@@ -30,6 +30,7 @@
 #include "LinkerScript.h"
 #include "MarkLive.h"
 #include "OutputSections.h"
+#include "PLO.h"
 #include "ScriptParser.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
@@ -831,6 +832,7 @@ void LinkerDriver::readConfigs(opt::InputArgList &Args) {
   Config->Optimize = args::getInteger(Args, OPT_O, 1);
   Config->OrphanHandling = getOrphanHandling(Args);
   Config->OutputFile = Args.getLastArgValue(OPT_o);
+  Config->Plo = Args.hasArg(OPT_plo);
   Config->Pie = Args.hasFlag(OPT_pie, OPT_no_pie, false);
   Config->PrintIcfSections =
       Args.hasFlag(OPT_print_icf_sections, OPT_no_print_icf_sections, false);
@@ -838,6 +840,7 @@ void LinkerDriver::readConfigs(opt::InputArgList &Args) {
       Args.hasFlag(OPT_print_gc_sections, OPT_no_print_gc_sections, false);
   Config->PrintSymbolOrder =
       Args.getLastArgValue(OPT_print_symbol_order);
+  Config->Profile = Args.getLastArgValue(OPT_profile);
   Config->Rpath = getRpath(Args);
   Config->Relocatable = Args.hasArg(OPT_relocatable);
   Config->SaveTemps = Args.hasArg(OPT_save_temps);
@@ -849,6 +852,7 @@ void LinkerDriver::readConfigs(opt::InputArgList &Args) {
   Config->SortSection = getSortSection(Args);
   Config->SplitStackAdjustSize = args::getInteger(Args, OPT_split_stack_adjust_size, 16384);
   Config->Strip = getStrip(Args);
+  Config->SymFile = Args.getLastArgValue(OPT_symfile);
   Config->Sysroot = Args.getLastArgValue(OPT_sysroot);
   Config->Target1Rel = Args.hasFlag(OPT_target1_rel, OPT_target1_abs, false);
   Config->Target2 = getTarget2(Args);
@@ -1535,6 +1539,14 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
   if (!BitcodeFiles.empty())
     for (const char *S : LibcallRoutineNames)
       handleLibcall<ELFT>(S);
+
+  fprintf(stderr, "(shenhan): %lu\n", ObjectFiles.size());
+  if (Config->Plo && !ObjectFiles.empty()) {
+    for (InputFile *F : ObjectFiles) {
+      lld::plo::ProcessFile(F);
+    }
+    return ;
+  }
 
   // Return if there were name resolution errors.
   if (errorCount())

@@ -100,8 +100,10 @@ struct Configuration {
   llvm::StringRef OutputFile;
   llvm::StringRef OptRemarksFilename;
   llvm::StringRef OptRemarksPasses;
+  llvm::StringRef Profile;
   llvm::StringRef ProgName;
   llvm::StringRef PrintSymbolOrder;
+  llvm::StringRef SymFile;
   llvm::StringRef SoName;
   llvm::StringRef Sysroot;
   llvm::StringRef ThinLTOCacheDir;
@@ -166,6 +168,7 @@ struct Configuration {
   bool OptRemarksWithHotness;
   bool PicThunk;
   bool Pie;
+  bool Plo;
   bool PrintGcSections;
   bool PrintIcfSections;
   bool Relocatable;

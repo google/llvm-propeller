@@ -35,6 +35,9 @@ add_lld_library(lldELF
   MapFile.cpp
   MarkLive.cpp
   OutputSections.cpp
+  PLO.cpp
+  PLOELFView.cpp
+  PLOELFCfg.cpp
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp
