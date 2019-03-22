@@ -1542,8 +1542,10 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
 
   fprintf(stderr, "(shenhan): %lu\n", ObjectFiles.size());
   if (Config->Plo && !ObjectFiles.empty()) {
-    for (InputFile *F : ObjectFiles) {
-      lld::plo::ProcessFile(F);
+    if (lld::plo::Plo.Init(Config->SymFile, Config->Profile)) {
+      lld::plo::Plo.ProcessFiles(ObjectFiles);
+    } else {
+      fprintf(stderr, "Init failed.\n");
     }
     return ;
   }

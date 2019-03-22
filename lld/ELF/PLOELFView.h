@@ -14,12 +14,58 @@
 using llvm::ArrayRef;
 using llvm::MemoryBufferRef;
 using llvm::StringRef;
+using std::list;
+using std::unique_ptr;
 
 namespace lld {
 namespace plo {
 
-template <class ELFT>
-class ELFCfgBuilder;
+class ELFCfgNode;
+
+class ELFCfgEdge {
+public:
+  const ELFCfgNode *Src;
+  const ELFCfgNode *Sink;
+  double            Weight{0.0};
+  bool              IsFT{false};
+
+  ELFCfgEdge(ELFCfgNode *S, ELFCfgNode *T)
+    :Src(S), Sink(T) {}
+};
+  
+class ELFCfgNode {
+ public:
+  const uint16_t                Shndx;
+  StringRef                     ShName;
+  uint64_t                      Address;
+  list<unique_ptr<ELFCfgEdge>>  Outs;
+  list<ELFCfgEdge *>            Ins;
+
+  ELFCfgNode(const uint16_t _Shndx, const StringRef &_ShName, uint64_t _Addr)
+    : Shndx(_Shndx), ShName(_ShName), Address(_Addr) {}
+
+  static const uint64_t InvalidAddress = 0;
+};
+
+class ELFCfg {
+ public:
+  StringRef Name;
+  list<std::unique_ptr<ELFCfgNode>> Nodes;
+  ELFCfgNode *EntryNode{nullptr};
+
+  ELFCfg(const StringRef &N) : Name(N) {}
+  void Diagnose() const;
+
+  ELFCfg() {}
+  ~ELFCfg() {}
+};
+
+class ELFCfgLessComparator {
+public:
+  bool operator()(ELFCfg *A, ELFCfg *B) const {
+    return A->EntryNode->Address < B->EntryNode->Address;
+  }
+};
 
 class ELFBlock {
  public:
@@ -86,8 +132,8 @@ class ELFView {
  public:
   static ELFView *Create(const MemoryBufferRef FR);
 
-  using BlockIter = std::list<std::unique_ptr<ELFBlock>>::iterator;
-  using ConstBlockIter = std::list<std::unique_ptr<ELFBlock>>::const_iterator;
+  using BlockIter = list<unique_ptr<ELFBlock>>::iterator;
+  using ConstBlockIter = list<unique_ptr<ELFBlock>>::const_iterator;
 
   ELFView(const MemoryBufferRef &FR) : FileRef(FR) {}
   virtual ~ELFView() {}
@@ -126,6 +172,8 @@ class ELFView {
   BlockIter SymTabShdrPos;     // Symbol table section header.
   BlockIter SymTabStrSectPos;  // Symbol table string table section.
   BlockIter SymTabStrShdrPos;  // Symbol table string table section header.
+
+  list<unique_ptr<ELFCfg>> Cfgs;
 };
 
 template <class ELFT>
@@ -164,10 +212,8 @@ class ELFViewImpl : public ELFView {
 
   void BuildCfgs() override;
 
- protected:
   bool check() const;
 
- private:
   const ViewFileEhdr *getEhdr(const ELFBlock *VB) const {
     assert(VB->getType() == ELFBlock::Ty::EHDR_BLK);
     if (VB->getType() != ELFBlock::Ty::EHDR_BLK) return nullptr;
@@ -312,9 +358,29 @@ class ELFViewImpl : public ELFView {
     return F;
   }
 
-  friend class ELFCfgBuilder<ELFT>;
+};
+
+template <class ELFT>
+class ELFCfgBuilder {
+ public:
+  using ViewFileShdr = typename ELFViewImpl<ELFT>::ViewFileShdr;
+  using ViewFileSym  = typename ELFViewImpl<ELFT>::ViewFileSym;
+  using ViewFileRela = typename ELFViewImpl<ELFT>::ViewFileRela;
+  using ELFTUInt     = typename ELFViewImpl<ELFT>::ELFTUInt;
+
+  ELFViewImpl<ELFT> *View;
+
+  uint32_t BB{0};
+  uint32_t BBWoutAddr{0};
+  uint32_t InvalidCfgs{0};
+
+  ELFCfgBuilder(ELFViewImpl<ELFT> *V) : View(V) {}
+  void BuildCfgs();
+
+protected:
+  void BuildCfg(ELFCfg &Cfg);
 };
 
 }  // namespace plo
 }  // namespace llvm
-#endif // LLVM_PLO_ELFREWRITER_H
+#endif

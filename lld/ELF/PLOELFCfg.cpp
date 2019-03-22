@@ -1,23 +1,34 @@
-#include "PLOELFCfg.h"
+#include "PLO.h"
 #include "PLOELFView.h"
 
 #include <list>
 #include <map>
+#include <memory>
 
 #include "llvm/Object/ELFTypes.h"
 
 using llvm::StringRef;
+using std::list;
+using std::unique_ptr;
 
 namespace lld {
 namespace plo {
 
 void ELFCfg::Diagnose() const {
   fprintf(stderr, "Edges for '%s'\n", Name.data());
-  for (auto &Src : Nodes) {
-    for (auto &Dst : Src->Outs) {
-      fprintf(stderr, "%s(%d) -> %s(%d)\n",
-	      Src->ShName.data(), Src->Shndx,
-	      Dst->ShName.data(), Dst->Shndx);
+  size_t S = Name.size();
+  auto DisplayName = [this, S](const char *T) {
+		       if (Name.data() == T)
+			 return "<Entry>";
+		       return T + S + 1;
+		     };
+  for (auto &N : Nodes) {
+    for (auto &Edge : N->Outs) {
+      auto *Src = Edge->Src;
+      auto *Dst = Edge->Sink;
+      fprintf(stderr, "%s(0x%lx) -> %s(0x%lx)\n",
+	      DisplayName(Src->ShName.data()), Src->Address,
+	      DisplayName(Dst->ShName.data()), Dst->Address);
     }
   }
 }
@@ -69,15 +80,32 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
   for (auto &I : Groups) {
     if (I.second.size() == 1)
       continue;
-    ELFCfg *Cfg = new ELFCfg(I.first);
+    unique_ptr<ELFCfg> Cfg(new ELFCfg(I.first));
     for (const ViewFileSym *Sym : I.second) {
-      Cfg->Nodes.emplace_back(
-          new ELFCfgNode(Sym->st_shndx,
-			 StringRef(StrTab + uint32_t(Sym->st_name))));
+      StringRef SymName(StrTab + uint32_t(Sym->st_name));
+      uint64_t SymAddr = ELFCfgNode::InvalidAddress;
+      if (Plo.SymAddrMap.find(SymName) != Plo.SymAddrMap.end()) {
+	SymAddr = Plo.SymAddrMap[SymName];
+      } else {
+	++BBWoutAddr;
+	Cfg.reset(nullptr);  // delete the instance
+	break;
+      }
+      ELFCfgNode *N = new ELFCfgNode(Sym->st_shndx, SymName, SymAddr);
+      if (!Cfg->EntryNode || Cfg->EntryNode->Address > SymAddr) {
+	Cfg->EntryNode = N;
+      }
+      Cfg->Nodes.emplace_back(N);
+      ++BB;
     }
-    BuildCfg(*Cfg);
-    Cfg->Diagnose();
-    Cfgs.emplace_back(Cfg);
+    if (Cfg) {
+      BuildCfg(*Cfg);
+      // Cfg->Diagnose();
+      // Transfer ownership of Cfg to View.Cfgs.
+      View->Cfgs.emplace_back(Cfg.release());
+    } else {
+      ++InvalidCfgs;
+    }
   }
 }
 
@@ -93,10 +121,11 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg) {
       uint16_t SymShndx(Symbols[RSym].st_shndx);
       for (auto &TargetNode : Cfg.Nodes) {
         if (TargetNode->Shndx == SymShndx) {
+	  ELFCfgEdge *E = new ELFCfgEdge(SrcNode.get(), TargetNode.get());
           // TODO(shenhan): even if a rela in A points to B, it does not
           // necessarily mean A has a jump to B. Check it.
-          SrcNode->Outs.push_back(TargetNode.get());
-          TargetNode->Ins.push_back(SrcNode.get());
+          SrcNode->Outs.emplace_back(E);
+          TargetNode->Ins.push_back(E);
         }
       }
     }

@@ -1,6 +1,6 @@
 #include "PLOELFView.h"
 
-#include "PLOELFCfg.h"
+#include "PLO.h"
 
 #include <unistd.h>
 
@@ -419,6 +419,10 @@ template <class ELFT>
 void ELFViewImpl<ELFT>::BuildCfgs() {
   ELFCfgBuilder<ELFT> CfgBuilder(this);
   CfgBuilder.BuildCfgs();
+  Plo.TotalBB += CfgBuilder.BB;
+  Plo.TotalBBWoutAddr += CfgBuilder.BBWoutAddr;
+  Plo.ValidCfgs += this->Cfgs.size();
+  Plo.InvalidCfgs += CfgBuilder.InvalidCfgs;
 }
 
 template class ELFViewImpl<llvm::object::ELF32LE>;
