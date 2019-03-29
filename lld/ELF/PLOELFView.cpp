@@ -21,7 +21,8 @@ namespace lld {
 namespace plo {
 
 ELFView *
-ELFView::Create(const StringRef &VN, const MemoryBufferRef FR) {
+ELFView::Create(const StringRef &VN, const uint32_t Ordinal,
+		const MemoryBufferRef FR) {
   const char *FH = FR.getBufferStart();
   if (FR.getBufferSize() <= 6) return nullptr;
   if (FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' && FH[3] == 'F') {
@@ -29,13 +30,13 @@ ELFView::Create(const StringRef &VN, const MemoryBufferRef FR) {
     char EData = FH[5];
     if (0 < EClass && EClass <= 2 && 0 < EData && EData <= 2) {
       if (EClass == 1 && EData == 1)
-        return new ELFViewImpl<llvm::object::ELF32LE>(VN, FR);
+        return new ELFViewImpl<llvm::object::ELF32LE>(VN, Ordinal, FR);
       if (EClass == 1 && EData == 2)
-        return new ELFViewImpl<llvm::object::ELF32BE>(VN, FR);
+        return new ELFViewImpl<llvm::object::ELF32BE>(VN, Ordinal, FR);
       if (EClass == 2 && EData == 1)
-        return new ELFViewImpl<llvm::object::ELF64LE>(VN, FR);
+        return new ELFViewImpl<llvm::object::ELF64LE>(VN, Ordinal, FR);
       if (EClass == 2 && EData == 2)
-        return new ELFViewImpl<llvm::object::ELF64BE>(VN, FR);
+        return new ELFViewImpl<llvm::object::ELF64BE>(VN, Ordinal, FR);
     }
   }
   return nullptr;

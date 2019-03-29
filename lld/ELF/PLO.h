@@ -5,6 +5,7 @@
 #include <list>
 #include <map>
 #include <mutex>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -17,6 +18,7 @@ using std::list;
 using std::map;
 using std::mutex;
 using std::pair;
+using std::set;
 using std::unique_ptr;
 using std::vector;
 
@@ -63,7 +65,7 @@ public:
   bool InitProfile(StringRef &Profile);
 
   void ProcessFiles(vector<elf::InputFile *> &Files);
-  void ProcessFile(elf::InputFile *Inf);
+  void ProcessFile(pair<elf::InputFile *, uint32_t> &Pair);
   void ProcessLBRs();
 
   // Thread safety is guaranteed.
@@ -79,7 +81,12 @@ public:
   list<unique_ptr<ELFView>> Views;
   // ELFCfgs are owned by ELFViews. Do not assume ownership here.
   // Same named Cfgs may exist in different object files (e.g. weak symbols.)
-  map<StringRef, list<ELFView *>> CfgMap;
+  struct ELFViewOrdinalComparator {
+    bool operator()(const ELFView *A, const ELFView *B) {
+      return A->Ordinal < B->Ordinal;
+    }
+  };
+  map<StringRef, set<ELFView *, ELFViewOrdinalComparator>> CfgMap;
 
   // statistics
   atomic<uint32_t> TotalBB{0};

@@ -56,9 +56,9 @@ bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
     P = P->FTEdge ? P->FTEdge->Sink : nullptr;
   }
   if (!P) {
-    fprintf(stderr, "Failed to mark path: %s -> %s.\n",
-	    From->ShName.str().c_str(),
-	    To->ShName.str().c_str());
+    // fprintf(stderr, "Failed to mark path: %s -> %s.\n",
+    // 	    From->ShName.str().c_str(),
+    // 	    To->ShName.str().c_str());
     return false;
   }
   return true;
