@@ -1,6 +1,12 @@
 CC=~/llvm/build-release/bin/clang-9
 lld=~/copt/plo2/build-release/bin/ld.lld
 
+check:
+	@if [[ ! -e "$(CC)" ]] || [[ ! -e "$(lld)" ]]; then \
+	  echo Please change Makefile to setup CC and lld ; \
+	  exit 1; \
+	fi
+
 sample.o : %.o: %.c
 	$(CC) -fbasicblock-sections=all -c -O2 $< -o $@
 
