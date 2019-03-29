@@ -139,12 +139,14 @@ class ELFBlock {
 
 class ELFView {
  public:
-  static ELFView *Create(const StringRef &VN, const MemoryBufferRef FR);
+  static ELFView *Create(const StringRef &VN,
+			 const uint32_t O, const MemoryBufferRef FR);
 
   using BlockIter = list<unique_ptr<ELFBlock>>::iterator;
   using ConstBlockIter = list<unique_ptr<ELFBlock>>::const_iterator;
 
-  ELFView(const StringRef &VN, const MemoryBufferRef &FR) : ViewName(VN), FileRef(FR) {}
+  ELFView(const StringRef &VN, const uint32_t O, const MemoryBufferRef &FR) :
+    ViewName(VN), Ordinal(O), FileRef(FR) {}
   virtual ~ELFView() {}
 
   MemoryBufferRef GetFileRef() const { return FileRef; }
@@ -169,7 +171,8 @@ class ELFView {
 
   virtual void BuildCfgs() = 0;
 
-  StringRef ViewName;
+  StringRef       ViewName;
+  const uint32_t  Ordinal;
   MemoryBufferRef FileRef;
   std::list<std::unique_ptr<ELFBlock>> Blocks;
   // These iterators are properly maintained before and after any modification.
@@ -197,7 +200,9 @@ class ELFViewImpl : public ELFView {
   using ViewFileRela = typename ELFT::Rela;
   using ViewFileSym  = typename ELFT::Sym;
 
-  ELFViewImpl(const StringRef &VN, const MemoryBufferRef &FR) : ELFView(VN, FR) {}
+  ELFViewImpl(const StringRef &VN,
+	      const uint32_t Ordinal,
+	      const MemoryBufferRef &FR) : ELFView(VN, Ordinal, FR) {}
   virtual ~ELFViewImpl() {}
 
   bool Init() override;

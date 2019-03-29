@@ -5,6 +5,7 @@
 #include <atomic>
 #include <fstream>
 #include <functional>
+#include <list>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -19,7 +20,9 @@
 
 using llvm::StringRef;
 
+using std::list;
 using std::mutex;
+using std::pair;
 using std::placeholders::_1;
 using std::vector;
 using std::string;
@@ -132,24 +135,6 @@ bool PLO::InitProfile(StringRef &Profile) {
   return true;
 }
 
-// This method if thread safe.
-void PLO::ProcessFile(elf::InputFile *Inf) {
-  ELFView *View = ELFView::Create(Inf->getName(), Inf->MB);
-  if (View && View->Init()) {
-    // fprintf(stderr, "Building Cfgs for %s...\n", Inf->getName().str().c_str());
-    View->BuildCfgs();
-    // Updating global data structure.
-    {
-      std::lock_guard<mutex> L(this->Lock);
-      this->Views.emplace_back(View);
-      for (auto &P : View->Cfgs) {
-	auto &CfgList = CfgMap[P.first];
-	CfgList.emplace_back(View);
-      }
-    }
-  }
-}
-
 static bool
 IsBBSymbol(const StringRef &SymName, StringRef &FuncName) {
   FuncName = "";
@@ -184,7 +169,6 @@ SymContainsAddr(const StringRef &SymName, uint64_t SymAddr, uint64_t Addr, Strin
 static uint64_t TotalCfgFound = 0;
 static uint64_t TotalCfgNotFound = 0;
 
-
 // TODO(shenhan): cache some results to speed up.
 static bool
 FindCfgForAddress(uint64_t Addr, ELFCfg *&ResultCfg, ELFCfgNode *&ResultNode) {
@@ -212,6 +196,9 @@ FindCfgForAddress(uint64_t Addr, ELFCfg *&ResultCfg, ELFCfgNode *&ResultNode) {
 	//          funcFoo.bb.1
 	//          funcFoo.bb.2
 	//          funcFoo.bb.3
+	// Also not, Objects (CfgLI->second) are sorted in the way
+	// they appear on the command line, which is the same as how
+	// linker chooses the weak symbol definition.
 	for (auto &View: CfgLI->second) {
 	  ELFCfg *Cfg = View->Cfgs[IndexName].get();
 	  assert(Cfg);
@@ -262,9 +249,9 @@ void PLO::ProcessLBRs() {
      ELFCfg *LastToCfg{nullptr};
      ELFCfgNode *LastToNode{nullptr};
 
-     // LBR records looks like:
-     //    Entry0: LastFromCfg[LastFromNode] -> LastToCfg[LastToNode] |
-     //    Entry1: FromCfg[FromNode] -> ToCfg[ToNode]
+     // The fist entry in the record is the branch that happens last in history.
+     // The second entry happens earlier than the first one, ..., etc.
+     // So we iterate the entries in reverse order - the earliest in history -> the latest.
      for (auto P = Record->Entries.rbegin(), Q = Record->Entries.rend();
    	 P != Q; ++P) {
        auto &Entry = *P;
@@ -282,8 +269,12 @@ void PLO::ProcessLBRs() {
 	 if (LastToCfg->MarkPath(LastToNode, FromNode) == false) {
 	   if (!(LastFromAddr == From && LastToAddr == To && std::next(P) == Q)) {
 	     ++Strange;
-	     PrintLBRRecord(Record.get());
-	     LastToCfg->Diagnose();
+	     // fprintf(stderr, "*****\n");
+	     // fprintf(stderr, "Failed to map %s -> %s\n",
+	     // 	     LastToNode->ShName.str().c_str(), FromNode->ShName.str().c_str());
+	     // PrintLBRRecord(Record.get());
+	     // LastToCfg->Diagnose();
+	     // fprintf(stderr, "*****\n");
 	   }
 	 }
        }
@@ -296,19 +287,19 @@ void PLO::ProcessLBRs() {
 
   fprintf(stderr, "Total strange: %d\n", Strange);
 
-  fprintf(stderr, "Total %d branches mapped, %d branches unmapped.\n",
-	  Mapped, Unmapped);
+  // fprintf(stderr, "Total %d branches mapped, %d branches unmapped.\n",
+  // 	  Mapped, Unmapped);
 
   fprintf(stderr, "Cfg found: %lu, not found: %lu.\n",
 	  TotalCfgFound,
 	  TotalCfgNotFound);
   // _ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE
-  // for (auto &View: Plo.Views) {
-  //   for (auto &I: View->Cfgs) {
-  //     ELFCfg *Cfg = I.second.get();
-  //     Cfg->Diagnose();
-  //   }
-  // }
+  for (auto &View: Plo.Views) {
+    for (auto &I: View->Cfgs) {
+      ELFCfg *Cfg = I.second.get();
+      Cfg->Diagnose();
+    }
+  }
        // auto C1 = FindObjectInMap(GlobalCfgs, Entry->From);
        // auto C2 = FindObjectInMap(GlobalCfgs, Entry->To);
   //     if (C1 != GlobalCfgs.end() && C1 == C2) {
@@ -332,21 +323,46 @@ void PLO::ProcessLBRs() {
   // }
   // fprintf(stderr, "Processed %d out of %d LBR entries.\n", TotalProcessedEntries, Total);
 }
-    
+
+// This method if thread safe.
+void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
+  auto *Inf = Pair.first;
+  ELFView *View = ELFView::Create(Inf->getName(), Pair.second, Inf->MB);
+  if (View && View->Init()) {
+    // fprintf(stderr, "Building Cfgs for %s...\n", Inf->getName().str().c_str());
+    View->BuildCfgs();
+    // Updating global data structure.
+    {
+      std::lock_guard<mutex> L(this->Lock);
+      this->Views.emplace_back(View);
+      for (auto &P : View->Cfgs) {
+	auto R = CfgMap[P.first].emplace(View);
+	(void)(R);
+	assert(R.second);
+      }
+    }
+  }
+}
 
 void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
+  vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
+  int Ordinal = 0;
+  for (auto &F : Files) {
+    FileOrdinalPairs.emplace_back(F, ++Ordinal);
+    // ProcessFile(pair<elf::InputFile *, uint32_t>(F, ++Ordinal));
+  }
   llvm::parallel::for_each(llvm::parallel::parallel_execution_policy(),
-                           Files.begin(),
-                           Files.end(),
-			   std::bind(&PLO::ProcessFile, this, _1));
+                           FileOrdinalPairs.begin(),
+                           FileOrdinalPairs.end(),
+                           std::bind(&PLO::ProcessFile, this, _1));
 
 
   // _ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE
-  auto &T = CfgMap["_ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE"];
-  for (auto *View: T) {
-    fprintf(stderr, "View: %s\n", View->ViewName.str().c_str());
-  }
-  exit(0);
+  // auto &T = CfgMap["_ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE"];
+  // for (auto *View: T) {
+  //   fprintf(stderr, "View: %s\n", View->ViewName.str().c_str());
+  // }
+  // exit(0);
 
   // FreeContainer(SymAddrMap);  // No longer needed after we create Cfg.
   // FreeContainer(SymSizeMap);
@@ -354,7 +370,7 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
   // fprintf(stderr, "Finsihed creating cfgs.\n");
 
   // fprintf(stderr, "Total %d intra procedure jumps.\n", B);
-  
+
   // fprintf(stderr, "Valid   cfgs: %u\n", ValidCfgs.load());
   // fprintf(stderr, "Invalid cfgs: %u\n", InvalidCfgs.load());
   // fprintf(stderr, "Total BBs: %u\n", TotalBB.load());

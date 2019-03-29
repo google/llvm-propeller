@@ -56,9 +56,9 @@ bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
     P = P->FTEdge ? P->FTEdge->Sink : nullptr;
   }
   if (!P) {
-    fprintf(stderr, "Failed to mark path: %s -> %s.\n",
-	    From->ShName.str().c_str(),
-	    To->ShName.str().c_str());
+    // fprintf(stderr, "Failed to mark path: %s -> %s.\n",
+    // 	    From->ShName.str().c_str(),
+    // 	    To->ShName.str().c_str());
     return false;
   }
   return true;
@@ -140,7 +140,7 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
     if (Cfg) {
       BuildCfg(*Cfg, CfgSym);
       // Transfer ownership of Cfg to View.Cfgs.
-      // Cfg->Diagnose();
+      Cfg->Diagnose();
       View->Cfgs.emplace(Cfg->Name, Cfg.release());
     }
   }
