@@ -325,7 +325,11 @@ void PLO::ProcessLBRs() {
 }
 
 // This method if thread safe.
+<<<<<<< HEAD
 void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
+=======
+void PLO::ProcessFile(pair<elf::InputFile *, uint32_t> &Pair) {
+>>>>>>> 1530b121d700aaa2f3a2df392be47a43949bf8c3
   auto *Inf = Pair.first;
   ELFView *View = ELFView::Create(Inf->getName(), Pair.second, Inf->MB);
   if (View && View->Init()) {
@@ -349,12 +353,19 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
   int Ordinal = 0;
   for (auto &F : Files) {
     FileOrdinalPairs.emplace_back(F, ++Ordinal);
+<<<<<<< HEAD
     // ProcessFile(pair<elf::InputFile *, uint32_t>(F, ++Ordinal));
+=======
+>>>>>>> 1530b121d700aaa2f3a2df392be47a43949bf8c3
   }
   llvm::parallel::for_each(llvm::parallel::parallel_execution_policy(),
                            FileOrdinalPairs.begin(),
                            FileOrdinalPairs.end(),
+<<<<<<< HEAD
                            std::bind(&PLO::ProcessFile, this, _1));
+=======
+			   std::bind(&PLO::ProcessFile, this, _1));
+>>>>>>> 1530b121d700aaa2f3a2df392be47a43949bf8c3
 
 
   // _ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE
