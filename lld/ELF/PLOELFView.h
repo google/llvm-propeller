@@ -2,6 +2,7 @@
 #define LLD_ELF_PLO_ELF_VIEW_H
 
 #include <list>
+#include <map>
 #include <memory>
 
 #include "llvm/ADT/iterator_range.h"
@@ -14,57 +15,65 @@
 using llvm::ArrayRef;
 using llvm::MemoryBufferRef;
 using llvm::StringRef;
+
 using std::list;
+using std::map;
 using std::unique_ptr;
 
 namespace lld {
 namespace plo {
 
+class ELFCfg;
 class ELFCfgNode;
 
 class ELFCfgEdge {
 public:
-  const ELFCfgNode *Src;
-  const ELFCfgNode *Sink;
-  double            Weight{0.0};
-  bool              IsFT{false};
+  ELFCfgNode *Src;
+  ELFCfgNode *Sink;
+  uint64_t    Weight;
+  // Whether it's an edge introduced by recursive-self-call.  (Usually
+  // calls do not split basic blocks and do not introduce new edges.)
+  enum EdgeType : char {NORMAL = 0, RSC, RSR, OTHER} Type {NORMAL};
 
-  ELFCfgEdge(ELFCfgNode *S, ELFCfgNode *T)
-    :Src(S), Sink(T) {}
+protected:
+  ELFCfgEdge(ELFCfgNode *N1, ELFCfgNode *N2, EdgeType T)
+    :Src(N1), Sink(N2), Weight(0), Type(T) {}
+
+  friend class ELFCfg;
 };
   
 class ELFCfgNode {
  public:
-  const uint16_t                Shndx;
-  StringRef                     ShName;
-  uint64_t                      Address;
-  list<unique_ptr<ELFCfgEdge>>  Outs;
-  list<ELFCfgEdge *>            Ins;
+  const uint16_t     Shndx;
+  StringRef          ShName;
+  list<ELFCfgEdge *> Outs;
+  list<ELFCfgEdge *> Ins;
+  // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
+  ELFCfgEdge *       FTEdge{nullptr};
+  uint64_t           MappedAddr{InvalidAddress};
 
-  ELFCfgNode(const uint16_t _Shndx, const StringRef &_ShName, uint64_t _Addr)
-    : Shndx(_Shndx), ShName(_ShName), Address(_Addr) {}
+  ELFCfgNode(const uint16_t _Shndx, const StringRef &_ShName)
+    : Shndx(_Shndx), ShName(_ShName) {}
 
-  static const uint64_t InvalidAddress = 0;
+  const static uint64_t InvalidAddress = -1l;
 };
 
 class ELFCfg {
  public:
   StringRef Name;
-  list<std::unique_ptr<ELFCfgNode>> Nodes;
-  ELFCfgNode *EntryNode{nullptr};
+  // Cfg size is the first bb section size. Not the size of all bb sections.
+  uint64_t Size{0};
+  map<uint64_t, unique_ptr<ELFCfgNode>> Nodes;
+  list<unique_ptr<ELFCfgEdge>> Edges;
 
   ELFCfg(const StringRef &N) : Name(N) {}
-  void Diagnose() const;
-
-  ELFCfg() {}
   ~ELFCfg() {}
-};
 
-class ELFCfgLessComparator {
-public:
-  bool operator()(ELFCfg *A, ELFCfg *B) const {
-    return A->EntryNode->Address < B->EntryNode->Address;
-  }
+  bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);
+  void MapBranch(ELFCfgNode *From, ELFCfgNode *To);
+  ELFCfgEdge *CreateEdge(ELFCfgNode *From, ELFCfgNode *To,
+			 typename ELFCfgEdge::EdgeType Type);
+  void Diagnose() const;
 };
 
 class ELFBlock {
@@ -130,12 +139,12 @@ class ELFBlock {
 
 class ELFView {
  public:
-  static ELFView *Create(const MemoryBufferRef FR);
+  static ELFView *Create(const StringRef &VN, const MemoryBufferRef FR);
 
   using BlockIter = list<unique_ptr<ELFBlock>>::iterator;
   using ConstBlockIter = list<unique_ptr<ELFBlock>>::const_iterator;
 
-  ELFView(const MemoryBufferRef &FR) : FileRef(FR) {}
+  ELFView(const StringRef &VN, const MemoryBufferRef &FR) : ViewName(VN), FileRef(FR) {}
   virtual ~ELFView() {}
 
   MemoryBufferRef GetFileRef() const { return FileRef; }
@@ -160,6 +169,7 @@ class ELFView {
 
   virtual void BuildCfgs() = 0;
 
+  StringRef ViewName;
   MemoryBufferRef FileRef;
   std::list<std::unique_ptr<ELFBlock>> Blocks;
   // These iterators are properly maintained before and after any modification.
@@ -173,7 +183,7 @@ class ELFView {
   BlockIter SymTabStrSectPos;  // Symbol table string table section.
   BlockIter SymTabStrShdrPos;  // Symbol table string table section header.
 
-  list<unique_ptr<ELFCfg>> Cfgs;
+  map<StringRef, unique_ptr<ELFCfg>> Cfgs;
 };
 
 template <class ELFT>
@@ -187,7 +197,7 @@ class ELFViewImpl : public ELFView {
   using ViewFileRela = typename ELFT::Rela;
   using ViewFileSym  = typename ELFT::Sym;
 
-  ELFViewImpl(const MemoryBufferRef &FR) : ELFView(FR) {}
+  ELFViewImpl(const StringRef &VN, const MemoryBufferRef &FR) : ELFView(VN, FR) {}
   virtual ~ELFViewImpl() {}
 
   bool Init() override;
@@ -378,7 +388,7 @@ class ELFCfgBuilder {
   void BuildCfgs();
 
 protected:
-  void BuildCfg(ELFCfg &Cfg);
+  void BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym);
 };
 
 }  // namespace plo

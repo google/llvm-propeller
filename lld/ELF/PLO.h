@@ -4,14 +4,19 @@
 #include <atomic>
 #include <list>
 #include <map>
+#include <mutex>
+#include <utility>
 #include <vector>
 
 #include "PLOELFView.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 using std::atomic;
 using std::list;
 using std::map;
+using std::mutex;
+using std::pair;
 using std::unique_ptr;
 using std::vector;
 
@@ -58,17 +63,23 @@ public:
   bool InitProfile(StringRef &Profile);
 
   void ProcessFiles(vector<elf::InputFile *> &Files);
+  void ProcessFile(elf::InputFile *Inf);
+  void ProcessLBRs();
 
   // Thread safety is guaranteed.
   void CreateCfgForFile(elf::InputFile *Inf);
-  // Disposed of after CreateCfgForFile is done.
-  map<StringRef, uint64_t> SymAddrMap;
+  // Addr -> Symbol (for all 't', 'T', 'w' and 'W' symbols) map.
+  map<uint64_t, llvm::SmallVector<StringRef, 3>> AddrSymMap;
+  map<StringRef, pair<uint64_t, uint64_t>> SymAddrSizeMap;
   PLOProfile Profile;
 
-  //
+  // Lock to access / modify global data structure.
+  mutex Lock;
+
   list<unique_ptr<ELFView>> Views;
   // ELFCfgs are owned by ELFViews. Do not assume ownership here.
-  map<uint64_t, ELFCfg *> GlobalCfgs;  // sorted by Cfg entry address.
+  // Same named Cfgs may exist in different object files (e.g. weak symbols.)
+  map<StringRef, list<ELFView *>> CfgMap;
 
   // statistics
   atomic<uint32_t> TotalBB{0};
