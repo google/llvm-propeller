@@ -11,7 +11,10 @@ sample.perfdata: sample.out
 	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
 
 sample.out.symfile sample.out.profile: sample.out sample.perfdata
-	~/copt/plo/plotool.sh $^
+	./plotool.sh $^
 
 sample.out.cfg: sample.out.symfile sample.out.profile sample.o
-	$(lld) -plo -symfile sample.out.symfile -profile sample.out.profile sample.o 2>&1 | tee $@
+	$(lld) -plo \
+	       -symfile sample.out.symfile \
+	       -profile sample.out.profile \
+	       sample.o 2>&1 | tee $@
