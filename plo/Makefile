@@ -1,5 +1,5 @@
-CC=~/llvm/build-release/bin/clang-9
-lld=~/copt/plo2/build-release/bin/ld.lld
+CC=~/llvm/build-release/bin/clang-9  # Must accept -fbasicblock-section options.
+lld=~/copt/plo2/build-release/bin/ld.lld  # Must contains plo changes.
 
 check:
 	@if [[ ! -e "$(CC)" ]] || [[ ! -e "$(lld)" ]]; then \
@@ -24,3 +24,6 @@ sample.out.cfg: sample.out.symfile sample.out.profile sample.o
 	       -symfile sample.out.symfile \
 	       -profile sample.out.profile \
 	       sample.o 2>&1 | tee $@
+
+clean:
+	rm -f sample.o sample.out sample.out.symfile sample.out.profile sample.out.cfg
