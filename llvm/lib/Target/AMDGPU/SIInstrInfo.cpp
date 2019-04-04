@@ -457,7 +457,12 @@ bool SIInstrInfo::shouldClusterMemOps(MachineOperand &BaseOp1,
 
   const MachineRegisterInfo &MRI =
       FirstLdSt.getParent()->getParent()->getRegInfo();
-  const TargetRegisterClass *DstRC = MRI.getRegClass(FirstDst->getReg());
+
+  const unsigned Reg = FirstDst->getReg();
+
+  const TargetRegisterClass *DstRC = TargetRegisterInfo::isVirtualRegister(Reg)
+                                         ? MRI.getRegClass(Reg)
+                                         : RI.getPhysRegClass(Reg);
 
   return (NumLoads * (RI.getRegSizeInBits(*DstRC) / 8)) <= LoadClusterThreshold;
 }
@@ -1209,6 +1214,12 @@ bool SIInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MI.setDesc(get(AMDGPU::S_XOR_B64));
     break;
 
+  case AMDGPU::S_OR_B64_term:
+    // This is only a terminator to get the correct spill code placement during
+    // register allocation.
+    MI.setDesc(get(AMDGPU::S_OR_B64));
+    break;
+
   case AMDGPU::S_ANDN2_B64_term:
     // This is only a terminator to get the correct spill code placement during
     // register allocation.
@@ -1322,9 +1333,15 @@ bool SIInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MI.eraseFromParent();
     break;
   }
+  case AMDGPU::ENTER_WWM: {
+    // This only gets its own opcode so that SIPreAllocateWWMRegs can tell when
+    // WWM is entered.
+    MI.setDesc(get(AMDGPU::S_OR_SAVEEXEC_B64));
+    break;
+  }
   case AMDGPU::EXIT_WWM: {
-    // This only gets its own opcode so that SIFixWWMLiveness can tell when WWM
-    // is exited.
+    // This only gets its own opcode so that SIPreAllocateWWMRegs can tell when
+    // WWM is exited.
     MI.setDesc(get(AMDGPU::S_MOV_B64));
     break;
   }
@@ -1687,6 +1704,7 @@ bool SIInstrInfo::analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
     case AMDGPU::SI_MASK_BRANCH:
     case AMDGPU::S_MOV_B64_term:
     case AMDGPU::S_XOR_B64_term:
+    case AMDGPU::S_OR_B64_term:
     case AMDGPU::S_ANDN2_B64_term:
       break;
     case AMDGPU::SI_IF:

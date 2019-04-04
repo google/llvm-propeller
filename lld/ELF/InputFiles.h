@@ -147,10 +147,10 @@ private:
 
 template <typename ELFT> class ELFFileBase : public InputFile {
 public:
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::Sym Elf_Sym;
-  typedef typename ELFT::Word Elf_Word;
-  typedef typename ELFT::SymRange Elf_Sym_Range;
+  using Elf_Shdr = typename ELFT::Shdr;
+  using Elf_Sym = typename ELFT::Sym;
+  using Elf_Word = typename ELFT::Word;
+  using Elf_Sym_Range = typename ELFT::SymRange;
 
   ELFFileBase(Kind K, MemoryBufferRef M);
   static bool classof(const InputFile *F) { return F->isElf(); }
@@ -161,28 +161,25 @@ public:
 
   StringRef getStringTable() const { return StringTable; }
 
-  uint32_t getSectionIndex(const Elf_Sym &Sym) const;
-
   Elf_Sym_Range getGlobalELFSyms();
   Elf_Sym_Range getELFSyms() const { return ELFSyms; }
 
 protected:
   ArrayRef<Elf_Sym> ELFSyms;
   uint32_t FirstGlobal = 0;
-  ArrayRef<Elf_Word> SymtabSHNDX;
   StringRef StringTable;
   void initSymtab(ArrayRef<Elf_Shdr> Sections, const Elf_Shdr *Symtab);
 };
 
 // .o file.
 template <class ELFT> class ObjFile : public ELFFileBase<ELFT> {
-  typedef ELFFileBase<ELFT> Base;
-  typedef typename ELFT::Rel Elf_Rel;
-  typedef typename ELFT::Rela Elf_Rela;
-  typedef typename ELFT::Sym Elf_Sym;
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::Word Elf_Word;
-  typedef typename ELFT::CGProfile Elf_CGProfile;
+  using Base = ELFFileBase<ELFT>;
+  using Elf_Rel = typename ELFT::Rel;
+  using Elf_Rela = typename ELFT::Rela;
+  using Elf_Sym = typename ELFT::Sym;
+  using Elf_Shdr = typename ELFT::Shdr;
+  using Elf_Word = typename ELFT::Word;
+  using Elf_CGProfile = typename ELFT::CGProfile;
 
   StringRef getShtGroupSignature(ArrayRef<Elf_Shdr> Sections,
                                  const Elf_Shdr &Sec);
@@ -201,6 +198,8 @@ public:
       fatal(toString(this) + ": invalid symbol index");
     return *this->Symbols[SymbolIndex];
   }
+
+  uint32_t getSectionIndex(const Elf_Sym &Sym) const;
 
   template <typename RelT> Symbol &getRelocTargetSym(const RelT &Rel) const {
     uint32_t SymIndex = Rel.getSymbol(Config->IsMips64EL);
@@ -246,6 +245,8 @@ private:
 
   bool shouldMerge(const Elf_Shdr &Sec);
   Symbol *createSymbol(const Elf_Sym *Sym);
+
+  ArrayRef<Elf_Word> SymtabSHNDX;
 
   // .shstrtab contents.
   StringRef SectionStringTable;
@@ -321,13 +322,13 @@ public:
 
 // .so file.
 template <class ELFT> class SharedFile : public ELFFileBase<ELFT> {
-  typedef ELFFileBase<ELFT> Base;
-  typedef typename ELFT::Dyn Elf_Dyn;
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::Sym Elf_Sym;
-  typedef typename ELFT::SymRange Elf_Sym_Range;
-  typedef typename ELFT::Verdef Elf_Verdef;
-  typedef typename ELFT::Versym Elf_Versym;
+  using Base = ELFFileBase<ELFT>;
+  using Elf_Dyn = typename ELFT::Dyn;
+  using Elf_Shdr = typename ELFT::Shdr;
+  using Elf_Sym = typename ELFT::Sym;
+  using Elf_Sym_Range = typename ELFT::SymRange;
+  using Elf_Verdef = typename ELFT::Verdef;
+  using Elf_Versym = typename ELFT::Versym;
 
   const Elf_Shdr *VersymSec = nullptr;
   const Elf_Shdr *VerdefSec = nullptr;

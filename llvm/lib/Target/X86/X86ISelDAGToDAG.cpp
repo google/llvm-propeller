@@ -2131,12 +2131,10 @@ bool X86DAGToDAGISel::selectLEA64_32Addr(SDValue N, SDValue &Base,
     Base = CurDAG->getRegister(0, MVT::i64);
   else if (Base.getValueType() == MVT::i32 && !dyn_cast<FrameIndexSDNode>(Base)) {
     // Base could already be %rip, particularly in the x32 ABI.
-    Base = SDValue(CurDAG->getMachineNode(
-                       TargetOpcode::SUBREG_TO_REG, DL, MVT::i64,
-                       CurDAG->getTargetConstant(0, DL, MVT::i64),
-                       Base,
-                       CurDAG->getTargetConstant(X86::sub_32bit, DL, MVT::i32)),
-                   0);
+    SDValue ImplDef = SDValue(CurDAG->getMachineNode(X86::IMPLICIT_DEF, DL,
+                                                     MVT::i64), 0);
+    Base = CurDAG->getTargetInsertSubreg(X86::sub_32bit, DL, MVT::i64, ImplDef,
+                                         Base);
   }
 
   RN = dyn_cast<RegisterSDNode>(Index);
@@ -2145,13 +2143,10 @@ bool X86DAGToDAGISel::selectLEA64_32Addr(SDValue N, SDValue &Base,
   else {
     assert(Index.getValueType() == MVT::i32 &&
            "Expect to be extending 32-bit registers for use in LEA");
-    Index = SDValue(CurDAG->getMachineNode(
-                        TargetOpcode::SUBREG_TO_REG, DL, MVT::i64,
-                        CurDAG->getTargetConstant(0, DL, MVT::i64),
-                        Index,
-                        CurDAG->getTargetConstant(X86::sub_32bit, DL,
-                                                  MVT::i32)),
-                    0);
+    SDValue ImplDef = SDValue(CurDAG->getMachineNode(X86::IMPLICIT_DEF, DL,
+                                                     MVT::i64), 0);
+    Index = CurDAG->getTargetInsertSubreg(X86::sub_32bit, DL, MVT::i64, ImplDef,
+                                          Index);
   }
 
   return true;
@@ -2634,10 +2629,13 @@ bool X86DAGToDAGISel::foldLoadStoreIntoMemOperand(SDNode *Node) {
     return false;
 
   bool IsCommutable = false;
+  bool IsNegate = false;
   switch (Opc) {
   default:
     return false;
   case X86ISD::SUB:
+    IsNegate = isNullConstant(StoredVal.getOperand(0));
+    break;
   case X86ISD::SBB:
     break;
   case X86ISD::ADD:
@@ -2649,7 +2647,7 @@ bool X86DAGToDAGISel::foldLoadStoreIntoMemOperand(SDNode *Node) {
     break;
   }
 
-  unsigned LoadOpNo = 0;
+  unsigned LoadOpNo = IsNegate ? 1 : 0;
   LoadSDNode *LoadNode = nullptr;
   SDValue InputChain;
   if (!isFusableLoadOpStorePattern(StoreNode, StoredVal, CurDAG, LoadOpNo,
@@ -2687,11 +2685,20 @@ bool X86DAGToDAGISel::foldLoadStoreIntoMemOperand(SDNode *Node) {
 
   MachineSDNode *Result;
   switch (Opc) {
-  case X86ISD::ADD:
   case X86ISD::SUB:
+    // Handle negate.
+    if (IsNegate) {
+      unsigned NewOpc = SelectOpcode(X86::NEG64m, X86::NEG32m, X86::NEG16m,
+                                     X86::NEG8m);
+      const SDValue Ops[] = {Base, Scale, Index, Disp, Segment, InputChain};
+      Result = CurDAG->getMachineNode(NewOpc, SDLoc(Node), MVT::i32,
+                                      MVT::Other, Ops);
+      break;
+    }
+   LLVM_FALLTHROUGH;
+  case X86ISD::ADD:
     // Try to match inc/dec.
-    if (!Subtarget->slowIncDec() ||
-        CurDAG->getMachineFunction().getFunction().optForSize()) {
+    if (!Subtarget->slowIncDec() || OptForSize) {
       bool IsOne = isOneConstant(StoredVal.getOperand(1));
       bool IsNegOne = isAllOnesConstant(StoredVal.getOperand(1));
       // ADD/SUB with 1/-1 and carry flag isn't used can use inc/dec.
@@ -3408,6 +3415,61 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
 
   switch (Opcode) {
   default: break;
+  case ISD::INTRINSIC_VOID: {
+    unsigned IntNo = Node->getConstantOperandVal(1);
+    switch (IntNo) {
+    default: break;
+    case Intrinsic::x86_sse3_monitor:
+    case Intrinsic::x86_monitorx:
+    case Intrinsic::x86_clzero: {
+      bool Use64BitPtr = Node->getOperand(2).getValueType() == MVT::i64;
+
+      unsigned Opc = 0;
+      switch (IntNo) {
+      case Intrinsic::x86_sse3_monitor:
+        if (!Subtarget->hasSSE3())
+          break;
+        Opc = Use64BitPtr ? X86::MONITOR64rrr : X86::MONITOR32rrr;
+        break;
+      case Intrinsic::x86_monitorx:
+        if (!Subtarget->hasMWAITX())
+          break;
+        Opc = Use64BitPtr ? X86::MONITORX64rrr : X86::MONITORX32rrr;
+        break;
+      case Intrinsic::x86_clzero:
+        if (!Subtarget->hasCLZERO())
+          break;
+        Opc = Use64BitPtr ? X86::CLZERO64r : X86::CLZERO32r;
+        break;
+      }
+
+      if (Opc) {
+        unsigned PtrReg = Use64BitPtr ? X86::RAX : X86::EAX;
+        SDValue Chain = CurDAG->getCopyToReg(Node->getOperand(0), dl, PtrReg,
+                                             Node->getOperand(2), SDValue());
+        SDValue InFlag = Chain.getValue(1);
+
+        if (IntNo == Intrinsic::x86_sse3_monitor ||
+            IntNo == Intrinsic::x86_monitorx) {
+          // Copy the other two operands to ECX and EDX.
+          Chain = CurDAG->getCopyToReg(Chain, dl, X86::ECX, Node->getOperand(3),
+                                       InFlag);
+          InFlag = Chain.getValue(1);
+          Chain = CurDAG->getCopyToReg(Chain, dl, X86::EDX, Node->getOperand(4),
+                                       InFlag);
+          InFlag = Chain.getValue(1);
+        }
+
+        MachineSDNode *CNode = CurDAG->getMachineNode(Opc, dl, MVT::Other,
+                                                      { Chain, InFlag});
+        ReplaceNode(Node, CNode);
+        return;
+      }
+    }
+    }
+
+    break;
+  }
   case ISD::BRIND: {
     if (Subtarget->isTargetNaCl())
       // NaCl has its own pass where jmp %r32 are converted to jmp %r64. We

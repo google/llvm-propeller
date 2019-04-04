@@ -286,7 +286,6 @@ protected:
 
   // Dynamially set bits that enable features.
   bool FP64FP16Denormals;
-  bool DX10Clamp;
   bool FlatForGlobal;
   bool AutoWaitcntBeforeBarrier;
   bool CodeObjectV3;
@@ -333,6 +332,7 @@ protected:
   bool HasDot1Insts;
   bool HasDot2Insts;
   bool EnableSRAMECC;
+  bool DoesNotSupportSRAMECC;
   bool FlatAddressSpace;
   bool FlatInstOffsets;
   bool FlatGlobalInsts;
@@ -529,14 +529,6 @@ public:
 
   bool supportsMinMaxDenormModes() const {
     return getGeneration() >= AMDGPUSubtarget::GFX9;
-  }
-
-  bool enableDX10Clamp() const {
-    return DX10Clamp;
-  }
-
-  bool enableIEEEBit(const MachineFunction &MF) const {
-    return AMDGPU::isCompute(MF.getFunction().getCallingConv());
   }
 
   bool useFlatForGlobal() const {
@@ -970,7 +962,6 @@ private:
   bool FMA;
   bool CaymanISA;
   bool CFALUBug;
-  bool DX10Clamp;
   bool HasVertexCache;
   bool R600ALUInst;
   bool FP64;

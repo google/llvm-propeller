@@ -96,7 +96,7 @@ static std::string getOutputPath(StringRef Path) {
 // FIXME: We could open the file in createFutureForFile and avoid needing to
 // return an error here, but for the moment that would cost us a file descriptor
 // (a limited resource on Windows) for the duration that the future is pending.
-typedef std::pair<std::unique_ptr<MemoryBuffer>, std::error_code> MBErrPair;
+using MBErrPair = std::pair<std::unique_ptr<MemoryBuffer>, std::error_code>;
 
 // Create a std::future that opens and maps a file using the best strategy for
 // the host platform.
@@ -204,7 +204,9 @@ void LinkerDriver::addArchiveBuffer(MemoryBufferRef MB, StringRef SymName,
                                     StringRef ParentName) {
   file_magic Magic = identify_magic(MB.getBuffer());
   if (Magic == file_magic::coff_import_library) {
-    Symtab->addFile(make<ImportFile>(MB));
+    InputFile *Imp = make<ImportFile>(MB);
+    Imp->ParentName = ParentName;
+    Symtab->addFile(Imp);
     return;
   }
 
@@ -314,7 +316,7 @@ void LinkerDriver::parseDirectives(InputFile *File) {
       Config->Entry = addUndefined(mangle(Arg->getValue()));
       break;
     case OPT_failifmismatch:
-      checkFailIfMismatch(Arg->getValue(), toString(File));
+      checkFailIfMismatch(Arg->getValue(), File);
       break;
     case OPT_incl:
       addUndefined(Arg->getValue());
@@ -1283,7 +1285,7 @@ void LinkerDriver::link(ArrayRef<const char *> ArgsArr) {
 
   // Handle /failifmismatch
   for (auto *Arg : Args.filtered(OPT_failifmismatch))
-    checkFailIfMismatch(Arg->getValue(), "cmd-line");
+    checkFailIfMismatch(Arg->getValue(), nullptr);
 
   // Handle /merge
   for (auto *Arg : Args.filtered(OPT_merge))

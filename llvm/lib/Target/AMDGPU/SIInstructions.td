@@ -121,6 +121,13 @@ def WWM : PseudoInstSI <(outs unknown:$vdst), (ins unknown:$src0)>;
 
 } // End let hasSideEffects = 0, mayLoad = 0, mayStore = 0, Uses = [EXEC]
 
+def ENTER_WWM : SPseudoInstSI <(outs SReg_64:$sdst), (ins i64imm:$src0)> {
+  let Defs = [EXEC];
+  let hasSideEffects = 0;
+  let mayLoad = 0;
+  let mayStore = 0;
+}
+
 def EXIT_WWM : SPseudoInstSI <(outs SReg_64:$sdst), (ins SReg_64:$src0)> {
   let hasSideEffects = 0;
   let mayLoad = 0;
@@ -182,6 +189,7 @@ class WrapTerminatorInst<SOP_Pseudo base_inst> : SPseudoInstSI<
 }
 
 def S_MOV_B64_term : WrapTerminatorInst<S_MOV_B64>;
+def S_OR_B64_term : WrapTerminatorInst<S_OR_B64>;
 def S_XOR_B64_term : WrapTerminatorInst<S_XOR_B64>;
 def S_ANDN2_B64_term : WrapTerminatorInst<S_ANDN2_B64>;
 

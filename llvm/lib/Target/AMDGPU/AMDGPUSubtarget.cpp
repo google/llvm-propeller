@@ -45,7 +45,7 @@ GCNSubtarget::~GCNSubtarget() = default;
 R600Subtarget &
 R600Subtarget::initializeSubtargetDependencies(const Triple &TT,
                                                StringRef GPU, StringRef FS) {
-  SmallString<256> FullFS("+promote-alloca,+dx10-clamp,");
+  SmallString<256> FullFS("+promote-alloca,");
   FullFS += FS;
   ParseSubtargetFeatures(GPU, FullFS);
 
@@ -64,7 +64,7 @@ R600Subtarget::initializeSubtargetDependencies(const Triple &TT,
 
 GCNSubtarget &
 GCNSubtarget::initializeSubtargetDependencies(const Triple &TT,
-                                                 StringRef GPU, StringRef FS) {
+                                              StringRef GPU, StringRef FS) {
   // Determine default and user-specified characteristics
   // On SI+, we want FP64 denormals to be on by default. FP32 denormals can be
   // enabled, but some instructions do not respect them and they run at the
@@ -77,7 +77,8 @@ GCNSubtarget::initializeSubtargetDependencies(const Triple &TT,
   // Similarly we want enable-prt-strict-null to be on by default and not to
   // unset everything else if it is disabled
 
-  SmallString<256> FullFS("+promote-alloca,+dx10-clamp,+load-store-opt,");
+  // Assuming ECC is enabled is the conservative default.
+  SmallString<256> FullFS("+promote-alloca,+load-store-opt,+sram-ecc,");
 
   if (isAmdHsaOS()) // Turn on FlatForGlobal for HSA.
     FullFS += "+flat-for-global,+unaligned-buffer-access,+trap-handler,";
@@ -129,6 +130,14 @@ GCNSubtarget::initializeSubtargetDependencies(const Triple &TT,
 
   HasFminFmaxLegacy = getGeneration() < AMDGPUSubtarget::VOLCANIC_ISLANDS;
 
+  // ECC is on by default, but turn it off if the hardware doesn't support it
+  // anyway. This matters for the gfx9 targets with d16 loads, but don't support
+  // ECC.
+  if (DoesNotSupportSRAMECC && EnableSRAMECC) {
+    ToggleFeature(AMDGPU::FeatureSRAMECC);
+    EnableSRAMECC = false;
+  }
+
   return *this;
 }
 
@@ -164,7 +173,6 @@ GCNSubtarget::GCNSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
     HalfRate64Ops(false),
 
     FP64FP16Denormals(false),
-    DX10Clamp(false),
     FlatForGlobal(false),
     AutoWaitcntBeforeBarrier(false),
     CodeObjectV3(false),
@@ -207,6 +215,7 @@ GCNSubtarget::GCNSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
     HasDot1Insts(false),
     HasDot2Insts(false),
     EnableSRAMECC(false),
+    DoesNotSupportSRAMECC(false),
     FlatAddressSpace(false),
     FlatInstOffsets(false),
     FlatGlobalInsts(false),
@@ -461,7 +470,6 @@ R600Subtarget::R600Subtarget(const Triple &TT, StringRef GPU, StringRef FS,
   FMA(false),
   CaymanISA(false),
   CFALUBug(false),
-  DX10Clamp(false),
   HasVertexCache(false),
   R600ALUInst(false),
   FP64(false),
@@ -632,9 +640,7 @@ struct MemOpClusterMutation : ScheduleDAGMutation {
 
   MemOpClusterMutation(const SIInstrInfo *tii) : TII(tii) {}
 
-  void apply(ScheduleDAGInstrs *DAGInstrs) override {
-    ScheduleDAGMI *DAG = static_cast<ScheduleDAGMI*>(DAGInstrs);
-
+  void apply(ScheduleDAGInstrs *DAG) override {
     SUnit *SUa = nullptr;
     // Search for two consequent memory operations and link them
     // to prevent scheduler from moving them apart.

@@ -387,6 +387,11 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("--fix-cortex-a53-843419");
   }
 
+  // Android does not allow shared text relocations. Emit a warning if the
+  // user's code contains any.
+  if (isAndroid)
+      CmdArgs.push_back("--warn-shared-textrel");
+
   for (const auto &Opt : ToolChain.ExtraOpts)
     CmdArgs.push_back(Opt.c_str());
 
@@ -459,7 +464,7 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
       if (HasCRTBeginEndFiles)
         CmdArgs.push_back(Args.MakeArgString(ToolChain.GetFilePath(crtbegin)));
-	}
+    }
 
     // Add crtfastmath.o if available and fast math is enabled.
     ToolChain.AddFastMathRuntimeIfAvailable(Args, CmdArgs);
@@ -670,14 +675,16 @@ void tools::gnutools::Assembler::ConstructJob(Compilation &C,
   case llvm::Triple::sparcel: {
     CmdArgs.push_back("-32");
     std::string CPU = getCPUName(Args, getToolChain().getTriple());
-    CmdArgs.push_back(sparc::getSparcAsmModeForCPU(CPU, getToolChain().getTriple()));
+    CmdArgs.push_back(
+        sparc::getSparcAsmModeForCPU(CPU, getToolChain().getTriple()));
     AddAssemblerKPIC(getToolChain(), Args, CmdArgs);
     break;
   }
   case llvm::Triple::sparcv9: {
     CmdArgs.push_back("-64");
     std::string CPU = getCPUName(Args, getToolChain().getTriple());
-    CmdArgs.push_back(sparc::getSparcAsmModeForCPU(CPU, getToolChain().getTriple()));
+    CmdArgs.push_back(
+        sparc::getSparcAsmModeForCPU(CPU, getToolChain().getTriple()));
     AddAssemblerKPIC(getToolChain(), Args, CmdArgs);
     break;
   }
@@ -1969,10 +1976,14 @@ void Generic_GCC::GCCInstallationDetector::AddDefaultGCCPrefixes(
       "powerpc64le-linux-gnu", "powerpc64le-unknown-linux-gnu",
       "powerpc64le-suse-linux", "ppc64le-redhat-linux"};
 
-  static const char *const RISCV32LibDirs[] = {"/lib", "/lib32"};
-  static const char *const RISCVTriples[] = {"riscv32-unknown-linux-gnu",
-                                             "riscv64-unknown-linux-gnu",
-                                             "riscv32-unknown-elf"};
+  static const char *const RISCV32LibDirs[] = {"/lib32", "/lib"};
+  static const char *const RISCV32Triples[] = {"riscv32-unknown-linux-gnu",
+                                               "riscv32-linux-gnu",
+                                               "riscv32-unknown-elf"};
+  static const char *const RISCV64LibDirs[] = {"/lib64", "/lib"};
+  static const char *const RISCV64Triples[] = {"riscv64-unknown-linux-gnu",
+                                               "riscv64-linux-gnu",
+                                               "riscv64-unknown-elf"};
 
   static const char *const SPARCv8LibDirs[] = {"/lib32", "/lib"};
   static const char *const SPARCv8Triples[] = {"sparc-linux-gnu",
@@ -2202,9 +2213,15 @@ void Generic_GCC::GCCInstallationDetector::AddDefaultGCCPrefixes(
     break;
   case llvm::Triple::riscv32:
     LibDirs.append(begin(RISCV32LibDirs), end(RISCV32LibDirs));
+    TripleAliases.append(begin(RISCV32Triples), end(RISCV32Triples));
+    BiarchLibDirs.append(begin(RISCV64LibDirs), end(RISCV64LibDirs));
+    BiarchTripleAliases.append(begin(RISCV64Triples), end(RISCV64Triples));
+    break;
+  case llvm::Triple::riscv64:
+    LibDirs.append(begin(RISCV64LibDirs), end(RISCV64LibDirs));
+    TripleAliases.append(begin(RISCV64Triples), end(RISCV64Triples));
     BiarchLibDirs.append(begin(RISCV32LibDirs), end(RISCV32LibDirs));
-    TripleAliases.append(begin(RISCVTriples), end(RISCVTriples));
-    BiarchTripleAliases.append(begin(RISCVTriples), end(RISCVTriples));
+    BiarchTripleAliases.append(begin(RISCV32Triples), end(RISCV32Triples));
     break;
   case llvm::Triple::sparc:
   case llvm::Triple::sparcel:

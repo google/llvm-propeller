@@ -146,7 +146,7 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST) {
       .legalFor({s16, s32, s64, v2s32, v4s32, v2s64, v2s16, v4s16, v8s16});
 
   getActionDefinitionsBuilder(
-      {G_FCOS, G_FSIN, G_FLOG10, G_FLOG, G_FLOG2, G_FEXP})
+      {G_FCOS, G_FSIN, G_FLOG10, G_FLOG, G_FLOG2, G_FEXP, G_FEXP2})
       // We need a call for these, so we always need to scalarize.
       .scalarize(0)
       // Regardless of FP16 support, widen 16-bit elements to 32-bits.
@@ -234,7 +234,8 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST) {
                                  {s32, p0, 32, 8},
                                  {s64, p0, 64, 8},
                                  {p0, p0, 64, 8},
-                                 {v2s32, p0, 64, 8}})
+                                 {v2s32, p0, 64, 8},
+                                 {v2s64, p0, 128, 8}})
       .clampScalar(0, s8, s64)
       .widenScalarToNextPow2(0)
       // TODO: We could support sum-of-pow2's but the lowering code doesn't know
@@ -448,9 +449,8 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST) {
   getActionDefinitionsBuilder(G_INSERT_VECTOR_ELT)
       .legalIf([=](const LegalityQuery &Query) {
         const LLT &VecTy = Query.Types[0];
-        // TODO: Support destination sizes of < 128 bits.
         // TODO: Support s8 and s16
-        return VecTy == v4s32 || VecTy == v2s64;
+        return VecTy == v2s32 || VecTy == v4s32 || VecTy == v2s64;
       });
 
   getActionDefinitionsBuilder(G_BUILD_VECTOR)

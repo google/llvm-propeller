@@ -8084,8 +8084,7 @@ static bool isOpenCLSizeDependentType(ASTContext &C, QualType Ty) {
   QualType DesugaredTy = Ty;
   do {
     ArrayRef<StringRef> Names(SizeTypeNames);
-    auto Match =
-        std::find(Names.begin(), Names.end(), DesugaredTy.getAsString());
+    auto Match = llvm::find(Names, DesugaredTy.getAsString());
     if (Names.end() != Match)
       return true;
 
@@ -11683,7 +11682,11 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
           setFunctionHasBranchProtectedScope();
       }
     }
-
+    // In OpenCL, we can't initialize objects in the __local address space,
+    // even implicitly, so don't synthesize an implicit initializer.
+    if (getLangOpts().OpenCL &&
+        Var->getType().getAddressSpace() == LangAS::opencl_local)
+      return;
     // C++03 [dcl.init]p9:
     //   If no initializer is specified for an object, and the
     //   object is of (possibly cv-qualified) non-POD class type (or

@@ -49,8 +49,17 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
   RISCVABI::ABI ABI = Subtarget.getTargetABI();
   assert(ABI != RISCVABI::ABI_Unknown && "Improperly initialised target ABI");
 
-  if (ABI != RISCVABI::ABI_ILP32 && ABI != RISCVABI::ABI_LP64)
+  switch (ABI) {
+  default:
     report_fatal_error("Don't know how to lower this ABI");
+  case RISCVABI::ABI_ILP32:
+  case RISCVABI::ABI_ILP32F:
+  case RISCVABI::ABI_ILP32D:
+  case RISCVABI::ABI_LP64:
+  case RISCVABI::ABI_LP64F:
+  case RISCVABI::ABI_LP64D:
+    break;
+  }
 
   MVT XLenVT = Subtarget.getXLenVT();
 
@@ -128,9 +137,9 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::CTPOP, XLenVT, Expand);
 
   ISD::CondCode FPCCToExtend[] = {
-      ISD::SETOGT, ISD::SETOGE, ISD::SETONE, ISD::SETO,   ISD::SETUEQ,
-      ISD::SETUGT, ISD::SETUGE, ISD::SETULT, ISD::SETULE, ISD::SETUNE,
-      ISD::SETGT,  ISD::SETGE,  ISD::SETNE};
+      ISD::SETOGT, ISD::SETOGE, ISD::SETONE, ISD::SETUEQ, ISD::SETUGT,
+      ISD::SETUGE, ISD::SETULT, ISD::SETULE, ISD::SETUNE, ISD::SETGT,
+      ISD::SETGE,  ISD::SETNE};
 
   ISD::NodeType FPOpToExtend[] = {
       ISD::FSIN, ISD::FCOS, ISD::FSINCOS, ISD::FPOW, ISD::FREM};
@@ -365,72 +374,90 @@ SDValue RISCVTargetLowering::LowerOperation(SDValue Op,
   }
 }
 
+static SDValue getTargetNode(GlobalAddressSDNode *N, SDLoc DL, EVT Ty,
+                             SelectionDAG &DAG, unsigned Flags) {
+  return DAG.getTargetGlobalAddress(N->getGlobal(), DL, Ty, 0, Flags);
+}
+
+static SDValue getTargetNode(BlockAddressSDNode *N, SDLoc DL, EVT Ty,
+                             SelectionDAG &DAG, unsigned Flags) {
+  return DAG.getTargetBlockAddress(N->getBlockAddress(), Ty, N->getOffset(),
+                                   Flags);
+}
+
+static SDValue getTargetNode(ConstantPoolSDNode *N, SDLoc DL, EVT Ty,
+                             SelectionDAG &DAG, unsigned Flags) {
+  return DAG.getTargetConstantPool(N->getConstVal(), Ty, N->getAlignment(),
+                                   N->getOffset(), Flags);
+}
+
+template <class NodeTy>
+SDValue RISCVTargetLowering::getAddr(NodeTy *N, SelectionDAG &DAG) const {
+  SDLoc DL(N);
+  EVT Ty = getPointerTy(DAG.getDataLayout());
+
+  switch (getTargetMachine().getCodeModel()) {
+  default:
+    report_fatal_error("Unsupported code model for lowering");
+  case CodeModel::Small: {
+    // Generate a sequence for accessing addresses within the first 2 GiB of
+    // address space. This generates the pattern (addi (lui %hi(sym)) %lo(sym)).
+    SDValue AddrHi = getTargetNode(N, DL, Ty, DAG, RISCVII::MO_HI);
+    SDValue AddrLo = getTargetNode(N, DL, Ty, DAG, RISCVII::MO_LO);
+    SDValue MNHi = SDValue(DAG.getMachineNode(RISCV::LUI, DL, Ty, AddrHi), 0);
+    return SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, AddrLo), 0);
+  }
+  case CodeModel::Medium: {
+    // Generate a sequence for accessing addresses within any 2GiB range within
+    // the address space. This generates the pattern (PseudoLLA sym), which
+    // expands to (addi (auipc %pcrel_hi(sym)) %pcrel_lo(auipc)).
+    SDValue Addr = getTargetNode(N, DL, Ty, DAG, 0);
+    return SDValue(DAG.getMachineNode(RISCV::PseudoLLA, DL, Ty, Addr), 0);
+  }
+  }
+}
+
 SDValue RISCVTargetLowering::lowerGlobalAddress(SDValue Op,
                                                 SelectionDAG &DAG) const {
   SDLoc DL(Op);
   EVT Ty = Op.getValueType();
   GlobalAddressSDNode *N = cast<GlobalAddressSDNode>(Op);
-  const GlobalValue *GV = N->getGlobal();
   int64_t Offset = N->getOffset();
   MVT XLenVT = Subtarget.getXLenVT();
 
   if (isPositionIndependent())
     report_fatal_error("Unable to lowerGlobalAddress");
+
+  SDValue Addr = getAddr(N, DAG);
+
   // In order to maximise the opportunity for common subexpression elimination,
   // emit a separate ADD node for the global address offset instead of folding
   // it in the global address node. Later peephole optimisations may choose to
   // fold it back in when profitable.
-  SDValue GAHi = DAG.getTargetGlobalAddress(GV, DL, Ty, 0, RISCVII::MO_HI);
-  SDValue GALo = DAG.getTargetGlobalAddress(GV, DL, Ty, 0, RISCVII::MO_LO);
-  SDValue MNHi = SDValue(DAG.getMachineNode(RISCV::LUI, DL, Ty, GAHi), 0);
-  SDValue MNLo =
-    SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, GALo), 0);
   if (Offset != 0)
-    return DAG.getNode(ISD::ADD, DL, Ty, MNLo,
+    return DAG.getNode(ISD::ADD, DL, Ty, Addr,
                        DAG.getConstant(Offset, DL, XLenVT));
-  return MNLo;
+  return Addr;
 }
 
 SDValue RISCVTargetLowering::lowerBlockAddress(SDValue Op,
                                                SelectionDAG &DAG) const {
-  SDLoc DL(Op);
-  EVT Ty = Op.getValueType();
   BlockAddressSDNode *N = cast<BlockAddressSDNode>(Op);
-  const BlockAddress *BA = N->getBlockAddress();
-  int64_t Offset = N->getOffset();
 
   if (isPositionIndependent())
     report_fatal_error("Unable to lowerBlockAddress");
 
-  SDValue BAHi = DAG.getTargetBlockAddress(BA, Ty, Offset, RISCVII::MO_HI);
-  SDValue BALo = DAG.getTargetBlockAddress(BA, Ty, Offset, RISCVII::MO_LO);
-  SDValue MNHi = SDValue(DAG.getMachineNode(RISCV::LUI, DL, Ty, BAHi), 0);
-  SDValue MNLo =
-    SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, BALo), 0);
-  return MNLo;
+  return getAddr(N, DAG);
 }
 
 SDValue RISCVTargetLowering::lowerConstantPool(SDValue Op,
                                                SelectionDAG &DAG) const {
-  SDLoc DL(Op);
-  EVT Ty = Op.getValueType();
   ConstantPoolSDNode *N = cast<ConstantPoolSDNode>(Op);
-  const Constant *CPA = N->getConstVal();
-  int64_t Offset = N->getOffset();
-  unsigned Alignment = N->getAlignment();
 
-  if (!isPositionIndependent()) {
-    SDValue CPAHi =
-        DAG.getTargetConstantPool(CPA, Ty, Alignment, Offset, RISCVII::MO_HI);
-    SDValue CPALo =
-        DAG.getTargetConstantPool(CPA, Ty, Alignment, Offset, RISCVII::MO_LO);
-    SDValue MNHi = SDValue(DAG.getMachineNode(RISCV::LUI, DL, Ty, CPAHi), 0);
-    SDValue MNLo =
-        SDValue(DAG.getMachineNode(RISCV::ADDI, DL, Ty, MNHi, CPALo), 0);
-    return MNLo;
-  } else {
+  if (isPositionIndependent())
     report_fatal_error("Unable to lowerConstantPool");
-  }
+
+  return getAddr(N, DAG);
 }
 
 SDValue RISCVTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
@@ -633,6 +660,17 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,
       return DCI.CombineTo(N, Op0.getOperand(0), Op0.getOperand(1));
 
     SDLoc DL(N);
+
+    // It's cheaper to materialise two 32-bit integers than to load a double
+    // from the constant pool and transfer it to integer registers through the
+    // stack.
+    if (ConstantFPSDNode *C = dyn_cast<ConstantFPSDNode>(Op0)) {
+      APInt V = C->getValueAPF().bitcastToAPInt();
+      SDValue Lo = DAG.getConstant(V.trunc(32), DL, MVT::i32);
+      SDValue Hi = DAG.getConstant(V.lshr(32).trunc(32), DL, MVT::i32);
+      return DCI.CombineTo(N, Lo, Hi);
+    }
+
     // This is a target-specific version of a DAGCombine performed in
     // DAGCombiner::visitBITCAST. It performs the equivalent of:
     // fold (bitconvert (fneg x)) -> (xor (bitconvert x), signbit)
@@ -970,6 +1008,14 @@ static const MCPhysReg ArgGPRs[] = {
   RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
   RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17
 };
+static const MCPhysReg ArgFPR32s[] = {
+  RISCV::F10_32, RISCV::F11_32, RISCV::F12_32, RISCV::F13_32,
+  RISCV::F14_32, RISCV::F15_32, RISCV::F16_32, RISCV::F17_32
+};
+static const MCPhysReg ArgFPR64s[] = {
+  RISCV::F10_64, RISCV::F11_64, RISCV::F12_64, RISCV::F13_64,
+  RISCV::F14_64, RISCV::F15_64, RISCV::F16_64, RISCV::F17_64
+};
 
 // Pass a 2*XLEN argument that has been split into two XLEN values through
 // registers or the stack as necessary.
@@ -1010,9 +1056,10 @@ static bool CC_RISCVAssign2XLen(unsigned XLen, CCState &State, CCValAssign VA1,
 }
 
 // Implements the RISC-V calling convention. Returns true upon failure.
-static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
-                     CCValAssign::LocInfo LocInfo, ISD::ArgFlagsTy ArgFlags,
-                     CCState &State, bool IsFixed, bool IsRet, Type *OrigTy) {
+static bool CC_RISCV(const DataLayout &DL, RISCVABI::ABI ABI, unsigned ValNo,
+                     MVT ValVT, MVT LocVT, CCValAssign::LocInfo LocInfo,
+                     ISD::ArgFlagsTy ArgFlags, CCState &State, bool IsFixed,
+                     bool IsRet, Type *OrigTy) {
   unsigned XLen = DL.getLargestLegalIntTypeSizeInBits();
   assert(XLen == 32 || XLen == 64);
   MVT XLenVT = XLen == 32 ? MVT::i32 : MVT::i64;
@@ -1022,10 +1069,42 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
   if (IsRet && ValNo > 1)
     return true;
 
-  if (ValVT == MVT::f32) {
+  // UseGPRForF32 if targeting one of the soft-float ABIs, if passing a
+  // variadic argument, or if no F32 argument registers are available.
+  bool UseGPRForF32 = true;
+  // UseGPRForF64 if targeting soft-float ABIs or an FLEN=32 ABI, if passing a
+  // variadic argument, or if no F64 argument registers are available.
+  bool UseGPRForF64 = true;
+
+  switch (ABI) {
+  default:
+    llvm_unreachable("Unexpected ABI");
+  case RISCVABI::ABI_ILP32:
+  case RISCVABI::ABI_LP64:
+    break;
+  case RISCVABI::ABI_ILP32F:
+  case RISCVABI::ABI_LP64F:
+    UseGPRForF32 = !IsFixed;
+    break;
+  case RISCVABI::ABI_ILP32D:
+  case RISCVABI::ABI_LP64D:
+    UseGPRForF32 = !IsFixed;
+    UseGPRForF64 = !IsFixed;
+    break;
+  }
+
+  if (State.getFirstUnallocated(ArgFPR32s) == array_lengthof(ArgFPR32s))
+    UseGPRForF32 = true;
+  if (State.getFirstUnallocated(ArgFPR64s) == array_lengthof(ArgFPR64s))
+    UseGPRForF64 = true;
+
+  // From this point on, rely on UseGPRForF32, UseGPRForF64 and similar local
+  // variables rather than directly checking against the target ABI.
+
+  if (UseGPRForF32 && ValVT == MVT::f32) {
     LocVT = XLenVT;
     LocInfo = CCValAssign::BCvt;
-  } else if (XLen == 64 && ValVT == MVT::f64) {
+  } else if (UseGPRForF64 && XLen == 64 && ValVT == MVT::f64) {
     LocVT = MVT::i64;
     LocInfo = CCValAssign::BCvt;
   }
@@ -1053,8 +1132,9 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
   assert(PendingLocs.size() == PendingArgFlags.size() &&
          "PendingLocs and PendingArgFlags out of sync");
 
-  // Handle passing f64 on RV32D with a soft float ABI.
-  if (XLen == 32 && ValVT == MVT::f64) {
+  // Handle passing f64 on RV32D with a soft float ABI or when floating point
+  // registers are exhausted.
+  if (UseGPRForF64 && XLen == 32 && ValVT == MVT::f64) {
     assert(!ArgFlags.isSplit() && PendingLocs.empty() &&
            "Can't lower f64 if it is split");
     // Depending on available argument GPRS, f64 may be passed in a pair of
@@ -1103,7 +1183,13 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
   }
 
   // Allocate to a register if possible, or else a stack slot.
-  unsigned Reg = State.AllocateReg(ArgGPRs);
+  unsigned Reg;
+  if (ValVT == MVT::f32 && !UseGPRForF32)
+    Reg = State.AllocateReg(ArgFPR32s, ArgFPR64s);
+  else if (ValVT == MVT::f64 && !UseGPRForF64)
+    Reg = State.AllocateReg(ArgFPR64s, ArgFPR32s);
+  else
+    Reg = State.AllocateReg(ArgGPRs);
   unsigned StackOffset = Reg ? 0 : State.AllocateStack(XLen / 8, XLen / 8);
 
   // If we reach this point and PendingLocs is non-empty, we must be at the
@@ -1124,7 +1210,8 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
     return false;
   }
 
-  assert(LocVT == XLenVT && "Expected an XLenVT at this stage");
+  assert((!UseGPRForF32 || !UseGPRForF64 || LocVT == XLenVT) &&
+         "Expected an XLenVT at this stage");
 
   if (Reg) {
     State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
@@ -1156,7 +1243,8 @@ void RISCVTargetLowering::analyzeInputArgs(
     else if (Ins[i].isOrigArg())
       ArgTy = FType->getParamType(Ins[i].getOrigArgIndex());
 
-    if (CC_RISCV(MF.getDataLayout(), i, ArgVT, ArgVT, CCValAssign::Full,
+    RISCVABI::ABI ABI = MF.getSubtarget<RISCVSubtarget>().getTargetABI();
+    if (CC_RISCV(MF.getDataLayout(), ABI, i, ArgVT, ArgVT, CCValAssign::Full,
                  ArgFlags, CCInfo, /*IsRet=*/true, IsRet, ArgTy)) {
       LLVM_DEBUG(dbgs() << "InputArg #" << i << " has unhandled type "
                         << EVT(ArgVT).getEVTString() << '\n');
@@ -1176,7 +1264,8 @@ void RISCVTargetLowering::analyzeOutputArgs(
     ISD::ArgFlagsTy ArgFlags = Outs[i].Flags;
     Type *OrigTy = CLI ? CLI->getArgs()[Outs[i].OrigArgIndex].Ty : nullptr;
 
-    if (CC_RISCV(MF.getDataLayout(), i, ArgVT, ArgVT, CCValAssign::Full,
+    RISCVABI::ABI ABI = MF.getSubtarget<RISCVSubtarget>().getTargetABI();
+    if (CC_RISCV(MF.getDataLayout(), ABI, i, ArgVT, ArgVT, CCValAssign::Full,
                  ArgFlags, CCInfo, Outs[i].IsFixed, IsRet, OrigTy)) {
       LLVM_DEBUG(dbgs() << "OutputArg #" << i << " has unhandled type "
                         << EVT(ArgVT).getEVTString() << "\n");
@@ -1213,8 +1302,24 @@ static SDValue unpackFromRegLoc(SelectionDAG &DAG, SDValue Chain,
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
   EVT LocVT = VA.getLocVT();
   SDValue Val;
+  const TargetRegisterClass *RC;
 
-  unsigned VReg = RegInfo.createVirtualRegister(&RISCV::GPRRegClass);
+  switch (LocVT.getSimpleVT().SimpleTy) {
+  default:
+    llvm_unreachable("Unexpected register type");
+  case MVT::i32:
+  case MVT::i64:
+    RC = &RISCV::GPRRegClass;
+    break;
+  case MVT::f32:
+    RC = &RISCV::FPR32RegClass;
+    break;
+  case MVT::f64:
+    RC = &RISCV::FPR64RegClass;
+    break;
+  }
+
+  unsigned VReg = RegInfo.createVirtualRegister(RC);
   RegInfo.addLiveIn(VA.getLocReg(), VReg);
   Val = DAG.getCopyFromReg(Chain, DL, VReg, LocVT);
 
@@ -1706,9 +1811,11 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
   // TargetGlobalAddress/TargetExternalSymbol node so that legalize won't
   // split it and then direct call can be matched by PseudoCALL.
   if (GlobalAddressSDNode *S = dyn_cast<GlobalAddressSDNode>(Callee)) {
-    Callee = DAG.getTargetGlobalAddress(S->getGlobal(), DL, PtrVT, 0, 0);
+    Callee = DAG.getTargetGlobalAddress(S->getGlobal(), DL, PtrVT, 0,
+                                        RISCVII::MO_CALL);
   } else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
-    Callee = DAG.getTargetExternalSymbol(S->getSymbol(), PtrVT, 0);
+    Callee =
+        DAG.getTargetExternalSymbol(S->getSymbol(), PtrVT, RISCVII::MO_CALL);
   }
 
   // The first call operand is the chain and the second is the target address.
@@ -1791,8 +1898,9 @@ bool RISCVTargetLowering::CanLowerReturn(
   for (unsigned i = 0, e = Outs.size(); i != e; ++i) {
     MVT VT = Outs[i].VT;
     ISD::ArgFlagsTy ArgFlags = Outs[i].Flags;
-    if (CC_RISCV(MF.getDataLayout(), i, VT, VT, CCValAssign::Full, ArgFlags,
-                 CCInfo, /*IsFixed=*/true, /*IsRet=*/true, nullptr))
+    RISCVABI::ABI ABI = MF.getSubtarget<RISCVSubtarget>().getTargetABI();
+    if (CC_RISCV(MF.getDataLayout(), ABI, i, VT, VT, CCValAssign::Full,
+                 ArgFlags, CCInfo, /*IsFixed=*/true, /*IsRet=*/true, nullptr))
       return false;
   }
   return true;

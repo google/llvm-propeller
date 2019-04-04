@@ -36,8 +36,6 @@
 #include <utility>
 
 namespace clang {
-class PCHContainerOperations;
-
 namespace clangd {
 
 // FIXME: find a better name.
@@ -217,7 +215,7 @@ public:
   /// Rename all occurrences of the symbol at the \p Pos in \p File to
   /// \p NewName.
   void rename(PathRef File, Position Pos, llvm::StringRef NewName,
-              Callback<std::vector<tooling::Replacement>> CB);
+              Callback<std::vector<TextEdit>> CB);
 
   struct TweakRef {
     std::string ID;    /// ID to pass for applyTweak.
@@ -300,7 +298,6 @@ private:
   mutable std::mutex CachedCompletionFuzzyFindRequestMutex;
 
   llvm::Optional<std::string> WorkspaceRoot;
-  std::shared_ptr<PCHContainerOperations> PCHs;
   // WorkScheduler has to be the last member, because its destructor has to be
   // called before all other members to stop the worker thread that references
   // ClangdServer.

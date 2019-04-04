@@ -113,6 +113,7 @@ class RISCVAsmParser : public MCTargetAsmParser {
   OperandMatchResultTy parseMemOpBaseReg(OperandVector &Operands);
   OperandMatchResultTy parseOperandWithModifier(OperandVector &Operands);
   OperandMatchResultTy parseBareSymbol(OperandVector &Operands);
+  OperandMatchResultTy parseCallSymbol(OperandVector &Operands);
   OperandMatchResultTy parseJALOffset(OperandVector &Operands);
 
   bool parseOperand(OperandVector &Operands, StringRef Mnemonic);
@@ -281,6 +282,27 @@ public:
       return false;
     return RISCVAsmParser::classifySymbolRef(getImm(), VK, Imm) &&
            VK == RISCVMCExpr::VK_RISCV_None;
+  }
+
+  bool isCallSymbol() const {
+    int64_t Imm;
+    RISCVMCExpr::VariantKind VK;
+    // Must be of 'immediate' type but not a constant.
+    if (!isImm() || evaluateConstantImm(getImm(), Imm, VK))
+      return false;
+    return RISCVAsmParser::classifySymbolRef(getImm(), VK, Imm) &&
+           (VK == RISCVMCExpr::VK_RISCV_CALL ||
+            VK == RISCVMCExpr::VK_RISCV_CALL_PLT);
+  }
+
+  bool isTPRelAddSymbol() const {
+    int64_t Imm;
+    RISCVMCExpr::VariantKind VK;
+    // Must be of 'immediate' type but not a constant.
+    if (!isImm() || evaluateConstantImm(getImm(), Imm, VK))
+      return false;
+    return RISCVAsmParser::classifySymbolRef(getImm(), VK, Imm) &&
+           VK == RISCVMCExpr::VK_RISCV_TPREL_ADD;
   }
 
   bool isCSRSystemRegister() const { return isSystemRegister(); }
@@ -477,7 +499,8 @@ public:
       IsValid = isInt<12>(Imm);
     return IsValid && ((IsConstantImm && VK == RISCVMCExpr::VK_RISCV_None) ||
                        VK == RISCVMCExpr::VK_RISCV_LO ||
-                       VK == RISCVMCExpr::VK_RISCV_PCREL_LO);
+                       VK == RISCVMCExpr::VK_RISCV_PCREL_LO ||
+                       VK == RISCVMCExpr::VK_RISCV_TPREL_LO);
   }
 
   bool isSImm12Lsb0() const { return isBareSimmNLsb0<12>(); }
@@ -503,10 +526,12 @@ public:
     bool IsConstantImm = evaluateConstantImm(getImm(), Imm, VK);
     if (!IsConstantImm) {
       IsValid = RISCVAsmParser::classifySymbolRef(getImm(), VK, Imm);
-      return IsValid && VK == RISCVMCExpr::VK_RISCV_HI;
+      return IsValid && (VK == RISCVMCExpr::VK_RISCV_HI ||
+                         VK == RISCVMCExpr::VK_RISCV_TPREL_HI);
     } else {
       return isUInt<20>(Imm) && (VK == RISCVMCExpr::VK_RISCV_None ||
-                                 VK == RISCVMCExpr::VK_RISCV_HI);
+                                 VK == RISCVMCExpr::VK_RISCV_HI ||
+                                 VK == RISCVMCExpr::VK_RISCV_TPREL_HI);
     }
   }
 
@@ -860,8 +885,8 @@ bool RISCVAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   case Match_InvalidSImm12:
     return generateImmOutOfRangeError(
         Operands, ErrorInfo, -(1 << 11), (1 << 11) - 1,
-        "operand must be a symbol with %lo/%pcrel_lo modifier or an integer in "
-        "the range");
+        "operand must be a symbol with %lo/%pcrel_lo/%tprel_lo modifier or an "
+        "integer in the range");
   case Match_InvalidSImm12Lsb0:
     return generateImmOutOfRangeError(
         Operands, ErrorInfo, -(1 << 11), (1 << 11) - 2,
@@ -872,8 +897,9 @@ bool RISCVAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
         "immediate must be a multiple of 2 bytes in the range");
   case Match_InvalidUImm20LUI:
     return generateImmOutOfRangeError(Operands, ErrorInfo, 0, (1 << 20) - 1,
-                                      "operand must be a symbol with %hi() "
-                                      "modifier or an integer in the range");
+                                      "operand must be a symbol with "
+                                      "%hi/%tprel_hi modifier or an integer in "
+                                      "the range");
   case Match_InvalidUImm20AUIPC:
     return generateImmOutOfRangeError(
         Operands, ErrorInfo, 0, (1 << 20) - 1,
@@ -903,6 +929,14 @@ bool RISCVAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   case Match_InvalidBareSymbol: {
     SMLoc ErrorLoc = ((RISCVOperand &)*Operands[ErrorInfo]).getStartLoc();
     return Error(ErrorLoc, "operand must be a bare symbol name");
+  }
+  case Match_InvalidCallSymbol: {
+    SMLoc ErrorLoc = ((RISCVOperand &)*Operands[ErrorInfo]).getStartLoc();
+    return Error(ErrorLoc, "operand must be a bare symbol name");
+  }
+  case Match_InvalidTPRelAddSymbol: {
+    SMLoc ErrorLoc = ((RISCVOperand &)*Operands[ErrorInfo]).getStartLoc();
+    return Error(ErrorLoc, "operand must be a symbol with %tprel_add modifier");
   }
   }
 
@@ -1127,6 +1161,11 @@ OperandMatchResultTy RISCVAsmParser::parseBareSymbol(OperandVector &Operands) {
   if (getParser().parseIdentifier(Identifier))
     return MatchOperand_ParseFail;
 
+  if (Identifier.consume_back("@plt")) {
+    Error(getLoc(), "'@plt' operand not valid for instruction");
+    return MatchOperand_ParseFail;
+  }
+
   MCSymbol *Sym = getContext().getOrCreateSymbol(Identifier);
 
   if (Sym->isVariable()) {
@@ -1138,6 +1177,29 @@ OperandMatchResultTy RISCVAsmParser::parseBareSymbol(OperandVector &Operands) {
     Res = V;
   } else
     Res = MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_None, getContext());
+  Operands.push_back(RISCVOperand::createImm(Res, S, E, isRV64()));
+  return MatchOperand_Success;
+}
+
+OperandMatchResultTy RISCVAsmParser::parseCallSymbol(OperandVector &Operands) {
+  SMLoc S = getLoc();
+  SMLoc E = SMLoc::getFromPointer(S.getPointer() - 1);
+  const MCExpr *Res;
+
+  if (getLexer().getKind() != AsmToken::Identifier)
+    return MatchOperand_NoMatch;
+
+  StringRef Identifier;
+  if (getParser().parseIdentifier(Identifier))
+    return MatchOperand_ParseFail;
+
+  RISCVMCExpr::VariantKind Kind = RISCVMCExpr::VK_RISCV_CALL;
+  if (Identifier.consume_back("@plt"))
+    Kind = RISCVMCExpr::VK_RISCV_CALL_PLT;
+
+  MCSymbol *Sym = getContext().getOrCreateSymbol(Identifier);
+  Res = MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_None, getContext());
+  Res = RISCVMCExpr::create(Res, Kind, getContext());
   Operands.push_back(RISCVOperand::createImm(Res, S, E, isRV64()));
   return MatchOperand_Success;
 }

@@ -40,9 +40,9 @@ namespace {
 template <class ELFT> class Writer {
 public:
   Writer() : Buffer(errorHandler().OutputBuffer) {}
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::Ehdr Elf_Ehdr;
-  typedef typename ELFT::Phdr Elf_Phdr;
+  using Elf_Shdr = typename ELFT::Shdr;
+  using Elf_Ehdr = typename ELFT::Ehdr;
+  using Elf_Phdr = typename ELFT::Phdr;
 
   void run();
 
@@ -152,14 +152,18 @@ template <class ELFT> void Writer<ELFT>::removeEmptyPTLoad() {
   });
 }
 
-template <class ELFT> static void combineEhFrameSections() {
+template <class ELFT> static void combineEhSections() {
   for (InputSectionBase *&S : InputSections) {
-    EhInputSection *ES = dyn_cast<EhInputSection>(S);
-    if (!ES || !ES->Live)
+    if (!S->Live)
       continue;
 
-    In.EhFrame->addSection<ELFT>(ES);
-    S = nullptr;
+    if (auto *ES = dyn_cast<EhInputSection>(S)) {
+      In.EhFrame->addSection<ELFT>(ES);
+      S = nullptr;
+    } else if (S->kind() == SectionBase::Regular && In.ARMExidx &&
+               In.ARMExidx->addSection(cast<InputSection>(S))) {
+      S = nullptr;
+    }
   }
 
   std::vector<InputSectionBase *> &V = InputSections;
@@ -465,8 +469,11 @@ template <class ELFT> void Writer<ELFT>::run() {
   // Such sections are of type input section.
   createSyntheticSections<ELFT>();
 
+  // Some input sections that are used for exception handling need to be moved
+  // into synthetic sections. Do that now so that they aren't assigned to
+  // output sections in the usual way.
   if (!Config->Relocatable)
-    combineEhFrameSections<ELFT>();
+    combineEhSections<ELFT>();
 
   // We want to process linker script commands. When SECTIONS command
   // is given we let it create sections.
@@ -961,7 +968,7 @@ template <class ELFT> void Writer<ELFT>::setReservedSymbolSections() {
   }
 
   // .rela_iplt_{start,end} mark the start and the end of .rela.plt section.
-  if (ElfSym::RelaIpltStart && !In.RelaIplt->empty()) {
+  if (ElfSym::RelaIpltStart && In.RelaIplt->isNeeded()) {
     ElfSym::RelaIpltStart->Section = In.RelaIplt;
     ElfSym::RelaIpltEnd->Section = In.RelaIplt;
     ElfSym::RelaIpltEnd->Value = In.RelaIplt->getSize();
@@ -1486,7 +1493,7 @@ template <class ELFT> void Writer<ELFT>::maybeAddThunks() {
 }
 
 static void finalizeSynthetic(SyntheticSection *Sec) {
-  if (Sec && !Sec->empty() && Sec->getParent())
+  if (Sec && Sec->isNeeded() && Sec->getParent())
     Sec->finalizeContents();
 }
 
@@ -1511,7 +1518,7 @@ static void removeUnusedSyntheticSections() {
     if (!SS)
       return;
     OutputSection *OS = SS->getParent();
-    if (!OS || !SS->empty())
+    if (!OS || SS->isNeeded())
       continue;
 
     // If we reach here, then SS is an unused synthetic section and we want to
@@ -1603,9 +1610,9 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   addIRelativeRelocs();
 
-  if (In.Plt && !In.Plt->empty())
+  if (In.Plt && In.Plt->isNeeded())
     In.Plt->addSymbols();
-  if (In.Iplt && !In.Iplt->empty())
+  if (In.Iplt && In.Iplt->isNeeded())
     In.Iplt->addSymbols();
 
   if (!Config->AllowShlibUndefined) {
@@ -1950,7 +1957,7 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
     Ret.push_back(RelRo);
 
   // PT_GNU_EH_FRAME is a special section pointing on .eh_frame_hdr.
-  if (!In.EhFrame->empty() && In.EhFrameHdr && In.EhFrame->getParent() &&
+  if (In.EhFrame->isNeeded() && In.EhFrameHdr && In.EhFrame->getParent() &&
       In.EhFrameHdr->getParent())
     AddHdr(PT_GNU_EH_FRAME, In.EhFrameHdr->getParent()->getPhdrFlags())
         ->add(In.EhFrameHdr->getParent());
@@ -2029,7 +2036,7 @@ template <class ELFT> void Writer<ELFT>::fixSectionAlignments() {
     // Find the first section after PT_GNU_RELRO. If it is in a PT_LOAD we
     // have to align it to a page.
     auto End = OutputSections.end();
-    auto I = std::find(OutputSections.begin(), End, P->LastSec);
+    auto I = llvm::find(OutputSections, P->LastSec);
     if (I == End || (I + 1) == End)
       continue;
 

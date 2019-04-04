@@ -255,6 +255,23 @@ namespace {
       return T;
     }
 
+    /// Completely replace the \c auto in \p TypeWithAuto by
+    /// \p Replacement. Also replace \p TypeWithAuto in \c TypeAttrPair if
+    /// necessary.
+    QualType ReplaceAutoType(QualType TypeWithAuto, QualType Replacement) {
+      QualType T = sema.ReplaceAutoType(TypeWithAuto, Replacement);
+      if (auto *AttrTy = TypeWithAuto->getAs<AttributedType>()) {
+        // Attributed type still should be an attributed type after replacement.
+        auto *NewAttrTy = cast<AttributedType>(T.getTypePtr());
+        for (TypeAttrPair &A : AttrsForTypes) {
+          if (A.first == AttrTy)
+            A.first = NewAttrTy;
+        }
+        AttrsForTypesSorted = false;
+      }
+      return T;
+    }
+
     /// Extract and remove the Attr* for a given attributed type.
     const Attr *takeAttrForAttributedType(const AttributedType *AT) {
       if (!AttrsForTypesSorted) {
@@ -517,8 +534,8 @@ static void distributeObjCPointerTypeAttrFromDeclarator(
       // attribute from being applied multiple times and gives
       // the source-location-filler something to work with.
       state.saveDeclSpecAttrs();
-      moveAttrFromListToList(attr, declarator.getAttributes(),
-                             declarator.getMutableDeclSpec().getAttributes());
+      declarator.getMutableDeclSpec().getAttributes().takeOneFrom(
+          declarator.getAttributes(), &attr);
       return;
     }
   }
@@ -2938,7 +2955,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
         // template type parameter.
         // FIXME: Retain some type sugar to indicate that this was written
         // as 'auto'.
-        T = SemaRef.ReplaceAutoType(
+        T = state.ReplaceAutoType(
             T, QualType(CorrespondingTemplateParam->getTypeForDecl(), 0));
       }
       break;
