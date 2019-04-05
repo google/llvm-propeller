@@ -5,6 +5,7 @@
 #include <atomic>
 #include <fstream>
 #include <functional>
+#include <iostream>
 #include <list>
 #include <mutex>
 #include <string>
@@ -12,6 +13,7 @@
 
 #include "InputFiles.h"
 #include "PLOELFView.h"
+#include "PLOProfile.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -31,6 +33,9 @@ namespace lld {
 namespace plo {
 
 PLO Plo;
+
+PLO::PLO() {}
+PLO::~PLO() {}  
 
 bool PLO::Init(StringRef &Symfile, StringRef &Profile) {
   return InitSymfile(Symfile) && InitProfile(Profile);
@@ -82,33 +87,11 @@ bool PLO::InitSymfile(StringRef &Symfile) {
   return true;
 }
 
-LBREntry *LBREntry::CreateEntry(const StringRef &SR) {
-  unique_ptr<LBREntry> EP(new LBREntry());
-  auto L1 = SR.split('/');
-  // Passing "0" as radix enables autosensing, so no need to skip "0x"
-  // prefix.
-  if (L1.first.empty() || L1.first.getAsInteger(0, EP->From))
-    return nullptr;
-  auto L2 = L1.second.split('/');
-  if (L2.first.empty() || L2.first.getAsInteger(0, EP->To))
-    return nullptr;
-  auto L3 = L2.second.split('/');
-  if (L3.first.empty() || L3.second.empty())
-    return nullptr;
-  EP->Predict = *(L3.first.data());
-  if (EP->Predict != 'M' && EP->Predict != 'P' && EP->Predict != '-')
-    return nullptr;
-  if (L3.second.rsplit('/').second.getAsInteger(10, EP->Cycles))
-    return nullptr;
-  // fprintf(stderr, "Created entry: 0x%lx->0x%lx %c %d\n",
-  // 	  EP->From, EP->To, EP->Predict, EP->Cycles);
-  return EP.release();
-}
-
-bool PLO::InitProfile(StringRef &Profile) {
+bool PLO::InitProfile(StringRef &ProfileName) {
   // Profile is huge, don't read all of the file into the memory.
-  std::ifstream fin(Profile.str());
+  std::ifstream fin(ProfileName.str());
   if (!fin.good()) return false;
+  Profile.reset(new PLOProfile());
   string line;
   while (fin.good() && !std::getline(fin, line).eof()) {
     if (line.empty()) continue;
@@ -128,10 +111,10 @@ bool PLO::InitProfile(StringRef &Profile) {
       q = p + 1;
     } while(true);
     if (!Rec->Entries.empty()) {
-      this->Profile.LBRs.emplace_back(Rec.release());
+      Profile->LBRs.emplace_back(Rec.release());
     }
   }
-  fprintf(stderr, "Total LBR records created: %lu\n", this->Profile.LBRs.size());
+  fprintf(stderr, "Total LBR records created: %lu\n", Profile->LBRs.size());
   return true;
 }
 
@@ -147,15 +130,15 @@ IsBBSymbol(const StringRef &SymName, StringRef &FuncName) {
 }
 
 
-static bool
-SymContainsAddr(const StringRef &SymName, uint64_t SymAddr, uint64_t Addr, StringRef &FuncName) {
-  if (IsBBSymbol(SymName, FuncName)) {
-    ;
-  } else {
+bool PLO::SymContainsAddr(const StringRef &SymName,
+			  uint64_t SymAddr,
+			  uint64_t Addr,
+			  StringRef &FuncName) {
+  if (!IsBBSymbol(SymName, FuncName)) {
     FuncName = SymName;
   }
-  auto PairI = Plo.SymAddrSizeMap.find(FuncName);
-  if (PairI != Plo.SymAddrSizeMap.end()) {
+  auto PairI = SymAddrSizeMap.find(FuncName);
+  if (PairI != SymAddrSizeMap.end()) {
     uint64_t FuncAddr = PairI->second.first;
     uint64_t FuncSize = PairI->second.second;
     if (FuncSize > 0 && FuncAddr <= Addr && Addr < FuncAddr + FuncSize) {
@@ -170,11 +153,12 @@ static uint64_t TotalCfgFound = 0;
 static uint64_t TotalCfgNotFound = 0;
 
 // TODO(shenhan): cache some results to speed up.
-static bool
-FindCfgForAddress(uint64_t Addr, ELFCfg *&ResultCfg, ELFCfgNode *&ResultNode) {
+bool PLO::FindCfgForAddress(uint64_t Addr,
+			    ELFCfg *&ResultCfg,
+			    ELFCfgNode *&ResultNode) {
   ResultCfg = nullptr, ResultNode = nullptr;
-  auto T = Plo.AddrSymMap.upper_bound(Addr);  // first element > Addr.
-  if (T == Plo.AddrSymMap.begin())
+  auto T = AddrSymMap.upper_bound(Addr);  // first element > Addr.
+  if (T == AddrSymMap.begin())
     return false;
   auto T0 = std::prev(T);
   uint64_t SymAddr = T0->first;
@@ -182,8 +166,8 @@ FindCfgForAddress(uint64_t Addr, ELFCfg *&ResultCfg, ELFCfgNode *&ResultNode) {
   for (StringRef &SymName: T0->second) {
     StringRef IndexName;
     if (SymContainsAddr(SymName, SymAddr, Addr, IndexName)) {
-      auto CfgLI = Plo.CfgMap.find(IndexName);
-      if (CfgLI != Plo.CfgMap.end()) {
+      auto CfgLI = CfgMap.find(IndexName);
+      if (CfgLI != CfgMap.end()) {
 	// There might be multiple object files that define SymName.
 	// So for "funcFoo.bb.3", we return Obj2.
 	// For "funcFoo.bb.1", we return Obj1 (the first matching obj).
@@ -219,111 +203,6 @@ FindCfgForAddress(uint64_t Addr, ELFCfg *&ResultCfg, ELFCfgNode *&ResultNode) {
   return false;
 }
 
-void PrintLBRRecord(LBRRecord *Record) {
-  fprintf(stderr, "================ Start of LBRecord ================\n");
-  for (auto P = Record->Entries.rbegin(), Q = Record->Entries.rend();
-   	 P != Q; ++P) {
-    auto &Entry = *P;
-    uint64_t From = Entry->From, To = Entry->To;
-    ELFCfg *FromCfg, *ToCfg;
-    ELFCfgNode *FromNode, *ToNode;
-    FindCfgForAddress(From, FromCfg, FromNode);
-    FindCfgForAddress(To, ToCfg, ToNode);
-    fprintf(stderr, "  %s(0x%lx) -> %s(0x%lx)\n",
-	    FromNode ? FromNode->ShName.str().c_str() : "NA",
-	    From,
-	    ToNode ? ToNode->ShName.str().c_str() : "NA",
-	    To);
-  }
-  fprintf(stderr, "================ End of LBRecord ================\n");
-}
-
-void PLO::ProcessLBRs() {
-  int Total = 0;
-  // uint32_t Mapped = 0;
-  // uint32_t Unmapped = 0;
-  uint32_t Strange = 0;
-  uint64_t LastFromAddr{0}, LastToAddr{0};
-  for (auto  &Record : Profile.LBRs) {
-     Total += Record->Entries.size();
-     ELFCfg *LastToCfg{nullptr};
-     ELFCfgNode *LastToNode{nullptr};
-
-     // The fist entry in the record is the branch that happens last in history.
-     // The second entry happens earlier than the first one, ..., etc.
-     // So we iterate the entries in reverse order - the earliest in history -> the latest.
-     for (auto P = Record->Entries.rbegin(), Q = Record->Entries.rend();
-   	 P != Q; ++P) {
-       auto &Entry = *P;
-       uint64_t From = Entry->From, To = Entry->To;
-       ELFCfg *FromCfg, *ToCfg;
-       ELFCfgNode *FromNode, *ToNode;
-       FindCfgForAddress(From, FromCfg, FromNode);
-       FindCfgForAddress(To, ToCfg, ToNode);
-
-       if (FromCfg && FromCfg == ToCfg) {
-	 FromCfg->MapBranch(FromNode, ToNode);
-       }
-       // Mark everything between LastToCfg[LastToNode] and FromCfg[FromNode].
-       if (LastToCfg == FromCfg) {
-	 if (LastToCfg->MarkPath(LastToNode, FromNode) == false) {
-	   if (!(LastFromAddr == From && LastToAddr == To && std::next(P) == Q)) {
-	     ++Strange;
-	     // fprintf(stderr, "*****\n");
-	     // fprintf(stderr, "Failed to map %s -> %s\n",
-	     // 	     LastToNode->ShName.str().c_str(), FromNode->ShName.str().c_str());
-	     // PrintLBRRecord(Record.get());
-	     // LastToCfg->Diagnose();
-	     // fprintf(stderr, "*****\n");
-	   }
-	 }
-       }
-       LastToCfg = ToCfg;
-       LastToNode = ToNode;
-       LastFromAddr = From;
-       LastToAddr = To;
-     }
-  }
-
-  fprintf(stderr, "Total strange: %d\n", Strange);
-
-  // fprintf(stderr, "Total %d branches mapped, %d branches unmapped.\n",
-  // 	  Mapped, Unmapped);
-
-  fprintf(stderr, "Cfg found: %lu, not found: %lu.\n",
-	  TotalCfgFound,
-	  TotalCfgNotFound);
-  // _ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE
-  for (auto &View: Plo.Views) {
-    for (auto &I: View->Cfgs) {
-      ELFCfg *Cfg = I.second.get();
-      Cfg->Diagnose();
-    }
-  }
-       // auto C1 = FindObjectInMap(GlobalCfgs, Entry->From);
-       // auto C2 = FindObjectInMap(GlobalCfgs, Entry->To);
-  //     if (C1 != GlobalCfgs.end() && C1 == C2) {
-  // 	// intra block jumps
-  // 	auto *Cfg = C1->second;
-  // 	auto N1 = FindObjectInMap(Cfg->Nodes, Entry->From);
-  // 	auto N2 = FindObjectInMap(Cfg->Nodes, Entry->To);
-  // 	if (N1 != Cfg->Nodes.end() && N2 != Cfg->Nodes.end()) {
-  // 	  ++TotalProcessedEntries;
-  // 	} else {
-  // 	  fprintf(stderr, "LBR: 0x%lx(%s)->0x%lx(%s) not found\n",
-  // 		  Entry->From, N1 == Cfg->Nodes.end() ? "NF" : "F",
-  // 		  Entry->To, N2 == Cfg->Nodes.end() ? "NF": "F");
-  // 	  fprintf(stderr, "Cfg: 0x%lx:%s\n", Cfg->GetAddress(), Cfg->Name.str().c_str());
-  // 	  Cfg->Diagnose();
-  // 	  std::next(C1)->second->Diagnose();
-  // 	  exit(1);
-  // 	}
-  //     }
-  //   }
-  // }
-  // fprintf(stderr, "Processed %d out of %d LBR entries.\n", TotalProcessedEntries, Total);
-}
-
 // This method if thread safe.
 void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
@@ -355,6 +234,15 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
                            FileOrdinalPairs.end(),
                            std::bind(&PLO::ProcessFile, this, _1));
 
+  Profile->ProcessLBRs();
+
+  for (auto &View: Views) {
+    for (auto &I: View->Cfgs) {
+      ELFCfg *Cfg = I.second.get();
+      std::cout << *Cfg;
+    }
+  }
+
   // _ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE
   // auto &T = CfgMap["_ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE"];
   // for (auto *View: T) {
@@ -364,7 +252,6 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
 
   // FreeContainer(SymAddrMap);  // No longer needed after we create Cfg.
   // FreeContainer(SymSizeMap);
-  ProcessLBRs();
   // fprintf(stderr, "Finsihed creating cfgs.\n");
 
   // fprintf(stderr, "Total %d intra procedure jumps.\n", B);

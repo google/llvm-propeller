@@ -1,47 +1,27 @@
 #include "PLO.h"
+#include "PLOELFCfg.h"
 #include "PLOELFView.h"
 
+#include <iomanip>
 #include <list>
 #include <map>
 #include <memory>
+#include <ostream>
 
 #include "llvm/Object/ELFTypes.h"
 
 using llvm::StringRef;
+using std::endl;
 using std::list;
 using std::map;
+using std::ostream;
 using std::unique_ptr;
 
 namespace lld {
 namespace plo {
 
-void ELFCfg::Diagnose() const {
-  size_t S = Name.size();
-  auto DisplayName = [this, S](const char *T) {
-		       if (Name.data() == T)
-			 return "<Entry>";
-		       return T + S + 1;
-		     };
-  fprintf(stderr, "Cfg for '%s'\n",
-	  Name.data());
-  const char *TypeStr[] = {"", " (*RSC*)", " (*RSR*)", " (*OTHER)"};
-  for (auto &N : Nodes) {
-    fprintf(stderr, " %s (0x%lx)\n", DisplayName(N.second->ShName.data()), N.second->MappedAddr);
-    for (auto &Edge : N.second->Outs) {
-      auto *Src = Edge->Src;
-      auto *Dst = Edge->Sink;
-      fprintf(stderr, "\t%s -> %s%s[%08ld]%s\n",
-	      DisplayName(Src->ShName.data()),
-	      DisplayName(Dst->ShName.data()),
-	      Edge == N.second->FTEdge ? " (*FT*) " : "",
-	      Edge->Weight,
-	      TypeStr[Edge->Type]);
-    }
-  }
-}
-
 ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From, ELFCfgNode *To,
-			       typename ELFCfgEdge::EdgeType Type) {
+                               typename ELFCfgEdge::EdgeType Type) {
   ELFCfgEdge *Edge = new ELFCfgEdge(From, To, Type);
   From->Outs.push_back(Edge);
   To->Ins.push_back(Edge);
@@ -57,8 +37,8 @@ bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
   }
   if (!P) {
     // fprintf(stderr, "Failed to mark path: %s -> %s.\n",
-    // 	    From->ShName.str().c_str(),
-    // 	    To->ShName.str().c_str());
+    //              From->ShName.str().c_str(),
+    //              To->ShName.str().c_str());
     return false;
   }
   return true;
@@ -123,24 +103,24 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
   for (auto &I : Groups) {
     const ViewFileSym *CfgSym = *(I.second.begin());
     unique_ptr<ELFCfg> Cfg(new ELFCfg(I.first));
-    Cfg->Size = ELFT::Is64Bits ? uint64_t(CfgSym->st_size) : uint32_t(CfgSym->st_size);
+    Cfg->Size = ELFT::Is64Bits ?
+      uint64_t(CfgSym->st_size) : uint32_t(CfgSym->st_size);
     for (const ViewFileSym *Sym : I.second) {
       StringRef SymName(StrTab + uint32_t(Sym->st_name));
-      ELFCfgNode *N = new ELFCfgNode(Sym->st_shndx, SymName);
+      ELFCfgNode *N = new ELFCfgNode(Sym->st_shndx, SymName, Cfg.get());
       auto ResultP = Plo.SymAddrSizeMap.find(SymName);
       if (ResultP != Plo.SymAddrSizeMap.end()) {
-	N->MappedAddr = ResultP->second.first;
-	Cfg->Nodes.emplace(N->MappedAddr, N);
+        N->MappedAddr = ResultP->second.first;
+        Cfg->Nodes.emplace(N->MappedAddr, N);
       } else {
-	Cfg.reset(nullptr); // discard invalid cfgs;
-	break;
+        Cfg.reset(nullptr); // discard invalid cfgs;
+        break;
       }
     }
 
     if (Cfg) {
       BuildCfg(*Cfg, CfgSym);
       // Transfer ownership of Cfg to View.Cfgs.
-      Cfg->Diagnose();
       View->Cfgs.emplace(Cfg->Name, Cfg.release());
     }
   }
@@ -158,11 +138,11 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
     // For crazy large CFG, create map to accerate lookup.
     for (auto &Node: Cfg.Nodes) {
       auto InsertResult = ShndxNodeMap.emplace(Node.second->Shndx,
-					       Node.second.get());
+                                               Node.second.get());
       if (!InsertResult.second) {
-	assert(false);
-	fprintf(stderr, "internal error, please check.\n");
-	return ;
+        assert(false);
+        fprintf(stderr, "internal error, please check.\n");
+        return ;
       }
     }
   }
@@ -177,27 +157,27 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
       bool IsRSC = (CfgSym == &Sym);
       // All bb section symbols are local symbols.
       if (!IsRSC && Sym.getBinding() != llvm::ELF::STB_LOCAL)
-	continue;
+        continue;
       uint16_t SymShndx(Sym.st_shndx);
       ELFCfgNode *TargetNode{nullptr};
       if (UsingMap) {
-	auto Result = ShndxNodeMap.find(SymShndx);
-	if (Result != ShndxNodeMap.end()) {
-	  TargetNode = Result->second;
-	}
+        auto Result = ShndxNodeMap.find(SymShndx);
+        if (Result != ShndxNodeMap.end()) {
+          TargetNode = Result->second;
+        }
       } else {
-	for (auto &T : Cfg.Nodes) {
-	  if (T.second->Shndx == SymShndx) {
-	    TargetNode = T.second.get();
-	    break;
-	  }
-	}
+        for (auto &T : Cfg.Nodes) {
+          if (T.second->Shndx == SymShndx) {
+            TargetNode = T.second.get();
+            break;
+          }
+        }
       }
       if (TargetNode) {
-	ELFCfgEdge *E = Cfg.CreateEdge(SrcNode, TargetNode,
-				       IsRSC ? ELFCfgEdge::RSC :
-				       ELFCfgEdge::NORMAL);
-	if (IsRSC) RSCEdges.push_back(E);
+        ELFCfgEdge *E = Cfg.CreateEdge(SrcNode, TargetNode,
+                                       IsRSC ? ELFCfgEdge::RSC :
+                                       ELFCfgEdge::NORMAL);
+        if (IsRSC) RSCEdges.push_back(E);
       }
     }
   }
@@ -205,27 +185,27 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
   // Create recursive-self-return edges for all exit edges.
   // In the following example, create an edge bb5->bb3
   // FuncA:
-  //    bb1:	        <---+
-  //        ...		    |
-  //    bb2:		    |
-  //        ...		    |   R(ecursie)-S(elf)-C(all) edge
-  //    bb3:		    |
-  //        ...		    |
+  //    bb1:            <---+
+  //        ...                     |
+  //    bb2:                |
+  //        ...                     |   R(ecursie)-S(elf)-C(all) edge
+  //    bb3:                |
+  //        ...                     |
   //        call FuncA  --- +
   //        xxx yyy     <---+
-  //        ...		    |
-  //    bb4:		    |
-  //        ...		    |   R(ecursie)-S(elf)-R(eturn) edge
-  //    bb5:		    |
-  //        ...		    |
+  //        ...                     |
+  //    bb4:                |
+  //        ...                     |   R(ecursie)-S(elf)-R(eturn) edge
+  //    bb5:                |
+  //        ...                     |
   //        ret   ----------+
-  
+
   for (auto *REdge : RSCEdges) {
     for (auto &N : Cfg.Nodes) {
       if (N.second->Outs.size() == 0 ||
-	  (N.second->Outs.size() == 1 &&
-	   (*N.second->Outs.begin())->Type == ELFCfgEdge::RSC)) {
-	Cfg.CreateEdge(N.second.get(), REdge->Src, ELFCfgEdge::RSR);
+          (N.second->Outs.size() == 1 &&
+           (*N.second->Outs.begin())->Type == ELFCfgEdge::RSC)) {
+        Cfg.CreateEdge(N.second.get(), REdge->Src, ELFCfgEdge::RSR);
       }
     }
   }
@@ -236,13 +216,42 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
        Q != E; ++P, ++Q) {
     for (auto &E: P->second->Outs) {
       if (E->Sink == Q->second.get()) {
-	P->second->FTEdge = E;
-	break;
+        P->second->FTEdge = E;
+        break;
       }
     }
   }
 }
 
+ostream & operator << (ostream &Out, const ELFCfgNode &Node) {
+  Out << Node.GetShortName()
+      << " (" << std::showbase << std::hex << Node.MappedAddr << ")";
+  return Out;
+}
+
+ostream & operator << (ostream &Out, const ELFCfgEdge &Edge) {
+  static const char *TypeStr[] = {"", " (*RSC*)", " (*RSR*)", " (*OTHER*)"};
+  Out << "Edge: " << *Edge.Src << " -> " << *Edge.Sink
+      << " [" << std::setw(12) << std::setfill('0')
+      << std::noshowbase << std::dec << Edge.Weight << "]"
+      << TypeStr[Edge.Type];
+  return Out;
+}
+
+ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
+  Out << "Cfg: '" << Cfg.Name.str() << "'" << endl;
+  for (auto &N : Cfg.Nodes) {
+    auto &Node = *(N.second);
+    Out << "  Node: " << Node << endl;
+    for (auto &Edge: Node.Outs) {
+      Out << "    " << *Edge
+          << (Edge == Node.FTEdge ? " (*FT*)" : "")
+          << endl;
+    }
+  }
+  Out << endl;
+  return Out;
+}
 
 template class ELFCfgBuilder<llvm::object::ELF32LE>;
 template class ELFCfgBuilder<llvm::object::ELF32BE>;

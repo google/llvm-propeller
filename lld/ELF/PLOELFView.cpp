@@ -426,6 +426,10 @@ void ELFViewImpl<ELFT>::BuildCfgs() {
   Plo.InvalidCfgs += CfgBuilder.InvalidCfgs;
 }
 
+bool PLO::ELFViewOrdinalComparator::Impl(const ELFView *A, const ELFView *B) {
+  return A->Ordinal < B->Ordinal;
+}
+
 template class ELFViewImpl<llvm::object::ELF32LE>;
 template class ELFViewImpl<llvm::object::ELF32BE>;
 template class ELFViewImpl<llvm::object::ELF64LE>;

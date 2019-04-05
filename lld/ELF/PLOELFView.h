@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 
+#include "PLOELFCfg.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -22,59 +23,6 @@ using std::unique_ptr;
 
 namespace lld {
 namespace plo {
-
-class ELFCfg;
-class ELFCfgNode;
-
-class ELFCfgEdge {
-public:
-  ELFCfgNode *Src;
-  ELFCfgNode *Sink;
-  uint64_t    Weight;
-  // Whether it's an edge introduced by recursive-self-call.  (Usually
-  // calls do not split basic blocks and do not introduce new edges.)
-  enum EdgeType : char {NORMAL = 0, RSC, RSR, OTHER} Type {NORMAL};
-
-protected:
-  ELFCfgEdge(ELFCfgNode *N1, ELFCfgNode *N2, EdgeType T)
-    :Src(N1), Sink(N2), Weight(0), Type(T) {}
-
-  friend class ELFCfg;
-};
-  
-class ELFCfgNode {
- public:
-  const uint16_t     Shndx;
-  StringRef          ShName;
-  list<ELFCfgEdge *> Outs;
-  list<ELFCfgEdge *> Ins;
-  // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
-  ELFCfgEdge *       FTEdge{nullptr};
-  uint64_t           MappedAddr{InvalidAddress};
-
-  ELFCfgNode(const uint16_t _Shndx, const StringRef &_ShName)
-    : Shndx(_Shndx), ShName(_ShName) {}
-
-  const static uint64_t InvalidAddress = -1l;
-};
-
-class ELFCfg {
- public:
-  StringRef Name;
-  // Cfg size is the first bb section size. Not the size of all bb sections.
-  uint64_t Size{0};
-  map<uint64_t, unique_ptr<ELFCfgNode>> Nodes;
-  list<unique_ptr<ELFCfgEdge>> Edges;
-
-  ELFCfg(const StringRef &N) : Name(N) {}
-  ~ELFCfg() {}
-
-  bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);
-  void MapBranch(ELFCfgNode *From, ELFCfgNode *To);
-  ELFCfgEdge *CreateEdge(ELFCfgNode *From, ELFCfgNode *To,
-			 typename ELFCfgEdge::EdgeType Type);
-  void Diagnose() const;
-};
 
 class ELFBlock {
  public:

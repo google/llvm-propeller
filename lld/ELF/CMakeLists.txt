@@ -38,6 +38,7 @@ add_lld_library(lldELF
   PLO.cpp
   PLOELFView.cpp
   PLOELFCfg.cpp
+  PLOProfile.cpp
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp
