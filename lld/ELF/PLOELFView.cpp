@@ -1,6 +1,7 @@
 #include "PLOELFView.h"
 
 #include "PLO.h"
+#include "PLOELFCfg.h"
 
 #include <unistd.h>
 
@@ -40,6 +41,15 @@ ELFView::Create(const StringRef &VN, const uint32_t Ordinal,
     }
   }
   return nullptr;
+}
+
+ELFView::~ELFView() {}
+void ELFView::EraseCfg(ELFCfg *&CfgPtr) {
+  auto I = Cfgs.find(CfgPtr->Name);
+  assert(I != Cfg.end());
+  I->second.reset(nullptr);
+  Cfgs.erase(I);
+  CfgPtr = nullptr;
 }
 
 template <class ELFT>

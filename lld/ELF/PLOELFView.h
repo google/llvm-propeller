@@ -5,7 +5,6 @@
 #include <map>
 #include <memory>
 
-#include "PLOELFCfg.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -23,6 +22,8 @@ using std::unique_ptr;
 
 namespace lld {
 namespace plo {
+
+class ELFCfg;
 
 class ELFBlock {
  public:
@@ -95,7 +96,7 @@ class ELFView {
 
   ELFView(const StringRef &VN, const uint32_t O, const MemoryBufferRef &FR) :
     ViewName(VN), Ordinal(O), FileRef(FR) {}
-  virtual ~ELFView() {}
+  virtual ~ELFView();
 
   MemoryBufferRef GetFileRef() const { return FileRef; }
 
@@ -135,6 +136,7 @@ class ELFView {
   BlockIter SymTabStrShdrPos;  // Symbol table string table section header.
 
   map<StringRef, unique_ptr<ELFCfg>> Cfgs;
+  void EraseCfg(ELFCfg *&CfgPtr);
 };
 
 template <class ELFT>
@@ -321,27 +323,6 @@ class ELFViewImpl : public ELFView {
     return F;
   }
 
-};
-
-template <class ELFT>
-class ELFCfgBuilder {
- public:
-  using ViewFileShdr = typename ELFViewImpl<ELFT>::ViewFileShdr;
-  using ViewFileSym  = typename ELFViewImpl<ELFT>::ViewFileSym;
-  using ViewFileRela = typename ELFViewImpl<ELFT>::ViewFileRela;
-  using ELFTUInt     = typename ELFViewImpl<ELFT>::ELFTUInt;
-
-  ELFViewImpl<ELFT> *View;
-
-  uint32_t BB{0};
-  uint32_t BBWoutAddr{0};
-  uint32_t InvalidCfgs{0};
-
-  ELFCfgBuilder(ELFViewImpl<ELFT> *V) : View(V) {}
-  void BuildCfgs();
-
-protected:
-  void BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym);
 };
 
 }  // namespace plo

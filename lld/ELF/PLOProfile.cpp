@@ -3,6 +3,7 @@
 #include "PLO.h"
 #include "PLOELFCfg.h"
 
+#include <iostream>
 #include <ostream>
 using std::endl;
 using std::ostream;
@@ -33,10 +34,14 @@ LBREntry *LBREntry::CreateEntry(const StringRef &SR) {
 
 void PLOProfile::ProcessLBRs() {
   int Total = 0;
-  uint32_t Strange = 0;
+  uint32_t Strange = 0, Strange2 = 0;
+  uint32_t IntraFunc = 0, InterFunc = 0;
   uint64_t LastFromAddr{0}, LastToAddr{0};
+  uint32_t Idx = 0;
   for (auto  &Record : LBRs) {
+    ++Idx;
     Total += Record->Entries.size();
+    LBREntry *LastEntry{nullptr};
     ELFCfg *LastToCfg{nullptr};
     ELFCfgNode *LastToNode{nullptr};
 
@@ -55,6 +60,10 @@ void PLOProfile::ProcessLBRs() {
 
       if (FromCfg && FromCfg == ToCfg) {
         FromCfg->MapBranch(FromNode, ToNode);
+        ++IntraFunc;
+      } else if (FromCfg && ToCfg /* implies: FromCfg != ToCfg */ ) {
+        FromCfg->MapCallOut(FromNode, ToNode);
+        ++InterFunc;
       }
       // Mark everything between LastToCfg[LastToNode] and FromCfg[FromNode].
       if (LastToCfg == FromCfg) {
@@ -62,16 +71,35 @@ void PLOProfile::ProcessLBRs() {
           if (!(LastFromAddr == From && LastToAddr == To
 		&& std::next(P) == Q)) {
             ++Strange;
+            std::cout << "*****" << endl;
+            std::cout << "Failed to map: "
+                 << *LastToNode << " -> "
+                 << *FromNode << endl;
+            std::cout << *FromCfg << endl;
+            
             // fprintf(stderr, "*****\n");
             // fprintf(stderr, "Failed to map %s -> %s\n",
-            //  LastToNode->ShName.str().c_str(),
-	    // FromNode->ShName.str().c_str());
+            //         LastToNode->ShName.str().c_str(),
+            //         FromNode->ShName.str().c_str());
             // PrintLBRRecord(Record.get());
             // LastToCfg->Diagnose();
             // fprintf(stderr, "*****\n");
           }
         }
+      } else {
+        if (LastToCfg && FromCfg && LastToCfg != FromCfg) {
+          if (!(LastFromAddr == From && LastToAddr == To
+		&& std::next(P) == Q)) {
+            std::cout << "Strange2: ===== " << std::dec << Idx << endl;
+            std::cout << "Last entry: " << *LastEntry << endl;
+            std::cout << "Entry: " << *Entry << endl;
+            std::cout << "Last: " << *LastToNode << endl;
+            std::cout << "From: " << *FromNode << endl;
+            ++Strange2;
+          }
+        }
       }
+      LastEntry = Entry.get();
       LastToCfg = ToCfg;
       LastToNode = ToNode;
       LastFromAddr = From;
@@ -80,6 +108,9 @@ void PLOProfile::ProcessLBRs() {
   }
 
   fprintf(stderr, "Total strange: %d\n", Strange);
+  fprintf(stderr, "Total strange2: %d\n", Strange2);
+  fprintf(stderr, "Total Intra: %d\n", IntraFunc);
+  fprintf(stderr, "Total Inter: %d\n", InterFunc);
 }
 
 ostream & operator << (ostream &Out, const LBREntry &Entry) {
@@ -90,14 +121,14 @@ ostream & operator << (ostream &Out, const LBREntry &Entry) {
   Out << (FromNode ? FromNode->ShName.str().c_str() : "NA")
       << "(" << std::showbase << std::hex << Entry.From << ") -> "
       << (ToNode ? ToNode->ShName.str().c_str() : "NA")
-      << "(" << std::showbase << std::hex << Entry.To << ")" << endl;
+      << "(" << std::showbase << std::hex << Entry.To << ")";
   return Out;
 }
 
 ostream & operator << (ostream &Out, const LBRRecord &R) {
   Out << "==== LBR Record ====" << endl;
   for (auto P = R.Entries.rbegin(), Q = R.Entries.rend(); P != Q; ++P)
-    Out << **P;
+    Out << **P << endl;
   Out << "==== End of LBR Record ====" << endl;
   return Out;
 }

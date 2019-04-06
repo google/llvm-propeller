@@ -18,6 +18,9 @@ using llvm::StringRef;
 namespace lld {
 namespace plo {
 
+template <class ELFT>
+class ELFViewImpl;
+
 class ELFCfgNode;
 
 class ELFCfgEdge {
@@ -27,7 +30,14 @@ public:
   uint64_t    Weight;
   // Whether it's an edge introduced by recursive-self-call.  (Usually
   // calls do not split basic blocks and do not introduce new edges.)
-  enum EdgeType : char {NORMAL = 0, RSC, RSR, OTHER} Type {NORMAL};
+  enum EdgeType : char {
+      INTRA_FUNC = 0,
+      INTRA_RSC,
+      INTRA_RSR,
+      // Intra edge dynamically created because of indirect jump, etc.
+      INTRA_DYNA,
+      INTER_FUNC
+  } Type {INTRA_FUNC};
 
 protected:
   ELFCfgEdge(ELFCfgNode *N1, ELFCfgNode *N2, EdgeType T)
@@ -42,15 +52,33 @@ class ELFCfg {
   // Cfg size is the first bb section size. Not the size of all bb sections.
   uint64_t Size{0};
   map<uint64_t, unique_ptr<ELFCfgNode>> Nodes;
-  list<unique_ptr<ELFCfgEdge>> Edges;
+  list<unique_ptr<ELFCfgEdge>> IntraEdges;
+  list<unique_ptr<ELFCfgEdge>> InterEdges;
 
   ELFCfg(const StringRef &N) : Name(N) {}
   ~ELFCfg() {}
 
   bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);
   void MapBranch(ELFCfgNode *From, ELFCfgNode *To);
-  ELFCfgEdge *CreateEdge(ELFCfgNode *From, ELFCfgNode *To,
+  void MapCallOut(ELFCfgNode *From, ELFCfgNode *To);
+
+private:
+  ELFCfgEdge *CreateEdge(ELFCfgNode *From,
+                         list<ELFCfgEdge *>& FromOuts,
+                         ELFCfgNode *To,
+                         list<ELFCfgEdge *>& ToIns,
                          typename ELFCfgEdge::EdgeType Type);
+
+  void EmplaceEdge(ELFCfgEdge *Edge) {
+    if (Edge->Type < ELFCfgEdge::INTER_FUNC) {
+      IntraEdges.emplace_back(Edge);
+    } else {
+      InterEdges.emplace_back(Edge);
+    }
+  }
+
+  template<class ELFT>
+  friend class ELFCfgBuilder;
 };
 
 class ELFCfgNode {
@@ -60,6 +88,10 @@ class ELFCfgNode {
   ELFCfg            *Cfg;
   list<ELFCfgEdge *> Outs;
   list<ELFCfgEdge *> Ins;
+
+  list<ELFCfgEdge *> CallOuts;  // Callouts/returns to other functions.
+  list<ELFCfgEdge *> CallIns;   // Callins/returns from other functions.
+  
   // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
   ELFCfgEdge *       FTEdge{nullptr};
   uint64_t           MappedAddr{InvalidAddress};
@@ -74,6 +106,27 @@ class ELFCfgNode {
   }
 
   const static uint64_t InvalidAddress = -1l;
+};
+
+template <class ELFT>
+class ELFCfgBuilder {
+ public:
+  using ViewFileShdr = typename ELFViewImpl<ELFT>::ViewFileShdr;
+  using ViewFileSym  = typename ELFViewImpl<ELFT>::ViewFileSym;
+  using ViewFileRela = typename ELFViewImpl<ELFT>::ViewFileRela;
+  using ELFTUInt     = typename ELFViewImpl<ELFT>::ELFTUInt;
+
+  ELFViewImpl<ELFT> *View;
+
+  uint32_t BB{0};
+  uint32_t BBWoutAddr{0};
+  uint32_t InvalidCfgs{0};
+
+  ELFCfgBuilder(ELFViewImpl<ELFT> *V) : View(V) {}
+  void BuildCfgs();
+
+protected:
+  void BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym);
 };
 
 ostream & operator << (ostream &Out, const ELFCfgNode &Node);

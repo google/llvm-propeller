@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "InputFiles.h"
+#include "PLOELFCfg.h"
 #include "PLOELFView.h"
 #include "PLOProfile.h"
 
@@ -236,12 +237,12 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
 
   Profile->ProcessLBRs();
 
-  for (auto &View: Views) {
-    for (auto &I: View->Cfgs) {
-      ELFCfg *Cfg = I.second.get();
-      std::cout << *Cfg;
-    }
-  }
+  // for (auto &View: Views) {
+  //   for (auto &I: View->Cfgs) {
+  //     ELFCfg *Cfg = I.second.get();
+  //     std::cout << *Cfg;
+  //   }
+  // }
 
   // _ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE
   // auto &T = CfgMap["_ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE"];
