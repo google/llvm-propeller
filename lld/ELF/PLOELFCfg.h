@@ -9,7 +9,7 @@
 #include "llvm/ADT/StringRef.h"
 
 using std::list;
-using std::map;
+using std::multimap;
 using std::ostream;
 using std::unique_ptr;
 
@@ -20,8 +20,8 @@ namespace plo {
 
 template <class ELFT>
 class ELFViewImpl;
-
 class ELFCfgNode;
+class ELFCfg;
 
 class ELFCfgEdge {
 public:
@@ -46,13 +46,42 @@ protected:
   friend class ELFCfg;
 };
 
+class ELFCfgNode {
+ public:
+  const uint16_t     Shndx;
+  StringRef          ShName;
+  uint64_t           ShSize;
+  uint64_t           MappedAddr;
+  ELFCfg            *Cfg;
+  
+  list<ELFCfgEdge *> Outs;      // Intra function edges.
+  list<ELFCfgEdge *> Ins;       // Intra function edges.
+  list<ELFCfgEdge *> CallOuts;  // Callouts/returns to other functions.
+  list<ELFCfgEdge *> CallIns;   // Callins/returns from other functions.
+  
+  // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
+  ELFCfgEdge *       FTEdge;
+
+
+  const static uint64_t InvalidAddress = -1l;
+
+private:
+  ELFCfgNode(const uint16_t _Shndx, const StringRef &_ShName,
+             uint64_t _Size, uint64_t _MappedAddr, ELFCfg *_Cfg)
+    : Shndx(_Shndx), ShName(_ShName), ShSize(_Size),
+      MappedAddr(_MappedAddr), Cfg(_Cfg),
+      Outs(), Ins(), CallOuts(), CallIns(), FTEdge(nullptr) {}
+
+  friend class ELFCfg;
+};
+
 class ELFCfg {
  public:
   StringRef Name;
   // Cfg size is the first bb section size. Not the size of all bb sections.
   uint64_t Size{0};
   // ELFCfg has the ownership for all Nodes / Edges.
-  map<uint64_t, unique_ptr<ELFCfgNode>> Nodes;
+  multimap<uint64_t, unique_ptr<ELFCfgNode>> Nodes;
   list<unique_ptr<ELFCfgEdge>> IntraEdges;
   list<unique_ptr<ELFCfgEdge>> InterEdges;
 
@@ -63,12 +92,22 @@ class ELFCfg {
   void MapBranch(ELFCfgNode *From, ELFCfgNode *To);
   void MapCallOut(ELFCfgNode *From, ELFCfgNode *To);
 
+  ELFCfgNode *GetEntryNode() const {
+    if (Nodes.empty()) return nullptr;
+    return Nodes.begin()->second.get();
+  }
+
 private:
+  // Create and take ownership.
   ELFCfgEdge *CreateEdge(ELFCfgNode *From,
                          list<ELFCfgEdge *>& FromOuts,
                          ELFCfgNode *To,
                          list<ELFCfgEdge *>& ToIns,
                          typename ELFCfgEdge::EdgeType Type);
+
+  // Create and take ownership.
+  ELFCfgNode *CreateNode(uint16_t Shndx, StringRef &ShName,
+                         uint64_t ShSize, uint64_t MappedAddress);
 
   void EmplaceEdge(ELFCfgEdge *Edge) {
     if (Edge->Type < ELFCfgEdge::INTER_FUNC) {
@@ -82,32 +121,6 @@ private:
   friend class ELFCfgBuilder;
 };
 
-class ELFCfgNode {
- public:
-  const uint16_t     Shndx;
-  StringRef          ShName;
-  ELFCfg            *Cfg;
-  list<ELFCfgEdge *> Outs;
-  list<ELFCfgEdge *> Ins;
-
-  list<ELFCfgEdge *> CallOuts;  // Callouts/returns to other functions.
-  list<ELFCfgEdge *> CallIns;   // Callins/returns from other functions.
-  
-  // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
-  ELFCfgEdge *       FTEdge{nullptr};
-  uint64_t           MappedAddr{InvalidAddress};
-
-  ELFCfgNode(const uint16_t _Shndx, const StringRef &_ShName, ELFCfg *_Cfg)
-    : Shndx(_Shndx), ShName(_ShName), Cfg(_Cfg) {}
-
-  const char *GetShortName() const {
-    if (ShName == Cfg->Name)
-      return "<Entry>";
-    return ShName.data() + Cfg->Name.size() + 1;
-  }
-
-  const static uint64_t InvalidAddress = -1l;
-};
 
 template <class ELFT>
 class ELFCfgBuilder {
@@ -128,6 +141,7 @@ class ELFCfgBuilder {
 
 protected:
   void BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym);
+  void CalculateFallthroughEdges(ELFCfg &Cfg);
 };
 
 ostream & operator << (ostream &Out, const ELFCfgNode &Node);

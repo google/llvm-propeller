@@ -72,9 +72,10 @@ void PLOProfile::ProcessLBRs() {
 		&& std::next(P) == Q)) {
             ++Strange;
             std::cout << "*****" << endl;
-            std::cout << "Failed to map: "
-                 << *LastToNode << " -> "
-                 << *FromNode << endl;
+            std::cout << "Failed to map " << std::showbase << std::hex
+                      << LastToAddr << " -> " << From << " LBR@" << Idx << " : "
+                      << *LastToNode << " -> "
+                      << *FromNode << endl;
             std::cout << *FromCfg << endl;
             
             // fprintf(stderr, "*****\n");
@@ -107,8 +108,8 @@ void PLOProfile::ProcessLBRs() {
     }
   }
 
-  fprintf(stderr, "Total strange: %d\n", Strange);
-  fprintf(stderr, "Total strange2: %d\n", Strange2);
+  fprintf(stderr, "Total intra-function mismatch: %d\n", Strange);
+  fprintf(stderr, "Total inter-function mismatch: %d\n", Strange2);
   fprintf(stderr, "Total Intra: %d\n", IntraFunc);
   fprintf(stderr, "Total Inter: %d\n", InterFunc);
 }

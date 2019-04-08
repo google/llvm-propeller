@@ -46,7 +46,7 @@ ELFView::Create(const StringRef &VN, const uint32_t Ordinal,
 ELFView::~ELFView() {}
 void ELFView::EraseCfg(ELFCfg *&CfgPtr) {
   auto I = Cfgs.find(CfgPtr->Name);
-  assert(I != Cfg.end());
+  assert(I != Cfgs.end());
   I->second.reset(nullptr);
   Cfgs.erase(I);
   CfgPtr = nullptr;

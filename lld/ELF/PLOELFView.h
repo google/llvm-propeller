@@ -182,7 +182,7 @@ class ELFViewImpl : public ELFView {
   const ViewFileEhdr *getEhdr(const ELFBlock *VB) const {
     assert(VB->getType() == ELFBlock::Ty::EHDR_BLK);
     if (VB->getType() != ELFBlock::Ty::EHDR_BLK) return nullptr;
-    return static_cast<ViewFileEhdr *>((void *)(VB->getContent()));
+    return static_cast<const ViewFileEhdr *>((const void *)(VB->getContent()));
   }
 
   ViewFileEhdr *getWritableEhdr(ELFBlock *VB) {
@@ -195,7 +195,7 @@ class ELFViewImpl : public ELFView {
   const ViewFileShdr *getShdr(const ELFBlock *VB) const {
     assert(VB->getType() == ELFBlock::Ty::SHDR_BLK);
     if (VB->getType() != ELFBlock::Ty::SHDR_BLK) return nullptr;
-    return static_cast<ViewFileShdr *>((void *)(VB->getContent()));
+    return static_cast<const ViewFileShdr *>((const void *)(VB->getContent()));
   }
 
   const ViewFileShdr *getShdr(uint16_t shidx) const {
@@ -260,6 +260,10 @@ class ELFViewImpl : public ELFView {
     if (sh_name >= uint32_t(getShdr(ShStrShdrPos->get())->sh_size))
       return StringRef();
     return StringRef((*ShStrSectPos)->getContent() + sh_name);
+  }
+
+  uint64_t getSectionSize(uint16_t Shndx) const {
+    return uint16_t(getShdr(Shndx)->sh_size);
   }
 
   ELFBlock *createShdrBlock(uint32_t SecName,

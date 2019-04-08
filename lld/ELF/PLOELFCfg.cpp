@@ -34,6 +34,13 @@ ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
   return Edge;
 }
 
+ELFCfgNode *ELFCfg::CreateNode(uint16_t Shndx, StringRef &ShName,
+                               uint64_t ShSize, uint64_t MappedAddress) {
+  auto E = Nodes.emplace(MappedAddress,
+                         new ELFCfgNode(Shndx, ShName, ShSize, MappedAddress, this));
+  return E->second.get();
+}
+
 bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
   if (From == To) return true;
   ELFCfgNode *P = From;
@@ -126,50 +133,20 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
     unique_ptr<ELFCfg> Cfg(new ELFCfg(I.first));
     Cfg->Size = ELFT::Is64Bits ?
       uint64_t(CfgSym->st_size) : uint32_t(CfgSym->st_size);
-    // dbg = (Cfg->Name == "_ZL12EvaluateStmtRN12_GLOBAL__N_110StmtResultERNS_8EvalInfoEPKN5clang4StmtEPKNS4_10SwitchCaseE.module._usr_local_google_home_shenhan_llvm_llvm_project_llvm_tools_clang_lib_AST_ExprConstant.cpp");
     for (const ViewFileSym *Sym : I.second) {
       StringRef SymName(StrTab + uint32_t(Sym->st_name));
-      ELFCfgNode *N = new ELFCfgNode(Sym->st_shndx, SymName, Cfg.get());
-      // if (dbg && Sym->st_shndx==10877) {
-      //   fprintf(stderr, "Creating w/ shndx: %d:%s\n", Sym->st_shndx, SymName.str().c_str());
-      //   fprintf(stderr, "Check: %d\n", N->Shndx);
-      // }
+      uint16_t SymShndx = uint16_t(Sym->st_shndx);
+      uint64_t SymSize = View->getSectionSize(SymShndx);
       auto ResultP = Plo.SymAddrSizeMap.find(SymName);
       if (ResultP != Plo.SymAddrSizeMap.end()) {
-        // if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d\n", N->Shndx); }
-        N->MappedAddr = ResultP->second.first;
-        // if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d\n", N->Shndx); }
-        // There are times different nodes are mapped to the same
-        // address, in this case, we only keep the first mapped
-        // node.
-        auto ExistingMappedNodeI = Cfg->Nodes.find(N->MappedAddr);
-        if (ExistingMappedNodeI != Cfg->Nodes.end()) {
-          auto *ExistingMappedNode = ExistingMappedNodeI->second.get();\
-          fprintf(stderr, "shenhan: existing: %lu, N: %lu\n", ExistingMappedNode->Outs.size(), N->Outs.size());
-          if (ExistingMappedNode->Outs.size() + ExistingMappedNode->Ins.size() <
-              N->Outs.size() + N->Ins.size()) {
-            // Replaec ExistingMappedNode w/ N.
-            ExistingMappedNodeI->second.reset(N);
-          }
-        } else {
-          auto ResultI = Cfg->Nodes.emplace(N->MappedAddr, N);
-          (void)ResultI;
-          assert(ResultI.second);
-        }
-        // if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d:%d\n", N->Shndx, ResultPair.second); }
-        // if (!ResultPair.second) {
-        //   fprintf(stderr, "Failed to insert, mapped address: 0x%lx\n", N->MappedAddr);
-        // }
+        Cfg->CreateNode(SymShndx, SymName, SymSize,
+                        ResultP->second.first);
       } else {
         Cfg.reset(nullptr); // discard invalid cfgs;
         break;
       }
     }
     if (!Cfg) continue;
-    // if (dbg) {
-    //   std::cout << *Cfg << endl;
-    //   // exit(0);
-    // }
 
     uint64_t CfgMappedAddr = Cfg->Nodes.begin()->second->MappedAddr;
     auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
@@ -186,6 +163,7 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
       BuildCfg(*Cfg, CfgSym);
       // Transfer ownership of Cfg to View.Cfgs.
       View->Cfgs.emplace(Cfg->Name, Cfg.release());
+
     }
   }
 }
@@ -195,31 +173,22 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
   assert(Cfg.Nodes.size() >= 1);
   auto Symbols = View->getSymbols();
 
-  bool dbg = (Cfg.Name == "_ZL12EvaluateStmtRN12_GLOBAL__N_110StmtResultERNS_8EvalInfoEPKN5clang4StmtEPKNS4_10SwitchCaseE.module._usr_local_google_home_shenhan_llvm_llvm_project_llvm_tools_clang_lib_AST_ExprConstant.cpp");
-
   bool UsingMap = false;
   map<uint16_t, ELFCfgNode *> ShndxNodeMap;
   if (Cfg.Nodes.size() >= 100) {
     UsingMap = true;
     // For crazy large CFG, create map to accerate lookup.
     for (auto &Node: Cfg.Nodes) {
-      if (dbg) {
-        fprintf(stderr, "shenhan: inserting %d\n", Node.second->Shndx);
-      }
       auto InsertResult = ShndxNodeMap.emplace(Node.second->Shndx,
                                                Node.second.get());
-      if (!InsertResult.second) {
-        assert(false);
-        fprintf(stderr, "internal error, please check.\n");
-        return ;
-      }
+      (void)(InsertResult);
+      assert(InsertResult.second);
     }
   }
+  
   list<ELFCfgEdge *> RSCEdges;
-  bool dbg2;
   for (auto &N : Cfg.Nodes) {
     ELFCfgNode *SrcNode = N.second.get();
-    dbg2 = (N.second->ShName == "_ZL12EvaluateStmtRN12_GLOBAL__N_110StmtResultERNS_8EvalInfoEPKN5clang4StmtEPKNS4_10SwitchCaseE.module._usr_local_google_home_shenhan_llvm_llvm_project_llvm_tools_clang_lib_AST_ExprConstant.cpp.bb.22");
     auto Relas = View->getRelasForSection(SrcNode->Shndx);
     for (const ViewFileRela &Rela : Relas) {
       uint32_t RSym = Rela.getSymbol(false);
@@ -286,22 +255,73 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
     }
   }
 
-  // Calculate fallthroughs.  Edge P->Q is fallthrough if P & Q are
-  // adjacent, and there is an NORMAL edge from P->Q.
+  CalculateFallthroughEdges(Cfg);
+}
+
+// Calculate fallthroughs.  Edge P->Q is fallthrough if P & Q are
+// adjacent, and there is an NORMAL edge from P->Q.
+// One rare
+// 00000000018ed2f0 0 t _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35
+// 00000000018ed2f0 0 t _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4
+//
+//
+// Disassembly of section .text.special_basic_block:
+// 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4>:
+//    0:   e9 00 00 00 00          jmpq   5 <.L.str.2+0x2>
+
+// Disassembly of section .text:
+// 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35>:
+//    0:   45 31 ed                xor    %r13d,%r13d
+//    3:   4d 85 f6                test   %r14,%r14
+//    6:   0f 84 00 00 00 00       je     c <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35+0xc>
+//    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
+template <class ELFT>
+void ELFCfgBuilder<ELFT>::CalculateFallthroughEdges(ELFCfg &Cfg) {
+  auto SetupFallthrough =
+    [](typename decltype(ELFCfg::Nodes)::iterator I1,
+       typename decltype(ELFCfg::Nodes)::iterator I2) {
+      ELFCfgNode *N1 = I1->second.get();
+      ELFCfgNode *N2 = I2->second.get();
+      for (auto *E : N1->Outs) {
+        if (E->Sink == N2) {
+          N1->FTEdge = E;
+          return true;
+        }
+      }
+      return false;
+    };
+
   for (auto P = Cfg.Nodes.begin(), Q = std::next(P), E = Cfg.Nodes.end();
        Q != E; ++P, ++Q) {
-    for (auto &E: P->second->Outs) {
-      if (E->Sink == Q->second.get()) {
-        P->second->FTEdge = E;
-        break;
+    if (P->first == Q->first) {
+      assert(std::next(Q) == E || Q->first != std::next(Q)->first);
+      if (SetupFallthrough(P, Q)) {
+        ;
+      } else if (SetupFallthrough(Q, P)) {
+        if (++Q != E) {
+          SetupFallthrough(P, Q);
+          ++P;
+        } else {
+          break;
+        }
+      } else {
+        fprintf(stderr, "Illegal\n");
+        exit(1);
+        assert(false);
       }
+    } else {
+      SetupFallthrough(P, Q);
     }
   }
 }
 
+
+
 ostream & operator << (ostream &Out, const ELFCfgNode &Node) {
-  Out << Node.GetShortName()
-      << " (" << std::showbase << std::hex << Node.MappedAddr << ")";
+  Out << (Node.ShName == Node.Cfg->Name ? "<Entry>" :
+          Node.ShName.data() + Node.Cfg->Name.size() + 1)
+      << " [size=" << std::noshowbase << std::dec << Node.ShSize << ", "
+      << " addr=" << std::showbase << std::hex << Node.MappedAddr << "]";
   return Out;
 }
 
