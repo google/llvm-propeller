@@ -51,6 +51,7 @@ class ELFCfg {
   StringRef Name;
   // Cfg size is the first bb section size. Not the size of all bb sections.
   uint64_t Size{0};
+  // ELFCfg has the ownership for all Nodes / Edges.
   map<uint64_t, unique_ptr<ELFCfgNode>> Nodes;
   list<unique_ptr<ELFCfgEdge>> IntraEdges;
   list<unique_ptr<ELFCfgEdge>> InterEdges;

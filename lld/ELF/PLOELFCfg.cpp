@@ -120,38 +120,56 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
   }
 
   map<uint64_t, ELFCfg *> AddrCfgMap;
-  bool dbg = false;
+  // bool dbg = false;
   for (auto &I : Groups) {
     const ViewFileSym *CfgSym = *(I.second.begin());
     unique_ptr<ELFCfg> Cfg(new ELFCfg(I.first));
     Cfg->Size = ELFT::Is64Bits ?
       uint64_t(CfgSym->st_size) : uint32_t(CfgSym->st_size);
-    dbg = (Cfg->Name == "_ZL12EvaluateStmtRN12_GLOBAL__N_110StmtResultERNS_8EvalInfoEPKN5clang4StmtEPKNS4_10SwitchCaseE.module._usr_local_google_home_shenhan_llvm_llvm_project_llvm_tools_clang_lib_AST_ExprConstant.cpp");
+    // dbg = (Cfg->Name == "_ZL12EvaluateStmtRN12_GLOBAL__N_110StmtResultERNS_8EvalInfoEPKN5clang4StmtEPKNS4_10SwitchCaseE.module._usr_local_google_home_shenhan_llvm_llvm_project_llvm_tools_clang_lib_AST_ExprConstant.cpp");
     for (const ViewFileSym *Sym : I.second) {
       StringRef SymName(StrTab + uint32_t(Sym->st_name));
       ELFCfgNode *N = new ELFCfgNode(Sym->st_shndx, SymName, Cfg.get());
-      if (dbg && Sym->st_shndx==10877) {
-        fprintf(stderr, "Creating w/ shndx: %d:%s\n", Sym->st_shndx, SymName.str().c_str());
-        fprintf(stderr, "Check: %d\n", N->Shndx);
-      }
+      // if (dbg && Sym->st_shndx==10877) {
+      //   fprintf(stderr, "Creating w/ shndx: %d:%s\n", Sym->st_shndx, SymName.str().c_str());
+      //   fprintf(stderr, "Check: %d\n", N->Shndx);
+      // }
       auto ResultP = Plo.SymAddrSizeMap.find(SymName);
       if (ResultP != Plo.SymAddrSizeMap.end()) {
-        if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d\n", N->Shndx); }
+        // if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d\n", N->Shndx); }
         N->MappedAddr = ResultP->second.first;
-        if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d\n", N->Shndx); }
-        auto ResultPair = Cfg->Nodes.emplace(N->MappedAddr, N);
-        if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d:%d\n", N->Shndx, ResultPair.second); }
+        // if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d\n", N->Shndx); }
+        // There are times different nodes are mapped to the same
+        // address, in this case, we only keep the first mapped
+        // node.
+        auto ExistingMappedNodeI = Cfg->Nodes.find(N->MappedAddr);
+        if (ExistingMappedNodeI != Cfg->Nodes.end()) {
+          auto *ExistingMappedNode = ExistingMappedNodeI->second.get();\
+          fprintf(stderr, "shenhan: existing: %lu, N: %lu\n", ExistingMappedNode->Outs.size(), N->Outs.size());
+          if (ExistingMappedNode->Outs.size() + ExistingMappedNode->Ins.size() <
+              N->Outs.size() + N->Ins.size()) {
+            // Replaec ExistingMappedNode w/ N.
+            ExistingMappedNodeI->second.reset(N);
+          }
+        } else {
+          auto ResultI = Cfg->Nodes.emplace(N->MappedAddr, N);
+          (void)ResultI;
+          assert(ResultI.second);
+        }
+        // if (Sym->st_shndx == 10877) { fprintf(stderr, "**************YES************ %d:%d\n", N->Shndx, ResultPair.second); }
+        // if (!ResultPair.second) {
+        //   fprintf(stderr, "Failed to insert, mapped address: 0x%lx\n", N->MappedAddr);
+        // }
       } else {
-        if (Sym->st_shndx == 10877) { fprintf(stderr, "**************NO************\n"); }
         Cfg.reset(nullptr); // discard invalid cfgs;
         break;
       }
     }
     if (!Cfg) continue;
-    if (dbg) {
-      std::cout << *Cfg << endl;
-      exit(0);
-    }
+    // if (dbg) {
+    //   std::cout << *Cfg << endl;
+    //   // exit(0);
+    // }
 
     uint64_t CfgMappedAddr = Cfg->Nodes.begin()->second->MappedAddr;
     auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
@@ -167,10 +185,6 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
       AddrCfgMap[CfgMappedAddr] = Cfg.get();
       BuildCfg(*Cfg, CfgSym);
       // Transfer ownership of Cfg to View.Cfgs.
-      if (dbg) {
-        std::cout << "=================" << endl;
-        std::cout << *Cfg;
-      }
       View->Cfgs.emplace(Cfg->Name, Cfg.release());
     }
   }
