@@ -163,7 +163,6 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
       BuildCfg(*Cfg, CfgSym);
       // Transfer ownership of Cfg to View.Cfgs.
       View->Cfgs.emplace(Cfg->Name, Cfg.release());
-
     }
   }
 }
@@ -260,21 +259,6 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
 
 // Calculate fallthroughs.  Edge P->Q is fallthrough if P & Q are
 // adjacent, and there is an NORMAL edge from P->Q.
-// One rare
-// 00000000018ed2f0 0 t _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35
-// 00000000018ed2f0 0 t _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4
-//
-//
-// Disassembly of section .text.special_basic_block:
-// 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4>:
-//    0:   e9 00 00 00 00          jmpq   5 <.L.str.2+0x2>
-
-// Disassembly of section .text:
-// 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35>:
-//    0:   45 31 ed                xor    %r13d,%r13d
-//    3:   4d 85 f6                test   %r14,%r14
-//    6:   0f 84 00 00 00 00       je     c <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35+0xc>
-//    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
 template <class ELFT>
 void ELFCfgBuilder<ELFT>::CalculateFallthroughEdges(ELFCfg &Cfg) {
   auto SetupFallthrough =
@@ -283,7 +267,7 @@ void ELFCfgBuilder<ELFT>::CalculateFallthroughEdges(ELFCfg &Cfg) {
       ELFCfgNode *N1 = I1->second.get();
       ELFCfgNode *N2 = I2->second.get();
       for (auto *E : N1->Outs) {
-        if (E->Sink == N2) {
+        if (E->Type == ELFCfgEdge::INTRA_FUNC && E->Sink == N2) {
           N1->FTEdge = E;
           return true;
         }
@@ -293,29 +277,55 @@ void ELFCfgBuilder<ELFT>::CalculateFallthroughEdges(ELFCfg &Cfg) {
 
   for (auto P = Cfg.Nodes.begin(), Q = std::next(P), E = Cfg.Nodes.end();
        Q != E; ++P, ++Q) {
-    if (P->first == Q->first) {
-      assert(std::next(Q) == E || Q->first != std::next(Q)->first);
-      if (SetupFallthrough(P, Q)) {
-        ;
-      } else if (SetupFallthrough(Q, P)) {
-        if (++Q != E) {
-          SetupFallthrough(P, Q);
-          ++P;
-        } else {
-          break;
-        }
-      } else {
-        fprintf(stderr, "Illegal\n");
-        exit(1);
-        assert(false);
-      }
-    } else {
+    if (P->first != Q->first) {
+      // Normal case.
       SetupFallthrough(P, Q);
+      continue;
+    }
+    // Very rare case: we have AT MOST 2 BBs with same address
+    // mapping, which is possible (but very rare, the scenario
+    // explained below). For example:
+    //   P[addr=0x123] Q[addr=0x123] R(=std::next(Q))[addr=0x125]
+     
+    // Firstly,  either P fallthroughs Q or Q fallthroughs P must happen.
+    // Secondly:
+    //     if P fallthroughs Q, then test if Q fallthroughs R.
+    //     if Q fallthroughs P, then test if P fallthroughs R.
+
+    // One example that 2 BB symbols have same address,
+    //   00000000018ed2f0  _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35
+    //   00000000018ed2f0 _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4
+
+    // In -fbasicblock-section=all mode:
+    // Disassembly of section .text.special_basic_block:
+    // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4>:
+    //    0:   e9 00 00 00 00          jmpq   5 <.L.str.2+0x2>
+    
+    // Disassembly of section .text:
+    // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35>:
+    //    0:   45 31 ed                xor    %r13d,%r13d
+    //    3:   4d 85 f6                test   %r14,%r14
+    //    6:   0f 84 00 00 00 00       je     c <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35+0xc>
+    //    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
+    
+    // The reason is that in -fbasicblock-section mode, bb.4 contains
+    // only 1 jump. However, in BB instrument mode, the jump is not
+    // emitted, so bb.4 collapses into an empty block, sharing the
+    // same address as bb.35.
+    assert(std::next(Q) == E || Q->first != std::next(Q)->first);
+    if (SetupFallthrough(P, Q)) {
+      ;
+    } else if (SetupFallthrough(Q, P)) {
+      // Swap P and Q's position.
+      ELFCfgNode *PNode = P->second.release();
+      Cfg.Nodes.erase(P);
+      P = Q;
+      Q = Cfg.Nodes.emplace(PNode->MappedAddr, PNode);
+    } else {
+      assert(false);
     }
   }
 }
-
-
 
 ostream & operator << (ostream &Out, const ELFCfgNode &Node) {
   Out << (Node.ShName == Node.Cfg->Name ? "<Entry>" :

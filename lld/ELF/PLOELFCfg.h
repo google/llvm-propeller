@@ -62,7 +62,6 @@ class ELFCfgNode {
   // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
   ELFCfgEdge *       FTEdge;
 
-
   const static uint64_t InvalidAddress = -1l;
 
 private:
