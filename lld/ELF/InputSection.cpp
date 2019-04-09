@@ -608,7 +608,7 @@ static int64_t getTlsTpOffset() {
   }
 }
 
-static uint64_t getRelocTargetVA(const InputFile *File, RelType Type, int64_t A,
+uint64_t InputSectionBase::getRelocTargetVA(const InputFile *File, RelType Type, int64_t A,
                                  uint64_t P, const Symbol &Sym, RelExpr Expr) {
   switch (Expr) {
   case R_ABS:
@@ -875,6 +875,8 @@ void InputSectionBase::relocateAlloc(uint8_t *Buf, uint8_t *BufEnd) {
   const unsigned Bits = Config->Wordsize * 8;
 
   for (const Relocation &Rel : Relocations) {
+    if (Rel.Expr == R_NONE)
+      continue;
     uint64_t Offset = Rel.Offset;
     if (auto *Sec = dyn_cast<InputSection>(this))
       Offset += Sec->OutSecOff;
@@ -930,6 +932,16 @@ void InputSectionBase::relocateAlloc(uint8_t *Buf, uint8_t *BufEnd) {
     default:
       Target->relocateOne(BufLoc, Type, TargetVA);
       break;
+    }
+  }
+
+  if (auto *Sec = dyn_cast<InputSection>(this)) {
+    if (Sec->NumJumpRelocations == 0) return;
+    for (const JumpRelocation &JumpRel : JumpRelocations) {
+      uint64_t Offset = JumpRel.Offset;
+      Offset += Sec->OutSecOff;
+      uint8_t *BufLoc = Buf + Offset;
+      Target->relocateOneJumpRelocation(BufLoc, JumpRel.Original, JumpRel.Size);
     }
   }
 }
