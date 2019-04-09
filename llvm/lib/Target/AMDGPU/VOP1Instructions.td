@@ -170,8 +170,12 @@ def V_READFIRSTLANE_B32 :
 }
 
 let SchedRW = [WriteQuarterRate32] in {
-defm V_CVT_I32_F64 : VOP1Inst <"v_cvt_i32_f64", VOP_I32_F64, fp_to_sint>;
+defm V_CVT_I32_F64 : VOP1Inst <"v_cvt_i32_f64", VOP_I32_F64,  fp_to_sint>;
 defm V_CVT_F64_I32 : VOP1Inst <"v_cvt_f64_i32", VOP1_F64_I32, sint_to_fp>;
+defm V_CVT_F32_F64 : VOP1Inst <"v_cvt_f32_f64", VOP_F32_F64,  fpround>;
+defm V_CVT_F64_F32 : VOP1Inst <"v_cvt_f64_f32", VOP_F64_F32,  fpextend>;
+defm V_CVT_U32_F64 : VOP1Inst <"v_cvt_u32_f64", VOP_I32_F64,  fp_to_uint>;
+defm V_CVT_F64_U32 : VOP1Inst <"v_cvt_f64_u32", VOP1_F64_I32, uint_to_fp>;
 defm V_CVT_F32_I32 : VOP1Inst <"v_cvt_f32_i32", VOP1_F32_I32, sint_to_fp>;
 defm V_CVT_F32_U32 : VOP1Inst <"v_cvt_f32_u32", VOP1_F32_I32, uint_to_fp>;
 defm V_CVT_U32_F32 : VOP1Inst <"v_cvt_u32_f32", VOP_I32_F32, fp_to_uint>;
@@ -183,10 +187,6 @@ defm V_CVT_F32_F16 : VOP1Inst <"v_cvt_f32_f16", VOP_F32_F16, fpextend>;
 defm V_CVT_RPI_I32_F32 : VOP1Inst <"v_cvt_rpi_i32_f32", VOP_I32_F32, cvt_rpi_i32_f32>;
 defm V_CVT_FLR_I32_F32 : VOP1Inst <"v_cvt_flr_i32_f32", VOP_I32_F32, cvt_flr_i32_f32>;
 defm V_CVT_OFF_F32_I4 : VOP1Inst  <"v_cvt_off_f32_i4", VOP1_F32_I32>;
-defm V_CVT_F32_F64 : VOP1Inst <"v_cvt_f32_f64", VOP_F32_F64, fpround>;
-defm V_CVT_F64_F32 : VOP1Inst <"v_cvt_f64_f32", VOP_F64_F32, fpextend>;
-defm V_CVT_U32_F64 : VOP1Inst <"v_cvt_u32_f64", VOP_I32_F64, fp_to_uint>;
-defm V_CVT_F64_U32 : VOP1Inst <"v_cvt_f64_u32", VOP1_F64_I32, uint_to_fp>;
 } // End SchedRW = [WriteQuarterRate32]
 
 defm V_CVT_F32_UBYTE0 : VOP1Inst <"v_cvt_f32_ubyte0", VOP1_F32_I32, AMDGPUcvt_f32_ubyte0>;
@@ -303,41 +303,43 @@ defm V_MOVRELSD_B32 : VOP1Inst <"v_movrelsd_b32", VOP_NO_EXT<VOP_I32_I32>>;
 
 defm V_MOV_FED_B32 : VOP1Inst <"v_mov_fed_b32", VOP_I32_I32>;
 
-// These instruction only exist on SI and CI
-let SubtargetPredicate = isSICI in {
+let SubtargetPredicate = isGFX6GFX7 in {
+  let SchedRW = [WriteQuarterRate32] in {
+    defm V_LOG_CLAMP_F32 :
+      VOP1Inst<"v_log_clamp_f32", VOP_F32_F32, int_amdgcn_log_clamp>;
+    defm V_RCP_CLAMP_F32 :
+      VOP1Inst<"v_rcp_clamp_f32", VOP_F32_F32>;
+    defm V_RCP_LEGACY_F32 :
+      VOP1Inst<"v_rcp_legacy_f32", VOP_F32_F32, AMDGPUrcp_legacy>;
+    defm V_RSQ_CLAMP_F32 :
+      VOP1Inst<"v_rsq_clamp_f32", VOP_F32_F32, AMDGPUrsq_clamp>;
+    defm V_RSQ_LEGACY_F32 :
+      VOP1Inst<"v_rsq_legacy_f32", VOP_F32_F32, AMDGPUrsq_legacy>;
+  } // End SchedRW = [WriteQuarterRate32]
 
-let SchedRW = [WriteQuarterRate32] in {
-defm V_LOG_CLAMP_F32 : VOP1Inst <"v_log_clamp_f32", VOP_F32_F32, int_amdgcn_log_clamp>;
-defm V_RCP_CLAMP_F32 : VOP1Inst <"v_rcp_clamp_f32", VOP_F32_F32>;
-defm V_RCP_LEGACY_F32 : VOP1Inst <"v_rcp_legacy_f32", VOP_F32_F32, AMDGPUrcp_legacy>;
-defm V_RSQ_CLAMP_F32 : VOP1Inst <"v_rsq_clamp_f32", VOP_F32_F32, AMDGPUrsq_clamp>;
-defm V_RSQ_LEGACY_F32 : VOP1Inst <"v_rsq_legacy_f32", VOP_F32_F32, AMDGPUrsq_legacy>;
-} // End SchedRW = [WriteQuarterRate32]
+  let SchedRW = [WriteDouble] in {
+    defm V_RCP_CLAMP_F64 :
+      VOP1Inst<"v_rcp_clamp_f64", VOP_F64_F64>;
+    defm V_RSQ_CLAMP_F64 :
+      VOP1Inst<"v_rsq_clamp_f64", VOP_F64_F64, AMDGPUrsq_clamp>;
+  } // End SchedRW = [WriteDouble]
+} // End SubtargetPredicate = isGFX6GFX7
 
-let SchedRW = [WriteDouble] in {
-defm V_RCP_CLAMP_F64 : VOP1Inst <"v_rcp_clamp_f64", VOP_F64_F64>;
-defm V_RSQ_CLAMP_F64 : VOP1Inst <"v_rsq_clamp_f64", VOP_F64_F64, AMDGPUrsq_clamp>;
-} // End SchedRW = [WriteDouble]
+let SubtargetPredicate = isGFX7GFX8GFX9 in {
+  let SchedRW = [WriteQuarterRate32] in {
+    defm V_LOG_LEGACY_F32 : VOP1Inst<"v_log_legacy_f32", VOP_F32_F32>;
+    defm V_EXP_LEGACY_F32 : VOP1Inst<"v_exp_legacy_f32", VOP_F32_F32>;
+  } // End SchedRW = [WriteQuarterRate32]
+} // End SubtargetPredicate = isGFX7GFX8GFX9
 
-} // End SubtargetPredicate = isSICI
-
-
-let SubtargetPredicate = isCIVI in {
-
-let SchedRW = [WriteDoubleAdd] in {
-defm V_TRUNC_F64 : VOP1Inst <"v_trunc_f64", VOP_F64_F64, ftrunc>;
-defm V_CEIL_F64 : VOP1Inst <"v_ceil_f64", VOP_F64_F64, fceil>;
-defm V_FLOOR_F64 : VOP1Inst <"v_floor_f64", VOP_F64_F64, ffloor>;
-defm V_RNDNE_F64 : VOP1Inst <"v_rndne_f64", VOP_F64_F64, frint>;
-} // End SchedRW = [WriteDoubleAdd]
-
-let SchedRW = [WriteQuarterRate32] in {
-defm V_LOG_LEGACY_F32 : VOP1Inst <"v_log_legacy_f32", VOP_F32_F32>;
-defm V_EXP_LEGACY_F32 : VOP1Inst <"v_exp_legacy_f32", VOP_F32_F32>;
-} // End SchedRW = [WriteQuarterRate32]
-
-} // End SubtargetPredicate = isCIVI
-
+let SubtargetPredicate = isGFX7Plus in {
+  let SchedRW = [WriteDoubleAdd] in {
+    defm V_TRUNC_F64 : VOP1Inst<"v_trunc_f64", VOP_F64_F64, ftrunc>;
+    defm V_CEIL_F64  : VOP1Inst<"v_ceil_f64", VOP_F64_F64, fceil>;
+    defm V_RNDNE_F64 : VOP1Inst<"v_rndne_f64", VOP_F64_F64, frint>;
+    defm V_FLOOR_F64 : VOP1Inst<"v_floor_f64", VOP_F64_F64, ffloor>;
+  } // End SchedRW = [WriteDoubleAdd]
+} // End SubtargetPredicate = isGFX7Plus
 
 let SubtargetPredicate = Has16BitInsts in {
 
@@ -391,21 +393,21 @@ def VOP_SWAP_I32 : VOPProfile<[i32, i32, i32, untyped]> {
   let Ins64 = (ins);
 }
 
-let SubtargetPredicate = isGFX9 in {
-  let Constraints = "$vdst = $src1, $vdst1 = $src0",
-      DisableEncoding="$vdst1,$src1",
-      SchedRW = [Write64Bit, Write64Bit] in {
-// Never VOP3. Takes as long as 2 v_mov_b32s
-def V_SWAP_B32 : VOP1_Pseudo <"v_swap_b32", VOP_SWAP_I32, [], 1>;
-}
+let SubtargetPredicate = isGFX9Plus in {
+  def V_SWAP_B32 : VOP1_Pseudo<"v_swap_b32", VOP_SWAP_I32, [], 1> {
+    let Constraints = "$vdst = $src1, $vdst1 = $src0";
+    let DisableEncoding = "$vdst1,$src1";
+    let SchedRW = [Write64Bit, Write64Bit];
+  }
 
-defm V_SCREEN_PARTITION_4SE_B32 : VOP1Inst <"v_screen_partition_4se_b32", VOP_I32_I32>;
+  defm V_SAT_PK_U8_I16    : VOP1Inst<"v_sat_pk_u8_i16", VOP_I32_I32>;
+  defm V_CVT_NORM_I16_F16 : VOP1Inst<"v_cvt_norm_i16_f16", VOP_I16_F16>;
+  defm V_CVT_NORM_U16_F16 : VOP1Inst<"v_cvt_norm_u16_f16", VOP_I16_F16>;
+} // End SubtargetPredicate = isGFX9Plus
 
-defm V_SAT_PK_U8_I16    : VOP1Inst<"v_sat_pk_u8_i16", VOP_I32_I32>;
-defm V_CVT_NORM_I16_F16 : VOP1Inst<"v_cvt_norm_i16_f16", VOP_I16_F16>;
-defm V_CVT_NORM_U16_F16 : VOP1Inst<"v_cvt_norm_u16_f16", VOP_I16_F16>;
-
-} // End SubtargetPredicate = isGFX9
+let SubtargetPredicate = isGFX9Only in {
+  defm V_SCREEN_PARTITION_4SE_B32 : VOP1Inst <"v_screen_partition_4se_b32", VOP_I32_I32>;
+} // End SubtargetPredicate = isGFX9Only
 
 //===----------------------------------------------------------------------===//
 // Target
@@ -416,7 +418,7 @@ defm V_CVT_NORM_U16_F16 : VOP1Inst<"v_cvt_norm_u16_f16", VOP_I16_F16>;
 //===----------------------------------------------------------------------===//
 
 multiclass VOP1_Real_si <bits<9> op> {
-  let AssemblerPredicates = [isSICI], DecoderNamespace = "SICI" in {
+  let AssemblerPredicates = [isGFX6GFX7], DecoderNamespace = "GFX6GFX7" in {
     def _e32_si :
       VOP1_Real<!cast<VOP1_Pseudo>(NAME#"_e32"), SIEncodingFamily.SI>,
       VOP1e<op{7-0}, !cast<VOP1_Pseudo>(NAME#"_e32").Pfl>;
@@ -491,7 +493,7 @@ defm V_MOVRELSD_B32      : VOP1_Real_si <0x44>;
 //===----------------------------------------------------------------------===//
 
 multiclass VOP1_Real_ci <bits<9> op> {
-  let AssemblerPredicates = [isCIOnly], DecoderNamespace = "CI" in {
+  let AssemblerPredicates = [isGFX7Only], DecoderNamespace = "GFX7" in {
     def _e32_ci :
       VOP1_Real<!cast<VOP1_Pseudo>(NAME#"_e32"), SIEncodingFamily.SI>,
       VOP1e<op{7-0}, !cast<VOP1_Pseudo>(NAME#"_e32").Pfl>;
@@ -509,7 +511,7 @@ defm V_LOG_LEGACY_F32    : VOP1_Real_ci <0x45>;
 defm V_EXP_LEGACY_F32    : VOP1_Real_ci <0x46>;
 
 //===----------------------------------------------------------------------===//
-// VI
+// GFX8, GFX9 (VI).
 //===----------------------------------------------------------------------===//
 
 class VOP1_DPPe <bits<8> op, VOP1_DPP_Pseudo ps, VOPProfile P = ps.Pfl> :
@@ -522,7 +524,7 @@ class VOP1_DPPe <bits<8> op, VOP1_DPP_Pseudo ps, VOPProfile P = ps.Pfl> :
 }
 
 multiclass VOP1Only_Real_vi <bits<10> op> {
-  let AssemblerPredicates = [isVI], DecoderNamespace = "VI" in {
+  let AssemblerPredicates = [isGFX8GFX9], DecoderNamespace = "GFX8" in {
     def _vi :
       VOP1_Real<!cast<VOP1_Pseudo>(NAME), SIEncodingFamily.VI>,
       VOP1e<op{7-0}, !cast<VOP1_Pseudo>(NAME).Pfl>;
@@ -530,7 +532,7 @@ multiclass VOP1Only_Real_vi <bits<10> op> {
 }
 
 multiclass VOP1_Real_e32e64_vi <bits<10> op> {
-  let AssemblerPredicates = [isVI], DecoderNamespace = "VI" in {
+  let AssemblerPredicates = [isGFX8GFX9], DecoderNamespace = "GFX8" in {
     def _e32_vi :
       VOP1_Real<!cast<VOP1_Pseudo>(NAME#"_e32"), SIEncodingFamily.VI>,
       VOP1e<op{7-0}, !cast<VOP1_Pseudo>(NAME#"_e32").Pfl>;
@@ -647,7 +649,7 @@ def V_MOV_B32_indirect : VPseudoInstSI<(outs),
   PseudoInstExpansion<(V_MOV_B32_e32_vi getVALUDstForVT<i32>.ret:$vdst,
                                         getVOPSrc0ForVT<i32>.ret:$src0)> {
   let VOP1 = 1;
-  let SubtargetPredicate = isVI;
+  let SubtargetPredicate = isGFX8GFX9;
 }
 
 // This is a pseudo variant of the v_movreld_b32 instruction in which the
@@ -670,7 +672,7 @@ def V_MOVRELD_B32_V4 : V_MOVRELD_B32_pseudo<VReg_128>;
 def V_MOVRELD_B32_V8 : V_MOVRELD_B32_pseudo<VReg_256>;
 def V_MOVRELD_B32_V16 : V_MOVRELD_B32_pseudo<VReg_512>;
 
-let OtherPredicates = [isVI] in {
+let OtherPredicates = [isGFX8GFX9] in {
 
 def : GCNPat <
   (i32 (int_amdgcn_mov_dpp i32:$src, imm:$dpp_ctrl, imm:$row_mask, imm:$bank_mask,
@@ -688,6 +690,9 @@ def : GCNPat <
                        (as_i1imm $bound_ctrl))
 >;
 
+} // End OtherPredicates = [isGFX8GFX9]
+
+let OtherPredicates = [isGFX8Plus] in {
 def : GCNPat<
   (i32 (anyext i16:$src)),
   (COPY $src)
@@ -710,14 +715,14 @@ def : GCNPat <
   (EXTRACT_SUBREG $src, sub0)
 >;
 
-} // End OtherPredicates = [isVI]
+} // End OtherPredicates = [isGFX8Plus]
 
 //===----------------------------------------------------------------------===//
 // GFX9
 //===----------------------------------------------------------------------===//
 
 multiclass VOP1_Real_gfx9 <bits<10> op> {
-  let AssemblerPredicates = [isGFX9], DecoderNamespace = "GFX9" in {
+  let AssemblerPredicates = [isGFX9Only], DecoderNamespace = "GFX9" in {
     defm NAME : VOP1_Real_e32e64_vi <op>;
   }
 

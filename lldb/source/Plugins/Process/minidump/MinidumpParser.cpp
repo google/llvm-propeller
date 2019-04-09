@@ -10,8 +10,9 @@
 #include "NtStructures.h"
 #include "RegisterContextMinidump_x86_32.h"
 
-#include "lldb/Utility/LLDBAssert.h"
 #include "Plugins/Process/Utility/LinuxProcMaps.h"
+#include "lldb/Utility/LLDBAssert.h"
+#include "lldb/Utility/Log.h"
 
 // C includes
 // C++ includes
@@ -22,11 +23,6 @@
 
 using namespace lldb_private;
 using namespace minidump;
-
-static llvm::Error stringError(llvm::StringRef Err) {
-  return llvm::make_error<llvm::StringError>(Err,
-                                             llvm::inconvertibleErrorCode());
-}
 
 const Header *ParseHeader(llvm::ArrayRef<uint8_t> &data) {
   const Header *header = nullptr;
@@ -45,125 +41,26 @@ const Header *ParseHeader(llvm::ArrayRef<uint8_t> &data) {
 
 llvm::Expected<MinidumpParser>
 MinidumpParser::Create(const lldb::DataBufferSP &data_sp) {
-  if (data_sp->GetByteSize() < sizeof(Header))
-    return stringError("Buffer too small.");
+  auto ExpectedFile = llvm::object::MinidumpFile::create(
+      llvm::MemoryBufferRef(toStringRef(data_sp->GetData()), "minidump"));
+  if (!ExpectedFile)
+    return ExpectedFile.takeError();
 
-  llvm::ArrayRef<uint8_t> header_data(data_sp->GetBytes(),
-                                      sizeof(Header));
-  const Header *header = ParseHeader(header_data);
-  if (!header)
-    return stringError("invalid minidump: can't parse the header");
-
-  // A minidump without at least one stream is clearly ill-formed
-  if (header->NumberOfStreams == 0)
-    return stringError("invalid minidump: no streams present");
-
-  struct FileRange {
-    uint32_t offset = 0;
-    uint32_t size = 0;
-
-    FileRange(uint32_t offset, uint32_t size) : offset(offset), size(size) {}
-    uint32_t end() const { return offset + size; }
-  };
-
-  const uint32_t file_size = data_sp->GetByteSize();
-
-  // Build a global minidump file map, checking for:
-  // - overlapping streams/data structures
-  // - truncation (streams pointing past the end of file)
-  std::vector<FileRange> minidump_map;
-
-  minidump_map.emplace_back(0, sizeof(Header));
-
-  // Add the directory entries to the file map
-  FileRange directory_range(header->StreamDirectoryRVA,
-                            header->NumberOfStreams * sizeof(Directory));
-  if (directory_range.end() > file_size)
-    return stringError("invalid minidump: truncated streams directory");
-  minidump_map.push_back(directory_range);
-
-  llvm::DenseMap<StreamType, LocationDescriptor> directory_map;
-
-  // Parse stream directory entries
-  llvm::ArrayRef<uint8_t> directory_data(
-      data_sp->GetBytes() + directory_range.offset, directory_range.size);
-  for (uint32_t i = 0; i < header->NumberOfStreams; ++i) {
-    const Directory *directory_entry = nullptr;
-    Status error = consumeObject(directory_data, directory_entry);
-    if (error.Fail())
-      return error.ToError();
-    if (directory_entry->Type == StreamType::Unused) {
-      // Ignore dummy streams (technically ill-formed, but a number of
-      // existing minidumps seem to contain such streams)
-      if (directory_entry->Location.DataSize == 0)
-        continue;
-      return stringError("invalid minidump: bad stream type");
-    }
-    // Update the streams map, checking for duplicate stream types
-    if (!directory_map
-             .insert({directory_entry->Type, directory_entry->Location})
-             .second)
-      return stringError("invalid minidump: duplicate stream type");
-
-    // Ignore the zero-length streams for layout checks
-    if (directory_entry->Location.DataSize != 0) {
-      minidump_map.emplace_back(directory_entry->Location.RVA,
-                                directory_entry->Location.DataSize);
-    }
-  }
-
-  // Sort the file map ranges by start offset
-  llvm::sort(minidump_map.begin(), minidump_map.end(),
-             [](const FileRange &a, const FileRange &b) {
-               return a.offset < b.offset;
-             });
-
-  // Check for overlapping streams/data structures
-  for (size_t i = 1; i < minidump_map.size(); ++i) {
-    const auto &prev_range = minidump_map[i - 1];
-    if (prev_range.end() > minidump_map[i].offset)
-      return stringError("invalid minidump: overlapping streams");
-  }
-
-  // Check for streams past the end of file
-  const auto &last_range = minidump_map.back();
-  if (last_range.end() > file_size)
-    return stringError("invalid minidump: truncated stream");
-
-  return MinidumpParser(std::move(data_sp), std::move(directory_map));
+  return MinidumpParser(data_sp, std::move(*ExpectedFile));
 }
 
-MinidumpParser::MinidumpParser(
-    lldb::DataBufferSP data_sp,
-    llvm::DenseMap<StreamType, LocationDescriptor> directory_map)
-    : m_data_sp(std::move(data_sp)), m_directory_map(std::move(directory_map)) {
-}
+MinidumpParser::MinidumpParser(lldb::DataBufferSP data_sp,
+                               std::unique_ptr<llvm::object::MinidumpFile> file)
+    : m_data_sp(std::move(data_sp)), m_file(std::move(file)) {}
 
 llvm::ArrayRef<uint8_t> MinidumpParser::GetData() {
   return llvm::ArrayRef<uint8_t>(m_data_sp->GetBytes(),
                                  m_data_sp->GetByteSize());
 }
 
-llvm::ArrayRef<uint8_t>
-MinidumpParser::GetStream(StreamType stream_type) {
-  auto iter = m_directory_map.find(stream_type);
-  if (iter == m_directory_map.end())
-    return {};
-
-  // check if there is enough data
-  if (iter->second.RVA + iter->second.DataSize > m_data_sp->GetByteSize())
-    return {};
-
-  return llvm::ArrayRef<uint8_t>(m_data_sp->GetBytes() + iter->second.RVA,
-                                 iter->second.DataSize);
-}
-
-llvm::Optional<std::string> MinidumpParser::GetMinidumpString(uint32_t rva) {
-  auto arr_ref = m_data_sp->GetData();
-  if (rva > arr_ref.size())
-    return llvm::None;
-  arr_ref = arr_ref.drop_front(rva);
-  return parseMinidumpString(arr_ref);
+llvm::ArrayRef<uint8_t> MinidumpParser::GetStream(StreamType stream_type) {
+  return m_file->getRawStream(stream_type)
+      .getValueOr(llvm::ArrayRef<uint8_t>());
 }
 
 UUID MinidumpParser::GetModuleUUID(const MinidumpModule *module) {
@@ -276,29 +173,19 @@ MinidumpParser::GetThreadContextWow64(const MinidumpThread &td) {
   // stored in the first slot of the 64-bit TEB (wow64teb.Reserved1[0]).
 }
 
-const SystemInfo *MinidumpParser::GetSystemInfo() {
-  llvm::ArrayRef<uint8_t> data = GetStream(StreamType::SystemInfo);
-
-  if (data.size() == 0)
-    return nullptr;
-  const SystemInfo *system_info;
-
-  Status error = consumeObject(data, system_info);
-  if (error.Fail())
-    return nullptr;
-
-  return system_info;
-}
-
 ArchSpec MinidumpParser::GetArchitecture() {
   if (m_arch.IsValid())
     return m_arch;
 
   // Set the architecture in m_arch
-  const SystemInfo *system_info = GetSystemInfo();
+  llvm::Expected<const SystemInfo &> system_info = m_file->getSystemInfo();
 
-  if (!system_info)
+  if (!system_info) {
+    LLDB_LOG_ERROR(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS),
+                   system_info.takeError(),
+                   "Failed to read SystemInfo stream: {0}");
     return m_arch;
+  }
 
   // TODO what to do about big endiand flavors of arm ?
   // TODO set the arm subarch stuff if the minidump has info about it
@@ -349,13 +236,17 @@ ArchSpec MinidumpParser::GetArchitecture() {
     break;
   default: {
     triple.setOS(llvm::Triple::OSType::UnknownOS);
-    std::string csd_version;
-    if (auto s = GetMinidumpString(system_info->CSDVersionRVA))
-      csd_version = *s;
-    if (csd_version.find("Linux") != std::string::npos)
-      triple.setOS(llvm::Triple::OSType::Linux);
-    break;
+    auto ExpectedCSD = m_file->getString(system_info->CSDVersionRVA);
+    if (!ExpectedCSD) {
+      LLDB_LOG_ERROR(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS),
+                     ExpectedCSD.takeError(),
+                     "Failed to CSD Version string: {0}");
+    } else {
+      if (ExpectedCSD->find("Linux") != std::string::npos)
+        triple.setOS(llvm::Triple::OSType::Linux);
     }
+    break;
+  }
   }
   m_arch.SetTriple(triple);
   return m_arch;
@@ -410,24 +301,22 @@ std::vector<const MinidumpModule *> MinidumpParser::GetFilteredModuleList() {
 
   std::vector<const MinidumpModule *> filtered_modules;
   
-  llvm::Optional<std::string> name;
-  std::string module_name;
-
   for (const auto &module : modules) {
-    name = GetMinidumpString(module.module_name_rva);
-    
-    if (!name)
+    auto ExpectedName = m_file->getString(module.module_name_rva);
+    if (!ExpectedName) {
+      LLDB_LOG_ERROR(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_MODULES),
+                     ExpectedName.takeError(),
+                     "Failed to module name: {0}");
       continue;
-    
-    module_name = name.getValue();
-    
+    }
+
     MapType::iterator iter;
     bool inserted;
     // See if we have inserted this module aready into filtered_modules. If we
     // haven't insert an entry into module_name_to_filtered_index with the
     // index where we will insert it if it isn't in the vector already.
     std::tie(iter, inserted) = module_name_to_filtered_index.try_emplace(
-        module_name, filtered_modules.size());
+        *ExpectedName, filtered_modules.size());
 
     if (inserted) {
       // This module has not been seen yet, insert it into filtered_modules at

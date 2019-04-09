@@ -183,8 +183,8 @@ namespace {
                              "indirect-tls-seg-refs");
 
       // OptFor[Min]Size are used in pattern predicates that isel is matching.
-      OptForSize = MF.getFunction().optForSize();
-      OptForMinSize = MF.getFunction().optForMinSize();
+      OptForSize = MF.getFunction().hasOptSize();
+      OptForMinSize = MF.getFunction().hasMinSize();
       assert((!OptForMinSize || OptForSize) &&
              "OptForMinSize implies OptForSize");
 
@@ -1378,7 +1378,6 @@ static bool foldMaskAndShiftToExtract(SelectionDAG &DAG, SDValue N,
 // allows us to fold the shift into this addressing mode. Returns false if the
 // transform succeeded.
 static bool foldMaskedShiftToScaledMask(SelectionDAG &DAG, SDValue N,
-                                        uint64_t Mask,
                                         SDValue Shift, SDValue X,
                                         X86ISelAddressMode &AM) {
   if (Shift.getOpcode() != ISD::SHL ||
@@ -1395,6 +1394,11 @@ static bool foldMaskedShiftToScaledMask(SelectionDAG &DAG, SDValue N,
   unsigned ShiftAmt = Shift.getConstantOperandVal(1);
   if (ShiftAmt != 1 && ShiftAmt != 2 && ShiftAmt != 3)
     return true;
+
+  // Use a signed mask so that shifting right will insert sign bits. These
+  // bits will be removed when we shift the result left so it doesn't matter
+  // what we use. This might allow a smaller immediate encoding.
+  int64_t Mask = cast<ConstantSDNode>(N->getOperand(1))->getSExtValue();
 
   MVT VT = N.getSimpleValueType();
   SDLoc DL(N);
@@ -1863,7 +1867,7 @@ bool X86DAGToDAGISel::matchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
 
     // Try to swap the mask and shift to place shifts which can be done as
     // a scale on the outside of the mask.
-    if (!foldMaskedShiftToScaledMask(*CurDAG, N, Mask, Shift, X, AM))
+    if (!foldMaskedShiftToScaledMask(*CurDAG, N, Shift, X, AM))
       return false;
 
     // Try to fold the mask and shift into BEXTR and scale.
@@ -2129,7 +2133,7 @@ bool X86DAGToDAGISel::selectLEA64_32Addr(SDValue N, SDValue &Base,
   RegisterSDNode *RN = dyn_cast<RegisterSDNode>(Base);
   if (RN && RN->getReg() == 0)
     Base = CurDAG->getRegister(0, MVT::i64);
-  else if (Base.getValueType() == MVT::i32 && !dyn_cast<FrameIndexSDNode>(Base)) {
+  else if (Base.getValueType() == MVT::i32 && !isa<FrameIndexSDNode>(Base)) {
     // Base could already be %rip, particularly in the x32 ABI.
     SDValue ImplDef = SDValue(CurDAG->getMachineNode(X86::IMPLICIT_DEF, DL,
                                                      MVT::i64), 0);
@@ -2321,14 +2325,22 @@ bool X86DAGToDAGISel::isSExtAbsoluteSymbolRef(unsigned Width, SDNode *N) const {
          CR->getSignedMax().slt(1ull << Width);
 }
 
-static X86::CondCode getCondFromOpc(unsigned Opc) {
+static X86::CondCode getCondFromNode(SDNode *N) {
+  assert(N->isMachineOpcode() && "Unexpected node");
   X86::CondCode CC = X86::COND_INVALID;
-  if (CC == X86::COND_INVALID)
-    CC = X86::getCondFromBranchOpc(Opc);
-  if (CC == X86::COND_INVALID)
-    CC = X86::getCondFromSETOpc(Opc);
-  if (CC == X86::COND_INVALID)
-    CC = X86::getCondFromCMovOpc(Opc);
+  unsigned Opc = N->getMachineOpcode();
+  if (Opc == X86::JCC_1)
+    CC = static_cast<X86::CondCode>(N->getConstantOperandVal(1));
+  else if (Opc == X86::SETCCr)
+    CC = static_cast<X86::CondCode>(N->getConstantOperandVal(0));
+  else if (Opc == X86::SETCCm)
+    CC = static_cast<X86::CondCode>(N->getConstantOperandVal(5));
+  else if (Opc == X86::CMOV16rr || Opc == X86::CMOV32rr ||
+           Opc == X86::CMOV64rr)
+    CC = static_cast<X86::CondCode>(N->getConstantOperandVal(2));
+  else if (Opc == X86::CMOV16rm || Opc == X86::CMOV32rm ||
+           Opc == X86::CMOV64rm)
+    CC = static_cast<X86::CondCode>(N->getConstantOperandVal(6));
 
   return CC;
 }
@@ -2354,7 +2366,7 @@ bool X86DAGToDAGISel::onlyUsesZeroFlag(SDValue Flags) const {
       // Anything unusual: assume conservatively.
       if (!FlagUI->isMachineOpcode()) return false;
       // Examine the condition code of the user.
-      X86::CondCode CC = getCondFromOpc(FlagUI->getMachineOpcode());
+      X86::CondCode CC = getCondFromNode(*FlagUI);
 
       switch (CC) {
       // Comparisons which only use the zero flag.
@@ -2390,7 +2402,7 @@ bool X86DAGToDAGISel::hasNoSignFlagUses(SDValue Flags) const {
       // Anything unusual: assume conservatively.
       if (!FlagUI->isMachineOpcode()) return false;
       // Examine the condition code of the user.
-      X86::CondCode CC = getCondFromOpc(FlagUI->getMachineOpcode());
+      X86::CondCode CC = getCondFromNode(*FlagUI);
 
       switch (CC) {
       // Comparisons which don't examine the SF flag.
@@ -2451,7 +2463,7 @@ static bool mayUseCarryFlag(X86::CondCode CC) {
         if (!FlagUI->isMachineOpcode())
           return false;
         // Examine the condition code of the user.
-        X86::CondCode CC = getCondFromOpc(FlagUI->getMachineOpcode());
+        X86::CondCode CC = getCondFromNode(*FlagUI);
 
         if (mayUseCarryFlag(CC))
           return false;
@@ -3574,16 +3586,23 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
     // Check the minimum bitwidth for the new constant.
     // TODO: Using 16 and 8 bit operations is also possible for or32 & xor32.
     auto CanShrinkImmediate = [&](int64_t &ShiftedVal) {
+      if (Opcode == ISD::AND) {
+        // AND32ri is the same as AND64ri32 with zext imm.
+        // Try this before sign extended immediates below.
+        ShiftedVal = (uint64_t)Val >> ShAmt;
+        if (NVT == MVT::i64 && !isUInt<32>(Val) && isUInt<32>(ShiftedVal))
+          return true;
+      }
       ShiftedVal = Val >> ShAmt;
       if ((!isInt<8>(Val) && isInt<8>(ShiftedVal)) ||
           (!isInt<32>(Val) && isInt<32>(ShiftedVal)))
         return true;
-      // For 64-bit we can also try unsigned 32 bit immediates.
-      // AND32ri is the same as AND64ri32 with zext imm.
-      // MOV32ri+OR64r is cheaper than MOV64ri64+OR64rr
-      ShiftedVal = (uint64_t)Val >> ShAmt;
-      if (NVT == MVT::i64 && !isUInt<32>(Val) && isUInt<32>(ShiftedVal))
-        return true;
+      if (Opcode != ISD::AND) {
+        // MOV32ri+OR64r/XOR64r is cheaper than MOV64ri64+OR64rr/XOR64rr
+        ShiftedVal = (uint64_t)Val >> ShAmt;
+        if (NVT == MVT::i64 && !isUInt<32>(Val) && isUInt<32>(ShiftedVal))
+          return true;
+      }
       return false;
     };
 

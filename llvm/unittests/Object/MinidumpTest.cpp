@@ -249,3 +249,150 @@ TEST(MinidumpFile, getSystemInfo) {
   EXPECT_EQ(0x08070605u, Info.CPU.X86.FeatureInfo);
   EXPECT_EQ(0x02010009u, Info.CPU.X86.AMDExtendedFeatures);
 }
+
+TEST(MinidumpFile, getString) {
+  std::vector<uint8_t> ManyStrings{
+      // Header
+      'M', 'D', 'M', 'P', 0x93, 0xa7, 0, 0, // Signature, Version
+      2, 0, 0, 0,                           // NumberOfStreams,
+      0x20, 0, 0, 0,                        // StreamDirectoryRVA
+      0, 1, 2, 3, 4, 5, 6, 7,               // Checksum, TimeDateStamp
+      8, 9, 0, 1, 2, 3, 4, 5,               // Flags
+                                            // Stream Directory
+      0, 0, 0, 0, 0, 0, 0, 0,               // Type, DataSize,
+      0x20, 0, 0, 0,                        // RVA
+      1, 0, 0, 0, 0, 0,                     // String1 - odd length
+      0, 0, 1, 0, 0, 0,                     // String2 - too long
+      2, 0, 0, 0, 0, 0xd8,                  // String3 - invalid utf16
+      0, 0, 0, 0, 0, 0,                     // String4 - ""
+      2, 0, 0, 0, 'a', 0,                   // String5 - "a"
+      0,                                    // Mis-align next string
+      2, 0, 0, 0, 'a', 0,                   // String6 - "a"
+
+  };
+  auto ExpectedFile = create(ManyStrings);
+  ASSERT_THAT_EXPECTED(ExpectedFile, Succeeded());
+  const MinidumpFile &File = **ExpectedFile;
+  EXPECT_THAT_EXPECTED(File.getString(44), Failed<BinaryError>());
+  EXPECT_THAT_EXPECTED(File.getString(50), Failed<BinaryError>());
+  EXPECT_THAT_EXPECTED(File.getString(56), Failed<BinaryError>());
+  EXPECT_THAT_EXPECTED(File.getString(62), HasValue(""));
+  EXPECT_THAT_EXPECTED(File.getString(68), HasValue("a"));
+  EXPECT_THAT_EXPECTED(File.getString(75), HasValue("a"));
+
+  // Check the case when the size field does not fit into the remaining data.
+  EXPECT_THAT_EXPECTED(File.getString(ManyStrings.size() - 2),
+                       Failed<BinaryError>());
+}
+
+TEST(MinidumpFile, getModuleList) {
+  std::vector<uint8_t> OneModule{
+      // Header
+      'M', 'D', 'M', 'P', 0x93, 0xa7, 0, 0, // Signature, Version
+      1, 0, 0, 0,                           // NumberOfStreams,
+      32, 0, 0, 0,                          // StreamDirectoryRVA
+      0, 1, 2, 3, 4, 5, 6, 7,               // Checksum, TimeDateStamp
+      0, 0, 0, 0, 0, 0, 0, 0,               // Flags
+                                            // Stream Directory
+      4, 0, 0, 0, 112, 0, 0, 0,             // Type, DataSize,
+      44, 0, 0, 0,                          // RVA
+      // ModuleList
+      1, 0, 0, 0,             // NumberOfModules
+      1, 2, 3, 4, 5, 6, 7, 8, // BaseOfImage
+      9, 0, 1, 2, 3, 4, 5, 6, // SizeOfImage, Checksum
+      7, 8, 9, 0, 1, 2, 3, 4, // TimeDateStamp, ModuleNameRVA
+      0, 0, 0, 0, 0, 0, 0, 0, // Signature, StructVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // FileVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // ProductVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // FileFlagsMask, FileFlags
+      0, 0, 0, 0,             // FileOS
+      0, 0, 0, 0, 0, 0, 0, 0, // FileType, FileSubType
+      0, 0, 0, 0, 0, 0, 0, 0, // FileDate
+      1, 2, 3, 4, 5, 6, 7, 8, // CvRecord
+      9, 0, 1, 2, 3, 4, 5, 6, // MiscRecord
+      7, 8, 9, 0, 1, 2, 3, 4, // Reserved0
+      5, 6, 7, 8, 9, 0, 1, 2, // Reserved1
+  };
+  // Same as before, but with a padded module list.
+  std::vector<uint8_t> PaddedModule{
+      // Header
+      'M', 'D', 'M', 'P', 0x93, 0xa7, 0, 0, // Signature, Version
+      1, 0, 0, 0,                           // NumberOfStreams,
+      32, 0, 0, 0,                          // StreamDirectoryRVA
+      0, 1, 2, 3, 4, 5, 6, 7,               // Checksum, TimeDateStamp
+      0, 0, 0, 0, 0, 0, 0, 0,               // Flags
+                                            // Stream Directory
+      4, 0, 0, 0, 116, 0, 0, 0,             // Type, DataSize,
+      44, 0, 0, 0,                          // RVA
+      // ModuleList
+      1, 0, 0, 0,             // NumberOfModules
+      0, 0, 0, 0,             // Padding
+      1, 2, 3, 4, 5, 6, 7, 8, // BaseOfImage
+      9, 0, 1, 2, 3, 4, 5, 6, // SizeOfImage, Checksum
+      7, 8, 9, 0, 1, 2, 3, 4, // TimeDateStamp, ModuleNameRVA
+      0, 0, 0, 0, 0, 0, 0, 0, // Signature, StructVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // FileVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // ProductVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // FileFlagsMask, FileFlags
+      0, 0, 0, 0,             // FileOS
+      0, 0, 0, 0, 0, 0, 0, 0, // FileType, FileSubType
+      0, 0, 0, 0, 0, 0, 0, 0, // FileDate
+      1, 2, 3, 4, 5, 6, 7, 8, // CvRecord
+      9, 0, 1, 2, 3, 4, 5, 6, // MiscRecord
+      7, 8, 9, 0, 1, 2, 3, 4, // Reserved0
+      5, 6, 7, 8, 9, 0, 1, 2, // Reserved1
+  };
+
+  for (const std::vector<uint8_t> &Data : {OneModule, PaddedModule}) {
+    auto ExpectedFile = create(Data);
+    ASSERT_THAT_EXPECTED(ExpectedFile, Succeeded());
+    const MinidumpFile &File = **ExpectedFile;
+    Expected<ArrayRef<Module>> ExpectedModule = File.getModuleList();
+    ASSERT_THAT_EXPECTED(ExpectedModule, Succeeded());
+    ASSERT_EQ(1u, ExpectedModule->size());
+    const Module &M = ExpectedModule.get()[0];
+    EXPECT_EQ(0x0807060504030201u, M.BaseOfImage);
+    EXPECT_EQ(0x02010009u, M.SizeOfImage);
+    EXPECT_EQ(0x06050403u, M.Checksum);
+    EXPECT_EQ(0x00090807u, M.TimeDateStamp);
+    EXPECT_EQ(0x04030201u, M.ModuleNameRVA);
+    EXPECT_EQ(0x04030201u, M.CvRecord.DataSize);
+    EXPECT_EQ(0x08070605u, M.CvRecord.RVA);
+    EXPECT_EQ(0x02010009u, M.MiscRecord.DataSize);
+    EXPECT_EQ(0x06050403u, M.MiscRecord.RVA);
+    EXPECT_EQ(0x0403020100090807u, M.Reserved0);
+    EXPECT_EQ(0x0201000908070605u, M.Reserved1);
+  }
+
+  std::vector<uint8_t> StreamTooShort{
+      // Header
+      'M', 'D', 'M', 'P', 0x93, 0xa7, 0, 0, // Signature, Version
+      1, 0, 0, 0,                           // NumberOfStreams,
+      32, 0, 0, 0,                          // StreamDirectoryRVA
+      0, 1, 2, 3, 4, 5, 6, 7,               // Checksum, TimeDateStamp
+      0, 0, 0, 0, 0, 0, 0, 0,               // Flags
+                                            // Stream Directory
+      4, 0, 0, 0, 111, 0, 0, 0,             // Type, DataSize,
+      44, 0, 0, 0,                          // RVA
+      // ModuleList
+      1, 0, 0, 0,             // NumberOfModules
+      1, 2, 3, 4, 5, 6, 7, 8, // BaseOfImage
+      9, 0, 1, 2, 3, 4, 5, 6, // SizeOfImage, Checksum
+      7, 8, 9, 0, 1, 2, 3, 4, // TimeDateStamp, ModuleNameRVA
+      0, 0, 0, 0, 0, 0, 0, 0, // Signature, StructVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // FileVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // ProductVersion
+      0, 0, 0, 0, 0, 0, 0, 0, // FileFlagsMask, FileFlags
+      0, 0, 0, 0,             // FileOS
+      0, 0, 0, 0, 0, 0, 0, 0, // FileType, FileSubType
+      0, 0, 0, 0, 0, 0, 0, 0, // FileDate
+      1, 2, 3, 4, 5, 6, 7, 8, // CvRecord
+      9, 0, 1, 2, 3, 4, 5, 6, // MiscRecord
+      7, 8, 9, 0, 1, 2, 3, 4, // Reserved0
+      5, 6, 7, 8, 9, 0, 1, 2, // Reserved1
+  };
+  auto ExpectedFile = create(StreamTooShort);
+  ASSERT_THAT_EXPECTED(ExpectedFile, Succeeded());
+  const MinidumpFile &File = **ExpectedFile;
+  EXPECT_THAT_EXPECTED(File.getModuleList(), Failed<BinaryError>());
+}

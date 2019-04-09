@@ -1692,9 +1692,15 @@ Instruction *InstCombiner::visitSub(BinaryOperator &I) {
                                   Builder.CreateNot(Y, Y->getName() + ".not"));
 
     // 0 - (X sdiv C)  -> (X sdiv -C)  provided the negation doesn't overflow.
-    if (match(Op1, m_SDiv(m_Value(X), m_Constant(C))) && match(Op0, m_Zero()) &&
-        C->isNotMinSignedValue() && !C->isOneValue())
-      return BinaryOperator::CreateSDiv(X, ConstantExpr::getNeg(C));
+    // TODO: This could be extended to match arbitrary vector constants.
+    const APInt *DivC;
+    if (match(Op0, m_Zero()) && match(Op1, m_SDiv(m_Value(X), m_APInt(DivC))) &&
+        !DivC->isMinSignedValue() && *DivC != 1) {
+      Constant *NegDivC = ConstantInt::get(I.getType(), -(*DivC));
+      Instruction *BO = BinaryOperator::CreateSDiv(X, NegDivC);
+      BO->setIsExact(cast<BinaryOperator>(Op1)->isExact());
+      return BO;
+    }
 
     // 0 - (X << Y)  -> (-X << Y)   when X is freely negatable.
     if (match(Op1, m_Shl(m_Value(X), m_Value(Y))) && match(Op0, m_Zero()))

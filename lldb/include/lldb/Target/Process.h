@@ -68,36 +68,22 @@ public:
   ~ProcessProperties() override;
 
   bool GetDisableMemoryCache() const;
-
   uint64_t GetMemoryCacheLineSize() const;
-
   Args GetExtraStartupCommands() const;
-
   void SetExtraStartupCommands(const Args &args);
-
   FileSpec GetPythonOSPluginPath() const;
-
   void SetPythonOSPluginPath(const FileSpec &file);
-
   bool GetIgnoreBreakpointsInExpressions() const;
-
   void SetIgnoreBreakpointsInExpressions(bool ignore);
-
   bool GetUnwindOnErrorInExpressions() const;
-
   void SetUnwindOnErrorInExpressions(bool ignore);
-
   bool GetStopOnSharedLibraryEvents() const;
-
   void SetStopOnSharedLibraryEvents(bool stop);
-
   bool GetDetachKeepsStopped() const;
-
   void SetDetachKeepsStopped(bool keep_stopped);
-
   bool GetWarningsOptimization() const;
-
   bool GetStopOnExec() const;
+  std::chrono::seconds GetUtilityExpressionTimeout() const;
 
 protected:
   static void OptionValueChangedCallback(void *baton,
@@ -432,7 +418,6 @@ public:
 /// \see RegisterNotificationCallbacks (const Notifications&) @see
 /// UnregisterNotificationCallbacks (const Notifications&)
 //------------------------------------------------------------------
-#ifndef SWIG
   typedef struct {
     void *baton;
     void (*initialize)(void *baton, Process *process);
@@ -517,7 +502,6 @@ public:
 
     DISALLOW_COPY_AND_ASSIGN(ProcessEventData);
   };
-#endif // SWIG
 
   //------------------------------------------------------------------
   /// Construct with a shared pointer to a target, and the Process listener.
@@ -838,9 +822,7 @@ public:
 ///
 /// \see Process::Notifications
 //------------------------------------------------------------------
-#ifndef SWIG
   void RegisterNotificationCallbacks(const Process::Notifications &callbacks);
-#endif
 
 //------------------------------------------------------------------
 /// Unregister for process and thread notifications.
@@ -858,9 +840,7 @@ public:
 ///
 /// \see Process::Notifications
 //------------------------------------------------------------------
-#ifndef SWIG
   bool UnregisterNotificationCallbacks(const Process::Notifications &callbacks);
-#endif
 
   //==================================================================
   // Built in Process Control functions

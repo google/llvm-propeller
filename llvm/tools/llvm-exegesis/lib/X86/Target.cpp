@@ -8,6 +8,7 @@
 #include "../Target.h"
 
 #include "../Latency.h"
+#include "../SnippetGenerator.h"
 #include "../Uops.h"
 #include "MCTargetDesc/X86BaseInfo.h"
 #include "MCTargetDesc/X86MCTargetDesc.h"
@@ -28,10 +29,13 @@ static Error isInvalidMemoryInstr(const Instruction &Instr) {
   // These have no memory access.
   case X86II::Pseudo:
   case X86II::RawFrm:
+  case X86II::AddCCFrm:
   case X86II::MRMDestReg:
   case X86II::MRMSrcReg:
   case X86II::MRMSrcReg4VOp3:
   case X86II::MRMSrcRegOp4:
+  case X86II::MRMSrcRegCC:
+  case X86II::MRMXrCC:
   case X86II::MRMXr:
   case X86II::MRM0r:
   case X86II::MRM1r:
@@ -118,6 +122,8 @@ static Error isInvalidMemoryInstr(const Instruction &Instr) {
   case X86II::MRMSrcMem:
   case X86II::MRMSrcMem4VOp3:
   case X86II::MRMSrcMemOp4:
+  case X86II::MRMSrcMemCC:
+  case X86II::MRMXmCC:
   case X86II::MRMXm:
   case X86II::MRM0m:
   case X86II::MRM1m:
@@ -428,6 +434,10 @@ private:
 
   unsigned getMaxMemoryAccessSize() const override { return 64; }
 
+  void randomizeMCOperand(const Instruction &Instr, const Variable &Var,
+                          llvm::MCOperand &AssignedValue,
+                          const llvm::BitVector &ForbiddenRegs) const override;
+
   void fillMemoryOperands(InstructionTemplate &IT, unsigned Reg,
                           unsigned Offset) const override;
 
@@ -478,6 +488,23 @@ ExegesisX86Target::getScratchMemoryRegister(const llvm::Triple &TT) const {
     return 0;
   }
   return TT.isOSWindows() ? llvm::X86::RCX : llvm::X86::RDI;
+}
+
+void ExegesisX86Target::randomizeMCOperand(
+    const Instruction &Instr, const Variable &Var,
+    llvm::MCOperand &AssignedValue,
+    const llvm::BitVector &ForbiddenRegs) const {
+  ExegesisTarget::randomizeMCOperand(Instr, Var, AssignedValue, ForbiddenRegs);
+
+  const Operand &Op = Instr.getPrimaryOperand(Var);
+  switch (Op.getExplicitOperandInfo().OperandType) {
+  case llvm::X86::OperandType::OPERAND_COND_CODE:
+    AssignedValue = llvm::MCOperand::createImm(
+        randomIndex(llvm::X86::CondCode::LAST_VALID_COND));
+    break;
+  default:
+    break;
+  }
 }
 
 void ExegesisX86Target::fillMemoryOperands(InstructionTemplate &IT,

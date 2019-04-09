@@ -1,22 +1,8 @@
 /*===---- __clang_cuda_cmath.h - Device-side CUDA cmath support ------------===
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+ * See https://llvm.org/LICENSE.txt for license information.
+ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
  *
  *===-----------------------------------------------------------------------===
  */
@@ -78,13 +64,16 @@ __DEVICE__ float frexp(float __arg, int *__exp) {
 #ifndef _MSC_VER
 __DEVICE__ bool isinf(float __x) { return ::__isinff(__x); }
 __DEVICE__ bool isinf(double __x) { return ::__isinf(__x); }
+__DEVICE__ bool isinf(long double __x) { return ::__isinfl(__x); }
 __DEVICE__ bool isfinite(float __x) { return ::__finitef(__x); }
 // For inscrutable reasons, __finite(), the double-precision version of
 // __finitef, does not exist when compiling for MacOS.  __isfinited is available
 // everywhere and is just as good.
 __DEVICE__ bool isfinite(double __x) { return ::__isfinited(__x); }
+__DEVICE__ bool isfinite(long double __x) { return ::__finitel(__x); }
 __DEVICE__ bool isnan(float __x) { return ::__isnanf(__x); }
 __DEVICE__ bool isnan(double __x) { return ::__isnan(__x); }
+__DEVICE__ bool isnan(long double __x) { return ::__isnanl(__x); }
 #endif
 
 __DEVICE__ bool isgreater(float __x, float __y) {

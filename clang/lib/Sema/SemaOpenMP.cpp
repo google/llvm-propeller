@@ -2361,9 +2361,6 @@ Sema::DeclGroupPtrTy Sema::ActOnOpenMPAllocateDirective(
         (VD->getStorageClass() == SC_Register && VD->hasAttr<AsmLabelAttr>() &&
          !VD->isLocalVarDecl()))
       continue;
-    // Do not apply for parameters.
-    if (isa<ParmVarDecl>(VD))
-      continue;
 
     // If the used several times in the allocate directive, the same allocator
     // must be used.
@@ -11269,17 +11266,18 @@ buildDeclareReductionRef(Sema &SemaRef, SourceLocation Loc, SourceRange Range,
     }
   }
   // Perform ADL.
-  if (SemaRef.getLangOpts().CPlusPlus) {
+  if (SemaRef.getLangOpts().CPlusPlus)
     argumentDependentLookup(SemaRef, ReductionId, Loc, Ty, Lookups);
-    if (auto *VD = filterLookupForUDReductionAndMapper<ValueDecl *>(
-            Lookups, [&SemaRef, Ty](ValueDecl *D) -> ValueDecl * {
-              if (!D->isInvalidDecl() &&
-                  SemaRef.Context.hasSameType(D->getType(), Ty))
-                return D;
-              return nullptr;
-            }))
-      return SemaRef.BuildDeclRefExpr(VD, VD->getType().getNonReferenceType(),
-                                      VK_LValue, Loc);
+  if (auto *VD = filterLookupForUDReductionAndMapper<ValueDecl *>(
+          Lookups, [&SemaRef, Ty](ValueDecl *D) -> ValueDecl * {
+            if (!D->isInvalidDecl() &&
+                SemaRef.Context.hasSameType(D->getType(), Ty))
+              return D;
+            return nullptr;
+          }))
+    return SemaRef.BuildDeclRefExpr(VD, VD->getType().getNonReferenceType(),
+                                    VK_LValue, Loc);
+  if (SemaRef.getLangOpts().CPlusPlus) {
     if (auto *VD = filterLookupForUDReductionAndMapper<ValueDecl *>(
             Lookups, [&SemaRef, Ty, Loc](ValueDecl *D) -> ValueDecl * {
               if (!D->isInvalidDecl() &&
@@ -11893,7 +11891,8 @@ static bool actOnOMPReductionKindClause(
       S.ActOnUninitializedDecl(RHSVD);
     if (RHSVD->isInvalidDecl())
       continue;
-    if (!RHSVD->hasInit() && DeclareReductionRef.isUnset()) {
+    if (!RHSVD->hasInit() &&
+        (DeclareReductionRef.isUnset() || !S.LangOpts.CPlusPlus)) {
       S.Diag(ELoc, diag::err_omp_reduction_id_not_compatible)
           << Type << ReductionIdRange;
       bool IsDecl = !VD || VD->isThisDeclarationADefinition(Context) ==

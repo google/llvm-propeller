@@ -354,7 +354,7 @@ def : Pat<(i64 (sext (i8 (X86setcc_c X86_COND_B, EFLAGS)))),
 // this happens, it is great.  However, if we are left with an 8-bit sbb and an
 // and, we might as well just match it as a setb.
 def : Pat<(and (i8 (X86setcc_c X86_COND_B, EFLAGS)), 1),
-          (SETBr)>;
+          (SETCCr (i8 2))>;
 
 // Patterns to give priority when both inputs are zero so that we don't use
 // an immediate for the RHS.
@@ -1236,36 +1236,22 @@ def : Pat<(X86cmp GR32:$src1, 0),
 def : Pat<(X86cmp GR64:$src1, 0),
           (TEST64rr GR64:$src1, GR64:$src1)>;
 
+def inv_cond_XFORM : SDNodeXForm<imm, [{
+  X86::CondCode CC = static_cast<X86::CondCode>(N->getZExtValue());
+  return CurDAG->getTargetConstant(X86::GetOppositeBranchCondition(CC),
+                                   SDLoc(N), MVT::i8);
+}]>;
+
 // Conditional moves with folded loads with operands swapped and conditions
 // inverted.
-multiclass CMOVmr<PatLeaf InvertedCond, Instruction Inst16, Instruction Inst32,
-                  Instruction Inst64> {
-  let Predicates = [HasCMov] in {
-    def : Pat<(X86cmov (loadi16 addr:$src1), GR16:$src2, InvertedCond, EFLAGS),
-              (Inst16 GR16:$src2, addr:$src1)>;
-    def : Pat<(X86cmov (loadi32 addr:$src1), GR32:$src2, InvertedCond, EFLAGS),
-              (Inst32 GR32:$src2, addr:$src1)>;
-    def : Pat<(X86cmov (loadi64 addr:$src1), GR64:$src2, InvertedCond, EFLAGS),
-              (Inst64 GR64:$src2, addr:$src1)>;
-  }
+let Predicates = [HasCMov] in {
+  def : Pat<(X86cmov (loadi16 addr:$src1), GR16:$src2, imm:$cond, EFLAGS),
+            (CMOV16rm GR16:$src2, addr:$src1, (inv_cond_XFORM imm:$cond))>;
+  def : Pat<(X86cmov (loadi32 addr:$src1), GR32:$src2, imm:$cond, EFLAGS),
+            (CMOV32rm GR32:$src2, addr:$src1, (inv_cond_XFORM imm:$cond))>;
+  def : Pat<(X86cmov (loadi64 addr:$src1), GR64:$src2, imm:$cond, EFLAGS),
+            (CMOV64rm GR64:$src2, addr:$src1, (inv_cond_XFORM imm:$cond))>;
 }
-
-defm : CMOVmr<X86_COND_B , CMOVAE16rm, CMOVAE32rm, CMOVAE64rm>;
-defm : CMOVmr<X86_COND_AE, CMOVB16rm , CMOVB32rm , CMOVB64rm>;
-defm : CMOVmr<X86_COND_E , CMOVNE16rm, CMOVNE32rm, CMOVNE64rm>;
-defm : CMOVmr<X86_COND_NE, CMOVE16rm , CMOVE32rm , CMOVE64rm>;
-defm : CMOVmr<X86_COND_BE, CMOVA16rm , CMOVA32rm , CMOVA64rm>;
-defm : CMOVmr<X86_COND_A , CMOVBE16rm, CMOVBE32rm, CMOVBE64rm>;
-defm : CMOVmr<X86_COND_L , CMOVGE16rm, CMOVGE32rm, CMOVGE64rm>;
-defm : CMOVmr<X86_COND_GE, CMOVL16rm , CMOVL32rm , CMOVL64rm>;
-defm : CMOVmr<X86_COND_LE, CMOVG16rm , CMOVG32rm , CMOVG64rm>;
-defm : CMOVmr<X86_COND_G , CMOVLE16rm, CMOVLE32rm, CMOVLE64rm>;
-defm : CMOVmr<X86_COND_P , CMOVNP16rm, CMOVNP32rm, CMOVNP64rm>;
-defm : CMOVmr<X86_COND_NP, CMOVP16rm , CMOVP32rm , CMOVP64rm>;
-defm : CMOVmr<X86_COND_S , CMOVNS16rm, CMOVNS32rm, CMOVNS64rm>;
-defm : CMOVmr<X86_COND_NS, CMOVS16rm , CMOVS32rm , CMOVS64rm>;
-defm : CMOVmr<X86_COND_O , CMOVNO16rm, CMOVNO32rm, CMOVNO64rm>;
-defm : CMOVmr<X86_COND_NO, CMOVO16rm , CMOVO32rm , CMOVO64rm>;
 
 // zextload bool -> zextload byte
 // i1 stored in one byte in zero-extended form.
@@ -1293,14 +1279,16 @@ def : Pat<(extloadi32i16 addr:$src), (MOVZX32rm16 addr:$src)>;
 
 // For other extloads, use subregs, since the high contents of the register are
 // defined after an extload.
+// NOTE: The extloadi64i32 pattern needs to be first as it will try to form
+// 32-bit loads for 4 byte aligned i8/i16 loads.
+def : Pat<(extloadi64i32 addr:$src),
+          (SUBREG_TO_REG (i64 0), (MOV32rm addr:$src), sub_32bit)>;
 def : Pat<(extloadi64i1 addr:$src),
           (SUBREG_TO_REG (i64 0), (MOVZX32rm8 addr:$src), sub_32bit)>;
 def : Pat<(extloadi64i8 addr:$src),
           (SUBREG_TO_REG (i64 0), (MOVZX32rm8 addr:$src), sub_32bit)>;
 def : Pat<(extloadi64i16 addr:$src),
           (SUBREG_TO_REG (i64 0), (MOVZX32rm16 addr:$src), sub_32bit)>;
-def : Pat<(extloadi64i32 addr:$src),
-          (SUBREG_TO_REG (i64 0), (MOV32rm addr:$src), sub_32bit)>;
 
 // anyext. Define these to do an explicit zero-extend to
 // avoid partial-register updates.

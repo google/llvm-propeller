@@ -441,6 +441,25 @@ Instruction *InstCombiner::visitFMul(BinaryOperator &I) {
       return replaceInstUsesWith(I, Sqrt);
     }
 
+    // Like the similar transform in instsimplify, this requires 'nsz' because
+    // sqrt(-0.0) = -0.0, and -0.0 * -0.0 does not simplify to -0.0.
+    if (I.hasNoNaNs() && I.hasNoSignedZeros() && Op0 == Op1 &&
+        Op0->hasNUses(2)) {
+      // Peek through fdiv to find squaring of square root:
+      // (X / sqrt(Y)) * (X / sqrt(Y)) --> (X * X) / Y
+      if (match(Op0, m_FDiv(m_Value(X),
+                            m_Intrinsic<Intrinsic::sqrt>(m_Value(Y))))) {
+        Value *XX = Builder.CreateFMulFMF(X, X, &I);
+        return BinaryOperator::CreateFDivFMF(XX, Y, &I);
+      }
+      // (sqrt(Y) / X) * (sqrt(Y) / X) --> Y / (X * X)
+      if (match(Op0, m_FDiv(m_Intrinsic<Intrinsic::sqrt>(m_Value(Y)),
+                            m_Value(X)))) {
+        Value *XX = Builder.CreateFMulFMF(X, X, &I);
+        return BinaryOperator::CreateFDivFMF(Y, XX, &I);
+      }
+    }
+
     // exp(X) * exp(Y) -> exp(X + Y)
     // Match as long as at least one of exp has only one use.
     if (match(Op0, m_Intrinsic<Intrinsic::exp>(m_Value(X))) &&
@@ -996,6 +1015,10 @@ Instruction *InstCombiner::visitSDiv(BinaryOperator &I) {
       (match(Op1, m_SExt(m_Value(X))) && X->getType()->isIntOrIntVectorTy(1)))
     return BinaryOperator::CreateNeg(Op0);
 
+  // X / INT_MIN --> X == INT_MIN
+  if (match(Op1, m_SignMask()))
+    return new ZExtInst(Builder.CreateICmpEQ(Op0, Op1), I.getType());
+
   const APInt *Op1C;
   if (match(Op1, m_APInt(Op1C))) {
     // sdiv exact X, C  -->  ashr exact X, log2(C)
@@ -1020,17 +1043,14 @@ Instruction *InstCombiner::visitSDiv(BinaryOperator &I) {
       Value *NarrowOp = Builder.CreateSDiv(Op0Src, NarrowDivisor);
       return new SExtInst(NarrowOp, Op0->getType());
     }
-  }
 
-  if (Constant *RHS = dyn_cast<Constant>(Op1)) {
-    // X/INT_MIN -> X == INT_MIN
-    if (RHS->isMinSignedValue())
-      return new ZExtInst(Builder.CreateICmpEQ(Op0, Op1), I.getType());
-
-    // -X/C  -->  X/-C  provided the negation doesn't overflow.
-    Value *X;
-    if (match(Op0, m_NSWSub(m_Zero(), m_Value(X)))) {
-      auto *BO = BinaryOperator::CreateSDiv(X, ConstantExpr::getNeg(RHS));
+    // -X / C --> X / -C (if the negation doesn't overflow).
+    // TODO: This could be enhanced to handle arbitrary vector constants by
+    //       checking if all elements are not the min-signed-val.
+    if (!Op1C->isMinSignedValue() &&
+        match(Op0, m_NSWSub(m_Zero(), m_Value(X)))) {
+      Constant *NegC = ConstantInt::get(I.getType(), -(*Op1C));
+      Instruction *BO = BinaryOperator::CreateSDiv(X, NegC);
       BO->setIsExact(I.isExact());
       return BO;
     }

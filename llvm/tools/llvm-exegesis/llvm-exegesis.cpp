@@ -137,6 +137,12 @@ static cl::opt<std::string> CpuName(
     cl::desc("cpu name to use for pfm counters, leave empty to autodetect"),
     cl::cat(Options), cl::init(""));
 
+static cl::opt<bool>
+    DumpObjectToDisk("dump-object-to-disk",
+                     cl::desc("dumps the generated benchmark object to disk "
+                              "and prints a message to access it"),
+                     cl::cat(BenchmarkOptions), cl::init(true));
+
 static ExitOnError ExitOnErr;
 
 #ifdef LLVM_EXEGESIS_INITIALIZE_NATIVE_TARGET
@@ -353,6 +359,11 @@ readSnippets(const LLVMState &State, llvm::StringRef Filename) {
 }
 
 void benchmarkMain() {
+#ifndef HAVE_LIBPFM
+  llvm::report_fatal_error(
+      "benchmarking unavaliable, LLVM was built without libpfm.");
+#endif
+
   if (exegesis::pfm::pfmInitialize())
     llvm::report_fatal_error("cannot initialize libpfm");
 
@@ -406,7 +417,7 @@ void benchmarkMain() {
 
   for (const BenchmarkCode &Conf : Configurations) {
     InstructionBenchmark Result =
-        Runner->runConfiguration(Conf, NumRepetitions);
+        Runner->runConfiguration(Conf, NumRepetitions, DumpObjectToDisk);
     ExitOnErr(Result.writeYaml(State, BenchmarkFile));
   }
   exegesis::pfm::pfmTerminate();

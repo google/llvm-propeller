@@ -424,7 +424,7 @@ void DWARFDebugLine::ParsingState::resetRowAndSequence() {
   Sequence.reset();
 }
 
-void DWARFDebugLine::ParsingState::appendRowToMatrix(uint32_t Offset) {
+void DWARFDebugLine::ParsingState::appendRowToMatrix() {
   if (Sequence.Empty) {
     // Record the beginning of instruction sequence.
     Sequence.Empty = false;
@@ -540,7 +540,7 @@ Error DWARFDebugLine::LineTable::parse(
         // address is that of the byte after the last target machine instruction
         // of the sequence.
         State.Row.EndSequence = true;
-        State.appendRowToMatrix(*OffsetPtr);
+        State.appendRowToMatrix();
         if (OS) {
           *OS << "\n";
           OS->indent(12);
@@ -642,7 +642,7 @@ Error DWARFDebugLine::LineTable::parse(
         // Takes no arguments. Append a row to the matrix using the
         // current values of the state-machine registers. Then set
         // the basic_block register to false.
-        State.appendRowToMatrix(*OffsetPtr);
+        State.appendRowToMatrix();
         if (OS) {
           *OS << "\n";
           OS->indent(12);
@@ -827,7 +827,7 @@ Error DWARFDebugLine::LineTable::parse(
         State.Row.dump(*OS);
       }
 
-      State.appendRowToMatrix(*OffsetPtr);
+      State.appendRowToMatrix();
       // Reset discriminator to 0.
       State.Row.Discriminator = 0;
     }
@@ -842,7 +842,7 @@ Error DWARFDebugLine::LineTable::parse(
 
   // Sort all sequences so that address lookup will work faster.
   if (!Sequences.empty()) {
-    llvm::sort(Sequences, Sequence::orderByLowPC);
+    llvm::sort(Sequences, Sequence::orderByHighPC);
     // Note: actually, instruction address ranges of sequences should not
     // overlap (in shared objects and executables). If they do, the address
     // lookup would still work, though, but result would be ambiguous.
@@ -919,31 +919,15 @@ uint32_t DWARFDebugLine::LineTable::lookupAddress(
 
 uint32_t DWARFDebugLine::LineTable::lookupAddressImpl(
     object::SectionedAddress Address) const {
-  if (Sequences.empty())
-    return UnknownRowIndex;
   // First, find an instruction sequence containing the given address.
   DWARFDebugLine::Sequence Sequence;
   Sequence.SectionIndex = Address.SectionIndex;
-  Sequence.LowPC = Address.Address;
-  SequenceIter FirstSeq = Sequences.begin();
-  SequenceIter LastSeq = Sequences.end();
-  SequenceIter SeqPos = std::lower_bound(
-      FirstSeq, LastSeq, Sequence, DWARFDebugLine::Sequence::orderByLowPC);
-  DWARFDebugLine::Sequence FoundSeq;
-
-  if (SeqPos == LastSeq) {
-    FoundSeq = Sequences.back();
-  } else if (SeqPos->LowPC == Address.Address &&
-             SeqPos->SectionIndex == Address.SectionIndex) {
-    FoundSeq = *SeqPos;
-  } else {
-    if (SeqPos == FirstSeq)
-      return UnknownRowIndex;
-    FoundSeq = *(SeqPos - 1);
-  }
-  if (FoundSeq.SectionIndex != Address.SectionIndex)
+  Sequence.HighPC = Address.Address;
+  SequenceIter It = llvm::upper_bound(Sequences, Sequence,
+                                      DWARFDebugLine::Sequence::orderByHighPC);
+  if (It == Sequences.end() || It->SectionIndex != Address.SectionIndex)
     return UnknownRowIndex;
-  return findRowInSeq(FoundSeq, Address);
+  return findRowInSeq(*It, Address);
 }
 
 bool DWARFDebugLine::LineTable::lookupAddressRange(
@@ -971,17 +955,11 @@ bool DWARFDebugLine::LineTable::lookupAddressRangeImpl(
   // First, find an instruction sequence containing the given address.
   DWARFDebugLine::Sequence Sequence;
   Sequence.SectionIndex = Address.SectionIndex;
-  Sequence.LowPC = Address.Address;
-  SequenceIter FirstSeq = Sequences.begin();
+  Sequence.HighPC = Address.Address;
   SequenceIter LastSeq = Sequences.end();
-  SequenceIter SeqPos = std::lower_bound(
-      FirstSeq, LastSeq, Sequence, DWARFDebugLine::Sequence::orderByLowPC);
-  if (SeqPos == LastSeq || !SeqPos->containsPC(Address)) {
-    if (SeqPos == FirstSeq)
-      return false;
-    SeqPos--;
-  }
-  if (!SeqPos->containsPC(Address))
+  SequenceIter SeqPos = llvm::upper_bound(
+      Sequences, Sequence, DWARFDebugLine::Sequence::orderByHighPC);
+  if (SeqPos == LastSeq || !SeqPos->containsPC(Address))
     return false;
 
   SequenceIter StartPos = SeqPos;

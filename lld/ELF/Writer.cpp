@@ -560,12 +560,16 @@ template <class ELFT> void Writer<ELFT>::run() {
     error("failed to write to the output file: " + toString(std::move(E)));
 }
 
-static bool shouldKeepInSymtab(SectionBase *Sec, StringRef SymName,
-                               const Symbol &B) {
-  if (B.isSection())
+static bool shouldKeepInSymtab(const Defined &Sym) {
+  if (Sym.isSection())
     return false;
 
   if (Config->Discard == DiscardPolicy::None)
+    return true;
+
+  // If -emit-reloc is given, all symbols including local ones need to be
+  // copied because they may be referenced by relocations.
+  if (Config->EmitRelocs)
     return true;
 
   // In ELF assembly .L symbols are normally discarded by the assembler.
@@ -573,12 +577,15 @@ static bool shouldKeepInSymtab(SectionBase *Sec, StringRef SymName,
   // * --discard-locals is used.
   // * The symbol is in a SHF_MERGE section, which is normally the reason for
   //   the assembler keeping the .L symbol.
-  if (!SymName.startswith(".L") && !SymName.empty())
+  StringRef Name = Sym.getName();
+  bool IsLocal = Name.startswith(".L") || Name.empty();
+  if (!IsLocal)
     return true;
 
   if (Config->Discard == DiscardPolicy::Locals)
     return false;
 
+  SectionBase *Sec = Sym.Section;
   return !Sec || !(Sec->Flags & SHF_MERGE);
 }
 
@@ -623,9 +630,7 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
         continue;
       if (!includeInSymtab(*B))
         continue;
-
-      SectionBase *Sec = DR->Section;
-      if (!shouldKeepInSymtab(Sec, B->getName(), *B))
+      if (!shouldKeepInSymtab(*DR))
         continue;
       In.SymTab->addSymbol(B);
     }
@@ -1623,15 +1628,14 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
     // ld.bfd traces all DT_NEEDED to emulate the logic of the dynamic linker to
     // catch more cases. That is too much for us. Our approach resembles the one
     // used in ld.gold, achieves a good balance to be useful but not too smart.
-    for (InputFile *File : SharedFiles) {
-      SharedFile<ELFT> *F = cast<SharedFile<ELFT>>(File);
-      F->AllNeededIsKnown = llvm::all_of(F->DtNeeded, [&](StringRef Needed) {
-        return Symtab->SoNames.count(Needed);
-      });
-    }
+    for (SharedFile *File : SharedFiles)
+      File->AllNeededIsKnown =
+          llvm::all_of(File->DtNeeded, [&](StringRef Needed) {
+            return Symtab->SoNames.count(Needed);
+          });
     for (Symbol *Sym : Symtab->getSymbols())
       if (Sym->isUndefined() && !Sym->isWeak())
-        if (auto *F = dyn_cast_or_null<SharedFile<ELFT>>(Sym->File))
+        if (auto *F = dyn_cast_or_null<SharedFile>(Sym->File))
           if (F->AllNeededIsKnown)
             error(toString(F) + ": undefined reference to " + toString(*Sym));
   }
@@ -1646,9 +1650,9 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
     if (Sym->includeInDynsym()) {
       In.DynSymTab->addSymbol(Sym);
-      if (auto *File = dyn_cast_or_null<SharedFile<ELFT>>(Sym->File))
+      if (auto *File = dyn_cast_or_null<SharedFile>(Sym->File))
         if (File->IsNeeded && !Sym->isUndefined())
-          In.VerNeed->addSymbol(Sym);
+          addVerneed(Sym);
     }
   }
 

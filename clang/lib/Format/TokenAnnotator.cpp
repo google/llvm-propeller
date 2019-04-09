@@ -2095,7 +2095,7 @@ static bool isFunctionDeclarationName(const FormatToken &Current,
     return true;
   for (const FormatToken *Tok = Next->Next; Tok && Tok != Next->MatchingParen;
        Tok = Tok->Next) {
-    if (Tok->is(tok::l_paren) && Tok->MatchingParen) {
+    if (Tok->isOneOf(tok::l_paren, TT_TemplateOpener) && Tok->MatchingParen) {
       Tok = Tok->MatchingParen;
       continue;
     }
@@ -2832,7 +2832,8 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
     return true;
   }
   if (Left.is(TT_UnaryOperator))
-    return Right.is(TT_BinaryOperator);
+    return (Style.SpaceAfterLogicalNot && Left.is(tok::exclaim)) ||
+           Right.is(TT_BinaryOperator);
 
   // If the next token is a binary operator or a selector name, we have
   // incorrectly classified the parenthesis as a cast. FIXME: Detect correctly.

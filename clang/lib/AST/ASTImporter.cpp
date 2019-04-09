@@ -1947,7 +1947,7 @@ bool ASTNodeImporter::IsStructuralMatch(VarDecl *FromVar, VarDecl *ToVar,
 
 bool ASTNodeImporter::IsStructuralMatch(EnumDecl *FromEnum, EnumDecl *ToEnum) {
   // Eliminate a potential failure point where we attempt to re-import
-  // something we're trying to import while completin ToEnum
+  // something we're trying to import while completing ToEnum.
   if (Decl *ToOrigin = Importer.GetOriginalDecl(ToEnum))
     if (auto *ToOriginEnum = dyn_cast<EnumDecl>(ToOrigin))
         ToEnum = ToOriginEnum;
@@ -2441,7 +2441,7 @@ ExpectedDecl ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
     }
 
     if (!ConflictingDecls.empty()) {
-      Name = Importer.HandleNameConflict(Name, DC, IDNS,
+      Name = Importer.HandleNameConflict(SearchName, DC, IDNS,
                                          ConflictingDecls.data(),
                                          ConflictingDecls.size());
       if (!Name)
@@ -7792,9 +7792,10 @@ Expected<DeclContext *> ASTImporter::ImportContext(DeclContext *FromDC) {
   if (!FromDC)
     return FromDC;
 
-  auto *ToDC = cast_or_null<DeclContext>(Import(cast<Decl>(FromDC)));
-  if (!ToDC)
-    return nullptr;
+  ExpectedDecl ToDCOrErr = Import_New(cast<Decl>(FromDC));
+  if (!ToDCOrErr)
+    return ToDCOrErr.takeError();
+  auto *ToDC = cast<DeclContext>(*ToDCOrErr);
 
   // When we're using a record/enum/Objective-C class/protocol as a context, we
   // need it to have a definition.
@@ -8590,10 +8591,16 @@ Decl *ASTImporter::MapImported(Decl *From, Decl *To) {
 
 bool ASTImporter::IsStructurallyEquivalent(QualType From, QualType To,
                                            bool Complain) {
-  llvm::DenseMap<const Type *, const Type *>::iterator Pos
-   = ImportedTypes.find(From.getTypePtr());
-  if (Pos != ImportedTypes.end() && ToContext.hasSameType(Import(From), To))
-    return true;
+  llvm::DenseMap<const Type *, const Type *>::iterator Pos =
+      ImportedTypes.find(From.getTypePtr());
+  if (Pos != ImportedTypes.end()) {
+    if (ExpectedType ToFromOrErr = Import_New(From)) {
+      if (ToContext.hasSameType(*ToFromOrErr, To))
+        return true;
+    } else {
+      llvm::consumeError(ToFromOrErr.takeError());
+    }
+  }
 
   StructuralEquivalenceContext Ctx(FromContext, ToContext, NonEquivalentDecls,
                                    getStructuralEquivalenceKind(*this), false,

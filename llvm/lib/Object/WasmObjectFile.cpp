@@ -255,7 +255,7 @@ WasmObjectFile::WasmObjectFile(MemoryBufferRef Buffer, Error &Err)
   }
 
   ReadContext Ctx;
-  Ctx.Start = reinterpret_cast<const uint8_t *>(getData().data());
+  Ctx.Start = getData().bytes_begin();
   Ctx.Ptr = Ctx.Start + 4;
   Ctx.End = Ctx.Start + getData().size();
 
@@ -767,6 +767,7 @@ Error WasmObjectFile::parseRelocSection(StringRef Name, ReadContext &Ctx) {
     case wasm::R_WASM_FUNCTION_INDEX_LEB:
     case wasm::R_WASM_TABLE_INDEX_SLEB:
     case wasm::R_WASM_TABLE_INDEX_I32:
+    case wasm::R_WASM_TABLE_INDEX_REL_SLEB:
       if (!isValidFunctionSymbol(Reloc.Index))
         return make_error<GenericBinaryError>("Bad relocation function index",
                                               object_error::parse_failed);
@@ -793,6 +794,7 @@ Error WasmObjectFile::parseRelocSection(StringRef Name, ReadContext &Ctx) {
     case wasm::R_WASM_MEMORY_ADDR_LEB:
     case wasm::R_WASM_MEMORY_ADDR_SLEB:
     case wasm::R_WASM_MEMORY_ADDR_I32:
+    case wasm::R_WASM_MEMORY_ADDR_REL_SLEB:
       if (!isValidDataSymbol(Reloc.Index))
         return make_error<GenericBinaryError>("Bad relocation data index",
                                               object_error::parse_failed);
