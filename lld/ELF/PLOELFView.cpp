@@ -13,28 +13,20 @@ namespace lld {
 namespace plo {
 
 ELFView *
-ELFView::Create(const StringRef &VN, const uint32_t Ordinal,
+ELFView::Create(const StringRef &VN,
+                const uint32_t Ordinal,
 		const MemoryBufferRef &FR) {
   const char *FH = FR.getBufferStart();
-  if (FR.getBufferSize() <= 6) return nullptr;
-  if (FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' && FH[3] == 'F') {
-    char EClass = FH[4];
-    char EData = FH[5];
-    if (0 < EClass && EClass <= 2 && 0 < EData && EData <= 2) {
-      if (EClass == 1 && EData == 1)
-        return new ELFViewImpl<llvm::object::ELF32LE>(VN, Ordinal, FR);
-      if (EClass == 1 && EData == 2)
-        return new ELFViewImpl<llvm::object::ELF32BE>(VN, Ordinal, FR);
-      if (EClass == 2 && EData == 1)
-        return new ELFViewImpl<llvm::object::ELF64LE>(VN, Ordinal, FR);
-      if (EClass == 2 && EData == 2)
-        return new ELFViewImpl<llvm::object::ELF64BE>(VN, Ordinal, FR);
+  if (FR.getBufferSize() > 6 &&
+      FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' && FH[3] == 'F') {
+    auto R = ObjectFile::createELFObjectFile(FR);
+    if (R) {
+      return new ELFView(*R, VN, Ordinal, FR);
     }
   }
   return nullptr;
 }
 
-ELFView::~ELFView() {}
 void ELFView::EraseCfg(ELFCfg *&CfgPtr) {
   auto I = Cfgs.find(CfgPtr->Name);
   assert(I != Cfgs.end());
@@ -43,20 +35,8 @@ void ELFView::EraseCfg(ELFCfg *&CfgPtr) {
   CfgPtr = nullptr;
 }
 
-template <class ELFT>
-bool ELFViewImpl<ELFT>::Init() {
-  // ViewFile::create is an extremely cheap op.
-  auto R = ELFObjectFile<ELFT>::create(FileRef);
-  if (!R) {
-    return false;
-  }
-  ViewFile.reset(new ELFObjectFile<ELFT>(std::move(*R)));
-  return true;
-}
-
-template <class ELFT>
-void ELFViewImpl<ELFT>::BuildCfgs() {
-  ELFCfgBuilder<ELFT> CfgBuilder(this);
+void ELFView::BuildCfgs() {
+  ELFCfgBuilder CfgBuilder(this);
   CfgBuilder.BuildCfgs();
   Plo.TotalBB += CfgBuilder.BB;
   Plo.TotalBBWoutAddr += CfgBuilder.BBWoutAddr;
@@ -67,11 +47,6 @@ void ELFViewImpl<ELFT>::BuildCfgs() {
 bool PLO::ELFViewOrdinalComparator::Impl(const ELFView *A, const ELFView *B) {
   return A->Ordinal < B->Ordinal;
 }
-
-template class ELFViewImpl<llvm::object::ELF32LE>;
-template class ELFViewImpl<llvm::object::ELF32BE>;
-template class ELFViewImpl<llvm::object::ELF64LE>;
-template class ELFViewImpl<llvm::object::ELF64BE>;
 
 }  // namespace plo
 }  // namespace lld

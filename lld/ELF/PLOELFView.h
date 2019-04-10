@@ -5,12 +5,11 @@
 #include <memory>
 
 #include "llvm/ADT/iterator_range.h"
-#include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 using llvm::MemoryBufferRef;
-using llvm::object::ELFObjectFile;
-using llvm::object::ELFSectionRef;
+using llvm::object::ObjectFile;
 using llvm::object::section_iterator;
 using llvm::StringRef;
 
@@ -25,41 +24,27 @@ class ELFCfg;
 class ELFView {
  public:
   static ELFView *Create(const StringRef &VN,
-                         const uint32_t O, const MemoryBufferRef &FR);
+                         const uint32_t O,
+                         const MemoryBufferRef &FR);
 
-  ELFView(const StringRef &VN, const uint32_t O, const MemoryBufferRef &FR) :
-    ViewName(VN), Ordinal(O), FileRef(FR) {}
-  virtual ~ELFView();
+  ELFView(unique_ptr<ObjectFile> &VF,
+          const StringRef &VN,
+          const uint32_t VO,
+          const MemoryBufferRef &FR) :
+    ViewFile(std::move(VF)), ViewName(VN), Ordinal(VO), FileRef(FR), Cfgs() {}
+  ~ELFView() {}
 
-  MemoryBufferRef GetFileRef() const { return FileRef; }
+  void BuildCfgs();
+  void EraseCfg(ELFCfg *&CfgPtr);
 
-  virtual bool Init() = 0;
-
-  virtual void BuildCfgs() = 0;
-
-  StringRef       ViewName;
-  const uint32_t  Ordinal;
-  MemoryBufferRef FileRef;
+  unique_ptr<ObjectFile> ViewFile;
+  StringRef              ViewName;
+  const uint32_t         Ordinal;
+  MemoryBufferRef        FileRef;
 
   map<StringRef, unique_ptr<ELFCfg>> Cfgs;
-  void EraseCfg(ELFCfg *&CfgPtr);
 };
 
-template <class ELFT>
-class ELFViewImpl : public ELFView {
-public:
-  unique_ptr<ELFObjectFile<ELFT>> ViewFile;
-
-  ELFViewImpl(const StringRef &VN,
-              const uint32_t Ordinal,
-              const MemoryBufferRef &FR)
-    : ELFView(VN, Ordinal, FR) {}
-  virtual ~ELFViewImpl() {}
-
-  bool Init() override;
-
-  void BuildCfgs() override;
-};
 
 }  // namespace plo
 }  // namespace llvm

@@ -208,7 +208,7 @@ bool PLO::FindCfgForAddress(uint64_t Addr,
 void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
   ELFView *View = ELFView::Create(Inf->getName(), Pair.second, Inf->MB);
-  if (View && View->Init()) {
+  if (View) {
     // fprintf(stderr, "Building Cfgs for %s...\n", Inf->getName().str().c_str());
     View->BuildCfgs();
     // Updating global data structure.
@@ -245,15 +245,6 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
   //   }
   // }
 
-  // _ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE
-  // auto &T = CfgMap["_ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE"];
-  // for (auto *View: T) {
-  //   fprintf(stderr, "View: %s\n", View->ViewName.str().c_str());
-  // }
-  // exit(0);
-
-  // FreeContainer(SymAddrMap);  // No longer needed after we create Cfg.
-  // FreeContainer(SymSizeMap);
   // fprintf(stderr, "Finsihed creating cfgs.\n");
 
   // fprintf(stderr, "Total %d intra procedure jumps.\n", B);
@@ -264,6 +255,7 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
   // fprintf(stderr, "Total BB w/out address: %u\n", TotalBBWoutAddr.load());
 
   // Dispose the huge SymAddrMap.
+  // Dispose the huge profile data.
 }
 
 }  // namespace plo

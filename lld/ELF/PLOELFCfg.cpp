@@ -10,16 +10,16 @@
 #include <memory>
 #include <ostream>
 
-#include "llvm/ADT/STLExtras.h"
+#include "llvm/Object/ObjectFile.h"
+// Needed by ELFSectionRef & ELFSymbolRef.
 #include "llvm/Object/ELFObjectFile.h"
-#include "llvm/Object/ELFTypes.h"
 
-using llvm::object::ELFRelocationRef;
-using llvm::object::ELFSymbolRef;
-using llvm::object::ELFSectionRef;
+using llvm::object::RelocationRef;
+using llvm::object::SectionRef;
 using llvm::object::section_iterator;
+using llvm::object::SymbolRef;
 using llvm::StringRef;
-using std::endl;
+
 using std::list;
 using std::map;
 using std::unique_ptr;
@@ -88,14 +88,13 @@ void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
                 ELFCfgEdge::INTER_FUNC)->Weight);
 }
 
-template <class ELFT>
-void ELFCfgBuilder<ELFT>::BuildCfgs() {
+void ELFCfgBuilder::BuildCfgs() {
   auto Symbols = View->ViewFile->symbols();
-  map<StringRef, list<ELFSymbolRef>> Groups;
-  for (const ELFSymbolRef &Sym : Symbols) {
+  map<StringRef, list<SymbolRef>> Groups;
+  for (const SymbolRef &Sym : Symbols) {
     auto R = Sym.getType();
     auto S = Sym.getName();
-    if (R && S && *R == llvm::object::SymbolRef::ST_Function) {
+    if (R && S && *R == SymbolRef::ST_Function) {
       StringRef SymName = *S;
       auto IE = Groups.emplace(
            std::piecewise_construct,
@@ -107,8 +106,8 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
   }
 
   // Now we have a map of function names, group "funcname.bb.x".
-  for (const ELFSymbolRef &Sym : Symbols) {
-    if ((Sym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0) break;
+  for (const SymbolRef &Sym : Symbols) {
+    if ((Sym.getFlags() & SymbolRef::SF_Global) != 0) break;
     auto NameOrErr = Sym.getName();
     if (!NameOrErr) continue;
     StringRef SymName(*NameOrErr);
@@ -137,16 +136,16 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
   map<uint64_t, ELFCfg *> AddrCfgMap;
   for (auto &I : Groups) {
     assert(I.second.size() >= 1);
-    ELFSymbolRef CfgSym = *(I.second.begin());
-    unique_ptr<ELFCfg> Cfg = llvm::make_unique<ELFCfg>(I.first);
-    for (ELFSymbolRef Sym: I.second) {
+    SymbolRef CfgSym = *(I.second.begin());
+    unique_ptr<ELFCfg> Cfg(new ELFCfg(I.first));
+    for (SymbolRef Sym: I.second) {
       auto SymNameE = Sym.getName();
       auto SectionIE = Sym.getSection();
       if (SymNameE && SectionIE &&
           (*SectionIE) != Sym.getObject()->section_end()) {
         StringRef SymName = *SymNameE;
         uint16_t SymShndx = (*SectionIE)->getIndex();
-        uint64_t SymSize = Sym.getSize();
+        uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
         auto ResultP = Plo.SymAddrSizeMap.find(SymName);
         if (ResultP != Plo.SymAddrSizeMap.end()) {
           Cfg->CreateNode(SymShndx, SymName, SymSize,
@@ -178,22 +177,20 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
   }  // Enf of processing all groups.
 }
 
-template <class ELFT>
-void ELFCfgBuilder<ELFT>::BuildRelocationSectionMap(
+void ELFCfgBuilder::BuildRelocationSectionMap(
     map<uint16_t, section_iterator> &RelocationSectionMap) {
-  for (auto I = View->ViewFile->section_begin(),
+  for (section_iterator I = View->ViewFile->section_begin(),
          J = View->ViewFile->section_end(); I != J; ++I) {
-    ELFSectionRef SecRef = *I;
-    if (SecRef.getType() == llvm::ELF::SHT_RELA) {
-      auto R = SecRef.getRelocatedSection();
+    SectionRef SecRef = *I;
+    if (llvm::object::ELFSectionRef(SecRef).getType() == llvm::ELF::SHT_RELA) {
+      section_iterator R = SecRef.getRelocatedSection();
       assert(R != J);
       RelocationSectionMap.emplace(R->getIndex(), *I);
     }
   }
 }
 
-template <class ELFT>
-void ELFCfgBuilder<ELFT>::BuildShndxNodeMap(
+void ELFCfgBuilder::BuildShndxNodeMap(
     ELFCfg &Cfg,
     map<uint16_t, ELFCfgNode *> &ShndxNodeMap) {
   for (auto &Node: Cfg.Nodes) {
@@ -204,8 +201,7 @@ void ELFCfgBuilder<ELFT>::BuildShndxNodeMap(
   }
 }
 
-template <class ELFT>
-void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym) {
+void ELFCfgBuilder::BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym) {
   assert(Cfg.Nodes.size() >= 1);
 
   map<uint16_t, ELFCfgNode *> ShndxNodeMap;
@@ -221,8 +217,8 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym) {
     if (RelaSecRefI == RelocationSectionMap.end())
       continue;
 
-    for (const ELFRelocationRef &Rela : RelaSecRefI->second->relocations()) {
-      ELFSymbolRef RSym = *(Rela.getSymbol());
+    for (const RelocationRef &Rela : RelaSecRefI->second->relocations()) {
+      SymbolRef RSym = *(Rela.getSymbol());
       bool IsRSC = (CfgSym == RSym);
 
       // All bb section symbols are local symbols.
@@ -284,8 +280,7 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym) {
 
 // Calculate fallthroughs.  Edge P->Q is fallthrough if P & Q are
 // adjacent, and there is an NORMAL edge from P->Q.
-template <class ELFT>
-void ELFCfgBuilder<ELFT>::CalculateFallthroughEdges(ELFCfg &Cfg) {
+void ELFCfgBuilder::CalculateFallthroughEdges(ELFCfg &Cfg) {
   auto SetupFallthrough =
     [](typename decltype(ELFCfg::Nodes)::iterator I1,
        typename decltype(ELFCfg::Nodes)::iterator I2) {
@@ -370,29 +365,25 @@ ostream & operator << (ostream &Out, const ELFCfgEdge &Edge) {
 }
 
 ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
-  Out << "Cfg: '" << Cfg.Name.str() << "'" << endl;
+  Out << "Cfg: '" << Cfg.Name.str() << "'" << std::endl;
   for (auto &N : Cfg.Nodes) {
     auto &Node = *(N.second);
-    Out << "  Node: " << Node << endl;
+    Out << "  Node: " << Node << std::endl;
     for (auto &Edge: Node.Outs) {
       Out << "    " << *Edge
           << (Edge == Node.FTEdge ? " (*FT*)" : "")
-          << endl;
+          << std::endl;
     }
   }
   for (auto &N : Cfg.InterEdges) {
     auto *Edge = N.get();
     Out << "  Calls: '" << Edge->Sink->Cfg->Name.str() << "': "
-        << std::noshowbase << std::dec << Edge->Weight << endl;
+        << std::noshowbase << std::dec << Edge->Weight << std::endl;
   }
-  Out << endl;
+  Out << std::endl;
   return Out;
 }
 
-template class ELFCfgBuilder<llvm::object::ELF32LE>;
-template class ELFCfgBuilder<llvm::object::ELF32BE>;
-template class ELFCfgBuilder<llvm::object::ELF64LE>;
-template class ELFCfgBuilder<llvm::object::ELF64BE>;
 
 }  // namespace plo
 }  // namespace lld

@@ -7,7 +7,7 @@
 #include <ostream>
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Object/ObjectFile.h"
 
 using std::list;
 using std::map;
@@ -15,15 +15,14 @@ using std::multimap;
 using std::ostream;
 using std::unique_ptr;
 
-using llvm::object::ELFSymbolRef;
+using llvm::object::SymbolRef;
 using llvm::object::section_iterator;
 using llvm::StringRef;
 
 namespace lld {
 namespace plo {
 
-template <class ELFT>
-class ELFViewImpl;
+class ELFView;
 class ELFCfgNode;
 class ELFCfg;
 
@@ -120,25 +119,23 @@ private:
     }
   }
 
-  template<class ELFT>
   friend class ELFCfgBuilder;
 };
 
 
-template <class ELFT>
 class ELFCfgBuilder {
  public:
-  ELFViewImpl<ELFT> *View;
+  ELFView *View;
 
   uint32_t BB{0};
   uint32_t BBWoutAddr{0};
   uint32_t InvalidCfgs{0};
 
-  ELFCfgBuilder(ELFViewImpl<ELFT> *V) : View(V) {}
+  ELFCfgBuilder(ELFView *V) : View(V) {}
   void BuildCfgs();
 
 protected:
-  void BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym);
+  void BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym);
   void CalculateFallthroughEdges(ELFCfg &Cfg);
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
