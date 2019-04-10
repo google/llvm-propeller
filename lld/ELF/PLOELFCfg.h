@@ -10,11 +10,13 @@
 #include "llvm/Object/ELFObjectFile.h"
 
 using std::list;
+using std::map;
 using std::multimap;
 using std::ostream;
 using std::unique_ptr;
 
 using llvm::object::ELFSymbolRef;
+using llvm::object::section_iterator;
 using llvm::StringRef;
 
 namespace lld {
@@ -138,6 +140,14 @@ class ELFCfgBuilder {
 protected:
   void BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym);
   void CalculateFallthroughEdges(ELFCfg &Cfg);
+  // Build a map from section "Idx" -> Section that relocates this
+  // section. Only used during building phase.
+  void BuildRelocationSectionMap(
+      map<uint16_t, section_iterator> &RelocationSectionMap);
+  // Build a map from section "Idx" -> Node representing "Idx". Only
+  // used during building phase.
+  void BuildShndxNodeMap(ELFCfg &Cfg,
+                         map<uint16_t, ELFCfgNode *> &ShndxNodeMap);
 };
 
 ostream & operator << (ostream &Out, const ELFCfgNode &Node);

@@ -11,16 +11,17 @@
 #include <ostream>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ELFTypes.h"
 
 using llvm::object::ELFRelocationRef;
 using llvm::object::ELFSymbolRef;
 using llvm::object::ELFSectionRef;
+using llvm::object::section_iterator;
 using llvm::StringRef;
 using std::endl;
 using std::list;
 using std::map;
-using std::ostream;
 using std::unique_ptr;
 
 namespace lld {
@@ -41,7 +42,8 @@ ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
 ELFCfgNode *ELFCfg::CreateNode(uint16_t Shndx, StringRef &ShName,
                                uint64_t ShSize, uint64_t MappedAddress) {
   auto E = Nodes.emplace(MappedAddress,
-                         new ELFCfgNode(Shndx, ShName, ShSize, MappedAddress, this));
+                         new ELFCfgNode(
+                             Shndx, ShName, ShSize, MappedAddress, this));
   return E->second.get();
 }
 
@@ -89,7 +91,7 @@ void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
 template <class ELFT>
 void ELFCfgBuilder<ELFT>::BuildCfgs() {
   auto Symbols = View->ViewFile->symbols();
-  std::map<StringRef, std::list<ELFSymbolRef>> Groups;
+  map<StringRef, list<ELFSymbolRef>> Groups;
   for (const ELFSymbolRef &Sym : Symbols) {
     auto R = Sym.getType();
     auto S = Sym.getName();
@@ -140,7 +142,8 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
     for (ELFSymbolRef Sym: I.second) {
       auto SymNameE = Sym.getName();
       auto SectionIE = Sym.getSection();
-      if (SymNameE && SectionIE && (*SectionIE) != Sym.getObject()->section_end()) {
+      if (SymNameE && SectionIE &&
+          (*SectionIE) != Sym.getObject()->section_end()) {
         StringRef SymName = *SymNameE;
         uint16_t SymShndx = (*SectionIE)->getIndex();
         uint64_t SymSize = Sym.getSize();
@@ -176,60 +179,71 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
 }
 
 template <class ELFT>
+void ELFCfgBuilder<ELFT>::BuildRelocationSectionMap(
+    map<uint16_t, section_iterator> &RelocationSectionMap) {
+  for (auto I = View->ViewFile->section_begin(),
+         J = View->ViewFile->section_end(); I != J; ++I) {
+    ELFSectionRef SecRef = *I;
+    if (SecRef.getType() == llvm::ELF::SHT_RELA) {
+      auto R = SecRef.getRelocatedSection();
+      assert(R != J);
+      RelocationSectionMap.emplace(R->getIndex(), *I);
+    }
+  }
+}
+
+template <class ELFT>
+void ELFCfgBuilder<ELFT>::BuildShndxNodeMap(
+    ELFCfg &Cfg,
+    map<uint16_t, ELFCfgNode *> &ShndxNodeMap) {
+  for (auto &Node: Cfg.Nodes) {
+    auto InsertResult = ShndxNodeMap.emplace(Node.second->Shndx,
+                                             Node.second.get());
+    (void)(InsertResult);
+    assert(InsertResult.second);
+  }
+}
+
+template <class ELFT>
 void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym) {
   assert(Cfg.Nodes.size() >= 1);
 
-  bool UsingMap = false;
   map<uint16_t, ELFCfgNode *> ShndxNodeMap;
-  if (Cfg.Nodes.size() >= 100) {
-    UsingMap = true;
-    // For crazy large CFG, create map to accerate lookup.
-    for (auto &Node: Cfg.Nodes) {
-      auto InsertResult = ShndxNodeMap.emplace(Node.second->Shndx,
-                                               Node.second.get());
-      (void)(InsertResult);
-      assert(InsertResult.second);
-    }
-  }
+  BuildShndxNodeMap(Cfg, ShndxNodeMap);
+
+  map<uint16_t, section_iterator> RelocationSectionMap;
+  BuildRelocationSectionMap(RelocationSectionMap);
 
   list<ELFCfgEdge *> RSCEdges;
   for (auto &N : Cfg.Nodes) {
     ELFCfgNode *SrcNode = N.second.get();
-    auto RelaSecRefI = View->GetRelaSectIter(SrcNode->Shndx);
-    if (RelaSecRefI == View->ViewFile->section_end())
+    auto RelaSecRefI = RelocationSectionMap.find(SrcNode->Shndx);
+    if (RelaSecRefI == RelocationSectionMap.end())
       continue;
-    
-    for (const ELFRelocationRef &Rela : RelaSecRefI->relocations()) {
+
+    for (const ELFRelocationRef &Rela : RelaSecRefI->second->relocations()) {
       ELFSymbolRef RSym = *(Rela.getSymbol());
       bool IsRSC = (CfgSym == RSym);
-      
+
       // All bb section symbols are local symbols.
-      if (!IsRSC && ((RSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
+      if (!IsRSC &&
+          ((RSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
         continue;
 
       auto SectionIE = RSym.getSection();
       if (!SectionIE) continue;
       uint16_t SymShndx((*SectionIE)->getIndex());
       ELFCfgNode *TargetNode{nullptr};
-      if (UsingMap) {
-        auto Result = ShndxNodeMap.find(SymShndx);
-        if (Result != ShndxNodeMap.end()) {
-          TargetNode = Result->second;
+      auto Result = ShndxNodeMap.find(SymShndx);
+      if (Result != ShndxNodeMap.end()) {
+        TargetNode = Result->second;
+        if (TargetNode) {
+          ELFCfgEdge *E = Cfg.CreateEdge(SrcNode, SrcNode->Outs,
+                                         TargetNode, TargetNode->Ins,
+                                         IsRSC ? ELFCfgEdge::INTRA_RSC :
+                                         ELFCfgEdge::INTRA_FUNC);
+          if (IsRSC) RSCEdges.push_back(E);
         }
-      } else {
-        for (auto &T : Cfg.Nodes) {
-          if (T.second->Shndx == SymShndx) {
-            TargetNode = T.second.get();
-            break;
-          }
-        }
-      }
-      if (TargetNode) {
-        ELFCfgEdge *E = Cfg.CreateEdge(SrcNode, SrcNode->Outs,
-                                       TargetNode, TargetNode->Ins,
-                                       IsRSC ? ELFCfgEdge::INTRA_RSC :
-                                       ELFCfgEdge::INTRA_FUNC);
-        if (IsRSC) RSCEdges.push_back(E);
       }
     }
   }
@@ -297,7 +311,7 @@ void ELFCfgBuilder<ELFT>::CalculateFallthroughEdges(ELFCfg &Cfg) {
     // mapping, which is possible (but very rare, the scenario
     // explained below). For example:
     //   P[addr=0x123] Q[addr=0x123] R(=std::next(Q))[addr=0x125]
-     
+
     // Firstly,  either P fallthroughs Q or Q fallthroughs P must happen.
     // Secondly:
     //     if P fallthroughs Q, then test if Q fallthroughs R.
@@ -311,14 +325,14 @@ void ELFCfgBuilder<ELFT>::CalculateFallthroughEdges(ELFCfg &Cfg) {
     // Disassembly of section .text.special_basic_block:
     // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4>:
     //    0:   e9 00 00 00 00          jmpq   5 <.L.str.2+0x2>
-    
+
     // Disassembly of section .text:
     // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35>:
     //    0:   45 31 ed                xor    %r13d,%r13d
     //    3:   4d 85 f6                test   %r14,%r14
     //    6:   0f 84 00 00 00 00       je     c <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35+0xc>
     //    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
-    
+
     // The reason is that in -fbasicblock-section mode, bb.4 contains
     // only 1 jump. However, in BB instrument mode, the jump is not
     // emitted, so bb.4 collapses into an empty block, sharing the

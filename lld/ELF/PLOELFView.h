@@ -25,7 +25,7 @@ class ELFCfg;
 class ELFView {
  public:
   static ELFView *Create(const StringRef &VN,
-			 const uint32_t O, const MemoryBufferRef &FR);
+                         const uint32_t O, const MemoryBufferRef &FR);
 
   ELFView(const StringRef &VN, const uint32_t O, const MemoryBufferRef &FR) :
     ViewName(VN), Ordinal(O), FileRef(FR) {}
@@ -51,22 +51,14 @@ public:
   unique_ptr<ELFObjectFile<ELFT>> ViewFile;
 
   ELFViewImpl(const StringRef &VN,
-	      const uint32_t Ordinal,
-	      const MemoryBufferRef &FR)
+              const uint32_t Ordinal,
+              const MemoryBufferRef &FR)
     : ELFView(VN, Ordinal, FR) {}
   virtual ~ELFViewImpl() {}
 
   bool Init() override;
 
   void BuildCfgs() override;
-
-  section_iterator GetRelaSectIter(const uint16_t shndx);
-private:
-  // Section "Idx" -> Section that relocates "Idx",
-  map<uint16_t, section_iterator> RelocationSectionMap;
-
-  void InitRelocationSectionMap();
-
 };
 
 }  // namespace plo
