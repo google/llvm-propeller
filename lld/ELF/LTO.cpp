@@ -75,6 +75,18 @@ static lto::Config createConfig() {
   // Always emit a section per function/datum with LTO.
   C.Options.FunctionSections = true;
   C.Options.DataSections = true;
+  if (!Config->LTOBasicBlockSections.empty()) {
+    if (Config->LTOBasicBlockSections.equals("all"))
+      C.Options.BasicBlockSections = BasicBlockSection::All;
+    else if (Config->LTOBasicBlockSections.equals("hot"))
+      C.Options.BasicBlockSections = BasicBlockSection::Hot;
+    else if (Config->LTOBasicBlockSections.equals("likely"))
+      C.Options.BasicBlockSections = BasicBlockSection::Likely;
+    else if (Config->LTOBasicBlockSections.equals("labels"))
+      C.Options.BasicBlockSections = BasicBlockSection::Labels;
+    else if (Config->LTOBasicBlockSections.equals("none"))
+      C.Options.BasicBlockSections = BasicBlockSection::None;
+  }
 
   if (Config->Relocatable)
     C.RelocModel = None;
