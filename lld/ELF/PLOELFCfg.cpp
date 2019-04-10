@@ -12,6 +12,9 @@
 
 #include "llvm/Object/ELFTypes.h"
 
+using llvm::object::ELFRelocationRef;
+using llvm::object::ELFSymbolRef;
+using llvm::object::ELFSectionRef;
 using llvm::StringRef;
 using std::endl;
 using std::list;
@@ -84,26 +87,27 @@ void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
 
 template <class ELFT>
 void ELFCfgBuilder<ELFT>::BuildCfgs() {
-  std::map<StringRef, std::list<const ViewFileSym *>> Groups;
-  auto Symbols = View->getSymbols();
-  const char *StrTab = (*View->SymTabStrSectPos)->getContent();
-  for (const ViewFileSym &Sym : Symbols) {
-    unsigned char T = Sym.getType();
-    if (T == llvm::ELF::STT_FUNC) {
+  auto Symbols = View->FilePtr->symbols();
+  std::map<StringRef, std::list<ELFSymbolRef>> Groups;
+  for (const ELFSymbolRef &Sym : Symbols) {
+    auto R = Sym.getType();
+    auto S = Sym.getName();
+    if (R && S && *R == llvm::object::SymbolRef::ST_Function) {
       auto IE = Groups.emplace(
-          std::piecewise_construct,
-          std::forward_as_tuple(StrTab + uint32_t(Sym.st_name)),
-          std::forward_as_tuple(1, &Sym));
+           std::piecewise_construct,
+           std::forward_as_tuple(*S),
+           std::forward_as_tuple(1, Sym));
       (void)(IE.second);
       assert(IE.second);
     }
   }
 
   // Now we have a map of function names, group "funcname.bb.x".
-  for (const ViewFileSym &Sym : Symbols) {
-    unsigned char Binding = Sym.getBinding();
-    if (Binding != llvm::ELF::STB_LOCAL) break;
-    StringRef SymName(StrTab + uint32_t(Sym.st_name));
+  for (const ELFSymbolRef &Sym : Symbols) {
+    if ((Sym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0) break;
+    auto NameOrErr = Sym.getName();
+    if (!NameOrErr) continue;
+    StringRef SymName(*NameOrErr);
     auto T = SymName.rsplit('.');
     StringRef RL = T.first, RR = T.second;
     bool AllDigits = true;
@@ -120,33 +124,34 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
       if (RBB == "bb") {
         auto L = Groups.find(RFN);
         if (L != Groups.end()) {
-          L->second.push_back(&Sym);
+          L->second.push_back(Sym);
         }
       }
     }
   }
 
   map<uint64_t, ELFCfg *> AddrCfgMap;
-  // bool dbg = false;
   for (auto &I : Groups) {
-    const ViewFileSym *CfgSym = *(I.second.begin());
+    ELFSymbolRef CfgSym = *(I.second.begin());
     unique_ptr<ELFCfg> Cfg(new ELFCfg(I.first));
-    Cfg->Size = ELFT::Is64Bits ?
-      uint64_t(CfgSym->st_size) : uint32_t(CfgSym->st_size);
-    for (const ViewFileSym *Sym : I.second) {
-      StringRef SymName(StrTab + uint32_t(Sym->st_name));
-      uint16_t SymShndx = uint16_t(Sym->st_shndx);
-      uint64_t SymSize = View->getSectionSize(SymShndx);
-      auto ResultP = Plo.SymAddrSizeMap.find(SymName);
-      if (ResultP != Plo.SymAddrSizeMap.end()) {
-        Cfg->CreateNode(SymShndx, SymName, SymSize,
-                        ResultP->second.first);
-      } else {
-        Cfg.reset(nullptr); // discard invalid cfgs;
-        break;
+    Cfg->Size = CfgSym.getSize();
+    for (ELFSymbolRef &Sym: I.second) {
+      auto SymNameE = Sym.getName();
+      auto SectionIE = Sym.getSection();
+      if (SymNameE && SectionIE && (*SectionIE) != Sym.getObject()->section_end()) {
+        StringRef SymName = *SymNameE;
+        uint16_t SymShndx = (*SectionIE)->getIndex();
+        uint64_t SymSize = Sym.getSize();
+        auto ResultP = Plo.SymAddrSizeMap.find(SymName);
+        if (ResultP != Plo.SymAddrSizeMap.end()) {
+          Cfg->CreateNode(SymShndx, SymName, SymSize,
+                          ResultP->second.first);
+          continue;
+        }
       }
+      Cfg.reset(nullptr);
+      break;
     }
-    if (!Cfg) continue;
 
     uint64_t CfgMappedAddr = Cfg->Nodes.begin()->second->MappedAddr;
     auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
@@ -168,9 +173,8 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
 }
 
 template <class ELFT>
-void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
+void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym) {
   assert(Cfg.Nodes.size() >= 1);
-  auto Symbols = View->getSymbols();
 
   bool UsingMap = false;
   map<uint16_t, ELFCfgNode *> ShndxNodeMap;
@@ -184,20 +188,27 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
       assert(InsertResult.second);
     }
   }
-  
+
   list<ELFCfgEdge *> RSCEdges;
   for (auto &N : Cfg.Nodes) {
     ELFCfgNode *SrcNode = N.second.get();
-    auto Relas = View->getRelasForSection(SrcNode->Shndx);
-    for (const ViewFileRela &Rela : Relas) {
-      uint32_t RSym = Rela.getSymbol(false);
-      assert(RSym < Symbols.size());
-      auto &Sym = Symbols[RSym];
-      bool IsRSC = (CfgSym == &Sym);
+    // auto SecRef = View->getELFSectionRef(SrcNode->Shndx);
+
+    auto RelaSecRefI = View->getRelaSectIter(SrcNode->Shndx);
+    if (RelaSecRefI == View->FilePtr->section_end())
+      continue;
+    
+    for (const ELFRelocationRef &Rela : RelaSecRefI->relocations()) {
+      ELFSymbolRef RSym = *(Rela.getSymbol());
+      bool IsRSC = (CfgSym == RSym);
+      
       // All bb section symbols are local symbols.
-      if (!IsRSC && Sym.getBinding() != llvm::ELF::STB_LOCAL)
+      if (!IsRSC && ((RSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
         continue;
-      uint16_t SymShndx(Sym.st_shndx);
+
+      auto SectionIE = RSym.getSection();
+      if (!SectionIE) continue;
+      uint16_t SymShndx((*SectionIE)->getIndex());
       ELFCfgNode *TargetNode{nullptr};
       if (UsingMap) {
         auto Result = ShndxNodeMap.find(SymShndx);
@@ -253,7 +264,6 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym) {
       }
     }
   }
-
   CalculateFallthroughEdges(Cfg);
 }
 

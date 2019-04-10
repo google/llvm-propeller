@@ -7,12 +7,14 @@
 #include <ostream>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Object/ELFObjectFile.h"
 
 using std::list;
 using std::multimap;
 using std::ostream;
 using std::unique_ptr;
 
+using llvm::object::ELFSymbolRef;
 using llvm::StringRef;
 
 namespace lld {
@@ -139,7 +141,7 @@ class ELFCfgBuilder {
   void BuildCfgs();
 
 protected:
-  void BuildCfg(ELFCfg &Cfg, const ViewFileSym *CfgSym);
+  void BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym);
   void CalculateFallthroughEdges(ELFCfg &Cfg);
 };
 

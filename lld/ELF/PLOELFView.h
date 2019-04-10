@@ -10,12 +10,16 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Object/ELF.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ELFTypes.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 using llvm::ArrayRef;
 using llvm::MemoryBufferRef;
 using llvm::object::ELFFile;
+using llvm::object::ELFObjectFile;
+using llvm::object::ELFSectionRef;
+using llvm::object::section_iterator;
 using llvm::StringRef;
 
 using std::list;
@@ -106,6 +110,8 @@ public:
   using ViewFileRela = typename ELFT::Rela;
   using ViewFileSym  = typename ELFT::Sym;
 
+  unique_ptr<ELFObjectFile<ELFT>> FilePtr;
+
   ELFViewImpl(const StringRef &VN,
 	      const uint32_t Ordinal,
 	      const MemoryBufferRef &FR)
@@ -144,6 +150,10 @@ public:
     }
     return ArrayRef<ViewFileRela>();
   }
+
+  ELFSectionRef getELFSectionRef(const uint16_t shndx) const;
+
+  section_iterator getRelaSectIter(const uint16_t shndx);
 
   ArrayRef<ViewFileSym> getSymbols() const {
     const ViewFileShdr *SymTabShdr = getShdr(SymTabShdrPos->get());

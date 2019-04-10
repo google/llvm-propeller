@@ -16,6 +16,7 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Object/ELFTypes.h"
 
+using llvm::object::ELFSectionRef;
 using llvm::StringRef;
 
 namespace lld {
@@ -56,6 +57,10 @@ template <class ELFT>
 bool ELFViewImpl<ELFT>::Init() {
   // ViewFile::create is an extremely cheap op.
   auto EVF = ViewFile::create(FileRef.getBuffer());
+  auto R = ELFObjectFile<ELFT>::create(FileRef);
+  if (R) {
+    FilePtr.reset(new ELFObjectFile<ELFT>(std::move(*R)));
+  }
   if (!EVF) return false;
   return initEhdr(*EVF) && initSections(*EVF);
 }
@@ -106,6 +111,25 @@ bool ELFViewImpl<ELFT>::initSections(const ViewFile &VF) {
   }
   return setupSymTabAndSymTabStrPos();
 }
+
+template <class ELFT>
+ELFSectionRef ELFViewImpl<ELFT>::getELFSectionRef(const uint16_t shndx) const {
+  auto I = FilePtr->section_begin(), E = FilePtr->section_end();
+  for (uint16_t i = 0; i < shndx && I != E; ++i, ++I);
+  return *I;
+}
+
+template <class ELFT>
+section_iterator ELFViewImpl<ELFT>::getRelaSectIter(const uint16_t shndx) {
+  for (auto I = FilePtr->section_begin(), J = FilePtr->section_end();
+       I != J; ++I) {
+    auto R = I->getRelocatedSection();
+    if (R != J && R->getIndex() == shndx) {
+      return I;
+    }
+  }
+  return FilePtr->section_end();
+}  
 
 template <class ELFT>
 void ELFViewImpl<ELFT>::BuildCfgs() {
