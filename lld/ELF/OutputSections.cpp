@@ -408,8 +408,8 @@ std::array<uint8_t, 4> OutputSection::getFiller() {
   if (Filler)
     return *Filler;
   if (Flags & SHF_EXECINSTR)
-    return {0x90, 0x90, 0x90, 0x90};
-  return {0x90, 0x90, 0x90, 0x90};
+    return Target->TrapInstr;
+  return {0, 0, 0, 0};
 }
 
 template void OutputSection::writeHeaderTo<ELF32LE>(ELF32LE::Shdr *Shdr);

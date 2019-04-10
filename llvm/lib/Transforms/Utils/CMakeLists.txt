@@ -44,7 +44,6 @@ add_llvm_library(LLVMTransformUtils
   NameAnonGlobals.cpp
   PredicateInfo.cpp
   PromoteMemoryToRegister.cpp
-  QualifyFunctionNames.cpp
   StripGCRelocates.cpp
   SSAUpdater.cpp
   SSAUpdaterBulk.cpp

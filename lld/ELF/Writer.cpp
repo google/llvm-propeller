@@ -53,7 +53,6 @@ private:
   void sortSections();
   void resolveShfLinkOrder();
   void maybeAddThunks();
-  void optimizeBasicBlockJumps();
   void sortInputSections();
   void finalizeSections();
   void checkExecuteOnly();
@@ -1458,89 +1457,6 @@ template <class ELFT> void Writer<ELFT>::resolveShfLinkOrder() {
   }
 }
 
-static uint32_t getMaxAlignment(OutputSection *OS) {
-  uint32_t maxAlignment = 0;
-  InputSection *MIS = nullptr;
-  for (InputSection *IS : getInputSections(OS)) {
-    if (IS->Alignment > maxAlignment)
-      MIS = IS;
-    maxAlignment = std::max(maxAlignment, IS->Alignment);
-  }
-  fprintf(stderr, "Max Alignment = %u\n", maxAlignment);
-  if (MIS != nullptr)
-    fprintf(stderr, "Name of IS = %s\n", MIS->Name.data());
-  return maxAlignment;
-}
-
-template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
-
-  Script->assignAddresses();
-  if (Config->FlipBBJumps) {
-    for (OutputSection *OS : OutputSections) {
-      if (!(OS->Flags & SHF_EXECINSTR)) continue;
-      uint32_t maxAlignment = getMaxAlignment(OS);
-      std::vector<InputSection *> Sections = getInputSections(OS);
-      std::vector<unsigned> NumJumps;
-      NumJumps.resize(Sections.size());
-      parallelForEachN(0, Sections.size(), [&](size_t I) {
-        InputSection &IS = *Sections[I];
-        NumJumps[I] = Target->flipDoubleJmpInsn(IS, IS.getFile<ELFT>(), maxAlignment);
-      });
-      unsigned NumJumpsD = 0;
-      for (auto &Val : NumJumps) {
-        NumJumpsD += Val;
-      }
-      if (NumJumpsD > 0)
-        fprintf(stderr, "Double flip %u jump instructions\n", NumJumpsD);
-     }
-  }
-
-  if (!Config->OptimizeBBJumps || !ELFT::Is64Bits)
-    return;
-  Script->assignAddresses();
-  unsigned NumJumpsShrinkedCum = 0;
-  for (OutputSection *OS : OutputSections) {
-    if (!(OS->Flags & SHF_EXECINSTR)) continue;
-    uint32_t maxAlignment = getMaxAlignment(OS);
-    std::vector<InputSection *> Sections = getInputSections(OS);
-    bool OnlyDelete = false;
-    std::vector<unsigned> NumJumps;
-    NumJumps.resize(Sections.size());
-    parallelForEachN(0, Sections.size(), [&](size_t I) {
-      InputSection *Next = (I +1) < Sections.size() ? Sections[I + 1] : nullptr;
-      InputSection &IS = *Sections[I];
-      NumJumps[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>(), true, Next, maxAlignment) > 0 ? 1 : 0;
-    });
-    unsigned NumJumpsDeleted = 0;
-    for (auto &Val : NumJumps) {
-      NumJumpsDeleted += Val;
-    }
-    if (NumJumpsDeleted > 0)
-      fprintf(stderr, "Deleted %u jump instructions\n", NumJumpsDeleted);
-    Script->assignAddresses();
-    for(;;) {
-      fprintf(stderr, "Shrinking Jump Instructions\n");
-    
-      parallelForEachN(0, Sections.size(), [&](size_t I) {
-        // NumJumps[I] = optimizeInputSectionBBJumps<ELFT>(Sections[I], false);
-        InputSection &IS = *Sections[I];
-        NumJumps[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>(), false, nullptr, maxAlignment) > 0 ? 1 : 0;
-      });
-      OnlyDelete = false; 
-      unsigned NumJumpsShrinked = 0;
-      for (auto &Val : NumJumps)
-        NumJumpsShrinked += Val;
-      NumJumpsShrinkedCum += NumJumpsShrinked;
-      if (NumJumpsShrinked > 0) {
-        fprintf(stderr, "Shrunk %u , %u jump instructions\n", NumJumpsShrinkedCum, NumJumpsShrinked);
-        Script->assignAddresses();
-      }
-      else
-        break;
-    }
-  }
-}
-
 // For most RISC ISAs, we need to generate content that depends on the address
 // of InputSections. For example some architectures such as AArch64 use small
 // displacements for jump instructions that is the linker's responsibility for
@@ -1848,10 +1764,6 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // this is the earliest point where we know sizes of sections and their
   // layouts (that are needed to determine if jump targets are in range).
   maybeAddThunks();
-
-  // Relaxation to delete inter-basic block jumps created by basic block
-  // sections.
-  optimizeBasicBlockJumps();
 
   // maybeAddThunks may have added local symbols to the static symbol table.
   finalizeSynthetic(In.SymTab);

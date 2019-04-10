@@ -118,8 +118,6 @@ public:
 
   enum SignReturnAddressKeyValue { AKey, BKey };
 
-  std::string BasicBlockSections;
-
   /// The code model to use (-mcmodel).
   std::string CodeModel;
 

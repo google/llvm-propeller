@@ -22,7 +22,7 @@ void llvm::initializeCodeGen(PassRegistry &Registry) {
   initializeAtomicExpandPass(Registry);
   initializeBranchFolderPassPass(Registry);
   initializeBranchRelaxationPass(Registry);
-  // initializeCFIInstrInserterPass(Registry);
+  initializeCFIInstrInserterPass(Registry);
   initializeCodeGenPreparePass(Registry);
   initializeDeadMachineInstructionElimPass(Registry);
   initializeDetectDeadLanesPass(Registry);

@@ -606,15 +606,9 @@ static MCSectionELF *selectELFSectionForGlobal(
     unsigned *NextUniqueID, const MCSymbolELF *AssociatedSymbol) {
 
   StringRef Group = "";
-  if (!isa<BasicBlock>(GO)) {
-    if (const Comdat *C = getELFComdat(GO)) {
-      Flags |= ELF::SHF_GROUP;
-      Group = C->getName();
-    }
-  }
-  else if (const Comdat *C = getELFComdat(dyn_cast<BasicBlock>(GO)->getParent())) {
+  if (const Comdat *C = getELFComdat(GO)) {
     Flags |= ELF::SHF_GROUP;
-    Group = C->getName(); 
+    Group = C->getName();
   }
 
   // Get the section entry size based on the kind.
@@ -643,18 +637,9 @@ static MCSectionELF *selectELFSectionForGlobal(
       Name += *OptionalPrefix;
   }
 
-  if (const auto *BB = dyn_cast<BasicBlock>(GO)) {
-    const auto &OptionalPrefix = BB->getSectionPrefix();
-    if (OptionalPrefix)
-      Name += *OptionalPrefix;
-  }
-
   unsigned UniqueID = MCContext::GenericSectionID;
   if (EmitUniqueSection) {
-    // Do not use unique section names for basic blocks.
-    // if (TM.getUniqueSectionNames() && !isa<BasicBlock>(GO)) {
-    if ((TM.getUniqueSectionNames() && !isa<BasicBlock>(GO)) ||
-        (TM.getUniqueBBSectionNames() && isa<BasicBlock>(GO))) {
+    if (TM.getUniqueSectionNames()) {
       Name.push_back('.');
       TM.getNameWithPrefix(Name, GO, Mang, true /*MayAlwaysUsePrivate*/);
     } else {
@@ -675,12 +660,10 @@ MCSection *TargetLoweringObjectFileELF::SelectSectionForGlobal(
 
   // If we have -ffunction-section or -fdata-section then we should emit the
   // global value to a uniqued section specifically for it.
-  // If we have a basic block then we got here because -fbasicblock-sections
-  // is true.
   bool EmitUniqueSection = false;
   if (!(Flags & ELF::SHF_MERGE) && !Kind.isCommon()) {
     if (Kind.isText())
-      EmitUniqueSection = isa<BasicBlock>(GO) || TM.getFunctionSections();
+      EmitUniqueSection = TM.getFunctionSections();
     else
       EmitUniqueSection = TM.getDataSections();
   }
@@ -739,20 +722,6 @@ MCSection *TargetLoweringObjectFileELF::getSectionForConstant(
 
   assert(Kind.isReadOnlyWithRel() && "Unknown section kind");
   return DataRelROSection;
-}
-
-MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
-    const Function &F) const {
-  std::string Name = ".text.special_basic_block";
-  unsigned UniqueID = NextUniqueID++;
-  unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
-  std::string GroupName = "";
-  if (F.hasComdat()) {
-    Flags |= ELF::SHF_GROUP;
-    GroupName = F.getComdat()->getName();
-  }
-  return getContext().getELFSection(Name, ELF::SHT_PROGBITS,
-      Flags, 0, GroupName, UniqueID);
 }
 
 static MCSectionELF *getStaticStructorSection(MCContext &Ctx, bool UseInitArray,
