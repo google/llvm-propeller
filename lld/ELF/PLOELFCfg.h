@@ -126,11 +126,6 @@ private:
 template <class ELFT>
 class ELFCfgBuilder {
  public:
-  using ViewFileShdr = typename ELFViewImpl<ELFT>::ViewFileShdr;
-  using ViewFileSym  = typename ELFViewImpl<ELFT>::ViewFileSym;
-  using ViewFileRela = typename ELFViewImpl<ELFT>::ViewFileRela;
-  using ELFTUInt     = typename ELFViewImpl<ELFT>::ELFTUInt;
-
   ELFViewImpl<ELFT> *View;
 
   uint32_t BB{0};

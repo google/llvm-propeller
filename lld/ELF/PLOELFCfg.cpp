@@ -10,6 +10,7 @@
 #include <memory>
 #include <ostream>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Object/ELFTypes.h"
 
 using llvm::object::ELFRelocationRef;
@@ -87,15 +88,16 @@ void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
 
 template <class ELFT>
 void ELFCfgBuilder<ELFT>::BuildCfgs() {
-  auto Symbols = View->FilePtr->symbols();
+  auto Symbols = View->ViewFile->symbols();
   std::map<StringRef, std::list<ELFSymbolRef>> Groups;
   for (const ELFSymbolRef &Sym : Symbols) {
     auto R = Sym.getType();
     auto S = Sym.getName();
     if (R && S && *R == llvm::object::SymbolRef::ST_Function) {
+      StringRef SymName = *S;
       auto IE = Groups.emplace(
            std::piecewise_construct,
-           std::forward_as_tuple(*S),
+           std::forward_as_tuple(SymName),
            std::forward_as_tuple(1, Sym));
       (void)(IE.second);
       assert(IE.second);
@@ -132,10 +134,10 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
 
   map<uint64_t, ELFCfg *> AddrCfgMap;
   for (auto &I : Groups) {
+    assert(I.second.size() >= 1);
     ELFSymbolRef CfgSym = *(I.second.begin());
-    unique_ptr<ELFCfg> Cfg(new ELFCfg(I.first));
-    Cfg->Size = CfgSym.getSize();
-    for (ELFSymbolRef &Sym: I.second) {
+    unique_ptr<ELFCfg> Cfg = llvm::make_unique<ELFCfg>(I.first);
+    for (ELFSymbolRef Sym: I.second) {
       auto SymNameE = Sym.getName();
       auto SectionIE = Sym.getSection();
       if (SymNameE && SectionIE && (*SectionIE) != Sym.getObject()->section_end()) {
@@ -152,6 +154,7 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
       Cfg.reset(nullptr);
       break;
     }
+    if (!Cfg) continue;
 
     uint64_t CfgMappedAddr = Cfg->Nodes.begin()->second->MappedAddr;
     auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
@@ -169,7 +172,7 @@ void ELFCfgBuilder<ELFT>::BuildCfgs() {
       // Transfer ownership of Cfg to View.Cfgs.
       View->Cfgs.emplace(Cfg->Name, Cfg.release());
     }
-  }
+  }  // Enf of processing all groups.
 }
 
 template <class ELFT>
@@ -192,10 +195,8 @@ void ELFCfgBuilder<ELFT>::BuildCfg(ELFCfg &Cfg, const ELFSymbolRef &CfgSym) {
   list<ELFCfgEdge *> RSCEdges;
   for (auto &N : Cfg.Nodes) {
     ELFCfgNode *SrcNode = N.second.get();
-    // auto SecRef = View->getELFSectionRef(SrcNode->Shndx);
-
-    auto RelaSecRefI = View->getRelaSectIter(SrcNode->Shndx);
-    if (RelaSecRefI == View->FilePtr->section_end())
+    auto RelaSecRefI = View->GetRelaSectIter(SrcNode->Shndx);
+    if (RelaSecRefI == View->ViewFile->section_end())
       continue;
     
     for (const ELFRelocationRef &Rela : RelaSecRefI->relocations()) {

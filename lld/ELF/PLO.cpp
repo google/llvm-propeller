@@ -68,9 +68,9 @@ bool PLO::InitSymfile(StringRef &Symfile) {
 		    if (!Name.empty()) {
 		      // fprintf(stderr, "Insert %s into 0x%lx\n", Name.str().c_str(), Addr);
 		      this->AddrSymMap[Addr].emplace_back(Name);
-		      if (this->AddrSymMap[Addr].size() > 3) {
-			fprintf(stderr, "0x%lx contains more than 3 symbols.\n", Addr);
-		      }
+		      // if (this->AddrSymMap[Addr].size() > 3) {
+		      //   fprintf(stderr, "0x%lx contains more than 3 symbols.\n", Addr);
+		      // }
 		      this->SymAddrSizeMap.emplace(
                           std::piecewise_construct,
 			  std::forward_as_tuple(Name),
@@ -229,6 +229,7 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
   int Ordinal = 0;
   for (auto &F : Files) {
     FileOrdinalPairs.emplace_back(F, ++Ordinal);
+    // ProcessFile(*FileOrdinalPairs.rbegin());
   }
   llvm::parallel::for_each(llvm::parallel::parallel_execution_policy(),
                            FileOrdinalPairs.begin(),
@@ -237,12 +238,12 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
 
   Profile->ProcessLBRs();
 
-  for (auto &View: Views) {
-    for (auto &I: View->Cfgs) {
-      ELFCfg *Cfg = I.second.get();
-      std::cout << *Cfg;
-    }
-  }
+  // for (auto &View: Views) {
+  //   for (auto &I: View->Cfgs) {
+  //     ELFCfg *Cfg = I.second.get();
+  //     std::cout << *Cfg;
+  //   }
+  // }
 
   // _ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE
   // auto &T = CfgMap["_ZN4llvm9AAResults13getModRefInfoEPKNS_11InstructionERKNS_8OptionalINS_14MemoryLocationEEE"];
