@@ -4,6 +4,9 @@ set -e
 
 # Binary must be built with "-fbasicblock-section-instrument=all".
 BINARY="$1"
+if [[ -L "$BINARY" ]]; then
+    BINARY=$(readlink -f "${BINARY}")
+fi
 # Perf data must contain lbr information.
 PERFDATA="$2"
 BASENAME=$(basename $1) # "$(echo ${BINARY} | sed -nEe 's!(.*)\.[^.]+$!\1!p')"

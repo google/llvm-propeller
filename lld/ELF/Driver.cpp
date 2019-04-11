@@ -1549,8 +1549,8 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
     for (const char *S : LibcallRoutineNames)
       handleLibcall<ELFT>(S);
 
-  fprintf(stderr, "(shenhan): %lu files to process.\n", ObjectFiles.size());
   if (Config->Plo && !ObjectFiles.empty()) {
+    fprintf(stderr, "PLO: %lu files to process.\n", ObjectFiles.size());
     if (lld::plo::Plo.Init(Config->SymFile, Config->Profile)) {
       lld::plo::Plo.ProcessFiles(ObjectFiles);
     } else {

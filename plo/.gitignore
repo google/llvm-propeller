@@ -1,2 +1,11 @@
 sample.o*
 sample.perfdata
+bbsec
+stage1
+clang.perfdata
+clang.profile
+clang.symfile
+commands
+run-commands.sh
+*-compiler
+test-build
