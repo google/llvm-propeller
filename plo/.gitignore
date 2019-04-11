@@ -1,6 +1,7 @@
 sample.o*
 sample.perfdata
 bbsec
+bbinstr
 stage1
 clang.perfdata
 clang.profile

@@ -1,3 +1,4 @@
+# Vanilla compiler (without any bb patches), can be any modern compilers.
 RELEASE_LLVM_BIN=/usr/local/google/home/shenhan/llvm/install-8.0/bin
 
 DDIR         := $(shell pwd)
@@ -27,7 +28,7 @@ BUILD_TOOLS = -DCMAKE_C_COMPILER=$(1)/clang \
 	      -DCMAKE_ASM_COMPILER=$(1)/clang
 
 # $1 is compiler name, "stage1", "instrbb", etc;
-# $2 is bin directory that is used to build the compiler;
+# $2 is bin directory that is used to build the compiler, must be absolute path.
 # $3 is any other cmake flags.
 define build_compiler
 	mkdir -p $(1)/build
@@ -48,7 +49,7 @@ bbsection_flags = -DCMAKE_C_FLAGS=-fbasicblock-sections=$(1) -DCMAKE_CXX_FLAGS=-
 		  -DCMAKE_SHARED_LINKER_FLAGS="$(2)" \
 	          -DCMAKE_MODULE_LINKER_FLAGS="$(2)"
 
-# Stage1 compiler is the vanilla compiler.
+# Stage1 compiler is the compiler that contains "bb section" and "plo" patches.
 stage1/install/bin/clang: $(LLVM_SOURCE)
 	$(call build_compiler,stage1,$(RELEASE_LLVM_BIN),)
 
