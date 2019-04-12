@@ -45,7 +45,6 @@ private:
 };
 
 ostream & operator << (ostream &Out, const LBREntry &Entry);
-ostream & operator << (ostream &Out, const LBRRecord &R);
 
 }
 }

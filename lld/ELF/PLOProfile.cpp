@@ -145,13 +145,5 @@ ostream & operator << (ostream &Out, const LBREntry &Entry) {
   return Out;
 }
 
-ostream & operator << (ostream &Out, const LBRRecord &R) {
-  Out << "==== LBR Record ====" << std::endl;
-  for (auto P = R.Entries.rbegin(), Q = R.Entries.rend(); P != Q; ++P)
-    Out << **P << std::endl;
-  Out << "==== End of LBR Record ====" << std::endl;
-  return Out;
-}
-
 }  // end of namespace plo
 }  // end of namespace lld

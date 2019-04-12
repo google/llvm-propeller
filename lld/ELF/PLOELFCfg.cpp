@@ -29,13 +29,16 @@ namespace plo {
 
 
 ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
-                               list<ELFCfgEdge *>& FromOuts,
                                ELFCfgNode *To,
-                               list<ELFCfgEdge *>& ToIns,
                                typename ELFCfgEdge::EdgeType Type) {
   ELFCfgEdge *Edge = new ELFCfgEdge(From, To, Type);
-  FromOuts.push_back(Edge);
-  ToIns.push_back(Edge);
+  if (Type <  ELFCfgEdge::EdgeType::INTER_FUNC) {
+    From->Outs.push_back(Edge);
+    To->Ins.push_back(Edge);
+  } else {
+    From->CallOuts.push_back(Edge);
+    To->CallIns.push_back(Edge);
+  }
   EmplaceEdge(Edge);  // Take ownership of "Edge".
   return Edge;
 }
@@ -68,7 +71,7 @@ void ELFCfg::MapBranch(ELFCfgNode *From, ELFCfgNode *To) {
       return;
     }
   }
-  ++(CreateEdge(From, From->Outs, To, To->Ins, ELFCfgEdge::INTRA_DYNA)->Weight);
+  ++(CreateEdge(From, To, ELFCfgEdge::INTRA_DYNA)->Weight);
 }
 
 void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
@@ -81,9 +84,7 @@ void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
     }
   }
   ++(CreateEdge(From,
-                From->CallOuts,
                 To,
-                To->CallIns,
                 ELFCfgEdge::INTER_FUNC)->Weight);
 }
 
@@ -240,8 +241,8 @@ void ELFCfgBuilder::BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
         if (Result != ShndxNodeMap.end()) {
           TargetNode = Result->second;
           if (TargetNode) {
-            ELFCfgEdge *E = Cfg.CreateEdge(SrcNode, SrcNode->Outs,
-                                           TargetNode, TargetNode->Ins,
+            ELFCfgEdge *E = Cfg.CreateEdge(SrcNode,
+                                           TargetNode,
                                            IsRSC ? ELFCfgEdge::INTRA_RSC :
                                            ELFCfgEdge::INTRA_FUNC);
             if (IsRSC) RSCEdges.push_back(E);
@@ -275,11 +276,7 @@ void ELFCfgBuilder::BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
         if (N->Outs.size() == 0 ||
             (N->Outs.size() == 1 &&
              (*N->Outs.begin())->Type == ELFCfgEdge::INTRA_RSC)) {
-          Cfg.CreateEdge(N.get(),
-                         N->Outs,
-                         REdge->Src,
-                         REdge->Src->Ins,
-                         ELFCfgEdge::INTRA_RSR);
+          Cfg.CreateEdge(N.get(), REdge->Src, ELFCfgEdge::INTRA_RSR);
         }
       }
     }
@@ -301,9 +298,7 @@ void ELFCfgBuilder::CalculateFallthroughEdges(
       }
       if (N1->ShSize == 0) {
         // An empty section always fallthrough to the next adjacent section.
-        N1->FTEdge = Cfg.CreateEdge(N1, N1->Outs,
-                                    N2, N2->Ins,
-                                    ELFCfgEdge::INTRA_FUNC);
+        N1->FTEdge = Cfg.CreateEdge(N1, N2, ELFCfgEdge::INTRA_FUNC);
         return true;
       }
       return false;

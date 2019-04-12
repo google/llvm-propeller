@@ -109,9 +109,7 @@ public:
 private:
   // Create and take ownership.
   ELFCfgEdge *CreateEdge(ELFCfgNode *From,
-                         list<ELFCfgEdge *>& FromOuts,
                          ELFCfgNode *To,
-                         list<ELFCfgEdge *>& ToIns,
                          typename ELFCfgEdge::EdgeType Type);
 
   // Create and take ownership.
