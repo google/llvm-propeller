@@ -33,14 +33,10 @@ LBREntry *LBREntry::CreateEntry(const StringRef &SR) {
 }
 
 void PLOProfile::ProcessLBRs() {
-  int Total = 0;
-  uint32_t Strange = 0, Strange2 = 0;
-  uint32_t IntraFunc = 0, InterFunc = 0;
+  uint64_t NonMarkedIntraFunc = 0, NonMarkedInterFunc = 0;
+  uint64_t IntraFunc = 0, InterFunc = 0;
   uint64_t LastFromAddr{0}, LastToAddr{0};
-  uint32_t Idx = 0;
   for (auto  &Record : LBRs) {
-    ++Idx;
-    Total += Record->Entries.size();
     LBREntry *LastEntry{nullptr};
     ELFCfg *LastToCfg{nullptr};
     ELFCfgNode *LastToNode{nullptr};
@@ -67,39 +63,33 @@ void PLOProfile::ProcessLBRs() {
       }
       // Mark everything between LastToCfg[LastToNode] and FromCfg[FromNode].
       if (LastToCfg == FromCfg) {
+        ++IntraFunc;
         if (LastToCfg->MarkPath(LastToNode, FromNode) == false) {
           if (!(LastFromAddr == From && LastToAddr == To
 		&& std::next(P) == Q)) {
-            ++Strange;
-            std::cout << "*****" << endl;
-            std::cout << "Failed to map " << std::showbase << std::hex
-                      << LastToAddr << " -> " << From << " LBR@" << Idx << " : "
-                      << *LastToNode << " -> "
-                      << *FromNode << endl;
-            std::cout << *FromCfg << endl;
-            exit(1);
-            
-            // fprintf(stderr, "*****\n");
-            // fprintf(stderr, "Failed to map %s -> %s\n",
-            //         LastToNode->ShName.str().c_str(),
-            //         FromNode->ShName.str().c_str());
-            // PrintLBRRecord(Record.get());
-            // LastToCfg->Diagnose();
-            // fprintf(stderr, "*****\n");
+            ++NonMarkedIntraFunc;
+            // std::cout << "*****" << endl;
+            // std::cout << "Failed to map " << std::showbase << std::hex
+            //           << LastToAddr << " -> " << From
+            //           << " LBR@" << std::noshowbase << std::dec << Idx << " : "
+            //           << *LastToNode << " -> "
+            //           << *FromNode << endl;
+            // std::cout << *FromCfg << endl;
           }
         }
       } else {
+        ++InterFunc;
         if (LastToCfg && FromCfg && LastToCfg != FromCfg) {
           if (!(LastFromAddr == From && LastToAddr == To
 		&& std::next(P) == Q)) {
-            std::cout << "Failed to map: " << std::showbase << std::hex
-                      << LastToAddr << " -> " << From << endl;
-            std::cout << "Last entry:    " << *LastEntry << endl;
-            std::cout << "Current Entry: " << *Entry << endl;
-            std::cout << "Last: " << *LastToNode << endl;
-            std::cout << "From: " << *FromNode << endl;
-            ++Strange2;
-            exit(1);
+            // std::cout << "Failed to map: " << std::showbase << std::hex
+            //           << LastToAddr << " -> " << From << endl;
+            // std::cout << "Last entry:    " << *LastEntry << endl;
+            // std::cout << "Current Entry: " << *Entry << endl;
+            // std::cout << "Last: " << *LastToNode << endl;
+            // std::cout << "From: " << *FromNode << endl;
+            // exit(1);
+            ++NonMarkedInterFunc;
           }
         }
       }
@@ -111,10 +101,8 @@ void PLOProfile::ProcessLBRs() {
     }
   }
 
-  fprintf(stderr, "Total intra-function mismatch: %d\n", Strange);
-  fprintf(stderr, "Total inter-function mismatch: %d\n", Strange2);
-  fprintf(stderr, "Total Intra: %d\n", IntraFunc);
-  fprintf(stderr, "Total Inter: %d\n", InterFunc);
+  fprintf(stderr, "Intra-func marked: %lu (%lu not marked)\n", IntraFunc, NonMarkedIntraFunc);
+  fprintf(stderr, "Inter-func marked: %lu (%lu not marked)\n", InterFunc, NonMarkedInterFunc);
 }
 
 ostream & operator << (ostream &Out, const LBREntry &Entry) {

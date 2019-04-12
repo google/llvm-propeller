@@ -253,9 +253,6 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
   // fprintf(stderr, "Invalid cfgs: %u\n", InvalidCfgs.load());
   // fprintf(stderr, "Total BBs: %u\n", TotalBB.load());
   // fprintf(stderr, "Total BB w/out address: %u\n", TotalBBWoutAddr.load());
-
-  // Dispose the huge SymAddrMap.
-  // Dispose the huge profile data.
 }
 
 }  // namespace plo

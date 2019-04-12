@@ -27,6 +27,7 @@ using std::unique_ptr;
 namespace lld {
 namespace plo {
 
+
 ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
                                list<ELFCfgEdge *>& FromOuts,
                                ELFCfgNode *To,
@@ -55,9 +56,6 @@ bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
     P = P->FTEdge ? P->FTEdge->Sink : nullptr;
   }
   if (!P) {
-    // fprintf(stderr, "Failed to mark path: %s -> %s.\n",
-    //              From->ShName.str().c_str(),
-    //              To->ShName.str().c_str());
     return false;
   }
   return true;
@@ -407,11 +405,11 @@ ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
           << (Edge == Node.FTEdge ? " (*FT*)" : "")
           << std::endl;
     }
-    for (auto &IE : Cfg.InterEdges) {
-      auto *Edge = IE.get();
-      Out << "  Calls: '" << Edge->Sink->Cfg->Name.str() << "': "
-          << std::noshowbase << std::dec << Edge->Weight << std::endl;
-    }
+    // for (auto &IE : Cfg.InterEdges) {
+    //   auto *Edge = IE.get();
+    //   Out << "  Calls: '" << Edge->Sink->Cfg->Name.str() << "': "
+    //       << std::noshowbase << std::dec << Edge->Weight << std::endl;
+    // }
     Out << std::endl;
   }
   return Out;

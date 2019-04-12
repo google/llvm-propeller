@@ -1,8 +1,8 @@
 # Vanilla compiler (without any bb patches), can be any modern compilers.
 RELEASE_LLVM_BIN=/usr/local/google/home/shenhan/llvm/install-8.0/bin
 
-DDIR         := $(shell pwd)
-LLVM_PROJECT := $(shell cd ../ && pwd)
+DDIR         := $(shell readlink -f .)
+LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
 LLVM_SOURCE  := $(shell find $(LLVM_PROJECT)/llvm $(LLVM_PROJECT)/clang $(LLVM_PROJECT)/lld \
 	'(' -ipath "*/.git"      -o      \
 	    -ipath "*/test"      -o      \
@@ -23,19 +23,21 @@ J_NUMBER := $(shell if [[ "$(J_NUMBER)" -lt "16" ]] ; then \
 # $4 is llvm enabled projects
 # $5 is target
 define build_compiler
-	mkdir -p $(1)/build
-	cd $(1)/build && cmake -G Ninja               \
-          -DCMAKE_INSTALL_PREFIX=$(DDIR)/$(1)/install \
-	  -DCMAKE_BUILD_TYPE=Release                  \
-          -DLLVM_OPTIMIZED_TABLEGEN=On                \
-          -DLLVM_TARGETS_TO_BUILD="X86"               \
-          -DLLVM_USE_LINKER=lld                       \
-	  -DCMAKE_C_COMPILER=$(2)/clang               \
-	  -DCMAKE_CXX_COMPILER=$(2)/clang++           \
-	  -DCMAKE_ASM_COMPILER=$(2)/clang             \
-	  $(3)                                        \
-          -DLLVM_ENABLE_PROJECTS=$(4)                 \
-          $(LLVM_PROJECT)/llvm
+	if [[ ! -e "$(1)/build/CMakeCache.txt" ]]; then \
+	  mkdir -p $(1)/build ;                         \
+	  cd $(1)/build && cmake -G Ninja               \
+            -DCMAKE_INSTALL_PREFIX=$(DDIR)/$(1)/install \
+	    -DCMAKE_BUILD_TYPE=Release                  \
+            -DLLVM_OPTIMIZED_TABLEGEN=On                \
+            -DLLVM_TARGETS_TO_BUILD="X86"               \
+            -DLLVM_USE_LINKER=lld                       \
+	    -DCMAKE_C_COMPILER=$(2)/clang               \
+	    -DCMAKE_CXX_COMPILER=$(2)/clang++           \
+	    -DCMAKE_ASM_COMPILER=$(2)/clang             \
+	    $(3)                                        \
+            -DLLVM_ENABLE_PROJECTS=$(4)                 \
+            $(LLVM_PROJECT)/llvm;                       \
+	fi
 	ninja -j$(J_NUMBER) -C $(1)/build $(5)
 	touch $@
 endef
@@ -52,10 +54,10 @@ bbsection_flags = -DCMAKE_C_FLAGS=-fbasicblock-sections=$(1) -DCMAKE_CXX_FLAGS=-
 stage1/install/bin/clang: $(LLVM_SOURCE)
 	$(call build_compiler,stage1,$(RELEASE_LLVM_BIN),,"clang;lld;compiler-rt",install)
 
-bbinstr/install/bin/clang:
+bbinstr/install/bin/clang: | stage1-compiler
 	$(call build_compiler,bbinstr,$(DDIR)/stage1/install/bin,$(call bbsection_flags,labels,$(lld_no_opt)),"clang;compiler-rt;lld",install)
 
-bbsec/install/bin/clang:
+bbsec/install/bin/clang: | stage1-compiler
 	$(call build_compiler,bbsec,$(DDIR)/stage1/install/bin,$(call bbsection_flags,all,$(lld_no_opt)),"clang",install-clang)
 
 stage1-compiler bbinstr-compiler bbsec-compiler: %-compiler: %/install/bin/clang
@@ -71,12 +73,11 @@ clang.profile clang.symfile: clang.perfdata
 
 run-plo.sh: bbsec-compiler clang.symfile clang.profile
 	cd bbsec/build ; ninja -t commands clang | grep -Ee "-o bin/clang-[0-9a-f]+" \
-	  | sed -E 's!$(DDIR)/stage1/install/bin/clang\+\+ !$(DDIR)/stage1/build/bin/clang++ -Wl,-plo -Wl,-symfile=$(DDIR)/clang.symfile -Wl,-profile=$(DDIR)/clang.profile !' > $(DDIR)/$@
+	  | sed -E 's!clang\+\+ !clang++ -Wl,-plo -Wl,-symfile=$(DDIR)/clang.symfile -Wl,-profile=$(DDIR)/clang.profile !' > $(DDIR)/$@
 	chmod +x $@
 
-run-plo: run-plo.sh clang.profile clang.symfile
-	ninja -C $(DDIR)/stage1/build
-	{ cd bbsec/build && $(DDIR)/$< ; } 2>&1 | tee $@.autolog
+run-plo: run-plo.sh stage1-compiler
+	{ cd bbsec/build && $(DDIR)/$< ; } 2>&1 | tee $@
 
 run-commands.sh:
 	rsync -a -f "+ */" -f "+ *.inc" -f "+ *.h" -f "+ *.def" -f "- *" \
@@ -91,12 +92,6 @@ run-commands.sh:
 	echo "head -n 333 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
                 >> $@
 	chmod +x $@
-
-# Check:
-# 	@If [[ ! -e "$(CC)" ]] || [[ ! -e "$(lld)" ]]; then \
-# 	  echo Please change Makefile to setup CC and lld ; \
-# 	  exit 1; \
-# 	fi
 
 sample.o : %.o: %.c
 	./stage1-compiler -fbasicblock-sections=all -gline-tables-only -c -O2 $< -o $@
@@ -116,10 +111,6 @@ sample.out.cfg: sample.out.symfile sample.out.profile sample.o $(lld)
 	  -profile sample.out.profile \
           sample.o 2>&1 | tee $@
 
-# .phony: clean
-# clean:
-# 	
-
 clean:
 	for F in bbinstr bbsec ; do \
 	  rm -fr $${F} ; rm -f $${F}-compiler ; \
@@ -129,7 +120,7 @@ clean:
 	rm -f sample.o sample.out sample.perfdata sample.out.symfile sample.out.profile sample.out.cfg
 	rm -fr test-build
 	rm -f *.autolog
-	rm -f runplo.sh runplo
+	rm -f run-plo.sh run-plo
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler
