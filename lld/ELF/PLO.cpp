@@ -39,7 +39,11 @@ PLO::PLO() {}
 PLO::~PLO() {}  
 
 bool PLO::Init(StringRef &Symfile, StringRef &Profile) {
-  return InitSymfile(Symfile) && InitProfile(Profile);
+  if (InitSymfile(Symfile)) {
+    this->Profile.reset(new PLOProfile(Profile));
+    return true;
+  }
+  return false;
 }
 
 // Each line contains: Addr Size Type Name
@@ -85,37 +89,6 @@ bool PLO::InitSymfile(StringRef &Symfile) {
     DoLine(L);
   DoLine(L);
   fprintf(stderr, "Processed %lu symfile entries.\n", AddrSymMap.size());
-  return true;
-}
-
-bool PLO::InitProfile(StringRef &ProfileName) {
-  // Profile is huge, don't read all of the file into the memory.
-  std::ifstream fin(ProfileName.str());
-  if (!fin.good()) return false;
-  Profile.reset(new PLOProfile());
-  string line;
-  while (fin.good() && !std::getline(fin, line).eof()) {
-    if (line.empty()) continue;
-    unique_ptr<LBRRecord> Rec(new LBRRecord());
-    const char *p = line.c_str();
-    const char *q = p + 1;
-    do {
-      while (*(q++) != ' ');
-      LBREntry *Entry = LBREntry::CreateEntry(StringRef(p, q - p - 1));
-      if (Entry == nullptr) {
-	fprintf(stderr, "Invalid entry: %s\n", StringRef(p, q - p - 1).str().c_str());
-	break;
-      }
-      Rec->Entries.emplace_back(Entry);
-      if (*q == '\0') break;
-      p = q + 1;
-      q = p + 1;
-    } while(true);
-    if (!Rec->Entries.empty()) {
-      Profile->LBRs.emplace_back(Rec.release());
-    }
-  }
-  fprintf(stderr, "Total LBR records created: %lu\n", Profile->LBRs.size());
   return true;
 }
 
@@ -236,7 +209,7 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
                            FileOrdinalPairs.end(),
                            std::bind(&PLO::ProcessFile, this, _1));
 
-  Profile->ProcessLBRs();
+  Profile->ProcessProfile();
 
   // for (auto &View: Views) {
   //   for (auto &I: View->Cfgs) {

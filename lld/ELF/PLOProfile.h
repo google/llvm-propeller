@@ -23,19 +23,25 @@ public:
   int      Cycles;
   char     Predict;
 
-  static LBREntry *CreateEntry(const StringRef &SR);
-};
-
-class LBRRecord {
-public:
-  list<unique_ptr<LBREntry>> Entries;
+  static bool FillEntry(const StringRef &SR, LBREntry &Entry);
 };
 
 class PLOProfile {
 public:
-  list<unique_ptr<LBRRecord>> LBRs;
+  PLOProfile(StringRef &PN): ProfileName(PN) {}
+  ~PLOProfile() {}
+  bool ProcessProfile();
 
-  void ProcessLBRs();
+private:
+  void ProcessLBR(LBREntry *EntryArray, int EntryIndex);
+  
+  StringRef ProfileName;
+
+  // Statistics.
+  uint64_t  IntraFunc{0};
+  uint64_t  NonMarkedIntraFunc{0};
+  uint64_t  InterFunc{0};
+  uint64_t  NonMarkedInterFunc{0};
 };
 
 ostream & operator << (ostream &Out, const LBREntry &Entry);

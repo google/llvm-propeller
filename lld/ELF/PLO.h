@@ -55,9 +55,10 @@ public:
   // Sym -> <Addr, Size> map.
   map<StringRef, pair<uint64_t, uint64_t>> SymAddrSizeMap;
 
+  unique_ptr<PLOProfile> Profile;
+
 private:
   bool InitSymfile(StringRef &SymfileName);
-  bool InitProfile(StringRef &ProfileName);
 
   void ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair);
   bool SymContainsAddr(const StringRef &SymName,
@@ -68,7 +69,6 @@ private:
   // Parallizable, thread safety is guaranteed.
   void CreateCfgForFile(elf::InputFile *Inf);
   
-  unique_ptr<PLOProfile> Profile;
   list<unique_ptr<ELFView>> Views;
   
   // Same named Cfgs may exist in different object files (e.g. weak symbols.)
