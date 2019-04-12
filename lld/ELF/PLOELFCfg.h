@@ -82,25 +82,15 @@ private:
   friend class ELFCfgBuilder;
 };
 
-struct ELFCfgNodeOrderingFunc {
-  bool operator() (const unique_ptr<ELFCfgNode> &P1, const unique_ptr<ELFCfgNode> &P2) {
-    if (P1->MappedAddr != P2->MappedAddr)
-      return P1->MappedAddr < P2->MappedAddr;
-    return P1->AddrTag < P2->AddrTag;
-  }
-};
-
 class ELFCfg {
 public:
-  ELFView *View;
-  StringRef Name;
+  ELFView    *View;
+  StringRef   Name;
   // Cfg size is the first bb section size. Not the size of all bb sections.
-  uint64_t Size{0};
-  // ELFCfg has the ownership for all Nodes / Edges.
-  // set<unique_ptr<ELFCfgNode>, ELFCfgNodeOrderingFunc> Nodes;
-
-  map<uint64_t, list<unique_ptr<ELFCfgNode>>> Nodes2;
+  uint64_t    Size{0};
   
+  // ELFCfg assumes the ownership for all Nodes / Edges.
+  list<unique_ptr<ELFCfgNode>> Nodes;
   list<unique_ptr<ELFCfgEdge>> IntraEdges;
   list<unique_ptr<ELFCfgEdge>> InterEdges;
 
@@ -112,8 +102,8 @@ public:
   void MapCallOut(ELFCfgNode *From, ELFCfgNode *To);
 
   ELFCfgNode *GetEntryNode() const {
-    if (Nodes2.empty()) return nullptr;
-    return Nodes2.begin()->second.begin()->get();
+    assert(!Nodes.empty());
+    return Nodes.begin()->get();
   }
 
 private:
@@ -152,15 +142,17 @@ class ELFCfgBuilder {
   void BuildCfgs();
 
 protected:
-  void BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym);
-  void CalculateFallthroughEdges(ELFCfg &Cfg);
+  void BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
+                map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap);
+  void CalculateFallthroughEdges(
+      ELFCfg &Cfg, map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap);
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
   void BuildRelocationSectionMap(
       map<uint64_t, section_iterator> &RelocationSectionMap);
   // Build a map from section "Idx" -> Node representing "Idx". Only
   // used during building phase.
-  void BuildShndxNodeMap(ELFCfg &Cfg,
+  void BuildShndxNodeMap(map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap,
                          map<uint64_t, ELFCfgNode *> &ShndxNodeMap);
 };
 

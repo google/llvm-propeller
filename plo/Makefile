@@ -128,6 +128,8 @@ clean:
 	rm -f clang.perfdata* clang.profile clang.symfile
 	rm -f sample.o sample.out sample.perfdata sample.out.symfile sample.out.profile sample.out.cfg
 	rm -fr test-build
+	rm -f *.autolog
+	rm -f runplo.sh runplo
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler

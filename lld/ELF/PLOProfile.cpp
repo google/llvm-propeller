@@ -92,12 +92,14 @@ void PLOProfile::ProcessLBRs() {
         if (LastToCfg && FromCfg && LastToCfg != FromCfg) {
           if (!(LastFromAddr == From && LastToAddr == To
 		&& std::next(P) == Q)) {
-            // std::cout << "Strange2: ===== " << std::dec << Idx << endl;
-            // std::cout << "Last entry: " << *LastEntry << endl;
-            // std::cout << "Entry: " << *Entry << endl;
-            // std::cout << "Last: " << *LastToNode << endl;
-            // std::cout << "From: " << *FromNode << endl;
+            std::cout << "Failed to map: " << std::showbase << std::hex
+                      << LastToAddr << " -> " << From << endl;
+            std::cout << "Last entry:    " << *LastEntry << endl;
+            std::cout << "Current Entry: " << *Entry << endl;
+            std::cout << "Last: " << *LastToNode << endl;
+            std::cout << "From: " << *FromNode << endl;
             ++Strange2;
+            exit(1);
           }
         }
       }

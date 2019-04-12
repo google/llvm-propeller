@@ -188,16 +188,14 @@ bool PLO::FindCfgForAddress(uint64_t Addr,
 	  ELFCfg *Cfg = View->Cfgs[IndexName].get();
 	  assert(Cfg);
 	  // Check Cfg does have name "SymName".
-	  for (auto &NPair : Cfg->Nodes2) {
-	    for (auto &N: NPair.second) {
-	      if (N->ShName == SymName) {
-		++TotalCfgFound;
-		ResultCfg = Cfg;
-		ResultNode = N.get();
-		return true;
-	      }
-	    }
-	  }
+          for (auto &N: Cfg->Nodes) {
+            if (N->ShName == SymName) {
+              ++TotalCfgFound;
+              ResultCfg = Cfg;
+              ResultNode = N.get();
+              return true;
+            }
+          }
 	}
       }
     }
