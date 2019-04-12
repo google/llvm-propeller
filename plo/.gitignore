@@ -3,10 +3,11 @@ sample.perfdata
 bbsec
 bbinstr
 stage1
-clang.perfdata
+clang.perfdata*
 clang.profile
 clang.symfile
 commands
 run-commands.sh
+run-plo*
 *-compiler
 test-build

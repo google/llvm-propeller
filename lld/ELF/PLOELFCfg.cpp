@@ -39,12 +39,13 @@ ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
   return Edge;
 }
 
-ELFCfgNode *ELFCfg::CreateNode(uint16_t Shndx, StringRef &ShName,
+ELFCfgNode *ELFCfg::CreateNode(uint64_t Shndx, StringRef &ShName,
                                uint64_t ShSize, uint64_t MappedAddress) {
-  auto E = Nodes.emplace(MappedAddress,
-                         new ELFCfgNode(
-                             Shndx, ShName, ShSize, MappedAddress, this));
-  return E->second.get();
+  // auto E = Nodes.emplace(new ELFCfgNode(
+  //                            Shndx, ShName, ShSize, MappedAddress, this));
+  auto *N = new ELFCfgNode(Shndx, ShName, ShSize, MappedAddress, this);
+  Nodes2[MappedAddress].emplace_back(N);
+  return N;
 }
 
 bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
@@ -137,14 +138,14 @@ void ELFCfgBuilder::BuildCfgs() {
   for (auto &I : Groups) {
     assert(I.second.size() >= 1);
     SymbolRef CfgSym = *(I.second.begin());
-    unique_ptr<ELFCfg> Cfg(new ELFCfg(I.first));
+    unique_ptr<ELFCfg> Cfg(new ELFCfg(View, I.first));
     for (SymbolRef Sym: I.second) {
       auto SymNameE = Sym.getName();
       auto SectionIE = Sym.getSection();
       if (SymNameE && SectionIE &&
           (*SectionIE) != Sym.getObject()->section_end()) {
         StringRef SymName = *SymNameE;
-        uint16_t SymShndx = (*SectionIE)->getIndex();
+        uint64_t SymShndx = (*SectionIE)->getIndex();
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
         auto ResultP = Plo.SymAddrSizeMap.find(SymName);
         if (ResultP != Plo.SymAddrSizeMap.end()) {
@@ -158,12 +159,12 @@ void ELFCfgBuilder::BuildCfgs() {
     }
     if (!Cfg) continue;
 
-    uint64_t CfgMappedAddr = Cfg->Nodes.begin()->second->MappedAddr;
+    uint64_t CfgMappedAddr = Cfg->GetEntryNode()->MappedAddr;
     auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
     if (ExistingI != AddrCfgMap.end()) {
       auto *ExistingCfg = ExistingI->second;
       // Discard smaller cfg that begins on the same address.
-      if (ExistingCfg->Nodes.size() >= Cfg->Nodes.size())
+      if (ExistingCfg->Nodes2.size() >= Cfg->Nodes2.size())
         Cfg.reset(nullptr);
       else
         View->EraseCfg(ExistingCfg);
@@ -178,7 +179,7 @@ void ELFCfgBuilder::BuildCfgs() {
 }
 
 void ELFCfgBuilder::BuildRelocationSectionMap(
-    map<uint16_t, section_iterator> &RelocationSectionMap) {
+    map<uint64_t, section_iterator> &RelocationSectionMap) {
   for (section_iterator I = View->ViewFile->section_begin(),
          J = View->ViewFile->section_end(); I != J; ++I) {
     SectionRef SecRef = *I;
@@ -192,54 +193,58 @@ void ELFCfgBuilder::BuildRelocationSectionMap(
 
 void ELFCfgBuilder::BuildShndxNodeMap(
     ELFCfg &Cfg,
-    map<uint16_t, ELFCfgNode *> &ShndxNodeMap) {
-  for (auto &Node: Cfg.Nodes) {
-    auto InsertResult = ShndxNodeMap.emplace(Node.second->Shndx,
-                                             Node.second.get());
-    (void)(InsertResult);
-    assert(InsertResult.second);
+    map<uint64_t, ELFCfgNode *> &ShndxNodeMap) {
+  for (auto &NodeL: Cfg.Nodes2) {
+    for (auto &Node: NodeL.second) {
+      auto InsertResult = ShndxNodeMap.emplace(Node->Shndx,
+                                               Node.get());
+      (void)(InsertResult);
+      assert(InsertResult.second);
+    }
   }
 }
 
 void ELFCfgBuilder::BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym) {
-  assert(Cfg.Nodes.size() >= 1);
+  assert(Cfg.Nodes2.size() >= 1);
 
-  map<uint16_t, ELFCfgNode *> ShndxNodeMap;
+  map<uint64_t, ELFCfgNode *> ShndxNodeMap;
   BuildShndxNodeMap(Cfg, ShndxNodeMap);
 
-  map<uint16_t, section_iterator> RelocationSectionMap;
+  map<uint64_t, section_iterator> RelocationSectionMap;
   BuildRelocationSectionMap(RelocationSectionMap);
 
   list<ELFCfgEdge *> RSCEdges;
-  for (auto &N : Cfg.Nodes) {
-    ELFCfgNode *SrcNode = N.second.get();
-    auto RelaSecRefI = RelocationSectionMap.find(SrcNode->Shndx);
-    if (RelaSecRefI == RelocationSectionMap.end())
-      continue;
+  for (auto &NPair : Cfg.Nodes2) {
+    for (auto &N: NPair.second) {
+      ELFCfgNode *SrcNode = N.get();
+      auto RelaSecRefI = RelocationSectionMap.find(SrcNode->Shndx);
+      if (RelaSecRefI == RelocationSectionMap.end())
+	continue;
 
-    for (const RelocationRef &Rela : RelaSecRefI->second->relocations()) {
-      SymbolRef RSym = *(Rela.getSymbol());
-      bool IsRSC = (CfgSym == RSym);
+      for (const RelocationRef &Rela : RelaSecRefI->second->relocations()) {
+	SymbolRef RSym = *(Rela.getSymbol());
+	bool IsRSC = (CfgSym == RSym);
 
-      // All bb section symbols are local symbols.
-      if (!IsRSC &&
-          ((RSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
-        continue;
+	// All bb section symbols are local symbols.
+	if (!IsRSC &&
+	    ((RSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
+	  continue;
 
-      auto SectionIE = RSym.getSection();
-      if (!SectionIE) continue;
-      uint16_t SymShndx((*SectionIE)->getIndex());
-      ELFCfgNode *TargetNode{nullptr};
-      auto Result = ShndxNodeMap.find(SymShndx);
-      if (Result != ShndxNodeMap.end()) {
-        TargetNode = Result->second;
-        if (TargetNode) {
-          ELFCfgEdge *E = Cfg.CreateEdge(SrcNode, SrcNode->Outs,
-                                         TargetNode, TargetNode->Ins,
-                                         IsRSC ? ELFCfgEdge::INTRA_RSC :
-                                         ELFCfgEdge::INTRA_FUNC);
-          if (IsRSC) RSCEdges.push_back(E);
-        }
+	auto SectionIE = RSym.getSection();
+	if (!SectionIE) continue;
+	uint64_t SymShndx((*SectionIE)->getIndex());
+	ELFCfgNode *TargetNode{nullptr};
+	auto Result = ShndxNodeMap.find(SymShndx);
+	if (Result != ShndxNodeMap.end()) {
+	  TargetNode = Result->second;
+	  if (TargetNode) {
+	    ELFCfgEdge *E = Cfg.CreateEdge(SrcNode, SrcNode->Outs,
+					   TargetNode, TargetNode->Ins,
+					   IsRSC ? ELFCfgEdge::INTRA_RSC :
+					   ELFCfgEdge::INTRA_FUNC);
+	    if (IsRSC) RSCEdges.push_back(E);
+	  }
+	}
       }
     }
   }
@@ -263,15 +268,17 @@ void ELFCfgBuilder::BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym) {
   //        ret   ----------+
 
   for (auto *REdge : RSCEdges) {
-    for (auto &N : Cfg.Nodes) {
-      if (N.second->Outs.size() == 0 ||
-          (N.second->Outs.size() == 1 &&
-           (*N.second->Outs.begin())->Type == ELFCfgEdge::INTRA_RSC)) {
-        Cfg.CreateEdge(N.second.get(),
-                       N.second->Outs,
-                       REdge->Src,
-                       REdge->Src->Ins,
-                       ELFCfgEdge::INTRA_RSR);
+    for (auto &NPair : Cfg.Nodes2) {
+      for (auto &N: NPair.second) {
+	if (N->Outs.size() == 0 ||
+	    (N->Outs.size() == 1 &&
+	     (*N->Outs.begin())->Type == ELFCfgEdge::INTRA_RSC)) {
+	  Cfg.CreateEdge(N.get(),
+			 N->Outs,
+			 REdge->Src,
+			 REdge->Src->Ins,
+			 ELFCfgEdge::INTRA_RSR);
+	}
       }
     }
   }
@@ -282,26 +289,53 @@ void ELFCfgBuilder::BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym) {
 // adjacent, and there is an NORMAL edge from P->Q.
 void ELFCfgBuilder::CalculateFallthroughEdges(ELFCfg &Cfg) {
   auto SetupFallthrough =
-    [](typename decltype(ELFCfg::Nodes)::iterator I1,
-       typename decltype(ELFCfg::Nodes)::iterator I2) {
-      ELFCfgNode *N1 = I1->second.get();
-      ELFCfgNode *N2 = I2->second.get();
+    [&Cfg](ELFCfgNode *N1, ELFCfgNode *N2) {
       for (auto *E : N1->Outs) {
         if (E->Type == ELFCfgEdge::INTRA_FUNC && E->Sink == N2) {
           N1->FTEdge = E;
           return true;
         }
       }
+      if (N1->ShSize == 0) {
+        // An empty section always fallthrough to the next adjacent section.
+        N1->FTEdge = Cfg.CreateEdge(N1, N1->Outs,
+                                    N2, N2->Ins,
+                                    ELFCfgEdge::INTRA_FUNC);
+        return true;
+      }
       return false;
     };
 
-  for (auto P = Cfg.Nodes.begin(), Q = std::next(P), E = Cfg.Nodes.end();
-       Q != E; ++P, ++Q) {
-    if (P->first != Q->first) {
-      // Normal case.
-      SetupFallthrough(P, Q);
-      continue;
+  struct SameComparator {
+    bool operator() (const unique_ptr<ELFCfgNode>& P1,
+                     const unique_ptr<ELFCfgNode>& P2) {
+      if (P1->ShSize == 0)
+	return true;
+      for (auto *E : P1->Outs) {
+	if (E->Type == ELFCfgEdge::INTRA_FUNC && E->Sink == P2.get())
+	  return true;
+      }
+      return false;
     }
+  };
+
+  for (auto &Pair: Cfg.Nodes2) {
+    auto &NodeL = Pair.second;
+    if (NodeL.size() > 1) {
+      NodeL.sort(SameComparator());
+      for (auto P = NodeL.begin(), Q = std::next(P), E = NodeL.end();
+	   Q != E; ++P, ++Q) {
+	SetupFallthrough((*P).get(), (*Q).get());
+      }
+    }
+  }
+
+  // bool dbg = (Cfg.Name == "_ZNK5clang6driver10toolchains11Generic_GCC10GCCVersion11isOlderThanEiiiN4llvm9StringRefE");
+  for (auto P = Cfg.Nodes2.begin(), Q = std::next(P), E = Cfg.Nodes2.end();
+       Q != E; ++P, ++Q) {
+    ELFCfgNode *PNode = P->second.rbegin()->get();
+    ELFCfgNode *QNode = Q->second.begin()->get();
+    SetupFallthrough(PNode, QNode);
     // Very rare case: we have AT MOST 2 BBs with same address
     // mapping, which is possible (but very rare, the scenario
     // explained below). For example:
@@ -327,23 +361,6 @@ void ELFCfgBuilder::CalculateFallthroughEdges(ELFCfg &Cfg) {
     //    3:   4d 85 f6                test   %r14,%r14
     //    6:   0f 84 00 00 00 00       je     c <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35+0xc>
     //    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
-
-    // The reason is that in -fbasicblock-section mode, bb.4 contains
-    // only 1 jump. However, in BB instrument mode, the jump is not
-    // emitted, so bb.4 collapses into an empty block, sharing the
-    // same address as bb.35.
-    assert(std::next(Q) == E || Q->first != std::next(Q)->first);
-    if (SetupFallthrough(P, Q)) {
-      ;
-    } else if (SetupFallthrough(Q, P)) {
-      // Swap P and Q's position.
-      ELFCfgNode *PNode = P->second.release();
-      Cfg.Nodes.erase(P);
-      P = Q;
-      Q = Cfg.Nodes.emplace(PNode->MappedAddr, PNode);
-    } else {
-      assert(false);
-    }
   }
 }
 
@@ -351,7 +368,8 @@ ostream & operator << (ostream &Out, const ELFCfgNode &Node) {
   Out << (Node.ShName == Node.Cfg->Name ? "<Entry>" :
           Node.ShName.data() + Node.Cfg->Name.size() + 1)
       << " [size=" << std::noshowbase << std::dec << Node.ShSize << ", "
-      << " addr=" << std::showbase << std::hex << Node.MappedAddr << "]";
+      << " addr=" << std::showbase << std::hex << Node.MappedAddr << ", "
+      << " shndx=" << std::noshowbase << std::dec << Node.Shndx << "]";
   return Out;
 }
 
@@ -365,22 +383,25 @@ ostream & operator << (ostream &Out, const ELFCfgEdge &Edge) {
 }
 
 ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
-  Out << "Cfg: '" << Cfg.Name.str() << "'" << std::endl;
-  for (auto &N : Cfg.Nodes) {
-    auto &Node = *(N.second);
-    Out << "  Node: " << Node << std::endl;
-    for (auto &Edge: Node.Outs) {
-      Out << "    " << *Edge
-          << (Edge == Node.FTEdge ? " (*FT*)" : "")
-          << std::endl;
+  Out << "Cfg: '" << Cfg.View->ViewName.str() << ":"
+      << Cfg.Name.str() << "'" << std::endl;
+  for (auto &NPair : Cfg.Nodes2) {
+    for (auto &N: NPair.second) {
+      auto &Node = *N;
+      Out << "  Node: " << Node << std::endl;
+      for (auto &Edge: Node.Outs) {
+	Out << "    " << *Edge
+	    << (Edge == Node.FTEdge ? " (*FT*)" : "")
+	    << std::endl;
+      }
     }
+    for (auto &N : Cfg.InterEdges) {
+      auto *Edge = N.get();
+      Out << "  Calls: '" << Edge->Sink->Cfg->Name.str() << "': "
+	  << std::noshowbase << std::dec << Edge->Weight << std::endl;
+    }
+    Out << std::endl;
   }
-  for (auto &N : Cfg.InterEdges) {
-    auto *Edge = N.get();
-    Out << "  Calls: '" << Edge->Sink->Cfg->Name.str() << "': "
-        << std::noshowbase << std::dec << Edge->Weight << std::endl;
-  }
-  Out << std::endl;
   return Out;
 }
 

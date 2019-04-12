@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <ostream>
+#include <set>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
@@ -13,6 +14,8 @@ using std::list;
 using std::map;
 using std::multimap;
 using std::ostream;
+using std::pair;
+using std::set;
 using std::unique_ptr;
 
 using llvm::object::SymbolRef;
@@ -51,10 +54,11 @@ protected:
 
 class ELFCfgNode {
  public:
-  const uint16_t     Shndx;
+  uint64_t           Shndx;
   StringRef          ShName;
   uint64_t           ShSize;
   uint64_t           MappedAddr;
+  uint8_t            AddrTag;
   ELFCfg            *Cfg;
   
   list<ELFCfgEdge *> Outs;      // Intra function edges.
@@ -68,26 +72,39 @@ class ELFCfgNode {
   const static uint64_t InvalidAddress = -1l;
 
 private:
-  ELFCfgNode(const uint16_t _Shndx, const StringRef &_ShName,
+  ELFCfgNode(uint64_t _Shndx, const StringRef &_ShName,
              uint64_t _Size, uint64_t _MappedAddr, ELFCfg *_Cfg)
     : Shndx(_Shndx), ShName(_ShName), ShSize(_Size),
-      MappedAddr(_MappedAddr), Cfg(_Cfg),
+      MappedAddr(_MappedAddr), AddrTag(0), Cfg(_Cfg),
       Outs(), Ins(), CallOuts(), CallIns(), FTEdge(nullptr) {}
 
   friend class ELFCfg;
+  friend class ELFCfgBuilder;
+};
+
+struct ELFCfgNodeOrderingFunc {
+  bool operator() (const unique_ptr<ELFCfgNode> &P1, const unique_ptr<ELFCfgNode> &P2) {
+    if (P1->MappedAddr != P2->MappedAddr)
+      return P1->MappedAddr < P2->MappedAddr;
+    return P1->AddrTag < P2->AddrTag;
+  }
 };
 
 class ELFCfg {
- public:
+public:
+  ELFView *View;
   StringRef Name;
   // Cfg size is the first bb section size. Not the size of all bb sections.
   uint64_t Size{0};
   // ELFCfg has the ownership for all Nodes / Edges.
-  multimap<uint64_t, unique_ptr<ELFCfgNode>> Nodes;
+  // set<unique_ptr<ELFCfgNode>, ELFCfgNodeOrderingFunc> Nodes;
+
+  map<uint64_t, list<unique_ptr<ELFCfgNode>>> Nodes2;
+  
   list<unique_ptr<ELFCfgEdge>> IntraEdges;
   list<unique_ptr<ELFCfgEdge>> InterEdges;
 
-  ELFCfg(const StringRef &N) : Name(N) {}
+  ELFCfg(ELFView *V, const StringRef &N) : View(V), Name(N) {}
   ~ELFCfg() {}
 
   bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);
@@ -95,8 +112,8 @@ class ELFCfg {
   void MapCallOut(ELFCfgNode *From, ELFCfgNode *To);
 
   ELFCfgNode *GetEntryNode() const {
-    if (Nodes.empty()) return nullptr;
-    return Nodes.begin()->second.get();
+    if (Nodes2.empty()) return nullptr;
+    return Nodes2.begin()->second.begin()->get();
   }
 
 private:
@@ -108,7 +125,7 @@ private:
                          typename ELFCfgEdge::EdgeType Type);
 
   // Create and take ownership.
-  ELFCfgNode *CreateNode(uint16_t Shndx, StringRef &ShName,
+  ELFCfgNode *CreateNode(uint64_t Shndx, StringRef &ShName,
                          uint64_t ShSize, uint64_t MappedAddress);
 
   void EmplaceEdge(ELFCfgEdge *Edge) {
@@ -140,11 +157,11 @@ protected:
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
   void BuildRelocationSectionMap(
-      map<uint16_t, section_iterator> &RelocationSectionMap);
+      map<uint64_t, section_iterator> &RelocationSectionMap);
   // Build a map from section "Idx" -> Node representing "Idx". Only
   // used during building phase.
   void BuildShndxNodeMap(ELFCfg &Cfg,
-                         map<uint16_t, ELFCfgNode *> &ShndxNodeMap);
+                         map<uint64_t, ELFCfgNode *> &ShndxNodeMap);
 };
 
 ostream & operator << (ostream &Out, const ELFCfgNode &Node);

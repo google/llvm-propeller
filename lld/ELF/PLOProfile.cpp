@@ -77,6 +77,7 @@ void PLOProfile::ProcessLBRs() {
                       << *LastToNode << " -> "
                       << *FromNode << endl;
             std::cout << *FromCfg << endl;
+            exit(1);
             
             // fprintf(stderr, "*****\n");
             // fprintf(stderr, "Failed to map %s -> %s\n",
@@ -91,11 +92,11 @@ void PLOProfile::ProcessLBRs() {
         if (LastToCfg && FromCfg && LastToCfg != FromCfg) {
           if (!(LastFromAddr == From && LastToAddr == To
 		&& std::next(P) == Q)) {
-            std::cout << "Strange2: ===== " << std::dec << Idx << endl;
-            std::cout << "Last entry: " << *LastEntry << endl;
-            std::cout << "Entry: " << *Entry << endl;
-            std::cout << "Last: " << *LastToNode << endl;
-            std::cout << "From: " << *FromNode << endl;
+            // std::cout << "Strange2: ===== " << std::dec << Idx << endl;
+            // std::cout << "Last entry: " << *LastEntry << endl;
+            // std::cout << "Entry: " << *Entry << endl;
+            // std::cout << "Last: " << *LastToNode << endl;
+            // std::cout << "From: " << *FromNode << endl;
             ++Strange2;
           }
         }

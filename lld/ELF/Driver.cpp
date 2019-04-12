@@ -1549,16 +1549,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
     for (const char *S : LibcallRoutineNames)
       handleLibcall<ELFT>(S);
 
-  if (Config->Plo && !ObjectFiles.empty()) {
-    fprintf(stderr, "PLO: %lu files to process.\n", ObjectFiles.size());
-    if (lld::plo::Plo.Init(Config->SymFile, Config->Profile)) {
-      lld::plo::Plo.ProcessFiles(ObjectFiles);
-    } else {
-      fprintf(stderr, "Init failed.\n");
-    }
-    return ;
-  }
-
   // Return if there were name resolution errors.
   if (errorCount())
     return;
@@ -1631,6 +1621,16 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
   for (BinaryFile *F : BinaryFiles)
     for (InputSectionBase *S : F->getSections())
       InputSections.push_back(cast<InputSection>(S));
+
+  if (Config->Plo && !ObjectFiles.empty()) {
+    fprintf(stderr, "PLO: %lu files to process.\n", ObjectFiles.size());
+    if (lld::plo::Plo.Init(Config->SymFile, Config->Profile)) {
+      lld::plo::Plo.ProcessFiles(ObjectFiles);
+    } else {
+      fprintf(stderr, "Init failed.\n");
+    }
+    return ;
+  }
 
   // We do not want to emit debug sections if --strip-all
   // or -strip-debug are given.
