@@ -640,7 +640,7 @@ static MCSectionELF *selectELFSectionForGlobal(
   unsigned UniqueID = MCContext::GenericSectionID;
   if (EmitUniqueSection) {
     if (TM.getUniqueSectionNames()) {
-      Name.push_back('.');
+       Name.push_back('.');
       TM.getNameWithPrefix(Name, GO, Mang, true /*MayAlwaysUsePrivate*/);
     } else {
       UniqueID = *NextUniqueID;
@@ -722,6 +722,31 @@ MCSection *TargetLoweringObjectFileELF::getSectionForConstant(
 
   assert(Kind.isReadOnlyWithRel() && "Unknown section kind");
   return DataRelROSection;
+}
+
+MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
+    const Function &F, const MachineBasicBlock &MBB, const TargetMachine &TM)
+    const {
+  SmallString<128> Name;
+  Name = ".text";
+  if (MBB.getBasicBlock()) {
+    const auto &OptionalPrefix = MBB.getBasicBlock()->getSectionPrefix();
+    if (OptionalPrefix)
+      Name += *OptionalPrefix;
+  }
+  if (TM.getUniqueBBSectionNames()) {
+    Name += ".";
+    Name += MBB.getSymbol()->getName();
+  }
+  unsigned UniqueID = NextUniqueID++;
+  unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
+  std::string GroupName = "";
+  if (F.hasComdat()) {
+    Flags |= ELF::SHF_GROUP;
+    GroupName = F.getComdat()->getName();
+  }
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS,
+      Flags, 0, GroupName, UniqueID);
 }
 
 static MCSectionELF *getStaticStructorSection(MCContext &Ctx, bool UseInitArray,

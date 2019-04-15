@@ -75,6 +75,9 @@ public:
   /// Return metadata containing the section prefix for a function.
   MDNode *createFunctionSectionPrefix(StringRef Prefix);
 
+  /// Return metadata containing the section prefix for a basic block.
+  MDNode *createBasicBlockSectionPrefix(StringRef Prefix);
+
   //===------------------------------------------------------------------===//
   // Range metadata.
   //===------------------------------------------------------------------===//

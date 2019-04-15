@@ -328,6 +328,9 @@ class MachineFunction {
   bool HasEHScopes = false;
   bool HasEHFunclets = false;
 
+  bool BasicBlockSections = false;
+  bool BasicBlockLabels = false;
+
   /// List of C++ TypeInfo used.
   std::vector<const GlobalValue *> TypeInfos;
 
@@ -434,6 +437,9 @@ public:
 
   /// getFunctionNumber - Return a unique ID for the current function.
   unsigned getFunctionNumber() const { return FunctionNumber; }
+
+  bool getBasicBlockSections() const { return BasicBlockSections; }
+  bool getBasicBlockLabels() const { return BasicBlockLabels; }
 
   /// getTarget - Return the target machine this machine code is compiled with
   const LLVMTargetMachine &getTarget() const { return Target; }

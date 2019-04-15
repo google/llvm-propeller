@@ -165,6 +165,7 @@
 #include "llvm/Transforms/Utils/LowerInvoke.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
+#include "llvm/Transforms/Utils/QualifyFunctionNames.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
 #include "llvm/Transforms/Vectorize/LoadStoreVectorizer.h"
 #include "llvm/Transforms/Vectorize/LoopVectorize.h"
@@ -965,6 +966,9 @@ PassBuilder::buildPerModuleDefaultPipeline(OptimizationLevel Level,
   for (auto &C : PipelineStartEPCallbacks)
     C(MPM);
 
+  // dbgs() << "Adding QualifyFunctionNames in Default Pipeline\n";
+  MPM.addPass(QualifyFunctionNames());
+
   if (PGOOpt && PGOOpt->SamplePGOSupport)
     MPM.addPass(createModuleToFunctionPassAdaptor(AddDiscriminatorsPass()));
 
@@ -987,6 +991,8 @@ PassBuilder::buildThinLTOPreLinkDefaultPipeline(OptimizationLevel Level,
 
   // Force any function attributes we want the rest of the pipeline to observe.
   MPM.addPass(ForceFunctionAttrsPass());
+  // dbgs() << "Adding QualifyFunctionNames in PreLink Pipeline\n";
+  MPM.addPass(QualifyFunctionNames());
 
   if (PGOOpt && PGOOpt->SamplePGOSupport)
     MPM.addPass(createModuleToFunctionPassAdaptor(AddDiscriminatorsPass()));

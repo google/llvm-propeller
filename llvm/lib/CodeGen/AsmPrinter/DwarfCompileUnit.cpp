@@ -468,6 +468,10 @@ void DwarfCompileUnit::constructScopeDIE(
 
 void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
                                          SmallVector<RangeSpan, 2> Range) {
+  // With basic block sections, DW_AT_ranges for every basic block between
+  // the span must be emitted.
+  if (Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::None)
+    return;
   const TargetLoweringObjectFile &TLOF = Asm->getObjFileLowering();
 
   // Emit the offset into .debug_ranges or .debug_rnglists as a relocatable
@@ -504,7 +508,8 @@ void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
 
 void DwarfCompileUnit::attachRangesOrLowHighPC(
     DIE &Die, SmallVector<RangeSpan, 2> Ranges) {
-  if (Ranges.size() == 1 || !DD->useRangesSection()) {
+  if ((Asm->TM.getBasicBlockSections() == llvm::BasicBlockSection::None) &&
+      (Ranges.size() == 1 || !DD->useRangesSection())) {
     const RangeSpan &Front = Ranges.front();
     const RangeSpan &Back = Ranges.back();
     attachLowHighPC(Die, Front.getStart(), Back.getEnd());
