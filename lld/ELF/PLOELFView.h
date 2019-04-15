@@ -34,7 +34,6 @@ class ELFView {
     ViewFile(std::move(VF)), ViewName(VN), Ordinal(VO), FileRef(FR), Cfgs() {}
   ~ELFView() {}
 
-  void BuildCfgs();
   void EraseCfg(ELFCfg *&CfgPtr);
 
   unique_ptr<ObjectFile> ViewFile;

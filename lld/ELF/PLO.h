@@ -43,8 +43,9 @@ public:
   PLO();
   ~PLO();
   
-  bool Init(StringRef &Symfile, StringRef &Profile);
-  void ProcessFiles(vector<elf::InputFile *> &Files);
+  bool ProcessFiles(vector<elf::InputFile *> &Files,
+                    StringRef &SymFileName,
+                    StringRef &ProfileName);
 
   bool FindCfgForAddress(uint64_t Addr,
 			 ELFCfg *&ResultCfg,
@@ -55,10 +56,10 @@ public:
   // Sym -> <Addr, Size> map.
   map<StringRef, pair<uint64_t, uint64_t>> SymAddrSizeMap;
 
-  unique_ptr<PLOProfile> Profile;
+  // unique_ptr<PLOProfile> Profile;
 
 private:
-  bool InitSymfile(StringRef &SymfileName);
+  bool ProcessSymfile(StringRef &SymfileName);
 
   void ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair);
   bool SymContainsAddr(const StringRef &SymName,
@@ -92,8 +93,6 @@ public:
   atomic<uint32_t> InvalidCfgs{0};
   
 };
-
-extern PLO Plo;
 
 template <class C>
 void FreeContainer(C &container) {

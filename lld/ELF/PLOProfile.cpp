@@ -36,7 +36,9 @@ bool LBREntry::FillEntry(const StringRef &SR, LBREntry &Entry) {
   return true;
 }
 
-bool PLOProfile::ProcessProfile() {
+PLOProfile::~PLOProfile() {}
+
+bool PLOProfile::ProcessProfile(StringRef &ProfileName) {
   std::ifstream fin(ProfileName.str());
   if (!fin.good()) return false;
   string line;
@@ -134,14 +136,8 @@ void PLOProfile::ProcessLBR(LBREntry *EntryArray, int EntryIndex) {
 }
 
 ostream & operator << (ostream &Out, const LBREntry &Entry) {
-  ELFCfg *FromCfg, *ToCfg;
-  ELFCfgNode *FromNode, *ToNode;
-  Plo.FindCfgForAddress(Entry.From, FromCfg, FromNode);
-  Plo.FindCfgForAddress(Entry.To, ToCfg, ToNode);
-  Out << (FromNode ? FromNode->ShName.str().c_str() : "NA")
-      << "(" << std::showbase << std::hex << Entry.From << ") -> "
-      << (ToNode ? ToNode->ShName.str().c_str() : "NA")
-      << "(" << std::showbase << std::hex << Entry.To << ")";
+  Out << std::showbase << std::hex << Entry.From << " -> "
+      << std::showbase << std::hex << Entry.To;
   return Out;
 }
 

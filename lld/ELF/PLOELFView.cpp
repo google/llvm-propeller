@@ -35,15 +35,6 @@ void ELFView::EraseCfg(ELFCfg *&CfgPtr) {
   CfgPtr = nullptr;
 }
 
-void ELFView::BuildCfgs() {
-  ELFCfgBuilder CfgBuilder(this);
-  CfgBuilder.BuildCfgs();
-  Plo.TotalBB += CfgBuilder.BB;
-  Plo.TotalBBWoutAddr += CfgBuilder.BBWoutAddr;
-  Plo.ValidCfgs += this->Cfgs.size();
-  Plo.InvalidCfgs += CfgBuilder.InvalidCfgs;
-}
-
 bool PLO::ELFViewOrdinalComparator::Impl(const ELFView *A, const ELFView *B) {
   return A->Ordinal < B->Ordinal;
 }

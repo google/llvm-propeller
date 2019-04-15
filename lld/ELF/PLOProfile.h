@@ -16,6 +16,8 @@ using llvm::StringRef;
 namespace lld {
 namespace plo {
 
+class PLO;
+
 class LBREntry {
 public:
   uint64_t From;
@@ -28,13 +30,14 @@ public:
 
 class PLOProfile {
 public:
-  PLOProfile(StringRef &PN): ProfileName(PN) {}
-  ~PLOProfile() {}
-  bool ProcessProfile();
+  PLOProfile(PLO &P) :Plo(P) {}
+  ~PLOProfile();
+  bool ProcessProfile(StringRef &ProfileName);
 
 private:
   void ProcessLBR(LBREntry *EntryArray, int EntryIndex);
-  
+
+  PLO &Plo;
   StringRef ProfileName;
 
   // Statistics.

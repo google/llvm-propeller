@@ -43,15 +43,6 @@ ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
   return Edge;
 }
 
-ELFCfgNode *ELFCfg::CreateNode(uint64_t Shndx, StringRef &ShName,
-                               uint64_t ShSize, uint64_t MappedAddress) {
-  // auto E = Nodes.emplace(new ELFCfgNode(
-  //                            Shndx, ShName, ShSize, MappedAddress, this));
-  auto *N = new ELFCfgNode(Shndx, ShName, ShSize, MappedAddress, this);
-  // Nodes2[MappedAddress].emplace_back(N);
-  return N;
-}
-
 bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
   if (From == To) return true;
   ELFCfgNode *P = From;
@@ -89,6 +80,7 @@ void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
 }
 
 void ELFCfgBuilder::BuildCfgs() {
+  // fprintf(stderr, "Building Cfgs for %s...\n", Inf->getName().str().c_str());
   auto Symbols = View->ViewFile->symbols();
   map<StringRef, list<SymbolRef>> Groups;
   for (const SymbolRef &Sym : Symbols) {
@@ -152,10 +144,11 @@ void ELFCfgBuilder::BuildCfgs() {
         if (ResultP != Plo.SymAddrSizeMap.end()) {
           uint64_t MappedAddr = ResultP->second.first;
           TmpNodeMap[MappedAddr].emplace_back(
-              Cfg->CreateNode(SymShndx, SymName, SymSize, MappedAddr));
+              new ELFCfgNode(SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
           continue;
         }
       }
+      TmpNodeMap.clear();
       Cfg.reset(nullptr);
       break;
     }

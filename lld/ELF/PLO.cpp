@@ -33,21 +33,11 @@ using std::string;
 namespace lld {
 namespace plo {
 
-PLO Plo;
-
 PLO::PLO() {}
-PLO::~PLO() {}  
-
-bool PLO::Init(StringRef &Symfile, StringRef &Profile) {
-  if (InitSymfile(Symfile)) {
-    this->Profile.reset(new PLOProfile(Profile));
-    return true;
-  }
-  return false;
-}
+PLO::~PLO() {}
 
 // Each line contains: Addr Size Type Name
-bool PLO::InitSymfile(StringRef &Symfile) {
+bool PLO::ProcessSymfile(StringRef &Symfile) {
   // Note: readFile keeps the content of the file till the end of lld
   // run. So we may use MemoryBufferRef safely.
   auto T = lld::elf::readFile(Symfile);
@@ -182,8 +172,7 @@ void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
   ELFView *View = ELFView::Create(Inf->getName(), Pair.second, Inf->MB);
   if (View) {
-    // fprintf(stderr, "Building Cfgs for %s...\n", Inf->getName().str().c_str());
-    View->BuildCfgs();
+    ELFCfgBuilder(*this, View).BuildCfgs();
     // Updating global data structure.
     {
       std::lock_guard<mutex> L(this->Lock);
@@ -197,7 +186,13 @@ void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   }
 }
 
-void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
+bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
+                       StringRef &SymfileName,
+                       StringRef &ProfileName) {
+  if (!ProcessSymfile(SymfileName)) {
+    return false;
+  }
+    
   vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
   int Ordinal = 0;
   for (auto &F : Files) {
@@ -209,7 +204,7 @@ void PLO::ProcessFiles(vector<elf::InputFile *> &Files) {
                            FileOrdinalPairs.end(),
                            std::bind(&PLO::ProcessFile, this, _1));
 
-  Profile->ProcessProfile();
+  return PLOProfile(*this).ProcessProfile(ProfileName);
 
   // for (auto &View: Views) {
   //   for (auto &I: View->Cfgs) {

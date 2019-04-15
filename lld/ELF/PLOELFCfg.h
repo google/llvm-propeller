@@ -1,6 +1,8 @@
 #ifndef LLD_ELF_PLO_ELF_CFG_H
 #define LLD_ELF_PLO_ELF_CFG_H
 
+#include "PLO.h"
+
 #include <list>
 #include <map>
 #include <memory>
@@ -112,10 +114,6 @@ private:
                          ELFCfgNode *To,
                          typename ELFCfgEdge::EdgeType Type);
 
-  // Create and take ownership.
-  ELFCfgNode *CreateNode(uint64_t Shndx, StringRef &ShName,
-                         uint64_t ShSize, uint64_t MappedAddress);
-
   void EmplaceEdge(ELFCfgEdge *Edge) {
     if (Edge->Type < ELFCfgEdge::INTER_FUNC) {
       IntraEdges.emplace_back(Edge);
@@ -129,14 +127,15 @@ private:
 
 
 class ELFCfgBuilder {
- public:
+public:
+  PLO     &Plo;
   ELFView *View;
 
   uint32_t BB{0};
   uint32_t BBWoutAddr{0};
   uint32_t InvalidCfgs{0};
 
-  ELFCfgBuilder(ELFView *V) : View(V) {}
+  ELFCfgBuilder(PLO &P, ELFView *V) : Plo(P), View(V) {}
   void BuildCfgs();
 
 protected:

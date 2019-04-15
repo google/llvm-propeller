@@ -1624,12 +1624,12 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
 
   if (Config->Plo && !ObjectFiles.empty()) {
     fprintf(stderr, "PLO: %lu files to process.\n", ObjectFiles.size());
-    if (lld::plo::Plo.Init(Config->SymFile, Config->Profile)) {
-      lld::plo::Plo.ProcessFiles(ObjectFiles);
-    } else {
-      fprintf(stderr, "Init failed.\n");
+    if (!lld::plo::PLO().ProcessFiles(ObjectFiles,
+                                      Config->SymFile,
+                                      Config->Profile)) {
+      fprintf(stderr, "PLO stage failed.\n");
     }
-    return ;
+    return;
   }
 
   // We do not want to emit debug sections if --strip-all
