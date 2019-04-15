@@ -1613,7 +1613,7 @@ bool SampleProfileLoader::runOnModule(Module &M, ModuleAnalysisManager *AM,
     if (F == nullptr)
       continue;
     SymbolMap[OrigName] = F;
-    auto pos = OrigName.find(".llvm.");
+    auto pos = OrigName.find('.');
     if (pos != StringRef::npos) {
       StringRef NewName = OrigName.substr(0, pos);
       auto r = SymbolMap.insert(std::make_pair(NewName, F));
@@ -1675,10 +1675,6 @@ bool SampleProfileLoader::runOnFunction(Function &F, ModuleAnalysisManager *AM) 
     ORE = OwnedORE.get();
   }
   Samples = Reader->getSamplesFor(F);
-  if (Samples && !Samples->empty()) {
-    dbgs() << "FOUND SAMPLES: " << F.getName() << "\n";
-    return emitAnnotations(F);
-  }
   if (Samples && !Samples->empty())
     return emitAnnotations(F);
   return false;

@@ -64,8 +64,6 @@ public:
   MCSection *getSectionForJumpTable(const Function &F,
                                     const TargetMachine &TM) const override;
 
-  MCSection *getSectionForMachineBasicBlock(const Function &F) const override;
-
   bool shouldPutJumpTableInFunctionSection(bool UsesLabelDifference,
                                            const Function &F) const override;
 
