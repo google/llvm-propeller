@@ -94,3 +94,43 @@
 ; CHECK-EMPTY:
 ; CHECK-NEXT: ??8@8
 ; CHECK-NEXT: error: Invalid mangled name
+
+?B@?$?K$H?
+; CHECK-EMPTY:
+; CHECK-NEXT: ?B@?$?K$H?
+; CHECK-NEXT: error: Invalid mangled name
+
+??C@$
+; CHECK-EMPTY:
+; CHECK-NEXT: ??C@$
+; CHECK-NEXT: error: Invalid mangled name
+
+?x@@3PAW
+; CHECK-EMPTY:
+; CHECK-NEXT: ?x@@3PAW
+; CHECK-NEXT: error: Invalid mangled name
+
+??}
+; CHECK-EMPTY:
+; CHECK-NEXT: ??}
+; CHECK-NEXT: error: Invalid mangled name
+
+?foo@?$?_
+; CHECK-EMPTY:
+; CHECK-NEXT: ?foo@?$?_
+; CHECK-NEXT: error: Invalid mangled name
+
+??_R4
+; CHECK-EMPTY:
+; CHECK-NEXT: ??_R4
+; CHECK-NEXT: error: Invalid mangled name
+
+??_R4foo@@
+; CHECK-EMPTY:
+; CHECK-NEXT: ??_R4foo@@
+; CHECK-NEXT: error: Invalid mangled name
+
+?foo@?$?BH@@QAEHXZ
+; CHECK-EMPTY:
+; CHECK-NEXT: ?foo@?$?BH@@QAEHXZ
+; CHECK-NEXT: error: Invalid mangled name

@@ -23,7 +23,6 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Lex/Preprocessor.h"
-#include "clang/Sema/CodeCompleteConsumer.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "clang/Tooling/Core/Replacement.h"
 #include "clang/Tooling/Refactoring/RefactoringResultConsumer.h"
@@ -110,7 +109,7 @@ ClangdServer::ClangdServer(const GlobalCompilationDatabase &CDB,
                            const FileSystemProvider &FSProvider,
                            DiagnosticsConsumer &DiagConsumer,
                            const Options &Opts)
-    : CDB(CDB), FSProvider(FSProvider),
+    : FSProvider(FSProvider),
       DynamicIdx(Opts.BuildDynamicSymbolIndex
                      ? new FileIndex(Opts.HeavyweightDynamicSymbolIndex)
                      : nullptr),
@@ -122,7 +121,7 @@ ClangdServer::ClangdServer(const GlobalCompilationDatabase &CDB,
       // is parsed.
       // FIXME(ioeric): this can be slow and we may be able to index on less
       // critical paths.
-      WorkScheduler(Opts.AsyncThreadsCount, Opts.StorePreamblesInMemory,
+      WorkScheduler(CDB, Opts.AsyncThreadsCount, Opts.StorePreamblesInMemory,
                     llvm::make_unique<UpdateIndexCallbacks>(DynamicIdx.get(),
                                                             DiagConsumer),
                     Opts.UpdateDebounce, Opts.RetentionPolicy) {
@@ -156,12 +155,8 @@ void ClangdServer::addDocument(PathRef File, llvm::StringRef Contents,
     Opts.ClangTidyOpts = ClangTidyOptProvider->getOptions(File);
   Opts.SuggestMissingIncludes = SuggestMissingIncludes;
 
-  // FIXME: some build systems like Bazel will take time to preparing
-  // environment to build the file, it would be nice if we could emit a
-  // "PreparingBuild" status to inform users, it is non-trivial given the
-  // current implementation.
+  // Compile command is set asynchronously during update, as it can be slow.
   ParseInputs Inputs;
-  Inputs.CompileCommand = getCompileCommand(File);
   Inputs.FS = FSProvider.getFileSystem();
   Inputs.Contents = Contents;
   Inputs.Opts = std::move(Opts);
@@ -187,28 +182,23 @@ void ClangdServer::codeComplete(PathRef File, Position Pos,
       return CB(IP.takeError());
     if (isCancelled())
       return CB(llvm::make_error<CancelledError>());
-    if (!IP->Preamble) {
-      vlog("File {0} is not ready for code completion. Enter fallback mode.",
-           File);
-      CodeCompleteResult CCR;
-      CCR.Context = CodeCompletionContext::CCC_Recovery;
-
-      // FIXME: perform simple completion e.g. using identifiers in the current
-      // file and symbols in the index.
-      // FIXME: let clients know that we've entered fallback mode.
-
-      return CB(std::move(CCR));
-    }
 
     llvm::Optional<SpeculativeFuzzyFind> SpecFuzzyFind;
-    if (CodeCompleteOpts.Index && CodeCompleteOpts.SpeculativeIndexRequest) {
-      SpecFuzzyFind.emplace();
-      {
-        std::lock_guard<std::mutex> Lock(CachedCompletionFuzzyFindRequestMutex);
-        SpecFuzzyFind->CachedReq = CachedCompletionFuzzyFindRequestByFile[File];
+    if (!IP->Preamble) {
+      // No speculation in Fallback mode, as it's supposed to be much faster
+      // without compiling.
+      vlog("Build for file {0} is not ready. Enter fallback mode.", File);
+    } else {
+      if (CodeCompleteOpts.Index && CodeCompleteOpts.SpeculativeIndexRequest) {
+        SpecFuzzyFind.emplace();
+        {
+          std::lock_guard<std::mutex> Lock(
+              CachedCompletionFuzzyFindRequestMutex);
+          SpecFuzzyFind->CachedReq =
+              CachedCompletionFuzzyFindRequestByFile[File];
+        }
       }
     }
-
     // FIXME(ibiryukov): even if Preamble is non-null, we may want to check
     // both the old and the new version in case only one of them matches.
     CodeCompleteResult Result = clangd::codeComplete(
@@ -547,14 +537,6 @@ void ClangdServer::typeHierarchy(PathRef File, Position Pos, int Resolve,
   };
 
   WorkScheduler.runWithAST("Type Hierarchy", File, Bind(Action, std::move(CB)));
-}
-
-tooling::CompileCommand ClangdServer::getCompileCommand(PathRef File) {
-  trace::Span Span("GetCompileCommand");
-  llvm::Optional<tooling::CompileCommand> C = CDB.getCompileCommand(File);
-  if (!C) // FIXME: Suppress diagnostics? Let the user know?
-    C = CDB.getFallbackCommand(File);
-  return std::move(*C);
 }
 
 void ClangdServer::onFileEvent(const DidChangeWatchedFilesParams &Params) {

@@ -534,6 +534,18 @@ static bool useFramePointerForTargetByDefault(const ArgList &Args,
     return !areOptimizationsEnabled(Args);
   }
 
+  if (Triple.isOSOpenBSD()) {
+    switch (Triple.getArch()) {
+    case llvm::Triple::mips64:
+    case llvm::Triple::mips64el:
+    case llvm::Triple::x86:
+    case llvm::Triple::x86_64:
+      return !areOptimizationsEnabled(Args);
+    default:
+      return true;
+    }
+  }
+
   if (Triple.isOSLinux() || Triple.getOS() == llvm::Triple::CloudABI ||
       Triple.isOSHurd()) {
     switch (Triple.getArch()) {
@@ -2709,7 +2721,7 @@ static void RenderModulesOptions(Compilation &C, const Driver &D,
     }
   }
 
-  HaveModules = HaveClangModules;
+  HaveModules |= HaveClangModules;
   if (Args.hasArg(options::OPT_fmodules_ts)) {
     CmdArgs.push_back("-fmodules-ts");
     HaveModules = true;
@@ -4259,7 +4271,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // If a std is supplied, only add -trigraphs if it follows the
   // option.
   bool ImplyVCPPCXXVer = false;
-  if (Arg *Std = Args.getLastArg(options::OPT_std_EQ, options::OPT_ansi)) {
+  const Arg *Std = Args.getLastArg(options::OPT_std_EQ, options::OPT_ansi);
+  if (Std) {
     if (Std->getOption().matches(options::OPT_ansi))
       if (types::isCXX(InputType))
         CmdArgs.push_back("-std=c++98");
@@ -4696,9 +4709,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_fdouble_square_bracket_attributes,
                   options::OPT_fno_double_square_bracket_attributes);
 
-  bool HaveModules = false;
-  RenderModulesOptions(C, D, Args, Input, Output, CmdArgs, HaveModules);
-
   // -faccess-control is default.
   if (Args.hasFlag(options::OPT_fno_access_control,
                    options::OPT_faccess_control, false))
@@ -4765,6 +4775,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (ImplyVCPPCXXVer) {
     StringRef LanguageStandard;
     if (const Arg *StdArg = Args.getLastArg(options::OPT__SLASH_std)) {
+      Std = StdArg;
       LanguageStandard = llvm::StringSwitch<StringRef>(StdArg->getValue())
                              .Case("c++14", "-std=c++14")
                              .Case("c++17", "-std=c++17")
@@ -4829,6 +4840,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                                        options::OPT_finline_hint_functions,
                                        options::OPT_fno_inline_functions))
     InlineArg->render(Args, CmdArgs);
+
+  // FIXME: Find a better way to determine whether the language has modules
+  // support by default, or just assume that all languages do.
+  bool HaveModules =
+      Std && (Std->containsValue("c++2a") || Std->containsValue("c++latest"));
+  RenderModulesOptions(C, D, Args, Input, Output, CmdArgs, HaveModules);
 
   Args.AddLastArg(CmdArgs, options::OPT_fexperimental_new_pass_manager,
                   options::OPT_fno_experimental_new_pass_manager);

@@ -706,6 +706,32 @@ def NAME#64mr : RI<{RegOpc{7}, RegOpc{6}, RegOpc{5}, RegOpc{4},
                                "{$src2, $dst|$dst, $src2}"),
                     [(set EFLAGS, (Op addr:$dst, GR64:$src2))]>, LOCK;
 
+// NOTE: These are order specific, we want the mi8 forms to be listed
+// first so that they are slightly preferred to the mi forms.
+def NAME#16mi8 : Ii8<{ImmOpc8{7}, ImmOpc8{6}, ImmOpc8{5}, ImmOpc8{4},
+                      ImmOpc8{3}, ImmOpc8{2}, ImmOpc8{1}, 1 },
+                      ImmMod, (outs), (ins i16mem :$dst, i16i8imm :$src2),
+                      !strconcat(mnemonic, "{w}\t",
+                                 "{$src2, $dst|$dst, $src2}"),
+                      [(set EFLAGS, (Op addr:$dst, i16immSExt8:$src2))]>,
+                      OpSize16, LOCK;
+
+def NAME#32mi8 : Ii8<{ImmOpc8{7}, ImmOpc8{6}, ImmOpc8{5}, ImmOpc8{4},
+                      ImmOpc8{3}, ImmOpc8{2}, ImmOpc8{1}, 1 },
+                      ImmMod, (outs), (ins i32mem :$dst, i32i8imm :$src2),
+                      !strconcat(mnemonic, "{l}\t",
+                                 "{$src2, $dst|$dst, $src2}"),
+                      [(set EFLAGS, (Op addr:$dst, i32immSExt8:$src2))]>,
+                      OpSize32, LOCK;
+
+def NAME#64mi8 : RIi8<{ImmOpc8{7}, ImmOpc8{6}, ImmOpc8{5}, ImmOpc8{4},
+                       ImmOpc8{3}, ImmOpc8{2}, ImmOpc8{1}, 1 },
+                       ImmMod, (outs), (ins i64mem :$dst, i64i8imm :$src2),
+                       !strconcat(mnemonic, "{q}\t",
+                                  "{$src2, $dst|$dst, $src2}"),
+                       [(set EFLAGS, (Op addr:$dst, i64immSExt8:$src2))]>,
+                       LOCK;
+
 def NAME#8mi : Ii8<{ImmOpc{7}, ImmOpc{6}, ImmOpc{5}, ImmOpc{4},
                     ImmOpc{3}, ImmOpc{2}, ImmOpc{1}, 0 },
                     ImmMod, (outs), (ins i8mem :$dst, i8imm :$src2),
@@ -736,30 +762,6 @@ def NAME#64mi32 : RIi32S<{ImmOpc{7}, ImmOpc{6}, ImmOpc{5}, ImmOpc{4},
                                      "{$src2, $dst|$dst, $src2}"),
                           [(set EFLAGS, (Op addr:$dst, i64immSExt32:$src2))]>,
                           LOCK;
-
-def NAME#16mi8 : Ii8<{ImmOpc8{7}, ImmOpc8{6}, ImmOpc8{5}, ImmOpc8{4},
-                      ImmOpc8{3}, ImmOpc8{2}, ImmOpc8{1}, 1 },
-                      ImmMod, (outs), (ins i16mem :$dst, i16i8imm :$src2),
-                      !strconcat(mnemonic, "{w}\t",
-                                 "{$src2, $dst|$dst, $src2}"),
-                      [(set EFLAGS, (Op addr:$dst, i16immSExt8:$src2))]>,
-                      OpSize16, LOCK;
-
-def NAME#32mi8 : Ii8<{ImmOpc8{7}, ImmOpc8{6}, ImmOpc8{5}, ImmOpc8{4},
-                      ImmOpc8{3}, ImmOpc8{2}, ImmOpc8{1}, 1 },
-                      ImmMod, (outs), (ins i32mem :$dst, i32i8imm :$src2),
-                      !strconcat(mnemonic, "{l}\t",
-                                 "{$src2, $dst|$dst, $src2}"),
-                      [(set EFLAGS, (Op addr:$dst, i32immSExt8:$src2))]>,
-                      OpSize32, LOCK;
-
-def NAME#64mi8 : RIi8<{ImmOpc8{7}, ImmOpc8{6}, ImmOpc8{5}, ImmOpc8{4},
-                       ImmOpc8{3}, ImmOpc8{2}, ImmOpc8{1}, 1 },
-                       ImmMod, (outs), (ins i64mem :$dst, i64i8imm :$src2),
-                       !strconcat(mnemonic, "{q}\t",
-                                  "{$src2, $dst|$dst, $src2}"),
-                       [(set EFLAGS, (Op addr:$dst, i64immSExt8:$src2))]>,
-                       LOCK;
 }
 
 }
@@ -996,28 +998,31 @@ defm : RELEASE_BINOP_MI<"OR",  or>;
 defm : RELEASE_BINOP_MI<"XOR", xor>;
 defm : RELEASE_BINOP_MI<"SUB", sub>;
 
-// Same as above, but for floating-point.
-// FIXME: imm version.
-// FIXME: Version that doesn't clobber $src, using AVX's VADDSS.
+// Atomic load + floating point patterns.
 // FIXME: This could also handle SIMD operations with *ps and *pd instructions.
-let usesCustomInserter = 1, SchedRW = [WriteMicrocoded] in {
-multiclass RELEASE_FP_BINOP_MI<SDNode op> {
-    def NAME#32mr : I<0, Pseudo, (outs), (ins i32mem:$dst, FR32:$src),
-        "#BINOP "#NAME#"32mr PSEUDO!",
-        [(atomic_store_32 addr:$dst,
-           (i32 (bitconvert (op
-             (f32 (bitconvert (i32 (atomic_load_32 addr:$dst)))),
-          FR32:$src))))]>, Requires<[HasSSE1]>;
-    def NAME#64mr : I<0, Pseudo, (outs), (ins i64mem:$dst, FR64:$src),
-        "#BINOP "#NAME#"64mr PSEUDO!",
-        [(atomic_store_64 addr:$dst,
-           (i64 (bitconvert (op
-             (f64 (bitconvert (i64 (atomic_load_64 addr:$dst)))),
-          FR64:$src))))]>, Requires<[HasSSE2]>;
+multiclass ATOMIC_LOAD_FP_BINOP_MI<string Name, SDNode op> {
+  def : Pat<(op FR32:$src1, (bitconvert (i32 (atomic_load_32 addr:$src2)))),
+            (!cast<Instruction>(Name#"SSrm") FR32:$src1, addr:$src2)>,
+            Requires<[UseSSE1]>;
+  def : Pat<(op FR32:$src1, (bitconvert (i32 (atomic_load_32 addr:$src2)))),
+            (!cast<Instruction>("V"#Name#"SSrm") FR32:$src1, addr:$src2)>,
+            Requires<[UseAVX]>;
+  def : Pat<(op FR32X:$src1, (bitconvert (i32 (atomic_load_32 addr:$src2)))),
+            (!cast<Instruction>("V"#Name#"SSZrm") FR32X:$src1, addr:$src2)>,
+            Requires<[HasAVX512]>;
+
+  def : Pat<(op FR64:$src1, (bitconvert (i64 (atomic_load_64 addr:$src2)))),
+            (!cast<Instruction>(Name#"SDrm") FR64:$src1, addr:$src2)>,
+            Requires<[UseSSE1]>;
+  def : Pat<(op FR64:$src1, (bitconvert (i64 (atomic_load_64 addr:$src2)))),
+            (!cast<Instruction>("V"#Name#"SDrm") FR64:$src1, addr:$src2)>,
+            Requires<[UseAVX]>;
+  def : Pat<(op FR64X:$src1, (bitconvert (i64 (atomic_load_64 addr:$src2)))),
+            (!cast<Instruction>("V"#Name#"SDZrm") FR64X:$src1, addr:$src2)>,
+            Requires<[HasAVX512]>;
 }
-defm RELEASE_FADD : RELEASE_FP_BINOP_MI<fadd>;
+defm : ATOMIC_LOAD_FP_BINOP_MI<"ADD", fadd>;
 // FIXME: Add fsub, fmul, fdiv, ...
-}
 
 multiclass RELEASE_UNOP<string Name, dag dag8, dag dag16, dag dag32,
                         dag dag64> {
@@ -1077,6 +1082,35 @@ def : Pat<(i8  (atomic_load_8 addr:$src)),  (MOV8rm addr:$src)>;
 def : Pat<(i16 (atomic_load_16 addr:$src)), (MOV16rm addr:$src)>;
 def : Pat<(i32 (atomic_load_32 addr:$src)), (MOV32rm addr:$src)>;
 def : Pat<(i64 (atomic_load_64 addr:$src)), (MOV64rm addr:$src)>;
+
+// Floating point loads/stores.
+def : Pat<(atomic_store_32 addr:$dst, (i32 (bitconvert (f32 FR32:$src)))),
+          (MOVSSmr addr:$dst, FR32:$src)>, Requires<[UseSSE1]>;
+def : Pat<(atomic_store_32 addr:$dst, (i32 (bitconvert (f32 FR32:$src)))),
+          (VMOVSSmr addr:$dst, FR32:$src)>, Requires<[UseAVX]>;
+def : Pat<(atomic_store_32 addr:$dst, (i32 (bitconvert (f32 FR32:$src)))),
+          (VMOVSSZmr addr:$dst, FR32:$src)>, Requires<[HasAVX512]>;
+
+def : Pat<(atomic_store_64 addr:$dst, (i64 (bitconvert (f64 FR64:$src)))),
+          (MOVSDmr addr:$dst, FR64:$src)>, Requires<[UseSSE2]>;
+def : Pat<(atomic_store_64 addr:$dst, (i64 (bitconvert (f64 FR64:$src)))),
+          (VMOVSDmr addr:$dst, FR64:$src)>, Requires<[UseAVX]>;
+def : Pat<(atomic_store_64 addr:$dst, (i64 (bitconvert (f64 FR64:$src)))),
+          (VMOVSDmr addr:$dst, FR64:$src)>, Requires<[HasAVX512]>;
+
+def : Pat<(f32 (bitconvert (i32 (atomic_load_32 addr:$src)))),
+          (MOVSSrm addr:$src)>, Requires<[UseSSE1]>;
+def : Pat<(f32 (bitconvert (i32 (atomic_load_32 addr:$src)))),
+          (VMOVSSrm addr:$src)>, Requires<[UseAVX]>;
+def : Pat<(f32 (bitconvert (i32 (atomic_load_32 addr:$src)))),
+          (VMOVSSZrm addr:$src)>, Requires<[HasAVX512]>;
+
+def : Pat<(f64 (bitconvert (i64 (atomic_load_64 addr:$src)))),
+          (MOVSDrm addr:$src)>, Requires<[UseSSE2]>;
+def : Pat<(f64 (bitconvert (i64 (atomic_load_64 addr:$src)))),
+          (VMOVSDrm addr:$src)>, Requires<[UseAVX]>;
+def : Pat<(f64 (bitconvert (i64 (atomic_load_64 addr:$src)))),
+          (VMOVSDZrm addr:$src)>, Requires<[HasAVX512]>;
 
 //===----------------------------------------------------------------------===//
 // DAG Pattern Matching Rules
