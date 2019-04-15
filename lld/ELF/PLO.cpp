@@ -204,14 +204,17 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                            FileOrdinalPairs.end(),
                            std::bind(&PLO::ProcessFile, this, _1));
 
-  return PLOProfile(*this).ProcessProfile(ProfileName);
+  if (PLOProfile(*this).ProcessProfile(ProfileName)) {
+    for (auto &View: Views) {
+      for (auto &I: View->Cfgs) {
+        ELFCfg *Cfg = I.second.get();
+        std::cout << *Cfg;
+      }
+    }
+    return true;
+  }
 
-  // for (auto &View: Views) {
-  //   for (auto &I: View->Cfgs) {
-  //     ELFCfg *Cfg = I.second.get();
-  //     std::cout << *Cfg;
-  //   }
-  // }
+  return false;
 
   // fprintf(stderr, "Finsihed creating cfgs.\n");
 

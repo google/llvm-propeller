@@ -93,8 +93,11 @@ run-commands.sh:
                 >> $@
 	chmod +x $@
 
-sample.o : %.o: %.c
-	./stage1-compiler -fbasicblock-sections=all -gline-tables-only -c -O2 $< -o $@
+sample.o : %.o: %.c stage1-compiler
+	./stage1-compiler -fbasicblock-sections=all -c -O2 $< -o $@
+
+sample_instr.o: sample.c stage1-compiler
+	./stage1-compiler -fbasicblock-sections=labels -c -O2 $< -o $@
 
 sample.out: sample.c
 	./stage1-compiler -fbasicblock-sections=labels -O2 -o $@ $<
@@ -105,7 +108,7 @@ sample.perfdata: sample.out
 sample.out.symfile sample.out.profile: sample.out sample.perfdata
 	./plotool.sh $^
 
-sample.out.cfg: sample.out.symfile sample.out.profile sample.o $(lld)
+sample.out.cfg: sample.out.symfile sample.out.profile sample.o stage1-compiler
 	stage1/install/bin/ld.lld -plo \
 	  -symfile sample.out.symfile \
 	  -profile sample.out.profile \

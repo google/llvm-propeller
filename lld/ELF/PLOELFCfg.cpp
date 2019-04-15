@@ -139,7 +139,14 @@ void ELFCfgBuilder::BuildCfgs() {
           (*SectionIE) != Sym.getObject()->section_end()) {
         StringRef SymName = *SymNameE;
         uint64_t SymShndx = (*SectionIE)->getIndex();
+        // Note here: BB Symbols only carry size information when
+        // -fbasicblock-section=all. Objects built with
+        // -fbasicblock-section=labels do not have size information
+        // for BB symbols.
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
+        // All BB symbols' value must equal to 0 (the offset), because
+        // they are always defined at the beginning of their section.
+        assert(Sym.getValue() == 0);
         auto ResultP = Plo.SymAddrSizeMap.find(SymName);
         if (ResultP != Plo.SymAddrSizeMap.end()) {
           uint64_t MappedAddr = ResultP->second.first;
@@ -147,12 +154,13 @@ void ELFCfgBuilder::BuildCfgs() {
               new ELFCfgNode(SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
           continue;
         }
+        // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
       }
       TmpNodeMap.clear();
       Cfg.reset(nullptr);
       break;
     }
-    if (!Cfg) continue;
+    if (!Cfg) continue;  // to next Cfg group.
 
     uint64_t CfgMappedAddr = TmpNodeMap.begin()->first;
     auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
@@ -281,6 +289,22 @@ void ELFCfgBuilder::BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
 // adjacent, and there is a NORMAL edge from P->Q.
 void ELFCfgBuilder::CalculateFallthroughEdges(
     ELFCfg &Cfg, map<uint64_t, list<unique_ptr<ELFCfgNode>>> &TmpNodeMap) {
+  /*
+    TmpNodeMap groups nodes according to their address:
+      addr1: [Node1]
+      addr2: [Node2, Node3]
+      addr3: [Node4]
+      addr4: [Node5]
+      addr5: [Node6, Node 7]
+    For the above example, Node2, Node3 have same "MappedAddr" (*).
+
+    We firstly sort Nodes that have same address, like addr2 and addr5
+    groups, within each group, if NodeA has a fallthrough to NodeB, we
+    place NodeA before NodeB. (Op. A)
+
+    We then try to find fallthrough relationship between the previous groups's last
+    node and curent group's first node. (Op. B)
+  */
   auto SetupFallthrough =
     [&Cfg](ELFCfgNode *N1, ELFCfgNode *N2) {
       for (auto *E : N1->Outs) {
@@ -297,7 +321,7 @@ void ELFCfgBuilder::CalculateFallthroughEdges(
       return false;
     };
 
-  struct CompareNodesWithSameAddr {
+  struct CompareNodesWithSameAddrGroup {
     bool operator() (const unique_ptr<ELFCfgNode>& P1,
                      const unique_ptr<ELFCfgNode>& P2) {
       if (P1->ShSize == 0)
@@ -310,10 +334,11 @@ void ELFCfgBuilder::CalculateFallthroughEdges(
     }
   };
 
+  // Op. A.
   for (auto &Pair: TmpNodeMap) {
     auto &NodeL = Pair.second;
     if (NodeL.size() > 1) {
-      NodeL.sort(CompareNodesWithSameAddr());
+      NodeL.sort(CompareNodesWithSameAddrGroup());
       for (auto P = NodeL.begin(), Q = std::next(P), E = NodeL.end();
            Q != E; ++P, ++Q) {
         SetupFallthrough((*P).get(), (*Q).get());
@@ -321,6 +346,7 @@ void ELFCfgBuilder::CalculateFallthroughEdges(
     }
   }
 
+  // Op. B.
   for (auto P = TmpNodeMap.begin(), Q = std::next(P), E = TmpNodeMap.end();
        Q != E; ++P, ++Q) {
     SetupFallthrough(P->second.rbegin()->get(), Q->second.begin()->get());
@@ -336,32 +362,24 @@ void ELFCfgBuilder::CalculateFallthroughEdges(
   }
   TmpNodeMap.clear();
 
+  // (*) Rare case: we have BBs with same address mapping, which is
+  // possible, but very rare.
 
-    // Very rare case: we have AT MOST 2 BBs with same address
-    // mapping, which is possible (but very rare, the scenario
-    // explained below). For example:
-    //   P[addr=0x123] Q[addr=0x123] R(=std::next(Q))[addr=0x125]
+  // One example that 2 BB symbols have same address,
+  //   00000000018ed2f0 _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35
+  //   00000000018ed2f0 _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4
 
-    // Firstly,  either P fallthroughs Q or Q fallthroughs P must happen.
-    // Secondly:
-    //     if P fallthroughs Q, then test if Q fallthroughs R.
-    //     if Q fallthroughs P, then test if P fallthroughs R.
+  // In -fbasicblock-section=all mode:
+  // Disassembly of section .text.special_basic_block:
+  // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4>:
+  //    0:   e9 00 00 00 00          jmpq   5 <.L.str.2+0x2>
 
-    // One example that 2 BB symbols have same address,
-    //   00000000018ed2f0  _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35
-    //   00000000018ed2f0 _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4
-
-    // In -fbasicblock-section=all mode:
-    // Disassembly of section .text.special_basic_block:
-    // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4>:
-    //    0:   e9 00 00 00 00          jmpq   5 <.L.str.2+0x2>
-
-    // Disassembly of section .text:
-    // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35>:
-    //    0:   45 31 ed                xor    %r13d,%r13d
-    //    3:   4d 85 f6                test   %r14,%r14
-    //    6:   0f 84 00 00 00 00       je     c <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35+0xc>
-    //    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
+  // Disassembly of section .text:
+  // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35>:
+  //    0:   45 31 ed                xor    %r13d,%r13d
+  //    3:   4d 85 f6                test   %r14,%r14
+  //    6:   0f 84 00 00 00 00       je     c <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35+0xc>
+  //    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
 }
 
 ostream & operator << (ostream &Out, const ELFCfgNode &Node) {
@@ -393,13 +411,12 @@ ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
           << (Edge == Node.FTEdge ? " (*FT*)" : "")
           << std::endl;
     }
-    // for (auto &IE : Cfg.InterEdges) {
-    //   auto *Edge = IE.get();
-    //   Out << "  Calls: '" << Edge->Sink->Cfg->Name.str() << "': "
-    //       << std::noshowbase << std::dec << Edge->Weight << std::endl;
-    // }
-    Out << std::endl;
+    for (auto &Edge: Node.CallOuts) {
+      Out << "    Calls: '" << Edge->Sink->ShName.str() << "': "
+          << std::noshowbase << std::dec << Edge->Weight << std::endl;
+    }
   }
+  Out << std::endl;
   return Out;
 }
 
