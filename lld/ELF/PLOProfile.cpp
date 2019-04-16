@@ -2,6 +2,7 @@
 
 #include "PLO.h"
 #include "PLOELFCfg.h"
+#include "PLOELFView.h"
 
 #include <fstream>
 #include <iostream>
@@ -45,18 +46,18 @@ bool PLOProfile::ProcessProfile(StringRef &ProfileName) {
   // Preallocate "Entries" (total size = sizeof(LBREntry) * 32 bytes =
   // 6k). Which is way more faster than create space everytime.
   LBREntry EntryArray[32];
-  int EntryIndex;
+  uint64_t TotalRecords = 0;
   while (fin.good() && !std::getline(fin, line).eof()) {
     if (line.empty()) continue;
-    EntryIndex = 0;
+    int EntryIndex = 0;
     const char *p = line.c_str();
     const char *q = p + 1;
     do {
       while (*(q++) != ' ');
       StringRef EntryString = StringRef(p, q - p - 1);
       if (!LBREntry::FillEntry(EntryString, EntryArray[EntryIndex])) {
-	fprintf(stderr, "Invalid entry: %s\n", EntryString.str().c_str());
-	break;
+        fprintf(stderr, "Invalid entry: %s\n", EntryString.str().c_str());
+        break;
       }
       if (*q == '\0') break;
       p = q + 1;
@@ -64,6 +65,7 @@ bool PLOProfile::ProcessProfile(StringRef &ProfileName) {
       ++EntryIndex;
     } while(true);
     if (EntryIndex) {
+      ++TotalRecords;
       ProcessLBR(EntryArray, EntryIndex);
     }
   }
@@ -71,7 +73,120 @@ bool PLOProfile::ProcessProfile(StringRef &ProfileName) {
           IntraFunc, NonMarkedIntraFunc);
   fprintf(stderr, "Inter-func marked: %lu (%lu not marked)\n",
           InterFunc, NonMarkedInterFunc);
+  fprintf(stderr, "Total LBR records: %lu\n", TotalRecords);
   return true;
+}
+
+static bool
+IsBBSymbol(const StringRef &SymName, StringRef &FuncName) {
+  FuncName = "";
+  auto R = SymName.split(".bb.");
+  if (R.second.empty()) return false;
+  for (const char *I = R.second.data(), *J = R.second.data() + R.second.size();
+       I != J; ++I)
+    if (*I < '0' || *I > '9') return false;
+  FuncName = R.first;
+  return true;
+}
+
+bool PLOProfile::SymContainsAddr(const StringRef &SymName,
+                                 uint64_t SymAddr,
+                                 uint64_t Addr,
+                                 StringRef &FuncName) {
+  if (!IsBBSymbol(SymName, FuncName)) {
+    FuncName = SymName;
+  }
+  auto PairI = Plo.SymAddrSizeMap.find(FuncName);
+  if (PairI != Plo.SymAddrSizeMap.end()) {
+    uint64_t FuncAddr = PairI->second.first;
+    uint64_t FuncSize = PairI->second.second;
+    if (FuncSize > 0 && FuncAddr <= Addr && Addr < FuncAddr + FuncSize) {
+      return true;
+    }
+  }
+  FuncName = "";
+  return false;
+}
+
+void PLOProfile::CacheSearchResult(uint64_t Addr, ELFCfgNode *Node) {
+  if (SearchTimeMap.size() > MaxCachedResults) {
+    auto STI = SearchTimeMap.begin();
+    uint64_t SearchAddress = STI->second;
+    auto EraseResult = SearchCacheMap.erase(SearchAddress);
+    (void)EraseResult;
+    assert(EraseResult > 0);
+    SearchTimeMap.erase(STI);
+  }
+
+  auto R = SearchCacheMap.find(Addr);
+  if(R != SearchCacheMap.end()) {
+    // Update search time.
+    uint64_t OldSearchTime = R->second.first;
+    SearchTimeMap.erase(OldSearchTime);
+    SearchTimeMap.emplace(SearchTime, Addr);
+    R->second.first = SearchTime;
+  } else {
+    SearchTimeMap.emplace(SearchTime, Addr);
+    SearchCacheMap.emplace(std::piecewise_construct,
+                           std::forward_as_tuple(Addr),
+                           std::forward_as_tuple(SearchTime, Node));
+  }
+}
+
+bool PLOProfile::FindCfgForAddress(uint64_t Addr,
+                                   ELFCfg *&ResultCfg,
+                                   ELFCfgNode *&ResultNode) {
+  ++SearchTime;
+  auto CacheI = SearchCacheMap.find(Addr);
+  if (CacheI != SearchCacheMap.end()) {
+    ResultNode = CacheI->second.second;
+    ResultCfg = ResultNode->Cfg;
+    return true;
+  }
+  ResultCfg = nullptr, ResultNode = nullptr;
+  auto T = Plo.AddrSymMap.upper_bound(Addr);  // first element > Addr.
+  if (T == Plo.AddrSymMap.begin())
+    return false;
+  auto T0 = std::prev(T);
+  uint64_t SymAddr = T0->first;
+  // There are multiple symbols registered on the same address.
+  for (StringRef &SymName: T0->second) {
+    StringRef IndexName;
+    if (SymContainsAddr(SymName, SymAddr, Addr, IndexName)) {
+      auto CfgLI = Plo.CfgMap.find(IndexName);
+      if (CfgLI != Plo.CfgMap.end()) {
+        // There might be multiple object files that define SymName.
+        // So for "funcFoo.bb.3", we return Obj2.
+        // For "funcFoo.bb.1", we return Obj1 (the first matching obj).
+        // Obj1:
+        //    Cfg1: funcFoo
+        //          funcFoo.bb.1
+        //          funcFoo.bb.2
+        // Obj2:
+        //    Cfg1: funcFoo
+        //          funcFoo.bb.1
+        //          funcFoo.bb.2
+        //          funcFoo.bb.3
+        // Also not, Objects (CfgLI->second) are sorted in the way
+        // they appear on the command line, which is the same as how
+        // linker chooses the weak symbol definition.
+        for (auto &View: CfgLI->second) {
+          ELFCfg *Cfg = View->Cfgs[IndexName].get();
+          assert(Cfg);
+          // Check Cfg does have name "SymName".
+          for (auto &N: Cfg->Nodes) {
+            if (N->ShName == SymName) {
+              ResultCfg = Cfg;
+              ResultNode = N.get();
+              CacheSearchResult(Addr, ResultNode);
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
 }
 
 void PLOProfile::ProcessLBR(LBREntry *EntryArray, int EntryIndex) {
@@ -88,8 +203,8 @@ void PLOProfile::ProcessLBR(LBREntry *EntryArray, int EntryIndex) {
     uint64_t From = Entry.From, To = Entry.To;
     ELFCfg *FromCfg, *ToCfg;
     ELFCfgNode *FromNode, *ToNode;
-    Plo.FindCfgForAddress(From, FromCfg, FromNode);
-    Plo.FindCfgForAddress(To, ToCfg, ToNode);
+    FindCfgForAddress(From, FromCfg, FromNode);
+    FindCfgForAddress(To, ToCfg, ToNode);
 
     if (FromCfg && FromCfg == ToCfg) {
       FromCfg->MapBranch(FromNode, ToNode);

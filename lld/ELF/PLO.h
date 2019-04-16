@@ -47,10 +47,6 @@ public:
                     StringRef &SymFileName,
                     StringRef &ProfileName);
 
-  bool FindCfgForAddress(uint64_t Addr,
-			 ELFCfg *&ResultCfg,
-			 ELFCfgNode *&ResultNode);
-
   // Addr -> Symbol (for all 't', 'T', 'w' and 'W' symbols) map.
   map<uint64_t, llvm::SmallVector<StringRef, 3>> AddrSymMap;
   // Sym -> <Addr, Size> map.
@@ -62,10 +58,6 @@ private:
   bool ProcessSymfile(StringRef &SymfileName);
 
   void ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair);
-  bool SymContainsAddr(const StringRef &SymName,
-		       uint64_t SymAddr,
-		       uint64_t Addr,
-		       StringRef &FuncName);
 
   // Parallizable, thread safety is guaranteed.
   void CreateCfgForFile(elf::InputFile *Inf);
@@ -91,6 +83,8 @@ public:
   atomic<uint32_t> TotalBBWoutAddr{0};
   atomic<uint32_t> ValidCfgs{0};
   atomic<uint32_t> InvalidCfgs{0};
+
+  friend class PLOProfile;
   
 };
 

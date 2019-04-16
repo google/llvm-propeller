@@ -60,11 +60,7 @@ bool PLO::ProcessSymfile(StringRef &Symfile) {
 		  if (Type == 'T' || Type == 't' || Type == 'W' || Type == 'w') {
 		    StringRef Name = S3.second;
 		    if (!Name.empty()) {
-		      // fprintf(stderr, "Insert %s into 0x%lx\n", Name.str().c_str(), Addr);
 		      this->AddrSymMap[Addr].emplace_back(Name);
-		      // if (this->AddrSymMap[Addr].size() > 3) {
-		      //   fprintf(stderr, "0x%lx contains more than 3 symbols.\n", Addr);
-		      // }
 		      this->SymAddrSizeMap.emplace(
                           std::piecewise_construct,
 			  std::forward_as_tuple(Name),
@@ -80,91 +76,6 @@ bool PLO::ProcessSymfile(StringRef &Symfile) {
   DoLine(L);
   fprintf(stderr, "Processed %lu symfile entries.\n", AddrSymMap.size());
   return true;
-}
-
-static bool
-IsBBSymbol(const StringRef &SymName, StringRef &FuncName) {
-  FuncName = "";
-  auto R = SymName.split(".bb.");
-  if (R.second.empty()) return false;
-  for (const char *I = R.second.data(), *J = R.second.data() + R.second.size(); I != J; ++I)
-    if (*I < '0' || *I > '9') return false;
-  FuncName = R.first;
-  return true;
-}
-
-
-bool PLO::SymContainsAddr(const StringRef &SymName,
-			  uint64_t SymAddr,
-			  uint64_t Addr,
-			  StringRef &FuncName) {
-  if (!IsBBSymbol(SymName, FuncName)) {
-    FuncName = SymName;
-  }
-  auto PairI = SymAddrSizeMap.find(FuncName);
-  if (PairI != SymAddrSizeMap.end()) {
-    uint64_t FuncAddr = PairI->second.first;
-    uint64_t FuncSize = PairI->second.second;
-    if (FuncSize > 0 && FuncAddr <= Addr && Addr < FuncAddr + FuncSize) {
-      return true;
-    }
-  }
-  FuncName = "";
-  return false;
-}
-
-static uint64_t TotalCfgFound = 0;
-static uint64_t TotalCfgNotFound = 0;
-
-// TODO(shenhan): cache some results to speed up.
-bool PLO::FindCfgForAddress(uint64_t Addr,
-			    ELFCfg *&ResultCfg,
-			    ELFCfgNode *&ResultNode) {
-  ResultCfg = nullptr, ResultNode = nullptr;
-  auto T = AddrSymMap.upper_bound(Addr);  // first element > Addr.
-  if (T == AddrSymMap.begin())
-    return false;
-  auto T0 = std::prev(T);
-  uint64_t SymAddr = T0->first;
-  // There are multiple symbols registered on the same address.
-  for (StringRef &SymName: T0->second) {
-    StringRef IndexName;
-    if (SymContainsAddr(SymName, SymAddr, Addr, IndexName)) {
-      auto CfgLI = CfgMap.find(IndexName);
-      if (CfgLI != CfgMap.end()) {
-	// There might be multiple object files that define SymName.
-	// So for "funcFoo.bb.3", we return Obj2.
-	// For "funcFoo.bb.1", we return Obj1 (the first matching obj).
-	// Obj1:
-	//    Cfg1: funcFoo
-	//          funcFoo.bb.1
-	//          funcFoo.bb.2
-	// Obj2:
-	//    Cfg1: funcFoo
-	//          funcFoo.bb.1
-	//          funcFoo.bb.2
-	//          funcFoo.bb.3
-	// Also not, Objects (CfgLI->second) are sorted in the way
-	// they appear on the command line, which is the same as how
-	// linker chooses the weak symbol definition.
-	for (auto &View: CfgLI->second) {
-	  ELFCfg *Cfg = View->Cfgs[IndexName].get();
-	  assert(Cfg);
-	  // Check Cfg does have name "SymName".
-          for (auto &N: Cfg->Nodes) {
-            if (N->ShName == SymName) {
-              ++TotalCfgFound;
-              ResultCfg = Cfg;
-              ResultNode = N.get();
-              return true;
-            }
-          }
-	}
-      }
-    }
-  }
-  ++TotalCfgNotFound;
-  return false;
 }
 
 // This method if thread safe.
@@ -205,12 +116,12 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                            std::bind(&PLO::ProcessFile, this, _1));
 
   if (PLOProfile(*this).ProcessProfile(ProfileName)) {
-    for (auto &View: Views) {
-      for (auto &I: View->Cfgs) {
-        ELFCfg *Cfg = I.second.get();
-        std::cout << *Cfg;
-      }
-    }
+    // for (auto &View: Views) {
+    //   for (auto &I: View->Cfgs) {
+    //     ELFCfg *Cfg = I.second.get();
+    //     std::cout << *Cfg;
+    //   }
+    // }
     return true;
   }
 

@@ -88,8 +88,6 @@ class ELFCfg {
 public:
   ELFView    *View;
   StringRef   Name;
-  // Cfg size is the first bb section size. Not the size of all bb sections.
-  uint64_t    Size{0};
   
   // ELFCfg assumes the ownership for all Nodes / Edges.
   list<unique_ptr<ELFCfgNode>> Nodes;
