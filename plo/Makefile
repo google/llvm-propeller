@@ -77,7 +77,8 @@ run-plo.sh: bbsec-compiler clang.symfile clang.profile
 	chmod +x $@
 
 run-plo: run-plo.sh stage1-compiler
-	{ cd bbsec/build && $(DDIR)/$< ; } 2>&1 | tee $@
+	{ cd bbsec/build && $(DDIR)/$< ; } 2>&1 | tee $(DDIR)/$@.autolog
+	mv $@.autolog $@
 
 run-commands.sh:
 	rsync -a -f "+ */" -f "+ *.inc" -f "+ *.h" -f "+ *.def" -f "- *" \

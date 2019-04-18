@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "InputFiles.h"
+#include "PLOBBOrdering.h"
 #include "PLOELFCfg.h"
 #include "PLOELFView.h"
 #include "PLOProfile.h"
@@ -124,6 +125,8 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
         if (Cfg->Weight > 1000) {
           ++CfgHasWeight;
           std::cout << *Cfg;
+
+          PLOBBOrdering(*Cfg).DoOrder();
         }
       }
     }

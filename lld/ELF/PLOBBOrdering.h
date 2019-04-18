@@ -13,56 +13,30 @@ using std::unique_ptr;
 namespace lld {
 namespace plo {
 
+class ELFCfgEdge;
 class ELFCfgNode;
 class ELFCfg;
-class MeshPoint;
 
-class MeshLink {
+class BBChain {
 public:
-  MeshPoint *Src;
-  MeshPoint *Sink;
-  uint64_t   Weight;
-
-  MeshLink(MeshPoint *S, MeshPoint *T, uint64_t W)
-    : Src(S), Sink(T), Weight(W) {}
-  ~MeshLink() {}
-};
-
-class MeshPoint {
-public:
+  BBChain(ELFCfgNode *N) : Nodes(1, N) {}
   list<ELFCfgNode *> Nodes;
-  list<MeshLink *>   Links;
-
-  StringRef GetName() const {
-    return (*Nodes.begin())->GetShortName();
-  }
-};
-
-class Mesh {
-public:
-  Mesh(ELFCfg &C) : Cfg(C) {}
-
-  void Init();
-
-  void Reduce();
-  MeshPoint *ReduceLink(MeshLink *);
-
-  MeshLink *CreateLink(MeshPoint *P1, MeshPoint *P2, uint64_t W);
-  MeshPoint *MergeEndPoints(MeshPoint *P1, MeshPoint *P2);
-
-  ELFCfg &Cfg;
-  list<unique_ptr<MeshPoint>>    Points;
-  list<unique_ptr<MeshLink>>     Links;
 };
 
 class PLOBBOrdering {
 public:
-  
+  PLOBBOrdering(ELFCfg &C);
+  ~PLOBBOrdering();
+
+  void DoOrder();
+
+  void ConnectChain(ELFCfgEdge *E, BBChain *C1, BBChain *C2);
+
+  ELFCfg &Cfg;
+  list<unique_ptr<BBChain>>  Chains;
 };
 
-std::ostream & operator << (std::ostream &Out, const MeshPoint &P);
-std::ostream & operator << (std::ostream &Out, const MeshLink  &L);
-std::ostream & operator << (std::ostream &Out, const Mesh      &M);
+ostream &operator << (ostream & Out, BBChain &C);
   
 }
 }
