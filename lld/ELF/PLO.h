@@ -73,7 +73,7 @@ private:
     }
   };
   map<StringRef, set<ELFView *, ELFViewOrdinalComparator>> CfgMap;
-  
+
   // Lock to access / modify global data structure.
   mutex Lock;
 

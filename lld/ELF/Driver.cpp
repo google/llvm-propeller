@@ -1623,11 +1623,10 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
       InputSections.push_back(cast<InputSection>(S));
 
   if (Config->Plo && !ObjectFiles.empty()) {
-    fprintf(stderr, "PLO: %lu files to process.\n", ObjectFiles.size());
     if (!lld::plo::PLO().ProcessFiles(ObjectFiles,
                                       Config->SymFile,
                                       Config->Profile)) {
-      fprintf(stderr, "PLO stage failed.\n");
+      error("PLO stage failed.");
     }
     return;
   }

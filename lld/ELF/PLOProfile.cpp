@@ -109,37 +109,27 @@ bool PLOProfile::SymContainsAddr(const StringRef &SymName,
 }
 
 void PLOProfile::CacheSearchResult(uint64_t Addr, ELFCfgNode *Node) {
-  if (SearchTimeMap.size() > MaxCachedResults) {
-    auto STI = SearchTimeMap.begin();
-    uint64_t SearchAddress = STI->second;
-    auto EraseResult = SearchCacheMap.erase(SearchAddress);
+  if (SearchTimeline.size() > MaxCachedResults) {
+    auto A = SearchTimeline.begin();
+    auto EraseResult = SearchCacheMap.erase(*A);
     (void)EraseResult;
     assert(EraseResult > 0);
-    SearchTimeMap.erase(STI);
+    SearchTimeline.erase(A);
   }
 
-  auto R = SearchCacheMap.find(Addr);
-  if(R != SearchCacheMap.end()) {
-    // Update search time.
-    uint64_t OldSearchTime = R->second.first;
-    SearchTimeMap.erase(OldSearchTime);
-    SearchTimeMap.emplace(SearchTime, Addr);
-    R->second.first = SearchTime;
-  } else {
-    SearchTimeMap.emplace(SearchTime, Addr);
-    SearchCacheMap.emplace(std::piecewise_construct,
-                           std::forward_as_tuple(Addr),
-                           std::forward_as_tuple(SearchTime, Node));
-  }
+  assert(SearchCacheMap.find(Addr) == SearchCacheMap.end());
+  SearchTimeline.push_back(Addr);
+  SearchCacheMap.emplace(std::piecewise_construct,
+                         std::forward_as_tuple(Addr),
+                         std::forward_as_tuple(Node));
 }
 
 bool PLOProfile::FindCfgForAddress(uint64_t Addr,
                                    ELFCfg *&ResultCfg,
                                    ELFCfgNode *&ResultNode) {
-  ++SearchTime;
   auto CacheI = SearchCacheMap.find(Addr);
   if (CacheI != SearchCacheMap.end()) {
-    ResultNode = CacheI->second.second;
+    ResultNode = CacheI->second;
     ResultCfg = ResultNode->Cfg;
     return true;
   }

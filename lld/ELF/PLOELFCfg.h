@@ -73,6 +73,14 @@ class ELFCfgNode {
 
   const static uint64_t InvalidAddress = -1l;
 
+  StringRef GetShortName() {
+    auto I = ShName.rsplit(".bb.");
+    if (!I.second.empty()) {
+      return I.second;
+    }
+    return "E"; // Entry;
+  }
+
 private:
   ELFCfgNode(uint64_t _Shndx, const StringRef &_ShName,
              uint64_t _Size, uint64_t _MappedAddr, ELFCfg *_Cfg)
@@ -88,13 +96,14 @@ class ELFCfg {
 public:
   ELFView    *View;
   StringRef   Name;
+  uint64_t    Weight;
   
   // ELFCfg assumes the ownership for all Nodes / Edges.
   list<unique_ptr<ELFCfgNode>> Nodes;
   list<unique_ptr<ELFCfgEdge>> IntraEdges;
   list<unique_ptr<ELFCfgEdge>> InterEdges;
 
-  ELFCfg(ELFView *V, const StringRef &N) : View(V), Name(N) {}
+  ELFCfg(ELFView *V, const StringRef &N) : View(V), Name(N), Weight(0) {}
   ~ELFCfg() {}
 
   bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);

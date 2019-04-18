@@ -52,19 +52,18 @@ private:
 
   PLO       &Plo;
 
-  // Simple LRU cache to speed up lookup. Usually there are hundreds
-  // of millions address lookup. This reduce total time from 7m to
-  // 1m10s.
+  // Naive FIFO cache to speed up lookup. Usually there are hundreds
+  // of millions address lookup. This reduce total time from 7m to 1m.
+
+  using SearchCacheTy = map<uint64_t, ELFCfgNode *>;
   inline void CacheSearchResult(uint64_t Addr, ELFCfgNode *Node);
-  // Time -> Address mapping.
-  uint64_t SearchTime{0};
-  // Use 1M cache.
-  uint32_t MaxCachedResults =
-    16 * 1024 * 1024 / sizeof(map<uint64_t, ELFCfgNode *>::value_type);
-  // Access time -> address map.
-  map<uint64_t, uint64_t>     SearchTimeMap;
-  // Address -> <access time, Node *> map.
-  map<uint64_t, pair<uint64_t, ELFCfgNode *>> SearchCacheMap;
+  // Use 8M cache.
+  const uint32_t MaxCachedResults = 8 * 1024 * 1024 /
+      sizeof(SearchCacheTy::value_type);
+  // Search address sequence.
+  list<uint64_t> SearchTimeline;
+  // Address -> Node map.
+  SearchCacheTy  SearchCacheMap;
 
   // Statistics.
   uint64_t  IntraFunc{0};

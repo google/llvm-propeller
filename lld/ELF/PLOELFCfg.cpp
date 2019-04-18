@@ -47,7 +47,13 @@ bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
   if (From == To) return true;
   ELFCfgNode *P = From;
   while (P && P != To) {
-    P = P->FTEdge ? P->FTEdge->Sink : nullptr;
+    if (P->FTEdge) {
+      ++P->FTEdge->Weight;
+      ++this->Weight;
+      P = P->FTEdge->Sink;
+    } else {
+      P = nullptr;
+    }
   }
   if (!P) {
     return false;
@@ -56,6 +62,7 @@ bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
 }
 
 void ELFCfg::MapBranch(ELFCfgNode *From, ELFCfgNode *To) {
+  ++this->Weight;
   for (auto &E : From->Outs) {
     if (E->Sink == To) {
       ++(E->Weight);
@@ -402,7 +409,8 @@ ostream & operator << (ostream &Out, const ELFCfgEdge &Edge) {
 
 ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
   Out << "Cfg: '" << Cfg.View->ViewName.str() << ":"
-      << Cfg.Name.str() << "'" << std::endl;
+      << Cfg.Name.str() << "', Weight="
+      << std::noshowbase << std::dec << Cfg.Weight << std::endl;
   for (auto &N : Cfg.Nodes) {
     auto &Node = *N;
     Out << "  Node: " << Node << std::endl;

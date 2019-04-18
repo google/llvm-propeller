@@ -36,6 +36,7 @@ add_lld_library(lldELF
   MarkLive.cpp
   OutputSections.cpp
   PLO.cpp
+  PLOBBOrdering.cpp
   PLOELFView.cpp
   PLOELFCfg.cpp
   PLOProfile.cpp

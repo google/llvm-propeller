@@ -108,7 +108,6 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
   int Ordinal = 0;
   for (auto &F : Files) {
     FileOrdinalPairs.emplace_back(F, ++Ordinal);
-    // ProcessFile(*FileOrdinalPairs.rbegin());
   }
   llvm::parallel::for_each(llvm::parallel::parallel_execution_policy(),
                            FileOrdinalPairs.begin(),
@@ -116,12 +115,19 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                            std::bind(&PLO::ProcessFile, this, _1));
 
   if (PLOProfile(*this).ProcessProfile(ProfileName)) {
-    // for (auto &View: Views) {
-    //   for (auto &I: View->Cfgs) {
-    //     ELFCfg *Cfg = I.second.get();
-    //     std::cout << *Cfg;
-    //   }
-    // }
+    uint64_t TotalCfgs = 0;
+    uint64_t CfgHasWeight = 0;
+    for (auto &View: Views) {
+      for (auto &I: View->Cfgs) {
+        ++TotalCfgs;
+        ELFCfg *Cfg = I.second.get();
+        if (Cfg->Weight > 1000) {
+          ++CfgHasWeight;
+          std::cout << *Cfg;
+        }
+      }
+    }
+    fprintf(stderr, "Cfg has Weight / Total Cfg: %lu / %lu\n", CfgHasWeight, TotalCfgs);
     return true;
   }
 
