@@ -39,6 +39,7 @@ add_lld_library(lldELF
   PLOBBOrdering.cpp
   PLOELFView.cpp
   PLOELFCfg.cpp
+  PLOFuncOrdering.cpp
   PLOProfile.cpp
   Relocations.cpp
   ScriptLexer.cpp

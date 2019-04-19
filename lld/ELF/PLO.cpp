@@ -15,6 +15,7 @@
 #include "PLOBBOrdering.h"
 #include "PLOELFCfg.h"
 #include "PLOELFView.h"
+#include "PLOFuncOrdering.h"
 #include "PLOProfile.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -118,18 +119,20 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
   if (PLOProfile(*this).ProcessProfile(ProfileName)) {
     uint64_t TotalCfgs = 0;
     uint64_t CfgHasWeight = 0;
-    for (auto &View: Views) {
-      for (auto &I: View->Cfgs) {
-        ++TotalCfgs;
-        ELFCfg *Cfg = I.second.get();
-        if (Cfg->Weight > 1000) {
-          ++CfgHasWeight;
-          std::cout << *Cfg;
+    PLOFuncOrdering PFO(*this);
+    std::cout << PFO.CG;
+    // for (auto &View: Views) {
+    //   for (auto &I: View->Cfgs) {
+    //     ++TotalCfgs;
+    //     ELFCfg *Cfg = I.second.get();
+    //     if (Cfg->Weight > 1000) {
+    //       ++CfgHasWeight;
+    //       std::cout << *Cfg;
 
-          PLOBBOrdering(*Cfg).DoOrder();
-        }
-      }
-    }
+    //       PLOBBOrdering(*Cfg).DoOrder();
+    //     }
+    //   }
+    // }
     fprintf(stderr, "Cfg has Weight / Total Cfg: %lu / %lu\n", CfgHasWeight, TotalCfgs);
     return true;
   }
