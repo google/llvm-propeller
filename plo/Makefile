@@ -60,6 +60,16 @@ bbinstr/install/bin/clang: | stage1-compiler
 bbsec/install/bin/clang: | stage1-compiler
 	$(call build_compiler,bbsec,$(DDIR)/stage1/install/bin,$(call bbsection_flags,all,$(lld_no_opt)),"clang",install-clang)
 
+relink-clang-plo.sh: symbol-ordering
+	ninja -j$(J_NUMBER) -C bbsec/build -t commands clang \
+          | grep -Fe " -o bin/clang-9 " | \
+          sed -e "s! -o bin/clang-9 ! -o bin/clang-9-plo -Wl,--symbol-ordering-file=$(DDIR)/$< -Wl,--no-call-graph-profile-sort !" \
+              -e 's!$(lld_no_opt)!$(lld_opt)!g' > $@
+	chmod +x $@
+
+bbsec/build/bin/clang-9-plo: relink-clang-plo.sh
+	cd bbsec/build && $(DDIR)/$<
+
 stage1-compiler bbinstr-compiler bbsec-compiler: %-compiler: %/install/bin/clang
 	@rm -f $@
 	ln -sf $< $@
@@ -68,17 +78,20 @@ stage1-compiler bbinstr-compiler bbsec-compiler: %-compiler: %/install/bin/clang
 clang.perfdata: run-commands.sh bbinstr-compiler
 	perf record -o $@ -e "cycles:u" -j any,u -- ./$< $(DDIR)/bbinstr/install/bin/clang
 
-clang.profile clang.symfile: clang.perfdata
-	./plotool.sh $(DDIR)/bbinstr/install/bin/clang $<
+clang-9.profile clang-9.symfile: clang.perfdata
+	./plotool.sh $(DDIR)/bbinstr/install/bin/clang-9 $<
 
-run-plo.sh: bbsec-compiler clang.symfile clang.profile
+run-plo.sh: bbsec-compiler clang-9.symfile clang-9.profile
 	cd bbsec/build ; ninja -t commands clang | grep -Ee "-o bin/clang-[0-9a-f]+" \
-	  | sed -E 's!clang\+\+ !clang++ -Wl,-plo -Wl,-symfile=$(DDIR)/clang.symfile -Wl,-profile=$(DDIR)/clang.profile !' > $(DDIR)/$@
+	  | sed -E 's!clang\+\+ !clang++ -Wl,-plo -Wl,-symfile=$(DDIR)/clang-9.symfile -Wl,-profile=$(DDIR)/clang-9.profile !' > $(DDIR)/$@
 	chmod +x $@
 
 run-plo: run-plo.sh stage1-compiler
 	{ cd bbsec/build && $(DDIR)/$< ; } 2>&1 | tee $(DDIR)/$@.autolog
 	mv $@.autolog $@
+
+symbol-ordering: run-plo
+	grep "SYM: " $< | sed -Ee 's!^SYM: !!' > $@
 
 run-commands.sh:
 	rsync -a -f "+ */" -f "+ *.inc" -f "+ *.h" -f "+ *.def" -f "- *" \
@@ -90,7 +103,7 @@ run-commands.sh:
                    -e 's!^$(RELEASE_LLVM_BIN)/clang !$${CCP} !' \
                    -e 's!^!cd $(DDIR)/test-build \&\& !' >> commands
 	echo "export CCP=\$$1" > $@
-	echo "head -n 333 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
+	echo "head -n 600 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
                 >> $@
 	chmod +x $@
 
@@ -125,6 +138,7 @@ clean:
 	rm -fr test-build
 	rm -f *.autolog
 	rm -f run-plo.sh run-plo
+	rm -f relink-clang-plo.sh
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler

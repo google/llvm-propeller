@@ -37,7 +37,7 @@ class ELFCfg;
 class ELFCfgNode;
 class ELFView;
 class PLOProfile;
-class FuncOrdering;
+class CallGraph;
 
 class PLO {
 public:
@@ -86,7 +86,7 @@ public:
   atomic<uint32_t> InvalidCfgs{0};
 
   friend class PLOProfile;
-  friend class PLOFuncOrdering;
+  friend class CallGraph;
   
 };
 

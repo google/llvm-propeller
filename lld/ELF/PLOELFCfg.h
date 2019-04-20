@@ -99,7 +99,7 @@ public:
   uint64_t    Weight;
   
   // ELFCfg assumes the ownership for all Nodes / Edges.
-  list<unique_ptr<ELFCfgNode>> Nodes;
+  list<unique_ptr<ELFCfgNode>> Nodes;  // Sorted by address.
   list<unique_ptr<ELFCfgEdge>> IntraEdges;
   list<unique_ptr<ELFCfgEdge>> InterEdges;
 

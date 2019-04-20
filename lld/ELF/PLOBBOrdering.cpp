@@ -23,21 +23,23 @@ PLOBBOrdering::PLOBBOrdering(ELFCfg &C) : Cfg(C) {
 }
 
 void PLOBBOrdering::ConnectChain(ELFCfgEdge *Edge, BBChain *C1, BBChain *C2) {
-  std::cout << "Merging edge: " << *Edge << std::endl;
-  std::cout << "  " << *C1 << std::endl;
-  std::cout << "  " << *C2 << std::endl;
+  // std::cout << "Merging edge: " << *Edge << std::endl;
+  // std::cout << "  " << *C1 << std::endl;
+  // std::cout << "  " << *C2 << std::endl;
   C1->Nodes.insert(C1->Nodes.end(), C2->Nodes.begin(), C2->Nodes.end());
   C2->Nodes.clear();
-  std::cout << "==>" << std::endl;
-  std::cout << "  " << *C1 << std::endl;
+  // std::cout << "==>" << std::endl;
+  // std::cout << "  " << *C1 << std::endl;
 }
 
-void PLOBBOrdering::DoOrder() {
+void PLOBBOrdering::DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSymbols) {
   // Sort Cfg intra edges
   list<ELFCfgEdge *> Edges;
   std::for_each(Cfg.IntraEdges.begin(), Cfg.IntraEdges.end(),
                 [&Edges](unique_ptr<ELFCfgEdge> &U) {
-                  Edges.push_back(U.get());
+                  if (U->Type == ELFCfgEdge::INTRA_FUNC) {
+                    Edges.push_back(U.get());
+                  }
                 });
   Edges.sort([](ELFCfgEdge *E1, ELFCfgEdge *E2) {
                 return E1->Weight < E2->Weight;
@@ -70,9 +72,14 @@ void PLOBBOrdering::DoOrder() {
      ;
   }
 
-  std::cout << Chains.size() << " chains: " << std::endl;
   for (auto &C: Chains) {
-    std::cout << "  " << *C << std::endl;
+    if (C->Nodes.size() == 1) {
+      ColdSymbols.push_back((*C->Nodes.begin())->ShName);
+    } else {
+      for (auto *N: C->Nodes) {
+        HotSymbols.push_back(N->ShName);
+      }
+    }
   }
 }
 

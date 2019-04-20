@@ -120,7 +120,7 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
     uint64_t TotalCfgs = 0;
     uint64_t CfgHasWeight = 0;
     PLOFuncOrdering PFO(*this);
-    std::cout << PFO.CG;
+    // std::cout << PFO.CG;
     // for (auto &View: Views) {
     //   for (auto &I: View->Cfgs) {
     //     ++TotalCfgs;
