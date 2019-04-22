@@ -53,6 +53,10 @@ void PLOBBOrdering::DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSy
       auto *C1 = (*I).get();
       auto *C1Head = *(C1->Nodes.begin());
       auto *C1Tail = *(C1->Nodes.rbegin());
+      if (!(Edge->Src == C1Tail || Edge->Src == C1Head ||
+            Edge->Sink == C1Tail || Edge->Sink == C1Head)) {
+        continue;
+      }
       for (auto J = std::next(I); J != E; ++J) {
         auto C2 = (*J).get();
         auto *C2Head = *(C2->Nodes.begin());

@@ -83,6 +83,7 @@ bool PLO::ProcessSymfile(StringRef &Symfile) {
 // This method if thread safe.
 void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
+  fprintf(stderr, "Processing: %s\n", Inf->getName().str().c_str());
   ELFView *View = ELFView::Create(Inf->getName(), Pair.second, Inf->MB);
   if (View) {
     ELFCfgBuilder(*this, View).BuildCfgs();

@@ -65,4 +65,4 @@ echo "Done generating ${SYMNAME}."
 
 # rm -f ${BASENAME}.brstack.?? ${BASENAME}{.brstack,.mmap2,.mmap2.1,.pid}
 echo rm -fr ${TMPDIR}
-# rm -fr ${TMPDIR}
+rm -fr ${TMPDIR}
