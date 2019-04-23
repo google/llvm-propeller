@@ -1606,6 +1606,16 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   // Add the range of this function to the list of ranges for the CU.
   TheCU.addRange(RangeSpan(Asm->getFunctionBegin(), Asm->getFunctionEnd()));
 
+  // With basic block sections, add all basic block ranges with unique
+  // sections.
+  if (MF->getBasicBlockSections()) {
+    for (auto &MBB : *MF) {
+      if (MBB.isUniqueSection() && !MBB.pred_empty()) {
+        TheCU.addRange(RangeSpan(MBB.getSymbol(), MBB.getEndMCSymbol()));
+      }
+    }
+  }
+
   // Under -gmlt, skip building the subprogram if there are no inlined
   // subroutines inside it. But with -fdebug-info-for-profiling, the subprogram
   // is still needed as we need its source location.
