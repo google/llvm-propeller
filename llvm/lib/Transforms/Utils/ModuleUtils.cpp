@@ -269,8 +269,7 @@ void llvm::filterDeadComdatFunctions(
   });
 }
 
-std::string llvm::getUniqueModuleId(Module *M,
-                                    bool UseModuleName) {
+std::string llvm::getUniqueModuleId(Module *M) {
   MD5 Md5;
   bool ExportsSymbols = false;
   auto AddGlobal = [&](GlobalValue &GV) {
@@ -291,13 +290,8 @@ std::string llvm::getUniqueModuleId(Module *M,
   for (auto &IF : M->ifuncs())
     AddGlobal(IF);
 
-  if (!ExportsSymbols && !UseModuleName)
+  if (!ExportsSymbols)
     return "";
-  
-  if (UseModuleName) {
-    Md5.update(M->getModuleIdentifier());
-    Md5.update(ArrayRef<uint8_t>{0});
-  }
 
   MD5::MD5Result R;
   Md5.final(R);

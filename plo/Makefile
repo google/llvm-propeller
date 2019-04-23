@@ -133,12 +133,14 @@ clean:
 	  rm -fr $${F} ; rm -f $${F}-compiler ; \
 	done
 	rm -f commands run-commands.sh
-	rm -f clang.perfdata* clang.profile clang.symfile
+	rm -f clang.perfdata* clang-9.profile clang-9.symfile
 	rm -f sample.o sample.out sample.perfdata sample.out.symfile sample.out.profile sample.out.cfg
 	rm -fr test-build
-	rm -f *.autolog
+	rm -f *.autolog log
 	rm -f run-plo.sh run-plo
 	rm -f relink-clang-plo.sh
+	rm -f symbol-ordering
+	rm -f *~
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler

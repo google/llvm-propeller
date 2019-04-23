@@ -2098,9 +2098,7 @@ bool AsmParser::parseStatement(ParseStatementInfo &Info,
     case DK_CFI_SIGNAL_FRAME:
       return parseDirectiveCFISignalFrame();
     case DK_CFI_UNDEFINED:
-      // Disable CFI for inline asm until handled cleanly.
-      return true;
-      // return parseDirectiveCFIUndefined(IDLoc);
+      return parseDirectiveCFIUndefined(IDLoc);
     case DK_CFI_REGISTER:
       return parseDirectiveCFIRegister(IDLoc);
     case DK_CFI_WINDOW_SAVE:
