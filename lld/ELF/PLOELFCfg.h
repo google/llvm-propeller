@@ -60,7 +60,7 @@ class ELFCfgNode {
   StringRef          ShName;
   uint64_t           ShSize;
   uint64_t           MappedAddr;
-  uint8_t            AddrTag;
+  uint64_t           Weight;
   ELFCfg            *Cfg;
   
   list<ELFCfgEdge *> Outs;      // Intra function edges.
@@ -85,7 +85,7 @@ private:
   ELFCfgNode(uint64_t _Shndx, const StringRef &_ShName,
              uint64_t _Size, uint64_t _MappedAddr, ELFCfg *_Cfg)
     : Shndx(_Shndx), ShName(_ShName), ShSize(_Size),
-      MappedAddr(_MappedAddr), AddrTag(0), Cfg(_Cfg),
+      MappedAddr(_MappedAddr), Weight(0), Cfg(_Cfg),
       Outs(), Ins(), CallOuts(), CallIns(), FTEdge(nullptr) {}
 
   friend class ELFCfg;
@@ -96,14 +96,13 @@ class ELFCfg {
 public:
   ELFView    *View;
   StringRef   Name;
-  uint64_t    Weight;
   
   // ELFCfg assumes the ownership for all Nodes / Edges.
   list<unique_ptr<ELFCfgNode>> Nodes;  // Sorted by address.
   list<unique_ptr<ELFCfgEdge>> IntraEdges;
   list<unique_ptr<ELFCfgEdge>> InterEdges;
 
-  ELFCfg(ELFView *V, const StringRef &N) : View(V), Name(N), Weight(0) {}
+  ELFCfg(ELFView *V, const StringRef &N) : View(V), Name(N) {}
   ~ELFCfg() {}
 
   bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);
@@ -113,6 +112,13 @@ public:
   ELFCfgNode *GetEntryNode() const {
     assert(!Nodes.empty());
     return Nodes.begin()->get();
+  }
+
+  template <class Visitor>
+  void ForEachNodeRef(Visitor V) {
+    for (auto &N: Nodes) {
+      V(*N);
+    }
   }
 
 private:

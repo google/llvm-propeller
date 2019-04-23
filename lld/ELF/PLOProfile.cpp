@@ -160,9 +160,7 @@ bool PLOProfile::FindCfgForAddress(uint64_t Addr,
         // Also not, Objects (CfgLI->second) are sorted in the way
         // they appear on the command line, which is the same as how
         // linker chooses the weak symbol definition.
-        for (auto &View: CfgLI->second) {
-          ELFCfg *Cfg = View->Cfgs[IndexName].get();
-          assert(Cfg);
+        for (auto *Cfg: CfgLI->second) {
           // Check Cfg does have name "SymName".
           for (auto &N: Cfg->Nodes) {
             if (N->ShName == SymName) {

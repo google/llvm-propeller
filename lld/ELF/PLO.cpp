@@ -92,7 +92,7 @@ void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
       std::lock_guard<mutex> L(this->Lock);
       this->Views.emplace_back(View);
       for (auto &P : View->Cfgs) {
-	auto R = CfgMap[P.first].emplace(View);
+	auto R = CfgMap[P.first].emplace(P.second.get());
 	(void)(R);
 	assert(R.second);
       }
@@ -120,7 +120,16 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
   if (PLOProfile(*this).ProcessProfile(ProfileName)) {
     uint64_t TotalCfgs = 0;
     uint64_t CfgHasWeight = 0;
-    PLOFuncOrdering PFO(*this);
+    PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
+    list<ELFCfg *> OrderResult;
+    PFO.DoOrder(OrderResult);
+    // list<StringRef> HotSymbols, ColdSymbols;
+    // for (auto &Sym: HotSymbols) {
+    //   printf("SYM: %s\n", Sym.str().c_str());
+    // }
+    // for (auto &Sym: ColdSymbols) {
+    //   printf("SYM: %s\n", Sym.str().c_str());
+    // }
     // std::cout << PFO.CG;
     // for (auto &View: Views) {
     //   for (auto &I: View->Cfgs) {
@@ -134,7 +143,7 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
     //     }
     //   }
     // }
-    fprintf(stderr, "Cfg has Weight / Total Cfg: %lu / %lu\n", CfgHasWeight, TotalCfgs);
+    // fprintf(stderr, "Cfg has Weight / Total Cfg: %lu / %lu\n", CfgHasWeight, TotalCfgs);
     return true;
   }
 

@@ -5,10 +5,11 @@
 #include <memory>
 #include <ostream>
 
-#include "PLOELFCfg.h"
+#include "llvm/ADT/StringRef.h"
 
 using std::list;
 using std::unique_ptr;
+using llvm::StringRef;
 
 namespace lld {
 namespace plo {
@@ -21,6 +22,7 @@ class BBChain {
 public:
   BBChain(ELFCfgNode *N) : Nodes(1, N) {}
   list<ELFCfgNode *> Nodes;
+  double Density;
 };
 
 class PLOBBOrdering {
@@ -36,7 +38,7 @@ public:
   list<unique_ptr<BBChain>>  Chains;
 };
 
-ostream &operator << (ostream & Out, BBChain &C);
+std::ostream &operator << (std::ostream & Out, BBChain &C);
   
 }
 }

@@ -6,7 +6,9 @@
 
 #include "llvm/ADT/StringRef.h"
 
+#include "PLO.h"
 #include "PLOELFCfg.h"
+#include "PLOELFView.h"
 
 using std::map;
 using std::pair;
@@ -76,13 +78,85 @@ void PLOBBOrdering::DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSy
      ;
   }
 
-  for (auto &C: Chains) {
-    if (C->Nodes.size() == 1) {
-      ColdSymbols.push_back((*C->Nodes.begin())->ShName);
+  // for (auto &C: Chains) {
+  //   if (C->Nodes.size() == 1) {
+  //     ColdSymbols.push_back((*C->Nodes.begin())->ShName);
+  //   } else {
+  //     for (auto *N: C->Nodes) {
+  //       HotSymbols.push_back(N->ShName);
+  //     }
+  //   }
+  // }
+
+  for (auto I = Chains.begin(), E = Chains.end(); I != E;) {
+    if ((*I)->Nodes.size() == 1) {
+      ColdSymbols.push_back((*(*I)->Nodes.begin())->ShName);
+      Chains.erase(I++);
     } else {
-      for (auto *N: C->Nodes) {
-        HotSymbols.push_back(N->ShName);
+      ++I;
+    }
+  }
+
+  if (Chains.empty())
+    return ;
+
+  // creating nodes -> Chain mapping:
+  map<ELFCfgNode *, BBChain *> Map;
+  for (auto &C: Chains) {
+    for (auto *N: C->Nodes) {
+      Map[N] = C.get();
+    }
+  }
+
+  // Calculating chain density
+  for (auto &C: Chains) {
+    uint64_t TotalNodeSize = 0;
+    for (auto *N: C->Nodes) {
+      TotalNodeSize += N->ShSize;
+    }
+    C->Density = TotalNodeSize / C->Nodes.size();
+  }
+
+  auto HasEdgeOver =
+    [&Map](BBChain *C1, BBChain *C2) {
+      uint64_t result = 0;
+      for (auto *N: C1->Nodes) {
+        if (N->Outs.size() == 2) {
+          ELFCfgEdge *E1 = *(N->Outs.begin());
+          ELFCfgEdge *E2 = *(N->Outs.rbegin());
+          ELFCfgEdge *LesserEdge = nullptr;
+          if (E1->Weight == E2->Weight) continue;
+          if (E1->Weight > E2->Weight) {
+            LesserEdge = E2;
+          } else {
+            LesserEdge = E1;
+          }
+          auto R = Map.find(LesserEdge->Sink);
+          if (R != Map.end() && R->second == C2) {
+            if (result == 0 || result < LesserEdge->Weight) {
+              result = LesserEdge->Weight;
+            }
+          }
+        }
       }
+      return result;
+    };
+
+  auto CompareChain =
+    [&HasEdgeOver](unique_ptr<BBChain> &C1, unique_ptr<BBChain> &C2) {
+      int R1 = HasEdgeOver(C1.get(), C2.get());
+      int R2 = HasEdgeOver(C2.get(), C1.get());
+      if (R1 == R2) {
+        return -C1->Density < -C2->Density;
+      }
+      return -R1 < -R2;
+    };
+
+
+  Chains.sort(CompareChain);
+  for (auto &C: Chains) {
+    for (auto *N: C->Nodes) {
+      HotSymbols.push_back(N->ShName);
     }
   }
 }

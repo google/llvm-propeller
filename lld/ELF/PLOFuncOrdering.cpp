@@ -16,10 +16,10 @@ using std::vector;
 namespace lld {
 namespace plo {
 
-PLOFuncOrdering::PLOFuncOrdering(PLO &Plo) {
-  CG.InitGraph(Plo);
-  CG.DoOrder();
-}
+// PLOFuncOrdering::PLOFuncOrdering(PLO &Plo) {
+//   CG.InitGraph(Plo);
+//   CG.DoOrder();
+// }
 
 void CallGraph::InitGraph(PLO &Plo) {
   map<ELFCfg *, CGPoint *> Map;
@@ -35,9 +35,7 @@ void CallGraph::InitGraph(PLO &Plo) {
       }
     };
   for (auto &Pair: Plo.CfgMap) {
-    StringRef CfgName = Pair.first;
-    ELFView *V = *(Pair.second.begin());
-    ELFCfg *Cfg = V->Cfgs[CfgName].get();
+    ELFCfg *Cfg = *(Pair.second.begin());
     CGPoint *P1 = FindOrCreatePoint(Cfg);
     for (auto &IEdge: Cfg->InterEdges) {
       if (IEdge->Src->Cfg == IEdge->Sink->Cfg) continue;
@@ -110,8 +108,11 @@ void CallGraph::DoOrder() {
       break;
     for (ELFCfg *Cfg: P->Cfgs) {
       std::cout << "Do order: " << Cfg->Name.str() << std::endl;
-      PLOBBOrdering BBO(*Cfg);
-      BBO.DoOrder(HotSymbols, ColdSymbols);
+      for (auto &N: Cfg->Nodes) {
+        std::cout << "SYM: " << N->ShName.str() << std::endl;
+      }
+      // PLOBBOrdering BBO(*Cfg);
+      // BBO.DoOrder(HotSymbols, ColdSymbols);
     }
     T = std::prev(T);
   }
@@ -127,12 +128,48 @@ void CallGraph::DoOrder() {
   for (; S != T; ++S) {
     CGPoint *P = *S;
     for (ELFCfg *Cfg: P->Cfgs) {
-      // std::cout << "Output cold symbols from: " << Cfg->Name.str() << std::endl;
       for (auto &Node: Cfg->Nodes) {
         std::cout << "SYM: " << Node->ShName.str() << std::endl;
       }
     }
   }
+}
+
+bool CCubeAlgorithm::DoOrder(list<ELFCfg *> &OrderResult) {
+  map<uint64_t, ELFCfg *> WeightMap;
+  map<ELFCfg *, Cluster *> ClusterMap;
+  Plo.ForEachCfgRef([this, &ClusterMap, &WeightMap](ELFCfg &Cfg) {
+                      uint64_t CfgWeight = 0;
+                      Cfg.ForEachNodeRef([&CfgWeight](ELFCfgNode &N) {
+                                           CfgWeight += N.Weight;
+                                         });
+                      WeightMap[CfgWeight] = &Cfg;
+                      Cluster *C = new Cluster(&Cfg);
+                      Clusters.emplace_back(C);
+                      ClusterMap[&Cfg] = C;
+                    });
+
+  auto MostLikelyPredecessor = [](ELFCfg *Cfg) -> ELFCfg * {
+                                 ELFCfgNode *Entry = Cfg->GetEntryNode();
+                                 if (!Entry) return nullptr;
+                                 ELFCfgEdge *E = nullptr;
+                                 for (ELFCfgEdge *CallIn: Entry->CallIns) {
+                                   if (!E || E->Weight < CallIn->Weight) {
+                                     E = CallIn;
+                                   }
+                                 }
+                                 return E->Src->Cfg;
+                               };
+
+  for (auto P = WeightMap.rbegin(), E = WeightMap.rend(); P != E; ++P) {
+    ELFCfg *Cfg = P->second;
+    ELFCfg *PredecessorCfg = MostLikelyPredecessor(Cfg);
+    auto *PredecessorCluster = ClusterMap[PredecessorCfg];
+    auto *Cluster = ClusterMap[Cfg];
+    
+  }
+  
+  return true;
 }
 
 using std::endl;

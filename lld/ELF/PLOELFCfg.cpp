@@ -44,12 +44,13 @@ ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
 }
 
 bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
+  assert(From->Cfg == To->Cfg);
   if (From == To) return true;
   ELFCfgNode *P = From;
   while (P && P != To) {
+    ++P->Weight;
     if (P->FTEdge) {
       ++P->FTEdge->Weight;
-      ++this->Weight;
       P = P->FTEdge->Sink;
     } else {
       P = nullptr;
@@ -58,11 +59,13 @@ bool ELFCfg::MarkPath(ELFCfgNode *From, ELFCfgNode *To) {
   if (!P) {
     return false;
   }
+  ++(P->Weight);
   return true;
 }
 
 void ELFCfg::MapBranch(ELFCfgNode *From, ELFCfgNode *To) {
-  ++this->Weight;
+  ++From->Weight;
+  ++To->Weight;
   for (auto &E : From->Outs) {
     if (E->Sink == To) {
       ++(E->Weight);
@@ -75,15 +78,15 @@ void ELFCfg::MapBranch(ELFCfgNode *From, ELFCfgNode *To) {
 void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
   assert(From->Cfg == this);
   assert(From->Cfg != To->Cfg);
+  ++From->Weight;
+  ++To->Weight;
   for (auto &E : From->CallOuts) {
     if (E->Sink == To) {
       ++(E->Weight);
       return ;
     }
   }
-  ++(CreateEdge(From,
-                To,
-                ELFCfgEdge::INTER_FUNC)->Weight);
+  ++(CreateEdge(From, To, ELFCfgEdge::INTER_FUNC)->Weight);
 }
 
 void ELFCfgBuilder::BuildCfgs() {
@@ -409,8 +412,7 @@ ostream & operator << (ostream &Out, const ELFCfgEdge &Edge) {
 
 ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
   Out << "Cfg: '" << Cfg.View->ViewName.str() << ":"
-      << Cfg.Name.str() << "', Weight="
-      << std::noshowbase << std::dec << Cfg.Weight << std::endl;
+      << Cfg.Name.str() << "'" << std::endl;
   for (auto &N : Cfg.Nodes) {
     auto &Node = *N;
     Out << "  Node: " << Node << std::endl;
@@ -428,6 +430,9 @@ ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
   return Out;
 }
 
+bool PLO::ELFViewOrdinalComparator::operator ()(const ELFCfg *A, const ELFCfg *B) {
+   return A->View->Ordinal < B->View->Ordinal;
+}
 
 }  // namespace plo
 }  // namespace lld

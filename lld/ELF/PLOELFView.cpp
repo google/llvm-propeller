@@ -35,9 +35,5 @@ void ELFView::EraseCfg(ELFCfg *&CfgPtr) {
   CfgPtr = nullptr;
 }
 
-bool PLO::ELFViewOrdinalComparator::Impl(const ELFView *A, const ELFView *B) {
-  return A->Ordinal < B->Ordinal;
-}
-
 }  // namespace plo
 }  // namespace lld

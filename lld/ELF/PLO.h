@@ -53,7 +53,12 @@ public:
   // Sym -> <Addr, Size> map.
   map<StringRef, pair<uint64_t, uint64_t>> SymAddrSizeMap;
 
-  // unique_ptr<PLOProfile> Profile;
+  template <class Visitor>
+  void ForEachCfgRef(Visitor V) {
+    for (auto &P : CfgMap) {
+      V(*(*(P.second.begin())));
+    }
+  }
 
 private:
   bool ProcessSymfile(StringRef &SymfileName);
@@ -68,12 +73,9 @@ private:
   // Same named Cfgs may exist in different object files (e.g. weak symbols.)
   // We always choose symbols that appear earlier on the command line.
   struct ELFViewOrdinalComparator {
-    bool Impl(const ELFView *A, const ELFView *B);
-    bool operator()(const ELFView *A, const ELFView *B) {
-      return Impl(A, B);
-    }
+    bool operator()(const ELFCfg *A, const ELFCfg *B);
   };
-  map<StringRef, set<ELFView *, ELFViewOrdinalComparator>> CfgMap;
+  map<StringRef, set<ELFCfg *, ELFViewOrdinalComparator>> CfgMap;
 
   // Lock to access / modify global data structure.
   mutex Lock;

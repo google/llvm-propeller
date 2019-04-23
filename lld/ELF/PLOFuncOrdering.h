@@ -127,12 +127,35 @@ public:
   map<uint64_t, unique_ptr<CGPoint>>   Points;
 };
 
+class CCubeAlgorithm {
+public:
+  class Cluster {
+  public:
+    Cluster(ELFCfg *Cfg) : Nodes(1, Cfg) {}
+    ~Cluster() {}
+    list<ELFCfg *> Nodes;
+  };
+
+public:
+  CCubeAlgorithm(PLO &P) : Plo(P) {}
+
+  bool DoOrder(list<ELFCfg *> &OrderResult);
+
+  PLO &Plo;
+  list<unique_ptr<Cluster>> Clusters;
+};
+
+template <class ReorderingAlgorithm>
 class PLOFuncOrdering {
  public:
-  PLOFuncOrdering(PLO &Plo);
+  PLOFuncOrdering(PLO &P) :Algo(P) {}
   ~PLOFuncOrdering() {}
 
-  CallGraph CG;
+  bool DoOrder(list<ELFCfg *> &OrderResult) {
+    return Algo.DoOrder(OrderResult);
+  }
+
+  ReorderingAlgorithm Algo;
 };
  
 }
