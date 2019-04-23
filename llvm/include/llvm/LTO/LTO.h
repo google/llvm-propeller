@@ -87,6 +87,10 @@ setupOptimizationRemarks(LLVMContext &Context, StringRef LTORemarksFilename,
                          StringRef LTORemarksPasses,
                          bool LTOPassRemarksWithHotness, int Count = -1);
 
+/// Setups the output file for saving statistics.
+Expected<std::unique_ptr<ToolOutputFile>>
+setupStatsFile(StringRef StatsFilename);
+
 class LTO;
 struct SymbolResolution;
 class ThinBackendProc;
@@ -131,6 +135,7 @@ public:
     using irsymtab::Symbol::isWeak;
     using irsymtab::Symbol::isIndirect;
     using irsymtab::Symbol::getName;
+    using irsymtab::Symbol::getIRName;
     using irsymtab::Symbol::getVisibility;
     using irsymtab::Symbol::canBeOmittedFromSymbolTable;
     using irsymtab::Symbol::isTLS;
@@ -160,6 +165,9 @@ public:
 
   // Returns a table with all the comdats used by this file.
   ArrayRef<StringRef> getComdatTable() const { return ComdatTable; }
+
+  // Returns the only BitcodeModule from InputFile.
+  BitcodeModule &getSingleBitcodeModule();
 
 private:
   ArrayRef<Symbol> module_symbols(unsigned I) const {

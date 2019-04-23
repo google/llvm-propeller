@@ -88,7 +88,12 @@ static bool isEndCF(const MachineInstr& MI, const SIRegisterInfo* TRI) {
 }
 
 static bool isFullExecCopy(const MachineInstr& MI) {
-  return MI.getOperand(1).getReg() == AMDGPU::EXEC;
+  if (MI.isCopy() && MI.getOperand(1).getReg() == AMDGPU::EXEC) {
+    assert(MI.isFullCopy());
+    return true;
+  }
+
+  return false;
 }
 
 static unsigned getOrNonExecReg(const MachineInstr &MI,
@@ -241,7 +246,7 @@ static unsigned optimizeVcndVcmpPair(MachineBasicBlock &MBB,
   MachineInstr *Andn2 = BuildMI(MBB, *And, And->getDebugLoc(),
                                 TII->get(Andn2Opc), And->getOperand(0).getReg())
                             .addReg(ExecReg)
-                            .addReg(CCReg, CC->getSubReg());
+                            .addReg(CCReg, 0, CC->getSubReg());
   And->eraseFromParent();
   LIS->InsertMachineInstrInMaps(*Andn2);
 

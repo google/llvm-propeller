@@ -3147,30 +3147,44 @@ SDValue AMDGPUTargetLowering::performSraCombine(SDNode *N,
 
 SDValue AMDGPUTargetLowering::performSrlCombine(SDNode *N,
                                                 DAGCombinerInfo &DCI) const {
-  if (N->getValueType(0) != MVT::i64)
-    return SDValue();
-
-  const ConstantSDNode *RHS = dyn_cast<ConstantSDNode>(N->getOperand(1));
+  auto *RHS = dyn_cast<ConstantSDNode>(N->getOperand(1));
   if (!RHS)
     return SDValue();
 
+  EVT VT = N->getValueType(0);
+  SDValue LHS = N->getOperand(0);
   unsigned ShiftAmt = RHS->getZExtValue();
+  SelectionDAG &DAG = DCI.DAG;
+  SDLoc SL(N);
+
+  // fold (srl (and x, c1 << c2), c2) -> (and (srl(x, c2), c1)
+  // this improves the ability to match BFE patterns in isel.
+  if (LHS.getOpcode() == ISD::AND) {
+    if (auto *Mask = dyn_cast<ConstantSDNode>(LHS.getOperand(1))) {
+      if (Mask->getAPIntValue().isShiftedMask() &&
+          Mask->getAPIntValue().countTrailingZeros() == ShiftAmt) {
+        return DAG.getNode(
+            ISD::AND, SL, VT,
+            DAG.getNode(ISD::SRL, SL, VT, LHS.getOperand(0), N->getOperand(1)),
+            DAG.getNode(ISD::SRL, SL, VT, LHS.getOperand(1), N->getOperand(1)));
+      }
+    }
+  }
+
+  if (VT != MVT::i64)
+    return SDValue();
+
   if (ShiftAmt < 32)
     return SDValue();
 
   // srl i64:x, C for C >= 32
   // =>
   //   build_pair (srl hi_32(x), C - 32), 0
-
-  SelectionDAG &DAG = DCI.DAG;
-  SDLoc SL(N);
-
   SDValue One = DAG.getConstant(1, SL, MVT::i32);
   SDValue Zero = DAG.getConstant(0, SL, MVT::i32);
 
-  SDValue VecOp = DAG.getNode(ISD::BITCAST, SL, MVT::v2i32, N->getOperand(0));
-  SDValue Hi = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, SL, MVT::i32,
-                           VecOp, One);
+  SDValue VecOp = DAG.getNode(ISD::BITCAST, SL, MVT::v2i32, LHS);
+  SDValue Hi = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, SL, MVT::i32, VecOp, One);
 
   SDValue NewConst = DAG.getConstant(ShiftAmt - 32, SL, MVT::i32);
   SDValue NewShift = DAG.getNode(ISD::SRL, SL, MVT::i32, Hi, NewConst);
@@ -3692,6 +3706,8 @@ SDValue AMDGPUTargetLowering::performFNegCombine(SDNode *N,
       RHS = RHS.getOperand(0);
 
     SDValue Res = DAG.getNode(ISD::FADD, SL, VT, LHS, RHS, N0->getFlags());
+    if (Res.getOpcode() != ISD::FADD)
+      return SDValue(); // Op got folded away.
     if (!N0.hasOneUse())
       DAG.ReplaceAllUsesWith(N0, DAG.getNode(ISD::FNEG, SL, VT, Res));
     return Res;
@@ -3711,6 +3727,8 @@ SDValue AMDGPUTargetLowering::performFNegCombine(SDNode *N,
       RHS = DAG.getNode(ISD::FNEG, SL, VT, RHS);
 
     SDValue Res = DAG.getNode(Opc, SL, VT, LHS, RHS, N0->getFlags());
+    if (Res.getOpcode() != Opc)
+      return SDValue(); // Op got folded away.
     if (!N0.hasOneUse())
       DAG.ReplaceAllUsesWith(N0, DAG.getNode(ISD::FNEG, SL, VT, Res));
     return Res;
@@ -3738,6 +3756,8 @@ SDValue AMDGPUTargetLowering::performFNegCombine(SDNode *N,
       RHS = RHS.getOperand(0);
 
     SDValue Res = DAG.getNode(Opc, SL, VT, LHS, MHS, RHS);
+    if (Res.getOpcode() != Opc)
+      return SDValue(); // Op got folded away.
     if (!N0.hasOneUse())
       DAG.ReplaceAllUsesWith(N0, DAG.getNode(ISD::FNEG, SL, VT, Res));
     return Res;
@@ -3766,6 +3786,8 @@ SDValue AMDGPUTargetLowering::performFNegCombine(SDNode *N,
     unsigned Opposite = inverseMinMax(Opc);
 
     SDValue Res = DAG.getNode(Opposite, SL, VT, NegLHS, NegRHS, N0->getFlags());
+    if (Res.getOpcode() != Opposite)
+      return SDValue(); // Op got folded away.
     if (!N0.hasOneUse())
       DAG.ReplaceAllUsesWith(N0, DAG.getNode(ISD::FNEG, SL, VT, Res));
     return Res;
@@ -3776,6 +3798,8 @@ SDValue AMDGPUTargetLowering::performFNegCombine(SDNode *N,
       Ops[I] = DAG.getNode(ISD::FNEG, SL, VT, N0->getOperand(I), N0->getFlags());
 
     SDValue Res = DAG.getNode(AMDGPUISD::FMED3, SL, VT, Ops, N0->getFlags());
+    if (Res.getOpcode() != AMDGPUISD::FMED3)
+      return SDValue(); // Op got folded away.
     if (!N0.hasOneUse())
       DAG.ReplaceAllUsesWith(N0, DAG.getNode(ISD::FNEG, SL, VT, Res));
     return Res;

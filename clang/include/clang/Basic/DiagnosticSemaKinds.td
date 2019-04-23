@@ -9132,6 +9132,10 @@ def err_omp_requires_clause_redeclaration : Error <
   "Only one %0 clause can appear on a requires directive in a single translation unit">;
 def note_omp_requires_previous_clause : Note <
   "%0 clause previously used here">;
+def err_omp_target_before_requires : Error <
+  "target region encountered before requires directive with '%0' clause">;
+def note_omp_requires_encountered_target : Note <
+  "target previously encountered here">;
 def err_omp_invalid_scope : Error <
   "'#pragma omp %0' directive must appear only in file scope">;
 def note_omp_invalid_length_on_this_ptr_mapping : Note <
@@ -9238,6 +9242,12 @@ def err_module_unimported_use_header : Error<
   "%select{declaration|definition|default argument|"
   "explicit specialization|partial specialization}0 of %1 must be imported "
   "from module '%2' before it is required">;
+def err_module_unimported_use_global_module_fragment : Error<
+  "%select{missing '#include'|missing '#include %3'}2; "
+  "%select{||default argument of |explicit specialization of |"
+  "partial specialization of }0%1 must be "
+  "%select{declared|defined|defined|declared|declared}0 "
+  "before it is used">;
 def err_module_unimported_use_multiple : Error<
   "%select{declaration|definition|default argument|"
   "explicit specialization|partial specialization}0 of %1 must be imported "
@@ -9263,11 +9273,42 @@ def err_module_decl_not_at_start : Error<
 def note_global_module_introducer_missing : Note<
   "add 'module;' to the start of the file to introduce a "
   "global module fragment">;
+def err_export_within_anonymous_namespace : Error<
+  "export declaration appears within anonymous namespace">;
+def note_anonymous_namespace : Note<"anonymous namespace begins here">;
+def ext_export_no_name_block : ExtWarn<
+  "ISO C++20 does not permit %select{an empty|a static_assert}0 declaration "
+  "to appear in an export block">, InGroup<ExportUnnamed>;
+def ext_export_no_names : ExtWarn<
+  "ISO C++20 does not permit a declaration that does not introduce any names "
+  "to be exported">, InGroup<ExportUnnamed>;
+def note_export : Note<"export block begins here">;
+def err_export_no_name : Error<
+  "%select{empty|static_assert|asm}0 declaration cannot be exported">;
+def ext_export_using_directive : ExtWarn<
+  "ISO C++20 does not permit using directive to be exported">,
+  InGroup<DiagGroup<"export-using-directive">>;
 def err_export_within_export : Error<
   "export declaration appears within another export declaration">;
+def err_export_internal : Error<
+  "declaration of %0 with internal linkage cannot be exported">;
+def err_export_using_internal : Error<
+  "using declaration referring to %0 with internal linkage cannot be exported">;
 def err_export_not_in_module_interface : Error<
-  "export declaration can only be used within a module interface unit after "
-  "the module declaration">;
+  "export declaration can only be used within a module interface unit"
+  "%select{ after the module declaration|}0">;
+def err_export_in_private_module_fragment : Error<
+  "export declaration cannot be used in a private module fragment">;
+def note_private_module_fragment : Note<
+  "private module fragment begins here">;
+def err_private_module_fragment_not_module : Error<
+  "private module fragment declaration with no preceding module declaration">;
+def err_private_module_fragment_redefined : Error<
+  "private module fragment redefined">;
+def err_private_module_fragment_not_module_interface : Error<
+  "private module fragment in module implementation unit">;
+def note_not_module_interface_add_export : Note<
+  "add 'export' here if this is intended to be a module interface unit">;
 
 def ext_equivalent_internal_linkage_decl_in_modules : ExtWarn<
   "ambiguous use of internal linkage declaration %0 defined in multiple modules">,

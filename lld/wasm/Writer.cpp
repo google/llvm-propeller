@@ -93,6 +93,7 @@ private:
   void createImportSection();
   void createMemorySection();
   void createElemSection();
+  void createDataCountSection();
   void createCodeSection();
   void createDataSection();
   void createCustomSections();
@@ -414,6 +415,16 @@ void Writer::createElemSection() {
   }
 }
 
+void Writer::createDataCountSection() {
+  if (!Segments.size() || !TargetFeatures.count("bulk-memory"))
+    return;
+
+  log("createDataCountSection");
+  SyntheticSection *Section = createSyntheticSection(WASM_SEC_DATACOUNT);
+  raw_ostream &OS = Section->getStream();
+  writeUleb128(OS, Segments.size(), "data count");
+}
+
 void Writer::createCodeSection() {
   if (InputFunctions.empty())
     return;
@@ -718,12 +729,12 @@ void Writer::createProducersSection() {
 }
 
 void Writer::createTargetFeaturesSection() {
-  if (TargetFeatures.size() == 0)
+  if (TargetFeatures.empty())
     return;
 
   SmallVector<std::string, 8> Emitted(TargetFeatures.begin(),
                                       TargetFeatures.end());
-  std::sort(Emitted.begin(), Emitted.end());
+  llvm::sort(Emitted);
   SyntheticSection *Section =
       createSyntheticSection(WASM_SEC_CUSTOM, "target_features");
   auto &OS = Section->getStream();
@@ -865,6 +876,7 @@ void Writer::createSections() {
   createEventSection();
   createExportSection();
   createElemSection();
+  createDataCountSection();
   createCodeSection();
   createDataSection();
   createCustomSections();
@@ -1158,6 +1170,20 @@ void Writer::processRelocations(InputChunk *Chunk) {
         Sym->setGOTIndex(NumImportedGlobals++);
         GOTSymbols.push_back(Sym);
       }
+      break;
+    }
+    case R_WASM_MEMORY_ADDR_SLEB:
+    case R_WASM_MEMORY_ADDR_LEB:
+    case R_WASM_MEMORY_ADDR_REL_SLEB: {
+      if (!Config->Relocatable) {
+        auto* Sym = File->getSymbols()[Reloc.Index];
+        if (Sym->isUndefined() && !Sym->isWeak()) {
+          error(toString(File) + ": cannot resolve relocation of type " +
+                relocTypeToString(Reloc.Type) +
+                " against undefined (non-weak) data symbol: " + toString(*Sym));
+        }
+      }
+      break;
     }
     }
 
@@ -1376,10 +1402,10 @@ void Writer::calculateInitFunctions() {
 
   // Sort in order of priority (lowest first) so that they are called
   // in the correct order.
-  std::stable_sort(InitFunctions.begin(), InitFunctions.end(),
-                   [](const WasmInitEntry &L, const WasmInitEntry &R) {
-                     return L.Priority < R.Priority;
-                   });
+  llvm::stable_sort(InitFunctions,
+                    [](const WasmInitEntry &L, const WasmInitEntry &R) {
+                      return L.Priority < R.Priority;
+                    });
 }
 
 void Writer::run() {

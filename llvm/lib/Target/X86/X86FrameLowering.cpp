@@ -794,8 +794,8 @@ void X86FrameLowering::emitStackProbeCall(MachineFunction &MF,
         .addExternalSymbol(MF.createExternalSymbolName(Symbol));
   }
 
-  unsigned AX = Is64Bit ? X86::RAX : X86::EAX;
-  unsigned SP = Is64Bit ? X86::RSP : X86::ESP;
+  unsigned AX = Uses64BitFramePtr ? X86::RAX : X86::EAX;
+  unsigned SP = Uses64BitFramePtr ? X86::RSP : X86::ESP;
   CI.addReg(AX, RegState::Implicit)
       .addReg(SP, RegState::Implicit)
       .addReg(AX, RegState::Define | RegState::Implicit)
@@ -809,7 +809,7 @@ void X86FrameLowering::emitStackProbeCall(MachineFunction &MF,
     // adjusting %rsp.
     // All other platforms do not specify a particular ABI for the stack probe
     // function, so we arbitrarily define it to not adjust %esp/%rsp itself.
-    BuildMI(MBB, MBBI, DL, TII.get(getSUBrrOpcode(Is64Bit)), SP)
+    BuildMI(MBB, MBBI, DL, TII.get(getSUBrrOpcode(Uses64BitFramePtr)), SP)
         .addReg(SP)
         .addReg(AX);
   }
@@ -3088,8 +3088,7 @@ void X86FrameLowering::orderFrameObjects(
 
   // Sort the objects using X86FrameSortingAlgorithm (see its comment for
   // info).
-  std::stable_sort(SortingObjects.begin(), SortingObjects.end(),
-                   X86FrameSortingComparator());
+  llvm::stable_sort(SortingObjects, X86FrameSortingComparator());
 
   // Now modify the original list to represent the final order that
   // we want. The order will depend on whether we're going to access them

@@ -608,7 +608,7 @@ bool IRTranslator::translateCast(unsigned Opcode, const User &U,
                                  MachineIRBuilder &MIRBuilder) {
   unsigned Op = getOrCreateVReg(*U.getOperand(0));
   unsigned Res = getOrCreateVReg(U);
-  MIRBuilder.buildInstr(Opcode).addDef(Res).addUse(Op);
+  MIRBuilder.buildInstr(Opcode, {Res}, {Op});
   return true;
 }
 
@@ -790,6 +790,8 @@ unsigned IRTranslator::getSimpleIntrinsicOpcode(Intrinsic::ID ID) {
       return TargetOpcode::G_FLOG10;
     case Intrinsic::pow:
       return TargetOpcode::G_FPOW;
+    case Intrinsic::rint:
+      return TargetOpcode::G_FRINT;
     case Intrinsic::round:
       return TargetOpcode::G_INTRINSIC_ROUND;
     case Intrinsic::sin:
@@ -1166,6 +1168,8 @@ bool IRTranslator::translateCall(const User &U, MachineIRBuilder &MIRBuilder) {
 
   MachineInstrBuilder MIB =
       MIRBuilder.buildIntrinsic(ID, ResultRegs, !CI.doesNotAccessMemory());
+  if (isa<FPMathOperator>(CI))
+    MIB->copyIRFlags(CI);
 
   for (auto &Arg : CI.arg_operands()) {
     // Some intrinsics take metadata parameters. Reject them.

@@ -90,17 +90,6 @@ endif()
 add_library_flags_if(LIBCXX_HAVE_CXX_ATOMICS_WITH_LIB atomic)
 add_library_flags_if(MINGW "${MINGW_LIBRARIES}")
 
-# Add the unwinder library.
-if (LIBCXXABI_USE_LLVM_UNWINDER)
-  if (NOT LIBCXXABI_ENABLE_STATIC_UNWINDER AND (TARGET unwind_shared OR HAVE_LIBUNWIND))
-    add_interface_library(unwind_shared)
-  elseif (LIBCXXABI_ENABLE_STATIC_UNWINDER AND (TARGET unwind_static OR HAVE_LIBUNWIND))
-    add_interface_library(unwind_static)
-  else()
-    add_interface_library(unwind)
-  endif()
-endif()
-
 # Setup flags.
 add_link_flags_if_supported(-nodefaultlibs)
 
@@ -171,6 +160,19 @@ if (LIBCXX_ENABLE_SHARED)
   )
   cxx_set_common_defines(cxx_shared)
 
+  # Link against LLVM libunwind
+  if (LIBCXXABI_USE_LLVM_UNWINDER)
+    if (NOT LIBCXXABI_STATICALLY_LINK_UNWINDER_IN_SHARED_LIBRARY AND (TARGET unwind_shared OR HAVE_LIBUNWIND))
+      target_link_libraries(cxx_shared PRIVATE unwind_shared)
+      list(APPEND LIBCXX_INTERFACE_LIBRARIES unwind_shared) # For the linker script
+    elseif (LIBCXXABI_STATICALLY_LINK_UNWINDER_IN_SHARED_LIBRARY AND (TARGET unwind_static OR HAVE_LIBUNWIND))
+      # libunwind is already included in libc++abi
+    else()
+      target_link_libraries(cxx_shared PRIVATE unwind)
+      list(APPEND LIBCXX_INTERFACE_LIBRARIES unwind) # For the linker script
+    endif()
+  endif()
+
   # Link against libc++abi
   if (LIBCXX_STATICALLY_LINK_ABI_IN_SHARED_LIBRARY)
     if (APPLE)
@@ -228,7 +230,8 @@ if (LIBCXX_ENABLE_SHARED)
       COMMAND
         ${PYTHON_EXECUTABLE} ${LIBCXX_SOURCE_DIR}/utils/gen_link_script.py
       ARGS
-        "$<TARGET_LINKER_FILE:cxx_shared>"
+        --input "$<TARGET_SONAME_FILE:cxx_shared>"
+        --output "$<TARGET_LINKER_FILE:cxx_shared>"
         ${LIBCXX_INTERFACE_LIBRARY_NAMES}
       WORKING_DIRECTORY ${LIBCXX_BUILD_DIR}
     )

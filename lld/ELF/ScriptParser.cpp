@@ -636,7 +636,7 @@ std::vector<SectionPattern> ScriptParser::readInputSectionsList() {
 
     std::vector<StringRef> V;
     while (!errorCount() && peek() != ")" && peek() != "EXCLUDE_FILE")
-      V.push_back(next());
+      V.push_back(unquote(next()));
 
     if (!V.empty())
       Ret.push_back({std::move(ExcludeFilePat), StringMatcher(V)});
@@ -752,6 +752,7 @@ bool ScriptParser::readSectionDirective(OutputSection *Cmd, StringRef Tok1, Stri
   } else {
     skip(); // This is "COPY", "INFO" or "OVERLAY".
     Cmd->NonAlloc = true;
+    Cmd->Type = SHT_PROGBITS;
   }
   expect(")");
   return true;

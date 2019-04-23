@@ -349,15 +349,18 @@ struct CodeCompletionBuilder {
     // Turn absolute path into a literal string that can be #included.
     auto Inserted = [&](llvm::StringRef Header)
         -> llvm::Expected<std::pair<std::string, bool>> {
-      auto ResolvedDeclaring =
-          toHeaderFile(C.IndexResult->CanonicalDeclaration.FileURI, FileName);
+      auto DeclaringURI =
+          URI::parse(C.IndexResult->CanonicalDeclaration.FileURI);
+      if (!DeclaringURI)
+        return DeclaringURI.takeError();
+      auto ResolvedDeclaring = URI::resolve(*DeclaringURI, FileName);
       if (!ResolvedDeclaring)
         return ResolvedDeclaring.takeError();
       auto ResolvedInserted = toHeaderFile(Header, FileName);
       if (!ResolvedInserted)
         return ResolvedInserted.takeError();
       return std::make_pair(
-          Includes.calculateIncludePath(*ResolvedDeclaring, *ResolvedInserted),
+          Includes.calculateIncludePath(*ResolvedInserted),
           Includes.shouldInsertInclude(*ResolvedDeclaring, *ResolvedInserted));
     };
     bool ShouldInsert = C.headerToInsertIfAllowed(Opts).hasValue();
@@ -698,8 +701,7 @@ static bool isBlacklistedMember(const NamedDecl &D) {
 struct CompletionRecorder : public CodeCompleteConsumer {
   CompletionRecorder(const CodeCompleteOptions &Opts,
                      llvm::unique_function<void()> ResultsCallback)
-      : CodeCompleteConsumer(Opts.getClangCompleteOpts(),
-                             /*OutputIsBinary=*/false),
+      : CodeCompleteConsumer(Opts.getClangCompleteOpts()),
         CCContext(CodeCompletionContext::CCC_Other), Opts(Opts),
         CCAllocator(std::make_shared<GlobalCodeCompletionAllocator>()),
         CCTUInfo(CCAllocator), ResultsCallback(std::move(ResultsCallback)) {
@@ -820,8 +822,7 @@ class SignatureHelpCollector final : public CodeCompleteConsumer {
 public:
   SignatureHelpCollector(const clang::CodeCompleteOptions &CodeCompleteOpts,
                          const SymbolIndex *Index, SignatureHelp &SigHelp)
-      : CodeCompleteConsumer(CodeCompleteOpts,
-                             /*OutputIsBinary=*/false),
+      : CodeCompleteConsumer(CodeCompleteOpts),
         SigHelp(SigHelp),
         Allocator(std::make_shared<clang::GlobalCodeCompletionAllocator>()),
         CCTUInfo(Allocator), Index(Index) {}

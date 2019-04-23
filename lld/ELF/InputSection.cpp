@@ -253,6 +253,7 @@ void InputSectionBase::parseCompressedHeader() {
     }
 
     UncompressedSize = Hdr->ch_size;
+    Alignment = std::max<uint64_t>(Hdr->ch_addralign, 1);
     RawData = RawData.slice(sizeof(*Hdr));
     return;
   }
@@ -270,6 +271,7 @@ void InputSectionBase::parseCompressedHeader() {
   }
 
   UncompressedSize = Hdr->ch_size;
+  Alignment = std::max<uint64_t>(Hdr->ch_addralign, 1);
   RawData = RawData.slice(sizeof(*Hdr));
 }
 
@@ -613,6 +615,7 @@ static uint64_t getRelocTargetVA(const InputFile *File, RelType Type, int64_t A,
                                  uint64_t P, const Symbol &Sym, RelExpr Expr) {
   switch (Expr) {
   case R_ABS:
+  case R_DTPREL:
   case R_RELAX_TLS_LD_TO_LE_ABS:
   case R_RELAX_GOT_PC_NOPIC:
     return Sym.getVA(A);
@@ -632,7 +635,7 @@ static uint64_t getRelocTargetVA(const InputFile *File, RelType Type, int64_t A,
   case R_GOTPLTREL:
     return Sym.getVA(A) - In.GotPlt->getVA();
   case R_GOTPLT:
-  case R_RELAX_TLS_GD_TO_IE_END:
+  case R_RELAX_TLS_GD_TO_IE_GOTPLT:
     return Sym.getGotVA() + A - In.GotPlt->getVA();
   case R_TLSLD_GOT_OFF:
   case R_GOT_OFF:
@@ -806,7 +809,7 @@ void InputSection::relocateNonAlloc(uint8_t *Buf, ArrayRef<RelTy> Rels) {
     if (Expr == R_NONE)
       continue;
 
-    if (Expr != R_ABS) {
+    if (Expr != R_ABS && Expr != R_DTPREL) {
       std::string Msg = getLocation<ELFT>(Offset) +
                         ": has non-ABS relocation " + toString(Type) +
                         " against symbol '" + toString(Sym) + "'";
@@ -908,7 +911,7 @@ void InputSectionBase::relocateAlloc(uint8_t *Buf, uint8_t *BufEnd) {
     case R_RELAX_TLS_GD_TO_IE:
     case R_RELAX_TLS_GD_TO_IE_ABS:
     case R_RELAX_TLS_GD_TO_IE_GOT_OFF:
-    case R_RELAX_TLS_GD_TO_IE_END:
+    case R_RELAX_TLS_GD_TO_IE_GOTPLT:
       Target->relaxTlsGdToIe(BufLoc, Type, TargetVA);
       break;
     case R_PPC_CALL:
@@ -1224,11 +1227,9 @@ SectionPiece *MergeInputSection::getSectionPiece(uint64_t Offset) {
 
   // If Offset is not at beginning of a section piece, it is not in the map.
   // In that case we need to  do a binary search of the original section piece vector.
-  auto It2 =
-      llvm::upper_bound(Pieces, Offset, [](uint64_t Offset, SectionPiece P) {
-        return Offset < P.InputOff;
-      });
-  return &It2[-1];
+  auto It = llvm::bsearch(Pieces,
+                          [=](SectionPiece P) { return Offset < P.InputOff; });
+  return &It[-1];
 }
 
 // Returns the offset in an output section for a given input offset.

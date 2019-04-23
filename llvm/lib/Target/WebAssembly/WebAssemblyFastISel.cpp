@@ -151,7 +151,7 @@ private:
     return MVT::INVALID_SIMPLE_VALUE_TYPE;
   }
   bool computeAddress(const Value *Obj, Address &Addr);
-  bool materializeLoadStoreOperands(Address &Addr);
+  void materializeLoadStoreOperands(Address &Addr);
   void addLoadStoreOperands(const Address &Addr, const MachineInstrBuilder &MIB,
                             MachineMemOperand *MMO);
   unsigned maskI1Value(unsigned Reg, const Value *V);
@@ -207,7 +207,6 @@ public:
 } // end anonymous namespace
 
 bool WebAssemblyFastISel::computeAddress(const Value *Obj, Address &Addr) {
-
   const User *U = nullptr;
   unsigned Opcode = Instruction::UserOp1;
   if (const auto *I = dyn_cast<Instruction>(Obj)) {
@@ -230,6 +229,8 @@ bool WebAssemblyFastISel::computeAddress(const Value *Obj, Address &Addr) {
       return false;
 
   if (const auto *GV = dyn_cast<GlobalValue>(Obj)) {
+    if (TLI.isPositionIndependent())
+      return false;
     if (Addr.getGlobalValue())
       return false;
     Addr.setGlobalValue(GV);
@@ -374,13 +375,10 @@ bool WebAssemblyFastISel::computeAddress(const Value *Obj, Address &Addr) {
   return Addr.getReg() != 0;
 }
 
-bool WebAssemblyFastISel::materializeLoadStoreOperands(Address &Addr) {
+void WebAssemblyFastISel::materializeLoadStoreOperands(Address &Addr) {
   if (Addr.isRegBase()) {
     unsigned Reg = Addr.getReg();
     if (Reg == 0) {
-      const GlobalValue *GV = Addr.getGlobalValue();
-      if (GV && TLI.isPositionIndependent())
-        return false;
       Reg = createResultReg(Subtarget->hasAddr64() ? &WebAssembly::I64RegClass
                                                    : &WebAssembly::I32RegClass);
       unsigned Opc = Subtarget->hasAddr64() ? WebAssembly::CONST_I64
@@ -390,7 +388,6 @@ bool WebAssemblyFastISel::materializeLoadStoreOperands(Address &Addr) {
       Addr.setReg(Reg);
     }
   }
-  return true;
 }
 
 void WebAssemblyFastISel::addLoadStoreOperands(const Address &Addr,
@@ -851,6 +848,13 @@ bool WebAssemblyFastISel::selectCall(const Instruction *I) {
     Args.push_back(Reg);
   }
 
+  unsigned CalleeReg = 0;
+  if (!IsDirect) {
+    CalleeReg = getRegForValue(Call->getCalledValue());
+    if (!CalleeReg)
+      return false;
+  }
+
   auto MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(Opc));
 
   if (!IsVoid)
@@ -858,12 +862,8 @@ bool WebAssemblyFastISel::selectCall(const Instruction *I) {
 
   if (IsDirect)
     MIB.addGlobalAddress(Func);
-  else {
-    unsigned Reg = getRegForValue(Call->getCalledValue());
-    if (Reg == 0)
-      return false;
-    MIB.addReg(Reg);
-  }
+  else
+    MIB.addReg(CalleeReg);
 
   for (unsigned ArgReg : Args)
     MIB.addReg(ArgReg);
@@ -1187,8 +1187,7 @@ bool WebAssemblyFastISel::selectLoad(const Instruction *I) {
     return false;
   }
 
-  if (!materializeLoadStoreOperands(Addr))
-    return false;
+  materializeLoadStoreOperands(Addr);
 
   unsigned ResultReg = createResultReg(RC);
   auto MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(Opc),
@@ -1240,8 +1239,7 @@ bool WebAssemblyFastISel::selectStore(const Instruction *I) {
     return false;
   }
 
-  if (!materializeLoadStoreOperands(Addr))
-    return false;
+  materializeLoadStoreOperands(Addr);
 
   unsigned ValueReg = getRegForValue(Store->getValueOperand());
   if (ValueReg == 0)

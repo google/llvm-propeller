@@ -603,7 +603,7 @@ LegalizerHelper::LegalizeResult LegalizerHelper::narrowScalar(MachineInstr &MI,
 
     unsigned TmpReg = MRI.createGenericVirtualRegister(NarrowTy);
     auto &MMO = **MI.memoperands_begin();
-    if (MMO.getSize() * 8 == NarrowSize) {
+    if (MMO.getSizeInBits() == NarrowSize) {
       MIRBuilder.buildLoad(TmpReg, PtrReg, MMO);
     } else {
       unsigned ExtLoad = ZExt ? TargetOpcode::G_ZEXTLOAD
@@ -899,6 +899,13 @@ LegalizerHelper::widenScalarExtract(MachineInstr &MI, unsigned TypeIdx,
       ShiftTy, Src, MIRBuilder.buildConstant(ShiftTy, Offset));
     MIRBuilder.buildTrunc(DstReg, LShr);
     MI.eraseFromParent();
+    return Legalized;
+  }
+
+  if (SrcTy.isScalar()) {
+    Observer.changingInstr(MI);
+    widenScalarSrc(MI, WideTy, 1, TargetOpcode::G_ANYEXT);
+    Observer.changedInstr(MI);
     return Legalized;
   }
 
@@ -1315,9 +1322,13 @@ LegalizerHelper::widenScalar(MachineInstr &MI, unsigned TypeIdx, LLT WideTy) {
   case TargetOpcode::G_FLOG10:
   case TargetOpcode::G_FLOG:
   case TargetOpcode::G_FLOG2:
+  case TargetOpcode::G_FRINT:
   case TargetOpcode::G_FSQRT:
   case TargetOpcode::G_FEXP:
   case TargetOpcode::G_FEXP2:
+  case TargetOpcode::G_FPOW:
+  case TargetOpcode::G_INTRINSIC_TRUNC:
+  case TargetOpcode::G_INTRINSIC_ROUND:
     assert(TypeIdx == 0);
     Observer.changingInstr(MI);
 
@@ -1437,10 +1448,11 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     ConstantFP &ZeroForNegation =
         *cast<ConstantFP>(ConstantFP::getZeroValueForNegation(ZeroTy));
     auto Zero = MIRBuilder.buildFConstant(Ty, ZeroForNegation);
-    MIRBuilder.buildInstr(TargetOpcode::G_FSUB)
-        .addDef(Res)
-        .addUse(Zero->getOperand(0).getReg())
-        .addUse(MI.getOperand(1).getReg());
+    unsigned SubByReg = MI.getOperand(1).getReg();
+    unsigned ZeroReg = Zero->getOperand(0).getReg();
+    MachineInstr *SrcMI = MRI.getVRegDef(SubByReg);
+    MIRBuilder.buildInstr(TargetOpcode::G_FSUB, {Res}, {ZeroReg, SubByReg},
+                          SrcMI->getFlags());
     MI.eraseFromParent();
     return Legalized;
   }
@@ -1455,10 +1467,7 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     unsigned RHS = MI.getOperand(2).getReg();
     unsigned Neg = MRI.createGenericVirtualRegister(Ty);
     MIRBuilder.buildInstr(TargetOpcode::G_FNEG).addDef(Neg).addUse(RHS);
-    MIRBuilder.buildInstr(TargetOpcode::G_FADD)
-        .addDef(Res)
-        .addUse(LHS)
-        .addUse(Neg);
+    MIRBuilder.buildInstr(TargetOpcode::G_FADD, {Res}, {LHS, Neg}, MI.getFlags());
     MI.eraseFromParent();
     return Legalized;
   }
@@ -1494,8 +1503,8 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     }
 
     if (DstTy.isScalar()) {
-      unsigned TmpReg = MRI.createGenericVirtualRegister(
-          LLT::scalar(MMO.getSize() /* in bytes */ * 8));
+      unsigned TmpReg =
+          MRI.createGenericVirtualRegister(LLT::scalar(MMO.getSizeInBits()));
       MIRBuilder.buildLoad(TmpReg, PtrReg, MMO);
       switch (MI.getOpcode()) {
       default:
@@ -2184,6 +2193,7 @@ LegalizerHelper::fewerElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case G_FLOG10:
   case G_FCEIL:
   case G_FFLOOR:
+  case G_FRINT:
   case G_INTRINSIC_ROUND:
   case G_INTRINSIC_TRUNC:
   case G_FCOS:

@@ -459,6 +459,40 @@ LLVMMetadataRef LLVMDILocationGetScope(LLVMMetadataRef Location);
  */
 LLVMMetadataRef LLVMDILocationGetInlinedAt(LLVMMetadataRef Location);
 
+/**
+ * Get the metadata of the file associated with a given scope.
+ * \param Scope     The scope object.
+ *
+ * @see DIScope::getFile()
+ */
+LLVMMetadataRef LLVMDIScopeGetFile(LLVMMetadataRef Scope);
+
+/**
+ * Get the directory of a given file.
+ * \param File     The file object.
+ * \param Len      The length of the returned string.
+ *
+ * @see DIFile::getDirectory()
+ */
+const char *LLVMDIFileGetDirectory(LLVMMetadataRef File, unsigned *Len);
+
+/**
+ * Get the name of a given file.
+ * \param File     The file object.
+ * \param Len      The length of the returned string.
+ *
+ * @see DIFile::getFilename()
+ */
+const char *LLVMDIFileGetFilename(LLVMMetadataRef File, unsigned *Len);
+
+/**
+ * Get the source of a given file.
+ * \param File     The file object.
+ * \param Len      The length of the returned string.
+ *
+ * @see DIFile::getSource()
+ */
+const char *LLVMDIFileGetSource(LLVMMetadataRef File, unsigned *Len);
 
 /**
  * Create a type array.
@@ -1038,6 +1072,48 @@ LLVMMetadataRef LLVMDIBuilderCreateGlobalVariableExpression(
     size_t NameLen, const char *Linkage, size_t LinkLen, LLVMMetadataRef File,
     unsigned LineNo, LLVMMetadataRef Ty, LLVMBool LocalToUnit,
     LLVMMetadataRef Expr, LLVMMetadataRef Decl, uint32_t AlignInBits);
+
+/**
+ * Retrieves the \c DIVariable associated with this global variable expression.
+ * \param GVE    The global variable expression.
+ *
+ * @see llvm::DIGlobalVariableExpression::getVariable()
+ */
+LLVMMetadataRef LLVMDIGlobalVariableExpressionGetVariable(LLVMMetadataRef GVE);
+
+/**
+ * Retrieves the \c DIExpression associated with this global variable expression.
+ * \param GVE    The global variable expression.
+ *
+ * @see llvm::DIGlobalVariableExpression::getExpression()
+ */
+LLVMMetadataRef LLVMDIGlobalVariableExpressionGetExpression(
+    LLVMMetadataRef GVE);
+
+/**
+ * Get the metadata of the file associated with a given variable.
+ * \param Var     The variable object.
+ *
+ * @see DIVariable::getFile()
+ */
+LLVMMetadataRef LLVMDIVariableGetFile(LLVMMetadataRef Var);
+
+/**
+ * Get the metadata of the scope associated with a given variable.
+ * \param Var     The variable object.
+ *
+ * @see DIVariable::getScope()
+ */
+LLVMMetadataRef LLVMDIVariableGetScope(LLVMMetadataRef Var);
+
+/**
+ * Get the source line where this \c DIVariable is declared.
+ * \param Var     The DIVariable.
+ *
+ * @see DIVariable::getLine()
+ */
+unsigned LLVMDIVariableGetLine(LLVMMetadataRef Var);
+
 /**
  * Create a new temporary \c MDNode.  Suitable for use in constructing cyclic
  * \c MDNode structures. A temporary \c MDNode is not uniqued, may be RAUW'd,
@@ -1200,6 +1276,14 @@ LLVMMetadataRef LLVMGetSubprogram(LLVMValueRef Func);
  * @see llvm::Function::setSubprogram()
  */
 void LLVMSetSubprogram(LLVMValueRef Func, LLVMMetadataRef SP);
+
+/**
+ * Get the line associated with a given subprogram.
+ * \param Subprogram     The subprogram object.
+ *
+ * @see DISubprogram::getLine()
+ */
+unsigned LLVMDISubprogramGetLine(LLVMMetadataRef Subprogram);
 
 /**
  * Get the debug location for the given instruction.

@@ -1045,10 +1045,9 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
       error(ExportEntry.getExportRVA(RVA));
 
       uint64_t VA = COFFObj->getImageBase() + RVA;
-      auto Sec = llvm::upper_bound(
-          SectionAddresses, VA,
-          [](uint64_t LHS, const std::pair<uint64_t, SectionRef> &RHS) {
-            return LHS < RHS.first;
+      auto Sec = llvm::bsearch(
+          SectionAddresses, [VA](const std::pair<uint64_t, SectionRef> &RHS) {
+            return VA < RHS.first;
           });
       if (Sec != SectionAddresses.begin()) {
         --Sec;
@@ -1142,33 +1141,25 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
     std::vector<RelocationRef>::const_iterator RelEnd = Rels.end();
     // Disassemble symbol by symbol.
     for (unsigned SI = 0, SE = Symbols.size(); SI != SE; ++SI) {
-      uint64_t Start = std::get<0>(Symbols[SI]) - SectionAddr;
-      // The end is either the section end or the beginning of the next
-      // symbol.
-      uint64_t End = (SI == SE - 1)
-                         ? SectSize
-                         : std::get<0>(Symbols[SI + 1]) - SectionAddr;
-      // Don't try to disassemble beyond the end of section contents.
-      if (End > SectSize)
-        End = SectSize;
-      // If this symbol has the same address as the next symbol, then skip it.
-      if (Start >= End)
-        continue;
-
-      // Check if we need to skip symbol
-      // Skip if the symbol's data is not between StartAddress and StopAddress
-      if (End + SectionAddr <= StartAddress ||
-          Start + SectionAddr >= StopAddress)
-        continue;
-
-      // Stop disassembly at the stop address specified
-      if (End + SectionAddr > StopAddress)
-        End = StopAddress - SectionAddr;
-
-      /// Skip if user requested specific symbols and this is not in the list
+      // Skip if --disassemble-functions is not empty and the symbol is not in
+      // the list.
       if (!DisasmFuncsSet.empty() &&
           !DisasmFuncsSet.count(std::get<1>(Symbols[SI])))
         continue;
+
+      uint64_t Start = std::get<0>(Symbols[SI]);
+      if (Start < SectionAddr || StopAddress <= Start)
+        continue;
+
+      // The end is the section end, the beginning of the next symbol, or
+      // --stop-address.
+      uint64_t End = std::min<uint64_t>(SectionAddr + SectSize, StopAddress);
+      if (SI + 1 < SE)
+        End = std::min(End, std::get<0>(Symbols[SI + 1]));
+      if (Start >= End || End <= StartAddress)
+        continue;
+      Start -= SectionAddr;
+      End -= SectionAddr;
 
       if (!PrintedSection) {
         PrintedSection = true;
@@ -1302,35 +1293,33 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
             // N.B. We don't walk the relocations in the relocatable case yet.
             auto *TargetSectionSymbols = &Symbols;
             if (!Obj->isRelocatableObject()) {
-              auto SectionAddress = llvm::upper_bound(
-                  SectionAddresses, Target,
-                  [](uint64_t LHS, const std::pair<uint64_t, SectionRef> &RHS) {
-                    return LHS < RHS.first;
+              auto It = llvm::bsearch(
+                  SectionAddresses,
+                  [=](const std::pair<uint64_t, SectionRef> &RHS) {
+                    return Target < RHS.first;
                   });
-              if (SectionAddress != SectionAddresses.begin()) {
-                --SectionAddress;
-                TargetSectionSymbols = &AllSymbols[SectionAddress->second];
+              if (It != SectionAddresses.begin()) {
+                --It;
+                TargetSectionSymbols = &AllSymbols[It->second];
               } else {
                 TargetSectionSymbols = &AbsoluteSymbols;
               }
             }
 
-            // Find the first symbol in the section whose offset is less than
+            // Find the last symbol in the section whose offset is less than
             // or equal to the target. If there isn't a section that contains
             // the target, find the nearest preceding absolute symbol.
-            auto TargetSym = llvm::upper_bound(
-                *TargetSectionSymbols, Target,
-                [](uint64_t LHS,
-                   const std::tuple<uint64_t, StringRef, uint8_t> &RHS) {
-                  return LHS < std::get<0>(RHS);
+            auto TargetSym = llvm::bsearch(
+                *TargetSectionSymbols,
+                [=](const std::tuple<uint64_t, StringRef, uint8_t> &RHS) {
+                  return Target < std::get<0>(RHS);
                 });
             if (TargetSym == TargetSectionSymbols->begin()) {
               TargetSectionSymbols = &AbsoluteSymbols;
-              TargetSym = llvm::upper_bound(
-                  AbsoluteSymbols, Target,
-                  [](uint64_t LHS,
-                     const std::tuple<uint64_t, StringRef, uint8_t> &RHS) {
-                    return LHS < std::get<0>(RHS);
+              TargetSym = llvm::bsearch(
+                  AbsoluteSymbols,
+                  [=](const std::tuple<uint64_t, StringRef, uint8_t> &RHS) {
+                    return Target < std::get<0>(RHS);
                   });
             }
             if (TargetSym != TargetSectionSymbols->begin()) {
@@ -2028,7 +2017,7 @@ int main(int argc, char **argv) {
       !(MachOOpt &&
         (Bind || DataInCode || DylibId || DylibsUsed || ExportsTrie ||
          FirstPrivateHeader || IndirectSymbols || InfoPlist || LazyBind ||
-         LinkOptHints || Rebase || ObjcMetaData || UniversalHeaders ||
+         LinkOptHints || ObjcMetaData || Rebase || UniversalHeaders ||
          WeakBind || !FilterSections.empty()))) {
     cl::PrintHelpMessage();
     return 2;

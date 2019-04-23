@@ -671,7 +671,7 @@ inlineCallsImpl(CallGraphSCC &SCC, CallGraph &CG,
         LLVM_DEBUG(dbgs() << "    -> Deleting dead call: " << *Instr << "\n");
         // Update the call graph by deleting the edge from Callee to Caller.
         setInlineRemark(CS, "trivially dead");
-        CG[Caller]->removeCallEdgeFor(CS);
+        CG[Caller]->removeCallEdgeFor(*cast<CallBase>(CS.getInstruction()));
         Instr->eraseFromParent();
         ++NumCallsDeleted;
       } else {
@@ -1008,8 +1008,9 @@ PreservedAnalyses InlinerPass::run(LazyCallGraph::SCC &InitialC,
       bool RemarksEnabled =
           Callee.getContext().getDiagHandlerPtr()->isMissedOptRemarkEnabled(
               DEBUG_TYPE);
-      return getInlineCost(CS, Params, CalleeTTI, GetAssumptionCache, {GetBFI},
-                           PSI, RemarksEnabled ? &ORE : nullptr);
+      return getInlineCost(cast<CallBase>(*CS.getInstruction()), Params,
+                           CalleeTTI, GetAssumptionCache, {GetBFI}, PSI,
+                           RemarksEnabled ? &ORE : nullptr);
     };
 
     // Now process as many calls as we have within this caller in the sequnece.

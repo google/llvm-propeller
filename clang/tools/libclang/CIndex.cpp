@@ -8723,8 +8723,8 @@ void clang::setThreadBackgroundPriority() {
   if (getenv("LIBCLANG_BGPRIO_DISABLE"))
     return;
 
-#ifdef USE_DARWIN_THREADS
-  setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG);
+#if LLVM_ENABLE_THREADS
+  llvm::set_thread_priority(llvm::ThreadPriority::Background);
 #endif
 }
 

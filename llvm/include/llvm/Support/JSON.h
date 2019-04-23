@@ -95,7 +95,7 @@ public:
   using iterator = Storage::iterator;
   using const_iterator = Storage::const_iterator;
 
-  explicit Object() = default;
+  Object() = default;
   // KV is a trivial key-value struct for list-initialization.
   // (using std::pair forces extra copies).
   struct KV;
@@ -156,7 +156,7 @@ public:
   using iterator = std::vector<Value>::iterator;
   using const_iterator = std::vector<Value>::const_iterator;
 
-  explicit Array() = default;
+  Array() = default;
   explicit Array(std::initializer_list<Value> Elements);
   template <typename Collection> explicit Array(const Collection &C) {
     for (const auto &V : C)
@@ -179,6 +179,7 @@ public:
 
   bool empty() const { return V.empty(); }
   size_t size() const { return V.size(); }
+  void reserve(size_t S) { V.reserve(S); }
 
   void clear() { V.clear(); }
   void push_back(const Value &E) { V.push_back(E); }
@@ -309,8 +310,8 @@ public:
     create<std::string>(std::move(V));
   }
   Value(const llvm::SmallVectorImpl<char> &V)
-      : Value(std::string(V.begin(), V.end())){};
-  Value(const llvm::formatv_object_base &V) : Value(V.str()){};
+      : Value(std::string(V.begin(), V.end())) {}
+  Value(const llvm::formatv_object_base &V) : Value(V.str()) {}
   // Strings: types with reference semantics. Must be valid UTF-8.
   Value(StringRef V) : Type(T_StringRef) {
     create<llvm::StringRef>(V);

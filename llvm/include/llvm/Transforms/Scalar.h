@@ -137,6 +137,8 @@ Pass *createIndVarSimplifyPass();
 // LICM - This pass is a loop invariant code motion and memory promotion pass.
 //
 Pass *createLICMPass();
+Pass *createLICMPass(unsigned LicmMssaOptCap,
+                     unsigned LicmMssaNoAccForPromotionCap);
 
 //===----------------------------------------------------------------------===//
 //
@@ -457,6 +459,12 @@ FunctionPass *createNaryReassociatePass();
 // LoopDistribute - Distribute loops.
 //
 FunctionPass *createLoopDistributePass();
+
+//===----------------------------------------------------------------------===//
+//
+// LoopFuse - Fuse loops.
+//
+FunctionPass *createLoopFusePass();
 
 //===----------------------------------------------------------------------===//
 //
