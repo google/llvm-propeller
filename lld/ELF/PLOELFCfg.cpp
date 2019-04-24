@@ -32,7 +32,7 @@ ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
                                ELFCfgNode *To,
                                typename ELFCfgEdge::EdgeType Type) {
   ELFCfgEdge *Edge = new ELFCfgEdge(From, To, Type);
-  if (Type <  ELFCfgEdge::EdgeType::INTER_FUNC) {
+  if (Type <  ELFCfgEdge::EdgeType::INTER_FUNC_CALL) {
     From->Outs.push_back(Edge);
     To->Ins.push_back(Edge);
   } else {
@@ -75,18 +75,22 @@ void ELFCfg::MapBranch(ELFCfgNode *From, ELFCfgNode *To) {
   ++(CreateEdge(From, To, ELFCfgEdge::INTRA_DYNA)->Weight);
 }
 
-void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To) {
+void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr) {
   assert(From->Cfg == this);
   assert(From->Cfg != To->Cfg);
   ++From->Weight;
   ++To->Weight;
+  ELFCfgEdge::EdgeType EdgeType = ELFCfgEdge::INTER_FUNC_RETURN;
+  if (To->Cfg->GetEntryNode() == To && ToAddr == To->MappedAddr) {
+      EdgeType = ELFCfgEdge::INTER_FUNC_CALL;
+  }
   for (auto &E : From->CallOuts) {
-    if (E->Sink == To) {
+    if (E->Sink == To && E->Type == EdgeType) {
       ++(E->Weight);
       return ;
     }
   }
-  ++(CreateEdge(From, To, ELFCfgEdge::INTER_FUNC)->Weight);
+  ++(CreateEdge(From, To, EdgeType)->Weight);
 }
 
 void ELFCfgBuilder::BuildCfgs() {
@@ -142,6 +146,7 @@ void ELFCfgBuilder::BuildCfgs() {
     SymbolRef CfgSym = *(I.second.begin());
     StringRef CfgName = I.first;
     uint64_t  CfgSize = llvm::object::ELFSymbolRef(CfgSym).getSize();
+    // assert(CfgSize);
     unique_ptr<ELFCfg> Cfg(new ELFCfg(View, CfgName, CfgSize));
     for (SymbolRef Sym: I.second) {
       auto SymNameE = Sym.getName();
@@ -157,7 +162,7 @@ void ELFCfgBuilder::BuildCfgs() {
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
         // All BB symbols' value must equal to 0 (the offset), because
         // they are always defined at the beginning of their section.
-        assert(Sym.getValue() == 0);
+        // assert(Sym.getValue() == 0);
         auto ResultP = Plo.SymAddrSizeMap.find(SymName);
         if (ResultP != Plo.SymAddrSizeMap.end()) {
           uint64_t MappedAddr = ResultP->second.first;

@@ -135,17 +135,21 @@ void CallGraph::DoOrder() {
   }
 }
 
+CCubeAlgorithm::Cluster::Cluster(ELFCfg *Cfg) :Nodes(1, Cfg), Size(Cfg->Size) {}
+CCubeAlgorithm::Cluster::~Cluster() {}
+
 bool CCubeAlgorithm::DoOrder(list<ELFCfg *> &OrderResult) {
-  map<uint64_t, ELFCfg *> WeightMap;
+  map<uint64_t, ELFCfg *> WeightOrder;
   map<ELFCfg *, Cluster *> ClusterMap;
-  Plo.ForEachCfgRef([this, &ClusterMap, &WeightMap](ELFCfg &Cfg) {
+  fprintf(stderr, "Ordering Cfg...\n");
+  Plo.ForEachCfgRef([this, &ClusterMap, &WeightOrder](ELFCfg &Cfg) {
                       uint64_t CfgWeight = 0;
                       Cfg.ForEachNodeRef([&CfgWeight](ELFCfgNode &N) {
                                            CfgWeight += N.Weight;
                                          });
-                      WeightMap[CfgWeight] = &Cfg;
+                      WeightOrder[CfgWeight] = &Cfg;
                       Cluster *C = new Cluster(&Cfg);
-                      Clusters.emplace_back(C);
+                      C->Handler = Clusters.emplace(Clusters.end(), C);
                       ClusterMap[&Cfg] = C;
                     });
 
@@ -154,7 +158,8 @@ bool CCubeAlgorithm::DoOrder(list<ELFCfg *> &OrderResult) {
       if (!Entry) return nullptr;
       ELFCfgEdge *E = nullptr;
       for (ELFCfgEdge *CallIn: Entry->CallIns) {
-        if (CallIn->Src->Cfg == Cfg) continue;
+        if (CallIn->Type != ELFCfgEdge::INTER_FUNC_CALL ||
+            CallIn->Src->Cfg == Cfg) continue;
         if (!E || E->Weight < CallIn->Weight) {
           E = CallIn;
         }
@@ -162,18 +167,33 @@ bool CCubeAlgorithm::DoOrder(list<ELFCfg *> &OrderResult) {
       return E ? E->Src->Cfg : nullptr;
     };
 
-  for (auto P = WeightMap.rbegin(), E = WeightMap.rend(); P != E; ++P) {
+  fprintf(stderr, "Visiting Cfgs in reverse order of its weight ...\n");
+  fprintf(stderr, "Total cluster size before: %lu\n", Clusters.size());
+  for (auto P = WeightOrder.rbegin(), E = WeightOrder.rend(); P != E; ++P) {
+    if (P->first == 0) break;
     ELFCfg *Cfg = P->second;
-    ELFCfg *PredecessorCfg = MostLikelyPredecessor(Cfg);
-    fprintf(stderr, "Predecessor of %s is %s.\n",
-            Cfg->Name.str().c_str(),
-            PredecessorCfg ? PredecessorCfg->Name.str().c_str(): "nullptr");
-            
-    if (!PredecessorCfg) continue;
-    auto *PredecessorCluster = ClusterMap[PredecessorCfg];
     auto *Cluster = ClusterMap[Cfg];
+    assert(Cluster);
+    if (Cluster->Size > 4096) continue;
     
+    ELFCfg *PredecessorCfg = MostLikelyPredecessor(Cfg);
+    if (!PredecessorCfg) continue;
+    assert(PredecessorCfg != Cfg);
+    auto *PredecessorCluster = ClusterMap[PredecessorCfg];
+    if (PredecessorCluster->Size > 4096) continue;
+    if (PredecessorCluster == Cluster) continue;
+
+    // fprintf(stderr, "Predecessor of %s is %s.\n",
+    //         Cfg->Name.str().c_str(),
+    //         PredecessorCfg ? PredecessorCfg->Name.str().c_str(): "nullptr");
+    *PredecessorCluster << *Cluster;  // Join 2 clusters into PredecessorCluster.
+    for (ELFCfg *Cfg: PredecessorCluster->Nodes) {
+      ClusterMap[Cfg] = PredecessorCluster;
+    }
+    Clusters.erase(Cluster->Handler);
   }
+
+  fprintf(stderr, "Total cluster size after: %lu\n", Clusters.size());
   
   return true;
 }

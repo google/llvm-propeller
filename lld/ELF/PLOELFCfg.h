@@ -44,7 +44,8 @@ public:
       INTRA_RSR,
       // Intra edge dynamically created because of indirect jump, etc.
       INTRA_DYNA,
-      INTER_FUNC
+      INTER_FUNC_CALL,
+      INTER_FUNC_RETURN,
   } Type {INTRA_FUNC};
 
 protected:
@@ -109,7 +110,7 @@ public:
 
   bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);
   void MapBranch(ELFCfgNode *From, ELFCfgNode *To);
-  void MapCallOut(ELFCfgNode *From, ELFCfgNode *To);
+  void MapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr);
 
   ELFCfgNode *GetEntryNode() const {
     assert(!Nodes.empty());
@@ -130,7 +131,7 @@ private:
                          typename ELFCfgEdge::EdgeType Type);
 
   void EmplaceEdge(ELFCfgEdge *Edge) {
-    if (Edge->Type < ELFCfgEdge::INTER_FUNC) {
+    if (Edge->Type < ELFCfgEdge::INTER_FUNC_CALL) {
       IntraEdges.emplace_back(Edge);
     } else {
       InterEdges.emplace_back(Edge);

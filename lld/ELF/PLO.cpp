@@ -118,48 +118,13 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                            std::bind(&PLO::ProcessFile, this, _1));
 
   if (PLOProfile(*this).ProcessProfile(ProfileName)) {
-    uint64_t TotalCfgs = 0;
-    uint64_t CfgHasWeight = 0;
     PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
     list<ELFCfg *> OrderResult;
     PFO.DoOrder(OrderResult);
-    // list<StringRef> HotSymbols, ColdSymbols;
-    // for (auto &Sym: HotSymbols) {
-    //   printf("SYM: %s\n", Sym.str().c_str());
-    // }
-    // for (auto &Sym: ColdSymbols) {
-    //   printf("SYM: %s\n", Sym.str().c_str());
-    // }
-    // std::cout << PFO.CG;
-    // for (auto &View: Views) {
-    //   for (auto &I: View->Cfgs) {
-    //     ++TotalCfgs;
-    //     ELFCfg *Cfg = I.second.get();
-    //     if (Cfg->Weight > 1000) {
-    //       ++CfgHasWeight;
-    //       std::cout << *Cfg;
-
-    //       PLOBBOrdering(*Cfg).DoOrder();
-    //     }
-    //   }
-    // }
-    // fprintf(stderr, "Cfg has Weight / Total Cfg: %lu / %lu\n", CfgHasWeight, TotalCfgs);
-    ForEachCfgRef([](ELFCfg &Cfg) {
-                    std::cout << Cfg;
-                  });
     return true;
   }
 
   return false;
-
-  // fprintf(stderr, "Finsihed creating cfgs.\n");
-
-  // fprintf(stderr, "Total %d intra procedure jumps.\n", B);
-
-  // fprintf(stderr, "Valid   cfgs: %u\n", ValidCfgs.load());
-  // fprintf(stderr, "Invalid cfgs: %u\n", InvalidCfgs.load());
-  // fprintf(stderr, "Total BBs: %u\n", TotalBB.load());
-  // fprintf(stderr, "Total BB w/out address: %u\n", TotalBBWoutAddr.load());
 }
 
 }  // namespace plo

@@ -131,9 +131,20 @@ class CCubeAlgorithm {
 public:
   class Cluster {
   public:
-    Cluster(ELFCfg *Cfg) : Nodes(1, Cfg) {}
-    ~Cluster() {}
+    Cluster(ELFCfg *Cfg);
+    ~Cluster();
     list<ELFCfg *> Nodes;
+    uint64_t Size;
+
+    Cluster & operator << (Cluster &Other) {
+      Nodes.insert(Nodes.end(), Other.Nodes.begin(), Other.Nodes.end());
+      this->Size += Other.Size;
+      // Other.Nodes.clear();
+      Other.Size = 0;
+      return *this;
+    }
+
+    list<unique_ptr<Cluster>>::iterator Handler;
   };
 
 public:
