@@ -96,13 +96,15 @@ class ELFCfg {
 public:
   ELFView    *View;
   StringRef   Name;
+  uint64_t    Size;
   
   // ELFCfg assumes the ownership for all Nodes / Edges.
   list<unique_ptr<ELFCfgNode>> Nodes;  // Sorted by address.
   list<unique_ptr<ELFCfgEdge>> IntraEdges;
   list<unique_ptr<ELFCfgEdge>> InterEdges;
 
-  ELFCfg(ELFView *V, const StringRef &N) : View(V), Name(N) {}
+  ELFCfg(ELFView *V, const StringRef &N, uint64_t S)
+    : View(V), Name(N), Size(S) {}
   ~ELFCfg() {}
 
   bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);

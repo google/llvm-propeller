@@ -141,7 +141,8 @@ void ELFCfgBuilder::BuildCfgs() {
     map<uint64_t, list<unique_ptr<ELFCfgNode>>> TmpNodeMap;
     SymbolRef CfgSym = *(I.second.begin());
     StringRef CfgName = I.first;
-    unique_ptr<ELFCfg> Cfg(new ELFCfg(View, CfgName));
+    uint64_t  CfgSize = llvm::object::ELFSymbolRef(CfgSym).getSize();
+    unique_ptr<ELFCfg> Cfg(new ELFCfg(View, CfgName, CfgSize));
     for (SymbolRef Sym: I.second) {
       auto SymNameE = Sym.getName();
       auto SectionIE = Sym.getSection();
@@ -397,6 +398,7 @@ ostream & operator << (ostream &Out, const ELFCfgNode &Node) {
           Node.ShName.data() + Node.Cfg->Name.size() + 1)
       << " [size=" << std::noshowbase << std::dec << Node.ShSize << ", "
       << " addr=" << std::showbase << std::hex << Node.MappedAddr << ", "
+      << " weight=" << std::showbase << std::dec << Node.Weight << ", "
       << " shndx=" << std::noshowbase << std::dec << Node.Shndx << "]";
   return Out;
 }
@@ -412,7 +414,8 @@ ostream & operator << (ostream &Out, const ELFCfgEdge &Edge) {
 
 ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
   Out << "Cfg: '" << Cfg.View->ViewName.str() << ":"
-      << Cfg.Name.str() << "'" << std::endl;
+      << Cfg.Name.str() << "', size="
+      << std::noshowbase << std::dec << Cfg.Size << std::endl;
   for (auto &N : Cfg.Nodes) {
     auto &Node = *N;
     Out << "  Node: " << Node << std::endl;

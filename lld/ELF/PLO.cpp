@@ -144,6 +144,9 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
     //   }
     // }
     // fprintf(stderr, "Cfg has Weight / Total Cfg: %lu / %lu\n", CfgHasWeight, TotalCfgs);
+    ForEachCfgRef([](ELFCfg &Cfg) {
+                    std::cout << Cfg;
+                  });
     return true;
   }
 

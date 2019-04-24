@@ -150,20 +150,26 @@ bool CCubeAlgorithm::DoOrder(list<ELFCfg *> &OrderResult) {
                     });
 
   auto MostLikelyPredecessor = [](ELFCfg *Cfg) -> ELFCfg * {
-                                 ELFCfgNode *Entry = Cfg->GetEntryNode();
-                                 if (!Entry) return nullptr;
-                                 ELFCfgEdge *E = nullptr;
-                                 for (ELFCfgEdge *CallIn: Entry->CallIns) {
-                                   if (!E || E->Weight < CallIn->Weight) {
-                                     E = CallIn;
-                                   }
-                                 }
-                                 return E->Src->Cfg;
-                               };
+      ELFCfgNode *Entry = Cfg->GetEntryNode();
+      if (!Entry) return nullptr;
+      ELFCfgEdge *E = nullptr;
+      for (ELFCfgEdge *CallIn: Entry->CallIns) {
+        if (CallIn->Src->Cfg == Cfg) continue;
+        if (!E || E->Weight < CallIn->Weight) {
+          E = CallIn;
+        }
+      }
+      return E ? E->Src->Cfg : nullptr;
+    };
 
   for (auto P = WeightMap.rbegin(), E = WeightMap.rend(); P != E; ++P) {
     ELFCfg *Cfg = P->second;
     ELFCfg *PredecessorCfg = MostLikelyPredecessor(Cfg);
+    fprintf(stderr, "Predecessor of %s is %s.\n",
+            Cfg->Name.str().c_str(),
+            PredecessorCfg ? PredecessorCfg->Name.str().c_str(): "nullptr");
+            
+    if (!PredecessorCfg) continue;
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
     auto *Cluster = ClusterMap[Cfg];
     
