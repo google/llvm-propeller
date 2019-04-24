@@ -213,6 +213,7 @@ endif()
 add_subdirectory(Common)
 add_subdirectory(lib)
 add_subdirectory(tools/lld)
+add_subdirectory(tools/layout)
 
 if (LLVM_INCLUDE_TESTS)
   add_subdirectory(test)
