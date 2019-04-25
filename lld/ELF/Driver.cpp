@@ -780,12 +780,6 @@ void LinkerDriver::readConfigs(opt::InputArgList &Args) {
   Config->Cref = Args.hasFlag(OPT_cref, OPT_no_cref, false);
   Config->DefineCommon = Args.hasFlag(OPT_define_common, OPT_no_define_common,
                                       !Args.hasArg(OPT_relocatable));
-  Config->OptimizeBBJumps =
-      Args.hasFlag(OPT_optimize_bb_jumps,
-                   OPT_no_optimize_bb_jumps, true);
-  Config->FlipBBJumps =
-      Args.hasFlag(OPT_flip_bb_jumps,
-                   OPT_no_flip_bb_jumps, false);
   Config->Demangle = Args.hasFlag(OPT_demangle, OPT_no_demangle, true);
   Config->DisableVerify = Args.hasArg(OPT_disable_verify);
   Config->Discard = getDiscard(Args);
@@ -864,7 +858,6 @@ void LinkerDriver::readConfigs(opt::InputArgList &Args) {
   Config->Sysroot = Args.getLastArgValue(OPT_sysroot);
   Config->Target1Rel = Args.hasFlag(OPT_target1_rel, OPT_target1_abs, false);
   Config->Target2 = getTarget2(Args);
-  Config->LTOBasicBlockSections = Args.getLastArgValue(OPT_lto_basicblock_sections);
   Config->ThinLTOCacheDir = Args.getLastArgValue(OPT_thinlto_cache_dir);
   Config->ThinLTOCachePolicy = CHECK(
       parseCachePruningPolicy(Args.getLastArgValue(OPT_thinlto_cache_policy)),

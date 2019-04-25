@@ -18,7 +18,6 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Type.h"
 #include <algorithm>
 
@@ -40,8 +39,7 @@ template class llvm::SymbolTableListTraits<Instruction>;
 
 BasicBlock::BasicBlock(LLVMContext &C, const Twine &Name, Function *NewParent,
                        BasicBlock *InsertBefore)
-  : GlobalObject(FunctionType::get(Type::getVoidTy(C), false), Value::BasicBlockVal, 0, 0,
-                 llvm::GlobalValue::PrivateLinkage, ""), Parent(nullptr) {
+  : Value(Type::getLabelTy(C), Value::BasicBlockVal), Parent(nullptr) {
 
   if (NewParent)
     insertInto(NewParent, InsertBefore);
@@ -492,21 +490,4 @@ BasicBlock::iterator llvm::skipDebugIntrinsics(BasicBlock::iterator It) {
   while (isa<DbgInfoIntrinsic>(It))
     ++It;
   return It;
-}
-
-void BasicBlock::setSectionPrefix(StringRef Prefix) {
-  MDBuilder MDB(getContext());
-  setMetadata(LLVMContext::MD_section_prefix,
-              MDB.createBasicBlockSectionPrefix(Prefix));
-}
-
-Optional<StringRef> BasicBlock::getSectionPrefix() const {
-  if (MDNode *MD = getMetadata(LLVMContext::MD_section_prefix)) {
-    assert(cast<MDString>(MD->getOperand(0))
-               ->getString()
-               .equals("bb_section_prefix") &&
-           "Metadata not match");
-    return cast<MDString>(MD->getOperand(1))->getString();
-  }
-  return None;
 }

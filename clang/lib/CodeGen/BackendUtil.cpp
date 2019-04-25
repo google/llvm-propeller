@@ -456,20 +456,9 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.NoZerosInBSS = CodeGenOpts.NoZeroInitializedInBSS;
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
-
-  Options.BasicBlockSections =
-      llvm::StringSwitch<llvm::BasicBlockSection::SectionMode>(
-          CodeGenOpts.BasicBlockSections)
-          .Case("all", llvm::BasicBlockSection::All)
-          .Case("hot", llvm::BasicBlockSection::Hot)
-          .Case("likely", llvm::BasicBlockSection::Likely)
-          .Case("labels", llvm::BasicBlockSection::Labels)
-          .Default(llvm::BasicBlockSection::None);
-
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;
-  Options.UniqueBBSectionNames = CodeGenOpts.UniqueBBSectionNames;
   Options.EmulatedTLS = CodeGenOpts.EmulatedTLS;
   Options.ExplicitEmulatedTLS = CodeGenOpts.ExplicitEmulatedTLS;
   Options.DebuggerTuning = CodeGenOpts.getDebuggerTuning();
