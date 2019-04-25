@@ -321,6 +321,10 @@ class MachineFunction {
   /// CodeView label annotations.
   std::vector<std::pair<MCSymbol *, MDNode *>> CodeViewAnnotations;
 
+  /// CodeView heapallocsites.
+  std::vector<std::tuple<MCSymbol*, MCSymbol*, DIType*>>
+      CodeViewHeapAllocSites;
+
   bool CallsEHReturn = false;
   bool CallsUnwindInit = false;
   bool HasEHScopes = false;
@@ -445,7 +449,6 @@ public:
   /// getSubtarget - Return the subtarget for which this machine code is being
   /// compiled.
   const TargetSubtargetInfo &getSubtarget() const { return *STI; }
-  void setSubtarget(const TargetSubtargetInfo *ST) { STI = ST; }
 
   /// getSubtarget - This method returns a pointer to the specified type of
   /// TargetSubtargetInfo.  In debug builds, it verifies that the object being
@@ -910,6 +913,14 @@ public:
 
   ArrayRef<std::pair<MCSymbol *, MDNode *>> getCodeViewAnnotations() const {
     return CodeViewAnnotations;
+  }
+
+  /// Record heapallocsites
+  void addCodeViewHeapAllocSite(MachineInstr *I, MDNode *MD);
+
+  ArrayRef<std::tuple<MCSymbol*, MCSymbol*, DIType*>>
+      getCodeViewHeapAllocSites() const {
+    return CodeViewHeapAllocSites;
   }
 
   /// Return a reference to the C++ typeinfo for the current function.

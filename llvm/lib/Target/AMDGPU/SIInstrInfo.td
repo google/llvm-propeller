@@ -23,6 +23,8 @@ def SIEncodingFamily {
   int SDWA9 = 3;
   int GFX80 = 4;
   int GFX9 = 5;
+  int GFX10 = 6;
+  int SDWA10 = 7;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1888,6 +1890,8 @@ class VOPProfile <list<ValueType> _ArgVT, bit _EnableF32SrcMods = 0,
                             getAsmDPP<HasDst, NumSrcArgs, HasModifiers, DstVT>.ret, "");
   field string AsmSDWA = getAsmSDWA<HasDst, NumSrcArgs, DstVT>.ret;
   field string AsmSDWA9 = getAsmSDWA9<HasDst, HasSDWAOMod, NumSrcArgs, DstVT>.ret;
+
+  field string TieRegDPP = "$old";
 }
 
 class VOP_NO_EXT <VOPProfile p> : VOPProfile <p.ArgVT> {
@@ -2102,7 +2106,9 @@ def getMCOpcodeGen : InstrMapping {
                    // does not actually change the encoding, and thus may be
                    // removed later.
                    [!cast<string>(SIEncodingFamily.GFX80)],
-                   [!cast<string>(SIEncodingFamily.GFX9)]];
+                   [!cast<string>(SIEncodingFamily.GFX9)],
+                   [!cast<string>(SIEncodingFamily.GFX10)],
+                   [!cast<string>(SIEncodingFamily.SDWA10)]];
 }
 
 // Get equivalent SOPK instruction.
