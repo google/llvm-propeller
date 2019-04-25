@@ -119,8 +119,12 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
 
   if (PLOProfile(*this).ProcessProfile(ProfileName)) {
     PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
-    list<ELFCfg *> OrderResult;
-    PFO.DoOrder(OrderResult);
+    list<ELFCfg *> OrderResult = PFO.DoOrder();
+    for (auto *Cfg : OrderResult) {
+      Cfg->ForEachNodeRef([](ELFCfgNode &N) {
+                            std::cout << "SYM: " << N.ShName.str() << std::endl;
+                          });
+    }
     return true;
   }
 

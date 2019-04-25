@@ -146,7 +146,6 @@ void ELFCfgBuilder::BuildCfgs() {
     SymbolRef CfgSym = *(I.second.begin());
     StringRef CfgName = I.first;
     uint64_t  CfgSize = llvm::object::ELFSymbolRef(CfgSym).getSize();
-    // assert(CfgSize);
     unique_ptr<ELFCfg> Cfg(new ELFCfg(View, CfgName, CfgSize));
     for (SymbolRef Sym: I.second) {
       auto SymNameE = Sym.getName();

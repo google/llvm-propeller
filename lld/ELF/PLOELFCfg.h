@@ -124,6 +124,12 @@ public:
     }
   }
 
+  double ComputeDensity() {
+    double W = 0;
+    ForEachNodeRef([&W](ELFCfgNode &N) { W += N.Weight; });
+    return W / this->Size;
+  }
+
 private:
   // Create and take ownership.
   ELFCfgEdge *CreateEdge(ELFCfgNode *From,
