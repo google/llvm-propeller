@@ -19,6 +19,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/SectionKind.h"
+#include "llvm/CodeGen/MachineBasicBlock.h"
 #include <cstdint>
 
 namespace llvm {
@@ -88,6 +89,9 @@ public:
                                            SectionKind Kind,
                                            const Constant *C,
                                            unsigned &Align) const;
+
+  virtual MCSection *getSectionForMachineBasicBlock(const Function &F,
+      const MachineBasicBlock &MBB, const TargetMachine &TM) const;
 
   /// Classify the specified global variable into a set of target independent
   /// categories embodied in SectionKind.
