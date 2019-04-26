@@ -291,6 +291,8 @@ defm profile: Eq<"profile", "PLO profile">;
 
 defm symfile: Eq<"symfile", "PLO symbol file">;
 
+defm cfgdump: Eq<"cfgdump", "File to dump the Cfg to.">;
+
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 

@@ -8,6 +8,7 @@
 #include <iostream>
 #include <list>
 #include <mutex>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,28 @@ namespace plo {
 
 PLO::PLO() {}
 PLO::~PLO() {}
+
+int counter = 0;
+
+bool PLO::DumpCfgsToFile(StringRef &CfgDumpFile) const {
+  if(CfgDumpFile.empty())
+    return false;
+
+  std::ofstream OS;
+  OS.open(CfgDumpFile.str(), std::ios::out);
+
+  if(!OS.good()){
+    fprintf(stderr, "File is not good for writing: <%s>\n", CfgDumpFile.str().c_str());
+    return false;
+  }
+
+  for (auto &P : CfgMap) {
+    (*P.second.begin())->DumpToOS(OS);
+  }
+
+  OS.close();
+  return true;
+}
 
 // Each line contains: Addr Size Type Name
 bool PLO::ProcessSymfile(StringRef &Symfile) {
@@ -100,9 +123,37 @@ void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   }
 }
 
+void PLO::CalculateNodeFreqs() {
+  for(auto &P: CfgMap){
+    auto& Cfg = *P.second.begin();
+    if (Cfg->Nodes.empty())
+      return;
+    bool Hot = false;
+    for (auto& Node : Cfg->Nodes){
+      uint64_t SumOuts = std::accumulate(Node->Outs.begin(), Node->Outs.end(), 0, [] (uint64_t PSum, const ELFCfgEdge * Edge){
+        return PSum + Edge->Weight;
+      });
+      uint64_t SumIns = std::accumulate(Node->Ins.begin(), Node->Ins.end(), 0, [] (uint64_t PSum, const ELFCfgEdge * Edge){
+        return PSum + Edge->Weight;
+      });
+
+      uint64_t SumCallIns =  std::accumulate(Node->CallIns.begin(), Node->CallIns.end(), 0, [] (uint64_t PSum, const ELFCfgEdge * Edge){
+        return PSum + Edge->Weight;
+      });
+
+      Node->Freq = std::max({SumOuts, SumIns, SumCallIns});
+      Hot |= (Node->Freq != 0);
+    }
+    if (Hot && Cfg->GetEntryNode()->Freq==0)
+      Cfg->GetEntryNode()->Freq = 1;
+  }
+}
+
+
 bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                        StringRef &SymfileName,
-                       StringRef &ProfileName) {
+                       StringRef &ProfileName,
+                       StringRef &CfgDump) {
   if (!ProcessSymfile(SymfileName)) {
     return false;
   }
@@ -118,6 +169,8 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                            std::bind(&PLO::ProcessFile, this, _1));
 
   if (PLOProfile(*this).ProcessProfile(ProfileName)) {
+    CalculateNodeFreqs();
+    DumpCfgsToFile(CfgDump);
     PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
     list<ELFCfg *> OrderResult;
     PFO.DoOrder(OrderResult);

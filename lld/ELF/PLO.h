@@ -46,7 +46,8 @@ public:
   
   bool ProcessFiles(vector<elf::InputFile *> &Files,
                     StringRef &SymFileName,
-                    StringRef &ProfileName);
+                    StringRef &ProfileName,
+                    StringRef &CfgDump);
 
   // Addr -> Symbol (for all 't', 'T', 'w' and 'W' symbols) map.
   map<uint64_t, llvm::SmallVector<StringRef, 3>> AddrSymMap;
@@ -65,11 +66,14 @@ private:
 
   void ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair);
 
+  bool DumpCfgsToFile(StringRef &CfgDumpFile) const;
+  void CalculateNodeFreqs();
+
   // Parallizable, thread safety is guaranteed.
   void CreateCfgForFile(elf::InputFile *Inf);
-  
+
   list<unique_ptr<ELFView>> Views;
-  
+
   // Same named Cfgs may exist in different object files (e.g. weak symbols.)
   // We always choose symbols that appear earlier on the command line.
   struct ELFViewOrdinalComparator {

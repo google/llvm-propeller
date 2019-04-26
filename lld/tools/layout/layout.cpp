@@ -6,7 +6,6 @@
 #include <deque>
 #include <list>
 
-#include "../../ELF/PLOELFView.h"
 #include "../../ELF/PLOELFCfg.h"
 
 #include "llvm/ADT/StringRef.h"
@@ -68,12 +67,11 @@ class NodeChainBuilder {
   std::list<const ELFCfgNode *> Layout;
 
   NodeChainBuilder(const ELFCfg * _Cfg): Cfg(_Cfg){
-    for(auto& I: Cfg->Nodes){
-      auto* Node = I.second.get();
-      auto* Chain = new NodeChain(Node);
-      NodeToChainMap[Node] = Chain;
+    for(auto& Node: Cfg->Nodes){
+      auto* Chain = new NodeChain(Node.get());
+      NodeToChainMap[Node.get()] = Chain;
       Chains.insert(Chain);
-      NodeOffset[Node] = 0;
+      NodeOffset[Node.get()] = 0;
     }
   }
 
@@ -153,36 +151,36 @@ int main(int Argc, const char **Argv) {
   fprintf(stderr, "Read all Cfgs\n");
 
   if (!opts::CfgDump.empty()){
-    std::ofstream fout;
-    fout.open(opts::CfgDump.getValue(), std::ios::out);
+    std::ofstream OS;
+    OS.open(opts::CfgDump.getValue(), std::ios::out);
 
-    if (!fout.good()) {
+    if (!OS.good()) {
       fprintf(stderr, "File is not good for writing: <%s>\n", opts::CfgDump.getValue().c_str());
       exit(0);
     } else {
         for (auto &Cfg: CfgReader.Cfgs) {
-          Cfg->WriteToFile(fout);
+          Cfg->DumpToOS(OS);
         }
-      fout.close();
+      OS.close();
     }
   }
 
   if(!opts::LayoutDump.empty()){
-    std::ofstream fout;
-    fout.open(opts::LayoutDump.getValue(), std::ios::out);
+    std::ofstream LOS;
+    LOS.open(opts::LayoutDump.getValue(), std::ios::out);
     for(auto& Cfg: CfgReader.Cfgs){
       if (Cfg->IsHot()){
         auto ChainBuilder = lld::plo::NodeChainBuilder(Cfg.get());
         ChainBuilder.GreedyChain();
         ChainBuilder.ChainSort();
         for(auto * Node: ChainBuilder.Layout)
-          fout << Node->ShName.str() << "\n";
+          LOS << Node->ShName.str() << "\n";
       } else {
-        for(auto& P: Cfg->Nodes){
-          fout << P.second->ShName.str() << "\n";
+        for(auto& Node: Cfg->Nodes){
+          LOS << Node->ShName.str() << "\n";
         }
       }
     }
-    fout.close();
+    LOS.close();
   }
 }

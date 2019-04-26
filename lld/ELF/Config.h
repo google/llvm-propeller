@@ -104,6 +104,7 @@ struct Configuration {
   llvm::StringRef ProgName;
   llvm::StringRef PrintSymbolOrder;
   llvm::StringRef SymFile;
+  llvm::StringRef CfgDump;
   llvm::StringRef SoName;
   llvm::StringRef Sysroot;
   llvm::StringRef ThinLTOCacheDir;
