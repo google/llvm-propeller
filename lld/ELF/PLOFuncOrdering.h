@@ -48,10 +48,11 @@ public:
 
 private:
   ELFCfg *MostLikelyPredecessor(
-      Cluster *Cluster, ELFCfg *Cfg, map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
+      Cluster *Cluster, ELFCfg *Cfg, uint64_t CfgWeight,
+      map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
 
   void MergeClusters();
-  map<double, Cluster *> SortClusters();
+  void SortClusters();
 
   PLO &Plo;
   list<unique_ptr<Cluster>> Clusters;
@@ -69,7 +70,7 @@ class PLOFuncOrdering {
 
   ReorderingAlgorithm Algo;
 };
- 
+
 }
 }
 

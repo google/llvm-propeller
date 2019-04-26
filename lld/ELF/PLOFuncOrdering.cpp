@@ -22,18 +22,20 @@ CCubeAlgorithm::Cluster::Cluster(ELFCfg *Cfg)
 CCubeAlgorithm::Cluster::~Cluster() {}
 
 ELFCfg *CCubeAlgorithm::MostLikelyPredecessor(
-   Cluster *Cluster, ELFCfg *Cfg,
+   Cluster *Cluster, ELFCfg *Cfg, uint64_t CfgWeight,
    map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap) {
   ELFCfgNode *Entry = Cfg->GetEntryNode();
   if (!Entry) return nullptr;
   ELFCfgEdge *E = nullptr;
   for (ELFCfgEdge *CallIn: Entry->CallIns) {
+    ELFCfg *Caller = CallIn->Src->Cfg;
     if (CallIn->Type != ELFCfgEdge::INTER_FUNC_CALL ||
-        CallIn->Src->Cfg == Cfg) continue;
-    if (!E || E->Weight < CallIn->Weight) {
-      // Check if caller is in the same Cluster as callee, is so, skip.
-      if (ClusterMap[CallIn->Src->Cfg] == Cluster) continue;
-      if (ClusterMap[CallIn->Src->Cfg]->Size > 4096) continue;
+        Caller == Cfg ||ClusterMap[Caller] == Cluster) {
+      continue;
+    }
+    if (!E ||
+        E->Weight / (double)CfgWeight < CallIn->Weight / (double)CfgWeight ) {
+      // if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 21)) continue;
       E = CallIn;
     }
   }
@@ -66,17 +68,22 @@ void CCubeAlgorithm::MergeClusters() {
     ELFCfg *Cfg = P->second;
     auto *Cluster = ClusterMap[Cfg];
     assert(Cluster);
-    if (Cluster->Size > 4096) continue;
 
-    ELFCfg *PredecessorCfg = MostLikelyPredecessor(Cluster, Cfg, ClusterMap);
+    ELFCfg *PredecessorCfg = MostLikelyPredecessor(
+        Cluster, Cfg, -P->first, ClusterMap);
     if (!PredecessorCfg) continue;
     assert(PredecessorCfg != Cfg);
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
-    if (PredecessorCluster->Size > 4096) continue;
+    assert(PredecessorCluster);
+
     if (PredecessorCluster == Cluster) continue;
+    if (Cluster->Size + PredecessorCluster->Size > (1 << 21)) continue;
 
     // Join 2 clusters into PredecessorCluster.
+    fprintf(stderr, "Before: density: %.3f & %.3f\n",
+            PredecessorCluster->Density, Cluster->Density);
     *PredecessorCluster << *Cluster;
+    fprintf(stderr, "After: density: %.3f\n", PredecessorCluster->Density);
 
     // Update Cfg <-> Cluster mapping, because all cfgs that were
     // previsously in Cluster are now in PredecessorCluster.
@@ -88,32 +95,21 @@ void CCubeAlgorithm::MergeClusters() {
   fprintf(stderr, "Total cluster size after: %lu\n", Clusters.size());
 }
 
-map<double, CCubeAlgorithm::Cluster *> CCubeAlgorithm::SortClusters() {
-  // Calculate Cluster density
-  map<double, Cluster *> ClusterOrder;
-  for (auto &Cluster: Clusters) {
-    uint64_t TotalExecCnt = 0;
-    uint64_t TotalSize = 0;
-    for (auto *Cfg: Cluster->Cfgs) {
-      TotalExecCnt += Cfg->ComputeDensity() * Cfg->Size;
-      TotalSize += Cfg->Size;
-    }
-    Cluster->Density = TotalExecCnt / (double)TotalSize;
-    ClusterOrder[-(Cluster->Density)] = Cluster.get();
-  }
-  return ClusterOrder;
+void CCubeAlgorithm::SortClusters() {
+  Clusters.sort([](unique_ptr<Cluster> &C1,
+                   unique_ptr<Cluster> &C2) {
+                  return -C1->Density < -C2->Density;
+                });
 }
 
 list<ELFCfg *> CCubeAlgorithm::DoOrder() {
   MergeClusters();
-  map<double, Cluster *> ClusterOrder = SortClusters();
-  list<ELFCfg *> OrderResult;
-  for (auto &P: ClusterOrder) {
-    OrderResult.insert(OrderResult.end(),
-                       P.second->Cfgs.begin(),
-                       P.second->Cfgs.end());
+  SortClusters();
+  list<ELFCfg *> L;
+  for (auto &Cptr : Clusters) {
+    L.insert(L.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());
   }
-  return OrderResult;
+  return L;
 }
 
 }
