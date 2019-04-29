@@ -28,13 +28,12 @@ ELFCfg *CCubeAlgorithm::MostLikelyPredecessor(
   if (!Entry) return nullptr;
   ELFCfgEdge *E = nullptr;
   for (ELFCfgEdge *CallIn: Entry->CallIns) {
-    ELFCfg *Caller = CallIn->Src->Cfg;
     if (CallIn->Type != ELFCfgEdge::INTER_FUNC_CALL ||
-        Caller == Cfg ||ClusterMap[Caller] == Cluster) {
-      continue;
-    }
-    if (!E ||
-        E->Weight / (double)CfgWeight < CallIn->Weight / (double)CfgWeight ) {
+        CallIn->Src->Cfg == Cfg) continue;
+    if (!E || E->Weight / (double)CfgWeight
+        < CallIn->Weight / (double)CfgWeight ) {
+      // Check if caller is in the same Cluster as callee, is so, skip.
+      if (ClusterMap[CallIn->Src->Cfg] == Cluster) continue;
       // if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 21)) continue;
       E = CallIn;
     }
@@ -77,7 +76,7 @@ void CCubeAlgorithm::MergeClusters() {
     assert(PredecessorCluster);
 
     if (PredecessorCluster == Cluster) continue;
-    if (Cluster->Size + PredecessorCluster->Size > (1 << 21)) continue;
+    if (PredecessorCluster->Size + Cluster->Size > 4096) continue;
 
     // Join 2 clusters into PredecessorCluster.
     fprintf(stderr, "Before: density: %.3f & %.3f\n",
