@@ -176,6 +176,10 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
     for (auto *Cfg : OrderResult) {
       Cfg->ForEachNodeRef([](ELFCfgNode &N) {
                             std::cout << "SYM: " << N.ShName.str() << std::endl;
+                            if (IsBBSymbol(N.ShName)) {
+                              std::cout << "SYM: " << N.ShName.str()
+                                        << ".bbend" << std::endl;
+                            }
                           });
     }
     return true;

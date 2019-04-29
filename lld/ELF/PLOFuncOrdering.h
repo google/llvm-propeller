@@ -48,7 +48,7 @@ public:
 
 private:
   ELFCfg *MostLikelyPredecessor(
-      Cluster *Cluster, ELFCfg *Cfg, uint64_t CfgWeight,
+      Cluster *Cluster, ELFCfg *Cfg,
       map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
 
   void MergeClusters();

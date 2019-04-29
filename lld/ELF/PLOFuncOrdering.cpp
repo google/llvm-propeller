@@ -22,18 +22,16 @@ CCubeAlgorithm::Cluster::Cluster(ELFCfg *Cfg)
 CCubeAlgorithm::Cluster::~Cluster() {}
 
 ELFCfg *CCubeAlgorithm::MostLikelyPredecessor(
-   Cluster *Cluster, ELFCfg *Cfg, uint64_t CfgWeight,
+   Cluster *Cluster, ELFCfg *Cfg,
    map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap) {
   ELFCfgNode *Entry = Cfg->GetEntryNode();
   if (!Entry) return nullptr;
   ELFCfgEdge *E = nullptr;
   for (ELFCfgEdge *CallIn: Entry->CallIns) {
-    if (CallIn->Type != ELFCfgEdge::INTER_FUNC_CALL ||
-        CallIn->Src->Cfg == Cfg) continue;
-    if (!E || E->Weight / (double)CfgWeight
-        < CallIn->Weight / (double)CfgWeight ) {
-      // Check if caller is in the same Cluster as callee, is so, skip.
-      if (ClusterMap[CallIn->Src->Cfg] == Cluster) continue;
+    auto *Caller = CallIn->Src->Cfg;
+    if (Caller == Cfg ||
+        ClusterMap[Caller] == Cluster) continue;
+    if (!E || E->Weight < CallIn->Weight) {
       // if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 21)) continue;
       E = CallIn;
     }
@@ -42,19 +40,20 @@ ELFCfg *CCubeAlgorithm::MostLikelyPredecessor(
 }
 
 void CCubeAlgorithm::MergeClusters() {
-  // Signed integer is used here, because negated weights are used as
+  // Signed key is used here, because negated weights are used as
   // sorting keys.
-  map<int64_t, ELFCfg *> WeightOrder;
+  map<double, ELFCfg *> WeightOrder;
   map<ELFCfg *, Cluster *> ClusterMap;
   fprintf(stderr, "Ordering Cfg...\n");
   Plo.ForEachCfgRef([this, &ClusterMap, &WeightOrder](ELFCfg &Cfg) {
                       uint64_t CfgWeight = 0;
+                      double CfgSize = (double)Cfg.Size;
                       Cfg.ForEachNodeRef([&CfgWeight](ELFCfgNode &N) {
                                              CfgWeight += N.Weight;
                                            // Use MaxWeight or Sum of weights?
                                            // CfgWeight += N.Weight;
                                          });
-                      WeightOrder[-CfgWeight] = &Cfg;
+                      WeightOrder[-(CfgWeight / CfgSize)] = &Cfg;
                       Cluster *C = new Cluster(&Cfg);
                       C->Handler = Clusters.emplace(Clusters.end(), C);
                       ClusterMap[&Cfg] = C;
@@ -63,20 +62,20 @@ void CCubeAlgorithm::MergeClusters() {
   fprintf(stderr, "Total cluster size before: %lu\n", Clusters.size());
   for (auto P = WeightOrder.begin(), E = WeightOrder.end();
        P != E; P = WeightOrder.erase(P)) {
-    if (P->first == 0) break;
+    // "P->first" is in the range of [-a_large_number, 0]
+    if (P->first >= -0.005) break;
     ELFCfg *Cfg = P->second;
     auto *Cluster = ClusterMap[Cfg];
     assert(Cluster);
 
-    ELFCfg *PredecessorCfg = MostLikelyPredecessor(
-        Cluster, Cfg, -P->first, ClusterMap);
+    ELFCfg *PredecessorCfg = MostLikelyPredecessor(Cluster, Cfg, ClusterMap);
     if (!PredecessorCfg) continue;
     assert(PredecessorCfg != Cfg);
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
     assert(PredecessorCluster);
 
     if (PredecessorCluster == Cluster) continue;
-    if (PredecessorCluster->Size + Cluster->Size > 4096) continue;
+    if (PredecessorCluster->Size + Cluster->Size > (1 << 21)) continue;
 
     // Join 2 clusters into PredecessorCluster.
     fprintf(stderr, "Before: density: %.3f & %.3f\n",

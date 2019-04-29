@@ -61,6 +61,18 @@ public:
     }
   }
 
+  static bool IsBBSymbol(StringRef &N) {
+    auto R1 = N.rsplit('.');
+    if (R1.second.empty())
+      return false;
+    for (const char *P = R1.second.begin(), *Q = R1.second.end(); P != Q; ++P) {
+      if (*P < '0' || *P > '9') {
+        return false;
+      }
+    }
+    return R1.first.rsplit('.').second == "bb";
+  }
+
 private:
   bool ProcessSymfile(StringRef &SymfileName);
 
