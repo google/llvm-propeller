@@ -60,6 +60,7 @@ class ELFCfgNode {
   uint64_t           Shndx;
   StringRef          ShName;
   uint64_t           ShSize;
+  uint64_t           Freq;
   uint64_t           MappedAddr;
   uint64_t           Weight;
   ELFCfg            *Cfg;
@@ -91,7 +92,29 @@ private:
 
   friend class ELFCfg;
   friend class ELFCfgBuilder;
+  friend class ELFCfgReader;
 };
+
+class ELFCfgEdgeBuilder {
+ public:
+  std::string SrcShName, SinkShName;
+  uint64_t Weight;
+  uint16_t Type;
+
+  ELFCfgEdgeBuilder(std::string _SrcShName, std::string _SinkShName, uint64_t _Weight, uint16_t _Type)
+      :SrcShName(_SrcShName), SinkShName(_SinkShName), Weight(_Weight), Type(_Type){}
+};
+
+class ELFCfgReader {
+ public:
+  StringRef CfgFilePath;
+  std::vector<unique_ptr<ELFCfg>> Cfgs;
+  ELFCfgReader(StringRef& _CfgFilePath): CfgFilePath(_CfgFilePath) {}
+
+  void ReadCfgs();
+};
+
+
 
 class ELFCfg {
 public:
@@ -111,10 +134,17 @@ public:
   bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);
   void MapBranch(ELFCfgNode *From, ELFCfgNode *To);
   void MapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr);
+  void DumpToOS(std::ostream&) const;
 
   ELFCfgNode *GetEntryNode() const {
     assert(!Nodes.empty());
     return Nodes.begin()->get();
+  }
+
+  bool IsHot() const {
+    if (Nodes.empty())
+      return false;
+    return (GetEntryNode()->Freq != 0);
   }
 
   template <class Visitor>
@@ -145,6 +175,7 @@ private:
   }
 
   friend class ELFCfgBuilder;
+  friend class ELFCfgReader;
 };
 
 
@@ -163,8 +194,10 @@ public:
 protected:
   void BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
                 map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap);
+
   void CalculateFallthroughEdges(
       ELFCfg &Cfg, map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap);
+
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
   void BuildRelocationSectionMap(
@@ -178,6 +211,8 @@ protected:
 ostream & operator << (ostream &Out, const ELFCfgNode &Node);
 ostream & operator << (ostream &Out, const ELFCfgEdge &Edge);
 ostream & operator << (ostream &Out, const ELFCfg     &Cfg);
+
+
 
 }
 }

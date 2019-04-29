@@ -861,6 +861,7 @@ void LinkerDriver::readConfigs(opt::InputArgList &Args) {
   Config->SplitStackAdjustSize = args::getInteger(Args, OPT_split_stack_adjust_size, 16384);
   Config->Strip = getStrip(Args);
   Config->SymFile = Args.getLastArgValue(OPT_symfile);
+  Config->CfgDump = Args.getLastArgValue(OPT_cfgdump);
   Config->Sysroot = Args.getLastArgValue(OPT_sysroot);
   Config->Target1Rel = Args.hasFlag(OPT_target1_rel, OPT_target1_abs, false);
   Config->Target2 = getTarget2(Args);
@@ -1626,7 +1627,8 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
     printf("Entering into PLO mode, processing %lu files.\n", ObjectFiles.size());
     if (!lld::plo::PLO().ProcessFiles(ObjectFiles,
                                       Config->SymFile,
-                                      Config->Profile)) {
+                                      Config->Profile,
+                                      Config->CfgDump)) {
       error("PLO stage failed.");
     }
     return;

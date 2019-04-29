@@ -3,12 +3,16 @@
 #include "PLO.h"
 #include "PLOELFView.h"
 
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <list>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <ostream>
+#include <string>
+#include <unordered_map>
 
 #include "llvm/Object/ObjectFile.h"
 // Needed by ELFSectionRef & ELFSymbolRef.
@@ -22,11 +26,31 @@ using llvm::StringRef;
 
 using std::list;
 using std::map;
+using std::string;
 using std::unique_ptr;
 
 namespace lld {
 namespace plo {
 
+void ELFCfg::DumpToOS(std::ostream& os) const {
+  os << Name.str() << " " << Size << "\n";
+  os << Nodes.size() << "\n";
+
+  for (const auto &Node: Nodes){
+    os << Node->Shndx << " " << Node->ShName.str() << " " << Node->MappedAddr << " " << Node->ShSize << " " << Node->Freq << "\n";
+  }
+
+  os << IntraEdges.size() << "\n";
+  for(const auto &Edge: IntraEdges){
+    bool IsFTEdge = (Edge.get() == Edge->Src->FTEdge);
+    os << Edge->Src->ShName.str() << " " << Edge->Sink->ShName.str() << " " << Edge->Weight << " " << Edge->Type << " " << IsFTEdge << "\n";
+  }
+
+  os << InterEdges.size() << "\n";
+  for(const auto &Edge: InterEdges){
+    os << Edge->Src->ShName.str() << " " << Edge->Sink->ShName.str() << " " << Edge->Weight << " " << Edge->Type << "\n";
+  }
+}
 
 ELFCfgEdge *ELFCfg::CreateEdge(ELFCfgNode *From,
                                ELFCfgNode *To,
@@ -91,6 +115,95 @@ void ELFCfg::MapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr) {
     }
   }
   ++(CreateEdge(From, To, EdgeType)->Weight);
+}
+
+void ELFCfgReader::ReadCfgs() {
+  std::ifstream fin(CfgFilePath.str());
+  if (!fin.good()) {
+    fprintf(stderr, "Cannot open file: <%s>.", CfgFilePath.str().c_str());
+    exit(0);
+  }
+  std::unordered_map<std::string, ELFCfgNode*> AllNodes;
+  std::list<ELFCfgEdgeBuilder> InterEdges;
+  while(true){
+    string *CfgName = new string();
+    uint64_t CfgSize;
+    fin >> *CfgName >> CfgSize;
+    if (fin.eof())
+      break;
+    unique_ptr<ELFCfg> Cfg(new ELFCfg(nullptr, StringRef(*CfgName), CfgSize));
+    Cfg->Size = CfgSize;
+    unsigned NNodes;
+    fin >> NNodes;
+    for (unsigned i=0; i<NNodes; ++i){
+      uint16_t Shndx;
+      string *ShName = new string();
+      uint64_t MappedAddr, ShSize, Freq;
+      fin >> Shndx >> *ShName >> MappedAddr >> ShSize >> Freq;
+      StringRef ShNameRef(*ShName);
+      ELFCfgNode * Node = new ELFCfgNode(Shndx, ShNameRef, ShSize, MappedAddr, Cfg.get());
+      Node->Freq = Freq;
+      AllNodes.emplace(ShNameRef, Node);
+      Cfg->Nodes.emplace_back(std::move(Node));
+    }
+    unsigned NIntraEdges;
+    fin >> NIntraEdges;
+    for(unsigned i=0; i<NIntraEdges; ++i){
+      std::string SrcShName, SinkShName;
+      uint64_t Weight;
+      uint16_t Type;
+      uint8_t IsFTEdge;
+      fin >> SrcShName >> SinkShName >> Weight >> Type >> IsFTEdge;
+      auto SrcNodeIt = AllNodes.find(SrcShName);
+      if(SrcNodeIt == AllNodes.end()){
+        fprintf(stderr, "Intra edge Src: %s could not be mapped to Cfg\n", SrcShName.c_str());
+        exit(0);
+      }
+      auto& SrcNode = SrcNodeIt->second;
+      auto SinkNodeIt = AllNodes.find(SinkShName);
+      if(SinkNodeIt == AllNodes.end()){
+        fprintf(stderr, "Intra edge Sink: %s could not be mapped to Cfg\n", SinkShName.c_str());
+        exit(0);
+      }
+      auto& SinkNode = SinkNodeIt->second;
+      ELFCfgEdge * Edge = Cfg->CreateEdge(SrcNode, SinkNode, static_cast<ELFCfgEdge::EdgeType>(Type));
+      Edge->Weight = Weight;
+      if (IsFTEdge)
+        SrcNode->FTEdge = Edge;
+    }
+    unsigned NInterEdges;
+    fin >> NInterEdges;
+    for(unsigned i=0; i<NInterEdges; ++i){
+      std::string SrcShName, SinkShName;
+      uint64_t Weight;
+      uint16_t Type;
+      fin >> SrcShName >> SinkShName >> Weight >> Type;
+      InterEdges.push_back(ELFCfgEdgeBuilder(SrcShName, SinkShName, Weight, Type));
+    }
+    Cfgs.emplace_back(std::move(Cfg));
+  }
+  for (ELFCfgEdgeBuilder& EdgeBuilder: InterEdges){
+    auto SrcNodeIt = AllNodes.find(EdgeBuilder.SrcShName);
+    if (SrcNodeIt == AllNodes.end()){
+      fprintf(stderr, "Inter edge source was not found\n");
+      continue;
+    }
+    auto SinkNodeIt = AllNodes.find(EdgeBuilder.SinkShName);
+    if (SinkNodeIt == AllNodes.end()){
+      fprintf(stderr, "Inter edge sink was not found\n");
+      continue;
+    }
+    auto& SrcNode = SrcNodeIt->second;
+    auto& SinkNode = SinkNodeIt->second;
+    SrcNode->Cfg->CreateEdge(SrcNode, SinkNode, static_cast<ELFCfgEdge::EdgeType>(EdgeBuilder.Type))->Weight = EdgeBuilder.Weight;
+  }
+
+  std::sort(Cfgs.begin(), Cfgs.end(), [] (const unique_ptr<ELFCfg>& A, const unique_ptr<ELFCfg>& B){
+    const auto& AEntry = A->GetEntryNode();
+    const auto& BEntry = B->GetEntryNode();
+    assert(AEntry->MappedAddr != BEntry->MappedAddr);
+    return AEntry->MappedAddr < BEntry->MappedAddr;
+  });
 }
 
 void ELFCfgBuilder::BuildCfgs() {
@@ -299,6 +412,8 @@ void ELFCfgBuilder::BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
   }
   CalculateFallthroughEdges(Cfg, TmpNodeMap);
 }
+
+
 
 // Calculate fallthroughs.  Edge P->Q is fallthrough if P & Q are
 // adjacent, and there is a NORMAL edge from P->Q.
