@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <iostream>
 #include <map>
-#include <vector>
 
 #include "PLO.h"
 #include "PLOBBOrdering.h"
@@ -11,7 +10,6 @@
 #include "PLOELFView.h"
 
 using std::map;
-using std::vector;
 
 namespace lld {
 namespace plo {
@@ -40,7 +38,7 @@ ELFCfg *CCubeAlgorithm::MostLikelyPredecessor(
 }
 
 void CCubeAlgorithm::MergeClusters() {
-  // Signed key is used here, because negated weights are used as
+  // Signed key is used here, because negated density are used as
   // sorting keys.
   map<double, ELFCfg *> WeightOrder;
   map<ELFCfg *, Cluster *> ClusterMap;

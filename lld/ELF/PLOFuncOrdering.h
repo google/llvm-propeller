@@ -6,13 +6,10 @@
 #include <map>
 #include <memory>
 #include <ostream>
-#include <set>
 #include <utility>
 
 using std::list;
 using std::map;
-using std::pair;
-using std::set;
 using std::unique_ptr;
 
 namespace lld {
@@ -31,6 +28,7 @@ public:
     uint64_t       Size;
     double         Density;
 
+    // Merge "Other" cluster into this cluster.
     Cluster & operator << (Cluster &Other) {
       Cfgs.insert(Cfgs.end(), Other.Cfgs.begin(), Other.Cfgs.end());
       this->Size += Other.Size;
@@ -39,6 +37,8 @@ public:
       return *this;
     }
 
+    // Handler is used to remove itself from ownership list without
+    // the need to iterate through the list.
     list<unique_ptr<Cluster>>::iterator Handler;
   };
 
