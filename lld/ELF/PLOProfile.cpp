@@ -39,7 +39,7 @@ bool LBREntry::FillEntry(const StringRef &SR, LBREntry &Entry) {
 
 PLOProfile::~PLOProfile() {}
 
-bool PLOProfile::ProcessProfile(StringRef &ProfileName) {
+bool PLOProfile::Process(StringRef &ProfileName) {
   std::ifstream fin(ProfileName.str());
   if (!fin.good()) return false;
   string line;

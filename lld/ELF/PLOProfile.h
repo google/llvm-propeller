@@ -36,15 +36,15 @@ class PLOProfile {
 public:
   PLOProfile(PLO &P) :Plo(P) {}
   ~PLOProfile();
-  bool ProcessProfile(StringRef &ProfileName);
+  bool Process(StringRef &ProfileName);
 
 private:
   void ProcessLBR(LBREntry *EntryArray, int EntryIndex);
-  
+
   bool FindCfgForAddress(uint64_t Addr,
                          ELFCfg *&ResultCfg,
                          ELFCfgNode *&ResultNode);
-  
+
   bool SymContainsAddr(const StringRef &SymName,
                        uint64_t SymAddr,
                        uint64_t Addr,
@@ -54,7 +54,8 @@ private:
 
   // Naive FIFO cache to speed up lookup. Usually there are hundreds
   // of millions address lookup. This reduce total time from 7m to 1m.
-
+  // A more advanced LRU algorithm does not seem to gain benefit over
+  // the FIFO cache here.
   using SearchCacheTy = map<uint64_t, ELFCfgNode *>;
   inline void CacheSearchResult(uint64_t Addr, ELFCfgNode *Node);
   // Use 8M cache.

@@ -11,6 +11,8 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Allocator.h"
+#include "llvm/Support/StringSaver.h"
 
 // This is toplevel PLO head file, do not include any other PLO*.h.
 
@@ -49,11 +51,19 @@ public:
                     StringRef &ProfileName,
                     StringRef &CfgDump);
 
+  vector<StringRef> GenSymbolOrderingFile();
+
   // Addr -> Symbol (for all 't', 'T', 'w' and 'W' symbols) map.
   map<uint64_t, llvm::SmallVector<StringRef, 3>> AddrSymMap;
   // Sym -> <Addr, Size> map.
   map<StringRef, pair<uint64_t, uint64_t>> SymAddrSizeMap;
+  llvm::BumpPtrAllocator BPAllocator;
+  // StringRefs for AddrSymMap & SymAddrSizeMap. SymStringSaver is
+  // huge and lives as long as PLO, so do not use lld arena, which
+  // lasts till end of lld.
+  llvm::StringSaver SymStrSaver;
 
+public:
   template <class Visitor>
   void ForEachCfgRef(Visitor V) {
     for (auto &P : CfgMap) {
@@ -61,17 +71,28 @@ public:
     }
   }
 
-  static bool IsBBSymbol(StringRef &N) {
-    auto R1 = N.rsplit('.');
-    if (R1.second.empty())
-      return false;
-    for (const char *P = R1.second.begin(), *Q = R1.second.end(); P != Q; ++P) {
-      if (*P < '0' || *P > '9') {
-        return false;
-      }
+  static StringRef BBSymbol(StringRef &N) {
+    StringRef::iterator P = (N.end() - 1), A = N.begin();
+    char C = '\0';
+    for ( ; P > A; --P) {
+      C = *P;
+      if (C == '.') break;
+      if (C < '0' || C > '9') return StringRef("");
     }
-    return R1.first.rsplit('.').second == "bb";
+    if (C == '.' && P - A >= 4 /* must be like "xx.bb." */ &&
+        *(P - 1) == 'b' && *(P - 2) == 'b' && *(P - 3) == '.') {
+      return StringRef(N.data(), P - A - 3);
+    }
+    return StringRef("");
   }
+
+  template <class C>
+  void FreeContainer(C &container) {
+    container.clear();
+    C tmp;
+    container.swap(tmp);
+  }
+
 
 private:
   bool ProcessSymfile(StringRef &SymfileName);
@@ -81,13 +102,12 @@ private:
   bool DumpCfgsToFile(StringRef &CfgDumpFile) const;
   void CalculateNodeFreqs();
 
-  // Parallizable, thread safety is guaranteed.
-  void CreateCfgForFile(elf::InputFile *Inf);
-
   list<unique_ptr<ELFView>> Views;
 
-  // Same named Cfgs may exist in different object files (e.g. weak symbols.)
-  // We always choose symbols that appear earlier on the command line.
+  // Same named Cfgs may exist in different object files (e.g. weak
+  // symbols.)  We always choose symbols that appear earlier on the
+  // command line.  Note: implementation is in the .cpp file, because
+  // ELFCfg here is an incomplete type.
   struct ELFViewOrdinalComparator {
     bool operator()(const ELFCfg *A, const ELFCfg *B);
   };
@@ -96,24 +116,9 @@ private:
   // Lock to access / modify global data structure.
   mutex Lock;
 
-public:
-  // statistics
-  atomic<uint32_t> TotalBB{0};
-  atomic<uint32_t> TotalBBWoutAddr{0};
-  atomic<uint32_t> ValidCfgs{0};
-  atomic<uint32_t> InvalidCfgs{0};
-
   friend class PLOProfile;
   friend class CallGraph;
-  
 };
-
-template <class C>
-void FreeContainer(C &container) {
-  container.clear();
-  C tmp;
-  container.swap(tmp);
-}
 
 }  // namespace plo
 }  // namespace lld

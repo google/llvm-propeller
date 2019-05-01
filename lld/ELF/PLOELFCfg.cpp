@@ -230,24 +230,11 @@ void ELFCfgBuilder::BuildCfgs() {
     auto NameOrErr = Sym.getName();
     if (!NameOrErr) continue;
     StringRef SymName(*NameOrErr);
-    auto T = SymName.rsplit('.');
-    StringRef RL = T.first, RR = T.second;
-    bool AllDigits = true;
-    for (const char *P0 = RR.data(), *PN = RR.data() + RR.size();
-         P0 != PN; ++P0) {
-      if (!(*P0 <= '9' && *P0 >= '0')) {
-        AllDigits = false;
-        break;
-      }
-    }
-    if (AllDigits) {
-      auto T = RL.rsplit('.');
-      StringRef RFN = T.first, RBB = T.second;
-      if (RBB == "bb") {
-        auto L = Groups.find(RFN);
-        if (L != Groups.end()) {
-          L->second.push_back(Sym);
-        }
+    StringRef BBSymBaseName = PLO::BBSymbol(SymName);
+    if (!BBSymBaseName.empty()) {
+      auto L = Groups.find(BBSymBaseName);
+      if (L != Groups.end()) {
+        L->second.push_back(Sym);
       }
     }
   }
@@ -272,9 +259,6 @@ void ELFCfgBuilder::BuildCfgs() {
         // -fbasicblock-section=labels do not have size information
         // for BB symbols.
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
-        // All BB symbols' value must equal to 0 (the offset), because
-        // they are always defined at the beginning of their section.
-        // assert(Sym.getValue() == 0);
         auto ResultP = Plo.SymAddrSizeMap.find(SymName);
         if (ResultP != Plo.SymAddrSizeMap.end()) {
           uint64_t MappedAddr = ResultP->second.first;
