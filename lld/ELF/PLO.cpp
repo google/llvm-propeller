@@ -37,10 +37,38 @@ using std::string;
 namespace lld {
 namespace plo {
 
-PLO::PLO() :BPAllocator(), SymStrSaver(BPAllocator) {}
-PLO::~PLO() { BPAllocator.Reset(); }
+PLO::PLO() {}
+PLO::~PLO() {}
 
-int counter = 0;
+Symfile::Symfile() : BPAllocator(), SymStrSaver(BPAllocator) {}
+Symfile::~Symfile() { BPAllocator.Reset(); }
+
+bool Symfile::Init(StringRef SymfileName) {
+  std::ifstream fin(SymfileName.str());
+  if (!fin.good()) return false;
+  string line;
+  while (fin.good() && !std::getline(fin, line).eof()) {
+    StringRef L(line);
+    auto S1 = L.split(' ');
+    if (S1.first.empty()) continue;
+    uint64_t Addr = strtoull(S1.first.data(), nullptr, 16);
+    auto S2 = S1.second.split(' ');
+    if (S2.first.empty()) continue;
+    uint64_t Size = strtoull(S2.first.data(), nullptr, 16);
+    auto S3 = S2.second.split(' ');
+    char Type = *(S3.first.data());
+    if (Type == 'T' || Type == 't' || Type == 'W' || Type == 'w') {
+      StringRef TemporalName = S3.second;
+      if (!TemporalName.empty()) {
+        StringRef NameRef = this->SymStrSaver.save(TemporalName);
+        auto SymHandler = SymList.emplace(SymList.end(), NameRef, Addr, Size);
+        NameMap.emplace(NameRef, SymHandler);
+        AddrMap[Addr].emplace_back(SymHandler);
+      }
+    }
+  }
+  return true;
+}
 
 bool PLO::DumpCfgsToFile(StringRef &CfgDumpFile) const {
   if(CfgDumpFile.empty())
@@ -59,35 +87,6 @@ bool PLO::DumpCfgsToFile(StringRef &CfgDumpFile) const {
   }
 
   OS.close();
-  return true;
-}
-
-// Each line contains: Addr Size Type Name
-bool PLO::ProcessSymfile(StringRef &Symfile) {
-  std::ifstream fin(Symfile.str());
-  if (!fin.good()) return false;
-  string line;
-  while (fin.good() && !std::getline(fin, line).eof()) {
-    StringRef L(line);
-    auto S1 = L.split(' ');
-    if (S1.first.empty()) continue;
-    uint64_t Addr = strtoull(S1.first.data(), nullptr, 16);
-    auto S2 = S1.second.split(' ');
-    if (S2.first.empty()) continue;
-    uint64_t Size = strtoull(S2.first.data(), nullptr, 16);
-    auto S3 = S2.second.split(' ');
-    char Type = *(S3.first.data());
-    if (Type == 'T' || Type == 't' || Type == 'W' || Type == 'w') {
-      StringRef TemporalName = S3.second;
-      if (!TemporalName.empty()) {
-        StringRef NameRef = this->SymStrSaver.save(TemporalName);
-        AddrSymMap[Addr].emplace_back(NameRef);
-        SymAddrSizeMap.emplace(std::piecewise_construct,
-                               std::forward_as_tuple(NameRef),
-                               std::forward_as_tuple(Addr, Size));
-      }
-    }
-  }
   return true;
 }
 
@@ -142,9 +141,8 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                        StringRef &SymfileName,
                        StringRef &ProfileName,
                        StringRef &CfgDump) {
-  if (!ProcessSymfile(SymfileName)) {
+  if (!Syms.Init(SymfileName))
     return false;
-  }
     
   vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
   int Ordinal = 0;
@@ -155,12 +153,10 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                            FileOrdinalPairs.begin(),
                            FileOrdinalPairs.end(),
                            std::bind(&PLO::ProcessFile, this, _1));
-
   if (PLOProfile(*this).Process(ProfileName)) {
     CalculateNodeFreqs();
     DumpCfgsToFile(CfgDump);
-    FreeContainer(AddrSymMap);
-    FreeContainer(SymAddrSizeMap);
+    Syms.Reset();
     return true;
   }
   return false;
@@ -169,16 +165,23 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
 vector<StringRef> PLO::GenSymbolOrderingFile() { 
   PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
   list<ELFCfg *> OrderResult = PFO.DoOrder();
+  list<StringRef> HotS, ColdS;
   vector<StringRef> SymbolOrderingFile;
   for (auto *Cfg : OrderResult) {
-    Cfg->ForEachNodeRef(
-        [&SymbolOrderingFile](ELFCfgNode &N) {
-          SymbolOrderingFile.emplace_back(Saver.save(N.ShName));
-          if (!BBSymbol(N.ShName).empty()) {
-            SymbolOrderingFile.emplace_back(Saver.save(N.ShName + ".bbend"));
-          }
-        });
+    if (Cfg->IsHot())
+      PLOBBOrdering(*Cfg).DoOrder(HotS, ColdS);
+    else
+      Cfg->ForEachNodeRef([&ColdS](ELFCfgNode &N) { ColdS.emplace_back(N.ShName); });
   }
+  SymbolOrderingFile.insert(SymbolOrderingFile.end(), HotS.begin(), HotS.end());
+  SymbolOrderingFile.insert(SymbolOrderingFile.end(), ColdS.begin(), ColdS.end());
+    // Cfg->ForEachNodeRef(
+    //     [&SymbolOrderingFile](ELFCfgNode &N) {
+    //       SymbolOrderingFile.emplace_back(Saver.save(N.ShName));
+    //       if (!BBSymbol(N.ShName).empty()) {
+    //         SymbolOrderingFile.emplace_back(Saver.save(N.ShName + ".bbend"));
+    //       }
+    //     });
   return SymbolOrderingFile;
 }
 

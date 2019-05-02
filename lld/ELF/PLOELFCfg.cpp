@@ -259,9 +259,9 @@ void ELFCfgBuilder::BuildCfgs() {
         // -fbasicblock-section=labels do not have size information
         // for BB symbols.
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
-        auto ResultP = Plo.SymAddrSizeMap.find(SymName);
-        if (ResultP != Plo.SymAddrSizeMap.end()) {
-          uint64_t MappedAddr = ResultP->second.first;
+        auto ResultP = Plo.Syms.NameMap.find(SymName);
+        if (ResultP != Plo.Syms.NameMap.end()) {
+          uint64_t MappedAddr = Plo.Syms.GetAddr(ResultP->second);
           TmpNodeMap[MappedAddr].emplace_back(
               new ELFCfgNode(SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
           continue;

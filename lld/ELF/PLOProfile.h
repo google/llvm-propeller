@@ -45,8 +45,9 @@ private:
                          ELFCfg *&ResultCfg,
                          ELFCfgNode *&ResultNode);
 
-  bool SymContainsAddr(const StringRef &SymName,
+  bool SymContainsAddr(StringRef &SymName,
                        uint64_t SymAddr,
+                       uint64_t SymSize,
                        uint64_t Addr,
                        StringRef &FuncName);
 

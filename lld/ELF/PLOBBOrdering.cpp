@@ -24,11 +24,15 @@ PLOBBOrdering::PLOBBOrdering(ELFCfg &C) : Cfg(C) {
   }
 }
 
+BBChain::BBChain(ELFCfgNode *N) : Nodes(1, N), Size(N->ShSize) {}
+BBChain::~BBChain() {}
+
 void PLOBBOrdering::ConnectChain(ELFCfgEdge *Edge, BBChain *C1, BBChain *C2) {
   // std::cout << "Merging edge: " << *Edge << std::endl;
   // std::cout << "  " << *C1 << std::endl;
   // std::cout << "  " << *C2 << std::endl;
   C1->Nodes.insert(C1->Nodes.end(), C2->Nodes.begin(), C2->Nodes.end());
+  C1->Size += C2->Size;
   C2->Nodes.clear();
   // std::cout << "==>" << std::endl;
   // std::cout << "  " << *C1 << std::endl;
@@ -88,17 +92,14 @@ void PLOBBOrdering::DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSy
   //   }
   // }
 
-  for (auto I = Chains.begin(), E = Chains.end(); I != E;) {
-    if ((*I)->Nodes.size() == 1) {
-      ColdSymbols.push_back((*(*I)->Nodes.begin())->ShName);
-      Chains.erase(I++);
-    } else {
-      ++I;
-    }
-  }
-
-  if (Chains.empty())
-    return ;
+  // for (auto I = Chains.begin(), E = Chains.end(); I != E;) {
+  //   if ((*I)->Nodes.size() == 1) {
+  //     ColdSymbols.push_back((*(*I)->Nodes.begin())->ShName);
+  //     Chains.erase(I++);
+  //   } else {
+  //     ++I;
+  //   }
+  // }
 
   // creating nodes -> Chain mapping:
   map<ELFCfgNode *, BBChain *> Map;
@@ -147,7 +148,7 @@ void PLOBBOrdering::DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSy
       int R1 = HasEdgeOver(C1.get(), C2.get());
       int R2 = HasEdgeOver(C2.get(), C1.get());
       if (R1 == R2) {
-        return -C1->Density < -C2->Density;
+        return -C1->Size < -C2->Size;
       }
       return -R1 < -R2;
     };
@@ -156,7 +157,10 @@ void PLOBBOrdering::DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSy
   Chains.sort(CompareChain);
   for (auto &C: Chains) {
     for (auto *N: C->Nodes) {
-      HotSymbols.push_back(N->ShName);
+      if (N->Weight)
+        HotSymbols.push_back(N->ShName);
+      else
+        ColdSymbols.push_back(N->ShName);
     }
   }
 }

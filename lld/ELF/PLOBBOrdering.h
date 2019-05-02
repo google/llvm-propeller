@@ -20,9 +20,11 @@ class ELFCfg;
 
 class BBChain {
 public:
-  BBChain(ELFCfgNode *N) : Nodes(1, N) {}
+  BBChain(ELFCfgNode *N);
+  ~BBChain();
   list<ELFCfgNode *> Nodes;
-  double Density;
+  uint64_t           Size;
+  double             Density;
 };
 
 class PLOBBOrdering {

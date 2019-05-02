@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -22,6 +23,7 @@ using std::map;
 using std::mutex;
 using std::pair;
 using std::set;
+using std::tuple;
 using std::unique_ptr;
 using std::vector;
 
@@ -41,6 +43,40 @@ class ELFView;
 class PLOProfile;
 class CallGraph;
 
+class Symfile {
+public:
+  Symfile();
+  ~Symfile();
+
+  // <Name, Addr, Size>
+  using Sym = tuple<StringRef, uint32_t, uint32_t>;
+  using SymHandler = list<Sym>::iterator;
+
+  StringRef GetName(SymHandler S) { return std::get<0>(*S); }
+  uint32_t  GetAddr(SymHandler S) { return std::get<1>(*S); }
+  uint32_t  GetSize(SymHandler S) { return std::get<2>(*S); }
+  
+  map<StringRef, SymHandler> NameMap;
+  map<uint64_t, llvm::SmallVector<SymHandler, 3>> AddrMap;
+
+  bool Init(StringRef SymfileName);
+  void Reset() {
+    map<StringRef, SymHandler> T0(std::move(NameMap));
+    map<uint64_t, llvm::SmallVector<SymHandler, 3>> T1(std::move(AddrMap));
+    SymList.clear();
+    BPAllocator.Reset();
+  }
+
+private:
+  list<Sym> SymList;
+
+  llvm::BumpPtrAllocator BPAllocator;
+  // StringRefs for symbol names. SymStringSaver is huge and lives
+  // only as long as Symfile, so do not use lld arena, which lasts
+  // till end of lld.
+  llvm::StringSaver SymStrSaver;
+};
+
 class PLO {
 public:
   PLO();
@@ -53,17 +89,6 @@ public:
 
   vector<StringRef> GenSymbolOrderingFile();
 
-  // Addr -> Symbol (for all 't', 'T', 'w' and 'W' symbols) map.
-  map<uint64_t, llvm::SmallVector<StringRef, 3>> AddrSymMap;
-  // Sym -> <Addr, Size> map.
-  map<StringRef, pair<uint64_t, uint64_t>> SymAddrSizeMap;
-  llvm::BumpPtrAllocator BPAllocator;
-  // StringRefs for AddrSymMap & SymAddrSizeMap. SymStringSaver is
-  // huge and lives as long as PLO, so do not use lld arena, which
-  // lasts till end of lld.
-  llvm::StringSaver SymStrSaver;
-
-public:
   template <class Visitor>
   void ForEachCfgRef(Visitor V) {
     for (auto &P : CfgMap) {
@@ -86,17 +111,9 @@ public:
     return StringRef("");
   }
 
-  template <class C>
-  void FreeContainer(C &container) {
-    container.clear();
-    C tmp;
-    container.swap(tmp);
-  }
-
+  Symfile Syms;
 
 private:
-  bool ProcessSymfile(StringRef &SymfileName);
-
   void ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair);
 
   bool DumpCfgsToFile(StringRef &CfgDumpFile) const;
@@ -122,6 +139,5 @@ private:
 
 }  // namespace plo
 }  // namespace lld
-
 
 #endif

@@ -46,7 +46,6 @@ bool PLOProfile::Process(StringRef &ProfileName) {
   // Preallocate "Entries" (total size = sizeof(LBREntry) * 32 bytes =
   // 6k). Which is way more faster than create space everytime.
   LBREntry EntryArray[32];
-  uint64_t TotalRecords = 0;
   while (fin.good() && !std::getline(fin, line).eof()) {
     if (line.empty()) continue;
     int EntryIndex = 0;
@@ -65,15 +64,9 @@ bool PLOProfile::Process(StringRef &ProfileName) {
       ++EntryIndex;
     } while(true);
     if (EntryIndex) {
-      ++TotalRecords;
       ProcessLBR(EntryArray, EntryIndex);
     }
   }
-  fprintf(stderr, "Intra-func marked: %lu (%lu not marked)\n",
-          IntraFunc, NonMarkedIntraFunc);
-  fprintf(stderr, "Inter-func marked: %lu (%lu not marked)\n",
-          InterFunc, NonMarkedInterFunc);
-  fprintf(stderr, "Total LBR records: %lu\n", TotalRecords);
   return true;
 }
 
@@ -89,17 +82,18 @@ IsBBSymbol(const StringRef &SymName, StringRef &FuncName) {
   return true;
 }
 
-bool PLOProfile::SymContainsAddr(const StringRef &SymName,
-                                 uint64_t SymAddr,
-                                 uint64_t Addr,
+bool PLOProfile::SymContainsAddr(StringRef &SymName,
+                                 uint64_t   SymAddr,
+                                 uint64_t   SymSize,
+                                 uint64_t   Addr,
                                  StringRef &FuncName) {
   if (!IsBBSymbol(SymName, FuncName)) {
     FuncName = SymName;
   }
-  auto PairI = Plo.SymAddrSizeMap.find(FuncName);
-  if (PairI != Plo.SymAddrSizeMap.end()) {
-    uint64_t FuncAddr = PairI->second.first;
-    uint64_t FuncSize = PairI->second.second;
+  auto PairI = Plo.Syms.NameMap.find(FuncName);
+  if (PairI != Plo.Syms.NameMap.end()) {
+    uint64_t FuncAddr = Plo.Syms.GetAddr(PairI->second);
+    uint64_t FuncSize = Plo.Syms.GetSize(PairI->second);
     if (FuncSize > 0 && FuncAddr <= Addr && Addr < FuncAddr + FuncSize) {
       return true;
     }
@@ -134,15 +128,17 @@ bool PLOProfile::FindCfgForAddress(uint64_t Addr,
     return true;
   }
   ResultCfg = nullptr, ResultNode = nullptr;
-  auto T = Plo.AddrSymMap.upper_bound(Addr);  // first element > Addr.
-  if (T == Plo.AddrSymMap.begin())
+  auto T = Plo.Syms.AddrMap.upper_bound(Addr);  // first element > Addr.
+  if (T == Plo.Syms.AddrMap.begin())
     return false;
   auto T0 = std::prev(T);
-  uint64_t SymAddr = T0->first;
   // There are multiple symbols registered on the same address.
-  for (StringRef &SymName: T0->second) {
+  uint64_t SymAddr = T0->first;
+  for (auto Handler: T0->second) {
     StringRef IndexName;
-    if (SymContainsAddr(SymName, SymAddr, Addr, IndexName)) {
+    StringRef SymName = Plo.Syms.GetName(Handler);
+    uint64_t  SymSize = Plo.Syms.GetSize(Handler);
+    if (SymContainsAddr(SymName, SymAddr, SymSize, Addr, IndexName)) {
       auto CfgLI = Plo.CfgMap.find(IndexName);
       if (CfgLI != Plo.CfgMap.end()) {
         // There might be multiple object files that define SymName.
