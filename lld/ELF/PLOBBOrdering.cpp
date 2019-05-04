@@ -38,7 +38,9 @@ void PLOBBOrdering::ConnectChain(ELFCfgEdge *Edge, BBChain *C1, BBChain *C2) {
   // std::cout << "  " << *C1 << std::endl;
 }
 
-void PLOBBOrdering::DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSymbols) {
+void PLOBBOrdering::DoOrder(list<StringRef> &SymbolList,
+                            list<StringRef>::iterator HotPlaceHolder,
+                            list<StringRef>::iterator ColdPlaceHolder) {
   // Sort Cfg intra edges
   list<ELFCfgEdge *> Edges;
   std::for_each(Cfg.IntraEdges.begin(), Cfg.IntraEdges.end(),
@@ -158,9 +160,9 @@ void PLOBBOrdering::DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSy
   for (auto &C: Chains) {
     for (auto *N: C->Nodes) {
       if (N->Weight)
-        HotSymbols.push_back(N->ShName);
+        SymbolList.insert(HotPlaceHolder, N->ShName);
       else
-        ColdSymbols.push_back(N->ShName);
+        SymbolList.insert(ColdPlaceHolder, N->ShName);
     }
   }
 }
@@ -173,18 +175,6 @@ ostream &operator << (ostream & Out, BBChain &C) {
   Out << " }";
   return Out;
 }
-
-// static bool Linkable(MeshPoint *MP1, MeshPoint *MP2) {
-//   auto NodeIsConnected = [](ELFCfgNode *N1, ELFCfgNode *N2) {
-//                            for (ELFCfgEdge *E: N1->Outs) {
-//                              if (E->Sink == N2)
-//                                return true;
-//                            }
-//                            return false;
-//                          };
-//   return NodeIsConnected((*MP1->Nodes.rbegin()), (*MP2->Nodes.begin())) ||
-//     NodeIsConnected((*MP2->Nodes.rbegin()), (*MP1->Nodes.begin()));
-// }
 
 }
 };

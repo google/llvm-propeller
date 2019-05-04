@@ -165,24 +165,23 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
 vector<StringRef> PLO::GenSymbolOrderingFile() { 
   PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
   list<ELFCfg *> OrderResult = PFO.DoOrder();
-  list<StringRef> HotS, ColdS;
-  vector<StringRef> SymbolOrderingFile;
+  list<StringRef> SymbolList(1, "Hot");
+  const auto HotPlaceHolder = SymbolList.begin();
+  const auto ColdPlaceHolder = SymbolList.end();
   for (auto *Cfg : OrderResult) {
-    if (Cfg->IsHot())
-      PLOBBOrdering(*Cfg).DoOrder(HotS, ColdS);
-    else
-      Cfg->ForEachNodeRef([&ColdS](ELFCfgNode &N) { ColdS.emplace_back(N.ShName); });
+    if (Cfg->IsHot()) {
+      PLOBBOrdering(*Cfg).DoOrder(SymbolList, HotPlaceHolder, ColdPlaceHolder);
+    } else {
+      Cfg->ForEachNodeRef(
+        [&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
+          SymbolList.insert(ColdPlaceHolder, N.ShName);
+        });
+    }
   }
-  SymbolOrderingFile.insert(SymbolOrderingFile.end(), HotS.begin(), HotS.end());
-  SymbolOrderingFile.insert(SymbolOrderingFile.end(), ColdS.begin(), ColdS.end());
-    // Cfg->ForEachNodeRef(
-    //     [&SymbolOrderingFile](ELFCfgNode &N) {
-    //       SymbolOrderingFile.emplace_back(Saver.save(N.ShName));
-    //       if (!BBSymbol(N.ShName).empty()) {
-    //         SymbolOrderingFile.emplace_back(Saver.save(N.ShName + ".bbend"));
-    //       }
-    //     });
-  return SymbolOrderingFile;
+  SymbolList.erase(HotPlaceHolder);
+  return vector<StringRef>(
+      std::move_iterator<list<StringRef>::iterator>(SymbolList.begin()),
+      std::move_iterator<list<StringRef>::iterator>(SymbolList.end()));
 }
 
 }  // namespace plo

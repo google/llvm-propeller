@@ -32,7 +32,9 @@ public:
   PLOBBOrdering(ELFCfg &C);
   ~PLOBBOrdering();
 
-  void DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSymbols);
+  void DoOrder(list<StringRef> &SymbolList,
+               list<StringRef>::iterator HotPlaceHolder,
+               list<StringRef>::iterator ColdPlaceHolder);
 
   void ConnectChain(ELFCfgEdge *E, BBChain *C1, BBChain *C2);
 

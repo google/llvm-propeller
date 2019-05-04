@@ -14,7 +14,6 @@
 
 using std::list;
 using std::map;
-using std::multimap;
 using std::ostream;
 using std::pair;
 using std::set;
