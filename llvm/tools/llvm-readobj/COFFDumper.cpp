@@ -592,11 +592,14 @@ void COFFDumper::cacheRelocations() {
       RelocMap[Section].push_back(Reloc);
 
     // Sort relocations by address.
-    llvm::sort(RelocMap[Section], relocAddressLess);
+    llvm::sort(RelocMap[Section], [](RelocationRef L, RelocationRef R) {
+      return L.getOffset() < R.getOffset();
+    });
   }
 }
 
-void COFFDumper::printDataDirectory(uint32_t Index, const std::string &FieldName) {
+void COFFDumper::printDataDirectory(uint32_t Index,
+                                    const std::string &FieldName) {
   const data_directory *Data;
   if (Obj->getDataDirectory(Index, Data))
     return;
@@ -1234,8 +1237,9 @@ void COFFDumper::mergeCodeViewTypes(MergingTypeTableBuilder &CVIDs,
       if (GHash) {
         std::vector<GloballyHashedType> Hashes =
             GloballyHashedType::hashTypes(Types);
-        if (auto EC = mergeTypeAndIdRecords(GlobalCVIDs, GlobalCVTypes, SourceToDest, Types,
-                                            Hashes, PCHSignature))
+        if (auto EC =
+                mergeTypeAndIdRecords(GlobalCVIDs, GlobalCVTypes, SourceToDest,
+                                      Types, Hashes, PCHSignature))
           return error(std::move(EC));
       } else {
         if (auto EC = mergeTypeAndIdRecords(CVIDs, CVTypes, SourceToDest, Types,
@@ -1388,15 +1392,11 @@ void COFFDumper::printSymbols() {
 
 void COFFDumper::printDynamicSymbols() { ListScope Group(W, "DynamicSymbols"); }
 
-static ErrorOr<StringRef>
+static Expected<StringRef>
 getSectionName(const llvm::object::COFFObjectFile *Obj, int32_t SectionNumber,
                const coff_section *Section) {
-  if (Section) {
-    StringRef SectionName;
-    if (std::error_code EC = Obj->getSectionName(Section, SectionName))
-      return EC;
-    return SectionName;
-  }
+  if (Section)
+    return Obj->getSectionName(Section);
   if (SectionNumber == llvm::COFF::IMAGE_SYM_DEBUG)
     return StringRef("IMAGE_SYM_DEBUG");
   if (SectionNumber == llvm::COFF::IMAGE_SYM_ABSOLUTE)
@@ -1421,11 +1421,10 @@ void COFFDumper::printSymbol(const SymbolRef &Sym) {
   if (Obj->getSymbolName(Symbol, SymbolName))
     SymbolName = "";
 
-  StringRef SectionName = "";
-  ErrorOr<StringRef> Res =
-      getSectionName(Obj, Symbol.getSectionNumber(), Section);
-  if (Res)
-    SectionName = *Res;
+  StringRef SectionName;
+  if (Expected<StringRef> NameOrErr =
+          getSectionName(Obj, Symbol.getSectionNumber(), Section))
+    SectionName = *NameOrErr;
 
   W.printString("Name", SymbolName);
   W.printNumber("Value", Symbol.getValue());
@@ -1493,16 +1492,12 @@ void COFFDumper::printSymbol(const SymbolRef &Sym) {
           && Aux->Selection == COFF::IMAGE_COMDAT_SELECT_ASSOCIATIVE) {
         const coff_section *Assoc;
         StringRef AssocName = "";
-        std::error_code EC = Obj->getSection(AuxNumber, Assoc);
-        ErrorOr<StringRef> Res = getSectionName(Obj, AuxNumber, Assoc);
-        if (Res)
-          AssocName = *Res;
-        if (!EC)
-          EC = Res.getError();
-        if (EC) {
-          AssocName = "";
+        if (std::error_code EC = Obj->getSection(AuxNumber, Assoc))
           error(EC);
-        }
+        Expected<StringRef> Res = getSectionName(Obj, AuxNumber, Assoc);
+        if (!Res)
+          error(Res.takeError());
+        AssocName = *Res;
 
         W.printNumber("AssocSection", AssocName, AuxNumber);
       }
@@ -1549,7 +1544,8 @@ void COFFDumper::printUnwindInfo() {
   case COFF::IMAGE_FILE_MACHINE_ARMNT: {
     ARM::WinEH::Decoder Decoder(W, Obj->getMachine() ==
                                        COFF::IMAGE_FILE_MACHINE_ARM64);
-    Decoder.dumpProcedureData(*Obj);
+    // TODO Propagate the error.
+    consumeError(Decoder.dumpProcedureData(*Obj));
     break;
   }
   default:
@@ -1767,7 +1763,8 @@ void COFFDumper::printResourceDirectoryTable(
     SmallString<20> IDStr;
     raw_svector_ostream OS(IDStr);
     if (i < Table.NumberOfNameEntries) {
-      ArrayRef<UTF16> RawEntryNameString = unwrapOrError(RSF.getEntryNameString(Entry));
+      ArrayRef<UTF16> RawEntryNameString =
+          unwrapOrError(RSF.getEntryNameString(Entry));
       std::vector<UTF16> EndianCorrectedNameString;
       if (llvm::sys::IsBigEndianHost) {
         EndianCorrectedNameString.resize(RawEntryNameString.size() + 1);

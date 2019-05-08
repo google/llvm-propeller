@@ -189,7 +189,6 @@ class WrapTerminatorInst<SOP_Pseudo base_inst> : SPseudoInstSI<
 }
 
 def S_MOV_B64_term : WrapTerminatorInst<S_MOV_B64>;
-def S_OR_B64_term : WrapTerminatorInst<S_OR_B64>;
 def S_XOR_B64_term : WrapTerminatorInst<S_XOR_B64>;
 def S_ANDN2_B64_term : WrapTerminatorInst<S_ANDN2_B64>;
 
@@ -1463,7 +1462,7 @@ def : GCNPat<
 
 def : GCNPat<
   (fcanonicalize (v2f16 (VOP3PMods v2f16:$src, i32:$src_mods))),
-  (V_PK_MUL_F16 0, (i32 CONST.V2FP16_ONE), $src_mods, $src, DSTCLAMP.NONE)
+  (V_PK_MUL_F16 0, (i32 CONST.FP16_ONE), $src_mods, $src, DSTCLAMP.NONE)
 >;
 }
 
@@ -1524,6 +1523,14 @@ def : GCNPat <
 >;
 } // End OtherPredicates = [HasDLInsts]
 
+let SubtargetPredicate = isGFX10Plus in
+def : GCNPat <
+  (fma (f16 (VOP3Mods0 f32:$src0, i32:$src0_modifiers, i1:$clamp, i32:$omod)),
+       (f16 (VOP3Mods f32:$src1, i32:$src1_modifiers)),
+       (f16 (VOP3NoMods f32:$src2))),
+  (V_FMAC_F16_e64 $src0_modifiers, $src0, $src1_modifiers, $src1,
+                  SRCMODS.NONE, $src2, $clamp, $omod)
+>;
 
 // Allow integer inputs
 class ExpPattern<SDPatternOperator node, ValueType vt, Instruction Inst> : GCNPat<

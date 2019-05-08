@@ -241,7 +241,7 @@ public:
                           unsigned SrcAlign, bool IsMemset,
                           bool ZeroMemset,
                           bool MemcpyStrSrc,
-                          MachineFunction &MF) const override;
+                          const AttributeList &FuncAttributes) const override;
 
   bool isMemOpUniform(const SDNode *N) const;
   bool isMemOpHasNoClobberedMemOperand(const SDNode *N) const;
@@ -367,6 +367,8 @@ public:
                                     bool SNaN = false,
                                     unsigned Depth = 0) const override;
   AtomicExpansionKind shouldExpandAtomicRMWInIR(AtomicRMWInst *) const override;
+
+  unsigned getPrefLoopAlignment(MachineLoop *ML) const override;
 };
 
 } // End namespace llvm

@@ -82,7 +82,7 @@ ARMLegalizerInfo::ARMLegalizerInfo(const ARMSubtarget &ST) {
   }
 
   getActionDefinitionsBuilder({G_SEXT, G_ZEXT, G_ANYEXT})
-      .legalForCartesianProduct({s32}, {s1, s8, s16});
+      .legalForCartesianProduct({s8, s16, s32}, {s1, s8, s16});
 
   getActionDefinitionsBuilder({G_ADD, G_SUB, G_MUL, G_AND, G_OR, G_XOR})
       .legalFor({s32})
@@ -90,6 +90,7 @@ ARMLegalizerInfo::ARMLegalizerInfo(const ARMSubtarget &ST) {
 
   getActionDefinitionsBuilder({G_ASHR, G_LSHR, G_SHL})
     .legalFor({{s32, s32}})
+    .minScalar(0, s32)
     .clampScalar(1, s32, s32);
 
   bool HasHWDivide = (!ST.isThumb() && ST.hasDivideInARMMode()) ||
@@ -113,8 +114,12 @@ ARMLegalizerInfo::ARMLegalizerInfo(const ARMSubtarget &ST) {
       setAction({Op, s32}, Libcall);
   }
 
-  getActionDefinitionsBuilder(G_INTTOPTR).legalFor({{p0, s32}});
-  getActionDefinitionsBuilder(G_PTRTOINT).legalFor({{s32, p0}});
+  getActionDefinitionsBuilder(G_INTTOPTR)
+      .legalFor({{p0, s32}})
+      .minScalar(1, s32);
+  getActionDefinitionsBuilder(G_PTRTOINT)
+      .legalFor({{s32, p0}})
+      .minScalar(0, s32);
 
   getActionDefinitionsBuilder(G_CONSTANT)
       .legalFor({s32, p0})
@@ -124,8 +129,9 @@ ARMLegalizerInfo::ARMLegalizerInfo(const ARMSubtarget &ST) {
       .legalForCartesianProduct({s1}, {s32, p0})
       .minScalar(1, s32);
 
-  getActionDefinitionsBuilder(G_SELECT).legalForCartesianProduct({s32, p0},
-                                                                 {s1});
+  getActionDefinitionsBuilder(G_SELECT)
+      .legalForCartesianProduct({s32, p0}, {s1})
+      .minScalar(0, s32);
 
   // We're keeping these builders around because we'll want to add support for
   // floating point to them.
@@ -145,7 +151,9 @@ ARMLegalizerInfo::ARMLegalizerInfo(const ARMSubtarget &ST) {
           .legalFor({s32, p0})
           .minScalar(0, s32);
 
-  getActionDefinitionsBuilder(G_GEP).legalFor({{p0, s32}});
+  getActionDefinitionsBuilder(G_GEP)
+      .legalFor({{p0, s32}})
+      .minScalar(1, s32);
 
   getActionDefinitionsBuilder(G_BRCOND).legalFor({s1});
 

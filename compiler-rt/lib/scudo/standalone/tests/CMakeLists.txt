@@ -15,7 +15,7 @@ set(SCUDO_UNITTEST_CFLAGS
 set(SCUDO_TEST_ARCH ${SCUDO_STANDALONE_SUPPORTED_ARCH})
 
 # gtests requires c++
-set(LINK_FLAGS)
+set(LINK_FLAGS ${COMPILER_RT_UNITTEST_LINK_FLAGS})
 foreach(lib ${SANITIZER_TEST_CXX_LIBRARIES})
   list(APPEND LINK_FLAGS -l${lib})
 endforeach()
@@ -56,6 +56,8 @@ set(SCUDO_UNIT_TEST_SOURCES
   list_test.cc
   map_test.cc
   mutex_test.cc
+  quarantine_test.cc
+  release_test.cc
   report_test.cc
   secondary_test.cc
   size_class_map_test.cc

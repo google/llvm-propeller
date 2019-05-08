@@ -281,7 +281,8 @@ public:
   StringRef ArgStr;   // The argument string itself (ex: "help", "o")
   StringRef HelpStr;  // The descriptive text message for -help
   StringRef ValueStr; // String describing what the value of this option is
-  OptionCategory *Category; // The Category this option belongs to
+  SmallVector<OptionCategory *, 2>
+      Categories;                    // The Categories this option belongs to
   SmallPtrSet<SubCommand *, 4> Subs; // The subcommands this option belongs to.
   bool FullyInitialized = false; // Has addArgument been called?
 
@@ -333,14 +334,16 @@ public:
   void setFormattingFlag(enum FormattingFlags V) { Formatting = V; }
   void setMiscFlag(enum MiscFlags M) { Misc |= M; }
   void setPosition(unsigned pos) { Position = pos; }
-  void setCategory(OptionCategory &C) { Category = &C; }
+  void addCategory(OptionCategory &C);
   void addSubCommand(SubCommand &S) { Subs.insert(&S); }
 
 protected:
   explicit Option(enum NumOccurrencesFlag OccurrencesFlag,
                   enum OptionHidden Hidden)
       : Occurrences(OccurrencesFlag), Value(0), HiddenFlag(Hidden),
-        Formatting(NormalFormatting), Misc(0), Category(&GeneralCategory) {}
+        Formatting(NormalFormatting), Misc(0) {
+    Categories.push_back(&GeneralCategory);
+  }
 
   inline void setNumAdditionalVals(unsigned n) { AdditionalVals = n; }
 
@@ -451,7 +454,7 @@ struct cat {
 
   cat(OptionCategory &c) : Category(c) {}
 
-  template <class Opt> void apply(Opt &O) const { O.setCategory(Category); }
+  template <class Opt> void apply(Opt &O) const { O.addCategory(Category); }
 };
 
 // sub - Specify the subcommand that this option belongs to.
@@ -827,6 +830,8 @@ class basic_parser_impl { // non-template implementation of basic_parser<t>
 public:
   basic_parser_impl(Option &) {}
 
+  virtual ~basic_parser_impl() {}
+
   enum ValueExpected getValueExpectedFlagDefault() const {
     return ValueRequired;
   }
@@ -854,8 +859,6 @@ public:
   virtual void anchor();
 
 protected:
-  ~basic_parser_impl() = default;
-
   // A helper for basic_parser::printOptionDiff.
   void printOptionName(const Option &O, size_t GlobalWidth) const;
 };
@@ -869,15 +872,12 @@ public:
   using OptVal = OptionValue<DataType>;
 
   basic_parser(Option &O) : basic_parser_impl(O) {}
-
-protected:
-  ~basic_parser() = default;
 };
 
 //--------------------------------------------------
 // parser<bool>
 //
-template <> class parser<bool> final : public basic_parser<bool> {
+template <> class parser<bool> : public basic_parser<bool> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -904,8 +904,7 @@ extern template class basic_parser<bool>;
 
 //--------------------------------------------------
 // parser<boolOrDefault>
-template <>
-class parser<boolOrDefault> final : public basic_parser<boolOrDefault> {
+template <> class parser<boolOrDefault> : public basic_parser<boolOrDefault> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -931,7 +930,7 @@ extern template class basic_parser<boolOrDefault>;
 //--------------------------------------------------
 // parser<int>
 //
-template <> class parser<int> final : public basic_parser<int> {
+template <> class parser<int> : public basic_parser<int> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -953,7 +952,7 @@ extern template class basic_parser<int>;
 //--------------------------------------------------
 // parser<unsigned>
 //
-template <> class parser<unsigned> final : public basic_parser<unsigned> {
+template <> class parser<unsigned> : public basic_parser<unsigned> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -999,8 +998,7 @@ extern template class basic_parser<unsigned long>;
 // parser<unsigned long long>
 //
 template <>
-class parser<unsigned long long> final
-    : public basic_parser<unsigned long long> {
+class parser<unsigned long long> : public basic_parser<unsigned long long> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -1023,7 +1021,7 @@ extern template class basic_parser<unsigned long long>;
 //--------------------------------------------------
 // parser<double>
 //
-template <> class parser<double> final : public basic_parser<double> {
+template <> class parser<double> : public basic_parser<double> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -1045,7 +1043,7 @@ extern template class basic_parser<double>;
 //--------------------------------------------------
 // parser<float>
 //
-template <> class parser<float> final : public basic_parser<float> {
+template <> class parser<float> : public basic_parser<float> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -1067,7 +1065,7 @@ extern template class basic_parser<float>;
 //--------------------------------------------------
 // parser<std::string>
 //
-template <> class parser<std::string> final : public basic_parser<std::string> {
+template <> class parser<std::string> : public basic_parser<std::string> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -1092,7 +1090,7 @@ extern template class basic_parser<std::string>;
 //--------------------------------------------------
 // parser<char>
 //
-template <> class parser<char> final : public basic_parser<char> {
+template <> class parser<char> : public basic_parser<char> {
 public:
   parser(Option &O) : basic_parser(O) {}
 
@@ -1205,7 +1203,11 @@ template <> struct applicator<FormattingFlags> {
 };
 
 template <> struct applicator<MiscFlags> {
-  static void opt(MiscFlags MF, Option &O) { O.setMiscFlag(MF); }
+  static void opt(MiscFlags MF, Option &O) {
+    assert((MF != Grouping || O.ArgStr.size() == 1) &&
+           "cl::Grouping can only apply to single charater Options.");
+    O.setMiscFlag(MF);
+  }
 };
 
 // apply method - Apply modifiers to an option in a type safe way.
@@ -1425,6 +1427,8 @@ template <class DataType, class StorageClass> class list_storage {
 public:
   list_storage() = default;
 
+  void clear() {}
+
   bool setLocation(Option &O, StorageClass &L) {
     if (Location)
       return O.error("cl::location(x) specified more than once!");
@@ -1475,6 +1479,10 @@ public:
 
   reference operator[](size_type pos) { return Storage[pos]; }
   const_reference operator[](size_type pos) const { return Storage[pos]; }
+
+  void clear() {
+    Storage.clear();
+  }
 
   iterator erase(const_iterator pos) { return Storage.erase(pos); }
   iterator erase(const_iterator first, const_iterator last) {
@@ -1553,7 +1561,10 @@ class list : public Option, public list_storage<DataType, StorageClass> {
   void printOptionValue(size_t /*GlobalWidth*/, bool /*Force*/) const override {
   }
 
-  void setDefault() override {}
+  void setDefault() override {
+    Positions.clear();
+    list_storage<DataType, StorageClass>::clear();
+  }
 
   void done() {
     addArgument();
@@ -1762,7 +1773,7 @@ class alias : public Option {
     if (!Subs.empty())
       error("cl::alias must not have cl::sub(), aliased option's cl::sub() will be used!");
     Subs = AliasFor->Subs;
-    Category = AliasFor->Category;
+    Categories = AliasFor->Categories;
     addArgument();
   }
 

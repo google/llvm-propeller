@@ -317,7 +317,10 @@ public:
             "indexes can be specified as arguments.\n"
             "Use the thread-index \"all\" to see all threads.\n"
             "Use the thread-index \"unique\" to see threads grouped by unique "
-            "call stacks.",
+            "call stacks.\n"
+            "Use 'settings set frame-format' to customize the printing of "
+            "frames in the backtrace and 'settings set thread-format' to "
+            "customize the thread header.",
             nullptr,
             eCommandRequiresProcess | eCommandRequiresThread |
                 eCommandTryTargetAPILock | eCommandProcessMustBeLaunched |
@@ -612,7 +615,7 @@ protected:
         result.AppendErrorWithFormat("empty class name for scripted step.");
         result.SetStatus(eReturnStatusFailed);
         return false;
-      } else if (!m_interpreter.GetScriptInterpreter()->CheckObjectExists(
+      } else if (!GetDebugger().GetScriptInterpreter()->CheckObjectExists(
                      m_options.m_class_name.c_str())) {
         result.AppendErrorWithFormat(
             "class for scripted step: \"%s\" does not exist.",
@@ -836,7 +839,7 @@ public:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     bool synchronous_execution = m_interpreter.GetSynchronous();
 
-    if (!m_interpreter.GetDebugger().GetSelectedTarget()) {
+    if (!GetDebugger().GetSelectedTarget()) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
       result.SetStatus(eReturnStatusFailed);
@@ -1116,7 +1119,7 @@ protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     bool synchronous_execution = m_interpreter.GetSynchronous();
 
-    Target *target = m_interpreter.GetDebugger().GetSelectedTarget().get();
+    Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
@@ -1388,7 +1391,9 @@ public:
   CommandObjectThreadList(CommandInterpreter &interpreter)
       : CommandObjectParsed(
             interpreter, "thread list",
-            "Show a summary of each thread in the current target process.",
+            "Show a summary of each thread in the current target process.  "
+            "Use 'settings set thread-format' to customize the individual "
+            "thread listings.",
             "thread list",
             eCommandRequiresProcess | eCommandTryTargetAPILock |
                 eCommandProcessMustBeLaunched | eCommandProcessMustBePaused) {}

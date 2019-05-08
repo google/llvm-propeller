@@ -3822,7 +3822,6 @@ Instruction *InstCombiner::foldICmpWithCastAndCast(ICmpInst &ICmp) {
   Value *LHSCIOp        = LHSCI->getOperand(0);
   Type *SrcTy     = LHSCIOp->getType();
   Type *DestTy    = LHSCI->getType();
-  Value *RHSCIOp;
 
   // Turn icmp (ptrtoint x), (ptrtoint/c) into a compare of the input if the
   // integer type is the same size as the pointer type.
@@ -3864,7 +3863,7 @@ Instruction *InstCombiner::foldICmpWithCastAndCast(ICmpInst &ICmp) {
 
   if (auto *CI = dyn_cast<CastInst>(ICmp.getOperand(1))) {
     // Not an extension from the same type?
-    RHSCIOp = CI->getOperand(0);
+    Value *RHSCIOp = CI->getOperand(0);
     if (RHSCIOp->getType() != LHSCIOp->getType())
       return nullptr;
 
@@ -5481,6 +5480,8 @@ Instruction *InstCombiner::visitFCmpInst(FCmpInst &I) {
     return replaceInstUsesWith(I, V);
 
   // Simplify 'fcmp pred X, X'
+  Type *OpType = Op0->getType();
+  assert(OpType == Op1->getType() && "fcmp with different-typed operands?");
   if (Op0 == Op1) {
     switch (Pred) {
       default: break;
@@ -5490,7 +5491,7 @@ Instruction *InstCombiner::visitFCmpInst(FCmpInst &I) {
     case FCmpInst::FCMP_UNE:    // True if unordered or not equal
       // Canonicalize these to be 'fcmp uno %X, 0.0'.
       I.setPredicate(FCmpInst::FCMP_UNO);
-      I.setOperand(1, Constant::getNullValue(Op0->getType()));
+      I.setOperand(1, Constant::getNullValue(OpType));
       return &I;
 
     case FCmpInst::FCMP_ORD:    // True if ordered (no nans)
@@ -5499,7 +5500,7 @@ Instruction *InstCombiner::visitFCmpInst(FCmpInst &I) {
     case FCmpInst::FCMP_OLE:    // True if ordered and less than or equal
       // Canonicalize these to be 'fcmp ord %X, 0.0'.
       I.setPredicate(FCmpInst::FCMP_ORD);
-      I.setOperand(1, Constant::getNullValue(Op0->getType()));
+      I.setOperand(1, Constant::getNullValue(OpType));
       return &I;
     }
   }
@@ -5508,14 +5509,19 @@ Instruction *InstCombiner::visitFCmpInst(FCmpInst &I) {
   // then canonicalize the operand to 0.0.
   if (Pred == CmpInst::FCMP_ORD || Pred == CmpInst::FCMP_UNO) {
     if (!match(Op0, m_PosZeroFP()) && isKnownNeverNaN(Op0, &TLI)) {
-      I.setOperand(0, ConstantFP::getNullValue(Op0->getType()));
+      I.setOperand(0, ConstantFP::getNullValue(OpType));
       return &I;
     }
     if (!match(Op1, m_PosZeroFP()) && isKnownNeverNaN(Op1, &TLI)) {
-      I.setOperand(1, ConstantFP::getNullValue(Op0->getType()));
+      I.setOperand(1, ConstantFP::getNullValue(OpType));
       return &I;
     }
   }
+
+  // fcmp pred (fneg X), (fneg Y) -> fcmp swap(pred) X, Y
+  Value *X, *Y;
+  if (match(Op0, m_FNeg(m_Value(X))) && match(Op1, m_FNeg(m_Value(Y))))
+    return new FCmpInst(I.getSwappedPredicate(), X, Y, "", &I);
 
   // Test if the FCmpInst instruction is used exclusively by a select as
   // part of a minimum or maximum operation. If so, refrain from doing
@@ -5535,7 +5541,7 @@ Instruction *InstCombiner::visitFCmpInst(FCmpInst &I) {
   // The sign of 0.0 is ignored by fcmp, so canonicalize to +0.0:
   // fcmp Pred X, -0.0 --> fcmp Pred X, 0.0
   if (match(Op1, m_AnyZeroFP()) && !match(Op1, m_PosZeroFP())) {
-    I.setOperand(1, ConstantFP::getNullValue(Op1->getType()));
+    I.setOperand(1, ConstantFP::getNullValue(OpType));
     return &I;
   }
 
@@ -5575,12 +5581,7 @@ Instruction *InstCombiner::visitFCmpInst(FCmpInst &I) {
   if (Instruction *R = foldFabsWithFcmpZero(I))
     return R;
 
-  Value *X, *Y;
   if (match(Op0, m_FNeg(m_Value(X)))) {
-    // fcmp pred (fneg X), (fneg Y) -> fcmp swap(pred) X, Y
-    if (match(Op1, m_FNeg(m_Value(Y))))
-      return new FCmpInst(I.getSwappedPredicate(), X, Y, "", &I);
-
     // fcmp pred (fneg X), C --> fcmp swap(pred) X, -C
     Constant *C;
     if (match(Op1, m_Constant(C))) {

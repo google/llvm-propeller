@@ -20,18 +20,8 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/Support/SourceMgr.h"
 
-// Workaround for the gcc 6.1 bug PR80916.
-#if defined(__GNUC__) && __GNUC__ > 5
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wunused-function"
-#endif
-
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#if defined(__GNUC__) && __GNUC__ > 5
-#  pragma GCC diagnostic pop
-#endif
 
 using namespace llvm;
 
@@ -572,7 +562,6 @@ TEST_F(LoopPassManagerTest, InvalidationOfBundledAnalyses) {
   // invalidation and running.
   EXPECT_CALL(MFPHandle, run(HasName("f"), _))
       .WillOnce(Return(getLoopPassPreservedAnalyses()));
-  EXPECT_CALL(MLAHandle, invalidate(_, _, _)).Times(3);
   EXPECT_CALL(MLAHandle, run(HasName("loop.0.0"), _, _));
   EXPECT_CALL(MLAHandle, run(HasName("loop.0.1"), _, _));
   EXPECT_CALL(MLAHandle, run(HasName("loop.0"), _, _));

@@ -44,6 +44,8 @@
 #include "clang/Format/Format.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
+#include "clang/Lex/ExternalPreprocessorSource.h"
+#include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "clang/Sema/DeclSpec.h"
@@ -52,7 +54,9 @@
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -1017,6 +1021,24 @@ struct SemaCompleteInput {
   llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS;
 };
 
+void loadMainFilePreambleMacros(const Preprocessor &PP,
+                                const PreambleData &Preamble) {
+  // The ExternalPreprocessorSource has our macros, if we know where to look.
+  // We can read all the macros using PreambleMacros->ReadDefinedMacros(),
+  // but this includes transitively included files, so may deserialize a lot.
+  ExternalPreprocessorSource *PreambleMacros = PP.getExternalSource();
+  // As we have the names of the macros, we can look up their IdentifierInfo
+  // and then use this to load just the macros we want.
+  IdentifierInfoLookup *PreambleIdentifiers =
+      PP.getIdentifierTable().getExternalIdentifierLookup();
+  if (!PreambleIdentifiers || !PreambleMacros)
+    return;
+  for (const auto& MacroName : Preamble.MainFileMacros)
+    if (auto *II = PreambleIdentifiers->get(MacroName))
+      if (II->isOutOfDate())
+        PreambleMacros->updateOutOfDateIdentifier(*II);
+}
+
 // Invokes Sema code completion on a file.
 // If \p Includes is set, it will be updated based on the compiler invocation.
 bool semaCodeComplete(std::unique_ptr<CodeCompleteConsumer> Consumer,
@@ -1058,9 +1080,9 @@ bool semaCodeComplete(std::unique_ptr<CodeCompleteConsumer> Consumer,
   // However, if we're completing *inside* the preamble section of the draft,
   // overriding the preamble will break sema completion. Fortunately we can just
   // skip all includes in this case; these completions are really simple.
-  bool CompletingInPreamble =
-      ComputePreambleBounds(*CI->getLangOpts(), ContentsBuffer.get(), 0).Size >
-      Input.Offset;
+  PreambleBounds PreambleRegion =
+      ComputePreambleBounds(*CI->getLangOpts(), ContentsBuffer.get(), 0);
+  bool CompletingInPreamble = PreambleRegion.Size > Input.Offset;
   // NOTE: we must call BeginSourceFile after prepareCompilerInstance. Otherwise
   // the remapped buffers do not get freed.
   IgnoreDiagnostics DummyDiagsConsumer;
@@ -1078,6 +1100,14 @@ bool semaCodeComplete(std::unique_ptr<CodeCompleteConsumer> Consumer,
         Input.FileName);
     return false;
   }
+  // Macros can be defined within the preamble region of the main file.
+  // They don't fall nicely into our index/Sema dichotomy:
+  //  - they're not indexed for completion (they're not available across files)
+  //  - but Sema code complete won't see them: as part of the preamble, they're
+  //    deserialized only when mentioned.
+  // Force them to be deserialized so SemaCodeComplete sees them.
+  if (Input.Preamble)
+    loadMainFilePreambleMacros(Clang->getPreprocessor(), *Input.Preamble);
   if (Includes)
     Clang->getPreprocessor().addPPCallbacks(
         collectIncludeStructureCallback(Clang->getSourceManager(), Includes));
@@ -1187,6 +1217,7 @@ class CodeCompleteFlow {
   llvm::Optional<OpaqueType> PreferredType; // Initialized once Sema runs.
   // Whether to query symbols from any scope. Initialized once Sema runs.
   bool AllScopes = false;
+  llvm::StringSet<> ContextWords;
   // Include-insertion and proximity scoring rely on the include structure.
   // This is available after Sema has run.
   llvm::Optional<IncludeInserter> Inserter;  // Available during runWithSema.
@@ -1209,6 +1240,7 @@ public:
     trace::Span Tracer("CodeCompleteFlow");
     HeuristicPrefix =
         guessCompletionPrefix(SemaCCInput.Contents, SemaCCInput.Offset);
+    populateContextWords(SemaCCInput.Contents);
     if (Opts.Index && SpecFuzzyFind && SpecFuzzyFind->CachedReq.hasValue()) {
       assert(!SpecFuzzyFind->Result.valid());
       SpecReq = speculativeFuzzyFindRequestForCompletion(
@@ -1269,7 +1301,11 @@ public:
 
     semaCodeComplete(std::move(RecorderOwner), Opts.getClangCompleteOpts(),
                      SemaCCInput, &Includes);
+    logResults(Output, Tracer);
+    return Output;
+  }
 
+  void logResults(const CodeCompleteResult &Output, const trace::Span &Tracer) {
     SPAN_ATTACH(Tracer, "sema_results", NSema);
     SPAN_ATTACH(Tracer, "index_results", NIndex);
     SPAN_ATTACH(Tracer, "merged_results", NSemaAndIndex);
@@ -1283,27 +1319,24 @@ public:
     assert(!Opts.Limit || Output.Completions.size() <= Opts.Limit);
     // We don't assert that isIncomplete means we hit a limit.
     // Indexes may choose to impose their own limits even if we don't have one.
-    return Output;
   }
 
   CodeCompleteResult
   runWithoutSema(llvm::StringRef Content, size_t Offset,
                  llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS) && {
-    auto CCPrefix = guessCompletionPrefix(Content, Offset);
+    trace::Span Tracer("CodeCompleteWithoutSema");
     // Fill in fields normally set by runWithSema()
+    HeuristicPrefix = guessCompletionPrefix(Content, Offset);
+    populateContextWords(Content);
     CCContextKind = CodeCompletionContext::CCC_Recovery;
-    Filter = FuzzyMatcher(CCPrefix.Name);
+    Filter = FuzzyMatcher(HeuristicPrefix.Name);
     auto Pos = offsetToPosition(Content, Offset);
     ReplacedRange.start = ReplacedRange.end = Pos;
-    ReplacedRange.start.character -= CCPrefix.Name.size();
+    ReplacedRange.start.character -= HeuristicPrefix.Name.size();
 
     llvm::StringMap<SourceParams> ProxSources;
     ProxSources[FileName].Cost = 0;
     FileProximity.emplace(ProxSources);
-
-    // FIXME: collect typed scope specifier and potentially parse the enclosing
-    // namespaces.
-    // FIXME: initialize ScopeProximity when scopes are added.
 
     auto Style = getFormatStyleForFile(FileName, Content, VFS.get());
     // This will only insert verbatim headers.
@@ -1317,19 +1350,60 @@ public:
       ID.Name = IDAndCount.first();
       ID.References = IDAndCount.second;
       // Avoid treating typed filter as an identifier.
-      if (ID.Name == CCPrefix.Name)
+      if (ID.Name == HeuristicPrefix.Name)
         --ID.References;
       if (ID.References > 0)
         IdentifierResults.push_back(std::move(ID));
     }
 
-    // FIXME: add results from Opts.Index when we know more about scopes (e.g.
-    // typed scope specifier).
-    return toCodeCompleteResult(mergeResults(
-        /*SemaResults=*/{}, /*IndexResults*/ {}, IdentifierResults));
+    // Simplified version of getQueryScopes():
+    //  - accessible scopes are determined heuristically.
+    //  - all-scopes query if no qualifier was typed (and it's allowed).
+    SpecifiedScope Scopes;
+    Scopes.AccessibleScopes =
+        visibleNamespaces(Content.take_front(Offset), Style);
+    for (std::string &S : Scopes.AccessibleScopes)
+      if (!S.empty())
+        S.append("::"); // visibleNamespaces doesn't include trailing ::.
+    if (HeuristicPrefix.Qualifier.empty())
+      AllScopes = Opts.AllScopes;
+    else if (HeuristicPrefix.Qualifier.startswith("::")) {
+      Scopes.AccessibleScopes = {""};
+      Scopes.UnresolvedQualifier = HeuristicPrefix.Qualifier.drop_front(2);
+    } else
+      Scopes.UnresolvedQualifier = HeuristicPrefix.Qualifier;
+    // First scope is the (modified) enclosing scope.
+    QueryScopes = Scopes.scopesForIndexQuery();
+    ScopeProximity.emplace(QueryScopes);
+
+    SymbolSlab IndexResults = Opts.Index ? queryIndex() : SymbolSlab();
+
+    CodeCompleteResult Output = toCodeCompleteResult(mergeResults(
+        /*SemaResults=*/{}, IndexResults, IdentifierResults));
+    Output.RanParser = false;
+    logResults(Output, Tracer);
+    return Output;
   }
 
 private:
+  void populateContextWords(llvm::StringRef Content) {
+    // Take last 3 lines before the completion point.
+    unsigned RangeEnd = HeuristicPrefix.Qualifier.begin() - Content.data(),
+             RangeBegin = RangeEnd;
+    for (size_t I = 0; I < 3 && RangeBegin > 0; ++I) {
+      auto PrevNL = Content.rfind('\n', RangeBegin - 1);
+      if (PrevNL == StringRef::npos) {
+        RangeBegin = 0;
+        break;
+      }
+      RangeBegin = PrevNL + 1;
+    }
+
+    ContextWords = collectWords(Content.slice(RangeBegin, RangeEnd));
+    dlog("Completion context words: {0}",
+         llvm::join(ContextWords.keys(), ", "));
+  }
+
   // This is called by run() once Sema code completion is done, but before the
   // Sema data structures are torn down. It does all the real work.
   CodeCompleteResult runWithSema() {
@@ -1441,7 +1515,7 @@ private:
     llvm::DenseMap<size_t, size_t> BundleLookup;
     auto AddToBundles = [&](const CodeCompletionResult *SemaResult,
                             const Symbol *IndexResult,
-                            const RawIdentifier *IdentifierResult = nullptr) {
+                            const RawIdentifier *IdentifierResult) {
       CompletionCandidate C;
       C.SemaResult = SemaResult;
       C.IndexResult = IndexResult;
@@ -1480,12 +1554,12 @@ private:
     };
     // Emit all Sema results, merging them with Index results if possible.
     for (auto &SemaResult : SemaResults)
-      AddToBundles(&SemaResult, CorrespondingIndexResult(SemaResult));
+      AddToBundles(&SemaResult, CorrespondingIndexResult(SemaResult), nullptr);
     // Now emit any Index-only results.
     for (const auto &IndexResult : IndexResults) {
       if (UsedIndexResults.count(&IndexResult))
         continue;
-      AddToBundles(/*SemaResult=*/nullptr, &IndexResult);
+      AddToBundles(/*SemaResult=*/nullptr, &IndexResult, nullptr);
     }
     // Emit identifier results.
     for (const auto &Ident : IdentifierResults)
@@ -1513,12 +1587,14 @@ private:
     SymbolQualitySignals Quality;
     SymbolRelevanceSignals Relevance;
     Relevance.Context = CCContextKind;
+    Relevance.Name = Bundle.front().Name;
     Relevance.Query = SymbolRelevanceSignals::CodeComplete;
     Relevance.FileProximityMatch = FileProximity.getPointer();
     if (ScopeProximity)
       Relevance.ScopeProximityMatch = ScopeProximity.getPointer();
     if (PreferredType)
       Relevance.HadContextType = true;
+    Relevance.ContextWords = &ContextWords;
 
     auto &First = Bundle.front();
     if (auto FuzzyScore = fuzzyScore(First))

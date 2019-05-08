@@ -183,10 +183,13 @@ DecodeStatus AMDGPUDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
   bool IsSDWA = false;
 
   // ToDo: AMDGPUDisassembler supports only VI ISA.
-  if (!STI.getFeatureBits()[AMDGPU::FeatureGCN3Encoding])
+  if (!STI.getFeatureBits()[AMDGPU::FeatureGCN3Encoding] && !isGFX10())
     report_fatal_error("Disassembly not yet supported for subtarget");
 
-  const unsigned MaxInstBytesNum = (std::min)((size_t)8, Bytes_.size());
+  unsigned MaxInstBytesNum = (std::min)(
+    STI.getFeatureBits()[AMDGPU::FeatureGFX10] ? (size_t) 20 :
+    STI.getFeatureBits()[AMDGPU::FeatureVOP3Literal] ? (size_t) 12 : (size_t)8,
+    Bytes_.size());
   Bytes = Bytes_.slice(0, MaxInstBytesNum);
 
   DecodeStatus Res = MCDisassembler::Fail;
@@ -206,6 +209,18 @@ DecodeStatus AMDGPUDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
 
       Res = tryDecodeInst(DecoderTableSDWA964, MI, QW, Address);
       if (Res) { IsSDWA = true;  break; }
+
+      Res = tryDecodeInst(DecoderTableSDWA1064, MI, QW, Address);
+      if (Res) { IsSDWA = true;  break; }
+
+      // Some GFX9 subtargets repurposed the v_mad_mix_f32, v_mad_mixlo_f16 and
+      // v_mad_mixhi_f16 for FMA variants. Try to decode using this special
+      // table first so we print the correct name.
+
+      if (STI.getFeatureBits()[AMDGPU::FeatureFmaMixInsts]) {
+        Res = tryDecodeInst(DecoderTableGFX9_DL64, MI, QW, Address);
+        if (Res) break;
+      }
 
       if (STI.getFeatureBits()[AMDGPU::FeatureUnpackedD16VMem]) {
         Res = tryDecodeInst(DecoderTableGFX80_UNPACKED64, MI, QW, Address);
@@ -238,6 +253,9 @@ DecodeStatus AMDGPUDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
     Res = tryDecodeInst(DecoderTableGFX932, MI, DW, Address);
     if (Res) break;
 
+    Res = tryDecodeInst(DecoderTableGFX1032, MI, DW, Address);
+    if (Res) break;
+
     if (Bytes.size() < 4) break;
     const uint64_t QW = ((uint64_t)eatBytes<uint32_t>(Bytes) << 32) | DW;
     Res = tryDecodeInst(DecoderTableGFX864, MI, QW, Address);
@@ -247,23 +265,71 @@ DecodeStatus AMDGPUDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
     if (Res) break;
 
     Res = tryDecodeInst(DecoderTableGFX964, MI, QW, Address);
+    if (Res) break;
+
+    Res = tryDecodeInst(DecoderTableGFX1064, MI, QW, Address);
   } while (false);
 
+  if (Res && (MaxInstBytesNum - Bytes.size()) == 12 && (!HasLiteral ||
+        !(MCII->get(MI.getOpcode()).TSFlags & SIInstrFlags::VOP3))) {
+    MaxInstBytesNum = 8;
+    Bytes = Bytes_.slice(0, MaxInstBytesNum);
+    eatBytes<uint64_t>(Bytes);
+  }
+
   if (Res && (MI.getOpcode() == AMDGPU::V_MAC_F32_e64_vi ||
-              MI.getOpcode() == AMDGPU::V_MAC_F32_e64_si ||
+              MI.getOpcode() == AMDGPU::V_MAC_F32_e64_gfx6_gfx7 ||
+              MI.getOpcode() == AMDGPU::V_MAC_F32_e64_gfx10 ||
               MI.getOpcode() == AMDGPU::V_MAC_F16_e64_vi ||
-              MI.getOpcode() == AMDGPU::V_FMAC_F32_e64_vi)) {
+              MI.getOpcode() == AMDGPU::V_FMAC_F32_e64_vi ||
+              MI.getOpcode() == AMDGPU::V_FMAC_F32_e64_gfx10 ||
+              MI.getOpcode() == AMDGPU::V_FMAC_F16_e64_gfx10)) {
     // Insert dummy unused src2_modifiers.
     insertNamedMCOperand(MI, MCOperand::createImm(0),
                          AMDGPU::OpName::src2_modifiers);
   }
 
   if (Res && (MCII->get(MI.getOpcode()).TSFlags & SIInstrFlags::MIMG)) {
-    Res = convertMIMGInst(MI);
+    int VAddr0Idx =
+        AMDGPU::getNamedOperandIdx(MI.getOpcode(), AMDGPU::OpName::vaddr0);
+    int RsrcIdx =
+        AMDGPU::getNamedOperandIdx(MI.getOpcode(), AMDGPU::OpName::srsrc);
+    unsigned NSAArgs = RsrcIdx - VAddr0Idx - 1;
+    if (VAddr0Idx >= 0 && NSAArgs > 0) {
+      unsigned NSAWords = (NSAArgs + 3) / 4;
+      if (Bytes.size() < 4 * NSAWords) {
+        Res = MCDisassembler::Fail;
+      } else {
+        for (unsigned i = 0; i < NSAArgs; ++i) {
+          MI.insert(MI.begin() + VAddr0Idx + 1 + i,
+                    decodeOperand_VGPR_32(Bytes[i]));
+        }
+        Bytes = Bytes.slice(4 * NSAWords);
+      }
+    }
+
+    if (Res)
+      Res = convertMIMGInst(MI);
   }
 
   if (Res && IsSDWA)
     Res = convertSDWAInst(MI);
+
+  int VDstIn_Idx = AMDGPU::getNamedOperandIdx(MI.getOpcode(),
+                                              AMDGPU::OpName::vdst_in);
+  if (VDstIn_Idx != -1) {
+    int Tied = MCII->get(MI.getOpcode()).getOperandConstraint(VDstIn_Idx,
+                           MCOI::OperandConstraint::TIED_TO);
+    if (Tied != -1 && (MI.getNumOperands() <= (unsigned)VDstIn_Idx ||
+         !MI.getOperand(VDstIn_Idx).isReg() ||
+         MI.getOperand(VDstIn_Idx).getReg() != MI.getOperand(Tied).getReg())) {
+      if (MI.getNumOperands() > (unsigned)VDstIn_Idx)
+        MI.erase(&MI.getOperand(VDstIn_Idx));
+      insertNamedMCOperand(MI,
+        MCOperand::createReg(MI.getOperand(Tied).getReg()),
+        AMDGPU::OpName::vdst_in);
+    }
+  }
 
   // if the opcode was not recognized we'll assume a Size of 4 bytes
   // (unless there are fewer bytes left)
@@ -273,7 +339,8 @@ DecodeStatus AMDGPUDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
 }
 
 DecodeStatus AMDGPUDisassembler::convertSDWAInst(MCInst &MI) const {
-  if (STI.getFeatureBits()[AMDGPU::FeatureGFX9]) {
+  if (STI.getFeatureBits()[AMDGPU::FeatureGFX9] ||
+      STI.getFeatureBits()[AMDGPU::FeatureGFX10]) {
     if (AMDGPU::getNamedOperandIdx(MI.getOpcode(), AMDGPU::OpName::sdst) != -1)
       // VOPC - insert clamp
       insertNamedMCOperand(MI, MCOperand::createImm(0), AMDGPU::OpName::clamp);
@@ -291,9 +358,9 @@ DecodeStatus AMDGPUDisassembler::convertSDWAInst(MCInst &MI) const {
   return MCDisassembler::Success;
 }
 
-// Note that MIMG format provides no information about VADDR size.
-// Consequently, decoded instructions always show address
-// as if it has 1 dword, which could be not really so.
+// Note that before gfx10, the MIMG encoding provided no information about
+// VADDR size. Consequently, decoded instructions always show address as if it
+// has 1 dword, which could be not really so.
 DecodeStatus AMDGPUDisassembler::convertMIMGInst(MCInst &MI) const {
 
   int VDstIdx = AMDGPU::getNamedOperandIdx(MI.getOpcode(),
@@ -301,7 +368,8 @@ DecodeStatus AMDGPUDisassembler::convertMIMGInst(MCInst &MI) const {
 
   int VDataIdx = AMDGPU::getNamedOperandIdx(MI.getOpcode(),
                                             AMDGPU::OpName::vdata);
-
+  int VAddr0Idx =
+      AMDGPU::getNamedOperandIdx(MI.getOpcode(), AMDGPU::OpName::vaddr0);
   int DMaskIdx = AMDGPU::getNamedOperandIdx(MI.getOpcode(),
                                             AMDGPU::OpName::dmask);
 
@@ -314,16 +382,42 @@ DecodeStatus AMDGPUDisassembler::convertMIMGInst(MCInst &MI) const {
   assert(DMaskIdx != -1);
   assert(TFEIdx != -1);
 
+  const AMDGPU::MIMGInfo *Info = AMDGPU::getMIMGInfo(MI.getOpcode());
   bool IsAtomic = (VDstIdx != -1);
   bool IsGather4 = MCII->get(MI.getOpcode()).TSFlags & SIInstrFlags::Gather4;
 
-  unsigned DMask = MI.getOperand(DMaskIdx).getImm() & 0xf;
-  if (DMask == 0)
-    return MCDisassembler::Success;
+  bool IsNSA = false;
+  unsigned AddrSize = Info->VAddrDwords;
 
-  unsigned DstSize = IsGather4 ? 4 : countPopulation(DMask);
-  if (DstSize == 1)
-    return MCDisassembler::Success;
+  if (STI.getFeatureBits()[AMDGPU::FeatureGFX10]) {
+    unsigned DimIdx =
+        AMDGPU::getNamedOperandIdx(MI.getOpcode(), AMDGPU::OpName::dim);
+    const AMDGPU::MIMGBaseOpcodeInfo *BaseOpcode =
+        AMDGPU::getMIMGBaseOpcodeInfo(Info->BaseOpcode);
+    const AMDGPU::MIMGDimInfo *Dim =
+        AMDGPU::getMIMGDimInfoByEncoding(MI.getOperand(DimIdx).getImm());
+
+    AddrSize = BaseOpcode->NumExtraArgs +
+               (BaseOpcode->Gradients ? Dim->NumGradients : 0) +
+               (BaseOpcode->Coordinates ? Dim->NumCoords : 0) +
+               (BaseOpcode->LodOrClampOrMip ? 1 : 0);
+    IsNSA = Info->MIMGEncoding == AMDGPU::MIMGEncGfx10NSA;
+    if (!IsNSA) {
+      if (AddrSize > 8)
+        AddrSize = 16;
+      else if (AddrSize > 4)
+        AddrSize = 8;
+    } else {
+      if (AddrSize > Info->VAddrDwords) {
+        // The NSA encoding does not contain enough operands for the combination
+        // of base opcode / dimension. Should this be an error?
+        return MCDisassembler::Success;
+      }
+    }
+  }
+
+  unsigned DMask = MI.getOperand(DMaskIdx).getImm() & 0xf;
+  unsigned DstSize = IsGather4 ? 4 : std::max(countPopulation(DMask), 1u);
 
   bool D16 = D16Idx >= 0 && MI.getOperand(D16Idx).getImm();
   if (D16 && AMDGPU::hasPackedD16(STI)) {
@@ -334,44 +428,64 @@ DecodeStatus AMDGPUDisassembler::convertMIMGInst(MCInst &MI) const {
   if (MI.getOperand(TFEIdx).getImm())
     return MCDisassembler::Success;
 
-  int NewOpcode = -1;
+  if (DstSize == Info->VDataDwords && AddrSize == Info->VAddrDwords)
+    return MCDisassembler::Success;
 
-  if (IsGather4) {
-    if (D16 && AMDGPU::hasPackedD16(STI))
-      NewOpcode = AMDGPU::getMaskedMIMGOp(MI.getOpcode(), 2);
-    else
-      return MCDisassembler::Success;
-  } else {
-    NewOpcode = AMDGPU::getMaskedMIMGOp(MI.getOpcode(), DstSize);
-    if (NewOpcode == -1)
-      return MCDisassembler::Success;
-  }
-
-  auto RCID = MCII->get(NewOpcode).OpInfo[VDataIdx].RegClass;
-
-  // Get first subregister of VData
-  unsigned Vdata0 = MI.getOperand(VDataIdx).getReg();
-  unsigned VdataSub0 = MRI.getSubReg(Vdata0, AMDGPU::sub0);
-  Vdata0 = (VdataSub0 != 0)? VdataSub0 : Vdata0;
+  int NewOpcode =
+      AMDGPU::getMIMGOpcode(Info->BaseOpcode, Info->MIMGEncoding, DstSize, AddrSize);
+  if (NewOpcode == -1)
+    return MCDisassembler::Success;
 
   // Widen the register to the correct number of enabled channels.
-  auto NewVdata = MRI.getMatchingSuperReg(Vdata0, AMDGPU::sub0,
-                                          &MRI.getRegClass(RCID));
-  if (NewVdata == AMDGPU::NoRegister) {
-    // It's possible to encode this such that the low register + enabled
-    // components exceeds the register count.
-    return MCDisassembler::Success;
+  unsigned NewVdata = AMDGPU::NoRegister;
+  if (DstSize != Info->VDataDwords) {
+    auto DataRCID = MCII->get(NewOpcode).OpInfo[VDataIdx].RegClass;
+
+    // Get first subregister of VData
+    unsigned Vdata0 = MI.getOperand(VDataIdx).getReg();
+    unsigned VdataSub0 = MRI.getSubReg(Vdata0, AMDGPU::sub0);
+    Vdata0 = (VdataSub0 != 0)? VdataSub0 : Vdata0;
+
+    NewVdata = MRI.getMatchingSuperReg(Vdata0, AMDGPU::sub0,
+                                       &MRI.getRegClass(DataRCID));
+    if (NewVdata == AMDGPU::NoRegister) {
+      // It's possible to encode this such that the low register + enabled
+      // components exceeds the register count.
+      return MCDisassembler::Success;
+    }
+  }
+
+  unsigned NewVAddr0 = AMDGPU::NoRegister;
+  if (STI.getFeatureBits()[AMDGPU::FeatureGFX10] && !IsNSA &&
+      AddrSize != Info->VAddrDwords) {
+    unsigned VAddr0 = MI.getOperand(VAddr0Idx).getReg();
+    unsigned VAddrSub0 = MRI.getSubReg(VAddr0, AMDGPU::sub0);
+    VAddr0 = (VAddrSub0 != 0) ? VAddrSub0 : VAddr0;
+
+    auto AddrRCID = MCII->get(NewOpcode).OpInfo[VAddr0Idx].RegClass;
+    NewVAddr0 = MRI.getMatchingSuperReg(VAddr0, AMDGPU::sub0,
+                                        &MRI.getRegClass(AddrRCID));
+    if (NewVAddr0 == AMDGPU::NoRegister)
+      return MCDisassembler::Success;
   }
 
   MI.setOpcode(NewOpcode);
-  // vaddr will be always appear as a single VGPR. This will look different than
-  // how it is usually emitted because the number of register components is not
-  // in the instruction encoding.
-  MI.getOperand(VDataIdx) = MCOperand::createReg(NewVdata);
 
-  if (IsAtomic) {
-    // Atomic operations have an additional operand (a copy of data)
-    MI.getOperand(VDstIdx) = MCOperand::createReg(NewVdata);
+  if (NewVdata != AMDGPU::NoRegister) {
+    MI.getOperand(VDataIdx) = MCOperand::createReg(NewVdata);
+
+    if (IsAtomic) {
+      // Atomic operations have an additional operand (a copy of data)
+      MI.getOperand(VDstIdx) = MCOperand::createReg(NewVdata);
+    }
+  }
+
+  if (NewVAddr0 != AMDGPU::NoRegister) {
+    MI.getOperand(VAddr0Idx) = MCOperand::createReg(NewVAddr0);
+  } else if (IsNSA) {
+    assert(AddrSize <= Info->VAddrDwords);
+    MI.erase(MI.begin() + VAddr0Idx + AddrSize,
+             MI.begin() + VAddr0Idx + Info->VAddrDwords);
   }
 
   return MCDisassembler::Success;

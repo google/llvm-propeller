@@ -64,11 +64,12 @@ add_lldb_tool(lldb-server
 
     LINK_LIBS
       lldbBase
-      lldbCore
       lldbHost
       lldbInitialization
-      lldbInterpreter
       ${LLDB_PLUGINS}
+      lldbPluginInstructionARM
+      lldbPluginInstructionMIPS
+      lldbPluginInstructionMIPS64
       ${LLDB_SYSTEM_LIBS}
 
     LINK_COMPONENTS

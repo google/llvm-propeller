@@ -90,7 +90,7 @@ void JITLinkerBase::linkPhase2(std::unique_ptr<JITLinkerBase> Self,
                                Expected<AsyncLookupResult> LR) {
   // If the lookup failed, bail out.
   if (!LR)
-    return Ctx->notifyFailed(LR.takeError());
+    return deallocateAndBailOut(LR.takeError());
 
   // Assign addresses to external atoms.
   applyLookupResult(*LR);
@@ -102,7 +102,7 @@ void JITLinkerBase::linkPhase2(std::unique_ptr<JITLinkerBase> Self,
 
   // Copy atom content to working memory and fix up.
   if (auto Err = copyAndFixUpAllAtoms(Layout, *Alloc))
-    return Ctx->notifyFailed(std::move(Err));
+    return deallocateAndBailOut(std::move(Err));
 
   LLVM_DEBUG({
     dbgs() << "Atom graph \"" << G->getName() << "\" after copy-and-fixup:\n";
@@ -110,7 +110,7 @@ void JITLinkerBase::linkPhase2(std::unique_ptr<JITLinkerBase> Self,
   });
 
   if (auto Err = runPasses(Passes.PostFixupPasses, *G))
-    return Ctx->notifyFailed(std::move(Err));
+    return deallocateAndBailOut(std::move(Err));
 
   // FIXME: Use move capture once we have c++14.
   auto *UnownedSelf = Self.release();
@@ -124,7 +124,7 @@ void JITLinkerBase::linkPhase2(std::unique_ptr<JITLinkerBase> Self,
 
 void JITLinkerBase::linkPhase3(std::unique_ptr<JITLinkerBase> Self, Error Err) {
   if (Err)
-    return Ctx->notifyFailed(std::move(Err));
+    return deallocateAndBailOut(std::move(Err));
   Ctx->notifyFinalized(std::move(Alloc));
 }
 
@@ -170,31 +170,31 @@ void JITLinkerBase::layOutAtoms() {
     auto &SL = KV.second;
     for (auto *SIList : {&SL.ContentSections, &SL.ZeroFillSections}) {
       for (auto &SI : *SIList) {
-        std::vector<DefinedAtom *> LayoutHeads;
-        LayoutHeads.reserve(SI.S->atoms_size());
+        // First build the set of layout-heads (i.e. "heads" of layout-next
+        // chains) by copying the section atoms, then eliminating any that
+        // appear as layout-next targets.
+        DenseSet<DefinedAtom *> LayoutHeads;
+        for (auto *DA : SI.S->atoms())
+          LayoutHeads.insert(DA);
 
-        // First build the list of layout-heads (i.e. "heads" of layout-next
-        // chains).
-        DenseSet<DefinedAtom *> AlreadyLayedOut;
-        for (auto *DA : SI.S->atoms()) {
-          if (AlreadyLayedOut.count(DA))
-            continue;
-          LayoutHeads.push_back(DA);
-          while (DA->hasLayoutNext()) {
-            auto &Next = DA->getLayoutNext();
-            AlreadyLayedOut.insert(&Next);
-            DA = &Next;
-          }
-        }
+        for (auto *DA : SI.S->atoms())
+          if (DA->hasLayoutNext())
+            LayoutHeads.erase(&DA->getLayoutNext());
+
+        // Next, sort the layout heads by address order.
+        std::vector<DefinedAtom *> OrderedLayoutHeads;
+        OrderedLayoutHeads.reserve(LayoutHeads.size());
+        for (auto *DA : LayoutHeads)
+          OrderedLayoutHeads.push_back(DA);
 
         // Now sort the list of layout heads by address.
-        std::sort(LayoutHeads.begin(), LayoutHeads.end(),
+        std::sort(OrderedLayoutHeads.begin(), OrderedLayoutHeads.end(),
                   [](const DefinedAtom *LHS, const DefinedAtom *RHS) {
                     return LHS->getAddress() < RHS->getAddress();
                   });
 
         // Now populate the SI.Atoms field by appending each of the chains.
-        for (auto *DA : LayoutHeads) {
+        for (auto *DA : OrderedLayoutHeads) {
           SI.Atoms.push_back(DA);
           while (DA->hasLayoutNext()) {
             auto &Next = DA->getLayoutNext();
@@ -345,9 +345,21 @@ void JITLinkerBase::applyLookupResult(AsyncLookupResult Result) {
     A.setAddress(KV.second.getAddress());
   }
 
+  LLVM_DEBUG({
+    dbgs() << "Externals after applying lookup result:\n";
+    for (auto *A : G->external_atoms())
+      dbgs() << "  " << A->getName() << ": "
+             << formatv("{0:x16}", A->getAddress()) << "\n";
+  });
   assert(llvm::all_of(G->external_atoms(),
                       [](Atom *A) { return A->getAddress() != 0; }) &&
          "All atoms should have been resolved by this point");
+}
+
+void JITLinkerBase::deallocateAndBailOut(Error Err) {
+  assert(Err && "Should not be bailing out on success value");
+  assert(Alloc && "can not call deallocateAndBailOut before allocation");
+  Ctx->notifyFailed(joinErrors(std::move(Err), Alloc->deallocate()));
 }
 
 void JITLinkerBase::dumpGraph(raw_ostream &OS) {

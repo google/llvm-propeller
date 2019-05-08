@@ -683,6 +683,8 @@ def err_id_after_template_in_nested_name_spec : Error<
   "expected template name after 'template' keyword in nested name specifier">;
 def err_unexpected_template_in_unqualified_id : Error<
   "'template' keyword not permitted here">;
+def err_unexpected_template_after_using : Error<
+  "'template' keyword not permitted after 'using' keyword">;
 def err_two_right_angle_brackets_need_space : Error<
   "a space is required between consecutive right angle brackets (use '> >')">;
 def err_right_angle_bracket_equal_needs_space : Error<
@@ -879,6 +881,16 @@ def warn_cxx14_compat_constexpr_on_lambda : Warning<
   InGroup<CXXPre17Compat>, DefaultIgnore;
 def ext_constexpr_on_lambda_cxx17 : ExtWarn<
   "'constexpr' on lambda expressions is a C++17 extension">, InGroup<CXX17>;
+
+ // C++2a template lambdas
+ def ext_lambda_template_parameter_list: ExtWarn<
+  "explicit template parameter list for lambdas is a C++2a extension">,
+  InGroup<CXX2a>;
+def warn_cxx17_compat_lambda_template_parameter_list: Warning<
+  "explicit template parameter list for lambdas is incompatible with "
+  "C++ standards before C++2a">, InGroup<CXXPre2aCompat>, DefaultIgnore;
+ def err_lambda_template_parameter_list_empty : Error<
+   "lambda template parameter list cannot be empty">;
 
 // Availability attribute
 def err_expected_version : Error<

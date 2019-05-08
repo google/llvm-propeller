@@ -101,6 +101,7 @@ private:
                                 MachineRegisterInfo &MRI) const;
   bool selectIntrinsicWithSideEffects(MachineInstr &I,
                                       MachineRegisterInfo &MRI) const;
+  bool selectIntrinsic(MachineInstr &I, MachineRegisterInfo &MRI) const;
   bool selectVectorICmp(MachineInstr &I, MachineRegisterInfo &MRI) const;
   bool selectIntrinsicTrunc(MachineInstr &I, MachineRegisterInfo &MRI) const;
   bool selectIntrinsicRound(MachineInstr &I, MachineRegisterInfo &MRI) const;
@@ -116,6 +117,12 @@ private:
                                      const RegisterBank &DstRB, LLT ScalarTy,
                                      unsigned VecReg, unsigned LaneIdx,
                                      MachineIRBuilder &MIRBuilder) const;
+
+  /// Helper function for selecting G_FCONSTANT. If the G_FCONSTANT can be
+  /// materialized using a FMOV instruction, then update MI and return it.
+  /// Otherwise, do nothing and return a nullptr.
+  MachineInstr *emitFMovForFConstant(MachineInstr &MI,
+                                     MachineRegisterInfo &MRI) const;
 
   ComplexRendererFns selectArithImmed(MachineOperand &Root) const;
 
@@ -514,6 +521,36 @@ static bool selectSubregisterCopy(MachineInstr &I, MachineRegisterInfo &MRI,
   return true;
 }
 
+/// Helper function to get the source and destination register classes for a
+/// copy. Returns a std::pair containing the source register class for the
+/// copy, and the destination register class for the copy. If a register class
+/// cannot be determined, then it will be nullptr.
+static std::pair<const TargetRegisterClass *, const TargetRegisterClass *>
+getRegClassesForCopy(MachineInstr &I, const TargetInstrInfo &TII,
+                     MachineRegisterInfo &MRI, const TargetRegisterInfo &TRI,
+                     const RegisterBankInfo &RBI) {
+  unsigned DstReg = I.getOperand(0).getReg();
+  unsigned SrcReg = I.getOperand(1).getReg();
+  const RegisterBank &DstRegBank = *RBI.getRegBank(DstReg, MRI, TRI);
+  const RegisterBank &SrcRegBank = *RBI.getRegBank(SrcReg, MRI, TRI);
+  unsigned DstSize = RBI.getSizeInBits(DstReg, MRI, TRI);
+  unsigned SrcSize = RBI.getSizeInBits(SrcReg, MRI, TRI);
+
+  // Special casing for cross-bank copies of s1s. We can technically represent
+  // a 1-bit value with any size of register. The minimum size for a GPR is 32
+  // bits. So, we need to put the FPR on 32 bits as well.
+  //
+  // FIXME: I'm not sure if this case holds true outside of copies. If it does,
+  // then we can pull it into the helpers that get the appropriate class for a
+  // register bank. Or make a new helper that carries along some constraint
+  // information.
+  if (SrcRegBank != DstRegBank && (DstSize == 1 && SrcSize == 1))
+    SrcSize = DstSize = 32;
+
+  return {getMinClassForRegBank(SrcRegBank, SrcSize, true),
+          getMinClassForRegBank(DstRegBank, DstSize, true)};
+}
+
 static bool selectCopy(MachineInstr &I, const TargetInstrInfo &TII,
                        MachineRegisterInfo &MRI, const TargetRegisterInfo &TRI,
                        const RegisterBankInfo &RBI) {
@@ -522,8 +559,12 @@ static bool selectCopy(MachineInstr &I, const TargetInstrInfo &TII,
   unsigned SrcReg = I.getOperand(1).getReg();
   const RegisterBank &DstRegBank = *RBI.getRegBank(DstReg, MRI, TRI);
   const RegisterBank &SrcRegBank = *RBI.getRegBank(SrcReg, MRI, TRI);
-  const TargetRegisterClass *DstRC = getMinClassForRegBank(
-      DstRegBank, RBI.getSizeInBits(DstReg, MRI, TRI), true);
+
+  // Find the correct register classes for the source and destination registers.
+  const TargetRegisterClass *SrcRC;
+  const TargetRegisterClass *DstRC;
+  std::tie(SrcRC, DstRC) = getRegClassesForCopy(I, TII, MRI, TRI, RBI);
+
   if (!DstRC) {
     LLVM_DEBUG(dbgs() << "Unexpected dest size "
                       << RBI.getSizeInBits(DstReg, MRI, TRI) << '\n');
@@ -556,8 +597,6 @@ static bool selectCopy(MachineInstr &I, const TargetInstrInfo &TII,
   // a SUBREG_TO_REG.
   if (I.isCopy()) {
     // Yes. Check if there's anything to fix up.
-    const TargetRegisterClass *SrcRC = getMinClassForRegBank(
-        SrcRegBank, RBI.getSizeInBits(SrcReg, MRI, TRI), true);
     if (!SrcRC) {
       LLVM_DEBUG(dbgs() << "Couldn't determine source register class\n");
       return false;
@@ -1087,6 +1126,43 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
     return constrainSelectedInstRegOperands(I, TII, TRI, RBI);
   }
 
+  case TargetOpcode::G_BSWAP: {
+    // Handle vector types for G_BSWAP directly.
+    unsigned DstReg = I.getOperand(0).getReg();
+    LLT DstTy = MRI.getType(DstReg);
+
+    // We should only get vector types here; everything else is handled by the
+    // importer right now.
+    if (!DstTy.isVector() || DstTy.getSizeInBits() > 128) {
+      LLVM_DEBUG(dbgs() << "Dst type for G_BSWAP currently unsupported.\n");
+      return false;
+    }
+
+    // Only handle 4 and 2 element vectors for now.
+    // TODO: 16-bit elements.
+    unsigned NumElts = DstTy.getNumElements();
+    if (NumElts != 4 && NumElts != 2) {
+      LLVM_DEBUG(dbgs() << "Unsupported number of elements for G_BSWAP.\n");
+      return false;
+    }
+
+    // Choose the correct opcode for the supported types. Right now, that's
+    // v2s32, v4s32, and v2s64.
+    unsigned Opc = 0;
+    unsigned EltSize = DstTy.getElementType().getSizeInBits();
+    if (EltSize == 32)
+      Opc = (DstTy.getNumElements() == 2) ? AArch64::REV32v8i8
+                                          : AArch64::REV32v16i8;
+    else if (EltSize == 64)
+      Opc = AArch64::REV64v16i8;
+
+    // We should always get something by the time we get here...
+    assert(Opc != 0 && "Didn't get an opcode for G_BSWAP?");
+
+    I.setDesc(TII.get(Opc));
+    return constrainSelectedInstRegOperands(I, TII, TRI, RBI);
+  }
+
   case TargetOpcode::G_FCONSTANT:
   case TargetOpcode::G_CONSTANT: {
     const bool isFP = Opcode == TargetOpcode::G_FCONSTANT;
@@ -1140,14 +1216,18 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
     const unsigned MovOpc =
         DefSize == 32 ? AArch64::MOVi32imm : AArch64::MOVi64imm;
 
-    I.setDesc(TII.get(MovOpc));
-
     if (isFP) {
+      // Either emit a FMOV, or emit a copy to emit a normal mov.
       const TargetRegisterClass &GPRRC =
           DefSize == 32 ? AArch64::GPR32RegClass : AArch64::GPR64RegClass;
       const TargetRegisterClass &FPRRC =
           DefSize == 32 ? AArch64::FPR32RegClass : AArch64::FPR64RegClass;
 
+      // Can we use a FMOV instruction to represent the immediate?
+      if (emitFMovForFConstant(I, MRI))
+        return true;
+
+      // Nope. Emit a copy and use a normal mov instead.
       const unsigned DefGPRReg = MRI.createVirtualRegister(&GPRRC);
       MachineOperand &RegOp = I.getOperand(0);
       RegOp.setReg(DefGPRReg);
@@ -1171,6 +1251,7 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
       I.getOperand(1).ChangeToImmediate(Val);
     }
 
+    I.setDesc(TII.get(MovOpc));
     constrainSelectedInstRegOperands(I, TII, TRI, RBI);
     return true;
   }
@@ -1675,12 +1756,16 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
     const unsigned TReg = I.getOperand(2).getReg();
     const unsigned FReg = I.getOperand(3).getReg();
 
+    // If we have a floating-point result, then we should use a floating point
+    // select instead of an integer select.
+    bool IsFP = (RBI.getRegBank(I.getOperand(0).getReg(), MRI, TRI)->getID() !=
+                 AArch64::GPRRegBankID);
     unsigned CSelOpc = 0;
 
     if (Ty == LLT::scalar(32)) {
-      CSelOpc = AArch64::CSELWr;
+      CSelOpc = IsFP ? AArch64::FCSELSrrr : AArch64::CSELWr;
     } else if (Ty == LLT::scalar(64) || Ty == LLT::pointer(0, 64)) {
-      CSelOpc = AArch64::CSELXr;
+      CSelOpc = IsFP ? AArch64::FCSELDrrr : AArch64::CSELXr;
     } else {
       return false;
     }
@@ -1818,6 +1903,8 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
   case TargetOpcode::G_VASTART:
     return STI.isTargetDarwin() ? selectVaStartDarwin(I, MF, MRI)
                                 : selectVaStartAAPCS(I, MF, MRI);
+  case TargetOpcode::G_INTRINSIC:
+    return selectIntrinsic(I, MRI);
   case TargetOpcode::G_INTRINSIC_W_SIDE_EFFECTS:
     return selectIntrinsicWithSideEffects(I, MRI);
   case TargetOpcode::G_IMPLICIT_DEF: {
@@ -2251,40 +2338,6 @@ static bool getLaneCopyOpcode(unsigned &CopyOpc, unsigned &ExtractSubReg,
   return true;
 }
 
-/// Given a register \p Reg, find the value of a constant defining \p Reg.
-/// Return true if one could be found, and store it in \p Val. Return false
-/// otherwise.
-static bool getConstantValueForReg(unsigned Reg, MachineRegisterInfo &MRI,
-                                   unsigned &Val) {
-  // Look at the def of the register.
-  MachineInstr *Def = MRI.getVRegDef(Reg);
-  if (!Def)
-    return false;
-
-  // Find the first definition which isn't a copy.
-  if (Def->isCopy()) {
-    Reg = Def->getOperand(1).getReg();
-    auto It = find_if_not(MRI.reg_nodbg_instructions(Reg),
-                          [](const MachineInstr &MI) { return MI.isCopy(); });
-    if (It == MRI.reg_instr_nodbg_end()) {
-      LLVM_DEBUG(dbgs() << "Couldn't find non-copy def for register\n");
-      return false;
-    }
-    Def = &*It;
-  }
-
-  // TODO: Handle opcodes other than G_CONSTANT.
-  if (Def->getOpcode() != TargetOpcode::G_CONSTANT) {
-    LLVM_DEBUG(dbgs() << "VRegs defined by anything other than G_CONSTANT "
-                         "currently unsupported.\n");
-    return false;
-  }
-
-  // Return the constant value associated with the operand.
-  Val = Def->getOperand(1).getCImm()->getLimitedValue();
-  return true;
-}
-
 MachineInstr *AArch64InstructionSelector::emitExtractVectorElt(
     Optional<unsigned> DstReg, const RegisterBank &DstRB, LLT ScalarTy,
     unsigned VecReg, unsigned LaneIdx, MachineIRBuilder &MIRBuilder) const {
@@ -2368,9 +2421,10 @@ bool AArch64InstructionSelector::selectExtractElt(
   }
 
   // Find the index to extract from.
-  unsigned LaneIdx = 0;
-  if (!getConstantValueForReg(LaneIdxOp.getReg(), MRI, LaneIdx))
+  auto VRegAndVal = getConstantVRegValWithLookThrough(LaneIdxOp.getReg(), MRI);
+  if (!VRegAndVal)
     return false;
+  unsigned LaneIdx = VRegAndVal->Value;
 
   MachineIRBuilder MIRBuilder(I);
 
@@ -2572,7 +2626,7 @@ void AArch64InstructionSelector::collectShuffleMaskIndices(
 unsigned
 AArch64InstructionSelector::emitConstantPoolEntry(Constant *CPVal,
                                                   MachineFunction &MF) const {
-  Type *CPTy = CPVal->getType()->getPointerTo();
+  Type *CPTy = CPVal->getType();
   unsigned Align = MF.getDataLayout().getPrefTypeAlignment(CPTy);
   if (Align == 0)
     Align = MF.getDataLayout().getTypeAllocSize(CPTy);
@@ -2707,6 +2761,39 @@ MachineInstr *AArch64InstructionSelector::emitVectorConcat(
           .addImm(0);
   constrainSelectedInstRegOperands(*InsElt, TII, TRI, RBI);
   return &*InsElt;
+}
+
+MachineInstr *AArch64InstructionSelector::emitFMovForFConstant(
+    MachineInstr &I, MachineRegisterInfo &MRI) const {
+  assert(I.getOpcode() == TargetOpcode::G_FCONSTANT &&
+         "Expected a G_FCONSTANT!");
+  MachineOperand &ImmOp = I.getOperand(1);
+  unsigned DefSize = MRI.getType(I.getOperand(0).getReg()).getSizeInBits();
+
+  // Only handle 32 and 64 bit defs for now.
+  if (DefSize != 32 && DefSize != 64)
+    return nullptr;
+
+  // Don't handle null values using FMOV.
+  if (ImmOp.getFPImm()->isNullValue())
+    return nullptr;
+
+  // Get the immediate representation for the FMOV.
+  const APFloat &ImmValAPF = ImmOp.getFPImm()->getValueAPF();
+  int Imm = DefSize == 32 ? AArch64_AM::getFP32Imm(ImmValAPF)
+                          : AArch64_AM::getFP64Imm(ImmValAPF);
+
+  // If this is -1, it means the immediate can't be represented as the requested
+  // floating point value. Bail.
+  if (Imm == -1)
+    return nullptr;
+
+  // Update MI to represent the new FMOV instruction, constrain it, and return.
+  ImmOp.ChangeToImmediate(Imm);
+  unsigned MovOpc = DefSize == 32 ? AArch64::FMOVSi : AArch64::FMOVDi;
+  I.setDesc(TII.get(MovOpc));
+  constrainSelectedInstRegOperands(I, TII, TRI, RBI);
+  return &I;
 }
 
 bool AArch64InstructionSelector::tryOptVectorDup(MachineInstr &I) const {
@@ -2946,9 +3033,10 @@ bool AArch64InstructionSelector::selectInsertElt(
   // Find the definition of the index. Bail out if it's not defined by a
   // G_CONSTANT.
   unsigned IdxReg = I.getOperand(3).getReg();
-  unsigned LaneIdx = 0;
-  if (!getConstantValueForReg(IdxReg, MRI, LaneIdx))
+  auto VRegAndVal = getConstantVRegValWithLookThrough(IdxReg, MRI);
+  if (!VRegAndVal)
     return false;
+  unsigned LaneIdx = VRegAndVal->Value;
 
   // Perform the lane insert.
   unsigned SrcReg = I.getOperand(1).getReg();
@@ -3078,6 +3166,17 @@ bool AArch64InstructionSelector::selectBuildVector(
   return true;
 }
 
+/// Helper function to find an intrinsic ID on an a MachineInstr. Returns the
+/// ID if it exists, and 0 otherwise.
+static unsigned findIntrinsicID(MachineInstr &I) {
+  auto IntrinOp = find_if(I.operands(), [&](const MachineOperand &Op) {
+    return Op.isIntrinsicID();
+  });
+  if (IntrinOp == I.operands_end())
+    return 0;
+  return IntrinOp->getIntrinsicID();
+}
+
 /// Helper function to emit the correct opcode for a llvm.aarch64.stlxr
 /// intrinsic.
 static unsigned getStlxrOpcode(unsigned NumBytesToStore) {
@@ -3096,12 +3195,9 @@ static unsigned getStlxrOpcode(unsigned NumBytesToStore) {
 bool AArch64InstructionSelector::selectIntrinsicWithSideEffects(
     MachineInstr &I, MachineRegisterInfo &MRI) const {
   // Find the intrinsic ID.
-  auto IntrinOp = find_if(I.operands(), [&](const MachineOperand &Op) {
-    return Op.isIntrinsicID();
-  });
-  if (IntrinOp == I.operands_end())
+  unsigned IntrinID = findIntrinsicID(I);
+  if (!IntrinID)
     return false;
-  unsigned IntrinID = IntrinOp->getIntrinsicID();
   MachineIRBuilder MIRBuilder(I);
 
   // Select the instruction.
@@ -3141,6 +3237,58 @@ bool AArch64InstructionSelector::selectIntrinsicWithSideEffects(
 
   I.eraseFromParent();
   return true;
+}
+
+bool AArch64InstructionSelector::selectIntrinsic(
+    MachineInstr &I, MachineRegisterInfo &MRI) const {
+  unsigned IntrinID = findIntrinsicID(I);
+  if (!IntrinID)
+    return false;
+  MachineIRBuilder MIRBuilder(I);
+
+  switch (IntrinID) {
+  default:
+    break;
+  case Intrinsic::aarch64_crypto_sha1h:
+    unsigned DstReg = I.getOperand(0).getReg();
+    unsigned SrcReg = I.getOperand(2).getReg();
+
+    // FIXME: Should this be an assert?
+    if (MRI.getType(DstReg).getSizeInBits() != 32 ||
+        MRI.getType(SrcReg).getSizeInBits() != 32)
+      return false;
+
+    // The operation has to happen on FPRs. Set up some new FPR registers for
+    // the source and destination if they are on GPRs.
+    if (RBI.getRegBank(SrcReg, MRI, TRI)->getID() != AArch64::FPRRegBankID) {
+      SrcReg = MRI.createVirtualRegister(&AArch64::FPR32RegClass);
+      MIRBuilder.buildCopy({SrcReg}, {I.getOperand(2)});
+
+      // Make sure the copy ends up getting constrained properly.
+      RBI.constrainGenericRegister(I.getOperand(2).getReg(),
+                                   AArch64::GPR32RegClass, MRI);
+    }
+
+    if (RBI.getRegBank(DstReg, MRI, TRI)->getID() != AArch64::FPRRegBankID)
+      DstReg = MRI.createVirtualRegister(&AArch64::FPR32RegClass);
+
+    // Actually insert the instruction.
+    auto SHA1Inst = MIRBuilder.buildInstr(AArch64::SHA1Hrr, {DstReg}, {SrcReg});
+    constrainSelectedInstRegOperands(*SHA1Inst, TII, TRI, RBI);
+
+    // Did we create a new register for the destination?
+    if (DstReg != I.getOperand(0).getReg()) {
+      // Yep. Copy the result of the instruction back into the original
+      // destination.
+      MIRBuilder.buildCopy({I.getOperand(0)}, {DstReg});
+      RBI.constrainGenericRegister(I.getOperand(0).getReg(),
+                                   AArch64::GPR32RegClass, MRI);
+    }
+
+    I.eraseFromParent();
+    return true;
+  }
+  return false;
 }
 
 /// SelectArithImmed - Select an immediate value that can be represented as

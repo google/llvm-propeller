@@ -46,11 +46,12 @@ WindowsResource::WindowsResource(MemoryBufferRef Source)
                          support::little);
 }
 
+// static
 Expected<std::unique_ptr<WindowsResource>>
 WindowsResource::createWindowsResource(MemoryBufferRef Source) {
   if (Source.getBufferSize() < WIN_RES_MAGIC_SIZE + WIN_RES_NULL_ENTRY_SIZE)
     return make_error<GenericBinaryError>(
-        "File too small to be a resource file",
+        Source.getBufferIdentifier() + ": too small to be a resource file",
         object_error::invalid_file_type);
   std::unique_ptr<WindowsResource> Ret(new WindowsResource(Source));
   return std::move(Ret);
@@ -58,14 +59,14 @@ WindowsResource::createWindowsResource(MemoryBufferRef Source) {
 
 Expected<ResourceEntryRef> WindowsResource::getHeadEntry() {
   if (BBS.getLength() < sizeof(WinResHeaderPrefix) + sizeof(WinResHeaderSuffix))
-    return make_error<EmptyResError>(".res contains no entries",
+    return make_error<EmptyResError>(getFileName() + " contains no entries",
                                      object_error::unexpected_eof);
   return ResourceEntryRef::create(BinaryStreamRef(BBS), this);
 }
 
 ResourceEntryRef::ResourceEntryRef(BinaryStreamRef Ref,
                                    const WindowsResource *Owner)
-    : Reader(Ref) {}
+    : Reader(Ref), Owner(Owner) {}
 
 Expected<ResourceEntryRef>
 ResourceEntryRef::create(BinaryStreamRef BSR, const WindowsResource *Owner) {
@@ -108,7 +109,8 @@ Error ResourceEntryRef::loadNext() {
   RETURN_IF_ERROR(Reader.readObject(Prefix));
 
   if (Prefix->HeaderSize < MIN_HEADER_SIZE)
-    return make_error<GenericBinaryError>("Header size is too small.",
+    return make_error<GenericBinaryError>(Owner->getFileName() +
+                                              ": header size too small",
                                           object_error::parse_failed);
 
   RETURN_IF_ERROR(readStringOrId(Reader, TypeID, Type, IsStringType));
@@ -155,8 +157,19 @@ void printResourceTypeName(uint16_t TypeID, raw_ostream &OS) {
   }
 }
 
-static Error makeDuplicateResourceError(const ResourceEntryRef &Entry,
-                                        StringRef File1, StringRef File2) {
+static bool convertUTF16LEToUTF8String(ArrayRef<UTF16> Src, std::string &Out) {
+  if (!sys::IsBigEndianHost)
+    return convertUTF16ToUTF8String(Src, Out);
+
+  std::vector<UTF16> EndianCorrectedSrc;
+  EndianCorrectedSrc.resize(Src.size() + 1);
+  llvm::copy(Src, EndianCorrectedSrc.begin() + 1);
+  EndianCorrectedSrc[0] = UNI_UTF16_BYTE_ORDER_MARK_SWAPPED;
+  return convertUTF16ToUTF8String(makeArrayRef(EndianCorrectedSrc), Out);
+}
+
+static std::string makeDuplicateResourceError(
+    const ResourceEntryRef &Entry, StringRef File1, StringRef File2) {
   std::string Ret;
   raw_string_ostream OS(Ret);
 
@@ -165,7 +178,7 @@ static Error makeDuplicateResourceError(const ResourceEntryRef &Entry,
   OS << " type ";
   if (Entry.checkTypeString()) {
     std::string UTF8;
-    if (!convertUTF16ToUTF8String(Entry.getTypeString(), UTF8))
+    if (!convertUTF16LEToUTF8String(Entry.getTypeString(), UTF8))
       UTF8 = "(failed conversion from UTF16)";
     OS << '\"' << UTF8 << '\"';
   } else
@@ -174,7 +187,7 @@ static Error makeDuplicateResourceError(const ResourceEntryRef &Entry,
   OS << "/name ";
   if (Entry.checkNameString()) {
     std::string UTF8;
-    if (!convertUTF16ToUTF8String(Entry.getNameString(), UTF8))
+    if (!convertUTF16LEToUTF8String(Entry.getNameString(), UTF8))
       UTF8 = "(failed conversion from UTF16)";
     OS << '\"' << UTF8 << '\"';
   } else {
@@ -184,10 +197,11 @@ static Error makeDuplicateResourceError(const ResourceEntryRef &Entry,
   OS << "/language " << Entry.getLanguage() << ", in " << File1 << " and in "
      << File2;
 
-  return make_error<GenericBinaryError>(OS.str(), object_error::parse_failed);
+  return OS.str();
 }
 
-Error WindowsResourceParser::parse(WindowsResource *WR) {
+Error WindowsResourceParser::parse(WindowsResource *WR,
+                                   std::vector<std::string> &Duplicates) {
   auto EntryOrErr = WR->getHeadEntry();
   if (!EntryOrErr) {
     auto E = EntryOrErr.takeError();
@@ -216,9 +230,10 @@ Error WindowsResourceParser::parse(WindowsResource *WR) {
     bool IsNewNode = Root.addEntry(Entry, InputFilenames.size(),
                                    IsNewTypeString, IsNewNameString, Node);
     InputFilenames.push_back(WR->getFileName());
-    if (!IsNewNode)
-      return makeDuplicateResourceError(Entry, InputFilenames[Node->Origin],
-                                        WR->getFileName());
+    if (!IsNewNode) {
+      Duplicates.push_back(makeDuplicateResourceError(
+          Entry, InputFilenames[Node->Origin], WR->getFileName()));
+    }
 
     if (IsNewTypeString)
       StringTable.push_back(Entry.getTypeString());
@@ -331,16 +346,7 @@ WindowsResourceParser::TreeNode &
 WindowsResourceParser::TreeNode::addNameChild(ArrayRef<UTF16> NameRef,
                                               bool &IsNewString) {
   std::string NameString;
-  ArrayRef<UTF16> CorrectedName;
-  std::vector<UTF16> EndianCorrectedName;
-  if (sys::IsBigEndianHost) {
-    EndianCorrectedName.resize(NameRef.size() + 1);
-    llvm::copy(NameRef, EndianCorrectedName.begin() + 1);
-    EndianCorrectedName[0] = UNI_UTF16_BYTE_ORDER_MARK_SWAPPED;
-    CorrectedName = makeArrayRef(EndianCorrectedName);
-  } else
-    CorrectedName = NameRef;
-  convertUTF16ToUTF8String(CorrectedName, NameString);
+  convertUTF16LEToUTF8String(NameRef, NameString);
 
   auto Child = StringChildren.find(NameString);
   if (Child == StringChildren.end()) {

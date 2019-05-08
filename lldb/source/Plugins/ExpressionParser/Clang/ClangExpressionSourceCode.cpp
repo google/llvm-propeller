@@ -8,6 +8,9 @@
 
 #include "ClangExpressionSourceCode.h"
 
+#include "clang/Basic/CharInfo.h"
+#include "llvm/ADT/StringRef.h"
+
 #include "Plugins/ExpressionParser/Clang/ClangModulesDeclVendor.h"
 #include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 #include "lldb/Symbol/Block.h"
@@ -161,25 +164,75 @@ static void AddMacros(const DebugMacros *dm, CompileUnit *comp_unit,
   }
 }
 
+/// Checks if the expression body contains the given variable as a token.
+/// \param body The expression body.
+/// \param var The variable token we are looking for.
+/// \return True iff the expression body containes the variable as a token.
+static bool ExprBodyContainsVar(llvm::StringRef body, llvm::StringRef var) {
+  assert(var.find_if([](char c) { return !clang::isIdentifierBody(c); }) ==
+             llvm::StringRef::npos &&
+         "variable contains non-identifier chars?");
+
+  size_t start = 0;
+  // Iterate over all occurences of the variable string in our expression.
+  while ((start = body.find(var, start)) != llvm::StringRef::npos) {
+    // We found our variable name in the expression. Check that the token
+    // that contains our needle is equal to our variable and not just contains
+    // the character sequence by accident.
+    // Prevents situations where we for example inlcude the variable 'FOO' in an
+    // expression like 'FOObar + 1'.
+    bool has_characters_before =
+        start != 0 && clang::isIdentifierBody(body[start - 1]);
+    bool has_characters_after =
+        start + var.size() < body.size() &&
+        clang::isIdentifierBody(body[start + var.size()]);
+
+    // Our token just contained the variable name as a substring. Continue
+    // searching the rest of the expression.
+    if (has_characters_before || has_characters_after) {
+      ++start;
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 static void AddLocalVariableDecls(const lldb::VariableListSP &var_list_sp,
-                                  StreamString &stream) {
+                                  StreamString &stream,
+                                  const std::string &expr,
+                                  lldb::LanguageType wrapping_language) {
   for (size_t i = 0; i < var_list_sp->GetSize(); i++) {
     lldb::VariableSP var_sp = var_list_sp->GetVariableAtIndex(i);
 
     ConstString var_name = var_sp->GetName();
-    if (!var_name || var_name == ConstString("this") ||
-        var_name == ConstString(".block_descriptor"))
+
+
+    // We can check for .block_descriptor w/o checking for langauge since this
+    // is not a valid identifier in either C or C++.
+    if (!var_name || var_name == ".block_descriptor")
+      continue;
+
+    if (!expr.empty() && !ExprBodyContainsVar(expr, var_name.GetStringRef()))
+      continue;
+
+    if ((var_name == "self" || var_name == "_cmd") &&
+        (wrapping_language == lldb::eLanguageTypeObjC ||
+         wrapping_language == lldb::eLanguageTypeObjC_plus_plus))
+      continue;
+
+    if (var_name == "this" &&
+        wrapping_language == lldb::eLanguageTypeC_plus_plus)
       continue;
 
     stream.Printf("using $__lldb_local_vars::%s;\n", var_name.AsCString());
   }
 }
 
-bool ClangExpressionSourceCode::GetText(std::string &text,
-                                   lldb::LanguageType wrapping_language,
-                                   bool static_method,
-                                   ExecutionContext &exe_ctx, bool add_locals,
-                                   llvm::ArrayRef<std::string> modules) const {
+bool ClangExpressionSourceCode::GetText(
+    std::string &text, lldb::LanguageType wrapping_language, bool static_method,
+    ExecutionContext &exe_ctx, bool add_locals, bool force_add_all_locals,
+    llvm::ArrayRef<std::string> modules) const {
   const char *target_specific_defines = "typedef signed char BOOL;\n";
   std::string module_macros;
 
@@ -252,15 +305,14 @@ bool ClangExpressionSourceCode::GetText(std::string &text,
       }
     }
 
-    if (add_locals) {
-      if (Language::LanguageIsCPlusPlus(frame->GetLanguage())) {
-        if (target->GetInjectLocalVariables(&exe_ctx)) {
-          lldb::VariableListSP var_list_sp =
-              frame->GetInScopeVariableList(false, true);
-          AddLocalVariableDecls(var_list_sp, lldb_local_var_decls);
-        }
+    if (add_locals)
+      if (target->GetInjectLocalVariables(&exe_ctx)) {
+        lldb::VariableListSP var_list_sp =
+            frame->GetInScopeVariableList(false, true);
+        AddLocalVariableDecls(var_list_sp, lldb_local_var_decls,
+                              force_add_all_locals ? "" : m_body,
+                              wrapping_language);
       }
-    }
   }
 
   if (m_wrap) {
@@ -338,11 +390,12 @@ bool ClangExpressionSourceCode::GetText(std::string &text,
             "@implementation $__lldb_objc_class ($__lldb_category)   \n"
             "+(void)%s:(void *)$__lldb_arg                           \n"
             "{                                                       \n"
+            "    %s;                                                 \n"
             "%s"
             "}                                                       \n"
             "@end                                                    \n",
             module_imports.c_str(), m_name.c_str(), m_name.c_str(),
-            tagged_body.c_str());
+            lldb_local_var_decls.GetData(), tagged_body.c_str());
       } else {
         wrap_stream.Printf(
             "%s"
@@ -352,11 +405,12 @@ bool ClangExpressionSourceCode::GetText(std::string &text,
             "@implementation $__lldb_objc_class ($__lldb_category)  \n"
             "-(void)%s:(void *)$__lldb_arg                          \n"
             "{                                                      \n"
+            "    %s;                                                \n"
             "%s"
             "}                                                      \n"
             "@end                                                   \n",
             module_imports.c_str(), m_name.c_str(), m_name.c_str(),
-            tagged_body.c_str());
+            lldb_local_var_decls.GetData(), tagged_body.c_str());
       }
       break;
     }
