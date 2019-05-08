@@ -1156,7 +1156,7 @@ void AsmPrinter::EmitFunctionBody() {
         }
       }
     }
-    if (MBB.isUniqueSection()) {
+    if (MBB.isUniqueSection() || MF->getBasicBlockLabels()) {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
       // MCSymbol *CurrentBBEnd = createTempSymbol("bb_end");
