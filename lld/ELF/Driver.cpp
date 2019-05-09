@@ -1630,11 +1630,11 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
     }
     printf("Entering into PLO mode, processing %lu files.\n", ObjectFiles.size());
     lld::plo::PLO Plo;
-    if (Plo.ProcessFiles(ObjectFiles,
+    if (Plo.processFiles(ObjectFiles,
                          Config->SymFile,
                          Config->Profile,
                          Config->CfgDump)) {
-      Config->SymbolOrderingFile = Plo.GenSymbolOrderingFile();
+      Config->SymbolOrderingFile = Plo.genSymbolOrderingFile();
     } else {
       error("PLO stage failed.");
     }

@@ -29,23 +29,23 @@ public:
   int      Cycles;
   char     Predict;
 
-  static bool FillEntry(const StringRef &SR, LBREntry &Entry);
+  static bool fillEntry(const StringRef &SR, LBREntry &Entry);
 };
 
 class PLOProfile {
 public:
   PLOProfile(PLO &P) :Plo(P) {}
   ~PLOProfile();
-  bool Process(StringRef &ProfileName);
+  bool process(StringRef &ProfileName);
 
 private:
-  void ProcessLBR(LBREntry *EntryArray, int EntryIndex);
+  void processLBR(LBREntry *EntryArray, int EntryIndex);
 
-  bool FindCfgForAddress(uint64_t Addr,
+  bool findCfgForAddress(uint64_t Addr,
                          ELFCfg *&ResultCfg,
                          ELFCfgNode *&ResultNode);
 
-  bool SymContainsAddr(StringRef &SymName,
+  bool symContainsAddr(StringRef &SymName,
                        uint64_t SymAddr,
                        uint64_t SymSize,
                        uint64_t Addr,
@@ -58,7 +58,7 @@ private:
   // A more advanced LRU algorithm does not seem to gain benefit over
   // the FIFO cache here.
   using SearchCacheTy = map<uint64_t, ELFCfgNode *>;
-  inline void CacheSearchResult(uint64_t Addr, ELFCfgNode *Node);
+  inline void cacheSearchResult(uint64_t Addr, ELFCfgNode *Node);
   // Use 8M cache.
   const uint32_t MaxCachedResults = 8 * 1024 * 1024 /
       sizeof(SearchCacheTy::value_type);

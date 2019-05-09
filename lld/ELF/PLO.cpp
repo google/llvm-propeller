@@ -43,7 +43,7 @@ PLO::~PLO() {}
 Symfile::Symfile() : BPAllocator(), SymStrSaver(BPAllocator) {}
 Symfile::~Symfile() { BPAllocator.Reset(); }
 
-bool Symfile::Init(StringRef SymfileName) {
+bool Symfile::init(StringRef SymfileName) {
   std::ifstream fin(SymfileName.str());
   if (!fin.good()) return false;
   string line;
@@ -70,7 +70,7 @@ bool Symfile::Init(StringRef SymfileName) {
   return true;
 }
 
-bool PLO::DumpCfgsToFile(StringRef &CfgDumpFile) const {
+bool PLO::dumpCfgsToFile(StringRef &CfgDumpFile) const {
   if (CfgDumpFile.empty())
     return false;
 
@@ -92,10 +92,10 @@ bool PLO::DumpCfgsToFile(StringRef &CfgDumpFile) const {
 }
 
 // This method is thread safe.
-void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
+void PLO::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
   fprintf(stderr, "Processing: %s\n", Inf->getName().str().c_str());
-  ELFView *View = ELFView::Create(Inf->getName(), Pair.second, Inf->MB);
+  ELFView *View = ELFView::create(Inf->getName(), Pair.second, Inf->MB);
   if (View) {
     ELFCfgBuilder(*this, View).BuildCfgs();
     {
@@ -111,7 +111,7 @@ void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   }
 }
 
-void PLO::CalculateNodeFreqs() {
+void PLO::calculateNodeFreqs() {
   for (auto &P : CfgMap) {
     auto &Cfg = *P.second.begin();
     if (Cfg->Nodes.empty())
@@ -143,11 +143,11 @@ void PLO::CalculateNodeFreqs() {
   }
 }
 
-bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
+bool PLO::processFiles(vector<elf::InputFile *> &Files,
                        StringRef &SymfileName,
                        StringRef &ProfileName,
                        StringRef &CfgDump) {
-  if (!Syms.Init(SymfileName))
+  if (!Syms.init(SymfileName))
     return false;
     
   vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
@@ -158,17 +158,17 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
   llvm::parallel::for_each(llvm::parallel::parallel_execution_policy(),
                            FileOrdinalPairs.begin(),
                            FileOrdinalPairs.end(),
-                           std::bind(&PLO::ProcessFile, this, _1));
-  if (PLOProfile(*this).Process(ProfileName)) {
-    CalculateNodeFreqs();
-    DumpCfgsToFile(CfgDump);
-    Syms.Reset();
+                           std::bind(&PLO::processFile, this, _1));
+  if (PLOProfile(*this).process(ProfileName)) {
+    calculateNodeFreqs();
+    dumpCfgsToFile(CfgDump);
+    Syms.reset();
     return true;
   }
   return false;
 }
 
-vector<StringRef> PLO::GenSymbolOrderingFile() { 
+vector<StringRef> PLO::genSymbolOrderingFile() { 
   PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
   list<ELFCfg *> OrderResult = PFO.doOrder();
   list<StringRef> SymbolList(1, "Hot");

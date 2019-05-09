@@ -13,7 +13,7 @@ namespace lld {
 namespace plo {
 
 ELFView *
-ELFView::Create(const StringRef &VN,
+ELFView::create(const StringRef &VN,
                 const uint32_t Ordinal,
 		const MemoryBufferRef &FR) {
   const char *FH = FR.getBufferStart();

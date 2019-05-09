@@ -264,7 +264,7 @@ void ELFCfgBuilder::BuildCfgs() {
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
         auto ResultP = Plo.Syms.NameMap.find(SymName);
         if (ResultP != Plo.Syms.NameMap.end()) {
-          uint64_t MappedAddr = Plo.Syms.GetAddr(ResultP->second);
+          uint64_t MappedAddr = Plo.Syms.getAddr(ResultP->second);
           TmpNodeMap[MappedAddr].emplace_back(new ELFCfgNode(
               SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
           continue;

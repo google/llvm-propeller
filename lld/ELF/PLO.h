@@ -52,15 +52,15 @@ public:
   using Sym = tuple<StringRef, uint32_t, uint32_t>;
   using SymHandler = list<Sym>::iterator;
 
-  StringRef GetName(SymHandler S) { return std::get<0>(*S); }
-  uint32_t  GetAddr(SymHandler S) { return std::get<1>(*S); }
-  uint32_t  GetSize(SymHandler S) { return std::get<2>(*S); }
+  StringRef getName(SymHandler S) { return std::get<0>(*S); }
+  uint32_t  getAddr(SymHandler S) { return std::get<1>(*S); }
+  uint32_t  getSize(SymHandler S) { return std::get<2>(*S); }
   
   map<StringRef, SymHandler> NameMap;
   map<uint64_t, llvm::SmallVector<SymHandler, 3>> AddrMap;
 
-  bool Init(StringRef SymfileName);
-  void Reset() {
+  bool init(StringRef SymfileName);
+  void reset() {
     map<StringRef, SymHandler> T0(std::move(NameMap));
     map<uint64_t, llvm::SmallVector<SymHandler, 3>> T1(std::move(AddrMap));
     SymList.clear();
@@ -82,12 +82,12 @@ public:
   PLO();
   ~PLO();
   
-  bool ProcessFiles(vector<elf::InputFile *> &Files,
+  bool processFiles(vector<elf::InputFile *> &Files,
                     StringRef &SymFileName,
                     StringRef &ProfileName,
                     StringRef &CfgDump);
 
-  vector<StringRef> GenSymbolOrderingFile();
+  vector<StringRef> genSymbolOrderingFile();
 
   template <class Visitor>
   void ForEachCfgRef(Visitor V) {
@@ -114,10 +114,10 @@ public:
   Symfile Syms;
 
 private:
-  void ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair);
+  void processFile(const pair<elf::InputFile *, uint32_t> &Pair);
 
-  bool DumpCfgsToFile(StringRef &CfgDumpFile) const;
-  void CalculateNodeFreqs();
+  bool dumpCfgsToFile(StringRef &CfgDumpFile) const;
+  void calculateNodeFreqs();
 
   list<unique_ptr<ELFView>> Views;
 
