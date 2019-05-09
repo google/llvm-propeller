@@ -13,6 +13,7 @@
 #include <ostream>
 #include <string>
 #include <unordered_map>
+#include <iostream>
 
 #include "llvm/Object/ObjectFile.h"
 // Needed by ELFSectionRef & ELFSymbolRef.
@@ -201,7 +202,15 @@ void ELFCfgReader::ReadCfgs() {
   std::sort(Cfgs.begin(), Cfgs.end(), [] (const unique_ptr<ELFCfg>& A, const unique_ptr<ELFCfg>& B){
     const auto& AEntry = A->GetEntryNode();
     const auto& BEntry = B->GetEntryNode();
-    assert(AEntry->MappedAddr != BEntry->MappedAddr);
+    if(AEntry->MappedAddr == BEntry->MappedAddr){
+      fprintf(stderr, "Found same address for functions:\n\t%s\n\t%s\n",A->Name.str().c_str(), B->Name.str().c_str());
+      std::cerr << *AEntry << "\n";
+      std::cerr << *BEntry << "\n";
+      //assert(false);
+      auto NameCompare = A->Name.compare(B->Name);
+      assert(NameCompare!=0);
+      return NameCompare < 0;
+    }
     return AEntry->MappedAddr < BEntry->MappedAddr;
   });
 }
