@@ -74,7 +74,7 @@ class ELFCfgNode {
 
   const static uint64_t InvalidAddress = -1l;
 
-  StringRef GetShortName() {
+  StringRef getShortName() {
     auto I = ShName.rsplit(".bb.");
     if (!I.second.empty()) {
       return I.second;
@@ -112,7 +112,7 @@ class ELFCfgReader {
   std::vector<unique_ptr<ELFCfg>> Cfgs;
   ELFCfgReader(StringRef& _CfgFilePath): CfgFilePath(_CfgFilePath) {}
 
-  void ReadCfgs();
+  void readCfgs();
 };
 
 class ELFCfg {
@@ -130,42 +130,42 @@ public:
     : View(V), Name(N), Size(S) {}
   ~ELFCfg() {}
 
-  bool MarkPath(ELFCfgNode *From, ELFCfgNode *To);
-  void MapBranch(ELFCfgNode *From, ELFCfgNode *To);
-  void MapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr);
-  void DumpToOS(std::ostream&) const;
+  bool markPath(ELFCfgNode *From, ELFCfgNode *To);
+  void mapBranch(ELFCfgNode *From, ELFCfgNode *To);
+  void mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr);
+  void dumpToOS(std::ostream&) const;
 
-  ELFCfgNode *GetEntryNode() const {
+  ELFCfgNode *getEntryNode() const {
     assert(!Nodes.empty());
     return Nodes.begin()->get();
   }
 
-  bool IsHot() const {
+  bool isHot() const {
     if (Nodes.empty())
       return false;
-    return (GetEntryNode()->Freq != 0);
+    return (getEntryNode()->Freq != 0);
   }
 
   template <class Visitor>
-  void ForEachNodeRef(Visitor V) {
+  void forEachNodeRef(Visitor V) {
     for (auto &N: Nodes) {
       V(*N);
     }
   }
 
-  double ComputeDensity() {
+  double computeDensity() {
     double W = 0;
-    ForEachNodeRef([&W](ELFCfgNode &N) { W += N.Weight; });
+    forEachNodeRef([&W](ELFCfgNode &N) { W += N.Weight; });
     return W / this->Size;
   }
 
 private:
   // Create and take ownership.
-  ELFCfgEdge *CreateEdge(ELFCfgNode *From,
+  ELFCfgEdge *createEdge(ELFCfgNode *From,
                          ELFCfgNode *To,
                          typename ELFCfgEdge::EdgeType Type);
 
-  void EmplaceEdge(ELFCfgEdge *Edge) {
+  void emplaceEdge(ELFCfgEdge *Edge) {
     if (Edge->Type < ELFCfgEdge::INTER_FUNC_CALL) {
       IntraEdges.emplace_back(Edge);
     } else {
@@ -188,22 +188,22 @@ public:
   uint32_t InvalidCfgs{0};
 
   ELFCfgBuilder(PLO &P, ELFView *V) : Plo(P), View(V) {}
-  void BuildCfgs();
+  void buildCfgs();
 
 protected:
-  void BuildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
+  void buildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
                 map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap);
 
-  void CalculateFallthroughEdges(
+  void calculateFallthroughEdges(
       ELFCfg &Cfg, map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap);
 
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
-  void BuildRelocationSectionMap(
+  void buildRelocationSectionMap(
       map<uint64_t, section_iterator> &RelocationSectionMap);
   // Build a map from section "Idx" -> Node representing "Idx". Only
   // used during building phase.
-  void BuildShndxNodeMap(map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap,
+  void buildShndxNodeMap(map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap,
                          map<uint64_t, ELFCfgNode *> &ShndxNodeMap);
 };
 

@@ -191,16 +191,16 @@ void PLOProfile::processLBR(LBREntry *EntryArray, int EntryIndex) {
     findCfgForAddress(To, ToCfg, ToNode);
 
     if (FromCfg && FromCfg == ToCfg) {
-      FromCfg->MapBranch(FromNode, ToNode);
+      FromCfg->mapBranch(FromNode, ToNode);
       ++IntraFunc;
     } else if (FromCfg && ToCfg /* implies: FromCfg != ToCfg */ ) {
-      FromCfg->MapCallOut(FromNode, ToNode, To);
+      FromCfg->mapCallOut(FromNode, ToNode, To);
       ++InterFunc;
     }
     // Mark everything between LastToCfg[LastToNode] and FromCfg[FromNode].
     if (FromCfg && LastToCfg == FromCfg) {
       ++IntraFunc;
-      if (LastToCfg->MarkPath(LastToNode, FromNode) == false) {
+      if (LastToCfg->markPath(LastToNode, FromNode) == false) {
         if (!(LastFromAddr == From && LastToAddr == To && P == 0)) {
           ++NonMarkedIntraFunc;
           // std::cout << "*****" << std::endl;

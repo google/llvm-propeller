@@ -147,7 +147,7 @@ int main(int Argc, const char **Argv) {
   cl::ParseCommandLineOptions(Argc, Argv, "Codestitcher");
   StringRef CfgFile = opts::CfgRead.getValue();
   auto CfgReader = lld::plo::ELFCfgReader(CfgFile);
-  CfgReader.ReadCfgs();
+  CfgReader.readCfgs();
   fprintf(stderr, "Read all Cfgs\n");
 
   if (!opts::CfgDump.empty()){
@@ -159,7 +159,7 @@ int main(int Argc, const char **Argv) {
       exit(0);
     } else {
         for (auto &Cfg: CfgReader.Cfgs) {
-          Cfg->DumpToOS(OS);
+          Cfg->dumpToOS(OS);
         }
       OS.close();
     }
@@ -169,7 +169,7 @@ int main(int Argc, const char **Argv) {
     std::ofstream LOS;
     LOS.open(opts::LayoutDump.getValue(), std::ios::out);
     for(auto& Cfg: CfgReader.Cfgs){
-      if (Cfg->IsHot()){
+      if (Cfg->isHot()){
         auto ChainBuilder = lld::plo::NodeChainBuilder(Cfg.get());
         ChainBuilder.GreedyChain();
         ChainBuilder.ChainSort();

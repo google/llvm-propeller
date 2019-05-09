@@ -84,7 +84,7 @@ bool PLO::dumpCfgsToFile(StringRef &CfgDumpFile) const {
   }
 
   for (auto &P : CfgMap) {
-    (*P.second.begin())->DumpToOS(OS);
+    (*P.second.begin())->dumpToOS(OS);
   }
 
   OS.close();
@@ -97,7 +97,7 @@ void PLO::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   fprintf(stderr, "Processing: %s\n", Inf->getName().str().c_str());
   ELFView *View = ELFView::create(Inf->getName(), Pair.second, Inf->MB);
   if (View) {
-    ELFCfgBuilder(*this, View).BuildCfgs();
+    ELFCfgBuilder(*this, View).buildCfgs();
     {
       // Updating global data structure.
       std::lock_guard<mutex> L(this->Lock);
@@ -138,8 +138,8 @@ void PLO::calculateNodeFreqs() {
       Node->Freq = std::max({SumOuts, SumIns, SumCallIns});
       Hot |= (Node->Freq != 0);
     }
-    if (Hot && Cfg->GetEntryNode()->Freq == 0)
-      Cfg->GetEntryNode()->Freq = 1;
+    if (Hot && Cfg->getEntryNode()->Freq == 0)
+      Cfg->getEntryNode()->Freq = 1;
   }
 }
 
@@ -175,10 +175,10 @@ vector<StringRef> PLO::genSymbolOrderingFile() {
   const auto HotPlaceHolder = SymbolList.begin();
   const auto ColdPlaceHolder = SymbolList.end();
   for (auto *Cfg : OrderResult) {
-    if (Cfg->IsHot()) {
+    if (Cfg->isHot()) {
       PLOBBOrdering(*Cfg).doOrder(SymbolList, HotPlaceHolder, ColdPlaceHolder);
     } else {
-      Cfg->ForEachNodeRef(
+      Cfg->forEachNodeRef(
         [&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
           SymbolList.insert(ColdPlaceHolder, N.ShName);
         });
