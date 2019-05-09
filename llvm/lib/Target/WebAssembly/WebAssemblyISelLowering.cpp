@@ -45,9 +45,6 @@ WebAssemblyTargetLowering::WebAssemblyTargetLowering(
   setBooleanContents(ZeroOrOneBooleanContent);
   // Except in SIMD vectors
   setBooleanVectorContents(ZeroOrNegativeOneBooleanContent);
-  // WebAssembly does not produce floating-point exceptions on normal floating
-  // point operations.
-  setHasFloatingPointExceptions(false);
   // We don't know the microarchitecture here, so just reduce register pressure.
   setSchedulingPreference(Sched::RegPressure);
   // Tell ISel that we have a stack pointer.
@@ -270,6 +267,11 @@ WebAssemblyTargetLowering::WebAssemblyTargetLowering(
     MaxStoresPerMemset = 1;
     MaxStoresPerMemsetOptSize = 1;
   }
+
+  // Override the __gnu_f2h_ieee/__gnu_h2f_ieee names so that the f32 name is
+  // consistent with the f64 and f128 names.
+  setLibcallName(RTLIB::FPEXT_F16_F32, "__extendhfsf2");
+  setLibcallName(RTLIB::FPROUND_F32_F16, "__truncsfhf2");
 
   // Always convert switches to br_tables unless there is only one case, which
   // is equivalent to a simple branch. This reduces code size for wasm, and we

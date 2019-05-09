@@ -17,7 +17,7 @@ using llvm::SmallVector;
 namespace lld {
 namespace plo {
 
-bool LBREntry::FillEntry(const StringRef &SR, LBREntry &Entry) {
+bool LBREntry::fillEntry(const StringRef &SR, LBREntry &Entry) {
   auto L1 = SR.split('/');
   // Passing "0" as radix enables autosensing, so no need to skip "0x"
   // prefix.
@@ -39,14 +39,13 @@ bool LBREntry::FillEntry(const StringRef &SR, LBREntry &Entry) {
 
 PLOProfile::~PLOProfile() {}
 
-bool PLOProfile::ProcessProfile(StringRef &ProfileName) {
+bool PLOProfile::process(StringRef &ProfileName) {
   std::ifstream fin(ProfileName.str());
   if (!fin.good()) return false;
   string line;
   // Preallocate "Entries" (total size = sizeof(LBREntry) * 32 bytes =
   // 6k). Which is way more faster than create space everytime.
   LBREntry EntryArray[32];
-  uint64_t TotalRecords = 0;
   while (fin.good() && !std::getline(fin, line).eof()) {
     if (line.empty()) continue;
     int EntryIndex = 0;
@@ -55,7 +54,7 @@ bool PLOProfile::ProcessProfile(StringRef &ProfileName) {
     do {
       while (*(q++) != ' ');
       StringRef EntryString = StringRef(p, q - p - 1);
-      if (!LBREntry::FillEntry(EntryString, EntryArray[EntryIndex])) {
+      if (!LBREntry::fillEntry(EntryString, EntryArray[EntryIndex])) {
         fprintf(stderr, "Invalid entry: %s\n", EntryString.str().c_str());
         break;
       }
@@ -65,20 +64,14 @@ bool PLOProfile::ProcessProfile(StringRef &ProfileName) {
       ++EntryIndex;
     } while(true);
     if (EntryIndex) {
-      ++TotalRecords;
-      ProcessLBR(EntryArray, EntryIndex);
+      processLBR(EntryArray, EntryIndex);
     }
   }
-  fprintf(stderr, "Intra-func marked: %lu (%lu not marked)\n",
-          IntraFunc, NonMarkedIntraFunc);
-  fprintf(stderr, "Inter-func marked: %lu (%lu not marked)\n",
-          InterFunc, NonMarkedInterFunc);
-  fprintf(stderr, "Total LBR records: %lu\n", TotalRecords);
   return true;
 }
 
 static bool
-IsBBSymbol(const StringRef &SymName, StringRef &FuncName) {
+isBBSymbol(const StringRef &SymName, StringRef &FuncName) {
   FuncName = "";
   auto R = SymName.split(".bb.");
   if (R.second.empty()) return false;
@@ -89,17 +82,18 @@ IsBBSymbol(const StringRef &SymName, StringRef &FuncName) {
   return true;
 }
 
-bool PLOProfile::SymContainsAddr(const StringRef &SymName,
-                                 uint64_t SymAddr,
-                                 uint64_t Addr,
+bool PLOProfile::symContainsAddr(StringRef &SymName,
+                                 uint64_t   SymAddr,
+                                 uint64_t   SymSize,
+                                 uint64_t   Addr,
                                  StringRef &FuncName) {
-  if (!IsBBSymbol(SymName, FuncName)) {
+  if (!isBBSymbol(SymName, FuncName)) {
     FuncName = SymName;
   }
-  auto PairI = Plo.SymAddrSizeMap.find(FuncName);
-  if (PairI != Plo.SymAddrSizeMap.end()) {
-    uint64_t FuncAddr = PairI->second.first;
-    uint64_t FuncSize = PairI->second.second;
+  auto PairI = Plo.Syms.NameMap.find(FuncName);
+  if (PairI != Plo.Syms.NameMap.end()) {
+    uint64_t FuncAddr = Plo.Syms.getAddr(PairI->second);
+    uint64_t FuncSize = Plo.Syms.getSize(PairI->second);
     if (FuncSize > 0 && FuncAddr <= Addr && Addr < FuncAddr + FuncSize) {
       return true;
     }
@@ -108,7 +102,7 @@ bool PLOProfile::SymContainsAddr(const StringRef &SymName,
   return false;
 }
 
-void PLOProfile::CacheSearchResult(uint64_t Addr, ELFCfgNode *Node) {
+void PLOProfile::cacheSearchResult(uint64_t Addr, ELFCfgNode *Node) {
   if (SearchTimeline.size() > MaxCachedResults) {
     auto A = SearchTimeline.begin();
     auto EraseResult = SearchCacheMap.erase(*A);
@@ -124,7 +118,7 @@ void PLOProfile::CacheSearchResult(uint64_t Addr, ELFCfgNode *Node) {
                          std::forward_as_tuple(Node));
 }
 
-bool PLOProfile::FindCfgForAddress(uint64_t Addr,
+bool PLOProfile::findCfgForAddress(uint64_t Addr,
                                    ELFCfg *&ResultCfg,
                                    ELFCfgNode *&ResultNode) {
   auto CacheI = SearchCacheMap.find(Addr);
@@ -134,15 +128,17 @@ bool PLOProfile::FindCfgForAddress(uint64_t Addr,
     return true;
   }
   ResultCfg = nullptr, ResultNode = nullptr;
-  auto T = Plo.AddrSymMap.upper_bound(Addr);  // first element > Addr.
-  if (T == Plo.AddrSymMap.begin())
+  auto T = Plo.Syms.AddrMap.upper_bound(Addr);  // first element > Addr.
+  if (T == Plo.Syms.AddrMap.begin())
     return false;
   auto T0 = std::prev(T);
-  uint64_t SymAddr = T0->first;
   // There are multiple symbols registered on the same address.
-  for (StringRef &SymName: T0->second) {
+  uint64_t SymAddr = T0->first;
+  for (auto Handler: T0->second) {
     StringRef IndexName;
-    if (SymContainsAddr(SymName, SymAddr, Addr, IndexName)) {
+    StringRef SymName = Plo.Syms.getName(Handler);
+    uint64_t  SymSize = Plo.Syms.getSize(Handler);
+    if (symContainsAddr(SymName, SymAddr, SymSize, Addr, IndexName)) {
       auto CfgLI = Plo.CfgMap.find(IndexName);
       if (CfgLI != Plo.CfgMap.end()) {
         // There might be multiple object files that define SymName.
@@ -166,7 +162,7 @@ bool PLOProfile::FindCfgForAddress(uint64_t Addr,
             if (N->ShName == SymName) {
               ResultCfg = Cfg;
               ResultNode = N.get();
-              CacheSearchResult(Addr, ResultNode);
+              cacheSearchResult(Addr, ResultNode);
               return true;
             }
           }
@@ -177,7 +173,7 @@ bool PLOProfile::FindCfgForAddress(uint64_t Addr,
   return false;
 }
 
-void PLOProfile::ProcessLBR(LBREntry *EntryArray, int EntryIndex) {
+void PLOProfile::processLBR(LBREntry *EntryArray, int EntryIndex) {
   ELFCfg *LastToCfg{nullptr};
   ELFCfgNode *LastToNode{nullptr};
   uint64_t LastFromAddr{0}, LastToAddr{0};
@@ -191,20 +187,20 @@ void PLOProfile::ProcessLBR(LBREntry *EntryArray, int EntryIndex) {
     uint64_t From = Entry.From, To = Entry.To;
     ELFCfg *FromCfg, *ToCfg;
     ELFCfgNode *FromNode, *ToNode;
-    FindCfgForAddress(From, FromCfg, FromNode);
-    FindCfgForAddress(To, ToCfg, ToNode);
+    findCfgForAddress(From, FromCfg, FromNode);
+    findCfgForAddress(To, ToCfg, ToNode);
 
     if (FromCfg && FromCfg == ToCfg) {
-      FromCfg->MapBranch(FromNode, ToNode);
+      FromCfg->mapBranch(FromNode, ToNode);
       ++IntraFunc;
     } else if (FromCfg && ToCfg /* implies: FromCfg != ToCfg */ ) {
-      FromCfg->MapCallOut(FromNode, ToNode, To);
+      FromCfg->mapCallOut(FromNode, ToNode, To);
       ++InterFunc;
     }
     // Mark everything between LastToCfg[LastToNode] and FromCfg[FromNode].
     if (FromCfg && LastToCfg == FromCfg) {
       ++IntraFunc;
-      if (LastToCfg->MarkPath(LastToNode, FromNode) == false) {
+      if (LastToCfg->markPath(LastToNode, FromNode) == false) {
         if (!(LastFromAddr == From && LastToAddr == To && P == 0)) {
           ++NonMarkedIntraFunc;
           // std::cout << "*****" << std::endl;

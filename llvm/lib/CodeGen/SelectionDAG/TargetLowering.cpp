@@ -153,6 +153,107 @@ TargetLowering::makeLibCall(SelectionDAG &DAG, RTLIB::Libcall LC, EVT RetVT,
   return LowerCallTo(CLI);
 }
 
+bool
+TargetLowering::findOptimalMemOpLowering(std::vector<EVT> &MemOps,
+                                         unsigned Limit, uint64_t Size,
+                                         unsigned DstAlign, unsigned SrcAlign,
+                                         bool IsMemset,
+                                         bool ZeroMemset,
+                                         bool MemcpyStrSrc,
+                                         bool AllowOverlap,
+                                         unsigned DstAS, unsigned SrcAS,
+                                         const AttributeList &FuncAttributes) const {
+  // If 'SrcAlign' is zero, that means the memory operation does not need to
+  // load the value, i.e. memset or memcpy from constant string. Otherwise,
+  // it's the inferred alignment of the source. 'DstAlign', on the other hand,
+  // is the specified alignment of the memory operation. If it is zero, that
+  // means it's possible to change the alignment of the destination.
+  // 'MemcpyStrSrc' indicates whether the memcpy source is constant so it does
+  // not need to be loaded.
+  if (!(SrcAlign == 0 || SrcAlign >= DstAlign))
+    return false;
+
+  EVT VT = getOptimalMemOpType(Size, DstAlign, SrcAlign,
+                               IsMemset, ZeroMemset, MemcpyStrSrc,
+                               FuncAttributes);
+
+  if (VT == MVT::Other) {
+    // Use the largest integer type whose alignment constraints are satisfied.
+    // We only need to check DstAlign here as SrcAlign is always greater or
+    // equal to DstAlign (or zero).
+    VT = MVT::i64;
+    while (DstAlign && DstAlign < VT.getSizeInBits() / 8 &&
+           !allowsMisalignedMemoryAccesses(VT, DstAS, DstAlign))
+      VT = (MVT::SimpleValueType)(VT.getSimpleVT().SimpleTy - 1);
+    assert(VT.isInteger());
+
+    // Find the largest legal integer type.
+    MVT LVT = MVT::i64;
+    while (!isTypeLegal(LVT))
+      LVT = (MVT::SimpleValueType)(LVT.SimpleTy - 1);
+    assert(LVT.isInteger());
+
+    // If the type we've chosen is larger than the largest legal integer type
+    // then use that instead.
+    if (VT.bitsGT(LVT))
+      VT = LVT;
+  }
+
+  unsigned NumMemOps = 0;
+  while (Size != 0) {
+    unsigned VTSize = VT.getSizeInBits() / 8;
+    while (VTSize > Size) {
+      // For now, only use non-vector load / store's for the left-over pieces.
+      EVT NewVT = VT;
+      unsigned NewVTSize;
+
+      bool Found = false;
+      if (VT.isVector() || VT.isFloatingPoint()) {
+        NewVT = (VT.getSizeInBits() > 64) ? MVT::i64 : MVT::i32;
+        if (isOperationLegalOrCustom(ISD::STORE, NewVT) &&
+            isSafeMemOpType(NewVT.getSimpleVT()))
+          Found = true;
+        else if (NewVT == MVT::i64 &&
+                 isOperationLegalOrCustom(ISD::STORE, MVT::f64) &&
+                 isSafeMemOpType(MVT::f64)) {
+          // i64 is usually not legal on 32-bit targets, but f64 may be.
+          NewVT = MVT::f64;
+          Found = true;
+        }
+      }
+
+      if (!Found) {
+        do {
+          NewVT = (MVT::SimpleValueType)(NewVT.getSimpleVT().SimpleTy - 1);
+          if (NewVT == MVT::i8)
+            break;
+        } while (!isSafeMemOpType(NewVT.getSimpleVT()));
+      }
+      NewVTSize = NewVT.getSizeInBits() / 8;
+
+      // If the new VT cannot cover all of the remaining bits, then consider
+      // issuing a (or a pair of) unaligned and overlapping load / store.
+      bool Fast;
+      if (NumMemOps && AllowOverlap && NewVTSize < Size &&
+          allowsMisalignedMemoryAccesses(VT, DstAS, DstAlign, &Fast) &&
+          Fast)
+        VTSize = Size;
+      else {
+        VT = NewVT;
+        VTSize = NewVTSize;
+      }
+    }
+
+    if (++NumMemOps > Limit)
+      return false;
+
+    MemOps.push_back(VT);
+    Size -= VTSize;
+  }
+
+  return true;
+}
+
 /// Soften the operands of a comparison. This code is shared among BR_CC,
 /// SELECT_CC, and SETCC handlers.
 void TargetLowering::softenSetCCOperands(SelectionDAG &DAG, EVT VT,
@@ -347,7 +448,6 @@ TargetLowering::isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
 /// return true.
 bool TargetLowering::ShrinkDemandedConstant(SDValue Op, const APInt &Demanded,
                                             TargetLoweringOpt &TLO) const {
-  SelectionDAG &DAG = TLO.DAG;
   SDLoc DL(Op);
   unsigned Opcode = Op.getOpcode();
 
@@ -373,8 +473,8 @@ bool TargetLowering::ShrinkDemandedConstant(SDValue Op, const APInt &Demanded,
 
     if (!C.isSubsetOf(Demanded)) {
       EVT VT = Op.getValueType();
-      SDValue NewC = DAG.getConstant(Demanded & C, DL, VT);
-      SDValue NewOp = DAG.getNode(Opcode, DL, VT, Op.getOperand(0), NewC);
+      SDValue NewC = TLO.DAG.getConstant(Demanded & C, DL, VT);
+      SDValue NewOp = TLO.DAG.getNode(Opcode, DL, VT, Op.getOperand(0), NewC);
       return TLO.CombineTo(Op, NewOp);
     }
 
@@ -1471,36 +1571,12 @@ bool TargetLowering::SimplifyDemandedBits(
       if (SimplifyDemandedBits(Src, DemandedSrcBits, DemandedSrcElts,
                                KnownSrcBits, TLO, Depth + 1))
         return true;
-    } else if ((NumSrcEltBits % BitWidth) == 0 &&
-               TLO.DAG.getDataLayout().isLittleEndian()) {
-      unsigned Scale = NumSrcEltBits / BitWidth;
-      unsigned NumSrcElts = SrcVT.isVector() ? SrcVT.getVectorNumElements() : 1;
-      APInt DemandedSrcBits = APInt::getNullValue(NumSrcEltBits);
-      APInt DemandedSrcElts = APInt::getNullValue(NumSrcElts);
-      for (unsigned i = 0; i != NumElts; ++i)
-        if (DemandedElts[i]) {
-          unsigned Offset = (i % Scale) * BitWidth;
-          DemandedSrcBits.insertBits(DemandedBits, Offset);
-          DemandedSrcElts.setBit(i / Scale);
-        }
-
-      if (SrcVT.isVector()) {
-        APInt KnownSrcUndef, KnownSrcZero;
-        if (SimplifyDemandedVectorElts(Src, DemandedSrcElts, KnownSrcUndef,
-                                       KnownSrcZero, TLO, Depth + 1))
-          return true;
-      }
-
-      KnownBits KnownSrcBits;
-      if (SimplifyDemandedBits(Src, DemandedSrcBits, DemandedSrcElts,
-                               KnownSrcBits, TLO, Depth + 1))
-        return true;
     }
 
     // If this is a bitcast, let computeKnownBits handle it.  Only do this on a
     // recursive call where Known may be useful to the caller.
     if (Depth > 0) {
-      Known = TLO.DAG.computeKnownBits(Op, DemandedElts, Depth);
+      Known = TLO.DAG.computeKnownBits(Op, Depth);
       return false;
     }
     break;
@@ -3230,9 +3306,8 @@ SDValue TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
   }
 
   // Fold away ALL boolean setcc's.
-  SDValue Temp;
   if (N0.getValueType().getScalarType() == MVT::i1 && foldBooleans) {
-    EVT OpVT = N0.getValueType();
+    SDValue Temp;
     switch (Cond) {
     default: llvm_unreachable("Unknown integer setcc!");
     case ISD::SETEQ:  // X == Y  -> ~(X^Y)
@@ -5224,17 +5299,16 @@ SDValue TargetLowering::expandUnalignedStore(StoreSDNode *ST,
   EVT VT = Val.getValueType();
   int Alignment = ST->getAlignment();
   auto &MF = DAG.getMachineFunction();
-  EVT MemVT = ST->getMemoryVT();
+  EVT StoreMemVT = ST->getMemoryVT();
 
   SDLoc dl(ST);
-  if (MemVT.isFloatingPoint() || MemVT.isVector()) {
+  if (StoreMemVT.isFloatingPoint() || StoreMemVT.isVector()) {
     EVT intVT = EVT::getIntegerVT(*DAG.getContext(), VT.getSizeInBits());
     if (isTypeLegal(intVT)) {
       if (!isOperationLegalOrCustom(ISD::STORE, intVT) &&
-          MemVT.isVector()) {
+          StoreMemVT.isVector()) {
         // Scalarize the store and let the individual components be handled.
         SDValue Result = scalarizeVectorStore(ST, DAG);
-
         return Result;
       }
       // Expand to a bitconvert of the value to the integer type of the
@@ -5247,24 +5321,22 @@ SDValue TargetLowering::expandUnalignedStore(StoreSDNode *ST,
     }
     // Do a (aligned) store to a stack slot, then copy from the stack slot
     // to the final destination using (unaligned) integer loads and stores.
-    EVT StoredVT = ST->getMemoryVT();
-    MVT RegVT =
-      getRegisterType(*DAG.getContext(),
-                      EVT::getIntegerVT(*DAG.getContext(),
-                                        StoredVT.getSizeInBits()));
+    MVT RegVT = getRegisterType(
+        *DAG.getContext(),
+        EVT::getIntegerVT(*DAG.getContext(), StoreMemVT.getSizeInBits()));
     EVT PtrVT = Ptr.getValueType();
-    unsigned StoredBytes = StoredVT.getStoreSize();
+    unsigned StoredBytes = StoreMemVT.getStoreSize();
     unsigned RegBytes = RegVT.getSizeInBits() / 8;
     unsigned NumRegs = (StoredBytes + RegBytes - 1) / RegBytes;
 
     // Make sure the stack slot is also aligned for the register type.
-    SDValue StackPtr = DAG.CreateStackTemporary(StoredVT, RegVT);
+    SDValue StackPtr = DAG.CreateStackTemporary(StoreMemVT, RegVT);
     auto FrameIndex = cast<FrameIndexSDNode>(StackPtr.getNode())->getIndex();
 
     // Perform the original store, only redirected to the stack slot.
     SDValue Store = DAG.getTruncStore(
         Chain, dl, Val, StackPtr,
-        MachinePointerInfo::getFixedStack(MF, FrameIndex, 0), StoredVT);
+        MachinePointerInfo::getFixedStack(MF, FrameIndex, 0), StoreMemVT);
 
     EVT StackPtrVT = StackPtr.getValueType();
 
@@ -5293,17 +5365,17 @@ SDValue TargetLowering::expandUnalignedStore(StoreSDNode *ST,
     // The last store may be partial.  Do a truncating store.  On big-endian
     // machines this requires an extending load from the stack slot to ensure
     // that the bits are in the right place.
-    EVT MemVT = EVT::getIntegerVT(*DAG.getContext(),
-                                  8 * (StoredBytes - Offset));
+    EVT LoadMemVT =
+        EVT::getIntegerVT(*DAG.getContext(), 8 * (StoredBytes - Offset));
 
     // Load from the stack slot.
     SDValue Load = DAG.getExtLoad(
         ISD::EXTLOAD, dl, RegVT, Store, StackPtr,
-        MachinePointerInfo::getFixedStack(MF, FrameIndex, Offset), MemVT);
+        MachinePointerInfo::getFixedStack(MF, FrameIndex, Offset), LoadMemVT);
 
     Stores.push_back(
         DAG.getTruncStore(Load.getValue(1), dl, Load, Ptr,
-                          ST->getPointerInfo().getWithOffset(Offset), MemVT,
+                          ST->getPointerInfo().getWithOffset(Offset), LoadMemVT,
                           MinAlign(ST->getAlignment(), Offset),
                           ST->getMemOperand()->getFlags(), ST->getAAInfo()));
     // The order of the stores doesn't matter - say it with a TokenFactor.
@@ -5311,18 +5383,16 @@ SDValue TargetLowering::expandUnalignedStore(StoreSDNode *ST,
     return Result;
   }
 
-  assert(ST->getMemoryVT().isInteger() &&
-         !ST->getMemoryVT().isVector() &&
+  assert(StoreMemVT.isInteger() && !StoreMemVT.isVector() &&
          "Unaligned store of unknown type.");
   // Get the half-size VT
-  EVT NewStoredVT = ST->getMemoryVT().getHalfSizedIntegerVT(*DAG.getContext());
+  EVT NewStoredVT = StoreMemVT.getHalfSizedIntegerVT(*DAG.getContext());
   int NumBits = NewStoredVT.getSizeInBits();
   int IncrementSize = NumBits / 8;
 
   // Divide the stored value in two parts.
-  SDValue ShiftAmount =
-      DAG.getConstant(NumBits, dl, getShiftAmountTy(Val.getValueType(),
-                                                    DAG.getDataLayout()));
+  SDValue ShiftAmount = DAG.getConstant(
+      NumBits, dl, getShiftAmountTy(Val.getValueType(), DAG.getDataLayout()));
   SDValue Lo = Val;
   SDValue Hi = DAG.getNode(ISD::SRL, dl, VT, Val, ShiftAmount);
 
@@ -5341,7 +5411,7 @@ SDValue TargetLowering::expandUnalignedStore(StoreSDNode *ST,
       ST->getMemOperand()->getFlags(), ST->getAAInfo());
 
   SDValue Result =
-    DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Store1, Store2);
+      DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Store1, Store2);
   return Result;
 }
 

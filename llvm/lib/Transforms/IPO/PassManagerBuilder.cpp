@@ -43,16 +43,13 @@
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Vectorize.h"
 #include "llvm/Transforms/Vectorize/LoopVectorize.h"
+#include "llvm/Transforms/Vectorize/SLPVectorizer.h"
 
 using namespace llvm;
 
 static cl::opt<bool>
     RunPartialInlining("enable-partial-inlining", cl::init(false), cl::Hidden,
                        cl::ZeroOrMore, cl::desc("Run Partial inlinining pass"));
-
-static cl::opt<bool>
-RunSLPVectorization("vectorize-slp", cl::Hidden,
-                    cl::desc("Run the SLP vectorization passes"));
 
 static cl::opt<bool>
 UseGVNAfterVectorization("use-gvn-after-vectorization",
@@ -162,9 +159,7 @@ PassManagerBuilder::PassManagerBuilder() {
     DisableUnrollLoops = false;
     SLPVectorize = RunSLPVectorization;
     LoopVectorize = EnableLoopVectorization;
-    // FIXME: Add: LoopsInterleaved = EnableLoopInterleaving;
-    // Replace usage of DisableUnrollLoops with LoopsInterleaved when creating
-    // the LoopVectorize pass, to be consistent with the new pass manager.
+    LoopsInterleaved = EnableLoopInterleaving;
     RerollLoops = RunLoopRerolling;
     NewGVN = RunNewGVN;
     LicmMssaOptCap = SetLicmMssaOptCap;
@@ -673,7 +668,7 @@ void PassManagerBuilder::populateModulePassManager(
   // llvm.loop.distribute=true or when -enable-loop-distribute is specified.
   MPM.add(createLoopDistributePass());
 
-  MPM.add(createLoopVectorizePass(DisableUnrollLoops, !LoopVectorize));
+  MPM.add(createLoopVectorizePass(!LoopsInterleaved, !LoopVectorize));
 
   // Eliminate loads by forwarding stores from the previous iteration to loads
   // of the current iteration.

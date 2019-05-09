@@ -6,11 +6,14 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Allocator.h"
+#include "llvm/Support/StringSaver.h"
 
 // This is toplevel PLO head file, do not include any other PLO*.h.
 
@@ -20,6 +23,7 @@ using std::map;
 using std::mutex;
 using std::pair;
 using std::set;
+using std::tuple;
 using std::unique_ptr;
 using std::vector;
 
@@ -39,20 +43,51 @@ class ELFView;
 class PLOProfile;
 class CallGraph;
 
+class Symfile {
+public:
+  Symfile();
+  ~Symfile();
+
+  // <Name, Addr, Size>
+  using Sym = tuple<StringRef, uint32_t, uint32_t>;
+  using SymHandler = list<Sym>::iterator;
+
+  StringRef getName(SymHandler S) { return std::get<0>(*S); }
+  uint32_t  getAddr(SymHandler S) { return std::get<1>(*S); }
+  uint32_t  getSize(SymHandler S) { return std::get<2>(*S); }
+  
+  map<StringRef, SymHandler> NameMap;
+  map<uint64_t, llvm::SmallVector<SymHandler, 3>> AddrMap;
+
+  bool init(StringRef SymfileName);
+  void reset() {
+    map<StringRef, SymHandler> T0(std::move(NameMap));
+    map<uint64_t, llvm::SmallVector<SymHandler, 3>> T1(std::move(AddrMap));
+    SymList.clear();
+    BPAllocator.Reset();
+  }
+
+private:
+  list<Sym> SymList;
+
+  llvm::BumpPtrAllocator BPAllocator;
+  // StringRefs for symbol names. SymStringSaver is huge and lives
+  // only as long as Symfile, so do not use lld arena, which lasts
+  // till end of lld.
+  llvm::StringSaver SymStrSaver;
+};
+
 class PLO {
 public:
   PLO();
   ~PLO();
   
-  bool ProcessFiles(vector<elf::InputFile *> &Files,
+  bool processFiles(vector<elf::InputFile *> &Files,
                     StringRef &SymFileName,
                     StringRef &ProfileName,
                     StringRef &CfgDump);
 
-  // Addr -> Symbol (for all 't', 'T', 'w' and 'W' symbols) map.
-  map<uint64_t, llvm::SmallVector<StringRef, 3>> AddrSymMap;
-  // Sym -> <Addr, Size> map.
-  map<StringRef, pair<uint64_t, uint64_t>> SymAddrSizeMap;
+  vector<StringRef> genSymbolOrderingFile();
 
   template <class Visitor>
   void ForEachCfgRef(Visitor V) {
@@ -61,33 +96,35 @@ public:
     }
   }
 
-  static bool IsBBSymbol(StringRef &N) {
-    auto R1 = N.rsplit('.');
-    if (R1.second.empty())
-      return false;
-    for (const char *P = R1.second.begin(), *Q = R1.second.end(); P != Q; ++P) {
-      if (*P < '0' || *P > '9') {
-        return false;
-      }
+  static StringRef BBSymbol(StringRef &N) {
+    StringRef::iterator P = (N.end() - 1), A = N.begin();
+    char C = '\0';
+    for ( ; P > A; --P) {
+      C = *P;
+      if (C == '.') break;
+      if (C < '0' || C > '9') return StringRef("");
     }
-    return R1.first.rsplit('.').second == "bb";
+    if (C == '.' && P - A >= 4 /* must be like "xx.bb." */ &&
+        *(P - 1) == 'b' && *(P - 2) == 'b' && *(P - 3) == '.') {
+      return StringRef(N.data(), P - A - 3);
+    }
+    return StringRef("");
   }
 
+  Symfile Syms;
+
 private:
-  bool ProcessSymfile(StringRef &SymfileName);
+  void processFile(const pair<elf::InputFile *, uint32_t> &Pair);
 
-  void ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair);
-
-  bool DumpCfgsToFile(StringRef &CfgDumpFile) const;
-  void CalculateNodeFreqs();
-
-  // Parallizable, thread safety is guaranteed.
-  void CreateCfgForFile(elf::InputFile *Inf);
+  bool dumpCfgsToFile(StringRef &CfgDumpFile) const;
+  void calculateNodeFreqs();
 
   list<unique_ptr<ELFView>> Views;
 
-  // Same named Cfgs may exist in different object files (e.g. weak symbols.)
-  // We always choose symbols that appear earlier on the command line.
+  // Same named Cfgs may exist in different object files (e.g. weak
+  // symbols.)  We always choose symbols that appear earlier on the
+  // command line.  Note: implementation is in the .cpp file, because
+  // ELFCfg here is an incomplete type.
   struct ELFViewOrdinalComparator {
     bool operator()(const ELFCfg *A, const ELFCfg *B);
   };
@@ -96,27 +133,11 @@ private:
   // Lock to access / modify global data structure.
   mutex Lock;
 
-public:
-  // statistics
-  atomic<uint32_t> TotalBB{0};
-  atomic<uint32_t> TotalBBWoutAddr{0};
-  atomic<uint32_t> ValidCfgs{0};
-  atomic<uint32_t> InvalidCfgs{0};
-
   friend class PLOProfile;
   friend class CallGraph;
-  
 };
-
-template <class C>
-void FreeContainer(C &container) {
-  container.clear();
-  C tmp;
-  container.swap(tmp);
-}
 
 }  // namespace plo
 }  // namespace lld
-
 
 #endif

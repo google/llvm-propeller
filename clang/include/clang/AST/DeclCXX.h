@@ -1221,6 +1221,9 @@ public:
   /// lambda.
   TemplateParameterList *getGenericLambdaTemplateParameterList() const;
 
+  /// Retrieve the lambda template parameters that were specified explicitly.
+  ArrayRef<NamedDecl *> getLambdaExplicitTemplateParameters() const;
+
   LambdaCaptureDefault getLambdaCaptureDefault() const {
     assert(isLambda());
     return static_cast<LambdaCaptureDefault>(getLambdaData().CaptureDefault);
@@ -1324,6 +1327,14 @@ public:
   ///
   /// \note This does NOT include a check for union-ness.
   bool isEmpty() const { return data().Empty; }
+
+  bool hasPrivateFields() const {
+    return data().HasPrivateFields;
+  }
+
+  bool hasProtectedFields() const {
+    return data().HasProtectedFields;
+  }
 
   /// Determine whether this class has direct non-static data members.
   bool hasDirectFields() const {

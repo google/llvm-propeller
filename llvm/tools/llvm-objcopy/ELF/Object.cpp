@@ -402,7 +402,7 @@ void SymbolTableSection::assignIndices() {
 void SymbolTableSection::addSymbol(Twine Name, uint8_t Bind, uint8_t Type,
                                    SectionBase *DefinedIn, uint64_t Value,
                                    uint8_t Visibility, uint16_t Shndx,
-                                   uint64_t Size) {
+                                   uint64_t SymbolSize) {
   Symbol Sym;
   Sym.Name = Name.str();
   Sym.Binding = Bind;
@@ -418,7 +418,7 @@ void SymbolTableSection::addSymbol(Twine Name, uint8_t Bind, uint8_t Type,
   }
   Sym.Value = Value;
   Sym.Visibility = Visibility;
-  Sym.Size = Size;
+  Sym.Size = SymbolSize;
   Sym.Index = Symbols.size();
   Symbols.emplace_back(llvm::make_unique<Symbol>(Sym));
   Size += this->EntrySize;
@@ -681,6 +681,27 @@ void DynamicRelocationSection::accept(SectionVisitor &Visitor) const {
 
 void DynamicRelocationSection::accept(MutableSectionVisitor &Visitor) {
   Visitor.visit(*this);
+}
+
+Error DynamicRelocationSection::removeSectionReferences(
+    bool AllowBrokenLinks, function_ref<bool(const SectionBase *)> ToRemove) {
+  if (ToRemove(Symbols)) {
+    if (!AllowBrokenLinks)
+      return createStringError(
+          llvm::errc::invalid_argument,
+          "Symbol table %s cannot be removed because it is "
+          "referenced by the relocation section %s.",
+          Symbols->Name.data(), this->Name.data());
+    Symbols = nullptr;
+  }
+
+  // SecToApplyRel contains a section referenced by sh_info field. It keeps
+  // a section to which the relocation section applies. When we remove any
+  // sections we also remove their relocation sections. Since we do that much
+  // earlier, this assert should never be triggered.
+  assert(!SecToApplyRel || !ToRemove(SecToApplyRel));
+
+  return Error::success();
 }
 
 Error Section::removeSectionReferences(bool AllowBrokenDependency,

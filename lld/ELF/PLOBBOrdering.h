@@ -20,9 +20,11 @@ class ELFCfg;
 
 class BBChain {
 public:
-  BBChain(ELFCfgNode *N) : Nodes(1, N) {}
+  BBChain(ELFCfgNode *N);
+  ~BBChain();
   list<ELFCfgNode *> Nodes;
-  double Density;
+  uint64_t           Size;
+  double             Density;
 };
 
 class PLOBBOrdering {
@@ -30,7 +32,9 @@ public:
   PLOBBOrdering(ELFCfg &C);
   ~PLOBBOrdering();
 
-  void DoOrder(list<StringRef> &HotSymbols, list<StringRef> &ColdSymbols);
+  void doOrder(list<StringRef> &SymbolList,
+               list<StringRef>::iterator HotPlaceHolder,
+               list<StringRef>::iterator ColdPlaceHolder);
 
   void ConnectChain(ELFCfgEdge *E, BBChain *C1, BBChain *C2);
 

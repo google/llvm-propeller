@@ -309,14 +309,20 @@ protected:
         m_options.m_stop_on_continue.OptionWasSet()) {
       // Use user set settings
       CommandInterpreterRunOptions options;
-      options.SetStopOnContinue(m_options.m_stop_on_continue.GetCurrentValue());
-      options.SetStopOnError(m_options.m_stop_on_error.GetCurrentValue());
+
+      if (m_options.m_stop_on_continue.OptionWasSet())
+        options.SetStopOnContinue(
+            m_options.m_stop_on_continue.GetCurrentValue());
+
+      if (m_options.m_stop_on_error.OptionWasSet())
+        options.SetStopOnError(m_options.m_stop_on_error.GetCurrentValue());
 
       // Individual silent setting is override for global command echo settings.
       if (m_options.m_silent_run.GetCurrentValue()) {
         options.SetSilent(true);
       } else {
         options.SetPrintResults(true);
+        options.SetPrintErrors(true);
         options.SetEchoCommands(m_interpreter.GetEchoCommands());
         options.SetEchoCommentCommands(m_interpreter.GetEchoCommentCommands());
       }
@@ -985,11 +991,8 @@ protected:
           llvm::StringRef bytes_strref(lines[i]);
           Status error = AppendRegexSubstitution(bytes_strref, check_only);
           if (error.Fail()) {
-            if (!m_interpreter.GetDebugger()
-                     .GetCommandInterpreter()
-                     .GetBatchCommandMode()) {
-              StreamSP out_stream =
-                  m_interpreter.GetDebugger().GetAsyncOutputStream();
+            if (!GetDebugger().GetCommandInterpreter().GetBatchCommandMode()) {
+              StreamSP out_stream = GetDebugger().GetAsyncOutputStream();
               out_stream->Printf("error: %s\n", error.AsCString());
             }
           }
@@ -1018,7 +1021,7 @@ protected:
         true);
 
     if (argc == 1) {
-      Debugger &debugger = m_interpreter.GetDebugger();
+      Debugger &debugger = GetDebugger();
       bool color_prompt = debugger.GetUseColor();
       const bool multiple_lines = true; // Get multiple lines
       IOHandlerSP io_handler_sp(new IOHandlerEditline(
@@ -1246,7 +1249,7 @@ public:
     if (m_fetched_help_long)
       return CommandObjectRaw::GetHelpLong();
 
-    ScriptInterpreter *scripter = m_interpreter.GetScriptInterpreter();
+    ScriptInterpreter *scripter = GetDebugger().GetScriptInterpreter();
     if (!scripter)
       return CommandObjectRaw::GetHelpLong();
 
@@ -1261,7 +1264,7 @@ public:
 protected:
   bool DoExecute(llvm::StringRef raw_command_line,
                  CommandReturnObject &result) override {
-    ScriptInterpreter *scripter = m_interpreter.GetScriptInterpreter();
+    ScriptInterpreter *scripter = GetDebugger().GetScriptInterpreter();
 
     Status error;
 
@@ -1304,7 +1307,7 @@ public:
     StreamString stream;
     stream.Printf("For more information run 'help %s'", name.c_str());
     SetHelp(stream.GetString());
-    if (ScriptInterpreter *scripter = m_interpreter.GetScriptInterpreter())
+    if (ScriptInterpreter *scripter = GetDebugger().GetScriptInterpreter())
       GetFlags().Set(scripter->GetFlagsForCommandObject(cmd_obj_sp));
   }
 
@@ -1319,7 +1322,7 @@ public:
   llvm::StringRef GetHelp() override {
     if (m_fetched_help_short)
       return CommandObjectRaw::GetHelp();
-    ScriptInterpreter *scripter = m_interpreter.GetScriptInterpreter();
+    ScriptInterpreter *scripter = GetDebugger().GetScriptInterpreter();
     if (!scripter)
       return CommandObjectRaw::GetHelp();
     std::string docstring;
@@ -1335,7 +1338,7 @@ public:
     if (m_fetched_help_long)
       return CommandObjectRaw::GetHelpLong();
 
-    ScriptInterpreter *scripter = m_interpreter.GetScriptInterpreter();
+    ScriptInterpreter *scripter = GetDebugger().GetScriptInterpreter();
     if (!scripter)
       return CommandObjectRaw::GetHelpLong();
 
@@ -1350,7 +1353,7 @@ public:
 protected:
   bool DoExecute(llvm::StringRef raw_command_line,
                  CommandReturnObject &result) override {
-    ScriptInterpreter *scripter = m_interpreter.GetScriptInterpreter();
+    ScriptInterpreter *scripter = GetDebugger().GetScriptInterpreter();
 
     Status error;
 
@@ -1462,8 +1465,7 @@ protected:
   };
 
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    if (m_interpreter.GetDebugger().GetScriptLanguage() !=
-        lldb::eScriptLanguagePython) {
+    if (GetDebugger().GetScriptLanguage() != lldb::eScriptLanguagePython) {
       result.AppendError("only scripting language supported for module "
                          "importing is currently Python");
       result.SetStatus(eReturnStatusFailed);
@@ -1489,7 +1491,7 @@ protected:
       // won't stomp on each other (wrt to execution contents, options, and
       // more)
       m_exe_ctx.Clear();
-      if (m_interpreter.GetScriptInterpreter()->LoadScriptingModule(
+      if (GetDebugger().GetScriptInterpreter()->LoadScriptingModule(
               entry.c_str(), m_options.m_allow_reload, init_session, error)) {
         result.SetStatus(eReturnStatusSuccessFinishNoResult);
       } else {
@@ -1630,7 +1632,7 @@ protected:
                               std::string &data) override {
     StreamFileSP error_sp = io_handler.GetErrorStreamFile();
 
-    ScriptInterpreter *interpreter = m_interpreter.GetScriptInterpreter();
+    ScriptInterpreter *interpreter = GetDebugger().GetScriptInterpreter();
     if (interpreter) {
 
       StringList lines;
@@ -1676,8 +1678,7 @@ protected:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    if (m_interpreter.GetDebugger().GetScriptLanguage() !=
-        lldb::eScriptLanguagePython) {
+    if (GetDebugger().GetScriptLanguage() != lldb::eScriptLanguagePython) {
       result.AppendError("only scripting language supported for scripted "
                          "commands is currently Python");
       result.SetStatus(eReturnStatusFailed);
@@ -1715,8 +1716,7 @@ protected:
         }
       }
     } else {
-      ScriptInterpreter *interpreter =
-          GetCommandInterpreter().GetScriptInterpreter();
+      ScriptInterpreter *interpreter = GetDebugger().GetScriptInterpreter();
       if (!interpreter) {
         result.AppendError("cannot find ScriptInterpreter");
         result.SetStatus(eReturnStatusFailed);

@@ -53,51 +53,25 @@ CheckValidProgramTranslation(llvm::StringRef fpo_program,
                result_dwarf_expression.GetString().data());
 }
 
-TEST(PDBFPOProgramToDWARFExpressionTests, SingleAssignmentConst) {
-  CheckValidProgramTranslation("$T0 0 = ", "$T0", "DW_OP_constu 0x0");
-}
-
 TEST(PDBFPOProgramToDWARFExpressionTests, SingleAssignmentRegisterRef) {
   CheckValidProgramTranslation("$T0 $ebp = ", "$T0", "DW_OP_breg6 +0");
 }
 
-TEST(PDBFPOProgramToDWARFExpressionTests, SingleAssignmentExpressionPlus) {
-  CheckValidProgramTranslation("$T0 $ebp 4 + = ", "$T0",
-                               "DW_OP_breg6 +0, DW_OP_constu 0x4, DW_OP_plus ");
-}
-
-TEST(PDBFPOProgramToDWARFExpressionTests, SingleAssignmentExpressionDeref) {
-  CheckValidProgramTranslation("$T0 $ebp ^ = ", "$T0",
-                               "DW_OP_breg6 +0, DW_OP_deref ");
-}
-
-TEST(PDBFPOProgramToDWARFExpressionTests, SingleAssignmentExpressionMinus) {
-  CheckValidProgramTranslation(
-      "$T0 $ebp 4 - = ", "$T0",
-      "DW_OP_breg6 +0, DW_OP_constu 0x4, DW_OP_minus ");
-}
-
-TEST(PDBFPOProgramToDWARFExpressionTests, SingleAssignmentExpressionAlign) {
-  CheckValidProgramTranslation("$T0 $ebp 128 @ = ", "$T0",
-                               "DW_OP_breg6 +0, DW_OP_constu 0x80, DW_OP_lit1 "
-                               ", DW_OP_minus , DW_OP_not , DW_OP_and ");
-}
-
 TEST(PDBFPOProgramToDWARFExpressionTests, MultipleIndependentAssignments) {
-  CheckValidProgramTranslation("$T1 1 = $T0 0 =", "$T0", "DW_OP_constu 0x0");
+  CheckValidProgramTranslation("$T1 1 = $T0 0 =", "$T0", "DW_OP_consts +0");
 }
 
 TEST(PDBFPOProgramToDWARFExpressionTests, MultipleDependentAssignments) {
   CheckValidProgramTranslation(
       "$T1 $ebp 4 + = $T0 $T1 8 - 128 @ = ", "$T0",
-      "DW_OP_breg6 +0, DW_OP_constu 0x4, DW_OP_plus , DW_OP_constu 0x8, "
-      "DW_OP_minus , DW_OP_constu 0x80, DW_OP_lit1 , DW_OP_minus , DW_OP_not , "
+      "DW_OP_breg6 +0, DW_OP_consts +4, DW_OP_plus , DW_OP_consts +8, "
+      "DW_OP_minus , DW_OP_consts +128, DW_OP_lit1 , DW_OP_minus , DW_OP_not , "
       "DW_OP_and ");
 }
 
 TEST(PDBFPOProgramToDWARFExpressionTests, DependencyChain) {
   CheckValidProgramTranslation("$T1 0 = $T0 $T1 = $ebp $T0 =", "$ebp",
-                               "DW_OP_constu 0x0");
+                               "DW_OP_consts +0");
 }
 
 /// Invalid programs tests

@@ -1,5 +1,5 @@
 # Vanilla compiler (without any bb patches), can be any modern compilers.
-RELEASE_LLVM_BIN=/usr/local/google/home/rahmanl/copt/build/lld-plo/release/bin
+RELEASE_LLVM_BIN=${HOME}/llvm/install-8.0/bin
 
 DDIR         := $(shell readlink -f .)
 LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
@@ -111,10 +111,10 @@ sample.o : %.o: %.c stage1-compiler
 	./stage1-compiler -fbasicblock-sections=all -c -O2 $< -o $@
 
 sample_instr.o: sample.c stage1-compiler
-	./stage1-compiler -fbasicblock-sections=labels -c -O2 $< -o $@
+	./stage1-compiler -fbasicblock-sections=labels -fpic -c -O2 $< -o $@
 
-sample.out: sample.c
-	./stage1-compiler -fbasicblock-sections=labels -O2 -o $@ $<
+sample.out: sample_instr.o
+	./stage1-compiler -pie -o $@ $<
 
 sample.perfdata: sample.out
 	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
@@ -122,12 +122,12 @@ sample.perfdata: sample.out
 sample.out.symfile sample.out.profile: sample.out sample.perfdata
 	./plotool.sh $^
 
-sample.out.cfg: sample.out.symfile sample.out.profile sample.o stage1-compiler
-	stage1/install/bin/ld.lld -plo \
-	  -symfile sample.out.symfile \
-	  -profile sample.out.profile \
-	  -cfgdump sample.out.cfg \
-          sample.o 2>&1 | tee sample.out.cfg.autolog
+sample.plo.out: sample.out.symfile sample.out.profile sample.o stage1-compiler
+	stage1/install/bin/clang -fuse-ld=lld \
+	  -Wl,-plo \
+	  -Wl,-symfile=sample.out.symfile \
+	  -Wl,-profile=sample.out.profile \
+	  sample.o -o $@ 2>&1 | tee $@.autolog
 
 sample.out.layout: sample.out.cfg stage1-compiler
 	stage1/install/bin/layout -cfg-read sample.out.cfg \

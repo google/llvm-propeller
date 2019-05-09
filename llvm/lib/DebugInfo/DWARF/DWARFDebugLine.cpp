@@ -980,7 +980,7 @@ const llvm::DWARFDebugLine::FileNameEntry &
 DWARFDebugLine::LineTable::getFileNameEntry(uint64_t Index) const {
   uint16_t DwarfVersion = Prologue.getVersion();
   assert(DwarfVersion != 0 && "LineTable has no dwarf version information");
-  // Unlike previous versions, in Dwarf 5 the file names is 0-indexed.
+  // In DWARF v5 the file names are 0-indexed.
   if (DwarfVersion >= 5)
     return Prologue.FileNames[Index];
   else
@@ -1020,21 +1020,24 @@ bool DWARFDebugLine::LineTable::getFileNameByIndex(uint64_t FileIndex,
   }
 
   SmallString<16> FilePath;
-  uint64_t IncludeDirIndex = Entry.DirIdx;
   StringRef IncludeDir;
   // Be defensive about the contents of Entry.
-  if (IncludeDirIndex > 0 &&
-      IncludeDirIndex <= Prologue.IncludeDirectories.size())
-    IncludeDir = Prologue.IncludeDirectories[IncludeDirIndex - 1]
-                     .getAsCString()
-                     .getValue();
+  if (Prologue.getVersion() >= 5) {
+    if (Entry.DirIdx < Prologue.IncludeDirectories.size())
+      IncludeDir =
+          Prologue.IncludeDirectories[Entry.DirIdx].getAsCString().getValue();
+  } else {
+    if (0 < Entry.DirIdx && Entry.DirIdx <= Prologue.IncludeDirectories.size())
+      IncludeDir = Prologue.IncludeDirectories[Entry.DirIdx - 1]
+                       .getAsCString()
+                       .getValue();
 
-  // We may still need to append compilation directory of compile unit.
-  // We know that FileName is not absolute, the only way to have an
-  // absolute path at this point would be if IncludeDir is absolute.
-  if (CompDir && Kind == FileLineInfoKind::AbsoluteFilePath &&
-      !isPathAbsoluteOnWindowsOrPosix(IncludeDir))
-    sys::path::append(FilePath, CompDir);
+    // We may still need to append compilation directory of compile unit.
+    // We know that FileName is not absolute, the only way to have an
+    // absolute path at this point would be if IncludeDir is absolute.
+    if (CompDir && !isPathAbsoluteOnWindowsOrPosix(IncludeDir))
+      sys::path::append(FilePath, CompDir);
+  }
 
   // sys::path::append skips empty strings.
   sys::path::append(FilePath, IncludeDir, FileName);

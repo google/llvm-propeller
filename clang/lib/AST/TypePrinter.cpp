@@ -259,6 +259,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Paren:
     case Type::PackExpansion:
     case Type::SubstTemplateTypeParm:
+    case Type::MacroQualified:
       CanPrefixQualifiers = false;
       break;
 
@@ -963,6 +964,21 @@ void TypePrinter::printTypedefBefore(const TypedefType *T, raw_ostream &OS) {
   printTypeSpec(T->getDecl(), OS);
 }
 
+void TypePrinter::printMacroQualifiedBefore(const MacroQualifiedType *T,
+                                            raw_ostream &OS) {
+  StringRef MacroName = T->getMacroIdentifier()->getName();
+  OS << MacroName << " ";
+
+  // Since this type is meant to print the macro instead of the whole attribute,
+  // we trim any attributes and go directly to the original modified type.
+  printBefore(T->getModifiedType(), OS);
+}
+
+void TypePrinter::printMacroQualifiedAfter(const MacroQualifiedType *T,
+                                           raw_ostream &OS) {
+  printAfter(T->getModifiedType(), OS);
+}
+
 void TypePrinter::printTypedefAfter(const TypedefType *T, raw_ostream &OS) {}
 
 void TypePrinter::printTypeOfExprBefore(const TypeOfExprType *T,
@@ -1217,8 +1233,18 @@ void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T,
                                               raw_ostream &OS) {
   if (IdentifierInfo *Id = T->getIdentifier())
     OS << Id->getName();
-  else
-    OS << "type-parameter-" << T->getDepth() << '-' << T->getIndex();
+  else {
+    bool IsLambdaAutoParam = false;
+    if (auto D = T->getDecl()) {
+      if (auto M = dyn_cast_or_null<CXXMethodDecl>(D->getDeclContext()))
+        IsLambdaAutoParam = D->isImplicit() && M->getParent()->isLambda();
+    }
+
+    if (IsLambdaAutoParam)
+      OS << "auto";
+    else
+      OS << "type-parameter-" << T->getDepth() << '-' << T->getIndex();
+  }
   spaceBeforePlaceHolder(OS);
 }
 

@@ -1125,6 +1125,8 @@ MemoryAccess *MemorySSA::renameBlock(BasicBlock *BB, MemoryAccess *IncomingVal,
 void MemorySSA::renamePass(DomTreeNode *Root, MemoryAccess *IncomingVal,
                            SmallPtrSetImpl<BasicBlock *> &Visited,
                            bool SkipVisited, bool RenameAllUses) {
+  assert(Root && "Trying to rename accesses in an unreachable block");
+
   SmallVector<RenamePassData, 32> WorkStack;
   // Skip everything if we already renamed this block and we are skipping.
   // Note: You can't sink this into the if, because we need it to occur
@@ -2211,6 +2213,15 @@ MemorySSAAnalysis::Result MemorySSAAnalysis::run(Function &F,
   auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
   auto &AA = AM.getResult<AAManager>(F);
   return MemorySSAAnalysis::Result(llvm::make_unique<MemorySSA>(F, &AA, &DT));
+}
+
+bool MemorySSAAnalysis::Result::invalidate(
+    Function &F, const PreservedAnalyses &PA,
+    FunctionAnalysisManager::Invalidator &Inv) {
+  auto PAC = PA.getChecker<MemorySSAAnalysis>();
+  return !(PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>()) ||
+         Inv.invalidate<AAManager>(F, PA) ||
+         Inv.invalidate<DominatorTreeAnalysis>(F, PA);
 }
 
 PreservedAnalyses MemorySSAPrinterPass::run(Function &F,

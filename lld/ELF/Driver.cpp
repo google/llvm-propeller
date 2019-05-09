@@ -72,6 +72,7 @@ Configuration *elf::Config;
 LinkerDriver *elf::Driver;
 
 static void setConfigs(opt::InputArgList &Args);
+static void readConfigs(opt::InputArgList &Args);
 
 bool elf::link(ArrayRef<const char *> Args, bool CanExitEarly,
                raw_ostream &Error) {
@@ -757,7 +758,7 @@ static void parseClangOption(StringRef Opt, const Twine &Msg) {
 }
 
 // Initializes Config members by the command line options.
-void LinkerDriver::readConfigs(opt::InputArgList &Args) {
+static void readConfigs(opt::InputArgList &Args) {
   errorHandler().Verbose = Args.hasArg(OPT_verbose);
   errorHandler().FatalWarnings =
       Args.hasFlag(OPT_fatal_warnings, OPT_no_fatal_warnings, false);
@@ -1624,14 +1625,19 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
       InputSections.push_back(cast<InputSection>(S));
 
   if (Config->Plo && !ObjectFiles.empty()) {
+    if (!Config->SymbolOrderingFile.empty()) {
+      error("Conflict options: --plo and --symbol-ordering-file.");
+    }
     printf("Entering into PLO mode, processing %lu files.\n", ObjectFiles.size());
-    if (!lld::plo::PLO().ProcessFiles(ObjectFiles,
-                                      Config->SymFile,
-                                      Config->Profile,
-                                      Config->CfgDump)) {
+    lld::plo::PLO Plo;
+    if (Plo.processFiles(ObjectFiles,
+                         Config->SymFile,
+                         Config->Profile,
+                         Config->CfgDump)) {
+      Config->SymbolOrderingFile = Plo.genSymbolOrderingFile();
+    } else {
       error("PLO stage failed.");
     }
-    return;
   }
 
   // We do not want to emit debug sections if --strip-all

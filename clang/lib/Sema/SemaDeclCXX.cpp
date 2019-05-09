@@ -1158,7 +1158,7 @@ static bool checkTupleLikeDecomposition(Sema &S,
       if (E.isInvalid())
         return true;
 
-      E = S.ActOnCallExpr(nullptr, E.get(), Loc, None, Loc);
+      E = S.BuildCallExpr(nullptr, E.get(), Loc, None, Loc);
     } else {
       //   Otherwise, the initializer is get<i-1>(e), where get is looked up
       //   in the associated namespaces.
@@ -1168,7 +1168,7 @@ static bool checkTupleLikeDecomposition(Sema &S,
           UnresolvedSetIterator(), UnresolvedSetIterator());
 
       Expr *Arg = E.get();
-      E = S.ActOnCallExpr(nullptr, Get, Loc, Arg, Loc);
+      E = S.BuildCallExpr(nullptr, Get, Loc, Arg, Loc);
     }
     if (E.isInvalid())
       return true;
@@ -5697,9 +5697,11 @@ void Sema::checkClassLevelDLLAttribute(CXXRecordDecl *Class) {
 
   TemplateSpecializationKind TSK = Class->getTemplateSpecializationKind();
 
-  // Ignore explicit dllexport on explicit class template instantiation declarations.
+  // Ignore explicit dllexport on explicit class template instantiation
+  // declarations, except in MinGW mode.
   if (ClassExported && !ClassAttr->isInherited() &&
-      TSK == TSK_ExplicitInstantiationDeclaration) {
+      TSK == TSK_ExplicitInstantiationDeclaration &&
+      !Context.getTargetInfo().getTriple().isWindowsGNUEnvironment()) {
     Class->dropAttr<DLLExportAttr>();
     return;
   }
@@ -5724,9 +5726,12 @@ void Sema::checkClassLevelDLLAttribute(CXXRecordDecl *Class) {
         continue;
 
       if (MD->isInlined()) {
-        // MinGW does not import or export inline methods.
+        // MinGW does not import or export inline methods. But do it for
+        // template instantiations.
         if (!Context.getTargetInfo().getCXXABI().isMicrosoft() &&
-            !Context.getTargetInfo().getTriple().isWindowsItaniumEnvironment())
+            !Context.getTargetInfo().getTriple().isWindowsItaniumEnvironment() &&
+            TSK != TSK_ExplicitInstantiationDeclaration &&
+            TSK != TSK_ExplicitInstantiationDefinition)
           continue;
 
         // MSVC versions before 2015 don't export the move assignment operators
@@ -5952,8 +5957,11 @@ static bool canPassInRegisters(Sema &S, CXXRecordDecl *D,
 
     // Note: This permits small classes with nontrivial destructors to be
     // passed in registers, which is non-conforming.
+    bool isAArch64 = S.Context.getTargetInfo().getTriple().isAArch64();
+    uint64_t TypeSize = isAArch64 ? 128 : 64;
+
     if (CopyCtorIsTrivial &&
-        S.getASTContext().getTypeSize(D->getTypeForDecl()) <= 64)
+        S.getASTContext().getTypeSize(D->getTypeForDecl()) <= TypeSize)
       return true;
     return false;
   }
@@ -6629,6 +6637,8 @@ void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
   // makes such functions always instantiate to constexpr functions. For
   // functions which cannot be constexpr (for non-constructors in C++11 and for
   // destructors in C++1y), this is checked elsewhere.
+  //
+  // FIXME: This should not apply if the member is deleted.
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, RD, CSM,
                                                      HasConstParam);
   if ((getLangOpts().CPlusPlus14 ? !isa<CXXDestructorDecl>(MD)
@@ -6640,38 +6650,26 @@ void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
     HadError = true;
   }
 
-  //   and may have an explicit exception-specification only if it is compatible
-  //   with the exception-specification on the implicit declaration.
-  if (Type->hasExceptionSpec()) {
-    // Delay the check if this is the first declaration of the special member,
-    // since we may not have parsed some necessary in-class initializers yet.
-    if (First) {
-      // If the exception specification needs to be instantiated, do so now,
-      // before we clobber it with an EST_Unevaluated specification below.
-      if (Type->getExceptionSpecType() == EST_Uninstantiated) {
-        InstantiateExceptionSpec(MD->getBeginLoc(), MD);
-        Type = MD->getType()->getAs<FunctionProtoType>();
-      }
-      DelayedDefaultedMemberExceptionSpecs.push_back(std::make_pair(MD, Type));
-    } else
-      CheckExplicitlyDefaultedMemberExceptionSpec(MD, Type);
-  }
-
-  //   If a function is explicitly defaulted on its first declaration,
   if (First) {
-    //  -- it is implicitly considered to be constexpr if the implicit
-    //     definition would be,
+    // C++2a [dcl.fct.def.default]p3:
+    //   If a function is explicitly defaulted on its first declaration, it is
+    //   implicitly considered to be constexpr if the implicit declaration
+    //   would be.
     MD->setConstexpr(Constexpr);
 
-    //  -- it is implicitly considered to have the same exception-specification
-    //     as if it had been implicitly declared,
-    FunctionProtoType::ExtProtoInfo EPI = Type->getExtProtoInfo();
-    EPI.ExceptionSpec.Type = EST_Unevaluated;
-    EPI.ExceptionSpec.SourceDecl = MD;
-    MD->setType(Context.getFunctionType(ReturnType,
-                                        llvm::makeArrayRef(&ArgType,
-                                                           ExpectedParams),
-                                        EPI));
+    if (!Type->hasExceptionSpec()) {
+      // C++2a [except.spec]p3:
+      //   If a declaration of a function does not have a noexcept-specifier
+      //   [and] is defaulted on its first declaration, [...] the exception
+      //   specification is as specified below
+      FunctionProtoType::ExtProtoInfo EPI = Type->getExtProtoInfo();
+      EPI.ExceptionSpec.Type = EST_Unevaluated;
+      EPI.ExceptionSpec.SourceDecl = MD;
+      MD->setType(Context.getFunctionType(ReturnType,
+                                          llvm::makeArrayRef(&ArgType,
+                                                             ExpectedParams),
+                                          EPI));
+    }
   }
 
   if (ShouldDeleteForTypeMismatch || ShouldDeleteSpecialMember(MD, CSM)) {
@@ -6704,43 +6702,12 @@ void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
     MD->setInvalidDecl();
 }
 
-/// Check whether the exception specification provided for an
-/// explicitly-defaulted special member matches the exception specification
-/// that would have been generated for an implicit special member, per
-/// C++11 [dcl.fct.def.default]p2.
-void Sema::CheckExplicitlyDefaultedMemberExceptionSpec(
-    CXXMethodDecl *MD, const FunctionProtoType *SpecifiedType) {
-  // If the exception specification was explicitly specified but hadn't been
-  // parsed when the method was defaulted, grab it now.
-  if (SpecifiedType->getExceptionSpecType() == EST_Unparsed)
-    SpecifiedType =
-        MD->getTypeSourceInfo()->getType()->castAs<FunctionProtoType>();
-
-  // Compute the implicit exception specification.
-  CallingConv CC = Context.getDefaultCallingConvention(/*IsVariadic=*/false,
-                                                       /*IsCXXMethod=*/true);
-  FunctionProtoType::ExtProtoInfo EPI(CC);
-  auto IES = computeImplicitExceptionSpec(*this, MD->getLocation(), MD);
-  EPI.ExceptionSpec = IES.getExceptionSpec();
-  const FunctionProtoType *ImplicitType = cast<FunctionProtoType>(
-    Context.getFunctionType(Context.VoidTy, None, EPI));
-
-  // Ensure that it matches.
-  CheckEquivalentExceptionSpec(
-    PDiag(diag::err_incorrect_defaulted_exception_spec)
-      << getSpecialMember(MD), PDiag(),
-    ImplicitType, SourceLocation(),
-    SpecifiedType, MD->getLocation());
-}
-
 void Sema::CheckDelayedMemberExceptionSpecs() {
   decltype(DelayedOverridingExceptionSpecChecks) Overriding;
   decltype(DelayedEquivalentExceptionSpecChecks) Equivalent;
-  decltype(DelayedDefaultedMemberExceptionSpecs) Defaulted;
 
   std::swap(Overriding, DelayedOverridingExceptionSpecChecks);
   std::swap(Equivalent, DelayedEquivalentExceptionSpecChecks);
-  std::swap(Defaulted, DelayedDefaultedMemberExceptionSpecs);
 
   // Perform any deferred checking of exception specifications for virtual
   // destructors.
@@ -6751,11 +6718,6 @@ void Sema::CheckDelayedMemberExceptionSpecs() {
   // special members.
   for (auto &Check : Equivalent)
     CheckEquivalentExceptionSpec(Check.second, Check.first);
-
-  // Check that any explicitly-defaulted methods have exception specifications
-  // compatible with their implicit exception specifications.
-  for (auto &Spec : Defaulted)
-    CheckExplicitlyDefaultedMemberExceptionSpec(Spec.first, Spec.second);
 }
 
 namespace {
@@ -11369,7 +11331,6 @@ void Sema::ActOnFinishCXXMemberDecls() {
     if (Record->isInvalidDecl()) {
       DelayedOverridingExceptionSpecChecks.clear();
       DelayedEquivalentExceptionSpecChecks.clear();
-      DelayedDefaultedMemberExceptionSpecs.clear();
       return;
     }
     checkForMultipleExportedDefaultConstructors(*this, Record);
@@ -11601,7 +11562,7 @@ buildMemcpyForAssignmentOp(Sema &S, SourceLocation Loc, QualType T,
   Expr *CallArgs[] = {
     To, From, IntegerLiteral::Create(S.Context, Size, SizeType, Loc)
   };
-  ExprResult Call = S.ActOnCallExpr(/*Scope=*/nullptr, MemCpyRef.get(),
+  ExprResult Call = S.BuildCallExpr(/*Scope=*/nullptr, MemCpyRef.get(),
                                     Loc, CallArgs, Loc);
 
   assert(!Call.isInvalid() && "Call to __builtin_memcpy cannot fail!");

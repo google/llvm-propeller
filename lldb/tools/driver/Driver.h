@@ -43,43 +43,26 @@ public:
 
   lldb::SBError ProcessArgs(const llvm::opt::InputArgList &args, bool &exiting);
 
-  const char *GetFilename() const;
-
-  const char *GetCrashLogFilename() const;
-
-  const char *GetArchName() const;
-
-  lldb::ScriptLanguage GetScriptLanguage() const;
-
   void WriteCommandsForSourcing(CommandPlacement placement,
                                 lldb::SBStream &strm);
 
-  bool GetDebugMode() const;
-
   struct OptionData {
-    void AddLocalLLDBInit();
     void AddInitialCommand(std::string command, CommandPlacement placement,
                            bool is_file, lldb::SBError &error);
 
     struct InitialCmdEntry {
       InitialCmdEntry(std::string contents, bool in_is_file,
-                      bool is_cwd_lldbinit_file_read, bool in_quiet = false)
+                      bool in_quiet = false)
           : contents(std::move(contents)), is_file(in_is_file),
-            source_quietly(in_quiet),
-            is_cwd_lldbinit_file_read(is_cwd_lldbinit_file_read) {}
+            source_quietly(in_quiet) {}
 
       std::string contents;
       bool is_file;
       bool source_quietly;
-
-      /// Remember if this is reading the local lldbinit file so we can skip it
-      /// if not permitted.
-      bool is_cwd_lldbinit_file_read;
     };
 
     std::vector<std::string> m_args;
 
-    lldb::ScriptLanguage m_script_lang = lldb::eScriptLanguageDefault;
     lldb::LanguageType m_repl_lang = lldb::eLanguageTypeUnknown;
     lldb::pid_t m_process_pid = LLDB_INVALID_PROCESS_ID;
 

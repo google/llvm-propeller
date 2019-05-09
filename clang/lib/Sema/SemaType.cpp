@@ -182,6 +182,10 @@ namespace {
     SmallVector<TypeAttrPair, 8> AttrsForTypes;
     bool AttrsForTypesSorted = true;
 
+    /// MacroQualifiedTypes mapping to macro expansion locations that will be
+    /// stored in a MacroQualifiedTypeLoc.
+    llvm::DenseMap<const MacroQualifiedType *, SourceLocation> LocsForMacros;
+
     /// Flag to indicate we parsed a noderef attribute. This is used for
     /// validating that noderef was used on a pointer or array.
     bool parsedNoDeref;
@@ -293,6 +297,19 @@ namespace {
       }
 
       llvm_unreachable("no Attr* for AttributedType*");
+    }
+
+    SourceLocation
+    getExpansionLocForMacroQualifiedType(const MacroQualifiedType *MQT) const {
+      auto FoundLoc = LocsForMacros.find(MQT);
+      assert(FoundLoc != LocsForMacros.end() &&
+             "Unable to find macro expansion location for MacroQualifedType");
+      return FoundLoc->second;
+    }
+
+    void setExpansionLocForMacroQualifiedType(const MacroQualifiedType *MQT,
+                                              SourceLocation Loc) {
+      LocsForMacros[MQT] = Loc;
     }
 
     void setParsedNoDeref(bool parsed) { parsedNoDeref = parsed; }
@@ -2935,7 +2952,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
         sema::LambdaScopeInfo *LSI = SemaRef.getCurLambda();
         assert(LSI && "No LambdaScopeInfo on the stack!");
         const unsigned TemplateParameterDepth = LSI->AutoTemplateParameterDepth;
-        const unsigned AutoParameterPosition = LSI->AutoTemplateParams.size();
+        const unsigned AutoParameterPosition = LSI->TemplateParams.size();
         const bool IsParameterPack = D.hasEllipsis();
 
         // Create the TemplateTypeParmDecl here to retrieve the corresponding
@@ -2947,7 +2964,8 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
                 /*KeyLoc*/ SourceLocation(), /*NameLoc*/ D.getBeginLoc(),
                 TemplateParameterDepth, AutoParameterPosition,
                 /*Identifier*/ nullptr, false, IsParameterPack);
-        LSI->AutoTemplateParams.push_back(CorrespondingTemplateParam);
+        CorrespondingTemplateParam->setImplicit();
+        LSI->TemplateParams.push_back(CorrespondingTemplateParam);
         // Replace the 'auto' in the function parameter with this invented
         // template type parameter.
         // FIXME: Retain some type sugar to indicate that this was written
@@ -4978,11 +4996,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     processTypeAttrs(state, T, TAL_DeclChunk, DeclType.getAttrs());
 
     if (DeclType.Kind != DeclaratorChunk::Paren) {
-      if (ExpectNoDerefChunk) {
-        if (!IsNoDerefableChunk(DeclType))
-          S.Diag(DeclType.Loc, diag::warn_noderef_on_non_pointer_or_array);
-        ExpectNoDerefChunk = false;
-      }
+      if (ExpectNoDerefChunk && !IsNoDerefableChunk(DeclType))
+        S.Diag(DeclType.Loc, diag::warn_noderef_on_non_pointer_or_array);
 
       ExpectNoDerefChunk = state.didParseNoDeref();
     }
@@ -5009,7 +5024,10 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         break;
       case DeclaratorChunk::Function: {
         const DeclaratorChunk::FunctionTypeInfo &FTI = DeclType.Fun;
-        if (FTI.NumParams == 0 && !FTI.isVariadic)
+        // We supress the warning when there's no LParen location, as this
+        // indicates the declaration was an implicit declaration, which gets
+        // warned about separately via -Wimplicit-function-declaration.
+        if (FTI.NumParams == 0 && !FTI.isVariadic && FTI.getLParenLoc().isValid())
           S.Diag(DeclType.Loc, diag::warn_strict_prototypes)
               << IsBlock
               << FixItHint::CreateInsertion(FTI.getRParenLoc(), "void");
@@ -5370,6 +5388,11 @@ namespace {
       Visit(TL.getModifiedLoc());
       fillAttributedTypeLoc(TL, State);
     }
+    void VisitMacroQualifiedTypeLoc(MacroQualifiedTypeLoc TL) {
+      Visit(TL.getInnerLoc());
+      TL.setExpansionLoc(
+          State.getExpansionLocForMacroQualifiedType(TL.getTypePtr()));
+    }
     void VisitQualifiedTypeLoc(QualifiedTypeLoc TL) {
       Visit(TL.getUnqualifiedLoc());
     }
@@ -5643,6 +5666,9 @@ namespace {
       assert(Chunk.Kind == DeclaratorChunk::Pipe);
       TL.setKWLoc(Chunk.Loc);
     }
+    void VisitMacroQualifiedTypeLoc(MacroQualifiedTypeLoc TL) {
+      TL.setExpansionLoc(Chunk.Loc);
+    }
 
     void VisitTypeLoc(TypeLoc TL) {
       llvm_unreachable("unsupported TypeLoc kind in declarator!");
@@ -5719,6 +5745,12 @@ GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
     if (AtomicTypeLoc ATL = CurrTL.getAs<AtomicTypeLoc>()) {
       fillAtomicQualLoc(ATL, D.getTypeObject(i));
       CurrTL = ATL.getValueLoc().getUnqualifiedLoc();
+    }
+
+    while (MacroQualifiedTypeLoc TL = CurrTL.getAs<MacroQualifiedTypeLoc>()) {
+      TL.setExpansionLoc(
+          State.getExpansionLocForMacroQualifiedType(TL.getTypePtr()));
+      CurrTL = TL.getNextTypeLoc().getUnqualifiedLoc();
     }
 
     while (AttributedTypeLoc TL = CurrTL.getAs<AttributedTypeLoc>()) {
@@ -6981,12 +7013,16 @@ static bool handleFunctionTypeAttr(TypeProcessingState &state, ParsedAttr &attr,
   return true;
 }
 
-bool Sema::hasExplicitCallingConv(QualType &T) {
-  QualType R = T.IgnoreParens();
-  while (const AttributedType *AT = dyn_cast<AttributedType>(R)) {
+bool Sema::hasExplicitCallingConv(QualType T) {
+  const AttributedType *AT;
+
+  // Stop if we'd be stripping off a typedef sugar node to reach the
+  // AttributedType.
+  while ((AT = T->getAs<AttributedType>()) &&
+         AT->getAs<TypedefType>() == T->getAs<TypedefType>()) {
     if (AT->isCallingConv())
       return true;
-    R = AT->getModifiedType().IgnoreParens();
+    T = AT->getModifiedType();
   }
   return false;
 }
@@ -7308,8 +7344,10 @@ static void deduceOpenCLImplicitAddrSpace(TypeProcessingState &State,
        // otherwise it will fail some sema check.
       IsFuncReturnType || IsFuncType ||
       // Do not deduce addr space for member types of struct, except the pointee
-      // type of a pointer member type.
-      (D.getContext() == DeclaratorContext::MemberContext && !IsPointee) ||
+      // type of a pointer member type or static data members.
+      (D.getContext() == DeclaratorContext::MemberContext &&
+       (!IsPointee &&
+        D.getDeclSpec().getStorageClassSpec() != DeclSpec::SCS_static)) ||
       // Do not deduce addr space for types used to define a typedef and the
       // typedef itself, except the pointee type of a pointer type which is used
       // to define the typedef.
@@ -7568,6 +7606,20 @@ static void processTypeAttrs(TypeProcessingState &state, QualType &type,
       else if (!handleFunctionTypeAttr(state, attr, type))
         distributeFunctionTypeAttr(state, attr, type);
       break;
+    }
+
+    // Handle attributes that are defined in a macro. We do not want this to be
+    // applied to ObjC builtin attributes.
+    if (isa<AttributedType>(type) && attr.hasMacroIdentifier() &&
+        !type.getQualifiers().hasObjCLifetime() &&
+        !type.getQualifiers().hasObjCGCAttr() &&
+        attr.getKind() != ParsedAttr::AT_ObjCGC &&
+        attr.getKind() != ParsedAttr::AT_ObjCOwnership) {
+      const IdentifierInfo *MacroII = attr.getMacroIdentifier();
+      type = state.getSema().Context.getMacroQualifiedType(type, MacroII);
+      state.setExpansionLocForMacroQualifiedType(
+          cast<MacroQualifiedType>(type.getTypePtr()),
+          attr.getMacroExpansionLoc());
     }
   }
 

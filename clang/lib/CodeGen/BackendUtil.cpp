@@ -571,6 +571,9 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
   PMBuilder.LoopVectorize = CodeGenOpts.VectorizeLoop;
 
   PMBuilder.DisableUnrollLoops = !CodeGenOpts.UnrollLoops;
+  // Loop interleaving in the loop vectorizer has historically been set to be
+  // enabled when loop unrolling is enabled.
+  PMBuilder.LoopsInterleaved = CodeGenOpts.UnrollLoops;
   PMBuilder.MergeFunctions = CodeGenOpts.MergeFunctions;
   PMBuilder.PrepareForThinLTO = CodeGenOpts.PrepareForThinLTO;
   PMBuilder.PrepareForLTO = CodeGenOpts.PrepareForLTO;
@@ -973,13 +976,15 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
   TimeRegion Region(FrontendTimesIsEnabled ? &CodeGenerationTime : nullptr);
   setCommandLineOpts(CodeGenOpts);
 
-  // The new pass manager always makes a target machine available to passes
-  // during construction.
-  CreateTargetMachine(/*MustCreateTM*/ true);
-  if (!TM)
-    // This will already be diagnosed, just bail.
+  bool RequiresCodeGen = (Action != Backend_EmitNothing &&
+                          Action != Backend_EmitBC &&
+                          Action != Backend_EmitLL);
+  CreateTargetMachine(RequiresCodeGen);
+
+  if (RequiresCodeGen && !TM)
     return;
-  TheModule->setDataLayout(TM->createDataLayout());
+  if (TM)
+    TheModule->setDataLayout(TM->createDataLayout());
 
   Optional<PGOOptions> PGOOpt;
 

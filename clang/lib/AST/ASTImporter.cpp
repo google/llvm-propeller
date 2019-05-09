@@ -175,6 +175,14 @@ namespace clang {
       return Importer.Import_New(From);
     }
 
+    // Import an Optional<T> by importing the contained T, if any.
+    template<typename T>
+    Expected<Optional<T>> import(Optional<T> From) {
+      if (!From)
+        return Optional<T>();
+      return import(*From);
+    }
+
     template <class T>
     Expected<std::tuple<T>>
     importSeq(const T &From) {
@@ -255,8 +263,7 @@ namespace clang {
         return true; // Already imported.
       ToD = CreateFun(std::forward<Args>(args)...);
       // Keep track of imported Decls.
-      Importer.MapImported(FromD, ToD);
-      Importer.AddToLookupTable(ToD);
+      Importer.RegisterImportedDecl(FromD, ToD);
       InitializeImportedDecl(FromD, ToD);
       return false; // A new Decl is created.
     }
@@ -412,6 +419,8 @@ namespace clang {
     Expected<FunctionTemplateAndArgsTy>
     ImportFunctionTemplateWithTemplateArgsFromSpecialization(
         FunctionDecl *FromFD);
+    Error ImportTemplateParameterLists(const DeclaratorDecl *FromD,
+                                       DeclaratorDecl *ToD);
 
     Error ImportTemplateInformation(FunctionDecl *FromFD, FunctionDecl *ToFD);
 
@@ -1767,6 +1776,9 @@ Error ASTNodeImporter::ImportDefinition(
     ToData.HasDeclaredCopyAssignmentWithConstParam
       = FromData.HasDeclaredCopyAssignmentWithConstParam;
 
+    // Copy over the data stored in RecordDeclBits
+    ToCXX->setArgPassingRestrictions(FromCXX->getArgPassingRestrictions());
+
     SmallVector<CXXBaseSpecifier *, 4> Bases;
     for (const auto &Base1 : FromCXX->bases()) {
       ExpectedType TyOrErr = import(Base1.getType());
@@ -2770,6 +2782,22 @@ ExpectedDecl ASTNodeImporter::VisitEnumConstantDecl(EnumConstantDecl *D) {
   return ToEnumerator;
 }
 
+Error ASTNodeImporter::ImportTemplateParameterLists(const DeclaratorDecl *FromD,
+                                                    DeclaratorDecl *ToD) {
+  unsigned int Num = FromD->getNumTemplateParameterLists();
+  if (Num == 0)
+    return Error::success();
+  SmallVector<TemplateParameterList *, 2> ToTPLists(Num);
+  for (unsigned int I = 0; I < Num; ++I)
+    if (Expected<TemplateParameterList *> ToTPListOrErr =
+            import(FromD->getTemplateParameterList(I)))
+      ToTPLists[I] = *ToTPListOrErr;
+    else
+      return ToTPListOrErr.takeError();
+  ToD->setTemplateParameterListsInfo(Importer.ToContext, ToTPLists);
+  return Error::success();
+}
+
 Error ASTNodeImporter::ImportTemplateInformation(
     FunctionDecl *FromFD, FunctionDecl *ToFD) {
   switch (FromFD->getTemplatedKind()) {
@@ -2815,6 +2843,9 @@ Error ASTNodeImporter::ImportTemplateInformation(
     ExpectedSLoc POIOrErr = import(FTSInfo->getPointOfInstantiation());
     if (!POIOrErr)
       return POIOrErr.takeError();
+
+    if (Error Err = ImportTemplateParameterLists(FromFD, ToFD))
+      return Err;
 
     TemplateSpecializationKind TSK = FTSInfo->getTemplateSpecializationKind();
     ToFD->setFunctionTemplateSpecialization(
@@ -3099,6 +3130,11 @@ ExpectedDecl ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     auto *Recent = const_cast<FunctionDecl *>(
           FoundByLookup->getMostRecentDecl());
     ToFunction->setPreviousDecl(Recent);
+    // FIXME Probably we should merge exception specifications.  E.g. In the
+    // "To" context the existing function may have exception specification with
+    // noexcept-unevaluated, while the newly imported function may have an
+    // evaluated noexcept.  A call to adjustExceptionSpec() on the imported
+    // decl and its redeclarations may be required.
   }
 
   // Import Ctor initializers.
@@ -6876,7 +6912,8 @@ ExpectedStmt ASTNodeImporter::VisitCXXNewExpr(CXXNewExpr *E) {
 
   FunctionDecl *ToOperatorNew, *ToOperatorDelete;
   SourceRange ToTypeIdParens, ToSourceRange, ToDirectInitRange;
-  Expr *ToArraySize, *ToInitializer;
+  Optional<Expr *> ToArraySize;
+  Expr *ToInitializer;
   QualType ToType;
   TypeSourceInfo *ToAllocatedTypeSourceInfo;
   std::tie(
@@ -7653,6 +7690,17 @@ void ASTImporter::AddToLookupTable(Decl *ToD) {
       LookupTable->add(ToND);
 }
 
+Expected<Decl *> ASTImporter::ImportImpl(Decl *FromD) {
+  // Import the decl using ASTNodeImporter.
+  ASTNodeImporter Importer(*this);
+  return Importer.Visit(FromD);
+}
+
+void ASTImporter::RegisterImportedDecl(Decl *FromD, Decl *ToD) {
+  MapImported(FromD, ToD);
+  AddToLookupTable(ToD);
+}
+
 Expected<QualType> ASTImporter::Import_New(QualType FromT) {
   if (FromT.isNull())
     return QualType{};
@@ -7746,7 +7794,6 @@ Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
   if (!FromD)
     return nullptr;
 
-  ASTNodeImporter Importer(*this);
 
   // Check whether we've already imported this declaration.
   Decl *ToD = GetAlreadyImportedOrNull(FromD);
@@ -7757,7 +7804,7 @@ Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
   }
 
   // Import the declaration.
-  ExpectedDecl ToDOrErr = Importer.Visit(FromD);
+  ExpectedDecl ToDOrErr = ImportImpl(FromD);
   if (!ToDOrErr)
     return ToDOrErr;
   ToD = *ToDOrErr;
@@ -7767,6 +7814,9 @@ Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
   if (!ToD) {
     return nullptr;
   }
+
+  // Make sure that ImportImpl registered the imported decl.
+  assert(ImportedDecls.count(FromD) != 0 && "Missing call to MapImported?");
 
   // Once the decl is connected to the existing declarations, i.e. when the
   // redecl chain is properly set then we populate the lookup again.

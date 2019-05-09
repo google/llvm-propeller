@@ -75,7 +75,7 @@ InputSectionBase::InputSectionBase(InputFile *File, uint64_t Flags,
 
   // The ELF spec states that a value of 0 means the section has
   // no alignment constraits.
-  uint32_t V = std::max<uint64_t>(Alignment, 1);
+  uint32_t V = std::max<uint32_t>(Alignment, 1);
   if (!isPowerOf2_64(V))
     fatal(toString(this) + ": sh_addralign is not a power of 2");
   this->Alignment = V;
@@ -253,7 +253,7 @@ void InputSectionBase::parseCompressedHeader() {
     }
 
     UncompressedSize = Hdr->ch_size;
-    Alignment = std::max<uint64_t>(Hdr->ch_addralign, 1);
+    Alignment = std::max<uint32_t>(Hdr->ch_addralign, 1);
     RawData = RawData.slice(sizeof(*Hdr));
     return;
   }
@@ -271,7 +271,7 @@ void InputSectionBase::parseCompressedHeader() {
   }
 
   UncompressedSize = Hdr->ch_size;
-  Alignment = std::max<uint64_t>(Hdr->ch_addralign, 1);
+  Alignment = std::max<uint32_t>(Hdr->ch_addralign, 1);
   RawData = RawData.slice(sizeof(*Hdr));
 }
 
@@ -631,6 +631,7 @@ uint64_t InputSectionBase::getRelocTargetVA(const InputFile *File, RelType Type,
   case R_GOTPLTONLY_PC:
     return In.GotPlt->getVA() + A - P;
   case R_GOTREL:
+  case R_PPC64_RELAX_TOC:
     return Sym.getVA(A) - In.Got->getVA();
   case R_GOTPLTREL:
     return Sym.getVA(A) - In.GotPlt->getVA();
@@ -896,7 +897,11 @@ void InputSectionBase::relocateAlloc(uint8_t *Buf, uint8_t *BufEnd) {
     switch (Expr) {
     case R_RELAX_GOT_PC:
     case R_RELAX_GOT_PC_NOPIC:
-      Target->relaxGot(BufLoc, TargetVA);
+      Target->relaxGot(BufLoc, Type, TargetVA);
+      break;
+    case R_PPC64_RELAX_TOC:
+      if (!tryRelaxPPC64TocIndirection(Type, Rel, BufLoc))
+        Target->relocateOne(BufLoc, Type, TargetVA);
       break;
     case R_RELAX_TLS_IE_TO_LE:
       Target->relaxTlsIeToLe(BufLoc, Type, TargetVA);

@@ -668,7 +668,7 @@ int main(int Argc, const char **Argv) {
   cl::ParseCommandLineOptions(Argc, Argv, "Layout");
   StringRef CfgFile = opts::CfgRead.getValue();
   auto CfgReader = lld::plo::ELFCfgReader(CfgFile);
-  CfgReader.ReadCfgs();
+  CfgReader.readCfgs();
   fprintf(stderr, "Read all Cfgs\n");
 
   if (!opts::CfgDump.empty()){
@@ -680,7 +680,7 @@ int main(int Argc, const char **Argv) {
       exit(0);
     } else {
         for (auto &Cfg: CfgReader.Cfgs) {
-          Cfg->DumpToOS(OS);
+          Cfg->dumpToOS(OS);
         }
       OS.close();
     }

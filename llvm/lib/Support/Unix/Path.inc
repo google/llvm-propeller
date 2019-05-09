@@ -185,8 +185,21 @@ std::string getMainExecutable(const char *argv0, void *MainAddr) {
 #elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) ||   \
     defined(__minix) || defined(__DragonFly__) ||                              \
     defined(__FreeBSD_kernel__) || defined(_AIX)
+  StringRef curproc("/proc/curproc/file");
   char exe_path[PATH_MAX];
-
+  // /proc is not mounted by default under FreeBSD, but gives more accurate
+  // information than argv[0] when it is.
+  if (sys::fs::exists(curproc)) {
+    ssize_t len = readlink(curproc.str().c_str(), exe_path, sizeof(exe_path));
+    if (len > 0) {
+      // Null terminate the string for realpath. readlink never null
+      // terminates its output.
+      len = std::min(len, ssize_t(sizeof(exe_path) - 1));
+      exe_path[len] = '\0';
+      return exe_path;
+    }
+  }
+  // If we don't have procfs mounted, fall back to argv[0]
   if (getprogpath(exe_path, argv0) != NULL)
     return exe_path;
 #elif defined(__linux__) || defined(__CYGWIN__)
@@ -773,7 +786,7 @@ const char *mapped_file_region::const_data() const {
 }
 
 int mapped_file_region::alignment() {
-  return Process::getPageSize();
+  return Process::getPageSizeEstimate();
 }
 
 std::error_code detail::directory_iterator_construct(detail::DirIterState &it,
@@ -1124,6 +1137,7 @@ namespace fs {
 /// implementation.
 std::error_code copy_file(const Twine &From, const Twine &To) {
   uint32_t Flag = COPYFILE_DATA;
+#if __has_builtin(__builtin_available)
   if (__builtin_available(macos 10.12, *)) {
     bool IsSymlink;
     if (std::error_code Error = is_symlink_file(From, IsSymlink))
@@ -1133,7 +1147,7 @@ std::error_code copy_file(const Twine &From, const Twine &To) {
     if (!IsSymlink && !exists(To))
       Flag = COPYFILE_CLONE;
   }
-
+#endif
   int Status =
       copyfile(From.str().c_str(), To.str().c_str(), /* State */ NULL, Flag);
 

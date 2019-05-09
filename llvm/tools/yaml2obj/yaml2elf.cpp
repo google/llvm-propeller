@@ -40,8 +40,7 @@ class ContiguousBlobAccumulator {
       Align = 1;
     uint64_t CurrentOffset = InitialOffset + OS.tell();
     uint64_t AlignedOffset = alignTo(CurrentOffset, Align);
-    for (; CurrentOffset != AlignedOffset; ++CurrentOffset)
-      OS.write('\0');
+    OS.write_zeros(AlignedOffset - CurrentOffset);
     return AlignedOffset; // == CurrentOffset;
   }
 
@@ -61,27 +60,28 @@ public:
 // sections and symbols can be referenced by name instead of by index.
 namespace {
 class NameToIdxMap {
-  StringMap<int> Map;
+  StringMap<unsigned> Map;
+
 public:
-  /// \returns true if name is already present in the map.
-  bool addName(StringRef Name, unsigned i) {
-    return !Map.insert(std::make_pair(Name, (int)i)).second;
+  /// \Returns false if name is already present in the map.
+  bool addName(StringRef Name, unsigned Ndx) {
+    return Map.insert({Name, Ndx}).second;
   }
-  /// \returns true if name is not present in the map
+  /// \Returns false if name is not present in the map.
   bool lookup(StringRef Name, unsigned &Idx) const {
-    StringMap<int>::const_iterator I = Map.find(Name);
+    auto I = Map.find(Name);
     if (I == Map.end())
-      return true;
+      return false;
     Idx = I->getValue();
-    return false;
+    return true;
   }
-  /// asserts if name is not present in the map
+  /// Asserts if name is not present in the map.
   unsigned get(StringRef Name) const {
-    unsigned Idx = 0;
-    auto missing = lookup(Name, Idx);
-    (void)missing;
-    assert(!missing && "Expected section not found in index");
-    return Idx;
+    unsigned Idx;
+    if (lookup(Name, Idx))
+      return Idx;
+    assert(false && "Expected section not found in index");
+    return 0;
   }
   unsigned size() const { return Map.size(); }
 };
@@ -147,7 +147,7 @@ class ELFState {
                               std::vector<Elf_Shdr> &SHeaders);
   void addSymbols(ArrayRef<ELFYAML::Symbol> Symbols, std::vector<Elf_Sym> &Syms,
                   const StringTableBuilder &Strtab);
-  void writeSectionContent(Elf_Shdr &SHeader,
+  bool writeSectionContent(Elf_Shdr &SHeader,
                            const ELFYAML::RawContentSection &Section,
                            ContiguousBlobAccumulator &CBA);
   bool writeSectionContent(Elf_Shdr &SHeader,
@@ -170,7 +170,7 @@ class ELFState {
   bool writeSectionContent(Elf_Shdr &SHeader,
                            const ELFYAML::DynamicSection &Section,
                            ContiguousBlobAccumulator &CBA);
-  SmallVector<const char *, 5> implicitSectionNames() const;
+  std::vector<StringRef> implicitSectionNames() const;
 
   // - SHT_NULL entry (placed first, i.e. 0'th entry)
   // - symbol table (.symtab) (defaults to after last yaml section)
@@ -239,7 +239,7 @@ void ELFState<ELFT>::initProgramHeaders(std::vector<Elf_Phdr> &PHeaders) {
 
 static bool convertSectionIndex(NameToIdxMap &SN2I, StringRef SecName,
                                 StringRef IndexSrc, unsigned &IndexDest) {
-  if (SN2I.lookup(IndexSrc, IndexDest) && !to_integer(IndexSrc, IndexDest)) {
+  if (!SN2I.lookup(IndexSrc, IndexDest) && !to_integer(IndexSrc, IndexDest)) {
     WithColor::error() << "Unknown section referenced: '" << IndexSrc
                        << "' at YAML section '" << SecName << "'.\n";
     return false;
@@ -271,29 +271,13 @@ bool ELFState<ELFT>::initSectionHeaders(std::vector<Elf_Shdr> &SHeaders,
       SHeader.sh_link = Index;
     }
 
-    if (auto S = dyn_cast<ELFYAML::RawContentSection>(Sec.get()))
-      writeSectionContent(SHeader, *S, CBA);
-    else if (auto S = dyn_cast<ELFYAML::RelocationSection>(Sec.get())) {
-      if (S->Link.empty())
-        // For relocation section set link to .symtab by default.
-        SHeader.sh_link = getDotSymTabSecNo();
-
-      unsigned Index = 0;
-      if (!S->RelocatableSec.empty() &&
-          !convertSectionIndex(SN2I, S->Name, S->RelocatableSec, Index))
+    if (auto S = dyn_cast<ELFYAML::RawContentSection>(Sec.get())) {
+      if (!writeSectionContent(SHeader, *S, CBA))
         return false;
-      SHeader.sh_info = Index;
+    } else if (auto S = dyn_cast<ELFYAML::RelocationSection>(Sec.get())) {
       if (!writeSectionContent(SHeader, *S, CBA))
         return false;
     } else if (auto S = dyn_cast<ELFYAML::Group>(Sec.get())) {
-      unsigned SymIdx;
-      if (SymN2I.lookup(S->Signature, SymIdx) &&
-          !to_integer(S->Signature, SymIdx)) {
-        WithColor::error() << "Unknown symbol referenced: '" << S->Signature
-                           << "' at YAML section '" << S->Name << "'.\n";
-        return false;
-      }
-      SHeader.sh_info = SymIdx;
       if (!writeSectionContent(SHeader, *S, CBA))
         return false;
     } else if (auto S = dyn_cast<ELFYAML::MipsABIFlags>(Sec.get())) {
@@ -309,11 +293,14 @@ bool ELFState<ELFT>::initSectionHeaders(std::vector<Elf_Shdr> &SHeaders,
       if (!writeSectionContent(SHeader, *S, CBA))
         return false;
     } else if (auto S = dyn_cast<ELFYAML::SymverSection>(Sec.get())) {
-      writeSectionContent(SHeader, *S, CBA);
+      if (!writeSectionContent(SHeader, *S, CBA))
+        return false;
     } else if (auto S = dyn_cast<ELFYAML::VerneedSection>(Sec.get())) {
-      writeSectionContent(SHeader, *S, CBA);
+      if (!writeSectionContent(SHeader, *S, CBA))
+        return false;
     } else if (auto S = dyn_cast<ELFYAML::VerdefSection>(Sec.get())) {
-      writeSectionContent(SHeader, *S, CBA);
+      if (!writeSectionContent(SHeader, *S, CBA))
+        return false;
     } else
       llvm_unreachable("Unknown section type");
 
@@ -338,9 +325,11 @@ void ELFState<ELFT>::initSymtabSectionHeader(Elf_Shdr &SHeader,
   SHeader.sh_name = DotShStrtab.getOffset(IsStatic ? ".symtab" : ".dynsym");
   SHeader.sh_type = IsStatic ? ELF::SHT_SYMTAB : ELF::SHT_DYNSYM;
   SHeader.sh_link = IsStatic ? getDotStrTabSecNo() : getDotDynStrSecNo();
-  const auto &Symbols = IsStatic ? Doc.Symbols : Doc.DynamicSymbols;
-  auto &Strtab = IsStatic ? DotStrtab : DotDynstr;
+  if (!IsStatic)
+    SHeader.sh_flags |= ELF::SHF_ALLOC;
+
   // One greater than symbol table index of the last local symbol.
+  const auto &Symbols = IsStatic ? Doc.Symbols : Doc.DynamicSymbols;
   SHeader.sh_info = findFirstNonGlobal(Symbols) + 1;
   SHeader.sh_entsize = sizeof(Elf_Sym);
   SHeader.sh_addralign = 8;
@@ -365,7 +354,7 @@ void ELFState<ELFT>::initSymtabSectionHeader(Elf_Shdr &SHeader,
     Syms.push_back(Sym);
   }
 
-  addSymbols(Symbols, Syms, Strtab);
+  addSymbols(Symbols, Syms, IsStatic ? DotStrtab : DotDynstr);
 
   writeArrayData(
       CBA.getOSAndAlignedOffset(SHeader.sh_offset, SHeader.sh_addralign),
@@ -391,6 +380,9 @@ void ELFState<ELFT>::initStrtabSectionHeader(Elf_Shdr &SHeader, StringRef Name,
     unsigned SecNdx = getDotDynStrSecNo() - 1;
     if (SecNdx < Doc.Sections.size())
       SHeader.sh_addr = Doc.Sections[SecNdx]->Address;
+
+    // We assume that .dynstr is always allocatable.
+    SHeader.sh_flags |= ELF::SHF_ALLOC;
   }
 }
 
@@ -399,7 +391,18 @@ void ELFState<ELFT>::setProgramHeaderLayout(std::vector<Elf_Phdr> &PHeaders,
                                             std::vector<Elf_Shdr> &SHeaders) {
   uint32_t PhdrIdx = 0;
   for (auto &YamlPhdr : Doc.ProgramHeaders) {
-    auto &PHeader = PHeaders[PhdrIdx++];
+    Elf_Phdr &PHeader = PHeaders[PhdrIdx++];
+
+    std::vector<Elf_Shdr *> Sections;
+    for (const ELFYAML::SectionName &SecName : YamlPhdr.Sections) {
+      unsigned Index;
+      if (!SN2I.lookup(SecName.Section, Index)) {
+        WithColor::error() << "Unknown section referenced: '" << SecName.Section
+                           << "' by program header.\n";
+        exit(1);
+      }
+      Sections.push_back(&SHeaders[Index]);
+    }
 
     if (YamlPhdr.Offset) {
       PHeader.p_offset = *YamlPhdr.Offset;
@@ -410,12 +413,8 @@ void ELFState<ELFT>::setProgramHeaderLayout(std::vector<Elf_Phdr> &PHeaders,
         PHeader.p_offset = 0;
 
       // Find the minimum offset for the program header.
-      for (auto SecName : YamlPhdr.Sections) {
-        uint32_t Index = 0;
-        SN2I.lookup(SecName.Section, Index);
-        const auto &SHeader = SHeaders[Index];
-        PHeader.p_offset = std::min(PHeader.p_offset, SHeader.sh_offset);
-      }
+      for (Elf_Shdr *SHeader : Sections)
+        PHeader.p_offset = std::min(PHeader.p_offset, SHeader->sh_offset);
     }
 
     // Find the maximum offset of the end of a section in order to set p_filesz,
@@ -424,15 +423,12 @@ void ELFState<ELFT>::setProgramHeaderLayout(std::vector<Elf_Phdr> &PHeaders,
       PHeader.p_filesz = *YamlPhdr.FileSize;
     } else {
       PHeader.p_filesz = 0;
-      for (auto SecName : YamlPhdr.Sections) {
-        uint32_t Index = 0;
-        SN2I.lookup(SecName.Section, Index);
-        const auto &SHeader = SHeaders[Index];
+      for (Elf_Shdr *SHeader : Sections) {
         uint64_t EndOfSection;
-        if (SHeader.sh_type == llvm::ELF::SHT_NOBITS)
-          EndOfSection = SHeader.sh_offset;
+        if (SHeader->sh_type == llvm::ELF::SHT_NOBITS)
+          EndOfSection = SHeader->sh_offset;
         else
-          EndOfSection = SHeader.sh_offset + SHeader.sh_size;
+          EndOfSection = SHeader->sh_offset + SHeader->sh_size;
         uint64_t EndOfSegment = PHeader.p_offset + PHeader.p_filesz;
         EndOfSegment = std::max(EndOfSegment, EndOfSection);
         PHeader.p_filesz = EndOfSegment - PHeader.p_offset;
@@ -446,13 +442,9 @@ void ELFState<ELFT>::setProgramHeaderLayout(std::vector<Elf_Phdr> &PHeaders,
       PHeader.p_memsz = *YamlPhdr.MemSize;
     } else {
       PHeader.p_memsz = PHeader.p_filesz;
-      for (auto SecName : YamlPhdr.Sections) {
-        uint32_t Index = 0;
-        SN2I.lookup(SecName.Section, Index);
-        const auto &SHeader = SHeaders[Index];
-        if (SHeader.sh_offset == PHeader.p_offset + PHeader.p_filesz)
-          PHeader.p_memsz += SHeader.sh_size;
-      }
+      for (Elf_Shdr *SHeader : Sections)
+        if (SHeader->sh_offset == PHeader.p_offset + PHeader.p_filesz)
+          PHeader.p_memsz += SHeader->sh_size;
     }
 
     // Set the alignment of the segment to be the same as the maximum alignment
@@ -462,13 +454,9 @@ void ELFState<ELFT>::setProgramHeaderLayout(std::vector<Elf_Phdr> &PHeaders,
       PHeader.p_align = *YamlPhdr.Align;
     } else {
       PHeader.p_align = 1;
-      for (auto SecName : YamlPhdr.Sections) {
-        uint32_t Index = 0;
-        SN2I.lookup(SecName.Section, Index);
-        const auto &SHeader = SHeaders[Index];
-        if (SHeader.sh_offset == PHeader.p_offset)
-          PHeader.p_align = std::max(PHeader.p_align, SHeader.sh_addralign);
-      }
+      for (Elf_Shdr *SHeader : Sections)
+        if (SHeader->sh_offset == PHeader.p_offset)
+          PHeader.p_align = std::max(PHeader.p_align, SHeader->sh_addralign);
     }
   }
 }
@@ -480,12 +468,19 @@ void ELFState<ELFT>::addSymbols(ArrayRef<ELFYAML::Symbol> Symbols,
   for (const auto &Sym : Symbols) {
     Elf_Sym Symbol;
     zero(Symbol);
-    if (!Sym.Name.empty())
+
+    // If NameIndex, which contains the name offset, is explicitly specified, we
+    // use it. This is useful for preparing broken objects. Otherwise, we add
+    // the specified Name to the string table builder to get its offset.
+    if (Sym.NameIndex)
+      Symbol.st_name = *Sym.NameIndex;
+    else if (!Sym.Name.empty())
       Symbol.st_name = Strtab.getOffset(Sym.Name);
+
     Symbol.setBindingAndType(Sym.Binding, Sym.Type);
     if (!Sym.Section.empty()) {
       unsigned Index;
-      if (SN2I.lookup(Sym.Section, Index)) {
+      if (!SN2I.lookup(Sym.Section, Index)) {
         WithColor::error() << "Unknown section referenced: '" << Sym.Section
                            << "' by YAML symbol " << Sym.Name << ".\n";
         exit(1);
@@ -503,7 +498,7 @@ void ELFState<ELFT>::addSymbols(ArrayRef<ELFYAML::Symbol> Symbols,
 }
 
 template <class ELFT>
-void ELFState<ELFT>::writeSectionContent(
+bool ELFState<ELFT>::writeSectionContent(
     Elf_Shdr &SHeader, const ELFYAML::RawContentSection &Section,
     ContiguousBlobAccumulator &CBA) {
   assert(Section.Size >= Section.Content.binary_size() &&
@@ -521,6 +516,7 @@ void ELFState<ELFT>::writeSectionContent(
     SHeader.sh_entsize = 0;
   SHeader.sh_size = Section.Size;
   SHeader.sh_info = Section.Info;
+  return true;
 }
 
 static bool isMips64EL(const ELFYAML::Object &Doc) {
@@ -542,13 +538,23 @@ ELFState<ELFT>::writeSectionContent(Elf_Shdr &SHeader,
   SHeader.sh_entsize = IsRela ? sizeof(Elf_Rela) : sizeof(Elf_Rel);
   SHeader.sh_size = SHeader.sh_entsize * Section.Relocations.size();
 
+  // For relocation section set link to .symtab by default.
+  if (Section.Link.empty())
+    SHeader.sh_link = getDotSymTabSecNo();
+
+  unsigned Index = 0;
+  if (!Section.RelocatableSec.empty() &&
+      !convertSectionIndex(SN2I, Section.Name, Section.RelocatableSec, Index))
+    return false;
+  SHeader.sh_info = Index;
+
   auto &OS = CBA.getOSAndAlignedOffset(SHeader.sh_offset, SHeader.sh_addralign);
 
   for (const auto &Rel : Section.Relocations) {
     unsigned SymIdx = 0;
     // If a relocation references a symbol, try to look one up in the symbol
     // table. If it is not there, treat the value as a symbol index.
-    if (Rel.Symbol && SymN2I.lookup(*Rel.Symbol, SymIdx) &&
+    if (Rel.Symbol && !SymN2I.lookup(*Rel.Symbol, SymIdx) &&
         !to_integer(*Rel.Symbol, SymIdx)) {
       WithColor::error() << "Unknown symbol referenced: '" << *Rel.Symbol
                          << "' at YAML section '" << Section.Name << "'.\n";
@@ -583,17 +589,26 @@ bool ELFState<ELFT>::writeSectionContent(Elf_Shdr &SHeader,
   SHeader.sh_entsize = 4;
   SHeader.sh_size = SHeader.sh_entsize * Section.Members.size();
 
+  unsigned SymIdx;
+  if (!SymN2I.lookup(Section.Signature, SymIdx) &&
+      !to_integer(Section.Signature, SymIdx)) {
+    WithColor::error() << "Unknown symbol referenced: '" << Section.Signature
+                       << "' at YAML section '" << Section.Name << "'.\n";
+    return false;
+  }
+  SHeader.sh_info = SymIdx;
+
   raw_ostream &OS =
       CBA.getOSAndAlignedOffset(SHeader.sh_offset, SHeader.sh_addralign);
 
-  for (auto member : Section.Members) {
-    unsigned int sectionIndex = 0;
-    if (member.sectionNameOrType == "GRP_COMDAT")
-      sectionIndex = llvm::ELF::GRP_COMDAT;
-    else if (!convertSectionIndex(SN2I, Section.Name, member.sectionNameOrType,
-                                  sectionIndex))
+  for (const ELFYAML::SectionOrType &Member : Section.Members) {
+    unsigned int SectionIndex = 0;
+    if (Member.sectionNameOrType == "GRP_COMDAT")
+      SectionIndex = llvm::ELF::GRP_COMDAT;
+    else if (!convertSectionIndex(SN2I, Section.Name, Member.sectionNameOrType,
+                                  SectionIndex))
       return false;
-    support::endian::write<uint32_t>(OS, sectionIndex, ELFT::TargetEndianness);
+    support::endian::write<uint32_t>(OS, SectionIndex, ELFT::TargetEndianness);
   }
   return true;
 }
@@ -661,48 +676,48 @@ template <class ELFT>
 bool ELFState<ELFT>::writeSectionContent(Elf_Shdr &SHeader,
                                          const ELFYAML::VerneedSection &Section,
                                          ContiguousBlobAccumulator &CBA) {
- typedef typename ELFT::Verneed Elf_Verneed;
- typedef typename ELFT::Vernaux Elf_Vernaux;
+  typedef typename ELFT::Verneed Elf_Verneed;
+  typedef typename ELFT::Vernaux Elf_Vernaux;
 
- auto &OS = CBA.getOSAndAlignedOffset(SHeader.sh_offset, SHeader.sh_addralign);
+  auto &OS = CBA.getOSAndAlignedOffset(SHeader.sh_offset, SHeader.sh_addralign);
 
- uint64_t AuxCnt = 0;
- for (size_t I = 0; I < Section.VerneedV.size(); ++I) {
-   const ELFYAML::VerneedEntry &VE = Section.VerneedV[I];
+  uint64_t AuxCnt = 0;
+  for (size_t I = 0; I < Section.VerneedV.size(); ++I) {
+    const ELFYAML::VerneedEntry &VE = Section.VerneedV[I];
 
-   Elf_Verneed VerNeed;
-   VerNeed.vn_version = VE.Version;
-   VerNeed.vn_file = DotDynstr.getOffset(VE.File);
-   if (I == Section.VerneedV.size() - 1)
-     VerNeed.vn_next = 0;
-   else
-     VerNeed.vn_next =
-         sizeof(Elf_Verneed) + VE.AuxV.size() * sizeof(Elf_Vernaux);
-   VerNeed.vn_cnt = VE.AuxV.size();
-   VerNeed.vn_aux = sizeof(Elf_Verneed);
-   OS.write((const char *)&VerNeed, sizeof(Elf_Verneed));
+    Elf_Verneed VerNeed;
+    VerNeed.vn_version = VE.Version;
+    VerNeed.vn_file = DotDynstr.getOffset(VE.File);
+    if (I == Section.VerneedV.size() - 1)
+      VerNeed.vn_next = 0;
+    else
+      VerNeed.vn_next =
+          sizeof(Elf_Verneed) + VE.AuxV.size() * sizeof(Elf_Vernaux);
+    VerNeed.vn_cnt = VE.AuxV.size();
+    VerNeed.vn_aux = sizeof(Elf_Verneed);
+    OS.write((const char *)&VerNeed, sizeof(Elf_Verneed));
 
-   for (size_t J = 0; J < VE.AuxV.size(); ++J, ++AuxCnt) {
-     const ELFYAML::VernauxEntry &VAuxE = VE.AuxV[J];
+    for (size_t J = 0; J < VE.AuxV.size(); ++J, ++AuxCnt) {
+      const ELFYAML::VernauxEntry &VAuxE = VE.AuxV[J];
 
-     Elf_Vernaux VernAux;
-     VernAux.vna_hash = VAuxE.Hash;
-     VernAux.vna_flags = VAuxE.Flags;
-     VernAux.vna_other = VAuxE.Other;
-     VernAux.vna_name = DotDynstr.getOffset(VAuxE.Name);
-     if (J == VE.AuxV.size() - 1)
-       VernAux.vna_next = 0;
-     else
-       VernAux.vna_next = sizeof(Elf_Vernaux);
-     OS.write((const char *)&VernAux, sizeof(Elf_Vernaux));
-   }
- }
+      Elf_Vernaux VernAux;
+      VernAux.vna_hash = VAuxE.Hash;
+      VernAux.vna_flags = VAuxE.Flags;
+      VernAux.vna_other = VAuxE.Other;
+      VernAux.vna_name = DotDynstr.getOffset(VAuxE.Name);
+      if (J == VE.AuxV.size() - 1)
+        VernAux.vna_next = 0;
+      else
+        VernAux.vna_next = sizeof(Elf_Vernaux);
+      OS.write((const char *)&VernAux, sizeof(Elf_Vernaux));
+    }
+  }
 
- SHeader.sh_size = Section.VerneedV.size() * sizeof(Elf_Verneed) +
-                   AuxCnt * sizeof(Elf_Vernaux);
- SHeader.sh_info = Section.Info;
+  SHeader.sh_size = Section.VerneedV.size() * sizeof(Elf_Verneed) +
+                    AuxCnt * sizeof(Elf_Vernaux);
+  SHeader.sh_info = Section.Info;
 
- return true;
+  return true;
 }
 
 template <class ELFT>
@@ -776,7 +791,7 @@ template <class ELFT> bool ELFState<ELFT>::buildSectionIndex() {
     StringRef Name = Doc.Sections[i]->Name;
     DotShStrtab.add(Name);
     // "+ 1" to take into account the SHT_NULL entry.
-    if (SN2I.addName(Name, i + 1)) {
+    if (!SN2I.addName(Name, i + 1)) {
       WithColor::error() << "Repeated section name: '" << Name
                          << "' at YAML section number " << i << ".\n";
       return false;
@@ -785,8 +800,8 @@ template <class ELFT> bool ELFState<ELFT>::buildSectionIndex() {
 
   auto SecNo = 1 + Doc.Sections.size();
   // Add special sections after input sections, if necessary.
-  for (const auto &Name : implicitSectionNames())
-    if (!SN2I.addName(Name, SecNo)) {
+  for (StringRef Name : implicitSectionNames())
+    if (SN2I.addName(Name, SecNo)) {
       // Account for this section, since it wasn't in the Doc
       ++SecNo;
       DotShStrtab.add(Name);
@@ -812,7 +827,7 @@ bool ELFState<ELFT>::buildSymbolIndex(ArrayRef<ELFYAML::Symbol> Symbols) {
     if (Sym.Binding.value != ELF::STB_LOCAL)
       GlobalSymbolSeen = true;
 
-    if (!Name.empty() && SymN2I.addName(Name, I)) {
+    if (!Name.empty() && !SymN2I.addName(Name, I)) {
       WithColor::error() << "Repeated symbol name: '" << Name << "'.\n";
       return false;
     }
@@ -883,28 +898,26 @@ int ELFState<ELFT>::writeELF(raw_ostream &OS, const ELFYAML::Object &Doc) {
   ContiguousBlobAccumulator CBA(SectionContentBeginOffset);
 
   std::vector<Elf_Shdr> SHeaders;
-  if(!State.initSectionHeaders(SHeaders, CBA))
+  if (!State.initSectionHeaders(SHeaders, CBA))
     return 1;
 
   // Populate SHeaders with implicit sections not present in the Doc
-  for (const auto &Name : State.implicitSectionNames())
+  for (StringRef Name : State.implicitSectionNames())
     if (State.SN2I.get(Name) >= SHeaders.size())
       SHeaders.push_back({});
 
   // Initialize the implicit sections
-  auto Index = State.SN2I.get(".symtab");
-  State.initSymtabSectionHeader(SHeaders[Index], SymtabType::Static, CBA);
-  Index = State.SN2I.get(".strtab");
-  State.initStrtabSectionHeader(SHeaders[Index], ".strtab", State.DotStrtab, CBA);
-  Index = State.SN2I.get(".shstrtab");
-  State.initStrtabSectionHeader(SHeaders[Index], ".shstrtab", State.DotShStrtab, CBA);
+  State.initSymtabSectionHeader(SHeaders[State.SN2I.get(".symtab")],
+                                SymtabType::Static, CBA);
+  State.initStrtabSectionHeader(SHeaders[State.SN2I.get(".strtab")], ".strtab",
+                                State.DotStrtab, CBA);
+  State.initStrtabSectionHeader(SHeaders[State.SN2I.get(".shstrtab")],
+                                ".shstrtab", State.DotShStrtab, CBA);
   if (!Doc.DynamicSymbols.empty()) {
-    Index = State.SN2I.get(".dynsym");
-    State.initSymtabSectionHeader(SHeaders[Index], SymtabType::Dynamic, CBA);
-    SHeaders[Index].sh_flags |= ELF::SHF_ALLOC;
-    Index = State.SN2I.get(".dynstr");
-    State.initStrtabSectionHeader(SHeaders[Index], ".dynstr", State.DotDynstr, CBA);
-    SHeaders[Index].sh_flags |= ELF::SHF_ALLOC;
+    State.initSymtabSectionHeader(SHeaders[State.SN2I.get(".dynsym")],
+                                  SymtabType::Dynamic, CBA);
+    State.initStrtabSectionHeader(SHeaders[State.SN2I.get(".dynstr")],
+                                  ".dynstr", State.DotDynstr, CBA);
   }
 
   // Now we can decide segment offsets
@@ -918,30 +931,21 @@ int ELFState<ELFT>::writeELF(raw_ostream &OS, const ELFYAML::Object &Doc) {
 }
 
 template <class ELFT>
-SmallVector<const char *, 5> ELFState<ELFT>::implicitSectionNames() const {
+std::vector<StringRef> ELFState<ELFT>::implicitSectionNames() const {
   if (Doc.DynamicSymbols.empty())
     return {".symtab", ".strtab", ".shstrtab"};
   return {".symtab", ".strtab", ".shstrtab", ".dynsym", ".dynstr"};
 }
 
-static bool is64Bit(const ELFYAML::Object &Doc) {
-  return Doc.Header.Class == ELFYAML::ELF_ELFCLASS(ELF::ELFCLASS64);
-}
-
-static bool isLittleEndian(const ELFYAML::Object &Doc) {
-  return Doc.Header.Data == ELFYAML::ELF_ELFDATA(ELF::ELFDATA2LSB);
-}
-
 int yaml2elf(llvm::ELFYAML::Object &Doc, raw_ostream &Out) {
-  if (is64Bit(Doc)) {
-    if (isLittleEndian(Doc))
+  bool IsLE = Doc.Header.Data == ELFYAML::ELF_ELFDATA(ELF::ELFDATA2LSB);
+  bool Is64Bit = Doc.Header.Class == ELFYAML::ELF_ELFCLASS(ELF::ELFCLASS64);
+  if (Is64Bit) {
+    if (IsLE)
       return ELFState<object::ELF64LE>::writeELF(Out, Doc);
-    else
-      return ELFState<object::ELF64BE>::writeELF(Out, Doc);
-  } else {
-    if (isLittleEndian(Doc))
-      return ELFState<object::ELF32LE>::writeELF(Out, Doc);
-    else
-      return ELFState<object::ELF32BE>::writeELF(Out, Doc);
+    return ELFState<object::ELF64BE>::writeELF(Out, Doc);
   }
+  if (IsLE)
+    return ELFState<object::ELF32LE>::writeELF(Out, Doc);
+  return ELFState<object::ELF32BE>::writeELF(Out, Doc);
 }

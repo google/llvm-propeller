@@ -124,8 +124,10 @@ public:
   static ConstantRange makeExactICmpRegion(CmpInst::Predicate Pred,
                                            const APInt &Other);
 
-  /// Return the exact range containing all X such that "X BinOpC Y" is
-  /// guaranteed not to wrap (overflow) for all Y in Other.
+  /// Produce the largest range containing all X such that "X BinOp Y" is
+  /// guaranteed not to wrap (overflow) for *all* Y in Other. However, there may
+  /// be *some* Y in Other for which additional X not contained in the result
+  /// also do not overflow.
   ///
   /// NoWrapKind must be one of OBO::NoUnsignedWrap or OBO::NoSignedWrap.
   ///
@@ -141,6 +143,12 @@ public:
   static ConstantRange makeGuaranteedNoWrapRegion(Instruction::BinaryOps BinOp,
                                                   const ConstantRange &Other,
                                                   unsigned NoWrapKind);
+
+  /// Produce the range that contains X if and only if "X BinOp Other" does
+  /// not wrap.
+  static ConstantRange makeExactNoWrapRegion(Instruction::BinaryOps BinOp,
+                                             const APInt &Other,
+                                             unsigned NoWrapKind);
 
   /// Set up \p Pred and \p RHS such that
   /// ConstantRange::makeExactICmpRegion(Pred, RHS) == *this.  Return true if
@@ -362,6 +370,11 @@ public:
   ConstantRange urem(const ConstantRange &Other) const;
 
   /// Return a new range representing the possible values resulting
+  /// from a signed remainder operation of a value in this range and a
+  /// value in \p Other.
+  ConstantRange srem(const ConstantRange &Other) const;
+
+  /// Return a new range representing the possible values resulting
   /// from a binary-and of a value in this range by a value in \p Other.
   ConstantRange binaryAnd(const ConstantRange &Other) const;
 
@@ -396,6 +409,10 @@ public:
 
   /// Return a new range that is the logical not of the current set.
   ConstantRange inverse() const;
+
+  /// Calculate absolute value range. If the original range contains signed
+  /// min, then the resulting range will also contain signed min.
+  ConstantRange abs() const;
 
   /// Represents whether an operation on the given constant range is known to
   /// always or never overflow.

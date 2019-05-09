@@ -295,6 +295,7 @@ are no syntax errors may indicate that a function was declared but never called.
         options.SetStopOnError(data->stop_on_error);
         options.SetEchoCommands(false);
         options.SetPrintResults(true);
+        options.SetPrintErrors(true);
         options.SetAddToHistory(false);
 
         debugger.GetCommandInterpreter().HandleCommands(commands, &exe_ctx,
@@ -387,7 +388,7 @@ are no syntax errors may indicate that a function was declared but never called.
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = m_interpreter.GetDebugger().GetSelectedTarget().get();
+    Target *target = GetDebugger().GetSelectedTarget().get();
 
     if (target == nullptr) {
       result.AppendError("There is not a current executable; there are no "
@@ -442,7 +443,7 @@ protected:
         if (m_options.m_use_script_language) {
           // Special handling for one-liner specified inline.
           if (m_options.m_use_one_liner) {
-            m_interpreter.GetScriptInterpreter()->SetWatchpointCommandCallback(
+            GetDebugger().GetScriptInterpreter()->SetWatchpointCommandCallback(
                 wp_options, m_options.m_one_liner.c_str());
           }
           // Special handling for using a Python function by name instead of
@@ -452,10 +453,11 @@ protected:
           else if (!m_options.m_function_name.empty()) {
             std::string oneliner(m_options.m_function_name);
             oneliner += "(frame, wp, internal_dict)";
-            m_interpreter.GetScriptInterpreter()->SetWatchpointCommandCallback(
+            GetDebugger().GetScriptInterpreter()->SetWatchpointCommandCallback(
                 wp_options, oneliner.c_str());
           } else {
-            m_interpreter.GetScriptInterpreter()
+            GetDebugger()
+                .GetScriptInterpreter()
                 ->CollectDataForWatchpointCommandCallback(wp_options, result);
           }
         } else {
@@ -503,7 +505,7 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = m_interpreter.GetDebugger().GetSelectedTarget().get();
+    Target *target = GetDebugger().GetSelectedTarget().get();
 
     if (target == nullptr) {
       result.AppendError("There is not a current executable; there are no "
@@ -582,7 +584,7 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = m_interpreter.GetDebugger().GetSelectedTarget().get();
+    Target *target = GetDebugger().GetSelectedTarget().get();
 
     if (target == nullptr) {
       result.AppendError("There is not a current executable; there are no "

@@ -1051,9 +1051,8 @@ static int getRankProximityAux(OutputSection *A, OutputSection *B) {
 }
 
 static int getRankProximity(OutputSection *A, BaseCommand *B) {
-  if (auto *Sec = dyn_cast<OutputSection>(B))
-    return getRankProximityAux(A, Sec);
-  return -1;
+  auto *Sec = dyn_cast<OutputSection>(B);
+  return (Sec && Sec->Live) ? getRankProximityAux(A, Sec) : -1;
 }
 
 // When placing orphan sections, we want to place them after symbol assignments
@@ -2088,11 +2087,12 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
   if (Config->ZWxneeded)
     AddHdr(PT_OPENBSD_WXNEEDED, PF_X);
 
-  // Create one PT_NOTE per a group of contiguous .note sections.
+  // Create one PT_NOTE per a group of contiguous SHT_NOTE sections with the
+  // same alignment.
   PhdrEntry *Note = nullptr;
   for (OutputSection *Sec : OutputSections) {
     if (Sec->Type == SHT_NOTE && (Sec->Flags & SHF_ALLOC)) {
-      if (!Note || Sec->LMAExpr)
+      if (!Note || Sec->LMAExpr || Note->LastSec->Alignment != Sec->Alignment)
         Note = AddHdr(PT_NOTE, PF_R);
       Note->add(Sec);
     } else {

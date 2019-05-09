@@ -507,8 +507,9 @@ Error deregisterEHFrameSection(const void *EHFrameSectionAddr) {
 #endif
 }
 
-AtomGraphPassFunction createEHFrameRecorderPass(const Triple &TT,
-                                                JITTargetAddress &EHFrameAddr) {
+AtomGraphPassFunction
+createEHFrameRecorderPass(const Triple &TT,
+                          StoreFrameAddressFunction StoreFrameAddress) {
   const char *EHFrameSectionName = nullptr;
   if (TT.getObjectFormat() == Triple::MachO)
     EHFrameSectionName = "__eh_frame";
@@ -516,20 +517,13 @@ AtomGraphPassFunction createEHFrameRecorderPass(const Triple &TT,
     EHFrameSectionName = ".eh_frame";
 
   auto RecordEHFrame = [EHFrameSectionName,
-                        &EHFrameAddr](AtomGraph &G) -> Error {
+                        StoreFrameAddress](AtomGraph &G) -> Error {
     // Search for a non-empty eh-frame and record the address of the first atom
     // in it.
     JITTargetAddress Addr = 0;
-    for (auto &S : G.sections())
-      if (S.getName() == EHFrameSectionName && !S.atoms_empty()) {
-        Addr = (*S.atoms().begin())->getAddress();
-        for (auto *DA : S.atoms())
-          if (DA->getAddress() < Addr)
-            Addr = DA->getAddress();
-        break;
-      }
-
-    EHFrameAddr = Addr;
+    if (auto *S = G.findSectionByName(EHFrameSectionName))
+      Addr = S->getRange().getStart();
+    StoreFrameAddress(Addr);
     return Error::success();
   };
 

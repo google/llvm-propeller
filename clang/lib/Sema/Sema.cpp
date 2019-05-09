@@ -958,7 +958,6 @@ void Sema::ActOnEndOfTranslationUnit() {
   // incompatible declarations.
   assert(DelayedOverridingExceptionSpecChecks.empty());
   assert(DelayedEquivalentExceptionSpecChecks.empty());
-  assert(DelayedDefaultedMemberExceptionSpecs.empty());
 
   // All dllexport classes should have been processed already.
   assert(DelayedDllExportClasses.empty());
@@ -1629,7 +1628,7 @@ void Sema::RecordParsingTemplateParameterDepth(unsigned Depth) {
 }
 
 // Check that the type of the VarDecl has an accessible copy constructor and
-// resolve its destructor's exception spefication.
+// resolve its destructor's exception specification.
 static void checkEscapingByref(VarDecl *VD, Sema &S) {
   QualType T = VD->getType();
   EnterExpressionEvaluationContext scope(
@@ -1646,7 +1645,7 @@ static void checkEscapingByref(VarDecl *VD, Sema &S) {
     S.Context.setBlockVarCopyInit(VD, Init, S.canThrow(Init));
   }
 
-  // The destructor's exception spefication is needed when IRGen generates
+  // The destructor's exception specification is needed when IRGen generates
   // block copy/destroy functions. Resolve it here.
   if (const CXXRecordDecl *RD = T->getAsCXXRecordDecl())
     if (CXXDestructorDecl *DD = RD->getDestructor()) {
@@ -1793,7 +1792,7 @@ LambdaScopeInfo *Sema::getCurLambda(bool IgnoreNonLambdaCapturingScope) {
 // an associated template parameter list.
 LambdaScopeInfo *Sema::getCurGenericLambda() {
   if (LambdaScopeInfo *LSI =  getCurLambda()) {
-    return (LSI->AutoTemplateParams.size() ||
+    return (LSI->TemplateParams.size() ||
                     LSI->GLTemplateParameterList) ? LSI : nullptr;
   }
   return nullptr;
@@ -2061,7 +2060,7 @@ bool Sema::tryToRecoverWithCall(ExprResult &E, const PartialDiagnostic &PD,
 
     // FIXME: Try this before emitting the fixit, and suppress diagnostics
     // while doing so.
-    E = ActOnCallExpr(nullptr, E.get(), Range.getEnd(), None,
+    E = BuildCallExpr(nullptr, E.get(), Range.getEnd(), None,
                       Range.getEnd().getLocWithOffset(1));
     return true;
   }

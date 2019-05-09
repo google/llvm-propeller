@@ -475,7 +475,8 @@ class VarDecl;
     // A few supplemental visitor functions.
     Decl *VisitCXXMethodDecl(CXXMethodDecl *D,
                              TemplateParameterList *TemplateParams,
-                             bool IsClassScopeSpecialization = false);
+                             Optional<const ASTTemplateArgumentListInfo *>
+                                 ClassScopeSpecializationArgs = llvm::None);
     Decl *VisitFunctionDecl(FunctionDecl *D,
                             TemplateParameterList *TemplateParams);
     Decl *VisitDecl(Decl *D);
@@ -544,7 +545,8 @@ class VarDecl;
     Decl *VisitVarTemplateSpecializationDecl(
         VarTemplateDecl *VarTemplate, VarDecl *FromVar, void *InsertPos,
         const TemplateArgumentListInfo &TemplateArgsInfo,
-        ArrayRef<TemplateArgument> Converted);
+        ArrayRef<TemplateArgument> Converted,
+        VarTemplateSpecializationDecl *PrevDecl = nullptr);
 
     Decl *InstantiateTypedefNameDecl(TypedefNameDecl *D, bool IsTypeAlias);
     ClassTemplatePartialSpecializationDecl *

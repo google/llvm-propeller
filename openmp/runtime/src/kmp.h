@@ -325,7 +325,8 @@ typedef enum kmp_sched {
   kmp_sched_static_steal = 102, // mapped to kmp_sch_static_steal (44)
 #endif
   kmp_sched_upper,
-  kmp_sched_default = kmp_sched_static // default scheduling
+  kmp_sched_default = kmp_sched_static, // default scheduling
+  kmp_sched_monotonic = 0x80000000
 } kmp_sched_t;
 #endif
 
@@ -438,6 +439,11 @@ enum sched_type : kmp_int32 {
 #define SCHEDULE_HAS_NONMONOTONIC(s) (((s)&kmp_sch_modifier_nonmonotonic) != 0)
 #define SCHEDULE_HAS_NO_MODIFIERS(s)                                           \
   (((s) & (kmp_sch_modifier_nonmonotonic | kmp_sch_modifier_monotonic)) == 0)
+#define SCHEDULE_GET_MODIFIERS(s)                                              \
+  ((enum sched_type)(                                                          \
+      (s) & (kmp_sch_modifier_nonmonotonic | kmp_sch_modifier_monotonic)))
+#define SCHEDULE_SET_MODIFIERS(s, m)                                           \
+  (s = (enum sched_type)((kmp_int32)s | (kmp_int32)m))
 #else
 /* By doing this we hope to avoid multiple tests on OMP_45_ENABLED. Compilers
    can now eliminate tests on compile time constants and dead code that results
@@ -446,10 +452,46 @@ enum sched_type : kmp_int32 {
 #define SCHEDULE_HAS_MONOTONIC(s) false
 #define SCHEDULE_HAS_NONMONOTONIC(s) false
 #define SCHEDULE_HAS_NO_MODIFIERS(s) true
+#define SCHEDULE_GET_MODIFIERS(s) ((enum sched_type)0)
+#define SCHEDULE_SET_MODIFIERS(s, m) /* Nothing */
 #endif
+#define SCHEDULE_NONMONOTONIC 0
+#define SCHEDULE_MONOTONIC 1
 
   kmp_sch_default = kmp_sch_static /**< default scheduling algorithm */
 };
+
+// Apply modifiers on internal kind to standard kind
+static inline void
+__kmp_sched_apply_mods_stdkind(kmp_sched_t *kind,
+                               enum sched_type internal_kind) {
+#if OMP_50_ENABLED
+  if (SCHEDULE_HAS_MONOTONIC(internal_kind)) {
+    *kind = (kmp_sched_t)((int)*kind | (int)kmp_sched_monotonic);
+  }
+#endif
+}
+
+// Apply modifiers on standard kind to internal kind
+static inline void
+__kmp_sched_apply_mods_intkind(kmp_sched_t kind,
+                               enum sched_type *internal_kind) {
+#if OMP_50_ENABLED
+  if ((int)kind & (int)kmp_sched_monotonic) {
+    *internal_kind = (enum sched_type)((int)*internal_kind |
+                                       (int)kmp_sch_modifier_monotonic);
+  }
+#endif
+}
+
+// Get standard schedule without modifiers
+static inline kmp_sched_t __kmp_sched_without_mods(kmp_sched_t kind) {
+#if OMP_50_ENABLED
+  return (kmp_sched_t)((int)kind & ~((int)kmp_sched_monotonic));
+#else
+  return kind;
+#endif
+}
 
 /* Type to keep runtime schedule set via OMP_SCHEDULE or omp_set_schedule() */
 typedef union kmp_r_sched {
@@ -1201,16 +1243,22 @@ static inline void __kmp_clear_x87_fpu_status_word() {
   __asm__ __volatile__("fnclex");
 #endif // KMP_MIC
 }
+#if __SSE__
+static inline void __kmp_load_mxcsr(const kmp_uint32 *p) { _mm_setcsr(*p); }
+static inline void __kmp_store_mxcsr(kmp_uint32 *p) { *p = _mm_getcsr(); }
+#else
+static inline void __kmp_load_mxcsr(const kmp_uint32 *p) {}
+static inline void __kmp_store_mxcsr(kmp_uint32 *p) { *p = 0; }
+#endif
 #else
 // Windows still has these as external functions in assembly file
 extern void __kmp_x86_cpuid(int mode, int mode2, struct kmp_cpuid *p);
 extern void __kmp_load_x87_fpu_control_word(const kmp_int16 *p);
 extern void __kmp_store_x87_fpu_control_word(kmp_int16 *p);
 extern void __kmp_clear_x87_fpu_status_word();
-#endif // KMP_OS_UNIX
-
-#define __kmp_load_mxcsr(p) _mm_setcsr(*(p))
+static inline void __kmp_load_mxcsr(const kmp_uint32 *p) { _mm_setcsr(*p); }
 static inline void __kmp_store_mxcsr(kmp_uint32 *p) { *p = _mm_getcsr(); }
+#endif // KMP_OS_UNIX
 
 #define KMP_X86_MXCSR_MASK 0xffffffc0 /* ignore status flags (6 lsb) */
 
@@ -2640,6 +2688,10 @@ typedef struct KMP_ALIGN_CACHE kmp_base_team {
   std::atomic<int> t_construct; // count of single directive encountered by team
   char pad[sizeof(kmp_lock_t)]; // padding to maintain performance on big iron
 
+  // [0] - parallel / [1] - worksharing task reduction data shared by taskgroups
+  std::atomic<void *> t_tg_reduce_data[2]; // to support task modifier
+  std::atomic<int> t_tg_fini_counter[2]; // sync end of task reductions
+
   // Master only
   // ---------------------------------------------------------------------------
   KMP_ALIGN_CACHE int t_master_tid; // tid of master in parent team
@@ -3776,7 +3828,15 @@ KMP_EXPORT void __kmpc_taskloop(ident_t *loc, kmp_int32 gtid, kmp_task_t *task,
 #endif
 #if OMP_50_ENABLED
 KMP_EXPORT void *__kmpc_task_reduction_init(int gtid, int num_data, void *data);
+KMP_EXPORT void *__kmpc_taskred_init(int gtid, int num_data, void *data);
 KMP_EXPORT void *__kmpc_task_reduction_get_th_data(int gtid, void *tg, void *d);
+KMP_EXPORT void *__kmpc_task_reduction_modifier_init(ident_t *loc, int gtid,
+                                                     int is_ws, int num,
+                                                     void *data);
+KMP_EXPORT void *__kmpc_taskred_modifier_init(ident_t *loc, int gtid, int is_ws,
+                                              int num, void *data);
+KMP_EXPORT void __kmpc_task_reduction_modifier_fini(ident_t *loc, int gtid,
+                                                    int is_ws);
 KMP_EXPORT kmp_int32 __kmpc_omp_reg_task_with_affinity(
     ident_t *loc_ref, kmp_int32 gtid, kmp_task_t *new_task, kmp_int32 naffins,
     kmp_task_affinity_info_t *affin_list);

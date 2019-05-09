@@ -23,7 +23,7 @@ class ELFCfg;
 
 class ELFView {
  public:
-  static ELFView *Create(const StringRef &VN,
+  static ELFView *create(const StringRef &VN,
                          const uint32_t O,
                          const MemoryBufferRef &FR);
 
