@@ -71,14 +71,15 @@ bool Symfile::Init(StringRef SymfileName) {
 }
 
 bool PLO::DumpCfgsToFile(StringRef &CfgDumpFile) const {
-  if(CfgDumpFile.empty())
+  if (CfgDumpFile.empty())
     return false;
 
   std::ofstream OS;
   OS.open(CfgDumpFile.str(), std::ios::out);
 
-  if(!OS.good()){
-    fprintf(stderr, "File is not good for writing: <%s>\n", CfgDumpFile.str().c_str());
+  if (!OS.good()) {
+    fprintf(stderr, "File is not good for writing: <%s>\n",
+            CfgDumpFile.str().c_str());
     return false;
   }
 
@@ -111,31 +112,36 @@ void PLO::ProcessFile(const pair<elf::InputFile *, uint32_t> &Pair) {
 }
 
 void PLO::CalculateNodeFreqs() {
-  for(auto &P: CfgMap){
-    auto& Cfg = *P.second.begin();
+  for (auto &P : CfgMap) {
+    auto &Cfg = *P.second.begin();
     if (Cfg->Nodes.empty())
       return;
     bool Hot = false;
-    for (auto& Node : Cfg->Nodes){
-      uint64_t SumOuts = std::accumulate(Node->Outs.begin(), Node->Outs.end(), 0, [] (uint64_t PSum, const ELFCfgEdge * Edge){
-        return PSum + Edge->Weight;
-      });
-      uint64_t SumIns = std::accumulate(Node->Ins.begin(), Node->Ins.end(), 0, [] (uint64_t PSum, const ELFCfgEdge * Edge){
-        return PSum + Edge->Weight;
-      });
+    for (auto &Node : Cfg->Nodes) {
+      uint64_t SumOuts =
+          std::accumulate(Node->Outs.begin(), Node->Outs.end(), 0,
+                          [](uint64_t PSum, const ELFCfgEdge *Edge) {
+                            return PSum + Edge->Weight;
+                          });
+      uint64_t SumIns =
+          std::accumulate(Node->Ins.begin(), Node->Ins.end(), 0,
+                          [](uint64_t PSum, const ELFCfgEdge *Edge) {
+                            return PSum + Edge->Weight;
+                          });
 
-      uint64_t SumCallIns =  std::accumulate(Node->CallIns.begin(), Node->CallIns.end(), 0, [] (uint64_t PSum, const ELFCfgEdge * Edge){
-        return PSum + Edge->Weight;
-      });
+      uint64_t SumCallIns =
+          std::accumulate(Node->CallIns.begin(), Node->CallIns.end(), 0,
+                          [](uint64_t PSum, const ELFCfgEdge *Edge) {
+                            return PSum + Edge->Weight;
+                          });
 
       Node->Freq = std::max({SumOuts, SumIns, SumCallIns});
       Hot |= (Node->Freq != 0);
     }
-    if (Hot && Cfg->GetEntryNode()->Freq==0)
+    if (Hot && Cfg->GetEntryNode()->Freq == 0)
       Cfg->GetEntryNode()->Freq = 1;
   }
 }
-
 
 bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
                        StringRef &SymfileName,
@@ -164,13 +170,13 @@ bool PLO::ProcessFiles(vector<elf::InputFile *> &Files,
 
 vector<StringRef> PLO::GenSymbolOrderingFile() { 
   PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
-  list<ELFCfg *> OrderResult = PFO.DoOrder();
+  list<ELFCfg *> OrderResult = PFO.doOrder();
   list<StringRef> SymbolList(1, "Hot");
   const auto HotPlaceHolder = SymbolList.begin();
   const auto ColdPlaceHolder = SymbolList.end();
   for (auto *Cfg : OrderResult) {
     if (Cfg->IsHot()) {
-      PLOBBOrdering(*Cfg).DoOrder(SymbolList, HotPlaceHolder, ColdPlaceHolder);
+      PLOBBOrdering(*Cfg).doOrder(SymbolList, HotPlaceHolder, ColdPlaceHolder);
     } else {
       Cfg->ForEachNodeRef(
         [&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {

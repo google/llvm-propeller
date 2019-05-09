@@ -32,7 +32,7 @@ public:
   PLOBBOrdering(ELFCfg &C);
   ~PLOBBOrdering();
 
-  void DoOrder(list<StringRef> &SymbolList,
+  void doOrder(list<StringRef> &SymbolList,
                list<StringRef>::iterator HotPlaceHolder,
                list<StringRef>::iterator ColdPlaceHolder);
 

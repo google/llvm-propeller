@@ -95,13 +95,15 @@ private:
 };
 
 class ELFCfgEdgeBuilder {
- public:
+public:
   std::string SrcShName, SinkShName;
   uint64_t Weight;
   uint16_t Type;
 
-  ELFCfgEdgeBuilder(std::string _SrcShName, std::string _SinkShName, uint64_t _Weight, uint16_t _Type)
-      :SrcShName(_SrcShName), SinkShName(_SinkShName), Weight(_Weight), Type(_Type){}
+  ELFCfgEdgeBuilder(std::string _SrcShName, std::string _SinkShName,
+                    uint64_t _Weight, uint16_t _Type)
+      : SrcShName(_SrcShName), SinkShName(_SinkShName), Weight(_Weight),
+        Type(_Type) {}
 };
 
 class ELFCfgReader {
@@ -112,8 +114,6 @@ class ELFCfgReader {
 
   void ReadCfgs();
 };
-
-
 
 class ELFCfg {
 public:
@@ -210,8 +210,6 @@ protected:
 ostream & operator << (ostream &Out, const ELFCfgNode &Node);
 ostream & operator << (ostream &Out, const ELFCfgEdge &Edge);
 ostream & operator << (ostream &Out, const ELFCfg     &Cfg);
-
-
 
 }
 }

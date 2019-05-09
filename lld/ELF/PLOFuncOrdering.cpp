@@ -19,7 +19,7 @@ CCubeAlgorithm::Cluster::Cluster(ELFCfg *Cfg)
 
 CCubeAlgorithm::Cluster::~Cluster() {}
 
-ELFCfg *CCubeAlgorithm::MostLikelyPredecessor(
+ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
    Cluster *Cluster, ELFCfg *Cfg,
    map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap) {
   ELFCfgNode *Entry = Cfg->GetEntryNode();
@@ -37,7 +37,7 @@ ELFCfg *CCubeAlgorithm::MostLikelyPredecessor(
   return E ? E->Src->Cfg : nullptr;
 }
 
-void CCubeAlgorithm::MergeClusters() {
+void CCubeAlgorithm::mergeClusters() {
   // Signed key is used here, because negated density are used as
   // sorting keys.
   map<double, ELFCfg *> WeightOrder;
@@ -66,7 +66,7 @@ void CCubeAlgorithm::MergeClusters() {
     auto *Cluster = ClusterMap[Cfg];
     assert(Cluster);
 
-    ELFCfg *PredecessorCfg = MostLikelyPredecessor(Cluster, Cfg, ClusterMap);
+    ELFCfg *PredecessorCfg = getMostLikelyPredecessor(Cluster, Cfg, ClusterMap);
     if (!PredecessorCfg) continue;
     assert(PredecessorCfg != Cfg);
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
@@ -91,16 +91,16 @@ void CCubeAlgorithm::MergeClusters() {
   fprintf(stderr, "Total cluster size after: %lu\n", Clusters.size());
 }
 
-void CCubeAlgorithm::SortClusters() {
+void CCubeAlgorithm::sortClusters() {
   Clusters.sort([](unique_ptr<Cluster> &C1,
                    unique_ptr<Cluster> &C2) {
                   return -C1->Density < -C2->Density;
                 });
 }
 
-list<ELFCfg *> CCubeAlgorithm::DoOrder() {
-  MergeClusters();
-  SortClusters();
+list<ELFCfg *> CCubeAlgorithm::doOrder() {
+  mergeClusters();
+  sortClusters();
   list<ELFCfg *> L;
   for (auto &Cptr : Clusters) {
     L.insert(L.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());

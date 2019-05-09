@@ -44,15 +44,15 @@ public:
 
 public:
   CCubeAlgorithm(PLO &P) : Plo(P) {}
-  list<ELFCfg *> DoOrder();
+  list<ELFCfg *> doOrder();
 
 private:
-  ELFCfg *MostLikelyPredecessor(
+  ELFCfg *getMostLikelyPredecessor(
       Cluster *Cluster, ELFCfg *Cfg,
       map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
 
-  void MergeClusters();
-  void SortClusters();
+  void mergeClusters();
+  void sortClusters();
 
   PLO &Plo;
   list<unique_ptr<Cluster>> Clusters;
@@ -64,8 +64,8 @@ class PLOFuncOrdering {
   PLOFuncOrdering(PLO &P) :Algo(P) {}
   ~PLOFuncOrdering() {}
 
-  list<ELFCfg *> DoOrder() {
-    return Algo.DoOrder();
+  list<ELFCfg *> doOrder() {
+    return Algo.doOrder();
   }
 
   ReorderingAlgorithm Algo;

@@ -32,23 +32,26 @@ using std::unique_ptr;
 namespace lld {
 namespace plo {
 
-void ELFCfg::DumpToOS(std::ostream& os) const {
+void ELFCfg::DumpToOS(std::ostream &os) const {
   os << Name.str() << " " << Size << "\n";
   os << Nodes.size() << "\n";
 
-  for (const auto &Node: Nodes){
-    os << Node->Shndx << " " << Node->ShName.str() << " " << Node->MappedAddr << " " << Node->ShSize << " " << Node->Freq << "\n";
+  for (const auto &Node : Nodes) {
+    os << Node->Shndx << " " << Node->ShName.str() << " " << Node->MappedAddr
+       << " " << Node->ShSize << " " << Node->Freq << "\n";
   }
 
   os << IntraEdges.size() << "\n";
-  for(const auto &Edge: IntraEdges){
+  for (const auto &Edge : IntraEdges) {
     bool IsFTEdge = (Edge.get() == Edge->Src->FTEdge);
-    os << Edge->Src->ShName.str() << " " << Edge->Sink->ShName.str() << " " << Edge->Weight << " " << Edge->Type << " " << IsFTEdge << "\n";
+    os << Edge->Src->ShName.str() << " " << Edge->Sink->ShName.str() << " "
+       << Edge->Weight << " " << Edge->Type << " " << IsFTEdge << "\n";
   }
 
   os << InterEdges.size() << "\n";
-  for(const auto &Edge: InterEdges){
-    os << Edge->Src->ShName.str() << " " << Edge->Sink->ShName.str() << " " << Edge->Weight << " " << Edge->Type << "\n";
+  for (const auto &Edge : InterEdges) {
+    os << Edge->Src->ShName.str() << " " << Edge->Sink->ShName.str() << " "
+       << Edge->Weight << " " << Edge->Type << "\n";
   }
 }
 
@@ -262,8 +265,8 @@ void ELFCfgBuilder::BuildCfgs() {
         auto ResultP = Plo.Syms.NameMap.find(SymName);
         if (ResultP != Plo.Syms.NameMap.end()) {
           uint64_t MappedAddr = Plo.Syms.GetAddr(ResultP->second);
-          TmpNodeMap[MappedAddr].emplace_back(
-              new ELFCfgNode(SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
+          TmpNodeMap[MappedAddr].emplace_back(new ELFCfgNode(
+              SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
           continue;
         }
         // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
@@ -416,8 +419,8 @@ void ELFCfgBuilder::CalculateFallthroughEdges(
     groups, within each group, if NodeA has a fallthrough to NodeB, we
     place NodeA before NodeB. (Op. A)
 
-    We then try to find fallthrough relationship between the previous groups's last
-    node and curent group's first node. (Op. B)
+    We then try to find fallthrough relationship between the previous groups's
+    last node and curent group's first node. (Op. B)
   */
   auto SetupFallthrough =
     [&Cfg](ELFCfgNode *N1, ELFCfgNode *N2) {
@@ -536,8 +539,9 @@ ostream & operator << (ostream &Out, const ELFCfg &Cfg) {
   return Out;
 }
 
-bool PLO::ELFViewOrdinalComparator::operator ()(const ELFCfg *A, const ELFCfg *B) {
-   return A->View->Ordinal < B->View->Ordinal;
+bool PLO::ELFViewOrdinalComparator::operator()(const ELFCfg *A,
+                                               const ELFCfg *B) {
+  return A->View->Ordinal < B->View->Ordinal;
 }
 
 }  // namespace plo
