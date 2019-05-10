@@ -14,6 +14,7 @@
 
 #include "InputFiles.h"
 #include "PLOBBOrdering.h"
+#include "PLOBBReordering.h"
 #include "PLOELFCfg.h"
 #include "PLOELFView.h"
 #include "PLOFuncOrdering.h"
@@ -176,7 +177,7 @@ vector<StringRef> PLO::genSymbolOrderingFile() {
   const auto ColdPlaceHolder = SymbolList.end();
   for (auto *Cfg : OrderResult) {
     if (Cfg->isHot()) {
-      PLOBBOrdering(*Cfg).doOrder(SymbolList, HotPlaceHolder, ColdPlaceHolder);
+      ExtTSPChainBuilder(Cfg).doSplitOrder(SymbolList, HotPlaceHolder, ColdPlaceHolder);
     } else {
       Cfg->forEachNodeRef(
         [&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
