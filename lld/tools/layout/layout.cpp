@@ -153,9 +153,9 @@ class NodeChainBuilder {
     std::sort(ChainsCopy.begin(), ChainsCopy.end(),
               [this](const NodeChain* C1, const NodeChain* C2) {
                 if (opts::FunctionEntryFirst){
-                  if (C1->GetFirstNode() == this->Cfg->GetEntryNode())
+                  if (C1->GetFirstNode() == this->Cfg->getEntryNode())
                     return true;
-                  if (C2->GetFirstNode() == this->Cfg->GetEntryNode())
+                  if (C2->GetFirstNode() == this->Cfg->getEntryNode())
                     return false;
                 }
                 double C1ExecDensity = C1->GetExecDensity();
@@ -197,7 +197,7 @@ class NodeChainBuilder {
    * each other (used for fallthroughs).
    * Returns true if this can be done. */
   bool AttachNodes(const ELFCfgNode * Src, const ELFCfgNode * Sink){
-    if(opts::FunctionEntryFirst && Sink == Cfg->GetEntryNode())
+    if(opts::FunctionEntryFirst && Sink == Cfg->getEntryNode())
       return false;
     if(opts::SeparateHotCold && (Src->Freq==0 ^ Sink->Freq==0))
       return false;
@@ -531,7 +531,7 @@ class ExtTSPChainBuilder : public NodeChainBuilder{
         NodeChainAssembly NCA(SplitChain, UnsplitChain, SlicePos, MergeOrder, this);
         //std::cerr << "Trying NCA: ";
         //NCA.Dump();
-        ELFCfgNode * EntryNode = Cfg->GetEntryNode();
+        ELFCfgNode * EntryNode = Cfg->getEntryNode();
         if(opts::FunctionEntryFirst &&
            (NCA.SplitChain->GetFirstNode()==EntryNode || NCA.UnsplitChain->GetFirstNode()==EntryNode) &&
            (NCA.GetFirstNode() != EntryNode))
@@ -690,7 +690,7 @@ int main(int Argc, const char **Argv) {
     std::ofstream LOS;
     LOS.open(opts::LayoutDump.getValue(), std::ios::out);
     for(auto& Cfg: CfgReader.Cfgs){
-      if (Cfg->IsHot()){
+      if (Cfg->isHot()){
         /*
         auto ChainBuilder = lld::plo::NodeChainBuilder(Cfg.get());
         ChainBuilder.GreedyChain();
