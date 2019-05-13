@@ -13,6 +13,7 @@
 #include <ostream>
 #include <string>
 #include <unordered_map>
+#include <iostream>
 
 #include "llvm/Object/ObjectFile.h"
 // Needed by ELFSectionRef & ELFSymbolRef.

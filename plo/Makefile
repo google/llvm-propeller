@@ -127,12 +127,12 @@ sample.plo.out: sample.out.symfile sample.out.profile sample.o stage1-compiler
 	  -Wl,-plo \
 	  -Wl,-symfile=sample.out.symfile \
 	  -Wl,-profile=sample.out.profile \
-	  -Wl,-cfgdump=sample.out.cfgdump \
+	  -Wl,-cfgdump=sample.out.cfg \
 	  sample.o -o $@ 2>&1 | tee $@.autolog
 
 sample.out.layout: sample.out.cfg stage1-compiler
 	stage1/install/bin/layout -cfg-read sample.out.cfg \
-		-layout-dump sample.out.layout | tee sample.out.layout.autolog
+		-layout-dump $@ | tee $@.autolog
 
 clean:
 	for F in bbinstr bbsec ; do \
