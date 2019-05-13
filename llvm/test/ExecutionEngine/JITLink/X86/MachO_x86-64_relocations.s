@@ -180,32 +180,32 @@ anon_minuend_long1:
 # Both forms "A: .quad A - B + C" and "A: .quad B - A + C" are tested.
 #
 # Check "A: .quad B - A + C".
-# jitlink-check: *{8}subtrahend_quad2 = (named_data - subtrahend_quad2 + 2)
+# jitlink-check: *{8}subtrahend_quad2 = (named_data - subtrahend_quad2 - 2)
         .globl  subtrahend_quad2
         .p2align  3
 subtrahend_quad2:
-        .quad named_data - subtrahend_quad2 + 2
+        .quad named_data - subtrahend_quad2 - 2
 
 # Check "A: .long B - A + C".
-# jitlink-check: *{4}subtrahend_long2 = (named_data - subtrahend_long2 + 2)[31:0]
+# jitlink-check: *{4}subtrahend_long2 = (named_data - subtrahend_long2 - 2)[31:0]
         .globl  subtrahend_long2
         .p2align  2
 subtrahend_long2:
-        .long named_data - subtrahend_long2 + 2
+        .long named_data - subtrahend_long2 - 2
 
 # Check "A: .quad A - B + C".
-# jitlink-check: *{8}minuend_quad3 = (minuend_quad3 - named_data + 2)
+# jitlink-check: *{8}minuend_quad3 = (minuend_quad3 - named_data - 2)
         .globl  minuend_quad3
         .p2align  3
 minuend_quad3:
-        .quad minuend_quad3 - named_data + 2
+        .quad minuend_quad3 - named_data - 2
 
 # Check "A: .long B - A + C".
-# jitlink-check: *{4}minuend_long3 = (minuend_long3 - named_data + 2)[31:0]
+# jitlink-check: *{4}minuend_long3 = (minuend_long3 - named_data - 2)[31:0]
         .globl  minuend_long3
         .p2align  2
 minuend_long3:
-        .long minuend_long3 - named_data + 2
+        .long minuend_long3 - named_data - 2
 
 # Check X86_64_RELOC_SUBTRACTOR handling for exprs of the form
 # "A: .quad/long B - C + D", where 'B' or 'C' is at a fixed offset from 'A'
@@ -262,5 +262,39 @@ subtractor_with_alt_entry_subtrahend_quad:
         .alt_entry subtractor_with_alt_entry_subtrahend_quad_B
 subtractor_with_alt_entry_subtrahend_quad_B:
         .quad 0
+
+# Check that unreferenced atoms in no-dead-strip sections are not dead stripped.
+# We need to use a local symbol for this as any named symbol will end up in the
+# ORC responsibility set, which is automatically marked live and would couse
+# spurious passes.
+#
+# jitlink-check: *{8}section_addr(macho_reloc.o, __nds_test_sect) = 0
+        .section        __DATA,__nds_test_sect,regular,no_dead_strip
+        .quad 0
+
+# Check that explicit zero-fill symbols are supported
+# jitlink-check: *{8}zero_fill_test = 0
+        .globl zero_fill_test
+.zerofill __DATA,__zero_fill_test,zero_fill_test,8,3
+
+# Check that section alignments are respected.
+# We test this by introducing two segments with alignment 8, each containing one
+# byte of data. We require both symbols to have an aligned address.
+#
+# jitlink-check: section_alignment_check1[2:0] = 0
+# jitlink-check: section_alignment_check2[2:0] = 0
+        .section        __DATA,__sec_align_chk1
+        .p2align 3
+
+        .globl section_alignment_check1
+section_alignment_check1:
+        .byte 0
+
+        .section        __DATA,__sec_align_chk2
+        .p2align 3
+
+        .globl section_alignment_check2
+section_alignment_check2:
+        .byte 0
 
 .subsections_via_symbols

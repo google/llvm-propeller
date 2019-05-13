@@ -241,6 +241,10 @@ Error JITLinkerBase::allocateSegments(const SegmentLayoutMap &Layout) {
     for (auto &SI : SegLayout.ContentSections) {
       assert(!SI.S->atoms_empty() && "Sections in layout must not be empty");
       assert(!SI.Atoms.empty() && "Section layouts must not be empty");
+
+      // Bump to section alignment before processing atoms.
+      SegContentSize = alignTo(SegContentSize, SI.S->getAlignment());
+
       for (auto *DA : SI.Atoms) {
         SegContentSize = alignTo(SegContentSize, DA->getAlignment());
         SegContentSize += DA->getSize();
@@ -249,15 +253,22 @@ Error JITLinkerBase::allocateSegments(const SegmentLayoutMap &Layout) {
 
     // Get segment content alignment.
     unsigned SegContentAlign = 1;
-    if (!SegLayout.ContentSections.empty())
+    if (!SegLayout.ContentSections.empty()) {
+      auto &FirstContentSection = SegLayout.ContentSections.front();
       SegContentAlign =
-          SegLayout.ContentSections.front().Atoms.front()->getAlignment();
+          std::max(FirstContentSection.S->getAlignment(),
+                   FirstContentSection.Atoms.front()->getAlignment());
+    }
 
     // Calculate segment zero-fill size.
     uint64_t SegZeroFillSize = 0;
     for (auto &SI : SegLayout.ZeroFillSections) {
       assert(!SI.S->atoms_empty() && "Sections in layout must not be empty");
       assert(!SI.Atoms.empty() && "Section layouts must not be empty");
+
+      // Bump to section alignment before processing atoms.
+      SegZeroFillSize = alignTo(SegZeroFillSize, SI.S->getAlignment());
+
       for (auto *DA : SI.Atoms) {
         SegZeroFillSize = alignTo(SegZeroFillSize, DA->getAlignment());
         SegZeroFillSize += DA->getSize();
@@ -266,9 +277,13 @@ Error JITLinkerBase::allocateSegments(const SegmentLayoutMap &Layout) {
 
     // Calculate segment zero-fill alignment.
     uint32_t SegZeroFillAlign = 1;
-    if (!SegLayout.ZeroFillSections.empty())
+
+    if (!SegLayout.ZeroFillSections.empty()) {
+      auto &FirstZeroFillSection = SegLayout.ZeroFillSections.front();
       SegZeroFillAlign =
-          SegLayout.ZeroFillSections.front().Atoms.front()->getAlignment();
+          std::max(FirstZeroFillSection.S->getAlignment(),
+                   FirstZeroFillSection.Atoms.front()->getAlignment());
+    }
 
     if (SegContentSize == 0)
       SegContentAlign = SegZeroFillAlign;
@@ -314,12 +329,14 @@ Error JITLinkerBase::allocateSegments(const SegmentLayoutMap &Layout) {
         Alloc->getTargetMemory(static_cast<sys::Memory::ProtectionFlags>(Prot));
 
     for (auto *SIList : {&SL.ContentSections, &SL.ZeroFillSections})
-      for (auto &SI : *SIList)
+      for (auto &SI : *SIList) {
+        AtomTargetAddr = alignTo(AtomTargetAddr, SI.S->getAlignment());
         for (auto *DA : SI.Atoms) {
           AtomTargetAddr = alignTo(AtomTargetAddr, DA->getAlignment());
           DA->setAddress(AtomTargetAddr);
           AtomTargetAddr += DA->getSize();
         }
+      }
   }
 
   return Error::success();
@@ -433,28 +450,16 @@ void prune(AtomGraph &G) {
     //
     // We replace if all of the following hold:
     //   (1) The atom is marked should-discard,
-    //   (2) it is live, and
-    //   (3) it has edges pointing to it.
+    //   (2) it has live edges (i.e. edges from live atoms) pointing to it.
     //
     // Otherwise we simply delete the atom.
-    bool ReplaceWithExternal = DA->isLive() && DA->shouldDiscard();
-    std::vector<Edge *> *EdgesToUpdateForDA = nullptr;
-    if (ReplaceWithExternal) {
-      auto ETUItr = EdgesToUpdate.find(DA);
-      if (ETUItr == EdgesToUpdate.end())
-        ReplaceWithExternal = false;
-      else
-        EdgesToUpdateForDA = &ETUItr->second;
-    }
 
     G.removeDefinedAtom(*DA);
 
-    if (ReplaceWithExternal) {
-      assert(EdgesToUpdateForDA &&
-             "Replacing atom: There should be edges to update");
-
+    auto EdgesToUpdateItr = EdgesToUpdate.find(DA);
+    if (EdgesToUpdateItr != EdgesToUpdate.end()) {
       auto &ExternalReplacement = G.addExternalAtom(DA->getName());
-      for (auto *EdgeToUpdate : *EdgesToUpdateForDA)
+      for (auto *EdgeToUpdate : EdgesToUpdateItr->second)
         EdgeToUpdate->setTarget(ExternalReplacement);
       LLVM_DEBUG(dbgs() << "replaced with " << ExternalReplacement << "\n");
     } else

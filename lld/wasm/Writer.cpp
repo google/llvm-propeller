@@ -1142,6 +1142,10 @@ void Writer::calculateTypes() {
     registerType(E->Signature);
 }
 
+static bool requiresGOTAccess(const Symbol* Sym) {
+  return Config->Pic && !Sym->isHidden() && !Sym->isLocal();
+}
+
 void Writer::processRelocations(InputChunk *Chunk) {
   if (!Chunk->Live)
     return;
@@ -1161,10 +1165,8 @@ void Writer::processRelocations(InputChunk *Chunk) {
     case R_WASM_TABLE_INDEX_I32:
     case R_WASM_TABLE_INDEX_SLEB:
     case R_WASM_TABLE_INDEX_REL_SLEB: {
-      if (Config->Pic && Reloc.Type != R_WASM_TABLE_INDEX_REL_SLEB)
-        break;
       auto *F = cast<FunctionSymbol>(Sym);
-      if (F->hasTableIndex() || !F->hasFunctionIndex())
+      if (F->hasTableIndex() || !F->hasFunctionIndex() || requiresGOTAccess(F))
         break;
       F->setTableIndex(TableBase + IndirectFunctions.size());
       IndirectFunctions.emplace_back(F);
@@ -1207,7 +1209,7 @@ void Writer::processRelocations(InputChunk *Chunk) {
         // These relocation types are only present in the data section and
         // will be converted into code by `generateRelocationCode`.  This code
         // requires the symbols to have GOT entires.
-        if (!Sym->isHidden() && !Sym->isLocal() && !Sym->isInGOT()) {
+        if (requiresGOTAccess(Sym) && !Sym->isInGOT()) {
           Sym->setGOTIndex(NumImportedGlobals++);
           GOTSymbols.push_back(Sym);
         }

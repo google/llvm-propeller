@@ -366,7 +366,8 @@ static bool isKnownZFlag(StringRef S) {
          S == "nokeep-text-section-prefix" || S == "norelro" || S == "notext" ||
          S == "now" || S == "origin" || S == "relro" || S == "retpolineplt" ||
          S == "rodynamic" || S == "text" || S == "wxneeded" ||
-         S.startswith("max-page-size=") || S.startswith("stack-size=");
+         S.startswith("common-page-size") || S.startswith("max-page-size=") ||
+         S.startswith("stack-size=");
 }
 
 // Report an error for an unknown -z option.
@@ -441,6 +442,11 @@ void LinkerDriver::main(ArrayRef<const char *> ArgsArr) {
   checkOptions();
   if (errorCount())
     return;
+
+  // The Target instance handles target-specific stuff, such as applying
+  // relocations or writing a PLT section. It also contains target-dependent
+  // values such as a default image base address.
+  Target = getTarget();
 
   switch (Config->EKind) {
   case ELF32LEKind:
@@ -831,6 +837,7 @@ static void readConfigs(opt::InputArgList &Args) {
   Config->MipsGotSize = args::getInteger(Args, OPT_mips_got_size, 0xfff0);
   Config->MergeArmExidx =
       Args.hasFlag(OPT_merge_exidx_entries, OPT_no_merge_exidx_entries, true);
+  Config->Nmagic = Args.hasFlag(OPT_nmagic, OPT_no_nmagic, false);
   Config->NoinhibitExec = Args.hasArg(OPT_noinhibit_exec);
   Config->Nostdlib = Args.hasArg(OPT_nostdlib);
   Config->OFormatBinary = isOutputFormatBinary(Args);
@@ -964,11 +971,10 @@ static void readConfigs(opt::InputArgList &Args) {
   if (Args.hasArg(OPT_print_map))
     Config->MapFile = "-";
 
-  // --omagic is an option to create old-fashioned executables in which
-  // .text segments are writable. Today, the option is still in use to
-  // create special-purpose programs such as boot loaders. It doesn't
-  // make sense to create PT_GNU_RELRO for such executables.
-  if (Config->Omagic)
+  // Page alignment can be disabled by the -n (--nmagic) and -N (--omagic).
+  // As PT_GNU_RELRO relies on Paging, do not create it when we have disabled
+  // it.
+  if (Config->Nmagic || Config->Omagic)
     Config->ZRelro = false;
 
   std::tie(Config->BuildId, Config->BuildIdVector) = getBuildId(Args);
@@ -1121,6 +1127,8 @@ void LinkerDriver::createFiles(opt::InputArgList &Args) {
       Config->AsNeeded = false;
       break;
     case OPT_Bstatic:
+    case OPT_omagic:
+    case OPT_nmagic:
       Config->Static = true;
       break;
     case OPT_Bdynamic:
@@ -1206,6 +1214,29 @@ static uint64_t getMaxPageSize(opt::InputArgList &Args) {
                                        Target->DefaultMaxPageSize);
   if (!isPowerOf2_64(Val))
     error("max-page-size: value isn't a power of 2");
+  if (Config->Nmagic || Config->Omagic) {
+    if (Val != Target->DefaultMaxPageSize)
+      warn("-z max-page-size set, but paging disabled by omagic or nmagic");
+    return 1;
+  }
+  return Val;
+}
+
+// Parse -z common-page-size=<value>. The default value is defined by
+// each target.
+static uint64_t getCommonPageSize(opt::InputArgList &Args) {
+  uint64_t Val = args::getZOptionValue(Args, OPT_z, "common-page-size",
+                                       Target->DefaultCommonPageSize);
+  if (!isPowerOf2_64(Val))
+    error("common-page-size: value isn't a power of 2");
+  if (Config->Nmagic || Config->Omagic) {
+    if (Val != Target->DefaultCommonPageSize)
+      warn("-z common-page-size set, but paging disabled by omagic or nmagic");
+    return 1;
+  }
+  // CommonPageSize can't be larger than MaxPageSize.
+  if (Val > Config->MaxPageSize)
+    Val = Config->MaxPageSize;
   return Val;
 }
 
@@ -1645,13 +1676,19 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
   if (Config->Strip != StripPolicy::None)
     llvm::erase_if(InputSections, [](InputSectionBase *S) { return S->Debug; });
 
-  // The Target instance handles target-specific stuff, such as applying
-  // relocations or writing a PLT section. It also contains target-dependent
-  // values such as a default image base address.
-  Target = getTarget();
-
   Config->EFlags = Target->calcEFlags();
+  // MaxPageSize (sometimes called abi page size) is the maximum page size that
+  // the output can be run on. For example if the OS can use 4k or 64k page
+  // sizes then MaxPageSize must be 64 for the output to be useable on both.
+  // All important alignment decisions must use this value.
   Config->MaxPageSize = getMaxPageSize(Args);
+  // CommonPageSize is the most common page size that the output will be run on.
+  // For example if an OS can use 4k or 64k page sizes and 4k is more common
+  // than 64k then CommonPageSize is set to 4k. CommonPageSize can be used for
+  // optimizations such as DATA_SEGMENT_ALIGN in linker scripts. LLD's use of it
+  // is limited to writing trap instructions on the last executable segment.
+  Config->CommonPageSize = getCommonPageSize(Args);
+
   Config->ImageBase = getImageBase(Args);
 
   if (Config->EMachine == EM_ARM) {

@@ -92,7 +92,7 @@ public:
   virtual unsigned flipDoubleJmpInsn(InputSection &IS, InputFile *File, uint32_t) const
   { return 0; }
 
-  unsigned PageSize = 4096;
+  unsigned DefaultCommonPageSize = 4096;
   unsigned DefaultMaxPageSize = 4096;
 
   uint64_t getImageBase() const;
