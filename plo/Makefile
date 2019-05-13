@@ -114,7 +114,7 @@ sample_instr.o: sample.c stage1-compiler
 	./stage1-compiler -fbasicblock-sections=labels -fpic -c -O2 $< -o $@
 
 sample.out: sample_instr.o
-	./stage1-compiler -pie -o $@ $<
+	./stage1-compiler -Wl,-build-id -o $@ $<
 
 sample.perfdata: sample.out
 	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
@@ -127,6 +127,7 @@ sample.plo.out: sample.out.symfile sample.out.profile sample.o stage1-compiler
 	  -Wl,-plo \
 	  -Wl,-symfile=sample.out.symfile \
 	  -Wl,-profile=sample.out.profile \
+	  -Wl,-cfgdump=sample.out.cfgdump \
 	  sample.o -o $@ 2>&1 | tee $@.autolog
 
 sample.out.layout: sample.out.cfg stage1-compiler
