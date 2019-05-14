@@ -180,14 +180,6 @@ void MachineFunction::init() {
     Alignment = std::max(Alignment,
                          STI->getTargetLowering()->getPrefFunctionAlignment());
 
-  if (Target.getBasicBlockSections() == llvm::BasicBlockSection::All ||
-      F.getBasicBlockSections())
-    BasicBlockSections = true;
-
-  if (Target.getBasicBlockSections() == llvm::BasicBlockSection::Labels ||
-      F.getBasicBlockLabels())
-    BasicBlockLabels = true;
-
   if (AlignAllFunctions)
     Alignment = AlignAllFunctions;
 

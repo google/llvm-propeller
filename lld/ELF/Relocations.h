@@ -24,7 +24,6 @@ class SectionBase;
 
 // Represents a relocation type, such as R_X86_64_PC32 or R_ARM_THM_CALL.
 using RelType = uint32_t;
-using JumpRelType = uint32_t;
 
 // List of target-independent relocation types. Relocations read
 // from files are converted to these types so that the main code
@@ -105,13 +104,6 @@ struct Relocation {
   uint64_t Offset;
   int64_t Addend;
   Symbol *Sym;
-};
-
-// Artificial Relocations to manipulate jump instructions.
-struct JumpRelocation {
-  JumpRelType Original;
-  uint64_t Offset;
-  unsigned Size;
 };
 
 template <class ELFT> void scanRelocations(InputSectionBase &);

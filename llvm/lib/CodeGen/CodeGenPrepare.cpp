@@ -431,41 +431,11 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
 
   ProfileSummaryInfo *PSI =
       &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
-
-  if (TM->getBasicBlockSections() == llvm::BasicBlockSection::All)
-    F.setBasicBlockSections(true);
-
-  if (TM->getBasicBlockSections() == llvm::BasicBlockSection::Labels)
-    F.setBasicBlockLabels(true);
-
   if (ProfileGuidedSectionPrefix) {
-    if (PSI->isFunctionHotInCallGraph(&F, *BFI)) {
-      if (TM->getBasicBlockSections() == llvm::BasicBlockSection::Hot ||
-          TM->getBasicBlockSections() == llvm::BasicBlockSection::Likely)
-        F.setBasicBlockSections(true);
+    if (PSI->isFunctionHotInCallGraph(&F, *BFI))
       F.setSectionPrefix(".hot");
-    }
-    else if (PSI->isFunctionColdInCallGraph(&F, *BFI)) {
+    else if (PSI->isFunctionColdInCallGraph(&F, *BFI))
       F.setSectionPrefix(".unlikely");
-    } else {
-      if (TM->getBasicBlockSections() == llvm::BasicBlockSection::Likely)
-        F.setBasicBlockSections(true);
-    }
-
-    if (F.getBasicBlockSections()) {
-      for (BasicBlock &BB : F) {
-        auto Count = BFI->getBlockProfileCount(&BB);
-        if (Count && PSI->isHotCount(*Count))
-          BB.setSectionPrefix(".hot");
-        else if (Count && PSI->isColdCount(*Count))
-          BB.setSectionPrefix(".unlikely");
-      }
-    }
-  }
-  else if (F.getBasicBlockSections()) {
-    for (BasicBlock &BB : F) {
-      BB.setSectionPrefix(F.getName());
-    }
   }
 
   /// This optimization identifies DIV instructions that can be

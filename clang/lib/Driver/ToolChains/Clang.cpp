@@ -3673,11 +3673,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         options::OPT_fno_function_sections,
         options::OPT_fdata_sections,
         options::OPT_fno_data_sections,
-        options::OPT_fbasicblock_sections_EQ,
         options::OPT_funique_section_names,
         options::OPT_fno_unique_section_names,
-        options::OPT_funique_bb_section_names,
-        options::OPT_fno_unique_bb_section_names,
         options::OPT_mrestrict_it,
         options::OPT_mno_restrict_it,
         options::OPT_mstackrealign,
@@ -4166,11 +4163,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-ffunction-sections");
   }
 
-  if (Arg *A = Args.getLastArg(options::OPT_fbasicblock_sections_EQ)) {
-    CmdArgs.push_back(
-        Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
-  }
-
   if (Args.hasFlag(options::OPT_fdata_sections, options::OPT_fno_data_sections,
                    UseSeparateSections)) {
     CmdArgs.push_back("-fdata-sections");
@@ -4179,10 +4171,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (!Args.hasFlag(options::OPT_funique_section_names,
                     options::OPT_fno_unique_section_names, true))
     CmdArgs.push_back("-fno-unique-section-names");
-
-  if (Args.hasFlag(options::OPT_funique_bb_section_names,
-                   options::OPT_fno_unique_bb_section_names, false))
-    CmdArgs.push_back("-funique-bb-section-names");
 
   if (auto *A = Args.getLastArg(
       options::OPT_finstrument_functions,
