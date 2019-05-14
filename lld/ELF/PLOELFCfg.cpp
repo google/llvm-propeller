@@ -2,6 +2,8 @@
 
 #include "PLO.h"
 #include "PLOELFView.h"
+#include "Symbols.h"
+#include "SymbolTable.h"
 
 #include <fstream>
 #include <iomanip>
@@ -220,7 +222,6 @@ void ELFCfgReader::readCfgs() {
 }
 
 void ELFCfgBuilder::buildCfgs() {
-  // fprintf(stderr, "Building Cfgs for %s...\n", Inf->getName().str().c_str());
   auto Symbols = View->ViewFile->symbols();
   map<StringRef, list<SymbolRef>> Groups;
   for (const SymbolRef &Sym : Symbols) {
@@ -228,6 +229,9 @@ void ELFCfgBuilder::buildCfgs() {
     auto S = Sym.getName();
     if (R && S && *R == SymbolRef::ST_Function) {
       StringRef SymName = *S;
+      lld::elf::Symbol *PSym = Plo.Symtab->find(SymName);
+      if (PSym && (PSym->kind() == lld::elf::Symbol::UndefinedKind))
+        continue;
       auto IE = Groups.emplace(std::piecewise_construct,
                                std::forward_as_tuple(SymName),
                                std::forward_as_tuple(1, Sym));

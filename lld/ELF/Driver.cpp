@@ -1660,7 +1660,7 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
       error("Conflict options: --plo and --symbol-ordering-file.");
     }
     printf("Entering into PLO mode, processing %lu files.\n", ObjectFiles.size());
-    lld::plo::PLO Plo;
+    lld::plo::PLO Plo(Symtab);
     if (Plo.processFiles(ObjectFiles,
                          Config->SymFile,
                          Config->Profile,

@@ -43,7 +43,6 @@ void CCubeAlgorithm::mergeClusters() {
   // sorting keys.
   map<double, ELFCfg *> WeightOrder;
   map<ELFCfg *, Cluster *> ClusterMap;
-  fprintf(stderr, "Ordering Cfg...\n");
   Plo.ForEachCfgRef([this, &ClusterMap, &WeightOrder](ELFCfg &Cfg) {
     uint64_t CfgWeight = 0;
     double CfgSize = (double)Cfg.Size;
@@ -80,11 +79,8 @@ void CCubeAlgorithm::mergeClusters() {
       continue;
 
     // Join 2 clusters into PredecessorCluster.
-    fprintf(stderr, "Before: density: %.3f & %.3f\n",
-            PredecessorCluster->Density, Cluster->Density);
     *PredecessorCluster << *Cluster;
-    fprintf(stderr, "After: density: %.3f\n", PredecessorCluster->Density);
-
+    
     // Update Cfg <-> Cluster mapping, because all cfgs that were
     // previsously in Cluster are now in PredecessorCluster.
     for (ELFCfg *Cfg : Cluster->Cfgs) {

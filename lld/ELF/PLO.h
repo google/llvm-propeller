@@ -33,6 +33,7 @@ using llvm::StringRef;
 namespace lld {
 namespace elf {
   class InputFile;
+  class SymbolTable;
 }
 
 namespace plo {
@@ -79,7 +80,7 @@ private:
 
 class PLO {
 public:
-  PLO();
+  PLO(lld::elf::SymbolTable *ST);
   ~PLO();
   
   bool processFiles(vector<elf::InputFile *> &Files,
@@ -112,6 +113,7 @@ public:
   }
 
   Symfile Syms;
+  lld::elf::SymbolTable *Symtab;
 
 private:
   void processFile(const pair<elf::InputFile *, uint32_t> &Pair);

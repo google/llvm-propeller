@@ -19,6 +19,8 @@
 #include "PLOELFView.h"
 #include "PLOFuncOrdering.h"
 #include "PLOProfile.h"
+#include "Symbols.h"
+#include "SymbolTable.h"
 
 #include "lld/Common/Memory.h"
 #include "llvm/ADT/SmallVector.h"
@@ -38,7 +40,7 @@ using std::string;
 namespace lld {
 namespace plo {
 
-PLO::PLO() {}
+PLO::PLO(lld::elf::SymbolTable *ST) : Symtab{ST} {}
 PLO::~PLO() {}
 
 Symfile::Symfile() : BPAllocator(), SymStrSaver(BPAllocator) {}
@@ -104,9 +106,9 @@ void PLO::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
       std::lock_guard<mutex> L(this->Lock);
       this->Views.emplace_back(View);
       for (auto &P : View->Cfgs) {
-	auto R = CfgMap[P.first].emplace(P.second.get());
-	(void)(R);
-	assert(R.second);
+        auto R = CfgMap[P.first].emplace(P.second.get());
+        (void)(R);
+        assert(R.second);
       }
     }
   }
