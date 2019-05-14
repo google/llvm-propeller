@@ -731,8 +731,9 @@ static void appendUserToPath(SmallVectorImpl<char> &Result) {
   Result.append(UID.begin(), UID.end());
 }
 
-static void addPGOAndCoverageFlags(Compilation &C, const Driver &D,
-                                   const InputInfo &Output, const ArgList &Args,
+static void addPGOAndCoverageFlags(const ToolChain &TC, Compilation &C,
+                                   const Driver &D, const InputInfo &Output,
+                                   const ArgList &Args,
                                    ArgStringList &CmdArgs) {
 
   auto *PGOGenerateArg = Args.getLastArg(options::OPT_fprofile_generate,
@@ -783,6 +784,11 @@ static void addPGOAndCoverageFlags(Compilation &C, const Driver &D,
                                            ProfileGenerateArg->getValue()));
     // The default is to use Clang Instrumentation.
     CmdArgs.push_back("-fprofile-instrument=clang");
+    if (TC.getTriple().isWindowsMSVCEnvironment()) {
+      // Add dependent lib for clang_rt.profile
+      CmdArgs.push_back(Args.MakeArgString("--dependent-lib=" +
+                                           TC.getCompilerRT(Args, "profile")));
+    }
   }
 
   Arg *PGOGenArg = nullptr;
@@ -1166,7 +1172,7 @@ void Clang::AddPreprocessingOptions(Compilation &C, const JobAction &JA,
     }
 
     CmdArgs.push_back("-include");
-    CmdArgs.push_back("__clang_openmp_math.h");
+    CmdArgs.push_back("__clang_openmp_math_declares.h");
   }
 
   // Add -i* options, and automatically translate to
@@ -4188,7 +4194,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // sampling, overhead of call arc collection is way too high and there's no
   // way to collect the output.
   if (!Triple.isNVPTX())
-    addPGOAndCoverageFlags(C, D, Output, Args, CmdArgs);
+    addPGOAndCoverageFlags(TC, C, D, Output, Args, CmdArgs);
 
   if (auto *ABICompatArg = Args.getLastArg(options::OPT_fclang_abi_compat_EQ))
     ABICompatArg->render(Args, CmdArgs);

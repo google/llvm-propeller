@@ -5021,11 +5021,12 @@ bool X86TargetLowering::shouldFoldConstantShiftPairToMask(
           (N->getOpcode() == ISD::SRL &&
            N->getOperand(0).getOpcode() == ISD::SHL)) &&
          "Expected shift-shift mask");
-
-  if (Subtarget.hasFastVectorShiftMasks() && N->getValueType(0).isVector()) {
+  EVT VT = N->getValueType(0);
+  if ((Subtarget.hasFastVectorShiftMasks() && VT.isVector()) ||
+      (Subtarget.hasFastScalarShiftMasks() && !VT.isVector())) {
     // Only fold if the shift values are equal - so it folds to AND.
-    // TODO - we should fold if either is non-uniform but we don't do the
-    // fold for non-splats yet.
+    // TODO - we should fold if either is a non-uniform vector but we don't do
+    // the fold for non-splats yet.
     return N->getOperand(1) == N->getOperand(0).getOperand(1);
   }
   return TargetLoweringBase::shouldFoldConstantShiftPairToMask(N, Level);
@@ -22129,7 +22130,7 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       unsigned IntrWithRoundingModeOpcode = IntrData->Opc1;
       if (IntrWithRoundingModeOpcode != 0) {
         SDValue Rnd = Op.getOperand(2);
-        unsigned RC;
+        unsigned RC = 0;
         if (isRoundModeSAEToX(Rnd, RC))
           return DAG.getNode(IntrWithRoundingModeOpcode, dl, Op.getValueType(),
                              Op.getOperand(1),
@@ -22161,7 +22162,7 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       unsigned IntrWithRoundingModeOpcode = IntrData->Opc1;
       if (IntrWithRoundingModeOpcode != 0) {
         SDValue Rnd = Op.getOperand(3);
-        unsigned RC;
+        unsigned RC = 0;
         if (isRoundModeSAEToX(Rnd, RC))
           return DAG.getNode(IntrWithRoundingModeOpcode, dl, Op.getValueType(),
                              Op.getOperand(1), Src2,
@@ -22202,7 +22203,7 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       unsigned IntrWithRoundingModeOpcode = IntrData->Opc1;
       if (IntrWithRoundingModeOpcode != 0) {
         SDValue Rnd = Op.getOperand(4);
-        unsigned RC;
+        unsigned RC = 0;
         if (isRoundModeSAEToX(Rnd, RC))
           return DAG.getNode(IntrWithRoundingModeOpcode, dl, Op.getValueType(),
                              Src1, Src2, Src3,
@@ -22227,7 +22228,7 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       unsigned IntrWithRoundingModeOpcode = IntrData->Opc1;
       if (IntrWithRoundingModeOpcode != 0) {
         SDValue Rnd = Op.getOperand(4);
-        unsigned RC;
+        unsigned RC = 0;
         if (isRoundModeSAEToX(Rnd, RC))
           return getVectorMaskingNode(
               DAG.getNode(IntrWithRoundingModeOpcode, dl, Op.getValueType(),
@@ -22269,7 +22270,7 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       if (Op.getNumOperands() == (5U + HasRounding)) {
         if (HasRounding) {
           SDValue Rnd = Op.getOperand(5);
-          unsigned RC;
+          unsigned RC = 0;
           if (isRoundModeSAEToX(Rnd, RC))
             return getScalarMaskingNode(
                 DAG.getNode(IntrWithRoundingModeOpcode, dl, VT, Src1, Src2,
@@ -22306,7 +22307,7 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       SDValue Rnd = Op.getOperand(5);
 
       SDValue NewOp;
-      unsigned RC;
+      unsigned RC = 0;
       if (isRoundModeCurDirection(Rnd))
         NewOp = DAG.getNode(IntrData->Opc0, dl, VT, Src1, Src2);
       else if (isRoundModeSAEToX(Rnd, RC))
@@ -22342,7 +22343,7 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       SDValue NewOp;
       if (IntrData->Opc1 != 0) {
         SDValue Rnd = Op.getOperand(5);
-        unsigned RC;
+        unsigned RC = 0;
         if (isRoundModeSAEToX(Rnd, RC))
           NewOp = DAG.getNode(IntrData->Opc1, dl, VT, Src1, Src2,
                               DAG.getTargetConstant(RC, dl, MVT::i32));
@@ -25848,12 +25849,13 @@ static SDValue LowerATOMIC_FENCE(SDValue Op, const X86Subtarget &Subtarget,
       DAG.getTargetConstant(1, dl, MVT::i8),   // Scale
       DAG.getRegister(0, MVT::i32),            // Index
       DAG.getTargetConstant(0, dl, MVT::i32),  // Disp
-      DAG.getRegister(0, MVT::i32),            // Segment.
+      DAG.getRegister(0, MVT::i16),            // Segment.
       Zero,
       Chain
     };
-    SDNode *Res = DAG.getMachineNode(X86::OR32mi8Locked, dl, MVT::Other, Ops);
-    return SDValue(Res, 0);
+    SDNode *Res = DAG.getMachineNode(X86::OR32mi8Locked, dl, MVT::i32,
+                                     MVT::Other, Ops);
+    return SDValue(Res, 1);
   }
 
   // MEMBARRIER is a compiler barrier; it codegens to a no-op.
@@ -26299,17 +26301,18 @@ static SDValue emitLockedStackOp(SelectionDAG &DAG,
   // https://shipilev.net/blog/2014/on-the-fence-with-dependencies/
 
   if (Subtarget.is64Bit()) {
-    SDValue Zero = DAG.getTargetConstant(0, DL, MVT::i8);
+    SDValue Zero = DAG.getTargetConstant(0, DL, MVT::i32);
     SDValue Ops[] = {
       DAG.getRegister(X86::RSP, MVT::i64),                  // Base
       DAG.getTargetConstant(1, DL, MVT::i8),                // Scale
       DAG.getRegister(0, MVT::i64),                         // Index
       DAG.getTargetConstant(0, DL, MVT::i32),               // Disp
-      DAG.getRegister(0, MVT::i32),                         // Segment.
+      DAG.getRegister(0, MVT::i16),                         // Segment.
       Zero,
       Chain};
-    SDNode *Res = DAG.getMachineNode(X86::LOCK_OR32mi8, DL, MVT::Other, Ops);
-    return SDValue(Res, 0);
+    SDNode *Res = DAG.getMachineNode(X86::LOCK_OR32mi8, DL, MVT::i32,
+                                     MVT::Other, Ops);
+    return SDValue(Res, 1);
   }
 
   SDValue Zero = DAG.getTargetConstant(0, DL, MVT::i32);
@@ -26318,12 +26321,13 @@ static SDValue emitLockedStackOp(SelectionDAG &DAG,
     DAG.getTargetConstant(1, DL, MVT::i8),          // Scale
     DAG.getRegister(0, MVT::i32),                   // Index
     DAG.getTargetConstant(0, DL, MVT::i32),         // Disp
-    DAG.getRegister(0, MVT::i32),                   // Segment.
+    DAG.getRegister(0, MVT::i16),                   // Segment.
     Zero,
     Chain
   };
-  SDNode *Res = DAG.getMachineNode(X86::OR32mi8Locked, DL, MVT::Other, Ops);
-  return SDValue(Res, 0);
+  SDNode *Res = DAG.getMachineNode(X86::LOCK_OR32mi8, DL, MVT::i32,
+                                   MVT::Other, Ops);
+  return SDValue(Res, 1);
 }
 
 static SDValue lowerAtomicArithWithLOCK(SDValue N, SelectionDAG &DAG,
@@ -26401,13 +26405,17 @@ static SDValue lowerAtomicArith(SDValue N, SelectionDAG &DAG,
       // traffic.  This assumes that stack locations are very likely to be
       // accessed only by the owning thread. 
       SDValue NewChain = emitLockedStackOp(DAG, Subtarget, Chain, DL);
-      DAG.ReplaceAllUsesOfValueWith(N.getValue(1), NewChain);
-      return SDValue();
+      assert(!N->hasAnyUseOfValue(0));
+      // NOTE: The getUNDEF is needed to give something for the unused result 0.
+      return DAG.getNode(ISD::MERGE_VALUES, DL, N->getVTList(),
+                         DAG.getUNDEF(VT), NewChain);
     }
     // MEMBARRIER is a compiler barrier; it codegens to a no-op.
     SDValue NewChain = DAG.getNode(X86ISD::MEMBARRIER, DL, MVT::Other, Chain);
-    DAG.ReplaceAllUsesOfValueWith(N.getValue(1), NewChain);
-    return SDValue();
+    assert(!N->hasAnyUseOfValue(0));
+    // NOTE: The getUNDEF is needed to give something for the unused result 0.
+    return DAG.getNode(ISD::MERGE_VALUES, DL, N->getVTList(),
+                       DAG.getUNDEF(VT), NewChain);
   }
 
   SDValue LockOp = lowerAtomicArithWithLOCK(N, DAG, Subtarget);
@@ -26449,9 +26457,10 @@ static SDValue LowerATOMIC_STORE(SDValue Op, SelectionDAG &DAG,
                                               Ops, MVT::i64,
                                               Node->getMemOperand());
 
-      // If this is a sequentially consistent store, also emit an mfence.
+      // If this is a sequentially consistent store, also emit an appropriate
+      // barrier.
       if (IsSeqCst)
-        Chain = DAG.getNode(X86ISD::MFENCE, dl, MVT::Other, Chain);
+        Chain = emitLockedStackOp(DAG, Subtarget, Chain, dl);
 
       return Chain;
     }
@@ -28324,6 +28333,23 @@ bool X86TargetLowering::isVectorShiftByScalarCheap(Type *Ty) const {
   // Otherwise, it's significantly cheaper to shift by a scalar amount than by a
   // fully general vector.
   return true;
+}
+
+bool X86TargetLowering::isBinOp(unsigned Opcode) const {
+  switch (Opcode) {
+  case X86ISD::PMULUDQ:
+  case X86ISD::FMAX:
+  case X86ISD::FMIN:
+  case X86ISD::FMAXC:
+  case X86ISD::FMINC:
+  case X86ISD::FAND:
+  case X86ISD::FANDN:
+  case X86ISD::FOR:
+  case X86ISD::FXOR:
+    return true;
+  }
+
+  return TargetLoweringBase::isBinOp(Opcode);
 }
 
 bool X86TargetLowering::isCommutativeBinOp(unsigned Opcode) const {

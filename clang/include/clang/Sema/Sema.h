@@ -5985,8 +5985,8 @@ public:
 
   /// MarkVirtualMembersReferenced - Will mark all members of the given
   /// CXXRecordDecl referenced.
-  void MarkVirtualMembersReferenced(SourceLocation Loc,
-                                    const CXXRecordDecl *RD);
+  void MarkVirtualMembersReferenced(SourceLocation Loc, const CXXRecordDecl *RD,
+                                    bool ConstexprOnly = false);
 
   /// Define all of the vtables that have been used in this
   /// translation unit and reference any virtual members used by those
@@ -7420,8 +7420,10 @@ public:
     SourceRange InstantiationRange;
 
     CodeSynthesisContext()
-      : Kind(TemplateInstantiation), Entity(nullptr), Template(nullptr),
-        TemplateArgs(nullptr), NumTemplateArgs(0), DeductionInfo(nullptr) {}
+        : Kind(TemplateInstantiation),
+          SavedInNonInstantiationSFINAEContext(false), Entity(nullptr),
+          Template(nullptr), TemplateArgs(nullptr), NumTemplateArgs(0),
+          DeductionInfo(nullptr) {}
 
     /// Determines whether this template is an actual instantiation
     /// that should be counted toward the maximum instantiation depth.
