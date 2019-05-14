@@ -129,9 +129,14 @@ private:
   /// Indicate that this basic block is the entry block of a cleanup funclet.
   bool IsCleanupFuncletEntry = false;
 
+  /// Indicate that this basic block needs a unqiue section.
+  bool IsUniqueSection = false;
+
   /// since getSymbol is a relatively heavy-weight operation, the symbol
   /// is only computed once and is cached.
   mutable MCSymbol *CachedMCSymbol = nullptr;
+
+  MCSymbol *EndMCSymbol = nullptr;
 
   // Intrusive list support
   MachineBasicBlock() = default;
@@ -410,6 +415,11 @@ public:
   /// Indicates if this is the entry block of a cleanup funclet.
   void setIsCleanupFuncletEntry(bool V = true) { IsCleanupFuncletEntry = V; }
 
+  /// Indicate that this basic block needs a unqiue section.
+  bool isUniqueSection() const { return IsUniqueSection; }
+
+  void setIsUniqueSection(bool V = true) { IsUniqueSection = V; }
+
   /// Returns true if it is legal to hoist instructions into this block.
   bool isLegalToHoistInto() const;
 
@@ -420,6 +430,9 @@ public:
   /// the end of the block.
   void moveBefore(MachineBasicBlock *NewAfter);
   void moveAfter(MachineBasicBlock *NewBefore);
+
+  /// Insert an unconditional jump to a fallthrough block if any.
+  void insertUnconditionalFallthroughBranch();
 
   /// Update the terminator instructions in block to account for changes to the
   /// layout. If the block previously used a fallthrough, it may now need a
@@ -788,6 +801,13 @@ public:
 
   /// Return the MCSymbol for this basic block.
   MCSymbol *getSymbol() const;
+
+  void setEndMCSymbol(MCSymbol *Sym)
+  { EndMCSymbol = Sym; }
+
+  MCSymbol *getEndMCSymbol() const {
+    return EndMCSymbol;
+  }
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const {
     return IrrLoopHeaderWeight;

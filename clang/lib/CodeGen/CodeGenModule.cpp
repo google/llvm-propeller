@@ -59,6 +59,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MD5.h"
 #include "llvm/Support/TimeProfiler.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -978,7 +979,7 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
     }
   }
 
-  if (const auto *FD = dyn_cast<FunctionDecl>(ND))
+  if (const auto *FD = dyn_cast<FunctionDecl>(ND)) {
     if (FD->isMultiVersion() && !OmitMultiVersionMangling) {
       switch (FD->getMultiVersionKind()) {
       case MultiVersionKind::CPUDispatch:
@@ -994,7 +995,7 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
         llvm_unreachable("None multiversion type isn't valid here");
       }
     }
-
+  }
   return Out.str();
 }
 
@@ -1059,6 +1060,18 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
   // Keep the first result in the case of a mangling collision.
   const auto *ND = cast<NamedDecl>(GD.getDecl());
   std::string MangledName = getMangledNameImpl(*this, GD, ND);
+
+  // With BasicBlockSections, it is important to have a unique name for
+  // internal linkage functions, to differentiate the symbols across
+  // modules.
+  if (getCodeGenOpts().BasicBlockSections != "none" &&
+      dyn_cast<FunctionDecl>(GD.getDecl()) &&
+      this->getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) {
+    std::string UniqueSuffix = getUniqueModuleId(&getModule(), true);
+    if (!UniqueSuffix.empty()) {
+      MangledName = MangledName + '.' + UniqueSuffix;
+    }
+  }
 
   // Postfix kernel stub names with .stub to differentiate them from kernel
   // names in device binaries. This is to facilitate the debugger to find

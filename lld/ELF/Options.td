@@ -42,6 +42,10 @@ defm compress_debug_sections:
 
 defm defsym: Eq<"defsym", "Define a symbol alias">, MetaVarName<"<symbol>=<value>">;
 
+defm optimize_bb_jumps: B<"optimize-bb-jumps",
+    "Remove direct jumps at the end to the next basic block",
+    "Do not remove any direct jumps at the end to the next basic block">;
+
 defm split_stack_adjust_size
     : Eq<"split-stack-adjust-size",
          "Specify adjustment to stack size when a split-stack function calls a "
@@ -478,6 +482,8 @@ def opt_remarks_with_hotness: Flag<["--"], "opt-remarks-with-hotness">,
   HelpText<"Include hotness information in the optimization remarks file">;
 defm plugin_opt: Eq<"plugin-opt", "specifies LTO options for compatibility with GNU linkers">;
 def save_temps: F<"save-temps">;
+def lto_basicblock_sections: J<"lto-basicblock-sections=">,
+  HelpText<"Enable basic block sections for LTO">;
 def thinlto_cache_dir: J<"thinlto-cache-dir=">,
   HelpText<"Path to ThinLTO cached object file directory">;
 defm thinlto_cache_policy: Eq<"thinlto-cache-policy", "Pruning policy for the ThinLTO cache">;

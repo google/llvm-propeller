@@ -46,7 +46,8 @@ void DwarfCFIExceptionBase::markFunctionEnd() {
 }
 
 void DwarfCFIExceptionBase::endFragment() {
-  if (shouldEmitCFI)
+  // With -fbasicblock-sections, this is handled at each basic block.
+  if (shouldEmitCFI && !Asm->MF->getBasicBlockSections())
     Asm->OutStreamer->EmitCFIEndProc();
 }
 
@@ -120,7 +121,8 @@ void DwarfCFIException::beginFunction(const MachineFunction *MF) {
   shouldEmitLSDA = shouldEmitPersonality &&
     LSDAEncoding != dwarf::DW_EH_PE_omit;
 
-  shouldEmitCFI = MF->getMMI().getContext().getAsmInfo()->usesCFIForEH() &&
+  shouldEmitCFI = !MF->getBasicBlockLabels() &&
+                  MF->getMMI().getContext().getAsmInfo()->usesCFIForEH() &&
                   (shouldEmitPersonality || shouldEmitMoves);
   beginFragment(&*MF->begin(), getExceptionSym);
 }
@@ -168,4 +170,14 @@ void DwarfCFIException::endFunction(const MachineFunction *MF) {
     return;
 
   emitExceptionTable();
+}
+
+void DwarfCFIException::beginBasicBlock(const MachineBasicBlock &MBB) {
+  if (shouldEmitCFI)
+    Asm->OutStreamer->EmitCFIStartProc(/*IsSimple=*/false);
+}
+
+void DwarfCFIException::endBasicBlock(const MachineBasicBlock &MBB) {
+  if (shouldEmitCFI)
+    Asm->OutStreamer->EmitCFIEndProc();
 }

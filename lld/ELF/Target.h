@@ -78,10 +78,22 @@ public:
                              const uint8_t *Loc) const = 0;
 
   virtual void relocateOne(uint8_t *Loc, RelType Type, uint64_t Val) const = 0;
+  virtual void relocateOneJumpRelocation(uint8_t *Loc, JumpRelType Type,
+                                         JumpRelType Val) const { }
 
   virtual ~TargetInfo();
 
-  unsigned PageSize = 4096;
+  unsigned DefaultCommonPageSize = 4096;
+
+  virtual bool deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
+                                     InputSection *NextIS) const {
+    return false;
+  }
+
+  virtual bool shrinkJmpInsn(InputSection &IS, InputFile *File,
+                             uint32_t MaxAlignment) const
+  { return true; }
+
   unsigned DefaultMaxPageSize = 4096;
 
   uint64_t getImageBase() const;

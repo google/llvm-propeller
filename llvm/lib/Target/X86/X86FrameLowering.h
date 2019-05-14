@@ -59,6 +59,9 @@ public:
                         MachineBasicBlock &PrologMBB) const override;
 
   void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
+                                 MachineBasicBlock::iterator MBBI) const override;
+
+  void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator MBBI,
                                  const DebugLoc &DL) const;
 

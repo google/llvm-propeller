@@ -56,6 +56,7 @@ private:
   void sortSections();
   void resolveShfLinkOrder();
   void finalizeAddressDependentContent();
+  void optimizeBasicBlockJumps();
   void sortInputSections();
   void finalizeSections();
   void checkExecuteOnly();
@@ -1498,6 +1499,57 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
   }
 }
 
+// If basic block sections exist, there are opportunities to delete fall thru
+// jumps and shrink jump instructions after basic block reordering.  This
+// relaxation pass does that.
+template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
+  if (!Config->OptimizeBBJumps || !ELFT::Is64Bits)
+    return;
+
+  Script->assignAddresses();
+  for (OutputSection *OS : OutputSections) {
+    if (!(OS->Flags & SHF_EXECINSTR)) continue;
+    std::vector<InputSection *> Sections = getInputSections(OS);
+    std::vector<bool> Result(Sections.size());
+    // Delete all fall through jump instructions.
+    parallelForEachN(0, Sections.size(), [&](size_t I) {
+      InputSection *Next = (I + 1) < Sections.size() ?
+                           Sections[I + 1] : nullptr;
+      InputSection &IS = *Sections[I];
+      Result[I] = Target->deleteFallThruJmpInsn(IS, IS.getFile<ELFT>(), Next);
+    });
+    size_t NumDeleted = std::count(Result.begin(), Result.end(), true);
+    if (NumDeleted > 0) {
+      Script->assignAddresses();
+      // message("Removing" + Twine(NumDeleted).str() + " fall through jumps");
+    }
+
+    auto MaxIt = std::max_element(Sections.begin(), Sections.end(),
+                     [](InputSection * const s1, InputSection * const s2) {
+                       return s1->Alignment < s2->Alignment;
+                     });
+    uint32_t MaxAlign = (MaxIt != Sections.end()) ? (*MaxIt)->Alignment : 0;
+
+    std::vector<bool> Shrunk(Sections.size(), false);
+    bool Changed = false;
+    // Shrink jump Instructions when possible.
+    do {
+      Changed = false;
+      parallelForEachN(0, Sections.size(), [&](size_t I) {
+        if (!Shrunk[I]) {
+          InputSection &IS = *Sections[I];
+          Shrunk[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
+          Changed |= Shrunk[I];
+        }
+      });
+      size_t Num = std::count(Shrunk.begin(), Shrunk.end(), true);
+      // message("Shrunk " + Twine(Num).str() + " jmp instructions");
+      if (Changed)
+        Script->assignAddresses();
+    } while (Changed);
+  }
+}
+
 static void finalizeSynthetic(SyntheticSection *Sec) {
   if (Sec && Sec->isNeeded() && Sec->getParent())
     Sec->finalizeContents();
@@ -1780,6 +1832,10 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // finalizeAddressDependentContent may have added local symbols to the static symbol table.
   finalizeSynthetic(In.SymTab);
   finalizeSynthetic(In.PPC64LongBranchTarget);
+
+  // Relaxation to delete inter-basic block jumps created by basic block
+  // sections.
+  optimizeBasicBlockJumps();
 
   // Fill other section headers. The dynamic table is finalized
   // at the end because some tags like RELSZ depend on result
