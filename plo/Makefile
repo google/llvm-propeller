@@ -114,7 +114,7 @@ sample_instr.o: sample.c stage1-compiler
 	./stage1-compiler -fbasicblock-sections=labels -fpic -c -O2 $< -o $@
 
 sample.out: sample_instr.o
-	./stage1-compiler -pie -o $@ $<
+	./stage1-compiler -o $@ $<
 
 sample.perfdata: sample.out
 	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
