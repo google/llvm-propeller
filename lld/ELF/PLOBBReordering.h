@@ -1,3 +1,19 @@
+///===- PLOBBReordering.h -----------------------------------------*- C++ -*-===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+// \file This file contains the declaration of the ExtTSPChainBuilder and
+// NodeChainBuilder. ExtTSPChainBuilder is a subclass of NodeChainBuilder and
+// implements the Extended-TSP algorithm in the 2018 arxiv paper, authored by
+// Andy Newell and Surgey Pupyrev. [https://arxiv.org/abs/1809.04676].
+// ///
+// //===----------------------------------------------------------------------===//
+
+
+
 #ifndef LLD_ELF_PLO_BB_REORDERING_H
 #define LLD_ELF_PLO_BB_REORDERING_H
 
@@ -18,6 +34,8 @@ using std::vector;
 
 namespace lld{
 namespace plo {
+
+enum MergeOrder {Begin, X2X1Y = Begin, BeginNext, X1YX2=BeginNext, X2YX1, YX2X1, End};
 
 /* Represents a chain of ELFCfgNodes (basic blocks). */
 class NodeChain {
@@ -113,13 +131,13 @@ class ExtTSPChainBuilder : public NodeChainBuilder{
   class NodeChainSlice;
 
   map<std::pair<NodeChain*, NodeChain *>, NodeChainAssembly> NodeChainAssemblies;
-  unordered_map<NodeChain*, unordered_set<NodeChain *>> AdjacentChains;
+  unordered_map<NodeChain*, unordered_set<NodeChain *>> CandidateChains;
 
   void MergeChainEdges(NodeChain *SplitChain, NodeChain *UnsplitChain);
   void MergeChains(NodeChainAssembly& A);
 
-  double ExtTSPScore(NodeChain * Chain);
-  bool UpdateChainEdge(NodeChain * SplitChain, NodeChain * UnsplitChain);
+  double ExtTSPScore(NodeChain * Chain) const;
+  bool UpdateNodeChainAssembly(NodeChain * SplitChain, NodeChain * UnsplitChain);
   void ComputeChainOrder(vector<const NodeChain*>&);
 
  public:
@@ -159,36 +177,36 @@ class ExtTSPChainBuilder::NodeChainAssembly{
   bool ScoreComputed{false};
   const ExtTSPChainBuilder * ChainBuilder;
   NodeChain *SplitChain, *UnsplitChain;
-  uint8_t MergeOrder;
+  MergeOrder MOrder;
   list<const ELFCfgNode*>::iterator SlicePos;
 
   vector<NodeChainSlice> Slices;
 
-  NodeChainAssembly(NodeChain * ChainX, NodeChain * ChainY, list<const ELFCfgNode*>::iterator _SlicePos, uint8_t _MergeOrder, const ExtTSPChainBuilder* _ChainBuilder) {
+  NodeChainAssembly(NodeChain * ChainX, NodeChain * ChainY, list<const ELFCfgNode*>::iterator _SlicePos, MergeOrder _MOrder, const ExtTSPChainBuilder* _ChainBuilder) {
     SplitChain = ChainX;
     UnsplitChain = ChainY;
     SlicePos = _SlicePos;
-    MergeOrder = _MergeOrder;
+    MOrder = _MOrder;
     ChainBuilder = _ChainBuilder;
     NodeChainSlice X2(ChainX, SlicePos, ChainX->Nodes.end(), *ChainBuilder);
     NodeChainSlice Y(ChainY, ChainY->Nodes.begin(), ChainY->Nodes.end(), *ChainBuilder);
     NodeChainSlice X1(ChainX, ChainX->Nodes.begin(), SlicePos, *ChainBuilder);
 
-    switch(MergeOrder){
-      case 0:
+    switch(MOrder){
+      case MergeOrder::X2X1Y:
         Slices = {X2, X1, Y};
         break;
-      case 1:
+      case MergeOrder::X1YX2:
         Slices = {X1, Y, X2};
         break;
-      case 2:
+      case MergeOrder::X2YX1:
         Slices = {X2, Y, X1};
         break;
-      case 3:
+      case MergeOrder::YX2X1:
         Slices = {Y, X2, X1};
         break;
       default:
-        assert(false);
+        assert("Invalid MergeOrder!" && false);
     }
   }
 
