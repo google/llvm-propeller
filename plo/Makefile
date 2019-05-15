@@ -6,13 +6,13 @@ BOLT=/usr/local/google/home/shenhan/copt/bolt/build-release/bin/llvm-bolt
 
 #################################
 # Important targets:
-#  stage1-compiler: contains all the patches
+#  stage1-compiler: the compiler contains all the patches and used to do benchmark.
 #  stage2-compiler: instrumented compiler
 #  stage3-compiler: we collect pgo perf data by compiling stage3-compiler using stage2-compiler
 #  pgo-compiler: thinlto optimized compiler based on pgo perf data, this is the peak optimized compiler we get.
 #  perf.data:    perf collected for pgo-compiler, in order to further optimize pgo-compiler
 #  bolt-compiler: bolt on top of pgo-compiler using perf.data
-#  pgoplo-compiler: pgo on top of pgo-compiler using perf.data
+#  pgoplo-compiler: plo on top of pgo-compiler using perf.data
 #  benchmark-pgo/benchmark-pgoplo/benchmark-bolt: run benchmarks
 
 DDIR := $(shell pwd)
@@ -42,9 +42,6 @@ LLD_OPT := -fuse-ld=lld -Wl,-optimize-bb-jumps
 
 COMPILERS := stage1-compiler stage2-compiler stage3-compiler \
 	     pgo-compiler pgoplo-compiler bolt-compiler
-
-.phony: all clean
-all: benchmark
 
 # $1 are compiler flags.
 # $2 are ld flags.
@@ -185,7 +182,7 @@ pgoplo/build/bin/clang-9-plo: relink-clang-plo.sh stage1-compiler pgoplo/build/b
 benchmark-pgo benchmark-pgoplo benchmark-bolt benchmark-stage1: benchmark-%: %-compiler run-commands.sh
 	{ time ./run-commands.sh `readlink -f $<` 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
 
-######################################
+######################################  not fully ready, WIP.
 sample.bc: sample.c
 	./stage1-compiler -emit-llvm -c -O2 $< -o $@
 
@@ -215,6 +212,7 @@ sample.plo.out sample.out.cfg: sample_bball.o sample.out.symfile sample.out.prof
 sample.out.layout: sample.out.cfg stage1-compiler
 	stage1/install/bin/layout -cfg-read $< -layout-dump $@ | tee $@.autolog
 
+.phony: clean clean-all
 clean:
 	rm -f clang-9.symfile clang-9.profile
 	rm -fr stage{2,3} pgo/ pgoplo/
