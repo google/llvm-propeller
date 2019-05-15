@@ -1,21 +1,65 @@
-# Vanilla compiler (without any bb patches), can be any modern compilers.
-RELEASE_LLVM_BIN=${HOME}/llvm/install-8.0/bin
+# Customizable variables.
+# Vanilla clang/clang++ bin path.
+RELEASE_LLVM_BIN=/usr/bin
+PERF2BOLT=/usr/local/google/home/shenhan/copt/bolt/build-release/bin/perf2bolt
+BOLT=/usr/local/google/home/shenhan/copt/bolt/build-release/bin/llvm-bolt
 
-DDIR         := $(shell readlink -f .)
+#################################
+# Important targets:
+#  stage1-compiler: contains all the patches
+#  stage2-compiler: instrumented compiler
+#  stage3-compiler: we collect pgo perf data by compiling stage3-compiler using stage2-compiler
+#  pgo-compiler: thinlto optimized compiler based on pgo perf data, this is the peak optimized compiler we get.
+#  perf.data:    perf collected for pgo-compiler, in order to further optimize pgo-compiler
+#  bolt-compiler: bolt on top of pgo-compiler using perf.data
+#  pgoplo-compiler: pgo on top of pgo-compiler using perf.data
+#  benchmark-pgo/benchmark-pgoplo/benchmark-bolt: run benchmarks
+
+DDIR := $(shell pwd)
 LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
-LLVM_SOURCE  := $(shell find $(LLVM_PROJECT)/llvm $(LLVM_PROJECT)/clang $(LLVM_PROJECT)/lld \
-	'(' -ipath "*/.git"      -o      \
-	    -ipath "*/test"      -o      \
-	    -ipath "*/tests"     -o      \
+LLVM_SOURCE := $(shell find $(LLVM_PROJECT)/llvm \
+                            $(LLVM_PROJECT)/clang \
+                            $(LLVM_PROJECT)/lld \
+        '(' -ipath "*/.git"      -o      \
+            -ipath "*/test"      -o      \
+            -ipath "*/tests"     -o      \
             -ipath "*/unittests" -o      \
             -ipath "*/gtest"     -o      \
             -ipath "*/googletest" ')' -type d  -prune -o \
-	-type f '(' -iname "*.cpp" -o -iname "*.cc" -o -iname "*.c" -o -iname "*.h" ')' -print)
+        -type f '(' -iname "*.cpp" -o -iname "*.cc" -o -iname "*.c" \
+                   -o -iname "*.h" ')' -print)
 
 J_NUMBER := $(shell grep -Ee "^core id" /proc/cpuinfo | wc -l)
 J_NUMBER := $(shell if [[ "$(J_NUMBER)" -lt "16" ]] ; then \
                         echo $$(($(J_NUMBER) / 8 * 7)) ; \
                     else echo $$(($(J_NUMBER) - 5)); fi)
+
+STAGE1_BIN := $(DDIR)/stage1/install/bin
+STAGE2_BIN := $(DDIR)/stage2/install/bin
+PROFILES_DIR := $(DDIR)/stage2/build/profiles
+LLD_NO_OPT := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
+LLD_OPT := -fuse-ld=lld -Wl,-optimize-bb-jumps
+
+COMPILERS := stage1-compiler stage2-compiler stage3-compiler \
+	     pgo-compiler pgoplo-compiler bolt-compiler
+
+.phony: all clean
+all: benchmark
+
+# $1 are compiler flags.
+# $2 are ld flags.
+gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
+                  -DCMAKE_EXE_LINKER_FLAGS=$(2) \
+                  -DCMAKE_SHARED_LINKER_FLAGS=$(2) \
+                  -DCMAKE_MODULE_LINKER_FLAGS=$(2)
+
+# $1 is either "labels", "all" or "none".
+# -fexperimental-new-pass-manager -mllvm -qualify-function-names
+bb_section_lto_flags = -Wl,--lto-basicblock-sections=$(1)
+lld_relocs              := -Wl,-q
+bb_section_none_flags   := $(call gen_build_flags,"-fbasicblock-sections=none","$(LLD_NO_OPT)")
+bb_section_labels_flags := $(call gen_build_flags,"-fbasicblock-sections=labels","$(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,labels)")
+bb_section_all_flags    := $(call gen_build_flags,"-fbasicblock-sections=all","$(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,all)")
 
 # $1 is compiler name, "stage1", "instrbb", etc;
 # $2 is bin directory that is used to build the compiler, must be absolute path.
@@ -30,10 +74,10 @@ define build_compiler
 	    -DCMAKE_BUILD_TYPE=Release                  \
             -DLLVM_OPTIMIZED_TABLEGEN=On                \
             -DLLVM_TARGETS_TO_BUILD="X86"               \
-            -DLLVM_USE_LINKER=lld                       \
 	    -DCMAKE_C_COMPILER=$(2)/clang               \
 	    -DCMAKE_CXX_COMPILER=$(2)/clang++           \
 	    -DCMAKE_ASM_COMPILER=$(2)/clang             \
+	    -DLLVM_PARALLEL_LINK_JOBS=$(J_NUMBER)       \
 	    $(3)                                        \
             -DLLVM_ENABLE_PROJECTS=$(4)                 \
             $(LLVM_PROJECT)/llvm;                       \
@@ -42,58 +86,68 @@ define build_compiler
 	touch $@
 endef
 
-# $1 is either "labels" or "all".
-lld_no_opt := -fuse-ld=lld -Wl,-no-flip-bb-jumps -Wl,-no-optimize-bb-jumps
-lld_opt := -fuse-ld=lld -Wl,-flip-bb-jumps -Wl,-optimize-bb-jumps
-bbsection_flags = -DCMAKE_C_FLAGS=-fbasicblock-sections=$(1) -DCMAKE_CXX_FLAGS=-fbasicblock-sections=$(1) \
-	          -DCMAKE_EXE_LINKER_FLAGS="$(2)" \
-		  -DCMAKE_SHARED_LINKER_FLAGS="$(2)" \
-	          -DCMAKE_MODULE_LINKER_FLAGS="$(2)"
-
-# Stage1 compiler is the compiler that contains "bb section" and "plo" patches.
 stage1/install/bin/clang: $(LLVM_SOURCE)
-	$(call build_compiler,stage1,$(RELEASE_LLVM_BIN),,"clang;lld;compiler-rt",install)
+	$(call build_compiler,stage1,$(RELEASE_LLVM_BIN),,"clang;compiler-rt;lld",install)
 
-bbinstr/install/bin/clang: | stage1-compiler
-	$(call build_compiler,bbinstr,$(DDIR)/stage1/install/bin,$(call bbsection_flags,labels,$(lld_no_opt)),"clang;compiler-rt;lld",install)
+stage2/install/bin/clang: | stage1-compiler
+	$(call build_compiler,stage2,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_BUILD_INSTRUMENTED=ON $(bb_section_none_flags),"clang;lld",install)
 
-bbsec/install/bin/clang: | stage1-compiler
-	$(call build_compiler,bbsec,$(DDIR)/stage1/install/bin,$(call bbsection_flags,all,$(lld_no_opt)),"clang",install-clang)
+stage3/install/bin/clang: stage2-compiler
+	$(call build_compiler,stage3,$(DDIR)/stage2/install/bin,-DLLVM_USE_LINKER=lld $(bb_section_none_flags),clang,install-clang)
 
-relink-clang-plo.sh: symbol-ordering
-	ninja -j$(J_NUMBER) -C bbsec/build -t commands clang \
-          | grep -Fe " -o bin/clang-9 " | \
-          sed -e "s! -o bin/clang-9 ! -o bin/clang-9-plo -Wl,--symbol-ordering-file=$(DDIR)/$< -Wl,--no-call-graph-profile-sort !" \
-              -e 's!$(lld_no_opt)!$(lld_opt)!g' > $@
-	chmod +x $@
+# clang.profdata is instrument profile, generated by stage2 compiler build a stage3 compiler.
+clang.profdata: stage3-compiler
+	$(STAGE1_BIN)/llvm-profdata merge -output=$@ $(PROFILES_DIR)/*
 
-bbsec/build/bin/clang-9-plo: relink-clang-plo.sh
-	cd bbsec/build && $(DDIR)/$<
+# pgo compiler is optimized used clang.profdata w/ thinlto
+pgo/build/bin/clang-9: clang.profdata
+	$(call build_compiler,pgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",install)
+	[[ ! -z "$$(ninja -C pgo/build -t commands clang | \
+          head -n 20 | grep -e '-fprofile-instr-use=$(DDIR)/$<')" ]]
 
-stage1-compiler bbinstr-compiler bbsec-compiler: %-compiler: %/install/bin/clang
-	@rm -f $@
+# pgoplo compiler is built exactly as pgo compiler, except later, relink happens by providing profdata to linker.
+pgoplo/build/bin/clang-9: clang.profdata
+	$(call build_compiler,pgoplo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/clang.profdata -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",install)
+	[[ ! -z "$$(ninja -C pgoplo/build -t commands clang | \
+          head -n 20 | grep -e '-fprofile-instr-use=$(DDIR)/$<')" ]]
+
+stage1-compiler stage2-compiler stage3-compiler: %-compiler: %/install/bin/clang
 	ln -sf $< $@
 	touch $@
 
-clang.perfdata: run-commands.sh bbinstr-compiler
-	perf record -o $@ -e "cycles:u" -j any,u -- ./$< $(DDIR)/bbinstr/install/bin/clang
+pgo-compiler: pgo/build/bin/clang-9
+	ln -sf $< $@
+	touch $@
 
-clang-9.profile clang-9.symfile: clang.perfdata
-	./plotool.sh $(DDIR)/bbinstr/install/bin/clang-9 $<
+bolt-compiler: pgo/build/bin/clang-9-bolt
+	ln -sf $< $@
+	touch $@
 
-run-plo.sh: bbsec-compiler clang-9.symfile clang-9.profile
-	cd bbsec/build ; ninja -t commands clang | grep -Ee "-o bin/clang-[0-9a-f]+" \
-	  | sed -E 's!clang\+\+ !clang++ -Wl,-plo -Wl,-symfile=$(DDIR)/clang-9.symfile -Wl,-profile=$(DDIR)/clang-9.profile !' > $(DDIR)/$@
-	chmod +x $@
+pgoplo-compiler: pgoplo/build/bin/clang-9-plo
+	ln -sf $< $@
+	touch $@
 
-run-plo: run-plo.sh stage1-compiler
-	{ cd bbsec/build && $(DDIR)/$< ; } 2>&1 | tee $(DDIR)/$@.autolog
-	mv $@.autolog $@
+# perf.data is used to generate plo- and bolt- compiler
+perf.data: pgo-compiler run-commands.sh
+	perf record -o $@ -e cycles:u -j any,u -- \
+		./run-commands.sh `readlink -f $<`
 
-symbol-ordering: run-plo
-	grep "SYM: " $< | sed -Ee 's!^SYM: !!' > $@
+perf.yaml: perf.data
+	$(PERF2BOLT) -o perf.fdata -w perf.yaml -p $^ \
+           pgo/build/bin/clang-9
 
-run-commands.sh:
+# -keep-bb-symbols=local
+#		 -reorder-functions="hfsort+"       \
+#	  	 -split-functions=3 -split-all-cold
+#                  -reorder-blocks="cache+"      
+pgo/build/bin/clang-9-bolt: pgo/build/bin/clang-9 perf.yaml
+	$(BOLT) $< -o $@ -b perf.yaml     \
+		 -split-functions=3                     \
+		 -reorder-blocks="cache+"               \
+	 	 -reorder-functions="hfsort" -relocs=1  \
+		 2>&1 | tee clang-bolt.autolog
+
+run-commands.sh: | stage1-compiler
 	rsync -a -f "+ */" -f "+ *.inc" -f "+ *.h" -f "+ *.def" -f "- *" \
             stage1/build/ test-build/
 	ninja -C stage1/build -t commands clang \
@@ -102,18 +156,43 @@ run-commands.sh:
             | sed -Ee 's!^$(RELEASE_LLVM_BIN)/clang\+\+ !$${CCP} -x c++ !' \
                    -e 's!^$(RELEASE_LLVM_BIN)/clang !$${CCP} !' \
                    -e 's!^!cd $(DDIR)/test-build \&\& !' >> commands
-	echo "export CCP=\$$1" > $@
-	echo "head -n 600 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
-                >> $@
+	echo "export CCP=\$$1" > run-commands.sh
+	echo "head -n 300 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
+                >> run-commands.sh
+	chmod +x run-commands.sh
+
+clang-9.symfile clang-9.profile: perf.data
+	$(DDIR)/plotool.sh $(DDIR)/pgo/build/bin/clang-9 $<
+
+relink-clang-plo.sh: clang-9.symfile clang-9.profile pgoplo/build/bin/clang-9
+	echo "pushd pgoplo/build" > $@
+	ninja -C pgoplo/build -t commands clang \
+          | grep -Fe " -o bin/clang-9 " \
+          | sed -e "s! -o bin/clang-9 ! -o bin/clang-9-plo \
+                     -Wl,-plo                              \
+                     -Wl,-symfile=$(DDIR)/clang-9.symfile  \
+                     -Wl,-profile=$(DDIR)/clang-9.profile  \
+                     -Wl,--lto-basicblock-sections=all     \
+                     -Wl,--no-call-graph-profile-sort !"   \
+               -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
+	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@
+	echo 'EV=$$? ; popd ; exit $$EV' >> $@
 	chmod +x $@
 
-sample.o : %.o: %.c stage1-compiler
-	./stage1-compiler -fbasicblock-sections=all -c -O2 $< -o $@
+pgoplo/build/bin/clang-9-plo: relink-clang-plo.sh stage1-compiler pgoplo/build/bin/clang-9
+	./$< 2>&1 | tee $<.autolog
 
-sample_instr.o: sample.c stage1-compiler
-	./stage1-compiler -fbasicblock-sections=labels -fpic -c -O2 $< -o $@
+benchmark-pgo benchmark-pgoplo benchmark-bolt benchmark-stage1: benchmark-%: %-compiler run-commands.sh
+	{ time ./run-commands.sh `readlink -f $<` 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
 
-sample.out: sample_instr.o
+######################################
+sample.bc: sample.c
+	./stage1-compiler -emit-llvm -c -O2 $< -o $@
+
+sample_bblabels.o: sample.bc
+	./stage1-compiler -c -O2 -fbasicblock-sections=labels $< -o $@
+
+sample.out: sample_bblabels.o
 	./stage1-compiler -Wl,-build-id -o $@ $<
 
 sample.perfdata: sample.out
@@ -122,31 +201,35 @@ sample.perfdata: sample.out
 sample.out.symfile sample.out.profile: sample.out sample.perfdata
 	./plotool.sh $^
 
-sample.plo.out: sample.out.symfile sample.out.profile sample.o stage1-compiler
+sample_bball.o: sample.bc
+	./stage1-compiler -c -O2 -fbasicblock-sections=all $< -o $@
+
+sample.plo.out sample.out.cfg: sample_bball.o sample.out.symfile sample.out.profile stage1-compiler
 	stage1/install/bin/clang -fuse-ld=lld \
 	  -Wl,-plo \
 	  -Wl,-symfile=sample.out.symfile \
 	  -Wl,-profile=sample.out.profile \
 	  -Wl,-cfgdump=sample.out.cfg \
-	  sample.o -o $@ 2>&1 | tee $@.autolog
+	  sample_bball.o -o $@ 2>&1 | tee $@.autolog
 
 sample.out.layout: sample.out.cfg stage1-compiler
-	stage1/install/bin/layout -cfg-read sample.out.cfg \
-		-layout-dump $@ | tee $@.autolog
+	stage1/install/bin/layout -cfg-read $< -layout-dump $@ | tee $@.autolog
 
 clean:
-	for F in bbinstr bbsec ; do \
-	  rm -fr $${F} ; rm -f $${F}-compiler ; \
-	done
-	rm -f commands run-commands.sh
-	rm -f clang.perfdata* clang-9.profile clang-9.symfile
-	rm -f sample.o sample.out sample.perfdata sample.out.symfile sample.out.profile sample.out.cfg
+	rm -f clang-9.symfile clang-9.profile
+	rm -fr stage{2,3} pgo/ pgoplo/
+	rm -f {stage2,stage3,pgo,bolt,pgoplo}-compiler
+	rm -f run-commands.sh commands benchmark
+	rm -f run-plo run-plo.sh
 	rm -fr test-build
-	rm -f *.autolog log
-	rm -f run-plo.sh run-plo
+	rm -f perf.data perf.fdata perf.yaml clang.profdata
+	rm -f benchmark {real-,}symbol-ordering pmu
+	rm -f *.autolog
 	rm -f relink-clang-plo.sh
-	rm -f symbol-ordering
+	rm -f check-symbol-ordering
+	rm -f benchmark-{stage1,pgo,pgoplo,bolt}{,.result}
 	rm -f *~
+	rm -f sample.out sample.out.{layout,symfile,profile,cfg} sample_*.o sample.out sample.plo.out
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler
