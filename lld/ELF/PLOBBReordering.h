@@ -5,7 +5,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// \file This file contains the declaration of the ExtTSPChainBuilder and 
+// \file This file contains the declaration of the ExtTSPChainBuilder and
+// NodeChainBuilder. ExtTSPChainBuilder is a subclass of NodeChainBuilder and
+// implements the Extended-TSP algorithm in the 2018 arxiv paper, authored by
+// Andy Newell and Surgey Pupyrev. [https://arxiv.org/abs/1809.04676].
+// ///
+// //===----------------------------------------------------------------------===//
 
 
 

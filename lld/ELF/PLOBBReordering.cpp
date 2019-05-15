@@ -104,15 +104,19 @@ void NodeChainBuilder::SortChainsByExecutionDensity(vector<const NodeChain*>& Ch
 
 void NodeChainBuilder::AttachFallThroughs(){
   for(auto& Node: Cfg->Nodes){
+    if(Node->Outs.size()==1){
+      const ELFCfgEdge * E = Node->Outs.front();
+      if(E->Sink->Ins.size()==1)
+        AttachNodes(E->Src, E->Sink);
+    }
+  }
+
+  for(auto& Node: Cfg->Nodes){
     if(Node->FTEdge!=nullptr){
       AttachNodes(Node.get(), Node->FTEdge->Sink);
     }
   }
 
-  for(auto& Node: Cfg->Nodes){
-    for(const ELFCfgEdge* E: Node->Outs)
-      AttachNodes(E->Src, E->Sink);
-  }
 }
 
 /* Merge two chains in the specified order. */
