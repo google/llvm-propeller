@@ -207,7 +207,7 @@ sample.plo.out sample.out.cfg: sample_bball.o sample.out.symfile sample.out.prof
 	  -Wl,-symfile=sample.out.symfile \
 	  -Wl,-profile=sample.out.profile \
 	  -Wl,-cfgdump=sample.out.cfg \
-	  sample_bball.o -o $@ 2>&1 | tee $@.autolog
+	  sample_bball.o -o sample.plo.out 2>&1 | tee sample.plo.out.autolog
 
 sample.out.layout: sample.out.cfg stage1-compiler
 	stage1/install/bin/layout -cfg-read $< -layout-dump $@ | tee $@.autolog
