@@ -179,7 +179,8 @@ vector<StringRef> PLO::genSymbolOrderingFile() {
   const auto ColdPlaceHolder = SymbolList.end();
   for (auto *Cfg : OrderResult) {
     if (Cfg->isHot()) {
-      ExtTSPChainBuilder(Cfg).doSplitOrder(SymbolList, HotPlaceHolder, ColdPlaceHolder);
+      ExtTSPChainBuilder(Cfg).doSplitOrder(SymbolList, HotPlaceHolder,
+                                           ColdPlaceHolder);
     } else {
       Cfg->forEachNodeRef(
         [&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
