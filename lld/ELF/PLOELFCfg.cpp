@@ -263,8 +263,7 @@ void ELFCfgBuilder::buildCfgs() {
     map<uint64_t, list<unique_ptr<ELFCfgNode>>> TmpNodeMap;
     SymbolRef CfgSym = *(I.second.begin());
     StringRef CfgName = I.first;
-    uint64_t CfgSize = llvm::object::ELFSymbolRef(CfgSym).getSize();
-    unique_ptr<ELFCfg> Cfg(new ELFCfg(View, CfgName, CfgSize));
+    unique_ptr<ELFCfg> Cfg(new ELFCfg(View, CfgName, 0));
     for (SymbolRef Sym : I.second) {
       auto SymNameE = Sym.getName();
       auto SectionIE = Sym.getSection();
@@ -414,6 +413,12 @@ void ELFCfgBuilder::buildCfg(
     }
   }
   calculateFallthroughEdges(Cfg, TmpNodeMap);
+
+  // Calculate Cfg Size to be the sum of all its bb sections.
+  Cfg.Size = 0;
+  Cfg.forEachNodeRef([&Cfg](ELFCfgNode &N) {
+    Cfg.Size += N.ShSize;
+  });
 }
 
 // Calculate fallthroughs.  Edge P->Q is fallthrough if P & Q are

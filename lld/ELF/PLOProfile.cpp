@@ -58,10 +58,10 @@ bool PLOProfile::process(StringRef &ProfileName) {
         fprintf(stderr, "Invalid entry: %s\n", EntryString.str().c_str());
         break;
       }
+      ++EntryIndex;
       if (*q == '\0') break;
       p = q + 1;
       q = p + 1;
-      ++EntryIndex;
     } while(true);
     if (EntryIndex) {
       processLBR(EntryArray, EntryIndex);
