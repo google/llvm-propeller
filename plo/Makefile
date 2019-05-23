@@ -247,14 +247,18 @@ clean:
 	rm -fr pgo cspgo
 	rm -fr {pgo,cspgo}-plo
 	rm -fr {pgo,cspgo}-plo-compiler
-	rm -f  {pgo,cspgo}-compiler 
+	rm -f  {pgo,cspgo}{-bolt,}-compiler 
 	rm -f  {pgo,cspgo}-compiler.symfile
 	rm -f  {pgo,cspgo}-compiler.profile
+	rm -f  {pgo,cspgo}-compiler.cfg
+	rm -f  {cspgo,pgo}.fdata
+	rm -f  {cspgo,pgo}-compiler.yaml
 	rm -f  relink-clang-{cspgo,pgo}-plo.sh
-	rm -f  benchmark-{pgo,cspgo}.result benchmark-{pgo,cspgo}-plo.result
+	rm -f  benchmark-*.result
 	rm -f  commands run-commands.sh
-	rm -f  sample.out sample.out.{layout,symfile,profile,cfg} sample_*.o sample.plo.out sample.bc sample.perfdata
+	rm -f  sample.out sample.out.{layout,symfile,profile,cfg} 
+	rm -f sample_*.o sample.plo.out sample.bc sample.perfdata
 	rm -f  *.autolog
 
 clean-all: clean
-	rm -fr stage1 ; rm -fr stage1-compiler
+	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
