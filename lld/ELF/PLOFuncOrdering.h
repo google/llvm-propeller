@@ -31,9 +31,9 @@ public:
     // Merge "Other" cluster into this cluster.
     Cluster & operator << (Cluster &Other) {
       Cfgs.insert(Cfgs.end(), Other.Cfgs.begin(), Other.Cfgs.end());
-      this->Size += Other.Size;
       this->Density = (Density * Size + Other.Density * Other.Size)
           / (this->Size + Other.Size);
+      this->Size += Other.Size;
       return *this;
     }
 

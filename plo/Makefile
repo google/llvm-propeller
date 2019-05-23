@@ -83,6 +83,8 @@ define build_compiler
 	touch $@
 endef
 
+all-compilers: stage1-compiler pgo-compiler cspgo-compiler pgo-plo-compiler cspgo-plo-compiler #pgo-bolt-compiler cspgo-bolt-compiler
+
 stage1/install/bin/clang: $(LLVM_SOURCE)
 	$(call build_compiler,stage1,$(RELEASE_LLVM_BIN),,"clang;compiler-rt;lld",install)
 
@@ -98,6 +100,10 @@ stage-pgo-compiler stage-cspgo-compiler pgo-compiler cspgo-compiler: %-compiler:
 	touch $@
 
 pgo-plo-compiler cspgo-plo-compiler: %-compiler: %/build/bin/clang-9-plo
+	ln -sf $< $@
+	touch $@
+
+pgo-bolt-compiler cspgo-bolt-compiler: %-bolt-compiler: %/build/bin/clang-9-bolt
 	ln -sf $< $@
 	touch $@
 
@@ -118,7 +124,17 @@ pgo-compiler.symfile cspgo-compiler.symfile: %-compiler.symfile: %-compiler %.pe
 	./plotool.sh $< $(word 2,$^)
 	[[ -n "`grep -F '.bb.' $@`" ]] || { echo "ERROR: no .bb. in $@" ; exit 1; }
 
-pgo-plo/build/bin/clang-9-plo cspgo-plo/build/bin/clang-9-plo: %-plo/build/bin/clang-9-plo: relink-clang-%-plo.sh
+pgo-compiler.yaml cspgo-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
+	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
+
+pgo/build/bin/clang-9-bolt cspgo/build/bin/clang-9-bolt: %/build/bin/clang-9-bolt: %-compiler.yaml %-compiler:
+	$(BOLT) $(shell readlink -f $(word 2,$^) -o $@ -b $< \
+		 -split-functions=3                     \
+		 -reorder-blocks="cache+"               \
+	 	 -reorder-functions="hfsort" -relocs=1  \
+		 2>&1 | tee $@.autolog
+
+pgo-plo/build/bin/clang-9-plo cspgo-plo/build/bin/clang-9-plo: %-plo/build/bin/clang-9-plo: relink-clang-%-plo.sh stage1-compiler
 	./$<
 	[[ -e "$@" ]] || { echo "Failed to link $@" ; exit 1; }
 
@@ -171,8 +187,9 @@ relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.symfile
 	  echo "Generate $@ failed."; exit 1; \
 	fi
 
-benchmark-pgo benchmark-pgo-plo benchmark-cspgo benchmark-cspgo-plo benchmark-stage1: benchmark-%: %-compiler run-commands.sh
-	{ time ./run-commands.sh `readlink -f $<` 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
+benchmark-pgo benchmark-pgo-plo benchmark-pgo-bolt benchmark-cspgo benchmark-cspgo-plo benchmark-cspgo-bolt benchmark-stage1: \
+benchmark-%: %-compiler run-commands.sh
+	{ time ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
 
 # ######################################  not fully ready, WIP.
 # sample.bc: sample.c
