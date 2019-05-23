@@ -576,12 +576,30 @@ static bool shouldKeepInSymtab(const Defined &Sym) {
   if (Config->EmitRelocs)
     return true;
 
+  StringRef Name = Sym.getName();
+
+  // If it's .bb. symbol.
+  if (Config->Plo) {
+    auto S1 = Name.rsplit('.');
+    if (!S1.second.empty()) {
+      bool AllDigits = true;
+      for (auto I: S1.second) {
+        if (I < '0' || I > '9') {
+          AllDigits = false;
+          break;
+        }
+      }
+      if (AllDigits && S1.first.rsplit('.').second == "bb") {
+        return false;
+      }
+    }
+  }
+
   // In ELF assembly .L symbols are normally discarded by the assembler.
   // If the assembler fails to do so, the linker discards them if
   // * --discard-locals is used.
   // * The symbol is in a SHF_MERGE section, which is normally the reason for
   //   the assembler keeping the .L symbol.
-  StringRef Name = Sym.getName();
   bool IsLocal = Name.startswith(".L") || Name.empty();
   if (!IsLocal)
     return true;
@@ -1542,7 +1560,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
           Changed |= Shrunk[I];
         }
       });
-      size_t Num = std::count(Shrunk.begin(), Shrunk.end(), true);
+      // size_t Num = std::count(Shrunk.begin(), Shrunk.end(), true);
       // message("Shrunk " + Twine(Num).str() + " jmp instructions");
       if (Changed)
         Script->assignAddresses();
