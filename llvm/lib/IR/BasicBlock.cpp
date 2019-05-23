@@ -18,7 +18,6 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Type.h"
 #include <algorithm>
 
@@ -487,23 +486,4 @@ BasicBlock::iterator llvm::skipDebugIntrinsics(BasicBlock::iterator It) {
   while (isa<DbgInfoIntrinsic>(It))
     ++It;
   return It;
-}
-
-void BasicBlock::setSectionPrefix(StringRef Prefix) {
-  Instruction *TI = getTerminator();
-  MDBuilder MDB(getContext());
-  TI->setMetadata(LLVMContext::MD_section_prefix,
-                  MDB.createBasicBlockSectionPrefix(Prefix));
-}
-
-Optional<StringRef> BasicBlock::getSectionPrefix() const {
-  const Instruction *TI = getTerminator();
-  if (MDNode *MD = TI->getMetadata(LLVMContext::MD_section_prefix)) {
-    assert(cast<MDString>(MD->getOperand(0))
-               ->getString()
-               .equals("bb_section_prefix") &&
-           "Metadata not match");
-    return cast<MDString>(MD->getOperand(1))->getString();
-  }
-  return None;
 }
