@@ -13,16 +13,16 @@
 #include "SymbolFileDWARF.h"
 #include "SymbolFileDWARFDebugMap.h"
 
-DIERef::DIERef(const DWARFFormValue &form_value)
-    : cu_offset(DW_INVALID_OFFSET), die_offset(DW_INVALID_OFFSET) {
+DIERef::DIERef(const DWARFFormValue &form_value) {
   if (form_value.IsValid()) {
-    const DWARFUnit *dwarf_cu = form_value.GetCompileUnit();
-    if (dwarf_cu) {
-      if (dwarf_cu->GetBaseObjOffset() != DW_INVALID_OFFSET)
-        cu_offset = dwarf_cu->GetBaseObjOffset();
+    DWARFDIE die = form_value.Reference();
+    die_offset = die.GetOffset();
+    if (die) {
+      section = die.GetCU()->GetDebugSection();
+      if (die.GetCU()->GetBaseObjOffset() != DW_INVALID_OFFSET)
+        cu_offset = die.GetCU()->GetBaseObjOffset();
       else
-        cu_offset = dwarf_cu->GetOffset();
+        cu_offset = die.GetCU()->GetOffset();
     }
-    die_offset = form_value.Reference();
   }
 }

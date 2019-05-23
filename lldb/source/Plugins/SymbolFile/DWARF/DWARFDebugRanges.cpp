@@ -105,7 +105,7 @@ void DWARFDebugRanges::Dump(Stream &s,
       dw_addr_t begin_addr = begin + base_addr;
       dw_addr_t end_addr = end + base_addr;
 
-      s.AddressRange(begin_addr, end_addr, sizeof(dw_addr_t), NULL);
+      s.AddressRange(begin_addr, end_addr, sizeof(dw_addr_t), nullptr);
     }
   }
 }
@@ -204,8 +204,10 @@ static uint64_t ReadAddressFromDebugAddrSection(const DWARFUnit *cu,
   uint32_t index_size = cu->GetAddressByteSize();
   dw_offset_t addr_base = cu->GetAddrBase();
   lldb::offset_t offset = addr_base + index * index_size;
-  return cu->GetSymbolFileDWARF()->get_debug_addr_data().GetMaxU64(&offset,
-                                                                   index_size);
+  return cu->GetSymbolFileDWARF()
+      ->GetDWARFContext()
+      .getOrLoadAddrData()
+      .GetMaxU64(&offset, index_size);
 }
 
 bool DWARFDebugRngLists::FindRanges(const DWARFUnit *cu,

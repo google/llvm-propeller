@@ -391,6 +391,18 @@ static Value *emitFPIntBuiltin(CodeGenFunction &CGF,
   return CGF.Builder.CreateCall(F, {Src0, Src1});
 }
 
+// Emit an intrinsic that has overloaded integer result and fp operand.
+static Value *emitFPToIntRoundBuiltin(CodeGenFunction &CGF,
+                                      const CallExpr *E,
+                                      unsigned IntrinsicID) {
+   llvm::Type *ResultType = CGF.ConvertType(E->getType());
+   llvm::Value *Src0 = CGF.EmitScalarExpr(E->getArg(0));
+
+   Function *F = CGF.CGM.getIntrinsic(IntrinsicID,
+                                      {ResultType, Src0->getType()});
+   return CGF.Builder.CreateCall(F, Src0);
+}
+
 /// EmitFAbs - Emit a call to @llvm.fabs().
 static Value *EmitFAbs(CodeGenFunction &CGF, Value *V) {
   Function *F = CGF.CGM.getIntrinsic(Intrinsic::fabs, V->getType());
@@ -1122,9 +1134,10 @@ llvm::Function *CodeGenFunction::generateBuiltinOSLogHelperFunction(
     return F;
 
   llvm::SmallVector<QualType, 4> ArgTys;
-  llvm::SmallVector<ImplicitParamDecl, 4> Params;
-  Params.emplace_back(Ctx, nullptr, SourceLocation(), &Ctx.Idents.get("buffer"),
-                      Ctx.VoidPtrTy, ImplicitParamDecl::Other);
+  FunctionArgList Args;
+  Args.push_back(ImplicitParamDecl::Create(
+      Ctx, nullptr, SourceLocation(), &Ctx.Idents.get("buffer"), Ctx.VoidPtrTy,
+      ImplicitParamDecl::Other));
   ArgTys.emplace_back(Ctx.VoidPtrTy);
 
   for (unsigned int I = 0, E = Layout.Items.size(); I < E; ++I) {
@@ -1133,16 +1146,12 @@ llvm::Function *CodeGenFunction::generateBuiltinOSLogHelperFunction(
       continue;
 
     QualType ArgTy = getOSLogArgType(Ctx, Size);
-    Params.emplace_back(
+    Args.push_back(ImplicitParamDecl::Create(
         Ctx, nullptr, SourceLocation(),
         &Ctx.Idents.get(std::string("arg") + llvm::to_string(I)), ArgTy,
-        ImplicitParamDecl::Other);
+        ImplicitParamDecl::Other));
     ArgTys.emplace_back(ArgTy);
   }
-
-  FunctionArgList Args;
-  for (auto &P : Params)
-    Args.push_back(&P);
 
   QualType ReturnTy = Ctx.VoidTy;
   QualType FuncionTy = Ctx.getFunctionType(ReturnTy, ArgTys, {});
@@ -1176,7 +1185,7 @@ llvm::Function *CodeGenFunction::generateBuiltinOSLogHelperFunction(
   auto AL = ApplyDebugLocation::CreateArtificial(*this);
 
   CharUnits Offset;
-  Address BufAddr(Builder.CreateLoad(GetAddrOfLocalVar(&Params[0]), "buf"),
+  Address BufAddr(Builder.CreateLoad(GetAddrOfLocalVar(Args[0]), "buf"),
                   BufferAlignment);
   Builder.CreateStore(Builder.getInt8(Layout.getSummaryByte()),
                       Builder.CreateConstByteGEP(BufAddr, Offset++, "summary"));
@@ -1196,7 +1205,7 @@ llvm::Function *CodeGenFunction::generateBuiltinOSLogHelperFunction(
     if (!Size.getQuantity())
       continue;
 
-    Address Arg = GetAddrOfLocalVar(&Params[I]);
+    Address Arg = GetAddrOfLocalVar(Args[I]);
     Address Addr = Builder.CreateConstByteGEP(BufAddr, Offset, "argData");
     Addr = Builder.CreateBitCast(Addr, Arg.getPointer()->getType(),
                                  "argDataCast");
@@ -1388,8 +1397,6 @@ static llvm::Value *dumpRecord(CodeGenFunction &CGF, QualType RType,
   const auto *RT = RType->getAs<RecordType>();
   ASTContext &Context = CGF.getContext();
   RecordDecl *RD = RT->getDecl()->getDefinition();
-  ASTContext &Ctx = RD->getASTContext();
-  const ASTRecordLayout &RL = Ctx.getASTRecordLayout(RD);
   std::string Pad = std::string(Lvl * 4, ' ');
 
   Value *GString =
@@ -1419,9 +1426,6 @@ static llvm::Value *dumpRecord(CodeGenFunction &CGF, QualType RType,
   }
 
   for (const auto *FD : RD->fields()) {
-    uint64_t Off = RL.getFieldOffset(FD->getFieldIndex());
-    Off = Ctx.toCharUnitsFromBits(Off).getQuantity();
-
     Value *FieldPtr = RecordPtr;
     if (RD->isUnion())
       FieldPtr = CGF.Builder.CreatePointerCast(
@@ -1720,6 +1724,22 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     case Builtin::BI__builtin_truncf:
     case Builtin::BI__builtin_truncl:
       return RValue::get(emitUnaryBuiltin(*this, E, Intrinsic::trunc));
+
+    case Builtin::BIlround:
+    case Builtin::BIlroundf:
+    case Builtin::BIlroundl:
+    case Builtin::BI__builtin_lround:
+    case Builtin::BI__builtin_lroundf:
+    case Builtin::BI__builtin_lroundl:
+      return RValue::get(emitFPToIntRoundBuiltin(*this, E, Intrinsic::lround));
+
+    case Builtin::BIllround:
+    case Builtin::BIllroundf:
+    case Builtin::BIllroundl:
+    case Builtin::BI__builtin_llround:
+    case Builtin::BI__builtin_llroundf:
+    case Builtin::BI__builtin_llroundl:
+      return RValue::get(emitFPToIntRoundBuiltin(*this, E, Intrinsic::llround));
 
     default:
       break;
@@ -11862,6 +11882,22 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
                              Ops[0]->getType()->getVectorNumElements());
     Intrinsic::ID IID = Intrinsic::x86_avx512bf16_mask_cvtneps2bf16_128;
     return Builder.CreateCall(CGM.getIntrinsic(IID), Ops);
+  }
+
+  case X86::BI__builtin_ia32_cvtneps2bf16_256_mask:
+  case X86::BI__builtin_ia32_cvtneps2bf16_512_mask: {
+    Intrinsic::ID IID;
+    switch (BuiltinID) {
+    default: llvm_unreachable("Unsupported intrinsic!");
+    case X86::BI__builtin_ia32_cvtneps2bf16_256_mask:
+      IID = Intrinsic::x86_avx512bf16_cvtneps2bf16_256;
+      break;
+    case X86::BI__builtin_ia32_cvtneps2bf16_512_mask:
+      IID = Intrinsic::x86_avx512bf16_cvtneps2bf16_512;
+      break;
+    }
+    Value *Res = Builder.CreateCall(CGM.getIntrinsic(IID), Ops[0]);
+    return EmitX86Select(*this, Ops[2], Res, Ops[1]);
   }
 
   case X86::BI__emul:

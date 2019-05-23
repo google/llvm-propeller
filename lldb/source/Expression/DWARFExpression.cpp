@@ -46,19 +46,16 @@ ReadAddressFromDebugAddrSection(const DWARFUnit *dwarf_cu,
   uint32_t index_size = dwarf_cu->GetAddressByteSize();
   dw_offset_t addr_base = dwarf_cu->GetAddrBase();
   lldb::offset_t offset = addr_base + index * index_size;
-  return dwarf_cu->GetSymbolFileDWARF()->get_debug_addr_data().GetMaxU64(
-      &offset, index_size);
+  return dwarf_cu->GetSymbolFileDWARF()
+      ->GetDWARFContext()
+      .getOrLoadAddrData()
+      .GetMaxU64(&offset, index_size);
 }
 
 // DWARFExpression constructor
 DWARFExpression::DWARFExpression(DWARFUnit *dwarf_cu)
     : m_module_wp(), m_data(), m_dwarf_cu(dwarf_cu),
       m_reg_kind(eRegisterKindDWARF), m_loclist_slide(LLDB_INVALID_ADDRESS) {}
-
-DWARFExpression::DWARFExpression(const DWARFExpression &rhs)
-    : m_module_wp(rhs.m_module_wp), m_data(rhs.m_data),
-      m_dwarf_cu(rhs.m_dwarf_cu), m_reg_kind(rhs.m_reg_kind),
-      m_loclist_slide(rhs.m_loclist_slide) {}
 
 DWARFExpression::DWARFExpression(lldb::ModuleSP module_sp,
                                  const DataExtractor &data,
@@ -652,7 +649,7 @@ static bool ReadRegisterValueAsScalar(RegisterContext *reg_ctx,
                                       lldb::RegisterKind reg_kind,
                                       uint32_t reg_num, Status *error_ptr,
                                       Value &value) {
-  if (reg_ctx == NULL) {
+  if (reg_ctx == nullptr) {
     if (error_ptr)
       error_ptr->SetErrorStringWithFormat("No register context in frame.\n");
   } else {
@@ -1252,7 +1249,7 @@ bool DWARFExpression::Evaluate(ExecutionContext *exe_ctx,
   if (IsLocationList()) {
     lldb::offset_t offset = 0;
     addr_t pc;
-    StackFrame *frame = NULL;
+    StackFrame *frame = nullptr;
     if (reg_ctx)
       pc = reg_ctx->GetPC();
     else {
@@ -1326,14 +1323,14 @@ bool DWARFExpression::Evaluate(
   }
   std::vector<Value> stack;
 
-  Process *process = NULL;
-  StackFrame *frame = NULL;
+  Process *process = nullptr;
+  StackFrame *frame = nullptr;
 
   if (exe_ctx) {
     process = exe_ctx->GetProcessPtr();
     frame = exe_ctx->GetFramePtr();
   }
-  if (reg_ctx == NULL && frame)
+  if (reg_ctx == nullptr && frame)
     reg_ctx = frame->GetRegisterContext().get();
 
   if (initial_value_ptr)
@@ -2818,12 +2815,7 @@ bool DWARFExpression::Evaluate(
         return false;
       }
       uint64_t index = opcodes.GetULEB128(&offset);
-      uint32_t index_size = dwarf_cu->GetAddressByteSize();
-      dw_offset_t addr_base = dwarf_cu->GetAddrBase();
-      lldb::offset_t offset = addr_base + index * index_size;
-      uint64_t value =
-          dwarf_cu->GetSymbolFileDWARF()->get_debug_addr_data().GetMaxU64(
-              &offset, index_size);
+      lldb::addr_t value = ReadAddressFromDebugAddrSection(dwarf_cu, index);
       stack.push_back(Scalar(value));
       stack.back().SetValueType(Value::eValueTypeFileAddress);
     } break;
@@ -2843,22 +2835,8 @@ bool DWARFExpression::Evaluate(
         return false;
       }
       uint64_t index = opcodes.GetULEB128(&offset);
-      uint32_t index_size = dwarf_cu->GetAddressByteSize();
-      dw_offset_t addr_base = dwarf_cu->GetAddrBase();
-      lldb::offset_t offset = addr_base + index * index_size;
-      const DWARFDataExtractor &debug_addr =
-          dwarf_cu->GetSymbolFileDWARF()->get_debug_addr_data();
-      switch (index_size) {
-      case 4:
-        stack.push_back(Scalar(debug_addr.GetU32(&offset)));
-        break;
-      case 8:
-        stack.push_back(Scalar(debug_addr.GetU64(&offset)));
-        break;
-      default:
-        assert(false && "Unhandled index size");
-        return false;
-      }
+      lldb::addr_t value = ReadAddressFromDebugAddrSection(dwarf_cu, index);
+      stack.push_back(Scalar(value));
     } break;
 
     default:
@@ -3188,7 +3166,7 @@ void DWARFExpression::PrintDWARFLocationList(
     s.Indent();
     if (cu)
       s.AddressRange(start_addr + base_addr, end_addr + base_addr,
-                     cu->GetAddressByteSize(), NULL, ": ");
+                     cu->GetAddressByteSize(), nullptr, ": ");
     uint32_t loc_length = debug_loc_data.GetU16(&offset);
 
     DataExtractor locationData(debug_loc_data, offset, loc_length);

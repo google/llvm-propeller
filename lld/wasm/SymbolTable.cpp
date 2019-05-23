@@ -59,7 +59,7 @@ void SymbolTable::addCombinedLTOObject() {
 
   for (StringRef Filename : LTO->compile()) {
     auto *Obj = make<ObjFile>(MemoryBufferRef(Filename, "lto.tmp"), "");
-    Obj->parse();
+    Obj->parse(true);
     ObjectFiles.push_back(Obj);
   }
 }
@@ -196,6 +196,17 @@ DefinedFunction *SymbolTable::addSyntheticFunction(StringRef Name,
   SyntheticFunctions.emplace_back(Function);
   return replaceSymbol<DefinedFunction>(insertName(Name).first, Name,
                                         Flags, nullptr, Function);
+}
+
+DefinedData *SymbolTable::addOptionalDataSymbol(StringRef Name, uint32_t Value,
+                                                uint32_t Flags) {
+  Symbol *S = find(Name);
+  if (!S || S->isDefined())
+    return nullptr;
+  LLVM_DEBUG(dbgs() << "addOptionalDataSymbol: " << Name << "\n");
+  auto *rtn = replaceSymbol<DefinedData>(S, Name, Flags);
+  rtn->setVirtualAddress(Value);
+  return rtn;
 }
 
 DefinedData *SymbolTable::addSyntheticDataSymbol(StringRef Name,
@@ -476,7 +487,7 @@ void SymbolTable::addLazy(ArchiveFile *File, const Archive::Symbol *Sym) {
 }
 
 bool SymbolTable::addComdat(StringRef Name) {
-  return Comdats.insert(CachedHashStringRef(Name)).second;
+  return ComdatGroups.insert(CachedHashStringRef(Name)).second;
 }
 
 // The new signature doesn't match.  Create a variant to the symbol with the

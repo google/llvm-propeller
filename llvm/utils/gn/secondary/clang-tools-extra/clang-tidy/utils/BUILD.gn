@@ -7,6 +7,7 @@ static_library("utils") {
     "//clang/lib/ASTMatchers",
     "//clang/lib/Basic",
     "//clang/lib/Lex",
+    "//clang/lib/Tooling/Refactoring",
     "//llvm/lib/Support",
   ]
   sources = [
@@ -22,6 +23,7 @@ static_library("utils") {
     "LexerUtils.cpp",
     "NamespaceAliaser.cpp",
     "OptionsUtils.cpp",
+    "TransformerClangTidyCheck.cpp",
     "TypeTraits.cpp",
     "UsingInserter.cpp",
   ]

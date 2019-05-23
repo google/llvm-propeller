@@ -386,14 +386,14 @@ void GDBRemoteCommunicationClient::GetRemoteQSupported() {
         std::vector<std::string> supported_compressions;
         compressions += sizeof("SupportedCompressions=") - 1;
         const char *end_of_compressions = strchr(compressions, ';');
-        if (end_of_compressions == NULL) {
+        if (end_of_compressions == nullptr) {
           end_of_compressions = strchr(compressions, '\0');
         }
         const char *current_compression = compressions;
         while (current_compression < end_of_compressions) {
           const char *next_compression_name = strchr(current_compression, ',');
           const char *end_of_this_word = next_compression_name;
-          if (next_compression_name == NULL ||
+          if (next_compression_name == nullptr ||
               end_of_compressions < next_compression_name) {
             end_of_this_word = end_of_compressions;
           }
@@ -775,7 +775,7 @@ int GDBRemoteCommunicationClient::SendArgumentsPacket(
   std::vector<const char *> argv;
   FileSpec exe_file = launch_info.GetExecutableFile();
   std::string exe_path;
-  const char *arg = NULL;
+  const char *arg = nullptr;
   const Args &launch_args = launch_info.GetArguments();
   if (exe_file)
     exe_path = exe_file.GetPath(false);
@@ -786,7 +786,7 @@ int GDBRemoteCommunicationClient::SendArgumentsPacket(
   }
   if (!exe_path.empty()) {
     argv.push_back(exe_path.c_str());
-    for (uint32_t i = 1; (arg = launch_args.GetArgumentAtIndex(i)) != NULL;
+    for (uint32_t i = 1; (arg = launch_args.GetArgumentAtIndex(i)) != nullptr;
          ++i) {
       if (arg)
         argv.push_back(arg);
@@ -1094,7 +1094,7 @@ const char *GDBRemoteCommunicationClient::GetGDBServerProgramName() {
     if (!m_gdb_server_name.empty())
       return m_gdb_server_name.c_str();
   }
-  return NULL;
+  return nullptr;
 }
 
 uint32_t GDBRemoteCommunicationClient::GetGDBServerProgramVersion() {
@@ -1711,28 +1711,22 @@ lldb_private::Status
 GDBRemoteCommunicationClient::GetWatchpointsTriggerAfterInstruction(
     bool &after, const ArchSpec &arch) {
   Status error;
-  llvm::Triple::ArchType atype = arch.GetMachine();
+  llvm::Triple triple = arch.GetTriple();
 
   // we assume watchpoints will happen after running the relevant opcode and we
   // only want to override this behavior if we have explicitly received a
   // qHostInfo telling us otherwise
   if (m_qHostInfo_is_valid != eLazyBoolYes) {
-    // On targets like MIPS and ppc64le, watchpoint exceptions are always
+    // On targets like MIPS and ppc64, watchpoint exceptions are always
     // generated before the instruction is executed. The connected target may
     // not support qHostInfo or qWatchpointSupportInfo packets.
-    after =
-        !(atype == llvm::Triple::mips || atype == llvm::Triple::mipsel ||
-          atype == llvm::Triple::mips64 || atype == llvm::Triple::mips64el ||
-          atype == llvm::Triple::ppc64le);
+    after = !(triple.isMIPS() || triple.isPPC64());
   } else {
-    // For MIPS and ppc64le, set m_watchpoints_trigger_after_instruction to
+    // For MIPS and ppc64, set m_watchpoints_trigger_after_instruction to
     // eLazyBoolNo if it is not calculated before.
-    if ((m_watchpoints_trigger_after_instruction == eLazyBoolCalculate &&
-         (atype == llvm::Triple::mips || atype == llvm::Triple::mipsel ||
-          atype == llvm::Triple::mips64 || atype == llvm::Triple::mips64el)) ||
-        atype == llvm::Triple::ppc64le) {
+    if (m_watchpoints_trigger_after_instruction == eLazyBoolCalculate &&
+        (triple.isMIPS() || triple.isPPC64()))
       m_watchpoints_trigger_after_instruction = eLazyBoolNo;
-    }
 
     after = (m_watchpoints_trigger_after_instruction != eLazyBoolNo);
   }

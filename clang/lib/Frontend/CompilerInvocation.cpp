@@ -285,7 +285,12 @@ static bool ParseAnalyzerArgs(AnalyzerOptions &Opts, ArgList &Args,
   }
 
   Opts.ShowCheckerHelp = Args.hasArg(OPT_analyzer_checker_help);
-  Opts.ShowCheckerHelpHidden = Args.hasArg(OPT_analyzer_checker_help_hidden);
+  Opts.ShowCheckerHelpAlpha = Args.hasArg(OPT_analyzer_checker_help_alpha);
+  Opts.ShowCheckerHelpDeveloper =
+      Args.hasArg(OPT_analyzer_checker_help_developer);
+  Opts.ShowCheckerOptionList = Args.hasArg(OPT_analyzer_checker_option_help);
+  Opts.ShowCheckerOptionDeveloperList =
+      Args.hasArg(OPT_analyzer_checker_option_help_developer);
   Opts.ShowConfigOptionsList = Args.hasArg(OPT_analyzer_config_help);
   Opts.ShowEnabledCheckerList = Args.hasArg(OPT_analyzer_list_enabled_checkers);
   Opts.ShouldEmitErrorsOnInvalidConfigValue =
@@ -1068,7 +1073,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   if (const Arg *A = Args.getLastArg(OPT_compress_debug_sections,
                                      OPT_compress_debug_sections_EQ)) {
     if (A->getOption().getID() == OPT_compress_debug_sections) {
-      Opts.setCompressDebugSections(llvm::DebugCompressionType::Z);
+      // TODO: be more clever about the compression type auto-detection
+      Opts.setCompressDebugSections(llvm::DebugCompressionType::GNU);
     } else {
       auto DCT = llvm::StringSwitch<llvm::DebugCompressionType>(A->getValue())
                      .Case("none", llvm::DebugCompressionType::None)
@@ -2744,6 +2750,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.HalfArgsAndReturns = Args.hasArg(OPT_fallow_half_arguments_and_returns)
                             | Opts.NativeHalfArgsAndReturns;
   Opts.GNUAsm = !Args.hasArg(OPT_fno_gnu_inline_asm);
+  Opts.Cmse = Args.hasArg(OPT_mcmse); // Armv8-M Security Extensions
 
   // __declspec is enabled by default for the PS4 by the driver, and also
   // enabled for Microsoft Extensions or Borland Extensions, here.

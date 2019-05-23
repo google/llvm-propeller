@@ -36,9 +36,7 @@ namespace ptdecoder {
 ///     context.
 class PTInstruction {
 public:
-  PTInstruction();
-
-  PTInstruction(const PTInstruction &insn);
+  PTInstruction() = default;
 
   PTInstruction(const std::shared_ptr<ptdecoder_private::Instruction> &ptr);
 
@@ -82,12 +80,6 @@ private:
 ///     type PTInstruction.
 class PTInstructionList {
 public:
-  PTInstructionList();
-
-  PTInstructionList(const PTInstructionList &insn_list);
-
-  ~PTInstructionList();
-
   // Get number of instructions in the list
   size_t GetSize() const;
 
@@ -110,12 +102,6 @@ private:
 ///     specific options.
 class PTTraceOptions {
 public:
-  PTTraceOptions();
-
-  PTTraceOptions(const PTTraceOptions &options);
-
-  ~PTTraceOptions();
-
   lldb::TraceType GetType() const;
 
   uint64_t GetTraceBufferSize() const;
@@ -155,10 +141,6 @@ private:
 class PTDecoder {
 public:
   PTDecoder(lldb::SBDebugger &sbdebugger);
-
-  PTDecoder(const PTDecoder &ptdecoder);
-
-  ~PTDecoder();
 
   /// Start Intel(R) Processor Trace on a thread or complete process with
   /// Intel(R) Processor Trace specific configuration options

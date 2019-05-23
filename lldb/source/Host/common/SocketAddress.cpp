@@ -92,10 +92,6 @@ SocketAddress::SocketAddress(const struct addrinfo *addr_info) {
   *this = addr_info;
 }
 
-// SocketAddress copy constructor
-SocketAddress::SocketAddress(const SocketAddress &rhs)
-    : m_socket_addr(rhs.m_socket_addr) {}
-
 // Destructor
 SocketAddress::~SocketAddress() {}
 
@@ -240,11 +236,11 @@ SocketAddress::GetAddressInfo(const char *hostname, const char *servname,
   hints.ai_protocol = ai_protocol;
   hints.ai_flags = ai_flags;
 
-  struct addrinfo *service_info_list = NULL;
+  struct addrinfo *service_info_list = nullptr;
   int err = ::getaddrinfo(hostname, servname, &hints, &service_info_list);
   if (err == 0 && service_info_list) {
-    for (struct addrinfo *service_ptr = service_info_list; service_ptr != NULL;
-         service_ptr = service_ptr->ai_next) {
+    for (struct addrinfo *service_ptr = service_info_list;
+         service_ptr != nullptr; service_ptr = service_ptr->ai_next) {
       addr_list.emplace_back(SocketAddress(service_ptr));
     }
   }

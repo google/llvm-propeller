@@ -9,6 +9,7 @@
 #include "MCTargetDesc/PPCMCExpr.h"
 #include "MCTargetDesc/PPCMCTargetDesc.h"
 #include "PPCTargetStreamer.h"
+#include "TargetInfo/PowerPCTargetInfo.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
@@ -146,8 +147,7 @@ public:
     : MCTargetAsmParser(Options, STI, MII) {
     // Check for 64-bit vs. 32-bit pointer mode.
     const Triple &TheTriple = STI.getTargetTriple();
-    IsPPC64 = (TheTriple.getArch() == Triple::ppc64 ||
-               TheTriple.getArch() == Triple::ppc64le);
+    IsPPC64 = TheTriple.isPPC64();
     IsDarwin = TheTriple.isMacOSX();
     // Initialize the set of available features.
     setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));

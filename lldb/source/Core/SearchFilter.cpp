@@ -72,10 +72,6 @@ void Searcher::GetDescription(Stream *s) {}
 SearchFilter::SearchFilter(const TargetSP &target_sp, unsigned char filterType)
     : m_target_sp(target_sp), SubclassID(filterType) {}
 
-SearchFilter::SearchFilter(const SearchFilter &rhs) = default;
-
-SearchFilter &SearchFilter::operator=(const SearchFilter &rhs) = default;
-
 SearchFilter::~SearchFilter() = default;
 
 SearchFilterSP SearchFilter::CreateFromStructuredData(
@@ -404,16 +400,6 @@ SearchFilterByModule::SearchFilterByModule(const lldb::TargetSP &target_sp,
                                            const FileSpec &module)
     : SearchFilter(target_sp, FilterTy::ByModule), m_module_spec(module) {}
 
-SearchFilterByModule::SearchFilterByModule(const SearchFilterByModule &rhs) =
-    default;
-
-SearchFilterByModule &SearchFilterByModule::
-operator=(const SearchFilterByModule &rhs) {
-  m_target_sp = rhs.m_target_sp;
-  m_module_spec = rhs.m_module_spec;
-  return *this;
-}
-
 SearchFilterByModule::~SearchFilterByModule() = default;
 
 bool SearchFilterByModule::ModulePasses(const ModuleSP &module_sp) {
@@ -537,9 +523,6 @@ SearchFilterByModuleList::SearchFilterByModuleList(
     const lldb::TargetSP &target_sp, const FileSpecList &module_list,
     enum FilterTy filter_ty)
     : SearchFilter(target_sp, filter_ty), m_module_spec_list(module_list) {}
-
-SearchFilterByModuleList::SearchFilterByModuleList(
-    const SearchFilterByModuleList &rhs) = default;
 
 SearchFilterByModuleList &SearchFilterByModuleList::
 operator=(const SearchFilterByModuleList &rhs) {

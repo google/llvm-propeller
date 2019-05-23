@@ -165,11 +165,6 @@ BitcodeCompiler::BitcodeCompiler() {
 
 BitcodeCompiler::~BitcodeCompiler() = default;
 
-static void undefine(Symbol *S) {
-  replaceSymbol<Undefined>(S, nullptr, S->getName(), STB_GLOBAL, STV_DEFAULT,
-                           S->Type);
-}
-
 void BitcodeCompiler::add(BitcodeFile &F) {
   lto::InputFile &Obj = *F.Obj;
   bool IsExec = !Config->Shared && !Config->Relocatable;
@@ -214,7 +209,8 @@ void BitcodeCompiler::add(BitcodeFile &F) {
         !(DR->Section == nullptr && (!Sym->File || Sym->File->isElf()));
 
     if (R.Prevailing)
-      undefine(Sym);
+      Sym->replace(Undefined{nullptr, Sym->getName(), STB_GLOBAL, STV_DEFAULT,
+                             Sym->Type});
 
     // We tell LTO to not apply interprocedural optimization for wrapped
     // (with --wrap) symbols because otherwise LTO would inline them while
@@ -229,7 +225,7 @@ void BitcodeCompiler::add(BitcodeFile &F) {
 // distributed build system that depends on that behavior.
 static void thinLTOCreateEmptyIndexFiles() {
   for (LazyObjFile *F : LazyObjFiles) {
-    if (F->AddedToLink || !isBitcode(F->MB))
+    if (!isBitcode(F->MB))
       continue;
     std::string Path = replaceThinLTOSuffix(getThinLTOOutputFile(F->getName()));
     std::unique_ptr<raw_fd_ostream> OS = openFile(Path + ".thinlto.bc");

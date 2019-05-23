@@ -803,6 +803,10 @@ static void addPGOAndCoverageFlags(const ToolChain &TC, Compilation &C,
     CmdArgs.push_back("-fprofile-instrument=csllvm");
   }
   if (PGOGenArg) {
+    if (TC.getTriple().isWindowsMSVCEnvironment()) {
+      CmdArgs.push_back(Args.MakeArgString("--dependent-lib=" +
+                                           TC.getCompilerRT(Args, "profile")));
+    }
     if (PGOGenArg->getOption().matches(
             PGOGenerateArg ? options::OPT_fprofile_generate_EQ
                            : options::OPT_fcs_profile_generate_EQ)) {
@@ -1423,6 +1427,9 @@ void Clang::AddARMTargetArgs(const llvm::Triple &Triple, const ArgList &Args,
   if (!Args.hasFlag(options::OPT_mimplicit_float,
                     options::OPT_mno_implicit_float, true))
     CmdArgs.push_back("-no-implicit-float");
+
+  if (Args.getLastArg(options::OPT_mcmse))
+    CmdArgs.push_back("-mcmse");
 }
 
 void Clang::RenderTargetOptions(const llvm::Triple &EffectiveTriple,
@@ -5220,30 +5227,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       isa<CompileJobAction>(JA))
     CmdArgs.push_back("-disable-llvm-passes");
 
-  if (Output.getType() == types::TY_Dependencies) {
-    // Handled with other dependency code.
-  } else if (Output.isFilename()) {
-    CmdArgs.push_back("-o");
-    CmdArgs.push_back(Output.getFilename());
-  } else {
-    assert(Output.isNothing() && "Invalid output.");
-  }
-
-  addDashXForInput(Args, Input, CmdArgs);
-
-  ArrayRef<InputInfo> FrontendInputs = Input;
-  if (IsHeaderModulePrecompile)
-    FrontendInputs = ModuleHeaderInputs;
-  else if (Input.isNothing())
-    FrontendInputs = {};
-
-  for (const InputInfo &Input : FrontendInputs) {
-    if (Input.isFilename())
-      CmdArgs.push_back(Input.getFilename());
-    else
-      Input.getInputArg().renderAsInput(Args, CmdArgs);
-  }
-
   Args.AddAllArgs(CmdArgs, options::OPT_undef);
 
   const char *Exec = D.getClangProgramPath();
@@ -5440,6 +5423,32 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                       !TC.getTriple().isAndroid() &&
                        TC.useIntegratedAs()))
     CmdArgs.push_back("-faddrsig");
+
+  // Add the "-o out -x type src.c" flags last. This is done primarily to make
+  // the -cc1 command easier to edit when reproducing compiler crashes.
+  if (Output.getType() == types::TY_Dependencies) {
+    // Handled with other dependency code.
+  } else if (Output.isFilename()) {
+    CmdArgs.push_back("-o");
+    CmdArgs.push_back(Output.getFilename());
+  } else {
+    assert(Output.isNothing() && "Invalid output.");
+  }
+
+  addDashXForInput(Args, Input, CmdArgs);
+
+  ArrayRef<InputInfo> FrontendInputs = Input;
+  if (IsHeaderModulePrecompile)
+    FrontendInputs = ModuleHeaderInputs;
+  else if (Input.isNothing())
+    FrontendInputs = {};
+
+  for (const InputInfo &Input : FrontendInputs) {
+    if (Input.isFilename())
+      CmdArgs.push_back(Input.getFilename());
+    else
+      Input.getInputArg().renderAsInput(Args, CmdArgs);
+  }
 
   // Finally add the compile command to the compilation.
   if (Args.hasArg(options::OPT__SLASH_fallback) &&

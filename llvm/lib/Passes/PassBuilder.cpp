@@ -94,6 +94,7 @@
 #include "llvm/Transforms/Instrumentation/CGProfile.h"
 #include "llvm/Transforms/Instrumentation/ControlHeightReduction.h"
 #include "llvm/Transforms/Instrumentation/GCOVProfiler.h"
+#include "llvm/Transforms/Instrumentation/HWAddressSanitizer.h"
 #include "llvm/Transforms/Instrumentation/InstrOrderFile.h"
 #include "llvm/Transforms/Instrumentation/InstrProfiling.h"
 #include "llvm/Transforms/Instrumentation/MemorySanitizer.h"
@@ -141,6 +142,7 @@
 #include "llvm/Transforms/Scalar/MakeGuardsExplicit.h"
 #include "llvm/Transforms/Scalar/MemCpyOptimizer.h"
 #include "llvm/Transforms/Scalar/MergedLoadStoreMotion.h"
+#include "llvm/Transforms/Scalar/MergeICmps.h"
 #include "llvm/Transforms/Scalar/NaryReassociate.h"
 #include "llvm/Transforms/Scalar/NewGVN.h"
 #include "llvm/Transforms/Scalar/PartiallyInlineLibCalls.h"
@@ -215,6 +217,8 @@ PipelineTuningOptions::PipelineTuningOptions() {
   LoopInterleaving = EnableLoopInterleaving;
   LoopVectorization = EnableLoopVectorization;
   SLPVectorization = RunSLPVectorization;
+  LoopUnrolling = true;
+  ForgetAllSCEVInLoopUnroll = ForgetSCEVInLoopUnroll;
   LicmMssaOptCap = SetLicmMssaOptCap;
   LicmMssaNoAccForPromotionCap = SetLicmMssaNoAccForPromotionCap;
 }
@@ -457,9 +461,11 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   // Do not enable unrolling in PreLinkThinLTO phase during sample PGO
   // because it changes IR to makes profile annotation in back compile
   // inaccurate.
-  if (Phase != ThinLTOPhase::PreLink || !PGOOpt ||
-      PGOOpt->Action != PGOOptions::SampleUse)
-    LPM2.addPass(LoopFullUnrollPass(Level));
+  if ((Phase != ThinLTOPhase::PreLink || !PGOOpt ||
+       PGOOpt->Action != PGOOptions::SampleUse) &&
+      PTO.LoopUnrolling)
+    LPM2.addPass(
+        LoopFullUnrollPass(Level, false, PTO.ForgetAllSCEVInLoopUnroll));
 
   for (auto &C : LoopOptimizerEndEPCallbacks)
     C(LPM2, Level);
@@ -905,7 +911,9 @@ ModulePassManager PassBuilder::buildModuleOptimizationPipeline(
     OptimizePM.addPass(
         createFunctionToLoopPassAdaptor(LoopUnrollAndJamPass(Level)));
   }
-  OptimizePM.addPass(LoopUnrollPass(LoopUnrollOptions(Level)));
+  if (PTO.LoopUnrolling)
+    OptimizePM.addPass(LoopUnrollPass(
+        LoopUnrollOptions(Level, false, PTO.ForgetAllSCEVInLoopUnroll)));
   OptimizePM.addPass(WarnMissedTransformationsPass());
   OptimizePM.addPass(InstCombinePass());
   OptimizePM.addPass(RequireAnalysisPass<OptimizationRemarkEmitterAnalysis, Function>());
@@ -943,7 +951,7 @@ ModulePassManager PassBuilder::buildModuleOptimizationPipeline(
 
   // Optimize PHIs by speculating around them when profitable. Note that this
   // pass needs to be run after any PRE or similar pass as it is essentially
-  // inserting redudnancies into the progrem. This even includes SimplifyCFG.
+  // inserting redundancies into the program. This even includes SimplifyCFG.
   OptimizePM.addPass(SpeculateAroundPHIsPass());
 
   for (auto &C : OptimizerLastEPCallbacks)

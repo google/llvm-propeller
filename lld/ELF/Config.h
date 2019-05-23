@@ -142,6 +142,7 @@ struct Configuration {
   bool DefineCommon;
   bool OptimizeBBJumps;
   bool Demangle = true;
+  bool DependentLibraries;
   bool DisableVerify;
   bool EhFrameHdr;
   bool EmitLLVM;
