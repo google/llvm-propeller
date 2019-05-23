@@ -197,13 +197,13 @@ benchmark-pgo benchmark-pgo-plo benchmark-cspgo benchmark-cspgo-plo benchmark-st
 # sample_bball.o: sample.bc
 # 	./stage1-compiler -c -O2 -fbasicblock-sections=all $< -o $@
 
-# sample.plo.out sample.out.cfg: sample_bball.o sample.out.symfile sample.out.profile stage1-compiler
-# 	stage1/install/bin/clang -fuse-ld=lld \
-# 	  -Wl,-plo \
-# 	  -Wl,-symfile=sample.out.symfile \
-# 	  -Wl,-profile=sample.out.profile \
-# 	  -Wl,-cfgdump=sample.out.cfg \
-# 	  sample_bball.o -o $@ 2>&1 | tee $@.autolog
+sample.plo.out sample.out.cfg: sample_bball.o sample.out.symfile sample.out.profile stage1-compiler
+	stage1/install/bin/clang -fuse-ld=lld \
+	  -Wl,-plo \
+	  -Wl,-symfile=sample.out.symfile \
+	  -Wl,-profile=sample.out.profile \
+	  -Wl,-cfgdump=sample.out.cfg \
+	  sample_bball.o -o sample.plo.out 2>&1 | tee sample.plo.out.autolog
 
 # sample.out.layout: sample.out.cfg stage1-compiler
 # 	stage1/install/bin/layout -cfg-read $< -layout-dump $@ | tee $@.autolog
