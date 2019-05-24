@@ -247,7 +247,11 @@ template <class ELFT> void OutputSection::writeTo(uint8_t *Buf) {
         End = Buf + Size;
       else
         End = Buf + Sections[I + 1]->OutSecOff;
-      fill(Start, End - Start, Filler);
+      // Check if this IS needs a special filler.
+      if (IS->Filler)
+        fill(Start, End - Start, *(IS->Filler));
+      else
+        fill(Start, End - Start, Filler);
     }
   });
 
