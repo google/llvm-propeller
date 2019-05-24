@@ -101,7 +101,9 @@ class NodeChainBuilder {
     NodeChain * Chain = new NodeChain(Node);
     NodeToChainMap[Node] = Chain;
     NodeOffset[Node] = 0;
-    Chains.emplace(Node->Shndx, Chain);
+    Chains.emplace(std::piecewise_construct,
+                   std::forward_as_tuple(Node->Shndx),
+                   std::forward_as_tuple(Chain));
   }
 
  public:

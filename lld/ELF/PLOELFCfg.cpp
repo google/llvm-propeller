@@ -556,7 +556,7 @@ ostream &operator<<(ostream &Out, const ELFCfg &Cfg) {
 }
 
 bool PLO::ELFViewOrdinalComparator::operator()(const ELFCfg *A,
-                                               const ELFCfg *B) {
+                                               const ELFCfg *B) const {
   return A->View->Ordinal < B->View->Ordinal;
 }
 
