@@ -4,7 +4,7 @@ if(POLICY CMP0075)
   cmake_policy(SET CMP0075 NEW)
 endif()
 
-# Add path for custom modules
+# Add path for custom modules.
 set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
@@ -15,7 +15,7 @@ include(LLDBStandalone)
 include(LLDBConfig)
 include(AddLLDB)
 
-# Define the LLDB_CONFIGURATION_xxx matching the build type
+# Define the LLDB_CONFIGURATION_xxx matching the build type.
 if( uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG" )
   add_definitions( -DLLDB_CONFIGURATION_DEBUG )
 else()
@@ -124,6 +124,24 @@ if(LLDB_INCLUDE_TESTS)
           message(WARNING "LLDB test suite requires libc++ in llvm/projects/libcxx or an existing build symlinked to ${cxx_dir}")
         endif()
       else()
+        # We require libcxx for the test suite, so if we aren't building it,
+        # try to provide a helpful error about how to resolve the situation.
+        if(NOT TARGET cxx)
+          if(LLVM_ENABLE_PROJECTS STREQUAL "")
+            # If `LLVM_ENABLE_PROJECTS` is not being used (implying that we are
+            # using the old layout), suggest checking it out.
+            message(FATAL_ERROR
+              "LLDB test suite requires libc++, but it is currently disabled. "
+              "Please checkout `libcxx` in `llvm/projects` or disable tests "
+              "via `LLDB_INCLUDE_TESTS=OFF`.")
+          else()
+            # If `LLVM_ENABLE_PROJECTS` is being used, suggest adding it.
+            message(FATAL_ERROR
+              "LLDB test suite requires libc++, but it is currently disabled. "
+              "Please add `libcxx` to `LLVM_ENABLE_PROJECTS` or disable tests "
+              "via `LLDB_INCLUDE_TESTS=OFF`.")
+          endif()
+        endif()
         list(APPEND LLDB_TEST_DEPS cxx)
       endif()
     endif()
@@ -154,7 +172,7 @@ if (NOT LLDB_DISABLE_PYTHON)
     get_target_property(liblldb_build_dir liblldb LIBRARY_OUTPUT_DIRECTORY)
 
     # Add a Post-Build Event to copy over Python files and create the symlink
-    # to liblldb.so for the Python API(hardlink on Windows)
+    # to liblldb.so for the Python API(hardlink on Windows).
     add_custom_target(finish_swig ALL
         COMMAND
            ${PYTHON_EXECUTABLE} ${LLDB_SOURCE_DIR}/scripts/finishSwigWrapperClasses.py

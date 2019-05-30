@@ -659,7 +659,9 @@ void AsmPrinter::EmitFunctionHeader() {
   EmitConstantPool();
 
   // Print the 'header' of function.
-  OutStreamer->SwitchSection(getObjFileLowering().SectionForGlobal(&F, TM));
+  MF->setSection(getObjFileLowering().SectionForGlobal(&F, TM));
+  OutStreamer->SwitchSection(MF->getSection());
+
   EmitVisibility(CurrentFnSym, F.getVisibility());
 
   EmitLinkage(&F, CurrentFnSym);
@@ -921,9 +923,6 @@ static bool emitDebugLabelComment(const MachineInstr *MI, AsmPrinter &AP) {
 }
 
 AsmPrinter::CFIMoveType AsmPrinter::needsCFIMoves() const {
-  if (MF->getBasicBlockLabels())
-    return CFI_M_None;
-
   if (MAI->getExceptionHandlingType() == ExceptionHandling::DwarfCFI &&
       MF->getFunction().needsUnwindTableEntry())
     return CFI_M_EH;
@@ -1011,18 +1010,6 @@ static bool needFuncLabelsForEHOrDebugInfo(const MachineFunction &MF,
       classifyEHPersonality(MF.getFunction().getPersonalityFn()));
 }
 
-/// HasEHInfo - Return true is this Machine Basic Block is a landing pad or
-/// it has EHLabels used in exception tables.
-static bool HasEHInfo(const MachineBasicBlock &MBB) {
-  if (MBB.isEHPad() || MBB.isEHFuncletEntry())
-    return true;
-  for (auto &MI : MBB) {
-    if (MI.isEHLabel())
-      return true;
-  }
-  return false;
-}
-
 /// EmitFunctionBody - This method emits the body and trailer for a
 /// function.
 void AsmPrinter::EmitFunctionBody() {
@@ -1055,29 +1042,8 @@ void AsmPrinter::EmitFunctionBody() {
   bool HasAnyRealCode = false;
   int NumInstsInFunction = 0;
   bool emitBasicBlockSections = MF->getBasicBlockSections();
-
-  if (emitBasicBlockSections) {
-    for (auto &MBB : *MF) {
-      // A unique BB section can only be created if this basic block is not
-      // used for exception table computations.
-      if (!MBB.pred_empty() && !HasEHInfo(MBB))
-        MBB.setIsUniqueSection();
-    }
-    // With -fbasicblock-sections, fall through blocks must be made
-    // explicitly reachable.  Do this after unique sections is set as
-    // unnecessary fallthroughs can be avoided.
-    for (auto &MBB : *MF) {
-      MBB.insertUnconditionalFallthroughBranch();
-    }
-    // With fbasicblock-sections, not all basic blocks can be put in separate
-    // sections.  Sort the sections so that unique sections move to the end.
-    // Clustering basic blocks that go in the same section works well with
-    // generating CFI info.
-    (*MF).sort([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-      return (X.isUniqueSection() == Y.isUniqueSection()) ?
-             (X.getNumber() < Y.getNumber()) : !X.isUniqueSection();
-    });
-  }
+  if (emitBasicBlockSections)
+    MF->sortBasicBlockSections();
 
   for (auto &MBB : *MF) {
     // Print a label for the basic block.
@@ -1113,6 +1079,7 @@ void AsmPrinter::EmitFunctionBody() {
       case TargetOpcode::LOCAL_ESCAPE:
         emitFrameAlloc(MI);
         break;
+      case TargetOpcode::ANNOTATION_LABEL:
       case TargetOpcode::EH_LABEL:
       case TargetOpcode::GC_LABEL:
         OutStreamer->EmitLabel(MI.getOperand(0).getMCSymbol());
@@ -1161,7 +1128,7 @@ void AsmPrinter::EmitFunctionBody() {
     if (MF->getBasicBlockLabels() || MBB.isUniqueSection()) {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
-      MCSymbol *CurrentBBEnd = createTempSymbol("bb_end");
+      MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
       // MCSymbol *CurrentBBEnd = OutContext.getOrCreateSymbol(
          // MBB.getSymbol()->getName() + Twine(".bbend"));
       const MCExpr *SizeExp =  MCBinaryExpr::createSub(
@@ -1204,10 +1171,11 @@ void AsmPrinter::EmitFunctionBody() {
     }
   }
 
-  const Function &F = MF->getFunction();
   // Switch to the original section if basic block sections was used.
   if (emitBasicBlockSections)
-    OutStreamer->SwitchSection(getObjFileLowering().SectionForGlobal(&F, TM));
+    OutStreamer->SwitchSection(MF->getSection());
+
+  const Function &F = MF->getFunction();
   for (const auto &BB : F) {
     if (!BB.hasAddressTaken())
       continue;
@@ -2022,7 +1990,7 @@ struct Structor {
 /// priority.
 void AsmPrinter::EmitXXStructorList(const DataLayout &DL, const Constant *List,
                                     bool isCtor) {
-  // Should be an array of '{ int, void ()* }' structs.  The first value is the
+  // Should be an array of '{ i32, void ()*, i8* }' structs.  The first value is the
   // init priority.
   if (!isa<ConstantArray>(List)) return;
 
@@ -2030,12 +1998,10 @@ void AsmPrinter::EmitXXStructorList(const DataLayout &DL, const Constant *List,
   const ConstantArray *InitList = dyn_cast<ConstantArray>(List);
   if (!InitList) return; // Not an array!
   StructType *ETy = dyn_cast<StructType>(InitList->getType()->getElementType());
-  // FIXME: Only allow the 3-field form in LLVM 4.0.
-  if (!ETy || ETy->getNumElements() < 2 || ETy->getNumElements() > 3)
-    return; // Not an array of two or three elements!
-  if (!isa<IntegerType>(ETy->getTypeAtIndex(0U)) ||
-      !isa<PointerType>(ETy->getTypeAtIndex(1U))) return; // Not (int, ptr).
-  if (ETy->getNumElements() == 3 && !isa<PointerType>(ETy->getTypeAtIndex(2U)))
+  if (!ETy || ETy->getNumElements() != 3 ||
+      !isa<IntegerType>(ETy->getTypeAtIndex(0U)) ||
+      !isa<PointerType>(ETy->getTypeAtIndex(1U)) ||
+      !isa<PointerType>(ETy->getTypeAtIndex(2U)))
     return; // Not (int, ptr, ptr).
 
   // Gather the structors in a form that's convenient for sorting by priority.
@@ -2051,7 +2017,7 @@ void AsmPrinter::EmitXXStructorList(const DataLayout &DL, const Constant *List,
     Structor &S = Structors.back();
     S.Priority = Priority->getLimitedValue(65535);
     S.Func = CS->getOperand(1);
-    if (ETy->getNumElements() == 3 && !CS->getOperand(2)->isNullValue())
+    if (!CS->getOperand(2)->isNullValue())
       S.ComdatKey =
           dyn_cast<GlobalValue>(CS->getOperand(2)->stripPointerCasts());
   }
@@ -2288,7 +2254,10 @@ const MCExpr *AsmPrinter::lowerConstant(const Constant *CV) {
 
     // We can emit the pointer value into this slot if the slot is an
     // integer slot equal to the size of the pointer.
-    if (DL.getTypeAllocSize(Ty) == DL.getTypeAllocSize(Op->getType()))
+    //
+    // If the pointer is larger than the resultant integer, then
+    // as with Trunc just depend on the assembler to truncate it.
+    if (DL.getTypeAllocSize(Ty) <= DL.getTypeAllocSize(Op->getType()))
       return OpExpr;
 
     // Otherwise the pointer is smaller than the resultant integer, mask off
@@ -3028,8 +2997,7 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) const {
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
                                                               MBB, TM));
     } else if (BasicBlockSections) {
-      const Function &F = MF->getFunction();
-      OutStreamer->SwitchSection(getObjFileLowering().SectionForGlobal(&F, TM));
+      OutStreamer->SwitchSection(MF->getSection());
     }
     // Emit alignment after section is created for basic block sections.
     // if (unsigned Align = MBB.getAlignment())

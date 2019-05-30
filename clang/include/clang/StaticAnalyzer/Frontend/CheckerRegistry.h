@@ -98,15 +98,28 @@ public:
     StringRef OptionName;
     StringRef DefaultValStr;
     StringRef Description;
+    bool IsHidden;
 
     CmdLineOption(StringRef OptionType, StringRef OptionName,
-                  StringRef DefaultValStr, StringRef Description)
+                  StringRef DefaultValStr, StringRef Description, bool IsHidden)
         : OptionType(OptionType), OptionName(OptionName),
-          DefaultValStr(DefaultValStr), Description(Description) {
+          DefaultValStr(DefaultValStr), Description(Description),
+          IsHidden(IsHidden) {
 
       assert((OptionType == "bool" || OptionType == "string" ||
               OptionType == "int") &&
              "Unknown command line option type!");
+
+      assert((OptionType != "bool" ||
+              (DefaultValStr == "true" || DefaultValStr == "false")) &&
+             "Invalid value for boolean command line option! Maybe incorrect "
+             "parameters to the addCheckerOption or addPackageOption method?");
+
+      int Tmp;
+      assert((OptionType != "int" || !DefaultValStr.getAsInteger(0, Tmp)) &&
+             "Invalid value for integer command line option! Maybe incorrect "
+             "parameters to the addCheckerOption or addPackageOption method?");
+      (void)Tmp;
     }
   };
 
@@ -148,6 +161,12 @@ public:
 
     bool isDisabled(const LangOptions &LO) const {
       return State == StateFromCmdLine::State_Disabled && ShouldRegister(LO);
+    }
+
+    // Since each checker must have a different full name, we can identify
+    // CheckerInfo objects by them.
+    bool operator==(const CheckerInfo &Rhs) const {
+      return FullName == Rhs.FullName;
     }
 
     CheckerInfo(InitializationFunction Fn, ShouldRegisterFunction sfn,
@@ -222,7 +241,7 @@ public:
   /// non-compatibility mode.
   void addCheckerOption(StringRef OptionType, StringRef CheckerFullName,
                         StringRef OptionName, StringRef DefaultValStr,
-                        StringRef Description);
+                        StringRef Description, bool IsHidden = false);
 
   /// Adds a package to the registry.
   void addPackage(StringRef FullName);
@@ -238,7 +257,7 @@ public:
   /// non-compatibility mode.
   void addPackageOption(StringRef OptionType, StringRef PackageFullName,
                         StringRef OptionName, StringRef DefaultValStr,
-                        StringRef Description);
+                        StringRef Description, bool IsHidden = false);
 
   // FIXME: This *really* should be added to the frontend flag descriptions.
   /// Initializes a CheckerManager by calling the initialization functions for
@@ -255,6 +274,7 @@ public:
   void printCheckerWithDescList(raw_ostream &Out,
                                 size_t MaxNameChars = 30) const;
   void printEnabledCheckerList(raw_ostream &Out) const;
+  void printCheckerOptionList(raw_ostream &Out) const;
 
 private:
   /// Collect all enabled checkers. The returned container preserves the order

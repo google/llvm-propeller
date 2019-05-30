@@ -247,17 +247,8 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   bool InsertedCFIInstr = false;
 
-  /*if (MF.getBasicBlockSections()) {
-    // With fbasicblock-sections, not all basic blocks can be put in separate
-    // sections.  Sort the sections so that unique sections move to the end.
-    // Clustering basic blocks that go in the same section works well with
-    // generating CFI info.
-    MF.sort([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-      return (X.isUniqueSection() == Y.isUniqueSection()) ?
-          (X.getNumber() < Y.getNumber()) : !X.isUniqueSection();
-    });
-  }*/
-
+  MF.sortBasicBlockSections();
+ 
   for (MachineBasicBlock &MBB : MF) {
     // Skip the first MBB in a function
     if (MBB.getNumber() == MF.front().getNumber()) continue;
@@ -268,8 +259,8 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
 
     // If the current MBB will be placed in a unique section, a full DefCfa
     // must be emitted.
-    // const bool ForceFullCFA = MF.getBasicBlockSections();
-    const bool ForceFullCFA = false;
+    // const bool ForceFullCFA = MBB.isUniqueSection();
+    const bool ForceFullCFA = true;
 
     if (PrevMBBInfo->OutgoingCFAOffset != MBBInfo.IncomingCFAOffset ||
         ForceFullCFA) {

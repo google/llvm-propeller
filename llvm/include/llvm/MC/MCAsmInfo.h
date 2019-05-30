@@ -27,6 +27,7 @@ class MCCFIInstruction;
 class MCExpr;
 class MCSection;
 class MCStreamer;
+class MCSubtargetInfo;
 class MCSymbol;
 
 namespace WinEH {
@@ -387,6 +388,12 @@ protected:
   // %hi(), and similar unary operators.
   bool HasMipsExpressions = false;
 
+  // If true, then use symbols instead of sections for relocations.  This is
+  // true with basic block sections, as the basic block is relaxed by the
+  // linker.
+  bool RelocateWithSymbols = false;
+  bool RelocateWithSizeRelocs = false;
+
 public:
   explicit MCAsmInfo();
   virtual ~MCAsmInfo();
@@ -473,7 +480,13 @@ public:
   bool hasMachoTBSSDirective() const { return HasMachoTBSSDirective; }
   bool hasCOFFAssociativeComdats() const { return HasCOFFAssociativeComdats; }
   bool hasCOFFComdatConstants() const { return HasCOFFComdatConstants; }
-  unsigned getMaxInstLength() const { return MaxInstLength; }
+
+  /// Returns the maximum possible encoded instruction size in bytes. If \p STI
+  /// is null, this should be the maximum size for any subtarget.
+  virtual unsigned getMaxInstLength(const MCSubtargetInfo *STI = nullptr) const {
+    return MaxInstLength;
+  }
+
   unsigned getMinInstAlignment() const { return MinInstAlignment; }
   bool getDollarIsPC() const { return DollarIsPC; }
   const char *getSeparatorString() const { return SeparatorString; }
@@ -632,6 +645,15 @@ public:
   bool canRelaxRelocations() const { return RelaxELFRelocations; }
   void setRelaxELFRelocations(bool V) { RelaxELFRelocations = V; }
   bool hasMipsExpressions() const { return HasMipsExpressions; }
+  bool shouldRelocateWithSymbols() const { return RelocateWithSymbols; }
+  bool shouldRelocateWithSizeRelocs() const { return RelocateWithSizeRelocs; }
+  void setRelocateWithSymbols(bool V = true) {
+    // Relocate with symbols and size relocs.  This is currently active
+    // during basic block sections.  If the target does not support size
+    // relocs, this must be split.
+    RelocateWithSymbols = V;
+    RelocateWithSizeRelocs = V;
+  }
 };
 
 } // end namespace llvm

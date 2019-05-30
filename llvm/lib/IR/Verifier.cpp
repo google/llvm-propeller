@@ -641,18 +641,18 @@ void Verifier::visitGlobalVariable(const GlobalVariable &GV) {
       PointerType *FuncPtrTy =
           FunctionType::get(Type::getVoidTy(Context), false)->
           getPointerTo(DL.getProgramAddressSpace());
-      // FIXME: Reject the 2-field form in LLVM 4.0.
       Assert(STy &&
                  (STy->getNumElements() == 2 || STy->getNumElements() == 3) &&
                  STy->getTypeAtIndex(0u)->isIntegerTy(32) &&
                  STy->getTypeAtIndex(1) == FuncPtrTy,
              "wrong type for intrinsic global variable", &GV);
-      if (STy->getNumElements() == 3) {
-        Type *ETy = STy->getTypeAtIndex(2);
-        Assert(ETy->isPointerTy() &&
-                   cast<PointerType>(ETy)->getElementType()->isIntegerTy(8),
-               "wrong type for intrinsic global variable", &GV);
-      }
+      Assert(STy->getNumElements() == 3,
+             "the third field of the element type is mandatory, "
+             "specify i8* null to migrate from the obsoleted 2-field form");
+      Type *ETy = STy->getTypeAtIndex(2);
+      Assert(ETy->isPointerTy() &&
+                 cast<PointerType>(ETy)->getElementType()->isIntegerTy(8),
+             "wrong type for intrinsic global variable", &GV);
     }
   }
 
@@ -4595,29 +4595,38 @@ void Verifier::visitIntrinsicCall(Intrinsic::ID ID, CallBase &Call) {
     break;
   }
   case Intrinsic::smul_fix:
+  case Intrinsic::smul_fix_sat:
   case Intrinsic::umul_fix: {
     Value *Op1 = Call.getArgOperand(0);
     Value *Op2 = Call.getArgOperand(1);
     Assert(Op1->getType()->isIntOrIntVectorTy(),
-           "first operand of [us]mul_fix must be an int type or vector "
+           "first operand of [us]mul_fix[_sat] must be an int type or vector "
            "of ints");
     Assert(Op2->getType()->isIntOrIntVectorTy(),
-           "second operand of [us]mul_fix must be an int type or vector "
+           "second operand of [us]mul_fix_[sat] must be an int type or vector "
            "of ints");
 
     auto *Op3 = cast<ConstantInt>(Call.getArgOperand(2));
     Assert(Op3->getType()->getBitWidth() <= 32,
-           "third argument of [us]mul_fix must fit within 32 bits");
+           "third argument of [us]mul_fix[_sat] must fit within 32 bits");
 
-    if (ID == Intrinsic::smul_fix) {
+    if (ID == Intrinsic::smul_fix || ID == Intrinsic::smul_fix_sat) {
       Assert(
           Op3->getZExtValue() < Op1->getType()->getScalarSizeInBits(),
-          "the scale of smul_fix must be less than the width of the operands");
+          "the scale of smul_fix[_sat] must be less than the width of the operands");
     } else {
       Assert(Op3->getZExtValue() <= Op1->getType()->getScalarSizeInBits(),
-             "the scale of umul_fix must be less than or equal to the width of "
+             "the scale of umul_fix[_sat] must be less than or equal to the width of "
              "the operands");
     }
+    break;
+  }
+  case Intrinsic::lround:
+  case Intrinsic::llround: {
+    Type *ValTy = Call.getArgOperand(0)->getType();
+    Type *ResultTy = Call.getType();
+    Assert(!ValTy->isVectorTy() && !ResultTy->isVectorTy(),
+           "Intrinsic does not support vectors", &Call);
     break;
   }
   };

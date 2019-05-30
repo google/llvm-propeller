@@ -28,8 +28,6 @@
 
 namespace lldb_private {
 class ConstString;
-}
-namespace lldb_private {
 class Event;
 }
 
@@ -60,10 +58,11 @@ public:
 
   const char *GetName() { return m_name.c_str(); }
 
-  uint32_t StartListeningForEventSpec(lldb::BroadcasterManagerSP manager_sp,
-                                      const BroadcastEventSpec &event_spec);
+  uint32_t
+  StartListeningForEventSpec(const lldb::BroadcasterManagerSP &manager_sp,
+                             const BroadcastEventSpec &event_spec);
 
-  bool StopListeningForEventSpec(lldb::BroadcasterManagerSP manager_sp,
+  bool StopListeningForEventSpec(const lldb::BroadcasterManagerSP &manager_sp,
                                  const BroadcastEventSpec &event_spec);
 
   uint32_t StartListeningForEvents(Broadcaster *broadcaster,

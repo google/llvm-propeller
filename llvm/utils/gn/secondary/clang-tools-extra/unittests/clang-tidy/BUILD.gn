@@ -18,6 +18,7 @@ unittest("ClangTidyTests") {
     "//clang/lib/Serialization",
     "//clang/lib/Tooling",
     "//clang/lib/Tooling/Core",
+    "//clang/lib/Tooling/Refactoring",
     "//llvm/lib/Support",
   ]
   include_dirs = [ "//clang-tools-extra/clang-tidy" ]
@@ -31,6 +32,7 @@ unittest("ClangTidyTests") {
     "ObjCModuleTest.cpp",
     "OverlappingReplacementsTest.cpp",
     "ReadabilityModuleTest.cpp",
+    "TransformerClangTidyCheckTest.cpp",
     "UsingInserterTest.cpp",
   ]
 }

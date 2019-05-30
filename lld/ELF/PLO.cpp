@@ -97,7 +97,6 @@ bool PLO::dumpCfgsToFile(StringRef &CfgDumpFile) const {
 // This method is thread safe.
 void PLO::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
-  fprintf(stderr, "Processing: %s\n", Inf->getName().str().c_str());
   ELFView *View = ELFView::create(Inf->getName(), Pair.second, Inf->MB);
   if (View) {
     ELFCfgBuilder(*this, View).buildCfgs();

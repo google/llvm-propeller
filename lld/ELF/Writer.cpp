@@ -29,6 +29,8 @@
 #include "llvm/Support/xxhash.h"
 #include <climits>
 
+#define DEBUG_TYPE "lld"
+
 using namespace llvm;
 using namespace llvm::ELF;
 using namespace llvm::object;
@@ -180,14 +182,18 @@ static Defined *addOptionalRegular(StringRef Name, SectionBase *Sec,
   Symbol *S = Symtab->find(Name);
   if (!S || S->isDefined())
     return nullptr;
-  return Symtab->addDefined(Name, StOther, STT_NOTYPE, Val,
-                            /*Size=*/0, Binding, Sec,
-                            /*File=*/nullptr);
+
+  return cast<Defined>(Symtab->addSymbol(
+      Defined{/*File=*/nullptr, Name, Binding, StOther, STT_NOTYPE, Val,
+              /*Size=*/0, Sec}));
 }
 
 static Defined *addAbsolute(StringRef Name) {
-  return Symtab->addDefined(Name, STV_HIDDEN, STT_NOTYPE, 0, 0, STB_GLOBAL,
-                            nullptr, nullptr);
+  Symbol *Sym = Symtab->addSymbol(Defined{nullptr, Name, STB_GLOBAL, STV_HIDDEN,
+                                          STT_NOTYPE, 0, 0, nullptr});
+  if (!Sym->isDefined())
+    error("duplicate symbol: " + toString(*Sym));
+  return cast<Defined>(Sym);
 }
 
 // The linker is expected to define some symbols depending on
@@ -236,10 +242,10 @@ void elf::addReservedSymbols() {
     if (Config->EMachine == EM_PPC || Config->EMachine == EM_PPC64)
       GotOff = 0x8000;
 
-    ElfSym::GlobalOffsetTable =
-        Symtab->addDefined(GotSymName, STV_HIDDEN, STT_NOTYPE, GotOff,
-                           /*Size=*/0, STB_GLOBAL, Out::ElfHeader,
-                           /*File=*/nullptr);
+    Symtab->addSymbol(Defined{/*File=*/nullptr, GotSymName, STB_GLOBAL,
+                              STV_HIDDEN, STT_NOTYPE, GotOff, /*Size=*/0,
+                              Out::ElfHeader});
+    ElfSym::GlobalOffsetTable = cast<Defined>(S);
   }
 
   // __ehdr_start is the location of ELF file headers. Note that we define
@@ -576,12 +582,30 @@ static bool shouldKeepInSymtab(const Defined &Sym) {
   if (Config->EmitRelocs)
     return true;
 
+  StringRef Name = Sym.getName();
+
+  // If it's .bb. symbol.
+  if (Config->Plo) {
+    auto S1 = Name.rsplit('.');
+    if (!S1.second.empty()) {
+      bool AllDigits = true;
+      for (auto I: S1.second) {
+        if (I < '0' || I > '9') {
+          AllDigits = false;
+          break;
+        }
+      }
+      if (AllDigits && S1.first.rsplit('.').second == "bb") {
+        return false;
+      }
+    }
+  }
+
   // In ELF assembly .L symbols are normally discarded by the assembler.
   // If the assembler fails to do so, the linker discards them if
   // * --discard-locals is used.
   // * The symbol is in a SHF_MERGE section, which is normally the reason for
   //   the assembler keeping the .L symbol.
-  StringRef Name = Sym.getName();
   bool IsLocal = Name.startswith(".L") || Name.empty();
   if (!IsLocal)
     return true;
@@ -1499,6 +1523,44 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
   }
 }
 
+// If Input Sections have been shrinked (basic block sections) then
+// update symbol values and sizes associated with these sections.
+static void fixSymbolsAfterShrinking() {
+  for (InputFile *File : ObjectFiles) {
+    parallelForEach(File->getSymbols(), [&](Symbol *Sym) {
+      auto *Def = dyn_cast<Defined>(Sym);
+      if (!Def)
+        return;
+
+      const auto *Sec = Def->Section;
+      if (!Sec)
+        return;
+
+      const auto *InputSec = dyn_cast<InputSectionBase>(Sec->Repl);
+      if (!InputSec || !InputSec->BytesDropped)
+        return;
+
+      const auto NewSize = InputSec->data().size();
+
+      if (Def->Value > NewSize) {
+        LLVM_DEBUG(llvm::dbgs() << "Moving symbol " << Sym->getName() <<
+                   " from "  << Def->Value << " to " <<
+                   Def->Value - InputSec->BytesDropped << " bytes\n");
+        Def->Value -= InputSec->BytesDropped;
+        return;
+      }
+
+      if (Def->Value + Def->Size > NewSize) {
+        LLVM_DEBUG(llvm::dbgs() << "Shrinking symbol " << Sym->getName() <<
+                   " from "  << Def->Size << " to " <<
+                   Def->Size - InputSec->BytesDropped << " bytes\n");
+        Def->Size -= InputSec->BytesDropped;
+      }
+    });
+  }
+}
+
+
 // If basic block sections exist, there are opportunities to delete fall thru
 // jumps and shrink jump instructions after basic block reordering.  This
 // relaxation pass does that.
@@ -1521,7 +1583,8 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     size_t NumDeleted = std::count(Result.begin(), Result.end(), true);
     if (NumDeleted > 0) {
       Script->assignAddresses();
-      // message("Removing" + Twine(NumDeleted).str() + " fall through jumps");
+      LLVM_DEBUG(llvm::dbgs() << "Removing " << NumDeleted <<
+                 " fall through jumps\n");
     }
 
     auto MaxIt = std::max_element(Sections.begin(), Sections.end(),
@@ -1543,11 +1606,14 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
         }
       });
       size_t Num = std::count(Shrunk.begin(), Shrunk.end(), true);
-      // message("Shrunk " + Twine(Num).str() + " jmp instructions");
+      if (Num > 0)
+        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->Name <<
+                   " : Shrinking " << Num << " jmp instructions\n");
       if (Changed)
         Script->assignAddresses();
     } while (Changed);
   }
+  fixSymbolsAfterShrinking();
 }
 
 static void finalizeSynthetic(SyntheticSection *Sec) {
@@ -1640,9 +1706,9 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // Even the author of gold doesn't remember why gold behaves that way.
   // https://sourceware.org/ml/binutils/2002-03/msg00360.html
   if (In.Dynamic->Parent)
-    Symtab->addDefined("_DYNAMIC", STV_HIDDEN, STT_NOTYPE, 0 /*Value*/,
-                       /*Size=*/0, STB_WEAK, In.Dynamic,
-                       /*File=*/nullptr);
+    Symtab->addSymbol(Defined{/*File=*/nullptr, "_DYNAMIC", STB_WEAK,
+                              STV_HIDDEN, STT_NOTYPE,
+                              /*Value=*/0, /*Size=*/0, In.Dynamic});
 
   // Define __rel[a]_iplt_{start,end} symbols if needed.
   addRelIpltSymbols();
@@ -2241,24 +2307,6 @@ template <class ELFT> void Writer<ELFT>::setPhdrs() {
       // to protect the last page. This is a no-op on FreeBSD which always
       // rounds up.
       P->p_memsz = alignTo(P->p_memsz, Config->CommonPageSize);
-    }
-
-    if (P->p_type == PT_TLS && P->p_memsz) {
-      if (!Config->Shared &&
-          (Config->EMachine == EM_ARM || Config->EMachine == EM_AARCH64)) {
-        // On ARM/AArch64, reserve extra space (8 words) between the thread
-        // pointer and an executable's TLS segment by overaligning the segment.
-        // This reservation is needed for backwards compatibility with Android's
-        // TCB, which allocates several slots after the thread pointer (e.g.
-        // TLS_SLOT_STACK_GUARD==5). For simplicity, this overalignment is also
-        // done on other operating systems.
-        P->p_align = std::max<uint64_t>(P->p_align, Config->Wordsize * 8);
-      }
-
-      // The TLS pointer goes after PT_TLS for variant 2 targets. At least glibc
-      // will align it, so round up the size to make sure the offsets are
-      // correct.
-      P->p_memsz = alignTo(P->p_memsz, P->p_align);
     }
   }
 }

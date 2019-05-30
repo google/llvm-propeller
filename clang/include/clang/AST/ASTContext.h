@@ -271,6 +271,12 @@ private:
   llvm::DenseMap<const MaterializeTemporaryExpr *, APValue *>
     MaterializedTemporaryValues;
 
+  /// A cache mapping a string value to a StringLiteral object with the same
+  /// value.
+  ///
+  /// This is lazily created.  This is intentionally not serialized.
+  mutable llvm::StringMap<StringLiteral *> StringLiteralCache;
+
   /// Representation of a "canonical" template template parameter that
   /// is used in canonical template names.
   class CanonicalTemplateTemplateParm : public llvm::FoldingSetNode {
@@ -1323,6 +1329,10 @@ public:
                                 ArrayType::ArraySizeModifier ASM,
                                 unsigned IndexTypeQuals) const;
 
+  /// Return a type for a constant array for a string literal of the
+  /// specified element type and length.
+  QualType getStringLiteralArrayType(QualType EltTy, unsigned Length) const;
+
   /// Returns a vla type where known sizes are replaced with [*].
   QualType getVariableArrayDecayedType(QualType Ty) const;
 
@@ -1512,7 +1522,7 @@ public:
 
   /// C++11 deduced auto type.
   QualType getAutoType(QualType DeducedType, AutoTypeKeyword Keyword,
-                       bool IsDependent) const;
+                       bool IsDependent, bool IsPack = false) const;
 
   /// C++11 deduction pattern for 'auto' type.
   QualType getAutoDeductType() const;
@@ -2385,7 +2395,8 @@ public:
 
   /// Retrieves the default calling convention for the current target.
   CallingConv getDefaultCallingConvention(bool IsVariadic,
-                                          bool IsCXXMethod) const;
+                                          bool IsCXXMethod,
+                                          bool IsBuiltin = false) const;
 
   /// Retrieves the "canonical" template name that refers to a
   /// given template.
@@ -2804,6 +2815,11 @@ public:
   /// of static storage duration.
   APValue *getMaterializedTemporaryValue(const MaterializeTemporaryExpr *E,
                                          bool MayCreate);
+
+  /// Return a string representing the human readable name for the specified
+  /// function declaration or file name. Used by SourceLocExpr and
+  /// PredefinedExpr to cache evaluated results.
+  StringLiteral *getPredefinedStringLiteralFromCache(StringRef Key) const;
 
   //===--------------------------------------------------------------------===//
   //                    Statistics

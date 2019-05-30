@@ -19,12 +19,12 @@
 #include "llvm/IR/Module.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/SectionKind.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
 #include <cstdint>
 
 namespace llvm {
 
 class GlobalValue;
+class MachineBasicBlock;
 class MachineModuleInfo;
 class Mangler;
 class MCContext;

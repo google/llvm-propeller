@@ -17,8 +17,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLD_ELF_SYNTHETIC_SECTION_H
-#define LLD_ELF_SYNTHETIC_SECTION_H
+#ifndef LLD_ELF_SYNTHETIC_SECTIONS_H
+#define LLD_ELF_SYNTHETIC_SECTIONS_H
 
 #include "DWARF.h"
 #include "EhFrame.h"
@@ -68,6 +68,10 @@ public:
   void finalizeContents() override;
   bool isNeeded() const override { return !Sections.empty(); }
   size_t getSize() const override { return Size; }
+
+  static bool classof(const SectionBase *D) {
+    return SyntheticSection::classof(D) && D->Name == ".eh_frame";
+  }
 
   template <class ELFT> void addSection(InputSectionBase *S);
 

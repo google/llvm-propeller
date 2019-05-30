@@ -121,8 +121,7 @@ void DwarfCFIException::beginFunction(const MachineFunction *MF) {
   shouldEmitLSDA = shouldEmitPersonality &&
     LSDAEncoding != dwarf::DW_EH_PE_omit;
 
-  shouldEmitCFI = !MF->getBasicBlockLabels() &&
-                  MF->getMMI().getContext().getAsmInfo()->usesCFIForEH() &&
+  shouldEmitCFI = MF->getMMI().getContext().getAsmInfo()->usesCFIForEH() &&
                   (shouldEmitPersonality || shouldEmitMoves);
   beginFragment(&*MF->begin(), getExceptionSym);
 }

@@ -47,6 +47,7 @@ public:
   bool MCUseDwarfDirectory : 1;
   bool MCIncrementalLinkerCompatible : 1;
   bool MCPIECopyRelocations : 1;
+  bool MCRelocateWithSymbols : 1;
   bool ShowMCEncoding : 1;
   bool ShowMCInst : 1;
   bool AsmVerbose : 1;

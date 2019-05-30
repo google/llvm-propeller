@@ -130,7 +130,7 @@ private:
   // command line.  Note: implementation is in the .cpp file, because
   // ELFCfg here is an incomplete type.
   struct ELFViewOrdinalComparator {
-    bool operator()(const ELFCfg *A, const ELFCfg *B);
+    bool operator()(const ELFCfg *A, const ELFCfg *B) const;
   };
   map<StringRef, set<ELFCfg *, ELFViewOrdinalComparator>> CfgMap;
 

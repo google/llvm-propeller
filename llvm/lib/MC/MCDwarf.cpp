@@ -29,6 +29,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/StringTableBuilder.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/EndianStream.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -847,6 +848,20 @@ static void EmitGenDwarfAbbrev(MCStreamer *MCOS) {
   MCOS->EmitIntValue(0, 1);
 }
 
+static const MCExpr *MakeSizeExpr(MCStreamer &MCOS, MCSymbol &Start,
+                                  const MCSymbol &End) {
+  const MCExpr *Range = MakeStartMinusEndExpr(MCOS, Start, End, 0);
+
+  auto MAI = MCOS.getContext().getAsmInfo();
+  if (!MAI->shouldRelocateWithSizeRelocs())
+    return forceExpAbs(MCOS, Range);
+
+  MCOS.emitELFSize(&Start, Range);
+  const MCExpr *RelocatableRange = MCSymbolRefExpr::create(
+      &Start, MCSymbolRefExpr::VK_SIZE, MCOS.getContext());
+  return RelocatableRange;
+}
+
 // When generating dwarf for assembly source files this emits the data for
 // .debug_aranges section. This section contains a header and a table of pairs
 // of PointerSize'ed values for the address and size of section(s) with line
@@ -901,17 +916,16 @@ static void EmitGenDwarfAranges(MCStreamer *MCOS,
   // Now emit the table of pairs of PointerSize'ed values for the section
   // addresses and sizes.
   for (MCSection *Sec : Sections) {
-    const MCSymbol *StartSymbol = Sec->getBeginSymbol();
+    MCSymbol *StartSymbol = Sec->getBeginSymbol();
     MCSymbol *EndSymbol = Sec->getEndSymbol(context);
     assert(StartSymbol && "StartSymbol must not be NULL");
     assert(EndSymbol && "EndSymbol must not be NULL");
 
     const MCExpr *Addr = MCSymbolRefExpr::create(
       StartSymbol, MCSymbolRefExpr::VK_None, context);
-    const MCExpr *Size = MakeStartMinusEndExpr(*MCOS,
-      *StartSymbol, *EndSymbol, 0);
+    const MCExpr *Size = MakeSizeExpr(*MCOS, *StartSymbol, *EndSymbol);
     MCOS->EmitValue(Addr, AddrSize);
-    emitAbsValue(*MCOS, Size, AddrSize);
+    MCOS->EmitValue(Size, AddrSize);
   }
 
   // And finally the pair of terminating zeros.
@@ -1106,7 +1120,7 @@ static void EmitGenDwarfRanges(MCStreamer *MCOS) {
   MCOS->SwitchSection(context.getObjectFileInfo()->getDwarfRangesSection());
 
   for (MCSection *Sec : Sections) {
-    const MCSymbol *StartSymbol = Sec->getBeginSymbol();
+    MCSymbol *StartSymbol = Sec->getBeginSymbol();
     MCSymbol *EndSymbol = Sec->getEndSymbol(context);
     assert(StartSymbol && "StartSymbol must not be NULL");
     assert(EndSymbol && "EndSymbol must not be NULL");
@@ -1118,10 +1132,10 @@ static void EmitGenDwarfRanges(MCStreamer *MCOS) {
     MCOS->EmitValue(SectionStartAddr, AddrSize);
 
     // Emit a range list entry spanning this section
-    const MCExpr *SectionSize = MakeStartMinusEndExpr(*MCOS,
-      *StartSymbol, *EndSymbol, 0);
+    const MCExpr *SectionSize = MakeSizeExpr(*MCOS, *StartSymbol, *EndSymbol);
+
     MCOS->EmitIntValue(0, AddrSize);
-    emitAbsValue(*MCOS, SectionSize, AddrSize);
+    MCOS->EmitValue(SectionSize, AddrSize);
   }
 
   // Emit end of list entry
@@ -1519,9 +1533,8 @@ void FrameEmitterImpl::EmitCompactUnwind(const MCDwarfFrameInfo &Frame) {
   Streamer.EmitSymbolValue(Frame.Begin, Size);
 
   // Range Length
-  const MCExpr *Range = MakeStartMinusEndExpr(Streamer, *Frame.Begin,
-                                              *Frame.End, 0);
-  emitAbsValue(Streamer, Range, 4);
+  const MCExpr *Range = MakeSizeExpr(Streamer, *Frame.Begin, *Frame.End);
+  Streamer.EmitValue(Range, 4);
 
   // Compact Encoding
   Size = getSizeForEncoding(Streamer, dwarf::DW_EH_PE_udata4);
@@ -1711,9 +1724,8 @@ void FrameEmitterImpl::EmitFDE(const MCSymbol &cieStart,
   emitFDESymbol(Streamer, *frame.Begin, PCEncoding, IsEH);
 
   // PC Range
-  const MCExpr *Range =
-      MakeStartMinusEndExpr(Streamer, *frame.Begin, *frame.End, 0);
-  emitAbsValue(Streamer, Range, PCSize);
+  const MCExpr *Range = MakeSizeExpr(Streamer, *frame.Begin, *frame.End);
+  Streamer.EmitValue(Range, PCSize);
 
   if (IsEH) {
     // Augmentation Data Length
