@@ -3,7 +3,16 @@
 #include "llvm/Support/CommandLine.h"
 #include <deque>
 #include <stdio.h>
+#include <set>
+#include <unordered_map>
+#include <vector>
+#include <iostream>
+#include <numeric>
 
+#define NEGATE(X) (-(int64_t)X)
+
+using std::vector;
+using std::unordered_map;
 using std::deque;
 using std::list;
 using std::set;
@@ -12,9 +21,19 @@ using namespace llvm;
 
 namespace opts{
 
+static cl::opt<bool> PrintStats("print-stats",
+                                cl::desc("Print stats for the new layout."),
+                                cl::init(false),
+                                cl::ZeroOrMore);
+
+static cl::opt<bool> UsePathCover("use-path-cover",
+                                  cl::desc("Use the path cover algorithm to find covers."),
+                                  cl::init(false),
+                                  cl::ZeroOrMore);
+
 static cl::opt<bool> SeparateHotCold("separate-hot-cold",
                                      cl::desc("Separate the hot and cold basic blocks."),
-                                     cl::init(true),
+                                     cl::init(false),
                                      cl::ZeroOrMore);
 
 static cl::opt<bool> FunctionEntryFirst("func-entry-first",
@@ -56,15 +75,17 @@ static cl::opt<uint32_t> ChainSplitThreshold("chain-split-threshold",
 namespace lld{
 namespace plo {
 
-double GetEdgeExtTSPScore(uint64_t EdgeWeight, bool IsEdgeForward, uint32_t SrcSinkDistance){
-  if (SrcSinkDistance == 0)
-    return EdgeWeight * opts::FallthroughWeight;
+double GetEdgeExtTSPScore(const ELFCfgEdge* Edge, bool IsEdgeForward, uint32_t SrcSinkDistance){
+  if(Edge->Weight==0)
+    return 0;
+  if (SrcSinkDistance == 0 && (Edge->Type==ELFCfgEdge::EdgeType::INTRA_FUNC || Edge->Type==ELFCfgEdge::EdgeType::INTRA_DYNA))
+    return Edge->Weight * opts::FallthroughWeight;
 
   if (IsEdgeForward && SrcSinkDistance < opts::ForwardDistance)
-    return EdgeWeight * opts::ForwardWeight * (1.0 - ((double)SrcSinkDistance)/opts::ForwardDistance);
+    return Edge->Weight * opts::ForwardWeight * (1.0 - ((double)SrcSinkDistance)/opts::ForwardDistance);
 
   if (!IsEdgeForward && SrcSinkDistance < opts::BackwardDistance)
-    return EdgeWeight * opts::BackwardWeight * (1.0 - ((double)SrcSinkDistance)/opts::BackwardDistance);
+    return Edge->Weight * opts::BackwardWeight * (1.0 - ((double)SrcSinkDistance)/opts::BackwardDistance);
   return 0;
 }
 
@@ -103,18 +124,26 @@ void NodeChainBuilder::SortChainsByExecutionDensity(vector<const NodeChain*>& Ch
 }
 
 void NodeChainBuilder::AttachFallThroughs(){
+  /*
   for(auto& Node: Cfg->Nodes){
     if(Node->Outs.size()==1){
       const ELFCfgEdge * E = Node->Outs.front();
+      if(E->Type != ELFCfgEdge::EdgeType::INTRA_FUNC)
+        continue;
       if(E->Sink->Ins.size()==1)
         AttachNodes(E->Src, E->Sink);
     }
   }
+  */
 
   for(auto& Node: Cfg->Nodes){
     if(Node->FTEdge!=nullptr){
       AttachNodes(Node.get(), Node->FTEdge->Sink);
     }
+  }
+
+  for(auto& Edge: Cfg->IntraEdges){
+    AttachNodes(Edge->Src, Edge->Sink);
   }
 
 }
@@ -150,6 +179,9 @@ bool NodeChainBuilder::AttachNodes(const ELFCfgNode * Src, const ELFCfgNode * Si
 }
 
 void NodeChainBuilder::ComputeChainOrder(vector<const NodeChain*>& ChainOrder){
+  if(opts::UsePathCover)
+    BuildPathCovers();
+
   deque<const ELFCfgEdge*> CfgEdgeQ;
 
   for(auto& Edge: Cfg->IntraEdges)
@@ -170,63 +202,65 @@ void NodeChainBuilder::ComputeChainOrder(vector<const NodeChain*>& ChainOrder){
     AttachNodes(Edge->Src, Edge->Sink);
   }
   SortChainsByExecutionDensity(ChainOrder);
+  if(opts::PrintStats)
+    PrintStats();
 }
 
 
-
-void ExtTSPChainBuilder::MergeChains(NodeChainAssembly& A){
+void ExtTSPChainBuilder::MergeChains(std::unique_ptr<NodeChainAssembly> A){
   /* Merge the Node sequences according to a given NodeChainAssembly.*/
-  for(NodeChainSlice& Slice: A.Slices)
-    A.SplitChain->Nodes.splice(A.SplitChain->Nodes.end(), Slice.Chain->Nodes, Slice.Begin, Slice.End);
+  for(NodeChainSlice& Slice: A->Slices)
+    A->SplitChain->Nodes.splice(A->SplitChain->Nodes.end(), Slice.Chain->Nodes, Slice.Begin, Slice.End);
 
   /* Update NodeOffset and NodeToChainMap for all the nodes in the sequence */
   uint32_t RunningOffset = 0;
-  for(const ELFCfgNode * Node: A.SplitChain->Nodes){
-    NodeToChainMap[Node]=A.SplitChain;
+  for(const ELFCfgNode * Node: A->SplitChain->Nodes){
+    NodeToChainMap[Node]=A->SplitChain;
     NodeOffset[Node] = RunningOffset;
     RunningOffset += Node->ShSize;
   }
 
   /* Update the total binary size, frequency, and TSP score of the merged chain */
-  A.SplitChain->Size += A.UnsplitChain->Size;
-  A.SplitChain->Freq += A.UnsplitChain->Freq;
-  A.SplitChain->Score = A.GetExtTSPScore();
+  A->SplitChain->Size += A->UnsplitChain->Size;
+  A->SplitChain->Freq += A->UnsplitChain->Freq;
+  A->SplitChain->Score = A->GetExtTSPScore();
 
 
   /* Merge the assembly candidate chains of the two chains and remove the records
    * for the defunct NodeChain. */
-  for(NodeChain * C: CandidateChains[A.UnsplitChain]){
-    NodeChainAssemblies.erase(std::make_pair(C, A.UnsplitChain));
-    NodeChainAssemblies.erase(std::make_pair(A.UnsplitChain,C));
-    CandidateChains[C].erase(A.UnsplitChain);
-    if(C!=A.SplitChain)
-      CandidateChains[A.SplitChain].insert(C);
+  for(NodeChain * C: CandidateChains[A->UnsplitChain]){
+    //std::cerr << "Candidate chain removal: " << C << " " << A->UnsplitChain << " " << A->SplitChain << "\n";
+    NodeChainAssemblies.erase(std::make_pair(C, A->UnsplitChain));
+    NodeChainAssemblies.erase(std::make_pair(A->UnsplitChain,C));
+    CandidateChains[C].erase(A->UnsplitChain);
+    if(C!=A->SplitChain)
+      CandidateChains[A->SplitChain].insert(C);
   }
 
   /* Update the NodeChainAssembly for all candidate chains of the merged
    * NodeChain. Remove a NodeChain from the merge chain's candidates if the
    * NodeChainAssembly update finds no gain.*/
-  auto& SplitChainCandidateChains = CandidateChains[A.SplitChain];
+  auto& SplitChainCandidateChains = CandidateChains[A->SplitChain];
 
   for(auto CI=SplitChainCandidateChains.begin(), CE=SplitChainCandidateChains.end(); CI!=CE;){
     NodeChain * OtherChain = *CI;
     auto& OtherChainCandidateChains=CandidateChains[OtherChain];
-    bool OS = UpdateNodeChainAssembly(OtherChain, A.SplitChain);
-    bool SO = UpdateNodeChainAssembly(A.SplitChain, OtherChain);
+    bool OS = UpdateNodeChainAssembly(OtherChain, A->SplitChain);
+    bool SO = UpdateNodeChainAssembly(A->SplitChain, OtherChain);
     if(OS || SO){
-      OtherChainCandidateChains.insert(A.SplitChain);
+      OtherChainCandidateChains.insert(A->SplitChain);
       CI++;
     }else{
-      OtherChainCandidateChains.erase(A.SplitChain);
+      OtherChainCandidateChains.erase(A->SplitChain);
       CI = SplitChainCandidateChains.erase(CI);
     }
   }
 
   /* Remove all the candidate chain records for the merged-in chain.*/
-  CandidateChains.erase(A.UnsplitChain);
+  CandidateChains.erase(A->UnsplitChain);
 
   /* Finally, remove the merged-in chain record from the Chains.*/
-  Chains.erase(A.UnsplitChain->DelegateNode->Shndx);
+  Chains.erase(A->UnsplitChain->DelegateNode->Shndx);
 }
 
 /* Calculate the Extended TSP metric for a NodeChain */
@@ -243,7 +277,7 @@ double ExtTSPChainBuilder::ExtTSPScore(NodeChain * Chain) const {
       auto SinkOffset = NodeOffset.at(Edge->Sink);
       bool EdgeForward = SrcOffset < SinkOffset;
       uint32_t Distance = EdgeForward ? SinkOffset - SrcOffset - Node->ShSize : SrcOffset - SinkOffset + Node->ShSize;
-      Score += GetEdgeExtTSPScore(Edge->Weight, EdgeForward, Distance);
+      Score += GetEdgeExtTSPScore(Edge, EdgeForward, Distance);
     }
     SrcOffset += Node->ShSize;
   }
@@ -258,7 +292,7 @@ bool ExtTSPChainBuilder::UpdateNodeChainAssembly(NodeChain * SplitChain, NodeCha
   bool DoSplit = (SplitChain->Size <= opts::ChainSplitThreshold);
   auto SlicePosEnd = DoSplit ? SplitChain->Nodes.end() : std::next(SplitChain->Nodes.begin());
 
-  list<NodeChainAssembly> CandidateNCAs;
+  list<unique_ptr<NodeChainAssembly>> CandidateNCAs;
 
   for(auto SlicePos = SplitChain->Nodes.begin(); SlicePos!=SlicePosEnd; ++SlicePos){
     /* Do not split the mutually-forced edges in the chain.*/
@@ -270,24 +304,24 @@ bool ExtTSPChainBuilder::UpdateNodeChainAssembly(NodeChain * SplitChain, NodeCha
     auto MergeOrderEnd = (SlicePos==SplitChain->Nodes.begin()) ? MergeOrder::BeginNext : MergeOrder::End;
     for(uint8_t MI=MergeOrder::Begin; MI!=MergeOrderEnd; MI++){
       MergeOrder MOrder = static_cast<MergeOrder>(MI);
-      NodeChainAssembly NCA(SplitChain, UnsplitChain, SlicePos, MOrder, this);
+      auto NCA = unique_ptr<NodeChainAssembly>(new NodeChainAssembly (SplitChain, UnsplitChain, SlicePos, MOrder, this));
       ELFCfgNode * EntryNode = Cfg->getEntryNode();
       if(opts::FunctionEntryFirst &&
-         (NCA.SplitChain->GetFirstNode()==EntryNode || NCA.UnsplitChain->GetFirstNode()==EntryNode) &&
-         (NCA.GetFirstNode() != EntryNode))
+         (NCA->SplitChain->GetFirstNode()==EntryNode || NCA->UnsplitChain->GetFirstNode()==EntryNode) &&
+         (NCA->GetFirstNode() != EntryNode))
         continue;
       CandidateNCAs.push_back(std::move(NCA));
     }
   }
 
   auto BestCandidate = std::max_element(CandidateNCAs.begin(), CandidateNCAs.end(),
-                                          [](NodeChainAssembly& C1,
-                                             NodeChainAssembly& C2){
-                                             return C1.GetExtTSPGain() < C2.GetExtTSPGain();});
+                                          [](unique_ptr<NodeChainAssembly>& C1,
+                                             unique_ptr<NodeChainAssembly>& C2){
+                                             return C1->GetExtTSPGain() < C2->GetExtTSPGain();});
 
   NodeChainAssemblies.erase(std::make_pair(SplitChain, UnsplitChain));
 
-  if(BestCandidate!=CandidateNCAs.end() && BestCandidate->GetExtTSPGain() > 0){
+  if(BestCandidate!=CandidateNCAs.end()){ //&& (*BestCandidate)->GetExtTSPGain() > 0){
     NodeChainAssemblies.emplace(std::make_pair(SplitChain,UnsplitChain), std::move(*BestCandidate));
     return true;
   }else
@@ -301,10 +335,10 @@ ExtTSPChainBuilder::ExtTSPChainBuilder(const ELFCfg * _Cfg): NodeChainBuilder(_C
   for(auto& Node: Cfg->Nodes){
     std::copy_if(Node->Outs.begin(), Node->Outs.end(),
                  std::back_inserter(ProfiledOuts[Node.get()]),
-                 [](const ELFCfgEdge* Edge) {return Edge->Weight!=0;});
+                 [](const ELFCfgEdge* Edge) {return Edge->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && Edge->Weight!=0;});
     std::copy_if(Node->Ins.begin(), Node->Ins.end(),
                  std::back_inserter(ProfiledIns[Node.get()]),
-                 [](const ELFCfgEdge* Edge) {return Edge->Weight!=0;});
+                 [](const ELFCfgEdge* Edge) {return Edge->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && Edge->Weight!=0;});
   }
 
 
@@ -352,6 +386,9 @@ ExtTSPChainBuilder::ExtTSPChainBuilder(const ELFCfg * _Cfg): NodeChainBuilder(_C
 }
 
 void ExtTSPChainBuilder::ComputeChainOrder(vector<const NodeChain*>& ChainOrder){
+  if(opts::UsePathCover)
+    BuildPathCovers();
+
   for(auto& KV: MutuallyForcedOut)
     AttachNodes(KV.first, KV.second);
 
@@ -379,19 +416,23 @@ void ExtTSPChainBuilder::ComputeChainOrder(vector<const NodeChain*>& ChainOrder)
   do{
     Merged = false;
     auto BestCandidate = std::max_element(NodeChainAssemblies.begin(), NodeChainAssemblies.end(),
-                                          [](std::pair<const std::pair<NodeChain*,NodeChain*>, NodeChainAssembly>& C1,
-                                             std::pair<const std::pair<NodeChain*,NodeChain*>, NodeChainAssembly>& C2){
-                                            return C1.second.GetExtTSPGain() < C2.second.GetExtTSPGain();
+                                          [](std::pair<const std::pair<NodeChain*,NodeChain*>, unique_ptr<NodeChainAssembly>>& C1,
+                                             std::pair<const std::pair<NodeChain*,NodeChain*>, unique_ptr<NodeChainAssembly>>& C2){
+                                            return C1.second->GetExtTSPGain() < C2.second->GetExtTSPGain();
                                           });
 
-    if(BestCandidate!=NodeChainAssemblies.end() && BestCandidate->second.GetExtTSPGain() > 0){
-      MergeChains(BestCandidate->second);
+    if(BestCandidate!=NodeChainAssemblies.end() && BestCandidate->second->GetExtTSPGain() > 0){
+      unique_ptr<NodeChainAssembly> BestCandidateNCA = std::move(BestCandidate->second);
+      NodeChainAssemblies.erase(BestCandidate);
+      MergeChains(std::move(BestCandidateNCA));
       Merged = true;
     }
   } while(Merged);
 
   AttachFallThroughs();
   SortChainsByExecutionDensity(ChainOrder);
+  if(opts::PrintStats)
+    PrintStats();
 }
 
 double ExtTSPChainBuilder::NodeChainAssembly::ExtTSPScore() const {
@@ -426,7 +467,7 @@ double ExtTSPChainBuilder::NodeChainAssembly::ExtTSPScore() const {
             if(std::abs(SinkSliceIdx - SrcSliceIdx) == 2)
               Distance += Slices[1].Size();
           }
-          Score += GetEdgeExtTSPScore(Edge->Weight, EdgeForward, Distance);
+          Score += GetEdgeExtTSPScore(Edge, EdgeForward, Distance);
         }
       }
     }
@@ -448,5 +489,294 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
   }
 }
 
+void NodeChainBuilder::BuildPathCovers() {
+  unordered_map<const ELFCfgNode*, const ELFCfgNode *> PathCoverInv;
+  unordered_map<const ELFCfgNode*, const ELFCfgEdge*> PathCoverEdge;
+
+  unordered_map<const ELFCfgNode*, int64_t> AugmentPathDistance;
+  unordered_map<const ELFCfgNode*, const ELFCfgNode*> AugmentPathParent;
+  vector<const ELFCfgNode*> HotNodes;
+
+  for(auto& N: Cfg->Nodes){
+    if(N->Freq!=0)
+      HotNodes.push_back(N.get());
+  }
+
+  for(auto * N: HotNodes){
+    PathCoverInv[N] = nullptr;
+    PathCoverEdge[N] = nullptr;
+  }
+
+  bool PathCoverUpdated = true;
+  while(PathCoverUpdated){
+
+    set<const ELFCfgNode*> FreeOutNodes;
+    set<const ELFCfgNode*> FreeInNodes;
+
+    for(auto * N: HotNodes){
+      AugmentPathDistance[N]=0;
+      AugmentPathParent[N]=nullptr;
+      if(PathCoverEdge[N]==nullptr)
+        FreeOutNodes.insert(N);
+      if(PathCoverInv[N]==nullptr)
+        FreeInNodes.insert(N);
+    }
+
+    set<const ELFCfgNode*> ChangedNodes;
+    deque<const ELFCfgNode*> ChangedNodesQueue;
+
+    for(auto *N: FreeOutNodes){
+      for(auto *E: N->Outs){
+        if(E->Sink == E->Src)
+          continue;
+        if(E->Weight && E->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && AugmentPathDistance[E->Sink] > NEGATE(E->Weight)){
+          //std::cerr << "AugmentPath: " << *E->Src << " TO " << *E->Sink << "\t" << E->Weight << "\n";
+          AugmentPathDistance[E->Sink] = NEGATE(E->Weight);
+          AugmentPathParent[E->Sink] = E->Src;
+          if(ChangedNodes.insert(E->Sink).second)
+            ChangedNodesQueue.push_back(E->Sink);
+        }
+      }
+    }
+
+    while(!ChangedNodesQueue.empty()){
+      const ELFCfgNode * CN = ChangedNodesQueue.front();
+      //std::cerr << "Changed Node is " << *CN << "\n";
+      ChangedNodesQueue.pop_front();
+      ChangedNodes.erase(CN);
+
+      auto * PrevNode = PathCoverInv[CN];
+      if(PrevNode != nullptr){
+        //std::cerr << "\t\tAnd its PathCoverInv is " << *PathCoverIt->second << "\n";
+        int64_t DistanceWithPathCoverEdge = AugmentPathDistance[CN] + PathCoverEdge[PrevNode]->Weight;
+        for(const ELFCfgEdge* E: PrevNode->Outs){
+          if(E->Sink == E->Src)
+            continue;
+          if(E->Weight && E->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && AugmentPathDistance[E->Sink] > NEGATE(E->Weight) + DistanceWithPathCoverEdge){
+            //std::cerr << "Found better path for: " << *E->Sink << "\t Via " << *E->Src << "\t " << NEGATE(E->Weight) + DistanceWithPathCoverEdge << "\n";
+            AugmentPathDistance[E->Sink] = NEGATE(E->Weight) + DistanceWithPathCoverEdge;
+            AugmentPathParent[E->Sink] = PrevNode;
+            if(ChangedNodes.insert(E->Sink).second)
+              ChangedNodesQueue.push_back(E->Sink);
+          }
+        }
+      }
+    }
+
+    auto ClosestFreeInNode = std::min_element(FreeInNodes.begin(),
+                                              FreeInNodes.end(),
+                                              [&AugmentPathDistance](const ELFCfgNode* N1, const ELFCfgNode* N2){
+                                                return AugmentPathDistance[N1] < AugmentPathDistance[N2];});
+/*std::cerr << "[BEFORE] Path Cover is as follows{\n";
+  for(auto& KV: PathCover){
+    std::cerr << *KV.first << " -> " << *KV.second << " [" << PathCoverWeight[KV.first] << "]\n";
+  }
+  std::cerr << "}\n";
+  */
+
+
+    if(ClosestFreeInNode!= FreeInNodes.end() && AugmentPathDistance[*ClosestFreeInNode]!=0){
+      const ELFCfgNode * Node = *ClosestFreeInNode;
+      while(Node!=nullptr){
+        const ELFCfgNode * NodeParent = AugmentPathParent[Node];
+        //std::cerr << *NodeParent << " ---> " << *Node << "\t";
+        auto * NodeParentOldPCEdge = PathCoverEdge[NodeParent];
+        bool EdgeFound = false;
+        for(auto * E: NodeParent->Outs)
+          if(E->Weight!=0 && E->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && E->Sink==Node){
+            PathCoverEdge[NodeParent] = E;
+            EdgeFound = true;
+            break;
+          }
+        assert(EdgeFound && "Edge wasn't found\n");
+        PathCoverInv[Node]=NodeParent;
+        Node = NodeParentOldPCEdge!=nullptr ? NodeParentOldPCEdge->Sink : nullptr;
+      }
+    }else
+      PathCoverUpdated = false;
+
+    /*
+    std::cerr << "[AFTER] Path Cover is as follows{\n";
+  for(auto& KV: PathCover){
+    std::cerr << *KV.first << " -> " << *KV.second << " [" << PathCoverWeight[KV.first] << "]\n";
+  }
+  std::cerr << "}\n";
+  */
+
+
+  }
+
+  /*
+  std::cerr << "Function: " << Cfg->Name.str() << ", Path Cover is as follows{\n";
+  for(auto& KV: PathCoverEdge){
+    if(KV.second!=nullptr)
+      std::cerr << *KV.first << " -> " << *KV.second << "\n";
+  }
+  */
+
+
+  unordered_map<const ELFCfgNode*, unsigned> PathCoverIndex;
+  std::map<unsigned, const ELFCfgEdge*> MinCutEdge;
+  unsigned Index=0;
+  for(auto& KV: PathCoverEdge){
+    if(!PathCoverIndex[KV.first]){
+      auto * N=KV.first;
+
+      while(PathCoverInv[N]!=nullptr && PathCoverInv[N]!=KV.first){
+        N = PathCoverInv[N];
+      }
+
+      Index++;
+      const ELFCfgEdge * MinEdge = nullptr;
+      while(!PathCoverIndex[N]){
+        PathCoverIndex[N] = Index;
+        if(PathCoverEdge[N]!=nullptr){
+          if(MinEdge==nullptr || PathCoverEdge[N]->Weight < MinEdge->Weight)
+            MinEdge = PathCoverEdge[N];
+          N = PathCoverEdge[N]->Sink;
+        }else {
+          MinEdge = nullptr;
+          break;
+        }
+      }
+      MinCutEdge[Index] = MinEdge;
+    }
+  }
+
+  /*
+  for(auto& KV: MinCutEdge){
+    if(KV.second!=nullptr)
+      std::cerr << "Min cut edge for cycle cover(" << KV.first << ") is: " << *KV.second << "\n";
+  }
+  */
+
+  std::list<std::pair<const ELFCfgEdge*, int64_t>> GainVector;
+
+  for(auto *N: HotNodes){
+    for(auto *E: N->Outs){
+      if(E->Weight==0 || E->Type!=ELFCfgEdge::EdgeType::INTRA_FUNC)
+        continue;
+      if(PathCoverIndex[E->Src]==PathCoverIndex[E->Sink])
+        continue;
+      if(MinCutEdge[PathCoverIndex[E->Src]]==nullptr && MinCutEdge[PathCoverIndex[E->Sink]]==nullptr)
+        continue;
+
+      int64_t Gain = E->Weight;
+
+      if(PathCoverEdge[E->Src]!=nullptr)
+        Gain -= PathCoverEdge[E->Src]->Weight;
+      if(PathCoverInv[E->Sink]!=nullptr)
+        Gain -= PathCoverEdge[PathCoverInv[E->Sink]]->Weight;
+
+      if(MinCutEdge[PathCoverIndex[E->Src]]!=nullptr)
+        Gain += MinCutEdge[PathCoverIndex[E->Src]]->Weight;
+
+      if(MinCutEdge[PathCoverIndex[E->Sink]]!=nullptr)
+        Gain += MinCutEdge[PathCoverIndex[E->Sink]]->Weight;
+
+      GainVector.push_back(std::make_pair(E,Gain));
+    }
+  }
+
+  while(true){
+    auto BestGain = std::max_element(GainVector.begin(), GainVector.end(),
+              [] (const std::pair<const ELFCfgEdge*, int64_t>& P1,
+                  const std::pair<const ELFCfgEdge*, int64_t>& P2){
+                return P1.second < P2.second;
+              });
+
+    if(BestGain!=GainVector.end() && BestGain->second > 0){
+      //std::cerr << "One gain: " << *BestGain->first << " ----> " << BestGain->second << "\t";
+      auto * E = BestGain->first;
+      if(MinCutEdge[PathCoverIndex[E->Src]]==nullptr && MinCutEdge[PathCoverIndex[E->Sink]]==nullptr){
+        //std::cerr << "NOT APPLIED\n";
+        continue;
+      }
+      //std::cerr << "APPLIED\n";
+
+      if(PathCoverEdge[E->Src]!=nullptr)
+        PathCoverInv[PathCoverEdge[E->Src]->Sink]=nullptr;
+      if(PathCoverInv[E->Sink]!=nullptr)
+        PathCoverEdge[PathCoverInv[E->Sink]]=nullptr;
+      PathCoverEdge[E->Src]=E;
+      PathCoverInv[E->Sink]=E->Src;
+
+      MinCutEdge[PathCoverIndex[E->Src]]=nullptr;
+      MinCutEdge[PathCoverIndex[E->Sink]]=nullptr;
+
+      for(auto PI=GainVector.begin(); PI!=GainVector.end(); ){
+        auto * F = PI->first;
+        if(MinCutEdge[PathCoverIndex[F->Src]]==nullptr && MinCutEdge[PathCoverIndex[F->Sink]]==nullptr){
+          PI = GainVector.erase(PI);
+          continue;
+        }
+        int64_t Gain = F->Weight;
+        if(PathCoverEdge[F->Src]!=nullptr)
+          Gain -= PathCoverEdge[F->Src]->Weight;
+        if(PathCoverInv[F->Sink]!=nullptr)
+          Gain -= PathCoverEdge[PathCoverInv[F->Sink]]->Weight;
+
+        if(MinCutEdge[PathCoverIndex[F->Src]]!=nullptr)
+          Gain += MinCutEdge[PathCoverIndex[F->Src]]->Weight;
+
+        if(MinCutEdge[PathCoverIndex[F->Sink]]!=nullptr)
+          Gain += MinCutEdge[PathCoverIndex[F->Sink]]->Weight;
+
+        PI->second = Gain;
+        PI++;
+      }
+
+    }else
+      break;
+  }
+
+  for(auto& KV: MinCutEdge){
+    auto * E = KV.second;
+    if(E!=nullptr){
+      PathCoverEdge[E->Src]=nullptr;
+      PathCoverInv[E->Sink]=nullptr;
+    }
+  }
+
+  /*
+  std::cerr << "Function: " << Cfg->Name.str() << ", Path Cover is as follows{\n";
+  for(auto& KV: PathCoverEdge){
+    if(KV.second!=nullptr)
+      std::cerr << *KV.first << " -> " << *KV.second << "\n";
+  }
+  std::cerr << "}\n";
+  */
+
+  for(auto& KV: PathCoverEdge){
+    if(KV.second!=nullptr)
+      AttachNodes(KV.second->Src, KV.second->Sink);
+  }
+}
+
+void ExtTSPChainBuilder::PrintStats() const {
+  NodeChainBuilder::PrintStats();
+  double TotalScore = std::accumulate(Chains.begin(), Chains.end(), 0.0,
+                  [this](double D, const std::pair<const uint64_t, unique_ptr<NodeChain>>& C){return ExtTSPScore(C.second.get()) + D;});
+  if(TotalScore!=0)
+    std::cerr << "Ext TSP Score: " << TotalScore << "\t" << Cfg->Name.str() << "\n";
+}
+
+void NodeChainBuilder::PrintStats() const{
+  uint32_t FTs = 0;
+  for(auto& N: Cfg->Nodes)
+    for(auto* E: N->Outs){
+      if(E->Weight && (E->Type==ELFCfgEdge::EdgeType::INTRA_FUNC || E->Type==ELFCfgEdge::EdgeType::INTRA_DYNA)){
+        if(NodeOffset.at(E->Src)+E->Src->ShSize == NodeOffset.at(E->Sink)){
+          FTs+=E->Weight;
+          std::cerr << "fallthrough:\tFROM: " << E->Src->ShName.str() << " TO: " << E->Sink->ShName.str() << "(" << E->Weight << ")\n";
+        }
+      }
+    }
+
+  if(FTs!=0)
+    std::cerr << "fallthrough: " << FTs << "\t" << Cfg->Name.str() << "\n";
+}
+
 }
 }
+

@@ -47,7 +47,7 @@ void CCubeAlgorithm::mergeClusters() {
     uint64_t CfgWeight = 0;
     double CfgSize = (double)Cfg.Size;
     Cfg.forEachNodeRef([&CfgWeight](ELFCfgNode &N) {
-      CfgWeight += N.Weight;
+      CfgWeight += N.Freq;
       // Use MaxWeight or Sum of weights?
       // CfgWeight += N.Weight;
     });
@@ -75,7 +75,7 @@ void CCubeAlgorithm::mergeClusters() {
 
     if (PredecessorCluster == Cluster)
       continue;
-    if (PredecessorCluster->Size + Cluster->Size > (1 << 21))
+    if (PredecessorCluster->Size + Cluster->Size > (1 << 12))
       continue;
 
     // Join 2 clusters into PredecessorCluster.

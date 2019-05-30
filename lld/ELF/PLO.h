@@ -88,7 +88,8 @@ public:
                     StringRef &ProfileName,
                     StringRef &CfgDump);
 
-  vector<StringRef> genSymbolOrderingFile();
+  vector<StringRef> genSymbolOrderingFile(bool ReorderBlocks,
+                                          bool ReorderFunctions);
 
   template <class Visitor>
   void ForEachCfgRef(Visitor V) {
@@ -120,6 +121,7 @@ private:
 
   bool dumpCfgsToFile(StringRef &CfgDumpFile) const;
   void calculateNodeFreqs();
+  void resetEntryNodeSizes();
 
   list<unique_ptr<ELFView>> Views;
 

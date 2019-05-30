@@ -59,8 +59,8 @@ class ELFCfgNode {
   uint64_t           Shndx;
   StringRef          ShName;
   uint64_t           ShSize;
-  uint64_t           Freq;
   uint64_t           MappedAddr;
+  uint64_t           Freq;
   uint64_t           Weight;
   ELFCfg            *Cfg;
   

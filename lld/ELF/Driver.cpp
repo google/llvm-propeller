@@ -859,6 +859,8 @@ static void readConfigs(opt::InputArgList &Args) {
   Config->Profile = Args.getLastArgValue(OPT_profile);
   Config->Rpath = getRpath(Args);
   Config->Relocatable = Args.hasArg(OPT_relocatable);
+  Config->ReorderBlocks = Args.hasArg(OPT_reorder_blocks);
+  Config->ReorderFunctions = Args.hasArg(OPT_reorder_functions);
   Config->SaveTemps = Args.hasArg(OPT_save_temps);
   Config->SearchPaths = args::getStrings(Args, OPT_library_path);
   Config->SectionStartMap = getSectionStartMap(Args);
@@ -1666,7 +1668,8 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
                          Config->SymFile,
                          Config->Profile,
                          Config->CfgDump)) {
-      Config->SymbolOrderingFile = Plo.genSymbolOrderingFile();
+      Config->SymbolOrderingFile = Plo.genSymbolOrderingFile(Config->ReorderBlocks,
+                                                             Config->ReorderFunctions);
     } else {
       error("PLO stage failed.");
     }

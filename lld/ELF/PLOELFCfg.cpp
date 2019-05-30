@@ -5,6 +5,7 @@
 #include "Symbols.h"
 #include "SymbolTable.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -73,13 +74,61 @@ ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
 }
 
 bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To) {
+  if(From==nullptr){
+    /* If the From Node is null, walk backward from the To Node while only
+     * one INTRA_FUNC incoming edge is found. */
+    assert(To!=nullptr);
+    ELFCfgNode *P = To;
+    do {
+      vector<ELFCfgEdge *> IntraInEdges;
+      std::copy_if(P->Ins.begin(), P->Ins.end(),
+                   std::back_inserter(IntraInEdges),
+                   [this](ELFCfgEdge * E){
+                     return E->Type==ELFCfgEdge::EdgeType::INTRA_FUNC
+                         && E->Sink!=getEntryNode();});
+      if(IntraInEdges.size()==1){
+        ++P->Weight;
+        IntraInEdges.front()->Weight++;
+        P = IntraInEdges.front()->Src;
+      } else{
+        P = nullptr;
+      }
+    }while(P && P!=To);
+    return true;
+  }
+
+  if(To==nullptr){
+    /* If the To Node is null, walk forward from the From Node while only
+     * one INTRA_FUNC outgoing edge is found. */
+    assert(From!=nullptr);
+    ELFCfgNode *P=From;
+    do {
+      vector<ELFCfgEdge *> IntraOutEdges;
+      std::copy_if(P->Outs.begin(), P->Outs.end(),
+                   std::back_inserter(IntraOutEdges),
+                   [this](ELFCfgEdge * E){
+                     return E->Type==ELFCfgEdge::EdgeType::INTRA_FUNC
+                         && E->Sink!=getEntryNode();});
+      if(IntraOutEdges.size()==1){
+        ++P->Weight;
+        ++IntraOutEdges.front()->Weight;
+        P = IntraOutEdges.front()->Sink;
+      } else {
+        P = nullptr;
+      }
+    }while(P && P!=From);
+    return true;
+  }
+
   assert(From->Cfg == To->Cfg);
   if (From == To)
     return true;
   ELFCfgNode *P = From;
   while (P && P != To) {
+    //fprintf(stderr, "Marking path\n");
     ++P->Weight;
     if (P->FTEdge) {
+      //fprintf(stderr, "\t%s has FTEdge to %s\n",P->ShName.str().c_str(),P->FTEdge->Sink->ShName.str().c_str());
       ++P->FTEdge->Weight;
       P = P->FTEdge->Sink;
     } else {
@@ -142,7 +191,7 @@ void ELFCfgReader::readCfgs() {
     unsigned NNodes;
     fin >> NNodes;
     for (unsigned i = 0; i < NNodes; ++i) {
-      uint16_t Shndx;
+      uint64_t Shndx;
       string *ShName = new string();
       uint64_t MappedAddr, ShSize, Freq;
       fin >> Shndx >> *ShName >> MappedAddr >> ShSize >> Freq;
@@ -155,6 +204,7 @@ void ELFCfgReader::readCfgs() {
     }
     unsigned NIntraEdges;
     fin >> NIntraEdges;
+    //fprintf(stderr,"Number of intraedges: %u\n",NIntraEdges);
     for (unsigned i = 0; i < NIntraEdges; ++i) {
       std::string SrcShName, SinkShName;
       uint64_t Weight;
@@ -191,6 +241,7 @@ void ELFCfgReader::readCfgs() {
       InterEdges.push_back(
           ELFCfgEdgeBuilder(SrcShName, SinkShName, Weight, Type));
     }
+    fprintf(stderr, "Finished reading Cfg for function: %s\n",Cfg->Name.str().c_str());
     Cfgs.emplace_back(std::move(Cfg));
   }
   for (ELFCfgEdgeBuilder &EdgeBuilder : InterEdges) {
@@ -216,7 +267,7 @@ void ELFCfgReader::readCfgs() {
             [](const unique_ptr<ELFCfg> &A, const unique_ptr<ELFCfg> &B) {
               const auto &AEntry = A->getEntryNode();
               const auto &BEntry = B->getEntryNode();
-              assert(AEntry->MappedAddr != BEntry->MappedAddr);
+              //assert(AEntry->MappedAddr != BEntry->MappedAddr);
               return AEntry->MappedAddr < BEntry->MappedAddr;
             });
 }
@@ -230,8 +281,12 @@ void ELFCfgBuilder::buildCfgs() {
     if (R && S && *R == SymbolRef::ST_Function) {
       StringRef SymName = *S;
       lld::elf::Symbol *PSym = Plo.Symtab->find(SymName);
-      if (PSym && (PSym->kind() == lld::elf::Symbol::UndefinedKind))
+      /*
+      if (PSym) (PSym->kind() == lld::elf::Symbol::UndefinedKind)){ 
+        fprintf(stderr, "%s UNDEFINED KIND\n", SymName.str().c_str());
         continue;
+      }
+      */
       auto IE = Groups.emplace(std::piecewise_construct,
                                std::forward_as_tuple(SymName),
                                std::forward_as_tuple(1, Sym));

@@ -9,6 +9,7 @@
 
 #include <llvm/ADT/SmallVector.h>
 
+using std::deque;
 using std::ostream;
 using std::string;
 
@@ -52,21 +53,23 @@ bool PLOProfile::process(StringRef &ProfileName) {
     const char *p = line.c_str();
     const char *q = p + 1;
     do {
+      /* The LBR record sample line includes a space at the end. */
       while (*(q++) != ' ');
       StringRef EntryString = StringRef(p, q - p - 1);
       if (!LBREntry::fillEntry(EntryString, EntryArray[EntryIndex])) {
         fprintf(stderr, "Invalid entry: %s\n", EntryString.str().c_str());
         break;
       }
+      ++EntryIndex;
       if (*q == '\0') break;
       p = q + 1;
       q = p + 1;
-      ++EntryIndex;
     } while(true);
     if (EntryIndex) {
       processLBR(EntryArray, EntryIndex);
     }
   }
+  fprintf(stderr, "Nonmarked: %lu %lu\n",NonMarkedIntraFunc, NonMarkedInterFunc);
   return true;
 }
 
@@ -134,6 +137,7 @@ bool PLOProfile::findCfgForAddress(uint64_t Addr,
   auto T0 = std::prev(T);
   // There are multiple symbols registered on the same address.
   uint64_t SymAddr = T0->first;
+
   for (auto Handler: T0->second) {
     StringRef IndexName;
     StringRef SymName = Plo.Syms.getName(Handler);
@@ -178,6 +182,7 @@ void PLOProfile::processLBR(LBREntry *EntryArray, int EntryIndex) {
   ELFCfgNode *LastToNode{nullptr};
   uint64_t LastFromAddr{0}, LastToAddr{0};
 
+  deque<ELFCfgNode*> CallSiteNodes;
   // The fist entry in the record is the branch that happens last in
   // history.  The second entry happens earlier than the first one,
   // ..., etc.  So we iterate the entries in reverse order - the
@@ -193,8 +198,38 @@ void PLOProfile::processLBR(LBREntry *EntryArray, int EntryIndex) {
     if (FromCfg && FromCfg == ToCfg) {
       FromCfg->mapBranch(FromNode, ToNode);
       ++IntraFunc;
-    } else if (FromCfg && ToCfg /* implies: FromCfg != ToCfg */ ) {
-      FromCfg->mapCallOut(FromNode, ToNode, To);
+    } else if (FromCfg || ToCfg /* implies: FromCfg != ToCfg */ ) {
+      if(FromCfg && ToCfg)
+        FromCfg->mapCallOut(FromNode, ToNode, To);
+
+      if(ToCfg){
+        if(ToNode==ToCfg->getEntryNode() && To==ToNode->MappedAddr){
+          // Call
+          if(FromNode)
+            CallSiteNodes.push_back(FromNode);
+        }else{
+          // Return
+          if(FromCfg){
+            while(!CallSiteNodes.empty() && CallSiteNodes.back()!=ToNode){
+              CallSiteNodes.pop_back();
+            }
+            if(!CallSiteNodes.empty())
+              CallSiteNodes.pop_back();
+          }
+          /* If the return address is at the end of the Node, the sink Node
+           * for the return is the Node right before the current ToNode. */
+          if(To == ToNode->MappedAddr){
+            auto NI=ToCfg->Nodes.rbegin();
+            auto NIE=ToCfg->Nodes.rend();
+            for(;NI!=NIE && NI->get()!= ToNode; ++NI);
+            if(NI != NIE)
+              NI++;
+            if(NI!=NIE){
+              ToNode = NI->get();
+            }
+          }
+        }
+      }
       ++InterFunc;
     }
     // Mark everything between LastToCfg[LastToNode] and FromCfg[FromNode].
@@ -214,6 +249,11 @@ void PLOProfile::processLBR(LBREntry *EntryArray, int EntryIndex) {
       }
     } else {
       ++InterFunc;
+
+      /* Extend the path for the first entry if possible. */
+      if(FromCfg && P == EntryIndex - 1)
+        FromCfg->markPath(nullptr, FromNode);
+
       if (LastToCfg && FromCfg && LastToCfg != FromCfg) {
         if (!(LastFromAddr == From && LastToAddr == To && P == 0)) {
           // std::cout << "Failed to map: " << std::showbase << std::hex
@@ -232,6 +272,14 @@ void PLOProfile::processLBR(LBREntry *EntryArray, int EntryIndex) {
     LastFromAddr = From;
     LastToAddr = To;
   }
+
+  /* Extend the path for the last entry if possible. */
+  if(LastToCfg)
+    LastToCfg->markPath(LastToNode, nullptr);
+  /*
+  for(ELFCfgNode * CallSite: CallSiteNodes)
+    CallSite->Cfg->markPath(CallSite, nullptr);
+  */
 }
 
 ostream & operator << (ostream &Out, const LBREntry &Entry) {
