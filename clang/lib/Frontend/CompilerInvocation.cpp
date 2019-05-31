@@ -868,7 +868,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
       Args.hasArg(OPT_mincremental_linker_compatible);
   Opts.PIECopyRelocations =
       Args.hasArg(OPT_mpie_copy_relocations);
-  Opts.RelocateWithSymbols = Args.hasArg(OPT_mrelocate_with_symbols);
   Opts.NoPLT = Args.hasArg(OPT_fno_plt);
   Opts.OmitLeafFramePointer = Args.hasArg(OPT_momit_leaf_frame_pointer);
   Opts.SaveTempLabels = Args.hasArg(OPT_msave_temp_labels);
@@ -891,30 +890,14 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.TrapFuncName = Args.getLastArgValue(OPT_ftrap_function_EQ);
   Opts.UseInitArray = Args.hasArg(OPT_fuse_init_array);
 
-  Opts.BasicBlockSections = Args.getLastArgValue(OPT_fbasicblock_sections_EQ,
-                                                 "none");
-  if (Opts.BasicBlockSections != "all" &&
-      Opts.BasicBlockSections != "likely" &&
-      Opts.BasicBlockSections != "hot" &&
-      Opts.BasicBlockSections != "labels" &&
-      Opts.BasicBlockSections != "none") {
-    Diags.Report(diag::err_drv_invalid_value)
-        << Args.getLastArg(OPT_fbasicblock_sections_EQ)->getAsString(Args)
-        << Opts.BasicBlockSections;
-  }
-
-  // Basic Block Sections implies Function Sections.
   Opts.FunctionSections = Args.hasFlag(OPT_ffunction_sections,
-                                       OPT_fno_function_sections, false) ||
-                          (Opts.BasicBlockSections != "none");
+                                       OPT_fno_function_sections, false);
   Opts.DataSections = Args.hasFlag(OPT_fdata_sections,
                                    OPT_fno_data_sections, false);
   Opts.StackSizeSection =
       Args.hasFlag(OPT_fstack_size_section, OPT_fno_stack_size_section, false);
   Opts.UniqueSectionNames = Args.hasFlag(OPT_funique_section_names,
                                          OPT_fno_unique_section_names, true);
-  Opts.UniqueBBSectionNames = Args.hasFlag(OPT_funique_bb_section_names,
-                                           OPT_fno_unique_bb_section_names, false);
 
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 

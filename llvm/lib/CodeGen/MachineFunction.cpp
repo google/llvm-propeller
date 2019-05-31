@@ -180,14 +180,6 @@ void MachineFunction::init() {
     Alignment = std::max(Alignment,
                          STI->getTargetLowering()->getPrefFunctionAlignment());
 
-  if (Target.getBasicBlockSections() == llvm::BasicBlockSection::All ||
-      F.getBasicBlockSections())
-    BasicBlockSections = true;
-
-  if (Target.getBasicBlockSections() == llvm::BasicBlockSection::Labels ||
-      F.getBasicBlockLabels())
-    BasicBlockLabels = true;
-
   if (AlignAllFunctions)
     Alignment = AlignAllFunctions;
 
@@ -327,46 +319,6 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
   // numbering, shrink MBBNumbering now.
   assert(BlockNo <= MBBNumbering.size() && "Mismatch!");
   MBBNumbering.resize(BlockNo);
-}
-
-/// HasEHInfo - Return true is this Machine Basic Block is a landing pad or
-/// it has EHLabels used in exception tables.
-static bool HasEHInfo(const MachineBasicBlock &MBB) {
-  if (MBB.isEHPad() || MBB.isEHFuncletEntry())
-    return true;
-  for (auto &MI : MBB) {
-    if (MI.isEHLabel())
-      return true;
-  }
-  return false;
-}
-
-bool MachineFunction::sortBasicBlockSections() {
-  // This should only be done once no matter how many times it is called.
-  if (this->BBSectionsSorted || !this->getBasicBlockSections())
-    return false;
-
-  for (auto &MBB : *this) {
-    // A unique BB section can only be created if this basic block is not
-    // used for exception table computations.
-    if (!MBB.pred_empty() && !HasEHInfo(MBB))
-      MBB.setIsUniqueSection();
-  } 
-
-  // With -fbasicblock-sections, fall through blocks must be made
-  // explicitly reachable.  Do this after unique sections is set as
-  // unnecessary fallthroughs can be avoided.
-  for (auto &MBB : *this) {
-    MBB.insertUnconditionalFallthroughBranch();
-  }
-
-  this->sort(([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    return (X.isUniqueSection() == Y.isUniqueSection()) ?
-           (X.getNumber() < Y.getNumber()) : !X.isUniqueSection();
-  }));
-
-  this->BBSectionsSorted = true;
-  return true;
 }
 
 /// Allocate a new MachineInstr. Use this instead of `new MachineInstr'.

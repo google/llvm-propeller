@@ -51,34 +51,16 @@ MachineBasicBlock::~MachineBasicBlock() {
 
 /// Return the MCSymbol for this basic block.
 MCSymbol *MachineBasicBlock::getSymbol() const {
-  // Hack to keep str tab shorter:
-  // static std::string bb_prefix = "a";
   if (!CachedMCSymbol) {
     const MachineFunction *MF = getParent();
     MCContext &Ctx = MF->getContext();
-
-    // With Basic Block Sections, use the function name as the prefix for the
-    // label corresponding to the basic block.  This makes it debugger and
-    // profiler friendly if the basic block is not going to be placed along
-    // with the rest of the function.
-    bool BasicBlockSections = MF->getBasicBlockSections() ||
-                              MF->getBasicBlockLabels();
-    auto Delimiter = BasicBlockSections ? "." : "_";
-    auto Prefix = !BasicBlockSections ?
-        Ctx.getAsmInfo()->getPrivateLabelPrefix() :
-        MF->getName();
+    auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
-
-    if (BasicBlockSections) {
-      CachedMCSymbol = Ctx.getOrCreateSymbol(
-          Twine(Prefix) + Twine(Delimiter) + "bb" + Twine(Delimiter) +
-          Twine(getNumber()));
-    } else {
-      CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
-                           Twine(MF->getFunctionNumber()) + Twine(Delimiter) +
-                           Twine(getNumber()));
-    }
+    CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
+                                           Twine(MF->getFunctionNumber()) +
+                                           "_" + Twine(getNumber()));
   }
+
   return CachedMCSymbol;
 }
 
@@ -539,34 +521,6 @@ void MachineBasicBlock::moveBefore(MachineBasicBlock *NewAfter) {
 
 void MachineBasicBlock::moveAfter(MachineBasicBlock *NewBefore) {
   getParent()->splice(++NewBefore->getIterator(), getIterator());
-}
-
-// Insert unconditional jumps to the basic block to which there is
-// a fall through.
-void MachineBasicBlock::insertUnconditionalFallthroughBranch() {
-  MachineBasicBlock *Fallthrough = getFallThrough();
-
-  if (Fallthrough == nullptr)
-    return;
-
-  // If this basic block and the Fallthrough basic block are in the same
-  // section then do not insert the jump.
-  if (!this->isUniqueSection() && !Fallthrough->isUniqueSection())
-    return;
-
-  const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
-  SmallVector<MachineOperand, 4> Cond;
-  MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
-
-  // If a branch to the fall through block already exists, return.
-  if (!TII->analyzeBranch(*this, TBB, FBB, Cond) &&
-      (TBB == Fallthrough || FBB == Fallthrough)) {
-    return;
-  }
-
-  Cond.clear();
-  DebugLoc DL = findBranchDebugLoc();
-  TII->insertBranch(*this, Fallthrough, nullptr, Cond, DL);
 }
 
 void MachineBasicBlock::updateTerminator() {

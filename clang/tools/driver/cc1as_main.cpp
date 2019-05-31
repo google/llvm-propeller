@@ -90,7 +90,6 @@ struct AssemblerInvocation {
   unsigned SaveTemporaryLabels : 1;
   unsigned GenDwarfForAssembly : 1;
   unsigned RelaxELFRelocations : 1;
-  unsigned RelocateWithSymbols : 1;
   unsigned DwarfVersion;
   std::string DwarfDebugFlags;
   std::string DwarfDebugProducer;
@@ -235,7 +234,6 @@ bool AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
   }
 
   Opts.RelaxELFRelocations = Args.hasArg(OPT_mrelax_relocations);
-  Opts.RelocateWithSymbols = Args.hasArg(OPT_mrelocate_with_symbols);
   Opts.DwarfVersion = getLastArgIntValue(Args, OPT_dwarf_version_EQ, 2, Diags);
   Opts.DwarfDebugFlags = Args.getLastArgValue(OPT_dwarf_debug_flags);
   Opts.DwarfDebugProducer = Args.getLastArgValue(OPT_dwarf_debug_producer);
@@ -360,7 +358,6 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
   MAI->setCompressDebugSections(Opts.CompressDebugSections);
 
   MAI->setRelaxELFRelocations(Opts.RelaxELFRelocations);
-  MAI->setRelocateWithSymbols(Opts.RelocateWithSymbols);
 
   bool IsBinary = Opts.OutputType == AssemblerInvocation::FT_Obj;
   if (Opts.OutputPath.empty())
