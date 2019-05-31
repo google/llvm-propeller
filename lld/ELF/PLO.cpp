@@ -114,32 +114,23 @@ void PLO::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
 }
 
 void PLO::calculateNodeFreqs() {
+  auto sumEdgeWeights = [](list<ELFCfgEdge *> &Edges) -> uint64_t {
+    return std::accumulate(Edges.begin(), Edges.end(), 0,
+                           [](uint64_t PSum, const ELFCfgEdge *Edge) {
+                             return PSum + Edge->Weight;
+                           });
+  };
   for (auto &P : CfgMap) {
     auto &Cfg = *P.second.begin();
     if (Cfg->Nodes.empty())
       return;
     bool Hot = false;
-    for (auto &Node : Cfg->Nodes) {
-      uint64_t SumOuts =
-          std::accumulate(Node->Outs.begin(), Node->Outs.end(), 0,
-                          [](uint64_t PSum, const ELFCfgEdge *Edge) {
-                            return PSum + Edge->Weight;
-                          });
-      uint64_t SumIns =
-          std::accumulate(Node->Ins.begin(), Node->Ins.end(), 0,
-                          [](uint64_t PSum, const ELFCfgEdge *Edge) {
-                            return PSum + Edge->Weight;
-                          });
-
-      uint64_t SumCallIns =
-          std::accumulate(Node->CallIns.begin(), Node->CallIns.end(), 0,
-                          [](uint64_t PSum, const ELFCfgEdge *Edge) {
-                            return PSum + Edge->Weight;
-                          });
-
-      Node->Freq = std::max({SumOuts, SumIns, SumCallIns});
-      Hot |= (Node->Freq != 0);
-    }
+    Cfg->forEachNodeRef([&Hot, &sumEdgeWeights](ELFCfgNode &Node) {
+      Node.Freq =
+          std::max({sumEdgeWeights(Node.Outs), sumEdgeWeights(Node.Ins),
+                    sumEdgeWeights(Node.CallIns)});
+      Hot |= (Node.Freq != 0);
+    });
     if (Hot && Cfg->getEntryNode()->Freq == 0)
       Cfg->getEntryNode()->Freq = 1;
   }

@@ -51,6 +51,14 @@ void CCubeAlgorithm::mergeClusters() {
       // Use MaxWeight or Sum of weights?
       // CfgWeight += N.Weight;
     });
+    // Cfg.forEachNodeRef([&CfgWeight, &CfgSize](ELFCfgNode &N) {
+    //   if (N.Freq) {
+    //     CfgWeight += N.Weight;
+    //     CfgSize += N.ShSize;
+    //   }
+    //   // Use MaxWeight or Sum of weights?
+    //   // CfgWeight += N.Weight;
+    // });
     WeightOrder[-(CfgWeight / CfgSize)] = &Cfg;
     Cluster *C = new Cluster(&Cfg);
     C->Handler = Clusters.emplace(Clusters.end(), C);

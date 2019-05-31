@@ -90,9 +90,9 @@ define build_compiler
 endef
 
 ALL_COMPILERS := stage1-compiler \
-								pgo-compiler cspgo-compiler \
-								pgo-plo-compiler cspgo-plo-compiler \
-								pgo-bolt-compiler cspgo-bolt-compiler
+		 pgo-compiler cspgo-compiler \
+		 pgo-plo-compiler cspgo-plo-compiler \
+		 pgo-bolt-compiler cspgo-bolt-compiler
 
 all-compilers: $(ALL_COMPILERS)
 
@@ -125,7 +125,7 @@ stage-cspgo.profdata stage-pgo.profdata: %.profdata: %-compiler run-commands.sh 
 	$(STAGE1_BIN)/llvm-profdata merge -output=$@ `find $(dir $(shell readlink -f $<))../ -path "*/csprofiles/*.profraw" -o -path "*/profiles/*.profraw"`
 
 pgo/build/bin/clang-9: stage-pgo.profdata
-	$(call build_compiler,pgo,$(DDIR)/stage1/install/bin,    -DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",all)
+	$(call build_compiler,pgo,$(DDIR)/stage1/install/bin,    -DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-plo/build/bin/clang-9: stage-pgo.profdata
 	$(call build_compiler,pgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",clang lld)
@@ -156,11 +156,11 @@ stage-cspgo/build/bin/clang-9: stage-pgo.profdata | stage1-compiler
 
 cspgo/build/bin/clang-9: stage-cspgo.profdata stage-pgo.profdata | stage1-compiler
 	$(STAGE1_BIN)/llvm-profdata merge -output=stage-cspgo2.profdata stage-cspgo.profdata stage-pgo.profdata
-	$(call build_compiler,cspgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/stage-cspgo2.profdata -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",all)
+	$(call build_compiler,cspgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/stage-cspgo2.profdata -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
 cspgo-plo/build/bin/clang-9: stage-cspgo.profdata stage-pgo.profdata | stage1-compiler
 	$(STAGE1_BIN)/llvm-profdata merge -output=stage-cspgo2.profdata stage-cspgo.profdata stage-pgo.profdata
-	$(call build_compiler,cspgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/stage-cspgo2.profdata -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",all)
+	$(call build_compiler,cspgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/stage-cspgo2.profdata -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",clang lld)
 
 run-commands.sh: | stage1-compiler
 	rsync -a -f "+ */" -f "+ *.inc" -f "+ *.h" -f "+ *.def" -f "- *" \
@@ -206,26 +206,29 @@ benchmark-%: %-compiler run-commands.sh
 	{ time ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
 
 # ######################################  sample workflow
-sample.bc: sample.c
-	./stage1-compiler -emit-llvm -c -O2 $< -o $@
-
-sample_bblabels.o: sample.bc
-	./stage1-compiler -c -O2 -fbasicblock-sections=labels $< -o $@
+sample_bblabels.o: sample.c
+	./stage1-compiler -c -O2 -fbasicblock-sections=labels -fpic $< -o $@
 	@[[ -n `readelf -Ws $@ | grep -F '.bb.'` ]] \
 		|| { echo "No bb symbols found in $@, error" ; exit 1; }
 
 sample.out: sample_bblabels.o
-	./stage1-compiler -Wl,-build-id -o $@ $<
+	./stage1-compiler -Wl,--build-id -o $@ $< -pie
 	@[[ -n `readelf -Ws $@ | grep -F '.bb.'` ]] \
 		|| { echo "No bb symbols found in $@, error" ; exit 1; }
 
 sample.perfdata: sample.out
 	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
 
-sample.out.symfile sample.out.profile: sample.out sample.perfdata
+~/copt/plo2/autofdo-forked/create_llvm_prof: ~/copt/plo2/autofdo-forked/*.cc ~/copt/plo2/autofdo-forked/*.h
+	make -C `dirname $@` -j50
+
+sample.llvm_prof: sample.perfdata ~/copt/plo2/autofdo-forked/create_llvm_prof
+	~/copt/plo2/autofdo-forked/create_llvm_prof --profile=$< --out=$@ --format=plo --binary=sample.out --logtostderr
+
+sample.out.symfile: sample.out sample.perfdata
 	./plotool.sh $^
 
-sample_bball.o: sample.bc
+sample_bball.o: sample.c
 	./stage1-compiler -c -O2 -fbasicblock-sections=all $< -o $@
 
 sample.plo.out sample.out.cfg: sample_bball.o sample.out.symfile sample.out.profile stage1-compiler
