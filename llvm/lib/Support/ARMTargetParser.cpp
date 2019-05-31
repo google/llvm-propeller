@@ -77,6 +77,7 @@ unsigned ARM::parseArchVersion(StringRef Arch) {
   case ArchKind::ARMV8R:
   case ArchKind::ARMV8MBaseline:
   case ArchKind::ARMV8MMainline:
+  case ArchKind::ARMV8_1MMainline:
     return 8;
   case ArchKind::INVALID:
     return 0;
@@ -93,6 +94,7 @@ ARM::ProfileKind ARM::parseArchProfile(StringRef Arch) {
   case ArchKind::ARMV7EM:
   case ArchKind::ARMV8MMainline:
   case ArchKind::ARMV8MBaseline:
+  case ArchKind::ARMV8_1MMainline:
     return ProfileKind::M;
   case ArchKind::ARMV7R:
   case ArchKind::ARMV8R:
@@ -151,6 +153,7 @@ StringRef ARM::getArchSynonym(StringRef Arch) {
       .Case("v8r", "v8-r")
       .Case("v8m.base", "v8-m.base")
       .Case("v8m.main", "v8-m.main")
+      .Case("v8.1m.main", "v8.1-m.main")
       .Default(Arch);
 }
 
@@ -159,28 +162,15 @@ bool ARM::getFPUFeatures(unsigned FPUKind, std::vector<StringRef> &Features) {
   if (FPUKind >= FK_LAST || FPUKind == FK_INVALID)
     return false;
 
-  // fp-only-sp and d16 subtarget features are independent of each other, so we
-  // must enable/disable both.
-  switch (FPUNames[FPUKind].Restriction) {
-  case FPURestriction::SP_D16:
-    Features.push_back("+fp-only-sp");
-    Features.push_back("+d16");
-    break;
-  case FPURestriction::D16:
-    Features.push_back("-fp-only-sp");
-    Features.push_back("+d16");
-    break;
-  case FPURestriction::None:
-    Features.push_back("-fp-only-sp");
-    Features.push_back("-d16");
-    break;
-  }
-
   // FPU version subtarget features are inclusive of lower-numbered ones, so
   // enable the one corresponding to this version and disable all that are
   // higher. We also have to make sure to disable fp16 when vfp4 is disabled,
   // as +vfp4 implies +fp16 but -vfp4 does not imply -fp16.
   switch (FPUNames[FPUKind].FPUVer) {
+  case FPUVersion::VFPV5_FULLFP16:
+    Features.push_back("+fp-armv8");
+    Features.push_back("+fullfp16");
+    break;
   case FPUVersion::VFPV5:
     Features.push_back("+fp-armv8");
     break;
@@ -214,6 +204,28 @@ bool ARM::getFPUFeatures(unsigned FPUKind, std::vector<StringRef> &Features) {
     Features.push_back("-vfp4");
     Features.push_back("-fp-armv8");
     break;
+  }
+
+  // fp64 and d32 subtarget features are independent of each other, so we
+  // must disable/enable both.
+  if (FPUKind == FK_NONE) {
+    Features.push_back("-fp64");
+    Features.push_back("-d32");
+  } else {
+    switch (FPUNames[FPUKind].Restriction) {
+    case FPURestriction::SP_D16:
+      Features.push_back("-fp64");
+      Features.push_back("-d32");
+      break;
+    case FPURestriction::D16:
+      Features.push_back("+fp64");
+      Features.push_back("-d32");
+      break;
+    case FPURestriction::None:
+      Features.push_back("+fp64");
+      Features.push_back("+d32");
+      break;
+    }
   }
 
   // crypto includes neon, so we handle this similarly to FPU version.

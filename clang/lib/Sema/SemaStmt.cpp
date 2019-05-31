@@ -4223,15 +4223,23 @@ Sema::CreateCapturedStmtRecordDecl(CapturedDecl *&CD, SourceLocation Loc,
   return RD;
 }
 
-static void
-buildCapturedStmtCaptureList(SmallVectorImpl<CapturedStmt::Capture> &Captures,
-                             SmallVectorImpl<Expr *> &CaptureInits,
-                             ArrayRef<sema::Capture> Candidates) {
-  for (const sema::Capture &Cap : Candidates) {
+static bool
+buildCapturedStmtCaptureList(Sema &S, CapturedRegionScopeInfo *RSI,
+                             SmallVectorImpl<CapturedStmt::Capture> &Captures,
+                             SmallVectorImpl<Expr *> &CaptureInits) {
+  for (const sema::Capture &Cap : RSI->Captures) {
+    if (Cap.isInvalid())
+      continue;
+
+    // Create a field for this capture.
+    FieldDecl *Field = S.BuildCaptureField(RSI->TheRecordDecl, Cap);
+
     if (Cap.isThisCapture()) {
+      ExprResult Init =
+          S.performThisCaptureInitialization(Cap, /*Implicit*/ true);
       Captures.push_back(CapturedStmt::Capture(Cap.getLocation(),
                                                CapturedStmt::VCK_This));
-      CaptureInits.push_back(Cap.getInitExpr());
+      CaptureInits.push_back(Init.get());
       continue;
     } else if (Cap.isVLATypeCapture()) {
       Captures.push_back(
@@ -4240,13 +4248,25 @@ buildCapturedStmtCaptureList(SmallVectorImpl<CapturedStmt::Capture> &Captures,
       continue;
     }
 
-    Captures.push_back(CapturedStmt::Capture(Cap.getLocation(),
+    if (S.getLangOpts().OpenMP && RSI->CapRegionKind == CR_OpenMP)
+      S.setOpenMPCaptureKind(Field, Cap.getVariable(), RSI->OpenMPLevel);
+
+    VarDecl *Var = Cap.getVariable();
+    SourceLocation Loc = Cap.getLocation();
+
+    // FIXME: For a non-reference capture, we need to build an expression to
+    // perform a copy here!
+    ExprResult Init = S.BuildDeclarationNameExpr(
+        CXXScopeSpec(), DeclarationNameInfo(Var->getDeclName(), Loc), Var);
+
+    Captures.push_back(CapturedStmt::Capture(Loc,
                                              Cap.isReferenceCapture()
                                                  ? CapturedStmt::VCK_ByRef
                                                  : CapturedStmt::VCK_ByCopy,
-                                             Cap.getVariable()));
-    CaptureInits.push_back(Cap.getInitExpr());
+                                             Var));
+    CaptureInits.push_back(Init.get());
   }
+  return false;
 }
 
 void Sema::ActOnCapturedRegionStart(SourceLocation Loc, Scope *CurScope,
@@ -4339,25 +4359,31 @@ void Sema::ActOnCapturedRegionStart(SourceLocation Loc, Scope *CurScope,
 void Sema::ActOnCapturedRegionError() {
   DiscardCleanupsInEvaluationContext();
   PopExpressionEvaluationContext();
+  PopDeclContext();
+  PoppedFunctionScopePtr ScopeRAII = PopFunctionScopeInfo();
+  CapturedRegionScopeInfo *RSI = cast<CapturedRegionScopeInfo>(ScopeRAII.get());
 
-  CapturedRegionScopeInfo *RSI = getCurCapturedRegion();
   RecordDecl *Record = RSI->TheRecordDecl;
   Record->setInvalidDecl();
 
   SmallVector<Decl*, 4> Fields(Record->fields());
   ActOnFields(/*Scope=*/nullptr, Record->getLocation(), Record, Fields,
               SourceLocation(), SourceLocation(), ParsedAttributesView());
-
-  PopDeclContext();
-  PopFunctionScopeInfo();
 }
 
 StmtResult Sema::ActOnCapturedRegionEnd(Stmt *S) {
-  CapturedRegionScopeInfo *RSI = getCurCapturedRegion();
+  // Leave the captured scope before we start creating captures in the
+  // enclosing scope.
+  DiscardCleanupsInEvaluationContext();
+  PopExpressionEvaluationContext();
+  PopDeclContext();
+  PoppedFunctionScopePtr ScopeRAII = PopFunctionScopeInfo();
+  CapturedRegionScopeInfo *RSI = cast<CapturedRegionScopeInfo>(ScopeRAII.get());
 
   SmallVector<CapturedStmt::Capture, 4> Captures;
   SmallVector<Expr *, 4> CaptureInits;
-  buildCapturedStmtCaptureList(Captures, CaptureInits, RSI->Captures);
+  if (buildCapturedStmtCaptureList(*this, RSI, Captures, CaptureInits))
+    return StmtError();
 
   CapturedDecl *CD = RSI->TheCapturedDecl;
   RecordDecl *RD = RSI->TheRecordDecl;
@@ -4368,12 +4394,6 @@ StmtResult Sema::ActOnCapturedRegionEnd(Stmt *S) {
 
   CD->setBody(Res->getCapturedStmt());
   RD->completeDefinition();
-
-  DiscardCleanupsInEvaluationContext();
-  PopExpressionEvaluationContext();
-
-  PopDeclContext();
-  PopFunctionScopeInfo();
 
   return Res;
 }

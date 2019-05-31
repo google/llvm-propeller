@@ -914,14 +914,10 @@ endif()
 
 # Plugin support
 # FIXME: Make this configurable.
-if(WIN32 OR CYGWIN)
-  if(BUILD_SHARED_LIBS OR LLVM_BUILD_LLVM_DYLIB)
-    set(LLVM_ENABLE_PLUGINS ON)
-  else()
-    set(LLVM_ENABLE_PLUGINS OFF)
-  endif()
+if(BUILD_SHARED_LIBS OR LLVM_BUILD_LLVM_DYLIB)
+  set(LLVM_ENABLE_PLUGINS ON)
 else()
-  set(LLVM_ENABLE_PLUGINS ${LLVM_ENABLE_PIC})
+  set(LLVM_ENABLE_PLUGINS OFF)
 endif()
 
 # By default we should enable LLVM_ENABLE_IDE only for multi-configuration
@@ -980,4 +976,20 @@ if(macos_signposts_available)
                           " \"${LLVM_ENABLE_SUPPORT_XCODE_SIGNPOSTS}\"!")
     endif()
   endif()
+endif()
+
+option(LLVM_USE_RELATIVE_PATHS_IN_DEBUG_INFO "Use relative paths in debug info" OFF)
+set(LLVM_SOURCE_PREFIX "" CACHE STRING "Use prefix for sources in debug info")
+
+if(LLVM_USE_RELATIVE_PATHS_IN_DEBUG_INFO)
+  check_c_compiler_flag("-fdebug-prefix-map=foo=bar" SUPPORTS_FDEBUG_PREFIX_MAP)
+  if(LLVM_ENABLE_PROJECTS_USED)
+    get_filename_component(source_root "${LLVM_MAIN_SRC_DIR}/.." ABSOLUTE)
+  else()
+    set(source_root "${LLVM_MAIN_SRC_DIR}")
+  endif()
+  file(RELATIVE_PATH relative_root "${source_root}" "${CMAKE_BINARY_DIR}")
+  append_if(SUPPORTS_FDEBUG_PREFIX_MAP "-fdebug-prefix-map=${CMAKE_BINARY_DIR}=${relative_root}" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+  append_if(SUPPORTS_FDEBUG_PREFIX_MAP "-fdebug-prefix-map=${source_root}/=${LLVM_SOURCE_PREFIX}" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+  add_flag_if_supported("-no-canonical-prefixes" NO_CANONICAL_PREFIXES)
 endif()

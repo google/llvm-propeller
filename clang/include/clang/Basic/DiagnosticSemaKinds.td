@@ -904,6 +904,12 @@ def err_objc_root_class_subclass : Error<
 def err_restricted_superclass_mismatch : Error<
   "cannot subclass a class that was declared with the "
   "'objc_subclassing_restricted' attribute">;
+def err_class_stub_subclassing_mismatch : Error<
+  "'objc_class_stub' attribute cannot be specified on a class that does not "
+  "have the 'objc_subclassing_restricted' attribute">;
+def err_implementation_of_class_stub : Error<
+  "cannot declare implementation of a class declared with the "
+  "'objc_class_stub' attribute">;
 def warn_objc_root_class_missing : Warning<
   "class %0 defined without specifying a base class">,
   InGroup<ObjCRootClass>;
@@ -2785,6 +2791,9 @@ def warn_dllimport_dropped_from_inline_function : Warning<
   "%q0 redeclared inline; %1 attribute ignored">,
   InGroup<IgnoredAttributes>;
 def warn_attribute_ignored : Warning<"%0 attribute ignored">,
+  InGroup<IgnoredAttributes>;
+def warn_nothrow_attribute_ignored : Warning<"'nothrow' attribute conflicts with"
+  " exception specification; attribute ignored">,
   InGroup<IgnoredAttributes>;
 def warn_attribute_ignored_on_inline :
   Warning<"%0 attribute ignored on inline function">,

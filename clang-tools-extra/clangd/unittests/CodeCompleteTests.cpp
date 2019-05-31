@@ -49,6 +49,9 @@ class IgnoreDiagnostics : public DiagnosticsConsumer {
 
 // GMock helpers for matching completion items.
 MATCHER_P(Named, Name, "") { return arg.Name == Name; }
+MATCHER_P(NameStartsWith, Prefix, "") {
+  return llvm::StringRef(arg.Name).startswith(Prefix);
+}
 MATCHER_P(Scope, S, "") { return arg.Scope == S; }
 MATCHER_P(Qualifier, Q, "") { return arg.RequiredQualifier == Q; }
 MATCHER_P(Labeled, Label, "") {
@@ -446,6 +449,45 @@ TEST(CompletionTest, Kinds) {
   Results = completions("nam^");
   EXPECT_THAT(Results.Completions,
               Has("namespace", CompletionItemKind::Snippet));
+
+  // Members of anonymous unions are of kind 'field'.
+  Results = completions(
+      R"cpp(
+        struct X{
+            union {
+              void *a;
+            };
+        };
+        auto u = X().^
+      )cpp");
+  EXPECT_THAT(
+      Results.Completions,
+      UnorderedElementsAre(AllOf(Named("a"), Kind(CompletionItemKind::Field))));
+
+  // Completion kinds for templates should not be unknown.
+  Results = completions(
+      R"cpp(
+        template <class T> struct complete_class {};
+        template <class T> void complete_function();
+        template <class T> using complete_type_alias = int;
+        template <class T> int complete_variable = 10;
+
+        struct X {
+          template <class T> static int complete_static_member = 10;
+
+          static auto x = complete_^
+        }
+      )cpp");
+  EXPECT_THAT(
+      Results.Completions,
+      UnorderedElementsAre(
+          AllOf(Named("complete_class"), Kind(CompletionItemKind::Class)),
+          AllOf(Named("complete_function"), Kind(CompletionItemKind::Function)),
+          AllOf(Named("complete_type_alias"),
+                Kind(CompletionItemKind::Interface)),
+          AllOf(Named("complete_variable"), Kind(CompletionItemKind::Variable)),
+          AllOf(Named("complete_static_member"),
+                Kind(CompletionItemKind::Property))));
 }
 
 TEST(CompletionTest, NoDuplicates) {
@@ -1946,10 +1988,13 @@ TEST(CompletionTest, SuggestOverrides) {
   };
   )cpp");
   const auto Results = completions(Text);
-  EXPECT_THAT(Results.Completions,
-              AllOf(Contains(Labeled("void vfunc(bool param, int p) override")),
-                    Contains(Labeled("void ttt(bool param) const override")),
-                    Not(Contains(Labeled("void vfunc(bool param) override")))));
+  EXPECT_THAT(
+      Results.Completions,
+      AllOf(Contains(AllOf(Labeled("void vfunc(bool param, int p) override"),
+                           NameStartsWith("vfunc"))),
+            Contains(AllOf(Labeled("void ttt(bool param) const override"),
+                           NameStartsWith("ttt"))),
+            Not(Contains(Labeled("void vfunc(bool param) override")))));
 }
 
 TEST(CompletionTest, OverridesNonIdentName) {
@@ -2374,6 +2419,28 @@ TEST(CompletionTest, ObjectiveCMethodTwoArgumentsFromMiddle) {
   EXPECT_THAT(C, ElementsAre(ReturnType("id")));
   EXPECT_THAT(C, ElementsAre(Signature("(unsigned int)")));
   EXPECT_THAT(C, ElementsAre(SnippetSuffix("${1:(unsigned int)}")));
+}
+
+TEST(CompletionTest, CursorInSnippets) {
+  clangd::CodeCompleteOptions Options;
+  Options.EnableSnippets = true;
+  auto Results = completions(
+      R"cpp(
+    void while_foo(int a, int b);
+    void test() {
+      whil^
+    })cpp",
+      /*IndexSymbols=*/{}, Options);
+
+  // Last placeholder in code patterns should be $0 to put the cursor there.
+  EXPECT_THAT(
+      Results.Completions,
+      Contains(AllOf(Named("while"),
+                     SnippetSuffix("(${1:condition}){\n${0:statements}\n}"))));
+  // However, snippets for functions must *not* end with $0.
+  EXPECT_THAT(Results.Completions,
+              Contains(AllOf(Named("while_foo"),
+                             SnippetSuffix("(${1:int a}, ${2:int b})"))));
 }
 
 TEST(CompletionTest, WorksWithNullType) {

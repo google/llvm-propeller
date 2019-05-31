@@ -843,19 +843,11 @@ VarDecl *Sema::createLambdaInitCaptureVarDecl(SourceLocation Loc,
   return NewVD;
 }
 
-FieldDecl *Sema::buildInitCaptureField(LambdaScopeInfo *LSI, VarDecl *Var) {
-  FieldDecl *Field = FieldDecl::Create(
-      Context, LSI->Lambda, Var->getLocation(), Var->getLocation(),
-      nullptr, Var->getType(), Var->getTypeSourceInfo(), nullptr, false,
-      ICIS_NoInit);
-  Field->setImplicit(true);
-  Field->setAccess(AS_private);
-  LSI->Lambda->addDecl(Field);
-
+void Sema::addInitCapture(LambdaScopeInfo *LSI, VarDecl *Var) {
+  assert(Var->isInitCapture() && "init capture flag should be set");
   LSI->addCapture(Var, /*isBlock*/false, Var->getType()->isReferenceType(),
                   /*isNested*/false, Var->getLocation(), SourceLocation(),
-                  Var->getType(), Var->getInit());
-  return Field;
+                  Var->getType(), /*Invalid*/false);
 }
 
 void Sema::ActOnStartOfLambdaDefinition(LambdaIntroducer &Intro,
@@ -1182,7 +1174,7 @@ void Sema::ActOnStartOfLambdaDefinition(LambdaIntroducer &Intro,
     }
 
     if (C->Init.isUsable()) {
-      buildInitCaptureField(LSI, Var);
+      addInitCapture(LSI, Var);
     } else {
       TryCaptureKind Kind = C->Kind == LCK_ByRef ? TryCapture_ExplicitByRef :
                                                    TryCapture_ExplicitByVal;
@@ -1439,6 +1431,24 @@ static void addBlockPointerConversion(Sema &S,
   Class->addDecl(Conversion);
 }
 
+ExprResult Sema::performThisCaptureInitialization(const Capture &Cap,
+                                                  bool IsImplicit) {
+  QualType ThisTy = getCurrentThisType();
+  SourceLocation Loc = Cap.getLocation();
+  Expr *This = BuildCXXThisExpr(Loc, ThisTy, IsImplicit);
+  if (Cap.isReferenceCapture())
+    return This;
+
+  // Capture (by copy) of '*this'.
+  Expr *StarThis = CreateBuiltinUnaryOp(Loc, UO_Deref, This).get();
+  InitializedEntity Entity = InitializedEntity::InitializeLambdaCapture(
+      nullptr, Cap.getCaptureType(), Loc);
+  InitializationKind InitKind =
+      InitializationKind::CreateDirect(Loc, Loc, Loc);
+  InitializationSequence Init(*this, Entity, InitKind, StarThis);
+  return Init.Perform(*this, Entity, InitKind, StarThis);
+}
+
 static ExprResult performLambdaVarCaptureInitialization(
     Sema &S, const Capture &Capture, FieldDecl *Field,
     SourceLocation ImplicitCaptureLoc, bool IsImplicitCapture) {
@@ -1497,8 +1507,8 @@ mapImplicitCaptureStyle(CapturingScopeInfo::ImplicitCaptureStyle ICS) {
 }
 
 bool Sema::CaptureHasSideEffects(const Capture &From) {
-  if (!From.isVLATypeCapture()) {
-    Expr *Init = From.getInitExpr();
+  if (From.isInitCapture()) {
+    Expr *Init = From.getVariable()->getInit();
     if (Init && Init->HasSideEffects(Context))
       return true;
   }
@@ -1539,6 +1549,54 @@ bool Sema::DiagnoseUnusedLambdaCapture(SourceRange CaptureRange,
   return true;
 }
 
+/// Create a field within the lambda class or captured statement record for the
+/// given capture.
+FieldDecl *Sema::BuildCaptureField(RecordDecl *RD,
+                                   const sema::Capture &Capture) {
+  SourceLocation Loc = Capture.getLocation();
+  QualType FieldType = Capture.getCaptureType();
+
+  TypeSourceInfo *TSI = nullptr;
+  if (Capture.isVariableCapture()) {
+    auto *Var = Capture.getVariable();
+    if (Var->isInitCapture())
+      TSI = Capture.getVariable()->getTypeSourceInfo();
+  }
+
+  // FIXME: Should we really be doing this? A null TypeSourceInfo seems more
+  // appropriate, at least for an implicit capture.
+  if (!TSI)
+    TSI = Context.getTrivialTypeSourceInfo(FieldType, Loc);
+
+  // Build the non-static data member.
+  FieldDecl *Field =
+      FieldDecl::Create(Context, RD, Loc, Loc, nullptr, FieldType, TSI, nullptr,
+                        false, ICIS_NoInit);
+  // If the variable being captured has an invalid type, mark the class as
+  // invalid as well.
+  if (!FieldType->isDependentType()) {
+    if (RequireCompleteType(Loc, FieldType, diag::err_field_incomplete)) {
+      RD->setInvalidDecl();
+      Field->setInvalidDecl();
+    } else {
+      NamedDecl *Def;
+      FieldType->isIncompleteType(&Def);
+      if (Def && Def->isInvalidDecl()) {
+        RD->setInvalidDecl();
+        Field->setInvalidDecl();
+      }
+    }
+  }
+  Field->setImplicit(true);
+  Field->setAccess(AS_private);
+  RD->addDecl(Field);
+
+  if (Capture.isVLATypeCapture())
+    Field->setCapturedVLAType(Capture.getCapturedVLAType());
+
+  return Field;
+}
+
 ExprResult Sema::BuildLambdaExpr(SourceLocation StartLoc, SourceLocation EndLoc,
                                  LambdaScopeInfo *LSI) {
   // Collect information from the lambda scope.
@@ -1576,15 +1634,16 @@ ExprResult Sema::BuildLambdaExpr(SourceLocation StartLoc, SourceLocation EndLoc,
 
     PopExpressionEvaluationContext();
 
-    // Translate captures.
-    auto CurField = Class->field_begin();
     // True if the current capture has a used capture or default before it.
     bool CurHasPreviousCapture = CaptureDefault != LCD_None;
     SourceLocation PrevCaptureLoc = CurHasPreviousCapture ?
         CaptureDefaultLoc : IntroducerRange.getBegin();
 
-    for (unsigned I = 0, N = LSI->Captures.size(); I != N; ++I, ++CurField) {
+    for (unsigned I = 0, N = LSI->Captures.size(); I != N; ++I) {
       const Capture &From = LSI->Captures[I];
+
+      if (From.isInvalid())
+        return ExprError();
 
       assert(!From.isBlockCapture() && "Cannot capture __block variables");
       bool IsImplicit = I >= LSI->NumExplicitCaptures;
@@ -1597,7 +1656,7 @@ ExprResult Sema::BuildLambdaExpr(SourceLocation StartLoc, SourceLocation EndLoc,
       if (!CurContext->isDependentContext() && !IsImplicit && !From.isODRUsed()) {
         // Initialized captures that are non-ODR used may not be eliminated.
         bool NonODRUsedInitCapture =
-            IsGenericLambda && From.isNonODRUsed() && From.getInitExpr();
+            IsGenericLambda && From.isNonODRUsed() && From.isInitCapture();
         if (!NonODRUsedInitCapture) {
           bool IsLast = (I + 1) == LSI->NumExplicitCaptures;
           SourceRange FixItRange;
@@ -1623,6 +1682,9 @@ ExprResult Sema::BuildLambdaExpr(SourceLocation StartLoc, SourceLocation EndLoc,
         PrevCaptureLoc = CaptureRange.getEnd();
       }
 
+      // Add a FieldDecl for the capture.
+      FieldDecl *Field = BuildCaptureField(Class, From);
+
       // Handle 'this' capture.
       if (From.isThisCapture()) {
         // Capturing 'this' implicitly with a default of '[=]' is deprecated,
@@ -1636,10 +1698,11 @@ ExprResult Sema::BuildLambdaExpr(SourceLocation StartLoc, SourceLocation EndLoc,
                      getLocForEndOfToken(CaptureDefaultLoc), ", this");
         }
 
+        ExprResult Init = performThisCaptureInitialization(From, IsImplicit);
         Captures.push_back(
             LambdaCapture(From.getLocation(), IsImplicit,
                           From.isCopyCapture() ? LCK_StarThis : LCK_This));
-        CaptureInits.push_back(From.getInitExpr());
+        CaptureInits.push_back(Init.get());
         continue;
       }
       if (From.isVLATypeCapture()) {
@@ -1653,15 +1716,13 @@ ExprResult Sema::BuildLambdaExpr(SourceLocation StartLoc, SourceLocation EndLoc,
       LambdaCaptureKind Kind = From.isCopyCapture() ? LCK_ByCopy : LCK_ByRef;
       Captures.push_back(LambdaCapture(From.getLocation(), IsImplicit, Kind,
                                        Var, From.getEllipsisLoc()));
-      Expr *Init = From.getInitExpr();
-      if (!Init) {
-        auto InitResult = performLambdaVarCaptureInitialization(
-            *this, From, *CurField, CaptureDefaultLoc, IsImplicit);
-        if (InitResult.isInvalid())
-          return ExprError();
-        Init = InitResult.get();
-      }
-      CaptureInits.push_back(Init);
+
+      ExprResult Init =
+          From.isInitCapture()
+              ? Var->getInit()
+              : performLambdaVarCaptureInitialization(
+                    *this, From, Field, CaptureDefaultLoc, IsImplicit);
+      CaptureInits.push_back(Init.get());
     }
 
     // C++11 [expr.prim.lambda]p6:

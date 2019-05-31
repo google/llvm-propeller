@@ -61,6 +61,8 @@ public:
 
   ArrayRef<Symbol *> getSymbols() const { return Symbols; }
 
+  MutableArrayRef<Symbol *> getMutableSymbols() { return Symbols; }
+
 protected:
   InputFile(Kind K, MemoryBufferRef M) : MB(M), FileKind(K) {}
   MemoryBufferRef MB;
@@ -136,7 +138,7 @@ public:
 
 private:
   Symbol *createDefined(const WasmSymbol &Sym);
-  Symbol *createUndefined(const WasmSymbol &Sym);
+  Symbol *createUndefined(const WasmSymbol &Sym, bool IsCalledDirectly);
 
   bool isExcludedByComdat(InputChunk *Chunk) const;
 

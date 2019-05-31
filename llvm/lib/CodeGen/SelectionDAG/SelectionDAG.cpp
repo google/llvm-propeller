@@ -2122,16 +2122,32 @@ SDValue SelectionDAG::FoldSetCC(EVT VT, SDValue N1, SDValue N2,
 }
 
 /// See if the specified operand can be simplified with the knowledge that only
-/// the bits specified by Mask are used.
-SDValue SelectionDAG::GetDemandedBits(SDValue V, const APInt &Mask) {
+/// the bits specified by DemandedBits are used.
+/// TODO: really we should be making this into the DAG equivalent of
+/// SimplifyMultipleUseDemandedBits and not generate any new nodes.
+SDValue SelectionDAG::GetDemandedBits(SDValue V, const APInt &DemandedBits) {
+  EVT VT = V.getValueType();
+  APInt DemandedElts = VT.isVector()
+                           ? APInt::getAllOnesValue(VT.getVectorNumElements())
+                           : APInt(1, 1);
+  return GetDemandedBits(V, DemandedBits, DemandedElts);
+}
+
+/// See if the specified operand can be simplified with the knowledge that only
+/// the bits specified by DemandedBits are used in the elements specified by
+/// DemandedElts.
+/// TODO: really we should be making this into the DAG equivalent of
+/// SimplifyMultipleUseDemandedBits and not generate any new nodes.
+SDValue SelectionDAG::GetDemandedBits(SDValue V, const APInt &DemandedBits,
+                                      const APInt &DemandedElts) {
   switch (V.getOpcode()) {
   default:
     break;
   case ISD::Constant: {
-    const ConstantSDNode *CV = cast<ConstantSDNode>(V.getNode());
+    auto *CV = cast<ConstantSDNode>(V.getNode());
     assert(CV && "Const value should be ConstSDNode.");
     const APInt &CVal = CV->getAPIntValue();
-    APInt NewVal = CVal & Mask;
+    APInt NewVal = CVal & DemandedBits;
     if (NewVal != CVal)
       return getConstant(NewVal, SDLoc(V), V.getValueType());
     break;
@@ -2139,24 +2155,25 @@ SDValue SelectionDAG::GetDemandedBits(SDValue V, const APInt &Mask) {
   case ISD::OR:
   case ISD::XOR:
     // If the LHS or RHS don't contribute bits to the or, drop them.
-    if (MaskedValueIsZero(V.getOperand(0), Mask))
+    if (MaskedValueIsZero(V.getOperand(0), DemandedBits))
       return V.getOperand(1);
-    if (MaskedValueIsZero(V.getOperand(1), Mask))
+    if (MaskedValueIsZero(V.getOperand(1), DemandedBits))
       return V.getOperand(0);
     break;
   case ISD::SRL:
     // Only look at single-use SRLs.
     if (!V.getNode()->hasOneUse())
       break;
-    if (ConstantSDNode *RHSC = dyn_cast<ConstantSDNode>(V.getOperand(1))) {
+    if (auto *RHSC = dyn_cast<ConstantSDNode>(V.getOperand(1))) {
       // See if we can recursively simplify the LHS.
       unsigned Amt = RHSC->getZExtValue();
 
       // Watch out for shift count overflow though.
-      if (Amt >= Mask.getBitWidth())
+      if (Amt >= DemandedBits.getBitWidth())
         break;
-      APInt NewMask = Mask << Amt;
-      if (SDValue SimplifyLHS = GetDemandedBits(V.getOperand(0), NewMask))
+      APInt SrcDemandedBits = DemandedBits << Amt;
+      if (SDValue SimplifyLHS =
+              GetDemandedBits(V.getOperand(0), SrcDemandedBits))
         return getNode(ISD::SRL, SDLoc(V), V.getValueType(), SimplifyLHS,
                        V.getOperand(1));
     }
@@ -2166,8 +2183,9 @@ SDValue SelectionDAG::GetDemandedBits(SDValue V, const APInt &Mask) {
     // Also handle the case where masked out bits in X are known to be zero.
     if (ConstantSDNode *RHSC = isConstOrConstSplat(V.getOperand(1))) {
       const APInt &AndVal = RHSC->getAPIntValue();
-      if (Mask.isSubsetOf(AndVal) ||
-          Mask.isSubsetOf(computeKnownBits(V.getOperand(0)).Zero | AndVal))
+      if (DemandedBits.isSubsetOf(AndVal) ||
+          DemandedBits.isSubsetOf(computeKnownBits(V.getOperand(0)).Zero |
+                                  AndVal))
         return V.getOperand(0);
     }
     break;
@@ -2176,11 +2194,12 @@ SDValue SelectionDAG::GetDemandedBits(SDValue V, const APInt &Mask) {
     SDValue Src = V.getOperand(0);
     unsigned SrcBitWidth = Src.getScalarValueSizeInBits();
     // Being conservative here - only peek through if we only demand bits in the
-    // non-extended source (even though the extended bits are technically undef).
-    if (Mask.getActiveBits() > SrcBitWidth)
+    // non-extended source (even though the extended bits are technically
+    // undef).
+    if (DemandedBits.getActiveBits() > SrcBitWidth)
       break;
-    APInt SrcMask = Mask.trunc(SrcBitWidth);
-    if (SDValue DemandedSrc = GetDemandedBits(Src, SrcMask))
+    APInt SrcDemandedBits = DemandedBits.trunc(SrcBitWidth);
+    if (SDValue DemandedSrc = GetDemandedBits(Src, SrcDemandedBits))
       return getNode(ISD::ANY_EXTEND, SDLoc(V), V.getValueType(), DemandedSrc);
     break;
   }
@@ -2189,7 +2208,7 @@ SDValue SelectionDAG::GetDemandedBits(SDValue V, const APInt &Mask) {
     unsigned ExVTBits = ExVT.getScalarSizeInBits();
 
     // If none of the extended bits are demanded, eliminate the sextinreg.
-    if (Mask.getActiveBits() <= ExVTBits)
+    if (DemandedBits.getActiveBits() <= ExVTBits)
       return V.getOperand(0);
 
     break;
@@ -2207,9 +2226,22 @@ bool SelectionDAG::SignBitIsZero(SDValue Op, unsigned Depth) const {
 /// MaskedValueIsZero - Return true if 'V & Mask' is known to be zero.  We use
 /// this predicate to simplify operations downstream.  Mask is known to be zero
 /// for bits that V cannot have.
-bool SelectionDAG::MaskedValueIsZero(SDValue Op, const APInt &Mask,
+bool SelectionDAG::MaskedValueIsZero(SDValue V, const APInt &Mask,
                                      unsigned Depth) const {
-  return Mask.isSubsetOf(computeKnownBits(Op, Depth).Zero);
+  EVT VT = V.getValueType();
+  APInt DemandedElts = VT.isVector()
+                           ? APInt::getAllOnesValue(VT.getVectorNumElements())
+                           : APInt(1, 1);
+  return MaskedValueIsZero(V, Mask, DemandedElts, Depth);
+}
+
+/// MaskedValueIsZero - Return true if 'V & Mask' is known to be zero in
+/// DemandedElts.  We use this predicate to simplify operations downstream.
+/// Mask is known to be zero for bits that V cannot have.
+bool SelectionDAG::MaskedValueIsZero(SDValue V, const APInt &Mask,
+                                     const APInt &DemandedElts,
+                                     unsigned Depth) const {
+  return Mask.isSubsetOf(computeKnownBits(V, DemandedElts, Depth).Zero);
 }
 
 /// isSplatValue - Return true if the vector V has the same value
@@ -2886,8 +2918,59 @@ KnownBits SelectionDAG::computeKnownBits(SDValue Op, const APInt &DemandedElts,
   }
   case ISD::LOAD: {
     LoadSDNode *LD = cast<LoadSDNode>(Op);
-    // If this is a ZEXTLoad and we are looking at the loaded value.
-    if (ISD::isZEXTLoad(Op.getNode()) && Op.getResNo() == 0) {
+    const Constant *Cst = TLI->getTargetConstantFromLoad(LD);
+    if (ISD::isNON_EXTLoad(LD) && Cst) {
+      // Determine any common known bits from the loaded constant pool value.
+      Type *CstTy = Cst->getType();
+      if ((NumElts * BitWidth) == CstTy->getPrimitiveSizeInBits()) {
+        // If its a vector splat, then we can (quickly) reuse the scalar path.
+        // NOTE: We assume all elements match and none are UNDEF.
+        if (CstTy->isVectorTy()) {
+          if (const Constant *Splat = Cst->getSplatValue()) {
+            Cst = Splat;
+            CstTy = Cst->getType();
+          }
+        }
+        // TODO - do we need to handle different bitwidths?
+        if (CstTy->isVectorTy() && BitWidth == CstTy->getScalarSizeInBits()) {
+          // Iterate across all vector elements finding common known bits.
+          Known.One.setAllBits();
+          Known.Zero.setAllBits();
+          for (unsigned i = 0; i != NumElts; ++i) {
+            if (!DemandedElts[i])
+              continue;
+            if (Constant *Elt = Cst->getAggregateElement(i)) {
+              if (auto *CInt = dyn_cast<ConstantInt>(Elt)) {
+                const APInt &Value = CInt->getValue();
+                Known.One &= Value;
+                Known.Zero &= ~Value;
+                continue;
+              }
+              if (auto *CFP = dyn_cast<ConstantFP>(Elt)) {
+                APInt Value = CFP->getValueAPF().bitcastToAPInt();
+                Known.One &= Value;
+                Known.Zero &= ~Value;
+                continue;
+              }
+            }
+            Known.One.clearAllBits();
+            Known.Zero.clearAllBits();
+            break;
+          }
+        } else if (BitWidth == CstTy->getPrimitiveSizeInBits()) {
+          if (auto *CInt = dyn_cast<ConstantInt>(Cst)) {
+            const APInt &Value = CInt->getValue();
+            Known.One = Value;
+            Known.Zero = ~Value;
+          } else if (auto *CFP = dyn_cast<ConstantFP>(Cst)) {
+            APInt Value = CFP->getValueAPF().bitcastToAPInt();
+            Known.One = Value;
+            Known.Zero = ~Value;
+          }
+        }
+      }
+    } else if (ISD::isZEXTLoad(Op.getNode()) && Op.getResNo() == 0) {
+      // If this is a ZEXTLoad and we are looking at the loaded value.
       EVT VT = LD->getMemoryVT();
       unsigned MemBits = VT.getScalarSizeInBits();
       Known.Zero.setBitsFrom(MemBits);
@@ -4055,7 +4138,9 @@ static SDValue FoldBUILD_VECTOR(const SDLoc &DL, EVT VT,
   return SDValue();
 }
 
-static SDValue FoldCONCAT_VECTORS(const SDLoc &DL, EVT VT,
+/// Try to simplify vector concatenation to an input value, undef, or build
+/// vector.
+static SDValue foldCONCAT_VECTORS(const SDLoc &DL, EVT VT,
                                   ArrayRef<SDValue> Ops,
                                   SelectionDAG &DAG) {
   assert(!Ops.empty() && "Can't concatenate an empty list of vectors!");
@@ -4074,6 +4159,31 @@ static SDValue FoldCONCAT_VECTORS(const SDLoc &DL, EVT VT,
   // Concat of UNDEFs is UNDEF.
   if (llvm::all_of(Ops, [](SDValue Op) { return Op.isUndef(); }))
     return DAG.getUNDEF(VT);
+
+  // Scan the operands and look for extract operations from a single source
+  // that correspond to insertion at the same location via this concatenation:
+  // concat (extract X, 0*subvec_elts), (extract X, 1*subvec_elts), ...
+  SDValue IdentitySrc;
+  bool IsIdentity = true;
+  for (unsigned i = 0, e = Ops.size(); i != e; ++i) {
+    SDValue Op = Ops[i];
+    unsigned IdentityIndex = i * Op.getValueType().getVectorNumElements();
+    if (Op.getOpcode() != ISD::EXTRACT_SUBVECTOR ||
+        Op.getOperand(0).getValueType() != VT ||
+        (IdentitySrc && Op.getOperand(0) != IdentitySrc) ||
+        !isa<ConstantSDNode>(Op.getOperand(1)) ||
+        Op.getConstantOperandVal(1) != IdentityIndex) {
+      IsIdentity = false;
+      break;
+    }
+    assert((!IdentitySrc || IdentitySrc == Op.getOperand(0)) &&
+           "Unexpected identity source vector for concat of extracts");
+    IdentitySrc = Op.getOperand(0);
+  }
+  if (IsIdentity) {
+    assert(IdentitySrc && "Failed to set source vector of extracts");
+    return IdentitySrc;
+  }
 
   // A CONCAT_VECTOR with all UNDEF/BUILD_VECTOR operands can be
   // simplified to one big BUILD_VECTOR.
@@ -4906,9 +5016,8 @@ SDValue SelectionDAG::getNode(unsigned Opcode, const SDLoc &DL, EVT VT,
     break;
   }
   case ISD::CONCAT_VECTORS: {
-    // Attempt to fold CONCAT_VECTORS into BUILD_VECTOR or UNDEF.
     SDValue Ops[] = {N1, N2};
-    if (SDValue V = FoldCONCAT_VECTORS(DL, VT, Ops, *this))
+    if (SDValue V = foldCONCAT_VECTORS(DL, VT, Ops, *this))
       return V;
     break;
   }
@@ -5326,9 +5435,8 @@ SDValue SelectionDAG::getNode(unsigned Opcode, const SDLoc &DL, EVT VT,
     break;
   }
   case ISD::CONCAT_VECTORS: {
-    // Attempt to fold CONCAT_VECTORS into BUILD_VECTOR or UNDEF.
     SDValue Ops[] = {N1, N2, N3};
-    if (SDValue V = FoldCONCAT_VECTORS(DL, VT, Ops, *this))
+    if (SDValue V = foldCONCAT_VECTORS(DL, VT, Ops, *this))
       return V;
     break;
   }
@@ -7052,8 +7160,7 @@ SDValue SelectionDAG::getNode(unsigned Opcode, const SDLoc &DL, EVT VT,
       return V;
     break;
   case ISD::CONCAT_VECTORS:
-    // Attempt to fold CONCAT_VECTORS into BUILD_VECTOR or UNDEF.
-    if (SDValue V = FoldCONCAT_VECTORS(DL, VT, Ops, *this))
+    if (SDValue V = foldCONCAT_VECTORS(DL, VT, Ops, *this))
       return V;
     break;
   case ISD::SELECT_CC:

@@ -157,6 +157,7 @@ private:
   SymbolNode *demangleEncodedSymbol(StringView &MangledName,
                                     QualifiedNameNode *QN);
   SymbolNode *demangleDeclarator(StringView &MangledName);
+  SymbolNode *demangleMD5Name(StringView &MangledName);
 
   VariableSymbolNode *demangleVariableEncoding(StringView &MangledName,
                                                StorageClass SC);
@@ -222,7 +223,7 @@ private:
   demangleSpecialTableSymbolNode(StringView &MangledName,
                                  SpecialIntrinsicKind SIK);
   LocalStaticGuardVariableNode *
-  demangleLocalStaticGuard(StringView &MangledName);
+  demangleLocalStaticGuard(StringView &MangledName, bool IsThread);
   VariableSymbolNode *demangleUntypedVariable(ArenaAllocator &Arena,
                                               StringView &MangledName,
                                               StringView VariableName);

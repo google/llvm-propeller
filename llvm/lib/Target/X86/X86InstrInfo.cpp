@@ -2877,6 +2877,14 @@ static unsigned getLoadStoreRegOpcode(unsigned Reg,
       assert(STI.hasBWI() && "KMOVD requires BWI");
       return load ? X86::KMOVDkm : X86::KMOVDmk;
     }
+    // All of these mask pair classes have the same spill size, the same kind
+    // of kmov instructions can be used with all of them.
+    if (X86::VK1PAIRRegClass.hasSubClassEq(RC) ||
+        X86::VK2PAIRRegClass.hasSubClassEq(RC) ||
+        X86::VK4PAIRRegClass.hasSubClassEq(RC) ||
+        X86::VK8PAIRRegClass.hasSubClassEq(RC) ||
+        X86::VK16PAIRRegClass.hasSubClassEq(RC))
+      return load ? X86::MASKPAIR16LOAD : X86::MASKPAIR16STORE;
     llvm_unreachable("Unknown 4-byte regclass");
   case 8:
     if (X86::GR64RegClass.hasSubClassEq(RC))
@@ -3931,6 +3939,12 @@ bool X86InstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
                        get(HasVLX ? X86::VPXORDZ128rr : X86::VXORPSrr));
       MIB.addReg(SrcReg, RegState::ImplicitDefine);
       return true;
+    }
+    if (MI.getOpcode() == X86::AVX512_256_SET0) {
+      // No VLX so we must reference a zmm.
+      unsigned ZReg =
+        TRI->getMatchingSuperReg(SrcReg, X86::sub_ymm, &X86::VR512RegClass);
+      MIB->getOperand(0).setReg(ZReg);
     }
     return Expand2AddrUndef(MIB, get(X86::VPXORDZrr));
   }

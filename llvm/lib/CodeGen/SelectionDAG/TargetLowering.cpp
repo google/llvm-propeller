@@ -112,6 +112,7 @@ void TargetLoweringBase::ArgListEntry::setAttributes(const CallBase *Call,
   IsSwiftSelf = Call->paramHasAttr(ArgIdx, Attribute::SwiftSelf);
   IsSwiftError = Call->paramHasAttr(ArgIdx, Attribute::SwiftError);
   Alignment = Call->getParamAlignment(ArgIdx);
+  ByValType = Call->getParamByValType(ArgIdx);
 }
 
 /// Generate a libcall taking the given operands as arguments and returning a
@@ -659,6 +660,14 @@ bool TargetLowering::SimplifyDemandedBits(
       Known.Zero &= Known2.Zero;
     }
     return false; // Don't fall through, will infinitely loop.
+  case ISD::LOAD: {
+    LoadSDNode *LD = cast<LoadSDNode>(Op);
+    if (getTargetConstantFromLoad(LD)) {
+      Known = TLO.DAG.computeKnownBits(Op, DemandedElts, Depth);
+      return false; // Don't fall through, will infinitely loop.
+    }
+    break;
+  }
   case ISD::INSERT_VECTOR_ELT: {
     SDValue Vec = Op.getOperand(0);
     SDValue Scl = Op.getOperand(1);
@@ -2312,6 +2321,10 @@ bool TargetLowering::SimplifyDemandedBitsForTargetNode(
          " is a target node!");
   computeKnownBitsForTargetNode(Op, Known, DemandedElts, TLO.DAG, Depth);
   return false;
+}
+
+const Constant *TargetLowering::getTargetConstantFromLoad(LoadSDNode*) const {
+  return nullptr;
 }
 
 bool TargetLowering::isKnownNeverNaNForTargetNode(SDValue Op,

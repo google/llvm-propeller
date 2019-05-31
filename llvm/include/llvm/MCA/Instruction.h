@@ -80,11 +80,10 @@ struct ReadDescriptor {
 
 class ReadState;
 
-/// Longest register dependency.
+/// A critical data dependency descriptor.
 ///
-/// Used internally by WriteState/ReadState/InstructionBase to help with the
-/// computation of the longest register dependency for an instruction.
-struct CriticalRegDep {
+/// Field RegID is set to the invalid register for memory dependencies.
+struct CriticalDependency {
   unsigned IID;
   unsigned RegID;
   unsigned Cycles;
@@ -136,7 +135,7 @@ class WriteState {
   unsigned DependentWriteCyclesLeft;
 
   // Critical register dependency for this write.
-  CriticalRegDep CRD;
+  CriticalDependency CRD;
 
   // A list of dependent reads. Users is a set of dependent
   // reads. A dependent read is added to the set only if CyclesLeft
@@ -166,7 +165,7 @@ public:
     return DependentWriteCyclesLeft;
   }
   const WriteState *getDependentWrite() const { return DependentWrite; }
-  const CriticalRegDep &getCriticalRegDep() const { return CRD; }
+  const CriticalDependency &getCriticalRegDep() const { return CRD; }
 
   // This method adds Use to the set of data dependent reads. IID is the
   // instruction identifier associated with this write. ReadAdvance is the
@@ -244,7 +243,7 @@ class ReadState {
   // propagated to field CyclesLeft.
   unsigned TotalCycles;
   // Longest register dependency.
-  CriticalRegDep CRD;
+  CriticalDependency CRD;
   // This field is set to true only if there are no dependent writes, and
   // there are no `CyclesLeft' to wait.
   bool IsReady;
@@ -256,14 +255,14 @@ class ReadState {
 public:
   ReadState(const ReadDescriptor &Desc, unsigned RegID)
       : RD(&Desc), RegisterID(RegID), PRFID(0), DependentWrites(0),
-        CyclesLeft(UNKNOWN_CYCLES), TotalCycles(0), CRD(),
-        IsReady(true), IsZero(false), IndependentFromDef(false) {}
+        CyclesLeft(UNKNOWN_CYCLES), TotalCycles(0), CRD(), IsReady(true),
+        IsZero(false), IndependentFromDef(false) {}
 
   const ReadDescriptor &getDescriptor() const { return *RD; }
   unsigned getSchedClass() const { return RD->SchedClassID; }
   unsigned getRegisterID() const { return RegisterID; }
   unsigned getRegisterFileID() const { return PRFID; }
-  const CriticalRegDep &getCriticalRegDep() const { return CRD; }
+  const CriticalDependency &getCriticalRegDep() const { return CRD; }
 
   bool isPending() const { return !IndependentFromDef && CyclesLeft > 0; }
   bool isReady() const { return IsReady; }
@@ -405,9 +404,6 @@ class InstructionBase {
   // One entry per each implicit and explicit register use.
   SmallVector<ReadState, 4> Uses;
 
-  // Critical register dependency.
-  CriticalRegDep CRD;
-
 public:
   InstructionBase(const InstrDesc &D) : Desc(D), IsOptimizableMove(false) {}
 
@@ -418,9 +414,6 @@ public:
   const InstrDesc &getDesc() const { return Desc; }
 
   unsigned getLatency() const { return Desc.MaxLatency; }
-
-  const CriticalRegDep &getCriticalRegDep() const { return CRD; }
-  const CriticalRegDep &computeCriticalRegDep();
 
   bool hasDependentUsers() const {
     return any_of(Defs,
@@ -465,14 +458,21 @@ class Instruction : public InstructionBase {
   // Retire Unit token ID for this instruction.
   unsigned RCUTokenID;
 
+  // LS token ID for this instruction.
+  // This field is set to the invalid null token if this is not a memory
+  // operation.
+  unsigned LSUTokenID;
+
+  // Critical register dependency.
+  CriticalDependency CriticalRegDep;
+
+  // Critical memory dependency.
+  CriticalDependency CriticalMemDep;
+
   // A bitmask of busy processor resource units.
   // This field is set to zero only if execution is not delayed during this
   // cycle because of unavailable pipeline resources.
   uint64_t CriticalResourceMask;
-
-  // An instruction identifier. This field is only set if execution is delayed
-  // by a memory dependency.
-  unsigned CriticalMemDep;
 
   // True if this instruction has been optimized at register renaming stage.
   bool IsEliminated;
@@ -480,10 +480,12 @@ class Instruction : public InstructionBase {
 public:
   Instruction(const InstrDesc &D)
       : InstructionBase(D), Stage(IS_INVALID), CyclesLeft(UNKNOWN_CYCLES),
-        RCUTokenID(0), CriticalResourceMask(0), CriticalMemDep(0),
-        IsEliminated(false) {}
+        RCUTokenID(0), LSUTokenID(0), CriticalRegDep(), CriticalMemDep(),
+        CriticalResourceMask(0), IsEliminated(false) {}
 
   unsigned getRCUTokenID() const { return RCUTokenID; }
+  unsigned getLSUTokenID() const { return LSUTokenID; }
+  void setLSUTokenID(unsigned LSUTok) { LSUTokenID = LSUTok; }
   int getCyclesLeft() const { return CyclesLeft; }
 
   // Transition to the dispatch stage, and assign a RCUToken to this
@@ -522,12 +524,17 @@ public:
     Stage = IS_RETIRED;
   }
 
+  const CriticalDependency &getCriticalRegDep() const { return CriticalRegDep; }
+  const CriticalDependency &getCriticalMemDep() const { return CriticalMemDep; }
+  const CriticalDependency &computeCriticalRegDep();
+  void setCriticalMemDep(const CriticalDependency &MemDep) {
+    CriticalMemDep = MemDep;
+  }
+
   uint64_t getCriticalResourceMask() const { return CriticalResourceMask; }
-  unsigned getCriticalMemDep() const { return CriticalMemDep; }
   void setCriticalResourceMask(uint64_t ResourceMask) {
     CriticalResourceMask = ResourceMask;
   }
-  void setCriticalMemDep(unsigned IID) { CriticalMemDep = IID; }
 
   void cycleEvent();
 };

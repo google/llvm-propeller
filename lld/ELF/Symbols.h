@@ -255,6 +255,9 @@ public:
   // True if this symbol is defined by a linker script.
   unsigned ScriptDefined : 1;
 
+  // The partition whose dynamic symbol table contains this symbol's definition.
+  uint8_t Partition = 1;
+
   bool isSection() const { return Type == llvm::ELF::STT_SECTION; }
   bool isTls() const { return Type == llvm::ELF::STT_TLS; }
   bool isFunc() const { return Type == llvm::ELF::STT_FUNC; }
@@ -433,6 +436,9 @@ struct ElfSym {
   // __rel{,a}_iplt_{start,end} symbols.
   static Defined *RelaIpltStart;
   static Defined *RelaIpltEnd;
+
+  // _TLS_MODULE_BASE_ on targets that support TLSDESC.
+  static Defined *TlsModuleBase;
 };
 
 // A buffer class that is large enough to hold any Symbol-derived
@@ -464,7 +470,7 @@ static inline void assertSymbols() {
   AssertSymbol<LazyObject>();
 }
 
-void printTraceSymbol(Symbol *Sym);
+void printTraceSymbol(const Symbol *Sym);
 
 size_t Symbol::getSymbolSize() const {
   switch (kind()) {
@@ -516,6 +522,7 @@ void Symbol::replace(const Symbol &New) {
   Traced = Old.Traced;
   IsPreemptible = Old.IsPreemptible;
   ScriptDefined = Old.ScriptDefined;
+  Partition = Old.Partition;
 
   // Symbol length is computed lazily. If we already know a symbol length,
   // propagate it.

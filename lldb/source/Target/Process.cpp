@@ -44,6 +44,7 @@
 #include "lldb/Target/InstrumentationRuntime.h"
 #include "lldb/Target/JITLoader.h"
 #include "lldb/Target/JITLoaderList.h"
+#include "lldb/Target/Language.h"
 #include "lldb/Target/LanguageRuntime.h"
 #include "lldb/Target/MemoryHistory.h"
 #include "lldb/Target/MemoryRegionInfo.h"
@@ -1547,41 +1548,74 @@ const lldb::ABISP &Process::GetABI() {
   return m_abi_sp;
 }
 
+std::vector<LanguageRuntime *>
+Process::GetLanguageRuntimes(bool retry_if_null) {
+  std::vector<LanguageRuntime *> language_runtimes;
+
+  if (m_finalizing)
+    return language_runtimes;
+
+  std::lock_guard<std::recursive_mutex> guard(m_language_runtimes_mutex);
+  // Before we pass off a copy of the language runtimes, we must make sure that
+  // our collection is properly populated. It's possible that some of the
+  // language runtimes were not loaded yet, either because nobody requested it
+  // yet or the proper condition for loading wasn't yet met (e.g. libc++.so
+  // hadn't been loaded).
+  for (const lldb::LanguageType lang_type : Language::GetSupportedLanguages()) {
+    if (LanguageRuntime *runtime = GetLanguageRuntime(lang_type, retry_if_null))
+      language_runtimes.emplace_back(runtime);
+  }
+
+  return language_runtimes;
+}
+
 LanguageRuntime *Process::GetLanguageRuntime(lldb::LanguageType language,
                                              bool retry_if_null) {
   if (m_finalizing)
     return nullptr;
 
+  LanguageRuntime *runtime = nullptr;
+
   std::lock_guard<std::recursive_mutex> guard(m_language_runtimes_mutex);
   LanguageRuntimeCollection::iterator pos;
   pos = m_language_runtimes.find(language);
-  if (pos == m_language_runtimes.end() || (retry_if_null && !(*pos).second)) {
+  if (pos == m_language_runtimes.end() || (retry_if_null && !pos->second)) {
     lldb::LanguageRuntimeSP runtime_sp(
         LanguageRuntime::FindPlugin(this, language));
 
     m_language_runtimes[language] = runtime_sp;
-    return runtime_sp.get();
+    runtime = runtime_sp.get();
   } else
-    return (*pos).second.get();
+    runtime = pos->second.get();
+
+  if (runtime)
+    // It's possible that a language runtime can support multiple LanguageTypes,
+    // for example, CPPLanguageRuntime will support eLanguageTypeC_plus_plus,
+    // eLanguageTypeC_plus_plus_03, etc. Because of this, we should get the
+    // primary language type and make sure that our runtime supports it.
+    assert(runtime->GetLanguageType() == Language::GetPrimaryLanguage(language));
+
+  return runtime;
 }
 
 CPPLanguageRuntime *Process::GetCPPLanguageRuntime(bool retry_if_null) {
   std::lock_guard<std::recursive_mutex> guard(m_language_runtimes_mutex);
   LanguageRuntime *runtime =
       GetLanguageRuntime(eLanguageTypeC_plus_plus, retry_if_null);
-  if (runtime != nullptr &&
-      runtime->GetLanguageType() == eLanguageTypeC_plus_plus)
-    return static_cast<CPPLanguageRuntime *>(runtime);
-  return nullptr;
+  if (!runtime)
+    return nullptr;
+
+  return static_cast<CPPLanguageRuntime *>(runtime);
 }
 
 ObjCLanguageRuntime *Process::GetObjCLanguageRuntime(bool retry_if_null) {
   std::lock_guard<std::recursive_mutex> guard(m_language_runtimes_mutex);
   LanguageRuntime *runtime =
       GetLanguageRuntime(eLanguageTypeObjC, retry_if_null);
-  if (runtime != nullptr && runtime->GetLanguageType() == eLanguageTypeObjC)
-    return static_cast<ObjCLanguageRuntime *>(runtime);
-  return nullptr;
+  if (!runtime)
+    return nullptr;
+
+  return static_cast<ObjCLanguageRuntime *>(runtime);
 }
 
 bool Process::IsPossibleDynamicValue(ValueObject &in_value) {
@@ -1597,12 +1631,12 @@ bool Process::IsPossibleDynamicValue(ValueObject &in_value) {
     return runtime ? runtime->CouldHaveDynamicValue(in_value) : false;
   }
 
-  LanguageRuntime *cpp_runtime = GetLanguageRuntime(eLanguageTypeC_plus_plus);
-  if (cpp_runtime && cpp_runtime->CouldHaveDynamicValue(in_value))
-    return true;
+  for (LanguageRuntime *runtime : GetLanguageRuntimes()) {
+    if (runtime->CouldHaveDynamicValue(in_value))
+      return true;
+  }
 
-  LanguageRuntime *objc_runtime = GetLanguageRuntime(eLanguageTypeObjC);
-  return objc_runtime ? objc_runtime->CouldHaveDynamicValue(in_value) : false;
+  return false;
 }
 
 void Process::SetDynamicCheckers(DynamicCheckerFunctions *dynamic_checkers) {
@@ -5350,7 +5384,7 @@ Process::RunThreadPlan(ExecutionContext &exe_ctx,
 
             event_explanation = ts.GetData();
           }
-        } while (0);
+        } while (false);
 
         if (event_explanation)
           log->Printf("Process::RunThreadPlan(): execution interrupted: %s %s",

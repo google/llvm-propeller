@@ -92,8 +92,10 @@ CompletionItemKind toCompletionItemKind(index::SymbolKind Kind) {
   case SK::Extension:
   case SK::Union:
     return CompletionItemKind::Class;
-  // FIXME(ioeric): figure out whether reference is the right type for aliases.
   case SK::TypeAlias:
+    // We use the same kind as the VSCode C++ extension.
+    // FIXME: pick a better option when we have one.
+    return CompletionItemKind::Interface;
   case SK::Using:
     return CompletionItemKind::Reference;
   case SK::Function:
@@ -394,8 +396,9 @@ struct CodeCompletionBuilder {
     Bundled.emplace_back();
     BundledEntry &S = Bundled.back();
     if (C.SemaResult) {
+      bool IsPattern = C.SemaResult->Kind == CodeCompletionResult::RK_Pattern;
       getSignature(*SemaCCS, &S.Signature, &S.SnippetSuffix,
-                   &Completion.RequiredQualifier);
+                   &Completion.RequiredQualifier, IsPattern);
       S.ReturnType = getReturnType(*SemaCCS);
     } else if (C.IndexResult) {
       S.Signature = C.IndexResult->Signature;
@@ -480,7 +483,8 @@ private:
         return EmptyArgs ? "()" : "($0)";
       return *Snippet; // Not an arg snippet?
     }
-    if (Completion.Kind == CompletionItemKind::Reference ||
+    // 'CompletionItemKind::Interface' matches template type aliases.
+    if (Completion.Kind == CompletionItemKind::Interface ||
         Completion.Kind == CompletionItemKind::Class) {
       if (Snippet->front() != '<')
         return *Snippet; // Not an arg snippet?

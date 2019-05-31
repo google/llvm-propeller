@@ -112,21 +112,6 @@ FunctionScopeInfo::WeakObjectProfileTy::getBaseInfo(const Expr *E) {
   return BaseInfoTy(D, IsExact);
 }
 
-bool CapturingScopeInfo::isVLATypeCaptured(const VariableArrayType *VAT) const {
-  RecordDecl *RD = nullptr;
-  if (auto *LSI = dyn_cast<LambdaScopeInfo>(this))
-    RD = LSI->Lambda;
-  else if (auto CRSI = dyn_cast<CapturedRegionScopeInfo>(this))
-    RD = CRSI->TheRecordDecl;
-
-  if (RD)
-    for (auto *FD : RD->fields()) {
-      if (FD->hasCapturedVLAType() && FD->getCapturedVLAType() == VAT)
-        return true;
-    }
-  return false;
-}
-
 FunctionScopeInfo::WeakObjectProfileTy::WeakObjectProfileTy(
                                           const ObjCPropertyRefExpr *PropE)
     : Base(nullptr, true), Property(getBestPropertyDecl(PropE)) {
@@ -229,6 +214,19 @@ void FunctionScopeInfo::markSafeWeakUse(const Expr *E) {
     return;
 
   ThisUse->markSafe();
+}
+
+bool Capture::isInitCapture() const {
+  // Note that a nested capture of an init-capture is not itself an
+  // init-capture.
+  return !isNested() && isVariableCapture() && getVariable()->isInitCapture();
+}
+
+bool CapturingScopeInfo::isVLATypeCaptured(const VariableArrayType *VAT) const {
+  for (auto &Cap : Captures)
+    if (Cap.isVLATypeCapture() && Cap.getCapturedVLAType() == VAT)
+      return true;
+  return false;
 }
 
 void LambdaScopeInfo::getPotentialVariableCapture(unsigned Idx, VarDecl *&VD,

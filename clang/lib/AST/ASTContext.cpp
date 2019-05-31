@@ -3742,7 +3742,10 @@ QualType ASTContext::getFunctionTypeInternal(
         break;
       }
 
-      case EST_DynamicNone: case EST_BasicNoexcept: case EST_NoexceptTrue:
+      case EST_DynamicNone:
+      case EST_BasicNoexcept:
+      case EST_NoexceptTrue:
+      case EST_NoThrow:
         CanonicalEPI.ExceptionSpec.Type = EST_BasicNoexcept;
         break;
 
@@ -6927,13 +6930,10 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
           getObjCEncodingForTypeImpl(Field->getType(), S,
                                      ObjCEncOptions().setExpandStructures(),
                                      Field);
-        else {
-          ObjCEncOptions NewOptions = ObjCEncOptions().setExpandStructures();
-          if (Options.EncodePointerToObjCTypedef())
-            NewOptions.setEncodePointerToObjCTypedef();
-          getObjCEncodingForTypeImpl(Field->getType(), S, NewOptions, FD,
+        else
+          getObjCEncodingForTypeImpl(Field->getType(), S,
+                                     ObjCEncOptions().setExpandStructures(), FD,
                                      NotEncodedT);
-        }
       }
     }
     S += '}';
@@ -6973,36 +6973,6 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
         }
         S += '"';
       }
-      return;
-    }
-
-    QualType PointeeTy = OPT->getPointeeType();
-    if (!Options.EncodingProperty() &&
-        isa<TypedefType>(PointeeTy.getTypePtr()) &&
-        !Options.EncodePointerToObjCTypedef()) {
-      // Another historical/compatibility reason.
-      // We encode the underlying type which comes out as
-      // {...};
-      S += '^';
-      if (FD && OPT->getInterfaceDecl()) {
-        // Prevent recursive encoding of fields in some rare cases.
-        ObjCInterfaceDecl *OI = OPT->getInterfaceDecl();
-        SmallVector<const ObjCIvarDecl*, 32> Ivars;
-        DeepCollectObjCIvars(OI, true, Ivars);
-        for (unsigned i = 0, e = Ivars.size(); i != e; ++i) {
-          if (Ivars[i] == FD) {
-            S += '{';
-            S += OI->getObjCRuntimeNameAsString();
-            S += '}';
-            return;
-          }
-        }
-      }
-      ObjCEncOptions NewOptions =
-          ObjCEncOptions().setEncodePointerToObjCTypedef();
-      if (Options.ExpandPointedToStructures())
-        NewOptions.setExpandStructures();
-      getObjCEncodingForTypeImpl(PointeeTy, S, NewOptions, /*Field=*/nullptr);
       return;
     }
 

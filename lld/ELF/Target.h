@@ -81,7 +81,7 @@ public:
 
   virtual ~TargetInfo();
 
-  unsigned PageSize = 4096;
+  unsigned DefaultCommonPageSize = 4096;
   unsigned DefaultMaxPageSize = 4096;
 
   uint64_t getImageBase() const;
@@ -99,8 +99,6 @@ public:
   RelType TlsGotRel;
   RelType TlsModuleIndexRel;
   RelType TlsOffsetRel;
-  unsigned GotEntrySize = 0;
-  unsigned GotPltEntrySize = 0;
   unsigned PltEntrySize;
   unsigned PltHeaderSize;
 
