@@ -81,6 +81,12 @@ MDNode *MDBuilder::createFunctionSectionPrefix(StringRef Prefix) {
                       createString(Prefix)});
 }
 
+MDNode *MDBuilder::createBasicBlockSectionPrefix(StringRef Prefix) {
+  return MDNode::get(Context,
+                     {createString("bb_section_prefix"),
+                      createString(Prefix)});
+}
+
 MDNode *MDBuilder::createRange(const APInt &Lo, const APInt &Hi) {
   assert(Lo.getBitWidth() == Hi.getBitWidth() && "Mismatched bitwidths!");
 

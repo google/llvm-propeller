@@ -384,7 +384,21 @@ void DwarfCompileUnit::attachLowHighPC(DIE &D, const MCSymbol *Begin,
 DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
   DIE *SPDie = getOrCreateSubprogramDIE(SP, includeMinimalInlineScopes());
 
-  attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
+  if (!Asm->MF->getBasicBlockSections())
+    attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
+  else {
+    SmallVector<RangeSpan, 2> BB_List;
+    BB_List.push_back(RangeSpan(Asm->getFunctionBegin(),
+                                Asm->getFunctionEnd()));
+    for (auto &MBB : *Asm->MF) {
+      if (!MBB.pred_empty() && MBB.isUniqueSection()) {
+        BB_List.push_back(
+            RangeSpan(MBB.getSymbol(),
+                      MBB.getEndMCSymbol()));
+      }
+    }
+    attachRangesOrLowHighPC(*SPDie, BB_List);
+  }
   if (DD->useAppleExtensionAttributes() &&
       !DD->getCurrentFunction()->getTarget().Options.DisableFramePointerElim(
           *DD->getCurrentFunction()))
@@ -468,6 +482,10 @@ void DwarfCompileUnit::constructScopeDIE(
 
 void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
                                          SmallVector<RangeSpan, 2> Range) {
+  // With basic block sections, DW_AT_ranges for every basic block between
+  // the span must be emitted.
+  // if (Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::None)
+  //  return;
   const TargetLoweringObjectFile &TLOF = Asm->getObjFileLowering();
 
   // Emit the offset into .debug_ranges or .debug_rnglists as a relocatable
@@ -504,7 +522,10 @@ void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
 
 void DwarfCompileUnit::attachRangesOrLowHighPC(
     DIE &Die, SmallVector<RangeSpan, 2> Ranges) {
-  if (Ranges.size() == 1 || !DD->useRangesSection()) {
+  // With basic block sections, if the range spans multiple sections then this
+  // cannot be emitted as (low pc, high pc).
+  if ((Asm->TM.getBasicBlockSections() == llvm::BasicBlockSection::None) &&
+      (Ranges.size() == 1 || !DD->useRangesSection())) {
     const RangeSpan &Front = Ranges.front();
     const RangeSpan &Back = Ranges.back();
     attachLowHighPC(Die, Front.getStart(), Back.getEnd());

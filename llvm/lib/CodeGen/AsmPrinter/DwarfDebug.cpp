@@ -1608,6 +1608,16 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   // Add the range of this function to the list of ranges for the CU.
   TheCU.addRange(RangeSpan(Asm->getFunctionBegin(), Asm->getFunctionEnd()));
 
+  // With basic block sections, add all basic block ranges with unique
+  // sections.
+  if (MF->getBasicBlockSections()) {
+    for (auto &MBB : *MF) {
+      if (MBB.isUniqueSection() && !MBB.pred_empty()) {
+        TheCU.addRange(RangeSpan(MBB.getSymbol(), MBB.getEndMCSymbol()));
+      }
+    }
+  }
+
   // Under -gmlt, skip building the subprogram if there are no inlined
   // subroutines inside it. But with -fdebug-info-for-profiling, the subprogram
   // is still needed as we need its source location.
@@ -2177,11 +2187,19 @@ void DwarfDebug::emitDebugLocDWO() {
       // * as of October 2018, at least
       // Ideally/in v5, this could use SectionLabels to reuse existing addresses
       // in the address pool to minimize object size/relocations.
-      Asm->emitInt8(dwarf::DW_LLE_startx_length);
-      unsigned idx = AddrPool.getIndex(Entry.BeginSym);
-      Asm->EmitULEB128(idx);
-      Asm->EmitLabelDifference(Entry.EndSym, Entry.BeginSym, 4);
-
+      if (Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::None &&
+          Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::Labels) {
+        // With basic block sections, symbol difference cannot be emitted as
+        // the can span sections.
+        Asm->emitInt8(dwarf::DW_LLE_startx_endx);
+        Asm->EmitULEB128(AddrPool.getIndex(Entry.BeginSym));
+        Asm->EmitULEB128(AddrPool.getIndex(Entry.EndSym));
+      } else {
+        Asm->emitInt8(dwarf::DW_LLE_startx_length);
+        unsigned idx = AddrPool.getIndex(Entry.BeginSym);
+        Asm->EmitULEB128(idx);
+        Asm->EmitLabelDifference(Entry.EndSym, Entry.BeginSym, 4);
+      }
       emitDebugLocEntryLocation(Entry, List.CU);
     }
     Asm->emitInt8(dwarf::DW_LLE_end_of_list);

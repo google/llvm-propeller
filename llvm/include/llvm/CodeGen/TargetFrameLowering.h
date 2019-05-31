@@ -168,6 +168,9 @@ public:
   virtual void emitEpilogue(MachineFunction &MF,
                             MachineBasicBlock &MBB) const = 0;
 
+  virtual void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
+                                         MachineBasicBlock::iterator MBBI) const { }
+
   /// Replace a StackProbe stub (if any) with the actual probe code inline
   virtual void inlineStackProbe(MachineFunction &MF,
                                 MachineBasicBlock &PrologueMBB) const {}
