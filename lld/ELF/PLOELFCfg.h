@@ -153,6 +153,13 @@ public:
     }
   }
 
+  template <class Visitor>
+  void forEachNodeRefConst(Visitor V) const {
+    for (auto &N: Nodes) {
+      V(*N);
+    }
+  }
+
   double computeDensity() {
     double W = 0;
     forEachNodeRef([&W](ELFCfgNode &N) { W += N.Weight; });

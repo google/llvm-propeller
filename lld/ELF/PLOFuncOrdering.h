@@ -7,10 +7,12 @@
 #include <memory>
 #include <ostream>
 #include <utility>
+#include <vector>
 
 using std::list;
 using std::map;
 using std::unique_ptr;
+using std::vector;
 
 namespace lld {
 namespace plo {
@@ -22,20 +24,21 @@ class CCubeAlgorithm {
 public:
   class Cluster {
   public:
-    Cluster(ELFCfg *Cfg);
+    Cluster(const ELFCfg *Cfg);
     ~Cluster();
-    list<ELFCfg *> Cfgs;
+    list<const ELFCfg *> Cfgs;
     uint64_t       Size;
-    double         Density;
+    uint64_t       Weight;
 
     // Merge "Other" cluster into this cluster.
     Cluster & operator << (Cluster &Other) {
       Cfgs.insert(Cfgs.end(), Other.Cfgs.begin(), Other.Cfgs.end());
-      this->Density = (Density * Size + Other.Density * Other.Size)
-          / (this->Size + Other.Size);
+      this->Weight += Other.Weight;
       this->Size += Other.Size;
       return *this;
     }
+
+    double getDensity() {return ((double)Weight)/Size;}
 
     // Handler is used to remove itself from ownership list without
     // the need to iterate through the list.
@@ -43,18 +46,19 @@ public:
   };
 
 public:
-  CCubeAlgorithm(PLO &P) : Plo(P) {}
-  list<ELFCfg *> doOrder();
+  CCubeAlgorithm(PLO &P);
+  list<const ELFCfg *> doOrder();
 
 private:
-  ELFCfg *getMostLikelyPredecessor(
-      Cluster *Cluster, ELFCfg *Cfg,
-      map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
+  const ELFCfg *getMostLikelyPredecessor(
+      Cluster *Cluster, const ELFCfg *Cfg,
+      map<const ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
 
   void mergeClusters();
   void sortClusters();
 
   PLO &Plo;
+  vector<const ELFCfg*> HotCfgs, ColdCfgs;
   list<unique_ptr<Cluster>> Clusters;
 };
 
@@ -107,7 +111,7 @@ class PLOFuncOrdering {
   PLOFuncOrdering(PLO &P) :Algo(P) {}
   ~PLOFuncOrdering() {}
 
-  list<ELFCfg *> doOrder() {
+  list<const ELFCfg *> doOrder() {
     return Algo.doOrder();
   }
 

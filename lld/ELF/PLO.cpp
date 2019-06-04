@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "Config.h"
 #include "InputFiles.h"
 #include "PLOBBOrdering.h"
 #include "PLOBBReordering.h"
@@ -36,6 +37,8 @@ using std::pair;
 using std::placeholders::_1;
 using std::vector;
 using std::string;
+
+using lld::elf::Config;
 
 namespace lld {
 namespace plo {
@@ -73,16 +76,16 @@ bool Symfile::init(StringRef SymfileName) {
   return true;
 }
 
-bool PLO::dumpCfgsToFile(StringRef &CfgDumpFile) const {
-  if (CfgDumpFile.empty())
+bool PLO::dumpCfgsToFile() const {
+  if (Config->CfgDump.empty())
     return false;
 
   std::ofstream OS;
-  OS.open(CfgDumpFile.str(), std::ios::out);
+  OS.open(Config->CfgDump.str(), std::ios::out);
 
   if (!OS.good()) {
     fprintf(stderr, "File is not good for writing: <%s>\n",
-            CfgDumpFile.str().c_str());
+            Config->CfgDump.str().c_str());
     return false;
   }
 
@@ -152,8 +155,15 @@ void PLO::calculateNodeFreqs() {
                           [](uint64_t PSum, const ELFCfgEdge *Edge) {
                             return PSum + Edge->Weight;
                           });
+      uint64_t MaxCallOut =
+          Node->CallOuts.empty() ?
+          0 :
+          (*std::max_element(Node->CallOuts.begin(), Node->CallOuts.end(),
+                          [](const ELFCfgEdge *E1, const ELFCfgEdge *E2){
+                            return E1->Weight < E2->Weight;
+                          }))->Weight;
 
-      Node->Freq = std::max({SumOuts, SumIns, SumCallIns});
+      Node->Freq = std::max({SumOuts, SumIns, SumCallIns, MaxCallOut});
       Hot |= (Node->Freq != 0);
     }
     if (Hot && Cfg->getEntryNode()->Freq == 0)
@@ -161,11 +171,8 @@ void PLO::calculateNodeFreqs() {
   }
 }
 
-bool PLO::processFiles(vector<elf::InputFile *> &Files,
-                       StringRef &SymfileName,
-                       StringRef &ProfileName,
-                       StringRef &CfgDump){
-  if (!Syms.init(SymfileName))
+bool PLO::processFiles(vector<elf::InputFile *> &Files){
+  if (!Syms.init(Config->SymFile))
     return false;
     
   vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
@@ -177,21 +184,20 @@ bool PLO::processFiles(vector<elf::InputFile *> &Files,
                            FileOrdinalPairs.begin(),
                            FileOrdinalPairs.end(),
                            std::bind(&PLO::processFile, this, _1));
-  if (PLOProfile(*this).process(ProfileName)) {
+  if (PLOProfile(*this).process(Config->Profile)) {
     //resetEntryNodeSizes();
     calculateNodeFreqs();
-    dumpCfgsToFile(CfgDump);
+    dumpCfgsToFile();
     Syms.reset();
     return true;
   }
   return false;
 }
 
-vector<StringRef> PLO::genSymbolOrderingFile(bool ReorderBlocks,
-                                             bool ReorderFunctions) {
-  list<ELFCfg *> CfgOrder;
+vector<StringRef> PLO::genSymbolOrderingFile() {
+  list<const ELFCfg *> CfgOrder;
 
-  if(ReorderFunctions){
+  if(Config->ReorderFunctions){
     CfgOrder = PLOFuncOrdering<CCubeAlgorithm>(*this).doOrder();
   }else{
     std::vector<ELFCfg*> OrderResult;
@@ -210,10 +216,10 @@ vector<StringRef> PLO::genSymbolOrderingFile(bool ReorderBlocks,
   const auto HotPlaceHolder = SymbolList.begin();
   const auto ColdPlaceHolder = SymbolList.end();
   for (auto *Cfg : CfgOrder) {
-    if (Cfg->isHot() && ReorderBlocks){
-      ExtTSPChainBuilder(Cfg).doSplitOrder(SymbolList, HotPlaceHolder, ReorderFunctions ? ColdPlaceHolder : HotPlaceHolder);
+    if (Cfg->isHot() && Config->ReorderBlocks){
+      ExtTSPChainBuilder(Cfg).doSplitOrder(SymbolList, HotPlaceHolder, Config->SplitFunctions ? ColdPlaceHolder : HotPlaceHolder);
     } else {
-      Cfg->forEachNodeRef(
+      Cfg->forEachNodeRefConst(
         [&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
           SymbolList.insert(ColdPlaceHolder, N.ShName);
         });

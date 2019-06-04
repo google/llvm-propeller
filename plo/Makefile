@@ -1,8 +1,8 @@
 # Customizable variables.
 # Vanilla clang/clang++ bin path.
 RELEASE_LLVM_BIN=/usr/bin
-PERF2BOLT=/usr/local/google/home/shenhan/copt/bolt/build-release/bin/perf2bolt
-BOLT=/usr/local/google/home/shenhan/copt/bolt/build-release/bin/llvm-bolt
+PERF2BOLT=/usr/local/google/home/rahmanl/copt/build/bolt.shenhan/release/bin/perf2bolt
+BOLT=/usr/local/google/home/rahmanl/copt/build/bolt.shenhan/release/bin/llvm-bolt
 
 #################################
 # Important targets:
@@ -188,8 +188,10 @@ relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.symfile
                      -Wl,-plo                              \
                      -Wl,-symfile=$(DDIR)/$(word 2,$^) \
                      -Wl,-profile=$(DDIR)/$(subst .symfile,.profile,$(word 2,$^)) \
-                     -Wl,-cfgdump=$(DDIR)/$(subst .symfile,.cfg,$(word 2,$^)) \
                      -Wl,--lto-basicblock-sections=all     \
+		     -Wl,-split-functions                  \
+		     -Wl,-reorder-functions                \
+		     -Wl,-reorder-blocks                   \
                      -Wl,--no-call-graph-profile-sort !"   \
                -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
 	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@
@@ -201,9 +203,11 @@ relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.symfile
 	  echo "Generate $@ failed."; exit 1; \
 	fi
 
+                     #-Wl,-cfgdump=$(DDIR)/$(subst .symfile,.cfg,$(word 2,$^)) \
+
 benchmark-pgo benchmark-pgo-plo benchmark-pgo-bolt benchmark-cspgo benchmark-cspgo-plo benchmark-cspgo-bolt benchmark-stage1: \
 benchmark-%: %-compiler run-commands.sh
-	{ time ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
+	{ time perf stat -o $@.pmu -e instructions,cycles,branches,branch-misses,icache_64b.iftag_stall,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,idq.dsb_uops,idq.mite_uops,idq.all_dsb_cycles_4_uops,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit -- ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
 
 # ######################################  sample workflow
 sample.bc: sample.c

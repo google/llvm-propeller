@@ -276,10 +276,11 @@ void PLOProfile::processLBR(LBREntry *EntryArray, int EntryIndex) {
   /* Extend the path for the last entry if possible. */
   if(LastToCfg)
     LastToCfg->markPath(LastToNode, nullptr);
+
   /*
   for(ELFCfgNode * CallSite: CallSiteNodes)
     CallSite->Cfg->markPath(CallSite, nullptr);
-  */
+    */
 }
 
 ostream & operator << (ostream &Out, const LBREntry &Entry) {

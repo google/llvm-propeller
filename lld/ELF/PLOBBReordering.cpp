@@ -33,7 +33,7 @@ static cl::opt<bool> UsePathCover("use-path-cover",
 
 static cl::opt<bool> SeparateHotCold("separate-hot-cold",
                                      cl::desc("Separate the hot and cold basic blocks."),
-                                     cl::init(false),
+                                     cl::init(true),
                                      cl::ZeroOrMore);
 
 static cl::opt<bool> FunctionEntryFirst("func-entry-first",
@@ -68,7 +68,7 @@ static cl::opt<uint32_t> BackwardDistance("backward-distance",
 
 static cl::opt<uint32_t> ChainSplitThreshold("chain-split-threshold",
                                        cl::desc("Maximum binary size of a code chain that can be split."),
-                                       cl::init(128),
+                                       cl::init(256),
                                        cl::ZeroOrMore);
 }
 
@@ -276,7 +276,9 @@ double ExtTSPChainBuilder::ExtTSPScore(NodeChain * Chain) const {
         continue;
       auto SinkOffset = NodeOffset.at(Edge->Sink);
       bool EdgeForward = SrcOffset < SinkOffset;
-      uint32_t Distance = EdgeForward ? SinkOffset - SrcOffset - Node->ShSize : SrcOffset - SinkOffset + Node->ShSize;
+      uint32_t Distance = EdgeForward
+          ? SinkOffset - SrcOffset - Node->ShSize
+          : SrcOffset - SinkOffset + Node->ShSize;
       Score += GetEdgeExtTSPScore(Edge, EdgeForward, Distance);
     }
     SrcOffset += Node->ShSize;
@@ -290,7 +292,9 @@ double ExtTSPChainBuilder::ExtTSPScore(NodeChain * Chain) const {
 bool ExtTSPChainBuilder::UpdateNodeChainAssembly(NodeChain * SplitChain, NodeChain * UnsplitChain){
   /* Only split the chain if the size of the chain is smaller than a treshold.*/
   bool DoSplit = (SplitChain->Size <= opts::ChainSplitThreshold);
-  auto SlicePosEnd = DoSplit ? SplitChain->Nodes.end() : std::next(SplitChain->Nodes.begin());
+  auto SlicePosEnd = DoSplit
+      ? SplitChain->Nodes.end()
+      : std::next(SplitChain->Nodes.begin());
 
   list<unique_ptr<NodeChainAssembly>> CandidateNCAs;
 
@@ -301,7 +305,10 @@ bool ExtTSPChainBuilder::UpdateNodeChainAssembly(NodeChain * SplitChain, NodeCha
 
     /* If the split position is at the beginning (no splitting), only consider
      * one MergeOrder.*/
-    auto MergeOrderEnd = (SlicePos==SplitChain->Nodes.begin()) ? MergeOrder::BeginNext : MergeOrder::End;
+    auto MergeOrderEnd = (SlicePos==SplitChain->Nodes.begin())
+        ? MergeOrder::BeginNext
+        : MergeOrder::End;
+
     for(uint8_t MI=MergeOrder::Begin; MI!=MergeOrderEnd; MI++){
       MergeOrder MOrder = static_cast<MergeOrder>(MI);
       auto NCA = unique_ptr<NodeChainAssembly>(new NodeChainAssembly (SplitChain, UnsplitChain, SlicePos, MOrder, this));
@@ -321,8 +328,10 @@ bool ExtTSPChainBuilder::UpdateNodeChainAssembly(NodeChain * SplitChain, NodeCha
 
   NodeChainAssemblies.erase(std::make_pair(SplitChain, UnsplitChain));
 
-  if(BestCandidate!=CandidateNCAs.end()){ //&& (*BestCandidate)->GetExtTSPGain() > 0){
-    NodeChainAssemblies.emplace(std::make_pair(SplitChain,UnsplitChain), std::move(*BestCandidate));
+  if(BestCandidate!=CandidateNCAs.end() && (*BestCandidate)->GetExtTSPGain() > 0){
+    NodeChainAssemblies.emplace(std::piecewise_construct,
+                                std::forward_as_tuple(SplitChain, UnsplitChain),
+                                std::forward_as_tuple(std::move(*BestCandidate)));
     return true;
   }else
     return false;
@@ -335,10 +344,12 @@ ExtTSPChainBuilder::ExtTSPChainBuilder(const ELFCfg * _Cfg): NodeChainBuilder(_C
   for(auto& Node: Cfg->Nodes){
     std::copy_if(Node->Outs.begin(), Node->Outs.end(),
                  std::back_inserter(ProfiledOuts[Node.get()]),
-                 [](const ELFCfgEdge* Edge) {return Edge->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && Edge->Weight!=0;});
+                 [](const ELFCfgEdge* Edge) {
+                   return Edge->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && Edge->Weight!=0;});
     std::copy_if(Node->Ins.begin(), Node->Ins.end(),
                  std::back_inserter(ProfiledIns[Node.get()]),
-                 [](const ELFCfgEdge* Edge) {return Edge->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && Edge->Weight!=0;});
+                 [](const ELFCfgEdge* Edge) {
+                   return Edge->Type==ELFCfgEdge::EdgeType::INTRA_FUNC && Edge->Weight!=0;});
   }
 
 
@@ -350,16 +361,15 @@ ExtTSPChainBuilder::ExtTSPChainBuilder(const ELFCfg * _Cfg): NodeChainBuilder(_C
     }
   }
 
-  /* Break cycles in the mutually forced edges by cutting the minimum weight
-   * edge in every cycle. */
+  /* Break cycles in the mutually forced edges by cutting the edge sinking to
+   * the smallest address in every cycle (hopefully a loop backedge).*/
   map<const ELFCfgNode *, unsigned> NodeToCycleMap;
   set<const ELFCfgNode *> CycleCutNodes;
   unsigned CycleCount = 0;
   for (auto It = MutuallyForcedOut.begin(); It!=MutuallyForcedOut.end(); ++It){
     if(NodeToCycleMap[It->first])
       continue;
-    uint64_t MinEdgeWeight = 0;
-    const ELFCfgNode * MinEdgeSrc = nullptr;
+    const ELFCfgEdge * VictimEdge = nullptr;
     auto NodeIt = It;
     CycleCount++;
     while(NodeIt!=MutuallyForcedOut.end()){
@@ -367,15 +377,14 @@ ExtTSPChainBuilder::ExtTSPChainBuilder(const ELFCfg * _Cfg): NodeChainBuilder(_C
       auto NodeCycle = NodeToCycleMap[Node];
       if(NodeCycle!=0){
         if(NodeCycle==CycleCount){ /*found a cycle */
-          CycleCutNodes.insert(MinEdgeSrc);
+          CycleCutNodes.insert(VictimEdge->Src);
         }
         break;
       }else
         NodeToCycleMap[Node] = CycleCount;
       const ELFCfgEdge * Edge = ProfiledOuts[Node].front();
-      if(MinEdgeSrc==nullptr || (Edge->Weight < MinEdgeWeight)){
-        MinEdgeWeight = Edge->Weight;
-        MinEdgeSrc = Node;
+      if (!VictimEdge || (VictimEdge->Sink->MappedAddr < VictimEdge->Sink->MappedAddr)){
+        VictimEdge = Edge;
       }
       NodeIt = MutuallyForcedOut.find(NodeIt->second);
     }
@@ -456,14 +465,14 @@ double ExtTSPChainBuilder::NodeChainAssembly::ExtTSPScore() const {
           uint32_t Distance = 0;
 
           if(SrcSliceIdx==SinkSliceIdx) {
-            Distance = EdgeForward ?
-                (SinkNodeOffset - SrcNodeOffset - Node->ShSize) :
-                (SrcNodeOffset - SinkNodeOffset + Node->ShSize);
+            Distance = EdgeForward
+                ? SinkNodeOffset - SrcNodeOffset - Node->ShSize
+                : SrcNodeOffset - SinkNodeOffset + Node->ShSize;
           } else {
             const NodeChainSlice& SinkSlice = Slices[SinkSliceIdx];
-            Distance = EdgeForward ?
-                (SrcSlice.EndOffset - SrcNodeOffset - Node->ShSize + SinkNodeOffset - SinkSlice.BeginOffset) :
-                (SrcNodeOffset - SrcSlice.BeginOffset + Node->ShSize + SinkSlice.EndOffset - SinkNodeOffset);
+            Distance = EdgeForward
+                ? SrcSlice.EndOffset - SrcNodeOffset - Node->ShSize + SinkNodeOffset - SinkSlice.BeginOffset
+                : SrcNodeOffset - SrcSlice.BeginOffset + Node->ShSize + SinkSlice.EndOffset - SinkNodeOffset;
             if(std::abs(SinkSliceIdx - SrcSliceIdx) == 2)
               Distance += Slices[1].Size();
           }
@@ -483,7 +492,7 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
   ComputeChainOrder(ChainOrder);
 
   for(const NodeChain * C: ChainOrder){
-    list<StringRef>::iterator InsertPos = (C->Freq)? HotPlaceHolder : ColdPlaceHolder;
+    list<StringRef>::iterator InsertPos = C->Freq ? HotPlaceHolder : ColdPlaceHolder;
     for(const ELFCfgNode *N : C->Nodes)
       SymbolList.insert(InsertPos, N->ShName);
   }
@@ -590,7 +599,7 @@ void NodeChainBuilder::BuildPathCovers() {
           }
         assert(EdgeFound && "Edge wasn't found\n");
         PathCoverInv[Node]=NodeParent;
-        Node = NodeParentOldPCEdge!=nullptr ? NodeParentOldPCEdge->Sink : nullptr;
+        Node = (NodeParentOldPCEdge!=nullptr) ? NodeParentOldPCEdge->Sink : nullptr;
       }
     }else
       PathCoverUpdated = false;

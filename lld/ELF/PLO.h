@@ -83,13 +83,9 @@ public:
   PLO(lld::elf::SymbolTable *ST);
   ~PLO();
   
-  bool processFiles(vector<elf::InputFile *> &Files,
-                    StringRef &SymFileName,
-                    StringRef &ProfileName,
-                    StringRef &CfgDump);
+  bool processFiles(vector<elf::InputFile *> &Files);
 
-  vector<StringRef> genSymbolOrderingFile(bool ReorderBlocks,
-                                          bool ReorderFunctions);
+  vector<StringRef> genSymbolOrderingFile();
 
   template <class Visitor>
   void ForEachCfgRef(Visitor V) {
@@ -115,11 +111,12 @@ public:
 
   Symfile Syms;
   lld::elf::SymbolTable *Symtab;
+  bool SplitFunctions;
 
 private:
   void processFile(const pair<elf::InputFile *, uint32_t> &Pair);
 
-  bool dumpCfgsToFile(StringRef &CfgDumpFile) const;
+  bool dumpCfgsToFile() const;
   void calculateNodeFreqs();
   void resetEntryNodeSizes();
 

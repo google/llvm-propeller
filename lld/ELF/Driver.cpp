@@ -862,6 +862,7 @@ static void readConfigs(opt::InputArgList &Args) {
   Config->Relocatable = Args.hasArg(OPT_relocatable);
   Config->ReorderBlocks = Args.hasArg(OPT_reorder_blocks);
   Config->ReorderFunctions = Args.hasArg(OPT_reorder_functions);
+  Config->SplitFunctions = Args.hasArg(OPT_split_functions);
   Config->SaveTemps = Args.hasArg(OPT_save_temps);
   Config->SearchPaths = args::getStrings(Args, OPT_library_path);
   Config->SectionStartMap = getSectionStartMap(Args);
@@ -1716,12 +1717,8 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
     }
     printf("Entering into PLO mode, processing %lu files.\n", ObjectFiles.size());
     lld::plo::PLO Plo(Symtab);
-    if (Plo.processFiles(ObjectFiles,
-                         Config->SymFile,
-                         Config->Profile,
-                         Config->CfgDump)) {
-      Config->SymbolOrderingFile = Plo.genSymbolOrderingFile(Config->ReorderBlocks,
-                                                             Config->ReorderFunctions);
+    if (Plo.processFiles(ObjectFiles)) {
+      Config->SymbolOrderingFile = Plo.genSymbolOrderingFile();
     } else {
       error("PLO stage failed.");
     }

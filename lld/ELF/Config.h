@@ -180,6 +180,7 @@ struct Configuration {
   bool RelrPackDynRelocs;
   bool ReorderBlocks;
   bool ReorderFunctions;
+  bool SplitFunctions;
   bool SaveTemps;
   bool SingleRoRx;
   bool Shared;
