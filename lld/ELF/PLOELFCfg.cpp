@@ -281,7 +281,7 @@ void ELFCfgBuilder::buildCfgs() {
     auto S = Sym.getName();
     if (R && S && *R == SymbolRef::ST_Function) {
       StringRef SymName = *S;
-      /* 
+      /*
       lld::elf::Symbol *PSym =
           Plo ? Plo->Symtab->find(SymName) : Prop->Symtab->find(SymName);
       if (PSym) (PSym->kind() == lld::elf::Symbol::UndefinedKind)){ 
