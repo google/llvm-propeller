@@ -152,7 +152,7 @@ private:
 
   SymbolEntry *createBasicBlockSymbol(uint64_t Ordinal, SymbolEntry *Function,
                                       StringRef &BBIndex, uint64_t Size) {
-    assert(!Function->isBBSymbol && Function->isFunction);
+    assert(!Function->isBBSymbol && Function->isFunction());
     return (*(Symbols.emplace(
                 Symbols.end(),
                 new SymbolEntry(Ordinal, BBIndex, SymbolEntry::AliasesTy(),
