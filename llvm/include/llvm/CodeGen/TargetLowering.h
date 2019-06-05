@@ -435,10 +435,12 @@ public:
     return false;
   }
 
-  /// Allow store merging after legalization in addition to before legalization.
-  /// This may catch stores that do not exist earlier (eg, stores created from
-  /// intrinsics).
-  virtual bool mergeStoresAfterLegalization() const { return true; }
+  /// Allow store merging for the specified type after legalization in addition
+  /// to before legalization. This may transform stores that do not exist
+  /// earlier (for example, stores created from intrinsics).
+  virtual bool mergeStoresAfterLegalization(EVT MemVT) const {
+    return true;
+  }
 
   /// Returns if it's reasonable to merge stores to MemVT size.
   virtual bool canMergeStoresTo(unsigned AS, EVT MemVT,
@@ -1591,8 +1593,9 @@ public:
   }
 
   /// Returns true if a cast from SrcAS to DestAS is "cheap", such that e.g. we
-  /// are happy to sink it into basic blocks.
-  virtual bool isCheapAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const {
+  /// are happy to sink it into basic blocks. A cast may be free, but not
+  /// necessarily a no-op. e.g. a free truncate from a 64-bit to 32-bit pointer.
+  virtual bool isFreeAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const {
     return isNoopAddrSpaceCast(SrcAS, DestAS);
   }
 

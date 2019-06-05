@@ -309,10 +309,9 @@ bool X86_64::shrinkJmpInsn(InputSection &IS, InputFile *File,
   // Alignment can affect TargetOffset, use the maximum possible alignment to
   // conservatively pick the right offset.
   if ((int64_t) TargetOffset < 0) {
-    // TargetOffset -= MaxAlignment;
+    TargetOffset -= MaxAlignment;
   } else {
-    // TargetOffset += MaxAlignment;
-    TargetOffset += 4;
+    TargetOffset += MaxAlignment;
   }
 
   // If the TargetOffset cannot be expressed in one byte, the jmp cannot
