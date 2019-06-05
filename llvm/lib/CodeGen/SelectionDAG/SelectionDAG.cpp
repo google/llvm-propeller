@@ -3878,13 +3878,43 @@ unsigned SelectionDAG::ComputeNumSignBits(SDValue Op, const APInt &DemandedElts,
     if (LoadSDNode *LD = dyn_cast<LoadSDNode>(Op)) {
       unsigned ExtType = LD->getExtensionType();
       switch (ExtType) {
-        default: break;
-        case ISD::SEXTLOAD:    // '17' bits known
-          Tmp = LD->getMemoryVT().getScalarSizeInBits();
-          return VTBits-Tmp+1;
-        case ISD::ZEXTLOAD:    // '16' bits known
-          Tmp = LD->getMemoryVT().getScalarSizeInBits();
-          return VTBits-Tmp;
+      default: break;
+      case ISD::SEXTLOAD: // e.g. i16->i32 = '17' bits known.
+        Tmp = LD->getMemoryVT().getScalarSizeInBits();
+        return VTBits - Tmp + 1;
+      case ISD::ZEXTLOAD: // e.g. i16->i32 = '16' bits known.
+        Tmp = LD->getMemoryVT().getScalarSizeInBits();
+        return VTBits - Tmp;
+      case ISD::NON_EXTLOAD:
+        if (const Constant *Cst = TLI->getTargetConstantFromLoad(LD)) {
+          // We only need to handle vectors - computeKnownBits should handle
+          // scalar cases.
+          Type *CstTy = Cst->getType();
+          if (CstTy->isVectorTy() &&
+              (NumElts * VTBits) == CstTy->getPrimitiveSizeInBits()) {
+            Tmp = VTBits;
+            for (unsigned i = 0; i != NumElts; ++i) {
+              if (!DemandedElts[i])
+                continue;
+              if (Constant *Elt = Cst->getAggregateElement(i)) {
+                if (auto *CInt = dyn_cast<ConstantInt>(Elt)) {
+                  const APInt &Value = CInt->getValue();
+                  Tmp = std::min(Tmp, Value.getNumSignBits());
+                  continue;
+                }
+                if (auto *CFP = dyn_cast<ConstantFP>(Elt)) {
+                  APInt Value = CFP->getValueAPF().bitcastToAPInt();
+                  Tmp = std::min(Tmp, Value.getNumSignBits());
+                  continue;
+                }
+              }
+              // Unknown type. Conservatively assume no bits match sign bit.
+              return 1;
+            }
+            return Tmp;
+          }
+        }
+        break;
       }
     }
   }
@@ -4439,6 +4469,17 @@ SDValue SelectionDAG::getNode(unsigned Opcode, const SDLoc &DL, EVT VT,
            "Invalid fpext node, dst < src!");
     if (Operand.isUndef())
       return getUNDEF(VT);
+    break;
+  case ISD::FP_TO_SINT:
+  case ISD::FP_TO_UINT:
+    if (Operand.isUndef())
+      return getUNDEF(VT);
+    break;
+  case ISD::SINT_TO_FP:
+  case ISD::UINT_TO_FP:
+    // [us]itofp(undef) = 0, because the result value is bounded.
+    if (Operand.isUndef())
+      return getConstantFP(0.0, DL, VT);
     break;
   case ISD::SIGN_EXTEND:
     assert(VT.isInteger() && Operand.getValueType().isInteger() &&
@@ -7690,71 +7731,50 @@ SDNode *SelectionDAG::MorphNodeTo(SDNode *N, unsigned Opc,
 SDNode* SelectionDAG::mutateStrictFPToFP(SDNode *Node) {
   unsigned OrigOpc = Node->getOpcode();
   unsigned NewOpc;
-  bool IsUnary = false;
-  bool IsTernary = false;
   switch (OrigOpc) {
   default:
     llvm_unreachable("mutateStrictFPToFP called with unexpected opcode!");
-  case ISD::STRICT_FADD: NewOpc = ISD::FADD; break;
-  case ISD::STRICT_FSUB: NewOpc = ISD::FSUB; break;
-  case ISD::STRICT_FMUL: NewOpc = ISD::FMUL; break;
-  case ISD::STRICT_FDIV: NewOpc = ISD::FDIV; break;
-  case ISD::STRICT_FREM: NewOpc = ISD::FREM; break;
-  case ISD::STRICT_FMA: NewOpc = ISD::FMA; IsTernary = true; break;
-  case ISD::STRICT_FSQRT: NewOpc = ISD::FSQRT; IsUnary = true; break;
-  case ISD::STRICT_FPOW: NewOpc = ISD::FPOW; break;
-  case ISD::STRICT_FPOWI: NewOpc = ISD::FPOWI; break;
-  case ISD::STRICT_FSIN: NewOpc = ISD::FSIN; IsUnary = true; break;
-  case ISD::STRICT_FCOS: NewOpc = ISD::FCOS; IsUnary = true; break;
-  case ISD::STRICT_FEXP: NewOpc = ISD::FEXP; IsUnary = true; break;
-  case ISD::STRICT_FEXP2: NewOpc = ISD::FEXP2; IsUnary = true; break;
-  case ISD::STRICT_FLOG: NewOpc = ISD::FLOG; IsUnary = true; break;
-  case ISD::STRICT_FLOG10: NewOpc = ISD::FLOG10; IsUnary = true; break;
-  case ISD::STRICT_FLOG2: NewOpc = ISD::FLOG2; IsUnary = true; break;
-  case ISD::STRICT_FRINT: NewOpc = ISD::FRINT; IsUnary = true; break;
-  case ISD::STRICT_FNEARBYINT:
-    NewOpc = ISD::FNEARBYINT;
-    IsUnary = true;
-    break;
-  case ISD::STRICT_FMAXNUM: NewOpc = ISD::FMAXNUM; break;
-  case ISD::STRICT_FMINNUM: NewOpc = ISD::FMINNUM; break;
-  case ISD::STRICT_FCEIL: NewOpc = ISD::FCEIL; IsUnary = true; break;
-  case ISD::STRICT_FFLOOR: NewOpc = ISD::FFLOOR; IsUnary = true; break;
-  case ISD::STRICT_FROUND: NewOpc = ISD::FROUND; IsUnary = true; break;
-  case ISD::STRICT_FTRUNC: NewOpc = ISD::FTRUNC; IsUnary = true; break;
-  // STRICT_FP_ROUND takes an extra argument describing whether or not
-  // the value will be changed by this node. See ISDOpcodes.h for details.
-  case ISD::STRICT_FP_ROUND: NewOpc = ISD::FP_ROUND; break;
-  case ISD::STRICT_FP_EXTEND: NewOpc = ISD::FP_EXTEND; IsUnary = true; break;
+  case ISD::STRICT_FADD:       NewOpc = ISD::FADD;       break;
+  case ISD::STRICT_FSUB:       NewOpc = ISD::FSUB;       break;
+  case ISD::STRICT_FMUL:       NewOpc = ISD::FMUL;       break;
+  case ISD::STRICT_FDIV:       NewOpc = ISD::FDIV;       break;
+  case ISD::STRICT_FREM:       NewOpc = ISD::FREM;       break;
+  case ISD::STRICT_FMA:        NewOpc = ISD::FMA;        break;
+  case ISD::STRICT_FSQRT:      NewOpc = ISD::FSQRT;      break;
+  case ISD::STRICT_FPOW:       NewOpc = ISD::FPOW;       break;
+  case ISD::STRICT_FPOWI:      NewOpc = ISD::FPOWI;      break;
+  case ISD::STRICT_FSIN:       NewOpc = ISD::FSIN;       break;
+  case ISD::STRICT_FCOS:       NewOpc = ISD::FCOS;       break;
+  case ISD::STRICT_FEXP:       NewOpc = ISD::FEXP;       break;
+  case ISD::STRICT_FEXP2:      NewOpc = ISD::FEXP2;      break;
+  case ISD::STRICT_FLOG:       NewOpc = ISD::FLOG;       break;
+  case ISD::STRICT_FLOG10:     NewOpc = ISD::FLOG10;     break;
+  case ISD::STRICT_FLOG2:      NewOpc = ISD::FLOG2;      break;
+  case ISD::STRICT_FRINT:      NewOpc = ISD::FRINT;      break;
+  case ISD::STRICT_FNEARBYINT: NewOpc = ISD::FNEARBYINT; break;
+  case ISD::STRICT_FMAXNUM:    NewOpc = ISD::FMAXNUM;    break;
+  case ISD::STRICT_FMINNUM:    NewOpc = ISD::FMINNUM;    break;
+  case ISD::STRICT_FCEIL:      NewOpc = ISD::FCEIL;      break;
+  case ISD::STRICT_FFLOOR:     NewOpc = ISD::FFLOOR;     break;
+  case ISD::STRICT_FROUND:     NewOpc = ISD::FROUND;     break;
+  case ISD::STRICT_FTRUNC:     NewOpc = ISD::FTRUNC;     break;
+  case ISD::STRICT_FP_ROUND:   NewOpc = ISD::FP_ROUND;   break;
+  case ISD::STRICT_FP_EXTEND:  NewOpc = ISD::FP_EXTEND;  break;
   }
+
+  assert(Node->getNumValues() == 2 && "Unexpected number of results!");
 
   // We're taking this node out of the chain, so we need to re-link things.
   SDValue InputChain = Node->getOperand(0);
   SDValue OutputChain = SDValue(Node, 1);
   ReplaceAllUsesOfValueWith(OutputChain, InputChain);
 
-  SDVTList VTs;
-  SDNode *Res = nullptr;
+  SmallVector<SDValue, 3> Ops;
+  for (unsigned i = 1, e = Node->getNumOperands(); i != e; ++i)
+    Ops.push_back(Node->getOperand(i));
 
-  switch (OrigOpc) {
-  default:
-    VTs = getVTList(Node->getOperand(1).getValueType());
-    break;
-  case ISD::STRICT_FP_ROUND:
-  case ISD::STRICT_FP_EXTEND:
-    VTs = getVTList(Node->getValueType(0));
-    break;
-  }
-
-  if (IsUnary)
-    Res = MorphNodeTo(Node, NewOpc, VTs, { Node->getOperand(1) });
-  else if (IsTernary)
-    Res = MorphNodeTo(Node, NewOpc, VTs, { Node->getOperand(1),
-                                           Node->getOperand(2),
-                                           Node->getOperand(3)});
-  else
-    Res = MorphNodeTo(Node, NewOpc, VTs, { Node->getOperand(1),
-                                           Node->getOperand(2) });
+  SDVTList VTs = getVTList(Node->getValueType(0));
+  SDNode *Res = MorphNodeTo(Node, NewOpc, VTs, Ops);
 
   // MorphNodeTo can operate in two ways: if an existing node with the
   // specified operands exists, it can just return it.  Otherwise, it
@@ -8661,14 +8681,18 @@ SDValue llvm::peekThroughExtractSubvectors(SDValue V) {
   return V;
 }
 
-bool llvm::isBitwiseNot(SDValue V) {
+bool llvm::isBitwiseNot(SDValue V, bool AllowUndefs) {
   if (V.getOpcode() != ISD::XOR)
     return false;
-  ConstantSDNode *C = isConstOrConstSplat(peekThroughBitcasts(V.getOperand(1)));
-  return C && C->isAllOnesValue();
+  V = peekThroughBitcasts(V.getOperand(1));
+  unsigned NumBits = V.getScalarValueSizeInBits();
+  ConstantSDNode *C =
+      isConstOrConstSplat(V, AllowUndefs, /*AllowTruncation*/ true);
+  return C && (C->getAPIntValue().countTrailingOnes() >= NumBits);
 }
 
-ConstantSDNode *llvm::isConstOrConstSplat(SDValue N, bool AllowUndefs) {
+ConstantSDNode *llvm::isConstOrConstSplat(SDValue N, bool AllowUndefs,
+                                          bool AllowTruncation) {
   if (ConstantSDNode *CN = dyn_cast<ConstantSDNode>(N))
     return CN;
 
@@ -8676,17 +8700,23 @@ ConstantSDNode *llvm::isConstOrConstSplat(SDValue N, bool AllowUndefs) {
     BitVector UndefElements;
     ConstantSDNode *CN = BV->getConstantSplatNode(&UndefElements);
 
-    // BuildVectors can truncate their operands. Ignore that case here.
-    if (CN && (UndefElements.none() || AllowUndefs) &&
-        CN->getValueType(0) == N.getValueType().getScalarType())
-      return CN;
+    // BuildVectors can truncate their operands. Ignore that case here unless
+    // AllowTruncation is set.
+    if (CN && (UndefElements.none() || AllowUndefs)) {
+      EVT CVT = CN->getValueType(0);
+      EVT NSVT = N.getValueType().getScalarType();
+      assert(CVT.bitsGE(NSVT) && "Illegal build vector element extension");
+      if (AllowTruncation || (CVT == NSVT))
+        return CN;
+    }
   }
 
   return nullptr;
 }
 
 ConstantSDNode *llvm::isConstOrConstSplat(SDValue N, const APInt &DemandedElts,
-                                          bool AllowUndefs) {
+                                          bool AllowUndefs,
+                                          bool AllowTruncation) {
   if (ConstantSDNode *CN = dyn_cast<ConstantSDNode>(N))
     return CN;
 
@@ -8694,10 +8724,15 @@ ConstantSDNode *llvm::isConstOrConstSplat(SDValue N, const APInt &DemandedElts,
     BitVector UndefElements;
     ConstantSDNode *CN = BV->getConstantSplatNode(DemandedElts, &UndefElements);
 
-    // BuildVectors can truncate their operands. Ignore that case here.
-    if (CN && (UndefElements.none() || AllowUndefs) &&
-        CN->getValueType(0) == N.getValueType().getScalarType())
-      return CN;
+    // BuildVectors can truncate their operands. Ignore that case here unless
+    // AllowTruncation is set.
+    if (CN && (UndefElements.none() || AllowUndefs)) {
+      EVT CVT = CN->getValueType(0);
+      EVT NSVT = N.getValueType().getScalarType();
+      assert(CVT.bitsGE(NSVT) && "Illegal build vector element extension");
+      if (AllowTruncation || (CVT == NSVT))
+        return CN;
+    }
   }
 
   return nullptr;
