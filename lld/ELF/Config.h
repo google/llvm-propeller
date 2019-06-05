@@ -84,6 +84,7 @@ struct Configuration {
   uint8_t OSABI = 0;
   llvm::CachePruningPolicy ThinLTOCachePolicy;
   llvm::StringMap<uint64_t> SectionStartMap;
+  llvm::StringRef CfgDump;
   llvm::StringRef Chroot;
   llvm::StringRef DynamicLinker;
   llvm::StringRef DwoDir;
@@ -104,7 +105,6 @@ struct Configuration {
   llvm::StringRef ProgName;
   llvm::StringRef PrintSymbolOrder;
   llvm::StringRef SymFile;
-  llvm::StringRef CfgDump;
   llvm::StringRef SoName;
   llvm::StringRef Sysroot;
   llvm::StringRef ThinLTOCacheDir;
@@ -178,6 +178,9 @@ struct Configuration {
   bool PrintIcfSections;
   bool Relocatable;
   bool RelrPackDynRelocs;
+  bool ReorderBlocks;
+  bool ReorderFunctions;
+  bool SplitFunctions;
   bool SaveTemps;
   bool SingleRoRx;
   bool Shared;

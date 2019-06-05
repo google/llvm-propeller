@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "Config.h"
 #include "InputFiles.h"
 #include "PLOBBOrdering.h"
 #include "PLOBBReordering.h"
@@ -36,6 +37,8 @@ using std::pair;
 using std::placeholders::_1;
 using std::vector;
 using std::string;
+
+using lld::elf::Config;
 
 namespace lld {
 namespace plo {
@@ -73,16 +76,16 @@ bool Symfile::init(StringRef SymfileName) {
   return true;
 }
 
-bool PLO::dumpCfgsToFile(StringRef &CfgDumpFile) const {
-  if (CfgDumpFile.empty())
+bool PLO::dumpCfgsToFile() const {
+  if (Config->CfgDump.empty())
     return false;
 
   std::ofstream OS;
-  OS.open(CfgDumpFile.str(), std::ios::out);
+  OS.open(Config->CfgDump.str(), std::ios::out);
 
   if (!OS.good()) {
     fprintf(stderr, "File is not good for writing: <%s>\n",
-            CfgDumpFile.str().c_str());
+            Config->CfgDump.str().c_str());
     return false;
   }
 
@@ -113,6 +116,22 @@ void PLO::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   }
 }
 
+void PLO::resetEntryNodeSizes() {
+  for (auto &P : CfgMap) {
+    auto &Cfg = *P.second.begin();
+    auto FirstNode = Cfg->Nodes.begin();
+    if(FirstNode==Cfg->Nodes.end())
+      continue;
+    auto SecondNode = std::next(FirstNode);
+
+    while(SecondNode!=Cfg->Nodes.end()){
+      (*FirstNode)->ShSize = (*SecondNode)->MappedAddr - (*FirstNode)->MappedAddr;
+      FirstNode++;
+      SecondNode++;
+    }
+  }
+}
+
 void PLO::calculateNodeFreqs() {
   auto sumEdgeWeights = [](list<ELFCfgEdge *> &Edges) -> uint64_t {
     return std::accumulate(Edges.begin(), Edges.end(), 0,
@@ -123,12 +142,19 @@ void PLO::calculateNodeFreqs() {
   for (auto &P : CfgMap) {
     auto &Cfg = *P.second.begin();
     if (Cfg->Nodes.empty())
-      return;
+      continue;
     bool Hot = false;
     Cfg->forEachNodeRef([&Hot, &sumEdgeWeights](ELFCfgNode &Node) {
+      uint64_t MaxCallOut =
+          Node.CallOuts.empty() ?
+          0 :
+          (*std::max_element(Node.CallOuts.begin(), Node.CallOuts.end(),
+                          [](const ELFCfgEdge *E1, const ELFCfgEdge *E2){
+                            return E1->Weight < E2->Weight;
+                          }))->Weight;
       Node.Freq =
           std::max({sumEdgeWeights(Node.Outs), sumEdgeWeights(Node.Ins),
-                    sumEdgeWeights(Node.CallIns)});
+                    sumEdgeWeights(Node.CallIns), MaxCallOut});
       Hot |= (Node.Freq != 0);
     });
     if (Hot && Cfg->getEntryNode()->Freq == 0)
@@ -136,11 +162,8 @@ void PLO::calculateNodeFreqs() {
   }
 }
 
-bool PLO::processFiles(vector<elf::InputFile *> &Files,
-                       StringRef &SymfileName,
-                       StringRef &ProfileName,
-                       StringRef &CfgDump) {
-  if (!Syms.init(SymfileName))
+bool PLO::processFiles(vector<elf::InputFile *> &Files){
+  if (!Syms.init(Config->SymFile))
     return false;
     
   vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
@@ -152,27 +175,42 @@ bool PLO::processFiles(vector<elf::InputFile *> &Files,
                            FileOrdinalPairs.begin(),
                            FileOrdinalPairs.end(),
                            std::bind(&PLO::processFile, this, _1));
-  if (PLOProfile(*this).process(ProfileName)) {
+  if (PLOProfile(*this).process(Config->Profile)) {
+    //resetEntryNodeSizes();
     calculateNodeFreqs();
-    dumpCfgsToFile(CfgDump);
+    dumpCfgsToFile();
     Syms.reset();
     return true;
   }
   return false;
 }
 
-vector<StringRef> PLO::genSymbolOrderingFile() { 
-  PLOFuncOrdering<CCubeAlgorithm> PFO(*this);
-  list<ELFCfg *> OrderResult = PFO.doOrder();
+vector<StringRef> PLO::genSymbolOrderingFile() {
+  list<const ELFCfg *> CfgOrder;
+
+  if(Config->ReorderFunctions){
+    CfgOrder = PLOFuncOrdering<CCubeAlgorithm>(*this).doOrder();
+  }else{
+    std::vector<ELFCfg*> OrderResult;
+    ForEachCfgRef([&OrderResult](ELFCfg& Cfg){OrderResult.push_back(&Cfg);});
+
+    std::sort(OrderResult.begin(), OrderResult.end(),
+              [](const ELFCfg* A, const ELFCfg* B) {
+                const auto &AEntry = A->getEntryNode();
+                const auto &BEntry = B->getEntryNode();
+                return AEntry->MappedAddr < BEntry->MappedAddr;
+              });
+    std::copy(OrderResult.begin(), OrderResult.end(), std::back_inserter(CfgOrder));
+  }
+
   list<StringRef> SymbolList(1, "Hot");
   const auto HotPlaceHolder = SymbolList.begin();
   const auto ColdPlaceHolder = SymbolList.end();
-  for (auto *Cfg : OrderResult) {
-    if (Cfg->isHot()) {
-      ExtTSPChainBuilder(Cfg).doSplitOrder(SymbolList, HotPlaceHolder,
-                                           ColdPlaceHolder);
+  for (auto *Cfg : CfgOrder) {
+    if (Cfg->isHot() && Config->ReorderBlocks){
+      ExtTSPChainBuilder(Cfg).doSplitOrder(SymbolList, HotPlaceHolder, Config->SplitFunctions ? ColdPlaceHolder : HotPlaceHolder);
     } else {
-      Cfg->forEachNodeRef(
+      Cfg->forEachNodeRefConst(
         [&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
           SymbolList.insert(ColdPlaceHolder, N.ShName);
         });

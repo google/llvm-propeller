@@ -7,6 +7,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "../../ELF/PLOBBReordering.h"
+#include "../../ELF/PLOFuncOrdering.h"
 #include "../../ELF/PLOELFCfg.h"
 
 using llvm::StringRef;
@@ -22,6 +23,20 @@ CfgRead(
   "cfg-read",
   cl::desc("File to read the Cfg from."),
   cl::Required);
+
+static cl::opt<bool>
+ReorderBlocks(
+    "reorder-blocks",
+    cl::desc("Reorder basic blocks."),
+    cl::init(false),
+    cl::ZeroOrMore);
+
+static cl::opt<bool>
+ReorderFuncs(
+    "reorder-funcs",
+    cl::desc("Reorder functions."),
+    cl::init(false),
+    cl::ZeroOrMore);
 
 static cl::opt<std::string>
 CfgDump(
@@ -61,9 +76,8 @@ int main(int Argc, const char **Argv) {
   if(!opts::LayoutDump.empty()){
     list<StringRef> SymbolOrder;
     for(auto& Cfg: CfgReader.Cfgs){
-      if (Cfg->isHot()){
-        auto ChainBuilder = lld::plo::ExtTSPChainBuilder(Cfg.get());
-        ChainBuilder.doSplitOrder(SymbolOrder, SymbolOrder.end(), SymbolOrder.end());
+      if (Cfg->isHot() && opts::ReorderBlocks){
+        lld::plo::ExtTSPChainBuilder(Cfg.get()).doSplitOrder(SymbolOrder, SymbolOrder.end(), SymbolOrder.end());
       } else {
         for(auto& Node: Cfg->Nodes)
           SymbolOrder.push_back(Node->ShName);
@@ -76,4 +90,5 @@ int main(int Argc, const char **Argv) {
       LOS << Symbol.str() << "\n";
     LOS.close();
   }
+  return 0;
 }

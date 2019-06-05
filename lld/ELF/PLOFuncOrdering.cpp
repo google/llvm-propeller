@@ -4,6 +4,7 @@
 #include <iostream>
 #include <map>
 
+#include "Config.h"
 #include "PLO.h"
 #include "PLOBBOrdering.h"
 #include "PLOELFCfg.h"
@@ -11,24 +12,53 @@
 
 using std::map;
 
+using lld::elf::Config;
+
 namespace lld {
 namespace plo {
 
-CCubeAlgorithm::Cluster::Cluster(ELFCfg *Cfg)
-    : Cfgs(1, Cfg), Size(Cfg->Size), Density(Cfg->computeDensity()) {}
+CCubeAlgorithm::CCubeAlgorithm(PLO &P) : Plo(P) {
+  Plo.ForEachCfgRef([this](ELFCfg &Cfg) {
+    if (Cfg.isHot())
+      HotCfgs.push_back(&Cfg);
+    else
+      ColdCfgs.push_back(&Cfg);
+  });
+
+  fprintf(stderr, "Reordering %zu hot functions.\n", HotCfgs.size());
+  vector<const ELFCfg*> AllCfgs[2] = {HotCfgs, ColdCfgs};
+  for(auto& CfgVector: AllCfgs){
+    std::sort(CfgVector.begin(), CfgVector.end(),
+              [] (const ELFCfg* Cfg1, const ELFCfg* Cfg2){
+                return Cfg1->getEntryNode()->MappedAddr < Cfg2->getEntryNode()->MappedAddr;
+              });
+  }
+}
+
+CCubeAlgorithm::Cluster::Cluster(const ELFCfg *Cfg)
+    : Cfgs(1, Cfg) {}
 
 CCubeAlgorithm::Cluster::~Cluster() {}
 
-ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
-    Cluster *Cluster, ELFCfg *Cfg,
-    map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap) {
+const ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
+    Cluster *Cluster, const ELFCfg *Cfg,
+    map<const ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap) {
   ELFCfgNode *Entry = Cfg->getEntryNode();
   if (!Entry)
     return nullptr;
   ELFCfgEdge *E = nullptr;
   for (ELFCfgEdge *CallIn : Entry->CallIns) {
     auto *Caller = CallIn->Src->Cfg;
-    if (Caller == Cfg || ClusterMap[Caller] == Cluster)
+    auto *CallerCluster = ClusterMap[Caller];
+    assert(Caller->isHot());
+    if (Caller == Cfg || CallerCluster == Cluster)
+      continue;
+    // Ignore calls which are cold relative to the callee
+    if (CallIn->Weight * 10 < Entry->Freq)
+      continue;
+    // Do not merge if the caller cluster's density would degrade by more than 1/8.
+    if (8 * CallerCluster->Size * (Cluster->Weight * CallerCluster->Weight)
+          < CallerCluster->Weight * (Cluster->Size + CallerCluster->Size))
       continue;
     if (!E || E->Weight < CallIn->Weight) {
       // if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 21)) continue;
@@ -41,40 +71,47 @@ ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
 void CCubeAlgorithm::mergeClusters() {
   // Signed key is used here, because negated density are used as
   // sorting keys.
-  map<double, ELFCfg *> WeightOrder;
-  map<ELFCfg *, Cluster *> ClusterMap;
-  Plo.ForEachCfgRef([this, &ClusterMap, &WeightOrder](ELFCfg &Cfg) {
+  map<const ELFCfg *, double> CfgWeightMap;
+  map<const ELFCfg *, Cluster *> ClusterMap;
+  for(const ELFCfg * Cfg: HotCfgs){
     uint64_t CfgWeight = 0;
-    double CfgSize = (double)Cfg.Size;
-    Cfg.forEachNodeRef([&CfgWeight](ELFCfgNode &N) {
-      CfgWeight += N.Weight;
-      // Use MaxWeight or Sum of weights?
-      // CfgWeight += N.Weight;
+    double CfgSize = Config->SplitFunctions ? 0 : (double)Cfg->Size;
+    Cfg->forEachNodeRefConst([this, &CfgSize, &CfgWeight](ELFCfgNode &N) {
+      CfgWeight += N.Freq;
+      if (Config->SplitFunctions && N.Freq)
+        CfgSize += N.ShSize;
     });
-    // Cfg.forEachNodeRef([&CfgWeight, &CfgSize](ELFCfgNode &N) {
-    //   if (N.Freq) {
-    //     CfgWeight += N.Weight;
-    //     CfgSize += N.ShSize;
-    //   }
-    //   // Use MaxWeight or Sum of weights?
-    //   // CfgWeight += N.Weight;
-    // });
-    WeightOrder[-(CfgWeight / CfgSize)] = &Cfg;
-    Cluster *C = new Cluster(&Cfg);
+    // HEAD: Cfg.forEachNodeRef([&CfgWeight, &CfgSize](ELFCfgNode &N) {
+    // HEAD:   if (N.Freq) {
+    // HEAD:     CfgWeight += N.Weight;
+    // HEAD:     CfgSize += N.ShSize;
+    // HEAD:   }
+    // HEAD:   // Use MaxWeight or Sum of weights?
+    // HEAD:   // CfgWeight += N.Weight;
+    // HEAD: });
+    // HEAD: WeightOrder[-(CfgWeight / CfgSize)] = &Cfg;
+    // HEAD: Cluster *C = new Cluster(&Cfg);
+    assert(CfgSize!=0);
+    Cluster *C = new Cluster(Cfg);
+    C->Weight = CfgWeight;
+    C->Size = CfgSize;
+    CfgWeightMap.emplace(Cfg, C->getDensity());
     C->Handler = Clusters.emplace(Clusters.end(), C);
-    ClusterMap[&Cfg] = C;
-  });
+    ClusterMap[Cfg] = C;
+  }
 
-  for (auto P = WeightOrder.begin(), E = WeightOrder.end(); P != E;
-       P = WeightOrder.erase(P)) {
-    // "P->first" is in the range of [-a_large_number, 0]
-    if (P->first >= -0.005)
+  std::stable_sort(HotCfgs.begin(), HotCfgs.end(),
+            [&CfgWeightMap] (const ELFCfg* Cfg1, const ELFCfg* Cfg2){
+              return CfgWeightMap[Cfg1] > CfgWeightMap[Cfg2];
+            });
+  for (const ELFCfg* Cfg : HotCfgs){
+    // "P->second" is in the range of [0, a_large_number]
+    if (CfgWeightMap[Cfg] <= 0.005)
       break;
-    ELFCfg *Cfg = P->second;
     auto *Cluster = ClusterMap[Cfg];
     assert(Cluster);
 
-    ELFCfg *PredecessorCfg = getMostLikelyPredecessor(Cluster, Cfg, ClusterMap);
+    const ELFCfg *PredecessorCfg = getMostLikelyPredecessor(Cluster, Cfg, ClusterMap);
     if (!PredecessorCfg)
       continue;
     assert(PredecessorCfg != Cfg);
@@ -91,7 +128,7 @@ void CCubeAlgorithm::mergeClusters() {
     
     // Update Cfg <-> Cluster mapping, because all cfgs that were
     // previsously in Cluster are now in PredecessorCluster.
-    for (ELFCfg *Cfg : Cluster->Cfgs) {
+    for (const ELFCfg *Cfg : Cluster->Cfgs) {
       ClusterMap[Cfg] = PredecessorCluster;
     }
     Clusters.erase(Cluster->Handler);
@@ -100,17 +137,21 @@ void CCubeAlgorithm::mergeClusters() {
 
 void CCubeAlgorithm::sortClusters() {
   Clusters.sort([](unique_ptr<Cluster> &C1, unique_ptr<Cluster> &C2) {
-    return -C1->Density < -C2->Density;
+    if (C1->getDensity() == C2->getDensity())
+      return C1->Cfgs.front()->getEntryNode()->MappedAddr < C2->Cfgs.front()->getEntryNode()->MappedAddr;
+    return C1->getDensity() > C2->getDensity();
   });
 }
 
-list<ELFCfg *> CCubeAlgorithm::doOrder() {
+list<const ELFCfg *> CCubeAlgorithm::doOrder() {
   mergeClusters();
   sortClusters();
-  list<ELFCfg *> L;
+  list<const ELFCfg *> L;
   for (auto &Cptr : Clusters) {
     L.insert(L.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());
   }
+
+  L.insert(L.end(), ColdCfgs.begin(), ColdCfgs.end());
   return L;
 }
 

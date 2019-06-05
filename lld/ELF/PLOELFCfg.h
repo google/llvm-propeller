@@ -59,8 +59,8 @@ class ELFCfgNode {
   uint64_t           Shndx;
   StringRef          ShName;
   uint64_t           ShSize;
-  uint64_t           Freq;
   uint64_t           MappedAddr;
+  uint64_t           Freq;
   uint64_t           Weight;
   ELFCfg            *Cfg;
   
@@ -148,6 +148,13 @@ public:
 
   template <class Visitor>
   void forEachNodeRef(Visitor V) {
+    for (auto &N: Nodes) {
+      V(*N);
+    }
+  }
+
+  template <class Visitor>
+  void forEachNodeRefConst(Visitor V) const {
     for (auto &N: Nodes) {
       V(*N);
     }

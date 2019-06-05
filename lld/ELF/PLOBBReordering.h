@@ -94,7 +94,10 @@ class NodeChainBuilder {
    * each other (used for fallthroughs).
    * Returns true if this can be done. */
   bool AttachNodes(const ELFCfgNode * Src, const ELFCfgNode * Sink);
-  void ComputeChainOrder(vector<const NodeChain*>&);
+  virtual void ComputeChainOrder(vector<const NodeChain*>&);
+  void BuildPathCovers();
+
+  virtual void PrintStats() const;
 
  private:
   void CreateChainForNode(const ELFCfgNode * Node){
@@ -107,6 +110,9 @@ class NodeChainBuilder {
   }
 
  public:
+  virtual ~NodeChainBuilder() = default;
+  NodeChainBuilder(NodeChainBuilder&) = delete;
+
   uint32_t getNodeOffset(const ELFCfgNode* N) const {
     return NodeOffset.at(N);
   }
@@ -132,15 +138,16 @@ class ExtTSPChainBuilder : public NodeChainBuilder{
   class NodeChainAssembly;
   class NodeChainSlice;
 
-  map<std::pair<NodeChain*, NodeChain *>, NodeChainAssembly> NodeChainAssemblies;
+  map<std::pair<NodeChain*, NodeChain *>, std::unique_ptr<NodeChainAssembly>> NodeChainAssemblies;
   unordered_map<NodeChain*, unordered_set<NodeChain *>> CandidateChains;
 
   void MergeChainEdges(NodeChain *SplitChain, NodeChain *UnsplitChain);
-  void MergeChains(NodeChainAssembly& A);
+  void MergeChains(std::unique_ptr<NodeChainAssembly> A);
 
   double ExtTSPScore(NodeChain * Chain) const;
   bool UpdateNodeChainAssembly(NodeChain * SplitChain, NodeChain * UnsplitChain);
   void ComputeChainOrder(vector<const NodeChain*>&);
+  void PrintStats() const;
 
  public:
   ExtTSPChainBuilder(const ELFCfg * _Cfg);

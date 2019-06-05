@@ -32,6 +32,8 @@ def build_id: F<"build-id">, HelpText<"Alias for --build-id=fast">;
 def build_id_eq: J<"build-id=">, HelpText<"Generate build ID note">,
   MetaVarName<"[fast,md5,sha1,uuid,0x<hexstring>]">;
 
+defm cfgdump: Eq<"cfgdump", "File to dump the Cfg to.">;
+
 defm check_sections: B<"check-sections",
     "Check section addresses for overlaps (default)",
     "Do not check section addresses for overlaps">;
@@ -297,8 +299,6 @@ defm profile: Eq<"profile", "PLO profile">;
 
 defm symfile: Eq<"symfile", "PLO symbol file">;
 
-defm cfgdump: Eq<"cfgdump", "File to dump the Cfg to.">;
-
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 
@@ -307,6 +307,12 @@ def push_state: F<"push-state">,
 
 def print_map: F<"print-map">,
   HelpText<"Print a link map to the standard output">;
+
+def reorder_blocks: F<"reorder-blocks">, HelpText<"Reorder basic blocks.">;
+
+def reorder_functions: F<"reorder-functions">, HelpText<"Reorder functions,">;
+
+def split_functions: F<"split-functions">, HelpText<"Split functions.">;
 
 defm reproduce: Eq<"reproduce", "Dump linker invocation and input files for debugging">;
 
