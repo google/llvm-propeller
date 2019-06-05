@@ -2,6 +2,7 @@
 
 #include "PLO.h"
 #include "PLOELFView.h"
+#include "Propeller.h"
 #include "Symbols.h"
 #include "SymbolTable.h"
 
@@ -280,9 +281,9 @@ void ELFCfgBuilder::buildCfgs() {
     auto S = Sym.getName();
     if (R && S && *R == SymbolRef::ST_Function) {
       StringRef SymName = *S;
+      /* 
       lld::elf::Symbol *PSym =
           Plo ? Plo->Symtab->find(SymName) : Prop->Symtab->find(SymName);
-      /*
       if (PSym) (PSym->kind() == lld::elf::Symbol::UndefinedKind)){ 
         fprintf(stderr, "%s UNDEFINED KIND\n", SymName.str().c_str());
         continue;
@@ -340,12 +341,17 @@ void ELFCfgBuilder::buildCfgs() {
                 SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
             continue;
           }
+          // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
         } else {
-          TmpNodeMap[TmpNodeMap.size() + 1].emplace_back(
-              new ELFCfgNode(SymShndx, SymName, SymSize, 0l, Cfg.get()));
-          continue;
+          auto *SE = Prop->Propf->findSymbol(SymName);
+          if (SE) {
+            TmpNodeMap[SE->Ordinal].emplace_back(
+                new ELFCfgNode(SymShndx, SymName, SymSize, 0l, Cfg.get()));
+            continue;
+          }
+          // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
         }
-        // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
+        
       }
       TmpNodeMap.clear();
       Cfg.reset(nullptr);
