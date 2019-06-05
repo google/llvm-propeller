@@ -103,6 +103,7 @@ struct Configuration {
   llvm::StringRef OptRemarksPasses;
   llvm::StringRef Profile;
   llvm::StringRef ProgName;
+  llvm::StringRef Propeller;
   llvm::StringRef PrintSymbolOrder;
   llvm::StringRef SymFile;
   llvm::StringRef SoName;

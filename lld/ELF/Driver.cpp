@@ -31,6 +31,7 @@
 #include "MarkLive.h"
 #include "OutputSections.h"
 #include "PLO.h"
+#include "Propeller.h"
 #include "ScriptParser.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
@@ -860,6 +861,7 @@ static void readConfigs(opt::InputArgList &Args) {
   Config->PrintSymbolOrder =
       Args.getLastArgValue(OPT_print_symbol_order);
   Config->Profile = Args.getLastArgValue(OPT_profile);
+  Config->Propeller = Args.getLastArgValue(OPT_propeller);
   Config->Rpath = getRpath(Args);
   Config->Relocatable = Args.hasArg(OPT_relocatable);
   Config->ReorderBlocks = Args.hasArg(OPT_reorder_blocks);
@@ -1774,6 +1776,28 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
       error("PLO stage failed.");
     }
   }
+
+  if (!Config->Propeller.empty()) {
+      lld::propeller::Propeller P(Symtab);
+      P.processFiles(ObjectFiles, Config->Propeller);
+  }
+
+  // if (Config->Plo && !ObjectFiles.empty()) {
+  //   if (!Config->SymbolOrderingFile.empty()) {
+  //     error("Conflict options: --plo and --symbol-ordering-file.");
+  //   }
+  //   printf("Entering into PLO mode, processing %lu files.\n",
+  //          ObjectFiles.size());
+  //   lld::plo::PLO Plo(Symtab);
+  //   if (Plo.processFiles(ObjectFiles,
+  //                        Config->SymFile,
+  //                        Config->Profile,
+  //                        Config->CfgDump)) {
+  //     Config->SymbolOrderingFile = Plo.genSymbolOrderingFile();
+  //   } else {
+  //     error("PLO stage failed.");
+  //   }
+  // }
 
   llvm::erase_if(InputSections, [](InputSectionBase *S) {
     if (S->Type == SHT_LLVM_SYMPART) {

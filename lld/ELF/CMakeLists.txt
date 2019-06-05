@@ -42,6 +42,7 @@ add_lld_library(lldELF
   PLOFuncOrdering.cpp
   PLOBBReordering.cpp
   PLOProfile.cpp
+  Propeller.cpp
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp

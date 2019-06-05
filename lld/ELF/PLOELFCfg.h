@@ -2,6 +2,7 @@
 #define LLD_ELF_PLO_ELF_CFG_H
 
 #include "PLO.h"
+#include "Propeller.h"
 
 #include <list>
 #include <map>
@@ -24,7 +25,10 @@ using llvm::object::section_iterator;
 using llvm::StringRef;
 
 namespace lld {
+
 namespace plo {
+
+using lld::propeller::Propeller;
 
 class ELFView;
 class ELFCfgNode;
@@ -187,14 +191,16 @@ private:
 
 class ELFCfgBuilder {
 public:
-  PLO     &Plo;
-  ELFView *View;
+  PLO       *Plo;
+  Propeller *Prop;
+  ELFView   *View;
 
   uint32_t BB{0};
   uint32_t BBWoutAddr{0};
   uint32_t InvalidCfgs{0};
 
-  ELFCfgBuilder(PLO &P, ELFView *V) : Plo(P), View(V) {}
+  ELFCfgBuilder(PLO &P, ELFView *V) : Plo(&P), Prop(nullptr), View(V) {}
+  ELFCfgBuilder(Propeller &P, ELFView *V) : Plo(nullptr), Prop(&P), View(V) {}
   void buildCfgs();
 
 protected:
@@ -219,5 +225,5 @@ ostream & operator << (ostream &Out, const ELFCfgEdge &Edge);
 ostream & operator << (ostream &Out, const ELFCfg     &Cfg);
 
 }
-}
+} // namespace lld
 #endif

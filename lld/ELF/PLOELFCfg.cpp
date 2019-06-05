@@ -280,7 +280,8 @@ void ELFCfgBuilder::buildCfgs() {
     auto S = Sym.getName();
     if (R && S && *R == SymbolRef::ST_Function) {
       StringRef SymName = *S;
-      lld::elf::Symbol *PSym = Plo.Symtab->find(SymName);
+      lld::elf::Symbol *PSym =
+          Plo ? Plo->Symtab->find(SymName) : Prop->Symtab->find(SymName);
       /*
       if (PSym) (PSym->kind() == lld::elf::Symbol::UndefinedKind)){ 
         fprintf(stderr, "%s UNDEFINED KIND\n", SymName.str().c_str());
@@ -331,11 +332,17 @@ void ELFCfgBuilder::buildCfgs() {
         // -fbasicblock-section=labels do not have size information
         // for BB symbols.
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
-        auto ResultP = Plo.Syms.NameMap.find(SymName);
-        if (ResultP != Plo.Syms.NameMap.end()) {
-          uint64_t MappedAddr = Plo.Syms.getAddr(ResultP->second);
-          TmpNodeMap[MappedAddr].emplace_back(new ELFCfgNode(
-              SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
+        if (Plo) {
+          auto ResultP = Plo->Syms.NameMap.find(SymName);
+          if (ResultP != Plo->Syms.NameMap.end()) {
+            uint64_t MappedAddr = Plo->Syms.getAddr(ResultP->second);
+            TmpNodeMap[MappedAddr].emplace_back(new ELFCfgNode(
+                SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
+            continue;
+          }
+        } else {
+          TmpNodeMap[TmpNodeMap.size() + 1].emplace_back(
+              new ELFCfgNode(SymShndx, SymName, SymSize, 0l, Cfg.get()));
           continue;
         }
         // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
@@ -347,21 +354,26 @@ void ELFCfgBuilder::buildCfgs() {
     if (!Cfg)
       continue; // to next Cfg group.
 
-    uint64_t CfgMappedAddr = TmpNodeMap.begin()->first;
-    auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
-    if (ExistingI != AddrCfgMap.end()) {
-      auto *ExistingCfg = ExistingI->second;
-      // Discard smaller cfg that begins on the same address.
-      if (ExistingCfg->Nodes.size() >= TmpNodeMap.size()) {
-        Cfg.reset(nullptr);
-      } else {
-        View->EraseCfg(ExistingCfg);
-        AddrCfgMap.erase(ExistingI);
+    // Only do this under PLO mode
+    if (Plo) {
+      uint64_t CfgMappedAddr = TmpNodeMap.begin()->first;
+      auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
+      if (ExistingI != AddrCfgMap.end()) {
+        auto *ExistingCfg = ExistingI->second;
+        // Discard smaller cfg that begins on the same address.
+        if (ExistingCfg->Nodes.size() >= TmpNodeMap.size()) {
+          Cfg.reset(nullptr);
+        } else {
+          View->EraseCfg(ExistingCfg);
+          AddrCfgMap.erase(ExistingI);
+        }
       }
     }
     if (Cfg) {
       buildCfg(*Cfg, CfgSym, TmpNodeMap);
-      AddrCfgMap[CfgMappedAddr] = Cfg.get();
+      if (Plo) {
+        AddrCfgMap[TmpNodeMap.begin()->first] = Cfg.get();
+      }
       View->Cfgs.emplace(Cfg->Name, std::move(Cfg));
     }
   } // Enf of processing all groups.

@@ -226,8 +226,11 @@ sample.perfdata: sample.out
 ~/copt/plo2/autofdo-forked/create_llvm_prof: ~/copt/plo2/autofdo-forked/*.cc ~/copt/plo2/autofdo-forked/*.h
 	make -C `dirname $@` -j50
 
-sample.llvm_prof: sample.perfdata ~/copt/plo2/autofdo-forked/create_llvm_prof
-	~/copt/plo2/autofdo-forked/create_llvm_prof --profile=$< --out=$@ --format=plo --binary=sample.out --logtostderr
+sample.propeller: sample.perfdata ~/copt/plo2/autofdo-forked/create_llvm_prof
+	~/copt/plo2/autofdo-forked/create_llvm_prof --profile=$< --out=$@ --format=propeller --binary=sample.out --logtostderr
+
+sample.propeller.out: sample.propeller sample_bball.o stage1-compiler
+	./stage1-compiler -fuse-ld=lld -Wl,-propeller=$< sample_bball.o
 
 sample.out.symfile: sample.out sample.perfdata
 	./plotool.sh $^

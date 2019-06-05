@@ -295,6 +295,8 @@ defm print_symbol_order: Eq<"print-symbol-order",
 
 def plo: F<"plo">, HelpText<"Entering PLO mode first">;
 
+defm propeller: Eq<"propeller", "Propeller profile">;
+
 defm profile: Eq<"profile", "PLO profile">;
 
 defm symfile: Eq<"symfile", "PLO symbol file">;
