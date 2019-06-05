@@ -76,7 +76,7 @@ void CCubeAlgorithm::mergeClusters() {
   for(const ELFCfg * Cfg: HotCfgs){
     uint64_t CfgWeight = 0;
     double CfgSize = Config->SplitFunctions ? 0 : (double)Cfg->Size;
-    Cfg->forEachNodeRefConst([this, &CfgSize, &CfgWeight](ELFCfgNode &N) {
+    Cfg->forEachNodeRefConst([&CfgSize, &CfgWeight](ELFCfgNode &N) {
       CfgWeight += N.Freq;
       if (Config->SplitFunctions && N.Freq)
         CfgSize += N.ShSize;
