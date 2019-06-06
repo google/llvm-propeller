@@ -88,7 +88,7 @@ public:
   vector<StringRef> genSymbolOrderingFile();
 
   template <class Visitor>
-  void ForEachCfgRef(Visitor V) {
+  void forEachCfgRef(Visitor V) {
     for (auto &P : CfgMap) {
       V(*(*(P.second.begin())));
     }

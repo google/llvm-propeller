@@ -20,6 +20,7 @@ namespace plo {
 class PLO;
 class ELFCfg;
 
+template <class CfgContainerTy>
 class CCubeAlgorithm {
 public:
   class Cluster {
@@ -42,11 +43,11 @@ public:
 
     // Handler is used to remove itself from ownership list without
     // the need to iterate through the list.
-    list<unique_ptr<Cluster>>::iterator Handler;
+    typename list<unique_ptr<Cluster>>::iterator Handler;
   };
 
 public:
-  CCubeAlgorithm(PLO &P);
+  CCubeAlgorithm(CfgContainerTy &P);
   list<const ELFCfg *> doOrder();
 
 private:
@@ -57,7 +58,7 @@ private:
   void mergeClusters();
   void sortClusters();
 
-  PLO &Plo;
+  CfgContainerTy &CfgContainer;
   vector<const ELFCfg*> HotCfgs, ColdCfgs;
   list<unique_ptr<Cluster>> Clusters;
 };

@@ -9,6 +9,7 @@
 #include "PLOBBOrdering.h"
 #include "PLOELFCfg.h"
 #include "PLOELFView.h"
+#include "Propeller.h"
 
 using std::map;
 
@@ -17,8 +18,9 @@ using lld::elf::Config;
 namespace lld {
 namespace plo {
 
-CCubeAlgorithm::CCubeAlgorithm(PLO &P) : Plo(P) {
-  Plo.ForEachCfgRef([this](ELFCfg &Cfg) {
+template<class CfgContainerTy>
+CCubeAlgorithm<CfgContainerTy>::CCubeAlgorithm(CfgContainerTy &P) : CfgContainer(P) {
+  CfgContainer.forEachCfgRef([this](ELFCfg &Cfg) {
     if (Cfg.isHot())
       HotCfgs.push_back(&Cfg);
     else
@@ -35,14 +37,17 @@ CCubeAlgorithm::CCubeAlgorithm(PLO &P) : Plo(P) {
   }
 }
 
-CCubeAlgorithm::Cluster::Cluster(const ELFCfg *Cfg)
+template<class CfgContainerTy>
+CCubeAlgorithm<CfgContainerTy>::Cluster::Cluster(const ELFCfg *Cfg)
     : Cfgs(1, Cfg) {}
 
-CCubeAlgorithm::Cluster::~Cluster() {}
+template<class CfgContainerTy>
+CCubeAlgorithm<CfgContainerTy>::Cluster::~Cluster() {}
 
-const ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
+template<class CfgContainerTy>
+const ELFCfg *CCubeAlgorithm<CfgContainerTy>::getMostLikelyPredecessor(
     Cluster *Cluster, const ELFCfg *Cfg,
-    map<const ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap) {
+    map<const ELFCfg *, CCubeAlgorithm<CfgContainerTy>::Cluster *> &ClusterMap) {
   ELFCfgNode *Entry = Cfg->getEntryNode();
   if (!Entry)
     return nullptr;
@@ -68,7 +73,8 @@ const ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
   return E ? E->Src->Cfg : nullptr;
 }
 
-void CCubeAlgorithm::mergeClusters() {
+template<class CfgContainerTy>
+void CCubeAlgorithm<CfgContainerTy>::mergeClusters() {
   // Signed key is used here, because negated density are used as
   // sorting keys.
   map<const ELFCfg *, double> CfgWeightMap;
@@ -81,16 +87,7 @@ void CCubeAlgorithm::mergeClusters() {
       if (Config->SplitFunctions && N.Freq)
         CfgSize += N.ShSize;
     });
-    // HEAD: Cfg.forEachNodeRef([&CfgWeight, &CfgSize](ELFCfgNode &N) {
-    // HEAD:   if (N.Freq) {
-    // HEAD:     CfgWeight += N.Weight;
-    // HEAD:     CfgSize += N.ShSize;
-    // HEAD:   }
-    // HEAD:   // Use MaxWeight or Sum of weights?
-    // HEAD:   // CfgWeight += N.Weight;
-    // HEAD: });
-    // HEAD: WeightOrder[-(CfgWeight / CfgSize)] = &Cfg;
-    // HEAD: Cluster *C = new Cluster(&Cfg);
+    
     assert(CfgSize!=0);
     Cluster *C = new Cluster(Cfg);
     C->Weight = CfgWeight;
@@ -135,7 +132,8 @@ void CCubeAlgorithm::mergeClusters() {
   }
 }
 
-void CCubeAlgorithm::sortClusters() {
+template<class CfgContainerTy>
+void CCubeAlgorithm<CfgContainerTy>::sortClusters() {
   Clusters.sort([](unique_ptr<Cluster> &C1, unique_ptr<Cluster> &C2) {
     if (C1->getDensity() == C2->getDensity())
       return C1->Cfgs.front()->getEntryNode()->MappedAddr < C2->Cfgs.front()->getEntryNode()->MappedAddr;
@@ -143,7 +141,8 @@ void CCubeAlgorithm::sortClusters() {
   });
 }
 
-list<const ELFCfg *> CCubeAlgorithm::doOrder() {
+template<class CfgContainerTy>
+list<const ELFCfg *> CCubeAlgorithm<CfgContainerTy>::doOrder() {
   mergeClusters();
   sortClusters();
   list<const ELFCfg *> L;
@@ -155,5 +154,8 @@ list<const ELFCfg *> CCubeAlgorithm::doOrder() {
   return L;
 }
 
+template class CCubeAlgorithm<lld::propeller::Propeller>;
+template class CCubeAlgorithm<lld::plo::PLO>;
+  
 }
 }

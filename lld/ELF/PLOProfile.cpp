@@ -69,7 +69,7 @@ bool PLOProfile::process(StringRef &ProfileName) {
       processLBR(EntryArray, EntryIndex);
     }
   }
-  fprintf(stderr, "Nonmarked: %lu %lu\n",NonMarkedIntraFunc, NonMarkedInterFunc);
+  // fprintf(stderr, "Nonmarked: %lu %lu\n",NonMarkedIntraFunc, NonMarkedInterFunc);
   return true;
 }
 

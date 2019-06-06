@@ -74,7 +74,7 @@ ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
   return Edge;
 }
 
-bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To) {
+bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
   if(From==nullptr){
     /* If the From Node is null, walk backward from the To Node while only
      * one INTRA_FUNC incoming edge is found. */
@@ -127,10 +127,11 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To) {
   ELFCfgNode *P = From;
   while (P && P != To) {
     //fprintf(stderr, "Marking path\n");
-    ++P->Weight;
+    P->Weight += Cnt;
     if (P->FTEdge) {
-      //fprintf(stderr, "\t%s has FTEdge to %s\n",P->ShName.str().c_str(),P->FTEdge->Sink->ShName.str().c_str());
-      ++P->FTEdge->Weight;
+      // fprintf(stderr, "\t%s has FTEdge to %s\n", P->ShName.str().c_str(),
+      //         P->FTEdge->Sink->ShName.str().c_str());
+      P->FTEdge->Weight += Cnt;
       P = P->FTEdge->Sink;
     } else {
       P = nullptr;
@@ -139,38 +140,63 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To) {
   if (!P) {
     return false;
   }
-  ++(P->Weight);
+  P->Weight += Cnt;
   return true;
 }
 
-void ELFCfg::mapBranch(ELFCfgNode *From, ELFCfgNode *To) {
-  ++From->Weight;
-  ++To->Weight;
+void ELFCfg::mapBranch(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt,
+                       bool isCall, bool isReturn) {
+  assert(From->Cfg == To->Cfg);
+  From->Weight += Cnt;
+  To->Weight += Cnt;
+
   for (auto &E : From->Outs) {
-    if (E->Sink == To) {
-      ++(E->Weight);
+    bool EdgeTypeOk = true;
+    if (!isCall && !isReturn) {
+      EdgeTypeOk = E->Type == ELFCfgEdge::INTRA_FUNC ||
+                   E->Type == ELFCfgEdge::INTRA_DYNA;
+    } else {
+      if (isCall)
+        EdgeTypeOk = E->Type == ELFCfgEdge::INTRA_RSC;
+      if (isReturn)
+        EdgeTypeOk = E->Type == ELFCfgEdge::INTRA_RSR;
+    }
+    if (EdgeTypeOk && E->Sink == To) {
+      E->Weight += Cnt;
       return;
     }
   }
-  ++(createEdge(From, To, ELFCfgEdge::INTRA_DYNA)->Weight);
+
+  ELFCfgEdge::EdgeType Type = ELFCfgEdge::INTRA_DYNA;
+  if (isCall)
+    Type = ELFCfgEdge::INTRA_RSC;
+  else if (isReturn)
+    Type = ELFCfgEdge::INTRA_RSR;
+
+  createEdge(From, To, Type)->Weight += Cnt;
 }
 
-void ELFCfg::mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr) {
+void ELFCfg::mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr,
+                        uint64_t Cnt, bool isCall, bool isReturn) {
   assert(From->Cfg == this);
   assert(From->Cfg != To->Cfg);
-  ++From->Weight;
-  ++To->Weight;
+  From->Weight += Cnt;
+  To->Weight += Cnt;
   ELFCfgEdge::EdgeType EdgeType = ELFCfgEdge::INTER_FUNC_RETURN;
-  if (To->Cfg->getEntryNode() == To && ToAddr == To->MappedAddr) {
-      EdgeType = ELFCfgEdge::INTER_FUNC_CALL;
+  if (isCall ||
+      (ToAddr && To->Cfg->getEntryNode() == To && ToAddr == To->MappedAddr)) {
+    EdgeType = ELFCfgEdge::INTER_FUNC_CALL;
+  }
+  if (isReturn) {
+    EdgeType= ELFCfgEdge::INTER_FUNC_RETURN;
   }
   for (auto &E : From->CallOuts) {
     if (E->Sink == To && E->Type == EdgeType) {
-      ++(E->Weight);
+      E->Weight += Cnt;
       return ;
     }
   }
-  ++(createEdge(From, To, EdgeType)->Weight);
+  createEdge(From, To, EdgeType)->Weight += Cnt;
 }
 
 void ELFCfgReader::readCfgs() {
