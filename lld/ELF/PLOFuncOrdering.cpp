@@ -18,8 +18,9 @@ using lld::elf::Config;
 namespace lld {
 namespace plo {
 
-template<class CfgContainerTy>
-CCubeAlgorithm<CfgContainerTy>::CCubeAlgorithm(CfgContainerTy &P) : CfgContainer(P) {
+template <class CfgContainerTy>
+CCubeAlgorithm<CfgContainerTy>::CCubeAlgorithm(CfgContainerTy &P)
+    : CfgContainer(P) {
   CfgContainer.forEachCfgRef([this](ELFCfg &Cfg) {
     if (Cfg.isHot())
       HotCfgs.push_back(&Cfg);
@@ -28,11 +29,12 @@ CCubeAlgorithm<CfgContainerTy>::CCubeAlgorithm(CfgContainerTy &P) : CfgContainer
   });
 
   fprintf(stderr, "Reordering %zu hot functions.\n", HotCfgs.size());
-  vector<const ELFCfg*> AllCfgs[2] = {HotCfgs, ColdCfgs};
-  for(auto& CfgVector: AllCfgs){
+  vector<const ELFCfg *> AllCfgs[2] = {HotCfgs, ColdCfgs};
+  for (auto &CfgVector : AllCfgs) {
     std::sort(CfgVector.begin(), CfgVector.end(),
-              [] (const ELFCfg* Cfg1, const ELFCfg* Cfg2){
-                return Cfg1->getEntryNode()->MappedAddr < Cfg2->getEntryNode()->MappedAddr;
+              [](const ELFCfg *Cfg1, const ELFCfg *Cfg2) {
+                return Cfg1->getEntryNode()->MappedAddr <
+                       Cfg2->getEntryNode()->MappedAddr;
               });
   }
 }
@@ -44,10 +46,11 @@ CCubeAlgorithm<CfgContainerTy>::Cluster::Cluster(const ELFCfg *Cfg)
 template<class CfgContainerTy>
 CCubeAlgorithm<CfgContainerTy>::Cluster::~Cluster() {}
 
-template<class CfgContainerTy>
+template <class CfgContainerTy>
 const ELFCfg *CCubeAlgorithm<CfgContainerTy>::getMostLikelyPredecessor(
     Cluster *Cluster, const ELFCfg *Cfg,
-    map<const ELFCfg *, CCubeAlgorithm<CfgContainerTy>::Cluster *> &ClusterMap) {
+    map<const ELFCfg *, CCubeAlgorithm<CfgContainerTy>::Cluster *>
+        &ClusterMap) {
   ELFCfgNode *Entry = Cfg->getEntryNode();
   if (!Entry)
     return nullptr;
@@ -61,9 +64,10 @@ const ELFCfg *CCubeAlgorithm<CfgContainerTy>::getMostLikelyPredecessor(
     // Ignore calls which are cold relative to the callee
     if (CallIn->Weight * 10 < Entry->Freq)
       continue;
-    // Do not merge if the caller cluster's density would degrade by more than 1/8.
-    if (8 * CallerCluster->Size * (Cluster->Weight * CallerCluster->Weight)
-          < CallerCluster->Weight * (Cluster->Size + CallerCluster->Size))
+    // Do not merge if the caller cluster's density would degrade by more than
+    // 1/8.
+    if (8 * CallerCluster->Size * (Cluster->Weight * CallerCluster->Weight) <
+        CallerCluster->Weight * (Cluster->Size + CallerCluster->Size))
       continue;
     if (!E || E->Weight < CallIn->Weight) {
       // if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 21)) continue;
@@ -108,7 +112,8 @@ void CCubeAlgorithm<CfgContainerTy>::mergeClusters() {
     auto *Cluster = ClusterMap[Cfg];
     assert(Cluster);
 
-    const ELFCfg *PredecessorCfg = getMostLikelyPredecessor(Cluster, Cfg, ClusterMap);
+    const ELFCfg *PredecessorCfg =
+        getMostLikelyPredecessor(Cluster, Cfg, ClusterMap);
     if (!PredecessorCfg)
       continue;
     assert(PredecessorCfg != Cfg);
@@ -132,11 +137,12 @@ void CCubeAlgorithm<CfgContainerTy>::mergeClusters() {
   }
 }
 
-template<class CfgContainerTy>
+template <class CfgContainerTy>
 void CCubeAlgorithm<CfgContainerTy>::sortClusters() {
   Clusters.sort([](unique_ptr<Cluster> &C1, unique_ptr<Cluster> &C2) {
     if (C1->getDensity() == C2->getDensity())
-      return C1->Cfgs.front()->getEntryNode()->MappedAddr < C2->Cfgs.front()->getEntryNode()->MappedAddr;
+      return C1->Cfgs.front()->getEntryNode()->MappedAddr <
+             C2->Cfgs.front()->getEntryNode()->MappedAddr;
     return C1->getDensity() > C2->getDensity();
   });
 }
