@@ -66,7 +66,6 @@ void LLVMTargetMachine::initAsmInfo() {
   TmpAsmInfo->setCompressDebugSections(Options.CompressDebugSections);
 
   TmpAsmInfo->setRelaxELFRelocations(Options.RelaxELFRelocations);
-  TmpAsmInfo->setRelocateWithSymbols(Options.MCOptions.MCRelocateWithSymbols);
 
   if (Options.ExceptionModel != ExceptionHandling::None)
     TmpAsmInfo->setExceptionsType(Options.ExceptionModel);
