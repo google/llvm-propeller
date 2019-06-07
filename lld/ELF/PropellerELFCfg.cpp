@@ -9,18 +9,13 @@
 #include "llvm/Object/ELFObjectFile.h"
 
 #include <algorithm>
-#include <fstream>
 #include <iomanip>
-#include <iostream>
 #include <list>
 #include <map>
 #include <memory>
 #include <numeric>
 #include <ostream>
 #include <string>
-#include <unordered_map>
-#include <iostream>
-
 
 using llvm::object::ObjectFile;
 using llvm::object::RelocationRef;
@@ -31,34 +26,12 @@ using llvm::StringRef;
 
 using std::list;
 using std::map;
+using std::ostream;
 using std::string;
 using std::unique_ptr;
 
 namespace lld {
 namespace propeller {
-
-void ELFCfg::dumpToOS(std::ostream &os) const {
-  os << Name.str() << " " << Size << "\n";
-  os << Nodes.size() << "\n";
-
-  for (const auto &Node : Nodes) {
-    os << Node->Shndx << " " << Node->ShName.str() << " " << Node->MappedAddr
-       << " " << Node->ShSize << " " << Node->Freq << "\n";
-  }
-
-  os << IntraEdges.size() << "\n";
-  for (const auto &Edge : IntraEdges) {
-    bool IsFTEdge = (Edge.get() == Edge->Src->FTEdge);
-    os << Edge->Src->ShName.str() << " " << Edge->Sink->ShName.str() << " "
-       << Edge->Weight << " " << Edge->Type << " " << IsFTEdge << "\n";
-  }
-
-  os << InterEdges.size() << "\n";
-  for (const auto &Edge : InterEdges) {
-    os << Edge->Src->ShName.str() << " " << Edge->Sink->ShName.str() << " "
-       << Edge->Weight << " " << Edge->Type << "\n";
-  }
-}
 
 ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
                                typename ELFCfgEdge::EdgeType Type) {
@@ -126,11 +99,8 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
     return true;
   ELFCfgNode *P = From;
   while (P && P != To) {
-    //fprintf(stderr, "Marking path\n");
     P->Weight += Cnt;
     if (P->FTEdge) {
-      // fprintf(stderr, "\t%s has FTEdge to %s\n", P->ShName.str().c_str(),
-      //         P->FTEdge->Sink->ShName.str().c_str());
       P->FTEdge->Weight += Cnt;
       P = P->FTEdge->Sink;
     } else {
@@ -197,106 +167,6 @@ void ELFCfg::mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr,
     }
   }
   createEdge(From, To, EdgeType)->Weight += Cnt;
-}
-
-void ELFCfgReader::readCfgs() {
-  std::ifstream fin(CfgFilePath.str());
-  if (!fin.good()) {
-    fprintf(stderr, "Cannot open file: <%s>.", CfgFilePath.str().c_str());
-    exit(0);
-  }
-  std::unordered_map<std::string, ELFCfgNode *> AllNodes;
-  std::list<ELFCfgEdgeBuilder> InterEdges;
-  while (true) {
-    string *CfgName = new string();
-    uint64_t CfgSize;
-    fin >> *CfgName >> CfgSize;
-    if (fin.eof())
-      break;
-    unique_ptr<ELFCfg> Cfg(new ELFCfg(nullptr, StringRef(*CfgName), CfgSize));
-    Cfg->Size = CfgSize;
-    unsigned NNodes;
-    fin >> NNodes;
-    for (unsigned i = 0; i < NNodes; ++i) {
-      uint64_t Shndx;
-      string *ShName = new string();
-      uint64_t MappedAddr, ShSize, Freq;
-      fin >> Shndx >> *ShName >> MappedAddr >> ShSize >> Freq;
-      StringRef ShNameRef(*ShName);
-      ELFCfgNode *Node =
-          new ELFCfgNode(Shndx, ShNameRef, ShSize, MappedAddr, Cfg.get());
-      Node->Freq = Freq;
-      AllNodes.emplace(ShNameRef, Node);
-      Cfg->Nodes.emplace_back(std::move(Node));
-    }
-    unsigned NIntraEdges;
-    fin >> NIntraEdges;
-    //fprintf(stderr,"Number of intraedges: %u\n",NIntraEdges);
-    for (unsigned i = 0; i < NIntraEdges; ++i) {
-      std::string SrcShName, SinkShName;
-      uint64_t Weight;
-      uint16_t Type;
-      uint8_t IsFTEdge;
-      fin >> SrcShName >> SinkShName >> Weight >> Type >> IsFTEdge;
-      auto SrcNodeIt = AllNodes.find(SrcShName);
-      if (SrcNodeIt == AllNodes.end()) {
-        fprintf(stderr, "Intra edge Src: %s could not be mapped to Cfg\n",
-                SrcShName.c_str());
-        exit(0);
-      }
-      auto &SrcNode = SrcNodeIt->second;
-      auto SinkNodeIt = AllNodes.find(SinkShName);
-      if (SinkNodeIt == AllNodes.end()) {
-        fprintf(stderr, "Intra edge Sink: %s could not be mapped to Cfg\n",
-                SinkShName.c_str());
-        exit(0);
-      }
-      auto &SinkNode = SinkNodeIt->second;
-      ELFCfgEdge *Edge = Cfg->createEdge(
-          SrcNode, SinkNode, static_cast<ELFCfgEdge::EdgeType>(Type));
-      Edge->Weight = Weight;
-      if (IsFTEdge)
-        SrcNode->FTEdge = Edge;
-    }
-    unsigned NInterEdges;
-    fin >> NInterEdges;
-    for (unsigned i = 0; i < NInterEdges; ++i) {
-      std::string SrcShName, SinkShName;
-      uint64_t Weight;
-      uint16_t Type;
-      fin >> SrcShName >> SinkShName >> Weight >> Type;
-      InterEdges.push_back(
-          ELFCfgEdgeBuilder(SrcShName, SinkShName, Weight, Type));
-    }
-    fprintf(stderr, "Finished reading Cfg for function: %s\n",Cfg->Name.str().c_str());
-    Cfgs.emplace_back(std::move(Cfg));
-  }
-  for (ELFCfgEdgeBuilder &EdgeBuilder : InterEdges) {
-    auto SrcNodeIt = AllNodes.find(EdgeBuilder.SrcShName);
-    if (SrcNodeIt == AllNodes.end()) {
-      fprintf(stderr, "Inter edge source was not found\n");
-      continue;
-    }
-    auto SinkNodeIt = AllNodes.find(EdgeBuilder.SinkShName);
-    if (SinkNodeIt == AllNodes.end()) {
-      fprintf(stderr, "Inter edge sink was not found\n");
-      continue;
-    }
-    auto &SrcNode = SrcNodeIt->second;
-    auto &SinkNode = SinkNodeIt->second;
-    SrcNode->Cfg
-        ->createEdge(SrcNode, SinkNode,
-                     static_cast<ELFCfgEdge::EdgeType>(EdgeBuilder.Type))
-        ->Weight = EdgeBuilder.Weight;
-  }
-
-  std::sort(Cfgs.begin(), Cfgs.end(),
-            [](const unique_ptr<ELFCfg> &A, const unique_ptr<ELFCfg> &B) {
-              const auto &AEntry = A->getEntryNode();
-              const auto &BEntry = B->getEntryNode();
-              //assert(AEntry->MappedAddr != BEntry->MappedAddr);
-              return AEntry->MappedAddr < BEntry->MappedAddr;
-            });
 }
 
 static StringRef BBSymbol(StringRef &N) {
@@ -615,14 +485,6 @@ ELFView::create(const StringRef &VN,
     }
   }
   return nullptr;
-}
-
-void ELFView::EraseCfg(ELFCfg *&CfgPtr) {
-  auto I = Cfgs.find(CfgPtr->Name);
-  assert(I != Cfgs.end());
-  I->second.reset(nullptr);
-  Cfgs.erase(I);
-  CfgPtr = nullptr;
 }
 
 ostream &operator<<(ostream &Out, const ELFCfgNode &Node) {
