@@ -8,6 +8,10 @@
 using llvm::SmallVector;
 using llvm::StringRef;
 
+#include <string>
+
+using std::string;
+
 namespace lld {
 namespace propeller {
 
@@ -68,6 +72,13 @@ struct SymbolEntry {
         return true;
     }
     return false;
+  }
+
+  string getFQN() const {
+    if (BBTag) {
+      return ContainingFunc->Name.str() + ".bb." + Name.str();
+    }
+    return Name.str();
   }
 
   static bool isBBSymbol(const StringRef &SymName,

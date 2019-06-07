@@ -1778,8 +1778,12 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
   }
 
   if (!Config->Propeller.empty()) {
-      lld::propeller::Propeller P(Symtab);
-      P.processFiles(ObjectFiles, Config->Propeller);
+    lld::propeller::Propeller P(Symtab);
+    if (P.processFiles(ObjectFiles)) {
+      Config->SymbolOrderingFile = P.genSymbolOrderingFile();
+    } else {
+      error("Propeller stage failed.");
+    }
   }
 
   // if (Config->Plo && !ObjectFiles.empty()) {

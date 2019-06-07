@@ -25,6 +25,7 @@ using std::mutex;
 using std::pair;
 using std::set;
 using std::unique_ptr;
+using std::vector;
 
 namespace lld {
 namespace elf {
@@ -33,6 +34,7 @@ class SymbolTable;
 
 namespace plo {
 class ELFCfg;
+class ELFCfgEdge;
 class ELFCfgNode;
 class ELFView;
 } // namespace plo
@@ -40,6 +42,7 @@ class ELFView;
 namespace propeller {
 
 using lld::plo::ELFCfg;
+using lld::plo::ELFCfgEdge;
 using lld::plo::ELFCfgNode;
 using lld::plo::ELFView;
 
@@ -64,22 +67,7 @@ public:
 
   bool readSymbols();
   SymbolEntry *findSymbol(StringRef SymName);
-
-private:
-  llvm::BumpPtrAllocator BPAllocator;
-  llvm::StringSaver PropfileStrSaver;
-  FILE *PStream;
-  Propeller &Prop;
-  map<uint64_t, unique_ptr<SymbolEntry>> SymbolOrdinalMap;
-  map<StringRef, map<StringRef, SymbolEntry *>> SymbolNameMap;
-  size_t LineSize;
-  char *LineBuf;
-
-  // SymbolNameMap is order in the following way:
-  //   SymbolNameMap[foo][""] = functionSymbol;
-  //     SymbolNameMap[foo]["1"] = fun.bb.1.Symbol;
-  //     SymbolNameMap[foo]["2"] = fun.bb.2.Symbol;
-  //   etc...
+  bool processProfile();
 
   SymbolEntry *createFunctionSymbol(uint64_t Ordinal, const StringRef &Name,
                                     SymbolEntry::AliasesTy &&Aliases,
@@ -92,6 +80,9 @@ private:
                              std::forward_as_tuple(Ordinal),
                              std::forward_as_tuple(Sym));
     SymbolNameMap[Name][""] = Sym;
+    for (auto &A: Sym->Aliases) {
+      SymbolNameMap[A][""] = Sym;
+    }
     return Sym;
   }
 
@@ -110,6 +101,22 @@ private:
     SymbolNameMap[Function->Name][BBIndex] = Sym;
     return Sym;
   }
+
+  llvm::BumpPtrAllocator BPAllocator;
+  llvm::StringSaver PropfileStrSaver;
+  FILE *PStream;
+  Propeller &Prop;
+  map<uint64_t, unique_ptr<SymbolEntry>> SymbolOrdinalMap;
+  // SymbolNameMap is order in the following way:
+  //   SymbolNameMap[foo][""] = functionSymbol;
+  //     SymbolNameMap[foo]["1"] = fun.bb.1.Symbol;
+  //     SymbolNameMap[foo]["2"] = fun.bb.2.Symbol;
+  //   etc...
+  map<StringRef, map<StringRef, SymbolEntry *>> SymbolNameMap;
+  uint64_t LineNo;
+  char LineTag;
+  size_t LineSize;
+  char *LineBuf;
 };
 
 class Propeller {
@@ -118,8 +125,17 @@ public:
       : Symtab(ST), Views(), CfgMap(), Propf(nullptr) {}
   ~Propeller() { }
 
-  bool processFiles(std::vector<lld::elf::InputFile *> &Files,
-                    StringRef PropfileName);
+  bool processFiles(std::vector<lld::elf::InputFile *> &Files);
+  void processFile(const pair<elf::InputFile *, uint32_t> &Pair);
+  ELFCfgNode *findCfgNode(uint64_t SymbolOrdinal);
+  void calculateNodeFreqs();
+  vector<StringRef> genSymbolOrderingFile();
+  template <class Visitor>
+  void forEachCfgRef(Visitor V) {
+    for (auto &P : CfgMap) {
+      V(*(*(P.second.begin())));
+    }
+  }
 
   lld::elf::SymbolTable *Symtab;
   struct ELFViewDeleter {
@@ -135,11 +151,6 @@ public:
   };
   map<StringRef, set<ELFCfg *, ELFViewOrdinalComparator>> CfgMap;
   unique_ptr<Propfile> Propf;
-
-private:
-  void processFile(const pair<elf::InputFile *, uint32_t> &Pair);
-  ELFCfgNode *findCfgNode(uint64_t SymbolOrdinal);
-
   // Lock to access / modify global data structure.
   mutex Lock;
 };

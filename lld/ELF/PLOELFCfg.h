@@ -134,9 +134,11 @@ public:
     : View(V), Name(N), Size(S) {}
   ~ELFCfg() {}
 
-  bool markPath(ELFCfgNode *From, ELFCfgNode *To);
-  void mapBranch(ELFCfgNode *From, ELFCfgNode *To);
-  void mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr);
+  bool markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt = 1);
+  void mapBranch(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt = 1,
+                 bool isCall = false, bool isReturn = false);
+  void mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr,
+                  uint64_t Cnt = 1, bool isCall = false, bool isReturn = false);
   void dumpToOS(std::ostream&) const;
 
   ELFCfgNode *getEntryNode() const {

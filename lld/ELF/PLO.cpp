@@ -189,10 +189,10 @@ vector<StringRef> PLO::genSymbolOrderingFile() {
   list<const ELFCfg *> CfgOrder;
 
   if(Config->ReorderFunctions){
-    CfgOrder = PLOFuncOrdering<CCubeAlgorithm>(*this).doOrder();
+    CfgOrder = lld::plo::CCubeAlgorithm<PLO>(*this).doOrder();
   }else{
     std::vector<ELFCfg*> OrderResult;
-    ForEachCfgRef([&OrderResult](ELFCfg& Cfg){OrderResult.push_back(&Cfg);});
+    forEachCfgRef([&OrderResult](ELFCfg& Cfg){OrderResult.push_back(&Cfg);});
 
     std::sort(OrderResult.begin(), OrderResult.end(),
               [](const ELFCfg* A, const ELFCfg* B) {
