@@ -1,20 +1,18 @@
 #include "PLOBBOrdering.h"
 
-#include <algorithm>
-#include <iostream>
-#include <map>
+#include "PLOELFCfg.h"
 
 #include "llvm/ADT/StringRef.h"
 
-#include "PLO.h"
-#include "PLOELFCfg.h"
-#include "PLOELFView.h"
+#include <algorithm>
+#include <iostream>
+#include <map>
 
 using std::map;
 using std::pair;
 
 namespace lld {
-namespace plo {
+namespace propeller {
 
 PLOBBOrdering::~PLOBBOrdering() {}
 

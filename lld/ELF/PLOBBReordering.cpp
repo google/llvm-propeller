@@ -1,13 +1,15 @@
 #include "PLOBBReordering.h"
 
 #include "llvm/Support/CommandLine.h"
-#include <deque>
+
 #include <stdio.h>
+
+#include <deque>
+#include <iostream>
+#include <numeric>
 #include <set>
 #include <unordered_map>
 #include <vector>
-#include <iostream>
-#include <numeric>
 
 #define NEGATE(X) (-(int64_t)X)
 
@@ -73,7 +75,7 @@ static cl::opt<uint32_t> ChainSplitThreshold("chain-split-threshold",
 }
 
 namespace lld{
-namespace plo {
+namespace propeller {
 
 double GetEdgeExtTSPScore(const ELFCfgEdge* Edge, bool IsEdgeForward, uint32_t SrcSinkDistance){
   if(Edge->Weight==0)

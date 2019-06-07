@@ -3,7 +3,6 @@
 #include "Config.h"
 #include "PLOBBReordering.h"
 #include "PLOELFCfg.h"
-#include "PLOELFView.h"
 #include "PLOFuncOrdering.h"
 #include "InputFiles.h"
 
@@ -19,10 +18,8 @@
 #include <vector>
 
 using lld::elf::Config;
-using lld::plo::CCubeAlgorithm;
-using lld::plo::PLOFuncOrdering;
-using lld::plo::ExtTSPChainBuilder;
 using llvm::StringRef;
+
 using std::list;
 using std::map;
 using std::string;
@@ -243,10 +240,9 @@ bool Propfile::processProfile() {
 
 void Propeller::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
-  fprintf(stderr, "Processing: %s\n", Inf->getName().str().c_str());
   ELFView *View = ELFView::create(Inf->getName(), Pair.second, Inf->MB);
   if (View) {
-    lld::plo::ELFCfgBuilder(*this, View).buildCfgs();
+    ELFCfgBuilder(*this, View).buildCfgs();
     {
       // Updating global data structure.
       std::lock_guard<mutex> L(this->Lock);
@@ -271,6 +267,10 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
   }
   StringRef FuncName = S->BBTag ? S->ContainingFunc->Name : S->Name;
   auto CfgLI = CfgMap.find(FuncName);
+  if (CfgLI == CfgMap.end()) {
+    warn(string("No Cfg named '") + FuncName + "' found.");
+    return nullptr;
+  }
   if (CfgLI != CfgMap.end()) {
     // There might be multiple object files that define SymName.
     // So for "funcFoo.bb.3", we return Obj2.
@@ -284,7 +284,7 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
     //          funcFoo.bb.1
     //          funcFoo.bb.2
     //          funcFoo.bb.3
-    // Also not, Objects (CfgLI->second) are sorted in the way
+    // Also note, Objects (CfgLI->second) are sorted in the way
     // they appear on the command line, which is the same as how
     // linker chooses the weak symbol definition.
     string FQN = S->getFQN();
@@ -297,8 +297,8 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
       }
     }
   }
-  warn(string("No Cfg found for '") + FuncName.str() +
-       "', ordinal: " + std::to_string(SymbolOrdinal) + ".");
+  warn(string("No '") + S->getFQN() +
+       "' found in Cfgs, ordinal: " + std::to_string(SymbolOrdinal) + ".");
   return nullptr;
 }
 
@@ -334,7 +334,6 @@ void Propeller::calculateNodeFreqs() {
 
 bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   if (Config->Propeller.empty()) return true;
-  fprintf(stderr, "Entering into Propeller...\n");
   string PropellerFileName = Config->Propeller.str();
   FILE *PropFile = fopen(PropellerFileName.c_str(), "r");
   if (!PropFile) {
@@ -363,21 +362,18 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
 
-  // Releasing every support data (symbol ordinal / name map, saved string refs,
+  // Releasing all support data (symbol ordinal / name map, saved string refs,
   // etc) before moving to reordering.
   Propf.reset(nullptr);
-
-  calculateNodeFreqs();
-
-  // Do reordering ...
   return true;
 }
 
 vector<StringRef> Propeller::genSymbolOrderingFile() {
-  list<const ELFCfg *> CfgOrder;
+  calculateNodeFreqs();
 
+  list<const ELFCfg *> CfgOrder;
   if (Config->ReorderFunctions) {
-    CfgOrder = lld::plo::CCubeAlgorithm<Propeller>(*this).doOrder();
+    CfgOrder = CCubeAlgorithm<Propeller>(*this).doOrder();
   } else {
     std::vector<ELFCfg *> OrderResult;
     forEachCfgRef([&OrderResult](ELFCfg &Cfg) { OrderResult.push_back(&Cfg); });
@@ -412,7 +408,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
       std::move_iterator<list<StringRef>::iterator>(SymbolList.end()));
 }
 
-void Propeller::ELFViewDeleter::operator()(lld::plo::ELFView *V) {
+void Propeller::ELFViewDeleter::operator()(ELFView *V) {
   delete V;
 }
 

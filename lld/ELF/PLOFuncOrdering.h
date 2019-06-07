@@ -15,9 +15,8 @@ using std::unique_ptr;
 using std::vector;
 
 namespace lld {
-namespace plo {
+namespace propeller {
 
-class PLO;
 class ELFCfg;
 
 template <class CfgContainerTy>
@@ -61,62 +60,6 @@ private:
   CfgContainerTy &CfgContainer;
   vector<const ELFCfg*> HotCfgs, ColdCfgs;
   list<unique_ptr<Cluster>> Clusters;
-};
-
-/*
-class PHAlgorithm {
-public:
-  class Cluster {
-  public:
-    Cluster(ELFCfg *Cfg);
-    ~Cluster();
-    list<ELFCfg *> Cfgs;
-    uint64_t       Size;
-    double         Density;
-
-    // Merge "Other" cluster into this cluster.
-    Cluster & operator << (Cluster &Other) {
-      Cfgs.insert(Cfgs.end(), Other.Cfgs.begin(), Other.Cfgs.end());
-      this->Density = (Density * Size + Other.Density * Other.Size)
-          / (this->Size + Other.Size);
-      this->Size += Other.Size;
-      return *this;
-    }
-
-    // Handler is used to remove itself from ownership list without
-    // the need to iterate through the list.
-    list<unique_ptr<Cluster>>::iterator Handler;
-  };
-
-public:
-  PHAlgorithm(PLO &P) : Plo(P) {}
-  list<ELFCfg *> doOrder();
-
-private:
-  ELFCfg *getMostLikelyPredecessor(
-      Cluster *Cluster, ELFCfg *Cfg,
-      map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
-
-  void mergeClusters();
-  void sortClusters();
-
-  PLO &Plo;
-  list<unique_ptr<Cluster>> Clusters;
-};
-*/
-
-
-template <class ReorderingAlgorithm>
-class PLOFuncOrdering {
- public:
-  PLOFuncOrdering(PLO &P) :Algo(P) {}
-  ~PLOFuncOrdering() {}
-
-  list<const ELFCfg *> doOrder() {
-    return Algo.doOrder();
-  }
-
-  ReorderingAlgorithm Algo;
 };
 
 }

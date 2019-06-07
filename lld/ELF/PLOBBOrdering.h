@@ -1,18 +1,18 @@
-#ifndef LLD_ELF_PLO_BB_ORDERING_H
-#define LLD_ELF_PLO_BB_ORDERING_H
+#ifndef LLD_ELF_PROPELLER_BB_ORDERING_H
+#define LLD_ELF_PROPELLER_BB_ORDERING_H
+
+#include "llvm/ADT/StringRef.h"
 
 #include <list>
 #include <memory>
 #include <ostream>
-
-#include "llvm/ADT/StringRef.h"
 
 using std::list;
 using std::unique_ptr;
 using llvm::StringRef;
 
 namespace lld {
-namespace plo {
+namespace propeller {
 
 class ELFCfgEdge;
 class ELFCfgNode;

@@ -14,8 +14,8 @@
 
 
 
-#ifndef LLD_ELF_PLO_BB_REORDERING_H
-#define LLD_ELF_PLO_BB_REORDERING_H
+#ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
+#define LLD_ELF_PROPELLER_BB_REORDERING_H
 
 #include "PLOELFCfg.h"
 
@@ -33,7 +33,7 @@ using std::unique_ptr;
 using std::vector;
 
 namespace lld{
-namespace plo {
+namespace propeller {
 
 enum MergeOrder {Begin, X2X1Y = Begin, BeginNext, X1YX2=BeginNext, X2YX1, YX2X1, End};
 
@@ -268,9 +268,6 @@ class ExtTSPChainBuilder::NodeChainAssembly{
   // copy constructor is implicitly deleted
   // NodeChainAssembly(const NodeChainAssembly&) = delete;
   NodeChainAssembly() = delete;
-
-
-
 };
 
 }

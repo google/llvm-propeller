@@ -1,7 +1,5 @@
 #include "PLOELFCfg.h"
 
-#include "PLO.h"
-#include "PLOELFView.h"
 #include "Propeller.h"
 #include "Symbols.h"
 #include "SymbolTable.h"
@@ -23,6 +21,7 @@
 // Needed by ELFSectionRef & ELFSymbolRef.
 #include "llvm/Object/ELFObjectFile.h"
 
+using llvm::object::ObjectFile;
 using llvm::object::RelocationRef;
 using llvm::object::SectionRef;
 using llvm::object::section_iterator;
@@ -35,7 +34,7 @@ using std::string;
 using std::unique_ptr;
 
 namespace lld {
-namespace plo {
+namespace propeller {
 
 void ELFCfg::dumpToOS(std::ostream &os) const {
   os << Name.str() << " " << Size << "\n";
@@ -299,6 +298,23 @@ void ELFCfgReader::readCfgs() {
             });
 }
 
+static StringRef BBSymbol(StringRef &N) {
+  StringRef::iterator P = (N.end() - 1), A = N.begin();
+  char C = '\0';
+  for (; P > A; --P) {
+    C = *P;
+    if (C == '.')
+      break;
+    if (C < '0' || C > '9')
+      return StringRef("");
+  }
+  if (C == '.' && P - A >= 4 /* must be like "xx.bb." */ && *(P - 1) == 'b' &&
+      *(P - 2) == 'b' && *(P - 3) == '.') {
+    return StringRef(N.data(), P - A - 3);
+  }
+  return StringRef("");
+}
+
 void ELFCfgBuilder::buildCfgs() {
   auto Symbols = View->ViewFile->symbols();
   map<StringRef, list<SymbolRef>> Groups;
@@ -331,7 +347,7 @@ void ELFCfgBuilder::buildCfgs() {
     if (!NameOrErr)
       continue;
     StringRef SymName(*NameOrErr);
-    StringRef BBSymBaseName = PLO::BBSymbol(SymName);
+    StringRef BBSymBaseName = BBSymbol(SymName);
     if (!BBSymBaseName.empty()) {
       auto L = Groups.find(BBSymBaseName);
       if (L != Groups.end()) {
@@ -340,7 +356,6 @@ void ELFCfgBuilder::buildCfgs() {
     }
   }
 
-  map<uint64_t, ELFCfg *> AddrCfgMap;
   for (auto &I : Groups) {
     assert(I.second.size() >= 1);
     map<uint64_t, list<unique_ptr<ELFCfgNode>>> TmpNodeMap;
@@ -359,25 +374,13 @@ void ELFCfgBuilder::buildCfgs() {
         // -fbasicblock-section=labels do not have size information
         // for BB symbols.
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
-        if (Plo) {
-          auto ResultP = Plo->Syms.NameMap.find(SymName);
-          if (ResultP != Plo->Syms.NameMap.end()) {
-            uint64_t MappedAddr = Plo->Syms.getAddr(ResultP->second);
-            TmpNodeMap[MappedAddr].emplace_back(new ELFCfgNode(
-                SymShndx, SymName, SymSize, MappedAddr, Cfg.get()));
-            continue;
-          }
-          // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
-        } else {
-          auto *SE = Prop->Propf->findSymbol(SymName);
-          if (SE) {
-            TmpNodeMap[SE->Ordinal].emplace_back(
-                new ELFCfgNode(SymShndx, SymName, SymSize, 0l, Cfg.get()));
-            continue;
-          }
-          // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
+        auto *SE = Prop->Propf->findSymbol(SymName);
+        if (SE) {
+          TmpNodeMap[SE->Ordinal].emplace_back(
+              new ELFCfgNode(SymShndx, SymName, SymSize, 0l, Cfg.get()));
+          continue;
         }
-        
+        // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
       }
       TmpNodeMap.clear();
       Cfg.reset(nullptr);
@@ -386,26 +389,8 @@ void ELFCfgBuilder::buildCfgs() {
     if (!Cfg)
       continue; // to next Cfg group.
 
-    // Only do this under PLO mode
-    if (Plo) {
-      uint64_t CfgMappedAddr = TmpNodeMap.begin()->first;
-      auto ExistingI = AddrCfgMap.find(CfgMappedAddr);
-      if (ExistingI != AddrCfgMap.end()) {
-        auto *ExistingCfg = ExistingI->second;
-        // Discard smaller cfg that begins on the same address.
-        if (ExistingCfg->Nodes.size() >= TmpNodeMap.size()) {
-          Cfg.reset(nullptr);
-        } else {
-          View->EraseCfg(ExistingCfg);
-          AddrCfgMap.erase(ExistingI);
-        }
-      }
-    }
     if (Cfg) {
       buildCfg(*Cfg, CfgSym, TmpNodeMap);
-      if (Plo) {
-        AddrCfgMap[TmpNodeMap.begin()->first] = Cfg.get();
-      }
       View->Cfgs.emplace(Cfg->Name, std::move(Cfg));
     }
   } // Enf of processing all groups.
@@ -616,6 +601,29 @@ void ELFCfgBuilder::calculateFallthroughEdges(
   //    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
 }
 
+ELFView *
+ELFView::create(const StringRef &VN,
+                const uint32_t Ordinal,
+		const MemoryBufferRef &FR) {
+  const char *FH = FR.getBufferStart();
+  if (FR.getBufferSize() > 6 &&
+      FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' && FH[3] == 'F') {
+    auto R = ObjectFile::createELFObjectFile(FR);
+    if (R) {
+      return new ELFView(*R, VN, Ordinal, FR);
+    }
+  }
+  return nullptr;
+}
+
+void ELFView::EraseCfg(ELFCfg *&CfgPtr) {
+  auto I = Cfgs.find(CfgPtr->Name);
+  assert(I != Cfgs.end());
+  I->second.reset(nullptr);
+  Cfgs.erase(I);
+  CfgPtr = nullptr;
+}
+
 ostream &operator<<(ostream &Out, const ELFCfgNode &Node) {
   Out << (Node.ShName == Node.Cfg->Name
               ? "<Entry>"
@@ -652,11 +660,6 @@ ostream &operator<<(ostream &Out, const ELFCfg &Cfg) {
   }
   Out << std::endl;
   return Out;
-}
-
-bool PLO::ELFViewOrdinalComparator::operator()(const ELFCfg *A,
-                                               const ELFCfg *B) const {
-  return A->View->Ordinal < B->View->Ordinal;
 }
 
 }  // namespace plo
