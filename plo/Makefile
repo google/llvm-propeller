@@ -1,8 +1,9 @@
 # Customizable variables.
 # Vanilla clang/clang++ bin path.
 RELEASE_LLVM_BIN=/usr/bin
-PERF2BOLT=/usr/local/google/home/rahmanl/copt/build/bolt.shenhan/release/bin/perf2bolt
-BOLT=/usr/local/google/home/rahmanl/copt/build/bolt.shenhan/release/bin/llvm-bolt
+PERF2BOLT=${HOME}/copt/bolt/build-release/bin/perf2bolt
+BOLT=${HOME}/copt/bolt/build-release/bin/llvm-bolt
+CREATE_LLVM_PROF=${HOME}/copt/plo2/autofdo-forked/create_llvm_prof
 
 #################################
 # Important targets:
@@ -48,6 +49,7 @@ PROFILES_DIR := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
 LLD_OPT := -fuse-ld=lld -Wl,-optimize-bb-jumps
+FLAVORS := stage1 pgo pgo-plo pgo-plo2 cspgo cspgo-plo pgo-bolt cspgo-bolt
 
 # $1 are compiler flags.
 # $2 are ld flags.
@@ -137,6 +139,9 @@ pgo-compiler.symfile cspgo-compiler.symfile: %-compiler.symfile: %-compiler %.pe
 	./plotool.sh $< $(word 2,$^)
 	[[ -n "`grep -F '.bb.' $@`" ]] || { echo "ERROR: no .bb. in $@" ; exit 1; }
 
+pgo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
+	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr
+
 pgo-compiler.yaml cspgo-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
 
@@ -179,15 +184,15 @@ run-commands.sh: | stage1-compiler
                 >> run-commands.sh
 	chmod +x run-commands.sh
 
+#  -Wl,-plo -Wl,-symfile=$(DDIR)/pgo-compiler.symfile -Wl,-profile=pgo-compiler.profile \
+
 relink-clang-pgo-plo.sh relink-clang-cspgo-plo.sh: \
-relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.symfile
+relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.propeller
 	echo "pushd $(shell dirname $(shell dirname $<))" > $@
 	ninja -C "$(shell dirname $(shell dirname $<))" -t commands clang \
           | grep -Fe " -o bin/clang-9 " \
           | sed -e "s! -o bin/clang-9 ! -o bin/clang-9-plo \
-                     -Wl,-plo                              \
-                     -Wl,-symfile=$(DDIR)/$(word 2,$^) \
-                     -Wl,-profile=$(DDIR)/$(subst .symfile,.profile,$(word 2,$^)) \
+		     -Wl,-propeller=$(DDIR)/$(word 2,$^)   \
                      -Wl,--lto-basicblock-sections=all     \
 		     -Wl,-split-functions                  \
 		     -Wl,-reorder-functions                \
@@ -203,20 +208,20 @@ relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.symfile
 	  echo "Generate $@ failed."; exit 1; \
 	fi
 
-                     #-Wl,-cfgdump=$(DDIR)/$(subst .symfile,.cfg,$(word 2,$^)) \
-
-benchmark-pgo benchmark-pgo-plo benchmark-pgo-bolt benchmark-cspgo benchmark-cspgo-plo benchmark-cspgo-bolt benchmark-stage1: \
-benchmark-%: %-compiler run-commands.sh
+$(foreach F,$(FLAVORS),benchmark-pmu-${F}): benchmark-pmu-%: %-compiler run-commands.sh
 	{ time perf stat -o $@.pmu -e instructions,cycles,branches,branch-misses,icache_64b.iftag_stall,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,idq.dsb_uops,idq.mite_uops,idq.all_dsb_cycles_4_uops,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit -- ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
+
+$(foreach F,$(FLAVORS),benchmark-${F}): benchmark-%: %-compiler run-commands.sh
+	{ time ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee $@.result
 
 # ######################################  sample workflow
 sample_bblabels.o: sample.c
-	./stage1-compiler -c -O2 -fbasicblock-sections=labels -fpic $< -o $@
+	./stage1-compiler -c -O2 -fbasicblock-sections=labels $< -o $@
 	@[[ -n `readelf -Ws $@ | grep -F '.bb.'` ]] \
 		|| { echo "No bb symbols found in $@, error" ; exit 1; }
 
 sample.out: sample_bblabels.o
-	./stage1-compiler -Wl,--build-id -o $@ $< -pie
+	./stage1-compiler -Wl,--build-id -o $@ $<
 	@[[ -n `readelf -Ws $@ | grep -F '.bb.'` ]] \
 		|| { echo "No bb symbols found in $@, error" ; exit 1; }
 
