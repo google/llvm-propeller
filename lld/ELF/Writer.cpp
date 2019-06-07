@@ -1560,6 +1560,7 @@ static void fixSymbolsAfterShrinking() {
   }
 }
 
+
 // If basic block sections exist, there are opportunities to delete fall thru
 // jumps and shrink jump instructions after basic block reordering.  This
 // relaxation pass does that.
@@ -1592,23 +1593,19 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
                      });
     uint32_t MaxAlign = (MaxIt != Sections.end()) ? (*MaxIt)->Alignment : 0;
 
-    std::vector<unsigned> Shrunk(Sections.size(), 0);
+    std::vector<bool> Shrunk(Sections.size(), false);
     bool Changed = false;
     // Shrink jump Instructions when possible.
     do {
       Changed = false;
       parallelForEachN(0, Sections.size(), [&](size_t I) {
-        if (Shrunk[I] == 0) {
+        if (!Shrunk[I]) {
           InputSection &IS = *Sections[I];
-          Shrunk[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>(),
-                                            MaxAlign);
-          Changed |= (Shrunk[I] > 0);
+          Shrunk[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
+          Changed |= Shrunk[I];
         }
       });
-      size_t Num = std::count_if(Shrunk.begin(), Shrunk.end(),
-          [] (int e) { return e > 0; });
-      Num += std::count_if(Shrunk.begin(), Shrunk.end(),
-          [] (int e) { return e > 4; });
+      size_t Num = std::count(Shrunk.begin(), Shrunk.end(), true);
       if (Num > 0)
         LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->Name <<
                    " : Shrinking " << Num << " jmp instructions\n");
