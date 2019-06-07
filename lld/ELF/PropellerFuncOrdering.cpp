@@ -1,9 +1,8 @@
-#include "PLOFuncOrdering.h"
+#include "PropellerFuncOrdering.h"
 
 #include "Config.h"
-#include "PLOBBOrdering.h"
-#include "PLOELFCfg.h"
 #include "Propeller.h"
+#include "PropellerELFCfg.h"
 
 #include <algorithm>
 #include <iostream>

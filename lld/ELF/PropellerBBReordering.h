@@ -17,7 +17,7 @@
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
-#include "PLOELFCfg.h"
+#include "PropellerELFCfg.h"
 
 #include <list>
 #include <set>

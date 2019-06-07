@@ -1,9 +1,9 @@
 #include "Propeller.h"
 
 #include "Config.h"
-#include "PLOBBReordering.h"
-#include "PLOELFCfg.h"
-#include "PLOFuncOrdering.h"
+#include "PropellerBBReordering.h"
+#include "PropellerELFCfg.h"
+#include "PropellerFuncOrdering.h"
 #include "InputFiles.h"
 
 #include "llvm/Support/Parallel.h"

@@ -35,11 +35,11 @@ add_lld_library(lldELF
   MapFile.cpp
   MarkLive.cpp
   OutputSections.cpp
-  PLOBBOrdering.cpp
-  PLOELFCfg.cpp
-  PLOFuncOrdering.cpp
-  PLOBBReordering.cpp
   Propeller.cpp
+  PropellerBBReordering.cpp
+  PropellerELFCfg.cpp
+  PropellerFuncOrdering.cpp
+  PropellerBBReordering.cpp
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp

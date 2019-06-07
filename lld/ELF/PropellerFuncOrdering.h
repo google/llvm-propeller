@@ -1,5 +1,5 @@
-#ifndef LLD_ELF_PLO_FUNC_ORDERING_H
-#define LLD_ELF_PLO_FUNC_ORDERING_H
+#ifndef LLD_ELF_PROPELLER_FUNC_ORDERING_H
+#define LLD_ELF_PROPELLER_FUNC_ORDERING_H
 
 #include <iostream>
 #include <list>

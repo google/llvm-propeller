@@ -1,8 +1,12 @@
-#include "PLOELFCfg.h"
+#include "PropellerELFCfg.h"
 
 #include "Propeller.h"
 #include "Symbols.h"
 #include "SymbolTable.h"
+
+#include "llvm/Object/ObjectFile.h"
+// Needed by ELFSectionRef & ELFSymbolRef.
+#include "llvm/Object/ELFObjectFile.h"
 
 #include <algorithm>
 #include <fstream>
@@ -17,9 +21,6 @@
 #include <unordered_map>
 #include <iostream>
 
-#include "llvm/Object/ObjectFile.h"
-// Needed by ELFSectionRef & ELFSymbolRef.
-#include "llvm/Object/ELFObjectFile.h"
 
 using llvm::object::ObjectFile;
 using llvm::object::RelocationRef;

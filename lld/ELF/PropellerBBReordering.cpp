@@ -1,4 +1,4 @@
-#include "PLOBBReordering.h"
+#include "PropellerBBReordering.h"
 
 #include "llvm/Support/CommandLine.h"
 
