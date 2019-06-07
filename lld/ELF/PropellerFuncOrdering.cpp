@@ -1,22 +1,18 @@
-#include "PLOFuncOrdering.h"
+#include "PropellerFuncOrdering.h"
+
+#include "Config.h"
+#include "Propeller.h"
+#include "PropellerELFCfg.h"
 
 #include <algorithm>
 #include <iostream>
 #include <map>
 
-#include "Config.h"
-#include "PLO.h"
-#include "PLOBBOrdering.h"
-#include "PLOELFCfg.h"
-#include "PLOELFView.h"
-#include "Propeller.h"
-
+using lld::elf::Config;
 using std::map;
 
-using lld::elf::Config;
-
 namespace lld {
-namespace plo {
+namespace propeller {
 
 template <class CfgContainerTy>
 CCubeAlgorithm<CfgContainerTy>::CCubeAlgorithm(CfgContainerTy &P)
@@ -161,7 +157,6 @@ list<const ELFCfg *> CCubeAlgorithm<CfgContainerTy>::doOrder() {
 }
 
 template class CCubeAlgorithm<lld::propeller::Propeller>;
-template class CCubeAlgorithm<lld::plo::PLO>;
-  
+ 
 }
 }

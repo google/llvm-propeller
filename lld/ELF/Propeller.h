@@ -32,22 +32,15 @@ namespace elf {
 class SymbolTable;
 }
 
-namespace plo {
+namespace propeller {
+
 class ELFCfg;
 class ELFCfgEdge;
 class ELFCfgNode;
 class ELFView;
-} // namespace plo
-
-namespace propeller {
-
-using lld::plo::ELFCfg;
-using lld::plo::ELFCfgEdge;
-using lld::plo::ELFCfgNode;
-using lld::plo::ELFView;
-
 class Propeller;
 
+// Propeller Profile
 class Propfile {
 public:
   Propfile(FILE *PS, Propeller &P)
@@ -72,14 +65,13 @@ public:
   SymbolEntry *createFunctionSymbol(uint64_t Ordinal, const StringRef &Name,
                                     SymbolEntry::AliasesTy &&Aliases,
                                     uint64_t Size) {
-    fprintf(stderr, "Creating: %s\n", Name.str().c_str());
     auto *Sym = new SymbolEntry(Ordinal, Name, std::move(Aliases),
                                 SymbolEntry::INVALID_ADDRESS, Size,
                                 llvm::object::SymbolRef::ST_Function);
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(Ordinal),
                              std::forward_as_tuple(Sym));
-    SymbolNameMap[Name][""] = Sym;
+    SymbolNameMap[Name][""] = Sym;  // See SymbolNameMap comment.
     for (auto &A: Sym->Aliases) {
       SymbolNameMap[A][""] = Sym;
     }
@@ -88,8 +80,6 @@ public:
 
   SymbolEntry *createBasicBlockSymbol(uint64_t Ordinal, SymbolEntry *Function,
                                       StringRef &BBIndex, uint64_t Size) {
-    fprintf(stderr, "Creating: %s:%s\n", Function->Name.str().c_str(),
-            BBIndex.str().c_str());
     assert(!Function->isBBSymbol && Function->isFunction);
     auto *Sym =
         new SymbolEntry(Ordinal, BBIndex, SymbolEntry::AliasesTy(),
@@ -107,16 +97,16 @@ public:
   FILE *PStream;
   Propeller &Prop;
   map<uint64_t, unique_ptr<SymbolEntry>> SymbolOrdinalMap;
-  // SymbolNameMap is order in the following way:
+  // SymbolNameMap is ordered in the following way:
   //   SymbolNameMap[foo][""] = functionSymbol;
   //     SymbolNameMap[foo]["1"] = fun.bb.1.Symbol;
   //     SymbolNameMap[foo]["2"] = fun.bb.2.Symbol;
   //   etc...
   map<StringRef, map<StringRef, SymbolEntry *>> SymbolNameMap;
   uint64_t LineNo;
-  char LineTag;
-  size_t LineSize;
-  char *LineBuf;
+  char     LineTag;
+  size_t   LineSize;
+  char    *LineBuf;
 };
 
 class Propeller {
@@ -141,7 +131,7 @@ public:
   struct ELFViewDeleter {
     void operator()(ELFView *V);
   };
-  list<unique_ptr<lld::plo::ELFView, ELFViewDeleter>> Views;
+  list<unique_ptr<ELFView, ELFViewDeleter>> Views;
   // Same named Cfgs may exist in different object files (e.g. weak
   // symbols.)  We always choose symbols that appear earlier on the
   // command line.  Note: implementation is in the .cpp file, because

@@ -1,8 +1,10 @@
-#ifndef LLD_ELF_PLO_ELF_CFG_H
-#define LLD_ELF_PLO_ELF_CFG_H
+#ifndef LLD_ELF_PROPELLER_ELF_CFG_H
+#define LLD_ELF_PROPELLER_ELF_CFG_H
 
-#include "PLO.h"
 #include "Propeller.h"
+
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Object/ObjectFile.h"
 
 #include <list>
 #include <map>
@@ -10,8 +12,11 @@
 #include <ostream>
 #include <set>
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Object/ObjectFile.h"
+using llvm::MemoryBufferRef;
+using llvm::object::ObjectFile;
+using llvm::object::SymbolRef;
+using llvm::object::section_iterator;
+using llvm::StringRef;
 
 using std::list;
 using std::map;
@@ -20,15 +25,8 @@ using std::pair;
 using std::set;
 using std::unique_ptr;
 
-using llvm::object::SymbolRef;
-using llvm::object::section_iterator;
-using llvm::StringRef;
-
 namespace lld {
-
-namespace plo {
-
-using lld::propeller::Propeller;
+namespace propeller {
 
 class ELFView;
 class ELFCfgNode;
@@ -193,7 +191,6 @@ private:
 
 class ELFCfgBuilder {
 public:
-  PLO       *Plo;
   Propeller *Prop;
   ELFView   *View;
 
@@ -201,8 +198,7 @@ public:
   uint32_t BBWoutAddr{0};
   uint32_t InvalidCfgs{0};
 
-  ELFCfgBuilder(PLO &P, ELFView *V) : Plo(&P), Prop(nullptr), View(V) {}
-  ELFCfgBuilder(Propeller &P, ELFView *V) : Plo(nullptr), Prop(&P), View(V) {}
+  ELFCfgBuilder(Propeller &P, ELFView *V) : Prop(&P), View(V) {}
   void buildCfgs();
 
 protected:
@@ -220,6 +216,29 @@ protected:
   // used during building phase.
   void buildShndxNodeMap(map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap,
                          map<uint64_t, ELFCfgNode *> &ShndxNodeMap);
+};
+
+class ELFView {
+ public:
+  static ELFView *create(const StringRef &VN,
+                         const uint32_t O,
+                         const MemoryBufferRef &FR);
+
+  ELFView(unique_ptr<ObjectFile> &VF,
+          const StringRef &VN,
+          const uint32_t VO,
+          const MemoryBufferRef &FR) :
+    ViewFile(std::move(VF)), ViewName(VN), Ordinal(VO), FileRef(FR), Cfgs() {}
+  ~ELFView() {}
+
+  void EraseCfg(ELFCfg *&CfgPtr);
+
+  unique_ptr<ObjectFile> ViewFile;
+  StringRef              ViewName;
+  const uint32_t         Ordinal;
+  MemoryBufferRef        FileRef;
+
+  map<StringRef, unique_ptr<ELFCfg>> Cfgs;
 };
 
 ostream & operator << (ostream &Out, const ELFCfgNode &Node);

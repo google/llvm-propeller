@@ -266,11 +266,13 @@ clean:
 	rm -f  {pgo,cspgo}{-bolt,}-compiler 
 	rm -f  {pgo,cspgo}-compiler.symfile
 	rm -f  {pgo,cspgo}-compiler.profile
+	rm -f  {pgo,cspgo}-compiler.propeller
 	rm -f  {pgo,cspgo}-compiler.cfg
 	rm -f  {cspgo,pgo}.fdata
 	rm -f  {cspgo,pgo}-compiler.yaml
 	rm -f  relink-clang-{cspgo,pgo}-plo.sh
 	rm -f  benchmark-*.result
+	rm -f  benchmark-*.pmu
 	rm -f  commands run-commands.sh
 	rm -f  sample.out sample.out.{layout,symfile,profile,cfg} 
 	rm -f sample_*.o sample.plo.out sample.bc sample.perfdata
