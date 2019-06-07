@@ -238,6 +238,17 @@ static cl::opt<bool>
                      cl::desc("Emit functions into separate sections"),
                      cl::init(false));
 
+static cl::opt<llvm::BasicBlockSection::SectionMode> BasicBlockSections(
+    "basicblock-sections",
+    cl::desc("Emit basic blocks into separate sections"),
+    cl::init(BasicBlockSection::None),
+    cl::values(
+        clEnumValN(BasicBlockSection::None, "none", "Off"),
+        clEnumValN(BasicBlockSection::All, "all", "All Basic Blocks"),
+        clEnumValN(BasicBlockSection::Hot, "hot", "Hot Basic Blocks"),
+        clEnumValN(BasicBlockSection::Likely, "likely", "Likely Basic Blocks"),
+        clEnumValN(BasicBlockSection::Likely, "labels", "Labelled Basic Blocks")));
+
 static cl::opt<bool> EmulatedTLS("emulated-tls",
                                  cl::desc("Use emulated TLS model"),
                                  cl::init(false));
@@ -245,6 +256,17 @@ static cl::opt<bool> EmulatedTLS("emulated-tls",
 static cl::opt<bool>
     UniqueSectionNames("unique-section-names",
                        cl::desc("Give unique names to every section"),
+                       cl::init(true));
+
+static cl::opt<bool>
+    UniqueBBSectionNames("unique-bb-section-names",
+                       cl::desc("Give unique names to every basic block section"),
+                       cl::init(false));
+
+static cl::opt<bool>
+    SeparateBBSections("separate-bb-sections",
+                       cl::desc("basic block sections can be "
+                                "separated from the parent function"),
                        cl::init(true));
 
 static cl::opt<llvm::EABI>
@@ -294,7 +316,10 @@ static TargetOptions InitTargetOptionsFromCodeGenFlags() {
   Options.RelaxELFRelocations = RelaxELFRelocations;
   Options.DataSections = DataSections;
   Options.FunctionSections = FunctionSections;
+  Options.BasicBlockSections = BasicBlockSections;
   Options.UniqueSectionNames = UniqueSectionNames;
+  Options.UniqueBBSectionNames = UniqueBBSectionNames;
+  Options.SeparateBBSections = SeparateBBSections;
   Options.EmulatedTLS = EmulatedTLS;
   Options.ExplicitEmulatedTLS = EmulatedTLS.getNumOccurrences() > 0;
   Options.ExceptionModel = ExceptionModel;

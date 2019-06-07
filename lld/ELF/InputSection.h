@@ -137,6 +137,12 @@ public:
     return cast_or_null<ObjFile<ELFT>>(File);
   }
 
+  unsigned BytesDropped = 0;
+  void drop_back(uint64_t num) {
+    RawData = RawData.drop_back(num);
+    BytesDropped += num;
+  }
+
   ArrayRef<uint8_t> data() const {
     if (UncompressedSize >= 0)
       uncompress();
@@ -188,11 +194,22 @@ public:
   // the mmap'ed output buffer.
   template <class ELFT> void relocate(uint8_t *Buf, uint8_t *BufEnd);
   void relocateAlloc(uint8_t *Buf, uint8_t *BufEnd);
+  static uint64_t getRelocTargetVA(const InputFile *File, RelType Type, int64_t A,
+                                   uint64_t P, const Symbol &Sym, RelExpr Expr);
 
   // The native ELF reloc data type is not very convenient to handle.
   // So we convert ELF reloc records to our own records in Relocations.cpp.
   // This vector contains such "cooked" relocations.
   std::vector<Relocation> Relocations;
+
+  llvm::Optional<std::array<uint8_t, 4>> Filler;
+
+  // These are artificial jump relocations.
+  std::vector<JumpRelocation> JumpRelocations;
+
+  void addJumpRelocation(JumpRelocation J) {
+    JumpRelocations.push_back(J);
+  }
 
   // A function compiled with -fsplit-stack calling a function
   // compiled without -fsplit-stack needs its prologue adjusted. Find

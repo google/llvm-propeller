@@ -110,6 +110,7 @@ struct Configuration {
   llvm::StringRef Sysroot;
   llvm::StringRef ThinLTOCacheDir;
   llvm::StringRef ThinLTOIndexOnlyArg;
+  llvm::StringRef LTOBasicBlockSections;
   std::pair<llvm::StringRef, llvm::StringRef> ThinLTOObjectSuffixReplace;
   std::pair<llvm::StringRef, llvm::StringRef> ThinLTOPrefixReplace;
   std::string Rpath;
@@ -140,6 +141,7 @@ struct Configuration {
   bool CompressDebugSections;
   bool Cref;
   bool DefineCommon;
+  bool OptimizeBBJumps;
   bool Demangle = true;
   bool DependentLibraries;
   bool DisableVerify;

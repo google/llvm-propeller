@@ -622,8 +622,8 @@ static int64_t getTlsTpOffset(const Symbol &S) {
   }
 }
 
-static uint64_t getRelocTargetVA(const InputFile *File, RelType Type, int64_t A,
-                                 uint64_t P, const Symbol &Sym, RelExpr Expr) {
+uint64_t InputSectionBase::getRelocTargetVA(const InputFile *File,
+    RelType Type, int64_t A, uint64_t P, const Symbol &Sym, RelExpr Expr) {
   switch (Expr) {
   case R_ABS:
   case R_DTPREL:
@@ -824,6 +824,12 @@ void InputSection::relocateNonAlloc(uint8_t *Buf, ArrayRef<RelTy> Rels) {
     if (Expr == R_NONE)
       continue;
 
+    if (Expr == R_SIZE) {
+      Target->relocateOne(BufLoc, Type,
+                          SignExtend64<Bits>(Sym.getSize() + Addend));
+      continue;
+    }
+
     if (Expr != R_ABS && Expr != R_DTPREL) {
       std::string Msg = getLocation<ELFT>(Offset) +
                         ": has non-ABS relocation " + toString(Type) +
@@ -894,6 +900,8 @@ void InputSectionBase::relocateAlloc(uint8_t *Buf, uint8_t *BufEnd) {
   const unsigned Bits = Config->Wordsize * 8;
 
   for (const Relocation &Rel : Relocations) {
+    if (Rel.Expr == R_NONE)
+      continue;
     uint64_t Offset = Rel.Offset;
     if (auto *Sec = dyn_cast<InputSection>(this))
       Offset += Sec->OutSecOff;
@@ -953,6 +961,19 @@ void InputSectionBase::relocateAlloc(uint8_t *Buf, uint8_t *BufEnd) {
     default:
       Target->relocateOne(BufLoc, Type, TargetVA);
       break;
+    }
+  }
+
+  // Relocate JumpRelocations.  JumpRelocations are created when the opcode of
+  // a jmp insn must be modified to shrink the jmp insn or to flip the jmp
+  // insn.  This is primarily used to relax and optimize jumps created to use
+  // basic block sections.
+  if (auto *Sec = dyn_cast<InputSection>(this)) {
+    for (const JumpRelocation &JumpRel : JumpRelocations) {
+      uint64_t Offset = JumpRel.Offset;
+      Offset += Sec->OutSecOff;
+      uint8_t *BufLoc = Buf + Offset;
+      Target->relocateOneJumpRelocation(BufLoc, JumpRel.Original, JumpRel.Size);
     }
   }
 }

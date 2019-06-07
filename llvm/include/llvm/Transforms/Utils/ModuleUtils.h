@@ -106,7 +106,10 @@ void filterDeadComdatFunctions(
 /// If the module has no strong external symbols (such a module may still have a
 /// semantic effect if it performs global initialization), we cannot produce a
 /// unique identifier for this module, so we return the empty string.
-std::string getUniqueModuleId(Module *M);
+///
+/// If UseModuleId is true, we include the ModuleIdentifier string.  This is
+/// however not guaranteed to be unique.
+std::string getUniqueModuleId(Module *M, bool UseModuleId = false);
 
 } // End llvm namespace
 
