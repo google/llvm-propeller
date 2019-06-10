@@ -169,23 +169,6 @@ void ELFCfg::mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr,
   createEdge(From, To, EdgeType)->Weight += Cnt;
 }
 
-static StringRef BBSymbol(StringRef &N) {
-  StringRef::iterator P = (N.end() - 1), A = N.begin();
-  char C = '\0';
-  for (; P > A; --P) {
-    C = *P;
-    if (C == '.')
-      break;
-    if (C < '0' || C > '9')
-      return StringRef("");
-  }
-  if (C == '.' && P - A >= 4 /* must be like "xx.bb." */ && *(P - 1) == 'b' &&
-      *(P - 2) == 'b' && *(P - 3) == '.') {
-    return StringRef(N.data(), P - A - 3);
-  }
-  return StringRef("");
-}
-
 void ELFCfgBuilder::buildCfgs() {
   auto Symbols = View->ViewFile->symbols();
   map<StringRef, list<SymbolRef>> Groups;
@@ -210,17 +193,18 @@ void ELFCfgBuilder::buildCfgs() {
     }
   }
 
-  // Now we have a map of function names, group "funcname.bb.x".
+  // Now we have a map of function names, group "x.bb.funcname".
   for (const SymbolRef &Sym : Symbols) {
+    // All bb symbols are local, upon seeing the first global, exit.
     if ((Sym.getFlags() & SymbolRef::SF_Global) != 0)
       break;
     auto NameOrErr = Sym.getName();
     if (!NameOrErr)
       continue;
-    StringRef SymName(*NameOrErr);
-    StringRef BBSymBaseName = BBSymbol(SymName);
-    if (!BBSymBaseName.empty()) {
-      auto L = Groups.find(BBSymBaseName);
+    StringRef SName = *NameOrErr;
+    StringRef FName;
+    if (SymbolEntry::isBBSymbol(SName, &FName, nullptr)) {
+      auto L = Groups.find(FName);
       if (L != Groups.end()) {
         L->second.push_back(Sym);
       }

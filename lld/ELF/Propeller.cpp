@@ -32,9 +32,14 @@ namespace propeller {
 SymbolEntry *Propfile::findSymbol(StringRef SymName) {
   StringRef FuncName;
   StringRef BBIndex;
+  string BBNum;
   if (!SymbolEntry::isBBSymbol(SymName, &FuncName, &BBIndex)) {
     FuncName = SymName;
     BBIndex = "";
+  } else {
+    // When SymName is like "11111.bb.foo", set BBIndex to "5".
+    BBNum = SymbolEntry::convertBBIndexToBBNum(BBIndex);
+    BBIndex = StringRef(BBNum);
   }
   auto L1 = SymbolNameMap.find(FuncName);
   if (L1 != SymbolNameMap.end()) {
@@ -43,8 +48,7 @@ SymbolEntry *Propfile::findSymbol(StringRef SymName) {
       return L2->second;
     }
   }
-  fprintf(stderr, "Warning: failed to find symbol for :%s\n",
-          SymName.str().c_str());
+  warn(string("failed to find SymbolEntry for '") + SymName.str() + "'.");
   return nullptr;
 }
 
@@ -126,30 +130,17 @@ bool Propfile::readSymbols() {
     }
   } // End of iterating all symbols.
 
-  if (!BBSymbols.empty() && LineTag != 'S') {
-    for (auto &S : BBSymbols) {
-      uint64_t SOrdinal;
-      uint64_t FuncIndex;
-      uint64_t SSize;
-      StringRef BBIndex;
-      std::tie(SOrdinal, FuncIndex, BBIndex, SSize) = S;
-      auto ExistingI = SymbolOrdinalMap.find(FuncIndex);
-      assert(ExistingI != SymbolOrdinalMap.end());
-      createBasicBlockSymbol(SOrdinal, ExistingI->second.get(), BBIndex, SSize);
-    }
-    list<tuple<uint64_t, uint64_t, StringRef, uint64_t>> Tmp;
-    BBSymbols.swap(Tmp); // Empty and release BBSymbols.
+  for (auto &S : BBSymbols) {
+    uint64_t SOrdinal;
+    uint64_t FuncIndex;
+    uint64_t SSize;
+    StringRef BBIndex;
+    std::tie(SOrdinal, FuncIndex, BBIndex, SSize) = S;
+    auto ExistingI = SymbolOrdinalMap.find(FuncIndex);
+    assert(ExistingI != SymbolOrdinalMap.end());
+    createBasicBlockSymbol(SOrdinal, ExistingI->second.get(), BBIndex, SSize);
   }
 
-  // check
-  for (auto &P : SymbolOrdinalMap) {
-    auto *Sym = P.second.get();
-    if (!((Sym->BBTag && Sym->ContainingFunc->isFunction()) ||
-          (!Sym->BBTag && !Sym->ContainingFunc))) {
-      fprintf(stderr, "Check error.\n");
-      exit(1);
-    }
-  }
   return true;
 }
 
@@ -287,18 +278,34 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
     // Also note, Objects (CfgLI->second) are sorted in the way
     // they appear on the command line, which is the same as how
     // linker chooses the weak symbol definition.
-    string FQN = S->getFQN();
-    for (auto *Cfg : CfgLI->second) {
-      // Check Cfg does have name "SymName".
-      for (auto &N : Cfg->Nodes) {
-        if (N->ShName == FQN) {
-          return N.get();
+    if (!S->BBTag) {
+      for (auto *Cfg : CfgLI->second) {
+        // Check Cfg does have name "SymName".
+        for (auto &N : Cfg->Nodes) {
+          if (N->ShName == S->Name) {
+            return N.get();
+          }
+        }
+      }
+    } else {
+      uint32_t NumOnes;
+      if (S->Name.getAsInteger(10, NumOnes) == true || !NumOnes) {
+        warn("Internal error, BB name is invalid: '" + S->Name.str() + "'.");
+      } else {
+        for (auto *Cfg : CfgLI->second) {
+          // Check Cfg does have name "SymName".
+          for (auto &N : Cfg->Nodes) {
+            auto T = N->ShName.find_first_of('.');
+            if (T != string::npos && T == NumOnes) {
+              return N.get();
+            }
+          }
         }
       }
     }
   }
-  warn(string("No '") + S->getFQN() +
-       "' found in Cfgs, ordinal: " + std::to_string(SymbolOrdinal) + ".");
+  warn(string("No cfg found for symbol ordinal: ") +
+       std::to_string(SymbolOrdinal) + ".");
   return nullptr;
 }
 

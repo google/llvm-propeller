@@ -31,7 +31,7 @@ void CCubeAlgorithm::init(CfgContainerTy &CfgContainer) {
               });
   }
 }
-  
+
 CCubeAlgorithm::Cluster::Cluster(const ELFCfg *Cfg)
     : Cfgs(1, Cfg) {}
 

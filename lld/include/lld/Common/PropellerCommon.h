@@ -15,6 +15,10 @@ using std::string;
 namespace lld {
 namespace propeller {
 
+// This data structure is shared between lld propeller component and
+// create_llvm_prof.
+// The basic block symbols are encoded in this way:
+//    index.'bb'.function_name
 struct SymbolEntry {
 
   using AliasesTy = SmallVector<StringRef, 3>;
@@ -26,20 +30,17 @@ struct SymbolEntry {
   ~SymbolEntry() {}
 
   uint64_t Ordinal;
-  StringRef Name;  // If this is a bb, Name is only the BBIndex part.
+  // For a function symbol, it's the full name. For a bb symbol this is only the
+  // bbindex part.
+  StringRef Name;
   AliasesTy Aliases;
   uint64_t Addr;
   uint64_t Size;
-  uint8_t Type;
-  bool BBTag;
+  uint8_t Type;    // Of type: llvm::objet::SymbolRef::Type.
+  bool BBTag;      // Whether this is a basic block section symbol.
+  // For BBTag symbols, this is the containing fuction pointer, for
+  // a normal function symbol, this points to itself.
   SymbolEntry *ContainingFunc;
-
-  // Given a basicblock symbol (e.g. "foo.bb.5"), return bb index "5".
-  // Need to be changed if we use another bb label schema.
-  StringRef getBBIndex() const {
-    assert(BBTag);
-    return Name.rsplit('.').second;
-  }
 
   bool containsAddress(uint64_t A) const {
     return Addr <= A && A < Addr + Size;
@@ -62,40 +63,36 @@ struct SymbolEntry {
   bool isFunction() const {
     return this->Type == llvm::object::SymbolRef::ST_Function;
   }
-
-  // This might be changed if we use a different bb name scheme.
+  
   bool isFunctionForBBName(StringRef BBName) {
-    if (BBName.startswith(Name))
+    auto A = BBName.split(".bb.");
+    if (A.second == Name)
       return true;
-    for (auto N : Aliases) {
-      if (BBName.startswith(N))
+    for (auto N : Aliases)
+      if (A.second == N)
         return true;
-    }
     return false;
   }
 
-  string getFQN() const {
-    if (BBTag) {
-      return ContainingFunc->Name.str() + ".bb." + Name.str();
-    }
-    return Name.str();
+  // "1111" -> "4".
+  static string convertBBIndexToBBNum(const StringRef &BBIndex) {
+    return std::to_string(BBIndex.size());
   }
 
   static bool isBBSymbol(const StringRef &SymName,
                          StringRef *FuncName = nullptr,
                          StringRef *BBIndex = nullptr) {
+    if (SymName.empty())
+      return false;
     auto R = SymName.split(".bb.");
     if (R.second.empty())
       return false;
-    for (const char *I = R.second.data(),
-                    *J = R.second.data() + R.second.size();
-         I != J; ++I)
-      if (*I < '0' || *I > '9')
-        return false;
+    for (auto *I = R.first.bytes_begin(), *J = R.first.bytes_end(); I != J; ++I)
+      if (*I != '1') return false;
     if (FuncName)
-      *FuncName = R.first;
+      *FuncName = R.second;
     if (BBIndex)
-      *BBIndex = R.second;
+      *BBIndex = R.first;
     return true;
   }
 
