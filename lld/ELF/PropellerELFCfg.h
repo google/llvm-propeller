@@ -93,28 +93,6 @@ private:
 
   friend class ELFCfg;
   friend class ELFCfgBuilder;
-  friend class ELFCfgReader;
-};
-
-class ELFCfgEdgeBuilder {
-public:
-  std::string SrcShName, SinkShName;
-  uint64_t Weight;
-  uint16_t Type;
-
-  ELFCfgEdgeBuilder(std::string _SrcShName, std::string _SinkShName,
-                    uint64_t _Weight, uint16_t _Type)
-      : SrcShName(_SrcShName), SinkShName(_SinkShName), Weight(_Weight),
-        Type(_Type) {}
-};
-
-class ELFCfgReader {
- public:
-  StringRef CfgFilePath;
-  std::vector<unique_ptr<ELFCfg>> Cfgs;
-  ELFCfgReader(StringRef& _CfgFilePath): CfgFilePath(_CfgFilePath) {}
-
-  void readCfgs();
 };
 
 class ELFCfg {
@@ -137,7 +115,6 @@ public:
                  bool isCall = false, bool isReturn = false);
   void mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr,
                   uint64_t Cnt = 1, bool isCall = false, bool isReturn = false);
-  void dumpToOS(std::ostream&) const;
 
   ELFCfgNode *getEntryNode() const {
     assert(!Nodes.empty());
@@ -185,7 +162,6 @@ private:
   }
 
   friend class ELFCfgBuilder;
-  friend class ELFCfgReader;
 };
 
 

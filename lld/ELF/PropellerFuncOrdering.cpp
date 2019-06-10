@@ -5,7 +5,6 @@
 #include "PropellerELFCfg.h"
 
 #include <algorithm>
-#include <iostream>
 #include <map>
 
 using lld::elf::Config;
@@ -15,8 +14,7 @@ namespace lld {
 namespace propeller {
 
 template <class CfgContainerTy>
-CCubeAlgorithm<CfgContainerTy>::CCubeAlgorithm(CfgContainerTy &P)
-    : CfgContainer(P) {
+void CCubeAlgorithm::init(CfgContainerTy &CfgContainer) {
   CfgContainer.forEachCfgRef([this](ELFCfg &Cfg) {
     if (Cfg.isHot())
       HotCfgs.push_back(&Cfg);
@@ -24,7 +22,6 @@ CCubeAlgorithm<CfgContainerTy>::CCubeAlgorithm(CfgContainerTy &P)
       ColdCfgs.push_back(&Cfg);
   });
 
-  fprintf(stderr, "Reordering %zu hot functions.\n", HotCfgs.size());
   vector<const ELFCfg *> AllCfgs[2] = {HotCfgs, ColdCfgs};
   for (auto &CfgVector : AllCfgs) {
     std::sort(CfgVector.begin(), CfgVector.end(),
@@ -34,18 +31,15 @@ CCubeAlgorithm<CfgContainerTy>::CCubeAlgorithm(CfgContainerTy &P)
               });
   }
 }
-
-template<class CfgContainerTy>
-CCubeAlgorithm<CfgContainerTy>::Cluster::Cluster(const ELFCfg *Cfg)
+  
+CCubeAlgorithm::Cluster::Cluster(const ELFCfg *Cfg)
     : Cfgs(1, Cfg) {}
 
-template<class CfgContainerTy>
-CCubeAlgorithm<CfgContainerTy>::Cluster::~Cluster() {}
+CCubeAlgorithm::Cluster::~Cluster() {}
 
-template <class CfgContainerTy>
-const ELFCfg *CCubeAlgorithm<CfgContainerTy>::getMostLikelyPredecessor(
+const ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
     Cluster *Cluster, const ELFCfg *Cfg,
-    map<const ELFCfg *, CCubeAlgorithm<CfgContainerTy>::Cluster *>
+    map<const ELFCfg *, CCubeAlgorithm::Cluster *>
         &ClusterMap) {
   ELFCfgNode *Entry = Cfg->getEntryNode();
   if (!Entry)
@@ -73,8 +67,7 @@ const ELFCfg *CCubeAlgorithm<CfgContainerTy>::getMostLikelyPredecessor(
   return E ? E->Src->Cfg : nullptr;
 }
 
-template<class CfgContainerTy>
-void CCubeAlgorithm<CfgContainerTy>::mergeClusters() {
+void CCubeAlgorithm::mergeClusters() {
   // Signed key is used here, because negated density are used as
   // sorting keys.
   map<const ELFCfg *, double> CfgWeightMap;
@@ -133,8 +126,7 @@ void CCubeAlgorithm<CfgContainerTy>::mergeClusters() {
   }
 }
 
-template <class CfgContainerTy>
-void CCubeAlgorithm<CfgContainerTy>::sortClusters() {
+void CCubeAlgorithm::sortClusters() {
   Clusters.sort([](unique_ptr<Cluster> &C1, unique_ptr<Cluster> &C2) {
     if (C1->getDensity() == C2->getDensity())
       return C1->Cfgs.front()->getEntryNode()->MappedAddr <
@@ -143,8 +135,7 @@ void CCubeAlgorithm<CfgContainerTy>::sortClusters() {
   });
 }
 
-template<class CfgContainerTy>
-list<const ELFCfg *> CCubeAlgorithm<CfgContainerTy>::doOrder() {
+list<const ELFCfg *> CCubeAlgorithm::doOrder() {
   mergeClusters();
   sortClusters();
   list<const ELFCfg *> L;
@@ -156,7 +147,7 @@ list<const ELFCfg *> CCubeAlgorithm<CfgContainerTy>::doOrder() {
   return L;
 }
 
-template class CCubeAlgorithm<lld::propeller::Propeller>;
- 
+template void CCubeAlgorithm::init<Propeller>(Propeller &);
+
 }
 }

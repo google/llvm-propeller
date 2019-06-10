@@ -373,7 +373,9 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
 
   list<const ELFCfg *> CfgOrder;
   if (Config->ReorderFunctions) {
-    CfgOrder = CCubeAlgorithm<Propeller>(*this).doOrder();
+    CCubeAlgorithm Algo;
+    Algo.init(*this);
+    CfgOrder = Algo.doOrder();
   } else {
     std::vector<ELFCfg *> OrderResult;
     forEachCfgRef([&OrderResult](ELFCfg &Cfg) { OrderResult.push_back(&Cfg); });

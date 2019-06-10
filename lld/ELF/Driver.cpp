@@ -873,7 +873,6 @@ static void readConfigs(opt::InputArgList &Args) {
   Config->SortSection = getSortSection(Args);
   Config->SplitStackAdjustSize = args::getInteger(Args, OPT_split_stack_adjust_size, 16384);
   Config->Strip = getStrip(Args);
-  Config->CfgDump = Args.getLastArgValue(OPT_cfgdump);
   Config->Sysroot = Args.getLastArgValue(OPT_sysroot);
   Config->Target1Rel = Args.hasFlag(OPT_target1_rel, OPT_target1_abs, false);
   Config->Target2 = getTarget2(Args);

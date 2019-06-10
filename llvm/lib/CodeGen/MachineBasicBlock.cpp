@@ -49,48 +49,32 @@ MachineBasicBlock::MachineBasicBlock(MachineFunction &MF, const BasicBlock *B)
 MachineBasicBlock::~MachineBasicBlock() {
 }
 
-#if 0
-static std::string GetUnary(unsigned num) {
-  std::function<std::string(unsigned)> Unary = [&Unary](unsigned num) {
-      return ((num == 0) ? "" : "1" + Unary(num - 1));
-    };
-  return Unary(num);
-}
-#endif
-
 /// Return the MCSymbol for this basic block.
 MCSymbol *MachineBasicBlock::getSymbol() const {
-  // Hack to keep str tab shorter:
-  // static std::string bb_prefix = "a";
   if (!CachedMCSymbol) {
     const MachineFunction *MF = getParent();
     MCContext &Ctx = MF->getContext();
+    auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
 
-    // With Basic Block Sections, use the function name as the prefix for the
-    // label corresponding to the basic block.  This makes it debugger and
-    // profiler friendly if the basic block is not going to be placed along
-    // with the rest of the function.
     bool BasicBlockSections = MF->getBasicBlockSections() ||
                               MF->getBasicBlockLabels();
     auto Delimiter = BasicBlockSections ? "." : "_";
-    auto Prefix = !BasicBlockSections ?
-        Ctx.getAsmInfo()->getPrivateLabelPrefix() :
-        MF->getName();
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
 
+    // With Basic Block Sections, we emit a symbol for every basic block. To
+    // keep the size of strtab small, we choose a unary encoding which can
+    // compress the symbol names significantly.  The basic blocks for function
+    // foo are named 1.bb.foo, 11.bb.foo, and so on.
     if (BasicBlockSections) {
-      // Emit long label names only with -funique-bbsection-names
-      //if (MF->getTarget().getUniqueBBSectionNames()) {
-        CachedMCSymbol = Ctx.getOrCreateSymbol(
-            Twine(Prefix) + Twine(Delimiter) + "bb" + Twine(Delimiter) +
-            Twine(getNumber()));
-      // } else {
-      //  CachedMCSymbol = Ctx.getOrCreateSymbol(
-            // Twine(MF->getFunctionNumber()) + Twine(Delimiter) +
-            //Twine(getNumber()));
-      //      GetUnary(getNumber()) + Twine(Delimiter) + Twine(Prefix));
-      // }
- 
+      std::function<std::string(unsigned)> Unary = [&Unary](unsigned num) {
+        if (num == 0) return std::string("");
+        if (num == 1) return std::string("1");
+        std::string s = Unary(num / 2);
+        return s + s + Unary(num % 2);
+      };
+      CachedMCSymbol = Ctx.getOrCreateSymbol(Unary(getNumber()) +
+                           Twine(Delimiter) + "bb" + Twine(Delimiter) +
+                           Twine(MF->getName()));
     } else {
       CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
                            Twine(MF->getFunctionNumber()) + Twine(Delimiter) +

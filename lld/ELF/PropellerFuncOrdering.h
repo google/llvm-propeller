@@ -1,12 +1,9 @@
 #ifndef LLD_ELF_PROPELLER_FUNC_ORDERING_H
 #define LLD_ELF_PROPELLER_FUNC_ORDERING_H
 
-#include <iostream>
 #include <list>
 #include <map>
 #include <memory>
-#include <ostream>
-#include <utility>
 #include <vector>
 
 using std::list;
@@ -19,7 +16,6 @@ namespace propeller {
 
 class ELFCfg;
 
-template <class CfgContainerTy>
 class CCubeAlgorithm {
 public:
   class Cluster {
@@ -46,7 +42,11 @@ public:
   };
 
 public:
-  CCubeAlgorithm(CfgContainerTy &P);
+  CCubeAlgorithm() {}
+  
+  template <class CfgContainerTy>
+  void init(CfgContainerTy &CfgContainer);
+
   list<const ELFCfg *> doOrder();
 
 private:
@@ -57,7 +57,6 @@ private:
   void mergeClusters();
   void sortClusters();
 
-  CfgContainerTy &CfgContainer;
   vector<const ELFCfg*> HotCfgs, ColdCfgs;
   list<unique_ptr<Cluster>> Clusters;
 };
