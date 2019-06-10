@@ -74,11 +74,6 @@ struct SymbolEntry {
     return false;
   }
 
-  // "1111" -> "4".
-  static string convertBBIndexToBBNum(const StringRef &BBIndex) {
-    return std::to_string(BBIndex.size());
-  }
-
   static bool isBBSymbol(const StringRef &SymName,
                          StringRef *FuncName = nullptr,
                          StringRef *BBIndex = nullptr) {

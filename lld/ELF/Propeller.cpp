@@ -32,14 +32,15 @@ namespace propeller {
 SymbolEntry *Propfile::findSymbol(StringRef SymName) {
   StringRef FuncName;
   StringRef BBIndex;
-  string BBNum;
+  string TmpStr;
   if (!SymbolEntry::isBBSymbol(SymName, &FuncName, &BBIndex)) {
     FuncName = SymName;
     BBIndex = "";
   } else {
     // When SymName is like "11111.bb.foo", set BBIndex to "5".
-    BBNum = SymbolEntry::convertBBIndexToBBNum(BBIndex);
-    BBIndex = StringRef(BBNum);
+    // "1111" -> "4".
+    TmpStr = std::to_string(BBIndex.size());
+    BBIndex = StringRef(TmpStr);
   }
   auto L1 = SymbolNameMap.find(FuncName);
   if (L1 != SymbolNameMap.end()) {
