@@ -89,6 +89,9 @@ public:
                              std::forward_as_tuple(Ordinal),
                              std::forward_as_tuple(Sym));
     SymbolNameMap[Function->Name][BBIndex] = Sym;
+    for (auto &A: Function->Aliases) {
+      SymbolNameMap[A][BBIndex] = Sym;
+    }
     return Sym;
   }
 
