@@ -74,6 +74,14 @@ struct SymbolEntry {
     return false;
   }
 
+  static std::string toCompactBBName(StringRef UnifiedBBName) {
+    StringRef FName, BName;
+    if (isBBSymbol(UnifiedBBName, &FName, &BName)) {
+      return FName.str() + ".bb." + std::to_string(BName.size());
+    }
+    return "";
+  }
+
   static bool isBBSymbol(const StringRef &SymName,
                          StringRef *FuncName = nullptr,
                          StringRef *BBIndex = nullptr) {

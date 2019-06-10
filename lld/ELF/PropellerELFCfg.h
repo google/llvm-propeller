@@ -179,10 +179,11 @@ public:
 
 protected:
   void buildCfg(ELFCfg &Cfg, const SymbolRef &CfgSym,
-                map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap);
+                map<uint64_t, unique_ptr<ELFCfgNode>> &NodeMap);
 
-  void calculateFallthroughEdges(
-      ELFCfg &Cfg, map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap);
+  void
+  calculateFallthroughEdges(ELFCfg &Cfg,
+                            map<uint64_t, unique_ptr<ELFCfgNode>> &NodeMap);
 
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
@@ -190,7 +191,7 @@ protected:
       map<uint64_t, section_iterator> &RelocationSectionMap);
   // Build a map from section "Idx" -> Node representing "Idx". Only
   // used during building phase.
-  void buildShndxNodeMap(map<uint64_t, list<unique_ptr<ELFCfgNode>>> &NodeMap,
+  void buildShndxNodeMap(map<uint64_t, unique_ptr<ELFCfgNode>> &NodeMap,
                          map<uint64_t, ELFCfgNode *> &ShndxNodeMap);
 };
 

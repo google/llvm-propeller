@@ -213,7 +213,7 @@ void ELFCfgBuilder::buildCfgs() {
 
   for (auto &I : Groups) {
     assert(I.second.size() >= 1);
-    map<uint64_t, list<unique_ptr<ELFCfgNode>>> TmpNodeMap;
+    map<uint64_t, unique_ptr<ELFCfgNode>> TmpNodeMap;
     SymbolRef CfgSym = *(I.second.begin());
     StringRef CfgName = I.first;
     unique_ptr<ELFCfg> Cfg(new ELFCfg(View, CfgName, 0));
@@ -231,8 +231,14 @@ void ELFCfgBuilder::buildCfgs() {
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
         auto *SE = Prop->Propf->findSymbol(SymName);
         if (SE) {
-          TmpNodeMap[SE->Ordinal].emplace_back(
-              new ELFCfgNode(SymShndx, SymName, SymSize, 0l, Cfg.get()));
+          if (TmpNodeMap.find(SE->Ordinal) != TmpNodeMap.end()) {
+            error("Internal error checking Cfg map.");
+            return;
+          }
+          TmpNodeMap.emplace(
+              std::piecewise_construct, std::forward_as_tuple(SE->Ordinal),
+              std::forward_as_tuple(new ELFCfgNode(SymShndx, SymName, SymSize,
+                                                   SE->Ordinal, Cfg.get())));
           continue;
         }
         // Otherwise fallthrough to ditch Cfg & TmpNodeMap.
@@ -265,20 +271,19 @@ void ELFCfgBuilder::buildRelocationSectionMap(
 }
 
 void ELFCfgBuilder::buildShndxNodeMap(
-    map<uint64_t, list<unique_ptr<ELFCfgNode>>> &TmpNodeMap,
+    map<uint64_t, unique_ptr<ELFCfgNode>> &TmpNodeMap,
     map<uint64_t, ELFCfgNode *> &ShndxNodeMap) {
   for (auto &NodeL : TmpNodeMap) {
-    for (auto &Node : NodeL.second) {
-      auto InsertResult = ShndxNodeMap.emplace(Node->Shndx, Node.get());
-      (void)(InsertResult);
-      assert(InsertResult.second);
-    }
+    auto &Node = NodeL.second;
+    auto InsertResult = ShndxNodeMap.emplace(Node->Shndx, Node.get());
+    (void)(InsertResult);
+    assert(InsertResult.second);
   }
 }
 
 void ELFCfgBuilder::buildCfg(
     ELFCfg &Cfg, const SymbolRef &CfgSym,
-    map<uint64_t, list<unique_ptr<ELFCfgNode>>> &TmpNodeMap) {
+    map<uint64_t, unique_ptr<ELFCfgNode>> &TmpNodeMap) {
   map<uint64_t, ELFCfgNode *> ShndxNodeMap;
   buildShndxNodeMap(TmpNodeMap, ShndxNodeMap);
 
@@ -287,36 +292,34 @@ void ELFCfgBuilder::buildCfg(
 
   list<ELFCfgEdge *> RSCEdges;
   for (auto &NPair : TmpNodeMap) {
-    for (auto &N : NPair.second) {
-      ELFCfgNode *SrcNode = N.get();
-      auto RelaSecRefI = RelocationSectionMap.find(SrcNode->Shndx);
-      if (RelaSecRefI == RelocationSectionMap.end())
+    ELFCfgNode *SrcNode = NPair.second.get();
+    auto RelaSecRefI = RelocationSectionMap.find(SrcNode->Shndx);
+    if (RelaSecRefI == RelocationSectionMap.end())
+      continue;
+
+    for (const RelocationRef &Rela : RelaSecRefI->second->relocations()) {
+      SymbolRef RSym = *(Rela.getSymbol());
+      bool IsRSC = (CfgSym == RSym);
+
+      // All bb section symbols are local symbols.
+      if (!IsRSC &&
+          ((RSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
         continue;
 
-      for (const RelocationRef &Rela : RelaSecRefI->second->relocations()) {
-        SymbolRef RSym = *(Rela.getSymbol());
-        bool IsRSC = (CfgSym == RSym);
-
-        // All bb section symbols are local symbols.
-        if (!IsRSC &&
-            ((RSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
-          continue;
-
-        auto SectionIE = RSym.getSection();
-        if (!SectionIE)
-          continue;
-        uint64_t SymShndx((*SectionIE)->getIndex());
-        ELFCfgNode *TargetNode{nullptr};
-        auto Result = ShndxNodeMap.find(SymShndx);
-        if (Result != ShndxNodeMap.end()) {
-          TargetNode = Result->second;
-          if (TargetNode) {
-            ELFCfgEdge *E = Cfg.createEdge(SrcNode, TargetNode,
-                                           IsRSC ? ELFCfgEdge::INTRA_RSC
-                                                 : ELFCfgEdge::INTRA_FUNC);
-            if (IsRSC)
-              RSCEdges.push_back(E);
-          }
+      auto SectionIE = RSym.getSection();
+      if (!SectionIE)
+        continue;
+      uint64_t SymShndx((*SectionIE)->getIndex());
+      ELFCfgNode *TargetNode{nullptr};
+      auto Result = ShndxNodeMap.find(SymShndx);
+      if (Result != ShndxNodeMap.end()) {
+        TargetNode = Result->second;
+        if (TargetNode) {
+          ELFCfgEdge *E = Cfg.createEdge(SrcNode, TargetNode,
+                                         IsRSC ? ELFCfgEdge::INTRA_RSC
+                                               : ELFCfgEdge::INTRA_FUNC);
+          if (IsRSC)
+            RSCEdges.push_back(E);
         }
       }
     }
@@ -339,19 +342,25 @@ void ELFCfgBuilder::buildCfg(
   //    bb5:                |
   //        ...             |
   //        ret   ----------+
-
   for (auto *REdge : RSCEdges) {
     for (auto &NPair : TmpNodeMap) {
-      for (auto &N : NPair.second) {
-        if (N->Outs.size() == 0 ||
-            (N->Outs.size() == 1 &&
-             (*N->Outs.begin())->Type == ELFCfgEdge::INTRA_RSC)) {
-          Cfg.createEdge(N.get(), REdge->Src, ELFCfgEdge::INTRA_RSR);
-        }
+      auto &N = NPair.second;
+      if (N->Outs.size() == 0 ||
+          (N->Outs.size() == 1 &&
+           (*N->Outs.begin())->Type == ELFCfgEdge::INTRA_RSC)) {
+        // Now "N" is the exit node.
+        Cfg.createEdge(N.get(), REdge->Src, ELFCfgEdge::INTRA_RSR);
       }
     }
   }
   calculateFallthroughEdges(Cfg, TmpNodeMap);
+
+  // Transfer nodes ownership to Cfg and destroy TmpNodeMap.
+  for (auto &Pair : TmpNodeMap) {
+    Cfg.Nodes.emplace_back(std::move(Pair.second));
+    Pair.second.reset(nullptr);
+  }
+  TmpNodeMap.clear();
 
   // Calculate Cfg Size to be the sum of all its bb sections.
   Cfg.Size = 0;
@@ -363,7 +372,7 @@ void ELFCfgBuilder::buildCfg(
 // Calculate fallthroughs.  Edge P->Q is fallthrough if P & Q are
 // adjacent, and there is a NORMAL edge from P->Q.
 void ELFCfgBuilder::calculateFallthroughEdges(
-    ELFCfg &Cfg, map<uint64_t, list<unique_ptr<ELFCfgNode>>> &TmpNodeMap) {
+    ELFCfg &Cfg, map<uint64_t, unique_ptr<ELFCfgNode>> &TmpNodeMap) {
   /*
     TmpNodeMap groups nodes according to their address:
       addr1: [Node1]
@@ -395,65 +404,10 @@ void ELFCfgBuilder::calculateFallthroughEdges(
     return false;
   };
 
-  struct CompareNodesWithSameAddrGroup {
-    bool operator()(const unique_ptr<ELFCfgNode> &P1,
-                    const unique_ptr<ELFCfgNode> &P2) {
-      if (P1->ShSize == 0)
-        return true;
-      for (auto *E : P1->Outs) {
-        if (E->Type == ELFCfgEdge::INTRA_FUNC && E->Sink == P2.get())
-          return true;
-      }
-      return false;
-    }
-  };
-
-  // Op. A.
-  for (auto &Pair : TmpNodeMap) {
-    auto &NodeL = Pair.second;
-    if (NodeL.size() > 1) {
-      NodeL.sort(CompareNodesWithSameAddrGroup());
-      for (auto P = NodeL.begin(), Q = std::next(P), E = NodeL.end(); Q != E;
-           ++P, ++Q) {
-        SetupFallthrough((*P).get(), (*Q).get());
-      }
-    }
-  }
-
-  // Op. B.
   for (auto P = TmpNodeMap.begin(), Q = std::next(P), E = TmpNodeMap.end();
        Q != E; ++P, ++Q) {
-    SetupFallthrough(P->second.rbegin()->get(), Q->second.begin()->get());
+    SetupFallthrough(P->second.get(), Q->second.get());
   }
-
-  // Transfer nodes ownership to Cfg and destroy TmpNodeMap.
-  for (auto &Pair : TmpNodeMap) {
-    for (auto &Node : Pair.second) {
-      Cfg.Nodes.emplace_back(std::move(Node));
-      Node.reset(nullptr);
-    }
-    Pair.second.clear();
-  }
-  TmpNodeMap.clear();
-
-  // (*) Rare case: we have BBs with same address mapping, which is
-  // possible, but very rare.
-
-  // One example that 2 BB symbols have same address,
-  //   00000000018ed2f0 _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35
-  //   00000000018ed2f0 _ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4
-
-  // In -fbasicblock-section=all mode:
-  // Disassembly of section .text.special_basic_block:
-  // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.4>:
-  //    0:   e9 00 00 00 00          jmpq   5 <.L.str.2+0x2>
-
-  // Disassembly of section .text:
-  // 0000000000000000 <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35>:
-  //    0:   45 31 ed                xor    %r13d,%r13d
-  //    3:   4d 85 f6                test   %r14,%r14
-  //    6:   0f 84 00 00 00 00       je     c <_ZN4llvm12InstCombiner16foldSelectIntoOpERNS_10SelectInstEPNS_5ValueES4_.bb.35+0xc>
-  //    c:   e9 00 00 00 00          jmpq   11 <.L.str.4+0x2>
 }
 
 ELFView *

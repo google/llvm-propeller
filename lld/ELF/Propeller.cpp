@@ -49,7 +49,8 @@ SymbolEntry *Propfile::findSymbol(StringRef SymName) {
       return L2->second;
     }
   }
-  warn(string("failed to find SymbolEntry for '") + SymName.str() + "'.");
+  warn(string("failed to find SymbolEntry for '") +
+       SymbolEntry::toCompactBBName(SymName) + "'.");
   return nullptr;
 }
 
@@ -64,7 +65,8 @@ bool Propfile::readSymbols() {
       continue;
     if (LineBuf[0] == '#')
       continue;
-    if (LineBuf[0] == 'S' || LineBuf[0] == 'B' || LineBuf[0] == 'F') {
+    if (LineBuf[0] == 'B' || LineBuf[0] == 'F') break; // Done symbol section.
+    if (LineBuf[0] == 'S') {
       LineTag = LineBuf[0];
       continue;
     }
@@ -72,8 +74,6 @@ bool Propfile::readSymbols() {
       LineBuf[--R] = '\0'; // drop '\n' character at the end;
     }
     StringRef L(LineBuf); // LineBuf is null-terminated.
-    if (LineTag != '\0' && LineTag != 'S')
-      break;
 
     uint64_t SOrdinal;
     uint64_t SSize;
@@ -141,7 +141,6 @@ bool Propfile::readSymbols() {
     assert(ExistingI != SymbolOrdinalMap.end());
     createBasicBlockSymbol(SOrdinal, ExistingI->second.get(), BBIndex, SSize);
   }
-
   return true;
 }
 
@@ -216,13 +215,9 @@ bool Propfile::processProfile() {
       // LineTag == 'F'
       if (FromN->Cfg == ToN->Cfg) {
         if (!FromN->Cfg->markPath(FromN, ToN, Cnt)) {
-          fprintf(stderr, "Waring: failed to mark %lu -> %lu (%s -> %s)\n",
-                  From, To, FromN->ShName.str().c_str(),
-                  ToN->ShName.str().c_str());
-        } else {
-          fprintf(stderr, "Done marking: %lu -> %lu (%s -> %s)\n",
-                  From, To, FromN->ShName.str().c_str(),
-                  ToN->ShName.str().c_str());
+          warn("Waring: failed to mark '" + 
+                  SymbolEntry::toCompactBBName(FromN->ShName) + "' -> '" + 
+                  SymbolEntry::toCompactBBName(ToN->ShName) +"'.");
         }
       }
     }
