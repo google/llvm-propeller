@@ -65,7 +65,10 @@ bool Propfile::readSymbols() {
       continue;
     if (LineBuf[0] == '#')
       continue;
-    if (LineBuf[0] == 'B' || LineBuf[0] == 'F') break; // Done symbol section.
+    if (LineBuf[0] == 'B' || LineBuf[0] == 'F') {
+      LineTag = LineBuf[0];
+      break; // Done symbol section.
+    }
     if (LineBuf[0] == 'S') {
       LineTag = LineBuf[0];
       continue;
@@ -176,6 +179,8 @@ static bool parseBranchOrFallthroughLine(StringRef L, uint64_t *From,
 
 bool Propfile::processProfile() {
   ssize_t R;
+  uint64_t BCnt = 0;
+  uint64_t FCnt = 0;
   while ((R = getline(&LineBuf, &LineSize, PStream)) != -1) {
     ++LineNo;
     if (R == 0)
@@ -190,7 +195,6 @@ bool Propfile::processProfile() {
     if (LineBuf[R - 1] == '\n') {
       LineBuf[--R] = '\0'; // drop '\n' character at the end;
     }
-
     StringRef L(LineBuf); // LineBuf is null-terminated.
     uint64_t From, To, Cnt;
     char Tag;
@@ -206,12 +210,14 @@ bool Propfile::processProfile() {
     }
 
     if (LineTag == 'B') {
+      ++BCnt;
       if (FromN->Cfg == ToN->Cfg) {
         FromN->Cfg->mapBranch(FromN, ToN, Cnt, Tag == 'C', Tag == 'R');
       } else {
         FromN->Cfg->mapCallOut(FromN, ToN, 0, Cnt, Tag == 'C', Tag == 'R');
       }
     } else {
+      ++FCnt;
       // LineTag == 'F'
       if (FromN->Cfg == ToN->Cfg) {
         if (!FromN->Cfg->markPath(FromN, ToN, Cnt)) {
@@ -221,6 +227,13 @@ bool Propfile::processProfile() {
         }
       }
     }
+  }
+
+  if (!BCnt) {
+    warn("Warning: 0 branch info processed.");
+  }
+  if (!FCnt) {
+    warn("Warning: 0 fallthrough info processed.");
   }
   return true;
 }
@@ -328,6 +341,7 @@ void Propeller::calculateNodeFreqs() {
       Node.Freq =
           std::max({sumEdgeWeights(Node.Outs), sumEdgeWeights(Node.Ins),
                     sumEdgeWeights(Node.CallIns), MaxCallOut});
+
       Hot |= (Node.Freq != 0);
     });
     if (Hot && Cfg->getEntryNode()->Freq == 0)
@@ -374,23 +388,18 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
 vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
-  list<const ELFCfg *> CfgOrder;
-  if (Config->PropellerReorderFuncs) {
+  list<ELFCfg *> CfgOrder;
+  if (Config->ReorderFunctions) {
     CCubeAlgorithm Algo;
     Algo.init(*this);
     CfgOrder = Algo.doOrder();
   } else {
-    std::vector<ELFCfg *> OrderResult;
-    forEachCfgRef([&OrderResult](ELFCfg &Cfg) { OrderResult.push_back(&Cfg); });
-
-    std::sort(OrderResult.begin(), OrderResult.end(),
-              [](const ELFCfg *A, const ELFCfg *B) {
-                const auto &AEntry = A->getEntryNode();
-                const auto &BEntry = B->getEntryNode();
-                return AEntry->MappedAddr < BEntry->MappedAddr;
-              });
-    std::copy(OrderResult.begin(), OrderResult.end(),
-              std::back_inserter(CfgOrder));
+    forEachCfgRef([&CfgOrder](ELFCfg &Cfg) { CfgOrder.push_back(&Cfg); });
+    CfgOrder.sort([](const ELFCfg *A, const ELFCfg *B) {
+      const auto *AEntry = A->getEntryNode();
+      const auto *BEntry = B->getEntryNode();
+      return AEntry->MappedAddr < BEntry->MappedAddr;
+    });
   }
 
   list<StringRef> SymbolList(1, "Hot");
@@ -402,15 +411,52 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
           SymbolList, HotPlaceHolder,
           Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
     } else {
-      Cfg->forEachNodeRefConst([&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
+      Cfg->forEachNodeRef([&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
         SymbolList.insert(ColdPlaceHolder, N.ShName);
       });
     }
   }
+
+  calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
+
+  // {
+  //   auto writeOut = [](const char *fname, list<StringRef> &Names) {
+  //     FILE *fp = fopen(fname, "w");
+  //     if (!fp) {
+  //       fprintf(stderr, "failed to open: %s\n", fname);
+  //     }
+  //     for (auto &N : Names) {
+  //       fprintf(fp, "%s\n", N.str().c_str());
+  //     }
+  //     fclose(fp);
+  //   };
+
+  //   writeOut("symbol-ordering", SymbolList);
+  //   writeOut("propeller-legacy", PropLeg.BBSymbolsToKeep);
+  // }
+
   SymbolList.erase(HotPlaceHolder);
   return vector<StringRef>(
       std::move_iterator<list<StringRef>::iterator>(SymbolList.begin()),
       std::move_iterator<list<StringRef>::iterator>(SymbolList.end()));
+}
+
+void Propeller::calculatePropellerLegacy(
+    list<StringRef> &SymList, list<StringRef>::iterator HotPlaceHolder,
+    list<StringRef>::iterator ColdPlaceHolder) {
+  if (HotPlaceHolder == ColdPlaceHolder) return ;
+  StringRef LastFuncName = "";
+  for (auto I = std::next(HotPlaceHolder), J = ColdPlaceHolder; I != J; ++I) {
+    StringRef SName = *I;
+    StringRef FName;
+    if (SymbolEntry::isBBSymbol(SName, &FName)) {
+      if (LastFuncName.empty() || LastFuncName != FName) {
+        PropLeg.BBSymbolsToKeep.emplace_back(SName);
+        LastFuncName = FName;
+      }
+    }
+  }
+  return;
 }
 
 void Propeller::ELFViewDeleter::operator()(ELFView *V) {
@@ -421,6 +467,8 @@ bool Propeller::ELFViewOrdinalComparator::operator()(const ELFCfg *A,
                                                      const ELFCfg *B) const {
   return A->View->Ordinal < B->View->Ordinal;
 }
+
+PropellerLegacy PropLeg;
 
 } // namespace propeller
 } // namespace lld
