@@ -15,6 +15,9 @@ using std::string;
 namespace lld {
 namespace propeller {
 
+static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
+static const char BASIC_BLOCK_UNIFIED_CHARACTER = 'a';
+
 // This data structure is shared between lld propeller component and
 // create_llvm_prof.
 // The basic block symbols are encoded in this way:
@@ -49,8 +52,8 @@ struct SymbolEntry {
   bool containsAnotherSymbol(SymbolEntry *O) const {
     if (O->Size == 0) {
       // Note if O's size is 0, we allow O on the end boundary. For example,
-      // if foo.bb.4 is at address 0x10. foo is [0x0, 0x10), we then assume
-      // foo contains foo.bb.4.
+      // if foo.BB.4 is at address 0x10. foo is [0x0, 0x10), we then assume
+      // foo contains foo.BB.4.
       return this->Addr <= O->Addr && O->Addr <= this->Addr + this->Size;
     }
     return containsAddress(O->Addr) && containsAddress(O->Addr + O->Size - 1);
@@ -65,7 +68,7 @@ struct SymbolEntry {
   }
   
   bool isFunctionForBBName(StringRef BBName) {
-    auto A = BBName.split(".bb.");
+    auto A = BBName.split(BASIC_BLOCK_SEPARATOR);
     if (A.second == Name)
       return true;
     for (auto N : Aliases)
@@ -77,7 +80,7 @@ struct SymbolEntry {
   static std::string toCompactBBName(StringRef UnifiedBBName) {
     StringRef FName, BName;
     if (isBBSymbol(UnifiedBBName, &FName, &BName)) {
-      return FName.str() + ".bb." + std::to_string(BName.size());
+      return FName.str() + BASIC_BLOCK_SEPARATOR + std::to_string(BName.size());
     }
     return "";
   }
@@ -87,11 +90,11 @@ struct SymbolEntry {
                          StringRef *BBIndex = nullptr) {
     if (SymName.empty())
       return false;
-    auto R = SymName.split(".bb.");
+    auto R = SymName.split(BASIC_BLOCK_SEPARATOR);
     if (R.second.empty())
       return false;
     for (auto *I = R.first.bytes_begin(), *J = R.first.bytes_end(); I != J; ++I)
-      if (*I != '1') return false;
+      if (*I != BASIC_BLOCK_UNIFIED_CHARACTER) return false;
     if (FuncName)
       *FuncName = R.second;
     if (BBIndex)
