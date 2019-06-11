@@ -389,7 +389,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
   list<ELFCfg *> CfgOrder;
-  if (Config->ReorderFunctions) {
+  if (Config->PropellerReorderFuncs) {
     CCubeAlgorithm Algo;
     Algo.init(*this);
     CfgOrder = Algo.doOrder();
