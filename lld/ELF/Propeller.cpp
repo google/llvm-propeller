@@ -375,7 +375,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
   list<const ELFCfg *> CfgOrder;
-  if (Config->ReorderFunctions) {
+  if (Config->PropellerReorderFuncs) {
     CCubeAlgorithm Algo;
     Algo.init(*this);
     CfgOrder = Algo.doOrder();
@@ -397,10 +397,10 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   const auto HotPlaceHolder = SymbolList.begin();
   const auto ColdPlaceHolder = SymbolList.end();
   for (auto *Cfg : CfgOrder) {
-    if (Cfg->isHot() && Config->ReorderBlocks) {
+    if (Cfg->isHot() && Config->PropellerReorderBlocks) {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
-          Config->SplitFunctions ? ColdPlaceHolder : HotPlaceHolder);
+          Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
     } else {
       Cfg->forEachNodeRefConst([&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
         SymbolList.insert(ColdPlaceHolder, N.ShName);

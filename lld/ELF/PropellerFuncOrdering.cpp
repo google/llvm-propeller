@@ -74,10 +74,10 @@ void CCubeAlgorithm::mergeClusters() {
   map<const ELFCfg *, Cluster *> ClusterMap;
   for(const ELFCfg * Cfg: HotCfgs){
     uint64_t CfgWeight = 0;
-    double CfgSize = Config->SplitFunctions ? 0 : (double)Cfg->Size;
+    double CfgSize = Config->PropellerSplitFuncs ? 0 : (double)Cfg->Size;
     Cfg->forEachNodeRefConst([&CfgSize, &CfgWeight](ELFCfgNode &N) {
       CfgWeight += N.Freq;
-      if (Config->SplitFunctions && N.Freq)
+      if (Config->PropellerSplitFuncs && N.Freq)
         CfgSize += N.ShSize;
     });
     
