@@ -121,6 +121,9 @@ public:
   ELFCfgNode *findCfgNode(uint64_t SymbolOrdinal);
   void calculateNodeFreqs();
   vector<StringRef> genSymbolOrderingFile();
+  void calculatePropellerLegacy(list<StringRef> &SymList,
+                                list<StringRef>::iterator HotPlaceHolder,
+                                list<StringRef>::iterator ColdPlaceHolder);
   template <class Visitor>
   void forEachCfgRef(Visitor V) {
     for (auto &P : CfgMap) {
@@ -145,6 +148,12 @@ public:
   // Lock to access / modify global data structure.
   mutex Lock;
 };
+
+struct PropellerLegacy {
+  list<StringRef> BBSymbolsToKeep;
+};
+
+extern PropellerLegacy PropLeg;
 
 } // namespace propeller
 } // namespace lld

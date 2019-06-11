@@ -20,9 +20,9 @@ class CCubeAlgorithm {
 public:
   class Cluster {
   public:
-    Cluster(const ELFCfg *Cfg);
+    Cluster(ELFCfg *Cfg);
     ~Cluster();
-    list<const ELFCfg *> Cfgs;
+    list<ELFCfg *> Cfgs;
     uint64_t       Size;
     uint64_t       Weight;
 
@@ -47,17 +47,17 @@ public:
   template <class CfgContainerTy>
   void init(CfgContainerTy &CfgContainer);
 
-  list<const ELFCfg *> doOrder();
+  list<ELFCfg *> doOrder();
 
 private:
-  const ELFCfg *getMostLikelyPredecessor(
-      Cluster *Cluster, const ELFCfg *Cfg,
-      map<const ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
+  ELFCfg *getMostLikelyPredecessor(
+      Cluster *Cluster, ELFCfg *Cfg,
+      map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
 
   void mergeClusters();
   void sortClusters();
 
-  vector<const ELFCfg*> HotCfgs, ColdCfgs;
+  vector<ELFCfg*> HotCfgs, ColdCfgs;
   list<unique_ptr<Cluster>> Clusters;
 };
 

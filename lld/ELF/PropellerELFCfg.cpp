@@ -48,49 +48,49 @@ ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
 }
 
 bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
-  if(From==nullptr){
+  if (From == nullptr) {
     /* If the From Node is null, walk backward from the To Node while only
      * one INTRA_FUNC incoming edge is found. */
-    assert(To!=nullptr);
+    assert(To != nullptr);
     ELFCfgNode *P = To;
     do {
       vector<ELFCfgEdge *> IntraInEdges;
       std::copy_if(P->Ins.begin(), P->Ins.end(),
-                   std::back_inserter(IntraInEdges),
-                   [this](ELFCfgEdge * E){
-                     return E->Type==ELFCfgEdge::EdgeType::INTRA_FUNC
-                         && E->Sink!=getEntryNode();});
-      if(IntraInEdges.size()==1){
+                   std::back_inserter(IntraInEdges), [this](ELFCfgEdge *E) {
+                     return E->Type == ELFCfgEdge::EdgeType::INTRA_FUNC &&
+                            E->Sink != getEntryNode();
+                   });
+      if (IntraInEdges.size() == 1) {
         ++P->Weight;
         IntraInEdges.front()->Weight++;
         P = IntraInEdges.front()->Src;
-      } else{
+      } else {
         P = nullptr;
       }
-    }while(P && P!=To);
+    } while (P && P != To);
     return true;
   }
 
-  if(To==nullptr){
+  if (To == nullptr) {
     /* If the To Node is null, walk forward from the From Node while only
      * one INTRA_FUNC outgoing edge is found. */
-    assert(From!=nullptr);
-    ELFCfgNode *P=From;
+    assert(From != nullptr);
+    ELFCfgNode *P = From;
     do {
       vector<ELFCfgEdge *> IntraOutEdges;
       std::copy_if(P->Outs.begin(), P->Outs.end(),
-                   std::back_inserter(IntraOutEdges),
-                   [this](ELFCfgEdge * E){
-                     return E->Type==ELFCfgEdge::EdgeType::INTRA_FUNC
-                         && E->Sink!=getEntryNode();});
-      if(IntraOutEdges.size()==1){
+                   std::back_inserter(IntraOutEdges), [this](ELFCfgEdge *E) {
+                     return E->Type == ELFCfgEdge::EdgeType::INTRA_FUNC &&
+                            E->Sink != getEntryNode();
+                   });
+      if (IntraOutEdges.size() == 1) {
         ++P->Weight;
         ++IntraOutEdges.front()->Weight;
         P = IntraOutEdges.front()->Sink;
       } else {
         P = nullptr;
       }
-    }while(P && P!=From);
+    } while (P && P != From);
     return true;
   }
 

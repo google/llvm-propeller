@@ -17,29 +17,29 @@ template <class CfgContainerTy>
 void CCubeAlgorithm::init(CfgContainerTy &CfgContainer) {
   CfgContainer.forEachCfgRef([this](ELFCfg &Cfg) {
     if (Cfg.isHot())
-      HotCfgs.push_back(&Cfg);
+      this->HotCfgs.push_back(&Cfg);
     else
-      ColdCfgs.push_back(&Cfg);
+      this->ColdCfgs.push_back(&Cfg);
   });
 
-  vector<const ELFCfg *> AllCfgs[2] = {HotCfgs, ColdCfgs};
-  for (auto &CfgVector : AllCfgs) {
-    std::sort(CfgVector.begin(), CfgVector.end(),
-              [](const ELFCfg *Cfg1, const ELFCfg *Cfg2) {
-                return Cfg1->getEntryNode()->MappedAddr <
-                       Cfg2->getEntryNode()->MappedAddr;
-              });
-  }
+  auto CfgComparator = [](ELFCfg *Cfg1, ELFCfg *Cfg2) ->bool {
+    return Cfg1->getEntryNode()->MappedAddr < Cfg2->getEntryNode()->MappedAddr;
+  };
+  auto sortCfg = [&CfgComparator](vector<ELFCfg *> &Cfg) {
+    std::sort(Cfg.begin(), Cfg.end(), CfgComparator);
+  };
+  sortCfg(HotCfgs);
+  sortCfg(ColdCfgs);
 }
 
-CCubeAlgorithm::Cluster::Cluster(const ELFCfg *Cfg)
+CCubeAlgorithm::Cluster::Cluster(ELFCfg *Cfg)
     : Cfgs(1, Cfg) {}
 
 CCubeAlgorithm::Cluster::~Cluster() {}
 
-const ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
-    Cluster *Cluster, const ELFCfg *Cfg,
-    map<const ELFCfg *, CCubeAlgorithm::Cluster *>
+ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
+    Cluster *Cluster, ELFCfg *Cfg,
+    map<ELFCfg *, CCubeAlgorithm::Cluster *>
         &ClusterMap) {
   ELFCfgNode *Entry = Cfg->getEntryNode();
   if (!Entry)
@@ -70,12 +70,12 @@ const ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
 void CCubeAlgorithm::mergeClusters() {
   // Signed key is used here, because negated density are used as
   // sorting keys.
-  map<const ELFCfg *, double> CfgWeightMap;
-  map<const ELFCfg *, Cluster *> ClusterMap;
-  for(const ELFCfg * Cfg: HotCfgs){
+  map<ELFCfg *, double> CfgWeightMap;
+  map<ELFCfg *, Cluster *> ClusterMap;
+  for(ELFCfg * Cfg: HotCfgs){
     uint64_t CfgWeight = 0;
     double CfgSize = Config->SplitFunctions ? 0 : (double)Cfg->Size;
-    Cfg->forEachNodeRefConst([&CfgSize, &CfgWeight](ELFCfgNode &N) {
+    Cfg->forEachNodeRef([&CfgSize, &CfgWeight](ELFCfgNode &N) {
       CfgWeight += N.Freq;
       if (Config->SplitFunctions && N.Freq)
         CfgSize += N.ShSize;
@@ -91,17 +91,17 @@ void CCubeAlgorithm::mergeClusters() {
   }
 
   std::stable_sort(HotCfgs.begin(), HotCfgs.end(),
-            [&CfgWeightMap] (const ELFCfg* Cfg1, const ELFCfg* Cfg2){
+            [&CfgWeightMap] (ELFCfg* Cfg1, ELFCfg* Cfg2){
               return CfgWeightMap[Cfg1] > CfgWeightMap[Cfg2];
             });
-  for (const ELFCfg* Cfg : HotCfgs){
+  for (ELFCfg* Cfg : HotCfgs){
     // "P->second" is in the range of [0, a_large_number]
     if (CfgWeightMap[Cfg] <= 0.005)
       break;
     auto *Cluster = ClusterMap[Cfg];
     assert(Cluster);
 
-    const ELFCfg *PredecessorCfg =
+    ELFCfg *PredecessorCfg =
         getMostLikelyPredecessor(Cluster, Cfg, ClusterMap);
     if (!PredecessorCfg)
       continue;
@@ -119,7 +119,7 @@ void CCubeAlgorithm::mergeClusters() {
     
     // Update Cfg <-> Cluster mapping, because all cfgs that were
     // previsously in Cluster are now in PredecessorCluster.
-    for (const ELFCfg *Cfg : Cluster->Cfgs) {
+    for (ELFCfg *Cfg : Cluster->Cfgs) {
       ClusterMap[Cfg] = PredecessorCluster;
     }
     Clusters.erase(Cluster->Handler);
@@ -135,10 +135,10 @@ void CCubeAlgorithm::sortClusters() {
   });
 }
 
-list<const ELFCfg *> CCubeAlgorithm::doOrder() {
+list<ELFCfg *> CCubeAlgorithm::doOrder() {
   mergeClusters();
   sortClusters();
-  list<const ELFCfg *> L;
+  list<ELFCfg *> L;
   for (auto &Cptr : Clusters) {
     L.insert(L.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());
   }
