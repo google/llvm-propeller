@@ -64,16 +64,16 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // With Basic Block Sections, we emit a symbol for every basic block. To
     // keep the size of strtab small, we choose a unary encoding which can
     // compress the symbol names significantly.  The basic blocks for function
-    // foo are named 1.bb.foo, 11.bb.foo, and so on.
+    // foo are named a.BB.foo, aa.BB.foo, and so on.
     if (BasicBlockSections) {
       std::function<std::string(unsigned)> Unary = [&Unary](unsigned num) {
         if (num == 0) return std::string("");
-        if (num == 1) return std::string("1");
+        if (num == 1) return std::string("a");
         std::string s = Unary(num / 2);
         return s + s + Unary(num % 2);
       };
       CachedMCSymbol = Ctx.getOrCreateSymbol(Unary(getNumber()) +
-                           Twine(Delimiter) + "bb" + Twine(Delimiter) +
+                           Twine(Delimiter) + "BB" + Twine(Delimiter) +
                            Twine(MF->getName()));
     } else {
       CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
