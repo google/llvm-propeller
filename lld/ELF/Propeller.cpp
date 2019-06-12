@@ -444,7 +444,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
 void Propeller::calculatePropellerLegacy(
     list<StringRef> &SymList, list<StringRef>::iterator HotPlaceHolder,
     list<StringRef>::iterator ColdPlaceHolder) {
-  if (HotPlaceHolder == ColdPlaceHolder) return ;
+  if (HotPlaceHolder == ColdPlaceHolder) return;
   StringRef LastFuncName = "";
   for (auto I = std::next(HotPlaceHolder), J = ColdPlaceHolder; I != J; ++I) {
     StringRef SName = *I;
@@ -452,8 +452,8 @@ void Propeller::calculatePropellerLegacy(
     if (SymbolEntry::isBBSymbol(SName, &FName)) {
       if (LastFuncName.empty() || LastFuncName != FName) {
         PropLeg.BBSymbolsToKeep.insert(SName);
-        LastFuncName = FName;
       }
+      LastFuncName = FName;
     }
   }
   return;

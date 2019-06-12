@@ -295,6 +295,10 @@ defm propeller: Eq<"propeller", "Propeller profile">;
 
 defm propeller_opt: Eq<"propeller-opt", "Propeller optimization flags">, MetaVarName<"[reorder-none,reorder-blocks,reorder-funcs,reorder-all, split-funcs,no-split-funcs]">;
 
+defm propeller_keep_named_symbols: B<"propeller-keep-named-symbols",
+    "Do not delete basic block section symbols",
+    "Delete unused basic block section symbols (default)">;
+
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 

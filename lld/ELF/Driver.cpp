@@ -865,6 +865,10 @@ static void readConfigs(opt::InputArgList &Args) {
       Config->PropellerSplitFuncs =
       !Config->Propeller.empty();
 
+  Config->PropellerKeepNamedSymbols =
+      Args.hasFlag(OPT_propeller_keep_named_symbols,
+                   OPT_no_propeller_keep_named_symbols, false);
+
   // Parse Propeller flags.
   auto PropellerOpts = Args.getAllArgValues(OPT_propeller_opt);
   for(auto& PropellerOpt: PropellerOpts){
