@@ -106,6 +106,7 @@ void CCubeAlgorithm::mergeClusters() {
     if (!PredecessorCfg)
       continue;
     assert(PredecessorCfg != Cfg);
+    log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
     assert(PredecessorCluster);
 
@@ -136,6 +137,7 @@ void CCubeAlgorithm::sortClusters() {
 }
 
 list<ELFCfg *> CCubeAlgorithm::doOrder() {
+  log("propeller: reordering " + Twine(HotCfgs.size()) + " hot functions.");
   mergeClusters();
   sortClusters();
   list<ELFCfg *> L;

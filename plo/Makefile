@@ -4,7 +4,7 @@ RELEASE_LLVM_BIN=/usr/bin
 PERF2BOLT=${HOME}/copt/build/bolt.shenhan/release/bin/perf2bolt
 BOLT=${HOME}/copt/build/bolt.shenhan/release/bin/llvm-bolt
 CREATE_LLVM_PROF_DIR=${HOME}/copt/source/autofdo
-CREATE_LLVM_PROF=${HOME}/copt/plo2/autofdo-forked/create_llvm_prof
+CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
 
 #################################
 # Important targets:

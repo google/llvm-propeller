@@ -6,9 +6,9 @@
 # RUN: ld.lld  %t.o -o %t.out
 # RUN: llvm-nm -n %t.out| FileCheck %s --check-prefix=NM1
 
-# NM1:	0000000000201000 t foo
-# NM1:	0000000000201008 t bar
-# NM1:	0000000000201010 t baz
+# NM1:	0000000000201000 T foo
+# NM1:	0000000000201008 T bar
+# NM1:	0000000000201010 T baz
 
 # RUN: llvm-objdump -s %t.out| FileCheck %s --check-prefix=BEFORE
 
@@ -34,12 +34,12 @@
 # RUN: echo "2 1 100 C" >> %t_prof.propeller
 # RUN: echo "Fallthroughs" >> %t_prof.propeller
 
-# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -split-functions -reorder-functions -reorder-blocks -o %t.propeller.out
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller --verbose -o %t.propeller.out
 # RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM2
 
-# NM2:	0000000000201000 t baz
-# NM2:	0000000000201000 t bar
-# NM2:	0000000000201000 t foo
+# NM2:	0000000000201000 T baz
+# NM2:	0000000000201008 T bar
+# NM2:	0000000000201010 T foo
 
 # RUN: llvm-objdump -s %t.propeller.out| FileCheck %s --check-prefix=AFTER
 
@@ -54,6 +54,7 @@
 .section	.foo,"ax",@progbits
 # -- Begin function foo
 .type	foo,@function
+.globl   foo
 foo:
  .quad 0x11
 
@@ -64,6 +65,7 @@ foo:
 .section	.bar,"ax",@progbits
 # -- Begin function bar
 .type	bar,@function
+.globl   bar
 bar:
  .quad 0x22
 
@@ -74,6 +76,7 @@ bar:
 .section	.baz,"ax",@progbits
 # -- Begin function baz
 .type	baz,@function
+.globl   baz
 baz:
  .quad 0x33
 

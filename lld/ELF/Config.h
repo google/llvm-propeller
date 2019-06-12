@@ -102,6 +102,7 @@ struct Configuration {
   llvm::StringRef OptRemarksPasses;
   llvm::StringRef ProgName;
   llvm::StringRef Propeller;
+  std::vector<std::string> PropellerOpts;
   llvm::StringRef PrintSymbolOrder;
   llvm::StringRef SoName;
   llvm::StringRef Sysroot;
@@ -175,9 +176,9 @@ struct Configuration {
   bool PrintIcfSections;
   bool Relocatable;
   bool RelrPackDynRelocs;
-  bool ReorderBlocks;
-  bool ReorderFunctions;
-  bool SplitFunctions;
+  bool PropellerReorderBlocks;
+  bool PropellerReorderFuncs;
+  bool PropellerSplitFuncs;
   bool SaveTemps;
   bool SingleRoRx;
   bool Shared;
