@@ -150,7 +150,11 @@ public:
 };
 
 struct PropellerLegacy {
-  list<StringRef> BBSymbolsToKeep;
+  set<StringRef> BBSymbolsToKeep;
+
+  bool shouldKeepSymbol(StringRef SymName) {
+    return BBSymbolsToKeep.find(SymName) != BBSymbolsToKeep.end();
+  }
 };
 
 extern PropellerLegacy PropLeg;
