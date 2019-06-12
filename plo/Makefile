@@ -138,7 +138,7 @@ pgo.perfdata cspgo.perfdata: %.perfdata: %-compiler run-commands.sh
 
 pgo-compiler.symfile cspgo-compiler.symfile: %-compiler.symfile: %-compiler %.perfdata
 	./plotool.sh $< $(word 2,$^)
-	[[ -n "`grep -F '.bb.' $@`" ]] || { echo "ERROR: no .bb. in $@" ; exit 1; }
+	[[ -n "`grep -F '.BB.' $@`" ]] || { echo "ERROR: no .BB. in $@" ; exit 1; }
 
 pgo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr
@@ -217,12 +217,12 @@ $(foreach F,$(FLAVORS),benchmark-${F}): benchmark-%: %-compiler run-commands.sh
 # ######################################  sample workflow
 sample_bblabels.o: sample.c
 	./stage1-compiler -c -O2 -fbasicblock-sections=labels $< -o $@
-	@[[ -n `readelf -Ws $@ | grep -F '.bb.'` ]] \
+	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No bb symbols found in $@, error" ; exit 1; }
 
 sample.out: sample_bblabels.o
 	./stage1-compiler -Wl,--build-id -o $@ $<
-	@[[ -n `readelf -Ws $@ | grep -F '.bb.'` ]] \
+	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No bb symbols found in $@, error" ; exit 1; }
 
 sample.perfdata: sample.out
