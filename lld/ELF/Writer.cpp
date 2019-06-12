@@ -13,6 +13,7 @@
 #include "LinkerScript.h"
 #include "MapFile.h"
 #include "OutputSections.h"
+#include "Propeller.h"
 #include "Relocations.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
@@ -580,22 +581,10 @@ static bool shouldKeepInSymtab(const Defined &Sym) {
 
   StringRef Name = Sym.getName();
 
-  // If it's .bb. symbol.
-  // if (Config->Plo) {
-  //   auto S1 = Name.rsplit('.');
-  //   if (!S1.second.empty()) {
-  //     bool AllDigits = true;
-  //     for (auto I: S1.second) {
-  //       if (I < '0' || I > '9') {
-  //         AllDigits = false;
-  //         break;
-  //       }
-  //     }
-  //     if (AllDigits && S1.first.rsplit('.').second == "bb") {
-  //       return false;
-  //     }
-  //   }
-  // }
+  if (!Config->Propeller.empty() &&
+      !propeller::PropLeg.shouldKeepSymbol(Name)) {
+    return false;
+  }
 
   // In ELF assembly .L symbols are normally discarded by the assembler.
   // If the assembler fails to do so, the linker discards them if

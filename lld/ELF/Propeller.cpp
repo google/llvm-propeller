@@ -385,6 +385,19 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   return true;
 }
 
+// template <class C>
+// static void writeOut(const char *fname, C &Names) {
+//   FILE *fp = fopen(fname, "w");
+//   if (!fp) {
+//     fprintf(stderr, "failed to open: %s\n", fname);
+//   }
+//   for (auto &N : Names) {
+//     fprintf(fp, "%s\n", N.str().c_str());
+//   }
+//   fclose(fp);
+//   fprintf(stderr, "Done writing %s\n", fname);
+// };
+
 vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
@@ -419,22 +432,9 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
 
   calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
 
-  // {
-  //   auto writeOut = [](const char *fname, list<StringRef> &Names) {
-  //     FILE *fp = fopen(fname, "w");
-  //     if (!fp) {
-  //       fprintf(stderr, "failed to open: %s\n", fname);
-  //     }
-  //     for (auto &N : Names) {
-  //       fprintf(fp, "%s\n", N.str().c_str());
-  //     }
-  //     fclose(fp);
-  //   };
-
-  //   writeOut("symbol-ordering", SymbolList);
-  //   writeOut("propeller-legacy", PropLeg.BBSymbolsToKeep);
-  // }
-
+  // writeOut("symbol-ordering", SymbolList);
+  // writeOut("propeller-legacy", PropLeg.BBSymbolsToKeep);
+  
   SymbolList.erase(HotPlaceHolder);
   return vector<StringRef>(
       std::move_iterator<list<StringRef>::iterator>(SymbolList.begin()),
@@ -451,7 +451,7 @@ void Propeller::calculatePropellerLegacy(
     StringRef FName;
     if (SymbolEntry::isBBSymbol(SName, &FName)) {
       if (LastFuncName.empty() || LastFuncName != FName) {
-        PropLeg.BBSymbolsToKeep.emplace_back(SName);
+        PropLeg.BBSymbolsToKeep.insert(SName);
         LastFuncName = FName;
       }
     }
