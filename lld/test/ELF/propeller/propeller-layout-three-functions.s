@@ -6,17 +6,14 @@
 # RUN: ld.lld  %t.o -o %t.out
 # RUN: llvm-nm -n %t.out| FileCheck %s --check-prefix=NM1
 
-# NM1:	0000000000201000 T foo
-# NM1:	0000000000201008 T bar
-# NM1:	0000000000201010 T baz
+# NM1:	0000000000201000 t foo
+# NM1:	0000000000201008 t bar
+# NM1:	0000000000201010 t baz
 
 # RUN: llvm-objdump -s %t.out| FileCheck %s --check-prefix=BEFORE
 
-# BEFORE:      Contents of section .foo:
-# BEFORE-NEXT:  201000 11000000 00000000
-# BEFORE:      Contents of section .bar:
-# BEFORE-NEXT:  201008 22000000 00000000
-# BEFORE:      Contents of section .baz:
+# BEFORE:      Contents of section .text:
+# BEFORE-NEXT:  201000 11000000 00000000 22000000 00000000
 # BEFORE-NEXT:  201010 33000000 00000000
 
 ## Create a propeller profile for foo, based on the cfg below:
@@ -37,24 +34,20 @@
 # RUN: ld.lld  %t.o -propeller=%t_prof.propeller --verbose -o %t.propeller.out
 # RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM2
 
-# NM2:	0000000000201000 T baz
-# NM2:	0000000000201008 T bar
-# NM2:	0000000000201010 T foo
+# NM2:	0000000000201000 t baz
+# NM2:	0000000000201008 t bar
+# NM2:	0000000000201010 t foo
 
 # RUN: llvm-objdump -s %t.propeller.out| FileCheck %s --check-prefix=AFTER
 
-# AFTER:      Contents of section .baz:
-# AFTER-NEXT:  201000 00000011
-# AFTER:      Contents of section .bar:
-# AFTER-NEXT:  201000 00000022
-# AFTER:      Contents of section .foo:
-# AFTER-NEXT:  201000 00000033
+# AFTER:      Contents of section .text
+# AFTER-NEXT:  201000 33000000 00000000 22000000 0000000
+# AFTER-NEXT:  201010 11000000 00000000
 #
 
-.section	.foo,"ax",@progbits
+.section	.text,"ax",@progbits,unique,1
 # -- Begin function foo
 .type	foo,@function
-.globl   foo
 foo:
  .quad 0x11
 
@@ -62,10 +55,9 @@ foo:
  .size	foo, .Lfoo_end-foo
 # -- End function foo
 
-.section	.bar,"ax",@progbits
+.section	.text,"ax",@progbits,unique,2
 # -- Begin function bar
 .type	bar,@function
-.globl   bar
 bar:
  .quad 0x22
 
@@ -73,10 +65,9 @@ bar:
  .size	bar, .Lbar_end-bar
 # -- End function bar
 
-.section	.baz,"ax",@progbits
+.section	.text,"ax",@progbits,unique,3
 # -- Begin function baz
 .type	baz,@function
-.globl   baz
 baz:
  .quad 0x33
 

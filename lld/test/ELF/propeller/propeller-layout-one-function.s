@@ -14,7 +14,7 @@
 
 # RUN: llvm-objdump -s %t.out| FileCheck %s --check-prefix=BEFORE
 
-# BEFORE:      Contents of section .foo:
+# BEFORE:      Contents of section .text:
 # BEFORE-NEXT:  201000 0f1f000f 1f007403 0f1f000f 1f0075f3
 # BEFORE-NEXT:  201010 44000000 00000000
 
@@ -52,7 +52,7 @@
 # RUN: echo "4 5 10" >> %t_prof.propeller
 # RUN: echo "1 2 5" >> %t_prof.propeller
 
-# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -o %t.propeller.out
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.out
 # RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM2
 
 # NM2:	0000000000201000 t foo
@@ -63,20 +63,20 @@
 
 # RUN: llvm-objdump -s %t.propeller.out| FileCheck %s --check-prefix=AFTER
 
-# AFTER:      Contents of section .foo:
+# AFTER:      Contents of section .text:
 # AFTER-NEXT:  201000 0f1f000f 1f00750d 0f1f0075 f6440000
 # AFTER-NEXT:  201010 00000000 000f1f00
 
 
 
-.section	.foo,"ax",@progbits
+.section	.text,"ax",@progbits
 # -- Begin function foo
 .type	foo,@function
 foo:
  nopl (%rax)
  jmp	a.BB.foo
 
-.section	.foo,"ax",@progbits,unique,1
+.section	.text,"ax",@progbits,unique,1
 a.BB.foo:
  nopl (%rax)
  je	aaa.BB.foo
@@ -84,14 +84,14 @@ a.BB.foo:
 .La.BB.foo_end:
  .size	a.BB.foo, .La.BB.foo_end-a.BB.foo
 
-.section	.foo,"ax",@progbits,unique,2
+.section	.text,"ax",@progbits,unique,2
 aa.BB.foo:
  nopl (%rax)
  jmp	aaa.BB.foo
 .Laa.BB.foo_end:
  .size	aa.BB.foo, .Laa.BB.foo_end-aa.BB.foo
 
-.section	.foo,"ax",@progbits,unique,3
+.section	.text,"ax",@progbits,unique,3
 aaa.BB.foo:
  nopl (%rax)
  jne	a.BB.foo
@@ -99,13 +99,13 @@ aaa.BB.foo:
 .Laaa.BB.foo_end:
  .size	aaa.BB.foo, .Laaa.BB.foo_end-aaa.BB.foo
 
-.section	.foo,"ax",@progbits,unique,4
+.section	.text,"ax",@progbits,unique,4
 aaaa.BB.foo:
  .quad	0x44
 .Laaaa.BB.foo_end:
  .size	aaaa.BB.foo, .Laaaa.BB.foo_end-aaaa.BB.foo
 
-.section	.foo,"ax",@progbits
+.section	.text,"ax",@progbits
 .Lfoo_end:
  .size	foo, .Lfoo_end-foo
 # -- End function (foo)
