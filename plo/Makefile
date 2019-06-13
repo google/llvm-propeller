@@ -256,7 +256,7 @@ sample_bball.o: sample.c
 	./stage1-compiler -c -O2 -fbasicblock-sections=all $< -o $@
 
 sample.propeller.out: sample.propeller sample_bball.o stage1-compiler
-	./stage1-compiler -o $@ -fuse-ld=lld -Wl,-propeller=$< -Wl,-reorder-functions -Wl,-reorder-blocks -Wl,-split-functions sample_bball.o
+	./stage1-compiler -o $@ -fuse-ld=lld -Wl,-propeller=$< sample_bball.o
 
 sample.out.symfile: sample.out sample.perfdata
 	./plotool.sh $^
