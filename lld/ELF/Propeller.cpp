@@ -49,8 +49,8 @@ SymbolEntry *Propfile::findSymbol(StringRef SymName) {
       return L2->second;
     }
   }
-  warn(string("failed to find SymbolEntry for '") +
-       SymbolEntry::toCompactBBName(SymName) + "'.");
+  // warn(string("failed to find SymbolEntry for '") +
+  //     SymbolEntry::toCompactBBName(SymName) + "'.");
   return nullptr;
 }
 
@@ -221,9 +221,9 @@ bool Propfile::processProfile() {
       // LineTag == 'F'
       if (FromN->Cfg == ToN->Cfg) {
         if (!FromN->Cfg->markPath(FromN, ToN, Cnt)) {
-          warn("Waring: failed to mark '" + 
-                  SymbolEntry::toCompactBBName(FromN->ShName) + "' -> '" + 
-                  SymbolEntry::toCompactBBName(ToN->ShName) +"'.");
+          // warn("Waring: failed to mark '" + 
+          //        SymbolEntry::toCompactBBName(FromN->ShName) + "' -> '" + 
+          //        SymbolEntry::toCompactBBName(ToN->ShName) +"'.");
         }
       }
     }
@@ -268,7 +268,7 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
   StringRef FuncName = S->BBTag ? S->ContainingFunc->Name : S->Name;
   auto CfgLI = CfgMap.find(FuncName);
   if (CfgLI == CfgMap.end()) {
-    warn(string("No Cfg named '") + FuncName + "' found.");
+    //warn(string("No Cfg named '") + FuncName + "' found.");
     return nullptr;
   }
   if (CfgLI != CfgMap.end()) {
@@ -313,8 +313,8 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
       }
     }
   }
-  warn(string("No cfg found for symbol ordinal: ") +
-       std::to_string(SymbolOrdinal) + ".");
+  // warn(string("No cfg found for symbol ordinal: ") +
+  //     std::to_string(SymbolOrdinal) + ".");
   return nullptr;
 }
 
