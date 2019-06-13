@@ -195,8 +195,9 @@ relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.propeller
           | sed -e "s! -o bin/clang-9 ! -o bin/clang-9-plo \
 		     -Wl,-propeller=$(DDIR)/$(word 2,$^)   \
                      -Wl,--lto-basicblock-sections=all     \
-		     -Wl,-propeller-opt=reorder-all     \
-		     -Wl,-propeller-opt=split-funcs  \
+		     -Wl,-propeller-opt=reorder-blocks     \
+		     -Wl,-propeller-opt=reorder-funcs      \
+		     -Wl,-propeller-opt=split-funcs        \
                      -Wl,--no-call-graph-profile-sort !"   \
                -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
 	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@
