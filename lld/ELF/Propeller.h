@@ -152,7 +152,8 @@ public:
 struct PropellerLegacy {
   set<StringRef> BBSymbolsToKeep;
 
-  bool shouldKeepSymbol(StringRef SymName) {
+  bool shouldKeepBBSymbol(StringRef SymName) {
+    if (!SymbolEntry::isBBSymbol(SymName)) return true;
     return BBSymbolsToKeep.find(SymName) != BBSymbolsToKeep.end();
   }
 };

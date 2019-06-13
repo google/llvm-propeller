@@ -592,7 +592,7 @@ static bool shouldKeepInSymtab(const Defined &Sym) {
   if (!Config->Propeller.empty() &&
       lld::propeller::SymbolEntry::isBBSymbol(Name)) {
     if (Config->PropellerKeepNamedSymbols ||
-        propeller::PropLeg.shouldKeepSymbol(Name))
+        propeller::PropLeg.shouldKeepBBSymbol(Name))
       return true;
     else
       return false;
