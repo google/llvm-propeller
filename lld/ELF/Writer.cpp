@@ -581,9 +581,13 @@ static bool shouldKeepInSymtab(const Defined &Sym) {
 
   StringRef Name = Sym.getName();
 
-  if (!Config->Propeller.empty() &&
-      !propeller::PropLeg.shouldKeepSymbol(Name)) {
-    return false;
+  if (!Config->Propeller.empty()) {
+    if (Name.empty() && Sym.Type == llvm::ELF::STT_NOTYPE &&        Sym.Binding == llvm::ELF::STB_LOCAL) {
+      return false;
+    }
+    if (!propeller::PropLeg.shouldKeepBBSymbol(Name)) {
+      return false;
+    }
   }
 
   // In ELF assembly .L symbols are normally discarded by the assembler.

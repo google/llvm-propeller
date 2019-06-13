@@ -57,7 +57,7 @@ private:
   void mergeClusters();
   void sortClusters();
 
-  vector<ELFCfg*> HotCfgs, ColdCfgs;
+  vector<ELFCfg *> HotCfgs, ColdCfgs;
   list<unique_ptr<Cluster>> Clusters;
 };
 
