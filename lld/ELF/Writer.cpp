@@ -21,6 +21,7 @@
 #include "Target.h"
 #include "lld/Common/Filesystem.h"
 #include "lld/Common/Memory.h"
+#include "lld/Common/PropellerCommon.h"
 #include "lld/Common/Strings.h"
 #include "lld/Common/Threads.h"
 #include "llvm/ADT/StringMap.h"
@@ -28,7 +29,9 @@
 #include "llvm/Support/RandomNumberGenerator.h"
 #include "llvm/Support/SHA1.h"
 #include "llvm/Support/xxhash.h"
+#include <cctype>
 #include <climits>
+#include <type_traits>
 
 #define DEBUG_TYPE "lld"
 
@@ -581,13 +584,18 @@ static bool shouldKeepInSymtab(const Defined &Sym) {
 
   StringRef Name = Sym.getName();
 
-  if (!Config->Propeller.empty()) {
-    if (Name.empty() && Sym.Type == llvm::ELF::STT_NOTYPE &&        Sym.Binding == llvm::ELF::STB_LOCAL) {
+  if (Name.empty() && Sym.Type == llvm::ELF::STT_NOTYPE &&
+      Sym.Binding == llvm::ELF::STB_LOCAL) {
+    return false;
+  }
+
+  if (!Config->Propeller.empty() &&
+      lld::propeller::SymbolEntry::isBBSymbol(Name)) {
+    if (Config->PropellerKeepNamedSymbols ||
+        propeller::PropLeg.shouldKeepBBSymbol(Name))
+      return true;
+    else
       return false;
-    }
-    if (!propeller::PropLeg.shouldKeepBBSymbol(Name)) {
-      return false;
-    }
   }
 
   // In ELF assembly .L symbols are normally discarded by the assembler.

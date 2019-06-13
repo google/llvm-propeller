@@ -46,7 +46,7 @@ LLVM_SOURCE := $(shell find $(LLVM_PROJECT)/llvm \
             -ipath "*/gtest"     -o      \
             -ipath "*/googletest" ')' -type d  -prune -o \
         -type f '(' -iname "*.cpp" -o -iname "*.cc" -o -iname "*.c" \
-                   -o -iname "*.h" ')' -print)
+                   -o -iname "*.h" -o -iname "*.td" ')' -print)
 
 J_NUMBER := $(shell grep -Ee "^core id" /proc/cpuinfo | wc -l)
 J_NUMBER := $(shell if [[ "$(J_NUMBER)" -lt "16" ]] ; then \
@@ -204,9 +204,8 @@ relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.propeller
           | sed -e "s! -o bin/clang-9 ! -o bin/clang-9-plo \
 		     -Wl,-propeller=$(DDIR)/$(word 2,$^)   \
                      -Wl,--lto-basicblock-sections=all     \
-		     -Wl,-split-functions                  \
-		     -Wl,-reorder-functions                \
-		     -Wl,-reorder-blocks                   \
+		     -Wl,-propeller-opt=reorder-all     \
+		     -Wl,-propeller-opt=split-funcs  \
                      -Wl,--no-call-graph-profile-sort !"   \
                -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
 	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@

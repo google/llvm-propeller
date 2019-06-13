@@ -12,11 +12,8 @@
 
 # RUN: llvm-objdump -s %t.out| FileCheck %s --check-prefix=BEFORE
 
-# BEFORE:      Contents of section .foo:
-# BEFORE-NEXT:  201000 11000000 00000000
-# BEFORE:      Contents of section .bar:
-# BEFORE-NEXT:  201008 22000000 00000000
-# BEFORE:      Contents of section .baz:
+# BEFORE:      Contents of section .text:
+# BEFORE-NEXT:  201000 11000000 00000000 22000000 00000000
 # BEFORE-NEXT:  201010 33000000 00000000
 
 ## Create a propeller profile for foo, based on the cfg below:
@@ -34,24 +31,21 @@
 # RUN: echo "2 1 100 C" >> %t_prof.propeller
 # RUN: echo "Fallthroughs" >> %t_prof.propeller
 
-# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -split-functions -reorder-functions -reorder-blocks -o %t.propeller.out
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller --verbose -o %t.propeller.out
 # RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM2
 
 # NM2:	0000000000201000 t baz
-# NM2:	0000000000201000 t bar
-# NM2:	0000000000201000 t foo
+# NM2:	0000000000201008 t bar
+# NM2:	0000000000201010 t foo
 
 # RUN: llvm-objdump -s %t.propeller.out| FileCheck %s --check-prefix=AFTER
 
-# AFTER:      Contents of section .baz:
-# AFTER-NEXT:  201000 00000011
-# AFTER:      Contents of section .bar:
-# AFTER-NEXT:  201000 00000022
-# AFTER:      Contents of section .foo:
-# AFTER-NEXT:  201000 00000033
+# AFTER:      Contents of section .text
+# AFTER-NEXT:  201000 33000000 00000000 22000000 0000000
+# AFTER-NEXT:  201010 11000000 00000000
 #
 
-.section	.foo,"ax",@progbits
+.section	.text,"ax",@progbits,unique,1
 # -- Begin function foo
 .type	foo,@function
 foo:
@@ -61,7 +55,7 @@ foo:
  .size	foo, .Lfoo_end-foo
 # -- End function foo
 
-.section	.bar,"ax",@progbits
+.section	.text,"ax",@progbits,unique,2
 # -- Begin function bar
 .type	bar,@function
 bar:
@@ -71,7 +65,7 @@ bar:
  .size	bar, .Lbar_end-bar
 # -- End function bar
 
-.section	.baz,"ax",@progbits
+.section	.text,"ax",@progbits,unique,3
 # -- Begin function baz
 .type	baz,@function
 baz:

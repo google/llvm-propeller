@@ -74,13 +74,13 @@ void CCubeAlgorithm::mergeClusters() {
   map<ELFCfg *, Cluster *> ClusterMap;
   for(ELFCfg * Cfg: HotCfgs){
     uint64_t CfgWeight = 0;
-    double CfgSize = Config->SplitFunctions ? 0 : (double)Cfg->Size;
+    double CfgSize = Config->PropellerSplitFuncs ? 0 : (double)Cfg->Size;
     Cfg->forEachNodeRef([&CfgSize, &CfgWeight](ELFCfgNode &N) {
       CfgWeight += N.Freq;
-      if (Config->SplitFunctions && N.Freq)
+      if (Config->PropellerSplitFuncs && N.Freq)
         CfgSize += N.ShSize;
     });
-    
+
     assert(CfgSize!=0);
     Cluster *C = new Cluster(Cfg);
     C->Weight = CfgWeight;
@@ -106,6 +106,7 @@ void CCubeAlgorithm::mergeClusters() {
     if (!PredecessorCfg)
       continue;
     assert(PredecessorCfg != Cfg);
+    log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
     assert(PredecessorCluster);
 
@@ -136,6 +137,7 @@ void CCubeAlgorithm::sortClusters() {
 }
 
 list<ELFCfg *> CCubeAlgorithm::doOrder() {
+  log("propeller: reordering " + Twine(HotCfgs.size()) + " hot functions.");
   mergeClusters();
   sortClusters();
   list<ELFCfg *> L;

@@ -859,11 +859,40 @@ static void readConfigs(opt::InputArgList &Args) {
   Config->PrintSymbolOrder =
       Args.getLastArgValue(OPT_print_symbol_order);
   Config->Propeller = Args.getLastArgValue(OPT_propeller);
+
+  Config->PropellerReorderBlocks =
+      Config->PropellerReorderFuncs =
+      Config->PropellerSplitFuncs =
+      !Config->Propeller.empty();
+
+  Config->PropellerKeepNamedSymbols =
+      Args.hasFlag(OPT_propeller_keep_named_symbols,
+                   OPT_no_propeller_keep_named_symbols, false);
+
+  // Parse Propeller flags.
+  auto PropellerOpts = Args.getAllArgValues(OPT_propeller_opt);
+  for(auto& PropellerOpt: PropellerOpts){
+    StringRef S = StringRef(PropellerOpt);
+    if (S == "reorder-funcs"){
+      Config->PropellerReorderFuncs = true;
+    } else if (S == "reorder-blocks") {
+      Config->PropellerReorderBlocks = true;
+    } else if (S == "reorder-none") {
+      Config->PropellerReorderBlocks = false;
+      Config->PropellerReorderFuncs = false;
+    } else if (S == "reorder-all") {
+      Config->PropellerReorderBlocks = true;
+      Config->PropellerReorderFuncs = true;
+    } else if (S == "split-funcs") {
+      Config->PropellerSplitFuncs = true;
+    } else if (S == "no-split-funcs") {
+      Config->PropellerSplitFuncs = false;
+    } else
+      error("unknown propeller option: " + S);
+  }
+
   Config->Rpath = getRpath(Args);
   Config->Relocatable = Args.hasArg(OPT_relocatable);
-  Config->ReorderBlocks = Args.hasArg(OPT_reorder_blocks);
-  Config->ReorderFunctions = Args.hasArg(OPT_reorder_functions);
-  Config->SplitFunctions = Args.hasArg(OPT_split_functions);
   Config->SaveTemps = Args.hasArg(OPT_save_temps);
   Config->SearchPaths = args::getStrings(Args, OPT_library_path);
   Config->SectionStartMap = getSectionStartMap(Args);

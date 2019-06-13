@@ -293,6 +293,12 @@ defm print_symbol_order: Eq<"print-symbol-order",
 
 defm propeller: Eq<"propeller", "Propeller profile">;
 
+defm propeller_opt: Eq<"propeller-opt", "Propeller optimization flags">, MetaVarName<"[reorder-none,reorder-blocks,reorder-funcs,reorder-all, split-funcs,no-split-funcs]">;
+
+defm propeller_keep_named_symbols: B<"propeller-keep-named-symbols",
+    "Do not delete basic block section symbols",
+    "Delete unused basic block section symbols (default)">;
+
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 
@@ -301,12 +307,6 @@ def push_state: F<"push-state">,
 
 def print_map: F<"print-map">,
   HelpText<"Print a link map to the standard output">;
-
-def reorder_blocks: F<"reorder-blocks">, HelpText<"Reorder basic blocks.">;
-
-def reorder_functions: F<"reorder-functions">, HelpText<"Reorder functions,">;
-
-def split_functions: F<"split-functions">, HelpText<"Split functions.">;
 
 defm reproduce: Eq<"reproduce", "Dump linker invocation and input files for debugging">;
 
