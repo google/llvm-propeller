@@ -69,14 +69,10 @@ public:
       }
     };
 
-    ES.lookup(
-        SearchOrder, std::move(InternedSymbols), std::move(OnResolve),
-        // OnReady:
-        [&ES](Error Err) { ES.reportError(std::move(Err)); },
-        // RegisterDependencies:
-        [this](const SymbolDependenceMap &Deps) {
-          registerDependencies(Deps);
-        });
+    ES.lookup(SearchOrder, std::move(InternedSymbols), SymbolState::Resolved,
+              std::move(OnResolve), [this](const SymbolDependenceMap &Deps) {
+                registerDependencies(Deps);
+              });
   }
 
   void notifyResolved(AtomGraph &G) override {
@@ -131,7 +127,7 @@ public:
       if (auto Err = MR.defineMaterializing(ExtraSymbolsToClaim))
         return notifyFailed(std::move(Err));
 
-    MR.resolve(InternedResult);
+    MR.notifyResolved(InternedResult);
 
     Layer.notifyLoaded(MR);
   }
@@ -145,7 +141,7 @@ public:
 
       return;
     }
-    MR.emit();
+    MR.notifyEmitted();
   }
 
   AtomGraphPassFunction getMarkLivePass(const Triple &TT) const override {

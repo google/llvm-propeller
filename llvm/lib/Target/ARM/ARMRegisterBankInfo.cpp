@@ -160,6 +160,10 @@ ARMRegisterBankInfo::ARMRegisterBankInfo(const TargetRegisterInfo &TRI)
          "Subclass not added?");
   assert(RBGPR.covers(*TRI.getRegClass(ARM::tGPR_and_tcGPRRegClassID)) &&
          "Subclass not added?");
+  assert(RBGPR.covers(*TRI.getRegClass(ARM::tGPREven_and_tGPR_and_tcGPRRegClassID)) &&
+         "Subclass not added?");
+  assert(RBGPR.covers(*TRI.getRegClass(ARM::tGPROdd_and_tcGPRRegClassID)) &&
+         "Subclass not added?");
   assert(RBGPR.getSize() == 32 && "GPRs should hold up to 32-bit");
 
 #ifndef NDEBUG
@@ -181,6 +185,13 @@ const RegisterBank &ARMRegisterBankInfo::getRegBankFromRegClass(
   case tGPR_and_tcGPRRegClassID:
   case tcGPRRegClassID:
   case tGPRRegClassID:
+  case tGPREvenRegClassID:
+  case tGPROddRegClassID:
+  case tGPR_and_tGPREvenRegClassID:
+  case tGPR_and_tGPROddRegClassID:
+  case tGPREven_and_tcGPRRegClassID:
+  case tGPREven_and_tGPR_and_tcGPRRegClassID:
+  case tGPROdd_and_tcGPRRegClassID:
     return getRegBank(ARM::GPRRegBankID);
   case HPRRegClassID:
   case SPR_8RegClassID:

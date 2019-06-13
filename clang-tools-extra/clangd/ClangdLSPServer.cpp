@@ -25,16 +25,6 @@
 namespace clang {
 namespace clangd {
 namespace {
-class IgnoreCompletionError : public llvm::ErrorInfo<CancelledError> {
-public:
-  void log(llvm::raw_ostream &OS) const override {
-    OS << "ignored auto-triggered completion, preceding char did not match";
-  }
-  std::error_code convertToErrorCode() const override {
-    return std::make_error_code(std::errc::operation_canceled);
-  }
-};
-
 /// Transforms a tweak into a code action that would apply it if executed.
 /// EXPECTS: T.prepare() was called and returned true.
 CodeAction toCodeAction(const ClangdServer::TweakRef &T, const URIForFile &File,
@@ -369,7 +359,7 @@ void ClangdLSPServer::onInitialize(const InitializeParams &Params,
             {"documentRangeFormattingProvider", true},
             {"documentOnTypeFormattingProvider",
              llvm::json::Object{
-                 {"firstTriggerCharacter", "}"},
+                 {"firstTriggerCharacter", "\n"},
                  {"moreTriggerCharacter", {}},
              }},
             {"codeActionProvider", true},
@@ -492,13 +482,13 @@ void ClangdLSPServer::onCommand(const ExecuteCommandParams &Params,
 
     auto Action = [ApplyEdit](decltype(Reply) Reply, URIForFile File,
                               std::string Code,
-                              llvm::Expected<tooling::Replacements> R) {
+                              llvm::Expected<std::vector<TextEdit>> R) {
       if (!R)
         return Reply(R.takeError());
 
       WorkspaceEdit WE;
       WE.changes.emplace();
-      (*WE.changes)[File.uri()] = replacementsToEdits(Code, *R);
+      (*WE.changes)[File.uri()] = std::move(*R);
 
       Reply("Fix applied.");
       ApplyEdit(std::move(WE));
@@ -586,11 +576,7 @@ void ClangdLSPServer::onDocumentOnTypeFormatting(
         "onDocumentOnTypeFormatting called for non-added file",
         ErrorCode::InvalidParams));
 
-  auto ReplacementsOrError = Server->formatOnType(*Code, File, Params.position);
-  if (ReplacementsOrError)
-    Reply(replacementsToEdits(*Code, ReplacementsOrError.get()));
-  else
-    Reply(ReplacementsOrError.takeError());
+  Reply(Server->formatOnType(*Code, File, Params.position, Params.ch));
 }
 
 void ClangdLSPServer::onDocumentRangeFormatting(
@@ -738,8 +724,12 @@ void ClangdLSPServer::onCodeAction(const CodeActionParams &Params,
 
 void ClangdLSPServer::onCompletion(const CompletionParams &Params,
                                    Callback<CompletionList> Reply) {
-  if (!shouldRunCompletion(Params))
-    return Reply(llvm::make_error<IgnoreCompletionError>());
+  if (!shouldRunCompletion(Params)) {
+    // Clients sometimes auto-trigger completions in undesired places (e.g.
+    // 'a >^ '), we return empty results in those cases.
+    vlog("ignored auto-triggered completion, preceding char did not match");
+    return Reply(CompletionList());
+  }
   Server->codeComplete(Params.textDocument.uri.file(), Params.position, CCOpts,
                        Bind(
                            [this](decltype(Reply) Reply,

@@ -187,6 +187,10 @@
 #define _LIBCPP_CLANG_VER 0
 #endif
 
+#if defined(_LIBCPP_COMPILER_GCC) && __cplusplus < 201103L
+#error "libc++ does not support using GCC with C++03. Please enable C++11"
+#endif
+
 // FIXME: ABI detection should be done via compiler builtin macros. This
 // is just a placeholder until Clang implements such macros. For now assume
 // that Windows compilers pretending to be MSVC++ target the Microsoft ABI,
@@ -1271,6 +1275,21 @@ _LIBCPP_FUNC_VIS extern "C" void __sanitizer_annotate_contiguous_container(
 #else
 #  define _LIBCPP_FALLTHROUGH() ((void)0)
 #endif
+
+#if __has_attribute(__nodebug__)
+#define _LIBCPP_NODEBUG __attribute__((__nodebug__))
+#else
+#define _LIBCPP_NODEBUG
+#endif
+
+#ifndef _LIBCPP_NODEBUG_TYPE
+#if __has_attribute(__nodebug__) && \
+    (defined(_LIBCPP_COMPILER_CLANG) && _LIBCPP_CLANG_VER >= 900)
+#define _LIBCPP_NODEBUG_TYPE __attribute__((nodebug))
+#else
+#define _LIBCPP_NODEBUG_TYPE
+#endif
+#endif // !defined(_LIBCPP_NODEBUG_TYPE)
 
 #if defined(_LIBCPP_ABI_MICROSOFT) && \
     (defined(_LIBCPP_COMPILER_MSVC) || __has_declspec_attribute(empty_bases))

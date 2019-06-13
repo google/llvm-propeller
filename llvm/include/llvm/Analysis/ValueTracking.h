@@ -16,6 +16,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instruction.h"
@@ -521,6 +522,12 @@ class Value;
   /// value (all bits poison).
   const Value *getGuaranteedNonFullPoisonOp(const Instruction *I);
 
+  /// Return true if the given instruction must trigger undefined behavior.
+  /// when I is executed with any operands which appear in KnownPoison holding
+  /// a full-poison value at the point of execution.
+  bool mustTriggerUB(const Instruction *I,
+                     const SmallSet<const Value *, 16>& KnownPoison);
+
   /// Return true if this function can prove that if PoisonI is executed
   /// and yields a full-poison value (all bits poison), then that will
   /// trigger undefined behavior.
@@ -598,6 +605,12 @@ class Value;
     RHS = R;
     return Result;
   }
+
+  /// Determine the pattern that a select with the given compare as its
+  /// predicate and given values as its true/false operands would match.
+  SelectPatternResult matchDecomposedSelectPattern(
+      CmpInst *CmpI, Value *TrueVal, Value *FalseVal, Value *&LHS, Value *&RHS,
+      Instruction::CastOps *CastOp = nullptr, unsigned Depth = 0);
 
   /// Return the canonical comparison predicate for the specified
   /// minimum/maximum flavor.

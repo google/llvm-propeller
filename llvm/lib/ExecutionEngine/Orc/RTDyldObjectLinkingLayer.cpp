@@ -41,9 +41,6 @@ public:
           OnResolved(Result);
         };
 
-    // We're not waiting for symbols to be ready. Just log any errors.
-    auto OnReady = [&ES](Error Err) { ES.reportError(std::move(Err)); };
-
     // Register dependencies for all symbols contained in this set.
     auto RegisterDependencies = [&](const SymbolDependenceMap &Deps) {
       MR.addDependenciesForAll(Deps);
@@ -52,8 +49,8 @@ public:
     JITDylibSearchList SearchOrder;
     MR.getTargetJITDylib().withSearchOrderDo(
         [&](const JITDylibSearchList &JDs) { SearchOrder = JDs; });
-    ES.lookup(SearchOrder, InternedSymbols, OnResolvedWithUnwrap, OnReady,
-              RegisterDependencies);
+    ES.lookup(SearchOrder, InternedSymbols, SymbolState::Resolved,
+              OnResolvedWithUnwrap, RegisterDependencies);
   }
 
   Expected<LookupSet> getResponsibilitySet(const LookupSet &Symbols) {
@@ -187,7 +184,7 @@ Error RTDyldObjectLinkingLayer::onObjLoad(
     if (auto Err = R.defineMaterializing(ExtraSymbolsToClaim))
       return Err;
 
-  R.resolve(Symbols);
+  R.notifyResolved(Symbols);
 
   if (NotifyLoaded)
     NotifyLoaded(K, Obj, *LoadedObjInfo);
@@ -204,7 +201,7 @@ void RTDyldObjectLinkingLayer::onObjEmit(
     return;
   }
 
-  R.emit();
+  R.notifyEmitted();
 
   if (NotifyEmitted)
     NotifyEmitted(K, std::move(ObjBuffer));

@@ -8126,9 +8126,9 @@ const SCEV *ScalarEvolution::computeSCEVAtScope(const SCEV *V, const Loop *L) {
                     break;
                   }
                 }
-                if (!MultipleInitValues && InitValue)
-                  return getSCEV(InitValue);
               }
+              if (!MultipleInitValues && InitValue)
+                return getSCEV(InitValue);
             }
             // Okay, we know how many times the containing loop executes.  If
             // this is a constant evolving PHI node, get the final value at
@@ -8137,6 +8137,16 @@ const SCEV *ScalarEvolution::computeSCEVAtScope(const SCEV *V, const Loop *L) {
                 getConstantEvolutionLoopExitValue(PN, BTCC->getAPInt(), LI);
             if (RV) return getSCEV(RV);
           }
+        }
+
+        // If there is a single-input Phi, evaluate it at our scope. If we can
+        // prove that this replacement does not break LCSSA form, use new value.
+        if (PN->getNumOperands() == 1) {
+          const SCEV *Input = getSCEV(PN->getOperand(0));
+          const SCEV *InputAtScope = getSCEVAtScope(Input, L);
+          // TODO: We can generalize it using LI.replacementPreservesLCSSAForm,
+          // for the simplest case just support constants.
+          if (isa<SCEVConstant>(InputAtScope)) return InputAtScope;
         }
       }
 

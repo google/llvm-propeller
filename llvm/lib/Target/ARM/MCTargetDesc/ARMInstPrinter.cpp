@@ -771,11 +771,13 @@ void ARMInstPrinter::printPKHASRShiftImm(const MCInst *MI, unsigned OpNum,
 void ARMInstPrinter::printRegisterList(const MCInst *MI, unsigned OpNum,
                                        const MCSubtargetInfo &STI,
                                        raw_ostream &O) {
-  assert(std::is_sorted(MI->begin() + OpNum, MI->end(),
-                        [&](const MCOperand &LHS, const MCOperand &RHS) {
-                          return MRI.getEncodingValue(LHS.getReg()) <
-                                 MRI.getEncodingValue(RHS.getReg());
-                        }));
+  if (MI->getOpcode() != ARM::t2CLRM) {
+    assert(std::is_sorted(MI->begin() + OpNum, MI->end(),
+                          [&](const MCOperand &LHS, const MCOperand &RHS) {
+                            return MRI.getEncodingValue(LHS.getReg()) <
+                                   MRI.getEncodingValue(RHS.getReg());
+                          }));
+  }
 
   O << "{";
   for (unsigned i = OpNum, e = MI->getNumOperands(); i != e; ++i) {
@@ -930,12 +932,29 @@ void ARMInstPrinter::printPredicateOperand(const MCInst *MI, unsigned OpNum,
     O << ARMCondCodeToString(CC);
 }
 
+void ARMInstPrinter::printMandatoryRestrictedPredicateOperand(
+    const MCInst *MI, unsigned OpNum, const MCSubtargetInfo &STI,
+    raw_ostream &O) {
+  if ((ARMCC::CondCodes)MI->getOperand(OpNum).getImm() == ARMCC::HS)
+    O << "cs";
+  else
+    printMandatoryPredicateOperand(MI, OpNum, STI, O);
+}
+
 void ARMInstPrinter::printMandatoryPredicateOperand(const MCInst *MI,
                                                     unsigned OpNum,
                                                     const MCSubtargetInfo &STI,
                                                     raw_ostream &O) {
   ARMCC::CondCodes CC = (ARMCC::CondCodes)MI->getOperand(OpNum).getImm();
   O << ARMCondCodeToString(CC);
+}
+
+void ARMInstPrinter::printMandatoryInvertedPredicateOperand(const MCInst *MI,
+                                                            unsigned OpNum,
+                                                            const MCSubtargetInfo &STI,
+                                                            raw_ostream &O) {
+  ARMCC::CondCodes CC = (ARMCC::CondCodes)MI->getOperand(OpNum).getImm();
+  O << ARMCondCodeToString(ARMCC::getOppositeCondition(CC));
 }
 
 void ARMInstPrinter::printSBitModifierOperand(const MCInst *MI, unsigned OpNum,
@@ -1020,16 +1039,13 @@ void ARMInstPrinter::printThumbITMask(const MCInst *MI, unsigned OpNum,
                                       raw_ostream &O) {
   // (3 - the number of trailing zeros) is the number of then / else.
   unsigned Mask = MI->getOperand(OpNum).getImm();
-  unsigned Firstcond = MI->getOperand(OpNum - 1).getImm();
-  unsigned CondBit0 = Firstcond & 1;
   unsigned NumTZ = countTrailingZeros(Mask);
   assert(NumTZ <= 3 && "Invalid IT mask!");
   for (unsigned Pos = 3, e = NumTZ; Pos > e; --Pos) {
-    bool T = ((Mask >> Pos) & 1) == CondBit0;
-    if (T)
-      O << 't';
-    else
+    if ((Mask >> Pos) & 1)
       O << 'e';
+    else
+      O << 't';
   }
 }
 
@@ -1578,5 +1594,29 @@ void ARMInstPrinter::printComplexRotationOp(const MCInst *MI, unsigned OpNo,
                                             raw_ostream &O) {
   unsigned Val = MI->getOperand(OpNo).getImm();
   O << "#" << (Val * Angle) + Remainder;
+}
+
+void ARMInstPrinter::printVPTPredicateOperand(const MCInst *MI, unsigned OpNum,
+                                              const MCSubtargetInfo &STI,
+                                              raw_ostream &O) {
+  ARMVCC::VPTCodes CC = (ARMVCC::VPTCodes)MI->getOperand(OpNum).getImm();
+  if (CC != ARMVCC::None)
+    O << ARMVPTPredToString(CC);
+}
+
+void ARMInstPrinter::printVPTMask(const MCInst *MI, unsigned OpNum,
+                                  const MCSubtargetInfo &STI,
+                                  raw_ostream &O) {
+  // (3 - the number of trailing zeroes) is the number of them / else.
+  unsigned Mask = MI->getOperand(OpNum).getImm();
+  unsigned NumTZ = countTrailingZeros(Mask);
+  assert(NumTZ <= 3 && "Invalid VPT mask!");
+  for (unsigned Pos = 3, e = NumTZ; Pos > e; --Pos) {
+    bool T = ((Mask >> Pos) & 1) == 0;
+    if (T)
+      O << 't';
+    else
+      O << 'e';
+  }
 }
 
