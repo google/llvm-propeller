@@ -43,6 +43,7 @@ template <class ELFT> bool ELFViewImpl<ELFT>::Init() {
   auto EVF = ViewFile::create(FileRef.getBuffer());
   if (!EVF)
     return false;
+
   return initEhdr(*EVF) && initSections(*EVF);
 }
 
@@ -75,23 +76,32 @@ template <class ELFT> bool ELFViewImpl<ELFT>::initSections(const ViewFile &VF) {
     if (!ErrOrShdr)
       return false;
     const ViewFileShdr *Shdr = *ErrOrShdr;
-    auto EContents = VF.template getSectionContentsAsArray<char>(Shdr);
-    if (EContents) {
-      const ArrayRef<char> Contents = *EContents;
-      FirstSectPos = Blocks.emplace(
-          FirstSectPos,
-          new ELFBlock(ELFBlock::Ty::SECT_BLK,
-                       StringRef(Contents.data(), Contents.size())));
-      FirstShdrPos = Blocks.emplace(
-          FirstShdrPos,
-          new ELFBlock(ELFBlock::Ty::SHDR_BLK,
-                       StringRef((const char *)Shdr, sizeof(*Shdr))));
-      if (i == ShStrNdx) {
-        ShStrSectPos = FirstSectPos;
-        ShStrShdrPos = FirstShdrPos;
-      }
+    const char  *DataStart;
+    size_t DataSize;
+    if (Shdr->sh_type == llvm::ELF::SHT_NOBITS) {
+      DataStart = nullptr;
+      DataSize = 0;
     } else {
-      return false;
+      auto EContents = VF.template getSectionContentsAsArray<char>(Shdr);
+      if (EContents) {
+        DataStart = EContents->data();
+        DataSize = EContents->size();
+      } else {
+        fprintf(stderr,
+                "Invalid section (ShNdx=%ld) content presented in file.\n", i);
+        return false;
+      }
+    }
+    FirstSectPos = Blocks.emplace(
+        FirstSectPos,
+        new ELFBlock(ELFBlock::Ty::SECT_BLK, StringRef(DataStart, DataSize)));
+    FirstShdrPos = Blocks.emplace(
+        FirstShdrPos,
+        new ELFBlock(ELFBlock::Ty::SHDR_BLK,
+                     StringRef((const char *)Shdr, sizeof(*Shdr))));
+    if (i == ShStrNdx) {
+      ShStrSectPos = FirstSectPos;
+      ShStrShdrPos = FirstShdrPos;
     }
   }
   return setupSymTabAndSymTabStrPos();

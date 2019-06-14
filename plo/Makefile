@@ -238,8 +238,8 @@ sample_bblabels.o: sample.c
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
 
-sample.out: sample_bblabels.o
-	./stage1-compiler -o $@ $<
+sample.out: sample_bblabels.o stage1-compiler
+	./stage1-compiler -fuse-ld=lld -Wl,-O2 -o $@ $<
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
 
@@ -262,7 +262,7 @@ sample.out.symfile: sample.out sample.perfdata
 	./plotool.sh $^
 
 sample.plo.out sample.out.cfg: sample.BB.ll.o sample.out.symfile sample.out.profile stage1-compiler
-	stage1/install/bin/clang -fuse-ld=lld \
+	stage1/install/bin/clang -fuse-ld=lld -Wl,-O2 \
 	  -Wl,-plo \
 	  -Wl,-symfile=sample.out.symfile \
 	  -Wl,-profile=sample.out.profile \
@@ -274,9 +274,12 @@ sample.out.layout: sample.out.cfg stage1-compiler
 
 .phony: clean clean-all
 .phone: $(foreach F,$(FLAVORS),dummy-$(F))
+$(foreach F,$(FLAVORS),dummy-$(F)):
 
 $(foreach F,$(FLAVORS),clean-$(F)): clean-%: dummy-%
 	rm -fr $(subst dummy-,,$<){,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,.symfile,.yaml,.profile,.cfg,.size-summaries}
+	if [[ "$(subst dummy-,,$<)" == "pgo" ]]; then rm -fr stage-pgo ; done
+	if [[ "$(subst dummy-,,$<)" == "cspgo" ]]; then rm -fr stage-cspgo ; done
 
 clean:
 	@for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \
