@@ -505,10 +505,10 @@ template <class ELFT> void Writer<ELFT>::run() {
   // completes section contents. For example, we need to add strings
   // to the string table, and add entries to .got and .plt.
   // finalizeSections does that.
-  auto startTime = std::chrono::system_clock::now();
+  auto startFinalizeSectionTime = std::chrono::system_clock::now();
   finalizeSections();
-  auto endTime = std::chrono::system_clock::now();
-  warn("[TIME](us) finalize section (includes section ordering): " + Twine((endTime - startTime).count()));
+  auto endFinalizeSectionTime = std::chrono::system_clock::now();
+  warn("[TIME](us) finalize section (includes section ordering): " + Twine((endFinalizeSectionTime - startfinalizeSectionTime).count()));
   checkExecuteOnly();
   if (errorCount())
     return;
@@ -1934,6 +1934,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Relaxation to delete inter-basic block jumps created by basic block
   // sections.
+  auto startOptBBJumpTime = std::chrono::system_clock::now();
   optimizeBasicBlockJumps();
 
   // Fill other section headers. The dynamic table is finalized
