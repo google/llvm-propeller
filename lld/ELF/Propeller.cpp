@@ -8,6 +8,7 @@
 
 #include "llvm/Support/Parallel.h"
 
+#include <chrono>
 #include <stdio.h>
 #include <fstream>
 #include <functional>
@@ -49,8 +50,8 @@ SymbolEntry *Propfile::findSymbol(StringRef SymName) {
       return L2->second;
     }
   }
-  warn(string("failed to find SymbolEntry for '") +
-       SymbolEntry::toCompactBBName(SymName) + "'.");
+  // warn(string("failed to find SymbolEntry for '") +
+  //     SymbolEntry::toCompactBBName(SymName) + "'.");
   return nullptr;
 }
 
@@ -181,6 +182,8 @@ bool Propfile::processProfile() {
   ssize_t R;
   uint64_t BCnt = 0;
   uint64_t FCnt = 0;
+  auto startBranchTime = std::chrono::system_clock::now();
+  auto startFallthroughTime = std::chrono::system_clock::now();
   while ((R = getline(&LineBuf, &LineSize, PStream)) != -1) {
     ++LineNo;
     if (R == 0)
@@ -189,6 +192,20 @@ bool Propfile::processProfile() {
       continue;
     if (LineBuf[0] == 'S' || LineBuf[0] == 'B' || LineBuf[0] == 'F') {
       LineTag = LineBuf[0];
+      switch(LineTag) {
+        case 'S':
+          break;
+        case 'B':
+          break;
+        case 'F':
+          startFallthroughTime = std::chrono::system_clock::now();
+          warn("[TIME](us) process branch: " + Twine((startFallthroughTime - startBranchTime).count()));
+          break;
+        default:
+          // unreachable
+          assert(false && "unreachable");
+          break;
+      }
       continue;
     }
     if (LineTag != 'B' && LineTag != 'F') break;
@@ -221,13 +238,15 @@ bool Propfile::processProfile() {
       // LineTag == 'F'
       if (FromN->Cfg == ToN->Cfg) {
         if (!FromN->Cfg->markPath(FromN, ToN, Cnt)) {
-          warn("Waring: failed to mark '" + 
-                  SymbolEntry::toCompactBBName(FromN->ShName) + "' -> '" + 
-                  SymbolEntry::toCompactBBName(ToN->ShName) +"'.");
+          // warn("Waring: failed to mark '" + 
+          //        SymbolEntry::toCompactBBName(FromN->ShName) + "' -> '" + 
+          //        SymbolEntry::toCompactBBName(ToN->ShName) +"'.");
         }
       }
     }
   }
+
+  warn("[TIME](us) process fallthrough: " + Twine((std::chrono::system_clock::now() - startBranchTime).count()));
 
   if (!BCnt) {
     warn("Warning: 0 branch info processed.");
@@ -268,7 +287,7 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
   StringRef FuncName = S->BBTag ? S->ContainingFunc->Name : S->Name;
   auto CfgLI = CfgMap.find(FuncName);
   if (CfgLI == CfgMap.end()) {
-    warn(string("No Cfg named '") + FuncName + "' found.");
+    //warn(string("No Cfg named '") + FuncName + "' found.");
     return nullptr;
   }
   if (CfgLI != CfgMap.end()) {
@@ -313,8 +332,8 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
       }
     }
   }
-  warn(string("No cfg found for symbol ordinal: ") +
-       std::to_string(SymbolOrdinal) + ".");
+  // warn(string("No cfg found for symbol ordinal: ") +
+  //     std::to_string(SymbolOrdinal) + ".");
   return nullptr;
 }
 
@@ -358,10 +377,12 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
   Propf = llvm::make_unique<Propfile>(PropFile, *this);
+  auto startReadSymbolTime = std::chrono::system_clock::now();
   if (!Propf->readSymbols()) {
     error(string("Invalid propfile: '") + PropellerFileName + "'.");
     return false;
   }
+  auto startCreateCfgTime = std::chrono::system_clock::now();
 
   // Creating Cfgs.
   vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
@@ -374,11 +395,16 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
       FileOrdinalPairs.end(),
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
+  auto startProcessProfileTime = std::chrono::system_clock::now();
+
   // Map profiles.
   if (!Propf->processProfile()) {
     return false;
   }
 
+  warn("[TIME](us) read symbol: " + Twine((startCreateCfgTime - startReadSymbolTime).count()));
+  warn("[TIME](us) cfg create: " + Twine((startProcessProfileTime - startCreateCfgTime).count()));
+  warn("[TIME](us) process profile " + Twine((std::chrono::system_clock::now() - startProcessProfileTime).count()));
   // Releasing all support data (symbol ordinal / name map, saved string refs,
   // etc) before moving to reordering.
   Propf.reset(nullptr);

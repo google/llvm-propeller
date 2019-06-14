@@ -29,6 +29,7 @@
 #include "llvm/Support/RandomNumberGenerator.h"
 #include "llvm/Support/SHA1.h"
 #include "llvm/Support/xxhash.h"
+#include <chrono>
 #include <cctype>
 #include <climits>
 #include <type_traits>
@@ -504,7 +505,10 @@ template <class ELFT> void Writer<ELFT>::run() {
   // completes section contents. For example, we need to add strings
   // to the string table, and add entries to .got and .plt.
   // finalizeSections does that.
+  auto startTime = std::chrono::system_clock::now();
   finalizeSections();
+  auto endTime = std::chrono::system_clock::now();
+  warn("[TIME](us) finalize section (includes section ordering): " + Twine((endTime - startTime).count()));
   checkExecuteOnly();
   if (errorCount())
     return;
