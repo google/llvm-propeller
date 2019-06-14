@@ -1,12 +1,12 @@
-#include "PLOELFView.h"
-#include "llvm/Support/MemoryBuffer.h"
-
 #include <stdio.h>
-
 #include <fstream>
 #include <string>
 
-using namespace llvm::plo;
+#include "PLOELFView.h"
+#include "llvm/Support/MemoryBuffer.h"
+
+using llvm::plo::ELFSizeInfo;
+using llvm::plo::ELFView;
 
 using llvm::MemoryBuffer;
 using llvm::MemoryBufferRef;

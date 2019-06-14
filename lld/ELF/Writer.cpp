@@ -644,6 +644,7 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
     return;
   for (InputFile *File : ObjectFiles) {
     ObjFile<ELFT> *F = cast<ObjFile<ELFT>>(File);
+    std::list<Symbol *> Locals;
     for (Symbol *B : F->getLocalSymbols()) {
       if (!B->isLocal())
         fatal(toString(F) +
@@ -657,7 +658,14 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
         continue;
       if (!shouldKeepInSymtab(*DR))
         continue;
-      In.SymTab->addSymbol(B);
+      Locals.emplace_back(B);
+    }
+
+    Locals.sort([](Symbol *A, Symbol *B) {
+      return A->getName().size() > B->getName().size();
+    });
+    for (auto *S : Locals) {
+      In.SymTab->addSymbol(S);
     }
   }
 }
