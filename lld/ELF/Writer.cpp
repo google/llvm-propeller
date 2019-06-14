@@ -508,7 +508,7 @@ template <class ELFT> void Writer<ELFT>::run() {
   auto startFinalizeSectionTime = std::chrono::system_clock::now();
   finalizeSections();
   auto endFinalizeSectionTime = std::chrono::system_clock::now();
-  warn("[TIME](us) finalize section (includes section ordering): " + Twine((endFinalizeSectionTime - startfinalizeSectionTime).count()));
+  warn("[TIME](us) finalize section (includes section ordering): " + Twine((endFinalizeSectionTime - startFinalizeSectionTime).count()));
   checkExecuteOnly();
   if (errorCount())
     return;
