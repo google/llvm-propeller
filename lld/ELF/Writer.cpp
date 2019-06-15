@@ -45,6 +45,9 @@ using namespace llvm::support::endian;
 using namespace lld;
 using namespace lld::elf;
 
+using std::chrono::system_clock;
+using std::chrono::duration;
+
 namespace {
 // The writer writes a SymbolTable result to a file.
 template <class ELFT> class Writer {
@@ -505,10 +508,11 @@ template <class ELFT> void Writer<ELFT>::run() {
   // completes section contents. For example, we need to add strings
   // to the string table, and add entries to .got and .plt.
   // finalizeSections does that.
-  auto startFinalizeSectionTime = std::chrono::system_clock::now();
+  auto startFinalizeSectionTime = system_clock::now();
   finalizeSections();
-  auto endFinalizeSectionTime = std::chrono::system_clock::now();
-  warn("[TIME](us) finalize section (includes section ordering): " + Twine((endFinalizeSectionTime - startFinalizeSectionTime).count()));
+  auto endFinalizeSectionTime = system_clock::now();
+  duration<double> FinalizeSectionTime = endFinalizeSectionTime - startFinalizeSectionTime;
+  warn("[TIME](s) finalize section (includes section ordering): " + Twine(std::to_string(FinalizeSectionTime.count())));
   checkExecuteOnly();
   if (errorCount())
     return;
@@ -1942,8 +1946,12 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Relaxation to delete inter-basic block jumps created by basic block
   // sections.
-  auto startOptBBJumpTime = std::chrono::system_clock::now();
+  auto startOptBBJumpTime = system_clock::now();
   optimizeBasicBlockJumps();
+  auto endOptBBJumpTime = system_clock::now();
+  duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+  warn("[TIME](s) optimize bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
+
 
   // Fill other section headers. The dynamic table is finalized
   // at the end because some tags like RELSZ depend on result
