@@ -8,6 +8,7 @@
 
 #include "llvm/Support/Parallel.h"
 
+#include <chrono>
 #include <stdio.h>
 #include <fstream>
 #include <functional>
@@ -25,6 +26,8 @@ using std::map;
 using std::string;
 using std::tuple;
 using std::vector;
+using std::chrono::duration;
+using std::chrono::system_clock;
 
 namespace lld {
 namespace propeller {
@@ -49,8 +52,8 @@ SymbolEntry *Propfile::findSymbol(StringRef SymName) {
       return L2->second;
     }
   }
-  warn(string("failed to find SymbolEntry for '") +
-       SymbolEntry::toCompactBBName(SymName) + "'.");
+  // warn(string("failed to find SymbolEntry for '") +
+  //     SymbolEntry::toCompactBBName(SymName) + "'.");
   return nullptr;
 }
 
@@ -221,9 +224,9 @@ bool Propfile::processProfile() {
       // LineTag == 'F'
       if (FromN->Cfg == ToN->Cfg) {
         if (!FromN->Cfg->markPath(FromN, ToN, Cnt)) {
-          warn("Waring: failed to mark '" + 
-                  SymbolEntry::toCompactBBName(FromN->ShName) + "' -> '" + 
-                  SymbolEntry::toCompactBBName(ToN->ShName) +"'.");
+          // warn("Waring: failed to mark '" + 
+          //        SymbolEntry::toCompactBBName(FromN->ShName) + "' -> '" + 
+          //        SymbolEntry::toCompactBBName(ToN->ShName) +"'.");
         }
       }
     }
@@ -268,7 +271,7 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
   StringRef FuncName = S->BBTag ? S->ContainingFunc->Name : S->Name;
   auto CfgLI = CfgMap.find(FuncName);
   if (CfgLI == CfgMap.end()) {
-    warn(string("No Cfg named '") + FuncName + "' found.");
+    //warn(string("No Cfg named '") + FuncName + "' found.");
     return nullptr;
   }
   if (CfgLI != CfgMap.end()) {
@@ -313,8 +316,8 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
       }
     }
   }
-  warn(string("No cfg found for symbol ordinal: ") +
-       std::to_string(SymbolOrdinal) + ".");
+  // warn(string("No cfg found for symbol ordinal: ") +
+  //     std::to_string(SymbolOrdinal) + ".");
   return nullptr;
 }
 
@@ -358,10 +361,12 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
   Propf = llvm::make_unique<Propfile>(PropFile, *this);
+  auto startReadSymbolTime = system_clock::now();
   if (!Propf->readSymbols()) {
     error(string("Invalid propfile: '") + PropellerFileName + "'.");
     return false;
   }
+  auto startCreateCfgTime = system_clock::now();
 
   // Creating Cfgs.
   vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
@@ -374,11 +379,19 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
       FileOrdinalPairs.end(),
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
+  auto startProcessProfileTime = system_clock::now();
+
   // Map profiles.
   if (!Propf->processProfile()) {
     return false;
   }
 
+  duration<double> ProcessProfileTime = system_clock::now() - startProcessProfileTime;
+  duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
+  duration<double> CreateCfgTime = startProcessProfileTime - startCreateCfgTime;
+  warn("[TIME](s) read symbols: " + Twine(std::to_string(ReadSymbolTime.count())));
+  warn("[TIME](s) cfg create: " + Twine(std::to_string(CreateCfgTime.count())));
+  warn("[TIME](s) process profile " + Twine(std::to_string(ProcessProfileTime.count())));
   // Releasing all support data (symbol ordinal / name map, saved string refs,
   // etc) before moving to reordering.
   Propf.reset(nullptr);
@@ -405,7 +418,11 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   if (Config->PropellerReorderFuncs) {
     CCubeAlgorithm Algo;
     Algo.init(*this);
+    auto startFuncOrderTime = system_clock::now();
     CfgOrder = Algo.doOrder();
+    auto endFuncOrderTime = system_clock::now();
+    duration<double> FuncOrderTime = endFuncOrderTime - startFuncOrderTime;
+    warn("[TIME](s) func ordering: " + Twine(std::to_string(FuncOrderTime.count())));
   } else {
     forEachCfgRef([&CfgOrder](ELFCfg &Cfg) { CfgOrder.push_back(&Cfg); });
     CfgOrder.sort([](const ELFCfg *A, const ELFCfg *B) {
@@ -415,6 +432,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     });
   }
 
+  auto startBBOrderTime = system_clock::now();
   list<StringRef> SymbolList(1, "Hot");
   const auto HotPlaceHolder = SymbolList.begin();
   const auto ColdPlaceHolder = SymbolList.end();
@@ -429,6 +447,9 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
       });
     }
   }
+  auto endBBOrderTime = system_clock::now();
+  duration<double> BBOrderTime = endBBOrderTime - startBBOrderTime;
+  warn("[TIME](s) total bb ordering: " + Twine(std::to_string(BBOrderTime.count())));
 
   calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
 

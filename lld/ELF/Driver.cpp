@@ -873,14 +873,14 @@ static void readConfigs(opt::InputArgList &Args) {
       Args.getLastArgValue(OPT_print_symbol_order);
   Config->Propeller = Args.getLastArgValue(OPT_propeller);
 
+  Config->PropellerKeepNamedSymbols =
+      Args.hasFlag(OPT_propeller_keep_named_symbols,
+                   OPT_no_propeller_keep_named_symbols, false);
+
   Config->PropellerReorderBlocks =
       Config->PropellerReorderFuncs =
       Config->PropellerSplitFuncs =
       !Config->Propeller.empty();
-
-  Config->PropellerKeepNamedSymbols =
-      Args.hasFlag(OPT_propeller_keep_named_symbols,
-                   OPT_no_propeller_keep_named_symbols, false);
 
   // Parse Propeller flags.
   auto PropellerOpts = Args.getAllArgValues(OPT_propeller_opt);
@@ -888,20 +888,23 @@ static void readConfigs(opt::InputArgList &Args) {
     StringRef S = StringRef(PropellerOpt);
     if (S == "reorder-funcs"){
       Config->PropellerReorderFuncs = true;
+    } else if (S == "no-reorder-funcs") {
+      Config->PropellerReorderFuncs = false;
     } else if (S == "reorder-blocks") {
       Config->PropellerReorderBlocks = true;
-    } else if (S == "reorder-none") {
+    } else if (S == "no-reorder-blocks") {
       Config->PropellerReorderBlocks = false;
-      Config->PropellerReorderFuncs = false;
-    } else if (S == "reorder-all") {
-      Config->PropellerReorderBlocks = true;
-      Config->PropellerReorderFuncs = true;
     } else if (S == "split-funcs") {
       Config->PropellerSplitFuncs = true;
     } else if (S == "no-split-funcs") {
       Config->PropellerSplitFuncs = false;
     } else
       error("unknown propeller option: " + S);
+  }
+
+  if (!Config->PropellerReorderBlocks && Config->PropellerSplitFuncs){
+    error("propeller: Inconsistent combination of propeller optimizations:\n"
+          "split-funcs can only be used with reorder-blocks");
   }
 
   Config->Rpath = getRpath(Args);
