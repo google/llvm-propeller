@@ -1094,7 +1094,7 @@ Address CodeGenModule::createUnnamedGlobalFrom(const VarDecl &D,
     } else if (isa<CapturedDecl>(DC)) {
       return "<captured>";
     } else {
-      llvm::llvm_unreachable_internal("expected a function or method");
+      llvm_unreachable("expected a function or method");
     }
   };
 
@@ -1107,12 +1107,16 @@ Address CodeGenModule::createUnnamedGlobalFrom(const VarDecl &D,
     llvm::GlobalVariable *InsertBefore = nullptr;
     unsigned AS =
         getContext().getTargetAddressSpace(getStringLiteralAddressSpace());
+    std::string Name;
+    if (D.hasGlobalStorage())
+      Name = getMangledName(&D).str() + ".const";
+    else if (const DeclContext *DC = D.getParentFunctionOrMethod())
+      Name = ("__const." + FunctionName(DC) + "." + D.getName()).str();
+    else
+      llvm_unreachable("local variable has no parent function or method");
     llvm::GlobalVariable *GV = new llvm::GlobalVariable(
         getModule(), Ty, isConstant, llvm::GlobalValue::PrivateLinkage,
-        Constant,
-        "__const." + FunctionName(D.getParentFunctionOrMethod()) + "." +
-            D.getName(),
-        InsertBefore, llvm::GlobalValue::NotThreadLocal, AS);
+        Constant, Name, InsertBefore, llvm::GlobalValue::NotThreadLocal, AS);
     GV->setAlignment(Align.getQuantity());
     GV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     CacheEntry = GV;

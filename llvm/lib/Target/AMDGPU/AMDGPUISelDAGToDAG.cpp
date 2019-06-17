@@ -217,6 +217,7 @@ private:
   void SelectBRCOND(SDNode *N);
   void SelectFMAD_FMA(SDNode *N);
   void SelectATOMIC_CMP_SWAP(SDNode *N);
+  void SelectDSAppendConsume(SDNode *N, unsigned IntrID);
   void SelectINTRINSIC_W_CHAIN(SDNode *N);
 
 protected:
@@ -500,13 +501,16 @@ SDNode *AMDGPUDAGToDAGISel::glueCopyToM0(SDNode *N, SDValue Val) const {
 
   // Write max value to m0 before each load operation
 
-  SDValue M0 = Lowering.copyToM0(*CurDAG, CurDAG->getEntryNode(), SDLoc(N),
+  assert(N->getOperand(0).getValueType() == MVT::Other && "Expected chain");
+
+  SDValue M0 = Lowering.copyToM0(*CurDAG, N->getOperand(0), SDLoc(N),
                                  Val);
 
   SDValue Glue = M0.getValue(1);
 
   SmallVector <SDValue, 8> Ops;
-  for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i)
+  Ops.push_back(M0); // Replace the chain.
+  for (unsigned i = 1, e = N->getNumOperands(); i != e; ++i)
     Ops.push_back(N->getOperand(i));
 
   Ops.push_back(Glue);
@@ -1010,6 +1014,9 @@ void AMDGPUDAGToDAGISel::SelectDIV_SCALE(SDNode *N) {
 }
 
 void AMDGPUDAGToDAGISel::SelectDIV_FMAS(SDNode *N) {
+  const GCNSubtarget *ST = static_cast<const GCNSubtarget *>(Subtarget);
+  const SIRegisterInfo *TRI = ST->getRegisterInfo();
+
   SDLoc SL(N);
   EVT VT = N->getValueType(0);
 
@@ -1021,7 +1028,7 @@ void AMDGPUDAGToDAGISel::SelectDIV_FMAS(SDNode *N) {
   SDValue CarryIn = N->getOperand(3);
   // V_DIV_FMAS implicitly reads VCC.
   SDValue VCC = CurDAG->getCopyToReg(CurDAG->getEntryNode(), SL,
-                                     AMDGPU::VCC, CarryIn, SDValue());
+                                     TRI->getVCC(), CarryIn, SDValue());
 
   SDValue Ops[10];
 
@@ -1838,9 +1845,12 @@ void AMDGPUDAGToDAGISel::SelectBRCOND(SDNode *N) {
     return;
   }
 
+  const GCNSubtarget *ST = static_cast<const GCNSubtarget *>(Subtarget);
+  const SIRegisterInfo *TRI = ST->getRegisterInfo();
+
   bool UseSCCBr = isCBranchSCC(N) && isUniformBr(N);
   unsigned BrOp = UseSCCBr ? AMDGPU::S_CBRANCH_SCC1 : AMDGPU::S_CBRANCH_VCCNZ;
-  unsigned CondReg = UseSCCBr ? AMDGPU::SCC : AMDGPU::VCC;
+  unsigned CondReg = UseSCCBr ? (unsigned)AMDGPU::SCC : TRI->getVCC();
   SDLoc SL(N);
 
   if (!UseSCCBr) {
@@ -1857,9 +1867,13 @@ void AMDGPUDAGToDAGISel::SelectBRCOND(SDNode *N) {
     // the S_AND when is unnecessary. But it would be better to add a separate
     // pass after SIFixSGPRCopies to do the unnecessary S_AND removal, so it
     // catches both cases.
-    Cond = SDValue(CurDAG->getMachineNode(AMDGPU::S_AND_B64, SL, MVT::i1,
-                               CurDAG->getRegister(AMDGPU::EXEC, MVT::i1),
-                               Cond),
+    Cond = SDValue(CurDAG->getMachineNode(ST->isWave32() ? AMDGPU::S_AND_B32
+                                                         : AMDGPU::S_AND_B64,
+                     SL, MVT::i1,
+                     CurDAG->getRegister(ST->isWave32() ? AMDGPU::EXEC_LO
+                                                        : AMDGPU::EXEC,
+                                         MVT::i1),
+                    Cond),
                    0);
   }
 
@@ -1980,15 +1994,7 @@ void AMDGPUDAGToDAGISel::SelectATOMIC_CMP_SWAP(SDNode *N) {
   CurDAG->RemoveDeadNode(N);
 }
 
-void AMDGPUDAGToDAGISel::SelectINTRINSIC_W_CHAIN(SDNode *N) {
-  unsigned IntrID = cast<ConstantSDNode>(N->getOperand(1))->getZExtValue();
-  if ((IntrID != Intrinsic::amdgcn_ds_append &&
-       IntrID != Intrinsic::amdgcn_ds_consume) ||
-      N->getValueType(0) != MVT::i32) {
-    SelectCode(N);
-    return;
-  }
-
+void AMDGPUDAGToDAGISel::SelectDSAppendConsume(SDNode *N, unsigned IntrID) {
   // The address is assumed to be uniform, so if it ends up in a VGPR, it will
   // be copied to an SGPR with readfirstlane.
   unsigned Opc = IntrID == Intrinsic::amdgcn_ds_append ?
@@ -1997,6 +2003,7 @@ void AMDGPUDAGToDAGISel::SelectINTRINSIC_W_CHAIN(SDNode *N) {
   SDValue Chain = N->getOperand(0);
   SDValue Ptr = N->getOperand(2);
   MemIntrinsicSDNode *M = cast<MemIntrinsicSDNode>(N);
+  MachineMemOperand *MMO = M->getMemOperand();
   bool IsGDS = M->getAddressSpace() == AMDGPUAS::REGION_ADDRESS;
 
   SDValue Offset;
@@ -2023,7 +2030,25 @@ void AMDGPUDAGToDAGISel::SelectINTRINSIC_W_CHAIN(SDNode *N) {
     N->getOperand(N->getNumOperands() - 1) // New glue
   };
 
-  CurDAG->SelectNodeTo(N, Opc, N->getVTList(), Ops);
+  SDNode *Selected = CurDAG->SelectNodeTo(N, Opc, N->getVTList(), Ops);
+  CurDAG->setNodeMemRefs(cast<MachineSDNode>(Selected), {MMO});
+}
+
+void AMDGPUDAGToDAGISel::SelectINTRINSIC_W_CHAIN(SDNode *N) {
+  unsigned IntrID = cast<ConstantSDNode>(N->getOperand(1))->getZExtValue();
+  switch (IntrID) {
+  case Intrinsic::amdgcn_ds_append:
+  case Intrinsic::amdgcn_ds_consume: {
+    if (N->getValueType(0) != MVT::i32)
+      break;
+    SelectDSAppendConsume(N, IntrID);
+    return;
+  }
+  default:
+    break;
+  }
+
+  SelectCode(N);
 }
 
 bool AMDGPUDAGToDAGISel::SelectVOP3ModsImpl(SDValue In, SDValue &Src,

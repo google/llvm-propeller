@@ -551,9 +551,14 @@ def SI_PC_ADD_REL_OFFSET : SPseudoInstSI <
   (outs SReg_64:$dst),
   (ins si_ga:$ptr_lo, si_ga:$ptr_hi),
   [(set SReg_64:$dst,
-   (i64 (SIpc_add_rel_offset (tglobaladdr:$ptr_lo), (tglobaladdr:$ptr_hi))))]> {
+      (i64 (SIpc_add_rel_offset tglobaladdr:$ptr_lo, tglobaladdr:$ptr_hi)))]> {
   let Defs = [SCC];
 }
+
+def : GCNPat <
+  (SIpc_add_rel_offset tglobaladdr:$ptr_lo, 0),
+  (SI_PC_ADD_REL_OFFSET $ptr_lo, (i32 0))
+>;
 
 def : GCNPat <
   (AMDGPUinit_exec i64:$src),
@@ -604,7 +609,12 @@ def : Pat <
   // TODO: we could add more variants for other types of conditionals
 
 def : Pat <
-  (int_amdgcn_icmp i1:$src, (i1 0), (i32 33)),
+  (i64 (int_amdgcn_icmp i1:$src, (i1 0), (i32 33))),
+  (COPY $src) // Return the SGPRs representing i1 src
+>;
+
+def : Pat <
+  (i32 (int_amdgcn_icmp i1:$src, (i1 0), (i32 33))),
   (COPY $src) // Return the SGPRs representing i1 src
 >;
 

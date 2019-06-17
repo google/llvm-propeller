@@ -713,11 +713,14 @@ def fauto_profile_accurate : Flag<["-"], "fauto-profile-accurate">,
     Group<f_Group>, Alias<fprofile_sample_accurate>;
 def fno_auto_profile_accurate : Flag<["-"], "fno-auto-profile-accurate">,
     Group<f_Group>, Alias<fno_profile_sample_accurate>;
-def fdebug_info_for_profiling : Flag<["-"], "fdebug-info-for-profiling">, Group<f_Group>,
-    Flags<[CC1Option]>,
+def fdebug_compilation_dir : Separate<["-"], "fdebug-compilation-dir">,
+    Group<f_Group>, Flags<[CC1Option, CC1AsOption, CoreOption]>,
+    HelpText<"The compilation directory to embed in the debug info.">;
+def fdebug_info_for_profiling : Flag<["-"], "fdebug-info-for-profiling">,
+    Group<f_Group>, Flags<[CC1Option]>,
     HelpText<"Emit extra debug info to make sample profile more accurate.">;
-def fno_debug_info_for_profiling : Flag<["-"], "fno-debug-info-for-profiling">, Group<f_Group>,
-    Flags<[DriverOption]>,
+def fno_debug_info_for_profiling : Flag<["-"], "fno-debug-info-for-profiling">,
+    Group<f_Group>, Flags<[DriverOption]>,
     HelpText<"Do not emit extra debug info for sample profiler.">;
 def fprofile_instr_generate : Flag<["-"], "fprofile-instr-generate">,
     Group<f_Group>, Flags<[CoreOption]>,
@@ -2229,6 +2232,11 @@ def mcumode : Flag<["-"], "mcumode">, Group<m_amdgpu_Features_Group>,
 def mno_cumode : Flag<["-"], "mno-cumode">, Group<m_amdgpu_Features_Group>,
   HelpText<"WGP wavefront execution mode is used (AMDGPU only)">;
 
+def mwavefrontsize64 : Flag<["-"], "mwavefrontsize64">,
+  Group<m_Group>, HelpText<"Wavefront size 64 is used">;
+def mno_wavefrontsize64 : Flag<["-"], "mno-wavefrontsize64">,
+  Group<m_Group>, HelpText<"Wavefront size 32 is used">;
+
 def faltivec : Flag<["-"], "faltivec">, Group<f_Group>, Flags<[DriverOption]>;
 def fno_altivec : Flag<["-"], "fno-altivec">, Group<f_Group>, Flags<[DriverOption]>;
 def maltivec : Flag<["-"], "maltivec">, Group<m_ppc_Features_Group>;
@@ -2640,6 +2648,10 @@ def : Separate<["--"], "no-system-header-prefix">, Alias<no_system_header_prefix
 def s : Flag<["-"], "s">, Group<Link_Group>;
 def target : Joined<["--"], "target=">, Flags<[DriverOption, CoreOption]>,
   HelpText<"Generate code for the given target">;
+def _print_supported_cpus : Flag<["-", "--"], "print-supported-cpus">,
+  Group<CompileOnly_Group>, Flags<[CC1Option, CoreOption]>,
+  HelpText<"Print supported cpu models for the given target (if target is not specified,"
+           " it will print the supported cpus for the default target)">;
 def gcc_toolchain : Joined<["--"], "gcc-toolchain=">, Flags<[DriverOption]>,
   HelpText<"Use the gcc toolchain at the given directory">;
 def time : Flag<["-"], "time">,

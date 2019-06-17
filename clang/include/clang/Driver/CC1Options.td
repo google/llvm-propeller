@@ -190,8 +190,6 @@ def default_function_attr : Separate<["-"], "default-function-attr">,
   HelpText<"Apply given attribute to all functions">;
 def dwarf_version_EQ : Joined<["-"], "dwarf-version=">;
 def debugger_tuning_EQ : Joined<["-"], "debugger-tuning=">;
-def fdebug_compilation_dir : Separate<["-"], "fdebug-compilation-dir">,
-  HelpText<"The compilation directory to embed in the debug info.">;
 def dwarf_debug_flags : Separate<["-"], "dwarf-debug-flags">,
   HelpText<"The string to embed in the Dwarf debug flags record.">;
 def record_command_line : Separate<["-"], "record-command-line">,
@@ -685,7 +683,7 @@ def version : Flag<["-"], "version">,
   HelpText<"Print the compiler version">;
 def main_file_name : Separate<["-"], "main-file-name">,
   HelpText<"Main file name to use for debug info">;
-def split_dwarf_file : Separate<["-"], "split-dwarf-file">,
+def split_dwarf_output : Separate<["-"], "split-dwarf-output">,
   HelpText<"File name to use for split dwarf debug info output">;
 
 }
@@ -698,6 +696,8 @@ def enable_split_dwarf : Flag<["-"], "enable-split-dwarf">,
   HelpText<"Use DWARF fission in 'split' mode">;
 def enable_split_dwarf_EQ : Joined<["-"], "enable-split-dwarf=">,
   HelpText<"Set DWARF fission mode to either 'split' or 'single'">, Values<"split,single">;
+def split_dwarf_file : Separate<["-"], "split-dwarf-file">,
+  HelpText<"Name of the split dwarf debug info file to encode in the object file">;
 def fno_wchar : Flag<["-"], "fno-wchar">,
   HelpText<"Disable C++ builtin type wchar_t">;
 def fconstant_string_class : Separate<["-"], "fconstant-string-class">,

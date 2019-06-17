@@ -673,8 +673,7 @@ static int64_t computeAddend(const RelTy &Rel, const RelTy *End,
 
 // Custom error message if Sym is defined in a discarded section.
 template <class ELFT>
-static std::string maybeReportDiscarded(Undefined &Sym, InputSectionBase &Sec,
-                                        uint64_t Offset) {
+static std::string maybeReportDiscarded(Undefined &Sym) {
   auto *File = dyn_cast_or_null<ObjFile<ELFT>>(Sym.File);
   if (!File || !Sym.DiscardedSecIdx ||
       File->getSections()[Sym.DiscardedSecIdx] != &InputSection::Discarded)
@@ -741,8 +740,7 @@ static bool maybeReportUndefined(Symbol &Sym, InputSectionBase &Sec,
     }
   };
 
-  std::string Msg =
-      maybeReportDiscarded<ELFT>(cast<Undefined>(Sym), Sec, Offset);
+  std::string Msg = maybeReportDiscarded<ELFT>(cast<Undefined>(Sym));
   if (Msg.empty())
     Msg = "undefined " + Visibility() + "symbol: " + toString(Sym);
 
@@ -924,10 +922,19 @@ template <class ELFT, class RelTy>
 static void processRelocAux(InputSectionBase &Sec, RelExpr Expr, RelType Type,
                             uint64_t Offset, Symbol &Sym, const RelTy &Rel,
                             int64_t Addend) {
-  if (isStaticLinkTimeConstant(Expr, Type, Sym, Sec, Offset)) {
+  // If the relocation is known to be a link-time constant, we know no dynamic
+  // relocation will be created, pass the control to relocateAlloc() or
+  // relocateNonAlloc() to resolve it.
+  //
+  // The behavior of an undefined weak reference is implementation defined. If
+  // the relocation is to a weak undef, and we are producing an executable, let
+  // relocate{,Non}Alloc() resolve it.
+  if (isStaticLinkTimeConstant(Expr, Type, Sym, Sec, Offset) ||
+      (!Config->Shared && Sym.isUndefWeak())) {
     Sec.Relocations.push_back({Expr, Type, Offset, Addend, &Sym});
     return;
   }
+
   bool CanWrite = (Sec.Flags & SHF_WRITE) || !Config->ZText;
   if (CanWrite) {
     // FIXME Improve the way we handle absolute relocation types that will
@@ -965,13 +972,6 @@ static void processRelocAux(InputSectionBase &Sec, RelExpr Expr, RelType Type,
         In.MipsGot->addEntry(*Sec.File, Sym, Addend, Expr);
       return;
     }
-  }
-
-  // If the relocation is to a weak undef, and we are producing
-  // executable, give up on it and produce a non preemptible 0.
-  if (!Config->Shared && Sym.isUndefWeak()) {
-    Sec.Relocations.push_back({Expr, Type, Offset, Addend, &Sym});
-    return;
   }
 
   if (!CanWrite && (Config->Pic && !isRelExpr(Expr))) {

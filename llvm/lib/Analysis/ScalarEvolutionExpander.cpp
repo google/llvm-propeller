@@ -753,7 +753,7 @@ Value *SCEVExpander::visitAddExpr(const SCEVAddExpr *S) {
       Sum = InsertNoopCastOfTo(Sum, Ty);
       // Canonicalize a constant to the RHS.
       if (isa<Constant>(Sum)) std::swap(Sum, W);
-      Sum = InsertBinop(Instruction::Add, Sum, W, SCEV::FlagAnyWrap,
+      Sum = InsertBinop(Instruction::Add, Sum, W, S->getNoWrapFlags(),
                         /*IsSafeToHoist*/ true);
       ++I;
     }
@@ -842,9 +842,9 @@ Value *SCEVExpander::visitMulExpr(const SCEVMulExpr *S) {
         assert(!Ty->isVectorTy() && "vector types are not SCEVable");
         Prod = InsertBinop(Instruction::Shl, Prod,
                            ConstantInt::get(Ty, RHS->logBase2()),
-                           SCEV::FlagAnyWrap, /*IsSafeToHoist*/ true);
+                           S->getNoWrapFlags(), /*IsSafeToHoist*/ true);
       } else {
-        Prod = InsertBinop(Instruction::Mul, Prod, W, SCEV::FlagAnyWrap,
+        Prod = InsertBinop(Instruction::Mul, Prod, W, S->getNoWrapFlags(),
                            /*IsSafeToHoist*/ true);
       }
     }

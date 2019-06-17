@@ -9,6 +9,11 @@ if (MSVC)
   set_source_files_properties(SemaTemplate.cpp PROPERTIES COMPILE_FLAGS /bigobj)
 endif()
 
+clang_tablegen(OpenCLBuiltins.inc -gen-clang-opencl-builtins
+  SOURCE OpenCLBuiltins.td
+  TARGET ClangOpenCLBuiltinsImpl
+  )
+
 add_clang_library(clangSema
   AnalysisBasedWarnings.cpp
   CodeCompleteConsumer.cpp
@@ -59,6 +64,9 @@ add_clang_library(clangSema
   SemaType.cpp
   TypeLocBuilder.cpp
 
+  DEPENDS
+  ClangOpenCLBuiltinsImpl
+
   LINK_LIBS
   clangAST
   clangAnalysis
@@ -66,10 +74,3 @@ add_clang_library(clangSema
   clangEdit
   clangLex
   )
-
-clang_tablegen(OpenCLBuiltins.inc -gen-clang-opencl-builtins
-  SOURCE OpenCLBuiltins.td
-  TARGET ClangOpenCLBuiltinsImpl
-  )
-
-set_source_files_properties(SemaLookup.cpp OBJECT_DEPENDS ClangOpenCLBuiltinsImpl)
