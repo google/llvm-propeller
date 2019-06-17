@@ -63,7 +63,6 @@ class ELFCfgNode {
   uint64_t           ShSize;
   uint64_t           MappedAddr;
   uint64_t           Freq;
-  uint64_t           Weight;
   ELFCfg            *Cfg;
   
   list<ELFCfgEdge *> Outs;      // Intra function edges.
@@ -88,7 +87,7 @@ private:
   ELFCfgNode(uint64_t _Shndx, const StringRef &_ShName,
              uint64_t _Size, uint64_t _MappedAddr, ELFCfg *_Cfg)
     : Shndx(_Shndx), ShName(_ShName), ShSize(_Size),
-      MappedAddr(_MappedAddr), Weight(0), Cfg(_Cfg),
+      MappedAddr(_MappedAddr), Freq(0), Cfg(_Cfg),
       Outs(), Ins(), CallOuts(), CallIns(), FTEdge(nullptr) {}
 
   friend class ELFCfg;
@@ -132,12 +131,6 @@ public:
     for (auto &N: Nodes) {
       V(*N);
     }
-  }
-
-  double computeDensity() {
-    double W = 0;
-    forEachNodeRef([&W](ELFCfgNode &N) { W += N.Weight; });
-    return W / this->Size;
   }
 
 private:

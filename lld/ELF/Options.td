@@ -301,6 +301,10 @@ defm propeller_keep_named_symbols: B<"propeller-keep-named-symbols",
     "Do not delete basic block section symbols",
     "Delete unused basic block section symbols (default)">;
 
+defm propeller_print_stats: B<"propeller-print-stats",
+    "Print propeller statistics.",
+    "Do not print propeller statistics (default)">;
+
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 

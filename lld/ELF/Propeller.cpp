@@ -386,12 +386,14 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
 
-  duration<double> ProcessProfileTime = system_clock::now() - startProcessProfileTime;
-  duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
-  duration<double> CreateCfgTime = startProcessProfileTime - startCreateCfgTime;
-  warn("[TIME](s) read symbols: " + Twine(std::to_string(ReadSymbolTime.count())));
-  warn("[TIME](s) cfg create: " + Twine(std::to_string(CreateCfgTime.count())));
-  warn("[TIME](s) process profile " + Twine(std::to_string(ProcessProfileTime.count())));
+  if (Config->PropellerPrintStats){
+    duration<double> ProcessProfileTime = system_clock::now() - startProcessProfileTime;
+    duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
+    duration<double> CreateCfgTime = startProcessProfileTime - startCreateCfgTime;
+    fprintf(stderr, "[Propeller] Read all symbols in %f seconds.\n", ReadSymbolTime.count());
+    fprintf(stderr, "[Propeller] Created all cfgs in %f seconds.\n", CreateCfgTime.count());
+    fprintf(stderr, "[Propeller] Proccesed the profile in %f seconds.\n", ProcessProfileTime.count());
+  }
   // Releasing all support data (symbol ordinal / name map, saved string refs,
   // etc) before moving to reordering.
   Propf.reset(nullptr);
@@ -419,10 +421,13 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     CCubeAlgorithm Algo;
     Algo.init(*this);
     auto startFuncOrderTime = system_clock::now();
-    CfgOrder = Algo.doOrder();
-    auto endFuncOrderTime = system_clock::now();
-    duration<double> FuncOrderTime = endFuncOrderTime - startFuncOrderTime;
-    warn("[TIME](s) func ordering: " + Twine(std::to_string(FuncOrderTime.count())));
+    auto CfgsReordered = Algo.doOrder(CfgOrder);
+    if (Config->PropellerPrintStats){
+      duration<double> FuncOrderTime = system_clock::now() - startFuncOrderTime;
+      fprintf(stderr, "[Propeller] Reordered %u hot functions in %f seconds.\n",
+              CfgsReordered,
+              FuncOrderTime.count());
+    }
   } else {
     forEachCfgRef([&CfgOrder](ELFCfg &Cfg) { CfgOrder.push_back(&Cfg); });
     CfgOrder.sort([](const ELFCfg *A, const ELFCfg *B) {
@@ -432,24 +437,29 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     });
   }
 
-  auto startBBOrderTime = system_clock::now();
   list<StringRef> SymbolList(1, "Hot");
   const auto HotPlaceHolder = SymbolList.begin();
   const auto ColdPlaceHolder = SymbolList.end();
+  unsigned ReorderedN = 0;
+  auto startBBOrderTime = system_clock::now();
   for (auto *Cfg : CfgOrder) {
     if (Cfg->isHot() && Config->PropellerReorderBlocks) {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
           Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
+      ReorderedN++;
     } else {
       Cfg->forEachNodeRef([&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
         SymbolList.insert(ColdPlaceHolder, N.ShName);
       });
     }
   }
-  auto endBBOrderTime = system_clock::now();
-  duration<double> BBOrderTime = endBBOrderTime - startBBOrderTime;
-  warn("[TIME](s) total bb ordering: " + Twine(std::to_string(BBOrderTime.count())));
+  if (Config->PropellerPrintStats){
+    duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;
+    fprintf(stderr, "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
+            ReorderedN,
+            BBOrderTime.count());
+  }
 
   calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
 

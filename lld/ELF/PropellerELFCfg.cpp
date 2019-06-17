@@ -61,8 +61,6 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
                             E->Sink != getEntryNode();
                    });
       if (IntraInEdges.size() == 1) {
-        ++P->Weight;
-        IntraInEdges.front()->Weight++;
         P = IntraInEdges.front()->Src;
       } else {
         P = nullptr;
@@ -84,8 +82,6 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
                             E->Sink != getEntryNode();
                    });
       if (IntraOutEdges.size() == 1) {
-        ++P->Weight;
-        ++IntraOutEdges.front()->Weight;
         P = IntraOutEdges.front()->Sink;
       } else {
         P = nullptr;
@@ -99,7 +95,6 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
     return true;
   ELFCfgNode *P = From;
   while (P && P != To) {
-    P->Weight += Cnt;
     if (P->FTEdge) {
       P->FTEdge->Weight += Cnt;
       P = P->FTEdge->Sink;
@@ -110,15 +105,12 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
   if (!P) {
     return false;
   }
-  P->Weight += Cnt;
   return true;
 }
 
 void ELFCfg::mapBranch(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt,
                        bool isCall, bool isReturn) {
   assert(From->Cfg == To->Cfg);
-  From->Weight += Cnt;
-  To->Weight += Cnt;
 
   for (auto &E : From->Outs) {
     bool EdgeTypeOk = true;
@@ -150,8 +142,6 @@ void ELFCfg::mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr,
                         uint64_t Cnt, bool isCall, bool isReturn) {
   assert(From->Cfg == this);
   assert(From->Cfg != To->Cfg);
-  From->Weight += Cnt;
-  To->Weight += Cnt;
   ELFCfgEdge::EdgeType EdgeType = ELFCfgEdge::INTER_FUNC_RETURN;
   if (isCall ||
       (ToAddr && To->Cfg->getEntryNode() == To && ToAddr == To->MappedAddr)) {
@@ -431,7 +421,7 @@ ostream &operator<<(ostream &Out, const ELFCfgNode &Node) {
               : Node.ShName.data() + Node.Cfg->Name.size() + 1)
       << " [size=" << std::noshowbase << std::dec << Node.ShSize << ", "
       << " addr=" << std::showbase << std::hex << Node.MappedAddr << ", "
-      << " weight=" << std::showbase << std::dec << Node.Weight << ", "
+      << " frequency=" << std::showbase << std::dec << Node.Freq << ", "
       << " shndx=" << std::noshowbase << std::dec << Node.Shndx << "]";
   return Out;
 }

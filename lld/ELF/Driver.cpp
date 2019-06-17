@@ -864,6 +864,10 @@ static void readConfigs(opt::InputArgList &Args) {
       Args.hasFlag(OPT_propeller_keep_named_symbols,
                    OPT_no_propeller_keep_named_symbols, false);
 
+  Config->PropellerPrintStats =
+      Args.hasFlag(OPT_propeller_print_stats,
+                   OPT_no_propeller_print_stats, false);
+
   Config->PropellerReorderBlocks =
       Config->PropellerReorderFuncs =
       Config->PropellerSplitFuncs =

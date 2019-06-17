@@ -177,6 +177,7 @@ struct Configuration {
   bool Relocatable;
   bool RelrPackDynRelocs;
   bool PropellerKeepNamedSymbols;
+  bool PropellerPrintStats;
   bool PropellerReorderBlocks;
   bool PropellerReorderFuncs;
   bool PropellerSplitFuncs;

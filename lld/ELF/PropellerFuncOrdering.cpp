@@ -136,17 +136,15 @@ void CCubeAlgorithm::sortClusters() {
   });
 }
 
-list<ELFCfg *> CCubeAlgorithm::doOrder() {
-  // log("propeller: reordering " + Twine(HotCfgs.size()) + " hot functions.");
+unsigned CCubeAlgorithm::doOrder(list<ELFCfg *>& CfgOrder) {
   mergeClusters();
   sortClusters();
-  list<ELFCfg *> L;
   for (auto &Cptr : Clusters) {
-    L.insert(L.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());
+    CfgOrder.insert(CfgOrder.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());
   }
 
-  L.insert(L.end(), ColdCfgs.begin(), ColdCfgs.end());
-  return L;
+  CfgOrder.insert(CfgOrder.end(), ColdCfgs.begin(), ColdCfgs.end());
+  return HotCfgs.size();
 }
 
 template void CCubeAlgorithm::init<Propeller>(Propeller &);
