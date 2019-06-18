@@ -16,7 +16,7 @@
 # BEFORE-NEXT:  201000 11000000 00000000 22000000 00000000
 # BEFORE-NEXT:  201010 33000000 00000000
 
-## Create a propeller profile for foo, based on the cfg below:
+## Create a propeller profile based on the following inter-procedural calls.
 ##
 ##       100        100
 ##  baz -----> bar -----> foo
@@ -31,7 +31,7 @@
 # RUN: echo "2 1 100 C" >> %t_prof.propeller
 # RUN: echo "Fallthroughs" >> %t_prof.propeller
 
-# RUN: ld.lld  %t.o -propeller=%t_prof.propeller --verbose -o %t.propeller.out
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -o %t.propeller.out
 # RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM2
 
 # NM2:	0000000000201000 t baz
@@ -43,6 +43,16 @@
 # AFTER:      Contents of section .text
 # AFTER-NEXT:  201000 33000000 00000000 22000000 0000000
 # AFTER-NEXT:  201010 11000000 00000000
+#
+
+## Disable function reordering and expect that the original function order is retained.
+#
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-opt=no-reorder-funcs -o %t.propeller.out
+# RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM3
+
+# NM3:	0000000000201000 t foo
+# NM3:	0000000000201008 t bar
+# NM3:	0000000000201010 t baz
 #
 
 .section	.text,"ax",@progbits,unique,1

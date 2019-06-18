@@ -58,6 +58,17 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef File) {
   return Ret;
 }
 
+static void getBasicBlockSectionsList(MemoryBufferRef MBRef,
+                                      TargetOptions &Options) {
+  SmallVector<StringRef, 0> Arr;
+  MBRef.getBuffer().split(Arr, '\n');
+  for (StringRef S : Arr) {
+    S = S.trim();
+    if (!S.empty() && S[0] != '#')
+      Options.BasicBlockSectionsList[S.str()] = true;
+  }
+}
+
 static std::string getThinLTOOutputFile(StringRef ModulePath) {
   return lto::getThinLTOOutputFile(ModulePath,
                                    Config->ThinLTOPrefixReplace.first,
@@ -87,6 +98,12 @@ static lto::Config createConfig() {
       C.Options.BasicBlockSections = BasicBlockSection::Labels;
     else if (Config->LTOBasicBlockSections.equals("none"))
       C.Options.BasicBlockSections = BasicBlockSection::None;
+    else if (Optional<MemoryBufferRef> Buffer =
+             readFile(Config->LTOBasicBlockSections)) {
+      getBasicBlockSectionsList(*Buffer, C.Options);
+      C.Options.BasicBlockSections = BasicBlockSection::List;
+    }
+
   }
 
   if (Config->Relocatable)

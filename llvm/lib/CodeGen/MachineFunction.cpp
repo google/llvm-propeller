@@ -181,7 +181,9 @@ void MachineFunction::init() {
                          STI->getTargetLowering()->getPrefFunctionAlignment());
 
   if (Target.getBasicBlockSections() == llvm::BasicBlockSection::All ||
-      F.getBasicBlockSections())
+      F.getBasicBlockSections() ||
+      (Target.getBasicBlockSections() == llvm::BasicBlockSection::List  &&
+       Target.isFunctionInBasicBlockSectionsList(F.getName())))
     BasicBlockSections = true;
 
   if (Target.getBasicBlockSections() == llvm::BasicBlockSection::Labels ||

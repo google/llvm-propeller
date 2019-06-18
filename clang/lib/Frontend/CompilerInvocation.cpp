@@ -907,10 +907,24 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
         << Opts.BasicBlockSections;
   }
 
+  Opts.BasicBlockSectionsList = Args.getLastArgValue(
+                                    OPT_fbasicblock_sections_list_EQ, "");
+
+  // -fbasicblock-sections= and -fbasicblock-sections=list cannot be used
+  // together.
+  if (Opts.BasicBlockSections != "none" &&
+      !Opts.BasicBlockSectionsList.empty()) {
+    Diags.Report(diag::err_drv_argument_not_allowed_with)
+        << Args.getLastArg(OPT_fbasicblock_sections_list_EQ)->getAsString(Args)
+        << Args.getLastArg(OPT_fbasicblock_sections_EQ)->getAsString(Args);
+  }
+
   // Basic Block Sections implies Function Sections.
   Opts.FunctionSections = Args.hasFlag(OPT_ffunction_sections,
                                        OPT_fno_function_sections, false) ||
-                          (Opts.BasicBlockSections != "none");
+                          (Opts.BasicBlockSections != "none" ||
+                           !Opts.BasicBlockSectionsList.empty());
+
   Opts.DataSections = Args.hasFlag(OPT_fdata_sections,
                                    OPT_fno_data_sections, false);
   Opts.StackSizeSection =
