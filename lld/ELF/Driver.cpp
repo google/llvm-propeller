@@ -875,6 +875,7 @@ static void readConfigs(opt::InputArgList &Args) {
 
   // Parse Propeller flags.
   auto PropellerOpts = Args.getAllArgValues(OPT_propeller_opt);
+  bool SplitFuncsExplicit = false;
   for(auto& PropellerOpt: PropellerOpts){
     StringRef S = StringRef(PropellerOpt);
     if (S == "reorder-funcs"){
@@ -887,15 +888,18 @@ static void readConfigs(opt::InputArgList &Args) {
       Config->PropellerReorderBlocks = false;
     } else if (S == "split-funcs") {
       Config->PropellerSplitFuncs = true;
+      SplitFuncsExplicit = true;
     } else if (S == "no-split-funcs") {
       Config->PropellerSplitFuncs = false;
     } else
       error("unknown propeller option: " + S);
   }
 
-  if (!Config->PropellerReorderBlocks && Config->PropellerSplitFuncs){
+  if (!Config->PropellerReorderBlocks && SplitFuncsExplicit){
     error("propeller: Inconsistent combination of propeller optimizations:\n"
           "split-funcs can only be used with reorder-blocks");
+  } else {
+    Config->PropellerSplitFuncs = false;
   }
 
   Config->Rpath = getRpath(Args);
