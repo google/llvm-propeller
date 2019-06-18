@@ -402,6 +402,27 @@ static TargetMachine::CodeGenFileType getCodeGenFileType(BackendAction Action) {
   }
 }
 
+static void getBasicBlockSectionsList(llvm::TargetOptions &Options,
+                                      std::string FunctionsListFile) {
+  if (FunctionsListFile.empty())
+    return;
+  auto MBOrErr = llvm::MemoryBuffer::getFile(FunctionsListFile);
+  if (auto EC = MBOrErr.getError()) {
+    errs() << "Cannot open " + FunctionsListFile + ": " + EC.message();
+    return;
+  }
+  Options.BasicBlockSections = llvm::BasicBlockSection::List;
+  std::unique_ptr<MemoryBuffer> &MB = *MBOrErr;
+  MemoryBufferRef MBRef = MB->getMemBufferRef();
+  SmallVector<StringRef, 0> Arr;
+  MBRef.getBuffer().split(Arr, '\n');
+  for (StringRef S : Arr) {
+    S = S.trim();
+    if (!S.empty() && S[0] != '#')
+      Options.BasicBlockSectionsList[S.str()] = true;
+  }
+}
+
 static void initTargetOptions(llvm::TargetOptions &Options,
                               const CodeGenOptions &CodeGenOpts,
                               const clang::TargetOptions &TargetOpts,
@@ -467,6 +488,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
           .Case("likely", llvm::BasicBlockSection::Likely)
           .Case("labels", llvm::BasicBlockSection::Labels)
           .Default(llvm::BasicBlockSection::None);
+
+  getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSectionsList);
 
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;

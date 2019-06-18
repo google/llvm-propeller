@@ -120,6 +120,8 @@ public:
 
   std::string BasicBlockSections;
 
+  std::string BasicBlockSectionsList;
+
   /// The code model to use (-mcmodel).
   std::string CodeModel;
 
