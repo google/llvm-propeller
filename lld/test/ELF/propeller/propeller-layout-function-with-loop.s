@@ -1,6 +1,6 @@
 # REQUIRES: x86
 ## Basic propeller tests.
-## This test exercises basic block reordering on a single function.
+## This test exercises basic block reordering on a single function with a simple loop.
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
 # RUN: ld.lld  %t.o -o %t.out
@@ -38,6 +38,8 @@
 ##           v   v
 ##         aaaa.BB.foo
 ##
+## The optimal layout must include foo -> a.BB.foo -> aaa.BB.foo -> aaaa.BB.foo
+## as a fallthrough chain in the layout.
 
 # RUN: echo "Symbols" > %t_prof.propeller
 # RUN: echo "1 18 Nfoo" > %t_prof.propeller
@@ -67,6 +69,16 @@
 # AFTER-NEXT:  201000 0f1f000f 1f00750d 0f1f0075 f6440000
 # AFTER-NEXT:  201010 00000000 000f1f00
 
+## Disable basic block reordering and expect that the original bb order is retained.
+#
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-opt=no-reorder-blocks -propeller-keep-named-symbols -o %t.propeller.out
+# RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM3
+
+# NM3:	0000000000201000 t foo
+# NM3:	0000000000201003 t a.BB.foo
+# NM3:	0000000000201008 t aa.BB.foo
+# NM3:	000000000020100b t aaa.BB.foo
+# NM3:	0000000000201010 t aaaa.BB.foo
 
 
 .section	.text,"ax",@progbits
