@@ -417,9 +417,12 @@ static void getBasicBlockSectionsList(llvm::TargetOptions &Options,
   SmallVector<StringRef, 0> Arr;
   MBRef.getBuffer().split(Arr, '\n');
   for (StringRef S : Arr) {
-    S = S.trim();
-    if (!S.empty() && S[0] != '#')
-      Options.BasicBlockSectionsList[S.str()] = true;
+    // Function names follow a '!' character.
+    // Empty '!' implies no more functions.
+    if (S.size() == 1 && S[0] == '!')
+      break;
+    if (S.size() > 1 && S[0] == '!')
+      Options.BasicBlockSectionsList[S.str().substr(1)] = true;
   }
 }
 
