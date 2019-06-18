@@ -160,7 +160,7 @@ pgo-compiler.symfile cspgo-compiler.symfile: %-compiler.symfile: %-compiler %.pe
 	[[ -n "`grep -F '.BB.' $@`" ]] || { echo "ERROR: no .BB. in $@" ; exit 1; }
 
 pgo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr
+	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@,$(subst .propeller,.funclist,$@) --logtostderr
 
 pgo-compiler.yaml cspgo-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))

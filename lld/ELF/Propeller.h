@@ -78,7 +78,7 @@ public:
 
   SymbolEntry *createBasicBlockSymbol(uint64_t Ordinal, SymbolEntry *Function,
                                       StringRef &BBIndex, uint64_t Size) {
-    assert(!Function->isBBSymbol && Function->isFunction);
+    assert(!Function->isBBSymbol && Function->isFunction());
     auto *Sym =
         new SymbolEntry(Ordinal, BBIndex, SymbolEntry::AliasesTy(),
                         SymbolEntry::INVALID_ADDRESS, Size,
