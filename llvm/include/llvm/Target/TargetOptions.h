@@ -15,6 +15,7 @@
 #define LLVM_TARGET_TARGETOPTIONS_H
 
 #include "llvm/MC/MCTargetOptions.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace llvm {
   class MachineFunction;
@@ -69,7 +70,8 @@ namespace llvm {
       All,    // Use Basic Block Sections for all functions.
       Hot,    // Use Basic Block Sections for hot functions only.
       Likely, // Do not use Basic Block Sections for "unlikely" functions.
-      Labels  // Do not use Basic Block Sections but label basic blocks.
+      Labels, // Do not use Basic Block Sections but label basic blocks.
+      List // Get list of functions from a file/
     };
   }
 
@@ -269,6 +271,8 @@ namespace llvm {
 
     /// Emit basic blocks into separate sections.
     BasicBlockSection::SectionMode BasicBlockSections = BasicBlockSection::None;
+
+    StringMap<bool> BasicBlockSectionsList;
 
     /// FloatABIType - This setting is set by -float-abi=xxx option is specfied
     /// on the command line. This setting may either be Default, Soft, or Hard.

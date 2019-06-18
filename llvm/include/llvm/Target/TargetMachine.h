@@ -264,6 +264,10 @@ public:
     return Options.BasicBlockSections;
   }
 
+  bool isFunctionInBasicBlockSectionsList(const StringRef &name) const {
+    return Options.BasicBlockSectionsList.lookup(name);
+  }
+
   /// Get a \c TargetIRAnalysis appropriate for the target.
   ///
   /// This is used to construct the new pass manager's target IR analysis pass,
