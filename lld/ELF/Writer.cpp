@@ -652,7 +652,8 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
     return;
   for (InputFile *File : ObjectFiles) {
     ObjFile<ELFT> *F = cast<ObjFile<ELFT>>(File);
-    std::list<Symbol *> Locals;
+    std::list<Symbol *> LocalNonBBSymbols;
+    std::list<Symbol *> LocalBBSymbols;
     for (Symbol *B : F->getLocalSymbols()) {
       if (!B->isLocal())
         fatal(toString(F) +
@@ -666,13 +667,23 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
         continue;
       if (!shouldKeepInSymtab(*DR))
         continue;
-      Locals.emplace_back(B);
+
+      if (lld::propeller::SymbolEntry::isBBSymbol(B->getName()))
+        LocalBBSymbols.emplace_back(B);
+      else
+        LocalNonBBSymbols.emplace_back(B);
     }
 
-    Locals.sort([](Symbol *A, Symbol *B) {
+    LocalBBSymbols.sort([](Symbol *A, Symbol *B) {
       return A->getName().size() > B->getName().size();
     });
-    for (auto *S : Locals) {
+
+    // Add BB symbols to SymTab first.
+    for (auto *S : LocalBBSymbols) {
+      In.SymTab->addSymbol(S);
+    }
+
+    for (auto *S : LocalNonBBSymbols) {
       In.SymTab->addSymbol(S);
     }
   }
