@@ -188,7 +188,7 @@ bool Propfile::processProfile() {
     ++LineNo;
     if (R == 0)
       continue;
-    if (LineBuf[0] == '#')
+    if (LineBuf[0] == '#' || LineBuf[0] == '!')
       continue;
     if (LineBuf[0] == 'S' || LineBuf[0] == 'B' || LineBuf[0] == 'F') {
       LineTag = LineBuf[0];
