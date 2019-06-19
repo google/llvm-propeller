@@ -185,6 +185,7 @@ bool NodeChainBuilder::AttachNodes(const ELFCfgNode *Src,
     return false;
   if (SrcChain->GetLastNode() != Src || SinkChain->GetFirstNode() != Sink)
     return false;
+  log("Attaching nodes " + Twine(Src->ShName) + "[" + Twine(Src->Freq) + "] -> " + Twine(Sink->ShName) + "[" + Twine(Sink->Freq) + "]");
   MergeChains(SrcChain, SinkChain);
   return true;
 }

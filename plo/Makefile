@@ -59,7 +59,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
-FLAVORS            := stage1 pgo pgo-vanilla pgo-plo pgo-plolikely pgo-plohot pgo-plolist cspgo cspgo-plo pgo-bolt cspgo-bolt
+FLAVORS            := stage1 nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plolikely pgo-plohot pgo-plolist cspgo cspgo-plo pgo-bolt cspgo-bolt
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -164,10 +164,6 @@ pgo-plolist/build/bin/clang-9: stage-pgo.profdata pgo-compiler.propeller
 
 pgo.perfdata cspgo.perfdata: %.perfdata: %-compiler run-commands.sh
 	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
-
-pgo-compiler.symfile cspgo-compiler.symfile: %-compiler.symfile: %-compiler %.perfdata
-	./plotool.sh $< $(word 2,$^)
-	[[ -n "`grep -F '.BB.' $@`" ]] || { echo "ERROR: no .BB. in $@" ; exit 1; }
 
 pgo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr

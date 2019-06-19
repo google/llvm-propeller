@@ -106,7 +106,7 @@ void CCubeAlgorithm::mergeClusters() {
     if (!PredecessorCfg)
       continue;
     assert(PredecessorCfg != Cfg);
-    // log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
+    log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
     assert(PredecessorCluster);
 

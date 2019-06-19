@@ -895,11 +895,14 @@ static void readConfigs(opt::InputArgList &Args) {
       error("unknown propeller option: " + S);
   }
 
-  if (!Config->PropellerReorderBlocks && SplitFuncsExplicit){
-    error("propeller: Inconsistent combination of propeller optimizations:\n"
-          "split-funcs can only be used with reorder-blocks");
-  } else {
-    Config->PropellerSplitFuncs = false;
+  if (!Config->Propeller.empty() && !Config->PropellerReorderBlocks) {
+    if (SplitFuncsExplicit){
+      error("propeller: Inconsistent combination of propeller optimizations:\n"
+            "\tsplit-funcs can only be used with reorder-blocks");
+    } else {
+      warn("propeller: no-reorder-blocks implicitly sets no-split-funcs.");
+      Config->PropellerSplitFuncs = false;
+    }
   }
 
   Config->Rpath = getRpath(Args);
