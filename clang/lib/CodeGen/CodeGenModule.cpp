@@ -1091,7 +1091,7 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
   // With BasicBlockSections, it is important to have a unique name for
   // internal linkage functions, to differentiate the symbols across
   // modules.
-  if (/* getCodeGenOpts().BasicBlockSections != "none" && */
+  if (getCodeGenOpts().UniqueInternalFuncNames &&
       dyn_cast<FunctionDecl>(GD.getDecl()) &&
       this->getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) {
     std::string UniqueSuffix = getUniqueModuleId(&getModule(), true);

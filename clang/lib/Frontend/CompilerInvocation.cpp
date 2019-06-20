@@ -933,8 +933,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                                          OPT_fno_unique_section_names, true);
   Opts.UniqueBBSectionNames = Args.hasFlag(OPT_funique_bb_section_names,
                                            OPT_fno_unique_bb_section_names, false);
-  Opts.SeparateBBSections = Args.hasFlag(OPT_fseparate_bb_sections,
-                                         OPT_fno_separate_bb_sections, true);
+  Opts.UniqueInternalFuncNames = Args.hasFlag(OPT_funique_internal_funcnames,
+                                              OPT_fno_unique_internal_funcnames, false);
 
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
