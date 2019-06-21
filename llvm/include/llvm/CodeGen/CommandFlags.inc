@@ -263,12 +263,6 @@ static cl::opt<bool>
                        cl::desc("Give unique names to every basic block section"),
                        cl::init(false));
 
-static cl::opt<bool>
-    SeparateBBSections("separate-bb-sections",
-                       cl::desc("basic block sections can be "
-                                "separated from the parent function"),
-                       cl::init(true));
-
 static cl::opt<llvm::EABI>
     EABIVersion("meabi", cl::desc("Set EABI type (default depends on triple):"),
                 cl::init(EABI::Default),
@@ -319,7 +313,6 @@ static TargetOptions InitTargetOptionsFromCodeGenFlags() {
   Options.BasicBlockSections = BasicBlockSections;
   Options.UniqueSectionNames = UniqueSectionNames;
   Options.UniqueBBSectionNames = UniqueBBSectionNames;
-  Options.SeparateBBSections = SeparateBBSections;
   Options.EmulatedTLS = EmulatedTLS;
   Options.ExplicitEmulatedTLS = EmulatedTLS.getNumOccurrences() > 0;
   Options.ExceptionModel = ExceptionModel;

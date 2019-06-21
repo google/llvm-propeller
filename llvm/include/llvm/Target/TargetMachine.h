@@ -244,8 +244,6 @@ public:
 
   bool getUniqueBBSectionNames() const { return Options.UniqueBBSectionNames; }
 
-  bool canSeparateBBSections() const { return Options.SeparateBBSections; }
-
   /// Return true if data objects should be emitted into their own section,
   /// corresponds to -fdata-sections.
   bool getDataSections() const {

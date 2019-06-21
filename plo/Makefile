@@ -74,8 +74,8 @@ gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
 # $1 is either "labels", "all" or "none".
 # -fexperimental-new-pass-manager -mllvm -qualify-function-names
 bb_section_lto_flags = -Wl,--lto-basicblock-sections=$(1)
-# lld_relocs              := -Wl,-q
-lld_relocs := 
+lld_relocs              := -Wl,-q
+# lld_relocs := 
 bb_section_none_flags      := $(call gen_build_flags,"-fbasicblock-sections=none","   $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,none)")
 bb_section_labels_flags    := $(call gen_build_flags,"-fbasicblock-sections=labels"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,labels)")
 bb_section_all_flags       := $(call gen_build_flags,"-fbasicblock-sections=all","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,all)")

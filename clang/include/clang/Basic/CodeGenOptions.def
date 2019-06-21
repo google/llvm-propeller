@@ -143,8 +143,7 @@ CODEGENOPT(NoTrappingMath    , 1, 0) ///< Set when -fno-trapping-math is enabled
 CODEGENOPT(NoNaNsFPMath      , 1, 0) ///< Assume FP arguments, results not NaN.
 CODEGENOPT(FlushDenorm       , 1, 0) ///< Allow FP denorm numbers to be flushed to zero
 CODEGENOPT(CorrectlyRoundedDivSqrt, 1, 0) ///< -cl-fp32-correctly-rounded-divide-sqrt
-CODEGENOPT(SeparateBBSections, 1, 1) ///< BB Sections can be separated from the parent
-                                     ///< function.
+CODEGENOPT(UniqueInternalFuncNames, 1, 0) ///< Internal Linkage functions get unique names.
 
 /// When false, this attempts to generate code as if the result of an
 /// overflowing conversion matches the overflowing behavior of a target's native

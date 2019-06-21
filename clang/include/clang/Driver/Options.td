@@ -1819,7 +1819,8 @@ def fno_function_sections : Flag<["-"], "fno-function-sections">,
 def fbasicblock_sections_EQ : Joined<["-"], "fbasicblock-sections=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>,
   HelpText<"Place each function's basic blocks in unique sections (ELF Only) : hot | likely | all | labels | none">,
   Values<"hot,likely,all,labels,none">;
-def fbasicblock_sections_list_EQ : Joined<["-"], "fbasicblock-sections-list=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>, HelpText<"Place the basic blocks of each functions in the list unique sections (ELF Only)">;
+def fbasicblock_sections_list_EQ : Joined<["-"], "fbasicblock-sections-list=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>,
+  HelpText<"Place the basic blocks of each functions in the list unique sections (ELF Only)">;
 def fdata_sections : Flag <["-"], "fdata-sections">, Group<f_Group>,
  Flags<[CC1Option]>, HelpText<"Place each data in its own section (ELF Only)">;
 def fno_data_sections : Flag <["-"], "fno-data-sections">, Group<f_Group>,
@@ -1840,10 +1841,10 @@ def funique_bb_section_names : Flag <["-"], "funique-bb-section-names">,
   HelpText<"Use unique names for basic block sections (ELF Only)">;
 def fno_unique_bb_section_names : Flag <["-"], "fno-unique-bb-section-names">,
   Group<f_Group>, Flags<[CC1Option]>;
-def fseparate_bb_sections : Flag <["-"], "fseparate-bb-sections">,
+def funique_internal_funcnames : Flag <["-"], "funique-internal-funcnames">,
   Group<f_Group>, Flags<[CC1Option]>,
-  HelpText<"A basic block section can be separated from its parent function (ELF Only)">;
-def fno_separate_bb_sections : Flag <["-"], "fno-separate-bb-sections">,
+  HelpText<"Uniqueify Internal Linkage Function Names">;
+def fno_unique_internal_funcnames : Flag <["-"], "fno-unique-internal-funcnames">,
   Group<f_Group>, Flags<[CC1Option]>;
 def fstrict_return : Flag<["-"], "fstrict-return">, Group<f_Group>,
   Flags<[CC1Option]>,
