@@ -4,17 +4,12 @@
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
 # RUN: ld.lld  %t.o -o %t.out
-# RUN: llvm-nm -n %t.out| FileCheck %s --check-prefix=NM1
 
-# NM1:	0000000000201000 t foo
-# NM1:	0000000000201008 t bar
-# NM1:	0000000000201010 t baz
+# RUN: llvm-nm -nS %t.out| FileCheck %s --check-prefix=BEFORE
 
-# RUN: llvm-objdump -s %t.out| FileCheck %s --check-prefix=BEFORE
-
-# BEFORE:      Contents of section .text:
-# BEFORE-NEXT:  201000 11000000 00000000 22000000 00000000
-# BEFORE-NEXT:  201010 33000000 00000000
+# BEFORE:	0000000000201000 0000000000000008 t foo
+# BEFORE-NEXT:	0000000000201008 0000000000000008 t bar
+# BEFORE-NEXT:	0000000000201010 0000000000000008 t baz
 
 ## Create a propeller profile based on the following inter-procedural calls.
 ##
@@ -31,29 +26,23 @@
 # RUN: echo "2 1 100 C" >> %t_prof.propeller
 # RUN: echo "Fallthroughs" >> %t_prof.propeller
 
-# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -o %t.propeller.out
-# RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM2
-
-# NM2:	0000000000201000 t baz
-# NM2:	0000000000201008 t bar
-# NM2:	0000000000201010 t foo
-
-# RUN: llvm-objdump -s %t.propeller.out| FileCheck %s --check-prefix=AFTER
-
-# AFTER:      Contents of section .text
-# AFTER-NEXT:  201000 33000000 00000000 22000000 0000000
-# AFTER-NEXT:  201010 11000000 00000000
+## Link with the propeller profile and expect the functions to be reordered.
 #
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -o %t.propeller.reorder.out
+# RUN: llvm-nm -nS %t.propeller.reorder.out| FileCheck %s --check-prefix=REORDER
+
+# REORDER:	0000000000201000 0000000000000008 t baz
+# REORDER-NEXT:	0000000000201008 0000000000000008 t bar
+# REORDER-NEXT:	0000000000201010 0000000000000008 t foo
 
 ## Disable function reordering and expect that the original function order is retained.
 #
-# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-opt=no-reorder-funcs -o %t.propeller.out
-# RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM3
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-opt=no-reorder-funcs -o %t.propeller.noreorder.out
+# RUN: llvm-nm -nS %t.propeller.noreorder.out| FileCheck %s --check-prefix=NOREORDER
 
-# NM3:	0000000000201000 t foo
-# NM3:	0000000000201008 t bar
-# NM3:	0000000000201010 t baz
-#
+# NOREORDER:	0000000000201000 0000000000000008 t foo
+# NOREORDER-NEXT:	0000000000201008 0000000000000008 t bar
+# NOREORDER-NEXT:	0000000000000008 t baz
 
 .section	.text,"ax",@progbits,unique,1
 # -- Begin function foo

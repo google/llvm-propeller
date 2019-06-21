@@ -4,19 +4,26 @@
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
 # RUN: ld.lld  %t.o -o %t.out
-# RUN: llvm-nm -n %t.out| FileCheck %s --check-prefix=NM1
+# RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=BEFORE
 
-# NM1:	0000000000201000 t foo
-# NM1:	0000000000201003 t a.BB.foo
-# NM1:	0000000000201008 t aa.BB.foo
-# NM1:	000000000020100b t aaa.BB.foo
-# NM1:	0000000000201010 t aaaa.BB.foo
+# BEFORE:	0000000000201000 foo:
+# BEFORE-NEXT:	nopl    (%rax)
 
-# RUN: llvm-objdump -s %t.out| FileCheck %s --check-prefix=BEFORE
+# BEFORE:	0000000000201003 a.BB.foo:
+# BEFORE-NEXT:	nopl	(%rax)
+# BEFORE-NEXT:	je      3 <aaa.BB.foo>
 
-# BEFORE:      Contents of section .text:
-# BEFORE-NEXT:  201000 0f1f000f 1f007403 0f1f000f 1f0075f3
-# BEFORE-NEXT:  201010 44000000 00000000
+# BEFORE:	0000000000201008 aa.BB.foo:
+# BEFORE-NEXT:	nopl    (%rax)
+
+# BEFORE:	000000000020100b aaa.BB.foo:
+# BEFORE-NEXT:	nopl    (%rax)
+# BEFORE-NEXT:	jne     -13 <a.BB.foo>
+
+# BEFORE:	0000000000201010 aaaa.BB.foo:
+# BEFORE-NEXT:	nopl    (%rax)
+# BEFORE-NEXT:	retq
+
 
 ## Create a propeller profile for foo, based on the cfg below:
 ##
@@ -54,32 +61,32 @@
 # RUN: echo "4 5 10" >> %t_prof.propeller
 # RUN: echo "1 2 5" >> %t_prof.propeller
 
-# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.out
-# RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM2
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.reorder.out
+# RUN: llvm-objdump -d %t.propeller.reorder.out| FileCheck %s --check-prefix=REORDER
 
-# NM2:	0000000000201000 t foo
-# NM2:	0000000000201003 t a.BB.foo
-# NM2:	0000000000201008 t aaa.BB.foo
-# NM2:	000000000020100d t aaaa.BB.foo
-# NM2:	0000000000201015 t aa.BB.foo
+# REORDER:	0000000000201000 foo:
+# REORDER-NEXT:	nopl    (%rax)
 
-# RUN: llvm-objdump -s %t.propeller.out| FileCheck %s --check-prefix=AFTER
+# REORDER:	0000000000201003 a.BB.foo:
+# REORDER-NEXT:	nopl	(%rax)
+# REORDER-NEXT:	jne      9 <aa.BB.foo>
 
-# AFTER:      Contents of section .text:
-# AFTER-NEXT:  201000 0f1f000f 1f00750d 0f1f0075 f6440000
-# AFTER-NEXT:  201010 00000000 000f1f00
+# REORDER:	0000000000201008 aaa.BB.foo:
+# REORDER-NEXT:	nopl    (%rax)
+# REORDER-NEXT:	jne     -10 <a.BB.foo>
+
+# REORDER:	000000000020100d aaaa.BB.foo:
+# REORDER-NEXT:	nopl    (%rax)
+# REORDER-NEXT:	retq
+
+# REORDER:	0000000000201011 aa.BB.foo:
+# REORDER-NEXT:	nopl    (%rax)
+# REORDER-NEXT:	jmp	-14 <aaa.BB.foo>
 
 ## Disable basic block reordering and expect that the original bb order is retained.
 #
-# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-opt=no-reorder-blocks -propeller-keep-named-symbols -o %t.propeller.out
-# RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM3
-
-# NM3:	0000000000201000 t foo
-# NM3:	0000000000201003 t a.BB.foo
-# NM3:	0000000000201008 t aa.BB.foo
-# NM3:	000000000020100b t aaa.BB.foo
-# NM3:	0000000000201010 t aaaa.BB.foo
-
+# RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-opt=no-reorder-blocks -propeller-keep-named-symbols -o %t.propeller.noreorder.out
+# RUN: diff %t.propeller.noreorder.out %t.out
 
 .section	.text,"ax",@progbits
 # -- Begin function foo
@@ -113,7 +120,8 @@ aaa.BB.foo:
 
 .section	.text,"ax",@progbits,unique,4
 aaaa.BB.foo:
- .quad	0x44
+ nopl (%rax)
+ ret
 .Laaaa.BB.foo_end:
  .size	aaaa.BB.foo, .Laaaa.BB.foo_end-aaaa.BB.foo
 

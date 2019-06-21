@@ -4,18 +4,12 @@
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
 # RUN: ld.lld  %t.o -o %t.out
-# RUN: llvm-nm -Sn %t.out| FileCheck %s --check-prefix=NM1
+# RUN: llvm-nm -Sn %t.out| FileCheck %s --check-prefix=BEFORE
 
-# NM1:	0000000000201000 0000000000000005 t foo
-# NM1:	0000000000201005 0000000000000005 t a.BB.foo
-# NM1:	000000000020100a 0000000000000008 t aa.BB.foo
-# NM1:	0000000000201012 0000000000000008 t aaa.BB.foo
-
-# RUN: llvm-objdump -s %t.out| FileCheck %s --check-prefix=BEFORE
-
-# BEFORE:      Contents of section .text:
-# BEFORE-NEXT:  201000 0f1f0074 0d0f1f00 74082200 00000000
-# BEFORE-NEXT:  201010 00003300 00000000 0000
+# BEFORE:	0000000000201000 0000000000000005 t foo
+# BEFORE-NEXT:	0000000000201005 0000000000000005 t a.BB.foo
+# BEFORE-NEXT:	000000000020100a 0000000000000004 t aa.BB.foo
+# BEFORE-NEXT:	000000000020100e 0000000000000004 t aaa.BB.foo
 
 ## Create a propeller profile for foo, based on the cfg below:
 ##
@@ -48,19 +42,12 @@
 # RUN: echo "1 2 100" >> %t_prof.propeller
 
 # RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.out
-# RUN: llvm-nm -n %t.propeller.out| FileCheck %s --check-prefix=NM2
+# RUN: llvm-nm -nS %t.propeller.out| FileCheck %s --check-prefix=AFTER
 
-# NM2:	0000000000201000 t foo
-# NM2:	0000000000201005 t a.BB.foo
-# NM2:	000000000020100a t aaa.BB.foo
-# NM2:	0000000000201012 t aa.BB.foo
-
-# RUN: llvm-objdump -s %t.propeller.out| FileCheck %s --check-prefix=AFTER
-
-# AFTER:      Contents of section .text
-# AFTER-NEXT:  201000 0f1f0074 050f1f00 75083300 00000000
-# AFTER-NEXT:  201010 00002200 00000000 0000
-#
+# AFTER:	0000000000201000 0000000000000005 t foo
+# AFTER-NEXT:	0000000000201005 0000000000000005 t a.BB.foo
+# AFTER-NEXT:	000000000020100a 0000000000000004 t aaa.BB.foo
+# AFTER-NEXT:	000000000020100e 0000000000000004 t aa.BB.foo
 
 .section	.text,"ax",@progbits
 # -- Begin function foo
@@ -80,13 +67,15 @@ a.BB.foo:
 
 .section	.text,"ax",@progbits,unique,2
 aa.BB.foo:
- .quad	0x22
+ nopl (%rax)
+ ret
 .Laa.BB.foo_end:
  .size	aa.BB.foo, .Laa.BB.foo_end-aa.BB.foo
 
 .section	.text,"ax",@progbits,unique,3
 aaa.BB.foo:
- .quad	0x33
+ nopl (%rax)
+ ret
 .Laaa.BB.foo_end:
  .size	aaa.BB.foo, .Laaa.BB.foo_end-aaa.BB.foo
 

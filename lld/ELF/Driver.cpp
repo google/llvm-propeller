@@ -897,8 +897,8 @@ static void readConfigs(opt::InputArgList &Args) {
 
   if (!Config->Propeller.empty() && !Config->PropellerReorderBlocks) {
     if (SplitFuncsExplicit){
-      error("propeller: Inconsistent combination of propeller optimizations:\n"
-            "\tsplit-funcs can only be used with reorder-blocks");
+      error("propeller: Inconsistent combination of propeller optimizations"
+            " 'split-funcs' and 'no-reorder-blocks'.");
     } else {
       warn("propeller: no-reorder-blocks implicitly sets no-split-funcs.");
       Config->PropellerSplitFuncs = false;

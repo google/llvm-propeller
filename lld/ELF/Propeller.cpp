@@ -443,14 +443,16 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   unsigned ReorderedN = 0;
   auto startBBOrderTime = system_clock::now();
   for (auto *Cfg : CfgOrder) {
+    log("Ordering Cfg for function: " + Twine(Cfg->Name) + " --> " + Twine(Cfg->getEntryNode()->MappedAddr));
     if (Cfg->isHot() && Config->PropellerReorderBlocks) {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
           Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
       ReorderedN++;
     } else {
-      Cfg->forEachNodeRef([&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
-        SymbolList.insert(ColdPlaceHolder, N.ShName);
+      auto PlaceHolder = Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
+      Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
+        SymbolList.insert(PlaceHolder,N.ShName);
       });
     }
   }
