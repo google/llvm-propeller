@@ -28,6 +28,8 @@
 using namespace lldb;
 using namespace lldb_private;
 
+char ObjCLanguageRuntime::ID = 0;
+
 // Destructor
 ObjCLanguageRuntime::~ObjCLanguageRuntime() {}
 
@@ -371,6 +373,18 @@ bool ObjCLanguageRuntime::GetTypeBitSize(const CompilerType &compiler_type,
     m_type_size_cache.Insert(opaque_ptr, size);
 
   return found;
+}
+
+lldb::BreakpointPreconditionSP
+ObjCLanguageRuntime::GetBreakpointExceptionPrecondition(LanguageType language,
+                                                        bool throw_bp) {
+  if (language != eLanguageTypeObjC)
+    return lldb::BreakpointPreconditionSP();
+  if (!throw_bp)
+    return lldb::BreakpointPreconditionSP();
+  BreakpointPreconditionSP precondition_sp(
+      new ObjCLanguageRuntime::ObjCExceptionPrecondition());
+  return precondition_sp;
 }
 
 // Exception breakpoint Precondition class for ObjC:

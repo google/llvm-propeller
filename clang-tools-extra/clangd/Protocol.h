@@ -387,6 +387,11 @@ struct ClientCapabilities {
   /// textDocument.completion.completionItem.snippetSupport
   bool CompletionSnippets = false;
 
+  /// Client supports completions with additionalTextEdit near the cursor.
+  /// This is a clangd extension. (LSP says this is for unrelated text only).
+  /// textDocument.completion.editsNearCursor
+  bool CompletionFixes = false;
+
   /// Client supports hierarchical document symbols.
   bool HierarchicalDocumentSymbol = false;
 
@@ -478,6 +483,28 @@ struct InitializeParams {
 };
 bool fromJSON(const llvm::json::Value &, InitializeParams &);
 
+enum class MessageType {
+  /// An error message.
+  Error = 1,
+  /// A warning message.
+  Warning = 2,
+  /// An information message.
+  Info = 3,
+  /// A log message.
+  Log = 4,
+};
+llvm::json::Value toJSON(const MessageType &);
+
+/// The show message notification is sent from a server to a client to ask the
+/// client to display a particular message in the user interface.
+struct ShowMessageParams {
+  /// The message type.
+  MessageType type = MessageType::Info;
+  /// The actual message.
+  std::string message;
+};
+llvm::json::Value toJSON(const ShowMessageParams &);
+
 struct DidOpenTextDocumentParams {
   /// The document that was opened.
   TextDocumentItem textDocument;
@@ -548,15 +575,13 @@ struct DidChangeConfigurationParams {
 };
 bool fromJSON(const llvm::json::Value &, DidChangeConfigurationParams &);
 
-struct FormattingOptions {
-  /// Size of a tab in spaces.
-  int tabSize = 0;
-
-  /// Prefer spaces over tabs.
-  bool insertSpaces = false;
-};
-bool fromJSON(const llvm::json::Value &, FormattingOptions &);
-llvm::json::Value toJSON(const FormattingOptions &);
+// Note: we do not parse FormattingOptions for *FormattingParams.
+// In general, we use a clang-format style detected from common mechanisms
+// (.clang-format files and the -fallback-style flag).
+// It would be possible to override these with FormatOptions, but:
+//  - the protocol makes FormatOptions mandatory, so many clients set them to
+//    useless values, and we can't tell when to respect them
+// - we also format in other places, where FormatOptions aren't available.
 
 struct DocumentRangeFormattingParams {
   /// The document to format.
@@ -564,9 +589,6 @@ struct DocumentRangeFormattingParams {
 
   /// The range to format
   Range range;
-
-  /// The format options
-  FormattingOptions options;
 };
 bool fromJSON(const llvm::json::Value &, DocumentRangeFormattingParams &);
 
@@ -579,18 +601,12 @@ struct DocumentOnTypeFormattingParams {
 
   /// The character that has been typed.
   std::string ch;
-
-  /// The format options.
-  FormattingOptions options;
 };
 bool fromJSON(const llvm::json::Value &, DocumentOnTypeFormattingParams &);
 
 struct DocumentFormattingParams {
   /// The document to format.
   TextDocumentIdentifier textDocument;
-
-  /// The format options
-  FormattingOptions options;
 };
 bool fromJSON(const llvm::json::Value &, DocumentFormattingParams &);
 
@@ -599,7 +615,6 @@ struct DocumentSymbolParams {
   TextDocumentIdentifier textDocument;
 };
 bool fromJSON(const llvm::json::Value &, DocumentSymbolParams &);
-
 
 /// Represents a related message and source code location for a diagnostic.
 /// This should be used to point to code locations that cause or related to a
@@ -650,11 +665,17 @@ llvm::json::Value toJSON(const Diagnostic &);
 
 /// A LSP-specific comparator used to find diagnostic in a container like
 /// std:map.
-/// We only use the required fields of Diagnostic to do the comparsion to avoid
-/// any regression issues from LSP clients (e.g. VScode), see
-/// https://git.io/vbr29
+/// We only use as many fields of Diagnostic as is needed to make distinct
+/// diagnostics unique in practice, to avoid  regression issues from LSP clients
+/// (e.g. VScode), see https://git.io/vbr29
 struct LSPDiagnosticCompare {
   bool operator()(const Diagnostic &LHS, const Diagnostic &RHS) const {
+    if (!LHS.code.empty() && !RHS.code.empty()) {
+      // If the code is known for both, use the code to diambiguate, as e.g.
+      // two checkers could produce diagnostics with the same range and message.
+      return std::tie(LHS.range, LHS.message, LHS.code) <
+             std::tie(RHS.range, RHS.message, RHS.code);
+    }
     return std::tie(LHS.range, LHS.message) < std::tie(RHS.range, RHS.message);
   }
 };
@@ -746,6 +767,7 @@ struct CodeAction {
   llvm::Optional<std::string> kind;
   const static llvm::StringLiteral QUICKFIX_KIND;
   const static llvm::StringLiteral REFACTOR_KIND;
+  const static llvm::StringLiteral INFO_KIND;
 
   /// The diagnostics that this code action resolves.
   llvm::Optional<std::vector<Diagnostic>> diagnostics;

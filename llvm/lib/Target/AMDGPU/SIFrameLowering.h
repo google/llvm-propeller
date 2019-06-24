@@ -37,6 +37,8 @@ public:
   void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
                             RegScavenger *RS = nullptr) const override;
 
+  bool isSupportedStackID(TargetStackID::Value ID) const override;
+
   void processFunctionBeforeFrameFinalized(
     MachineFunction &MF,
     RegScavenger *RS = nullptr) const override;
@@ -58,12 +60,9 @@ private:
     SIMachineFunctionInfo *MFI,
     MachineFunction &MF) const;
 
-  std::pair<unsigned, unsigned> getReservedPrivateSegmentWaveByteOffsetReg(
-    const GCNSubtarget &ST,
-    const SIInstrInfo *TII,
-    const SIRegisterInfo *TRI,
-    SIMachineFunctionInfo *MFI,
-    MachineFunction &MF) const;
+  unsigned getReservedPrivateSegmentWaveByteOffsetReg(
+      const GCNSubtarget &ST, const SIInstrInfo *TII, const SIRegisterInfo *TRI,
+      SIMachineFunctionInfo *MFI, MachineFunction &MF) const;
 
   // Emit scratch setup code for AMDPAL or Mesa, assuming ResourceRegUsed is set.
   void emitEntryFunctionScratchSetup(const GCNSubtarget &ST, MachineFunction &MF,
@@ -73,7 +72,6 @@ private:
 
 public:
   bool hasFP(const MachineFunction &MF) const override;
-  bool hasSP(const MachineFunction &MF) const;
 };
 
 } // end namespace llvm

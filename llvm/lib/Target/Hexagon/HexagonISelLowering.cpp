@@ -1325,7 +1325,7 @@ HexagonTargetLowering::HexagonTargetLowering(const TargetMachine &TM,
   if (EmitJumpTables)
     setMinimumJumpTableEntries(MinimumJumpTables);
   else
-    setMinimumJumpTableEntries(std::numeric_limits<int>::max());
+    setMinimumJumpTableEntries(std::numeric_limits<unsigned>::max());
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
 
   setOperationAction(ISD::ABS, MVT::i32, Legal);
@@ -2620,7 +2620,6 @@ HexagonTargetLowering::LowerUnalignedLoad(SDValue Op, SelectionDAG &DAG)
   const SDLoc &dl(Op);
   const DataLayout &DL = DAG.getDataLayout();
   LLVMContext &Ctx = *DAG.getContext();
-  unsigned AS = LN->getAddressSpace();
 
   // If the load aligning is disabled or the load can be broken up into two
   // smaller legal loads, do the default (target-independent) expansion.
@@ -2630,15 +2629,15 @@ HexagonTargetLowering::LowerUnalignedLoad(SDValue Op, SelectionDAG &DAG)
     DoDefault = true;
 
   if (!AlignLoads) {
-    if (allowsMemoryAccess(Ctx, DL, LN->getMemoryVT(), AS, HaveAlign))
+    if (allowsMemoryAccess(Ctx, DL, LN->getMemoryVT(), *LN->getMemOperand()))
       return Op;
     DoDefault = true;
   }
-  if (!DoDefault && 2*HaveAlign == NeedAlign) {
+  if (!DoDefault && (2 * HaveAlign) == NeedAlign) {
     // The PartTy is the equivalent of "getLoadableTypeOfSize(HaveAlign)".
-    MVT PartTy = HaveAlign <= 8 ? MVT::getIntegerVT(8*HaveAlign)
+    MVT PartTy = HaveAlign <= 8 ? MVT::getIntegerVT(8 * HaveAlign)
                                 : MVT::getVectorVT(MVT::i8, HaveAlign);
-    DoDefault = allowsMemoryAccess(Ctx, DL, PartTy, AS, HaveAlign);
+    DoDefault = allowsMemoryAccess(Ctx, DL, PartTy, *LN->getMemOperand());
   }
   if (DoDefault) {
     std::pair<SDValue, SDValue> P = expandUnalignedLoad(LN, DAG);
@@ -3065,8 +3064,9 @@ EVT HexagonTargetLowering::getOptimalMemOpType(uint64_t Size,
   return MVT::Other;
 }
 
-bool HexagonTargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
-      unsigned AS, unsigned Align, bool *Fast) const {
+bool HexagonTargetLowering::allowsMisalignedMemoryAccesses(
+    EVT VT, unsigned AS, unsigned Align, MachineMemOperand::Flags Flags,
+    bool *Fast) const {
   if (Fast)
     *Fast = false;
   return Subtarget.isHVXVectorType(VT.getSimpleVT());

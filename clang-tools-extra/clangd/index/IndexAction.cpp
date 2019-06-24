@@ -116,9 +116,11 @@ public:
               const index::IndexingOptions &Opts,
               std::function<void(SymbolSlab)> SymbolsCallback,
               std::function<void(RefSlab)> RefsCallback,
+              std::function<void(RelationSlab)> RelationsCallback,
               std::function<void(IncludeGraph)> IncludeGraphCallback)
       : WrapperFrontendAction(index::createIndexingAction(C, Opts, nullptr)),
         SymbolsCallback(SymbolsCallback), RefsCallback(RefsCallback),
+        RelationsCallback(RelationsCallback),
         IncludeGraphCallback(IncludeGraphCallback), Collector(C),
         Includes(std::move(Includes)),
         PragmaHandler(collectIWYUHeaderMaps(this->Includes.get())) {}
@@ -126,6 +128,7 @@ public:
   std::unique_ptr<ASTConsumer>
   CreateASTConsumer(CompilerInstance &CI, llvm::StringRef InFile) override {
     CI.getPreprocessor().addCommentHandler(PragmaHandler.get());
+    addSystemHeadersMapping(Includes.get(), CI.getLangOpts());
     if (IncludeGraphCallback != nullptr)
       CI.getPreprocessor().addPPCallbacks(
           llvm::make_unique<IncludeGraphCollector>(CI.getSourceManager(), IG));
@@ -155,6 +158,8 @@ public:
     SymbolsCallback(Collector->takeSymbols());
     if (RefsCallback != nullptr)
       RefsCallback(Collector->takeRefs());
+    if (RelationsCallback != nullptr)
+      RelationsCallback(Collector->takeRelations());
     if (IncludeGraphCallback != nullptr) {
 #ifndef NDEBUG
       // This checks if all nodes are initialized.
@@ -168,6 +173,7 @@ public:
 private:
   std::function<void(SymbolSlab)> SymbolsCallback;
   std::function<void(RefSlab)> RefsCallback;
+  std::function<void(RelationSlab)> RelationsCallback;
   std::function<void(IncludeGraph)> IncludeGraphCallback;
   std::shared_ptr<SymbolCollector> Collector;
   std::unique_ptr<CanonicalIncludes> Includes;
@@ -181,6 +187,7 @@ std::unique_ptr<FrontendAction> createStaticIndexingAction(
     SymbolCollector::Options Opts,
     std::function<void(SymbolSlab)> SymbolsCallback,
     std::function<void(RefSlab)> RefsCallback,
+    std::function<void(RelationSlab)> RelationsCallback,
     std::function<void(IncludeGraph)> IncludeGraphCallback) {
   index::IndexingOptions IndexOpts;
   IndexOpts.SystemSymbolFilter =
@@ -194,11 +201,11 @@ std::unique_ptr<FrontendAction> createStaticIndexingAction(
     Opts.RefsInHeaders = true;
   }
   auto Includes = llvm::make_unique<CanonicalIncludes>();
-  addSystemHeadersMapping(Includes.get());
   Opts.Includes = Includes.get();
   return llvm::make_unique<IndexAction>(
       std::make_shared<SymbolCollector>(std::move(Opts)), std::move(Includes),
-      IndexOpts, SymbolsCallback, RefsCallback, IncludeGraphCallback);
+      IndexOpts, SymbolsCallback, RefsCallback, RelationsCallback,
+      IncludeGraphCallback);
 }
 
 } // namespace clangd

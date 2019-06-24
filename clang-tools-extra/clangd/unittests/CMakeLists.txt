@@ -39,6 +39,7 @@ add_unittest(ClangdUnitTests ClangdTests
   FileIndexTests.cpp
   FindSymbolsTests.cpp
   FormattedStringTests.cpp
+  FormatTests.cpp
   FSTests.cpp
   FunctionTests.cpp
   FuzzyMatchTests.cpp
@@ -86,6 +87,7 @@ target_link_libraries(ClangdTests
   clangTooling
   clangToolingCore
   clangToolingInclusions
+  clangToolingSyntax
   LLVMSupport
   LLVMTestingSupport
   )

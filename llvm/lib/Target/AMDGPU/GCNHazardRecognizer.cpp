@@ -115,6 +115,12 @@ static bool isSendMsgTraceDataOrGDS(const SIInstrInfo &TII,
   }
 }
 
+static bool isPermlane(const MachineInstr &MI) {
+  unsigned Opcode = MI.getOpcode();
+  return Opcode == AMDGPU::V_PERMLANE16_B32 ||
+         Opcode == AMDGPU::V_PERMLANEX16_B32;
+}
+
 static unsigned getHWReg(const SIInstrInfo *TII, const MachineInstr &RegInstr) {
   const MachineOperand *RegOp = TII->getNamedOperand(RegInstr,
                                                      AMDGPU::OpName::simm16);
@@ -137,6 +143,9 @@ GCNHazardRecognizer::getHazardType(SUnit *SU, int Stalls) {
     return NoopHazard;
 
   if (ST.hasNSAtoVMEMBug() && checkNSAtoVMEMHazard(MI) > 0)
+    return NoopHazard;
+
+  if (checkFPAtomicToDenormModeHazard(MI) > 0)
     return NoopHazard;
 
   if (ST.hasNoDataDepHazard())
@@ -240,6 +249,8 @@ unsigned GCNHazardRecognizer::PreEmitNoopsCommon(MachineInstr *MI) {
 
   if (ST.hasNSAtoVMEMBug())
     WaitStates = std::max(WaitStates, checkNSAtoVMEMHazard(MI));
+
+  WaitStates = std::max(WaitStates, checkFPAtomicToDenormModeHazard(MI));
 
   if (ST.hasNoDataDepHazard())
     return WaitStates;
@@ -516,7 +527,7 @@ int GCNHazardRecognizer::checkSMRDHazards(MachineInstr *SMRD) {
   WaitStatesNeeded = checkSoftClauseHazards(SMRD);
 
   // This SMRD hazard only affects SI.
-  if (ST.getGeneration() != AMDGPUSubtarget::SOUTHERN_ISLANDS)
+  if (!ST.hasSMRDReadVALUDefHazard())
     return WaitStatesNeeded;
 
   // A read of an SGPR by SMRD instruction requires 4 wait states when the
@@ -555,7 +566,7 @@ int GCNHazardRecognizer::checkSMRDHazards(MachineInstr *SMRD) {
 }
 
 int GCNHazardRecognizer::checkVMEMHazards(MachineInstr* VMEM) {
-  if (ST.getGeneration() < AMDGPUSubtarget::VOLCANIC_ISLANDS)
+  if (!ST.hasVMEMReadSGPRVALUDefHazard())
     return 0;
 
   int WaitStatesNeeded = checkSoftClauseHazards(VMEM);
@@ -634,8 +645,7 @@ int GCNHazardRecognizer::checkSetRegHazards(MachineInstr *SetRegInstr) {
   const SIInstrInfo *TII = ST.getInstrInfo();
   unsigned HWReg = getHWReg(TII, *SetRegInstr);
 
-  const int SetRegWaitStates =
-      ST.getGeneration() <= AMDGPUSubtarget::SEA_ISLANDS ? 1 : 2;
+  const int SetRegWaitStates = ST.getSetRegWaitStates();
   auto IsHazardFn = [TII, HWReg] (MachineInstr *MI) {
     return HWReg == getHWReg(TII, *MI);
   };
@@ -781,7 +791,7 @@ int GCNHazardRecognizer::checkRWLaneHazards(MachineInstr *RWLane) {
 }
 
 int GCNHazardRecognizer::checkRFEHazards(MachineInstr *RFE) {
-  if (ST.getGeneration() < AMDGPUSubtarget::VOLCANIC_ISLANDS)
+  if (!ST.hasRFEHazards())
     return 0;
 
   const SIInstrInfo *TII = ST.getInstrInfo();
@@ -835,9 +845,47 @@ int GCNHazardRecognizer::checkReadM0Hazards(MachineInstr *MI) {
 
 void GCNHazardRecognizer::fixHazards(MachineInstr *MI) {
   fixVMEMtoScalarWriteHazards(MI);
+  fixVcmpxPermlaneHazards(MI);
   fixSMEMtoVectorWriteHazards(MI);
   fixVcmpxExecWARHazard(MI);
   fixLdsBranchVmemWARHazard(MI);
+}
+
+bool GCNHazardRecognizer::fixVcmpxPermlaneHazards(MachineInstr *MI) {
+  if (!ST.hasVcmpxPermlaneHazard() || !isPermlane(*MI))
+    return false;
+
+  const SIInstrInfo *TII = ST.getInstrInfo();
+  auto IsHazardFn = [TII] (MachineInstr *MI) {
+    return TII->isVOPC(*MI);
+  };
+
+  auto IsExpiredFn = [] (MachineInstr *MI, int) {
+    if (!MI)
+      return false;
+    unsigned Opc = MI->getOpcode();
+    return SIInstrInfo::isVALU(*MI) &&
+           Opc != AMDGPU::V_NOP_e32 &&
+           Opc != AMDGPU::V_NOP_e64 &&
+           Opc != AMDGPU::V_NOP_sdwa;
+  };
+
+  if (::getWaitStatesSince(IsHazardFn, MI, IsExpiredFn) ==
+      std::numeric_limits<int>::max())
+    return false;
+
+  // V_NOP will be discarded by SQ.
+  // Use V_MOB_B32 v?, v?. Register must be alive so use src0 of V_PERMLANE*
+  // which is always a VGPR and available.
+  auto *Src0 = TII->getNamedOperand(*MI, AMDGPU::OpName::src0);
+  unsigned Reg = Src0->getReg();
+  bool IsUndef = Src0->isUndef();
+  BuildMI(*MI->getParent(), MI, MI->getDebugLoc(),
+          TII->get(AMDGPU::V_MOV_B32_e32))
+    .addReg(Reg, RegState::Define | (IsUndef ? RegState::Dead : 0))
+    .addReg(Reg, IsUndef ? RegState::Undef : RegState::Kill);
+
+  return true;
 }
 
 bool GCNHazardRecognizer::fixVMEMtoScalarWriteHazards(MachineInstr *MI) {
@@ -1094,4 +1142,40 @@ int GCNHazardRecognizer::checkNSAtoVMEMHazard(MachineInstr *MI) {
   };
 
   return NSAtoVMEMWaitStates - getWaitStatesSince(IsHazardFn, 1);
+}
+
+int GCNHazardRecognizer::checkFPAtomicToDenormModeHazard(MachineInstr *MI) {
+  int FPAtomicToDenormModeWaitStates = 3;
+
+  if (MI->getOpcode() != AMDGPU::S_DENORM_MODE)
+    return 0;
+
+  auto IsHazardFn = [] (MachineInstr *I) {
+    if (!SIInstrInfo::isVMEM(*I) && !SIInstrInfo::isFLAT(*I))
+      return false;
+    return SIInstrInfo::isFPAtomic(*I);
+  };
+
+  auto IsExpiredFn = [] (MachineInstr *MI, int WaitStates) {
+    if (WaitStates >= 3 || SIInstrInfo::isVALU(*MI))
+      return true;
+
+    switch (MI->getOpcode()) {
+    case AMDGPU::S_WAITCNT:
+    case AMDGPU::S_WAITCNT_VSCNT:
+    case AMDGPU::S_WAITCNT_VMCNT:
+    case AMDGPU::S_WAITCNT_EXPCNT:
+    case AMDGPU::S_WAITCNT_LGKMCNT:
+    case AMDGPU::S_WAITCNT_IDLE:
+      return true;
+    default:
+      break;
+    }
+
+    return false;
+  };
+
+
+  return FPAtomicToDenormModeWaitStates -
+         ::getWaitStatesSince(IsHazardFn, MI, IsExpiredFn);
 }

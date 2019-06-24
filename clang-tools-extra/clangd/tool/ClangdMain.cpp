@@ -34,11 +34,6 @@
 
 namespace clang {
 namespace clangd {
-// FIXME: remove this option when Dex is cheap enough.
-static llvm::cl::opt<bool>
-    UseDex("use-dex-index",
-           llvm::cl::desc("Use experimental Dex dynamic index"),
-           llvm::cl::init(true), llvm::cl::Hidden);
 
 static llvm::cl::opt<Path> CompileCommandsDir(
     "compile-commands-dir",
@@ -268,6 +263,11 @@ static llvm::cl::opt<CodeCompleteOptions::CodeCompletionParse>
                                     "Always used text-based completion")),
         llvm::cl::init(CodeCompleteOptions().RunParser), llvm::cl::Hidden);
 
+static llvm::cl::opt<bool> HiddenFeatures(
+    "hidden-features",
+    llvm::cl::desc("Enable hidden features mostly useful to clangd developers"),
+    llvm::cl::init(false), llvm::cl::Hidden);
+
 namespace {
 
 /// \brief Supports a test URI scheme with relaxed constraints for lit tests.
@@ -447,7 +447,6 @@ int main(int argc, char *argv[]) {
   if (!ResourceDir.empty())
     Opts.ResourceDir = ResourceDir;
   Opts.BuildDynamicSymbolIndex = EnableIndex;
-  Opts.HeavyweightDynamicSymbolIndex = UseDex;
   Opts.BackgroundIndex = EnableBackgroundIndex;
   Opts.BackgroundIndexRebuildPeriodMs = BackgroundIndexRebuildPeriod;
   std::unique_ptr<SymbolIndex> StaticIdx;
@@ -465,6 +464,7 @@ int main(int argc, char *argv[]) {
   }
   Opts.StaticIndex = StaticIdx.get();
   Opts.AsyncThreadsCount = WorkerThreadsCount;
+  Opts.HiddenFeatures = HiddenFeatures;
 
   clangd::CodeCompleteOptions CCOpts;
   CCOpts.IncludeIneligibleResults = IncludeIneligibleResults;

@@ -133,7 +133,9 @@ MipsRegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
   case G_FADD:
   case G_FSUB:
   case G_FMUL:
-  case G_FDIV: {
+  case G_FDIV:
+  case G_FABS:
+  case G_FSQRT:{
     unsigned Size = MRI.getType(MI.getOperand(0).getReg()).getSizeInBits();
     assert((Size == 32 || Size == 64) && "Unsupported floating point size");
     OperandsMapping = Size == 32 ? &Mips::ValueMappings[Mips::SPRIdx]
@@ -147,6 +149,49 @@ MipsRegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
         Size == 32 ? &Mips::ValueMappings[Mips::SPRIdx]
                    : &Mips::ValueMappings[Mips::DPRIdx];
     OperandsMapping = getOperandsMapping({FPRValueMapping, nullptr});
+    break;
+  }
+  case G_FCMP: {
+    unsigned Size = MRI.getType(MI.getOperand(2).getReg()).getSizeInBits();
+    assert((Size == 32 || Size == 64) && "Unsupported floating point size");
+    const RegisterBankInfo::ValueMapping *FPRValueMapping =
+        Size == 32 ? &Mips::ValueMappings[Mips::SPRIdx]
+                   : &Mips::ValueMappings[Mips::DPRIdx];
+    OperandsMapping =
+        getOperandsMapping({&Mips::ValueMappings[Mips::GPRIdx], nullptr,
+                            FPRValueMapping, FPRValueMapping});
+    break;
+  }
+  case G_FPEXT:
+    OperandsMapping = getOperandsMapping({&Mips::ValueMappings[Mips::DPRIdx],
+                                          &Mips::ValueMappings[Mips::SPRIdx]});
+    break;
+  case G_FPTRUNC:
+    OperandsMapping = getOperandsMapping({&Mips::ValueMappings[Mips::SPRIdx],
+                                          &Mips::ValueMappings[Mips::DPRIdx]});
+    break;
+  case G_FPTOSI: {
+    unsigned SizeFP = MRI.getType(MI.getOperand(1).getReg()).getSizeInBits();
+    assert((MRI.getType(MI.getOperand(0).getReg()).getSizeInBits() == 32) &&
+           "Unsupported integer size");
+    assert((SizeFP == 32 || SizeFP == 64) && "Unsupported floating point size");
+    OperandsMapping = getOperandsMapping({
+        &Mips::ValueMappings[Mips::GPRIdx],
+        SizeFP == 32 ? &Mips::ValueMappings[Mips::SPRIdx]
+                     : &Mips::ValueMappings[Mips::DPRIdx],
+    });
+    break;
+  }
+  case G_SITOFP: {
+    unsigned SizeInt = MRI.getType(MI.getOperand(1).getReg()).getSizeInBits();
+    unsigned SizeFP = MRI.getType(MI.getOperand(0).getReg()).getSizeInBits();
+    (void)SizeInt;
+    assert((SizeInt == 32) && "Unsupported integer size");
+    assert((SizeFP == 32 || SizeFP == 64) && "Unsupported floating point size");
+    OperandsMapping =
+        getOperandsMapping({SizeFP == 32 ? &Mips::ValueMappings[Mips::SPRIdx]
+                                         : &Mips::ValueMappings[Mips::DPRIdx],
+                            &Mips::ValueMappings[Mips::GPRIdx]});
     break;
   }
   case G_CONSTANT:

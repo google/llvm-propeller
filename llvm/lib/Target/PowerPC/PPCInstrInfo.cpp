@@ -391,9 +391,9 @@ MachineInstr *PPCInstrInfo::commuteInstructionImpl(MachineInstr &MI, bool NewMI,
   // Swap op1/op2
   assert(((OpIdx1 == 1 && OpIdx2 == 2) || (OpIdx1 == 2 && OpIdx2 == 1)) &&
          "Only the operands 1 and 2 can be swapped in RLSIMI/RLWIMIo.");
-  unsigned Reg0 = MI.getOperand(0).getReg();
-  unsigned Reg1 = MI.getOperand(1).getReg();
-  unsigned Reg2 = MI.getOperand(2).getReg();
+  Register Reg0 = MI.getOperand(0).getReg();
+  Register Reg1 = MI.getOperand(1).getReg();
+  Register Reg2 = MI.getOperand(2).getReg();
   unsigned SubReg1 = MI.getOperand(1).getSubReg();
   unsigned SubReg2 = MI.getOperand(2).getSubReg();
   bool Reg1IsKill = MI.getOperand(1).isKill();
@@ -421,7 +421,7 @@ MachineInstr *PPCInstrInfo::commuteInstructionImpl(MachineInstr &MI, bool NewMI,
 
   if (NewMI) {
     // Create a new instruction.
-    unsigned Reg0 = ChangeReg0 ? Reg2 : MI.getOperand(0).getReg();
+    Register Reg0 = ChangeReg0 ? Reg2 : MI.getOperand(0).getReg();
     bool Reg0IsDead = MI.getOperand(0).isDead();
     return BuildMI(MF, MI.getDebugLoc(), MI.getDesc())
         .addReg(Reg0, RegState::Define | getDeadRegState(Reg0IsDead))
@@ -2400,7 +2400,7 @@ MachineInstr *PPCInstrInfo::getForwardingDefMI(
               return &*It;
             }
             break;
-          } else if (It->readsRegister(Reg, &getRegisterInfo())) 
+          } else if (It->readsRegister(Reg, &getRegisterInfo()))
             // If we see another use of this reg between the def and the MI,
             // we want to flat it so the def isn't deleted.
             SeenIntermediateUse = true;
@@ -3218,7 +3218,7 @@ static void swapMIOperands(MachineInstr &MI, unsigned Op1, unsigned Op2) {
   }
 }
 
-// Check if the 'MI' that has the index OpNoForForwarding 
+// Check if the 'MI' that has the index OpNoForForwarding
 // meets the requirement described in the ImmInstrInfo.
 bool PPCInstrInfo::isUseMIElgibleForForwarding(MachineInstr &MI,
                                                const ImmInstrInfo &III,
@@ -3264,7 +3264,7 @@ bool PPCInstrInfo::isDefMIElgibleForForwarding(MachineInstr &DefMI,
                                                MachineOperand *&RegMO) const {
   unsigned Opc = DefMI.getOpcode();
   if (Opc != PPC::ADDItocL && Opc != PPC::ADDI && Opc != PPC::ADDI8)
-    return false; 
+    return false;
 
   assert(DefMI.getNumOperands() >= 3 &&
          "Add inst must have at least three operands");
@@ -3436,7 +3436,7 @@ bool PPCInstrInfo::transformToImmFormFedByAdd(
     // Otherwise, it is Constant Pool Index(CPI) or Global,
     // which is relocation in fact. We need to replace the special zero
     // register with ImmMO.
-    // Before that, we need to fixup the target flags for imm. 
+    // Before that, we need to fixup the target flags for imm.
     // For some reason, we miss to set the flag for the ImmMO if it is CPI.
     if (DefMI.getOpcode() == PPC::ADDItocL)
       ImmMO->setTargetFlags(PPCII::MO_TOC_LO);
@@ -3922,3 +3922,77 @@ PPCInstrInfo::isSignOrZeroExtended(const MachineInstr &MI, bool SignExt,
   }
   return false;
 }
+
+bool PPCInstrInfo::isBDNZ(unsigned Opcode) const {
+  return (Opcode == (Subtarget.isPPC64() ? PPC::BDNZ8 : PPC::BDNZ));
+}
+
+bool PPCInstrInfo::analyzeLoop(MachineLoop &L, MachineInstr *&IndVarInst,
+                               MachineInstr *&CmpInst) const {
+  MachineBasicBlock *LoopEnd = L.getBottomBlock();
+  MachineBasicBlock::iterator I = LoopEnd->getFirstTerminator();
+  // We really "analyze" only CTR loops right now.
+  if (I != LoopEnd->end() && isBDNZ(I->getOpcode())) {
+    IndVarInst = nullptr;
+    CmpInst = &*I;
+    return false;
+  }
+  return true;
+}
+
+MachineInstr *
+PPCInstrInfo::findLoopInstr(MachineBasicBlock &PreHeader) const {
+
+  unsigned LOOPi = (Subtarget.isPPC64() ? PPC::MTCTR8loop : PPC::MTCTRloop);
+
+  // The loop set-up instruction should be in preheader
+  for (auto &I : PreHeader.instrs())
+    if (I.getOpcode() == LOOPi)
+      return &I;
+  return nullptr;
+}
+
+unsigned PPCInstrInfo::reduceLoopCount(
+    MachineBasicBlock &MBB, MachineBasicBlock &PreHeader, MachineInstr *IndVar,
+    MachineInstr &Cmp, SmallVectorImpl<MachineOperand> &Cond,
+    SmallVectorImpl<MachineInstr *> &PrevInsts, unsigned Iter,
+    unsigned MaxIter) const {
+  // We expect a hardware loop currently. This means that IndVar is set
+  // to null, and the compare is the ENDLOOP instruction.
+  assert((!IndVar) && isBDNZ(Cmp.getOpcode()) && "Expecting a CTR loop");
+  MachineFunction *MF = MBB.getParent();
+  DebugLoc DL = Cmp.getDebugLoc();
+  MachineInstr *Loop = findLoopInstr(PreHeader);
+  if (!Loop)
+    return 0;
+  unsigned LoopCountReg = Loop->getOperand(0).getReg();
+  MachineRegisterInfo &MRI = MF->getRegInfo();
+  MachineInstr *LoopCount = MRI.getUniqueVRegDef(LoopCountReg);
+
+  if (!LoopCount)
+    return 0;
+  // If the loop trip count is a compile-time value, then just change the
+  // value.
+  if (LoopCount->getOpcode() == PPC::LI8 || LoopCount->getOpcode() == PPC::LI) {
+    int64_t Offset = LoopCount->getOperand(1).getImm();
+    if (Offset <= 1) {
+      LoopCount->eraseFromParent();
+      Loop->eraseFromParent();
+      return 0;
+    }
+    LoopCount->getOperand(1).setImm(Offset - 1);
+    return Offset - 1;
+  }
+
+  // The loop trip count is a run-time value.
+  // We need to subtract one from the trip count,
+  // and insert branch later to check if we're done with the loop.
+
+  // Since BDZ/BDZ8 that we will insert will also decrease the ctr by 1,
+  // so we don't need to generate any thing here.
+  Cond.push_back(MachineOperand::CreateImm(0));
+  Cond.push_back(MachineOperand::CreateReg(
+      Subtarget.isPPC64() ? PPC::CTR8 : PPC::CTR, true));
+  return LoopCountReg;
+}
+

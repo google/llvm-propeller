@@ -53,8 +53,7 @@ namespace objcopy {
 StringRef ToolName;
 
 LLVM_ATTRIBUTE_NORETURN void error(Twine Message) {
-  WithColor::error(errs(), ToolName) << Message << ".\n";
-  errs().flush();
+  WithColor::error(errs(), ToolName) << Message << "\n";
   exit(1);
 }
 
@@ -81,6 +80,12 @@ LLVM_ATTRIBUTE_NORETURN void reportError(StringRef File, Error E) {
   OS.flush();
   WithColor::error(errs(), ToolName) << "'" << File << "': " << Buf;
   exit(1);
+}
+
+ErrorSuccess reportWarning(Error E) {
+  assert(E);
+  WithColor::warning(errs(), ToolName) << toString(std::move(E));
+  return Error::success();
 }
 
 } // end namespace objcopy
@@ -123,6 +128,14 @@ static Error deepWriteArchive(StringRef ArcName,
   return Error::success();
 }
 
+/// The function executeObjcopyOnIHex does the dispatch based on the format
+/// of the output specified by the command line options.
+static Error executeObjcopyOnIHex(const CopyConfig &Config, MemoryBuffer &In,
+                                  Buffer &Out) {
+  // TODO: support output formats other than ELF.
+  return elf::executeObjcopyOnIHex(Config, In, Out);
+}
+
 /// The function executeObjcopyOnRawBinary does the dispatch based on the format
 /// of the output specified by the command line options.
 static Error executeObjcopyOnRawBinary(const CopyConfig &Config,
@@ -146,7 +159,7 @@ static Error executeObjcopyOnBinary(const CopyConfig &Config,
     return macho::executeObjcopyOnBinary(Config, *MachOBinary, Out);
   else
     return createStringError(object_error::invalid_file_type,
-                             "Unsupported object file format");
+                             "unsupported object file format");
 }
 
 static Error executeObjcopyOnArchive(const CopyConfig &Config,
@@ -210,12 +223,18 @@ static Error executeObjcopy(const CopyConfig &Config) {
     if (auto EC = sys::fs::status(Config.InputFilename, Stat))
       return createFileError(Config.InputFilename, EC);
 
-  if (Config.InputFormat == "binary") {
-    auto BufOrErr = MemoryBuffer::getFile(Config.InputFilename);
+  typedef Error (*ProcessRawFn)(const CopyConfig &, MemoryBuffer &, Buffer &);
+  auto ProcessRaw = StringSwitch<ProcessRawFn>(Config.InputFormat)
+                        .Case("binary", executeObjcopyOnRawBinary)
+                        .Case("ihex", executeObjcopyOnIHex)
+                        .Default(nullptr);
+
+  if (ProcessRaw) {
+    auto BufOrErr = MemoryBuffer::getFileOrSTDIN(Config.InputFilename);
     if (!BufOrErr)
       return createFileError(Config.InputFilename, BufOrErr.getError());
     FileBuffer FB(Config.OutputFilename);
-    if (Error E = executeObjcopyOnRawBinary(Config, *BufOrErr->get(), FB))
+    if (Error E = ProcessRaw(Config, *BufOrErr->get(), FB))
       return E;
   } else {
     Expected<OwningBinary<llvm::object::Binary>> BinaryOrErr =
@@ -250,7 +269,7 @@ int main(int argc, char **argv) {
   ToolName = argv[0];
   bool IsStrip = sys::path::stem(ToolName).contains("strip");
   Expected<DriverConfig> DriverConfig =
-      IsStrip ? parseStripOptions(makeArrayRef(argv + 1, argc))
+      IsStrip ? parseStripOptions(makeArrayRef(argv + 1, argc), reportWarning)
               : parseObjcopyOptions(makeArrayRef(argv + 1, argc));
   if (!DriverConfig) {
     logAllUnhandledErrors(DriverConfig.takeError(),

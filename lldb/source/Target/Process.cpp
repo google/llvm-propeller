@@ -39,7 +39,6 @@
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Target/ABI.h"
-#include "lldb/Target/CPPLanguageRuntime.h"
 #include "lldb/Target/DynamicLoader.h"
 #include "lldb/Target/InstrumentationRuntime.h"
 #include "lldb/Target/JITLoader.h"
@@ -48,7 +47,6 @@
 #include "lldb/Target/LanguageRuntime.h"
 #include "lldb/Target/MemoryHistory.h"
 #include "lldb/Target/MemoryRegionInfo.h"
-#include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/OperatingSystem.h"
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
@@ -1598,16 +1596,6 @@ LanguageRuntime *Process::GetLanguageRuntime(lldb::LanguageType language,
   return runtime;
 }
 
-ObjCLanguageRuntime *Process::GetObjCLanguageRuntime(bool retry_if_null) {
-  std::lock_guard<std::recursive_mutex> guard(m_language_runtimes_mutex);
-  LanguageRuntime *runtime =
-      GetLanguageRuntime(eLanguageTypeObjC, retry_if_null);
-  if (!runtime)
-    return nullptr;
-
-  return static_cast<ObjCLanguageRuntime *>(runtime);
-}
-
 bool Process::IsPossibleDynamicValue(ValueObject &in_value) {
   if (m_finalizing)
     return false;
@@ -2720,7 +2708,7 @@ DynamicLoader *Process::GetDynamicLoader() {
   return m_dyld_up.get();
 }
 
-const lldb::DataBufferSP Process::GetAuxvData() { return DataBufferSP(); }
+DataExtractor Process::GetAuxvData() { return DataExtractor(); }
 
 JITLoaderList &Process::GetJITLoaders() {
   if (!m_jit_loaders_up) {

@@ -199,6 +199,32 @@ TokenBuffer::spelledForExpanded(llvm::ArrayRef<syntax::Token> Expanded) const {
                   : LastSpelled + 1);
 }
 
+llvm::Optional<TokenBuffer::Expansion>
+TokenBuffer::expansionStartingAt(const syntax::Token *Spelled) const {
+  assert(Spelled);
+  assert(Spelled->location().isFileID() && "not a spelled token");
+  auto FileIt = Files.find(SourceMgr->getFileID(Spelled->location()));
+  assert(FileIt != Files.end() && "file not tracked by token buffer");
+
+  auto &File = FileIt->second;
+  assert(File.SpelledTokens.data() <= Spelled &&
+         Spelled < (File.SpelledTokens.data() + File.SpelledTokens.size()));
+
+  unsigned SpelledIndex = Spelled - File.SpelledTokens.data();
+  auto M = llvm::bsearch(File.Mappings, [&](const Mapping &M) {
+    return SpelledIndex <= M.BeginSpelled;
+  });
+  if (M == File.Mappings.end() || M->BeginSpelled != SpelledIndex)
+    return llvm::None;
+
+  Expansion E;
+  E.Spelled = llvm::makeArrayRef(File.SpelledTokens.data() + M->BeginSpelled,
+                                 File.SpelledTokens.data() + M->EndSpelled);
+  E.Expanded = llvm::makeArrayRef(ExpandedTokens.data() + M->BeginExpanded,
+                                  ExpandedTokens.data() + M->EndExpanded);
+  return E;
+}
+
 std::vector<syntax::Token> syntax::tokenize(FileID FID, const SourceManager &SM,
                                             const LangOptions &LO) {
   std::vector<syntax::Token> Tokens;
@@ -451,8 +477,7 @@ std::string TokenBuffer::dumpForTests() const {
 
   auto DumpTokens = [this, &PrintToken](llvm::raw_ostream &OS,
                                         llvm::ArrayRef<syntax::Token> Tokens) {
-    if (Tokens.size() == 1) {
-      assert(Tokens[0].kind() == tok::eof);
+    if (Tokens.empty()) {
       OS << "<empty>";
       return;
     }
@@ -469,7 +494,8 @@ std::string TokenBuffer::dumpForTests() const {
 
   OS << "expanded tokens:\n"
      << "  ";
-  DumpTokens(OS, ExpandedTokens);
+  // (!) we do not show '<eof>'.
+  DumpTokens(OS, llvm::makeArrayRef(ExpandedTokens).drop_back());
   OS << "\n";
 
   std::vector<FileID> Keys;

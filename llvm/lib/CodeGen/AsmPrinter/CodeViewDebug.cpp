@@ -1142,9 +1142,15 @@ void CodeViewDebug::collectVariableInfoFromMFTable(
     // If the variable has an attached offset expression, extract it.
     // FIXME: Try to handle DW_OP_deref as well.
     int64_t ExprOffset = 0;
-    if (VI.Expr)
-      if (!VI.Expr->extractIfOffset(ExprOffset))
+    bool Deref = false;
+    if (VI.Expr) {
+      // If there is one DW_OP_deref element, use offset of 0 and keep going.
+      if (VI.Expr->getNumElements() == 1 &&
+          VI.Expr->getElement(0) == llvm::dwarf::DW_OP_deref)
+        Deref = true;
+      else if (!VI.Expr->extractIfOffset(ExprOffset))
         continue;
+    }
 
     // Get the frame register used and the offset.
     unsigned FrameReg = 0;
@@ -1154,6 +1160,7 @@ void CodeViewDebug::collectVariableInfoFromMFTable(
     // Calculate the label ranges.
     LocalVarDefRange DefRange =
         createDefRangeMem(CVReg, FrameOffset + ExprOffset);
+
     for (const InsnRange &Range : Scope->getRanges()) {
       const MCSymbol *Begin = getLabelBeforeInsn(Range.first);
       const MCSymbol *End = getLabelAfterInsn(Range.second);
@@ -1164,6 +1171,9 @@ void CodeViewDebug::collectVariableInfoFromMFTable(
     LocalVariable Var;
     Var.DIVar = VI.Var;
     Var.DefRanges.emplace_back(std::move(DefRange));
+    if (Deref)
+      Var.UseReferenceType = true;
+
     recordLocalVariable(std::move(Var), Scope);
   }
 }
@@ -3069,12 +3079,13 @@ void CodeViewDebug::emitDebugInfoForGlobal(const CVGlobalVariable &CVGV) {
     OS.EmitBinaryData(SRef);
 
     OS.AddComment("Name");
-    // Get fully qualified name if global is a static data member.
-    std::string Name = DIGV->getDisplayName();
+    const DIScope *Scope = DIGV->getScope();
+    // For static data members, get the scope from the declaration.
     if (const auto *MemberDecl = dyn_cast_or_null<DIDerivedType>(
             DIGV->getRawStaticDataMemberDeclaration()))
-      Name = getFullyQualifiedName(MemberDecl->getScope(), Name);
-    emitNullTerminatedSymbolName(OS, Name);
+      Scope = MemberDecl->getScope();
+    emitNullTerminatedSymbolName(OS,
+                                 getFullyQualifiedName(Scope, DIGV->getName()));
     endSymbolRecord(SConstantEnd);
   }
 }

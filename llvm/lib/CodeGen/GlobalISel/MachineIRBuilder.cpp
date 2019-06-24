@@ -179,6 +179,12 @@ MachineInstrBuilder MachineIRBuilder::buildGlobalValue(unsigned Res,
       .addGlobalAddress(GV);
 }
 
+MachineInstrBuilder MachineIRBuilder::buildJumpTable(const LLT PtrTy,
+                                                     unsigned JTI) {
+  return buildInstr(TargetOpcode::G_JUMP_TABLE, {PtrTy}, {})
+      .addJumpTableIndex(JTI);
+}
+
 void MachineIRBuilder::validateBinaryOp(const LLT &Res, const LLT &Op0,
                                         const LLT &Op1) {
   assert((Res.isScalar() || Res.isVector()) && "invalid operand type");
@@ -204,7 +210,7 @@ MachineInstrBuilder MachineIRBuilder::buildGEP(unsigned Res, unsigned Op0,
 }
 
 Optional<MachineInstrBuilder>
-MachineIRBuilder::materializeGEP(unsigned &Res, unsigned Op0,
+MachineIRBuilder::materializeGEP(Register &Res, Register Op0,
                                  const LLT &ValueTy, uint64_t Value) {
   assert(Res == 0 && "Res is a result argument");
   assert(ValueTy.isScalar()  && "invalid offset type");
@@ -237,6 +243,17 @@ MachineInstrBuilder MachineIRBuilder::buildBr(MachineBasicBlock &Dest) {
 MachineInstrBuilder MachineIRBuilder::buildBrIndirect(unsigned Tgt) {
   assert(getMRI()->getType(Tgt).isPointer() && "invalid branch destination");
   return buildInstr(TargetOpcode::G_BRINDIRECT).addUse(Tgt);
+}
+
+MachineInstrBuilder MachineIRBuilder::buildBrJT(unsigned TablePtr,
+                                                unsigned JTI,
+                                                unsigned IndexReg) {
+  assert(getMRI()->getType(TablePtr).isPointer() &&
+         "Table reg must be a pointer");
+  return buildInstr(TargetOpcode::G_BRJT)
+      .addUse(TablePtr)
+      .addJumpTableIndex(JTI)
+      .addUse(IndexReg);
 }
 
 MachineInstrBuilder MachineIRBuilder::buildCopy(const DstOp &Res,
@@ -489,7 +506,7 @@ MachineInstrBuilder MachineIRBuilder::buildExtract(const DstOp &Dst,
   return Extract;
 }
 
-void MachineIRBuilder::buildSequence(unsigned Res, ArrayRef<unsigned> Ops,
+void MachineIRBuilder::buildSequence(Register Res, ArrayRef<Register> Ops,
                                      ArrayRef<uint64_t> Indices) {
 #ifndef NDEBUG
   assert(Ops.size() == Indices.size() && "incompatible args");
@@ -518,11 +535,11 @@ void MachineIRBuilder::buildSequence(unsigned Res, ArrayRef<unsigned> Ops,
     return;
   }
 
-  unsigned ResIn = getMRI()->createGenericVirtualRegister(ResTy);
+  Register ResIn = getMRI()->createGenericVirtualRegister(ResTy);
   buildUndef(ResIn);
 
   for (unsigned i = 0; i < Ops.size(); ++i) {
-    unsigned ResOut = i + 1 == Ops.size()
+    Register ResOut = i + 1 == Ops.size()
                           ? Res
                           : getMRI()->createGenericVirtualRegister(ResTy);
     buildInsert(ResOut, ResIn, Ops[i], Indices[i]);
@@ -535,7 +552,7 @@ MachineInstrBuilder MachineIRBuilder::buildUndef(const DstOp &Res) {
 }
 
 MachineInstrBuilder MachineIRBuilder::buildMerge(const DstOp &Res,
-                                                 ArrayRef<unsigned> Ops) {
+                                                 ArrayRef<Register> Ops) {
   // Unfortunately to convert from ArrayRef<LLT> to ArrayRef<SrcOp>,
   // we need some temporary storage for the DstOp objects. Here we use a
   // sufficiently large SmallVector to not go through the heap.
@@ -555,13 +572,13 @@ MachineInstrBuilder MachineIRBuilder::buildUnmerge(ArrayRef<LLT> Res,
 MachineInstrBuilder MachineIRBuilder::buildUnmerge(LLT Res,
                                                    const SrcOp &Op) {
   unsigned NumReg = Op.getLLTTy(*getMRI()).getSizeInBits() / Res.getSizeInBits();
-  SmallVector<unsigned, 8> TmpVec;
+  SmallVector<Register, 8> TmpVec;
   for (unsigned I = 0; I != NumReg; ++I)
     TmpVec.push_back(getMRI()->createGenericVirtualRegister(Res));
   return buildUnmerge(TmpVec, Op);
 }
 
-MachineInstrBuilder MachineIRBuilder::buildUnmerge(ArrayRef<unsigned> Res,
+MachineInstrBuilder MachineIRBuilder::buildUnmerge(ArrayRef<Register> Res,
                                                    const SrcOp &Op) {
   // Unfortunately to convert from ArrayRef<unsigned> to ArrayRef<DstOp>,
   // we need some temporary storage for the DstOp objects. Here we use a
@@ -571,7 +588,7 @@ MachineInstrBuilder MachineIRBuilder::buildUnmerge(ArrayRef<unsigned> Res,
 }
 
 MachineInstrBuilder MachineIRBuilder::buildBuildVector(const DstOp &Res,
-                                                       ArrayRef<unsigned> Ops) {
+                                                       ArrayRef<Register> Ops) {
   // Unfortunately to convert from ArrayRef<unsigned> to ArrayRef<SrcOp>,
   // we need some temporary storage for the DstOp objects. Here we use a
   // sufficiently large SmallVector to not go through the heap.
@@ -587,7 +604,7 @@ MachineInstrBuilder MachineIRBuilder::buildSplatVector(const DstOp &Res,
 
 MachineInstrBuilder
 MachineIRBuilder::buildBuildVectorTrunc(const DstOp &Res,
-                                        ArrayRef<unsigned> Ops) {
+                                        ArrayRef<Register> Ops) {
   // Unfortunately to convert from ArrayRef<unsigned> to ArrayRef<SrcOp>,
   // we need some temporary storage for the DstOp objects. Here we use a
   // sufficiently large SmallVector to not go through the heap.
@@ -596,7 +613,7 @@ MachineIRBuilder::buildBuildVectorTrunc(const DstOp &Res,
 }
 
 MachineInstrBuilder
-MachineIRBuilder::buildConcatVectors(const DstOp &Res, ArrayRef<unsigned> Ops) {
+MachineIRBuilder::buildConcatVectors(const DstOp &Res, ArrayRef<Register> Ops) {
   // Unfortunately to convert from ArrayRef<unsigned> to ArrayRef<SrcOp>,
   // we need some temporary storage for the DstOp objects. Here we use a
   // sufficiently large SmallVector to not go through the heap.
@@ -604,8 +621,8 @@ MachineIRBuilder::buildConcatVectors(const DstOp &Res, ArrayRef<unsigned> Ops) {
   return buildInstr(TargetOpcode::G_CONCAT_VECTORS, Res, TmpVec);
 }
 
-MachineInstrBuilder MachineIRBuilder::buildInsert(unsigned Res, unsigned Src,
-                                                  unsigned Op, unsigned Index) {
+MachineInstrBuilder MachineIRBuilder::buildInsert(Register Res, Register Src,
+                                                  Register Op, unsigned Index) {
   assert(Index + getMRI()->getType(Op).getSizeInBits() <=
              getMRI()->getType(Res).getSizeInBits() &&
          "insertion past the end of a register");
@@ -623,7 +640,7 @@ MachineInstrBuilder MachineIRBuilder::buildInsert(unsigned Res, unsigned Src,
 }
 
 MachineInstrBuilder MachineIRBuilder::buildIntrinsic(Intrinsic::ID ID,
-                                                     ArrayRef<unsigned> ResultRegs,
+                                                     ArrayRef<Register> ResultRegs,
                                                      bool HasSideEffects) {
   auto MIB =
       buildInstr(HasSideEffects ? TargetOpcode::G_INTRINSIC_W_SIDE_EFFECTS

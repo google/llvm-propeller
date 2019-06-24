@@ -39,12 +39,19 @@ class MachineFrameInfo;
 class MachineFunction;
 class TargetRegisterClass;
 
-class AMDGPUImagePseudoSourceValue : public PseudoSourceValue {
+class AMDGPUPseudoSourceValue : public PseudoSourceValue {
 public:
-  // TODO: Is the img rsrc useful?
-  explicit AMDGPUImagePseudoSourceValue(const TargetInstrInfo &TII) :
-    PseudoSourceValue(PseudoSourceValue::TargetCustom, TII) {}
+  enum AMDGPUPSVKind : unsigned {
+    PSVBuffer = PseudoSourceValue::TargetCustom,
+    PSVImage,
+    GWSResource
+  };
 
+protected:
+  AMDGPUPseudoSourceValue(unsigned Kind, const TargetInstrInfo &TII)
+      : PseudoSourceValue(Kind, TII) {}
+
+public:
   bool isConstant(const MachineFrameInfo *) const override {
     // This should probably be true for most images, but we will start by being
     // conservative.
@@ -60,23 +67,48 @@ public:
   }
 };
 
-class AMDGPUBufferPseudoSourceValue : public PseudoSourceValue {
+class AMDGPUBufferPseudoSourceValue final : public AMDGPUPseudoSourceValue {
 public:
-  explicit AMDGPUBufferPseudoSourceValue(const TargetInstrInfo &TII) :
-    PseudoSourceValue(PseudoSourceValue::TargetCustom, TII) { }
+  explicit AMDGPUBufferPseudoSourceValue(const TargetInstrInfo &TII)
+      : AMDGPUPseudoSourceValue(PSVBuffer, TII) {}
 
-  bool isConstant(const MachineFrameInfo *) const override {
-    // This should probably be true for most images, but we will start by being
-    // conservative.
+  static bool classof(const PseudoSourceValue *V) {
+    return V->kind() == PSVBuffer;
+  }
+};
+
+class AMDGPUImagePseudoSourceValue final : public AMDGPUPseudoSourceValue {
+public:
+  // TODO: Is the img rsrc useful?
+  explicit AMDGPUImagePseudoSourceValue(const TargetInstrInfo &TII)
+      : AMDGPUPseudoSourceValue(PSVImage, TII) {}
+
+  static bool classof(const PseudoSourceValue *V) {
+    return V->kind() == PSVImage;
+  }
+};
+
+class AMDGPUGWSResourcePseudoSourceValue final : public AMDGPUPseudoSourceValue {
+public:
+  explicit AMDGPUGWSResourcePseudoSourceValue(const TargetInstrInfo &TII)
+      : AMDGPUPseudoSourceValue(GWSResource, TII) {}
+
+  static bool classof(const PseudoSourceValue *V) {
+    return V->kind() == GWSResource;
+  }
+
+  // These are inaccessible memory from IR.
+  bool isAliased(const MachineFrameInfo *) const override {
     return false;
   }
 
-  bool isAliased(const MachineFrameInfo *) const override {
-    return true;
+  // These are inaccessible memory from IR.
+  bool mayAlias(const MachineFrameInfo *) const override {
+    return false;
   }
 
-  bool mayAlias(const MachineFrameInfo *) const override {
-    return true;
+  void printCustom(raw_ostream &OS) const override {
+    OS << "GWSResource";
   }
 };
 
@@ -181,6 +213,7 @@ class SIMachineFunctionInfo final : public AMDGPUMachineFunction {
            std::unique_ptr<const AMDGPUBufferPseudoSourceValue>> BufferPSVs;
   DenseMap<const Value *,
            std::unique_ptr<const AMDGPUImagePseudoSourceValue>> ImagePSVs;
+  std::unique_ptr<const AMDGPUGWSResourcePseudoSourceValue> GWSResourcePSV;
 
 private:
   unsigned LDSWaveSpillSize = 0;
@@ -444,7 +477,8 @@ public:
   }
 
   unsigned getPreloadedReg(AMDGPUFunctionArgInfo::PreloadedValue Value) const {
-    return ArgInfo.getPreloadedValue(Value).first->getRegister();
+    auto Arg = ArgInfo.getPreloadedValue(Value).first;
+    return Arg ? Arg->getRegister() : 0;
   }
 
   unsigned getGITPtrHigh() const {
@@ -486,6 +520,11 @@ public:
     return FrameOffsetReg;
   }
 
+  void setFrameOffsetReg(unsigned Reg) {
+    assert(Reg != 0 && "Should never be unset");
+    FrameOffsetReg = Reg;
+  }
+
   void setStackPtrOffsetReg(unsigned Reg) {
     assert(Reg != 0 && "Should never be unset");
     StackPtrOffsetReg = Reg;
@@ -502,8 +541,6 @@ public:
   void setScratchWaveOffsetReg(unsigned Reg) {
     assert(Reg != 0 && "Should never be unset");
     ScratchWaveOffsetReg = Reg;
-    if (isEntryFunction())
-      FrameOffsetReg = ScratchWaveOffsetReg;
   }
 
   unsigned getQueuePtrUserSGPR() const {
@@ -661,6 +698,15 @@ public:
       ImgRsrc,
       llvm::make_unique<AMDGPUImagePseudoSourceValue>(TII));
     return PSV.first->second.get();
+  }
+
+  const AMDGPUGWSResourcePseudoSourceValue *getGWSPSV(const SIInstrInfo &TII) {
+    if (!GWSResourcePSV) {
+      GWSResourcePSV =
+          llvm::make_unique<AMDGPUGWSResourcePseudoSourceValue>(TII);
+    }
+
+    return GWSResourcePSV.get();
   }
 
   unsigned getOccupancy() const {

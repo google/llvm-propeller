@@ -53,6 +53,7 @@ set(SCUDO_UNIT_TEST_SOURCES
   bytemap_test.cc
   checksum_test.cc
   chunk_test.cc
+  combined_test.cc
   flags_test.cc
   list_test.cc
   map_test.cc
@@ -65,6 +66,7 @@ set(SCUDO_UNIT_TEST_SOURCES
   size_class_map_test.cc
   stats_test.cc
   strings_test.cc
+  tsd_test.cc
   vector_test.cc
   scudo_unit_test_main.cc)
 

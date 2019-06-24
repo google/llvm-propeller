@@ -273,7 +273,7 @@ private:
   // The lifetime of the old/new ASTWorkers will overlap, but their handles
   // don't. When the old handle is destroyed, the old worker will stop reporting
   // diagnostics.
-  bool ReportDiagnostics = true; /* GUARDED_BY(DiagMu) */
+  bool ReportDiagnostics = true; /* GUARDED_BY(DiagsMu) */
 };
 
 /// A smart-pointer-like class that points to an active ASTWorker.
@@ -882,6 +882,15 @@ void TUScheduler::remove(PathRef File) {
   if (!Removed)
     elog("Trying to remove file from TUScheduler that is not tracked: {0}",
          File);
+}
+
+llvm::StringRef TUScheduler::getContents(PathRef File) const {
+  auto It = Files.find(File);
+  if (It == Files.end()) {
+    elog("getContents() for untracked file: {0}", File);
+    return "";
+  }
+  return It->second->Contents;
 }
 
 void TUScheduler::run(llvm::StringRef Name,

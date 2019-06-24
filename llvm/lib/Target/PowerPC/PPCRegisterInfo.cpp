@@ -298,6 +298,11 @@ BitVector PPCRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
     markSuperRegs(Reserved, PPC::R13); // Small Data Area pointer register
   }
 
+  // Always reserve r2 on AIX for now.
+  // TODO: Make r2 allocatable on AIX/XCOFF for some leaf functions.
+  if (Subtarget.isAIXABI())
+    markSuperRegs(Reserved, PPC::R2);  // System-reserved register
+
   // On PPC64, r13 is the thread pointer. Never allocate this register.
   if (TM.isPPC64())
     markSuperRegs(Reserved, PPC::R13);
@@ -1109,7 +1114,7 @@ PPCRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   MI.getOperand(OperandBase + 1).ChangeToRegister(SReg, false, false, true);
 }
 
-unsigned PPCRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
+Register PPCRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const PPCFrameLowering *TFI = getFrameLowering(MF);
 
   if (!TM.isPPC64())
@@ -1118,7 +1123,7 @@ unsigned PPCRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
     return TFI->hasFP(MF) ? PPC::X31 : PPC::X1;
 }
 
-unsigned PPCRegisterInfo::getBaseRegister(const MachineFunction &MF) const {
+Register PPCRegisterInfo::getBaseRegister(const MachineFunction &MF) const {
   const PPCSubtarget &Subtarget = MF.getSubtarget<PPCSubtarget>();
   if (!hasBasePointer(MF))
     return getFrameRegister(MF);

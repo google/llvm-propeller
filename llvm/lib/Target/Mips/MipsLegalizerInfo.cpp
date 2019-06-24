@@ -94,8 +94,41 @@ MipsLegalizerInfo::MipsLegalizerInfo(const MipsSubtarget &ST) {
   getActionDefinitionsBuilder(G_FCONSTANT)
       .legalFor({s32, s64});
 
-  getActionDefinitionsBuilder({G_FADD, G_FSUB, G_FMUL, G_FDIV})
+  getActionDefinitionsBuilder({G_FADD, G_FSUB, G_FMUL, G_FDIV, G_FABS, G_FSQRT})
       .legalFor({s32, s64});
+
+  getActionDefinitionsBuilder(G_FCMP)
+      .legalFor({{s32, s32}, {s32, s64}})
+      .minScalar(0, s32);
+
+  getActionDefinitionsBuilder({G_FCEIL, G_FFLOOR})
+      .libcallFor({s32, s64});
+
+  getActionDefinitionsBuilder(G_FPEXT)
+      .legalFor({{s64, s32}});
+
+  getActionDefinitionsBuilder(G_FPTRUNC)
+      .legalFor({{s32, s64}});
+
+  // FP to int conversion instructions
+  getActionDefinitionsBuilder(G_FPTOSI)
+      .legalForCartesianProduct({s32}, {s64, s32})
+      .libcallForCartesianProduct({s64}, {s64, s32})
+      .minScalar(0, s32);
+
+  getActionDefinitionsBuilder(G_FPTOUI)
+      .libcallForCartesianProduct({s64}, {s64, s32})
+      .minScalar(0, s32);
+
+  // Int to FP conversion instructions
+  getActionDefinitionsBuilder(G_SITOFP)
+      .legalForCartesianProduct({s64, s32}, {s32})
+      .libcallForCartesianProduct({s64, s32}, {s64})
+      .minScalar(1, s32);
+
+  getActionDefinitionsBuilder(G_UITOFP)
+      .libcallForCartesianProduct({s64, s32}, {s64})
+      .minScalar(1, s32);
 
   computeTables();
   verify(*ST.getInstrInfo());

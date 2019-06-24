@@ -58,7 +58,7 @@
 ; CHECK-NEXT:      Natural Loop Information
 ; CHECK-NEXT:      Branch Probability Analysis
 ; CHECK-NEXT:      ARM Instruction Selection
-; CHECK-NEXT:      Expand ISel Pseudo-instructions
+; CHECK-NEXT:      Finalize ISel and expand pseudo-instructions
 ; CHECK-NEXT:      Early Tail Duplication
 ; CHECK-NEXT:      Optimize machine instruction PHIs
 ; CHECK-NEXT:      Slot index numbering
@@ -125,6 +125,7 @@
 ; CHECK-NEXT:      Machine Natural Loop Construction
 ; CHECK-NEXT:      Machine Block Frequency Analysis
 ; CHECK-NEXT:      If Converter
+; CHECK-NEXT:      MVE VPT block insertion pass
 ; CHECK-NEXT:      Thumb IT blocks insertion pass
 ; CHECK-NEXT:      MachineDominator Tree Construction
 ; CHECK-NEXT:      Machine Natural Loop Construction

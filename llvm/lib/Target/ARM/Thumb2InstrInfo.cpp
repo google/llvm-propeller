@@ -161,7 +161,7 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     // otherwise).
     if (TargetRegisterInfo::isVirtualRegister(SrcReg)) {
       MachineRegisterInfo *MRI = &MF.getRegInfo();
-      MRI->constrainRegClass(SrcReg, &ARM::GPRPair_with_gsub_1_in_rGPRRegClass);
+      MRI->constrainRegClass(SrcReg, &ARM::GPRPair_with_gsub_1_in_GPRwithAPSRnospRegClass);
     }
 
     MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::t2STRDi8));
@@ -203,7 +203,7 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     if (TargetRegisterInfo::isVirtualRegister(DestReg)) {
       MachineRegisterInfo *MRI = &MF.getRegInfo();
       MRI->constrainRegClass(DestReg,
-                             &ARM::GPRPair_with_gsub_1_in_rGPRRegClass);
+                             &ARM::GPRPair_with_gsub_1_in_GPRwithAPSRnospRegClass);
     }
 
     MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::t2LDRDi8));
@@ -610,6 +610,14 @@ bool llvm::rewriteT2FrameIndex(MachineInstr &MI, unsigned FrameRegIdx,
         Offset = -Offset;
         isSub = true;
       }
+    } else if (AddrMode == ARMII::AddrModeT2_i7s4) {
+      Offset += MI.getOperand(FrameRegIdx + 1).getImm();
+      NumBits = 9; // 7 bits scaled by 4
+      unsigned OffsetMask = 0x3;
+      // MCInst operand expects already scaled value.
+      Scale = 1;
+      assert((Offset & OffsetMask) == 0 && "Can't encode this offset!");
+      (void)OffsetMask; // squash unused-variable warning at -NDEBUG
     } else if (AddrMode == ARMII::AddrModeT2_i8s4) {
       Offset += MI.getOperand(FrameRegIdx + 1).getImm() * 4;
       NumBits = 10; // 8 bits scaled by 4
@@ -676,4 +684,29 @@ ARMCC::CondCodes llvm::getITInstrPredicate(const MachineInstr &MI,
   if (Opc == ARM::tBcc || Opc == ARM::t2Bcc)
     return ARMCC::AL;
   return getInstrPredicate(MI, PredReg);
+}
+
+int llvm::findFirstVPTPredOperandIdx(const MachineInstr &MI) {
+  const MCInstrDesc &MCID = MI.getDesc();
+
+  if (!MCID.OpInfo)
+    return -1;
+
+  for (unsigned i = 0, e = MCID.getNumOperands(); i != e; ++i)
+    if (ARM::isVpred(MCID.OpInfo[i].OperandType))
+      return i;
+
+  return -1;
+}
+
+ARMVCC::VPTCodes llvm::getVPTInstrPredicate(const MachineInstr &MI,
+                                            unsigned &PredReg) {
+  int PIdx = findFirstVPTPredOperandIdx(MI);
+  if (PIdx == -1) {
+    PredReg = 0;
+    return ARMVCC::None;
+  }
+
+  PredReg = MI.getOperand(PIdx+1).getReg();
+  return (ARMVCC::VPTCodes)MI.getOperand(PIdx).getImm();
 }

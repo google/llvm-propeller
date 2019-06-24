@@ -216,6 +216,10 @@ struct IHexRecord {
   static IHexLineData getLine(uint8_t Type, uint16_t Addr,
                               ArrayRef<uint8_t> Data);
 
+  // Parses the line and returns record if possible.
+  // Line should be trimmed from whitespace characters.
+  static Expected<IHexRecord> parse(StringRef Line);
+
   // Calculates checksum of stringified record representation
   // S must NOT contain leading ':' and trailing whitespace
   // characters
@@ -862,21 +866,41 @@ using object::ELFFile;
 using object::ELFObjectFile;
 using object::OwningBinary;
 
-class BinaryELFBuilder {
+class BasicELFBuilder {
+protected:
   uint16_t EMachine;
-  MemoryBuffer *MemBuf;
   std::unique_ptr<Object> Obj;
 
   void initFileHeader();
   void initHeaderSegment();
   StringTableSection *addStrTab();
   SymbolTableSection *addSymTab(StringTableSection *StrTab);
-  void addData(SymbolTableSection *SymTab);
   void initSections();
 
 public:
+  BasicELFBuilder(uint16_t EM)
+      : EMachine(EM), Obj(llvm::make_unique<Object>()) {}
+};
+
+class BinaryELFBuilder : public BasicELFBuilder {
+  MemoryBuffer *MemBuf;
+  void addData(SymbolTableSection *SymTab);
+
+public:
   BinaryELFBuilder(uint16_t EM, MemoryBuffer *MB)
-      : EMachine(EM), MemBuf(MB), Obj(llvm::make_unique<Object>()) {}
+      : BasicELFBuilder(EM), MemBuf(MB) {}
+
+  std::unique_ptr<Object> build();
+};
+
+class IHexELFBuilder : public BasicELFBuilder {
+  const std::vector<IHexRecord> &Records;
+
+  void addDataSections();
+
+public:
+  IHexELFBuilder(const std::vector<IHexRecord> &Records)
+      : BasicELFBuilder(ELF::EM_386), Records(Records) {}
 
   std::unique_ptr<Object> build();
 };
@@ -889,17 +913,23 @@ private:
 
   const ELFFile<ELFT> &ElfFile;
   Object &Obj;
+  size_t EhdrOffset = 0;
+  Optional<StringRef> ExtractPartition;
 
   void setParentSegment(Segment &Child);
-  void readProgramHeaders();
+  void readProgramHeaders(const ELFFile<ELFT> &HeadersFile);
   void initGroupSection(GroupSection *GroupSec);
   void initSymbolTable(SymbolTableSection *SymTab);
   void readSectionHeaders();
+  void readSections();
+  void findEhdrOffset();
   SectionBase &makeSection(const Elf_Shdr &Shdr);
 
 public:
-  ELFBuilder(const ELFObjectFile<ELFT> &ElfObj, Object &Obj)
-      : ElfFile(*ElfObj.getELFFile()), Obj(Obj) {}
+  ELFBuilder(const ELFObjectFile<ELFT> &ElfObj, Object &Obj,
+             Optional<StringRef> ExtractPartition)
+      : ElfFile(*ElfObj.getELFFile()), Obj(Obj),
+        ExtractPartition(ExtractPartition) {}
 
   void build();
 };
@@ -914,12 +944,36 @@ public:
   std::unique_ptr<Object> create() const override;
 };
 
+class IHexReader : public Reader {
+  MemoryBuffer *MemBuf;
+
+  Expected<std::vector<IHexRecord>> parse() const;
+  Error parseError(size_t LineNo, Error E) const {
+    return LineNo == -1U
+               ? createFileError(MemBuf->getBufferIdentifier(), std::move(E))
+               : createFileError(MemBuf->getBufferIdentifier(), LineNo,
+                                 std::move(E));
+  }
+  template <typename... Ts>
+  Error parseError(size_t LineNo, char const *Fmt, const Ts &... Vals) const {
+    Error E = createStringError(errc::invalid_argument, Fmt, Vals...);
+    return parseError(LineNo, std::move(E));
+  }
+
+public:
+  IHexReader(MemoryBuffer *MB) : MemBuf(MB) {}
+
+  std::unique_ptr<Object> create() const override;
+};
+
 class ELFReader : public Reader {
   Binary *Bin;
+  Optional<StringRef> ExtractPartition;
 
 public:
   std::unique_ptr<Object> create() const override;
-  explicit ELFReader(Binary *B) : Bin(B) {}
+  explicit ELFReader(Binary *B, Optional<StringRef> ExtractPartition)
+      : Bin(B), ExtractPartition(ExtractPartition) {}
 };
 
 class Object {

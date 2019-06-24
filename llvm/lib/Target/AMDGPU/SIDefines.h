@@ -93,7 +93,10 @@ enum : uint64_t {
   IsNonFlatSeg = UINT64_C(1) << 51,
 
   // Uses floating point double precision rounding mode
-  FPDPRounding = UINT64_C(1) << 52
+  FPDPRounding = UINT64_C(1) << 52,
+
+  // Instruction is FP atomic.
+  FPAtomic = UINT64_C(1) << 53
 };
 
 // v_cmp_class_* etc. use a 10-bit mask for what operation is checked.
@@ -153,13 +156,6 @@ namespace AMDGPU {
     OPERAND_KIMM32,
     OPERAND_KIMM16
   };
-}
-
-namespace SIStackID {
-enum StackTypes : uint8_t {
-  SCRATCH = 0,
-  SGPR_SPILL = 1
-};
 }
 
 // Input operand modifiers bit-masks
@@ -330,6 +326,8 @@ enum Offset : unsigned { // Offset, (5) [10:6]
   OFFSET_WIDTH_ = 5,
   OFFSET_MASK_ = (((1 << OFFSET_WIDTH_) - 1) << OFFSET_SHIFT_),
 
+  OFFSET_MEM_VIOL = 8,
+
   OFFSET_SRC_SHARED_BASE = 16,
   OFFSET_SRC_PRIVATE_BASE = 0
 };
@@ -342,6 +340,11 @@ enum WidthMinusOne : unsigned { // WidthMinusOne, (5) [15:11]
 
   WIDTH_M1_SRC_SHARED_BASE = 15,
   WIDTH_M1_SRC_PRIVATE_BASE = 15
+};
+
+// Some values from WidthMinusOne mapped into Width domain.
+enum Width : unsigned {
+  WIDTH_DEFAULT_ = WIDTH_M1_DEFAULT_ + 1,
 };
 
 } // namespace Hwreg
@@ -454,7 +457,20 @@ enum DppCtrl : unsigned {
   ROW_HALF_MIRROR   = 0x141,
   BCAST15           = 0x142,
   BCAST31           = 0x143,
-  DPP_LAST          = BCAST31
+  DPP_UNUSED8_FIRST = 0x144,
+  DPP_UNUSED8_LAST  = 0x14F,
+  ROW_SHARE_FIRST   = 0x150,
+  ROW_SHARE_LAST    = 0x15F,
+  ROW_XMASK_FIRST   = 0x160,
+  ROW_XMASK_LAST    = 0x16F,
+  DPP_LAST          = ROW_XMASK_LAST
+};
+
+enum DppFiMode {
+  DPP_FI_0  = 0,
+  DPP_FI_1  = 1,
+  DPP8_FI_0 = 0xE9,
+  DPP8_FI_1 = 0xEA,
 };
 
 } // namespace DPP

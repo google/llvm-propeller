@@ -101,6 +101,16 @@ Improvements to clang-tidy
   Finds and fixes ``absl::Time`` subtraction expressions to do subtraction
   in the Time domain instead of the numeric domain.
 
+- New :doc:`android-cloexec-pipe
+  <clang-tidy/checks/android-cloexec-pipe>` check.
+
+  This check detects usage of ``pipe()``.
+
+- New :doc:`android-cloexec-pipe2
+  <clang-tidy/checks/android-cloexec-pipe2>` check.
+
+  This checks ensures that ``pipe2()`` is called with the O_CLOEXEC flag.
+
 - New :doc:`bugprone-unhandled-self-assignment
   <clang-tidy/checks/bugprone-unhandled-self-assignment>` check.
 
@@ -114,6 +124,20 @@ Improvements to clang-tidy
   Checks for repeated branches in ``if/else if/else`` chains, consecutive
   repeated branches in ``switch`` statements and indentical true and false
   branches in conditional operators.
+
+- New :doc:`fuchsia-default-arguments-calls
+  <clang-tidy/checks/fuchsia-default-arguments-calls>` check.
+
+  Warns if a function or method is called with default arguments.
+  This was previously done by `fuchsia-default-arguments check`, which has been
+  removed.
+
+- New :doc:`fuchsia-default-arguments-calls
+  <clang-tidy/checks/fuchsia-default-arguments-calls>` check.
+
+  Warns if a function or method is declared with default parameters.
+  This was previously done by `fuchsia-default-arguments check` check, which has
+  been removed.
 
 - New :doc:`google-readability-avoid-underscore-in-googletest-name
   <clang-tidy/checks/google-readability-avoid-underscore-in-googletest-name>`
@@ -156,6 +180,14 @@ Improvements to clang-tidy
   which greatly reduces warnings related to loops which are unlikely to
   cause an actual functional bug.
 
+- The ‘fuchsia-default-arguments’ check has been removed.
+
+  Warnings of function or method calls and declarations with default arguments
+  were moved to :doc:`fuchsia-default-arguments-calls
+  <clang-tidy/checks/fuchsia-default-arguments-calls>` and
+  :doc:`fuchsia-default-arguments-calls
+  <clang-tidy/checks/fuchsia-default-arguments-calls>` checks respectively.
+
 - The :doc:`google-runtime-int <clang-tidy/checks/google-runtime-int>`
   check has been disabled in Objective-C++.
 
@@ -182,11 +214,12 @@ Improvements to clang-tidy
   Rewrites function signatures to use a trailing return type.
 
 - The :doc:`misc-throw-by-value-catch-by-reference
-  <clang-tidy/checks/misc-throw-by-value-catch-by-reference.rst>` now supports
+  <clang-tidy/checks/misc-throw-by-value-catch-by-reference>` now supports
   `WarnOnLargeObject` and `MaxSize` options to warn on any large trivial
   object caught by value.
 
-- Added `UseAssignment` option to :doc:`cppcoreguidelines-pro-type-member-init`
+- Added `UseAssignment` option to :doc:`cppcoreguidelines-pro-type-member-init
+  <clang-tidy/checks/cppcoreguidelines-pro-type-member-init>`
 
   If set to true, the check will provide fix-its with literal initializers
   (``int i = 0;``) instead of curly braces (``int i{};``).

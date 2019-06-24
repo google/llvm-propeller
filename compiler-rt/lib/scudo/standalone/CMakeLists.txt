@@ -57,10 +57,12 @@ if (COMPILER_RT_HAS_MCRC_FLAG)
 endif()
 
 set(SCUDO_HEADERS
+  allocator_config.h
   atomic_helpers.h
   bytemap.h
   checksum.h
   chunk.h
+  combined.h
   flags.h
   flags_parser.h
   fuchsia.h
@@ -80,6 +82,9 @@ set(SCUDO_HEADERS
   size_class_map.h
   stats.h
   string_utils.h
+  tsd.h
+  tsd_exclusive.h
+  tsd_shared.h
   vector.h)
 
 if(COMPILER_RT_HAS_SCUDO_STANDALONE)

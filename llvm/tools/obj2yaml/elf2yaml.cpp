@@ -329,7 +329,8 @@ template <class ELFT>
 std::error_code ELFDumper<ELFT>::dumpCommonSection(const Elf_Shdr *Shdr,
                                                    ELFYAML::Section &S) {
   S.Type = Shdr->sh_type;
-  S.Flags = Shdr->sh_flags;
+  if (Shdr->sh_flags)
+    S.Flags = static_cast<ELFYAML::ELF_SHF>(Shdr->sh_flags);
   S.Address = Shdr->sh_addr;
   S.AddressAlign = Shdr->sh_addralign;
   if (Shdr->sh_entsize)
@@ -438,10 +439,11 @@ ELFDumper<ELFT>::dumpContentSection(const Elf_Shdr *Shdr) {
   auto ContentOrErr = Obj.getSectionContents(Shdr);
   if (!ContentOrErr)
     return errorToErrorCode(ContentOrErr.takeError());
-  S->Content = yaml::BinaryRef(ContentOrErr.get());
-  S->Size = S->Content.binary_size();
-  S->Info = Shdr->sh_info;
-
+  ArrayRef<uint8_t> Content = *ContentOrErr;
+  if (!Content.empty())
+    S->Content = yaml::BinaryRef(Content);
+  if (Shdr->sh_info)
+    S->Info = static_cast<llvm::yaml::Hex64>(Shdr->sh_info);
   return S.release();
 }
 

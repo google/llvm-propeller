@@ -146,6 +146,14 @@ void ARMTargetInfo::setAtomic() {
   }
 }
 
+bool ARMTargetInfo::hasMVE() const {
+  return ArchKind == llvm::ARM::ArchKind::ARMV8_1MMainline && MVE != 0;
+}
+
+bool ARMTargetInfo::hasMVEFloat() const {
+  return hasMVE() && (MVE & MVE_FP);
+}
+
 bool ARMTargetInfo::isThumb() const {
   return ArchISA == llvm::ARM::ISAKind::THUMB;
 }
@@ -315,6 +323,8 @@ ARMTargetInfo::ARMTargetInfo(const llvm::Triple &Triple,
     this->MCountName = Opts.EABIVersion == llvm::EABI::GNU
                            ? "\01__gnu_mcount_nc"
                            : "\01mcount";
+
+  SoftFloatABI = llvm::is_contained(Opts.FeaturesAsWritten, "+soft-float-abi");
 }
 
 StringRef ARMTargetInfo::getABI() const { return ABI; }
@@ -377,12 +387,21 @@ bool ARMTargetInfo::initFeatureMap(
 
   // Convert user-provided arm and thumb GNU target attributes to
   // [-|+]thumb-mode target features respectively.
-  std::vector<std::string> UpdatedFeaturesVec(FeaturesVec);
-  for (auto &Feature : UpdatedFeaturesVec) {
-    if (Feature.compare("+arm") == 0)
-      Feature = "-thumb-mode";
-    else if (Feature.compare("+thumb") == 0)
-      Feature = "+thumb-mode";
+  std::vector<std::string> UpdatedFeaturesVec;
+  for (const auto &Feature : FeaturesVec) {
+    // Skip soft-float-abi; it's something we only use to initialize a bit of
+    // class state, and is otherwise unrecognized.
+    if (Feature == "+soft-float-abi")
+      continue;
+
+    StringRef FixedFeature;
+    if (Feature == "+arm")
+      FixedFeature = "-thumb-mode";
+    else if (Feature == "+thumb")
+      FixedFeature = "+thumb-mode";
+    else
+      FixedFeature = Feature;
+    UpdatedFeaturesVec.push_back(FixedFeature.str());
   }
 
   return TargetInfo::initFeatureMap(Features, Diags, CPU, UpdatedFeaturesVec);
@@ -392,11 +411,13 @@ bool ARMTargetInfo::initFeatureMap(
 bool ARMTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
                                          DiagnosticsEngine &Diags) {
   FPU = 0;
+  MVE = 0;
   CRC = 0;
   Crypto = 0;
   DSP = 0;
   Unaligned = 1;
-  SoftFloat = SoftFloatABI = false;
+  SoftFloat = false;
+  // Note that SoftFloatABI is initialized in our constructor.
   HWDiv = 0;
   DotProd = 0;
   HasFloat16 = true;
@@ -406,20 +427,30 @@ bool ARMTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
   for (const auto &Feature : Features) {
     if (Feature == "+soft-float") {
       SoftFloat = true;
-    } else if (Feature == "+soft-float-abi") {
-      SoftFloatABI = true;
-    } else if (Feature == "+vfp2") {
+    } else if (Feature == "+vfp2sp" || Feature == "+vfp2d16sp" ||
+               Feature == "+vfp2" || Feature == "+vfp2d16") {
       FPU |= VFP2FPU;
       HW_FP |= HW_FP_SP;
-    } else if (Feature == "+vfp3") {
+      if (Feature == "+vfp2" || Feature == "+vfp2d16")
+          HW_FP |= HW_FP_DP;
+    } else if (Feature == "+vfp3sp" || Feature == "+vfp3d16sp" ||
+               Feature == "+vfp3" || Feature == "+vfp3d16") {
       FPU |= VFP3FPU;
       HW_FP |= HW_FP_SP;
-    } else if (Feature == "+vfp4") {
+      if (Feature == "+vfp3" || Feature == "+vfp3d16")
+          HW_FP |= HW_FP_DP;
+    } else if (Feature == "+vfp4sp" || Feature == "+vfp4d16sp" ||
+               Feature == "+vfp4" || Feature == "+vfp4d16") {
       FPU |= VFP4FPU;
       HW_FP |= HW_FP_SP | HW_FP_HP;
-    } else if (Feature == "+fp-armv8") {
+      if (Feature == "+vfp4" || Feature == "+vfp4d16")
+          HW_FP |= HW_FP_DP;
+    } else if (Feature == "+fp-armv8sp" || Feature == "+fp-armv8d16sp" ||
+               Feature == "+fp-armv8" || Feature == "+fp-armv8d16") {
       FPU |= FPARMV8;
       HW_FP |= HW_FP_SP | HW_FP_HP;
+      if (Feature == "+fp-armv8" || Feature == "+fp-armv8d16")
+          HW_FP |= HW_FP_DP;
     } else if (Feature == "+neon") {
       FPU |= NeonFPU;
       HW_FP |= HW_FP_SP;
@@ -448,6 +479,15 @@ bool ARMTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
       HasLegalHalfType = true;
     } else if (Feature == "+dotprod") {
       DotProd = true;
+    } else if (Feature == "+mve") {
+      DSP = 1;
+      MVE |= MVE_INT;
+    } else if (Feature == "+mve.fp") {
+      DSP = 1;
+      HasLegalHalfType = true;
+      FPU |= FPARMV8;
+      MVE |= MVE_INT | MVE_FP;
+      HW_FP |= HW_FP_SP | HW_FP_HP;
     }
   }
 
@@ -480,11 +520,6 @@ bool ARMTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
   else if (FPMath == FP_VFP)
     Features.push_back("-neonfp");
 
-  // Remove front-end specific options which the backend handles differently.
-  auto Feature = llvm::find(Features, "+soft-float-abi");
-  if (Feature != Features.end())
-    Features.erase(Feature);
-
   return true;
 }
 
@@ -498,6 +533,7 @@ bool ARMTargetInfo::hasFeature(StringRef Feature) const {
       .Case("vfp", FPU && !SoftFloat)
       .Case("hwdiv", HWDiv & HWDivThumb)
       .Case("hwdiv-arm", HWDiv & HWDivARM)
+      .Case("mve", hasMVE())
       .Default(false);
 }
 
@@ -711,6 +747,10 @@ void ARMTargetInfo::getTargetDefines(const LangOptions &Opts,
     // floating-point even when it is present in VFP.
     Builder.defineMacro("__ARM_NEON_FP",
                         "0x" + Twine::utohexstr(HW_FP & ~HW_FP_DP));
+  }
+
+  if (hasMVE()) {
+    Builder.defineMacro("__ARM_FEATURE_MVE", hasMVEFloat() ? "3" : "1");
   }
 
   Builder.defineMacro("__ARM_SIZEOF_WCHAR_T",

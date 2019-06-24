@@ -16,6 +16,7 @@
 
 #include "llvm/Support/Casting.h"
 
+#include "lldb/Breakpoint/BreakpointPrecondition.h"
 #include "lldb/Core/PluginInterface.h"
 #include "lldb/Core/ThreadSafeDenseMap.h"
 #include "lldb/Symbol/CompilerType.h"
@@ -154,7 +155,7 @@ public:
     std::unique_ptr<ClangASTContext> m_scratch_ast_ctx_up;
   };
 
-  class ObjCExceptionPrecondition : public Breakpoint::BreakpointPrecondition {
+  class ObjCExceptionPrecondition : public BreakpointPrecondition {
   public:
     ObjCExceptionPrecondition();
 
@@ -170,6 +171,10 @@ public:
   private:
     std::unordered_set<std::string> m_class_names;
   };
+
+  static lldb::BreakpointPreconditionSP
+  GetBreakpointExceptionPrecondition(lldb::LanguageType language,
+                                     bool throw_bp);
 
   class TaggedPointerVendor {
   public:
@@ -188,6 +193,21 @@ public:
   };
 
   ~ObjCLanguageRuntime() override;
+
+  static char ID;
+
+  bool isA(const void *ClassID) const override {
+    return ClassID == &ID || LanguageRuntime::isA(ClassID);
+  }
+
+  static bool classof(const LanguageRuntime *runtime) {
+    return runtime->isA(&ID);
+  }
+
+  static ObjCLanguageRuntime *Get(Process &process) {
+    return llvm::cast_or_null<ObjCLanguageRuntime>(
+        process.GetLanguageRuntime(lldb::eLanguageTypeObjC));
+  }
 
   virtual TaggedPointerVendor *GetTaggedPointerVendor() { return nullptr; }
 

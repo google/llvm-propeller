@@ -45,6 +45,8 @@
 using namespace lldb;
 using namespace lldb_private;
 
+char AppleObjCRuntime::ID = 0;
+
 AppleObjCRuntime::~AppleObjCRuntime() {}
 
 AppleObjCRuntime::AppleObjCRuntime(Process *process)
@@ -451,13 +453,11 @@ bool AppleObjCRuntime::CalculateHasNewLiteralsAndIndexing() {
 lldb::SearchFilterSP AppleObjCRuntime::CreateExceptionSearchFilter() {
   Target &target = m_process->GetTarget();
 
+  FileSpecList filter_modules;
   if (target.GetArchitecture().GetTriple().getVendor() == llvm::Triple::Apple) {
-    FileSpecList filter_modules;
     filter_modules.Append(std::get<0>(GetExceptionThrowLocation()));
-    return target.GetSearchFilterForModuleList(&filter_modules);
-  } else {
-    return LanguageRuntime::CreateExceptionSearchFilter();
   }
+  return target.GetSearchFilterForModuleList(&filter_modules);
 }
 
 ValueObjectSP AppleObjCRuntime::GetExceptionObjectForThread(
@@ -552,7 +552,7 @@ ThreadSP AppleObjCRuntime::GetBacktraceThreadFromException(
 
   if (pcs.empty()) return ThreadSP();
 
-  ThreadSP new_thread_sp(new HistoryThread(*m_process, 0, pcs, 0, false));
+  ThreadSP new_thread_sp(new HistoryThread(*m_process, 0, pcs));
   m_process->GetExtendedThreadList().AddThread(new_thread_sp);
   return new_thread_sp;
 }

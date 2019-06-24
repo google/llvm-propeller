@@ -53,6 +53,9 @@ public:
   bool TraverseDecl(Decl *X) {
     if (X && isa<TranslationUnitDecl>(X))
       return Base::TraverseDecl(X); // Already pushed by constructor.
+    // Base::TraverseDecl will suppress children, but not this node itself.
+    if (X && X->isImplicit())
+      return true;
     return traverseNode(X, [&] { return Base::TraverseDecl(X); });
   }
   bool TraverseTypeLoc(TypeLoc X) {
@@ -243,7 +246,17 @@ void SelectionTree::print(llvm::raw_ostream &OS, const SelectionTree::Node &N,
                                                                     : '.');
   else
     OS.indent(Indent);
-  OS << N.ASTNode.getNodeKind().asStringRef() << " ";
+  if (const TypeLoc *TL = N.ASTNode.get<TypeLoc>()) {
+    // TypeLoc is a hierarchy, but has only a single ASTNodeKind.
+    // Synthesize the name from the Type subclass (except for QualifiedTypeLoc).
+    if (TL->getTypeLocClass() == TypeLoc::Qualified)
+      OS << "QualifiedTypeLoc";
+    else
+      OS << TL->getType()->getTypeClassName() << "TypeLoc";
+  } else {
+    OS << N.ASTNode.getNodeKind().asStringRef();
+  }
+  OS << " ";
   N.ASTNode.print(OS, PrintPolicy);
   OS << "\n";
   for (const Node *Child : N.Children)
@@ -277,6 +290,7 @@ SelectionTree::SelectionTree(ASTContext &AST, unsigned Begin, unsigned End)
   if (Begin == End)
     std::tie(Begin, End) = pointBounds(Begin, FID, AST);
   PrintPolicy.TerseOutput = true;
+  PrintPolicy.IncludeNewlines = false;
 
   Nodes = SelectionVisitor::collect(AST, Begin, End, FID);
   Root = Nodes.empty() ? nullptr : &Nodes.front();

@@ -120,6 +120,7 @@ struct CopyConfig {
   StringRef BuildIdLinkDir;
   Optional<StringRef> BuildIdLinkInput;
   Optional<StringRef> BuildIdLinkOutput;
+  Optional<StringRef> ExtractPartition;
   StringRef SplitDWO;
   StringRef SymbolsPrefix;
   StringRef AllocSectionsPrefix;
@@ -155,6 +156,7 @@ struct CopyConfig {
   bool AllowBrokenLinks = false;
   bool DeterministicArchives = true;
   bool ExtractDWO = false;
+  bool ExtractMainPartition = false;
   bool KeepFileSymbols = false;
   bool LocalizeHidden = false;
   bool OnlyKeepDebug = false;
@@ -186,8 +188,11 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr);
 
 // ParseStripOptions returns the config and sets the input arguments. If a
 // help flag is set then ParseStripOptions will print the help messege and
-// exit.
-Expected<DriverConfig> parseStripOptions(ArrayRef<const char *> ArgsArr);
+// exit. ErrorCallback is used to handle recoverable errors. An Error returned
+// by the callback aborts the parsing and is then returned by this function.
+Expected<DriverConfig>
+parseStripOptions(ArrayRef<const char *> ArgsArr,
+                  std::function<Error(Error)> ErrorCallback);
 
 } // namespace objcopy
 } // namespace llvm

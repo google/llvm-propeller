@@ -88,8 +88,7 @@ public:
     /// opened files and uses the index to augment code completion results.
     bool BuildDynamicSymbolIndex = false;
     /// Use a heavier and faster in-memory index implementation.
-    /// FIXME: we should make this true if it isn't too slow to build!.
-    bool HeavyweightDynamicSymbolIndex = false;
+    bool HeavyweightDynamicSymbolIndex = true;
     /// If true, ClangdServer automatically indexes files in the current project
     /// on background threads. The index is stored in the project root.
     bool BackgroundIndex = false;
@@ -124,6 +123,10 @@ public:
         std::chrono::milliseconds(500);
 
     bool SuggestMissingIncludes = false;
+
+    /// Enable hidden features mostly useful to clangd developers.
+    /// e.g. tweaks to dump the AST.
+    bool HiddenFeatures = false;
   };
   // Sensible default options for use in tests.
   // Features like indexing must be enabled if desired.
@@ -151,6 +154,9 @@ public:
   /// constructor will receive onDiagnosticsReady callback.
   void addDocument(PathRef File, StringRef Contents,
                    WantDiagnostics WD = WantDiagnostics::Auto);
+
+  /// Get the contents of \p File, which should have been added.
+  llvm::StringRef getDocument(PathRef File) const;
 
   /// Remove \p File from list of tracked files, schedule a request to free
   /// resources associated with it. Pending diagnostics for closed files may not
@@ -214,10 +220,11 @@ public:
   llvm::Expected<tooling::Replacements> formatFile(StringRef Code,
                                                    PathRef File);
 
-  /// Run formatting after a character was typed at \p Pos in \p File with
+  /// Run formatting after \p TriggerText was typed at \p Pos in \p File with
   /// content \p Code.
-  llvm::Expected<tooling::Replacements>
-  formatOnType(StringRef Code, PathRef File, Position Pos);
+  llvm::Expected<std::vector<TextEdit>> formatOnType(StringRef Code,
+                                                     PathRef File, Position Pos,
+                                                     StringRef TriggerText);
 
   /// Rename all occurrences of the symbol at the \p Pos in \p File to
   /// \p NewName.
@@ -227,6 +234,7 @@ public:
   struct TweakRef {
     std::string ID;    /// ID to pass for applyTweak.
     std::string Title; /// A single-line message to show in the UI.
+    Tweak::Intent Intent;
   };
   /// Enumerate the code tweaks available to the user at a specified point.
   void enumerateTweaks(PathRef File, Range Sel,
@@ -234,7 +242,7 @@ public:
 
   /// Apply the code tweak with a specified \p ID.
   void applyTweak(PathRef File, Range Sel, StringRef ID,
-                  Callback<tooling::Replacements> CB);
+                  Callback<Tweak::Effect> CB);
 
   /// Only for testing purposes.
   /// Waits until all requests to worker thread are finished and dumps AST for
@@ -291,6 +299,7 @@ private:
   // If this is true, suggest include insertion fixes for diagnostic errors that
   // can be caused by missing includes (e.g. member access in incomplete type).
   bool SuggestMissingIncludes = false;
+  bool EnableHiddenFeatures = false;
 
   // GUARDED_BY(CachedCompletionFuzzyFindRequestMutex)
   llvm::StringMap<llvm::Optional<FuzzyFindRequest>>

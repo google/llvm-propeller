@@ -84,8 +84,9 @@ private:
   int checkAnyInstHazards(MachineInstr *MI);
   int checkReadM0Hazards(MachineInstr *SMovRel);
   int checkNSAtoVMEMHazard(MachineInstr *MI);
-
+  int checkFPAtomicToDenormModeHazard(MachineInstr *MI);
   void fixHazards(MachineInstr *MI);
+  bool fixVcmpxPermlaneHazards(MachineInstr *MI);
   bool fixVMEMtoScalarWriteHazards(MachineInstr *MI);
   bool fixSMEMtoVectorWriteHazards(MachineInstr *MI);
   bool fixVcmpxExecWARHazard(MachineInstr *MI);

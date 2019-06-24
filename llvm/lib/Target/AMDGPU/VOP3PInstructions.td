@@ -69,6 +69,16 @@ def V_PK_LSHLREV_B16 : VOP3PInst<"v_pk_lshlrev_b16", VOP3_Profile<VOP_V2I16_V2I1
 def V_PK_ASHRREV_I16 : VOP3PInst<"v_pk_ashrrev_i16", VOP3_Profile<VOP_V2I16_V2I16_V2I16>, ashr_rev>;
 def V_PK_LSHRREV_B16 : VOP3PInst<"v_pk_lshrrev_b16", VOP3_Profile<VOP_V2I16_V2I16_V2I16>, lshr_rev>;
 
+
+// Undo sub x, c -> add x, -c canonicalization since c is more likely
+// an inline immediate than -c.
+// The constant will be emitted as a mov, and folded later.
+// TODO: We could directly encode the immediate now
+def : GCNPat<
+  (add (v2i16 (VOP3PMods0 v2i16:$src0, i32:$src0_modifiers, i1:$clamp)), NegSubInlineConstV216:$src1),
+  (V_PK_SUB_U16 $src0_modifiers, $src0, SRCMODS.OP_SEL_1, NegSubInlineConstV216:$src1, $clamp)
+>;
+
 multiclass MadFmaMixPats<SDPatternOperator fma_like,
                          Instruction mix_inst,
                          Instruction mixlo_inst,
@@ -412,3 +422,20 @@ defm V_PK_MAX_F16     : VOP3P_Real_gfx10<0x012>;
 defm V_FMA_MIX_F32    : VOP3P_Real_gfx10<0x020>;
 defm V_FMA_MIXLO_F16  : VOP3P_Real_gfx10<0x021>;
 defm V_FMA_MIXHI_F16  : VOP3P_Real_gfx10<0x022>;
+
+let SubtargetPredicate = HasDot2Insts in {
+
+defm V_DOT2_F32_F16 : VOP3P_Real_gfx10 <0x013>;
+defm V_DOT2_I32_I16 : VOP3P_Real_gfx10 <0x014>;
+defm V_DOT2_U32_U16 : VOP3P_Real_gfx10 <0x015>;
+defm V_DOT4_U32_U8  : VOP3P_Real_gfx10 <0x017>;
+defm V_DOT8_U32_U4  : VOP3P_Real_gfx10 <0x019>;
+
+} // End SubtargetPredicate = HasDot2Insts
+
+let SubtargetPredicate = HasDot1Insts in {
+
+defm V_DOT4_I32_I8  : VOP3P_Real_gfx10 <0x016>;
+defm V_DOT8_I32_I4  : VOP3P_Real_gfx10 <0x018>;
+
+} // End SubtargetPredicate = HasDot1Insts
