@@ -839,6 +839,8 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
       setOperationAction(ISD::FNEG, MVT::v2f64, Legal);
       setOperationAction(ISD::FABS, MVT::v4f32, Legal);
       setOperationAction(ISD::FABS, MVT::v2f64, Legal);
+      setOperationAction(ISD::FCOPYSIGN, MVT::v4f32, Legal);
+      setOperationAction(ISD::FCOPYSIGN, MVT::v2f64, Legal);
 
       if (Subtarget.hasDirectMove())
         setOperationAction(ISD::BUILD_VECTOR, MVT::v2i64, Custom);
@@ -11265,7 +11267,16 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     MachineRegisterInfo &RegInfo = F->getRegInfo();
     unsigned CRReg = RegInfo.createVirtualRegister(&PPC::CRRCRegClass);
     BuildMI(*BB, MI, Dl, TII->get(PPC::TCHECK), CRReg);
-    return BB;
+    BuildMI(*BB, MI, Dl, TII->get(TargetOpcode::COPY),
+            MI.getOperand(0).getReg())
+        .addReg(CRReg);
+  } else if (MI.getOpcode() == PPC::TBEGIN_RET) {
+    DebugLoc Dl = MI.getDebugLoc();
+    unsigned Imm = MI.getOperand(1).getImm();
+    BuildMI(*BB, MI, Dl, TII->get(PPC::TBEGIN)).addImm(Imm);
+    BuildMI(*BB, MI, Dl, TII->get(TargetOpcode::COPY),
+            MI.getOperand(0).getReg())
+        .addReg(PPC::CR0EQ);
   } else if (MI.getOpcode() == PPC::SETRNDi) {
     DebugLoc dl = MI.getDebugLoc();
     unsigned OldFPSCRReg = MI.getOperand(0).getReg();

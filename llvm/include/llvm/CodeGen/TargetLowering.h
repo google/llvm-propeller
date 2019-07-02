@@ -1385,18 +1385,6 @@ public:
     return OptSize ? MaxLoadsPerMemcmpOptSize : MaxLoadsPerMemcmp;
   }
 
-  /// For memcmp expansion when the memcmp result is only compared equal or
-  /// not-equal to 0, allow up to this number of load pairs per block. As an
-  /// example, this may allow 'memcmp(a, b, 3) == 0' in a single block:
-  ///   a0 = load2bytes &a[0]
-  ///   b0 = load2bytes &b[0]
-  ///   a2 = load1byte  &a[2]
-  ///   b2 = load1byte  &b[2]
-  ///   r  = cmp eq (a0 ^ b0 | a2 ^ b2), 0
-  virtual unsigned getMemcmpEqZeroLoadsPerBlock() const {
-    return 1;
-  }
-
   /// Get maximum # of store operations permitted for llvm.memmove
   ///
   /// This function returns the maximum number of store operations permitted
@@ -4066,6 +4054,12 @@ private:
                                                SDValue N1, ISD::CondCode Cond,
                                                DAGCombinerInfo &DCI,
                                                const SDLoc &DL) const;
+
+  SDValue prepareUREMEqFold(EVT VT, SDValue N0, SDValue N1, ISD::CondCode Cond,
+                            DAGCombinerInfo &DCI, const SDLoc &DL,
+                            SmallVectorImpl<SDNode *> &Created) const;
+  SDValue buildUREMEqFold(EVT VT, SDValue N0, SDValue N1, ISD::CondCode Cond,
+                          DAGCombinerInfo &DCI, const SDLoc &DL) const;
 };
 
 /// Given an LLVM IR type and return type attributes, compute the return value

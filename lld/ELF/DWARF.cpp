@@ -92,24 +92,20 @@ LLDDwarfObj<ELFT>::findAux(const InputSectionBase &Sec, uint64_t Pos,
   const typename ELFT::Sym &Sym = File->template getELFSyms<ELFT>()[SymIndex];
   uint32_t SecIndex = File->getSectionIndex(Sym);
 
-  // Broken debug info can point to a non-Defined symbol.
+  // An undefined symbol may be a symbol defined in a discarded section. We
+  // shall still resolve it. This is important for --gdb-index: the end address
+  // offset of an entry in .debug_ranges is relocated. If it is not resolved,
+  // its zero value will terminate the decoding of .debug_ranges prematurely.
   Symbol &S = File->getRelocTargetSym(Rel);
-  auto *DR = dyn_cast<Defined>(&S);
-  if (!DR) {
-    if (S.isSection())
-      return None;
-    RelType Type = Rel.getType(Config->IsMips64EL);
-    if (Type != Target->NoneRel)
-      error(toString(File) + ": relocation " + lld::toString(Type) + " at 0x" +
-            llvm::utohexstr(Rel.r_offset) + " has unsupported target");
-    return None;
-  }
-  uint64_t Val = DR->Value;
+  uint64_t Val = 0;
+  if (auto *DR = dyn_cast<Defined>(&S)) {
+    Val = DR->Value;
 
-  // FIXME: We should be consistent about always adding the file
-  // offset or not.
-  if (DR->Section->Flags & ELF::SHF_ALLOC)
-    Val += cast<InputSection>(DR->Section)->getOffsetInFile();
+    // FIXME: We should be consistent about always adding the file
+    // offset or not.
+    if (DR->Section->Flags & ELF::SHF_ALLOC)
+      Val += cast<InputSection>(DR->Section)->getOffsetInFile();
+  }
 
   DataRefImpl D;
   D.p = getAddend<ELFT>(Rel);

@@ -203,14 +203,6 @@ def SETTING_MSG(setting):
     return "Value of setting '%s' is correct" % setting
 
 
-def EnvArray():
-    """Returns an env variable array from the os.environ map object."""
-    return list(map(lambda k,
-                    v: k + "=" + v,
-                    list(os.environ.keys()),
-                    list(os.environ.values())))
-
-
 def line_number(filename, string_to_match):
     """Helper function to return the line number of the first matched string."""
     with io.open(filename, mode='r', encoding="utf-8") as f:
@@ -1864,6 +1856,9 @@ class TestBase(Base):
         # decorators.
         Base.setUp(self)
 
+        if lldbtest_config.inferior_env:
+            self.runCmd('settings set target.env-vars {}'.format(lldbtest_config.inferior_env))
+
         # Set the clang modules cache path used by LLDB.
         mod_cache = os.path.join(os.environ["LLDB_BUILD"], "module-cache-lldb")
         self.runCmd('settings set symbols.clang-modules-cache-path "%s"'
@@ -1877,7 +1872,7 @@ class TestBase(Base):
         # Make sure that a sanitizer LLDB's environment doesn't get passed on.
         if 'DYLD_LIBRARY_PATH' in os.environ:
             self.runCmd('settings set target.env-vars DYLD_LIBRARY_PATH=')
-        
+
         if "LLDB_MAX_LAUNCH_COUNT" in os.environ:
             self.maxLaunchCount = int(os.environ["LLDB_MAX_LAUNCH_COUNT"])
 

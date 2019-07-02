@@ -205,6 +205,10 @@ def SIpc_add_rel_offset : SDNode<"AMDGPUISD::PC_ADD_REL_OFFSET",
   SDTypeProfile<1, 2, [SDTCisVT<0, iPTR>, SDTCisSameAs<0,1>, SDTCisSameAs<0,2>]>
 >;
 
+def SIlds : SDNode<"AMDGPUISD::LDS",
+  SDTypeProfile<1, 1, [SDTCisVT<0, iPTR>, SDTCisSameAs<0,1>]>
+>;
+
 def SIload_d16_lo : SDNode<"AMDGPUISD::LOAD_D16_LO",
   SIload_d16,
   [SDNPMayLoad, SDNPMemOperand, SDNPHasChain]
@@ -2303,6 +2307,15 @@ def getVCMPXNoSDstOp : InstrMapping {
   let ColFields = ["HasSDst"];
   let KeyCol = ["1"];
   let ValueCols = [["0"]];
+}
+
+// Maps a SOPP to a SOPP with S_NOP
+def getSOPPWithRelaxation : InstrMapping {
+  let FilterClass = "Base_SOPP";
+  let RowFields = ["AsmString"];
+  let ColFields = ["Size"];
+  let KeyCol = ["4"];
+  let ValueCols = [["8"]];
 }
 
 include "SIInstructions.td"

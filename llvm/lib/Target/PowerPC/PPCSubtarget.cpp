@@ -108,7 +108,6 @@ void PPCSubtarget::initializeEnvironment() {
   HasDirectMove = false;
   IsQPXStackUnaligned = false;
   HasHTM = false;
-  HasFusion = false;
   HasFloat128 = false;
   IsISA3_0 = false;
   UseLongCalls = false;
@@ -146,7 +145,8 @@ void PPCSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   if (isDarwin())
     HasLazyResolverStubs = true;
 
-  if (TargetTriple.isOSNetBSD() || TargetTriple.isOSOpenBSD())
+  if (TargetTriple.isOSNetBSD() || TargetTriple.isOSOpenBSD() ||
+      TargetTriple.isMusl())
     SecurePlt = true;
 
   if (HasSPE && IsPPC64)

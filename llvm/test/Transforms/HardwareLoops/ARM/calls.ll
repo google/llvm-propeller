@@ -4,7 +4,6 @@
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-none-eabi -mattr=+mve -hardware-loops -disable-arm-loloops=false %s -S -o - | FileCheck %s --check-prefix=CHECK --check-prefix=CHECK-MVE
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-none-eabi -mattr=+mve.fp -hardware-loops -disable-arm-loloops=false %s -S -o - | FileCheck %s --check-prefix=CHECK --check-prefix=CHECK-MVEFP
 
-
 ; CHECK-LABEL: skip_call
 ; CHECK-NOT: call void @llvm.set.loop.iterations
 ; CHECK-NOT: call i32 @llvm.loop.decrement
@@ -86,6 +85,7 @@ exit:
 ; CHECK-MVE-NOT:  call void @llvm.set.loop.iterations
 ; CHECK-FP:       call void @llvm.set.loop.iterations.i32(i32 100)
 ; CHECK-MVEFP:    call void @llvm.set.loop.iterations.i32(i32 100)
+
 define float @test_fabs(float* %a) {
 entry:
   br label %loop
@@ -313,7 +313,7 @@ exit:
 ; CHECK-MVE: [[LOOP_DEC]] = call i32 @llvm.loop.decrement.reg.i32.i32.i32(i32 [[COUNT]], i32 1)
 ; CHECK-MVE: [[CMP:%[^ ]+]] = icmp ne i32 [[LOOP_DEC]], 0
 ; CHECK-MVE: br i1 [[CMP]], label %loop, label %exit
-define void @test_masked_i32(<4 x i1> %mask, <4 x i32>* %a, <4 x i32>* %b, <4 x i32>* %c, <4 x i32> %passthru) {
+define arm_aapcs_vfpcc void @test_masked_i32(<4 x i1> %mask, <4 x i32>* %a, <4 x i32>* %b, <4 x i32>* %c, <4 x i32> %passthru) {
 entry:
   br label %loop
 loop:
@@ -340,7 +340,7 @@ exit:
 ; CHECK-MVE: [[LOOP_DEC]] = call i32 @llvm.loop.decrement.reg.i32.i32.i32(i32 [[COUNT]], i32 1)
 ; CHECK-MVE: [[CMP:%[^ ]+]] = icmp ne i32 [[LOOP_DEC]], 0
 ; CHECK-MVE: br i1 [[CMP]], label %loop, label %exit
-define void @test_masked_f32(<4 x i1> %mask, <4 x float>* %a, <4 x float>* %b, <4 x float>* %c, <4 x float> %passthru) {
+define arm_aapcs_vfpcc void @test_masked_f32(<4 x i1> %mask, <4 x float>* %a, <4 x float>* %b, <4 x float>* %c, <4 x float> %passthru) {
 entry:
   br label %loop
 loop:
@@ -367,7 +367,7 @@ exit:
 ; CHECK-MVE: [[LOOP_DEC]] = call i32 @llvm.loop.decrement.reg.i32.i32.i32(i32 [[COUNT]], i32 1)
 ; CHECK-MVE: [[CMP:%[^ ]+]] = icmp ne i32 [[LOOP_DEC]], 0
 ; CHECK-MVE: br i1 [[CMP]], label %loop, label %exit
-define void @test_gather_scatter(<4 x i1> %mask, <4 x float*> %a, <4 x float*> %b, <4 x float*> %c, <4 x float> %passthru) {
+define arm_aapcs_vfpcc void @test_gather_scatter(<4 x i1> %mask, <4 x float*> %a, <4 x float*> %b, <4 x float*> %c, <4 x float> %passthru) {
 entry:
   br label %loop
 loop:

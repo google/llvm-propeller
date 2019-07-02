@@ -261,10 +261,16 @@ def GPRwithAPSRnosp : RegisterClass<"ARM", [i32], 32, (add (sequence "R%u", 0, 1
   let isAllocatable = 0;
 }
 
-def GPRwithZR : RegisterClass<"ARM", [i32], 32, (add (sequence "R%u", 0, 12),
-                                              LR, ZR)> {
-
+def GPRwithZR : RegisterClass<"ARM", [i32], 32, (add (sub GPR, PC), ZR)> {
   let AltOrders = [(add LR, GPRwithZR), (trunc GPRwithZR, 8)];
+  let AltOrderSelect = [{
+      return 1 + MF.getSubtarget<ARMSubtarget>().isThumb1Only();
+  }];
+  let DiagnosticString = "operand must be a register in range [r0, r14] or zr";
+}
+
+def GPRwithZRnosp : RegisterClass<"ARM", [i32], 32, (sub GPRwithZR, SP)> {
+  let AltOrders = [(add LR, GPRwithZRnosp), (trunc GPRwithZRnosp, 8)];
   let AltOrderSelect = [{
       return 1 + MF.getSubtarget<ARMSubtarget>().isThumb1Only();
   }];
@@ -468,8 +474,11 @@ def DPair : RegisterClass<"ARM", [v16i8, v8i16, v4i32, v2i64, v4f32, v2f64],
                           128, (interleave QPR, TuplesOE2D)> {
   // Allocate starting at non-VFP2 registers D16-D31 first.
   // Prefer even-odd pairs as they are easier to copy.
-  let AltOrders = [(add (rotl QPR, 8), (rotl DPair, 16))];
-  let AltOrderSelect = [{ return 1; }];
+  let AltOrders = [(add (rotl QPR, 8),  (rotl DPair, 16)),
+                   (add (trunc QPR, 8), (trunc DPair, 16))];
+  let AltOrderSelect = [{
+    return 1 + MF.getSubtarget<ARMSubtarget>().hasMVEIntegerOps();
+  }];
 }
 
 // Pseudo-registers representing even-odd pairs of GPRs from R1 to R13/SP.

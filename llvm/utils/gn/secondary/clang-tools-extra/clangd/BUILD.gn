@@ -57,6 +57,7 @@ static_library("clangd") {
     "//clang/lib/Tooling/Refactoring",
     "//clang/lib/Tooling/Syntax",
     "//llvm/lib/Support",
+    "//llvm/lib/Target:AllTargetsInfos",
     "//llvm/utils/gn/build/libs/atomic",
     "//llvm/utils/gn/build/libs/pthread",
   ]
@@ -93,8 +94,10 @@ static_library("clangd") {
     "Logger.cpp",
     "Protocol.cpp",
     "Quality.cpp",
+    "QueryDriverDatabase.cpp",
     "RIFF.cpp",
     "Selection.cpp",
+    "SemanticHighlighting.cpp",
     "SourceCode.cpp",
     "TUScheduler.cpp",
     "Threading.cpp",
