@@ -143,8 +143,19 @@ public:
 
   unsigned BytesDropped = 0;
   void drop_back(uint64_t num) {
-    RawData = RawData.drop_back(num);
     BytesDropped += num;
+  }
+
+  void push_back(uint64_t num) {
+    assert(BytesDropped >= num);
+    BytesDropped -= num;
+  }
+
+  void trim() {
+    if (BytesDropped){
+      RawData = RawData.drop_back(BytesDropped);
+      BytesDropped = 0;
+    }
   }
 
   ArrayRef<uint8_t> data() const {

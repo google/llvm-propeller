@@ -1716,18 +1716,16 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
                      [](InputSection * const s1, InputSection * const s2) {
                        return s1->Alignment < s2->Alignment;
                      });
-    uint32_t MaxAlign = (MaxIt != Sections.end()) ? (*MaxIt)->Alignment : 0;
 
+    // Shrink jump Instructions optimistically
     std::vector<unsigned> Shrunk(Sections.size(), 0);
     bool Changed = false;
-    // Shrink jump Instructions when possible.
     do {
       Changed = false;
       parallelForEachN(0, Sections.size(), [&](size_t I) {
         if (Shrunk[I] == 0) {
           InputSection &IS = *Sections[I];
-          Shrunk[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>(),
-                                            MaxAlign);
+          Shrunk[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
           Changed |= (Shrunk[I] > 0);
         }
       });
@@ -1741,7 +1739,36 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       if (Changed)
         Script->assignAddresses();
     } while (Changed);
+
+    // Grow jump instructions when necessary
+    std::vector<unsigned> Grown(Sections.size(), 0);
+    do {
+      Changed = false;
+      parallelForEachN(0, Sections.size(), [&](size_t I) {
+        if (Grown[I] == 0) {
+          InputSection &IS = *Sections[I];
+          Grown[I] = Target->growJmpInsn(IS, IS.getFile<ELFT>());
+          Changed |= (Grown[I] > 0);
+        }
+      });
+      size_t Num = std::count_if(Grown.begin(), Grown.end(),
+          [] (int e) { return e > 0; });
+      Num += std::count_if(Grown.begin(), Grown.end(),
+          [] (int e) { return e > 4; });
+      if (Num > 0)
+        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->Name <<
+                   " : Growing " << Num << " jmp instructions\n");
+      if (Changed)
+        Script->assignAddresses();
+    } while (Changed);
   }
+
+  for (OutputSection *OS : OutputSections) {
+    std::vector<InputSection *> Sections = getInputSections(OS);
+    for (InputSection * IS: Sections)
+      IS->trim();
+  }
+
   fixSymbolsAfterShrinking();
 }
 

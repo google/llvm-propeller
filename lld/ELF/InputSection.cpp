@@ -139,7 +139,7 @@ size_t InputSectionBase::getSize() const {
     return S->getSize();
   if (UncompressedSize >= 0)
     return UncompressedSize;
-  return RawData.size();
+  return RawData.size() - BytesDropped;
 }
 
 void InputSectionBase::uncompress() const {
