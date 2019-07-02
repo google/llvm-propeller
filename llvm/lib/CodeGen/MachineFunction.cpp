@@ -353,7 +353,7 @@ bool MachineFunction::sortBasicBlockSections() {
     // used for exception table computations.
     if (!MBB.pred_empty() && !HasEHInfo(MBB))
       MBB.setIsUniqueSection();
-  } 
+  }
 
   // With -fbasicblock-sections, fall through blocks must be made
   // explicitly reachable.  Do this after unique sections is set as

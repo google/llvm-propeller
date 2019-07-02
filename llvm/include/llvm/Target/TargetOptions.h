@@ -126,7 +126,7 @@ namespace llvm {
           EnableFastISel(false), EnableGlobalISel(false), UseInitArray(false),
           DisableIntegratedAS(false), RelaxELFRelocations(false),
           FunctionSections(false), DataSections(false),
-          SeparateBBSections(true), UniqueSectionNames(true),
+          UniqueSectionNames(true),
           UniqueBBSectionNames(false), TrapUnreachable(false),
           NoTrapAfterNoreturn(false), EmulatedTLS(false),
           ExplicitEmulatedTLS(false), EnableIPRA(false),
@@ -233,8 +233,6 @@ namespace llvm {
 
     /// Emit data into separate sections.
     unsigned DataSections : 1;
-
-    unsigned SeparateBBSections : 1;
 
     unsigned UniqueSectionNames : 1;
 
