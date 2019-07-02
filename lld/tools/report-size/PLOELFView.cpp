@@ -147,7 +147,7 @@ bool ELFViewImpl<ELFT>::GetELFSizeInfo(ELFSizeInfo *SizeInfo) {
     if (Type == llvm::ELF::SHT_SYMTAB) {
       SizeInfo->SymTabSize += SecSize;
       SizeInfo->SymTabEntryNum += SecSize / ELFTUInt(hdr.sh_entsize);
-      assert(SecSize % ELFTUint(hdr.sh_entsize) == 0);
+      assert(SecSize % ELFTUInt(hdr.sh_entsize) == 0);
     } else if (Type == llvm::ELF::SHT_STRTAB) {
       SizeInfo->StrTabSize += SecSize;
     }

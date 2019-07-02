@@ -1712,11 +1712,6 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
                  " fall through jumps\n");
     }
 
-    auto MaxIt = std::max_element(Sections.begin(), Sections.end(),
-                     [](InputSection * const s1, InputSection * const s2) {
-                       return s1->Alignment < s2->Alignment;
-                     });
-
     // Shrink jump Instructions optimistically
     std::vector<unsigned> Shrunk(Sections.size(), 0);
     bool Changed = false;
