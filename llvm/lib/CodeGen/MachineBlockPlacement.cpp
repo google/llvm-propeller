@@ -3078,6 +3078,7 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
     MBFI->view("MBP." + MF.getName(), false);
   }
 
+  MF.RenumberBlocks();
 
   // We always return true as we have no way to track whether the final order
   // differs from the original order.
@@ -3154,8 +3155,6 @@ bool MachineBlockPlacementStats::runOnMachineFunction(MachineFunction &F) {
       BranchTakenFreq += EdgeFreq.getFrequency();
     }
   }
-
-  F.RenumberBlocks();
 
   return false;
 }
