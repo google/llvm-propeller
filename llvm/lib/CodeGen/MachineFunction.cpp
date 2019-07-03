@@ -348,6 +348,8 @@ bool MachineFunction::sortBasicBlockSections() {
   if (this->BBSectionsSorted || !this->getBasicBlockSections())
     return false;
 
+  RenumberBlocks();
+
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.
