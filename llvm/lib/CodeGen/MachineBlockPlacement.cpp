@@ -3155,5 +3155,7 @@ bool MachineBlockPlacementStats::runOnMachineFunction(MachineFunction &F) {
     }
   }
 
+  F.RenumberBlocks();
+
   return false;
 }
