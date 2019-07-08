@@ -348,13 +348,15 @@ bool MachineFunction::sortBasicBlockSections() {
   if (this->BBSectionsSorted || !this->getBasicBlockSections())
     return false;
 
-  RenumberBlocks();
+  DenseMap<const MachineBasicBlock *, unsigned> MBBOrder;
+  unsigned MBBOrderN = 0;
 
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.
     if (!MBB.pred_empty() && !HasEHInfo(MBB))
       MBB.setIsUniqueSection();
+    MBBOrder[&MBB] = MBBOrderN++;
   }
 
   // With -fbasicblock-sections, fall through blocks must be made
@@ -366,13 +368,8 @@ bool MachineFunction::sortBasicBlockSections() {
 
   this->sort(([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
     return (X.isUniqueSection() == Y.isUniqueSection()) ?
-           (X.getNumber() < Y.getNumber()) : !X.isUniqueSection();
+           (MBBOrder[&X] < MBBOrder[&Y]) : !X.isUniqueSection();
   }));
-
-  errs() << "Sorted bbs for function: " << getName() << "\n";
-  for (const auto &BB : *this) {
-    errs() << BB.getNumber() << "\n";
-  }
 
   this->BBSectionsSorted = true;
   return true;
