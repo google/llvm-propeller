@@ -371,6 +371,12 @@ bool MachineFunction::sortBasicBlockSections() {
            (MBBOrder[&X] < MBBOrder[&Y]) : !X.isUniqueSection();
   }));
 
+  errs() << "Order for function: " << getName() << "\n";
+  for (auto &MBB : *this) {
+    errs() << MBB.getNumber() << " ";
+  }
+  errs() << "\n";
+
   this->BBSectionsSorted = true;
   return true;
 }
