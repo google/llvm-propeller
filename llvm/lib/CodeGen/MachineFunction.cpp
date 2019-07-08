@@ -345,6 +345,7 @@ static bool HasEHInfo(const MachineBasicBlock &MBB) {
 
 bool MachineFunction::sortBasicBlockSections() {
   // This should only be done once no matter how many times it is called.
+  errs() << "Order for function: " << getName() << "\t" << this->BBSectionsSorted << "\t" << this->getBasicBlockSections() << "\n";
   if (this->BBSectionsSorted || !this->getBasicBlockSections())
     return false;
 
@@ -371,7 +372,6 @@ bool MachineFunction::sortBasicBlockSections() {
            (MBBOrder[&X] < MBBOrder[&Y]) : !X.isUniqueSection();
   }));
 
-  errs() << "Order for function: " << getName() << "\n";
   for (auto &MBB : *this) {
     errs() << MBB.getNumber() << " ";
   }
