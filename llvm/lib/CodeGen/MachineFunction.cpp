@@ -369,6 +369,11 @@ bool MachineFunction::sortBasicBlockSections() {
            (X.getNumber() < Y.getNumber()) : !X.isUniqueSection();
   }));
 
+  errs() << "Sorted bbs for function: " << getName() << "\n";
+  for (const auto &BB : *this) {
+    errs() << BB.getNumber() << "\n";
+  }
+
   this->BBSectionsSorted = true;
   return true;
 }
