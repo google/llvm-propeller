@@ -75,12 +75,12 @@ class ELFCfgNode {
 
   const static uint64_t InvalidAddress = -1l;
 
-  StringRef getShortName() {
-    auto I = ShName.rsplit(".bb.");
-    if (!I.second.empty()) {
-      return I.second;
-    }
-    return "E"; // Entry;
+  unsigned getBBIndex() {
+    StringRef FName, BName;
+    if (SymbolEntry::isBBSymbol(ShName, &FName, &BName))
+      return BName.size();
+    else
+      return 0;
   }
 
 private:
@@ -132,6 +132,8 @@ public:
       V(*N);
     }
   }
+
+  void writeAsDotGraph();
 
 private:
   // Create and take ownership.

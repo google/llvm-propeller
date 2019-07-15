@@ -9,12 +9,14 @@
 #include "llvm/Object/ELFObjectFile.h"
 
 #include <algorithm>
+#include <fstream>
 #include <iomanip>
 #include <list>
 #include <map>
 #include <memory>
 #include <numeric>
 #include <ostream>
+#include <stdio.h>
 #include <string>
 
 using llvm::object::ObjectFile;
@@ -32,6 +34,27 @@ using std::unique_ptr;
 
 namespace lld {
 namespace propeller {
+
+void ELFCfg::writeAsDotGraph() {
+  Twine fname = Name + ".dot";
+  FILE *fp = fopen(fname.str().c_str(), "w");
+  if (!fp) {
+   fprintf(stderr, "failed to open: %s\n", fname.str().c_str());
+  }
+  fprintf(fp, "digraph %s {\n",  Name.str().c_str());
+  forEachNodeRef([&fp](ELFCfgNode &N){
+    fprintf(fp, "%u;", N.getBBIndex());
+  });
+  fprintf(fp, "\n");
+  for (auto &E: IntraEdges){
+    bool IsFTEdge = (E->Src->FTEdge == E.get());
+    fprintf(fp, " %u -> %u [label=\"%lu\", weight=%f];\n", E->Src->getBBIndex(), E->Sink->getBBIndex(), E->Weight, IsFTEdge ? 1.0 : 0.1);
+  }
+  fprintf(fp, "}\n");
+  fclose(fp);
+  fprintf(stderr, "Done dumping cfg for %s\n", Name.str().c_str());
+}
+
 
 ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
                                typename ELFCfgEdge::EdgeType Type) {
@@ -219,15 +242,18 @@ void ELFCfgBuilder::buildCfgs() {
         // -fbasicblock-section=labels do not have size information
         // for BB symbols.
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
+        // Drop bb sections with no code
         auto *SE = Prop->Propf->findSymbol(SymName);
         if (SE) {
+          if (!SymSize)
+            continue;
           if (TmpNodeMap.find(SE->Ordinal) != TmpNodeMap.end()) {
             error("Internal error checking Cfg map.");
             return;
           }
           TmpNodeMap.emplace(
               std::piecewise_construct, std::forward_as_tuple(SE->Ordinal),
-              std::forward_as_tuple(new ELFCfgNode(SymShndx, SymName, SymSize,
+              std::forward_as_tuple(new ELFCfgNode(SymShndx, SymName, SE->Size,
                                                    SE->Ordinal, Cfg.get())));
           continue;
         }
@@ -237,6 +263,10 @@ void ELFCfgBuilder::buildCfgs() {
       Cfg.reset(nullptr);
       break;
     }
+
+    if (TmpNodeMap.empty())
+      Cfg.reset(nullptr);
+
     if (!Cfg)
       continue; // to next Cfg group.
 

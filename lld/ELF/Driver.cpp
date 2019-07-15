@@ -879,9 +879,14 @@ static void readConfigs(opt::InputArgList &Args) {
       Args.hasFlag(OPT_propeller_keep_named_symbols,
                    OPT_no_propeller_keep_named_symbols, false);
 
+  Config->PropellerDumpSymbolOrder =
+      Args.getLastArgValue(OPT_propeller_dump_symbol_order);
+
   Config->PropellerPrintStats =
       Args.hasFlag(OPT_propeller_print_stats,
                    OPT_no_propeller_print_stats, false);
+
+  Config->PropellerDumpCfgs = Args.getAllArgValues(OPT_propeller_dump_cfg);
 
   Config->PropellerReorderBlocks =
       Config->PropellerReorderFuncs =

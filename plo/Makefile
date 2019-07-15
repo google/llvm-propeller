@@ -59,7 +59,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plolikely pgo-plohot pgo-plolist cspgo cspgo-plo pgo-bolt cspgo-bolt
+FLAVORS            := stage1 nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plolikely pgo-plohot pgo-plolist cspgo cspgo-plo pgo-bolt cspgo-bolt pgo-plo-noorder
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -75,13 +75,14 @@ gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
 # -fexperimental-new-pass-manager -mllvm -qualify-function-names
 bb_section_lto_flags = -Wl,--lto-basicblock-sections=$(1)
 lld_relocs              := -Wl,-q
-# lld_relocs := 
-bb_section_none_flags      := $(call gen_build_flags,"-fbasicblock-sections=none","   $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,none)")
-bb_section_labels_flags    := $(call gen_build_flags,"-fbasicblock-sections=labels"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,labels)")
-bb_section_all_flags       := $(call gen_build_flags,"-fbasicblock-sections=all","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,all)")
-bb_section_likely_flags    := $(call gen_build_flags,"-fbasicblock-sections=likely"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,likely)")
-bb_section_hot_flags       := $(call gen_build_flags,"-fbasicblock-sections=hot","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,hot)")
-bb_section_list_flags       = $(call gen_build_flags,"-fbasicblock-sections-list=$1","$(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,$1)")
+funique_flag            := -funique-internal-funcnames
+
+bb_section_none_flags      := $(call gen_build_flags,"-fbasicblock-sections=none $(funique_flag)","   $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,none)")
+bb_section_labels_flags    := $(call gen_build_flags,"-fbasicblock-sections=labels $(funique_flag)"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,labels)")
+bb_section_all_flags       := $(call gen_build_flags,"-fbasicblock-sections=all $(funique_flag)","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,all)")
+bb_section_likely_flags    := $(call gen_build_flags,"-fbasicblock-sections=likely $(funique_flag)"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,likely)")
+bb_section_hot_flags       := $(call gen_build_flags,"-fbasicblock-sections=hot $(funique_flag)","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,hot)")
+bb_section_list_flags       = $(call gen_build_flags,"-fbasicblock-sections-list=$1 $(funique_flag)","$(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,$1)")
 
 # $1 is compiler name, "stage1", "instrbb", etc;
 # $2 is bin directory that is used to build the compiler, must be absolute path.
@@ -130,7 +131,14 @@ pgo-plo-compiler pgo-plolikely-compiler pgo-plohot-compiler pgo-plolist-compiler
 	ln -sf $< $@
 	touch $@
 
-pgo-bolt-compiler cspgo-bolt-compiler: %-bolt-compiler: %/build/bin/clang-9-bolt
+pgo-plo-compiler.symorder pgo-compiler.symorder: %.symorder: %
+	llvm-nm -nS $< | sed -nEe '/(.+)\s(.+)\s(W|t|T)\s(.+)/p' | sed -Ee 's!(.+)\s(a+\.BB\.)(.+)!\1 \2 \3!' | awk '$$4~/^a+\.BB\.$$/{print $$1 " " $$2 " " $$3 " " length($$4)-4 ".BB." $$5} $$4!~/^a+\.BB\.$$/{print $$0}' > $@
+
+pgo-plo-noorder-compiler: pgo-plo/build/bin/clang-9
+	ln -sf $< $@
+	touch $@
+
+pgo-bolt-compiler cspgo-bolt-compiler pgo-vanilla-bolt-compiler: %-bolt-compiler: %/build/bin/clang-9-bolt
 	ln -sf $< $@
 	touch $@
 
@@ -162,16 +170,16 @@ pgo-plohot/build/bin/clang-9: stage-pgo.profdata
 pgo-plolist/build/bin/clang-9: stage-pgo.profdata pgo-compiler.propeller
 	$(call build_compiler,pgo-plolist,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
-pgo.perfdata cspgo.perfdata: %.perfdata: %-compiler run-commands.sh
+pgo.perfdata cspgo.perfdata pgo-vanilla.perfdata: %.perfdata: %-compiler run-commands.sh
 	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
 
 pgo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr
 
-pgo-compiler.yaml cspgo-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
+pgo-compiler.yaml cspgo-compiler.yaml pgo-vanilla-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
 
-pgo/build/bin/clang-9-bolt cspgo/build/bin/clang-9-bolt: %/build/bin/clang-9-bolt: %-compiler.yaml %-compiler
+pgo/build/bin/clang-9-bolt cspgo/build/bin/clang-9-bolt pgo-vanilla/build/bin/clang-9-bolt: %/build/bin/clang-9-bolt: %-compiler.yaml %-compiler
 	$(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -reorder-blocks="cache+"               \
@@ -222,13 +230,18 @@ define do_relink
 	ninja -C "$(shell dirname $(shell dirname $<))" -t commands clang \
           | grep -Fe " -o bin/clang-9 " \
           | sed -e "s! -o bin/clang-9 ! -o bin/clang-9-plo \
-		     -Wl,-propeller=$(DDIR)/$(word 2,$^)   \
                      -Wl,--lto-basicblock-sections=$1     \
-		     -Wl,-propeller-opt=reorder-blocks     \
-		     -Wl,-propeller-opt=reorder-funcs      \
-		     -Wl,-propeller-opt=split-funcs        \
+		     -Wl,-propeller=$(DDIR)/$(word 2,$^)  \
+		     -Wl,-propeller-opt=reorder-blocks    \
+		     -Wl,-propeller-opt=reorder-funcs     \
+		     -Wl,-propeller-opt=split-funcs       \
+		     -Wl,-propeller-keep-named-symbols    \
+		     -Wl,-propeller-dump-symbol-order=$(DDIR)/symbol-order-$1 \
+		     -Wl,-propeller-dump-cfg="_ZN5clang4Sema21InstantiatingTemplate5ClearEv" \
+		     -Wl,-propeller-dump-cfg="_ZN4llvm10AllocaInstC1EPNS_4TypeEjPNS_5ValueEjRKNS_5TwineEPNS_11InstructionE" \
+		     -Wl,-propeller-dump-cfg="_ZN4llvm10AllocaInstC2EPNS_4TypeEjPNS_5ValueEjRKNS_5TwineEPNS_11InstructionE" \
                      -Wl,--no-call-graph-profile-sort !"   \
-               -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
+		     -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
 	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@
 	echo 'EV=$$? ; popd ; exit $$EV' >> $@
 	@if [[ `wc -l $@ | cut -f1 -d' '` -gt 2 ]] ; then \
@@ -238,6 +251,7 @@ define do_relink
 	  echo "Generate $@ failed."; exit 1; \
 	fi
 endef
+
 
 relink-clang-pgo-plo.sh relink-clang-cspgo-plo.sh: \
 relink-clang-%-plo.sh: %-plo/build/bin/clang-9 %-compiler.propeller

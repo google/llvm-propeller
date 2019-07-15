@@ -103,6 +103,8 @@ struct Configuration {
   llvm::StringRef OptRemarksFormat;
   llvm::StringRef ProgName;
   llvm::StringRef Propeller;
+  llvm::StringRef PropellerDumpSymbolOrder;
+  std::vector<std::string> PropellerDumpCfgs;
   std::vector<std::string> PropellerOpts;
   llvm::StringRef PrintSymbolOrder;
   llvm::StringRef SoName;

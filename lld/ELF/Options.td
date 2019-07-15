@@ -315,6 +315,13 @@ defm propeller_print_stats: B<"propeller-print-stats",
     "Print propeller statistics.",
     "Do not print propeller statistics (default)">;
 
+defm propeller_dump_symbol_order: Eq<"propeller-dump-symbol-order",
+    "Dump the propeller-generated symbol ordering into the file.">,
+  MetaVarName<"<file>">;
+
+defm propeller_dump_cfg: Eq<"propeller-dump-cfg",
+    "Dump the cfg of the function in DOT format (in a file named the same as the function).">;
+
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 
