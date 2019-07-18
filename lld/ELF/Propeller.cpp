@@ -497,17 +497,19 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
           Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
       ReorderedN++;
     } else {
-      auto PlaceHolder = Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
+      auto PlaceHolder =
+          Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
       Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
-        SymbolList.insert(PlaceHolder,N.ShName);
+        SymbolList.insert(PlaceHolder, N.ShName);
       });
     }
   }
-  if (Config->PropellerPrintStats){
+  if (Config->PropellerPrintStats) {
     duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;
-    fprintf(stderr, "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
-            ReorderedN,
-            BBOrderTime.count());
+    fprintf(
+        stderr,
+        "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
+        ReorderedN, BBOrderTime.count());
   }
 
   calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
