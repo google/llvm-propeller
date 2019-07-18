@@ -60,7 +60,7 @@ ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
         CallerCluster->Weight * (Cluster->Size + CallerCluster->Size))
       continue;
     if (!E || E->Weight < CallIn->Weight) {
-      // if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 21)) continue;
+      if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 20)) continue;
       E = CallIn;
     }
   }
@@ -74,7 +74,7 @@ void CCubeAlgorithm::mergeClusters() {
   map<ELFCfg *, Cluster *> ClusterMap;
   for(ELFCfg * Cfg: HotCfgs){
     uint64_t CfgWeight = 0;
-    double CfgSize = Config->PropellerSplitFuncs ? 0 : (double)Cfg->Size;
+    uint64_t CfgSize = Config->PropellerSplitFuncs ? 0 : (double)Cfg->Size;
     Cfg->forEachNodeRef([&CfgSize, &CfgWeight](ELFCfgNode &N) {
       CfgWeight += N.Freq;
       if (Config->PropellerSplitFuncs && N.Freq)
@@ -84,7 +84,7 @@ void CCubeAlgorithm::mergeClusters() {
     assert(CfgSize!=0);
     Cluster *C = new Cluster(Cfg);
     C->Weight = CfgWeight;
-    C->Size = CfgSize;
+    C->Size = std::max(CfgSize, (uint64_t)1);
     CfgWeightMap.emplace(Cfg, C->getDensity());
     C->Handler = Clusters.emplace(Clusters.end(), C);
     ClusterMap[Cfg] = C;
@@ -99,6 +99,8 @@ void CCubeAlgorithm::mergeClusters() {
     if (CfgWeightMap[Cfg] <= 0.005)
       break;
     auto *Cluster = ClusterMap[Cfg];
+    if (Cluster->Size > (1 << 20))
+      continue;
     assert(Cluster);
 
     ELFCfg *PredecessorCfg =
@@ -106,14 +108,14 @@ void CCubeAlgorithm::mergeClusters() {
     if (!PredecessorCfg)
       continue;
     assert(PredecessorCfg != Cfg);
-    // log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
+    log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
     assert(PredecessorCluster);
 
     if (PredecessorCluster == Cluster)
       continue;
-    if (PredecessorCluster->Size + Cluster->Size > (1 << 21))
-      continue;
+    // if (PredecessorCluster->Size + Cluster->Size > (1 << 21))
+    //  continue;
 
     // Join 2 clusters into PredecessorCluster.
     *PredecessorCluster << *Cluster;
@@ -136,17 +138,15 @@ void CCubeAlgorithm::sortClusters() {
   });
 }
 
-list<ELFCfg *> CCubeAlgorithm::doOrder() {
-  // log("propeller: reordering " + Twine(HotCfgs.size()) + " hot functions.");
+unsigned CCubeAlgorithm::doOrder(list<ELFCfg *>& CfgOrder) {
   mergeClusters();
   sortClusters();
-  list<ELFCfg *> L;
   for (auto &Cptr : Clusters) {
-    L.insert(L.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());
+    CfgOrder.insert(CfgOrder.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());
   }
 
-  L.insert(L.end(), ColdCfgs.begin(), ColdCfgs.end());
-  return L;
+  CfgOrder.insert(CfgOrder.end(), ColdCfgs.begin(), ColdCfgs.end());
+  return HotCfgs.size();
 }
 
 template void CCubeAlgorithm::init<Propeller>(Propeller &);

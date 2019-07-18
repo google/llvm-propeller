@@ -421,7 +421,7 @@ added in the future:
 
     This calling convention aims to minimize overhead in the caller by
     preserving as many registers as possible (all the registers that are
-    perserved on the fast path, composed of the entry and exit blocks).
+    preserved on the fast path, composed of the entry and exit blocks).
 
     This calling convention behaves identical to the `C` calling convention on
     how arguments and return values are passed, but it uses a different set of
@@ -1475,6 +1475,13 @@ example:
     This function attribute indicates that the function does not call itself
     either directly or indirectly down any possible call path. This produces
     undefined behavior at runtime if the function ever does recurse.
+``willreturn``
+    This function attribute indicates that a call of this function will
+    either exhibit undefined behavior or comes back and continues execution
+    at a point in the existing call stack that includes the current invocation.
+    Annotated functions may still raise an exception, i.a., ``nounwind`` is not implied.
+    If an invocation of an annotated function does not return control back
+    to a point in the call stack, the behavior is undefined.
 ``nounwind``
     This function attribute indicates that the function never raises an
     exception. If the function does raise an exception, its runtime
@@ -3782,6 +3789,8 @@ All ARM modes:
 
 - ``Q``, ``Um``, ``Un``, ``Uq``, ``Us``, ``Ut``, ``Uv``, ``Uy``: Memory address
   operand. Treated the same as operand ``m``, at the moment.
+- ``Te``: An even general-purpose 32-bit integer register: ``r0,r2,...,r12,r14``
+- ``To``: An odd general-purpose 32-bit integer register: ``r1,r3,...,r11``
 
 ARM and ARM's Thumb2 mode:
 
@@ -4582,10 +4591,12 @@ DISubprogram
 """"""""""""
 
 ``DISubprogram`` nodes represent functions from the source language. A
-``DISubprogram`` may be attached to a function definition using ``!dbg``
-metadata. The ``variables:`` field points at :ref:`variables <DILocalVariable>`
-that must be retained, even if their IR counterparts are optimized out of
-the IR. The ``type:`` field must point at an :ref:`DISubroutineType`.
+distinct ``DISubprogram`` may be attached to a function definition using
+``!dbg`` metadata. A unique ``DISubprogram`` may be attached to a function
+declaration used for call site debug info. The ``variables:`` field points at
+:ref:`variables <DILocalVariable>` that must be retained, even if their IR
+counterparts are optimized out of the IR. The ``type:`` field must point at an
+:ref:`DISubroutineType`.
 
 .. _DISubprogramDeclaration:
 
@@ -4704,11 +4715,25 @@ The current supported opcode vocabulary is limited:
   (``16`` and ``DW_ATE_signed`` here, respectively) to which the top of the
   expression stack is to be converted. Maps into a ``DW_OP_convert`` operation
   that references a base type constructed from the supplied values.
+- ``DW_OP_LLVM_tag_offset, tag_offset`` specifies that a memory tag should be
+  optionally applied to the pointer. The memory tag is derived from the
+  given tag offset in an implementation-defined manner.
 - ``DW_OP_swap`` swaps top two stack entries.
 - ``DW_OP_xderef`` provides extended dereference mechanism. The entry at the top
   of the stack is treated as an address. The second stack entry is treated as an
   address space identifier.
 - ``DW_OP_stack_value`` marks a constant value.
+- If an expression is marked with ``DW_OP_entry_value`` all register and
+  memory read operations refer to the respective value at the function entry.
+  The first operand of ``DW_OP_entry_value`` is the size of following
+  DWARF expression.
+  ``DW_OP_entry_value`` may appear after the ``LiveDebugValues`` pass.
+  LLVM only supports entry values for function parameters
+  that are unmodified throughout a function and that are described as
+  simple register location descriptions.
+  ``DW_OP_entry_value`` may also appear after the ``AsmPrinter`` pass when
+  a call site parameter value (``DW_AT_call_site_parameter_value``)
+  is represented as entry value of the parameter.
 
 DWARF specifies three kinds of simple location descriptions: Register, memory,
 and implicit location descriptions.  Note that a location description is
@@ -4745,6 +4770,18 @@ valid debug intrinsic.
     !3 = !DIExpression(DW_OP_deref, DW_OP_constu, 3, DW_OP_plus, DW_OP_LLVM_fragment, 3, 7)
     !4 = !DIExpression(DW_OP_constu, 2, DW_OP_swap, DW_OP_xderef)
     !5 = !DIExpression(DW_OP_constu, 42, DW_OP_stack_value)
+
+DIFlags
+"""""""""""""""
+
+These flags encode various properties of DINodes.
+
+The `ArgumentNotModified` flag marks a function argument whose value
+is not modified throughout of a function. This flag is used to decide
+whether a DW_OP_entry_value can be used in a location description
+after the function prologue. The language frontend is expected to compute
+this property for each DILocalVariable. The flag should be used
+only in optimized code.
 
 DIObjCProperty
 """"""""""""""
@@ -10442,6 +10479,16 @@ functions such as ``i8 @llvm.ctpop.i8(i8 %val)`` and
 overloaded, and only one type suffix is required. Because the argument's
 type is matched against the return type, it does not require its own
 name suffix.
+
+For target developers who are defining intrinsics for back-end code
+generation, any intrinsic overloads based solely the distinction between
+integer or floating point types should not be relied upon for correct
+code generation. In such cases, the recommended approach for target
+maintainers when defining intrinsics is to create separate integer and
+FP intrinsics rather than rely on overloading. For example, if different
+codegen is required for ``llvm.target.foo(<4 x i32>)`` and
+``llvm.target.foo(<4 x float>)`` then these should be split into
+different intrinsics.
 
 To learn how to add an intrinsic function, please see the `Extending
 LLVM Guide <ExtendingLLVM.html>`_.

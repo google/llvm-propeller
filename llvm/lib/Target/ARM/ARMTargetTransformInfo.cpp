@@ -696,14 +696,10 @@ bool ARMTTIImpl::isLoweredToCall(const Function *F) {
 bool ARMTTIImpl::isHardwareLoopProfitable(Loop *L, ScalarEvolution &SE,
                                           AssumptionCache &AC,
                                           TargetLibraryInfo *LibInfo,
-                                          TTI::HardwareLoopInfo &HWLoopInfo) {
+                                          HardwareLoopInfo &HWLoopInfo) {
   // Low-overhead branches are only supported in the 'low-overhead branch'
   // extension of v8.1-m.
   if (!ST->hasLOB() || DisableLowOverheadLoops)
-    return false;
-
-  // For now, for simplicity, only support loops with one exit block.
-  if (!L->getExitBlock())
     return false;
 
   if (!SE.hasLoopInvariantBackedgeTakenCount(L))

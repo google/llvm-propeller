@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "PLOELFView.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -13,6 +14,7 @@ using llvm::MemoryBufferRef;
 
 using std::ifstream;
 using std::string;
+using std::vector;
 
 bool getSizeInfo(const string &Path, ELFSizeInfo *SizeInfo) {
   auto FileOrErr = MemoryBuffer::getFileOrSTDIN(Path);
@@ -61,11 +63,43 @@ int main(int argc, const char *argv[]) {
         ++total;
     }
   }
-  printf("Text: %lu\n", TotalSize.TextSize);
-  printf("Alloc: %lu\n", TotalSize.OtherAllocSize);
-  printf("SymTab: %lu\n", TotalSize.SymTabSize);
-  printf("StrTab: %lu\n", TotalSize.StrTabSize);
-  printf("FileSize: %lu\n", TotalSize.FileSize);
-  printf("Files: %u/%u\n", errcnt, total);
+  auto CommaPrint = [](uint64_t Num) {
+    if (Num == 0) {
+      printf("0");
+      return;
+    }
+    vector<uint64_t> Nums;
+    uint64_t D = Num;
+    while (D) {
+      Nums.push_back(D % 1000);
+      D /= 1000;
+    }
+    for (auto O = Nums.rbegin(), P = Nums.rbegin(), Q = Nums.rend(); P != Q;
+         ++P) {
+      if (P != O) {
+        printf(",%03lu", *P);
+      } else {
+        printf("%lu", *P);
+      }
+    }
+  };
+  auto PrintResult = [&CommaPrint](const char *Prefix, uint64_t Num) {
+    printf("%s: ", Prefix);
+    CommaPrint(Num);
+    printf("\n");
+  };
+  PrintResult("Text", TotalSize.TextSize);
+  PrintResult("Alloc", TotalSize.OtherAllocSize);
+  PrintResult("SymTab",TotalSize.SymTabSize);
+  PrintResult("SymEntries", TotalSize.SymTabEntryNum);
+  PrintResult("StrTab", TotalSize.StrTabSize);
+  PrintResult("FileSize", TotalSize.FileSize);
+  {
+    printf("Files (err/total): ");
+    CommaPrint(errcnt);
+    printf("/");
+    CommaPrint(total);
+    printf("\n");
+  }
   return 0;
 }

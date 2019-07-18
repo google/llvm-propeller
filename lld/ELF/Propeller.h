@@ -69,16 +69,20 @@ public:
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(Ordinal),
                              std::forward_as_tuple(Sym));
-    SymbolNameMap[Name][""] = Sym;  // See SymbolNameMap comment.
+    // SymbolNameMap[Name][""] = Sym;  // See SymbolNameMap comment.
     for (auto &A: Sym->Aliases) {
       SymbolNameMap[A][""] = Sym;
     }
+
+    if (Sym->Aliases.size() > 1)
+      FunctionsWithAliases.push_back(Sym);
+
     return Sym;
   }
 
   SymbolEntry *createBasicBlockSymbol(uint64_t Ordinal, SymbolEntry *Function,
                                       StringRef &BBIndex, uint64_t Size) {
-    assert(!Function->isBBSymbol && Function->isFunction);
+    assert(!Function->BBTag && Function->isFunction());
     auto *Sym =
         new SymbolEntry(Ordinal, BBIndex, SymbolEntry::AliasesTy(),
                         SymbolEntry::INVALID_ADDRESS, Size,
@@ -86,7 +90,7 @@ public:
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(Ordinal),
                              std::forward_as_tuple(Sym));
-    SymbolNameMap[Function->Name][BBIndex] = Sym;
+    //SymbolNameMap[Function->Name][BBIndex] = Sym;
     for (auto &A: Function->Aliases) {
       SymbolNameMap[A][BBIndex] = Sym;
     }
@@ -104,6 +108,7 @@ public:
   //     SymbolNameMap[foo]["2"] = fun.bb.2.Symbol;
   //   etc...
   map<StringRef, map<StringRef, SymbolEntry *>> SymbolNameMap;
+  list<SymbolEntry*> FunctionsWithAliases;
   uint64_t LineNo;
   char     LineTag;
   size_t   LineSize;
@@ -143,7 +148,8 @@ public:
   struct ELFViewOrdinalComparator {
     bool operator()(const ELFCfg *A, const ELFCfg *B) const;
   };
-  map<StringRef, set<ELFCfg *, ELFViewOrdinalComparator>> CfgMap;
+  using CfgMapTy = map<StringRef, set<ELFCfg *, ELFViewOrdinalComparator>>;
+  CfgMapTy CfgMap;
   unique_ptr<Propfile> Propf;
   // Lock to access / modify global data structure.
   mutex Lock;

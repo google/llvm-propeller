@@ -6786,6 +6786,10 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case ParsedAttr::AT_CUDAHost:
     handleSimpleAttributeWithExclusions<CUDAHostAttr, CUDAGlobalAttr>(S, D, AL);
     break;
+  case ParsedAttr::AT_HIPPinnedShadow:
+    handleSimpleAttributeWithExclusions<HIPPinnedShadowAttr, CUDADeviceAttr,
+                                        CUDAConstantAttr>(S, D, AL);
+    break;
   case ParsedAttr::AT_GNUInline:
     handleGNUInlineAttr(S, D, AL);
     break;
@@ -6812,6 +6816,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case ParsedAttr::AT_NoSplitStack:
     handleSimpleAttribute<NoSplitStackAttr>(S, D, AL);
+    break;
+  case ParsedAttr::AT_NoUniqueAddress:
+    handleSimpleAttribute<NoUniqueAddressAttr>(S, D, AL);
     break;
   case ParsedAttr::AT_NonNull:
     if (auto *PVD = dyn_cast<ParmVarDecl>(D))

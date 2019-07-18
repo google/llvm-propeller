@@ -496,6 +496,11 @@ public:
     return (Flags & SIInstrFlags::FLAT) && !(Flags & SIInstrFlags::LGKM_CNT);
   }
 
+  // FIXME: Make this more precise
+  static bool isFLATScratch(const MachineInstr &MI) {
+    return isSegmentSpecificFLAT(MI);
+  }
+
   // Any FLAT encoded instruction, including global_* and scratch_*.
   bool isFLAT(uint16_t Opcode) const {
     return get(Opcode).TSFlags & SIInstrFlags::FLAT;
@@ -629,6 +634,14 @@ public:
 
   bool usesFPDPRounding(uint16_t Opcode) const {
     return get(Opcode).TSFlags & SIInstrFlags::FPDPRounding;
+  }
+
+  static bool isFPAtomic(const MachineInstr &MI) {
+    return MI.getDesc().TSFlags & SIInstrFlags::FPAtomic;
+  }
+
+  bool isFPAtomic(uint16_t Opcode) const {
+    return get(Opcode).TSFlags & SIInstrFlags::FPAtomic;
   }
 
   bool isVGPRCopy(const MachineInstr &MI) const {
@@ -946,6 +959,15 @@ public:
   /// not exist. If Opcode is not a pseudo instruction, this is identity.
   int pseudoToMCOpcode(int Opcode) const;
 
+  const TargetRegisterClass *getRegClass(const MCInstrDesc &TID, unsigned OpNum,
+                                         const TargetRegisterInfo *TRI,
+                                         const MachineFunction &MF)
+    const override {
+    if (OpNum >= TID.getNumOperands())
+      return nullptr;
+    return RI.getRegClass(TID.OpInfo[OpNum].RegClass);
+  }
+
   void fixImplicitOperands(MachineInstr &MI) const;
 };
 
@@ -977,11 +999,14 @@ TargetInstrInfo::RegSubRegPair getRegSequenceSubReg(MachineInstr &MI,
 MachineInstr *getVRegSubRegDef(const TargetInstrInfo::RegSubRegPair &P,
                                MachineRegisterInfo &MRI);
 
-/// \brief Return true if EXEC mask isnt' changed between the def and
-/// all uses of VReg. Currently if def and uses are in different BBs -
-/// simply return false. Should be run on SSA.
-bool isEXECMaskConstantBetweenDefAndUses(unsigned VReg,
-                                         const MachineRegisterInfo &MRI);
+/// \brief Return false if EXEC is not changed between the def of \p VReg at \p
+/// DefMI and uses. If \p UseMI is not specified, this checks all uses of \p
+/// VReg. Should be run on SSA. Currently does not attempt to track between
+/// blocks.
+bool execMayBeModifiedBeforeUse(const MachineRegisterInfo &MRI,
+                                unsigned VReg,
+                                const MachineInstr &DefMI,
+                                const MachineInstr *UseMI = nullptr);
 
 namespace AMDGPU {
 

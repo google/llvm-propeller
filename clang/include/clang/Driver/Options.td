@@ -623,6 +623,9 @@ def emit_ast : Flag<["-"], "emit-ast">,
   HelpText<"Emit Clang AST files for source inputs">;
 def emit_llvm : Flag<["-"], "emit-llvm">, Flags<[CC1Option]>, Group<Action_Group>,
   HelpText<"Use the LLVM representation for assembler and object files">;
+def emit_iterface_stubs : Flag<["-"], "emit-interface-stubs">, Flags<[CC1Option]>, Group<Action_Group>,
+  HelpText<"Generate Inteface Stub Files.">;
+def iterface_stub_version_EQ : JoinedOrSeparate<["-"], "interface-stub-version=">, Flags<[CC1Option]>;
 def exported__symbols__list : Separate<["-"], "exported_symbols_list">;
 def e : JoinedOrSeparate<["-"], "e">, Group<Link_Group>;
 def fPIC : Flag<["-"], "fPIC">, Group<f_Group>;
@@ -1717,6 +1720,8 @@ def foperator_arrow_depth_EQ : Joined<["-"], "foperator-arrow-depth=">,
 
 def fsave_optimization_record : Flag<["-"], "fsave-optimization-record">,
   Group<f_Group>, HelpText<"Generate a YAML optimization record file">;
+def fsave_optimization_record_EQ : Joined<["-"], "fsave-optimization-record=">,
+  Group<f_Group>, HelpText<"Generate an optimization record file in a specific format (default: YAML)">;
 def fno_save_optimization_record : Flag<["-"], "fno-save-optimization-record">,
   Group<f_Group>, Flags<[NoArgumentUnused]>;
 def foptimization_record_file_EQ : Joined<["-"], "foptimization-record-file=">,
@@ -1822,8 +1827,10 @@ def ffunction_sections : Flag<["-"], "ffunction-sections">, Group<f_Group>,
 def fno_function_sections : Flag<["-"], "fno-function-sections">,
   Group<f_Group>, Flags<[CC1Option]>;
 def fbasicblock_sections_EQ : Joined<["-"], "fbasicblock-sections=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>,
-  HelpText<"Place each function's basic block in its own section (ELF Only) : hot | likely | all | labels | none">,
+  HelpText<"Place each function's basic blocks in unique sections (ELF Only) : hot | likely | all | labels | none">,
   Values<"hot,likely,all,labels,none">;
+def fbasicblock_sections_list_EQ : Joined<["-"], "fbasicblock-sections-list=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>,
+  HelpText<"Place the basic blocks of each functions in the list unique sections (ELF Only)">;
 def fdata_sections : Flag <["-"], "fdata-sections">, Group<f_Group>,
  Flags<[CC1Option]>, HelpText<"Place each data in its own section (ELF Only)">;
 def fno_data_sections : Flag <["-"], "fno-data-sections">, Group<f_Group>,
@@ -1844,10 +1851,10 @@ def funique_bb_section_names : Flag <["-"], "funique-bb-section-names">,
   HelpText<"Use unique names for basic block sections (ELF Only)">;
 def fno_unique_bb_section_names : Flag <["-"], "fno-unique-bb-section-names">,
   Group<f_Group>, Flags<[CC1Option]>;
-def fseparate_bb_sections : Flag <["-"], "fseparate-bb-sections">,
+def funique_internal_funcnames : Flag <["-"], "funique-internal-funcnames">,
   Group<f_Group>, Flags<[CC1Option]>,
-  HelpText<"A basic block section can be separated from its parent function (ELF Only)">;
-def fno_separate_bb_sections : Flag <["-"], "fno-separate-bb-sections">,
+  HelpText<"Uniqueify Internal Linkage Function Names">;
+def fno_unique_internal_funcnames : Flag <["-"], "fno-unique-internal-funcnames">,
   Group<f_Group>, Flags<[CC1Option]>;
 def fstrict_return : Flag<["-"], "fstrict-return">, Group<f_Group>,
   Flags<[CC1Option]>,
@@ -2138,6 +2145,10 @@ def mrelax : Flag<["-"], "mrelax">, Group<m_riscv_Features_Group>,
   HelpText<"Enable linker relaxation">;
 def mno_relax : Flag<["-"], "mno-relax">, Group<m_riscv_Features_Group>,
   HelpText<"Disable linker relaxation">;
+def msave_restore : Flag<["-"], "msave-restore">, Group<m_riscv_Features_Group>,
+  HelpText<"Enable using library calls for save and restore">;
+def mno_save_restore : Flag<["-"], "mno-save-restore">, Group<m_riscv_Features_Group>,
+  HelpText<"Disable using library calls for save and restore">;
 
 def munaligned_access : Flag<["-"], "munaligned-access">, Group<m_arm_Features_Group>,
   HelpText<"Allow memory accesses to be unaligned (AArch32/AArch64 only)">;
@@ -2652,6 +2663,8 @@ def _print_supported_cpus : Flag<["-", "--"], "print-supported-cpus">,
   Group<CompileOnly_Group>, Flags<[CC1Option, CoreOption]>,
   HelpText<"Print supported cpu models for the given target (if target is not specified,"
            " it will print the supported cpus for the default target)">;
+def mcpu_EQ_QUESTION : Flag<["-"], "mcpu=?">, Alias<_print_supported_cpus>;
+def mtune_EQ_QUESTION : Flag<["-"], "mtune=?">, Alias<_print_supported_cpus>;
 def gcc_toolchain : Joined<["--"], "gcc-toolchain=">, Flags<[DriverOption]>,
   HelpText<"Use the gcc toolchain at the given directory">;
 def time : Flag<["-"], "time">,

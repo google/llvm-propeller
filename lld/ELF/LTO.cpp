@@ -58,6 +58,20 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef File) {
   return Ret;
 }
 
+static void getBasicBlockSectionsList(MemoryBufferRef MBRef,
+                                      TargetOptions &Options) {
+  SmallVector<StringRef, 0> Arr;
+  MBRef.getBuffer().split(Arr, '\n');
+  for (StringRef S : Arr) {
+    // Function names follow a '!' character.
+    // Empty '!' implies no more functions.
+    if (S.size() == 1 && S[0] == '!')
+      break;
+    if (S.size() > 1 && S[0] == '!')
+      Options.BasicBlockSectionsList[S.str().substr(1)] = true;
+  }
+}
+
 static std::string getThinLTOOutputFile(StringRef ModulePath) {
   return lto::getThinLTOOutputFile(ModulePath,
                                    Config->ThinLTOPrefixReplace.first,
@@ -87,6 +101,12 @@ static lto::Config createConfig() {
       C.Options.BasicBlockSections = BasicBlockSection::Labels;
     else if (Config->LTOBasicBlockSections.equals("none"))
       C.Options.BasicBlockSections = BasicBlockSection::None;
+    else if (Optional<MemoryBufferRef> Buffer =
+             readFile(Config->LTOBasicBlockSections)) {
+      getBasicBlockSectionsList(*Buffer, C.Options);
+      C.Options.BasicBlockSections = BasicBlockSection::List;
+    }
+
   }
 
   if (Config->Relocatable)
@@ -112,6 +132,7 @@ static lto::Config createConfig() {
   C.RemarksFilename = Config->OptRemarksFilename;
   C.RemarksPasses = Config->OptRemarksPasses;
   C.RemarksWithHotness = Config->OptRemarksWithHotness;
+  C.RemarksFormat = Config->OptRemarksFormat;
 
   C.SampleProfile = Config->LTOSampleProfile;
   C.UseNewPM = Config->LTONewPassManager;

@@ -15,6 +15,7 @@
 #define LLVM_TARGET_TARGETOPTIONS_H
 
 #include "llvm/MC/MCTargetOptions.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace llvm {
   class MachineFunction;
@@ -69,7 +70,8 @@ namespace llvm {
       All,    // Use Basic Block Sections for all functions.
       Hot,    // Use Basic Block Sections for hot functions only.
       Likely, // Do not use Basic Block Sections for "unlikely" functions.
-      Labels  // Do not use Basic Block Sections but label basic blocks.
+      Labels, // Do not use Basic Block Sections but label basic blocks.
+      List // Get list of functions from a file/
     };
   }
 
@@ -124,12 +126,13 @@ namespace llvm {
           EnableFastISel(false), EnableGlobalISel(false), UseInitArray(false),
           DisableIntegratedAS(false), RelaxELFRelocations(false),
           FunctionSections(false), DataSections(false),
-          SeparateBBSections(true), UniqueSectionNames(true),
+          UniqueSectionNames(true),
           UniqueBBSectionNames(false), TrapUnreachable(false),
           NoTrapAfterNoreturn(false), EmulatedTLS(false),
           ExplicitEmulatedTLS(false), EnableIPRA(false),
           EmitStackSizeSection(false), EnableMachineOutliner(false),
-          SupportsDefaultOutlining(false), EmitAddrsig(false) {}
+          SupportsDefaultOutlining(false), EmitAddrsig(false),
+          EnableDebugEntryValues(false) {}
 
     /// PrintMachineCode - This flag is enabled when the -print-machineinstrs
     /// option is specified on the command line, and should enable debugging
@@ -232,8 +235,6 @@ namespace llvm {
     /// Emit data into separate sections.
     unsigned DataSections : 1;
 
-    unsigned SeparateBBSections : 1;
-
     unsigned UniqueSectionNames : 1;
 
     unsigned UniqueBBSectionNames : 1;
@@ -269,6 +270,11 @@ namespace llvm {
 
     /// Emit basic blocks into separate sections.
     BasicBlockSection::SectionMode BasicBlockSections = BasicBlockSection::None;
+
+    StringMap<bool> BasicBlockSectionsList;
+
+    /// Emit debug info about parameter's entry values.
+    unsigned EnableDebugEntryValues : 1;
 
     /// FloatABIType - This setting is set by -float-abi=xxx option is specfied
     /// on the command line. This setting may either be Default, Soft, or Hard.

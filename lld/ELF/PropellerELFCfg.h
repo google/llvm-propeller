@@ -63,7 +63,6 @@ class ELFCfgNode {
   uint64_t           ShSize;
   uint64_t           MappedAddr;
   uint64_t           Freq;
-  uint64_t           Weight;
   ELFCfg            *Cfg;
   
   list<ELFCfgEdge *> Outs;      // Intra function edges.
@@ -76,19 +75,19 @@ class ELFCfgNode {
 
   const static uint64_t InvalidAddress = -1l;
 
-  StringRef getShortName() {
-    auto I = ShName.rsplit(".bb.");
-    if (!I.second.empty()) {
-      return I.second;
-    }
-    return "E"; // Entry;
+  unsigned getBBIndex() {
+    StringRef FName, BName;
+    if (SymbolEntry::isBBSymbol(ShName, &FName, &BName))
+      return BName.size();
+    else
+      return 0;
   }
 
 private:
   ELFCfgNode(uint64_t _Shndx, const StringRef &_ShName,
              uint64_t _Size, uint64_t _MappedAddr, ELFCfg *_Cfg)
     : Shndx(_Shndx), ShName(_ShName), ShSize(_Size),
-      MappedAddr(_MappedAddr), Weight(0), Cfg(_Cfg),
+      MappedAddr(_MappedAddr), Freq(0), Cfg(_Cfg),
       Outs(), Ins(), CallOuts(), CallIns(), FTEdge(nullptr) {}
 
   friend class ELFCfg;
@@ -134,11 +133,7 @@ public:
     }
   }
 
-  double computeDensity() {
-    double W = 0;
-    forEachNodeRef([&W](ELFCfgNode &N) { W += N.Weight; });
-    return W / this->Size;
-  }
+  void writeAsDotGraph();
 
 private:
   // Create and take ownership.

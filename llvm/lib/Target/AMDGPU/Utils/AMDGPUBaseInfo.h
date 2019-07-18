@@ -190,6 +190,9 @@ unsigned getNumVGPRBlocks(const MCSubtargetInfo *STI, unsigned NumSGPRs,
 LLVM_READONLY
 int16_t getNamedOperandIdx(uint16_t Opcode, uint16_t NamedIdx);
 
+LLVM_READONLY
+int getSOPPWithRelaxation(uint16_t Opcode);
+
 struct MIMGBaseOpcodeInfo {
   MIMGBaseOpcode BaseOpcode;
   bool Store;
@@ -444,6 +447,48 @@ StringRef getHwreg(unsigned Id, const MCSubtargetInfo &STI);
 void decodeHwreg(unsigned Val, unsigned &Id, unsigned &Offset, unsigned &Width);
 
 } // namespace Hwreg
+
+namespace SendMsg {
+
+LLVM_READONLY
+int64_t getMsgId(const StringRef Name);
+
+LLVM_READONLY
+int64_t getMsgOpId(int64_t MsgId, const StringRef Name);
+
+LLVM_READNONE
+StringRef getMsgName(int64_t MsgId);
+
+LLVM_READNONE
+StringRef getMsgOpName(int64_t MsgId, int64_t OpId);
+
+LLVM_READNONE
+bool isValidMsgId(int64_t MsgId, const MCSubtargetInfo &STI, bool Strict = true);
+
+LLVM_READNONE
+bool isValidMsgOp(int64_t MsgId, int64_t OpId, bool Strict = true);
+
+LLVM_READNONE
+bool isValidMsgStream(int64_t MsgId, int64_t OpId, int64_t StreamId, bool Strict = true);
+
+LLVM_READNONE
+bool msgRequiresOp(int64_t MsgId);
+
+LLVM_READNONE
+bool msgSupportsStream(int64_t MsgId, int64_t OpId);
+
+void decodeMsg(unsigned Val,
+               uint16_t &MsgId,
+               uint16_t &OpId,
+               uint16_t &StreamId);
+
+LLVM_READNONE
+uint64_t encodeMsg(uint64_t MsgId,
+                   uint64_t OpId,
+                   uint64_t StreamId);
+
+} // namespace SendMsg
+
 
 unsigned getInitialPSInputAddr(const Function &F);
 

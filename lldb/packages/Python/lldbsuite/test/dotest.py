@@ -270,6 +270,9 @@ def parseOptionsAndInitTestdirs():
             else:
                 os.environ[parts[0]] = parts[1]
 
+    if args.set_inferior_env_vars:
+        lldbtest_config.inferior_env = ' '.join(args.set_inferior_env_vars)
+
     # only print the args if being verbose (and parsable is off)
     if args.v and not args.q:
         print(sys.argv)
@@ -1186,6 +1189,8 @@ def canRunWatchpointTests():
 
     platform = lldbplatformutil.getPlatform()
     if platform == "netbsd":
+      if os.geteuid() == 0:
+        return True, "root can always write dbregs"
       try:
         output = subprocess.check_output(["/sbin/sysctl", "-n",
           "security.models.extensions.user_set_dbregs"]).decode().strip()

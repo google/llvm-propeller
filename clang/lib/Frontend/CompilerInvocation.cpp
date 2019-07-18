@@ -729,23 +729,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.SplitDwarfFile = Args.getLastArgValue(OPT_split_dwarf_file);
   Opts.SplitDwarfOutput = Args.getLastArgValue(OPT_split_dwarf_output);
   Opts.SplitDwarfInlining = !Args.hasArg(OPT_fno_split_dwarf_inlining);
-
-  if (Arg *A =
-          Args.getLastArg(OPT_enable_split_dwarf, OPT_enable_split_dwarf_EQ)) {
-    if (A->getOption().matches(options::OPT_enable_split_dwarf)) {
-      Opts.setSplitDwarfMode(CodeGenOptions::SplitFileFission);
-    } else {
-      StringRef Name = A->getValue();
-      if (Name == "single")
-        Opts.setSplitDwarfMode(CodeGenOptions::SingleFileFission);
-      else if (Name == "split")
-        Opts.setSplitDwarfMode(CodeGenOptions::SplitFileFission);
-      else
-        Diags.Report(diag::err_drv_invalid_value)
-            << A->getAsString(Args) << Name;
-    }
-  }
-
   Opts.DebugTypeExtRefs = Args.hasArg(OPT_dwarf_ext_refs);
   Opts.DebugExplicitImport = Args.hasArg(OPT_dwarf_explicit_import);
   Opts.DebugFwdTemplateParams = Args.hasArg(OPT_debug_forward_template_params);
@@ -760,6 +743,13 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   Opts.DisableLLVMPasses = Args.hasArg(OPT_disable_llvm_passes);
   Opts.DisableLifetimeMarkers = Args.hasArg(OPT_disable_lifetimemarkers);
+
+  llvm::Triple T(TargetOpts.Triple);
+  llvm::Triple::ArchType Arch = T.getArch();
+  if (Opts.OptimizationLevel > 0 &&
+      (Arch == llvm::Triple::x86 || Arch == llvm::Triple::x86_64))
+    Opts.EnableDebugEntryValues = Args.hasArg(OPT_femit_debug_entry_values);
+
   Opts.DisableO0ImplyOptNone = Args.hasArg(OPT_disable_O0_optnone);
   Opts.DisableRedZone = Args.hasArg(OPT_disable_red_zone);
   Opts.IndirectTlsSegRefs = Args.hasArg(OPT_mno_tls_direct_seg_refs);
@@ -911,10 +901,24 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
         << Opts.BasicBlockSections;
   }
 
+  Opts.BasicBlockSectionsList = Args.getLastArgValue(
+                                    OPT_fbasicblock_sections_list_EQ, "");
+
+  // -fbasicblock-sections= and -fbasicblock-sections=list cannot be used
+  // together.
+  if (Opts.BasicBlockSections != "none" &&
+      !Opts.BasicBlockSectionsList.empty()) {
+    Diags.Report(diag::err_drv_argument_not_allowed_with)
+        << Args.getLastArg(OPT_fbasicblock_sections_list_EQ)->getAsString(Args)
+        << Args.getLastArg(OPT_fbasicblock_sections_EQ)->getAsString(Args);
+  }
+
   // Basic Block Sections implies Function Sections.
   Opts.FunctionSections = Args.hasFlag(OPT_ffunction_sections,
                                        OPT_fno_function_sections, false) ||
-                          (Opts.BasicBlockSections != "none");
+                          (Opts.BasicBlockSections != "none" ||
+                           !Opts.BasicBlockSectionsList.empty());
+
   Opts.DataSections = Args.hasFlag(OPT_fdata_sections,
                                    OPT_fno_data_sections, false);
   Opts.StackSizeSection =
@@ -923,8 +927,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                                          OPT_fno_unique_section_names, true);
   Opts.UniqueBBSectionNames = Args.hasFlag(OPT_funique_bb_section_names,
                                            OPT_fno_unique_bb_section_names, false);
-  Opts.SeparateBBSections = Args.hasFlag(OPT_fseparate_bb_sections,
-                                         OPT_fno_separate_bb_sections, true);
+  Opts.UniqueInternalFuncNames = Args.hasFlag(OPT_funique_internal_funcnames,
+                                              OPT_fno_unique_internal_funcnames, false);
 
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
@@ -1253,6 +1257,11 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   if (Arg *A = Args.getLastArg(OPT_opt_record_passes)) {
     Opts.OptRecordPasses = A->getValue();
+    NeedLocTracking = true;
+  }
+
+  if (Arg *A = Args.getLastArg(OPT_opt_record_format)) {
+    Opts.OptRecordFormat = A->getValue();
     NeedLocTracking = true;
   }
 
@@ -1695,6 +1704,25 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       Opts.ProgramAction = frontend::GenerateHeaderModule; break;
     case OPT_emit_pch:
       Opts.ProgramAction = frontend::GeneratePCH; break;
+    case OPT_emit_iterface_stubs: {
+      llvm::Optional<frontend::ActionKind> ProgramAction =
+          llvm::StringSwitch<llvm::Optional<frontend::ActionKind>>(
+              Args.hasArg(OPT_iterface_stub_version_EQ)
+                  ? Args.getLastArgValue(OPT_iterface_stub_version_EQ)
+                  : "")
+              .Case("experimental-yaml-elf-v1",
+                    frontend::GenerateInterfaceYAMLExpV1)
+              .Case("experimental-tapi-elf-v1",
+                    frontend::GenerateInterfaceTBEExpV1)
+              .Default(llvm::None);
+      if (!ProgramAction)
+        Diags.Report(diag::err_drv_invalid_value)
+            << "Must specify a valid interface stub format type using "
+            << "-interface-stub-version=<experimental-tapi-elf-v1 | "
+               "experimental-yaml-elf-v1>";
+      Opts.ProgramAction = *ProgramAction;
+      break;
+    }
     case OPT_init_only:
       Opts.ProgramAction = frontend::InitOnly; break;
     case OPT_fsyntax_only:
@@ -2208,9 +2236,15 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     Opts.NativeHalfType = 1;
     Opts.NativeHalfArgsAndReturns = 1;
     Opts.OpenCLCPlusPlus = Opts.CPlusPlus;
+
     // Include default header file for OpenCL.
-    if (Opts.IncludeDefaultHeader && !Opts.DeclareOpenCLBuiltins) {
-      PPOpts.Includes.push_back("opencl-c.h");
+    if (Opts.IncludeDefaultHeader) {
+      if (Opts.DeclareOpenCLBuiltins) {
+        // Only include base header file for builtin types and constants.
+        PPOpts.Includes.push_back("opencl-c-base.h");
+      } else {
+        PPOpts.Includes.push_back("opencl-c.h");
+      }
     }
   }
 
@@ -3127,6 +3161,8 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::GenerateModuleInterface:
   case frontend::GenerateHeaderModule:
   case frontend::GeneratePCH:
+  case frontend::GenerateInterfaceYAMLExpV1:
+  case frontend::GenerateInterfaceTBEExpV1:
   case frontend::ParseSyntaxOnly:
   case frontend::ModuleFileInfo:
   case frontend::VerifyPCH:

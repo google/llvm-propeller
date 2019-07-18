@@ -47,7 +47,7 @@ public:
   NodeChain(const ELFCfgNode *Node) {
     DelegateNode = Node;
     Nodes.push_back(Node);
-    Size = Node->ShSize;
+    Size = std::max(Node->ShSize, (uint64_t)1);
     Freq = Node->Freq;
   }
 

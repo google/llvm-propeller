@@ -47,7 +47,7 @@ public:
   template <class CfgContainerTy>
   void init(CfgContainerTy &CfgContainer);
 
-  list<ELFCfg *> doOrder();
+  unsigned doOrder(list<ELFCfg*>& CfgOrder);
 
 private:
   ELFCfg *getMostLikelyPredecessor(

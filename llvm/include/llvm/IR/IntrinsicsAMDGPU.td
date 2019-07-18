@@ -1122,7 +1122,7 @@ def int_amdgcn_exp : Intrinsic <[], [
   llvm_i1_ty,        // done
   llvm_i1_ty         // vm
   ],
-  [ImmArg<0>, ImmArg<1>, ImmArg<6>, ImmArg<7>]
+  [ImmArg<0>, ImmArg<1>, ImmArg<6>, ImmArg<7>, IntrInaccessibleMemOnly]
 >;
 
 // exp with compr bit set.
@@ -1133,7 +1133,7 @@ def int_amdgcn_exp_compr : Intrinsic <[], [
   LLVMMatchType<0>,  // src1
   llvm_i1_ty,        // done
   llvm_i1_ty],       // vm
-  [ImmArg<0>, ImmArg<1>, ImmArg<4>, ImmArg<5>]
+  [ImmArg<0>, ImmArg<1>, ImmArg<4>, ImmArg<5>, IntrInaccessibleMemOnly]
 >;
 
 def int_amdgcn_buffer_wbinvl1_sc :
@@ -1170,7 +1170,7 @@ def int_amdgcn_s_decperflevel :
 def int_amdgcn_s_getreg :
   GCCBuiltin<"__builtin_amdgcn_s_getreg">,
   Intrinsic<[llvm_i32_ty], [llvm_i32_ty],
-  [IntrReadMem, IntrSpeculatable, ImmArg<0>]
+  [IntrInaccessibleMemOnly, IntrReadMem, IntrSpeculatable, ImmArg<0>]
 >;
 
 // int_amdgcn_s_getpc is provided to allow a specific style of position
@@ -1348,6 +1348,65 @@ def int_amdgcn_alignbyte : Intrinsic<[llvm_i32_ty],
   [IntrNoMem, IntrSpeculatable]
 >;
 
+// llvm.amdgcn.ds.gws.init(i32 bar_val, i32 resource_id)
+//
+// bar_val is the total number of waves that will wait on this
+// barrier, minus 1.
+def int_amdgcn_ds_gws_init :
+  GCCBuiltin<"__builtin_amdgcn_ds_gws_init">,
+  Intrinsic<[],
+  [llvm_i32_ty, llvm_i32_ty],
+  [IntrConvergent, IntrWriteMem, IntrInaccessibleMemOnly], "",
+  [SDNPMemOperand]
+>;
+
+// llvm.amdgcn.ds.gws.barrier(i32 vsrc0, i32 resource_id)
+// bar_val is the total number of waves that will wait on this
+// barrier, minus 1.
+def int_amdgcn_ds_gws_barrier :
+  GCCBuiltin<"__builtin_amdgcn_ds_gws_barrier">,
+  Intrinsic<[],
+  [llvm_i32_ty, llvm_i32_ty],
+  [IntrConvergent, IntrInaccessibleMemOnly], "",
+  [SDNPMemOperand]
+>;
+
+// llvm.amdgcn.ds.gws.sema.v(i32 resource_id)
+def int_amdgcn_ds_gws_sema_v :
+  GCCBuiltin<"__builtin_amdgcn_ds_gws_sema_v">,
+  Intrinsic<[],
+  [llvm_i32_ty],
+  [IntrConvergent, IntrInaccessibleMemOnly], "",
+  [SDNPMemOperand]
+>;
+
+// llvm.amdgcn.ds.gws.sema.br(i32 vsrc, i32 resource_id)
+def int_amdgcn_ds_gws_sema_br :
+  GCCBuiltin<"__builtin_amdgcn_ds_gws_sema_br">,
+  Intrinsic<[],
+  [llvm_i32_ty, llvm_i32_ty],
+  [IntrConvergent, IntrInaccessibleMemOnly], "",
+  [SDNPMemOperand]
+>;
+
+// llvm.amdgcn.ds.gws.sema.p(i32 resource_id)
+def int_amdgcn_ds_gws_sema_p :
+  GCCBuiltin<"__builtin_amdgcn_ds_gws_sema_p">,
+  Intrinsic<[],
+  [llvm_i32_ty],
+  [IntrConvergent, IntrInaccessibleMemOnly], "",
+  [SDNPMemOperand]
+>;
+
+// llvm.amdgcn.ds.gws.sema.release.all(i32 resource_id)
+def int_amdgcn_ds_gws_sema_release_all :
+  GCCBuiltin<"__builtin_amdgcn_ds_gws_sema_release_all">,
+  Intrinsic<[],
+  [llvm_i32_ty],
+  [IntrConvergent, IntrInaccessibleMemOnly], "",
+  [SDNPMemOperand]
+>;
+
 
 // Copies the source value to the destination value, with the guarantee that
 // the source value is computed as if the entire program were executed in WQM.
@@ -1465,7 +1524,7 @@ def int_amdgcn_mov_dpp8 :
 
 def int_amdgcn_s_get_waveid_in_workgroup :
   GCCBuiltin<"__builtin_amdgcn_s_get_waveid_in_workgroup">,
-  Intrinsic<[llvm_i32_ty], [], [IntrReadMem]>;
+  Intrinsic<[llvm_i32_ty], [], [IntrReadMem, IntrInaccessibleMemOnly]>;
 
 //===----------------------------------------------------------------------===//
 // Deep learning intrinsics.

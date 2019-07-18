@@ -132,11 +132,7 @@ template <class ELFT> bool ELFViewImpl<ELFT>::setupSymTabAndSymTabStrPos() {
 
 template <class ELFT>
 bool ELFViewImpl<ELFT>::GetELFSizeInfo(ELFSizeInfo *SizeInfo) {
-  SizeInfo->TextSize = 0;
-  SizeInfo->OtherAllocSize = 0;
-  SizeInfo->SymTabSize = 0;
-  SizeInfo->StrTabSize = 0;
-  SizeInfo->FileSize = 0;
+  memset(SizeInfo, 0, sizeof(ELFSizeInfo));
   for (auto &T : getShdrBlocks()) {
     const ViewFileShdr &hdr = *(getShdr(T.get()));
     ELFTUInt Flags = ELFTUInt(hdr.sh_flags);
@@ -149,9 +145,11 @@ bool ELFViewImpl<ELFT>::GetELFSizeInfo(ELFSizeInfo *SizeInfo) {
       SizeInfo->OtherAllocSize += SecSize;
     }
     if (Type == llvm::ELF::SHT_SYMTAB) {
-      SizeInfo->SymTabSize = SecSize;
+      SizeInfo->SymTabSize += SecSize;
+      SizeInfo->SymTabEntryNum += SecSize / ELFTUInt(hdr.sh_entsize);
+      assert(SecSize % ELFTUInt(hdr.sh_entsize) == 0);
     } else if (Type == llvm::ELF::SHT_STRTAB) {
-      SizeInfo->StrTabSize = SecSize;
+      SizeInfo->StrTabSize += SecSize;
     }
   }
   SizeInfo->FileSize = FileRef.getBufferSize();

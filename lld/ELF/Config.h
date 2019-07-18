@@ -100,8 +100,11 @@ struct Configuration {
   llvm::StringRef OutputFile;
   llvm::StringRef OptRemarksFilename;
   llvm::StringRef OptRemarksPasses;
+  llvm::StringRef OptRemarksFormat;
   llvm::StringRef ProgName;
   llvm::StringRef Propeller;
+  llvm::StringRef PropellerDumpSymbolOrder;
+  std::vector<std::string> PropellerDumpCfgs;
   std::vector<std::string> PropellerOpts;
   llvm::StringRef PrintSymbolOrder;
   llvm::StringRef SoName;
@@ -180,6 +183,7 @@ struct Configuration {
   bool Relocatable;
   bool RelrPackDynRelocs;
   bool PropellerKeepNamedSymbols;
+  bool PropellerPrintStats;
   bool PropellerReorderBlocks;
   bool PropellerReorderFuncs;
   bool PropellerSplitFuncs;

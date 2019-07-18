@@ -588,11 +588,11 @@ template <class ELFT> void Writer<ELFT>::run() {
   // completes section contents. For example, we need to add strings
   // to the string table, and add entries to .got and .plt.
   // finalizeSections does that.
-  auto startFinalizeSectionTime = system_clock::now();
+  //auto startFinalizeSectionTime = system_clock::now();
   finalizeSections();
-  auto endFinalizeSectionTime = system_clock::now();
-  duration<double> FinalizeSectionTime = endFinalizeSectionTime - startFinalizeSectionTime;
-  warn("[TIME](s) finalize section (includes section ordering): " + Twine(std::to_string(FinalizeSectionTime.count())));
+  //auto endFinalizeSectionTime = system_clock::now();
+  //duration<double> FinalizeSectionTime = endFinalizeSectionTime - startFinalizeSectionTime;
+  //warn("[TIME](s) finalize section (includes section ordering): " + Twine(std::to_string(FinalizeSectionTime.count())));
   checkExecuteOnly();
   if (errorCount())
     return;
@@ -734,7 +734,8 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
     return;
   for (InputFile *File : ObjectFiles) {
     ObjFile<ELFT> *F = cast<ObjFile<ELFT>>(File);
-    std::list<Symbol *> Locals;
+    std::list<Symbol *> LocalNonBBSymbols;
+    std::list<Symbol *> LocalBBSymbols;
     for (Symbol *B : F->getLocalSymbols()) {
       if (!B->isLocal())
         fatal(toString(F) +
@@ -748,13 +749,23 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
         continue;
       if (!shouldKeepInSymtab(*DR))
         continue;
-      Locals.emplace_back(B);
+
+      if (lld::propeller::SymbolEntry::isBBSymbol(B->getName()))
+        LocalBBSymbols.emplace_back(B);
+      else
+        LocalNonBBSymbols.emplace_back(B);
     }
 
-    Locals.sort([](Symbol *A, Symbol *B) {
+    LocalBBSymbols.sort([](Symbol *A, Symbol *B) {
       return A->getName().size() > B->getName().size();
     });
-    for (auto *S : Locals) {
+
+    // Add BB symbols to SymTab first.
+    for (auto *S : LocalBBSymbols) {
+      In.SymTab->addSymbol(S);
+    }
+
+    for (auto *S : LocalNonBBSymbols) {
       In.SymTab->addSymbol(S);
     }
   }
@@ -1701,22 +1712,15 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
                  " fall through jumps\n");
     }
 
-    auto MaxIt = std::max_element(Sections.begin(), Sections.end(),
-                     [](InputSection * const s1, InputSection * const s2) {
-                       return s1->Alignment < s2->Alignment;
-                     });
-    uint32_t MaxAlign = (MaxIt != Sections.end()) ? (*MaxIt)->Alignment : 0;
-
+    // Shrink jump Instructions optimistically
     std::vector<unsigned> Shrunk(Sections.size(), 0);
     bool Changed = false;
-    // Shrink jump Instructions when possible.
     do {
       Changed = false;
       parallelForEachN(0, Sections.size(), [&](size_t I) {
         if (Shrunk[I] == 0) {
           InputSection &IS = *Sections[I];
-          Shrunk[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>(),
-                                            MaxAlign);
+          Shrunk[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
           Changed |= (Shrunk[I] > 0);
         }
       });
@@ -1730,7 +1734,36 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       if (Changed)
         Script->assignAddresses();
     } while (Changed);
+
+    // Grow jump instructions when necessary
+    std::vector<unsigned> Grown(Sections.size(), 0);
+    do {
+      Changed = false;
+      parallelForEachN(0, Sections.size(), [&](size_t I) {
+        if (Grown[I] == 0) {
+          InputSection &IS = *Sections[I];
+          Grown[I] = Target->growJmpInsn(IS, IS.getFile<ELFT>());
+          Changed |= (Grown[I] > 0);
+        }
+      });
+      size_t Num = std::count_if(Grown.begin(), Grown.end(),
+          [] (int e) { return e > 0; });
+      Num += std::count_if(Grown.begin(), Grown.end(),
+          [] (int e) { return e > 4; });
+      if (Num > 0)
+        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->Name <<
+                   " : Growing " << Num << " jmp instructions\n");
+      if (Changed)
+        Script->assignAddresses();
+    } while (Changed);
   }
+
+  for (OutputSection *OS : OutputSections) {
+    std::vector<InputSection *> Sections = getInputSections(OS);
+    for (InputSection * IS: Sections)
+      IS->trim();
+  }
+
   fixSymbolsAfterShrinking();
 }
 
@@ -1872,8 +1905,10 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Scan relocations. This must be done after every symbol is declared so that
   // we can correctly decide if a dynamic relocation is needed.
-  if (!Config->Relocatable)
+  if (!Config->Relocatable) {
     forEachRelSec(scanRelocations<ELFT>);
+    reportUndefinedSymbols<ELFT>();
+  }
 
   addIRelativeRelocs();
 
@@ -2068,11 +2103,11 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Relaxation to delete inter-basic block jumps created by basic block
   // sections.
-  auto startOptBBJumpTime = system_clock::now();
+  //auto startOptBBJumpTime = system_clock::now();
   optimizeBasicBlockJumps();
-  auto endOptBBJumpTime = system_clock::now();
-  duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
-  warn("[TIME](s) optimize bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
+  //auto endOptBBJumpTime = system_clock::now();
+  //duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+  //warn("[TIME](s) optimize bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
 
 
   // Fill other section headers. The dynamic table is finalized

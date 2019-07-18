@@ -9,12 +9,14 @@
 #include "llvm/Object/ELFObjectFile.h"
 
 #include <algorithm>
+#include <fstream>
 #include <iomanip>
 #include <list>
 #include <map>
 #include <memory>
 #include <numeric>
 #include <ostream>
+#include <stdio.h>
 #include <string>
 
 using llvm::object::ObjectFile;
@@ -32,6 +34,27 @@ using std::unique_ptr;
 
 namespace lld {
 namespace propeller {
+
+void ELFCfg::writeAsDotGraph() {
+  Twine fname = Name + ".dot";
+  FILE *fp = fopen(fname.str().c_str(), "w");
+  if (!fp) {
+   fprintf(stderr, "failed to open: %s\n", fname.str().c_str());
+  }
+  fprintf(fp, "digraph %s {\n",  Name.str().c_str());
+  forEachNodeRef([&fp](ELFCfgNode &N){
+    fprintf(fp, "%u;", N.getBBIndex());
+  });
+  fprintf(fp, "\n");
+  for (auto &E: IntraEdges){
+    bool IsFTEdge = (E->Src->FTEdge == E.get());
+    fprintf(fp, " %u -> %u [label=\"%lu\", weight=%f];\n", E->Src->getBBIndex(), E->Sink->getBBIndex(), E->Weight, IsFTEdge ? 1.0 : 0.1);
+  }
+  fprintf(fp, "}\n");
+  fclose(fp);
+  fprintf(stderr, "Done dumping cfg for %s\n", Name.str().c_str());
+}
+
 
 ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
                                typename ELFCfgEdge::EdgeType Type) {
@@ -61,8 +84,6 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
                             E->Sink != getEntryNode();
                    });
       if (IntraInEdges.size() == 1) {
-        ++P->Weight;
-        IntraInEdges.front()->Weight++;
         P = IntraInEdges.front()->Src;
       } else {
         P = nullptr;
@@ -84,8 +105,6 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
                             E->Sink != getEntryNode();
                    });
       if (IntraOutEdges.size() == 1) {
-        ++P->Weight;
-        ++IntraOutEdges.front()->Weight;
         P = IntraOutEdges.front()->Sink;
       } else {
         P = nullptr;
@@ -99,7 +118,6 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
     return true;
   ELFCfgNode *P = From;
   while (P && P != To) {
-    P->Weight += Cnt;
     if (P->FTEdge) {
       P->FTEdge->Weight += Cnt;
       P = P->FTEdge->Sink;
@@ -110,15 +128,12 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
   if (!P) {
     return false;
   }
-  P->Weight += Cnt;
   return true;
 }
 
 void ELFCfg::mapBranch(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt,
                        bool isCall, bool isReturn) {
   assert(From->Cfg == To->Cfg);
-  From->Weight += Cnt;
-  To->Weight += Cnt;
 
   for (auto &E : From->Outs) {
     bool EdgeTypeOk = true;
@@ -150,8 +165,6 @@ void ELFCfg::mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr,
                         uint64_t Cnt, bool isCall, bool isReturn) {
   assert(From->Cfg == this);
   assert(From->Cfg != To->Cfg);
-  From->Weight += Cnt;
-  To->Weight += Cnt;
   ELFCfgEdge::EdgeType EdgeType = ELFCfgEdge::INTER_FUNC_RETURN;
   if (isCall ||
       (ToAddr && To->Cfg->getEntryNode() == To && ToAddr == To->MappedAddr)) {
@@ -229,15 +242,18 @@ void ELFCfgBuilder::buildCfgs() {
         // -fbasicblock-section=labels do not have size information
         // for BB symbols.
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
+        // Drop bb sections with no code
         auto *SE = Prop->Propf->findSymbol(SymName);
         if (SE) {
+          if (!SymSize)
+            continue;
           if (TmpNodeMap.find(SE->Ordinal) != TmpNodeMap.end()) {
             error("Internal error checking Cfg map.");
             return;
           }
           TmpNodeMap.emplace(
               std::piecewise_construct, std::forward_as_tuple(SE->Ordinal),
-              std::forward_as_tuple(new ELFCfgNode(SymShndx, SymName, SymSize,
+              std::forward_as_tuple(new ELFCfgNode(SymShndx, SymName, SE->Size,
                                                    SE->Ordinal, Cfg.get())));
           continue;
         }
@@ -247,6 +263,10 @@ void ELFCfgBuilder::buildCfgs() {
       Cfg.reset(nullptr);
       break;
     }
+
+    if (TmpNodeMap.empty())
+      Cfg.reset(nullptr);
+
     if (!Cfg)
       continue; // to next Cfg group.
 
@@ -431,7 +451,7 @@ ostream &operator<<(ostream &Out, const ELFCfgNode &Node) {
               : Node.ShName.data() + Node.Cfg->Name.size() + 1)
       << " [size=" << std::noshowbase << std::dec << Node.ShSize << ", "
       << " addr=" << std::showbase << std::hex << Node.MappedAddr << ", "
-      << " weight=" << std::showbase << std::dec << Node.Weight << ", "
+      << " frequency=" << std::showbase << std::dec << Node.Freq << ", "
       << " shndx=" << std::noshowbase << std::dec << Node.Shndx << "]";
   return Out;
 }

@@ -526,15 +526,12 @@ void SIFrameLowering::emitEntryFunctionScratchSetup(const GCNSubtarget &ST,
 static unsigned findScratchNonCalleeSaveRegister(MachineFunction &MF,
                                                  LivePhysRegs &LiveRegs,
                                                  const TargetRegisterClass &RC) {
-  const GCNSubtarget &Subtarget = MF.getSubtarget<GCNSubtarget>();
-  const SIRegisterInfo &TRI = *Subtarget.getRegisterInfo();
+  MachineRegisterInfo &MRI = MF.getRegInfo();
 
   // Mark callee saved registers as used so we will not choose them.
-  const MCPhysReg *CSRegs = TRI.getCalleeSavedRegs(&MF);
+  const MCPhysReg *CSRegs = MRI.getCalleeSavedRegs();
   for (unsigned i = 0; CSRegs[i]; ++i)
     LiveRegs.addReg(CSRegs[i]);
-
-  MachineRegisterInfo &MRI = MF.getRegInfo();
 
   for (unsigned Reg : RC) {
     if (LiveRegs.available(MRI, Reg))
@@ -681,7 +678,8 @@ void SIFrameLowering::emitEpilogue(MachineFunction &MF,
     if (ScratchExecCopy == AMDGPU::NoRegister) {
       // See emitPrologue
       LivePhysRegs LiveRegs(*ST.getRegisterInfo());
-      LiveRegs.addLiveIns(MBB);
+      LiveRegs.addLiveOuts(MBB);
+      LiveRegs.stepBackward(*MBBI);
 
       ScratchExecCopy
         = findScratchNonCalleeSaveRegister(MF, LiveRegs,
@@ -707,12 +705,12 @@ void SIFrameLowering::emitEpilogue(MachineFunction &MF,
       .addReg(ScratchExecCopy);
   }
 
-  if (hasFP(MF)) {
-    const MachineFrameInfo &MFI = MF.getFrameInfo();
-    uint32_t NumBytes = MFI.getStackSize();
-    uint32_t RoundedSize = FuncInfo->isStackRealigned() ?
-      NumBytes + MFI.getMaxAlignment() : NumBytes;
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  uint32_t NumBytes = MFI.getStackSize();
+  uint32_t RoundedSize = FuncInfo->isStackRealigned() ?
+    NumBytes + MFI.getMaxAlignment() : NumBytes;
 
+  if (RoundedSize != 0 && hasFP(MF)) {
     const unsigned StackPtrReg = FuncInfo->getStackPtrOffsetReg();
     BuildMI(MBB, MBBI, DL, TII->get(AMDGPU::S_SUB_U32), StackPtrReg)
       .addReg(StackPtrReg)
@@ -721,10 +719,13 @@ void SIFrameLowering::emitEpilogue(MachineFunction &MF,
   }
 }
 
-static bool allStackObjectsAreDead(const MachineFrameInfo &MFI) {
+// Note SGPRSpill stack IDs should only be used for SGPR spilling to VGPRs, not
+// memory.
+static bool allStackObjectsAreDeadOrSGPR(const MachineFrameInfo &MFI) {
   for (int I = MFI.getObjectIndexBegin(), E = MFI.getObjectIndexEnd();
        I != E; ++I) {
-    if (!MFI.isDeadObjectIndex(I))
+    if (!MFI.isDeadObjectIndex(I) &&
+        MFI.getStackID(I) != TargetStackID::SGPRSpill)
       return false;
   }
 
@@ -751,11 +752,8 @@ void SIFrameLowering::processFunctionBeforeFrameFinalized(
   const SIInstrInfo *TII = ST.getInstrInfo();
   const SIRegisterInfo &TRI = TII->getRegisterInfo();
   SIMachineFunctionInfo *FuncInfo = MF.getInfo<SIMachineFunctionInfo>();
-  bool AllSGPRSpilledToVGPRs = false;
 
   if (TRI.spillSGPRToVGPR() && FuncInfo->hasSpilledSGPRs()) {
-    AllSGPRSpilledToVGPRs = true;
-
     // Process all SGPR spills before frame offsets are finalized. Ideally SGPRs
     // are spilled to VGPRs, in which case we can eliminate the stack usage.
     //
@@ -777,8 +775,7 @@ void SIFrameLowering::processFunctionBeforeFrameFinalized(
             bool Spilled = TRI.eliminateSGPRToVGPRSpillFrameIndex(MI, FI, RS);
             (void)Spilled;
             assert(Spilled && "failed to spill SGPR to VGPR when allocated");
-          } else
-            AllSGPRSpilledToVGPRs = false;
+          }
         }
       }
     }
@@ -786,11 +783,7 @@ void SIFrameLowering::processFunctionBeforeFrameFinalized(
 
   FuncInfo->removeSGPRToVGPRFrameIndices(MFI);
 
-  // FIXME: The other checks should be redundant with allStackObjectsAreDead,
-  // but currently hasNonSpillStackObjects is set only from source
-  // allocas. Stack temps produced from legalization are not counted currently.
-  if (FuncInfo->hasNonSpillStackObjects() || FuncInfo->hasSpilledVGPRs() ||
-      !AllSGPRSpilledToVGPRs || !allStackObjectsAreDead(MFI)) {
+  if (!allStackObjectsAreDeadOrSGPR(MFI)) {
     assert(RS && "RegScavenger required if spilling");
 
     if (FuncInfo->isEntryFunction()) {
@@ -831,8 +824,7 @@ MachineBasicBlock::iterator SIFrameLowering::eliminateCallFramePseudoInstr(
   bool IsDestroy = Opc == TII->getCallFrameDestroyOpcode();
   uint64_t CalleePopAmount = IsDestroy ? I->getOperand(1).getImm() : 0;
 
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
-  if (!TFI->hasReservedCallFrame(MF)) {
+  if (!hasReservedCallFrame(MF)) {
     unsigned Align = getStackAlignment();
 
     Amount = alignTo(Amount, Align);
@@ -863,14 +855,10 @@ bool SIFrameLowering::hasFP(const MachineFunction &MF) const {
     // API SP if there are calls.
     if (MF.getInfo<SIMachineFunctionInfo>()->isEntryFunction())
       return true;
-
-    // Retain behavior of always omitting the FP for leaf functions when
-    // possible.
-    if (MF.getTarget().Options.DisableFramePointerElim(MF))
-      return true;
   }
 
   return MFI.hasVarSizedObjects() || MFI.isFrameAddressTaken() ||
     MFI.hasStackMap() || MFI.hasPatchPoint() ||
-    MF.getSubtarget<GCNSubtarget>().getRegisterInfo()->needsStackRealignment(MF);
+    MF.getSubtarget<GCNSubtarget>().getRegisterInfo()->needsStackRealignment(MF) ||
+    MF.getTarget().Options.DisableFramePointerElim(MF);
 }

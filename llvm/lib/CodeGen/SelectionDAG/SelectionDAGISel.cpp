@@ -570,7 +570,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   for (unsigned i = 0, e = FuncInfo->ArgDbgValues.size(); i != e; ++i) {
     MachineInstr *MI = FuncInfo->ArgDbgValues[e-i-1];
     bool hasFI = MI->getOperand(0).isFI();
-    unsigned Reg =
+    Register Reg =
         hasFI ? TRI.getFrameRegister(*MF) : MI->getOperand(0).getReg();
     if (TargetRegisterInfo::isPhysicalRegister(Reg))
       EntryMBB->insert(EntryMBB->begin(), MI);
@@ -655,6 +655,35 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
 
   // Determine if floating point is used for msvc
   computeUsesMSVCFloatingPoint(TM.getTargetTriple(), Fn, MF->getMMI());
+
+  // Replace forward-declared registers with the registers containing
+  // the desired value.
+  for (DenseMap<unsigned, unsigned>::iterator
+       I = FuncInfo->RegFixups.begin(), E = FuncInfo->RegFixups.end();
+       I != E; ++I) {
+    unsigned From = I->first;
+    unsigned To = I->second;
+    // If To is also scheduled to be replaced, find what its ultimate
+    // replacement is.
+    while (true) {
+      DenseMap<unsigned, unsigned>::iterator J = FuncInfo->RegFixups.find(To);
+      if (J == E) break;
+      To = J->second;
+    }
+    // Make sure the new register has a sufficiently constrained register class.
+    if (TargetRegisterInfo::isVirtualRegister(From) &&
+        TargetRegisterInfo::isVirtualRegister(To))
+      MRI.constrainRegClass(To, MRI.getRegClass(From));
+    // Replace it.
+
+
+    // Replacing one register with another won't touch the kill flags.
+    // We need to conservatively clear the kill flags as a kill on the old
+    // register might dominate existing uses of the new register.
+    if (!MRI.use_empty(To))
+      MRI.clearKillFlags(From);
+    MRI.replaceRegWith(From, To);
+  }
 
   TLI->finalizeLowering(*MF);
 

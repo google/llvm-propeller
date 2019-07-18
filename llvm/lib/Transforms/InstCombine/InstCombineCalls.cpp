@@ -1194,6 +1194,23 @@ static Instruction *foldCttzCtlz(IntrinsicInst &II, InstCombiner &IC) {
     return CallInst::Create(F, {X, II.getArgOperand(1)});
   }
 
+  if (IsTZ) {
+    // cttz(-x) -> cttz(x)
+    if (match(Op0, m_Neg(m_Value(X)))) {
+      II.setOperand(0, X);
+      return &II;
+    }
+
+    // cttz(abs(x)) -> cttz(x)
+    // cttz(nabs(x)) -> cttz(x)
+    Value *Y;
+    SelectPatternFlavor SPF = matchSelectPattern(Op0, X, Y).Flavor;
+    if (SPF == SPF_ABS || SPF == SPF_NABS) {
+      II.setOperand(0, X);
+      return &II;
+    }
+  }
+
   KnownBits Known = IC.computeKnownBits(Op0, 0, &II);
 
   // Create a mask for bits above (ctlz) or below (cttz) the first known one.
@@ -1966,6 +1983,13 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       if (match(Op0, m_ZeroInt()) || match(Op0, m_Undef()))
         return BinaryOperator::CreateLShr(Op1,
                                           ConstantExpr::getSub(WidthC, ShAmtC));
+
+      // fshl i16 X, X, 8 --> bswap i16 X (reduce to more-specific form)
+      if (Op0 == Op1 && BitWidth == 16 && match(ShAmtC, m_SpecificInt(8))) {
+        Module *Mod = II->getModule();
+        Function *Bswap = Intrinsic::getDeclaration(Mod, Intrinsic::bswap, Ty);
+        return CallInst::Create(Bswap, { Op0 });
+      }
     }
 
     // Left or right might be masked.
@@ -3781,6 +3805,30 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     // A constant value is trivially uniform.
     if (Constant *C = dyn_cast<Constant>(II->getArgOperand(0)))
       return replaceInstUsesWith(*II, C);
+
+    // The rest of these may not be safe if the exec may not be the same between
+    // the def and use.
+    Value *Src = II->getArgOperand(0);
+    Instruction *SrcInst = dyn_cast<Instruction>(Src);
+    if (SrcInst && SrcInst->getParent() != II->getParent())
+      break;
+
+    // readfirstlane (readfirstlane x) -> readfirstlane x
+    // readlane (readfirstlane x), y -> readfirstlane x
+    if (match(Src, m_Intrinsic<Intrinsic::amdgcn_readfirstlane>()))
+      return replaceInstUsesWith(*II, Src);
+
+    if (IID == Intrinsic::amdgcn_readfirstlane) {
+      // readfirstlane (readlane x, y) -> readlane x, y
+      if (match(Src, m_Intrinsic<Intrinsic::amdgcn_readlane>()))
+        return replaceInstUsesWith(*II, Src);
+    } else {
+      // readlane (readlane x, y), y -> readlane x, y
+      if (match(Src, m_Intrinsic<Intrinsic::amdgcn_readlane>(
+                  m_Value(), m_Specific(II->getArgOperand(1)))))
+        return replaceInstUsesWith(*II, Src);
+    }
+
     break;
   }
   case Intrinsic::stackrestore: {

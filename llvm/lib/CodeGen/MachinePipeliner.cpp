@@ -148,6 +148,11 @@ static cl::opt<bool> SwpIgnoreRecMII("pipeliner-ignore-recmii",
                                      cl::ReallyHidden, cl::init(false),
                                      cl::ZeroOrMore, cl::desc("Ignore RecMII"));
 
+static cl::opt<bool> SwpShowResMask("pipeliner-show-mask", cl::Hidden,
+                                    cl::init(false));
+static cl::opt<bool> SwpDebugResource("pipeliner-dbg-res", cl::Hidden,
+                                      cl::init(false));
+
 namespace llvm {
 
 // A command line option to enable the CopyToPhi DAG mutation.
@@ -1007,23 +1012,20 @@ unsigned SwingSchedulerDAG::calculateResMII() {
     });
     for (unsigned C = 0; C < NumCycles; ++C)
       while (RI != RE) {
-        if ((*RI++)->canReserveResources(*MI)) {
+        if ((*RI)->canReserveResources(*MI)) {
+          (*RI)->reserveResources(*MI);
           ++ReservedCycles;
           break;
         }
+        RI++;
       }
-    // Start reserving resources using existing DFAs.
-    for (unsigned C = 0; C < ReservedCycles; ++C) {
-      --RI;
-      (*RI)->reserveResources(*MI);
-    }
-
     LLVM_DEBUG(dbgs() << "ReservedCycles:" << ReservedCycles
                       << ", NumCycles:" << NumCycles << "\n");
     // Add new DFAs, if needed, to reserve resources.
     for (unsigned C = ReservedCycles; C < NumCycles; ++C) {
-      LLVM_DEBUG(dbgs() << "NewResource created to reserve resources"
-                        << "\n");
+      LLVM_DEBUG(if (SwpDebugResource) dbgs()
+                 << "NewResource created to reserve resources"
+                 << "\n");
       ResourceManager *NewResource = new ResourceManager(&MF.getSubtarget());
       assert(NewResource->canReserveResources(*MI) && "Reserve error.");
       NewResource->reserveResources(*MI);
@@ -3720,9 +3722,8 @@ void SwingSchedulerDAG::checkValidNodeOrder(const NodeSetType &Circuits) const {
 
     for (SDep &PredEdge : SU->Preds) {
       SUnit *PredSU = PredEdge.getSUnit();
-      unsigned PredIndex =
-          std::get<1>(*std::lower_bound(Indices.begin(), Indices.end(),
-                                        std::make_pair(PredSU, 0), CompareKey));
+      unsigned PredIndex = std::get<1>(
+          *llvm::lower_bound(Indices, std::make_pair(PredSU, 0), CompareKey));
       if (!PredSU->getInstr()->isPHI() && PredIndex < Index) {
         PredBefore = true;
         Pred = PredSU;
@@ -3737,9 +3738,8 @@ void SwingSchedulerDAG::checkValidNodeOrder(const NodeSetType &Circuits) const {
       // return Indices.end().
       if (SuccSU->isBoundaryNode())
         continue;
-      unsigned SuccIndex =
-          std::get<1>(*std::lower_bound(Indices.begin(), Indices.end(),
-                                        std::make_pair(SuccSU, 0), CompareKey));
+      unsigned SuccIndex = std::get<1>(
+          *llvm::lower_bound(Indices, std::make_pair(SuccSU, 0), CompareKey));
       if (!SuccSU->getInstr()->isPHI() && SuccIndex < Index) {
         SuccBefore = true;
         Succ = SuccSU;
@@ -3750,9 +3750,8 @@ void SwingSchedulerDAG::checkValidNodeOrder(const NodeSetType &Circuits) const {
     if (PredBefore && SuccBefore && !SU->getInstr()->isPHI()) {
       // instructions in circuits are allowed to be scheduled
       // after both a successor and predecessor.
-      bool InCircuit = std::any_of(
-          Circuits.begin(), Circuits.end(),
-          [SU](const NodeSet &Circuit) { return Circuit.count(SU); });
+      bool InCircuit = llvm::any_of(
+          Circuits, [SU](const NodeSet &Circuit) { return Circuit.count(SU); });
       if (InCircuit)
         LLVM_DEBUG(dbgs() << "In a circuit, predecessor ";);
       else {
@@ -3971,19 +3970,25 @@ void ResourceManager::initProcResourceVectors(
     ProcResourceID++;
   }
   LLVM_DEBUG({
-    dbgs() << "ProcResourceDesc:\n";
-    for (unsigned I = 1, E = SM.getNumProcResourceKinds(); I < E; ++I) {
-      const MCProcResourceDesc *ProcResource = SM.getProcResource(I);
-      dbgs() << format(" %16s(%2d): Mask: 0x%08x, NumUnits:%2d\n",
-                       ProcResource->Name, I, Masks[I], ProcResource->NumUnits);
+    if (SwpShowResMask) {
+      dbgs() << "ProcResourceDesc:\n";
+      for (unsigned I = 1, E = SM.getNumProcResourceKinds(); I < E; ++I) {
+        const MCProcResourceDesc *ProcResource = SM.getProcResource(I);
+        dbgs() << format(" %16s(%2d): Mask: 0x%08x, NumUnits:%2d\n",
+                         ProcResource->Name, I, Masks[I],
+                         ProcResource->NumUnits);
+      }
+      dbgs() << " -----------------\n";
     }
-    dbgs() << " -----------------\n";
   });
 }
 
 bool ResourceManager::canReserveResources(const MCInstrDesc *MID) const {
 
-  LLVM_DEBUG({ dbgs() << "canReserveResources:\n"; });
+  LLVM_DEBUG({
+    if (SwpDebugResource)
+      dbgs() << "canReserveResources:\n";
+  });
   if (UseDFA)
     return DFAResources->canReserveResources(MID);
 
@@ -4006,20 +4011,24 @@ bool ResourceManager::canReserveResources(const MCInstrDesc *MID) const {
         SM.getProcResource(I->ProcResourceIdx);
     unsigned NumUnits = ProcResource->NumUnits;
     LLVM_DEBUG({
-      dbgs() << format(" %16s(%2d): Count: %2d, NumUnits:%2d, Cycles:%2d\n",
-                       ProcResource->Name, I->ProcResourceIdx,
-                       ProcResourceCount[I->ProcResourceIdx], NumUnits,
-                       I->Cycles);
+      if (SwpDebugResource)
+        dbgs() << format(" %16s(%2d): Count: %2d, NumUnits:%2d, Cycles:%2d\n",
+                         ProcResource->Name, I->ProcResourceIdx,
+                         ProcResourceCount[I->ProcResourceIdx], NumUnits,
+                         I->Cycles);
     });
     if (ProcResourceCount[I->ProcResourceIdx] >= NumUnits)
       return false;
   }
-  LLVM_DEBUG(dbgs() << "return true\n\n";);
+  LLVM_DEBUG(if (SwpDebugResource) dbgs() << "return true\n\n";);
   return true;
 }
 
 void ResourceManager::reserveResources(const MCInstrDesc *MID) {
-  LLVM_DEBUG({ dbgs() << "reserveResources:\n"; });
+  LLVM_DEBUG({
+    if (SwpDebugResource)
+      dbgs() << "reserveResources:\n";
+  });
   if (UseDFA)
     return DFAResources->reserveResources(MID);
 
@@ -4039,15 +4048,20 @@ void ResourceManager::reserveResources(const MCInstrDesc *MID) {
       continue;
     ++ProcResourceCount[PRE.ProcResourceIdx];
     LLVM_DEBUG({
-      const MCProcResourceDesc *ProcResource =
-          SM.getProcResource(PRE.ProcResourceIdx);
-      dbgs() << format(" %16s(%2d): Count: %2d, NumUnits:%2d, Cycles:%2d\n",
-                       ProcResource->Name, PRE.ProcResourceIdx,
-                       ProcResourceCount[PRE.ProcResourceIdx],
-                       ProcResource->NumUnits, PRE.Cycles);
+      if (SwpDebugResource) {
+        const MCProcResourceDesc *ProcResource =
+            SM.getProcResource(PRE.ProcResourceIdx);
+        dbgs() << format(" %16s(%2d): Count: %2d, NumUnits:%2d, Cycles:%2d\n",
+                         ProcResource->Name, PRE.ProcResourceIdx,
+                         ProcResourceCount[PRE.ProcResourceIdx],
+                         ProcResource->NumUnits, PRE.Cycles);
+      }
     });
   }
-  LLVM_DEBUG({ dbgs() << "reserveResources: done!\n\n"; });
+  LLVM_DEBUG({
+    if (SwpDebugResource)
+      dbgs() << "reserveResources: done!\n\n";
+  });
 }
 
 bool ResourceManager::canReserveResources(const MachineInstr &MI) const {

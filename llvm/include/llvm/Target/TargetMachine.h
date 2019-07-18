@@ -244,8 +244,6 @@ public:
 
   bool getUniqueBBSectionNames() const { return Options.UniqueBBSectionNames; }
 
-  bool canSeparateBBSections() const { return Options.SeparateBBSections; }
-
   /// Return true if data objects should be emitted into their own section,
   /// corresponds to -fdata-sections.
   bool getDataSections() const {
@@ -262,6 +260,10 @@ public:
   /// corresponding to -fbasicblock-sections.
   llvm::BasicBlockSection::SectionMode getBasicBlockSections() const {
     return Options.BasicBlockSections;
+  }
+
+  bool isFunctionInBasicBlockSectionsList(const StringRef &name) const {
+    return Options.BasicBlockSectionsList.lookup(name);
   }
 
   /// Get a \c TargetIRAnalysis appropriate for the target.

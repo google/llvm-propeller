@@ -185,6 +185,7 @@ bool NodeChainBuilder::AttachNodes(const ELFCfgNode *Src,
     return false;
   if (SrcChain->GetLastNode() != Src || SinkChain->GetFirstNode() != Sink)
     return false;
+  log("Attaching nodes " + Twine(Src->ShName) + "[" + Twine(Src->Freq) + "] -> " + Twine(Sink->ShName) + "[" + Twine(Sink->Freq) + "]");
   MergeChains(SrcChain, SinkChain);
   return true;
 }
@@ -220,9 +221,13 @@ void NodeChainBuilder::ComputeChainOrder(
 
 void ExtTSPChainBuilder::MergeChains(std::unique_ptr<NodeChainAssembly> A) {
   /* Merge the Node sequences according to a given NodeChainAssembly.*/
-  for (NodeChainSlice &Slice : A->Slices)
-    A->SplitChain->Nodes.splice(A->SplitChain->Nodes.end(), Slice.Chain->Nodes,
-                                Slice.Begin, Slice.End);
+  list<const ELFCfgNode*> NewNodeOrder;
+  for (NodeChainSlice &Slice : A->Slices){
+    std::copy(Slice.Begin, Slice.End, std::back_inserter(NewNodeOrder));
+  }
+  A->SplitChain->Nodes = std::move(NewNodeOrder);
+  //fprintf(stderr, "Now chain is:\n");
+  //A->SplitChain->Dump();
 
   /* Update NodeOffset and NodeToChainMap for all the nodes in the sequence */
   uint32_t RunningOffset = 0;
@@ -465,6 +470,14 @@ void ExtTSPChainBuilder::ComputeChainOrder(
         BestCandidate->second->GetExtTSPGain() > 0) {
       unique_ptr<NodeChainAssembly> BestCandidateNCA =
           std::move(BestCandidate->second);
+      /*
+      fprintf(stderr, "Best candidate was merging the following chains: %f\n", BestCandidateNCA->GetExtTSPGain());
+      for(auto& S: BestCandidateNCA->Slices){
+        for(auto SI=S.Begin, SE=S.End; SI!=SE; ++SI)
+          fprintf(stderr, "%s -> ", (*SI)->ShName.str().c_str());
+        fprintf(stderr, "\n");
+      }
+      */
       NodeChainAssemblies.erase(BestCandidate);
       MergeChains(std::move(BestCandidateNCA));
       Merged = true;
@@ -472,6 +485,11 @@ void ExtTSPChainBuilder::ComputeChainOrder(
   } while (Merged);
 
   AttachFallThroughs();
+  /*
+  for(auto& C: Chains){
+    C.second->Dump();
+  }
+  */
   SortChainsByExecutionDensity(ChainOrder);
   if (opts::PrintStats)
     PrintStats();

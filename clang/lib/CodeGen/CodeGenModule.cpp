@@ -1092,7 +1092,7 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
   // With BasicBlockSections, it is important to have a unique name for
   // internal linkage functions, to differentiate the symbols across
   // modules.
-  if (getCodeGenOpts().BasicBlockSections != "none" &&
+  if (getCodeGenOpts().UniqueInternalFuncNames &&
       dyn_cast<FunctionDecl>(GD.getDecl()) &&
       this->getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) {
     std::string UniqueSuffix = getUniqueModuleId(&getModule(), true);
@@ -1101,13 +1101,11 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
     }
   }
 
-  // Postfix kernel stub names with .stub to differentiate them from kernel
-  // names in device binaries. This is to facilitate the debugger to find
-  // the correct symbols for kernels in the device binary.
+  // Adjust kernel stub mangling as we may need to be able to differentiate
+  // them from the kernel itself (e.g., for HIP).
   if (auto *FD = dyn_cast<FunctionDecl>(GD.getDecl()))
-    if (getLangOpts().HIP && !getLangOpts().CUDAIsDevice &&
-        FD->hasAttr<CUDAGlobalAttr>())
-      MangledName = MangledName + ".stub";
+    if (!getLangOpts().CUDAIsDevice && FD->hasAttr<CUDAGlobalAttr>())
+      MangledName = getCUDARuntime().getDeviceStubName(MangledName);
 
   auto Result = Manglings.insert(std::make_pair(MangledName, GD));
   return MangledDeclNames[CanonicalGD] = Result.first->first();
@@ -2430,7 +2428,8 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
       if (!Global->hasAttr<CUDADeviceAttr>() &&
           !Global->hasAttr<CUDAGlobalAttr>() &&
           !Global->hasAttr<CUDAConstantAttr>() &&
-          !Global->hasAttr<CUDASharedAttr>())
+          !Global->hasAttr<CUDASharedAttr>() &&
+          !(LangOpts.HIP && Global->hasAttr<HIPPinnedShadowAttr>()))
         return;
     } else {
       // We need to emit host-side 'shadows' for all global
@@ -2490,13 +2489,19 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
         // Emit declaration of the must-be-emitted declare target variable.
         if (llvm::Optional<OMPDeclareTargetDeclAttr::MapTypeTy> Res =
                 OMPDeclareTargetDeclAttr::isDeclareTargetDeclaration(VD)) {
-          if (*Res == OMPDeclareTargetDeclAttr::MT_To) {
+          bool UnifiedMemoryEnabled =
+              getOpenMPRuntime().hasRequiresUnifiedSharedMemory();
+          if (*Res == OMPDeclareTargetDeclAttr::MT_To &&
+              !UnifiedMemoryEnabled) {
             (void)GetAddrOfGlobalVar(VD);
           } else {
-            assert(*Res == OMPDeclareTargetDeclAttr::MT_Link &&
-                   "link claue expected.");
-            (void)getOpenMPRuntime().getAddrOfDeclareTargetLink(VD);
+            assert(((*Res == OMPDeclareTargetDeclAttr::MT_Link) ||
+                    (*Res == OMPDeclareTargetDeclAttr::MT_To &&
+                     UnifiedMemoryEnabled)) &&
+                   "Link clause or to clause with unified memory expected.");
+            (void)getOpenMPRuntime().getAddrOfDeclareTargetVar(VD);
           }
+
           return;
         }
       }
@@ -3721,6 +3726,11 @@ static bool shouldBeInCOMDAT(CodeGenModule &CGM, const Decl &D) {
   if (!CGM.supportsCOMDAT())
     return false;
 
+  // Do not set COMDAT attribute for CUDA/HIP stub functions to prevent
+  // them being "merged" by the COMDAT Folding linker optimization.
+  if (D.hasAttr<CUDAGlobalAttr>())
+    return false;
+
   if (D.hasAttr<SelectAnyAttr>())
     return true;
 
@@ -3785,7 +3795,12 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
       !getLangOpts().CUDAIsDevice &&
       (D->hasAttr<CUDAConstantAttr>() || D->hasAttr<CUDADeviceAttr>() ||
        D->hasAttr<CUDASharedAttr>());
-  if (getLangOpts().CUDA && (IsCUDASharedVar || IsCUDAShadowVar))
+  // HIP pinned shadow of initialized host-side global variables are also
+  // left undefined.
+  bool IsHIPPinnedShadowVar =
+      getLangOpts().CUDAIsDevice && D->hasAttr<HIPPinnedShadowAttr>();
+  if (getLangOpts().CUDA &&
+      (IsCUDASharedVar || IsCUDAShadowVar || IsHIPPinnedShadowVar))
     Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
   else if (!InitExpr) {
     // This is a tentative definition; tentative definitions are
@@ -3896,7 +3911,8 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
       // global variables become internal definitions. These have to
       // be internal in order to prevent name conflicts with global
       // host variables with the same name in a different TUs.
-      if (D->hasAttr<CUDADeviceAttr>() || D->hasAttr<CUDAConstantAttr>()) {
+      if (D->hasAttr<CUDADeviceAttr>() || D->hasAttr<CUDAConstantAttr>() ||
+          D->hasAttr<HIPPinnedShadowAttr>()) {
         Linkage = llvm::GlobalValue::InternalLinkage;
 
         // Shadow variables and their properties must be registered
@@ -3920,7 +3936,8 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
     }
   }
 
-  GV->setInitializer(Init);
+  if (!IsHIPPinnedShadowVar)
+    GV->setInitializer(Init);
   if (emitter) emitter->finalize(GV);
 
   // If it is safe to mark the global 'constant', do so now.

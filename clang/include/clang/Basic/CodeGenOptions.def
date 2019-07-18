@@ -62,6 +62,7 @@ CODEGENOPT(ExperimentalNewPassManager, 1, 0) ///< Enables the new, experimental
 CODEGENOPT(DebugPassManager, 1, 0) ///< Prints debug information for the new
                                    ///< pass manager.
 CODEGENOPT(DisableRedZone    , 1, 0) ///< Set when -mno-red-zone is enabled.
+CODEGENOPT(EnableDebugEntryValues, 1, 0) ///< Emit call site parameter dbg info
 CODEGENOPT(IndirectTlsSegRefs, 1, 0) ///< Set when -mno-tls-direct-seg-refs
                                      ///< is specified.
 CODEGENOPT(DisableTailCalls  , 1, 0) ///< Do not emit tail calls.
@@ -143,8 +144,7 @@ CODEGENOPT(NoTrappingMath    , 1, 0) ///< Set when -fno-trapping-math is enabled
 CODEGENOPT(NoNaNsFPMath      , 1, 0) ///< Assume FP arguments, results not NaN.
 CODEGENOPT(FlushDenorm       , 1, 0) ///< Allow FP denorm numbers to be flushed to zero
 CODEGENOPT(CorrectlyRoundedDivSqrt, 1, 0) ///< -cl-fp32-correctly-rounded-divide-sqrt
-CODEGENOPT(SeparateBBSections, 1, 1) ///< BB Sections can be separated from the parent
-                                     ///< function.
+CODEGENOPT(UniqueInternalFuncNames, 1, 0) ///< Internal Linkage functions get unique names.
 
 /// When false, this attempts to generate code as if the result of an
 /// overflowing conversion matches the overflowing behavior of a target's native
@@ -262,8 +262,6 @@ CODEGENOPT(DebugTypeExtRefs, 1, 0) ///< Whether or not debug info should contain
 CODEGENOPT(DebugExplicitImport, 1, 0)  ///< Whether or not debug info should
                                        ///< contain explicit imports for
                                        ///< anonymous namespaces
-
-ENUM_CODEGENOPT(SplitDwarfMode, DwarfFissionKind, 2, NoFission) ///< DWARF fission mode to use.
 
 CODEGENOPT(SplitDwarfInlining, 1, 1) ///< Whether to include inlining info in the
                                      ///< skeleton CU to allow for symbolication

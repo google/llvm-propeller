@@ -363,6 +363,9 @@ namespace opts {
              cl::values(clEnumVal(LLVM, "LLVM default style"),
                         clEnumVal(GNU, "GNU readelf style")),
              cl::init(LLVM));
+
+  cl::extrahelp
+      HelpResponse("\nPass @FILE as argument to read options from FILE.\n");
 } // namespace opts
 
 namespace llvm {
@@ -495,13 +498,9 @@ static void dumpObject(const ObjectFile *Obj, ScopedPrinter &Writer) {
   if (opts::ProgramHeaders || opts::SectionMapping == cl::BOU_TRUE)
     Dumper->printProgramHeaders(opts::ProgramHeaders, opts::SectionMapping);
   if (!opts::StringDump.empty())
-    llvm::for_each(opts::StringDump, [&Dumper, Obj](StringRef SectionName) {
-      Dumper->printSectionAsString(Obj, SectionName);
-    });
+    Dumper->printSectionsAsString(Obj, opts::StringDump);
   if (!opts::HexDump.empty())
-    llvm::for_each(opts::HexDump, [&Dumper, Obj](StringRef SectionName) {
-      Dumper->printSectionAsHex(Obj, SectionName);
-    });
+    Dumper->printSectionsAsHex(Obj, opts::HexDump);
   if (opts::HashTable)
     Dumper->printHashTable();
   if (opts::GnuHashTable)

@@ -35,7 +35,7 @@ class MachineInstr;
 class MCInst;
 class PassRegistry;
 
-
+FunctionPass *createARMLowOverheadLoopsPass();
 Pass *createARMParallelDSPPass();
 FunctionPass *createARMISelDag(ARMBaseTargetMachine &TM,
                                CodeGenOpt::Level OptLevel);
@@ -64,7 +64,9 @@ void initializeARMCodeGenPreparePass(PassRegistry &);
 void initializeARMConstantIslandsPass(PassRegistry &);
 void initializeARMExpandPseudoPass(PassRegistry &);
 void initializeThumb2SizeReducePass(PassRegistry &);
+void initializeThumb2ITBlockPass(PassRegistry &);
 void initializeMVEVPTBlockPass(PassRegistry &);
+void initializeARMLowOverheadLoopsPass(PassRegistry &);
 
 } // end namespace llvm
 

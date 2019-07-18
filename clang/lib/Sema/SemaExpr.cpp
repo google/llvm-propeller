@@ -4737,6 +4737,33 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
   assert(VK == VK_RValue || LangOpts.CPlusPlus ||
          !ResultType.isCForbiddenLValueType());
 
+  if (LHSExp->IgnoreParenImpCasts()->getType()->isVariablyModifiedType() &&
+      FunctionScopes.size() > 1) {
+    if (auto *TT =
+            LHSExp->IgnoreParenImpCasts()->getType()->getAs<TypedefType>()) {
+      for (auto I = FunctionScopes.rbegin(),
+                E = std::prev(FunctionScopes.rend());
+           I != E; ++I) {
+        auto *CSI = dyn_cast<CapturingScopeInfo>(*I);
+        if (CSI == nullptr)
+          break;
+        DeclContext *DC = nullptr;
+        if (auto *LSI = dyn_cast<LambdaScopeInfo>(CSI))
+          DC = LSI->CallOperator;
+        else if (auto *CRSI = dyn_cast<CapturedRegionScopeInfo>(CSI))
+          DC = CRSI->TheCapturedDecl;
+        else if (auto *BSI = dyn_cast<BlockScopeInfo>(CSI))
+          DC = BSI->TheDecl;
+        if (DC) {
+          if (DC->containsDecl(TT->getDecl()))
+            break;
+          captureVariablyModifiedType(
+              Context, LHSExp->IgnoreParenImpCasts()->getType(), CSI);
+        }
+      }
+    }
+  }
+
   return new (Context)
       ArraySubscriptExpr(LHSExp, RHSExp, ResultType, VK, OK, RLoc);
 }
@@ -5767,28 +5794,29 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
   // CheckBuiltinFunctionCall below just after creation of the call expression.
   const FunctionType *FuncT = nullptr;
   if (!BuiltinID || !Context.BuiltinInfo.hasCustomTypechecking(BuiltinID)) {
-   retry:
+  retry:
     if (const PointerType *PT = Fn->getType()->getAs<PointerType>()) {
       // C99 6.5.2.2p1 - "The expression that denotes the called function shall
       // have type pointer to function".
       FuncT = PT->getPointeeType()->getAs<FunctionType>();
       if (!FuncT)
         return ExprError(Diag(LParenLoc, diag::err_typecheck_call_not_function)
-                           << Fn->getType() << Fn->getSourceRange());
+                         << Fn->getType() << Fn->getSourceRange());
     } else if (const BlockPointerType *BPT =
-                 Fn->getType()->getAs<BlockPointerType>()) {
+                   Fn->getType()->getAs<BlockPointerType>()) {
       FuncT = BPT->getPointeeType()->castAs<FunctionType>();
     } else {
       // Handle calls to expressions of unknown-any type.
       if (Fn->getType() == Context.UnknownAnyTy) {
         ExprResult rewrite = rebuildUnknownAnyFunction(*this, Fn);
-        if (rewrite.isInvalid()) return ExprError();
+        if (rewrite.isInvalid())
+          return ExprError();
         Fn = rewrite.get();
         goto retry;
       }
 
-    return ExprError(Diag(LParenLoc, diag::err_typecheck_call_not_function)
-      << Fn->getType() << Fn->getSourceRange());
+      return ExprError(Diag(LParenLoc, diag::err_typecheck_call_not_function)
+                       << Fn->getType() << Fn->getSourceRange());
     }
   }
 
@@ -9617,9 +9645,11 @@ static void DiagnoseBadShiftValues(Sema& S, ExprResult &LHS, ExprResult &RHS,
     return;
 
   // When left shifting an ICE which is signed, we can check for overflow which
-  // according to C++ has undefined behavior ([expr.shift] 5.8/2). Unsigned
-  // integers have defined behavior modulo one more than the maximum value
-  // representable in the result type, so never warn for those.
+  // according to C++ standards prior to C++2a has undefined behavior
+  // ([expr.shift] 5.8/2). Unsigned integers have defined behavior modulo one
+  // more than the maximum value representable in the result type, so never
+  // warn for those. (FIXME: Unsigned left-shift overflow in a constant
+  // expression is still probably a bug.)
   Expr::EvalResult LHSResult;
   if (LHS.get()->isValueDependent() ||
       LHSType->hasUnsignedIntegerRepresentation() ||
@@ -9628,8 +9658,9 @@ static void DiagnoseBadShiftValues(Sema& S, ExprResult &LHS, ExprResult &RHS,
   llvm::APSInt Left = LHSResult.Val.getInt();
 
   // If LHS does not have a signed type and non-negative value
-  // then, the behavior is undefined. Warn about it.
-  if (Left.isNegative() && !S.getLangOpts().isSignedOverflowDefined()) {
+  // then, the behavior is undefined before C++2a. Warn about it.
+  if (Left.isNegative() && !S.getLangOpts().isSignedOverflowDefined() &&
+      !S.getLangOpts().CPlusPlus2a) {
     S.DiagRuntimeBehavior(Loc, LHS.get(),
                           S.PDiag(diag::warn_shift_lhs_negative)
                             << LHS.get()->getSourceRange());
@@ -14538,14 +14569,13 @@ Sema::VerifyIntegerConstantExpression(Expr *E, llvm::APSInt *Result,
     return ExprError();
   }
 
-  if (!isa<ConstantExpr>(E))
-    E = ConstantExpr::Create(Context, E);
-
   // Circumvent ICE checking in C++11 to avoid evaluating the expression twice
   // in the non-ICE case.
   if (!getLangOpts().CPlusPlus11 && E->isIntegerConstantExpr(Context)) {
     if (Result)
       *Result = E->EvaluateKnownConstIntCheckOverflow(Context);
+    if (!isa<ConstantExpr>(E))
+      E = ConstantExpr::Create(Context, E);
     return E;
   }
 
@@ -14555,8 +14585,12 @@ Sema::VerifyIntegerConstantExpression(Expr *E, llvm::APSInt *Result,
 
   // Try to evaluate the expression, and produce diagnostics explaining why it's
   // not a constant expression as a side-effect.
-  bool Folded = E->EvaluateAsRValue(EvalResult, Context) &&
-                EvalResult.Val.isInt() && !EvalResult.HasSideEffects;
+  bool Folded =
+      E->EvaluateAsRValue(EvalResult, Context, /*isConstantContext*/ true) &&
+      EvalResult.Val.isInt() && !EvalResult.HasSideEffects;
+
+  if (!isa<ConstantExpr>(E))
+    E = ConstantExpr::Create(Context, E, EvalResult.Val);
 
   // In C++11, we can rely on diagnostics being produced for any expression
   // which is not a constant expression. If no diagnostics were produced, then

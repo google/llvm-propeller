@@ -75,6 +75,11 @@ struct FileHeader {
   ELF_EM Machine;
   ELF_EF Flags;
   llvm::yaml::Hex64 Entry;
+
+  Optional<llvm::yaml::Hex16> SHEntSize;
+  Optional<llvm::yaml::Hex16> SHOffset;
+  Optional<llvm::yaml::Hex16> SHNum;
+  Optional<llvm::yaml::Hex16> SHStrNdx;
 };
 
 struct SectionName {
@@ -153,7 +158,7 @@ struct DynamicSection : Section {
 struct RawContentSection : Section {
   Optional<yaml::BinaryRef> Content;
   Optional<llvm::yaml::Hex64> Size;
-  llvm::yaml::Hex64 Info;
+  Optional<llvm::yaml::Hex64> Info;
 
   RawContentSection() : Section(SectionKind::RawContent) {}
 

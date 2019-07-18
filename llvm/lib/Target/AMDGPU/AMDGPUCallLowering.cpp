@@ -37,17 +37,17 @@ struct OutgoingArgHandler : public CallLowering::ValueHandler {
 
   MachineInstrBuilder MIB;
 
-  unsigned getStackAddress(uint64_t Size, int64_t Offset,
+  Register getStackAddress(uint64_t Size, int64_t Offset,
                            MachinePointerInfo &MPO) override {
     llvm_unreachable("not implemented");
   }
 
-  void assignValueToAddress(unsigned ValVReg, unsigned Addr, uint64_t Size,
+  void assignValueToAddress(Register ValVReg, Register Addr, uint64_t Size,
                             MachinePointerInfo &MPO, CCValAssign &VA) override {
     llvm_unreachable("not implemented");
   }
 
-  void assignValueToReg(unsigned ValVReg, unsigned PhysReg,
+  void assignValueToReg(Register ValVReg, Register PhysReg,
                         CCValAssign &VA) override {
     MIB.addUse(PhysReg);
     MIRBuilder.buildCopy(PhysReg, ValVReg);
@@ -69,7 +69,7 @@ AMDGPUCallLowering::AMDGPUCallLowering(const AMDGPUTargetLowering &TLI)
 
 bool AMDGPUCallLowering::lowerReturn(MachineIRBuilder &MIRBuilder,
                                      const Value *Val,
-                                     ArrayRef<unsigned> VRegs) const {
+                                     ArrayRef<Register> VRegs) const {
 
   MachineFunction &MF = MIRBuilder.getMF();
   MachineRegisterInfo &MRI = MF.getRegInfo();
@@ -81,7 +81,7 @@ bool AMDGPUCallLowering::lowerReturn(MachineIRBuilder &MIRBuilder,
     return true;
   }
 
-  unsigned VReg = VRegs[0];
+  Register VReg = VRegs[0];
 
   const Function &F = MF.getFunction();
   auto &DL = F.getParent()->getDataLayout();
@@ -111,7 +111,7 @@ bool AMDGPUCallLowering::lowerReturn(MachineIRBuilder &MIRBuilder,
   return true;
 }
 
-unsigned AMDGPUCallLowering::lowerParameterPtr(MachineIRBuilder &MIRBuilder,
+Register AMDGPUCallLowering::lowerParameterPtr(MachineIRBuilder &MIRBuilder,
                                                Type *ParamTy,
                                                uint64_t Offset) const {
 
@@ -122,12 +122,12 @@ unsigned AMDGPUCallLowering::lowerParameterPtr(MachineIRBuilder &MIRBuilder,
   const DataLayout &DL = F.getParent()->getDataLayout();
   PointerType *PtrTy = PointerType::get(ParamTy, AMDGPUAS::CONSTANT_ADDRESS);
   LLT PtrType = getLLTForType(*PtrTy, DL);
-  unsigned DstReg = MRI.createGenericVirtualRegister(PtrType);
-  unsigned KernArgSegmentPtr =
+  Register DstReg = MRI.createGenericVirtualRegister(PtrType);
+  Register KernArgSegmentPtr =
     MFI->getPreloadedReg(AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
-  unsigned KernArgSegmentVReg = MRI.getLiveInVirtReg(KernArgSegmentPtr);
+  Register KernArgSegmentVReg = MRI.getLiveInVirtReg(KernArgSegmentPtr);
 
-  unsigned OffsetReg = MRI.createGenericVirtualRegister(LLT::scalar(64));
+  Register OffsetReg = MRI.createGenericVirtualRegister(LLT::scalar(64));
   MIRBuilder.buildConstant(OffsetReg, Offset);
 
   MIRBuilder.buildGEP(DstReg, KernArgSegmentVReg, OffsetReg);
@@ -138,14 +138,14 @@ unsigned AMDGPUCallLowering::lowerParameterPtr(MachineIRBuilder &MIRBuilder,
 void AMDGPUCallLowering::lowerParameter(MachineIRBuilder &MIRBuilder,
                                         Type *ParamTy, uint64_t Offset,
                                         unsigned Align,
-                                        unsigned DstReg) const {
+                                        Register DstReg) const {
   MachineFunction &MF = MIRBuilder.getMF();
   const Function &F = MF.getFunction();
   const DataLayout &DL = F.getParent()->getDataLayout();
   PointerType *PtrTy = PointerType::get(ParamTy, AMDGPUAS::CONSTANT_ADDRESS);
   MachinePointerInfo PtrInfo(UndefValue::get(PtrTy));
   unsigned TypeSize = DL.getTypeStoreSize(ParamTy);
-  unsigned PtrReg = lowerParameterPtr(MIRBuilder, ParamTy, Offset);
+  Register PtrReg = lowerParameterPtr(MIRBuilder, ParamTy, Offset);
 
   MachineMemOperand *MMO =
       MF.getMachineMemOperand(PtrInfo, MachineMemOperand::MOLoad |
@@ -156,7 +156,7 @@ void AMDGPUCallLowering::lowerParameter(MachineIRBuilder &MIRBuilder,
   MIRBuilder.buildLoad(DstReg, PtrReg, *MMO);
 }
 
-static unsigned findFirstFreeSGPR(CCState &CCInfo) {
+static Register findFirstFreeSGPR(CCState &CCInfo) {
   unsigned NumSGPRs = AMDGPU::SGPR_32RegClass.getNumRegs();
   for (unsigned Reg = 0; Reg < NumSGPRs; ++Reg) {
     if (!CCInfo.isAllocated(AMDGPU::SGPR0 + Reg)) {
@@ -193,9 +193,9 @@ static void allocateSystemSGPRs(CCState &CCInfo,
   }
 }
 
-bool AMDGPUCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
-                                              const Function &F,
-                                              ArrayRef<unsigned> VRegs) const {
+bool AMDGPUCallLowering::lowerFormalArguments(
+    MachineIRBuilder &MIRBuilder, const Function &F,
+    ArrayRef<ArrayRef<Register>> VRegs) const {
   // AMDGPU_GS and AMDGP_HS are not supported yet.
   if (F.getCallingConv() == CallingConv::AMDGPU_GS ||
       F.getCallingConv() == CallingConv::AMDGPU_HS)
@@ -215,27 +215,27 @@ bool AMDGPUCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
 
   // FIXME: How should these inputs interact with inreg / custom SGPR inputs?
   if (Info->hasPrivateSegmentBuffer()) {
-    unsigned PrivateSegmentBufferReg = Info->addPrivateSegmentBuffer(*TRI);
+    Register PrivateSegmentBufferReg = Info->addPrivateSegmentBuffer(*TRI);
     MF.addLiveIn(PrivateSegmentBufferReg, &AMDGPU::SReg_128RegClass);
     CCInfo.AllocateReg(PrivateSegmentBufferReg);
   }
 
   if (Info->hasDispatchPtr()) {
-    unsigned DispatchPtrReg = Info->addDispatchPtr(*TRI);
+    Register DispatchPtrReg = Info->addDispatchPtr(*TRI);
     // FIXME: Need to add reg as live-in
     CCInfo.AllocateReg(DispatchPtrReg);
   }
 
   if (Info->hasQueuePtr()) {
-    unsigned QueuePtrReg = Info->addQueuePtr(*TRI);
+    Register QueuePtrReg = Info->addQueuePtr(*TRI);
     // FIXME: Need to add reg as live-in
     CCInfo.AllocateReg(QueuePtrReg);
   }
 
   if (Info->hasKernargSegmentPtr()) {
-    unsigned InputPtrReg = Info->addKernargSegmentPtr(*TRI);
+    Register InputPtrReg = Info->addKernargSegmentPtr(*TRI);
     const LLT P2 = LLT::pointer(AMDGPUAS::CONSTANT_ADDRESS, 64);
-    unsigned VReg = MRI.createGenericVirtualRegister(P2);
+    Register VReg = MRI.createGenericVirtualRegister(P2);
     MRI.addLiveIn(InputPtrReg, VReg);
     MIRBuilder.getMBB().addLiveIn(InputPtrReg);
     MIRBuilder.buildCopy(VReg, InputPtrReg);
@@ -275,9 +275,16 @@ bool AMDGPUCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
       uint64_t ArgOffset = alignTo(ExplicitArgOffset, ABIAlign) + BaseOffset;
       ExplicitArgOffset = alignTo(ExplicitArgOffset, ABIAlign) + AllocSize;
 
+      ArrayRef<Register> OrigArgRegs = VRegs[i];
+      Register ArgReg =
+          OrigArgRegs.size() == 1
+              ? OrigArgRegs[0]
+              : MRI.createGenericVirtualRegister(getLLTForType(*ArgTy, DL));
       unsigned Align = MinAlign(KernArgBaseAlign, ArgOffset);
       ArgOffset = alignTo(ArgOffset, DL.getABITypeAlignment(ArgTy));
-      lowerParameter(MIRBuilder, ArgTy, ArgOffset, Align, VRegs[i]);
+      lowerParameter(MIRBuilder, ArgTy, ArgOffset, Align, ArgReg);
+      if (OrigArgRegs.size() > 1)
+        unpackRegs(OrigArgRegs, ArgReg, ArgTy, MIRBuilder);
       ++i;
     }
 
@@ -295,7 +302,8 @@ bool AMDGPUCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
 
     // We can only hanlde simple value types at the moment.
     ISD::ArgFlagsTy Flags;
-    ArgInfo OrigArg{VRegs[i], CurOrigArg->getType()};
+    assert(VRegs[i].size() == 1 && "Can't lower into more than one register");
+    ArgInfo OrigArg{VRegs[i][0], CurOrigArg->getType()};
     setArgFlags(OrigArg, i + 1, DL, F);
     Flags.setOrigAlign(DL.getABITypeAlignment(CurOrigArg->getType()));
 
@@ -348,10 +356,12 @@ bool AMDGPUCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
          OrigArgIdx != NumArgs && i != ArgLocs.size(); ++Arg, ++OrigArgIdx) {
        if (Skipped.test(OrigArgIdx))
           continue;
-      CCValAssign &VA = ArgLocs[i++];
-      MRI.addLiveIn(VA.getLocReg(), VRegs[OrigArgIdx]);
-      MIRBuilder.getMBB().addLiveIn(VA.getLocReg());
-      MIRBuilder.buildCopy(VRegs[OrigArgIdx], VA.getLocReg());
+       assert(VRegs[OrigArgIdx].size() == 1 &&
+              "Can't lower into more than 1 reg");
+       CCValAssign &VA = ArgLocs[i++];
+       MRI.addLiveIn(VA.getLocReg(), VRegs[OrigArgIdx][0]);
+       MIRBuilder.getMBB().addLiveIn(VA.getLocReg());
+       MIRBuilder.buildCopy(VRegs[OrigArgIdx][0], VA.getLocReg());
     }
 
     allocateSystemSGPRs(CCInfo, MF, *Info, F.getCallingConv(), IsShader);

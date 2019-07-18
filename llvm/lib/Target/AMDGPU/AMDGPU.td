@@ -193,6 +193,12 @@ def FeatureFlatSegmentOffsetBug : SubtargetFeature<"flat-segment-offset-bug",
   "GFX10 bug, inst_offset ignored in flat segment"
 >;
 
+def FeatureOffset3fBug : SubtargetFeature<"offset-3f-bug",
+  "HasOffset3fBug",
+  "true",
+  "Branch offset of 3f hardware bug"
+>;
+
 class SubtargetFeatureLDSBankCount <int Value> : SubtargetFeature <
   "ldsbankcount"#Value,
   "LDSBankCount",
@@ -767,6 +773,7 @@ def FeatureGroup {
     FeatureVcmpxExecWARHazard,
     FeatureLdsBranchVmemWARHazard,
     FeatureNSAtoVMEMBug,
+    FeatureOffset3fBug,
     FeatureFlatSegmentOffsetBug
    ];
 }
@@ -777,7 +784,7 @@ def FeatureISAVersion10_1_0 : FeatureSet<
      FeatureLDSBankCount32,
      FeatureDLInsts,
      FeatureNSAEncoding,
-     FeatureWavefrontSize64,
+     FeatureWavefrontSize32,
      FeatureScalarStores,
      FeatureScalarAtomics,
      FeatureScalarFlatScratchInsts,
@@ -795,7 +802,7 @@ def FeatureISAVersion10_1_1 : FeatureSet<
      FeatureDot5Insts,
      FeatureDot6Insts,
      FeatureNSAEncoding,
-     FeatureWavefrontSize64,
+     FeatureWavefrontSize32,
      FeatureScalarStores,
      FeatureScalarAtomics,
      FeatureScalarFlatScratchInsts,
@@ -812,7 +819,7 @@ def FeatureISAVersion10_1_2 : FeatureSet<
      FeatureDot5Insts,
      FeatureDot6Insts,
      FeatureNSAEncoding,
-     FeatureWavefrontSize64,
+     FeatureWavefrontSize32,
      FeatureScalarStores,
      FeatureScalarAtomics,
      FeatureScalarFlatScratchInsts,
@@ -1067,6 +1074,9 @@ def HasDot5Insts : Predicate<"Subtarget->hasDot5Insts()">,
 
 def HasDot6Insts : Predicate<"Subtarget->hasDot6Insts()">,
   AssemblerPredicate<"FeatureDot6Insts">;
+
+def HasOffset3fBug : Predicate<"!Subtarget->hasOffset3fBug()">,
+  AssemblerPredicate<"FeatureOffset3fBug">;
 
 def EnableLateCFGStructurize : Predicate<
   "EnableLateStructurizeCFG">;

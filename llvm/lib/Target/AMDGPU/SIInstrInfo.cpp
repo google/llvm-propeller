@@ -2547,7 +2547,8 @@ bool SIInstrInfo::hasUnwantedEffectsWhenEXECEmpty(const MachineInstr &MI) const 
   //       given the typical code patterns.
   if (Opcode == AMDGPU::S_SENDMSG || Opcode == AMDGPU::S_SENDMSGHALT ||
       Opcode == AMDGPU::EXP || Opcode == AMDGPU::EXP_DONE ||
-      Opcode == AMDGPU::DS_ORDERED_COUNT || Opcode == AMDGPU::S_TRAP)
+      Opcode == AMDGPU::DS_ORDERED_COUNT || Opcode == AMDGPU::S_TRAP ||
+      Opcode == AMDGPU::DS_GWS_INIT || Opcode == AMDGPU::DS_GWS_BARRIER)
     return true;
 
   if (MI.isCall() || MI.isInlineAsm())
@@ -2702,7 +2703,7 @@ bool SIInstrInfo::isImmOperandLegal(const MachineInstr &MI, unsigned OpNo,
   const MCInstrDesc &InstDesc = MI.getDesc();
   const MCOperandInfo &OpInfo = InstDesc.OpInfo[OpNo];
 
-  assert(MO.isImm() || MO.isTargetIndex() || MO.isFI());
+  assert(MO.isImm() || MO.isTargetIndex() || MO.isFI() || MO.isGlobal());
 
   if (OpInfo.OperandType == MCOI::OPERAND_IMMEDIATE)
     return true;
@@ -3011,7 +3012,7 @@ bool SIInstrInfo::verifyInstruction(const MachineInstr &MI,
 
     switch (Desc.OpInfo[i].OperandType) {
     case MCOI::OPERAND_REGISTER:
-      if (MI.getOperand(i).isImm()) {
+      if (MI.getOperand(i).isImm() || MI.getOperand(i).isGlobal()) {
         ErrInfo = "Illegal immediate value for operand.";
         return false;
       }
@@ -3681,7 +3682,7 @@ bool SIInstrInfo::isLegalVSrcOperand(const MachineRegisterInfo &MRI,
     return isLegalRegOperand(MRI, OpInfo, MO);
 
   // Handle non-register types that are treated like immediates.
-  assert(MO.isImm() || MO.isTargetIndex() || MO.isFI());
+  assert(MO.isImm() || MO.isTargetIndex() || MO.isFI() || MO.isGlobal());
   return true;
 }
 
@@ -3738,7 +3739,7 @@ bool SIInstrInfo::isOperandLegal(const MachineInstr &MI, unsigned OpIdx,
   }
 
   // Handle non-register types that are treated like immediates.
-  assert(MO->isImm() || MO->isTargetIndex() || MO->isFI());
+  assert(MO->isImm() || MO->isTargetIndex() || MO->isFI() || MO->isGlobal());
 
   if (!DefinedRC) {
     // This operand expects an immediate.
@@ -4402,21 +4403,28 @@ void SIInstrInfo::legalizeOperands(MachineInstr &MI,
       unsigned NewVAddrHi = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
       unsigned NewVAddr = MRI.createVirtualRegister(&AMDGPU::VReg_64RegClass);
 
+      const auto *BoolXExecRC = RI.getRegClass(AMDGPU::SReg_1_XEXECRegClassID);
+      unsigned CondReg0 = MRI.createVirtualRegister(BoolXExecRC);
+      unsigned CondReg1 = MRI.createVirtualRegister(BoolXExecRC);
+
       unsigned RsrcPtr, NewSRsrc;
       std::tie(RsrcPtr, NewSRsrc) = extractRsrcPtr(*this, MI, *Rsrc);
 
       // NewVaddrLo = RsrcPtr:sub0 + VAddr:sub0
-      DebugLoc DL = MI.getDebugLoc();
-      fixImplicitOperands(*
-        BuildMI(MBB, MI, DL, get(AMDGPU::V_ADD_I32_e32), NewVAddrLo)
-          .addReg(RsrcPtr, 0, AMDGPU::sub0)
-          .addReg(VAddr->getReg(), 0, AMDGPU::sub0));
+      const DebugLoc &DL = MI.getDebugLoc();
+      BuildMI(MBB, MI, DL, get(AMDGPU::V_ADD_I32_e64), NewVAddrLo)
+        .addDef(CondReg0)
+        .addReg(RsrcPtr, 0, AMDGPU::sub0)
+        .addReg(VAddr->getReg(), 0, AMDGPU::sub0)
+        .addImm(0);
 
       // NewVaddrHi = RsrcPtr:sub1 + VAddr:sub1
-      fixImplicitOperands(*
-        BuildMI(MBB, MI, DL, get(AMDGPU::V_ADDC_U32_e32), NewVAddrHi)
-          .addReg(RsrcPtr, 0, AMDGPU::sub1)
-          .addReg(VAddr->getReg(), 0, AMDGPU::sub1));
+      BuildMI(MBB, MI, DL, get(AMDGPU::V_ADDC_U32_e64), NewVAddrHi)
+        .addDef(CondReg1, RegState::Dead)
+        .addReg(RsrcPtr, 0, AMDGPU::sub1)
+        .addReg(VAddr->getReg(), 0, AMDGPU::sub1)
+        .addReg(CondReg0, RegState::Kill)
+        .addImm(0);
 
       // NewVaddr = {NewVaddrHi, NewVaddrLo}
       BuildMI(MBB, MI, MI.getDebugLoc(), get(AMDGPU::REG_SEQUENCE), NewVAddr)
@@ -4596,37 +4604,37 @@ void SIInstrInfo::moveToVALU(MachineInstr &TopInst,
       continue;
 
     case AMDGPU::S_LSHL_B32:
-      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+      if (ST.hasOnlyRevVALUShifts()) {
         NewOpcode = AMDGPU::V_LSHLREV_B32_e64;
         swapOperands(Inst);
       }
       break;
     case AMDGPU::S_ASHR_I32:
-      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+      if (ST.hasOnlyRevVALUShifts()) {
         NewOpcode = AMDGPU::V_ASHRREV_I32_e64;
         swapOperands(Inst);
       }
       break;
     case AMDGPU::S_LSHR_B32:
-      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+      if (ST.hasOnlyRevVALUShifts()) {
         NewOpcode = AMDGPU::V_LSHRREV_B32_e64;
         swapOperands(Inst);
       }
       break;
     case AMDGPU::S_LSHL_B64:
-      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+      if (ST.hasOnlyRevVALUShifts()) {
         NewOpcode = AMDGPU::V_LSHLREV_B64;
         swapOperands(Inst);
       }
       break;
     case AMDGPU::S_ASHR_I64:
-      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+      if (ST.hasOnlyRevVALUShifts()) {
         NewOpcode = AMDGPU::V_ASHRREV_I64;
         swapOperands(Inst);
       }
       break;
     case AMDGPU::S_LSHR_B64:
-      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+      if (ST.hasOnlyRevVALUShifts()) {
         NewOpcode = AMDGPU::V_LSHRREV_B64;
         swapOperands(Inst);
       }
@@ -6073,28 +6081,48 @@ MachineInstr *llvm::getVRegSubRegDef(const TargetInstrInfo::RegSubRegPair &P,
   return nullptr;
 }
 
-bool llvm::isEXECMaskConstantBetweenDefAndUses(unsigned VReg,
-                                               const MachineRegisterInfo &MRI) {
+bool llvm::execMayBeModifiedBeforeUse(const MachineRegisterInfo &MRI,
+                                      unsigned VReg,
+                                      const MachineInstr &DefMI,
+                                      const MachineInstr *UseMI) {
   assert(MRI.isSSA() && "Must be run on SSA");
+
   auto *TRI = MRI.getTargetRegisterInfo();
+  auto *DefBB = DefMI.getParent();
 
-  auto *DefI = MRI.getVRegDef(VReg);
-  auto *BB = DefI->getParent();
+  if (UseMI) {
+    // Don't bother searching between blocks, although it is possible this block
+    // doesn't modify exec.
+    if (UseMI->getParent() != DefBB)
+      return true;
+  } else {
+    int NumUse = 0;
+    const int MaxUseScan = 10;
 
-  DenseSet<MachineInstr*> Uses;
-  for (auto &Use : MRI.use_nodbg_operands(VReg)) {
-    auto *I = Use.getParent();
-    if (I->getParent() != BB)
-      return false;
-    Uses.insert(I);
+    for (auto &UseInst : MRI.use_nodbg_instructions(VReg)) {
+      if (UseInst.getParent() != DefBB)
+        return true;
+
+      if (NumUse++ > MaxUseScan)
+        return true;
+    }
   }
 
-  auto E = BB->end();
-  for (auto I = std::next(DefI->getIterator()); I != E; ++I) {
-    Uses.erase(&*I);
-    // don't check the last use
-    if (Uses.empty() || I->modifiesRegister(AMDGPU::EXEC, TRI))
-      break;
+  const int MaxInstScan = 20;
+  int NumScan = 0;
+
+  // Stop scan at the use if known.
+  auto E = UseMI ? UseMI->getIterator() : DefBB->end();
+  for (auto I = std::next(DefMI.getIterator()); I != E; ++I) {
+    if (I->isDebugInstr())
+      continue;
+
+    if (NumScan++ > MaxInstScan)
+      return true;
+
+    if (I->modifiesRegister(AMDGPU::EXEC, TRI))
+      return true;
   }
-  return Uses.empty();
+
+  return false;
 }

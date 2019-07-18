@@ -1486,6 +1486,7 @@ void Verifier::visitModuleFlagCGProfileEntry(const MDOperand &MDO) {
 static bool isFuncOnlyAttr(Attribute::AttrKind Kind) {
   switch (Kind) {
   case Attribute::NoReturn:
+  case Attribute::WillReturn:
   case Attribute::NoCfCheck:
   case Attribute::NoUnwind:
   case Attribute::NoInline:
@@ -1631,7 +1632,7 @@ void Verifier::verifyParameterAttrs(AttributeSet Attrs, Type *Ty,
 
   if (Attrs.hasAttribute(Attribute::ByVal) && Attrs.getByValType()) {
     Assert(Attrs.getByValType() == cast<PointerType>(Ty)->getElementType(),
-           "Attribute 'byval' type does not match parameter!");
+           "Attribute 'byval' type does not match parameter!", V);
   }
 
   AttrBuilder IncompatibleAttrs = AttributeFuncs::typeIncompatible(Ty);
@@ -2228,8 +2229,11 @@ void Verifier::visitFunction(const Function &F) {
            MDs.empty() ? nullptr : MDs.front().second);
   } else if (F.isDeclaration()) {
     for (const auto &I : MDs) {
-      AssertDI(I.first != LLVMContext::MD_dbg,
-               "function declaration may not have a !dbg attachment", &F);
+      // This is used for call site debug information.
+      AssertDI(I.first != LLVMContext::MD_dbg ||
+                   !cast<DISubprogram>(I.second)->isDistinct(),
+               "function declaration may only have a unique !dbg attachment",
+               &F);
       Assert(I.first != LLVMContext::MD_prof,
              "function declaration may not have a !prof attachment", &F);
 
@@ -2307,36 +2311,44 @@ void Verifier::visitFunction(const Function &F) {
   // FIXME: Check this incrementally while visiting !dbg attachments.
   // FIXME: Only check when N is the canonical subprogram for F.
   SmallPtrSet<const MDNode *, 32> Seen;
+  auto VisitDebugLoc = [&](const Instruction &I, const MDNode *Node) {
+    // Be careful about using DILocation here since we might be dealing with
+    // broken code (this is the Verifier after all).
+    const DILocation *DL = dyn_cast_or_null<DILocation>(Node);
+    if (!DL)
+      return;
+    if (!Seen.insert(DL).second)
+      return;
+
+    Metadata *Parent = DL->getRawScope();
+    AssertDI(Parent && isa<DILocalScope>(Parent),
+             "DILocation's scope must be a DILocalScope", N, &F, &I, DL,
+             Parent);
+    DILocalScope *Scope = DL->getInlinedAtScope();
+    if (Scope && !Seen.insert(Scope).second)
+      return;
+
+    DISubprogram *SP = Scope ? Scope->getSubprogram() : nullptr;
+
+    // Scope and SP could be the same MDNode and we don't want to skip
+    // validation in that case
+    if (SP && ((Scope != SP) && !Seen.insert(SP).second))
+      return;
+
+    // FIXME: Once N is canonical, check "SP == &N".
+    AssertDI(SP->describes(&F),
+             "!dbg attachment points at wrong subprogram for function", N, &F,
+             &I, DL, Scope, SP);
+  };
   for (auto &BB : F)
     for (auto &I : BB) {
-      // Be careful about using DILocation here since we might be dealing with
-      // broken code (this is the Verifier after all).
-      DILocation *DL =
-          dyn_cast_or_null<DILocation>(I.getDebugLoc().getAsMDNode());
-      if (!DL)
-        continue;
-      if (!Seen.insert(DL).second)
-        continue;
-
-      Metadata *Parent = DL->getRawScope();
-      AssertDI(Parent && isa<DILocalScope>(Parent),
-               "DILocation's scope must be a DILocalScope", N, &F, &I, DL,
-               Parent);
-      DILocalScope *Scope = DL->getInlinedAtScope();
-      if (Scope && !Seen.insert(Scope).second)
-        continue;
-
-      DISubprogram *SP = Scope ? Scope->getSubprogram() : nullptr;
-
-      // Scope and SP could be the same MDNode and we don't want to skip
-      // validation in that case
-      if (SP && ((Scope != SP) && !Seen.insert(SP).second))
-        continue;
-
-      // FIXME: Once N is canonical, check "SP == &N".
-      AssertDI(SP->describes(&F),
-               "!dbg attachment points at wrong subprogram for function", N, &F,
-               &I, DL, Scope, SP);
+      VisitDebugLoc(I, I.getDebugLoc().getAsMDNode());
+      // The llvm.loop annotations also contain two DILocations.
+      if (auto MD = I.getMetadata(LLVMContext::MD_loop))
+        for (unsigned i = 1; i < MD->getNumOperands(); ++i)
+          VisitDebugLoc(I, dyn_cast_or_null<MDNode>(MD->getOperand(i)));
+      if (BrokenDebugInfo)
+        return;
     }
 }
 

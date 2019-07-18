@@ -67,6 +67,7 @@
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Utils/CanonicalizeAliases.h"
+#include "llvm/Transforms/Utils/EntryExitInstrumenter.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
 #include <memory>
@@ -406,6 +407,30 @@ static TargetMachine::CodeGenFileType getCodeGenFileType(BackendAction Action) {
   }
 }
 
+static void getBasicBlockSectionsList(llvm::TargetOptions &Options,
+                                      std::string FunctionsListFile) {
+  if (FunctionsListFile.empty())
+    return;
+  auto MBOrErr = llvm::MemoryBuffer::getFile(FunctionsListFile);
+  if (auto EC = MBOrErr.getError()) {
+    errs() << "Cannot open " + FunctionsListFile + ": " + EC.message();
+    return;
+  }
+  Options.BasicBlockSections = llvm::BasicBlockSection::List;
+  std::unique_ptr<MemoryBuffer> &MB = *MBOrErr;
+  MemoryBufferRef MBRef = MB->getMemBufferRef();
+  SmallVector<StringRef, 0> Arr;
+  MBRef.getBuffer().split(Arr, '\n');
+  for (StringRef S : Arr) {
+    // Function names follow a '!' character.
+    // Empty '!' implies no more functions.
+    if (S.size() == 1 && S[0] == '!')
+      break;
+    if (S.size() > 1 && S[0] == '!')
+      Options.BasicBlockSectionsList[S.str().substr(1)] = true;
+  }
+}
+
 static void initTargetOptions(llvm::TargetOptions &Options,
                               const CodeGenOptions &CodeGenOpts,
                               const clang::TargetOptions &TargetOpts,
@@ -472,6 +497,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
           .Case("labels", llvm::BasicBlockSection::Labels)
           .Default(llvm::BasicBlockSection::None);
 
+  getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSectionsList);
+
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;
@@ -481,9 +508,9 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.DebuggerTuning = CodeGenOpts.getDebuggerTuning();
   Options.EmitStackSizeSection = CodeGenOpts.StackSizeSection;
   Options.EmitAddrsig = CodeGenOpts.Addrsig;
+  Options.EnableDebugEntryValues = CodeGenOpts.EnableDebugEntryValues;
 
-  if (CodeGenOpts.getSplitDwarfMode() != CodeGenOptions::NoFission)
-    Options.MCOptions.SplitDwarfFile = CodeGenOpts.SplitDwarfFile;
+  Options.MCOptions.SplitDwarfFile = CodeGenOpts.SplitDwarfFile;
   Options.MCOptions.MCRelaxAll = CodeGenOpts.RelaxAll;
   Options.MCOptions.MCSaveTempLabels = CodeGenOpts.SaveTempLabels;
   Options.MCOptions.MCUseDwarfDirectory = !CodeGenOpts.NoDwarfDirectoryAsm;
@@ -874,8 +901,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
     break;
 
   default:
-    if (!CodeGenOpts.SplitDwarfOutput.empty() &&
-        (CodeGenOpts.getSplitDwarfMode() == CodeGenOptions::SplitFileFission)) {
+    if (!CodeGenOpts.SplitDwarfOutput.empty()) {
       DwoOS = openOutputFile(CodeGenOpts.SplitDwarfOutput);
       if (!DwoOS)
         return;
@@ -1143,6 +1169,11 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
       // configure the pipeline.
       PassBuilder::OptimizationLevel Level = mapToLevel(CodeGenOpts);
 
+      PB.registerPipelineStartEPCallback([](ModulePassManager &MPM) {
+        MPM.addPass(createModuleToFunctionPassAdaptor(
+            EntryExitInstrumenterPass(/*PostInlining=*/false)));
+      });
+
       // Register callbacks to schedule sanitizer passes at the appropriate part of
       // the pipeline.
       // FIXME: either handle asan/the remaining sanitizers or error out
@@ -1287,8 +1318,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
     NeedCodeGen = true;
     CodeGenPasses.add(
         createTargetTransformInfoWrapperPass(getTargetIRAnalysis()));
-    if (!CodeGenOpts.SplitDwarfOutput.empty() &&
-        CodeGenOpts.getSplitDwarfMode() == CodeGenOptions::SplitFileFission) {
+    if (!CodeGenOpts.SplitDwarfOutput.empty()) {
       DwoOS = openOutputFile(CodeGenOpts.SplitDwarfOutput);
       if (!DwoOS)
         return;
@@ -1440,6 +1470,7 @@ static void runThinLTOBackend(ModuleSummaryIndex *CombinedIndex, Module *M,
   Conf.RemarksWithHotness = CGOpts.DiagnosticsWithHotness;
   Conf.RemarksFilename = CGOpts.OptRecordFile;
   Conf.RemarksPasses = CGOpts.OptRecordPasses;
+  Conf.RemarksFormat = CGOpts.OptRecordFormat;
   Conf.SplitDwarfFile = CGOpts.SplitDwarfFile;
   Conf.SplitDwarfOutput = CGOpts.SplitDwarfOutput;
   switch (Action) {

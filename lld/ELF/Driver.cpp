@@ -861,6 +861,7 @@ static void readConfigs(opt::InputArgList &Args) {
   Config->OptRemarksFilename = Args.getLastArgValue(OPT_opt_remarks_filename);
   Config->OptRemarksPasses = Args.getLastArgValue(OPT_opt_remarks_passes);
   Config->OptRemarksWithHotness = Args.hasArg(OPT_opt_remarks_with_hotness);
+  Config->OptRemarksFormat = Args.getLastArgValue(OPT_opt_remarks_format);
   Config->Optimize = args::getInteger(Args, OPT_O, 1);
   Config->OrphanHandling = getOrphanHandling(Args);
   Config->OutputFile = Args.getLastArgValue(OPT_o);
@@ -878,6 +879,15 @@ static void readConfigs(opt::InputArgList &Args) {
       Args.hasFlag(OPT_propeller_keep_named_symbols,
                    OPT_no_propeller_keep_named_symbols, false);
 
+  Config->PropellerDumpSymbolOrder =
+      Args.getLastArgValue(OPT_propeller_dump_symbol_order);
+
+  Config->PropellerPrintStats =
+      Args.hasFlag(OPT_propeller_print_stats,
+                   OPT_no_propeller_print_stats, false);
+
+  Config->PropellerDumpCfgs = Args.getAllArgValues(OPT_propeller_dump_cfg);
+
   Config->PropellerReorderBlocks =
       Config->PropellerReorderFuncs =
       Config->PropellerSplitFuncs =
@@ -885,6 +895,7 @@ static void readConfigs(opt::InputArgList &Args) {
 
   // Parse Propeller flags.
   auto PropellerOpts = Args.getAllArgValues(OPT_propeller_opt);
+  bool SplitFuncsExplicit = false;
   for(auto& PropellerOpt: PropellerOpts){
     StringRef S = StringRef(PropellerOpt);
     if (S == "reorder-funcs"){
@@ -897,15 +908,21 @@ static void readConfigs(opt::InputArgList &Args) {
       Config->PropellerReorderBlocks = false;
     } else if (S == "split-funcs") {
       Config->PropellerSplitFuncs = true;
+      SplitFuncsExplicit = true;
     } else if (S == "no-split-funcs") {
       Config->PropellerSplitFuncs = false;
     } else
       error("unknown propeller option: " + S);
   }
 
-  if (!Config->PropellerReorderBlocks && Config->PropellerSplitFuncs){
-    error("propeller: Inconsistent combination of propeller optimizations:\n"
-          "split-funcs can only be used with reorder-blocks");
+  if (!Config->Propeller.empty() && !Config->PropellerReorderBlocks) {
+    if (SplitFuncsExplicit){
+      error("propeller: Inconsistent combination of propeller optimizations"
+            " 'split-funcs' and 'no-reorder-blocks'.");
+    } else {
+      warn("propeller: no-reorder-blocks implicitly sets no-split-funcs.");
+      Config->PropellerSplitFuncs = false;
+    }
   }
 
   Config->Rpath = getRpath(Args);

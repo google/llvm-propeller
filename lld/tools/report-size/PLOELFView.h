@@ -81,6 +81,7 @@ struct ELFSizeInfo {
   uint64_t TextSize;
   uint64_t OtherAllocSize;
   uint64_t SymTabSize;
+  uint64_t SymTabEntryNum;
   uint64_t StrTabSize;
   uint64_t FileSize;
 
@@ -92,6 +93,7 @@ struct ELFSizeInfo {
     TextSize += R.TextSize;
     OtherAllocSize += R.OtherAllocSize;
     SymTabSize += R.SymTabSize;
+    SymTabEntryNum += R.SymTabEntryNum;
     StrTabSize += R.StrTabSize;
     FileSize += R.FileSize;
     return *this;

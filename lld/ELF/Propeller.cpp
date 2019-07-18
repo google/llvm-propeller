@@ -33,11 +33,12 @@ namespace lld {
 namespace propeller {
 
 SymbolEntry *Propfile::findSymbol(StringRef SymName) {
+  std::pair<StringRef, StringRef> SymNameSplit = SymName.split(".llvm.");
   StringRef FuncName;
   StringRef BBIndex;
   string TmpStr;
-  if (!SymbolEntry::isBBSymbol(SymName, &FuncName, &BBIndex)) {
-    FuncName = SymName;
+  if (!SymbolEntry::isBBSymbol(SymNameSplit.first, &FuncName, &BBIndex)) {
+    FuncName = SymNameSplit.first;
     BBIndex = "";
   } else {
     // When SymName is like "11111.bb.foo", set BBIndex to "5".
@@ -66,7 +67,7 @@ bool Propfile::readSymbols() {
     ++LineNo;
     if (R == 0)
       continue;
-    if (LineBuf[0] == '#')
+    if (LineBuf[0] == '#' || LineBuf[0] == '!')
       continue;
     if (LineBuf[0] == 'B' || LineBuf[0] == 'F') {
       LineTag = LineBuf[0];
@@ -109,8 +110,11 @@ bool Propfile::readSymbols() {
       StringRef SavedNameStr = PropfileStrSaver.save(EphemeralStr.substr(1));
       SymbolEntry::AliasesTy SAliases;
       SavedNameStr.split(SAliases, '/');
+      for(auto& SAlias: SAliases){
+        SAlias = SAlias.split(".llvm.").first;
+      }
       StringRef SName = SAliases[0];
-      SAliases.erase(SAliases.begin());
+      //SAliases.erase(SAliases.begin());
       assert(SymbolOrdinalMap.find(SOrdinal) == SymbolOrdinalMap.end());
       createFunctionSymbol(SOrdinal, SName, std::move(SAliases), SSize);
     } else {
@@ -188,7 +192,7 @@ bool Propfile::processProfile() {
     ++LineNo;
     if (R == 0)
       continue;
-    if (LineBuf[0] == '#')
+    if (LineBuf[0] == '#' || LineBuf[0] == '!')
       continue;
     if (LineBuf[0] == 'S' || LineBuf[0] == 'B' || LineBuf[0] == 'F') {
       LineTag = LineBuf[0];
@@ -251,7 +255,8 @@ void Propeller::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
       std::lock_guard<mutex> L(this->Lock);
       this->Views.emplace_back(View);
       for (auto &P : View->Cfgs) {
-        auto R = CfgMap[P.first].emplace(P.second.get());
+        std::pair<StringRef, StringRef> SplitName = P.first.split(".llvm.");
+        auto R = CfgMap[SplitName.first].emplace(P.second.get());
         (void)(R);
         assert(R.second);
       }
@@ -268,56 +273,58 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
     error(string("Invalid symbol ordinal: " + std::to_string(SymbolOrdinal)));
     return nullptr;
   }
-  StringRef FuncName = S->BBTag ? S->ContainingFunc->Name : S->Name;
-  auto CfgLI = CfgMap.find(FuncName);
-  if (CfgLI == CfgMap.end()) {
+  SymbolEntry *Func = S->BBTag ? S->ContainingFunc : S;
+  for (auto& FuncAliasName : Func->Aliases){
+    auto CfgLI = CfgMap.find(FuncAliasName);
+    if (CfgLI == CfgMap.end())
+      continue;
+
     //warn(string("No Cfg named '") + FuncName + "' found.");
-    return nullptr;
-  }
-  if (CfgLI != CfgMap.end()) {
-    // There might be multiple object files that define SymName.
-    // So for "funcFoo.bb.3", we return Obj2.
-    // For "funcFoo.bb.1", we return Obj1 (the first matching obj).
-    // Obj1:
-    //    Cfg1: funcFoo
-    //          funcFoo.bb.1
-    //          funcFoo.bb.2
-    // Obj2:
-    //    Cfg1: funcFoo
-    //          funcFoo.bb.1
-    //          funcFoo.bb.2
-    //          funcFoo.bb.3
-    // Also note, Objects (CfgLI->second) are sorted in the way
-    // they appear on the command line, which is the same as how
-    // linker chooses the weak symbol definition.
-    if (!S->BBTag) {
-      for (auto *Cfg : CfgLI->second) {
-        // Check Cfg does have name "SymName".
-        for (auto &N : Cfg->Nodes) {
-          if (N->ShName == S->Name) {
-            return N.get();
-          }
-        }
-      }
-    } else {
-      uint32_t NumOnes;
-      if (S->Name.getAsInteger(10, NumOnes) == true || !NumOnes) {
-        warn("Internal error, BB name is invalid: '" + S->Name.str() + "'.");
-      } else {
+    //return nullptr;
+
+    if (CfgLI != CfgMap.end()) {
+      // There might be multiple object files that define SymName.
+      // So for "funcFoo.bb.3", we return Obj2.
+      // For "funcFoo.bb.1", we return Obj1 (the first matching obj).
+      // Obj1:
+      //    Cfg1: funcFoo
+      //          funcFoo.bb.1
+      //          funcFoo.bb.2
+      // Obj2:
+      //    Cfg1: funcFoo
+      //          funcFoo.bb.1
+      //          funcFoo.bb.2
+      //          funcFoo.bb.3
+      // Also note, Objects (CfgLI->second) are sorted in the way
+      // they appear on the command line, which is the same as how
+      // linker chooses the weak symbol definition.
+      if (!S->BBTag) {
         for (auto *Cfg : CfgLI->second) {
           // Check Cfg does have name "SymName".
           for (auto &N : Cfg->Nodes) {
-            auto T = N->ShName.find_first_of('.');
-            if (T != string::npos && T == NumOnes) {
+            if (N->ShName.split(".llvm.").first == FuncAliasName) {
               return N.get();
+            }
+          }
+        }
+      } else {
+        uint32_t NumOnes;
+        if (S->Name.getAsInteger(10, NumOnes) == true || !NumOnes) {
+          warn("Internal error, BB name is invalid: '" + S->Name.str() + "'.");
+        } else {
+          for (auto *Cfg : CfgLI->second) {
+            // Check Cfg does have name "SymName".
+            for (auto &N : Cfg->Nodes) {
+              auto T = N->ShName.find_first_of('.');
+              if (T != string::npos && T == NumOnes) {
+                return N.get();
+              }
             }
           }
         }
       }
     }
   }
-  // warn(string("No cfg found for symbol ordinal: ") +
-  //     std::to_string(SymbolOrdinal) + ".");
   return nullptr;
 }
 
@@ -379,6 +386,32 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
       FileOrdinalPairs.end(),
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
+  /* Drop alias cfgs. */
+  for(SymbolEntry * F : Propf->FunctionsWithAliases){
+
+    ELFCfg * PrimaryCfg = nullptr;
+    CfgMapTy::iterator PrimaryCfgMapEntry;
+
+    for(StringRef& AliasName : F->Aliases){
+      auto L = CfgMap.find(AliasName);
+      if (L == CfgMap.end())
+        continue;
+
+      if (L->second.empty())
+        continue;
+
+      if (!PrimaryCfg || PrimaryCfg->Nodes.size() < (*L->second.begin())->Nodes.size()){
+        if(PrimaryCfg)
+          CfgMap.erase(PrimaryCfgMapEntry);
+
+        PrimaryCfg = *L->second.begin();
+        PrimaryCfgMapEntry = L;
+      } else {
+        CfgMap.erase(L);
+      }
+    }
+  }
+
   auto startProcessProfileTime = system_clock::now();
 
   // Map profiles.
@@ -386,30 +419,47 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
 
-  duration<double> ProcessProfileTime = system_clock::now() - startProcessProfileTime;
-  duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
-  duration<double> CreateCfgTime = startProcessProfileTime - startCreateCfgTime;
-  warn("[TIME](s) read symbols: " + Twine(std::to_string(ReadSymbolTime.count())));
-  warn("[TIME](s) cfg create: " + Twine(std::to_string(CreateCfgTime.count())));
-  warn("[TIME](s) process profile " + Twine(std::to_string(ProcessProfileTime.count())));
+  if (Config->PropellerPrintStats){
+    duration<double> ProcessProfileTime = system_clock::now() - startProcessProfileTime;
+    duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
+    duration<double> CreateCfgTime = startProcessProfileTime - startCreateCfgTime;
+    fprintf(stderr, "[Propeller] Read all symbols in %f seconds.\n", ReadSymbolTime.count());
+    fprintf(stderr, "[Propeller] Created all cfgs in %f seconds.\n", CreateCfgTime.count());
+    fprintf(stderr, "[Propeller] Proccesed the profile in %f seconds.\n", ProcessProfileTime.count());
+  }
+
+  for (auto &CfgNameToDump : Config->PropellerDumpCfgs){
+    auto CfgLI = CfgMap.find(CfgNameToDump);
+    if(CfgLI == CfgMap.end()){
+      warn("[Propeller] Could not dump cfg for function '"+ CfgNameToDump +"' : No such function name exists.");
+      continue;
+    }
+    for (auto *Cfg : CfgLI->second) {
+      if (Cfg->Name == CfgNameToDump){
+        Cfg->writeAsDotGraph();
+        break;
+      }
+    }
+  }
+
   // Releasing all support data (symbol ordinal / name map, saved string refs,
   // etc) before moving to reordering.
   Propf.reset(nullptr);
   return true;
 }
 
-// template <class C>
-// static void writeOut(const char *fname, C &Names) {
-//   FILE *fp = fopen(fname, "w");
-//   if (!fp) {
-//     fprintf(stderr, "failed to open: %s\n", fname);
-//   }
-//   for (auto &N : Names) {
-//     fprintf(fp, "%s\n", N.str().c_str());
-//   }
-//   fclose(fp);
-//   fprintf(stderr, "Done writing %s\n", fname);
-// };
+template <class C>
+static void writeOut(const char *fname, C &Names) {
+   FILE *fp = fopen(fname, "w");
+   if (!fp) {
+     fprintf(stderr, "failed to open: %s\n", fname);
+   }
+   for (auto &N : Names) {
+     fprintf(fp, "%s\n", N.str().c_str());
+   }
+   fclose(fp);
+   fprintf(stderr, "Done writing %s\n", fname);
+};
 
 vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
@@ -419,10 +469,13 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     CCubeAlgorithm Algo;
     Algo.init(*this);
     auto startFuncOrderTime = system_clock::now();
-    CfgOrder = Algo.doOrder();
-    auto endFuncOrderTime = system_clock::now();
-    duration<double> FuncOrderTime = endFuncOrderTime - startFuncOrderTime;
-    warn("[TIME](s) func ordering: " + Twine(std::to_string(FuncOrderTime.count())));
+    auto CfgsReordered = Algo.doOrder(CfgOrder);
+    if (Config->PropellerPrintStats){
+      duration<double> FuncOrderTime = system_clock::now() - startFuncOrderTime;
+      fprintf(stderr, "[Propeller] Reordered %u hot functions in %f seconds.\n",
+              CfgsReordered,
+              FuncOrderTime.count());
+    }
   } else {
     forEachCfgRef([&CfgOrder](ELFCfg &Cfg) { CfgOrder.push_back(&Cfg); });
     CfgOrder.sort([](const ELFCfg *A, const ELFCfg *B) {
@@ -432,31 +485,43 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     });
   }
 
-  auto startBBOrderTime = system_clock::now();
   list<StringRef> SymbolList(1, "Hot");
   const auto HotPlaceHolder = SymbolList.begin();
   const auto ColdPlaceHolder = SymbolList.end();
+  unsigned ReorderedN = 0;
+  auto startBBOrderTime = system_clock::now();
   for (auto *Cfg : CfgOrder) {
+    log("Ordering Cfg for function: " + Twine(Cfg->Name) + " --> " + Twine(Cfg->getEntryNode()->MappedAddr));
     if (Cfg->isHot() && Config->PropellerReorderBlocks) {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
           Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
+      ReorderedN++;
     } else {
-      Cfg->forEachNodeRef([&SymbolList, ColdPlaceHolder](ELFCfgNode &N) {
-        SymbolList.insert(ColdPlaceHolder, N.ShName);
+      auto PlaceHolder = Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
+      Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
+        SymbolList.insert(PlaceHolder,N.ShName);
       });
     }
   }
-  auto endBBOrderTime = system_clock::now();
-  duration<double> BBOrderTime = endBBOrderTime - startBBOrderTime;
-  warn("[TIME](s) total bb ordering: " + Twine(std::to_string(BBOrderTime.count())));
+  if (Config->PropellerPrintStats){
+    duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;
+    fprintf(stderr, "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
+            ReorderedN,
+            BBOrderTime.count());
+  }
 
   calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
 
   // writeOut("symbol-ordering", SymbolList);
   // writeOut("propeller-legacy", PropLeg.BBSymbolsToKeep);
-  
+
+  if (!Config->PropellerDumpSymbolOrder.empty()){
+    writeOut(Config->PropellerDumpSymbolOrder.str().c_str(), SymbolList);
+  }
+
   SymbolList.erase(HotPlaceHolder);
+
   return vector<StringRef>(
       std::move_iterator<list<StringRef>::iterator>(SymbolList.begin()),
       std::move_iterator<list<StringRef>::iterator>(SymbolList.end()));

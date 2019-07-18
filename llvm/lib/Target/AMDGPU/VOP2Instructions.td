@@ -175,7 +175,9 @@ multiclass VOP2bInst <string opName,
     let SchedRW = [Write32Bit, WriteSALU] in {
       let Uses = !if(useSGPRInput, [VCC, EXEC], [EXEC]), Defs = [VCC] in {
         def _e32 : VOP2_Pseudo <opName, P, VOPPatOrNull<node,P>.ret>,
-                   Commutable_REV<revOp#"_e32", !eq(revOp, opName)>;
+                   Commutable_REV<revOp#"_e32", !eq(revOp, opName)> {
+          let usesCustomInserter = !eq(P.NumSrcArgs, 2);
+        }
 
         def _sdwa  : VOP2_SDWA_Pseudo <opName, P> {
           let AsmMatchConverter = "cvtSdwaVOP2b";
@@ -342,7 +344,7 @@ def VOP2b_I32_I1_I32_I32 : VOPProfile<[i32, i32, i32, untyped], 0, /*EnableClamp
   let AsmDPP8 = "$vdst, vcc, $src0, $src1 $dpp8$fi";
   let AsmDPP16 = AsmDPP#"$fi";
   let Outs32 = (outs DstRC:$vdst);
-  let Outs64 = (outs DstRC:$vdst, SReg_64:$sdst);
+  let Outs64 = (outs DstRC:$vdst, VOPDstS64orS32:$sdst);
 }
 
 // Write out to vcc or arbitrary SGPR and read in from vcc or
@@ -356,7 +358,7 @@ def VOP2b_I32_I1_I32_I32_I1 : VOPProfile<[i32, i32, i32, i1], 0, /*EnableClamp=*
   let AsmDPP8 = "$vdst, vcc, $src0, $src1, vcc $dpp8$fi";
   let AsmDPP16 = AsmDPP#"$fi";
   let Outs32 = (outs DstRC:$vdst);
-  let Outs64 = (outs DstRC:$vdst, SReg_64:$sdst);
+  let Outs64 = (outs DstRC:$vdst, VOPDstS64orS32:$sdst);
 
   // Suppress src2 implied by type since the 32-bit encoding uses an
   // implicit VCC use.

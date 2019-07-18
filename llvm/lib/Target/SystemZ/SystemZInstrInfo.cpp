@@ -168,11 +168,13 @@ void SystemZInstrInfo::expandRIEPseudo(MachineInstr &MI, unsigned LowOpcode,
   if (!DestIsHigh && !SrcIsHigh)
     MI.setDesc(get(LowOpcodeK));
   else {
-    emitGRX32Move(*MI.getParent(), MI, MI.getDebugLoc(), DestReg, SrcReg,
-                  SystemZ::LR, 32, MI.getOperand(1).isKill(),
-                  MI.getOperand(1).isUndef());
+    if (DestReg != SrcReg) {
+      emitGRX32Move(*MI.getParent(), MI, MI.getDebugLoc(), DestReg, SrcReg,
+                    SystemZ::LR, 32, MI.getOperand(1).isKill(),
+                    MI.getOperand(1).isUndef());
+      MI.getOperand(1).setReg(DestReg);
+    }
     MI.setDesc(get(DestIsHigh ? HighOpcode : LowOpcode));
-    MI.getOperand(1).setReg(DestReg);
     MI.tieOperands(0, 1);
   }
 }
@@ -1177,13 +1179,13 @@ MachineInstr *SystemZInstrInfo::foldMemoryOperandImpl(
       MemOpcode = -1;
     else {
       assert(NumOps == 3 && "Expected two source registers.");
-      unsigned DstReg = MI.getOperand(0).getReg();
-      unsigned DstPhys =
+      Register DstReg = MI.getOperand(0).getReg();
+      Register DstPhys =
         (TRI->isVirtualRegister(DstReg) ? VRM->getPhys(DstReg) : DstReg);
-      unsigned SrcReg = (OpNum == 2 ? MI.getOperand(1).getReg()
+      Register SrcReg = (OpNum == 2 ? MI.getOperand(1).getReg()
                                     : ((OpNum == 1 && MI.isCommutable())
                                            ? MI.getOperand(2).getReg()
-                                           : 0));
+                                         : Register()));
       if (DstPhys && !SystemZ::GRH32BitRegClass.contains(DstPhys) && SrcReg &&
           TRI->isVirtualRegister(SrcReg) && DstPhys == VRM->getPhys(SrcReg))
         NeedsCommute = (OpNum == 1);

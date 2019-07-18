@@ -206,18 +206,6 @@ void AMDGPUAsmPrinter::EmitFunctionBodyStart() {
 
   if (STM.isAmdHsaOS())
     HSAMetadataStream->emitKernel(*MF, CurrentProgramInfo);
-
-  DumpCodeInstEmitter = nullptr;
-  if (STM.dumpCode()) {
-    // For -dumpcode, get the assembler out of the streamer, even if it does
-    // not really want to let us have it. This only works with -filetype=obj.
-    bool SaveFlag = OutStreamer->getUseAssemblerInfoForParsing();
-    OutStreamer->setUseAssemblerInfoForParsing(true);
-    MCAssembler *Assembler = OutStreamer->getAssemblerPtr();
-    OutStreamer->setUseAssemblerInfoForParsing(SaveFlag);
-    if (Assembler)
-      DumpCodeInstEmitter = Assembler->getEmitterPtr();
-  }
 }
 
 void AMDGPUAsmPrinter::EmitFunctionBodyEnd() {
@@ -298,10 +286,38 @@ void AMDGPUAsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) const {
 }
 
 void AMDGPUAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
+  if (GV->getAddressSpace() == AMDGPUAS::LOCAL_ADDRESS) {
+    if (GV->hasInitializer() && !isa<UndefValue>(GV->getInitializer())) {
+      OutContext.reportError({},
+                             Twine(GV->getName()) +
+                                 ": unsupported initializer for address space");
+      return;
+    }
 
-  // Group segment variables aren't emitted in HSA.
-  if (AMDGPU::isGroupSegment(GV))
+    // LDS variables aren't emitted in HSA or PAL yet.
+    const Triple::OSType OS = TM.getTargetTriple().getOS();
+    if (OS == Triple::AMDHSA || OS == Triple::AMDPAL)
+      return;
+
+    MCSymbol *GVSym = getSymbol(GV);
+
+    GVSym->redefineIfPossible();
+    if (GVSym->isDefined() || GVSym->isVariable())
+      report_fatal_error("symbol '" + Twine(GVSym->getName()) +
+                         "' is already defined");
+
+    const DataLayout &DL = GV->getParent()->getDataLayout();
+    uint64_t Size = DL.getTypeAllocSize(GV->getValueType());
+    unsigned Align = GV->getAlignment();
+    if (!Align)
+      Align = 4;
+
+    EmitVisibility(GVSym, GV->getVisibility(), !GV->isDeclaration());
+    EmitLinkage(GV, GVSym);
+    if (auto TS = getTargetStreamer())
+      TS->emitAMDGPULDS(GVSym, Size, Align);
     return;
+  }
 
   AsmPrinter::EmitGlobalVariable(GV);
 }
@@ -309,7 +325,13 @@ void AMDGPUAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
 bool AMDGPUAsmPrinter::doFinalization(Module &M) {
   CallGraphResourceInfo.clear();
 
-  if (AMDGPU::isGFX10(*getGlobalSTI())) {
+  // Pad with s_code_end to help tools and guard against instruction prefetch
+  // causing stale data in caches. Arguably this should be done by the linker,
+  // which is why this isn't done for Mesa.
+  const MCSubtargetInfo &STI = *getGlobalSTI();
+  if (AMDGPU::isGFX10(STI) &&
+      (STI.getTargetTriple().getOS() == Triple::AMDHSA ||
+       STI.getTargetTriple().getOS() == Triple::AMDPAL)) {
     OutStreamer->SwitchSection(getObjFileLowering().getTextSection());
     getTargetStreamer()->EmitCodeEnd();
   }
@@ -360,6 +382,10 @@ uint16_t AMDGPUAsmPrinter::getAmdhsaKernelCodeProperties(
   if (MFI.hasFlatScratchInit()) {
     KernelCodeProperties |=
         amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_FLAT_SCRATCH_INIT;
+  }
+  if (MF.getSubtarget<GCNSubtarget>().isWave32()) {
+    KernelCodeProperties |=
+        amdhsa::KERNEL_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32;
   }
 
   return KernelCodeProperties;
@@ -418,6 +444,18 @@ bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
     EmitPALMetadata(MF, CurrentProgramInfo);
   else if (!STM.isAmdHsaOS()) {
     EmitProgramInfoSI(MF, CurrentProgramInfo);
+  }
+
+  DumpCodeInstEmitter = nullptr;
+  if (STM.dumpCode()) {
+    // For -dumpcode, get the assembler out of the streamer, even if it does
+    // not really want to let us have it. This only works with -filetype=obj.
+    bool SaveFlag = OutStreamer->getUseAssemblerInfoForParsing();
+    OutStreamer->setUseAssemblerInfoForParsing(true);
+    MCAssembler *Assembler = OutStreamer->getAssemblerPtr();
+    OutStreamer->setUseAssemblerInfoForParsing(SaveFlag);
+    if (Assembler)
+      DumpCodeInstEmitter = Assembler->getEmitterPtr();
   }
 
   DisasmLines.clear();
@@ -1081,6 +1119,10 @@ void AMDGPUAsmPrinter::EmitPALMetadata(const MachineFunction &MF,
     MD->setSpiPsInputEna(MFI->getPSInputEnable());
     MD->setSpiPsInputAddr(MFI->getPSInputAddr());
   }
+
+  const GCNSubtarget &STM = MF.getSubtarget<GCNSubtarget>();
+  if (STM.isWave32())
+    MD->setWave32(MF.getFunction().getCallingConv());
 }
 
 // This is supposed to be log2(Size)

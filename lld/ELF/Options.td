@@ -311,6 +311,17 @@ defm propeller_keep_named_symbols: B<"propeller-keep-named-symbols",
     "Do not delete basic block section symbols",
     "Delete unused basic block section symbols (default)">;
 
+defm propeller_print_stats: B<"propeller-print-stats",
+    "Print propeller statistics.",
+    "Do not print propeller statistics (default)">;
+
+defm propeller_dump_symbol_order: Eq<"propeller-dump-symbol-order",
+    "Dump the propeller-generated symbol ordering into the file.">,
+  MetaVarName<"<file>">;
+
+defm propeller_dump_cfg: Eq<"propeller-dump-cfg",
+    "Dump the cfg of the function in DOT format (in a file named the same as the function).">;
+
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 
@@ -499,6 +510,8 @@ def opt_remarks_passes: Separate<["--"], "opt-remarks-passes">,
   HelpText<"Regex for the passes that need to be serialized to the output file">;
 def opt_remarks_with_hotness: Flag<["--"], "opt-remarks-with-hotness">,
   HelpText<"Include hotness information in the optimization remarks file">;
+def opt_remarks_format: Separate<["--"], "opt-remarks-format">,
+  HelpText<"The format used for serializing remarks (default: YAML)">;
 defm plugin_opt: Eq<"plugin-opt", "specifies LTO options for compatibility with GNU linkers">;
 def save_temps: F<"save-temps">;
 def lto_basicblock_sections: J<"lto-basicblock-sections=">,

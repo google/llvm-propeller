@@ -2607,17 +2607,33 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
   case BuiltinType::Double:
     Out << 'd';
     break;
-  case BuiltinType::LongDouble:
-    Out << (getASTContext().getTargetInfo().useFloat128ManglingForLongDouble()
-                ? 'g'
-                : 'e');
+  case BuiltinType::LongDouble: {
+    bool UseFloat128Mangling =
+        getASTContext().getTargetInfo().useFloat128ManglingForLongDouble();
+    if (getASTContext().getLangOpts().OpenMP &&
+        getASTContext().getLangOpts().OpenMPIsDevice) {
+      UseFloat128Mangling = getASTContext()
+                                .getAuxTargetInfo()
+                                ->useFloat128ManglingForLongDouble();
+    }
+    Out << (UseFloat128Mangling ? 'g' : 'e');
     break;
-  case BuiltinType::Float128:
-    if (getASTContext().getTargetInfo().useFloat128ManglingForLongDouble())
+  }
+  case BuiltinType::Float128: {
+    bool UseFloat128Mangling =
+        getASTContext().getTargetInfo().useFloat128ManglingForLongDouble();
+    if (getASTContext().getLangOpts().OpenMP &&
+        getASTContext().getLangOpts().OpenMPIsDevice) {
+      UseFloat128Mangling = getASTContext()
+                                .getAuxTargetInfo()
+                                ->useFloat128ManglingForLongDouble();
+    }
+    if (UseFloat128Mangling)
       Out << "U10__float128"; // Match the GCC mangling
     else
       Out << 'g';
     break;
+  }
   case BuiltinType::NullPtr:
     Out << "Dn";
     break;
@@ -4483,7 +4499,7 @@ void CXXNameMangler::mangleTemplateArg(TemplateArgument A) {
     // It's possible to end up with a DeclRefExpr here in certain
     // dependent cases, in which case we should mangle as a
     // declaration.
-    const Expr *E = A.getAsExpr()->IgnoreParens();
+    const Expr *E = A.getAsExpr()->IgnoreParenImpCasts();
     if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E)) {
       const ValueDecl *D = DRE->getDecl();
       if (isa<VarDecl>(D) || isa<FunctionDecl>(D)) {

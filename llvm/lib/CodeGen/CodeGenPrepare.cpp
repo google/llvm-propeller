@@ -437,6 +437,10 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
   if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::All)
     F.setBasicBlockSections(true);
 
+  if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::List &&
+      TM->isFunctionInBasicBlockSectionsList(F.getName()))
+    F.setBasicBlockSections(true);
+
   if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::Labels)
     F.setBasicBlockLabels(true);
 

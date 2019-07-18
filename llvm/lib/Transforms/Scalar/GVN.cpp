@@ -492,6 +492,7 @@ uint32_t GVN::ValueTable::lookupOrAdd(Value *V) {
   switch (I->getOpcode()) {
     case Instruction::Call:
       return lookupOrAddCall(cast<CallInst>(I));
+    case Instruction::FNeg:
     case Instruction::Add:
     case Instruction::FAdd:
     case Instruction::Sub:
@@ -2467,8 +2468,7 @@ void GVN::addDeadBlock(BasicBlock *BB) {
 
       for (BasicBlock::iterator II = B->begin(); isa<PHINode>(II); ++II) {
         PHINode &Phi = cast<PHINode>(*II);
-        Phi.setIncomingValue(Phi.getBasicBlockIndex(P),
-                             UndefValue::get(Phi.getType()));
+        Phi.setIncomingValueForBlock(P, UndefValue::get(Phi.getType()));
         if (MD)
           MD->invalidateCachedPointerInfo(&Phi);
       }

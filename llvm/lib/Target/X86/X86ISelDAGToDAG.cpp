@@ -502,6 +502,7 @@ namespace {
     bool shrinkAndImmediate(SDNode *N);
     bool isMaskZeroExtended(SDNode *N) const;
     bool tryShiftAmountMod(SDNode *N);
+    bool tryShrinkShlLogicImm(SDNode *N);
     bool tryVPTESTM(SDNode *Root, SDValue Setcc, SDValue Mask);
 
     MachineSDNode *emitPCMPISTR(unsigned ROpc, unsigned MOpc, bool MayFoldLoad,
@@ -808,6 +809,26 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
       }
       SDValue Res = CurDAG->getNode(NewOpc, SDLoc(N), N->getValueType(0),
                                     N->getOperand(0), N->getOperand(1));
+      --I;
+      CurDAG->ReplaceAllUsesOfValueWith(SDValue(N, 0), Res);
+      ++I;
+      CurDAG->DeleteNode(N);
+      continue;
+    }
+    case ISD::ANY_EXTEND:
+    case ISD::ANY_EXTEND_VECTOR_INREG: {
+      // Replace vector any extend with the zero extend equivalents so we don't
+      // need 2 sets of patterns. Ignore vXi1 extensions.
+      if (!N->getValueType(0).isVector() ||
+          N->getOperand(0).getScalarValueSizeInBits() == 1)
+        break;
+
+      unsigned NewOpc = N->getOpcode() == ISD::ANY_EXTEND
+                            ? ISD::ZERO_EXTEND
+                            : ISD::ZERO_EXTEND_VECTOR_INREG;
+
+      SDValue Res = CurDAG->getNode(NewOpc, SDLoc(N), N->getValueType(0),
+                                    N->getOperand(0));
       --I;
       CurDAG->ReplaceAllUsesOfValueWith(SDValue(N, 0), Res);
       ++I;
@@ -2262,12 +2283,14 @@ bool X86DAGToDAGISel::selectScalarSSELoad(SDNode *Root, SDNode *Parent,
   if (!hasSingleUsesFromRoot(Root, Parent))
     return false;
 
-  // We can allow a full vector load here since narrowing a load is ok.
+  // We can allow a full vector load here since narrowing a load is ok unless
+  // it's volatile.
   if (ISD::isNON_EXTLoad(N.getNode())) {
-    PatternNodeWithChain = N;
-    if (IsProfitableToFold(PatternNodeWithChain, N.getNode(), Root) &&
-        IsLegalToFold(PatternNodeWithChain, Parent, Root, OptLevel)) {
-      LoadSDNode *LD = cast<LoadSDNode>(PatternNodeWithChain);
+    LoadSDNode *LD = cast<LoadSDNode>(N);
+    if (!LD->isVolatile() &&
+        IsProfitableToFold(N, LD, Root) &&
+        IsLegalToFold(N, Parent, Root, OptLevel)) {
+      PatternNodeWithChain = N;
       return selectAddr(LD, LD->getBasePtr(), Base, Scale, Index, Disp,
                         Segment);
     }
@@ -2292,23 +2315,6 @@ bool X86DAGToDAGISel::selectScalarSSELoad(SDNode *Root, SDNode *Parent,
     if (ISD::isNON_EXTLoad(PatternNodeWithChain.getNode()) &&
         IsProfitableToFold(PatternNodeWithChain, N.getNode(), Root) &&
         IsLegalToFold(PatternNodeWithChain, N.getNode(), Root, OptLevel)) {
-      LoadSDNode *LD = cast<LoadSDNode>(PatternNodeWithChain);
-      return selectAddr(LD, LD->getBasePtr(), Base, Scale, Index, Disp,
-                        Segment);
-    }
-  }
-
-  // Also handle the case where we explicitly require zeros in the top
-  // elements.  This is a vector shuffle from the zero vector.
-  if (N.getOpcode() == X86ISD::VZEXT_MOVL && N.getNode()->hasOneUse() &&
-      // Check to see if the top elements are all zeros (or bitcast of zeros).
-      N.getOperand(0).getOpcode() == ISD::SCALAR_TO_VECTOR &&
-      N.getOperand(0).getNode()->hasOneUse()) {
-    PatternNodeWithChain = N.getOperand(0).getOperand(0);
-    if (ISD::isNON_EXTLoad(PatternNodeWithChain.getNode()) &&
-        IsProfitableToFold(PatternNodeWithChain, N.getNode(), Root) &&
-        IsLegalToFold(PatternNodeWithChain, N.getNode(), Root, OptLevel)) {
-      // Okay, this is a zero extending load.  Fold it.
       LoadSDNode *LD = cast<LoadSDNode>(PatternNodeWithChain);
       return selectAddr(LD, LD->getBasePtr(), Base, Scale, Index, Disp,
                         Segment);
@@ -3115,8 +3121,6 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
   if (NVT != MVT::i32 && NVT != MVT::i64)
     return false;
 
-  unsigned Size = NVT.getSizeInBits();
-
   SDValue NBits;
 
   // If we have BMI2's BZHI, we are ok with muti-use patterns.
@@ -3129,16 +3133,27 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
   auto checkOneUse = [checkUses](SDValue Op) { return checkUses(Op, 1); };
   auto checkTwoUse = [checkUses](SDValue Op) { return checkUses(Op, 2); };
 
+  auto peekThroughOneUseTruncation = [checkOneUse](SDValue V) {
+    if (V->getOpcode() == ISD::TRUNCATE && checkOneUse(V)) {
+      assert(V.getSimpleValueType() == MVT::i32 &&
+             V.getOperand(0).getSimpleValueType() == MVT::i64 &&
+             "Expected i64 -> i32 truncation");
+      V = V.getOperand(0);
+    }
+    return V;
+  };
+
   // a) x & ((1 << nbits) + (-1))
-  auto matchPatternA = [&checkOneUse, &NBits](SDValue Mask) -> bool {
+  auto matchPatternA = [checkOneUse, peekThroughOneUseTruncation,
+                        &NBits](SDValue Mask) -> bool {
     // Match `add`. Must only have one use!
     if (Mask->getOpcode() != ISD::ADD || !checkOneUse(Mask))
       return false;
     // We should be adding all-ones constant (i.e. subtracting one.)
     if (!isAllOnesConstant(Mask->getOperand(1)))
       return false;
-    // Match `1 << nbits`. Must only have one use!
-    SDValue M0 = Mask->getOperand(0);
+    // Match `1 << nbits`. Might be truncated. Must only have one use!
+    SDValue M0 = peekThroughOneUseTruncation(Mask->getOperand(0));
     if (M0->getOpcode() != ISD::SHL || !checkOneUse(M0))
       return false;
     if (!isOneConstant(M0->getOperand(0)))
@@ -3147,23 +3162,36 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
     return true;
   };
 
+  auto isAllOnes = [this, peekThroughOneUseTruncation, NVT](SDValue V) {
+    V = peekThroughOneUseTruncation(V);
+    return CurDAG->MaskedValueIsAllOnes(
+        V, APInt::getLowBitsSet(V.getSimpleValueType().getSizeInBits(),
+                                NVT.getSizeInBits()));
+  };
+
   // b) x & ~(-1 << nbits)
-  auto matchPatternB = [&checkOneUse, &NBits](SDValue Mask) -> bool {
+  auto matchPatternB = [checkOneUse, isAllOnes, peekThroughOneUseTruncation,
+                        &NBits](SDValue Mask) -> bool {
     // Match `~()`. Must only have one use!
-    if (!isBitwiseNot(Mask) || !checkOneUse(Mask))
+    if (Mask.getOpcode() != ISD::XOR || !checkOneUse(Mask))
       return false;
-    // Match `-1 << nbits`. Must only have one use!
-    SDValue M0 = Mask->getOperand(0);
+    // The -1 only has to be all-ones for the final Node's NVT.
+    if (!isAllOnes(Mask->getOperand(1)))
+      return false;
+    // Match `-1 << nbits`. Might be truncated. Must only have one use!
+    SDValue M0 = peekThroughOneUseTruncation(Mask->getOperand(0));
     if (M0->getOpcode() != ISD::SHL || !checkOneUse(M0))
       return false;
-    if (!isAllOnesConstant(M0->getOperand(0)))
+    // The -1 only has to be all-ones for the final Node's NVT.
+    if (!isAllOnes(M0->getOperand(0)))
       return false;
     NBits = M0->getOperand(1);
     return true;
   };
 
   // Match potentially-truncated (bitwidth - y)
-  auto matchShiftAmt = [checkOneUse, Size, &NBits](SDValue ShiftAmt) {
+  auto matchShiftAmt = [checkOneUse, &NBits](SDValue ShiftAmt,
+                                             unsigned Bitwidth) {
     // Skip over a truncate of the shift amount.
     if (ShiftAmt.getOpcode() == ISD::TRUNCATE) {
       ShiftAmt = ShiftAmt.getOperand(0);
@@ -3175,52 +3203,56 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
     if (ShiftAmt.getOpcode() != ISD::SUB)
       return false;
     auto V0 = dyn_cast<ConstantSDNode>(ShiftAmt.getOperand(0));
-    if (!V0 || V0->getZExtValue() != Size)
+    if (!V0 || V0->getZExtValue() != Bitwidth)
       return false;
     NBits = ShiftAmt.getOperand(1);
     return true;
   };
 
   // c) x &  (-1 >> (32 - y))
-  auto matchPatternC = [&checkOneUse, matchShiftAmt](SDValue Mask) -> bool {
+  auto matchPatternC = [checkOneUse, peekThroughOneUseTruncation,
+                        matchShiftAmt](SDValue Mask) -> bool {
+    // The mask itself may be truncated.
+    Mask = peekThroughOneUseTruncation(Mask);
+    unsigned Bitwidth = Mask.getSimpleValueType().getSizeInBits();
     // Match `l>>`. Must only have one use!
     if (Mask.getOpcode() != ISD::SRL || !checkOneUse(Mask))
       return false;
-    // We should be shifting all-ones constant.
+    // We should be shifting truly all-ones constant.
     if (!isAllOnesConstant(Mask.getOperand(0)))
       return false;
     SDValue M1 = Mask.getOperand(1);
     // The shift amount should not be used externally.
     if (!checkOneUse(M1))
       return false;
-    return matchShiftAmt(M1);
+    return matchShiftAmt(M1, Bitwidth);
   };
 
   SDValue X;
 
   // d) x << (32 - y) >> (32 - y)
-  auto matchPatternD = [&checkOneUse, &checkTwoUse, matchShiftAmt,
+  auto matchPatternD = [checkOneUse, checkTwoUse, matchShiftAmt,
                         &X](SDNode *Node) -> bool {
     if (Node->getOpcode() != ISD::SRL)
       return false;
     SDValue N0 = Node->getOperand(0);
     if (N0->getOpcode() != ISD::SHL || !checkOneUse(N0))
       return false;
+    unsigned Bitwidth = N0.getSimpleValueType().getSizeInBits();
     SDValue N1 = Node->getOperand(1);
     SDValue N01 = N0->getOperand(1);
     // Both of the shifts must be by the exact same value.
     // There should not be any uses of the shift amount outside of the pattern.
     if (N1 != N01 || !checkTwoUse(N1))
       return false;
-    if (!matchShiftAmt(N1))
+    if (!matchShiftAmt(N1, Bitwidth))
       return false;
     X = N0->getOperand(0);
     return true;
   };
 
-  auto matchLowBitMask = [&matchPatternA, &matchPatternB,
-                          &matchPatternC](SDValue Mask) -> bool {
-    // FIXME: pattern c.
+  auto matchLowBitMask = [matchPatternA, matchPatternB,
+                          matchPatternC](SDValue Mask) -> bool {
     return matchPatternA(Mask) || matchPatternB(Mask) || matchPatternC(Mask);
   };
 
@@ -3240,18 +3272,6 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
 
   SDLoc DL(Node);
 
-  // If we do *NOT* have BMI2, let's find out if the if the 'X' is *logically*
-  // shifted (potentially with one-use trunc inbetween),
-  // and if so look past one-use truncation.
-  MVT XVT = NVT;
-  if (!Subtarget->hasBMI2() && X.getOpcode() == ISD::TRUNCATE &&
-      X.hasOneUse() && X.getOperand(0).getOpcode() == ISD::SRL) {
-    assert(NVT == MVT::i32 && "Expected target valuetype to be i32");
-    X = X.getOperand(0);
-    XVT = X.getSimpleValueType();
-    assert(XVT == MVT::i64 && "Expected truncation from i64");
-  }
-
   // Truncate the shift amount.
   NBits = CurDAG->getNode(ISD::TRUNCATE, DL, MVT::i8, NBits);
   insertDAGNode(*CurDAG, SDValue(Node, 0), NBits);
@@ -3267,17 +3287,30 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
 
   if (Subtarget->hasBMI2()) {
     // Great, just emit the the BZHI..
-    if (XVT != MVT::i32) {
+    if (NVT != MVT::i32) {
       // But have to place the bit count into the wide-enough register first.
-      NBits = CurDAG->getNode(ISD::ANY_EXTEND, DL, XVT, NBits);
+      NBits = CurDAG->getNode(ISD::ANY_EXTEND, DL, NVT, NBits);
       insertDAGNode(*CurDAG, SDValue(Node, 0), NBits);
     }
 
-    SDValue Extract = CurDAG->getNode(X86ISD::BZHI, DL, XVT, X, NBits);
+    SDValue Extract = CurDAG->getNode(X86ISD::BZHI, DL, NVT, X, NBits);
     ReplaceNode(Node, Extract.getNode());
     SelectCode(Extract.getNode());
     return true;
   }
+
+  // Else, if we do *NOT* have BMI2, let's find out if the if the 'X' is
+  // *logically* shifted (potentially with one-use trunc inbetween),
+  // and the truncation was the only use of the shift,
+  // and if so look past one-use truncation.
+  {
+    SDValue RealX = peekThroughOneUseTruncation(X);
+    // FIXME: only if the shift is one-use?
+    if (RealX != X && RealX.getOpcode() == ISD::SRL)
+      X = RealX;
+  }
+
+  MVT XVT = X.getSimpleValueType();
 
   // Else, emitting BEXTR requires one more step.
   // The 'control' of BEXTR has the pattern of:
@@ -3292,6 +3325,7 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
   insertDAGNode(*CurDAG, SDValue(Node, 0), Control);
 
   // If the 'X' is *logically* shifted, we can fold that shift into 'control'.
+  // FIXME: only if the shift is one-use?
   if (X.getOpcode() == ISD::SRL) {
     SDValue ShiftAmt = X.getOperand(1);
     X = X.getOperand(0);
@@ -3564,6 +3598,119 @@ bool X86DAGToDAGISel::tryShiftAmountMod(SDNode *N) {
   // Now that we've optimized the shift amount, defer to normal isel to get
   // load folding and legacy vs BMI2 selection without repeating it here.
   SelectCode(N);
+  return true;
+}
+
+bool X86DAGToDAGISel::tryShrinkShlLogicImm(SDNode *N) {
+  MVT NVT = N->getSimpleValueType(0);
+  unsigned Opcode = N->getOpcode();
+  SDLoc dl(N);
+
+  // For operations of the form (x << C1) op C2, check if we can use a smaller
+  // encoding for C2 by transforming it into (x op (C2>>C1)) << C1.
+  SDValue Shift = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+
+  ConstantSDNode *Cst = dyn_cast<ConstantSDNode>(N1);
+  if (!Cst)
+    return false;
+
+  int64_t Val = Cst->getSExtValue();
+
+  // If we have an any_extend feeding the AND, look through it to see if there
+  // is a shift behind it. But only if the AND doesn't use the extended bits.
+  // FIXME: Generalize this to other ANY_EXTEND than i32 to i64?
+  bool FoundAnyExtend = false;
+  if (Shift.getOpcode() == ISD::ANY_EXTEND && Shift.hasOneUse() &&
+      Shift.getOperand(0).getSimpleValueType() == MVT::i32 &&
+      isUInt<32>(Val)) {
+    FoundAnyExtend = true;
+    Shift = Shift.getOperand(0);
+  }
+
+  if (Shift.getOpcode() != ISD::SHL || !Shift.hasOneUse())
+    return false;
+
+  // i8 is unshrinkable, i16 should be promoted to i32.
+  if (NVT != MVT::i32 && NVT != MVT::i64)
+    return false;
+
+  ConstantSDNode *ShlCst = dyn_cast<ConstantSDNode>(Shift.getOperand(1));
+  if (!ShlCst)
+    return false;
+
+  uint64_t ShAmt = ShlCst->getZExtValue();
+
+  // Make sure that we don't change the operation by removing bits.
+  // This only matters for OR and XOR, AND is unaffected.
+  uint64_t RemovedBitsMask = (1ULL << ShAmt) - 1;
+  if (Opcode != ISD::AND && (Val & RemovedBitsMask) != 0)
+    return false;
+
+  // Check the minimum bitwidth for the new constant.
+  // TODO: Using 16 and 8 bit operations is also possible for or32 & xor32.
+  auto CanShrinkImmediate = [&](int64_t &ShiftedVal) {
+    if (Opcode == ISD::AND) {
+      // AND32ri is the same as AND64ri32 with zext imm.
+      // Try this before sign extended immediates below.
+      ShiftedVal = (uint64_t)Val >> ShAmt;
+      if (NVT == MVT::i64 && !isUInt<32>(Val) && isUInt<32>(ShiftedVal))
+        return true;
+      // Also swap order when the AND can become MOVZX.
+      if (ShiftedVal == UINT8_MAX || ShiftedVal == UINT16_MAX)
+        return true;
+    }
+    ShiftedVal = Val >> ShAmt;
+    if ((!isInt<8>(Val) && isInt<8>(ShiftedVal)) ||
+        (!isInt<32>(Val) && isInt<32>(ShiftedVal)))
+      return true;
+    if (Opcode != ISD::AND) {
+      // MOV32ri+OR64r/XOR64r is cheaper than MOV64ri64+OR64rr/XOR64rr
+      ShiftedVal = (uint64_t)Val >> ShAmt;
+      if (NVT == MVT::i64 && !isUInt<32>(Val) && isUInt<32>(ShiftedVal))
+        return true;
+    }
+    return false;
+  };
+
+  int64_t ShiftedVal;
+  if (!CanShrinkImmediate(ShiftedVal))
+    return false;
+
+  // Ok, we can reorder to get a smaller immediate.
+
+  // But, its possible the original immediate allowed an AND to become MOVZX.
+  // Doing this late due to avoid the MakedValueIsZero call as late as
+  // possible.
+  if (Opcode == ISD::AND) {
+    // Find the smallest zext this could possibly be.
+    unsigned ZExtWidth = Cst->getAPIntValue().getActiveBits();
+    ZExtWidth = PowerOf2Ceil(std::max(ZExtWidth, 8U));
+
+    // Figure out which bits need to be zero to achieve that mask.
+    APInt NeededMask = APInt::getLowBitsSet(NVT.getSizeInBits(),
+                                            ZExtWidth);
+    NeededMask &= ~Cst->getAPIntValue();
+
+    if (CurDAG->MaskedValueIsZero(N->getOperand(0), NeededMask))
+      return false;
+  }
+
+  SDValue X = Shift.getOperand(0);
+  if (FoundAnyExtend) {
+    SDValue NewX = CurDAG->getNode(ISD::ANY_EXTEND, dl, NVT, X);
+    insertDAGNode(*CurDAG, SDValue(N, 0), NewX);
+    X = NewX;
+  }
+
+  SDValue NewCst = CurDAG->getConstant(ShiftedVal, dl, NVT);
+  insertDAGNode(*CurDAG, SDValue(N, 0), NewCst);
+  SDValue NewBinOp = CurDAG->getNode(Opcode, dl, NVT, X, NewCst);
+  insertDAGNode(*CurDAG, SDValue(N, 0), NewBinOp);
+  SDValue NewSHL = CurDAG->getNode(ISD::SHL, dl, NVT, NewBinOp,
+                                   Shift.getOperand(1));
+  ReplaceNode(N, NewSHL.getNode());
+  SelectCode(NewSHL.getNode());
   return true;
 }
 
@@ -4131,115 +4278,11 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
 
     LLVM_FALLTHROUGH;
   case ISD::OR:
-  case ISD::XOR: {
+  case ISD::XOR:
+    if (tryShrinkShlLogicImm(Node))
+      return;
+    break;
 
-    // For operations of the form (x << C1) op C2, check if we can use a smaller
-    // encoding for C2 by transforming it into (x op (C2>>C1)) << C1.
-    SDValue Shift = Node->getOperand(0);
-    SDValue N1 = Node->getOperand(1);
-
-    ConstantSDNode *Cst = dyn_cast<ConstantSDNode>(N1);
-    if (!Cst)
-      break;
-
-    int64_t Val = Cst->getSExtValue();
-
-    // If we have an any_extend feeding the AND, look through it to see if there
-    // is a shift behind it. But only if the AND doesn't use the extended bits.
-    // FIXME: Generalize this to other ANY_EXTEND than i32 to i64?
-    bool FoundAnyExtend = false;
-    if (Shift.getOpcode() == ISD::ANY_EXTEND && Shift.hasOneUse() &&
-        Shift.getOperand(0).getSimpleValueType() == MVT::i32 &&
-        isUInt<32>(Val)) {
-      FoundAnyExtend = true;
-      Shift = Shift.getOperand(0);
-    }
-
-    if (Shift.getOpcode() != ISD::SHL || !Shift.hasOneUse())
-      break;
-
-    // i8 is unshrinkable, i16 should be promoted to i32.
-    if (NVT != MVT::i32 && NVT != MVT::i64)
-      break;
-
-    ConstantSDNode *ShlCst = dyn_cast<ConstantSDNode>(Shift.getOperand(1));
-    if (!ShlCst)
-      break;
-
-    uint64_t ShAmt = ShlCst->getZExtValue();
-
-    // Make sure that we don't change the operation by removing bits.
-    // This only matters for OR and XOR, AND is unaffected.
-    uint64_t RemovedBitsMask = (1ULL << ShAmt) - 1;
-    if (Opcode != ISD::AND && (Val & RemovedBitsMask) != 0)
-      break;
-
-    // Check the minimum bitwidth for the new constant.
-    // TODO: Using 16 and 8 bit operations is also possible for or32 & xor32.
-    auto CanShrinkImmediate = [&](int64_t &ShiftedVal) {
-      if (Opcode == ISD::AND) {
-        // AND32ri is the same as AND64ri32 with zext imm.
-        // Try this before sign extended immediates below.
-        ShiftedVal = (uint64_t)Val >> ShAmt;
-        if (NVT == MVT::i64 && !isUInt<32>(Val) && isUInt<32>(ShiftedVal))
-          return true;
-        // Also swap order when the AND can become MOVZX.
-        if (ShiftedVal == UINT8_MAX || ShiftedVal == UINT16_MAX)
-          return true;
-      }
-      ShiftedVal = Val >> ShAmt;
-      if ((!isInt<8>(Val) && isInt<8>(ShiftedVal)) ||
-          (!isInt<32>(Val) && isInt<32>(ShiftedVal)))
-        return true;
-      if (Opcode != ISD::AND) {
-        // MOV32ri+OR64r/XOR64r is cheaper than MOV64ri64+OR64rr/XOR64rr
-        ShiftedVal = (uint64_t)Val >> ShAmt;
-        if (NVT == MVT::i64 && !isUInt<32>(Val) && isUInt<32>(ShiftedVal))
-          return true;
-      }
-      return false;
-    };
-
-    int64_t ShiftedVal;
-    if (!CanShrinkImmediate(ShiftedVal))
-      break;
-
-    // Ok, we can reorder to get a smaller immediate.
-
-    // But, its possible the original immediate allowed an AND to become MOVZX.
-    // Doing this late due to avoid the MakedValueIsZero call as late as
-    // possible.
-    if (Opcode == ISD::AND) {
-      // Find the smallest zext this could possibly be.
-      unsigned ZExtWidth = Cst->getAPIntValue().getActiveBits();
-      ZExtWidth = PowerOf2Ceil(std::max(ZExtWidth, 8U));
-
-      // Figure out which bits need to be zero to achieve that mask.
-      APInt NeededMask = APInt::getLowBitsSet(NVT.getSizeInBits(),
-                                              ZExtWidth);
-      NeededMask &= ~Cst->getAPIntValue();
-
-      if (CurDAG->MaskedValueIsZero(Node->getOperand(0), NeededMask))
-        break;
-    }
-
-    SDValue X = Shift.getOperand(0);
-    if (FoundAnyExtend) {
-      SDValue NewX = CurDAG->getNode(ISD::ANY_EXTEND, dl, NVT, X);
-      insertDAGNode(*CurDAG, SDValue(Node, 0), NewX);
-      X = NewX;
-    }
-
-    SDValue NewCst = CurDAG->getConstant(ShiftedVal, dl, NVT);
-    insertDAGNode(*CurDAG, SDValue(Node, 0), NewCst);
-    SDValue NewBinOp = CurDAG->getNode(Opcode, dl, NVT, X, NewCst);
-    insertDAGNode(*CurDAG, SDValue(Node, 0), NewBinOp);
-    SDValue NewSHL = CurDAG->getNode(ISD::SHL, dl, NVT, NewBinOp,
-                                     Shift.getOperand(1));
-    ReplaceNode(Node, NewSHL.getNode());
-    SelectCode(NewSHL.getNode());
-    return;
-  }
   case X86ISD::SMUL:
     // i16/i32/i64 are handled with isel patterns.
     if (NVT != MVT::i8)

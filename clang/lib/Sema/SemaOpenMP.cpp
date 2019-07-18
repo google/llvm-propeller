@@ -1354,16 +1354,28 @@ const DSAStackTy::DSAVarData DSAStackTy::getTopDSA(ValueDecl *D,
   // in a Construct, C/C++, predetermined, p.7]
   //  Variables with static storage duration that are declared in a scope
   //  inside the construct are shared.
-  auto &&MatchesAlways = [](OpenMPDirectiveKind) { return true; };
   if (VD && VD->isStaticDataMember()) {
-    DSAVarData DVarTemp = hasDSA(D, isOpenMPPrivate, MatchesAlways, FromParent);
-    if (DVarTemp.CKind != OMPC_unknown && DVarTemp.RefExpr)
+    // Check for explicitly specified attributes.
+    const_iterator I = begin();
+    const_iterator EndI = end();
+    if (FromParent && I != EndI)
+      ++I;
+    auto It = I->SharingMap.find(D);
+    if (It != I->SharingMap.end()) {
+      const DSAInfo &Data = It->getSecond();
+      DVar.RefExpr = Data.RefExpr.getPointer();
+      DVar.PrivateCopy = Data.PrivateCopy;
+      DVar.CKind = Data.Attributes;
+      DVar.ImplicitDSALoc = I->DefaultAttrLoc;
+      DVar.DKind = I->Directive;
       return DVar;
+    }
 
     DVar.CKind = OMPC_shared;
     return DVar;
   }
 
+  auto &&MatchesAlways = [](OpenMPDirectiveKind) { return true; };
   // The predetermined shared attribute for const-qualified types having no
   // mutable members was removed after OpenMP 3.1.
   if (SemaRef.LangOpts.OpenMP <= 31) {
@@ -1576,7 +1588,9 @@ void Sema::checkOpenMPDeviceExpr(const Expr *E) {
          "OpenMP device compilation mode is expected.");
   QualType Ty = E->getType();
   if ((Ty->isFloat16Type() && !Context.getTargetInfo().hasFloat16Type()) ||
-      (Ty->isFloat128Type() && !Context.getTargetInfo().hasFloat128Type()) ||
+      ((Ty->isFloat128Type() ||
+        (Ty->isRealFloatingType() && Context.getTypeSize(Ty) == 128)) &&
+       !Context.getTargetInfo().hasFloat128Type()) ||
       (Ty->isIntegerType() && Context.getTypeSize(Ty) == 128 &&
        !Context.getTargetInfo().hasInt128Type()))
     targetDiag(E->getExprLoc(), diag::err_type_unsupported)
@@ -1864,11 +1878,14 @@ VarDecl *Sema::isOpenMPCapturedDecl(ValueDecl *D, bool CheckScopeInfo,
         DSAStack->getTopDSA(D, DSAStack->isClauseParsingMode());
     if (DVarPrivate.CKind != OMPC_unknown && isOpenMPPrivate(DVarPrivate.CKind))
       return VD ? VD : cast<VarDecl>(DVarPrivate.PrivateCopy->getDecl());
+    // Threadprivate variables must not be captured.
+    if (isOpenMPThreadPrivate(DVarPrivate.CKind))
+      return nullptr;
+    // The variable is not private or it is the variable in the directive with
+    // default(none) clause and not used in any clause.
     DVarPrivate = DSAStack->hasDSA(D, isOpenMPPrivate,
                                    [](OpenMPDirectiveKind) { return true; },
                                    DSAStack->isClauseParsingMode());
-    // The variable is not private or it is the variable in the directive with
-    // default(none) clause and not used in any clause.
     if (DVarPrivate.CKind != OMPC_unknown ||
         (VD && DSAStack->getDefaultDSA() == DSA_none))
       return VD ? VD : cast<VarDecl>(DVarPrivate.PrivateCopy->getDecl());
@@ -5692,12 +5709,14 @@ static bool checkOpenMPIterationSpace(
             ? ((NestedLoopCount == 1) ? OMPC_linear : OMPC_lastprivate)
             : OMPC_private;
     if (((isOpenMPSimdDirective(DKind) && DVar.CKind != OMPC_unknown &&
-          DVar.CKind != PredeterminedCKind) ||
+          DVar.CKind != PredeterminedCKind && DVar.RefExpr &&
+          (SemaRef.getLangOpts().OpenMP <= 45 ||
+           (DVar.CKind != OMPC_lastprivate && DVar.CKind != OMPC_private))) ||
          ((isOpenMPWorksharingDirective(DKind) || DKind == OMPD_taskloop ||
            isOpenMPDistributeDirective(DKind)) &&
           !isOpenMPSimdDirective(DKind) && DVar.CKind != OMPC_unknown &&
           DVar.CKind != OMPC_private && DVar.CKind != OMPC_lastprivate)) &&
-        (DVar.CKind != OMPC_private || DVar.RefExpr != nullptr)) {
+        (DVar.CKind != OMPC_private || DVar.RefExpr)) {
       SemaRef.Diag(Init->getBeginLoc(), diag::err_omp_loop_var_dsa)
           << getOpenMPClauseName(DVar.CKind) << getOpenMPDirectiveName(DKind)
           << getOpenMPClauseName(PredeterminedCKind);
