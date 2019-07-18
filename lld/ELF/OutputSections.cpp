@@ -165,6 +165,24 @@ void OutputSection::sort(llvm::function_ref<int(InputSectionBase *S)> Order) {
       sortByOrder(ISD->Sections, Order);
 }
 
+static void fill(uint8_t *Buf, size_t Size,
+                 const std::vector<std::vector<uint8_t>> &SFiller) {
+  size_t I = 0;
+  unsigned FillerIndex = 0;
+  while(I < Size) {
+    for (; I + SFiller[FillerIndex].size() <= Size; I += SFiller[FillerIndex].size())
+      memcpy(Buf + I, SFiller[FillerIndex].data(), SFiller[FillerIndex].size());
+    if (FillerIndex + 1 < SFiller.size()) {
+      FillerIndex++;
+    } else {
+      memcpy(Buf + I, SFiller[FillerIndex].data(), Size - I);
+      break;
+    }
+  }
+}
+
+
+
 // Fill [Buf, Buf + Size) with Filler.
 // This is used for linker script "=fillexp" command.
 static void fill(uint8_t *Buf, size_t Size,
@@ -249,7 +267,9 @@ template <class ELFT> void OutputSection::writeTo(uint8_t *Buf) {
       else
         End = Buf + Sections[I + 1]->OutSecOff;
       // Check if this IS needs a special filler.
-      if (IS->Filler)
+      if (IS->SpecialFiller)
+        fill(Start, End - Start, *(IS->SpecialFiller));
+      else if (IS->Filler)
         fill(Start, End - Start, *(IS->Filler));
       else
         fill(Start, End - Start, Filler);

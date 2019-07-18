@@ -74,12 +74,13 @@ gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
 # $1 is either "labels", "all" or "none".
 # -fexperimental-new-pass-manager -mllvm -qualify-function-names
 bb_section_lto_flags = -Wl,--lto-basicblock-sections=$(1)
+#-Wl,--lto-unique-bb-section-names
 lld_relocs              := -Wl,-q
-funique_flag            := -funique-internal-funcnames
+funique_flag            := -funique-internal-funcnames -funique-bb-section-names -v
 
 bb_section_none_flags      := $(call gen_build_flags,"-fbasicblock-sections=none $(funique_flag)","   $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,none)")
 bb_section_labels_flags    := $(call gen_build_flags,"-fbasicblock-sections=labels $(funique_flag)"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,labels)")
-bb_section_all_flags       := $(call gen_build_flags,"-fbasicblock-sections=all $(funique_flag)","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,all)")
+bb_section_all_flags       := $(call gen_build_flags,"-fbasicblock-sections=all $(funique_flag)","    $(lld_relocs) $(LLD_OPT) $(call bb_section_lto_flags,all)")
 bb_section_likely_flags    := $(call gen_build_flags,"-fbasicblock-sections=likely $(funique_flag)"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,likely)")
 bb_section_hot_flags       := $(call gen_build_flags,"-fbasicblock-sections=hot $(funique_flag)","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,hot)")
 bb_section_list_flags       = $(call gen_build_flags,"-fbasicblock-sections-list=$1 $(funique_flag)","$(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,$1)")
@@ -240,6 +241,7 @@ define do_relink
 		     -Wl,-propeller-dump-cfg="_ZN5clang4Sema21InstantiatingTemplate5ClearEv" \
 		     -Wl,-propeller-dump-cfg="_ZN4llvm10AllocaInstC1EPNS_4TypeEjPNS_5ValueEjRKNS_5TwineEPNS_11InstructionE" \
 		     -Wl,-propeller-dump-cfg="_ZN4llvm10AllocaInstC2EPNS_4TypeEjPNS_5ValueEjRKNS_5TwineEPNS_11InstructionE" \
+		     -Wl,-propeller-dump-cfg="_ZNK4llvm13ConstantRange8truncateEj" \
                      -Wl,--no-call-graph-profile-sort !"   \
 		     -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
 	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@
@@ -302,7 +304,10 @@ sample.propeller: sample.perfdata $(CREATE_LLVM_PROF)
 	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=sample.out --logtostderr
 
 sample_bball.o: sample.c
-	./stage1-compiler -c -O2 -fbasicblock-sections=all $< -o $@
+	./stage1-compiler -flto=thin -c -O2 -fbasicblock-sections=all -funique-bb-section-names $< -o $@
+
+sample_bball.out: sample_bball.o stage1-compiler
+	./stage1-compiler -fuse-ld=lld -flto=thin -O2 -Wl,--lto-basicblock-sections=all -Wl,--lto-unique-bb-section-names $< -o $@
 
 sample.propeller.out: sample.propeller sample_bball.o stage1-compiler
 	./stage1-compiler -o $@ -fuse-ld=lld -Wl,-propeller=$< sample_bball.o

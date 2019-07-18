@@ -516,6 +516,9 @@ defm plugin_opt: Eq<"plugin-opt", "specifies LTO options for compatibility with 
 def save_temps: F<"save-temps">;
 def lto_basicblock_sections: J<"lto-basicblock-sections=">,
   HelpText<"Enable basic block sections for LTO">;
+defm lto_unique_bb_section_names: B<"lto-unique-bb-section-names",
+    "Give unique names to every basic block section for LTO",
+    "Do not give unique names to every basic block section for LTO">;
 def thinlto_cache_dir: J<"thinlto-cache-dir=">,
   HelpText<"Path to ThinLTO cached object file directory">;
 defm thinlto_cache_policy: Eq<"thinlto-cache-policy", "Pruning policy for the ThinLTO cache">;

@@ -1714,16 +1714,18 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
 
     // Shrink jump Instructions optimistically
     std::vector<unsigned> Shrunk(Sections.size(), 0);
-    bool Changed = false;
+    std::vector<bool> Changed(Sections.size(), 0);
+    bool AnyChanged = false;
     do {
-      Changed = false;
+      AnyChanged = false;
       parallelForEachN(0, Sections.size(), [&](size_t I) {
-        if (Shrunk[I] == 0) {
-          InputSection &IS = *Sections[I];
-          Shrunk[I] = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
-          Changed |= (Shrunk[I] > 0);
-        }
+        InputSection &IS = *Sections[I];
+        unsigned BytesShrunk = Target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
+        Changed[I] = (BytesShrunk > 0);
+        Shrunk[I] += BytesShrunk;
       });
+      AnyChanged = std::any_of(Changed.begin(), Changed.end(),
+                               [] (bool e) {return e;});
       size_t Num = std::count_if(Shrunk.begin(), Shrunk.end(),
           [] (int e) { return e > 0; });
       Num += std::count_if(Shrunk.begin(), Shrunk.end(),
@@ -1731,20 +1733,19 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       if (Num > 0)
         LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->Name <<
                    " : Shrinking " << Num << " jmp instructions\n");
-      if (Changed)
+      if (AnyChanged)
         Script->assignAddresses();
-    } while (Changed);
+    } while (AnyChanged);
 
     // Grow jump instructions when necessary
     std::vector<unsigned> Grown(Sections.size(), 0);
     do {
-      Changed = false;
+      AnyChanged = false;
       parallelForEachN(0, Sections.size(), [&](size_t I) {
-        if (Grown[I] == 0) {
-          InputSection &IS = *Sections[I];
-          Grown[I] = Target->growJmpInsn(IS, IS.getFile<ELFT>());
-          Changed |= (Grown[I] > 0);
-        }
+        InputSection &IS = *Sections[I];
+        unsigned BytesGrown = Target->growJmpInsn(IS, IS.getFile<ELFT>());
+        Changed[I] = (BytesGrown > 0);
+        Grown[I] += BytesGrown;
       });
       size_t Num = std::count_if(Grown.begin(), Grown.end(),
           [] (int e) { return e > 0; });
@@ -1753,9 +1754,11 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       if (Num > 0)
         LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->Name <<
                    " : Growing " << Num << " jmp instructions\n");
-      if (Changed)
+      AnyChanged = std::any_of(Changed.begin(), Changed.end(),
+                               [] (bool e) {return e;});
+      if (AnyChanged)
         Script->assignAddresses();
-    } while (Changed);
+    } while (AnyChanged);
   }
 
   for (OutputSection *OS : OutputSections) {

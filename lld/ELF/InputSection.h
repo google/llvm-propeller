@@ -218,6 +218,7 @@ public:
   std::vector<Relocation> Relocations;
 
   llvm::Optional<std::array<uint8_t, 4>> Filler;
+  llvm::Optional<std::vector<std::vector<uint8_t>>> SpecialFiller;
 
   // These are artificial jump relocations.
   std::vector<JumpRelocation> JumpRelocations;

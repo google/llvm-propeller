@@ -106,8 +106,9 @@ static lto::Config createConfig() {
       getBasicBlockSectionsList(*Buffer, C.Options);
       C.Options.BasicBlockSections = BasicBlockSection::List;
     }
-
   }
+
+  C.Options.UniqueBBSectionNames = Config->LTOUniqueBBSectionNames;
 
   if (Config->Relocatable)
     C.RelocModel = None;

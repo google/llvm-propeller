@@ -58,6 +58,17 @@ public:
 };
 } // namespace
 
+static std::vector<std::vector<uint8_t>> X86_NOP_INSTRUCTIONS = {
+  {0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00},
+  {0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00},
+  {0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00},
+  {0x66, 0x0f, 0x1f, 0x44, 0x00, 0x00},
+  {0x0f, 0x1f, 0x44, 0x00, 0x00},
+  {0x0f, 0x1f, 0x00},
+  {0x66, 0x90},
+  {0x90}
+};
+
 X86_64::X86_64() {
   CopyRel = R_X86_64_COPY;
   GotRel = R_X86_64_GLOB_DAT;
@@ -245,7 +256,8 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
     R.Expr = R_NONE;
     R.Offset = 0;
     IS.drop_back(SizeOfDirectJmpInsn);
-    IS.Filler =  {0x90, 0x90, 0x90, 0x90};
+    //IS.Filler =  {0x90, 0x90, 0x90, 0x90};
+    IS.SpecialFiller = X86_NOP_INSTRUCTIONS;
     return true;
   }
 
@@ -283,7 +295,8 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
   R.Expr = R_NONE;
   R.Offset = 0;
   IS.drop_back(SizeOfDirectJmpInsn);
-  IS.Filler =  {0x90, 0x90, 0x90, 0x90};
+  //IS.Filler =  {0x90, 0x90, 0x90, 0x90};
+  IS.SpecialFiller = X86_NOP_INSTRUCTIONS;
   return true;
 }
 
@@ -293,8 +306,9 @@ static uint64_t getTargetOffsetForJmp(InputSection &IS, InputFile *File,
                                       Relocation &R, JmpInsnOpcode &JmpCode) {
   const unsigned SizeOfJmpCCOpcode = 2;
 
-  if (!isRelocationForJmpInsn(R))
+  if (!isRelocationForJmpInsn(R)){
     return false;
+  }
 
   unsigned JIndex = getJumpRelocationWithOffset(IS, (R.Offset - 1));
   if (JIndex != IS.JumpRelocations.size()){
@@ -306,8 +320,9 @@ static uint64_t getTargetOffsetForJmp(InputSection &IS, InputFile *File,
                                (JmpInsn - 1) : nullptr;
     JmpCode = getJmpInsnType(JmpCCInsn, JmpInsn);
   }
-  if (JmpCode == J_UNKNOWN)
+  if (JmpCode == J_UNKNOWN){
     return 0;
+  }
 
   uint64_t AddrLoc = (IS.getOutputSection())->Addr + IS.OutSecOff + R.Offset;
   uint64_t TargetOffset = SignExtend64(
@@ -355,6 +370,7 @@ static void shrinkJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
 
   if (JIndex < IS.JumpRelocations.size()) {
     JumpRelocation &J = IS.JumpRelocations[JIndex];
+    assert((!DoShrinkJmp || J.Size == 4) && "Not the right size of jump.");
     J.Offset = R.Offset - 1;
     if (DoShrinkJmp)
       J.Size = NewJmpSize;
@@ -365,6 +381,7 @@ static void shrinkJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
   if (DoShrinkJmp) {
     // Shrinking Jmp corresponding to relocation R, adjust type and addend.
     R.Type = R_X86_64_PC8;
+    assert(R.Addend == -4 && "Addend must be -4 to shrink.");
     R.Addend += 3;
     BytesShrunk += 3;
   }
@@ -378,8 +395,9 @@ unsigned X86_64::shrinkJmpInsn(InputSection &IS, InputFile *File) const {
 
   bool IsShortJmp = false;
 
-  if (IS.getSize() < SizeOfDirectNearJmpInsn)
+  if (IS.getSize() < SizeOfDirectNearJmpInsn){
     return 0;
+  }
 
   unsigned RIndex = getRelocationWithOffset(IS, (IS.getSize() - 4));
 
@@ -427,7 +445,7 @@ unsigned X86_64::shrinkJmpInsn(InputSection &IS, InputFile *File) const {
         }
       }
     }
-    bool CanShrinkR = isOneByteOffsetWhenShrunk(TargetOffset, JmpCode, BytesShrunk);
+    bool CanShrinkR = !IsShortJmp && isOneByteOffsetWhenShrunk(TargetOffset, JmpCode, BytesShrunk);
     shrinkJmpWithRelocation(IS, JmpCode, R, BytesShrunk, CanShrinkR);
   }
 
@@ -443,25 +461,25 @@ static void growJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
   // Check if there is a Jump Relocation against this offset.
   unsigned JIndex = getJumpRelocationWithOffset(IS, (R.Offset - 1));
 
+  if (JIndex == IS.JumpRelocations.size()){
+    error("Jump relocation does not exist!");
+    return;
+  }
+
   if (DoGrowJmp && JmpCode!=J_JMP_32)
     BytesGrown += 1;
 
   // Update R.Offset
   R.Offset += BytesGrown;
-  unsigned NewJmpSize = DoGrowJmp ? 4 : 1;
 
-  if (JIndex < IS.JumpRelocations.size()) {
-    JumpRelocation &J = IS.JumpRelocations[JIndex];
-    J.Offset = R.Offset - 1;
-    if (DoGrowJmp)
-      J.Size = NewJmpSize;
-  } else {
-    IS.addJumpRelocation({JmpCode, R.Offset - 1, NewJmpSize});
-  }
-
+  JumpRelocation &J = IS.JumpRelocations[JIndex];
+  assert((!DoGrowJmp || J.Size == 1) && "Not the right size of jump.");
+  J.Offset = R.Offset - 1;
   if (DoGrowJmp) {
     // Growing Jmp corresponding to relocation R, adjust type and addend.
+    J.Size = 4;
     R.Type = R_X86_64_PC32;
+    assert(R.Addend == -1 && "Addend must be -1 to grow.");
     R.Addend -= 3;
     BytesGrown += 3;
   }
@@ -481,7 +499,7 @@ unsigned X86_64::growJmpInsn(InputSection &IS, InputFile *File) const {
   unsigned RIndex = getRelocationWithOffset(IS, (IS.getSize() - 1));
 
   if (RIndex == IS.Relocations.size()){
-    if (IS.getSize() < (SizeOfDirectNearJmpInsn + SizeOfJmpCCInsn)){
+    if (IS.getSize() < SizeOfDirectNearJmpInsn){
       return 0;
     }
 

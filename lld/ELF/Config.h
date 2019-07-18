@@ -112,6 +112,7 @@ struct Configuration {
   llvm::StringRef ThinLTOCacheDir;
   llvm::StringRef ThinLTOIndexOnlyArg;
   llvm::StringRef LTOBasicBlockSections;
+  bool LTOUniqueBBSectionNames;
   std::pair<llvm::StringRef, llvm::StringRef> ThinLTOObjectSuffixReplace;
   std::pair<llvm::StringRef, llvm::StringRef> ThinLTOPrefixReplace;
   std::string Rpath;

@@ -940,6 +940,8 @@ static void readConfigs(opt::InputArgList &Args) {
   Config->Target1Rel = Args.hasFlag(OPT_target1_rel, OPT_target1_abs, false);
   Config->Target2 = getTarget2(Args);
   Config->LTOBasicBlockSections = Args.getLastArgValue(OPT_lto_basicblock_sections);
+  Config->LTOUniqueBBSectionNames = Args.hasFlag(OPT_lto_unique_bb_section_names,
+                                                 OPT_no_lto_unique_bb_section_names, false);
   Config->ThinLTOCacheDir = Args.getLastArgValue(OPT_thinlto_cache_dir);
   Config->ThinLTOCachePolicy = CHECK(
       parseCachePruningPolicy(Args.getLastArgValue(OPT_thinlto_cache_policy)),
