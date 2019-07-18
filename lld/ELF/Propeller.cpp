@@ -449,16 +449,16 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
 }
 
 template <class C>
-static void writeOut(const char *fname, C &Names) {
-   FILE *fp = fopen(fname, "w");
-   if (!fp) {
-     fprintf(stderr, "failed to open: %s\n", fname);
-   }
-   for (auto &N : Names) {
-     fprintf(fp, "%s\n", N.str().c_str());
-   }
-   fclose(fp);
-   fprintf(stderr, "Done writing %s\n", fname);
+static void writeOut(const char *fname, const C &Names) {
+  FILE *fp = fopen(fname, "w");
+  if (!fp) {
+    fprintf(stderr, "failed to open: %s\n", fname);
+  }
+  for (auto &N : Names) {
+    fprintf(fp, "%s\n", N.str().c_str());
+  }
+  fclose(fp);
+  fprintf(stderr, "Done writing %s\n", fname);
 };
 
 vector<StringRef> Propeller::genSymbolOrderingFile() {
@@ -491,7 +491,6 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   unsigned ReorderedN = 0;
   auto startBBOrderTime = system_clock::now();
   for (auto *Cfg : CfgOrder) {
-    log("Ordering Cfg for function: " + Twine(Cfg->Name) + " --> " + Twine(Cfg->getEntryNode()->MappedAddr));
     if (Cfg->isHot() && Config->PropellerReorderBlocks) {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
