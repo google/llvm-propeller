@@ -400,8 +400,9 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
       if (L->second.empty())
         continue;
 
-      if (!PrimaryCfg || PrimaryCfg->Nodes.size() < (*L->second.begin())->Nodes.size()){
-        if(PrimaryCfg)
+      if (!PrimaryCfg ||
+          PrimaryCfg->Nodes.size() < (*L->second.begin())->Nodes.size()) {
+        if (PrimaryCfg)
           CfgMap.erase(PrimaryCfgMapEntry);
 
         PrimaryCfg = *L->second.begin();
@@ -419,19 +420,25 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
 
-  if (Config->PropellerPrintStats){
-    duration<double> ProcessProfileTime = system_clock::now() - startProcessProfileTime;
+  if (Config->PropellerPrintStats) {
+    duration<double> ProcessProfileTime =
+        system_clock::now() - startProcessProfileTime;
     duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
-    duration<double> CreateCfgTime = startProcessProfileTime - startCreateCfgTime;
-    fprintf(stderr, "[Propeller] Read all symbols in %f seconds.\n", ReadSymbolTime.count());
-    fprintf(stderr, "[Propeller] Created all cfgs in %f seconds.\n", CreateCfgTime.count());
-    fprintf(stderr, "[Propeller] Proccesed the profile in %f seconds.\n", ProcessProfileTime.count());
+    duration<double> CreateCfgTime =
+        startProcessProfileTime - startCreateCfgTime;
+    fprintf(stderr, "[Propeller] Read all symbols in %f seconds.\n",
+            ReadSymbolTime.count());
+    fprintf(stderr, "[Propeller] Created all cfgs in %f seconds.\n",
+            CreateCfgTime.count());
+    fprintf(stderr, "[Propeller] Proccesed the profile in %f seconds.\n",
+            ProcessProfileTime.count());
   }
 
   for (auto &CfgNameToDump : Config->PropellerDumpCfgs){
     auto CfgLI = CfgMap.find(CfgNameToDump);
-    if(CfgLI == CfgMap.end()){
-      warn("[Propeller] Could not dump cfg for function '"+ CfgNameToDump +"' : No such function name exists.");
+    if (CfgLI == CfgMap.end()) {
+      warn("[Propeller] Could not dump cfg for function '" + CfgNameToDump +
+           "' : No such function name exists.");
       continue;
     }
     for (auto *Cfg : CfgLI->second) {
