@@ -51,19 +51,16 @@ private:
   /// Storage. Also returns paths for dependencies of \p StartSourceFile if it
   /// wasn't cached yet.
   std::pair<const LoadedShard &, std::vector<Path>>
-  loadShard(PathRef StartSourceFile);
+  loadShard(PathRef StartSourceFile, PathRef DependentTU);
 
   /// Cache for Storage lookups.
   llvm::StringMap<LoadedShard> LoadedShards;
-
-  /// References are into the AbsolutePaths in LoadedShards.
-  llvm::DenseMap<PathRef, PathRef> FileToTU;
 
   BackgroundIndexStorage::Factory &IndexStorageFactory;
 };
 
 std::pair<const LoadedShard &, std::vector<Path>>
-BackgroundIndexLoader::loadShard(PathRef StartSourceFile) {
+BackgroundIndexLoader::loadShard(PathRef StartSourceFile, PathRef DependentTU) {
   auto It = LoadedShards.try_emplace(StartSourceFile);
   LoadedShard &LS = It.first->getValue();
   std::vector<Path> Edges = {};
@@ -72,6 +69,7 @@ BackgroundIndexLoader::loadShard(PathRef StartSourceFile) {
     return {LS, Edges};
 
   LS.AbsolutePath = StartSourceFile.str();
+  LS.DependentTU = DependentTU;
   BackgroundIndexStorage *Storage = IndexStorageFactory(LS.AbsolutePath);
   auto Shard = Storage->loadShard(StartSourceFile);
   if (!Shard || !Shard->Sources) {
@@ -111,8 +109,7 @@ void BackgroundIndexLoader::load(PathRef MainFile) {
     PathRef SourceFile = ToVisit.front();
     ToVisit.pop();
 
-    auto ShardAndEdges = loadShard(SourceFile);
-    FileToTU[ShardAndEdges.first.AbsolutePath] = MainFile;
+    auto ShardAndEdges = loadShard(SourceFile, MainFile);
     for (PathRef Edge : ShardAndEdges.second) {
       auto It = InQueue.insert(Edge);
       if (It.second)
@@ -124,13 +121,8 @@ void BackgroundIndexLoader::load(PathRef MainFile) {
 std::vector<LoadedShard> BackgroundIndexLoader::takeResult() && {
   std::vector<LoadedShard> Result;
   Result.reserve(LoadedShards.size());
-  for (auto &It : LoadedShards) {
+  for (auto &It : LoadedShards)
     Result.push_back(std::move(It.getValue()));
-    LoadedShard &LS = Result.back();
-    auto TUsIt = FileToTU.find(LS.AbsolutePath);
-    assert(TUsIt != FileToTU.end() && "No TU registered for the shard");
-    Result.back().DependentTU = TUsIt->second;
-  }
   return Result;
 }
 } // namespace
