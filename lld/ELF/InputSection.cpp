@@ -139,7 +139,10 @@ size_t InputSectionBase::getSize() const {
     return s->getSize();
   if (uncompressedSize >= 0)
     return uncompressedSize;
-  return rawData.size() - BytesDropped;
+  if (Trimmed)
+    return rawData.size();
+  else
+    return rawData.size() - BytesDropped;
 }
 
 void InputSectionBase::uncompress() const {
@@ -840,6 +843,9 @@ void InputSection::relocateNonAlloc(uint8_t *buf, ArrayRef<RelTy> rels) {
 
     Symbol &sym = getFile<ELFT>()->getRelocTargetSym(rel);
     RelExpr expr = target->getRelExpr(type, sym, bufLoc);
+
+    if (expr == R_NONE)
+      continue;
 
     if (expr == R_SIZE) {
       target->relocateOne(bufLoc, type,

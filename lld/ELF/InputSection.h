@@ -142,6 +142,9 @@ public:
   }
 
   unsigned BytesDropped = 0;
+
+  bool Trimmed = false;
+
   void drop_back(uint64_t num) {
     BytesDropped += num;
   }
@@ -152,9 +155,11 @@ public:
   }
 
   void trim() {
+    if (Trimmed)
+      return;
     if (BytesDropped){
       rawData = rawData.drop_back(BytesDropped);
-      BytesDropped = 0;
+      Trimmed = true;
     }
   }
 
