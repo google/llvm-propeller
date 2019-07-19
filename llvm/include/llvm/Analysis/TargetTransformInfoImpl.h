@@ -140,6 +140,8 @@ public:
 
   unsigned getInliningThresholdMultiplier() { return 1; }
 
+  int getInlinerVectorBonusPercent() { return 150; }
+
   unsigned getMemcpyCost(const Instruction *I) {
     return TTI::TCC_Expensive;
   }
@@ -220,6 +222,12 @@ public:
   }
 
   bool canMacroFuseCmp() { return false; }
+
+  bool canSaveCmp(Loop *L, BranchInst **BI, ScalarEvolution *SE, LoopInfo *LI,
+                  DominatorTree *DT, AssumptionCache *AC,
+                  TargetLibraryInfo *LibInfo) {
+    return false;
+  }
 
   bool shouldFavorPostInc() const { return false; }
 

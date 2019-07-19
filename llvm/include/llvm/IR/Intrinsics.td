@@ -94,6 +94,8 @@ class ReadNone<int argNo> : IntrinsicProperty {
 
 def IntrNoReturn : IntrinsicProperty;
 
+def IntrWillReturn : IntrinsicProperty;
+
 // IntrCold - Calls to this intrinsic are cold.
 // Parallels the cold attribute on LLVM IR functions.
 def IntrCold : IntrinsicProperty;
@@ -261,6 +263,7 @@ def llvm_v2f32_ty      : LLVMType<v2f32>;    //  2 x float
 def llvm_v4f32_ty      : LLVMType<v4f32>;    //  4 x float
 def llvm_v8f32_ty      : LLVMType<v8f32>;    //  8 x float
 def llvm_v16f32_ty     : LLVMType<v16f32>;   // 16 x float
+def llvm_v32f32_ty     : LLVMType<v32f32>;   // 32 x float
 def llvm_v1f64_ty      : LLVMType<v1f64>;    //  1 x double
 def llvm_v2f64_ty      : LLVMType<v2f64>;    //  2 x double
 def llvm_v4f64_ty      : LLVMType<v4f64>;    //  4 x double
@@ -1040,7 +1043,6 @@ def int_clear_cache : Intrinsic<[], [llvm_ptr_ty, llvm_ptr_ty],
 // Intrinsic to detect whether its argument is a constant.
 def int_is_constant : Intrinsic<[llvm_i1_ty], [llvm_any_ty], [IntrNoMem], "llvm.is.constant">;
 
-
 //===-------------------------- Masked Intrinsics -------------------------===//
 //
 def int_masked_store : Intrinsic<[], [llvm_anyvector_ty,
@@ -1214,6 +1216,22 @@ def int_loop_decrement_reg :
 
 def int_ssa_copy : Intrinsic<[llvm_any_ty], [LLVMMatchType<0>],
                              [IntrNoMem, Returned<0>]>;
+
+//===------- Intrinsics that are used to preserve debug information -------===//
+
+def int_preserve_array_access_index : Intrinsic<[llvm_anyptr_ty],
+                                                [llvm_anyptr_ty, llvm_i32_ty,
+                                                 llvm_i32_ty],
+                                                [IntrNoMem, ImmArg<1>, ImmArg<2>]>;
+def int_preserve_union_access_index : Intrinsic<[llvm_anyptr_ty],
+                                                [llvm_anyptr_ty, llvm_i32_ty],
+                                                [IntrNoMem, ImmArg<1>]>;
+def int_preserve_struct_access_index : Intrinsic<[llvm_anyptr_ty],
+                                                 [llvm_anyptr_ty, llvm_i32_ty,
+                                                  llvm_i32_ty],
+                                                 [IntrNoMem, ImmArg<1>,
+                                                  ImmArg<2>]>;
+
 //===----------------------------------------------------------------------===//
 // Target-specific intrinsics
 //===----------------------------------------------------------------------===//

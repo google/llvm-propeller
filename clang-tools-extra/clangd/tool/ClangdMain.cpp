@@ -58,8 +58,7 @@ static llvm::cl::opt<CompletionStyleFlag> CompletionStyle(
                    "completion, with full type information"),
         clEnumValN(Bundled, "bundled",
                    "Similar completion items (e.g. function overloads) are "
-                   "combined. Type information shown where possible")),
-    llvm::cl::init(Detailed));
+                   "combined. Type information shown where possible")));
 
 // FIXME: Flags are the wrong mechanism for user preferences.
 // We should probably read a dotfile or similar.
@@ -76,7 +75,7 @@ static llvm::cl::opt<JSONStreamStyle> InputStyle(
         clEnumValN(JSONStreamStyle::Standard, "standard", "usual LSP protocol"),
         clEnumValN(JSONStreamStyle::Delimited, "delimited",
                    "messages delimited by --- lines, with # comment support")),
-    llvm::cl::init(JSONStreamStyle::Standard));
+    llvm::cl::init(JSONStreamStyle::Standard), llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
     PrettyPrint("pretty", llvm::cl::desc("Pretty-print JSON output"),
@@ -189,15 +188,7 @@ static llvm::cl::opt<bool> EnableBackgroundIndex(
     llvm::cl::desc(
         "Index project code in the background and persist index on disk. "
         "Experimental"),
-    llvm::cl::init(false), llvm::cl::Hidden);
-
-static llvm::cl::opt<int> BackgroundIndexRebuildPeriod(
-    "background-index-rebuild-period",
-    llvm::cl::desc(
-        "If set to non-zero, the background index rebuilds the symbol index "
-        "periodically every X milliseconds; otherwise, the "
-        "symbol index will be updated for each indexed file"),
-    llvm::cl::init(5000), llvm::cl::Hidden);
+    llvm::cl::init(true));
 
 enum CompileArgsFrom { LSPCompileArgs, FilesystemCompileArgs };
 static llvm::cl::opt<CompileArgsFrom> CompileArgsFrom(
@@ -215,7 +206,8 @@ static llvm::cl::opt<bool> EnableFunctionArgSnippets(
     llvm::cl::desc("When disabled, completions contain only parentheses for "
                    "function calls. When enabled, completions also contain "
                    "placeholders for method parameters"),
-    llvm::cl::init(CodeCompleteOptions().EnableFunctionArgSnippets));
+    llvm::cl::init(CodeCompleteOptions().EnableFunctionArgSnippets),
+    llvm::cl::Hidden);
 
 static llvm::cl::opt<std::string> ClangTidyChecks(
     "clang-tidy-checks",
@@ -277,6 +269,12 @@ static llvm::cl::list<std::string> QueryDriverGlobs(
         "will be used to extract system includes. e.g. "
         "/usr/bin/**/clang-*,/path/to/repo/**/g++-*"),
     llvm::cl::CommaSeparated);
+
+static llvm::cl::list<std::string> TweakList(
+    "tweaks",
+    llvm::cl::desc(
+        "Specify a list of Tweaks to enable (only for clangd developers)."),
+    llvm::cl::Hidden, llvm::cl::CommaSeparated);
 
 namespace {
 
@@ -358,7 +356,7 @@ int main(int argc, char *argv[]) {
     LogLevel = Logger::Verbose;
     PrettyPrint = true;
     // Ensure background index makes progress.
-    BackgroundIndex::preventThreadStarvationInTests();
+    BackgroundQueue::preventThreadStarvationInTests();
   }
   if (Test || EnableTestScheme) {
     static URISchemeRegistry::Add<TestScheme> X(
@@ -459,7 +457,6 @@ int main(int argc, char *argv[]) {
     Opts.ResourceDir = ResourceDir;
   Opts.BuildDynamicSymbolIndex = EnableIndex;
   Opts.BackgroundIndex = EnableBackgroundIndex;
-  Opts.BackgroundIndexRebuildPeriodMs = BackgroundIndexRebuildPeriod;
   std::unique_ptr<SymbolIndex> StaticIdx;
   std::future<void> AsyncIndexLoad; // Block exit while loading the index.
   if (EnableIndex && !IndexFile.empty()) {
@@ -475,12 +472,12 @@ int main(int argc, char *argv[]) {
   }
   Opts.StaticIndex = StaticIdx.get();
   Opts.AsyncThreadsCount = WorkerThreadsCount;
-  Opts.HiddenFeatures = HiddenFeatures;
 
   clangd::CodeCompleteOptions CCOpts;
   CCOpts.IncludeIneligibleResults = IncludeIneligibleResults;
   CCOpts.Limit = LimitResults;
-  CCOpts.BundleOverloads = CompletionStyle != Detailed;
+  if (CompletionStyle.getNumOccurrences())
+    CCOpts.BundleOverloads = CompletionStyle != Detailed;
   CCOpts.ShowOrigins = ShowOrigins;
   CCOpts.InsertIncludes = HeaderInsertion;
   if (!HeaderInsertionDecorators) {
@@ -533,6 +530,14 @@ int main(int argc, char *argv[]) {
   }
   Opts.SuggestMissingIncludes = SuggestMissingIncludes;
   Opts.QueryDriverGlobs = std::move(QueryDriverGlobs);
+
+  Opts.TweakFilter = [&](const Tweak &T) {
+    if (T.hidden() && !HiddenFeatures)
+      return false;
+    if (TweakList.getNumOccurrences())
+      return llvm::is_contained(TweakList, T.id());
+    return true;
+  };
   llvm::Optional<OffsetEncoding> OffsetEncodingFromFlag;
   if (ForceOffsetEncoding != OffsetEncoding::UnsupportedEncoding)
     OffsetEncodingFromFlag = ForceOffsetEncoding;

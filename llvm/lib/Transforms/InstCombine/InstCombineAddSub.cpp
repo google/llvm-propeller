@@ -1202,7 +1202,10 @@ Instruction *InstCombiner::visitAdd(BinaryOperator &I) {
 
   // (A + 1) + ~B --> A - B
   // ~B + (A + 1) --> A - B
-  if (match(&I, m_c_BinOp(m_Add(m_Value(A), m_One()), m_Not(m_Value(B)))))
+  // (~B + A) + 1 --> A - B
+  // (A + ~B) + 1 --> A - B
+  if (match(&I, m_c_BinOp(m_Add(m_Value(A), m_One()), m_Not(m_Value(B)))) ||
+      match(&I, m_BinOp(m_c_Add(m_Not(m_Value(B)), m_Value(A)), m_One())))
     return BinaryOperator::CreateSub(A, B);
 
   // X % C0 + (( X / C0 ) % C1) * C0 => X % (C0 * C1)
@@ -1576,6 +1579,12 @@ Instruction *InstCombiner::visitSub(BinaryOperator &I) {
   // Y - (X + 1) --> ~X + Y
   if (match(Op1, m_OneUse(m_Add(m_Value(X), m_One()))))
     return BinaryOperator::CreateAdd(Builder.CreateNot(X), Op0);
+
+  // Y - ~X --> (X + 1) + Y
+  if (match(Op1, m_OneUse(m_Not(m_Value(X))))) {
+    return BinaryOperator::CreateAdd(
+        Builder.CreateAdd(Op0, ConstantInt::get(I.getType(), 1)), X);
+  }
 
   if (Constant *C = dyn_cast<Constant>(Op0)) {
     bool IsNegate = match(C, m_ZeroInt());

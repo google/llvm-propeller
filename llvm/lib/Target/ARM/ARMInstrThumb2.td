@@ -2756,7 +2756,8 @@ def : T2Pat<(and     rGPR:$src, t2_so_imm_not:$imm),
 
 // top16Zero - answer true if the upper 16 bits of $src are 0, false otherwise
 def top16Zero: PatLeaf<(i32 rGPR:$src), [{
-  return CurDAG->MaskedValueIsZero(SDValue(N,0), APInt::getHighBitsSet(32, 16));
+  return !SDValue(N,0)->getValueType(0).isVector() &&
+         CurDAG->MaskedValueIsZero(SDValue(N,0), APInt::getHighBitsSet(32, 16));
   }]>;
 
 // so_imm_notSext is needed instead of so_imm_not, as the value of imm
@@ -5216,10 +5217,18 @@ def t2LoopDec :
   t2PseudoInst<(outs GPRlr:$Rm), (ins GPRlr:$Rn, imm0_7:$size),
                4, IIC_Br, []>, Sched<[WriteBr]>;
 
-let isBranch = 1, isTerminator = 1, hasSideEffects = 1 in
+let isBranch = 1, isTerminator = 1, hasSideEffects = 1 in {
+def t2WhileLoopStart :
+    t2PseudoInst<(outs),
+                 (ins rGPR:$elts, brtarget:$target),
+                 4, IIC_Br, []>,
+                 Sched<[WriteBr]>;
+
 def t2LoopEnd :
   t2PseudoInst<(outs), (ins GPRlr:$elts, brtarget:$target),
   8, IIC_Br, []>, Sched<[WriteBr]>;
+
+} // end isBranch, isTerminator, hasSideEffects
 
 } // end isNotDuplicable
 

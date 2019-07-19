@@ -38,7 +38,6 @@
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
@@ -1999,6 +1998,15 @@ bool isKnownNonZero(const Value *V, unsigned Depth, const Query &Q) {
       // Must be non-zero due to null test above.
       return true;
 
+    if (auto *CE = dyn_cast<ConstantExpr>(C)) {
+      // See the comment for IntToPtr/PtrToInt instructions below.
+      if (CE->getOpcode() == Instruction::IntToPtr ||
+          CE->getOpcode() == Instruction::PtrToInt)
+        if (Q.DL.getTypeSizeInBits(CE->getOperand(0)->getType()) <=
+            Q.DL.getTypeSizeInBits(CE->getType()))
+          return isKnownNonZero(CE->getOperand(0), Depth, Q);
+    }
+
     // For constant vectors, check that all elements are undefined or known
     // non-zero to determine that the whole vector is known non-zero.
     if (auto *VecTy = dyn_cast<VectorType>(C->getType())) {
@@ -3166,7 +3174,7 @@ bool llvm::isKnownNeverNaN(const Value *V, const TargetLibraryInfo *TLI,
   return true;
 }
 
-Value *llvm::isBytewiseValue(Value *V) {
+Value *llvm::isBytewiseValue(Value *V, const DataLayout &DL) {
 
   // All byte-wide stores are splatable, even of arbitrary variables.
   if (V->getType()->isIntegerTy(8))
@@ -3177,6 +3185,10 @@ Value *llvm::isBytewiseValue(Value *V) {
   // Undef don't care.
   auto *UndefInt8 = UndefValue::get(Type::getInt8Ty(Ctx));
   if (isa<UndefValue>(V))
+    return UndefInt8;
+
+  const uint64_t Size = DL.getTypeStoreSize(V->getType());
+  if (!Size)
     return UndefInt8;
 
   Constant *C = dyn_cast<Constant>(V);
@@ -3205,7 +3217,8 @@ Value *llvm::isBytewiseValue(Value *V) {
     else if (CFP->getType()->isDoubleTy())
       Ty = Type::getInt64Ty(Ctx);
     // Don't handle long double formats, which have strange constraints.
-    return Ty ? isBytewiseValue(ConstantExpr::getBitCast(CFP, Ty)) : nullptr;
+    return Ty ? isBytewiseValue(ConstantExpr::getBitCast(CFP, Ty), DL)
+              : nullptr;
   }
 
   // We can handle constant integers that are multiple of 8 bits.
@@ -3215,6 +3228,17 @@ Value *llvm::isBytewiseValue(Value *V) {
       if (!CI->getValue().isSplat(8))
         return nullptr;
       return ConstantInt::get(Ctx, CI->getValue().trunc(8));
+    }
+  }
+
+  if (auto *CE = dyn_cast<ConstantExpr>(C)) {
+    if (CE->getOpcode() == Instruction::IntToPtr) {
+      auto PS = DL.getPointerSizeInBits(
+          cast<PointerType>(CE->getType())->getAddressSpace());
+      return isBytewiseValue(
+          ConstantExpr::getIntegerCast(CE->getOperand(0),
+                                       Type::getIntNTy(Ctx, PS), false),
+          DL);
     }
   }
 
@@ -3233,20 +3257,15 @@ Value *llvm::isBytewiseValue(Value *V) {
   if (ConstantDataSequential *CA = dyn_cast<ConstantDataSequential>(C)) {
     Value *Val = UndefInt8;
     for (unsigned I = 0, E = CA->getNumElements(); I != E; ++I)
-      if (!(Val = Merge(Val, isBytewiseValue(CA->getElementAsConstant(I)))))
+      if (!(Val = Merge(Val, isBytewiseValue(CA->getElementAsConstant(I), DL))))
         return nullptr;
     return Val;
   }
 
-  if (isa<ConstantVector>(C)) {
-    Constant *Splat = cast<ConstantVector>(C)->getSplatValue();
-    return Splat ? isBytewiseValue(Splat) : nullptr;
-  }
-
-  if (isa<ConstantArray>(C) || isa<ConstantStruct>(C)) {
+  if (isa<ConstantAggregate>(C)) {
     Value *Val = UndefInt8;
     for (unsigned I = 0, E = C->getNumOperands(); I != E; ++I)
-      if (!(Val = Merge(Val, isBytewiseValue(C->getOperand(I)))))
+      if (!(Val = Merge(Val, isBytewiseValue(C->getOperand(I), DL))))
         return nullptr;
     return Val;
   }
@@ -3420,57 +3439,6 @@ Value *llvm::FindInsertedValue(Value *V, ArrayRef<unsigned> idx_range,
   // Otherwise, we don't know (such as, extracting from a function return value
   // or load instruction)
   return nullptr;
-}
-
-/// Analyze the specified pointer to see if it can be expressed as a base
-/// pointer plus a constant offset. Return the base and offset to the caller.
-Value *llvm::GetPointerBaseWithConstantOffset(Value *Ptr, int64_t &Offset,
-                                              const DataLayout &DL) {
-  unsigned BitWidth = DL.getIndexTypeSizeInBits(Ptr->getType());
-  APInt ByteOffset(BitWidth, 0);
-
-  // We walk up the defs but use a visited set to handle unreachable code. In
-  // that case, we stop after accumulating the cycle once (not that it
-  // matters).
-  SmallPtrSet<Value *, 16> Visited;
-  while (Visited.insert(Ptr).second) {
-    if (Ptr->getType()->isVectorTy())
-      break;
-
-    if (GEPOperator *GEP = dyn_cast<GEPOperator>(Ptr)) {
-      // If one of the values we have visited is an addrspacecast, then
-      // the pointer type of this GEP may be different from the type
-      // of the Ptr parameter which was passed to this function.  This
-      // means when we construct GEPOffset, we need to use the size
-      // of GEP's pointer type rather than the size of the original
-      // pointer type.
-      APInt GEPOffset(DL.getIndexTypeSizeInBits(Ptr->getType()), 0);
-      if (!GEP->accumulateConstantOffset(DL, GEPOffset))
-        break;
-
-      APInt OrigByteOffset(ByteOffset);
-      ByteOffset += GEPOffset.sextOrTrunc(ByteOffset.getBitWidth());
-      if (ByteOffset.getMinSignedBits() > 64) {
-        // Stop traversal if the pointer offset wouldn't fit into int64_t
-        // (this should be removed if Offset is updated to an APInt)
-        ByteOffset = OrigByteOffset;
-        break;
-      }
-
-      Ptr = GEP->getPointerOperand();
-    } else if (Operator::getOpcode(Ptr) == Instruction::BitCast ||
-               Operator::getOpcode(Ptr) == Instruction::AddrSpaceCast) {
-      Ptr = cast<Operator>(Ptr)->getOperand(0);
-    } else if (GlobalAlias *GA = dyn_cast<GlobalAlias>(Ptr)) {
-      if (GA->isInterposable())
-        break;
-      Ptr = GA->getAliasee();
-    } else {
-      break;
-    }
-  }
-  Offset = ByteOffset.getSExtValue();
-  return Ptr;
 }
 
 bool llvm::isGEPBasedOnPointerToString(const GEPOperator *GEP,
@@ -3697,7 +3665,9 @@ const Value *llvm::getArgumentAliasingToReturnedPointer(const CallBase *Call) {
 bool llvm::isIntrinsicReturningPointerAliasingArgumentWithoutCapturing(
     const CallBase *Call) {
   return Call->getIntrinsicID() == Intrinsic::launder_invariant_group ||
-         Call->getIntrinsicID() == Intrinsic::strip_invariant_group;
+         Call->getIntrinsicID() == Intrinsic::strip_invariant_group ||
+         Call->getIntrinsicID() == Intrinsic::aarch64_irg ||
+         Call->getIntrinsicID() == Intrinsic::aarch64_tagp;
 }
 
 /// \p PN defines a loop-variant pointer to an object.  Check if the
@@ -3948,7 +3918,8 @@ bool llvm::isSafeToSpeculativelyExecute(const Value *V,
       return false;
     const DataLayout &DL = LI->getModule()->getDataLayout();
     return isDereferenceableAndAlignedPointer(LI->getPointerOperand(),
-                                              LI->getAlignment(), DL, CtxI, DT);
+                                              LI->getType(), LI->getAlignment(),
+                                              DL, CtxI, DT);
   }
   case Instruction::Call: {
     auto *CI = cast<const CallInst>(Inst);
@@ -4398,7 +4369,7 @@ const Value *llvm::getGuaranteedNonFullPoisonOp(const Instruction *I) {
       // Note: It's really tempting to think that a conditional branch or
       // switch should be listed here, but that's incorrect.  It's not
       // branching off of poison which is UB, it is executing a side effecting
-      // instruction which follows the branch.  
+      // instruction which follows the branch.
       return nullptr;
   }
 }

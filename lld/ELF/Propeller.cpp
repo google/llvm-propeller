@@ -18,7 +18,7 @@
 #include <tuple>
 #include <vector>
 
-using lld::elf::Config;
+using lld::elf::config;
 using llvm::StringRef;
 
 using std::list;
@@ -247,7 +247,7 @@ bool Propfile::processProfile() {
 
 void Propeller::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
-  ELFView *View = ELFView::create(Inf->getName(), Pair.second, Inf->MB);
+  ELFView *View = ELFView::create(Inf->getName(), Pair.second, Inf->mb);
   if (View) {
     ELFCfgBuilder(*this, View).buildCfgs();
     {
@@ -360,8 +360,8 @@ void Propeller::calculateNodeFreqs() {
 }
 
 bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
-  if (Config->Propeller.empty()) return true;
-  string PropellerFileName = Config->Propeller.str();
+  if (config->propeller.empty()) return true;
+  string PropellerFileName = config->propeller.str();
   FILE *PropFile = fopen(PropellerFileName.c_str(), "r");
   if (!PropFile) {
     error(string("Failed to open '") + PropellerFileName + "'.");
@@ -419,7 +419,7 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
 
-  if (Config->PropellerPrintStats){
+  if (config->propellerPrintStats){
     duration<double> ProcessProfileTime = system_clock::now() - startProcessProfileTime;
     duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
     duration<double> CreateCfgTime = startProcessProfileTime - startCreateCfgTime;
@@ -428,7 +428,7 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     fprintf(stderr, "[Propeller] Proccesed the profile in %f seconds.\n", ProcessProfileTime.count());
   }
 
-  for (auto &CfgNameToDump : Config->PropellerDumpCfgs){
+  for (auto &CfgNameToDump : config->propellerDumpCfgs){
     auto CfgLI = CfgMap.find(CfgNameToDump);
     if(CfgLI == CfgMap.end()){
       warn("[Propeller] Could not dump cfg for function '"+ CfgNameToDump +"' : No such function name exists.");
@@ -465,12 +465,12 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
   list<ELFCfg *> CfgOrder;
-  if (Config->PropellerReorderFuncs) {
+  if (config->propellerReorderFuncs) {
     CCubeAlgorithm Algo;
     Algo.init(*this);
     auto startFuncOrderTime = system_clock::now();
     auto CfgsReordered = Algo.doOrder(CfgOrder);
-    if (Config->PropellerPrintStats){
+    if (config->propellerPrintStats){
       duration<double> FuncOrderTime = system_clock::now() - startFuncOrderTime;
       fprintf(stderr, "[Propeller] Reordered %u hot functions in %f seconds.\n",
               CfgsReordered,
@@ -492,19 +492,19 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   auto startBBOrderTime = system_clock::now();
   for (auto *Cfg : CfgOrder) {
     log("Ordering Cfg for function: " + Twine(Cfg->Name) + " --> " + Twine(Cfg->getEntryNode()->MappedAddr));
-    if (Cfg->isHot() && Config->PropellerReorderBlocks) {
+    if (Cfg->isHot() && config->propellerReorderBlocks) {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
-          Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
+          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
       ReorderedN++;
     } else {
-      auto PlaceHolder = Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
+      auto PlaceHolder = config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
       Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
         SymbolList.insert(PlaceHolder,N.ShName);
       });
     }
   }
-  if (Config->PropellerPrintStats){
+  if (config->propellerPrintStats){
     duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;
     fprintf(stderr, "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
             ReorderedN,
@@ -516,8 +516,8 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   // writeOut("symbol-ordering", SymbolList);
   // writeOut("propeller-legacy", PropLeg.BBSymbolsToKeep);
 
-  if (!Config->PropellerDumpSymbolOrder.empty()){
-    writeOut(Config->PropellerDumpSymbolOrder.str().c_str(), SymbolList);
+  if (!config->propellerDumpSymbolOrder.empty()){
+    writeOut(config->propellerDumpSymbolOrder.str().c_str(), SymbolList);
   }
 
   SymbolList.erase(HotPlaceHolder);

@@ -288,7 +288,7 @@ Optional<size_t> ConstantAggregateBuilder::splitAt(CharUnits Pos) {
     return Offsets.size();
 
   while (true) {
-    auto FirstAfterPos = std::upper_bound(Offsets.begin(), Offsets.end(), Pos);
+    auto FirstAfterPos = llvm::upper_bound(Offsets, Pos);
     if (FirstAfterPos == Offsets.begin())
       return 0;
 
@@ -1115,6 +1115,7 @@ public:
     case CK_ToVoid:
     case CK_Dynamic:
     case CK_LValueBitCast:
+    case CK_LValueToRValueBitCast:
     case CK_NullToMemberPointer:
     case CK_UserDefinedConversion:
     case CK_CPointerToObjCPointerCast:
@@ -1877,7 +1878,7 @@ ConstantLValueEmitter::tryEmitBase(const APValue::LValueBase &base) {
 
         if (VD->isLocalVarDecl()) {
           return CGM.getOrCreateStaticVarDecl(
-              *VD, CGM.getLLVMLinkageVarDefinition(VD, /*isConstant=*/false));
+              *VD, CGM.getLLVMLinkageVarDefinition(VD, /*IsConstant=*/false));
         }
       }
     }

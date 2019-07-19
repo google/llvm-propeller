@@ -39,8 +39,15 @@ MipsLegalizerInfo::MipsLegalizerInfo(const MipsSubtarget &ST) {
       .legalForTypesWithMemDesc({{s32, p0, 8, 8},
                                  {s32, p0, 16, 8},
                                  {s32, p0, 32, 8},
+                                 {s64, p0, 64, 8},
                                  {p0, p0, 32, 8}})
       .minScalar(0, s32);
+
+  getActionDefinitionsBuilder(G_UNMERGE_VALUES)
+     .legalFor({{s32, s64}});
+
+  getActionDefinitionsBuilder(G_MERGE_VALUES)
+     .legalFor({{s64, s32}});
 
   getActionDefinitionsBuilder({G_ZEXTLOAD, G_SEXTLOAD})
     .legalForTypesWithMemDesc({{s32, p0, 8, 8},
@@ -48,7 +55,7 @@ MipsLegalizerInfo::MipsLegalizerInfo(const MipsSubtarget &ST) {
       .minScalar(0, s32);
 
   getActionDefinitionsBuilder(G_SELECT)
-      .legalForCartesianProduct({p0, s32}, {s32})
+      .legalForCartesianProduct({p0, s32, s64}, {s32})
       .minScalar(0, s32)
       .minScalar(1, s32);
 
@@ -57,7 +64,7 @@ MipsLegalizerInfo::MipsLegalizerInfo(const MipsSubtarget &ST) {
       .minScalar(0, s32);
 
   getActionDefinitionsBuilder(G_PHI)
-      .legalFor({p0, s32})
+      .legalFor({p0, s32, s64})
       .minScalar(0, s32);
 
   getActionDefinitionsBuilder({G_AND, G_OR, G_XOR})
@@ -74,7 +81,8 @@ MipsLegalizerInfo::MipsLegalizerInfo(const MipsSubtarget &ST) {
     .minScalar(1, s32);
 
   getActionDefinitionsBuilder(G_ICMP)
-      .legalFor({{s32, s32}})
+      .legalForCartesianProduct({s32}, {s32, p0})
+      .clampScalar(1, s32, s32)
       .minScalar(0, s32);
 
   getActionDefinitionsBuilder(G_CONSTANT)

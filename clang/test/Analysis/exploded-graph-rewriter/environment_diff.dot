@@ -8,11 +8,16 @@ Node0x1 [shape=record,label=
  "{
     { "node_id": 1,
       "pointer": "0x1",
+      "has_report": false,
+      "is_sink": false,
       "state_id": 2,
       "program_points": [],
       "program_state": {
         "store": null,
         "constraints": null,
+        "dynamic_types": null,
+        "constructing_objects": null,
+        "checker_messages": null,
         "environment": {
           "pointer": "0x2",
           "items": [
@@ -20,7 +25,7 @@ Node0x1 [shape=record,label=
               "location_context": "#0 Call",
               "lctx_id": 3,
               "calling": "foo",
-              "call_line": 4,
+              "location": null,
               "items": [
                 {
                   "stmt_id": 5,
@@ -54,11 +59,16 @@ Node0x6 [shape=record,label=
  "{
     { "node_id": 6,
       "pointer": "0x6",
+      "has_report": false,
+      "is_sink": false,
       "state_id": 7,
       "program_points": [],
       "program_state": {
         "store": null,
         "constraints": null,
+        "dynamic_types": null,
+        "constructing_objects": null,
+        "checker_messages": null,
         "environment": {
           "pointer": "0x2",
           "items": [
@@ -66,7 +76,7 @@ Node0x6 [shape=record,label=
               "location_context": "#0 Call",
               "lctx_id": 3,
               "calling": "foo",
-              "call_line": 4,
+              "location": null,
               "items": [
                 {
                   "stmt_id": 9,
@@ -94,11 +104,16 @@ Node0x9 [shape=record,label=
  "{
     { "node_id": 9,
       "pointer": "0x9",
+      "has_report": false,
+      "is_sink": false,
       "state_id": 7,
       "program_points": [],
       "program_state": {
         "store": null,
         "constraints": null,
+        "dynamic_types": null,
+        "constructing_objects": null,
+        "checker_messages": null,
         "environment": {
           "pointer": "0x2",
           "items": [
@@ -106,7 +121,7 @@ Node0x9 [shape=record,label=
               "location_context": "#0 Call",
               "lctx_id": 3,
               "calling": "foo",
-              "call_line": 4,
+              "location": null,
               "items": [
                 {
                   "stmt_id": 9,

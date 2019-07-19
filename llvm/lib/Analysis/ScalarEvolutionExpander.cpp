@@ -60,12 +60,10 @@ Value *SCEVExpander::ReuseOrCreateCast(Value *V, Type *Ty,
           // instructions that might be inserted before BIP.
           if (BasicBlock::iterator(CI) != IP || BIP == IP) {
             // Create a new cast, and leave the old cast in place in case
-            // it is being used as an insert point. Clear its operand
-            // so that it doesn't hold anything live.
+            // it is being used as an insert point.
             Ret = CastInst::Create(Op, V, Ty, "", &*IP);
             Ret->takeName(CI);
             CI->replaceAllUsesWith(Ret);
-            CI->setOperand(0, UndefValue::get(V->getType()));
             break;
           }
           Ret = CI;
@@ -840,9 +838,13 @@ Value *SCEVExpander::visitMulExpr(const SCEVMulExpr *S) {
       if (match(W, m_Power2(RHS))) {
         // Canonicalize Prod*(1<<C) to Prod<<C.
         assert(!Ty->isVectorTy() && "vector types are not SCEVable");
+        auto NWFlags = S->getNoWrapFlags();
+        // clear nsw flag if shl will produce poison value.
+        if (RHS->logBase2() == RHS->getBitWidth() - 1)
+          NWFlags = ScalarEvolution::clearFlags(NWFlags, SCEV::FlagNSW);
         Prod = InsertBinop(Instruction::Shl, Prod,
-                           ConstantInt::get(Ty, RHS->logBase2()),
-                           S->getNoWrapFlags(), /*IsSafeToHoist*/ true);
+                           ConstantInt::get(Ty, RHS->logBase2()), NWFlags,
+                           /*IsSafeToHoist*/ true);
       } else {
         Prod = InsertBinop(Instruction::Mul, Prod, W, S->getNoWrapFlags(),
                            /*IsSafeToHoist*/ true);

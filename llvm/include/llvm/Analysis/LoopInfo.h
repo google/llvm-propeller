@@ -201,9 +201,10 @@ public:
   }
 
   /// True if terminator in the block can branch to another block that is
-  /// outside of the current loop.
+  /// outside of the current loop. \p BB must be inside the loop.
   bool isLoopExiting(const BlockT *BB) const {
     assert(!isInvalid() && "Loop not in a valid state!");
+    assert(contains(BB) && "Exiting block must be part of the loop");
     for (const auto &Succ : children<const BlockT *>(BB)) {
       if (!contains(Succ))
         return true;
@@ -269,16 +270,20 @@ public:
 
   /// Return all unique successor blocks of this loop.
   /// These are the blocks _outside of the current loop_ which are branched to.
-  /// This assumes that loop exits are in canonical form, i.e. all exits are
-  /// dedicated exits.
   void getUniqueExitBlocks(SmallVectorImpl<BlockT *> &ExitBlocks) const;
+
+  /// Return all unique successor blocks of this loop except successors from
+  /// Latch block are not considered. If the exit comes from Latch has also
+  /// non Latch predecessor in a loop it will be added to ExitBlocks.
+  /// These are the blocks _outside of the current loop_ which are branched to.
+  void getUniqueNonLatchExitBlocks(SmallVectorImpl<BlockT *> &ExitBlocks) const;
 
   /// If getUniqueExitBlocks would return exactly one block, return that block.
   /// Otherwise return null.
   BlockT *getUniqueExitBlock() const;
 
   /// Edge type.
-  typedef std::pair<const BlockT *, const BlockT *> Edge;
+  typedef std::pair<BlockT *, BlockT *> Edge;
 
   /// Return all pairs of (_inside_block_,_outside_block_).
   void getExitEdges(SmallVectorImpl<Edge> &ExitEdges) const;

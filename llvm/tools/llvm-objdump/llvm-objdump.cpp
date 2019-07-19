@@ -336,6 +336,7 @@ static cl::extrahelp
     HelpResponse("\nPass @FILE as argument to read options from FILE.\n");
 
 static StringSet<> DisasmFuncsSet;
+static StringSet<> FoundSectionSet;
 static StringRef ToolName;
 
 typedef std::vector<std::tuple<uint64_t, StringRef, uint8_t>> SectionSymbolsTy;
@@ -343,11 +344,15 @@ typedef std::vector<std::tuple<uint64_t, StringRef, uint8_t>> SectionSymbolsTy;
 static bool shouldKeep(object::SectionRef S) {
   if (FilterSections.empty())
     return true;
-  StringRef String;
-  std::error_code error = S.getName(String);
+  StringRef SecName;
+  std::error_code error = S.getName(SecName);
   if (error)
     return false;
-  return is_contained(FilterSections, String);
+  // StringSet does not allow empty key so avoid adding sections with
+  // no name (such as the section with index 0) here.
+  if (!SecName.empty())
+    FoundSectionSet.insert(SecName);
+  return is_contained(FilterSections, SecName);
 }
 
 SectionFilter ToolSectionFilter(object::ObjectFile const &O) {
@@ -381,8 +386,12 @@ void warn(StringRef Message) {
   errs().flush();
 }
 
-void warn(Twine Message) {
+static void warn(Twine Message) {
+  // Output order between errs() and outs() matters especially for archive
+  // files where the output is per member object.
+  outs().flush();
   WithColor::warning(errs(), ToolName) << Message << "\n";
+  errs().flush();
 }
 
 LLVM_ATTRIBUTE_NORETURN void report_error(StringRef File, Twine Message) {
@@ -432,6 +441,22 @@ LLVM_ATTRIBUTE_NORETURN void report_error(Error E, StringRef ArchiveName,
     report_error(std::move(E), ArchiveName, "???", ArchitectureName);
   } else
     report_error(std::move(E), ArchiveName, NameOrErr.get(), ArchitectureName);
+}
+
+static void warnOnNoMatchForSections() {
+  SetVector<StringRef> MissingSections;
+  for (StringRef S : FilterSections) {
+    if (FoundSectionSet.count(S))
+      return;
+    // User may specify a unnamed section. Don't warn for it.
+    if (!S.empty())
+      MissingSections.insert(S);
+  }
+
+  // Warn only if no section in FilterSections is matched.
+  for (StringRef S : MissingSections)
+    warn("section '" + S + "' mentioned in a -j/--section option, but not "
+         "found in any input file");
 }
 
 static const Target *getTarget(const ObjectFile *Obj = nullptr) {
@@ -579,8 +604,7 @@ void SourcePrinter::printSourceLine(raw_ostream &OS,
     return;
 
   DILineInfo LineInfo = DILineInfo();
-  auto ExpectedLineInfo =
-      Symbolizer->symbolizeCode(Obj->getFileName(), Address);
+  auto ExpectedLineInfo = Symbolizer->symbolizeCode(*Obj, Address);
   if (!ExpectedLineInfo)
     consumeError(ExpectedLineInfo.takeError());
   else
@@ -973,14 +997,15 @@ static bool shouldAdjustVA(const SectionRef &Section) {
 typedef std::pair<uint64_t, char> MappingSymbolPair;
 static char getMappingSymbolKind(ArrayRef<MappingSymbolPair> MappingSymbols,
                                  uint64_t Address) {
-  auto Sym = bsearch(MappingSymbols, [Address](const MappingSymbolPair &Val) {
-      return Val.first > Address;
-  });
+  auto It =
+      partition_point(MappingSymbols, [Address](const MappingSymbolPair &Val) {
+        return Val.first <= Address;
+      });
   // Return zero for any address before the first mapping symbol; this means
   // we should use the default disassembly mode, depending on the target.
-  if (Sym == MappingSymbols.begin())
+  if (It == MappingSymbols.begin())
     return '\x00';
-  return (Sym - 1)->second;
+  return (It - 1)->second;
 }
 
 static uint64_t
@@ -1119,9 +1144,9 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
       error(ExportEntry.getExportRVA(RVA));
 
       uint64_t VA = COFFObj->getImageBase() + RVA;
-      auto Sec = llvm::bsearch(
-          SectionAddresses, [VA](const std::pair<uint64_t, SectionRef> &RHS) {
-            return VA < RHS.first;
+      auto Sec = partition_point(
+          SectionAddresses, [VA](const std::pair<uint64_t, SectionRef> &O) {
+            return O.first <= VA;
           });
       if (Sec != SectionAddresses.begin()) {
         --Sec;
@@ -1378,10 +1403,10 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
             // N.B. We don't walk the relocations in the relocatable case yet.
             auto *TargetSectionSymbols = &Symbols;
             if (!Obj->isRelocatableObject()) {
-              auto It = llvm::bsearch(
+              auto It = partition_point(
                   SectionAddresses,
-                  [=](const std::pair<uint64_t, SectionRef> &RHS) {
-                    return Target < RHS.first;
+                  [=](const std::pair<uint64_t, SectionRef> &O) {
+                    return O.first <= Target;
                   });
               if (It != SectionAddresses.begin()) {
                 --It;
@@ -1394,17 +1419,17 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
             // Find the last symbol in the section whose offset is less than
             // or equal to the target. If there isn't a section that contains
             // the target, find the nearest preceding absolute symbol.
-            auto TargetSym = llvm::bsearch(
+            auto TargetSym = partition_point(
                 *TargetSectionSymbols,
-                [=](const std::tuple<uint64_t, StringRef, uint8_t> &RHS) {
-                  return Target < std::get<0>(RHS);
+                [=](const std::tuple<uint64_t, StringRef, uint8_t> &O) {
+                  return std::get<0>(O) <= Target;
                 });
             if (TargetSym == TargetSectionSymbols->begin()) {
               TargetSectionSymbols = &AbsoluteSymbols;
-              TargetSym = llvm::bsearch(
+              TargetSym = partition_point(
                   AbsoluteSymbols,
-                  [=](const std::tuple<uint64_t, StringRef, uint8_t> &RHS) {
-                    return Target < std::get<0>(RHS);
+                  [=](const std::tuple<uint64_t, StringRef, uint8_t> &O) {
+                    return std::get<0>(O) <= Target;
                   });
             }
             if (TargetSym != TargetSectionSymbols->begin()) {
@@ -2155,6 +2180,8 @@ int main(int argc, char **argv) {
                         DisassembleFunctions.end());
 
   llvm::for_each(InputFilenames, dumpInput);
+
+  warnOnNoMatchForSections();
 
   return EXIT_SUCCESS;
 }

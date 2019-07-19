@@ -51,6 +51,7 @@
 #include "llvm/DebugInfo/CodeView/TypeIndex.h"
 #include "llvm/DebugInfo/CodeView/TypeRecord.h"
 #include "llvm/DebugInfo/CodeView/TypeTableCollection.h"
+#include "llvm/DebugInfo/CodeView/TypeVisitorCallbackPipeline.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -93,6 +94,26 @@
 
 using namespace llvm;
 using namespace llvm::codeview;
+
+namespace {
+class CVMCAdapter : public CodeViewRecordStreamer {
+public:
+  CVMCAdapter(MCStreamer &OS) : OS(&OS) {}
+
+  void EmitBytes(StringRef Data) { OS->EmitBytes(Data); }
+
+  void EmitIntValue(uint64_t Value, unsigned Size) {
+    OS->EmitIntValueInHex(Value, Size);
+  }
+
+  void EmitBinaryData(StringRef Data) { OS->EmitBinaryData(Data); }
+
+  void AddComment(const Twine &T) { OS->AddComment(T); }
+
+private:
+  MCStreamer *OS = nullptr;
+};
+} // namespace
 
 static CPUType mapArchToCVCPUType(Triple::ArchType Type) {
   switch (Type) {
@@ -583,8 +604,9 @@ void CodeViewDebug::endModule() {
   clear();
 }
 
-static void emitNullTerminatedSymbolName(MCStreamer &OS, StringRef S,
-    unsigned MaxFixedRecordLength = 0xF00) {
+static void
+emitNullTerminatedSymbolName(MCStreamer &OS, StringRef S,
+                             unsigned MaxFixedRecordLength = 0xF00) {
   // The maximum CV record length is 0xFF00. Most of the strings we emit appear
   // after a fixed length portion of the record. The fixed length portion should
   // always be less than 0xF00 (3840) bytes, so truncate the string so that the
@@ -593,6 +615,13 @@ static void emitNullTerminatedSymbolName(MCStreamer &OS, StringRef S,
       S.take_front(MaxRecordLength - MaxFixedRecordLength - 1));
   NullTerminatedString.push_back('\0');
   OS.EmitBytes(NullTerminatedString);
+}
+
+static StringRef getTypeLeafName(TypeLeafKind TypeKind) {
+  for (const EnumEntry<TypeLeafKind> &EE : getTypeLeafNames())
+    if (EE.Value == TypeKind)
+      return EE.Name;
+  return "";
 }
 
 void CodeViewDebug::emitTypeInformation() {
@@ -611,31 +640,55 @@ void CodeViewDebug::emitTypeInformation() {
   }
 
   TypeTableCollection Table(TypeTable.records());
+  SmallString<512> CommentBlock;
+  raw_svector_ostream CommentOS(CommentBlock);
+  std::unique_ptr<ScopedPrinter> SP;
+  std::unique_ptr<TypeDumpVisitor> TDV;
+  TypeVisitorCallbackPipeline Pipeline;
+
+  if (OS.isVerboseAsm()) {
+    // To construct block comment describing the type record for readability.
+    SP = llvm::make_unique<ScopedPrinter>(CommentOS);
+    SP->setPrefix(CommentPrefix);
+    TDV = llvm::make_unique<TypeDumpVisitor>(Table, SP.get(), false);
+    Pipeline.addCallbackToPipeline(*TDV);
+  }
+
+  // To emit type record using Codeview MCStreamer adapter
+  CVMCAdapter CVMCOS(OS);
+  TypeRecordMapping typeMapping(CVMCOS);
+  Pipeline.addCallbackToPipeline(typeMapping);
+
   Optional<TypeIndex> B = Table.getFirst();
   while (B) {
     // This will fail if the record data is invalid.
     CVType Record = Table.getType(*B);
 
-    if (OS.isVerboseAsm()) {
-      // Emit a block comment describing the type record for readability.
-      SmallString<512> CommentBlock;
-      raw_svector_ostream CommentOS(CommentBlock);
-      ScopedPrinter SP(CommentOS);
-      SP.setPrefix(CommentPrefix);
-      TypeDumpVisitor TDV(Table, &SP, false);
+    CommentBlock.clear();
 
-      Error E = codeview::visitTypeRecord(Record, *B, TDV);
-      if (E) {
-        logAllUnhandledErrors(std::move(E), errs(), "error: ");
-        llvm_unreachable("produced malformed type record");
-      }
+    auto RecordLen = Record.length();
+    auto RecordKind = Record.kind();
+    if (OS.isVerboseAsm())
+      CVMCOS.AddComment("Record length");
+    CVMCOS.EmitIntValue(RecordLen - 2, 2);
+    if (OS.isVerboseAsm())
+      CVMCOS.AddComment("Record kind: " + getTypeLeafName(RecordKind));
+    CVMCOS.EmitIntValue(RecordKind, sizeof(RecordKind));
+
+    Error E = codeview::visitTypeRecord(Record, *B, Pipeline);
+
+    if (E) {
+      logAllUnhandledErrors(std::move(E), errs(), "error: ");
+      llvm_unreachable("produced malformed type record");
+    }
+
+    if (OS.isVerboseAsm()) {
       // emitRawComment will insert its own tab and comment string before
       // the first line, so strip off our first one. It also prints its own
       // newline.
       OS.emitRawComment(
           CommentOS.str().drop_front(CommentPrefix.size() - 1).rtrim());
     }
-    OS.EmitBinaryData(Record.str_data());
     B = Table.getNext(*B);
   }
 }
@@ -1082,7 +1135,7 @@ void CodeViewDebug::emitDebugInfoForFunction(const Function *GV,
       if (!BeginLabel->isDefined() || !EndLabel->isDefined())
         continue;
 
-      DIType *DITy = std::get<2>(HeapAllocSite);
+      const DIType *DITy = std::get<2>(HeapAllocSite);
       MCSymbol *HeapAllocEnd = beginSymbolRecord(SymbolKind::S_HEAPALLOCSITE);
       OS.AddComment("Call site offset");
       OS.EmitCOFFSecRel32(BeginLabel, /*Offset=*/0);

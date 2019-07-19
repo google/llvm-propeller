@@ -30,6 +30,7 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/Analysis/AssumptionCache.h"
 #include <functional>
 
 namespace llvm {
@@ -261,6 +262,18 @@ public:
   /// TODO: This is a rather blunt instrument.  Perhaps altering the costs of
   /// individual classes of instructions would be better.
   unsigned getInliningThresholdMultiplier() const;
+
+  /// \returns Vector bonus in percent.
+  ///
+  /// Vector bonuses: We want to more aggressively inline vector-dense kernels
+  /// and apply this bonus based on the percentage of vector instructions. A
+  /// bonus is applied if the vector instructions exceed 50% and half that amount
+  /// is applied if it exceeds 10%. Note that these bonuses are some what
+  /// arbitrary and evolved over time by accident as much as because they are
+  /// principled bonuses.
+  /// FIXME: It would be nice to base the bonus values on something more
+  /// scientific. A target may has no bonus on vector instructions.
+  int getInlinerVectorBonusPercent() const;
 
   /// Estimate the cost of an intrinsic when lowered.
   ///
@@ -527,6 +540,12 @@ public:
   /// Loop-strength-reduction (LSR) uses that knowledge to adjust its cost
   /// calculation for the instructions in a loop.
   bool canMacroFuseCmp() const;
+
+  /// Return true if the target can save a compare for loop count, for example
+  /// hardware loop saves a compare.
+  bool canSaveCmp(Loop *L, BranchInst **BI, ScalarEvolution *SE, LoopInfo *LI,
+                  DominatorTree *DT, AssumptionCache *AC,
+                  TargetLibraryInfo *LibInfo) const;
 
   /// \return True is LSR should make efforts to create/preserve post-inc
   /// addressing mode expressions.
@@ -1121,6 +1140,7 @@ public:
   virtual int getCallCost(const Function *F,
                           ArrayRef<const Value *> Arguments, const User *U) = 0;
   virtual unsigned getInliningThresholdMultiplier() = 0;
+  virtual int getInlinerVectorBonusPercent() = 0;
   virtual int getIntrinsicCost(Intrinsic::ID IID, Type *RetTy,
                                ArrayRef<Type *> ParamTys, const User *U) = 0;
   virtual int getIntrinsicCost(Intrinsic::ID IID, Type *RetTy,
@@ -1152,6 +1172,9 @@ public:
   virtual bool isLSRCostLess(TargetTransformInfo::LSRCost &C1,
                              TargetTransformInfo::LSRCost &C2) = 0;
   virtual bool canMacroFuseCmp() = 0;
+  virtual bool canSaveCmp(Loop *L, BranchInst **BI, ScalarEvolution *SE,
+                          LoopInfo *LI, DominatorTree *DT, AssumptionCache *AC,
+                          TargetLibraryInfo *LibInfo) = 0;
   virtual bool shouldFavorPostInc() const = 0;
   virtual bool shouldFavorBackedgeIndex(const Loop *L) const = 0;
   virtual bool isLegalMaskedStore(Type *DataType) = 0;
@@ -1341,6 +1364,9 @@ public:
   unsigned getInliningThresholdMultiplier() override {
     return Impl.getInliningThresholdMultiplier();
   }
+  int getInlinerVectorBonusPercent() override {
+    return Impl.getInlinerVectorBonusPercent();
+  }
   int getIntrinsicCost(Intrinsic::ID IID, Type *RetTy,
                        ArrayRef<Type *> ParamTys, const User *U = nullptr) override {
     return Impl.getIntrinsicCost(IID, RetTy, ParamTys, U);
@@ -1401,6 +1427,12 @@ public:
   }
   bool canMacroFuseCmp() override {
     return Impl.canMacroFuseCmp();
+  }
+  bool canSaveCmp(Loop *L, BranchInst **BI,
+                        ScalarEvolution *SE,
+                        LoopInfo *LI, DominatorTree *DT, AssumptionCache *AC,
+                        TargetLibraryInfo *LibInfo) override {
+    return Impl.canSaveCmp(L, BI, SE, LI, DT, AC, LibInfo);
   }
   bool shouldFavorPostInc() const override {
     return Impl.shouldFavorPostInc();

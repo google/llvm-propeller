@@ -645,7 +645,8 @@ bool CXXRecordDecl::lambdaIsDefaultConstructibleAndAssignable() const {
   // C++17 [expr.prim.lambda]p21:
   //   The closure type associated with a lambda-expression has no default
   //   constructor and a deleted copy assignment operator.
-  if (getLambdaCaptureDefault() != LCD_None)
+  if (getLambdaCaptureDefault() != LCD_None || 
+      getLambdaData().NumCaptures != 0)
     return false;
   return getASTContext().getLangOpts().CPlusPlus2a;
 }
@@ -1450,10 +1451,8 @@ CXXRecordDecl::getLambdaExplicitTemplateParameters() const {
                              [](const NamedDecl *D) { return !D->isImplicit(); })
          && "Explicit template params should be ordered before implicit ones");
 
-  const auto ExplicitEnd = std::lower_bound(List->begin(), List->end(), false,
-                                            [](const NamedDecl *D, bool) {
-    return !D->isImplicit();
-  });
+  const auto ExplicitEnd = llvm::partition_point(
+      *List, [](const NamedDecl *D) { return !D->isImplicit(); });
   return llvm::makeArrayRef(List->begin(), ExplicitEnd);
 }
 

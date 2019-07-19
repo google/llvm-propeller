@@ -639,29 +639,9 @@ bool TargetLowering::SimplifyDemandedBits(
     break;
   }
   case ISD::BUILD_VECTOR:
-    // Collect the known bits that are shared by every constant vector element.
-    Known.Zero.setAllBits(); Known.One.setAllBits();
-    for (SDValue SrcOp : Op->ops()) {
-      if (!isa<ConstantSDNode>(SrcOp)) {
-        // We can only handle all constant values - bail out with no known bits.
-        Known = KnownBits(BitWidth);
-        return false;
-      }
-      Known2.One = cast<ConstantSDNode>(SrcOp)->getAPIntValue();
-      Known2.Zero = ~Known2.One;
-
-      // BUILD_VECTOR can implicitly truncate sources, we must handle this.
-      if (Known2.One.getBitWidth() != BitWidth) {
-        assert(Known2.getBitWidth() > BitWidth &&
-               "Expected BUILD_VECTOR implicit truncation");
-        Known2 = Known2.trunc(BitWidth);
-      }
-
-      // Known bits are the values that are shared by every element.
-      // TODO: support per-element known bits.
-      Known.One &= Known2.One;
-      Known.Zero &= Known2.Zero;
-    }
+    // Collect the known bits that are shared by every demanded element.
+    // TODO: Call SimplifyDemandedBits for non-constant demanded elements.
+    Known = TLO.DAG.computeKnownBits(Op, DemandedElts, Depth);
     return false; // Don't fall through, will infinitely loop.
   case ISD::LOAD: {
     LoadSDNode *LD = cast<LoadSDNode>(Op);
@@ -2694,6 +2674,17 @@ SDValue TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
        isCondCodeLegal(SwappedCC, N0.getSimpleValueType())))
     return DAG.getSetCC(dl, VT, N1, N0, SwappedCC);
 
+  // If we have a subtract with the same 2 non-constant operands as this setcc
+  // -- but in reverse order -- then try to commute the operands of this setcc
+  // to match. A matching pair of setcc (cmp) and sub may be combined into 1
+  // instruction on some targets.
+  if (!isConstOrConstSplat(N0) && !isConstOrConstSplat(N1) &&
+      (DCI.isBeforeLegalizeOps() ||
+       isCondCodeLegal(SwappedCC, N0.getSimpleValueType())) &&
+      DAG.getNodeIfExists(ISD::SUB, DAG.getVTList(OpVT), { N1, N0 } ) &&
+      !DAG.getNodeIfExists(ISD::SUB, DAG.getVTList(OpVT), { N0, N1 } ))
+    return DAG.getSetCC(dl, VT, N1, N0, SwappedCC);
+
   if (auto *N1C = dyn_cast<ConstantSDNode>(N1.getNode())) {
     const APInt &C1 = N1C->getAPIntValue();
 
@@ -3652,6 +3643,7 @@ void TargetLowering::LowerAsmOperandForConstraint(SDValue Op,
 
     GlobalAddressSDNode *GA;
     ConstantSDNode *C;
+    BlockAddressSDNode *BA;
     uint64_t Offset = 0;
 
     // Match (GA) or (C) or (GA+C) or (GA-C) or ((GA+C)+C) or (((GA+C)+C)+C),
@@ -3678,6 +3670,12 @@ void TargetLowering::LowerAsmOperandForConstraint(SDValue Op,
                                                     : C->getSExtValue();
         Ops.push_back(DAG.getTargetConstant(Offset + ExtVal,
                                             SDLoc(C), MVT::i64));
+        return;
+      } else if ((BA = dyn_cast<BlockAddressSDNode>(Op)) &&
+                 ConstraintLetter != 'n') {
+        Ops.push_back(DAG.getTargetBlockAddress(
+            BA->getBlockAddress(), BA->getValueType(0),
+            Offset + BA->getOffset(), BA->getTargetFlags()));
         return;
       } else {
         const unsigned OpCode = Op.getOpcode();
@@ -4462,13 +4460,14 @@ SDValue TargetLowering::BuildUDIV(SDNode *N, SelectionDAG &DAG,
 /// return a DAG expression that will generate the same comparison result
 /// using only multiplications, additions and shifts/rotations.
 /// Ref: "Hacker's Delight" 10-17.
-SDValue TargetLowering::buildUREMEqFold(EVT VT, SDValue REMNode,
-                                        SDValue CompNode, ISD::CondCode Cond,
+SDValue TargetLowering::buildUREMEqFold(EVT SETCCVT, SDValue REMNode,
+                                        SDValue CompTargetNode,
+                                        ISD::CondCode Cond,
                                         DAGCombinerInfo &DCI,
                                         const SDLoc &DL) const {
   SmallVector<SDNode *, 2> Built;
-  if (SDValue Folded =
-          prepareUREMEqFold(VT, REMNode, CompNode, Cond, DCI, DL, Built)) {
+  if (SDValue Folded = prepareUREMEqFold(SETCCVT, REMNode, CompTargetNode, Cond,
+                                         DCI, DL, Built)) {
     for (SDNode *N : Built)
       DCI.AddToWorklist(N);
     return Folded;
@@ -4478,9 +4477,9 @@ SDValue TargetLowering::buildUREMEqFold(EVT VT, SDValue REMNode,
 }
 
 SDValue
-TargetLowering::prepareUREMEqFold(EVT VT, SDValue REMNode, SDValue CompNode,
-                                  ISD::CondCode Cond, DAGCombinerInfo &DCI,
-                                  const SDLoc &DL,
+TargetLowering::prepareUREMEqFold(EVT SETCCVT, SDValue REMNode,
+                                  SDValue CompTargetNode, ISD::CondCode Cond,
+                                  DAGCombinerInfo &DCI, const SDLoc &DL,
                                   SmallVectorImpl<SDNode *> &Created) const {
   // fold (seteq/ne (urem N, D), 0) -> (setule/ugt (rotr (mul N, P), K), Q)
   // - D must be constant with D = D0 * 2^K where D0 is odd and D0 != 1
@@ -4490,15 +4489,15 @@ TargetLowering::prepareUREMEqFold(EVT VT, SDValue REMNode, SDValue CompNode,
   assert((Cond == ISD::SETEQ || Cond == ISD::SETNE) &&
          "Only applicable for (in)equality comparisons.");
 
-  EVT REMVT = REMNode->getValueType(0);
+  EVT VT = REMNode.getValueType();
 
   // If MUL is unavailable, we cannot proceed in any case.
-  if (!isOperationLegalOrCustom(ISD::MUL, REMVT))
+  if (!isOperationLegalOrCustom(ISD::MUL, VT))
     return SDValue();
 
   // TODO: Add non-uniform constant support.
   ConstantSDNode *Divisor = isConstOrConstSplat(REMNode->getOperand(1));
-  ConstantSDNode *CompTarget = isConstOrConstSplat(CompNode);
+  ConstantSDNode *CompTarget = isConstOrConstSplat(CompTargetNode);
   if (!Divisor || !CompTarget || Divisor->isNullValue() ||
       !CompTarget->isNullValue())
     return SDValue();
@@ -4529,28 +4528,28 @@ TargetLowering::prepareUREMEqFold(EVT VT, SDValue REMNode, SDValue CompNode,
 
   SelectionDAG &DAG = DCI.DAG;
 
-  SDValue PVal = DAG.getConstant(P, DL, REMVT);
-  SDValue QVal = DAG.getConstant(Q, DL, REMVT);
+  SDValue PVal = DAG.getConstant(P, DL, VT);
+  SDValue QVal = DAG.getConstant(Q, DL, VT);
   // (mul N, P)
-  SDValue Op1 = DAG.getNode(ISD::MUL, DL, REMVT, REMNode->getOperand(0), PVal);
+  SDValue Op1 = DAG.getNode(ISD::MUL, DL, VT, REMNode->getOperand(0), PVal);
   Created.push_back(Op1.getNode());
 
   // Rotate right only if D was even.
   if (DivisorIsEven) {
     // We need ROTR to do this.
-    if (!isOperationLegalOrCustom(ISD::ROTR, REMVT))
+    if (!isOperationLegalOrCustom(ISD::ROTR, VT))
       return SDValue();
     SDValue ShAmt =
-        DAG.getConstant(K, DL, getShiftAmountTy(REMVT, DAG.getDataLayout()));
+        DAG.getConstant(K, DL, getShiftAmountTy(VT, DAG.getDataLayout()));
     SDNodeFlags Flags;
     Flags.setExact(true);
     // UREM: (rotr (mul N, P), K)
-    Op1 = DAG.getNode(ISD::ROTR, DL, REMVT, Op1, ShAmt, Flags);
+    Op1 = DAG.getNode(ISD::ROTR, DL, VT, Op1, ShAmt, Flags);
     Created.push_back(Op1.getNode());
   }
 
   // UREM: (setule/setugt (rotr (mul N, P), K), Q)
-  return DAG.getSetCC(DL, VT, Op1, QVal,
+  return DAG.getSetCC(DL, SETCCVT, Op1, QVal,
                       ((Cond == ISD::SETEQ) ? ISD::SETULE : ISD::SETUGT));
 }
 
@@ -5096,6 +5095,17 @@ SDValue TargetLowering::expandFMINNUM_FMAXNUM(SDNode *Node,
     }
 
     return DAG.getNode(NewOp, dl, VT, Quiet0, Quiet1, Node->getFlags());
+  }
+
+  // If the target has FMINIMUM/FMAXIMUM but not FMINNUM/FMAXNUM use that
+  // instead if there are no NaNs.
+  if (Node->getFlags().hasNoNaNs()) {
+    unsigned IEEE2018Op =
+        Node->getOpcode() == ISD::FMINNUM ? ISD::FMINIMUM : ISD::FMAXIMUM;
+    if (isOperationLegalOrCustom(IEEE2018Op, VT)) {
+      return DAG.getNode(IEEE2018Op, dl, VT, Node->getOperand(0),
+                         Node->getOperand(1), Node->getFlags());
+    }
   }
 
   return SDValue();

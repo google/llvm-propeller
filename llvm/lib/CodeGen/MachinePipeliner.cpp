@@ -2430,7 +2430,7 @@ void SwingSchedulerDAG::generateExistingPhis(
         // Use the value defined by the Phi, unless we're generating the first
         // epilog and the Phi refers to a Phi in a different stage.
         else if (VRMap[PrevStage - np].count(Def) &&
-                 (!LoopDefIsPhi || PrevStage != LastStageNum))
+                 (!LoopDefIsPhi || (PrevStage != LastStageNum) || (LoopValStage == StageScheduled)))
           PhiOp2 = VRMap[PrevStage - np][Def];
       }
 
@@ -3557,6 +3557,14 @@ void SMSchedule::orderDependence(SwingSchedulerDAG *SSD, SUnit *SU,
       if (S.getKind() == SDep::Order && stageScheduled(*I) == StageInst1) {
         OrderBeforeUse = true;
         if (Pos < MoveUse)
+          MoveUse = Pos;
+      }
+      // We did not handle HW dependences in previous for loop,
+      // and we normally set Latency = 0 for Anti deps,
+      // so may have nodes in same cycle with Anti denpendent on HW regs.
+      else if (S.getKind() == SDep::Anti && stageScheduled(*I) == StageInst1) {
+        OrderBeforeUse = true;
+        if ((MoveUse == 0) || (Pos < MoveUse))
           MoveUse = Pos;
       }
     }

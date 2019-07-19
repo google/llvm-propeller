@@ -1119,6 +1119,7 @@ OperandMatchResultTy RISCVAsmParser::parseImmediate(OperandVector &Operands) {
   default:
     return MatchOperand_NoMatch;
   case AsmToken::LParen:
+  case AsmToken::Dot:
   case AsmToken::Minus:
   case AsmToken::Plus:
   case AsmToken::Exclaim:
@@ -1761,6 +1762,7 @@ bool RISCVAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
   case RISCV::PseudoAddTPRel:
     if (checkPseudoAddTPRel(Inst, Operands))
       return true;
+    break;
   }
 
   emitToStreamer(Out, Inst);

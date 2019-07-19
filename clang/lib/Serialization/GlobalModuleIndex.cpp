@@ -21,8 +21,8 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/Bitcode/BitstreamReader.h"
-#include "llvm/Bitcode/BitstreamWriter.h"
+#include "llvm/Bitstream/BitstreamReader.h"
+#include "llvm/Bitstream/BitstreamWriter.h"
 #include "llvm/Support/DJB.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/LockFileManager.h"
@@ -658,8 +658,8 @@ llvm::Error GlobalModuleIndexBuilder::loadModuleFile(const FileEntry *File) {
 
         // Find the imported module file.
         const FileEntry *DependsOnFile
-          = FileMgr.getFile(ImportedFile, /*openFile=*/false,
-                            /*cacheFailure=*/false);
+          = FileMgr.getFile(ImportedFile, /*OpenFile=*/false,
+                            /*CacheFailure=*/false);
 
         if (!DependsOnFile)
           return llvm::createStringError(std::errc::bad_file_descriptor,

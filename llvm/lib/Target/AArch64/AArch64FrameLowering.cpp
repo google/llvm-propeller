@@ -842,6 +842,10 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF,
   if (MF.getFunction().getCallingConv() == CallingConv::GHC)
     return;
 
+  // Set tagged base pointer to the bottom of the stack frame.
+  // Ideally it should match SP value after prologue.
+  AFI->setTaggedBasePointerOffset(MFI.getStackSize());
+
   // getStackSize() includes all the locals in its size calculation. We don't
   // include these locals when computing the stack size of a funclet, as they
   // are allocated in the parent's stack frame and accessed via the frame
@@ -1508,27 +1512,28 @@ int AArch64FrameLowering::getNonLocalFrameIndexReference(
   return getSEHFrameIndexOffset(MF, FI);
 }
 
-static int getFPOffset(const MachineFunction &MF, int FI) {
-  const auto &MFI = MF.getFrameInfo();
+static int getFPOffset(const MachineFunction &MF, int ObjectOffset) {
   const auto *AFI = MF.getInfo<AArch64FunctionInfo>();
   const auto &Subtarget = MF.getSubtarget<AArch64Subtarget>();
   bool IsWin64 =
       Subtarget.isCallingConvWin64(MF.getFunction().getCallingConv());
   unsigned FixedObject = IsWin64 ? alignTo(AFI->getVarArgsGPRSize(), 16) : 0;
-  return MFI.getObjectOffset(FI) + FixedObject + 16;
+  return ObjectOffset + FixedObject + 16;
 }
 
-static int getStackOffset(const MachineFunction &MF, int FI) {
+static int getStackOffset(const MachineFunction &MF, int ObjectOffset) {
   const auto &MFI = MF.getFrameInfo();
-  return MFI.getObjectOffset(FI) + MFI.getStackSize();
+  return ObjectOffset + MFI.getStackSize();
 }
 
 int AArch64FrameLowering::getSEHFrameIndexOffset(const MachineFunction &MF,
                                                  int FI) const {
   const auto *RegInfo = static_cast<const AArch64RegisterInfo *>(
       MF.getSubtarget().getRegisterInfo());
-  return RegInfo->getLocalAddressRegister(MF) == AArch64::FP ?
-         getFPOffset(MF, FI) : getStackOffset(MF, FI);
+  int ObjectOffset = MF.getFrameInfo().getObjectOffset(FI);
+  return RegInfo->getLocalAddressRegister(MF) == AArch64::FP
+             ? getFPOffset(MF, ObjectOffset)
+             : getStackOffset(MF, ObjectOffset);
 }
 
 int AArch64FrameLowering::resolveFrameIndexReference(const MachineFunction &MF,
@@ -1536,15 +1541,25 @@ int AArch64FrameLowering::resolveFrameIndexReference(const MachineFunction &MF,
                                                      bool PreferFP,
                                                      bool ForSimm) const {
   const auto &MFI = MF.getFrameInfo();
+  int ObjectOffset = MFI.getObjectOffset(FI);
+  bool isFixed = MFI.isFixedObjectIndex(FI);
+  return resolveFrameOffsetReference(MF, ObjectOffset, isFixed, FrameReg,
+                                     PreferFP, ForSimm);
+}
+
+int AArch64FrameLowering::resolveFrameOffsetReference(
+    const MachineFunction &MF, int ObjectOffset, bool isFixed,
+    unsigned &FrameReg, bool PreferFP, bool ForSimm) const {
+  const auto &MFI = MF.getFrameInfo();
   const auto *RegInfo = static_cast<const AArch64RegisterInfo *>(
       MF.getSubtarget().getRegisterInfo());
   const auto *AFI = MF.getInfo<AArch64FunctionInfo>();
   const auto &Subtarget = MF.getSubtarget<AArch64Subtarget>();
-  int FPOffset = getFPOffset(MF, FI);
-  int Offset = getStackOffset(MF, FI);
-  bool isFixed = MFI.isFixedObjectIndex(FI);
-  bool isCSR = !isFixed && MFI.getObjectOffset(FI) >=
-                               -((int)AFI->getCalleeSavedStackSize());
+
+  int FPOffset = getFPOffset(MF, ObjectOffset);
+  int Offset = getStackOffset(MF, ObjectOffset);
+  bool isCSR =
+      !isFixed && ObjectOffset >= -((int)AFI->getCalleeSavedStackSize());
 
   // Use frame pointer to reference fixed objects. Use it for locals if
   // there are VLAs or a dynamically realigned SP (and thus the SP isn't

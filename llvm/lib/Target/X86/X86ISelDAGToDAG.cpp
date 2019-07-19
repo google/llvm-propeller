@@ -792,6 +792,27 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
     }
 
     switch (N->getOpcode()) {
+    case ISD::FP_TO_SINT:
+    case ISD::FP_TO_UINT: {
+      // Replace vector fp_to_s/uint with their X86 specific equivalent so we
+      // don't need 2 sets of patterns.
+      if (!N->getSimpleValueType(0).isVector())
+        break;
+
+      unsigned NewOpc;
+      switch (N->getOpcode()) {
+      default: llvm_unreachable("Unexpected opcode!");
+      case ISD::FP_TO_SINT: NewOpc = X86ISD::CVTTP2SI; break;
+      case ISD::FP_TO_UINT: NewOpc = X86ISD::CVTTP2UI; break;
+      }
+      SDValue Res = CurDAG->getNode(NewOpc, SDLoc(N), N->getValueType(0),
+                                    N->getOperand(0));
+      --I;
+      CurDAG->ReplaceAllUsesOfValueWith(SDValue(N, 0), Res);
+      ++I;
+      CurDAG->DeleteNode(N);
+      continue;
+    }
     case ISD::SHL:
     case ISD::SRA:
     case ISD::SRL: {
@@ -2441,6 +2462,37 @@ bool X86DAGToDAGISel::selectLEAAddr(SDValue N,
       Complexity = 4;
     else
       Complexity += 2;
+  }
+
+  // Heuristic: try harder to form an LEA from ADD if the operands set flags.
+  // Unlike ADD, LEA does not affect flags, so we will be less likely to require
+  // duplicating flag-producing instructions later in the pipeline.
+  if (N.getOpcode() == ISD::ADD) {
+    auto isMathWithFlags = [](SDValue V) {
+      switch (V.getOpcode()) {
+      case X86ISD::ADD:
+      case X86ISD::SUB:
+      case X86ISD::ADC:
+      case X86ISD::SBB:
+      /* TODO: These opcodes can be added safely, but we may want to justify
+               their inclusion for different reasons (better for reg-alloc).
+      case X86ISD::SMUL:
+      case X86ISD::UMUL:
+      case X86ISD::OR:
+      case X86ISD::XOR:
+      case X86ISD::AND:
+      */
+        // Value 1 is the flag output of the node - verify it's not dead.
+        return !SDValue(V.getNode(), 1).use_empty();
+      default:
+        return false;
+      }
+    };
+    // TODO: This could be an 'or' rather than 'and' to make the transform more
+    //       likely to happen. We might want to factor in whether there's a
+    //       load folding opportunity for the math op that disappears with LEA.
+    if (isMathWithFlags(N.getOperand(0)) && isMathWithFlags(N.getOperand(1)))
+      Complexity++;
   }
 
   if (AM.Disp)
@@ -4281,7 +4333,109 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
   case ISD::XOR:
     if (tryShrinkShlLogicImm(Node))
       return;
-    break;
+
+    LLVM_FALLTHROUGH;
+  case ISD::ADD:
+  case ISD::SUB: {
+    // Try to avoid folding immediates with multiple uses for optsize.
+    // This code tries to select to register form directly to avoid going
+    // through the isel table which might fold the immediate. We can't change
+    // the patterns on the add/sub/and/or/xor with immediate paterns in the
+    // tablegen files to check immediate use count without making the patterns
+    // unavailable to the fast-isel table.
+    if (!OptForSize)
+      break;
+
+    // Only handle i8/i16/i32/i64.
+    if (NVT != MVT::i8 && NVT != MVT::i16 && NVT != MVT::i32 && NVT != MVT::i64)
+      break;
+
+    SDValue N0 = Node->getOperand(0);
+    SDValue N1 = Node->getOperand(1);
+
+    ConstantSDNode *Cst = dyn_cast<ConstantSDNode>(N1);
+    if (!Cst)
+      break;
+
+    int64_t Val = Cst->getSExtValue();
+
+    // Make sure its an immediate that is considered foldable.
+    // FIXME: Handle unsigned 32 bit immediates for 64-bit AND.
+    if (!isInt<8>(Val) && !isInt<32>(Val))
+      break;
+
+    // Check if we should avoid folding this immediate.
+    if (!shouldAvoidImmediateInstFormsForSize(N1.getNode()))
+      break;
+
+    // We should not fold the immediate. So we need a register form instead.
+    unsigned ROpc, MOpc;
+    switch (NVT.SimpleTy) {
+    default: llvm_unreachable("Unexpected VT!");
+    case MVT::i8:
+      switch (Opcode) {
+      default: llvm_unreachable("Unexpected opcode!");
+      case ISD::ADD: ROpc = X86::ADD8rr; MOpc = X86::ADD8rm; break;
+      case ISD::SUB: ROpc = X86::SUB8rr; MOpc = X86::SUB8rm; break;
+      case ISD::AND: ROpc = X86::AND8rr; MOpc = X86::AND8rm; break;
+      case ISD::OR:  ROpc = X86::OR8rr;  MOpc = X86::OR8rm;  break;
+      case ISD::XOR: ROpc = X86::XOR8rr; MOpc = X86::XOR8rm; break;
+      }
+      break;
+    case MVT::i16:
+      switch (Opcode) {
+      default: llvm_unreachable("Unexpected opcode!");
+      case ISD::ADD: ROpc = X86::ADD16rr; MOpc = X86::ADD16rm; break;
+      case ISD::SUB: ROpc = X86::SUB16rr; MOpc = X86::SUB16rm; break;
+      case ISD::AND: ROpc = X86::AND16rr; MOpc = X86::AND16rm; break;
+      case ISD::OR:  ROpc = X86::OR16rr;  MOpc = X86::OR16rm;  break;
+      case ISD::XOR: ROpc = X86::XOR16rr; MOpc = X86::XOR16rm; break;
+      }
+      break;
+    case MVT::i32:
+      switch (Opcode) {
+      default: llvm_unreachable("Unexpected opcode!");
+      case ISD::ADD: ROpc = X86::ADD32rr; MOpc = X86::ADD32rm; break;
+      case ISD::SUB: ROpc = X86::SUB32rr; MOpc = X86::SUB32rm; break;
+      case ISD::AND: ROpc = X86::AND32rr; MOpc = X86::AND32rm; break;
+      case ISD::OR:  ROpc = X86::OR32rr;  MOpc = X86::OR32rm;  break;
+      case ISD::XOR: ROpc = X86::XOR32rr; MOpc = X86::XOR32rm; break;
+      }
+      break;
+    case MVT::i64:
+      switch (Opcode) {
+      default: llvm_unreachable("Unexpected opcode!");
+      case ISD::ADD: ROpc = X86::ADD64rr; MOpc = X86::ADD64rm; break;
+      case ISD::SUB: ROpc = X86::SUB64rr; MOpc = X86::SUB64rm; break;
+      case ISD::AND: ROpc = X86::AND64rr; MOpc = X86::AND64rm; break;
+      case ISD::OR:  ROpc = X86::OR64rr;  MOpc = X86::OR64rm;  break;
+      case ISD::XOR: ROpc = X86::XOR64rr; MOpc = X86::XOR64rm; break;
+      }
+      break;
+    }
+
+    // Ok this is a AND/OR/XOR/ADD/SUB with constant.
+
+    // If this is a not a subtract, we can still try to fold a load.
+    if (Opcode != ISD::SUB) {
+      SDValue Tmp0, Tmp1, Tmp2, Tmp3, Tmp4;
+      if (tryFoldLoad(Node, N0, Tmp0, Tmp1, Tmp2, Tmp3, Tmp4)) {
+        SDValue Ops[] = { N1, Tmp0, Tmp1, Tmp2, Tmp3, Tmp4, N0.getOperand(0) };
+        SDVTList VTs = CurDAG->getVTList(NVT, MVT::i32, MVT::Other);
+        MachineSDNode *CNode = CurDAG->getMachineNode(MOpc, dl, VTs, Ops);
+        // Update the chain.
+        ReplaceUses(N0.getValue(1), SDValue(CNode, 2));
+        // Record the mem-refs
+        CurDAG->setNodeMemRefs(CNode, {cast<LoadSDNode>(N0)->getMemOperand()});
+        ReplaceUses(SDValue(Node, 0), SDValue(CNode, 0));
+        CurDAG->RemoveDeadNode(Node);
+        return;
+      }
+    }
+
+    CurDAG->SelectNodeTo(Node, ROpc, NVT, MVT::i32, N0, N1);
+    return;
+  }
 
   case X86ISD::SMUL:
     // i16/i32/i64 are handled with isel patterns.

@@ -564,7 +564,7 @@ define void @test_extract_i32(<4 x i32> %arg, i32* %dst) {
 define void @test_extract_f64(<2 x double> %arg, double* %dst) {
 ; SSE2-LABEL: test_extract_f64:
 ; SSE2:       # %bb.0:
-; SSE2-NEXT:    movhpd %xmm0, (%rdi)
+; SSE2-NEXT:    movhps %xmm0, (%rdi)
 ; SSE2-NEXT:    retq
 ;
 ; SSE4A-LABEL: test_extract_f64:
@@ -575,17 +575,17 @@ define void @test_extract_f64(<2 x double> %arg, double* %dst) {
 ;
 ; SSE41-LABEL: test_extract_f64:
 ; SSE41:       # %bb.0:
-; SSE41-NEXT:    movhpd %xmm0, (%rdi)
+; SSE41-NEXT:    movhps %xmm0, (%rdi)
 ; SSE41-NEXT:    retq
 ;
 ; AVX-LABEL: test_extract_f64:
 ; AVX:       # %bb.0:
-; AVX-NEXT:    vmovhpd %xmm0, (%rdi)
+; AVX-NEXT:    vmovhps %xmm0, (%rdi)
 ; AVX-NEXT:    retq
 ;
 ; VLX-LABEL: test_extract_f64:
 ; VLX:       # %bb.0:
-; VLX-NEXT:    vmovhpd %xmm0, (%rdi)
+; VLX-NEXT:    vmovhps %xmm0, (%rdi)
 ; VLX-NEXT:    retq
   %1 = extractelement <2 x double> %arg, i32 1
   store double %1, double* %dst, align 1, !nontemporal !1
@@ -1234,9 +1234,9 @@ define void @test_op_v32i8(<32 x i8> %a, <32 x i8> %b, <32 x i8>* %dst) {
 define void @test_unaligned_v8f32(<8 x float> %a, <8 x float> %b, <8 x float>* %dst) {
 ; SSE-LABEL: test_unaligned_v8f32:
 ; SSE:       # %bb.0:
-; SSE-NEXT:    addps %xmm2, %xmm0
 ; SSE-NEXT:    addps %xmm3, %xmm1
 ; SSE-NEXT:    movntps %xmm1, 16(%rdi)
+; SSE-NEXT:    addps %xmm2, %xmm0
 ; SSE-NEXT:    movntps %xmm0, (%rdi)
 ; SSE-NEXT:    retq
 ;

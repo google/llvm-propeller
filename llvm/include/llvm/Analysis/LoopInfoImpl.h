@@ -95,49 +95,36 @@ bool LoopBase<BlockT, LoopT>::hasDedicatedExits() const {
   return true;
 }
 
+// Helper function to get unique loop exits. Pred is a predicate pointing to
+// BasicBlocks in a loop which should be considered to find loop exits.
+template <class BlockT, class LoopT, typename PredicateT>
+void getUniqueExitBlocksHelper(const LoopT *L,
+                               SmallVectorImpl<BlockT *> &ExitBlocks,
+                               PredicateT Pred) {
+  assert(!L->isInvalid() && "Loop not in a valid state!");
+  SmallPtrSet<BlockT *, 32> Visited;
+  auto Filtered = make_filter_range(L->blocks(), Pred);
+  for (BlockT *BB : Filtered)
+    for (BlockT *Successor : children<BlockT *>(BB))
+      if (!L->contains(Successor))
+        if (Visited.insert(Successor).second)
+          ExitBlocks.push_back(Successor);
+}
+
 template <class BlockT, class LoopT>
 void LoopBase<BlockT, LoopT>::getUniqueExitBlocks(
     SmallVectorImpl<BlockT *> &ExitBlocks) const {
-  typedef GraphTraits<BlockT *> BlockTraits;
-  typedef GraphTraits<Inverse<BlockT *>> InvBlockTraits;
+  getUniqueExitBlocksHelper(this, ExitBlocks,
+                            [](const BlockT *BB) { return true; });
+}
 
-  assert(hasDedicatedExits() &&
-         "getUniqueExitBlocks assumes the loop has canonical form exits!");
-
-  SmallVector<BlockT *, 32> SwitchExitBlocks;
-  for (BlockT *Block : this->blocks()) {
-    SwitchExitBlocks.clear();
-    for (BlockT *Successor : children<BlockT *>(Block)) {
-      // If block is inside the loop then it is not an exit block.
-      if (contains(Successor))
-        continue;
-
-      BlockT *FirstPred = *InvBlockTraits::child_begin(Successor);
-
-      // If current basic block is this exit block's first predecessor then only
-      // insert exit block in to the output ExitBlocks vector. This ensures that
-      // same exit block is not inserted twice into ExitBlocks vector.
-      if (Block != FirstPred)
-        continue;
-
-      // If a terminator has more then two successors, for example SwitchInst,
-      // then it is possible that there are multiple edges from current block to
-      // one exit block.
-      if (std::distance(BlockTraits::child_begin(Block),
-                        BlockTraits::child_end(Block)) <= 2) {
-        ExitBlocks.push_back(Successor);
-        continue;
-      }
-
-      // In case of multiple edges from current block to exit block, collect
-      // only one edge in ExitBlocks. Use switchExitBlocks to keep track of
-      // duplicate edges.
-      if (!is_contained(SwitchExitBlocks, Successor)) {
-        SwitchExitBlocks.push_back(Successor);
-        ExitBlocks.push_back(Successor);
-      }
-    }
-  }
+template <class BlockT, class LoopT>
+void LoopBase<BlockT, LoopT>::getUniqueNonLatchExitBlocks(
+    SmallVectorImpl<BlockT *> &ExitBlocks) const {
+  const BlockT *Latch = getLoopLatch();
+  assert(Latch && "Latch block must exists");
+  getUniqueExitBlocksHelper(this, ExitBlocks,
+                            [Latch](const BlockT *BB) { return BB != Latch; });
 }
 
 template <class BlockT, class LoopT>

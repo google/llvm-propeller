@@ -401,8 +401,9 @@ public:
   /// efficiently, casting the load to a smaller vector of larger types and
   /// loading is more efficient, however, this can be undone by optimizations in
   /// dag combiner.
-  virtual bool isLoadBitCastBeneficial(EVT LoadVT,
-                                       EVT BitcastVT) const {
+  virtual bool isLoadBitCastBeneficial(EVT LoadVT, EVT BitcastVT,
+                                       const SelectionDAG &DAG,
+                                       const MachineMemOperand &MMO) const {
     // Don't do if we could do an indexed load on the original type, but not on
     // the new one.
     if (!LoadVT.isSimple() || !BitcastVT.isSimple())
@@ -416,14 +417,18 @@ public:
         getTypeToPromoteTo(ISD::LOAD, LoadMVT) == BitcastVT.getSimpleVT())
       return false;
 
-    return true;
+    bool Fast = false;
+    return allowsMemoryAccess(*DAG.getContext(), DAG.getDataLayout(), BitcastVT,
+                              MMO, &Fast) && Fast;
   }
 
   /// Return true if the following transform is beneficial:
   /// (store (y (conv x)), y*)) -> (store x, (x*))
-  virtual bool isStoreBitCastBeneficial(EVT StoreVT, EVT BitcastVT) const {
+  virtual bool isStoreBitCastBeneficial(EVT StoreVT, EVT BitcastVT,
+                                        const SelectionDAG &DAG,
+                                        const MachineMemOperand &MMO) const {
     // Default to the same logic as loads.
-    return isLoadBitCastBeneficial(StoreVT, BitcastVT);
+    return isLoadBitCastBeneficial(StoreVT, BitcastVT, DAG, MMO);
   }
 
   /// Return true if it is expected to be cheaper to do a store of a non-zero
@@ -564,6 +569,16 @@ public:
                                                     unsigned KeptBits) const {
     // By default, let's assume that no one prefers shifts.
     return false;
+  }
+
+  /// These two forms are equivalent:
+  ///   sub %y, (xor %x, -1)
+  ///   add (add %x, 1), %y
+  /// The variant with two add's is IR-canonical.
+  /// Some targets may prefer one to the other.
+  virtual bool preferIncOfAddToSubOfNot(EVT VT) const {
+    // By default, let's assume that everyone prefers the form with two add's.
+    return true;
   }
 
   /// Return true if the target wants to use the optimization that
@@ -4055,11 +4070,13 @@ private:
                                                DAGCombinerInfo &DCI,
                                                const SDLoc &DL) const;
 
-  SDValue prepareUREMEqFold(EVT VT, SDValue N0, SDValue N1, ISD::CondCode Cond,
+  SDValue prepareUREMEqFold(EVT SETCCVT, SDValue REMNode,
+                            SDValue CompTargetNode, ISD::CondCode Cond,
                             DAGCombinerInfo &DCI, const SDLoc &DL,
                             SmallVectorImpl<SDNode *> &Created) const;
-  SDValue buildUREMEqFold(EVT VT, SDValue N0, SDValue N1, ISD::CondCode Cond,
-                          DAGCombinerInfo &DCI, const SDLoc &DL) const;
+  SDValue buildUREMEqFold(EVT SETCCVT, SDValue REMNode, SDValue CompTargetNode,
+                          ISD::CondCode Cond, DAGCombinerInfo &DCI,
+                          const SDLoc &DL) const;
 };
 
 /// Given an LLVM IR type and return type attributes, compute the return value

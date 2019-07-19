@@ -59,6 +59,15 @@ private:
   /// the patterns that don't require complex C++.
   bool selectImpl(MachineInstr &I, CodeGenCoverage &CoverageInfo) const;
 
+  // A lowering phase that runs before any selection attempts.
+
+  void preISelLower(MachineInstr &I) const;
+
+  // An early selection function that runs before the selectImpl() call.
+  bool earlySelect(MachineInstr &I) const;
+
+  bool earlySelectSHL(MachineInstr &I, MachineRegisterInfo &MRI) const;
+
   bool selectVaStartAAPCS(MachineInstr &I, MachineFunction &MF,
                           MachineRegisterInfo &MRI) const;
   bool selectVaStartDarwin(MachineInstr &I, MachineFunction &MF,
@@ -116,6 +125,13 @@ private:
   MachineInstr *emitVectorConcat(Optional<Register> Dst, Register Op1,
                                  Register Op2,
                                  MachineIRBuilder &MIRBuilder) const;
+  MachineInstr *emitIntegerCompare(MachineOperand &LHS, MachineOperand &RHS,
+                                   MachineOperand &Predicate,
+                                   MachineIRBuilder &MIRBuilder) const;
+  MachineInstr *emitCMN(MachineOperand &LHS, MachineOperand &RHS,
+                        MachineIRBuilder &MIRBuilder) const;
+  MachineInstr *emitTST(const Register &LHS, const Register &RHS,
+                        MachineIRBuilder &MIRBuilder) const;
   MachineInstr *emitExtractVectorElt(Optional<Register> DstReg,
                                      const RegisterBank &DstRB, LLT ScalarTy,
                                      Register VecReg, unsigned LaneIdx,
@@ -130,6 +146,14 @@ private:
   /// Emit a CSet for a compare.
   MachineInstr *emitCSetForICMP(Register DefReg, unsigned Pred,
                                 MachineIRBuilder &MIRBuilder) const;
+
+  // Equivalent to the i32shift_a and friends from AArch64InstrInfo.td.
+  // We use these manually instead of using the importer since it doesn't
+  // support SDNodeXForm.
+  ComplexRendererFns selectShiftA_32(const MachineOperand &Root) const;
+  ComplexRendererFns selectShiftB_32(const MachineOperand &Root) const;
+  ComplexRendererFns selectShiftA_64(const MachineOperand &Root) const;
+  ComplexRendererFns selectShiftB_64(const MachineOperand &Root) const;
 
   ComplexRendererFns selectArithImmed(MachineOperand &Root) const;
 
@@ -166,21 +190,12 @@ private:
                              unsigned char OpFlags) const;
 
   // Optimization methods.
-
-  // Helper function to check if a reg def is an MI with a given opcode and
-  // returns it if so.
-  MachineInstr *findMIFromReg(unsigned Reg, unsigned Opc,
-                              MachineIRBuilder &MIB) const {
-    auto *Def = MIB.getMRI()->getVRegDef(Reg);
-    if (!Def || Def->getOpcode() != Opc)
-      return nullptr;
-    return Def;
-  }
-
   bool tryOptVectorShuffle(MachineInstr &I) const;
   bool tryOptVectorDup(MachineInstr &MI) const;
   bool tryOptSelect(MachineInstr &MI) const;
-  bool tryOptCMN(MachineInstr &MI) const;
+  MachineInstr *tryFoldIntegerCompare(MachineOperand &LHS, MachineOperand &RHS,
+                                      MachineOperand &Predicate,
+                                      MachineIRBuilder &MIRBuilder) const;
 
   const AArch64TargetMachine &TM;
   const AArch64Subtarget &STI;
@@ -777,6 +792,19 @@ static unsigned selectFCMPOpc(MachineInstr &I, MachineRegisterInfo &MRI) {
   return CmpOpcTbl[ShouldUseImm][OpSize == 64];
 }
 
+/// Returns true if \p P is an unsigned integer comparison predicate.
+static bool isUnsignedICMPPred(const CmpInst::Predicate P) {
+  switch (P) {
+  default:
+    return false;
+  case CmpInst::ICMP_UGT:
+  case CmpInst::ICMP_UGE:
+  case CmpInst::ICMP_ULT:
+  case CmpInst::ICMP_ULE:
+    return true;
+  }
+}
+
 static AArch64CC::CondCode changeICMPPredToAArch64CC(CmpInst::Predicate P) {
   switch (P) {
   default:
@@ -871,12 +899,23 @@ bool AArch64InstructionSelector::selectCompareBranch(
 
   Register LHS = CCMI->getOperand(2).getReg();
   Register RHS = CCMI->getOperand(3).getReg();
-  if (!getConstantVRegVal(RHS, MRI))
+  auto VRegAndVal = getConstantVRegValWithLookThrough(RHS, MRI);
+  if (!VRegAndVal)
     std::swap(RHS, LHS);
 
-  const auto RHSImm = getConstantVRegVal(RHS, MRI);
-  if (!RHSImm || *RHSImm != 0)
-    return false;
+  VRegAndVal = getConstantVRegValWithLookThrough(RHS, MRI);
+  if (!VRegAndVal || VRegAndVal->Value != 0) {
+    MachineIRBuilder MIB(I);
+    // If we can't select a CBZ then emit a cmp + Bcc.
+    if (!emitIntegerCompare(CCMI->getOperand(2), CCMI->getOperand(3),
+                            CCMI->getOperand(1), MIB))
+      return false;
+    const AArch64CC::CondCode CC = changeICMPPredToAArch64CC(
+        (CmpInst::Predicate)CCMI->getOperand(1).getPredicate());
+    MIB.buildInstr(AArch64::Bcc, {}, {}).addImm(CC).addMBB(DestMBB);
+    I.eraseFromParent();
+    return true;
+  }
 
   const RegisterBank &RB = *RBI.getRegBank(LHS, MRI, TRI);
   if (RB.getID() != AArch64::GPRRegBankID)
@@ -1043,6 +1082,98 @@ void AArch64InstructionSelector::materializeLargeCMVal(
   return;
 }
 
+void AArch64InstructionSelector::preISelLower(MachineInstr &I) const {
+  MachineBasicBlock &MBB = *I.getParent();
+  MachineFunction &MF = *MBB.getParent();
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+
+  switch (I.getOpcode()) {
+  case TargetOpcode::G_SHL:
+  case TargetOpcode::G_ASHR:
+  case TargetOpcode::G_LSHR: {
+    // These shifts are legalized to have 64 bit shift amounts because we want
+    // to take advantage of the existing imported selection patterns that assume
+    // the immediates are s64s. However, if the shifted type is 32 bits and for
+    // some reason we receive input GMIR that has an s64 shift amount that's not
+    // a G_CONSTANT, insert a truncate so that we can still select the s32
+    // register-register variant.
+    unsigned SrcReg = I.getOperand(1).getReg();
+    unsigned ShiftReg = I.getOperand(2).getReg();
+    const LLT ShiftTy = MRI.getType(ShiftReg);
+    const LLT SrcTy = MRI.getType(SrcReg);
+    if (SrcTy.isVector())
+      return;
+    assert(!ShiftTy.isVector() && "unexpected vector shift ty");
+    if (SrcTy.getSizeInBits() != 32 || ShiftTy.getSizeInBits() != 64)
+      return;
+    auto *AmtMI = MRI.getVRegDef(ShiftReg);
+    assert(AmtMI && "could not find a vreg definition for shift amount");
+    if (AmtMI->getOpcode() != TargetOpcode::G_CONSTANT) {
+      // Insert a subregister copy to implement a 64->32 trunc
+      MachineIRBuilder MIB(I);
+      auto Trunc = MIB.buildInstr(TargetOpcode::COPY, {SrcTy}, {})
+                       .addReg(ShiftReg, 0, AArch64::sub_32);
+      MRI.setRegBank(Trunc.getReg(0), RBI.getRegBank(AArch64::GPRRegBankID));
+      I.getOperand(2).setReg(Trunc.getReg(0));
+    }
+    return;
+  }
+  default:
+    return;
+  }
+}
+
+bool AArch64InstructionSelector::earlySelectSHL(
+    MachineInstr &I, MachineRegisterInfo &MRI) const {
+  // We try to match the immediate variant of LSL, which is actually an alias
+  // for a special case of UBFM. Otherwise, we fall back to the imported
+  // selector which will match the register variant.
+  assert(I.getOpcode() == TargetOpcode::G_SHL && "unexpected op");
+  const auto &MO = I.getOperand(2);
+  auto VRegAndVal = getConstantVRegVal(MO.getReg(), MRI);
+  if (!VRegAndVal)
+    return false;
+
+  const LLT DstTy = MRI.getType(I.getOperand(0).getReg());
+  if (DstTy.isVector())
+    return false;
+  bool Is64Bit = DstTy.getSizeInBits() == 64;
+  auto Imm1Fn = Is64Bit ? selectShiftA_64(MO) : selectShiftA_32(MO);
+  auto Imm2Fn = Is64Bit ? selectShiftB_64(MO) : selectShiftB_32(MO);
+  MachineIRBuilder MIB(I);
+
+  if (!Imm1Fn || !Imm2Fn)
+    return false;
+
+  auto NewI =
+      MIB.buildInstr(Is64Bit ? AArch64::UBFMXri : AArch64::UBFMWri,
+                     {I.getOperand(0).getReg()}, {I.getOperand(1).getReg()});
+
+  for (auto &RenderFn : *Imm1Fn)
+    RenderFn(NewI);
+  for (auto &RenderFn : *Imm2Fn)
+    RenderFn(NewI);
+
+  I.eraseFromParent();
+  return constrainSelectedInstRegOperands(*NewI, TII, TRI, RBI);
+}
+
+bool AArch64InstructionSelector::earlySelect(MachineInstr &I) const {
+  assert(I.getParent() && "Instruction should be in a basic block!");
+  assert(I.getParent()->getParent() && "Instruction should be in a function!");
+
+  MachineBasicBlock &MBB = *I.getParent();
+  MachineFunction &MF = *MBB.getParent();
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+
+  switch (I.getOpcode()) {
+  case TargetOpcode::G_SHL:
+    return earlySelectSHL(I, MRI);
+  default:
+    return false;
+  }
+}
+
 bool AArch64InstructionSelector::select(MachineInstr &I,
                                         CodeGenCoverage &CoverageInfo) const {
   assert(I.getParent() && "Instruction should be in a basic block!");
@@ -1064,27 +1195,24 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
       const Register DefReg = I.getOperand(0).getReg();
       const LLT DefTy = MRI.getType(DefReg);
 
-      const TargetRegisterClass *DefRC = nullptr;
-      if (TargetRegisterInfo::isPhysicalRegister(DefReg)) {
-        DefRC = TRI.getRegClass(DefReg);
-      } else {
-        const RegClassOrRegBank &RegClassOrBank =
-            MRI.getRegClassOrRegBank(DefReg);
+      const RegClassOrRegBank &RegClassOrBank =
+        MRI.getRegClassOrRegBank(DefReg);
 
-        DefRC = RegClassOrBank.dyn_cast<const TargetRegisterClass *>();
+      const TargetRegisterClass *DefRC
+        = RegClassOrBank.dyn_cast<const TargetRegisterClass *>();
+      if (!DefRC) {
+        if (!DefTy.isValid()) {
+          LLVM_DEBUG(dbgs() << "PHI operand has no type, not a gvreg?\n");
+          return false;
+        }
+        const RegisterBank &RB = *RegClassOrBank.get<const RegisterBank *>();
+        DefRC = getRegClassForTypeOnBank(DefTy, RB, RBI);
         if (!DefRC) {
-          if (!DefTy.isValid()) {
-            LLVM_DEBUG(dbgs() << "PHI operand has no type, not a gvreg?\n");
-            return false;
-          }
-          const RegisterBank &RB = *RegClassOrBank.get<const RegisterBank *>();
-          DefRC = getRegClassForTypeOnBank(DefTy, RB, RBI);
-          if (!DefRC) {
-            LLVM_DEBUG(dbgs() << "PHI operand has unexpected size/bank\n");
-            return false;
-          }
+          LLVM_DEBUG(dbgs() << "PHI operand has unexpected size/bank\n");
+          return false;
         }
       }
+
       I.setDesc(TII.get(TargetOpcode::PHI));
 
       return RBI.constrainGenericRegister(DefReg, *DefRC, MRI);
@@ -1102,6 +1230,19 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
         dbgs() << "Generic instruction has unexpected implicit operands\n");
     return false;
   }
+
+  // Try to do some lowering before we start instruction selecting. These
+  // lowerings are purely transformations on the input G_MIR and so selection
+  // must continue after any modification of the instruction.
+  preISelLower(I);
+
+  // There may be patterns where the importer can't deal with them optimally,
+  // but does select it to a suboptimal sequence so our custom C++ selection
+  // code later never has a chance to work on it. Therefore, we have an early
+  // selection attempt here to give priority to certain selection routines
+  // over the imported ones.
+  if (earlySelect(I))
+    return true;
 
   if (selectImpl(I, CoverageInfo))
     return true;
@@ -1821,12 +1962,7 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
     const Register TReg = I.getOperand(2).getReg();
     const Register FReg = I.getOperand(3).getReg();
 
-    // If we have a floating-point result, then we should use a floating point
-    // select instead of an integer select.
-    bool IsFP = (RBI.getRegBank(I.getOperand(0).getReg(), MRI, TRI)->getID() !=
-                 AArch64::GPRRegBankID);
-
-    if (IsFP && tryOptSelect(I))
+    if (tryOptSelect(I))
       return true;
 
     Register CSelOpc = selectSelectOpc(I, MRI, RBI);
@@ -1858,46 +1994,12 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
       return false;
     }
 
-    unsigned CmpOpc = 0;
-    Register ZReg;
-
-    // Check if this compare can be represented as a cmn, and perform any
-    // necessary transformations to do so.
-    if (tryOptCMN(I))
-      return true;
-
-    LLT CmpTy = MRI.getType(I.getOperand(2).getReg());
-    if (CmpTy == LLT::scalar(32)) {
-      CmpOpc = AArch64::SUBSWrr;
-      ZReg = AArch64::WZR;
-    } else if (CmpTy == LLT::scalar(64) || CmpTy.isPointer()) {
-      CmpOpc = AArch64::SUBSXrr;
-      ZReg = AArch64::XZR;
-    } else {
-      return false;
-    }
-
-    // Try to match immediate forms.
-    auto ImmFns = selectArithImmed(I.getOperand(3));
-    if (ImmFns)
-      CmpOpc = CmpOpc == AArch64::SUBSWrr ? AArch64::SUBSWri : AArch64::SUBSXri;
-
-    auto CmpMI = BuildMI(MBB, I, I.getDebugLoc(), TII.get(CmpOpc))
-                     .addDef(ZReg)
-                     .addUse(I.getOperand(2).getReg());
-
-    // If we matched a valid constant immediate, add those operands.
-    if (ImmFns) {
-      for (auto &RenderFn : *ImmFns)
-        RenderFn(CmpMI);
-    } else {
-      CmpMI.addUse(I.getOperand(3).getReg());
-    }
-
     MachineIRBuilder MIRBuilder(I);
+    if (!emitIntegerCompare(I.getOperand(2), I.getOperand(3), I.getOperand(1),
+                            MIRBuilder))
+      return false;
     emitCSetForICMP(I.getOperand(0).getReg(), I.getOperand(1).getPredicate(),
-             MIRBuilder);
-    constrainSelectedInstRegOperands(*CmpMI, TII, TRI, RBI);
+                    MIRBuilder);
     I.eraseFromParent();
     return true;
   }
@@ -2709,13 +2811,10 @@ void AArch64InstructionSelector::collectShuffleMaskIndices(
       "G_SHUFFLE_VECTOR should have a constant mask operand as G_BUILD_VECTOR");
   // Find the constant indices.
   for (unsigned i = 1, e = MaskDef->getNumOperands(); i < e; ++i) {
-    MachineInstr *ScalarDef = MRI.getVRegDef(MaskDef->getOperand(i).getReg());
-    assert(ScalarDef && "Could not find vreg def of shufflevec index op");
     // Look through copies.
-    while (ScalarDef->getOpcode() == TargetOpcode::COPY) {
-      ScalarDef = MRI.getVRegDef(ScalarDef->getOperand(1).getReg());
-      assert(ScalarDef && "Could not find def of copy operand");
-    }
+    MachineInstr *ScalarDef =
+        getDefIgnoringCopies(MaskDef->getOperand(i).getReg(), MRI);
+    assert(ScalarDef && "Could not find vreg def of shufflevec index op");
     if (ScalarDef->getOpcode() != TargetOpcode::G_CONSTANT) {
       // This be an undef if not a constant.
       assert(ScalarDef->getOpcode() == TargetOpcode::G_IMPLICIT_DEF);
@@ -2804,6 +2903,108 @@ getInsertVecEltOpInfo(const RegisterBank &RB, unsigned EltSize) {
     }
   }
   return std::make_pair(Opc, SubregIdx);
+}
+
+MachineInstr *
+AArch64InstructionSelector::emitCMN(MachineOperand &LHS, MachineOperand &RHS,
+                                    MachineIRBuilder &MIRBuilder) const {
+  assert(LHS.isReg() && RHS.isReg() && "Expected LHS and RHS to be registers!");
+  MachineRegisterInfo &MRI = MIRBuilder.getMF().getRegInfo();
+  static const unsigned OpcTable[2][2]{{AArch64::ADDSXrr, AArch64::ADDSXri},
+                                       {AArch64::ADDSWrr, AArch64::ADDSWri}};
+  bool Is32Bit = (MRI.getType(LHS.getReg()).getSizeInBits() == 32);
+  auto ImmFns = selectArithImmed(RHS);
+  unsigned Opc = OpcTable[Is32Bit][ImmFns.hasValue()];
+  Register ZReg = Is32Bit ? AArch64::WZR : AArch64::XZR;
+
+  auto CmpMI = MIRBuilder.buildInstr(Opc, {ZReg}, {LHS.getReg()});
+
+  // If we matched a valid constant immediate, add those operands.
+  if (ImmFns) {
+    for (auto &RenderFn : *ImmFns)
+      RenderFn(CmpMI);
+  } else {
+    CmpMI.addUse(RHS.getReg());
+  }
+
+  constrainSelectedInstRegOperands(*CmpMI, TII, TRI, RBI);
+  return &*CmpMI;
+}
+
+MachineInstr *
+AArch64InstructionSelector::emitTST(const Register &LHS, const Register &RHS,
+                                    MachineIRBuilder &MIRBuilder) const {
+  MachineRegisterInfo &MRI = MIRBuilder.getMF().getRegInfo();
+  unsigned RegSize = MRI.getType(LHS).getSizeInBits();
+  bool Is32Bit = (RegSize == 32);
+  static const unsigned OpcTable[2][2]{{AArch64::ANDSXrr, AArch64::ANDSXri},
+                                       {AArch64::ANDSWrr, AArch64::ANDSWri}};
+  Register ZReg = Is32Bit ? AArch64::WZR : AArch64::XZR;
+
+  // We might be able to fold in an immediate into the TST. We need to make sure
+  // it's a logical immediate though, since ANDS requires that.
+  auto ValAndVReg = getConstantVRegValWithLookThrough(RHS, MRI);
+  bool IsImmForm = ValAndVReg.hasValue() &&
+                   AArch64_AM::isLogicalImmediate(ValAndVReg->Value, RegSize);
+  unsigned Opc = OpcTable[Is32Bit][IsImmForm];
+  auto TstMI = MIRBuilder.buildInstr(Opc, {ZReg}, {LHS});
+
+  if (IsImmForm)
+    TstMI.addImm(
+        AArch64_AM::encodeLogicalImmediate(ValAndVReg->Value, RegSize));
+  else
+    TstMI.addUse(RHS);
+
+  constrainSelectedInstRegOperands(*TstMI, TII, TRI, RBI);
+  return &*TstMI;
+}
+
+MachineInstr *AArch64InstructionSelector::emitIntegerCompare(
+    MachineOperand &LHS, MachineOperand &RHS, MachineOperand &Predicate,
+    MachineIRBuilder &MIRBuilder) const {
+  assert(LHS.isReg() && RHS.isReg() && "Expected LHS and RHS to be registers!");
+  MachineRegisterInfo &MRI = MIRBuilder.getMF().getRegInfo();
+
+  // Fold the compare if possible.
+  MachineInstr *FoldCmp =
+      tryFoldIntegerCompare(LHS, RHS, Predicate, MIRBuilder);
+  if (FoldCmp)
+    return FoldCmp;
+
+  // Can't fold into a CMN. Just emit a normal compare.
+  unsigned CmpOpc = 0;
+  Register ZReg;
+
+  LLT CmpTy = MRI.getType(LHS.getReg());
+  assert((CmpTy.isScalar() || CmpTy.isPointer()) &&
+         "Expected scalar or pointer");
+  if (CmpTy == LLT::scalar(32)) {
+    CmpOpc = AArch64::SUBSWrr;
+    ZReg = AArch64::WZR;
+  } else if (CmpTy == LLT::scalar(64) || CmpTy.isPointer()) {
+    CmpOpc = AArch64::SUBSXrr;
+    ZReg = AArch64::XZR;
+  } else {
+    return nullptr;
+  }
+
+  // Try to match immediate forms.
+  auto ImmFns = selectArithImmed(RHS);
+  if (ImmFns)
+    CmpOpc = CmpOpc == AArch64::SUBSWrr ? AArch64::SUBSWri : AArch64::SUBSXri;
+
+  auto CmpMI = MIRBuilder.buildInstr(CmpOpc).addDef(ZReg).addUse(LHS.getReg());
+  // If we matched a valid constant immediate, add those operands.
+  if (ImmFns) {
+    for (auto &RenderFn : *ImmFns)
+      RenderFn(CmpMI);
+  } else {
+    CmpMI.addUse(RHS.getReg());
+  }
+
+  // Make sure that we can constrain the compare that we emitted.
+  constrainSelectedInstRegOperands(*CmpMI, TII, TRI, RBI);
+  return &*CmpMI;
 }
 
 MachineInstr *AArch64InstructionSelector::emitVectorConcat(
@@ -2957,33 +3158,47 @@ bool AArch64InstructionSelector::tryOptSelect(MachineInstr &I) const {
   }
 
   // Is the condition defined by a compare?
-  // TODO: Handle G_ICMP.
-  if (!CondDef || CondDef->getOpcode() != TargetOpcode::G_FCMP)
+  if (!CondDef)
     return false;
 
-  // Get the condition code for the select.
+  unsigned CondOpc = CondDef->getOpcode();
+  if (CondOpc != TargetOpcode::G_ICMP && CondOpc != TargetOpcode::G_FCMP)
+    return false;
+
   AArch64CC::CondCode CondCode;
-  AArch64CC::CondCode CondCode2;
-  changeFCMPPredToAArch64CC(
-      (CmpInst::Predicate)CondDef->getOperand(1).getPredicate(), CondCode,
-      CondCode2);
+  if (CondOpc == TargetOpcode::G_ICMP) {
+    CondCode = changeICMPPredToAArch64CC(
+        (CmpInst::Predicate)CondDef->getOperand(1).getPredicate());
+    if (!emitIntegerCompare(CondDef->getOperand(2), CondDef->getOperand(3),
+                            CondDef->getOperand(1), MIB)) {
+      LLVM_DEBUG(dbgs() << "Couldn't emit compare for select!\n");
+      return false;
+    }
+  } else {
+    // Get the condition code for the select.
+    AArch64CC::CondCode CondCode2;
+    changeFCMPPredToAArch64CC(
+        (CmpInst::Predicate)CondDef->getOperand(1).getPredicate(), CondCode,
+        CondCode2);
 
-  // changeFCMPPredToAArch64CC sets CondCode2 to AL when we require two
-  // instructions to emit the comparison.
-  // TODO: Handle FCMP_UEQ and FCMP_ONE. After that, this check will be
-  // unnecessary.
-  if (CondCode2 != AArch64CC::AL)
-    return false;
+    // changeFCMPPredToAArch64CC sets CondCode2 to AL when we require two
+    // instructions to emit the comparison.
+    // TODO: Handle FCMP_UEQ and FCMP_ONE. After that, this check will be
+    // unnecessary.
+    if (CondCode2 != AArch64CC::AL)
+      return false;
 
-  // Make sure we'll be able to select the compare.
-  unsigned CmpOpc = selectFCMPOpc(*CondDef, MRI);
-  if (!CmpOpc)
-    return false;
+    // Make sure we'll be able to select the compare.
+    unsigned CmpOpc = selectFCMPOpc(*CondDef, MRI);
+    if (!CmpOpc)
+      return false;
 
-  // Emit a new compare.
-  auto Cmp = MIB.buildInstr(CmpOpc, {}, {CondDef->getOperand(2).getReg()});
-  if (CmpOpc != AArch64::FCMPSri && CmpOpc != AArch64::FCMPDri)
-    Cmp.addUse(CondDef->getOperand(3).getReg());
+    // Emit a new compare.
+    auto Cmp = MIB.buildInstr(CmpOpc, {}, {CondDef->getOperand(2).getReg()});
+    if (CmpOpc != AArch64::FCMPSri && CmpOpc != AArch64::FCMPDri)
+      Cmp.addUse(CondDef->getOperand(3).getReg());
+    constrainSelectedInstRegOperands(*Cmp, TII, TRI, RBI);
+  }
 
   // Emit the select.
   unsigned CSelOpc = selectSelectOpc(I, MRI, RBI);
@@ -2991,15 +3206,16 @@ bool AArch64InstructionSelector::tryOptSelect(MachineInstr &I) const {
       MIB.buildInstr(CSelOpc, {I.getOperand(0).getReg()},
                      {I.getOperand(2).getReg(), I.getOperand(3).getReg()})
           .addImm(CondCode);
-  constrainSelectedInstRegOperands(*Cmp, TII, TRI, RBI);
   constrainSelectedInstRegOperands(*CSel, TII, TRI, RBI);
   I.eraseFromParent();
   return true;
 }
 
-bool AArch64InstructionSelector::tryOptCMN(MachineInstr &I) const {
-  assert(I.getOpcode() == TargetOpcode::G_ICMP && "Expected G_ICMP");
-  MachineIRBuilder MIRBuilder(I);
+MachineInstr *AArch64InstructionSelector::tryFoldIntegerCompare(
+    MachineOperand &LHS, MachineOperand &RHS, MachineOperand &Predicate,
+    MachineIRBuilder &MIRBuilder) const {
+  assert(LHS.isReg() && RHS.isReg() && Predicate.isPredicate() &&
+         "Unexpected MachineOperand");
   MachineRegisterInfo &MRI = *MIRBuilder.getMRI();
   // We want to find this sort of thing:
   // x = G_SUB 0, y
@@ -3009,20 +3225,6 @@ bool AArch64InstructionSelector::tryOptCMN(MachineInstr &I) const {
   // e.g:
   //
   // cmn z, y
-
-  // Helper lambda to find the def.
-  auto FindDef = [&](Register VReg) {
-    MachineInstr *Def = MRI.getVRegDef(VReg);
-    while (Def) {
-      if (Def->getOpcode() != TargetOpcode::COPY)
-        break;
-      // Copies can be from physical registers. If we hit this, we're done.
-      if (TargetRegisterInfo::isPhysicalRegister(Def->getOperand(1).getReg()))
-        break;
-      Def = MRI.getVRegDef(Def->getOperand(1).getReg());
-    }
-    return Def;
-  };
 
   // Helper lambda to detect the subtract followed by the compare.
   // Takes in the def of the LHS or RHS, and checks if it's a subtract from 0.
@@ -3050,68 +3252,55 @@ bool AArch64InstructionSelector::tryOptCMN(MachineInstr &I) const {
   };
 
   // Check if the RHS or LHS of the G_ICMP is defined by a SUB
-  MachineInstr *LHSDef = FindDef(I.getOperand(2).getReg());
-  MachineInstr *RHSDef = FindDef(I.getOperand(3).getReg());
-  const AArch64CC::CondCode CC = changeICMPPredToAArch64CC(
-      (CmpInst::Predicate)I.getOperand(1).getPredicate());
-  bool DidFold = false;
-  if (IsCMN(LHSDef, CC)) {
-    // We're doing this:
-    //
-    // Given:
-    //
-    // x = G_SUB 0, y
-    // G_ICMP x, z
-    //
-    // Update the G_ICMP:
-    //
-    // G_ICMP y, z
-    I.getOperand(2).setReg(LHSDef->getOperand(2).getReg());
-    DidFold = true;
-  } else if (IsCMN(RHSDef, CC)) {
-    // Same idea here, but with the RHS of the compare instead:
-    //
-    // Given:
-    //
-    // x = G_SUB 0, y
-    // G_ICMP z, x
-    //
-    // Update the G_ICMP:
-    //
-    // G_ICMP z, y
-    I.getOperand(3).setReg(RHSDef->getOperand(2).getReg());
-    DidFold = true;
+  MachineInstr *LHSDef = getDefIgnoringCopies(LHS.getReg(), MRI);
+  MachineInstr *RHSDef = getDefIgnoringCopies(RHS.getReg(), MRI);
+  CmpInst::Predicate P = (CmpInst::Predicate)Predicate.getPredicate();
+  const AArch64CC::CondCode CC = changeICMPPredToAArch64CC(P);
+
+  // Given this:
+  //
+  // x = G_SUB 0, y
+  // G_ICMP x, z
+  //
+  // Produce this:
+  //
+  // cmn y, z
+  if (IsCMN(LHSDef, CC))
+    return emitCMN(LHSDef->getOperand(2), RHS, MIRBuilder);
+
+  // Same idea here, but with the RHS of the compare instead:
+  //
+  // Given this:
+  //
+  // x = G_SUB 0, y
+  // G_ICMP z, x
+  //
+  // Produce this:
+  //
+  // cmn z, y
+  if (IsCMN(RHSDef, CC))
+    return emitCMN(LHS, RHSDef->getOperand(2), MIRBuilder);
+
+  // Given this:
+  //
+  // z = G_AND x, y
+  // G_ICMP z, 0
+  //
+  // Produce this if the compare is signed:
+  //
+  // tst x, y
+  if (!isUnsignedICMPPred(P) && LHSDef &&
+      LHSDef->getOpcode() == TargetOpcode::G_AND) {
+    // Make sure that the RHS is 0.
+    auto ValAndVReg = getConstantVRegValWithLookThrough(RHS.getReg(), MRI);
+    if (!ValAndVReg || ValAndVReg->Value != 0)
+      return nullptr;
+
+    return emitTST(LHSDef->getOperand(1).getReg(),
+                   LHSDef->getOperand(2).getReg(), MIRBuilder);
   }
 
-  if (DidFold) {
-    // We can fold. Emit a CMN.
-    static const unsigned OpcTable[2][2]{{AArch64::ADDSXrr, AArch64::ADDSXri},
-                                         {AArch64::ADDSWrr, AArch64::ADDSWri}};
-    bool Is32Bit =
-        (MRI.getType(I.getOperand(2).getReg()).getSizeInBits() == 32);
-    auto ImmFns = selectArithImmed(I.getOperand(3));
-    unsigned Opc = OpcTable[Is32Bit][ImmFns.hasValue()];
-    Register ZReg = Is32Bit ? AArch64::WZR : AArch64::XZR;
-
-    auto CmpMI = MIRBuilder.buildInstr(Opc, {ZReg}, {I.getOperand(2).getReg()});
-
-    // If we matched a valid constant immediate, add those operands.
-    if (ImmFns) {
-      for (auto &RenderFn : *ImmFns)
-        RenderFn(CmpMI);
-    } else {
-      CmpMI.addUse(I.getOperand(3).getReg());
-    }
-
-    constrainSelectedInstRegOperands(*CmpMI, TII, TRI, RBI);
-
-    // Add a CSet after the CMN.
-    emitCSetForICMP(I.getOperand(0).getReg(), I.getOperand(1).getPredicate(),
-             MIRBuilder);
-    I.eraseFromParent();
-  }
-
-  return DidFold;
+  return nullptr;
 }
 
 bool AArch64InstructionSelector::tryOptVectorDup(MachineInstr &I) const {
@@ -3136,12 +3325,12 @@ bool AArch64InstructionSelector::tryOptVectorDup(MachineInstr &I) const {
 
   // Begin matching the insert.
   auto *InsMI =
-      findMIFromReg(I.getOperand(1).getReg(), G_INSERT_VECTOR_ELT, MIB);
+      getOpcodeDef(G_INSERT_VECTOR_ELT, I.getOperand(1).getReg(), MRI);
   if (!InsMI)
     return false;
   // Match the undef vector operand.
   auto *UndefMI =
-      findMIFromReg(InsMI->getOperand(1).getReg(), G_IMPLICIT_DEF, MIB);
+      getOpcodeDef(G_IMPLICIT_DEF, InsMI->getOperand(1).getReg(), MRI);
   if (!UndefMI)
     return false;
   // Match the scalar being splatted.
@@ -3153,7 +3342,7 @@ bool AArch64InstructionSelector::tryOptVectorDup(MachineInstr &I) const {
     return false;
 
   // The shuffle's second operand doesn't matter if the mask is all zero.
-  auto *ZeroVec = findMIFromReg(I.getOperand(3).getReg(), G_BUILD_VECTOR, MIB);
+  auto *ZeroVec = getOpcodeDef(G_BUILD_VECTOR, I.getOperand(3).getReg(), MRI);
   if (!ZeroVec)
     return false;
   int64_t Zero = 0;
@@ -3614,37 +3803,77 @@ bool AArch64InstructionSelector::selectIntrinsic(
   return false;
 }
 
-/// SelectArithImmed - Select an immediate value that can be represented as
-/// a 12-bit value shifted left by either 0 or 12.  If so, return true with
-/// Val set to the 12-bit value and Shift set to the shifter operand.
-InstructionSelector::ComplexRendererFns
-AArch64InstructionSelector::selectArithImmed(MachineOperand &Root) const {
-  MachineInstr &MI = *Root.getParent();
-  MachineBasicBlock &MBB = *MI.getParent();
-  MachineFunction &MF = *MBB.getParent();
-  MachineRegisterInfo &MRI = MF.getRegInfo();
-
-  // This function is called from the addsub_shifted_imm ComplexPattern,
-  // which lists [imm] as the list of opcode it's interested in, however
-  // we still need to check whether the operand is actually an immediate
-  // here because the ComplexPattern opcode list is only used in
-  // root-level opcode matching.
+static Optional<uint64_t> getImmedFromMO(const MachineOperand &Root) {
+  auto &MI = *Root.getParent();
+  auto &MBB = *MI.getParent();
+  auto &MF = *MBB.getParent();
+  auto &MRI = MF.getRegInfo();
   uint64_t Immed;
   if (Root.isImm())
     Immed = Root.getImm();
   else if (Root.isCImm())
     Immed = Root.getCImm()->getZExtValue();
   else if (Root.isReg()) {
-    MachineInstr *Def = MRI.getVRegDef(Root.getReg());
-    if (Def->getOpcode() != TargetOpcode::G_CONSTANT)
+    auto ValAndVReg =
+        getConstantVRegValWithLookThrough(Root.getReg(), MRI, true);
+    if (!ValAndVReg)
       return None;
-    MachineOperand &Op1 = Def->getOperand(1);
-    if (!Op1.isCImm() || Op1.getCImm()->getBitWidth() > 64)
-      return None;
-    Immed = Op1.getCImm()->getZExtValue();
+    Immed = ValAndVReg->Value;
   } else
     return None;
+  return Immed;
+}
 
+InstructionSelector::ComplexRendererFns
+AArch64InstructionSelector::selectShiftA_32(const MachineOperand &Root) const {
+  auto MaybeImmed = getImmedFromMO(Root);
+  if (MaybeImmed == None || *MaybeImmed > 31)
+    return None;
+  uint64_t Enc = (32 - *MaybeImmed) & 0x1f;
+  return {{[=](MachineInstrBuilder &MIB) { MIB.addImm(Enc); }}};
+}
+
+InstructionSelector::ComplexRendererFns
+AArch64InstructionSelector::selectShiftB_32(const MachineOperand &Root) const {
+  auto MaybeImmed = getImmedFromMO(Root);
+  if (MaybeImmed == None || *MaybeImmed > 31)
+    return None;
+  uint64_t Enc = 31 - *MaybeImmed;
+  return {{[=](MachineInstrBuilder &MIB) { MIB.addImm(Enc); }}};
+}
+
+InstructionSelector::ComplexRendererFns
+AArch64InstructionSelector::selectShiftA_64(const MachineOperand &Root) const {
+  auto MaybeImmed = getImmedFromMO(Root);
+  if (MaybeImmed == None || *MaybeImmed > 63)
+    return None;
+  uint64_t Enc = (64 - *MaybeImmed) & 0x3f;
+  return {{[=](MachineInstrBuilder &MIB) { MIB.addImm(Enc); }}};
+}
+
+InstructionSelector::ComplexRendererFns
+AArch64InstructionSelector::selectShiftB_64(const MachineOperand &Root) const {
+  auto MaybeImmed = getImmedFromMO(Root);
+  if (MaybeImmed == None || *MaybeImmed > 63)
+    return None;
+  uint64_t Enc = 63 - *MaybeImmed;
+  return {{[=](MachineInstrBuilder &MIB) { MIB.addImm(Enc); }}};
+}
+
+/// SelectArithImmed - Select an immediate value that can be represented as
+/// a 12-bit value shifted left by either 0 or 12.  If so, return true with
+/// Val set to the 12-bit value and Shift set to the shifter operand.
+InstructionSelector::ComplexRendererFns
+AArch64InstructionSelector::selectArithImmed(MachineOperand &Root) const {
+  // This function is called from the addsub_shifted_imm ComplexPattern,
+  // which lists [imm] as the list of opcode it's interested in, however
+  // we still need to check whether the operand is actually an immediate
+  // here because the ComplexPattern opcode list is only used in
+  // root-level opcode matching.
+  auto MaybeImmed = getImmedFromMO(Root);
+  if (MaybeImmed == None)
+    return None;
+  uint64_t Immed = *MaybeImmed;
   unsigned ShiftAmt;
 
   if (Immed >> 12 == 0) {

@@ -46,7 +46,12 @@ public:
     /// Parsed AST of the active file.
     ParsedAST &AST;
     /// A location of the cursor in the editor.
+    // FIXME: Cursor is redundant and should be removed
     SourceLocation Cursor;
+    /// The begin offset of the selection
+    unsigned SelectionBegin;
+    /// The end offset of the selection
+    unsigned SelectionEnd;
     /// The AST nodes that were selected.
     SelectionTree ASTSelection;
     // FIXME: provide a way to get sources and ASTs for other files.
@@ -110,9 +115,11 @@ public:
       TweakRegistrationFor##Subclass(#Subclass, /*Description=*/"");           \
   const char *Subclass::id() const { return #Subclass; }
 
-/// Calls prepare() on all tweaks, returning those that can run on the
-/// selection.
-std::vector<std::unique_ptr<Tweak>> prepareTweaks(const Tweak::Selection &S);
+/// Calls prepare() on all tweaks that satisfy the filter, returning those that
+/// can run on the selection.
+std::vector<std::unique_ptr<Tweak>>
+prepareTweaks(const Tweak::Selection &S,
+              llvm::function_ref<bool(const Tweak &)> Filter);
 
 // Calls prepare() on the tweak with a given ID.
 // If prepare() returns false, returns an error.

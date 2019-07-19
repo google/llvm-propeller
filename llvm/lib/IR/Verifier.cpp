@@ -691,6 +691,13 @@ void Verifier::visitGlobalVariable(const GlobalVariable &GV) {
                       "DIGlobalVariableExpression");
   }
 
+  // Scalable vectors cannot be global variables, since we don't know
+  // the runtime size. If the global is a struct or an array containing
+  // scalable vectors, that will be caught by the isValidElementType methods
+  // in StructType or ArrayType instead.
+  if (auto *VTy = dyn_cast<VectorType>(GV.getValueType()))
+    Assert(!VTy->isScalable(), "Globals cannot contain scalable vectors", &GV);
+
   if (!GV.hasInitializer()) {
     visitGlobalValue(GV);
     return;
@@ -1486,10 +1493,12 @@ void Verifier::visitModuleFlagCGProfileEntry(const MDOperand &MDO) {
 static bool isFuncOnlyAttr(Attribute::AttrKind Kind) {
   switch (Kind) {
   case Attribute::NoReturn:
+  case Attribute::NoSync:
   case Attribute::WillReturn:
   case Attribute::NoCfCheck:
   case Attribute::NoUnwind:
   case Attribute::NoInline:
+  case Attribute::NoFree:
   case Attribute::AlwaysInline:
   case Attribute::OptimizeForSize:
   case Attribute::StackProtect:
@@ -1507,6 +1516,7 @@ static bool isFuncOnlyAttr(Attribute::AttrKind Kind) {
   case Attribute::ReturnsTwice:
   case Attribute::SanitizeAddress:
   case Attribute::SanitizeHWAddress:
+  case Attribute::SanitizeMemTag:
   case Attribute::SanitizeThread:
   case Attribute::SanitizeMemory:
   case Attribute::MinSize:
@@ -4768,11 +4778,11 @@ void Verifier::visitConstrainedFPIntrinsic(ConstrainedFPIntrinsic &FPI) {
   // argument type check is needed here.
 
   if (HasExceptionMD) {
-    Assert(FPI.getExceptionBehavior() != ConstrainedFPIntrinsic::ebInvalid,
+    Assert(FPI.getExceptionBehavior().hasValue(),
            "invalid exception behavior argument", &FPI);
   }
   if (HasRoundingMD) {
-    Assert(FPI.getRoundingMode() != ConstrainedFPIntrinsic::rmInvalid,
+    Assert(FPI.getRoundingMode().hasValue(),
            "invalid rounding mode argument", &FPI);
   }
 }

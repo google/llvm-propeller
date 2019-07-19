@@ -58,6 +58,7 @@ Clang-Tidy Checks
    bugprone-move-forwarding-reference
    bugprone-multiple-statement-macro
    bugprone-parent-virtual-call
+   bugprone-posix-return
    bugprone-sizeof-container
    bugprone-sizeof-expression
    bugprone-string-constructor
@@ -256,6 +257,7 @@ Clang-Tidy Checks
    readability-braces-around-statements
    readability-const-return-type
    readability-container-size-empty
+   readability-convert-member-functions-to-static
    readability-delete-null-pointer
    readability-deleted-default
    readability-else-after-return

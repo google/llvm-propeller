@@ -1279,6 +1279,10 @@ bool PPCTargetLowering::hasSPE() const {
   return Subtarget.hasSPE();
 }
 
+bool PPCTargetLowering::preferIncOfAddToSubOfNot(EVT VT) const {
+  return VT.isScalarInteger();
+}
+
 const char *PPCTargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch ((PPCISD::NodeType)Opcode) {
   case PPCISD::FIRST_NUMBER:    break;
@@ -2229,6 +2233,25 @@ bool llvm::isIntS16Immediate(SDValue Op, int16_t &Imm) {
   return isIntS16Immediate(Op.getNode(), Imm);
 }
 
+
+/// SelectAddressEVXRegReg - Given the specified address, check to see if it can
+/// be represented as an indexed [r+r] operation.
+bool PPCTargetLowering::SelectAddressEVXRegReg(SDValue N, SDValue &Base,
+                                               SDValue &Index,
+                                               SelectionDAG &DAG) const {
+  for (SDNode::use_iterator UI = N->use_begin(), E = N->use_end();
+      UI != E; ++UI) {
+    if (MemSDNode *Memop = dyn_cast<MemSDNode>(*UI)) {
+      if (Memop->getMemoryVT() == MVT::f64) {
+          Base = N.getOperand(0);
+          Index = N.getOperand(1);
+          return true;
+      }
+    }
+  }
+  return false;
+}
+
 /// SelectAddressRegReg - Given the specified addressed, check to see if it
 /// can be represented as an indexed [r+r] operation.  Returns false if it
 /// can be more efficiently represented as [r+imm]. If \p EncodingAlignment is
@@ -2240,6 +2263,10 @@ bool PPCTargetLowering::SelectAddressRegReg(SDValue N, SDValue &Base,
                                             unsigned EncodingAlignment) const {
   int16_t imm = 0;
   if (N.getOpcode() == ISD::ADD) {
+    // Is there any SPE load/store (f64), which can't handle 16bit offset?
+    // SPE load/store can only handle 8-bit offsets.
+    if (hasSPE() && SelectAddressEVXRegReg(N, Base, Index, DAG))
+        return true;
     if (isIntS16Immediate(N.getOperand(1), imm) &&
         (!EncodingAlignment || !(imm % EncodingAlignment)))
       return false; // r+i
@@ -4428,25 +4455,15 @@ static bool isFunctionGlobalAddress(SDValue Callee);
 static bool
 callsShareTOCBase(const Function *Caller, SDValue Callee,
                     const TargetMachine &TM) {
-  // Need a GlobalValue to determine if a Caller and Callee share the same
-  // TOCBase.
-  const GlobalValue *GV = nullptr;
+   // Callee is either a GlobalAddress or an ExternalSymbol. ExternalSymbols
+   // don't have enough information to determine if the caller and calle share
+   // the same  TOC base, so we have to pessimistically assume they don't for
+   // correctness.
+   GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee);
+   if (!G)
+     return false;
 
-  if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee)) {
-    GV = G->getGlobal();
-  } else if (MCSymbolSDNode *M = dyn_cast<MCSymbolSDNode>(Callee)) {
-    // On AIX only, we replace GlobalAddressSDNode with MCSymbolSDNode for
-    // the callee of a direct function call. The MCSymbolSDNode contains the
-    // MCSymbol for the funtion entry point.
-    const auto *S = cast<MCSymbolXCOFF>(M->getMCSymbol());
-    GV = S->getGlobalValue();
-  }
-
-  // If we failed to get a GlobalValue, then pessimistically assume they do not
-  // share a TOCBase.
-  if (!GV)
-    return false;
-
+   const GlobalValue *GV = G->getGlobal();
   // The medium and large code models are expected to provide a sufficiently
   // large TOC to provide all data addressing needs of a module with a
   // single TOC. Since each module will be addressed with a single TOC then we
@@ -4930,39 +4947,27 @@ PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag, SDValue &Chain,
   // we're building with the leopard linker or later, which automatically
   // synthesizes these stubs.
   const TargetMachine &TM = DAG.getTarget();
-  MachineFunction &MF = DAG.getMachineFunction();
-  const Module *Mod = MF.getFunction().getParent();
+  const Module *Mod = DAG.getMachineFunction().getFunction().getParent();
   const GlobalValue *GV = nullptr;
   if (auto *G = dyn_cast<GlobalAddressSDNode>(Callee))
     GV = G->getGlobal();
   bool Local = TM.shouldAssumeDSOLocal(*Mod, GV);
   bool UsePlt = !Local && Subtarget.isTargetELF() && !isPPC64;
 
+  // If the callee is a GlobalAddress/ExternalSymbol node (quite common,
+  // every direct call is) turn it into a TargetGlobalAddress /
+  // TargetExternalSymbol node so that legalize doesn't hack it.
   if (isFunctionGlobalAddress(Callee)) {
     GlobalAddressSDNode *G = cast<GlobalAddressSDNode>(Callee);
 
-    if (TM.getTargetTriple().isOSAIX()) {
-      // Direct function calls reference the symbol for the function's entry
-      // point, which is named by inserting a "." before the function's
-      // C-linkage name.
-      auto &Context = MF.getMMI().getContext();
-      MCSymbol *S = Context.getOrCreateSymbol(Twine(".") +
-                                              Twine(G->getGlobal()->getName()));
-      cast<MCSymbolXCOFF>(S)->setGlobalValue(GV);
-      Callee = DAG.getMCSymbol(S, PtrVT);
-    } else {
-      // A call to a TLS address is actually an indirect call to a
-      // thread-specific pointer.
-      unsigned OpFlags = 0;
-      if (UsePlt)
-        OpFlags = PPCII::MO_PLT;
+    // A call to a TLS address is actually an indirect call to a
+    // thread-specific pointer.
+    unsigned OpFlags = 0;
+    if (UsePlt)
+      OpFlags = PPCII::MO_PLT;
 
-      // If the callee is a GlobalAddress/ExternalSymbol node (quite common,
-      // every direct call is) turn it into a TargetGlobalAddress /
-      // TargetExternalSymbol node so that legalize doesn't hack it.
-      Callee = DAG.getTargetGlobalAddress(G->getGlobal(), dl,
-                                          Callee.getValueType(), 0, OpFlags);
-    }
+    Callee = DAG.getTargetGlobalAddress(G->getGlobal(), dl,
+                                        Callee.getValueType(), 0, OpFlags);
     needIndirectCall = false;
   }
 
@@ -5241,6 +5246,7 @@ SDValue PPCTargetLowering::FinishCall(
   // same TOC), the NOP will remain unchanged, or become some other NOP.
 
   MachineFunction &MF = DAG.getMachineFunction();
+  EVT PtrVT = getPointerTy(DAG.getDataLayout());
   if (!isTailCall && !isPatchPoint &&
       ((Subtarget.isSVR4ABI() && Subtarget.isPPC64()) ||
        Subtarget.isAIXABI())) {
@@ -5259,7 +5265,6 @@ SDValue PPCTargetLowering::FinishCall(
       // allocated and an unnecessary move instruction being generated.
       CallOpc = PPCISD::BCTRL_LOAD_TOC;
 
-      EVT PtrVT = getPointerTy(DAG.getDataLayout());
       SDValue StackPtr = DAG.getRegister(PPC::X1, PtrVT);
       unsigned TOCSaveOffset = Subtarget.getFrameLowering()->getTOCSaveOffset();
       SDValue TOCOff = DAG.getIntPtrConstant(TOCSaveOffset, dl);
@@ -5273,6 +5278,19 @@ SDValue PPCTargetLowering::FinishCall(
       // Otherwise insert NOP for non-local calls.
       CallOpc = PPCISD::CALL_NOP;
     }
+  }
+
+  if (Subtarget.isAIXABI() && isFunctionGlobalAddress(Callee)) {
+    // On AIX, direct function calls reference the symbol for the function's
+    // entry point, which is named by inserting a "." before the function's
+    // C-linkage name.
+    GlobalAddressSDNode *G = cast<GlobalAddressSDNode>(Callee);
+    auto &Context = DAG.getMachineFunction().getMMI().getContext();
+    MCSymbol *S = Context.getOrCreateSymbol(Twine(".") +
+                                            Twine(G->getGlobal()->getName()));
+    Callee = DAG.getMCSymbol(S, PtrVT);
+    // Replace the GlobalAddressSDNode Callee with the MCSymbolSDNode.
+    Ops[1] = Callee;
   }
 
   Chain = DAG.getNode(CallOpc, dl, NodeTys, Ops);
@@ -13958,7 +13976,7 @@ PPCTargetLowering::getConstraintType(StringRef Constraint) const {
     return C_RegisterClass;
   } else if (Constraint == "wa" || Constraint == "wd" ||
              Constraint == "wf" || Constraint == "ws" ||
-             Constraint == "wi") {
+             Constraint == "wi" || Constraint == "ww") {
     return C_RegisterClass; // VSX registers.
   }
   return TargetLowering::getConstraintType(Constraint);
@@ -13986,10 +14004,12 @@ PPCTargetLowering::getSingleConstraintMatchWeight(
             StringRef(constraint) == "wf") &&
            type->isVectorTy())
     return CW_Register;
-  else if (StringRef(constraint) == "ws" && type->isDoubleTy())
-    return CW_Register;
   else if (StringRef(constraint) == "wi" && type->isIntegerTy(64))
     return CW_Register; // just hold 64-bit integers data.
+  else if (StringRef(constraint) == "ws" && type->isDoubleTy())
+    return CW_Register;
+  else if (StringRef(constraint) == "ww" && type->isFloatTy())
+    return CW_Register;
 
   switch (*constraint) {
   default:
@@ -14075,7 +14095,7 @@ PPCTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
              Constraint == "wf" || Constraint == "wi") &&
              Subtarget.hasVSX()) {
     return std::make_pair(0U, &PPC::VSRCRegClass);
-  } else if (Constraint == "ws" && Subtarget.hasVSX()) {
+  } else if ((Constraint == "ws" || Constraint == "ww") && Subtarget.hasVSX()) {
     if (VT == MVT::f32 && Subtarget.hasP8Vector())
       return std::make_pair(0U, &PPC::VSSRCRegClass);
     else

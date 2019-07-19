@@ -1630,6 +1630,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
                       .Case("__builtin_FILE", true)
                       .Case("__builtin_FUNCTION", true)
                       .Case("__builtin_COLUMN", true)
+                      .Case("__builtin_bit_cast", true)
                       .Default(false);
         }
       });
@@ -1706,7 +1707,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
 
         HasLexedNextToken = Tok.is(tok::string_literal);
         if (!FinishLexStringLiteral(Tok, WarningName, "'__has_warning'",
-                                    /*MacroExpansion=*/false))
+                                    /*AllowMacroExpansion=*/false))
           return false;
 
         // FIXME: Should we accept "-R..." flags here, or should that be

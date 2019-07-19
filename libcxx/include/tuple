@@ -521,6 +521,13 @@ class _LIBCPP_TEMPLATE_VIS tuple
         template <class ..._Args>
         static constexpr bool __enable_implicit() {
             return
+               __tuple_constructible<
+                    tuple<_Args...>,
+                    typename __make_tuple_types<tuple,
+                             sizeof...(_Args) < sizeof...(_Tp) ?
+                                 sizeof...(_Args) :
+                                 sizeof...(_Tp)>::type
+                >::value &&
                 __tuple_convertible<
                     tuple<_Args...>,
                     typename __make_tuple_types<tuple,
@@ -547,7 +554,8 @@ class _LIBCPP_TEMPLATE_VIS tuple
     {
         template <class _Tuple>
         static constexpr bool __enable_implicit() {
-            return __tuple_convertible<_Tuple, tuple>::value;
+            return __tuple_constructible<_Tuple, tuple>::value
+                && __tuple_convertible<_Tuple, tuple>::value;
         }
 
         template <class _Tuple>
@@ -577,6 +585,7 @@ class _LIBCPP_TEMPLATE_VIS tuple
         template <class _Tuple>
         static constexpr bool __enable_implicit() {
             return _And<
+                __tuple_constructible<_Tuple, tuple>,
                 __tuple_convertible<_Tuple, tuple>,
                 _PreferTupleLikeConstructor<_Tuple>
             >::value;
@@ -592,6 +601,25 @@ class _LIBCPP_TEMPLATE_VIS tuple
         }
     };
 
+    template <class _Tuple, bool _DisableIfLValue>
+    using _EnableImplicitTupleLikeConstructor = _EnableIf<
+                         _CheckTupleLikeConstructor<
+                             __tuple_like_with_size<_Tuple, sizeof...(_Tp)>::value
+                             && !_PackExpandsToThisTuple<_Tuple>::value
+                             && (!is_lvalue_reference<_Tuple>::value || !_DisableIfLValue)
+                         >::template __enable_implicit<_Tuple>(),
+                         bool
+                      >;
+
+    template <class _Tuple, bool _DisableIfLValue>
+    using _EnableExplicitTupleLikeConstructor = _EnableIf<
+                         _CheckTupleLikeConstructor<
+                             __tuple_like_with_size<_Tuple, sizeof...(_Tp)>::value
+                             && !_PackExpandsToThisTuple<_Tuple>::value
+                             && (!is_lvalue_reference<_Tuple>::value || !_DisableIfLValue)
+                         >::template __enable_explicit<_Tuple>(),
+                         bool
+                      >;
     template <size_t _Jp, class ..._Up> friend _LIBCPP_CONSTEXPR_AFTER_CXX11
         typename tuple_element<_Jp, tuple<_Up...> >::type& get(tuple<_Up...>&) _NOEXCEPT;
     template <size_t _Jp, class ..._Up> friend _LIBCPP_CONSTEXPR_AFTER_CXX11
@@ -806,34 +834,26 @@ public:
                     typename __make_tuple_types<tuple, sizeof...(_Tp), sizeof...(_Up)>::type(),
                     _VSTD::forward<_Up>(__u)...) {}
 
-    template <class _Tuple,
-              typename enable_if
-                      <
-                         _CheckTupleLikeConstructor<
-                             __tuple_like_with_size<_Tuple, sizeof...(_Tp)>::value
-                             && !_PackExpandsToThisTuple<_Tuple>::value
-                         >::template __enable_implicit<_Tuple>(),
-                         bool
-                      >::type = false
-             >
+    template <class _Tuple, _EnableImplicitTupleLikeConstructor<_Tuple, true> = false>
         _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
         tuple(_Tuple&& __t) _NOEXCEPT_((is_nothrow_constructible<_BaseT, _Tuple>::value))
             : __base_(_VSTD::forward<_Tuple>(__t)) {}
 
-    template <class _Tuple,
-              typename enable_if
-                      <
-                         _CheckTupleLikeConstructor<
-                             __tuple_like_with_size<_Tuple, sizeof...(_Tp)>::value
-                             && !_PackExpandsToThisTuple<_Tuple>::value
-                         >::template __enable_explicit<_Tuple>(),
-                         bool
-                      >::type = false
-             >
+    template <class _Tuple, _EnableImplicitTupleLikeConstructor<const _Tuple&, false> = false>
+        _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+        tuple(const _Tuple& __t) _NOEXCEPT_((is_nothrow_constructible<_BaseT, const _Tuple&>::value))
+            : __base_(__t) {}
+    template <class _Tuple, _EnableExplicitTupleLikeConstructor<_Tuple, true> = false>
         _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
         explicit
         tuple(_Tuple&& __t) _NOEXCEPT_((is_nothrow_constructible<_BaseT, _Tuple>::value))
             : __base_(_VSTD::forward<_Tuple>(__t)) {}
+
+    template <class _Tuple, _EnableExplicitTupleLikeConstructor<const _Tuple&, false> = false>
+        _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+        explicit
+        tuple(const _Tuple& __t) _NOEXCEPT_((is_nothrow_constructible<_BaseT, const _Tuple&>::value))
+            : __base_(__t) {}
 
     template <class _Alloc, class _Tuple,
               typename enable_if

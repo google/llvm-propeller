@@ -166,11 +166,122 @@ static Register findFirstFreeSGPR(CCState &CCInfo) {
   llvm_unreachable("Cannot allocate sgpr");
 }
 
+static void allocateSpecialEntryInputVGPRs(CCState &CCInfo,
+                                           MachineFunction &MF,
+                                           const SIRegisterInfo &TRI,
+                                           SIMachineFunctionInfo &Info) {
+  const LLT S32 = LLT::scalar(32);
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+
+  if (Info.hasWorkItemIDX()) {
+    Register Reg = AMDGPU::VGPR0;
+    MRI.setType(MF.addLiveIn(Reg, &AMDGPU::VGPR_32RegClass), S32);
+
+    CCInfo.AllocateReg(Reg);
+    Info.setWorkItemIDX(ArgDescriptor::createRegister(Reg));
+  }
+
+  if (Info.hasWorkItemIDY()) {
+    Register Reg = AMDGPU::VGPR1;
+    MRI.setType(MF.addLiveIn(Reg, &AMDGPU::VGPR_32RegClass), S32);
+
+    CCInfo.AllocateReg(Reg);
+    Info.setWorkItemIDY(ArgDescriptor::createRegister(Reg));
+  }
+
+  if (Info.hasWorkItemIDZ()) {
+    Register Reg = AMDGPU::VGPR2;
+    MRI.setType(MF.addLiveIn(Reg, &AMDGPU::VGPR_32RegClass), S32);
+
+    CCInfo.AllocateReg(Reg);
+    Info.setWorkItemIDZ(ArgDescriptor::createRegister(Reg));
+  }
+}
+
+// Allocate special inputs passed in user SGPRs.
+static void allocateHSAUserSGPRs(CCState &CCInfo,
+                                 MachineIRBuilder &MIRBuilder,
+                                 MachineFunction &MF,
+                                 const SIRegisterInfo &TRI,
+                                 SIMachineFunctionInfo &Info) {
+  // FIXME: How should these inputs interact with inreg / custom SGPR inputs?
+  if (Info.hasPrivateSegmentBuffer()) {
+    unsigned PrivateSegmentBufferReg = Info.addPrivateSegmentBuffer(TRI);
+    MF.addLiveIn(PrivateSegmentBufferReg, &AMDGPU::SGPR_128RegClass);
+    CCInfo.AllocateReg(PrivateSegmentBufferReg);
+  }
+
+  if (Info.hasDispatchPtr()) {
+    unsigned DispatchPtrReg = Info.addDispatchPtr(TRI);
+    MF.addLiveIn(DispatchPtrReg, &AMDGPU::SGPR_64RegClass);
+    CCInfo.AllocateReg(DispatchPtrReg);
+  }
+
+  if (Info.hasQueuePtr()) {
+    unsigned QueuePtrReg = Info.addQueuePtr(TRI);
+    MF.addLiveIn(QueuePtrReg, &AMDGPU::SGPR_64RegClass);
+    CCInfo.AllocateReg(QueuePtrReg);
+  }
+
+  if (Info.hasKernargSegmentPtr()) {
+    MachineRegisterInfo &MRI = MF.getRegInfo();
+    Register InputPtrReg = Info.addKernargSegmentPtr(TRI);
+    const LLT P4 = LLT::pointer(AMDGPUAS::CONSTANT_ADDRESS, 64);
+    Register VReg = MRI.createGenericVirtualRegister(P4);
+    MRI.addLiveIn(InputPtrReg, VReg);
+    MIRBuilder.getMBB().addLiveIn(InputPtrReg);
+    MIRBuilder.buildCopy(VReg, InputPtrReg);
+    CCInfo.AllocateReg(InputPtrReg);
+  }
+
+  if (Info.hasDispatchID()) {
+    unsigned DispatchIDReg = Info.addDispatchID(TRI);
+    MF.addLiveIn(DispatchIDReg, &AMDGPU::SGPR_64RegClass);
+    CCInfo.AllocateReg(DispatchIDReg);
+  }
+
+  if (Info.hasFlatScratchInit()) {
+    unsigned FlatScratchInitReg = Info.addFlatScratchInit(TRI);
+    MF.addLiveIn(FlatScratchInitReg, &AMDGPU::SGPR_64RegClass);
+    CCInfo.AllocateReg(FlatScratchInitReg);
+  }
+
+  // TODO: Add GridWorkGroupCount user SGPRs when used. For now with HSA we read
+  // these from the dispatch pointer.
+}
+
 static void allocateSystemSGPRs(CCState &CCInfo,
                                 MachineFunction &MF,
                                 SIMachineFunctionInfo &Info,
                                 CallingConv::ID CallConv,
                                 bool IsShader) {
+  const LLT S32 = LLT::scalar(32);
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+
+  if (Info.hasWorkGroupIDX()) {
+    Register Reg = Info.addWorkGroupIDX();
+    MRI.setType(MF.addLiveIn(Reg, &AMDGPU::SReg_32_XM0RegClass), S32);
+    CCInfo.AllocateReg(Reg);
+  }
+
+  if (Info.hasWorkGroupIDY()) {
+    Register Reg = Info.addWorkGroupIDY();
+    MRI.setType(MF.addLiveIn(Reg, &AMDGPU::SReg_32_XM0RegClass), S32);
+    CCInfo.AllocateReg(Reg);
+  }
+
+  if (Info.hasWorkGroupIDZ()) {
+    unsigned Reg = Info.addWorkGroupIDZ();
+    MRI.setType(MF.addLiveIn(Reg, &AMDGPU::SReg_32_XM0RegClass), S32);
+    CCInfo.AllocateReg(Reg);
+  }
+
+  if (Info.hasWorkGroupInfo()) {
+    unsigned Reg = Info.addWorkGroupInfo();
+    MRI.setType(MF.addLiveIn(Reg, &AMDGPU::SReg_32_XM0RegClass), S32);
+    CCInfo.AllocateReg(Reg);
+  }
+
   if (Info.hasPrivateSegmentWaveByteOffset()) {
     // Scratch wave offset passed in system SGPR.
     unsigned PrivateSegmentWaveByteOffsetReg;
@@ -193,16 +304,71 @@ static void allocateSystemSGPRs(CCState &CCInfo,
   }
 }
 
+bool AMDGPUCallLowering::lowerFormalArgumentsKernel(
+    MachineIRBuilder &MIRBuilder, const Function &F,
+    ArrayRef<ArrayRef<Register>> VRegs) const {
+  MachineFunction &MF = MIRBuilder.getMF();
+  const GCNSubtarget *Subtarget = &MF.getSubtarget<GCNSubtarget>();
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+  SIMachineFunctionInfo *Info = MF.getInfo<SIMachineFunctionInfo>();
+  const SIRegisterInfo *TRI = MF.getSubtarget<GCNSubtarget>().getRegisterInfo();
+  const DataLayout &DL = F.getParent()->getDataLayout();
+
+  SmallVector<CCValAssign, 16> ArgLocs;
+  CCState CCInfo(F.getCallingConv(), F.isVarArg(), MF, ArgLocs, F.getContext());
+
+  allocateHSAUserSGPRs(CCInfo, MIRBuilder, MF, *TRI, *Info);
+
+  unsigned i = 0;
+  const unsigned KernArgBaseAlign = 16;
+  const unsigned BaseOffset = Subtarget->getExplicitKernelArgOffset(F);
+  uint64_t ExplicitArgOffset = 0;
+
+  // TODO: Align down to dword alignment and extract bits for extending loads.
+  for (auto &Arg : F.args()) {
+    Type *ArgTy = Arg.getType();
+    unsigned AllocSize = DL.getTypeAllocSize(ArgTy);
+    if (AllocSize == 0)
+      continue;
+
+    unsigned ABIAlign = DL.getABITypeAlignment(ArgTy);
+
+    uint64_t ArgOffset = alignTo(ExplicitArgOffset, ABIAlign) + BaseOffset;
+    ExplicitArgOffset = alignTo(ExplicitArgOffset, ABIAlign) + AllocSize;
+
+    ArrayRef<Register> OrigArgRegs = VRegs[i];
+    Register ArgReg =
+      OrigArgRegs.size() == 1
+      ? OrigArgRegs[0]
+      : MRI.createGenericVirtualRegister(getLLTForType(*ArgTy, DL));
+    unsigned Align = MinAlign(KernArgBaseAlign, ArgOffset);
+    ArgOffset = alignTo(ArgOffset, DL.getABITypeAlignment(ArgTy));
+    lowerParameter(MIRBuilder, ArgTy, ArgOffset, Align, ArgReg);
+    if (OrigArgRegs.size() > 1)
+      unpackRegs(OrigArgRegs, ArgReg, ArgTy, MIRBuilder);
+    ++i;
+  }
+
+  allocateSpecialEntryInputVGPRs(CCInfo, MF, *TRI, *Info);
+  allocateSystemSGPRs(CCInfo, MF, *Info, F.getCallingConv(), false);
+  return true;
+}
+
 bool AMDGPUCallLowering::lowerFormalArguments(
     MachineIRBuilder &MIRBuilder, const Function &F,
     ArrayRef<ArrayRef<Register>> VRegs) const {
+  // The infrastructure for normal calling convention lowering is essentially
+  // useless for kernels. We want to avoid any kind of legalization or argument
+  // splitting.
+  if (F.getCallingConv() == CallingConv::AMDGPU_KERNEL)
+    return lowerFormalArgumentsKernel(MIRBuilder, F, VRegs);
+
   // AMDGPU_GS and AMDGP_HS are not supported yet.
   if (F.getCallingConv() == CallingConv::AMDGPU_GS ||
       F.getCallingConv() == CallingConv::AMDGPU_HS)
     return false;
 
   MachineFunction &MF = MIRBuilder.getMF();
-  const GCNSubtarget *Subtarget = &MF.getSubtarget<GCNSubtarget>();
   MachineRegisterInfo &MRI = MF.getRegInfo();
   SIMachineFunctionInfo *Info = MF.getInfo<SIMachineFunctionInfo>();
   const SIRegisterInfo *TRI = MF.getSubtarget<GCNSubtarget>().getRegisterInfo();
@@ -213,83 +379,10 @@ bool AMDGPUCallLowering::lowerFormalArguments(
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(F.getCallingConv(), F.isVarArg(), MF, ArgLocs, F.getContext());
 
-  // FIXME: How should these inputs interact with inreg / custom SGPR inputs?
-  if (Info->hasPrivateSegmentBuffer()) {
-    Register PrivateSegmentBufferReg = Info->addPrivateSegmentBuffer(*TRI);
-    MF.addLiveIn(PrivateSegmentBufferReg, &AMDGPU::SReg_128RegClass);
-    CCInfo.AllocateReg(PrivateSegmentBufferReg);
-  }
-
-  if (Info->hasDispatchPtr()) {
-    Register DispatchPtrReg = Info->addDispatchPtr(*TRI);
-    // FIXME: Need to add reg as live-in
-    CCInfo.AllocateReg(DispatchPtrReg);
-  }
-
-  if (Info->hasQueuePtr()) {
-    Register QueuePtrReg = Info->addQueuePtr(*TRI);
-    // FIXME: Need to add reg as live-in
-    CCInfo.AllocateReg(QueuePtrReg);
-  }
-
-  if (Info->hasKernargSegmentPtr()) {
-    Register InputPtrReg = Info->addKernargSegmentPtr(*TRI);
-    const LLT P2 = LLT::pointer(AMDGPUAS::CONSTANT_ADDRESS, 64);
-    Register VReg = MRI.createGenericVirtualRegister(P2);
-    MRI.addLiveIn(InputPtrReg, VReg);
-    MIRBuilder.getMBB().addLiveIn(InputPtrReg);
-    MIRBuilder.buildCopy(VReg, InputPtrReg);
-    CCInfo.AllocateReg(InputPtrReg);
-  }
-
-  if (Info->hasDispatchID()) {
-    unsigned DispatchIDReg = Info->addDispatchID(*TRI);
-    // FIXME: Need to add reg as live-in
-    CCInfo.AllocateReg(DispatchIDReg);
-  }
-
-  if (Info->hasFlatScratchInit()) {
-    unsigned FlatScratchInitReg = Info->addFlatScratchInit(*TRI);
-    // FIXME: Need to add reg as live-in
-    CCInfo.AllocateReg(FlatScratchInitReg);
-  }
-
-  // The infrastructure for normal calling convention lowering is essentially
-  // useless for kernels. We want to avoid any kind of legalization or argument
-  // splitting.
-  if (F.getCallingConv() == CallingConv::AMDGPU_KERNEL) {
-    unsigned i = 0;
-    const unsigned KernArgBaseAlign = 16;
-    const unsigned BaseOffset = Subtarget->getExplicitKernelArgOffset(F);
-    uint64_t ExplicitArgOffset = 0;
-
-    // TODO: Align down to dword alignment and extract bits for extending loads.
-    for (auto &Arg : F.args()) {
-      Type *ArgTy = Arg.getType();
-      unsigned AllocSize = DL.getTypeAllocSize(ArgTy);
-      if (AllocSize == 0)
-        continue;
-
-      unsigned ABIAlign = DL.getABITypeAlignment(ArgTy);
-
-      uint64_t ArgOffset = alignTo(ExplicitArgOffset, ABIAlign) + BaseOffset;
-      ExplicitArgOffset = alignTo(ExplicitArgOffset, ABIAlign) + AllocSize;
-
-      ArrayRef<Register> OrigArgRegs = VRegs[i];
-      Register ArgReg =
-          OrigArgRegs.size() == 1
-              ? OrigArgRegs[0]
-              : MRI.createGenericVirtualRegister(getLLTForType(*ArgTy, DL));
-      unsigned Align = MinAlign(KernArgBaseAlign, ArgOffset);
-      ArgOffset = alignTo(ArgOffset, DL.getABITypeAlignment(ArgTy));
-      lowerParameter(MIRBuilder, ArgTy, ArgOffset, Align, ArgReg);
-      if (OrigArgRegs.size() > 1)
-        unpackRegs(OrigArgRegs, ArgReg, ArgTy, MIRBuilder);
-      ++i;
-    }
-
-    allocateSystemSGPRs(CCInfo, MF, *Info, F.getCallingConv(), IsShader);
-    return true;
+  if (Info->hasImplicitBufferPtr()) {
+    unsigned ImplicitBufferPtrReg = Info->addImplicitBufferPtr(*TRI);
+    MF.addLiveIn(ImplicitBufferPtrReg, &AMDGPU::SGPR_64RegClass);
+    CCInfo.AllocateReg(ImplicitBufferPtrReg);
   }
 
   unsigned NumArgs = F.arg_size();
