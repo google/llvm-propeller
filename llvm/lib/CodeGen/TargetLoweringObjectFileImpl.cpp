@@ -21,6 +21,7 @@
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/BinaryFormat/MachO.h"
+#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
@@ -752,12 +753,14 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
     const Function &F, const MachineBasicBlock &MBB, const TargetMachine &TM)
     const {
   SmallString<128> Name;
-  Name = ".text";
+  Name = (static_cast<MCSectionELF*>(MBB.getParent()->getSection()))->getSectionName();
+  /*
   if (MBB.getBasicBlock()) {
     const auto &OptionalPrefix = MBB.getBasicBlock()->getSectionPrefix();
     if (OptionalPrefix)
       Name += *OptionalPrefix;
   }
+  */
   if (TM.getUniqueBBSectionNames()) {
     Name += ".";
     Name += MBB.getSymbol()->getName();
