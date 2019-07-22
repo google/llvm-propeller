@@ -975,8 +975,7 @@ static bool isLoadInvariantInLoop(LoadInst *LI, DominatorTree *DT,
                                   Loop *CurLoop) {
   Value *Addr = LI->getOperand(0);
   const DataLayout &DL = LI->getModule()->getDataLayout();
-  const uint32_t LocSizeInBits = DL.getTypeSizeInBits(
-      cast<PointerType>(Addr->getType())->getElementType());
+  const uint32_t LocSizeInBits = DL.getTypeSizeInBits(LI->getType());
 
   // if the type is i8 addrspace(x)*, we know this is the type of
   // llvm.invariant.start operand
@@ -2016,8 +2015,8 @@ bool llvm::promoteLoopAccessesToScalars(
         // deref info through it.
         if (!DereferenceableInPH) {
           DereferenceableInPH = isDereferenceableAndAlignedPointer(
-              Store->getPointerOperand(), Store->getAlignment(), MDL,
-              Preheader->getTerminator(), DT);
+              Store->getPointerOperand(), Store->getValueOperand()->getType(),
+              Store->getAlignment(), MDL, Preheader->getTerminator(), DT);
         }
       } else
         return false; // Not a load or store.

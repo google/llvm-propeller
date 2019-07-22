@@ -24,6 +24,43 @@ SymbolID hashUSR(llvm::StringRef USR) {
   return llvm::SHA1::hash(arrayRefFromStringRef(USR));
 }
 
+template <typename T>
+static void
+populateParentNamespaces(llvm::SmallVector<Reference, 4> &Namespaces,
+                         const T *D, bool &IsAnonymousNamespace);
+
+// A function to extract the appropriate relative path for a given info's
+// documentation. The path returned is a composite of the parent namespaces.
+//
+// Example: Given the below, the diretory path for class C info will be
+// <root>/A/B
+//
+// namespace A {
+// namesapce B {
+//
+// class C {};
+//
+// }
+// }
+llvm::SmallString<128>
+getInfoRelativePath(const llvm::SmallVectorImpl<doc::Reference> &Namespaces) {
+  std::error_code OK;
+  llvm::SmallString<128> Path;
+  for (auto R = Namespaces.rbegin(), E = Namespaces.rend(); R != E; ++R)
+    llvm::sys::path::append(Path, R->Name);
+  return Path;
+}
+
+llvm::SmallString<128> getInfoRelativePath(const Decl *D) {
+  llvm::SmallVector<Reference, 4> Namespaces;
+  // The third arg in populateParentNamespaces is a boolean passed by reference,
+  // its value is not relevant in here so it's not used anywhere besides the
+  // function call
+  bool B = true;
+  populateParentNamespaces(Namespaces, D, B);
+  return getInfoRelativePath(Namespaces);
+}
+
 class ClangDocCommentVisitor
     : public ConstCommentVisitor<ClangDocCommentVisitor> {
 public:
@@ -203,13 +240,13 @@ static void parseFields(RecordInfo &I, const RecordDecl *D, bool PublicOnly) {
       // valid, as opposed to an assert.
       if (const auto *N = dyn_cast<EnumDecl>(T)) {
         I.Members.emplace_back(getUSRForDecl(T), N->getNameAsString(),
-                               InfoType::IT_enum, F->getNameAsString(),
-                               N->getAccessUnsafe());
+                               InfoType::IT_enum, getInfoRelativePath(N),
+                               F->getNameAsString(), N->getAccessUnsafe());
         continue;
       } else if (const auto *N = dyn_cast<RecordDecl>(T)) {
         I.Members.emplace_back(getUSRForDecl(T), N->getNameAsString(),
-                               InfoType::IT_record, F->getNameAsString(),
-                               N->getAccessUnsafe());
+                               InfoType::IT_record, getInfoRelativePath(N),
+                               F->getNameAsString(), N->getAccessUnsafe());
         continue;
       }
     }
@@ -228,11 +265,13 @@ static void parseParameters(FunctionInfo &I, const FunctionDecl *D) {
     if (const auto *T = getDeclForType(P->getOriginalType())) {
       if (const auto *N = dyn_cast<EnumDecl>(T)) {
         I.Params.emplace_back(getUSRForDecl(N), N->getNameAsString(),
-                              InfoType::IT_enum, P->getNameAsString());
+                              InfoType::IT_enum, getInfoRelativePath(N),
+                              P->getNameAsString());
         continue;
       } else if (const auto *N = dyn_cast<RecordDecl>(T)) {
         I.Params.emplace_back(getUSRForDecl(N), N->getNameAsString(),
-                              InfoType::IT_record, P->getNameAsString());
+                              InfoType::IT_record, getInfoRelativePath(N),
+                              P->getNameAsString());
         continue;
       }
     }
@@ -254,14 +293,15 @@ static void parseBases(RecordInfo &I, const CXXRecordDecl *D) {
                              InfoType::IT_record);
     } else if (const RecordDecl *P = getDeclForType(B.getType()))
       I.Parents.emplace_back(getUSRForDecl(P), P->getNameAsString(),
-                             InfoType::IT_record);
+                             InfoType::IT_record, getInfoRelativePath(P));
     else
       I.Parents.emplace_back(B.getType().getAsString());
   }
   for (const CXXBaseSpecifier &B : D->vbases()) {
     if (const auto *P = getDeclForType(B.getType()))
       I.VirtualParents.emplace_back(getUSRForDecl(P), P->getNameAsString(),
-                                    InfoType::IT_record);
+                                    InfoType::IT_record,
+                                    getInfoRelativePath(P));
     else
       I.VirtualParents.emplace_back(B.getType().getAsString());
   }
@@ -270,14 +310,14 @@ static void parseBases(RecordInfo &I, const CXXRecordDecl *D) {
 template <typename T>
 static void
 populateParentNamespaces(llvm::SmallVector<Reference, 4> &Namespaces,
-                         const T *D, bool &IsAnonymousNamespace) {
+                         const T *D, bool &IsInAnonymousNamespace) {
   const auto *DC = dyn_cast<DeclContext>(D);
   while ((DC = DC->getParent())) {
     if (const auto *N = dyn_cast<NamespaceDecl>(DC)) {
       std::string Namespace;
       if (N->isAnonymousNamespace()) {
         Namespace = "@nonymous_namespace";
-        IsAnonymousNamespace = true;
+        IsInAnonymousNamespace = true;
       } else
         Namespace = N->getNameAsString();
       Namespaces.emplace_back(getUSRForDecl(N), Namespace,
@@ -324,41 +364,52 @@ static void populateFunctionInfo(FunctionInfo &I, const FunctionDecl *D,
   populateSymbolInfo(I, D, FC, LineNumber, Filename, IsInAnonymousNamespace);
   if (const auto *T = getDeclForType(D->getReturnType())) {
     if (dyn_cast<EnumDecl>(T))
-      I.ReturnType =
-          TypeInfo(getUSRForDecl(T), T->getNameAsString(), InfoType::IT_enum);
+      I.ReturnType = TypeInfo(getUSRForDecl(T), T->getNameAsString(),
+                              InfoType::IT_enum, getInfoRelativePath(T));
     else if (dyn_cast<RecordDecl>(T))
-      I.ReturnType =
-          TypeInfo(getUSRForDecl(T), T->getNameAsString(), InfoType::IT_record);
+      I.ReturnType = TypeInfo(getUSRForDecl(T), T->getNameAsString(),
+                              InfoType::IT_record, getInfoRelativePath(T));
   } else {
     I.ReturnType = TypeInfo(D->getReturnType().getAsString());
   }
   parseParameters(I, D);
 }
 
-std::unique_ptr<Info> emitInfo(const NamespaceDecl *D, const FullComment *FC,
-                               int LineNumber, llvm::StringRef File,
-                               bool PublicOnly) {
+std::pair<std::unique_ptr<Info>, std::unique_ptr<Info>>
+emitInfo(const NamespaceDecl *D, const FullComment *FC, int LineNumber,
+         llvm::StringRef File, bool PublicOnly) {
   auto I = llvm::make_unique<NamespaceInfo>();
   bool IsInAnonymousNamespace = false;
   populateInfo(*I, D, FC, IsInAnonymousNamespace);
   if (PublicOnly && ((IsInAnonymousNamespace || D->isAnonymousNamespace()) ||
                      !isPublic(D->getAccess(), D->getLinkageInternal())))
-    return nullptr;
+    return {};
   I->Name = D->isAnonymousNamespace()
                 ? llvm::SmallString<16>("@nonymous_namespace")
                 : I->Name;
-  return std::unique_ptr<Info>{std::move(I)};
+  I->Path = getInfoRelativePath(I->Namespace);
+  if (I->Namespace.empty() && I->USR == SymbolID())
+    return {std::unique_ptr<Info>{std::move(I)}, nullptr};
+
+  auto ParentI = llvm::make_unique<NamespaceInfo>();
+  ParentI->USR = I->Namespace.empty() ? SymbolID() : I->Namespace[0].USR;
+  ParentI->ChildNamespaces.emplace_back(I->USR, I->Name,
+                                        InfoType::IT_namespace);
+  if (I->Namespace.empty())
+    ParentI->Path = getInfoRelativePath(ParentI->Namespace);
+  return {std::unique_ptr<Info>{std::move(I)},
+          std::unique_ptr<Info>{std::move(ParentI)}};
 }
 
-std::unique_ptr<Info> emitInfo(const RecordDecl *D, const FullComment *FC,
-                               int LineNumber, llvm::StringRef File,
-                               bool PublicOnly) {
+std::pair<std::unique_ptr<Info>, std::unique_ptr<Info>>
+emitInfo(const RecordDecl *D, const FullComment *FC, int LineNumber,
+         llvm::StringRef File, bool PublicOnly) {
   auto I = llvm::make_unique<RecordInfo>();
   bool IsInAnonymousNamespace = false;
   populateSymbolInfo(*I, D, FC, LineNumber, File, IsInAnonymousNamespace);
   if (PublicOnly && ((IsInAnonymousNamespace ||
                       !isPublic(D->getAccess(), D->getLinkageInternal()))))
-    return nullptr;
+    return {};
 
   I->TagType = D->getTagKind();
   parseFields(*I, D, PublicOnly);
@@ -369,40 +420,71 @@ std::unique_ptr<Info> emitInfo(const RecordDecl *D, const FullComment *FC,
     }
     parseBases(*I, C);
   }
-  return std::unique_ptr<Info>{std::move(I)};
+  I->Path = getInfoRelativePath(I->Namespace);
+
+  if (I->Namespace.empty()) {
+    auto ParentI = llvm::make_unique<NamespaceInfo>();
+    ParentI->USR = SymbolID();
+    ParentI->ChildRecords.emplace_back(I->USR, I->Name, InfoType::IT_record);
+    ParentI->Path = getInfoRelativePath(ParentI->Namespace);
+    return {std::unique_ptr<Info>{std::move(I)},
+            std::unique_ptr<Info>{std::move(ParentI)}};
+  }
+
+  switch (I->Namespace[0].RefType) {
+  case InfoType::IT_namespace: {
+    auto ParentI = llvm::make_unique<NamespaceInfo>();
+    ParentI->USR = I->Namespace[0].USR;
+    ParentI->ChildRecords.emplace_back(I->USR, I->Name, InfoType::IT_record);
+    return {std::unique_ptr<Info>{std::move(I)},
+            std::unique_ptr<Info>{std::move(ParentI)}};
+  }
+  case InfoType::IT_record: {
+    auto ParentI = llvm::make_unique<RecordInfo>();
+    ParentI->USR = I->Namespace[0].USR;
+    ParentI->ChildRecords.emplace_back(I->USR, I->Name, InfoType::IT_record);
+    return {std::unique_ptr<Info>{std::move(I)},
+            std::unique_ptr<Info>{std::move(ParentI)}};
+  }
+  default:
+    llvm_unreachable("Invalid reference type for parent namespace");
+  }
 }
 
-std::unique_ptr<Info> emitInfo(const FunctionDecl *D, const FullComment *FC,
-                               int LineNumber, llvm::StringRef File,
-                               bool PublicOnly) {
+std::pair<std::unique_ptr<Info>, std::unique_ptr<Info>>
+emitInfo(const FunctionDecl *D, const FullComment *FC, int LineNumber,
+         llvm::StringRef File, bool PublicOnly) {
   FunctionInfo Func;
   bool IsInAnonymousNamespace = false;
   populateFunctionInfo(Func, D, FC, LineNumber, File, IsInAnonymousNamespace);
   if (PublicOnly && ((IsInAnonymousNamespace ||
                       !isPublic(D->getAccess(), D->getLinkageInternal()))))
-    return nullptr;
+    return {};
 
   Func.Access = clang::AccessSpecifier::AS_none;
 
   // Wrap in enclosing scope
-  auto I = llvm::make_unique<NamespaceInfo>();
+  auto ParentI = llvm::make_unique<NamespaceInfo>();
   if (!Func.Namespace.empty())
-    I->USR = Func.Namespace[0].USR;
+    ParentI->USR = Func.Namespace[0].USR;
   else
-    I->USR = SymbolID();
-  I->ChildFunctions.emplace_back(std::move(Func));
-  return std::unique_ptr<Info>{std::move(I)};
+    ParentI->USR = SymbolID();
+  if (Func.Namespace.empty())
+    ParentI->Path = getInfoRelativePath(ParentI->Namespace);
+  ParentI->ChildFunctions.emplace_back(std::move(Func));
+  // Info is wrapped in its parent scope so it's returned in the second position
+  return {nullptr, std::unique_ptr<Info>{std::move(ParentI)}};
 }
 
-std::unique_ptr<Info> emitInfo(const CXXMethodDecl *D, const FullComment *FC,
-                               int LineNumber, llvm::StringRef File,
-                               bool PublicOnly) {
+std::pair<std::unique_ptr<Info>, std::unique_ptr<Info>>
+emitInfo(const CXXMethodDecl *D, const FullComment *FC, int LineNumber,
+         llvm::StringRef File, bool PublicOnly) {
   FunctionInfo Func;
   bool IsInAnonymousNamespace = false;
   populateFunctionInfo(Func, D, FC, LineNumber, File, IsInAnonymousNamespace);
   if (PublicOnly && ((IsInAnonymousNamespace ||
                       !isPublic(D->getAccess(), D->getLinkageInternal()))))
-    return nullptr;
+    return {};
 
   Func.IsMethod = true;
 
@@ -419,50 +501,60 @@ std::unique_ptr<Info> emitInfo(const CXXMethodDecl *D, const FullComment *FC,
   Func.Access = D->getAccess();
 
   // Wrap in enclosing scope
-  auto I = llvm::make_unique<RecordInfo>();
-  I->USR = ParentUSR;
-  I->ChildFunctions.emplace_back(std::move(Func));
-  return std::unique_ptr<Info>{std::move(I)};
+  auto ParentI = llvm::make_unique<RecordInfo>();
+  ParentI->USR = ParentUSR;
+  if (Func.Namespace.empty())
+    ParentI->Path = getInfoRelativePath(ParentI->Namespace);
+  ParentI->ChildFunctions.emplace_back(std::move(Func));
+  // Info is wrapped in its parent scope so it's returned in the second position
+  return {nullptr, std::unique_ptr<Info>{std::move(ParentI)}};
 }
 
-std::unique_ptr<Info> emitInfo(const EnumDecl *D, const FullComment *FC,
-                               int LineNumber, llvm::StringRef File,
-                               bool PublicOnly) {
+std::pair<std::unique_ptr<Info>, std::unique_ptr<Info>>
+emitInfo(const EnumDecl *D, const FullComment *FC, int LineNumber,
+         llvm::StringRef File, bool PublicOnly) {
   EnumInfo Enum;
   bool IsInAnonymousNamespace = false;
   populateSymbolInfo(Enum, D, FC, LineNumber, File, IsInAnonymousNamespace);
   if (PublicOnly && ((IsInAnonymousNamespace ||
                       !isPublic(D->getAccess(), D->getLinkageInternal()))))
-    return nullptr;
+    return {};
 
   Enum.Scoped = D->isScoped();
   parseEnumerators(Enum, D);
 
-  // Wrap in enclosing scope
-  if (!Enum.Namespace.empty()) {
-    switch (Enum.Namespace[0].RefType) {
-    case InfoType::IT_namespace: {
-      auto I = llvm::make_unique<NamespaceInfo>();
-      I->USR = Enum.Namespace[0].USR;
-      I->ChildEnums.emplace_back(std::move(Enum));
-      return std::unique_ptr<Info>{std::move(I)};
-    }
-    case InfoType::IT_record: {
-      auto I = llvm::make_unique<RecordInfo>();
-      I->USR = Enum.Namespace[0].USR;
-      I->ChildEnums.emplace_back(std::move(Enum));
-      return std::unique_ptr<Info>{std::move(I)};
-    }
-    default:
-      break;
-    }
+  // Put in global namespace
+  if (Enum.Namespace.empty()) {
+    auto ParentI = llvm::make_unique<NamespaceInfo>();
+    ParentI->USR = SymbolID();
+    ParentI->ChildEnums.emplace_back(std::move(Enum));
+    ParentI->Path = getInfoRelativePath(ParentI->Namespace);
+    // Info is wrapped in its parent scope so it's returned in the second
+    // position
+    return {nullptr, std::unique_ptr<Info>{std::move(ParentI)}};
   }
 
-  // Put in global namespace
-  auto I = llvm::make_unique<NamespaceInfo>();
-  I->USR = SymbolID();
-  I->ChildEnums.emplace_back(std::move(Enum));
-  return std::unique_ptr<Info>{std::move(I)};
+  // Wrap in enclosing scope
+  switch (Enum.Namespace[0].RefType) {
+  case InfoType::IT_namespace: {
+    auto ParentI = llvm::make_unique<NamespaceInfo>();
+    ParentI->USR = Enum.Namespace[0].USR;
+    ParentI->ChildEnums.emplace_back(std::move(Enum));
+    // Info is wrapped in its parent scope so it's returned in the second
+    // position
+    return {nullptr, std::unique_ptr<Info>{std::move(ParentI)}};
+  }
+  case InfoType::IT_record: {
+    auto ParentI = llvm::make_unique<RecordInfo>();
+    ParentI->USR = Enum.Namespace[0].USR;
+    ParentI->ChildEnums.emplace_back(std::move(Enum));
+    // Info is wrapped in its parent scope so it's returned in the second
+    // position
+    return {nullptr, std::unique_ptr<Info>{std::move(ParentI)}};
+  }
+  default:
+    llvm_unreachable("Invalid reference type for parent namespace");
+  }
 }
 
 } // namespace serialize

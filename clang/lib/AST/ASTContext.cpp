@@ -228,12 +228,11 @@ RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
 
     if (Found) {
       Comment = MaybeBeforeDecl + 1;
-      assert(Comment == std::lower_bound(RawComments.begin(), RawComments.end(),
-                                         &CommentAtDeclLoc, Compare));
+      assert(Comment ==
+             llvm::lower_bound(RawComments, &CommentAtDeclLoc, Compare));
     } else {
       // Slow path.
-      Comment = std::lower_bound(RawComments.begin(), RawComments.end(),
-                                 &CommentAtDeclLoc, Compare);
+      Comment = llvm::lower_bound(RawComments, &CommentAtDeclLoc, Compare);
     }
   }
 
@@ -1525,8 +1524,14 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
     return Target->getHalfFormat();
   case BuiltinType::Float:      return Target->getFloatFormat();
   case BuiltinType::Double:     return Target->getDoubleFormat();
-  case BuiltinType::LongDouble: return Target->getLongDoubleFormat();
-  case BuiltinType::Float128:   return Target->getFloat128Format();
+  case BuiltinType::LongDouble:
+    if (getLangOpts().OpenMP && getLangOpts().OpenMPIsDevice)
+      return AuxTarget->getLongDoubleFormat();
+    return Target->getLongDoubleFormat();
+  case BuiltinType::Float128:
+    if (getLangOpts().OpenMP && getLangOpts().OpenMPIsDevice)
+      return AuxTarget->getFloat128Format();
+    return Target->getFloat128Format();
   }
 }
 

@@ -262,6 +262,38 @@ entry:
   ret <16 x i8> %out
 }
 
+define arm_aapcs_vfpcc <2 x i64> @shuffle1_i64(<2 x i64> %src) {
+; CHECK-LABEL: shuffle1_i64:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    bx lr
+entry:
+  %out = shufflevector <2 x i64> %src, <2 x i64> undef, <2 x i32> <i32 0, i32 1>
+  ret <2 x i64> %out
+}
+
+define arm_aapcs_vfpcc <2 x i64> @shuffle2_i64(<2 x i64> %src) {
+; CHECK-LABEL: shuffle2_i64:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    vmov.f32 s4, s2
+; CHECK-NEXT:    vmov.f32 s5, s3
+; CHECK-NEXT:    vmov.f32 s6, s0
+; CHECK-NEXT:    vmov.f32 s7, s1
+; CHECK-NEXT:    vmov q0, q1
+; CHECK-NEXT:    bx lr
+entry:
+  %out = shufflevector <2 x i64> %src, <2 x i64> undef, <2 x i32> <i32 1, i32 0>
+  ret <2 x i64> %out
+}
+
+define arm_aapcs_vfpcc <2 x i64> @shuffle3_i64(<2 x i64> %src) {
+; CHECK-LABEL: shuffle3_i64:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    bx lr
+entry:
+  %out = shufflevector <2 x i64> %src, <2 x i64> undef, <2 x i32> <i32 undef, i32 1>
+  ret <2 x i64> %out
+}
+
 define arm_aapcs_vfpcc <4 x float> @shuffle1_f32(<4 x float> %src) {
 ; CHECK-LABEL: shuffle1_f32:
 ; CHECK:       @ %bb.0: @ %entry
@@ -310,49 +342,26 @@ entry:
 }
 
 define arm_aapcs_vfpcc <8 x half> @shuffle1_f16(<8 x half> %src) {
-; CHECK-MVE-LABEL: shuffle1_f16:
-; CHECK-MVE:       @ %bb.0: @ %entry
-; CHECK-MVE-NEXT:    movs r2, #0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[7]
-; CHECK-MVE-NEXT:    vdup.16 q1, r2
-; CHECK-MVE-NEXT:    vmov.u16 r1, q0[6]
-; CHECK-MVE-NEXT:    vmov.16 q1[0], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[5]
-; CHECK-MVE-NEXT:    vmov.16 q1[1], r1
-; CHECK-MVE-NEXT:    vmov.16 q1[2], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[4]
-; CHECK-MVE-NEXT:    vmov.16 q1[3], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[3]
-; CHECK-MVE-NEXT:    vmov.16 q1[4], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[2]
-; CHECK-MVE-NEXT:    vmov.16 q1[5], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[1]
-; CHECK-MVE-NEXT:    vmov.16 q1[6], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[0]
-; CHECK-MVE-NEXT:    vmov.16 q1[7], r0
-; CHECK-MVE-NEXT:    vmov q0, q1
-; CHECK-MVE-NEXT:    bx lr
-;
-; CHECK-MVEFP-LABEL: shuffle1_f16:
-; CHECK-MVEFP:       @ %bb.0: @ %entry
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[7]
-; CHECK-MVEFP-NEXT:    vmov.u16 r1, q0[6]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[0], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[5]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[1], r1
-; CHECK-MVEFP-NEXT:    vmov.16 q1[2], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[4]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[3], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[3]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[4], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[2]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[5], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[1]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[6], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[0]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[7], r0
-; CHECK-MVEFP-NEXT:    vmov q0, q1
-; CHECK-MVEFP-NEXT:    bx lr
+; CHECK-LABEL: shuffle1_f16:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    vmov.u16 r0, q0[7]
+; CHECK-NEXT:    vmov.u16 r1, q0[6]
+; CHECK-NEXT:    vmov.16 q1[0], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[5]
+; CHECK-NEXT:    vmov.16 q1[1], r1
+; CHECK-NEXT:    vmov.16 q1[2], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[4]
+; CHECK-NEXT:    vmov.16 q1[3], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[3]
+; CHECK-NEXT:    vmov.16 q1[4], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[2]
+; CHECK-NEXT:    vmov.16 q1[5], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[1]
+; CHECK-NEXT:    vmov.16 q1[6], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[0]
+; CHECK-NEXT:    vmov.16 q1[7], r0
+; CHECK-NEXT:    vmov q0, q1
+; CHECK-NEXT:    bx lr
 entry:
   %out = shufflevector <8 x half> %src, <8 x half> undef, <8 x i32> <i32 7, i32 6, i32 5, i32 4, i32 3, i32 2, i32 1, i32 0>
   ret <8 x half> %out
@@ -368,49 +377,26 @@ entry:
 }
 
 define arm_aapcs_vfpcc <8 x half> @shuffle3_f16(<8 x half> %src) {
-; CHECK-MVE-LABEL: shuffle3_f16:
-; CHECK-MVE:       @ %bb.0: @ %entry
-; CHECK-MVE-NEXT:    movs r2, #0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[4]
-; CHECK-MVE-NEXT:    vdup.16 q1, r2
-; CHECK-MVE-NEXT:    vmov.u16 r1, q0[5]
-; CHECK-MVE-NEXT:    vmov.16 q1[0], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[7]
-; CHECK-MVE-NEXT:    vmov.16 q1[1], r1
-; CHECK-MVE-NEXT:    vmov.16 q1[2], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[6]
-; CHECK-MVE-NEXT:    vmov.16 q1[3], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[3]
-; CHECK-MVE-NEXT:    vmov.16 q1[4], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[1]
-; CHECK-MVE-NEXT:    vmov.16 q1[5], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[2]
-; CHECK-MVE-NEXT:    vmov.16 q1[6], r0
-; CHECK-MVE-NEXT:    vmov.u16 r0, q0[0]
-; CHECK-MVE-NEXT:    vmov.16 q1[7], r0
-; CHECK-MVE-NEXT:    vmov q0, q1
-; CHECK-MVE-NEXT:    bx lr
-;
-; CHECK-MVEFP-LABEL: shuffle3_f16:
-; CHECK-MVEFP:       @ %bb.0: @ %entry
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[4]
-; CHECK-MVEFP-NEXT:    vmov.u16 r1, q0[5]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[0], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[7]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[1], r1
-; CHECK-MVEFP-NEXT:    vmov.16 q1[2], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[6]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[3], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[3]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[4], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[1]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[5], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[2]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[6], r0
-; CHECK-MVEFP-NEXT:    vmov.u16 r0, q0[0]
-; CHECK-MVEFP-NEXT:    vmov.16 q1[7], r0
-; CHECK-MVEFP-NEXT:    vmov q0, q1
-; CHECK-MVEFP-NEXT:    bx lr
+; CHECK-LABEL: shuffle3_f16:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    vmov.u16 r0, q0[4]
+; CHECK-NEXT:    vmov.u16 r1, q0[5]
+; CHECK-NEXT:    vmov.16 q1[0], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[7]
+; CHECK-NEXT:    vmov.16 q1[1], r1
+; CHECK-NEXT:    vmov.16 q1[2], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[6]
+; CHECK-NEXT:    vmov.16 q1[3], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[3]
+; CHECK-NEXT:    vmov.16 q1[4], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[1]
+; CHECK-NEXT:    vmov.16 q1[5], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[2]
+; CHECK-NEXT:    vmov.16 q1[6], r0
+; CHECK-NEXT:    vmov.u16 r0, q0[0]
+; CHECK-NEXT:    vmov.16 q1[7], r0
+; CHECK-NEXT:    vmov q0, q1
+; CHECK-NEXT:    bx lr
 entry:
   %out = shufflevector <8 x half> %src, <8 x half> undef, <8 x i32> <i32 4, i32 5, i32 7, i32 6, i32 3, i32 1, i32 2, i32 0>
   ret <8 x half> %out
@@ -434,6 +420,38 @@ define arm_aapcs_vfpcc <8 x half> @shuffle6_f16(<8 x half> %src) {
 entry:
   %out = shufflevector <8 x half> %src, <8 x half> undef, <8 x i32> <i32 1, i32 0, i32 3, i32 2, i32 5, i32 4, i32 7, i32 6>
   ret <8 x half> %out
+}
+
+define arm_aapcs_vfpcc <2 x double> @shuffle1_f64(<2 x double> %src) {
+; CHECK-LABEL: shuffle1_f64:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    bx lr
+entry:
+  %out = shufflevector <2 x double> %src, <2 x double> undef, <2 x i32> <i32 0, i32 1>
+  ret <2 x double> %out
+}
+
+define arm_aapcs_vfpcc <2 x double> @shuffle2_f64(<2 x double> %src) {
+; CHECK-LABEL: shuffle2_f64:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    vmov.f32 s4, s2
+; CHECK-NEXT:    vmov.f32 s5, s3
+; CHECK-NEXT:    vmov.f32 s6, s0
+; CHECK-NEXT:    vmov.f32 s7, s1
+; CHECK-NEXT:    vmov q0, q1
+; CHECK-NEXT:    bx lr
+entry:
+  %out = shufflevector <2 x double> %src, <2 x double> undef, <2 x i32> <i32 1, i32 0>
+  ret <2 x double> %out
+}
+
+define arm_aapcs_vfpcc <2 x double> @shuffle3_f64(<2 x double> %src) {
+; CHECK-LABEL: shuffle3_f64:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    bx lr
+entry:
+  %out = shufflevector <2 x double> %src, <2 x double> undef, <2 x i32> <i32 undef, i32 1>
+  ret <2 x double> %out
 }
 
 
@@ -467,6 +485,17 @@ entry:
   ret <16 x i8> %res
 }
 
+define arm_aapcs_vfpcc <2 x i64> @insert_i64(i64 %a) {
+; CHECK-LABEL: insert_i64:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    vmov.32 q0[0], r0
+; CHECK-NEXT:    vmov.32 q0[1], r1
+; CHECK-NEXT:    bx lr
+entry:
+  %res = insertelement <2 x i64> undef, i64 %a, i32 0
+  ret <2 x i64> %res
+}
+
 define arm_aapcs_vfpcc <4 x float> @insert_f32(float %a) {
 ; CHECK-LABEL: insert_f32:
 ; CHECK:       @ %bb.0: @ %entry
@@ -489,12 +518,35 @@ entry:
   ret <8 x half> %res
 }
 
+define arm_aapcs_vfpcc <2 x double> @insert_f64(double %a) {
+; CHECK-LABEL: insert_f64:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    .save {r4, r6, r7, lr}
+; CHECK-NEXT:    push {r4, r6, r7, lr}
+; CHECK-NEXT:    .setfp r7, sp, #8
+; CHECK-NEXT:    add r7, sp, #8
+; CHECK-NEXT:    .pad #16
+; CHECK-NEXT:    sub sp, #16
+; CHECK-NEXT:    mov r4, sp
+; CHECK-NEXT:    bfc r4, #0, #4
+; CHECK-NEXT:    mov sp, r4
+; CHECK-NEXT:    sub.w r4, r7, #8
+; CHECK-NEXT:    vstr d0, [sp]
+; CHECK-NEXT:    mov r0, sp
+; CHECK-NEXT:    vldrw.u32 q0, [r0]
+; CHECK-NEXT:    mov sp, r4
+; CHECK-NEXT:    pop {r4, r6, r7, pc}
+entry:
+  %res = insertelement <2 x double> undef, double %a, i32 0
+  ret <2 x double> %res
+}
+
 define arm_aapcs_vfpcc i64 @scalar_to_vector_i32(<8 x i16> %v) {
 ; CHECK-LABEL: scalar_to_vector_i32:
 ; CHECK:       @ %bb.0: @ %entry
 ; CHECK-NEXT:    .pad #8
 ; CHECK-NEXT:    sub sp, #8
-; CHECK-NEXT:    adr r1, .LCPI30_0
+; CHECK-NEXT:    adr r1, .LCPI38_0
 ; CHECK-NEXT:    vmov.u16 r0, q0[0]
 ; CHECK-NEXT:    vldrw.u32 q1, [r1]
 ; CHECK-NEXT:    vmov.32 q0[0], r0
@@ -507,7 +559,7 @@ define arm_aapcs_vfpcc i64 @scalar_to_vector_i32(<8 x i16> %v) {
 ; CHECK-NEXT:    bx lr
 ; CHECK-NEXT:    .p2align 4
 ; CHECK-NEXT:  @ %bb.1:
-; CHECK-NEXT:  .LCPI30_0:
+; CHECK-NEXT:  .LCPI38_0:
 ; CHECK-NEXT:    .zero 4
 ; CHECK-NEXT:    .long 7 @ 0x7
 ; CHECK-NEXT:    .long 1 @ 0x1
@@ -579,6 +631,28 @@ entry:
   ret i8 %res
 }
 
+define arm_aapcs_vfpcc i64 @extract_i64_0(<2 x i64> %a) {
+; CHECK-LABEL: extract_i64_0:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    vmov r0, s0
+; CHECK-NEXT:    vmov r1, s1
+; CHECK-NEXT:    bx lr
+entry:
+  %res = extractelement <2 x i64> %a, i32 0
+  ret i64 %res
+}
+
+define arm_aapcs_vfpcc i64 @extract_i64_1(<2 x i64> %a) {
+; CHECK-LABEL: extract_i64_1:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    vmov r0, s2
+; CHECK-NEXT:    vmov r1, s3
+; CHECK-NEXT:    bx lr
+entry:
+  %res = extractelement <2 x i64> %a, i32 1
+  ret i64 %res
+}
+
 define arm_aapcs_vfpcc float @extract_f32_0(<4 x float> %a) {
 ; CHECK-LABEL: extract_f32_0:
 ; CHECK:       @ %bb.0: @ %entry
@@ -622,3 +696,25 @@ entry:
   %res = extractelement <8 x half> %a, i32 3
   ret half %res
 }
+
+define arm_aapcs_vfpcc double @extract_f64_0(<2 x double> %a) {
+; CHECK-LABEL: extract_f64_0:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    @ kill: def $d0 killed $d0 killed $q0
+; CHECK-NEXT:    bx lr
+entry:
+  %res = extractelement <2 x double> %a, i32 0
+  ret double %res
+}
+
+define arm_aapcs_vfpcc double @extract_f64_1(<2 x double> %a) {
+; CHECK-LABEL: extract_f64_1:
+; CHECK:       @ %bb.0: @ %entry
+; CHECK-NEXT:    vmov.f32 s0, s2
+; CHECK-NEXT:    vmov.f32 s1, s3
+; CHECK-NEXT:    bx lr
+entry:
+  %res = extractelement <2 x double> %a, i32 1
+  ret double %res
+}
+

@@ -86,7 +86,6 @@
 #include "lldb/Symbol/VerifyDecl.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Language.h"
-#include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataExtractor.h"
@@ -95,6 +94,7 @@
 #include "lldb/Utility/RegularExpression.h"
 #include "lldb/Utility/Scalar.h"
 
+#include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserClang.h"
 #include "Plugins/SymbolFile/PDB/PDBASTParser.h"
 
@@ -1615,10 +1615,11 @@ clang::FunctionTemplateDecl *ClangASTContext::CreateFunctionTemplateDecl(
 void ClangASTContext::CreateFunctionTemplateSpecializationInfo(
     FunctionDecl *func_decl, clang::FunctionTemplateDecl *func_tmpl_decl,
     const TemplateParameterInfos &infos) {
-  TemplateArgumentList template_args(TemplateArgumentList::OnStack, infos.args);
+  TemplateArgumentList *template_args_ptr =
+      TemplateArgumentList::CreateCopy(func_decl->getASTContext(), infos.args);
 
-  func_decl->setFunctionTemplateSpecialization(func_tmpl_decl, &template_args,
-                                               nullptr);
+  func_decl->setFunctionTemplateSpecialization(func_tmpl_decl,
+                                               template_args_ptr, nullptr);
 }
 
 ClassTemplateDecl *ClangASTContext::CreateClassTemplateDecl(
@@ -1954,7 +1955,8 @@ NamespaceDecl *ClangASTContext::GetUniqueNamespaceDeclaration(
         assert(namespace_decl ==
                parent_namespace_decl->getAnonymousNamespace());
       } else {
-        // BAD!!!
+        assert(false && "GetUniqueNamespaceDeclaration called with no name and "
+                        "no namespace as decl_ctx");
       }
     }
   }

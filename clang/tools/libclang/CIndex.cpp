@@ -3782,6 +3782,8 @@ static const ExprEvalResult* evaluateExpr(Expr *expr, CXCursor C) {
     return nullptr;
 
   expr = expr->IgnoreParens();
+  if (expr->isValueDependent())
+    return nullptr;
   if (!expr->EvaluateAsRValue(ER, ctx))
     return nullptr;
 
@@ -5194,6 +5196,8 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
       return cxstring::createRef("CallExpr");
   case CXCursor_ObjCMessageExpr:
       return cxstring::createRef("ObjCMessageExpr");
+  case CXCursor_BuiltinBitCastExpr:
+    return cxstring::createRef("BuiltinBitCastExpr");
   case CXCursor_UnexposedStmt:
       return cxstring::createRef("UnexposedStmt");
   case CXCursor_DeclStmt:
@@ -6267,6 +6271,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::PragmaComment:
   case Decl::PragmaDetectMismatch:
   case Decl::UsingPack:
+  case Decl::Concept:
     return C;
 
   // Declaration kinds that don't make any sense here, but are

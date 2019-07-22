@@ -188,7 +188,7 @@ Status
 ProcessWindows::DoAttachToProcessWithID(lldb::pid_t pid,
                                         const ProcessAttachInfo &attach_info) {
   DebugDelegateSP delegate(new LocalDebugDelegate(shared_from_this()));
-  Status error = AttachProcess(attach_info, delegate);
+  Status error = AttachProcess(pid, attach_info, delegate);
   if (error.Success())
     SetID(GetDebuggedProcessId());
   return error;
@@ -246,17 +246,8 @@ Status ProcessWindows::DoResume() {
 }
 
 Status ProcessWindows::DoDestroy() {
-  Status error;
-  Log *log = ProcessWindowsLog::GetLogIfAny(WINDOWS_LOG_PROCESS);
   StateType private_state = GetPrivateState();
-  if (private_state != eStateExited && private_state != eStateDetached)
-    return DestroyProcess();
-  else {
-    error.SetErrorStringWithFormat(
-        "cannot destroy process {0} while state = {1}", GetID(), private_state);
-    LLDB_LOG(log, "error: {0}", error);
-  }
-  return error;
+  return DestroyProcess(private_state);
 }
 
 Status ProcessWindows::DoHalt(bool &caused_stop) {
@@ -605,6 +596,9 @@ void ProcessWindows::OnExitProcess(uint32_t exit_code) {
     Status error(exit_code, eErrorTypeWin32);
     OnDebuggerError(error, 0);
   }
+
+  // Reset the session.
+  m_session_data.reset();
 }
 
 void ProcessWindows::OnDebuggerConnected(lldb::addr_t image_base) {

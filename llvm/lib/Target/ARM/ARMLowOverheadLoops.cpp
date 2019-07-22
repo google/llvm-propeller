@@ -54,6 +54,12 @@ namespace {
 
     bool ProcessLoop(MachineLoop *ML);
 
+    void RevertWhile(MachineInstr *MI) const;
+
+    void RevertLoopDec(MachineInstr *MI) const;
+
+    void RevertLoopEnd(MachineInstr *MI) const;
+
     void Expand(MachineLoop *ML, MachineInstr *Start,
                 MachineInstr *Dec, MachineInstr *End, bool Revert);
 
@@ -85,6 +91,7 @@ bool ARMLowOverheadLoops::runOnMachineFunction(MachineFunction &MF) {
     MF.getSubtarget().getInstrInfo());
   BBUtils = std::unique_ptr<ARMBasicBlockUtils>(new ARMBasicBlockUtils(MF));
   BBUtils->computeAllBlockSizes();
+  BBUtils->adjustBBOffsetsAfter(&MF.front());
 
   bool Changed = false;
   for (auto ML : MLI) {
@@ -105,15 +112,20 @@ bool ARMLowOverheadLoops::ProcessLoop(MachineLoop *ML) {
   LLVM_DEBUG(dbgs() << "ARM Loops: Processing " << *ML);
 
   auto IsLoopStart = [](MachineInstr &MI) {
-    return MI.getOpcode() == ARM::t2DoLoopStart;
+    return MI.getOpcode() == ARM::t2DoLoopStart ||
+           MI.getOpcode() == ARM::t2WhileLoopStart;
   };
 
-  auto SearchForStart =
-    [&IsLoopStart](MachineBasicBlock *MBB) -> MachineInstr* {
+  // Search the given block for a loop start instruction. If one isn't found,
+  // and there's only one predecessor block, search that one too.
+  std::function<MachineInstr*(MachineBasicBlock*)> SearchForStart =
+    [&IsLoopStart, &SearchForStart](MachineBasicBlock *MBB) -> MachineInstr* {
     for (auto &MI : *MBB) {
       if (IsLoopStart(MI))
         return &MI;
     }
+    if (MBB->pred_size() == 1)
+      return SearchForStart(*MBB->pred_begin());
     return nullptr;
   };
 
@@ -122,8 +134,28 @@ bool ARMLowOverheadLoops::ProcessLoop(MachineLoop *ML) {
   MachineInstr *End = nullptr;
   bool Revert = false;
 
-  if (auto *Preheader = ML->getLoopPreheader())
+  // Search the preheader for the start intrinsic, or look through the
+  // predecessors of the header to find exactly one set.iterations intrinsic.
+  // FIXME: I don't see why we shouldn't be supporting multiple predecessors
+  // with potentially multiple set.loop.iterations, so we need to enable this.
+  if (auto *Preheader = ML->getLoopPreheader()) {
     Start = SearchForStart(Preheader);
+  } else {
+    LLVM_DEBUG(dbgs() << "ARM Loops: Failed to find loop preheader!\n"
+               << " - Performing manual predecessor search.\n");
+    MachineBasicBlock *Pred = nullptr;
+    for (auto *MBB : ML->getHeader()->predecessors()) {
+      if (!ML->contains(MBB)) {
+        if (Pred) {
+          LLVM_DEBUG(dbgs() << " - Found multiple out-of-loop preds.\n");
+          Start = nullptr;
+          break;
+        }
+        Pred = MBB;
+        Start = SearchForStart(MBB);
+      }
+    }
+  }
 
   // Find the low-overhead loop components and decide whether or not to fall
   // back to a normal loop.
@@ -158,21 +190,29 @@ bool ARMLowOverheadLoops::ProcessLoop(MachineLoop *ML) {
       break;
   }
 
-  if (Start || Dec || End) {
-    if (!Start || !Dec || !End)
-      report_fatal_error("Failed to find all loop components");
-  } else {
+  if (!Start && !Dec && !End) {
     LLVM_DEBUG(dbgs() << "ARM Loops: Not a low-overhead loop.\n");
     return Changed;
+  } if (!(Start && Dec && End)) {
+    report_fatal_error("Failed to find all loop components");
   }
 
   if (!End->getOperand(1).isMBB() ||
       End->getOperand(1).getMBB() != ML->getHeader())
     report_fatal_error("Expected LoopEnd to target Loop Header");
 
-  // The LE instructions has 12-bits for the label offset.
-  if (!BBUtils->isBBInRange(End, ML->getHeader(), 4096)) {
-    LLVM_DEBUG(dbgs() << "ARM Loops: Too large for a low-overhead loop!\n");
+  // The WLS and LE instructions have 12-bits for the label offset. WLS
+  // requires a positive offset, while LE uses negative.
+  if (BBUtils->getOffsetOf(End) < BBUtils->getOffsetOf(ML->getHeader()) ||
+      !BBUtils->isBBInRange(End, ML->getHeader(), 4094)) {
+    LLVM_DEBUG(dbgs() << "ARM Loops: LE offset is out-of-range\n");
+    Revert = true;
+  }
+  if (Start->getOpcode() == ARM::t2WhileLoopStart &&
+      (BBUtils->getOffsetOf(Start) >
+       BBUtils->getOffsetOf(Start->getOperand(1).getMBB()) ||
+       !BBUtils->isBBInRange(Start, Start->getOperand(1).getMBB(), 4094))) {
+    LLVM_DEBUG(dbgs() << "ARM Loops: WLS offset is out-of-range!\n");
     Revert = true;
   }
 
@@ -182,6 +222,68 @@ bool ARMLowOverheadLoops::ProcessLoop(MachineLoop *ML) {
 
   Expand(ML, Start, Dec, End, Revert);
   return true;
+}
+
+// WhileLoopStart holds the exit block, so produce a cmp lr, 0 and then a
+// beq that branches to the exit branch.
+// FIXME: Need to check that we're not trashing the CPSR when generating the
+// cmp. We could also try to generate a cbz if the value in LR is also in
+// another low register.
+void ARMLowOverheadLoops::RevertWhile(MachineInstr *MI) const {
+  LLVM_DEBUG(dbgs() << "ARM Loops: Reverting to cmp: " << *MI);
+  MachineBasicBlock *MBB = MI->getParent();
+  MachineInstrBuilder MIB = BuildMI(*MBB, MI, MI->getDebugLoc(),
+                                    TII->get(ARM::t2CMPri));
+  MIB.addReg(ARM::LR);
+  MIB.addImm(0);
+  MIB.addImm(ARMCC::AL);
+  MIB.addReg(ARM::CPSR);
+
+  // TODO: Try to use tBcc instead
+  MIB = BuildMI(*MBB, MI, MI->getDebugLoc(), TII->get(ARM::t2Bcc));
+  MIB.add(MI->getOperand(1));   // branch target
+  MIB.addImm(ARMCC::EQ);        // condition code
+  MIB.addReg(ARM::CPSR);
+  MI->eraseFromParent();
+}
+
+// TODO: Check flags so that we can possibly generate a tSubs or tSub.
+void ARMLowOverheadLoops::RevertLoopDec(MachineInstr *MI) const {
+  LLVM_DEBUG(dbgs() << "ARM Loops: Reverting to sub: " << *MI);
+  MachineBasicBlock *MBB = MI->getParent();
+  MachineInstrBuilder MIB = BuildMI(*MBB, MI, MI->getDebugLoc(),
+                                    TII->get(ARM::t2SUBri));
+  MIB.addDef(ARM::LR);
+  MIB.add(MI->getOperand(1));
+  MIB.add(MI->getOperand(2));
+  MIB.addImm(ARMCC::AL);
+  MIB.addReg(0);
+  MIB.addReg(0);
+  MI->eraseFromParent();
+}
+
+// Generate a subs, or sub and cmp, and a branch instead of an LE.
+// FIXME: Need to check that we're not trashing the CPSR when generating
+// the cmp.
+void ARMLowOverheadLoops::RevertLoopEnd(MachineInstr *MI) const {
+  LLVM_DEBUG(dbgs() << "ARM Loops: Reverting to cmp, br: " << *MI);
+
+  // Create cmp
+  MachineBasicBlock *MBB = MI->getParent();
+  MachineInstrBuilder MIB = BuildMI(*MBB, MI, MI->getDebugLoc(),
+                                    TII->get(ARM::t2CMPri));
+  MIB.addReg(ARM::LR);
+  MIB.addImm(0);
+  MIB.addImm(ARMCC::AL);
+  MIB.addReg(ARM::CPSR);
+
+  // TODO Try to use tBcc instead.
+  // Create bne
+  MIB = BuildMI(*MBB, MI, MI->getDebugLoc(), TII->get(ARM::t2Bcc));
+  MIB.add(MI->getOperand(1));   // branch target
+  MIB.addImm(ARMCC::NE);        // condition code
+  MIB.addReg(ARM::CPSR);
+  MI->eraseFromParent();
 }
 
 void ARMLowOverheadLoops::Expand(MachineLoop *ML, MachineInstr *Start,
@@ -212,15 +314,21 @@ void ARMLowOverheadLoops::Expand(MachineLoop *ML, MachineInstr *Start,
       break;
     }
 
+    unsigned Opc = Start->getOpcode() == ARM::t2DoLoopStart ?
+      ARM::t2DLS : ARM::t2WLS;
     MachineInstrBuilder MIB =
-      BuildMI(*MBB, InsertPt, InsertPt->getDebugLoc(), TII->get(ARM::t2DLS));
-    if (InsertPt != Start)
-      InsertPt->eraseFromParent();
+      BuildMI(*MBB, InsertPt, InsertPt->getDebugLoc(), TII->get(Opc));
 
     MIB.addDef(ARM::LR);
     MIB.add(Start->getOperand(0));
-    LLVM_DEBUG(dbgs() << "ARM Loops: Inserted DLS: " << *MIB);
+    if (Opc == ARM::t2WLS)
+      MIB.add(Start->getOperand(1));
+
+    if (InsertPt != Start)
+      InsertPt->eraseFromParent();
     Start->eraseFromParent();
+    LLVM_DEBUG(dbgs() << "ARM Loops: Inserted start: " << *MIB);
+    return &*MIB;
   };
 
   // Combine the LoopDec and LoopEnd instructions into LE(TP).
@@ -234,60 +342,40 @@ void ARMLowOverheadLoops::Expand(MachineLoop *ML, MachineInstr *Start,
     MIB.add(End->getOperand(1));
     LLVM_DEBUG(dbgs() << "ARM Loops: Inserted LE: " << *MIB);
 
-    // If there is a branch after loop end, which branches to the fallthrough
-    // block, remove the branch.
-    MachineBasicBlock *Latch = End->getParent();
-    MachineInstr *Terminator = &Latch->instr_back();
-    if (End != Terminator) {
-      MachineBasicBlock *Exit = ML->getExitBlock();
-      if (Latch->isLayoutSuccessor(Exit)) {
-        LLVM_DEBUG(dbgs() << "ARM Loops: Removing loop exit branch: "
-                   << *Terminator);
+    End->eraseFromParent();
+    Dec->eraseFromParent();
+    return &*MIB;
+  };
+
+  // TODO: We should be able to automatically remove these branches before we
+  // get here - probably by teaching analyzeBranch about the pseudo
+  // instructions.
+  // If there is an unconditional branch, after I, that just branches to the
+  // next block, remove it.
+  auto RemoveDeadBranch = [](MachineInstr *I) {
+    MachineBasicBlock *BB = I->getParent();
+    MachineInstr *Terminator = &BB->instr_back();
+    if (Terminator->isUnconditionalBranch() && I != Terminator) {
+      MachineBasicBlock *Succ = Terminator->getOperand(0).getMBB();
+      if (BB->isLayoutSuccessor(Succ)) {
+        LLVM_DEBUG(dbgs() << "ARM Loops: Removing branch: " << *Terminator);
         Terminator->eraseFromParent();
       }
     }
-    End->eraseFromParent();
-    Dec->eraseFromParent();
-  };
-
-  // Generate a subs, or sub and cmp, and a branch instead of an LE.
-  // TODO: Check flags so that we can possibly generate a subs.
-  auto ExpandBranch = [this](MachineInstr *Dec, MachineInstr *End) {
-    LLVM_DEBUG(dbgs() << "ARM Loops: Reverting to sub, cmp, br.\n");
-    // Create sub
-    MachineBasicBlock *MBB = Dec->getParent();
-    MachineInstrBuilder MIB = BuildMI(*MBB, Dec, Dec->getDebugLoc(),
-                                      TII->get(ARM::t2SUBri));
-    MIB.addDef(ARM::LR);
-    MIB.add(Dec->getOperand(1));
-    MIB.add(Dec->getOperand(2));
-    MIB.addImm(ARMCC::AL);
-    MIB.addReg(0);
-    MIB.addReg(0);
-
-    // Create cmp
-    MBB = End->getParent();
-    MIB = BuildMI(*MBB, End, End->getDebugLoc(), TII->get(ARM::t2CMPri));
-    MIB.addReg(ARM::LR);
-    MIB.addImm(0);
-    MIB.addImm(ARMCC::AL);
-    MIB.addReg(ARM::CPSR);
-
-    // Create bne
-    MIB = BuildMI(*MBB, End, End->getDebugLoc(), TII->get(ARM::t2Bcc));
-    MIB.add(End->getOperand(1));  // branch target
-    MIB.addImm(ARMCC::NE);        // condition code
-    MIB.addReg(ARM::CPSR);
-    End->eraseFromParent();
-    Dec->eraseFromParent();
   };
 
   if (Revert) {
-    Start->eraseFromParent();
-    ExpandBranch(Dec, End);
+    if (Start->getOpcode() == ARM::t2WhileLoopStart)
+      RevertWhile(Start);
+    else
+      Start->eraseFromParent();
+    RevertLoopDec(Dec);
+    RevertLoopEnd(End);
   } else {
-    ExpandLoopStart(ML, Start);
-    ExpandLoopEnd(ML, Dec, End);
+    Start = ExpandLoopStart(ML, Start);
+    RemoveDeadBranch(Start);
+    End = ExpandLoopEnd(ML, Dec, End);
+    RemoveDeadBranch(End);
   }
 }
 

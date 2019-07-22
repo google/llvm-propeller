@@ -2669,8 +2669,9 @@ void CGOpenMPRuntimeNVPTX::syncCTAThreads(CodeGenFunction &CGF) {
       llvm::ConstantPointerNull::get(
           cast<llvm::PointerType>(getIdentTyPointerTy())),
       llvm::ConstantInt::get(CGF.Int32Ty, /*V=*/0, /*isSigned=*/true)};
-  CGF.EmitRuntimeCall(
+  llvm::CallInst *Call = CGF.EmitRuntimeCall(
       createNVPTXRuntimeFunction(OMPRTL__kmpc_barrier_simple_spmd), Args);
+  Call->setConvergent();
 }
 
 void CGOpenMPRuntimeNVPTX::emitBarrierCall(CodeGenFunction &CGF,
@@ -2684,7 +2685,9 @@ void CGOpenMPRuntimeNVPTX::emitBarrierCall(CodeGenFunction &CGF,
   unsigned Flags = getDefaultFlagsForBarriers(Kind);
   llvm::Value *Args[] = {emitUpdateLocation(CGF, Loc, Flags),
                          getThreadID(CGF, Loc)};
-  CGF.EmitRuntimeCall(createNVPTXRuntimeFunction(OMPRTL__kmpc_barrier), Args);
+  llvm::CallInst *Call = CGF.EmitRuntimeCall(
+      createNVPTXRuntimeFunction(OMPRTL__kmpc_barrier), Args);
+  Call->setConvergent();
 }
 
 void CGOpenMPRuntimeNVPTX::emitCriticalRegion(
@@ -4928,7 +4931,11 @@ void CGOpenMPRuntimeNVPTX::checkArchForUnifiedAddressing(
       case CudaArch::GFX902:
       case CudaArch::GFX904:
       case CudaArch::GFX906:
+      case CudaArch::GFX908:
       case CudaArch::GFX909:
+      case CudaArch::GFX1010:
+      case CudaArch::GFX1011:
+      case CudaArch::GFX1012:
       case CudaArch::UNKNOWN:
         break;
       case CudaArch::LAST:
@@ -4982,7 +4989,11 @@ static std::pair<unsigned, unsigned> getSMsBlocksPerSM(CodeGenModule &CGM) {
   case CudaArch::GFX902:
   case CudaArch::GFX904:
   case CudaArch::GFX906:
+  case CudaArch::GFX908:
   case CudaArch::GFX909:
+  case CudaArch::GFX1010:
+  case CudaArch::GFX1011:
+  case CudaArch::GFX1012:
   case CudaArch::UNKNOWN:
     break;
   case CudaArch::LAST:

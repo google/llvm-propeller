@@ -151,8 +151,12 @@ std::vector<Fix> IncludeFixer::fixesForSymbols(const SymbolSlab &Syms) const {
     auto ResolvedInserted = toHeaderFile(Header, File);
     if (!ResolvedInserted)
       return ResolvedInserted.takeError();
+    auto Spelled = Inserter->calculateIncludePath(*ResolvedInserted, File);
+    if (!Spelled)
+      return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                     "Header not on include path");
     return std::make_pair(
-        Inserter->calculateIncludePath(*ResolvedInserted),
+        std::move(*Spelled),
         Inserter->shouldInsertInclude(*ResolvedDeclaring, *ResolvedInserted));
   };
 
@@ -314,7 +318,7 @@ public:
     assert(SemaPtr && "Sema must have been set.");
     if (SemaPtr->isSFINAEContext())
       return TypoCorrection();
-    if (!SemaPtr->SourceMgr.isWrittenInMainFile(Typo.getLoc()))
+    if (!isInsideMainFile(Typo.getLoc(), SemaPtr->SourceMgr))
       return clang::TypoCorrection();
 
     // This is not done lazily because `SS` can get out of scope and it's
@@ -396,7 +400,6 @@ std::vector<Fix> IncludeFixer::fixUnresolvedName() const {
 
   return {};
 }
-
 
 llvm::Optional<const SymbolSlab *>
 IncludeFixer::fuzzyFindCached(const FuzzyFindRequest &Req) const {

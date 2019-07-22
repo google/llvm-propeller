@@ -60,7 +60,6 @@
 #include "llvm/Transforms/Instrumentation/HWAddressSanitizer.h"
 #include "llvm/Transforms/Instrumentation/InstrProfiling.h"
 #include "llvm/Transforms/Instrumentation/MemorySanitizer.h"
-#include "llvm/Transforms/Instrumentation/PGOInstrumentation.h"
 #include "llvm/Transforms/Instrumentation/ThreadSanitizer.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
@@ -232,9 +231,13 @@ static bool asanUseGlobalsGC(const Triple &T, const CodeGenOptions &CGOpts) {
     return true;
   case Triple::ELF:
     return CGOpts.DataSections && !CGOpts.DisableIntegratedAS;
-  default:
-    return false;
+  case Triple::XCOFF:
+    llvm::report_fatal_error("ASan not implemented for XCOFF.");
+  case Triple::Wasm:
+  case Triple::UnknownObjectFormat:
+    break;
   }
+  return false;
 }
 
 static void addAddressSanitizerPasses(const PassManagerBuilder &Builder,
@@ -1006,17 +1009,6 @@ static void addSanitizersAtO0(ModulePassManager &MPM,
   if (LangOpts.Sanitize.has(SanitizerKind::Thread)) {
     MPM.addPass(createModuleToFunctionPassAdaptor(ThreadSanitizerPass()));
   }
-
-  if (LangOpts.Sanitize.has(SanitizerKind::HWAddress)) {
-    bool Recover = CodeGenOpts.SanitizeRecover.has(SanitizerKind::HWAddress);
-    MPM.addPass(createModuleToFunctionPassAdaptor(
-        HWAddressSanitizerPass(/*CompileKernel=*/false, Recover)));
-  }
-
-  if (LangOpts.Sanitize.has(SanitizerKind::KernelHWAddress)) {
-    MPM.addPass(createModuleToFunctionPassAdaptor(
-        HWAddressSanitizerPass(/*CompileKernel=*/true, /*Recover=*/true)));
-  }
 }
 
 /// A clean version of `EmitAssembly` that uses the new pass manager.
@@ -1215,23 +1207,6 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
                   UseOdrIndicator));
             });
       }
-      if (LangOpts.Sanitize.has(SanitizerKind::HWAddress)) {
-        bool Recover =
-            CodeGenOpts.SanitizeRecover.has(SanitizerKind::HWAddress);
-        PB.registerOptimizerLastEPCallback(
-            [Recover](FunctionPassManager &FPM,
-                      PassBuilder::OptimizationLevel Level) {
-              FPM.addPass(HWAddressSanitizerPass(
-                  /*CompileKernel=*/false, Recover));
-            });
-      }
-      if (LangOpts.Sanitize.has(SanitizerKind::KernelHWAddress)) {
-        PB.registerOptimizerLastEPCallback(
-            [](FunctionPassManager &FPM, PassBuilder::OptimizationLevel Level) {
-              FPM.addPass(HWAddressSanitizerPass(
-                  /*CompileKernel=*/true, /*Recover=*/true));
-            });
-      }
       if (Optional<GCOVOptions> Options = getGCOVOptions(CodeGenOpts))
         PB.registerPipelineStartEPCallback([Options](ModulePassManager &MPM) {
           MPM.addPass(GCOVProfilerPass(*Options));
@@ -1258,13 +1233,18 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
       }
     }
 
+    if (LangOpts.Sanitize.has(SanitizerKind::HWAddress)) {
+      bool Recover = CodeGenOpts.SanitizeRecover.has(SanitizerKind::HWAddress);
+      MPM.addPass(HWAddressSanitizerPass(
+          /*CompileKernel=*/false, Recover));
+    }
+    if (LangOpts.Sanitize.has(SanitizerKind::KernelHWAddress)) {
+      MPM.addPass(HWAddressSanitizerPass(
+          /*CompileKernel=*/true, /*Recover=*/true));
+    }
+
     if (CodeGenOpts.OptimizationLevel == 0)
       addSanitizersAtO0(MPM, TargetTriple, LangOpts, CodeGenOpts);
-
-    if (CodeGenOpts.hasProfileIRInstr()) {
-      // This file is stored as the ProfileFile.
-      MPM.addPass(PGOInstrumentationGenCreateVar(PGOOpt->ProfileFile));
-    }
   }
 
   // FIXME: We still use the legacy pass manager to do code generation. We

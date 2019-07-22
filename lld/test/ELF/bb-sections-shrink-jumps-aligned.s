@@ -12,14 +12,16 @@
 # CHECK-NEXT:		75 7b	jne	123 <a.BB.foo>
 # CHECK-NEXT:		e9 b6 00 00 00	jmp	182 <aa.BB.foo>
 # CHECK-COUNT-54:	int3
-# CHECK-NOT:		int32
+# CHECK-NOT:		int3
 # CHECK-EMPTY:
 
 # CHECK:		a.BB.foo:
 # CHECK-NEXT:		nopl    (%rax)
 # CHECK-NEXT:		nopl    (%rax)
-# CHECK-COUNT-58:	nop
-# CHECK-NOT:		nop
+# CHECK-COUNT-6:	nopw	(%rax,%rax)
+# CHECK-NOT:		nopw	(%rax,%rax)
+# CHECK-NEXT:		nopl	(%rax)
+# CHECK-NEXT:		nop
 # CHECK-EMPTY:
 
 # CHECK:		aa.BB.foo:

@@ -2718,25 +2718,18 @@ Triple MachOObjectFile::getHostArch() {
 }
 
 bool MachOObjectFile::isValidArch(StringRef ArchFlag) {
-  return StringSwitch<bool>(ArchFlag)
-      .Case("i386", true)
-      .Case("x86_64", true)
-      .Case("x86_64h", true)
-      .Case("armv4t", true)
-      .Case("arm", true)
-      .Case("armv5e", true)
-      .Case("armv6", true)
-      .Case("armv6m", true)
-      .Case("armv7", true)
-      .Case("armv7em", true)
-      .Case("armv7k", true)
-      .Case("armv7m", true)
-      .Case("armv7s", true)
-      .Case("arm64", true)
-      .Case("arm64_32", true)
-      .Case("ppc", true)
-      .Case("ppc64", true)
-      .Default(false);
+  auto validArchs = getValidArchs();
+  return llvm::find(validArchs, ArchFlag) != validArchs.end();
+}
+
+ArrayRef<StringRef> MachOObjectFile::getValidArchs() {
+  static const std::array<StringRef, 17> validArchs = {
+      "i386",   "x86_64", "x86_64h",  "armv4t",  "arm",    "armv5e",
+      "armv6",  "armv6m", "armv7",    "armv7em", "armv7k", "armv7m",
+      "armv7s", "arm64",  "arm64_32", "ppc",     "ppc64",
+  };
+
+  return validArchs;
 }
 
 Triple::ArchType MachOObjectFile::getArch() const {

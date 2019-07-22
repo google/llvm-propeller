@@ -441,6 +441,9 @@ defm wrap: Eq<"wrap", "Use wrapper functions for symbol">,
 def z: JoinedOrSeparate<["-"], "z">, MetaVarName<"<option>">,
   HelpText<"Linker option extensions">;
 
+def visual_studio_diagnostics_format : F<"vs-diagnostics">,
+HelpText<"Format diagnostics for Visual Studio compatiblity">;
+
 // Aliases
 def: Separate<["-"], "f">, Alias<auxiliary>, HelpText<"Alias for --auxiliary">;
 def: F<"call_shared">, Alias<Bdynamic>, HelpText<"Alias for --Bdynamic">;
@@ -516,6 +519,9 @@ defm plugin_opt: Eq<"plugin-opt", "specifies LTO options for compatibility with 
 def save_temps: F<"save-temps">;
 def lto_basicblock_sections: J<"lto-basicblock-sections=">,
   HelpText<"Enable basic block sections for LTO">;
+defm lto_unique_bb_section_names: B<"lto-unique-bb-section-names",
+    "Give unique names to every basic block section for LTO",
+    "Do not give unique names to every basic block section for LTO">;
 def thinlto_cache_dir: J<"thinlto-cache-dir=">,
   HelpText<"Path to ThinLTO cached object file directory">;
 defm thinlto_cache_policy: Eq<"thinlto-cache-policy", "Pruning policy for the ThinLTO cache">;

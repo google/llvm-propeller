@@ -140,6 +140,14 @@ struct Section {
   llvm::yaml::Hex64 AddressAlign;
   Optional<llvm::yaml::Hex64> EntSize;
 
+  // This can be used to override the sh_offset field. It does not place the
+  // section data at the offset specified. Useful for creating invalid objects.
+  Optional<llvm::yaml::Hex64> ShOffset;
+
+  // This can be used to override the sh_size field. It does not affect the
+  // content written.
+  Optional<llvm::yaml::Hex64> ShSize;
+
   Section(SectionKind Kind) : Kind(Kind) {}
   virtual ~Section();
 };

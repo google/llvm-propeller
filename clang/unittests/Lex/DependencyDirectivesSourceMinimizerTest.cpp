@@ -507,4 +507,65 @@ int c = 12 ' ';
   EXPECT_STREQ("#include <bob>\n#include <foo>\n", Out.data());
 }
 
+TEST(MinimizeSourceToDependencyDirectivesTest, CharacterLiteralPrefixL) {
+  SmallVector<char, 128> Out;
+
+  StringRef Source = R"(L'P'
+#if DEBUG
+// '
+#endif
+#include <test.h>
+)";
+  ASSERT_FALSE(minimizeSourceToDependencyDirectives(Source, Out));
+  EXPECT_STREQ("#include <test.h>\n", Out.data());
+}
+
+TEST(MinimizeSourceToDependencyDirectivesTest, CharacterLiteralPrefixU) {
+  SmallVector<char, 128> Out;
+
+  StringRef Source = R"(int x = U'P';
+#include <test.h>
+// '
+)";
+  ASSERT_FALSE(minimizeSourceToDependencyDirectives(Source, Out));
+  EXPECT_STREQ("#include <test.h>\n", Out.data());
+}
+
+TEST(MinimizeSourceToDependencyDirectivesTest, CharacterLiteralPrefixu) {
+  SmallVector<char, 128> Out;
+
+  StringRef Source = R"(int x = u'b';
+int y = u8'a';
+int z = 128'78;
+#include <test.h>
+// '
+)";
+  ASSERT_FALSE(minimizeSourceToDependencyDirectives(Source, Out));
+  EXPECT_STREQ("#include <test.h>\n", Out.data());
+}
+
+TEST(MinimizeSourceToDependencyDirectivesTest, PragmaOnce) {
+  SmallVector<char, 128> Out;
+  SmallVector<Token, 4> Tokens;
+
+  StringRef Source = R"(// comment
+#pragma once
+// another comment
+#include <test.h>
+)";
+  ASSERT_FALSE(minimizeSourceToDependencyDirectives(Source, Out, Tokens));
+  EXPECT_STREQ("#pragma once\n#include <test.h>\n", Out.data());
+  ASSERT_EQ(Tokens.size(), 3u);
+  EXPECT_EQ(Tokens[0].K,
+            minimize_source_to_dependency_directives::pp_pragma_once);
+
+  Source = R"(// comment
+    #pragma once extra tokens
+    // another comment
+    #include <test.h>
+    )";
+  ASSERT_FALSE(minimizeSourceToDependencyDirectives(Source, Out));
+  EXPECT_STREQ("#pragma once\n#include <test.h>\n", Out.data());
+}
+
 } // end anonymous namespace

@@ -20,7 +20,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Bitcode/BitstreamWriter.h"
+#include "llvm/Bitstream/BitstreamWriter.h"
 #include <initializer_list>
 #include <vector>
 
@@ -91,6 +91,7 @@ enum RecordId {
   MEMBER_TYPE_ACCESS,
   NAMESPACE_USR,
   NAMESPACE_NAME,
+  NAMESPACE_PATH,
   ENUM_USR,
   ENUM_NAME,
   ENUM_DEFLOCATION,
@@ -99,6 +100,7 @@ enum RecordId {
   ENUM_SCOPED,
   RECORD_USR,
   RECORD_NAME,
+  RECORD_PATH,
   RECORD_DEFLOCATION,
   RECORD_LOCATION,
   RECORD_TAG_TYPE,
@@ -106,6 +108,7 @@ enum RecordId {
   REFERENCE_USR,
   REFERENCE_NAME,
   REFERENCE_TYPE,
+  REFERENCE_PATH,
   REFERENCE_FIELD,
   RI_LAST,
   RI_FIRST = VERSION

@@ -13,8 +13,8 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Bitcode/BitCodes.h"
-#include "llvm/Bitcode/BitstreamReader.h"
+#include "llvm/Bitstream/BitCodes.h"
+#include "llvm/Bitstream/BitstreamReader.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ErrorOr.h"
@@ -124,7 +124,12 @@ SerializedDiagnosticReader::skipUntilRecordOrBlock(
     else
       return llvm::errorToErrorCode(Res.takeError());
 
-    switch ((llvm::bitc::FixedAbbrevIDs)Code) {
+    if (Code >= static_cast<unsigned>(llvm::bitc::FIRST_APPLICATION_ABBREV)) {
+      // We found a record.
+      BlockOrRecordID = Code;
+      return Cursor::Record;
+    }
+    switch (static_cast<llvm::bitc::FixedAbbrevIDs>(Code)) {
     case llvm::bitc::ENTER_SUBBLOCK:
       if (Expected<unsigned> Res = Stream.ReadSubBlockID())
         BlockOrRecordID = Res.get();
@@ -145,10 +150,8 @@ SerializedDiagnosticReader::skipUntilRecordOrBlock(
     case llvm::bitc::UNABBREV_RECORD:
       return SDError::UnsupportedConstruct;
 
-    default:
-      // We found a record.
-      BlockOrRecordID = Code;
-      return Cursor::Record;
+    case llvm::bitc::FIRST_APPLICATION_ABBREV:
+      llvm_unreachable("Unexpected abbrev id.");
     }
   }
 

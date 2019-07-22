@@ -69,7 +69,7 @@ void test_T_ctor_sfinae() {
   }
   {
     using V = std::variant<std::string, float>;
-    static_assert(!std::is_constructible<V, int>::value,
+    static_assert(std::is_constructible<V, int>::value == VariantAllowsNarrowingConversions,
                   "no matching constructor");
   }
   {
@@ -127,11 +127,13 @@ void test_T_ctor_basic() {
     static_assert(v.index() == 1, "");
     static_assert(std::get<1>(v) == 42, "");
   }
+#ifndef TEST_VARIANT_ALLOWS_NARROWING_CONVERSIONS
   {
     constexpr std::variant<unsigned, long> v(42);
     static_assert(v.index() == 1, "");
     static_assert(std::get<1>(v) == 42, "");
   }
+#endif
   {
     std::variant<std::string, bool const> v = "foo";
     assert(v.index() == 0);
@@ -175,10 +177,34 @@ void test_T_ctor_basic() {
 #endif
 }
 
+struct BoomOnAnything {
+  template <class T>
+  constexpr BoomOnAnything(T) { static_assert(!std::is_same<T, T>::value, ""); }
+};
+
+void test_no_narrowing_check_for_class_types() {
+  using V = std::variant<int, BoomOnAnything>;
+  V v(42);
+  assert(v.index() == 0);
+  assert(std::get<0>(v) == 42);
+}
+
+struct Bar {};
+struct Baz {};
+void test_construction_with_repeated_types() {
+  using V = std::variant<int, Bar, Baz, int, Baz, int, int>;
+  static_assert(!std::is_constructible<V, int>::value, "");
+  static_assert(!std::is_constructible<V, Baz>::value, "");
+  // OK, the selected type appears only once and so it shouldn't
+  // be affected by the duplicate types.
+  static_assert(std::is_constructible<V, Bar>::value, "");
+}
+
 int main(int, char**) {
   test_T_ctor_basic();
   test_T_ctor_noexcept();
   test_T_ctor_sfinae();
-
+  test_no_narrowing_check_for_class_types();
+  test_construction_with_repeated_types();
   return 0;
 }

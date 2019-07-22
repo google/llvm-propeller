@@ -50,6 +50,7 @@ option(LLDB_USE_SYSTEM_SIX "Use six.py shipped with system and do not install a 
 option(LLDB_USE_ENTITLEMENTS "When codesigning, use entitlements if available" ON)
 option(LLDB_BUILD_FRAMEWORK "Build LLDB.framework (Darwin only)" OFF)
 option(LLDB_NO_INSTALL_DEFAULT_RPATH "Disable default RPATH settings in binaries" OFF)
+option(LLDB_USE_SYSTEM_DEBUGSERVER "Use the system's debugserver for testing (Darwin only)." OFF)
 
 if(LLDB_BUILD_FRAMEWORK)
   if(NOT APPLE)
@@ -65,12 +66,9 @@ if(LLDB_BUILD_FRAMEWORK)
   set(LLDB_FRAMEWORK_BUILD_DIR bin CACHE STRING "Output directory for LLDB.framework")
   set(LLDB_FRAMEWORK_INSTALL_DIR Library/Frameworks CACHE STRING "Install directory for LLDB.framework")
 
-  # Set designated directory for all dSYMs. Essentially, this emits the
-  # framework's dSYM outside of the framework directory.
-  if(LLVM_EXTERNALIZE_DEBUGINFO)
-    set(LLVM_EXTERNALIZE_DEBUGINFO_OUTPUT_DIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin CACHE STRING
-        "Directory to emit dSYM files stripped from executables and libraries (Darwin Only)")
-  endif()
+  # Essentially, emit the framework's dSYM outside of the framework directory.
+  set(LLDB_DEBUGINFO_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin CACHE STRING
+      "Directory to emit dSYM files stripped from executables and libraries (Darwin Only)")
 endif()
 
 if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
@@ -140,8 +138,9 @@ function(find_python_libs_windows)
          REGEX "^#define[ \t]+PY_VERSION[ \t]+\"[^\"]+\"")
     string(REGEX REPLACE "^#define[ \t]+PY_VERSION[ \t]+\"([^\"+]+)[+]?\".*" "\\1"
          PYTHONLIBS_VERSION_STRING "${python_version_str}")
-    message(STATUS "Found Python version ${PYTHONLIBS_VERSION_STRING}")
+    message(STATUS "Found Python library version ${PYTHONLIBS_VERSION_STRING}")
     string(REGEX REPLACE "([0-9]+)[.]([0-9]+)[.][0-9]+" "python\\1\\2" PYTHONLIBS_BASE_NAME "${PYTHONLIBS_VERSION_STRING}")
+    set(PYTHONLIBS_VERSION_STRING "${PYTHONLIBS_VERSION_STRING}" PARENT_SCOPE)
     unset(python_version_str)
   else()
     message(WARNING "Unable to find ${PYTHON_INCLUDE_DIR}/patchlevel.h, Python installation is corrupt.")
@@ -188,7 +187,6 @@ function(find_python_libs_windows)
 endfunction(find_python_libs_windows)
 
 if (NOT LLDB_DISABLE_PYTHON)
-
   if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
     find_python_libs_windows()
 
@@ -197,8 +195,13 @@ if (NOT LLDB_DISABLE_PYTHON)
       add_definitions( -DLLDB_PYTHON_HOME="${LLDB_PYTHON_HOME}" )
     endif()
   else()
-    find_package(PythonInterp)
-    find_package(PythonLibs)
+    find_package(PythonInterp REQUIRED)
+    find_package(PythonLibs REQUIRED)
+  endif()
+
+  if (NOT PYTHON_VERSION_STRING VERSION_EQUAL PYTHONLIBS_VERSION_STRING AND
+      NOT CMAKE_CROSSCOMPILING)
+    message(FATAL_ERROR "Found incompatible Python interpreter (${PYTHON_VERSION_STRING}) and Python libraries (${PYTHONLIBS_VERSION_STRING})")
   endif()
 
   if (PYTHON_INCLUDE_DIR)
@@ -335,7 +338,6 @@ if (APPLE)
   if(NOT IOS)
     find_library(CARBON_LIBRARY Carbon)
     find_library(CORE_SERVICES_LIBRARY CoreServices)
-    find_library(DEBUG_SYMBOLS_LIBRARY DebugSymbols PATHS "/System/Library/PrivateFrameworks")
   endif()
   find_library(FOUNDATION_LIBRARY Foundation)
   find_library(CORE_FOUNDATION_LIBRARY CoreFoundation)

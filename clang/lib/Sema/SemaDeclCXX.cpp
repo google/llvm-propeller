@@ -7238,7 +7238,7 @@ bool Sema::ShouldDeleteSpecialMember(CXXMethodDecl *MD, CXXSpecialMember CSM,
   //   The closure type associated with a lambda-expression has a
   //   deleted (8.4.3) default constructor and a deleted copy
   //   assignment operator.
-  // C++2a adds back these operators if the lambda has no capture-default.
+  // C++2a adds back these operators if the lambda has no lambda-capture.
   if (RD->isLambda() && !RD->lambdaIsDefaultConstructibleAndAssignable() &&
       (CSM == CXXDefaultConstructor || CSM == CXXCopyAssignment)) {
     if (Diagnose)
@@ -9802,7 +9802,7 @@ UsingShadowDecl *Sema::BuildUsingShadowDecl(Scope *S,
     NonTemplateTarget = TargetTD->getTemplatedDecl();
 
   UsingShadowDecl *Shadow;
-  if (isa<CXXConstructorDecl>(NonTemplateTarget)) {
+  if (NonTemplateTarget && isa<CXXConstructorDecl>(NonTemplateTarget)) {
     bool IsVirtualBase =
         isVirtualDirectBase(cast<CXXRecordDecl>(CurContext),
                             UD->getQualifier()->getAsRecordDecl());
@@ -11168,8 +11168,8 @@ Sema::findInheritingConstructor(SourceLocation Loc,
 
   CXXConstructorDecl *DerivedCtor = CXXConstructorDecl::Create(
       Context, Derived, UsingLoc, NameInfo, TInfo->getType(), TInfo,
-      BaseCtor->getExplicitSpecifier(), /*Inline=*/true,
-      /*ImplicitlyDeclared=*/true,
+      BaseCtor->getExplicitSpecifier(), /*isInline=*/true,
+      /*isImplicitlyDeclared=*/true,
       Constexpr ? BaseCtor->getConstexprKind() : CSK_unspecified,
       InheritedConstructor(Shadow, BaseCtor));
   if (Shadow->isInvalidDecl())
@@ -11190,7 +11190,7 @@ Sema::findInheritingConstructor(SourceLocation Loc,
         Context.getTrivialTypeSourceInfo(FPT->getParamType(I), UsingLoc);
     ParmVarDecl *PD = ParmVarDecl::Create(
         Context, DerivedCtor, UsingLoc, UsingLoc, /*IdentifierInfo=*/nullptr,
-        FPT->getParamType(I), TInfo, SC_None, /*DefaultArg=*/nullptr);
+        FPT->getParamType(I), TInfo, SC_None, /*DefArg=*/nullptr);
     PD->setScopeInfo(0, I);
     PD->setImplicit();
     // Ensure attributes are propagated onto parameters (this matters for
@@ -11751,7 +11751,7 @@ buildSingleCopyAssignRecursively(Sema &S, SourceLocation Loc, QualType T,
 
     // Create the reference to operator=.
     ExprResult OpEqualRef
-      = S.BuildMemberReferenceExpr(To.build(S, Loc), T, Loc, /*isArrow=*/false,
+      = S.BuildMemberReferenceExpr(To.build(S, Loc), T, Loc, /*IsArrow=*/false,
                                    SS, /*TemplateKWLoc=*/SourceLocation(),
                                    /*FirstQualifierInScope=*/nullptr,
                                    OpLookup,
@@ -13272,7 +13272,7 @@ CheckOperatorNewDeleteTypes(Sema &SemaRef, const FunctionDecl *FnDecl,
                         diag::err_operator_new_delete_dependent_result_type)
     << FnDecl->getDeclName() << ExpectedResultType;
 
-  // OpenCL C++: the operator is valid on any address space.
+  // The operator is valid on any address space for OpenCL.
   if (SemaRef.getLangOpts().OpenCLCPlusPlus) {
     if (auto *PtrTy = ResultType->getAs<PointerType>()) {
       ResultType = RemoveAddressSpaceFromPtr(SemaRef, PtrTy);
@@ -13305,7 +13305,7 @@ CheckOperatorNewDeleteTypes(Sema &SemaRef, const FunctionDecl *FnDecl,
 
   // Check that the first parameter type is what we expect.
   if (SemaRef.getLangOpts().OpenCLCPlusPlus) {
-    // OpenCL C++: the operator is valid on any address space.
+    // The operator is valid on any address space for OpenCL.
     if (auto *PtrTy =
             FnDecl->getParamDecl(0)->getType()->getAs<PointerType>()) {
       FirstParamType = RemoveAddressSpaceFromPtr(SemaRef, PtrTy);

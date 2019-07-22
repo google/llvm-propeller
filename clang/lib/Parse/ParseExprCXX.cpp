@@ -1334,10 +1334,10 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
 
     SourceLocation NoLoc;
     D.AddTypeInfo(DeclaratorChunk::getFunction(
-                      /*hasProto=*/true,
-                      /*isAmbiguous=*/false, LParenLoc, ParamInfo.data(),
+                      /*HasProto=*/true,
+                      /*IsAmbiguous=*/false, LParenLoc, ParamInfo.data(),
                       ParamInfo.size(), EllipsisLoc, RParenLoc,
-                      /*RefQualifierIsLValueRef=*/true,
+                      /*RefQualifierIsLvalueRef=*/true,
                       /*RefQualifierLoc=*/NoLoc, MutableLoc, ESpecType,
                       ESpecRange, DynamicExceptions.data(),
                       DynamicExceptionRanges.data(), DynamicExceptions.size(),
@@ -1394,14 +1394,14 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
 
     SourceLocation NoLoc;
     D.AddTypeInfo(DeclaratorChunk::getFunction(
-                      /*hasProto=*/true,
-                      /*isAmbiguous=*/false,
+                      /*HasProto=*/true,
+                      /*IsAmbiguous=*/false,
                       /*LParenLoc=*/NoLoc,
                       /*Params=*/nullptr,
                       /*NumParams=*/0,
                       /*EllipsisLoc=*/NoLoc,
                       /*RParenLoc=*/NoLoc,
-                      /*RefQualifierIsLValueRef=*/true,
+                      /*RefQualifierIsLvalueRef=*/true,
                       /*RefQualifierLoc=*/NoLoc, MutableLoc, EST_None,
                       /*ESpecRange=*/SourceRange(),
                       /*Exceptions=*/nullptr,
@@ -1701,7 +1701,7 @@ Parser::ParseCXXPseudoDestructor(Expr *Base, SourceLocation OpLoc,
       ParseUnqualifiedIdTemplateId(SS, SourceLocation(),
                                    Name, NameLoc,
                                    false, ObjectType, SecondTypeName,
-                                   /*AssumeTemplateName=*/true))
+                                   /*AssumeTemplateId=*/true))
     return ExprError();
 
   return Actions.ActOnPseudoDestructorExpr(getCurScope(), Base, OpLoc, OpKind,
@@ -3061,7 +3061,7 @@ void Parser::ParseDirectNewDeclarator(Declarator &D) {
     MaybeParseCXX11Attributes(Attrs);
 
     D.AddTypeInfo(DeclaratorChunk::getArray(0,
-                                            /*static=*/false, /*star=*/false,
+                                            /*isStatic=*/false, /*isStar=*/false,
                                             Size.get(), T.getOpenLocation(),
                                             T.getCloseLocation()),
                   std::move(Attrs), T.getCloseLocation());
@@ -3512,4 +3512,38 @@ Parser::ParseCXXAmbiguousParenExpression(ParenParseOption &ExprType,
   assert(Tok.is(tok::eof) && Tok.getEofData() == AttrEnd.getEofData());
   ConsumeAnyToken();
   return Result;
+}
+
+/// Parse a __builtin_bit_cast(T, E).
+ExprResult Parser::ParseBuiltinBitCast() {
+  SourceLocation KWLoc = ConsumeToken();
+
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  if (T.expectAndConsume(diag::err_expected_lparen_after, "__builtin_bit_cast"))
+    return ExprError();
+
+  // Parse the common declaration-specifiers piece.
+  DeclSpec DS(AttrFactory);
+  ParseSpecifierQualifierList(DS);
+
+  // Parse the abstract-declarator, if present.
+  Declarator DeclaratorInfo(DS, DeclaratorContext::TypeNameContext);
+  ParseDeclarator(DeclaratorInfo);
+
+  if (ExpectAndConsume(tok::comma)) {
+    Diag(Tok.getLocation(), diag::err_expected) << tok::comma;
+    SkipUntil(tok::r_paren, StopAtSemi);
+    return ExprError();
+  }
+
+  ExprResult Operand = ParseExpression();
+
+  if (T.consumeClose())
+    return ExprError();
+
+  if (Operand.isInvalid() || DeclaratorInfo.isInvalidType())
+    return ExprError();
+
+  return Actions.ActOnBuiltinBitCastExpr(KWLoc, DeclaratorInfo, Operand,
+                                         T.getCloseLocation());
 }

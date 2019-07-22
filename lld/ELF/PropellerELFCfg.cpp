@@ -243,10 +243,10 @@ void ELFCfgBuilder::buildCfgs() {
         // for BB symbols.
         uint64_t SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
         // Drop bb sections with no code
+        if (!SymSize)
+          continue;
         auto *SE = Prop->Propf->findSymbol(SymName);
         if (SE) {
-          if (!SymSize)
-            continue;
           if (TmpNodeMap.find(SE->Ordinal) != TmpNodeMap.end()) {
             error("Internal error checking Cfg map.");
             return;
@@ -267,8 +267,9 @@ void ELFCfgBuilder::buildCfgs() {
     if (TmpNodeMap.empty())
       Cfg.reset(nullptr);
 
-    if (!Cfg)
+    if (!Cfg){
       continue; // to next Cfg group.
+    }
 
     if (Cfg) {
       buildCfg(*Cfg, CfgSym, TmpNodeMap);

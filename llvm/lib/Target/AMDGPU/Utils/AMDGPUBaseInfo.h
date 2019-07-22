@@ -439,7 +439,7 @@ LLVM_READNONE
 bool isValidHwregWidth(int64_t Width);
 
 LLVM_READNONE
-int64_t encodeHwreg(int64_t Id, int64_t Offset, int64_t Width);
+uint64_t encodeHwreg(uint64_t Id, uint64_t Offset, uint64_t Width);
 
 LLVM_READNONE
 StringRef getHwreg(unsigned Id, const MCSubtargetInfo &STI);
@@ -564,6 +564,8 @@ inline unsigned getOperandSize(const MCOperandInfo &OpInfo) {
   case AMDGPU::OPERAND_REG_IMM_FP32:
   case AMDGPU::OPERAND_REG_INLINE_C_INT32:
   case AMDGPU::OPERAND_REG_INLINE_C_FP32:
+  case AMDGPU::OPERAND_REG_INLINE_AC_INT32:
+  case AMDGPU::OPERAND_REG_INLINE_AC_FP32:
     return 4;
 
   case AMDGPU::OPERAND_REG_IMM_INT64:
@@ -578,6 +580,10 @@ inline unsigned getOperandSize(const MCOperandInfo &OpInfo) {
   case AMDGPU::OPERAND_REG_INLINE_C_FP16:
   case AMDGPU::OPERAND_REG_INLINE_C_V2INT16:
   case AMDGPU::OPERAND_REG_INLINE_C_V2FP16:
+  case AMDGPU::OPERAND_REG_INLINE_AC_INT16:
+  case AMDGPU::OPERAND_REG_INLINE_AC_FP16:
+  case AMDGPU::OPERAND_REG_INLINE_AC_V2INT16:
+  case AMDGPU::OPERAND_REG_INLINE_AC_V2FP16:
   case AMDGPU::OPERAND_REG_IMM_V2INT16:
   case AMDGPU::OPERAND_REG_IMM_V2FP16:
     return 2;

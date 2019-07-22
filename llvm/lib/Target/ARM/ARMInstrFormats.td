@@ -2591,7 +2591,7 @@ class NEONFPPat<dag pattern, dag result> : Pat<pattern, result> {
 // VFP/NEON Instruction aliases for type suffices.
 // Note: When EmitPriority == 1, the alias will be used for printing
 class VFPDataTypeInstAlias<string opc, string dt, string asm, dag Result, bit EmitPriority = 0> :
-  InstAlias<!strconcat(opc, dt, "\t", asm), Result, EmitPriority>, Requires<[HasVFP2]>;
+  InstAlias<!strconcat(opc, dt, "\t", asm), Result, EmitPriority>, Requires<[HasFPRegs]>;
 
 // Note: When EmitPriority == 1, the alias will be used for printing
 multiclass VFPDTAnyInstAlias<string opc, string asm, dag Result, bit EmitPriority = 0> {
@@ -2722,6 +2722,16 @@ def complexrotateop : Operand<i32> {
 def complexrotateopodd : Operand<i32> {
   let ParserMatchClass = ComplexRotationOperand<180, 90, "Odd", "90 or 270">;
   let PrintMethod = "printComplexRotationOp<180, 90>";
+}
+
+def MveSaturateOperand : AsmOperandClass {
+  let PredicateMethod = "isMveSaturateOp";
+  let DiagnosticString = "saturate operand must be 48 or 64";
+  let Name = "MveSaturate";
+}
+def saturateop : Operand<i32> {
+  let ParserMatchClass = MveSaturateOperand;
+  let PrintMethod = "printMveSaturateOp";
 }
 
 // Data type suffix token aliases. Implements Table A7-3 in the ARM ARM.

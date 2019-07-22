@@ -1767,8 +1767,8 @@ static void insertLineSequence(std::vector<DWARFDebugLine::Row> &Seq,
   }
 
   object::SectionedAddress Front = Seq.front().Address;
-  auto InsertPoint = llvm::bsearch(
-      Rows, [=](const DWARFDebugLine::Row &O) { return !(O.Address < Front); });
+  auto InsertPoint = partition_point(
+      Rows, [=](const DWARFDebugLine::Row &O) { return O.Address < Front; });
 
   // FIXME: this only removes the unneeded end_sequence if the
   // sequences have been inserted in order. Using a global sort like
@@ -2003,7 +2003,7 @@ void DwarfLinker::patchFrameInfoForObject(const DebugMapObject &DMO,
                                           RangesTy &Ranges,
                                           DWARFContext &OrigDwarf,
                                           unsigned AddrSize) {
-  StringRef FrameData = OrigDwarf.getDWARFObj().getDebugFrameSection();
+  StringRef FrameData = OrigDwarf.getDWARFObj().getDebugFrameSection().Data;
   if (FrameData.empty())
     return;
 

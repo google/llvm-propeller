@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <map>
 
-using lld::elf::Config;
+using lld::elf::config;
 using std::map;
 
 namespace lld {
@@ -74,10 +74,10 @@ void CCubeAlgorithm::mergeClusters() {
   map<ELFCfg *, Cluster *> ClusterMap;
   for(ELFCfg * Cfg: HotCfgs){
     uint64_t CfgWeight = 0;
-    uint64_t CfgSize = Config->PropellerSplitFuncs ? 0 : (double)Cfg->Size;
+    uint64_t CfgSize = config->propellerSplitFuncs ? 0 : (double)Cfg->Size;
     Cfg->forEachNodeRef([&CfgSize, &CfgWeight](ELFCfgNode &N) {
       CfgWeight += N.Freq;
-      if (Config->PropellerSplitFuncs && N.Freq)
+      if (config->propellerSplitFuncs && N.Freq)
         CfgSize += N.ShSize;
     });
 

@@ -935,48 +935,34 @@ public:
     return false;
   }
 
-  bool isMovZSymbolG3() const {
-    return isMovWSymbol(AArch64MCExpr::VK_ABS_G3);
+  bool isMovWSymbolG3() const {
+    return isMovWSymbol({AArch64MCExpr::VK_ABS_G3, AArch64MCExpr::VK_PREL_G3});
   }
 
-  bool isMovZSymbolG2() const {
-    return isMovWSymbol({AArch64MCExpr::VK_ABS_G2, AArch64MCExpr::VK_ABS_G2_S,
-                         AArch64MCExpr::VK_TPREL_G2,
-                         AArch64MCExpr::VK_DTPREL_G2});
-  }
-
-  bool isMovZSymbolG1() const {
-    return isMovWSymbol({
-        AArch64MCExpr::VK_ABS_G1, AArch64MCExpr::VK_ABS_G1_S,
-        AArch64MCExpr::VK_GOTTPREL_G1, AArch64MCExpr::VK_TPREL_G1,
-        AArch64MCExpr::VK_DTPREL_G1,
-    });
-  }
-
-  bool isMovZSymbolG0() const {
-    return isMovWSymbol({AArch64MCExpr::VK_ABS_G0, AArch64MCExpr::VK_ABS_G0_S,
-                         AArch64MCExpr::VK_TPREL_G0,
-                         AArch64MCExpr::VK_DTPREL_G0});
-  }
-
-  bool isMovKSymbolG3() const {
-    return isMovWSymbol(AArch64MCExpr::VK_ABS_G3);
-  }
-
-  bool isMovKSymbolG2() const {
-    return isMovWSymbol(AArch64MCExpr::VK_ABS_G2_NC);
-  }
-
-  bool isMovKSymbolG1() const {
-    return isMovWSymbol({AArch64MCExpr::VK_ABS_G1_NC,
-                         AArch64MCExpr::VK_TPREL_G1_NC,
-                         AArch64MCExpr::VK_DTPREL_G1_NC});
-  }
-
-  bool isMovKSymbolG0() const {
+  bool isMovWSymbolG2() const {
     return isMovWSymbol(
-        {AArch64MCExpr::VK_ABS_G0_NC, AArch64MCExpr::VK_GOTTPREL_G0_NC,
-         AArch64MCExpr::VK_TPREL_G0_NC, AArch64MCExpr::VK_DTPREL_G0_NC});
+        {AArch64MCExpr::VK_ABS_G2, AArch64MCExpr::VK_ABS_G2_S,
+         AArch64MCExpr::VK_ABS_G2_NC, AArch64MCExpr::VK_PREL_G2,
+         AArch64MCExpr::VK_PREL_G2_NC, AArch64MCExpr::VK_TPREL_G2,
+         AArch64MCExpr::VK_DTPREL_G2});
+  }
+
+  bool isMovWSymbolG1() const {
+    return isMovWSymbol(
+        {AArch64MCExpr::VK_ABS_G1, AArch64MCExpr::VK_ABS_G1_S,
+         AArch64MCExpr::VK_ABS_G1_NC, AArch64MCExpr::VK_PREL_G1,
+         AArch64MCExpr::VK_PREL_G1_NC, AArch64MCExpr::VK_GOTTPREL_G1,
+         AArch64MCExpr::VK_TPREL_G1, AArch64MCExpr::VK_TPREL_G1_NC,
+         AArch64MCExpr::VK_DTPREL_G1, AArch64MCExpr::VK_DTPREL_G1_NC});
+  }
+
+  bool isMovWSymbolG0() const {
+    return isMovWSymbol(
+        {AArch64MCExpr::VK_ABS_G0, AArch64MCExpr::VK_ABS_G0_S,
+         AArch64MCExpr::VK_ABS_G0_NC, AArch64MCExpr::VK_PREL_G0,
+         AArch64MCExpr::VK_PREL_G0_NC, AArch64MCExpr::VK_GOTTPREL_G0_NC,
+         AArch64MCExpr::VK_TPREL_G0, AArch64MCExpr::VK_TPREL_G0_NC,
+         AArch64MCExpr::VK_DTPREL_G0, AArch64MCExpr::VK_DTPREL_G0_NC});
   }
 
   template<int RegWidth, int Shift>
@@ -2502,6 +2488,7 @@ AArch64AsmParser::tryParseAdrpLabel(OperandVector &Operands) {
     } else if (DarwinRefKind != MCSymbolRefExpr::VK_PAGE &&
                DarwinRefKind != MCSymbolRefExpr::VK_GOTPAGE &&
                DarwinRefKind != MCSymbolRefExpr::VK_TLVPPAGE &&
+               ELFRefKind != AArch64MCExpr::VK_ABS_PAGE_NC &&
                ELFRefKind != AArch64MCExpr::VK_GOT_PAGE &&
                ELFRefKind != AArch64MCExpr::VK_GOTTPREL_PAGE &&
                ELFRefKind != AArch64MCExpr::VK_TLSDESC_PAGE) {
@@ -3259,6 +3246,13 @@ bool AArch64AsmParser::parseSymbolicImmVal(const MCExpr *&ImmVal) {
                   .Case("abs_g0", AArch64MCExpr::VK_ABS_G0)
                   .Case("abs_g0_s", AArch64MCExpr::VK_ABS_G0_S)
                   .Case("abs_g0_nc", AArch64MCExpr::VK_ABS_G0_NC)
+                  .Case("prel_g3", AArch64MCExpr::VK_PREL_G3)
+                  .Case("prel_g2", AArch64MCExpr::VK_PREL_G2)
+                  .Case("prel_g2_nc", AArch64MCExpr::VK_PREL_G2_NC)
+                  .Case("prel_g1", AArch64MCExpr::VK_PREL_G1)
+                  .Case("prel_g1_nc", AArch64MCExpr::VK_PREL_G1_NC)
+                  .Case("prel_g0", AArch64MCExpr::VK_PREL_G0)
+                  .Case("prel_g0_nc", AArch64MCExpr::VK_PREL_G0_NC)
                   .Case("dtprel_g2", AArch64MCExpr::VK_DTPREL_G2)
                   .Case("dtprel_g1", AArch64MCExpr::VK_DTPREL_G1)
                   .Case("dtprel_g1_nc", AArch64MCExpr::VK_DTPREL_G1_NC)
@@ -3267,6 +3261,7 @@ bool AArch64AsmParser::parseSymbolicImmVal(const MCExpr *&ImmVal) {
                   .Case("dtprel_hi12", AArch64MCExpr::VK_DTPREL_HI12)
                   .Case("dtprel_lo12", AArch64MCExpr::VK_DTPREL_LO12)
                   .Case("dtprel_lo12_nc", AArch64MCExpr::VK_DTPREL_LO12_NC)
+                  .Case("pg_hi21_nc", AArch64MCExpr::VK_ABS_PAGE_NC)
                   .Case("tprel_g2", AArch64MCExpr::VK_TPREL_G2)
                   .Case("tprel_g1", AArch64MCExpr::VK_TPREL_G1)
                   .Case("tprel_g1_nc", AArch64MCExpr::VK_TPREL_G1_NC)

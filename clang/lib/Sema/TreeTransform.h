@@ -2652,6 +2652,16 @@ public:
                                                ListInitialization);
   }
 
+  /// Build a new C++ __builtin_bit_cast expression.
+  ///
+  /// By default, performs semantic analysis to build the new expression.
+  /// Subclasses may override this routine to provide different behavior.
+  ExprResult RebuildBuiltinBitCastExpr(SourceLocation KWLoc,
+                                       TypeSourceInfo *TSI, Expr *Sub,
+                                       SourceLocation RParenLoc) {
+    return getSema().BuildBuiltinBitCastExpr(KWLoc, TSI, Sub, RParenLoc);
+  }
+
   /// Build a new C++ typeid(type) expression.
   ///
   /// By default, performs semantic analysis to build the new expression.
@@ -4526,6 +4536,14 @@ QualType TreeTransform<Derived>::TransformDecayedType(TypeLocBuilder &TLB,
   return Result;
 }
 
+/// Helper to deduce addr space of a pointee type in OpenCL mode.
+/// If the type is updated it will be overwritten in PointeeType param.
+static void deduceOpenCLPointeeAddrSpace(Sema &SemaRef, QualType &PointeeType) {
+  if (PointeeType.getAddressSpace() == LangAS::Default)
+    PointeeType = SemaRef.Context.getAddrSpaceQualType(PointeeType,
+                                                       LangAS::opencl_generic);
+}
+
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformPointerType(TypeLocBuilder &TLB,
                                                       PointerTypeLoc TL) {
@@ -4533,6 +4551,9 @@ QualType TreeTransform<Derived>::TransformPointerType(TypeLocBuilder &TLB,
     = getDerived().TransformType(TLB, TL.getPointeeLoc());
   if (PointeeType.isNull())
     return QualType();
+
+  if (SemaRef.getLangOpts().OpenCL)
+    deduceOpenCLPointeeAddrSpace(SemaRef, PointeeType);
 
   QualType Result = TL.getType();
   if (PointeeType->getAs<ObjCObjectType>()) {
@@ -4572,6 +4593,9 @@ TreeTransform<Derived>::TransformBlockPointerType(TypeLocBuilder &TLB,
   if (PointeeType.isNull())
     return QualType();
 
+  if (SemaRef.getLangOpts().OpenCL)
+    deduceOpenCLPointeeAddrSpace(SemaRef, PointeeType);
+
   QualType Result = TL.getType();
   if (getDerived().AlwaysRebuild() ||
       PointeeType != TL.getPointeeLoc().getType()) {
@@ -4600,6 +4624,9 @@ TreeTransform<Derived>::TransformReferenceType(TypeLocBuilder &TLB,
   QualType PointeeType = getDerived().TransformType(TLB, TL.getPointeeLoc());
   if (PointeeType.isNull())
     return QualType();
+
+  if (SemaRef.getLangOpts().OpenCL)
+    deduceOpenCLPointeeAddrSpace(SemaRef, PointeeType);
 
   QualType Result = TL.getType();
   if (getDerived().AlwaysRebuild() ||
@@ -5364,13 +5391,6 @@ QualType TreeTransform<Derived>::TransformFunctionProtoType(
     ResultType = getDerived().TransformType(TLB, TL.getReturnLoc());
     if (ResultType.isNull())
       return QualType();
-
-    // Return type can not be qualified with an address space.
-    if (ResultType.getAddressSpace() != LangAS::Default) {
-      SemaRef.Diag(TL.getReturnLoc().getBeginLoc(),
-                   diag::err_attribute_address_function_type);
-      return QualType();
-    }
 
     if (getDerived().TransformFunctionTypeParams(
             TL.getBeginLoc(), TL.getParams(),
@@ -6602,13 +6622,13 @@ TreeTransform<Derived>::TransformCompoundStmt(CompoundStmt *S,
                                               bool IsStmtExpr) {
   Sema::CompoundScopeRAII CompoundScope(getSema());
 
+  const Stmt *ExprResult = S->getStmtExprResult();
   bool SubStmtInvalid = false;
   bool SubStmtChanged = false;
   SmallVector<Stmt*, 8> Statements;
   for (auto *B : S->body()) {
     StmtResult Result = getDerived().TransformStmt(
-        B,
-        IsStmtExpr && B == S->body_back() ? SDK_StmtExprResult : SDK_Discarded);
+        B, IsStmtExpr && B == ExprResult ? SDK_StmtExprResult : SDK_Discarded);
 
     if (Result.isInvalid()) {
       // Immediately fail if this was a DeclStmt, since it's very
@@ -10243,6 +10263,22 @@ TreeTransform<Derived>::TransformCXXNamedCastExpr(CXXNamedCastExpr *E) {
       Type, E->getAngleBrackets().getEnd(),
       // FIXME. this should be '(' location
       E->getAngleBrackets().getEnd(), SubExpr.get(), E->getRParenLoc());
+}
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformBuiltinBitCastExpr(BuiltinBitCastExpr *BCE) {
+  TypeSourceInfo *TSI =
+      getDerived().TransformType(BCE->getTypeInfoAsWritten());
+  if (!TSI)
+    return ExprError();
+
+  ExprResult Sub = getDerived().TransformExpr(BCE->getSubExpr());
+  if (Sub.isInvalid())
+    return ExprError();
+
+  return getDerived().RebuildBuiltinBitCastExpr(BCE->getBeginLoc(), TSI,
+                                                Sub.get(), BCE->getEndLoc());
 }
 
 template<typename Derived>

@@ -71,7 +71,7 @@ ASM_FUNCTION_PPC_RE = re.compile(
     flags=(re.M | re.S))
 
 ASM_FUNCTION_RISCV_RE = re.compile(
-    r'^_?(?P<func>[^:]+):[ \t]*#+[ \t]*@(?P=func)\n[^:]*?'
+    r'^_?(?P<func>[^:]+):[ \t]*#+[ \t]*@(?P=func)\n(?:\s*\.?Lfunc_begin[^:\n]*:\n)?[^:]*?'
     r'(?P<body>^##?[ \t]+[^:]+:.*?)\s*'
     r'.Lfunc_end[0-9]+:\n',
     flags=(re.M | re.S))
@@ -215,8 +215,8 @@ def scrub_asm_powerpc(asm, args):
   asm = common.SCRUB_WHITESPACE_RE.sub(r' ', asm)
   # Expand the tabs used for indentation.
   asm = string.expandtabs(asm, 2)
-  # Stripe unimportant comments
-  asm = SCRUB_LOOP_COMMENT_RE.sub(r'', asm)
+  # Stripe unimportant comments, but leave the token '#' in place.
+  asm = SCRUB_LOOP_COMMENT_RE.sub(r'#', asm)
   # Strip trailing whitespace.
   asm = common.SCRUB_TRAILING_WHITESPACE_RE.sub(r'', asm)
   return asm

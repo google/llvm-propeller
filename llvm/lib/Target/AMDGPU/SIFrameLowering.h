@@ -36,6 +36,12 @@ public:
 
   void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
                             RegScavenger *RS = nullptr) const override;
+  void determineCalleeSavesSGPR(MachineFunction &MF, BitVector &SavedRegs,
+                                RegScavenger *RS = nullptr) const;
+  bool
+  assignCalleeSavedSpillSlots(MachineFunction &MF,
+                              const TargetRegisterInfo *TRI,
+                              std::vector<CalleeSavedInfo> &CSI) const override;
 
   bool isSupportedStackID(TargetStackID::Value ID) const override;
 
@@ -60,7 +66,7 @@ private:
     SIMachineFunctionInfo *MFI,
     MachineFunction &MF) const;
 
-  unsigned getReservedPrivateSegmentWaveByteOffsetReg(
+  std::pair<unsigned, bool> getReservedPrivateSegmentWaveByteOffsetReg(
       const GCNSubtarget &ST, const SIInstrInfo *TII, const SIRegisterInfo *TRI,
       SIMachineFunctionInfo *MFI, MachineFunction &MF) const;
 

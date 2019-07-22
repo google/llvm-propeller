@@ -66,6 +66,15 @@ struct FileRange {
 
   unsigned length() const { return End - Begin; }
 
+  /// Check if \p Offset is inside the range.
+  bool contains(unsigned Offset) const {
+    return Begin <= Offset && Offset < End;
+  }
+  /// Check \p Offset is inside the range or equal to its endpoint.
+  bool touches(unsigned Offset) const {
+    return Begin <= Offset && Offset <= End;
+  }
+
   /// Gets the substring that this FileRange refers to.
   llvm::StringRef text(const SourceManager &SM) const;
 
@@ -90,8 +99,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const FileRange &R);
 /// Can represent both expanded and spelled tokens.
 class Token {
 public:
-  Token(SourceLocation Location, unsigned Length, tok::TokenKind Kind)
-      : Location(Location), Length(Length), Kind(Kind) {}
+  Token(SourceLocation Location, unsigned Length, tok::TokenKind Kind);
   /// EXPECTS: clang::Token is not an annotation token.
   explicit Token(const clang::Token &T);
 

@@ -165,6 +165,9 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::LOAD, MVT::v16f32, Promote);
   AddPromotedToType(ISD::LOAD, MVT::v16f32, MVT::v16i32);
 
+  setOperationAction(ISD::LOAD, MVT::v32f32, Promote);
+  AddPromotedToType(ISD::LOAD, MVT::v32f32, MVT::v32i32);
+
   setOperationAction(ISD::LOAD, MVT::i64, Promote);
   AddPromotedToType(ISD::LOAD, MVT::i64, MVT::v2i32);
 
@@ -255,6 +258,9 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(const TargetMachine &TM,
 
   setOperationAction(ISD::STORE, MVT::v16f32, Promote);
   AddPromotedToType(ISD::STORE, MVT::v16f32, MVT::v16i32);
+
+  setOperationAction(ISD::STORE, MVT::v32f32, Promote);
+  AddPromotedToType(ISD::STORE, MVT::v32f32, MVT::v32i32);
 
   setOperationAction(ISD::STORE, MVT::i64, Promote);
   AddPromotedToType(ISD::STORE, MVT::i64, MVT::v2i32);
@@ -355,6 +361,10 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::EXTRACT_SUBVECTOR, MVT::v5i32, Custom);
   setOperationAction(ISD::EXTRACT_SUBVECTOR, MVT::v8f32, Custom);
   setOperationAction(ISD::EXTRACT_SUBVECTOR, MVT::v8i32, Custom);
+  setOperationAction(ISD::EXTRACT_SUBVECTOR, MVT::v16f32, Custom);
+  setOperationAction(ISD::EXTRACT_SUBVECTOR, MVT::v16i32, Custom);
+  setOperationAction(ISD::EXTRACT_SUBVECTOR, MVT::v32f32, Custom);
+  setOperationAction(ISD::EXTRACT_SUBVECTOR, MVT::v32i32, Custom);
 
   setOperationAction(ISD::FP16_TO_FP, MVT::f64, Expand);
   setOperationAction(ISD::FP_TO_FP16, MVT::f64, Custom);
@@ -719,8 +729,9 @@ bool AMDGPUTargetLowering::shouldReduceLoadWidth(SDNode *N,
   return (OldSize < 32);
 }
 
-bool AMDGPUTargetLowering::isLoadBitCastBeneficial(EVT LoadTy,
-                                                   EVT CastTy) const {
+bool AMDGPUTargetLowering::isLoadBitCastBeneficial(EVT LoadTy, EVT CastTy,
+                                                   const SelectionDAG &DAG,
+                                                   const MachineMemOperand &MMO) const {
 
   assert(LoadTy.getSizeInBits() == CastTy.getSizeInBits());
 
@@ -730,8 +741,12 @@ bool AMDGPUTargetLowering::isLoadBitCastBeneficial(EVT LoadTy,
   unsigned LScalarSize = LoadTy.getScalarSizeInBits();
   unsigned CastScalarSize = CastTy.getScalarSizeInBits();
 
-  return (LScalarSize < CastScalarSize) ||
-         (CastScalarSize >= 32);
+  if ((LScalarSize >= CastScalarSize) && (CastScalarSize < 32))
+    return false;
+
+  bool Fast = false;
+  return allowsMemoryAccess(*DAG.getContext(), DAG.getDataLayout(), CastTy,
+                            MMO, &Fast) && Fast;
 }
 
 // SI+ has instructions for cttz / ctlz for 32-bit values. This is probably also
@@ -2922,18 +2937,11 @@ bool AMDGPUTargetLowering::SelectFlatOffset(bool IsSigned,
     SDValue N1 = Addr.getOperand(1);
     int64_t COffsetVal = cast<ConstantSDNode>(N1)->getSExtValue();
 
-    if (ST.getGeneration() >= AMDGPUSubtarget::GFX10) {
-      if ((IsSigned && isInt<12>(COffsetVal)) ||
-          (!IsSigned && isUInt<11>(COffsetVal))) {
-        Addr = N0;
-        OffsetVal = COffsetVal;
-      }
-    } else {
-      if ((IsSigned && isInt<13>(COffsetVal)) ||
-          (!IsSigned && isUInt<12>(COffsetVal))) {
-        Addr = N0;
-        OffsetVal = COffsetVal;
-      }
+    const SIInstrInfo *TII = ST.getInstrInfo();
+    if (TII->isLegalFLATOffset(COffsetVal, findMemSDNode(N)->getAddressSpace(),
+                               IsSigned)) {
+      Addr = N0;
+      OffsetVal = COffsetVal;
     }
   }
 
@@ -3650,13 +3658,11 @@ SDValue AMDGPUTargetLowering::performSelectCombine(SDNode *N,
 
   if (Cond.hasOneUse()) { // TODO: Look for multiple select uses.
     SelectionDAG &DAG = DCI.DAG;
-    if ((DAG.isConstantValueOfAnyType(True) ||
-         DAG.isConstantValueOfAnyType(True)) &&
-        (!DAG.isConstantValueOfAnyType(False) &&
-         !DAG.isConstantValueOfAnyType(False))) {
+    if (DAG.isConstantValueOfAnyType(True) &&
+        !DAG.isConstantValueOfAnyType(False)) {
       // Swap cmp + select pair to move constant to false input.
       // This will allow using VOPC cndmasks more often.
-      // select (setcc x, y), k, x -> select (setcc y, x) x, x
+      // select (setcc x, y), k, x -> select (setccinv x, y), x, k
 
       SDLoc SL(N);
       ISD::CondCode NewCC = getSetCCInverse(cast<CondCodeSDNode>(CC)->get(),
@@ -4423,6 +4429,10 @@ const char* AMDGPUTargetLowering::getTargetNodeName(unsigned Opcode) const {
   NODE_NAME_CASE(BUFFER_ATOMIC_OR)
   NODE_NAME_CASE(BUFFER_ATOMIC_XOR)
   NODE_NAME_CASE(BUFFER_ATOMIC_CMPSWAP)
+  NODE_NAME_CASE(BUFFER_ATOMIC_FADD)
+  NODE_NAME_CASE(BUFFER_ATOMIC_PK_FADD)
+  NODE_NAME_CASE(ATOMIC_FADD)
+  NODE_NAME_CASE(ATOMIC_PK_FADD)
 
   case AMDGPUISD::LAST_AMDGPU_ISD_NUMBER: break;
   }

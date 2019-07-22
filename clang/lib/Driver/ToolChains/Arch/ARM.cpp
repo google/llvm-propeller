@@ -100,7 +100,6 @@ static void DecodeARMFeaturesFromCPU(const Driver &D, StringRef CPU,
 static void checkARMArchName(const Driver &D, const Arg *A, const ArgList &Args,
                              llvm::StringRef ArchName, llvm::StringRef CPUName,
                              std::vector<StringRef> &Features,
-                             std::vector<StringRef> &ExtensionFeatures,
                              const llvm::Triple &Triple) {
   std::pair<StringRef, StringRef> Split = ArchName.split("+");
 
@@ -108,7 +107,7 @@ static void checkARMArchName(const Driver &D, const Arg *A, const ArgList &Args,
   llvm::ARM::ArchKind ArchKind = llvm::ARM::parseArch(MArch);
   if (ArchKind == llvm::ARM::ArchKind::INVALID ||
       (Split.second.size() && !DecodeARMFeatures(
-        D, Split.second, CPUName, ArchKind, ExtensionFeatures)))
+        D, Split.second, CPUName, ArchKind, Features)))
     D.Diag(clang::diag::err_drv_clang_unsupported) << A->getAsString(Args);
 }
 
@@ -116,7 +115,6 @@ static void checkARMArchName(const Driver &D, const Arg *A, const ArgList &Args,
 static void checkARMCPUName(const Driver &D, const Arg *A, const ArgList &Args,
                             llvm::StringRef CPUName, llvm::StringRef ArchName,
                             std::vector<StringRef> &Features,
-                            std::vector<StringRef> &ExtensionFeatures,
                             const llvm::Triple &Triple) {
   std::pair<StringRef, StringRef> Split = CPUName.split("+");
 
@@ -125,7 +123,7 @@ static void checkARMCPUName(const Driver &D, const Arg *A, const ArgList &Args,
     arm::getLLVMArchKindForARM(CPU, ArchName, Triple);
   if (ArchKind == llvm::ARM::ArchKind::INVALID ||
       (Split.second.size() && !DecodeARMFeatures(
-        D, Split.second, CPU, ArchKind, ExtensionFeatures)))
+        D, Split.second, CPU, ArchKind, Features)))
     D.Diag(clang::diag::err_drv_clang_unsupported) << A->getAsString(Args);
 }
 
@@ -361,13 +359,13 @@ void arm::getARMTargetFeatures(const ToolChain &TC,
           << ArchArg->getAsString(Args);
     ArchName = StringRef(WaArch->getValue()).substr(7);
     checkARMArchName(D, WaArch, Args, ArchName, CPUName,
-                     Features, ExtensionFeatures, Triple);
+                     ExtensionFeatures, Triple);
     // FIXME: Set Arch.
     D.Diag(clang::diag::warn_drv_unused_argument) << WaArch->getAsString(Args);
   } else if (ArchArg) {
     ArchName = ArchArg->getValue();
     checkARMArchName(D, ArchArg, Args, ArchName, CPUName,
-                     Features, ExtensionFeatures, Triple);
+                     ExtensionFeatures, Triple);
   }
 
   // Add CPU features for generic CPUs
@@ -378,12 +376,16 @@ void arm::getARMTargetFeatures(const ToolChain &TC,
         Features.push_back(
             Args.MakeArgString((F.second ? "+" : "-") + F.first()));
   } else if (!CPUName.empty()) {
-    DecodeARMFeaturesFromCPU(D, CPUName, ExtensionFeatures);
+    // This sets the default features for the specified CPU. We certainly don't
+    // want to override the features that have been explicitly specified on the
+    // command line. Therefore, process them directly instead of appending them
+    // at the end later.
+    DecodeARMFeaturesFromCPU(D, CPUName, Features);
   }
 
   if (CPUArg)
     checkARMCPUName(D, CPUArg, Args, CPUName, ArchName,
-                    Features, ExtensionFeatures, Triple);
+                    ExtensionFeatures, Triple);
   // Honor -mfpu=. ClangAs gives preference to -Wa,-mfpu=.
   const Arg *FPUArg = Args.getLastArg(options::OPT_mfpu_EQ);
   if (WaFPU) {

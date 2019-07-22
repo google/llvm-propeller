@@ -82,6 +82,10 @@ LegalizerHelper::LegalizeResult
 LegalizerHelper::legalizeInstrStep(MachineInstr &MI) {
   LLVM_DEBUG(dbgs() << "Legalizing: "; MI.print(dbgs()));
 
+  if (MI.getOpcode() == TargetOpcode::G_INTRINSIC ||
+      MI.getOpcode() == TargetOpcode::G_INTRINSIC_W_SIDE_EFFECTS)
+    return LI.legalizeIntrinsic(MI, MRI, MIRBuilder) ? Legalized
+                                                     : UnableToLegalize;
   auto Step = LI.getAction(MI, MRI);
   switch (Step.Action) {
   case Legal:
@@ -311,6 +315,55 @@ simpleLibcall(MachineInstr &MI, MachineIRBuilder &MIRBuilder, unsigned Size,
     Args.push_back({MI.getOperand(i).getReg(), OpType});
   return createLibcall(MIRBuilder, Libcall, {MI.getOperand(0).getReg(), OpType},
                        Args);
+}
+
+LegalizerHelper::LegalizeResult
+llvm::createMemLibcall(MachineIRBuilder &MIRBuilder, MachineRegisterInfo &MRI,
+                       MachineInstr &MI) {
+  assert(MI.getOpcode() == TargetOpcode::G_INTRINSIC_W_SIDE_EFFECTS);
+  auto &Ctx = MIRBuilder.getMF().getFunction().getContext();
+
+  SmallVector<CallLowering::ArgInfo, 3> Args;
+  for (unsigned i = 1; i < MI.getNumOperands(); i++) {
+    Register Reg = MI.getOperand(i).getReg();
+
+    // Need derive an IR type for call lowering.
+    LLT OpLLT = MRI.getType(Reg);
+    Type *OpTy = nullptr;
+    if (OpLLT.isPointer())
+      OpTy = Type::getInt8PtrTy(Ctx, OpLLT.getAddressSpace());
+    else
+      OpTy = IntegerType::get(Ctx, OpLLT.getSizeInBits());
+    Args.push_back({Reg, OpTy});
+  }
+
+  auto &CLI = *MIRBuilder.getMF().getSubtarget().getCallLowering();
+  auto &TLI = *MIRBuilder.getMF().getSubtarget().getTargetLowering();
+  Intrinsic::ID ID = MI.getOperand(0).getIntrinsicID();
+  RTLIB::Libcall RTLibcall;
+  switch (ID) {
+  case Intrinsic::memcpy:
+    RTLibcall = RTLIB::MEMCPY;
+    break;
+  case Intrinsic::memset:
+    RTLibcall = RTLIB::MEMSET;
+    break;
+  case Intrinsic::memmove:
+    RTLibcall = RTLIB::MEMMOVE;
+    break;
+  default:
+    return LegalizerHelper::UnableToLegalize;
+  }
+  const char *Name = TLI.getLibcallName(RTLibcall);
+
+  MIRBuilder.setInstr(MI);
+  MIRBuilder.getMF().getFrameInfo().setHasCalls(true);
+  if (!CLI.lowerCall(MIRBuilder, TLI.getLibcallCallingConv(RTLibcall),
+                     MachineOperand::CreateES(Name),
+                     CallLowering::ArgInfo({0}, Type::getVoidTy(Ctx)), Args))
+    return LegalizerHelper::UnableToLegalize;
+
+  return LegalizerHelper::Legalized;
 }
 
 static RTLIB::Libcall getConvRTLibDesc(unsigned Opcode, Type *ToType,
@@ -704,6 +757,81 @@ LegalizerHelper::LegalizeResult LegalizerHelper::narrowScalar(MachineInstr &MI,
     narrowScalarDst(MI, NarrowTy, 0, TargetOpcode::G_ZEXT);
     Observer.changedInstr(MI);
     return Legalized;
+  case TargetOpcode::G_PHI: {
+    unsigned NumParts = SizeOp0 / NarrowSize;
+    SmallVector<Register, 2> DstRegs;
+    SmallVector<SmallVector<Register, 2>, 2> SrcRegs;
+    DstRegs.resize(NumParts);
+    SrcRegs.resize(MI.getNumOperands() / 2);
+    Observer.changingInstr(MI);
+    for (unsigned i = 1; i < MI.getNumOperands(); i += 2) {
+      MachineBasicBlock &OpMBB = *MI.getOperand(i + 1).getMBB();
+      MIRBuilder.setInsertPt(OpMBB, OpMBB.getFirstTerminator());
+      extractParts(MI.getOperand(i).getReg(), NarrowTy, NumParts,
+                   SrcRegs[i / 2]);
+    }
+    MachineBasicBlock &MBB = *MI.getParent();
+    MIRBuilder.setInsertPt(MBB, MI);
+    for (unsigned i = 0; i < NumParts; ++i) {
+      DstRegs[i] = MRI.createGenericVirtualRegister(NarrowTy);
+      MachineInstrBuilder MIB =
+          MIRBuilder.buildInstr(TargetOpcode::G_PHI).addDef(DstRegs[i]);
+      for (unsigned j = 1; j < MI.getNumOperands(); j += 2)
+        MIB.addUse(SrcRegs[j / 2][i]).add(MI.getOperand(j + 1));
+    }
+    MIRBuilder.setInsertPt(MBB, --MBB.getFirstNonPHI());
+    MIRBuilder.buildMerge(MI.getOperand(0).getReg(), DstRegs);
+    Observer.changedInstr(MI);
+    MI.eraseFromParent();
+    return Legalized;
+  }
+  case TargetOpcode::G_EXTRACT_VECTOR_ELT:
+  case TargetOpcode::G_INSERT_VECTOR_ELT: {
+    if (TypeIdx != 2)
+      return UnableToLegalize;
+
+    int OpIdx = MI.getOpcode() == TargetOpcode::G_EXTRACT_VECTOR_ELT ? 2 : 3;
+    Observer.changingInstr(MI);
+    narrowScalarSrc(MI, NarrowTy, OpIdx);
+    Observer.changedInstr(MI);
+    return Legalized;
+  }
+  case TargetOpcode::G_ICMP: {
+    uint64_t SrcSize = MRI.getType(MI.getOperand(2).getReg()).getSizeInBits();
+    if (NarrowSize * 2 != SrcSize)
+      return UnableToLegalize;
+
+    Observer.changingInstr(MI);
+    Register LHSL = MRI.createGenericVirtualRegister(NarrowTy);
+    Register LHSH = MRI.createGenericVirtualRegister(NarrowTy);
+    MIRBuilder.buildUnmerge({LHSL, LHSH}, MI.getOperand(2).getReg());
+
+    Register RHSL = MRI.createGenericVirtualRegister(NarrowTy);
+    Register RHSH = MRI.createGenericVirtualRegister(NarrowTy);
+    MIRBuilder.buildUnmerge({RHSL, RHSH}, MI.getOperand(3).getReg());
+
+    CmpInst::Predicate Pred =
+        static_cast<CmpInst::Predicate>(MI.getOperand(1).getPredicate());
+
+    if (Pred == CmpInst::ICMP_EQ || Pred == CmpInst::ICMP_NE) {
+      MachineInstrBuilder XorL = MIRBuilder.buildXor(NarrowTy, LHSL, RHSL);
+      MachineInstrBuilder XorH = MIRBuilder.buildXor(NarrowTy, LHSH, RHSH);
+      MachineInstrBuilder Or = MIRBuilder.buildOr(NarrowTy, XorL, XorH);
+      MachineInstrBuilder Zero = MIRBuilder.buildConstant(NarrowTy, 0);
+      MIRBuilder.buildICmp(Pred, MI.getOperand(0).getReg(), Or, Zero);
+    } else {
+      const LLT s1 = LLT::scalar(1);
+      MachineInstrBuilder CmpH = MIRBuilder.buildICmp(Pred, s1, LHSH, RHSH);
+      MachineInstrBuilder CmpHEQ =
+          MIRBuilder.buildICmp(CmpInst::Predicate::ICMP_EQ, s1, LHSH, RHSH);
+      MachineInstrBuilder CmpLU = MIRBuilder.buildICmp(
+          ICmpInst::getUnsignedPredicate(Pred), s1, LHSL, RHSL);
+      MIRBuilder.buildSelect(MI.getOperand(0).getReg(), CmpHEQ, CmpLU, CmpH);
+    }
+    Observer.changedInstr(MI);
+    MI.eraseFromParent();
+    return Legalized;
+  }
   }
 }
 
@@ -787,31 +915,112 @@ LegalizerHelper::widenScalarMergeValues(MachineInstr &MI, unsigned TypeIdx,
 
   Register DstReg = MI.getOperand(0).getReg();
   LLT DstTy = MRI.getType(DstReg);
-  if (!DstTy.isScalar())
+  if (DstTy.isVector())
     return UnableToLegalize;
+
+  Register Src1 = MI.getOperand(1).getReg();
+  LLT SrcTy = MRI.getType(Src1);
+  const int DstSize = DstTy.getSizeInBits();
+  const int SrcSize = SrcTy.getSizeInBits();
+  const int WideSize = WideTy.getSizeInBits();
+  const int NumMerge = (DstSize + WideSize - 1) / WideSize;
 
   unsigned NumOps = MI.getNumOperands();
   unsigned NumSrc = MI.getNumOperands() - 1;
   unsigned PartSize = DstTy.getSizeInBits() / NumSrc;
 
-  Register Src1 = MI.getOperand(1).getReg();
-  Register ResultReg = MIRBuilder.buildZExt(DstTy, Src1)->getOperand(0).getReg();
+  if (WideSize >= DstSize) {
+    // Directly pack the bits in the target type.
+    Register ResultReg = MIRBuilder.buildZExt(WideTy, Src1).getReg(0);
 
-  for (unsigned I = 2; I != NumOps; ++I) {
-    const unsigned Offset = (I - 1) * PartSize;
+    for (unsigned I = 2; I != NumOps; ++I) {
+      const unsigned Offset = (I - 1) * PartSize;
 
+      Register SrcReg = MI.getOperand(I).getReg();
+      assert(MRI.getType(SrcReg) == LLT::scalar(PartSize));
+
+      auto ZextInput = MIRBuilder.buildZExt(WideTy, SrcReg);
+
+      Register NextResult = I + 1 == NumOps && WideSize == DstSize ? DstReg :
+        MRI.createGenericVirtualRegister(WideTy);
+
+      auto ShiftAmt = MIRBuilder.buildConstant(WideTy, Offset);
+      auto Shl = MIRBuilder.buildShl(WideTy, ZextInput, ShiftAmt);
+      MIRBuilder.buildOr(NextResult, ResultReg, Shl);
+      ResultReg = NextResult;
+    }
+
+    if (WideSize > DstSize)
+      MIRBuilder.buildTrunc(DstReg, ResultReg);
+
+    MI.eraseFromParent();
+    return Legalized;
+  }
+
+  // Unmerge the original values to the GCD type, and recombine to the next
+  // multiple greater than the original type.
+  //
+  // %3:_(s12) = G_MERGE_VALUES %0:_(s4), %1:_(s4), %2:_(s4) -> s6
+  // %4:_(s2), %5:_(s2) = G_UNMERGE_VALUES %0
+  // %6:_(s2), %7:_(s2) = G_UNMERGE_VALUES %1
+  // %8:_(s2), %9:_(s2) = G_UNMERGE_VALUES %2
+  // %10:_(s6) = G_MERGE_VALUES %4, %5, %6
+  // %11:_(s6) = G_MERGE_VALUES %7, %8, %9
+  // %12:_(s12) = G_MERGE_VALUES %10, %11
+  //
+  // Padding with undef if necessary:
+  //
+  // %2:_(s8) = G_MERGE_VALUES %0:_(s4), %1:_(s4) -> s6
+  // %3:_(s2), %4:_(s2) = G_UNMERGE_VALUES %0
+  // %5:_(s2), %6:_(s2) = G_UNMERGE_VALUES %1
+  // %7:_(s2) = G_IMPLICIT_DEF
+  // %8:_(s6) = G_MERGE_VALUES %3, %4, %5
+  // %9:_(s6) = G_MERGE_VALUES %6, %7, %7
+  // %10:_(s12) = G_MERGE_VALUES %8, %9
+
+  const int GCD = greatestCommonDivisor(SrcSize, WideSize);
+  LLT GCDTy = LLT::scalar(GCD);
+
+  SmallVector<Register, 8> Parts;
+  SmallVector<Register, 8> NewMergeRegs;
+  SmallVector<Register, 8> Unmerges;
+  LLT WideDstTy = LLT::scalar(NumMerge * WideSize);
+
+  // Decompose the original operands if they don't evenly divide.
+  for (int I = 1, E = MI.getNumOperands(); I != E; ++I) {
     Register SrcReg = MI.getOperand(I).getReg();
-    assert(MRI.getType(SrcReg) == LLT::scalar(PartSize));
+    if (GCD == SrcSize) {
+      Unmerges.push_back(SrcReg);
+    } else {
+      auto Unmerge = MIRBuilder.buildUnmerge(GCDTy, SrcReg);
+      for (int J = 0, JE = Unmerge->getNumOperands() - 1; J != JE; ++J)
+        Unmerges.push_back(Unmerge.getReg(J));
+    }
+  }
 
-    auto ZextInput = MIRBuilder.buildZExt(DstTy, SrcReg);
+  // Pad with undef to the next size that is a multiple of the requested size.
+  if (static_cast<int>(Unmerges.size()) != NumMerge * WideSize) {
+    Register UndefReg = MIRBuilder.buildUndef(GCDTy).getReg(0);
+    for (int I = Unmerges.size(); I != NumMerge * WideSize; ++I)
+      Unmerges.push_back(UndefReg);
+  }
 
-    Register NextResult = I + 1 == NumOps ? DstReg :
-      MRI.createGenericVirtualRegister(DstTy);
+  const int PartsPerGCD = WideSize / GCD;
 
-    auto ShiftAmt = MIRBuilder.buildConstant(DstTy, Offset);
-    auto Shl = MIRBuilder.buildShl(DstTy, ZextInput, ShiftAmt);
-    MIRBuilder.buildOr(NextResult, ResultReg, Shl);
-    ResultReg = NextResult;
+  // Build merges of each piece.
+  ArrayRef<Register> Slicer(Unmerges);
+  for (int I = 0; I != NumMerge; ++I, Slicer = Slicer.drop_front(PartsPerGCD)) {
+    auto Merge = MIRBuilder.buildMerge(WideTy, Slicer.take_front(PartsPerGCD));
+    NewMergeRegs.push_back(Merge.getReg(0));
+  }
+
+  // A truncate may be necessary if the requested type doesn't evenly divide the
+  // original result type.
+  if (DstTy.getSizeInBits() == WideDstTy.getSizeInBits()) {
+    MIRBuilder.buildMerge(DstReg, NewMergeRegs);
+  } else {
+    auto FinalMerge = MIRBuilder.buildMerge(WideDstTy, NewMergeRegs);
+    MIRBuilder.buildTrunc(DstReg, FinalMerge.getReg(0));
   }
 
   MI.eraseFromParent();
@@ -1326,6 +1535,12 @@ LegalizerHelper::widenScalar(MachineInstr &MI, unsigned TypeIdx, LLT WideTy) {
   case TargetOpcode::G_FNEG:
   case TargetOpcode::G_FABS:
   case TargetOpcode::G_FCANONICALIZE:
+  case TargetOpcode::G_FMINNUM:
+  case TargetOpcode::G_FMAXNUM:
+  case TargetOpcode::G_FMINNUM_IEEE:
+  case TargetOpcode::G_FMAXNUM_IEEE:
+  case TargetOpcode::G_FMINIMUM:
+  case TargetOpcode::G_FMAXIMUM:
   case TargetOpcode::G_FDIV:
   case TargetOpcode::G_FREM:
   case TargetOpcode::G_FCEIL:
@@ -1368,6 +1583,25 @@ LegalizerHelper::widenScalar(MachineInstr &MI, unsigned TypeIdx, LLT WideTy) {
     widenScalarDst(MI, WideTy, 0);
     Observer.changedInstr(MI);
     return Legalized;
+  case TargetOpcode::G_BUILD_VECTOR: {
+    Observer.changingInstr(MI);
+
+    const LLT WideEltTy = TypeIdx == 1 ? WideTy : WideTy.getElementType();
+    for (int I = 1, E = MI.getNumOperands(); I != E; ++I)
+      widenScalarSrc(MI, WideEltTy, I, TargetOpcode::G_ANYEXT);
+
+    // Avoid changing the result vector type if the source element type was
+    // requested.
+    if (TypeIdx == 1) {
+      auto &TII = *MI.getMF()->getSubtarget().getInstrInfo();
+      MI.setDesc(TII.get(TargetOpcode::G_BUILD_VECTOR_TRUNC));
+    } else {
+      widenScalarDst(MI, WideTy, 0);
+    }
+
+    Observer.changedInstr(MI);
+    return Legalized;
+  }
   }
 }
 
@@ -1612,6 +1846,16 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     return lowerUITOFP(MI, TypeIdx, Ty);
   case G_SITOFP:
     return lowerSITOFP(MI, TypeIdx, Ty);
+  case G_SMIN:
+  case G_SMAX:
+  case G_UMIN:
+  case G_UMAX:
+    return lowerMinMax(MI, TypeIdx, Ty);
+  case G_FCOPYSIGN:
+    return lowerFCopySign(MI, TypeIdx, Ty);
+  case G_FMINNUM:
+  case G_FMAXNUM:
+    return lowerFMinNumMaxNum(MI);
   }
 }
 
@@ -1762,12 +2006,10 @@ LegalizerHelper::fewerElementsVectorMultiEltType(
   LLT DstTy = MRI.getType(DstReg);
   LLT LeftoverTy0;
 
-  int NumParts, NumLeftover;
   // All of the operands need to have the same number of elements, so if we can
   // determine a type breakdown for the result type, we can for all of the
   // source types.
-  std::tie(NumParts, NumLeftover)
-    = getNarrowTypeBreakDown(DstTy, NarrowTy0, LeftoverTy0);
+  int NumParts = getNarrowTypeBreakDown(DstTy, NarrowTy0, LeftoverTy0).first;
   if (NumParts < 0)
     return UnableToLegalize;
 
@@ -2223,6 +2465,12 @@ LegalizerHelper::fewerElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case G_SMAX:
   case G_UMIN:
   case G_UMAX:
+  case G_FMINNUM:
+  case G_FMAXNUM:
+  case G_FMINNUM_IEEE:
+  case G_FMAXNUM_IEEE:
+  case G_FMINIMUM:
+  case G_FMAXIMUM:
     return fewerElementsVectorBasic(MI, TypeIdx, NarrowTy);
   case G_SHL:
   case G_LSHR:
@@ -3109,4 +3357,114 @@ LegalizerHelper::lowerSITOFP(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
   }
 
   return UnableToLegalize;
+}
+
+static CmpInst::Predicate minMaxToCompare(unsigned Opc) {
+  switch (Opc) {
+  case TargetOpcode::G_SMIN:
+    return CmpInst::ICMP_SLT;
+  case TargetOpcode::G_SMAX:
+    return CmpInst::ICMP_SGT;
+  case TargetOpcode::G_UMIN:
+    return CmpInst::ICMP_ULT;
+  case TargetOpcode::G_UMAX:
+    return CmpInst::ICMP_UGT;
+  default:
+    llvm_unreachable("not in integer min/max");
+  }
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerMinMax(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
+  Register Dst = MI.getOperand(0).getReg();
+  Register Src0 = MI.getOperand(1).getReg();
+  Register Src1 = MI.getOperand(2).getReg();
+
+  const CmpInst::Predicate Pred = minMaxToCompare(MI.getOpcode());
+  LLT CmpType = MRI.getType(Dst).changeElementSize(1);
+
+  auto Cmp = MIRBuilder.buildICmp(Pred, CmpType, Src0, Src1);
+  MIRBuilder.buildSelect(Dst, Cmp, Src0, Src1);
+
+  MI.eraseFromParent();
+  return Legalized;
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerFCopySign(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
+  Register Dst = MI.getOperand(0).getReg();
+  Register Src0 = MI.getOperand(1).getReg();
+  Register Src1 = MI.getOperand(2).getReg();
+
+  const LLT Src0Ty = MRI.getType(Src0);
+  const LLT Src1Ty = MRI.getType(Src1);
+
+  const int Src0Size = Src0Ty.getScalarSizeInBits();
+  const int Src1Size = Src1Ty.getScalarSizeInBits();
+
+  auto SignBitMask = MIRBuilder.buildConstant(
+    Src0Ty, APInt::getSignMask(Src0Size));
+
+  auto NotSignBitMask = MIRBuilder.buildConstant(
+    Src0Ty, APInt::getLowBitsSet(Src0Size, Src0Size - 1));
+
+  auto And0 = MIRBuilder.buildAnd(Src0Ty, Src0, NotSignBitMask);
+  MachineInstr *Or;
+
+  if (Src0Ty == Src1Ty) {
+    auto And1 = MIRBuilder.buildAnd(Src1Ty, Src0, SignBitMask);
+    Or = MIRBuilder.buildOr(Dst, And0, And1);
+  } else if (Src0Size > Src1Size) {
+    auto ShiftAmt = MIRBuilder.buildConstant(Src0Ty, Src0Size - Src1Size);
+    auto Zext = MIRBuilder.buildZExt(Src0Ty, Src1);
+    auto Shift = MIRBuilder.buildShl(Src0Ty, Zext, ShiftAmt);
+    auto And1 = MIRBuilder.buildAnd(Src0Ty, Shift, SignBitMask);
+    Or = MIRBuilder.buildOr(Dst, And0, And1);
+  } else {
+    auto ShiftAmt = MIRBuilder.buildConstant(Src1Ty, Src1Size - Src0Size);
+    auto Shift = MIRBuilder.buildLShr(Src1Ty, Src1, ShiftAmt);
+    auto Trunc = MIRBuilder.buildTrunc(Src0Ty, Shift);
+    auto And1 = MIRBuilder.buildAnd(Src0Ty, Trunc, SignBitMask);
+    Or = MIRBuilder.buildOr(Dst, And0, And1);
+  }
+
+  // Be careful about setting nsz/nnan/ninf on every instruction, since the
+  // constants are a nan and -0.0, but the final result should preserve
+  // everything.
+  if (unsigned Flags = MI.getFlags())
+    Or->setFlags(Flags);
+
+  MI.eraseFromParent();
+  return Legalized;
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerFMinNumMaxNum(MachineInstr &MI) {
+  unsigned NewOp = MI.getOpcode() == TargetOpcode::G_FMINNUM ?
+    TargetOpcode::G_FMINNUM_IEEE : TargetOpcode::G_FMAXNUM_IEEE;
+
+  Register Dst = MI.getOperand(0).getReg();
+  Register Src0 = MI.getOperand(1).getReg();
+  Register Src1 = MI.getOperand(2).getReg();
+  LLT Ty = MRI.getType(Dst);
+
+  if (!MI.getFlag(MachineInstr::FmNoNans)) {
+    // Insert canonicalizes if it's possible we need to quiet to get correct
+    // sNaN behavior.
+
+    // Note this must be done here, and not as an optimization combine in the
+    // absence of a dedicate quiet-snan instruction as we're using an
+    // omni-purpose G_FCANONICALIZE.
+    if (!isKnownNeverSNaN(Src0, MRI))
+      Src0 = MIRBuilder.buildFCanonicalize(Ty, Src0, MI.getFlags()).getReg(0);
+
+    if (!isKnownNeverSNaN(Src1, MRI))
+      Src1 = MIRBuilder.buildFCanonicalize(Ty, Src1, MI.getFlags()).getReg(0);
+  }
+
+  // If there are no nans, it's safe to simply replace this with the non-IEEE
+  // version.
+  MIRBuilder.buildInstr(NewOp, {Dst}, {Src0, Src1}, MI.getFlags());
+  MI.eraseFromParent();
+  return Legalized;
 }

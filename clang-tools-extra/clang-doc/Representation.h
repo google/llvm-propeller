@@ -75,15 +75,16 @@ struct CommentInfo {
                  Other.ParamName, Other.CloseName, Other.SelfClosing,
                  Other.Explicit, Other.AttrKeys, Other.AttrValues, Other.Args);
 
-    if (FirstCI < SecondCI ||
-        (FirstCI == SecondCI && Children.size() < Other.Children.size()))
+    if (FirstCI < SecondCI)
       return true;
 
-    if (FirstCI > SecondCI || Children.size() > Other.Children.size())
-      return false;
+    if (FirstCI == SecondCI) {
+      return std::lexicographical_compare(
+          Children.begin(), Children.end(), Other.Children.begin(),
+          Other.Children.end(), llvm::deref<llvm::less>());
+    }
 
-    return std::equal(Children.begin(), Children.end(), Other.Children.begin(),
-                      llvm::deref<llvm::less>{});
+    return false;
   }
 
   SmallString<16>
@@ -113,8 +114,11 @@ struct CommentInfo {
 struct Reference {
   Reference() = default;
   Reference(llvm::StringRef Name) : Name(Name) {}
+  Reference(llvm::StringRef Name, StringRef Path) : Name(Name), Path(Path) {}
   Reference(SymbolID USR, StringRef Name, InfoType IT)
       : USR(USR), Name(Name), RefType(IT) {}
+  Reference(SymbolID USR, StringRef Name, InfoType IT, StringRef Path)
+      : USR(USR), Name(Name), RefType(IT), Path(Path) {}
 
   bool operator==(const Reference &Other) const {
     return std::tie(USR, Name, RefType) ==
@@ -126,6 +130,8 @@ struct Reference {
   InfoType RefType = InfoType::IT_default; // Indicates the type of this
                                            // Reference (namespace, record,
                                            // function, enum, default).
+  llvm::SmallString<128> Path; // Path of directory where the clang-doc
+                               // generated file will be saved
 };
 
 // A base struct for TypeInfos
@@ -133,7 +139,10 @@ struct TypeInfo {
   TypeInfo() = default;
   TypeInfo(SymbolID Type, StringRef Field, InfoType IT)
       : Type(Type, Field, IT) {}
+  TypeInfo(SymbolID Type, StringRef Field, InfoType IT, StringRef Path)
+      : Type(Type, Field, IT, Path) {}
   TypeInfo(llvm::StringRef RefName) : Type(RefName) {}
+  TypeInfo(llvm::StringRef RefName, StringRef Path) : Type(RefName, Path) {}
 
   bool operator==(const TypeInfo &Other) const { return Type == Other.Type; }
 
@@ -143,11 +152,13 @@ struct TypeInfo {
 // Info for field types.
 struct FieldTypeInfo : public TypeInfo {
   FieldTypeInfo() = default;
-  FieldTypeInfo(SymbolID Type, StringRef Field, InfoType IT,
+  FieldTypeInfo(SymbolID Type, StringRef Field, InfoType IT, StringRef Path,
                 llvm::StringRef Name)
-      : TypeInfo(Type, Field, IT), Name(Name) {}
+      : TypeInfo(Type, Field, IT, Path), Name(Name) {}
   FieldTypeInfo(llvm::StringRef RefName, llvm::StringRef Name)
       : TypeInfo(RefName), Name(Name) {}
+  FieldTypeInfo(llvm::StringRef RefName, StringRef Path, llvm::StringRef Name)
+      : TypeInfo(RefName, Path), Name(Name) {}
 
   bool operator==(const FieldTypeInfo &Other) const {
     return std::tie(Type, Name) == std::tie(Other.Type, Other.Name);
@@ -159,12 +170,15 @@ struct FieldTypeInfo : public TypeInfo {
 // Info for member types.
 struct MemberTypeInfo : public FieldTypeInfo {
   MemberTypeInfo() = default;
-  MemberTypeInfo(SymbolID Type, StringRef Field, InfoType IT,
+  MemberTypeInfo(SymbolID Type, StringRef Field, InfoType IT, StringRef Path,
                  llvm::StringRef Name, AccessSpecifier Access)
-      : FieldTypeInfo(Type, Field, IT, Name), Access(Access) {}
+      : FieldTypeInfo(Type, Field, IT, Path, Name), Access(Access) {}
   MemberTypeInfo(llvm::StringRef RefName, llvm::StringRef Name,
                  AccessSpecifier Access)
       : FieldTypeInfo(RefName, Name), Access(Access) {}
+  MemberTypeInfo(llvm::StringRef RefName, StringRef Path, llvm::StringRef Name,
+                 AccessSpecifier Access)
+      : FieldTypeInfo(RefName, Path, Name), Access(Access) {}
 
   bool operator==(const MemberTypeInfo &Other) const {
     return std::tie(Type, Name, Access) ==
@@ -219,6 +233,8 @@ struct Info {
   llvm::SmallVector<Reference, 4>
       Namespace; // List of parent namespaces for this decl.
   std::vector<CommentInfo> Description; // Comment description of this decl.
+  llvm::SmallString<128> Path;          // Path of directory where the clang-doc
+                                        // generated file will be saved
 
   void mergeBase(Info &&I);
   bool mergeable(const Info &Other);

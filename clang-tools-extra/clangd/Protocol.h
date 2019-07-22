@@ -393,9 +393,15 @@ struct ClientCapabilities {
   bool CompletionFixes = false;
 
   /// Client supports hierarchical document symbols.
+  /// textDocument.documentSymbol.hierarchicalDocumentSymbolSupport
   bool HierarchicalDocumentSymbol = false;
 
+  /// Client supports signature help.
+  /// textDocument.signatureHelp
+  bool HasSignatureHelp = false;
+
   /// Client supports processing label offsets instead of a simple label string.
+  /// textDocument.signatureHelp.signatureInformation.parameterInformation.labelOffsetSupport
   bool OffsetsInSignatureHelp = false;
 
   /// The supported set of CompletionItemKinds for textDocument/completion.
@@ -406,10 +412,15 @@ struct ClientCapabilities {
   /// textDocument.codeAction.codeActionLiteralSupport.
   bool CodeActionStructure = false;
 
+  /// Client supports semantic highlighting.
+  /// textDocument.semanticHighlightingCapabilities.semanticHighlighting
+  bool SemanticHighlighting = false;
+
   /// Supported encodings for LSP character offsets. (clangd extension).
   llvm::Optional<std::vector<OffsetEncoding>> offsetEncoding;
 
   /// The content format that should be used for Hover requests.
+  /// textDocument.hover.contentEncoding
   MarkupKind HoverContentFormat = MarkupKind::PlainText;
 };
 bool fromJSON(const llvm::json::Value &, ClientCapabilities &);
@@ -665,17 +676,11 @@ llvm::json::Value toJSON(const Diagnostic &);
 
 /// A LSP-specific comparator used to find diagnostic in a container like
 /// std:map.
-/// We only use as many fields of Diagnostic as is needed to make distinct
-/// diagnostics unique in practice, to avoid  regression issues from LSP clients
-/// (e.g. VScode), see https://git.io/vbr29
+/// We only use the required fields of Diagnostic to do the comparsion to avoid
+/// any regression issues from LSP clients (e.g. VScode), see
+/// https://git.io/vbr29
 struct LSPDiagnosticCompare {
   bool operator()(const Diagnostic &LHS, const Diagnostic &RHS) const {
-    if (!LHS.code.empty() && !RHS.code.empty()) {
-      // If the code is known for both, use the code to diambiguate, as e.g.
-      // two checkers could produce diagnostics with the same range and message.
-      return std::tie(LHS.range, LHS.message, LHS.code) <
-             std::tie(RHS.range, RHS.message, RHS.code);
-    }
     return std::tie(LHS.range, LHS.message) < std::tie(RHS.range, RHS.message);
   }
 };
@@ -1122,7 +1127,7 @@ struct TypeHierarchyItem {
   SymbolKind kind;
 
   /// `true` if the hierarchy item is deprecated. Otherwise, `false`.
-  bool deprecated;
+  bool deprecated = false;
 
   /// The URI of the text document where this type hierarchy item belongs to.
   URIForFile uri;
@@ -1148,13 +1153,26 @@ struct TypeHierarchyItem {
   /// descendants. If not defined, the children have not been resolved.
   llvm::Optional<std::vector<TypeHierarchyItem>> children;
 
-  /// The protocol has a slot here for an optional 'data' filed, which can
-  /// be used to identify a type hierarchy item in a resolve request. We don't
-  /// need this (the item itself is sufficient to identify what to resolve)
-  /// so don't declare it.
+  /// An optional 'data' filed, which can be used to identify a type hierarchy
+  /// item in a resolve request.
+  llvm::Optional<std::string> data;
 };
 llvm::json::Value toJSON(const TypeHierarchyItem &);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const TypeHierarchyItem &);
+bool fromJSON(const llvm::json::Value &, TypeHierarchyItem &);
+
+/// Parameters for the `typeHierarchy/resolve` request.
+struct ResolveTypeHierarchyItemParams {
+  /// The item to resolve.
+  TypeHierarchyItem item;
+
+  /// The hierarchy levels to resolve. `0` indicates no level.
+  int resolve;
+
+  /// The direction of the hierarchy levels to resolve.
+  TypeHierarchyDirection direction;
+};
+bool fromJSON(const llvm::json::Value &, ResolveTypeHierarchyItemParams &);
 
 struct ReferenceParams : public TextDocumentPositionParams {
   // For now, no options like context.includeDeclaration are supported.
@@ -1172,6 +1190,27 @@ struct FileStatus {
   // FIXME: add detail messages.
 };
 llvm::json::Value toJSON(const FileStatus &FStatus);
+
+/// Represents a semantic highlighting information that has to be applied on a
+/// specific line of the text document.
+struct SemanticHighlightingInformation {
+  /// The line these highlightings belong to.
+  int Line;
+  /// The base64 encoded string of highlighting tokens.
+  std::string Tokens;
+};
+bool operator==(const SemanticHighlightingInformation &Lhs,
+                const SemanticHighlightingInformation &Rhs);
+llvm::json::Value toJSON(const SemanticHighlightingInformation &Highlighting);
+
+/// Parameters for the semantic highlighting (server-side) push notification.
+struct SemanticHighlightingParams {
+  /// The textdocument these highlightings belong to.
+  TextDocumentIdentifier TextDocument;
+  /// The lines of highlightings that should be sent.
+  std::vector<SemanticHighlightingInformation> Lines;
+};
+llvm::json::Value toJSON(const SemanticHighlightingParams &Highlighting);
 
 } // namespace clangd
 } // namespace clang

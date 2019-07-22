@@ -20,8 +20,8 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Format/Format.h"
 #include "clang/Tooling/Core/Replacement.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/SHA1.h"
 
 namespace clang {
@@ -32,7 +32,7 @@ namespace clangd {
 // We tend to generate digests for source codes in a lot of different places.
 // This represents the type for those digests to prevent us hard coding details
 // of hashing function at every place that needs to store this information.
-using FileDigest = decltype(llvm::SHA1::hash({}));
+using FileDigest = std::array<uint8_t, 8>;
 FileDigest digest(StringRef Content);
 Optional<FileDigest> digestFile(const SourceManager &SM, FileID FID);
 
@@ -74,6 +74,14 @@ llvm::Optional<Range> getTokenRange(const SourceManager &SM,
 /// care to avoid comparing the result with expansion locations.
 llvm::Expected<SourceLocation> sourceLocationInMainFile(const SourceManager &SM,
                                                         Position P);
+
+/// Returns true iff \p Loc is inside the main file. This function handles
+/// file & macro locations. For macro locations, returns iff the macro is being
+/// expanded inside the main file.
+///
+/// The function is usually used to check whether a declaration is inside the
+/// the main file.
+bool isInsideMainFile(SourceLocation Loc, const SourceManager &SM);
 
 /// Turns a token range into a half-open range and checks its correctness.
 /// The resulting range will have only valid source location on both sides, both
@@ -200,6 +208,14 @@ llvm::StringSet<> collectWords(llvm::StringRef Content);
 /// visibleNamespaces are {"foo::", "", "a::", "b::", "foo::b::"}, not "a::b::".
 std::vector<std::string> visibleNamespaces(llvm::StringRef Code,
                                            const format::FormatStyle &Style);
+
+struct DefinedMacro {
+  llvm::StringRef Name;
+  const MacroInfo *Info;
+};
+// Gets the macro at a specified \p Loc.
+llvm::Optional<DefinedMacro> locateMacroAt(SourceLocation Loc,
+                                           Preprocessor &PP);
 
 } // namespace clangd
 } // namespace clang

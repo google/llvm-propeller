@@ -104,8 +104,7 @@ llvm::Optional<ReasonToReject> renamableWithinFile(const Decl &RenameDecl,
   auto &ASTCtx = RenameDecl.getASTContext();
   const auto &SM = ASTCtx.getSourceManager();
   bool MainFileIsHeader = ASTCtx.getLangOpts().IsHeaderFile;
-  bool DeclaredInMainFile =
-      SM.isWrittenInMainFile(SM.getExpansionLoc(RenameDecl.getLocation()));
+  bool DeclaredInMainFile = isInsideMainFile(RenameDecl.getBeginLoc(), SM);
 
   // If the symbol is declared in the main file (which is not a header), we
   // rename it.
@@ -136,6 +135,25 @@ llvm::Optional<ReasonToReject> renamableWithinFile(const Decl &RenameDecl,
   return ReasonToReject::UsedOutsideFile;
 }
 
+llvm::Error makeError(ReasonToReject Reason) {
+  auto Message = [](ReasonToReject Reason) {
+    switch (Reason) {
+    case NoIndexProvided:
+      return "symbol may be used in other files (no index available)";
+    case UsedOutsideFile:
+      return "the symbol is used outside main file";
+    case NonIndexable:
+      return "symbol may be used in other files (not eligible for indexing)";
+    case UnsupportedSymbol:
+      return "symbol is not a supported kind (e.g. namespace, macro)";
+    }
+    llvm_unreachable("unhandled reason kind");
+  };
+  return llvm::make_error<llvm::StringError>(
+      llvm::formatv("Cannot rename symbol: {0}", Message(Reason)),
+      llvm::inconvertibleErrorCode());
+}
+
 } // namespace
 
 llvm::Expected<tooling::Replacements>
@@ -145,6 +163,10 @@ renameWithinFile(ParsedAST &AST, llvm::StringRef File, Position Pos,
   ASTContext &ASTCtx = AST.getASTContext();
   SourceLocation SourceLocationBeg = clangd::getBeginningOfIdentifier(
       AST, Pos, AST.getSourceManager().getMainFileID());
+  // FIXME: renaming macros is not supported yet, the macro-handling code should
+  // be moved to rename tooling library.
+  if (locateMacroAt(SourceLocationBeg, AST.getPreprocessor()))
+    return makeError(UnsupportedSymbol);
   tooling::RefactoringRuleContext Context(AST.getSourceManager());
   Context.setASTContext(ASTCtx);
   auto Rename = clang::tooling::RenameOccurrences::initiate(
@@ -155,24 +177,8 @@ renameWithinFile(ParsedAST &AST, llvm::StringRef File, Position Pos,
   const auto *RenameDecl = Rename->getRenameDecl();
   assert(RenameDecl && "symbol must be found at this point");
   if (auto Reject =
-          renamableWithinFile(*RenameDecl->getCanonicalDecl(), File, Index)) {
-    auto Message = [](ReasonToReject Reason) {
-      switch (Reason) {
-      case NoIndexProvided:
-        return "symbol may be used in other files (no index available)";
-      case UsedOutsideFile:
-        return "the symbol is used outside main file";
-      case NonIndexable:
-        return "symbol may be used in other files (not eligible for indexing)";
-      case UnsupportedSymbol:
-        return "symbol is not a supported kind (e.g. namespace)";
-      }
-      llvm_unreachable("unhandled reason kind");
-    };
-    return llvm::make_error<llvm::StringError>(
-        llvm::formatv("Cannot rename symbol: {0}", Message(*Reject)),
-        llvm::inconvertibleErrorCode());
-  }
+          renamableWithinFile(*RenameDecl->getCanonicalDecl(), File, Index))
+    return makeError(*Reject);
 
   Rename->invoke(ResultCollector, Context);
 

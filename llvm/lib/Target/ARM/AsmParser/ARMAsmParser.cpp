@@ -2275,6 +2275,14 @@ public:
     return Value >= 1 && Value <= 32;
   }
 
+  bool isMveSaturateOp() const {
+    if (!isImm()) return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    uint64_t Value = CE->getValue();
+    return Value == 48 || Value == 64;
+  }
+
   bool isITCondCodeNoAL() const {
     if (!isITCondCode()) return false;
     ARMCC::CondCodes CC = getCondCode();
@@ -3368,6 +3376,14 @@ public:
     assert(N == 1 && "Invalid number of operands!");
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     Inst.addOperand(MCOperand::createImm((CE->getValue() - 90) / 180));
+  }
+
+  void addMveSaturateOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    unsigned Imm = CE->getValue();
+    assert((Imm == 48 || Imm == 64) && "Invalid saturate operand");
+    Inst.addOperand(MCOperand::createImm(Imm == 48 ? 1 : 0));
   }
 
   void print(raw_ostream &OS) const override;
@@ -7865,15 +7881,7 @@ bool ARMAsmParser::validateInstruction(MCInst &Inst,
   case ARM::MVE_VMULLs32bh:
   case ARM::MVE_VMULLs32th:
   case ARM::MVE_VMULLu32bh:
-  case ARM::MVE_VMULLu32th:
-  case ARM::MVE_VQDMLADHs32:
-  case ARM::MVE_VQDMLADHXs32:
-  case ARM::MVE_VQRDMLADHs32:
-  case ARM::MVE_VQRDMLADHXs32:
-  case ARM::MVE_VQDMLSDHs32:
-  case ARM::MVE_VQDMLSDHXs32:
-  case ARM::MVE_VQRDMLSDHs32:
-  case ARM::MVE_VQRDMLSDHXs32: {
+  case ARM::MVE_VMULLu32th: {
     if (Operands[3]->getReg() == Operands[4]->getReg()) {
       return Error (Operands[3]->getStartLoc(),
                     "Qd register and Qn register can't be identical");

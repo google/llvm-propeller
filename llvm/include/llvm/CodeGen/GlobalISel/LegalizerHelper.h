@@ -170,6 +170,7 @@ private:
                          ArrayRef<Register> Src1Regs,
                          ArrayRef<Register> Src2Regs, LLT NarrowTy);
 
+public:
   LegalizeResult fewerElementsVectorImplicitDef(MachineInstr &MI,
                                                 unsigned TypeIdx, LLT NarrowTy);
 
@@ -218,7 +219,11 @@ private:
   LegalizeResult lowerU64ToF32BitOps(MachineInstr &MI);
   LegalizeResult lowerUITOFP(MachineInstr &MI, unsigned TypeIdx, LLT Ty);
   LegalizeResult lowerSITOFP(MachineInstr &MI, unsigned TypeIdx, LLT Ty);
+  LegalizeResult lowerMinMax(MachineInstr &MI, unsigned TypeIdx, LLT Ty);
+  LegalizeResult lowerFCopySign(MachineInstr &MI, unsigned TypeIdx, LLT Ty);
+  LegalizeResult lowerFMinNumMaxNum(MachineInstr &MI);
 
+private:
   MachineRegisterInfo &MRI;
   const LegalizerInfo &LI;
   /// To keep track of changes made by the LegalizerHelper.
@@ -230,6 +235,11 @@ LegalizerHelper::LegalizeResult
 createLibcall(MachineIRBuilder &MIRBuilder, RTLIB::Libcall Libcall,
               const CallLowering::ArgInfo &Result,
               ArrayRef<CallLowering::ArgInfo> Args);
+
+/// Create a libcall to memcpy et al.
+LegalizerHelper::LegalizeResult createMemLibcall(MachineIRBuilder &MIRBuilder,
+                                                 MachineRegisterInfo &MRI,
+                                                 MachineInstr &MI);
 
 } // End namespace llvm.
 

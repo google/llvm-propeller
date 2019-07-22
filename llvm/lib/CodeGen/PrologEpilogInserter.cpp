@@ -927,18 +927,26 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &MF) {
   // Make sure that the stack protector comes before the local variables on the
   // stack.
   SmallSet<int, 16> ProtectedObjs;
-  if (MFI.getStackProtectorIndex() >= 0) {
+  if (MFI.hasStackProtectorIndex()) {
+    int StackProtectorFI = MFI.getStackProtectorIndex();
     StackObjSet LargeArrayObjs;
     StackObjSet SmallArrayObjs;
     StackObjSet AddrOfObjs;
 
-    AdjustStackOffset(MFI, MFI.getStackProtectorIndex(), StackGrowsDown,
-                      Offset, MaxAlign, Skew);
+    // If we need a stack protector, we need to make sure that
+    // LocalStackSlotPass didn't already allocate a slot for it.
+    // If we are told to use the LocalStackAllocationBlock, the stack protector
+    // is expected to be already pre-allocated.
+    if (!MFI.getUseLocalStackAllocationBlock())
+      AdjustStackOffset(MFI, StackProtectorFI, StackGrowsDown, Offset, MaxAlign,
+                        Skew);
+    else if (!MFI.isObjectPreAllocated(MFI.getStackProtectorIndex()))
+      llvm_unreachable(
+          "Stack protector not pre-allocated by LocalStackSlotPass.");
 
     // Assign large stack objects first.
     for (unsigned i = 0, e = MFI.getObjectIndexEnd(); i != e; ++i) {
-      if (MFI.isObjectPreAllocated(i) &&
-          MFI.getUseLocalStackAllocationBlock())
+      if (MFI.isObjectPreAllocated(i) && MFI.getUseLocalStackAllocationBlock())
         continue;
       if (i >= MinCSFrameIndex && i <= MaxCSFrameIndex)
         continue;
@@ -946,8 +954,7 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &MF) {
         continue;
       if (MFI.isDeadObjectIndex(i))
         continue;
-      if (MFI.getStackProtectorIndex() == (int)i ||
-          EHRegNodeFrameIndex == (int)i)
+      if (StackProtectorFI == (int)i || EHRegNodeFrameIndex == (int)i)
         continue;
       if (MFI.getStackID(i) !=
           TargetStackID::Default) // Only allocate objects on the default stack.
@@ -968,6 +975,15 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &MF) {
       }
       llvm_unreachable("Unexpected SSPLayoutKind.");
     }
+
+    // We expect **all** the protected stack objects to be pre-allocated by
+    // LocalStackSlotPass. If it turns out that PEI still has to allocate some
+    // of them, we may end up messing up the expected order of the objects.
+    if (MFI.getUseLocalStackAllocationBlock() &&
+        !(LargeArrayObjs.empty() && SmallArrayObjs.empty() &&
+          AddrOfObjs.empty()))
+      llvm_unreachable("Found protected stack objects not pre-allocated by "
+                       "LocalStackSlotPass.");
 
     AssignProtectedObjSet(LargeArrayObjs, ProtectedObjs, MFI, StackGrowsDown,
                           Offset, MaxAlign, Skew);
@@ -990,8 +1006,7 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &MF) {
       continue;
     if (MFI.isDeadObjectIndex(i))
       continue;
-    if (MFI.getStackProtectorIndex() == (int)i ||
-        EHRegNodeFrameIndex == (int)i)
+    if (MFI.getStackProtectorIndex() == (int)i || EHRegNodeFrameIndex == (int)i)
       continue;
     if (ProtectedObjs.count(i))
       continue;
@@ -1200,6 +1215,16 @@ void PEI::replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &MF,
         MI.getOperand(0).setIsDebug();
 
         const DIExpression *DIExpr = MI.getDebugExpression();
+
+        // If we have a direct DBG_VALUE, and its location expression isn't
+        // currently complex, then adding an offset will morph it into a
+        // complex location that is interpreted as being a memory address.
+        // This changes a pointer-valued variable to dereference that pointer,
+        // which is incorrect. Fix by adding DW_OP_stack_value.
+        unsigned PrependFlags = DIExpression::ApplyOffset;
+        if (!MI.isIndirectDebugValue() && !DIExpr->isComplex())
+          PrependFlags |= DIExpression::StackValue;
+
         // If we have DBG_VALUE that is indirect and has a Implicit location
         // expression need to insert a deref before prepending a Memory
         // location expression. Also after doing this we change the DBG_VALUE
@@ -1211,8 +1236,7 @@ void PEI::replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &MF,
           // Make the DBG_VALUE direct.
           MI.getOperand(1).ChangeToRegister(0, false);
         }
-        DIExpr =
-            DIExpression::prepend(DIExpr, DIExpression::ApplyOffset, Offset);
+        DIExpr = DIExpression::prepend(DIExpr, PrependFlags, Offset);
         MI.getOperand(3).setMetadata(DIExpr);
         continue;
       }

@@ -24,6 +24,7 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/TargetOpcodes.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/MC/MCInstrDesc.h"
@@ -1018,6 +1019,12 @@ public:
       && getOperand(1).isImm();
   }
 
+  /// A DBG_VALUE is an entry value iff its debug expression contains the
+  /// DW_OP_entry_value DWARF operation.
+  bool isDebugEntryValue() const {
+    return isDebugValue() && getDebugExpression()->isEntryValue();
+  }
+
   /// Return true if the instruction is a debug value which describes a part of
   /// a variable as unavailable.
   bool isUndefDebugValue() const {
@@ -1599,6 +1606,12 @@ public:
   /// Find all DBG_VALUEs immediately following this instruction that point
   /// to a register def in this instruction and point them to \p Reg instead.
   void changeDebugValuesDefReg(unsigned Reg);
+
+  /// Returns the Intrinsic::ID for this instruction.
+  /// \pre Must have an intrinsic ID operand.
+  unsigned getIntrinsicID() const {
+    return getOperand(getNumExplicitDefs()).getIntrinsicID();
+  }
 
 private:
   /// If this instruction is embedded into a MachineFunction, return the

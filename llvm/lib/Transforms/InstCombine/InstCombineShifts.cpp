@@ -20,6 +20,125 @@ using namespace PatternMatch;
 
 #define DEBUG_TYPE "instcombine"
 
+// Given pattern:
+//   (x shiftopcode Q) shiftopcode K
+// we should rewrite it as
+//   x shiftopcode (Q+K)  iff (Q+K) u< bitwidth(x)
+// This is valid for any shift, but they must be identical.
+static Instruction *
+reassociateShiftAmtsOfTwoSameDirectionShifts(BinaryOperator *Sh0,
+                                             const SimplifyQuery &SQ) {
+  // Look for:  (x shiftopcode ShAmt0) shiftopcode ShAmt1
+  Value *X, *ShAmt1, *ShAmt0;
+  Instruction *Sh1;
+  if (!match(Sh0, m_Shift(m_CombineAnd(m_Shift(m_Value(X), m_Value(ShAmt1)),
+                                       m_Instruction(Sh1)),
+                          m_Value(ShAmt0))))
+    return nullptr;
+
+  // The shift opcodes must be identical.
+  Instruction::BinaryOps ShiftOpcode = Sh0->getOpcode();
+  if (ShiftOpcode != Sh1->getOpcode())
+    return nullptr;
+  // Can we fold (ShAmt0+ShAmt1) ?
+  Value *NewShAmt = SimplifyBinOp(Instruction::BinaryOps::Add, ShAmt0, ShAmt1,
+                                  SQ.getWithInstruction(Sh0));
+  if (!NewShAmt)
+    return nullptr; // Did not simplify.
+  // Is the new shift amount smaller than the bit width?
+  // FIXME: could also rely on ConstantRange.
+  unsigned BitWidth = X->getType()->getScalarSizeInBits();
+  if (!match(NewShAmt, m_SpecificInt_ICMP(ICmpInst::Predicate::ICMP_ULT,
+                                          APInt(BitWidth, BitWidth))))
+    return nullptr;
+  // All good, we can do this fold.
+  BinaryOperator *NewShift = BinaryOperator::Create(ShiftOpcode, X, NewShAmt);
+  // If both of the original shifts had the same flag set, preserve the flag.
+  if (ShiftOpcode == Instruction::BinaryOps::Shl) {
+    NewShift->setHasNoUnsignedWrap(Sh0->hasNoUnsignedWrap() &&
+                                   Sh1->hasNoUnsignedWrap());
+    NewShift->setHasNoSignedWrap(Sh0->hasNoSignedWrap() &&
+                                 Sh1->hasNoSignedWrap());
+  } else {
+    NewShift->setIsExact(Sh0->isExact() && Sh1->isExact());
+  }
+  return NewShift;
+}
+
+// If we have some pattern that leaves only some low bits set, and then performs
+// left-shift of those bits, if none of the bits that are left after the final
+// shift are modified by the mask, we can omit the mask.
+//
+// There are many variants to this pattern:
+//   a)  (x & ((1 << MaskShAmt) - 1)) << ShiftShAmt
+//   b)  (x & (~(-1 << MaskShAmt))) << ShiftShAmt
+//   c)  (x & (-1 >> MaskShAmt)) << ShiftShAmt
+//   d)  (x & ((-1 << MaskShAmt) >> MaskShAmt)) << ShiftShAmt
+//   e)  ((x << MaskShAmt) l>> MaskShAmt) << ShiftShAmt
+//   f)  ((x << MaskShAmt) a>> MaskShAmt) << ShiftShAmt
+// All these patterns can be simplified to just:
+//   x << ShiftShAmt
+// iff:
+//   a,b)     (MaskShAmt+ShiftShAmt) u>= bitwidth(x)
+//   c,d,e,f) (ShiftShAmt-MaskShAmt) s>= 0 (i.e. ShiftShAmt u>= MaskShAmt)
+static Instruction *
+dropRedundantMaskingOfLeftShiftInput(BinaryOperator *OuterShift,
+                                     const SimplifyQuery &SQ) {
+  assert(OuterShift->getOpcode() == Instruction::BinaryOps::Shl &&
+         "The input must be 'shl'!");
+
+  Value *Masked = OuterShift->getOperand(0);
+  Value *ShiftShAmt = OuterShift->getOperand(1);
+
+  Value *MaskShAmt;
+
+  // ((1 << MaskShAmt) - 1)
+  auto MaskA = m_Add(m_Shl(m_One(), m_Value(MaskShAmt)), m_AllOnes());
+  // (~(-1 << maskNbits))
+  auto MaskB = m_Xor(m_Shl(m_AllOnes(), m_Value(MaskShAmt)), m_AllOnes());
+  // (-1 >> MaskShAmt)
+  auto MaskC = m_Shr(m_AllOnes(), m_Value(MaskShAmt));
+  // ((-1 << MaskShAmt) >> MaskShAmt)
+  auto MaskD =
+      m_Shr(m_Shl(m_AllOnes(), m_Value(MaskShAmt)), m_Deferred(MaskShAmt));
+
+  Value *X;
+  if (match(Masked, m_c_And(m_CombineOr(MaskA, MaskB), m_Value(X)))) {
+    // Can we simplify (MaskShAmt+ShiftShAmt) ?
+    Value *SumOfShAmts =
+        SimplifyAddInst(MaskShAmt, ShiftShAmt, /*IsNSW=*/false, /*IsNUW=*/false,
+                        SQ.getWithInstruction(OuterShift));
+    if (!SumOfShAmts)
+      return nullptr; // Did not simplify.
+    // Is the total shift amount *not* smaller than the bit width?
+    // FIXME: could also rely on ConstantRange.
+    unsigned BitWidth = X->getType()->getScalarSizeInBits();
+    if (!match(SumOfShAmts, m_SpecificInt_ICMP(ICmpInst::Predicate::ICMP_UGE,
+                                               APInt(BitWidth, BitWidth))))
+      return nullptr;
+    // All good, we can do this fold.
+  } else if (match(Masked, m_c_And(m_CombineOr(MaskC, MaskD), m_Value(X))) ||
+             match(Masked, m_Shr(m_Shl(m_Value(X), m_Value(MaskShAmt)),
+                                 m_Deferred(MaskShAmt)))) {
+    // Can we simplify (ShiftShAmt-MaskShAmt) ?
+    Value *ShAmtsDiff =
+        SimplifySubInst(ShiftShAmt, MaskShAmt, /*IsNSW=*/false, /*IsNUW=*/false,
+                        SQ.getWithInstruction(OuterShift));
+    if (!ShAmtsDiff)
+      return nullptr; // Did not simplify.
+    // Is the difference non-negative? (is ShiftShAmt u>= MaskShAmt ?)
+    // FIXME: could also rely on ConstantRange.
+    if (!match(ShAmtsDiff, m_NonNegative()))
+      return nullptr;
+    // All good, we can do this fold.
+  } else
+    return nullptr; // Don't know anything about this pattern.
+
+  // No 'NUW'/'NSW'!
+  // We no longer know that we won't shift-out non-0 bits.
+  return BinaryOperator::Create(OuterShift->getOpcode(), X, ShiftShAmt);
+}
+
 Instruction *InstCombiner::commonShiftTransforms(BinaryOperator &I) {
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
   assert(Op0->getType() == Op1->getType());
@@ -37,6 +156,10 @@ Instruction *InstCombiner::commonShiftTransforms(BinaryOperator &I) {
   if (Constant *CUI = dyn_cast<Constant>(Op1))
     if (Instruction *Res = FoldShiftByConstant(Op0, CUI, I))
       return Res;
+
+  if (Instruction *NewShift =
+          reassociateShiftAmtsOfTwoSameDirectionShifts(&I, SQ))
+    return NewShift;
 
   // (C1 shift (A add C2)) -> (C1 shift C2) shift A)
   // iff A and C2 are both positive.
@@ -578,6 +701,9 @@ Instruction *InstCombiner::visitShl(BinaryOperator &I) {
     return X;
 
   if (Instruction *V = commonShiftTransforms(I))
+    return V;
+
+  if (Instruction *V = dropRedundantMaskingOfLeftShiftInput(&I, SQ))
     return V;
 
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);

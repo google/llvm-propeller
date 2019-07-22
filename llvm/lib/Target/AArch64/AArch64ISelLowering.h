@@ -214,7 +214,13 @@ enum NodeType : unsigned {
   LD4LANEpost,
   ST2LANEpost,
   ST3LANEpost,
-  ST4LANEpost
+  ST4LANEpost,
+
+  STG,
+  STZG,
+  ST2G,
+  STZ2G
+
 };
 
 } // end namespace AArch64ISD
@@ -496,6 +502,8 @@ public:
     MVT KeptBitsVT = MVT::getIntegerVT(KeptBits);
     return VTIsOk(XVT) && VTIsOk(KeptBitsVT);
   }
+
+  bool preferIncOfAddToSubOfNot(EVT VT) const override;
 
   bool hasBitPreservingFPLogic(EVT VT) const override {
     // FIXME: Is this always true? It should be true for vectors at least.

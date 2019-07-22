@@ -634,6 +634,8 @@ namespace llvm {
       return true;
     }
 
+    bool preferIncOfAddToSubOfNot(EVT VT) const override;
+
     bool convertSetCCLogicToBitwiseLogic(EVT VT) const override {
       return VT.isScalarInteger();
     }
@@ -666,6 +668,11 @@ namespace llvm {
                                    SDValue &Offset,
                                    ISD::MemIndexedMode &AM,
                                    SelectionDAG &DAG) const override;
+
+    /// SelectAddressEVXRegReg - Given the specified addressed, check to see if
+    /// it can be more efficiently represented as [r+imm].
+    bool SelectAddressEVXRegReg(SDValue N, SDValue &Base, SDValue &Index,
+                                SelectionDAG &DAG) const;
 
     /// SelectAddressRegReg - Given the specified addressed, check to see if it
     /// can be more efficiently represented as [r+imm]. If \p EncodingAlignment

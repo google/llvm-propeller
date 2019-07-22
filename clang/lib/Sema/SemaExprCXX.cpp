@@ -529,7 +529,7 @@ ExprResult Sema::BuildCXXTypeId(QualType TypeInfoType,
 ExprResult
 Sema::ActOnCXXTypeid(SourceLocation OpLoc, SourceLocation LParenLoc,
                      bool isType, void *TyOrExpr, SourceLocation RParenLoc) {
-  // OpenCL C++ 1.0 s2.9: typeid is not supported.
+  // typeid is not supported in OpenCL.
   if (getLangOpts().OpenCLCPlusPlus) {
     return ExprError(Diag(OpLoc, diag::err_openclcxx_not_supported)
                      << "typeid");
@@ -1254,7 +1254,7 @@ ExprResult Sema::ActOnCXXThis(SourceLocation Loc) {
   QualType ThisTy = getCurrentThisType();
   if (ThisTy.isNull())
     return Diag(Loc, diag::err_invalid_this_use);
-  return BuildCXXThisExpr(Loc, ThisTy, /*isImplicit=*/false);
+  return BuildCXXThisExpr(Loc, ThisTy, /*IsImplicit=*/false);
 }
 
 Expr *Sema::BuildCXXThisExpr(SourceLocation Loc, QualType Type,
@@ -2656,8 +2656,8 @@ void Sema::DeclareGlobalNewDelete() {
   if (GlobalNewDeleteDeclared)
     return;
 
-  // OpenCL C++ 1.0 s2.9: the implicitly declared new and delete operators
-  // are not supported.
+  // The implicitly declared new and delete operators
+  // are not supported in OpenCL.
   if (getLangOpts().OpenCLCPlusPlus)
     return;
 
@@ -4216,7 +4216,15 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     break;
 
   case ICK_Block_Pointer_Conversion: {
-    From = ImpCastExprToType(From, ToType.getUnqualifiedType(), CK_BitCast,
+    LangAS AddrSpaceL =
+        ToType->castAs<BlockPointerType>()->getPointeeType().getAddressSpace();
+    LangAS AddrSpaceR =
+        FromType->castAs<BlockPointerType>()->getPointeeType().getAddressSpace();
+    assert(Qualifiers::isAddressSpaceSupersetOf(AddrSpaceL, AddrSpaceR) &&
+           "Invalid cast");
+    CastKind Kind =
+        AddrSpaceL != AddrSpaceR ? CK_AddressSpaceConversion : CK_BitCast;
+    From = ImpCastExprToType(From, ToType.getUnqualifiedType(), Kind,
                              VK_RValue, /*BasePath=*/nullptr, CCK).get();
     break;
   }

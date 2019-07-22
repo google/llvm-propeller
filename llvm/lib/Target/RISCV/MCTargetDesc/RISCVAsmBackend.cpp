@@ -186,6 +186,7 @@ static uint64_t adjustFixupValue(const MCFixup &Fixup, uint64_t Value,
   case FK_Data_2:
   case FK_Data_4:
   case FK_Data_8:
+  case FK_Data_6b:
     return Value;
   case RISCV::fixup_riscv_lo12_i:
   case RISCV::fixup_riscv_pcrel_lo12_i:
@@ -313,8 +314,12 @@ bool RISCVAsmBackend::shouldInsertExtraNopBytesForCodeAlign(
   bool HasStdExtC = STI.getFeatureBits()[RISCV::FeatureStdExtC];
   unsigned MinNopLen = HasStdExtC ? 2 : 4;
 
-  Size = AF.getAlignment() - MinNopLen;
-  return true;
+  if (AF.getAlignment() <= MinNopLen) {
+    return false;
+  } else {
+    Size = AF.getAlignment() - MinNopLen;
+    return true;
+  }
 }
 
 // We need to insert R_RISCV_ALIGN relocation type to indicate the
@@ -329,11 +334,10 @@ bool RISCVAsmBackend::shouldInsertFixupForCodeAlign(MCAssembler &Asm,
   if (!STI.getFeatureBits()[RISCV::FeatureRelax])
     return false;
 
-  // Calculate total Nops we need to insert.
+  // Calculate total Nops we need to insert. If there are none to insert
+  // then simply return.
   unsigned Count;
-  shouldInsertExtraNopBytesForCodeAlign(AF, Count);
-  // No Nop need to insert, simply return.
-  if (Count == 0)
+  if (!shouldInsertExtraNopBytesForCodeAlign(AF, Count) || (Count == 0))
     return false;
 
   MCContext &Ctx = Asm.getContext();

@@ -262,7 +262,14 @@ static bool isQuoteCppDigitSeparator(const char *const Start,
   if (Start == Cur)
     return false;
   // The previous character must be a valid PP number character.
-  if (!isPreprocessingNumberBody(*(Cur - 1)))
+  // Make sure that the L, u, U, u8 prefixes don't get marked as a
+  // separator though.
+  char Prev = *(Cur - 1);
+  if (Prev == 'L' || Prev == 'U' || Prev == 'u')
+    return false;
+  if (Prev == '8' && (Cur - 1 != Start) && *(Cur - 2) == 'u')
+    return false;
+  if (!isPreprocessingNumberBody(Prev))
     return false;
   // The next character should be a valid identifier body character.
   return (Cur + 1) < End && isIdentifierBody(*(Cur + 1));
@@ -605,7 +612,21 @@ bool Minimizer::lexDefine(const char *&First, const char *const End) {
 
 bool Minimizer::lexPragma(const char *&First, const char *const End) {
   // #pragma.
-  if (!isNextIdentifier("clang", First, End)) {
+  skipWhitespace(First, End);
+  if (First == End || !isIdentifierHead(*First))
+    return false;
+
+  IdInfo FoundId = lexIdentifier(First, End);
+  First = FoundId.Last;
+  if (FoundId.Name == "once") {
+    // #pragma once
+    skipLine(First, End);
+    makeToken(pp_pragma_once);
+    append("#pragma once\n");
+    return false;
+  }
+
+  if (FoundId.Name != "clang") {
     skipLine(First, End);
     return false;
   }
