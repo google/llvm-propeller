@@ -420,7 +420,7 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
 
-  if (Config->PropellerPrintStats) {
+  if (config->propellerPrintStats) {
     duration<double> ProcessProfileTime =
         system_clock::now() - startProcessProfileTime;
     duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
@@ -505,13 +505,13 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
       ReorderedN++;
     } else {
       auto PlaceHolder =
-          Config->PropellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
+          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
       Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
         SymbolList.insert(PlaceHolder, N.ShName);
       });
     }
   }
-  if (Config->PropellerPrintStats) {
+  if (config->propellerPrintStats) {
     duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;
     fprintf(
         stderr,
