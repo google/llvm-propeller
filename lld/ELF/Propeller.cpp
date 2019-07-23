@@ -400,8 +400,9 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
       if (L->second.empty())
         continue;
 
-      if (!PrimaryCfg || PrimaryCfg->Nodes.size() < (*L->second.begin())->Nodes.size()){
-        if(PrimaryCfg)
+      if (!PrimaryCfg ||
+          PrimaryCfg->Nodes.size() < (*L->second.begin())->Nodes.size()) {
+        if (PrimaryCfg)
           CfgMap.erase(PrimaryCfgMapEntry);
 
         PrimaryCfg = *L->second.begin();
@@ -419,19 +420,25 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     return false;
   }
 
-  if (config->propellerPrintStats){
-    duration<double> ProcessProfileTime = system_clock::now() - startProcessProfileTime;
+  if (config->propellerPrintStats) {
+    duration<double> ProcessProfileTime =
+        system_clock::now() - startProcessProfileTime;
     duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
-    duration<double> CreateCfgTime = startProcessProfileTime - startCreateCfgTime;
-    fprintf(stderr, "[Propeller] Read all symbols in %f seconds.\n", ReadSymbolTime.count());
-    fprintf(stderr, "[Propeller] Created all cfgs in %f seconds.\n", CreateCfgTime.count());
-    fprintf(stderr, "[Propeller] Proccesed the profile in %f seconds.\n", ProcessProfileTime.count());
+    duration<double> CreateCfgTime =
+        startProcessProfileTime - startCreateCfgTime;
+    fprintf(stderr, "[Propeller] Read all symbols in %f seconds.\n",
+            ReadSymbolTime.count());
+    fprintf(stderr, "[Propeller] Created all cfgs in %f seconds.\n",
+            CreateCfgTime.count());
+    fprintf(stderr, "[Propeller] Proccesed the profile in %f seconds.\n",
+            ProcessProfileTime.count());
   }
 
   for (auto &CfgNameToDump : config->propellerDumpCfgs){
     auto CfgLI = CfgMap.find(CfgNameToDump);
-    if(CfgLI == CfgMap.end()){
-      warn("[Propeller] Could not dump cfg for function '"+ CfgNameToDump +"' : No such function name exists.");
+    if (CfgLI == CfgMap.end()) {
+      warn("[Propeller] Could not dump cfg for function '" + CfgNameToDump +
+           "' : No such function name exists.");
       continue;
     }
     for (auto *Cfg : CfgLI->second) {
@@ -449,16 +456,16 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
 }
 
 template <class C>
-static void writeOut(const char *fname, C &Names) {
-   FILE *fp = fopen(fname, "w");
-   if (!fp) {
-     fprintf(stderr, "failed to open: %s\n", fname);
-   }
-   for (auto &N : Names) {
-     fprintf(fp, "%s\n", N.str().c_str());
-   }
-   fclose(fp);
-   fprintf(stderr, "Done writing %s\n", fname);
+static void writeOut(const char *fname, const C &Names) {
+  FILE *fp = fopen(fname, "w");
+  if (!fp) {
+    fprintf(stderr, "failed to open: %s\n", fname);
+  }
+  for (auto &N : Names) {
+    fprintf(fp, "%s\n", N.str().c_str());
+  }
+  fclose(fp);
+  fprintf(stderr, "Done writing %s\n", fname);
 };
 
 vector<StringRef> Propeller::genSymbolOrderingFile() {
@@ -491,24 +498,25 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   unsigned ReorderedN = 0;
   auto startBBOrderTime = system_clock::now();
   for (auto *Cfg : CfgOrder) {
-    log("Ordering Cfg for function: " + Twine(Cfg->Name) + " --> " + Twine(Cfg->getEntryNode()->MappedAddr));
     if (Cfg->isHot() && config->propellerReorderBlocks) {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
           config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
       ReorderedN++;
     } else {
-      auto PlaceHolder = config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
+      auto PlaceHolder =
+          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
       Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
-        SymbolList.insert(PlaceHolder,N.ShName);
+        SymbolList.insert(PlaceHolder, N.ShName);
       });
     }
   }
-  if (config->propellerPrintStats){
+  if (config->propellerPrintStats) {
     duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;
-    fprintf(stderr, "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
-            ReorderedN,
-            BBOrderTime.count());
+    fprintf(
+        stderr,
+        "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
+        ReorderedN, BBOrderTime.count());
   }
 
   calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
