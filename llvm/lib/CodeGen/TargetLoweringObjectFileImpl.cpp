@@ -591,8 +591,11 @@ MCSection *TargetLoweringObjectFileELF::getExplicitSectionGlobal(
   // MD_associated in a unique section.
   unsigned UniqueID = MCContext::GenericSectionID;
   const MCSymbolELF *AssociatedSymbol = getAssociatedSymbol(GO, TM);
-  if (AssociatedSymbol) {
+  if (AssociatedSymbol || (F && TM.getFunctionSections())){
     UniqueID = NextUniqueID++;
+  }
+
+  if (AssociatedSymbol){
     Flags |= ELF::SHF_LINK_ORDER;
   }
 

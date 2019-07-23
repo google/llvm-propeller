@@ -76,7 +76,7 @@ gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
 bb_section_lto_flags = -Wl,--lto-basicblock-sections=$(1)
 #-Wl,--lto-unique-bb-section-names
 lld_relocs              := -Wl,-q
-funique_flag            := -funique-internal-funcnames
+funique_flag            := -funique-internal-funcnames -ffunction-sections
 #-funique-bb-section-names
 
 bb_section_none_flags      := $(call gen_build_flags,"-fbasicblock-sections=none $(funique_flag)","   $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,none)")

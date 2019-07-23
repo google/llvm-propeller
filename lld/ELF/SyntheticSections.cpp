@@ -1944,7 +1944,7 @@ void SymbolTableBaseSection::sortSymTabSymbols() {
 
 void SymbolTableBaseSection::addSymbol(Symbol *b) {
   // Adding a local symbol to a .dynsym is a bug.
-  assert(this->Type != SHT_DYNSYM || !B->isLocal());
+  assert(this->type != SHT_DYNSYM || !b->isLocal());
   assert(this->type != SHT_DYNSYM || !b->isLocal());
   StringRef SName = b->getName();
   uint64_t EndKey = (uint64_t)(SName.data() + SName.size());

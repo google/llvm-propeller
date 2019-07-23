@@ -1731,7 +1731,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       Num += std::count_if(Shrunk.begin(), Shrunk.end(),
           [] (int e) { return e > 4; });
       if (Num > 0)
-        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->Name <<
+        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->name <<
                    " : Shrinking " << Num << " jmp instructions\n");
       if (AnyChanged)
         script->assignAddresses();
@@ -1752,7 +1752,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       Num += std::count_if(Grown.begin(), Grown.end(),
           [] (int e) { return e > 4; });
       if (Num > 0)
-        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->Name <<
+        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->name <<
                    " : Growing " << Num << " jmp instructions\n");
       AnyChanged = std::any_of(Changed.begin(), Changed.end(),
                                [] (bool e) {return e;});
