@@ -16,6 +16,8 @@ using std::unordered_map;
 using std::unordered_set;
 using std::vector;
 
+using llvm::StringMap;
+
 namespace lld {
 namespace propeller {
 
@@ -107,7 +109,8 @@ public:
 
   void doSplitOrder(list<StringRef> &SymbolList,
                     list<StringRef>::iterator HotPlaceHolder,
-                    list<StringRef>::iterator ColdPlaceHolder);
+                    list<StringRef>::iterator ColdPlaceHolder,
+                    StringMap<unsigned>& SymbolAlignmentMap);
 };
 
 /* Chain builder based on ExtTSP metric */

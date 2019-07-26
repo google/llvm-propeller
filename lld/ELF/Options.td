@@ -363,6 +363,9 @@ def strip_all: F<"strip-all">, HelpText<"Strip all symbols">;
 
 def strip_debug: F<"strip-debug">, HelpText<"Strip debugging information">;
 
+defm symbol_alignment_file:
+  Eq<"symbol-alignment-file", "Overwrite alignment for symbols.">;
+
 defm symbol_ordering_file:
   Eq<"symbol-ordering-file", "Layout sections to place symbols in the order specified by symbol ordering file">;
 

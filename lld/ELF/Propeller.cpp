@@ -501,7 +501,8 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     if (Cfg->isHot() && config->propellerReorderBlocks) {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
-          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
+          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder,
+          config->symbolAlignmentFile);
       ReorderedN++;
     } else {
       auto PlaceHolder =

@@ -542,7 +542,8 @@ double ExtTSPChainBuilder::NodeChainAssembly::ExtTSPScore() const {
 
 void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
                                     list<StringRef>::iterator HotPlaceHolder,
-                                    list<StringRef>::iterator ColdPlaceHolder) {
+                                    list<StringRef>::iterator ColdPlaceHolder,
+                                    StringMap<unsigned>& SymbolAlignmentMap) {
 
   vector<const NodeChain *> ChainOrder;
   ComputeChainOrder(ChainOrder);
@@ -552,6 +553,32 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
         C->Freq ? HotPlaceHolder : ColdPlaceHolder;
     for (const ELFCfgNode *N : C->Nodes)
       SymbolList.insert(InsertPos, N->ShName);
+  }
+
+  std::unordered_map<const ELFCfgNode*, const ELFCfgEdge*> FTEdge;
+  for (const NodeChain *C : ChainOrder) {
+    if (!C->Freq)
+      continue;
+    const ELFCfgNode * PrevN = nullptr;
+    for (const ELFCfgNode *N : C->Nodes){
+      for(const ELFCfgEdge *E: N->Ins){
+        if(E->Src == PrevN)
+          FTEdge.insert(std::make_pair(N,E));
+      }
+      PrevN = N;
+    }
+  }
+
+  for(auto &N: Cfg->Nodes){
+    if(N.get() == Cfg->getEntryNode())
+      continue;
+    unsigned align = 1;
+    if(N->Freq * 10 > Cfg->getEntryNode()->Freq) {
+      auto it = FTEdge.find(N.get());
+      if(it==FTEdge.end() || N->Freq > 2 * it->second->Weight)
+        align = 16;
+    }
+    SymbolAlignmentMap.insert(std::make_pair(N->ShName, align));
   }
 }
 
