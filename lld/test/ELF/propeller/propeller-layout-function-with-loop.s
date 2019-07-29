@@ -65,21 +65,24 @@
 # RUN: llvm-objdump -d %t.propeller.reorder.out| FileCheck %s --check-prefix=REORDER
 
 # REORDER:	0000000000201000 foo:
+# REORDER-NEXT:	nopl	(%rax)
+# REORDER-NEXT:	nopw	(%rax,%rax)
 # REORDER-NEXT:	nopl    (%rax)
+# REORDER-NEXT:	nop
 
-# REORDER:	0000000000201003 a.BB.foo:
+# REORDER:	0000000000201010 a.BB.foo:
 # REORDER-NEXT:	nopl	(%rax)
 # REORDER-NEXT:	jne      9 <aa.BB.foo>
 
-# REORDER:	0000000000201008 aaa.BB.foo:
+# REORDER:	0000000000201015 aaa.BB.foo:
 # REORDER-NEXT:	nopl    (%rax)
 # REORDER-NEXT:	jne     -10 <a.BB.foo>
 
-# REORDER:	000000000020100d aaaa.BB.foo:
+# REORDER:	000000000020101a aaaa.BB.foo:
 # REORDER-NEXT:	nopl    (%rax)
 # REORDER-NEXT:	retq
 
-# REORDER:	0000000000201011 aa.BB.foo:
+# REORDER:	000000000020101e aa.BB.foo:
 # REORDER-NEXT:	nopl    (%rax)
 # REORDER-NEXT:	jmp	-14 <aaa.BB.foo>
 
