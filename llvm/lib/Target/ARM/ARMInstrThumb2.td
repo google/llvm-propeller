@@ -5217,11 +5217,13 @@ def t2LoopDec :
   t2PseudoInst<(outs GPRlr:$Rm), (ins GPRlr:$Rn, imm0_7:$size),
                4, IIC_Br, []>, Sched<[WriteBr]>;
 
-let isBranch = 1, isTerminator = 1, hasSideEffects = 1 in {
+let isBranch = 1, isTerminator = 1, hasSideEffects = 1, Defs = [CPSR] in {
+// Set WhileLoopStart and LoopEnd to occupy 8 bytes because they may
+// get converted into t2CMP and t2Bcc.
 def t2WhileLoopStart :
     t2PseudoInst<(outs),
                  (ins rGPR:$elts, brtarget:$target),
-                 4, IIC_Br, []>,
+                 8, IIC_Br, []>,
                  Sched<[WriteBr]>;
 
 def t2LoopEnd :
@@ -5233,7 +5235,7 @@ def t2LoopEnd :
 } // end isNotDuplicable
 
 class CS<string iname, bits<4> opcode, list<dag> pattern=[]>
-  : V8_1MI<(outs rGPR:$Rd), (ins GPRwithZR:$Rn, GPRwithZRnosp:$Rm, pred_noal:$fcond),
+  : V8_1MI<(outs rGPR:$Rd), (ins GPRwithZRnosp:$Rn, GPRwithZRnosp:$Rm, pred_noal:$fcond),
            AddrModeNone, NoItinerary, iname, "$Rd, $Rn, $Rm, $fcond", "", pattern> {
   bits<4> Rd;
   bits<4> Rm;

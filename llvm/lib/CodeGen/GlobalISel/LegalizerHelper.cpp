@@ -567,6 +567,26 @@ LegalizerHelper::LegalizeResult LegalizerHelper::narrowScalar(MachineInstr &MI,
     MI.eraseFromParent();
     return Legalized;
   }
+  case TargetOpcode::G_SEXT: {
+    if (TypeIdx != 0)
+      return UnableToLegalize;
+
+    if (NarrowTy.getSizeInBits() != SizeOp0 / 2) {
+      LLVM_DEBUG(dbgs() << "Can't narrow sext to type " << NarrowTy << "\n");
+      return UnableToLegalize;
+    }
+
+    Register SrcReg = MI.getOperand(1).getReg();
+
+    // Shift the sign bit of the low register through the high register.
+    auto ShiftAmt =
+        MIRBuilder.buildConstant(LLT::scalar(64), NarrowTy.getSizeInBits() - 1);
+    auto Shift = MIRBuilder.buildAShr(NarrowTy, SrcReg, ShiftAmt);
+    MIRBuilder.buildMerge(MI.getOperand(0).getReg(), {SrcReg, Shift.getReg(0)});
+    MI.eraseFromParent();
+    return Legalized;
+  }
+
   case TargetOpcode::G_ADD: {
     // FIXME: add support for when SizeOp0 isn't an exact multiple of
     // NarrowSize.
@@ -941,7 +961,7 @@ LegalizerHelper::widenScalarMergeValues(MachineInstr &MI, unsigned TypeIdx,
 
       auto ZextInput = MIRBuilder.buildZExt(WideTy, SrcReg);
 
-      Register NextResult = I + 1 == NumOps && WideSize == DstSize ? DstReg :
+      Register NextResult = I + 1 == NumOps && WideTy == DstTy ? DstReg :
         MRI.createGenericVirtualRegister(WideTy);
 
       auto ShiftAmt = MIRBuilder.buildConstant(WideTy, Offset);
@@ -952,6 +972,8 @@ LegalizerHelper::widenScalarMergeValues(MachineInstr &MI, unsigned TypeIdx,
 
     if (WideSize > DstSize)
       MIRBuilder.buildTrunc(DstReg, ResultReg);
+    else if (DstTy.isPointer())
+      MIRBuilder.buildIntToPtr(DstReg, ResultReg);
 
     MI.eraseFromParent();
     return Legalized;
@@ -1856,6 +1878,8 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
   case G_FMINNUM:
   case G_FMAXNUM:
     return lowerFMinNumMaxNum(MI);
+  case G_UNMERGE_VALUES:
+    return lowerUnmergeValues(MI);
   }
 }
 
@@ -2750,12 +2774,22 @@ LegalizerHelper::moreElementsVector(MachineInstr &MI, unsigned TypeIdx,
   MIRBuilder.setInstr(MI);
   unsigned Opc = MI.getOpcode();
   switch (Opc) {
-  case TargetOpcode::G_IMPLICIT_DEF: {
+  case TargetOpcode::G_IMPLICIT_DEF:
+  case TargetOpcode::G_LOAD: {
+    if (TypeIdx != 0)
+      return UnableToLegalize;
     Observer.changingInstr(MI);
     moreElementsVectorDst(MI, MoreTy, 0);
     Observer.changedInstr(MI);
     return Legalized;
   }
+  case TargetOpcode::G_STORE:
+    if (TypeIdx != 0)
+      return UnableToLegalize;
+    Observer.changingInstr(MI);
+    moreElementsVectorSrc(MI, MoreTy, 0);
+    Observer.changedInstr(MI);
+    return Legalized;
   case TargetOpcode::G_AND:
   case TargetOpcode::G_OR:
   case TargetOpcode::G_XOR:
@@ -3467,4 +3501,37 @@ LegalizerHelper::lowerFMinNumMaxNum(MachineInstr &MI) {
   MIRBuilder.buildInstr(NewOp, {Dst}, {Src0, Src1}, MI.getFlags());
   MI.eraseFromParent();
   return Legalized;
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerUnmergeValues(MachineInstr &MI) {
+  const unsigned NumDst = MI.getNumOperands() - 1;
+  const Register SrcReg = MI.getOperand(NumDst).getReg();
+  LLT SrcTy = MRI.getType(SrcReg);
+
+  Register Dst0Reg = MI.getOperand(0).getReg();
+  LLT DstTy = MRI.getType(Dst0Reg);
+
+
+  // Expand scalarizing unmerge as bitcast to integer and shift.
+  if (!DstTy.isVector() && SrcTy.isVector() &&
+      SrcTy.getElementType() == DstTy) {
+    LLT IntTy = LLT::scalar(SrcTy.getSizeInBits());
+    Register Cast = MIRBuilder.buildBitcast(IntTy, SrcReg).getReg(0);
+
+    MIRBuilder.buildTrunc(Dst0Reg, Cast);
+
+    const unsigned DstSize = DstTy.getSizeInBits();
+    unsigned Offset = DstSize;
+    for (unsigned I = 1; I != NumDst; ++I, Offset += DstSize) {
+      auto ShiftAmt = MIRBuilder.buildConstant(IntTy, Offset);
+      auto Shift = MIRBuilder.buildLShr(IntTy, Cast, ShiftAmt);
+      MIRBuilder.buildTrunc(MI.getOperand(I), Shift);
+    }
+
+    MI.eraseFromParent();
+    return Legalized;
+  }
+
+  return UnableToLegalize;
 }

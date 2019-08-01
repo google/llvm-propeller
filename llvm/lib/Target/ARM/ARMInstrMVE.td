@@ -985,9 +985,9 @@ def MVE_VBIC : MVE_bit_arith<(outs MQPR:$Qd), (ins MQPR:$Qn, MQPR:$Qm),
   let Inst{0} = 0b0;
 }
 
-class MVE_VREV<string iname, string suffix, bits<2> size, bits<2> bit_8_7>
+class MVE_VREV<string iname, string suffix, bits<2> size, bits<2> bit_8_7, string cstr="">
   : MVE_bit_arith<(outs MQPR:$Qd), (ins MQPR:$Qm), iname,
-                  suffix, "$Qd, $Qm", ""> {
+                  suffix, "$Qd, $Qm", cstr> {
 
   let Inst{28} = 0b1;
   let Inst{25-23} = 0b111;
@@ -1001,9 +1001,9 @@ class MVE_VREV<string iname, string suffix, bits<2> size, bits<2> bit_8_7>
   let Inst{0} = 0b0;
 }
 
-def MVE_VREV64_8  : MVE_VREV<"vrev64", "8", 0b00, 0b00>;
-def MVE_VREV64_16 : MVE_VREV<"vrev64", "16", 0b01, 0b00>;
-def MVE_VREV64_32 : MVE_VREV<"vrev64", "32", 0b10, 0b00>;
+def MVE_VREV64_8  : MVE_VREV<"vrev64", "8", 0b00, 0b00, "@earlyclobber $Qd">;
+def MVE_VREV64_16 : MVE_VREV<"vrev64", "16", 0b01, 0b00, "@earlyclobber $Qd">;
+def MVE_VREV64_32 : MVE_VREV<"vrev64", "32", 0b10, 0b00, "@earlyclobber $Qd">;
 
 def MVE_VREV32_8  : MVE_VREV<"vrev32", "8", 0b00, 0b01>;
 def MVE_VREV32_16 : MVE_VREV<"vrev32", "16", 0b01, 0b01>;
@@ -2572,6 +2572,27 @@ def MVE_VFMSf32 : MVE_VADDSUBFMA_fp<"vfms", "f32", 0b0, 0b1, 0b0, 0b1,
 def MVE_VFMSf16 : MVE_VADDSUBFMA_fp<"vfms", "f16", 0b1, 0b1, 0b0, 0b1,
     (ins MQPR:$Qd_src), vpred_n, "$Qd = $Qd_src">;
 
+let Predicates = [HasMVEFloat, UseFusedMAC] in {
+  def : Pat<(v8f16 (fadd (v8f16 MQPR:$src1),
+                             (fmul (v8f16 MQPR:$src2),
+                                      (v8f16 MQPR:$src3)))),
+            (v8f16 (MVE_VFMAf16 $src1, $src2, $src3))>;
+  def : Pat<(v4f32 (fadd (v4f32 MQPR:$src1),
+                             (fmul (v4f32 MQPR:$src2),
+                                      (v4f32 MQPR:$src3)))),
+            (v4f32 (MVE_VFMAf32 $src1, $src2, $src3))>;
+
+  def : Pat<(v8f16 (fsub (v8f16 MQPR:$src1),
+                             (fmul (v8f16 MQPR:$src2),
+                                      (v8f16 MQPR:$src3)))),
+            (v8f16 (MVE_VFMSf16 $src1, $src2, $src3))>;
+  def : Pat<(v4f32 (fsub (v4f32 MQPR:$src1),
+                             (fmul (v4f32 MQPR:$src2),
+                                      (v4f32 MQPR:$src3)))),
+            (v4f32 (MVE_VFMSf32 $src1, $src2, $src3))>;
+}
+
+
 def MVE_VADDf32 : MVE_VADDSUBFMA_fp<"vadd", "f32", 0b0, 0b0, 0b1, 0b0>;
 def MVE_VADDf16 : MVE_VADDSUBFMA_fp<"vadd", "f16", 0b1, 0b0, 0b1, 0b0>;
 
@@ -3655,8 +3676,8 @@ let Predicates = [HasMVEFloat] in {
 }
 
 class MVE_VFMAMLA_qr<string iname, string suffix,
-                   bit bit_28, bits<2> bits_21_20, bit S,
-                   list<dag> pattern=[]>
+                     bit bit_28, bits<2> bits_21_20, bit S,
+                     list<dag> pattern=[]>
   : MVE_qDestSrc_rSrc<iname, suffix, pattern> {
 
   let Inst{28} = bit_28;
@@ -4561,6 +4582,7 @@ let Predicates = [HasMVEInt] in {
             (v4f32 (MVE_VPSEL MQPR:$v1, MQPR:$v2, 0,
                               (MVE_VCMPi32 (v4i32 MQPR:$pred), (MVE_VMOVimmi32 0), 1)))>;
 
+  // Pred <-> Int
   def : Pat<(v16i8 (zext  (v16i1 VCCR:$pred))),
             (v16i8 (MVE_VPSEL (MVE_VMOVimmi8 1), (MVE_VMOVimmi8 0), 0, VCCR:$pred))>;
   def : Pat<(v8i16 (zext  (v8i1  VCCR:$pred))),
@@ -4583,18 +4605,52 @@ let Predicates = [HasMVEInt] in {
             (v4i32 (MVE_VPSEL (MVE_VMOVimmi32 1), (MVE_VMOVimmi32 0), 0, VCCR:$pred))>;
 }
 
-def MVE_VPNOT : MVE_p<(outs), (ins), NoItinerary,
+let Predicates = [HasMVEFloat] in {
+  // Pred <-> Float
+  // 112 is 1.0 in float
+  def : Pat<(v4f32 (uint_to_fp (v4i1 VCCR:$pred))),
+            (v4f32 (MVE_VPSEL (v4f32 (MVE_VMOVimmf32 112)), (v4f32 (MVE_VMOVimmi32 0)), 0, VCCR:$pred))>;
+  // 2620 in 1.0 in half
+  def : Pat<(v8f16 (uint_to_fp (v8i1 VCCR:$pred))),
+            (v8f16 (MVE_VPSEL (v8f16 (MVE_VMOVimmi16 2620)), (v8f16 (MVE_VMOVimmi16 0)), 0, VCCR:$pred))>;
+  // 240 is -1.0 in float
+  def : Pat<(v4f32 (sint_to_fp (v4i1 VCCR:$pred))),
+            (v4f32 (MVE_VPSEL (v4f32 (MVE_VMOVimmf32 240)), (v4f32 (MVE_VMOVimmi32 0)), 0, VCCR:$pred))>;
+  // 2748 is -1.0 in half
+  def : Pat<(v8f16 (sint_to_fp (v8i1 VCCR:$pred))),
+            (v8f16 (MVE_VPSEL (v8f16 (MVE_VMOVimmi16 2748)), (v8f16 (MVE_VMOVimmi16 0)), 0, VCCR:$pred))>;
+
+  def : Pat<(v4i1 (fp_to_uint (v4f32 MQPR:$v1))),
+            (v4i1 (MVE_VCMPf32r (v4f32 MQPR:$v1), ZR, 1))>;
+  def : Pat<(v8i1 (fp_to_uint (v8f16 MQPR:$v1))),
+            (v8i1 (MVE_VCMPf16r (v8f16 MQPR:$v1), ZR, 1))>;
+  def : Pat<(v4i1 (fp_to_sint (v4f32 MQPR:$v1))),
+            (v4i1 (MVE_VCMPf32r (v4f32 MQPR:$v1), ZR, 1))>;
+  def : Pat<(v8i1 (fp_to_sint (v8f16 MQPR:$v1))),
+            (v8i1 (MVE_VCMPf16r (v8f16 MQPR:$v1), ZR, 1))>;
+}
+
+def MVE_VPNOT : MVE_p<(outs VCCR:$P0), (ins VCCR:$P0_in), NoItinerary,
                       "vpnot", "", "", vpred_n, "", []> {
   let Inst{31-0} = 0b11111110001100010000111101001101;
   let Unpredictable{19-17} = 0b111;
   let Unpredictable{12} = 0b1;
   let Unpredictable{7} = 0b1;
   let Unpredictable{5} = 0b1;
-  let Defs = [P0];
-  let Uses = [P0];
 
   let Constraints = "";
+  let DecoderMethod = "DecodeMVEVPNOT";
 }
+
+let Predicates = [HasMVEInt] in {
+  def : Pat<(v4i1 (xor (v4i1 VCCR:$pred), (v4i1 (predicate_cast (i32 65535))))),
+            (v4i1 (MVE_VPNOT (v4i1 VCCR:$pred)))>;
+  def : Pat<(v8i1 (xor (v8i1 VCCR:$pred), (v8i1 (predicate_cast (i32 65535))))),
+            (v8i1 (MVE_VPNOT (v8i1 VCCR:$pred)))>;
+  def : Pat<(v16i1 (xor (v16i1 VCCR:$pred), (v16i1 (predicate_cast (i32 65535))))),
+            (v16i1 (MVE_VPNOT (v16i1 VCCR:$pred)))>;
+}
+
 
 class MVE_loltp_start<dag iops, string asm, string ops, bits<2> size>
   : t2LOL<(outs GPRlr:$LR), iops, asm, ops> {

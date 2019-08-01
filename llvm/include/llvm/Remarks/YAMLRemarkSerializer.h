@@ -34,24 +34,55 @@ struct YAMLRemarkSerializer : public RemarkSerializer {
   /// The YAML streamer.
   yaml::Output YAMLOutput;
 
-  YAMLRemarkSerializer(raw_ostream &OS);
+  YAMLRemarkSerializer(raw_ostream &OS, SerializerMode Mode);
 
-  /// Emit a remark to the stream.
   void emit(const Remark &Remark) override;
+  std::unique_ptr<MetaSerializer>
+  metaSerializer(raw_ostream &OS,
+                 Optional<StringRef> ExternalFilename = None) override;
+
+protected:
+  bool DidEmitMeta = false;
+};
+
+struct YAMLMetaSerializer : public MetaSerializer {
+  Optional<StringRef> ExternalFilename;
+
+  YAMLMetaSerializer(raw_ostream &OS, Optional<StringRef> ExternalFilename)
+      : MetaSerializer(OS), ExternalFilename(ExternalFilename) {}
+
+  void emit() override;
 };
 
 /// Serialize the remarks to YAML using a string table. An remark entry looks
 /// like the regular YAML remark but instead of string entries it's using
 /// numbers that map to an index in the string table.
 struct YAMLStrTabRemarkSerializer : public YAMLRemarkSerializer {
-  YAMLStrTabRemarkSerializer(raw_ostream &OS) : YAMLRemarkSerializer(OS) {
+  YAMLStrTabRemarkSerializer(raw_ostream &OS, SerializerMode Mode)
+      : YAMLRemarkSerializer(OS, Mode) {
     // Having a string table set up enables the serializer to use it.
     StrTab.emplace();
   }
-  YAMLStrTabRemarkSerializer(raw_ostream &OS, StringTable StrTabIn)
-      : YAMLRemarkSerializer(OS) {
+  YAMLStrTabRemarkSerializer(raw_ostream &OS, SerializerMode Mode,
+                             StringTable StrTabIn)
+      : YAMLRemarkSerializer(OS, Mode) {
     StrTab = std::move(StrTabIn);
   }
+  std::unique_ptr<MetaSerializer>
+  metaSerializer(raw_ostream &OS,
+                 Optional<StringRef> ExternalFilename = None) override;
+};
+
+struct YAMLStrTabMetaSerializer : public YAMLMetaSerializer {
+  /// The string table is part of the metadata.
+  StringTable StrTab;
+
+  YAMLStrTabMetaSerializer(raw_ostream &OS,
+                           Optional<StringRef> ExternalFilename,
+                           StringTable StrTab)
+      : YAMLMetaSerializer(OS, ExternalFilename), StrTab(std::move(StrTab)) {}
+
+  void emit() override;
 };
 
 } // end namespace remarks

@@ -110,10 +110,6 @@ TEST(HTMLGeneratorTest, emitRecordHTML) {
   ClangDocContext CDCtx = getClangDocContext();
   auto Err = G->generateDocForInfo(&I, Actual, CDCtx);
   assert(!Err);
-  SmallString<16> PathToF;
-  llvm::sys::path::native("../../../path/to/F.html", PathToF);
-  SmallString<16> PathToInt;
-  llvm::sys::path::native("../int.html", PathToInt);
   std::string Expected = R"raw(<!DOCTYPE html>
 <meta charset="utf-8"/>
 <title>class r</title>
@@ -123,16 +119,14 @@ TEST(HTMLGeneratorTest, emitRecordHTML) {
   <p>Defined at line 10 of test.cpp</p>
   <p>
     Inherits from 
-    <a href=")raw" + std::string(PathToF.str()) +
-                         R"raw(">F</a>
+    <a href="../../../path/to/F.html">F</a>
     , G
   </p>
   <h2>Members</h2>
   <ul>
     <li>
       private 
-      <a href=")raw" + std::string(PathToInt.str()) +
-                         R"raw(">int</a>
+      <a href="../int.html">int</a>
        X
     </li>
   </ul>
@@ -177,10 +171,6 @@ TEST(HTMLGeneratorTest, emitFunctionHTML) {
   ClangDocContext CDCtx = getClangDocContext();
   auto Err = G->generateDocForInfo(&I, Actual, CDCtx);
   assert(!Err);
-  SmallString<16> PathToFloat;
-  llvm::sys::path::native("path/to/float.html", PathToFloat);
-  SmallString<16> PathToInt;
-  llvm::sys::path::native("path/to/int.html", PathToInt);
   std::string Expected = R"raw(<!DOCTYPE html>
 <meta charset="utf-8"/>
 <title></title>
@@ -188,11 +178,9 @@ TEST(HTMLGeneratorTest, emitFunctionHTML) {
 <div>
   <h3>f</h3>
   <p>
-    <a href=")raw" + std::string(PathToFloat.str()) +
-                         R"raw(">float</a>
+    <a href="path/to/float.html">float</a>
      f(
-    <a href=")raw" + std::string(PathToInt.str()) +
-                         R"raw(">int</a>
+    <a href="path/to/int.html">int</a>
      P)
   </p>
   <p>Defined at line 10 of test.cpp</p>

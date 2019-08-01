@@ -653,6 +653,7 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
 
     setOperationAction(ISD::FADD, MVT::v4f16, Custom);
     setOperationAction(ISD::FMUL, MVT::v4f16, Custom);
+    setOperationAction(ISD::FMA, MVT::v4f16, Custom);
 
     setOperationAction(ISD::FMAXNUM, MVT::v2f16, Custom);
     setOperationAction(ISD::FMINNUM, MVT::v2f16, Custom);
@@ -3095,12 +3096,13 @@ SITargetLowering::emitGWSMemViolTestLoop(MachineInstr &MI,
   MachineBasicBlock *RemainderBB;
   const SIInstrInfo *TII = getSubtarget()->getInstrInfo();
 
-  MachineBasicBlock::iterator Prev = std::prev(MI.getIterator());
+  // Apparently kill flags are only valid if the def is in the same block?
+  if (MachineOperand *Src = TII->getNamedOperand(MI, AMDGPU::OpName::data0))
+    Src->setIsKill(false);
 
   std::tie(LoopBB, RemainderBB) = splitBlockForLoop(MI, *BB, true);
 
   MachineBasicBlock::iterator I = LoopBB->end();
-  MachineOperand *Src = TII->getNamedOperand(MI, AMDGPU::OpName::data0);
 
   const unsigned EncodedReg = AMDGPU::Hwreg::encodeHwreg(
     AMDGPU::Hwreg::ID_TRAPSTS, AMDGPU::Hwreg::OFFSET_MEM_VIOL, 1);
@@ -3109,19 +3111,6 @@ SITargetLowering::emitGWSMemViolTestLoop(MachineInstr &MI,
   BuildMI(*LoopBB, LoopBB->begin(), DL, TII->get(AMDGPU::S_SETREG_IMM32_B32))
     .addImm(0)
     .addImm(EncodedReg);
-
-  // This is a pain, but we're not allowed to have physical register live-ins
-  // yet. Insert a pair of copies if the VGPR0 hack is necessary.
-  if (Src && TargetRegisterInfo::isPhysicalRegister(Src->getReg())) {
-    unsigned Data0 = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
-    BuildMI(*BB, std::next(Prev), DL, TII->get(AMDGPU::COPY), Data0)
-      .add(*Src);
-
-    BuildMI(*LoopBB, LoopBB->begin(), DL, TII->get(AMDGPU::COPY), Src->getReg())
-      .addReg(Data0);
-
-    MRI.setSimpleHint(Data0, Src->getReg());
-  }
 
   bundleInstWithWaitcnt(MI);
 
@@ -3971,6 +3960,30 @@ SDValue SITargetLowering::splitBinaryVectorOp(SDValue Op,
   return DAG.getNode(ISD::CONCAT_VECTORS, SDLoc(Op), VT, OpLo, OpHi);
 }
 
+SDValue SITargetLowering::splitTernaryVectorOp(SDValue Op,
+                                              SelectionDAG &DAG) const {
+  unsigned Opc = Op.getOpcode();
+  EVT VT = Op.getValueType();
+  assert(VT == MVT::v4i16 || VT == MVT::v4f16);
+
+  SDValue Lo0, Hi0;
+  std::tie(Lo0, Hi0) = DAG.SplitVectorOperand(Op.getNode(), 0);
+  SDValue Lo1, Hi1;
+  std::tie(Lo1, Hi1) = DAG.SplitVectorOperand(Op.getNode(), 1);
+  SDValue Lo2, Hi2;
+  std::tie(Lo2, Hi2) = DAG.SplitVectorOperand(Op.getNode(), 2);
+
+  SDLoc SL(Op);
+
+  SDValue OpLo = DAG.getNode(Opc, SL, Lo0.getValueType(), Lo0, Lo1, Lo2,
+                             Op->getFlags());
+  SDValue OpHi = DAG.getNode(Opc, SL, Hi0.getValueType(), Hi0, Hi1, Hi2,
+                             Op->getFlags());
+
+  return DAG.getNode(ISD::CONCAT_VECTORS, SDLoc(Op), VT, OpLo, OpHi);
+}
+
+
 SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   default: return AMDGPUTargetLowering::LowerOperation(Op, DAG);
@@ -4023,6 +4036,8 @@ SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::FMINNUM:
   case ISD::FMAXNUM:
     return lowerFMINNUM_FMAXNUM(Op, DAG);
+  case ISD::FMA:
+    return splitTernaryVectorOp(Op, DAG);
   case ISD::SHL:
   case ISD::SRA:
   case ISD::SRL:
@@ -5979,16 +5994,6 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
                                Op.getOperand(1), Op.getOperand(2));
     return DAG.getNode(ISD::BITCAST, DL, VT, Node);
   }
-  case Intrinsic::amdgcn_wqm: {
-    SDValue Src = Op.getOperand(1);
-    return SDValue(DAG.getMachineNode(AMDGPU::WQM, DL, Src.getValueType(), Src),
-                   0);
-  }
-  case Intrinsic::amdgcn_wwm: {
-    SDValue Src = Op.getOperand(1);
-    return SDValue(DAG.getMachineNode(AMDGPU::WWM, DL, Src.getValueType(), Src),
-                   0);
-  }
   case Intrinsic::amdgcn_fmad_ftz:
     return DAG.getNode(AMDGPUISD::FMAD_FTZ, DL, VT, Op.getOperand(1),
                        Op.getOperand(2), Op.getOperand(3));
@@ -6717,15 +6722,6 @@ SDValue SITargetLowering::LowerINTRINSIC_VOID(SDValue Op,
     unsigned Opc = Done->isNullValue() ?
       AMDGPUISD::EXPORT : AMDGPUISD::EXPORT_DONE;
     return DAG.getNode(Opc, DL, Op->getVTList(), Ops);
-  }
-  case Intrinsic::amdgcn_s_sendmsg:
-  case Intrinsic::amdgcn_s_sendmsghalt: {
-    unsigned NodeOp = (IntrinsicID == Intrinsic::amdgcn_s_sendmsg) ?
-      AMDGPUISD::SENDMSG : AMDGPUISD::SENDMSGHALT;
-    Chain = copyToM0(DAG, Chain, DL, Op.getOperand(3));
-    SDValue Glue = Chain.getValue(1);
-    return DAG.getNode(NodeOp, DL, MVT::Other, Chain,
-                       Op.getOperand(2), Glue);
   }
   case Intrinsic::amdgcn_init_exec: {
     return DAG.getNode(AMDGPUISD::INIT_EXEC, DL, MVT::Other, Chain,
@@ -10447,6 +10443,8 @@ SITargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
       }
       break;
     case 'a':
+      if (!Subtarget->hasMAIInsts())
+        break;
       switch (VT.getSizeInBits()) {
       default:
         return std::make_pair(0U, nullptr);

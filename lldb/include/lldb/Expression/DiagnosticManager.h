@@ -23,7 +23,6 @@ enum DiagnosticOrigin {
   eDiagnosticOriginUnknown = 0,
   eDiagnosticOriginLLDB,
   eDiagnosticOriginClang,
-  eDiagnosticOriginGo,
   eDiagnosticOriginSwift,
   eDiagnosticOriginLLVM
 };
@@ -47,7 +46,6 @@ public:
     switch (kind) {
     case eDiagnosticOriginUnknown:
     case eDiagnosticOriginLLDB:
-    case eDiagnosticOriginGo:
     case eDiagnosticOriginLLVM:
       return true;
     case eDiagnosticOriginClang:
@@ -126,8 +124,6 @@ public:
   void AddDiagnostic(Diagnostic *diagnostic) {
     m_diagnostics.push_back(diagnostic);
   }
-
-  void CopyDiagnostics(DiagnosticManager &otherDiagnostics);
 
   size_t Printf(DiagnosticSeverity severity, const char *format, ...)
       __attribute__((format(printf, 3, 4)));

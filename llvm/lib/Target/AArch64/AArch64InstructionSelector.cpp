@@ -203,7 +203,7 @@ private:
 
   // Materialize a GlobalValue or BlockAddress using a movz+movk sequence.
   void materializeLargeCMVal(MachineInstr &I, const Value *V,
-                             unsigned char OpFlags) const;
+                             unsigned OpFlags) const;
 
   // Optimization methods.
   bool tryOptVectorShuffle(MachineInstr &I) const;
@@ -1060,7 +1060,7 @@ bool AArch64InstructionSelector::selectVaStartDarwin(
 }
 
 void AArch64InstructionSelector::materializeLargeCMVal(
-    MachineInstr &I, const Value *V, unsigned char OpFlags) const {
+    MachineInstr &I, const Value *V, unsigned OpFlags) const {
   MachineBasicBlock &MBB = *I.getParent();
   MachineFunction &MF = *MBB.getParent();
   MachineRegisterInfo &MRI = MF.getRegInfo();
@@ -1668,7 +1668,7 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
       // FIXME: we don't support TLS yet.
       return false;
     }
-    unsigned char OpFlags = STI.ClassifyGlobalReference(GV, TM);
+    unsigned OpFlags = STI.ClassifyGlobalReference(GV, TM);
     if (OpFlags & AArch64II::MO_GOT) {
       I.setDesc(TII.get(AArch64::LOADgot));
       I.getOperand(1).setTargetFlags(OpFlags);
@@ -2027,21 +2027,24 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
   case TargetOpcode::G_ZEXT:
   case TargetOpcode::G_SEXT: {
     unsigned Opcode = I.getOpcode();
-    const LLT DstTy = MRI.getType(I.getOperand(0).getReg()),
-              SrcTy = MRI.getType(I.getOperand(1).getReg());
-    const bool isSigned = Opcode == TargetOpcode::G_SEXT;
+    const bool IsSigned = Opcode == TargetOpcode::G_SEXT;
     const Register DefReg = I.getOperand(0).getReg();
     const Register SrcReg = I.getOperand(1).getReg();
-    const RegisterBank &RB = *RBI.getRegBank(DefReg, MRI, TRI);
+    const LLT DstTy = MRI.getType(DefReg);
+    const LLT SrcTy = MRI.getType(SrcReg);
+    unsigned DstSize = DstTy.getSizeInBits();
+    unsigned SrcSize = SrcTy.getSizeInBits();
 
-    if (RB.getID() != AArch64::GPRRegBankID) {
-      LLVM_DEBUG(dbgs() << TII.getName(I.getOpcode()) << " on bank: " << RB
-                        << ", expected: GPR\n");
-      return false;
-    }
+    assert((*RBI.getRegBank(DefReg, MRI, TRI)).getID() ==
+               AArch64::GPRRegBankID &&
+           "Unexpected ext regbank");
 
+    MachineIRBuilder MIB(I);
     MachineInstr *ExtI;
-    if (DstTy == LLT::scalar(64)) {
+    if (DstTy.isVector())
+      return false; // Should be handled by imported patterns.
+
+    if (DstSize == 64) {
       // FIXME: Can we avoid manually doing this?
       if (!RBI.constrainGenericRegister(SrcReg, AArch64::GPR32RegClass, MRI)) {
         LLVM_DEBUG(dbgs() << "Failed to constrain " << TII.getName(Opcode)
@@ -2049,33 +2052,26 @@ bool AArch64InstructionSelector::select(MachineInstr &I,
         return false;
       }
 
-      const Register SrcXReg =
-          MRI.createVirtualRegister(&AArch64::GPR64RegClass);
-      BuildMI(MBB, I, I.getDebugLoc(), TII.get(AArch64::SUBREG_TO_REG))
-          .addDef(SrcXReg)
-          .addImm(0)
-          .addUse(SrcReg)
-          .addImm(AArch64::sub_32);
+      auto SubregToReg =
+          MIB.buildInstr(AArch64::SUBREG_TO_REG, {&AArch64::GPR64RegClass}, {})
+              .addImm(0)
+              .addUse(SrcReg)
+              .addImm(AArch64::sub_32);
 
-      const unsigned NewOpc = isSigned ? AArch64::SBFMXri : AArch64::UBFMXri;
-      ExtI = BuildMI(MBB, I, I.getDebugLoc(), TII.get(NewOpc))
-                 .addDef(DefReg)
-                 .addUse(SrcXReg)
-                 .addImm(0)
-                 .addImm(SrcTy.getSizeInBits() - 1);
-    } else if (DstTy.isScalar() && DstTy.getSizeInBits() <= 32) {
-      const unsigned NewOpc = isSigned ? AArch64::SBFMWri : AArch64::UBFMWri;
-      ExtI = BuildMI(MBB, I, I.getDebugLoc(), TII.get(NewOpc))
-                 .addDef(DefReg)
-                 .addUse(SrcReg)
-                 .addImm(0)
-                 .addImm(SrcTy.getSizeInBits() - 1);
+      ExtI = MIB.buildInstr(IsSigned ? AArch64::SBFMXri : AArch64::UBFMXri,
+                             {DefReg}, {SubregToReg})
+                  .addImm(0)
+                  .addImm(SrcSize - 1);
+    } else if (DstSize <= 32) {
+      ExtI = MIB.buildInstr(IsSigned ? AArch64::SBFMWri : AArch64::UBFMWri,
+                             {DefReg}, {SrcReg})
+                  .addImm(0)
+                  .addImm(SrcSize - 1);
     } else {
       return false;
     }
 
     constrainSelectedInstRegOperands(*ExtI, TII, TRI, RBI);
-
     I.eraseFromParent();
     return true;
   }
@@ -3896,7 +3892,9 @@ static unsigned findIntrinsicID(MachineInstr &I) {
 /// intrinsic.
 static unsigned getStlxrOpcode(unsigned NumBytesToStore) {
   switch (NumBytesToStore) {
-  // TODO: 1, 2, and 4 byte stores.
+  // TODO: 1 and 2 byte stores
+  case 4:
+    return AArch64::STLXRW;
   case 8:
     return AArch64::STLXRX;
   default:
@@ -3950,8 +3948,24 @@ bool AArch64InstructionSelector::selectIntrinsicWithSideEffects(
     unsigned Opc = getStlxrOpcode(NumBytesToStore);
     if (!Opc)
       return false;
-
-    auto StoreMI = MIRBuilder.buildInstr(Opc, {StatReg}, {SrcReg, PtrReg});
+    unsigned NumBitsToStore = NumBytesToStore * 8;
+    if (NumBitsToStore != 64) {
+      // The intrinsic always has a 64-bit source, but we might actually want
+      // a differently-sized source for the instruction. Try to get it.
+      // TODO: For 1 and 2-byte stores, this will have a G_AND. For now, let's
+      // just handle 4-byte stores.
+      // TODO: If we don't find a G_ZEXT, we'll have to truncate the value down
+      // to the right size for the STLXR.
+      MachineInstr *Zext = getOpcodeDef(TargetOpcode::G_ZEXT, SrcReg, MRI);
+      if (!Zext)
+        return false;
+      SrcReg = Zext->getOperand(1).getReg();
+      // We should get an appropriately-sized register here.
+      if (RBI.getSizeInBits(SrcReg, MRI, TRI) != NumBitsToStore)
+        return false;
+    }
+    auto StoreMI = MIRBuilder.buildInstr(Opc, {StatReg}, {SrcReg, PtrReg})
+                       .addMemOperand(*I.memoperands_begin());
     constrainSelectedInstRegOperands(*StoreMI, TII, TRI, RBI);
   }
 

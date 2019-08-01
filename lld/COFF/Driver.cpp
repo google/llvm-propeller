@@ -184,8 +184,10 @@ void LinkerDriver::addBuffer(std::unique_ptr<MemoryBuffer> mb,
     if (wholeArchive) {
       std::unique_ptr<Archive> file =
           CHECK(Archive::create(mbref), filename + ": failed to parse archive");
+      Archive *archive = file.get();
+      make<std::unique_ptr<Archive>>(std::move(file)); // take ownership
 
-      for (MemoryBufferRef m : getArchiveMembers(file.get()))
+      for (MemoryBufferRef m : getArchiveMembers(archive))
         addArchiveBuffer(m, "<whole-archive>", filename, 0);
       return;
     }
@@ -1752,24 +1754,6 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
       addUndefined(mangle("_load_config_used"));
   } while (run());
 
-  if (errorCount())
-    return;
-
-  // Do LTO by compiling bitcode input files to a set of native COFF files then
-  // link those files (unless -thinlto-index-only was given, in which case we
-  // resolve symbols and write indices, but don't generate native code or link).
-  symtab->addCombinedLTOObjects();
-
-  // If -thinlto-index-only is given, we should create only "index
-  // files" and not object files. Index file creation is already done
-  // in addCombinedLTOObject, so we are done if that's the case.
-  if (config->thinLTOIndexOnly)
-    return;
-
-  // If we generated native object files from bitcode files, this resolves
-  // references to the symbols we use from them.
-  run();
-
   if (args.hasArg(OPT_include_optional)) {
     // Handle /includeoptional
     for (auto *arg : args.filtered(OPT_include_optional))
@@ -1796,8 +1780,32 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
     run();
   }
 
-  // Make sure we have resolved all symbols.
-  symtab->reportRemainingUndefines();
+  // At this point, we should not have any symbols that cannot be resolved.
+  // If we are going to do codegen for link-time optimization, check for
+  // unresolvable symbols first, so we don't spend time generating code that
+  // will fail to link anyway.
+  if (!BitcodeFile::instances.empty() && !config->forceUnresolved)
+    symtab->reportUnresolvable();
+  if (errorCount())
+    return;
+
+  // Do LTO by compiling bitcode input files to a set of native COFF files then
+  // link those files (unless -thinlto-index-only was given, in which case we
+  // resolve symbols and write indices, but don't generate native code or link).
+  symtab->addCombinedLTOObjects();
+
+  // If -thinlto-index-only is given, we should create only "index
+  // files" and not object files. Index file creation is already done
+  // in addCombinedLTOObject, so we are done if that's the case.
+  if (config->thinLTOIndexOnly)
+    return;
+
+  // If we generated native object files from bitcode files, this resolves
+  // references to the symbols we use from them.
+  run();
+
+  // Resolve remaining undefined symbols and warn about imported locals.
+  symtab->resolveRemainingUndefines();
   if (errorCount())
     return;
 

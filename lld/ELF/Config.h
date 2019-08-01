@@ -223,6 +223,7 @@ struct Configuration {
   bool zOrigin;
   bool zRelro;
   bool zRodynamic;
+  bool zSeparateCode;
   bool zText;
   bool zRetpolineplt;
   bool zWxneeded;

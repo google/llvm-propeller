@@ -23,16 +23,16 @@ SelectionTree makeSelectionTree(const StringRef MarkedCode, ParsedAST &AST) {
   Annotations Test(MarkedCode);
   switch (Test.points().size()) {
   case 1: // Point selection.
-    return SelectionTree(AST.getASTContext(),
+    return SelectionTree(AST.getASTContext(), AST.getTokens(),
                          cantFail(positionToOffset(Test.code(), Test.point())));
   case 2: // Range selection.
     return SelectionTree(
-        AST.getASTContext(),
+        AST.getASTContext(), AST.getTokens(),
         cantFail(positionToOffset(Test.code(), Test.points()[0])),
         cantFail(positionToOffset(Test.code(), Test.points()[1])));
   default:
     ADD_FAILURE() << "Expected 1-2 points for selection.\n" << MarkedCode;
-    return SelectionTree(AST.getASTContext(), 0u, 0u);
+    return SelectionTree(AST.getASTContext(), AST.getTokens(), 0u, 0u);
   }
 }
 
@@ -219,6 +219,9 @@ TEST(SelectionTest, CommonAncestor) {
       {"void foo() { [[foo^]] (); }", "DeclRefExpr"},
       {"int bar; void foo() [[{ foo (); }]]^", "CompoundStmt"},
 
+      // Ignores whitespace, comments, and semicolons in the selection.
+      {"void foo() { [[foo^()]]; /*comment*/^}", "CallExpr"},
+
       // Tricky case: FunctionTypeLoc in FunctionDecl has a hole in it.
       {"[[^void]] foo();", "BuiltinTypeLoc"},
       {"[[void foo^()]];", "FunctionProtoTypeLoc"},
@@ -341,6 +344,23 @@ TEST(SelectionTest, Selected) {
     EXPECT_THAT(Complete, UnorderedElementsAreArray(Test.ranges("C"))) << C;
     EXPECT_THAT(Partial, UnorderedElementsAreArray(Test.ranges())) << C;
   }
+}
+
+TEST(SelectionTest, Implicit) {
+  const char* Test = R"cpp(
+    struct S { S(const char*); };
+    int f(S);
+    int x = f("^");
+  )cpp";
+  auto AST = TestTU::withCode(Annotations(Test).code()).build();
+  auto T = makeSelectionTree(Test, AST);
+
+  const SelectionTree::Node *Str = T.commonAncestor();
+  EXPECT_EQ("StringLiteral", nodeKind(Str)) << "Implicit selected?";
+  EXPECT_EQ("ImplicitCastExpr", nodeKind(Str->Parent));
+  EXPECT_EQ("CXXConstructExpr", nodeKind(Str->Parent->Parent));
+  EXPECT_EQ(Str, &Str->Parent->Parent->ignoreImplicit())
+      << "Didn't unwrap " << nodeKind(&Str->Parent->Parent->ignoreImplicit());
 }
 
 } // namespace

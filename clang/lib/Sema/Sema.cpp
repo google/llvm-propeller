@@ -961,6 +961,7 @@ void Sema::ActOnEndOfTranslationUnit() {
 
   // All dllexport classes should have been processed already.
   assert(DelayedDllExportClasses.empty());
+  assert(DelayedDllExportMemberFunctions.empty());
 
   // Remove file scoped decls that turned out to be used.
   UnusedFileScopedDecls.erase(
@@ -1658,24 +1659,12 @@ static void markEscapingByrefs(const FunctionScopeInfo &FSI, Sema &S) {
   // Set the EscapingByref flag of __block variables captured by
   // escaping blocks.
   for (const BlockDecl *BD : FSI.Blocks) {
+    if (BD->doesNotEscape())
+      continue;
     for (const BlockDecl::Capture &BC : BD->captures()) {
       VarDecl *VD = BC.getVariable();
-      if (VD->hasAttr<BlocksAttr>()) {
-        // Nothing to do if this is a __block variable captured by a
-        // non-escaping block.
-        if (BD->doesNotEscape())
-          continue;
+      if (VD->hasAttr<BlocksAttr>())
         VD->setEscapingByref();
-      }
-      // Check whether the captured variable is or contains an object of
-      // non-trivial C union type.
-      QualType CapType = BC.getVariable()->getType();
-      if (CapType.hasNonTrivialToPrimitiveDestructCUnion() ||
-          CapType.hasNonTrivialToPrimitiveCopyCUnion())
-        S.checkNonTrivialCUnion(BC.getVariable()->getType(),
-                                BD->getCaretLocation(),
-                                Sema::NTCUC_BlockCapture,
-                                Sema::NTCUK_Destruct|Sema::NTCUK_Copy);
     }
   }
 

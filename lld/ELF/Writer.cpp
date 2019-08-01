@@ -165,7 +165,7 @@ void Writer<ELFT>::removeEmptyPTLoad(std::vector<PhdrEntry *> &phdrs) {
   });
 }
 
-template <class ELFT> static void copySectionsIntoPartitions() {
+static void copySectionsIntoPartitions() {
   std::vector<InputSectionBase *> newSections;
   for (unsigned part = 2; part != partitions.size() + 1; ++part) {
     for (InputSectionBase *s : inputSections) {
@@ -557,7 +557,7 @@ template <class ELFT> static void createSyntheticSections() {
 template <class ELFT> void Writer<ELFT>::run() {
   // Make copies of any input sections that need to be copied into each
   // partition.
-  copySectionsIntoPartitions<ELFT>();
+  copySectionsIntoPartitions();
 
   // Create linker-synthesized sections such as .got or .plt.
   // Such sections are of type input section.
@@ -2469,13 +2469,11 @@ template <class ELFT> void Writer<ELFT>::assignFileOffsets() {
 
   for (OutputSection *sec : outputSections) {
     off = setFileOffset(sec, off);
-    if (script->hasSectionsCommand)
-      continue;
 
     // If this is a last section of the last executable segment and that
     // segment is the last loadable segment, align the offset of the
     // following section to avoid loading non-segments parts of the file.
-    if (lastRX && lastRX->lastSec == sec)
+    if (config->zSeparateCode && lastRX && lastRX->lastSec == sec)
       off = alignTo(off, config->commonPageSize);
   }
 
@@ -2748,7 +2746,7 @@ static void fillTrap(uint8_t *i, uint8_t *end) {
 // We'll leave other pages in segments as-is because the rest will be
 // overwritten by output sections.
 template <class ELFT> void Writer<ELFT>::writeTrapInstr() {
-  if (script->hasSectionsCommand)
+  if (!config->zSeparateCode)
     return;
 
   for (Partition &part : partitions) {

@@ -588,17 +588,29 @@ MCSection *TargetLoweringObjectFileELF::getExplicitSectionGlobal(
     Flags |= ELF::SHF_GROUP;
   }
 
+  bool EmitUniqueSection = false;
+
+  // If we have -ffunction-sections or -fdata-sections then we should emit the
+  // global value to a uniqued section of the same name.
+  if (!(Flags & ELF::SHF_MERGE) && !Kind.isCommon()) {
+    if (Kind.isText())
+      EmitUniqueSection = TM.getFunctionSections();
+    else
+      EmitUniqueSection = TM.getDataSections();
+  }
+  EmitUniqueSection |= GO->hasComdat();
+
   // A section can have at most one associated section. Put each global with
   // MD_associated in a unique section.
-  unsigned UniqueID = MCContext::GenericSectionID;
   const MCSymbolELF *AssociatedSymbol = getAssociatedSymbol(GO, TM);
-  if (AssociatedSymbol || (F && TM.getFunctionSections())){
-    UniqueID = NextUniqueID++;
-  }
-
-  if (AssociatedSymbol){
+  if (AssociatedSymbol) {
+    EmitUniqueSection = true;
     Flags |= ELF::SHF_LINK_ORDER;
   }
+
+  unsigned UniqueID = MCContext::GenericSectionID;
+  if (EmitUniqueSection)
+    UniqueID = NextUniqueID++;
 
   MCSectionELF *Section = getContext().getELFSection(
       SectionName, getELFSectionType(SectionName, Kind), Flags,
@@ -1858,7 +1870,7 @@ MCSection *TargetLoweringObjectFileWasm::getStaticDtorSection(
 //===----------------------------------------------------------------------===//
 MCSection *TargetLoweringObjectFileXCOFF::getExplicitSectionGlobal(
     const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
-  llvm_unreachable("XCOFF explicit sections not yet implemented.");
+  report_fatal_error("XCOFF explicit sections not yet implemented.");
 }
 
 MCSection *TargetLoweringObjectFileXCOFF::SelectSectionForGlobal(
@@ -1875,12 +1887,15 @@ MCSection *TargetLoweringObjectFileXCOFF::SelectSectionForGlobal(
                                         Kind, /* BeginSymbolName */ nullptr);
   }
 
+  if (Kind.isText())
+    return TextSection;
+
   report_fatal_error("XCOFF other section types not yet implemented.");
 }
 
 bool TargetLoweringObjectFileXCOFF::shouldPutJumpTableInFunctionSection(
     bool UsesLabelDifference, const Function &F) const {
-  llvm_unreachable("TLOF XCOFF not yet implemented.");
+  report_fatal_error("TLOF XCOFF not yet implemented.");
 }
 
 void TargetLoweringObjectFileXCOFF::Initialize(MCContext &Ctx,
@@ -1893,16 +1908,16 @@ void TargetLoweringObjectFileXCOFF::Initialize(MCContext &Ctx,
 
 MCSection *TargetLoweringObjectFileXCOFF::getStaticCtorSection(
     unsigned Priority, const MCSymbol *KeySym) const {
-  llvm_unreachable("XCOFF ctor section not yet implemented.");
+  report_fatal_error("XCOFF ctor section not yet implemented.");
 }
 
 MCSection *TargetLoweringObjectFileXCOFF::getStaticDtorSection(
     unsigned Priority, const MCSymbol *KeySym) const {
-  llvm_unreachable("XCOFF dtor section not yet implemented.");
+  report_fatal_error("XCOFF dtor section not yet implemented.");
 }
 
 const MCExpr *TargetLoweringObjectFileXCOFF::lowerRelativeReference(
     const GlobalValue *LHS, const GlobalValue *RHS,
     const TargetMachine &TM) const {
-  llvm_unreachable("XCOFF not yet implemented.");
+  report_fatal_error("XCOFF not yet implemented.");
 }

@@ -1397,6 +1397,12 @@ bool SIInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MI.setDesc(get(AMDGPU::S_OR_B32));
     break;
 
+  case AMDGPU::S_OR_B64_term:
+    // This is only a terminator to get the correct spill code placement during
+    // register allocation.
+    MI.setDesc(get(AMDGPU::S_OR_B64));
+    break;
+
   case AMDGPU::S_ANDN2_B64_term:
     // This is only a terminator to get the correct spill code placement during
     // register allocation.
@@ -1889,6 +1895,7 @@ bool SIInstrInfo::analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
     case AMDGPU::SI_MASK_BRANCH:
     case AMDGPU::S_MOV_B64_term:
     case AMDGPU::S_XOR_B64_term:
+    case AMDGPU::S_OR_B64_term:
     case AMDGPU::S_ANDN2_B64_term:
     case AMDGPU::S_MOV_B32_term:
     case AMDGPU::S_XOR_B32_term:
@@ -3609,7 +3616,7 @@ bool SIInstrInfo::verifyInstruction(const MachineInstr &MI,
     if (DC >= DppCtrl::BCAST15 && DC <= DppCtrl::BCAST31 &&
         ST.getGeneration() >= AMDGPUSubtarget::GFX10) {
       ErrInfo = "Invalid dpp_ctrl value: "
-                "broadcats are not supported on GFX10+";
+                "broadcasts are not supported on GFX10+";
       return false;
     }
     if (DC >= DppCtrl::ROW_SHARE_FIRST && DC <= DppCtrl::ROW_XMASK_LAST &&
@@ -3631,6 +3638,7 @@ unsigned SIInstrInfo::getVALUOp(const MachineInstr &MI) const {
   case AMDGPU::PHI: return AMDGPU::PHI;
   case AMDGPU::INSERT_SUBREG: return AMDGPU::INSERT_SUBREG;
   case AMDGPU::WQM: return AMDGPU::WQM;
+  case AMDGPU::SOFT_WQM: return AMDGPU::SOFT_WQM;
   case AMDGPU::WWM: return AMDGPU::WWM;
   case AMDGPU::S_MOV_B32: {
     const MachineRegisterInfo &MRI = MI.getParent()->getParent()->getRegInfo();
@@ -5506,6 +5514,7 @@ void SIInstrInfo::addUsersToMoveToVALUWorklist(
     switch (UseMI.getOpcode()) {
     case AMDGPU::COPY:
     case AMDGPU::WQM:
+    case AMDGPU::SOFT_WQM:
     case AMDGPU::WWM:
     case AMDGPU::REG_SEQUENCE:
     case AMDGPU::PHI:
@@ -5623,6 +5632,7 @@ const TargetRegisterClass *SIInstrInfo::getDestEquivalentVGPRClass(
   case AMDGPU::REG_SEQUENCE:
   case AMDGPU::INSERT_SUBREG:
   case AMDGPU::WQM:
+  case AMDGPU::SOFT_WQM:
   case AMDGPU::WWM: {
     const TargetRegisterClass *SrcRC = getOpRegClass(Inst, 1);
     if (RI.hasAGPRs(SrcRC)) {

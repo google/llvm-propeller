@@ -199,9 +199,11 @@ def int_amdgcn_wavefrontsize :
 // The first parameter is s_sendmsg immediate (i16),
 // the second one is copied to m0
 def int_amdgcn_s_sendmsg : GCCBuiltin<"__builtin_amdgcn_s_sendmsg">,
-  Intrinsic <[], [llvm_i32_ty, llvm_i32_ty], [ImmArg<0>, IntrInaccessibleMemOnly]>;
+  Intrinsic <[], [llvm_i32_ty, llvm_i32_ty],
+  [ImmArg<0>, IntrNoMem, IntrHasSideEffects]>;
 def int_amdgcn_s_sendmsghalt : GCCBuiltin<"__builtin_amdgcn_s_sendmsghalt">,
-  Intrinsic <[], [llvm_i32_ty, llvm_i32_ty], [ImmArg<0>, IntrInaccessibleMemOnly]>;
+  Intrinsic <[], [llvm_i32_ty, llvm_i32_ty],
+  [ImmArg<0>, IntrNoMem, IntrHasSideEffects]>;
 
 def int_amdgcn_s_barrier : GCCBuiltin<"__builtin_amdgcn_s_barrier">,
   Intrinsic<[], [], [IntrConvergent]>;
@@ -1428,6 +1430,13 @@ def int_amdgcn_ds_gws_sema_release_all :
 // Copies the source value to the destination value, with the guarantee that
 // the source value is computed as if the entire program were executed in WQM.
 def int_amdgcn_wqm : Intrinsic<[llvm_any_ty],
+  [LLVMMatchType<0>], [IntrNoMem, IntrSpeculatable]
+>;
+
+// Copies the source value to the destination value, such that the source
+// is computed as if the entire program were executed in WQM if any other
+// program code executes in WQM.
+def int_amdgcn_softwqm : Intrinsic<[llvm_any_ty],
   [LLVMMatchType<0>], [IntrNoMem, IntrSpeculatable]
 >;
 
