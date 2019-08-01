@@ -106,21 +106,19 @@ Target::Target(Debugger &debugger, const ArchSpec &target_arch,
 
   CheckInWithManager();
 
-  Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OBJECT));
-  if (log)
-    log->Printf("%p Target::Target()", static_cast<void *>(this));
+  LLDB_LOG(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OBJECT),
+           "{0} Target::Target()", static_cast<void *>(this));
   if (target_arch.IsValid()) {
-    LogIfAnyCategoriesSet(LIBLLDB_LOG_TARGET,
-                          "Target::Target created with architecture %s (%s)",
-                          target_arch.GetArchitectureName(),
-                          target_arch.GetTriple().getTriple().c_str());
+    LLDB_LOG(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_TARGET),
+             "Target::Target created with architecture {0} ({1})",
+             target_arch.GetArchitectureName(),
+             target_arch.GetTriple().getTriple().c_str());
   }
 }
 
 Target::~Target() {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OBJECT));
-  if (log)
-    log->Printf("%p Target::~Target()", static_cast<void *>(this));
+  LLDB_LOG(log, "{0} Target::~Target()", static_cast<void *>(this));
   DeleteCurrentProcess();
 }
 
@@ -645,8 +643,8 @@ void Target::AddBreakpoint(lldb::BreakpointSP bp_sp, bool internal) {
   if (log) {
     StreamString s;
     bp_sp->GetDescription(&s, lldb::eDescriptionLevelVerbose);
-    log->Printf("Target::%s (internal = %s) => break_id = %s\n", __FUNCTION__,
-                bp_sp->IsInternal() ? "yes" : "no", s.GetData());
+    LLDB_LOGF(log, "Target::%s (internal = %s) => break_id = %s\n",
+              __FUNCTION__, bp_sp->IsInternal() ? "yes" : "no", s.GetData());
   }
 
   bp_sp->ResolveBreakpoint();
@@ -778,10 +776,10 @@ WatchpointSP Target::CreateWatchpoint(lldb::addr_t addr, size_t size,
                                       const CompilerType *type, uint32_t kind,
                                       Status &error) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s (addr = 0x%8.8" PRIx64 " size = %" PRIu64
-                " type = %u)\n",
-                __FUNCTION__, addr, (uint64_t)size, kind);
+  LLDB_LOGF(log,
+            "Target::%s (addr = 0x%8.8" PRIx64 " size = %" PRIu64
+            " type = %u)\n",
+            __FUNCTION__, addr, (uint64_t)size, kind);
 
   WatchpointSP wp_sp;
   if (!ProcessIsValid()) {
@@ -836,10 +834,9 @@ WatchpointSP Target::CreateWatchpoint(lldb::addr_t addr, size_t size,
   }
 
   error = m_process_sp->EnableWatchpoint(wp_sp.get(), notify);
-  if (log)
-    log->Printf("Target::%s (creation of watchpoint %s with id = %u)\n",
-                __FUNCTION__, error.Success() ? "succeeded" : "failed",
-                wp_sp->GetID());
+  LLDB_LOGF(log, "Target::%s (creation of watchpoint %s with id = %u)\n",
+            __FUNCTION__, error.Success() ? "succeeded" : "failed",
+            wp_sp->GetID());
 
   if (error.Fail()) {
     // Enabling the watchpoint on the device side failed. Remove the said
@@ -858,8 +855,7 @@ WatchpointSP Target::CreateWatchpoint(lldb::addr_t addr, size_t size,
 
 void Target::RemoveAllowedBreakpoints() {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s \n", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s \n", __FUNCTION__);
 
   m_breakpoint_list.RemoveAllowed(true);
 
@@ -868,9 +864,8 @@ void Target::RemoveAllowedBreakpoints() {
 
 void Target::RemoveAllBreakpoints(bool internal_also) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s (internal_also = %s)\n", __FUNCTION__,
-                internal_also ? "yes" : "no");
+  LLDB_LOGF(log, "Target::%s (internal_also = %s)\n", __FUNCTION__,
+            internal_also ? "yes" : "no");
 
   m_breakpoint_list.RemoveAll(true);
   if (internal_also)
@@ -881,9 +876,8 @@ void Target::RemoveAllBreakpoints(bool internal_also) {
 
 void Target::DisableAllBreakpoints(bool internal_also) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s (internal_also = %s)\n", __FUNCTION__,
-                internal_also ? "yes" : "no");
+  LLDB_LOGF(log, "Target::%s (internal_also = %s)\n", __FUNCTION__,
+            internal_also ? "yes" : "no");
 
   m_breakpoint_list.SetEnabledAll(false);
   if (internal_also)
@@ -892,17 +886,15 @@ void Target::DisableAllBreakpoints(bool internal_also) {
 
 void Target::DisableAllowedBreakpoints() {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s", __FUNCTION__);
 
   m_breakpoint_list.SetEnabledAllowed(false);
 }
 
 void Target::EnableAllBreakpoints(bool internal_also) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s (internal_also = %s)\n", __FUNCTION__,
-                internal_also ? "yes" : "no");
+  LLDB_LOGF(log, "Target::%s (internal_also = %s)\n", __FUNCTION__,
+            internal_also ? "yes" : "no");
 
   m_breakpoint_list.SetEnabledAll(true);
   if (internal_also)
@@ -911,17 +903,15 @@ void Target::EnableAllBreakpoints(bool internal_also) {
 
 void Target::EnableAllowedBreakpoints() {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s", __FUNCTION__);
 
   m_breakpoint_list.SetEnabledAllowed(true);
 }
 
 bool Target::RemoveBreakpointByID(break_id_t break_id) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s (break_id = %i, internal = %s)\n", __FUNCTION__,
-                break_id, LLDB_BREAK_ID_IS_INTERNAL(break_id) ? "yes" : "no");
+  LLDB_LOGF(log, "Target::%s (break_id = %i, internal = %s)\n", __FUNCTION__,
+            break_id, LLDB_BREAK_ID_IS_INTERNAL(break_id) ? "yes" : "no");
 
   if (DisableBreakpointByID(break_id)) {
     if (LLDB_BREAK_ID_IS_INTERNAL(break_id))
@@ -940,9 +930,8 @@ bool Target::RemoveBreakpointByID(break_id_t break_id) {
 
 bool Target::DisableBreakpointByID(break_id_t break_id) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s (break_id = %i, internal = %s)\n", __FUNCTION__,
-                break_id, LLDB_BREAK_ID_IS_INTERNAL(break_id) ? "yes" : "no");
+  LLDB_LOGF(log, "Target::%s (break_id = %i, internal = %s)\n", __FUNCTION__,
+            break_id, LLDB_BREAK_ID_IS_INTERNAL(break_id) ? "yes" : "no");
 
   BreakpointSP bp_sp;
 
@@ -959,9 +948,8 @@ bool Target::DisableBreakpointByID(break_id_t break_id) {
 
 bool Target::EnableBreakpointByID(break_id_t break_id) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_BREAKPOINTS));
-  if (log)
-    log->Printf("Target::%s (break_id = %i, internal = %s)\n", __FUNCTION__,
-                break_id, LLDB_BREAK_ID_IS_INTERNAL(break_id) ? "yes" : "no");
+  LLDB_LOGF(log, "Target::%s (break_id = %i, internal = %s)\n", __FUNCTION__,
+            break_id, LLDB_BREAK_ID_IS_INTERNAL(break_id) ? "yes" : "no");
 
   BreakpointSP bp_sp;
 
@@ -1139,8 +1127,7 @@ Status Target::CreateBreakpointsFromFile(const FileSpec &file,
 // to end operations.
 bool Target::RemoveAllWatchpoints(bool end_to_end) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s\n", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s\n", __FUNCTION__);
 
   if (!end_to_end) {
     m_watchpoint_list.RemoveAll(true);
@@ -1171,8 +1158,7 @@ bool Target::RemoveAllWatchpoints(bool end_to_end) {
 // to end operations.
 bool Target::DisableAllWatchpoints(bool end_to_end) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s\n", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s\n", __FUNCTION__);
 
   if (!end_to_end) {
     m_watchpoint_list.SetEnabledAll(false);
@@ -1201,8 +1187,7 @@ bool Target::DisableAllWatchpoints(bool end_to_end) {
 // to end operations.
 bool Target::EnableAllWatchpoints(bool end_to_end) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s\n", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s\n", __FUNCTION__);
 
   if (!end_to_end) {
     m_watchpoint_list.SetEnabledAll(true);
@@ -1230,8 +1215,7 @@ bool Target::EnableAllWatchpoints(bool end_to_end) {
 // Assumption: Caller holds the list mutex lock for m_watchpoint_list.
 bool Target::ClearAllWatchpointHitCounts() {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s\n", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s\n", __FUNCTION__);
 
   size_t num_watchpoints = m_watchpoint_list.GetSize();
   for (size_t i = 0; i < num_watchpoints; ++i) {
@@ -1247,8 +1231,7 @@ bool Target::ClearAllWatchpointHitCounts() {
 // Assumption: Caller holds the list mutex lock for m_watchpoint_list.
 bool Target::ClearAllWatchpointHistoricValues() {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s\n", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s\n", __FUNCTION__);
 
   size_t num_watchpoints = m_watchpoint_list.GetSize();
   for (size_t i = 0; i < num_watchpoints; ++i) {
@@ -1265,8 +1248,7 @@ bool Target::ClearAllWatchpointHistoricValues() {
 // these operations.
 bool Target::IgnoreAllWatchpoints(uint32_t ignore_count) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s\n", __FUNCTION__);
+  LLDB_LOGF(log, "Target::%s\n", __FUNCTION__);
 
   if (!ProcessIsValid())
     return false;
@@ -1285,8 +1267,7 @@ bool Target::IgnoreAllWatchpoints(uint32_t ignore_count) {
 // Assumption: Caller holds the list mutex lock for m_watchpoint_list.
 bool Target::DisableWatchpointByID(lldb::watch_id_t watch_id) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s (watch_id = %i)\n", __FUNCTION__, watch_id);
+  LLDB_LOGF(log, "Target::%s (watch_id = %i)\n", __FUNCTION__, watch_id);
 
   if (!ProcessIsValid())
     return false;
@@ -1305,8 +1286,7 @@ bool Target::DisableWatchpointByID(lldb::watch_id_t watch_id) {
 // Assumption: Caller holds the list mutex lock for m_watchpoint_list.
 bool Target::EnableWatchpointByID(lldb::watch_id_t watch_id) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s (watch_id = %i)\n", __FUNCTION__, watch_id);
+  LLDB_LOGF(log, "Target::%s (watch_id = %i)\n", __FUNCTION__, watch_id);
 
   if (!ProcessIsValid())
     return false;
@@ -1325,8 +1305,7 @@ bool Target::EnableWatchpointByID(lldb::watch_id_t watch_id) {
 // Assumption: Caller holds the list mutex lock for m_watchpoint_list.
 bool Target::RemoveWatchpointByID(lldb::watch_id_t watch_id) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s (watch_id = %i)\n", __FUNCTION__, watch_id);
+  LLDB_LOGF(log, "Target::%s (watch_id = %i)\n", __FUNCTION__, watch_id);
 
   WatchpointSP watch_to_remove_sp = m_watchpoint_list.FindByID(watch_id);
   if (watch_to_remove_sp == m_last_created_watchpoint)
@@ -1343,8 +1322,7 @@ bool Target::RemoveWatchpointByID(lldb::watch_id_t watch_id) {
 bool Target::IgnoreWatchpointByID(lldb::watch_id_t watch_id,
                                   uint32_t ignore_count) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_WATCHPOINTS));
-  if (log)
-    log->Printf("Target::%s (watch_id = %i)\n", __FUNCTION__, watch_id);
+  LLDB_LOGF(log, "Target::%s (watch_id = %i)\n", __FUNCTION__, watch_id);
 
   if (!ProcessIsValid())
     return false;
@@ -1535,10 +1513,9 @@ bool Target::SetArchitecture(const ArchSpec &arch_spec, bool set_platform) {
 
   // If we have an executable file, try to reset the executable to the desired
   // architecture
-  if (log)
-    log->Printf("Target::SetArchitecture changing architecture to %s (%s)",
-                arch_spec.GetArchitectureName(),
-                arch_spec.GetTriple().getTriple().c_str());
+  LLDB_LOGF(log, "Target::SetArchitecture changing architecture to %s (%s)",
+            arch_spec.GetArchitectureName(),
+            arch_spec.GetTriple().getTriple().c_str());
   m_arch = other;
   ModuleSP executable_sp = GetExecutableModule();
 
@@ -1546,11 +1523,11 @@ bool Target::SetArchitecture(const ArchSpec &arch_spec, bool set_platform) {
   // Need to do something about unsetting breakpoints.
 
   if (executable_sp) {
-    if (log)
-      log->Printf("Target::SetArchitecture Trying to select executable file "
-                  "architecture %s (%s)",
-                  arch_spec.GetArchitectureName(),
-                  arch_spec.GetTriple().getTriple().c_str());
+    LLDB_LOGF(log,
+              "Target::SetArchitecture Trying to select executable file "
+              "architecture %s (%s)",
+              arch_spec.GetArchitectureName(),
+              arch_spec.GetTriple().getTriple().c_str());
     ModuleSpec module_spec(executable_sp->GetFileSpec(), other);
     FileSpecList search_paths = GetExecutableSearchPaths();
     Status error = ModuleList::GetSharedModule(module_spec, executable_sp,
@@ -1571,12 +1548,11 @@ bool Target::MergeArchitecture(const ArchSpec &arch_spec) {
       // The current target arch is compatible with "arch_spec", see if we can
       // improve our current architecture using bits from "arch_spec"
 
-      if (log)
-        log->Printf(
-            "Target::MergeArchitecture target has arch %s, merging with "
-            "arch %s",
-            m_arch.GetSpec().GetTriple().getTriple().c_str(),
-            arch_spec.GetTriple().getTriple().c_str());
+      LLDB_LOGF(log,
+                "Target::MergeArchitecture target has arch %s, merging with "
+                "arch %s",
+                m_arch.GetSpec().GetTriple().getTriple().c_str(),
+                arch_spec.GetTriple().getTriple().c_str());
 
       // Merge bits from arch_spec into "merged_arch" and set our architecture
       ArchSpec merged_arch(m_arch.GetSpec());
@@ -2319,11 +2295,10 @@ ArchSpec Target::GetDefaultArchitecture() {
 void Target::SetDefaultArchitecture(const ArchSpec &arch) {
   TargetPropertiesSP properties_sp(Target::GetGlobalProperties());
   if (properties_sp) {
-    LogIfAnyCategoriesSet(LIBLLDB_LOG_TARGET,
-                          "Target::SetDefaultArchitecture setting target's "
-                          "default architecture to  %s (%s)",
-                          arch.GetArchitectureName(),
-                          arch.GetTriple().getTriple().c_str());
+    LLDB_LOG(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_TARGET),
+             "Target::SetDefaultArchitecture setting target's "
+             "default architecture to  {0} ({1})",
+             arch.GetArchitectureName(), arch.GetTriple().getTriple());
     return properties_sp->SetDefaultArchitecture(arch);
   }
 }
@@ -2838,9 +2813,8 @@ Status Target::Launch(ProcessLaunchInfo &launch_info, Stream *stream) {
   Status error;
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_TARGET));
 
-  if (log)
-    log->Printf("Target::%s() called for %s", __FUNCTION__,
-                launch_info.GetExecutableFile().GetPath().c_str());
+  LLDB_LOGF(log, "Target::%s() called for %s", __FUNCTION__,
+            launch_info.GetExecutableFile().GetPath().c_str());
 
   StateType state = eStateInvalid;
 
@@ -2852,14 +2826,12 @@ Status Target::Launch(ProcessLaunchInfo &launch_info, Stream *stream) {
 
     if (process_sp) {
       state = process_sp->GetState();
-      if (log)
-        log->Printf(
-            "Target::%s the process exists, and its current state is %s",
-            __FUNCTION__, StateAsCString(state));
+      LLDB_LOGF(log,
+                "Target::%s the process exists, and its current state is %s",
+                __FUNCTION__, StateAsCString(state));
     } else {
-      if (log)
-        log->Printf("Target::%s the process instance doesn't currently exist.",
-                    __FUNCTION__);
+      LLDB_LOGF(log, "Target::%s the process instance doesn't currently exist.",
+                __FUNCTION__);
     }
   }
 
@@ -2891,9 +2863,8 @@ Status Target::Launch(ProcessLaunchInfo &launch_info, Stream *stream) {
   // that can launch a process for debugging, go ahead and do that here.
   if (state != eStateConnected && platform_sp &&
       platform_sp->CanDebugProcess()) {
-    if (log)
-      log->Printf("Target::%s asking the platform to debug the process",
-                  __FUNCTION__);
+    LLDB_LOGF(log, "Target::%s asking the platform to debug the process",
+              __FUNCTION__);
 
     // If there was a previous process, delete it before we make the new one.
     // One subtle point, we delete the process before we release the reference
@@ -2905,10 +2876,10 @@ Status Target::Launch(ProcessLaunchInfo &launch_info, Stream *stream) {
         GetPlatform()->DebugProcess(launch_info, debugger, this, error);
 
   } else {
-    if (log)
-      log->Printf("Target::%s the platform doesn't know how to debug a "
-                  "process, getting a process plugin to do this for us.",
-                  __FUNCTION__);
+    LLDB_LOGF(log,
+              "Target::%s the platform doesn't know how to debug a "
+              "process, getting a process plugin to do this for us.",
+              __FUNCTION__);
 
     if (state == eStateConnected) {
       assert(m_process_sp);
@@ -3303,221 +3274,13 @@ static constexpr OptionEnumValueElement g_memory_module_load_level_values[] = {
      "this setting loads sections and all symbols."} };
 
 static constexpr PropertyDefinition g_properties[] = {
-    {"default-arch", OptionValue::eTypeArch, true, 0, nullptr, {},
-     "Default architecture to choose, when there's a choice."},
-    {"move-to-nearest-code", OptionValue::eTypeBoolean, false, true, nullptr,
-     {}, "Move breakpoints to nearest code."},
-    {"language", OptionValue::eTypeLanguage, false, eLanguageTypeUnknown,
-     nullptr, {},
-     "The language to use when interpreting expressions entered in commands."},
-    {"expr-prefix", OptionValue::eTypeFileSpec, false, 0, nullptr, {},
-     "Path to a file containing expressions to be prepended to all "
-     "expressions."},
-    {"prefer-dynamic-value", OptionValue::eTypeEnum, false,
-     eDynamicDontRunTarget, nullptr, OptionEnumValues(g_dynamic_value_types),
-     "Should printed values be shown as their dynamic value."},
-    {"enable-synthetic-value", OptionValue::eTypeBoolean, false, true, nullptr,
-     {}, "Should synthetic values be used by default whenever available."},
-    {"skip-prologue", OptionValue::eTypeBoolean, false, true, nullptr, {},
-     "Skip function prologues when setting breakpoints by name."},
-    {"source-map", OptionValue::eTypePathMap, false, 0, nullptr, {},
-     "Source path remappings are used to track the change of location between "
-     "a source file when built, and "
-     "where it exists on the current system.  It consists of an array of "
-     "duples, the first element of each duple is "
-     "some part (starting at the root) of the path to the file when it was "
-     "built, "
-     "and the second is where the remainder of the original build hierarchy is "
-     "rooted on the local system.  "
-     "Each element of the array is checked in order and the first one that "
-     "results in a match wins."},
-    {"exec-search-paths", OptionValue::eTypeFileSpecList, false, 0, nullptr,
-     {}, "Executable search paths to use when locating executable files "
-         "whose paths don't match the local file system."},
-    {"debug-file-search-paths", OptionValue::eTypeFileSpecList, false, 0,
-     nullptr, {},
-     "List of directories to be searched when locating debug symbol files. "
-     "See also symbols.enable-external-lookup."},
-    {"clang-module-search-paths", OptionValue::eTypeFileSpecList, false, 0,
-     nullptr, {},
-     "List of directories to be searched when locating modules for Clang."},
-    {"auto-import-clang-modules", OptionValue::eTypeBoolean, false, true,
-     nullptr, {},
-     "Automatically load Clang modules referred to by the program."},
-    {"import-std-module", OptionValue::eTypeBoolean, false, false,
-     nullptr, {},
-     "Import the C++ std module to improve debugging STL containers."},
-    {"auto-apply-fixits", OptionValue::eTypeBoolean, false, true, nullptr,
-     {}, "Automatically apply fix-it hints to expressions."},
-    {"notify-about-fixits", OptionValue::eTypeBoolean, false, true, nullptr,
-     {}, "Print the fixed expression text."},
-    {"save-jit-objects", OptionValue::eTypeBoolean, false, false, nullptr,
-     {}, "Save intermediate object files generated by the LLVM JIT"},
-    {"max-children-count", OptionValue::eTypeSInt64, false, 256, nullptr,
-     {}, "Maximum number of children to expand in any level of depth."},
-    {"max-string-summary-length", OptionValue::eTypeSInt64, false, 1024,
-     nullptr, {},
-     "Maximum number of characters to show when using %s in summary strings."},
-    {"max-memory-read-size", OptionValue::eTypeSInt64, false, 1024, nullptr,
-     {}, "Maximum number of bytes that 'memory read' will fetch before "
-         "--force must be specified."},
-    {"breakpoints-use-platform-avoid-list", OptionValue::eTypeBoolean, false,
-     true, nullptr, {}, "Consult the platform module avoid list when "
-                        "setting non-module specific breakpoints."},
-    {"arg0", OptionValue::eTypeString, false, 0, nullptr, {},
-     "The first argument passed to the program in the argument array which can "
-     "be different from the executable itself."},
-    {"run-args", OptionValue::eTypeArgs, false, 0, nullptr, {},
-     "A list containing all the arguments to be passed to the executable when "
-     "it is run. Note that this does NOT include the argv[0] which is in "
-     "target.arg0."},
-    {"env-vars", OptionValue::eTypeDictionary, false, OptionValue::eTypeString,
-     nullptr, {}, "A list of all the environment variables to be passed "
-                  "to the executable's environment, and their values."},
-    {"inherit-env", OptionValue::eTypeBoolean, false, true, nullptr, {},
-     "Inherit the environment from the process that is running LLDB."},
-    {"input-path", OptionValue::eTypeFileSpec, false, 0, nullptr, {},
-     "The file/path to be used by the executable program for reading its "
-     "standard input."},
-    {"output-path", OptionValue::eTypeFileSpec, false, 0, nullptr, {},
-     "The file/path to be used by the executable program for writing its "
-     "standard output."},
-    {"error-path", OptionValue::eTypeFileSpec, false, 0, nullptr, {},
-     "The file/path to be used by the executable program for writing its "
-     "standard error."},
-    {"detach-on-error", OptionValue::eTypeBoolean, false, true, nullptr,
-     {}, "debugserver will detach (rather than killing) a process if it "
-              "loses connection with lldb."},
-    {"preload-symbols", OptionValue::eTypeBoolean, false, true, nullptr, {},
-     "Enable loading of symbol tables before they are needed."},
-    {"disable-aslr", OptionValue::eTypeBoolean, false, true, nullptr, {},
-     "Disable Address Space Layout Randomization (ASLR)"},
-    {"disable-stdio", OptionValue::eTypeBoolean, false, false, nullptr, {},
-     "Disable stdin/stdout for process (e.g. for a GUI application)"},
-    {"inline-breakpoint-strategy", OptionValue::eTypeEnum, false,
-     eInlineBreakpointsAlways, nullptr,
-     OptionEnumValues(g_inline_breakpoint_enums),
-     "The strategy to use when settings breakpoints by file and line. "
-     "Breakpoint locations can end up being inlined by the compiler, so that a "
-     "compile unit 'a.c' might contain an inlined function from another source "
-     "file. "
-     "Usually this is limited to breakpoint locations from inlined functions "
-     "from header or other include files, or more accurately "
-     "non-implementation source files. "
-     "Sometimes code might #include implementation files and cause inlined "
-     "breakpoint locations in inlined implementation files. "
-     "Always checking for inlined breakpoint locations can be expensive "
-     "(memory and time), so if you have a project with many headers "
-     "and find that setting breakpoints is slow, then you can change this "
-     "setting to headers. "
-     "This setting allows you to control exactly which strategy is used when "
-     "setting "
-     "file and line breakpoints."},
-    // FIXME: This is the wrong way to do per-architecture settings, but we
-    // don't have a general per architecture settings system in place yet.
-    {"x86-disassembly-flavor", OptionValue::eTypeEnum, false,
-     eX86DisFlavorDefault, nullptr,
-     OptionEnumValues(g_x86_dis_flavor_value_types),
-     "The default disassembly flavor to use for x86 or x86-64 targets."},
-    {"use-hex-immediates", OptionValue::eTypeBoolean, false, true, nullptr,
-     {}, "Show immediates in disassembly as hexadecimal."},
-    {"hex-immediate-style", OptionValue::eTypeEnum, false,
-     Disassembler::eHexStyleC, nullptr,
-     OptionEnumValues(g_hex_immediate_style_values),
-     "Which style to use for printing hexadecimal disassembly values."},
-    {"use-fast-stepping", OptionValue::eTypeBoolean, false, true, nullptr,
-     {}, "Use a fast stepping algorithm based on running from branch to "
-         "branch rather than instruction single-stepping."},
-    {"load-script-from-symbol-file", OptionValue::eTypeEnum, false,
-     eLoadScriptFromSymFileWarn, nullptr,
-     OptionEnumValues(g_load_script_from_sym_file_values),
-     "Allow LLDB to load scripting resources embedded in symbol files when "
-     "available."},
-    {"load-cwd-lldbinit", OptionValue::eTypeEnum, false, eLoadCWDlldbinitWarn,
-     nullptr, OptionEnumValues(g_load_current_working_dir_lldbinit_values),
-     "Allow LLDB to .lldbinit files from the current directory automatically."},
-    {"memory-module-load-level", OptionValue::eTypeEnum, false,
-     eMemoryModuleLoadLevelComplete, nullptr,
-     OptionEnumValues(g_memory_module_load_level_values),
-     "Loading modules from memory can be slow as reading the symbol tables and "
-     "other data can take a long time depending on your connection to the "
-     "debug target. "
-     "This setting helps users control how much information gets loaded when "
-     "loading modules from memory."
-     "'complete' is the default value for this setting which will load all "
-     "sections and symbols by reading them from memory (slowest, most "
-     "accurate). "
-     "'partial' will load sections and attempt to find function bounds without "
-     "downloading the symbol table (faster, still accurate, missing symbol "
-     "names). "
-     "'minimal' is the fastest setting and will load section data with no "
-     "symbols, but should rarely be used as stack frames in these memory "
-     "regions will be inaccurate and not provide any context (fastest). "},
-    {"display-expression-in-crashlogs", OptionValue::eTypeBoolean, false, false,
-     nullptr, {}, "Expressions that crash will show up in crash logs if "
-                  "the host system supports executable specific crash log "
-                  "strings and this setting is set to true."},
-    {"trap-handler-names", OptionValue::eTypeArray, true,
-     OptionValue::eTypeString, nullptr, {},
-     "A list of trap handler function names, e.g. a common Unix user process "
-     "one is _sigtramp."},
-    {"display-runtime-support-values", OptionValue::eTypeBoolean, false, false,
-     nullptr, {}, "If true, LLDB will show variables that are meant to "
-                  "support the operation of a language's runtime support."},
-    {"display-recognized-arguments", OptionValue::eTypeBoolean, false, false,
-     nullptr, {}, "Show recognized arguments in variable listings by default."},
-    {"non-stop-mode", OptionValue::eTypeBoolean, false, 0, nullptr, {},
-     "Disable lock-step debugging, instead control threads independently."},
-    {"require-hardware-breakpoint", OptionValue::eTypeBoolean, false, 0,
-     nullptr, {}, "Require all breakpoints to be hardware breakpoints."}};
-// clang-format on
+#define LLDB_PROPERTIES_target
+#include "lldb/Core/Properties.inc"
+};
 
 enum {
-  ePropertyDefaultArch,
-  ePropertyMoveToNearestCode,
-  ePropertyLanguage,
-  ePropertyExprPrefix,
-  ePropertyPreferDynamic,
-  ePropertyEnableSynthetic,
-  ePropertySkipPrologue,
-  ePropertySourceMap,
-  ePropertyExecutableSearchPaths,
-  ePropertyDebugFileSearchPaths,
-  ePropertyClangModuleSearchPaths,
-  ePropertyAutoImportClangModules,
-  ePropertyImportStdModule,
-  ePropertyAutoApplyFixIts,
-  ePropertyNotifyAboutFixIts,
-  ePropertySaveObjects,
-  ePropertyMaxChildrenCount,
-  ePropertyMaxSummaryLength,
-  ePropertyMaxMemReadSize,
-  ePropertyBreakpointUseAvoidList,
-  ePropertyArg0,
-  ePropertyRunArgs,
-  ePropertyEnvVars,
-  ePropertyInheritEnv,
-  ePropertyInputPath,
-  ePropertyOutputPath,
-  ePropertyErrorPath,
-  ePropertyDetachOnError,
-  ePropertyPreloadSymbols,
-  ePropertyDisableASLR,
-  ePropertyDisableSTDIO,
-  ePropertyInlineStrategy,
-  ePropertyDisassemblyFlavor,
-  ePropertyUseHexImmediates,
-  ePropertyHexImmediateStyle,
-  ePropertyUseFastStepping,
-  ePropertyLoadScriptFromSymbolFile,
-  ePropertyLoadCWDlldbinitFile,
-  ePropertyMemoryModuleLoadLevel,
-  ePropertyDisplayExpressionsInCrashlogs,
-  ePropertyTrapHandlerNames,
-  ePropertyDisplayRuntimeSupportValues,
-  ePropertyDisplayRecognizedArguments,
-  ePropertyNonStopModeEnabled,
-  ePropertyRequireHardwareBreakpoints,
+#define LLDB_PROPERTIES_target
+#include "lldb/Core/PropertiesEnum.inc"
   ePropertyExperimental,
 };
 
@@ -3594,25 +3357,14 @@ protected:
 
 // TargetProperties
 static constexpr PropertyDefinition g_experimental_properties[]{
-    {"inject-local-vars",
-     OptionValue::eTypeBoolean,
-     true,
-     true,
-     nullptr,
-     {},
-     "If true, inject local variables explicitly into the expression text.  "
-     "This will fix symbol resolution when there are name collisions between "
-     "ivars and local variables.  "
-     "But it can make expressions run much more slowly."},
-    {"use-modern-type-lookup",
-     OptionValue::eTypeBoolean,
-     true,
-     false,
-     nullptr,
-     {},
-     "If true, use Clang's modern type lookup infrastructure."}};
+#define LLDB_PROPERTIES_experimental
+#include "lldb/Core/Properties.inc"
+};
 
-enum { ePropertyInjectLocalVars = 0, ePropertyUseModernTypeLookup };
+enum {
+#define LLDB_PROPERTIES_experimental
+#include "lldb/Core/PropertiesEnum.inc"
+};
 
 class TargetExperimentalOptionValueProperties : public OptionValueProperties {
 public:

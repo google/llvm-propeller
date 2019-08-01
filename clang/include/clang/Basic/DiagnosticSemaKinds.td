@@ -2519,6 +2519,9 @@ def err_nsobject_attribute : Error<
   "'NSObject' attribute is for pointer types only">;
 def err_attributes_are_not_compatible : Error<
   "%0 and %1 attributes are not compatible">;
+def err_attribute_invalid_argument : Error<
+  "%select{'void'|a reference type|an array type|a non-vector or "
+  "non-vectorizable scalar type}0 is an invalid argument to attribute %1">;
 def err_attribute_wrong_number_arguments : Error<
   "%0 attribute %plural{0:takes no arguments|1:takes one argument|"
   ":requires exactly %1 arguments}1">;
@@ -2567,8 +2570,6 @@ def err_attribute_argument_out_of_range : Error<
 def err_init_priority_object_attr : Error<
   "can only use 'init_priority' attribute on file-scope definitions "
   "of objects of class type">;
-def err_attribute_argument_vec_type_hint : Error<
-  "invalid attribute argument %0 - expecting a vector or vectorizable scalar type">;
 def err_attribute_argument_out_of_bounds : Error<
   "%0 attribute parameter %1 is out of bounds">;
 def err_attribute_only_once_per_parameter : Error<
@@ -2778,6 +2779,11 @@ def err_no_accessor_for_property : Error<
 def err_cannot_find_suitable_accessor : Error<
   "cannot find suitable %select{getter|setter}0 for property %1">;
 
+def warn_alloca : Warning<
+  "use of function %0 is discouraged; there is no way to check for failure but "
+  "failure may still occur, resulting in a possibly exploitable security vulnerability">,
+  InGroup<DiagGroup<"alloca">>, DefaultIgnore;
+
 def warn_alloca_align_alignof : Warning<
   "second argument to __builtin_alloca_with_align is supposed to be in bits">,
   InGroup<DiagGroup<"alloca-with-align-alignof">>;
@@ -2966,6 +2972,7 @@ def warn_cconv_unsupported : Warning<
   "|on builtin function"
   "}1">,
   InGroup<IgnoredAttributes>;
+def error_cconv_unsupported : Error<warn_cconv_unsupported.Text>;
 def err_cconv_knr : Error<
   "function with no prototype cannot use the %0 calling convention">;
 def warn_cconv_knr : Warning<
@@ -5718,6 +5725,9 @@ def err_arithmetic_nonfragile_interface : Error<
   "arithmetic on pointer to interface %0, which is not a constant size for "
   "this architecture and platform">;
 
+def warn_deprecated_comma_subscript : Warning<
+  "top-level comma expression in array subscript is deprecated">,
+  InGroup<DeprecatedCommaSubscript>;
 
 def ext_subscript_non_lvalue : Extension<
   "ISO C90 does not allow subscripting non-lvalue array">;
@@ -7426,6 +7436,12 @@ def warn_unused_container_subscript_expr : Warning<
 def warn_unused_call : Warning<
   "ignoring return value of function declared with %0 attribute">,
   InGroup<UnusedValue>;
+def warn_unused_constructor : Warning<
+  "ignoring temporary created by a constructor declared with %0 attribute">,
+  InGroup<UnusedValue>;
+def warn_unused_constructor_msg : Warning<
+  "ignoring temporary created by a constructor declared with %0 attribute: %1">,
+  InGroup<UnusedValue>;
 def warn_side_effects_unevaluated_context : Warning<
   "expression with side effects has no effect in an unevaluated context">,
   InGroup<UnevaluatedExpression>;
@@ -7435,6 +7451,9 @@ def warn_side_effects_typeid : Warning<
 def warn_unused_result : Warning<
   "ignoring return value of function declared with %0 attribute">,
   InGroup<UnusedResult>;
+def warn_unused_result_msg : Warning<
+  "ignoring return value of function declared with %0 attribute: %1">,
+  InGroup<UnusedResult>;
 def warn_unused_volatile : Warning<
   "expression result unused; assign into a variable to force a volatile load">,
   InGroup<DiagGroup<"unused-volatile-lvalue">>;
@@ -7443,6 +7462,8 @@ def ext_cxx14_attr : Extension<
   "use of the %0 attribute is a C++14 extension">, InGroup<CXX14>;
 def ext_cxx17_attr : Extension<
   "use of the %0 attribute is a C++17 extension">, InGroup<CXX17>;
+def ext_cxx2a_attr : Extension<
+  "use of the %0 attribute is a C++2a extension">, InGroup<CXX2a>;
 
 def warn_unused_comparison : Warning<
   "%select{equality|inequality|relational|three-way}0 comparison result unused">,

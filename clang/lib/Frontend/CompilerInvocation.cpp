@@ -823,8 +823,32 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.CXXCtorDtorAliases = Args.hasArg(OPT_mconstructor_aliases);
   Opts.CodeModel = TargetOpts.CodeModel;
   Opts.DebugPass = Args.getLastArgValue(OPT_mdebug_pass);
-  Opts.DisableFPElim =
-      (Args.hasArg(OPT_mdisable_fp_elim) || Args.hasArg(OPT_pg));
+
+  // Handle -mframe-pointer option.
+  if (Arg *A = Args.getLastArg(OPT_mframe_pointer_EQ)) {
+    CodeGenOptions::FramePointerKind FP;
+    StringRef Name = A->getValue();
+    bool ValidFP = true;
+    if (Name == "none")
+      FP = CodeGenOptions::FramePointerKind::None;
+    else if (Name == "non-leaf")
+      FP = CodeGenOptions::FramePointerKind::NonLeaf;
+    else if (Name == "all")
+      FP = CodeGenOptions::FramePointerKind::All;
+    else {
+      Diags.Report(diag::err_drv_invalid_value) << A->getAsString(Args) << Name;
+      Success = false;
+      ValidFP = false;
+    }
+    if (ValidFP)
+      Opts.setFramePointer(FP);
+  }
+
+  // -pg may override -mframe-pointer
+  // TODO: This should be merged into getFramePointerKind in Clang.cpp.
+  if (Args.hasArg(OPT_pg))
+    Opts.setFramePointer(CodeGenOptions::FramePointerKind::All);
+
   Opts.DisableFree = Args.hasArg(OPT_disable_free);
   Opts.DiscardValueNames = Args.hasArg(OPT_discard_value_names);
   Opts.DisableTailCalls = Args.hasArg(OPT_mdisable_tail_calls);
@@ -872,7 +896,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
       Args.hasArg(OPT_mpie_copy_relocations);
   Opts.RelocateWithSymbols = Args.hasArg(OPT_mrelocate_with_symbols);
   Opts.NoPLT = Args.hasArg(OPT_fno_plt);
-  Opts.OmitLeafFramePointer = Args.hasArg(OPT_momit_leaf_frame_pointer);
   Opts.SaveTempLabels = Args.hasArg(OPT_msave_temp_labels);
   Opts.NoDwarfDirectoryAsm = Args.hasArg(OPT_fno_dwarf_directory_asm);
   Opts.SoftFloat = Args.hasArg(OPT_msoft_float);
@@ -1806,6 +1829,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
   Opts.ShowTimers = Args.hasArg(OPT_ftime_report);
   Opts.PrintSupportedCPUs = Args.hasArg(OPT_print_supported_cpus);
   Opts.TimeTrace = Args.hasArg(OPT_ftime_trace);
+  Opts.TimeTraceGranularity = getLastArgIntValue(
+      Args, OPT_ftime_trace_granularity_EQ, Opts.TimeTraceGranularity, Diags);
   Opts.ShowVersion = Args.hasArg(OPT_version);
   Opts.ASTMergeFiles = Args.getAllArgValues(OPT_ast_merge);
   Opts.LLVMArgs = Args.getAllArgValues(OPT_mllvm);
@@ -2441,7 +2466,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
         .Cases("cl1.1", "CL1.1", LangStandard::lang_opencl11)
         .Cases("cl1.2", "CL1.2", LangStandard::lang_opencl12)
         .Cases("cl2.0", "CL2.0", LangStandard::lang_opencl20)
-        .Case("c++", LangStandard::lang_openclcpp)
+        .Cases("clc++", "CLC++", LangStandard::lang_openclcpp)
         .Default(LangStandard::lang_unspecified);
 
     if (OpenCLLangStd == LangStandard::lang_unspecified) {

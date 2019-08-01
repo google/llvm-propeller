@@ -843,10 +843,12 @@ static RValue EmitMSVCRTSetJmp(CodeGenFunction &CGF, MSVCSetJmpKind SJKind,
     Name = SJKind == MSVCSetJmpKind::_setjmp ? "_setjmp" : "_setjmpex";
     Arg1Ty = CGF.Int8PtrTy;
     if (CGF.getTarget().getTriple().getArch() == llvm::Triple::aarch64) {
-      Arg1 = CGF.Builder.CreateCall(CGF.CGM.getIntrinsic(Intrinsic::sponentry));
+      Arg1 = CGF.Builder.CreateCall(
+          CGF.CGM.getIntrinsic(Intrinsic::sponentry, CGF.AllocaInt8PtrTy));
     } else
-      Arg1 = CGF.Builder.CreateCall(CGF.CGM.getIntrinsic(Intrinsic::frameaddress),
-                                    llvm::ConstantInt::get(CGF.Int32Ty, 0));
+      Arg1 = CGF.Builder.CreateCall(
+          CGF.CGM.getIntrinsic(Intrinsic::frameaddress, CGF.AllocaInt8PtrTy),
+          llvm::ConstantInt::get(CGF.Int32Ty, 0));
   }
 
   // Mark the call site and declaration with ReturnsTwice.
@@ -2131,7 +2133,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     Locality = (E->getNumArgs() > 2) ? EmitScalarExpr(E->getArg(2)) :
       llvm::ConstantInt::get(Int32Ty, 3);
     Value *Data = llvm::ConstantInt::get(Int32Ty, 1);
-    Function *F = CGM.getIntrinsic(Intrinsic::prefetch);
+    Function *F = CGM.getIntrinsic(Intrinsic::prefetch, Address->getType());
     return RValue::get(Builder.CreateCall(F, {Address, RW, Locality, Data}));
   }
   case Builtin::BI__builtin_readcyclecounter: {
@@ -2556,7 +2558,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
   case Builtin::BI__builtin_frame_address: {
     Value *Depth = ConstantEmitter(*this).emitAbstract(E->getArg(0),
                                                    getContext().UnsignedIntTy);
-    Function *F = CGM.getIntrinsic(Intrinsic::frameaddress);
+    Function *F = CGM.getIntrinsic(Intrinsic::frameaddress, AllocaInt8PtrTy);
     return RValue::get(Builder.CreateCall(F, Depth));
   }
   case Builtin::BI__builtin_extract_return_addr: {
@@ -2637,9 +2639,9 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     Address Buf = EmitPointerWithAlignment(E->getArg(0));
 
     // Store the frame pointer to the setjmp buffer.
-    Value *FrameAddr =
-      Builder.CreateCall(CGM.getIntrinsic(Intrinsic::frameaddress),
-                         ConstantInt::get(Int32Ty, 0));
+    Value *FrameAddr = Builder.CreateCall(
+        CGM.getIntrinsic(Intrinsic::frameaddress, AllocaInt8PtrTy),
+        ConstantInt::get(Int32Ty, 0));
     Builder.CreateStore(FrameAddr, Buf);
 
     // Store the stack pointer to the setjmp buffer.
@@ -6019,7 +6021,7 @@ Value *CodeGenFunction::EmitARMBuiltinExpr(unsigned BuiltinID,
     // Locality is not supported on ARM target
     Value *Locality = llvm::ConstantInt::get(Int32Ty, 3);
 
-    Function *F = CGM.getIntrinsic(Intrinsic::prefetch);
+    Function *F = CGM.getIntrinsic(Intrinsic::prefetch, Address->getType());
     return Builder.CreateCall(F, {Address, RW, Locality, IsData});
   }
 
@@ -6958,7 +6960,7 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
 
     // FIXME: We need AArch64 specific LLVM intrinsic if we want to specify
     // PLDL3STRM or PLDL2STRM.
-    Function *F = CGM.getIntrinsic(Intrinsic::prefetch);
+    Function *F = CGM.getIntrinsic(Intrinsic::prefetch, Address->getType());
     return Builder.CreateCall(F, {Address, RW, Locality, IsData});
   }
 
@@ -7293,12 +7295,13 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
   }
 
   if (BuiltinID == AArch64::BI_AddressOfReturnAddress) {
-    llvm::Function *F = CGM.getIntrinsic(Intrinsic::addressofreturnaddress);
+    llvm::Function *F =
+        CGM.getIntrinsic(Intrinsic::addressofreturnaddress, AllocaInt8PtrTy);
     return Builder.CreateCall(F);
   }
 
   if (BuiltinID == AArch64::BI__builtin_sponentry) {
-    llvm::Function *F = CGM.getIntrinsic(Intrinsic::sponentry);
+    llvm::Function *F = CGM.getIntrinsic(Intrinsic::sponentry, AllocaInt8PtrTy);
     return Builder.CreateCall(F);
   }
 
@@ -10034,7 +10037,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     Value *RW = ConstantInt::get(Int32Ty, (C->getZExtValue() >> 2) & 0x1);
     Value *Locality = ConstantInt::get(Int32Ty, C->getZExtValue() & 0x3);
     Value *Data = ConstantInt::get(Int32Ty, 1);
-    Function *F = CGM.getIntrinsic(Intrinsic::prefetch);
+    Function *F = CGM.getIntrinsic(Intrinsic::prefetch, Address->getType());
     return Builder.CreateCall(F, {Address, RW, Locality, Data});
   }
   case X86::BI_mm_clflush: {
@@ -12113,7 +12116,8 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
   }
 
   case X86::BI_AddressOfReturnAddress: {
-    Function *F = CGM.getIntrinsic(Intrinsic::addressofreturnaddress);
+    Function *F =
+        CGM.getIntrinsic(Intrinsic::addressofreturnaddress, AllocaInt8PtrTy);
     return Builder.CreateCall(F);
   }
   case X86::BI__stosb: {
@@ -13922,6 +13926,11 @@ Value *CodeGenFunction::EmitWebAssemblyBuiltinExpr(unsigned BuiltinID,
   case WebAssembly::BI__builtin_wasm_tls_size: {
     llvm::Type *ResultType = ConvertType(E->getType());
     Function *Callee = CGM.getIntrinsic(Intrinsic::wasm_tls_size, ResultType);
+    return Builder.CreateCall(Callee);
+  }
+  case WebAssembly::BI__builtin_wasm_tls_align: {
+    llvm::Type *ResultType = ConvertType(E->getType());
+    Function *Callee = CGM.getIntrinsic(Intrinsic::wasm_tls_align, ResultType);
     return Builder.CreateCall(Callee);
   }
   case WebAssembly::BI__builtin_wasm_tls_base: {

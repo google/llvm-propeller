@@ -2831,7 +2831,8 @@ static void handleSentinelAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
 static void handleWarnUnusedResult(Sema &S, Decl *D, const ParsedAttr &AL) {
   if (D->getFunctionType() &&
-      D->getFunctionType()->getReturnType()->isVoidType()) {
+      D->getFunctionType()->getReturnType()->isVoidType() &&
+      !isa<CXXConstructorDecl>(D)) {
     S.Diag(AL.getLoc(), diag::warn_attribute_void_function_method) << AL << 0;
     return;
   }
@@ -2841,14 +2842,30 @@ static void handleWarnUnusedResult(Sema &S, Decl *D, const ParsedAttr &AL) {
       return;
     }
 
-  // If this is spelled as the standard C++17 attribute, but not in C++17, warn
-  // about using it as an extension.
-  if (!S.getLangOpts().CPlusPlus17 && AL.isCXX11Attribute() &&
-      !AL.getScopeName())
-    S.Diag(AL.getLoc(), diag::ext_cxx17_attr) << AL;
+  StringRef Str;
+  if ((AL.isCXX11Attribute() || AL.isC2xAttribute()) && !AL.getScopeName()) {
+    // If this is spelled as the standard C++17 attribute, but not in C++17,
+    // warn about using it as an extension. If there are attribute arguments,
+    // then claim it's a C++2a extension instead.
+    // FIXME: If WG14 does not seem likely to adopt the same feature, add an
+    // extension warning for C2x mode.
+    const LangOptions &LO = S.getLangOpts();
+    if (AL.getNumArgs() == 1) {
+      if (LO.CPlusPlus && !LO.CPlusPlus2a)
+        S.Diag(AL.getLoc(), diag::ext_cxx2a_attr) << AL;
+
+      // Since this this is spelled [[nodiscard]], get the optional string
+      // literal. If in C++ mode, but not in C++2a mode, diagnose as an
+      // extension.
+      // FIXME: C2x should support this feature as well, even as an extension.
+      if (!S.checkStringLiteralArgumentAttr(AL, 0, Str, nullptr))
+        return;
+    } else if (LO.CPlusPlus && !LO.CPlusPlus17)
+      S.Diag(AL.getLoc(), diag::ext_cxx17_attr) << AL;
+  }
 
   D->addAttr(::new (S.Context)
-             WarnUnusedResultAttr(AL.getRange(), S.Context,
+             WarnUnusedResultAttr(AL.getRange(), S.Context, Str,
                                   AL.getAttributeSpellingListIndex()));
 }
 
@@ -2937,8 +2954,7 @@ static void handleVecTypeHint(Sema &S, Decl *D, const ParsedAttr &AL) {
   if (!ParmType->isExtVectorType() && !ParmType->isFloatingType() &&
       (ParmType->isBooleanType() ||
        !ParmType->isIntegralType(S.getASTContext()))) {
-    S.Diag(AL.getLoc(), diag::err_attribute_argument_vec_type_hint)
-        << ParmType;
+    S.Diag(AL.getLoc(), diag::err_attribute_invalid_argument) << 3 << AL;
     return;
   }
 
@@ -4538,6 +4554,67 @@ static void handleSuppressAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
       DiagnosticIdentifiers.size(), AL.getAttributeSpellingListIndex()));
 }
 
+static void handleLifetimeCategoryAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  TypeSourceInfo *DerefTypeLoc = nullptr;
+  QualType ParmType;
+  if (AL.hasParsedType()) {
+    ParmType = S.GetTypeFromParser(AL.getTypeArg(), &DerefTypeLoc);
+
+    unsigned SelectIdx = ~0U;
+    if (ParmType->isVoidType())
+      SelectIdx = 0;
+    else if (ParmType->isReferenceType())
+      SelectIdx = 1;
+    else if (ParmType->isArrayType())
+      SelectIdx = 2;
+
+    if (SelectIdx != ~0U) {
+      S.Diag(AL.getLoc(), diag::err_attribute_invalid_argument)
+          << SelectIdx << AL;
+      return;
+    }
+  }
+
+  // To check if earlier decl attributes do not conflict the newly parsed ones
+  // we always add (and check) the attribute to the cannonical decl.
+  D = D->getCanonicalDecl();
+  if (AL.getKind() == ParsedAttr::AT_Owner) {
+    if (checkAttrMutualExclusion<PointerAttr>(S, D, AL))
+      return;
+    if (const auto *OAttr = D->getAttr<OwnerAttr>()) {
+      const Type *ExistingDerefType = OAttr->getDerefTypeLoc()
+                                          ? OAttr->getDerefType().getTypePtr()
+                                          : nullptr;
+      if (ExistingDerefType != ParmType.getTypePtrOrNull()) {
+        S.Diag(AL.getLoc(), diag::err_attributes_are_not_compatible)
+            << AL << OAttr;
+        S.Diag(OAttr->getLocation(), diag::note_conflicting_attribute);
+      }
+      return;
+    }
+    D->addAttr(::new (S.Context)
+                   OwnerAttr(AL.getRange(), S.Context, DerefTypeLoc,
+                             AL.getAttributeSpellingListIndex()));
+  } else {
+    if (checkAttrMutualExclusion<OwnerAttr>(S, D, AL))
+      return;
+    if (const auto *PAttr = D->getAttr<PointerAttr>()) {
+      const Type *ExistingDerefType = PAttr->getDerefTypeLoc()
+                                          ? PAttr->getDerefType().getTypePtr()
+                                          : nullptr;
+      if (ExistingDerefType != ParmType.getTypePtrOrNull()) {
+        S.Diag(AL.getLoc(), diag::err_attributes_are_not_compatible)
+            << AL << PAttr;
+        S.Diag(PAttr->getLocation(), diag::note_conflicting_attribute);
+      }
+      return;
+    }
+    D->addAttr(::new (S.Context)
+                   PointerAttr(AL.getRange(), S.Context, DerefTypeLoc,
+                               AL.getAttributeSpellingListIndex()));
+  }
+}
+
 bool Sema::CheckCallingConvAttr(const ParsedAttr &Attrs, CallingConv &CC,
                                 const FunctionDecl *FD) {
   if (Attrs.isInvalid())
@@ -4666,6 +4743,11 @@ bool Sema::CheckCallingConvAttr(const ParsedAttr &Attrs, CallingConv &CC,
     // that command line flags that change the default convention to
     // __vectorcall don't affect declarations marked __stdcall.
     CC = CC_C;
+    break;
+
+  case TargetInfo::CCCR_Error:
+    Diag(Attrs.getLoc(), diag::error_cconv_unsupported)
+        << Attrs << (int)CallingConventionIgnoredReason::ForThisTarget;
     break;
 
   case TargetInfo::CCCR_Warning: {
@@ -7135,6 +7217,10 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case ParsedAttr::AT_Suppress:
     handleSuppressAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_Owner:
+  case ParsedAttr::AT_Pointer:
+    handleLifetimeCategoryAttr(S, D, AL);
     break;
   case ParsedAttr::AT_OpenCLKernel:
     handleSimpleAttribute<OpenCLKernelAttr>(S, D, AL);

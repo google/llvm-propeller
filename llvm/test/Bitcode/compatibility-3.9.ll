@@ -1373,7 +1373,7 @@ define void @intrinsics.codegen() {
   call i8* @llvm.returnaddress(i32 1)
   ; CHECK: call i8* @llvm.returnaddress(i32 1)
   call i8* @llvm.frameaddress(i32 1)
-  ; CHECK: call i8* @llvm.frameaddress(i32 1)
+  ; CHECK: call i8* @llvm.frameaddress.p0i8(i32 1)
 
   call i32 @llvm.read_register.i32(metadata !10)
   ; CHECK: call i32 @llvm.read_register.i32(metadata !10)
@@ -1390,7 +1390,7 @@ define void @intrinsics.codegen() {
   ; CHECK: call void @llvm.stackrestore(i8* %stack)
 
   call void @llvm.prefetch(i8* %stack, i32 0, i32 3, i32 0)
-  ; CHECK: call void @llvm.prefetch(i8* %stack, i32 0, i32 3, i32 0)
+  ; CHECK: call void @llvm.prefetch.p0i8(i8* %stack, i32 0, i32 3, i32 0)
 
   call void @llvm.pcmarker(i32 1)
   ; CHECK: call void @llvm.pcmarker(i32 1)
@@ -1588,7 +1588,7 @@ normal:
 }
 
 declare void @f.writeonly() writeonly
-; CHECK: declare void @f.writeonly() #40
+; CHECK: declare void @f.writeonly() #39
 
 ; CHECK: attributes #0 = { alignstack=4 }
 ; CHECK: attributes #1 = { alignstack=8 }
@@ -1629,8 +1629,8 @@ declare void @f.writeonly() writeonly
 ; CHECK: attributes #36 = { argmemonly nounwind readonly }
 ; CHECK: attributes #37 = { argmemonly nounwind }
 ; CHECK: attributes #38 = { nounwind readonly }
-; CHECK: attributes #39 = { inaccessiblemem_or_argmemonly nounwind }
-; CHECK: attributes #40 = { writeonly }
+; CHECK: attributes #39 = { writeonly }
+; CHECK: attributes #40 = { inaccessiblemem_or_argmemonly nounwind }
 ; CHECK: attributes #41 = { builtin }
 
 ;; Metadata

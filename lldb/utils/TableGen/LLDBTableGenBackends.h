@@ -1,4 +1,4 @@
-//===- TableGen.cpp - Top-Level TableGen implementation for Clang ---------===//
+//===- LLDBTableGenBackends.h -----------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,8 +7,9 @@
 //===----------------------------------------------------------------------===//
 //
 // This file contains the declarations for all of the LLDB TableGen
-// backends. A "TableGen backend" is just a function. See
-// "$LLVM_ROOT/utils/TableGen/TableGenBackends.h" for more info.
+// backends. A "TableGen backend" is just a function.
+//
+// See "$LLVM_ROOT/utils/TableGen/TableGenBackends.h" for more info.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,6 +29,8 @@ using llvm::RecordKeeper;
 namespace lldb_private {
 
 void EmitOptionDefs(RecordKeeper &RK, raw_ostream &OS);
+void EmitPropertyDefs(RecordKeeper &RK, raw_ostream &OS);
+void EmitPropertyEnumDefs(RecordKeeper &RK, raw_ostream &OS);
 
 } // namespace lldb_private
 

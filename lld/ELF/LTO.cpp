@@ -111,7 +111,9 @@ static lto::Config createConfig() {
 
   c.Options.UniqueBBSectionNames = config->ltoUniqueBBSectionNames;
 
-  if (config->relocatable)
+  if (auto relocModel = getRelocModelFromCMModel())
+    c.RelocModel = *relocModel;
+  else if (config->relocatable)
     c.RelocModel = None;
   else if (config->isPic)
     c.RelocModel = Reloc::PIC_;

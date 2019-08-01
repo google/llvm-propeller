@@ -1475,7 +1475,7 @@ declare void @llvm.write_register.i32(metadata, i32)
 declare void @llvm.write_register.i64(metadata, i64)
 declare i8* @llvm.stacksave()
 declare void @llvm.stackrestore(i8*)
-declare void @llvm.prefetch(i8*, i32, i32, i32)
+declare void @llvm.prefetch.p0i8(i8*, i32, i32, i32)
 declare void @llvm.pcmarker(i32)
 declare i64 @llvm.readcyclecounter()
 declare void @llvm.clear_cache(i8*, i8*)
@@ -1486,7 +1486,7 @@ define void @intrinsics.codegen() {
   call i8* @llvm.returnaddress(i32 1)
   ; CHECK: call i8* @llvm.returnaddress(i32 1)
   call i8* @llvm.frameaddress(i32 1)
-  ; CHECK: call i8* @llvm.frameaddress(i32 1)
+  ; CHECK: call i8* @llvm.frameaddress.p0i8(i32 1)
 
   call i32 @llvm.read_register.i32(metadata !10)
   ; CHECK: call i32 @llvm.read_register.i32(metadata !10)
@@ -1502,8 +1502,8 @@ define void @intrinsics.codegen() {
   call void @llvm.stackrestore(i8* %stack)
   ; CHECK: call void @llvm.stackrestore(i8* %stack)
 
-  call void @llvm.prefetch(i8* %stack, i32 0, i32 3, i32 0)
-  ; CHECK: call void @llvm.prefetch(i8* %stack, i32 0, i32 3, i32 0)
+  call void @llvm.prefetch.p0i8(i8* %stack, i32 0, i32 3, i32 0)
+  ; CHECK: call void @llvm.prefetch.p0i8(i8* %stack, i32 0, i32 3, i32 0)
 
   call void @llvm.pcmarker(i32 1)
   ; CHECK: call void @llvm.pcmarker(i32 1)

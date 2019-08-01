@@ -14,6 +14,7 @@
 #include "FormattedString.h"
 #include "Headers.h"
 #include "Protocol.h"
+#include "SemanticHighlighting.h"
 #include "SourceCode.h"
 #include "TUScheduler.h"
 #include "Trace.h"
@@ -31,6 +32,7 @@
 #include "clang/Tooling/Core/Replacement.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Errc.h"
@@ -60,15 +62,20 @@ struct UpdateIndexCallbacks : public ParsingCallbacks {
       FIndex->updatePreamble(Path, Ctx, std::move(PP), CanonIncludes);
   }
 
-  void onMainAST(PathRef Path, ParsedAST &AST) override {
+  void onMainAST(PathRef Path, ParsedAST &AST, PublishFn Publish) override {
     if (FIndex)
       FIndex->updateMain(Path, AST);
-    if (SemanticHighlighting)
-      DiagConsumer.onHighlightingsReady(Path, getSemanticHighlightings(AST));
-  }
 
-  void onDiagnostics(PathRef File, std::vector<Diag> Diags) override {
-    DiagConsumer.onDiagnosticsReady(File, std::move(Diags));
+    std::vector<Diag> Diagnostics = AST.getDiagnostics();
+    std::vector<HighlightingToken> Highlightings;
+    if (SemanticHighlighting)
+      Highlightings = getSemanticHighlightings(AST);
+
+    Publish([&]() {
+      DiagConsumer.onDiagnosticsReady(Path, std::move(Diagnostics));
+      if (SemanticHighlighting)
+        DiagConsumer.onHighlightingsReady(Path, std::move(Highlightings));
+    });
   }
 
   void onFileUpdated(PathRef File, const TUStatus &Status) override {
@@ -283,6 +290,35 @@ ClangdServer::formatOnType(llvm::StringRef Code, PathRef File, Position Pos,
        formatIncremental(Code, *CursorPos, TriggerText, *Style))
     Result.push_back(replacementToEdit(Code, R));
   return Result;
+}
+
+void ClangdServer::prepareRename(PathRef File, Position Pos,
+                                 Callback<llvm::Optional<Range>> CB) {
+  auto Action = [Pos, this](Path File, Callback<llvm::Optional<Range>> CB,
+                            llvm::Expected<InputsAndAST> InpAST) {
+    if (!InpAST)
+      return CB(InpAST.takeError());
+    auto &AST = InpAST->AST;
+    // Performing the rename isn't substantially more expensive than doing an
+    // AST-based check, so we just rename and throw away the results. We may
+    // have to revisit this when we support cross-file rename.
+    auto Changes = renameWithinFile(AST, File, Pos, "dummy", Index);
+    if (!Changes) {
+      // LSP says to return null on failure, but that will result in a generic
+      // failure message. If we send an LSP error response, clients can surface
+      // the message to users (VSCode does).
+      return CB(Changes.takeError());
+    }
+    SourceLocation Loc = getBeginningOfIdentifier(
+        AST, Pos, AST.getSourceManager().getMainFileID());
+    if (auto Range = getTokenRange(AST.getSourceManager(),
+                                   AST.getASTContext().getLangOpts(), Loc))
+      return CB(*Range);
+    // Return null if the "rename" is not valid at the position.
+    CB(llvm::None);
+  };
+  WorkScheduler.runWithAST("PrepareRename", File,
+                           Bind(Action, File.str(), std::move(CB)));
 }
 
 void ClangdServer::rename(PathRef File, Position Pos, llvm::StringRef NewName,

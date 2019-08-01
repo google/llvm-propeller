@@ -711,11 +711,6 @@ class Base(unittest2.TestCase):
         else:
             self.libcxxPath = None
 
-        if "LLDBMI_EXEC" in os.environ:
-            self.lldbMiExec = os.environ["LLDBMI_EXEC"]
-        else:
-            self.lldbMiExec = None
-
         if "LLDBVSCODE_EXEC" in os.environ:
             self.lldbVSCodeExec = os.environ["LLDBVSCODE_EXEC"]
         else:
@@ -1856,9 +1851,6 @@ class TestBase(Base):
         # decorators.
         Base.setUp(self)
 
-        if lldbtest_config.inferior_env:
-            self.runCmd('settings set target.env-vars {}'.format(lldbtest_config.inferior_env))
-
         # Set the clang modules cache path used by LLDB.
         mod_cache = os.path.join(os.environ["LLDB_BUILD"], "module-cache-lldb")
         self.runCmd('settings set symbols.clang-modules-cache-path "%s"'
@@ -1875,6 +1867,10 @@ class TestBase(Base):
         # Make sure that a sanitizer LLDB's environment doesn't get passed on.
         if 'DYLD_LIBRARY_PATH' in os.environ:
             self.runCmd('settings set target.env-vars DYLD_LIBRARY_PATH=')
+
+        # Set environment variables for the inferior.
+        if lldbtest_config.inferior_env:
+            self.runCmd('settings set target.env-vars {}'.format(lldbtest_config.inferior_env))
 
         if "LLDB_MAX_LAUNCH_COUNT" in os.environ:
             self.maxLaunchCount = int(os.environ["LLDB_MAX_LAUNCH_COUNT"])
