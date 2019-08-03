@@ -76,7 +76,7 @@ gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
 bb_section_lto_flags = -Wl,--lto-basicblock-sections=$(1)
 #-Wl,--lto-unique-bb-section-names
 lld_relocs              := -Wl,-q
-funique_flag            := -funique-internal-funcnames -ffunction-sections
+funique_flag            := -funique-internal-funcnames
 #-funique-bb-section-names
 
 bb_section_none_flags      := $(call gen_build_flags,"-fbasicblock-sections=none $(funique_flag)","   $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,none)")
@@ -308,10 +308,10 @@ sample_bball.o: sample.c
 	./stage1-compiler -flto=thin -c -O2 -fbasicblock-sections=all -funique-bb-section-names $< -o $@
 
 sample_bball.out: sample_bball.o stage1-compiler
-	./stage1-compiler -fuse-ld=lld -flto=thin -O2 -Wl,--lto-basicblock-sections=all -Wl,--lto-unique-bb-section-names $< -o $@
+	./stage1-compiler -fuse-ld=lld -flto=thin -O2 -Wl,--lto-basicblock-sections=all  -Wl,--lto-unique-bb-section-names $< -o $@
 
 sample.propeller.out: sample.propeller sample_bball.o stage1-compiler
-	./stage1-compiler -o $@ -fuse-ld=lld -Wl,-propeller=$< sample_bball.o
+	./stage1-compiler -o $@ -Wl,--lto-basicblock-sections=all -fuse-ld=lld -Wl,-propeller=$< -Wl,-propeller-keep-named-symbols -Wl,--lto-unique-bb-section-names $(word 2,$^)
 
 sample.out.symfile: sample.out sample.perfdata
 	./plotool.sh $^
