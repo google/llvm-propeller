@@ -922,7 +922,7 @@ static void readConfigs(opt::InputArgList &args) {
 
   config->propellerAlignBasicBlocks =
       args.hasFlag(OPT_propeller_align_basicblocks,
-                   OPT_no_propeller_align_basicblocks);
+                   OPT_no_propeller_align_basicblocks, false);
 
   config->propellerReorderBlocks =
       config->propellerReorderFuncs =

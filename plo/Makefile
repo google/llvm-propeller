@@ -252,6 +252,7 @@ define do_relink
 		     -Wl,-propeller-opt=split-funcs       \
 		     -Wl,-propeller-keep-named-symbols    \
 		     $${ALIGNFLAG} \
+		     -Wl,-no-warn-symbol-ordering \
 		     -Wl,-propeller-dump-symbol-order=$(DDIR)/symbol-order-$1 \
 		     -Wl,-propeller-dump-cfg="_ZN5clang4Sema21InstantiatingTemplate5ClearEv" \
 		     -Wl,-propeller-dump-cfg="_ZN4llvm10AllocaInstC1EPNS_4TypeEjPNS_5ValueEjRKNS_5TwineEPNS_11InstructionE" \

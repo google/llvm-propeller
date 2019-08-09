@@ -559,8 +559,13 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
   if(AlignBasicBlocks) {
     std::unordered_map<const ELFCfgNode*, const ELFCfgEdge*> FTEdge;
     for (const NodeChain *C : ChainOrder) {
-      if (!C->Freq)
+      if (!C->Freq){
+        for (const ELFCfgNode *N : C->Nodes){
+          if(N != Cfg->getEntryNode())
+            SymbolAlignmentMap.insert(std::make_pair(N->ShName, 1));
+        }
         continue;
+      }
       const ELFCfgNode * PrevN = nullptr;
       for (const ELFCfgNode *N : C->Nodes){
         for(const ELFCfgEdge *E: N->Ins){
