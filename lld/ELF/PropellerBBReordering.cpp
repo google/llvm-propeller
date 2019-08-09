@@ -582,7 +582,7 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
       unsigned align = 1;
       if(N->Freq * 10 > Cfg->getEntryNode()->Freq) {
         auto it = FTEdge.find(N.get());
-        if(it==FTEdge.end() || N->Freq > 2 * it->second->Weight)
+        if(it==FTEdge.end() || N->Freq >= 5 * it->second->Weight)
           align = 16;
       }
       SymbolAlignmentMap.insert(std::make_pair(N->ShName, align));
