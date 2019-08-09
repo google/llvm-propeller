@@ -240,7 +240,6 @@ define do_relink
 	   ALIGNFLAG="-Wl,-propeller-align-basicblocks" ; \
 	   ALIGNSUFFIX="-align" ; \
 	fi ; \
-	echo $${ALIGNFLAG} ; \
 	echo "pushd $(shell dirname $(shell dirname $<))" > $@ ; \
 	ninja -C "$(shell dirname $(shell dirname $<))" -t commands clang \
           | grep -Fe " -o bin/clang-10 " \
