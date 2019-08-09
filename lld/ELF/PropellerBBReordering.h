@@ -110,6 +110,7 @@ public:
   void doSplitOrder(list<StringRef> &SymbolList,
                     list<StringRef>::iterator HotPlaceHolder,
                     list<StringRef>::iterator ColdPlaceHolder,
+                    bool AlignBasicBlocks,
                     StringMap<unsigned>& SymbolAlignmentMap);
 };
 

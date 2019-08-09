@@ -502,6 +502,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
       ExtTSPChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
           config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder,
+          config->propellerAlignBasicBlocks,
           config->symbolAlignmentFile);
       ReorderedN++;
     } else {
@@ -510,6 +511,12 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
       Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
         SymbolList.insert(PlaceHolder, N.ShName);
       });
+    }
+    if(!config->propellerAlignBasicBlocks) {
+      for(auto &Node: Cfg->Nodes){
+        if(Node.get()!=Cfg->getEntryNode())
+          config->symbolAlignmentFile.insert(std::make_pair(Node->ShName, 1));
+      }
     }
   }
   if (config->propellerPrintStats) {

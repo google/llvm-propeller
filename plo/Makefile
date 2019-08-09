@@ -59,7 +59,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plolikely pgo-plohot pgo-plolist cspgo cspgo-plo pgo-bolt cspgo-bolt pgo-plo-noorder
+FLAVORS            := stage1 nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plolikely pgo-plohot pgo-plolist cspgo cspgo-plo pgo-bolt cspgo-bolt pgo-plo-noorder pgo-plo-align
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -133,6 +133,10 @@ pgo-plo-compiler pgo-plolikely-compiler pgo-plohot-compiler pgo-plolist-compiler
 	ln -sf $< $@
 	touch $@
 
+pgo-plo-align-compiler cspgo-plo-align-compiler: %-align-compiler: %/build/bin/clang-10-plo-align
+	ln -sf $< $@
+	touch $@
+
 pgo-plo-compiler.symorder pgo-compiler.symorder: %.symorder: %
 	llvm-nm -nS $< | sed -nEe '/(.+)\s(.+)\s(W|t|T)\s(.+)/p' | sed -Ee 's!(.+)\s(a+\.BB\.)(.+)!\1 \2 \3!' | awk '$$4~/^a+\.BB\.$$/{print $$1 " " $$2 " " $$3 " " length($$4)-4 ".BB." $$5} $$4!~/^a+\.BB\.$$/{print $$0}' > $@
 
@@ -192,6 +196,10 @@ pgo-plo/build/bin/clang-10-plo cspgo-plo/build/bin/clang-10-plo: %-plo/build/bin
 	./$<
 	[[ -e "$@" ]] || { echo "Failed to link $@" ; exit 1; }
 
+pgo-plo/build/bin/clang-10-plo-align cspgo-plo/build/bin/clang-10-plo-align: %-plo/build/bin/clang-10-plo-align: relink-clang-%-plo-align.sh stage1-compiler
+	./$<
+	[[ -e "$@" ]] || { echo "Failed to link $@" ; exit 1; }
+
 pgo-plolikely/build/bin/clang-10-plo pgo-plohot/build/bin/clang-10-plo pgo-plolist/build/bin/clang-10-plo: pgo-%/build/bin/clang-10-plo: relink-clang-pgo-%.sh stage1-compiler
 	./$<
 	[[ -e "$@" ]] || { echo "Failed to link $@" ; exit 1; }
@@ -228,16 +236,22 @@ run-commands.sh: | stage1-compiler
 
 # $1 must be "hot", "likely" or "all.
 define do_relink
-	echo "pushd $(shell dirname $(shell dirname $<))" > $@
+	if [[ "$(2)" == "align" ]]; then \
+	   ALIGNFLAG="-Wl,-propeller-align-basicblocks" ; \
+	   ALIGNSUFFIX="-align" ; \
+	fi ; \
+	echo $${ALIGNFLAG} ; \
+	echo "pushd $(shell dirname $(shell dirname $<))" > $@ ; \
 	ninja -C "$(shell dirname $(shell dirname $<))" -t commands clang \
           | grep -Fe " -o bin/clang-10 " \
-          | sed -e "s! -o bin/clang-10 ! -o bin/clang-10-plo \
+          | sed -e "s! -o bin/clang-10 ! -o bin/clang-10-plo$${ALIGNSUFFIX} \
                      -Wl,--lto-basicblock-sections=$1     \
 		     -Wl,-propeller=$(DDIR)/$(word 2,$^)  \
 		     -Wl,-propeller-opt=reorder-blocks    \
 		     -Wl,-propeller-opt=reorder-funcs     \
 		     -Wl,-propeller-opt=split-funcs       \
 		     -Wl,-propeller-keep-named-symbols    \
+		     $${ALIGNFLAG} \
 		     -Wl,-propeller-dump-symbol-order=$(DDIR)/symbol-order-$1 \
 		     -Wl,-propeller-dump-cfg="_ZN5clang4Sema21InstantiatingTemplate5ClearEv" \
 		     -Wl,-propeller-dump-cfg="_ZN4llvm10AllocaInstC1EPNS_4TypeEjPNS_5ValueEjRKNS_5TwineEPNS_11InstructionE" \
@@ -259,6 +273,11 @@ endef
 relink-clang-pgo-plo.sh relink-clang-cspgo-plo.sh: \
 relink-clang-%-plo.sh: %-plo/build/bin/clang-10 %-compiler.propeller
 	$(call do_relink,all)
+
+relink-clang-pgo-plo-align.sh relink-clang-cspgo-plo-align.sh: \
+relink-clang-%-plo-align.sh: %-plo/build/bin/clang-10 %-compiler.propeller
+	$(call do_relink,all,align)
+
 
 relink-clang-pgo-plolikely.sh: pgo-plolikely/build/bin/clang-10 pgo-compiler.propeller
 	$(call do_relink,likely)

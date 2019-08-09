@@ -920,6 +920,10 @@ static void readConfigs(opt::InputArgList &args) {
 
   config->propellerDumpCfgs = args.getAllArgValues(OPT_propeller_dump_cfg);
 
+  config->propellerAlignBasicBlocks =
+      args.hasFlag(OPT_propeller_align_basicblocks,
+                   OPT_no_propeller_align_basicblocks);
+
   config->propellerReorderBlocks =
       config->propellerReorderFuncs =
       config->propellerSplitFuncs =
