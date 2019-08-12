@@ -558,6 +558,8 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
 
   if(AlignBasicBlocks) {
     std::unordered_map<const ELFCfgNode*, const ELFCfgEdge*> FTEdge;
+    std::vector<const ELFCfgNode*> HotNodes;
+    std::unordered_map<const ELFCfgNode*, const ELFCfgNode*> NextN;
     for (const NodeChain *C : ChainOrder) {
       if (!C->Freq){
         for (const ELFCfgNode *N : C->Nodes){
@@ -568,11 +570,62 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
       }
       const ELFCfgNode * PrevN = nullptr;
       for (const ELFCfgNode *N : C->Nodes){
+        if(N->Freq)
+          HotNodes.push_back(N);
         for(const ELFCfgEdge *E: N->Ins){
           if(E->Src == PrevN)
             FTEdge.insert(std::make_pair(N,E));
         }
+        if(PrevN)
+          NextN[PrevN] = N;
         PrevN = N;
+      }
+    }
+
+    std::unordered_map<const ELFCfgNode*, std::set<const ELFCfgNode*>> Dominators;
+
+    Dominators[Cfg->getEntryNode()].insert(Cfg->getEntryNode());
+    std::deque<const ELFCfgNode*> Worklist;
+    std::set<const ELFCfgNode*> WorklistSet;
+
+    for(const ELFCfgNode* N: HotNodes){
+      if(N==Cfg->getEntryNode())
+        continue;
+      Dominators[N] = std::set<const ELFCfgNode *>(HotNodes.begin(), HotNodes.end());
+      Worklist.push_back(N);
+      WorklistSet.insert(N);
+    }
+
+    while(!Worklist.empty()){
+      const ELFCfgNode * N = Worklist.front();
+      Worklist.pop_front();
+      WorklistSet.erase(N);
+      std::set<const ELFCfgNode*> NewDoms;
+      bool first = false;
+      for(const ELFCfgEdge * E: N->Ins){
+        if(!E->Weight)
+          continue;
+        if (first){
+          NewDoms = Dominators[E->Src];
+          first = false;
+        } else {
+          for(auto it=NewDoms.begin(); it!=NewDoms.end(); ){
+            if (Dominators[E->Src].count(*it))
+              ++it;
+            else
+              it = NewDoms.erase(it);
+          }
+        }
+      }
+      NewDoms.insert(N);
+      if (NewDoms.size() != Dominators[N].size()){
+        Dominators[N] = NewDoms;
+        for(const ELFCfgEdge * E: N->Outs){
+          if(E->Weight && !WorklistSet.count(E->Sink) && E->Sink!=Cfg->getEntryNode()){
+            WorklistSet.insert(E->Sink);
+            Worklist.push_back(E->Sink);
+          }
+        }
       }
     }
 
@@ -580,11 +633,44 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
       if(N.get() == Cfg->getEntryNode())
         continue;
       unsigned align = 1;
+      uint64_t NonDomFreq = 0;
+      bool IsLoopHeader = false;
+      auto it = FTEdge.find(N.get());
+      for (const ELFCfgEdge * E: N->Ins){
+        if(!Dominators[E->Src].count(N.get())){
+          NonDomFreq += E->Weight;
+        }else
+          IsLoopHeader = true;
+      }
+      if(IsLoopHeader && (it==FTEdge.end() || N->Freq >= 5 * it->second->Weight)){
+        /*
+        for(const ELFCfgEdge * E: N->Ins){
+          if(Dominators[E->Src].count(N.get())){
+            const ELFCfgNode * NN = N.get();
+            unsigned LoopSize = 0;
+
+            do {
+              LoopSize += NN->ShSize;
+              NN = NextN[NN];
+            } while(NN!=nullptr && NN!=E->Src);
+
+            if (LoopSize >= 8 && LoopSize <= 128) {
+            */
+              align = 16;
+              //fprintf(stderr, "Aligning Node: %s\n", N->ShName.str().c_str());
+              /*
+            }
+          }
+        }
+        */
+      }
+      /*
       if(N->Freq * 10 > Cfg->getEntryNode()->Freq) {
         auto it = FTEdge.find(N.get());
         if(it==FTEdge.end() || N->Freq >= 5 * it->second->Weight)
           align = 16;
       }
+      */
       SymbolAlignmentMap.insert(std::make_pair(N->ShName, align));
     }
   }
