@@ -609,7 +609,7 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
     for(auto &N: Cfg->Nodes){
       if(N.get() == Cfg->getEntryNode())
         continue;
-      if(N->Freq && (N->Freq >= 10 * Cfg->getEntryNode()->Freq) && (MaxLoopSize[N.get()] >= 8) && (MinLoopSize[N.get()] <= 128) && (BackEdgeFreq[N.get()] * 5 >= N->Freq * 4)){
+      if(N->Freq && (N->Freq >= 10 * Cfg->getEntryNode()->Freq) && (BackEdgeFreq[N.get()] * 5 >= N->Freq * 4)){
         //fprintf(stderr, "Loop alignment for node: %s\n", N->ShName.str().c_str());
         SymbolAlignmentMap.insert(std::make_pair(N->ShName, 16));
       } else

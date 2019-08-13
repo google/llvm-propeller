@@ -520,7 +520,6 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
         }
       }
       */
-
     }
     if(!config->propellerAlignBasicBlocks) {
       for(auto &Node: Cfg->Nodes){
