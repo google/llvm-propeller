@@ -136,7 +136,7 @@ public:
     if (!BufOrError)
       exitWithErrorCode(BufOrError.getError(), InputFile);
 
-    auto Remapper = llvm::make_unique<SymbolRemapper>();
+    auto Remapper = std::make_unique<SymbolRemapper>();
     Remapper->File = std::move(BufOrError.get());
 
     for (line_iterator LineIt(*Remapper->File, /*SkipBlanks=*/true, '#');
@@ -328,7 +328,7 @@ static void mergeInstrProfile(const WeightedFileVector &Inputs,
   // Initialize the writer contexts.
   SmallVector<std::unique_ptr<WriterContext>, 4> Contexts;
   for (unsigned I = 0; I < NumThreads; ++I)
-    Contexts.emplace_back(llvm::make_unique<WriterContext>(
+    Contexts.emplace_back(std::make_unique<WriterContext>(
         OutputSparse, ErrorLock, WriterErrorCodes));
 
   if (NumThreads == 1) {
@@ -380,7 +380,7 @@ static void mergeInstrProfile(const WeightedFileVector &Inputs,
   }
 
   std::error_code EC;
-  raw_fd_ostream Output(OutputFilename.data(), EC, sys::fs::F_None);
+  raw_fd_ostream Output(OutputFilename.data(), EC, sys::fs::OF_None);
   if (EC)
     exitWithErrorCode(EC, OutputFilename);
 
@@ -682,7 +682,7 @@ static int overlap_main(int argc, const char *argv[]) {
   cl::ParseCommandLineOptions(argc, argv, "LLVM profile data overlap tool\n");
 
   std::error_code EC;
-  raw_fd_ostream OS(Output.data(), EC, sys::fs::F_Text);
+  raw_fd_ostream OS(Output.data(), EC, sys::fs::OF_Text);
   if (EC)
     exitWithErrorCode(EC, Output);
 
@@ -1027,7 +1027,7 @@ static int show_main(int argc, const char *argv[]) {
   }
 
   std::error_code EC;
-  raw_fd_ostream OS(OutputFilename.data(), EC, sys::fs::F_Text);
+  raw_fd_ostream OS(OutputFilename.data(), EC, sys::fs::OF_Text);
   if (EC)
     exitWithErrorCode(EC, OutputFilename);
 

@@ -8,6 +8,7 @@
 
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/DependencyScanning/DependencyScanningService.h"
 #include "clang/Tooling/DependencyScanning/DependencyScanningWorker.h"
 #include "clang/Tooling/JSONCompilationDatabase.h"
 #include "llvm/Support/InitLLVM.h"
@@ -45,9 +46,10 @@ public:
   ///
   /// \param Compilations     The reference to the compilation database that's
   /// used by the clang tool.
-  DependencyScanningTool(const tooling::CompilationDatabase &Compilations,
+  DependencyScanningTool(DependencyScanningService &Service,
+                         const tooling::CompilationDatabase &Compilations,
                          SharedStream &OS, SharedStream &Errs)
-      : Compilations(Compilations), OS(OS), Errs(Errs) {}
+      : Worker(Service), Compilations(Compilations), OS(OS), Errs(Errs) {}
 
   /// Computes the dependencies for the given file and prints them out.
   ///
@@ -79,6 +81,20 @@ llvm::cl::opt<bool> Help("h", llvm::cl::desc("Alias for -help"),
                          llvm::cl::Hidden);
 
 llvm::cl::OptionCategory DependencyScannerCategory("Tool options");
+
+static llvm::cl::opt<ScanningMode> ScanMode(
+    "mode",
+    llvm::cl::desc("The preprocessing mode used to compute the dependencies"),
+    llvm::cl::values(
+        clEnumValN(ScanningMode::MinimizedSourcePreprocessing,
+                   "preprocess-minimized-sources",
+                   "The set of dependencies is computed by preprocessing the "
+                   "source files that were minimized to only include the "
+                   "contents that might affect the dependencies"),
+        clEnumValN(ScanningMode::CanonicalPreprocessing, "preprocess",
+                   "The set of dependencies is computed by preprocessing the "
+                   "unmodified source files")),
+    llvm::cl::init(ScanningMode::MinimizedSourcePreprocessing));
 
 llvm::cl::opt<unsigned>
     NumThreads("j", llvm::cl::Optional,
@@ -118,7 +134,7 @@ int main(int argc, const char **argv) {
 
   // The command options are rewritten to run Clang in preprocessor only mode.
   auto AdjustingCompilations =
-      llvm::make_unique<tooling::ArgumentsAdjustingCompilations>(
+      std::make_unique<tooling::ArgumentsAdjustingCompilations>(
           std::move(Compilations));
   AdjustingCompilations->appendArgumentsAdjuster(
       [](const tooling::CommandLineArguments &Args, StringRef /*unused*/) {
@@ -136,12 +152,18 @@ int main(int argc, const char **argv) {
   SharedStream Errs(llvm::errs());
   // Print out the dependency results to STDOUT by default.
   SharedStream DependencyOS(llvm::outs());
+
+  DependencyScanningService Service(ScanMode);
+#if LLVM_ENABLE_THREADS
   unsigned NumWorkers =
       NumThreads == 0 ? llvm::hardware_concurrency() : NumThreads;
+#else
+  unsigned NumWorkers = 1;
+#endif
   std::vector<std::unique_ptr<DependencyScanningTool>> WorkerTools;
   for (unsigned I = 0; I < NumWorkers; ++I)
-    WorkerTools.push_back(llvm::make_unique<DependencyScanningTool>(
-        *AdjustingCompilations, DependencyOS, Errs));
+    WorkerTools.push_back(std::make_unique<DependencyScanningTool>(
+        Service, *AdjustingCompilations, DependencyOS, Errs));
 
   std::vector<std::thread> WorkerThreads;
   std::atomic<bool> HadErrors(false);
@@ -151,25 +173,30 @@ int main(int argc, const char **argv) {
   llvm::outs() << "Running clang-scan-deps on " << Inputs.size()
                << " files using " << NumWorkers << " workers\n";
   for (unsigned I = 0; I < NumWorkers; ++I) {
-    WorkerThreads.emplace_back(
-        [I, &Lock, &Index, &Inputs, &HadErrors, &WorkerTools]() {
-          while (true) {
-            std::string Input;
-            StringRef CWD;
-            // Take the next input.
-            {
-              std::unique_lock<std::mutex> LockGuard(Lock);
-              if (Index >= Inputs.size())
-                return;
-              const auto &Compilation = Inputs[Index++];
-              Input = Compilation.first;
-              CWD = Compilation.second;
-            }
-            // Run the tool on it.
-            if (WorkerTools[I]->runOnFile(Input, CWD))
-              HadErrors = true;
-          }
-        });
+    auto Worker = [I, &Lock, &Index, &Inputs, &HadErrors, &WorkerTools]() {
+      while (true) {
+        std::string Input;
+        StringRef CWD;
+        // Take the next input.
+        {
+          std::unique_lock<std::mutex> LockGuard(Lock);
+          if (Index >= Inputs.size())
+            return;
+          const auto &Compilation = Inputs[Index++];
+          Input = Compilation.first;
+          CWD = Compilation.second;
+        }
+        // Run the tool on it.
+        if (WorkerTools[I]->runOnFile(Input, CWD))
+          HadErrors = true;
+      }
+    };
+#if LLVM_ENABLE_THREADS
+    WorkerThreads.emplace_back(std::move(Worker));
+#else
+    // Run the worker without spawning a thread when threads are disabled.
+    Worker();
+#endif
   }
   for (auto &W : WorkerThreads)
     W.join();

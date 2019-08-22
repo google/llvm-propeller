@@ -183,7 +183,8 @@ public:
   /// Note that we're using std::map here, as for memoization:
   /// - we need a comparison operator
   /// - we need an assignment operator
-  using IDToNodeMap = std::map<std::string, ast_type_traits::DynTypedNode>;
+  using IDToNodeMap =
+      std::map<std::string, ast_type_traits::DynTypedNode, std::less<>>;
 
   const IDToNodeMap &getMap() const {
     return NodeMap;
@@ -971,7 +972,7 @@ public:
 
   virtual ~ASTMatchFinder() = default;
 
-  /// Returns true if the given class is directly or indirectly derived
+  /// Returns true if the given C++ class is directly or indirectly derived
   /// from a base type matching \c base.
   ///
   /// A class is not considered to be derived from itself.
@@ -979,6 +980,15 @@ public:
                                   const Matcher<NamedDecl> &Base,
                                   BoundNodesTreeBuilder *Builder,
                                   bool Directly) = 0;
+
+  /// Returns true if the given Objective-C class is directly or indirectly
+  /// derived from a base class matching \c base.
+  ///
+  /// A class is not considered to be derived from itself.
+  virtual bool objcClassIsDerivedFrom(const ObjCInterfaceDecl *Declaration,
+                                      const Matcher<NamedDecl> &Base,
+                                      BoundNodesTreeBuilder *Builder,
+                                      bool Directly) = 0;
 
   template <typename T>
   bool matchesChildOf(const T &Node, const DynTypedMatcher &Matcher,
@@ -1325,14 +1335,14 @@ public:
   template <typename T> operator Matcher<T>() const {
     return DynTypedMatcher::constructVariadic(
                Op, ast_type_traits::ASTNodeKind::getFromNodeKind<T>(),
-               getMatchers<T>(llvm::index_sequence_for<Ps...>()))
+               getMatchers<T>(std::index_sequence_for<Ps...>()))
         .template unconditionalConvertTo<T>();
   }
 
 private:
   // Helper method to unpack the tuple into a vector.
   template <typename T, std::size_t... Is>
-  std::vector<DynTypedMatcher> getMatchers(llvm::index_sequence<Is...>) const {
+  std::vector<DynTypedMatcher> getMatchers(std::index_sequence<Is...>) const {
     return {Matcher<T>(std::get<Is>(Params))...};
   }
 

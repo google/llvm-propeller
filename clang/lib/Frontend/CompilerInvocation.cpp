@@ -18,6 +18,7 @@
 #include "clang/Basic/FileSystemOptions.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/LangStandard.h"
 #include "clang/Basic/ObjCRuntime.h"
 #include "clang/Basic/Sanitizers.h"
 #include "clang/Basic/SourceLocation.h"
@@ -34,7 +35,6 @@
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/FrontendOptions.h"
 #include "clang/Frontend/FrontendPluginRegistry.h"
-#include "clang/Frontend/LangStandard.h"
 #include "clang/Frontend/MigratorOptions.h"
 #include "clang/Frontend/PreprocessorOutputOptions.h"
 #include "clang/Frontend/Utils.h"
@@ -122,7 +122,7 @@ CompilerInvocationBase::~CompilerInvocationBase() = default;
 static unsigned getOptimizationLevel(ArgList &Args, InputKind IK,
                                      DiagnosticsEngine &Diags) {
   unsigned DefaultOpt = llvm::CodeGenOpt::None;
-  if (IK.getLanguage() == InputKind::OpenCL && !Args.hasArg(OPT_cl_opt_disable))
+  if (IK.getLanguage() == Language::OpenCL && !Args.hasArg(OPT_cl_opt_disable))
     DefaultOpt = llvm::CodeGenOpt::Default;
 
   if (Arg *A = Args.getLastArg(options::OPT_O_Group)) {
@@ -324,18 +324,18 @@ static bool ParseAnalyzerArgs(AnalyzerOptions &Opts, ArgList &Args,
       getLastArgIntValue(Args, OPT_analyzer_inline_max_stack_depth,
                          Opts.InlineMaxStackDepth, Diags);
 
-  Opts.CheckersControlList.clear();
+  Opts.CheckersAndPackages.clear();
   for (const Arg *A :
        Args.filtered(OPT_analyzer_checker, OPT_analyzer_disable_checker)) {
     A->claim();
-    bool enable = (A->getOption().getID() == OPT_analyzer_checker);
+    bool IsEnabled = A->getOption().getID() == OPT_analyzer_checker;
     // We can have a list of comma separated checker names, e.g:
     // '-analyzer-checker=cocoa,unix'
-    StringRef checkerList = A->getValue();
-    SmallVector<StringRef, 4> checkers;
-    checkerList.split(checkers, ",");
-    for (auto checker : checkers)
-      Opts.CheckersControlList.emplace_back(checker, enable);
+    StringRef CheckerAndPackageList = A->getValue();
+    SmallVector<StringRef, 16> CheckersAndPackages;
+    CheckerAndPackageList.split(CheckersAndPackages, ",");
+    for (const StringRef CheckerOrPackage : CheckersAndPackages)
+      Opts.CheckersAndPackages.emplace_back(CheckerOrPackage, IsEnabled);
   }
 
   // Go through the analyzer configuration options.
@@ -479,6 +479,32 @@ static void parseAnalyzerConfigs(AnalyzerOptions &AnOpts,
       !llvm::sys::fs::is_directory(AnOpts.ModelPath))
     Diags->Report(diag::err_analyzer_config_invalid_input) << "model-path"
                                                            << "a filename";
+
+  // FIXME: Here we try to validate the silenced checkers or packages are valid.
+  // The current approach only validates the registered checkers which does not
+  // contain the runtime enabled checkers and optimally we would validate both.
+  if (!AnOpts.RawSilencedCheckersAndPackages.empty()) {
+    std::vector<StringRef> Checkers =
+        AnOpts.getRegisteredCheckers(/*IncludeExperimental=*/true);
+    std::vector<StringRef> Packages =
+        AnOpts.getRegisteredPackages(/*IncludeExperimental=*/true);
+
+    SmallVector<StringRef, 16> CheckersAndPackages;
+    AnOpts.RawSilencedCheckersAndPackages.split(CheckersAndPackages, ";");
+
+    for (const StringRef CheckerOrPackage : CheckersAndPackages) {
+      bool IsChecker = CheckerOrPackage.contains('.');
+      bool IsValidName =
+          IsChecker ? llvm::find(Checkers, CheckerOrPackage) != Checkers.end()
+                    : llvm::find(Packages, CheckerOrPackage) != Packages.end();
+
+      if (!IsValidName)
+        Diags->Report(diag::err_unknown_analyzer_checker_or_package)
+            << CheckerOrPackage;
+
+      AnOpts.SilencedCheckersAndPackages.emplace_back(CheckerOrPackage);
+    }
+  }
 }
 
 static bool ParseMigratorArgs(MigratorOptions &Opts, ArgList &Args) {
@@ -888,6 +914,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.NumRegisterParameters = getLastArgIntValue(Args, OPT_mregparm, 0, Diags);
   Opts.NoExecStack = Args.hasArg(OPT_mno_exec_stack);
   Opts.FatalWarnings = Args.hasArg(OPT_massembler_fatal_warnings);
+  Opts.NoWarn = Args.hasArg(OPT_massembler_no_warn);
   Opts.EnableSegmentedStacks = Args.hasArg(OPT_split_stacks);
   Opts.RelaxAll = Args.hasArg(OPT_mrelax_all);
   Opts.IncrementalLinkerCompatible =
@@ -977,7 +1004,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.LTOUnit = Args.hasFlag(OPT_flto_unit, OPT_fno_lto_unit, false);
   Opts.EnableSplitLTOUnit = Args.hasArg(OPT_fsplit_lto_unit);
   if (Arg *A = Args.getLastArg(OPT_fthinlto_index_EQ)) {
-    if (IK.getLanguage() != InputKind::LLVM_IR)
+    if (IK.getLanguage() != Language::LLVM_IR)
       Diags.Report(diag::err_drv_argument_only_allowed_with)
           << A->getAsString(Args) << "-x ir";
     Opts.ThinLTOIndexFile = Args.getLastArgValue(OPT_fthinlto_index_EQ);
@@ -1171,6 +1198,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.SanitizeCfiCrossDso = Args.hasArg(OPT_fsanitize_cfi_cross_dso);
   Opts.SanitizeCfiICallGeneralizePointers =
       Args.hasArg(OPT_fsanitize_cfi_icall_generalize_pointers);
+  Opts.SanitizeCfiCanonicalJumpTables =
+      Args.hasArg(OPT_fsanitize_cfi_canonical_jump_tables);
   Opts.SanitizeStats = Args.hasArg(OPT_fsanitize_stats);
   if (Arg *A = Args.getLastArg(
           OPT_fsanitize_address_poison_custom_array_cookie,
@@ -1318,7 +1347,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   if (Opts.DiagnosticsWithHotness && !UsingProfile &&
       // An IR file will contain PGO as metadata
-      IK.getLanguage() != InputKind::LLVM_IR)
+      IK.getLanguage() != Language::LLVM_IR)
     Diags.Report(diag::warn_drv_diagnostics_hotness_requires_pgo)
         << "-fdiagnostics-show-hotness";
 
@@ -1935,7 +1964,7 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       << "ARC migration" << "ObjC migration";
   }
 
-  InputKind DashX(InputKind::Unknown);
+  InputKind DashX(Language::Unknown);
   if (const Arg *A = Args.getLastArg(OPT_x)) {
     StringRef XValue = A->getValue();
 
@@ -1948,33 +1977,33 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
 
     // Principal languages.
     DashX = llvm::StringSwitch<InputKind>(XValue)
-                .Case("c", InputKind::C)
-                .Case("cl", InputKind::OpenCL)
-                .Case("cuda", InputKind::CUDA)
-                .Case("hip", InputKind::HIP)
-                .Case("c++", InputKind::CXX)
-                .Case("objective-c", InputKind::ObjC)
-                .Case("objective-c++", InputKind::ObjCXX)
-                .Case("renderscript", InputKind::RenderScript)
-                .Default(InputKind::Unknown);
+                .Case("c", Language::C)
+                .Case("cl", Language::OpenCL)
+                .Case("cuda", Language::CUDA)
+                .Case("hip", Language::HIP)
+                .Case("c++", Language::CXX)
+                .Case("objective-c", Language::ObjC)
+                .Case("objective-c++", Language::ObjCXX)
+                .Case("renderscript", Language::RenderScript)
+                .Default(Language::Unknown);
 
     // "objc[++]-cpp-output" is an acceptable synonym for
     // "objective-c[++]-cpp-output".
     if (DashX.isUnknown() && Preprocessed && !IsHeaderFile && !ModuleMap)
       DashX = llvm::StringSwitch<InputKind>(XValue)
-                  .Case("objc", InputKind::ObjC)
-                  .Case("objc++", InputKind::ObjCXX)
-                  .Default(InputKind::Unknown);
+                  .Case("objc", Language::ObjC)
+                  .Case("objc++", Language::ObjCXX)
+                  .Default(Language::Unknown);
 
     // Some special cases cannot be combined with suffixes.
     if (DashX.isUnknown() && !Preprocessed && !ModuleMap && !IsHeaderFile)
       DashX = llvm::StringSwitch<InputKind>(XValue)
-                  .Case("cpp-output", InputKind(InputKind::C).getPreprocessed())
-                  .Case("assembler-with-cpp", InputKind::Asm)
+                  .Case("cpp-output", InputKind(Language::C).getPreprocessed())
+                  .Case("assembler-with-cpp", Language::Asm)
                   .Cases("ast", "pcm",
-                         InputKind(InputKind::Unknown, InputKind::Precompiled))
-                  .Case("ir", InputKind::LLVM_IR)
-                  .Default(InputKind::Unknown);
+                         InputKind(Language::Unknown, InputKind::Precompiled))
+                  .Case("ir", Language::LLVM_IR)
+                  .Default(Language::Unknown);
 
     if (DashX.isUnknown())
       Diags.Report(diag::err_drv_invalid_value)
@@ -1998,7 +2027,7 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
         StringRef(Inputs[i]).rsplit('.').second);
       // FIXME: Warn on this?
       if (IK.isUnknown())
-        IK = InputKind::C;
+        IK = Language::C;
       // FIXME: Remove this hack.
       if (i == 0)
         DashX = IK;
@@ -2172,7 +2201,7 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   // FIXME: Perhaps a better model would be for a single source file to have
   // multiple language standards (C / C++ std, ObjC std, OpenCL std, OpenMP std)
   // simultaneously active?
-  if (IK.getLanguage() == InputKind::Asm) {
+  if (IK.getLanguage() == Language::Asm) {
     Opts.AsmPreprocessor = 1;
   } else if (IK.isObjectiveC()) {
     Opts.ObjC = 1;
@@ -2181,17 +2210,17 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   if (LangStd == LangStandard::lang_unspecified) {
     // Based on the base language, pick one.
     switch (IK.getLanguage()) {
-    case InputKind::Unknown:
-    case InputKind::LLVM_IR:
+    case Language::Unknown:
+    case Language::LLVM_IR:
       llvm_unreachable("Invalid input kind!");
-    case InputKind::OpenCL:
+    case Language::OpenCL:
       LangStd = LangStandard::lang_opencl10;
       break;
-    case InputKind::CUDA:
+    case Language::CUDA:
       LangStd = LangStandard::lang_cuda;
       break;
-    case InputKind::Asm:
-    case InputKind::C:
+    case Language::Asm:
+    case Language::C:
 #if defined(CLANG_DEFAULT_STD_C)
       LangStd = CLANG_DEFAULT_STD_C;
 #else
@@ -2202,25 +2231,25 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
         LangStd = LangStandard::lang_gnu11;
 #endif
       break;
-    case InputKind::ObjC:
+    case Language::ObjC:
 #if defined(CLANG_DEFAULT_STD_C)
       LangStd = CLANG_DEFAULT_STD_C;
 #else
       LangStd = LangStandard::lang_gnu11;
 #endif
       break;
-    case InputKind::CXX:
-    case InputKind::ObjCXX:
+    case Language::CXX:
+    case Language::ObjCXX:
 #if defined(CLANG_DEFAULT_STD_CXX)
       LangStd = CLANG_DEFAULT_STD_CXX;
 #else
       LangStd = LangStandard::lang_gnucxx14;
 #endif
       break;
-    case InputKind::RenderScript:
+    case Language::RenderScript:
       LangStd = LangStandard::lang_c99;
       break;
-    case InputKind::HIP:
+    case Language::HIP:
       LangStd = LangStandard::lang_hip;
       break;
     }
@@ -2277,13 +2306,13 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     }
   }
 
-  Opts.HIP = IK.getLanguage() == InputKind::HIP;
-  Opts.CUDA = IK.getLanguage() == InputKind::CUDA || Opts.HIP;
+  Opts.HIP = IK.getLanguage() == Language::HIP;
+  Opts.CUDA = IK.getLanguage() == Language::CUDA || Opts.HIP;
   if (Opts.CUDA)
     // Set default FP_CONTRACT to FAST.
     Opts.setDefaultFPContractMode(LangOptions::FPC_Fast);
 
-  Opts.RenderScript = IK.getLanguage() == InputKind::RenderScript;
+  Opts.RenderScript = IK.getLanguage() == Language::RenderScript;
   if (Opts.RenderScript) {
     Opts.NativeHalfType = 1;
     Opts.NativeHalfArgsAndReturns = 1;
@@ -2331,32 +2360,31 @@ static Visibility parseVisibility(Arg *arg, ArgList &args,
 static bool IsInputCompatibleWithStandard(InputKind IK,
                                           const LangStandard &S) {
   switch (IK.getLanguage()) {
-  case InputKind::Unknown:
-  case InputKind::LLVM_IR:
+  case Language::Unknown:
+  case Language::LLVM_IR:
     llvm_unreachable("should not parse language flags for this input");
 
-  case InputKind::C:
-  case InputKind::ObjC:
-  case InputKind::RenderScript:
-    return S.getLanguage() == InputKind::C;
+  case Language::C:
+  case Language::ObjC:
+  case Language::RenderScript:
+    return S.getLanguage() == Language::C;
 
-  case InputKind::OpenCL:
-    return S.getLanguage() == InputKind::OpenCL;
+  case Language::OpenCL:
+    return S.getLanguage() == Language::OpenCL;
 
-  case InputKind::CXX:
-  case InputKind::ObjCXX:
-    return S.getLanguage() == InputKind::CXX;
+  case Language::CXX:
+  case Language::ObjCXX:
+    return S.getLanguage() == Language::CXX;
 
-  case InputKind::CUDA:
+  case Language::CUDA:
     // FIXME: What -std= values should be permitted for CUDA compilations?
-    return S.getLanguage() == InputKind::CUDA ||
-           S.getLanguage() == InputKind::CXX;
+    return S.getLanguage() == Language::CUDA ||
+           S.getLanguage() == Language::CXX;
 
-  case InputKind::HIP:
-    return S.getLanguage() == InputKind::CXX ||
-           S.getLanguage() == InputKind::HIP;
+  case Language::HIP:
+    return S.getLanguage() == Language::CXX || S.getLanguage() == Language::HIP;
 
-  case InputKind::Asm:
+  case Language::Asm:
     // Accept (and ignore) all -std= values.
     // FIXME: The -std= value is not ignored; it affects the tokenization
     // and preprocessing rules if we're preprocessing this asm input.
@@ -2369,29 +2397,29 @@ static bool IsInputCompatibleWithStandard(InputKind IK,
 /// Get language name for given input kind.
 static const StringRef GetInputKindName(InputKind IK) {
   switch (IK.getLanguage()) {
-  case InputKind::C:
+  case Language::C:
     return "C";
-  case InputKind::ObjC:
+  case Language::ObjC:
     return "Objective-C";
-  case InputKind::CXX:
+  case Language::CXX:
     return "C++";
-  case InputKind::ObjCXX:
+  case Language::ObjCXX:
     return "Objective-C++";
-  case InputKind::OpenCL:
+  case Language::OpenCL:
     return "OpenCL";
-  case InputKind::CUDA:
+  case Language::CUDA:
     return "CUDA";
-  case InputKind::RenderScript:
+  case Language::RenderScript:
     return "RenderScript";
-  case InputKind::HIP:
+  case Language::HIP:
     return "HIP";
 
-  case InputKind::Asm:
+  case Language::Asm:
     return "Asm";
-  case InputKind::LLVM_IR:
+  case Language::LLVM_IR:
     return "LLVM IR";
 
-  case InputKind::Unknown:
+  case Language::Unknown:
     break;
   }
   llvm_unreachable("unknown input language");
@@ -2404,13 +2432,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // FIXME: Cleanup per-file based stuff.
   LangStandard::Kind LangStd = LangStandard::lang_unspecified;
   if (const Arg *A = Args.getLastArg(OPT_std_EQ)) {
-    LangStd = llvm::StringSwitch<LangStandard::Kind>(A->getValue())
-#define LANGSTANDARD(id, name, lang, desc, features) \
-      .Case(name, LangStandard::lang_##id)
-#define LANGSTANDARD_ALIAS(id, alias) \
-      .Case(alias, LangStandard::lang_##id)
-#include "clang/Frontend/LangStandards.def"
-      .Default(LangStandard::lang_unspecified);
+    LangStd = LangStandard::getLangKind(A->getValue());
     if (LangStd == LangStandard::lang_unspecified) {
       Diags.Report(diag::err_drv_invalid_value)
         << A->getAsString(Args) << A->getValue();
@@ -2428,13 +2450,13 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 #define LANGSTANDARD_ALIAS(id, alias) \
           if (KindValue == LangStandard::lang_##id) ++NumAliases;
 #define LANGSTANDARD_ALIAS_DEPR(id, alias)
-#include "clang/Frontend/LangStandards.def"
+#include "clang/Basic/LangStandards.def"
           Diag << NumAliases;
 #define LANGSTANDARD(id, name, lang, desc, features)
 #define LANGSTANDARD_ALIAS(id, alias) \
           if (KindValue == LangStandard::lang_##id) Diag << alias;
 #define LANGSTANDARD_ALIAS_DEPR(id, alias)
-#include "clang/Frontend/LangStandards.def"
+#include "clang/Basic/LangStandards.def"
         }
       }
     } else {
@@ -2934,8 +2956,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     }
   }
 
-  // Check if -fopenmp is specified.
-  Opts.OpenMP = Args.hasArg(options::OPT_fopenmp) ? 1 : 0;
+  // Check if -fopenmp is specified and set default version to 4.5.
+  Opts.OpenMP = Args.hasArg(options::OPT_fopenmp) ? 45 : 0;
   // Check if -fopenmp-simd is specified.
   bool IsSimdSpecified =
       Args.hasFlag(options::OPT_fopenmp_simd, options::OPT_fno_openmp_simd,
@@ -3424,7 +3446,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
                         Res.getFileSystemOpts().WorkingDir);
   llvm::Triple T(Res.getTargetOpts().Triple);
   if (DashX.getFormat() == InputKind::Precompiled ||
-      DashX.getLanguage() == InputKind::LLVM_IR) {
+      DashX.getLanguage() == Language::LLVM_IR) {
     // ObjCAAutoRefCount and Sanitize LangOpts are used to setup the
     // PassManager in BackendUtil.cpp. They need to be initializd no matter
     // what the input type is.
@@ -3438,7 +3460,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
                         Diags, LangOpts.Sanitize);
   } else {
     // Other LangOpts are only initialized when the input is not AST or LLVM IR.
-    // FIXME: Should we really be calling this for an InputKind::Asm input?
+    // FIXME: Should we really be calling this for an Language::Asm input?
     ParseLangArgs(LangOpts, Args, DashX, Res.getTargetOpts(),
                   Res.getPreprocessorOpts(), Diags);
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)

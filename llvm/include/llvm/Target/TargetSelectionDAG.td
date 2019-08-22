@@ -239,6 +239,9 @@ def SDTVecExtract : SDTypeProfile<1, 2, [   // vector extract
 def SDTVecInsert : SDTypeProfile<1, 3, [    // vector insert
   SDTCisEltOfVec<2, 1>, SDTCisSameAs<0, 1>, SDTCisPtrTy<3>
 ]>;
+def SDTVecReduce : SDTypeProfile<1, 1, [    // vector reduction
+  SDTCisInt<0>, SDTCisVec<1>
+]>;
 
 def SDTSubVecExtract : SDTypeProfile<1, 2, [// subvector extract
   SDTCisSubVecOfVec<0,1>, SDTCisInt<2>
@@ -414,6 +417,8 @@ def bitconvert : SDNode<"ISD::BITCAST"    , SDTUnaryOp>;
 def addrspacecast : SDNode<"ISD::ADDRSPACECAST", SDTUnaryOp>;
 def extractelt : SDNode<"ISD::EXTRACT_VECTOR_ELT", SDTVecExtract>;
 def insertelt  : SDNode<"ISD::INSERT_VECTOR_ELT", SDTVecInsert>;
+
+def vecreduce_add  : SDNode<"ISD::VECREDUCE_ADD", SDTVecReduce>;
 
 def fadd       : SDNode<"ISD::FADD"       , SDTFPBinOp, [SDNPCommutative]>;
 def fsub       : SDNode<"ISD::FSUB"       , SDTFPBinOp>;
@@ -1113,6 +1118,16 @@ def pre_truncstf32 : PatFrag<(ops node:$val, node:$base, node:$offset),
   let IsStore = 1;
   let MemoryVT = f32;
 }
+def pre_truncstvi8 : PatFrag<(ops node:$val, node:$base, node:$offset),
+                             (pre_truncst node:$val, node:$base, node:$offset)> {
+  let IsStore = 1;
+  let ScalarMemoryVT = i8;
+}
+def pre_truncstvi16 : PatFrag<(ops node:$val, node:$base, node:$offset),
+                              (pre_truncst node:$val, node:$base, node:$offset)> {
+  let IsStore = 1;
+  let ScalarMemoryVT = i16;
+}
 
 def post_store : PatFrag<(ops node:$val, node:$ptr, node:$offset),
                          (istore node:$val, node:$ptr, node:$offset), [{
@@ -1149,6 +1164,16 @@ def post_truncstf32 : PatFrag<(ops node:$val, node:$base, node:$offset),
                               (post_truncst node:$val, node:$base, node:$offset)> {
   let IsStore = 1;
   let MemoryVT = f32;
+}
+def post_truncstvi8 : PatFrag<(ops node:$val, node:$base, node:$offset),
+                              (post_truncst node:$val, node:$base, node:$offset)> {
+  let IsStore = 1;
+  let ScalarMemoryVT = i8;
+}
+def post_truncstvi16 : PatFrag<(ops node:$val, node:$base, node:$offset),
+                               (post_truncst node:$val, node:$base, node:$offset)> {
+  let IsStore = 1;
+  let ScalarMemoryVT = i16;
 }
 
 def nonvolatile_load : PatFrag<(ops node:$ptr),

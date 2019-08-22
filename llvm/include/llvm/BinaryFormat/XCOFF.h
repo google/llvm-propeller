@@ -19,7 +19,7 @@ namespace llvm {
 namespace XCOFF {
 
 // Constants used in the XCOFF definition.
-enum { SectionNameSize = 8, SymbolNameSize = 8 };
+enum { NameSize = 8 };
 enum ReservedSectionNum { N_DEBUG = -2, N_ABS = -1, N_UNDEF = 0 };
 
 // x_smclas field of x_csect from system header: /usr/include/syms.h
@@ -145,6 +145,29 @@ enum SymbolType {
   XTY_LD = 2, ///< Label definition.
               ///< Defines an entry point to an initialized csect.
   XTY_CM = 3  ///< Common csect definition. For uninitialized storage.
+};
+
+struct FileHeader32 {
+  uint16_t Magic;
+  uint16_t NumberOfSections;
+  int32_t TimeStamp;
+  uint32_t SymbolTableFileOffset;
+  int32_t NumberOfSymbolTableEntries;
+  uint16_t AuxiliaryHeaderSize;
+  uint16_t Flags;
+};
+
+struct SectionHeader32 {
+  char Name[XCOFF::NameSize];
+  uint32_t PhysicalAddress;
+  uint32_t VirtualAddress;
+  uint32_t Size;
+  uint32_t FileOffsetToData;
+  uint32_t FileOffsetToRelocations;
+  uint32_t FileOffsetToLineNumbers;
+  uint16_t NumberOfRelocations;
+  uint16_t NumberOfLineNumbers;
+  int32_t Flags;
 };
 
 } // end namespace XCOFF

@@ -36,6 +36,7 @@
 #include "llvm/Option/Option.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LEB128.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/TarWriter.h"
@@ -62,16 +63,16 @@ LinkerDriver *driver;
 bool link(ArrayRef<const char *> args, bool canExitEarly, raw_ostream &diag) {
   errorHandler().logName = args::getFilenameWithoutExe(args[0]);
   errorHandler().errorOS = &diag;
-  errorHandler().colorDiagnostics = diag.has_colors();
   errorHandler().errorLimitExceededMsg =
       "too many errors emitted, stopping now"
       " (use /errorlimit:0 to see all errors)";
   errorHandler().exitEarly = canExitEarly;
+  enableColors(diag.has_colors());
+
   config = make<Configuration>();
-
   symtab = make<SymbolTable>();
-
   driver = make<LinkerDriver>();
+
   driver->link(args);
 
   // Call exit() if we can to avoid calling destructors.
@@ -1422,6 +1423,13 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
   for (auto *arg : args.filtered(OPT_section))
     parseSection(arg->getValue());
 
+  // Handle /align
+  if (auto *arg = args.getLastArg(OPT_align)) {
+    parseNumbers(arg->getValue(), &config->align);
+    if (!isPowerOf2_64(config->align))
+      error("/align: not a power of two: " + StringRef(arg->getValue()));
+  }
+
   // Handle /aligncomm
   for (auto *arg : args.filtered(OPT_aligncomm))
     parseAligncomm(arg->getValue());
@@ -1467,6 +1475,7 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
       getOldNewOptions(args, OPT_thinlto_prefix_replace);
   config->thinLTOObjectSuffixReplace =
       getOldNewOptions(args, OPT_thinlto_object_suffix_replace);
+  config->ltoObjPath = args.getLastArgValue(OPT_lto_obj_path);
   // Handle miscellaneous boolean flags.
   config->allowBind = args.hasFlag(OPT_allowbind, OPT_allowbind_no, true);
   config->allowIsolation =
@@ -1809,6 +1818,7 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
   if (errorCount())
     return;
 
+  config->hadExplicitExports = !config->exports.empty();
   if (config->mingw) {
     // In MinGW, all symbols are automatically exported if no symbols
     // are chosen to be exported.
@@ -1832,10 +1842,12 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
   }
 
   // Windows specific -- when we are creating a .dll file, we also
-  // need to create a .lib file.
+  // need to create a .lib file. In MinGW mode, we only do that when the
+  // -implib option is given explicitly, for compatibility with GNU ld.
   if (!config->exports.empty() || config->dll) {
     fixupExports();
-    createImportLibrary(/*asLib=*/false);
+    if (!config->mingw || !config->implib.empty())
+      createImportLibrary(/*asLib=*/false);
     assignExportOrdinals();
   }
 

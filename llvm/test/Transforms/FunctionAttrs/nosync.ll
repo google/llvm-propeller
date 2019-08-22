@@ -1,5 +1,5 @@
 ; RUN: opt -functionattrs -S < %s | FileCheck %s --check-prefix=FNATTR
-; RUN: opt -attributor -attributor-disable=false -S < %s | FileCheck %s --check-prefix=ATTRIBUTOR
+; RUN: opt -attributor -attributor-disable=false -attributor-max-iterations=4 -S < %s | FileCheck %s --check-prefix=ATTRIBUTOR
 target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
 
 ; Test cases designed for the nosync function attribute.
@@ -43,10 +43,10 @@ entry:
 ; }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind uwtable
-; FNATTR-NEXT: define i32 @load_monotonic(i32* nocapture readonly)
+; FNATTR-NEXT: define i32 @load_monotonic(i32* nocapture readonly %0)
 ; ATTRIBUTOR: Function Attrs: nofree norecurse nosync nounwind uwtable
-; ATTRIBUTOR-NEXT: define i32 @load_monotonic(i32* nocapture readonly)
-define i32 @load_monotonic(i32* nocapture readonly) norecurse nounwind uwtable {
+; ATTRIBUTOR-NEXT: define i32 @load_monotonic(i32* nocapture readonly %0)
+define i32 @load_monotonic(i32* nocapture readonly %0) norecurse nounwind uwtable {
   %2 = load atomic i32, i32* %0 monotonic, align 4
   ret i32 %2
 }
@@ -59,10 +59,10 @@ define i32 @load_monotonic(i32* nocapture readonly) norecurse nounwind uwtable {
 ; }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind uwtable
-; FNATTR-NEXT: define void @store_monotonic(i32* nocapture)
+; FNATTR-NEXT: define void @store_monotonic(i32* nocapture %0)
 ; ATTRIBUTOR: Function Attrs: nofree norecurse nosync nounwind uwtable
-; ATTRIBUTOR-NEXT: define void @store_monotonic(i32* nocapture)
-define void @store_monotonic(i32* nocapture) norecurse nounwind uwtable {
+; ATTRIBUTOR-NEXT: define void @store_monotonic(i32* nocapture %0)
+define void @store_monotonic(i32* nocapture %0) norecurse nounwind uwtable {
   store atomic i32 10, i32* %0 monotonic, align 4
   ret void
 }
@@ -75,11 +75,11 @@ define void @store_monotonic(i32* nocapture) norecurse nounwind uwtable {
 ; }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind uwtable
-; FNATTR-NEXT: define i32 @load_acquire(i32* nocapture readonly)
+; FNATTR-NEXT: define i32 @load_acquire(i32* nocapture readonly %0)
 ; ATTRIBUTOR: Function Attrs: nofree norecurse nounwind uwtable
 ; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR-NEXT: define i32 @load_acquire(i32* nocapture readonly)
-define i32 @load_acquire(i32* nocapture readonly) norecurse nounwind uwtable {
+; ATTRIBUTOR-NEXT: define i32 @load_acquire(i32* nocapture readonly %0)
+define i32 @load_acquire(i32* nocapture readonly %0) norecurse nounwind uwtable {
   %2 = load atomic i32, i32* %0 acquire, align 4
   ret i32 %2
 }
@@ -91,11 +91,11 @@ define i32 @load_acquire(i32* nocapture readonly) norecurse nounwind uwtable {
 ; }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind uwtable
-; FNATTR-NEXT: define void @load_release(i32* nocapture)
+; FNATTR-NEXT: define void @load_release(i32* nocapture %0)
 ; ATTRIBUTOR: Function Attrs: nofree norecurse nounwind uwtable
 ; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR-NEXT: define void @load_release(i32* nocapture)
-define void @load_release(i32* nocapture) norecurse nounwind uwtable {
+; ATTRIBUTOR-NEXT: define void @load_release(i32* nocapture %0)
+define void @load_release(i32* nocapture %0) norecurse nounwind uwtable {
   store atomic volatile i32 10, i32* %0 release, align 4
   ret void
 }
@@ -103,11 +103,11 @@ define void @load_release(i32* nocapture) norecurse nounwind uwtable {
 ; TEST 6 - negative volatile, relaxed atomic
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind uwtable
-; FNATTR-NEXT: define void @load_volatile_release(i32* nocapture)
+; FNATTR-NEXT: define void @load_volatile_release(i32* nocapture %0)
 ; ATTRIBUTOR: Function Attrs: nofree norecurse nounwind uwtable
 ; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR-NEXT: define void @load_volatile_release(i32* nocapture)
-define void @load_volatile_release(i32* nocapture) norecurse nounwind uwtable {
+; ATTRIBUTOR-NEXT: define void @load_volatile_release(i32* nocapture %0)
+define void @load_volatile_release(i32* nocapture %0) norecurse nounwind uwtable {
   store atomic volatile i32 10, i32* %0 release, align 4
   ret void
 }
@@ -119,11 +119,11 @@ define void @load_volatile_release(i32* nocapture) norecurse nounwind uwtable {
 ; }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind uwtable
-; FNATTR-NEXT: define void @volatile_store(i32*)
+; FNATTR-NEXT: define void @volatile_store(i32* %0)
 ; ATTRIBUTOR: Function Attrs: nofree norecurse nounwind uwtable
 ; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR-NEXT: define void @volatile_store(i32*)
-define void @volatile_store(i32*) norecurse nounwind uwtable {
+; ATTRIBUTOR-NEXT: define void @volatile_store(i32* %0)
+define void @volatile_store(i32* %0) norecurse nounwind uwtable {
   store volatile i32 14, i32* %0, align 4
   ret void
 }
@@ -136,11 +136,11 @@ define void @volatile_store(i32*) norecurse nounwind uwtable {
 ; }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind uwtable
-; FNATTR-NEXT: define i32 @volatile_load(i32*)
+; FNATTR-NEXT: define i32 @volatile_load(i32* %0)
 ; ATTRIBUTOR: Function Attrs: nofree norecurse nounwind uwtable
 ; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR-NEXT: define i32 @volatile_load(i32*)
-define i32 @volatile_load(i32*) norecurse nounwind uwtable {
+; ATTRIBUTOR-NEXT: define i32 @volatile_load(i32* %0)
+define i32 @volatile_load(i32* %0) norecurse nounwind uwtable {
   %2 = load volatile i32, i32* %0, align 4
   ret i32 %2
 }
@@ -180,26 +180,24 @@ define void @call_might_sync() nounwind uwtable noinline {
   ret void
 }
 
-; TEST 11 - negative, should not deduce nosync
-; volatile operation in same scc. Call volatile_load defined in TEST 8.
+; TEST 11 - positive, should deduce nosync
+; volatile operation in same scc but dead. Call volatile_load defined in TEST 8.
 
 ; FNATTR: Function Attrs: nofree noinline nounwind uwtable
-; FNATTR-NEXT: define i32 @scc1(i32*)
-; ATTRIBUTOR: Function Attrs: nofree noinline nounwind uwtable
-; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR-NEXT: define i32 @scc1(i32*)
-define i32 @scc1(i32*) noinline nounwind uwtable {
+; FNATTR-NEXT: define i32 @scc1(i32* %0)
+; ATTRIBUTOR: Function Attrs: nofree noinline noreturn nosync nounwind uwtable
+; ATTRIBUTOR-NEXT: define i32 @scc1(i32* %0)
+define i32 @scc1(i32* %0) noinline nounwind uwtable {
   tail call void @scc2(i32* %0);
   %val = tail call i32 @volatile_load(i32* %0);
   ret i32 %val;
 }
 
 ; FNATTR: Function Attrs: nofree noinline nounwind uwtable
-; FNATTR-NEXT: define void @scc2(i32*)
-; ATTRIBUTOR: Function Attrs: nofree noinline nounwind uwtable
-; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR-NEXT: define void @scc2(i32*)
-define void @scc2(i32*) noinline nounwind uwtable {
+; FNATTR-NEXT: define void @scc2(i32* %0)
+; ATTRIBUTOR: Function Attrs: nofree noinline noreturn nosync nounwind uwtable
+; ATTRIBUTOR-NEXT: define void @scc2(i32* %0)
+define void @scc2(i32* %0) noinline nounwind uwtable {
   tail call i32 @scc1(i32* %0);
   ret void;
 }
@@ -224,10 +222,10 @@ define void @scc2(i32*) noinline nounwind uwtable {
 %"struct.std::__atomic_base" = type { i8 }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind
-; FNATTR-NEXT: define void @foo1(i32* nocapture, %"struct.std::atomic"* nocapture)
+; FNATTR-NEXT: define void @foo1(i32* nocapture %0, %"struct.std::atomic"* nocapture %1)
 ; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR: define void @foo1(i32*, %"struct.std::atomic"*)
-define void @foo1(i32*, %"struct.std::atomic"*) {
+; ATTRIBUTOR: define void @foo1(i32* %0, %"struct.std::atomic"* %1)
+define void @foo1(i32* %0, %"struct.std::atomic"* %1) {
   store i32 100, i32* %0, align 4
   fence release
   %3 = getelementptr inbounds %"struct.std::atomic", %"struct.std::atomic"* %1, i64 0, i32 0, i32 0
@@ -236,10 +234,10 @@ define void @foo1(i32*, %"struct.std::atomic"*) {
 }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind
-; FNATTR-NEXT: define void @bar(i32* nocapture readnone, %"struct.std::atomic"* nocapture readonly)
+; FNATTR-NEXT: define void @bar(i32* nocapture readnone %0, %"struct.std::atomic"* nocapture readonly %1)
 ; ATTRIBUTOR-NOT: nosync
-; ATTRIBUTOR: define void @bar(i32*, %"struct.std::atomic"*)
-define void @bar(i32 *, %"struct.std::atomic"*) {
+; ATTRIBUTOR: define void @bar(i32* %0, %"struct.std::atomic"* %1)
+define void @bar(i32* %0, %"struct.std::atomic"* %1) {
   %3 = getelementptr inbounds %"struct.std::atomic", %"struct.std::atomic"* %1, i64 0, i32 0, i32 0
   br label %4
 
@@ -256,10 +254,10 @@ define void @bar(i32 *, %"struct.std::atomic"*) {
 
 ; TEST 13 - Fence syncscope("singlethread") seq_cst
 ; FNATTR: Function Attrs: nofree norecurse nounwind
-; FNATTR-NEXT: define void @foo1_singlethread(i32* nocapture, %"struct.std::atomic"* nocapture)
+; FNATTR-NEXT: define void @foo1_singlethread(i32* nocapture %0, %"struct.std::atomic"* nocapture %1)
 ; ATTRIBUTOR: Function Attrs: nofree nosync
-; ATTRIBUTOR: define void @foo1_singlethread(i32*, %"struct.std::atomic"*)
-define void @foo1_singlethread(i32*, %"struct.std::atomic"*) {
+; ATTRIBUTOR: define void @foo1_singlethread(i32* %0, %"struct.std::atomic"* %1)
+define void @foo1_singlethread(i32* %0, %"struct.std::atomic"* %1) {
   store i32 100, i32* %0, align 4
   fence syncscope("singlethread") release
   %3 = getelementptr inbounds %"struct.std::atomic", %"struct.std::atomic"* %1, i64 0, i32 0, i32 0
@@ -268,10 +266,10 @@ define void @foo1_singlethread(i32*, %"struct.std::atomic"*) {
 }
 
 ; FNATTR: Function Attrs: nofree norecurse nounwind
-; FNATTR-NEXT: define void @bar_singlethread(i32* nocapture readnone, %"struct.std::atomic"* nocapture readonly)
+; FNATTR-NEXT: define void @bar_singlethread(i32* nocapture readnone %0, %"struct.std::atomic"* nocapture readonly %1)
 ; ATTRIBUTOR: Function Attrs: nofree nosync
-; ATTRIBUTOR: define void @bar_singlethread(i32*, %"struct.std::atomic"*)
-define void @bar_singlethread(i32 *, %"struct.std::atomic"*) {
+; ATTRIBUTOR: define void @bar_singlethread(i32* %0, %"struct.std::atomic"* %1)
+define void @bar_singlethread(i32* %0, %"struct.std::atomic"* %1) {
   %3 = getelementptr inbounds %"struct.std::atomic", %"struct.std::atomic"* %1, i64 0, i32 0, i32 0
   br label %4
 

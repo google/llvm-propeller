@@ -85,8 +85,8 @@ protected:
                                                  StringRef InFile) override {
     Preprocessor &PP = CI.getPreprocessor();
     PP.addPPCallbacks(
-        llvm::make_unique<PPCallbacksTracker>(Filters, CallbackCalls, PP));
-    return llvm::make_unique<ASTConsumer>();
+        std::make_unique<PPCallbacksTracker>(Filters, CallbackCalls, PP));
+    return std::make_unique<ASTConsumer>();
   }
 
   void EndSourceFileAction() override {
@@ -149,7 +149,7 @@ int main(int argc, const char **argv) {
                                  OptionsParser->getSourcePathList());
 
   std::error_code EC;
-  llvm::ToolOutputFile Out(OutputFileName, EC, llvm::sys::fs::F_Text);
+  llvm::ToolOutputFile Out(OutputFileName, EC, llvm::sys::fs::OF_Text);
   if (EC)
     error(EC.message());
   PPTraceFrontendActionFactory Factory(Filters, Out.os());

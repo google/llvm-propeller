@@ -98,7 +98,7 @@ void FileManager::addAncestorsAsVirtualDirs(StringRef Path) {
     return;
 
   // Add the virtual directory to the cache.
-  auto UDE = llvm::make_unique<DirectoryEntry>();
+  auto UDE = std::make_unique<DirectoryEntry>();
   UDE->Name = NamedDirEnt.first();
   NamedDirEnt.second = *UDE.get();
   VirtualDirectoryEntries.push_back(std::move(UDE));
@@ -345,7 +345,7 @@ FileManager::getVirtualFile(StringRef Filename, off_t Size,
     UFE->IsNamedPipe = Status.getType() == llvm::sys::fs::file_type::fifo_file;
     fillRealPathName(UFE, Status.getName());
   } else {
-    VirtualFileEntries.push_back(llvm::make_unique<FileEntry>());
+    VirtualFileEntries.push_back(std::make_unique<FileEntry>());
     UFE = VirtualFileEntries.back().get();
     NamedFileEnt.second = *UFE;
   }
@@ -483,7 +483,7 @@ void FileManager::invalidateCache(const FileEntry *Entry) {
   // invalidation of the whole cache.
   //
   // FIXME: This is broken. We sometimes have the same FileEntry* shared
-  // betweeen multiple SeenFileEntries, so this can leave dangling pointers.
+  // between multiple SeenFileEntries, so this can leave dangling pointers.
   UniqueRealFiles.erase(Entry->getUniqueID());
 }
 

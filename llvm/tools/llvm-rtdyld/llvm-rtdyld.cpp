@@ -441,8 +441,6 @@ static int printLineInfoForInput(bool LoadObjects, bool UseDebugObj) {
             continue;
           }
           object::section_iterator Sec = *SecOrErr;
-          StringRef SecName;
-          Sec->getName(SecName);
           Address.SectionIndex = Sec->getIndex();
           uint64_t SectionLoadAddress =
             LoadedObjInfo->getSectionLoadAddress(*Sec);
@@ -891,7 +889,7 @@ static int linkAndVerify() {
     ObjectFile &Obj = **MaybeObj;
 
     if (!Checker)
-      Checker = llvm::make_unique<RuntimeDyldChecker>(
+      Checker = std::make_unique<RuntimeDyldChecker>(
           IsSymbolValid, GetSymbolInfo, GetSectionInfo, GetStubInfo,
           GetStubInfo, Obj.isLittleEndian() ? support::little : support::big,
           Disassembler.get(), InstPrinter.get(), dbgs());

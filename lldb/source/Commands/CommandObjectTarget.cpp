@@ -37,7 +37,6 @@
 #include "lldb/Symbol/LocateSymbolFile.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolFile.h"
-#include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Symbol/UnwindPlan.h"
 #include "lldb/Symbol/VariableList.h"
 #include "lldb/Target/ABI.h"
@@ -135,14 +134,24 @@ static uint32_t DumpTargetList(TargetList &target_list,
 }
 
 // Note that the negation in the argument name causes a slightly confusing
-// mapping of the enum values,
+// mapping of the enum values.
 static constexpr OptionEnumValueElement g_dependents_enumaration[] = {
-    {eLoadDependentsDefault, "default",
-     "Only load dependents when the target is an executable."},
-    {eLoadDependentsNo, "true",
-     "Don't load dependents, even if the target is an executable."},
-    {eLoadDependentsYes, "false",
-     "Load dependents, even if the target is not an executable."}};
+    {
+        eLoadDependentsDefault,
+        "default",
+        "Only load dependents when the target is an executable.",
+    },
+    {
+        eLoadDependentsNo,
+        "true",
+        "Don't load dependents, even if the target is an executable.",
+    },
+    {
+        eLoadDependentsYes,
+        "false",
+        "Load dependents, even if the target is not an executable.",
+    },
+};
 
 #define LLDB_OPTIONS_target_dependents
 #include "CommandOptions.inc"
@@ -441,7 +450,8 @@ protected:
           }
         } else {
           result.AppendMessageWithFormat(
-              "Current executable set to '%s' (%s).\n", file_path,
+              "Current executable set to '%s' (%s).\n",
+              file_spec.GetPath().c_str(),
               target_sp->GetArchitecture().GetArchitectureName());
           result.SetStatus(eReturnStatusSuccessFinishNoResult);
         }
@@ -1437,15 +1447,11 @@ static size_t DumpModuleObjfileHeaders(Stream &strm, ModuleList &module_list) {
 
 static void DumpModuleSymtab(CommandInterpreter &interpreter, Stream &strm,
                              Module *module, SortOrder sort_order) {
-  if (module) {
-    SymbolVendor *sym_vendor = module->GetSymbolVendor();
-    if (sym_vendor) {
-      Symtab *symtab = sym_vendor->GetSymtab();
-      if (symtab)
-        symtab->Dump(&strm, interpreter.GetExecutionContext().GetTargetPtr(),
-                     sort_order);
-    }
-  }
+  if (!module)
+    return;
+  if (Symtab *symtab = module->GetSymtab())
+    symtab->Dump(&strm, interpreter.GetExecutionContext().GetTargetPtr(),
+                 sort_order);
 }
 
 static void DumpModuleSections(CommandInterpreter &interpreter, Stream &strm,
@@ -1465,11 +1471,10 @@ static void DumpModuleSections(CommandInterpreter &interpreter, Stream &strm,
   }
 }
 
-static bool DumpModuleSymbolVendor(Stream &strm, Module *module) {
+static bool DumpModuleSymbolFile(Stream &strm, Module *module) {
   if (module) {
-    SymbolVendor *symbol_vendor = module->GetSymbolVendor(true);
-    if (symbol_vendor) {
-      symbol_vendor->Dump(&strm);
+    if (SymbolFile *symbol_file = module->GetSymbolFile(true)) {
+      symbol_file->Dump(strm);
       return true;
     }
   }
@@ -1551,47 +1556,44 @@ static uint32_t LookupSymbolInModule(CommandInterpreter &interpreter,
                                      Stream &strm, Module *module,
                                      const char *name, bool name_is_regex,
                                      bool verbose) {
-  if (module) {
-    SymbolContext sc;
+  if (!module)
+    return 0;
 
-    SymbolVendor *sym_vendor = module->GetSymbolVendor();
-    if (sym_vendor) {
-      Symtab *symtab = sym_vendor->GetSymtab();
-      if (symtab) {
-        std::vector<uint32_t> match_indexes;
-        ConstString symbol_name(name);
-        uint32_t num_matches = 0;
-        if (name_is_regex) {
-          RegularExpression name_regexp(symbol_name.GetStringRef());
-          num_matches = symtab->AppendSymbolIndexesMatchingRegExAndType(
-              name_regexp, eSymbolTypeAny, match_indexes);
-        } else {
-          num_matches =
-              symtab->AppendSymbolIndexesWithName(symbol_name, match_indexes);
-        }
+  Symtab *symtab = module->GetSymtab();
+  if (!symtab)
+    return 0;
 
-        if (num_matches > 0) {
-          strm.Indent();
-          strm.Printf("%u symbols match %s'%s' in ", num_matches,
-                      name_is_regex ? "the regular expression " : "", name);
-          DumpFullpath(strm, &module->GetFileSpec(), 0);
-          strm.PutCString(":\n");
-          strm.IndentMore();
-          for (uint32_t i = 0; i < num_matches; ++i) {
-            Symbol *symbol = symtab->SymbolAtIndex(match_indexes[i]);
-            if (symbol && symbol->ValueIsAddress()) {
-              DumpAddress(interpreter.GetExecutionContext()
-                              .GetBestExecutionContextScope(),
-                          symbol->GetAddressRef(), verbose, strm);
-            }
-          }
-          strm.IndentLess();
-          return num_matches;
-        }
+  SymbolContext sc;
+  std::vector<uint32_t> match_indexes;
+  ConstString symbol_name(name);
+  uint32_t num_matches = 0;
+  if (name_is_regex) {
+    RegularExpression name_regexp(symbol_name.GetStringRef());
+    num_matches = symtab->AppendSymbolIndexesMatchingRegExAndType(
+        name_regexp, eSymbolTypeAny, match_indexes);
+  } else {
+    num_matches =
+        symtab->AppendSymbolIndexesWithName(symbol_name, match_indexes);
+  }
+
+  if (num_matches > 0) {
+    strm.Indent();
+    strm.Printf("%u symbols match %s'%s' in ", num_matches,
+                name_is_regex ? "the regular expression " : "", name);
+    DumpFullpath(strm, &module->GetFileSpec(), 0);
+    strm.PutCString(":\n");
+    strm.IndentMore();
+    for (uint32_t i = 0; i < num_matches; ++i) {
+      Symbol *symbol = symtab->SymbolAtIndex(match_indexes[i]);
+      if (symbol && symbol->ValueIsAddress()) {
+        DumpAddress(
+            interpreter.GetExecutionContext().GetBestExecutionContextScope(),
+            symbol->GetAddressRef(), verbose, strm);
       }
     }
+    strm.IndentLess();
   }
-  return 0;
+  return num_matches;
 }
 
 static void DumpSymbolContextList(ExecutionContextScope *exe_scope,
@@ -1959,10 +1961,22 @@ protected:
 #pragma mark CommandObjectTargetModulesDumpSymtab
 
 static constexpr OptionEnumValueElement g_sort_option_enumeration[] = {
-    {eSortOrderNone, "none",
-     "No sorting, use the original symbol table order."},
-    {eSortOrderByAddress, "address", "Sort output by symbol address."},
-    {eSortOrderByName, "name", "Sort output by symbol name."} };
+    {
+        eSortOrderNone,
+        "none",
+        "No sorting, use the original symbol table order.",
+    },
+    {
+        eSortOrderByAddress,
+        "address",
+        "Sort output by symbol address.",
+    },
+    {
+        eSortOrderByName,
+        "name",
+        "Sort output by symbol name.",
+    },
+};
 
 #define LLDB_OPTIONS_target_modules_dump_symtab
 #include "CommandOptions.inc"
@@ -2237,8 +2251,8 @@ protected:
         if (m_interpreter.WasInterrupted())
           break;
         Module *m = target->GetImages().GetModulePointerAtIndex(image_idx);
-        SymbolFile *sf = m->GetSymbolVendor()->GetSymbolFile();
-        sf->DumpClangAST(result.GetOutputStream());
+        if (SymbolFile *sf = m->GetSymbolFile())
+          sf->DumpClangAST(result.GetOutputStream());
       }
       result.SetStatus(eReturnStatusSuccessFinishResult);
       return true;
@@ -2263,8 +2277,8 @@ protected:
         if (m_interpreter.WasInterrupted())
           break;
         Module *m = module_list.GetModulePointerAtIndex(i);
-        SymbolFile *sf = m->GetSymbolVendor()->GetSymbolFile();
-        sf->DumpClangAST(result.GetOutputStream());
+        if (SymbolFile *sf = m->GetSymbolFile())
+          sf->DumpClangAST(result.GetOutputStream());
       }
     }
     result.SetStatus(eReturnStatusSuccessFinishResult);
@@ -2315,7 +2329,7 @@ protected:
           for (uint32_t image_idx = 0; image_idx < num_modules; ++image_idx) {
             if (m_interpreter.WasInterrupted())
               break;
-            if (DumpModuleSymbolVendor(
+            if (DumpModuleSymbolFile(
                     result.GetOutputStream(),
                     target_modules.GetModulePointerAtIndexUnlocked(image_idx)))
               num_dumped++;
@@ -2340,7 +2354,7 @@ protected:
                 break;
               Module *module = module_list.GetModulePointerAtIndex(i);
               if (module) {
-                if (DumpModuleSymbolVendor(result.GetOutputStream(), module))
+                if (DumpModuleSymbolFile(result.GetOutputStream(), module))
                   num_dumped++;
               }
             }
@@ -3250,9 +3264,9 @@ protected:
 
       case 's':
       case 'S': {
-        const SymbolVendor *symbol_vendor = module->GetSymbolVendor();
-        if (symbol_vendor) {
-          const FileSpec symfile_spec = symbol_vendor->GetMainFileSpec();
+        if (const SymbolFile *symbol_file = module->GetSymbolFile()) {
+          const FileSpec symfile_spec =
+              symbol_file->GetObjectFile()->GetFileSpec();
           if (format_char == 'S') {
             // Dump symbol file only if different from module file
             if (!symfile_spec || symfile_spec == module->GetFileSpec()) {
@@ -4185,48 +4199,44 @@ protected:
         // decides to create it!
         module_sp->SetSymbolFileFileSpec(symbol_fspec);
 
-        SymbolVendor *symbol_vendor =
-            module_sp->GetSymbolVendor(true, &result.GetErrorStream());
-        if (symbol_vendor) {
-          SymbolFile *symbol_file = symbol_vendor->GetSymbolFile();
+        SymbolFile *symbol_file =
+            module_sp->GetSymbolFile(true, &result.GetErrorStream());
+        if (symbol_file) {
+          ObjectFile *object_file = symbol_file->GetObjectFile();
 
-          if (symbol_file) {
-            ObjectFile *object_file = symbol_file->GetObjectFile();
+          if (object_file && object_file->GetFileSpec() == symbol_fspec) {
+            // Provide feedback that the symfile has been successfully added.
+            const FileSpec &module_fs = module_sp->GetFileSpec();
+            result.AppendMessageWithFormat(
+                "symbol file '%s' has been added to '%s'\n", symfile_path,
+                module_fs.GetPath().c_str());
 
-            if (object_file && object_file->GetFileSpec() == symbol_fspec) {
-              // Provide feedback that the symfile has been successfully added.
-              const FileSpec &module_fs = module_sp->GetFileSpec();
-              result.AppendMessageWithFormat(
-                  "symbol file '%s' has been added to '%s'\n", symfile_path,
-                  module_fs.GetPath().c_str());
+            // Let clients know something changed in the module if it is
+            // currently loaded
+            ModuleList module_list;
+            module_list.Append(module_sp);
+            target->SymbolsDidLoad(module_list);
 
-              // Let clients know something changed in the module if it is
-              // currently loaded
-              ModuleList module_list;
-              module_list.Append(module_sp);
-              target->SymbolsDidLoad(module_list);
+            // Make sure we load any scripting resources that may be embedded
+            // in the debug info files in case the platform supports that.
+            Status error;
+            StreamString feedback_stream;
+            module_sp->LoadScriptingResourceInTarget(target, error,
+                                                     &feedback_stream);
+            if (error.Fail() && error.AsCString())
+              result.AppendWarningWithFormat(
+                  "unable to load scripting data for module %s - error "
+                  "reported was %s",
+                  module_sp->GetFileSpec()
+                      .GetFileNameStrippingExtension()
+                      .GetCString(),
+                  error.AsCString());
+            else if (feedback_stream.GetSize())
+              result.AppendWarningWithFormat("%s", feedback_stream.GetData());
 
-              // Make sure we load any scripting resources that may be embedded
-              // in the debug info files in case the platform supports that.
-              Status error;
-              StreamString feedback_stream;
-              module_sp->LoadScriptingResourceInTarget(target, error,
-                                                       &feedback_stream);
-              if (error.Fail() && error.AsCString())
-                result.AppendWarningWithFormat(
-                    "unable to load scripting data for module %s - error "
-                    "reported was %s",
-                    module_sp->GetFileSpec()
-                        .GetFileNameStrippingExtension()
-                        .GetCString(),
-                    error.AsCString());
-              else if (feedback_stream.GetSize())
-                result.AppendWarningWithFormat("%s", feedback_stream.GetData());
-
-              flush = true;
-              result.SetStatus(eReturnStatusSuccessFinishResult);
-              return true;
-            }
+            flush = true;
+            result.SetStatus(eReturnStatusSuccessFinishResult);
+            return true;
           }
         }
         // Clear the symbol file spec if anything went wrong

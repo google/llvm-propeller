@@ -265,12 +265,23 @@ void ARMTargetLowering::addMVEVectorTypes(bool HasMVEFP) {
     setOperationAction(ISD::SDIV, VT, Expand);
     setOperationAction(ISD::UREM, VT, Expand);
     setOperationAction(ISD::SREM, VT, Expand);
+    setOperationAction(ISD::CTPOP, VT, Expand);
+
+    // Vector reductions
+    setOperationAction(ISD::VECREDUCE_ADD, VT, Legal);
 
     if (!HasMVEFP) {
       setOperationAction(ISD::SINT_TO_FP, VT, Expand);
       setOperationAction(ISD::UINT_TO_FP, VT, Expand);
       setOperationAction(ISD::FP_TO_SINT, VT, Expand);
       setOperationAction(ISD::FP_TO_UINT, VT, Expand);
+    }
+
+    // Pre and Post inc are supported on loads and stores
+    for (unsigned im = (unsigned)ISD::PRE_INC;
+         im != (unsigned)ISD::LAST_INDEXED_MODE; ++im) {
+      setIndexedLoadAction(im, VT, Legal);
+      setIndexedStoreAction(im, VT, Legal);
     }
   }
 
@@ -289,6 +300,13 @@ void ARMTargetLowering::addMVEVectorTypes(bool HasMVEFP) {
     setOperationAction(ISD::BUILD_VECTOR, VT.getVectorElementType(), Custom);
     setOperationAction(ISD::SCALAR_TO_VECTOR, VT, Legal);
     setOperationAction(ISD::SETCC, VT, Custom);
+
+    // Pre and Post inc are supported on loads and stores
+    for (unsigned im = (unsigned)ISD::PRE_INC;
+         im != (unsigned)ISD::LAST_INDEXED_MODE; ++im) {
+      setIndexedLoadAction(im, VT, Legal);
+      setIndexedStoreAction(im, VT, Legal);
+    }
 
     if (HasMVEFP) {
       setOperationAction(ISD::FMINNUM, VT, Legal);
@@ -336,6 +354,17 @@ void ARMTargetLowering::addMVEVectorTypes(bool HasMVEFP) {
   setTruncStoreAction(MVT::v4i32, MVT::v4i16, Legal);
   setTruncStoreAction(MVT::v4i32, MVT::v4i8,  Legal);
   setTruncStoreAction(MVT::v8i16, MVT::v8i8,  Legal);
+
+  // Pre and Post inc on these are legal, given the correct extends
+  for (unsigned im = (unsigned)ISD::PRE_INC;
+       im != (unsigned)ISD::LAST_INDEXED_MODE; ++im) {
+    setIndexedLoadAction(im, MVT::v8i8, Legal);
+    setIndexedStoreAction(im, MVT::v8i8, Legal);
+    setIndexedLoadAction(im, MVT::v4i8, Legal);
+    setIndexedStoreAction(im, MVT::v4i8, Legal);
+    setIndexedLoadAction(im, MVT::v4i16, Legal);
+    setIndexedStoreAction(im, MVT::v4i16, Legal);
+  }
 
   // Predicate types
   const MVT pTypes[] = {MVT::v16i1, MVT::v8i1, MVT::v4i1};
@@ -919,9 +948,10 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::FP_ROUND,   MVT::f32, Custom);
   }
 
-  if (!Subtarget->hasFP64() || !Subtarget->hasFPARMv8Base()){
+  if (!Subtarget->hasFP64() || !Subtarget->hasFPARMv8Base()) {
     setOperationAction(ISD::FP_EXTEND,  MVT::f64, Custom);
-    setOperationAction(ISD::FP_ROUND,  MVT::f16, Custom);
+    if (Subtarget->hasFullFP16())
+      setOperationAction(ISD::FP_ROUND,  MVT::f16, Custom);
   }
 
   if (!Subtarget->hasFP16())
@@ -990,6 +1020,7 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SRL_PARTS, MVT::i32, Custom);
   setOperationAction(ISD::SRL,       MVT::i64, Custom);
   setOperationAction(ISD::SRA,       MVT::i64, Custom);
+  setOperationAction(ISD::INTRINSIC_VOID, MVT::Other, Custom);
   setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i64, Custom);
 
   // MVE lowers 64 bit shifts to lsll and lsrl
@@ -2450,7 +2481,7 @@ bool MatchingStackOffset(SDValue Arg, unsigned Offset, ISD::ArgFlagsTy Flags,
   int FI = std::numeric_limits<int>::max();
   if (Arg.getOpcode() == ISD::CopyFromReg) {
     unsigned VR = cast<RegisterSDNode>(Arg.getOperand(1))->getReg();
-    if (!TargetRegisterInfo::isVirtualRegister(VR))
+    if (!Register::isVirtualRegister(VR))
       return false;
     MachineInstr *Def = MRI->getVRegDef(VR);
     if (!Def)
@@ -3515,6 +3546,48 @@ SDValue ARMTargetLowering::LowerEH_SJLJ_SETUP_DISPATCH(SDValue Op,
   SDLoc dl(Op);
   return DAG.getNode(ARMISD::EH_SJLJ_SETUP_DISPATCH, dl, MVT::Other,
                      Op.getOperand(0));
+}
+
+SDValue ARMTargetLowering::LowerINTRINSIC_VOID(
+    SDValue Op, SelectionDAG &DAG, const ARMSubtarget *Subtarget) const {
+  unsigned IntNo =
+      cast<ConstantSDNode>(
+          Op.getOperand(Op.getOperand(0).getValueType() == MVT::Other))
+          ->getZExtValue();
+  switch (IntNo) {
+    default:
+      return SDValue();  // Don't custom lower most intrinsics.
+    case Intrinsic::arm_gnu_eabi_mcount: {
+      MachineFunction &MF = DAG.getMachineFunction();
+      EVT PtrVT = getPointerTy(DAG.getDataLayout());
+      SDLoc dl(Op);
+      SDValue Chain = Op.getOperand(0);
+      // call "\01__gnu_mcount_nc"
+      const ARMBaseRegisterInfo *ARI = Subtarget->getRegisterInfo();
+      const uint32_t *Mask =
+          ARI->getCallPreservedMask(DAG.getMachineFunction(), CallingConv::C);
+      assert(Mask && "Missing call preserved mask for calling convention");
+      // Mark LR an implicit live-in.
+      unsigned Reg = MF.addLiveIn(ARM::LR, getRegClassFor(MVT::i32));
+      SDValue ReturnAddress =
+          DAG.getCopyFromReg(DAG.getEntryNode(), dl, Reg, PtrVT);
+      std::vector<EVT> ResultTys = {MVT::Other, MVT::Glue};
+      SDValue Callee =
+          DAG.getTargetExternalSymbol("\01__gnu_mcount_nc", PtrVT, 0);
+      SDValue RegisterMask = DAG.getRegisterMask(Mask);
+      if (Subtarget->isThumb())
+        return SDValue(
+            DAG.getMachineNode(
+                ARM::tBL_PUSHLR, dl, ResultTys,
+                {ReturnAddress, DAG.getTargetConstant(ARMCC::AL, dl, PtrVT),
+                 DAG.getRegister(0, PtrVT), Callee, RegisterMask, Chain}),
+            0);
+      return SDValue(
+          DAG.getMachineNode(ARM::BL_PUSHLR, dl, ResultTys,
+                             {ReturnAddress, Callee, RegisterMask, Chain}),
+          0);
+    }
+  }
 }
 
 SDValue
@@ -5329,7 +5402,7 @@ SDValue ARMTargetLowering::LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const {
   EVT VT = Op.getValueType();
   SDLoc dl(Op);  // FIXME probably not meaningful
   unsigned Depth = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
-  unsigned FrameReg = ARI.getFrameRegister(MF);
+  Register FrameReg = ARI.getFrameRegister(MF);
   SDValue FrameAddr = DAG.getCopyFromReg(DAG.getEntryNode(), dl, FrameReg, VT);
   while (Depth--)
     FrameAddr = DAG.getLoad(VT, dl, DAG.getEntryNode(), FrameAddr,
@@ -8808,6 +8881,7 @@ SDValue ARMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::EH_SJLJ_SETJMP: return LowerEH_SJLJ_SETJMP(Op, DAG);
   case ISD::EH_SJLJ_LONGJMP: return LowerEH_SJLJ_LONGJMP(Op, DAG);
   case ISD::EH_SJLJ_SETUP_DISPATCH: return LowerEH_SJLJ_SETUP_DISPATCH(Op, DAG);
+  case ISD::INTRINSIC_VOID: return LowerINTRINSIC_VOID(Op, DAG, Subtarget);
   case ISD::INTRINSIC_WO_CHAIN: return LowerINTRINSIC_WO_CHAIN(Op, DAG,
                                                                Subtarget);
   case ISD::BITCAST:       return ExpandBITCAST(Op.getNode(), DAG, Subtarget);
@@ -8997,19 +9071,19 @@ void ARMTargetLowering::SetupEntryBlockForSjLj(MachineInstr &MI,
     //   orr    r5, r5, #1
     //   add    r5, pc
     //   str    r5, [$jbuf, #+4] ; &jbuf[1]
-    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    Register NewVReg1 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::t2LDRpci), NewVReg1)
         .addConstantPoolIndex(CPI)
         .addMemOperand(CPMMO)
         .add(predOps(ARMCC::AL));
     // Set the low bit because of thumb mode.
-    unsigned NewVReg2 = MRI->createVirtualRegister(TRC);
+    Register NewVReg2 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::t2ORRri), NewVReg2)
         .addReg(NewVReg1, RegState::Kill)
         .addImm(0x01)
         .add(predOps(ARMCC::AL))
         .add(condCodeOp());
-    unsigned NewVReg3 = MRI->createVirtualRegister(TRC);
+    Register NewVReg3 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::tPICADD), NewVReg3)
       .addReg(NewVReg2, RegState::Kill)
       .addImm(PCLabelId);
@@ -9027,28 +9101,28 @@ void ARMTargetLowering::SetupEntryBlockForSjLj(MachineInstr &MI,
     //   orrs   r1, r2
     //   add    r2, $jbuf, #+4 ; &jbuf[1]
     //   str    r1, [r2]
-    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    Register NewVReg1 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::tLDRpci), NewVReg1)
         .addConstantPoolIndex(CPI)
         .addMemOperand(CPMMO)
         .add(predOps(ARMCC::AL));
-    unsigned NewVReg2 = MRI->createVirtualRegister(TRC);
+    Register NewVReg2 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::tPICADD), NewVReg2)
       .addReg(NewVReg1, RegState::Kill)
       .addImm(PCLabelId);
     // Set the low bit because of thumb mode.
-    unsigned NewVReg3 = MRI->createVirtualRegister(TRC);
+    Register NewVReg3 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::tMOVi8), NewVReg3)
         .addReg(ARM::CPSR, RegState::Define)
         .addImm(1)
         .add(predOps(ARMCC::AL));
-    unsigned NewVReg4 = MRI->createVirtualRegister(TRC);
+    Register NewVReg4 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::tORR), NewVReg4)
         .addReg(ARM::CPSR, RegState::Define)
         .addReg(NewVReg2, RegState::Kill)
         .addReg(NewVReg3, RegState::Kill)
         .add(predOps(ARMCC::AL));
-    unsigned NewVReg5 = MRI->createVirtualRegister(TRC);
+    Register NewVReg5 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::tADDframe), NewVReg5)
             .addFrameIndex(FI)
             .addImm(36); // &jbuf[1] :: pc
@@ -9063,13 +9137,13 @@ void ARMTargetLowering::SetupEntryBlockForSjLj(MachineInstr &MI,
     //   ldr  r1, LCPI1_1
     //   add  r1, pc, r1
     //   str  r1, [$jbuf, #+4] ; &jbuf[1]
-    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    Register NewVReg1 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::LDRi12), NewVReg1)
         .addConstantPoolIndex(CPI)
         .addImm(0)
         .addMemOperand(CPMMO)
         .add(predOps(ARMCC::AL));
-    unsigned NewVReg2 = MRI->createVirtualRegister(TRC);
+    Register NewVReg2 = MRI->createVirtualRegister(TRC);
     BuildMI(*MBB, MI, dl, TII->get(ARM::PICADD), NewVReg2)
         .addReg(NewVReg1, RegState::Kill)
         .addImm(PCLabelId)
@@ -9191,7 +9265,7 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
   bool IsPositionIndependent = isPositionIndependent();
   unsigned NumLPads = LPadList.size();
   if (Subtarget->isThumb2()) {
-    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    Register NewVReg1 = MRI->createVirtualRegister(TRC);
     BuildMI(DispatchBB, dl, TII->get(ARM::t2LDRi12), NewVReg1)
         .addFrameIndex(FI)
         .addImm(4)
@@ -9204,7 +9278,7 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
           .addImm(LPadList.size())
           .add(predOps(ARMCC::AL));
     } else {
-      unsigned VReg1 = MRI->createVirtualRegister(TRC);
+      Register VReg1 = MRI->createVirtualRegister(TRC);
       BuildMI(DispatchBB, dl, TII->get(ARM::t2MOVi16), VReg1)
           .addImm(NumLPads & 0xFFFF)
           .add(predOps(ARMCC::AL));
@@ -9229,12 +9303,12 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
       .addImm(ARMCC::HI)
       .addReg(ARM::CPSR);
 
-    unsigned NewVReg3 = MRI->createVirtualRegister(TRC);
+    Register NewVReg3 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::t2LEApcrelJT), NewVReg3)
         .addJumpTableIndex(MJTI)
         .add(predOps(ARMCC::AL));
 
-    unsigned NewVReg4 = MRI->createVirtualRegister(TRC);
+    Register NewVReg4 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::t2ADDrs), NewVReg4)
         .addReg(NewVReg3, RegState::Kill)
         .addReg(NewVReg1)
@@ -9247,7 +9321,7 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
       .addReg(NewVReg1)
       .addJumpTableIndex(MJTI);
   } else if (Subtarget->isThumb()) {
-    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    Register NewVReg1 = MRI->createVirtualRegister(TRC);
     BuildMI(DispatchBB, dl, TII->get(ARM::tLDRspi), NewVReg1)
         .addFrameIndex(FI)
         .addImm(1)
@@ -9270,7 +9344,7 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
         Align = MF->getDataLayout().getTypeAllocSize(C->getType());
       unsigned Idx = ConstantPool->getConstantPoolIndex(C, Align);
 
-      unsigned VReg1 = MRI->createVirtualRegister(TRC);
+      Register VReg1 = MRI->createVirtualRegister(TRC);
       BuildMI(DispatchBB, dl, TII->get(ARM::tLDRpci))
           .addReg(VReg1, RegState::Define)
           .addConstantPoolIndex(Idx)
@@ -9286,19 +9360,19 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
       .addImm(ARMCC::HI)
       .addReg(ARM::CPSR);
 
-    unsigned NewVReg2 = MRI->createVirtualRegister(TRC);
+    Register NewVReg2 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::tLSLri), NewVReg2)
         .addReg(ARM::CPSR, RegState::Define)
         .addReg(NewVReg1)
         .addImm(2)
         .add(predOps(ARMCC::AL));
 
-    unsigned NewVReg3 = MRI->createVirtualRegister(TRC);
+    Register NewVReg3 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::tLEApcrelJT), NewVReg3)
         .addJumpTableIndex(MJTI)
         .add(predOps(ARMCC::AL));
 
-    unsigned NewVReg4 = MRI->createVirtualRegister(TRC);
+    Register NewVReg4 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::tADDrr), NewVReg4)
         .addReg(ARM::CPSR, RegState::Define)
         .addReg(NewVReg2, RegState::Kill)
@@ -9308,7 +9382,7 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
     MachineMemOperand *JTMMOLd = MF->getMachineMemOperand(
         MachinePointerInfo::getJumpTable(*MF), MachineMemOperand::MOLoad, 4, 4);
 
-    unsigned NewVReg5 = MRI->createVirtualRegister(TRC);
+    Register NewVReg5 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::tLDRi), NewVReg5)
         .addReg(NewVReg4, RegState::Kill)
         .addImm(0)
@@ -9329,7 +9403,7 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
       .addReg(NewVReg6, RegState::Kill)
       .addJumpTableIndex(MJTI);
   } else {
-    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    Register NewVReg1 = MRI->createVirtualRegister(TRC);
     BuildMI(DispatchBB, dl, TII->get(ARM::LDRi12), NewVReg1)
         .addFrameIndex(FI)
         .addImm(4)
@@ -9342,7 +9416,7 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
           .addImm(NumLPads)
           .add(predOps(ARMCC::AL));
     } else if (Subtarget->hasV6T2Ops() && isUInt<16>(NumLPads)) {
-      unsigned VReg1 = MRI->createVirtualRegister(TRC);
+      Register VReg1 = MRI->createVirtualRegister(TRC);
       BuildMI(DispatchBB, dl, TII->get(ARM::MOVi16), VReg1)
           .addImm(NumLPads & 0xFFFF)
           .add(predOps(ARMCC::AL));
@@ -9371,7 +9445,7 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
         Align = MF->getDataLayout().getTypeAllocSize(C->getType());
       unsigned Idx = ConstantPool->getConstantPoolIndex(C, Align);
 
-      unsigned VReg1 = MRI->createVirtualRegister(TRC);
+      Register VReg1 = MRI->createVirtualRegister(TRC);
       BuildMI(DispatchBB, dl, TII->get(ARM::LDRcp))
           .addReg(VReg1, RegState::Define)
           .addConstantPoolIndex(Idx)
@@ -9388,20 +9462,20 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
       .addImm(ARMCC::HI)
       .addReg(ARM::CPSR);
 
-    unsigned NewVReg3 = MRI->createVirtualRegister(TRC);
+    Register NewVReg3 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::MOVsi), NewVReg3)
         .addReg(NewVReg1)
         .addImm(ARM_AM::getSORegOpc(ARM_AM::lsl, 2))
         .add(predOps(ARMCC::AL))
         .add(condCodeOp());
-    unsigned NewVReg4 = MRI->createVirtualRegister(TRC);
+    Register NewVReg4 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::LEApcrelJT), NewVReg4)
         .addJumpTableIndex(MJTI)
         .add(predOps(ARMCC::AL));
 
     MachineMemOperand *JTMMOLd = MF->getMachineMemOperand(
         MachinePointerInfo::getJumpTable(*MF), MachineMemOperand::MOLoad, 4, 4);
-    unsigned NewVReg5 = MRI->createVirtualRegister(TRC);
+    Register NewVReg5 = MRI->createVirtualRegister(TRC);
     BuildMI(DispContBB, dl, TII->get(ARM::LDRrs), NewVReg5)
         .addReg(NewVReg3, RegState::Kill)
         .addReg(NewVReg4)
@@ -9636,8 +9710,8 @@ ARMTargetLowering::EmitStructByval(MachineInstr &MI,
   const BasicBlock *LLVM_BB = BB->getBasicBlock();
   MachineFunction::iterator It = ++BB->getIterator();
 
-  unsigned dest = MI.getOperand(0).getReg();
-  unsigned src = MI.getOperand(1).getReg();
+  Register dest = MI.getOperand(0).getReg();
+  Register src = MI.getOperand(1).getReg();
   unsigned SizeVal = MI.getOperand(2).getImm();
   unsigned Align = MI.getOperand(3).getImm();
   DebugLoc dl = MI.getDebugLoc();
@@ -9688,9 +9762,9 @@ ARMTargetLowering::EmitStructByval(MachineInstr &MI,
     unsigned srcIn = src;
     unsigned destIn = dest;
     for (unsigned i = 0; i < LoopSize; i+=UnitSize) {
-      unsigned srcOut = MRI.createVirtualRegister(TRC);
-      unsigned destOut = MRI.createVirtualRegister(TRC);
-      unsigned scratch = MRI.createVirtualRegister(IsNeon ? VecTRC : TRC);
+      Register srcOut = MRI.createVirtualRegister(TRC);
+      Register destOut = MRI.createVirtualRegister(TRC);
+      Register scratch = MRI.createVirtualRegister(IsNeon ? VecTRC : TRC);
       emitPostLd(BB, MI, TII, dl, UnitSize, scratch, srcIn, srcOut,
                  IsThumb1, IsThumb2);
       emitPostSt(BB, MI, TII, dl, UnitSize, scratch, destIn, destOut,
@@ -9703,9 +9777,9 @@ ARMTargetLowering::EmitStructByval(MachineInstr &MI,
     // [scratch, srcOut] = LDRB_POST(srcIn, 1)
     // [destOut] = STRB_POST(scratch, destIn, 1)
     for (unsigned i = 0; i < BytesLeft; i++) {
-      unsigned srcOut = MRI.createVirtualRegister(TRC);
-      unsigned destOut = MRI.createVirtualRegister(TRC);
-      unsigned scratch = MRI.createVirtualRegister(TRC);
+      Register srcOut = MRI.createVirtualRegister(TRC);
+      Register destOut = MRI.createVirtualRegister(TRC);
+      Register scratch = MRI.createVirtualRegister(TRC);
       emitPostLd(BB, MI, TII, dl, 1, scratch, srcIn, srcOut,
                  IsThumb1, IsThumb2);
       emitPostSt(BB, MI, TII, dl, 1, scratch, destIn, destOut,
@@ -9748,7 +9822,7 @@ ARMTargetLowering::EmitStructByval(MachineInstr &MI,
   exitMBB->transferSuccessorsAndUpdatePHIs(BB);
 
   // Load an immediate to varEnd.
-  unsigned varEnd = MRI.createVirtualRegister(TRC);
+  Register varEnd = MRI.createVirtualRegister(TRC);
   if (Subtarget->useMovt()) {
     unsigned Vtmp = varEnd;
     if ((LoopSize & 0xFFFF0000) != 0)
@@ -9798,12 +9872,12 @@ ARMTargetLowering::EmitStructByval(MachineInstr &MI,
   //   destPhi = PHI(destLoop, dst)
   MachineBasicBlock *entryBB = BB;
   BB = loopMBB;
-  unsigned varLoop = MRI.createVirtualRegister(TRC);
-  unsigned varPhi = MRI.createVirtualRegister(TRC);
-  unsigned srcLoop = MRI.createVirtualRegister(TRC);
-  unsigned srcPhi = MRI.createVirtualRegister(TRC);
-  unsigned destLoop = MRI.createVirtualRegister(TRC);
-  unsigned destPhi = MRI.createVirtualRegister(TRC);
+  Register varLoop = MRI.createVirtualRegister(TRC);
+  Register varPhi = MRI.createVirtualRegister(TRC);
+  Register srcLoop = MRI.createVirtualRegister(TRC);
+  Register srcPhi = MRI.createVirtualRegister(TRC);
+  Register destLoop = MRI.createVirtualRegister(TRC);
+  Register destPhi = MRI.createVirtualRegister(TRC);
 
   BuildMI(*BB, BB->begin(), dl, TII->get(ARM::PHI), varPhi)
     .addReg(varLoop).addMBB(loopMBB)
@@ -9817,7 +9891,7 @@ ARMTargetLowering::EmitStructByval(MachineInstr &MI,
 
   //   [scratch, srcLoop] = LDR_POST(srcPhi, UnitSize)
   //   [destLoop] = STR_POST(scratch, destPhi, UnitSiz)
-  unsigned scratch = MRI.createVirtualRegister(IsNeon ? VecTRC : TRC);
+  Register scratch = MRI.createVirtualRegister(IsNeon ? VecTRC : TRC);
   emitPostLd(BB, BB->end(), TII, dl, UnitSize, scratch, srcPhi, srcLoop,
              IsThumb1, IsThumb2);
   emitPostSt(BB, BB->end(), TII, dl, UnitSize, scratch, destPhi, destLoop,
@@ -9858,9 +9932,9 @@ ARMTargetLowering::EmitStructByval(MachineInstr &MI,
   unsigned srcIn = srcLoop;
   unsigned destIn = destLoop;
   for (unsigned i = 0; i < BytesLeft; i++) {
-    unsigned srcOut = MRI.createVirtualRegister(TRC);
-    unsigned destOut = MRI.createVirtualRegister(TRC);
-    unsigned scratch = MRI.createVirtualRegister(TRC);
+    Register srcOut = MRI.createVirtualRegister(TRC);
+    Register destOut = MRI.createVirtualRegister(TRC);
+    Register scratch = MRI.createVirtualRegister(TRC);
     emitPostLd(BB, StartOfExit, TII, dl, 1, scratch, srcIn, srcOut,
                IsThumb1, IsThumb2);
     emitPostSt(BB, StartOfExit, TII, dl, 1, scratch, destIn, destOut,
@@ -9920,7 +9994,7 @@ ARMTargetLowering::EmitLowered__chkstk(MachineInstr &MI,
     break;
   case CodeModel::Large: {
     MachineRegisterInfo &MRI = MBB->getParent()->getRegInfo();
-    unsigned Reg = MRI.createVirtualRegister(&ARM::rGPRRegClass);
+    Register Reg = MRI.createVirtualRegister(&ARM::rGPRRegClass);
 
     BuildMI(*MBB, MI, DL, TII.get(ARM::t2MOVi32imm), Reg)
       .addExternalSymbol("__chkstk");
@@ -10168,8 +10242,8 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     // equality.
     bool RHSisZero = MI.getOpcode() == ARM::BCCZi64;
 
-    unsigned LHS1 = MI.getOperand(1).getReg();
-    unsigned LHS2 = MI.getOperand(2).getReg();
+    Register LHS1 = MI.getOperand(1).getReg();
+    Register LHS2 = MI.getOperand(2).getReg();
     if (RHSisZero) {
       BuildMI(BB, dl, TII->get(isThumb2 ? ARM::t2CMPri : ARM::CMPri))
           .addReg(LHS1)
@@ -10179,8 +10253,8 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
         .addReg(LHS2).addImm(0)
         .addImm(ARMCC::EQ).addReg(ARM::CPSR);
     } else {
-      unsigned RHS1 = MI.getOperand(3).getReg();
-      unsigned RHS2 = MI.getOperand(4).getReg();
+      Register RHS1 = MI.getOperand(3).getReg();
+      Register RHS2 = MI.getOperand(4).getReg();
       BuildMI(BB, dl, TII->get(isThumb2 ? ARM::t2CMPrr : ARM::CMPrr))
           .addReg(LHS1)
           .addReg(RHS1)
@@ -10241,15 +10315,15 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     Fn->insert(BBI, RSBBB);
     Fn->insert(BBI, SinkBB);
 
-    unsigned int ABSSrcReg = MI.getOperand(1).getReg();
-    unsigned int ABSDstReg = MI.getOperand(0).getReg();
+    Register ABSSrcReg = MI.getOperand(1).getReg();
+    Register ABSDstReg = MI.getOperand(0).getReg();
     bool ABSSrcKIll = MI.getOperand(1).isKill();
     bool isThumb2 = Subtarget->isThumb2();
     MachineRegisterInfo &MRI = Fn->getRegInfo();
     // In Thumb mode S must not be specified if source register is the SP or
     // PC and if destination register is the SP, so restrict register class
-    unsigned NewRsbDstReg =
-      MRI.createVirtualRegister(isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRRegClass);
+    Register NewRsbDstReg = MRI.createVirtualRegister(
+        isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRRegClass);
 
     // Transfer the remainder of BB and its successor edges to sinkMBB.
     SinkBB->splice(SinkBB->begin(), BB,
@@ -10328,7 +10402,7 @@ static void attachMEMCPYScratchRegs(const ARMSubtarget *Subtarget,
 
   // The MEMCPY both defines and kills the scratch registers.
   for (unsigned I = 0; I != MI.getOperand(4).getImm(); ++I) {
-    unsigned TmpReg = MRI.createVirtualRegister(isThumb1 ? &ARM::tGPRRegClass
+    Register TmpReg = MRI.createVirtualRegister(isThumb1 ? &ARM::tGPRRegClass
                                                          : &ARM::GPRRegClass);
     MIB.addReg(TmpReg, RegState::Define|RegState::Dead);
   }
@@ -14064,47 +14138,30 @@ bool ARMTargetLowering::allowsMisalignedMemoryAccesses(EVT VT, unsigned,
     return true;
   }
 
-  if (Ty != MVT::v16i8 && Ty != MVT::v8i16 && Ty != MVT::v8f16 &&
-      Ty != MVT::v4i32 && Ty != MVT::v4f32 && Ty != MVT::v2i64 &&
-      Ty != MVT::v2f64 &&
-      // These are for truncated stores
-      Ty != MVT::v4i8 && Ty != MVT::v8i8 && Ty != MVT::v4i16)
-    return false;
-
-  if (Subtarget->isLittle()) {
-    // In little-endian MVE, the store instructions VSTRB.U8,
-    // VSTRH.U16 and VSTRW.U32 all store the vector register in
-    // exactly the same format, and differ only in the range of
-    // their immediate offset field and the required alignment.
-    //
-    // In particular, VSTRB.U8 can store a vector at byte alignment.
-    // So at this stage we can simply say that loads/stores of all
-    // 128-bit wide vector types are permitted at any alignment,
-    // because we know at least _one_ instruction can manage that.
-    //
-    // Later on we might find that some of those loads are better
-    // generated as VLDRW.U32 if alignment permits, to take
-    // advantage of the larger immediate range. But for the moment,
-    // all that matters is that if we don't lower the load then
-    // _some_ instruction can handle it.
+  // These are for truncated stores/narrowing loads. They are fine so long as
+  // the alignment is at least the size of the item being loaded
+  if ((Ty == MVT::v4i8 || Ty == MVT::v8i8 || Ty == MVT::v4i16) &&
+      Alignment >= VT.getScalarSizeInBits() / 8) {
     if (Fast)
       *Fast = true;
     return true;
-  } else {
-    // In big-endian MVE, those instructions aren't so similar
-    // after all, because they reorder the bytes of the vector
-    // differently. So this time we can only store a particular
-    // kind of vector if its alignment is at least the element
-    // type. And we can't store vectors of i64 or f64 at all
-    // without having to do some postprocessing, because there's
-    // no VSTRD.U64.
-    if (Ty == MVT::v16i8 ||
-        ((Ty == MVT::v8i16 || Ty == MVT::v8f16) && Alignment >= 2) ||
-        ((Ty == MVT::v4i32 || Ty == MVT::v4f32) && Alignment >= 4)) {
-      if (Fast)
-        *Fast = true;
-      return true;
-    }
+  }
+
+  // In little-endian MVE, the store instructions VSTRB.U8, VSTRH.U16 and
+  // VSTRW.U32 all store the vector register in exactly the same format, and
+  // differ only in the range of their immediate offset field and the required
+  // alignment. So there is always a store that can be used, regardless of
+  // actual type.
+  //
+  // For big endian, that is not the case. But can still emit a (VSTRB.U8;
+  // VREV64.8) pair and get the same effect. This will likely be better than
+  // aligning the vector through the stack.
+  if (Ty == MVT::v16i8 || Ty == MVT::v8i16 || Ty == MVT::v8f16 ||
+      Ty == MVT::v4i32 || Ty == MVT::v4f32 || Ty == MVT::v2i64 ||
+      Ty == MVT::v2f64) {
+    if (Fast)
+      *Fast = true;
+    return true;
   }
 
   return false;
@@ -14635,6 +14692,52 @@ static bool getT2IndexedAddressParts(SDNode *Ptr, EVT VT,
   return false;
 }
 
+static bool getMVEIndexedAddressParts(SDNode *Ptr, EVT VT, unsigned Align,
+                                      bool isSEXTLoad, bool isLE, SDValue &Base,
+                                      SDValue &Offset, bool &isInc,
+                                      SelectionDAG &DAG) {
+  if (Ptr->getOpcode() != ISD::ADD && Ptr->getOpcode() != ISD::SUB)
+    return false;
+  if (!isa<ConstantSDNode>(Ptr->getOperand(1)))
+    return false;
+
+  ConstantSDNode *RHS = cast<ConstantSDNode>(Ptr->getOperand(1));
+  int RHSC = (int)RHS->getZExtValue();
+
+  auto IsInRange = [&](int RHSC, int Limit, int Scale) {
+    if (RHSC < 0 && RHSC > -Limit * Scale && RHSC % Scale == 0) {
+      assert(Ptr->getOpcode() == ISD::ADD);
+      isInc = false;
+      Offset = DAG.getConstant(-RHSC, SDLoc(Ptr), RHS->getValueType(0));
+      return true;
+    } else if (RHSC > 0 && RHSC < Limit * Scale && RHSC % Scale == 0) {
+      isInc = Ptr->getOpcode() == ISD::ADD;
+      Offset = DAG.getConstant(RHSC, SDLoc(Ptr), RHS->getValueType(0));
+      return true;
+    }
+    return false;
+  };
+
+  // Try to find a matching instruction based on s/zext, Alignment, Offset and
+  // (in BE) type.
+  Base = Ptr->getOperand(0);
+  if (VT == MVT::v4i16) {
+    if (Align >= 2 && IsInRange(RHSC, 0x80, 2))
+      return true;
+  } else if (VT == MVT::v4i8 || VT == MVT::v8i8) {
+    if (IsInRange(RHSC, 0x80, 1))
+      return true;
+  } else if (Align >= 4 && (isLE || VT == MVT::v4i32 || VT == MVT::v4f32) &&
+             IsInRange(RHSC, 0x80, 4))
+    return true;
+  else if (Align >= 2 && (isLE || VT == MVT::v8i16 || VT == MVT::v8f16) &&
+           IsInRange(RHSC, 0x80, 2))
+    return true;
+  else if ((isLE || VT == MVT::v16i8) && IsInRange(RHSC, 0x80, 1))
+    return true;
+  return false;
+}
+
 /// getPreIndexedAddressParts - returns true by value, base pointer and
 /// offset pointer and addressing mode by reference if the node's address
 /// can be legally represented as pre-indexed load / store address.
@@ -14648,25 +14751,35 @@ ARMTargetLowering::getPreIndexedAddressParts(SDNode *N, SDValue &Base,
 
   EVT VT;
   SDValue Ptr;
+  unsigned Align;
   bool isSEXTLoad = false;
   if (LoadSDNode *LD = dyn_cast<LoadSDNode>(N)) {
     Ptr = LD->getBasePtr();
-    VT  = LD->getMemoryVT();
+    VT = LD->getMemoryVT();
+    Align = LD->getAlignment();
     isSEXTLoad = LD->getExtensionType() == ISD::SEXTLOAD;
   } else if (StoreSDNode *ST = dyn_cast<StoreSDNode>(N)) {
     Ptr = ST->getBasePtr();
-    VT  = ST->getMemoryVT();
+    VT = ST->getMemoryVT();
+    Align = ST->getAlignment();
   } else
     return false;
 
   bool isInc;
   bool isLegal = false;
-  if (Subtarget->isThumb2())
-    isLegal = getT2IndexedAddressParts(Ptr.getNode(), VT, isSEXTLoad, Base,
-                                       Offset, isInc, DAG);
-  else
-    isLegal = getARMIndexedAddressParts(Ptr.getNode(), VT, isSEXTLoad, Base,
-                                        Offset, isInc, DAG);
+  if (VT.isVector())
+    isLegal = Subtarget->hasMVEIntegerOps() &&
+              getMVEIndexedAddressParts(Ptr.getNode(), VT, Align, isSEXTLoad,
+                                        Subtarget->isLittle(), Base, Offset,
+                                        isInc, DAG);
+  else {
+    if (Subtarget->isThumb2())
+      isLegal = getT2IndexedAddressParts(Ptr.getNode(), VT, isSEXTLoad, Base,
+                                         Offset, isInc, DAG);
+    else
+      isLegal = getARMIndexedAddressParts(Ptr.getNode(), VT, isSEXTLoad, Base,
+                                          Offset, isInc, DAG);
+  }
   if (!isLegal)
     return false;
 
@@ -14684,15 +14797,18 @@ bool ARMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
                                                    SelectionDAG &DAG) const {
   EVT VT;
   SDValue Ptr;
+  unsigned Align;
   bool isSEXTLoad = false, isNonExt;
   if (LoadSDNode *LD = dyn_cast<LoadSDNode>(N)) {
-    VT  = LD->getMemoryVT();
+    VT = LD->getMemoryVT();
     Ptr = LD->getBasePtr();
+    Align = LD->getAlignment();
     isSEXTLoad = LD->getExtensionType() == ISD::SEXTLOAD;
     isNonExt = LD->getExtensionType() == ISD::NON_EXTLOAD;
   } else if (StoreSDNode *ST = dyn_cast<StoreSDNode>(N)) {
-    VT  = ST->getMemoryVT();
+    VT = ST->getMemoryVT();
     Ptr = ST->getBasePtr();
+    Align = ST->getAlignment();
     isNonExt = !ST->isTruncatingStore();
   } else
     return false;
@@ -14715,12 +14831,19 @@ bool ARMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
 
   bool isInc;
   bool isLegal = false;
-  if (Subtarget->isThumb2())
-    isLegal = getT2IndexedAddressParts(Op, VT, isSEXTLoad, Base, Offset,
-                                       isInc, DAG);
-  else
-    isLegal = getARMIndexedAddressParts(Op, VT, isSEXTLoad, Base, Offset,
+  if (VT.isVector())
+    isLegal = Subtarget->hasMVEIntegerOps() &&
+              getMVEIndexedAddressParts(Op, VT, Align, isSEXTLoad,
+                                        Subtarget->isLittle(), Base, Offset,
                                         isInc, DAG);
+  else {
+    if (Subtarget->isThumb2())
+      isLegal = getT2IndexedAddressParts(Op, VT, isSEXTLoad, Base, Offset,
+                                         isInc, DAG);
+    else
+      isLegal = getARMIndexedAddressParts(Op, VT, isSEXTLoad, Base, Offset,
+                                          isInc, DAG);
+  }
   if (!isLegal)
     return false;
 
@@ -14976,7 +15099,8 @@ const char *ARMTargetLowering::LowerXConstraint(EVT ConstraintVT) const {
 /// constraint it is for this target.
 ARMTargetLowering::ConstraintType
 ARMTargetLowering::getConstraintType(StringRef Constraint) const {
-  if (Constraint.size() == 1) {
+  unsigned S = Constraint.size();
+  if (S == 1) {
     switch (Constraint[0]) {
     default:  break;
     case 'l': return C_RegisterClass;
@@ -14984,12 +15108,12 @@ ARMTargetLowering::getConstraintType(StringRef Constraint) const {
     case 'h': return C_RegisterClass;
     case 'x': return C_RegisterClass;
     case 't': return C_RegisterClass;
-    case 'j': return C_Other; // Constant for movw.
-      // An address with a single base register. Due to the way we
-      // currently handle addresses it is the same as an 'r' memory constraint.
+    case 'j': return C_Immediate; // Constant for movw.
+    // An address with a single base register. Due to the way we
+    // currently handle addresses it is the same as an 'r' memory constraint.
     case 'Q': return C_Memory;
     }
-  } else if (Constraint.size() == 2) {
+  } else if (S == 2) {
     switch (Constraint[0]) {
     default: break;
     case 'T': return C_RegisterClass;
@@ -15622,7 +15746,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.ptrVal = I.getArgOperand(0);
     Info.offset = 0;
     Value *AlignArg = I.getArgOperand(I.getNumArgOperands() - 1);
-    Info.align = cast<ConstantInt>(AlignArg)->getZExtValue();
+    Info.align = MaybeAlign(cast<ConstantInt>(AlignArg)->getZExtValue());
     // volatile loads with NEON intrinsics not supported
     Info.flags = MachineMemOperand::MOLoad;
     return true;
@@ -15637,7 +15761,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.memVT = EVT::getVectorVT(I.getType()->getContext(), MVT::i64, NumElts);
     Info.ptrVal = I.getArgOperand(I.getNumArgOperands() - 1);
     Info.offset = 0;
-    Info.align = 0;
+    Info.align.reset();
     // volatile loads with NEON intrinsics not supported
     Info.flags = MachineMemOperand::MOLoad;
     return true;
@@ -15663,7 +15787,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.ptrVal = I.getArgOperand(0);
     Info.offset = 0;
     Value *AlignArg = I.getArgOperand(I.getNumArgOperands() - 1);
-    Info.align = cast<ConstantInt>(AlignArg)->getZExtValue();
+    Info.align = MaybeAlign(cast<ConstantInt>(AlignArg)->getZExtValue());
     // volatile stores with NEON intrinsics not supported
     Info.flags = MachineMemOperand::MOStore;
     return true;
@@ -15684,7 +15808,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.memVT = EVT::getVectorVT(I.getType()->getContext(), MVT::i64, NumElts);
     Info.ptrVal = I.getArgOperand(0);
     Info.offset = 0;
-    Info.align = 0;
+    Info.align.reset();
     // volatile stores with NEON intrinsics not supported
     Info.flags = MachineMemOperand::MOStore;
     return true;
@@ -15697,7 +15821,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.memVT = MVT::getVT(PtrTy->getElementType());
     Info.ptrVal = I.getArgOperand(0);
     Info.offset = 0;
-    Info.align = DL.getABITypeAlignment(PtrTy->getElementType());
+    Info.align = MaybeAlign(DL.getABITypeAlignment(PtrTy->getElementType()));
     Info.flags = MachineMemOperand::MOLoad | MachineMemOperand::MOVolatile;
     return true;
   }
@@ -15709,7 +15833,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.memVT = MVT::getVT(PtrTy->getElementType());
     Info.ptrVal = I.getArgOperand(1);
     Info.offset = 0;
-    Info.align = DL.getABITypeAlignment(PtrTy->getElementType());
+    Info.align = MaybeAlign(DL.getABITypeAlignment(PtrTy->getElementType()));
     Info.flags = MachineMemOperand::MOStore | MachineMemOperand::MOVolatile;
     return true;
   }
@@ -15719,7 +15843,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.memVT = MVT::i64;
     Info.ptrVal = I.getArgOperand(2);
     Info.offset = 0;
-    Info.align = 8;
+    Info.align = Align(8);
     Info.flags = MachineMemOperand::MOStore | MachineMemOperand::MOVolatile;
     return true;
 
@@ -15729,7 +15853,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.memVT = MVT::i64;
     Info.ptrVal = I.getArgOperand(0);
     Info.offset = 0;
-    Info.align = 8;
+    Info.align = Align(8);
     Info.flags = MachineMemOperand::MOLoad | MachineMemOperand::MOVolatile;
     return true;
 
@@ -16078,6 +16202,12 @@ bool ARMTargetLowering::isLegalInterleavedAccessType(
   // Ensure the total vector size is 64 or a multiple of 128. Types larger than
   // 128 will be split into multiple interleaved accesses.
   return VecSize == 64 || VecSize % 128 == 0;
+}
+
+unsigned ARMTargetLowering::getMaxSupportedInterleaveFactor() const {
+  if (Subtarget->hasNEON())
+    return 4;
+  return TargetLoweringBase::getMaxSupportedInterleaveFactor();
 }
 
 /// Lower an interleaved load into a vldN intrinsic.
@@ -16468,7 +16598,7 @@ void ARMTargetLowering::insertCopiesSplitCSR(
     else
       llvm_unreachable("Unexpected register class in CSRsViaCopy!");
 
-    unsigned NewVR = MRI->createVirtualRegister(RC);
+    Register NewVR = MRI->createVirtualRegister(RC);
     // Create copy from CSR to a virtual register.
     // FIXME: this currently does not emit CFI pseudo-instructions, it works
     // fine for CXX_FAST_TLS since the C++-style TLS access functions should be

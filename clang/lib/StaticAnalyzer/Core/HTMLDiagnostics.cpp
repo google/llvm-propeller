@@ -612,7 +612,7 @@ HandlePopUpPieceStartTag(Rewriter &R,
   for (const auto &Range : PopUpRanges) {
     html::HighlightRange(R, Range.getBegin(), Range.getEnd(), "",
                          "<table class='variable_popup'><tbody>",
-                         /*IsTokenRange=*/false);
+                         /*IsTokenRange=*/true);
   }
 }
 
@@ -644,12 +644,11 @@ static void HandlePopUpPieceEndTag(Rewriter &R,
     Out << "</tbody></table></span>";
     html::HighlightRange(R, Range.getBegin(), Range.getEnd(),
                          "<span class='variable'>", Buf.c_str(),
-                         /*IsTokenRange=*/false);
-
-  // Otherwise inject just the new row at the end of the range.
+                         /*IsTokenRange=*/true);
   } else {
+    // Otherwise inject just the new row at the end of the range.
     html::HighlightRange(R, Range.getBegin(), Range.getEnd(), "", Buf.c_str(),
-                         /*IsTokenRange=*/false);
+                         /*IsTokenRange=*/true);
   }
 }
 
@@ -658,16 +657,14 @@ void HTMLDiagnostics::RewriteFile(Rewriter &R,
   // Process the path.
   // Maintain the counts of extra note pieces separately.
   unsigned TotalPieces = path.size();
-  unsigned TotalNotePieces =
-      std::count_if(path.begin(), path.end(),
-                    [](const std::shared_ptr<PathDiagnosticPiece> &p) {
-                      return isa<PathDiagnosticNotePiece>(*p);
-                    });
-  unsigned PopUpPieceCount =
-      std::count_if(path.begin(), path.end(),
-                    [](const std::shared_ptr<PathDiagnosticPiece> &p) {
-                      return isa<PathDiagnosticPopUpPiece>(*p);
-                    });
+  unsigned TotalNotePieces = std::count_if(
+      path.begin(), path.end(), [](const PathDiagnosticPieceRef &p) {
+        return isa<PathDiagnosticNotePiece>(*p);
+      });
+  unsigned PopUpPieceCount = std::count_if(
+      path.begin(), path.end(), [](const PathDiagnosticPieceRef &p) {
+        return isa<PathDiagnosticPopUpPiece>(*p);
+      });
 
   unsigned TotalRegularPieces = TotalPieces - TotalNotePieces - PopUpPieceCount;
   unsigned NumRegularPieces = TotalRegularPieces;

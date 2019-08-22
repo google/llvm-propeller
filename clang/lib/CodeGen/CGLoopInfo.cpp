@@ -253,12 +253,18 @@ LoopInfo::createLoopVectorizeMetadata(const LoopAttributes &Attrs,
   Args.append(LoopProperties.begin(), LoopProperties.end());
 
   // Setting vectorize.predicate
-  if (Attrs.VectorizePredicateEnable != LoopAttributes::Unspecified) {
+  bool IsVectorPredicateEnabled = false;
+  if (Attrs.VectorizePredicateEnable != LoopAttributes::Unspecified &&
+      Attrs.VectorizeEnable != LoopAttributes::Disable &&
+      Attrs.VectorizeWidth < 1) {
+
+    IsVectorPredicateEnabled =
+        (Attrs.VectorizePredicateEnable == LoopAttributes::Enable);
+
     Metadata *Vals[] = {
         MDString::get(Ctx, "llvm.loop.vectorize.predicate.enable"),
-        ConstantAsMetadata::get(ConstantInt::get(
-            llvm::Type::getInt1Ty(Ctx),
-            (Attrs.VectorizePredicateEnable == LoopAttributes::Enable)))};
+        ConstantAsMetadata::get(ConstantInt::get(llvm::Type::getInt1Ty(Ctx),
+                                                 IsVectorPredicateEnabled))};
     Args.push_back(MDNode::get(Ctx, Vals));
   }
 
@@ -281,12 +287,15 @@ LoopInfo::createLoopVectorizeMetadata(const LoopAttributes &Attrs,
   }
 
   // Setting vectorize.enable
-  if (Attrs.VectorizeEnable != LoopAttributes::Unspecified) {
+  if (Attrs.VectorizeEnable != LoopAttributes::Unspecified ||
+      IsVectorPredicateEnabled) {
     Metadata *Vals[] = {
         MDString::get(Ctx, "llvm.loop.vectorize.enable"),
         ConstantAsMetadata::get(ConstantInt::get(
             llvm::Type::getInt1Ty(Ctx),
-            (Attrs.VectorizeEnable == LoopAttributes::Enable)))};
+            IsVectorPredicateEnabled
+                ? true
+                : (Attrs.VectorizeEnable == LoopAttributes::Enable)))};
     Args.push_back(MDNode::get(Ctx, Vals));
   }
 
@@ -554,8 +563,9 @@ void LoopInfo::finish() {
 
 void LoopInfoStack::push(BasicBlock *Header, const llvm::DebugLoc &StartLoc,
                          const llvm::DebugLoc &EndLoc) {
-  Active.push_back(LoopInfo(Header, StagedAttrs, StartLoc, EndLoc,
-                            Active.empty() ? nullptr : &Active.back()));
+  Active.emplace_back(
+      new LoopInfo(Header, StagedAttrs, StartLoc, EndLoc,
+                   Active.empty() ? nullptr : Active.back().get()));
   // Clear the attributes so nested loops do not inherit them.
   StagedAttrs.clear();
 }
@@ -747,16 +757,16 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
 
 void LoopInfoStack::pop() {
   assert(!Active.empty() && "No active loops to pop");
-  Active.back().finish();
+  Active.back()->finish();
   Active.pop_back();
 }
 
 void LoopInfoStack::InsertHelper(Instruction *I) const {
   if (I->mayReadOrWriteMemory()) {
     SmallVector<Metadata *, 4> AccessGroups;
-    for (const LoopInfo &AL : Active) {
+    for (const auto &AL : Active) {
       // Here we assume that every loop that has an access group is parallel.
-      if (MDNode *Group = AL.getAccessGroup())
+      if (MDNode *Group = AL->getAccessGroup())
         AccessGroups.push_back(Group);
     }
     MDNode *UnionMD = nullptr;

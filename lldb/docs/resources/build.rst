@@ -185,8 +185,6 @@ suite.
 ::
 
   > cmake -G Ninja \
-      -DLLDB_TEST_USE_CUSTOM_C_COMPILER=On \
-      -DLLDB_TEST_USE_CUSTOM_CXX_COMPILER=On \
       -DLLDB_TEST_C_COMPILER=<path to C compiler> \
       -DLLDB_TEST_CXX_COMPILER=<path to C++ compiler> \
       <path to root of llvm source tree>
@@ -228,7 +226,6 @@ Sample command line:
   > cmake -G Ninja^
       -DLLDB_TEST_DEBUG_TEST_CRASHES=1^
       -DPYTHON_HOME=C:\Python35^
-      -DLLDB_TEST_USE_CUSTOM_C_COMPILER=ON^
       -DLLDB_TEST_C_COMPILER=d:\src\llvmbuild\ninja_release\bin\clang.exe^
       <path to root of llvm source tree>
 
@@ -320,7 +317,7 @@ Build LLDB standalone for development with Xcode:
           llvm-project/llvm
   > ninja -C /path/to/llvm-build
 
-  > cmake -B /path/to/lldb-build -G Xcode \
+  > cmake -B /path/to/lldb-build \
           -C /path/to/llvm-project/lldb/cmake/caches/Apple-lldb-Xcode.cmake \
           -DLLVM_DIR=/path/to/llvm-build/lib/cmake/llvm \
           -DClang_DIR=/path/to/llvm-build/lib/cmake/clang \

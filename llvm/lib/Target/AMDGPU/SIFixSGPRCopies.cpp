@@ -148,7 +148,7 @@ static bool hasVectorOperands(const MachineInstr &MI,
   const MachineRegisterInfo &MRI = MI.getParent()->getParent()->getRegInfo();
   for (unsigned i = 0, e = MI.getNumOperands(); i != e; ++i) {
     if (!MI.getOperand(i).isReg() ||
-        !TargetRegisterInfo::isVirtualRegister(MI.getOperand(i).getReg()))
+        !Register::isVirtualRegister(MI.getOperand(i).getReg()))
       continue;
 
     if (TRI->hasVectorRegisters(MRI.getRegClass(MI.getOperand(i).getReg())))
@@ -161,21 +161,19 @@ static std::pair<const TargetRegisterClass *, const TargetRegisterClass *>
 getCopyRegClasses(const MachineInstr &Copy,
                   const SIRegisterInfo &TRI,
                   const MachineRegisterInfo &MRI) {
-  unsigned DstReg = Copy.getOperand(0).getReg();
-  unsigned SrcReg = Copy.getOperand(1).getReg();
+  Register DstReg = Copy.getOperand(0).getReg();
+  Register SrcReg = Copy.getOperand(1).getReg();
 
-  const TargetRegisterClass *SrcRC =
-    TargetRegisterInfo::isVirtualRegister(SrcReg) ?
-    MRI.getRegClass(SrcReg) :
-    TRI.getPhysRegClass(SrcReg);
+  const TargetRegisterClass *SrcRC = Register::isVirtualRegister(SrcReg)
+                                         ? MRI.getRegClass(SrcReg)
+                                         : TRI.getPhysRegClass(SrcReg);
 
   // We don't really care about the subregister here.
   // SrcRC = TRI.getSubRegClass(SrcRC, Copy.getOperand(1).getSubReg());
 
-  const TargetRegisterClass *DstRC =
-    TargetRegisterInfo::isVirtualRegister(DstReg) ?
-    MRI.getRegClass(DstReg) :
-    TRI.getPhysRegClass(DstReg);
+  const TargetRegisterClass *DstRC = Register::isVirtualRegister(DstReg)
+                                         ? MRI.getRegClass(DstReg)
+                                         : TRI.getPhysRegClass(DstReg);
 
   return std::make_pair(SrcRC, DstRC);
 }
@@ -199,10 +197,10 @@ static bool tryChangeVGPRtoSGPRinCopy(MachineInstr &MI,
                                       const SIInstrInfo *TII) {
   MachineRegisterInfo &MRI = MI.getParent()->getParent()->getRegInfo();
   auto &Src = MI.getOperand(1);
-  unsigned DstReg = MI.getOperand(0).getReg();
-  unsigned SrcReg = Src.getReg();
-  if (!TargetRegisterInfo::isVirtualRegister(SrcReg) ||
-      !TargetRegisterInfo::isVirtualRegister(DstReg))
+  Register DstReg = MI.getOperand(0).getReg();
+  Register SrcReg = Src.getReg();
+  if (!Register::isVirtualRegister(SrcReg) ||
+      !Register::isVirtualRegister(DstReg))
     return false;
 
   for (const auto &MO : MRI.reg_nodbg_operands(DstReg)) {
@@ -238,7 +236,7 @@ static bool foldVGPRCopyIntoRegSequence(MachineInstr &MI,
                                         MachineRegisterInfo &MRI) {
   assert(MI.isRegSequence());
 
-  unsigned DstReg = MI.getOperand(0).getReg();
+  Register DstReg = MI.getOperand(0).getReg();
   if (!TRI->isSGPRClass(MRI.getRegClass(DstReg)))
     return false;
 
@@ -250,7 +248,7 @@ static bool foldVGPRCopyIntoRegSequence(MachineInstr &MI,
     return false;
 
   // It is illegal to have vreg inputs to a physreg defining reg_sequence.
-  if (TargetRegisterInfo::isPhysicalRegister(CopyUse.getOperand(0).getReg()))
+  if (Register::isPhysicalRegister(CopyUse.getOperand(0).getReg()))
     return false;
 
   const TargetRegisterClass *SrcRC, *DstRC;
@@ -281,7 +279,7 @@ static bool foldVGPRCopyIntoRegSequence(MachineInstr &MI,
   bool IsAGPR = TRI->hasAGPRs(DstRC);
 
   for (unsigned I = 1, N = MI.getNumOperands(); I != N; I += 2) {
-    unsigned SrcReg = MI.getOperand(I).getReg();
+    Register SrcReg = MI.getOperand(I).getReg();
     unsigned SrcSubReg = MI.getOperand(I).getSubReg();
 
     const TargetRegisterClass *SrcRC = MRI.getRegClass(SrcReg);
@@ -291,7 +289,7 @@ static bool foldVGPRCopyIntoRegSequence(MachineInstr &MI,
     SrcRC = TRI->getSubRegClass(SrcRC, SrcSubReg);
     const TargetRegisterClass *NewSrcRC = TRI->getEquivalentVGPRClass(SrcRC);
 
-    unsigned TmpReg = MRI.createVirtualRegister(NewSrcRC);
+    Register TmpReg = MRI.createVirtualRegister(NewSrcRC);
 
     BuildMI(*MI.getParent(), &MI, MI.getDebugLoc(), TII->get(AMDGPU::COPY),
             TmpReg)
@@ -299,7 +297,7 @@ static bool foldVGPRCopyIntoRegSequence(MachineInstr &MI,
 
     if (IsAGPR) {
       const TargetRegisterClass *NewSrcRC = TRI->getEquivalentAGPRClass(SrcRC);
-      unsigned TmpAReg = MRI.createVirtualRegister(NewSrcRC);
+      Register TmpAReg = MRI.createVirtualRegister(NewSrcRC);
       unsigned Opc = NewSrcRC == &AMDGPU::AGPR_32RegClass ?
         AMDGPU::V_ACCVGPR_WRITE_B32 : AMDGPU::COPY;
       BuildMI(*MI.getParent(), &MI, MI.getDebugLoc(), TII->get(Opc),
@@ -320,7 +318,7 @@ static bool phiHasVGPROperands(const MachineInstr &PHI,
                                const SIRegisterInfo *TRI,
                                const SIInstrInfo *TII) {
   for (unsigned i = 1; i < PHI.getNumOperands(); i += 2) {
-    unsigned Reg = PHI.getOperand(i).getReg();
+    Register Reg = PHI.getOperand(i).getReg();
     if (TRI->hasVGPRs(MRI.getRegClass(Reg)))
       return true;
   }
@@ -331,7 +329,7 @@ static bool phiHasBreakDef(const MachineInstr &PHI,
                            const MachineRegisterInfo &MRI,
                            SmallSet<unsigned, 8> &Visited) {
   for (unsigned i = 1; i < PHI.getNumOperands(); i += 2) {
-    unsigned Reg = PHI.getOperand(i).getReg();
+    Register Reg = PHI.getOperand(i).getReg();
     if (Visited.count(Reg))
       continue;
 
@@ -624,7 +622,7 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
         const TargetRegisterClass *SrcRC, *DstRC;
         std::tie(SrcRC, DstRC) = getCopyRegClasses(MI, *TRI, MRI);
 
-        if (!TargetRegisterInfo::isVirtualRegister(DstReg)) {
+        if (!Register::isVirtualRegister(DstReg)) {
           // If the destination register is a physical register there isn't
           // really much we can do to fix this.
           // Some special instructions use M0 as an input. Some even only use
@@ -643,8 +641,8 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
         }
 
         if (isVGPRToSGPRCopy(SrcRC, DstRC, *TRI)) {
-          unsigned SrcReg = MI.getOperand(1).getReg();
-          if (!TargetRegisterInfo::isVirtualRegister(SrcReg)) {
+          Register SrcReg = MI.getOperand(1).getReg();
+          if (!Register::isVirtualRegister(SrcReg)) {
             TII->moveToVALU(MI, MDT);
             break;
           }
@@ -668,7 +666,7 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
         break;
       }
       case AMDGPU::PHI: {
-        unsigned Reg = MI.getOperand(0).getReg();
+        Register Reg = MI.getOperand(0).getReg();
         if (!TRI->isSGPRClass(MRI.getRegClass(Reg)))
           break;
 

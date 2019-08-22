@@ -33,40 +33,37 @@ bool CallLowering::lowerCall(MachineIRBuilder &MIRBuilder, ImmutableCallSite CS,
                              ArrayRef<ArrayRef<Register>> ArgRegs,
                              Register SwiftErrorVReg,
                              std::function<unsigned()> GetCalleeReg) const {
+  CallLoweringInfo Info;
   auto &DL = CS.getParent()->getParent()->getParent()->getDataLayout();
 
   // First step is to marshall all the function's parameters into the correct
   // physregs and memory locations. Gather the sequence of argument types that
   // we'll pass to the assigner function.
-  SmallVector<ArgInfo, 8> OrigArgs;
   unsigned i = 0;
   unsigned NumFixedArgs = CS.getFunctionType()->getNumParams();
   for (auto &Arg : CS.args()) {
     ArgInfo OrigArg{ArgRegs[i], Arg->getType(), ISD::ArgFlagsTy{},
                     i < NumFixedArgs};
     setArgFlags(OrigArg, i + AttributeList::FirstArgIndex, DL, CS);
-    // We don't currently support swiftself args.
-    if (OrigArg.Flags.isSwiftSelf())
-      return false;
-    OrigArgs.push_back(OrigArg);
+    Info.OrigArgs.push_back(OrigArg);
     ++i;
   }
 
-  MachineOperand Callee = MachineOperand::CreateImm(0);
   if (const Function *F = CS.getCalledFunction())
-    Callee = MachineOperand::CreateGA(F, 0);
+    Info.Callee = MachineOperand::CreateGA(F, 0);
   else
-    Callee = MachineOperand::CreateReg(GetCalleeReg(), false);
+    Info.Callee = MachineOperand::CreateReg(GetCalleeReg(), false);
 
-  ArgInfo OrigRet{ResRegs, CS.getType(), ISD::ArgFlagsTy{}};
-  if (!OrigRet.Ty->isVoidTy())
-    setArgFlags(OrigRet, AttributeList::ReturnIndex, DL, CS);
+  Info.OrigRet = ArgInfo{ResRegs, CS.getType(), ISD::ArgFlagsTy{}};
+  if (!Info.OrigRet.Ty->isVoidTy())
+    setArgFlags(Info.OrigRet, AttributeList::ReturnIndex, DL, CS);
 
-  const MDNode *KnownCallees =
+  Info.KnownCallees =
       CS.getInstruction()->getMetadata(LLVMContext::MD_callees);
+  Info.CallConv = CS.getCallingConv();
+  Info.SwiftErrorVReg = SwiftErrorVReg;
 
-  return lowerCall(MIRBuilder, CS.getCallingConv(), Callee, OrigRet, OrigArgs,
-                   SwiftErrorVReg, KnownCallees);
+  return lowerCall(MIRBuilder, Info);
 }
 
 template <typename FuncInfoTy>
@@ -186,7 +183,7 @@ bool CallLowering::handleAssignments(CCState &CCInfo,
     MVT CurVT = MVT::getVT(Args[i].Ty);
     if (Handler.assignArg(i, CurVT, CurVT, CCValAssign::Full, Args[i], CCInfo)) {
       // Try to use the register type if we couldn't assign the VT.
-      if (!Handler.isArgumentHandler() || !CurVT.isValid())
+      if (!Handler.isIncomingArgumentHandler() || !CurVT.isValid())
         return false;
       CurVT = TLI->getRegisterTypeForCallingConv(
           F.getContext(), F.getCallingConv(), EVT(CurVT));
@@ -215,7 +212,7 @@ bool CallLowering::handleAssignments(CCState &CCInfo,
     if (VA.isRegLoc()) {
       MVT OrigVT = MVT::getVT(Args[i].Ty);
       MVT VAVT = VA.getValVT();
-      if (Handler.isArgumentHandler() && VAVT != OrigVT) {
+      if (Handler.isIncomingArgumentHandler() && VAVT != OrigVT) {
         if (VAVT.getSizeInBits() < OrigVT.getSizeInBits())
           return false; // Can't handle this type of arg yet.
         const LLT VATy(VAVT);

@@ -7,8 +7,6 @@ from __future__ import print_function
 
 import os
 import sys
-import time
-import re
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -477,3 +475,16 @@ class RegisterCommandsTestCase(TestBase):
         if test_16bit_regs:
             self.expect("expr -- $ax == (($ah << 8) | $al)",
                         substrs=['true'])
+
+    @skipIfiOSSimulator
+    @skipIf(archs=no_match(['amd64', 'arm', 'i386', 'x86_64']))
+    @expectedFailureNetBSD
+    def test_invalid_invocation(self):
+        self.build()
+        self.common_setup()
+
+        self.expect("register read -a arg", error=True,
+                    substrs=["the --all option can't be used when registers names are supplied as arguments"])
+
+        self.expect("register read --set 0 r", error=True,
+                    substrs=["the --set <set> option can't be used when registers names are supplied as arguments"])

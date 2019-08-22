@@ -722,12 +722,6 @@ bool RecursiveASTVisitor<Derived>::TraverseDecl(Decl *D) {
     break;
 #include "clang/AST/DeclNodes.inc"
   }
-
-  // Visit any attributes attached to this declaration.
-  for (auto *I : D->attrs()) {
-    if (!getDerived().TraverseAttr(I))
-      return false;
-  }
   return true;
 }
 
@@ -1407,6 +1401,11 @@ bool RecursiveASTVisitor<Derived>::TraverseDeclContextHelper(DeclContext *DC) {
     { CODE; }                                                                  \
     if (ReturnValue && ShouldVisitChildren)                                    \
       TRY_TO(TraverseDeclContextHelper(dyn_cast<DeclContext>(D)));             \
+    if (ReturnValue) {                                                         \
+      /* Visit any attributes attached to this declaration. */                 \
+      for (auto *I : D->attrs())                                               \
+        TRY_TO(getDerived().TraverseAttr(I));                                  \
+    }                                                                          \
     if (ReturnValue && getDerived().shouldTraversePostOrder())                 \
       TRY_TO(WalkUpFrom##DECL(D));                                             \
     return ReturnValue;                                                        \
@@ -2023,11 +2022,18 @@ bool RecursiveASTVisitor<Derived>::TraverseFunctionHelper(FunctionDecl *D) {
   if (CXXConstructorDecl *Ctor = dyn_cast<CXXConstructorDecl>(D)) {
     // Constructor initializers.
     for (auto *I : Ctor->inits()) {
-      TRY_TO(TraverseConstructorInitializer(I));
+      if (I->isWritten() || getDerived().shouldVisitImplicitCode())
+        TRY_TO(TraverseConstructorInitializer(I));
     }
   }
 
-  if (D->isThisDeclarationADefinition()) {
+  bool VisitBody = D->isThisDeclarationADefinition();
+  // If a method is set to default outside the class definition the compiler
+  // generates the method body and adds it to the AST.
+  if (const auto *MD = dyn_cast<CXXMethodDecl>(D))
+    VisitBody &= !MD->isDefaulted() || getDerived().shouldVisitImplicitCode();
+
+  if (VisitBody) {
     TRY_TO(TraverseStmt(D->getBody())); // Function body.
   }
   return true;

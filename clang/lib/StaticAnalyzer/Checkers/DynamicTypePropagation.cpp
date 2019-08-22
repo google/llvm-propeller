@@ -20,16 +20,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicTypeMap.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicType.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 
 using namespace clang;
@@ -83,9 +83,9 @@ class DynamicTypePropagation:
       ID.AddPointer(Sym);
     }
 
-    std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *N,
-                                                   BugReporterContext &BRC,
-                                                   BugReport &BR) override;
+    PathDiagnosticPieceRef VisitNode(const ExplodedNode *N,
+                                     BugReporterContext &BRC,
+                                     BugReport &BR) override;
 
   private:
     // The tracked symbol.
@@ -113,14 +113,7 @@ public:
 
 void DynamicTypePropagation::checkDeadSymbols(SymbolReaper &SR,
                                               CheckerContext &C) const {
-  ProgramStateRef State = C.getState();
-  DynamicTypeMapTy TypeMap = State->get<DynamicTypeMap>();
-  for (DynamicTypeMapTy::iterator I = TypeMap.begin(), E = TypeMap.end();
-       I != E; ++I) {
-    if (!SR.isLiveRegion(I->first)) {
-      State = State->remove<DynamicTypeMap>(I->first);
-    }
-  }
+  ProgramStateRef State = removeDeadTypes(C.getState(), SR);
 
   MostSpecializedTypeArgsMapTy TyArgMap =
       State->get<MostSpecializedTypeArgsMap>();
@@ -882,7 +875,7 @@ void DynamicTypePropagation::checkPostObjCMessage(const ObjCMethodCall &M,
   // When there is an entry available for the return symbol in DynamicTypeMap,
   // the call was inlined, and the information in the DynamicTypeMap is should
   // be precise.
-  if (RetRegion && !State->get<DynamicTypeMap>(RetRegion)) {
+  if (RetRegion && !getRawDynamicTypeInfo(State, RetRegion)) {
     // TODO: we have duplicated information in DynamicTypeMap and
     // MostSpecializedTypeArgsMap. We should only store anything in the later if
     // the stored data differs from the one stored in the former.
@@ -922,16 +915,14 @@ void DynamicTypePropagation::reportGenericsBug(
   std::unique_ptr<BugReport> R(
       new BugReport(*ObjCGenericsBugType, OS.str(), N));
   R->markInteresting(Sym);
-  R->addVisitor(llvm::make_unique<GenericsBugVisitor>(Sym));
+  R->addVisitor(std::make_unique<GenericsBugVisitor>(Sym));
   if (ReportedNode)
     R->addRange(ReportedNode->getSourceRange());
   C.emitReport(std::move(R));
 }
 
-std::shared_ptr<PathDiagnosticPiece>
-DynamicTypePropagation::GenericsBugVisitor::VisitNode(const ExplodedNode *N,
-                                                      BugReporterContext &BRC,
-                                                      BugReport &BR) {
+PathDiagnosticPieceRef DynamicTypePropagation::GenericsBugVisitor::VisitNode(
+    const ExplodedNode *N, BugReporterContext &BRC, BugReport &BR) {
   ProgramStateRef state = N->getState();
   ProgramStateRef statePrev = N->getFirstPred()->getState();
 

@@ -334,8 +334,8 @@ static void setStaticAnalyzerCheckerOpts(const ClangTidyOptions &Opts,
 
 typedef std::vector<std::pair<std::string, bool>> CheckersList;
 
-static CheckersList getCheckersControlList(ClangTidyContext &Context,
-                                           bool IncludeExperimental) {
+static CheckersList getAnalyzerCheckersAndPackages(ClangTidyContext &Context,
+                                                   bool IncludeExperimental) {
   CheckersList List;
 
   const auto &RegisteredCheckers =
@@ -390,7 +390,7 @@ ClangTidyASTConsumerFactory::CreateASTConsumer(
 
   std::unique_ptr<ClangTidyProfiling> Profiling;
   if (Context.getEnableProfiling()) {
-    Profiling = llvm::make_unique<ClangTidyProfiling>(
+    Profiling = std::make_unique<ClangTidyProfiling>(
         Context.getProfileStorageParams());
     FinderOptions.CheckProfiling.emplace(Profiling->Records);
   }
@@ -402,7 +402,7 @@ ClangTidyASTConsumerFactory::CreateASTConsumer(
   Preprocessor *ModuleExpanderPP = PP;
 
   if (Context.getLangOpts().Modules && OverlayFS != nullptr) {
-    auto ModuleExpander = llvm::make_unique<ExpandModularHeadersPPCallbacks>(
+    auto ModuleExpander = std::make_unique<ExpandModularHeadersPPCallbacks>(
         &Compiler, OverlayFS);
     ModuleExpanderPP = ModuleExpander->getPreprocessor();
     PP->addPPCallbacks(std::move(ModuleExpander));
@@ -419,9 +419,9 @@ ClangTidyASTConsumerFactory::CreateASTConsumer(
 
 #if CLANG_ENABLE_STATIC_ANALYZER
   AnalyzerOptionsRef AnalyzerOptions = Compiler.getAnalyzerOpts();
-  AnalyzerOptions->CheckersControlList =
-      getCheckersControlList(Context, Context.canEnableAnalyzerAlphaCheckers());
-  if (!AnalyzerOptions->CheckersControlList.empty()) {
+  AnalyzerOptions->CheckersAndPackages = getAnalyzerCheckersAndPackages(
+      Context, Context.canEnableAnalyzerAlphaCheckers());
+  if (!AnalyzerOptions->CheckersAndPackages.empty()) {
     setStaticAnalyzerCheckerOpts(Context.getOptions(), AnalyzerOptions);
     AnalyzerOptions->AnalysisStoreOpt = RegionStoreModel;
     AnalyzerOptions->AnalysisDiagOpt = PD_NONE;
@@ -434,7 +434,7 @@ ClangTidyASTConsumerFactory::CreateASTConsumer(
     Consumers.push_back(std::move(AnalysisConsumer));
   }
 #endif // CLANG_ENABLE_STATIC_ANALYZER
-  return llvm::make_unique<ClangTidyASTConsumer>(
+  return std::make_unique<ClangTidyASTConsumer>(
       std::move(Consumers), std::move(Profiling), std::move(Finder),
       std::move(Checks));
 }
@@ -447,7 +447,7 @@ std::vector<std::string> ClangTidyASTConsumerFactory::getCheckNames() {
   }
 
 #if CLANG_ENABLE_STATIC_ANALYZER
-  for (const auto &AnalyzerCheck : getCheckersControlList(
+  for (const auto &AnalyzerCheck : getAnalyzerCheckersAndPackages(
            Context, Context.canEnableAnalyzerAlphaCheckers()))
     CheckNames.push_back(AnalyzerCheckNamePrefix + AnalyzerCheck.first);
 #endif // CLANG_ENABLE_STATIC_ANALYZER
@@ -469,7 +469,7 @@ std::vector<std::string>
 getCheckNames(const ClangTidyOptions &Options,
               bool AllowEnablingAnalyzerAlphaCheckers) {
   clang::tidy::ClangTidyContext Context(
-      llvm::make_unique<DefaultOptionsProvider>(ClangTidyGlobalOptions(),
+      std::make_unique<DefaultOptionsProvider>(ClangTidyGlobalOptions(),
                                                 Options),
       AllowEnablingAnalyzerAlphaCheckers);
   ClangTidyASTConsumerFactory Factory(Context);
@@ -480,7 +480,7 @@ ClangTidyOptions::OptionMap
 getCheckOptions(const ClangTidyOptions &Options,
                 bool AllowEnablingAnalyzerAlphaCheckers) {
   clang::tidy::ClangTidyContext Context(
-      llvm::make_unique<DefaultOptionsProvider>(ClangTidyGlobalOptions(),
+      std::make_unique<DefaultOptionsProvider>(ClangTidyGlobalOptions(),
                                                 Options),
       AllowEnablingAnalyzerAlphaCheckers);
   ClangTidyASTConsumerFactory Factory(Context);

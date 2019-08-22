@@ -232,6 +232,7 @@ static Expected<NewSymbolInfo> parseNewSymbolInfo(StringRef FlagValue) {
             .CaseLower("weak", [&SI] { SI.Bind = ELF::STB_WEAK; })
             .CaseLower("default", [&SI] { SI.Visibility = ELF::STV_DEFAULT; })
             .CaseLower("hidden", [&SI] { SI.Visibility = ELF::STV_HIDDEN; })
+            .CaseLower("protected", [&SI] { SI.Visibility = ELF::STV_PROTECTED; })
             .CaseLower("file", [&SI] { SI.Type = ELF::STT_FILE; })
             .CaseLower("section", [&SI] { SI.Type = ELF::STT_SECTION; })
             .CaseLower("object", [&SI] { SI.Type = ELF::STT_OBJECT; })
@@ -810,6 +811,7 @@ parseStripOptions(ArrayRef<const char *> ArgsArr,
         InputArgs.hasFlag(STRIP_discard_all, STRIP_discard_locals)
             ? DiscardType::All
             : DiscardType::Locals;
+  Config.StripSections = InputArgs.hasArg(STRIP_strip_sections);
   Config.StripUnneeded = InputArgs.hasArg(STRIP_strip_unneeded);
   if (auto Arg = InputArgs.getLastArg(STRIP_strip_all, STRIP_no_strip_all))
     Config.StripAll = Arg->getOption().getID() == STRIP_strip_all;

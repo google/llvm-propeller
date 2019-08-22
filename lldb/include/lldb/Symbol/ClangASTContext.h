@@ -229,7 +229,8 @@ public:
           if (const RecordDeclType *record_decl =
                   llvm::dyn_cast<RecordDeclType>(named_decl))
             compiler_type.SetCompilerType(
-                ast, clang::QualType(record_decl->getTypeForDecl(), 0));
+                this, clang::QualType(record_decl->getTypeForDecl(), 0)
+                          .getAsOpaquePtr());
         }
       }
     }
@@ -395,7 +396,8 @@ public:
   clang::ParmVarDecl *CreateParameterDeclaration(clang::DeclContext *decl_ctx,
                                                  const char *name,
                                                  const CompilerType &param_type,
-                                                 int storage);
+                                                 int storage,
+                                                 bool add_decl=false);
 
   void SetFunctionParameters(clang::FunctionDecl *function_decl,
                              clang::ParmVarDecl **params, unsigned num_params);
@@ -707,7 +709,9 @@ public:
 
   lldb::Format GetFormat(lldb::opaque_compiler_type_t type) override;
 
-  size_t GetTypeBitAlign(lldb::opaque_compiler_type_t type) override;
+  llvm::Optional<size_t>
+  GetTypeBitAlign(lldb::opaque_compiler_type_t type,
+                  ExecutionContextScope *exe_scope) override;
 
   uint32_t GetNumChildren(lldb::opaque_compiler_type_t type,
                           bool omit_empty_base_classes,
@@ -877,12 +881,6 @@ public:
   // pointer type to pointee_type.
   static CompilerType CreateMemberPointerType(const CompilerType &type,
                                               const CompilerType &pointee_type);
-
-  // Converts "s" to a floating point value and place resulting floating point
-  // bytes in the "dst" buffer.
-  size_t ConvertStringToFloatValue(lldb::opaque_compiler_type_t type,
-                                   const char *s, uint8_t *dst,
-                                   size_t dst_size) override;
 
   // Dumping types
 #ifndef NDEBUG

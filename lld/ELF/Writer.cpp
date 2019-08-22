@@ -366,6 +366,8 @@ template <class ELFT> static void createSyntheticSections() {
       add(sec);
   }
 
+  StringRef relaDynName = config->isRela ? ".rela.dyn" : ".rel.dyn";
+
   for (Partition &part : partitions) {
     auto add = [&](InputSectionBase *sec) {
       sec->partition = part.getNumber();
@@ -389,13 +391,11 @@ template <class ELFT> static void createSyntheticSections() {
     part.dynStrTab = make<StringTableSection>(".dynstr", true);
     part.dynSymTab = make<SymbolTableSection<ELFT>>(*part.dynStrTab);
     part.dynamic = make<DynamicSection<ELFT>>();
-    if (config->androidPackDynRelocs) {
-      part.relaDyn = make<AndroidPackedRelocationSection<ELFT>>(
-          config->isRela ? ".rela.dyn" : ".rel.dyn");
-    } else {
-      part.relaDyn = make<RelocationSection<ELFT>>(
-          config->isRela ? ".rela.dyn" : ".rel.dyn", config->zCombreloc);
-    }
+    if (config->androidPackDynRelocs)
+      part.relaDyn = make<AndroidPackedRelocationSection<ELFT>>(relaDynName);
+    else
+      part.relaDyn =
+          make<RelocationSection<ELFT>>(relaDynName, config->zCombreloc);
 
     if (needsInterpSection())
       add(createInterpSection());
@@ -407,7 +407,7 @@ template <class ELFT> static void createSyntheticSections() {
       part.verSym = make<VersionTableSection>();
       add(part.verSym);
 
-      if (!config->versionDefinitions.empty()) {
+      if (!namedVersionDefs().empty()) {
         part.verDef = make<VersionDefinitionSection>();
         add(part.verDef);
       }
@@ -515,16 +515,14 @@ template <class ELFT> static void createSyntheticSections() {
       config->isRela ? ".rela.plt" : ".rel.plt", /*sort=*/false);
   add(in.relaPlt);
 
-  // The relaIplt immediately follows .rel.plt (.rel.dyn for ARM) to ensure
-  // that the IRelative relocations are processed last by the dynamic loader.
-  // We cannot place the iplt section in .rel.dyn when Android relocation
-  // packing is enabled because that would cause a section type mismatch.
-  // However, because the Android dynamic loader reads .rel.plt after .rel.dyn,
-  // we can get the desired behaviour by placing the iplt section in .rel.plt.
+  // The relaIplt immediately follows .rel[a].dyn to ensure that the IRelative
+  // relocations are processed last by the dynamic loader. We cannot place the
+  // iplt section in .rel.dyn when Android relocation packing is enabled because
+  // that would cause a section type mismatch. However, because the Android
+  // dynamic loader reads .rel.plt after .rel.dyn, we can get the desired
+  // behaviour by placing the iplt section in .rel.plt.
   in.relaIplt = make<RelocationSection<ELFT>>(
-      (config->emachine == EM_ARM && !config->androidPackDynRelocs)
-          ? ".rel.dyn"
-          : in.relaPlt->name,
+      config->androidPackDynRelocs ? in.relaPlt->name : relaDynName,
       /*sort=*/false);
   add(in.relaIplt);
 
@@ -1119,7 +1117,7 @@ template <class ELFT> void Writer<ELFT>::setReservedSymbolSections() {
     ElfSym::globalOffsetTable->section = gotSection;
   }
 
-  // .rela_iplt_{start,end} mark the start and the end of .rela.plt section.
+  // .rela_iplt_{start,end} mark the start and the end of in.relaIplt.
   if (ElfSym::relaIpltStart && in.relaIplt->isNeeded()) {
     ElfSym::relaIpltStart->section = in.relaIplt;
     ElfSym::relaIpltEnd->section = in.relaIplt;
@@ -1826,12 +1824,12 @@ static bool computeIsPreemptible(const Symbol &b) {
   if (!b.isDefined())
     return true;
 
-  // If we have a dynamic list it specifies which local symbols are preemptible.
-  if (config->hasDynamicList)
-    return false;
-
   if (!config->shared)
     return false;
+
+  // If the dynamic list is present, it specifies preemptable symbols in a DSO.
+  if (config->hasDynamicList)
+    return b.inDynamicList;
 
   // -Bsymbolic means that definitions are not preempted.
   if (config->bsymbolic || (config->bsymbolicFunctions && b.isFunc()))
@@ -1901,10 +1899,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   for (Partition &part : partitions)
     finalizeSynthetic(part.ehFrame);
 
-  symtab->forEachSymbol([](Symbol *s) {
-    if (!s->isPreemptible)
-      s->isPreemptible = computeIsPreemptible(*s);
-  });
+  symtab->forEachSymbol(
+      [](Symbol *s) { s->isPreemptible = computeIsPreemptible(*s); });
 
   // Scan relocations. This must be done after every symbol is declared so that
   // we can correctly decide if a dynamic relocation is needed.
@@ -1912,8 +1908,6 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
     forEachRelSec(scanRelocations<ELFT>);
     reportUndefinedSymbols<ELFT>();
   }
-
-  addIRelativeRelocs();
 
   if (in.plt && in.plt->isNeeded())
     in.plt->addSymbols();
@@ -2388,21 +2382,66 @@ void Writer<ELFT>::addPhdrForSection(Partition &part, unsigned shType,
   part.phdrs.push_back(entry);
 }
 
-// The first section of each PT_LOAD, the first section in PT_GNU_RELRO and the
-// first section after PT_GNU_RELRO have to be page aligned so that the dynamic
-// linker can set the permissions.
+// Place the first section of each PT_LOAD to a different page (of maxPageSize).
+// This is achieved by assigning an alignment expression to addrExpr of each
+// such section.
 template <class ELFT> void Writer<ELFT>::fixSectionAlignments() {
-  auto pageAlign = [](OutputSection *cmd) {
-    if (cmd && !cmd->addrExpr)
-      cmd->addrExpr = [=] {
-        return alignTo(script->getDot(), config->maxPageSize);
-      };
+  const PhdrEntry *prev;
+  auto pageAlign = [&](const PhdrEntry *p) {
+    OutputSection *cmd = p->firstSec;
+    if (cmd && !cmd->addrExpr) {
+      // Prefer advancing to align(dot, maxPageSize) + dot%maxPageSize to avoid
+      // padding in the file contents.
+      //
+      // When -z separate-code is used we must not have any overlap in pages
+      // between an executable segment and a non-executable segment. We align to
+      // the next maximum page size boundary on transitions between executable
+      // and non-executable segments.
+      //
+      // TODO Enable this technique on all targets.
+      bool enable = config->emachine == EM_386 ||
+                    config->emachine == EM_AARCH64 ||
+                    config->emachine == EM_PPC || config->emachine == EM_PPC64;
+
+      if (!enable || (config->zSeparateCode && prev &&
+                      (prev->p_flags & PF_X) != (p->p_flags & PF_X)))
+        cmd->addrExpr = [] {
+          return alignTo(script->getDot(), config->maxPageSize);
+        };
+      // PT_TLS is at the start of the first RW PT_LOAD. If `p` includes PT_TLS,
+      // it must be the RW. Align to p_align(PT_TLS) to make sure
+      // p_vaddr(PT_LOAD)%p_align(PT_LOAD) = 0. Otherwise, if
+      // sh_addralign(.tdata) < sh_addralign(.tbss), we will set p_align(PT_TLS)
+      // to sh_addralign(.tbss), while p_vaddr(PT_TLS)=p_vaddr(PT_LOAD) may not
+      // be congruent to 0 modulo p_align(PT_TLS).
+      //
+      // Technically this is not required, but as of 2019, some dynamic loaders
+      // don't handle p_vaddr%p_align != 0 correctly, e.g. glibc (i386 and
+      // x86-64) doesn't make runtime address congruent to p_vaddr modulo
+      // p_align for dynamic TLS blocks (PR/24606), FreeBSD rtld has the same
+      // bug, musl (TLS Variant 1 architectures) before 1.1.23 handled TLS
+      // blocks correctly. We need to keep the workaround for a while.
+      else if (Out::tlsPhdr && Out::tlsPhdr->firstSec == p->firstSec)
+        cmd->addrExpr = [] {
+          return alignTo(script->getDot(), config->maxPageSize) +
+                 alignTo(script->getDot() % config->maxPageSize,
+                         Out::tlsPhdr->p_align);
+        };
+      else
+        cmd->addrExpr = [] {
+          return alignTo(script->getDot(), config->maxPageSize) +
+                 script->getDot() % config->maxPageSize;
+        };
+    }
   };
 
   for (Partition &part : partitions) {
+    prev = nullptr;
     for (const PhdrEntry *p : part.phdrs)
-      if (p->p_type == PT_LOAD && p->firstSec)
-        pageAlign(p->firstSec);
+      if (p->p_type == PT_LOAD && p->firstSec) {
+        pageAlign(p);
+        prev = p;
+      }
   }
 }
 
@@ -2528,10 +2567,11 @@ template <class ELFT> void Writer<ELFT>::setPhdrs(Partition &part) {
       p->p_align = std::max<uint64_t>(p->p_align, config->maxPageSize);
     } else if (p->p_type == PT_GNU_RELRO) {
       p->p_align = 1;
-      // The glibc dynamic loader rounds the size down, so we need to round up
+      // musl/glibc ld.so rounds the size down, so we need to round up
       // to protect the last page. This is a no-op on FreeBSD which always
       // rounds up.
-      p->p_memsz = alignTo(p->p_memsz, config->commonPageSize);
+      p->p_memsz = alignTo(p->p_offset + p->p_memsz, config->commonPageSize) -
+                   p->p_offset;
     }
   }
 }

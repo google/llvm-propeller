@@ -30,18 +30,6 @@ static const char *BTFKindStr[] = {
 #include "BTF.def"
 };
 
-static const DIType * stripQualifiers(const DIType *Ty) {
-  while (const auto *DTy = dyn_cast<DIDerivedType>(Ty)) {
-    unsigned Tag = DTy->getTag();
-    if (Tag != dwarf::DW_TAG_typedef && Tag != dwarf::DW_TAG_const_type &&
-        Tag != dwarf::DW_TAG_volatile_type && Tag != dwarf::DW_TAG_restrict_type)
-      break;
-    Ty = DTy->getBaseType();
-  }
-
-  return Ty;
-}
-
 /// Emit a BTF common type.
 void BTFTypeBase::emitType(MCStreamer &OS) {
   OS.AddComment(std::string(BTFKindStr[Kind]) + "(id = " + std::to_string(Id) +
@@ -196,9 +184,7 @@ void BTFTypeEnum::emitType(MCStreamer &OS) {
   }
 }
 
-BTFTypeArray::BTFTypeArray(const DIType *Ty, uint32_t ElemTypeId,
-                           uint32_t ElemSize, uint32_t NumElems)
-    : ElemTyNoQual(Ty), ElemSize(ElemSize) {
+BTFTypeArray::BTFTypeArray(uint32_t ElemTypeId, uint32_t NumElems) {
   Kind = BTF::BTF_KIND_ARRAY;
   BTFType.NameOff = 0;
   BTFType.Info = Kind << 24;
@@ -219,9 +205,6 @@ void BTFTypeArray::completeType(BTFDebug &BDebug) {
   // created during initial type traversal. Just
   // retrieve that type id.
   ArrayInfo.IndexType = BDebug.getArrayIndexTypeId();
-
-  ElemTypeNoQual = ElemTyNoQual ? BDebug.getTypeId(ElemTyNoQual)
-                                : ArrayInfo.ElemType;
 }
 
 void BTFTypeArray::emitType(MCStreamer &OS) {
@@ -229,12 +212,6 @@ void BTFTypeArray::emitType(MCStreamer &OS) {
   OS.EmitIntValue(ArrayInfo.ElemType, 4);
   OS.EmitIntValue(ArrayInfo.IndexType, 4);
   OS.EmitIntValue(ArrayInfo.Nelems, 4);
-}
-
-void BTFTypeArray::getLocInfo(uint32_t Loc, uint32_t &LocOffset,
-                              uint32_t &ElementTypeId) {
-  ElementTypeId = ElemTypeNoQual;
-  LocOffset = Loc * ElemSize;
 }
 
 /// Represent either a struct or a union.
@@ -268,7 +245,6 @@ void BTFTypeStruct::completeType(BTFDebug &BDebug) {
     }
     const auto *BaseTy = DDTy->getBaseType();
     BTFMember.Type = BDebug.getTypeId(BaseTy);
-    MemberTypeNoQual.push_back(BDebug.getTypeId(stripQualifiers(BaseTy)));
     Members.push_back(BTFMember);
   }
 }
@@ -284,15 +260,6 @@ void BTFTypeStruct::emitType(MCStreamer &OS) {
 }
 
 std::string BTFTypeStruct::getName() { return STy->getName(); }
-
-void BTFTypeStruct::getMemberInfo(uint32_t Loc, uint32_t &MemberOffset,
-                                  uint32_t &MemberType) {
-  MemberType = MemberTypeNoQual[Loc];
-  MemberOffset =
-      HasBitField ? Members[Loc].Offset & 0xffffff : Members[Loc].Offset;
-}
-
-uint32_t BTFTypeStruct::getStructSize() { return STy->getSizeInBits() >> 3; }
 
 /// The Func kind represents both subprogram and pointee of function
 /// pointers. If the FuncName is empty, it represents a pointee of function
@@ -445,7 +412,7 @@ void BTFDebug::visitBasicType(const DIBasicType *BTy, uint32_t &TypeId) {
 
   // Create a BTF type instance for this DIBasicType and put it into
   // DIToIdMap for cross-type reference check.
-  auto TypeEntry = llvm::make_unique<BTFTypeInt>(
+  auto TypeEntry = std::make_unique<BTFTypeInt>(
       Encoding, BTy->getSizeInBits(), BTy->getOffsetInBits(), BTy->getName());
   TypeId = addType(std::move(TypeEntry), BTy);
 }
@@ -464,7 +431,7 @@ void BTFDebug::visitSubroutineType(
   // a function pointer has an empty name. The subprogram type will
   // not be added to DIToIdMap as it should not be referenced by
   // any other types.
-  auto TypeEntry = llvm::make_unique<BTFTypeFuncProto>(STy, VLen, FuncArgNames);
+  auto TypeEntry = std::make_unique<BTFTypeFuncProto>(STy, VLen, FuncArgNames);
   if (ForSubprog)
     TypeId = addType(std::move(TypeEntry)); // For subprogram
   else
@@ -495,7 +462,7 @@ void BTFDebug::visitStructType(const DICompositeType *CTy, bool IsStruct,
   }
 
   auto TypeEntry =
-      llvm::make_unique<BTFTypeStruct>(CTy, IsStruct, HasBitField, VLen);
+      std::make_unique<BTFTypeStruct>(CTy, IsStruct, HasBitField, VLen);
   StructTypes.push_back(TypeEntry.get());
   TypeId = addType(std::move(TypeEntry), CTy);
 
@@ -511,12 +478,10 @@ void BTFDebug::visitArrayType(const DICompositeType *CTy, uint32_t &TypeId) {
   visitTypeEntry(ElemType, ElemTypeId, false, false);
 
   // Strip qualifiers from element type to get accurate element size.
-  ElemType = stripQualifiers(ElemType);
   ElemSize = ElemType->getSizeInBits() >> 3;
 
   if (!CTy->getSizeInBits()) {
-    auto TypeEntry = llvm::make_unique<BTFTypeArray>(ElemType, ElemTypeId, 0, 0);
-    ArrayTypes.push_back(TypeEntry.get());
+    auto TypeEntry = std::make_unique<BTFTypeArray>(ElemTypeId, 0);
     ElemTypeId = addType(std::move(TypeEntry), CTy);
   } else {
     // Visit array dimensions.
@@ -527,12 +492,9 @@ void BTFDebug::visitArrayType(const DICompositeType *CTy, uint32_t &TypeId) {
           const DISubrange *SR = cast<DISubrange>(Element);
           auto *CI = SR->getCount().dyn_cast<ConstantInt *>();
           int64_t Count = CI->getSExtValue();
-          const DIType *ArrayElemTy = (I == 0) ? ElemType : nullptr;
 
           auto TypeEntry =
-              llvm::make_unique<BTFTypeArray>(ArrayElemTy, ElemTypeId,
-                                              ElemSize, Count);
-          ArrayTypes.push_back(TypeEntry.get());
+              std::make_unique<BTFTypeArray>(ElemTypeId, Count);
           if (I == 0)
             ElemTypeId = addType(std::move(TypeEntry), CTy);
           else
@@ -548,7 +510,7 @@ void BTFDebug::visitArrayType(const DICompositeType *CTy, uint32_t &TypeId) {
   // The IR does not have a type for array index while BTF wants one.
   // So create an array index type if there is none.
   if (!ArrayIndexTypeId) {
-    auto TypeEntry = llvm::make_unique<BTFTypeInt>(dwarf::DW_ATE_unsigned, 32,
+    auto TypeEntry = std::make_unique<BTFTypeInt>(dwarf::DW_ATE_unsigned, 32,
                                                    0, "__ARRAY_SIZE_TYPE__");
     ArrayIndexTypeId = addType(std::move(TypeEntry));
   }
@@ -560,7 +522,7 @@ void BTFDebug::visitEnumType(const DICompositeType *CTy, uint32_t &TypeId) {
   if (VLen > BTF::MAX_VLEN)
     return;
 
-  auto TypeEntry = llvm::make_unique<BTFTypeEnum>(CTy, VLen);
+  auto TypeEntry = std::make_unique<BTFTypeEnum>(CTy, VLen);
   TypeId = addType(std::move(TypeEntry), CTy);
   // No need to visit base type as BTF does not encode it.
 }
@@ -568,7 +530,7 @@ void BTFDebug::visitEnumType(const DICompositeType *CTy, uint32_t &TypeId) {
 /// Handle structure/union forward declarations.
 void BTFDebug::visitFwdDeclType(const DICompositeType *CTy, bool IsUnion,
                                 uint32_t &TypeId) {
-  auto TypeEntry = llvm::make_unique<BTFTypeFwd>(CTy->getName(), IsUnion);
+  auto TypeEntry = std::make_unique<BTFTypeFwd>(CTy->getName(), IsUnion);
   TypeId = addType(std::move(TypeEntry), CTy);
 }
 
@@ -610,7 +572,7 @@ void BTFDebug::visitDerivedType(const DIDerivedType *DTy, uint32_t &TypeId,
           /// Find a candidate, generate a fixup. Later on the struct/union
           /// pointee type will be replaced with either a real type or
           /// a forward declaration.
-          auto TypeEntry = llvm::make_unique<BTFTypeDerived>(DTy, Tag, true);
+          auto TypeEntry = std::make_unique<BTFTypeDerived>(DTy, Tag, true);
           auto &Fixup = FixupDerivedTypes[CTy->getName()];
           Fixup.first = CTag == dwarf::DW_TAG_union_type;
           Fixup.second.push_back(TypeEntry.get());
@@ -624,7 +586,7 @@ void BTFDebug::visitDerivedType(const DIDerivedType *DTy, uint32_t &TypeId,
   if (Tag == dwarf::DW_TAG_pointer_type || Tag == dwarf::DW_TAG_typedef ||
       Tag == dwarf::DW_TAG_const_type || Tag == dwarf::DW_TAG_volatile_type ||
       Tag == dwarf::DW_TAG_restrict_type) {
-    auto TypeEntry = llvm::make_unique<BTFTypeDerived>(DTy, Tag, false);
+    auto TypeEntry = std::make_unique<BTFTypeDerived>(DTy, Tag, false);
     TypeId = addType(std::move(TypeEntry), DTy);
   } else if (Tag != dwarf::DW_TAG_member) {
     return;
@@ -691,7 +653,7 @@ void BTFDebug::visitMapDefType(const DIType *Ty, uint32_t &TypeId) {
   }
 
   auto TypeEntry =
-      llvm::make_unique<BTFTypeStruct>(CTy, true, HasBitField, Elements.size());
+      std::make_unique<BTFTypeStruct>(CTy, true, HasBitField, Elements.size());
   StructTypes.push_back(TypeEntry.get());
   TypeId = addType(std::move(TypeEntry), CTy);
 
@@ -964,7 +926,7 @@ void BTFDebug::beginFunctionImpl(const MachineFunction *MF) {
 
   // Construct subprogram func type
   auto FuncTypeEntry =
-      llvm::make_unique<BTFTypeFunc>(SP->getName(), ProtoTypeId);
+      std::make_unique<BTFTypeFunc>(SP->getName(), ProtoTypeId);
   uint32_t FuncTypeId = addType(std::move(FuncTypeEntry));
 
   for (const auto &TypeEntry : TypeEntries)
@@ -1002,74 +964,22 @@ unsigned BTFDebug::populateStructType(const DIType *Ty) {
   return Id;
 }
 
-// Find struct/array debuginfo types given a type id.
-void BTFDebug::setTypeFromId(uint32_t TypeId, BTFTypeStruct **PrevStructType,
-                             BTFTypeArray **PrevArrayType) {
-  for (const auto &StructType : StructTypes) {
-    if (StructType->getId() == TypeId) {
-      *PrevStructType = StructType;
-      return;
-    }
-  }
-  for (const auto &ArrayType : ArrayTypes) {
-    if (ArrayType->getId() == TypeId) {
-      *PrevArrayType = ArrayType;
-      return;
-    }
-  }
-}
-
 /// Generate a struct member offset relocation.
 void BTFDebug::generateOffsetReloc(const MachineInstr *MI,
                                    const MCSymbol *ORSym, DIType *RootTy,
                                    StringRef AccessPattern) {
-  BTFTypeStruct *PrevStructType = nullptr;
-  BTFTypeArray *PrevArrayType = nullptr;
   unsigned RootId = populateStructType(RootTy);
-  setTypeFromId(RootId, &PrevStructType, &PrevArrayType);
-  unsigned RootTySize = PrevStructType->getStructSize();
-  StringRef IndexPattern = AccessPattern.substr(AccessPattern.find_first_of(':') + 1);
+  size_t FirstDollar = AccessPattern.find_first_of('$');
+  size_t FirstColon = AccessPattern.find_first_of(':');
+  StringRef IndexPattern = AccessPattern.substr(FirstDollar + 1);
+  StringRef OffsetStr = AccessPattern.substr(FirstColon + 1,
+      FirstDollar - FirstColon);
 
   BTFOffsetReloc OffsetReloc;
   OffsetReloc.Label = ORSym;
-  OffsetReloc.OffsetNameOff = addString(IndexPattern.drop_back());
+  OffsetReloc.OffsetNameOff = addString(IndexPattern);
   OffsetReloc.TypeID = RootId;
-
-  uint32_t Start = 0, End = 0, Offset = 0;
-  bool FirstAccess = true;
-  for (auto C : IndexPattern) {
-    if (C != ':') {
-      End++;
-    } else {
-      std::string SubStr = IndexPattern.substr(Start, End - Start);
-      int Loc = std::stoi(SubStr);
-
-      if (FirstAccess) {
-        Offset = Loc * RootTySize;
-        FirstAccess = false;
-      } else if (PrevStructType) {
-        uint32_t MemberOffset, MemberTypeId;
-        PrevStructType->getMemberInfo(Loc, MemberOffset, MemberTypeId);
-
-        Offset += MemberOffset >> 3;
-        PrevStructType = nullptr;
-        setTypeFromId(MemberTypeId, &PrevStructType, &PrevArrayType);
-      } else if (PrevArrayType) {
-        uint32_t LocOffset, ElementTypeId;
-        PrevArrayType->getLocInfo(Loc, LocOffset, ElementTypeId);
-
-        Offset += LocOffset;
-        PrevArrayType = nullptr;
-        setTypeFromId(ElementTypeId, &PrevStructType, &PrevArrayType);
-      } else {
-        llvm_unreachable("Internal Error: BTF offset relocation type traversal error");
-      }
-
-      Start = End + 1;
-      End = Start;
-    }
-  }
-  AccessOffsets[AccessPattern.str()] = Offset;
+  AccessOffsets[AccessPattern.str()] = std::stoi(OffsetStr);
   OffsetRelocTable[SecNameOff].push_back(OffsetReloc);
 }
 
@@ -1226,12 +1136,12 @@ void BTFDebug::processGlobals(bool ProcessingMapDef) {
                             ? BTF::VAR_GLOBAL_ALLOCATED
                             : BTF::VAR_STATIC;
     auto VarEntry =
-        llvm::make_unique<BTFKindVar>(Global.getName(), GVTypeId, GVarInfo);
+        std::make_unique<BTFKindVar>(Global.getName(), GVTypeId, GVarInfo);
     uint32_t VarId = addType(std::move(VarEntry));
 
     // Find or create a DataSec
     if (DataSecEntries.find(SecName) == DataSecEntries.end()) {
-      DataSecEntries[SecName] = llvm::make_unique<BTFKindDataSec>(Asm, SecName);
+      DataSecEntries[SecName] = std::make_unique<BTFKindDataSec>(Asm, SecName);
     }
 
     // Calculate symbol size
@@ -1307,7 +1217,7 @@ void BTFDebug::endModule() {
     }
 
     if (StructTypeId == 0) {
-      auto FwdTypeEntry = llvm::make_unique<BTFTypeFwd>(TypeName, IsUnion);
+      auto FwdTypeEntry = std::make_unique<BTFTypeFwd>(TypeName, IsUnion);
       StructTypeId = addType(std::move(FwdTypeEntry));
     }
 

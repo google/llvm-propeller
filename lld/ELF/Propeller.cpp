@@ -367,7 +367,7 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     error(string("Failed to open '") + PropellerFileName + "'.");
     return false;
   }
-  Propf = llvm::make_unique<Propfile>(PropFile, *this);
+  Propf.reset(new Propfile(PropFile, *this));
   auto startReadSymbolTime = system_clock::now();
   if (!Propf->readSymbols()) {
     error(string("Invalid propfile: '") + PropellerFileName + "'.");

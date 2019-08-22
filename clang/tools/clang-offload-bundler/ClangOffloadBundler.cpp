@@ -370,13 +370,9 @@ public:
 /// designated name.
 ///
 /// In order to bundle we create an IR file with the content of each section and
-/// use incremental linking to produce the resulting object. We also add section
-/// with a single byte to state the name of the component the main object file
-/// (the one we are bundling into) refers to.
+/// use incremental linking to produce the resulting object.
 ///
-/// To unbundle, we use just copy the contents of the designated section. If the
-/// requested bundle refer to the main object file, we just copy it with no
-/// changes.
+/// To unbundle, we just copy the contents of the designated section.
 class ObjectFileHandler final : public FileHandler {
 
   /// The object file we are currently dealing with.
@@ -390,7 +386,10 @@ class ObjectFileHandler final : public FileHandler {
   static bool IsOffloadSection(SectionRef CurSection,
                                StringRef &OffloadTriple) {
     StringRef SectionName;
-    CurSection.getName(SectionName);
+    if (Expected<StringRef> NameOrErr = CurSection.getName())
+      SectionName = *NameOrErr;
+    else
+      consumeError(NameOrErr.takeError());
 
     if (SectionName.empty())
       return false;
@@ -468,10 +467,7 @@ public:
       return;
     }
 
-    if (Content->size() < 2)
-      OS.write(Input.getBufferStart(), Input.getBufferSize());
-    else
-      OS.write(Content->data(), Content->size());
+    OS.write(Content->data(), Content->size());
   }
 
   void WriteHeader(raw_fd_ostream &OS,
@@ -559,7 +555,7 @@ public:
       // Write the bitcode contents to the temporary file.
       {
         std::error_code EC;
-        raw_fd_ostream BitcodeFile(BitcodeFileName, EC, sys::fs::F_None);
+        raw_fd_ostream BitcodeFile(BitcodeFileName, EC, sys::fs::OF_None);
         if (EC) {
           errs() << "error: unable to open temporary file.\n";
           return true;
@@ -589,22 +585,14 @@ public:
     std::string SectionName = OFFLOAD_BUNDLER_MAGIC_STR;
     SectionName += CurrentTriple;
 
-    // Create the constant with the content of the section. For the input we are
-    // bundling into (the host input), this is just a place-holder, so a single
-    // byte is sufficient.
-    assert(HostInputIndex != ~0u && "Host input index undefined??");
-    Constant *Content;
-    if (NumberOfProcessedInputs == HostInputIndex + 1) {
-      uint8_t Byte[] = {0};
-      Content = ConstantDataArray::get(VMContext, Byte);
-    } else
-      Content = ConstantDataArray::get(
-          VMContext, ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(
-                                           Input.getBufferStart()),
-                                       Input.getBufferSize()));
+    // Create the constant with the content of the section.
+    auto *Content = ConstantDataArray::get(
+        VMContext, ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(
+                                         Input.getBufferStart()),
+                                     Input.getBufferSize()));
 
-    // Create the global in the desired section. We don't want these globals in
-    // the symbol table, so we mark them private.
+    // Create the global in the desired section. We don't want these globals
+    // in the symbol table, so we mark them private.
     auto *GV = new GlobalVariable(*M, Content->getType(), /*IsConstant=*/true,
                                   GlobalVariable::PrivateLinkage, Content);
     GV->setSection(SectionName);
@@ -764,7 +752,7 @@ static bool BundleFiles() {
   std::error_code EC;
 
   // Create output file.
-  raw_fd_ostream OutputFile(OutputFileNames.front(), EC, sys::fs::F_None);
+  raw_fd_ostream OutputFile(OutputFileNames.front(), EC, sys::fs::OF_None);
 
   if (EC) {
     errs() << "error: Can't open file " << OutputFileNames.front() << ".\n";
@@ -862,7 +850,7 @@ static bool UnbundleFiles() {
 
     // Check if the output file can be opened and copy the bundle to it.
     std::error_code EC;
-    raw_fd_ostream OutputFile(Output->second, EC, sys::fs::F_None);
+    raw_fd_ostream OutputFile(Output->second, EC, sys::fs::OF_None);
     if (EC) {
       errs() << "error: Can't open file " << Output->second << ": "
              << EC.message() << "\n";
@@ -882,7 +870,7 @@ static bool UnbundleFiles() {
   if (Worklist.size() == TargetNames.size()) {
     for (auto &E : Worklist) {
       std::error_code EC;
-      raw_fd_ostream OutputFile(E.second, EC, sys::fs::F_None);
+      raw_fd_ostream OutputFile(E.second, EC, sys::fs::OF_None);
       if (EC) {
         errs() << "error: Can't open file " << E.second << ": " << EC.message()
                << "\n";
@@ -905,7 +893,7 @@ static bool UnbundleFiles() {
   // If we still have any elements in the worklist, create empty files for them.
   for (auto &E : Worklist) {
     std::error_code EC;
-    raw_fd_ostream OutputFile(E.second, EC, sys::fs::F_None);
+    raw_fd_ostream OutputFile(E.second, EC, sys::fs::OF_None);
     if (EC) {
       errs() << "error: Can't open file " << E.second << ": "  << EC.message()
              << "\n";

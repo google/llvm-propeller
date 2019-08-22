@@ -1584,9 +1584,8 @@ void SymbolFilePDB::FindTypesByName(
   }
 }
 
-size_t SymbolFilePDB::FindTypes(
-    const std::vector<lldb_private::CompilerContext> &contexts, bool append,
-    lldb_private::TypeMap &types) {
+size_t SymbolFilePDB::FindTypes(llvm::ArrayRef<CompilerContext> pattern,
+                                bool append, lldb_private::TypeMap &types) {
   return 0;
 }
 
@@ -1800,7 +1799,7 @@ bool SymbolFilePDB::ParseCompileUnitLineTable(CompileUnit &comp_unit,
   // to do a mapping so that we can hand out indices.
   llvm::DenseMap<uint32_t, uint32_t> index_map;
   BuildSupportFileIdToSupportFileIndexMap(*compiland_up, index_map);
-  auto line_table = llvm::make_unique<LineTable>(&comp_unit);
+  auto line_table = std::make_unique<LineTable>(&comp_unit);
 
   // Find contributions to `compiland` from all source and header files.
   std::string path = comp_unit.GetPath();

@@ -8,6 +8,9 @@
 # CHECK-NEXT:            "variable.other.cpp"
 # CHECK-NEXT:          ],
 # CHECK-NEXT:          [
+# CHECK-NEXT:            "variable.parameter.cpp"
+# CHECK-NEXT:          ],
+# CHECK-NEXT:          [
 # CHECK-NEXT:            "entity.name.function.cpp"
 # CHECK-NEXT:          ],
 # CHECK-NEXT:          [
@@ -30,6 +33,9 @@
 # CHECK-NEXT:          ],
 # CHECK-NEXT:          [
 # CHECK-NEXT:            "entity.name.type.template.cpp"
+# CHECK-NEXT:          ],
+# CHECK-NEXT:          [
+# CHECK-NEXT:            "storage.type.primitive.cpp"
 # CHECK-NEXT:          ]
 # CHECK-NEXT:        ]
 # CHECK-NEXT:      },
@@ -40,7 +46,7 @@
 # CHECK-NEXT:    "lines": [
 # CHECK-NEXT:      {
 # CHECK-NEXT:        "line": 0,
-# CHECK-NEXT:        "tokens": "AAAABAABAAA="
+# CHECK-NEXT:        "tokens": "AAAAAAADAAoAAAAEAAEAAA=="
 # CHECK-NEXT:      }
 # CHECK-NEXT:    ],
 # CHECK-NEXT:    "textDocument": {
@@ -55,11 +61,11 @@
 # CHECK-NEXT:    "lines": [
 # CHECK-NEXT:      {
 # CHECK-NEXT:        "line": 0,
-# CHECK-NEXT:        "tokens": "AAAABAABAAA="
+# CHECK-NEXT:        "tokens": "AAAAAAADAAoAAAAEAAEAAA=="
 # CHECK-NEXT:      }
 # CHECK-NEXT:      {
 # CHECK-NEXT:        "line": 1,
-# CHECK-NEXT:        "tokens": "AAAABAABAAA="
+# CHECK-NEXT:        "tokens": "AAAAAAADAAoAAAAEAAEAAA=="
 # CHECK-NEXT:      }
 # CHECK-NEXT:    ],
 # CHECK-NEXT:    "textDocument": {
@@ -74,7 +80,7 @@
 # CHECK-NEXT:    "lines": [
 # CHECK-NEXT:      {
 # CHECK-NEXT:        "line": 1,
-# CHECK-NEXT:        "tokens": "AAAABAABAAA="
+# CHECK-NEXT:        "tokens": "AAAAAAADAAoAAAAEAAEAAA=="
 # CHECK-NEXT:      }
 # CHECK-NEXT:   ],
 # CHECK-NEXT:    "textDocument": {

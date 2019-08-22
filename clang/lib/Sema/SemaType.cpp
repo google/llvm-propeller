@@ -5978,9 +5978,9 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
     }
 
     ASTContext &Ctx = S.Context;
-    auto *ASAttr = ::new (Ctx) AddressSpaceAttr(
-        Attr.getRange(), Ctx, Attr.getAttributeSpellingListIndex(),
-        static_cast<unsigned>(ASIdx));
+    auto *ASAttr = ::new (Ctx)
+        AddressSpaceAttr(Attr.getRange(), Ctx, static_cast<unsigned>(ASIdx),
+                         Attr.getAttributeSpellingListIndex());
 
     // If the expression is not value dependent (not templated), then we can
     // apply the address space qualifiers just to the equivalent type.
@@ -7385,8 +7385,22 @@ static void deduceOpenCLImplicitAddrSpace(TypeProcessingState &State,
   bool IsPointee =
       ChunkIndex > 0 &&
       (D.getTypeObject(ChunkIndex - 1).Kind == DeclaratorChunk::Pointer ||
-       D.getTypeObject(ChunkIndex - 1).Kind == DeclaratorChunk::BlockPointer ||
-       D.getTypeObject(ChunkIndex - 1).Kind == DeclaratorChunk::Reference);
+       D.getTypeObject(ChunkIndex - 1).Kind == DeclaratorChunk::Reference ||
+       D.getTypeObject(ChunkIndex - 1).Kind == DeclaratorChunk::BlockPointer);
+  // For pointers/references to arrays the next chunk is always an array
+  // followed by any number of parentheses.
+  if (!IsPointee && ChunkIndex > 1) {
+    auto AdjustedCI = ChunkIndex - 1;
+    if (D.getTypeObject(AdjustedCI).Kind == DeclaratorChunk::Array)
+      AdjustedCI--;
+    // Skip over all parentheses.
+    while (AdjustedCI > 0 &&
+           D.getTypeObject(AdjustedCI).Kind == DeclaratorChunk::Paren)
+      AdjustedCI--;
+    if (D.getTypeObject(AdjustedCI).Kind == DeclaratorChunk::Pointer ||
+        D.getTypeObject(AdjustedCI).Kind == DeclaratorChunk::Reference)
+      IsPointee = true;
+  }
   bool IsFuncReturnType =
       ChunkIndex > 0 &&
       D.getTypeObject(ChunkIndex - 1).Kind == DeclaratorChunk::Function;

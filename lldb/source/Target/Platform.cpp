@@ -384,7 +384,7 @@ Platform::Platform(bool is_host)
       m_rsync_opts(), m_rsync_prefix(), m_supports_ssh(false), m_ssh_opts(),
       m_ignores_remote_hostname(false), m_trap_handlers(),
       m_calculated_trap_handlers(false),
-      m_module_cache(llvm::make_unique<ModuleCache>()) {
+      m_module_cache(std::make_unique<ModuleCache>()) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OBJECT));
   LLDB_LOGF(log, "%p Platform::Platform()", static_cast<void *>(this));
 }
@@ -1628,7 +1628,7 @@ Status Platform::DownloadModuleSlice(const FileSpec &src_file_spec,
   Status error;
 
   std::error_code EC;
-  llvm::raw_fd_ostream dst(dst_file_spec.GetPath(), EC, llvm::sys::fs::F_None);
+  llvm::raw_fd_ostream dst(dst_file_spec.GetPath(), EC, llvm::sys::fs::OF_None);
   if (EC) {
     error.SetErrorStringWithFormat("unable to open destination file: %s",
                                    dst_file_spec.GetPath().c_str());

@@ -316,7 +316,7 @@ void IRExecutionUnit::GetRunnableInfo(Status &error, lldb::addr_t &func_addr,
   };
 
   if (process_sp->GetTarget().GetEnableSaveObjects()) {
-    m_object_cache_up = llvm::make_unique<ObjectDumper>();
+    m_object_cache_up = std::make_unique<ObjectDumper>();
     m_execution_engine_up->setObjectCache(m_object_cache_up.get());
   }
 
@@ -658,11 +658,7 @@ FindBestAlternateMangledName(ConstString demangled,
   if (!sym_ctx.module_sp)
     return ConstString();
 
-  SymbolVendor *sym_vendor = sym_ctx.module_sp->GetSymbolVendor();
-  if (!sym_vendor)
-    return ConstString();
-
-  lldb_private::SymbolFile *sym_file = sym_vendor->GetSymbolFile();
+  lldb_private::SymbolFile *sym_file = sym_ctx.module_sp->GetSymbolFile();
   if (!sym_file)
     return ConstString();
 

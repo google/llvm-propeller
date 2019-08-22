@@ -28,8 +28,6 @@ using namespace sampleprof;
 namespace llvm {
 namespace sampleprof {
 SampleProfileFormat FunctionSamples::Format;
-DenseMap<uint64_t, StringRef> FunctionSamples::GUIDToFuncNameMap;
-Module *FunctionSamples::CurrentModule;
 } // namespace sampleprof
 } // namespace llvm
 
@@ -102,8 +100,8 @@ void SampleRecord::print(raw_ostream &OS, unsigned Indent) const {
   OS << NumSamples;
   if (hasCalls()) {
     OS << ", calls:";
-    for (const auto &I : getCallTargets())
-      OS << " " << I.first() << ":" << I.second;
+    for (const auto &I : getSortedCallTargets())
+      OS << " " << I.first << ":" << I.second;
   }
   OS << "\n";
 }

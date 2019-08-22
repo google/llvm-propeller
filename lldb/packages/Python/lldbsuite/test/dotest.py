@@ -343,8 +343,13 @@ def parseOptionsAndInitTestdirs():
             args.skipCategories, False)
 
     if args.E:
-        cflags_extras = args.E
-        os.environ['CFLAGS_EXTRAS'] = cflags_extras
+        os.environ['CFLAGS_EXTRAS'] = args.E
+
+    if args.dwarf_version:
+        configuration.dwarf_version = args.dwarf_version
+        # We cannot modify CFLAGS_EXTRAS because they're used in test cases
+        # that explicitly require no debug info.
+        os.environ['CFLAGS'] = '-gdwarf-{}'.format(configuration.dwarf_version)
 
     if args.d:
         sys.stdout.write(
@@ -1216,8 +1221,8 @@ def run_suite():
     # Don't do debugserver tests on anything except OS X.
     configuration.dont_do_debugserver_test = "linux" in target_platform or "freebsd" in target_platform or "windows" in target_platform
 
-    # Don't do lldb-server (llgs) tests on anything except Linux.
-    configuration.dont_do_llgs_test = not ("linux" in target_platform)
+    # Don't do lldb-server (llgs) tests on anything except Linux and Windows.
+    configuration.dont_do_llgs_test = not ("linux" in target_platform) and not ("windows" in target_platform)
 
     # Collect tests from the specified testing directories. If a test
     # subdirectory filter is explicitly specified, limit the search to that

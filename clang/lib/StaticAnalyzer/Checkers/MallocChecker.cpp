@@ -516,19 +516,19 @@ private:
       // released -> allocated, it must be the realloc return value
       // check. If we have to handle more cases here, it might be cleaner just
       // to track this extra bit in the state itself.
-      return ((!Stmt || !isa<CallExpr>(Stmt)) &&
-              (S && (S->isAllocated() || S->isAllocatedOfSizeZero())) &&
-              (SPrev && !(SPrev->isAllocated() ||
-                          SPrev->isAllocatedOfSizeZero())));
+      return (
+          (!Stmt || !isa<CallExpr>(Stmt)) &&
+          (S && (S->isAllocated() || S->isAllocatedOfSizeZero())) &&
+          (SPrev && !(SPrev->isAllocated() || SPrev->isAllocatedOfSizeZero())));
     }
 
-    std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *N,
-                                                   BugReporterContext &BRC,
-                                                   BugReport &BR) override;
+    PathDiagnosticPieceRef VisitNode(const ExplodedNode *N,
+                                     BugReporterContext &BRC,
+                                     BugReport &BR) override;
 
-    std::shared_ptr<PathDiagnosticPiece>
-    getEndPath(BugReporterContext &BRC, const ExplodedNode *EndPathNode,
-               BugReport &BR) override {
+    PathDiagnosticPieceRef getEndPath(BugReporterContext &BRC,
+                                      const ExplodedNode *EndPathNode,
+                                      BugReport &BR) override {
       if (!IsLeak)
         return nullptr;
 
@@ -1086,7 +1086,7 @@ void MallocChecker::processNewAllocation(const CXXNewExpr *NE,
   if (!isStandardNewDelete(NE->getOperatorNew(), C.getASTContext()))
     return;
 
-  ParentMap &PM = C.getLocationContext()->getParentMap();
+  const ParentMap &PM = C.getLocationContext()->getParentMap();
   if (!PM.isConsumedExpr(NE) && treatUnusedNewEscaped(NE))
     return;
 
@@ -1823,7 +1823,7 @@ void MallocChecker::ReportBadFree(CheckerContext &C, SVal ArgVal,
 
     printExpectedAllocName(os, C, DeallocExpr);
 
-    auto R = llvm::make_unique<BugReport>(*BT_BadFree[*CheckKind], os.str(), N);
+    auto R = std::make_unique<BugReport>(*BT_BadFree[*CheckKind], os.str(), N);
     R->markInteresting(MR);
     R->addRange(Range);
     C.emitReport(std::move(R));
@@ -1847,7 +1847,7 @@ void MallocChecker::ReportFreeAlloca(CheckerContext &C, SVal ArgVal,
       BT_FreeAlloca[*CheckKind].reset(new BugType(
           CheckNames[*CheckKind], "Free alloca()", categories::MemoryError));
 
-    auto R = llvm::make_unique<BugReport>(
+    auto R = std::make_unique<BugReport>(
         *BT_FreeAlloca[*CheckKind],
         "Memory allocated by alloca() should not be deallocated", N);
     R->markInteresting(ArgVal.getAsRegion());
@@ -1903,10 +1903,10 @@ void MallocChecker::ReportMismatchedDealloc(CheckerContext &C,
         os << ", not " << DeallocOs.str();
     }
 
-    auto R = llvm::make_unique<BugReport>(*BT_MismatchedDealloc, os.str(), N);
+    auto R = std::make_unique<BugReport>(*BT_MismatchedDealloc, os.str(), N);
     R->markInteresting(Sym);
     R->addRange(Range);
-    R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
+    R->addVisitor(std::make_unique<MallocBugVisitor>(Sym));
     C.emitReport(std::move(R));
   }
 }
@@ -1962,7 +1962,7 @@ void MallocChecker::ReportOffsetFree(CheckerContext &C, SVal ArgVal,
   else
     os << "allocated memory";
 
-  auto R = llvm::make_unique<BugReport>(*BT_OffsetFree[*CheckKind], os.str(), N);
+  auto R = std::make_unique<BugReport>(*BT_OffsetFree[*CheckKind], os.str(), N);
   R->markInteresting(MR->getBaseRegion());
   R->addRange(Range);
   C.emitReport(std::move(R));
@@ -1988,7 +1988,7 @@ void MallocChecker::ReportUseAfterFree(CheckerContext &C, SourceRange Range,
     AllocationFamily AF =
         C.getState()->get<RegionState>(Sym)->getAllocationFamily();
 
-    auto R = llvm::make_unique<BugReport>(*BT_UseFree[*CheckKind],
+    auto R = std::make_unique<BugReport>(*BT_UseFree[*CheckKind],
         AF == AF_InnerBuffer
               ? "Inner pointer of container used after re/deallocation"
               : "Use of memory after it is freed",
@@ -1996,7 +1996,7 @@ void MallocChecker::ReportUseAfterFree(CheckerContext &C, SourceRange Range,
 
     R->markInteresting(Sym);
     R->addRange(Range);
-    R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
+    R->addVisitor(std::make_unique<MallocBugVisitor>(Sym));
 
     if (AF == AF_InnerBuffer)
       R->addVisitor(allocation_state::getInnerPointerBRVisitor(Sym));
@@ -2022,7 +2022,7 @@ void MallocChecker::ReportDoubleFree(CheckerContext &C, SourceRange Range,
       BT_DoubleFree[*CheckKind].reset(new BugType(
           CheckNames[*CheckKind], "Double free", categories::MemoryError));
 
-    auto R = llvm::make_unique<BugReport>(
+    auto R = std::make_unique<BugReport>(
         *BT_DoubleFree[*CheckKind],
         (Released ? "Attempt to free released memory"
                   : "Attempt to free non-owned memory"),
@@ -2031,7 +2031,7 @@ void MallocChecker::ReportDoubleFree(CheckerContext &C, SourceRange Range,
     R->markInteresting(Sym);
     if (PrevSym)
       R->markInteresting(PrevSym);
-    R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
+    R->addVisitor(std::make_unique<MallocBugVisitor>(Sym));
     C.emitReport(std::move(R));
   }
 }
@@ -2051,11 +2051,11 @@ void MallocChecker::ReportDoubleDelete(CheckerContext &C, SymbolRef Sym) const {
                                         "Double delete",
                                         categories::MemoryError));
 
-    auto R = llvm::make_unique<BugReport>(
+    auto R = std::make_unique<BugReport>(
         *BT_DoubleDelete, "Attempt to delete released memory", N);
 
     R->markInteresting(Sym);
-    R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
+    R->addVisitor(std::make_unique<MallocBugVisitor>(Sym));
     C.emitReport(std::move(R));
   }
 }
@@ -2079,13 +2079,13 @@ void MallocChecker::ReportUseZeroAllocated(CheckerContext &C,
           new BugType(CheckNames[*CheckKind], "Use of zero allocated",
                       categories::MemoryError));
 
-    auto R = llvm::make_unique<BugReport>(*BT_UseZerroAllocated[*CheckKind],
+    auto R = std::make_unique<BugReport>(*BT_UseZerroAllocated[*CheckKind],
                                          "Use of zero-allocated memory", N);
 
     R->addRange(Range);
     if (Sym) {
       R->markInteresting(Sym);
-      R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
+      R->addVisitor(std::make_unique<MallocBugVisitor>(Sym));
     }
     C.emitReport(std::move(R));
   }
@@ -2119,7 +2119,7 @@ void MallocChecker::ReportFunctionPointerFree(CheckerContext &C, SVal ArgVal,
 
     Os << " is a function pointer";
 
-    auto R = llvm::make_unique<BugReport>(*BT_BadFree[*CheckKind], Os.str(), N);
+    auto R = std::make_unique<BugReport>(*BT_BadFree[*CheckKind], Os.str(), N);
     R->markInteresting(MR);
     R->addRange(Range);
     C.emitReport(std::move(R));
@@ -2344,11 +2344,11 @@ void MallocChecker::reportLeak(SymbolRef Sym, ExplodedNode *N,
     os << "Potential memory leak";
   }
 
-  auto R = llvm::make_unique<BugReport>(
+  auto R = std::make_unique<BugReport>(
       *BT_Leak[*CheckKind], os.str(), N, LocUsedForUniqueing,
       AllocNode->getLocationContext()->getDecl());
   R->markInteresting(Sym);
-  R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym, true));
+  R->addVisitor(std::make_unique<MallocBugVisitor>(Sym, true));
   C.emitReport(std::move(R));
 }
 
@@ -2906,7 +2906,7 @@ static bool isReferenceCountingPointerDestructor(const CXXDestructorDecl *DD) {
   return false;
 }
 
-std::shared_ptr<PathDiagnosticPiece> MallocChecker::MallocBugVisitor::VisitNode(
+PathDiagnosticPieceRef MallocChecker::MallocBugVisitor::VisitNode(
     const ExplodedNode *N, BugReporterContext &BRC, BugReport &BR) {
 
   ProgramStateRef state = N->getState();

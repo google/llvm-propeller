@@ -187,6 +187,11 @@ public:
         // experssion is impossible to write down.
         if (const auto *CtorExpr = dyn_cast<CXXConstructExpr>(E))
           return CtorExpr->getParenOrBraceRange().isInvalid();
+        // Ignore implicit conversion-operator AST node.
+        if (const auto *ME = dyn_cast<MemberExpr>(E)) {
+          if (isa<CXXConversionDecl>(ME->getMemberDecl()))
+            return ME->getMemberLoc().isInvalid();
+        }
         return isa<ImplicitCastExpr>(E);
       };
 
@@ -208,10 +213,8 @@ public:
 
 private:
   void finish() override {
-    if (auto DefinedMacro = locateMacroAt(SearchedLocation, PP)) {
+    if (auto DefinedMacro = locateMacroAt(SearchedLocation, PP))
       MacroInfos.push_back(*DefinedMacro);
-      assert(Decls.empty());
-    }
   }
 };
 
@@ -310,7 +313,9 @@ std::vector<LocatedSymbol> locateSymbolAt(ParsedAST &AST, Position Pos,
 
   // Emit all symbol locations (declaration or definition) from AST.
   for (const Decl *D : Symbols.Decls) {
-    auto Loc = makeLocation(AST.getASTContext(), findNameLoc(D), *MainFilePath);
+    auto Loc =
+        makeLocation(AST.getASTContext(), spellingLocIfSpelled(findName(D), SM),
+                     *MainFilePath);
     if (!Loc)
       continue;
 
@@ -370,7 +375,6 @@ namespace {
 class ReferenceFinder : public index::IndexDataConsumer {
 public:
   struct Reference {
-    const Decl *CanonicalTarget;
     SourceLocation Loc;
     index::SymbolRoleSet Role;
   };
@@ -384,17 +388,15 @@ public:
 
   std::vector<Reference> take() && {
     llvm::sort(References, [](const Reference &L, const Reference &R) {
-      return std::tie(L.Loc, L.CanonicalTarget, L.Role) <
-             std::tie(R.Loc, R.CanonicalTarget, R.Role);
+      return std::tie(L.Loc, L.Role) < std::tie(R.Loc, R.Role);
     });
     // We sometimes see duplicates when parts of the AST get traversed twice.
-    References.erase(
-        std::unique(References.begin(), References.end(),
-                    [](const Reference &L, const Reference &R) {
-                      return std::tie(L.CanonicalTarget, L.Loc, L.Role) ==
-                             std::tie(R.CanonicalTarget, R.Loc, R.Role);
-                    }),
-        References.end());
+    References.erase(std::unique(References.begin(), References.end(),
+                                 [](const Reference &L, const Reference &R) {
+                                   return std::tie(L.Loc, L.Role) ==
+                                          std::tie(R.Loc, R.Role);
+                                 }),
+                     References.end());
     return std::move(References);
   }
 
@@ -407,7 +409,7 @@ public:
     const SourceManager &SM = AST.getSourceManager();
     Loc = SM.getFileLoc(Loc);
     if (isInsideMainFile(Loc, SM) && CanonicalTargets.count(D))
-      References.push_back({D, Loc, Roles});
+      References.push_back({Loc, Roles});
     return true;
   }
 
@@ -438,8 +440,11 @@ std::vector<DocumentHighlight> findDocumentHighlights(ParsedAST &AST,
   const SourceManager &SM = AST.getSourceManager();
   auto Symbols = getSymbolAtPosition(
       AST, getBeginningOfIdentifier(AST, Pos, SM.getMainFileID()));
+  // FIXME: show references to macro within file?
   auto References = findRefs(Symbols.Decls, AST);
 
+  // FIXME: we may get multiple DocumentHighlights with the same location and
+  // different kinds, deduplicate them.
   std::vector<DocumentHighlight> Result;
   for (const auto &Ref : References) {
     if (auto Range =
@@ -716,7 +721,7 @@ static HoverInfo getHoverContents(const Decl *D, const SymbolIndex *Index) {
         HI.Value.emplace();
         llvm::raw_string_ostream ValueOS(*HI.Value);
         Result.Val.printPretty(ValueOS, const_cast<ASTContext &>(Ctx),
-                               Var->getType());
+                               Init->getType());
       }
     }
   }
@@ -950,6 +955,15 @@ std::vector<Location> findReferences(ParsedAST &AST, Position Pos,
   // We traverse the AST to find references in the main file.
   // TODO: should we handle macros, too?
   auto MainFileRefs = findRefs(Symbols.Decls, AST);
+  // We may get multiple refs with the same location and different Roles, as
+  // cross-reference is only interested in locations, we deduplicate them
+  // by the location to avoid emitting duplicated locations.
+  MainFileRefs.erase(std::unique(MainFileRefs.begin(), MainFileRefs.end(),
+                                 [](const ReferenceFinder::Reference &L,
+                                    const ReferenceFinder::Reference &R) {
+                                   return L.Loc == R.Loc;
+                                 }),
+                     MainFileRefs.end());
   for (const auto &Ref : MainFileRefs) {
     if (auto Range =
             getTokenRange(AST.getASTContext().getSourceManager(),
@@ -1045,7 +1059,8 @@ static llvm::Optional<TypeHierarchyItem>
 declToTypeHierarchyItem(ASTContext &Ctx, const NamedDecl &ND) {
   auto &SM = Ctx.getSourceManager();
 
-  SourceLocation NameLoc = findNameLoc(&ND);
+  SourceLocation NameLoc =
+      spellingLocIfSpelled(findName(&ND), Ctx.getSourceManager());
   // getFileLoc is a good choice for us, but we also need to make sure
   // sourceLocToPosition won't switch files, so we call getSpellingLoc on top of
   // that to make sure it does not switch files.

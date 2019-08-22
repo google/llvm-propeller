@@ -30,6 +30,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Capacity.h"
+#include "llvm/Support/Errc.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
@@ -309,9 +310,20 @@ const FileEntry *HeaderSearch::getFileAndSuggestModule(
     ModuleMap::KnownHeader *SuggestedModule) {
   // If we have a module map that might map this header, load it and
   // check whether we'll have a suggestion for a module.
-  auto File = getFileMgr().getFile(FileName, /*OpenFile=*/true);
-  if (!File)
+  llvm::ErrorOr<const FileEntry *> File =
+      getFileMgr().getFile(FileName, /*OpenFile=*/true);
+  if (!File) {
+    // For rare, surprising errors (e.g. "out of file handles"), diag the EC
+    // message.
+    std::error_code EC = File.getError();
+    if (EC != llvm::errc::no_such_file_or_directory &&
+        EC != llvm::errc::invalid_argument &&
+        EC != llvm::errc::is_a_directory && EC != llvm::errc::not_a_directory) {
+      Diags.Report(IncludeLoc, diag::err_cannot_open_file)
+          << FileName << EC.message();
+    }
     return nullptr;
+  }
 
   // If there is a module that corresponds to this header, suggest it.
   if (!findUsableModuleForHeader(*File, Dir ? Dir : (*File)->getDir(),

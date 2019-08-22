@@ -90,7 +90,7 @@ void WasmDumper::printRelocation(const SectionRef &Section,
   StringRef SymName;
   symbol_iterator SI = Reloc.getSymbol();
   if (SI != Obj->symbol_end())
-    SymName = error(SI->getName());
+    SymName = unwrapOrError(Obj->getFileName(), SI->getName());
 
   bool HasAddend = false;
   switch (RelocType) {
@@ -133,8 +133,8 @@ void WasmDumper::printRelocations() {
   int SectionNumber = 0;
   for (const SectionRef &Section : Obj->sections()) {
     bool PrintedGroup = false;
-    StringRef Name;
-    error(Section.getName(Name));
+    StringRef Name = unwrapOrError(Obj->getFileName(), Section.getName());
+
     ++SectionNumber;
 
     for (const RelocationRef &Reloc : Section.relocations()) {

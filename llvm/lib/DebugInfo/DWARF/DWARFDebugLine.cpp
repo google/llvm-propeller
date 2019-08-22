@@ -16,7 +16,6 @@
 #include "llvm/DebugInfo/DWARF/DWARFRelocMap.h"
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/Format.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -156,7 +155,7 @@ void DWARFDebugLine::Prologue::dump(raw_ostream &OS,
 // Parse v2-v4 directory and file tables.
 static void
 parseV2DirFileTables(const DWARFDataExtractor &DebugLineData,
-                     uint32_t *OffsetPtr, uint64_t EndPrologueOffset,
+                     uint64_t *OffsetPtr, uint64_t EndPrologueOffset,
                      DWARFDebugLine::ContentTypeTracker &ContentTypes,
                      std::vector<DWARFFormValue> &IncludeDirectories,
                      std::vector<DWARFDebugLine::FileNameEntry> &FileNames) {
@@ -190,7 +189,7 @@ parseV2DirFileTables(const DWARFDataExtractor &DebugLineData,
 // Returns the descriptors, or an error if we did not find a path or ran off
 // the end of the prologue.
 static llvm::Expected<ContentDescriptors>
-parseV5EntryFormat(const DWARFDataExtractor &DebugLineData, uint32_t *OffsetPtr,
+parseV5EntryFormat(const DWARFDataExtractor &DebugLineData, uint64_t *OffsetPtr,
                    uint64_t EndPrologueOffset,
                    DWARFDebugLine::ContentTypeTracker *ContentTypes) {
   ContentDescriptors Descriptors;
@@ -201,7 +200,7 @@ parseV5EntryFormat(const DWARFDataExtractor &DebugLineData, uint32_t *OffsetPtr,
       return createStringError(
           errc::invalid_argument,
           "failed to parse entry content descriptions at offset "
-          "0x%8.8" PRIx32
+          "0x%8.8" PRIx64
           " because offset extends beyond the prologue end at offset "
           "0x%8.8" PRIx64,
           *OffsetPtr, EndPrologueOffset);
@@ -225,7 +224,7 @@ parseV5EntryFormat(const DWARFDataExtractor &DebugLineData, uint32_t *OffsetPtr,
 
 static Error
 parseV5DirFileTables(const DWARFDataExtractor &DebugLineData,
-                     uint32_t *OffsetPtr, uint64_t EndPrologueOffset,
+                     uint64_t *OffsetPtr, uint64_t EndPrologueOffset,
                      const dwarf::FormParams &FormParams,
                      const DWARFContext &Ctx, const DWARFUnit *U,
                      DWARFDebugLine::ContentTypeTracker &ContentTypes,
@@ -244,7 +243,7 @@ parseV5DirFileTables(const DWARFDataExtractor &DebugLineData,
       return createStringError(
           errc::invalid_argument,
           "failed to parse directory entry at offset "
-          "0x%8.8" PRIx32
+          "0x%8.8" PRIx64
           " because offset extends beyond the prologue end at offset "
           "0x%8.8" PRIx64,
           *OffsetPtr, EndPrologueOffset);
@@ -280,7 +279,7 @@ parseV5DirFileTables(const DWARFDataExtractor &DebugLineData,
       return createStringError(
           errc::invalid_argument,
           "failed to parse file entry at offset "
-          "0x%8.8" PRIx32
+          "0x%8.8" PRIx64
           " because offset extends beyond the prologue end at offset "
           "0x%8.8" PRIx64,
           *OffsetPtr, EndPrologueOffset);
@@ -325,7 +324,7 @@ parseV5DirFileTables(const DWARFDataExtractor &DebugLineData,
 }
 
 Error DWARFDebugLine::Prologue::parse(const DWARFDataExtractor &DebugLineData,
-                                      uint32_t *OffsetPtr,
+                                      uint64_t *OffsetPtr,
                                       const DWARFContext &Ctx,
                                       const DWARFUnit *U) {
   const uint64_t PrologueOffset = *OffsetPtr;
@@ -382,7 +381,7 @@ Error DWARFDebugLine::Prologue::parse(const DWARFDataExtractor &DebugLineData,
               errc::invalid_argument,
               "parsing line table prologue at 0x%8.8" PRIx64
               " found an invalid directory or file table description at"
-              " 0x%8.8" PRIx32,
+              " 0x%8.8" PRIx64,
               PrologueOffset, *OffsetPtr),
           std::move(e));
     }
@@ -394,7 +393,7 @@ Error DWARFDebugLine::Prologue::parse(const DWARFDataExtractor &DebugLineData,
     return createStringError(errc::invalid_argument,
                        "parsing line table prologue at 0x%8.8" PRIx64
                        " should have ended at 0x%8.8" PRIx64
-                       " but it ended at 0x%8.8" PRIx32,
+                       " but it ended at 0x%8.8" PRIx64,
                        PrologueOffset, EndPrologueOffset, *OffsetPtr);
   return Error::success();
 }
@@ -502,7 +501,7 @@ void DWARFDebugLine::ParsingState::appendRowToMatrix() {
 }
 
 const DWARFDebugLine::LineTable *
-DWARFDebugLine::getLineTable(uint32_t Offset) const {
+DWARFDebugLine::getLineTable(uint64_t Offset) const {
   LineTableConstIter Pos = LineTableMap.find(Offset);
   if (Pos != LineTableMap.end())
     return &Pos->second;
@@ -510,10 +509,10 @@ DWARFDebugLine::getLineTable(uint32_t Offset) const {
 }
 
 Expected<const DWARFDebugLine::LineTable *> DWARFDebugLine::getOrParseLineTable(
-    DWARFDataExtractor &DebugLineData, uint32_t Offset, const DWARFContext &Ctx,
+    DWARFDataExtractor &DebugLineData, uint64_t Offset, const DWARFContext &Ctx,
     const DWARFUnit *U, std::function<void(Error)> RecoverableErrorCallback) {
   if (!DebugLineData.isValidOffset(Offset))
-    return createStringError(errc::invalid_argument, "offset 0x%8.8" PRIx32
+    return createStringError(errc::invalid_argument, "offset 0x%8.8" PRIx64
                        " is not a valid debug line section offset",
                        Offset);
 
@@ -530,10 +529,10 @@ Expected<const DWARFDebugLine::LineTable *> DWARFDebugLine::getOrParseLineTable(
 }
 
 Error DWARFDebugLine::LineTable::parse(
-    DWARFDataExtractor &DebugLineData, uint32_t *OffsetPtr,
+    DWARFDataExtractor &DebugLineData, uint64_t *OffsetPtr,
     const DWARFContext &Ctx, const DWARFUnit *U,
     std::function<void(Error)> RecoverableErrorCallback, raw_ostream *OS) {
-  const uint32_t DebugLineOffset = *OffsetPtr;
+  const uint64_t DebugLineOffset = *OffsetPtr;
 
   clear();
 
@@ -549,7 +548,7 @@ Error DWARFDebugLine::LineTable::parse(
   if (PrologueErr)
     return PrologueErr;
 
-  const uint32_t EndOffset =
+  const uint64_t EndOffset =
       DebugLineOffset + Prologue.TotalLength + Prologue.sizeofTotalLength();
 
   // See if we should tell the data extractor the address size.
@@ -563,7 +562,7 @@ Error DWARFDebugLine::LineTable::parse(
 
   while (*OffsetPtr < EndOffset) {
     if (OS)
-      *OS << format("0x%08.08" PRIx32 ": ", *OffsetPtr);
+      *OS << format("0x%08.08" PRIx64 ": ", *OffsetPtr);
 
     uint8_t Opcode = DebugLineData.getU8(OffsetPtr);
 
@@ -574,7 +573,7 @@ Error DWARFDebugLine::LineTable::parse(
       // Extended Opcodes always start with a zero opcode followed by
       // a uleb128 length so you can skip ones you don't know about
       uint64_t Len = DebugLineData.getULEB128(OffsetPtr);
-      uint32_t ExtOffset = *OffsetPtr;
+      uint64_t ExtOffset = *OffsetPtr;
 
       // Tolerate zero-length; assume length is correct and soldier on.
       if (Len == 0) {
@@ -619,7 +618,7 @@ Error DWARFDebugLine::LineTable::parse(
           DebugLineData.setAddressSize(Len - 1);
         else if (DebugLineData.getAddressSize() != Len - 1) {
           return createStringError(errc::invalid_argument,
-                             "mismatching address size at offset 0x%8.8" PRIx32
+                             "mismatching address size at offset 0x%8.8" PRIx64
                              " expected 0x%2.2" PRIx8 " found 0x%2.2" PRIx64,
                              ExtOffset, DebugLineData.getAddressSize(),
                              Len - 1);
@@ -686,8 +685,8 @@ Error DWARFDebugLine::LineTable::parse(
       // Otherwise we have an unparseable line-number program.
       if (*OffsetPtr - ExtOffset != Len)
         return createStringError(errc::illegal_byte_sequence,
-                           "unexpected line op length at offset 0x%8.8" PRIx32
-                           " expected 0x%2.2" PRIx64 " found 0x%2.2" PRIx32,
+                           "unexpected line op length at offset 0x%8.8" PRIx64
+                           " expected 0x%2.2" PRIx64 " found 0x%2.2" PRIx64,
                            ExtOffset, Len, *OffsetPtr - ExtOffset);
     } else if (Opcode < Prologue.OpcodeBase) {
       if (OS)
@@ -1041,10 +1040,9 @@ static bool isPathAbsoluteOnWindowsOrPosix(const Twine &Path) {
          sys::path::is_absolute(Path, sys::path::Style::windows);
 }
 
-bool DWARFDebugLine::Prologue::getFileNameByIndex(uint64_t FileIndex,
-                                                  StringRef CompDir,
-                                                  FileLineInfoKind Kind,
-                                                  std::string &Result) const {
+bool DWARFDebugLine::Prologue::getFileNameByIndex(
+    uint64_t FileIndex, StringRef CompDir, FileLineInfoKind Kind,
+    std::string &Result, sys::path::Style Style) const {
   if (Kind == FileLineInfoKind::None || !hasFileAtIndex(FileIndex))
     return false;
   const FileNameEntry &Entry = getFileNameEntry(FileIndex);
@@ -1070,11 +1068,11 @@ bool DWARFDebugLine::Prologue::getFileNameByIndex(uint64_t FileIndex,
     // We know that FileName is not absolute, the only way to have an
     // absolute path at this point would be if IncludeDir is absolute.
     if (!CompDir.empty() && !isPathAbsoluteOnWindowsOrPosix(IncludeDir))
-      sys::path::append(FilePath, CompDir);
+      sys::path::append(FilePath, Style, CompDir);
   }
 
   // sys::path::append skips empty strings.
-  sys::path::append(FilePath, IncludeDir, FileName);
+  sys::path::append(FilePath, Style, IncludeDir, FileName);
   Result = FilePath.str();
   return true;
 }
@@ -1136,7 +1134,7 @@ DWARFDebugLine::LineTable DWARFDebugLine::SectionParser::parseNext(
   assert(DebugLineData.isValidOffset(Offset) &&
          "parsing should have terminated");
   DWARFUnit *U = prepareToParse(Offset);
-  uint32_t OldOffset = Offset;
+  uint64_t OldOffset = Offset;
   LineTable LT;
   if (Error Err = LT.parse(DebugLineData, &Offset, Context, U,
                            RecoverableErrorCallback, OS))
@@ -1150,14 +1148,14 @@ void DWARFDebugLine::SectionParser::skip(
   assert(DebugLineData.isValidOffset(Offset) &&
          "parsing should have terminated");
   DWARFUnit *U = prepareToParse(Offset);
-  uint32_t OldOffset = Offset;
+  uint64_t OldOffset = Offset;
   LineTable LT;
   if (Error Err = LT.Prologue.parse(DebugLineData, &Offset, Context, U))
     ErrorCallback(std::move(Err));
   moveToNextTable(OldOffset, LT.Prologue);
 }
 
-DWARFUnit *DWARFDebugLine::SectionParser::prepareToParse(uint32_t Offset) {
+DWARFUnit *DWARFDebugLine::SectionParser::prepareToParse(uint64_t Offset) {
   DWARFUnit *U = nullptr;
   auto It = LineToUnit.find(Offset);
   if (It != LineToUnit.end())
@@ -1166,7 +1164,7 @@ DWARFUnit *DWARFDebugLine::SectionParser::prepareToParse(uint32_t Offset) {
   return U;
 }
 
-void DWARFDebugLine::SectionParser::moveToNextTable(uint32_t OldOffset,
+void DWARFDebugLine::SectionParser::moveToNextTable(uint64_t OldOffset,
                                                     const Prologue &P) {
   // If the length field is not valid, we don't know where the next table is, so
   // cannot continue to parse. Mark the parser as done, and leave the Offset

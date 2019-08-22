@@ -177,6 +177,14 @@ static cl::opt<unsigned> TinyTripCountVectorThreshold(
              "value are vectorized only if no scalar iteration overheads "
              "are incurred."));
 
+// Indicates that an epilogue is undesired, predication is preferred.
+// This means that the vectorizer will try to fold the loop-tail (epilogue)
+// into the loop and predicate the loop body accordingly.
+static cl::opt<bool> PreferPredicateOverEpilog(
+    "prefer-predicate-over-epilog", cl::init(false), cl::Hidden,
+    cl::desc("Indicate that an epilogue is undesired, predication should be "
+             "used instead."));
+
 static cl::opt<bool> MaximizeBandwidth(
     "vectorizer-maximize-bandwidth", cl::init(false), cl::Hidden,
     cl::desc("Maximize bandwidth when selecting vectorization factor which "
@@ -795,6 +803,59 @@ void InnerLoopVectorizer::setDebugLocFromInst(IRBuilder<> &B, const Value *Ptr) 
     B.SetCurrentDebugLocation(DebugLoc());
 }
 
+/// Write a record \p DebugMsg about vectorization failure to the debug
+/// output stream. If \p I is passed, it is an instruction that prevents
+/// vectorization.
+#ifndef NDEBUG
+static void debugVectorizationFailure(const StringRef DebugMsg,
+    Instruction *I) {
+  dbgs() << "LV: Not vectorizing: " << DebugMsg;
+  if (I != nullptr)
+    dbgs() << " " << *I;
+  else
+    dbgs() << '.';
+  dbgs() << '\n';
+}
+#endif
+
+/// Create an analysis remark that explains why vectorization failed
+///
+/// \p PassName is the name of the pass (e.g. can be AlwaysPrint).  \p
+/// RemarkName is the identifier for the remark.  If \p I is passed it is an
+/// instruction that prevents vectorization.  Otherwise \p TheLoop is used for
+/// the location of the remark.  \return the remark object that can be
+/// streamed to.
+static OptimizationRemarkAnalysis createLVAnalysis(const char *PassName,
+    StringRef RemarkName, Loop *TheLoop, Instruction *I) {
+  Value *CodeRegion = TheLoop->getHeader();
+  DebugLoc DL = TheLoop->getStartLoc();
+
+  if (I) {
+    CodeRegion = I->getParent();
+    // If there is no debug location attached to the instruction, revert back to
+    // using the loop's.
+    if (I->getDebugLoc())
+      DL = I->getDebugLoc();
+  }
+
+  OptimizationRemarkAnalysis R(PassName, RemarkName, DL, CodeRegion);
+  R << "loop not vectorized: ";
+  return R;
+}
+
+namespace llvm {
+
+void reportVectorizationFailure(const StringRef DebugMsg,
+    const StringRef OREMsg, const StringRef ORETag,
+    OptimizationRemarkEmitter *ORE, Loop *TheLoop, Instruction *I) {
+  LLVM_DEBUG(debugVectorizationFailure(DebugMsg, I));
+  LoopVectorizeHints Hints(TheLoop, true /* doesn't matter */, *ORE);
+  ORE->emit(createLVAnalysis(Hints.vectorizeAnalysisPassName(),
+                ORETag, TheLoop, I) << OREMsg);
+}
+
+} // end namespace llvm
+
 #ifndef NDEBUG
 /// \return string containing a file name and a line # for the given loop.
 static std::string getDebugLocString(const Loop *L) {
@@ -853,7 +914,7 @@ enum ScalarEpilogueLowering {
   CM_ScalarEpilogueNotAllowedLowTripLoop,
 
   // Loop hint predicate indicating an epilogue is undesired.
-  CM_ScalarEpilogueNotNeededPredicatePragma
+  CM_ScalarEpilogueNotNeededUsePredicate
 };
 
 /// LoopVectorizationCostModel - estimates the expected speedups due to
@@ -1273,15 +1334,6 @@ private:
   /// Returns true if an artificially high cost for emulated masked memrefs
   /// should be used.
   bool useEmulatedMaskMemRefHack(Instruction *I);
-
-  /// Create an analysis remark that explains why vectorization failed
-  ///
-  /// \p RemarkName is the identifier for the remark.  \return the remark object
-  /// that can be streamed to.
-  OptimizationRemarkAnalysis createMissedAnalysis(StringRef RemarkName) {
-    return createLVMissedAnalysis(Hints->vectorizeAnalysisPassName(),
-                                  RemarkName, TheLoop);
-  }
 
   /// Map of scalar integer values to the smallest bitwidth they can be legally
   /// represented as. The vector equivalents of these values should be truncated
@@ -2694,7 +2746,7 @@ void InnerLoopVectorizer::emitMemRuntimeChecks(Loop *L, BasicBlock *Bypass) {
 
   // We currently don't use LoopVersioning for the actual loop cloning but we
   // still use it to add the noalias metadata.
-  LVer = llvm::make_unique<LoopVersioning>(*Legal->getLAI(), OrigLoop, LI, DT,
+  LVer = std::make_unique<LoopVersioning>(*Legal->getLAI(), OrigLoop, LI, DT,
                                            PSE.getSE());
   LVer->prepareNoAliasMetadata();
 }
@@ -4707,36 +4759,30 @@ bool LoopVectorizationCostModel::runtimeChecksRequired() {
   LLVM_DEBUG(dbgs() << "LV: Performing code size checks.\n");
 
   if (Legal->getRuntimePointerChecking()->Need) {
-    ORE->emit(createMissedAnalysis("CantVersionLoopWithOptForSize")
-              << "runtime pointer checks needed. Enable vectorization of this "
-                 "loop with '#pragma clang loop vectorize(enable)' when "
-                 "compiling with -Os/-Oz");
-    LLVM_DEBUG(
-        dbgs()
-        << "LV: Aborting. Runtime ptr check is required with -Os/-Oz.\n");
+    reportVectorizationFailure("Runtime ptr check is required with -Os/-Oz",
+        "runtime pointer checks needed. Enable vectorization of this "
+        "loop with '#pragma clang loop vectorize(enable)' when "
+        "compiling with -Os/-Oz",
+        "CantVersionLoopWithOptForSize", ORE, TheLoop);
     return true;
   }
 
   if (!PSE.getUnionPredicate().getPredicates().empty()) {
-    ORE->emit(createMissedAnalysis("CantVersionLoopWithOptForSize")
-              << "runtime SCEV checks needed. Enable vectorization of this "
-                 "loop with '#pragma clang loop vectorize(enable)' when "
-                 "compiling with -Os/-Oz");
-    LLVM_DEBUG(
-        dbgs()
-        << "LV: Aborting. Runtime SCEV check is required with -Os/-Oz.\n");
+    reportVectorizationFailure("Runtime SCEV check is required with -Os/-Oz",
+        "runtime SCEV checks needed. Enable vectorization of this "
+        "loop with '#pragma clang loop vectorize(enable)' when "
+        "compiling with -Os/-Oz",
+        "CantVersionLoopWithOptForSize", ORE, TheLoop);
     return true;
   }
 
   // FIXME: Avoid specializing for stride==1 instead of bailing out.
   if (!Legal->getLAI()->getSymbolicStrides().empty()) {
-    ORE->emit(createMissedAnalysis("CantVersionLoopWithOptForSize")
-              << "runtime stride == 1 checks needed. Enable vectorization of "
-                 "this loop with '#pragma clang loop vectorize(enable)' when "
-                 "compiling with -Os/-Oz");
-    LLVM_DEBUG(
-        dbgs()
-        << "LV: Aborting. Runtime stride check is required with -Os/-Oz.\n");
+    reportVectorizationFailure("Runtime stride check is required with -Os/-Oz",
+        "runtime stride == 1 checks needed. Enable vectorization of "
+        "this loop with '#pragma clang loop vectorize(enable)' when "
+        "compiling with -Os/-Oz",
+        "CantVersionLoopWithOptForSize", ORE, TheLoop);
     return true;
   }
 
@@ -4747,31 +4793,28 @@ Optional<unsigned> LoopVectorizationCostModel::computeMaxVF() {
   if (Legal->getRuntimePointerChecking()->Need && TTI.hasBranchDivergence()) {
     // TODO: It may by useful to do since it's still likely to be dynamically
     // uniform if the target can skip.
-    LLVM_DEBUG(
-        dbgs() << "LV: Not inserting runtime ptr check for divergent target");
-
-    ORE->emit(
-      createMissedAnalysis("CantVersionLoopWithDivergentTarget")
-      << "runtime pointer checks needed. Not enabled for divergent target");
-
+    reportVectorizationFailure(
+        "Not inserting runtime ptr check for divergent target",
+        "runtime pointer checks needed. Not enabled for divergent target",
+        "CantVersionLoopWithDivergentTarget", ORE, TheLoop);
     return None;
   }
 
   unsigned TC = PSE.getSE()->getSmallConstantTripCount(TheLoop);
   LLVM_DEBUG(dbgs() << "LV: Found trip count: " << TC << '\n');
   if (TC == 1) {
-    ORE->emit(createMissedAnalysis("SingleIterationLoop")
-              << "loop trip count is one, irrelevant for vectorization");
-    LLVM_DEBUG(dbgs() << "LV: Aborting, single iteration (non) loop.\n");
+    reportVectorizationFailure("Single iteration (non) loop",
+        "loop trip count is one, irrelevant for vectorization",
+        "SingleIterationLoop", ORE, TheLoop);
     return None;
   }
 
   switch (ScalarEpilogueStatus) {
   case CM_ScalarEpilogueAllowed:
     return computeFeasibleMaxVF(TC);
-  case CM_ScalarEpilogueNotNeededPredicatePragma:
+  case CM_ScalarEpilogueNotNeededUsePredicate:
     LLVM_DEBUG(
-        dbgs() << "LV: vector predicate hint found.\n"
+        dbgs() << "LV: vector predicate hint/switch found.\n"
                << "LV: Not allowing scalar epilogue, creating predicated "
                << "vector loop.\n");
     break;
@@ -4810,22 +4853,25 @@ Optional<unsigned> LoopVectorizationCostModel::computeMaxVF() {
   // found modulo the vectorization factor is not zero, try to fold the tail
   // by masking.
   // FIXME: look for a smaller MaxVF that does divide TC rather than masking.
-  if (Legal->canFoldTailByMasking()) {
+  if (Legal->prepareToFoldTailByMasking()) {
     FoldTailByMasking = true;
     return MaxVF;
   }
 
   if (TC == 0) {
-    ORE->emit(
-        createMissedAnalysis("UnknownLoopCountComplexCFG")
-        << "unable to calculate the loop count due to complex control flow");
+    reportVectorizationFailure(
+        "Unable to calculate the loop count due to complex control flow",
+        "unable to calculate the loop count due to complex control flow",
+        "UnknownLoopCountComplexCFG", ORE, TheLoop);
     return None;
   }
 
-  ORE->emit(createMissedAnalysis("NoTailLoopWithOptForSize")
-            << "cannot optimize for size and vectorize at the same time. "
-               "Enable vectorization of this loop with '#pragma clang loop "
-               "vectorize(enable)' when compiling with -Os/-Oz");
+  reportVectorizationFailure(
+      "Cannot optimize for size and vectorize at the same time.",
+      "cannot optimize for size and vectorize at the same time. "
+      "Enable vectorization of this loop with '#pragma clang loop "
+      "vectorize(enable)' when compiling with -Os/-Oz",
+      "NoTailLoopWithOptForSize", ORE, TheLoop);
   return None;
 }
 
@@ -4936,10 +4982,9 @@ LoopVectorizationCostModel::selectVectorizationFactor(unsigned MaxVF) {
   }
 
   if (!EnableCondStoresVectorization && NumPredStores) {
-    ORE->emit(createMissedAnalysis("ConditionalStore")
-              << "store that is conditionally executed prevents vectorization");
-    LLVM_DEBUG(
-        dbgs() << "LV: No vectorization. There are conditional stores.\n");
+    reportVectorizationFailure("There are conditional stores.",
+        "store that is conditionally executed prevents vectorization",
+        "ConditionalStore", ORE, TheLoop);
     Width = 1;
     Cost = ScalarCost;
   }
@@ -5084,6 +5129,14 @@ unsigned LoopVectorizationCostModel::selectInterleaveCount(unsigned VF,
       MaxInterleaveCount = ForceTargetMaxVectorInterleaveFactor;
   }
 
+  // If the trip count is constant, limit the interleave count to be less than
+  // the trip count divided by VF.
+  if (TC > 0) {
+    assert(TC >= VF && "VF exceeds trip count?");
+    if ((TC / VF) < MaxInterleaveCount)
+      MaxInterleaveCount = (TC / VF);
+  }
+
   // If we did not calculate the cost for VF (because the user selected the VF)
   // then we calculate the cost of VF here.
   if (LoopCost == 0)
@@ -5092,7 +5145,7 @@ unsigned LoopVectorizationCostModel::selectInterleaveCount(unsigned VF,
   assert(LoopCost && "Non-zero loop cost expected");
 
   // Clamp the calculated IC to be between the 1 and the max interleave count
-  // that the target allows.
+  // that the target and trip count allows.
   if (IC > MaxInterleaveCount)
     IC = MaxInterleaveCount;
   else if (IC < 1)
@@ -6919,7 +6972,7 @@ VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
 
   // Create a dummy pre-entry VPBasicBlock to start building the VPlan.
   VPBasicBlock *VPBB = new VPBasicBlock("Pre-Entry");
-  auto Plan = llvm::make_unique<VPlan>(VPBB);
+  auto Plan = std::make_unique<VPlan>(VPBB);
 
   VPRecipeBuilder RecipeBuilder(OrigLoop, TLI, Legal, CM, Builder);
   // Represent values that will have defs inside VPlan.
@@ -7039,7 +7092,7 @@ VPlanPtr LoopVectorizationPlanner::buildVPlan(VFRange &Range) {
   assert(EnableVPlanNativePath && "VPlan-native path is not enabled.");
 
   // Create new empty VPlan
-  auto Plan = llvm::make_unique<VPlan>();
+  auto Plan = std::make_unique<VPlan>();
 
   // Build hierarchical CFG
   VPlanHCFGBuilder HCFGBuilder(OrigLoop, LI, *Plan);
@@ -7253,8 +7306,8 @@ getScalarEpilogueLowering(Function *F, Loop *L, LoopVectorizeHints &Hints,
       (F->hasOptSize() ||
        llvm::shouldOptimizeForSize(L->getHeader(), PSI, BFI)))
     SEL = CM_ScalarEpilogueNotAllowedOptSize;
-  else if (Hints.getPredicate())
-    SEL = CM_ScalarEpilogueNotNeededPredicatePragma;
+  else if (PreferPredicateOverEpilog || Hints.getPredicate()) 
+    SEL = CM_ScalarEpilogueNotNeededUsePredicate;
 
   return SEL;
 }
@@ -7423,11 +7476,10 @@ bool LoopVectorizePass::processLoop(Loop *L) {
   // an integer loop and the vector instructions selected are purely integer
   // vector instructions?
   if (F->hasFnAttribute(Attribute::NoImplicitFloat)) {
-    LLVM_DEBUG(dbgs() << "LV: Can't vectorize when the NoImplicitFloat"
-                         "attribute is used.\n");
-    ORE->emit(createLVMissedAnalysis(Hints.vectorizeAnalysisPassName(),
-                                     "NoImplicitFloat", L)
-              << "loop not vectorized due to NoImplicitFloat attribute");
+    reportVectorizationFailure(
+        "Can't vectorize when the NoImplicitFloat attribute is used",
+        "loop not vectorized due to NoImplicitFloat attribute",
+        "NoImplicitFloat", ORE, L);
     Hints.emitRemarkWithHints();
     return false;
   }
@@ -7438,11 +7490,10 @@ bool LoopVectorizePass::processLoop(Loop *L) {
   // additional fp-math flags can help.
   if (Hints.isPotentiallyUnsafe() &&
       TTI->isFPVectorizationPotentiallyUnsafe()) {
-    LLVM_DEBUG(
-        dbgs() << "LV: Potentially unsafe FP op prevents vectorization.\n");
-    ORE->emit(
-        createLVMissedAnalysis(Hints.vectorizeAnalysisPassName(), "UnsafeFP", L)
-        << "loop not vectorized due to unsafe FP support.");
+    reportVectorizationFailure(
+        "Potentially unsafe FP op prevents vectorization",
+        "loop not vectorized due to unsafe FP support.",
+        "UnsafeFP", ORE, L);
     Hints.emitRemarkWithHints();
     return false;
   }

@@ -137,7 +137,7 @@ class DataRecorder {
 public:
   DataRecorder(const FileSpec &filename, std::error_code &ec)
       : m_filename(filename.GetFilename().GetStringRef()),
-        m_os(filename.GetPath(), ec, llvm::sys::fs::F_Text), m_record(true) {}
+        m_os(filename.GetPath(), ec, llvm::sys::fs::OF_Text), m_record(true) {}
 
   static llvm::Expected<std::unique_ptr<DataRecorder>>
   Create(const FileSpec &filename);
@@ -203,7 +203,7 @@ public:
 
   /// Create and register a new provider.
   template <typename T> T *Create() {
-    std::unique_ptr<ProviderBase> provider = llvm::make_unique<T>(m_root);
+    std::unique_ptr<ProviderBase> provider = std::make_unique<T>(m_root);
     return static_cast<T *>(Register(std::move(provider)));
   }
 

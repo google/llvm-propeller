@@ -5,9 +5,6 @@ Test that plugins that load commands work correctly.
 from __future__ import print_function
 
 
-import os
-import time
-import re
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -67,3 +64,15 @@ class PluginCommandTestCase(TestBase):
             print(retobj.GetOutput())
 
         self.expect(retobj, substrs=['abc def ghi'], exe=False)
+
+    @no_debug_info_test
+    def test_invalid_plugin_invocation(self):
+        self.expect("plugin load a b",
+                    error=True, startstr="error: 'plugin load' requires one argument")
+        self.expect("plugin load",
+                    error=True, startstr="error: 'plugin load' requires one argument")
+
+    @no_debug_info_test
+    def test_invalid_plugin_target(self):
+        self.expect("plugin load ThisIsNotAValidPluginName",
+                    error=True, startstr="error: no such file")

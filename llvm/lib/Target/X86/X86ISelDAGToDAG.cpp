@@ -3333,8 +3333,12 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
   SDValue ImplDef = SDValue(
       CurDAG->getMachineNode(TargetOpcode::IMPLICIT_DEF, DL, MVT::i32), 0);
   insertDAGNode(*CurDAG, SDValue(Node, 0), ImplDef);
-  NBits = CurDAG->getTargetInsertSubreg(X86::sub_8bit, DL, MVT::i32, ImplDef,
-                                        NBits);
+
+  SDValue SRIdxVal = CurDAG->getTargetConstant(X86::sub_8bit, DL, MVT::i32);
+  insertDAGNode(*CurDAG, SDValue(Node, 0), SRIdxVal);
+  NBits = SDValue(
+      CurDAG->getMachineNode(TargetOpcode::INSERT_SUBREG, DL, MVT::i32, ImplDef,
+                             NBits, SRIdxVal), 0);
   insertDAGNode(*CurDAG, SDValue(Node, 0), NBits);
 
   if (Subtarget->hasBMI2()) {
@@ -4201,6 +4205,7 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
 
       unsigned Opc = 0;
       switch (IntNo) {
+      default: llvm_unreachable("Unexpected intrinsic!");
       case Intrinsic::x86_sse3_monitor:
         if (!Subtarget->hasSSE3())
           break;

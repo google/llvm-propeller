@@ -1076,36 +1076,29 @@ bool IRTranslator::translateGetElementPtr(const User &U,
       }
 
       if (Offset != 0) {
-        Register NewBaseReg = MRI->createGenericVirtualRegister(PtrTy);
         LLT OffsetTy = getLLTForType(*OffsetIRTy, *DL);
         auto OffsetMIB = MIRBuilder.buildConstant({OffsetTy}, Offset);
-        MIRBuilder.buildGEP(NewBaseReg, BaseReg, OffsetMIB.getReg(0));
-
-        BaseReg = NewBaseReg;
+        BaseReg =
+            MIRBuilder.buildGEP(PtrTy, BaseReg, OffsetMIB.getReg(0)).getReg(0);
         Offset = 0;
       }
 
       Register IdxReg = getOrCreateVReg(*Idx);
-      if (MRI->getType(IdxReg) != OffsetTy) {
-        Register NewIdxReg = MRI->createGenericVirtualRegister(OffsetTy);
-        MIRBuilder.buildSExtOrTrunc(NewIdxReg, IdxReg);
-        IdxReg = NewIdxReg;
-      }
+      if (MRI->getType(IdxReg) != OffsetTy)
+        IdxReg = MIRBuilder.buildSExtOrTrunc(OffsetTy, IdxReg).getReg(0);
 
       // N = N + Idx * ElementSize;
       // Avoid doing it for ElementSize of 1.
       Register GepOffsetReg;
       if (ElementSize != 1) {
-        GepOffsetReg = MRI->createGenericVirtualRegister(OffsetTy);
         auto ElementSizeMIB = MIRBuilder.buildConstant(
             getLLTForType(*OffsetIRTy, *DL), ElementSize);
-        MIRBuilder.buildMul(GepOffsetReg, ElementSizeMIB.getReg(0), IdxReg);
+        GepOffsetReg =
+            MIRBuilder.buildMul(OffsetTy, ElementSizeMIB, IdxReg).getReg(0);
       } else
         GepOffsetReg = IdxReg;
 
-      Register NewBaseReg = MRI->createGenericVirtualRegister(PtrTy);
-      MIRBuilder.buildGEP(NewBaseReg, BaseReg, GepOffsetReg);
-      BaseReg = NewBaseReg;
+      BaseReg = MIRBuilder.buildGEP(PtrTy, BaseReg, GepOffsetReg).getReg(0);
     }
   }
 
@@ -1380,12 +1373,13 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
     } else if (const auto *CI = dyn_cast<Constant>(V)) {
       MIRBuilder.buildConstDbgValue(*CI, DI.getVariable(), DI.getExpression());
     } else {
-      Register Reg = getOrCreateVReg(*V);
-      // FIXME: This does not handle register-indirect values at offset 0. The
-      // direct/indirect thing shouldn't really be handled by something as
-      // implicit as reg+noreg vs reg+imm in the first palce, but it seems
-      // pretty baked in right now.
-      MIRBuilder.buildDirectDbgValue(Reg, DI.getVariable(), DI.getExpression());
+      for (Register Reg : getOrCreateVRegs(*V)) {
+        // FIXME: This does not handle register-indirect values at offset 0. The
+        // direct/indirect thing shouldn't really be handled by something as
+        // implicit as reg+noreg vs reg+imm in the first place, but it seems
+        // pretty baked in right now.
+        MIRBuilder.buildDirectDbgValue(Reg, DI.getVariable(), DI.getExpression());
+      }
     }
     return true;
   }
@@ -1544,6 +1538,37 @@ bool IRTranslator::translateInlineAsm(const CallInst &CI,
   return true;
 }
 
+bool IRTranslator::translateCallSite(const ImmutableCallSite &CS,
+                                     MachineIRBuilder &MIRBuilder) {
+  const Instruction &I = *CS.getInstruction();
+  ArrayRef<Register> Res = getOrCreateVRegs(I);
+
+  SmallVector<ArrayRef<Register>, 8> Args;
+  Register SwiftInVReg = 0;
+  Register SwiftErrorVReg = 0;
+  for (auto &Arg : CS.args()) {
+    if (CLI->supportSwiftError() && isSwiftError(Arg)) {
+      assert(SwiftInVReg == 0 && "Expected only one swift error argument");
+      LLT Ty = getLLTForType(*Arg->getType(), *DL);
+      SwiftInVReg = MRI->createGenericVirtualRegister(Ty);
+      MIRBuilder.buildCopy(SwiftInVReg, SwiftError.getOrCreateVRegUseAt(
+                                            &I, &MIRBuilder.getMBB(), Arg));
+      Args.emplace_back(makeArrayRef(SwiftInVReg));
+      SwiftErrorVReg =
+          SwiftError.getOrCreateVRegDefAt(&I, &MIRBuilder.getMBB(), Arg);
+      continue;
+    }
+    Args.push_back(getOrCreateVRegs(*Arg));
+  }
+
+  MF->getFrameInfo().setHasCalls(true);
+  bool Success =
+      CLI->lowerCall(MIRBuilder, CS, Res, Args, SwiftErrorVReg,
+                     [&]() { return getOrCreateVReg(*CS.getCalledValue()); });
+
+  return Success;
+}
+
 bool IRTranslator::translateCall(const User &U, MachineIRBuilder &MIRBuilder) {
   const CallInst &CI = cast<CallInst>(U);
   auto TII = MF->getTarget().getIntrinsicInfo();
@@ -1563,34 +1588,8 @@ bool IRTranslator::translateCall(const User &U, MachineIRBuilder &MIRBuilder) {
       ID = static_cast<Intrinsic::ID>(TII->getIntrinsicID(F));
   }
 
-  if (!F || !F->isIntrinsic() || ID == Intrinsic::not_intrinsic) {
-    ArrayRef<Register> Res = getOrCreateVRegs(CI);
-
-    SmallVector<ArrayRef<Register>, 8> Args;
-    Register SwiftInVReg = 0;
-    Register SwiftErrorVReg = 0;
-    for (auto &Arg: CI.arg_operands()) {
-      if (CLI->supportSwiftError() && isSwiftError(Arg)) {
-        assert(SwiftInVReg == 0 && "Expected only one swift error argument");
-        LLT Ty = getLLTForType(*Arg->getType(), *DL);
-        SwiftInVReg = MRI->createGenericVirtualRegister(Ty);
-        MIRBuilder.buildCopy(SwiftInVReg, SwiftError.getOrCreateVRegUseAt(
-                                              &CI, &MIRBuilder.getMBB(), Arg));
-        Args.emplace_back(makeArrayRef(SwiftInVReg));
-        SwiftErrorVReg =
-            SwiftError.getOrCreateVRegDefAt(&CI, &MIRBuilder.getMBB(), Arg);
-        continue;
-      }
-      Args.push_back(getOrCreateVRegs(*Arg));
-    }
-
-    MF->getFrameInfo().setHasCalls(true);
-    bool Success =
-        CLI->lowerCall(MIRBuilder, &CI, Res, Args, SwiftErrorVReg,
-                       [&]() { return getOrCreateVReg(*CI.getCalledValue()); });
-
-    return Success;
-  }
+  if (!F || !F->isIntrinsic() || ID == Intrinsic::not_intrinsic)
+    return translateCallSite(&CI, MIRBuilder);
 
   assert(ID != Intrinsic::not_intrinsic && "unknown intrinsic");
 
@@ -1623,13 +1622,14 @@ bool IRTranslator::translateCall(const User &U, MachineIRBuilder &MIRBuilder) {
   TargetLowering::IntrinsicInfo Info;
   // TODO: Add a GlobalISel version of getTgtMemIntrinsic.
   if (TLI.getTgtMemIntrinsic(Info, CI, *MF, ID)) {
-    unsigned Align = Info.align;
-    if (Align == 0)
-      Align = DL->getABITypeAlignment(Info.memVT.getTypeForEVT(F->getContext()));
+    MaybeAlign Align = Info.align;
+    if (!Align)
+      Align = MaybeAlign(
+          DL->getABITypeAlignment(Info.memVT.getTypeForEVT(F->getContext())));
 
     uint64_t Size = Info.memVT.getStoreSize();
-    MIB.addMemOperand(MF->getMachineMemOperand(MachinePointerInfo(Info.ptrVal),
-                                               Info.flags, Size, Align));
+    MIB.addMemOperand(MF->getMachineMemOperand(
+        MachinePointerInfo(Info.ptrVal), Info.flags, Size, Align->value()));
   }
 
   return true;
@@ -1665,30 +1665,7 @@ bool IRTranslator::translateInvoke(const User &U,
   MCSymbol *BeginSymbol = Context.createTempSymbol();
   MIRBuilder.buildInstr(TargetOpcode::EH_LABEL).addSym(BeginSymbol);
 
-  ArrayRef<Register> Res;
-  if (!I.getType()->isVoidTy())
-    Res = getOrCreateVRegs(I);
-  SmallVector<ArrayRef<Register>, 8> Args;
-  Register SwiftErrorVReg = 0;
-  Register SwiftInVReg = 0;
-  for (auto &Arg : I.arg_operands()) {
-    if (CLI->supportSwiftError() && isSwiftError(Arg)) {
-      assert(SwiftInVReg == 0 && "Expected only one swift error argument");
-      LLT Ty = getLLTForType(*Arg->getType(), *DL);
-      SwiftInVReg = MRI->createGenericVirtualRegister(Ty);
-      MIRBuilder.buildCopy(SwiftInVReg, SwiftError.getOrCreateVRegUseAt(
-                                            &I, &MIRBuilder.getMBB(), Arg));
-      Args.push_back(makeArrayRef(SwiftInVReg));
-      SwiftErrorVReg =
-          SwiftError.getOrCreateVRegDefAt(&I, &MIRBuilder.getMBB(), Arg);
-      continue;
-    }
-
-    Args.push_back(getOrCreateVRegs(*Arg));
-  }
-
-  if (!CLI->lowerCall(MIRBuilder, &I, Res, Args, SwiftErrorVReg,
-                      [&]() { return getOrCreateVReg(*I.getCalledValue()); }))
+  if (!translateCallSite(&I, MIRBuilder))
     return false;
 
   MCSymbol *EndSymbol = Context.createTempSymbol();
@@ -1919,7 +1896,7 @@ bool IRTranslator::translateShuffleVector(const User &U,
       .addDef(getOrCreateVReg(U))
       .addUse(getOrCreateVReg(*U.getOperand(0)))
       .addUse(getOrCreateVReg(*U.getOperand(1)))
-      .addUse(getOrCreateVReg(*U.getOperand(2)));
+      .addShuffleMask(cast<Constant>(U.getOperand(2)));
   return true;
 }
 
@@ -2210,26 +2187,26 @@ bool IRTranslator::runOnMachineFunction(MachineFunction &CurMF) {
                        : TPC->isGISelCSEEnabled();
 
   if (EnableCSE) {
-    EntryBuilder = make_unique<CSEMIRBuilder>(CurMF);
+    EntryBuilder = std::make_unique<CSEMIRBuilder>(CurMF);
     CSEInfo = &Wrapper.get(TPC->getCSEConfig());
     EntryBuilder->setCSEInfo(CSEInfo);
-    CurBuilder = make_unique<CSEMIRBuilder>(CurMF);
+    CurBuilder = std::make_unique<CSEMIRBuilder>(CurMF);
     CurBuilder->setCSEInfo(CSEInfo);
   } else {
-    EntryBuilder = make_unique<MachineIRBuilder>();
-    CurBuilder = make_unique<MachineIRBuilder>();
+    EntryBuilder = std::make_unique<MachineIRBuilder>();
+    CurBuilder = std::make_unique<MachineIRBuilder>();
   }
   CLI = MF->getSubtarget().getCallLowering();
   CurBuilder->setMF(*MF);
   EntryBuilder->setMF(*MF);
   MRI = &MF->getRegInfo();
   DL = &F.getParent()->getDataLayout();
-  ORE = llvm::make_unique<OptimizationRemarkEmitter>(&F);
+  ORE = std::make_unique<OptimizationRemarkEmitter>(&F);
   FuncInfo.MF = MF;
   FuncInfo.BPI = nullptr;
   const auto &TLI = *MF->getSubtarget().getTargetLowering();
   const TargetMachine &TM = MF->getTarget();
-  SL = make_unique<GISelSwitchLowering>(this, FuncInfo);
+  SL = std::make_unique<GISelSwitchLowering>(this, FuncInfo);
   SL->init(TLI, TM, *DL);
 
   EnableOpts = TM.getOptLevel() != CodeGenOpt::None && !skipFunction(F);
@@ -2281,18 +2258,6 @@ bool IRTranslator::runOnMachineFunction(MachineFunction &CurMF) {
     if (Arg.hasSwiftErrorAttr()) {
       assert(VRegs.size() == 1 && "Too many vregs for Swift error");
       SwiftError.setCurrentVReg(EntryBB, SwiftError.getFunctionArg(), VRegs[0]);
-    }
-  }
-
-  // We don't currently support translating swifterror or swiftself functions.
-  for (auto &Arg : F.args()) {
-    if (Arg.hasSwiftSelfAttr()) {
-      OptimizationRemarkMissed R("gisel-irtranslator", "GISelFailure",
-                                 F.getSubprogram(), &F.getEntryBlock());
-      R << "unable to lower arguments due to swiftself: "
-        << ore::NV("Prototype", F.getType());
-      reportTranslationError(*MF, *TPC, *ORE, R);
-      return false;
     }
   }
 

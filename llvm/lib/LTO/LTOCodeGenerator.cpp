@@ -174,7 +174,7 @@ void LTOCodeGenerator::setModule(std::unique_ptr<LTOModule> Mod) {
   AsmUndefinedRefs.clear();
 
   MergedModule = Mod->takeModule();
-  TheLinker = make_unique<Linker>(*MergedModule);
+  TheLinker = std::make_unique<Linker>(*MergedModule);
   setAsmUndefinedRefs(&*Mod);
 
   // We've just changed the input, so let's make sure we verify it.
@@ -229,7 +229,7 @@ bool LTOCodeGenerator::writeMergedModules(StringRef Path) {
 
   // create output file
   std::error_code EC;
-  ToolOutputFile Out(Path, EC, sys::fs::F_None);
+  ToolOutputFile Out(Path, EC, sys::fs::OF_None);
   if (EC) {
     std::string ErrMsg = "could not open bitcode file for writing: ";
     ErrMsg += Path.str() + ": " + EC.message();
@@ -690,7 +690,7 @@ LTOCodeGenerator::setDiagnosticHandler(lto_diagnostic_handler_t DiagHandler,
     return Context.setDiagnosticHandler(nullptr);
   // Register the LTOCodeGenerator stub in the LLVMContext to forward the
   // diagnostic to the external DiagHandler.
-  Context.setDiagnosticHandler(llvm::make_unique<LTODiagnosticHandler>(this),
+  Context.setDiagnosticHandler(std::make_unique<LTODiagnosticHandler>(this),
                                true);
 }
 

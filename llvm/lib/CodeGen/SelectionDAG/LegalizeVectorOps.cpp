@@ -335,12 +335,23 @@ SDValue VectorLegalizer::LegalizeOp(SDValue Op) {
   case ISD::STRICT_FTRUNC:
   case ISD::STRICT_FP_ROUND:
   case ISD::STRICT_FP_EXTEND:
-    // These pseudo-ops get legalized as if they were their non-strict
-    // equivalent.  For instance, if ISD::FSQRT is legal then ISD::STRICT_FSQRT
-    // is also legal, but if ISD::FSQRT requires expansion then so does
-    // ISD::STRICT_FSQRT.
-    Action = TLI.getStrictFPOperationAction(Node->getOpcode(),
-                                            Node->getValueType(0));
+    Action = TLI.getOperationAction(Node->getOpcode(), Node->getValueType(0));
+    // If we're asked to expand a strict vector floating-point operation,
+    // by default we're going to simply unroll it.  That is usually the
+    // best approach, except in the case where the resulting strict (scalar)
+    // operations would themselves use the fallback mutation to non-strict.
+    // In that specific case, just do the fallback on the vector op.
+    if (Action == TargetLowering::Expand &&
+        TLI.getStrictFPOperationAction(Node->getOpcode(),
+                                       Node->getValueType(0))
+        == TargetLowering::Legal) {
+      EVT EltVT = Node->getValueType(0).getVectorElementType();
+      if (TLI.getOperationAction(Node->getOpcode(), EltVT)
+          == TargetLowering::Expand &&
+          TLI.getStrictFPOperationAction(Node->getOpcode(), EltVT)
+          == TargetLowering::Legal)
+        Action = TargetLowering::Legal;
+    }
     break;
   case ISD::ADD:
   case ISD::SUB:
@@ -820,6 +831,13 @@ SDValue VectorLegalizer::Expand(SDValue Op) {
   case ISD::SMULFIX:
   case ISD::UMULFIX:
     return ExpandFixedPointMul(Op);
+  case ISD::SMULFIXSAT:
+    // FIXME: We do not expand SMULFIXSAT here yet, not sure why. Maybe it
+    // results in worse codegen compared to the default unroll? This should
+    // probably be investigated. And if we still prefer to unroll an explanation
+    // could be helpful, otherwise it just looks like something that hasn't been
+    // "implemented" yet.
+    return DAG.UnrollVectorOp(Op.getNode());
   case ISD::STRICT_FADD:
   case ISD::STRICT_FSUB:
   case ISD::STRICT_FMUL:

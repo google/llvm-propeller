@@ -12,8 +12,6 @@ from __future__ import print_function
 
 # System modules
 import os
-import platform
-import subprocess
 
 
 # Third-party modules
@@ -44,6 +42,9 @@ count = 1
 # The 'arch' and 'compiler' can be specified via command line.
 arch = None        # Must be initialized after option parsing
 compiler = None    # Must be initialized after option parsing
+
+# The overriden dwarf verison.
+dwarf_version = 0
 
 # Path to the FileCheck testing tool. Not optional.
 filecheck = None

@@ -75,6 +75,9 @@ public:
                     CompletionResult &result);
 
   llvm::StringRef GetRawLine() const { return m_command; }
+  llvm::StringRef GetRawLineUntilCursor() const {
+    return m_command.substr(0, m_cursor_index);
+  }
 
   unsigned GetRawCursorPos() const { return m_raw_cursor_pos; }
 
@@ -113,8 +116,8 @@ public:
   ///
   /// \see AddCompletion
   void AddCompletions(const StringList &completions) {
-    for (std::size_t i = 0; i < completions.GetSize(); ++i)
-      AddCompletion(completions.GetStringAtIndex(i));
+    for (const std::string &completion : completions)
+      AddCompletion(completion);
   }
 
   /// Adds multiple possible completion strings alongside their descriptions.

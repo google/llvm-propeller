@@ -10,6 +10,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclGroup.h"
+#include "clang/Basic/LangStandard.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
@@ -215,7 +216,7 @@ FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
     Consumers.push_back(std::move(C));
   }
 
-  return llvm::make_unique<MultiplexConsumer>(std::move(Consumers));
+  return std::make_unique<MultiplexConsumer>(std::move(Consumers));
 }
 
 /// For preprocessed files, if the first line is the linemarker and specifies
@@ -683,7 +684,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     CI.getSourceManager().setAllFilesAreTransient(true);
 
   // IR files bypass the rest of initialization.
-  if (Input.getKind().getLanguage() == InputKind::LLVM_IR) {
+  if (Input.getKind().getLanguage() == Language::LLVM_IR) {
     assert(hasIRSupport() &&
            "This action does not have IR file support!");
 

@@ -11,6 +11,8 @@
 #include "Protocol.h"
 #include "SourceCode.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Decl.h"
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include <algorithm>
 
@@ -37,7 +39,27 @@ public:
     llvm::sort(Tokens);
     auto Last = std::unique(Tokens.begin(), Tokens.end());
     Tokens.erase(Last, Tokens.end());
-    return Tokens;
+    // Macros can give tokens that have the same source range but conflicting
+    // kinds. In this case all tokens sharing this source range should be
+    // removed.
+    std::vector<HighlightingToken> NonConflicting;
+    NonConflicting.reserve(Tokens.size());
+    for (ArrayRef<HighlightingToken> TokRef = Tokens; !TokRef.empty();) {
+      ArrayRef<HighlightingToken> Conflicting =
+          TokRef.take_while([&](const HighlightingToken &T) {
+            // TokRef is guaranteed at least one element here because otherwise
+            // this predicate would never fire.
+            return T.R == TokRef.front().R;
+          });
+      // If there is exactly one token with this range it's non conflicting and
+      // should be in the highlightings.
+      if (Conflicting.size() == 1)
+        NonConflicting.push_back(TokRef.front());
+      // TokRef[Conflicting.size()] is the next token with a different range (or
+      // the end of the Tokens).
+      TokRef = TokRef.drop_front(Conflicting.size());
+    }
+    return NonConflicting;
   }
 
   bool VisitNamespaceAliasDecl(NamespaceAliasDecl *NAD) {
@@ -51,6 +73,10 @@ public:
     if (isa<CXXDestructorDecl>(MD))
       // When calling the destructor manually like: AAA::~A(); The ~ is a
       // MemberExpr. Other methods should still be highlighted though.
+      return true;
+    if (isa<CXXConversionDecl>(MD))
+      // The MemberLoc is invalid for C++ conversion operators. We do not
+      // attempt to add tokens with invalid locations.
       return true;
     addToken(ME->getMemberLoc(), MD);
     return true;
@@ -92,8 +118,8 @@ public:
   }
 
   bool VisitTypedefNameDecl(TypedefNameDecl *TD) {
-    if(const auto *TSI = TD->getTypeSourceInfo())
-      addTypeLoc(TD->getLocation(), TSI->getTypeLoc());
+    if (const auto *TSI = TD->getTypeSourceInfo())
+      addType(TD->getLocation(), TSI->getTypeLoc().getTypePtr());
     return true;
   }
 
@@ -115,10 +141,8 @@ public:
     // structs. It also makes us not highlight certain namespace qualifiers
     // twice. For elaborated types the actual type is highlighted as an inner
     // TypeLoc.
-    if (TL.getTypeLocClass() == TypeLoc::TypeLocClass::Elaborated)
-      return true;
-
-    addTypeLoc(TL.getBeginLoc(), TL);
+    if (TL.getTypeLocClass() != TypeLoc::TypeLocClass::Elaborated)
+      addType(TL.getBeginLoc(), TL.getTypePtr());
     return true;
   }
 
@@ -132,11 +156,34 @@ public:
         HighlightingTokenCollector>::TraverseNestedNameSpecifierLoc(NNSLoc);
   }
 
+  bool TraverseConstructorInitializer(CXXCtorInitializer *CI) {
+    if (const FieldDecl *FD = CI->getMember())
+      addToken(CI->getSourceLocation(), FD);
+    return RecursiveASTVisitor<
+        HighlightingTokenCollector>::TraverseConstructorInitializer(CI);
+  }
+
+  bool VisitDeclaratorDecl(DeclaratorDecl *D) {
+    if ((!D->getTypeSourceInfo()))
+      return true;
+
+    if (auto *AT = D->getType()->getContainedAutoType()) {
+      const auto Deduced = AT->getDeducedType();
+      if (!Deduced.isNull())
+        addType(D->getTypeSpecStartLoc(), Deduced.getTypePtr());
+    }
+    return true;
+  }
+
 private:
-  void addTypeLoc(SourceLocation Loc, const TypeLoc &TL) {
-    if (const Type *TP = TL.getTypePtr())
-      if (const TagDecl *TD = TP->getAsTagDecl())
-        addToken(Loc, TD);
+  void addType(SourceLocation Loc, const Type *TP) {
+    if (!TP)
+      return;
+    if (TP->isBuiltinType())
+      // Builtins must be special cased as they do not have a TagDecl.
+      addToken(Loc, HighlightingKind::Primitive);
+    if (const TagDecl *TD = TP->getAsTagDecl())
+      addToken(Loc, TD);
   }
 
   void addToken(SourceLocation Loc, const NamedDecl *D) {
@@ -174,6 +221,10 @@ private:
       addToken(Loc, HighlightingKind::EnumConstant);
       return;
     }
+    if (isa<ParmVarDecl>(D)) {
+      addToken(Loc, HighlightingKind::Parameter);
+      return;
+    }
     if (isa<VarDecl>(D)) {
       addToken(Loc, HighlightingKind::Variable);
       return;
@@ -198,11 +249,26 @@ private:
       addToken(Loc, HighlightingKind::TemplateParameter);
       return;
     }
+    if (isa<NonTypeTemplateParmDecl>(D)) {
+      addToken(Loc, HighlightingKind::TemplateParameter);
+      return;
+    }
   }
 
   void addToken(SourceLocation Loc, HighlightingKind Kind) {
-    if (Loc.isMacroID())
-      // FIXME: skip tokens inside macros for now.
+    if(Loc.isMacroID()) {
+      // Only intereseted in highlighting arguments in macros (DEF_X(arg)).
+      if (!SM.isMacroArgExpansion(Loc))
+        return;
+      Loc = SM.getSpellingLoc(Loc);
+    }
+
+    // Non top level decls that are included from a header are not filtered by
+    // topLevelDecls. (example: method declarations being included from another
+    // file for a class from another file)
+    // There are also cases with macros where the spelling loc will not be in the
+    // main file and the highlighting would be incorrect.
+    if (!isInsideMainFile(Loc, SM))
       return;
 
     auto R = getTokenRange(SM, Ctx.getLangOpts(), Loc);
@@ -370,6 +436,8 @@ llvm::StringRef toTextMateScope(HighlightingKind Kind) {
     return "entity.name.function.method.cpp";
   case HighlightingKind::Variable:
     return "variable.other.cpp";
+  case HighlightingKind::Parameter:
+    return "variable.parameter.cpp";
   case HighlightingKind::Field:
     return "variable.other.field.cpp";
   case HighlightingKind::Class:
@@ -382,6 +450,8 @@ llvm::StringRef toTextMateScope(HighlightingKind Kind) {
     return "entity.name.namespace.cpp";
   case HighlightingKind::TemplateParameter:
     return "entity.name.type.template.cpp";
+  case HighlightingKind::Primitive:
+    return "storage.type.primitive.cpp";
   case HighlightingKind::NumKinds:
     llvm_unreachable("must not pass NumKinds to the function");
   }

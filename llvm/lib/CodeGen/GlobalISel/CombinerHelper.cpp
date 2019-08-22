@@ -8,6 +8,7 @@
 #include "llvm/CodeGen/GlobalISel/CombinerHelper.h"
 #include "llvm/CodeGen/GlobalISel/Combiner.h"
 #include "llvm/CodeGen/GlobalISel/GISelChangeObserver.h"
+#include "llvm/CodeGen/GlobalISel/GISelKnownBits.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/GlobalISel/Utils.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -22,8 +23,11 @@
 using namespace llvm;
 
 CombinerHelper::CombinerHelper(GISelChangeObserver &Observer,
-                               MachineIRBuilder &B)
-    : Builder(B), MRI(Builder.getMF().getRegInfo()), Observer(Observer) {}
+                               MachineIRBuilder &B, GISelKnownBits *KB)
+    : Builder(B), MRI(Builder.getMF().getRegInfo()), Observer(Observer),
+      KB(KB) {
+  (void)this->KB;
+}
 
 void CombinerHelper::replaceRegWith(MachineRegisterInfo &MRI, Register FromReg,
                                     Register ToReg) const {
@@ -58,8 +62,8 @@ bool CombinerHelper::tryCombineCopy(MachineInstr &MI) {
 bool CombinerHelper::matchCombineCopy(MachineInstr &MI) {
   if (MI.getOpcode() != TargetOpcode::COPY)
     return false;
-  unsigned DstReg = MI.getOperand(0).getReg();
-  unsigned SrcReg = MI.getOperand(1).getReg();
+  Register DstReg = MI.getOperand(0).getReg();
+  Register SrcReg = MI.getOperand(1).getReg();
   LLT DstTy = MRI.getType(DstReg);
   LLT SrcTy = MRI.getType(SrcReg);
   // Simple Copy Propagation.
@@ -69,8 +73,8 @@ bool CombinerHelper::matchCombineCopy(MachineInstr &MI) {
   return false;
 }
 void CombinerHelper::applyCombineCopy(MachineInstr &MI) {
-  unsigned DstReg = MI.getOperand(0).getReg();
-  unsigned SrcReg = MI.getOperand(1).getReg();
+  Register DstReg = MI.getOperand(0).getReg();
+  Register SrcReg = MI.getOperand(1).getReg();
   MI.eraseFromParent();
   replaceRegWith(MRI, DstReg, SrcReg);
 }
@@ -282,7 +286,7 @@ void CombinerHelper::applyCombineExtendingLoads(MachineInstr &MI,
     // up the type and extend so that it uses the preferred use.
     if (UseMI->getOpcode() == Preferred.ExtendOpcode ||
         UseMI->getOpcode() == TargetOpcode::G_ANYEXT) {
-      unsigned UseDstReg = UseMI->getOperand(0).getReg();
+      Register UseDstReg = UseMI->getOperand(0).getReg();
       MachineOperand &UseSrcMO = UseMI->getOperand(1);
       const LLT &UseDstTy = MRI.getType(UseDstReg);
       if (UseDstReg != ChosenDstReg) {
@@ -698,7 +702,7 @@ bool CombinerHelper::optimizeMemcpy(MachineInstr &MI, Register Dst,
     const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
     if (!TRI->needsStackRealignment(MF))
       while (NewAlign > Align &&
-             DL.exceedsNaturalStackAlignment(NewAlign))
+             DL.exceedsNaturalStackAlignment(llvm::Align(NewAlign)))
           NewAlign /= 2;
 
     if (NewAlign > Align) {
@@ -804,7 +808,7 @@ bool CombinerHelper::optimizeMemmove(MachineInstr &MI, Register Dst,
     const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
     if (!TRI->needsStackRealignment(MF))
       while (NewAlign > Align &&
-             DL.exceedsNaturalStackAlignment(NewAlign))
+             DL.exceedsNaturalStackAlignment(llvm::Align(NewAlign)))
           NewAlign /= 2;
 
     if (NewAlign > Align) {
@@ -861,7 +865,7 @@ bool CombinerHelper::optimizeMemmove(MachineInstr &MI, Register Dst,
   return true;
 }
 
-bool CombinerHelper::tryCombineMemCpyFamily(MachineInstr &MI) {
+bool CombinerHelper::tryCombineMemCpyFamily(MachineInstr &MI, unsigned MaxLen) {
   // This combine is fairly complex so it's not written with a separate
   // matcher function.
   assert(MI.getOpcode() == TargetOpcode::G_INTRINSIC_W_SIDE_EFFECTS);
@@ -879,8 +883,8 @@ bool CombinerHelper::tryCombineMemCpyFamily(MachineInstr &MI) {
 
   unsigned DstAlign = MemOp->getBaseAlignment();
   unsigned SrcAlign = 0;
-  unsigned Dst = MI.getOperand(1).getReg();
-  unsigned Src = MI.getOperand(2).getReg();
+  Register Dst = MI.getOperand(1).getReg();
+  Register Src = MI.getOperand(2).getReg();
   Register Len = MI.getOperand(3).getReg();
 
   if (ID != Intrinsic::memset) {
@@ -899,6 +903,9 @@ bool CombinerHelper::tryCombineMemCpyFamily(MachineInstr &MI) {
     MI.eraseFromParent();
     return true;
   }
+
+  if (MaxLen && KnownLen > MaxLen)
+    return false;
 
   if (ID == Intrinsic::memcpy)
     return optimizeMemcpy(MI, Dst, Src, KnownLen, DstAlign, SrcAlign, IsVolatile);

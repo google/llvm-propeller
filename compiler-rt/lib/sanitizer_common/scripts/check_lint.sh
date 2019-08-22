@@ -66,7 +66,9 @@ fi
 LIT_TESTS=${COMPILER_RT}/test
 # Headers
 SANITIZER_INCLUDES=${COMPILER_RT}/include/sanitizer
-run_lint ${SANITIZER_INCLUDES_LINT_FILTER} ${SANITIZER_INCLUDES}/*.h &
+FUZZER_INCLUDES=${COMPILER_RT}/include/fuzzer
+run_lint ${SANITIZER_INCLUDES_LINT_FILTER} ${SANITIZER_INCLUDES}/*.h \
+                                           ${FUZZER_INCLUDES}/*.h &
 
 # Sanitizer_common
 COMMON_RTL=${COMPILER_RT}/lib/sanitizer_common
@@ -85,7 +87,7 @@ run_lint ${ASAN_RTL_LINT_FILTER} ${ASAN_RTL}/*.cpp \
                                  ${ASAN_RTL}/*.h &
 run_lint ${ASAN_TEST_LINT_FILTER} ${ASAN_RTL}/tests/*.cpp \
                                   ${ASAN_RTL}/tests/*.h &
-run_lint ${ASAN_LIT_TEST_LINT_FILTER} ${LIT_TESTS}/asan/*/*.cc &
+run_lint ${ASAN_LIT_TEST_LINT_FILTER} ${LIT_TESTS}/asan/*/*.cpp &
 
 # TSan
 TSAN_RTL=${COMPILER_RT}/lib/tsan
@@ -94,7 +96,7 @@ run_lint ${TSAN_RTL_LINT_FILTER} ${TSAN_RTL}/rtl/*.cpp \
 run_lint ${TSAN_TEST_LINT_FILTER} ${TSAN_RTL}/tests/rtl/*.cpp \
                                   ${TSAN_RTL}/tests/rtl/*.h \
                                   ${TSAN_RTL}/tests/unit/*.cpp &
-run_lint ${TSAN_LIT_TEST_LINT_FILTER} ${LIT_TESTS}/tsan/*.cc &
+run_lint ${TSAN_LIT_TEST_LINT_FILTER} ${LIT_TESTS}/tsan/*.cpp &
 
 # MSan
 MSAN_RTL=${COMPILER_RT}/lib/msan
@@ -105,7 +107,7 @@ run_lint ${MSAN_RTL_LINT_FILTER} ${MSAN_RTL}/*.cpp \
 LSAN_RTL=${COMPILER_RT}/lib/lsan
 run_lint ${LSAN_RTL_LINT_FILTER} ${LSAN_RTL}/*.cpp \
                                  ${LSAN_RTL}/*.h &
-run_lint ${LSAN_LIT_TEST_LINT_FILTER} ${LIT_TESTS}/lsan/*/*.cc &
+run_lint ${LSAN_LIT_TEST_LINT_FILTER} ${LIT_TESTS}/lsan/*/*.cpp &
 
 # DFSan
 DFSAN_RTL=${COMPILER_RT}/lib/dfsan
@@ -122,7 +124,7 @@ run_lint ${SCUDO_RTL_LINT_FILTER} ${SCUDO_RTL}/*.cpp \
 FILES=${COMMON_RTL}/*.inc
 TMPFILES=""
 for FILE in $FILES; do
-  TMPFILE="$(${MKTEMP}).$(basename ${FILE}).cc"
+  TMPFILE="$(${MKTEMP}).$(basename ${FILE}).cpp"
   cp -f $FILE $TMPFILE
   run_lint ${COMMON_RTL_INC_LINT_FILTER} $TMPFILE &
   TMPFILES="$TMPFILES $TMPFILE"

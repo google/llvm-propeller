@@ -21,6 +21,7 @@ class Register {
 
 public:
   Register(unsigned Val = 0): Reg(Val) {}
+  Register(MCRegister Val): Reg(Val) {}
 
   // Register numbers can represent physical registers, virtual registers, and
   // sometimes stack slots. The unsigned values are divided into these ranges:
@@ -105,8 +106,48 @@ public:
     return Reg;
   }
 
+  unsigned id() const { return Reg; }
+
+  operator MCRegister() const {
+    return MCRegister(Reg);
+  }
+
   bool isValid() const {
     return Reg != 0;
+  }
+
+  /// Comparisons between register objects
+  bool operator==(const Register &Other) const { return Reg == Other.Reg; }
+  bool operator!=(const Register &Other) const { return Reg != Other.Reg; }
+  bool operator==(const MCRegister &Other) const { return Reg == Other.id(); }
+  bool operator!=(const MCRegister &Other) const { return Reg != Other.id(); }
+
+  /// Comparisons against register constants. E.g.
+  /// * R == AArch64::WZR
+  /// * R == 0
+  /// * R == VirtRegMap::NO_PHYS_REG
+  bool operator==(unsigned Other) const { return Reg == Other; }
+  bool operator!=(unsigned Other) const { return Reg != Other; }
+  bool operator==(int Other) const { return Reg == unsigned(Other); }
+  bool operator!=(int Other) const { return Reg != unsigned(Other); }
+  // MSVC requires that we explicitly declare these two as well.
+  bool operator==(MCPhysReg Other) const { return Reg == unsigned(Other); }
+  bool operator!=(MCPhysReg Other) const { return Reg != unsigned(Other); }
+};
+
+// Provide DenseMapInfo for Register
+template<> struct DenseMapInfo<Register> {
+  static inline unsigned getEmptyKey() {
+    return DenseMapInfo<unsigned>::getEmptyKey();
+  }
+  static inline unsigned getTombstoneKey() {
+    return DenseMapInfo<unsigned>::getTombstoneKey();
+  }
+  static unsigned getHashValue(const Register &Val) {
+    return DenseMapInfo<unsigned>::getHashValue(Val.id());
+  }
+  static bool isEqual(const Register &LHS, const Register &RHS) {
+    return DenseMapInfo<unsigned>::isEqual(LHS.id(), RHS.id());
   }
 };
 

@@ -28,9 +28,8 @@
 #include "clang/Lex/PreprocessorOptions.h"
 #include "llvm/Support/CrashRecoveryContext.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Mutex.h"
-#include "llvm/Support/MutexGuard.h"
 #include <cstdio>
+#include <mutex>
 #include <utility>
 
 using namespace clang;
@@ -122,22 +121,21 @@ namespace llvm {
 namespace {
 
 class SessionSkipBodyData {
-  llvm::sys::Mutex Mux;
+  std::mutex Mux;
   PPRegionSetTy ParsedRegions;
 
 public:
-  SessionSkipBodyData() : Mux(/*recursive=*/false) {}
   ~SessionSkipBodyData() {
     //llvm::errs() << "RegionData: " << Skipped.size() << " - " << Skipped.getMemorySize() << "\n";
   }
 
   void copyTo(PPRegionSetTy &Set) {
-    llvm::MutexGuard MG(Mux);
+    std::lock_guard<std::mutex> MG(Mux);
     Set = ParsedRegions;
   }
 
   void update(ArrayRef<PPRegion> Regions) {
-    llvm::MutexGuard MG(Mux);
+    std::lock_guard<std::mutex> MG(Mux);
     ParsedRegions.insert(Regions.begin(), Regions.end());
   }
 };
@@ -370,16 +368,16 @@ public:
 
     DataConsumer->setASTContext(CI.getASTContext());
     Preprocessor &PP = CI.getPreprocessor();
-    PP.addPPCallbacks(llvm::make_unique<IndexPPCallbacks>(PP, *DataConsumer));
+    PP.addPPCallbacks(std::make_unique<IndexPPCallbacks>(PP, *DataConsumer));
     DataConsumer->setPreprocessor(CI.getPreprocessorPtr());
 
     if (SKData) {
       auto *PPRec = new PPConditionalDirectiveRecord(PP.getSourceManager());
       PP.addPPCallbacks(std::unique_ptr<PPCallbacks>(PPRec));
-      SKCtrl = llvm::make_unique<TUSkipBodyControl>(*SKData, *PPRec, PP);
+      SKCtrl = std::make_unique<TUSkipBodyControl>(*SKData, *PPRec, PP);
     }
 
-    return llvm::make_unique<IndexingConsumer>(*DataConsumer, SKCtrl.get());
+    return std::make_unique<IndexingConsumer>(*DataConsumer, SKCtrl.get());
   }
 
   TranslationUnitKind getTranslationUnitKind() override {
@@ -549,7 +547,7 @@ static CXErrorCode clang_indexSourceFile_Impl(
   auto DataConsumer =
     std::make_shared<CXIndexDataConsumer>(client_data, CB, index_options,
                                           CXTU->getTU());
-  auto InterAction = llvm::make_unique<IndexingFrontendAction>(DataConsumer,
+  auto InterAction = std::make_unique<IndexingFrontendAction>(DataConsumer,
                          SkipBodies ? IdxSession->SkipBodyData.get() : nullptr);
   std::unique_ptr<FrontendAction> IndexAction;
   IndexAction = createIndexingAction(DataConsumer,

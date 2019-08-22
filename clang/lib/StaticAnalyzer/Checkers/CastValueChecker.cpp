@@ -6,7 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines CastValueChecker which models casts of custom RTTIs.
+//  This defines CastValueChecker which models casts of custom RTTIs.
+//
+// TODO list:
+// - It only allows one succesful cast between two types however in the wild
+//   the object could be casted to multiple types.
+// - It needs to check the most likely type information from the dynamic type
+//   map to increase precision of dynamic casting.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,170 +21,308 @@
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicType.h"
 #include "llvm/ADT/Optional.h"
+#include <utility>
 
 using namespace clang;
 using namespace ento;
 
 namespace {
 class CastValueChecker : public Checker<eval::Call> {
+  enum class CallKind { Function, Method };
+
   using CastCheck =
-      std::function<void(const CastValueChecker *, const CallExpr *,
+      std::function<void(const CastValueChecker *, const CallEvent &Call,
                          DefinedOrUnknownSVal, CheckerContext &)>;
 
 public:
-  // We have three cases to evaluate a cast:
-  // 1) The parameter is non-null, the return value is non-null
-  // 2) The parameter is non-null, the return value is null
-  // 3) The parameter is null, the return value is null
-  //
+  // We have five cases to evaluate a cast:
+  // 1) The parameter is non-null, the return value is non-null.
+  // 2) The parameter is non-null, the return value is null.
+  // 3) The parameter is null, the return value is null.
   // cast: 1;  dyn_cast: 1, 2;  cast_or_null: 1, 3;  dyn_cast_or_null: 1, 2, 3.
+  //
+  // 4) castAs: Has no parameter, the return value is non-null.
+  // 5) getAs:  Has no parameter, the return value is null or non-null.
   bool evalCall(const CallEvent &Call, CheckerContext &C) const;
+  void checkDeadSymbols(SymbolReaper &SR, CheckerContext &C) const;
 
 private:
-  // These are known in the LLVM project.
-  const CallDescriptionMap<CastCheck> CDM = {
-      {{{"llvm", "cast"}, 1}, &CastValueChecker::evalCast},
-      {{{"llvm", "dyn_cast"}, 1}, &CastValueChecker::evalDynCast},
-      {{{"llvm", "cast_or_null"}, 1}, &CastValueChecker::evalCastOrNull},
+  // These are known in the LLVM project. The pairs are in the following form:
+  // {{{namespace, call}, argument-count}, {callback, kind}}
+  const CallDescriptionMap<std::pair<CastCheck, CallKind>> CDM = {
+      {{{"llvm", "cast"}, 1},
+       {&CastValueChecker::evalCast, CallKind::Function}},
+      {{{"llvm", "dyn_cast"}, 1},
+       {&CastValueChecker::evalDynCast, CallKind::Function}},
+      {{{"llvm", "cast_or_null"}, 1},
+       {&CastValueChecker::evalCastOrNull, CallKind::Function}},
       {{{"llvm", "dyn_cast_or_null"}, 1},
-       &CastValueChecker::evalDynCastOrNull}};
+       {&CastValueChecker::evalDynCastOrNull, CallKind::Function}},
+      {{{"clang", "castAs"}, 0},
+       {&CastValueChecker::evalCastAs, CallKind::Method}},
+      {{{"clang", "getAs"}, 0},
+       {&CastValueChecker::evalGetAs, CallKind::Method}}};
 
-  void evalCast(const CallExpr *CE, DefinedOrUnknownSVal ParamDV,
+  void evalCast(const CallEvent &Call, DefinedOrUnknownSVal DV,
                 CheckerContext &C) const;
-  void evalDynCast(const CallExpr *CE, DefinedOrUnknownSVal ParamDV,
+  void evalDynCast(const CallEvent &Call, DefinedOrUnknownSVal DV,
                    CheckerContext &C) const;
-  void evalCastOrNull(const CallExpr *CE, DefinedOrUnknownSVal ParamDV,
+  void evalCastOrNull(const CallEvent &Call, DefinedOrUnknownSVal DV,
                       CheckerContext &C) const;
-  void evalDynCastOrNull(const CallExpr *CE, DefinedOrUnknownSVal ParamDV,
+  void evalDynCastOrNull(const CallEvent &Call, DefinedOrUnknownSVal DV,
                          CheckerContext &C) const;
+  void evalCastAs(const CallEvent &Call, DefinedOrUnknownSVal DV,
+                  CheckerContext &C) const;
+  void evalGetAs(const CallEvent &Call, DefinedOrUnknownSVal DV,
+                 CheckerContext &C) const;
 };
 } // namespace
 
-static std::string getCastName(const Expr *Cast) {
-  return Cast->getType()->getPointeeCXXRecordDecl()->getNameAsString();
+static QualType getRecordType(QualType Ty) {
+  Ty = Ty.getCanonicalType();
+
+  if (Ty->isPointerType())
+    Ty = Ty->getPointeeType();
+
+  if (Ty->isReferenceType())
+    Ty = Ty.getNonReferenceType();
+
+  return Ty.getUnqualifiedType();
 }
 
-static void evalNonNullParamNonNullReturn(const CallExpr *CE,
-                                          DefinedOrUnknownSVal ParamDV,
-                                          CheckerContext &C) {
-  ProgramStateRef State = C.getState()->assume(ParamDV, true);
-  if (!State)
-    return;
+static bool isInfeasibleCast(const DynamicCastInfo *CastInfo,
+                             bool CastSucceeds) {
+  if (!CastInfo)
+    return false;
 
-  State = State->BindExpr(CE, C.getLocationContext(), ParamDV, false);
+  return CastSucceeds ? CastInfo->fails() : CastInfo->succeeds();
+}
 
-  std::string CastFromName = getCastName(CE->getArg(0));
-  std::string CastToName = getCastName(CE);
+static const NoteTag *getNoteTag(CheckerContext &C,
+                                 const DynamicCastInfo *CastInfo,
+                                 QualType CastToTy, const Expr *Object,
+                                 bool CastSucceeds, bool IsKnownCast) {
+  std::string CastToName =
+      CastInfo ? CastInfo->to()->getAsCXXRecordDecl()->getNameAsString()
+               : CastToTy->getAsCXXRecordDecl()->getNameAsString();
+  Object = Object->IgnoreParenImpCasts();
 
-  const NoteTag *CastTag = C.getNoteTag(
-      [CastFromName, CastToName](BugReport &) -> std::string {
+  return C.getNoteTag(
+      [=] {
         SmallString<128> Msg;
         llvm::raw_svector_ostream Out(Msg);
 
-        Out << "Assuming dynamic cast from '" << CastFromName << "' to '"
-            << CastToName << "' succeeds";
+        if (!IsKnownCast)
+          Out << "Assuming ";
+
+        if (const auto *DRE = dyn_cast<DeclRefExpr>(Object)) {
+          Out << '\'' << DRE->getDecl()->getNameAsString() << '\'';
+        } else if (const auto *ME = dyn_cast<MemberExpr>(Object)) {
+          Out << (IsKnownCast ? "Field '" : "field '")
+              << ME->getMemberDecl()->getNameAsString() << '\'';
+        } else {
+          Out << (IsKnownCast ? "The object" : "the object");
+        }
+
+        Out << ' ' << (CastSucceeds ? "is a" : "is not a") << " '" << CastToName
+            << '\'';
+
         return Out.str();
       },
       /*IsPrunable=*/true);
-
-  C.addTransition(State, CastTag);
 }
 
-static void evalNonNullParamNullReturn(const CallExpr *CE,
-                                       DefinedOrUnknownSVal ParamDV,
+//===----------------------------------------------------------------------===//
+// Main logic to evaluate a cast.
+//===----------------------------------------------------------------------===//
+
+static void addCastTransition(const CallEvent &Call, DefinedOrUnknownSVal DV,
+                              CheckerContext &C, bool IsNonNullParam,
+                              bool IsNonNullReturn,
+                              bool IsCheckedCast = false) {
+  ProgramStateRef State = C.getState()->assume(DV, IsNonNullParam);
+  if (!State)
+    return;
+
+  const Expr *Object;
+  QualType CastFromTy;
+  QualType CastToTy = getRecordType(Call.getResultType());
+
+  if (Call.getNumArgs() > 0) {
+    Object = Call.getArgExpr(0);
+    CastFromTy = getRecordType(Call.parameters()[0]->getType());
+  } else {
+    Object = cast<CXXInstanceCall>(&Call)->getCXXThisExpr();
+    CastFromTy = getRecordType(Object->getType());
+  }
+
+  const MemRegion *MR = DV.getAsRegion();
+  const DynamicCastInfo *CastInfo =
+      getDynamicCastInfo(State, MR, CastFromTy, CastToTy);
+
+  // We assume that every checked cast succeeds.
+  bool CastSucceeds = IsCheckedCast || CastFromTy == CastToTy;
+  if (!CastSucceeds) {
+    if (CastInfo)
+      CastSucceeds = IsNonNullReturn && CastInfo->succeeds();
+    else
+      CastSucceeds = IsNonNullReturn;
+  }
+
+  // Check for infeasible casts.
+  if (isInfeasibleCast(CastInfo, CastSucceeds)) {
+    C.generateSink(State, C.getPredecessor());
+    return;
+  }
+
+  // Store the type and the cast information.
+  bool IsKnownCast = CastInfo || IsCheckedCast || CastFromTy == CastToTy;
+  if (!IsKnownCast || IsCheckedCast)
+    State = setDynamicTypeAndCastInfo(State, MR, CastFromTy, CastToTy,
+                                      Call.getResultType(), CastSucceeds);
+
+  SVal V = CastSucceeds ? DV : C.getSValBuilder().makeNull();
+  C.addTransition(
+      State->BindExpr(Call.getOriginExpr(), C.getLocationContext(), V, false),
+      getNoteTag(C, CastInfo, CastToTy, Object, CastSucceeds, IsKnownCast));
+}
+
+//===----------------------------------------------------------------------===//
+// Evaluating cast, dyn_cast, cast_or_null, dyn_cast_or_null.
+//===----------------------------------------------------------------------===//
+
+static void evalNonNullParamNonNullReturn(const CallEvent &Call,
+                                          DefinedOrUnknownSVal DV,
+                                          CheckerContext &C,
+                                          bool IsCheckedCast = false) {
+  addCastTransition(Call, DV, C, /*IsNonNullParam=*/true,
+                    /*IsNonNullReturn=*/true, IsCheckedCast);
+}
+
+static void evalNonNullParamNullReturn(const CallEvent &Call,
+                                       DefinedOrUnknownSVal DV,
                                        CheckerContext &C) {
-  ProgramStateRef State = C.getState()->assume(ParamDV, true);
-  if (!State)
-    return;
-
-  State = State->BindExpr(CE, C.getLocationContext(),
-                          C.getSValBuilder().makeNull(), false);
-
-  std::string CastFromName = getCastName(CE->getArg(0));
-  std::string CastToName = getCastName(CE);
-
-  const NoteTag *CastTag = C.getNoteTag(
-      [CastFromName, CastToName](BugReport &) -> std::string {
-        SmallString<128> Msg;
-        llvm::raw_svector_ostream Out(Msg);
-
-        Out << "Assuming dynamic cast from '" << CastFromName << "' to '"
-            << CastToName << "' fails";
-        return Out.str();
-      },
-      /*IsPrunable=*/true);
-
-  C.addTransition(State, CastTag);
+  addCastTransition(Call, DV, C, /*IsNonNullParam=*/true,
+                    /*IsNonNullReturn=*/false);
 }
 
-static void evalNullParamNullReturn(const CallExpr *CE,
-                                    DefinedOrUnknownSVal ParamDV,
+static void evalNullParamNullReturn(const CallEvent &Call,
+                                    DefinedOrUnknownSVal DV,
                                     CheckerContext &C) {
-  ProgramStateRef State = C.getState()->assume(ParamDV, false);
-  if (!State)
-    return;
-
-  State = State->BindExpr(CE, C.getLocationContext(),
-                          C.getSValBuilder().makeNull(), false);
-
-  const NoteTag *CastTag =
-      C.getNoteTag("Assuming null pointer is passed into cast",
-                   /*IsPrunable=*/true);
-
-  C.addTransition(State, CastTag);
+  if (ProgramStateRef State = C.getState()->assume(DV, false))
+    C.addTransition(State->BindExpr(Call.getOriginExpr(),
+                                    C.getLocationContext(),
+                                    C.getSValBuilder().makeNull(), false),
+                    C.getNoteTag("Assuming null pointer is passed into cast",
+                                 /*IsPrunable=*/true));
 }
 
-void CastValueChecker::evalCast(const CallExpr *CE,
-                                DefinedOrUnknownSVal ParamDV,
+void CastValueChecker::evalCast(const CallEvent &Call, DefinedOrUnknownSVal DV,
                                 CheckerContext &C) const {
-  evalNonNullParamNonNullReturn(CE, ParamDV, C);
+  evalNonNullParamNonNullReturn(Call, DV, C, /*IsCheckedCast=*/true);
 }
 
-void CastValueChecker::evalDynCast(const CallExpr *CE,
-                                   DefinedOrUnknownSVal ParamDV,
+void CastValueChecker::evalDynCast(const CallEvent &Call,
+                                   DefinedOrUnknownSVal DV,
                                    CheckerContext &C) const {
-  evalNonNullParamNonNullReturn(CE, ParamDV, C);
-  evalNonNullParamNullReturn(CE, ParamDV, C);
+  evalNonNullParamNonNullReturn(Call, DV, C);
+  evalNonNullParamNullReturn(Call, DV, C);
 }
 
-void CastValueChecker::evalCastOrNull(const CallExpr *CE,
-                                      DefinedOrUnknownSVal ParamDV,
+void CastValueChecker::evalCastOrNull(const CallEvent &Call,
+                                      DefinedOrUnknownSVal DV,
                                       CheckerContext &C) const {
-  evalNonNullParamNonNullReturn(CE, ParamDV, C);
-  evalNullParamNullReturn(CE, ParamDV, C);
+  evalNonNullParamNonNullReturn(Call, DV, C);
+  evalNullParamNullReturn(Call, DV, C);
 }
 
-void CastValueChecker::evalDynCastOrNull(const CallExpr *CE,
-                                         DefinedOrUnknownSVal ParamDV,
+void CastValueChecker::evalDynCastOrNull(const CallEvent &Call,
+                                         DefinedOrUnknownSVal DV,
                                          CheckerContext &C) const {
-  evalNonNullParamNonNullReturn(CE, ParamDV, C);
-  evalNonNullParamNullReturn(CE, ParamDV, C);
-  evalNullParamNullReturn(CE, ParamDV, C);
+  evalNonNullParamNonNullReturn(Call, DV, C);
+  evalNonNullParamNullReturn(Call, DV, C);
+  evalNullParamNullReturn(Call, DV, C);
 }
+
+//===----------------------------------------------------------------------===//
+// Evaluating castAs, getAs.
+//===----------------------------------------------------------------------===//
+
+static void evalZeroParamNonNullReturn(const CallEvent &Call,
+                                       DefinedOrUnknownSVal DV,
+                                       CheckerContext &C,
+                                       bool IsCheckedCast = false) {
+  addCastTransition(Call, DV, C, /*IsNonNullParam=*/true,
+                    /*IsNonNullReturn=*/true, IsCheckedCast);
+}
+
+static void evalZeroParamNullReturn(const CallEvent &Call,
+                                    DefinedOrUnknownSVal DV,
+                                    CheckerContext &C) {
+  addCastTransition(Call, DV, C, /*IsNonNullParam=*/true,
+                    /*IsNonNullReturn=*/false);
+}
+
+void CastValueChecker::evalCastAs(const CallEvent &Call,
+                                  DefinedOrUnknownSVal DV,
+                                  CheckerContext &C) const {
+  evalZeroParamNonNullReturn(Call, DV, C, /*IsCheckedCast=*/true);
+}
+
+void CastValueChecker::evalGetAs(const CallEvent &Call, DefinedOrUnknownSVal DV,
+                                 CheckerContext &C) const {
+  evalZeroParamNonNullReturn(Call, DV, C);
+  evalZeroParamNullReturn(Call, DV, C);
+}
+
+//===----------------------------------------------------------------------===//
+// Main logic to evaluate a call.
+//===----------------------------------------------------------------------===//
 
 bool CastValueChecker::evalCall(const CallEvent &Call,
                                 CheckerContext &C) const {
-  const CastCheck *Check = CDM.lookup(Call);
-  if (!Check)
+  const auto *Lookup = CDM.lookup(Call);
+  if (!Lookup)
     return false;
 
-  const auto *CE = cast<CallExpr>(Call.getOriginExpr());
-  if (!CE)
+  // We need to obtain the record type of the call's result to model it.
+  if (!getRecordType(Call.getResultType())->isRecordType())
     return false;
 
-  // If we cannot obtain both of the classes we cannot be sure how to model it.
-  if (!CE->getType()->getPointeeCXXRecordDecl() ||
-      !CE->getArg(0)->getType()->getPointeeCXXRecordDecl())
+  const CastCheck &Check = Lookup->first;
+  CallKind Kind = Lookup->second;
+  Optional<DefinedOrUnknownSVal> DV;
+
+  switch (Kind) {
+  case CallKind::Function: {
+    // We need to obtain the record type of the call's parameter to model it.
+    if (!getRecordType(Call.parameters()[0]->getType())->isRecordType())
+      return false;
+
+    DV = Call.getArgSVal(0).getAs<DefinedOrUnknownSVal>();
+    break;
+  }
+  case CallKind::Method:
+    const auto *InstanceCall = dyn_cast<CXXInstanceCall>(&Call);
+    if (!InstanceCall)
+      return false;
+
+    DV = InstanceCall->getCXXThisVal().getAs<DefinedOrUnknownSVal>();
+    break;
+  }
+
+  if (!DV)
     return false;
 
-  SVal ParamV = Call.getArgSVal(0);
-  auto ParamDV = ParamV.getAs<DefinedOrUnknownSVal>();
-  if (!ParamDV)
-    return false;
-
-  (*Check)(this, CE, *ParamDV, C);
+  Check(this, Call, *DV, C);
   return true;
+}
+
+void CastValueChecker::checkDeadSymbols(SymbolReaper &SR,
+                                        CheckerContext &C) const {
+  C.addTransition(removeDeadCasts(C.getState(), SR));
 }
 
 void ento::registerCastValueChecker(CheckerManager &Mgr) {

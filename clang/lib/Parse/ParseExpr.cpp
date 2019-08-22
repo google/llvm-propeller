@@ -573,7 +573,7 @@ class CastExpressionIdValidator final : public CorrectionCandidateCallback {
   }
 
   std::unique_ptr<CorrectionCandidateCallback> clone() override {
-    return llvm::make_unique<CastExpressionIdValidator>(*this);
+    return std::make_unique<CastExpressionIdValidator>(*this);
   }
 
  private:
@@ -1772,12 +1772,12 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
             OpKind == tok::arrow ? tok::period : tok::arrow;
         ExprResult CorrectedLHS(/*Invalid=*/true);
         if (getLangOpts().CPlusPlus && OrigLHS) {
-          const bool DiagsAreSuppressed = Diags.getSuppressAllDiagnostics();
-          Diags.setSuppressAllDiagnostics(true);
+          // FIXME: Creating a TentativeAnalysisScope from outside Sema is a
+          // hack.
+          Sema::TentativeAnalysisScope Trap(Actions);
           CorrectedLHS = Actions.ActOnStartCXXMemberReference(
               getCurScope(), OrigLHS, OpLoc, CorrectedOpKind, ObjectType,
               MayBePseudoDestructor);
-          Diags.setSuppressAllDiagnostics(DiagsAreSuppressed);
         }
 
         Expr *Base = LHS.get();

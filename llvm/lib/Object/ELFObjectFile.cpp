@@ -43,7 +43,16 @@ const EnumEntry<unsigned> llvm::object::ElfSymbolTypes[NumElfSymbolTypes] = {
     {"File", "FILE", ELF::STT_FILE},
     {"Common", "COMMON", ELF::STT_COMMON},
     {"TLS", "TLS", ELF::STT_TLS},
-    {"GNU_IFunc", "IFUNC", ELF::STT_GNU_IFUNC}};
+    {"Unknown", "<unknown>: 7", 7},
+    {"Unknown", "<unknown>: 8", 8},
+    {"Unknown", "<unknown>: 9", 9},
+    {"GNU_IFunc", "IFUNC", ELF::STT_GNU_IFUNC},
+    {"OS Specific", "<OS specific>: 11", 11},
+    {"OS Specific", "<OS specific>: 12", 12},
+    {"Proc Specific", "<processor specific>: 13", 13},
+    {"Proc Specific", "<processor specific>: 14", 14},
+    {"Proc Specific", "<processor specific>: 15", 15}
+};
 
 ELFObjectFileBase::ELFObjectFileBase(unsigned int Type, MemoryBufferRef Source)
     : ObjectFile(Type, Source) {}
@@ -54,7 +63,7 @@ createPtr(MemoryBufferRef Object) {
   auto Ret = ELFObjectFile<ELFT>::create(Object);
   if (Error E = Ret.takeError())
     return std::move(E);
-  return make_unique<ELFObjectFile<ELFT>>(std::move(*Ret));
+  return std::make_unique<ELFObjectFile<ELFT>>(std::move(*Ret));
 }
 
 Expected<std::unique_ptr<ObjectFile>>
@@ -383,9 +392,13 @@ ELFObjectFileBase::getPltAddresses() const {
     return {};
   Optional<SectionRef> Plt = None, RelaPlt = None, GotPlt = None;
   for (const SectionRef &Section : sections()) {
-    StringRef Name;
-    if (Section.getName(Name))
+    Expected<StringRef> NameOrErr = Section.getName();
+    if (!NameOrErr) {
+      consumeError(NameOrErr.takeError());
       continue;
+    }
+    StringRef Name = *NameOrErr;
+
     if (Name == ".plt")
       Plt = Section;
     else if (Name == ".rela.plt" || Name == ".rel.plt")

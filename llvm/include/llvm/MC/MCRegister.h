@@ -9,15 +9,22 @@
 #ifndef LLVM_MC_REGISTER_H
 #define LLVM_MC_REGISTER_H
 
+#include "llvm/ADT/DenseMapInfo.h"
 #include <cassert>
 
 namespace llvm {
 
+/// An unsigned integer type large enough to represent all physical registers,
+/// but not necessarily virtual registers.
+using MCPhysReg = uint16_t;
+
 /// Wrapper class representing physical registers. Should be passed by value.
-/// Note that this class is not fully implemented at this time. A more complete
-/// implementation will follow.
 class MCRegister {
+  unsigned Reg;
+
 public:
+  MCRegister(unsigned Val = 0): Reg(Val) {}
+
   // Register numbers can represent physical registers, virtual registers, and
   // sometimes stack slots. The unsigned values are divided into these ranges:
   //
@@ -46,9 +53,58 @@ public:
     assert(!isStackSlot(Reg) && "Not a register! Check isStackSlot() first.");
     return int(Reg) > 0;
   }
+
+  /// Return true if the specified register number is in the physical register
+  /// namespace.
+  bool isPhysical() const {
+    return isPhysicalRegister(Reg);
+  }
+
+  operator unsigned() const {
+    return Reg;
+  }
+
+  unsigned id() const {
+    return Reg;
+  }
+
+  bool isValid() const {
+    return Reg != 0;
+  }
+
+  /// Comparisons between register objects
+  bool operator==(const MCRegister &Other) const { return Reg == Other.Reg; }
+  bool operator!=(const MCRegister &Other) const { return Reg != Other.Reg; }
+
+  /// Comparisons against register constants. E.g.
+  /// * R == AArch64::WZR
+  /// * R == 0
+  /// * R == VirtRegMap::NO_PHYS_REG
+  bool operator==(unsigned Other) const { return Reg == Other; }
+  bool operator!=(unsigned Other) const { return Reg != Other; }
+  bool operator==(int Other) const { return Reg == unsigned(Other); }
+  bool operator!=(int Other) const { return Reg != unsigned(Other); }
+  // MSVC requires that we explicitly declare these two as well.
+  bool operator==(MCPhysReg Other) const { return Reg == unsigned(Other); }
+  bool operator!=(MCPhysReg Other) const { return Reg != unsigned(Other); }
+};
+
+// Provide DenseMapInfo for MCRegister
+template<> struct DenseMapInfo<MCRegister> {
+  static inline unsigned getEmptyKey() {
+    return DenseMapInfo<unsigned>::getEmptyKey();
+  }
+  static inline unsigned getTombstoneKey() {
+    return DenseMapInfo<unsigned>::getTombstoneKey();
+  }
+  static unsigned getHashValue(const MCRegister &Val) {
+    return DenseMapInfo<unsigned>::getHashValue(Val.id());
+  }
+  static bool isEqual(const MCRegister &LHS, const MCRegister &RHS) {
+    return DenseMapInfo<unsigned>::isEqual(LHS.id(), RHS.id());
+  }
 };
 
 }
 
 #endif // ifndef LLVM_MC_REGISTER_H
-

@@ -797,6 +797,27 @@ namespace c {
                               "Add include \"x.h\" for symbol a::X")))));
 }
 
+TEST(IncludeFixerTest, NoCrashOnTemplateInstantiations) {
+  Annotations Test(R"cpp(
+    template <typename T> struct Templ {
+      template <typename U>
+      typename U::type operator=(const U &);
+    };
+
+    struct A {
+      Templ<char> s;
+      A() { [[a]]; } // this caused crashes if we compute scopes lazily.
+    };
+  )cpp");
+
+  auto TU = TestTU::withCode(Test.code());
+  auto Index = buildIndexWithSymbol({});
+  TU.ExternalIndex = Index.get();
+
+  EXPECT_THAT(TU.build().getDiagnostics(),
+              ElementsAre(Diag(Test.range(), "use of undeclared identifier 'a'")));
+}
+
 TEST(DiagsInHeaders, DiagInsideHeader) {
   Annotations Main(R"cpp(
     #include [["a.h"]]
@@ -924,6 +945,15 @@ TEST(IgnoreDiags, FromNonWrittenSources) {
   TestTU TU = TestTU::withCode(Main.code());
   TU.AdditionalFiles = {{"a.h", Header.code()}};
   TU.ExtraArgs = {"-DFOO=NOOO"};
+  EXPECT_THAT(TU.build().getDiagnostics(), UnorderedElementsAre());
+}
+
+TEST(IgnoreDiags, FromNonWrittenInclude) {
+  TestTU TU = TestTU::withCode("");
+  TU.ExtraArgs.push_back("--include=a.h");
+  TU.AdditionalFiles = {{"a.h", "void main();"}};
+  // The diagnostic "main must return int" is from the header, we don't attempt
+  // to render it in the main file as there is no written location there.
   EXPECT_THAT(TU.build().getDiagnostics(), UnorderedElementsAre());
 }
 

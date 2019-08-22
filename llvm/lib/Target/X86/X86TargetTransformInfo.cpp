@@ -50,6 +50,8 @@ using namespace llvm;
 
 #define DEBUG_TYPE "x86tti"
 
+extern cl::opt<bool> ExperimentalVectorWideningLegalization;
+
 //===----------------------------------------------------------------------===//
 //
 // X86 cost model.
@@ -887,7 +889,7 @@ int X86TTIImpl::getArithmeticInstrCost(
 int X86TTIImpl::getShuffleCost(TTI::ShuffleKind Kind, Type *Tp, int Index,
                                Type *SubTp) {
   // 64-bit packed float vectors (v2f32) are widened to type v4f32.
-  // 64-bit packed integer vectors (v2i32) are promoted to type v2i64.
+  // 64-bit packed integer vectors (v2i32) are widened to type v4i32.
   std::pair<int, MVT> LT = TLI->getTypeLegalizationCost(DL, Tp);
 
   // Treat Transpose as 2-op shuffles - there's no difference in lowering.
@@ -911,6 +913,40 @@ int X86TTIImpl::getShuffleCost(TTI::ShuffleKind Kind, Type *Tp, int Index,
       int NumSubElts = SubLT.second.getVectorNumElements();
       if ((Index % NumSubElts) == 0 && (NumElts % NumSubElts) == 0)
         return SubLT.first;
+      // Handle some cases for widening legalization. For now we only handle
+      // cases where the original subvector was naturally aligned and evenly
+      // fit in its legalized subvector type.
+      // FIXME: Remove some of the alignment restrictions.
+      // FIXME: We can use permq for 64-bit or larger extracts from 256-bit
+      // vectors.
+      int OrigSubElts = SubTp->getVectorNumElements();
+      if (ExperimentalVectorWideningLegalization &&
+          NumSubElts > OrigSubElts &&
+          (Index % OrigSubElts) == 0 && (NumSubElts % OrigSubElts) == 0 &&
+          LT.second.getVectorElementType() ==
+            SubLT.second.getVectorElementType() &&
+          LT.second.getVectorElementType().getSizeInBits() ==
+            Tp->getVectorElementType()->getPrimitiveSizeInBits()) {
+        assert(NumElts >= NumSubElts && NumElts > OrigSubElts &&
+               "Unexpected number of elements!");
+        Type *VecTy = VectorType::get(Tp->getVectorElementType(),
+                                      LT.second.getVectorNumElements());
+        Type *SubTy = VectorType::get(Tp->getVectorElementType(),
+                                      SubLT.second.getVectorNumElements());
+        int ExtractIndex = alignDown((Index % NumElts), NumSubElts);
+        int ExtractCost = getShuffleCost(TTI::SK_ExtractSubvector, VecTy,
+                                         ExtractIndex, SubTy);
+
+        // If the original size is 32-bits or more, we can use pshufd. Otherwise
+        // if we have SSSE3 we can use pshufb.
+        if (SubTp->getPrimitiveSizeInBits() >= 32 || ST->hasSSSE3())
+          return ExtractCost + 1; // pshufd or pshufb
+
+        assert(SubTp->getPrimitiveSizeInBits() == 16 &&
+               "Unexpected vector size");
+
+        return ExtractCost + 2; // worst case pshufhw + pshufd
+      }
     }
   }
 
@@ -1297,6 +1333,12 @@ int X86TTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
   // TODO: For AVX512DQ + AVX512VL, we also have cheap casts for 128-bit and
   // 256-bit wide vectors.
 
+  // Used with widening legalization
+  static const TypeConversionCostTblEntry AVX512FConversionTblWide[] = {
+    { ISD::SIGN_EXTEND, MVT::v8i64,  MVT::v8i8,   1 },
+    { ISD::ZERO_EXTEND, MVT::v8i64,  MVT::v8i8,   1 },
+  };
+
   static const TypeConversionCostTblEntry AVX512FConversionTbl[] = {
     { ISD::FP_EXTEND, MVT::v8f64,   MVT::v8f32,  1 },
     { ISD::FP_EXTEND, MVT::v8f64,   MVT::v16f32, 3 },
@@ -1314,8 +1356,8 @@ int X86TTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
     { ISD::ZERO_EXTEND, MVT::v16i32, MVT::v16i8,  1 },
     { ISD::SIGN_EXTEND, MVT::v16i32, MVT::v16i16, 1 },
     { ISD::ZERO_EXTEND, MVT::v16i32, MVT::v16i16, 1 },
-    { ISD::ZERO_EXTEND, MVT::v8i64,  MVT::v8i16,  1 },
     { ISD::SIGN_EXTEND, MVT::v8i64,  MVT::v8i16,  1 },
+    { ISD::ZERO_EXTEND, MVT::v8i64,  MVT::v8i16,  1 },
     { ISD::SIGN_EXTEND, MVT::v8i64,  MVT::v8i32,  1 },
     { ISD::ZERO_EXTEND, MVT::v8i64,  MVT::v8i32,  1 },
 
@@ -1366,6 +1408,15 @@ int X86TTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
     { ISD::FP_TO_UINT,  MVT::v16i8,  MVT::v16f32, 2 },
   };
 
+  static const TypeConversionCostTblEntry AVX2ConversionTblWide[] = {
+    { ISD::SIGN_EXTEND, MVT::v4i64,  MVT::v4i8,   1 },
+    { ISD::ZERO_EXTEND, MVT::v4i64,  MVT::v4i8,   1 },
+    { ISD::SIGN_EXTEND, MVT::v8i32,  MVT::v8i8,   1 },
+    { ISD::ZERO_EXTEND, MVT::v8i32,  MVT::v8i8,   1 },
+    { ISD::SIGN_EXTEND, MVT::v4i64,  MVT::v4i16,  1 },
+    { ISD::ZERO_EXTEND, MVT::v4i64,  MVT::v4i16,  1 },
+  };
+
   static const TypeConversionCostTblEntry AVX2ConversionTbl[] = {
     { ISD::SIGN_EXTEND, MVT::v4i64,  MVT::v4i1,   3 },
     { ISD::ZERO_EXTEND, MVT::v4i64,  MVT::v4i1,   3 },
@@ -1395,6 +1446,12 @@ int X86TTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
     { ISD::FP_ROUND,    MVT::v8f32,  MVT::v8f64,  3 },
 
     { ISD::UINT_TO_FP,  MVT::v8f32,  MVT::v8i32,  8 },
+  };
+
+  static const TypeConversionCostTblEntry AVXConversionTblWide[] = {
+    { ISD::SIGN_EXTEND, MVT::v4i64,  MVT::v4i8,  4 },
+    { ISD::SIGN_EXTEND, MVT::v8i32,  MVT::v8i8,  4 },
+    { ISD::SIGN_EXTEND, MVT::v4i64,  MVT::v4i16, 4 },
   };
 
   static const TypeConversionCostTblEntry AVXConversionTbl[] = {
@@ -1607,14 +1664,31 @@ int X86TTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
                                                      SimpleDstTy, SimpleSrcTy))
         return Entry->Cost;
 
+    if (ST->hasAVX512() && ExperimentalVectorWideningLegalization)
+      if (const auto *Entry = ConvertCostTableLookup(AVX512FConversionTblWide, ISD,
+                                                     SimpleDstTy, SimpleSrcTy))
+        return Entry->Cost;
+
     if (ST->hasAVX512())
       if (const auto *Entry = ConvertCostTableLookup(AVX512FConversionTbl, ISD,
                                                      SimpleDstTy, SimpleSrcTy))
         return Entry->Cost;
   }
 
+  if (ST->hasAVX2() && ExperimentalVectorWideningLegalization) {
+    if (const auto *Entry = ConvertCostTableLookup(AVX2ConversionTblWide, ISD,
+                                                   SimpleDstTy, SimpleSrcTy))
+      return Entry->Cost;
+  }
+
   if (ST->hasAVX2()) {
     if (const auto *Entry = ConvertCostTableLookup(AVX2ConversionTbl, ISD,
+                                                   SimpleDstTy, SimpleSrcTy))
+      return Entry->Cost;
+  }
+
+  if (ST->hasAVX() && ExperimentalVectorWideningLegalization) {
+    if (const auto *Entry = ConvertCostTableLookup(AVXConversionTblWide, ISD,
                                                    SimpleDstTy, SimpleSrcTy))
       return Entry->Cost;
   }
@@ -2425,14 +2499,6 @@ int X86TTIImpl::getAddressComputationCost(Type *Ty, ScalarEvolution *SE,
 
 int X86TTIImpl::getArithmeticReductionCost(unsigned Opcode, Type *ValTy,
                                            bool IsPairwise) {
-
-  std::pair<int, MVT> LT = TLI->getTypeLegalizationCost(DL, ValTy);
-
-  MVT MTy = LT.second;
-
-  int ISD = TLI->InstructionOpcodeToISD(Opcode);
-  assert(ISD && "Invalid opcode");
-
   // We use the Intel Architecture Code Analyzer(IACA) to measure the throughput
   // and make it as the cost.
 
@@ -2440,7 +2506,10 @@ int X86TTIImpl::getArithmeticReductionCost(unsigned Opcode, Type *ValTy,
     { ISD::FADD,  MVT::v2f64,   2 },
     { ISD::FADD,  MVT::v4f32,   4 },
     { ISD::ADD,   MVT::v2i64,   2 },      // The data reported by the IACA tool is "1.6".
+    { ISD::ADD,   MVT::v2i32,   2 }, // FIXME: chosen to be less than v4i32.
     { ISD::ADD,   MVT::v4i32,   3 },      // The data reported by the IACA tool is "3.5".
+    { ISD::ADD,   MVT::v2i16,   3 }, // FIXME: chosen to be less than v4i16
+    { ISD::ADD,   MVT::v4i16,   4 }, // FIXME: chosen to be less than v8i16
     { ISD::ADD,   MVT::v8i16,   5 },
   };
 
@@ -2449,8 +2518,11 @@ int X86TTIImpl::getArithmeticReductionCost(unsigned Opcode, Type *ValTy,
     { ISD::FADD,  MVT::v4f64,   5 },
     { ISD::FADD,  MVT::v8f32,   7 },
     { ISD::ADD,   MVT::v2i64,   1 },      // The data reported by the IACA tool is "1.5".
+    { ISD::ADD,   MVT::v2i32,   2 }, // FIXME: chosen to be less than v4i32
     { ISD::ADD,   MVT::v4i32,   3 },      // The data reported by the IACA tool is "3.5".
     { ISD::ADD,   MVT::v4i64,   5 },      // The data reported by the IACA tool is "4.8".
+    { ISD::ADD,   MVT::v2i16,   3 }, // FIXME: chosen to be less than v4i16
+    { ISD::ADD,   MVT::v4i16,   4 }, // FIXME: chosen to be less than v8i16
     { ISD::ADD,   MVT::v8i16,   5 },
     { ISD::ADD,   MVT::v8i32,   5 },
   };
@@ -2459,7 +2531,10 @@ int X86TTIImpl::getArithmeticReductionCost(unsigned Opcode, Type *ValTy,
     { ISD::FADD,  MVT::v2f64,   2 },
     { ISD::FADD,  MVT::v4f32,   4 },
     { ISD::ADD,   MVT::v2i64,   2 },      // The data reported by the IACA tool is "1.6".
+    { ISD::ADD,   MVT::v2i32,   2 }, // FIXME: chosen to be less than v4i32
     { ISD::ADD,   MVT::v4i32,   3 },      // The data reported by the IACA tool is "3.3".
+    { ISD::ADD,   MVT::v2i16,   2 },      // The data reported by the IACA tool is "4.3".
+    { ISD::ADD,   MVT::v4i16,   3 },      // The data reported by the IACA tool is "4.3".
     { ISD::ADD,   MVT::v8i16,   4 },      // The data reported by the IACA tool is "4.3".
   };
 
@@ -2468,11 +2543,46 @@ int X86TTIImpl::getArithmeticReductionCost(unsigned Opcode, Type *ValTy,
     { ISD::FADD,  MVT::v4f64,   3 },
     { ISD::FADD,  MVT::v8f32,   4 },
     { ISD::ADD,   MVT::v2i64,   1 },      // The data reported by the IACA tool is "1.5".
+    { ISD::ADD,   MVT::v2i32,   2 }, // FIXME: chosen to be less than v4i32
     { ISD::ADD,   MVT::v4i32,   3 },      // The data reported by the IACA tool is "2.8".
     { ISD::ADD,   MVT::v4i64,   3 },
+    { ISD::ADD,   MVT::v2i16,   2 },      // The data reported by the IACA tool is "4.3".
+    { ISD::ADD,   MVT::v4i16,   3 },      // The data reported by the IACA tool is "4.3".
     { ISD::ADD,   MVT::v8i16,   4 },
     { ISD::ADD,   MVT::v8i32,   5 },
   };
+
+  int ISD = TLI->InstructionOpcodeToISD(Opcode);
+  assert(ISD && "Invalid opcode");
+
+  // Before legalizing the type, give a chance to look up illegal narrow types
+  // in the table.
+  // FIXME: Is there a better way to do this?
+  EVT VT = TLI->getValueType(DL, ValTy);
+  if (VT.isSimple() && ExperimentalVectorWideningLegalization) {
+    MVT MTy = VT.getSimpleVT();
+    if (IsPairwise) {
+      if (ST->hasAVX())
+        if (const auto *Entry = CostTableLookup(AVX1CostTblPairWise, ISD, MTy))
+          return Entry->Cost;
+
+      if (ST->hasSSE42())
+        if (const auto *Entry = CostTableLookup(SSE42CostTblPairWise, ISD, MTy))
+          return Entry->Cost;
+    } else {
+      if (ST->hasAVX())
+        if (const auto *Entry = CostTableLookup(AVX1CostTblNoPairWise, ISD, MTy))
+          return Entry->Cost;
+
+      if (ST->hasSSE42())
+        if (const auto *Entry = CostTableLookup(SSE42CostTblNoPairWise, ISD, MTy))
+          return Entry->Cost;
+    }
+  }
+
+  std::pair<int, MVT> LT = TLI->getTypeLegalizationCost(DL, ValTy);
+
+  MVT MTy = LT.second;
 
   if (IsPairwise) {
     if (ST->hasAVX())

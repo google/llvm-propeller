@@ -344,9 +344,9 @@ static bool needsPlt(RelExpr expr) {
 // returns false for TLS variables even though they need GOT, because
 // TLS variables uses GOT differently than the regular variables.
 static bool needsGot(RelExpr expr) {
-  return oneof<R_GOT, R_GOT_OFF, R_HEXAGON_GOT, R_MIPS_GOT_LOCAL_PAGE,
-               R_MIPS_GOT_OFF, R_MIPS_GOT_OFF32, R_AARCH64_GOT_PAGE_PC,
-               R_GOT_PC, R_GOTPLT>(expr);
+  return oneof<R_GOT, R_GOT_OFF, R_MIPS_GOT_LOCAL_PAGE, R_MIPS_GOT_OFF,
+               R_MIPS_GOT_OFF32, R_AARCH64_GOT_PAGE_PC, R_GOT_PC, R_GOTPLT>(
+      expr);
 }
 
 // True if this expression is of the form Sym - X, where X is a position in the
@@ -369,7 +369,7 @@ static bool isRelExpr(RelExpr expr) {
 static bool isStaticLinkTimeConstant(RelExpr e, RelType type, const Symbol &sym,
                                      InputSectionBase &s, uint64_t relOff) {
   // These expressions always compute a constant
-  if (oneof<R_DTPREL, R_GOTPLT, R_GOT_OFF, R_HEXAGON_GOT, R_TLSLD_GOT_OFF,
+  if (oneof<R_DTPREL, R_GOTPLT, R_GOT_OFF, R_TLSLD_GOT_OFF,
             R_MIPS_GOT_LOCAL_PAGE, R_MIPS_GOTREL, R_MIPS_GOT_OFF,
             R_MIPS_GOT_OFF32, R_MIPS_GOT_GP_PC, R_MIPS_TLSGD,
             R_AARCH64_GOT_PAGE_PC, R_GOT_PC, R_GOTONLY_PC, R_GOTPLTONLY_PC,
@@ -510,10 +510,8 @@ static void replaceWithDefined(Symbol &sym, SectionBase *sec, uint64_t value,
   sym.gotIndex = old.gotIndex;
   sym.verdefIndex = old.verdefIndex;
   sym.ppc64BranchltIndex = old.ppc64BranchltIndex;
-  sym.isPreemptible = true;
   sym.exportDynamic = true;
   sym.isUsedInRegularObj = true;
-  sym.used = true;
 }
 
 // Reserve space in .bss or .bss.rel.ro for copy relocation.
@@ -771,8 +769,7 @@ static bool maybeReportUndefined(Symbol &sym, InputSectionBase &sec,
   if (!sym.isUndefined() || sym.isWeak())
     return false;
 
-  bool canBeExternal = !sym.isLocal() && sym.computeBinding() != STB_LOCAL &&
-                       sym.visibility == STV_DEFAULT;
+  bool canBeExternal = !sym.isLocal() && sym.visibility == STV_DEFAULT;
   if (config->unresolvedSymbols == UnresolvedPolicy::Ignore && canBeExternal)
     return false;
 
@@ -996,56 +993,29 @@ static void processRelocAux(InputSectionBase &sec, RelExpr expr, RelType type,
     }
   }
 
-  if (!canWrite && (config->isPic && !isRelExpr(expr))) {
-    error(
-        "can't create dynamic relocation " + toString(type) + " against " +
-        (sym.getName().empty() ? "local symbol" : "symbol: " + toString(sym)) +
-        " in readonly segment; recompile object files with -fPIC "
-        "or pass '-Wl,-z,notext' to allow text relocations in the output" +
-        getLocation(sec, sym, offset));
-    return;
-  }
-
-  // Copy relocations (for STT_OBJECT) and canonical PLT (for STT_FUNC) are only
-  // possible in an executable.
-  //
-  // Among R_ABS relocatoin types, symbolicRel has the same size as the word
-  // size. Others have fewer bits and may cause runtime overflow in -pie/-shared
-  // mode. Disallow them.
-  if (config->shared ||
-      (config->pie && expr == R_ABS && type != target->symbolicRel)) {
-    errorOrWarn(
-        "relocation " + toString(type) + " cannot be used against " +
-        (sym.getName().empty() ? "local symbol" : "symbol " + toString(sym)) +
-        "; recompile with -fPIC" + getLocation(sec, sym, offset));
-    return;
-  }
-
-  // If the symbol is undefined we already reported any relevant errors.
-  if (sym.isUndefined())
-    return;
-
-  if (!canDefineSymbolInExecutable(sym)) {
-    error("cannot preempt symbol: " + toString(sym) +
-          getLocation(sec, sym, offset));
-    return;
-  }
-
-  if (sym.isObject()) {
-    // Produce a copy relocation.
-    if (auto *ss = dyn_cast<SharedSymbol>(&sym)) {
-      if (!config->zCopyreloc)
-        error("unresolvable relocation " + toString(type) +
-              " against symbol '" + toString(*ss) +
-              "'; recompile with -fPIC or remove '-z nocopyreloc'" +
-              getLocation(sec, sym, offset));
-      addCopyRelSymbol<ELFT>(*ss);
+  // When producing an executable, we can perform copy relocations (for
+  // STT_OBJECT) and canonical PLT (for STT_FUNC).
+  if (!config->shared) {
+    if (!canDefineSymbolInExecutable(sym)) {
+      errorOrWarn("cannot preempt symbol: " + toString(sym) +
+                  getLocation(sec, sym, offset));
+      return;
     }
-    sec.relocations.push_back({expr, type, offset, addend, &sym});
-    return;
-  }
 
-  if (sym.isFunc()) {
+    if (sym.isObject()) {
+      // Produce a copy relocation.
+      if (auto *ss = dyn_cast<SharedSymbol>(&sym)) {
+        if (!config->zCopyreloc)
+          error("unresolvable relocation " + toString(type) +
+                " against symbol '" + toString(*ss) +
+                "'; recompile with -fPIC or remove '-z nocopyreloc'" +
+                getLocation(sec, sym, offset));
+        addCopyRelSymbol<ELFT>(*ss);
+      }
+      sec.relocations.push_back({expr, type, offset, addend, &sym});
+      return;
+    }
+
     // This handles a non PIC program call to function in a shared library. In
     // an ideal world, we could just report an error saying the relocation can
     // overflow at runtime. In the real world with glibc, crt1.o has a
@@ -1073,33 +1043,43 @@ static void processRelocAux(InputSectionBase &sec, RelExpr expr, RelType type,
     //   compiled without -fPIE/-fPIC and doesn't maintain ebx.
     // * If a library definition gets preempted to the executable, it will have
     //   the wrong ebx value.
-    if (config->pie && config->emachine == EM_386)
-      errorOrWarn("symbol '" + toString(sym) +
-                  "' cannot be preempted; recompile with -fPIE" +
-                  getLocation(sec, sym, offset));
-    if (!sym.isInPlt())
-      addPltEntry<ELFT>(in.plt, in.gotPlt, in.relaPlt, target->pltRel, sym);
-    if (!sym.isDefined())
-      replaceWithDefined(
-          sym, in.plt,
-          target->pltHeaderSize + target->pltEntrySize * sym.pltIndex, 0);
-    sym.needsPltAddr = true;
-    sec.relocations.push_back({expr, type, offset, addend, &sym});
+    if (sym.isFunc()) {
+      if (config->pie && config->emachine == EM_386)
+        errorOrWarn("symbol '" + toString(sym) +
+                    "' cannot be preempted; recompile with -fPIE" +
+                    getLocation(sec, sym, offset));
+      if (!sym.isInPlt())
+        addPltEntry<ELFT>(in.plt, in.gotPlt, in.relaPlt, target->pltRel, sym);
+      if (!sym.isDefined())
+        replaceWithDefined(
+            sym, in.plt,
+            target->pltHeaderSize + target->pltEntrySize * sym.pltIndex, 0);
+      sym.needsPltAddr = true;
+      sec.relocations.push_back({expr, type, offset, addend, &sym});
+      return;
+    }
+  }
+
+  if (config->isPic) {
+    if (!canWrite && !isRelExpr(expr))
+      errorOrWarn(
+          "can't create dynamic relocation " + toString(type) + " against " +
+          (sym.getName().empty() ? "local symbol"
+                                 : "symbol: " + toString(sym)) +
+          " in readonly segment; recompile object files with -fPIC "
+          "or pass '-Wl,-z,notext' to allow text relocations in the output" +
+          getLocation(sec, sym, offset));
+    else
+      errorOrWarn(
+          "relocation " + toString(type) + " cannot be used against " +
+          (sym.getName().empty() ? "local symbol" : "symbol " + toString(sym)) +
+          "; recompile with -fPIC" + getLocation(sec, sym, offset));
     return;
   }
 
   errorOrWarn("symbol '" + toString(sym) + "' has no type" +
               getLocation(sec, sym, offset));
 }
-
-struct IRelativeReloc {
-  RelType type;
-  InputSectionBase *sec;
-  uint64_t offset;
-  Symbol *sym;
-};
-
-static std::vector<IRelativeReloc> iRelativeRelocs;
 
 template <class ELFT, class RelTy>
 static void scanReloc(InputSectionBase &sec, OffsetGetter &getOffset, RelTy *&i,
@@ -1268,12 +1248,6 @@ static void scanReloc(InputSectionBase &sec, OffsetGetter &getOffset, RelTy *&i,
     //   correctly, the IRELATIVE relocations are stored in an array which a
     //   statically linked executable's startup code must enumerate using the
     //   linker-defined symbols __rela?_iplt_{start,end}.
-    //
-    // - An absolute relocation to a non-preemptible ifunc (such as a global
-    //   variable containing a pointer to the ifunc) needs to be relocated in
-    //   the exact same way as a GOT entry, so we can avoid needing to make the
-    //   PLT entry canonical by translating such relocations into IRELATIVE
-    //   relocations in the relaIplt.
     if (!sym.isInPlt()) {
       // Create PLT and GOTPLT slots for the symbol.
       sym.isInIplt = true;
@@ -1289,17 +1263,6 @@ static void scanReloc(InputSectionBase &sec, OffsetGetter &getOffset, RelTy *&i,
       addPltEntry<ELFT>(in.iplt, in.igotPlt, in.relaIplt, target->iRelativeRel,
                         *directSym);
       sym.pltIndex = directSym->pltIndex;
-    }
-    if (expr == R_ABS && addend == 0 && (sec.flags & SHF_WRITE)) {
-      // We might be able to represent this as an IRELATIVE. But we don't know
-      // yet whether some later relocation will make the symbol point to a
-      // canonical PLT, which would make this either a dynamic RELATIVE (PIC) or
-      // static (non-PIC) relocation. So we keep a record of the information
-      // required to process the relocation, and after scanRelocs() has been
-      // called on all relocations, the relocation is resolved by
-      // addIRelativeRelocs().
-      iRelativeRelocs.push_back({type, &sec, offset, &sym});
-      return;
     }
     if (needsGot(expr)) {
       // Redirect GOT accesses to point to the Igot.
@@ -1366,21 +1329,6 @@ template <class ELFT> void elf::scanRelocations(InputSectionBase &s) {
     scanRelocs<ELFT>(s, s.relas<ELFT>());
   else
     scanRelocs<ELFT>(s, s.rels<ELFT>());
-}
-
-// Figure out which representation to use for any absolute relocs to
-// non-preemptible ifuncs that we visited during scanRelocs().
-void elf::addIRelativeRelocs() {
-  for (IRelativeReloc &r : iRelativeRelocs) {
-    if (r.sym->type == STT_GNU_IFUNC)
-      in.relaIplt->addReloc(
-          {target->iRelativeRel, r.sec, r.offset, true, r.sym, 0});
-    else if (config->isPic)
-      addRelativeReloc(r.sec, r.offset, r.sym, 0, R_ABS, r.type);
-    else
-      r.sec->relocations.push_back({R_ABS, r.type, r.offset, 0, r.sym});
-  }
-  iRelativeRelocs.clear();
 }
 
 static bool mergeCmp(const InputSection *a, const InputSection *b) {

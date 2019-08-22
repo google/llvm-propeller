@@ -588,29 +588,14 @@ MCSection *TargetLoweringObjectFileELF::getExplicitSectionGlobal(
     Flags |= ELF::SHF_GROUP;
   }
 
-  bool EmitUniqueSection = false;
-
-  // If we have -ffunction-sections or -fdata-sections then we should emit the
-  // global value to a uniqued section of the same name.
-  if (!(Flags & ELF::SHF_MERGE) && !Kind.isCommon()) {
-    if (Kind.isText())
-      EmitUniqueSection = TM.getFunctionSections();
-    else
-      EmitUniqueSection = TM.getDataSections();
-  }
-  EmitUniqueSection |= GO->hasComdat();
-
   // A section can have at most one associated section. Put each global with
   // MD_associated in a unique section.
+  unsigned UniqueID = MCContext::GenericSectionID;
   const MCSymbolELF *AssociatedSymbol = getAssociatedSymbol(GO, TM);
   if (AssociatedSymbol) {
-    EmitUniqueSection = true;
+    UniqueID = NextUniqueID++;
     Flags |= ELF::SHF_LINK_ORDER;
   }
-
-  unsigned UniqueID = MCContext::GenericSectionID;
-  if (EmitUniqueSection)
-    UniqueID = NextUniqueID++;
 
   MCSectionELF *Section = getContext().getELFSection(
       SectionName, getELFSectionType(SectionName, Kind), Flags,
@@ -1564,7 +1549,8 @@ static MCSectionCOFF *getCOFFStaticStructorSection(MCContext &Ctx,
     // internally, so we use ".CRT$XCA00001" for them.
     SmallString<24> Name;
     raw_svector_ostream OS(Name);
-    OS << ".CRT$XC" << (Priority < 200 ? 'A' : 'T') << format("%05u", Priority);
+    OS << ".CRT$X" << (IsCtor ? "C" : "T") <<
+        (Priority < 200 ? 'A' : 'T') << format("%05u", Priority);
     MCSectionCOFF *Sec = Ctx.getCOFFSection(
         Name, COFF::IMAGE_SCN_CNT_INITIALIZED_DATA | COFF::IMAGE_SCN_MEM_READ,
         SectionKind::getReadOnly());
@@ -1880,11 +1866,14 @@ MCSection *TargetLoweringObjectFileXCOFF::SelectSectionForGlobal(
 
   // Common symbols go into a csect with matching name which will get mapped
   // into the .bss section.
-  if (Kind.isCommon()) {
+  if (Kind.isBSSLocal() || Kind.isCommon()) {
     SmallString<128> Name;
     getNameWithPrefix(Name, GO, TM);
-    return getContext().getXCOFFSection(Name, XCOFF::XMC_RW, XCOFF::XTY_CM,
-                                        Kind, /* BeginSymbolName */ nullptr);
+    XCOFF::StorageClass SC =
+        TargetLoweringObjectFileXCOFF::getStorageClassForGlobal(GO);
+    return getContext().getXCOFFSection(
+        Name, Kind.isBSSLocal() ? XCOFF::XMC_BS : XCOFF::XMC_RW, XCOFF::XTY_CM,
+        SC, Kind, /* BeginSymbolName */ nullptr);
   }
 
   if (Kind.isText())
@@ -1920,4 +1909,20 @@ const MCExpr *TargetLoweringObjectFileXCOFF::lowerRelativeReference(
     const GlobalValue *LHS, const GlobalValue *RHS,
     const TargetMachine &TM) const {
   report_fatal_error("XCOFF not yet implemented.");
+}
+
+XCOFF::StorageClass TargetLoweringObjectFileXCOFF::getStorageClassForGlobal(
+    const GlobalObject *GO) {
+  switch (GO->getLinkage()) {
+  case GlobalValue::InternalLinkage:
+    return XCOFF::C_HIDEXT;
+  case GlobalValue::ExternalLinkage:
+  case GlobalValue::CommonLinkage:
+    return XCOFF::C_EXT;
+  case GlobalValue::ExternalWeakLinkage:
+    return XCOFF::C_WEAKEXT;
+  default:
+    report_fatal_error(
+        "Unhandled linkage when mapping linkage to StorageClass.");
+  }
 }

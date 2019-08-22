@@ -181,12 +181,12 @@ void LinkerScript::addSymbol(SymbolAssignment *cmd) {
   // write expressions like this: `alignment = 16; . = ALIGN(., alignment)`.
   uint64_t symValue = value.sec ? 0 : value.getValue();
 
-  Defined New(nullptr, cmd->name, STB_GLOBAL, visibility, STT_NOTYPE, symValue,
-              0, sec);
+  Defined newSym(nullptr, cmd->name, STB_GLOBAL, visibility, STT_NOTYPE,
+                 symValue, 0, sec);
 
   Symbol *sym = symtab->insert(cmd->name);
-  sym->mergeProperties(New);
-  sym->replace(New);
+  sym->mergeProperties(newSym);
+  sym->replace(newSym);
   cmd->sym = cast<Defined>(sym);
 }
 
@@ -197,13 +197,13 @@ static void declareSymbol(SymbolAssignment *cmd) {
     return;
 
   uint8_t visibility = cmd->hidden ? STV_HIDDEN : STV_DEFAULT;
-  Defined New(nullptr, cmd->name, STB_GLOBAL, visibility, STT_NOTYPE, 0, 0,
-              nullptr);
+  Defined newSym(nullptr, cmd->name, STB_GLOBAL, visibility, STT_NOTYPE, 0, 0,
+                 nullptr);
 
   // We can't calculate final value right now.
   Symbol *sym = symtab->insert(cmd->name);
-  sym->mergeProperties(New);
-  sym->replace(New);
+  sym->mergeProperties(newSym);
+  sym->replace(newSym);
 
   cmd->sym = cast<Defined>(sym);
   cmd->provide = false;
@@ -305,30 +305,6 @@ bool LinkerScript::shouldKeep(InputSectionBase *s) {
 }
 
 // A helper function for the SORT() command.
-static std::function<bool(InputSectionBase *, InputSectionBase *)>
-getComparator(SortSectionPolicy k) {
-  switch (k) {
-  case SortSectionPolicy::Alignment:
-    return [](InputSectionBase *a, InputSectionBase *b) {
-      // ">" is not a mistake. Sections with larger alignments are placed
-      // before sections with smaller alignments in order to reduce the
-      // amount of padding necessary. This is compatible with GNU.
-      return a->alignment > b->alignment;
-    };
-  case SortSectionPolicy::Name:
-    return [](InputSectionBase *a, InputSectionBase *b) {
-      return a->name < b->name;
-    };
-  case SortSectionPolicy::Priority:
-    return [](InputSectionBase *a, InputSectionBase *b) {
-      return getPriority(a->name) < getPriority(b->name);
-    };
-  default:
-    llvm_unreachable("unknown sort policy");
-  }
-}
-
-// A helper function for the SORT() command.
 static bool matchConstraints(ArrayRef<InputSection *> sections,
                              ConstraintKind kind) {
   if (kind == ConstraintKind::NoConstraint)
@@ -343,8 +319,30 @@ static bool matchConstraints(ArrayRef<InputSection *> sections,
 
 static void sortSections(MutableArrayRef<InputSection *> vec,
                          SortSectionPolicy k) {
-  if (k != SortSectionPolicy::Default && k != SortSectionPolicy::None)
-    llvm::stable_sort(vec, getComparator(k));
+  auto alignmentComparator = [](InputSectionBase *a, InputSectionBase *b) {
+    // ">" is not a mistake. Sections with larger alignments are placed
+    // before sections with smaller alignments in order to reduce the
+    // amount of padding necessary. This is compatible with GNU.
+    return a->alignment > b->alignment;
+  };
+  auto nameComparator = [](InputSectionBase *a, InputSectionBase *b) {
+    return a->name < b->name;
+  };
+  auto priorityComparator = [](InputSectionBase *a, InputSectionBase *b) {
+    return getPriority(a->name) < getPriority(b->name);
+  };
+
+  switch (k) {
+  case SortSectionPolicy::Default:
+  case SortSectionPolicy::None:
+    return;
+  case SortSectionPolicy::Alignment:
+    return llvm::stable_sort(vec, alignmentComparator);
+  case SortSectionPolicy::Name:
+    return llvm::stable_sort(vec, nameComparator);
+  case SortSectionPolicy::Priority:
+    return llvm::stable_sort(vec, priorityComparator);
+  }
 }
 
 // Sort sections as instructed by SORT-family commands and --sort-section
@@ -460,7 +458,7 @@ void LinkerScript::processSectionCommands() {
   // This is needed as there are some cases where we cannot just
   // thread the current state through to a lambda function created by the
   // script parser.
-  auto deleter = make_unique<AddressState>();
+  auto deleter = std::make_unique<AddressState>();
   ctx = deleter.get();
   ctx->outSec = aether;
 
@@ -772,6 +770,14 @@ void LinkerScript::assignOffsets(OutputSection *sec) {
   if ((sec->flags & SHF_ALLOC) && sec->addrExpr)
     setDot(sec->addrExpr, sec->location, false);
 
+  // If the address of the section has been moved forward by an explicit
+  // expression so that it now starts past the current curPos of the enclosing
+  // region, we need to expand the current region to account for the space
+  // between the previous section, if any, and the start of this section.
+  if (ctx->memRegion && ctx->memRegion->curPos < dot)
+    expandMemoryRegion(ctx->memRegion, dot - ctx->memRegion->curPos,
+                       ctx->memRegion->name, sec->name);
+
   switchTo(sec);
 
   if (sec->lmaExpr)
@@ -1049,7 +1055,7 @@ static uint64_t getInitialDot() {
 void LinkerScript::assignAddresses() {
   dot = getInitialDot();
 
-  auto deleter = make_unique<AddressState>();
+  auto deleter = std::make_unique<AddressState>();
   ctx = deleter.get();
   errorOnMissingSection = true;
   switchTo(aether);

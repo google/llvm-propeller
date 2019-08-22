@@ -188,17 +188,17 @@ template <typename T> static bool hasBodyOrInit(const T *D) {
 }
 
 CrossTranslationUnitContext::CrossTranslationUnitContext(CompilerInstance &CI)
-    : CI(CI), Context(CI.getASTContext()),
-      CTULoadThreshold(CI.getAnalyzerOpts()->CTUImportThreshold) {}
+    : Context(CI.getASTContext()), ASTStorage(CI) {}
 
 CrossTranslationUnitContext::~CrossTranslationUnitContext() {}
 
-std::string CrossTranslationUnitContext::getLookupName(const NamedDecl *ND) {
+llvm::Optional<std::string>
+CrossTranslationUnitContext::getLookupName(const NamedDecl *ND) {
   SmallString<128> DeclUSR;
   bool Ret = index::generateUSRForDecl(ND, DeclUSR);
-  (void)Ret;
-  assert(!Ret && "Unable to generate USR");
-  return DeclUSR.str();
+  if (Ret)
+    return {};
+  return std::string(DeclUSR.str());
 }
 
 /// Recursively visits the decls of a DeclContext, and returns one with the
@@ -218,7 +218,8 @@ CrossTranslationUnitContext::findDefInDeclContext(const DeclContext *DC,
     const T *ResultDecl;
     if (!ND || !hasBodyOrInit(ND, ResultDecl))
       continue;
-    if (getLookupName(ResultDecl) != LookupName)
+    llvm::Optional<std::string> ResultLookupName = getLookupName(ResultDecl);
+    if (!ResultLookupName || *ResultLookupName != LookupName)
       continue;
     return ResultDecl;
   }
@@ -233,12 +234,12 @@ llvm::Expected<const T *> CrossTranslationUnitContext::getCrossTUDefinitionImpl(
   assert(!hasBodyOrInit(D) &&
          "D has a body or init in current translation unit!");
   ++NumGetCTUCalled;
-  const std::string LookupName = getLookupName(D);
-  if (LookupName.empty())
+  const llvm::Optional<std::string> LookupName = getLookupName(D);
+  if (!LookupName)
     return llvm::make_error<IndexError>(
         index_error_code::failed_to_generate_usr);
-  llvm::Expected<ASTUnit *> ASTUnitOrError = loadExternalAST(
-      LookupName, CrossTUDir, IndexName, DisplayCTUProgress);
+  llvm::Expected<ASTUnit *> ASTUnitOrError =
+      loadExternalAST(*LookupName, CrossTUDir, IndexName, DisplayCTUProgress);
   if (!ASTUnitOrError)
     return ASTUnitOrError.takeError();
   ASTUnit *Unit = *ASTUnitOrError;
@@ -294,7 +295,7 @@ llvm::Expected<const T *> CrossTranslationUnitContext::getCrossTUDefinitionImpl(
   }
 
   TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
-  if (const T *ResultDecl = findDefInDeclContext<T>(TU, LookupName))
+  if (const T *ResultDecl = findDefInDeclContext<T>(TU, *LookupName))
     return importDefinition(ResultDecl, Unit);
   return llvm::make_error<IndexError>(index_error_code::failed_import);
 }
@@ -340,6 +341,136 @@ void CrossTranslationUnitContext::emitCrossTUDiagnostics(const IndexError &IE) {
   }
 }
 
+CrossTranslationUnitContext::ASTFileLoader::ASTFileLoader(
+    const CompilerInstance &CI)
+    : CI(CI) {}
+
+std::unique_ptr<ASTUnit>
+CrossTranslationUnitContext::ASTFileLoader::operator()(StringRef ASTFilePath) {
+  // Load AST from ast-dump.
+  IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
+  TextDiagnosticPrinter *DiagClient =
+      new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
+  IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  IntrusiveRefCntPtr<DiagnosticsEngine> Diags(
+      new DiagnosticsEngine(DiagID, &*DiagOpts, DiagClient));
+
+  return ASTUnit::LoadFromASTFile(
+      ASTFilePath, CI.getPCHContainerOperations()->getRawReader(),
+      ASTUnit::LoadEverything, Diags, CI.getFileSystemOpts());
+}
+
+CrossTranslationUnitContext::ASTUnitStorage::ASTUnitStorage(
+    const CompilerInstance &CI)
+    : FileAccessor(CI), LoadGuard(const_cast<CompilerInstance &>(CI)
+                                      .getAnalyzerOpts()
+                                      ->CTUImportThreshold) {}
+
+llvm::Expected<ASTUnit *>
+CrossTranslationUnitContext::ASTUnitStorage::getASTUnitForFile(
+    StringRef FileName, bool DisplayCTUProgress) {
+  // Try the cache first.
+  auto ASTCacheEntry = FileASTUnitMap.find(FileName);
+  if (ASTCacheEntry == FileASTUnitMap.end()) {
+
+    // Do not load if the limit is reached.
+    if (!LoadGuard) {
+      ++NumASTLoadThresholdReached;
+      return llvm::make_error<IndexError>(
+          index_error_code::load_threshold_reached);
+    }
+
+    // Load the ASTUnit from the pre-dumped AST file specified by ASTFileName.
+    std::unique_ptr<ASTUnit> LoadedUnit = FileAccessor(FileName);
+
+    // Need the raw pointer and the unique_ptr as well.
+    ASTUnit *Unit = LoadedUnit.get();
+
+    // Update the cache.
+    FileASTUnitMap[FileName] = std::move(LoadedUnit);
+
+    LoadGuard.indicateLoadSuccess();
+
+    if (DisplayCTUProgress)
+      llvm::errs() << "CTU loaded AST file: " << FileName << "\n";
+
+    return Unit;
+
+  } else {
+    // Found in the cache.
+    return ASTCacheEntry->second.get();
+  }
+}
+
+llvm::Expected<ASTUnit *>
+CrossTranslationUnitContext::ASTUnitStorage::getASTUnitForFunction(
+    StringRef FunctionName, StringRef CrossTUDir, StringRef IndexName,
+    bool DisplayCTUProgress) {
+  // Try the cache first.
+  auto ASTCacheEntry = NameASTUnitMap.find(FunctionName);
+  if (ASTCacheEntry == NameASTUnitMap.end()) {
+    // Load the ASTUnit from the pre-dumped AST file specified by ASTFileName.
+
+    // Ensure that the Index is loaded, as we need to search in it.
+    if (llvm::Error IndexLoadError =
+            ensureCTUIndexLoaded(CrossTUDir, IndexName))
+      return std::move(IndexLoadError);
+
+    // Check if there is and entry in the index for the function.
+    if (!NameFileMap.count(FunctionName)) {
+      ++NumNotInOtherTU;
+      return llvm::make_error<IndexError>(index_error_code::missing_definition);
+    }
+
+    // Search in the index for the filename where the definition of FuncitonName
+    // resides.
+    if (llvm::Expected<ASTUnit *> FoundForFile =
+            getASTUnitForFile(NameFileMap[FunctionName], DisplayCTUProgress)) {
+
+      // Update the cache.
+      NameASTUnitMap[FunctionName] = *FoundForFile;
+      return *FoundForFile;
+
+    } else {
+      return FoundForFile.takeError();
+    }
+  } else {
+    // Found in the cache.
+    return ASTCacheEntry->second;
+  }
+}
+
+llvm::Expected<std::string>
+CrossTranslationUnitContext::ASTUnitStorage::getFileForFunction(
+    StringRef FunctionName, StringRef CrossTUDir, StringRef IndexName) {
+  if (llvm::Error IndexLoadError = ensureCTUIndexLoaded(CrossTUDir, IndexName))
+    return std::move(IndexLoadError);
+  return NameFileMap[FunctionName];
+}
+
+llvm::Error CrossTranslationUnitContext::ASTUnitStorage::ensureCTUIndexLoaded(
+    StringRef CrossTUDir, StringRef IndexName) {
+  // Dont initialize if the map is filled.
+  if (!NameFileMap.empty())
+    return llvm::Error::success();
+
+  // Get the absolute path to the index file.
+  SmallString<256> IndexFile = CrossTUDir;
+  if (llvm::sys::path::is_absolute(IndexName))
+    IndexFile = IndexName;
+  else
+    llvm::sys::path::append(IndexFile, IndexName);
+
+  if (auto IndexMapping = parseCrossTUIndex(IndexFile, CrossTUDir)) {
+    // Initialize member map.
+    NameFileMap = *IndexMapping;
+    return llvm::Error::success();
+  } else {
+    // Error while parsing CrossTU index file.
+    return IndexMapping.takeError();
+  };
+}
+
 llvm::Expected<ASTUnit *> CrossTranslationUnitContext::loadExternalAST(
     StringRef LookupName, StringRef CrossTUDir, StringRef IndexName,
     bool DisplayCTUProgress) {
@@ -348,64 +479,18 @@ llvm::Expected<ASTUnit *> CrossTranslationUnitContext::loadExternalAST(
   //        translation units contains decls with the same lookup name an
   //        error will be returned.
 
-  if (NumASTLoaded >= CTULoadThreshold) {
-    ++NumASTLoadThresholdReached;
-    return llvm::make_error<IndexError>(
-        index_error_code::load_threshold_reached);
-  }
+  // Try to get the value from the heavily cached storage.
+  llvm::Expected<ASTUnit *> Unit = ASTStorage.getASTUnitForFunction(
+      LookupName, CrossTUDir, IndexName, DisplayCTUProgress);
 
-  ASTUnit *Unit = nullptr;
-  auto NameUnitCacheEntry = NameASTUnitMap.find(LookupName);
-  if (NameUnitCacheEntry == NameASTUnitMap.end()) {
-    if (NameFileMap.empty()) {
-      SmallString<256> IndexFile = CrossTUDir;
-      if (llvm::sys::path::is_absolute(IndexName))
-        IndexFile = IndexName;
-      else
-        llvm::sys::path::append(IndexFile, IndexName);
-      llvm::Expected<llvm::StringMap<std::string>> IndexOrErr =
-          parseCrossTUIndex(IndexFile, CrossTUDir);
-      if (IndexOrErr)
-        NameFileMap = *IndexOrErr;
-      else
-        return IndexOrErr.takeError();
-    }
-
-    auto It = NameFileMap.find(LookupName);
-    if (It == NameFileMap.end()) {
-      ++NumNotInOtherTU;
-      return llvm::make_error<IndexError>(index_error_code::missing_definition);
-    }
-    StringRef ASTFileName = It->second;
-    auto ASTCacheEntry = FileASTUnitMap.find(ASTFileName);
-    if (ASTCacheEntry == FileASTUnitMap.end()) {
-      IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
-      TextDiagnosticPrinter *DiagClient =
-          new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
-      IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
-      IntrusiveRefCntPtr<DiagnosticsEngine> Diags(
-          new DiagnosticsEngine(DiagID, &*DiagOpts, DiagClient));
-
-      std::unique_ptr<ASTUnit> LoadedUnit(ASTUnit::LoadFromASTFile(
-          ASTFileName, CI.getPCHContainerOperations()->getRawReader(),
-          ASTUnit::LoadEverything, Diags, CI.getFileSystemOpts()));
-      Unit = LoadedUnit.get();
-      FileASTUnitMap[ASTFileName] = std::move(LoadedUnit);
-      ++NumASTLoaded;
-      if (DisplayCTUProgress) {
-        llvm::errs() << "CTU loaded AST file: "
-                     << ASTFileName << "\n";
-      }
-    } else {
-      Unit = ASTCacheEntry->second.get();
-    }
-    NameASTUnitMap[LookupName] = Unit;
-  } else {
-    Unit = NameUnitCacheEntry->second;
-  }
   if (!Unit)
+    return Unit.takeError();
+
+  // Check whether the backing pointer of the Expected is a nullptr.
+  if (!*Unit)
     return llvm::make_error<IndexError>(
         index_error_code::failed_to_get_external_ast);
+
   return Unit;
 }
 

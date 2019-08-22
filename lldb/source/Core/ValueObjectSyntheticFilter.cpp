@@ -140,7 +140,7 @@ void ValueObjectSynthetic::CreateSynthFilter() {
   }
   m_synth_filter_up = (m_synth_sp->GetFrontEnd(*valobj_for_frontend));
   if (!m_synth_filter_up)
-    m_synth_filter_up = llvm::make_unique<DummySyntheticFrontEnd>(*m_parent);
+    m_synth_filter_up = std::make_unique<DummySyntheticFrontEnd>(*m_parent);
 }
 
 bool ValueObjectSynthetic::UpdateValue() {
@@ -320,7 +320,7 @@ lldb::ValueObjectSP ValueObjectSynthetic::GetNonSyntheticValue() {
 void ValueObjectSynthetic::CopyValueData(ValueObject *source) {
   m_value = (source->UpdateValueIfNeeded(), source->GetValue());
   ExecutionContext exe_ctx(GetExecutionContextRef());
-  m_error = m_value.GetValueAsData(&exe_ctx, m_data, 0, GetModule().get());
+  m_error = m_value.GetValueAsData(&exe_ctx, m_data, GetModule().get());
 }
 
 bool ValueObjectSynthetic::CanProvideValue() {

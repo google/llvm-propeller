@@ -390,9 +390,9 @@ void SIRegisterInfo::materializeFrameBaseRegister(MachineBasicBlock *MBB,
   }
 
   MachineRegisterInfo &MRI = MF->getRegInfo();
-  unsigned OffsetReg = MRI.createVirtualRegister(&AMDGPU::SReg_32_XM0RegClass);
+  Register OffsetReg = MRI.createVirtualRegister(&AMDGPU::SReg_32_XM0RegClass);
 
-  unsigned FIReg = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
+  Register FIReg = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
 
   BuildMI(*MBB, Ins, DL, TII->get(AMDGPU::S_MOV_B32), OffsetReg)
     .addImm(Offset);
@@ -715,8 +715,9 @@ void SIRegisterInfo::buildSpillLoadStore(MachineBasicBlock::iterator MI,
   }
 
   for (unsigned i = 0, e = NumSubRegs; i != e; ++i, Offset += EltSize) {
-    unsigned SubReg = NumSubRegs == 1 ?
-      ValueReg : getSubReg(ValueReg, getSubRegFromChannel(i));
+    Register SubReg = NumSubRegs == 1
+                          ? Register(ValueReg)
+                          : getSubReg(ValueReg, getSubRegFromChannel(i));
 
     unsigned SOffsetRegState = 0;
     unsigned SrcDstRegState = getDefRegState(!IsStore);
@@ -806,7 +807,7 @@ bool SIRegisterInfo::spillSGPR(MachineBasicBlock::iterator MI,
   const GCNSubtarget &ST =  MF->getSubtarget<GCNSubtarget>();
   const SIInstrInfo *TII = ST.getInstrInfo();
 
-  unsigned SuperReg = MI->getOperand(0).getReg();
+  Register SuperReg = MI->getOperand(0).getReg();
   bool IsKill = MI->getOperand(0).isKill();
   const DebugLoc &DL = MI->getDebugLoc();
 
@@ -851,8 +852,8 @@ bool SIRegisterInfo::spillSGPR(MachineBasicBlock::iterator MI,
   // SubReg carries the "Kill" flag when SubReg == SuperReg.
   unsigned SubKillState = getKillRegState((NumSubRegs == 1) && IsKill);
   for (unsigned i = 0, e = NumSubRegs; i < e; ++i) {
-    unsigned SubReg = NumSubRegs == 1 ?
-      SuperReg : getSubReg(SuperReg, SplitParts[i]);
+    Register SubReg =
+        NumSubRegs == 1 ? SuperReg : getSubReg(SuperReg, SplitParts[i]);
 
     if (SpillToSMEM) {
       int64_t FrOffset = FrameInfo.getObjectOffset(Index);
@@ -924,7 +925,7 @@ bool SIRegisterInfo::spillSGPR(MachineBasicBlock::iterator MI,
 
       // Spill SGPR to a frame index.
       // TODO: Should VI try to spill to VGPR and then spill to SMEM?
-      unsigned TmpReg = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
+      Register TmpReg = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
       // TODO: Should VI try to spill to VGPR and then spill to SMEM?
 
       MachineInstrBuilder Mov
@@ -988,7 +989,7 @@ bool SIRegisterInfo::restoreSGPR(MachineBasicBlock::iterator MI,
   const SIInstrInfo *TII = ST.getInstrInfo();
   const DebugLoc &DL = MI->getDebugLoc();
 
-  unsigned SuperReg = MI->getOperand(0).getReg();
+  Register SuperReg = MI->getOperand(0).getReg();
   bool SpillToSMEM = spillSGPRToSMEM();
   if (SpillToSMEM && OnlyToVGPR)
     return false;
@@ -1026,8 +1027,8 @@ bool SIRegisterInfo::restoreSGPR(MachineBasicBlock::iterator MI,
   int64_t FrOffset = FrameInfo.getObjectOffset(Index);
 
   for (unsigned i = 0, e = NumSubRegs; i < e; ++i) {
-    unsigned SubReg = NumSubRegs == 1 ?
-      SuperReg : getSubReg(SuperReg, SplitParts[i]);
+    Register SubReg =
+        NumSubRegs == 1 ? SuperReg : getSubReg(SuperReg, SplitParts[i]);
 
     if (SpillToSMEM) {
       // FIXME: Size may be > 4 but extra bytes wasted.
@@ -1079,7 +1080,7 @@ bool SIRegisterInfo::restoreSGPR(MachineBasicBlock::iterator MI,
 
       // Restore SGPR from a stack slot.
       // FIXME: We should use S_LOAD_DWORD here for VI.
-      unsigned TmpReg = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
+      Register TmpReg = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
       unsigned Align = FrameInfo.getObjectAlignment(Index);
 
       MachinePointerInfo PtrInfo
@@ -1263,8 +1264,8 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
         // In an entry function/kernel the offset is already the absolute
         // address relative to the frame register.
 
-        unsigned DiffReg
-          = MRI.createVirtualRegister(&AMDGPU::SReg_32_XM0RegClass);
+        Register DiffReg =
+            MRI.createVirtualRegister(&AMDGPU::SReg_32_XM0RegClass);
 
         bool IsCopy = MI->getOpcode() == AMDGPU::V_MOV_B32_e32;
         Register ResultReg = IsCopy ?
@@ -1282,8 +1283,8 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
             .addImm(Log2_32(ST.getWavefrontSize()))
             .addReg(DiffReg);
         } else {
-          unsigned ScaledReg
-            = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
+          Register ScaledReg =
+              MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
 
           BuildMI(*MBB, MI, DL, TII->get(AMDGPU::V_LSHRREV_B32_e64), ScaledReg)
             .addImm(Log2_32(ST.getWavefrontSize()))
@@ -1296,8 +1297,8 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
               .addReg(ScaledReg, RegState::Kill)
               .addImm(0); // clamp bit
           } else {
-            unsigned ConstOffsetReg
-              = MRI.createVirtualRegister(&AMDGPU::SReg_32_XM0RegClass);
+            Register ConstOffsetReg =
+                MRI.createVirtualRegister(&AMDGPU::SReg_32_XM0RegClass);
 
             BuildMI(*MBB, MI, DL, TII->get(AMDGPU::S_MOV_B32), ConstOffsetReg)
               .addImm(Offset);
@@ -1345,7 +1346,7 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       int64_t Offset = FrameInfo.getObjectOffset(Index);
       FIOp.ChangeToImmediate(Offset);
       if (!TII->isImmOperandLegal(*MI, FIOperandNum, FIOp)) {
-        unsigned TmpReg = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
+        Register TmpReg = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
         BuildMI(*MBB, MI, DL, TII->get(AMDGPU::V_MOV_B32_e32), TmpReg)
           .addImm(Offset);
         FIOp.ChangeToRegister(TmpReg, false, false, true);
@@ -1361,7 +1362,7 @@ StringRef SIRegisterInfo::getRegAsmName(unsigned Reg) const {
 // FIXME: This is very slow. It might be worth creating a map from physreg to
 // register class.
 const TargetRegisterClass *SIRegisterInfo::getPhysRegClass(unsigned Reg) const {
-  assert(!TargetRegisterInfo::isVirtualRegister(Reg));
+  assert(!Register::isVirtualRegister(Reg));
 
   static const TargetRegisterClass *const BaseClasses[] = {
     &AMDGPU::VGPR_32RegClass,
@@ -1796,7 +1797,7 @@ ArrayRef<int16_t> SIRegisterInfo::getRegSplitParts(const TargetRegisterClass *RC
 const TargetRegisterClass*
 SIRegisterInfo::getRegClassForReg(const MachineRegisterInfo &MRI,
                                   unsigned Reg) const {
-  if (TargetRegisterInfo::isVirtualRegister(Reg))
+  if (Register::isVirtualRegister(Reg))
     return  MRI.getRegClass(Reg);
 
   return getPhysRegClass(Reg);
@@ -1968,7 +1969,7 @@ MachineInstr *SIRegisterInfo::findReachingDef(unsigned Reg, unsigned SubReg,
   SlotIndex UseIdx = LIS->getInstructionIndex(Use);
   SlotIndex DefIdx;
 
-  if (TargetRegisterInfo::isVirtualRegister(Reg)) {
+  if (Register::isVirtualRegister(Reg)) {
     if (!LIS->hasInterval(Reg))
       return nullptr;
     LiveInterval &LI = LIS->getInterval(Reg);

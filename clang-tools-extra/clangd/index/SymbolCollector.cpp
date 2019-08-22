@@ -81,7 +81,7 @@ static const char *PROTO_HEADER_COMMENT =
 // filters.
 bool isPrivateProtoDecl(const NamedDecl &ND) {
   const auto &SM = ND.getASTContext().getSourceManager();
-  auto Loc = findNameLoc(&ND);
+  auto Loc = spellingLocIfSpelled(findName(&ND), SM);
   auto FileName = SM.getFilename(Loc);
   if (!FileName.endswith(".proto.h") && !FileName.endswith(".pb.h"))
     return false;
@@ -147,17 +147,6 @@ getTokenRange(SourceLocation TokLoc, const SourceManager &SM,
           CreatePosition(TokLoc.getLocWithOffset(TokenLength))};
 }
 
-bool shouldIndexFile(const SourceManager &SM, FileID FID,
-                     const SymbolCollector::Options &Opts,
-                     llvm::DenseMap<FileID, bool> *FilesToIndexCache) {
-  if (!Opts.FileFilter)
-    return true;
-  auto I = FilesToIndexCache->try_emplace(FID);
-  if (I.second)
-    I.first->second = Opts.FileFilter(SM, FID);
-  return I.first->second;
-}
-
 // Return the symbol location of the token at \p TokLoc.
 llvm::Optional<SymbolLocation>
 getTokenLocation(SourceLocation TokLoc, const SourceManager &SM,
@@ -206,7 +195,7 @@ void SymbolCollector::initialize(ASTContext &Ctx) {
   ASTCtx = &Ctx;
   CompletionAllocator = std::make_shared<GlobalCodeCompletionAllocator>();
   CompletionTUInfo =
-      llvm::make_unique<CodeCompletionTUInfo>(CompletionAllocator);
+      std::make_unique<CodeCompletionTUInfo>(CompletionAllocator);
 }
 
 bool SymbolCollector::shouldCollectSymbol(const NamedDecl &ND,
@@ -410,7 +399,7 @@ bool SymbolCollector::handleMacroOccurence(const IdentifierInfo *Name,
   S.SymInfo = index::getSymbolInfoForMacro(*MI);
   std::string FileURI;
   // FIXME: use the result to filter out symbols.
-  shouldIndexFile(SM, SM.getFileID(Loc), Opts, &FilesToIndexCache);
+  shouldIndexFile(SM.getFileID(Loc));
   if (auto DeclLoc =
           getTokenLocation(DefLoc, SM, Opts, PP->getLangOpts(), FileURI))
     S.CanonicalDeclaration = *DeclLoc;
@@ -540,7 +529,7 @@ void SymbolCollector::finish() {
         for (const auto &LocAndRole : It.second) {
           auto FileID = SM.getFileID(LocAndRole.first);
           // FIXME: use the result to filter out references.
-          shouldIndexFile(SM, FileID, Opts, &FilesToIndexCache);
+          shouldIndexFile(FileID);
           if (auto FileURI = GetURI(FileID)) {
             auto Range =
                 getTokenRange(LocAndRole.first, SM, ASTCtx->getLangOpts());
@@ -587,10 +576,10 @@ const Symbol *SymbolCollector::addDeclaration(const NamedDecl &ND, SymbolID ID,
     S.Flags |= Symbol::VisibleOutsideFile;
   S.SymInfo = index::getSymbolInfo(&ND);
   std::string FileURI;
-  auto Loc = findNameLoc(&ND);
+  auto Loc = spellingLocIfSpelled(findName(&ND), SM);
   assert(Loc.isValid() && "Invalid source location for NamedDecl");
   // FIXME: use the result to filter out symbols.
-  shouldIndexFile(SM, SM.getFileID(Loc), Opts, &FilesToIndexCache);
+  shouldIndexFile(SM.getFileID(Loc));
   if (auto DeclLoc =
           getTokenLocation(Loc, SM, Opts, ASTCtx->getLangOpts(), FileURI))
     S.CanonicalDeclaration = *DeclLoc;
@@ -647,10 +636,10 @@ void SymbolCollector::addDefinition(const NamedDecl &ND,
   // in clang::index. We should only see one definition.
   Symbol S = DeclSym;
   std::string FileURI;
-  auto Loc = findNameLoc(&ND);
   const auto &SM = ND.getASTContext().getSourceManager();
+  auto Loc = spellingLocIfSpelled(findName(&ND), SM);
   // FIXME: use the result to filter out symbols.
-  shouldIndexFile(SM, SM.getFileID(Loc), Opts, &FilesToIndexCache);
+  shouldIndexFile(SM.getFileID(Loc));
   if (auto DefLoc =
           getTokenLocation(Loc, SM, Opts, ASTCtx->getLangOpts(), FileURI))
     S.Definition = *DefLoc;
@@ -740,6 +729,15 @@ bool SymbolCollector::isDontIncludeMeHeader(llvm::StringRef Content) {
       return true;
   }
   return false;
+}
+
+bool SymbolCollector::shouldIndexFile(FileID FID) {
+  if (!Opts.FileFilter)
+    return true;
+  auto I = FilesToIndexCache.try_emplace(FID);
+  if (I.second)
+    I.first->second = Opts.FileFilter(ASTCtx->getSourceManager(), FID);
+  return I.first->second;
 }
 
 } // namespace clangd

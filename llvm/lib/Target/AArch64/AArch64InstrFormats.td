@@ -637,6 +637,11 @@ def logical_imm64_XFORM : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(enc, SDLoc(N), MVT::i32);
 }]>;
 
+def gi_logical_imm32_XFORM : GICustomOperandRenderer<"renderLogicalImm32">,
+  GISDNodeXFormEquiv<logical_imm32_XFORM>;
+def gi_logical_imm64_XFORM : GICustomOperandRenderer<"renderLogicalImm64">,
+  GISDNodeXFormEquiv<logical_imm64_XFORM>;
+
 let DiagnosticType = "LogicalSecondSource" in {
   def LogicalImm32Operand : AsmOperandClass {
     let Name = "LogicalImm32";
@@ -782,6 +787,14 @@ class arith_shifted_reg<ValueType Ty, RegisterClass regclass, int width>
 def arith_shifted_reg32 : arith_shifted_reg<i32, GPR32, 32>;
 def arith_shifted_reg64 : arith_shifted_reg<i64, GPR64, 64>;
 
+def gi_arith_shifted_reg32 :
+  GIComplexOperandMatcher<s32, "selectArithShiftedRegister">,
+  GIComplexPatternEquiv<arith_shifted_reg32>;
+
+def gi_arith_shifted_reg64 :
+  GIComplexOperandMatcher<s64, "selectArithShiftedRegister">,
+  GIComplexPatternEquiv<arith_shifted_reg64>;
+
 // An arithmetic shifter operand:
 //  {7-6} - shift type: 00 = lsl, 01 = lsr, 10 = asr, 11 = ror
 //  {5-0} - imm6
@@ -803,6 +816,14 @@ class logical_shifted_reg<ValueType Ty, RegisterClass regclass, Operand shiftop>
 
 def logical_shifted_reg32 : logical_shifted_reg<i32, GPR32, logical_shift32>;
 def logical_shifted_reg64 : logical_shifted_reg<i64, GPR64, logical_shift64>;
+
+def gi_logical_shifted_reg32 :
+  GIComplexOperandMatcher<s32, "selectLogicalShiftedRegister">,
+  GIComplexPatternEquiv<logical_shifted_reg32>;
+
+def gi_logical_shifted_reg64 :
+  GIComplexOperandMatcher<s64, "selectLogicalShiftedRegister">,
+  GIComplexPatternEquiv<logical_shifted_reg64>;
 
 // A logical vector shifter operand:
 //  {7-6} - shift type: 00 = lsl
@@ -884,6 +905,14 @@ class neg_addsub_shifted_imm<ValueType Ty>
 
 def neg_addsub_shifted_imm32 : neg_addsub_shifted_imm<i32>;
 def neg_addsub_shifted_imm64 : neg_addsub_shifted_imm<i64>;
+
+def gi_neg_addsub_shifted_imm32 :
+    GIComplexOperandMatcher<s32, "selectNegArithImmed">,
+    GIComplexPatternEquiv<neg_addsub_shifted_imm32>;
+
+def gi_neg_addsub_shifted_imm64 :
+    GIComplexOperandMatcher<s64, "selectNegArithImmed">,
+    GIComplexPatternEquiv<neg_addsub_shifted_imm64>;
 
 // An extend operand:
 //  {5-3} - extend type

@@ -233,11 +233,13 @@ class Configuration(object):
         cxx_type = self.cxx.type
         if cxx_type is not None:
             assert self.cxx.version is not None
-            maj_v, min_v, _ = self.cxx.version
+            maj_v, min_v, patch_v = self.cxx.version
             self.config.available_features.add(cxx_type)
             self.config.available_features.add('%s-%s' % (cxx_type, maj_v))
             self.config.available_features.add('%s-%s.%s' % (
                 cxx_type, maj_v, min_v))
+            self.config.available_features.add('%s-%s.%s.%s' % (
+                cxx_type, maj_v, min_v, patch_v))
         self.cxx.compile_env = dict(os.environ)
         # 'CCACHE_CPP2' prevents ccache from stripping comments while
         # preprocessing. This is required to prevent stripping of '-verify'
@@ -581,6 +583,15 @@ class Configuration(object):
         support_path = os.path.join(self.libcxx_src_root, 'test/support')
         self.cxx.compile_flags += ['-I' + support_path]
 
+        # Add includes for the PSTL headers
+        pstl_src_root = self.get_lit_conf('pstl_src_root')
+        pstl_obj_root = self.get_lit_conf('pstl_obj_root')
+        if pstl_src_root is not None and pstl_obj_root is not None:
+            self.cxx.compile_flags += ['-I' + os.path.join(pstl_src_root, 'include')]
+            self.cxx.compile_flags += ['-I' + os.path.join(pstl_obj_root, 'generated_headers')]
+            self.cxx.compile_flags += ['-I' + os.path.join(pstl_src_root, 'test')]
+            self.config.available_features.add('parallel-algorithms')
+
         # FIXME(EricWF): variant_size.pass.cpp requires a slightly larger
         # template depth with older Clang versions.
         self.cxx.addFlagIfSupported('-ftemplate-depth=270')
@@ -591,11 +602,11 @@ class Configuration(object):
         if self.cxx_stdlib_under_test != 'libstdc++' and \
            not self.is_windows:
             self.cxx.compile_flags += [
-                '-include', os.path.join(support_path, 'nasty_macros.hpp')]
+                '-include', os.path.join(support_path, 'nasty_macros.h')]
         if self.cxx_stdlib_under_test == 'msvc':
             self.cxx.compile_flags += [
                 '-include', os.path.join(support_path,
-                                         'msvc_stdlib_force_include.hpp')]
+                                         'msvc_stdlib_force_include.h')]
             pass
         if self.is_windows and self.debug_build and \
                 self.cxx_stdlib_under_test != 'msvc':

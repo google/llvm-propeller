@@ -129,7 +129,7 @@ let Definition = "target" in {
     Desc<"Allow LLDB to load scripting resources embedded in symbol files when available.">;
   def LoadCWDlldbinitFile: Property<"load-cwd-lldbinit", "Enum">,
     DefaultEnumValue<"eLoadCWDlldbinitWarn">,
-    EnumValues<"OptionEnumValues(g_load_current_working_dir_lldbinit_values)">,
+    EnumValues<"OptionEnumValues(g_load_cwd_lldbinit_values)">,
     Desc<"Allow LLDB to .lldbinit files from the current directory automatically.">;
   def MemoryModuleLoadLevel: Property<"memory-module-load-level", "Enum">,
     DefaultEnumValue<"eMemoryModuleLoadLevelComplete">,
@@ -162,7 +162,7 @@ let Definition = "process" in {
     Desc<"Disable reading and caching of memory in fixed-size units.">;
   def ExtraStartCommand: Property<"extra-startup-command", "Array">,
     DefaultUnsignedValue<16>,
-    Desc<"A list containing extra commands understood by the particular process plugin used.  For instance, to turn on debugserver logging set this to 'QSetLogging:bitmask=LOG_DEFAULT;">;
+    Desc<"A list containing extra commands understood by the particular process plugin used.  For instance, to turn on debugserver logging set this to 'QSetLogging:bitmask=LOG_DEFAULT;'">;
   def IgnoreBreakpointsInExpressions: Property<"ignore-breakpoints-in-expressions", "Boolean">,
     Global,
     DefaultTrue,

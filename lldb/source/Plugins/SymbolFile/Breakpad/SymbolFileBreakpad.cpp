@@ -318,9 +318,8 @@ uint32_t SymbolFileBreakpad::FindTypes(
   return types.GetSize();
 }
 
-size_t
-SymbolFileBreakpad::FindTypes(const std::vector<CompilerContext> &context,
-                              bool append, TypeMap &types) {
+size_t SymbolFileBreakpad::FindTypes(llvm::ArrayRef<CompilerContext> pattern,
+                                     bool append, TypeMap &types) {
   if (!append)
     types.Clear();
   return types.GetSize();
@@ -590,7 +589,7 @@ void SymbolFileBreakpad::ParseLineTableAndSupportFiles(CompileUnit &cu,
          "How did we create compile units without a base address?");
 
   SupportFileMap map;
-  data.line_table_up = llvm::make_unique<LineTable>(&cu);
+  data.line_table_up = std::make_unique<LineTable>(&cu);
   std::unique_ptr<LineSequence> line_seq_up(
       data.line_table_up->CreateLineSequenceContainer());
   llvm::Optional<addr_t> next_addr;

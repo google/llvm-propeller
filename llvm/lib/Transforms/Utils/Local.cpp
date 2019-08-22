@@ -1152,7 +1152,7 @@ static unsigned enforceKnownAlignment(Value *V, unsigned Align,
 
     // If the preferred alignment is greater than the natural stack alignment
     // then don't round up. This avoids dynamic stack realignment.
-    if (DL.exceedsNaturalStackAlignment(PrefAlign))
+    if (DL.exceedsNaturalStackAlignment(llvm::Align(PrefAlign)))
       return Align;
     AI->setAlignment(PrefAlign);
     return PrefAlign;
@@ -1933,18 +1933,24 @@ unsigned llvm::changeToUnreachable(Instruction *I, bool UseLLVMTrap,
   return NumInstrsRemoved;
 }
 
-/// changeToCall - Convert the specified invoke into a normal call.
-void llvm::changeToCall(InvokeInst *II, DomTreeUpdater *DTU) {
-  SmallVector<Value*, 8> Args(II->arg_begin(), II->arg_end());
+CallInst *llvm::createCallMatchingInvoke(InvokeInst *II) {
+  SmallVector<Value *, 8> Args(II->arg_begin(), II->arg_end());
   SmallVector<OperandBundleDef, 1> OpBundles;
   II->getOperandBundlesAsDefs(OpBundles);
-  CallInst *NewCall = CallInst::Create(
-      II->getFunctionType(), II->getCalledValue(), Args, OpBundles, "", II);
-  NewCall->takeName(II);
+  CallInst *NewCall = CallInst::Create(II->getFunctionType(),
+                                       II->getCalledValue(), Args, OpBundles);
   NewCall->setCallingConv(II->getCallingConv());
   NewCall->setAttributes(II->getAttributes());
   NewCall->setDebugLoc(II->getDebugLoc());
   NewCall->copyMetadata(*II);
+  return NewCall;
+}
+
+/// changeToCall - Convert the specified invoke into a normal call.
+void llvm::changeToCall(InvokeInst *II, DomTreeUpdater *DTU) {
+  CallInst *NewCall = createCallMatchingInvoke(II);
+  NewCall->takeName(II);
+  NewCall->insertBefore(II);
   II->replaceAllUsesWith(NewCall);
 
   // Follow the call by a branch to the normal destination.
@@ -2339,6 +2345,9 @@ void llvm::combineMetadata(Instruction *K, const Instruction *J,
         K->setMetadata(Kind,
           MDNode::getMostGenericAlignmentOrDereferenceable(JMD, KMD));
         break;
+      case LLVMContext::MD_preserve_access_index:
+        // Preserve !preserve.access.index in K.
+        break;
     }
   }
   // Set !invariant.group from J if J has it. If both instructions have it
@@ -2361,7 +2370,7 @@ void llvm::combineMetadataForCSE(Instruction *K, const Instruction *J,
       LLVMContext::MD_invariant_group, LLVMContext::MD_align,
       LLVMContext::MD_dereferenceable,
       LLVMContext::MD_dereferenceable_or_null,
-      LLVMContext::MD_access_group};
+      LLVMContext::MD_access_group,    LLVMContext::MD_preserve_access_index};
   combineMetadata(K, J, KnownIDs, KDominatesJ);
 }
 
@@ -2444,7 +2453,7 @@ void llvm::patchReplacementInstruction(Instruction *I, Value *Repl) {
       LLVMContext::MD_noalias,         LLVMContext::MD_range,
       LLVMContext::MD_fpmath,          LLVMContext::MD_invariant_load,
       LLVMContext::MD_invariant_group, LLVMContext::MD_nonnull,
-      LLVMContext::MD_access_group};
+      LLVMContext::MD_access_group,    LLVMContext::MD_preserve_access_index};
   combineMetadata(ReplInst, I, KnownIDs, false);
 }
 

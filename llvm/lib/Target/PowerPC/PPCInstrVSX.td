@@ -864,14 +864,14 @@ let Uses = [RM] in {
 
   let isCodeGenOnly = 1, isMoveImm = 1, isAsCheapAsAMove = 1,
       isReMaterializable = 1 in {
-    def XXLXORz : XX3Form_Zero<60, 154, (outs vsrc:$XT), (ins),
+    def XXLXORz : XX3Form_SameOp<60, 154, (outs vsrc:$XT), (ins),
                        "xxlxor $XT, $XT, $XT", IIC_VecGeneral,
                        [(set v4i32:$XT, (v4i32 immAllZerosV))]>;
-    def XXLXORdpz : XX3Form_SetZero<60, 154,
+    def XXLXORdpz : XX3Form_SameOp<60, 154,
                          (outs vsfrc:$XT), (ins),
                          "xxlxor $XT, $XT, $XT", IIC_VecGeneral,
                          [(set f64:$XT, (fpimm0))]>;
-    def XXLXORspz : XX3Form_SetZero<60, 154,
+    def XXLXORspz : XX3Form_SameOp<60, 154,
                          (outs vssrc:$XT), (ins),
                          "xxlxor $XT, $XT, $XT", IIC_VecGeneral,
                          [(set f32:$XT, (fpimm0))]>;
@@ -1309,6 +1309,13 @@ let AddedComplexity = 400 in { // Prefer VSX patterns over non-VSX patterns.
 
   def : Pat<(int_ppc_vsx_xxleqv v4i32:$A, v4i32:$B),
             (XXLEQV $A, $B)>;
+
+  let isCodeGenOnly = 1, isMoveImm = 1, isAsCheapAsAMove = 1,
+      isReMaterializable = 1 in {
+    def XXLEQVOnes : XX3Form_SameOp<60, 186, (outs vsrc:$XT), (ins),
+                         "xxleqv $XT, $XT, $XT", IIC_VecGeneral,
+                         [(set v4i32:$XT, (bitconvert (v16i8 immAllOnesV)))]>;
+  }
 
   def XXLORC : XX3Form<60, 170,
                        (outs vsrc:$XT), (ins vsrc:$XA, vsrc:$XB),
@@ -4095,27 +4102,32 @@ let AddedComplexity = 400 in {
               (XXSPLTW (COPY_TO_REGCLASS (MTVSRWZ $A), VSRC), 1)>;
   }
 
+  let Predicates = [HasP8Vector] in {
+    def : Pat<(v1i128 (bitconvert (v16i8 immAllOnesV))),
+              (v1i128 (COPY_TO_REGCLASS(XXLEQVOnes), VSRC))>;
+    def : Pat<(v2i64 (bitconvert (v16i8 immAllOnesV))),
+              (v2i64 (COPY_TO_REGCLASS(XXLEQVOnes), VSRC))>;
+    def : Pat<(v8i16 (bitconvert (v16i8 immAllOnesV))),
+              (v8i16 (COPY_TO_REGCLASS(XXLEQVOnes), VSRC))>;
+    def : Pat<(v16i8 (bitconvert (v16i8 immAllOnesV))),
+              (v16i8 (COPY_TO_REGCLASS(XXLEQVOnes), VSRC))>;
+  }
+
   let Predicates = [HasP9Vector] in {
     // Endianness-neutral patterns for const splats with ISA 3.0 instructions.
     def : Pat<(v4i32 (scalar_to_vector i32:$A)),
               (v4i32 (MTVSRWS $A))>;
     def : Pat<(v4i32 (build_vector i32:$A, i32:$A, i32:$A, i32:$A)),
               (v4i32 (MTVSRWS $A))>;
-    def : Pat<(v16i8 (build_vector immAnyExt8:$A, immAnyExt8:$A, immAnyExt8:$A,
-                                   immAnyExt8:$A, immAnyExt8:$A, immAnyExt8:$A,
-                                   immAnyExt8:$A, immAnyExt8:$A, immAnyExt8:$A,
-                                   immAnyExt8:$A, immAnyExt8:$A, immAnyExt8:$A,
-                                   immAnyExt8:$A, immAnyExt8:$A, immAnyExt8:$A,
-                                   immAnyExt8:$A)),
+    def : Pat<(v16i8 (build_vector immNonAllOneAnyExt8:$A, immNonAllOneAnyExt8:$A,
+                                   immNonAllOneAnyExt8:$A, immNonAllOneAnyExt8:$A,
+                                   immNonAllOneAnyExt8:$A, immNonAllOneAnyExt8:$A,
+                                   immNonAllOneAnyExt8:$A, immNonAllOneAnyExt8:$A,
+                                   immNonAllOneAnyExt8:$A, immNonAllOneAnyExt8:$A,
+                                   immNonAllOneAnyExt8:$A, immNonAllOneAnyExt8:$A,
+                                   immNonAllOneAnyExt8:$A, immNonAllOneAnyExt8:$A,
+                                   immNonAllOneAnyExt8:$A, immNonAllOneAnyExt8:$A)),
               (v16i8 (COPY_TO_REGCLASS (XXSPLTIB imm:$A), VSRC))>;
-    def : Pat<(v16i8 immAllOnesV),
-              (v16i8 (COPY_TO_REGCLASS (XXSPLTIB 255), VSRC))>;
-    def : Pat<(v8i16 immAllOnesV),
-              (v8i16 (COPY_TO_REGCLASS (XXSPLTIB 255), VSRC))>;
-    def : Pat<(v4i32 immAllOnesV),
-              (v4i32 (XXSPLTIB 255))>;
-    def : Pat<(v2i64 immAllOnesV),
-              (v2i64 (XXSPLTIB 255))>;
     def : Pat<(v4i32 (scalar_to_vector FltToIntLoad.A)),
               (v4i32 (XVCVSPSXWS (LXVWSX xoaddr:$A)))>;
     def : Pat<(v4i32 (scalar_to_vector FltToUIntLoad.A)),

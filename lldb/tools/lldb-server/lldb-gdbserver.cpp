@@ -39,6 +39,8 @@
 #include "Plugins/Process/Linux/NativeProcessLinux.h"
 #elif defined(__NetBSD__)
 #include "Plugins/Process/NetBSD/NativeProcessNetBSD.h"
+#elif defined(_WIN32)
+#include "Plugins/Process/Windows/Common/NativeProcessWindows.h"
 #endif
 
 #ifndef LLGS_PROGRAM_NAME
@@ -60,6 +62,8 @@ namespace {
 typedef process_linux::NativeProcessLinux::Factory NativeProcessFactory;
 #elif defined(__NetBSD__)
 typedef process_netbsd::NativeProcessNetBSD::Factory NativeProcessFactory;
+#elif defined(_WIN32)
+typedef NativeProcessWindows::Factory NativeProcessFactory;
 #else
 // Dummy implementation to make sure the code compiles
 class NativeProcessFactory : public NativeProcessProtocol::Factory {
@@ -514,7 +518,7 @@ int main_gdbserver(int argc, char *argv[]) {
     handle_launch(gdb_server, argc, argv);
 
   // Print version info.
-  printf("%s-%s", LLGS_PROGRAM_NAME, LLGS_VERSION_STR);
+  printf("%s-%s\n", LLGS_PROGRAM_NAME, LLGS_VERSION_STR);
 
   ConnectToRemote(mainloop, gdb_server, reverse_connect, host_and_port,
                   progname, subcommand, named_pipe_path.c_str(), 

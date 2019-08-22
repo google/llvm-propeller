@@ -175,8 +175,8 @@ void Generator::AddProvidersToIndex() {
   index.AppendPathComponent("index.yaml");
 
   std::error_code EC;
-  auto strm = llvm::make_unique<raw_fd_ostream>(index.GetPath(), EC,
-                                                sys::fs::OpenFlags::F_None);
+  auto strm = std::make_unique<raw_fd_ostream>(index.GetPath(), EC,
+                                                sys::fs::OpenFlags::OF_None);
   yaml::Output yout(*strm);
 
   std::vector<std::string> files;
@@ -223,7 +223,7 @@ bool Loader::HasFile(StringRef file) {
 llvm::Expected<std::unique_ptr<DataRecorder>>
 DataRecorder::Create(const FileSpec &filename) {
   std::error_code ec;
-  auto recorder = llvm::make_unique<DataRecorder>(std::move(filename), ec);
+  auto recorder = std::make_unique<DataRecorder>(std::move(filename), ec);
   if (ec)
     return llvm::errorCodeToError(ec);
   return std::move(recorder);
@@ -254,7 +254,7 @@ void CommandProvider::Keep() {
 
   FileSpec file = GetRoot().CopyByAppendingPathComponent(Info::file);
   std::error_code ec;
-  llvm::raw_fd_ostream os(file.GetPath(), ec, llvm::sys::fs::F_Text);
+  llvm::raw_fd_ostream os(file.GetPath(), ec, llvm::sys::fs::OF_Text);
   if (ec)
     return;
   yaml::Output yout(os);
@@ -266,7 +266,7 @@ void CommandProvider::Discard() { m_data_recorders.clear(); }
 void VersionProvider::Keep() {
   FileSpec file = GetRoot().CopyByAppendingPathComponent(Info::file);
   std::error_code ec;
-  llvm::raw_fd_ostream os(file.GetPath(), ec, llvm::sys::fs::F_Text);
+  llvm::raw_fd_ostream os(file.GetPath(), ec, llvm::sys::fs::OF_Text);
   if (ec)
     return;
   os << m_version << "\n";

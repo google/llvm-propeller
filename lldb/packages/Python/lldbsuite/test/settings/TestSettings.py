@@ -6,7 +6,6 @@ from __future__ import print_function
 
 
 import os
-import time
 import re
 import lldb
 from lldbsuite.test.decorators import *
@@ -481,6 +480,45 @@ class SettingsCommandTestCase(TestBase):
                     SETTING_MSG("disassembly-format"),
                     substrs=['disassembly-format (format-string) = "foo "'])
         self.runCmd("settings clear disassembly-format", check=False)
+
+    def test_settings_list(self):
+        # List settings (and optionally test the filter to only show 'target' settings).
+        self.expect("settings list target", substrs=["language", "arg0", "detach-on-error"])
+        self.expect("settings list target", matching=False, substrs=["packet-timeout"])
+        self.expect("settings list", substrs=["language", "arg0", "detach-on-error", "packet-timeout"])
+
+    def test_settings_remove_single(self):
+        # Set some environment variables and use 'remove' to delete them.
+        self.runCmd("settings set target.env-vars a=b c=d")
+        self.expect("settings show target.env-vars", substrs=["a=b", "c=d"])
+        self.runCmd("settings remove target.env-vars a")
+        self.expect("settings show target.env-vars", matching=False, substrs=["a=b"])
+        self.expect("settings show target.env-vars", substrs=["c=d"])
+        self.runCmd("settings remove target.env-vars c")
+        self.expect("settings show target.env-vars", matching=False, substrs=["a=b", "c=d"])
+
+    def test_settings_remove_multiple(self):
+        self.runCmd("settings set target.env-vars a=b c=d e=f")
+        self.expect("settings show target.env-vars", substrs=["a=b", "c=d", "e=f"])
+        self.runCmd("settings remove target.env-vars a e")
+        self.expect("settings show target.env-vars", matching=False, substrs=["a=b", "e=f"])
+        self.expect("settings show target.env-vars", substrs=["c=d"])
+
+    def test_settings_remove_nonexistent_value(self):
+        self.expect("settings remove target.env-vars doesntexist", error=True,
+                    substrs=["no value found named 'doesntexist'"])
+
+    def test_settings_remove_nonexistent_settings(self):
+        self.expect("settings remove doesntexist alsodoesntexist", error=True,
+                    substrs=["error: invalid value path 'doesntexist'"])
+
+    def test_settings_remove_missing_arg(self):
+        self.expect("settings remove", error=True,
+                    substrs=["'settings remove' takes an array or dictionary item, or"])
+
+    def test_settings_remove_empty_arg(self):
+        self.expect("settings remove ''", error=True,
+                    substrs=["'settings remove' command requires a valid variable name"])
 
     def test_all_settings_exist(self):
         self.expect("settings show",

@@ -71,7 +71,7 @@
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicTypeMap.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicType.h"
 
 #include <utility>
 
@@ -406,13 +406,15 @@ void IteratorChecker::checkPreCall(const CallEvent &Call,
       } else if (isRandomIncrOrDecrOperator(Func->getOverloadedOperator())) {
         if (const auto *InstCall = dyn_cast<CXXInstanceCall>(&Call)) {
           // Check for out-of-range incrementions and decrementions
-          if (Call.getNumArgs() >= 1) {
+          if (Call.getNumArgs() >= 1 &&
+              Call.getArgExpr(0)->getType()->isIntegralOrEnumerationType()) {
             verifyRandomIncrOrDecr(C, Func->getOverloadedOperator(),
                                    InstCall->getCXXThisVal(),
                                    Call.getArgSVal(0));
           }
         } else {
-          if (Call.getNumArgs() >= 2) {
+          if (Call.getNumArgs() >= 2 &&
+              Call.getArgExpr(1)->getType()->isIntegralOrEnumerationType()) {
             verifyRandomIncrOrDecr(C, Func->getOverloadedOperator(),
                                    Call.getArgSVal(0), Call.getArgSVal(1));
           }
@@ -590,14 +592,16 @@ void IteratorChecker::checkPostCall(const CallEvent &Call,
       return;
     } else if (isRandomIncrOrDecrOperator(Func->getOverloadedOperator())) {
       if (const auto *InstCall = dyn_cast<CXXInstanceCall>(&Call)) {
-        if (Call.getNumArgs() >= 1) {
+        if (Call.getNumArgs() >= 1 &&
+              Call.getArgExpr(0)->getType()->isIntegralOrEnumerationType()) {
           handleRandomIncrOrDecr(C, Func->getOverloadedOperator(),
                                  Call.getReturnValue(),
                                  InstCall->getCXXThisVal(), Call.getArgSVal(0));
           return;
         }
       } else {
-        if (Call.getNumArgs() >= 2) {
+        if (Call.getNumArgs() >= 2 &&
+              Call.getArgExpr(1)->getType()->isIntegralOrEnumerationType()) {
           handleRandomIncrOrDecr(C, Func->getOverloadedOperator(),
                                  Call.getReturnValue(), Call.getArgSVal(0),
                                  Call.getArgSVal(1));
@@ -1587,7 +1591,7 @@ IteratorPosition IteratorChecker::advancePosition(CheckerContext &C,
 void IteratorChecker::reportOutOfRangeBug(const StringRef &Message,
                                           const SVal &Val, CheckerContext &C,
                                           ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*OutOfRangeBugType, Message, ErrNode);
+  auto R = std::make_unique<BugReport>(*OutOfRangeBugType, Message, ErrNode);
   R->markInteresting(Val);
   C.emitReport(std::move(R));
 }
@@ -1596,7 +1600,7 @@ void IteratorChecker::reportMismatchedBug(const StringRef &Message,
                                           const SVal &Val1, const SVal &Val2,
                                           CheckerContext &C,
                                           ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*MismatchedBugType, Message, ErrNode);
+  auto R = std::make_unique<BugReport>(*MismatchedBugType, Message, ErrNode);
   R->markInteresting(Val1);
   R->markInteresting(Val2);
   C.emitReport(std::move(R));
@@ -1606,7 +1610,7 @@ void IteratorChecker::reportMismatchedBug(const StringRef &Message,
                                           const SVal &Val, const MemRegion *Reg,
                                           CheckerContext &C,
                                           ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*MismatchedBugType, Message, ErrNode);
+  auto R = std::make_unique<BugReport>(*MismatchedBugType, Message, ErrNode);
   R->markInteresting(Val);
   R->markInteresting(Reg);
   C.emitReport(std::move(R));
@@ -1615,7 +1619,7 @@ void IteratorChecker::reportMismatchedBug(const StringRef &Message,
 void IteratorChecker::reportInvalidatedBug(const StringRef &Message,
                                            const SVal &Val, CheckerContext &C,
                                            ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*InvalidatedBugType, Message, ErrNode);
+  auto R = std::make_unique<BugReport>(*InvalidatedBugType, Message, ErrNode);
   R->markInteresting(Val);
   C.emitReport(std::move(R));
 }

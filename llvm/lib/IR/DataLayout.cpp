@@ -182,9 +182,9 @@ void DataLayout::reset(StringRef Desc) {
   LayoutMap = nullptr;
   BigEndian = false;
   AllocaAddrSpace = 0;
-  StackNaturalAlign = 0;
+  StackNaturalAlign.reset();
   ProgramAddrSpace = 0;
-  FunctionPtrAlign = 0;
+  FunctionPtrAlign.reset();
   TheFunctionPtrAlignType = FunctionPtrAlignType::Independent;
   ManglingMode = MM_None;
   NonIntegralAddressSpaces.clear();
@@ -378,7 +378,10 @@ void DataLayout::parseSpecifier(StringRef Desc) {
       }
       break;
     case 'S': { // Stack natural alignment.
-      StackNaturalAlign = inBytes(getInt(Tok));
+      uint64_t Alignment = inBytes(getInt(Tok));
+      if (Alignment != 0 && !llvm::isPowerOf2_64(Alignment))
+        report_fatal_error("Alignment is neither 0 nor a power of 2");
+      StackNaturalAlign = MaybeAlign(Alignment);
       break;
     }
     case 'F': {
@@ -394,7 +397,10 @@ void DataLayout::parseSpecifier(StringRef Desc) {
                            "datalayout string");
       }
       Tok = Tok.substr(1);
-      FunctionPtrAlign = inBytes(getInt(Tok));
+      uint64_t Alignment = inBytes(getInt(Tok));
+      if (Alignment != 0 && !llvm::isPowerOf2_64(Alignment))
+        report_fatal_error("Alignment is neither 0 nor a power of 2");
+      FunctionPtrAlign = MaybeAlign(Alignment);
       break;
     }
     case 'P': { // Function address space.

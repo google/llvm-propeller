@@ -1,5 +1,5 @@
 ; RUN: opt -functionattrs -S < %s | FileCheck %s --check-prefix=FNATTR
-; RUN: opt -attributor -attributor-disable=false -S < %s | FileCheck %s --check-prefix=ATTRIBUTOR
+; RUN: opt -attributor -attributor-disable=false -attributor-max-iterations=26 -S < %s | FileCheck %s --check-prefix=ATTRIBUTOR
 ; RUN: opt -attributor -attributor-disable=false -functionattrs -S < %s | FileCheck %s --check-prefix=BOTH
 ;
 ; Test cases specifically designed for the "returned" argument attribute.
@@ -259,10 +259,9 @@ return:                                           ; preds = %cond.end, %if.then3
 ;   return *a ? a : rt0(a);
 ; }
 ;
-; FIXME: no-return missing
 ; FNATTR:  define i32* @rt0(i32* readonly %a)
-; BOTH: Function Attrs: nofree noinline nosync nounwind readonly uwtable
-; BOTH-NEXT:    define i32* @rt0(i32* readonly returned %a)
+; BOTH: Function Attrs: nofree noinline noreturn nosync nounwind readonly uwtable
+; BOTH-NEXT:    define noalias nonnull align 536870912 dereferenceable(4294967295) i32* @rt0(i32* readonly %a)
 define i32* @rt0(i32* %a) #0 {
 entry:
   %v = load i32, i32* %a, align 4
@@ -278,10 +277,9 @@ entry:
 ;   return *a ? undef : rt1(a);
 ; }
 ;
-; FIXME: no-return missing
 ; FNATTR:  define noalias i32* @rt1(i32* nocapture readonly %a)
-; BOTH: Function Attrs: nofree noinline nosync nounwind readonly uwtable
-; BOTH-NEXT:    define noalias i32* @rt1(i32* nocapture readonly %a)
+; BOTH: Function Attrs: nofree noinline noreturn nosync nounwind readonly uwtable
+; BOTH-NEXT:    define noalias nonnull align 536870912 dereferenceable(4294967295) i32* @rt1(i32* nocapture readonly %a)
 define i32* @rt1(i32* %a) #0 {
 entry:
   %v = load i32, i32* %a, align 4
@@ -295,7 +293,7 @@ entry:
 ;
 ; FNATTR:  define i32* @rt2_helper(i32* %a)
 ; FNATTR:  define i32* @rt2(i32* readnone %a, i32* readnone %b)
-; BOTH:    define i32* @rt2_helper(i32* %a)
+; BOTH:    define i32* @rt2_helper(i32* returned %a)
 ; BOTH:    define i32* @rt2(i32* readnone %a, i32* readnone %b)
 define i32* @rt2_helper(i32* %a) #0 {
 entry:
@@ -716,10 +714,16 @@ r:
 ;
 ; FNATTR:     define i32 @deadblockcall1(i32 %A)
 ; FNATTR:     define i32 @deadblockcall2(i32 %A)
+; FNATTR:     define i32 @deadblockphi1(i32 %A)
+; FNATTR:     define i32 @deadblockphi2(i32 %A)
 ; ATTRIBUTOR: define i32 @deadblockcall1(i32 returned %A)
 ; ATTRIBUTOR: define i32 @deadblockcall2(i32 returned %A)
+; ATTRIBUTOR: define i32 @deadblockphi1(i32 returned %A)
+; ATTRIBUTOR: define i32 @deadblockphi2(i32 returned %A)
 ; BOTH:       define i32 @deadblockcall1(i32 returned %A)
 ; BOTH:       define i32 @deadblockcall2(i32 returned %A)
+; BOTH:       define i32 @deadblockphi1(i32 returned %A)
+; BOTH:       define i32 @deadblockphi2(i32 returned %A)
 define i32 @deadblockcall1(i32 %A) #0 {
 entry:
   ret i32 %A
@@ -741,11 +745,69 @@ unreachableblock2:
   ret i32 %C
 }
 
+define i32 @deadblockphi1(i32 %A) #0 {
+entry:
+  br label %r
+unreachableblock1:
+  %B = call i32 @deadblockcall_helper(i32 %B)
+  ret i32 %B
+unreachableblock2:
+  %C = call i32 @deadblockcall1(i32 %C)
+  br label %r
+r:
+  %PHI = phi i32 [%A, %entry], [%C, %unreachableblock2]
+  ret i32 %PHI
+}
+
+define i32 @deadblockphi2(i32 %A) #0 {
+entry:
+  br label %r
+unreachableblock1:
+  %B = call i32 @deadblockcall_helper(i32 %B)
+  br label %unreachableblock3
+unreachableblock2:
+  %C = call i32 @deadblockcall1(i32 %C)
+  br label %unreachableblock3
+unreachableblock3:
+  %PHI1 = phi i32 [%B, %unreachableblock1], [%C, %unreachableblock2]
+  br label %r
+r:
+  %PHI2 = phi i32 [%A, %entry], [%PHI1, %unreachableblock3]
+  ret i32 %PHI2
+}
+
+declare void @noreturn() noreturn;
+
+define i32 @deadblockphi3(i32 %A, i1 %c) #0 {
+entry:
+  br i1 %c, label %r, label %unreachablecall
+unreachablecall:
+  call void @noreturn();
+  %B = call i32 @deadblockcall_helper(i32 0)
+  br label %unreachableblock3
+unreachableblock2:
+  %C = call i32 @deadblockcall1(i32 %C)
+  br label %unreachableblock3
+unreachableblock3:
+  %PHI1 = phi i32 [%B, %unreachablecall], [%C, %unreachableblock2]
+  br label %r
+r:
+  %PHI2 = phi i32 [%A, %entry], [%PHI1, %unreachableblock3]
+  ret i32 %PHI2
+}
+
+
 attributes #0 = { noinline nounwind uwtable }
 
 ; BOTH-NOT: attributes #
 ; BOTH-DAG: attributes #{{[0-9]*}} = { nofree noinline norecurse nosync nounwind readnone uwtable willreturn }
 ; BOTH-DAG: attributes #{{[0-9]*}} = { nofree noinline nosync nounwind readnone uwtable }
-; BOTH-DAG: attributes #{{[0-9]*}} = { nofree noinline nosync nounwind readonly uwtable }
+; BOTH-DAG: attributes #{{[0-9]*}} = { nofree noinline noreturn nosync nounwind readonly uwtable }
 ; BOTH-DAG: attributes #{{[0-9]*}} = { noinline nounwind uwtable }
+; BOTH-DAG: attributes #{{[0-9]*}} = { nofree noinline nosync nounwind readnone uwtable willreturn }
+; BOTH-DAG: attributes #{{[0-9]*}} = { nofree noinline nosync nounwind uwtable willreturn }
+; BOTH-DAG: attributes #{{[0-9]*}} = { nofree nosync willreturn }
+; BOTH-DAG: attributes #{{[0-9]*}} = { nofree nosync }
+; BOTH-DAG: attributes #{{[0-9]*}} = { nofree noreturn nosync }
+; BOTH-DAG: attributes #{{[0-9]*}} = { noreturn }
 ; BOTH-NOT: attributes #

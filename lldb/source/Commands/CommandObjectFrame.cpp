@@ -534,7 +534,7 @@ protected:
             const size_t regex_start_index = regex_var_list.GetSize();
             llvm::StringRef name_str = entry.ref;
             RegularExpression regex(name_str);
-            if (regex.Compile(name_str)) {
+            if (regex.IsValid()) {
               size_t num_matches = 0;
               const size_t num_new_regex_vars =
                   variable_list->AppendVariablesIfUnique(regex, regex_var_list,
@@ -573,9 +573,9 @@ protected:
                                                entry.c_str());
               }
             } else {
-              char regex_error[1024];
-              if (regex.GetErrorAsCString(regex_error, sizeof(regex_error)))
-                result.GetErrorStream().Printf("error: %s\n", regex_error);
+              if (llvm::Error err = regex.GetError())
+                result.GetErrorStream().Printf(
+                    "error: %s\n", llvm::toString(std::move(err)).c_str());
               else
                 result.GetErrorStream().Printf(
                     "error: unknown regex error when compiling '%s'\n",

@@ -269,7 +269,7 @@ bool PPCAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
         return true;
       // This operand uses VSX numbering.
       // If the operand is a VMX register, convert it to a VSX register.
-      unsigned Reg = MI->getOperand(OpNo).getReg();
+      Register Reg = MI->getOperand(OpNo).getReg();
       if (PPCInstrInfo::isVRRegister(Reg))
         Reg = PPC::VSX32 + (Reg - PPC::V0);
       else if (PPCInstrInfo::isVFRegister(Reg))
@@ -382,7 +382,7 @@ void PPCAsmPrinter::LowerPATCHPOINT(StackMaps &SM, const MachineInstr &MI) {
     if (CallTarget) {
       assert((CallTarget & 0xFFFFFFFFFFFF) == CallTarget &&
              "High 16 bits of call target should be zero.");
-      unsigned ScratchReg = MI.getOperand(Opers.getNextScratchIdx()).getReg();
+      Register ScratchReg = MI.getOperand(Opers.getNextScratchIdx()).getReg();
       EncodedBytes = 0;
       // Materialize the jump address:
       EmitToStreamer(*OutStreamer, MCInstBuilder(PPC::LI8)
@@ -521,7 +521,7 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   if (!MI->isInlineAsm()) {
     for (const MachineOperand &MO: MI->operands()) {
       if (MO.isReg()) {
-        unsigned Reg = MO.getReg();
+        Register Reg = MO.getReg();
         if (Subtarget->hasSPE()) {
           if (PPC::F4RCRegClass.contains(Reg) ||
               PPC::F8RCRegClass.contains(Reg) ||
@@ -1659,7 +1659,7 @@ void PPCAIXAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
     report_fatal_error("COMDAT not yet supported by AIX.");
 
   SectionKind GVKind = getObjFileLowering().getKindForGlobal(GV, TM);
-  if (!GVKind.isCommon())
+  if (!GVKind.isCommon() && !GVKind.isBSSLocal())
     report_fatal_error("Only common variables are supported on AIX for now.");
 
   // Create the containing csect and switch to it.
@@ -1667,13 +1667,19 @@ void PPCAIXAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
       getObjFileLowering().SectionForGlobal(GV, GVKind, TM));
   OutStreamer->SwitchSection(CSect);
 
-  // Create the symbol and emit it.
+  // Create the symbol, set its storage class, and emit it.
   MCSymbolXCOFF *XSym = cast<MCSymbolXCOFF>(getSymbol(GV));
+  XSym->setStorageClass(
+      TargetLoweringObjectFileXCOFF::getStorageClassForGlobal(GV));
   const DataLayout &DL = GV->getParent()->getDataLayout();
   unsigned Align =
       GV->getAlignment() ? GV->getAlignment() : DL.getPreferredAlignment(GV);
   uint64_t Size = DL.getTypeAllocSize(GV->getType()->getElementType());
-  OutStreamer->EmitCommonSymbol(XSym, Size, Align);
+
+  if (GVKind.isBSSLocal())
+    OutStreamer->EmitXCOFFLocalCommonSymbol(XSym, Size, Align);
+  else
+    OutStreamer->EmitCommonSymbol(XSym, Size, Align);
 }
 
 /// createPPCAsmPrinterPass - Returns a pass that prints the PPC assembly code
