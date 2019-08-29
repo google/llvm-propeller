@@ -1078,8 +1078,8 @@ unsigned RISCVTargetLowering::ComputeNumSignBitsForTargetNode(
   return 1;
 }
 
-MachineBasicBlock *emitReadCycleWidePseudo(MachineInstr &MI,
-                                           MachineBasicBlock *BB) {
+static MachineBasicBlock *emitReadCycleWidePseudo(MachineInstr &MI,
+                                                  MachineBasicBlock *BB) {
   assert(MI.getOpcode() == RISCV::ReadCycleWide && "Unexpected instruction");
 
   // To read the 64-bit cycle CSR on a 32-bit target, we read the two halves.
@@ -2776,4 +2776,14 @@ unsigned RISCVTargetLowering::getExceptionPointerRegister(
 unsigned RISCVTargetLowering::getExceptionSelectorRegister(
     const Constant *PersonalityFn) const {
   return RISCV::X11;
+}
+
+bool RISCVTargetLowering::shouldExtendTypeInLibCall(EVT Type) const {
+  // Return false to suppress the unnecessary extensions if the LibCall
+  // arguments or return value is f32 type for LP64 ABI.
+  RISCVABI::ABI ABI = Subtarget.getTargetABI();
+  if (ABI == RISCVABI::ABI_LP64 && (Type == MVT::f32))
+    return false;
+
+  return true;
 }

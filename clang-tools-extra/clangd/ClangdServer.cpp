@@ -73,20 +73,16 @@ struct UpdateIndexCallbacks : public ParsingCallbacks {
     if (SemanticHighlighting)
       Highlightings = getSemanticHighlightings(AST);
 
-    // FIXME: We need a better way to send the maximum line number to the
-    // differ.
-    // The differ needs the information about the max number of lines
-    // to not send diffs that are outside the file.
-    const SourceManager &SM = AST.getSourceManager();
-    FileID MainFileID = SM.getMainFileID();
-    int NumLines = SM.getBufferData(MainFileID).count('\n') + 1;
-
     Publish([&]() {
       DiagConsumer.onDiagnosticsReady(Path, std::move(Diagnostics));
       if (SemanticHighlighting)
-        DiagConsumer.onHighlightingsReady(Path, std::move(Highlightings),
-                                          NumLines);
+        DiagConsumer.onHighlightingsReady(Path, std::move(Highlightings));
     });
+  }
+
+  void onFailedAST(PathRef Path, std::vector<Diag> Diags,
+                   PublishFn Publish) override {
+    Publish([&]() { DiagConsumer.onDiagnosticsReady(Path, Diags); });
   }
 
   void onFileUpdated(PathRef File, const TUStatus &Status) override {
@@ -582,11 +578,10 @@ void ClangdServer::onFileEvent(const DidChangeWatchedFilesParams &Params) {
 void ClangdServer::workspaceSymbols(
     llvm::StringRef Query, int Limit,
     Callback<std::vector<SymbolInformation>> CB) {
-  std::string QueryCopy = Query;
   WorkScheduler.run(
       "getWorkspaceSymbols",
-      [QueryCopy, Limit, CB = std::move(CB), this]() mutable {
-        CB(clangd::getWorkspaceSymbols(QueryCopy, Limit, Index,
+      [Query = Query.str(), Limit, CB = std::move(CB), this]() mutable {
+        CB(clangd::getWorkspaceSymbols(Query, Limit, Index,
                                        WorkspaceRoot.getValueOr("")));
       });
 }

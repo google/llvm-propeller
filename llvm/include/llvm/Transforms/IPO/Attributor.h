@@ -97,6 +97,7 @@
 #define LLVM_TRANSFORMS_IPO_ATTRIBUTOR_H
 
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/PassManager.h"
 
@@ -567,7 +568,15 @@ private:
 /// NOTE: The mechanics of adding a new "concrete" abstract attribute are
 ///       described in the file comment.
 struct Attributor {
-  Attributor(InformationCache &InfoCache) : InfoCache(InfoCache) {}
+  /// Constructor
+  ///
+  /// \param InformationCache Cache to hold various information accessible for
+  ///                         the abstract attributes.
+  /// \param DepRecomputeInterval Number of iterations until the dependences
+  ///                             between abstract attributes are recomputed.
+  Attributor(InformationCache &InfoCache, unsigned DepRecomputeInterval)
+      : InfoCache(InfoCache), DepRecomputeInterval(DepRecomputeInterval) {}
+
   ~Attributor() { DeleteContainerPointers(AllAbstractAttributes); }
 
   /// Run the analyses until a fixpoint is reached or enforced (timeout).
@@ -591,9 +600,16 @@ struct Attributor {
   /// most optimistic information for other abstract attributes in-flight, e.g.
   /// the one reasoning about the "captured" state for the argument or the one
   /// reasoning on the memory access behavior of the function as a whole.
+  ///
+  /// If the flag \p TrackDependence is set to false the dependence from
+  /// \p QueryingAA to the return abstract attribute is not automatically
+  /// recorded. This should only be used if the caller will record the
+  /// dependence explicitly if necessary, thus if it the returned abstract
+  /// attribute is used for reasoning. To record the dependences explicitly use
+  /// the `Attributor::recordDependence` method.
   template <typename AAType>
   const AAType &getAAFor(const AbstractAttribute &QueryingAA,
-                         const IRPosition &IRP) {
+                         const IRPosition &IRP, bool TrackDependence = true) {
     static_assert(std::is_base_of<AbstractAttribute, AAType>::value,
                   "Cannot query an attribute with a type not derived from "
                   "'AbstractAttribute'!");
@@ -605,7 +621,7 @@ struct Attributor {
     if (AAType *AA = static_cast<AAType *>(
             KindToAbstractAttributeMap.lookup(&AAType::ID))) {
       // Do not registr a dependence on an attribute with an invalid state.
-      if (AA->getState().isValidState())
+      if (TrackDependence && AA->getState().isValidState())
         QueryMap[AA].insert(const_cast<AbstractAttribute *>(&QueryingAA));
       return *AA;
     }
@@ -613,9 +629,21 @@ struct Attributor {
     // No matching attribute found, create one.
     auto &AA = AAType::createForPosition(IRP, *this);
     registerAA(AA);
-    if (AA.getState().isValidState())
+    if (TrackDependence && AA.getState().isValidState())
       QueryMap[&AA].insert(const_cast<AbstractAttribute *>(&QueryingAA));
     return AA;
+  }
+
+  /// Explicitly record a dependence from \p FromAA to \p ToAA, that is if
+  /// \p FromAA changes \p ToAA should be updated as well.
+  ///
+  /// This method should be used in conjunction with the `getAAFor` method and
+  /// with the TrackDependence flag passed to the method set to false. This can
+  /// be beneficial to avoid false dependences but it requires the users of
+  /// `getAAFor` to explicitly record true dependences through this method.
+  void recordDependence(const AbstractAttribute &FromAA,
+                        const AbstractAttribute &ToAA) {
+    QueryMap[&FromAA].insert(const_cast<AbstractAttribute *>(&ToAA));
   }
 
   /// Introduce a new abstract attribute into the fixpoint analysis.
@@ -654,6 +682,15 @@ struct Attributor {
   void identifyDefaultAbstractAttributes(
       Function &F, DenseSet<const char *> *Whitelist = nullptr);
 
+  /// Record that \p I is deleted after information was manifested.
+  void deleteAfterManifest(Instruction &I) { ToBeDeletedInsts.insert(&I); }
+
+  /// Record that \p BB is deleted after information was manifested.
+  void deleteAfterManifest(BasicBlock &BB) { ToBeDeletedBlocks.insert(&BB); }
+
+  /// Record that \p F is deleted after information was manifested.
+  void deleteAfterManifest(Function &F) { ToBeDeletedFunctions.insert(&F); }
+
   /// Return true if \p AA (or its context instruction) is assumed dead.
   ///
   /// If \p LivenessAA is not provided it is queried.
@@ -675,7 +712,7 @@ struct Attributor {
   /// matched with their respective return instructions. Returns true if \p Pred
   /// holds on all of them.
   bool checkForAllReturnedValuesAndReturnInsts(
-      const function_ref<bool(Value &, const SmallPtrSetImpl<ReturnInst *> &)>
+      const function_ref<bool(Value &, const SmallSetVector<ReturnInst *, 4> &)>
           &Pred,
       const AbstractAttribute &QueryingAA);
 
@@ -738,12 +775,24 @@ private:
   /// to the getAAFor<...>(...) method.
   ///{
   using QueryMapTy =
-      DenseMap<AbstractAttribute *, SetVector<AbstractAttribute *>>;
+      MapVector<const AbstractAttribute *, SetVector<AbstractAttribute *>>;
   QueryMapTy QueryMap;
   ///}
 
   /// The information cache that holds pre-processed (LLVM-IR) information.
   InformationCache &InfoCache;
+
+  /// Number of iterations until the dependences between abstract attributes are
+  /// recomputed.
+  const unsigned DepRecomputeInterval;
+
+  /// Functions, blocks, and instructions we delete after manifest is done.
+  ///
+  ///{
+  SmallPtrSet<Function *, 8> ToBeDeletedFunctions;
+  SmallPtrSet<BasicBlock *, 8> ToBeDeletedBlocks;
+  SmallPtrSet<Instruction *, 8> ToBeDeletedInsts;
+  ///}
 };
 
 /// An interface to query the internal state of an abstract attribute.
@@ -899,6 +948,13 @@ struct IntegerState : public AbstractState {
   ///       \p R is not dependent on additional assumed state.
   IntegerState operator^=(const IntegerState &R) {
     takeAssumedMinimum(R.Assumed);
+    return *this;
+  }
+
+  /// "Clamp" this state with \p R. The result is the maximum of the known
+  /// information but not more than what was assumed before.
+  IntegerState operator+=(const IntegerState &R) {
+    takeKnownMaximum(R.Known);
     return *this;
   }
 
@@ -1134,17 +1190,17 @@ struct AAReturnedValues
   /// Note: Unlike the Attributor::checkForAllReturnedValuesAndReturnInsts
   /// method, this one will not filter dead return instructions.
   virtual bool checkForAllReturnedValuesAndReturnInsts(
-      const function_ref<bool(Value &, const SmallPtrSetImpl<ReturnInst *> &)>
+      const function_ref<bool(Value &, const SmallSetVector<ReturnInst *, 4> &)>
           &Pred) const = 0;
 
-  using iterator = DenseMap<Value *, SmallPtrSet<ReturnInst *, 2>>::iterator;
+  using iterator = MapVector<Value *, SmallSetVector<ReturnInst *, 4>>::iterator;
   using const_iterator =
-      DenseMap<Value *, SmallPtrSet<ReturnInst *, 2>>::const_iterator;
+      MapVector<Value *, SmallSetVector<ReturnInst *, 4>>::const_iterator;
   virtual llvm::iterator_range<iterator> returned_values() = 0;
   virtual llvm::iterator_range<const_iterator> returned_values() const = 0;
 
   virtual size_t getNumReturnValues() const = 0;
-  virtual const SmallPtrSetImpl<CallBase *> &getUnresolvedCalls() const = 0;
+  virtual const SmallSetVector<CallBase *, 4> &getUnresolvedCalls() const = 0;
 
   /// Create an abstract attribute view for the position \p IRP.
   static AAReturnedValues &createForPosition(const IRPosition &IRP,
@@ -1349,27 +1405,117 @@ struct AAIsDead : public StateWrapper<BooleanState, AbstractAttribute>,
   static const char ID;
 };
 
+/// State for dereferenceable attribute
+struct DerefState : AbstractState {
+
+  /// State representing for dereferenceable bytes.
+  IntegerState DerefBytesState;
+
+  /// State representing that whether the value is globaly dereferenceable.
+  BooleanState GlobalState;
+
+  /// See AbstractState::isValidState()
+  bool isValidState() const override { return DerefBytesState.isValidState(); }
+
+  /// See AbstractState::isAtFixpoint()
+  bool isAtFixpoint() const override {
+    return !isValidState() ||
+           (DerefBytesState.isAtFixpoint() && GlobalState.isAtFixpoint());
+  }
+
+  /// See AbstractState::indicateOptimisticFixpoint(...)
+  ChangeStatus indicateOptimisticFixpoint() override {
+    DerefBytesState.indicateOptimisticFixpoint();
+    GlobalState.indicateOptimisticFixpoint();
+    return ChangeStatus::UNCHANGED;
+  }
+
+  /// See AbstractState::indicatePessimisticFixpoint(...)
+  ChangeStatus indicatePessimisticFixpoint() override {
+    DerefBytesState.indicatePessimisticFixpoint();
+    GlobalState.indicatePessimisticFixpoint();
+    return ChangeStatus::CHANGED;
+  }
+
+  /// Update known dereferenceable bytes.
+  void takeKnownDerefBytesMaximum(uint64_t Bytes) {
+    DerefBytesState.takeKnownMaximum(Bytes);
+  }
+
+  /// Update assumed dereferenceable bytes.
+  void takeAssumedDerefBytesMinimum(uint64_t Bytes) {
+    DerefBytesState.takeAssumedMinimum(Bytes);
+  }
+
+  /// Equality for DerefState.
+  bool operator==(const DerefState &R) {
+    return this->DerefBytesState == R.DerefBytesState &&
+           this->GlobalState == R.GlobalState;
+  }
+
+  /// Inequality for IntegerState.
+  bool operator!=(const DerefState &R) { return !(*this == R); }
+
+  /// See IntegerState::operator^=
+  DerefState operator^=(const DerefState &R) {
+    DerefBytesState ^= R.DerefBytesState;
+    GlobalState ^= R.GlobalState;
+    return *this;
+  }
+
+  /// See IntegerState::operator+=
+  DerefState operator+=(const DerefState &R) {
+    DerefBytesState += R.DerefBytesState;
+    GlobalState += R.GlobalState;
+    return *this;
+  }
+
+  /// See IntegerState::operator&=
+  DerefState operator&=(const DerefState &R) {
+    DerefBytesState &= R.DerefBytesState;
+    GlobalState &= R.GlobalState;
+    return *this;
+  }
+
+  /// See IntegerState::operator|=
+  DerefState operator|=(const DerefState &R) {
+    DerefBytesState |= R.DerefBytesState;
+    GlobalState |= R.GlobalState;
+    return *this;
+  }
+
+protected:
+  const AANonNull *NonNullAA = nullptr;
+};
+
 /// An abstract interface for all dereferenceable attribute.
 struct AADereferenceable
-    : public IRAttribute<Attribute::Dereferenceable, AbstractAttribute> {
+    : public IRAttribute<Attribute::Dereferenceable,
+                         StateWrapper<DerefState, AbstractAttribute>> {
   AADereferenceable(const IRPosition &IRP) : IRAttribute(IRP) {}
 
   /// Return true if we assume that the underlying value is nonnull.
-  virtual bool isAssumedNonNull() const = 0;
+  bool isAssumedNonNull() const {
+    return NonNullAA && NonNullAA->isAssumedNonNull();
+  }
 
   /// Return true if we assume that underlying value is
   /// dereferenceable(_or_null) globally.
-  virtual bool isAssumedGlobal() const = 0;
+  bool isAssumedGlobal() const { return GlobalState.getAssumed(); }
 
   /// Return true if we know that underlying value is
   /// dereferenceable(_or_null) globally.
-  virtual bool isKnownGlobal() const = 0;
+  bool isKnownGlobal() const { return GlobalState.getKnown(); }
 
   /// Return assumed dereferenceable bytes.
-  virtual uint32_t getAssumedDereferenceableBytes() const = 0;
+  uint32_t getAssumedDereferenceableBytes() const {
+    return DerefBytesState.getAssumed();
+  }
 
   /// Return known dereferenceable bytes.
-  virtual uint32_t getKnownDereferenceableBytes() const = 0;
+  uint32_t getKnownDereferenceableBytes() const {
+    return DerefBytesState.getKnown();
+  }
 
   /// Create an abstract attribute view for the position \p IRP.
   static AADereferenceable &createForPosition(const IRPosition &IRP,

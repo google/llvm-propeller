@@ -866,15 +866,28 @@ void MappingTraits<ELFYAML::ProgramHeader>::mapping(
 namespace {
 
 struct NormalizedOther {
-  NormalizedOther(IO &)
-      : Visibility(ELFYAML::ELF_STV(0)), Other(ELFYAML::ELF_STO(0)) {}
-  NormalizedOther(IO &, uint8_t Original)
-      : Visibility(Original & 0x3), Other(Original & ~0x3) {}
+  NormalizedOther(IO &) {}
+  NormalizedOther(IO &, Optional<uint8_t> Original) {
+    if (uint8_t Val = *Original & 0x3)
+      Visibility = Val;
+    if (uint8_t Val = *Original & ~0x3)
+      Other = Val;
+  }
 
-  uint8_t denormalize(IO &) { return Visibility | Other; }
+  Optional<uint8_t> denormalize(IO &) {
+    if (!Visibility && !Other)
+      return None;
 
-  ELFYAML::ELF_STV Visibility;
-  ELFYAML::ELF_STO Other;
+    uint8_t Ret = 0;
+    if (Visibility)
+      Ret |= *Visibility;
+    if (Other)
+      Ret |= *Other;
+    return Ret;
+  }
+
+  Optional<ELFYAML::ELF_STV> Visibility;
+  Optional<ELFYAML::ELF_STO> Other;
 };
 
 } // end anonymous namespace
@@ -888,9 +901,24 @@ void MappingTraits<ELFYAML::Symbol>::mapping(IO &IO, ELFYAML::Symbol &Symbol) {
   IO.mapOptional("Binding", Symbol.Binding, ELFYAML::ELF_STB(0));
   IO.mapOptional("Value", Symbol.Value, Hex64(0));
   IO.mapOptional("Size", Symbol.Size, Hex64(0));
-  MappingNormalization<NormalizedOther, uint8_t> Keys(IO, Symbol.Other);
-  IO.mapOptional("Visibility", Keys->Visibility, ELFYAML::ELF_STV(0));
-  IO.mapOptional("Other", Keys->Other, ELFYAML::ELF_STO(0));
+
+  // Symbol's Other field is a bit special. It is a bit field that represents
+  // st_other and usually holds symbol visibility. When we write a YAML document
+  // we split it into two fields named "Visibility" and "Other". The latter one
+  // usually holds no value, and so is almost never printed, although some
+  // targets (e.g. MIPS) may use it to specify the named bits to set (e.g.
+  // STO_MIPS_OPTIONAL). For producing broken objects we want to allow writing
+  // any value to st_other. To do this we allow one more field called "StOther".
+  // If it is present in a YAML document, we set st_other to its integer value
+  // whatever it is.
+  // obj2yaml should not print 'StOther', it should print 'Visibility' and
+  // 'Other' fields instead.
+  assert(!IO.outputting() || !Symbol.StOther.hasValue());
+  IO.mapOptional("StOther", Symbol.StOther);
+  MappingNormalization<NormalizedOther, Optional<uint8_t>> Keys(IO,
+                                                                Symbol.Other);
+  IO.mapOptional("Visibility", Keys->Visibility);
+  IO.mapOptional("Other", Keys->Other);
 }
 
 StringRef MappingTraits<ELFYAML::Symbol>::validate(IO &IO,
@@ -899,6 +927,8 @@ StringRef MappingTraits<ELFYAML::Symbol>::validate(IO &IO,
     return "Index and Section cannot both be specified for Symbol";
   if (Symbol.NameIndex && !Symbol.Name.empty())
     return "Name and NameIndex cannot both be specified for Symbol";
+  if (Symbol.StOther && Symbol.Other)
+    return "StOther cannot be specified for Symbol with either Visibility or Other";
   return StringRef();
 }
 

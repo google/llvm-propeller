@@ -319,7 +319,8 @@ uint32_t SymbolFileBreakpad::FindTypes(
 }
 
 size_t SymbolFileBreakpad::FindTypes(llvm::ArrayRef<CompilerContext> pattern,
-                                     bool append, TypeMap &types) {
+                                     LanguageSet languages, bool append,
+                                     TypeMap &types) {
   if (!append)
     types.Clear();
   return types.GetSize();
@@ -429,7 +430,7 @@ bool SymbolFileBreakpad::ParseUnwindRow(llvm::StringRef unwind_rules,
   while (auto rule = GetRule(unwind_rules)) {
     node_alloc.Reset();
     llvm::StringRef lhs = rule->first;
-    postfix::Node *rhs = postfix::Parse(rule->second, node_alloc);
+    postfix::Node *rhs = postfix::ParseOneExpression(rule->second, node_alloc);
     if (!rhs) {
       LLDB_LOG(log, "Could not parse `{0}` as unwind rhs.", rule->second);
       return false;

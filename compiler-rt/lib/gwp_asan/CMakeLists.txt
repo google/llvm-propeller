@@ -98,26 +98,6 @@ if (COMPILER_RT_HAS_GWP_ASAN)
       SOURCES optional/backtrace_sanitizer_common.cpp
       ADDITIONAL_HEADERS ${GWP_ASAN_BACKTRACE_HEADERS}
       CFLAGS ${GWP_ASAN_CFLAGS} ${SANITIZER_COMMON_CFLAGS})
-
-  # Build the stack trace compressor fuzzer.
-  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" AND
-      COMPILER_RT_BUILD_LIBFUZZER)
-    add_executable(stack_trace_compressor_fuzzer
-        stack_trace_compressor_fuzzer.cpp
-        ${GWP_ASAN_SOURCES}
-        ${GWP_ASAN_HEADERS})
-    set_target_properties(
-        stack_trace_compressor_fuzzer PROPERTIES FOLDER "Fuzzers")
-
-    # TODO(phosek): Remove -nostdlib++ and remove the "no c++ standard library
-    # for compiler-rt" dependency here.
-    target_compile_options(stack_trace_compressor_fuzzer
-        PRIVATE -nostdlib++ -fsanitize=fuzzer-no-link)
-    set_target_properties(
-        stack_trace_compressor_fuzzer PROPERTIES LINK_FLAGS -fsanitize=fuzzer)
-    add_dependencies(stack_trace_compressor_fuzzer fuzzer)
-    add_dependencies(gwp_asan stack_trace_compressor_fuzzer)
-  endif()
 endif()
 
 if(COMPILER_RT_INCLUDE_TESTS)

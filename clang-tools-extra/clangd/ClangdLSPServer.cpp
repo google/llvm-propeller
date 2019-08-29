@@ -464,6 +464,16 @@ void ClangdLSPServer::onInitialize(const InitializeParams &Params,
   if (!Params.capabilities.RenamePrepareSupport) // Only boolean allowed per LSP
     RenameProvider = true;
 
+  // Per LSP, codeActionProvide can be either boolean or CodeActionOptions.
+  // CodeActionOptions is only valid if the client supports action literal
+  // via textDocument.codeAction.codeActionLiteralSupport.
+  llvm::json::Value CodeActionProvider = true;
+  if (Params.capabilities.CodeActionStructure)
+    CodeActionProvider = llvm::json::Object{
+        {"codeActionKinds",
+         {CodeAction::QUICKFIX_KIND, CodeAction::REFACTOR_KIND,
+          CodeAction::INFO_KIND}}};
+
   llvm::json::Object Result{
       {{"capabilities",
         llvm::json::Object{
@@ -475,7 +485,7 @@ void ClangdLSPServer::onInitialize(const InitializeParams &Params,
                  {"firstTriggerCharacter", "\n"},
                  {"moreTriggerCharacter", {}},
              }},
-            {"codeActionProvider", true},
+            {"codeActionProvider", std::move(CodeActionProvider)},
             {"completionProvider",
              llvm::json::Object{
                  {"resolveProvider", false},
@@ -1185,7 +1195,7 @@ bool ClangdLSPServer::shouldRunCompletion(
 }
 
 void ClangdLSPServer::onHighlightingsReady(
-    PathRef File, std::vector<HighlightingToken> Highlightings, int NumLines) {
+    PathRef File, std::vector<HighlightingToken> Highlightings) {
   std::vector<HighlightingToken> Old;
   std::vector<HighlightingToken> HighlightingsCopy = Highlightings;
   {
@@ -1195,8 +1205,7 @@ void ClangdLSPServer::onHighlightingsReady(
   }
   // LSP allows us to send incremental edits of highlightings. Also need to diff
   // to remove highlightings from tokens that should no longer have them.
-  std::vector<LineHighlightings> Diffed =
-      diffHighlightings(Highlightings, Old, NumLines);
+  std::vector<LineHighlightings> Diffed = diffHighlightings(Highlightings, Old);
   publishSemanticHighlighting(
       {{URIForFile::canonicalize(File, /*TUPath=*/File)},
        toSemanticHighlightingInformation(Diffed)});

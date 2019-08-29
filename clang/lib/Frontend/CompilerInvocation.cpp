@@ -464,6 +464,35 @@ static void parseAnalyzerConfigs(AnalyzerOptions &AnOpts,
 
   // At this point, AnalyzerOptions is configured. Let's validate some options.
 
+  // FIXME: Here we try to validate the silenced checkers or packages are valid.
+  // The current approach only validates the registered checkers which does not
+  // contain the runtime enabled checkers and optimally we would validate both.
+  if (!AnOpts.RawSilencedCheckersAndPackages.empty()) {
+    std::vector<StringRef> Checkers =
+        AnOpts.getRegisteredCheckers(/*IncludeExperimental=*/true);
+    std::vector<StringRef> Packages =
+        AnOpts.getRegisteredPackages(/*IncludeExperimental=*/true);
+
+    SmallVector<StringRef, 16> CheckersAndPackages;
+    AnOpts.RawSilencedCheckersAndPackages.split(CheckersAndPackages, ";");
+
+    for (const StringRef CheckerOrPackage : CheckersAndPackages) {
+      if (Diags) {
+        bool IsChecker = CheckerOrPackage.contains('.');
+        bool IsValidName =
+            IsChecker
+                ? llvm::find(Checkers, CheckerOrPackage) != Checkers.end()
+                : llvm::find(Packages, CheckerOrPackage) != Packages.end();
+
+        if (!IsValidName)
+          Diags->Report(diag::err_unknown_analyzer_checker_or_package)
+              << CheckerOrPackage;
+      }
+
+      AnOpts.SilencedCheckersAndPackages.emplace_back(CheckerOrPackage);
+    }
+  }
+
   if (!Diags)
     return;
 
@@ -479,32 +508,6 @@ static void parseAnalyzerConfigs(AnalyzerOptions &AnOpts,
       !llvm::sys::fs::is_directory(AnOpts.ModelPath))
     Diags->Report(diag::err_analyzer_config_invalid_input) << "model-path"
                                                            << "a filename";
-
-  // FIXME: Here we try to validate the silenced checkers or packages are valid.
-  // The current approach only validates the registered checkers which does not
-  // contain the runtime enabled checkers and optimally we would validate both.
-  if (!AnOpts.RawSilencedCheckersAndPackages.empty()) {
-    std::vector<StringRef> Checkers =
-        AnOpts.getRegisteredCheckers(/*IncludeExperimental=*/true);
-    std::vector<StringRef> Packages =
-        AnOpts.getRegisteredPackages(/*IncludeExperimental=*/true);
-
-    SmallVector<StringRef, 16> CheckersAndPackages;
-    AnOpts.RawSilencedCheckersAndPackages.split(CheckersAndPackages, ";");
-
-    for (const StringRef CheckerOrPackage : CheckersAndPackages) {
-      bool IsChecker = CheckerOrPackage.contains('.');
-      bool IsValidName =
-          IsChecker ? llvm::find(Checkers, CheckerOrPackage) != Checkers.end()
-                    : llvm::find(Packages, CheckerOrPackage) != Packages.end();
-
-      if (!IsValidName)
-        Diags->Report(diag::err_unknown_analyzer_checker_or_package)
-            << CheckerOrPackage;
-
-      AnOpts.SilencedCheckersAndPackages.emplace_back(CheckerOrPackage);
-    }
-  }
 }
 
 static bool ParseMigratorArgs(MigratorOptions &Opts, ArgList &Args) {
@@ -1761,22 +1764,28 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     case OPT_emit_pch:
       Opts.ProgramAction = frontend::GeneratePCH; break;
     case OPT_emit_iterface_stubs: {
+      StringRef ArgStr =
+          Args.hasArg(OPT_iterface_stub_version_EQ)
+              ? Args.getLastArgValue(OPT_iterface_stub_version_EQ)
+              : "";
       llvm::Optional<frontend::ActionKind> ProgramAction =
-          llvm::StringSwitch<llvm::Optional<frontend::ActionKind>>(
-              Args.hasArg(OPT_iterface_stub_version_EQ)
-                  ? Args.getLastArgValue(OPT_iterface_stub_version_EQ)
-                  : "")
-              .Case("experimental-yaml-elf-v1",
-                    frontend::GenerateInterfaceYAMLExpV1)
-              .Case("experimental-tapi-elf-v1",
-                    frontend::GenerateInterfaceTBEExpV1)
+          llvm::StringSwitch<llvm::Optional<frontend::ActionKind>>(ArgStr)
+              .Case("experimental-ifs-v1", frontend::GenerateInterfaceIfsExpV1)
               .Default(llvm::None);
-      if (!ProgramAction)
+      if (!ProgramAction) {
+        std::string ErrorMessage =
+            "Invalid interface stub format: " + ArgStr.str() +
+            ((ArgStr == "experimental-yaml-elf-v1" ||
+              ArgStr == "experimental-tapi-elf-v1")
+                 ? " is deprecated."
+                 : ".");
         Diags.Report(diag::err_drv_invalid_value)
-            << "Must specify a valid interface stub format type using "
-            << "-interface-stub-version=<experimental-tapi-elf-v1 | "
-               "experimental-yaml-elf-v1>";
-      Opts.ProgramAction = *ProgramAction;
+            << "Must specify a valid interface stub format type, ie: "
+               "-interface-stub-version=experimental-ifs-v1"
+            << ErrorMessage;
+      } else {
+        Opts.ProgramAction = *ProgramAction;
+      }
       break;
     }
     case OPT_init_only:
@@ -3216,8 +3225,7 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::GenerateModuleInterface:
   case frontend::GenerateHeaderModule:
   case frontend::GeneratePCH:
-  case frontend::GenerateInterfaceYAMLExpV1:
-  case frontend::GenerateInterfaceTBEExpV1:
+  case frontend::GenerateInterfaceIfsExpV1:
   case frontend::ParseSyntaxOnly:
   case frontend::ModuleFileInfo:
   case frontend::VerifyPCH:
@@ -3395,8 +3403,7 @@ static void ParseTargetArgs(TargetOptions &Opts, ArgList &Args,
 }
 
 bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
-                                        const char *const *ArgBegin,
-                                        const char *const *ArgEnd,
+                                        ArrayRef<const char *> CommandLineArgs,
                                         DiagnosticsEngine &Diags) {
   bool Success = true;
 
@@ -3404,9 +3411,8 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   std::unique_ptr<OptTable> Opts = createDriverOptTable();
   const unsigned IncludedFlagsBitmask = options::CC1Option;
   unsigned MissingArgIndex, MissingArgCount;
-  InputArgList Args =
-      Opts->ParseArgs(llvm::makeArrayRef(ArgBegin, ArgEnd), MissingArgIndex,
-                      MissingArgCount, IncludedFlagsBitmask);
+  InputArgList Args = Opts->ParseArgs(CommandLineArgs, MissingArgIndex,
+                                      MissingArgCount, IncludedFlagsBitmask);
   LangOptions &LangOpts = *Res.getLangOpts();
 
   // Check for missing argument error.

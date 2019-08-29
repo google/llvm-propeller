@@ -235,6 +235,13 @@ void XCOFFObjectWriter::executePostLayoutBinding(
         break;
       }
       report_fatal_error("Unhandled mapping of read-write csect to section.");
+    case XCOFF::XMC_BS:
+      assert(XCOFF::XTY_CM == MCSec->getCSectType() &&
+             "Mapping invalid csect. CSECT with bss storage class must be "
+             "common type.");
+      BSSCsects.emplace_back(MCSec);
+      WrapperMap[MCSec] = &BSSCsects.back();
+      break;
     default:
       report_fatal_error("Unhandled mapping of csect to section.");
     }
@@ -247,8 +254,7 @@ void XCOFFObjectWriter::executePostLayoutBinding(
     const MCSymbolXCOFF *XSym = cast<MCSymbolXCOFF>(&S);
 
     // Map the symbol into its containing csect.
-    MCSectionXCOFF *ContainingCsect =
-        dyn_cast<MCSectionXCOFF>(XSym->getFragment(false)->getParent());
+    const MCSectionXCOFF *ContainingCsect = XSym->getContainingCsect();
     assert(WrapperMap.find(ContainingCsect) != WrapperMap.end() &&
            "Expected containing csect to exist in map");
 

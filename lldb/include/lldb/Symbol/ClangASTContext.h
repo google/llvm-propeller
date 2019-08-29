@@ -68,9 +68,8 @@ public:
   static lldb::TypeSystemSP CreateInstance(lldb::LanguageType language,
                                            Module *module, Target *target);
 
-  static void EnumerateSupportedLanguages(
-      std::set<lldb::LanguageType> &languages_for_types,
-      std::set<lldb::LanguageType> &languages_for_expressions);
+  static LanguageSet GetSupportedLanguagesForTypes();
+  static LanguageSet GetSupportedLanguagesForExpressions();
 
   static void Initialize();
 
@@ -250,7 +249,7 @@ public:
           &type_fields,
       bool packed = false);
 
-  static bool IsOperator(const char *name,
+  static bool IsOperator(llvm::StringRef name,
                          clang::OverloadedOperatorKind &op_kind);
 
   // Structure, Unions, Classes
@@ -465,6 +464,8 @@ public:
 
   CompilerType DeclGetFunctionArgumentType(void *opaque_decl,
                                            size_t arg_idx) override;
+
+  CompilerType GetTypeForDecl(void *opaque_decl) override;
 
   // CompilerDeclContext override functions
 

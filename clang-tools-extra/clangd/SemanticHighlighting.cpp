@@ -225,8 +225,9 @@ private:
       addToken(Loc, HighlightingKind::Parameter);
       return;
     }
-    if (isa<VarDecl>(D)) {
-      addToken(Loc, HighlightingKind::Variable);
+    if (const VarDecl *VD = dyn_cast<VarDecl>(D)) {
+      addToken(Loc, VD->isLocalVarDecl() ? HighlightingKind::LocalVariable
+                                         : HighlightingKind::Variable);
       return;
     }
     if (isa<FunctionDecl>(D)) {
@@ -256,7 +257,7 @@ private:
   }
 
   void addToken(SourceLocation Loc, HighlightingKind Kind) {
-    if(Loc.isMacroID()) {
+    if (Loc.isMacroID()) {
       // Only intereseted in highlighting arguments in macros (DEF_X(arg)).
       if (!SM.isMacroArgExpansion(Loc))
         return;
@@ -266,8 +267,8 @@ private:
     // Non top level decls that are included from a header are not filtered by
     // topLevelDecls. (example: method declarations being included from another
     // file for a class from another file)
-    // There are also cases with macros where the spelling loc will not be in the
-    // main file and the highlighting would be incorrect.
+    // There are also cases with macros where the spelling loc will not be in
+    // the main file and the highlighting would be incorrect.
     if (!isInsideMainFile(Loc, SM))
       return;
 
@@ -339,9 +340,11 @@ takeLine(ArrayRef<HighlightingToken> AllTokens,
 
 std::vector<LineHighlightings>
 diffHighlightings(ArrayRef<HighlightingToken> New,
-                  ArrayRef<HighlightingToken> Old, int NewMaxLine) {
-  assert(std::is_sorted(New.begin(), New.end()) && "New must be a sorted vector");
-  assert(std::is_sorted(Old.begin(), Old.end()) && "Old must be a sorted vector");
+                  ArrayRef<HighlightingToken> Old) {
+  assert(std::is_sorted(New.begin(), New.end()) &&
+         "New must be a sorted vector");
+  assert(std::is_sorted(Old.begin(), Old.end()) &&
+         "Old must be a sorted vector");
 
   // FIXME: There's an edge case when tokens span multiple lines. If the first
   // token on the line started on a line above the current one and the rest of
@@ -365,15 +368,13 @@ diffHighlightings(ArrayRef<HighlightingToken> New,
   auto OldEnd = Old.end();
   auto NextLineNumber = [&]() {
     int NextNew = NewLine.end() != NewEnd ? NewLine.end()->R.start.line
-                                             : std::numeric_limits<int>::max();
+                                          : std::numeric_limits<int>::max();
     int NextOld = OldLine.end() != OldEnd ? OldLine.end()->R.start.line
-                                             : std::numeric_limits<int>::max();
+                                          : std::numeric_limits<int>::max();
     return std::min(NextNew, NextOld);
   };
 
-  // If the New file has fewer lines than the Old file we don't want to send
-  // highlightings beyond the end of the file.
-  for (int LineNumber = 0; LineNumber < NewMaxLine;
+  for (int LineNumber = 0; NewLine.end() < NewEnd || OldLine.end() < OldEnd;
        LineNumber = NextLineNumber()) {
     NewLine = takeLine(New, NewLine.end(), LineNumber);
     OldLine = takeLine(Old, OldLine.end(), LineNumber);
@@ -436,6 +437,8 @@ llvm::StringRef toTextMateScope(HighlightingKind Kind) {
     return "entity.name.function.method.cpp";
   case HighlightingKind::Variable:
     return "variable.other.cpp";
+  case HighlightingKind::LocalVariable:
+    return "variable.other.local.cpp";
   case HighlightingKind::Parameter:
     return "variable.parameter.cpp";
   case HighlightingKind::Field:
