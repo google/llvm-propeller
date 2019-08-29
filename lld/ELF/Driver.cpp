@@ -1770,7 +1770,7 @@ static const char *libcallRoutineNames[] = {
 // Do actual linking. Note that when this function is called,
 // all linker scripts have already been parsed.
 template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
-  auto LinkStartTime = system_clock::now();
+  // auto LinkStartTime = system_clock::now();
   
   // If a -hash-style option was not given, set to a default value,
   // which varies depending on the target.
@@ -1936,9 +1936,9 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
       inputSections.push_back(cast<InputSection>(s));
 
 
-  auto PropellerStartTime = system_clock::now();
+  // auto PropellerStartTime = system_clock::now();
 
-  duration<double> PrePropellerTime = PropellerStartTime - LinkStartTime;
+  // duration<double> PrePropellerTime = PropellerStartTime - LinkStartTime;
   // fprintf(stderr, "[PrePropeller]: Total processing time: %f\n",
   //         PrePropellerTime.count());
 
@@ -1950,8 +1950,8 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
       error("Propeller stage failed.");
     }
   }
-  auto PropellerEndTime = system_clock::now();
-  duration<double> TotalPropellerTime = PropellerEndTime - PropellerStartTime;
+  // auto PropellerEndTime = system_clock::now();
+  // duration<double> TotalPropellerTime = PropellerEndTime - PropellerStartTime;
   // fprintf(stderr, "[Propeller]: Total processing time: %f\n",
   //         TotalPropellerTime.count());
 
@@ -2060,8 +2060,8 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   // Write the result to the file.
   writeResult<ELFT>();
 
-  auto LinkEndTime = system_clock::now();
-  duration<double> TotalPostPropellerTime = LinkEndTime - PropellerEndTime;
+  // auto LinkEndTime = system_clock::now();
+  // duration<double> TotalPostPropellerTime = LinkEndTime - PropellerEndTime;
   // fprintf(stderr, "[Propeller]: Total post propeller time: %f\n",
   //         TotalPostPropellerTime.count());
 }
