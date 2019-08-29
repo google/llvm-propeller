@@ -100,6 +100,7 @@ define build_compiler
 	    -DCMAKE_BUILD_TYPE=Release                  \
             -DLLVM_OPTIMIZED_TABLEGEN=On                \
             -DLLVM_TARGETS_TO_BUILD="X86"               \
+	    -DLLVM_USE_LINKER="lld"	                \
 	    -DCMAKE_C_COMPILER=$(2)/clang               \
 	    -DCMAKE_CXX_COMPILER=$(2)/clang++           \
 	    -DCMAKE_ASM_COMPILER=$(2)/clang             \
@@ -252,11 +253,6 @@ define do_relink
 		     -Wl,-propeller-keep-named-symbols    \
 		     $${ALIGNFLAG} \
 		     -Wl,-no-warn-symbol-ordering \
-		     -Wl,-propeller-dump-symbol-order=$(DDIR)/symbol-order-$1 \
-		     -Wl,-propeller-dump-cfg="_ZN5clang4Sema21InstantiatingTemplate5ClearEv" \
-		     -Wl,-propeller-dump-cfg="_ZN4llvm10AllocaInstC1EPNS_4TypeEjPNS_5ValueEjRKNS_5TwineEPNS_11InstructionE" \
-		     -Wl,-propeller-dump-cfg="_ZN4llvm10AllocaInstC2EPNS_4TypeEjPNS_5ValueEjRKNS_5TwineEPNS_11InstructionE" \
-		     -Wl,-propeller-dump-cfg="_ZNK4llvm13ConstantRange8truncateEj" \
                      -Wl,--no-call-graph-profile-sort !"   \
 		     -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
 	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@

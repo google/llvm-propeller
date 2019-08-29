@@ -69,6 +69,9 @@ using namespace llvm::support;
 using namespace lld;
 using namespace lld::elf;
 
+using std::chrono::duration;
+using std::chrono::system_clock;
+
 Configuration *elf::config;
 LinkerDriver *elf::driver;
 
@@ -1764,6 +1767,8 @@ static const char *libcallRoutineNames[] = {
 // Do actual linking. Note that when this function is called,
 // all linker scripts have already been parsed.
 template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
+  auto LinkStartTime = system_clock::now();
+  
   // If a -hash-style option was not given, set to a default value,
   // which varies depending on the target.
   if (!args.hasArg(OPT_hash_style)) {
@@ -1927,6 +1932,13 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
     for (InputSectionBase *s : f->getSections())
       inputSections.push_back(cast<InputSection>(s));
 
+
+  auto PropellerStartTime = system_clock::now();
+
+  duration<double> PrePropellerTime = PropellerStartTime - LinkStartTime;
+  // fprintf(stderr, "[PrePropeller]: Total processing time: %f\n",
+  //         PrePropellerTime.count());
+
   if (!config->propeller.empty()) {
     lld::propeller::Propeller P(symtab);
     if (P.processFiles(objectFiles)) {
@@ -1935,6 +1947,10 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
       error("Propeller stage failed.");
     }
   }
+  auto PropellerEndTime = system_clock::now();
+  duration<double> TotalPropellerTime = PropellerEndTime - PropellerStartTime;
+  // fprintf(stderr, "[Propeller]: Total processing time: %f\n",
+  //         TotalPropellerTime.count());
 
   if(!config->symbolAlignmentFile.empty()){
     auto alignSym = [&](Symbol &sym) {
@@ -1944,7 +1960,8 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
       if (auto *d = dyn_cast<Defined>(&sym)) {
         if (auto *sec = dyn_cast_or_null<InputSectionBase>(d->section)) {
           sec->alignment = it->second;
-          //warn("Setting alignment (" + Twine(it->second) + ") for symbol: " + sym.getName());
+          // warn("Setting alignment (" + Twine(it->second) + ") for symbol: " +
+          // sym.getName());
         }
       }
     };
@@ -2039,4 +2056,9 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
 
   // Write the result to the file.
   writeResult<ELFT>();
+
+  auto LinkEndTime = system_clock::now();
+  duration<double> TotalPostPropellerTime = LinkEndTime - PropellerEndTime;
+  // fprintf(stderr, "[Propeller]: Total post propeller time: %f\n",
+  //         TotalPostPropellerTime.count());
 }

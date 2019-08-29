@@ -80,18 +80,22 @@ class ELFBlock {
 struct ELFSizeInfo {
   uint64_t TextSize;
   uint64_t OtherAllocSize;
+  uint64_t RelaSize;
+  uint64_t EhFrameRelatedSize;
   uint64_t SymTabSize;
   uint64_t SymTabEntryNum;
   uint64_t StrTabSize;
   uint64_t FileSize;
 
   ELFSizeInfo()
-      : TextSize(0), OtherAllocSize(0), SymTabSize(0), StrTabSize(0),
-        FileSize(0) {}
+      : TextSize(0), OtherAllocSize(0), RelaSize(0), EhFrameRelatedSize(0),
+        SymTabSize(0), SymTabEntryNum(0), StrTabSize(0), FileSize(0) {}
 
   ELFSizeInfo &operator+=(const ELFSizeInfo &R) {
     TextSize += R.TextSize;
     OtherAllocSize += R.OtherAllocSize;
+    RelaSize += R.RelaSize;
+    EhFrameRelatedSize += R.EhFrameRelatedSize;
     SymTabSize += R.SymTabSize;
     SymTabEntryNum += R.SymTabEntryNum;
     StrTabSize += R.StrTabSize;

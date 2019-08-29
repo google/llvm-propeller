@@ -25,6 +25,10 @@ bool getSizeInfo(const string &Path, ELFSizeInfo *SizeInfo) {
 
   MemoryBufferRef MBR(*(*FileOrErr));
   ELFView *EV = ELFView::Create(MBR);
+  if (!EV) {
+    fprintf(stderr, "Failed to create ELF instance for \"%s\"\n", Path.c_str());
+    return false;
+  }
   if (EV && EV->Init()) {
     EV->GetELFSizeInfo(SizeInfo);
     return true;
@@ -90,6 +94,8 @@ int main(int argc, const char *argv[]) {
   };
   PrintResult("Text", TotalSize.TextSize);
   PrintResult("Alloc", TotalSize.OtherAllocSize);
+  PrintResult("Rela", TotalSize.RelaSize);
+  PrintResult("EHFrames", TotalSize.EhFrameRelatedSize);
   PrintResult("SymTab",TotalSize.SymTabSize);
   PrintResult("SymEntries", TotalSize.SymTabEntryNum);
   PrintResult("StrTab", TotalSize.StrTabSize);

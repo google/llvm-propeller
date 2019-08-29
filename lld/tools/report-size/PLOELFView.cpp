@@ -19,8 +19,10 @@ namespace plo {
 
 ELFView *ELFView::Create(const MemoryBufferRef FR) {
   const char *FH = FR.getBufferStart();
-  if (FR.getBufferSize() <= 6)
+  if (FR.getBufferSize() <= 6) {
+    fprintf(stderr, "File is too small.\n");
     return nullptr;
+  }
   if (FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' && FH[3] == 'F') {
     char EClass = FH[4];
     char EData = FH[5];
@@ -35,6 +37,7 @@ ELFView *ELFView::Create(const MemoryBufferRef FR) {
         return new ELFViewImpl<object::ELF64BE>(FR);
     }
   }
+  fprintf(stderr, "File has invalid magic number.\n");
   return nullptr;
 }
 
@@ -67,14 +70,20 @@ template <class ELFT> bool ELFViewImpl<ELFT>::initSections(const ViewFile &VF) {
   uint64_t SecOff = ELFTUInt(VF.getHeader()->e_shoff);
   uint16_t ShdrEntSize = uint16_t(VF.getHeader()->e_shentsize);
   RealSecNum = (BufSize - SecOff) / ShdrEntSize;
+  uint16_t ReportedSecNumber = uint16_t(VF.getHeader()->e_shnum);
+  // Choose realsecnum or reportedsecnumber, heuristically.
+  if (ReportedSecNumber >= 1 && ReportedSecNumber < 10000) {
+    RealSecNum = ReportedSecNumber;
+  }
 
   FirstSectPos = Blocks.end();
   FirstShdrPos = Blocks.end();
   uint16_t ShStrNdx = uint16_t(VF.getHeader()->e_shstrndx);
   for (int64_t i = RealSecNum - 1; i >= 0; --i) {
     auto ErrOrShdr = VF.getSection(i);
-    if (!ErrOrShdr)
+    if (!ErrOrShdr) {
       return false;
+    }
     const ViewFileShdr *Shdr = *ErrOrShdr;
     const char  *DataStart;
     size_t DataSize;
@@ -150,6 +159,18 @@ bool ELFViewImpl<ELFT>::GetELFSizeInfo(ELFSizeInfo *SizeInfo) {
       assert(SecSize % ELFTUInt(hdr.sh_entsize) == 0);
     } else if (Type == llvm::ELF::SHT_STRTAB) {
       SizeInfo->StrTabSize += SecSize;
+    }
+    if (((Flags & llvm::ELF::SHF_ALLOC) != 0) || Type == llvm::ELF::SHT_RELA ||
+        Type == llvm::ELF::SHT_REL) {
+      StringRef SecName = this->getSectionName(&hdr);
+      // .eh_frame_hdr only exists in executables.
+      if (SecName == ".eh_frame" || SecName == ".eh_frame_hdr" || SecName ==
+              ".rela.eh_frame") {
+        SizeInfo->EhFrameRelatedSize += SecSize;
+      }
+    }
+    if (Type == llvm::ELF::SHT_RELA || Type == llvm::ELF::SHT_REL) {
+      SizeInfo->RelaSize += SecSize;
     }
   }
   SizeInfo->FileSize = FileRef.getBufferSize();
