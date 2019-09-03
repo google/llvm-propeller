@@ -531,6 +531,9 @@ namespace llvm {
       // Windows's _chkstk call to do stack probing.
       WIN_ALLOCA,
 
+      // Expands to int3 or nothing, depending on basic block layout.
+      SEH_NORETURN,
+
       // For allocating variable amounts of stack space when using
       // segmented stacks. Check if the current stacklet has enough space, and
       // falls back to heap allocation if not.
@@ -683,6 +686,9 @@ namespace llvm {
     bool isCalleePop(CallingConv::ID CallingConv,
                      bool is64Bit, bool IsVarArg, bool GuaranteeTCO);
 
+    /// If Op is a constant whose elements are all the same constant or
+    /// undefined, return true and return the constant value in \p SplatVal.
+    bool isConstantSplat(SDValue Op, APInt &SplatVal);
   } // end namespace X86
 
   //===--------------------------------------------------------------------===//

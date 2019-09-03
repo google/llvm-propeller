@@ -118,6 +118,9 @@ public:
   const IncludeStructure &getIncludeStructure() const;
   const CanonicalIncludes &getCanonicalIncludes() const;
 
+  /// The start locations of all macro expansions spelled inside the main file.
+  /// Does not include expansions from inside other macro expansions.
+  llvm::ArrayRef<SourceLocation> getMainFileExpansions() const;
   /// Tokens recorded while parsing the main file.
   /// (!) does not have tokens from the preamble.
   const syntax::TokenBuffer &getTokens() const { return Tokens; }
@@ -126,6 +129,7 @@ private:
   ParsedAST(std::shared_ptr<const PreambleData> Preamble,
             std::unique_ptr<CompilerInstance> Clang,
             std::unique_ptr<FrontendAction> Action, syntax::TokenBuffer Tokens,
+            std::vector<SourceLocation> MainFileMacroExpLocs,
             std::vector<Decl *> LocalTopLevelDecls, std::vector<Diag> Diags,
             IncludeStructure Includes, CanonicalIncludes CanonIncludes);
 
@@ -145,6 +149,9 @@ private:
   ///   - Does not have spelled or expanded tokens for files from preamble.
   syntax::TokenBuffer Tokens;
 
+  /// The start locations of all macro expansions spelled inside the main file.
+  /// Does not include expansions from inside other macro expansions.
+  std::vector<SourceLocation> MainFileMacroExpLocs;
   // Data, stored after parsing.
   std::vector<Diag> Diags;
   // Top-level decls inside the current file. Not that this does not include
@@ -179,11 +186,6 @@ buildAST(PathRef FileName, std::unique_ptr<CompilerInvocation> Invocation,
          llvm::ArrayRef<Diag> CompilerInvocationDiags,
          const ParseInputs &Inputs,
          std::shared_ptr<const PreambleData> Preamble);
-
-/// Get the beginning SourceLocation at a specified \p Pos.
-/// May be invalid if Pos is, or if there's no identifier.
-SourceLocation getBeginningOfIdentifier(const ParsedAST &Unit,
-                                        const Position &Pos, const FileID FID);
 
 /// For testing/debugging purposes. Note that this method deserializes all
 /// unserialized Decls, so use with care.

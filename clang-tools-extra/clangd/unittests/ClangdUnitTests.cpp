@@ -30,45 +30,6 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::AllOf;
 
-TEST(ClangdUnitTest, GetBeginningOfIdentifier) {
-  std::string Preamble = R"cpp(
-struct Bar { int func(); };
-#define MACRO(X) void f() { X; }
-Bar* bar;
-  )cpp";
-  // First ^ is the expected beginning, last is the search position.
-  for (std::string Text : std::vector<std::string>{
-           "int ^f^oo();", // inside identifier
-           "int ^foo();",  // beginning of identifier
-           "int ^foo^();", // end of identifier
-           "int foo(^);",  // non-identifier
-           "^int foo();",  // beginning of file (can't back up)
-           "int ^f0^0();", // after a digit (lexing at N-1 is wrong)
-           "int ^λλ^λ();", // UTF-8 handled properly when backing up
-
-           // identifier in macro arg
-           "MACRO(bar->^func())",  // beginning of identifier
-           "MACRO(bar->^fun^c())", // inside identifier
-           "MACRO(bar->^func^())", // end of identifier
-           "MACRO(^bar->func())",  // begin identifier
-           "MACRO(^bar^->func())", // end identifier
-           "^MACRO(bar->func())",  // beginning of macro name
-           "^MAC^RO(bar->func())", // inside macro name
-           "^MACRO^(bar->func())", // end of macro name
-       }) {
-    std::string WithPreamble = Preamble + Text;
-    Annotations TestCase(WithPreamble);
-    auto AST = TestTU::withCode(TestCase.code()).build();
-    const auto &SourceMgr = AST.getSourceManager();
-    SourceLocation Actual = getBeginningOfIdentifier(
-        AST, TestCase.points().back(), SourceMgr.getMainFileID());
-    Position ActualPos = offsetToPosition(
-        TestCase.code(),
-        SourceMgr.getFileOffset(SourceMgr.getSpellingLoc(Actual)));
-    EXPECT_EQ(TestCase.points().front(), ActualPos) << Text;
-  }
-}
-
 MATCHER_P(DeclNamed, Name, "") {
   if (NamedDecl *ND = dyn_cast<NamedDecl>(arg))
     if (ND->getName() == Name)
@@ -260,6 +221,56 @@ TEST(ClangdUnitTest, CanBuildInvocationWithUnknownArgs) {
   Inputs.CompileCommand.CommandLine = {
       "clang", "-Xclang", "-fsome-unknown-flag", testPath("foo.cpp")};
   EXPECT_NE(buildCompilerInvocation(Inputs, IgnoreDiags), nullptr);
+}
+
+TEST(ClangdUnitTest, CollectsMainFileMacroExpansions) {
+  Annotations TestCase(R"cpp(
+    #define MACRO_ARGS(X, Y) X Y
+    ^ID(int A);
+    // Macro arguments included.
+    ^MACRO_ARGS(^MACRO_ARGS(^MACRO_EXP(int), A), ^ID(= 2));
+
+    // Macro names inside other macros not included.
+    #define FOO BAR
+    #define BAR 1
+    int A = ^FOO;
+
+    // Macros from token concatenations not included.
+    #define CONCAT(X) X##A()
+    #define PREPEND(X) MACRO##X()
+    #define MACROA() 123
+    int B = ^CONCAT(MACRO);
+    int D = ^PREPEND(A)
+
+    // Macros included not from preamble not included.
+    #include "foo.inc"
+
+    #define assert(COND) if (!(COND)) { printf("%s", #COND); exit(0); }
+
+    void test() {
+      // Includes macro expansions in arguments that are expressions
+      ^assert(0 <= ^BAR);
+    }
+  )cpp");
+  auto TU = TestTU::withCode(TestCase.code());
+  TU.HeaderCode = R"cpp(
+    #define ID(X) X
+    #define MACRO_EXP(X) ID(X)
+    MACRO_EXP(int B);
+  )cpp";
+  TU.AdditionalFiles["foo.inc"] = R"cpp(
+    int C = ID(1);
+    #define DEF 1
+    int D = DEF;
+  )cpp";
+  ParsedAST AST = TU.build();
+  const std::vector<SourceLocation> &MacroExpansionLocations =
+      AST.getMainFileExpansions();
+  std::vector<Position> MacroExpansionPositions;
+  for (const auto &L : MacroExpansionLocations)
+    MacroExpansionPositions.push_back(
+        sourceLocToPosition(AST.getSourceManager(), L));
+  EXPECT_EQ(MacroExpansionPositions, TestCase.points());
 }
 
 } // namespace

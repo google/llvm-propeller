@@ -1161,11 +1161,12 @@ void BinaryELFBuilder::addData(SymbolTableSection *SymTab) {
   Twine Prefix = Twine("_binary_") + SanitizedFilename;
 
   SymTab->addSymbol(Prefix + "_start", STB_GLOBAL, STT_NOTYPE, &DataSection,
-                    /*Value=*/0, STV_DEFAULT, 0, 0);
+                    /*Value=*/0, NewSymbolVisibility, 0, 0);
   SymTab->addSymbol(Prefix + "_end", STB_GLOBAL, STT_NOTYPE, &DataSection,
-                    /*Value=*/DataSection.Size, STV_DEFAULT, 0, 0);
+                    /*Value=*/DataSection.Size, NewSymbolVisibility, 0, 0);
   SymTab->addSymbol(Prefix + "_size", STB_GLOBAL, STT_NOTYPE, nullptr,
-                    /*Value=*/DataSection.Size, STV_DEFAULT, SHN_ABS, 0);
+                    /*Value=*/DataSection.Size, NewSymbolVisibility, SHN_ABS,
+                    0);
 }
 
 std::unique_ptr<Object> BinaryELFBuilder::build() {
@@ -1610,7 +1611,7 @@ Writer::~Writer() {}
 Reader::~Reader() {}
 
 std::unique_ptr<Object> BinaryReader::create() const {
-  return BinaryELFBuilder(MInfo.EMachine, MemBuf).build();
+  return BinaryELFBuilder(MInfo.EMachine, MemBuf, NewSymbolVisibility).build();
 }
 
 Expected<std::vector<IHexRecord>> IHexReader::parse() const {
@@ -1862,19 +1863,6 @@ void Object::sortSections() {
   });
 }
 
-static uint64_t alignToAddr(uint64_t Offset, uint64_t Addr, uint64_t Align) {
-  // Calculate Diff such that (Offset + Diff) & -Align == Addr & -Align.
-  if (Align == 0)
-    Align = 1;
-  auto Diff =
-      static_cast<int64_t>(Addr % Align) - static_cast<int64_t>(Offset % Align);
-  // We only want to add to Offset, however, so if Diff < 0 we can add Align and
-  // (Offset + Diff) & -Align == Addr & -Align will still hold.
-  if (Diff < 0)
-    Diff += Align;
-  return Offset + Diff;
-}
-
 // Orders segments such that if x = y->ParentSegment then y comes before x.
 static void orderSegments(std::vector<Segment *> &Segments) {
   llvm::stable_sort(Segments, compareSegmentsByOffset);
@@ -1902,8 +1890,8 @@ static uint64_t layoutSegments(std::vector<Segment *> &Segments,
       Seg->Offset =
           Parent->Offset + Seg->OriginalOffset - Parent->OriginalOffset;
     } else {
-      Offset = alignToAddr(Offset, Seg->VAddr, Seg->Align);
-      Seg->Offset = Offset;
+      Seg->Offset =
+          alignTo(Offset, std::max<uint64_t>(Seg->Align, 1), Seg->VAddr);
     }
     Offset = std::max(Offset, Seg->Offset + Seg->FileSize);
   }

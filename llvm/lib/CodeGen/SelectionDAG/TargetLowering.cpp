@@ -127,7 +127,6 @@ TargetLowering::makeLibCall(SelectionDAG &DAG, RTLIB::Libcall LC, EVT RetVT,
   Args.reserve(Ops.size());
 
   TargetLowering::ArgListEntry Entry;
-  SDNode *N = CallOptions.NodeBeforeSoften;
   for (unsigned i = 0; i < Ops.size(); ++i) {
     SDValue NewOp = Ops[i];
     Entry.Node = NewOp;
@@ -136,8 +135,8 @@ TargetLowering::makeLibCall(SelectionDAG &DAG, RTLIB::Libcall LC, EVT RetVT,
                                                  CallOptions.IsSExt);
     Entry.IsZExt = !Entry.IsSExt;
 
-    SDValue OldOp = N ? N->getOperand(i) : NewOp;
-    if (!shouldExtendTypeInLibCall(OldOp.getValueType())) {
+    if (CallOptions.IsSoften &&
+        !shouldExtendTypeInLibCall(CallOptions.OpsVTBeforeSoften[i])) {
       Entry.IsSExt = Entry.IsZExt = false;
     }
     Args.push_back(Entry);
@@ -153,8 +152,8 @@ TargetLowering::makeLibCall(SelectionDAG &DAG, RTLIB::Libcall LC, EVT RetVT,
   bool signExtend = shouldSignExtendTypeInLibCall(RetVT, CallOptions.IsSExt);
   bool zeroExtend = !signExtend;
 
-  RetVT = N ? N->getValueType(0) : RetVT;
-  if (!shouldExtendTypeInLibCall(RetVT)) {
+  if (CallOptions.IsSoften &&
+      !shouldExtendTypeInLibCall(CallOptions.RetVTBeforeSoften)) {
     signExtend = zeroExtend = false;
   }
 
@@ -379,12 +378,10 @@ void TargetLowering::softenSetCCOperands(SelectionDAG &DAG, EVT VT,
   // Use the target specific return value for comparions lib calls.
   EVT RetVT = getCmpLibcallReturnType();
   SDValue Ops[2] = {NewLHS, NewRHS};
-  SDValue OldSETCC = DAG.getNode(
-      ISD::SETCC, dl,
-      getSetCCResultType(DAG.getDataLayout(), *DAG.getContext(), RetVT),
-      OldLHS, OldRHS, DAG.getCondCode(CCCode));
   TargetLowering::MakeLibCallOptions CallOptions;
-  CallOptions.setNodeBeforeSoften(OldSETCC.getNode());
+  EVT OpsVT[2] = { OldLHS.getValueType(),
+                   OldRHS.getValueType() };
+  CallOptions.setTypeListBeforeSoften(OpsVT, RetVT, true);
   NewLHS = makeLibCall(DAG, LC1, RetVT, Ops, CallOptions, dl).first;
   NewRHS = DAG.getConstant(0, dl, RetVT);
 
@@ -1953,10 +1950,8 @@ bool TargetLowering::SimplifyDemandedBits(
     if (C && !C->isAllOnesValue() && !C->isOne() &&
         (C->getAPIntValue() | HighMask).isAllOnesValue()) {
       SDValue Neg1 = TLO.DAG.getAllOnesConstant(dl, VT);
-      // We can't guarantee that the new math op doesn't wrap, so explicitly
-      // clear those flags to prevent folding with a potential existing node
-      // that has those flags set.
-      SDNodeFlags Flags;
+      // Disable the nsw and nuw flags. We can no longer guarantee that we
+      // won't wrap after simplification.
       Flags.setNoSignedWrap(false);
       Flags.setNoUnsignedWrap(false);
       SDValue NewOp = TLO.DAG.getNode(Op.getOpcode(), dl, VT, Op0, Neg1, Flags);

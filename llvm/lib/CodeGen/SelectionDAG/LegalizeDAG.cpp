@@ -904,11 +904,10 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
         if (SrcVT.getScalarType() == MVT::f16) {
           EVT ISrcVT = SrcVT.changeTypeToInteger();
           EVT IDestVT = DestVT.changeTypeToInteger();
-          EVT LoadVT = TLI.getRegisterType(IDestVT.getSimpleVT());
+          EVT ILoadVT = TLI.getRegisterType(IDestVT.getSimpleVT());
 
-          SDValue Result = DAG.getExtLoad(ISD::ZEXTLOAD, dl, LoadVT,
-                                          Chain, Ptr, ISrcVT,
-                                          LD->getMemOperand());
+          SDValue Result = DAG.getExtLoad(ISD::ZEXTLOAD, dl, ILoadVT, Chain,
+                                          Ptr, ISrcVT, LD->getMemOperand());
           Value = DAG.getNode(ISD::FP16_TO_FP, dl, DestVT, Result);
           Chain = Result.getValue(1);
           break;
@@ -1627,7 +1626,6 @@ bool SelectionDAGLegalize::LegalizeSetCCCondCode(EVT VT, SDValue &LHS,
   MVT OpVT = LHS.getSimpleValueType();
   ISD::CondCode CCCode = cast<CondCodeSDNode>(CC)->get();
   NeedInvert = false;
-  bool NeedSwap = false;
   switch (TLI.getCondCodeAction(CCCode, OpVT)) {
   default: llvm_unreachable("Unknown condition code action!");
   case TargetLowering::Legal:
@@ -1641,6 +1639,7 @@ bool SelectionDAGLegalize::LegalizeSetCCCondCode(EVT VT, SDValue &LHS,
       return true;
     }
     // Swapping operands didn't work. Try inverting the condition.
+    bool NeedSwap = false;
     InvCC = getSetCCInverse(CCCode, OpVT.isInteger());
     if (!TLI.isCondCodeLegalOrCustom(InvCC, OpVT)) {
       // If inverting the condition is not enough, try swapping operands
@@ -2051,12 +2050,12 @@ SDValue SelectionDAGLegalize::ExpandLibCall(RTLIB::Libcall LC, SDNode *Node,
   std::pair<SDValue, SDValue> CallInfo = TLI.LowerCallTo(CLI);
 
   if (!CallInfo.second.getNode()) {
-    LLVM_DEBUG(dbgs() << "Created tailcall: "; DAG.getRoot().dump());
+    LLVM_DEBUG(dbgs() << "Created tailcall: "; DAG.getRoot().dump(&DAG));
     // It's a tailcall, return the chain (which is the DAG root).
     return DAG.getRoot();
   }
 
-  LLVM_DEBUG(dbgs() << "Created libcall: "; CallInfo.first.dump());
+  LLVM_DEBUG(dbgs() << "Created libcall: "; CallInfo.first.dump(&DAG));
   return CallInfo.first;
 }
 
