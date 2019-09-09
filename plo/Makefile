@@ -357,6 +357,7 @@ clean:
 	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \
 	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,.symfile,.yaml,.profile,.cfg,.size-summaries} ; \
 	  rm -f benchmark{-,pmu-}$${F}.result ; \
+	  rm -f benchmark-pmu-$${F}.{result,pmu} ; \
 	done
 	rm -f  check_environment
 	rm -f  commands run-commands.sh relink-clang-{cspgo,pgo}-plo{,hot,likely}.sh
