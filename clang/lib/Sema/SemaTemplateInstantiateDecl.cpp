@@ -550,6 +550,18 @@ void Sema::InstantiateAttrs(const MultiLevelTemplateArgumentList &TemplateArgs,
       continue;
     }
 
+    if (auto *A = dyn_cast<PointerAttr>(TmplAttr)) {
+      if (!New->hasAttr<PointerAttr>())
+        New->addAttr(A->clone(Context));
+      continue;
+    }
+
+    if (auto *A = dyn_cast<OwnerAttr>(TmplAttr)) {
+      if (!New->hasAttr<OwnerAttr>())
+        New->addAttr(A->clone(Context));
+      continue;
+    }
+
     assert(!TmplAttr->isPackExpansion());
     if (TmplAttr->isLateParsed() && LateAttrs) {
       // Late parsed attributes must be instantiated and attached after the
@@ -708,6 +720,9 @@ Decl *TemplateDeclInstantiator::InstantiateTypedefNameDecl(TypedefNameDecl *D,
   }
 
   SemaRef.InstantiateAttrs(TemplateArgs, D, Typedef);
+
+  if (D->getUnderlyingType()->getAs<DependentNameType>())
+    SemaRef.inferGslPointerAttribute(Typedef);
 
   Typedef->setAccess(D->getAccess());
 
@@ -2337,6 +2352,7 @@ Decl *TemplateDeclInstantiator::VisitTemplateTypeParmDecl(
       D->getDepth() - TemplateArgs.getNumSubstitutedLevels(), D->getIndex(),
       D->getIdentifier(), D->wasDeclaredWithTypename(), D->isParameterPack());
   Inst->setAccess(AS_public);
+  Inst->setImplicit(D->isImplicit());
 
   if (D->hasDefaultArgument() && !D->defaultArgumentWasInherited()) {
     TypeSourceInfo *InstantiatedDefaultArg =
@@ -2483,6 +2499,7 @@ Decl *TemplateDeclInstantiator::VisitNonTypeTemplateParmDecl(
         D->getPosition(), D->getIdentifier(), T, D->isParameterPack(), DI);
 
   Param->setAccess(AS_public);
+  Param->setImplicit(D->isImplicit());
   if (Invalid)
     Param->setInvalidDecl();
 
@@ -2626,6 +2643,7 @@ TemplateDeclInstantiator::VisitTemplateTemplateParmDecl(
                               D->getDefaultArgument().getTemplateNameLoc()));
   }
   Param->setAccess(AS_public);
+  Param->setImplicit(D->isImplicit());
 
   // Introduce this template parameter's instantiation into the instantiation
   // scope.

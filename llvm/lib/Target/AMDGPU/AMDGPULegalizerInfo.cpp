@@ -27,6 +27,7 @@
 #include "llvm/CodeGen/TargetOpcodes.h"
 #include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Debug.h"
 
@@ -247,18 +248,12 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
     // Don't worry about the size constraint.
     .legalIf(all(isPointer(0), isPointer(1)));
 
-  if (ST.has16BitInsts()) {
-    getActionDefinitionsBuilder(G_FCONSTANT)
-      .legalFor({S32, S64, S16})
-      .clampScalar(0, S16, S64);
-  } else {
-    getActionDefinitionsBuilder(G_FCONSTANT)
-      .legalFor({S32, S64})
-      .clampScalar(0, S32, S64);
-  }
+  getActionDefinitionsBuilder(G_FCONSTANT)
+    .legalFor({S32, S64, S16})
+    .clampScalar(0, S16, S64);
 
   getActionDefinitionsBuilder(G_IMPLICIT_DEF)
-    .legalFor({S1, S32, S64, V2S32, V4S32, V2S16, V4S16, GlobalPtr,
+    .legalFor({S1, S32, S64, S16, V2S32, V4S32, V2S16, V4S16, GlobalPtr,
                ConstantPtr, LocalPtr, FlatPtr, PrivatePtr})
     .moreElementsIf(isSmallOddVector(0), oneMoreElement(0))
     .clampScalarOrElt(0, S32, S512)
@@ -271,13 +266,15 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
   // values may not be legal.  We need to figure out how to distinguish
   // between these two scenarios.
   getActionDefinitionsBuilder(G_CONSTANT)
-    .legalFor({S1, S32, S64, GlobalPtr,
+    .legalFor({S1, S32, S64, S16, GlobalPtr,
                LocalPtr, ConstantPtr, PrivatePtr, FlatPtr })
     .clampScalar(0, S32, S64)
     .widenScalarToNextPow2(0)
     .legalIf(isPointer(0));
 
   setAction({G_FRAME_INDEX, PrivatePtr}, Legal);
+  getActionDefinitionsBuilder(G_GLOBAL_VALUE).customFor({LocalPtr});
+
 
   auto &FPOpActions = getActionDefinitionsBuilder(
     { G_FADD, G_FMUL, G_FNEG, G_FABS, G_FMA, G_FCANONICALIZE})
@@ -398,6 +395,10 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
     .legalForCartesianProduct(AddrSpaces32, {S32})
     .scalarize(0);
 
+  getActionDefinitionsBuilder(G_PTR_MASK)
+    .scalarize(0)
+    .alwaysLegal();
+
   setAction({G_BLOCK_ADDR, CodePtr}, Legal);
 
   auto &CmpBuilder =
@@ -439,7 +440,7 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
     .widenScalarToNextPow2(1, 32);
 
   // TODO: Expand for > s32
-  getActionDefinitionsBuilder(G_BSWAP)
+  getActionDefinitionsBuilder({G_BSWAP, G_BITREVERSE})
     .legalFor({S32})
     .clampScalar(0, S32, S32)
     .scalarize(0);
@@ -721,6 +722,15 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
       .legalIf(isRegisterType(0))
       .minScalarOrElt(0, S32);
 
+  if (ST.hasScalarPackInsts()) {
+    getActionDefinitionsBuilder(G_BUILD_VECTOR_TRUNC)
+      .legalFor({V2S16, S32})
+      .lower();
+  } else {
+    getActionDefinitionsBuilder(G_BUILD_VECTOR_TRUNC)
+      .lower();
+  }
+
   getActionDefinitionsBuilder(G_CONCAT_VECTORS)
     .legalIf(isRegisterType(0));
 
@@ -835,6 +845,8 @@ bool AMDGPULegalizerInfo::legalizeCustom(MachineInstr &MI,
   case TargetOpcode::G_FSIN:
   case TargetOpcode::G_FCOS:
     return legalizeSinCos(MI, MRI, MIRBuilder);
+  case TargetOpcode::G_GLOBAL_VALUE:
+    return legalizeGlobalValue(MI, MRI, MIRBuilder);
   default:
     return false;
   }
@@ -884,8 +896,9 @@ Register AMDGPULegalizerInfo::getSegmentAperture(
   Register QueuePtr = MRI.createGenericVirtualRegister(
     LLT::pointer(AMDGPUAS::CONSTANT_ADDRESS, 64));
 
-  // FIXME: Placeholder until we can track the input registers.
-  MIRBuilder.buildConstant(QueuePtr, 0xdeadbeef);
+  const SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
+  if (!loadInputValue(QueuePtr, MIRBuilder, &MFI->getArgInfo().QueuePtr))
+    return Register();
 
   // Offset into amd_queue_t for group_segment_aperture_base_hi /
   // private_segment_aperture_base_hi.
@@ -996,6 +1009,8 @@ bool AMDGPULegalizerInfo::legalizeAddrSpaceCast(
       MIRBuilder.buildConstant(DstTy, TM.getNullPointerValue(DestAS));
 
   Register ApertureReg = getSegmentAperture(DestAS, MRI, MIRBuilder);
+  if (!ApertureReg.isValid())
+    return false;
 
   Register CmpRes = MRI.createGenericVirtualRegister(LLT::scalar(1));
   MIRBuilder.buildICmp(CmpInst::ICMP_NE, CmpRes, Src, SegmentNull.getReg(0));
@@ -1279,6 +1294,43 @@ bool AMDGPULegalizerInfo::legalizeSinCos(
   return true;
 }
 
+bool AMDGPULegalizerInfo::legalizeGlobalValue(
+  MachineInstr &MI, MachineRegisterInfo &MRI,
+  MachineIRBuilder &B) const {
+  Register DstReg = MI.getOperand(0).getReg();
+  LLT Ty = MRI.getType(DstReg);
+  unsigned AS = Ty.getAddressSpace();
+
+  const GlobalValue *GV = MI.getOperand(1).getGlobal();
+  MachineFunction &MF = B.getMF();
+  SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
+
+  if (AS == AMDGPUAS::LOCAL_ADDRESS || AS == AMDGPUAS::REGION_ADDRESS) {
+    B.setInstr(MI);
+
+    if (!MFI->isEntryFunction()) {
+      const Function &Fn = MF.getFunction();
+      DiagnosticInfoUnsupported BadLDSDecl(
+        Fn, "local memory global used by non-kernel function", MI.getDebugLoc());
+      Fn.getContext().diagnose(BadLDSDecl);
+    }
+
+    // TODO: We could emit code to handle the initialization somewhere.
+    if (!AMDGPUTargetLowering::hasDefinedInitializer(GV)) {
+      B.buildConstant(DstReg, MFI->allocateLDSGlobal(B.getDataLayout(), *GV));
+      MI.eraseFromParent();
+      return true;
+    }
+  } else
+    return false;
+
+  const Function &Fn = MF.getFunction();
+  DiagnosticInfoUnsupported BadInit(
+    Fn, "unsupported initializer for address space", MI.getDebugLoc());
+  Fn.getContext().diagnose(BadInit);
+  return true;
+}
+
 // Return the use branch instruction, otherwise null if the usage is invalid.
 static MachineInstr *verifyCFIntrinsic(MachineInstr &MI,
                                        MachineRegisterInfo &MRI) {
@@ -1304,10 +1356,9 @@ Register AMDGPULegalizerInfo::getLiveInRegister(MachineRegisterInfo &MRI,
 
 bool AMDGPULegalizerInfo::loadInputValue(Register DstReg, MachineIRBuilder &B,
                                          const ArgDescriptor *Arg) const {
-  if (!Arg->isRegister())
+  if (!Arg->isRegister() || !Arg->getRegister().isValid())
     return false; // TODO: Handle these
 
-  assert(Arg->getRegister() != 0);
   assert(Arg->getRegister().isPhysical());
 
   MachineRegisterInfo &MRI = *B.getMRI();
@@ -1330,10 +1381,16 @@ bool AMDGPULegalizerInfo::loadInputValue(Register DstReg, MachineIRBuilder &B,
   // Insert the argument copy if it doens't already exist.
   // FIXME: It seems EmitLiveInCopies isn't called anywhere?
   if (!MRI.getVRegDef(LiveIn)) {
+    // FIXME: Should have scoped insert pt
+    MachineBasicBlock &OrigInsBB = B.getMBB();
+    auto OrigInsPt = B.getInsertPt();
+
     MachineBasicBlock &EntryMBB = B.getMF().front();
     EntryMBB.addLiveIn(Arg->getRegister());
     B.setInsertPt(EntryMBB, EntryMBB.begin());
     B.buildCopy(LiveIn, Arg->getRegister());
+
+    B.setInsertPt(OrigInsBB, OrigInsPt);
   }
 
   return true;
@@ -1434,6 +1491,18 @@ bool AMDGPULegalizerInfo::legalizeImplicitArgPtr(MachineInstr &MI,
   return true;
 }
 
+bool AMDGPULegalizerInfo::legalizeIsAddrSpace(MachineInstr &MI,
+                                              MachineRegisterInfo &MRI,
+                                              MachineIRBuilder &B,
+                                              unsigned AddrSpace) const {
+  B.setInstr(MI);
+  Register ApertureReg = getSegmentAperture(AddrSpace, MRI, B);
+  auto Hi32 = B.buildExtract(LLT::scalar(32), MI.getOperand(2).getReg(), 32);
+  B.buildICmp(ICmpInst::ICMP_EQ, MI.getOperand(0), Hi32, ApertureReg);
+  MI.eraseFromParent();
+  return true;
+}
+
 bool AMDGPULegalizerInfo::legalizeIntrinsic(MachineInstr &MI,
                                             MachineRegisterInfo &MRI,
                                             MachineIRBuilder &B) const {
@@ -1516,6 +1585,16 @@ bool AMDGPULegalizerInfo::legalizeIntrinsic(MachineInstr &MI,
                                       AMDGPUFunctionArgInfo::DISPATCH_ID);
   case Intrinsic::amdgcn_fdiv_fast:
     return legalizeFDIVFast(MI, MRI, B);
+  case Intrinsic::amdgcn_is_shared:
+    return legalizeIsAddrSpace(MI, MRI, B, AMDGPUAS::LOCAL_ADDRESS);
+  case Intrinsic::amdgcn_is_private:
+    return legalizeIsAddrSpace(MI, MRI, B, AMDGPUAS::PRIVATE_ADDRESS);
+  case Intrinsic::amdgcn_wavefrontsize: {
+    B.setInstr(MI);
+    B.buildConstant(MI.getOperand(0), ST.getWavefrontSize());
+    MI.eraseFromParent();
+    return true;
+  }
   default:
     return true;
   }

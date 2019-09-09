@@ -583,11 +583,7 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm) : TM(tm) {
   BooleanFloatContents = UndefinedBooleanContent;
   BooleanVectorContents = UndefinedBooleanContent;
   SchedPreferenceInfo = Sched::ILP;
-  MinFunctionAlignment = 0;
-  PrefFunctionAlignment = 0;
-  PrefLoopAlignment = 0;
   GatherAllAliasesMaxDepth = 18;
-  MinStackArgumentAlignment = 1;
   // TODO: the default will be switched to 0 in the next commit, along
   // with the Target-specific changes necessary.
   MaxAtomicSizeInBitsSupported = 1024;
@@ -656,6 +652,7 @@ void TargetLoweringBase::initActions() {
     setOperationAction(ISD::SMULFIX, VT, Expand);
     setOperationAction(ISD::SMULFIXSAT, VT, Expand);
     setOperationAction(ISD::UMULFIX, VT, Expand);
+    setOperationAction(ISD::UMULFIXSAT, VT, Expand);
 
     // Overflow operations default to expand
     setOperationAction(ISD::SADDO, VT, Expand);

@@ -30,11 +30,12 @@ struct VecDesc {
   unsigned VectorizationFactor;
 };
 
-  enum LibFunc {
+  enum LibFunc : unsigned {
 #define TLI_DEFINE_ENUM
 #include "llvm/Analysis/TargetLibraryInfo.def"
 
-    NumLibFuncs
+    NumLibFuncs,
+    NotLibFunc
   };
 
 /// Implementation of the target library information.
@@ -359,7 +360,6 @@ public:
   TargetLibraryAnalysis(TargetLibraryInfoImpl PresetInfoImpl)
       : PresetInfoImpl(std::move(PresetInfoImpl)) {}
 
-  TargetLibraryInfo run(Module &M, ModuleAnalysisManager &);
   TargetLibraryInfo run(Function &F, FunctionAnalysisManager &);
 
 private:
@@ -385,8 +385,13 @@ public:
   explicit TargetLibraryInfoWrapperPass(const Triple &T);
   explicit TargetLibraryInfoWrapperPass(const TargetLibraryInfoImpl &TLI);
 
-  TargetLibraryInfo &getTLI() { return TLI; }
-  const TargetLibraryInfo &getTLI() const { return TLI; }
+  TargetLibraryInfo &getTLI(const Function &F LLVM_ATTRIBUTE_UNUSED) {
+    return TLI;
+  }
+  const TargetLibraryInfo &
+  getTLI(const Function &F LLVM_ATTRIBUTE_UNUSED) const {
+    return TLI;
+  }
 };
 
 } // end namespace llvm

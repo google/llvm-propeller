@@ -240,11 +240,29 @@ void LegalizerHelper::insertParts(Register DstReg,
 static RTLIB::Libcall getRTLibDesc(unsigned Opcode, unsigned Size) {
   switch (Opcode) {
   case TargetOpcode::G_SDIV:
-    assert((Size == 32 || Size == 64) && "Unsupported size");
-    return Size == 64 ? RTLIB::SDIV_I64 : RTLIB::SDIV_I32;
+    assert((Size == 32 || Size == 64 || Size == 128) && "Unsupported size");
+    switch (Size) {
+    case 32:
+      return RTLIB::SDIV_I32;
+    case 64:
+      return RTLIB::SDIV_I64;
+    case 128:
+      return RTLIB::SDIV_I128;
+    default:
+      llvm_unreachable("unexpected size");
+    }
   case TargetOpcode::G_UDIV:
-    assert((Size == 32 || Size == 64) && "Unsupported size");
-    return Size == 64 ? RTLIB::UDIV_I64 : RTLIB::UDIV_I32;
+    assert((Size == 32 || Size == 64 || Size == 128) && "Unsupported size");
+    switch (Size) {
+    case 32:
+      return RTLIB::UDIV_I32;
+    case 64:
+      return RTLIB::UDIV_I64;
+    case 128:
+      return RTLIB::UDIV_I128;
+    default:
+      llvm_unreachable("unexpected size");
+    }
   case TargetOpcode::G_SREM:
     assert((Size == 32 || Size == 64) && "Unsupported size");
     return Size == 64 ? RTLIB::SREM_I64 : RTLIB::SREM_I32;
@@ -601,12 +619,16 @@ LegalizerHelper::LegalizeResult LegalizerHelper::narrowScalar(MachineInstr &MI,
     if (TypeIdx != 0)
       return UnableToLegalize;
 
-    if (NarrowTy.getSizeInBits() != SizeOp0 / 2) {
+    Register SrcReg = MI.getOperand(1).getReg();
+    LLT SrcTy = MRI.getType(SrcReg);
+
+    // FIXME: support the general case where the requested NarrowTy may not be
+    // the same as the source type. E.g. s128 = sext(s32)
+    if ((SrcTy.getSizeInBits() != SizeOp0 / 2) ||
+        SrcTy.getSizeInBits() != NarrowTy.getSizeInBits()) {
       LLVM_DEBUG(dbgs() << "Can't narrow sext to type " << NarrowTy << "\n");
       return UnableToLegalize;
     }
-
-    Register SrcReg = MI.getOperand(1).getReg();
 
     // Shift the sign bit of the low register through the high register.
     auto ShiftAmt =
@@ -1448,6 +1470,24 @@ LegalizerHelper::widenScalar(MachineInstr &MI, unsigned TypeIdx, LLT WideTy) {
     Observer.changedInstr(MI);
     return Legalized;
   }
+  case TargetOpcode::G_BITREVERSE: {
+    Observer.changingInstr(MI);
+
+    Register DstReg = MI.getOperand(0).getReg();
+    LLT Ty = MRI.getType(DstReg);
+    unsigned DiffBits = WideTy.getScalarSizeInBits() - Ty.getScalarSizeInBits();
+
+    Register DstExt = MRI.createGenericVirtualRegister(WideTy);
+    widenScalarSrc(MI, WideTy, 1, TargetOpcode::G_ANYEXT);
+    MI.getOperand(0).setReg(DstExt);
+    MIRBuilder.setInsertPt(MIRBuilder.getMBB(), ++MIRBuilder.getInsertPt());
+
+    auto ShiftAmt = MIRBuilder.buildConstant(WideTy, DiffBits);
+    auto Shift = MIRBuilder.buildLShr(WideTy, DstExt, ShiftAmt);
+    MIRBuilder.buildTrunc(DstReg, Shift);
+    Observer.changedInstr(MI);
+    return Legalized;
+  }
   case TargetOpcode::G_ADD:
   case TargetOpcode::G_AND:
   case TargetOpcode::G_MUL:
@@ -1713,6 +1753,7 @@ LegalizerHelper::widenScalar(MachineInstr &MI, unsigned TypeIdx, LLT WideTy) {
   case TargetOpcode::G_FMUL:
   case TargetOpcode::G_FSUB:
   case TargetOpcode::G_FMA:
+  case TargetOpcode::G_FMAD:
   case TargetOpcode::G_FNEG:
   case TargetOpcode::G_FABS:
   case TargetOpcode::G_FCANONICALIZE:
@@ -2788,6 +2829,7 @@ LegalizerHelper::fewerElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case G_FDIV:
   case G_FREM:
   case G_FMA:
+  case G_FMAD:
   case G_FPOW:
   case G_FEXP:
   case G_FEXP2:
@@ -2804,6 +2846,7 @@ LegalizerHelper::fewerElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case G_FSIN:
   case G_FSQRT:
   case G_BSWAP:
+  case G_BITREVERSE:
   case G_SDIV:
   case G_SMIN:
   case G_SMAX:

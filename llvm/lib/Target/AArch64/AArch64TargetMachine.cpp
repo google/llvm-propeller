@@ -504,7 +504,8 @@ bool AArch64PassConfig::addIRTranslator() {
 }
 
 void AArch64PassConfig::addPreLegalizeMachineIR() {
-  addPass(createAArch64PreLegalizeCombiner());
+  bool IsOptNone = getOptLevel() == CodeGenOpt::None;
+  addPass(createAArch64PreLegalizeCombiner(IsOptNone));
 }
 
 bool AArch64PassConfig::addLegalizeMachineIR() {
@@ -518,9 +519,7 @@ bool AArch64PassConfig::addRegBankSelect() {
 }
 
 void AArch64PassConfig::addPreGlobalInstructionSelect() {
-  // Workaround the deficiency of the fast register allocator.
-  if (TM->getOptLevel() == CodeGenOpt::None)
-    addPass(new Localizer());
+  addPass(new Localizer());
 }
 
 bool AArch64PassConfig::addGlobalInstructionSelect() {

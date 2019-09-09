@@ -1478,6 +1478,7 @@ bool TargetLibraryInfoImpl::isValidProtoForLibFunc(const FunctionType &FTy,
       return false;
   }
   case LibFunc::NumLibFuncs:
+  case LibFunc::NotLibFunc:
     break;
   }
 
@@ -1594,14 +1595,6 @@ StringRef TargetLibraryInfoImpl::getScalarizedFunction(StringRef F,
     return StringRef();
   VF = I->VectorizationFactor;
   return I->ScalarFnName;
-}
-
-TargetLibraryInfo TargetLibraryAnalysis::run(Module &M,
-                                             ModuleAnalysisManager &) {
-  if (PresetInfoImpl)
-    return TargetLibraryInfo(*PresetInfoImpl);
-
-  return TargetLibraryInfo(lookupInfoImpl(Triple(M.getTargetTriple())));
 }
 
 TargetLibraryInfo TargetLibraryAnalysis::run(Function &F,

@@ -58,6 +58,9 @@ public:
   bool legalizeSinCos(MachineInstr &MI, MachineRegisterInfo &MRI,
                       MachineIRBuilder &MIRBuilder) const;
 
+  bool legalizeGlobalValue(MachineInstr &MI, MachineRegisterInfo &MRI,
+                           MachineIRBuilder &MIRBuilder) const;
+
   Register getLiveInRegister(MachineRegisterInfo &MRI,
                              Register Reg, LLT Ty) const;
 
@@ -72,6 +75,8 @@ public:
 
   bool legalizeImplicitArgPtr(MachineInstr &MI, MachineRegisterInfo &MRI,
                               MachineIRBuilder &B) const;
+  bool legalizeIsAddrSpace(MachineInstr &MI, MachineRegisterInfo &MRI,
+                           MachineIRBuilder &B, unsigned AddrSpace) const;
   bool legalizeIntrinsic(MachineInstr &MI, MachineRegisterInfo &MRI,
                          MachineIRBuilder &MIRBuilder) const override;
 

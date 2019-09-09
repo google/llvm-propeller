@@ -287,7 +287,7 @@ relink-clang-pgo-plolist.sh: pgo-plolist/build/bin/clang-10 pgo-compiler.propell
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	# origin: instructions,cycles,branches,branch-misses,icache_64b.iftag_stall,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,idq.dsb_uops,idq.mite_uops,idq.all_dsb_cycles_4_uops,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit
 	# for papers: cycles,instructions,br_inst_retired.all_branches,br_inst_retired.conditional,br_inst_retired.near_taken,br_inst_retired.not_taken,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit 
-	{ time perf stat -o $@.pmu -e cycles,instructions,br_inst_retired.all_branches,br_inst_retired.conditional,br_inst_retired.near_taken,br_inst_retired.not_taken,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit -- ./run-commands.sh $(shell readlink -f $<) ; } 2>&1 | tee $@.result
+	{ time perf stat -o $@.pmu --field-separator=, -e cycles,instructions,br_inst_retired.all_branches,br_inst_retired.conditional,br_inst_retired.near_taken,br_inst_retired.not_taken,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit -- ./run-commands.sh $(shell readlink -f $<) ; } 2>&1 | tee $@.result
 
 $(ALL_BENCHMARKS): benchmark-%: %-compiler run-commands.sh
 	{ time ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -E "^(real|user|sys)" ; } 2>&1 | tee -a $@.result

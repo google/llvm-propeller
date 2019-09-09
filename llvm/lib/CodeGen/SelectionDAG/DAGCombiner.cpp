@@ -1749,7 +1749,8 @@ SDValue DAGCombiner::visit(SDNode *N) {
   case ISD::SUBCARRY:           return visitSUBCARRY(N);
   case ISD::SMULFIX:
   case ISD::SMULFIXSAT:
-  case ISD::UMULFIX:            return visitMULFIX(N);
+  case ISD::UMULFIX:
+  case ISD::UMULFIXSAT:         return visitMULFIX(N);
   case ISD::MUL:                return visitMUL(N);
   case ISD::SDIV:               return visitSDIV(N);
   case ISD::UDIV:               return visitUDIV(N);
@@ -3519,7 +3520,8 @@ SDValue DAGCombiner::visitSUBCARRY(SDNode *N) {
   return SDValue();
 }
 
-// Notice that "mulfix" can be any of SMULFIX, SMULFIXSAT and UMULFIX here.
+// Notice that "mulfix" can be any of SMULFIX, SMULFIXSAT, UMULFIX and
+// UMULFIXSAT here.
 SDValue DAGCombiner::visitMULFIX(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   SDValue N1 = N->getOperand(1);
@@ -4402,13 +4404,29 @@ SDValue DAGCombiner::visitUMUL_LOHI(SDNode *N) {
 }
 
 SDValue DAGCombiner::visitMULO(SDNode *N) {
+  SDValue N0 = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+  EVT VT = N0.getValueType();
   bool IsSigned = (ISD::SMULO == N->getOpcode());
 
+  EVT CarryVT = N->getValueType(1);
+  SDLoc DL(N);
+
+  // canonicalize constant to RHS.
+  if (DAG.isConstantIntBuildVectorOrConstantInt(N0) &&
+      !DAG.isConstantIntBuildVectorOrConstantInt(N1))
+    return DAG.getNode(N->getOpcode(), DL, N->getVTList(), N1, N0);
+
+  // fold (mulo x, 0) -> 0 + no carry out
+  if (isNullOrNullSplat(N1))
+    return CombineTo(N, DAG.getConstant(0, DL, VT),
+                     DAG.getConstant(0, DL, CarryVT));
+
   // (mulo x, 2) -> (addo x, x)
-  if (ConstantSDNode *C2 = isConstOrConstSplat(N->getOperand(1)))
+  if (ConstantSDNode *C2 = isConstOrConstSplat(N1))
     if (C2->getAPIntValue() == 2)
-      return DAG.getNode(IsSigned ? ISD::SADDO : ISD::UADDO, SDLoc(N),
-                         N->getVTList(), N->getOperand(0), N->getOperand(0));
+      return DAG.getNode(IsSigned ? ISD::SADDO : ISD::UADDO, DL,
+                         N->getVTList(), N0, N0);
 
   return SDValue();
 }

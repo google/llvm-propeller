@@ -154,6 +154,8 @@ namespace {
 
     bool is64Bit() const { return Root->getType()->isIntegerTy(64); }
 
+    Type *getType() const { return Root->getType(); }
+
     /// Return the incoming value to be accumulated. This maybe null.
     Value *getAccumulator() { return Acc; }
 
@@ -254,7 +256,7 @@ namespace {
 
       SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
       AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
-      TLI = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+      TLI = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
       DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
       auto &TPC = getAnalysis<TargetPassConfig>();
 
@@ -649,18 +651,31 @@ void ARMParallelDSP::InsertParallelMACs(Reduction &R) {
     if (MulCand->Paired)
       continue;
 
-    LLVM_DEBUG(dbgs() << "Accumulating unpaired mul: " << *MulCand->Root
-               << "\n");
+    Value *Mul = MulCand->Root;
+    LLVM_DEBUG(dbgs() << "Accumulating unpaired mul: " << *Mul << "\n");
+
+    if (R.getType() != Mul->getType()) {
+      assert(R.is64Bit() && "expected 64-bit result");
+      Mul = Builder.CreateSExt(Mul, R.getType());
+    }
+
     if (!Acc) {
-      Acc = MulCand->Root;
+      Acc = Mul;
       continue;
     }
-    Acc = Builder.CreateAdd(MulCand->Root, Acc);
+
+    Acc = Builder.CreateAdd(Mul, Acc);
     InsertAfter = cast<Instruction>(Acc);
   }
 
-  if (!Acc)
-    Acc = ConstantInt::get(IntegerType::get(M->getContext(), 32), 0);
+  if (!Acc) {
+    Acc = R.is64Bit() ?
+      ConstantInt::get(IntegerType::get(M->getContext(), 64), 0) :
+      ConstantInt::get(IntegerType::get(M->getContext(), 32), 0);
+  } else if (Acc->getType() != R.getType()) {
+    Builder.SetInsertPoint(R.getRoot());
+    Acc = Builder.CreateSExt(Acc, R.getType());
+  }
 
   IntegerType *Ty = IntegerType::get(M->getContext(), 32);
   for (auto &Pair : R.getMulPairs()) {

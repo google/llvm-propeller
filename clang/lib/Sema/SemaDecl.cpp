@@ -22,6 +22,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/NonTrivialTypeVisitor.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/PartialDiagnostic.h"
@@ -2661,6 +2662,60 @@ static void checkNewAttributesAfterDef(Sema &S, Decl *New, const Decl *Old) {
   }
 }
 
+static void diagnoseMissingConstinit(Sema &S, const VarDecl *InitDecl,
+                                     const ConstInitAttr *CIAttr,
+                                     bool AttrBeforeInit) {
+  SourceLocation InsertLoc = InitDecl->getInnerLocStart();
+
+  // Figure out a good way to write this specifier on the old declaration.
+  // FIXME: We should just use the spelling of CIAttr, but we don't preserve
+  // enough of the attribute list spelling information to extract that without
+  // heroics.
+  std::string SuitableSpelling;
+  if (S.getLangOpts().CPlusPlus2a)
+    SuitableSpelling =
+        S.PP.getLastMacroWithSpelling(InsertLoc, {tok::kw_constinit});
+  if (SuitableSpelling.empty() && S.getLangOpts().CPlusPlus11)
+    SuitableSpelling = S.PP.getLastMacroWithSpelling(
+        InsertLoc,
+        {tok::l_square, tok::l_square, S.PP.getIdentifierInfo("clang"),
+         tok::coloncolon,
+         S.PP.getIdentifierInfo("require_constant_initialization"),
+         tok::r_square, tok::r_square});
+  if (SuitableSpelling.empty())
+    SuitableSpelling = S.PP.getLastMacroWithSpelling(
+        InsertLoc,
+        {tok::kw___attribute, tok::l_paren, tok::r_paren,
+         S.PP.getIdentifierInfo("require_constant_initialization"),
+         tok::r_paren, tok::r_paren});
+  if (SuitableSpelling.empty() && S.getLangOpts().CPlusPlus2a)
+    SuitableSpelling = "constinit";
+  if (SuitableSpelling.empty() && S.getLangOpts().CPlusPlus11)
+    SuitableSpelling = "[[clang::require_constant_initialization]]";
+  if (SuitableSpelling.empty())
+    SuitableSpelling = "__attribute__((require_constant_initialization))";
+  SuitableSpelling += " ";
+
+  if (AttrBeforeInit) {
+    // extern constinit int a;
+    // int a = 0; // error (missing 'constinit'), accepted as extension
+    assert(CIAttr->isConstinit() && "should not diagnose this for attribute");
+    S.Diag(InitDecl->getLocation(), diag::ext_constinit_missing)
+        << InitDecl << FixItHint::CreateInsertion(InsertLoc, SuitableSpelling);
+    S.Diag(CIAttr->getLocation(), diag::note_constinit_specified_here);
+  } else {
+    // int a = 0;
+    // constinit extern int a; // error (missing 'constinit')
+    S.Diag(CIAttr->getLocation(),
+           CIAttr->isConstinit() ? diag::err_constinit_added_too_late
+                                 : diag::warn_require_const_init_added_too_late)
+        << FixItHint::CreateRemoval(SourceRange(CIAttr->getLocation()));
+    S.Diag(InitDecl->getLocation(), diag::note_constinit_missing_here)
+        << CIAttr->isConstinit()
+        << FixItHint::CreateInsertion(InsertLoc, SuitableSpelling);
+  }
+}
+
 /// mergeDeclAttributes - Copy attributes from the Old decl to the New one.
 void Sema::mergeDeclAttributes(NamedDecl *New, Decl *Old,
                                AvailabilityMergeKind AMK) {
@@ -2672,6 +2727,41 @@ void Sema::mergeDeclAttributes(NamedDecl *New, Decl *Old,
 
   if (!Old->hasAttrs() && !New->hasAttrs())
     return;
+
+  // [dcl.constinit]p1:
+  //   If the [constinit] specifier is applied to any declaration of a
+  //   variable, it shall be applied to the initializing declaration.
+  const auto *OldConstInit = Old->getAttr<ConstInitAttr>();
+  const auto *NewConstInit = New->getAttr<ConstInitAttr>();
+  if (bool(OldConstInit) != bool(NewConstInit)) {
+    const auto *OldVD = cast<VarDecl>(Old);
+    auto *NewVD = cast<VarDecl>(New);
+
+    // Find the initializing declaration. Note that we might not have linked
+    // the new declaration into the redeclaration chain yet.
+    const VarDecl *InitDecl = OldVD->getInitializingDeclaration();
+    if (!InitDecl &&
+        (NewVD->hasInit() || NewVD->isThisDeclarationADefinition()))
+      InitDecl = NewVD;
+
+    if (InitDecl == NewVD) {
+      // This is the initializing declaration. If it would inherit 'constinit',
+      // that's ill-formed. (Note that we do not apply this to the attribute
+      // form).
+      if (OldConstInit && OldConstInit->isConstinit())
+        diagnoseMissingConstinit(*this, NewVD, OldConstInit,
+                                 /*AttrBeforeInit=*/true);
+    } else if (NewConstInit) {
+      // This is the first time we've been told that this declaration should
+      // have a constant initializer. If we already saw the initializing
+      // declaration, this is too late.
+      if (InitDecl && InitDecl != NewVD) {
+        diagnoseMissingConstinit(*this, InitDecl, NewConstInit,
+                                 /*AttrBeforeInit=*/false);
+        NewVD->dropAttr<ConstInitAttr>();
+      }
+    }
+  }
 
   // Attributes declared post-definition are currently ignored.
   checkNewAttributesAfterDef(*this, New, Old);
@@ -4315,13 +4405,13 @@ Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS, DeclSpec &DS,
     // and definitions of functions and variables.
     // C++2a [dcl.constexpr]p1: The consteval specifier shall be applied only to
     // the declaration of a function or function template
-    bool IsConsteval = DS.getConstexprSpecifier() == CSK_consteval;
     if (Tag)
       Diag(DS.getConstexprSpecLoc(), diag::err_constexpr_tag)
-          << GetDiagnosticTypeSpecifierID(DS.getTypeSpecType()) << IsConsteval;
+          << GetDiagnosticTypeSpecifierID(DS.getTypeSpecType())
+          << DS.getConstexprSpecifier();
     else
       Diag(DS.getConstexprSpecLoc(), diag::err_constexpr_wrong_decl_kind)
-          << IsConsteval;
+          << DS.getConstexprSpecifier();
     // Don't emit warnings after this error.
     return TagD;
   }
@@ -5776,7 +5866,7 @@ Sema::ActOnTypedefDeclarator(Scope* S, Declarator& D, DeclContext* DC,
         << getLangOpts().CPlusPlus17;
   if (D.getDeclSpec().hasConstexprSpecifier())
     Diag(D.getDeclSpec().getConstexprSpecLoc(), diag::err_invalid_constexpr)
-        << 1 << (D.getDeclSpec().getConstexprSpecifier() == CSK_consteval);
+        << 1 << D.getDeclSpec().getConstexprSpecifier();
 
   if (D.getName().Kind != UnqualifiedIdKind::IK_Identifier) {
     if (D.getName().Kind == UnqualifiedIdKind::IK_DeductionGuideName)
@@ -6523,6 +6613,11 @@ NamedDecl *Sema::ActOnVariableDeclarator(
 
     if (D.isInvalidType())
       NewVD->setInvalidDecl();
+
+    if (NewVD->getType().hasNonTrivialToPrimitiveDestructCUnion() &&
+        NewVD->hasLocalStorage())
+      checkNonTrivialCUnion(NewVD->getType(), NewVD->getLocation(),
+                            NTCUC_AutoVar, NTCUK_Destruct);
   } else {
     bool Invalid = false;
 
@@ -6671,19 +6766,6 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     if (TemplateParamLists.size() > VDTemplateParamLists)
       NewVD->setTemplateParameterListsInfo(
           Context, TemplateParamLists.drop_back(VDTemplateParamLists));
-
-    if (D.getDeclSpec().hasConstexprSpecifier()) {
-      NewVD->setConstexpr(true);
-      // C++1z [dcl.spec.constexpr]p1:
-      //   A static data member declared with the constexpr specifier is
-      //   implicitly an inline variable.
-      if (NewVD->isStaticDataMember() && getLangOpts().CPlusPlus17)
-        NewVD->setImplicitlyInline();
-      if (D.getDeclSpec().getConstexprSpecifier() == CSK_consteval)
-        Diag(D.getDeclSpec().getConstexprSpecLoc(),
-             diag::err_constexpr_wrong_decl_kind)
-            << /*consteval*/ 1;
-    }
   }
 
   if (D.getDeclSpec().isInlineSpecified()) {
@@ -6747,6 +6829,36 @@ NamedDecl *Sema::ActOnVariableDeclarator(
              diag::err_thread_unsupported);
     } else
       NewVD->setTSCSpec(TSCS);
+  }
+
+  switch (D.getDeclSpec().getConstexprSpecifier()) {
+  case CSK_unspecified:
+    break;
+
+  case CSK_consteval:
+    Diag(D.getDeclSpec().getConstexprSpecLoc(),
+        diag::err_constexpr_wrong_decl_kind)
+      << D.getDeclSpec().getConstexprSpecifier();
+    LLVM_FALLTHROUGH;
+
+  case CSK_constexpr:
+    NewVD->setConstexpr(true);
+    // C++1z [dcl.spec.constexpr]p1:
+    //   A static data member declared with the constexpr specifier is
+    //   implicitly an inline variable.
+    if (NewVD->isStaticDataMember() && getLangOpts().CPlusPlus17)
+      NewVD->setImplicitlyInline();
+    break;
+
+  case CSK_constinit:
+    if (!NewVD->hasGlobalStorage())
+      Diag(D.getDeclSpec().getConstexprSpecLoc(),
+           diag::err_constinit_local_variable);
+    else
+      NewVD->addAttr(::new (Context) ConstInitAttr(
+          SourceRange(D.getDeclSpec().getConstexprSpecLoc()), Context,
+          ConstInitAttr::Keyword_constinit));
+    break;
   }
 
   // C99 6.7.4p3
@@ -7989,7 +8101,7 @@ static StorageClass getFunctionStorageClass(Sema &SemaRef, Declarator &D) {
   return SC_None;
 }
 
-static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
+static FunctionDecl *CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
                                            DeclContext *DC, QualType &R,
                                            TypeSourceInfo *TInfo,
                                            StorageClass SC,
@@ -8021,7 +8133,16 @@ static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
   }
 
   ExplicitSpecifier ExplicitSpecifier = D.getDeclSpec().getExplicitSpecifier();
+
   ConstexprSpecKind ConstexprKind = D.getDeclSpec().getConstexprSpecifier();
+  if (ConstexprKind == CSK_constinit) {
+    SemaRef.Diag(D.getDeclSpec().getConstexprSpecLoc(),
+                 diag::err_constexpr_wrong_decl_kind)
+        << ConstexprKind;
+    ConstexprKind = CSK_unspecified;
+    D.getMutableDeclSpec().ClearConstexprSpec();
+  }
+
   // Check that the return type is not an abstract class type.
   // For record types, this is done by the AbstractClassUsageDiagnoser once
   // the class has been completely parsed.
@@ -8452,7 +8573,6 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     bool isInline = D.getDeclSpec().isInlineSpecified();
     bool isVirtual = D.getDeclSpec().isVirtualSpecified();
     bool hasExplicit = D.getDeclSpec().hasExplicitSpecifier();
-    ConstexprSpecKind ConstexprKind = D.getDeclSpec().getConstexprSpecifier();
     isFriend = D.getDeclSpec().isFriendSpecified();
     if (isFriend && !isInline && D.isFunctionDefinition()) {
       // C++ [class.friend]p5
@@ -8651,7 +8771,8 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
       }
     }
 
-    if (ConstexprKind != CSK_unspecified) {
+    if (ConstexprSpecKind ConstexprKind =
+            D.getDeclSpec().getConstexprSpecifier()) {
       // C++11 [dcl.constexpr]p2: constexpr functions and constexpr constructors
       // are implicitly inline.
       NewFD->setImplicitlyInline();
@@ -8659,9 +8780,10 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
       // C++11 [dcl.constexpr]p3: functions declared constexpr are required to
       // be either constructors or to return a literal type. Therefore,
       // destructors cannot be declared constexpr.
-      if (isa<CXXDestructorDecl>(NewFD))
+      if (isa<CXXDestructorDecl>(NewFD)) {
         Diag(D.getDeclSpec().getConstexprSpecLoc(), diag::err_constexpr_dtor)
-            << (ConstexprKind == CSK_consteval);
+            << ConstexprKind;
+      }
     }
 
     // If __module_private__ was specified, mark the function accordingly.
@@ -8945,6 +9067,12 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
             << FunctionType::getNameForCallConv(CC);
       }
     }
+
+   if (NewFD->getReturnType().hasNonTrivialToPrimitiveDestructCUnion() ||
+       NewFD->getReturnType().hasNonTrivialToPrimitiveCopyCUnion())
+     checkNonTrivialCUnion(NewFD->getReturnType(),
+                           NewFD->getReturnTypeSourceRange().getBegin(),
+                           NTCUC_FunctionReturn, NTCUK_Destruct|NTCUK_Copy);
   } else {
     // C++11 [replacement.functions]p3:
     //  The program's definitions shall not be specified as inline.
@@ -11091,6 +11219,276 @@ bool Sema::DeduceVariableDeclarationType(VarDecl *VDecl, bool DirectInit,
   return VDecl->isInvalidDecl();
 }
 
+void Sema::checkNonTrivialCUnionInInitializer(const Expr *Init,
+                                              SourceLocation Loc) {
+  if (auto *CE = dyn_cast<ConstantExpr>(Init))
+    Init = CE->getSubExpr();
+
+  QualType InitType = Init->getType();
+  assert((InitType.hasNonTrivialToPrimitiveDefaultInitializeCUnion() ||
+          InitType.hasNonTrivialToPrimitiveCopyCUnion()) &&
+         "shouldn't be called if type doesn't have a non-trivial C struct");
+  if (auto *ILE = dyn_cast<InitListExpr>(Init)) {
+    for (auto I : ILE->inits()) {
+      if (!I->getType().hasNonTrivialToPrimitiveDefaultInitializeCUnion() &&
+          !I->getType().hasNonTrivialToPrimitiveCopyCUnion())
+        continue;
+      SourceLocation SL = I->getExprLoc();
+      checkNonTrivialCUnionInInitializer(I, SL.isValid() ? SL : Loc);
+    }
+    return;
+  }
+
+  if (isa<ImplicitValueInitExpr>(Init)) {
+    if (InitType.hasNonTrivialToPrimitiveDefaultInitializeCUnion())
+      checkNonTrivialCUnion(InitType, Loc, NTCUC_DefaultInitializedObject,
+                            NTCUK_Init);
+  } else {
+    // Assume all other explicit initializers involving copying some existing
+    // object.
+    // TODO: ignore any explicit initializers where we can guarantee
+    // copy-elision.
+    if (InitType.hasNonTrivialToPrimitiveCopyCUnion())
+      checkNonTrivialCUnion(InitType, Loc, NTCUC_CopyInit, NTCUK_Copy);
+  }
+}
+
+namespace {
+
+bool shouldIgnoreForRecordTriviality(const FieldDecl *FD) {
+  // Ignore unavailable fields. A field can be marked as unavailable explicitly
+  // in the source code or implicitly by the compiler if it is in a union
+  // defined in a system header and has non-trivial ObjC ownership
+  // qualifications. We don't want those fields to participate in determining
+  // whether the containing union is non-trivial.
+  return FD->hasAttr<UnavailableAttr>();
+}
+
+struct DiagNonTrivalCUnionDefaultInitializeVisitor
+    : DefaultInitializedTypeVisitor<DiagNonTrivalCUnionDefaultInitializeVisitor,
+                                    void> {
+  using Super =
+      DefaultInitializedTypeVisitor<DiagNonTrivalCUnionDefaultInitializeVisitor,
+                                    void>;
+
+  DiagNonTrivalCUnionDefaultInitializeVisitor(
+      QualType OrigTy, SourceLocation OrigLoc,
+      Sema::NonTrivialCUnionContext UseContext, Sema &S)
+      : OrigTy(OrigTy), OrigLoc(OrigLoc), UseContext(UseContext), S(S) {}
+
+  void visitWithKind(QualType::PrimitiveDefaultInitializeKind PDIK, QualType QT,
+                     const FieldDecl *FD, bool InNonTrivialUnion) {
+    if (const auto *AT = S.Context.getAsArrayType(QT))
+      return this->asDerived().visit(S.Context.getBaseElementType(AT), FD,
+                                     InNonTrivialUnion);
+    return Super::visitWithKind(PDIK, QT, FD, InNonTrivialUnion);
+  }
+
+  void visitARCStrong(QualType QT, const FieldDecl *FD,
+                      bool InNonTrivialUnion) {
+    if (InNonTrivialUnion)
+      S.Diag(FD->getLocation(), diag::note_non_trivial_c_union)
+          << 1 << 0 << QT << FD->getName();
+  }
+
+  void visitARCWeak(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {
+    if (InNonTrivialUnion)
+      S.Diag(FD->getLocation(), diag::note_non_trivial_c_union)
+          << 1 << 0 << QT << FD->getName();
+  }
+
+  void visitStruct(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {
+    const RecordDecl *RD = QT->castAs<RecordType>()->getDecl();
+    if (RD->isUnion()) {
+      if (OrigLoc.isValid()) {
+        bool IsUnion = false;
+        if (auto *OrigRD = OrigTy->getAsRecordDecl())
+          IsUnion = OrigRD->isUnion();
+        S.Diag(OrigLoc, diag::err_non_trivial_c_union_in_invalid_context)
+            << 0 << OrigTy << IsUnion << UseContext;
+        // Reset OrigLoc so that this diagnostic is emitted only once.
+        OrigLoc = SourceLocation();
+      }
+      InNonTrivialUnion = true;
+    }
+
+    if (InNonTrivialUnion)
+      S.Diag(RD->getLocation(), diag::note_non_trivial_c_union)
+          << 0 << 0 << QT.getUnqualifiedType() << "";
+
+    for (const FieldDecl *FD : RD->fields())
+      if (!shouldIgnoreForRecordTriviality(FD))
+        asDerived().visit(FD->getType(), FD, InNonTrivialUnion);
+  }
+
+  void visitTrivial(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {}
+
+  // The non-trivial C union type or the struct/union type that contains a
+  // non-trivial C union.
+  QualType OrigTy;
+  SourceLocation OrigLoc;
+  Sema::NonTrivialCUnionContext UseContext;
+  Sema &S;
+};
+
+struct DiagNonTrivalCUnionDestructedTypeVisitor
+    : DestructedTypeVisitor<DiagNonTrivalCUnionDestructedTypeVisitor, void> {
+  using Super =
+      DestructedTypeVisitor<DiagNonTrivalCUnionDestructedTypeVisitor, void>;
+
+  DiagNonTrivalCUnionDestructedTypeVisitor(
+      QualType OrigTy, SourceLocation OrigLoc,
+      Sema::NonTrivialCUnionContext UseContext, Sema &S)
+      : OrigTy(OrigTy), OrigLoc(OrigLoc), UseContext(UseContext), S(S) {}
+
+  void visitWithKind(QualType::DestructionKind DK, QualType QT,
+                     const FieldDecl *FD, bool InNonTrivialUnion) {
+    if (const auto *AT = S.Context.getAsArrayType(QT))
+      return this->asDerived().visit(S.Context.getBaseElementType(AT), FD,
+                                     InNonTrivialUnion);
+    return Super::visitWithKind(DK, QT, FD, InNonTrivialUnion);
+  }
+
+  void visitARCStrong(QualType QT, const FieldDecl *FD,
+                      bool InNonTrivialUnion) {
+    if (InNonTrivialUnion)
+      S.Diag(FD->getLocation(), diag::note_non_trivial_c_union)
+          << 1 << 1 << QT << FD->getName();
+  }
+
+  void visitARCWeak(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {
+    if (InNonTrivialUnion)
+      S.Diag(FD->getLocation(), diag::note_non_trivial_c_union)
+          << 1 << 1 << QT << FD->getName();
+  }
+
+  void visitStruct(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {
+    const RecordDecl *RD = QT->castAs<RecordType>()->getDecl();
+    if (RD->isUnion()) {
+      if (OrigLoc.isValid()) {
+        bool IsUnion = false;
+        if (auto *OrigRD = OrigTy->getAsRecordDecl())
+          IsUnion = OrigRD->isUnion();
+        S.Diag(OrigLoc, diag::err_non_trivial_c_union_in_invalid_context)
+            << 1 << OrigTy << IsUnion << UseContext;
+        // Reset OrigLoc so that this diagnostic is emitted only once.
+        OrigLoc = SourceLocation();
+      }
+      InNonTrivialUnion = true;
+    }
+
+    if (InNonTrivialUnion)
+      S.Diag(RD->getLocation(), diag::note_non_trivial_c_union)
+          << 0 << 1 << QT.getUnqualifiedType() << "";
+
+    for (const FieldDecl *FD : RD->fields())
+      if (!shouldIgnoreForRecordTriviality(FD))
+        asDerived().visit(FD->getType(), FD, InNonTrivialUnion);
+  }
+
+  void visitTrivial(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {}
+  void visitCXXDestructor(QualType QT, const FieldDecl *FD,
+                          bool InNonTrivialUnion) {}
+
+  // The non-trivial C union type or the struct/union type that contains a
+  // non-trivial C union.
+  QualType OrigTy;
+  SourceLocation OrigLoc;
+  Sema::NonTrivialCUnionContext UseContext;
+  Sema &S;
+};
+
+struct DiagNonTrivalCUnionCopyVisitor
+    : CopiedTypeVisitor<DiagNonTrivalCUnionCopyVisitor, false, void> {
+  using Super = CopiedTypeVisitor<DiagNonTrivalCUnionCopyVisitor, false, void>;
+
+  DiagNonTrivalCUnionCopyVisitor(QualType OrigTy, SourceLocation OrigLoc,
+                                 Sema::NonTrivialCUnionContext UseContext,
+                                 Sema &S)
+      : OrigTy(OrigTy), OrigLoc(OrigLoc), UseContext(UseContext), S(S) {}
+
+  void visitWithKind(QualType::PrimitiveCopyKind PCK, QualType QT,
+                     const FieldDecl *FD, bool InNonTrivialUnion) {
+    if (const auto *AT = S.Context.getAsArrayType(QT))
+      return this->asDerived().visit(S.Context.getBaseElementType(AT), FD,
+                                     InNonTrivialUnion);
+    return Super::visitWithKind(PCK, QT, FD, InNonTrivialUnion);
+  }
+
+  void visitARCStrong(QualType QT, const FieldDecl *FD,
+                      bool InNonTrivialUnion) {
+    if (InNonTrivialUnion)
+      S.Diag(FD->getLocation(), diag::note_non_trivial_c_union)
+          << 1 << 2 << QT << FD->getName();
+  }
+
+  void visitARCWeak(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {
+    if (InNonTrivialUnion)
+      S.Diag(FD->getLocation(), diag::note_non_trivial_c_union)
+          << 1 << 2 << QT << FD->getName();
+  }
+
+  void visitStruct(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {
+    const RecordDecl *RD = QT->castAs<RecordType>()->getDecl();
+    if (RD->isUnion()) {
+      if (OrigLoc.isValid()) {
+        bool IsUnion = false;
+        if (auto *OrigRD = OrigTy->getAsRecordDecl())
+          IsUnion = OrigRD->isUnion();
+        S.Diag(OrigLoc, diag::err_non_trivial_c_union_in_invalid_context)
+            << 2 << OrigTy << IsUnion << UseContext;
+        // Reset OrigLoc so that this diagnostic is emitted only once.
+        OrigLoc = SourceLocation();
+      }
+      InNonTrivialUnion = true;
+    }
+
+    if (InNonTrivialUnion)
+      S.Diag(RD->getLocation(), diag::note_non_trivial_c_union)
+          << 0 << 2 << QT.getUnqualifiedType() << "";
+
+    for (const FieldDecl *FD : RD->fields())
+      if (!shouldIgnoreForRecordTriviality(FD))
+        asDerived().visit(FD->getType(), FD, InNonTrivialUnion);
+  }
+
+  void preVisit(QualType::PrimitiveCopyKind PCK, QualType QT,
+                const FieldDecl *FD, bool InNonTrivialUnion) {}
+  void visitTrivial(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {}
+  void visitVolatileTrivial(QualType QT, const FieldDecl *FD,
+                            bool InNonTrivialUnion) {}
+
+  // The non-trivial C union type or the struct/union type that contains a
+  // non-trivial C union.
+  QualType OrigTy;
+  SourceLocation OrigLoc;
+  Sema::NonTrivialCUnionContext UseContext;
+  Sema &S;
+};
+
+} // namespace
+
+void Sema::checkNonTrivialCUnion(QualType QT, SourceLocation Loc,
+                                 NonTrivialCUnionContext UseContext,
+                                 unsigned NonTrivialKind) {
+  assert((QT.hasNonTrivialToPrimitiveDefaultInitializeCUnion() ||
+          QT.hasNonTrivialToPrimitiveDestructCUnion() ||
+          QT.hasNonTrivialToPrimitiveCopyCUnion()) &&
+         "shouldn't be called if type doesn't have a non-trivial C union");
+
+  if ((NonTrivialKind & NTCUK_Init) &&
+      QT.hasNonTrivialToPrimitiveDefaultInitializeCUnion())
+    DiagNonTrivalCUnionDefaultInitializeVisitor(QT, Loc, UseContext, *this)
+        .visit(QT, nullptr, false);
+  if ((NonTrivialKind & NTCUK_Destruct) &&
+      QT.hasNonTrivialToPrimitiveDestructCUnion())
+    DiagNonTrivalCUnionDestructedTypeVisitor(QT, Loc, UseContext, *this)
+        .visit(QT, nullptr, false);
+  if ((NonTrivialKind & NTCUK_Copy) && QT.hasNonTrivialToPrimitiveCopyCUnion())
+    DiagNonTrivalCUnionCopyVisitor(QT, Loc, UseContext, *this)
+        .visit(QT, nullptr, false);
+}
+
 /// AddInitializerToDecl - Adds the initializer Init to the
 /// declaration dcl. If DirectInit is true, this is C++ direct
 /// initialization rather than copy initialization.
@@ -11499,6 +11897,12 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init, bool DirectInit) {
       CheckForConstantInitializer(Init, DclT);
   }
 
+  QualType InitType = Init->getType();
+  if (!InitType.isNull() &&
+      (InitType.hasNonTrivialToPrimitiveDefaultInitializeCUnion() ||
+       InitType.hasNonTrivialToPrimitiveCopyCUnion()))
+    checkNonTrivialCUnionInInitializer(Init, Init->getExprLoc());
+
   // We will represent direct-initialization similarly to copy-initialization:
   //    int x(1);  -as-> int x = 1;
   //    ClassType x(a,b,c); -as-> ClassType x = ClassType(a,b,c);
@@ -11623,7 +12027,14 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       return;
     }
 
-    switch (Var->isThisDeclarationADefinition()) {
+    VarDecl::DefinitionKind DefKind = Var->isThisDeclarationADefinition();
+    if (!Var->isInvalidDecl() && DefKind != VarDecl::DeclarationOnly &&
+        Var->getType().hasNonTrivialToPrimitiveDefaultInitializeCUnion())
+      checkNonTrivialCUnion(Var->getType(), Var->getLocation(),
+                            NTCUC_DefaultInitializedObject, NTCUK_Init);
+
+
+    switch (DefKind) {
     case VarDecl::Definition:
       if (!Var->isStaticDataMember() || !Var->getAnyInitializer())
         break;
@@ -12043,17 +12454,17 @@ void Sema::CheckCompleteVariableDeclaration(VarDecl *var) {
 
     // Don't emit further diagnostics about constexpr globals since they
     // were just diagnosed.
-    if (!var->isConstexpr() && GlobalStorage &&
-            var->hasAttr<RequireConstantInitAttr>()) {
+    if (!var->isConstexpr() && GlobalStorage && var->hasAttr<ConstInitAttr>()) {
       // FIXME: Need strict checking in C++03 here.
       bool DiagErr = getLangOpts().CPlusPlus11
           ? !var->checkInitIsICE() : !checkConstInit();
       if (DiagErr) {
-        auto attr = var->getAttr<RequireConstantInitAttr>();
+        auto *Attr = var->getAttr<ConstInitAttr>();
         Diag(var->getLocation(), diag::err_require_constant_init_failed)
           << Init->getSourceRange();
-        Diag(attr->getLocation(), diag::note_declared_required_constant_init_here)
-          << attr->getRange();
+        Diag(Attr->getLocation(),
+             diag::note_declared_required_constant_init_here)
+            << Attr->getRange() << Attr->isConstinit();
         if (getLangOpts().CPlusPlus11) {
           APValue Value;
           SmallVector<PartialDiagnosticAt, 8> Notes;
@@ -12546,7 +12957,7 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D) {
         << getLangOpts().CPlusPlus17;
   if (DS.hasConstexprSpecifier())
     Diag(DS.getConstexprSpecLoc(), diag::err_invalid_constexpr)
-        << 0 << (D.getDeclSpec().getConstexprSpecifier() == CSK_consteval);
+        << 0 << D.getDeclSpec().getConstexprSpecifier();
 
   DiagnoseFunctionSpecifiers(DS);
 
@@ -12712,6 +13123,11 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
   if (New->isParameterPack())
     if (auto *LSI = getEnclosingLambda())
       LSI->LocalPacks.push_back(New);
+
+  if (New->getType().hasNonTrivialToPrimitiveDestructCUnion() ||
+      New->getType().hasNonTrivialToPrimitiveCopyCUnion())
+    checkNonTrivialCUnion(New->getType(), New->getLocation(),
+                          NTCUC_FunctionParam, NTCUK_Destruct|NTCUK_Copy);
 
   // Parameters can not be abstract class types.
   // For record types, this is done by the AbstractClassUsageDiagnoser once
@@ -15961,7 +16377,6 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
   // Verify that all the fields are okay.
   SmallVector<FieldDecl*, 32> RecFields;
 
-  bool ObjCFieldLifetimeErrReported = false;
   for (ArrayRef<Decl *>::iterator i = Fields.begin(), end = Fields.end();
        i != end; ++i) {
     FieldDecl *FD = cast<FieldDecl>(*i);
@@ -16100,38 +16515,27 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
         Record->setHasObjectMember(true);
       if (Record && FDTTy->getDecl()->hasVolatileMember())
         Record->setHasVolatileMember(true);
-      if (Record && Record->isUnion() &&
-          FD->getType().isNonTrivialPrimitiveCType(Context))
-        Diag(FD->getLocation(),
-             diag::err_nontrivial_primitive_type_in_union);
     } else if (FDTy->isObjCObjectType()) {
       /// A field cannot be an Objective-c object
       Diag(FD->getLocation(), diag::err_statically_allocated_object)
         << FixItHint::CreateInsertion(FD->getLocation(), "*");
       QualType T = Context.getObjCObjectPointerType(FD->getType());
       FD->setType(T);
-    } else if (getLangOpts().allowsNonTrivialObjCLifetimeQualifiers() &&
-               Record && !ObjCFieldLifetimeErrReported && Record->isUnion() &&
-               !getLangOpts().CPlusPlus) {
-      // It's an error in ARC or Weak if a field has lifetime.
-      // We don't want to report this in a system header, though,
-      // so we just make the field unavailable.
-      // FIXME: that's really not sufficient; we need to make the type
-      // itself invalid to, say, initialize or copy.
-      QualType T = FD->getType();
-      if (T.hasNonTrivialObjCLifetime()) {
-        SourceLocation loc = FD->getLocation();
-        if (getSourceManager().isInSystemHeader(loc)) {
-          if (!FD->hasAttr<UnavailableAttr>()) {
-            FD->addAttr(UnavailableAttr::CreateImplicit(Context, "",
-                          UnavailableAttr::IR_ARCFieldWithOwnership, loc));
-          }
-        } else {
-          Diag(FD->getLocation(), diag::err_arc_objc_object_in_tag)
-            << T->isBlockPointerType() << Record->getTagKind();
-        }
-        ObjCFieldLifetimeErrReported = true;
-      }
+    } else if (Record && Record->isUnion() &&
+               FD->getType().hasNonTrivialObjCLifetime() &&
+               getSourceManager().isInSystemHeader(FD->getLocation()) &&
+               !getLangOpts().CPlusPlus && !FD->hasAttr<UnavailableAttr>() &&
+               (FD->getType().getObjCLifetime() != Qualifiers::OCL_Strong ||
+                !Context.hasDirectOwnershipQualifier(FD->getType()))) {
+      // For backward compatibility, fields of C unions declared in system
+      // headers that have non-trivial ObjC ownership qualifications are marked
+      // as unavailable unless the qualifier is explicit and __strong. This can
+      // break ABI compatibility between programs compiled with ARC and MRR, but
+      // is a better option than rejecting programs using those unions under
+      // ARC.
+      FD->addAttr(UnavailableAttr::CreateImplicit(
+          Context, "", UnavailableAttr::IR_ARCFieldWithOwnership,
+          FD->getLocation()));
     } else if (getLangOpts().ObjC &&
                getLangOpts().getGC() != LangOptions::NonGC &&
                Record && !Record->hasObjectMember()) {
@@ -16149,16 +16553,26 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
       }
     }
 
-    if (Record && !getLangOpts().CPlusPlus && !FD->hasAttr<UnavailableAttr>()) {
+    if (Record && !getLangOpts().CPlusPlus &&
+        !shouldIgnoreForRecordTriviality(FD)) {
       QualType FT = FD->getType();
-      if (FT.isNonTrivialToPrimitiveDefaultInitialize())
+      if (FT.isNonTrivialToPrimitiveDefaultInitialize()) {
         Record->setNonTrivialToPrimitiveDefaultInitialize(true);
+        if (FT.hasNonTrivialToPrimitiveDefaultInitializeCUnion() ||
+            Record->isUnion())
+          Record->setHasNonTrivialToPrimitiveDefaultInitializeCUnion(true);
+      }
       QualType::PrimitiveCopyKind PCK = FT.isNonTrivialToPrimitiveCopy();
-      if (PCK != QualType::PCK_Trivial && PCK != QualType::PCK_VolatileTrivial)
+      if (PCK != QualType::PCK_Trivial && PCK != QualType::PCK_VolatileTrivial) {
         Record->setNonTrivialToPrimitiveCopy(true);
+        if (FT.hasNonTrivialToPrimitiveCopyCUnion() || Record->isUnion())
+          Record->setHasNonTrivialToPrimitiveCopyCUnion(true);
+      }
       if (FT.isDestructedType()) {
         Record->setNonTrivialToPrimitiveDestroy(true);
         Record->setParamDestroyedInCallee(true);
+        if (FT.hasNonTrivialToPrimitiveDestructCUnion() || Record->isUnion())
+          Record->setHasNonTrivialToPrimitiveDestructCUnion(true);
       }
 
       if (const auto *RT = FT->getAs<RecordType>()) {

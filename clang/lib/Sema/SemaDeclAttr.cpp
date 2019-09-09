@@ -4592,9 +4592,11 @@ static void handleLifetimeCategoryAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
       }
       return;
     }
-    D->addAttr(::new (S.Context)
-                   OwnerAttr(AL.getRange(), S.Context, DerefTypeLoc,
-                             AL.getAttributeSpellingListIndex()));
+    for (Decl *Redecl : D->redecls()) {
+      Redecl->addAttr(::new (S.Context)
+                          OwnerAttr(AL.getRange(), S.Context, DerefTypeLoc,
+                                    AL.getAttributeSpellingListIndex()));
+    }
   } else {
     if (checkAttrMutualExclusion<OwnerAttr>(S, D, AL))
       return;
@@ -4609,9 +4611,11 @@ static void handleLifetimeCategoryAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
       }
       return;
     }
-    D->addAttr(::new (S.Context)
-                   PointerAttr(AL.getRange(), S.Context, DerefTypeLoc,
-                               AL.getAttributeSpellingListIndex()));
+    for (Decl *Redecl : D->redecls()) {
+      Redecl->addAttr(::new (S.Context)
+                          PointerAttr(AL.getRange(), S.Context, DerefTypeLoc,
+                                      AL.getAttributeSpellingListIndex()));
+    }
   }
 }
 
@@ -7057,8 +7061,8 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case ParsedAttr::AT_VecTypeHint:
     handleVecTypeHint(S, D, AL);
     break;
-  case ParsedAttr::AT_RequireConstantInit:
-    handleSimpleAttribute<RequireConstantInitAttr>(S, D, AL);
+  case ParsedAttr::AT_ConstInit:
+    handleSimpleAttribute<ConstInitAttr>(S, D, AL);
     break;
   case ParsedAttr::AT_InitPriority:
     handleInitPriorityAttr(S, D, AL);

@@ -3106,3 +3106,144 @@ define <4 x i1> @boolvec_sdiv(<4 x i1> %x, <4 x i1> %y) {
   %r = sdiv <4 x i1> %x, %y
   ret <4 x i1> %r
 }
+
+define i32 @combine_sdiv_two(i32 %x) {
+; CHECK-LABEL: combine_sdiv_two:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
+; CHECK-NEXT:    movl %edi, %eax
+; CHECK-NEXT:    shrl $31, %eax
+; CHECK-NEXT:    addl %edi, %eax
+; CHECK-NEXT:    sarl %eax
+; CHECK-NEXT:    retq
+  %1 = sdiv i32 %x, 2
+  ret i32 %1
+}
+
+define i32 @combine_sdiv_negtwo(i32 %x) {
+; CHECK-LABEL: combine_sdiv_negtwo:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
+; CHECK-NEXT:    movl %edi, %eax
+; CHECK-NEXT:    shrl $31, %eax
+; CHECK-NEXT:    addl %edi, %eax
+; CHECK-NEXT:    sarl %eax
+; CHECK-NEXT:    negl %eax
+; CHECK-NEXT:    retq
+  %1 = sdiv i32 %x, -2
+  ret i32 %1
+}
+
+define i8 @combine_i8_sdiv_pow2(i8 %x) {
+; CHECK-LABEL: combine_i8_sdiv_pow2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
+; CHECK-NEXT:    movl %edi, %eax
+; CHECK-NEXT:    sarb $7, %al
+; CHECK-NEXT:    shrb $4, %al
+; CHECK-NEXT:    addl %edi, %eax
+; CHECK-NEXT:    sarb $4, %al
+; CHECK-NEXT:    # kill: def $al killed $al killed $eax
+; CHECK-NEXT:    retq
+  %1 = sdiv i8 %x, 16
+  ret i8 %1
+}
+
+define i8 @combine_i8_sdiv_negpow2(i8 %x) {
+; CHECK-LABEL: combine_i8_sdiv_negpow2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
+; CHECK-NEXT:    movl %edi, %eax
+; CHECK-NEXT:    sarb $7, %al
+; CHECK-NEXT:    shrb $2, %al
+; CHECK-NEXT:    addl %edi, %eax
+; CHECK-NEXT:    sarb $6, %al
+; CHECK-NEXT:    negb %al
+; CHECK-NEXT:    # kill: def $al killed $al killed $eax
+; CHECK-NEXT:    retq
+  %1 = sdiv i8 %x, -64
+  ret i8 %1
+}
+
+define i16 @combine_i16_sdiv_pow2(i16 %x) {
+; CHECK-LABEL: combine_i16_sdiv_pow2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
+; CHECK-NEXT:    leal 15(%rdi), %eax
+; CHECK-NEXT:    testw %di, %di
+; CHECK-NEXT:    cmovnsl %edi, %eax
+; CHECK-NEXT:    cwtl
+; CHECK-NEXT:    shrl $4, %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
+; CHECK-NEXT:    retq
+  %1 = sdiv i16 %x, 16
+  ret i16 %1
+}
+
+define i16 @combine_i16_sdiv_negpow2(i16 %x) {
+; CHECK-LABEL: combine_i16_sdiv_negpow2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
+; CHECK-NEXT:    leal 255(%rdi), %eax
+; CHECK-NEXT:    testw %di, %di
+; CHECK-NEXT:    cmovnsl %edi, %eax
+; CHECK-NEXT:    cwtl
+; CHECK-NEXT:    sarl $8, %eax
+; CHECK-NEXT:    negl %eax
+; CHECK-NEXT:    # kill: def $ax killed $ax killed $eax
+; CHECK-NEXT:    retq
+  %1 = sdiv i16 %x, -256
+  ret i16 %1
+}
+
+define i32 @combine_i32_sdiv_pow2(i32 %x) {
+; CHECK-LABEL: combine_i32_sdiv_pow2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
+; CHECK-NEXT:    leal 15(%rdi), %eax
+; CHECK-NEXT:    testl %edi, %edi
+; CHECK-NEXT:    cmovnsl %edi, %eax
+; CHECK-NEXT:    sarl $4, %eax
+; CHECK-NEXT:    retq
+  %1 = sdiv i32 %x, 16
+  ret i32 %1
+}
+
+define i32 @combine_i32_sdiv_negpow2(i32 %x) {
+; CHECK-LABEL: combine_i32_sdiv_negpow2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
+; CHECK-NEXT:    leal 255(%rdi), %eax
+; CHECK-NEXT:    testl %edi, %edi
+; CHECK-NEXT:    cmovnsl %edi, %eax
+; CHECK-NEXT:    sarl $8, %eax
+; CHECK-NEXT:    negl %eax
+; CHECK-NEXT:    retq
+  %1 = sdiv i32 %x, -256
+  ret i32 %1
+}
+
+define i64 @combine_i64_sdiv_pow2(i64 %x) {
+; CHECK-LABEL: combine_i64_sdiv_pow2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    leaq 15(%rdi), %rax
+; CHECK-NEXT:    testq %rdi, %rdi
+; CHECK-NEXT:    cmovnsq %rdi, %rax
+; CHECK-NEXT:    sarq $4, %rax
+; CHECK-NEXT:    retq
+  %1 = sdiv i64 %x, 16
+  ret i64 %1
+}
+
+define i64 @combine_i64_sdiv_negpow2(i64 %x) {
+; CHECK-LABEL: combine_i64_sdiv_negpow2:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    leaq 255(%rdi), %rax
+; CHECK-NEXT:    testq %rdi, %rdi
+; CHECK-NEXT:    cmovnsq %rdi, %rax
+; CHECK-NEXT:    sarq $8, %rax
+; CHECK-NEXT:    negq %rax
+; CHECK-NEXT:    retq
+  %1 = sdiv i64 %x, -256
+  ret i64 %1
+}

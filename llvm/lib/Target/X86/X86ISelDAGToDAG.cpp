@@ -3797,15 +3797,18 @@ bool X86DAGToDAGISel::combineIncDecVector(SDNode *Node) {
     return false;
 
   SDLoc DL(Node);
-  SDValue AllOnesVec;
+  SDValue OneConstant, AllOnesVec;
 
   APInt Ones = APInt::getAllOnesValue(32);
   assert(VT.getSizeInBits() % 32 == 0 &&
          "Expected bit count to be a multiple of 32");
+  OneConstant = CurDAG->getConstant(Ones, DL, MVT::i32);
+  insertDAGNode(*CurDAG, X, OneConstant);
+
   unsigned NumElts = VT.getSizeInBits() / 32;
   assert(NumElts > 0 && "Expected to get non-empty vector.");
-  AllOnesVec =
-      CurDAG->getConstant(Ones, DL, MVT::getVectorVT(MVT::i32, NumElts));
+  AllOnesVec = CurDAG->getSplatBuildVector(MVT::getVectorVT(MVT::i32, NumElts),
+                                           DL, OneConstant);
   insertDAGNode(*CurDAG, X, AllOnesVec);
 
   AllOnesVec = CurDAG->getBitcast(VT, AllOnesVec);
@@ -4703,7 +4706,7 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
     default: llvm_unreachable("Unsupported VT!");
     case MVT::i8:
       LoReg = X86::AL;  ClrReg = HiReg = X86::AH;
-      SExtOpcode = X86::CBW;
+      SExtOpcode = 0; // Not used.
       break;
     case MVT::i16:
       LoReg = X86::AX;  HiReg = X86::DX;
@@ -4725,24 +4728,27 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
     bool signBitIsZero = CurDAG->SignBitIsZero(N0);
 
     SDValue InFlag;
-    if (NVT == MVT::i8 && (!isSigned || signBitIsZero)) {
+    if (NVT == MVT::i8) {
       // Special case for div8, just use a move with zero extension to AX to
       // clear the upper 8 bits (AH).
       SDValue Tmp0, Tmp1, Tmp2, Tmp3, Tmp4, Chain;
       MachineSDNode *Move;
       if (tryFoldLoad(Node, N0, Tmp0, Tmp1, Tmp2, Tmp3, Tmp4)) {
         SDValue Ops[] = { Tmp0, Tmp1, Tmp2, Tmp3, Tmp4, N0.getOperand(0) };
-        Move = CurDAG->getMachineNode(X86::MOVZX32rm8, dl, MVT::i32,
-                                      MVT::Other, Ops);
+        unsigned Opc = (isSigned && !signBitIsZero) ? X86::MOVSX16rm8
+                                                    : X86::MOVZX16rm8;
+        Move = CurDAG->getMachineNode(Opc, dl, MVT::i16, MVT::Other, Ops);
         Chain = SDValue(Move, 1);
         ReplaceUses(N0.getValue(1), Chain);
         // Record the mem-refs
         CurDAG->setNodeMemRefs(Move, {cast<LoadSDNode>(N0)->getMemOperand()});
       } else {
-        Move = CurDAG->getMachineNode(X86::MOVZX32rr8, dl, MVT::i32, N0);
+        unsigned Opc = (isSigned && !signBitIsZero) ? X86::MOVSX16rr8
+                                                    : X86::MOVZX16rr8;
+        Move = CurDAG->getMachineNode(Opc, dl, MVT::i16, N0);
         Chain = CurDAG->getEntryNode();
       }
-      Chain  = CurDAG->getCopyToReg(Chain, dl, X86::EAX, SDValue(Move, 0),
+      Chain  = CurDAG->getCopyToReg(Chain, dl, X86::AX, SDValue(Move, 0),
                                     SDValue());
       InFlag = Chain.getValue(1);
     } else {
