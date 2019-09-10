@@ -28,9 +28,9 @@ declare i32 @_Z3foov() #1
 
 ; LINUX-SECTIONS: .section        .text._Z3bazb,"ax",@progbits
 ; LINUX-SECTIONS: _Z3bazb:
-; LINUX-SECTIONS: .section        .text.a.BB._Z3bazb,"ax",@progbits,unique,1
+; LINUX-SECTIONS: .section        .text._Z3bazb.a.BB._Z3bazb,"ax",@progbits,unique,1
 ; LINUX-SECTIONS: a.BB._Z3bazb:
 ; LINUX-SECTIONS: .size   a.BB._Z3bazb, .Ltmp0-a.BB._Z3bazb
-; LINUX-SECTIONS: .section        .text.aa.BB._Z3bazb,"ax",@progbits,unique,2
+; LINUX-SECTIONS: .section        .text._Z3bazb.aa.BB._Z3bazb,"ax",@progbits,unique,2
 ; LINUX-SECTIONS: aa.BB._Z3bazb:
 ; LINUX-SECTIONS: .size   aa.BB._Z3bazb, .Ltmp1-aa.BB._Z3bazb
