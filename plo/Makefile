@@ -353,6 +353,27 @@ $(foreach F,$(FLAVORS),clean-$(F)): clean-%: dummy-%
 	if [[ "$(subst dummy-,,$<)" == "pgo" ]]; then rm -fr stage-pgo ; fi
 	if [[ "$(subst dummy-,,$<)" == "cspgo" ]]; then rm -fr stage-cspgo ; fi
 
+benchmark-pgo-bolt.result benchmark-pgo.result benchmark-pgo-plolist.result benchmark-pgo-plo.result: benchmark-%.result: benchmark-%
+
+define check_against_baseline
+	export R=$$(export BASELINE_M=`sed -n -Ee 's/^user\s+(.*)/\1/p' $1 | tail -1 | sed -nEe 's/^([[:digit:]]+)m.*/\1/p'` ; \
+	export BASELINE_S=`sed -n -Ee 's/^user\s+(.*)/\1/p' $1 | tail -1 | sed -nEe 's/^.*m([[:digit:]]+)(\..*)s.*/\1/p'` ; \
+	export PLO_M=`sed -n -Ee 's/^user\s+(.*)/\1/p' $2 | tail -1 | sed -nEe 's/^([[:digit:]]+)m.*/\1/p'` ; \
+	export PLO_S=`sed -n -Ee 's/^user\s+(.*)/\1/p' $2 | tail -1 | sed -nEe 's/^.*m([[:digit:]]+)(\..*)s.*/\1/p'` ; \
+	echo "scale=3; base=$$BASELINE_M*60+$$BASELINE_S; plo=$$PLO_M*60+$$PLO_S; improve=(base-plo)/base*100; print improve;" | bc); \
+	echo "$2 improvement over $1: $${R}%" ; \
+	if [[ `echo "$${R} > 6" | bc -l` == '1' ]]; then \
+	  echo "Performance check passed: $2". ; \
+	else \
+	  echo "*** Performance check failed: $2, regression found." ; exit 1 ; \
+	fi
+endef
+
+check-performance: benchmark-pgo.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-bolt.result
+	@$(call check_against_baseline,$<,$(word 2,$^))
+	@$(call check_against_baseline,$<,$(word 3,$^))
+	@$(call check_against_baseline,$<,$(word 4,$^))
+
 clean:
 	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \
 	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,.symfile,.yaml,.profile,.cfg,.size-summaries} ; \
