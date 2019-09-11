@@ -245,9 +245,7 @@ static cl::opt<llvm::BasicBlockSection::SectionMode> BasicBlockSections(
     cl::values(
         clEnumValN(BasicBlockSection::None, "none", "Off"),
         clEnumValN(BasicBlockSection::All, "all", "All Basic Blocks"),
-        clEnumValN(BasicBlockSection::Hot, "hot", "Hot Basic Blocks"),
-        clEnumValN(BasicBlockSection::Likely, "likely", "Likely Basic Blocks"),
-        clEnumValN(BasicBlockSection::Likely, "labels", "Labelled Basic Blocks")));
+        clEnumValN(BasicBlockSection::Labels, "labels", "Labelled Basic Blocks")));
 
 static cl::opt<bool> EmulatedTLS("emulated-tls",
                                  cl::desc("Use emulated TLS model"),

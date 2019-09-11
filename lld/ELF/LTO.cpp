@@ -94,10 +94,6 @@ static lto::Config createConfig() {
   if (!config->ltoBasicBlockSections.empty()) {
     if (config->ltoBasicBlockSections.equals("all"))
       c.Options.BasicBlockSections = BasicBlockSection::All;
-    else if (config->ltoBasicBlockSections.equals("hot"))
-      c.Options.BasicBlockSections = BasicBlockSection::Hot;
-    else if (config->ltoBasicBlockSections.equals("likely"))
-      c.Options.BasicBlockSections = BasicBlockSection::Likely;
     else if (config->ltoBasicBlockSections.equals("labels"))
       c.Options.BasicBlockSections = BasicBlockSection::Labels;
     else if (config->ltoBasicBlockSections.equals("none"))

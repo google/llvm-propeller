@@ -446,17 +446,10 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
 
   if (ProfileGuidedSectionPrefix) {
     if (PSI->isFunctionHotInCallGraph(&F, *BFI)) {
-      if (TM &&
-          (TM->getBasicBlockSections() == llvm::BasicBlockSection::Hot ||
-           TM->getBasicBlockSections() == llvm::BasicBlockSection::Likely))
-        F.setBasicBlockSections(true);
       F.setSectionPrefix(".hot");
     }
     else if (PSI->isFunctionColdInCallGraph(&F, *BFI)) {
       F.setSectionPrefix(".unlikely");
-    } else {
-      if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::Likely)
-        F.setBasicBlockSections(true);
     }
 
     if (F.getBasicBlockSections()) {

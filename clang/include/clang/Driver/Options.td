@@ -1850,10 +1850,7 @@ def ffunction_sections : Flag<["-"], "ffunction-sections">, Group<f_Group>,
 def fno_function_sections : Flag<["-"], "fno-function-sections">,
   Group<f_Group>, Flags<[CC1Option]>;
 def fbasicblock_sections_EQ : Joined<["-"], "fbasicblock-sections=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>,
-  HelpText<"Place each function's basic blocks in unique sections (ELF Only) : hot | likely | all | labels | none">,
-  Values<"hot,likely,all,labels,none">;
-def fbasicblock_sections_list_EQ : Joined<["-"], "fbasicblock-sections-list=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>,
-  HelpText<"Place the basic blocks of each functions in the list unique sections (ELF Only)">;
+  HelpText<"Place each function's basic blocks in unique sections (ELF Only) : all | labels | none | <filename>">;
 def fdata_sections : Flag <["-"], "fdata-sections">, Group<f_Group>,
  Flags<[CC1Option]>, HelpText<"Place each data in its own section (ELF Only)">;
 def fno_data_sections : Flag <["-"], "fno-data-sections">, Group<f_Group>,

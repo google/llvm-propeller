@@ -2300,10 +2300,7 @@ static void CollectArgsForIntegratedAssembler(Compilation &C,
   auto BasicBlockSections =
       Args.getLastArgValue(options::OPT_fbasicblock_sections_EQ, "none");
 
-  auto BasicBlockSectionsList =
-      Args.getLastArgValue(options::OPT_fbasicblock_sections_list_EQ, "none");
-  if ((BasicBlockSections != "none" && BasicBlockSections != "labels") ||
-      BasicBlockSectionsList != "none")
+  if (BasicBlockSections != "none" && BasicBlockSections != "labels")
     CmdArgs.push_back("-mrelocate-with-symbols");
 
   // forward -fembed-bitcode to assmebler
@@ -3784,7 +3781,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         options::OPT_fdata_sections,
         options::OPT_fno_data_sections,
         options::OPT_fbasicblock_sections_EQ,
-        options::OPT_fbasicblock_sections_list_EQ,
         options::OPT_funique_internal_funcnames,
         options::OPT_fno_unique_internal_funcnames,
         options::OPT_funique_section_names,
@@ -4309,10 +4305,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(
         Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
   }
-
-  if (Arg *A = Args.getLastArg(options::OPT_fbasicblock_sections_list_EQ)) {
-    CmdArgs.push_back(
-        Args.MakeArgString(Twine("-fbasicblock-sections-list=") + A->getValue()));
+  else {
+    CmdArgs.push_back("-fbasicblock-sections=none");
   }
 
   if (Args.hasFlag(options::OPT_fdata_sections, options::OPT_fno_data_sections,

@@ -119,8 +119,6 @@ public:
 
   std::string BasicBlockSections;
 
-  std::string BasicBlockSectionsList;
-
   enum class FramePointerKind {
     None,        // Omit all frame pointers.
     NonLeaf,     // Keep non-leaf frame pointers.
