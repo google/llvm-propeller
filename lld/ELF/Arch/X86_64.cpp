@@ -50,8 +50,10 @@ public:
                                         uint8_t stOther) const override;
   bool deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
                              InputSection *NextIS) const override;
-  unsigned shrinkJmpInsn(InputSection &IS, InputFile *File) const override;
-  unsigned growJmpInsn(InputSection &IS, InputFile *File) const override;
+  unsigned shrinkJmpInsn(InputSection &IS, InputFile *File,
+                         uint32_t MaxAlignment) const override;
+  unsigned growJmpInsn(InputSection &IS, InputFile *File,
+                       uint32_t MaxAlignment) const override;
 };
 } // namespace
 
@@ -332,17 +334,28 @@ static uint64_t getTargetOffsetForJmp(InputSection &IS, InputFile *File,
 
 static bool isOneByteOffsetWhenShrunk(uint64_t TargetOffset,
                                          JmpInsnOpcode JmpCode,
-                                         unsigned BytesShrunk) {
+                                         unsigned BytesShrunk,
+                                         unsigned MaxAlign) {
   // For negative jumps, the jump target will be closer if shrinking
   // is done.
   if ((int64_t) TargetOffset < 0){
     TargetOffset += BytesShrunk;
     TargetOffset += (JmpCode == J_JMP_32) ? 3 : 4;
   }
+
+  if (MaxAlign > 0) {
+    if ((int64_t) TargetOffset < 0) {
+      TargetOffset -= (MaxAlign - 1);
+    } else {
+      TargetOffset += (MaxAlign - 1);
+    }
+  }
+
   return ((int64_t)TargetOffset == llvm::SignExtend64(TargetOffset, 8));
 }
 
-static bool isOneByteOffset(uint64_t TargetOffset, unsigned BytesGrown) {
+static bool isOneByteOffset(uint64_t TargetOffset, unsigned BytesGrown,
+                            unsigned MaxAlign) {
   // For negative jumps, the jump target is further.
   if ((int64_t) TargetOffset < 0){
     TargetOffset -= BytesGrown;
@@ -384,7 +397,8 @@ static void shrinkJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
   }
 }
 
-unsigned X86_64::shrinkJmpInsn(InputSection &IS, InputFile *File) const {
+unsigned X86_64::shrinkJmpInsn(InputSection &IS, InputFile *File,
+                               unsigned MaxAlign) const {
   const unsigned SizeOfDirectShortJmpInsn = 2;
   const unsigned SizeOfDirectNearJmpInsn = 5;
   const unsigned SizeOfJmpCCInsn = 6;
@@ -422,7 +436,7 @@ unsigned X86_64::shrinkJmpInsn(InputSection &IS, InputFile *File) const {
   unsigned BytesShrunk = 0;
 
   if (!DirectJmp) {
-    if (!IsShortJmp && isOneByteOffsetWhenShrunk(TargetOffset, JmpCode, BytesShrunk)) {
+    if (!IsShortJmp && isOneByteOffsetWhenShrunk(TargetOffset, JmpCode, BytesShrunk, MaxAlign)) {
       shrinkJmpWithRelocation(IS, JmpCode, R, BytesShrunk);
     }
   } else {
@@ -437,12 +451,12 @@ unsigned X86_64::shrinkJmpInsn(InputSection &IS, InputFile *File) const {
         JmpInsnOpcode JmpCode_B = J_UNKNOWN;
         uint64_t TargetOffset_B = getTargetOffsetForJmp(IS, File, Rb, JmpCode_B);
         if (JmpCode_B != J_UNKNOWN && JmpCode_B != J_JMP_32
-            && isOneByteOffsetWhenShrunk(TargetOffset_B, JmpCode, BytesShrunk)) {
+            && isOneByteOffsetWhenShrunk(TargetOffset_B, JmpCode, BytesShrunk, MaxAlign)) {
           shrinkJmpWithRelocation(IS, JmpCode_B, Rb, BytesShrunk);
         }
       }
     }
-    bool CanShrinkR = !IsShortJmp && isOneByteOffsetWhenShrunk(TargetOffset, JmpCode, BytesShrunk);
+    bool CanShrinkR = !IsShortJmp && isOneByteOffsetWhenShrunk(TargetOffset, JmpCode, BytesShrunk, MaxAlign);
     shrinkJmpWithRelocation(IS, JmpCode, R, BytesShrunk, CanShrinkR);
   }
 
@@ -482,7 +496,7 @@ static void growJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
   }
 }
 
-unsigned X86_64::growJmpInsn(InputSection &IS, InputFile *File) const {
+unsigned X86_64::growJmpInsn(InputSection &IS, InputFile *File, unsigned MaxAlign) const {
   const unsigned SizeOfJmpCCInsn = 2;
   const unsigned SizeOfDirectNearJmpInsn = 5;
   const unsigned SizeOfDirectShortJmpInsn = 2;
@@ -522,7 +536,7 @@ unsigned X86_64::growJmpInsn(InputSection &IS, InputFile *File) const {
   unsigned BytesGrown = 0;
   if (!DirectJmp) {
     // Grow JmpInsn.
-    if (IsShortJmp && !isOneByteOffset(TargetOffset, BytesGrown)){
+    if (IsShortJmp && !isOneByteOffset(TargetOffset, BytesGrown, MaxAlign)){
       growJmpWithRelocation(IS, JmpCode, R, BytesGrown);
     }
   } else {
@@ -537,12 +551,12 @@ unsigned X86_64::growJmpInsn(InputSection &IS, InputFile *File) const {
         JmpInsnOpcode JmpCode_B = J_UNKNOWN;
         uint64_t TargetOffset_B = getTargetOffsetForJmp(IS, File, Rb, JmpCode_B);
         if (JmpCode_B != J_UNKNOWN && JmpCode_B != J_JMP_32
-            && !isOneByteOffset(TargetOffset_B, BytesGrown)) {
+            && !isOneByteOffset(TargetOffset_B, BytesGrown, MaxAlign)) {
           growJmpWithRelocation(IS, JmpCode_B, Rb, BytesGrown);
         }
       }
     }
-    bool ShouldGrowR = IsShortJmp && !isOneByteOffset(TargetOffset, BytesGrown);
+    bool ShouldGrowR = IsShortJmp && !isOneByteOffset(TargetOffset, BytesGrown, MaxAlign);
     growJmpWithRelocation(IS, JmpCode, R, BytesGrown, ShouldGrowR);
   }
 
