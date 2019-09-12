@@ -1,11 +1,20 @@
 # Customizable variables.
 # Vanilla clang/clang++ bin path.
 
+paths.mk :
+	@if [[ ! -e "paths.mk" ]] ; then \
+		touch $@ ; \
+		echo "RELEASE_LLVM_BIN=/path/to/llvm/bin" >> $@ ; \
+		echo "CREATE_LLVM_PROF_DIR=/path/to/create_llvm_prof_dir" >> $@ ; \
+		echo "BOLT=/path/to/llvm-bolt" >> $@ ; \
+		echo "PERF2BOLT=/path/to/perf2bolt" >> $@ ; \
+		exit 1 ; \
+	fi
+
 include paths.mk
 
 check_environment: paths.mk
 	@if [[ ! -e "${RELEASE_LLVM_BIN}/clang" ]] || \
-	    [[ ! -e "${CREATE_LLVM_PROF}" ]] || \
 	    [[ ! -e "${BOLT}" ]] || \
 	    [[ ! -e "${PERF2BOLT}" ]] || \
 	    [[ ! -d "${CREATE_LLVM_PROF_DIR}" ]] ; then \
@@ -13,6 +22,8 @@ check_environment: paths.mk
 	  exit 1 ; \
 	fi
 	touch $@
+
+CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
 
 #################################
 # Important targets:
@@ -354,6 +365,8 @@ define check_against_baseline
 	  echo "*** Performance check failed: $2, regression found." ; exit 1 ; \
 	fi
 endef
+
+.DEFAULT_GOAL := check-performance
 
 check-performance: benchmark-pgo.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-bolt.result
 	@$(call check_against_baseline,$<,$(word 2,$^))
