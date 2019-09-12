@@ -240,10 +240,10 @@ bool Propfile::processProfile() {
   }
 
   if (!BCnt) {
-    warn("Warning: 0 branch info processed.");
+    warn("[Propeller]: Zero branch info processed.");
   }
   if (!FCnt) {
-    warn("Warning: 0 fallthrough info processed.");
+    warn("[Propeller]: Zero fallthrough info processed.");
   }
   return true;
 }
