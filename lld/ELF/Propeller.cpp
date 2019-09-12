@@ -6,7 +6,10 @@
 #include "PropellerFuncOrdering.h"
 #include "InputFiles.h"
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Parallel.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <chrono>
 #include <stdio.h>
@@ -434,17 +437,32 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
             ProcessProfileTime.count());
   }
 
-  for (auto &CfgNameToDump : config->propellerDumpCfgs){
-    auto CfgLI = CfgMap.find(CfgNameToDump);
-    if (CfgLI == CfgMap.end()) {
-      warn("[Propeller] Could not dump cfg for function '" + CfgNameToDump +
-           "' : No such function name exists.");
-      continue;
-    }
-    for (auto *Cfg : CfgLI->second) {
-      if (Cfg->Name == CfgNameToDump){
-        Cfg->writeAsDotGraph();
-        break;
+  if (!config->propellerDumpCfgs.empty()) {
+    llvm::SmallString<128> CfgOutputDir(config->outputFile);
+    llvm::sys::path::remove_filename(CfgOutputDir);
+    for (auto &CfgNameToDump : config->propellerDumpCfgs) {
+      auto CfgLI = CfgMap.find(CfgNameToDump);
+      if (CfgLI == CfgMap.end()) {
+        warn("[Propeller] Could not dump cfg for function '" + CfgNameToDump +
+             "' : No such function name exists.");
+        continue;
+      }
+      int Index = 0;
+      for (auto *Cfg : CfgLI->second) {
+        if (Cfg->Name == CfgNameToDump) {
+          llvm::SmallString<128> CfgOutput = CfgOutputDir;
+          if (++Index <= 1) {
+            llvm::sys::path::append(CfgOutput, (Cfg->Name + ".dot"));
+          } else {
+            llvm::sys::path::append(
+                CfgOutput,
+                (Cfg->Name + "." + StringRef(std::to_string(Index) + ".dot")));
+          }
+          if (!Cfg->writeAsDotGraph(CfgOutput.str())) {
+            warn("[Propeller] Failed to dump Cfg for: '" + CfgNameToDump +
+                 "'.");
+          }
+        }
       }
     }
   }
@@ -454,19 +472,6 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   Propf.reset(nullptr);
   return true;
 }
-
-template <class C>
-static void writeOut(const char *fname, const C &Names) {
-  FILE *fp = fopen(fname, "w");
-  if (!fp) {
-    fprintf(stderr, "failed to open: %s\n", fname);
-  }
-  for (auto &N : Names) {
-    fprintf(fp, "%s\n", N.str().c_str());
-  }
-  fclose(fp);
-  fprintf(stderr, "Done writing %s\n", fname);
-};
 
 vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
@@ -511,15 +516,6 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
       Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
         SymbolList.insert(PlaceHolder, N.ShName);
       });
-
-      /*
-      if(config->propellerAlignBasicBlocks){
-        for(auto &Node: Cfg->Nodes){
-          if(Node.get()!=Cfg->getEntryNode())
-            config->symbolAlignmentFile.insert(std::make_pair(Node->ShName, 1));
-        }
-      }
-      */
     }
     if(!config->propellerAlignBasicBlocks) {
       for(auto &Node: Cfg->Nodes){
@@ -538,11 +534,19 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
 
   calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
 
-  // writeOut("symbol-ordering", SymbolList);
-  // writeOut("propeller-legacy", PropLeg.BBSymbolsToKeep);
-
-  if (!config->propellerDumpSymbolOrder.empty()){
-    writeOut(config->propellerDumpSymbolOrder.str().c_str(), SymbolList);
+  if (!config->propellerDumpSymbolOrder.empty()) {
+    FILE *fp = fopen(config->propellerDumpSymbolOrder.str().c_str(), "w");
+    if (!fp) {
+      warn(StringRef("[Propeller] Dump symbol order: failed to open ") + "'" +
+           config->propellerDumpSymbolOrder + "'");
+    } else {
+      for (auto &N : SymbolList) {
+        fprintf(fp, "%s\n", N.str().c_str());
+      }
+      fclose(fp);
+      llvm::outs() << "[Propeller] Dumped symbol order file to: '"
+                   << config->propellerDumpSymbolOrder.str() << "'.\n";
+    }
   }
 
   SymbolList.erase(HotPlaceHolder);

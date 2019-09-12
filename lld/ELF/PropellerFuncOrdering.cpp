@@ -48,8 +48,6 @@ ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
   for (ELFCfgEdge *CallIn : Entry->CallIns) {
     auto *Caller = CallIn->Src->Cfg;
     auto *CallerCluster = ClusterMap[Caller];
-    if (!Caller->isHot())
-      fprintf(stderr, "Caller is not hot: %s\n", Caller->Name.str().c_str());
     assert(Caller->isHot());
     if (Caller == Cfg || CallerCluster == Cluster)
       continue;
