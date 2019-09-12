@@ -271,15 +271,16 @@ std::string llvm::getUniqueModuleId(Module *M,
   for (auto &IF : M->ifuncs())
     AddGlobal(IF);
 
-  if (!ExportsSymbols) {
-    if (!UseModuleId || M->getModuleIdentifier().empty()) {
+  // Using only module id is not guaranteed to keep this unique. So we augment
+  // the hash with the module id. This also handles the case when we have
+  // multiple definitions of the same globals in different modules (allowed by
+  // the "-z muldefs" linker flag).
+  if (UseModuleId && !M->getModuleIdentifier().empty()) {
+    Md5.update(M->getModuleIdentifier());
+    Md5.update(ArrayRef<uint8_t>{0});
+  } else {
+    if (!ExportsSymbols)
       return "";
-    }
-    else {
-      // Using only module id is not guaranteed to keep this unique.
-      Md5.update(M->getModuleIdentifier());
-      Md5.update(ArrayRef<uint8_t>{0});
-    }
   }
 
   MD5::MD5Result R;
