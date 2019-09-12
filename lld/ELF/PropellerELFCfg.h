@@ -133,7 +133,7 @@ public:
     }
   }
 
-  void writeAsDotGraph();
+  bool writeAsDotGraph(StringRef CfgOutName);
 
 private:
   // Create and take ownership.

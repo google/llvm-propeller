@@ -35,26 +35,26 @@ using std::unique_ptr;
 namespace lld {
 namespace propeller {
 
-void ELFCfg::writeAsDotGraph() {
-  Twine fname = Name + ".dot";
-  FILE *fp = fopen(fname.str().c_str(), "w");
+bool ELFCfg::writeAsDotGraph(StringRef CfgOutName) {
+  FILE *fp = fopen(CfgOutName.str().c_str(), "w");
   if (!fp) {
-   fprintf(stderr, "failed to open: %s\n", fname.str().c_str());
+    fprintf(stderr, "Failed to open: '%s'\n", CfgOutName.str().c_str());
+    return false;
   }
-  fprintf(fp, "digraph %s {\n",  Name.str().c_str());
-  forEachNodeRef([&fp](ELFCfgNode &N){
-    fprintf(fp, "%u;", N.getBBIndex());
-  });
+  fprintf(fp, "digraph %s {\n", Name.str().c_str());
+  forEachNodeRef([&fp](ELFCfgNode &N) { fprintf(fp, "%u;", N.getBBIndex()); });
   fprintf(fp, "\n");
-  for (auto &E: IntraEdges){
+  for (auto &E : IntraEdges) {
     bool IsFTEdge = (E->Src->FTEdge == E.get());
-    fprintf(fp, " %u -> %u [label=\"%lu\", weight=%f];\n", E->Src->getBBIndex(), E->Sink->getBBIndex(), E->Weight, IsFTEdge ? 1.0 : 0.1);
+    fprintf(fp, " %u -> %u [label=\"%lu\", weight=%f];\n", E->Src->getBBIndex(),
+            E->Sink->getBBIndex(), E->Weight, IsFTEdge ? 1.0 : 0.1);
   }
   fprintf(fp, "}\n");
   fclose(fp);
-  fprintf(stderr, "Done dumping cfg for %s\n", Name.str().c_str());
+  fprintf(stderr, "Done dumping cfg '%s' into '%s'.\n", Name.str().c_str(),
+          CfgOutName.str().c_str());
+  return true;
 }
-
 
 ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
                                typename ELFCfgEdge::EdgeType Type) {
