@@ -6,6 +6,7 @@
 // RUN: %clang_cc1 -triple x86_64-pc-linux-gnu -S -fbasicblock-sections=labels -o - < %s | FileCheck %s --check-prefix=BB_LABELS
 // RUN: %clang_cc1 -triple x86_64-pc-linux-gnu -S -fbasicblock-sections=all -o - < %s | FileCheck %s --check-prefix=BB_WORLD --check-prefix=BB_ALL
 // RUN: %clang_cc1 -triple x86_64-pc-linux-gnu -S -fbasicblock-sections=%S/basicblock-sections.funcnames -o - < %s | FileCheck %s --check-prefix=BB_WORLD --check-prefix=BB_LIST
+// RUN: %clang_cc1 -triple x86_64-pc-linux-gnu -S -fbasicblock-sections=all -funique-bb-section-names -o - < %s | FileCheck %s --check-prefix=UNIQUE
 
 int world(int a) {
   if (a  > 10)
@@ -41,3 +42,6 @@ int another(int a) {
 // BB_LIST-NOT: .section .text.another,"ax",@progbits,unique
 // BB_LIST: another
 // BB_LIST-NOT: a.BB.another
+//
+// UNIQUE: .section .text.world.a.BB.world
+// UNIQUE: .section .text.another.a.BB.another
