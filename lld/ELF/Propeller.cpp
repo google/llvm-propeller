@@ -94,18 +94,18 @@ bool Propfile::readSymbols() {
     auto EphemeralStr = L2S.second;
     if (L1.getAsInteger(10, SOrdinal) == true /* means error happens */ ||
         SOrdinal == 0) {
-      error("Invalid ordinal field at propfile line: " +
-            std::to_string(LineNo));
+      error("[Propeller]: Invalid ordinal field, at propfile line: " +
+            std::to_string(LineNo) + ".");
       return false;
     }
     if (L2.getAsInteger(16, SSize) == true) {
-      error("Invalid size field at propfile line: " +
-            std::to_string(LineNo));
+      error("[Propeller]: Invalid size field, at propfile line: " +
+            std::to_string(LineNo) + ".");
       return false;
     }
     if (EphemeralStr.empty()) {
-      error("Invalid name field at propfile line: " +
-            std::to_string(LineNo));
+      error("[Propeller]: Invalid name field, at propfile line: " +
+            std::to_string(LineNo) + ".");
       return false;
     }
     if (EphemeralStr[0] == 'N') { // Function symbol?
@@ -125,15 +125,21 @@ bool Propfile::readSymbols() {
       auto L = EphemeralStr.split('.');
       uint64_t FuncIndex;
       if (L.first.getAsInteger(10, FuncIndex) == true || FuncIndex == 0) {
-        error("Invalid function index field at propfile line: " +
-            std::to_string(LineNo));
+        error("[Propeller]: Invalid function index field, at propfile line: " +
+            std::to_string(LineNo) + ".");
         return false;
       }
       // Only save the index part, which is highly reusable.
       StringRef BBIndex = PropfileStrSaver.save(L.second);
       auto ExistingI = SymbolOrdinalMap.find(FuncIndex);
       if (ExistingI != SymbolOrdinalMap.end()) {
-        assert(!ExistingI->second->BBTag);
+        if (ExistingI->second->BBTag) {
+          error(
+              string("[Propeller]: Index '") + std::to_string(FuncIndex) +
+              "' is not a function index, but a bb index, at propfile line: " +
+              std::to_string(LineNo) + ".");
+          return false;
+        }
         createBasicBlockSymbol(SOrdinal, ExistingI->second.get(), BBIndex,
                                SSize);
       } else {
@@ -151,7 +157,12 @@ bool Propfile::readSymbols() {
     StringRef BBIndex;
     std::tie(SOrdinal, FuncIndex, BBIndex, SSize) = S;
     auto ExistingI = SymbolOrdinalMap.find(FuncIndex);
-    assert(ExistingI != SymbolOrdinalMap.end());
+    if (ExistingI == SymbolOrdinalMap.end()) {
+      error("[Propeller]: Function with index number '" +
+            std::to_string(FuncIndex) + "' does not exist, at propfile line: " +
+            std::to_string(LineNo) + ".");
+      return false;
+    }
     createBasicBlockSymbol(SOrdinal, ExistingI->second.get(), BBIndex, SSize);
   }
   return true;
@@ -209,8 +220,8 @@ bool Propfile::processProfile() {
     uint64_t From, To, Cnt;
     char Tag;
     if (!parseBranchOrFallthroughLine(L, &From, &To, &Cnt, &Tag)) {
-      error(string("Unrecogniz line #") + std::to_string(LineNo) +
-            " in propfile:\n" + L.str());
+      error(string("[Propeller]: Unrecognized propfile line: ") +
+            std::to_string(LineNo) + ":\n" + L.str());
       return false;
     }
     ELFCfgNode *FromN = Prop.findCfgNode(From);
@@ -273,7 +284,8 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
   SymbolEntry *S = Propf->SymbolOrdinalMap[SymbolOrdinal].get();
   if (!S) {
     // This is an internal error, should not happen.
-    error(string("Invalid symbol ordinal: " + std::to_string(SymbolOrdinal)));
+    error(string("[Propeller]: Invalid symbol ordinal: " +
+                 std::to_string(SymbolOrdinal)));
     return nullptr;
   }
   SymbolEntry *Func = S->BBTag ? S->ContainingFunc : S;
@@ -367,13 +379,14 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   string PropellerFileName = config->propeller.str();
   FILE *PropFile = fopen(PropellerFileName.c_str(), "r");
   if (!PropFile) {
-    error(string("Failed to open '") + PropellerFileName + "'.");
+    error(string("[Propeller]: Failed to open '") + PropellerFileName + "'.");
     return false;
   }
   Propf.reset(new Propfile(PropFile, *this));
   auto startReadSymbolTime = system_clock::now();
   if (!Propf->readSymbols()) {
-    error(string("Invalid propfile: '") + PropellerFileName + "'.");
+    error(string("[Propeller]: Invalid propfile: '") + PropellerFileName +
+          "'.");
     return false;
   }
   auto startCreateCfgTime = system_clock::now();
@@ -458,7 +471,7 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
                 CfgOutput,
                 (Cfg->Name + "." + StringRef(std::to_string(Index) + ".dot")));
           }
-          if (!Cfg->writeAsDotGraph(CfgOutput.str())) {
+          if (!Cfg->writeAsDotGraph(CfgOutput.c_str())) {
             warn("[Propeller] Failed to dump Cfg for: '" + CfgNameToDump +
                  "'.");
           }

@@ -69,7 +69,6 @@ public:
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(Ordinal),
                              std::forward_as_tuple(Sym));
-    // SymbolNameMap[Name][""] = Sym;  // See SymbolNameMap comment.
     for (auto &A: Sym->Aliases) {
       SymbolNameMap[A][""] = Sym;
     }
@@ -90,7 +89,6 @@ public:
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(Ordinal),
                              std::forward_as_tuple(Sym));
-    //SymbolNameMap[Function->Name][BBIndex] = Sym;
     for (auto &A: Function->Aliases) {
       SymbolNameMap[A][BBIndex] = Sym;
     }
