@@ -4305,9 +4305,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(
         Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
   }
-  else {
-    CmdArgs.push_back("-fbasicblock-sections=none");
-  }
 
   if (Args.hasFlag(options::OPT_fdata_sections, options::OPT_fno_data_sections,
                    UseSeparateSections)) {

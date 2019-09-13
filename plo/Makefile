@@ -74,10 +74,12 @@ LLVM_SOURCE := $(shell find $(LLVM_PROJECT)/llvm \
         -type f '(' -iname "*.cpp" -o -iname "*.cc" -o -iname "*.c" \
                    -o -iname "*.h" -o -iname "*.td" ')' -print)
 
+ifeq ($(J_NUMBER),)
 J_NUMBER := $(shell grep -Ee "^core id" /proc/cpuinfo | wc -l)
 J_NUMBER := $(shell if [[ "$(J_NUMBER)" -lt "16" ]] ; then \
                         echo $$(($(J_NUMBER) / 8 * 7)) ; \
                     else echo $$(($(J_NUMBER) - 5)); fi)
+endif
 
 STAGE1_BIN         := $(DDIR)/stage1/install/bin
 PROFILES_DIR       := $(DDIR)/stage2/build/profiles
@@ -393,12 +395,12 @@ check-performance: benchmark-pgo.result benchmark-pgo-plolist.result benchmark-p
 
 clean:
 	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \
-	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,.symfile,.yaml,.profile,.cfg,.size-summaries} ; \
+	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,.symfile,-compiler.yaml,.profile,.cfg,.size-summaries} ; \
 	  rm -f benchmark{-,pmu-}$${F}.result ; \
 	  rm -f benchmark-pmu-$${F}.{result,pmu} ; \
 	done
 	rm -f  check_environment
-	rm -f  commands run-commands.sh relink-clang-{cspgo,pgo}-plo.sh
+	rm -f  commands run-commands.sh relink-clang-{cspgo,pgo}-plo{,list,all}.sh
 	rm -f  sample.out sample.out.{layout,symfile,profile,cfg} 
 	rm -f  sample_*.o sample.plo.out sample.perfdata sample.propeller sample.propeller.out
 	rm -f  *.autolog *.log1

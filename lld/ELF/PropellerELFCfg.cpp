@@ -7,6 +7,7 @@
 #include "llvm/Object/ObjectFile.h"
 // Needed by ELFSectionRef & ELFSymbolRef.
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
 #include <fstream>
@@ -38,7 +39,7 @@ namespace propeller {
 bool ELFCfg::writeAsDotGraph(StringRef CfgOutName) {
   FILE *fp = fopen(CfgOutName.str().c_str(), "w");
   if (!fp) {
-    fprintf(stderr, "Failed to open: '%s'\n", CfgOutName.str().c_str());
+    warn("[Propeller]: Failed to open: '" + CfgOutName.str() + "'\n");
     return false;
   }
   fprintf(fp, "digraph %s {\n", Name.str().c_str());
@@ -51,8 +52,8 @@ bool ELFCfg::writeAsDotGraph(StringRef CfgOutName) {
   }
   fprintf(fp, "}\n");
   fclose(fp);
-  fprintf(stderr, "Done dumping cfg '%s' into '%s'.\n", Name.str().c_str(),
-          CfgOutName.str().c_str());
+  llvm::outs() << "[Propeller]: Done dumping cfg '" << Name.str() << "' into '"
+               << CfgOutName.str() << "'.\n";
   return true;
 }
 
