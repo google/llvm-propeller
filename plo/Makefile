@@ -60,10 +60,12 @@ LLVM_SOURCE := $(shell find $(LLVM_PROJECT)/llvm \
         -type f '(' -iname "*.cpp" -o -iname "*.cc" -o -iname "*.c" \
                    -o -iname "*.h" -o -iname "*.td" ')' -print)
 
+ifeq ($(J_NUMBER),)
 J_NUMBER := $(shell grep -Ee "^core id" /proc/cpuinfo | wc -l)
 J_NUMBER := $(shell if [[ "$(J_NUMBER)" -lt "16" ]] ; then \
                         echo $$(($(J_NUMBER) / 8 * 7)) ; \
                     else echo $$(($(J_NUMBER) - 5)); fi)
+endif
 
 STAGE1_BIN         := $(DDIR)/stage1/install/bin
 PROFILES_DIR       := $(DDIR)/stage2/build/profiles
