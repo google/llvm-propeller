@@ -25,7 +25,7 @@ check_environment: paths.mk
 	touch $@
 
 CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
-ITERATIONS := 5
+ITERATIONS ?= 3
 GITHASH := $(shell git rev-parse HEAD)
 
 ifeq ("$(shell git status -s)", "")
@@ -303,7 +303,11 @@ $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	{ time perf stat -o $@.pmu --field-separator=, -e cycles,instructions,br_inst_retired.all_branches,br_inst_retired.conditional,br_inst_retired.near_taken,br_inst_retired.not_taken,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit -- ./run-commands.sh $(shell readlink -f $<) ; } 2>&1 | tee $@.result
 
 $(ALL_BENCHMARKS): benchmark-%: %-compiler run-commands.sh
-	{ for i in {1..${ITERATIONS}}; do /usr/bin/time --format "${REPOHASH} USER:%U SYS:%S WALL:%e STATUS:%x" ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep "${REPOHASH}" ; done } 2>&1 | tee -a $@.result
+	@{ for i in {1..${ITERATIONS}}; do \
+		echo "Running $@ ... iteration $$i/${ITERATIONS} ..." ; \
+		/usr/bin/time --format "${REPOHASH} USER:%U SYS:%S WALL:%e STATUS:%x" ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep "${REPOHASH}" ; \
+	   done ; \
+	} | tee -a $@.result
 
 # ###################################### Size gaugement
 $(foreach F,nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plolist,$(F).size-summaries): %.size-summaries: %-compiler | stage1-compiler
@@ -370,10 +374,16 @@ benchmark-pgo-bolt.result benchmark-pgo.result benchmark-pgo-plolist.result benc
 
 define check_against_baseline
 	export BASE=`sed -n -Ee 's/^${REPOHASH} USER:(.*) SYS:(.*) WALL:(.*)/(\1+\2)/p' $1 | tail -n ${ITERATIONS} | bc` ; \
+	if [[ `echo $${BASE} | wc -w` != ${ITERATIONS} ]]; then \
+	  echo "Performance check failed: not enough iterations for $1"; exit 1 ; \
+	fi ; \
 	export TEST=`sed -n -Ee 's/^${REPOHASH} USER:(.*) SYS:(.*) WALL:(.*)/(\1+\2)/p' $2 | tail -n ${ITERATIONS} | bc ` ; \
-	export IMPROVE=`paste <(echo -e "$${TEST}") <(echo -e "$${BASE}") | awk '{print 100*($$2-$$1)/$$2}' ` ; \
-	export IMPROVE_AVG=`echo -e "$${IMPROVE}" | awk '{ total += $$1 } END { print total/${ITERATIONS} }' ` ; \
-	export IMPROVE_STDDEV=`echo -e "$${IMPROVE}" | awk -v improve_avg=$${IMPROVE_AVG} '{ total += ($$1-improve_avg)**2 } END { print (total/${ITERATIONS})**0.5 }' ` ; \
+	if [[ `echo $${TEST} | wc -w` != ${ITERATIONS} ]]; then \
+	  echo "Performance check failed: not enough iterations for $2"; exit 1 ; \
+	fi ; \
+	export IMPROVE=`paste <(echo "$${BASE}") <(echo "$${TEST}") | awk '{print 100*($$1-$$2)/$$1}' ` ; \
+	export IMPROVE_AVG=`echo "$${IMPROVE}" | awk '{ total += $$1 } END { print total/${ITERATIONS} }' ` ; \
+	export IMPROVE_STDDEV=`echo "$${IMPROVE}" | awk -v improve_avg=$${IMPROVE_AVG} '{ total += ($$1-improve_avg)**2 } END { print (total/${ITERATIONS})**0.5 }' ` ; \
 	if [[ `echo "$${IMPROVE_AVG} > 6" | bc -l` == '1' ]]; then \
 	  echo "Performance check passed: $2 [$${IMPROVE_AVG}% +-$${IMPROVE_STDDEV} improvement over $1]". ; \
 	else \
@@ -401,7 +411,7 @@ clean:
 	done
 	rm -f  check_environment
 	rm -f  commands run-commands.sh relink-clang-{cspgo,pgo}-plo{,list,all}.sh
-	rm -f  sample.out sample.out.{layout,symfile,profile,cfg} 
+	rm -f  sample.out sample.out.{layout,symfile,profile,cfg}
 	rm -f  sample_*.o sample.plo.out sample.perfdata sample.propeller sample.propeller.out
 	rm -f  *.autolog *.log1
 
