@@ -375,7 +375,7 @@ define check_against_baseline
 	export IMPROVE_AVG=`echo -e "$${IMPROVE}" | awk '{ total += $$1 } END { print total/${ITERATIONS} }' ` ; \
 	export IMPROVE_STDDEV=`echo -e "$${IMPROVE}" | awk -v improve_avg=$${IMPROVE_AVG} '{ total += ($$1-improve_avg)**2 } END { print (total/${ITERATIONS})**0.5 }' ` ; \
 	if [[ `echo "$${IMPROVE_AVG} > 6" | bc -l` == '1' ]]; then \
-	  echo "Performance check passed: $1 [$${IMPROVE_AVG}% +-$${IMPROVE_STDDEV} improvement over $1]". ; \
+	  echo "Performance check passed: $2 [$${IMPROVE_AVG}% +-$${IMPROVE_STDDEV} improvement over $1]". ; \
 	else \
 	  echo "*** Performance check failed: $2, regression found." ; exit 1 ; \
 	fi
