@@ -1128,13 +1128,10 @@ void AsmPrinter::EmitFunctionBody() {
         }
       }
     }
-    // if (MBB.isUniqueSection()) {
     if (MF->getBasicBlockLabels() || MBB.isUniqueSection()) {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
       MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
-      // MCSymbol *CurrentBBEnd = OutContext.getOrCreateSymbol(
-         // MBB.getSymbol()->getName() + Twine(".bbend"));
       const MCExpr *SizeExp =  MCBinaryExpr::createSub(
           MCSymbolRefExpr::create(CurrentBBEnd, OutContext),
           MCSymbolRefExpr::create(MBB.getSymbol(), OutContext), OutContext);
@@ -2970,8 +2967,8 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
 
   bool emitBBLabels = BasicBlockSections || MF->getBasicBlockLabels();
   if (MBB.pred_empty() ||
-      (!emitBBLabels && isBlockOnlyReachableByFallthrough(&MBB)
-       && !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
+      (!emitBBLabels && isBlockOnlyReachableByFallthrough(&MBB) &&
+       !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
     if (isVerbose()) {
       // NOTE: Want this comment at start of line, don't emit with AddComment.
       OutStreamer->emitRawComment(" %bb." + Twine(MBB.getNumber()) + ":",
@@ -2990,8 +2987,10 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
       OutStreamer->SwitchSection(MF->getSection());
     }
     // Emit alignment after section is created for basic block sections.
-    if (unsigned LogAlign = MBB.getLogAlignment())
-      EmitAlignment(LogAlign);
+    if (MBB.isUniqueSection()) {
+      if (unsigned LogAlign = MBB.getLogAlignment())
+        EmitAlignment(LogAlign);
+    }
     OutStreamer->EmitLabel(MBB.getSymbol());
     // With BasicBlockSections, each Basic Block must handle CFI information on its own.
     if (MBB.isUniqueSection()) {
@@ -3047,7 +3046,7 @@ void AsmPrinter::EmitVisibility(MCSymbol *Sym, unsigned Visibility,
 bool AsmPrinter::
 isBlockOnlyReachableByFallthrough(const MachineBasicBlock *MBB) const {
   // With BasicBlock Sections, no block is a fall through.
-  if (MF->getBasicBlockSections())
+  if (MBB->isUniqueSection())
     return false;
 
   // If this is a landing pad, it isn't a fall through.  If it has no preds,

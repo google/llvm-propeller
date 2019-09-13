@@ -62,16 +62,16 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     MCContext &Ctx = MF->getContext();
     auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
 
-    bool BasicBlockSections = MF->getBasicBlockSections() ||
-                              MF->getBasicBlockLabels();
-    auto Delimiter = BasicBlockSections ? "." : "_";
+    bool BasicBlockSymbols = MF->getBasicBlockSections() ||
+                             MF->getBasicBlockLabels();
+    auto Delimiter = BasicBlockSymbols ? "." : "_";
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
 
     // With Basic Block Sections, we emit a symbol for every basic block. To
     // keep the size of strtab small, we choose a unary encoding which can
     // compress the symbol names significantly.  The basic blocks for function
     // foo are named a.BB.foo, aa.BB.foo, and so on.
-    if (BasicBlockSections) {
+    if (BasicBlockSymbols) {
       std::function<std::string(unsigned)> Unary = [&Unary](unsigned num) {
         if (num == 0) return std::string("");
         if (num == 1) return std::string("a");

@@ -256,10 +256,10 @@ static cl::opt<bool>
                        cl::desc("Give unique names to every section"),
                        cl::init(true));
 
-static cl::opt<bool>
-    UniqueBBSectionNames("unique-bb-section-names",
-                       cl::desc("Give unique names to every basic block section"),
-                       cl::init(false));
+static cl::opt<bool> UniqueBBSectionNames(
+   "unique-bb-section-names",
+   cl::desc("Give unique names to every basic block section"),
+   cl::init(false));
 
 static cl::opt<llvm::EABI>
     EABIVersion("meabi", cl::desc("Set EABI type (default depends on triple):"),
