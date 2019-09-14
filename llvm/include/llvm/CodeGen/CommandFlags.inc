@@ -324,6 +324,7 @@ static TargetOptions InitTargetOptionsFromCodeGenFlags() {
   Options.EnableDebugEntryValues = EnableDebugEntryValues;
 
   Options.MCOptions = InitMCTargetOptionsFromFlags();
+  Options.MCOptions.MCRelocateWithSymbols = (BasicBlockSections == BasicBlockSection::All);
 
   Options.ThreadModel = TMModel;
   Options.EABIVersion = EABIVersion;
