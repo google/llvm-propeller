@@ -133,7 +133,7 @@ public:
     }
   }
 
-  bool writeAsDotGraph(StringRef CfgOutName);
+  bool writeAsDotGraph(const char *CfgOutName);
 
 private:
   // Create and take ownership.

@@ -36,10 +36,10 @@ using std::unique_ptr;
 namespace lld {
 namespace propeller {
 
-bool ELFCfg::writeAsDotGraph(StringRef CfgOutName) {
-  FILE *fp = fopen(CfgOutName.str().c_str(), "w");
+bool ELFCfg::writeAsDotGraph(const char *CfgOutName) {
+  FILE *fp = fopen(CfgOutName, "w");
   if (!fp) {
-    warn("[Propeller]: Failed to open: '" + CfgOutName.str() + "'\n");
+    warn("[Propeller]: Failed to open: '" + StringRef(CfgOutName) + "'\n");
     return false;
   }
   fprintf(fp, "digraph %s {\n", Name.str().c_str());
@@ -53,7 +53,7 @@ bool ELFCfg::writeAsDotGraph(StringRef CfgOutName) {
   fprintf(fp, "}\n");
   fclose(fp);
   llvm::outs() << "[Propeller]: Done dumping cfg '" << Name.str() << "' into '"
-               << CfgOutName.str() << "'.\n";
+               << CfgOutName << "'.\n";
   return true;
 }
 
