@@ -272,6 +272,18 @@ void ELFCfgBuilder::buildCfgs() {
       continue; // to next Cfg group.
     }
 
+    uint32_t GroupShndx = 0;
+    for (auto &T : TmpNodeMap) {
+      if (GroupShndx != 0 && T.second->Shndx == GroupShndx) {
+        Cfg.reset(nullptr);
+        error("[Propeller]: Basicblock sections must not have same section "
+              "index, this is usually caused by -fbasicblock-sections=labels. "
+              "Use -fbasicblock-sections=list/all instead.");
+        return ;
+      }
+      GroupShndx = T.second->Shndx;
+    }
+
     if (Cfg) {
       buildCfg(*Cfg, CfgSym, TmpNodeMap);
       View->Cfgs.emplace(Cfg->Name, std::move(Cfg));

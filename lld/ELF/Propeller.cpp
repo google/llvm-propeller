@@ -574,6 +574,8 @@ void Propeller::calculatePropellerLegacy(
     list<StringRef>::iterator ColdPlaceHolder) {
   // No function split or no cold symbols, all bb symbols shall be removed.
   if (HotPlaceHolder == ColdPlaceHolder) return ;
+  // For cold bb symbols that are cut out and placed in code segements, we keep
+  // only the first bb symbol that starts the code portion of the function.
   StringRef LastFuncName = "";
   for (auto I = std::next(HotPlaceHolder), J = ColdPlaceHolder; I != J; ++I) {
     StringRef SName = *I;

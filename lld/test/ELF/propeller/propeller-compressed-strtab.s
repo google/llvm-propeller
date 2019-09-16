@@ -5,9 +5,9 @@
 # RUN: ld.lld -propeller=%S/Inputs/propeller.data %t.o -propeller-keep-named-symbols -o %t.out
 
 # We shall have "a.BB.main", "aa.BB.main", "aaa.BB.main", "aaaa.BB.main" in the symbol table.
-# RUN: [[ "$(readelf -Ws %t.out | grep -F ".BB.main" | wc -l)" == "4" ]]
+# RUN: [[ "$(llvm-nm -S %t.out | grep -F ".BB.main" | wc -l)" == "4" ]]
 # But we only have "aaaa.BB.main" in .strtab, all others are compressed.
-# RUN: [[ "$(readelf -p.strtab %t.out | grep -F ".BB.main" | wc -l)" == "1" ]]
+# RUN: [[ "$(llvm-readobj --string-dump=.strtab %t.out | grep -F ".BB.main" | wc -l)" == "1" ]]
 
 .text
 	.section	.text.compute_flag,"ax",@progbits

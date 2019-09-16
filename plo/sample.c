@@ -2,6 +2,12 @@
 volatile int count;
 
 __attribute__((noinline))
+double this_is_very_code(double tt) {
+  volatile double dead = 3434343434, beaf = 56565656; /* Avoid compiler optimizing away */
+  return dead / beaf + beaf / dead + tt / 183;
+}
+
+__attribute__((noinline))
 int compute_flag(int i)
 {
         if (i % 10 < 4)          /* ... in 40% of the iterations */
@@ -23,6 +29,10 @@ int main(void)
 
                 if (flag)
                         x += x / y + y / x;     /* Execute expensive division if flag is set */
+		if (count % 137949234 == 183) {
+		  x += this_is_very_code(count);
+		}
+		  
         }
         return 0;
 }
