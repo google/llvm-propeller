@@ -6,9 +6,9 @@
 # RUN: clang -fuse-ld=lld -fbasicblock-sections=all -Wl,-lto-basicblock-sections=all -Wl,-propeller=%S/Inputs/propeller.data -Wl,-propeller-keep-named-symbols -O2 %t.o -o %t.out
 
 # We shall have "a.BB.main", "aa.BB.main", "aaa.BB.main", "aaaa.BB.main" in the symbol table.
-# RUN: [[ "$(readelf -Ws %t.out | grep -F ".BB.main" | wc -l)" == "4" ]]
+# RUN: [[ "$(llvm-nm -S %t.out | grep -F ".BB.main" | wc -l)" == "4" ]]
 # But we only have "aaaa.BB.main" in .strtab, all others are compressed.
-# RUN: [[ "$(readelf -p.strtab %t.out | grep -F ".BB.main" | wc -l)" == "1" ]]
+# RUN: [[ "$(llvm-readelf --string-dump=.strtab %t.out | grep -F ".BB.main" | wc -l)" == "1" ]]
 
 .text
 	.section	.text.compute_flag,"ax",@progbits

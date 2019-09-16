@@ -135,6 +135,9 @@ public:
   }
 
   lld::elf::SymbolTable *Symtab;
+
+  // ELFViewDeleter, which has its implementation in .cpp, saves us from having
+  // to have full ELFView definition visibile here.
   struct ELFViewDeleter {
     void operator()(ELFView *V);
   };
@@ -153,6 +156,23 @@ public:
   mutex Lock;
 };
 
+// When no "-propeller-keep-named-symbols" specified, we remove all BB symbols
+// that are hot, and we keep only the first code BB symbol that starts the cold
+// code region of the same function. See Below:
+// Hot:
+//  foo
+//  foo.bb.1   <= delete
+//  foo.bb.2   <= delete
+//  bar
+//  bar.bb.1   <= delete
+//  bar.bb.3   <= delete
+// Cold:
+//  foo.bb.3
+//  foo.bb.4   <= delete
+//  foo.bb.5   <= delete
+//  bar.bb.2
+//  bar.bb.4   <= delete
+//  bar.bb.5   <= delete
 struct PropellerLegacy {
   set<StringRef> BBSymbolsToKeep;
 
