@@ -517,12 +517,6 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
         SymbolList.insert(PlaceHolder, N.ShName);
       });
     }
-    if(!config->propellerAlignBasicBlocks) {
-      for(auto &Node: Cfg->Nodes){
-        if(Node.get()!=Cfg->getEntryNode())
-          config->symbolAlignmentFile.insert(std::make_pair(Node->ShName, 1));
-      }
-    }
   }
   if (config->propellerPrintStats) {
     duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;

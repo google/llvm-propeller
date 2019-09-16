@@ -43,7 +43,7 @@ bool ELFCfg::writeAsDotGraph(StringRef CfgOutName) {
     return false;
   }
   fprintf(fp, "digraph %s {\n", Name.str().c_str());
-  forEachNodeRef([&fp](ELFCfgNode &N) { fprintf(fp, "%u;", N.getBBIndex()); });
+  forEachNodeRef([&fp](ELFCfgNode &N) { fprintf(fp, "%u [size=\"%lu\"];", N.getBBIndex(), N.ShSize); });
   fprintf(fp, "\n");
   for (auto &E : IntraEdges) {
     bool IsFTEdge = (E->Src->FTEdge == E.get());
@@ -384,10 +384,12 @@ void ELFCfgBuilder::buildCfg(
   }
   TmpNodeMap.clear();
 
-  // Calculate Cfg Size to be the sum of all its bb sections.
-  Cfg.Size = 0;
+  // Set Cfg size and re-calculate size of the entry basicblock, which is
+  // initially the size of the whole function.
+  Cfg.Size = Cfg.getEntryNode()->ShSize;
   Cfg.forEachNodeRef([&Cfg](ELFCfgNode &N) {
-    Cfg.Size += N.ShSize;
+    if (&N != Cfg.getEntryNode())
+      Cfg.getEntryNode()->ShSize -= N.ShSize;
   });
 }
 

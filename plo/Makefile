@@ -25,19 +25,19 @@ check_environment: paths.mk
 	touch $@
 
 CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
-ITERATIONS ?= 3
+
+ITERATIONS ?= 5
 GITHASH := $(shell git rev-parse HEAD)
+$(shell git diff > gitdiff)
+DIFFHASH := $(shell cat gitdiff | sha1sum | awk '{print $$1}')
 
 ifeq ("$(shell git status -s)", "")
 	REPOSTATUS=CLEAN
 else
-	REPODIFF=$(shell git diff)
-	DIFFHASH=$(shell git diff | sha1sum | awk '{print $$1}')
 	REPOSTATUS=DIRTY.${DIFFHASH}
 endif
 
 REPOHASH := ${GITHASH}.${REPOSTATUS}
-
 
 #################################
 # Important targets:
@@ -298,9 +298,10 @@ relink-clang-pgo-plolist.sh: pgo-plolist/build/bin/clang-10 pgo-compiler.propell
 	$(call do_relink,$(DDIR)/pgo-compiler.propeller)
 
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
-	# origin: instructions,cycles,branches,branch-misses,icache_64b.iftag_stall,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,idq.dsb_uops,idq.mite_uops,idq.all_dsb_cycles_4_uops,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit
-	# for papers: cycles,instructions,br_inst_retired.all_branches,br_inst_retired.conditional,br_inst_retired.near_taken,br_inst_retired.not_taken,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit 
-	{ time perf stat -o $@.pmu --field-separator=, -e cycles,instructions,br_inst_retired.all_branches,br_inst_retired.conditional,br_inst_retired.near_taken,br_inst_retired.not_taken,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit -- ./run-commands.sh $(shell readlink -f $<) ; } 2>&1 | tee $@.result
+	@{ echo "Running $@ for ${ITERATIONS} iterations..." ; \
+		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles,instructions,br_inst_retired.all_branches,br_inst_retired.conditional,br_inst_retired.near_taken,br_inst_retired.not_taken,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit,idq.dsb_uops,idq.mite_uops,idq.ms_uops -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
+		awk 'NF {print "${REPOHASH},"$$0}' .$@.pmu ; \
+	} | tee -a $@.result
 
 $(ALL_BENCHMARKS): benchmark-%: %-compiler run-commands.sh
 	@{ for i in {1..${ITERATIONS}}; do \
@@ -371,6 +372,10 @@ $(foreach F,$(FLAVORS),clean-$(F)): clean-%: dummy-%
 	if [[ "$(subst dummy-,,$<)" == "cspgo" ]]; then rm -fr stage-cspgo ; fi
 
 benchmark-pgo-bolt.result benchmark-pgo.result benchmark-pgo-plolist.result benchmark-pgo-plo.result: benchmark-%.result: benchmark-%
+	touch $@
+
+benchmark-pmu-pgo-bolt.result benchmark-pmu-pgo.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result: benchmark-pmu-%.result: benchmark-pmu-%
+	touch $@
 
 define check_against_baseline
 	export BASE=`sed -n -Ee 's/^${REPOHASH} USER:(.*) SYS:(.*) WALL:(.*)/(\1+\2)/p' $1 | tail -n ${ITERATIONS} | bc` ; \
@@ -385,23 +390,54 @@ define check_against_baseline
 	export IMPROVE_AVG=`echo "$${IMPROVE}" | awk '{ total += $$1 } END { print total/${ITERATIONS} }' ` ; \
 	export IMPROVE_STDDEV=`echo "$${IMPROVE}" | awk -v improve_avg=$${IMPROVE_AVG} '{ total += ($$1-improve_avg)**2 } END { print (total/${ITERATIONS})**0.5 }' ` ; \
 	if [[ `echo "$${IMPROVE_AVG} > 6" | bc -l` == '1' ]]; then \
-	  echo "Performance check passed: $2 [$${IMPROVE_AVG}% +-$${IMPROVE_STDDEV} improvement over $1]". ; \
+	  echo "Performance check passed: $2 [$${IMPROVE_AVG}% +-$${IMPROVE_STDDEV} improvement over $1]." ; \
 	else \
 	  echo "*** Performance check failed: $2, regression found." ; exit 1 ; \
 	fi
 endef
 
+define check_pmu_against_baseline
+	BASE=`sed -n -Ee "s/^${REPOHASH},(.*),,$3,(.*)/\1/p" $1 | tail -n 1` ; \
+	TEST=`sed -n -Ee "s/^${REPOHASH},(.*),,$3,(.*)/\1/p" $2 | tail -n 1` ; \
+	IMPROVE=`echo "scale=2; 100*($${TEST}-$${BASE})/$${BASE}" | bc` ; \
+	printf "\t$${IMPROVE}"
+endef
+
 .DEFAULT_GOAL := stage1-compiler
 
+
+define append_git_status
+	echo -e "\n========================local diff against ${GITHASH}==========================" >> $1.${REPOHASH} ; \
+	cat gitdiff >> $1.${REPOHASH} ; \
+	echo -e "\n===========================end of local diff===================================" >> $1.${REPOHASH} ; \
+	ln -sf $1.${REPOHASH} $1.${GITHASH} ; \
+	ln -sf $1.${GITHASH} $1
+endef
+
+check-pmu-performance: benchmark-pmu-pgo.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-bolt.result
+	@PMU_EVENTS=( "cycles" "br_inst_retired.all_branches" "br_inst_retired.not_taken" "icache_64b.iftag_miss" "itlb_misses.miss_causes_a_walk" ) ; \
+	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
+	printf "VERSIONS" >> $@.${REPOHASH} ; \
+	for event in "$${PMU_EVENTS[@]}" ; do \
+		printf "\t$${event}" >> $@.${REPOHASH} ; \
+	done ; \
+	printf "\n" >> $@.${REPOHASH} ; \
+	for version in $(wordlist 2,$(words $^),$^) ; do \
+		printf "$${version}" >> $@.${REPOHASH} ; \
+		for event in "$${PMU_EVENTS[@]}" ; do \
+			$(call check_pmu_against_baseline,$<,$$version,$$event) >> $@.${REPOHASH} ; \
+		done ; \
+		printf "\n" >> $@.${REPOHASH} ; \
+	done ; \
+	printf "\n" >> $@.${REPOHASH} ; \
+	$(call append_git_status,$@)
+
 check-performance: benchmark-pgo.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-bolt.result
-	$(call check_against_baseline,$<,$(word 2,$^)) > $@.${REPOHASH} ; \
-	$(call check_against_baseline,$<,$(word 3,$^)) >> $@.${REPOHASH} ; \
-	$(call check_against_baseline,$<,$(word 4,$^)) >> $@.${REPOHASH} ; \
-	echo -e "\n========================local diff against ${GITHASH}==========================" >> $@.${REPOHASH} ; \
-	git diff >> $@.${REPOHASH} ; \
-	echo -e "\n===========================end of local diff===================================" >> $@.${REPOHASH} ; \
-	ln -sf $@.${REPOHASH} $@.${GITHASH} ; \
-	ln -sf $@.${GITHASH} $@
+	@echo "CHECK-PERFORMANCE" > $@.${REPOHASH} ; \
+	for version in $(wordlist 2,$(words $^),$^) ; do \
+		$(call check_against_baseline,$<,$$version) >> $@.${REPOHASH} ; \
+	done ; \
+	$(call append_git_status,$@)
 
 clean:
 	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \

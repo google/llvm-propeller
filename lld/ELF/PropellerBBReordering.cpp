@@ -72,7 +72,7 @@ static cl::opt<uint32_t> BackwardDistance(
 static cl::opt<uint32_t> ChainSplitThreshold(
     "chain-split-threshold",
     cl::desc("Maximum binary size of a code chain that can be split."),
-    cl::init(256), cl::ZeroOrMore);
+    cl::init(128), cl::ZeroOrMore);
 } // namespace opts
 
 namespace lld {
@@ -82,8 +82,8 @@ double GetEdgeExtTSPScore(const ELFCfgEdge *Edge, bool IsEdgeForward,
                           uint32_t SrcSinkDistance) {
   if (Edge->Weight == 0)
     return 0;
-  if (SrcSinkDistance == 0 && (Edge->Type == ELFCfgEdge::EdgeType::INTRA_FUNC ||
-                               Edge->Type == ELFCfgEdge::EdgeType::INTRA_DYNA))
+
+  if (SrcSinkDistance == 0 && (Edge->Type == ELFCfgEdge::EdgeType::INTRA_FUNC))
     return Edge->Weight * opts::FallthroughWeight;
 
   if (IsEdgeForward && SrcSinkDistance < opts::ForwardDistance)

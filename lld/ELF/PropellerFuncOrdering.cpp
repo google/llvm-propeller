@@ -60,7 +60,7 @@ ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
         CallerCluster->Weight * (Cluster->Size + CallerCluster->Size))
       continue;
     if (!E || E->Weight < CallIn->Weight) {
-      if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 20)) continue;
+      if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 21)) continue;
       E = CallIn;
     }
   }
@@ -76,7 +76,7 @@ void CCubeAlgorithm::mergeClusters() {
     uint64_t CfgWeight = 0;
     uint64_t CfgSize = config->propellerSplitFuncs ? 0 : (double)Cfg->Size;
     Cfg->forEachNodeRef([&CfgSize, &CfgWeight](ELFCfgNode &N) {
-      CfgWeight += N.Freq;
+      CfgWeight += N.Freq * N.ShSize;
       if (config->propellerSplitFuncs && N.Freq)
         CfgSize += N.ShSize;
     });
@@ -95,11 +95,10 @@ void CCubeAlgorithm::mergeClusters() {
               return CfgWeightMap[Cfg1] > CfgWeightMap[Cfg2];
             });
   for (ELFCfg* Cfg : HotCfgs){
-    // "P->second" is in the range of [0, a_large_number]
     if (CfgWeightMap[Cfg] <= 0.005)
       break;
     auto *Cluster = ClusterMap[Cfg];
-    if (Cluster->Size > (1 << 20))
+    if (Cluster->Size > (1 << 21))
       continue;
     assert(Cluster);
 
@@ -108,7 +107,7 @@ void CCubeAlgorithm::mergeClusters() {
     if (!PredecessorCfg)
       continue;
     assert(PredecessorCfg != Cfg);
-    log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
+    // log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
     auto *PredecessorCluster = ClusterMap[PredecessorCfg];
     assert(PredecessorCluster);
 
@@ -119,7 +118,7 @@ void CCubeAlgorithm::mergeClusters() {
 
     // Join 2 clusters into PredecessorCluster.
     *PredecessorCluster << *Cluster;
-    
+
     // Update Cfg <-> Cluster mapping, because all cfgs that were
     // previsously in Cluster are now in PredecessorCluster.
     for (ELFCfg *Cfg : Cluster->Cfgs) {

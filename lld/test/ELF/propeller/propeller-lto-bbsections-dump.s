@@ -6,6 +6,7 @@
 # RUN: clang -fuse-ld=lld -fbasicblock-sections=all -Wl,-lto-basicblock-sections=all -Wl,-propeller-dump-cfg=main -Wl,-propeller=%S/Inputs/propeller.data -O2 %t.o -o %t.out
 # RUN: cat $(dirname %t.o)/main.dot | FileCheck %s --check-prefix=LTO_CFG
 
+# LTO_CFG: 0 [size="48"];3 [size="11"];1 [size="18"];2 [size="38"];4 [size="8"];
 # LTO_CFG: 0 -> 1
 # LTO_CFG: 3 -> 4
 # LTO_CFG: 3 -> 1 [label="273908"

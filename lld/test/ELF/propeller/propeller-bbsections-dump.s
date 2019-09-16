@@ -5,6 +5,7 @@
 # RUN: ld.lld -propeller=%S/Inputs/propeller.data -propeller-dump-cfg=main %t.o -o %t.out
 
 # RUN: cat $(dirname %t)/main.dot | FileCheck %s --check-prefix=CFG
+# CFG: 0 [size="48"];3 [size="11"];1 [size="18"];2 [size="38"];4 [size="8"];
 # CFG: 0 -> 1
 # CFG: 3 -> 4
 # CFG: 3 -> 1 [label="273908"
