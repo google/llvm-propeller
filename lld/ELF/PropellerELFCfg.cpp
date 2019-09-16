@@ -276,6 +276,7 @@ void ELFCfgBuilder::buildCfgs() {
     for (auto &T : TmpNodeMap) {
       if (GroupShndx != 0 && T.second->Shndx == GroupShndx) {
         Cfg.reset(nullptr);
+        TmpNodeMap.clear();
         error("[Propeller]: Basicblock sections must not have same section "
               "index, this is usually caused by -fbasicblock-sections=labels. "
               "Use -fbasicblock-sections=list/all instead.");
@@ -412,32 +413,22 @@ void ELFCfgBuilder::calculateFallthroughEdges(
   /*
     TmpNodeMap groups nodes according to their address:
       addr1: [Node1]
-      addr2: [Node2, Node3]
-      addr3: [Node4]
-      addr4: [Node5]
-      addr5: [Node6, Node 7]
-    For the above example, Node2, Node3 have same "MappedAddr" (*).
-
-    We firstly sort Nodes that have same address, like addr2 and addr5
-    groups, within each group, if NodeA has a fallthrough to NodeB, we
-    place NodeA before NodeB. (Op. A)
-
-    We then try to find fallthrough relationship between the previous groups's
-    last node and curent group's first node. (Op. B)
+      addr2: [Node2]
+      addr3: [Node3]
+      addr4: [Node4]
+    And addr1 < addr2 < addr3 < addr4.
   */
   auto SetupFallthrough = [&Cfg](ELFCfgNode *N1, ELFCfgNode *N2) {
     for (auto *E : N1->Outs) {
       if (E->Type == ELFCfgEdge::INTRA_FUNC && E->Sink == N2) {
         N1->FTEdge = E;
-        return true;
+        return;
       }
     }
     if (N1->ShSize == 0) {
       // An empty section always fallthrough to the next adjacent section.
       N1->FTEdge = Cfg.createEdge(N1, N2, ELFCfgEdge::INTRA_FUNC);
-      return true;
     }
-    return false;
   };
 
   for (auto P = TmpNodeMap.begin(), Q = std::next(P), E = TmpNodeMap.end();
@@ -446,13 +437,11 @@ void ELFCfgBuilder::calculateFallthroughEdges(
   }
 }
 
-ELFView *
-ELFView::create(const StringRef &VN,
-                const uint32_t Ordinal,
-		const MemoryBufferRef &FR) {
+ELFView *ELFView::create(const StringRef &VN, const uint32_t Ordinal,
+                         const MemoryBufferRef &FR) {
   const char *FH = FR.getBufferStart();
-  if (FR.getBufferSize() > 6 &&
-      FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' && FH[3] == 'F') {
+  if (FR.getBufferSize() > 6 && FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' &&
+      FH[3] == 'F') {
     auto R = ObjectFile::createELFObjectFile(FR);
     if (R) {
       return new ELFView(*R, VN, Ordinal, FR);

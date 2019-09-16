@@ -38,7 +38,7 @@ class ELFCfgNode;
 class ELFView;
 class Propeller;
 
-// Propeller Profile
+// Propeller profile processing.
 class Propfile {
 public:
   Propfile(FILE *PS, Propeller &P)
@@ -81,6 +81,7 @@ public:
 
   SymbolEntry *createBasicBlockSymbol(uint64_t Ordinal, SymbolEntry *Function,
                                       StringRef &BBIndex, uint64_t Size) {
+    // BBIndex is of the form "1", "2", it's a stringref to integer.
     assert(!Function->BBTag && Function->isFunction());
     auto *Sym =
         new SymbolEntry(Ordinal, BBIndex, SymbolEntry::AliasesTy(),
@@ -96,7 +97,7 @@ public:
   }
 
   llvm::BumpPtrAllocator BPAllocator;
-  llvm::StringSaver PropfileStrSaver;
+  llvm::UniqueStringSaver PropfileStrSaver;
   FILE *PStream;
   Propeller &Prop;
   map<uint64_t, unique_ptr<SymbolEntry>> SymbolOrdinalMap;

@@ -129,7 +129,8 @@ bool Propfile::readSymbols() {
             std::to_string(LineNo) + ".");
         return false;
       }
-      // Only save the index part, which is highly reusable.
+      // Only save the index part, which is highly reusable. Note
+      // PropfileStrSaver is a UniqueStringSaver.
       StringRef BBIndex = PropfileStrSaver.save(L.second);
       auto ExistingI = SymbolOrdinalMap.find(FuncIndex);
       if (ExistingI != SymbolOrdinalMap.end()) {
@@ -240,13 +241,8 @@ bool Propfile::processProfile() {
     } else {
       ++FCnt;
       // LineTag == 'F'
-      if (FromN->Cfg == ToN->Cfg) {
-        if (!FromN->Cfg->markPath(FromN, ToN, Cnt)) {
-          // warn("Waring: failed to mark '" + 
-          //        SymbolEntry::toCompactBBName(FromN->ShName) + "' -> '" + 
-          //        SymbolEntry::toCompactBBName(ToN->ShName) +"'.");
-        }
-      }
+      if (FromN->Cfg == ToN->Cfg)
+        FromN->Cfg->markPath(FromN, ToN, Cnt);
     }
   }
 
@@ -294,46 +290,43 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
     if (CfgLI == CfgMap.end())
       continue;
 
-    //warn(string("No Cfg named '") + FuncName + "' found.");
-    //return nullptr;
-
-    if (CfgLI != CfgMap.end()) {
-      // There might be multiple object files that define SymName.
-      // So for "funcFoo.bb.3", we return Obj2.
-      // For "funcFoo.bb.1", we return Obj1 (the first matching obj).
-      // Obj1:
-      //    Cfg1: funcFoo
-      //          funcFoo.bb.1
-      //          funcFoo.bb.2
-      // Obj2:
-      //    Cfg1: funcFoo
-      //          funcFoo.bb.1
-      //          funcFoo.bb.2
-      //          funcFoo.bb.3
-      // Also note, Objects (CfgLI->second) are sorted in the way
-      // they appear on the command line, which is the same as how
-      // linker chooses the weak symbol definition.
-      if (!S->BBTag) {
+    // There might be multiple object files that define SymName.
+    // So for "funcFoo.bb.3", we return Obj2.
+    // For "funcFoo.bb.1", we return Obj1 (the first matching obj).
+    // Obj1:
+    //    Cfg1: funcFoo
+    //          funcFoo.bb.1
+    //          funcFoo.bb.2
+    // Obj2:
+    //    Cfg1: funcFoo
+    //          funcFoo.bb.1
+    //          funcFoo.bb.2
+    //          funcFoo.bb.3
+    // Also note, Objects (CfgLI->second) are sorted in the way
+    // they appear on the command line, which is the same as how
+    // linker chooses the weak symbol definition.
+    if (!S->BBTag) {
+      for (auto *Cfg : CfgLI->second) {
+        // Check Cfg does have name "SymName".
+        for (auto &N : Cfg->Nodes) {
+          if (N->ShName.split(".llvm.").first == FuncAliasName) {
+            return N.get();
+          }
+        }
+      }
+    } else {
+      uint32_t NumOnes;
+      // Compare the number of "a" in aaa...a.BB.funcname against integer
+      // NumOnes.
+      if (S->Name.getAsInteger(10, NumOnes) == true || !NumOnes) {
+        warn("Internal error, BB name is invalid: '" + S->Name.str() + "'.");
+      } else {
         for (auto *Cfg : CfgLI->second) {
           // Check Cfg does have name "SymName".
           for (auto &N : Cfg->Nodes) {
-            if (N->ShName.split(".llvm.").first == FuncAliasName) {
+            auto T = N->ShName.find_first_of('.');
+            if (T != string::npos && T == NumOnes) {
               return N.get();
-            }
-          }
-        }
-      } else {
-        uint32_t NumOnes;
-        if (S->Name.getAsInteger(10, NumOnes) == true || !NumOnes) {
-          warn("Internal error, BB name is invalid: '" + S->Name.str() + "'.");
-        } else {
-          for (auto *Cfg : CfgLI->second) {
-            // Check Cfg does have name "SymName".
-            for (auto &N : Cfg->Nodes) {
-              auto T = N->ShName.find_first_of('.');
-              if (T != string::npos && T == NumOnes) {
-                return N.get();
-              }
             }
           }
         }
