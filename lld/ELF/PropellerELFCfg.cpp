@@ -36,10 +36,10 @@ using std::unique_ptr;
 namespace lld {
 namespace propeller {
 
-bool ELFCfg::writeAsDotGraph(StringRef CfgOutName) {
-  FILE *fp = fopen(CfgOutName.str().c_str(), "w");
+bool ELFCfg::writeAsDotGraph(const char *CfgOutName) {
+  FILE *fp = fopen(CfgOutName, "w");
   if (!fp) {
-    warn("[Propeller]: Failed to open: '" + CfgOutName.str() + "'\n");
+    warn("[Propeller]: Failed to open: '" + StringRef(CfgOutName) + "'\n");
     return false;
   }
   fprintf(fp, "digraph %s {\n", Name.str().c_str());
@@ -53,7 +53,7 @@ bool ELFCfg::writeAsDotGraph(StringRef CfgOutName) {
   fprintf(fp, "}\n");
   fclose(fp);
   llvm::outs() << "[Propeller]: Done dumping cfg '" << Name.str() << "' into '"
-               << CfgOutName.str() << "'.\n";
+               << CfgOutName << "'.\n";
   return true;
 }
 
@@ -270,6 +270,18 @@ void ELFCfgBuilder::buildCfgs() {
 
     if (!Cfg){
       continue; // to next Cfg group.
+    }
+
+    uint32_t GroupShndx = 0;
+    for (auto &T : TmpNodeMap) {
+      if (GroupShndx != 0 && T.second->Shndx == GroupShndx) {
+        Cfg.reset(nullptr);
+        error("[Propeller]: Basicblock sections must not have same section "
+              "index, this is usually caused by -fbasicblock-sections=labels. "
+              "Use -fbasicblock-sections=list/all instead.");
+        return ;
+      }
+      GroupShndx = T.second->Shndx;
     }
 
     if (Cfg) {

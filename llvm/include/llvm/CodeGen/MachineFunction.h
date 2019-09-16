@@ -334,8 +334,11 @@ class MachineFunction {
   bool HasEHScopes = false;
   bool HasEHFunclets = false;
 
+  // True if basic block sections that are generated have been sorted.
   bool BBSectionsSorted = false;
+  // True if sections must be generated for all basic blocks.
   bool BasicBlockSections = false;
+  // True if labels must be generated for all basic blocks.
   bool BasicBlockLabels = false;
 
   /// List of C++ TypeInfo used.

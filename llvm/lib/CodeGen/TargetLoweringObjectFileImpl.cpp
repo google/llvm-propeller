@@ -666,7 +666,7 @@ static MCSectionELF *selectELFSectionForGlobal(
   unsigned UniqueID = MCContext::GenericSectionID;
   if (EmitUniqueSection) {
     if (TM.getUniqueSectionNames()) {
-       Name.push_back('.');
+      Name.push_back('.');
       TM.getNameWithPrefix(Name, GO, Mang, true /*MayAlwaysUsePrivate*/);
     } else {
       UniqueID = *NextUniqueID;
@@ -755,13 +755,6 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
     const {
   SmallString<128> Name;
   Name = (static_cast<MCSectionELF*>(MBB.getParent()->getSection()))->getSectionName();
-  /*
-  if (MBB.getBasicBlock()) {
-    const auto &OptionalPrefix = MBB.getBasicBlock()->getSectionPrefix();
-    if (OptionalPrefix)
-      Name += *OptionalPrefix;
-  }
-  */
   if (TM.getUniqueBBSectionNames()) {
     Name += ".";
     Name += MBB.getSymbol()->getName();
