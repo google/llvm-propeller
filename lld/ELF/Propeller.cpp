@@ -510,7 +510,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   auto startBBOrderTime = system_clock::now();
   for (auto *Cfg : CfgOrder) {
     if (Cfg->isHot() && config->propellerReorderBlocks) {
-      ExtTSPChainBuilder(Cfg).doSplitOrder(
+      NodeChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
           config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder,
           config->propellerAlignBasicBlocks,

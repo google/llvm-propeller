@@ -104,6 +104,12 @@ struct Configuration {
   llvm::StringRef progName;
   llvm::StringRef propeller;
   llvm::StringRef propellerDumpSymbolOrder;
+  double propellerFallthroughWeight;
+  double propellerForwardJumpWeight;
+  double propellerBackwardJumpWeight;
+  uint64_t propellerForwardJumpDistance;
+  uint64_t propellerBackwardJumpDistance;
+  uint64_t propellerChainSplitThreshold;
   std::vector<std::string> propellerDumpCfgs;
   std::vector<std::string> propellerOpts;
   llvm::StringRef printSymbolOrder;

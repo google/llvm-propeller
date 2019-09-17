@@ -326,6 +326,24 @@ defm propeller_align_basicblocks: B<"propeller-align-basicblocks",
     "Align basic blocks.",
     "Do not align basic blocks (default)">;
 
+defm propeller_fallthrough_weight: Eq<"propeller-fallthrough-weight",
+    "Fallthrough weight parameter to use in ExtTSP algorithm (default: 1.0).">;
+
+defm propeller_forward_jump_weight: Eq<"propeller-forward-jump-weight",
+    "(Near) forward jump weight parameter to use in ExtTSP algorithm (default: 0.1).">;
+
+defm propeller_backward_jump_weight: Eq<"propeller-backward-jump-weight",
+    "(Near) backward jump weight parameter to use in ExtTSP algorithm (default: 0.1).">;
+
+defm propeller_forward_jump_distance: Eq<"propeller-forward-jump-distance",
+    "Maximum distance for a forward jump in ExtTSP algorithm (default: 1024).">;
+
+defm propeller_backward_jump_distance: Eq<"propeller-backward-jump-distance",
+    "Maximum distance for a backward jump in ExtTSP algorithm (default: 640).">;
+
+defm propeller_chain_split_threshold: Eq<"propeller-chain-split-threshold",
+    "Maximum binary size of a chain which could be split in ExtTSP algorithm (default: 128).">;
+
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 

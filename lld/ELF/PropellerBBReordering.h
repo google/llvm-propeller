@@ -59,65 +59,19 @@ public:
   const ELFCfgNode *GetFirstNode() const { return Nodes.front(); }
 
   const ELFCfgNode *GetLastNode() const { return Nodes.back(); }
-
-  void Dump() const;
 };
 
-/* Base class for incremental chaining of Nodes in a Cfg.*/
+
+/* Chain builder based on ExtTSP metric */
 class NodeChainBuilder {
-protected:
+private:
   /* Cfg representing a function.*/
   const ELFCfg *Cfg;
-  /* Set of built chains, keyed by Shndx of their Delegate Nodes.*/
+  /* Set of built chains, keyed by section index of their Delegate Nodes.*/
   map<uint64_t, unique_ptr<NodeChain>> Chains;
   unordered_map<const ELFCfgNode *, NodeChain *> NodeToChainMap;
   unordered_map<const ELFCfgNode *, uint32_t> NodeOffset;
-  list<const ELFCfgNode *> Layout;
 
-  void SortChainsByExecutionDensity(vector<const NodeChain *> &ChainOrder);
-  void AttachFallThroughs();
-  void MergeChains(NodeChain *LeftChain, NodeChain *RightChain);
-
-  /* This function tries to place two nodes immediately adjacent to
-   * each other (used for fallthroughs).
-   * Returns true if this can be done. */
-  bool AttachNodes(const ELFCfgNode *Src, const ELFCfgNode *Sink);
-  virtual void ComputeChainOrder(vector<const NodeChain *> &);
-  void BuildPathCovers();
-
-  virtual void PrintStats() const;
-
-private:
-  void CreateChainForNode(const ELFCfgNode *Node) {
-    NodeChain *Chain = new NodeChain(Node);
-    NodeToChainMap[Node] = Chain;
-    NodeOffset[Node] = 0;
-    Chains.emplace(std::piecewise_construct, std::forward_as_tuple(Node->Shndx),
-                   std::forward_as_tuple(Chain));
-  }
-
-public:
-  virtual ~NodeChainBuilder() = default;
-  NodeChainBuilder(NodeChainBuilder &) = delete;
-
-  uint32_t getNodeOffset(const ELFCfgNode *N) const { return NodeOffset.at(N); }
-
-  NodeChainBuilder(const ELFCfg *_Cfg) : Cfg(_Cfg) {
-    for (auto &Node : Cfg->Nodes) {
-      CreateChainForNode(Node.get());
-    }
-  }
-
-  void doSplitOrder(list<StringRef> &SymbolList,
-                    list<StringRef>::iterator HotPlaceHolder,
-                    list<StringRef>::iterator ColdPlaceHolder,
-                    bool AlignBasicBlocks,
-                    StringMap<unsigned>& SymbolAlignmentMap);
-};
-
-/* Chain builder based on ExtTSP metric */
-class ExtTSPChainBuilder : public NodeChainBuilder {
-private:
   unordered_map<const ELFCfgNode *, ELFCfgNode *> MutuallyForcedOut;
 
   class NodeChainAssembly;
@@ -127,19 +81,46 @@ private:
       NodeChainAssemblies;
   unordered_map<NodeChain *, unordered_set<NodeChain *>> CandidateChains;
 
+  void SortChainsByExecutionDensity(vector<const NodeChain *> &ChainOrder);
+  void AttachFallThroughs();
+
+  /* This function tries to place two nodes immediately adjacent to
+   * each other (used for fallthroughs).
+   * Returns true if this can be done. */
+  bool AttachNodes(const ELFCfgNode *Src, const ELFCfgNode *Sink);
+
   void MergeChainEdges(NodeChain *SplitChain, NodeChain *UnsplitChain);
+
+  void MergeChains(NodeChain *LeftChain, NodeChain *RightChain);
   void MergeChains(std::unique_ptr<NodeChainAssembly> A);
 
   double ExtTSPScore(NodeChain *Chain) const;
   bool UpdateNodeChainAssembly(NodeChain *SplitChain, NodeChain *UnsplitChain);
   void ComputeChainOrder(vector<const NodeChain *> &);
-  void PrintStats() const;
+
+  void initMutuallyForcedEdges();
+
+  void initNodeChains();
 
 public:
-  ExtTSPChainBuilder(const ELFCfg *_Cfg);
+  virtual ~NodeChainBuilder() = default;
+  NodeChainBuilder(NodeChainBuilder &) = delete;
+
+  uint32_t getNodeOffset(const ELFCfgNode *N) const { return NodeOffset.at(N); }
+
+  NodeChainBuilder(const ELFCfg *_Cfg) : Cfg(_Cfg) {
+    initNodeChains();
+    initMutuallyForcedEdges();
+  }
+
+  void doSplitOrder(list<StringRef> &SymbolList,
+                    list<StringRef>::iterator HotPlaceHolder,
+                    list<StringRef>::iterator ColdPlaceHolder,
+                    bool AlignBasicBlocks,
+                    StringMap<unsigned>& SymbolAlignmentMap);
 };
 
-class ExtTSPChainBuilder::NodeChainSlice {
+class NodeChainBuilder::NodeChainSlice {
 private:
   NodeChain *Chain;
   list<const ELFCfgNode *>::iterator Begin, End;
@@ -159,15 +140,15 @@ private:
 
   uint32_t Size() const { return EndOffset - BeginOffset; }
 
-  friend class ExtTSPChainBuilder;
+  friend class NodeChainBuilder;
   friend class NodeChainAssembly;
 };
 
-class ExtTSPChainBuilder::NodeChainAssembly {
+class NodeChainBuilder::NodeChainAssembly {
 private:
   double Score;
   bool ScoreComputed{false};
-  const ExtTSPChainBuilder *ChainBuilder;
+  const NodeChainBuilder *ChainBuilder;
   NodeChain *SplitChain, *UnsplitChain;
   MergeOrder MOrder;
   list<const ELFCfgNode *>::iterator SlicePos;
@@ -177,7 +158,7 @@ private:
   NodeChainAssembly(NodeChain *ChainX, NodeChain *ChainY,
                     list<const ELFCfgNode *>::iterator _SlicePos,
                     MergeOrder _MOrder,
-                    const ExtTSPChainBuilder *_ChainBuilder) {
+                    const NodeChainBuilder *_ChainBuilder) {
     SplitChain = ChainX;
     UnsplitChain = ChainY;
     SlicePos = _SlicePos;
@@ -246,7 +227,7 @@ private:
   }
 
   void Dump() const;
-  friend class ExtTSPChainBuilder;
+  friend class NodeChainBuilder;
 
 public:
   NodeChainAssembly(NodeChainAssembly &&) = default;
