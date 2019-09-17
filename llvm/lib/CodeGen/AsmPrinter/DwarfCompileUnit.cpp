@@ -390,6 +390,9 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     SmallVector<RangeSpan, 2> BB_List;
     BB_List.push_back(RangeSpan(Asm->getFunctionBegin(),
                                 Asm->getFunctionEnd()));
+    // If basic block sections are on, only the entry BB and exception
+    // handling BBs will be in the [getFunctionBegin(), getFunctionEnd()]
+    // range. Ranges for the other BBs have to be emitted separately.
     for (auto &MBB : *Asm->MF) {
       if (!MBB.pred_empty() && MBB.isUniqueSection()) {
         BB_List.push_back(
@@ -482,10 +485,6 @@ void DwarfCompileUnit::constructScopeDIE(
 
 void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
                                          SmallVector<RangeSpan, 2> Range) {
-  // With basic block sections, DW_AT_ranges for every basic block between
-  // the span must be emitted.
-  // if (Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::None)
-  //  return;
   const TargetLoweringObjectFile &TLOF = Asm->getObjFileLowering();
 
   // Emit the offset into .debug_ranges or .debug_rnglists as a relocatable
@@ -537,9 +536,49 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     DIE &Die, const SmallVectorImpl<InsnRange> &Ranges) {
   SmallVector<RangeSpan, 2> List;
   List.reserve(Ranges.size());
-  for (const InsnRange &R : Ranges)
-    List.push_back(RangeSpan(DD->getLabelBeforeInsn(R.first),
-                             DD->getLabelAfterInsn(R.second)));
+  for (const InsnRange &R : Ranges) {
+    auto *BeginLabel = DD->getLabelBeforeInsn(R.first);
+    auto *EndLabel = DD->getLabelAfterInsn(R.second);
+
+    const auto *BeginMBB = R.first->getParent();
+    const auto *EndBB = R.second->getParent();
+
+    if (BeginMBB == EndBB || !EndBB->isUniqueSection() ||
+        Asm->MF->getBasicBlockSections() == llvm::BasicBlockSection::None) {
+      // Without basic block sections, there is just one continuous range.
+      // The same holds if EndBB is in the initial non-unique-section BB range.
+      List.push_back(RangeSpan(BeginLabel, EndLabel));
+      continue;
+    }
+
+    const auto *LastMBBInSection = BeginMBB;
+
+    if (BeginMBB->isUniqueSection()) {
+      // BeginLabel lies in a unique section ending at the BeginMBB's end
+      // symbol.
+      assert(BeginMBB->getEndMCSymbol() &&
+             "Unique BB sections should have end symbols.");
+      List.push_back(RangeSpan(BeginLabel, BeginMBB->getEndMCSymbol()));
+    } else {
+      // BeginLabel lies in a non-unique section, but EndLabel does not. The
+      // section for non-unique-section BBs ends at Asm->getFunctionEnd().
+      List.push_back(RangeSpan(BeginLabel, Asm->getFunctionEnd()));
+      while (!std::next(LastMBBInSection)->isUniqueSection())
+        ++LastMBBInSection;
+    }
+
+    for (auto *MBB = std::next(LastMBBInSection); MBB != EndBB; ++MBB) {
+      assert(MBB->isUniqueSection() && "All non-unique-section BBs should be"
+                                       " before the unique-section ones.");
+      assert(MBB->getSymbol() && "Unique BB sections should have symbols.");
+      assert(MBB->getEndMCSymbol() &&
+             "Unique BB sections should have end symbols.");
+      List.push_back(RangeSpan(MBB->getSymbol(), MBB->getEndMCSymbol()));
+    }
+
+    assert(EndBB->getSymbol() && "Unique BB sections should have symbols.");
+    List.push_back(RangeSpan(EndBB->getSymbol(), EndLabel));
+  }
   attachRangesOrLowHighPC(Die, std::move(List));
 }
 
