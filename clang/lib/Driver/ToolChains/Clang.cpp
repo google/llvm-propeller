@@ -4302,11 +4302,15 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   // Handle Propeller optimization flags here.
-  if (Arg *A = Args.getLastArg(options::OPT_fpropeller_EQ,
+  if (Arg *A = Args.getLastArg(options::OPT_fpropeller_optimize_EQ,
+                               options::OPT_fpropeller_label,
                                options::OPT_fno_propeller)) {
-    if (A->getOption().matches(options::OPT_fpropeller_EQ)) {
+    if (A->getOption().matches(options::OPT_fpropeller_optimize_EQ)) {
       CmdArgs.push_back(
           Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
+      CmdArgs.push_back("-funique-internal-funcnames");
+    } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
+      CmdArgs.push_back("-fbasicblock-sections=labels");
       CmdArgs.push_back("-funique-internal-funcnames");
     }
   }

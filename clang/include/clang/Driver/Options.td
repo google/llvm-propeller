@@ -1290,9 +1290,11 @@ def flto_jobs_EQ : Joined<["-"], "flto-jobs=">,
 def fthinlto_index_EQ : Joined<["-"], "fthinlto-index=">,
   Flags<[CoreOption, CC1Option]>, Group<f_Group>,
   HelpText<"Perform ThinLTO importing using provided function summary index">;
-def fpropeller_EQ : Joined<["-"], "fpropeller=">, Flags<[CoreOption, CC1Option]>, Group<f_Group>,
-  HelpText<"Enable Propeller optimization using the profiles given">;
-  def fno_propeller : Flag<["-"], "fno-propeller">, Group<f_Group>,
+def fpropeller_optimize_EQ : Joined<["-"], "fpropeller-optimize=">, Flags<[CoreOption, CC1Option]>, Group<f_Group>,
+  HelpText<"Enable Propeller optimization using the given profiles">;
+def fpropeller_label : Flag<["-"], "fpropeller-label">, Group<f_Group>,
+  HelpText<"Label the binary's basic blocks for generating Propeller profiles">;
+def fno_propeller : Flag<["-"], "fno-propeller">, Group<f_Group>,
   HelpText<"Disable Propeller (default)">;
 def fmacro_backtrace_limit_EQ : Joined<["-"], "fmacro-backtrace-limit=">,
                                 Group<f_Group>, Flags<[DriverOption, CoreOption]>;
