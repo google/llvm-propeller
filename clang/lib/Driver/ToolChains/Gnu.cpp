@@ -619,6 +619,21 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     }
   }
 
+  // With Propeller, trigger the linker flags only with lld.
+  if (Arg *A = Args.getLastArg(options::OPT_fpropeller_EQ,
+                               options::OPT_fno_propeller)) {
+    if (A->getOption().matches(options::OPT_fpropeller_EQ) &&
+        Args.getLastArgValue(options::OPT_fuse_ld_EQ).equals_lower("lld")) {
+      std::string propeller = std::string("--propeller=") + A->getValue();
+      CmdArgs.push_back(
+          Args.MakeArgString(Twine("--propeller=") + A->getValue()));
+      if (D.isUsingLTO())
+        CmdArgs.push_back(Args.MakeArgString(
+            Twine("--lto-basicblock-sections=") + A->getValue()));
+      CmdArgs.push_back("--optimize-bb-jumps");
+    }
+  }
+
   // Add OpenMP offloading linker script args if required.
   AddOpenMPLinkerScript(getToolChain(), C, Output, Inputs, Args, CmdArgs, JA);
 
