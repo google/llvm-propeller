@@ -451,9 +451,11 @@ ELFView *ELFView::create(const StringRef &VN, const uint32_t Ordinal,
 }
 
 ostream &operator<<(ostream &Out, const ELFCfgNode &Node) {
-  Out << (Node.ShName == Node.Cfg->Name
-              ? "<Entry>"
-              : Node.ShName.data() + Node.Cfg->Name.size() + 1)
+  Out << "["
+      << (Node.ShName == Node.Cfg->Name
+              ? "Entry"
+              : std::to_string(Node.ShName.size() - Node.Cfg->Name.size() - 4))
+      << "]"
       << " [size=" << std::noshowbase << std::dec << Node.ShSize << ", "
       << " addr=" << std::showbase << std::hex << Node.MappedAddr << ", "
       << " frequency=" << std::showbase << std::dec << Node.Freq << ", "

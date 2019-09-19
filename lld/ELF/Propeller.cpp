@@ -512,11 +512,9 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     if (Cfg->isHot() && config->propellerReorderBlocks) {
       NodeChainBuilder(Cfg).doSplitOrder(
           SymbolList, HotPlaceHolder,
-          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder,
-          config->propellerAlignBasicBlocks,
-          config->symbolAlignmentFile);
+          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
       ReorderedN++;
-    } else {
+     } else {
       auto PlaceHolder =
           config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
       Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {

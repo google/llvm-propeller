@@ -50,11 +50,13 @@ public:
   NodeChain(const ELFCfgNode *Node) {
     DelegateNode = Node;
     Nodes.push_back(Node);
-    Size = std::max(Node->ShSize, (uint64_t)1);
+    Size = Node->ShSize;
     Freq = Node->Freq;
   }
 
-  double GetExecDensity() const { return ((double)Freq) / Size; }
+  void Dump() const;
+
+  double GetExecDensity() const { return ((double)Freq) / std::max(Size, (uint32_t)1); }
 
   const ELFCfgNode *GetFirstNode() const { return Nodes.front(); }
 
@@ -115,9 +117,7 @@ public:
 
   void doSplitOrder(list<StringRef> &SymbolList,
                     list<StringRef>::iterator HotPlaceHolder,
-                    list<StringRef>::iterator ColdPlaceHolder,
-                    bool AlignBasicBlocks,
-                    StringMap<unsigned>& SymbolAlignmentMap);
+                    list<StringRef>::iterator ColdPlaceHolder);
 };
 
 class NodeChainBuilder::NodeChainSlice {
@@ -130,6 +130,7 @@ private:
                  list<const ELFCfgNode *>::iterator _End,
                  const NodeChainBuilder &ChainBuilder)
       : Chain(C), Begin(_Begin), End(_End) {
+
     BeginOffset = ChainBuilder.getNodeOffset(*Begin);
     if (End == Chain->Nodes.end())
       EndOffset = Chain->Size;
@@ -164,10 +165,10 @@ private:
     SlicePos = _SlicePos;
     MOrder = _MOrder;
     ChainBuilder = _ChainBuilder;
+    NodeChainSlice X1(ChainX, ChainX->Nodes.begin(), SlicePos, *ChainBuilder);
     NodeChainSlice X2(ChainX, SlicePos, ChainX->Nodes.end(), *ChainBuilder);
     NodeChainSlice Y(ChainY, ChainY->Nodes.begin(), ChainY->Nodes.end(),
                      *ChainBuilder);
-    NodeChainSlice X1(ChainX, ChainX->Nodes.begin(), SlicePos, *ChainBuilder);
 
     switch (MOrder) {
     case MergeOrder::X2X1Y:
@@ -200,17 +201,36 @@ private:
     return GetExtTSPScore() - SplitChain->Score - UnsplitChain->Score;
   }
 
-  bool FindSliceIndex(const ELFCfgNode *Node, uint8_t &SliceIdx) const {
+  bool FindSliceIndex(const ELFCfgNode *Node, uint8_t &Idx) const {
     NodeChain *Chain = ChainBuilder->NodeToChainMap.at(Node);
     if (SplitChain != Chain && UnsplitChain != Chain)
       return false;
     auto Offset = ChainBuilder->NodeOffset.at(Node);
-    for (uint8_t Idx = 0; Idx < 3; ++Idx) {
-      if (Chain == Slices[Idx].Chain) {
-        if (Offset >= Slices[Idx].BeginOffset &&
-            Offset < Slices[Idx].EndOffset) {
-          SliceIdx = Idx;
-          return true;
+    for (Idx = 0; Idx < 3; ++Idx) {
+      if (Chain != Slices[Idx].Chain)
+        continue;
+      if (Offset < Slices[Idx].BeginOffset)
+        continue;
+      if (Offset > Slices[Idx].EndOffset)
+        continue;
+      if (Offset < Slices[Idx].EndOffset && Offset > Slices[Idx].BeginOffset)
+        return true;
+      if (Offset == Slices[Idx].EndOffset) {
+        for(auto NI = std::prev(Slices[Idx].End);
+            NI != std::prev(Slices[Idx].Begin) && !(*NI)->ShSize ;
+            NI--){
+          if(*NI == Node)
+            return true;
+        }
+      }
+      if (Offset == Slices[Idx].BeginOffset) {
+        for(auto NI = Slices[Idx].Begin;
+            NI != Slices[Idx].End;
+            NI++){
+          if(*NI == Node)
+            return true;
+          if((*NI)->ShSize)
+            break;
         }
       }
     }
@@ -226,7 +246,6 @@ private:
     return nullptr;
   }
 
-  void Dump() const;
   friend class NodeChainBuilder;
 
 public:
@@ -235,6 +254,9 @@ public:
   // NodeChainAssembly(const NodeChainAssembly&) = delete;
   NodeChainAssembly() = delete;
 };
+
+
+ostream & operator << (ostream &Out, const NodeChain &Chain);
 
 } // namespace propeller
 } // namespace lld
