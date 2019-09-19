@@ -170,13 +170,13 @@ static void fill(uint8_t *Buf, size_t Size,
   size_t I = 0;
   unsigned FillerIndex = 0;
   while(I < Size) {
-    for (; I + SFiller[FillerIndex].size() <= Size; I += SFiller[FillerIndex].size())
+    for(; FillerIndex < SFiller.size() && I + SFiller[FillerIndex].size() > Size ; FillerIndex++);
+    if (FillerIndex == SFiller.size())
+      fatal("Failed padding with special filler.");
+    unsigned NC = (Size - I) / SFiller[FillerIndex].size();
+    for (unsigned C = 0 ; C < NC; ++C) {
       memcpy(Buf + I, SFiller[FillerIndex].data(), SFiller[FillerIndex].size());
-    if (FillerIndex + 1 < SFiller.size()) {
-      FillerIndex++;
-    } else {
-      memcpy(Buf + I, SFiller[FillerIndex].data(), Size - I);
-      break;
+      I += SFiller[FillerIndex].size();
     }
   }
 }
