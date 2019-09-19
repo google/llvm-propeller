@@ -31,10 +31,10 @@
 ## This example is motivated by Figure 6 in https://arxiv.org/pdf/1809.04676.pdf.
 
 # RUN: echo "Symbols" > %t_prof.propeller
-# RUN: echo "1 1a Nfoo" >> %t_prof.propeller
+# RUN: echo "1 12 Nfoo" >> %t_prof.propeller
 # RUN: echo "2 5 1.1" >> %t_prof.propeller
-# RUN: echo "3 8 1.2" >> %t_prof.propeller
-# RUN: echo "4 8 1.3" >> %t_prof.propeller
+# RUN: echo "3 4 1.2" >> %t_prof.propeller
+# RUN: echo "4 4 1.3" >> %t_prof.propeller
 # RUN: echo "Branches" >> %t_prof.propeller
 # RUN: echo "1 4 150" >> %t_prof.propeller
 # RUN: echo "2 4 100" >> %t_prof.propeller

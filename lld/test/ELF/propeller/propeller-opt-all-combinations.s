@@ -53,12 +53,12 @@
 
 # RUN: echo "Symbols" > %t_prof.propeller
 # RUN: echo "1 8 Nfoo" >> %t_prof.propeller
-# RUN: echo "2 24 Nbar" >> %t_prof.propeller
-# RUN: echo "3 c 2.1" >> %t_prof.propeller
+# RUN: echo "2 20 Nbar" >> %t_prof.propeller
+# RUN: echo "3 9 2.1" >> %t_prof.propeller
 # RUN: echo "4 7 2.2" >> %t_prof.propeller
-# RUN: echo "5 8 2.3" >> %t_prof.propeller
+# RUN: echo "5 7 2.3" >> %t_prof.propeller
 # RUN: echo "6 8 Nbaz" >> %t_prof.propeller
-# RUN: echo "7 8 Nqux" >> %t_prof.propeller
+# RUN: echo "7 7 Nqux" >> %t_prof.propeller
 # RUN: echo "Branches" >> %t_prof.propeller
 # RUN: echo "2 4 100" >> %t_prof.propeller
 # RUN: echo "4 1 100 C" >> %t_prof.propeller

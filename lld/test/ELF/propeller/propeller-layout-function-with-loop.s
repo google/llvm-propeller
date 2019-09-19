@@ -49,11 +49,11 @@
 ## as a fallthrough chain in the layout.
 
 # RUN: echo "Symbols" > %t_prof.propeller
-# RUN: echo "1 18 Nfoo" > %t_prof.propeller
+# RUN: echo "1 14 Nfoo" > %t_prof.propeller
 # RUN: echo "2 5 1.1" >> %t_prof.propeller
 # RUN: echo "3 3 1.2" >> %t_prof.propeller
 # RUN: echo "4 5 1.3" >> %t_prof.propeller
-# RUN: echo "5 b 1.4" >> %t_prof.propeller
+# RUN: echo "5 4 1.4" >> %t_prof.propeller
 # RUN: echo "Branches" >> %t_prof.propeller
 # RUN: echo "4 2 90" >> %t_prof.propeller
 # RUN: echo "2 4 95" >> %t_prof.propeller
