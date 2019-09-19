@@ -619,10 +619,10 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     }
   }
 
-  // With Propeller, trigger the linker flags only with lld.
   if (Arg *A = Args.getLastArg(options::OPT_fpropeller_optimize_EQ,
                                options::OPT_fpropeller_label,
                                options::OPT_fno_propeller)) {
+    // With Propeller, trigger the linker flags only with lld.
     if (A->getOption().matches(options::OPT_fpropeller_optimize_EQ)) {
       if (!Args.getLastArgValue(options::OPT_fuse_ld_EQ).equals_lower("lld"))
         D.Diag(clang::diag::err_drv_unsupported_opt)
@@ -636,6 +636,7 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("--no-call-graph-profile-sort");
       CmdArgs.push_back("-z");
       CmdArgs.push_back("nokeep-text-section-prefix");
+      CmdArgs.push_back("--no-warn-symbol-ordering");
     } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
       if (D.isUsingLTO())
         CmdArgs.push_back(Args.MakeArgString(
