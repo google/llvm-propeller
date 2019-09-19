@@ -108,7 +108,7 @@ funique_flag            := -funique-internal-funcnames
 
 bb_section_none_flags      := $(call gen_build_flags,"-fbasicblock-sections=none $(funique_flag)","   $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,none)")
 bb_section_labels_flags    := $(call gen_build_flags,"-fbasicblock-sections=labels $(funique_flag)"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,labels)")
-bb_section_all_flags       := $(call gen_build_flags,"-fbasicblock-sections=all $(funique_flag)","    $(lld_relocs) $(LLD_OPT) $(call bb_section_lto_flags,all)")
+bb_section_all_flags       := $(call gen_build_flags,"-fbasicblock-sections=all $(funique_flag)","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,all)")
 bb_section_list_flags       = $(call gen_build_flags,"-fbasicblock-sections=$1 $(funique_flag)","$(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,$1)")
 
 # $1 is compiler name, "stage1", "instrbb", etc;
@@ -252,8 +252,6 @@ run-commands.sh: | stage1-compiler
                 >> run-commands.sh
 	chmod +x run-commands.sh
 
-#  -Wl,-plo -Wl,-symfile=$(DDIR)/pgo-compiler.symfile -Wl,-profile=pgo-compiler.profile \
-
 # $1 must be "all"
 define do_relink
 	if [[ "$(2)" == "align" ]]; then \
@@ -266,12 +264,8 @@ define do_relink
           | sed -e "s! -o bin/clang-10 ! -o bin/clang-10-plo$${ALIGNSUFFIX} \
                      -Wl,--lto-basicblock-sections=$1     \
 		     -Wl,-propeller=$(DDIR)/$(word 2,$^)  \
-		     -Wl,-propeller-opt=reorder-blocks    \
-		     -Wl,-propeller-opt=reorder-funcs     \
-		     -Wl,-propeller-opt=split-funcs       \
 		     -Wl,-propeller-keep-named-symbols    \
 		     $${ALIGNFLAG} \
-		     -Wl,-no-warn-symbol-ordering \
                      -Wl,--no-call-graph-profile-sort !"   \
 		     -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
 	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@
