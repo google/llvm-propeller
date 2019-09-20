@@ -21,7 +21,6 @@
 # CHECK-COUNT-6:	nopw	(%rax,%rax)
 # CHECK-NOT:		nopw	(%rax,%rax)
 # CHECK-NEXT:		nopl	(%rax)
-# CHECK-NEXT:		nop
 # CHECK-EMPTY:
 
 # CHECK:		aa.BB.foo:

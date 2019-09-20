@@ -223,6 +223,9 @@ public:
   std::vector<Relocation> relocations;
 
   llvm::Optional<std::array<uint8_t, 4>> Filler;
+
+  // Special filler provides variable-length padding instructions.
+  // This has to be ordered by length.
   llvm::Optional<std::vector<std::vector<uint8_t>>> SpecialFiller;
 
   // These are artificial jump relocations.

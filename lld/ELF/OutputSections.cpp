@@ -167,20 +167,19 @@ void OutputSection::sort(llvm::function_ref<int(InputSectionBase *s)> order) {
 
 static void fill(uint8_t *Buf, size_t Size,
                  const std::vector<std::vector<uint8_t>> &SFiller) {
-  size_t I = 0;
-  unsigned FillerIndex = 0;
-  while(I < Size) {
-    for(; FillerIndex < SFiller.size() && I + SFiller[FillerIndex].size() > Size ; FillerIndex++);
-    if (FillerIndex == SFiller.size())
-      fatal("Failed padding with special filler.");
-    unsigned NC = (Size - I) / SFiller[FillerIndex].size();
-    for (unsigned C = 0 ; C < NC; ++C) {
-      memcpy(Buf + I, SFiller[FillerIndex].data(), SFiller[FillerIndex].size());
-      I += SFiller[FillerIndex].size();
-    }
+  unsigned I = 0;
+  unsigned NC = Size / SFiller.back().size();
+  for (unsigned C = 0 ; C < NC; ++C){
+    memcpy(Buf + I, SFiller.back().data(), SFiller.back().size());
+    I += SFiller.back().size();
   }
+  unsigned remaining = Size - I;
+  if (!remaining)
+    return;
+  if (SFiller.at(remaining-1).size() != remaining)
+    fatal("Failed padding with special filler.");
+  memcpy(Buf + I, SFiller.at(remaining-1).data(), remaining);
 }
-
 
 
 // Fill [Buf, Buf + Size) with Filler.

@@ -21,7 +21,6 @@
 # CHECK-NEXT:	nop
 # CHECK-NEXT:	nopw	(%rax,%rax)
 # CHECK-NEXT:   nopl	(%rax)
-# CHECK-NEXT:	nop
 # CHECK-EMPTY:
 # CHECK-NEXT:	0000000000201020 _foo4:
 # CHECK-NEXT:	nop
@@ -34,7 +33,7 @@
 # CHECK-NEXT:	nop
 # CHECK-EMPTY:
 # CHECK-NEXT:	0000000000201040 _foo5:
-# CHECK-NEXT:	jmp	6 <_foo7>
+# CHECK-NEXT:	jmp	6
 # CHECK-NEXT:	int3
 # CHECK-NEXT:	int3
 # CHECK-EMPTY:
