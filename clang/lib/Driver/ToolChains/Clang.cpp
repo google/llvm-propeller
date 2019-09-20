@@ -4305,13 +4305,27 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Arg *A = Args.getLastArg(options::OPT_fpropeller_optimize_EQ,
                                options::OPT_fpropeller_label,
                                options::OPT_fno_propeller)) {
+    /* If we specify -funique-internal-funcnames on the command
+       line, we do not need to push it again.
+
+       If we specify -fno-unique-internal-funcnames, we cannot push
+       "-funique-internal-funcnames".
+
+       So we push "-funique-internal-funcnames" only if no
+       -f(no-)unique-internal-funcnames is specified. */
+    bool NeedExplicitUniqueInternalFuncNames =
+        (nullptr ==
+         Args.getLastArg(options::OPT_funique_internal_funcnames,
+                         options::OPT_fno_unique_internal_funcnames));
     if (A->getOption().matches(options::OPT_fpropeller_optimize_EQ)) {
       CmdArgs.push_back(
           Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
-      CmdArgs.push_back("-funique-internal-funcnames");
+      if (NeedExplicitUniqueInternalFuncNames)
+        CmdArgs.push_back("-funique-internal-funcnames");
     } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
       CmdArgs.push_back("-fbasicblock-sections=labels");
-      CmdArgs.push_back("-funique-internal-funcnames");
+      if (NeedExplicitUniqueInternalFuncNames)
+        CmdArgs.push_back("-funique-internal-funcnames");
     }
   }
 
