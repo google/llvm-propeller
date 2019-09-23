@@ -181,7 +181,6 @@ static void fill(uint8_t *Buf, size_t Size,
   memcpy(Buf + I, SFiller.at(remaining-1).data(), remaining);
 }
 
-
 // Fill [Buf, Buf + Size) with Filler.
 // This is used for linker script "=fillexp" command.
 static void fill(uint8_t *buf, size_t size,

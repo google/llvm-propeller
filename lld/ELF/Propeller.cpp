@@ -9,6 +9,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Parallel.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <chrono>
@@ -56,15 +57,16 @@ SymbolEntry *Propfile::findSymbol(StringRef SymName) {
       return L2->second;
     }
   }
-  // warn(string("failed to find SymbolEntry for '") +
-  //     SymbolEntry::toCompactBBName(SymName) + "'.");
   return nullptr;
 }
 
+// Refer header file for detailed information about symbols section.
 bool Propfile::readSymbols() {
   ssize_t R;
   LineNo = 0;
   LineTag = '\0';
+  // A list of bbsymbols<ordinal, function_ordinal, bbindex and size> that
+  // appears before its wrapping function. This should be rather rare.
   list<tuple<uint64_t, uint64_t, StringRef, uint64_t>> BBSymbols;
   while ((R = getline(&LineBuf, &LineSize, PStream)) != -1) {
     ++LineNo;
@@ -81,7 +83,7 @@ bool Propfile::readSymbols() {
       continue;
     }
     if (LineBuf[R - 1] == '\n') {
-      LineBuf[--R] = '\0'; // drop '\n' character at the end;
+      LineBuf[--R] = '\0'; // Drop '\n' character at the end.
     }
     StringRef L(LineBuf); // LineBuf is null-terminated.
 
@@ -117,7 +119,6 @@ bool Propfile::readSymbols() {
         SAlias = SAlias.split(".llvm.").first;
       }
       StringRef SName = SAliases[0];
-      //SAliases.erase(SAliases.begin());
       assert(SymbolOrdinalMap.find(SOrdinal) == SymbolOrdinalMap.end());
       createFunctionSymbol(SOrdinal, SName, std::move(SAliases), SSize);
     } else {
@@ -169,7 +170,7 @@ bool Propfile::readSymbols() {
   return true;
 }
 
-// Parse a branch record like below
+// Helper method to parse a branch or fallthrough record like below
 //   10 12 232590 R
 static bool parseBranchOrFallthroughLine(StringRef L, uint64_t *From,
                                          uint64_t *To, uint64_t *Cnt, char *T) {
@@ -290,21 +291,8 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
     if (CfgLI == CfgMap.end())
       continue;
 
-    // There might be multiple object files that define SymName.
-    // So for "funcFoo.bb.3", we return Obj2.
-    // For "funcFoo.bb.1", we return Obj1 (the first matching obj).
-    // Obj1:
-    //    Cfg1: funcFoo
-    //          funcFoo.bb.1
-    //          funcFoo.bb.2
-    // Obj2:
-    //    Cfg1: funcFoo
-    //          funcFoo.bb.1
-    //          funcFoo.bb.2
-    //          funcFoo.bb.3
-    // Also note, Objects (CfgLI->second) are sorted in the way
-    // they appear on the command line, which is the same as how
-    // linker chooses the weak symbol definition.
+    // Objects (CfgLI->second) are sorted in the way they appear on the command
+    // line, which is the same as how linker chooses the weak symbol definition.
     if (!S->BBTag) {
       for (auto *Cfg : CfgLI->second) {
         // Check Cfg does have name "SymName".
@@ -435,12 +423,14 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
     duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
     duration<double> CreateCfgTime =
         startProcessProfileTime - startCreateCfgTime;
-    fprintf(stderr, "[Propeller] Read all symbols in %f seconds.\n",
-            ReadSymbolTime.count());
-    fprintf(stderr, "[Propeller] Created all cfgs in %f seconds.\n",
-            CreateCfgTime.count());
-    fprintf(stderr, "[Propeller] Proccesed the profile in %f seconds.\n",
-            ProcessProfileTime.count());
+    llvm::outs() << llvm::format(
+        "[Propeller] Read all symbols in %f seconds.\n",
+        ReadSymbolTime.count());
+    llvm::outs() << llvm::format(
+        "[Propeller] Created all cfgs in %f seconds.\n", CreateCfgTime.count());
+    llvm::outs() << llvm::format(
+        "[Propeller] Proccesed the profile in %f seconds.\n",
+        ProcessProfileTime.count());
   }
 
   if (!config->propellerDumpCfgs.empty()) {
@@ -465,8 +455,7 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
                 (Cfg->Name + "." + StringRef(std::to_string(Index) + ".dot")));
           }
           if (!Cfg->writeAsDotGraph(CfgOutput.c_str())) {
-            warn("[Propeller] Failed to dump Cfg for: '" + CfgNameToDump +
-                 "'.");
+            warn("[Propeller] Failed to dump Cfg: '" + CfgNameToDump + "'.");
           }
         }
       }
@@ -490,9 +479,9 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     auto CfgsReordered = Algo.doOrder(CfgOrder);
     if (config->propellerPrintStats){
       duration<double> FuncOrderTime = system_clock::now() - startFuncOrderTime;
-      fprintf(stderr, "[Propeller] Reordered %u hot functions in %f seconds.\n",
-              CfgsReordered,
-              FuncOrderTime.count());
+      llvm::outs() << llvm::format(
+          "[Propeller] Reordered %u hot functions in %f seconds.\n",
+          CfgsReordered, FuncOrderTime.count());
     }
   } else {
     forEachCfgRef([&CfgOrder](ELFCfg &Cfg) { CfgOrder.push_back(&Cfg); });
@@ -524,8 +513,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
   }
   if (config->propellerPrintStats) {
     duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;
-    fprintf(
-        stderr,
+    llvm::outs() << llvm::format(
         "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
         ReorderedN, BBOrderTime.count());
   }
@@ -559,8 +547,8 @@ void Propeller::calculatePropellerLegacy(
     list<StringRef>::iterator ColdPlaceHolder) {
   // No function split or no cold symbols, all bb symbols shall be removed.
   if (HotPlaceHolder == ColdPlaceHolder) return ;
-  // For cold bb symbols that are cut out and placed in code segements, we keep
-  // only the first bb symbol that starts the code portion of the function.
+  // For cold bb symbols that are split and placed in cold segements,
+  // only the first bb symbol of every function partition is kept.
   StringRef LastFuncName = "";
   for (auto I = std::next(HotPlaceHolder), J = ColdPlaceHolder; I != J; ++I) {
     StringRef SName = *I;

@@ -38,7 +38,76 @@ class ELFCfgNode;
 class ELFView;
 class Propeller;
 
-// Propeller profile processing.
+// Propeller profile parser.
+//
+// A sample propeller profile is like below:
+//
+// Symbols
+// 1 0 N.init/_init
+// 2 0 N.plt
+// 3 0 N.plt.got
+// 4 0 N.text
+// 5 2b N_start
+// 6 0 Nderegister_tm_clones
+// 7 0 Nregister_tm_clones
+// 8 0 N__do_global_dtors_aux
+// 9 0 Nframe_dummy
+// 10 2c Ncompute_flag
+// 11 7c Nmain
+// 12 f 11.1
+// 13 28 11.2
+// 14 b 11.3
+// 15 a 11.4
+// 16 65 N__libc_csu_init
+// 17 2 N__libc_csu_fini
+// 18 0 N.fini/_fini
+// 19 5e N_ZN9assistantD2Ev/_ZN9assistantD1Ev
+// Branches
+// 10 12 232590 R
+// 12 10 234842 C
+// 12 14 143608
+// 14 12 227040
+// Fallthroughs
+// 10 10 225131
+// 10 12 2255
+// 12 10 2283
+// 12 12 362886
+// 12 14 77103
+// 14 12 1376
+// 14 14 140856
+// !func1
+// !func2
+// !func3
+//
+// The file consists of 4 parts, "Symbols", "Branches", "Fallthroughs" and
+// Funclist.
+//
+// Each line in "Symbols" section contains the following field:
+//   index    - in decimal, unique for each symbol, start from 1
+//   size     - in hex, without "0x"
+//   name     - either starts with "N" or a digit. In the former case,
+//              everything after N is the symbol name. In the latter case, it's
+//              in the form of "a.b", "a" is a symbol index, "b" is the bb
+//              identification string (could be an index number). For the above
+//              example, name "14.2" means "main.bb.2", because "14" points to
+//              symbol main. Also note, symbols could have aliases, in such
+//              case, aliases are concatenated with the original name with a
+//              '/'. For example, symbol 17391 contains 2 aliases.
+// Note, the symbols listed are in strict non-decreasing address order.
+//
+// Each line in "Branches" section contains the following field:
+//   from     - sym_index, in decimal
+//   to       - sym_index, in decimal
+//   cnt      - counter, in decimal
+//   C/R      - a field indicate whether this is a function call or a return,
+//              could be empty if it's just a normal branch.
+//
+// Each line in "Fallthroughs" section contains exactly the same fields as in
+// "Branches" section, except the "C" field.
+//
+// Funclist contains lines that starts with "!", and everything following that
+// will be the function name that's to be consumed by compiler (for bb section
+// generation purpose).
 class Propfile {
 public:
   Propfile(FILE *PS, Propeller &P)

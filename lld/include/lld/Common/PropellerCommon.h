@@ -34,8 +34,9 @@ struct SymbolEntry {
 
   uint64_t Ordinal;
   // For a function symbol, it's the full name. For a bb symbol this is only the
-  // bbindex part.
+  // bbindex part, which is the number of "a"s before the ".bb." part.
   StringRef Name;
+  // Aliases[0] always equals to Name.
   AliasesTy Aliases;
   uint64_t Addr;
   uint64_t Size;

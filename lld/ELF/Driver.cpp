@@ -940,13 +940,19 @@ static void readConfigs(opt::InputArgList &args) {
   config->propellerReorderBlocks = config->propellerReorderFuncs =
       config->propellerSplitFuncs = !config->propeller.empty();
 
-  config->propellerFallthroughWeight = args::getFloat(args, OPT_propeller_fallthrough_weight, 1.0);
-  config->propellerForwardJumpWeight = args::getFloat(args, OPT_propeller_forward_jump_weight, 0.1);
-  config->propellerBackwardJumpWeight = args::getFloat(args, OPT_propeller_backward_jump_weight, 0.1);
+  config->propellerFallthroughWeight =
+      args::getFloat(args, OPT_propeller_fallthrough_weight, 1.0);
+  config->propellerForwardJumpWeight =
+      args::getFloat(args, OPT_propeller_forward_jump_weight, 0.1);
+  config->propellerBackwardJumpWeight =
+      args::getFloat(args, OPT_propeller_backward_jump_weight, 0.1);
 
-  config->propellerForwardJumpDistance = args::getFloat(args, OPT_propeller_forward_jump_distance, 1024);
-  config->propellerBackwardJumpDistance = args::getFloat(args, OPT_propeller_backward_jump_distance, 640);
-  config->propellerChainSplitThreshold = args::getFloat(args, OPT_propeller_chain_split_threshold, 128);
+  config->propellerForwardJumpDistance =
+      args::getFloat(args, OPT_propeller_forward_jump_distance, 1024);
+  config->propellerBackwardJumpDistance =
+      args::getFloat(args, OPT_propeller_backward_jump_distance, 640);
+  config->propellerChainSplitThreshold =
+      args::getFloat(args, OPT_propeller_chain_split_threshold, 128);
 
   // Parse Propeller flags.
   auto propellerOpts = args.getAllArgValues(OPT_propeller_opt);
@@ -1785,8 +1791,6 @@ template <class ELFT> static uint32_t getAndFeatures() {
 // Do actual linking. Note that when this function is called,
 // all linker scripts have already been parsed.
 template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
-  // auto LinkStartTime = system_clock::now();
-  
   // If a -hash-style option was not given, set to a default value,
   // which varies depending on the target.
   if (!args.hasArg(OPT_hash_style)) {
@@ -1950,13 +1954,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
     for (InputSectionBase *s : f->getSections())
       inputSections.push_back(cast<InputSection>(s));
 
-
-  // auto PropellerStartTime = system_clock::now();
-
-  // duration<double> PrePropellerTime = PropellerStartTime - LinkStartTime;
-  // fprintf(stderr, "[PrePropeller]: Total processing time: %f\n",
-  //         PrePropellerTime.count());
-
   if (!config->propeller.empty()) {
     lld::propeller::Propeller P(symtab);
     if (P.processFiles(objectFiles)) {
@@ -1965,11 +1962,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
       error("Propeller stage failed.");
     }
   }
-  // auto PropellerEndTime = system_clock::now();
-  // duration<double> TotalPropellerTime = PropellerEndTime -
-  // PropellerStartTime; fprintf(stderr, "[Propeller]: Total processing time:
-  // %f\n",
-  //         TotalPropellerTime.count());
 
   if (!config->symbolAlignmentFile.empty()) {
     auto alignSym = [](Symbol *sym) {
@@ -1979,8 +1971,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
       if (auto *d = dyn_cast<Defined>(sym)) {
         if (auto *sec = dyn_cast_or_null<InputSectionBase>(d->section)) {
           sec->alignment = it->second;
-          // warn("Setting alignment (" + Twine(it->second) + ") for symbol: " +
-          // sym.getName());
         }
       }
     };
@@ -1990,7 +1980,7 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
         if (sym->isLocal())
           alignSym(sym);
 
-    symtab->forEachSymbol([&](Symbol *sym) {
+    symtab->forEachSymbol([&alignSym](Symbol *sym) {
       if (!sym->isLazy())
         alignSym(sym);
     });
@@ -2007,7 +1997,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
     return config->strip != StripPolicy::None &&
            (s->name.startswith(".debug") || s->name.startswith(".zdebug"));
   });
-
 
   // Now that the number of partitions is fixed, save a pointer to the main
   // partition.
@@ -2100,9 +2089,4 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
 
   // Write the result to the file.
   writeResult<ELFT>();
-
-  // auto LinkEndTime = system_clock::now();
-  // duration<double> TotalPostPropellerTime = LinkEndTime - PropellerEndTime;
-  // fprintf(stderr, "[Propeller]: Total post propeller time: %f\n",
-  //         TotalPostPropellerTime.count());
 }

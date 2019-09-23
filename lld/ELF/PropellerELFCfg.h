@@ -183,6 +183,7 @@ protected:
                          map<uint64_t, ELFCfgNode *> &ShndxNodeMap);
 };
 
+// ELFView is a structure that corresponds to a single ELF file.
 class ELFView {
  public:
   static ELFView *create(const StringRef &VN,
@@ -203,6 +204,7 @@ class ELFView {
   const uint32_t         Ordinal;
   MemoryBufferRef        FileRef;
 
+  // Name -> ELFCfg mapping.
   map<StringRef, unique_ptr<ELFCfg>> Cfgs;
 };
 
