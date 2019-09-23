@@ -117,6 +117,9 @@ static std::string computeDataLayout(const Triple &TT) {
       !TT.isArch64Bit())
     Ret += "-p:32:32";
 
+  // Address spaces for 32 bit signed, 32 bit unsigned, and 64 bit pointers.
+  Ret += "-p270:32:32-p271:32:32-p272:64:64";
+
   // Some ABIs align 64 bit integers and doubles to 64 bits, others to 32.
   if (TT.isArch64Bit() || TT.isOSWindows() || TT.isOSNaCl())
     Ret += "-i64:64";
@@ -219,17 +222,9 @@ X86TargetMachine::X86TargetMachine(const Target &T, const Triple &TT,
           getEffectiveX86CodeModel(CM, JIT, TT.getArch() == Triple::x86_64),
           OL),
       TLOF(createTLOF(getTargetTriple())) {
-  // Windows stack unwinder gets confused when execution flow "falls through"
-  // after a call to 'noreturn' function.
-  // To prevent that, we emit a trap for 'unreachable' IR instructions.
-  // (which on X86, happens to be the 'ud2' instruction)
   // On PS4, the "return address" of a 'noreturn' call must still be within
   // the calling function, and TrapUnreachable is an easy way to get that.
-  // The check here for 64-bit windows is a bit icky, but as we're unlikely
-  // to ever want to mix 32 and 64-bit windows code in a single module
-  // this should be fine.
-  if ((TT.isOSWindows() && TT.getArch() == Triple::x86_64) || TT.isPS4() ||
-      TT.isOSBinFormatMachO()) {
+  if (TT.isPS4() || TT.isOSBinFormatMachO()) {
     this->Options.TrapUnreachable = true;
     this->Options.NoTrapAfterNoreturn = TT.isOSBinFormatMachO();
   }
@@ -518,12 +513,19 @@ void X86PassConfig::addPreEmitPass() {
 }
 
 void X86PassConfig::addPreEmitPass2() {
+  const Triple &TT = TM->getTargetTriple();
+  const MCAsmInfo *MAI = TM->getMCAsmInfo();
+
   addPass(createX86RetpolineThunksPass());
+
+  // Insert extra int3 instructions after trailing call instructions to avoid
+  // issues in the unwinder.
+  if (TT.isOSWindows() && TT.getArch() == Triple::x86_64)
+    addPass(createX86AvoidTrailingCallPass());
+
   // Verify basic block incoming and outgoing cfa offset and register values and
   // correct CFA calculation rule where needed by inserting appropriate CFI
   // instructions.
-  const Triple &TT = TM->getTargetTriple();
-  const MCAsmInfo *MAI = TM->getMCAsmInfo();
   if (!TT.isOSDarwin() &&
       (!TT.isOSWindows() ||
        MAI->getExceptionHandlingType() == ExceptionHandling::DwarfCFI))

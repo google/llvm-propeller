@@ -907,8 +907,7 @@ Error LTO::run(AddStreamFn AddStream, NativeObjectCache Cache) {
         GlobalValue::dropLLVMManglingEscape(Res.second.IRName));
 
     if (Res.second.VisibleOutsideSummary && Res.second.Prevailing)
-      GUIDPreservedSymbols.insert(GlobalValue::getGUID(
-          GlobalValue::dropLLVMManglingEscape(Res.second.IRName)));
+      GUIDPreservedSymbols.insert(GUID);
 
     GUIDPrevailingResolutions[GUID] =
         Res.second.Prevailing ? PrevailingType::Yes : PrevailingType::No;
@@ -1010,6 +1009,16 @@ Error LTO::runRegularLTO(AddStreamFn AddStream) {
   }
   return backend(Conf, AddStream, RegularLTO.ParallelCodeGenParallelismLevel,
                  std::move(RegularLTO.CombinedModule), ThinLTO.CombinedIndex);
+}
+
+static const char *libcallRoutineNames[] = {
+#define HANDLE_LIBCALL(code, name) name,
+#include "llvm/IR/RuntimeLibcalls.def"
+#undef HANDLE_LIBCALL
+};
+
+ArrayRef<const char*> LTO::getRuntimeLibcallSymbols() {
+  return makeArrayRef(libcallRoutineNames);
 }
 
 /// This class defines the interface to the ThinLTO backend.

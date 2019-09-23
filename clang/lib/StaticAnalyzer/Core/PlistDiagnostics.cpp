@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Analysis/PathDiagnostic.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/PlistSupport.h"
 #include "clang/Basic/SourceManager.h"
@@ -20,7 +21,6 @@
 #include "clang/Lex/TokenConcatenation.h"
 #include "clang/Rewrite/Core/HTMLRewrite.h"
 #include "clang/StaticAnalyzer/Core/AnalyzerOptions.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
 #include "clang/StaticAnalyzer/Core/IssueHash.h"
 #include "clang/StaticAnalyzer/Core/PathDiagnosticConsumers.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -679,7 +679,7 @@ void PlistDiagnostics::FlushDiagnosticsImpl(
     o << "   <key>type</key>";
     EmitString(o, D->getBugType()) << '\n';
     o << "   <key>check_name</key>";
-    EmitString(o, D->getCheckName()) << '\n';
+    EmitString(o, D->getCheckerName()) << '\n';
 
     o << "   <!-- This hash is experimental and going to change! -->\n";
     o << "   <key>issue_hash_content_of_line_in_context</key>";
@@ -689,7 +689,7 @@ void PlistDiagnostics::FlushDiagnosticsImpl(
                                             : D->getLocation().asLocation()),
                     SM);
     const Decl *DeclWithIssue = D->getDeclWithIssue();
-    EmitString(o, GetIssueHash(SM, L, D->getCheckName(), D->getBugType(),
+    EmitString(o, GetIssueHash(SM, L, D->getCheckerName(), D->getBugType(),
                                DeclWithIssue, LangOpts))
         << '\n';
 

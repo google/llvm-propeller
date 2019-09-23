@@ -90,7 +90,6 @@ enum SpillOpcodeKey {
   SOK_QuadBitSpill,
   SOK_SpillToVSR,
   SOK_SPESpill,
-  SOK_SPE4Spill,
   SOK_LastOpcodeSpill  // This must be last on the enum.
 };
 
@@ -967,11 +966,11 @@ void PPCInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     getKillRegState(KillSrc);
     return;
   } else if (PPC::SPERCRegClass.contains(SrcReg) &&
-             PPC::SPE4RCRegClass.contains(DestReg)) {
+             PPC::GPRCRegClass.contains(DestReg)) {
     BuildMI(MBB, I, DL, get(PPC::EFSCFD), DestReg).addReg(SrcReg);
     getKillRegState(KillSrc);
     return;
-  } else if (PPC::SPE4RCRegClass.contains(SrcReg) &&
+  } else if (PPC::GPRCRegClass.contains(SrcReg) &&
              PPC::SPERCRegClass.contains(DestReg)) {
     BuildMI(MBB, I, DL, get(PPC::EFDCFS), DestReg).addReg(SrcReg);
     getKillRegState(KillSrc);
@@ -1010,8 +1009,6 @@ void PPCInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     Opc = PPC::QVFMRb;
   else if (PPC::CRBITRCRegClass.contains(DestReg, SrcReg))
     Opc = PPC::CROR;
-  else if (PPC::SPE4RCRegClass.contains(DestReg, SrcReg))
-    Opc = PPC::OR;
   else if (PPC::SPERCRegClass.contains(DestReg, SrcReg))
     Opc = PPC::EVOR;
   else
@@ -1044,8 +1041,6 @@ unsigned PPCInstrInfo::getStoreOpcodeForSpill(unsigned Reg,
       OpcodeIndex = SOK_Float4Spill;
     } else if (PPC::SPERCRegClass.hasSubClassEq(RC)) {
       OpcodeIndex = SOK_SPESpill;
-    } else if (PPC::SPE4RCRegClass.hasSubClassEq(RC)) {
-      OpcodeIndex = SOK_SPE4Spill;
     } else if (PPC::CRRCRegClass.hasSubClassEq(RC)) {
       OpcodeIndex = SOK_CRSpill;
     } else if (PPC::CRBITRCRegClass.hasSubClassEq(RC)) {
@@ -1084,8 +1079,6 @@ unsigned PPCInstrInfo::getStoreOpcodeForSpill(unsigned Reg,
       OpcodeIndex = SOK_Float4Spill;
     } else if (PPC::SPERCRegClass.contains(Reg)) {
       OpcodeIndex = SOK_SPESpill;
-    } else if (PPC::SPE4RCRegClass.contains(Reg)) {
-      OpcodeIndex = SOK_SPE4Spill;
     } else if (PPC::CRRCRegClass.contains(Reg)) {
       OpcodeIndex = SOK_CRSpill;
     } else if (PPC::CRBITRCRegClass.contains(Reg)) {
@@ -1134,8 +1127,6 @@ PPCInstrInfo::getLoadOpcodeForSpill(unsigned Reg,
       OpcodeIndex = SOK_Float4Spill;
     } else if (PPC::SPERCRegClass.hasSubClassEq(RC)) {
       OpcodeIndex = SOK_SPESpill;
-    } else if (PPC::SPE4RCRegClass.hasSubClassEq(RC)) {
-      OpcodeIndex = SOK_SPE4Spill;
     } else if (PPC::CRRCRegClass.hasSubClassEq(RC)) {
       OpcodeIndex = SOK_CRSpill;
     } else if (PPC::CRBITRCRegClass.hasSubClassEq(RC)) {
@@ -1174,8 +1165,6 @@ PPCInstrInfo::getLoadOpcodeForSpill(unsigned Reg,
       OpcodeIndex = SOK_Float4Spill;
     } else if (PPC::SPERCRegClass.contains(Reg)) {
       OpcodeIndex = SOK_SPESpill;
-    } else if (PPC::SPE4RCRegClass.contains(Reg)) {
-      OpcodeIndex = SOK_SPE4Spill;
     } else if (PPC::CRRCRegClass.contains(Reg)) {
       OpcodeIndex = SOK_CRSpill;
     } else if (PPC::CRBITRCRegClass.contains(Reg)) {
@@ -2433,7 +2422,7 @@ const unsigned *PPCInstrInfo::getStoreOpcodesForSpillArray() const {
       {PPC::STW, PPC::STD, PPC::STFD, PPC::STFS, PPC::SPILL_CR,
        PPC::SPILL_CRBIT, PPC::STVX, PPC::STXVD2X, PPC::STXSDX, PPC::STXSSPX,
        PPC::SPILL_VRSAVE, PPC::QVSTFDX, PPC::QVSTFSXs, PPC::QVSTFDXb,
-       PPC::SPILLTOVSR_ST, PPC::EVSTDD, PPC::SPESTW},
+       PPC::SPILLTOVSR_ST, PPC::EVSTDD},
       // Power 9
       {PPC::STW, PPC::STD, PPC::STFD, PPC::STFS, PPC::SPILL_CR,
        PPC::SPILL_CRBIT, PPC::STVX, PPC::STXV, PPC::DFSTOREf64, PPC::DFSTOREf32,
@@ -2449,7 +2438,7 @@ const unsigned *PPCInstrInfo::getLoadOpcodesForSpillArray() const {
       {PPC::LWZ, PPC::LD, PPC::LFD, PPC::LFS, PPC::RESTORE_CR,
        PPC::RESTORE_CRBIT, PPC::LVX, PPC::LXVD2X, PPC::LXSDX, PPC::LXSSPX,
        PPC::RESTORE_VRSAVE, PPC::QVLFDX, PPC::QVLFSXs, PPC::QVLFDXb,
-       PPC::SPILLTOVSR_LD, PPC::EVLDD, PPC::SPELWZ},
+       PPC::SPILLTOVSR_LD, PPC::EVLDD},
       // Power 9
       {PPC::LWZ, PPC::LD, PPC::LFD, PPC::LFS, PPC::RESTORE_CR,
        PPC::RESTORE_CRBIT, PPC::LVX, PPC::LXV, PPC::DFLOADf64, PPC::DFLOADf32,
@@ -3941,21 +3930,99 @@ bool PPCInstrInfo::isBDNZ(unsigned Opcode) const {
   return (Opcode == (Subtarget.isPPC64() ? PPC::BDNZ8 : PPC::BDNZ));
 }
 
-bool PPCInstrInfo::analyzeLoop(MachineLoop &L, MachineInstr *&IndVarInst,
-                               MachineInstr *&CmpInst) const {
-  MachineBasicBlock *LoopEnd = L.getBottomBlock();
-  MachineBasicBlock::iterator I = LoopEnd->getFirstTerminator();
-  // We really "analyze" only CTR loops right now.
-  if (I != LoopEnd->end() && isBDNZ(I->getOpcode())) {
-    IndVarInst = nullptr;
-    CmpInst = &*I;
-    return false;
+namespace {
+class PPCPipelinerLoopInfo : public TargetInstrInfo::PipelinerLoopInfo {
+  MachineInstr *Loop, *EndLoop, *LoopCount;
+  MachineFunction *MF;
+  const TargetInstrInfo *TII;
+  int64_t TripCount;
+
+public:
+  PPCPipelinerLoopInfo(MachineInstr *Loop, MachineInstr *EndLoop,
+                       MachineInstr *LoopCount)
+      : Loop(Loop), EndLoop(EndLoop), LoopCount(LoopCount),
+        MF(Loop->getParent()->getParent()),
+        TII(MF->getSubtarget().getInstrInfo()) {
+    // Inspect the Loop instruction up-front, as it may be deleted when we call
+    // createTripCountGreaterCondition.
+    if (LoopCount->getOpcode() == PPC::LI8 || LoopCount->getOpcode() == PPC::LI)
+      TripCount = LoopCount->getOperand(1).getImm();
+    else
+      TripCount = -1;
   }
-  return true;
+
+  bool shouldIgnoreForPipelining(const MachineInstr *MI) const override {
+    // Only ignore the terminator.
+    return MI == EndLoop;
+  }
+
+  Optional<bool>
+  createTripCountGreaterCondition(int TC, MachineBasicBlock &MBB,
+                                  SmallVectorImpl<MachineOperand> &Cond) override {
+    if (TripCount == -1) {
+      // Since BDZ/BDZ8 that we will insert will also decrease the ctr by 1,
+      // so we don't need to generate any thing here.
+      Cond.push_back(MachineOperand::CreateImm(0));
+      Cond.push_back(MachineOperand::CreateReg(
+          MF->getSubtarget<PPCSubtarget>().isPPC64() ? PPC::CTR8 : PPC::CTR,
+          true));
+      return {};
+    }
+
+    return TripCount > TC;
+  }
+
+  void setPreheader(MachineBasicBlock *NewPreheader) override {
+    // Do nothing. We want the LOOP setup instruction to stay in the *old*
+    // preheader, so we can use BDZ in the prologs to adapt the loop trip count.
+  }
+
+  void adjustTripCount(int TripCountAdjust) override {
+    // If the loop trip count is a compile-time value, then just change the
+    // value.
+    if (LoopCount->getOpcode() == PPC::LI8 ||
+        LoopCount->getOpcode() == PPC::LI) {
+      int64_t TripCount = LoopCount->getOperand(1).getImm() + TripCountAdjust;
+      LoopCount->getOperand(1).setImm(TripCount);
+      return;
+    }
+
+    // Since BDZ/BDZ8 that we will insert will also decrease the ctr by 1,
+    // so we don't need to generate any thing here.
+  }
+
+  void disposed() override {
+    Loop->eraseFromParent();
+    // Ensure the loop setup instruction is deleted too.
+    LoopCount->eraseFromParent();
+  }
+};
+} // namespace
+
+std::unique_ptr<TargetInstrInfo::PipelinerLoopInfo>
+PPCInstrInfo::analyzeLoopForPipelining(MachineBasicBlock *LoopBB) const {
+  // We really "analyze" only hardware loops right now.
+  MachineBasicBlock::iterator I = LoopBB->getFirstTerminator();
+  MachineBasicBlock *Preheader = *LoopBB->pred_begin();
+  if (Preheader == LoopBB)
+    Preheader = *std::next(LoopBB->pred_begin());
+  MachineFunction *MF = Preheader->getParent();
+
+  if (I != LoopBB->end() && isBDNZ(I->getOpcode())) {
+    SmallPtrSet<MachineBasicBlock *, 8> Visited;
+    if (MachineInstr *LoopInst = findLoopInstr(*Preheader, Visited)) {
+      Register LoopCountReg = LoopInst->getOperand(0).getReg();
+      MachineRegisterInfo &MRI = MF->getRegInfo();
+      MachineInstr *LoopCount = MRI.getUniqueVRegDef(LoopCountReg);
+      return std::make_unique<PPCPipelinerLoopInfo>(LoopInst, &*I, LoopCount);
+    }
+  }
+  return nullptr;
 }
 
-MachineInstr *
-PPCInstrInfo::findLoopInstr(MachineBasicBlock &PreHeader) const {
+MachineInstr *PPCInstrInfo::findLoopInstr(
+    MachineBasicBlock &PreHeader,
+    SmallPtrSet<MachineBasicBlock *, 8> &Visited) const {
 
   unsigned LOOPi = (Subtarget.isPPC64() ? PPC::MTCTR8loop : PPC::MTCTRloop);
 
@@ -3964,50 +4031,6 @@ PPCInstrInfo::findLoopInstr(MachineBasicBlock &PreHeader) const {
     if (I.getOpcode() == LOOPi)
       return &I;
   return nullptr;
-}
-
-unsigned PPCInstrInfo::reduceLoopCount(
-    MachineBasicBlock &MBB, MachineBasicBlock &PreHeader, MachineInstr *IndVar,
-    MachineInstr &Cmp, SmallVectorImpl<MachineOperand> &Cond,
-    SmallVectorImpl<MachineInstr *> &PrevInsts, unsigned Iter,
-    unsigned MaxIter) const {
-  // We expect a hardware loop currently. This means that IndVar is set
-  // to null, and the compare is the ENDLOOP instruction.
-  assert((!IndVar) && isBDNZ(Cmp.getOpcode()) && "Expecting a CTR loop");
-  MachineFunction *MF = MBB.getParent();
-  DebugLoc DL = Cmp.getDebugLoc();
-  MachineInstr *Loop = findLoopInstr(PreHeader);
-  if (!Loop)
-    return 0;
-  Register LoopCountReg = Loop->getOperand(0).getReg();
-  MachineRegisterInfo &MRI = MF->getRegInfo();
-  MachineInstr *LoopCount = MRI.getUniqueVRegDef(LoopCountReg);
-
-  if (!LoopCount)
-    return 0;
-  // If the loop trip count is a compile-time value, then just change the
-  // value.
-  if (LoopCount->getOpcode() == PPC::LI8 || LoopCount->getOpcode() == PPC::LI) {
-    int64_t Offset = LoopCount->getOperand(1).getImm();
-    if (Offset <= 1) {
-      LoopCount->eraseFromParent();
-      Loop->eraseFromParent();
-      return 0;
-    }
-    LoopCount->getOperand(1).setImm(Offset - 1);
-    return Offset - 1;
-  }
-
-  // The loop trip count is a run-time value.
-  // We need to subtract one from the trip count,
-  // and insert branch later to check if we're done with the loop.
-
-  // Since BDZ/BDZ8 that we will insert will also decrease the ctr by 1,
-  // so we don't need to generate any thing here.
-  Cond.push_back(MachineOperand::CreateImm(0));
-  Cond.push_back(MachineOperand::CreateReg(
-      Subtarget.isPPC64() ? PPC::CTR8 : PPC::CTR, true));
-  return LoopCountReg;
 }
 
 // Return true if get the base operand, byte offset of an instruction and the

@@ -655,8 +655,8 @@ bool Options::HandleOptionCompletion(CompletionRequest &request,
   llvm::StringRef cur_opt_str = request.GetCursorArgumentPrefix();
 
   for (size_t i = 0; i < opt_element_vector.size(); i++) {
-    int opt_pos = opt_element_vector[i].opt_pos;
-    int opt_arg_pos = opt_element_vector[i].opt_arg_pos;
+    size_t opt_pos = static_cast<size_t>(opt_element_vector[i].opt_pos);
+    size_t opt_arg_pos = static_cast<size_t>(opt_element_vector[i].opt_arg_pos);
     int opt_defs_index = opt_element_vector[i].opt_defs_index;
     if (opt_pos == request.GetCursorIndex()) {
       // We're completing the option itself.
@@ -746,25 +746,14 @@ void Options::HandleOptionArgumentCompletion(
   auto opt_defs = GetDefinitions();
   std::unique_ptr<SearchFilter> filter_up;
 
-  int opt_arg_pos = opt_element_vector[opt_element_index].opt_arg_pos;
   int opt_defs_index = opt_element_vector[opt_element_index].opt_defs_index;
 
   // See if this is an enumeration type option, and if so complete it here:
 
   const auto &enum_values = opt_defs[opt_defs_index].enum_values;
-  if (!enum_values.empty()) {
-    std::string match_string(
-        request.GetParsedLine().GetArgumentAtIndex(opt_arg_pos),
-        request.GetParsedLine().GetArgumentAtIndex(opt_arg_pos) +
-            request.GetCursorCharPosition());
-
-    for (const auto &enum_value : enum_values) {
-      if (strstr(enum_value.string_value, match_string.c_str()) ==
-          enum_value.string_value) {
-        request.AddCompletion(enum_value.string_value);
-      }
-    }
-  }
+  if (!enum_values.empty())
+    for (const auto &enum_value : enum_values)
+      request.TryCompleteCurrentArg(enum_value.string_value);
 
   // If this is a source file or symbol type completion, and  there is a -shlib
   // option somewhere in the supplied arguments, then make a search filter for
@@ -937,7 +926,7 @@ static Args ReconstituteArgsAfterParsing(llvm::ArrayRef<char *> parsed,
   for (const char *arg : parsed) {
     auto pos = FindOriginalIter(arg, original);
     assert(pos != original.end());
-    result.AppendArgument(pos->ref, pos->quote);
+    result.AppendArgument(pos->ref(), pos->GetQuoteChar());
   }
   return result;
 }
@@ -948,8 +937,8 @@ static size_t FindArgumentIndexForOption(const Args &args,
   std::string long_opt =
       llvm::formatv("--{0}", long_option.definition->long_option);
   for (const auto &entry : llvm::enumerate(args)) {
-    if (entry.value().ref.startswith(short_opt) ||
-        entry.value().ref.startswith(long_opt))
+    if (entry.value().ref().startswith(short_opt) ||
+        entry.value().ref().startswith(long_opt))
       return entry.index();
   }
 
@@ -1088,7 +1077,7 @@ llvm::Expected<Args> Options::ParseAlias(const Args &args,
       continue;
 
     if (!input_line.empty()) {
-      auto tmp_arg = args_copy[idx].ref;
+      auto tmp_arg = args_copy[idx].ref();
       size_t pos = input_line.find(tmp_arg);
       if (pos != std::string::npos)
         input_line.erase(pos, tmp_arg.size());
@@ -1098,9 +1087,9 @@ llvm::Expected<Args> Options::ParseAlias(const Args &args,
          OptionParser::eNoArgument) &&
         (OptionParser::GetOptionArgument() != nullptr) &&
         (idx < args_copy.GetArgumentCount()) &&
-        (args_copy[idx].ref == OptionParser::GetOptionArgument())) {
+        (args_copy[idx].ref() == OptionParser::GetOptionArgument())) {
       if (input_line.size() > 0) {
-        auto tmp_arg = args_copy[idx].ref;
+        auto tmp_arg = args_copy[idx].ref();
         size_t pos = input_line.find(tmp_arg);
         if (pos != std::string::npos)
           input_line.erase(pos, tmp_arg.size());
@@ -1291,7 +1280,7 @@ OptionElementVector Options::ParseForCompletion(const Args &args,
   const Args::ArgEntry &cursor = args[cursor_index];
   if ((static_cast<int32_t>(dash_dash_pos) == -1 ||
        cursor_index < dash_dash_pos) &&
-      !cursor.IsQuoted() && cursor.ref == "-") {
+      !cursor.IsQuoted() && cursor.ref() == "-") {
     option_element_vector.push_back(
         OptionArgElement(OptionArgElement::eBareDash, cursor_index,
                          OptionArgElement::eBareDash));

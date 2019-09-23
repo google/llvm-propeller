@@ -755,7 +755,7 @@ define <8 x double> @test_getexp_round_pd_512(<8 x double> %a0) {
 ; CHECK:       # %bb.0:
 ; CHECK-NEXT:    vgetexppd {sae}, %zmm0, %zmm0
 ; CHECK-NEXT:    ret{{[l|q]}}
-  %res = call <8 x double> @llvm.x86.avx512.mask.getexp.pd.512(<8 x double> %a0,  <8 x double> zeroinitializer, i8 -1, i32 8)
+  %res = call <8 x double> @llvm.x86.avx512.mask.getexp.pd.512(<8 x double> %a0,  <8 x double> zeroinitializer, i8 -1, i32 12)
   ret <8 x double> %res
 }
 declare <8 x double> @llvm.x86.avx512.mask.getexp.pd.512(<8 x double>, <8 x double>, i8, i32) nounwind readnone
@@ -4796,6 +4796,22 @@ define <4 x float>@test_int_x86_avx512_mask_getmant_ss(<4 x float> %x0, <4 x flo
   %res12 = fadd <4 x float> %res2, %res3
   %res13 = fadd <4 x float> %res11, %res12
   ret <4 x float> %res13
+}
+
+define <4 x float> @test_int_x86_avx512_mask_getmant_ss_load(<4 x float> %x0, <4 x float>* %x1p) {
+; X64-LABEL: test_int_x86_avx512_mask_getmant_ss_load:
+; X64:       # %bb.0:
+; X64-NEXT:    vgetmantss $11, (%rdi), %xmm0, %xmm0
+; X64-NEXT:    retq
+;
+; X86-LABEL: test_int_x86_avx512_mask_getmant_ss_load:
+; X86:       # %bb.0:
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    vgetmantss $11, (%eax), %xmm0, %xmm0
+; X86-NEXT:    retl
+  %x1 = load <4 x float>, <4 x float>* %x1p
+  %res = call <4 x float> @llvm.x86.avx512.mask.getmant.ss(<4 x float> %x0, <4 x float> %x1, i32 11, <4 x float> undef, i8 -1, i32 4)
+  ret <4 x float> %res
 }
 
 declare <8 x double> @llvm.x86.avx512.vpermilvar.pd.512(<8 x double>, <8 x i64>)

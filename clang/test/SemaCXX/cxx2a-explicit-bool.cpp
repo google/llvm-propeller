@@ -20,7 +20,7 @@ namespace special_cases
 template<int a>
 struct A {
 // expected-note@-1+ {{candidate constructor}}
-  explicit(1 << a)
+  explicit(1 << a)  // expected-warning {{converting the result of '<<' to a boolean; did you mean '(1 << -1) != 0'?}}
 // expected-note@-1 {{negative shift count -1}}
 // expected-error@-2 {{explicit specifier argument is not a constant expression}}
   A(int);
@@ -715,5 +715,23 @@ A d0 = 0.0; // expected-error {{no viable constructor or deduction guide}}
 A d1(0, 0);
 A d2{0, 0};
 A d3 = {0.0, 0.0};// expected-error {{explicit deduction guide}}
+
+}
+
+namespace PR42980 {
+using size_t = decltype(sizeof(0));
+
+struct Str {// expected-note+ {{candidate constructor}}
+  template <size_t N>
+  explicit(N > 7)// expected-note {{resolved to true}}
+  Str(char const (&str)[N]);
+};
+
+template <size_t N>
+Str::Str(char const(&str)[N]) { }
+// expected-note@-1 {{candidate constructor}}
+
+Str a = "short";
+Str b = "not so short";// expected-error {{no viable conversion}}
 
 }

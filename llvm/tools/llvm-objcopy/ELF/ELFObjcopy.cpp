@@ -613,9 +613,8 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj,
   if (Error E = updateAndRemoveSymbols(Config, Obj))
     return E;
 
-  if (!Config.SectionsToRename.empty() || !Config.AllocSectionsPrefix.empty()) {
-    DenseSet<SectionBase *> PrefixedSections;
-    for (auto &Sec : Obj.sections()) {
+  if (!Config.SectionsToRename.empty()) {
+    for (SectionBase &Sec : Obj.sections()) {
       const auto Iter = Config.SectionsToRename.find(Sec.Name);
       if (Iter != Config.SectionsToRename.end()) {
         const SectionRename &SR = Iter->second;
@@ -623,58 +622,49 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj,
         if (SR.NewFlags.hasValue())
           setSectionFlagsAndType(Sec, SR.NewFlags.getValue());
       }
+    }
+  }
 
-      // Add a prefix to allocated sections and their relocation sections. This
-      // should be done after renaming the section by Config.SectionToRename to
-      // imitate the GNU objcopy behavior.
-      if (!Config.AllocSectionsPrefix.empty()) {
-        if (Sec.Flags & SHF_ALLOC) {
-          Sec.Name = (Config.AllocSectionsPrefix + Sec.Name).str();
-          PrefixedSections.insert(&Sec);
-
-          // Rename relocation sections associated to the allocated sections.
-          // For example, if we rename .text to .prefix.text, we also rename
-          // .rel.text to .rel.prefix.text.
-          //
-          // Dynamic relocation sections (SHT_REL[A] with SHF_ALLOC) are handled
-          // above, e.g., .rela.plt is renamed to .prefix.rela.plt, not
-          // .rela.prefix.plt since GNU objcopy does so.
-        } else if (auto *RelocSec = dyn_cast<RelocationSectionBase>(&Sec)) {
-          auto *TargetSec = RelocSec->getSection();
-          if (TargetSec && (TargetSec->Flags & SHF_ALLOC)) {
-            StringRef prefix;
-            switch (Sec.Type) {
-            case SHT_REL:
-              prefix = ".rel";
-              break;
-            case SHT_RELA:
-              prefix = ".rela";
-              break;
-            default:
-              continue;
-            }
-
-            // If the relocation section comes *after* the target section, we
-            // don't add Config.AllocSectionsPrefix because we've already added
-            // the prefix to TargetSec->Name. Otherwise, if the relocation
-            // section comes *before* the target section, we add the prefix.
-            if (PrefixedSections.count(TargetSec)) {
-              Sec.Name = (prefix + TargetSec->Name).str();
-            } else {
-              const auto Iter = Config.SectionsToRename.find(TargetSec->Name);
-              if (Iter != Config.SectionsToRename.end()) {
-                // Both `--rename-section` and `--prefix-alloc-sections` are
-                // given but the target section is not yet renamed.
-                Sec.Name =
-                    (prefix + Config.AllocSectionsPrefix + Iter->second.NewName)
-                        .str();
-              } else {
-                Sec.Name =
-                    (prefix + Config.AllocSectionsPrefix + TargetSec->Name)
-                        .str();
-              }
-            }
+  // Add a prefix to allocated sections and their relocation sections. This
+  // should be done after renaming the section by Config.SectionToRename to
+  // imitate the GNU objcopy behavior.
+  if (!Config.AllocSectionsPrefix.empty()) {
+    DenseSet<SectionBase *> PrefixedSections;
+    for (SectionBase &Sec : Obj.sections()) {
+      if (Sec.Flags & SHF_ALLOC) {
+        Sec.Name = (Config.AllocSectionsPrefix + Sec.Name).str();
+        PrefixedSections.insert(&Sec);
+      } else if (auto *RelocSec = dyn_cast<RelocationSectionBase>(&Sec)) {
+        // Rename relocation sections associated to the allocated sections.
+        // For example, if we rename .text to .prefix.text, we also rename
+        // .rel.text to .rel.prefix.text.
+        //
+        // Dynamic relocation sections (SHT_REL[A] with SHF_ALLOC) are handled
+        // above, e.g., .rela.plt is renamed to .prefix.rela.plt, not
+        // .rela.prefix.plt since GNU objcopy does so.
+        const SectionBase *TargetSec = RelocSec->getSection();
+        if (TargetSec && (TargetSec->Flags & SHF_ALLOC)) {
+          StringRef prefix;
+          switch (Sec.Type) {
+          case SHT_REL:
+            prefix = ".rel";
+            break;
+          case SHT_RELA:
+            prefix = ".rela";
+            break;
+          default:
+            llvm_unreachable("not a relocation section");
           }
+
+          // If the relocation section comes *after* the target section, we
+          // don't add Config.AllocSectionsPrefix because we've already added
+          // the prefix to TargetSec->Name. Otherwise, if the relocation
+          // section comes *before* the target section, we add the prefix.
+          if (PrefixedSections.count(TargetSec))
+            Sec.Name = (prefix + TargetSec->Name).str();
+          else
+            Sec.Name =
+                (prefix + Config.AllocSectionsPrefix + TargetSec->Name).str();
         }
       }
     }
@@ -747,7 +737,7 @@ Error executeObjcopyOnIHex(const CopyConfig &Config, MemoryBuffer &In,
   IHexReader Reader(&In);
   std::unique_ptr<Object> Obj = Reader.create();
   const ElfType OutputElfType =
-      getOutputElfType(Config.OutputArch.getValueOr(Config.BinaryArch));
+    getOutputElfType(Config.OutputArch.getValueOr(MachineInfo()));
   if (Error E = handleArgs(Config, *Obj, Reader, OutputElfType))
     return E;
   return writeOutput(Config, *Obj, Out, OutputElfType);
@@ -757,13 +747,13 @@ Error executeObjcopyOnRawBinary(const CopyConfig &Config, MemoryBuffer &In,
                                 Buffer &Out) {
   uint8_t NewSymbolVisibility =
       Config.NewSymbolVisibility.getValueOr((uint8_t)ELF::STV_DEFAULT);
-  BinaryReader Reader(Config.BinaryArch, &In, NewSymbolVisibility);
+  BinaryReader Reader(&In, NewSymbolVisibility);
   std::unique_ptr<Object> Obj = Reader.create();
 
   // Prefer OutputArch (-O<format>) if set, otherwise fallback to BinaryArch
   // (-B<arch>).
   const ElfType OutputElfType =
-      getOutputElfType(Config.OutputArch.getValueOr(Config.BinaryArch));
+      getOutputElfType(Config.OutputArch.getValueOr(MachineInfo()));
   if (Error E = handleArgs(Config, *Obj, Reader, OutputElfType))
     return E;
   return writeOutput(Config, *Obj, Out, OutputElfType);

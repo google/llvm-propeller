@@ -173,13 +173,13 @@ void MachineFunction::init() {
     FrameInfo->ensureMaxAlignment(F.getFnStackAlignment());
 
   ConstantPool = new (Allocator) MachineConstantPool(getDataLayout());
-  LogAlignment = STI->getTargetLowering()->getMinFunctionLogAlignment();
+  Alignment = STI->getTargetLowering()->getMinFunctionAlignment();
 
   // FIXME: Shouldn't use pref alignment if explicit alignment is set on F.
   // FIXME: Use Function::hasOptSize().
   if (!F.hasFnAttribute(Attribute::OptimizeForSize))
-    LogAlignment = std::max(
-        LogAlignment, STI->getTargetLowering()->getPrefFunctionLogAlignment());
+    Alignment = std::max(Alignment,
+                         STI->getTargetLowering()->getPrefFunctionAlignment());
 
   if (Target.getBasicBlockSections() == llvm::BasicBlockSection::All ||
       F.getBasicBlockSections() ||
@@ -192,7 +192,7 @@ void MachineFunction::init() {
     BasicBlockLabels = true;
 
   if (AlignAllFunctions)
-    LogAlignment = AlignAllFunctions;
+    Alignment = llvm::Align(1ULL << AlignAllFunctions);
 
   JumpTableInfo = nullptr;
 
@@ -937,13 +937,13 @@ unsigned MachineJumpTableInfo::getEntryAlignment(const DataLayout &TD) const {
   // alignment.
   switch (getEntryKind()) {
   case MachineJumpTableInfo::EK_BlockAddress:
-    return TD.getPointerABIAlignment(0);
+    return TD.getPointerABIAlignment(0).value();
   case MachineJumpTableInfo::EK_GPRel64BlockAddress:
-    return TD.getABIIntegerTypeAlignment(64);
+    return TD.getABIIntegerTypeAlignment(64).value();
   case MachineJumpTableInfo::EK_GPRel32BlockAddress:
   case MachineJumpTableInfo::EK_LabelDifference32:
   case MachineJumpTableInfo::EK_Custom32:
-    return TD.getABIIntegerTypeAlignment(32);
+    return TD.getABIIntegerTypeAlignment(32).value();
   case MachineJumpTableInfo::EK_Inline:
     return 1;
   }

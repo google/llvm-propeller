@@ -7,11 +7,16 @@ executable("llvm-reduce") {
     "//llvm/lib/Target:TargetsToBuild",
     "//llvm/lib/Transforms/Utils",
   ]
+  include_dirs = [ "." ]
   sources = [
     "TestRunner.cpp",
     "deltas/Delta.cpp",
+    "deltas/ReduceArguments.cpp",
+    "deltas/ReduceBasicBlocks.cpp",
     "deltas/ReduceFunctions.cpp",
     "deltas/ReduceGlobalVars.cpp",
+    "deltas/ReduceInstructions.cpp",
+    "deltas/ReduceMetadata.cpp",
     "llvm-reduce.cpp",
   ]
 }

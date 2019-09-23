@@ -237,7 +237,7 @@ defm V_NOT_B32 : VOP1Inst <"v_not_b32", VOP_I32_I32>;
 defm V_BFREV_B32 : VOP1Inst <"v_bfrev_b32", VOP_I32_I32, bitreverse>;
 defm V_FFBH_U32 : VOP1Inst <"v_ffbh_u32", VOP_I32_I32>;
 defm V_FFBL_B32 : VOP1Inst <"v_ffbl_b32", VOP_I32_I32>;
-defm V_FFBH_I32 : VOP1Inst <"v_ffbh_i32", VOP_I32_I32>;
+defm V_FFBH_I32 : VOP1Inst <"v_ffbh_i32", VOP_I32_I32, AMDGPUffbh_i32>;
 
 let SchedRW = [WriteDoubleAdd] in {
 defm V_FREXP_EXP_I32_F64 : VOP1Inst <"v_frexp_exp_i32_f64", VOP_I32_F64, int_amdgcn_frexp_exp>;
@@ -841,16 +841,16 @@ def V_MOVRELD_B32_V16 : V_MOVRELD_B32_pseudo<VReg_512>;
 let OtherPredicates = [isGFX8GFX9] in {
 
 def : GCNPat <
-  (i32 (int_amdgcn_mov_dpp i32:$src, imm:$dpp_ctrl, imm:$row_mask, imm:$bank_mask,
-                      imm:$bound_ctrl)),
+  (i32 (int_amdgcn_mov_dpp i32:$src, timm:$dpp_ctrl, timm:$row_mask, timm:$bank_mask,
+                      timm:$bound_ctrl)),
   (V_MOV_B32_dpp $src, $src, (as_i32imm $dpp_ctrl),
                        (as_i32imm $row_mask), (as_i32imm $bank_mask),
                        (as_i1imm $bound_ctrl))
 >;
 
 def : GCNPat <
-  (i32 (int_amdgcn_update_dpp i32:$old, i32:$src, imm:$dpp_ctrl, imm:$row_mask,
-                      imm:$bank_mask, imm:$bound_ctrl)),
+  (i32 (int_amdgcn_update_dpp i32:$old, i32:$src, timm:$dpp_ctrl, timm:$row_mask,
+                      timm:$bank_mask, timm:$bound_ctrl)),
   (V_MOV_B32_dpp $old, $src, (as_i32imm $dpp_ctrl),
                        (as_i32imm $row_mask), (as_i32imm $bank_mask),
                        (as_i1imm $bound_ctrl))
@@ -911,21 +911,21 @@ defm V_SCREEN_PARTITION_4SE_B32 : VOP1_Real_gfx9 <0x37>;
 
 let OtherPredicates = [isGFX10Plus] in {
 def : GCNPat <
-  (i32 (int_amdgcn_mov_dpp8 i32:$src, imm:$dpp8)),
+  (i32 (int_amdgcn_mov_dpp8 i32:$src, timm:$dpp8)),
   (V_MOV_B32_dpp8_gfx10 $src, $src, (as_i32imm $dpp8), (i32 DPP8Mode.FI_0))
 >;
 
 def : GCNPat <
-  (i32 (int_amdgcn_mov_dpp i32:$src, imm:$dpp_ctrl, imm:$row_mask, imm:$bank_mask,
-                      imm:$bound_ctrl)),
+  (i32 (int_amdgcn_mov_dpp i32:$src, timm:$dpp_ctrl, timm:$row_mask, timm:$bank_mask,
+                      timm:$bound_ctrl)),
   (V_MOV_B32_dpp_gfx10 $src, $src, (as_i32imm $dpp_ctrl),
                        (as_i32imm $row_mask), (as_i32imm $bank_mask),
                        (as_i1imm $bound_ctrl), (i32 0))
 >;
 
 def : GCNPat <
-  (i32 (int_amdgcn_update_dpp i32:$old, i32:$src, imm:$dpp_ctrl, imm:$row_mask,
-                              imm:$bank_mask, imm:$bound_ctrl)),
+  (i32 (int_amdgcn_update_dpp i32:$old, i32:$src, timm:$dpp_ctrl, timm:$row_mask,
+                              timm:$bank_mask, timm:$bound_ctrl)),
   (V_MOV_B32_dpp_gfx10 $old, $src, (as_i32imm $dpp_ctrl),
                        (as_i32imm $row_mask), (as_i32imm $bank_mask),
                        (as_i1imm $bound_ctrl), (i32 0))

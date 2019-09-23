@@ -51,13 +51,21 @@ Major New Features
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- ...
+- -Wtautological-overlap-compare will warn on negative numbers and non-int
+  types.
+- -Wtautological-compare for self comparisons and
+  -Wtautological-overlap-compare will now look through member and array
+  access to determine if two operand expressions are the same.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
 
-- ...
-
+- For X86 target, -march=skylake-avx512, -march=icelake-client,
+  -march=icelake-server, -march=cascadelake, -march=cooperlake will default to
+  not using 512-bit zmm registers in vectorized code unless 512-bit intrinsics
+  are used in the source code. 512-bit operations are known to cause the CPUs
+  to run at a lower frequency which can impact performance. This behavior can be
+  changed by passing -mprefer-vector-width=512 on the command line.
 
 New Compiler Flags
 ------------------

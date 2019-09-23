@@ -259,6 +259,12 @@ void ARMTargetLowering::addMVEVectorTypes(bool HasMVEFP) {
     setOperationAction(ISD::UMAX, VT, Legal);
     setOperationAction(ISD::ABS, VT, Legal);
     setOperationAction(ISD::SETCC, VT, Custom);
+    setOperationAction(ISD::MLOAD, VT, Custom);
+    setOperationAction(ISD::MSTORE, VT, Legal);
+    setOperationAction(ISD::CTLZ, VT, Legal);
+    setOperationAction(ISD::CTTZ, VT, Custom);
+    setOperationAction(ISD::BITREVERSE, VT, Legal);
+    setOperationAction(ISD::BSWAP, VT, Legal);
 
     // No native support for these.
     setOperationAction(ISD::UDIV, VT, Expand);
@@ -269,6 +275,10 @@ void ARMTargetLowering::addMVEVectorTypes(bool HasMVEFP) {
 
     // Vector reductions
     setOperationAction(ISD::VECREDUCE_ADD, VT, Legal);
+    setOperationAction(ISD::VECREDUCE_SMAX, VT, Legal);
+    setOperationAction(ISD::VECREDUCE_UMAX, VT, Legal);
+    setOperationAction(ISD::VECREDUCE_SMIN, VT, Legal);
+    setOperationAction(ISD::VECREDUCE_UMIN, VT, Legal);
 
     if (!HasMVEFP) {
       setOperationAction(ISD::SINT_TO_FP, VT, Expand);
@@ -300,6 +310,8 @@ void ARMTargetLowering::addMVEVectorTypes(bool HasMVEFP) {
     setOperationAction(ISD::BUILD_VECTOR, VT.getVectorElementType(), Custom);
     setOperationAction(ISD::SCALAR_TO_VECTOR, VT, Legal);
     setOperationAction(ISD::SETCC, VT, Custom);
+    setOperationAction(ISD::MLOAD, VT, Custom);
+    setOperationAction(ISD::MSTORE, VT, Legal);
 
     // Pre and Post inc are supported on loads and stores
     for (unsigned im = (unsigned)ISD::PRE_INC;
@@ -692,8 +704,8 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::FMAXNUM, MVT::f16, Legal);
   }
 
-  for (MVT VT : MVT::vector_valuetypes()) {
-    for (MVT InnerVT : MVT::vector_valuetypes()) {
+  for (MVT VT : MVT::fixedlen_vector_valuetypes()) {
+    for (MVT InnerVT : MVT::fixedlen_vector_valuetypes()) {
       setTruncStoreAction(VT, InnerVT, Expand);
       addAllExtLoads(VT, InnerVT, Expand);
     }
@@ -898,7 +910,7 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
     // It is legal to extload from v4i8 to v4i16 or v4i32.
     for (MVT Ty : {MVT::v8i8, MVT::v4i8, MVT::v2i8, MVT::v4i16, MVT::v2i16,
                    MVT::v2i32}) {
-      for (MVT VT : MVT::integer_vector_valuetypes()) {
+      for (MVT VT : MVT::integer_fixedlen_vector_valuetypes()) {
         setLoadExtAction(ISD::EXTLOAD, VT, Ty, Legal);
         setLoadExtAction(ISD::ZEXTLOAD, VT, Ty, Legal);
         setLoadExtAction(ISD::SEXTLOAD, VT, Ty, Legal);
@@ -1042,7 +1054,7 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
 
   // ARM does not have ROTL.
   setOperationAction(ISD::ROTL, MVT::i32, Expand);
-  for (MVT VT : MVT::vector_valuetypes()) {
+  for (MVT VT : MVT::fixedlen_vector_valuetypes()) {
     setOperationAction(ISD::ROTL, VT, Expand);
     setOperationAction(ISD::ROTR, VT, Expand);
   }
@@ -1416,7 +1428,7 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
 
   // On ARM arguments smaller than 4 bytes are extended, so all arguments
   // are at least 4 bytes aligned.
-  setMinStackArgumentAlignment(4);
+  setMinStackArgumentAlignment(llvm::Align(4));
 
   // Prefer likely predicted branches to selects on out-of-order cores.
   PredictableSelectIsExpensive = Subtarget->getSchedModel().isOutOfOrder();
@@ -3104,12 +3116,12 @@ ARMTargetLowering::LowerGlobalTLSAddressWindows(SDValue Op,
 
   // Load the current TEB (thread environment block)
   SDValue Ops[] = {Chain,
-                   DAG.getConstant(Intrinsic::arm_mrc, DL, MVT::i32),
-                   DAG.getConstant(15, DL, MVT::i32),
-                   DAG.getConstant(0, DL, MVT::i32),
-                   DAG.getConstant(13, DL, MVT::i32),
-                   DAG.getConstant(0, DL, MVT::i32),
-                   DAG.getConstant(2, DL, MVT::i32)};
+                   DAG.getTargetConstant(Intrinsic::arm_mrc, DL, MVT::i32),
+                   DAG.getTargetConstant(15, DL, MVT::i32),
+                   DAG.getTargetConstant(0, DL, MVT::i32),
+                   DAG.getTargetConstant(13, DL, MVT::i32),
+                   DAG.getTargetConstant(0, DL, MVT::i32),
+                   DAG.getTargetConstant(2, DL, MVT::i32)};
   SDValue CurrentTEB = DAG.getNode(ISD::INTRINSIC_W_CHAIN, DL,
                                    DAG.getVTList(MVT::i32, MVT::Other), Ops);
 
@@ -5796,8 +5808,7 @@ static SDValue LowerCTTZ(SDNode *N, SelectionDAG &DAG,
                          const ARMSubtarget *ST) {
   SDLoc dl(N);
   EVT VT = N->getValueType(0);
-  if (VT.isVector()) {
-    assert(ST->hasNEON());
+  if (VT.isVector() && ST->hasNEON()) {
 
     // Compute the least significant set bit: LSB = X & -X
     SDValue X = N->getOperand(0);
@@ -6934,6 +6945,19 @@ static SDValue LowerBUILD_VECTOR_i1(SDValue Op, SelectionDAG &DAG,
   } else
     return SDValue();
 
+  // If this is a single value copied into all lanes (a splat), we can just sign
+  // extend that single value
+  SDValue FirstOp = Op.getOperand(0);
+  if (!isa<ConstantSDNode>(FirstOp) &&
+      std::all_of(std::next(Op->op_begin()), Op->op_end(),
+                  [&FirstOp](SDUse &U) {
+                    return U.get().isUndef() || U.get() == FirstOp;
+                  })) {
+    SDValue Ext = DAG.getNode(ISD::SIGN_EXTEND_INREG, dl, MVT::i32, FirstOp,
+                              DAG.getValueType(MVT::i1));
+    return DAG.getNode(ARMISD::PREDICATE_CAST, dl, Op.getValueType(), Ext);
+  }
+
   // First create base with bits set where known
   unsigned Bits32 = 0;
   for (unsigned i = 0; i < NumElts; ++i) {
@@ -6946,7 +6970,6 @@ static SDValue LowerBUILD_VECTOR_i1(SDValue Op, SelectionDAG &DAG,
   }
 
   // Add in unknown nodes
-  // FIXME: Handle splats of the same value better.
   SDValue Base = DAG.getNode(ARMISD::PREDICATE_CAST, dl, VT,
                              DAG.getConstant(Bits32, dl, MVT::i32));
   for (unsigned i = 0; i < NumElts; ++i) {
@@ -8844,6 +8867,31 @@ static SDValue LowerPredicateStore(SDValue Op, SelectionDAG &DAG) {
       ST->getMemOperand());
 }
 
+static SDValue LowerMLOAD(SDValue Op, SelectionDAG &DAG) {
+  MaskedLoadSDNode *N = cast<MaskedLoadSDNode>(Op.getNode());
+  MVT VT = Op.getSimpleValueType();
+  SDValue Mask = N->getMask();
+  SDValue PassThru = N->getPassThru();
+  SDLoc dl(Op);
+
+  if (ISD::isBuildVectorAllZeros(PassThru.getNode()) ||
+      (PassThru->getOpcode() == ARMISD::VMOVIMM &&
+       isNullConstant(PassThru->getOperand(0))))
+    return Op;
+
+  // MVE Masked loads use zero as the passthru value. Here we convert undef to
+  // zero too, and other values are lowered to a select.
+  SDValue ZeroVec = DAG.getNode(ARMISD::VMOVIMM, dl, VT,
+                                DAG.getTargetConstant(0, dl, MVT::i32));
+  SDValue NewLoad = DAG.getMaskedLoad(
+      VT, dl, N->getChain(), N->getBasePtr(), Mask, ZeroVec, N->getMemoryVT(),
+      N->getMemOperand(), N->getExtensionType(), N->isExpandingLoad());
+  SDValue Combo = NewLoad;
+  if (!PassThru.isUndef())
+    Combo = DAG.getNode(ISD::VSELECT, dl, VT, Mask, NewLoad, PassThru);
+  return DAG.getMergeValues({Combo, NewLoad.getValue(1)}, dl);
+}
+
 static SDValue LowerAtomicLoadStore(SDValue Op, SelectionDAG &DAG) {
   if (isStrongerThanMonotonic(cast<AtomicSDNode>(Op)->getOrdering()))
     // Acquire/Release load/store is not legal for targets without a dmb or
@@ -8862,12 +8910,12 @@ static void ReplaceREADCYCLECOUNTER(SDNode *N,
   // Under Power Management extensions, the cycle-count is:
   //    mrc p15, #0, <Rt>, c9, c13, #0
   SDValue Ops[] = { N->getOperand(0), // Chain
-                    DAG.getConstant(Intrinsic::arm_mrc, DL, MVT::i32),
-                    DAG.getConstant(15, DL, MVT::i32),
-                    DAG.getConstant(0, DL, MVT::i32),
-                    DAG.getConstant(9, DL, MVT::i32),
-                    DAG.getConstant(13, DL, MVT::i32),
-                    DAG.getConstant(0, DL, MVT::i32)
+                    DAG.getTargetConstant(Intrinsic::arm_mrc, DL, MVT::i32),
+                    DAG.getTargetConstant(15, DL, MVT::i32),
+                    DAG.getTargetConstant(0, DL, MVT::i32),
+                    DAG.getTargetConstant(9, DL, MVT::i32),
+                    DAG.getTargetConstant(13, DL, MVT::i32),
+                    DAG.getTargetConstant(0, DL, MVT::i32)
   };
 
   SDValue Cycles32 = DAG.getNode(ISD::INTRINSIC_W_CHAIN, DL,
@@ -9047,6 +9095,8 @@ SDValue ARMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerPredicateLoad(Op, DAG);
   case ISD::STORE:
     return LowerPredicateStore(Op, DAG);
+  case ISD::MLOAD:
+    return LowerMLOAD(Op, DAG);
   case ISD::ATOMIC_LOAD:
   case ISD::ATOMIC_STORE:  return LowerAtomicLoadStore(Op, DAG);
   case ISD::FSINCOS:       return LowerFSINCOS(Op, DAG);
@@ -12591,6 +12641,24 @@ PerformARMBUILD_VECTORCombine(SDNode *N, TargetLowering::DAGCombinerInfo &DCI) {
   return Vec;
 }
 
+static SDValue
+PerformPREDICATE_CASTCombine(SDNode *N, TargetLowering::DAGCombinerInfo &DCI) {
+  EVT VT = N->getValueType(0);
+  SDValue Op = N->getOperand(0);
+  SDLoc dl(N);
+
+  // PREDICATE_CAST(PREDICATE_CAST(x)) == PREDICATE_CAST(x)
+  if (Op->getOpcode() == ARMISD::PREDICATE_CAST) {
+    // If the valuetypes are the same, we can remove the cast entirely.
+    if (Op->getOperand(0).getValueType() == VT)
+      return Op->getOperand(0);
+    return DCI.DAG.getNode(ARMISD::PREDICATE_CAST, dl,
+                           Op->getOperand(0).getValueType(), Op->getOperand(0));
+  }
+
+  return SDValue();
+}
+
 /// PerformInsertEltCombine - Target-specific dag combine xforms for
 /// ISD::INSERT_VECTOR_ELT.
 static SDValue PerformInsertEltCombine(SDNode *N,
@@ -14131,6 +14199,8 @@ SDValue ARMTargetLowering::PerformDAGCombine(SDNode *N,
     return PerformVLDCombine(N, DCI);
   case ARMISD::BUILD_VECTOR:
     return PerformARMBUILD_VECTORCombine(N, DCI);
+  case ARMISD::PREDICATE_CAST:
+    return PerformPREDICATE_CASTCombine(N, DCI);
   case ARMISD::SMULWB: {
     unsigned BitWidth = N->getValueType(0).getSizeInBits();
     APInt DemandedMask = APInt::getLowBitsSet(BitWidth, 16);
@@ -16701,7 +16771,8 @@ ARMTargetLowering::getABIAlignmentForCallingConv(Type *ArgTy,
 
   // Avoid over-aligning vector parameters. It would require realigning the
   // stack and waste space for no real benefit.
-  return std::min(DL.getABITypeAlignment(ArgTy), DL.getStackAlignment());
+  return std::min(DL.getABITypeAlignment(ArgTy),
+                  (unsigned)DL.getStackAlignment().value());
 }
 
 /// Return true if a type is an AAPCS-VFP homogeneous aggregate or one of

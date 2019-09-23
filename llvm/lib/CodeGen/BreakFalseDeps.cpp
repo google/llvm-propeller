@@ -9,12 +9,11 @@
 /// \file Break False Dependency pass.
 ///
 /// Some instructions have false dependencies which cause unnecessary stalls.
-/// For exmaple, instructions that only write part of a register, and implicitly
-/// need to read the other parts of the register.  This may cause unwanted
+/// For example, instructions may write part of a register and implicitly
+/// need to read the other parts of the register. This may cause unwanted
 /// stalls preventing otherwise unrelated instructions from executing in
 /// parallel in an out-of-order CPU.
-/// This pass is aimed at identifying and avoiding these depepndencies when
-/// possible.
+/// This pass is aimed at identifying and avoiding these dependencies.
 //
 //===----------------------------------------------------------------------===//
 
@@ -178,6 +177,7 @@ void BreakFalseDeps::processDefs(MachineInstr *MI) {
   assert(!MI->isDebugInstr() && "Won't process debug values");
 
   // Break dependence on undef uses. Do this before updating LiveRegs below.
+  // This can remove a false dependence with no additional instructions.
   unsigned OpNum;
   unsigned Pref = TII->getUndefRegClearance(*MI, OpNum, TRI);
   if (Pref) {
@@ -188,6 +188,11 @@ void BreakFalseDeps::processDefs(MachineInstr *MI) {
     if (!HadTrueDependency && shouldBreakDependence(MI, OpNum, Pref))
       UndefReads.push_back(std::make_pair(MI, OpNum));
   }
+
+  // The code below allows the target to create a new instruction to break the
+  // dependence. That opposes the goal of minimizing size, so bail out now.
+  if (MF->getFunction().hasMinSize())
+    return;
 
   const MCInstrDesc &MCID = MI->getDesc();
   for (unsigned i = 0,
@@ -207,6 +212,11 @@ void BreakFalseDeps::processDefs(MachineInstr *MI) {
 
 void BreakFalseDeps::processUndefReads(MachineBasicBlock *MBB) {
   if (UndefReads.empty())
+    return;
+
+  // The code below allows the target to create a new instruction to break the
+  // dependence. That opposes the goal of minimizing size, so bail out now.
+  if (MF->getFunction().hasMinSize())
     return;
 
   // Collect this block's live out register units.

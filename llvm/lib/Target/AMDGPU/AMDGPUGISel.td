@@ -34,6 +34,18 @@ def gi_vop3omods :
     GIComplexOperandMatcher<s32, "selectVOP3OMods">,
     GIComplexPatternEquiv<VOP3OMods>;
 
+def gi_vop3omods0clamp0omod :
+    GIComplexOperandMatcher<s32, "selectVOP3Mods0Clamp0OMod">,
+    GIComplexPatternEquiv<VOP3Mods0Clamp0OMod>;
+
+def gi_vop3opselmods0 :
+    GIComplexOperandMatcher<s32, "selectVOP3OpSelMods0">,
+    GIComplexPatternEquiv<VOP3OpSelMods0>;
+
+def gi_vop3opselmods :
+    GIComplexOperandMatcher<s32, "selectVOP3OpSelMods">,
+    GIComplexPatternEquiv<VOP3OpSelMods>;
+
 def gi_smrd_imm :
     GIComplexOperandMatcher<s64, "selectSmrdImm">,
     GIComplexPatternEquiv<SMRDImm>;
@@ -182,15 +194,6 @@ multiclass GISelVop2IntrPat <
 
 def : GISelSop2Pat <or, S_OR_B32, i32>;
 def : GISelVop2Pat <or, V_OR_B32_e32, i32>;
-
-// FIXME: We can't re-use SelectionDAG patterns here because they match
-// against a custom SDNode and we would need to create a generic machine
-// instruction that is equivalent to the custom SDNode.  This would also require
-// us to custom legalize the intrinsic to the new generic machine instruction,
-// but I can't get custom legalizing of intrinsic to work and I'm not sure if
-// this is even supported yet.
-def : GISelVop3Pat2ModsPat <
-  int_amdgcn_cvt_pkrtz, V_CVT_PKRTZ_F16_F32_e64, v2f16, f32>;
 
 // Since GlobalISel is more flexible then SelectionDAG, I think we can get
 // away with adding patterns for integer types and not legalizing all

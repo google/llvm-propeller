@@ -1128,6 +1128,34 @@ the configuration (without a prefix: ``Auto``).
         B
       };
 
+  * ``BS_Whitesmiths`` (in configuration: ``Whitesmiths``)
+    Like ``Allman`` but always indent braces and line up code with braces.
+
+    .. code-block:: c++
+
+      try
+        {
+        foo();
+        }
+      catch ()
+        {
+        }
+      void foo() { bar(); }
+      class foo
+        {
+        };
+      if (foo())
+        {
+        }
+      else
+        {
+        }
+      enum X : int
+        {
+        A,
+        B
+        };
+
   * ``BS_GNU`` (in configuration: ``GNU``)
     Always break before braces and add an extra level of indentation to
     braces of control statements, not to those of class, function
@@ -1525,6 +1553,23 @@ the configuration (without a prefix: ``Auto``).
        break;                                   break;
      default:                                 default:
        plop();                                  plop();
+     }                                      }
+
+**IndentGotoLabels** (``bool``)
+  Indent goto labels.
+
+  When ``false``, goto labels are flushed left.
+
+  .. code-block:: c++
+
+     true:                                  false:
+     int f() {                      vs.     int f() {
+       if (foo()) {                           if (foo()) {
+       label1:                              label1:
+         bar();                                 bar();
+       }                                      }
+     label2:                                label2:
+       return 1;                              return 1;
      }                                      }
 
 **IndentPPDirectives** (``PPDirectiveIndentStyle``)

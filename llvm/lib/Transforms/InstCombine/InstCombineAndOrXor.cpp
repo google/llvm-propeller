@@ -1049,6 +1049,65 @@ static Value *foldIsPowerOf2(ICmpInst *Cmp0, ICmpInst *Cmp1, bool JoinedByAnd,
   return nullptr;
 }
 
+/// Commuted variants are assumed to be handled by calling this function again
+/// with the parameters swapped.
+static Value *foldUnsignedUnderflowCheck(ICmpInst *ZeroICmp,
+                                         ICmpInst *UnsignedICmp, bool IsAnd,
+                                         const SimplifyQuery &Q,
+                                         InstCombiner::BuilderTy &Builder) {
+  Value *ZeroCmpOp;
+  ICmpInst::Predicate EqPred;
+  if (!match(ZeroICmp, m_ICmp(EqPred, m_Value(ZeroCmpOp), m_Zero())) ||
+      !ICmpInst::isEquality(EqPred))
+    return nullptr;
+
+  Value *Base, *Offset;
+  if (!match(ZeroCmpOp, m_Sub(m_Value(Base), m_Value(Offset))))
+    return nullptr;
+
+  ICmpInst::Predicate UnsignedPred;
+
+  // ZeroCmpOp <  Base && ZeroCmpOp != 0  --> Base >  Offset  iff Offset != 0
+  // ZeroCmpOp >= Base || ZeroCmpOp == 0  --> Base <= Base    iff Offset != 0
+  if (match(UnsignedICmp,
+            m_c_ICmp(UnsignedPred, m_Specific(ZeroCmpOp), m_Specific(Base)))) {
+    if (UnsignedICmp->getOperand(0) != ZeroCmpOp)
+      UnsignedPred = ICmpInst::getSwappedPredicate(UnsignedPred);
+
+    if (UnsignedPred == ICmpInst::ICMP_ULT && IsAnd &&
+        EqPred == ICmpInst::ICMP_NE &&
+        isKnownNonZero(Offset, Q.DL, /*Depth=*/0, Q.AC, Q.CxtI, Q.DT))
+      return Builder.CreateICmpUGT(Base, Offset);
+    if (UnsignedPred == ICmpInst::ICMP_UGE && !IsAnd &&
+        EqPred == ICmpInst::ICMP_EQ &&
+        isKnownNonZero(Offset, Q.DL, /*Depth=*/0, Q.AC, Q.CxtI, Q.DT))
+      return Builder.CreateICmpULE(Base, Offset);
+  }
+
+  if (!match(UnsignedICmp,
+             m_c_ICmp(UnsignedPred, m_Specific(Base), m_Specific(Offset))) ||
+      !ICmpInst::isUnsigned(UnsignedPred))
+    return nullptr;
+  if (UnsignedICmp->getOperand(0) != Base)
+    UnsignedPred = ICmpInst::getSwappedPredicate(UnsignedPred);
+
+  // Base >=/> Offset && (Base - Offset) != 0  <-->  Base > Offset
+  // (no overflow and not null)
+  if ((UnsignedPred == ICmpInst::ICMP_UGE ||
+       UnsignedPred == ICmpInst::ICMP_UGT) &&
+      EqPred == ICmpInst::ICMP_NE && IsAnd)
+    return Builder.CreateICmpUGT(Base, Offset);
+
+  // Base <=/< Offset || (Base - Offset) == 0  <-->  Base <= Offset
+  // (overflow or null)
+  if ((UnsignedPred == ICmpInst::ICMP_ULE ||
+       UnsignedPred == ICmpInst::ICMP_ULT) &&
+      EqPred == ICmpInst::ICMP_EQ && !IsAnd)
+    return Builder.CreateICmpULE(Base, Offset);
+
+  return nullptr;
+}
+
 /// Fold (icmp)&(icmp) if possible.
 Value *InstCombiner::foldAndOfICmps(ICmpInst *LHS, ICmpInst *RHS,
                                     Instruction &CxtI) {
@@ -1093,6 +1152,13 @@ Value *InstCombiner::foldAndOfICmps(ICmpInst *LHS, ICmpInst *RHS,
 
   if (Value *V = foldIsPowerOf2(LHS, RHS, true /* JoinedByAnd */, Builder))
     return V;
+
+  if (Value *X =
+          foldUnsignedUnderflowCheck(LHS, RHS, /*IsAnd=*/true, SQ, Builder))
+    return X;
+  if (Value *X =
+          foldUnsignedUnderflowCheck(RHS, LHS, /*IsAnd=*/true, SQ, Builder))
+    return X;
 
   // This only handles icmp of constants: (icmp1 A, C1) & (icmp2 B, C2).
   Value *LHS0 = LHS->getOperand(0), *RHS0 = RHS->getOperand(0);
@@ -2195,6 +2261,13 @@ Value *InstCombiner::foldOrOfICmps(ICmpInst *LHS, ICmpInst *RHS,
 
   if (Value *V = foldIsPowerOf2(LHS, RHS, false /* JoinedByAnd */, Builder))
     return V;
+
+  if (Value *X =
+          foldUnsignedUnderflowCheck(LHS, RHS, /*IsAnd=*/false, SQ, Builder))
+    return X;
+  if (Value *X =
+          foldUnsignedUnderflowCheck(RHS, LHS, /*IsAnd=*/false, SQ, Builder))
+    return X;
 
   // This only handles icmp of constants: (icmp1 A, C1) | (icmp2 B, C2).
   if (!LHSC || !RHSC)

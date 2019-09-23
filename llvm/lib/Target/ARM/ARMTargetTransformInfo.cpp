@@ -36,6 +36,10 @@ using namespace llvm;
 
 #define DEBUG_TYPE "armtti"
 
+static cl::opt<bool> EnableMaskedLoadStores(
+  "enable-arm-maskedldst", cl::Hidden, cl::init(false),
+  cl::desc("Enable the generation of masked loads and stores"));
+
 static cl::opt<bool> DisableLowOverheadLoops(
   "disable-arm-loloops", cl::Hidden, cl::init(false),
   cl::desc("Disable the generation of low-overhead loops"));
@@ -485,6 +489,22 @@ int ARMTTIImpl::getAddressComputationCost(Type *Ty, ScalarEvolution *SE,
     return 1;
   }
   return BaseT::getAddressComputationCost(Ty, SE, Ptr);
+}
+
+bool ARMTTIImpl::isLegalMaskedLoad(Type *DataTy) {
+  if (!EnableMaskedLoadStores || !ST->hasMVEIntegerOps())
+    return false;
+
+  if (DataTy->isVectorTy()) {
+    // We don't yet support narrowing or widening masked loads/stores. Expand
+    // them for the moment.
+    unsigned VecWidth = DataTy->getPrimitiveSizeInBits();
+    if (VecWidth != 128)
+      return false;
+  }
+
+  unsigned EltWidth = DataTy->getScalarSizeInBits();
+  return EltWidth == 32 || EltWidth == 16 || EltWidth == 8;
 }
 
 int ARMTTIImpl::getMemcpyCost(const Instruction *I) {
@@ -1059,11 +1079,11 @@ bool ARMTTIImpl::useReductionIntrinsic(unsigned Opcode, Type *Ty,
   case Instruction::Or:
   case Instruction::Xor:
   case Instruction::Mul:
-  case Instruction::ICmp:
   case Instruction::FCmp:
     return false;
+  case Instruction::ICmp:
   case Instruction::Add:
-    return ScalarBits * Ty->getVectorNumElements() == 128;
+    return ScalarBits < 64 && ScalarBits * Ty->getVectorNumElements() == 128;
   default:
     llvm_unreachable("Unhandled reduction opcode");
   }

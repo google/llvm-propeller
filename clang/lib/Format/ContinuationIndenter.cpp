@@ -606,7 +606,9 @@ void ContinuationIndenter::addTokenOnCurrentLine(LineState &State, bool DryRun,
   // disallowing any further line breaks if there is no line break after the
   // opening parenthesis. Don't break if it doesn't conserve columns.
   if (Style.AlignAfterOpenBracket == FormatStyle::BAS_AlwaysBreak &&
-      Previous.isOneOf(tok::l_paren, TT_TemplateOpener, tok::l_square) &&
+      (Previous.isOneOf(tok::l_paren, TT_TemplateOpener, tok::l_square) ||
+       (Previous.is(tok::l_brace) && Previous.BlockKind != BK_Block &&
+        Style.Cpp11BracedListStyle)) &&
       State.Column > getNewLineColumn(State) &&
       (!Previous.Previous || !Previous.Previous->isOneOf(
                                  tok::kw_for, tok::kw_while, tok::kw_switch)) &&
@@ -928,6 +930,11 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
       Current.isOneOf(Keywords.kw_implements, Keywords.kw_extends))
     return std::max(State.Stack.back().LastSpace,
                     State.Stack.back().Indent + Style.ContinuationIndentWidth);
+
+  if (Style.BreakBeforeBraces == FormatStyle::BS_Whitesmiths &&
+      State.Line->First->is(tok::kw_enum))
+    return (Style.IndentWidth * State.Line->First->IndentLevel) +
+           Style.IndentWidth;
 
   if (NextNonComment->is(tok::l_brace) && NextNonComment->BlockKind == BK_Block)
     return Current.NestingLevel == 0 ? State.FirstIndent

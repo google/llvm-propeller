@@ -1,6 +1,6 @@
-// RUN: %clang_cc1 -triple wasm32-unknown-unknown -target-feature +unimplemented-simd128 -target-feature +nontrapping-fptoint -target-feature +exception-handling -target-feature +bulk-memory -fno-lax-vector-conversions -O3 -emit-llvm -o - %s | FileCheck %s -check-prefixes WEBASSEMBLY,WEBASSEMBLY32
-// RUN: %clang_cc1 -triple wasm64-unknown-unknown -target-feature +unimplemented-simd128 -target-feature +nontrapping-fptoint -target-feature +exception-handling -target-feature +bulk-memory -fno-lax-vector-conversions -O3 -emit-llvm -o - %s | FileCheck %s -check-prefixes WEBASSEMBLY,WEBASSEMBLY64
-// RUN: not %clang_cc1 -triple wasm64-unknown-unknown -target-feature +nontrapping-fptoint -target-feature +exception-handling -target-feature +bulk-memory -fno-lax-vector-conversions -O3 -emit-llvm -o - %s 2>&1 | FileCheck %s -check-prefixes MISSING-SIMD
+// RUN: %clang_cc1 -triple wasm32-unknown-unknown -target-feature +unimplemented-simd128 -target-feature +nontrapping-fptoint -target-feature +exception-handling -target-feature +bulk-memory -flax-vector-conversions=none -O3 -emit-llvm -o - %s | FileCheck %s -check-prefixes WEBASSEMBLY,WEBASSEMBLY32
+// RUN: %clang_cc1 -triple wasm64-unknown-unknown -target-feature +unimplemented-simd128 -target-feature +nontrapping-fptoint -target-feature +exception-handling -target-feature +bulk-memory -flax-vector-conversions=none -O3 -emit-llvm -o - %s | FileCheck %s -check-prefixes WEBASSEMBLY,WEBASSEMBLY64
+// RUN: not %clang_cc1 -triple wasm64-unknown-unknown -target-feature +nontrapping-fptoint -target-feature +exception-handling -target-feature +bulk-memory -flax-vector-conversions=none -O3 -emit-llvm -o - %s 2>&1 | FileCheck %s -check-prefixes MISSING-SIMD
 
 // SIMD convenience types
 typedef char i8x16 __attribute((vector_size(16)));
@@ -462,4 +462,80 @@ i64x2 trunc_saturate_u_i64x2_f64x2(f64x2 f) {
   return __builtin_wasm_trunc_saturate_u_i64x2_f64x2(f);
   // WEBASSEMBLY: call <2 x i64> @llvm.wasm.trunc.saturate.unsigned.v2i64.v2f64(<2 x double> %f)
   // WEBASSEMBLY-NEXT: ret
+}
+
+i8x16 narrow_s_i8x16_i16x8(i16x8 low, i16x8 high) {
+  return __builtin_wasm_narrow_s_i8x16_i16x8(low, high);
+  // WEBASSEMBLY: call <16 x i8> @llvm.wasm.narrow.signed.v16i8.v8i16(
+  // WEBASSEMBLY-SAME: <8 x i16> %low, <8 x i16> %high)
+  // WEBASSEMBLY: ret
+}
+
+i8x16 narrow_u_i8x16_i16x8(i16x8 low, i16x8 high) {
+  return __builtin_wasm_narrow_u_i8x16_i16x8(low, high);
+  // WEBASSEMBLY: call <16 x i8> @llvm.wasm.narrow.unsigned.v16i8.v8i16(
+  // WEBASSEMBLY-SAME: <8 x i16> %low, <8 x i16> %high)
+  // WEBASSEMBLY: ret
+}
+
+i16x8 narrow_s_i16x8_i32x4(i32x4 low, i32x4 high) {
+  return __builtin_wasm_narrow_s_i16x8_i32x4(low, high);
+  // WEBASSEMBLY: call <8 x i16> @llvm.wasm.narrow.signed.v8i16.v4i32(
+  // WEBASSEMBLY-SAME: <4 x i32> %low, <4 x i32> %high)
+  // WEBASSEMBLY: ret
+}
+
+i16x8 narrow_u_i16x8_i32x4(i32x4 low, i32x4 high) {
+  return __builtin_wasm_narrow_u_i16x8_i32x4(low, high);
+  // WEBASSEMBLY: call <8 x i16> @llvm.wasm.narrow.unsigned.v8i16.v4i32(
+  // WEBASSEMBLY-SAME: <4 x i32> %low, <4 x i32> %high)
+  // WEBASSEMBLY: ret
+}
+
+i16x8 widen_low_s_i16x8_i8x16(i8x16 v) {
+  return __builtin_wasm_widen_low_s_i16x8_i8x16(v);
+  // WEBASSEMBLY: call <8 x i16> @llvm.wasm.widen.low.signed.v8i16.v16i8(<16 x i8> %v)
+  // WEBASSEMBLY: ret
+}
+
+i16x8 widen_high_s_i16x8_i8x16(i8x16 v) {
+  return __builtin_wasm_widen_high_s_i16x8_i8x16(v);
+  // WEBASSEMBLY: call <8 x i16> @llvm.wasm.widen.high.signed.v8i16.v16i8(<16 x i8> %v)
+  // WEBASSEMBLY: ret
+}
+
+i16x8 widen_low_u_i16x8_i8x16(i8x16 v) {
+  return __builtin_wasm_widen_low_u_i16x8_i8x16(v);
+  // WEBASSEMBLY: call <8 x i16> @llvm.wasm.widen.low.unsigned.v8i16.v16i8(<16 x i8> %v)
+  // WEBASSEMBLY: ret
+}
+
+i16x8 widen_high_u_i16x8_i8x16(i8x16 v) {
+  return __builtin_wasm_widen_high_u_i16x8_i8x16(v);
+  // WEBASSEMBLY: call <8 x i16> @llvm.wasm.widen.high.unsigned.v8i16.v16i8(<16 x i8> %v)
+  // WEBASSEMBLY: ret
+}
+
+i32x4 widen_low_s_i32x4_i16x8(i16x8 v) {
+  return __builtin_wasm_widen_low_s_i32x4_i16x8(v);
+  // WEBASSEMBLY: call <4 x i32> @llvm.wasm.widen.low.signed.v4i32.v8i16(<8 x i16> %v)
+  // WEBASSEMBLY: ret
+}
+
+i32x4 widen_high_s_i32x4_i16x8(i16x8 v) {
+  return __builtin_wasm_widen_high_s_i32x4_i16x8(v);
+  // WEBASSEMBLY: call <4 x i32> @llvm.wasm.widen.high.signed.v4i32.v8i16(<8 x i16> %v)
+  // WEBASSEMBLY: ret
+}
+
+i32x4 widen_low_u_i32x4_i16x8(i16x8 v) {
+  return __builtin_wasm_widen_low_u_i32x4_i16x8(v);
+  // WEBASSEMBLY: call <4 x i32> @llvm.wasm.widen.low.unsigned.v4i32.v8i16(<8 x i16> %v)
+  // WEBASSEMBLY: ret
+}
+
+i32x4 widen_high_u_i32x4_i16x8(i16x8 v) {
+  return __builtin_wasm_widen_high_u_i32x4_i16x8(v);
+  // WEBASSEMBLY: call <4 x i32> @llvm.wasm.widen.high.unsigned.v4i32.v8i16(<8 x i16> %v)
+  // WEBASSEMBLY: ret
 }

@@ -742,8 +742,7 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     if (MO.isGlobal()) {
       const GlobalValue *GV = MO.getGlobal();
       MOSymbol = getSymbol(GV);
-      unsigned char GVFlags = Subtarget->classifyGlobalReference(GV);
-      GlobalToc = (GVFlags & PPCII::MO_NLP_FLAG);
+      GlobalToc = Subtarget->isGVIndirectSymbol(GV);
     } else if (MO.isCPI()) {
       MOSymbol = GetCPISymbol(MO.getIndex());
     } else if (MO.isJTI()) {
@@ -799,8 +798,7 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       const GlobalValue *GV = MO.getGlobal();
       MOSymbol = getSymbol(GV);
       LLVM_DEBUG(
-          unsigned char GVFlags = Subtarget->classifyGlobalReference(GV);
-          assert((GVFlags & PPCII::MO_NLP_FLAG) &&
+          assert((Subtarget->isGVIndirectSymbol(GV)) &&
                  "LDtocL used on symbol that could be accessed directly is "
                  "invalid. Must match ADDIStocHA8."));
       MOSymbol = lookUpOrCreateTOCEntry(MOSymbol);
@@ -827,8 +825,7 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
     if (MO.isGlobal()) {
       const GlobalValue *GV = MO.getGlobal();
-      LLVM_DEBUG(unsigned char GVFlags = Subtarget->classifyGlobalReference(GV);
-                 assert(!(GVFlags & PPCII::MO_NLP_FLAG) &&
+      LLVM_DEBUG(assert(!(Subtarget->isGVIndirectSymbol(GV)) &&
                         "Interposable definitions must use indirect access."));
       MOSymbol = getSymbol(GV);
     } else if (MO.isCPI()) {
@@ -1607,7 +1604,7 @@ bool PPCDarwinAsmPrinter::doFinalization(Module &M) {
     if (!Stubs.empty()) {
       // Switch with ".non_lazy_symbol_pointer" directive.
       OutStreamer->SwitchSection(TLOFMacho.getNonLazySymbolPointerSection());
-      EmitAlignment(isPPC64 ? 3 : 2);
+      EmitAlignment(isPPC64 ? llvm::Align(8) : llvm::Align(4));
 
       for (unsigned i = 0, e = Stubs.size(); i != e; ++i) {
         // L_foo$stub:
@@ -1690,12 +1687,9 @@ void PPCAIXAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
     return;
   }
 
-  // Get the alignment in the log2 form.
-  const unsigned AlignLog = getGVAlignmentLog2(GV, DL);
-
   MCSymbol *EmittedInitSym = GVSym;
   EmitLinkage(GV, EmittedInitSym);
-  EmitAlignment(AlignLog, GV);
+  EmitAlignment(getGVAlignment(GV, DL), GV);
   OutStreamer->EmitLabel(EmittedInitSym);
   EmitGlobalConstant(GV->getParent()->getDataLayout(), GV->getInitializer());
 }

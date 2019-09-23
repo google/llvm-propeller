@@ -27,6 +27,7 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/BinaryFormat/Magic.h"
+#include "llvm/LTO/LTO.h"
 #include "llvm/Object/ArchiveWriter.h"
 #include "llvm/Object/COFFImportFile.h"
 #include "llvm/Object/COFFModuleDefinition.h"
@@ -50,7 +51,7 @@
 using namespace llvm;
 using namespace llvm::object;
 using namespace llvm::COFF;
-using llvm::sys::Process;
+using namespace llvm::sys;
 
 namespace lld {
 namespace coff {
@@ -188,8 +189,9 @@ void LinkerDriver::addBuffer(std::unique_ptr<MemoryBuffer> mb,
       Archive *archive = file.get();
       make<std::unique_ptr<Archive>>(std::move(file)); // take ownership
 
+      int memberIndex = 0;
       for (MemoryBufferRef m : getArchiveMembers(archive))
-        addArchiveBuffer(m, "<whole-archive>", filename, 0);
+        addArchiveBuffer(m, "<whole-archive>", filename, memberIndex++);
       return;
     }
     symtab->addFile(make<ArchiveFile>(mbref));
@@ -309,9 +311,10 @@ void LinkerDriver::enqueueArchiveMember(const Archive::Child &c,
     auto mbOrErr = future->get();
     if (mbOrErr.second)
       reportBufferError(errorCodeToError(mbOrErr.second), childName);
+    // Pass empty string as archive name so that the original filename is
+    // used as the buffer identifier.
     driver->addArchiveBuffer(takeBuffer(std::move(mbOrErr.first)),
-                             toCOFFString(sym), parentName,
-                             /*OffsetInArchive=*/0);
+                             toCOFFString(sym), "", /*OffsetInArchive=*/0);
   });
 }
 
@@ -1068,12 +1071,6 @@ void LinkerDriver::maybeExportMinGWSymbols(const opt::InputArgList &args) {
   });
 }
 
-static const char *libcallRoutineNames[] = {
-#define HANDLE_LIBCALL(code, name) name,
-#include "llvm/IR/RuntimeLibcalls.def"
-#undef HANDLE_LIBCALL
-};
-
 void LinkerDriver::link(ArrayRef<const char *> argsArr) {
   // Needed for LTO.
   InitializeAllTargetInfos();
@@ -1092,7 +1089,7 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
 
   // Parse command line options.
   ArgParser parser;
-  opt::InputArgList args = parser.parseLINK(argsArr);
+  opt::InputArgList args = parser.parse(argsArr);
 
   // Parse and evaluate -mllvm options.
   std::vector<const char *> v;
@@ -1137,17 +1134,15 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
   config->mingw = args.hasArg(OPT_lldmingw);
 
   if (auto *arg = args.getLastArg(OPT_linkrepro)) {
-    SmallString<64> path = StringRef(arg->getValue());
-    sys::path::append(path, "repro.tar");
+    const char *path = arg->getValue();
 
     Expected<std::unique_ptr<TarWriter>> errOrWriter =
-        TarWriter::create(path, "repro");
-
+        TarWriter::create(path, path::stem(path));
     if (errOrWriter) {
       tar = std::move(*errOrWriter);
+      tar->append("version.txt", getLLDVersion() + "\n");
     } else {
-      error("/linkrepro: failed to open " + path + ": " +
-            toString(errOrWriter.takeError()));
+      error("/linkrepro: " + toString(errOrWriter.takeError()));
     }
   }
 
@@ -1162,7 +1157,8 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
   searchPaths.push_back("");
   for (auto *arg : args.filtered(OPT_libpath))
     searchPaths.push_back(arg->getValue());
-  addLibSearchPaths();
+  if (!args.hasArg(OPT_lldignoreenv))
+    addLibSearchPaths();
 
   // Handle /ignore
   for (auto *arg : args.filtered(OPT_ignore)) {
@@ -1803,7 +1799,7 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
     // bitcode file in an archive member, we need to arrange to use LTO to
     // compile those archive members by adding them to the link beforehand.
     if (!BitcodeFile::instances.empty())
-      for (const char *s : libcallRoutineNames)
+      for (auto *s : lto::LTO::getRuntimeLibcallSymbols())
         symtab->addLibcall(s);
 
     // Windows specific -- if __load_config_used can be resolved, resolve it.

@@ -110,8 +110,6 @@ public:
     return nullptr;
   }
 
-  virtual unsigned getHwMode() const { return 0; }
-
   /// Target can subclass this hook to select a different DAG scheduler.
   virtual RegisterScheduler::FunctionPassCtor
       getDAGScheduler(CodeGenOpt::Level) const {
@@ -273,6 +271,12 @@ public:
   /// Enable use of alias analysis during code generation (during MI
   /// scheduling, DAGCombine, etc.).
   virtual bool useAA() const;
+
+  /// \brief Sink addresses into blocks using GEP instructions rather than
+  /// pointer casts and arithmetic.
+  virtual bool addrSinkUsingGEPs() const {
+    return useAA();
+  }
 
   /// Enable the use of the early if conversion pass.
   virtual bool enableEarlyIfConversion() const { return false; }

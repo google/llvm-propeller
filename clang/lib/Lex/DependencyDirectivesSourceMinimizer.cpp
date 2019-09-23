@@ -246,9 +246,12 @@ static void skipToNewlineRaw(const char *&First, const char *const End) {
 
 static const char *reverseOverSpaces(const char *First, const char *Last) {
   assert(First <= Last);
-  while (First != Last && isHorizontalWhitespace(Last[-1]))
+  const char *PrevLast = Last;
+  while (First != Last && isHorizontalWhitespace(Last[-1])) {
+    PrevLast = Last;
     --Last;
-  return Last;
+  }
+  return PrevLast;
 }
 
 static void skipLineComment(const char *&First, const char *const End) {
@@ -863,6 +866,54 @@ bool Minimizer::minimize() {
   Out.push_back(0);
   Out.pop_back();
   return Error;
+}
+
+bool clang::minimize_source_to_dependency_directives::computeSkippedRanges(
+    ArrayRef<Token> Input, llvm::SmallVectorImpl<SkippedRange> &Range) {
+  struct Directive {
+    enum DirectiveKind {
+      If,  // if/ifdef/ifndef
+      Else // elif,else
+    };
+    int Offset;
+    DirectiveKind Kind;
+  };
+  llvm::SmallVector<Directive, 32> Offsets;
+  for (const Token &T : Input) {
+    switch (T.K) {
+    case pp_if:
+    case pp_ifdef:
+    case pp_ifndef:
+      Offsets.push_back({T.Offset, Directive::If});
+      break;
+
+    case pp_elif:
+    case pp_else: {
+      if (Offsets.empty())
+        return true;
+      int PreviousOffset = Offsets.back().Offset;
+      Range.push_back({PreviousOffset, T.Offset - PreviousOffset});
+      Offsets.push_back({T.Offset, Directive::Else});
+      break;
+    }
+
+    case pp_endif: {
+      if (Offsets.empty())
+        return true;
+      int PreviousOffset = Offsets.back().Offset;
+      Range.push_back({PreviousOffset, T.Offset - PreviousOffset});
+      do {
+        Directive::DirectiveKind Kind = Offsets.pop_back_val().Kind;
+        if (Kind == Directive::If)
+          break;
+      } while (!Offsets.empty());
+      break;
+    }
+    default:
+      break;
+    }
+  }
+  return false;
 }
 
 bool clang::minimizeSourceToDependencyDirectives(

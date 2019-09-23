@@ -36,6 +36,7 @@
 #include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/MC/StringTableBuilder.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -337,7 +338,7 @@ public:
 } // end anonymous namespace
 
 void ELFWriter::align(unsigned Alignment) {
-  uint64_t Padding = OffsetToAlignment(W.OS.tell(), Alignment);
+  uint64_t Padding = offsetToAlignment(W.OS.tell(), llvm::Align(Alignment));
   W.OS.write_zeros(Padding);
 }
 
@@ -638,7 +639,7 @@ void ELFWriter::computeSymbolTable(
   unsigned EntrySize = is64Bit() ? ELF::SYMENTRY_SIZE64 : ELF::SYMENTRY_SIZE32;
   MCSectionELF *SymtabSection =
       Ctx.getELFSection(".symtab", ELF::SHT_SYMTAB, 0, EntrySize, "");
-  SymtabSection->setAlignment(is64Bit() ? 8 : 4);
+  SymtabSection->setAlignment(is64Bit() ? llvm::Align(8) : llvm::Align(4));
   SymbolTableIndex = addToSectionTable(SymtabSection);
 
   align(SymtabSection->getAlignment());
@@ -736,7 +737,7 @@ void ELFWriter::computeSymbolTable(
     MCSectionELF *SymtabShndxSection =
         Ctx.getELFSection(".symtab_shndx", ELF::SHT_SYMTAB_SHNDX, 0, 4, "");
     SymtabShndxSectionIndex = addToSectionTable(SymtabShndxSection);
-    SymtabShndxSection->setAlignment(4);
+    SymtabShndxSection->setAlignment(llvm::Align(4));
   }
 
   ArrayRef<std::string> FileNames = Asm.getFileNames();
@@ -824,7 +825,7 @@ MCSectionELF *ELFWriter::createRelocationSection(MCContext &Ctx,
   MCSectionELF *RelaSection = Ctx.createELFRelSection(
       RelaSectionName, hasRelocationAddend() ? ELF::SHT_RELA : ELF::SHT_REL,
       Flags, EntrySize, Sec.getGroup(), &Sec);
-  RelaSection->setAlignment(is64Bit() ? 8 : 4);
+  RelaSection->setAlignment(is64Bit() ? llvm::Align(8) : llvm::Align(4));
   return RelaSection;
 }
 
@@ -911,7 +912,7 @@ void ELFWriter::writeSectionData(const MCAssembler &Asm, MCSection &Sec,
     Section.setFlags(Section.getFlags() | ELF::SHF_COMPRESSED);
     // Alignment field should reflect the requirements of
     // the compressed section header.
-    Section.setAlignment(is64Bit() ? 8 : 4);
+    Section.setAlignment(is64Bit() ? llvm::Align(8) : llvm::Align(4));
   } else {
     // Add "z" prefix to section name. This is zlib-gnu style.
     MC.renameELFSection(&Section, (".z" + SectionName.drop_front(1)).str());
@@ -1135,7 +1136,7 @@ uint64_t ELFWriter::writeObject(MCAssembler &Asm, const MCAsmLayout &Layout) {
       if (!GroupIdx) {
         MCSectionELF *Group = Ctx.createELFGroupSection(SignatureSymbol);
         GroupIdx = addToSectionTable(Group);
-        Group->setAlignment(4);
+        Group->setAlignment(llvm::Align(4));
         Groups.push_back(Group);
       }
       std::vector<const MCSectionELF *> &Members =

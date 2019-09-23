@@ -65,6 +65,7 @@
 #include "llvm/Support/Threading.h"
 
 #include "Plugins/ExpressionParser/Clang/ClangFunctionCaller.h"
+#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 #include "Plugins/ExpressionParser/Clang/ClangUserExpression.h"
 #include "Plugins/ExpressionParser/Clang/ClangUtilityFunction.h"
 #include "lldb/Utility/ArchSpec.h"
@@ -493,7 +494,7 @@ static void ParseLangArgs(LangOptions &Opts, InputKind IK, const char *triple) {
     Opts.OpenCL = 1;
     Opts.AltiVec = 1;
     Opts.CXXOperatorNames = 1;
-    Opts.LaxVectorConversions = 1;
+    Opts.setLaxVectorConversions(LangOptions::LaxVectorConversionKind::All);
   }
 
   // OpenCL and C++ both have bool, true, false keywords.
@@ -8228,7 +8229,8 @@ clang::CXXMethodDecl *ClangASTContext::AddMethodToCXXRecordType(
             getASTContext()->DeclarationNames.getCXXDestructorName(
                 getASTContext()->getCanonicalType(record_qual_type)),
             clang::SourceLocation()),
-        method_qual_type, nullptr, is_inline, is_artificial);
+        method_qual_type, nullptr, is_inline, is_artificial,
+          ConstexprSpecKind::CSK_unspecified);
     cxx_method_decl = cxx_dtor_decl;
   } else if (decl_name == cxx_record_decl->getDeclName()) {
     cxx_ctor_decl = clang::CXXConstructorDecl::Create(

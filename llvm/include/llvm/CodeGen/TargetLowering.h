@@ -123,8 +123,7 @@ public:
     TypeLegal,           // The target natively supports this type.
     TypePromoteInteger,  // Replace this integer with a larger one.
     TypeExpandInteger,   // Split this integer into two of half the size.
-    TypeSoftenFloat,     // Convert this float to a same size integer type,
-                         // if an operation is not supported in target HW.
+    TypeSoftenFloat,     // Convert this float to a same size integer type.
     TypeExpandFloat,     // Split this float into two of half the size.
     TypeScalarizeVector, // Replace this one-element vector with its element.
     TypeSplitVector,     // Split this vector into two of half the size.
@@ -285,7 +284,7 @@ public:
   /// a constant pool load whose address depends on the select condition. The
   /// parameter may be used to differentiate a select with FP compare from
   /// integer compare.
-  virtual bool reduceSelectOfFPConstantLoads(bool IsFPSetCC) const {
+  virtual bool reduceSelectOfFPConstantLoads(EVT CmpOpVT) const {
     return true;
   }
 
@@ -839,7 +838,7 @@ public:
     int          offset = 0;       // offset off of ptrVal
     unsigned     size = 0;         // the size of the memory location
                                    // (taken from memVT if zero)
-    MaybeAlign align = Align(1);   // alignment
+    MaybeAlign align = Align::None(); // alignment
 
     MachineMemOperand::Flags flags = MachineMemOperand::MONone;
     IntrinsicInfo() = default;
@@ -1578,23 +1577,19 @@ public:
   }
 
   /// Return the minimum stack alignment of an argument.
-  unsigned getMinStackArgumentAlignment() const {
-    return MinStackArgumentAlignment.value();
+  llvm::Align getMinStackArgumentAlignment() const {
+    return MinStackArgumentAlignment;
   }
 
   /// Return the minimum function alignment.
-  unsigned getMinFunctionLogAlignment() const {
-    return Log2(MinFunctionAlignment);
-  }
+  llvm::Align getMinFunctionAlignment() const { return MinFunctionAlignment; }
 
   /// Return the preferred function alignment.
-  unsigned getPrefFunctionLogAlignment() const {
-    return Log2(PrefFunctionAlignment);
-  }
+  llvm::Align getPrefFunctionAlignment() const { return PrefFunctionAlignment; }
 
   /// Return the preferred loop alignment.
-  virtual unsigned getPrefLoopLogAlignment(MachineLoop *ML = nullptr) const {
-    return Log2(PrefLoopAlignment);
+  virtual llvm::Align getPrefLoopAlignment(MachineLoop *ML = nullptr) const {
+    return PrefLoopAlignment;
   }
 
   /// Should loops be aligned even when the function is marked OptSize (but not
@@ -2122,8 +2117,8 @@ protected:
   void setPrefLoopAlignment(llvm::Align Align) { PrefLoopAlignment = Align; }
 
   /// Set the minimum stack alignment of an argument.
-  void setMinStackArgumentAlignment(unsigned Align) {
-    MinStackArgumentAlignment = llvm::Align(Align);
+  void setMinStackArgumentAlignment(llvm::Align Align) {
+    MinStackArgumentAlignment = Align;
   }
 
   /// Set the maximum atomic operation size supported by the
@@ -2772,7 +2767,6 @@ private:
   /// up the MVT::LAST_VALUETYPE value to the next multiple of 8.
   uint32_t CondCodeActions[ISD::SETCC_INVALID][(MVT::LAST_VALUETYPE + 7) / 8];
 
-protected:
   ValueTypeActionImpl ValueTypeActions;
 
 private:
@@ -3371,6 +3365,18 @@ public:
     llvm_unreachable("Not Implemented");
   }
 
+  /// Return 1 if we can compute the negated form of the specified expression
+  /// for the same cost as the expression itself, or 2 if we can compute the
+  /// negated form more cheaply than the expression itself. Else return 0.
+  virtual char isNegatibleForFree(SDValue Op, SelectionDAG &DAG,
+                                  bool LegalOperations, bool ForCodeSize,
+                                  unsigned Depth = 0) const;
+
+  /// If isNegatibleForFree returns true, return the newly negated expression.
+  virtual SDValue getNegatedExpression(SDValue Op, SelectionDAG &DAG,
+                                       bool LegalOperations, bool ForCodeSize,
+                                       unsigned Depth = 0) const;
+
   //===--------------------------------------------------------------------===//
   // Lowering methods - These methods must be implemented by targets so that
   // the SelectionDAGBuilder code knows how to lower these.
@@ -3715,6 +3721,25 @@ public:
   virtual MachineMemOperand::Flags getMMOFlags(const Instruction &I) const {
     return MachineMemOperand::MONone;
   }
+
+  /// Should SelectionDAG lower an atomic store of the given kind as a normal
+  /// StoreSDNode (as opposed to an AtomicSDNode)?  NOTE: The intention is to
+  /// eventually migrate all targets to the using StoreSDNodes, but porting is
+  /// being done target at a time.  
+  virtual bool lowerAtomicStoreAsStoreSDNode(const StoreInst &SI) const {
+    assert(SI.isAtomic() && "violated precondition");
+    return false;
+  }
+
+  /// Should SelectionDAG lower an atomic load of the given kind as a normal
+  /// LoadSDNode (as opposed to an AtomicSDNode)?  NOTE: The intention is to
+  /// eventually migrate all targets to the using LoadSDNodes, but porting is
+  /// being done target at a time.  
+  virtual bool lowerAtomicLoadAsLoadSDNode(const LoadInst &LI) const {
+    assert(LI.isAtomic() && "violated precondition");
+    return false;
+  }
+
 
   /// This callback is invoked by the type legalizer to legalize nodes with an
   /// illegal operand type but legal result types.  It replaces the

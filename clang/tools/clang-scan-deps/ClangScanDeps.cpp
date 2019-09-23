@@ -150,13 +150,14 @@ static llvm::cl::opt<ScanningMode> ScanMode(
         clEnumValN(ScanningMode::CanonicalPreprocessing, "preprocess",
                    "The set of dependencies is computed by preprocessing the "
                    "unmodified source files")),
-    llvm::cl::init(ScanningMode::MinimizedSourcePreprocessing));
+    llvm::cl::init(ScanningMode::MinimizedSourcePreprocessing),
+    llvm::cl::cat(DependencyScannerCategory));
 
 llvm::cl::opt<unsigned>
     NumThreads("j", llvm::cl::Optional,
                llvm::cl::desc("Number of worker threads to use (default: use "
                               "all concurrent threads)"),
-               llvm::cl::init(0));
+               llvm::cl::init(0), llvm::cl::cat(DependencyScannerCategory));
 
 llvm::cl::opt<std::string>
     CompilationDB("compilation-database",
@@ -168,7 +169,27 @@ llvm::cl::opt<bool> ReuseFileManager(
     llvm::cl::desc("Reuse the file manager and its cache between invocations."),
     llvm::cl::init(true), llvm::cl::cat(DependencyScannerCategory));
 
+llvm::cl::opt<bool> SkipExcludedPPRanges(
+    "skip-excluded-pp-ranges",
+    llvm::cl::desc(
+        "Use the preprocessor optimization that skips excluded conditionals by "
+        "bumping the buffer pointer in the lexer instead of lexing the tokens  "
+        "until reaching the end directive."),
+    llvm::cl::init(true), llvm::cl::cat(DependencyScannerCategory));
+
+llvm::cl::opt<bool> Verbose("v", llvm::cl::Optional,
+                            llvm::cl::desc("Use verbose output."),
+                            llvm::cl::init(false),
+                            llvm::cl::cat(DependencyScannerCategory));
+
 } // end anonymous namespace
+
+/// \returns object-file path derived from source-file path.
+static std::string getObjFilePath(StringRef SrcFile) {
+  SmallString<128> ObjFileName(SrcFile);
+  llvm::sys::path::replace_extension(ObjFileName, "o");
+  return ObjFileName.str();
+}
 
 int main(int argc, const char **argv) {
   llvm::InitLLVM X(argc, argv);
@@ -198,10 +219,46 @@ int main(int argc, const char **argv) {
       std::make_unique<tooling::ArgumentsAdjustingCompilations>(
           std::move(Compilations));
   AdjustingCompilations->appendArgumentsAdjuster(
-      [](const tooling::CommandLineArguments &Args, StringRef /*unused*/) {
+      [](const tooling::CommandLineArguments &Args, StringRef FileName) {
+        std::string LastO = "";
+        bool HasMT = false;
+        bool HasMQ = false;
+        bool HasMD = false;
+        // We need to find the last -o value.
+        if (!Args.empty()) {
+          std::size_t Idx = Args.size() - 1;
+          for (auto It = Args.rbegin(); It != Args.rend(); ++It) {
+            if (It != Args.rbegin()) {
+              if (Args[Idx] == "-o")
+                LastO = Args[Idx + 1];
+              if (Args[Idx] == "-MT")
+                HasMT = true;
+              if (Args[Idx] == "-MQ")
+                HasMQ = true;
+              if (Args[Idx] == "-MD")
+                HasMD = true;
+            }
+            --Idx;
+          }
+        }
+        // If there's no -MT/-MQ Driver would add -MT with the value of the last
+        // -o option.
         tooling::CommandLineArguments AdjustedArgs = Args;
         AdjustedArgs.push_back("-o");
         AdjustedArgs.push_back("/dev/null");
+        if (!HasMT && !HasMQ) {
+          AdjustedArgs.push_back("-M");
+          AdjustedArgs.push_back("-MT");
+          // We're interested in source dependencies of an object file.
+          if (!HasMD) {
+            // FIXME: We are missing the directory unless the -o value is an
+            // absolute path.
+            AdjustedArgs.push_back(!LastO.empty() ? LastO
+                                                  : getObjFilePath(FileName));
+          } else {
+            AdjustedArgs.push_back(FileName);
+          }
+        }
         AdjustedArgs.push_back("-Xclang");
         AdjustedArgs.push_back("-Eonly");
         AdjustedArgs.push_back("-Xclang");
@@ -209,12 +266,15 @@ int main(int argc, const char **argv) {
         AdjustedArgs.push_back("-Wno-error");
         return AdjustedArgs;
       });
+  AdjustingCompilations->appendArgumentsAdjuster(
+      tooling::getClangStripSerializeDiagnosticAdjuster());
 
   SharedStream Errs(llvm::errs());
   // Print out the dependency results to STDOUT by default.
   SharedStream DependencyOS(llvm::outs());
 
-  DependencyScanningService Service(ScanMode, ReuseFileManager);
+  DependencyScanningService Service(ScanMode, ReuseFileManager,
+                                    SkipExcludedPPRanges);
 #if LLVM_ENABLE_THREADS
   unsigned NumWorkers =
       NumThreads == 0 ? llvm::hardware_concurrency() : NumThreads;
@@ -231,8 +291,10 @@ int main(int argc, const char **argv) {
   std::mutex Lock;
   size_t Index = 0;
 
-  llvm::outs() << "Running clang-scan-deps on " << Inputs.size()
-               << " files using " << NumWorkers << " workers\n";
+  if (Verbose) {
+    llvm::outs() << "Running clang-scan-deps on " << Inputs.size()
+                 << " files using " << NumWorkers << " workers\n";
+  }
   for (unsigned I = 0; I < NumWorkers; ++I) {
     auto Worker = [I, &Lock, &Index, &Inputs, &HadErrors, &WorkerTools]() {
       while (true) {

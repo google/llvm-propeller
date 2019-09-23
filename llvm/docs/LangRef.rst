@@ -3245,6 +3245,17 @@ match what was already there. However, a store *to* an undefined
 location could clobber arbitrary memory, therefore, it has undefined
 behavior.
 
+**MemorySanitizer**, a detector of uses of uninitialized memory,
+defines a branch with condition that depends on an undef value (or
+certain other values, like e.g. a result of a load from heap-allocated
+memory that has never been stored to) to have an externally visible
+side effect. For this reason functions with *sanitize_memory*
+attribute are not allowed to produce such branches "out of thin
+air". More strictly, an optimization that inserts a conditional branch
+is only valid if in all executions where the branch condition has at
+least one undefined bit, the same branch condition is evaluated in the
+input IR as well.
+
 .. _poisonvalues:
 
 Poison Values
@@ -3510,7 +3521,7 @@ resulting assembly string is parsed by LLVM's integrated assembler unless it is
 disabled -- even when emitting a ``.s`` file -- and thus must contain assembly
 syntax known to LLVM.
 
-LLVM also supports a few more substitions useful for writing inline assembly:
+LLVM also supports a few more substitutions useful for writing inline assembly:
 
 - ``${:uid}``: Expands to a decimal integer unique to this inline assembly blob.
   This substitution is useful when declaring a local label. Many standard
@@ -3814,6 +3825,8 @@ AArch64:
 - ``w``: A 32, 64, or 128-bit floating-point, SIMD or SVE vector register.
 - ``x``: Like w, but restricted to registers 0 to 15 inclusive.
 - ``y``: Like w, but restricted to SVE vector registers Z0 to Z7 inclusive.
+- ``Upl``: One of the low eight SVE predicate registers (P0 to P7)
+- ``Upa``: Any of the SVE predicate registers (P0 to P15)
 
 AMDGPU:
 
@@ -6507,7 +6520,7 @@ Where each VFuncId has the format:
     vFuncId: (TypeIdRef, offset: 16)
 
 Where each ``TypeIdRef`` refers to a :ref:`type id<typeid_summary>`
-by summary id or ``GUID`` preceeded by a ``guid:`` tag.
+by summary id or ``GUID`` preceded by a ``guid:`` tag.
 
 TypeCheckedLoadVCalls
 """""""""""""""""""""
@@ -11353,7 +11366,7 @@ privileges.
 The default behavior is to emit a call to ``__clear_cache`` from the run
 time library.
 
-This instrinsic does *not* empty the instruction pipeline. Modifications
+This intrinsic does *not* empty the instruction pipeline. Modifications
 of the current function are outside the scope of the intrinsic.
 
 '``llvm.instrprof.increment``' Intrinsic
@@ -11428,7 +11441,7 @@ The last argument specifies the value of the increment of the counter variable.
 
 Semantics:
 """"""""""
-See description of '``llvm.instrprof.increment``' instrinsic.
+See description of '``llvm.instrprof.increment``' intrinsic.
 
 
 '``llvm.instrprof.value.profile``' Intrinsic
@@ -12061,6 +12074,8 @@ trapping or setting ``errno``.
 
 When specified with the fast-math-flag 'afn', the result may be approximated
 using a less accurate calculation.
+
+.. _int_fma:
 
 '``llvm.fma.*``' Intrinsic
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -13941,8 +13956,8 @@ The expression:
 is equivalent to the expression a \* b + c, except that rounding will
 not be performed between the multiplication and addition steps if the
 code generator fuses the operations. Fusion is not guaranteed, even if
-the target platform supports it. If a fused multiply-add is required the
-corresponding llvm.fma.\* intrinsic function should be used
+the target platform supports it. If a fused multiply-add is required, the
+corresponding :ref:`llvm.fma <int_fma>` intrinsic function should be used
 instead. This never sets errno, just as '``llvm.fma.*``'.
 
 Examples:
@@ -15051,12 +15066,21 @@ Constrained FP intrinsics are used to support non-default rounding modes and
 accurately preserve exception behavior without compromising LLVM's ability to
 optimize FP code when the default behavior is used.
 
-Each of these intrinsics corresponds to a normal floating-point operation.  The
-first two arguments and the return value are the same as the corresponding FP
+If any FP operation in a function is constrained then they all must be
+constrained. This is required for correct LLVM IR. Optimizations that
+move code around can create miscompiles if mixing of constrained and normal
+operations is done. The correct way to mix constrained and less constrained
+operations is to use the rounding mode and exception handling metadata to
+mark constrained intrinsics as having LLVM's default behavior.
+
+Each of these intrinsics corresponds to a normal floating-point operation. The
+data arguments and the return value are the same as the corresponding FP
 operation.
 
-The third argument is a metadata argument specifying the rounding mode to be
-assumed. This argument must be one of the following strings:
+The rounding mode argument is a metadata string specifying what 
+assumptions, if any, the optimizer can make when transforming constant 
+values. Some constrained FP intrinsics omit this argument. If required 
+by the intrinsic, this argument must be one of the following strings:
 
 ::
 
@@ -15086,9 +15110,9 @@ the specified rounding mode, but this is not guaranteed.  Using a specific
 non-dynamic rounding mode which does not match the actual rounding mode at
 runtime results in undefined behavior.
 
-The fourth argument to the constrained floating-point intrinsics specifies the
-required exception behavior.  This argument must be one of the following
-strings:
+The exception behavior argument is a metadata string describing the floating
+point exception semantics that required for the intrinsic. This argument
+must be one of the following strings:
 
 ::
 

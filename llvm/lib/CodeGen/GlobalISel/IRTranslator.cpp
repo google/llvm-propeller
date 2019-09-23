@@ -32,6 +32,7 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/StackProtector.h"
 #include "llvm/CodeGen/TargetFrameLowering.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
@@ -1172,7 +1173,7 @@ void IRTranslator::getStackGuard(Register DstReg,
                MachineMemOperand::MODereferenceable;
   MachineMemOperand *MemRef =
       MF->getMachineMemOperand(MPInfo, Flags, DL->getPointerSizeInBits() / 8,
-                               DL->getPointerABIAlignment(0));
+                               DL->getPointerABIAlignment(0).value());
   MIB.setMemRefs({MemRef});
 }
 
@@ -1563,10 +1564,19 @@ bool IRTranslator::translateCallSite(const ImmutableCallSite &CS,
     Args.push_back(getOrCreateVRegs(*Arg));
   }
 
-  MF->getFrameInfo().setHasCalls(true);
+  // We don't set HasCalls on MFI here yet because call lowering may decide to
+  // optimize into tail calls. Instead, we defer that to selection where a final
+  // scan is done to check if any instructions are calls.
   bool Success =
       CLI->lowerCall(MIRBuilder, CS, Res, Args, SwiftErrorVReg,
                      [&]() { return getOrCreateVReg(*CS.getCalledValue()); });
+
+  // Check if we just inserted a tail call.
+  if (Success) {
+    assert(!HasTailCall && "Can't tail call return twice from block?");
+    const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
+    HasTailCall = TII->isTailCall(*std::prev(MIRBuilder.getInsertPt()));
+  }
 
   return Success;
 }
@@ -1609,14 +1619,29 @@ bool IRTranslator::translateCall(const User &U, MachineIRBuilder &MIRBuilder) {
   if (isa<FPMathOperator>(CI))
     MIB->copyIRFlags(CI);
 
-  for (auto &Arg : CI.arg_operands()) {
+  for (auto &Arg : enumerate(CI.arg_operands())) {
     // Some intrinsics take metadata parameters. Reject them.
-    if (isa<MetadataAsValue>(Arg))
+    if (isa<MetadataAsValue>(Arg.value()))
       return false;
-    ArrayRef<Register> VRegs = getOrCreateVRegs(*Arg);
-    if (VRegs.size() > 1)
-      return false;
-    MIB.addUse(VRegs[0]);
+
+    // If this is required to be an immediate, don't materialize it in a
+    // register.
+    if (CI.paramHasAttr(Arg.index(), Attribute::ImmArg)) {
+      if (ConstantInt *CI = dyn_cast<ConstantInt>(Arg.value())) {
+        // imm arguments are more convenient than cimm (and realistically
+        // probably sufficient), so use them.
+        assert(CI->getBitWidth() <= 64 &&
+               "large intrinsic immediates not handled");
+        MIB.addImm(CI->getSExtValue());
+      } else {
+        MIB.addFPImm(cast<ConstantFP>(Arg.value()));
+      }
+    } else {
+      ArrayRef<Register> VRegs = getOrCreateVRegs(*Arg.value());
+      if (VRegs.size() > 1)
+        return false;
+      MIB.addUse(VRegs[0]);
+    }
   }
 
   // Add a MachineMemOperand if it is a target mem intrinsic.
@@ -2276,8 +2301,15 @@ bool IRTranslator::runOnMachineFunction(MachineFunction &CurMF) {
       // Set the insertion point of all the following translations to
       // the end of this basic block.
       CurBuilder->setMBB(MBB);
-
+      HasTailCall = false;
       for (const Instruction &Inst : *BB) {
+        // If we translated a tail call in the last step, then we know
+        // everything after the call is either a return, or something that is
+        // handled by the call itself. (E.g. a lifetime marker or assume
+        // intrinsic.) In this case, we should stop translating the block and
+        // move on.
+        if (HasTailCall)
+          break;
 #ifndef NDEBUG
         Verifier.setCurrentInst(&Inst);
 #endif // ifndef NDEBUG

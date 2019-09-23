@@ -1,4 +1,4 @@
-; RUN: opt -S -attributor -attributor-disable=false -attributor-max-iterations-verify -attributor-max-iterations=5 < %s | FileCheck %s
+; RUN: opt -S -passes=attributor -aa-pipeline='basic-aa' -attributor-disable=false -attributor-max-iterations-verify -attributor-max-iterations=1 < %s | FileCheck %s
 
 ; TEST 1 - negative.
 
@@ -189,5 +189,80 @@ define void @test11(i8* noalias %a) {
 ; CHECK: define void @test11(i8* noalias %a)
 ; CHECK-NEXT:   tail call void @test11_helper(i8* %a, i8* %a)
   tail call void @test11_helper(i8* %a, i8* %a)
+  ret void
+}
+
+
+; TEST 12
+; CallSite Argument
+declare void @use_nocapture(i8* nocapture)
+declare void @use(i8*)
+define void @test12_1() {
+; CHECK-LABEL: @test12_1(
+; CHECK-NEXT:    [[A:%.*]] = alloca i8, align 4
+; CHECK-NEXT:    [[B:%.*]] = tail call noalias i8* @malloc(i64 4)
+; CHECK-NEXT:    tail call void @use_nocapture(i8* noalias nonnull align 4 dereferenceable(1) [[A]])
+; CHECK-NEXT:    tail call void @use_nocapture(i8* noalias nonnull align 4 dereferenceable(1) [[A]])
+; CHECK-NEXT:    tail call void @use_nocapture(i8* noalias nocapture [[B]])
+; CHECK-NEXT:    tail call void @use_nocapture(i8* noalias [[B]])
+; CHECK-NEXT:    ret void
+;
+  %A = alloca i8, align 4
+  %B = tail call noalias i8* @malloc(i64 4)
+  tail call void @use_nocapture(i8* %A)
+  tail call void @use_nocapture(i8* %A)
+  tail call void @use_nocapture(i8* %B)
+  tail call void @use_nocapture(i8* %B)
+  ret void
+}
+
+define void @test12_2(){
+; CHECK-LABEL: @test12_2(
+; CHECK-NEXT:    [[A:%.*]] = tail call noalias i8* @malloc(i64 4)
+; FIXME: This should be @use_nocapture(i8* noalias [[A]])
+; CHECK-NEXT:    tail call void @use_nocapture(i8* nocapture [[A]])
+; FIXME: This should be @use_nocapture(i8* noalias [[A]])
+; CHECK-NEXT:    tail call void @use_nocapture(i8* [[A]])
+; CHECK-NEXT:    tail call void @use(i8* [[A]])
+; CHECK-NEXT:    tail call void @use_nocapture(i8* [[A]])
+; CHECK-NEXT:    ret void
+;
+  %A = tail call noalias i8* @malloc(i64 4)
+  tail call void @use_nocapture(i8* %A)
+  tail call void @use_nocapture(i8* %A)
+  tail call void @use(i8* %A)
+  tail call void @use_nocapture(i8* %A)
+  ret void
+}
+
+declare void @two_args(i8* nocapture , i8* nocapture)
+define void @test12_3(){
+; CHECK-LABEL: @test12_3(
+  %A = tail call noalias i8* @malloc(i64 4)
+; CHECK: tail call void @two_args(i8* nocapture %A, i8* %A)
+  tail call void @two_args(i8* %A, i8* %A)
+  ret void
+}
+
+define void @test12_4(){
+; CHECK-LABEL: @test12_4(
+  %A = tail call noalias i8* @malloc(i64 4)
+  %B = tail call noalias i8* @malloc(i64 4)
+  %A_0 = getelementptr i8, i8* %A, i64 0
+  %A_1 = getelementptr i8, i8* %A, i64 1
+  %B_0 = getelementptr i8, i8* %B, i64 0
+
+; CHECK: tail call void @two_args(i8* noalias %A, i8* noalias %B)
+  tail call void @two_args(i8* %A, i8* %B)
+
+; CHECK: tail call void @two_args(i8* %A, i8* nocapture %A_0)
+  tail call void @two_args(i8* %A, i8* %A_0)
+
+; CHECK: tail call void @two_args(i8* %A, i8* %A_1)
+  tail call void @two_args(i8* %A, i8* %A_1)
+
+; FIXME: This should be @two_args(i8* noalias %A_0, i8* noalias %B_0)
+; CHECK: tail call void @two_args(i8* %A_0, i8* nocapture %B_0)
+  tail call void @two_args(i8* %A_0, i8* %B_0)
   ret void
 }

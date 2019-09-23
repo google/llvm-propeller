@@ -15,25 +15,19 @@
 #ifndef LLVM_TOOLS_LLVMREDUCE_LLVMREDUCE_DELTA_H
 #define LLVM_TOOLS_LLVMREDUCE_LLVMREDUCE_DELTA_H
 
-#include "../TestRunner.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/ScopedPrinter.h"
-#include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Transforms/Utils/Cloning.h"
-#include <fstream>
-#include <set>
+#include "TestRunner.h"
 #include <vector>
+#include <utility>
+#include <functional>
 
-using namespace llvm;
+namespace llvm {
 
 struct Chunk {
-  unsigned begin;
-  unsigned end;
+  int begin;
+  int end;
 
   /// Helper function to verify if a given Target-index is inside the Chunk
-  bool contains(unsigned Index) const { return Index >= begin && Index <= end; }
+  bool contains(int Index) const { return Index >= begin && Index <= end; }
 
   void print() const {
     errs() << "[" << begin;
@@ -52,8 +46,6 @@ struct Chunk {
     return std::tie(C1.begin, C1.end) < std::tie(C2.begin, C2.end);
   }
 };
-
-namespace llvm {
 
 /// This function implements the Delta Debugging algorithm, it receives a
 /// number of Targets (e.g. Functions, Instructions, Basic Blocks, etc.) and
@@ -76,7 +68,7 @@ namespace llvm {
 ///
 /// Other implementations of the Delta Debugging algorithm can also be found in
 /// the CReduce, Delta, and Lithium projects.
-void runDeltaPass(TestRunner &Test, unsigned Targets,
+void runDeltaPass(TestRunner &Test, int Targets,
                   std::function<void(const std::vector<Chunk> &, Module *)>
                       ExtractChunksFromModule);
 } // namespace llvm

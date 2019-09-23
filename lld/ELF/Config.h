@@ -157,6 +157,7 @@ struct Configuration {
   bool executeOnly;
   bool exportDynamic;
   bool fixCortexA53Errata843419;
+  bool fixCortexA8;
   bool forceBTI;
   bool formatBinary = false;
   bool requireCET;

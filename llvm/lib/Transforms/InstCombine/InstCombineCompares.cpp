@@ -2249,6 +2249,44 @@ Instruction *InstCombiner::foldICmpShrConstant(ICmpInst &Cmp,
   return nullptr;
 }
 
+Instruction *InstCombiner::foldICmpSRemConstant(ICmpInst &Cmp,
+                                                BinaryOperator *SRem,
+                                                const APInt &C) {
+  // Match an 'is positive' or 'is negative' comparison of remainder by a
+  // constant power-of-2 value:
+  // (X % pow2C) sgt/slt 0
+  const ICmpInst::Predicate Pred = Cmp.getPredicate();
+  if (Pred != ICmpInst::ICMP_SGT && Pred != ICmpInst::ICMP_SLT)
+    return nullptr;
+
+  // TODO: The one-use check is standard because we do not typically want to
+  //       create longer instruction sequences, but this might be a special-case
+  //       because srem is not good for analysis or codegen.
+  if (!SRem->hasOneUse())
+    return nullptr;
+
+  const APInt *DivisorC;
+  if (!C.isNullValue() || !match(SRem->getOperand(1), m_Power2(DivisorC)))
+    return nullptr;
+
+  // Mask off the sign bit and the modulo bits (low-bits).
+  Type *Ty = SRem->getType();
+  APInt SignMask = APInt::getSignMask(Ty->getScalarSizeInBits());
+  Constant *MaskC = ConstantInt::get(Ty, SignMask | (*DivisorC - 1));
+  Value *And = Builder.CreateAnd(SRem->getOperand(0), MaskC);
+
+  // For 'is positive?' check that the sign-bit is clear and at least 1 masked
+  // bit is set. Example:
+  // (i8 X % 32) s> 0 --> (X & 159) s> 0
+  if (Pred == ICmpInst::ICMP_SGT)
+    return new ICmpInst(ICmpInst::ICMP_SGT, And, ConstantInt::getNullValue(Ty));
+
+  // For 'is negative?' check that the sign-bit is set and at least 1 masked
+  // bit is set. Example:
+  // (i16 X % 4) s< 0 --> (X & 32771) u> 32768
+  return new ICmpInst(ICmpInst::ICMP_UGT, And, ConstantInt::get(Ty, SignMask));
+}
+
 /// Fold icmp (udiv X, Y), C.
 Instruction *InstCombiner::foldICmpUDivConstant(ICmpInst &Cmp,
                                                 BinaryOperator *UDiv,
@@ -2804,6 +2842,10 @@ Instruction *InstCombiner::foldICmpInstWithConstant(ICmpInst &Cmp) {
     case Instruction::LShr:
     case Instruction::AShr:
       if (Instruction *I = foldICmpShrConstant(Cmp, BO, *C))
+        return I;
+      break;
+    case Instruction::SRem:
+      if (Instruction *I = foldICmpSRemConstant(Cmp, BO, *C))
         return I;
       break;
     case Instruction::UDiv:
@@ -3642,21 +3684,21 @@ Instruction *InstCombiner::foldICmpBinOp(ICmpInst &I) {
     D = BO1->getOperand(1);
   }
 
-  // icmp (X+Y), X -> icmp Y, 0 for equalities or if there is no overflow.
+  // icmp (A+B), A -> icmp B, 0 for equalities or if there is no overflow.
+  // icmp (A+B), B -> icmp A, 0 for equalities or if there is no overflow.
   if ((A == Op1 || B == Op1) && NoOp0WrapProblem)
     return new ICmpInst(Pred, A == Op1 ? B : A,
                         Constant::getNullValue(Op1->getType()));
 
-  // icmp X, (X+Y) -> icmp 0, Y for equalities or if there is no overflow.
+  // icmp C, (C+D) -> icmp 0, D for equalities or if there is no overflow.
+  // icmp D, (C+D) -> icmp 0, C for equalities or if there is no overflow.
   if ((C == Op0 || D == Op0) && NoOp1WrapProblem)
     return new ICmpInst(Pred, Constant::getNullValue(Op0->getType()),
                         C == Op0 ? D : C);
 
-  // icmp (X+Y), (X+Z) -> icmp Y, Z for equalities or if there is no overflow.
+  // icmp (A+B), (A+D) -> icmp B, D for equalities or if there is no overflow.
   if (A && C && (A == C || A == D || B == C || B == D) && NoOp0WrapProblem &&
-      NoOp1WrapProblem &&
-      // Try not to increase register pressure.
-      BO0->hasOneUse() && BO1->hasOneUse()) {
+      NoOp1WrapProblem) {
     // Determine Y and Z in the form icmp (X+Y), (X+Z).
     Value *Y, *Z;
     if (A == C) {
@@ -3680,39 +3722,39 @@ Instruction *InstCombiner::foldICmpBinOp(ICmpInst &I) {
     return new ICmpInst(Pred, Y, Z);
   }
 
-  // icmp slt (X + -1), Y -> icmp sle X, Y
+  // icmp slt (A + -1), Op1 -> icmp sle A, Op1
   if (A && NoOp0WrapProblem && Pred == CmpInst::ICMP_SLT &&
       match(B, m_AllOnes()))
     return new ICmpInst(CmpInst::ICMP_SLE, A, Op1);
 
-  // icmp sge (X + -1), Y -> icmp sgt X, Y
+  // icmp sge (A + -1), Op1 -> icmp sgt A, Op1
   if (A && NoOp0WrapProblem && Pred == CmpInst::ICMP_SGE &&
       match(B, m_AllOnes()))
     return new ICmpInst(CmpInst::ICMP_SGT, A, Op1);
 
-  // icmp sle (X + 1), Y -> icmp slt X, Y
+  // icmp sle (A + 1), Op1 -> icmp slt A, Op1
   if (A && NoOp0WrapProblem && Pred == CmpInst::ICMP_SLE && match(B, m_One()))
     return new ICmpInst(CmpInst::ICMP_SLT, A, Op1);
 
-  // icmp sgt (X + 1), Y -> icmp sge X, Y
+  // icmp sgt (A + 1), Op1 -> icmp sge A, Op1
   if (A && NoOp0WrapProblem && Pred == CmpInst::ICMP_SGT && match(B, m_One()))
     return new ICmpInst(CmpInst::ICMP_SGE, A, Op1);
 
-  // icmp sgt X, (Y + -1) -> icmp sge X, Y
+  // icmp sgt Op0, (C + -1) -> icmp sge Op0, C
   if (C && NoOp1WrapProblem && Pred == CmpInst::ICMP_SGT &&
       match(D, m_AllOnes()))
     return new ICmpInst(CmpInst::ICMP_SGE, Op0, C);
 
-  // icmp sle X, (Y + -1) -> icmp slt X, Y
+  // icmp sle Op0, (C + -1) -> icmp slt Op0, C
   if (C && NoOp1WrapProblem && Pred == CmpInst::ICMP_SLE &&
       match(D, m_AllOnes()))
     return new ICmpInst(CmpInst::ICMP_SLT, Op0, C);
 
-  // icmp sge X, (Y + 1) -> icmp sgt X, Y
+  // icmp sge Op0, (C + 1) -> icmp sgt Op0, C
   if (C && NoOp1WrapProblem && Pred == CmpInst::ICMP_SGE && match(D, m_One()))
     return new ICmpInst(CmpInst::ICMP_SGT, Op0, C);
 
-  // icmp slt X, (Y + 1) -> icmp sle X, Y
+  // icmp slt Op0, (C + 1) -> icmp sle Op0, C
   if (C && NoOp1WrapProblem && Pred == CmpInst::ICMP_SLT && match(D, m_One()))
     return new ICmpInst(CmpInst::ICMP_SLE, Op0, C);
 
@@ -3720,33 +3762,33 @@ Instruction *InstCombiner::foldICmpBinOp(ICmpInst &I) {
   // canonicalization from (X -nuw 1) to (X + -1) means that the combinations
   // wouldn't happen even if they were implemented.
   //
-  // icmp ult (X - 1), Y -> icmp ule X, Y
-  // icmp uge (X - 1), Y -> icmp ugt X, Y
-  // icmp ugt X, (Y - 1) -> icmp uge X, Y
-  // icmp ule X, (Y - 1) -> icmp ult X, Y
+  // icmp ult (A - 1), Op1 -> icmp ule A, Op1
+  // icmp uge (A - 1), Op1 -> icmp ugt A, Op1
+  // icmp ugt Op0, (C - 1) -> icmp uge Op0, C
+  // icmp ule Op0, (C - 1) -> icmp ult Op0, C
 
-  // icmp ule (X + 1), Y -> icmp ult X, Y
+  // icmp ule (A + 1), Op0 -> icmp ult A, Op1
   if (A && NoOp0WrapProblem && Pred == CmpInst::ICMP_ULE && match(B, m_One()))
     return new ICmpInst(CmpInst::ICMP_ULT, A, Op1);
 
-  // icmp ugt (X + 1), Y -> icmp uge X, Y
+  // icmp ugt (A + 1), Op0 -> icmp uge A, Op1
   if (A && NoOp0WrapProblem && Pred == CmpInst::ICMP_UGT && match(B, m_One()))
     return new ICmpInst(CmpInst::ICMP_UGE, A, Op1);
 
-  // icmp uge X, (Y + 1) -> icmp ugt X, Y
+  // icmp uge Op0, (C + 1) -> icmp ugt Op0, C
   if (C && NoOp1WrapProblem && Pred == CmpInst::ICMP_UGE && match(D, m_One()))
     return new ICmpInst(CmpInst::ICMP_UGT, Op0, C);
 
-  // icmp ult X, (Y + 1) -> icmp ule X, Y
+  // icmp ult Op0, (C + 1) -> icmp ule Op0, C
   if (C && NoOp1WrapProblem && Pred == CmpInst::ICMP_ULT && match(D, m_One()))
     return new ICmpInst(CmpInst::ICMP_ULE, Op0, C);
 
   // if C1 has greater magnitude than C2:
-  //  icmp (X + C1), (Y + C2) -> icmp (X + C3), Y
+  //  icmp (A + C1), (C + C2) -> icmp (A + C3), C
   //  s.t. C3 = C1 - C2
   //
   // if C2 has greater magnitude than C1:
-  //  icmp (X + C1), (Y + C2) -> icmp X, (Y + C3)
+  //  icmp (A + C1), (C + C2) -> icmp A, (C + C3)
   //  s.t. C3 = C2 - C1
   if (A && C && NoOp0WrapProblem && NoOp1WrapProblem &&
       (BO0->hasOneUse() || BO1->hasOneUse()) && !I.isUnsigned())
@@ -3784,10 +3826,10 @@ Instruction *InstCombiner::foldICmpBinOp(ICmpInst &I) {
     D = BO1->getOperand(1);
   }
 
-  // icmp (X-Y), X -> icmp 0, Y for equalities or if there is no overflow.
+  // icmp (A-B), A -> icmp 0, B for equalities or if there is no overflow.
   if (A == Op1 && NoOp0WrapProblem)
     return new ICmpInst(Pred, Constant::getNullValue(Op1->getType()), B);
-  // icmp X, (X-Y) -> icmp Y, 0 for equalities or if there is no overflow.
+  // icmp C, (C-D) -> icmp D, 0 for equalities or if there is no overflow.
   if (C == Op0 && NoOp1WrapProblem)
     return new ICmpInst(Pred, D, Constant::getNullValue(Op0->getType()));
 
@@ -3799,15 +3841,12 @@ Instruction *InstCombiner::foldICmpBinOp(ICmpInst &I) {
   if (C == Op0 && (Pred == ICmpInst::ICMP_ULT || Pred == ICmpInst::ICMP_UGE))
     return new ICmpInst(Pred, C, D);
 
-  // icmp (Y-X), (Z-X) -> icmp Y, Z for equalities or if there is no overflow.
-  if (B && D && B == D && NoOp0WrapProblem && NoOp1WrapProblem &&
-      // Try not to increase register pressure.
-      BO0->hasOneUse() && BO1->hasOneUse())
+  // icmp (A-B), (C-B) -> icmp A, C for equalities or if there is no overflow.
+  if (B && D && B == D && NoOp0WrapProblem && NoOp1WrapProblem)
     return new ICmpInst(Pred, A, C);
-  // icmp (X-Y), (X-Z) -> icmp Z, Y for equalities or if there is no overflow.
-  if (A && C && A == C && NoOp0WrapProblem && NoOp1WrapProblem &&
-      // Try not to increase register pressure.
-      BO0->hasOneUse() && BO1->hasOneUse())
+
+  // icmp (A-B), (A-D) -> icmp D, B for equalities or if there is no overflow.
+  if (A && C && A == C && NoOp0WrapProblem && NoOp1WrapProblem)
     return new ICmpInst(Pred, D, B);
 
   // icmp (0-X) < cst --> x > -cst
@@ -5355,6 +5394,9 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
   if (Instruction *Res = foldICmpWithDominatingICmp(I))
     return Res;
 
+  if (Instruction *Res = foldICmpBinOp(I))
+    return Res;
+
   if (Instruction *Res = foldICmpUsingKnownBits(I))
     return Res;
 
@@ -5431,9 +5473,6 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
 
   if (Instruction *R = foldICmpWithCastOp(I))
     return R;
-
-  if (Instruction *Res = foldICmpBinOp(I))
-    return Res;
 
   if (Instruction *Res = foldICmpWithMinMax(I))
     return Res;

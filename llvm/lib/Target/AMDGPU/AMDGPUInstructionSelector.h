@@ -35,6 +35,7 @@ class AMDGPUInstrInfo;
 class AMDGPURegisterBankInfo;
 class GCNSubtarget;
 class MachineInstr;
+class MachineIRBuilder;
 class MachineOperand;
 class MachineRegisterInfo;
 class SIInstrInfo;
@@ -82,6 +83,12 @@ private:
   bool selectG_IMPLICIT_DEF(MachineInstr &I) const;
   bool selectG_INSERT(MachineInstr &I) const;
   bool selectG_INTRINSIC(MachineInstr &I) const;
+
+  std::tuple<Register, unsigned, unsigned>
+  splitBufferOffsets(MachineIRBuilder &B, Register OrigOffset) const;
+
+  bool selectStoreIntrinsic(MachineInstr &MI, bool IsFormat) const;
+
   bool selectG_INTRINSIC_W_SIDE_EFFECTS(MachineInstr &I) const;
   int getS_CMPOpcode(CmpInst::Predicate P, unsigned Size) const;
   bool selectG_ICMP(MachineInstr &I) const;
@@ -110,9 +117,16 @@ private:
   InstructionSelector::ComplexRendererFns
   selectVOP3Mods0(MachineOperand &Root) const;
   InstructionSelector::ComplexRendererFns
+  selectVOP3Mods0Clamp0OMod(MachineOperand &Root) const;
+  InstructionSelector::ComplexRendererFns
   selectVOP3OMods(MachineOperand &Root) const;
   InstructionSelector::ComplexRendererFns
   selectVOP3Mods(MachineOperand &Root) const;
+
+  InstructionSelector::ComplexRendererFns
+  selectVOP3OpSelMods0(MachineOperand &Root) const;
+  InstructionSelector::ComplexRendererFns
+  selectVOP3OpSelMods(MachineOperand &Root) const;
 
   InstructionSelector::ComplexRendererFns
   selectSmrdImm(MachineOperand &Root) const;

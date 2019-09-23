@@ -70,23 +70,47 @@ static SourceLocation GetEndLoc(Decl *D) {
   return D->getLocation();
 }
 
+/// Returns true on constant values based around a single IntegerLiteral.
+/// Allow for use of parentheses, integer casts, and negative signs.
+static bool IsIntegerLiteralConstantExpr(const Expr *E) {
+  // Allow parentheses
+  E = E->IgnoreParens();
+
+  // Allow conversions to different integer kind.
+  if (const auto *CE = dyn_cast<CastExpr>(E)) {
+    if (CE->getCastKind() != CK_IntegralCast)
+      return false;
+    E = CE->getSubExpr();
+  }
+
+  // Allow negative numbers.
+  if (const auto *UO = dyn_cast<UnaryOperator>(E)) {
+    if (UO->getOpcode() != UO_Minus)
+      return false;
+    E = UO->getSubExpr();
+  }
+
+  return isa<IntegerLiteral>(E);
+}
+
 /// Helper for tryNormalizeBinaryOperator. Attempts to extract an IntegerLiteral
-/// or EnumConstantDecl from the given Expr. If it fails, returns nullptr.
+/// constant expression or EnumConstantDecl from the given Expr. If it fails,
+/// returns nullptr.
 static const Expr *tryTransformToIntOrEnumConstant(const Expr *E) {
   E = E->IgnoreParens();
-  if (isa<IntegerLiteral>(E))
+  if (IsIntegerLiteralConstantExpr(E))
     return E;
   if (auto *DR = dyn_cast<DeclRefExpr>(E->IgnoreParenImpCasts()))
     return isa<EnumConstantDecl>(DR->getDecl()) ? DR : nullptr;
   return nullptr;
 }
 
-/// Tries to interpret a binary operator into `Decl Op Expr` form, if Expr is
-/// an integer literal or an enum constant.
+/// Tries to interpret a binary operator into `Expr Op NumExpr` form, if
+/// NumExpr is an integer literal or an enum constant.
 ///
 /// If this fails, at least one of the returned DeclRefExpr or Expr will be
 /// null.
-static std::tuple<const DeclRefExpr *, BinaryOperatorKind, const Expr *>
+static std::tuple<const Expr *, BinaryOperatorKind, const Expr *>
 tryNormalizeBinaryOperator(const BinaryOperator *B) {
   BinaryOperatorKind Op = B->getOpcode();
 
@@ -108,8 +132,7 @@ tryNormalizeBinaryOperator(const BinaryOperator *B) {
     Constant = tryTransformToIntOrEnumConstant(B->getLHS());
   }
 
-  auto *D = dyn_cast<DeclRefExpr>(MaybeDecl->IgnoreParenImpCasts());
-  return std::make_tuple(D, Op, Constant);
+  return std::make_tuple(MaybeDecl, Op, Constant);
 }
 
 /// For an expression `x == Foo && x == Bar`, this determines whether the
@@ -121,11 +144,11 @@ tryNormalizeBinaryOperator(const BinaryOperator *B) {
 static bool areExprTypesCompatible(const Expr *E1, const Expr *E2) {
   // User intent isn't clear if they're mixing int literals with enum
   // constants.
-  if (isa<IntegerLiteral>(E1) != isa<IntegerLiteral>(E2))
+  if (isa<DeclRefExpr>(E1) != isa<DeclRefExpr>(E2))
     return false;
 
   // Integer literal comparisons, regardless of literal type, are acceptable.
-  if (isa<IntegerLiteral>(E1))
+  if (!isa<DeclRefExpr>(E1))
     return true;
 
   // IntegerLiterals are handled above and only EnumConstantDecls are expected
@@ -1021,34 +1044,34 @@ private:
     if (!LHS->isComparisonOp() || !RHS->isComparisonOp())
       return {};
 
-    const DeclRefExpr *Decl1;
-    const Expr *Expr1;
+    const Expr *DeclExpr1;
+    const Expr *NumExpr1;
     BinaryOperatorKind BO1;
-    std::tie(Decl1, BO1, Expr1) = tryNormalizeBinaryOperator(LHS);
+    std::tie(DeclExpr1, BO1, NumExpr1) = tryNormalizeBinaryOperator(LHS);
 
-    if (!Decl1 || !Expr1)
+    if (!DeclExpr1 || !NumExpr1)
       return {};
 
-    const DeclRefExpr *Decl2;
-    const Expr *Expr2;
+    const Expr *DeclExpr2;
+    const Expr *NumExpr2;
     BinaryOperatorKind BO2;
-    std::tie(Decl2, BO2, Expr2) = tryNormalizeBinaryOperator(RHS);
+    std::tie(DeclExpr2, BO2, NumExpr2) = tryNormalizeBinaryOperator(RHS);
 
-    if (!Decl2 || !Expr2)
+    if (!DeclExpr2 || !NumExpr2)
       return {};
 
     // Check that it is the same variable on both sides.
-    if (Decl1->getDecl() != Decl2->getDecl())
+    if (!Expr::isSameComparisonOperand(DeclExpr1, DeclExpr2))
       return {};
 
     // Make sure the user's intent is clear (e.g. they're comparing against two
     // int literals, or two things from the same enum)
-    if (!areExprTypesCompatible(Expr1, Expr2))
+    if (!areExprTypesCompatible(NumExpr1, NumExpr2))
       return {};
 
     Expr::EvalResult L1Result, L2Result;
-    if (!Expr1->EvaluateAsInt(L1Result, *Context) ||
-        !Expr2->EvaluateAsInt(L2Result, *Context))
+    if (!NumExpr1->EvaluateAsInt(L1Result, *Context) ||
+        !NumExpr2->EvaluateAsInt(L2Result, *Context))
       return {};
 
     llvm::APSInt L1 = L1Result.Val.getInt();
@@ -1081,6 +1104,10 @@ private:
     // * Variable x is equal to the largest literal.
     // * Variable x is greater than largest literal.
     bool AlwaysTrue = true, AlwaysFalse = true;
+    // Track value of both subexpressions.  If either side is always
+    // true/false, another warning should have already been emitted.
+    bool LHSAlwaysTrue = true, LHSAlwaysFalse = true;
+    bool RHSAlwaysTrue = true, RHSAlwaysFalse = true;
     for (const llvm::APSInt &Value : Values) {
       TryResult Res1, Res2;
       Res1 = analyzeLogicOperatorCondition(BO1, Value, L1);
@@ -1096,10 +1123,16 @@ private:
         AlwaysTrue &= (Res1.isTrue() || Res2.isTrue());
         AlwaysFalse &= !(Res1.isTrue() || Res2.isTrue());
       }
+
+      LHSAlwaysTrue &= Res1.isTrue();
+      LHSAlwaysFalse &= Res1.isFalse();
+      RHSAlwaysTrue &= Res2.isTrue();
+      RHSAlwaysFalse &= Res2.isFalse();
     }
 
     if (AlwaysTrue || AlwaysFalse) {
-      if (BuildOpts.Observer)
+      if (!LHSAlwaysTrue && !LHSAlwaysFalse && !RHSAlwaysTrue &&
+          !RHSAlwaysFalse && BuildOpts.Observer)
         BuildOpts.Observer->compareAlwaysTrue(B, AlwaysTrue);
       return TryResult(AlwaysTrue);
     }
@@ -4999,6 +5032,8 @@ class StmtPrinterHelper : public PrinterHelper  {
 public:
   StmtPrinterHelper(const CFG* cfg, const LangOptions &LO)
       : LangOpts(LO) {
+    if (!cfg)
+      return;
     for (CFG::const_iterator I = cfg->begin(), E = cfg->end(); I != E; ++I ) {
       unsigned j = 1;
       for (CFGBlock::const_iterator BI = (*I)->begin(), BEnd = (*I)->end() ;
@@ -5321,9 +5356,21 @@ static void print_construction_context(raw_ostream &OS,
 }
 
 static void print_elem(raw_ostream &OS, StmtPrinterHelper &Helper,
+                       const CFGElement &E);
+
+void CFGElement::dumpToStream(llvm::raw_ostream &OS) const {
+  StmtPrinterHelper Helper(nullptr, {});
+  print_elem(OS, Helper, *this);
+}
+
+static void print_elem(raw_ostream &OS, StmtPrinterHelper &Helper,
                        const CFGElement &E) {
-  if (Optional<CFGStmt> CS = E.getAs<CFGStmt>()) {
-    const Stmt *S = CS->getStmt();
+  switch (E.getKind()) {
+  case CFGElement::Kind::Statement:
+  case CFGElement::Kind::CXXRecordTypedCall:
+  case CFGElement::Kind::Constructor: {
+    CFGStmt CS = E.castAs<CFGStmt>();
+    const Stmt *S = CS.getStmt();
     assert(S != nullptr && "Expecting non-null Stmt");
 
     // special printing for statement-expressions.
@@ -5375,12 +5422,18 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper &Helper,
     // Expressions need a newline.
     if (isa<Expr>(S))
       OS << '\n';
-  } else if (Optional<CFGInitializer> IE = E.getAs<CFGInitializer>()) {
-    print_initializer(OS, Helper, IE->getInitializer());
+
+    break;
+  }
+
+  case CFGElement::Kind::Initializer:
+    print_initializer(OS, Helper, E.castAs<CFGInitializer>().getInitializer());
     OS << '\n';
-  } else if (Optional<CFGAutomaticObjDtor> DE =
-                 E.getAs<CFGAutomaticObjDtor>()) {
-    const VarDecl *VD = DE->getVarDecl();
+    break;
+
+  case CFGElement::Kind::AutomaticObjectDtor: {
+    CFGAutomaticObjDtor DE = E.castAs<CFGAutomaticObjDtor>();
+    const VarDecl *VD = DE.getVarDecl();
     Helper.handleDecl(VD, OS);
 
     QualType T = VD->getType();
@@ -5390,53 +5443,75 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper &Helper,
     OS << ".~";
     T.getUnqualifiedType().print(OS, PrintingPolicy(Helper.getLangOpts()));
     OS << "() (Implicit destructor)\n";
-  } else if (Optional<CFGLifetimeEnds> DE = E.getAs<CFGLifetimeEnds>()) {
-    const VarDecl *VD = DE->getVarDecl();
-    Helper.handleDecl(VD, OS);
+    break;
+  }
 
+  case CFGElement::Kind::LifetimeEnds:
+    Helper.handleDecl(E.castAs<CFGLifetimeEnds>().getVarDecl(), OS);
     OS << " (Lifetime ends)\n";
-  } else if (Optional<CFGLoopExit> LE = E.getAs<CFGLoopExit>()) {
-    const Stmt *LoopStmt = LE->getLoopStmt();
-    OS << LoopStmt->getStmtClassName() << " (LoopExit)\n";
-  } else if (Optional<CFGScopeBegin> SB = E.getAs<CFGScopeBegin>()) {
+    break;
+
+  case CFGElement::Kind::LoopExit:
+    OS << E.castAs<CFGLoopExit>().getLoopStmt()->getStmtClassName() << " (LoopExit)\n";
+    break;
+
+  case CFGElement::Kind::ScopeBegin:
     OS << "CFGScopeBegin(";
-    if (const VarDecl *VD = SB->getVarDecl())
+    if (const VarDecl *VD = E.castAs<CFGScopeBegin>().getVarDecl())
       OS << VD->getQualifiedNameAsString();
     OS << ")\n";
-  } else if (Optional<CFGScopeEnd> SE = E.getAs<CFGScopeEnd>()) {
+    break;
+
+  case CFGElement::Kind::ScopeEnd:
     OS << "CFGScopeEnd(";
-    if (const VarDecl *VD = SE->getVarDecl())
+    if (const VarDecl *VD = E.castAs<CFGScopeEnd>().getVarDecl())
       OS << VD->getQualifiedNameAsString();
     OS << ")\n";
-  } else if (Optional<CFGNewAllocator> NE = E.getAs<CFGNewAllocator>()) {
+    break;
+
+  case CFGElement::Kind::NewAllocator:
     OS << "CFGNewAllocator(";
-    if (const CXXNewExpr *AllocExpr = NE->getAllocatorExpr())
+    if (const CXXNewExpr *AllocExpr = E.castAs<CFGNewAllocator>().getAllocatorExpr())
       AllocExpr->getType().print(OS, PrintingPolicy(Helper.getLangOpts()));
     OS << ")\n";
-  } else if (Optional<CFGDeleteDtor> DE = E.getAs<CFGDeleteDtor>()) {
-    const CXXRecordDecl *RD = DE->getCXXRecordDecl();
+    break;
+
+  case CFGElement::Kind::DeleteDtor: {
+    CFGDeleteDtor DE = E.castAs<CFGDeleteDtor>();
+    const CXXRecordDecl *RD = DE.getCXXRecordDecl();
     if (!RD)
       return;
     CXXDeleteExpr *DelExpr =
-        const_cast<CXXDeleteExpr*>(DE->getDeleteExpr());
+        const_cast<CXXDeleteExpr*>(DE.getDeleteExpr());
     Helper.handledStmt(cast<Stmt>(DelExpr->getArgument()), OS);
     OS << "->~" << RD->getName().str() << "()";
     OS << " (Implicit destructor)\n";
-  } else if (Optional<CFGBaseDtor> BE = E.getAs<CFGBaseDtor>()) {
-    const CXXBaseSpecifier *BS = BE->getBaseSpecifier();
+    break;
+  }
+
+  case CFGElement::Kind::BaseDtor: {
+    const CXXBaseSpecifier *BS = E.castAs<CFGBaseDtor>().getBaseSpecifier();
     OS << "~" << BS->getType()->getAsCXXRecordDecl()->getName() << "()";
     OS << " (Base object destructor)\n";
-  } else if (Optional<CFGMemberDtor> ME = E.getAs<CFGMemberDtor>()) {
-    const FieldDecl *FD = ME->getFieldDecl();
+    break;
+  }
+
+  case CFGElement::Kind::MemberDtor: {
+    const FieldDecl *FD = E.castAs<CFGMemberDtor>().getFieldDecl();
     const Type *T = FD->getType()->getBaseElementTypeUnsafe();
     OS << "this->" << FD->getName();
     OS << ".~" << T->getAsCXXRecordDecl()->getName() << "()";
     OS << " (Member object destructor)\n";
-  } else if (Optional<CFGTemporaryDtor> TE = E.getAs<CFGTemporaryDtor>()) {
-    const CXXBindTemporaryExpr *BT = TE->getBindTemporaryExpr();
+    break;
+  }
+
+  case CFGElement::Kind::TemporaryDtor: {
+    const CXXBindTemporaryExpr *BT = E.castAs<CFGTemporaryDtor>().getBindTemporaryExpr();
     OS << "~";
     BT->getType().print(OS, PrintingPolicy(Helper.getLangOpts()));
     OS << "() (Temporary object destructor)\n";
+    break;
+  }
   }
 }
 
