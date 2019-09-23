@@ -248,7 +248,7 @@ run-commands.sh: | stage1-compiler
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
 	echo "export CCP=\$$1" > run-commands.sh
-	echo "head -n 300 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
+	echo "cat commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
                 >> run-commands.sh
 	chmod +x run-commands.sh
 
@@ -444,6 +444,8 @@ clean:
 	rm -f  sample.out sample.out.{layout,symfile,profile,cfg}
 	rm -f  sample_*.o sample.plo.out sample.perfdata sample.propeller sample.propeller.out
 	rm -f  *.autolog *.log1
+	rm -f check-performance check-performance.*
+	rm -f gitdiff
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
