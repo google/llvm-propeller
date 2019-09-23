@@ -202,10 +202,15 @@ double NodeChainBuilder::ExtTSPScore(NodeChain *Chain) const {
 
 /* Updates the best NodeChainAssembly between two NodeChains. The existing
  * record will be replaced by the new NodeChainAssembly if a non-zero gain
- * is achieved. Otherwise, it will be removed. */
+ * is achieved. Otherwise, it will be removed.
+ * If a nodechain assembly record is (kept) inserted, returns true. Otherwise
+ * returns false. */
 bool NodeChainBuilder::UpdateNodeChainAssembly(NodeChain *SplitChain,
                                                NodeChain *UnsplitChain) {
-  /* Only split the chain if the size of the chain is smaller than a treshold.*/
+  // Remove the assembly record
+  NodeChainAssemblies.erase(std::make_pair(SplitChain, UnsplitChain));
+
+  // Only consider split the chain if the size of the chain is smaller than a treshold.
   bool DoSplit = (SplitChain->Size <= config->propellerChainSplitThreshold);
   auto SlicePosEnd =
       DoSplit ? SplitChain->Nodes.end() : std::next(SplitChain->Nodes.begin());
@@ -214,13 +219,12 @@ bool NodeChainBuilder::UpdateNodeChainAssembly(NodeChain *SplitChain,
 
   for (auto SlicePos = SplitChain->Nodes.begin(); SlicePos != SlicePosEnd;
        ++SlicePos) {
-    /* Do not split the mutually-forced edges in the chain.*/
+    // Do not split the mutually-forced edges in the chain.
     if (SlicePos != SplitChain->Nodes.begin() &&
         MutuallyForcedOut[*std::prev(SlicePos)] == *SlicePos)
       continue;
 
-    /* If the split position is at the beginning (no splitting), only consider
-     * one MergeOrder.*/
+    // If the split position is at the beginning (no splitting), only consider one MergeOrder
     auto MergeOrderEnd = (SlicePos == SplitChain->Nodes.begin())
                              ? MergeOrder::BeginNext
                              : MergeOrder::End;
@@ -241,13 +245,12 @@ bool NodeChainBuilder::UpdateNodeChainAssembly(NodeChain *SplitChain,
     }
   }
 
+  // Insert the best assembly of the two chains (only if it has positive gain).
   auto BestCandidate = std::max_element(
       CandidateNCAs.begin(), CandidateNCAs.end(),
       [](unique_ptr<NodeChainAssembly> &C1, unique_ptr<NodeChainAssembly> &C2) {
         return C1->GetExtTSPGain() < C2->GetExtTSPGain();
       });
-
-  NodeChainAssemblies.erase(std::make_pair(SplitChain, UnsplitChain));
 
   if (BestCandidate != CandidateNCAs.end() &&
       (*BestCandidate)->GetExtTSPGain() > 0) {
@@ -272,6 +275,9 @@ void NodeChainBuilder::initNodeChains() {
 }
 
 void NodeChainBuilder::initMutuallyForcedEdges() {
+  // Find all the mutually-forced edges.
+  // These are all the edges which are -- based on the profile -- the only (executed) outgoing edge
+  // from their source node and the only (executed) incoming edges to their sink nodes
   unordered_map<const ELFCfgNode *, vector<ELFCfgEdge *>> ProfiledOuts;
   unordered_map<const ELFCfgNode *, vector<ELFCfgEdge *>> ProfiledIns;
 
@@ -298,8 +304,8 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
     }
   }
 
-  /* Break cycles in the mutually forced edges by cutting the edge sinking to
-   * the smallest address in every cycle (hopefully a loop backedge).*/
+  // Break cycles in the mutually forced edges by cutting the edge sinking to
+  // the smallest address in every cycle (hopefully a loop backedge)
   map<const ELFCfgNode *, unsigned> NodeToCycleMap;
   set<const ELFCfgNode *> CycleCutNodes;
   unsigned CycleCount = 0;
@@ -335,15 +341,21 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
     }
   }
 
+  // Remove the victim edges to break cycles
   for (const ELFCfgNode *Node : CycleCutNodes)
     MutuallyForcedOut.erase(Node);
 }
 
 void NodeChainBuilder::ComputeChainOrder(
     vector<const NodeChain *> &ChainOrder) {
+
+  // Attach the mutually-foced edges (which will not be split anymore).
   for (auto &KV : MutuallyForcedOut)
     AttachNodes(KV.first, KV.second);
 
+  // Initialize the ExtTSP algorithm's data:
+  // For each chain, compute its ExtTSP score, add its chain assembly records,
+  // and its merge candidate chain.
   for (auto &C : Chains) {
     NodeChain *Chain = C.second.get();
     Chain->Score = ExtTSPScore(Chain);
@@ -364,6 +376,9 @@ void NodeChainBuilder::ComputeChainOrder(
     }
   }
 
+
+  // Keep merging the chain assembly record with the highest ExtTSP gain, until
+  // no more gain is possible.
   bool Merged;
   do {
     Merged = false;
@@ -386,11 +401,14 @@ void NodeChainBuilder::ComputeChainOrder(
     }
   } while (Merged);
 
+  // Merge fallthrough basic blocks if we have missed any
   AttachFallThroughs();
 
   SortChainsByExecutionDensity(ChainOrder);
 }
 
+
+// This function computes the ExtTSP score for a chain assembly record.
 double NodeChainBuilder::NodeChainAssembly::ExtTSPScore() const {
   double Score = 0;
   for (uint8_t SrcSliceIdx = 0; SrcSliceIdx < 3; ++SrcSliceIdx) {
