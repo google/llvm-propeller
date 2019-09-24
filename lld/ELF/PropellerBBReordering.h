@@ -84,6 +84,7 @@ private:
   unordered_map<NodeChain *, unordered_set<NodeChain *>> CandidateChains;
 
   void SortChainsByExecutionDensity(vector<const NodeChain *> &ChainOrder);
+  void InitializeExtTSP();
   void AttachFallThroughs();
 
   /* This function tries to place two nodes immediately adjacent to
