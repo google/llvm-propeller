@@ -6,10 +6,10 @@
 # RUN: ld.lld  %t.o -o %t.out
 # RUN: llvm-nm -Sn %t.out| FileCheck %s --check-prefix=BEFORE
 
-# BEFORE:	0000000000201000 0000000000000005 t foo
-# BEFORE-NEXT:	0000000000201005 0000000000000005 t a.BB.foo
-# BEFORE-NEXT:	000000000020100a 0000000000000004 t aa.BB.foo
-# BEFORE-NEXT:	000000000020100e 0000000000000004 t aaa.BB.foo
+# BEFORE:	0000000000201120 0000000000000005 t foo
+# BEFORE-NEXT:	0000000000201125 0000000000000005 t a.BB.foo
+# BEFORE-NEXT:	000000000020112a 0000000000000004 t aa.BB.foo
+# BEFORE-NEXT:	000000000020112e 0000000000000004 t aaa.BB.foo
 
 ## Create a propeller profile for foo, based on the cfg below:
 ##
@@ -44,13 +44,15 @@
 # RUN: ld.lld %t.o -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.out
 # RUN: llvm-nm -nS %t.propeller.out| FileCheck %s --check-prefix=AFTER
 
-# AFTER:	0000000000201000 0000000000000005 t foo
-# AFTER-NEXT:	0000000000201005 0000000000000005 t a.BB.foo
-# AFTER-NEXT:	000000000020100a 0000000000000004 t aaa.BB.foo
-# AFTER-NEXT:	000000000020100e 0000000000000004 t aa.BB.foo
+# AFTER:	0000000000201120 0000000000000005 t foo
+# AFTER-NEXT:	0000000000201125 0000000000000005 t a.BB.foo
+# AFTER-NEXT:	000000000020112a 0000000000000004 t aaa.BB.foo
+# AFTER-NEXT:	000000000020112e 0000000000000004 t aa.BB.foo
 
-.section	.text,"ax",@progbits
+#.global _start
+#_start:
 # -- Begin function foo
+.section	.text,"ax",@progbits
 .type	foo,@function
 foo:
  nopl (%rax)

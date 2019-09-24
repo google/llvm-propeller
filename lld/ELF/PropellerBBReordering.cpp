@@ -346,16 +346,12 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
     MutuallyForcedOut.erase(Node);
 }
 
-void NodeChainBuilder::ComputeChainOrder(
-    vector<const NodeChain *> &ChainOrder) {
-
-  // Attach the mutually-foced edges (which will not be split anymore).
-  for (auto &KV : MutuallyForcedOut)
-    AttachNodes(KV.first, KV.second);
-
-  // Initialize the ExtTSP algorithm's data:
-  // For each chain, compute its ExtTSP score, add its chain assembly records,
+// This function initializes the ExtTSP algorithm's data.
+void NodeChainBuilder::InitializeExtTSP(){
+  // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
+
+  std::set <std::pair<NodeChain*, NodeChain*>> Visited;
   for (auto &C : Chains) {
     NodeChain *Chain = C.second.get();
     Chain->Score = ExtTSPScore(Chain);
@@ -366,16 +362,30 @@ void NodeChainBuilder::ComputeChainOrder(
         NodeChain *OtherChain = NodeToChainMap.at(Edge->Sink);
         if (Chain == OtherChain)
           continue;
+        if (Visited.count(std::make_pair(Chain, OtherChain)))
+          continue;
         bool CO = UpdateNodeChainAssembly(Chain, OtherChain);
         bool OC = UpdateNodeChainAssembly(OtherChain, Chain);
         if (CO || OC) {
           CandidateChains[Chain].insert(OtherChain);
           CandidateChains[OtherChain].insert(Chain);
         }
+        Visited.insert(std::make_pair(Chain, OtherChain));
+        Visited.insert(std::make_pair(OtherChain, Chain));
       }
     }
   }
+}
 
+void NodeChainBuilder::ComputeChainOrder(
+    vector<const NodeChain *> &ChainOrder) {
+
+  // Attach the mutually-foced edges (which will not be split anymore).
+  for (auto &KV : MutuallyForcedOut)
+    AttachNodes(KV.first, KV.second);
+
+  // Initialize the Extended TSP algorithm's data.
+  InitializeExtTSP();
 
   // Keep merging the chain assembly record with the highest ExtTSP gain, until
   // no more gain is possible.
