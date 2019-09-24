@@ -93,6 +93,8 @@ private:
   /// Until the next call, bytes added to the stream will be added to this
   /// entry.
   void startEntry(const MCSymbol *BeginSym, const MCSymbol *EndSym) {
+    assert(&BeginSym->getSection() == &EndSym->getSection() &&
+           "debug_loc entries cannot span across multiple sections");
     Entries.emplace_back(BeginSym, EndSym, DWARFBytes.size(), Comments.size());
   }
 
