@@ -521,10 +521,7 @@ void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
 
 void DwarfCompileUnit::attachRangesOrLowHighPC(
     DIE &Die, SmallVector<RangeSpan, 2> Ranges) {
-  // With basic block sections, if the range spans multiple sections then this
-  // cannot be emitted as (low pc, high pc).
-  if ((Asm->TM.getBasicBlockSections() == llvm::BasicBlockSection::None) &&
-      (Ranges.size() == 1 || !DD->useRangesSection())) {
+  if (Ranges.size() == 1 || !DD->useRangesSection()) {
     const RangeSpan &Front = Ranges.front();
     const RangeSpan &Back = Ranges.back();
     attachLowHighPC(Die, Front.getStart(), Back.getEnd());

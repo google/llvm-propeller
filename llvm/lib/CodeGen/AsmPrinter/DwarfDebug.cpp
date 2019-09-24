@@ -1382,7 +1382,9 @@ bool DwarfDebug::buildLocationList(SmallVectorImpl<DebugLocEntry> &DebugLoc,
 
     const MCSymbol *EndLabel;
     if (std::next(EI) == Entries.end()) {
-      EndLabel = Asm->getFunctionEnd();
+      const MachineBasicBlock &EndMBB = Asm->MF->back();
+      EndLabel = EndMBB.isUniqueSection() ? EndMBB.getEndMCSymbol()
+                                          : Asm->getFunctionEnd();
       if (EI->isClobber())
         EndMI = EI->getInstr();
     }
