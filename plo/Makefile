@@ -98,25 +98,16 @@ gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
                   -DCMAKE_SHARED_LINKER_FLAGS=$(2) \
                   -DCMAKE_MODULE_LINKER_FLAGS=$(2)
 
-# $1 is either "labels", "all" or "none".
-# -fexperimental-new-pass-manager -mllvm -qualify-function-names
-bb_section_lto_flags = -Wl,--lto-basicblock-sections=$(1)
-#-Wl,--lto-unique-bb-section-names
-lld_relocs              := -Wl,-q
-funique_flag            := -funique-internal-funcnames
-#-funique-bb-section-names
-
-bb_section_none_flags      := $(call gen_build_flags,"-fbasicblock-sections=none $(funique_flag)","   $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,none)")
-bb_section_labels_flags    := $(call gen_build_flags,"-fbasicblock-sections=labels $(funique_flag)"," $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,labels)")
-bb_section_all_flags       := $(call gen_build_flags,"-fbasicblock-sections=all $(funique_flag)","    $(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,all)")
-bb_section_list_flags       = $(call gen_build_flags,"-fbasicblock-sections=$1 $(funique_flag)","$(lld_relocs) $(LLD_NO_OPT) $(call bb_section_lto_flags,$1)")
+bb_section_none_flags      := $(call gen_build_flags,,"${LLD_NO_OPT}")
+bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label","-fuse-ld=lld")
+bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fuse-ld=lld")
+bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1)","-fuse-ld=lld")
 
 # $1 is compiler name, "stage1", "instrbb", etc;
 # $2 is bin directory that is used to build the compiler, must be absolute path.
 # $3 is any other cmake flags (optional)
 # $4 is llvm enabled projects
 # $5 is target
-#	    -DLLVM_PARALLEL_LINK_JOBS=$(J_NUMBER)
 define build_compiler
 	if [[ ! -e "$(1)/build/CMakeCache.txt" ]]; then \
 	  mkdir -p $(1)/build ;                         \
@@ -149,15 +140,16 @@ stage1-compiler: stage1/install/bin/clang
 	touch $@
 
 stage-pgo/build/bin/clang-10: | stage1-compiler
-	$(call build_compiler,stage-pgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
+	$(call build_compiler,stage-pgo,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
 
-stage-pgo-compiler stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-compiler pgo-vanilla-compiler cspgo-compiler: %-compiler: %/build/bin/clang-10 | check_environment
+stage-pgo-compiler stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-compiler pgo-vanilla-compiler cspgo-compiler pgo-plolist-compiler pgo-plo-compiler: %-compiler: %/build/bin/clang-10 | check_environment
 	ln -sf $< $@
 	touch $@
 
-pgo-plo-compiler pgo-plolist-compiler cspgo-plo-compiler: %-compiler: %/build/bin/clang-10-plo
-	ln -sf $< $@
-	touch $@
+# pgo-plo-compiler cspgo-plo-compiler: %-compiler: %/build/bin/clang-10-plo
+# 	ln -sf $< $@
+# 	touch $@
+
 
 pgo-plo-align-compiler cspgo-plo-align-compiler: %-align-compiler: %/build/bin/clang-10-plo-align
 	ln -sf $< $@
@@ -179,22 +171,22 @@ stage-cspgo.profdata stage-pgo.profdata: %.profdata: %-compiler run-commands.sh 
 	$(STAGE1_BIN)/llvm-profdata merge -output=$@ `find $(dir $(shell readlink -f $<))../ -path "*/csprofiles/*.profraw" -o -path "*/profiles/*.profraw"`
 
 nonepgo/build/bin/clang-10: | stage1-compiler
-	$(call build_compiler,nonepgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld $(bb_section_none_flags),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,nonepgo,$(DDIR)/stage1/install/bin,$(bb_section_none_flags),"clang;compiler-rt;lld",clang lld)
 
 nonepgolabels/build/bin/clang-10: | stage1-compiler
-	$(call build_compiler,nonepgolabels,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,nonepgolabels,$(DDIR)/stage1/install/bin,$(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-vanilla/build/bin/clang-10: stage-pgo.profdata
-	$(call build_compiler,pgo-vanilla,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_none_flags),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,pgo-vanilla,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_none_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo/build/bin/clang-10: stage-pgo.profdata
-	$(call build_compiler,pgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,pgo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-plo/build/bin/clang-10: stage-pgo.profdata
-	$(call build_compiler,pgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,pgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-plolist/build/bin/clang-10: stage-pgo.profdata pgo-compiler.propeller
-	$(call build_compiler,pgo-plolist,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,pgo-plolist,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
 pgo.perfdata cspgo.perfdata pgo-vanilla.perfdata: %.perfdata: %-compiler run-commands.sh
 	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
