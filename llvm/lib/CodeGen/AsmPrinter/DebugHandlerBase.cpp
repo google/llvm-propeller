@@ -227,10 +227,15 @@ void DebugHandlerBase::beginFunction(const MachineFunction *MF) {
     // doing that violates the ranges that are calculated in the history map.
     // However, we currently do not emit debug values for constant arguments
     // directly at the start of the function, so this code is still useful.
+    //
+    // If the first mention of an argument is in a unique-section basic block,
+    // we cannot assign the CurrentFnBegin label, as it lies in a different
+    // section. For simplicity, we simply ignore such mentions in this code.
     const DILocalVariable *DIVar =
         Entries.front().getInstr()->getDebugVariable();
     if (DIVar->isParameter() &&
-        getDISubprogram(DIVar->getScope())->describes(&MF->getFunction())) {
+        getDISubprogram(DIVar->getScope())->describes(&MF->getFunction()) &&
+        !Entries.front().getInstr()->getParent()->isUniqueSection()) {
       if (!IsDescribedByReg(Entries.front().getInstr()))
         LabelsBeforeInsn[Entries.front().getInstr()] = Asm->getFunctionBegin();
       if (Entries.front().getInstr()->getDebugExpression()->isFragment()) {
