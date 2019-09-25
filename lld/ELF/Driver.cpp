@@ -1956,10 +1956,14 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
 
   if (!config->propeller.empty()) {
     lld::propeller::Propeller P(symtab);
-    if (P.processFiles(objectFiles)) {
-      config->symbolOrderingFile = P.genSymbolOrderingFile();
+    if (P.checkPropellerTarget()) {
+      if (P.processFiles(objectFiles)) {
+        config->symbolOrderingFile = P.genSymbolOrderingFile();
+      } else {
+        error("Propeller stage failed.");
+      }
     } else {
-      error("Propeller stage failed.");
+      warn("[Propeller]: Propeller skipped '" + config->outputFile + "'.");
     }
   }
 

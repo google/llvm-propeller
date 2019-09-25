@@ -125,6 +125,7 @@ public:
     if (PStream) fclose(PStream);
   }
 
+  bool matchesOutputFileName(const StringRef &OutputFile);
   bool readSymbols();
   SymbolEntry *findSymbol(StringRef SymName);
   bool processProfile();
@@ -189,6 +190,7 @@ public:
       : Symtab(ST), Views(), CfgMap(), Propf(nullptr) {}
   ~Propeller() { }
 
+  bool checkPropellerTarget();
   bool processFiles(std::vector<lld::elf::InputFile *> &Files);
   void processFile(const pair<elf::InputFile *, uint32_t> &Pair);
   ELFCfgNode *findCfgNode(uint64_t SymbolOrdinal);

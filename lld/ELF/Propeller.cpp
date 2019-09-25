@@ -13,7 +13,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <chrono>
-#include <stdio.h>
+#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <list>
@@ -35,6 +35,28 @@ using std::chrono::system_clock;
 
 namespace lld {
 namespace propeller {
+
+bool Propfile::matchesOutputFileName(const StringRef &OutputFileName) {
+  ssize_t R;
+  int OutputFileTagSeen = 0;
+  while ((R = getline(&LineBuf, &LineSize, PStream)) != -1) {
+    if (R == 0) continue;
+    if (LineBuf[R - 1] == '\n') {
+      LineBuf[--R] = '\0'; // Drop '\n' character at the end.
+    }
+    if (LineBuf[0] != '@') break;
+    ++OutputFileTagSeen;
+    if (StringRef(LineBuf + 1) == OutputFileName)
+      return true;
+  }
+  if (OutputFileTagSeen)
+    return false;
+  // If no @OutputFileName is specified, reset the stream and assume linker
+  // shall proceed propellering.
+  fseek(PStream, 0, SEEK_SET);
+  return true;
+}
+
 
 SymbolEntry *Propfile::findSymbol(StringRef SymName) {
   std::pair<StringRef, StringRef> SymNameSplit = SymName.split(".llvm.");
@@ -72,7 +94,7 @@ bool Propfile::readSymbols() {
     ++LineNo;
     if (R == 0)
       continue;
-    if (LineBuf[0] == '#' || LineBuf[0] == '!')
+    if (LineBuf[0] == '#' || LineBuf[0] == '!' || LineBuf[0] == '@')
       continue;
     if (LineBuf[0] == 'B' || LineBuf[0] == 'F') {
       LineTag = LineBuf[0];
@@ -355,18 +377,25 @@ void Propeller::calculateNodeFreqs() {
   }
 }
 
-bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
-  if (config->propeller.empty()) return true;
+bool Propeller::checkPropellerTarget() {
+  if (config->propeller.empty()) return false;
   string PropellerFileName = config->propeller.str();
-  FILE *PropFile = fopen(PropellerFileName.c_str(), "r");
-  if (!PropFile) {
+  FILE *FPtr = fopen(PropellerFileName.c_str(), "r");
+  if (!FPtr) {
     error(string("[Propeller]: Failed to open '") + PropellerFileName + "'.");
     return false;
   }
-  Propf.reset(new Propfile(PropFile, *this));
+  // Propfile takes ownership of FPtr.
+  Propf.reset(new Propfile(FPtr, *this));
+
+  return Propf->matchesOutputFileName(
+      llvm::sys::path::filename(config->outputFile));
+}
+
+bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   auto startReadSymbolTime = system_clock::now();
   if (!Propf->readSymbols()) {
-    error(string("[Propeller]: Invalid propfile: '") + PropellerFileName +
+    error(string("[Propeller]: Invalid propfile: '") + config->propeller.str() +
           "'.");
     return false;
   }
