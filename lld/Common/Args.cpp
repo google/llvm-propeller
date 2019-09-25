@@ -42,7 +42,7 @@ int64_t lld::args::getInteger(opt::InputArgList &args, unsigned key,
 }
 
 double lld::args::getFloat(opt::InputArgList &args, unsigned key,
-                              double Default) {
+                           double Default) {
   auto *a = args.getLastArg(key);
   if (!a)
     return Default;
