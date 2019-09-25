@@ -521,10 +521,7 @@ void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
 
 void DwarfCompileUnit::attachRangesOrLowHighPC(
     DIE &Die, SmallVector<RangeSpan, 2> Ranges) {
-  // With basic block sections, if the range spans multiple sections then this
-  // cannot be emitted as (low pc, high pc).
-  if ((Asm->TM.getBasicBlockSections() == llvm::BasicBlockSection::None) &&
-      (Ranges.size() == 1 || !DD->useRangesSection())) {
+  if (Ranges.size() == 1 || !DD->useRangesSection()) {
     const RangeSpan &Front = Ranges.front();
     const RangeSpan &Back = Ranges.back();
     attachLowHighPC(Die, Front.getStart(), Back.getEnd());
@@ -563,11 +560,12 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
       // BeginLabel lies in a non-unique section, but EndLabel does not. The
       // section for non-unique-section BBs ends at Asm->getFunctionEnd().
       List.push_back(RangeSpan(BeginLabel, Asm->getFunctionEnd()));
-      while (!std::next(LastMBBInSection)->isUniqueSection())
+      while (!LastMBBInSection->getNextNode()->isUniqueSection())
         ++LastMBBInSection;
     }
 
-    for (auto *MBB = std::next(LastMBBInSection); MBB != EndBB; ++MBB) {
+    for (auto *MBB = LastMBBInSection->getNextNode(); MBB != EndBB;
+         MBB = MBB->getNextNode()) {
       assert(MBB->isUniqueSection() && "All non-unique-section BBs should be"
                                        " before the unique-section ones.");
       assert(MBB->getSymbol() && "Unique BB sections should have symbols.");

@@ -7,9 +7,9 @@
 
 # RUN: llvm-nm -nS %t.out| FileCheck %s --check-prefix=BEFORE
 
-# BEFORE:	0000000000201000 0000000000000008 t foo
-# BEFORE-NEXT:	0000000000201008 0000000000000008 t bar
-# BEFORE-NEXT:	0000000000201010 0000000000000008 t baz
+# BEFORE:	0000000000201120 0000000000000008 t foo
+# BEFORE-NEXT:	0000000000201128 0000000000000008 t bar
+# BEFORE-NEXT:	0000000000201130 0000000000000008 t baz
 
 ## Create a propeller profile based on the following inter-procedural calls.
 ##
@@ -31,18 +31,18 @@
 # RUN: ld.lld  %t.o -propeller=%t_prof.propeller -o %t.propeller.reorder.out
 # RUN: llvm-nm -nS %t.propeller.reorder.out| FileCheck %s --check-prefix=REORDER
 
-# REORDER:	0000000000201000 0000000000000008 t baz
-# REORDER-NEXT:	0000000000201008 0000000000000008 t bar
-# REORDER-NEXT:	0000000000201010 0000000000000008 t foo
+# REORDER:	0000000000201120 0000000000000008 t baz
+# REORDER-NEXT:	0000000000201128 0000000000000008 t bar
+# REORDER-NEXT:	0000000000201130 0000000000000008 t foo
 
 ## Disable function reordering and expect that the original function order is retained.
 #
 # RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-opt=no-reorder-funcs -o %t.propeller.noreorder.out
 # RUN: llvm-nm -nS %t.propeller.noreorder.out| FileCheck %s --check-prefix=NOREORDER
 
-# NOREORDER:	0000000000201000 0000000000000008 t foo
-# NOREORDER-NEXT:	0000000000201008 0000000000000008 t bar
-# NOREORDER-NEXT:	0000000000000008 t baz
+# NOREORDER:		0000000000201120 0000000000000008 t foo
+# NOREORDER-NEXT:	0000000000201128 0000000000000008 t bar
+# NOREORDER-NEXT:	0000000000201130 0000000000000008 t baz
 
 .section	.text,"ax",@progbits,unique,1
 # -- Begin function foo

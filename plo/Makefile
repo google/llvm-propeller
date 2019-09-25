@@ -437,6 +437,7 @@ clean:
 	rm -f  sample_*.o sample.plo.out sample.perfdata sample.propeller sample.propeller.out
 	rm -f  *.autolog *.log1
 	rm -f check-performance check-performance.*
+	rm -f check-pmu-performance check-pmu-performance.*
 	rm -f gitdiff
 
 clean-all: clean
