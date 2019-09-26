@@ -1013,7 +1013,7 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
     }
   }
 
-  if (const auto *FD = dyn_cast<FunctionDecl>(ND)) {
+  if (const auto *FD = dyn_cast<FunctionDecl>(ND))
     if (FD->isMultiVersion() && !OmitMultiVersionMangling) {
       switch (FD->getMultiVersionKind()) {
       case MultiVersionKind::CPUDispatch:
@@ -1029,7 +1029,6 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
         llvm_unreachable("None multiversion type isn't valid here");
       }
     }
-  }
   return Out.str();
 }
 

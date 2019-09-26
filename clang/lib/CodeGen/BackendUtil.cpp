@@ -436,10 +436,8 @@ static void getBasicBlockSectionsList(llvm::TargetOptions &Options,
   for (StringRef S : Arr) {
     // Function names follow a '!' character.
     // Empty '!' implies no more functions.
-    if (S.size() == 1 && S[0] == '!')
-      break;
-    if (S.size() > 1 && S[0] == '!')
-      Options.BasicBlockSectionsList[S.str().substr(1)] = true;
+    if (S.consume_front("!") && !S.empty())
+      Options.BasicBlockSectionsList[S.str()] = true;
   }
 }
 

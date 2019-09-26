@@ -117,6 +117,7 @@ public:
 
   enum SignReturnAddressKeyValue { AKey, BKey };
 
+  // Allowed values are {"all", "labels", "none", "<filename>"}
   std::string BasicBlockSections;
 
   enum class FramePointerKind {
