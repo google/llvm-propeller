@@ -1,3 +1,14 @@
+//===-------------------- PropellerELFCfg.cpp -----------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file creates Cfg and maps propeller profile onto Cfg nodes / edges.
+//
+//===----------------------------------------------------------------------===//
 #include "PropellerELFCfg.h"
 
 #include "Propeller.h"
@@ -43,7 +54,9 @@ bool ELFCfg::writeAsDotGraph(const char *CfgOutName) {
     return false;
   }
   fprintf(fp, "digraph %s {\n", Name.str().c_str());
-  forEachNodeRef([&fp](ELFCfgNode &N) { fprintf(fp, "%u [size=\"%lu\"];", N.getBBIndex(), N.ShSize); });
+  forEachNodeRef([&fp](ELFCfgNode &N) {
+    fprintf(fp, "%u [size=\"%lu\"];", N.getBBIndex(), N.ShSize);
+  });
   fprintf(fp, "\n");
   for (auto &E : IntraEdges) {
     bool IsFTEdge = (E->Src->FTEdge == E.get());
@@ -57,6 +70,7 @@ bool ELFCfg::writeAsDotGraph(const char *CfgOutName) {
   return true;
 }
 
+// Create an edge for "From->To".
 ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
                                typename ELFCfgEdge::EdgeType Type) {
   ELFCfgEdge *Edge = new ELFCfgEdge(From, To, Type);
@@ -67,10 +81,13 @@ ELFCfgEdge *ELFCfg::createEdge(ELFCfgNode *From, ELFCfgNode *To,
     From->CallOuts.push_back(Edge);
     To->CallIns.push_back(Edge);
   }
-  emplaceEdge(Edge); // Take ownership of "Edge".
+  // Take ownership of "Edge", Cfg is responsible for all edges.
+  emplaceEdge(Edge);
   return Edge;
 }
 
+// Apply counter (CNT) to all edges between node From -> To. Both nodes are from
+// the same cfg.
 bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
   if (From == nullptr) {
     /* If the From Node is null, walk backward from the To Node while only
@@ -132,6 +149,8 @@ bool ELFCfg::markPath(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt) {
   return true;
 }
 
+// Apply counter (CNT) to the edge from node From -> To. Both nodes are from the
+// same cfg.
 void ELFCfg::mapBranch(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt,
                        bool isCall, bool isReturn) {
   assert(From->Cfg == To->Cfg);
@@ -162,6 +181,7 @@ void ELFCfg::mapBranch(ELFCfgNode *From, ELFCfgNode *To, uint64_t Cnt,
   createEdge(From, To, Type)->Weight += Cnt;
 }
 
+// Apply counter (CNT) for calls/returns/ that cross function boundaries.
 void ELFCfg::mapCallOut(ELFCfgNode *From, ELFCfgNode *To, uint64_t ToAddr,
                         uint64_t Cnt, bool isCall, bool isReturn) {
   assert(From->Cfg == this);
@@ -292,6 +312,8 @@ void ELFCfgBuilder::buildCfgs() {
   } // Enf of processing all groups.
 }
 
+// Build map: TextSection -> It's Relocation Section.
+// ELF file only contains link from Relocation Section -> It's text section.
 void ELFCfgBuilder::buildRelocationSectionMap(
     map<uint64_t, section_iterator> &RelocationSectionMap) {
   for (section_iterator I = View->ViewFile->section_begin(),
@@ -305,6 +327,7 @@ void ELFCfgBuilder::buildRelocationSectionMap(
   }
 }
 
+// Build map: basicblock section index -> basicblock section node.
 void ELFCfgBuilder::buildShndxNodeMap(
     map<uint64_t, unique_ptr<ELFCfgNode>> &TmpNodeMap,
     map<uint64_t, ELFCfgNode *> &ShndxNodeMap) {
@@ -437,6 +460,7 @@ void ELFCfgBuilder::calculateFallthroughEdges(
   }
 }
 
+// Create an ELFView instance that corresponds to a single ELF file.
 ELFView *ELFView::create(const StringRef &VN, const uint32_t Ordinal,
                          const MemoryBufferRef &FR) {
   const char *FH = FR.getBufferStart();

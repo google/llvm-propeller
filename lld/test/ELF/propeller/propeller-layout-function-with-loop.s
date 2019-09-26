@@ -2,9 +2,9 @@
 ## Basic propeller tests.
 ## This test exercises basic block reordering on a single function with a simple loop.
 
-# RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
+# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: ld.lld  %t.o -o %t.out
-# RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=BEFORE
+# RUN: llvm-objdump -d %t.out | FileCheck %s --check-prefix=BEFORE
 
 # BEFORE:	0000000000201120 foo:
 # BEFORE-NEXT:	nopl    (%rax)
@@ -62,7 +62,7 @@
 # RUN: echo "1 2 5" >> %t_prof.propeller
 
 # RUN: ld.lld  %t.o -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.reorder.out
-# RUN: llvm-objdump -d %t.propeller.reorder.out| FileCheck %s --check-prefix=REORDER
+# RUN: llvm-objdump -d %t.propeller.reorder.out | FileCheck %s --check-prefix=REORDER
 
 # REORDER:	0000000000201120 foo:
 # REORDER-NEXT:	nopl	(%rax)
@@ -128,4 +128,3 @@ aaaa.BB.foo:
 .section	.text,"ax",@progbits
 .Lfoo_end:
  .size	foo, .Lfoo_end-foo
-# -- End function (foo)

@@ -1,3 +1,26 @@
+//===------------------------- Propeller.cpp ------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// Propeller.cpp is the entry point to Propeller framework. The main
+// functionalities are:
+//
+//   - parses propeller profile file, which contains profile information in the
+//     granularity of basicblocks.  (a)
+//
+//   - parses each ELF object file and generates CFG based on relocation
+//     information of each basicblock section.
+//
+//   - maps profile in (a) onto (b) and get CFGs with profile counters (c)
+//
+//   - calls optimization passes that uses (c).
+//
+//===----------------------------------------------------------------------===//
+
 #include "Propeller.h"
 
 #include "Config.h"
@@ -25,17 +48,16 @@
 using lld::elf::config;
 using llvm::StringRef;
 
-using std::list;
-using std::map;
 using std::string;
 using std::tuple;
-using std::vector;
 using std::chrono::duration;
 using std::chrono::system_clock;
 
 namespace lld {
 namespace propeller {
 
+// Read the "@" directive in the propeller file, compare it against w/ "-o"
+// filename, return true if positive.
 bool Propfile::matchesOutputFileName(const StringRef &OutputFileName) {
   ssize_t R;
   int OutputFileTagSeen = 0;
@@ -56,7 +78,6 @@ bool Propfile::matchesOutputFileName(const StringRef &OutputFileName) {
   fseek(PStream, 0, SEEK_SET);
   return true;
 }
-
 
 SymbolEntry *Propfile::findSymbol(StringRef SymName) {
   std::pair<StringRef, StringRef> SymNameSplit = SymName.split(".llvm.");
@@ -116,13 +137,13 @@ bool Propfile::readSymbols() {
     auto L2S = L1S.second.split(' ');
     auto L2 = L2S.first;
     auto EphemeralStr = L2S.second;
-    if (L1.getAsInteger(10, SOrdinal) == true /* means error happens */ ||
+    if (L1.getAsInteger(10, SOrdinal) /* means error happens */ ||
         SOrdinal == 0) {
       error("[Propeller]: Invalid ordinal field, at propfile line: " +
             std::to_string(LineNo) + ".");
       return false;
     }
-    if (L2.getAsInteger(16, SSize) == true) {
+    if (L2.getAsInteger(16, SSize)) {
       error("[Propeller]: Invalid size field, at propfile line: " +
             std::to_string(LineNo) + ".");
       return false;
@@ -147,7 +168,7 @@ bool Propfile::readSymbols() {
       // It's a bb symbol.
       auto L = EphemeralStr.split('.');
       uint64_t FuncIndex;
-      if (L.first.getAsInteger(10, FuncIndex) == true || FuncIndex == 0) {
+      if (L.first.getAsInteger(10, FuncIndex) || FuncIndex == 0) {
         error("[Propeller]: Invalid function index field, at propfile line: " +
             std::to_string(LineNo) + ".");
         return false;
@@ -174,7 +195,7 @@ bool Propfile::readSymbols() {
     }
   } // End of iterating all symbols.
 
-  for (auto &S : BBSymbols) {
+  for (tuple<uint64_t, uint64_t, StringRef, uint64_t> &S : BBSymbols) {
     uint64_t SOrdinal;
     uint64_t FuncIndex;
     uint64_t SSize;
@@ -222,6 +243,7 @@ static bool parseBranchOrFallthroughLine(StringRef L, uint64_t *From,
   return true;
 }
 
+// Read propeller profile. Refer header file for detail about propeller profile.
 bool Propfile::processProfile() {
   ssize_t R;
   uint64_t BCnt = 0;
@@ -278,6 +300,7 @@ bool Propfile::processProfile() {
   return true;
 }
 
+// Parse each ELF file, create CFG and attach profile data to CFG.
 void Propeller::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
   auto *Inf = Pair.first;
   ELFView *View = ELFView::create(Inf->getName(), Pair.second, Inf->mb);
@@ -316,28 +339,22 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
     // Objects (CfgLI->second) are sorted in the way they appear on the command
     // line, which is the same as how linker chooses the weak symbol definition.
     if (!S->BBTag) {
-      for (auto *Cfg : CfgLI->second) {
+      for (auto *Cfg : CfgLI->second)
         // Check Cfg does have name "SymName".
-        for (auto &N : Cfg->Nodes) {
-          if (N->ShName.split(".llvm.").first == FuncAliasName) {
-            return N.get();
-          }
-        }
-      }
+        for (auto &N : Cfg->Nodes)
+          if (N->ShName.split(".llvm.").first == FuncAliasName) return N.get();
     } else {
       uint32_t NumOnes;
       // Compare the number of "a" in aaa...a.BB.funcname against integer
       // NumOnes.
-      if (S->Name.getAsInteger(10, NumOnes) == true || !NumOnes) {
+      if (S->Name.getAsInteger(10, NumOnes) || !NumOnes)
         warn("Internal error, BB name is invalid: '" + S->Name.str() + "'.");
-      } else {
+      else {
         for (auto *Cfg : CfgLI->second) {
           // Check Cfg does have name "SymName".
           for (auto &N : Cfg->Nodes) {
             auto T = N->ShName.find_first_of('.');
-            if (T != string::npos && T == NumOnes) {
-              return N.get();
-            }
+            if (T != string::npos && T == NumOnes) return N.get();
           }
         }
       }
@@ -377,6 +394,7 @@ void Propeller::calculateNodeFreqs() {
   }
 }
 
+// Returns true if linker output target matches propeller profile.
 bool Propeller::checkPropellerTarget() {
   if (config->propeller.empty()) return false;
   string PropellerFileName = config->propeller.str();
@@ -392,6 +410,8 @@ bool Propeller::checkPropellerTarget() {
       llvm::sys::path::filename(config->outputFile));
 }
 
+// Entrance of Propeller framework. This processes each elf input file in
+// parallel and stores the result information.
 bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   auto startReadSymbolTime = system_clock::now();
   if (!Propf->readSymbols()) {
@@ -497,6 +517,8 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   return true;
 }
 
+// Generate symbol ordering file according to selected optimization pass and
+// feed it to the linker.
 vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
@@ -571,6 +593,10 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
       std::move_iterator<list<StringRef>::iterator>(SymbolList.end()));
 }
 
+// Calculate a list of basicblock symbols that are to be kept in the final
+// binary. For hot bb symbols, all bb symbols are to be dropped, because the
+// content of all hot bb sections are grouped together with the origin function.
+// For cold bb symbols, only the first bb symbols of the same function are kept.
 void Propeller::calculatePropellerLegacy(
     list<StringRef> &SymList, list<StringRef>::iterator HotPlaceHolder,
     list<StringRef>::iterator ColdPlaceHolder) {

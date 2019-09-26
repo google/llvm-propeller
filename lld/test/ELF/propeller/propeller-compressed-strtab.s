@@ -1,13 +1,16 @@
 # REQUIRES: x86
-## Test control flow graph is created.
+## Test "a.BB.main", "aa.BB.main", "aaa.BB.main" and "aaaa.BB.main" are saved 
+## in strtab in compressed form.
 
-# RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
+# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: ld.lld -propeller=%S/Inputs/propeller.data %t.o -propeller-keep-named-symbols -o %t.out
 
-# We shall have "a.BB.main", "aa.BB.main", "aaa.BB.main", "aaaa.BB.main" in the symbol table.
-# RUN: [[ "$(llvm-nm -S %t.out | grep -F ".BB.main" | wc -l)" == "4" ]]
-# But we only have "aaaa.BB.main" in .strtab, all others are compressed.
-# RUN: [[ "$(llvm-readobj --string-dump=.strtab %t.out | grep -F ".BB.main" | wc -l)" == "1" ]]
+## We shall have "a.BB.main", "aa.BB.main", "aaa.BB.main", "aaaa.BB.main" in the symbol table.
+# RUN: llvm-nm %t.out | grep -cF ".BB.main" | FileCheck %s --check-prefix=SYM_COUNT
+# SYM_COUNT: 4
+## But we only have "aaaa.BB.main" in .strtab, all others are compressed.
+# RUN: llvm-readobj --string-dump=.strtab %t.out | grep -cF ".BB.main" | FileCheck %s --check-prefix=STRTAB_COUNT
+# STRTAB_COUNT: 1
 
 .text
 	.section	.text.compute_flag,"ax",@progbits

@@ -2,7 +2,7 @@
 ## Basic propeller tests.
 ## This test exercises optimal basic block reordering one a single function.
 
-# RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
+# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: ld.lld  %t.o -o %t.out
 # RUN: llvm-nm -Sn %t.out| FileCheck %s --check-prefix=BEFORE
 

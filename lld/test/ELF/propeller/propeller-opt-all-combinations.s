@@ -3,7 +3,7 @@
 ## This test exercises all combinations of propeller options (reorder-funcs, reorder-blocks,
 ## and split-funcs) on four functions.
 
-# RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
+# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: ld.lld  %t.o -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=BEFORE
 
@@ -181,7 +181,7 @@
 # NO_SPLIT_FUNC-NEXT:	jmp	-16 <aaa.BB.bar>
 # NO_SPLIT_FUNC-EMPTY:
 # NO_SPLIT_FUNC-NEXT:	foo:
-# NO_SPLIT_FUNC-NEXT:	xorb	%al, 0
+# NO_SPLIT_FUNC-NEXT: 	xorb	%al, 0
 # NO_SPLIT_FUNC-NEXT:	int3
 # NO_SPLIT_FUNC-EMPTY:
 # NO_SPLIT_FUNC-NEXT:	qux:

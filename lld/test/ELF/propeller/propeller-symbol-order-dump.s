@@ -1,10 +1,10 @@
 # REQUIRES: x86
 ## Test dump symbol order works good.
 
-# RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
-# RUN: ld.lld -propeller=%S/Inputs/propeller.data -propeller-dump-symbol-order=$(dirname %t)/symbol-order.dump %t.o -o %t.out
+# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
+# RUN: ld.lld -propeller=%S/Inputs/propeller.data -propeller-dump-symbol-order=%t2.symorder %t.o -o %t.out
 
-# RUN: cat $(dirname %t)/symbol-order.dump | FileCheck %s --check-prefix=SYMBOL_ORDER
+# RUN: cat %t2.symorder | FileCheck %s --check-prefix=SYMBOL_ORDER
 
 # SYMBOL_ORDER: main
 # SYMBOL_ORDER: aa.BB.main
