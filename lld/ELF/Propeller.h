@@ -12,6 +12,27 @@
 //
 //   Propeller - the main propeller framework class
 //
+// Propeller starts by checking if "-o" file matches propeller profile
+// (Propeller::checkPropellerTarget), then it enters Propeller::processFiles(),
+// which builds Cfg for each valid ELF object file (Propeller::processFile ->
+// ELFCfgBuilder::buildCfgs).
+//
+// After Cfgs are build, Propeller starts parsing Propeller profile (the
+// Propfile class). In this step, bb symbols are created, branch/call counters
+// are read, and *very importantly*, the counters are applied to the Cfg. For
+// example, upon seeing two consecutive branch records in the propeller profile:
+// a->b, c->d, we not only increment edge counters for a->b, c->d, we also walks
+// from b->c, and increment basicblock and edge counters in between. This last
+// step can only be done after we have a complete Cfg for the function.
+//
+// The Cfg information is stored in Propeller::CfgMap.
+//
+// After we have Cfgs with complete counters for edges/bbs, we pass the
+// information to optimization passes. For now, depending on 
+// propellerReorderFuncs, propellerReorderBlocks or propellerSplitFuncs,
+// propeller generates a list of basicblock symbol orders and feed it the origin
+// linker phase. This step is done in Propeller::genSymbolOrderingFile.
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef LLD_ELF_PROPELLER_H
@@ -56,7 +77,7 @@ class Propeller;
 
 // Propeller profile parser.
 //
-// A sample propeller profile is like below:
+// a sample propeller profile is like below:
 //
 // Symbols
 // 1 0 N.init/_init
@@ -126,8 +147,8 @@ class Propeller;
 // generation purpose).
 class Propfile {
 public:
-  Propfile(FILE *PS, Propeller &P)
-      : BPAllocator(), PropfileStrSaver(BPAllocator), PStream(PS), Prop(P),
+  Propfile(FILE *pS, Propeller &p)
+      : BPAllocator(), PropfileStrSaver(BPAllocator), PStream(pS), Prop(p),
         SymbolOrdinalMap(), LineSize(1024) {
     // LineBuf is to be used w/ getline, which requires the storage allocated by
     // malloc.
@@ -141,45 +162,45 @@ public:
     if (PStream) fclose(PStream);
   }
 
-  bool matchesOutputFileName(const StringRef &OutputFile);
+  bool matchesOutputFileName(const StringRef &outputFile);
   bool readSymbols();
-  SymbolEntry *findSymbol(StringRef SymName);
+  SymbolEntry *findSymbol(StringRef symName);
   bool processProfile();
 
-  SymbolEntry *createFunctionSymbol(uint64_t Ordinal, const StringRef &Name,
-                                    SymbolEntry::AliasesTy &&Aliases,
-                                    uint64_t Size) {
-    auto *Sym = new SymbolEntry(Ordinal, Name, std::move(Aliases),
-                                SymbolEntry::INVALID_ADDRESS, Size,
+  SymbolEntry *createFunctionSymbol(uint64_t ordinal, const StringRef &name,
+                                    SymbolEntry::AliasesTy &&aliases,
+                                    uint64_t size) {
+    auto *sym = new SymbolEntry(ordinal, name, std::move(aliases),
+                                SymbolEntry::INVALID_ADDRESS, size,
                                 llvm::object::SymbolRef::ST_Function);
     SymbolOrdinalMap.emplace(std::piecewise_construct,
-                             std::forward_as_tuple(Ordinal),
-                             std::forward_as_tuple(Sym));
-    for (auto &A: Sym->Aliases) {
-      SymbolNameMap[A][""] = Sym;
+                             std::forward_as_tuple(ordinal),
+                             std::forward_as_tuple(sym));
+    for (auto &a: sym->Aliases) {
+      SymbolNameMap[a][""] = sym;
     }
 
-    if (Sym->Aliases.size() > 1)
-      FunctionsWithAliases.push_back(Sym);
+    if (sym->Aliases.size() > 1)
+      FunctionsWithAliases.push_back(sym);
 
-    return Sym;
+    return sym;
   }
 
-  SymbolEntry *createBasicBlockSymbol(uint64_t Ordinal, SymbolEntry *Function,
-                                      StringRef &BBIndex, uint64_t Size) {
-    // BBIndex is of the form "1", "2", it's a stringref to integer.
-    assert(!Function->BBTag && Function->isFunction());
-    auto *Sym =
-        new SymbolEntry(Ordinal, BBIndex, SymbolEntry::AliasesTy(),
-                        SymbolEntry::INVALID_ADDRESS, Size,
-                        llvm::object::SymbolRef::ST_Unknown, true, Function);
+  SymbolEntry *createBasicBlockSymbol(uint64_t ordinal, SymbolEntry *function,
+                                      StringRef &bBIndex, uint64_t size) {
+    // bBIndex is of the form "1", "2", it's a stringref to integer.
+    assert(!function->BBTag && function->isFunction());
+    auto *sym =
+        new SymbolEntry(ordinal, bBIndex, SymbolEntry::AliasesTy(),
+                        SymbolEntry::INVALID_ADDRESS, size,
+                        llvm::object::SymbolRef::ST_Unknown, true, function);
     SymbolOrdinalMap.emplace(std::piecewise_construct,
-                             std::forward_as_tuple(Ordinal),
-                             std::forward_as_tuple(Sym));
-    for (auto &A: Function->Aliases) {
-      SymbolNameMap[A][BBIndex] = Sym;
+                             std::forward_as_tuple(ordinal),
+                             std::forward_as_tuple(sym));
+    for (auto &a: function->Aliases) {
+      SymbolNameMap[a][bBIndex] = sym;
     }
-    return Sym;
+    return sym;
   }
 
   llvm::BumpPtrAllocator BPAllocator;
@@ -207,18 +228,18 @@ public:
   ~Propeller() { }
 
   bool checkPropellerTarget();
-  bool processFiles(std::vector<lld::elf::InputFile *> &Files);
-  void processFile(const pair<elf::InputFile *, uint32_t> &Pair);
-  ELFCfgNode *findCfgNode(uint64_t SymbolOrdinal);
+  bool processFiles(std::vector<lld::elf::InputFile *> &files);
+  void processFile(const pair<elf::InputFile *, uint32_t> &pair);
+  ELFCfgNode *findCfgNode(uint64_t symbolOrdinal);
   void calculateNodeFreqs();
   vector<StringRef> genSymbolOrderingFile();
   void calculatePropellerLegacy(list<StringRef> &SymList,
-                                list<StringRef>::iterator HotPlaceHolder,
-                                list<StringRef>::iterator ColdPlaceHolder);
+                                list<StringRef>::iterator hotPlaceHolder,
+                                list<StringRef>::iterator coldPlaceHolder);
   template <class Visitor>
-  void forEachCfgRef(Visitor V) {
-    for (auto &P : CfgMap) {
-      V(*(*(P.second.begin())));
+  void forEachCfgRef(Visitor v) {
+    for (auto &p : CfgMap) {
+      v(*(*(p.second.begin())));
     }
   }
 
@@ -227,7 +248,7 @@ public:
   // ELFViewDeleter, which has its implementation in .cpp, saves us from having
   // to have full ELFView definition visibile here.
   struct ELFViewDeleter {
-    void operator()(ELFView *V);
+    void operator()(ELFView *v);
   };
   list<unique_ptr<ELFView, ELFViewDeleter>> Views;
   // Same named Cfgs may exist in different object files (e.g. weak
@@ -235,7 +256,7 @@ public:
   // command line.  Note: implementation is in the .cpp file, because
   // ELFCfg here is an incomplete type.
   struct ELFViewOrdinalComparator {
-    bool operator()(const ELFCfg *A, const ELFCfg *B) const;
+    bool operator()(const ELFCfg *a, const ELFCfg *b) const;
   };
   using CfgMapTy = map<StringRef, set<ELFCfg *, ELFViewOrdinalComparator>>;
   CfgMapTy CfgMap;
@@ -264,9 +285,9 @@ public:
 struct PropellerLegacy {
   set<StringRef> BBSymbolsToKeep;
 
-  bool shouldKeepBBSymbol(StringRef SymName) {
-    if (!SymbolEntry::isBBSymbol(SymName)) return true;
-    return BBSymbolsToKeep.find(SymName) != BBSymbolsToKeep.end();
+  bool shouldKeepBBSymbol(StringRef symName) {
+    if (!SymbolEntry::isBBSymbol(symName)) return true;
+    return BBSymbolsToKeep.find(symName) != BBSymbolsToKeep.end();
   }
 };
 
