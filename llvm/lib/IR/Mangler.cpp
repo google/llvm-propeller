@@ -118,9 +118,10 @@ void Mangler::getNameWithPrefix(raw_ostream &OS, const GlobalValue *GV,
       PrefixTy = Private;
   }
 
-  const DataLayout &DL = (isa<BasicBlock>(GV) ?
-      dyn_cast<BasicBlock>(GV)->getParent()->getParent()->getDataLayout() :
-      GV->getParent()->getDataLayout());
+  const DataLayout &DL =
+      (isa<BasicBlock>(GV)
+           ? dyn_cast<BasicBlock>(GV)->getParent()->getParent()->getDataLayout()
+           : GV->getParent()->getDataLayout());
 
   if (!GV->hasName()) {
     // Get the ID for the global, assigning a new one if we haven't got one

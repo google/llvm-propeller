@@ -1478,6 +1478,9 @@ void FrameEmitterImpl::EmitCFIInstruction(const MCCFIInstruction &Instr) {
   llvm_unreachable("Unhandled case in switch");
 }
 
+/// Deduping of FDE to CIE is particularly useful with basic block sections
+/// as every basic block gets its own FDE with duplicate CFI instructions. It
+/// is useful in general but the opportunities to dedup are lesser.
 static bool ShouldBeDeduped(const MCCFIInstruction &Instr,
                             const MCSymbol *BaseLabel,
                             const MCObjectStreamer &Streamer) {
@@ -1943,9 +1946,8 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
   DenseMap<CIEKey, const MCSymbol *> CIEStarts;
 
   for (const auto &Frame : FrameArray) {
-    DedupedInstructions[Frame.Begin] =
-        CIEKey::getDedupedInstructions(Frame.Instructions, Frame.Begin,
-                                       Streamer);
+    DedupedInstructions[Frame.Begin] = CIEKey::getDedupedInstructions(
+        Frame.Instructions, Frame.Begin, Streamer);
   }
 
   const MCSymbol *DummyDebugKey = nullptr;

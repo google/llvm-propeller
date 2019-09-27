@@ -1129,7 +1129,7 @@ void AsmPrinter::EmitFunctionBody() {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
       MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
-      const MCExpr *SizeExp =  MCBinaryExpr::createSub(
+      const MCExpr *SizeExp = MCBinaryExpr::createSub(
           MCSymbolRefExpr::create(CurrentBBEnd, OutContext),
           MCSymbolRefExpr::create(MBB.getSymbol(), OutContext), OutContext);
       OutStreamer->EmitLabel(CurrentBBEnd);
@@ -2990,7 +2990,8 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     //    EmitAlignment(LogAlign);
     // }
     OutStreamer->EmitLabel(MBB.getSymbol());
-    // With BasicBlockSections, each Basic Block must handle CFI information on its own.
+    // With BasicBlockSections, each Basic Block must handle CFI information on
+    // its own.
     if (MBB.isUniqueSection()) {
       for (const HandlerInfo &HI : Handlers) {
         HI.Handler->beginBasicBlock(MBB);
@@ -3008,8 +3009,7 @@ void AsmPrinter::EmitBasicBlockEnd(const MachineBasicBlock &MBB) {
   if (MF->getBasicBlockSections()) {
     auto I = std::next(MBB.getIterator());
     const MachineBasicBlock *nextBB = (I != MF->end()) ? &*I : nullptr;
-    if (MBB.isUniqueSection() ||
-        !nextBB || nextBB->isUniqueSection()) {
+    if (MBB.isUniqueSection() || !nextBB || nextBB->isUniqueSection()) {
       for (const HandlerInfo &HI : Handlers) {
         HI.Handler->endBasicBlock(MBB);
       }

@@ -14,8 +14,8 @@
 #ifndef LLVM_TARGET_TARGETOPTIONS_H
 #define LLVM_TARGET_TARGETOPTIONS_H
 
-#include "llvm/MC/MCTargetOptions.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/MC/MCTargetOptions.h"
 
 namespace llvm {
   class MachineFunction;
@@ -65,12 +65,12 @@ namespace llvm {
   }
 
   namespace BasicBlockSection {
-    enum SectionMode {
-      None,    // Do not use Basic Block Sections.
-      All,    // Use Basic Block Sections for all functions.
-      Labels, // Do not use Basic Block Sections but label basic blocks.
-      List // Get list of functions from a file/
-    };
+  enum SectionMode {
+    None,   // Do not use Basic Block Sections.
+    All,    // Use Basic Block Sections for all functions.
+    Labels, // Do not use Basic Block Sections but label basic blocks.
+    List    // Get list of functions from a file/
+  };
   }
 
   enum class EABI {
@@ -124,10 +124,9 @@ namespace llvm {
           EnableFastISel(false), EnableGlobalISel(false), UseInitArray(false),
           DisableIntegratedAS(false), RelaxELFRelocations(false),
           FunctionSections(false), DataSections(false),
-          UniqueSectionNames(true),
-          UniqueBBSectionNames(false), TrapUnreachable(false),
-          NoTrapAfterNoreturn(false), EmulatedTLS(false),
-          ExplicitEmulatedTLS(false), EnableIPRA(false),
+          UniqueSectionNames(true), UniqueBBSectionNames(false),
+          TrapUnreachable(false), NoTrapAfterNoreturn(false),
+          EmulatedTLS(false), ExplicitEmulatedTLS(false), EnableIPRA(false),
           EmitStackSizeSection(false), EnableMachineOutliner(false),
           SupportsDefaultOutlining(false), EmitAddrsig(false),
           EnableDebugEntryValues(false) {}

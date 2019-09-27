@@ -388,16 +388,14 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
   else {
     SmallVector<RangeSpan, 2> BB_List;
-    BB_List.push_back(RangeSpan(Asm->getFunctionBegin(),
-                                Asm->getFunctionEnd()));
+    BB_List.push_back(
+        RangeSpan(Asm->getFunctionBegin(), Asm->getFunctionEnd()));
     // If basic block sections are on, only the entry BB and exception
     // handling BBs will be in the [getFunctionBegin(), getFunctionEnd()]
     // range. Ranges for the other BBs have to be emitted separately.
     for (auto &MBB : *Asm->MF) {
       if (!MBB.pred_empty() && MBB.isUniqueSection()) {
-        BB_List.push_back(
-            RangeSpan(MBB.getSymbol(),
-                      MBB.getEndMCSymbol()));
+        BB_List.push_back(RangeSpan(MBB.getSymbol(), MBB.getEndMCSymbol()));
       }
     }
     attachRangesOrLowHighPC(*SPDie, BB_List);
