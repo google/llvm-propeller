@@ -100,7 +100,7 @@ gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
 
 bb_section_none_flags      := $(call gen_build_flags,,"${LLD_NO_OPT}")
 bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label","-fuse-ld=lld")
-bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fuse-ld=lld")
+bb_section_all_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fuse-ld=lld")
 bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1)","-fuse-ld=lld")
 
 # $1 is compiler name, "stage1", "instrbb", etc;
