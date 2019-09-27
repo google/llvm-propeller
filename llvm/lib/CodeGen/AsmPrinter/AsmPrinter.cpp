@@ -2984,11 +2984,6 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     } else if (BasicBlockSections) {
       OutStreamer->SwitchSection(MF->getSection());
     }
-    // Emit alignment after section is created for basic block sections.
-    // if (MBB.isUniqueSection()) {
-    //  if (unsigned LogAlign = MBB.getLogAlignment())
-    //    EmitAlignment(LogAlign);
-    // }
     OutStreamer->EmitLabel(MBB.getSymbol());
     // With BasicBlockSections, each Basic Block must handle CFI information on
     // its own.
