@@ -861,7 +861,7 @@ static void readConfigs(opt::InputArgList &args) {
                                       !args.hasArg(OPT_relocatable));
   config->optimizeBBJumps =
       args.hasFlag(OPT_optimize_bb_jumps,
-                   OPT_no_optimize_bb_jumps, true);
+                   OPT_no_optimize_bb_jumps, false);
 
   config->demangle = args.hasFlag(OPT_demangle, OPT_no_demangle, true);
   config->dependentLibraries = args.hasFlag(OPT_dependent_libraries, OPT_no_dependent_libraries, true);

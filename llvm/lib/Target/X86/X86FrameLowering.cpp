@@ -457,25 +457,27 @@ void X86FrameLowering::BuildCFI(MachineBasicBlock &MBB,
       .addCFIIndex(CFIIndex);
 }
 
+/// Emits Dwarf Info specifying offsets of callee saved registers and
+/// frame pointer.
 void X86FrameLowering::emitCalleeSavedFrameMoves(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) const {
   emitCalleeSavedFrameMoves(MBB, MBBI, DebugLoc{});
 
   MachineFunction &MF = *MBB.getParent();
-  if (hasFP(MF)) {
-    const MachineModuleInfo &MMI = MF.getMMI();
-    const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
-    const unsigned FramePtr = TRI->getFrameRegister(MF);
-    const unsigned MachineFramePtr =
-        STI.isTarget64BitILP32()
-            ? unsigned(getX86SubSuperRegister(FramePtr, 64))
-            : FramePtr;
-    unsigned DwarfReg = MRI->getDwarfRegNum(MachineFramePtr, true);
-    // Offset = space for return address + size of the frame pointer itself.
-    unsigned Offset = (Is64Bit ? 8 : 4) + (Uses64BitFramePtr ? 8 : 4);
-    BuildCFI(MBB, MBBI, DebugLoc{},
-             MCCFIInstruction::createOffset(nullptr, DwarfReg, -Offset));
-  }
+  if (!hasFP(MF))
+    return;
+
+  const MachineModuleInfo &MMI = MF.getMMI();
+  const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
+  const unsigned FramePtr = TRI->getFrameRegister(MF);
+  const unsigned MachineFramePtr =
+      STI.isTarget64BitILP32() ? unsigned(getX86SubSuperRegister(FramePtr, 64))
+                               : FramePtr;
+  unsigned DwarfReg = MRI->getDwarfRegNum(MachineFramePtr, true);
+  // Offset = space for return address + size of the frame pointer itself.
+  unsigned Offset = (Is64Bit ? 8 : 4) + (Uses64BitFramePtr ? 8 : 4);
+  BuildCFI(MBB, MBBI, DebugLoc{},
+           MCCFIInstruction::createOffset(nullptr, DwarfReg, -Offset));
 }
 
 void X86FrameLowering::emitCalleeSavedFrameMoves(

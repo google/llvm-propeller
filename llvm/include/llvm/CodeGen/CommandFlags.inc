@@ -239,13 +239,12 @@ static cl::opt<bool>
                      cl::init(false));
 
 static cl::opt<llvm::BasicBlockSection::SectionMode> BasicBlockSections(
-    "basicblock-sections",
-    cl::desc("Emit basic blocks into separate sections"),
+    "basicblock-sections", cl::desc("Emit basic blocks into separate sections"),
     cl::init(BasicBlockSection::None),
-    cl::values(
-        clEnumValN(BasicBlockSection::None, "none", "Off"),
-        clEnumValN(BasicBlockSection::All, "all", "All Basic Blocks"),
-        clEnumValN(BasicBlockSection::Labels, "labels", "Labelled Basic Blocks")));
+    cl::values(clEnumValN(BasicBlockSection::None, "none", "Off"),
+               clEnumValN(BasicBlockSection::All, "all", "All Basic Blocks"),
+               clEnumValN(BasicBlockSection::Labels, "labels",
+                          "Labelled Basic Blocks")));
 
 static cl::opt<bool> EmulatedTLS("emulated-tls",
                                  cl::desc("Use emulated TLS model"),
@@ -257,9 +256,9 @@ static cl::opt<bool>
                        cl::init(true));
 
 static cl::opt<bool> UniqueBBSectionNames(
-   "unique-bb-section-names",
-   cl::desc("Give unique names to every basic block section"),
-   cl::init(false));
+    "unique-bb-section-names",
+    cl::desc("Give unique names to every basic block section"),
+    cl::init(false));
 
 static cl::opt<llvm::EABI>
     EABIVersion("meabi", cl::desc("Set EABI type (default depends on triple):"),
@@ -324,7 +323,8 @@ static TargetOptions InitTargetOptionsFromCodeGenFlags() {
   Options.EnableDebugEntryValues = EnableDebugEntryValues;
 
   Options.MCOptions = InitMCTargetOptionsFromFlags();
-  Options.MCOptions.MCRelocateWithSymbols = (BasicBlockSections == BasicBlockSection::All);
+  Options.MCOptions.MCRelocateWithSymbols =
+      (BasicBlockSections == BasicBlockSection::All);
 
   Options.ThreadModel = TMModel;
   Options.EABIVersion = EABIVersion;

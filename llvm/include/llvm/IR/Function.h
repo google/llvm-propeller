@@ -162,21 +162,13 @@ public:
   /// within this function.
   unsigned getInstructionCount() const;
 
-  bool getBasicBlockSections() const {
-    return BasicBlockSections;
-  }
+  bool getBasicBlockSections() const { return BasicBlockSections; }
 
-  void setBasicBlockSections(bool value) {
-    BasicBlockSections = value;
-  }
+  void setBasicBlockSections(bool value) { BasicBlockSections = value; }
 
-  bool getBasicBlockLabels() const {
-    return BasicBlockLabels;
-  }
+  bool getBasicBlockLabels() const { return BasicBlockLabels; }
 
-  void setBasicBlockLabels(bool value) {
-    BasicBlockLabels = value;
-  }
+  void setBasicBlockLabels(bool value) { BasicBlockLabels = value; }
 
   /// Returns the FunctionType for me.
   FunctionType *getFunctionType() const {

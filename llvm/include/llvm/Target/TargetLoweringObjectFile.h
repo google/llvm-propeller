@@ -91,8 +91,10 @@ public:
                                            const Constant *C,
                                            unsigned &Align) const;
 
-  virtual MCSection *getSectionForMachineBasicBlock(const Function &F,
-      const MachineBasicBlock &MBB, const TargetMachine &TM) const;
+  virtual MCSection *
+  getSectionForMachineBasicBlock(const Function &F,
+                                 const MachineBasicBlock &MBB,
+                                 const TargetMachine &TM) const;
 
   /// Classify the specified global variable into a set of target independent
   /// categories embodied in SectionKind.

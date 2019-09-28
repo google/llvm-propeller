@@ -62,8 +62,8 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     MCContext &Ctx = MF->getContext();
     auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
 
-    bool BasicBlockSymbols = MF->getBasicBlockSections() ||
-                             MF->getBasicBlockLabels();
+    bool BasicBlockSymbols =
+        MF->getBasicBlockSections() || MF->getBasicBlockLabels();
     auto Delimiter = BasicBlockSymbols ? "." : "_";
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
 
@@ -72,19 +72,13 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // compress the symbol names significantly.  The basic blocks for function
     // foo are named a.BB.foo, aa.BB.foo, and so on.
     if (BasicBlockSymbols) {
-      std::function<std::string(unsigned)> Unary = [&Unary](unsigned num) {
-        if (num == 0) return std::string("");
-        if (num == 1) return std::string("a");
-        std::string s = Unary(num / 2);
-        return s + s + Unary(num % 2);
-      };
-      CachedMCSymbol = Ctx.getOrCreateSymbol(Unary(getNumber()) +
-                           Twine(Delimiter) + "BB" + Twine(Delimiter) +
-                           Twine(MF->getName()));
+      CachedMCSymbol = Ctx.getOrCreateSymbol(
+          std::string(getNumber(), 'a') + Twine(Delimiter) + "BB" +
+          Twine(Delimiter) + Twine(MF->getName()));
     } else {
-      CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
-                           Twine(MF->getFunctionNumber()) + Twine(Delimiter) +
-                           Twine(getNumber()));
+      CachedMCSymbol = Ctx.getOrCreateSymbol(
+          Twine(Prefix) + "BB" + Twine(MF->getFunctionNumber()) +
+          Twine(Delimiter) + Twine(getNumber()));
     }
   }
   return CachedMCSymbol;

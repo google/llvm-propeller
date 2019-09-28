@@ -183,7 +183,7 @@ void MachineFunction::init() {
 
   if (Target.getBasicBlockSections() == llvm::BasicBlockSection::All ||
       F.getBasicBlockSections() ||
-      (Target.getBasicBlockSections() == llvm::BasicBlockSection::List  &&
+      (Target.getBasicBlockSections() == llvm::BasicBlockSection::List &&
        Target.isFunctionInBasicBlockSectionsList(F.getName())))
     BasicBlockSections = true;
 
@@ -368,8 +368,9 @@ bool MachineFunction::sortBasicBlockSections() {
   }
 
   this->sort(([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    return (X.isUniqueSection() == Y.isUniqueSection()) ?
-           (MBBOrder[&X] < MBBOrder[&Y]) : !X.isUniqueSection();
+    return (X.isUniqueSection() == Y.isUniqueSection())
+               ? (MBBOrder[&X] < MBBOrder[&Y])
+               : !X.isUniqueSection();
   }));
 
   this->BBSectionsSorted = true;

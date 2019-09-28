@@ -249,8 +249,7 @@ void llvm::filterDeadComdatFunctions(
   });
 }
 
-std::string llvm::getUniqueModuleId(Module *M,
-                                    bool UseModuleId) {
+std::string llvm::getUniqueModuleId(Module *M, bool UseModuleId) {
   MD5 Md5;
   bool ExportsSymbols = false;
   auto AddGlobal = [&](GlobalValue &GV) {
@@ -271,10 +270,11 @@ std::string llvm::getUniqueModuleId(Module *M,
   for (auto &IF : M->ifuncs())
     AddGlobal(IF);
 
-  // Using only module id is not guaranteed to keep this unique. So we augment
-  // the hash with the module id. This also handles the case when we have
-  // multiple definitions of the same globals in different modules (allowed by
-  // the "-z muldefs" linker flag).
+  // When UseModuleId is true, we include the module identifier also.  Module
+  // ID helps when there are no globals exported or when multiple definitions
+  // of the same globals are allowed in different modules (with "-z muldefs").
+  // While it is highly likely that Module identifier is unique, it is not
+  // guaranteed.
   if (UseModuleId && !M->getModuleIdentifier().empty()) {
     Md5.update(M->getModuleIdentifier());
     Md5.update(ArrayRef<uint8_t>{0});

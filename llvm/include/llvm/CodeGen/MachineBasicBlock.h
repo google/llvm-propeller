@@ -136,6 +136,7 @@ private:
   /// is only computed once and is cached.
   mutable MCSymbol *CachedMCSymbol = nullptr;
 
+  /// Used during basic block sections to marks the end of a basic block.
   MCSymbol *EndMCSymbol = nullptr;
 
   // Intrusive list support
@@ -816,12 +817,9 @@ public:
   /// Return the MCSymbol for this basic block.
   MCSymbol *getSymbol() const;
 
-  void setEndMCSymbol(MCSymbol *Sym)
-  { EndMCSymbol = Sym; }
+  void setEndMCSymbol(MCSymbol *Sym) { EndMCSymbol = Sym; }
 
-  MCSymbol *getEndMCSymbol() const {
-    return EndMCSymbol;
-  }
+  MCSymbol *getEndMCSymbol() const { return EndMCSymbol; }
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const {
     return IrrLoopHeaderWeight;

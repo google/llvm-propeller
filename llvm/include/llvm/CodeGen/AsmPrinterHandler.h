@@ -68,9 +68,9 @@ public:
   /// Process end of an instruction.
   virtual void endInstruction() = 0;
 
-  // Process beginning and end of a basic block, with basic block sections.
-  virtual void beginBasicBlock(const MachineBasicBlock &MBB) { }
-  virtual void endBasicBlock(const MachineBasicBlock &MBB) { }
+  /// Process beginning and end of a basic block during basic block sections.
+  virtual void beginBasicBlock(const MachineBasicBlock &MBB) {}
+  virtual void endBasicBlock(const MachineBasicBlock &MBB) {}
 };
 } // End of namespace llvm
 

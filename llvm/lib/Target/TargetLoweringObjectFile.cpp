@@ -306,9 +306,9 @@ MCSection *TargetLoweringObjectFile::getSectionForConstant(
 }
 
 MCSection *TargetLoweringObjectFile::getSectionForMachineBasicBlock(
-    const Function &F, const MachineBasicBlock &MBB, const TargetMachine &TM)
-    const {
- return nullptr;
+    const Function &F, const MachineBasicBlock &MBB,
+    const TargetMachine &TM) const {
+  return nullptr;
 }
 
 /// getTTypeGlobalReference - Return an MCExpr to use for a
