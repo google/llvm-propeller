@@ -14,7 +14,7 @@ declare -a DD=( ELF/PropellerBBReordering.h
                 test/ELF/propeller/propeller-layout-optimal-fallthrough.s )
 
 
-BASEREV=`git log --oneline --parents --merges -n 88 | grep "Merge branch 'master' into plo-dev." | head -n 1 | cut -d" " -f3`
+BASEREV=`git log --oneline --parents --merges -n 88 | grep -E "Merge .*branch '.*master' into plo-dev." | head -n 1 | cut -d" " -f3`
 
 if [[ -z "${BASEREV}" ]]; then
     echo "Failed to find base revision for plo-dev branch."
