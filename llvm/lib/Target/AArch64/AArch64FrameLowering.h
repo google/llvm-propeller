@@ -24,8 +24,9 @@ public:
       : TargetFrameLowering(StackGrowsDown, 16, 0, 16,
                             true /*StackRealignable*/) {}
 
-  void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
-                                 MachineBasicBlock::iterator MBBI) const override;
+  void
+  emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
+                            MachineBasicBlock::iterator MBBI) const override;
 
   MachineBasicBlock::iterator
   eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,

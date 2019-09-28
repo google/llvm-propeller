@@ -21,8 +21,8 @@
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/BinaryFormat/MachO.h"
-#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/IR/Comdat.h"
@@ -54,8 +54,8 @@
 #include "llvm/ProfileData/InstrProf.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <cassert>
@@ -752,10 +752,11 @@ MCSection *TargetLoweringObjectFileELF::getSectionForConstant(
 }
 
 MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
-    const Function &F, const MachineBasicBlock &MBB, const TargetMachine &TM)
-    const {
+    const Function &F, const MachineBasicBlock &MBB,
+    const TargetMachine &TM) const {
   SmallString<128> Name;
-  Name = (static_cast<MCSectionELF*>(MBB.getParent()->getSection()))->getSectionName();
+  Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
+             ->getSectionName();
   if (TM.getUniqueBBSectionNames()) {
     Name += ".";
     Name += MBB.getSymbol()->getName();
@@ -767,8 +768,8 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
     Flags |= ELF::SHF_GROUP;
     GroupName = F.getComdat()->getName();
   }
-  return getContext().getELFSection(Name, ELF::SHT_PROGBITS,
-      Flags, 0, GroupName, UniqueID);
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0,
+                                    GroupName, UniqueID);
 }
 
 static MCSectionELF *getStaticStructorSection(MCContext &Ctx, bool UseInitArray,

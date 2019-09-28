@@ -248,7 +248,7 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
   bool InsertedCFIInstr = false;
 
   MF.sortBasicBlockSections();
- 
+
   for (MachineBasicBlock &MBB : MF) {
     // Skip the first MBB in a function
     if (MBB.getNumber() == MF.front().getNumber()) continue;

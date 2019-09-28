@@ -58,8 +58,9 @@ public:
   void inlineStackProbe(MachineFunction &MF,
                         MachineBasicBlock &PrologMBB) const override;
 
-  void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
-                                 MachineBasicBlock::iterator MBBI) const override;
+  void
+  emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
+                            MachineBasicBlock::iterator MBBI) const override;
 
   void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator MBBI,
