@@ -1,7 +1,6 @@
 #include "PropellerFuncOrdering.h"
 
 #include "Config.h"
-#include "Propeller.h"
 #include "PropellerELFCfg.h"
 
 #include <algorithm>
@@ -13,142 +12,130 @@ using std::map;
 namespace lld {
 namespace propeller {
 
-template <class CfgContainerTy>
-void CCubeAlgorithm::init(CfgContainerTy &CfgContainer) {
-  CfgContainer.forEachCfgRef([this](ELFCfg &Cfg) {
-    if (Cfg.isHot())
-      this->HotCfgs.push_back(&Cfg);
+void CCubeAlgorithm::init(Propeller &propeller) {
+  propeller.forEachCfgRef([this](ELFCfg &cfg) {
+    if (cfg.isHot())
+      this->HotCFGs.push_back(&cfg);
     else
-      this->ColdCfgs.push_back(&Cfg);
+      this->ColdCFGs.push_back(&cfg);
   });
 
-  auto CfgComparator = [](ELFCfg *Cfg1, ELFCfg *Cfg2) ->bool {
-    return Cfg1->getEntryNode()->MappedAddr < Cfg2->getEntryNode()->MappedAddr;
+  auto cfgComparator = [](ELFCfg *cfg1, ELFCfg *cfg2) ->bool {
+    return cfg1->getEntryNode()->MappedAddr < cfg2->getEntryNode()->MappedAddr;
   };
-  auto sortCfg = [&CfgComparator](vector<ELFCfg *> &Cfg) {
-    std::sort(Cfg.begin(), Cfg.end(), CfgComparator);
+  auto sortCFGs = [&cfgComparator](std::vector<ELFCfg *> &cfgs) {
+    std::sort(cfgs.begin(), cfgs.end(), cfgComparator);
   };
-  sortCfg(HotCfgs);
-  sortCfg(ColdCfgs);
+  sortCFGs(HotCFGs);
+  sortCFGs(ColdCFGs);
 }
 
-CCubeAlgorithm::Cluster::Cluster(ELFCfg *Cfg)
-    : Cfgs(1, Cfg) {}
+CCubeAlgorithm::Cluster::Cluster(ELFCfg *cfg, unsigned id)
+    : CFGs(1, cfg),  Id(id) {}
 
-CCubeAlgorithm::Cluster::~Cluster() {}
-
-ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(
-    Cluster *Cluster, ELFCfg *Cfg,
-    map<ELFCfg *, CCubeAlgorithm::Cluster *>
-        &ClusterMap) {
-  ELFCfgNode *Entry = Cfg->getEntryNode();
-  if (!Entry)
+ELFCfg *CCubeAlgorithm::getMostLikelyPredecessor(ELFCfg *cfg, Cluster *cluster) {
+  ELFCfgNode *entry = cfg->getEntryNode();
+  if (!entry)
     return nullptr;
-  ELFCfgEdge *E = nullptr;
-  for (ELFCfgEdge *CallIn : Entry->CallIns) {
-    auto *Caller = CallIn->Src->Cfg;
-    auto *CallerCluster = ClusterMap[Caller];
-    assert(Caller->isHot());
-    if (Caller == Cfg || CallerCluster == Cluster)
+  ELFCfgEdge *e = nullptr;
+  for (ELFCfgEdge *callIn : entry->CallIns) {
+    auto *caller = callIn->Src->Cfg;
+    auto *callerCluster = CFGToClusterMap[caller];
+    assert(caller->isHot());
+    if (caller == cfg || callerCluster == cluster)
       continue;
     // Ignore calls which are cold relative to the callee
-    if (CallIn->Weight * 10 < Entry->Freq)
+    if (callIn->Weight * 10 < entry->Freq)
       continue;
     // Do not merge if the caller cluster's density would degrade by more than
     // 1/8.
-    if (8 * CallerCluster->Size * (Cluster->Weight * CallerCluster->Weight) <
-        CallerCluster->Weight * (Cluster->Size + CallerCluster->Size))
+    if (8 * callerCluster->Size * (cluster->Weight * callerCluster->Weight) <
+        callerCluster->Weight * (cluster->Size + callerCluster->Size))
       continue;
-    if (!E || E->Weight < CallIn->Weight) {
-      if (ClusterMap[CallIn->Src->Cfg]->Size > (1 << 21)) continue;
-      E = CallIn;
+    if (!e || e->Weight < callIn->Weight) {
+      if (CFGToClusterMap[callIn->Src->Cfg]->Size > (1 << 21)) continue;
+      e = callIn;
     }
   }
-  return E ? E->Src->Cfg : nullptr;
+  return e ? e->Src->Cfg : nullptr;
 }
 
 void CCubeAlgorithm::mergeClusters() {
-  // Signed key is used here, because negated density are used as
-  // sorting keys.
-  map<ELFCfg *, double> CfgWeightMap;
-  map<ELFCfg *, Cluster *> ClusterMap;
-  for(ELFCfg * Cfg: HotCfgs){
-    uint64_t CfgWeight = 0;
-    uint64_t CfgSize = config->propellerSplitFuncs ? 0 : (double)Cfg->Size;
-    Cfg->forEachNodeRef([&CfgSize, &CfgWeight](ELFCfgNode &N) {
-      CfgWeight += N.Freq * N.ShSize;
-      if (config->propellerSplitFuncs && N.Freq)
-        CfgSize += N.ShSize;
+  map<ELFCfg *, double> cfgWeightMap;
+  for(ELFCfg * cfg: HotCFGs){
+    uint64_t cfgWeight = 0;
+    uint64_t cfgSize = config->propellerSplitFuncs ? 0 : (double)cfg->Size;
+    cfg->forEachNodeRef([&cfgSize, &cfgWeight](ELFCfgNode &n) {
+      cfgWeight += n.Freq * n.ShSize;
+      if (config->propellerSplitFuncs && n.Freq)
+        cfgSize += n.ShSize;
     });
 
-    assert(CfgSize!=0);
-    Cluster *C = new Cluster(Cfg);
-    C->Weight = CfgWeight;
-    C->Size = std::max(CfgSize, (uint64_t)1);
-    CfgWeightMap.emplace(Cfg, C->getDensity());
-    C->Handler = Clusters.emplace(Clusters.end(), C);
-    ClusterMap[Cfg] = C;
+    Cluster *c = new Cluster(cfg, ClusterCount++);
+    c->Weight = cfgWeight;
+    c->Size = std::max(cfgSize, (uint64_t)1);
+    cfgWeightMap.emplace(cfg, c->getDensity());
+    Clusters.emplace(c->Id, c);
+    CFGToClusterMap[cfg] = c;
   }
 
-  std::stable_sort(HotCfgs.begin(), HotCfgs.end(),
-            [&CfgWeightMap] (ELFCfg* Cfg1, ELFCfg* Cfg2){
-              return CfgWeightMap[Cfg1] > CfgWeightMap[Cfg2];
+  std::stable_sort(HotCFGs.begin(), HotCFGs.end(),
+            [&cfgWeightMap] (ELFCfg* cfg1, ELFCfg* cfg2){
+              return cfgWeightMap[cfg1] > cfgWeightMap[cfg2];
             });
-  for (ELFCfg* Cfg : HotCfgs){
-    if (CfgWeightMap[Cfg] <= 0.005)
+  for (ELFCfg* cfg : HotCFGs){
+    if (cfgWeightMap[cfg] <= 0.005)
       break;
-    auto *Cluster = ClusterMap[Cfg];
-    if (Cluster->Size > (1 << 21))
+    auto *cluster = CFGToClusterMap[cfg];
+    if (cluster->Size > (1 << 21))
       continue;
-    assert(Cluster);
+    assert(cluster);
 
-    ELFCfg *PredecessorCfg =
-        getMostLikelyPredecessor(Cluster, Cfg, ClusterMap);
-    if (!PredecessorCfg)
+    ELFCfg *predecessorCfg = getMostLikelyPredecessor(cfg, cluster);
+    if (!predecessorCfg)
       continue;
-    assert(PredecessorCfg != Cfg);
-    // log("propeller: most-likely caller of " + Twine(Cfg->Name) + " -> " + Twine(PredecessorCfg->Name));
-    auto *PredecessorCluster = ClusterMap[PredecessorCfg];
-    assert(PredecessorCluster);
+    assert(predecessorCfg != cfg);
+    auto *predecessorCluster = CFGToClusterMap[predecessorCfg];
+    assert(predecessorCluster);
 
-    if (PredecessorCluster == Cluster)
+    if (predecessorCluster == cluster)
       continue;
-    // if (PredecessorCluster->Size + Cluster->Size > (1 << 21))
-    //  continue;
 
     // Join 2 clusters into PredecessorCluster.
-    *PredecessorCluster << *Cluster;
+    predecessorCluster->mergeWith(*cluster);
 
     // Update Cfg <-> Cluster mapping, because all cfgs that were
     // previsously in Cluster are now in PredecessorCluster.
-    for (ELFCfg *Cfg : Cluster->Cfgs) {
-      ClusterMap[Cfg] = PredecessorCluster;
+    for (ELFCfg *cfg : cluster->CFGs) {
+      CFGToClusterMap[cfg] = predecessorCluster;
     }
-    Clusters.erase(Cluster->Handler);
+    Clusters.erase(cluster->Id);
   }
 }
 
-void CCubeAlgorithm::sortClusters() {
-  Clusters.sort([](unique_ptr<Cluster> &C1, unique_ptr<Cluster> &C2) {
-    if (C1->getDensity() == C2->getDensity())
-      return C1->Cfgs.front()->getEntryNode()->MappedAddr <
-             C2->Cfgs.front()->getEntryNode()->MappedAddr;
-    return C1->getDensity() > C2->getDensity();
+void CCubeAlgorithm::sortClusters(std::vector<Cluster*> &clusterOrder) {
+  for(auto &p: Clusters)
+    clusterOrder.push_back(p.second.get());
+  std::sort(clusterOrder.begin(), clusterOrder.end(),
+            [](Cluster * c1, Cluster * c2) {
+    if (c1->getDensity() == c2->getDensity())
+      return c1->CFGs.front()->getEntryNode()->MappedAddr <
+             c2->CFGs.front()->getEntryNode()->MappedAddr;
+    return c1->getDensity() > c2->getDensity();
   });
 }
 
-unsigned CCubeAlgorithm::doOrder(list<ELFCfg *>& CfgOrder) {
+unsigned CCubeAlgorithm::doOrder(std::list<ELFCfg *>& cfgOrder) {
   mergeClusters();
-  sortClusters();
-  for (auto &Cptr : Clusters) {
-    CfgOrder.insert(CfgOrder.end(), Cptr->Cfgs.begin(), Cptr->Cfgs.end());
+  std::vector<Cluster*> clusterOrder;
+  sortClusters(clusterOrder);
+  for (Cluster *c : clusterOrder) {
+    cfgOrder.insert(cfgOrder.end(), c->CFGs.begin(), c->CFGs.end());
   }
 
-  CfgOrder.insert(CfgOrder.end(), ColdCfgs.begin(), ColdCfgs.end());
-  return HotCfgs.size();
+  cfgOrder.insert(cfgOrder.end(), ColdCFGs.begin(), ColdCFGs.end());
+  return HotCFGs.size();
 }
-
-template void CCubeAlgorithm::init<Propeller>(Propeller &);
 
 }
 }

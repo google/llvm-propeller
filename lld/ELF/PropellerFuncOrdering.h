@@ -1,15 +1,12 @@
 #ifndef LLD_ELF_PROPELLER_FUNC_ORDERING_H
 #define LLD_ELF_PROPELLER_FUNC_ORDERING_H
 
+#include "Propeller.h"
+
 #include <list>
 #include <map>
 #include <memory>
 #include <vector>
-
-using std::list;
-using std::map;
-using std::unique_ptr;
-using std::vector;
 
 namespace lld {
 namespace propeller {
@@ -18,47 +15,43 @@ class ELFCfg;
 
 class CCubeAlgorithm {
 public:
+
   class Cluster {
   public:
-    Cluster(ELFCfg *Cfg);
-    ~Cluster();
-    list<ELFCfg *> Cfgs;
+    Cluster(ELFCfg *cfg, unsigned);
+    std::vector<ELFCfg *> CFGs;
+    unsigned       Id;
     uint64_t       Size;
     uint64_t       Weight;
 
-    // Merge "Other" cluster into this cluster.
-    Cluster & operator << (Cluster &Other) {
-      Cfgs.insert(Cfgs.end(), Other.Cfgs.begin(), Other.Cfgs.end());
-      this->Weight += Other.Weight;
-      this->Size += Other.Size;
+    // Merge "other" cluster into this cluster.
+    Cluster& mergeWith(Cluster &other) {
+      CFGs.insert(CFGs.end(), other.CFGs.begin(), other.CFGs.end());
+      this->Weight += other.Weight;
+      this->Size += other.Size;
       return *this;
     }
 
     double getDensity() {return ((double)Weight)/Size;}
-
-    // Handler is used to remove itself from ownership list without
-    // the need to iterate through the list.
-    typename list<unique_ptr<Cluster>>::iterator Handler;
   };
 
-public:
   CCubeAlgorithm() {}
-  
-  template <class CfgContainerTy>
-  void init(CfgContainerTy &CfgContainer);
 
-  unsigned doOrder(list<ELFCfg*>& CfgOrder);
+  void init(Propeller &propeller);
+
+  unsigned doOrder(std::list<ELFCfg*>& cfgOrder);
 
 private:
-  ELFCfg *getMostLikelyPredecessor(
-      Cluster *Cluster, ELFCfg *Cfg,
-      map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
+  unsigned ClusterCount = 0;
+
+  ELFCfg *getMostLikelyPredecessor(ELFCfg *cfg, Cluster *cluster);
 
   void mergeClusters();
-  void sortClusters();
+  void sortClusters(std::vector<Cluster*>&);
 
-  vector<ELFCfg *> HotCfgs, ColdCfgs;
-  list<unique_ptr<Cluster>> Clusters;
+  std::vector<ELFCfg *> HotCFGs, ColdCFGs;
+  std::map<ELFCfg *, Cluster*> CFGToClusterMap;
+  std::map<unsigned, std::unique_ptr<Cluster>> Clusters;
 };
 
 }

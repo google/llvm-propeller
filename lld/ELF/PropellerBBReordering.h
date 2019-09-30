@@ -3,21 +3,14 @@
 
 #include "PropellerELFCfg.h"
 
+#include "lld/Common/LLVM.h"
+#include "llvm/ADT/DenseMap.h"
+
 #include <list>
-#include <map>
-#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
-using std::list;
-using std::map;
-using std::set;
-using std::unique_ptr;
-using std::unordered_map;
-using std::unordered_set;
-using std::vector;
-
-using llvm::StringMap;
+using llvm::DenseMap;
 
 namespace lld {
 namespace propeller {
@@ -32,21 +25,23 @@ enum MergeOrder {
   End
 };
 
-/* Represents a chain of ELFCfgNodes (basic blocks). */
+// Represents a chain of nodes (basic blocks).
 class NodeChain {
 public:
+  // Representative node of the chain, with which it is initially constructed.
   const ELFCfgNode *DelegateNode = nullptr;
-  list<const ELFCfgNode *> Nodes;
+  std::vector<const ELFCfgNode *> Nodes;
 
   // Total binary size of the chain
-  uint32_t Size{0};
+  uint32_t Size = 0;
 
   // Total execution frequency of the chain
-  uint64_t Freq{0};
+  uint64_t Freq = 0;
 
-  double Score{0};
+  // Extended TSP score of the chain
+  double Score = 0;
 
-  // Constructor for building a NodeChain with a single Node.
+  // Constructor for building a NodeChain from a single Node
   NodeChain(const ELFCfgNode *Node) {
     DelegateNode = Node;
     Nodes.push_back(Node);
@@ -54,93 +49,139 @@ public:
     Freq = Node->Freq;
   }
 
-  void Dump() const;
+  double execDensity() const {
+    return ((double)Freq) / std::max(Size, (uint32_t)1);
+  }
 
-  double GetExecDensity() const { return ((double)Freq) / std::max(Size, (uint32_t)1); }
+  const ELFCfgNode *getFirstNode() const { return Nodes.front(); }
 
-  const ELFCfgNode *GetFirstNode() const { return Nodes.front(); }
-
-  const ELFCfgNode *GetLastNode() const { return Nodes.back(); }
+  const ELFCfgNode *getLastNode() const { return Nodes.back(); }
 };
 
-
-/* Chain builder based on ExtTSP metric */
+// BB Chain builder based on the ExtTSP metric
 class NodeChainBuilder {
 private:
-  /* Cfg representing a function.*/
-  const ELFCfg *Cfg;
-  /* Set of built chains, keyed by section index of their Delegate Nodes.*/
-  map<uint64_t, unique_ptr<NodeChain>> Chains;
-  unordered_map<const ELFCfgNode *, NodeChain *> NodeToChainMap;
-  unordered_map<const ELFCfgNode *, uint32_t> NodeOffset;
-
-  unordered_map<const ELFCfgNode *, ELFCfgNode *> MutuallyForcedOut;
-
   class NodeChainAssembly;
   class NodeChainSlice;
 
-  map<std::pair<NodeChain *, NodeChain *>, std::unique_ptr<NodeChainAssembly>>
+  // Cfg representing a single function.
+  const ELFCfg *CFG;
+
+  // Set of built chains, keyed by section index of their Delegate Nodes.
+  DenseMap<uint64_t, unique_ptr<NodeChain>> Chains;
+
+  // Map from every node to its containing chain.
+  // This map will be updated as chains keep merging together during the
+  // algorithm.
+  DenseMap<const ELFCfgNode *, NodeChain *> NodeToChainMap;
+
+  // Map from every node to its (binary) offset in its containing chain.
+  // This map will be updated as chains keep merging together during the
+  // algorithm.
+  DenseMap<const ELFCfgNode *, uint32_t> NodeOffsetMap;
+
+  // These represent all the edges which are -- based on the profile -- the only
+  // (executed) outgoing edges from their source node and the only (executed)
+  // incoming edges to their sink nodes. The algorithm will make sure that these
+  // edges form fall-throughs in the final order.
+  DenseMap<const ELFCfgNode *, ELFCfgNode *> MutuallyForcedOut;
+
+  // This maps every (ordered) pair of chains (with the first chain in the pair
+  // potentially splittable) to the highest-gain NodeChainAssembly for those chains.
+  DenseMap<std::pair<NodeChain *, NodeChain *>,
+           std::unique_ptr<NodeChainAssembly>>
       NodeChainAssemblies;
-  unordered_map<NodeChain *, unordered_set<NodeChain *>> CandidateChains;
 
-  void SortChainsByExecutionDensity(vector<const NodeChain *> &ChainOrder);
-  void InitializeExtTSP();
-  void AttachFallThroughs();
+  // This map stores the candidate chains for each chain.
+  //
+  // For every chain, its candidate chains are the chains which can increase the
+  // overall ExtTSP score when merged with that chain. This is used to update
+  // the NodeChainAssemblies map whenever chains merge together. The candidate
+  // chains of a chain may also be updated as result of a merge.
+  std::unordered_map<NodeChain *, std::unordered_set<NodeChain *>>
+      CandidateChains;
 
-  /* This function tries to place two nodes immediately adjacent to
-   * each other (used for fallthroughs).
-   * Returns true if this can be done. */
-  bool AttachNodes(const ELFCfgNode *Src, const ELFCfgNode *Sink);
+  void sortChainsByExecutionDensity(std::vector<const NodeChain *> &ChainOrder);
 
-  void MergeChainEdges(NodeChain *SplitChain, NodeChain *UnsplitChain);
+  void initializeExtTSP();
+  void attachFallThroughs();
 
-  void MergeChains(NodeChain *LeftChain, NodeChain *RightChain);
-  void MergeChains(std::unique_ptr<NodeChainAssembly> A);
+  // This function tries to place two nodes immediately adjacent to
+  // each other (used for fallthroughs).
+  // Returns true if this can be done.
+  bool attachNodes(const ELFCfgNode *src, const ELFCfgNode *sink);
 
-  double ExtTSPScore(NodeChain *Chain) const;
-  bool UpdateNodeChainAssembly(NodeChain *SplitChain, NodeChain *UnsplitChain);
-  void ComputeChainOrder(vector<const NodeChain *> &);
+  void mergeChainEdges(NodeChain *splitChain, NodeChain *unSplitChain);
 
+  void mergeChains(NodeChain *leftChain, NodeChain *rightChain);
+  void mergeChains(std::unique_ptr<NodeChainAssembly> assembly);
+
+  // Recompute the ExtTSP score of a chain
+  double computeExtTSPScore(NodeChain *chain) const;
+
+  // Update the related NodeChainAssembly records for two chains, with the assumption
+  // that UnsplitChain has been merged into SplitChain.
+  bool updateNodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain);
+
+  void computeChainOrder(std::vector<const NodeChain *> &chainOrder);
+
+  // Initialize the mutuallyForcedOut map
   void initMutuallyForcedEdges();
 
+  // Initialize basic block chains, with one chain for every node
   void initNodeChains();
 
+  uint32_t getNodeOffset(const ELFCfgNode *node) const {
+    auto it = NodeOffsetMap.find(node);
+    assert("Node does not exist in the offset map." && it != NodeOffsetMap.end());
+    return it->second;
+  }
+
+  NodeChain *getNodeChain(const ELFCfgNode *node) const {
+    auto it = NodeToChainMap.find(node);
+    assert("Node does not exist in the chain map." && it != NodeToChainMap.end());
+    return it->second;
+  }
+
 public:
-  virtual ~NodeChainBuilder() = default;
-  NodeChainBuilder(NodeChainBuilder &) = delete;
-
-  uint32_t getNodeOffset(const ELFCfgNode *N) const { return NodeOffset.at(N); }
-
-  NodeChainBuilder(const ELFCfg *_Cfg) : Cfg(_Cfg) {
+  NodeChainBuilder(const ELFCfg *_CFG) : CFG(_CFG) {
     initNodeChains();
     initMutuallyForcedEdges();
   }
 
-  void doSplitOrder(list<StringRef> &SymbolList,
-                    list<StringRef>::iterator HotPlaceHolder,
-                    list<StringRef>::iterator ColdPlaceHolder);
+  void doSplitOrder(std::list<StringRef> &SymbolList,
+                    std::list<StringRef>::iterator HotPlaceHolder,
+                    std::list<StringRef>::iterator ColdPlaceHolder);
 };
 
 class NodeChainBuilder::NodeChainSlice {
 private:
+  // Chain from which this slice comes from
   NodeChain *Chain;
-  list<const ELFCfgNode *>::iterator Begin, End;
+
+  // The endpoints of the slice in the corresponding chain
+  std::vector<const ELFCfgNode *>::iterator Begin, End;
+
+  // The offsets corresponding to the two endpoints
   uint32_t BeginOffset, EndOffset;
 
-  NodeChainSlice(NodeChain *C, list<const ELFCfgNode *>::iterator _Begin,
-                 list<const ELFCfgNode *>::iterator _End,
-                 const NodeChainBuilder &ChainBuilder)
-      : Chain(C), Begin(_Begin), End(_End) {
+  // Constructor for building a chain slice from a given chain and the two
+  // endpoints of the chain.
+  NodeChainSlice(NodeChain *c,
+                 std::vector<const ELFCfgNode *>::iterator begin,
+                 std::vector<const ELFCfgNode *>::iterator end,
+                 const NodeChainBuilder &chainBuilder)
+      : Chain(c), Begin(begin), End(end) {
 
-    BeginOffset = ChainBuilder.getNodeOffset(*Begin);
+    BeginOffset = chainBuilder.getNodeOffset(*begin);
     if (End == Chain->Nodes.end())
       EndOffset = Chain->Size;
     else
-      EndOffset = ChainBuilder.getNodeOffset(*End);
-    assert(EndOffset >= BeginOffset);
+      EndOffset = chainBuilder.getNodeOffset(*end);
   }
 
-  uint32_t Size() const { return EndOffset - BeginOffset; }
+  // (Binary) size of this slice
+  uint32_t size() const { return EndOffset - BeginOffset; }
 
   friend class NodeChainBuilder;
   friend class NodeChainAssembly;
@@ -148,89 +189,114 @@ private:
 
 class NodeChainBuilder::NodeChainAssembly {
 private:
-  double Score;
-  bool ScoreComputed{false};
+  // Total ExtTSP score of this NodeChainAssembly
+  double Score = 0;
+
+  // Whether the ExtTSP score has been computed for this NodeChainAssembly
+  bool ScoreComputed = false;
+
+  // Corresponding NodeChainBuilder of the assembled chains
   const NodeChainBuilder *ChainBuilder;
+
+  // The two assembled chains
   NodeChain *SplitChain, *UnsplitChain;
-  MergeOrder MOrder;
-  list<const ELFCfgNode *>::iterator SlicePos;
 
-  vector<NodeChainSlice> Slices;
+  // The slice position of Splitchain
+  std::vector<const ELFCfgNode *>::iterator SlicePosition;
 
-  NodeChainAssembly(NodeChain *ChainX, NodeChain *ChainY,
-                    list<const ELFCfgNode *>::iterator _SlicePos,
-                    MergeOrder _MOrder,
-                    const NodeChainBuilder *_ChainBuilder) {
-    SplitChain = ChainX;
-    UnsplitChain = ChainY;
-    SlicePos = _SlicePos;
-    MOrder = _MOrder;
-    ChainBuilder = _ChainBuilder;
-    NodeChainSlice X1(ChainX, ChainX->Nodes.begin(), SlicePos, *ChainBuilder);
-    NodeChainSlice X2(ChainX, SlicePos, ChainX->Nodes.end(), *ChainBuilder);
-    NodeChainSlice Y(ChainY, ChainY->Nodes.begin(), ChainY->Nodes.end(),
-                     *ChainBuilder);
+  // The three chain slices
+  std::vector<NodeChainSlice> Slices;
 
-    switch (MOrder) {
+  NodeChainAssembly(NodeChain *chainX, NodeChain *chainY,
+                    std::vector<const ELFCfgNode *>::iterator slicePosition,
+                    MergeOrder mergeOrder,
+                    const NodeChainBuilder *chainBuilder) : ChainBuilder(chainBuilder), SplitChain(chainX), UnsplitChain(chainY), SlicePosition(slicePosition) {
+    NodeChainSlice x1(chainX, chainX->Nodes.begin(), SlicePosition, *chainBuilder);
+    NodeChainSlice x2(chainX, SlicePosition, chainX->Nodes.end(), *chainBuilder);
+    NodeChainSlice y(chainY, chainY->Nodes.begin(), chainY->Nodes.end(), *chainBuilder);
+
+    switch (mergeOrder) {
     case MergeOrder::X2X1Y:
-      Slices = {X2, X1, Y};
+      Slices = {x2, x1, y};
       break;
     case MergeOrder::X1YX2:
-      Slices = {X1, Y, X2};
+      Slices = {x1, y, x2};
       break;
     case MergeOrder::X2YX1:
-      Slices = {X2, Y, X1};
+      Slices = {x2, y, x1};
       break;
     case MergeOrder::YX2X1:
-      Slices = {Y, X2, X1};
+      Slices = {y, x2, x1};
       break;
     default:
       assert("Invalid MergeOrder!" && false);
     }
   }
 
-  double GetExtTSPScore() {
+  double extTSPScore() {
     if (ScoreComputed)
       return Score;
     else {
       ScoreComputed = true;
-      return (Score = ExtTSPScore());
+      return (Score = computeExtTSPScore());
     }
   }
 
-  double GetExtTSPGain() {
-    return GetExtTSPScore() - SplitChain->Score - UnsplitChain->Score;
+  // Return the gain in ExtTSP score achieved by this NodeChainAssembly once it
+  // is accordingly applied to the two chains.
+  double extTSPScoreGain() {
+    return extTSPScore() - SplitChain->Score - UnsplitChain->Score;
   }
 
-  bool FindSliceIndex(const ELFCfgNode *Node, uint8_t &Idx) const {
-    NodeChain *Chain = ChainBuilder->NodeToChainMap.at(Node);
-    if (SplitChain != Chain && UnsplitChain != Chain)
+  // Find the NodeChainSlice in this NodeChainAssembly which contains the given node. If the node is not
+  // contained in this NodeChainAssembly, then return false. Otherwise, set idx equal to the index
+  // of the corresponding slice and return true.
+  bool findSliceIndex(const ELFCfgNode *node, uint8_t &idx) const {
+    // First find the chain containing the given node.
+    NodeChain *chain = ChainBuilder->getNodeChain(node);
+
+    // Return false if the found chain is not used in this NodeChainAssembly.
+    if (SplitChain != chain && UnsplitChain != chain)
       return false;
-    auto Offset = ChainBuilder->NodeOffset.at(Node);
-    for (Idx = 0; Idx < 3; ++Idx) {
-      if (Chain != Slices[Idx].Chain)
+
+    // Find the slice containing the node using the node's offset in the chain
+    auto offset = ChainBuilder->getNodeOffset(node);
+
+    for (idx = 0; idx < 3; ++idx) {
+      if (chain != Slices[idx].Chain)
         continue;
-      if (Offset < Slices[Idx].BeginOffset)
+      if (offset < Slices[idx].BeginOffset)
         continue;
-      if (Offset > Slices[Idx].EndOffset)
+      if (offset > Slices[idx].EndOffset)
         continue;
-      if (Offset < Slices[Idx].EndOffset && Offset > Slices[Idx].BeginOffset)
+      if (offset < Slices[idx].EndOffset && offset > Slices[idx].BeginOffset)
         return true;
-      if (Offset == Slices[Idx].EndOffset) {
-        for(auto NI = std::prev(Slices[Idx].End);
-            NI != std::prev(Slices[Idx].Begin) && !(*NI)->ShSize ;
-            NI--){
-          if(*NI == Node)
+      // A node can have zero size, which means multiple nodes may be associated
+      // with the same offset. This means that if the node's offset is at the
+      // beginning or the end of the slice, the node may reside in either slices
+      // of the chain.
+      if (offset == Slices[idx].EndOffset) {
+        // If offset is at the end of the slice, iterate backwards over the
+        // slice to find a zero-sized node.
+        for (auto nodeIt = std::prev(Slices[idx].End);
+             nodeIt != std::prev(Slices[idx].Begin); nodeIt--) {
+          // Stop iterating if the node's size is non-zero as this would change
+          // the offset.
+          if (!(*nodeIt)->ShSize)
+            break;
+          if (*nodeIt == node)
             return true;
         }
       }
-      if (Offset == Slices[Idx].BeginOffset) {
-        for(auto NI = Slices[Idx].Begin;
-            NI != Slices[Idx].End;
-            NI++){
-          if(*NI == Node)
+      if (offset == Slices[idx].BeginOffset) {
+        // If offset is at the beginning of the slice, iterate forwards over the
+        // slice to find the node.
+        for (auto nodeIt = Slices[idx].Begin; nodeIt != Slices[idx].End; nodeIt++) {
+          if (*nodeIt == node)
             return true;
-          if((*NI)->ShSize)
+          // Stop iterating if the node's size is non-zero as this would change
+          // the offset.
+          if ((*nodeIt)->ShSize)
             break;
         }
       }
@@ -238,12 +304,15 @@ private:
     return false;
   }
 
-  double ExtTSPScore() const;
+  // Total Extended TSP score of this NodeChainAssembly once it is assembled
+  // accordingly.
+  double computeExtTSPScore() const;
 
-  const ELFCfgNode *GetFirstNode() const {
-    for (auto &Slice : Slices)
-      if (Slice.Begin != Slice.End)
-        return *Slice.Begin;
+  // First node in the resulting assembled chain.
+  const ELFCfgNode *getFirstNode() const {
+    for (auto &slice : Slices)
+      if (slice.Begin != slice.End)
+        return *slice.Begin;
     return nullptr;
   }
 
@@ -255,9 +324,6 @@ public:
   // NodeChainAssembly(const NodeChainAssembly&) = delete;
   NodeChainAssembly() = delete;
 };
-
-
-ostream & operator << (ostream &Out, const NodeChain &Chain);
 
 } // namespace propeller
 } // namespace lld
