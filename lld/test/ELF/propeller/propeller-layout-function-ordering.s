@@ -2,10 +2,10 @@
 ## Basic propeller tests.
 ## This test exercises function reordering on three functions.
 
-# RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
+# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: ld.lld  %t.o -o %t.out
 
-# RUN: llvm-nm -nS %t.out| FileCheck %s --check-prefix=BEFORE
+# RUN: llvm-nm -nS %t.out | FileCheck %s --check-prefix=BEFORE
 
 # BEFORE:	0000000000201120 0000000000000008 t foo
 # BEFORE-NEXT:	0000000000201128 0000000000000008 t bar

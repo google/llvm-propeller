@@ -3,3 +3,4 @@
 !Makefile
 !plotool.sh
 !sample.c
+!generate-lld-*-patch.sh

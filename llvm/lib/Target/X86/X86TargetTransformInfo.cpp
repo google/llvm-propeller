@@ -1797,6 +1797,11 @@ int X86TTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,
     }
   }
 
+  static const CostTblEntry SLMCostTbl[] = {
+    // slm pcmpeq/pcmpgt throughput is 2
+    { ISD::SETCC,   MVT::v2i64,   2 },
+  };
+
   static const CostTblEntry AVX512BWCostTbl[] = {
     { ISD::SETCC,   MVT::v32i16,  1 },
     { ISD::SETCC,   MVT::v64i8,   1 },
@@ -1882,6 +1887,10 @@ int X86TTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,
 
     { ISD::SELECT,  MVT::v4f32,   3 }, // andps + andnps + orps
   };
+
+  if (ST->isSLM())
+    if (const auto *Entry = CostTableLookup(SLMCostTbl, ISD, MTy))
+      return LT.first * (ExtraCost + Entry->Cost);
 
   if (ST->hasBWI())
     if (const auto *Entry = CostTableLookup(AVX512BWCostTbl, ISD, MTy))
@@ -3285,7 +3294,7 @@ bool X86TTIImpl::isLegalMaskedStore(Type *DataType) {
   return isLegalMaskedLoad(DataType);
 }
 
-bool X86TTIImpl::isLegalNTLoad(Type *DataType, llvm::Align Alignment) {
+bool X86TTIImpl::isLegalNTLoad(Type *DataType, Align Alignment) {
   unsigned DataSize = DL.getTypeStoreSize(DataType);
   // The only supported nontemporal loads are for aligned vectors of 16 or 32
   // bytes.  Note that 32-byte nontemporal vector loads are supported by AVX2
@@ -3296,7 +3305,7 @@ bool X86TTIImpl::isLegalNTLoad(Type *DataType, llvm::Align Alignment) {
   return false;
 }
 
-bool X86TTIImpl::isLegalNTStore(Type *DataType, llvm::Align Alignment) {
+bool X86TTIImpl::isLegalNTStore(Type *DataType, Align Alignment) {
   unsigned DataSize = DL.getTypeStoreSize(DataType);
 
   // SSE4A supports nontemporal stores of float and double at arbitrary

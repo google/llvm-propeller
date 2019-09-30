@@ -1,3 +1,26 @@
+//===------------------------- Propeller.cpp ------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// Propeller.cpp is the entry point to Propeller framework. The main
+// functionalities are:
+//
+//   - parses propeller profile file, which contains profile information in the
+//     granularity of basicblocks.  (a)
+//
+//   - parses each ELF object file and generates CFG based on relocation
+//     information of each basicblock section.
+//
+//   - maps profile in (a) onto (b) and get CFGs with profile counters (c)
+//
+//   - calls optimization passes that uses (c).
+//
+//===----------------------------------------------------------------------===//
+
 #include "Propeller.h"
 
 #include "Config.h"
@@ -25,56 +48,53 @@
 using lld::elf::config;
 using llvm::StringRef;
 
-using std::list;
-using std::map;
 using std::string;
-using std::tuple;
-using std::vector;
 using std::chrono::duration;
 using std::chrono::system_clock;
 
 namespace lld {
 namespace propeller {
 
-bool Propfile::matchesOutputFileName(const StringRef &OutputFileName) {
-  ssize_t R;
-  int OutputFileTagSeen = 0;
-  while ((R = getline(&LineBuf, &LineSize, PStream)) != -1) {
-    if (R == 0) continue;
-    if (LineBuf[R - 1] == '\n') {
-      LineBuf[--R] = '\0'; // Drop '\n' character at the end.
+// Read the "@" directive in the propeller file, compare it against "-o"
+// filename, return true if positive.
+bool Propfile::matchesOutputFileName(const StringRef &outputFileName) {
+  ssize_t r;
+  int outputFileTagSeen = 0;
+  while ((r = getline(&LineBuf, &LineSize, PStream)) != -1) {
+    if (r == 0) continue;
+    if (LineBuf[r - 1] == '\n') {
+      LineBuf[--r] = '\0'; // Drop '\n' character at the end.
     }
     if (LineBuf[0] != '@') break;
-    ++OutputFileTagSeen;
-    if (StringRef(LineBuf + 1) == OutputFileName)
+    ++outputFileTagSeen;
+    if (StringRef(LineBuf + 1) == outputFileName)
       return true;
   }
-  if (OutputFileTagSeen)
+  if (outputFileTagSeen)
     return false;
-  // If no @OutputFileName is specified, reset the stream and assume linker
+  // If no @outputFileName is specified, reset the stream and assume linker
   // shall proceed propellering.
   fseek(PStream, 0, SEEK_SET);
   return true;
 }
 
-
-SymbolEntry *Propfile::findSymbol(StringRef SymName) {
-  std::pair<StringRef, StringRef> SymNameSplit = SymName.split(".llvm.");
-  StringRef FuncName;
-  StringRef BBIndex;
-  string TmpStr;
-  if (!SymbolEntry::isBBSymbol(SymNameSplit.first, &FuncName, &BBIndex)) {
-    FuncName = SymNameSplit.first;
-    BBIndex = "";
+SymbolEntry *Propfile::findSymbol(StringRef symName) {
+  std::pair<StringRef, StringRef> symNameSplit = symName.split(".llvm.");
+  StringRef funcName;
+  StringRef bbIndex;
+  string tmpStr;
+  if (!SymbolEntry::isBBSymbol(symNameSplit.first, &funcName, &bbIndex)) {
+    funcName = symNameSplit.first;
+    bbIndex = "";
   } else {
-    // When SymName is like "11111.bb.foo", set BBIndex to "5".
+    // When symName is like "11111.bb.foo", set BBIndex to "5".
     // "1111" -> "4".
-    TmpStr = std::to_string(BBIndex.size());
-    BBIndex = StringRef(TmpStr);
+    tmpStr = std::to_string(bbIndex.size());
+    bbIndex = StringRef(tmpStr);
   }
-  auto L1 = SymbolNameMap.find(FuncName);
+  auto L1 = SymbolNameMap.find(funcName);
   if (L1 != SymbolNameMap.end()) {
-    auto L2 = L1->second.find(BBIndex);
+    auto L2 = L1->second.find(bbIndex);
     if (L2 != L1->second.end()) {
       return L2->second;
     }
@@ -89,7 +109,7 @@ bool Propfile::readSymbols() {
   LineTag = '\0';
   // A list of bbsymbols<ordinal, function_ordinal, bbindex and size> that
   // appears before its wrapping function. This should be rather rare.
-  list<tuple<uint64_t, uint64_t, StringRef, uint64_t>> BBSymbols;
+  list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t>> bbSymbols;
   while ((R = getline(&LineBuf, &LineSize, PStream)) != -1) {
     ++LineNo;
     if (R == 0)
@@ -107,128 +127,130 @@ bool Propfile::readSymbols() {
     if (LineBuf[R - 1] == '\n') {
       LineBuf[--R] = '\0'; // Drop '\n' character at the end.
     }
-    StringRef L(LineBuf); // LineBuf is null-terminated.
+    StringRef lineStrRef(LineBuf); // LineBuf is null-terminated.
 
     uint64_t SOrdinal;
     uint64_t SSize;
-    auto L1S = L.split(' ');
-    auto L1 = L1S.first;
-    auto L2S = L1S.second.split(' ');
-    auto L2 = L2S.first;
-    auto EphemeralStr = L2S.second;
-    if (L1.getAsInteger(10, SOrdinal) == true /* means error happens */ ||
+    auto l1S = lineStrRef.split(' ');
+    auto l1 = l1S.first;
+    auto l2S = l1S.second.split(' ');
+    auto l2 = l2S.first;
+    auto ephemeralStr = l2S.second;
+    if (l1.getAsInteger(10, SOrdinal) /* means error happens */ ||
         SOrdinal == 0) {
       error("[Propeller]: Invalid ordinal field, at propfile line: " +
             std::to_string(LineNo) + ".");
       return false;
     }
-    if (L2.getAsInteger(16, SSize) == true) {
+    if (l2.getAsInteger(16, SSize)) {
       error("[Propeller]: Invalid size field, at propfile line: " +
             std::to_string(LineNo) + ".");
       return false;
     }
-    if (EphemeralStr.empty()) {
+    if (ephemeralStr.empty()) {
       error("[Propeller]: Invalid name field, at propfile line: " +
             std::to_string(LineNo) + ".");
       return false;
     }
-    if (EphemeralStr[0] == 'N') { // Function symbol?
-      // Save EphemeralStr for persistency across Propeller lifecycle.
-      StringRef SavedNameStr = PropfileStrSaver.save(EphemeralStr.substr(1));
-      SymbolEntry::AliasesTy SAliases;
-      SavedNameStr.split(SAliases, '/');
-      for(auto& SAlias: SAliases){
-        SAlias = SAlias.split(".llvm.").first;
+    if (ephemeralStr[0] == 'N') { // Function symbol?
+      // Save ephemeralStr for persistency across Propeller lifecycle.
+      StringRef savedNameStr = PropfileStrSaver.save(ephemeralStr.substr(1));
+      SymbolEntry::AliasesTy sAliases;
+      savedNameStr.split(sAliases, '/');
+      for(auto& sAlias: sAliases){
+        sAlias = sAlias.split(".llvm.").first;
       }
-      StringRef SName = SAliases[0];
+      StringRef sName = sAliases[0];
       assert(SymbolOrdinalMap.find(SOrdinal) == SymbolOrdinalMap.end());
-      createFunctionSymbol(SOrdinal, SName, std::move(SAliases), SSize);
+      createFunctionSymbol(SOrdinal, sName, std::move(sAliases), SSize);
     } else {
       // It's a bb symbol.
-      auto L = EphemeralStr.split('.');
-      uint64_t FuncIndex;
-      if (L.first.getAsInteger(10, FuncIndex) == true || FuncIndex == 0) {
+      auto lineStrRef = ephemeralStr.split('.');
+      uint64_t funcIndex;
+      if (lineStrRef.first.getAsInteger(10, funcIndex) || funcIndex == 0) {
         error("[Propeller]: Invalid function index field, at propfile line: " +
             std::to_string(LineNo) + ".");
         return false;
       }
       // Only save the index part, which is highly reusable. Note
       // PropfileStrSaver is a UniqueStringSaver.
-      StringRef BBIndex = PropfileStrSaver.save(L.second);
-      auto ExistingI = SymbolOrdinalMap.find(FuncIndex);
-      if (ExistingI != SymbolOrdinalMap.end()) {
-        if (ExistingI->second->BBTag) {
+      StringRef bbIndex = PropfileStrSaver.save(lineStrRef.second);
+      auto existingI = SymbolOrdinalMap.find(funcIndex);
+      if (existingI != SymbolOrdinalMap.end()) {
+        if (existingI->second->BBTag) {
           error(
-              string("[Propeller]: Index '") + std::to_string(FuncIndex) +
+              string("[Propeller]: Index '") + std::to_string(funcIndex) +
               "' is not a function index, but a bb index, at propfile line: " +
               std::to_string(LineNo) + ".");
           return false;
         }
-        createBasicBlockSymbol(SOrdinal, ExistingI->second.get(), BBIndex,
+        createBasicBlockSymbol(SOrdinal, existingI->second.get(), bbIndex,
                                SSize);
       } else {
         // A bb symbol appears earlier than its wrapping function, rare, but
         // not impossible, rather play it safely.
-        BBSymbols.emplace_back(SOrdinal, FuncIndex, BBIndex, SSize);
+        bbSymbols.emplace_back(SOrdinal, funcIndex, bbIndex, SSize);
       }
     }
   } // End of iterating all symbols.
 
-  for (auto &S : BBSymbols) {
-    uint64_t SOrdinal;
-    uint64_t FuncIndex;
-    uint64_t SSize;
-    StringRef BBIndex;
-    std::tie(SOrdinal, FuncIndex, BBIndex, SSize) = S;
-    auto ExistingI = SymbolOrdinalMap.find(FuncIndex);
-    if (ExistingI == SymbolOrdinalMap.end()) {
+  for (std::tuple<uint64_t, uint64_t, StringRef, uint64_t> &sym : bbSymbols) {
+    uint64_t sOrdinal;
+    uint64_t funcIndex;
+    uint64_t sSize;
+    StringRef bbIndex;
+    std::tie(sOrdinal, funcIndex, bbIndex, sSize) = sym;
+    auto existingI = SymbolOrdinalMap.find(funcIndex);
+    if (existingI == SymbolOrdinalMap.end()) {
       error("[Propeller]: Function with index number '" +
-            std::to_string(FuncIndex) + "' does not exist, at propfile line: " +
+            std::to_string(funcIndex) + "' does not exist, at propfile line: " +
             std::to_string(LineNo) + ".");
       return false;
     }
-    createBasicBlockSymbol(SOrdinal, ExistingI->second.get(), BBIndex, SSize);
+    createBasicBlockSymbol(sOrdinal, existingI->second.get(), bbIndex, sSize);
   }
   return true;
 }
 
 // Helper method to parse a branch or fallthrough record like below
 //   10 12 232590 R
-static bool parseBranchOrFallthroughLine(StringRef L, uint64_t *From,
-                                         uint64_t *To, uint64_t *Cnt, char *T) {
+static bool parseBranchOrFallthroughLine(StringRef lineRef,
+                                         uint64_t *fromNodeIdx,
+                                         uint64_t *toNodeIdx, uint64_t *count,
+                                         char *type) {
   auto getInt = [](const StringRef &S) -> uint64_t {
-    uint64_t R;
-    if (S.getAsInteger(10, R) /* string contains more than numbers */
-        || R == 0)
+    uint64_t r;
+    if (S.getAsInteger(10, r) /* string contains more than numbers */
+        || r == 0)
       return 0;
-    return R;
+    return r;
   };
-  auto S0 = L.split(' ');
-  *From = getInt(S0.first);
-  auto S1 = S0.second.split(' ');
-  *To = getInt(S1.first);
-  auto S2 = S1.second.split(' ');
-  *Cnt = getInt(S2.first);
-  if (!*From || !*To || !*Cnt)
+  auto s0 = lineRef.split(' ');
+  *fromNodeIdx = getInt(s0.first);
+  auto s1 = s0.second.split(' ');
+  *toNodeIdx = getInt(s1.first);
+  auto s2 = s1.second.split(' ');
+  *count = getInt(s2.first);
+  if (!*fromNodeIdx || !*toNodeIdx || !*count)
     return false;
-  if (!S2.second.empty()) {
-    if (S2.second == "C" || S2.second == "R")
-      *T = S2.second[0];
+  if (!s2.second.empty()) {
+    if (s2.second == "C" || s2.second == "R")
+      *type = s2.second[0];
     else
       return false;
-  } else {
-    *T = '\0';
-  }
+  } else
+    *type = '\0';
   return true;
 }
 
+// Read propeller profile. Refer header file for detail about propeller profile.
 bool Propfile::processProfile() {
-  ssize_t R;
-  uint64_t BCnt = 0;
-  uint64_t FCnt = 0;
-  while ((R = getline(&LineBuf, &LineSize, PStream)) != -1) {
+  ssize_t r;
+  uint64_t branchCnt = 0;
+  uint64_t fallthroughCnt = 0;
+  while ((r = getline(&LineBuf, &LineSize, PStream)) != -1) {
     ++LineNo;
-    if (R == 0)
+    if (r == 0)
       continue;
     if (LineBuf[0] == '#' || LineBuf[0] == '!')
       continue;
@@ -237,107 +259,104 @@ bool Propfile::processProfile() {
       continue;
     }
     if (LineTag != 'B' && LineTag != 'F') break;
-    if (LineBuf[R - 1] == '\n') {
-      LineBuf[--R] = '\0'; // drop '\n' character at the end;
+    if (LineBuf[r - 1] == '\n') {
+      LineBuf[--r] = '\0'; // drop '\n' character at the end;
     }
     StringRef L(LineBuf); // LineBuf is null-terminated.
-    uint64_t From, To, Cnt;
-    char Tag;
-    if (!parseBranchOrFallthroughLine(L, &From, &To, &Cnt, &Tag)) {
+    uint64_t from, to, count;
+    char tag;
+    if (!parseBranchOrFallthroughLine(L, &from, &to, &count, &tag)) {
       error(string("[Propeller]: Unrecognized propfile line: ") +
             std::to_string(LineNo) + ":\n" + L.str());
       return false;
     }
-    ELFCfgNode *FromN = Prop.findCfgNode(From);
-    ELFCfgNode *ToN = Prop.findCfgNode(To);
-    if (!FromN || !ToN) {
+    ELFCfgNode *fromN = Prop.findCfgNode(from);
+    ELFCfgNode *toN = Prop.findCfgNode(to);
+    if (!fromN || !toN) {
       continue;
     }
 
     if (LineTag == 'B') {
-      ++BCnt;
-      if (FromN->Cfg == ToN->Cfg) {
-        FromN->Cfg->mapBranch(FromN, ToN, Cnt, Tag == 'C', Tag == 'R');
+      ++branchCnt;
+      if (fromN->Cfg == toN->Cfg) {
+        fromN->Cfg->mapBranch(fromN, toN, count, tag == 'C', tag == 'R');
       } else {
-        FromN->Cfg->mapCallOut(FromN, ToN, 0, Cnt, Tag == 'C', Tag == 'R');
+        fromN->Cfg->mapCallOut(fromN, toN, 0, count, tag == 'C', tag == 'R');
       }
     } else {
-      ++FCnt;
+      ++fallthroughCnt;
       // LineTag == 'F'
-      if (FromN->Cfg == ToN->Cfg)
-        FromN->Cfg->markPath(FromN, ToN, Cnt);
+      if (fromN->Cfg == toN->Cfg)
+        fromN->Cfg->markPath(fromN, toN, count);
     }
   }
 
-  if (!BCnt) {
+  if (!branchCnt) {
     warn("[Propeller]: Zero branch info processed.");
   }
-  if (!FCnt) {
+  if (!fallthroughCnt) {
     warn("[Propeller]: Zero fallthrough info processed.");
   }
   return true;
 }
 
-void Propeller::processFile(const pair<elf::InputFile *, uint32_t> &Pair) {
-  auto *Inf = Pair.first;
-  ELFView *View = ELFView::create(Inf->getName(), Pair.second, Inf->mb);
+// Parse each ELF file, create CFG and attach profile data to CFG.
+void Propeller::processFile(const pair<elf::InputFile *, uint32_t> &pair) {
+  auto *inf = pair.first;
+  ELFView *View = ELFView::create(inf->getName(), pair.second, inf->mb);
   if (View) {
     ELFCfgBuilder(*this, View).buildCfgs();
     {
       // Updating global data structure.
-      std::lock_guard<mutex> L(this->Lock);
+      std::lock_guard<mutex> lock(this->Lock);
       this->Views.emplace_back(View);
       for (auto &P : View->Cfgs) {
         std::pair<StringRef, StringRef> SplitName = P.first.split(".llvm.");
-        auto R = CfgMap[SplitName.first].emplace(P.second.get());
-        (void)(R);
-        assert(R.second);
+        auto result = CfgMap[SplitName.first].emplace(P.second.get());
+        (void)(result);
+        assert(result.second);
       }
     }
   }
 }
 
-ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
-  assert(Propf->SymbolOrdinalMap.find(SymbolOrdinal) !=
+ELFCfgNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
+  assert(Propf->SymbolOrdinalMap.find(symbolOrdinal) !=
          Propf->SymbolOrdinalMap.end());
-  SymbolEntry *S = Propf->SymbolOrdinalMap[SymbolOrdinal].get();
-  if (!S) {
+  SymbolEntry *symbol = Propf->SymbolOrdinalMap[symbolOrdinal].get();
+  if (!symbol) {
     // This is an internal error, should not happen.
     error(string("[Propeller]: Invalid symbol ordinal: " +
-                 std::to_string(SymbolOrdinal)));
+                 std::to_string(symbolOrdinal)));
     return nullptr;
   }
-  SymbolEntry *Func = S->BBTag ? S->ContainingFunc : S;
-  for (auto& FuncAliasName : Func->Aliases){
-    auto CfgLI = CfgMap.find(FuncAliasName);
-    if (CfgLI == CfgMap.end())
+  SymbolEntry *funcSym = symbol->BBTag ? symbol->ContainingFunc : symbol;
+  for (auto& funcAliasName : funcSym->Aliases){
+    auto cfgLI = CfgMap.find(funcAliasName);
+    if (cfgLI == CfgMap.end())
       continue;
 
     // Objects (CfgLI->second) are sorted in the way they appear on the command
     // line, which is the same as how linker chooses the weak symbol definition.
-    if (!S->BBTag) {
-      for (auto *Cfg : CfgLI->second) {
+    if (!symbol->BBTag) {
+      for (auto *Cfg : cfgLI->second)
         // Check Cfg does have name "SymName".
-        for (auto &N : Cfg->Nodes) {
-          if (N->ShName.split(".llvm.").first == FuncAliasName) {
-            return N.get();
-          }
-        }
-      }
+        for (auto &node : Cfg->Nodes)
+          if (node->ShName.split(".llvm.").first == funcAliasName)
+            return node.get();
     } else {
       uint32_t NumOnes;
       // Compare the number of "a" in aaa...a.BB.funcname against integer
       // NumOnes.
-      if (S->Name.getAsInteger(10, NumOnes) == true || !NumOnes) {
-        warn("Internal error, BB name is invalid: '" + S->Name.str() + "'.");
-      } else {
-        for (auto *Cfg : CfgLI->second) {
+      if (symbol->Name.getAsInteger(10, NumOnes) || !NumOnes)
+        warn("Internal error, BB name is invalid: '" + symbol->Name.str() +
+             "'.");
+      else {
+        for (auto *Cfg : cfgLI->second) {
           // Check Cfg does have name "SymName".
-          for (auto &N : Cfg->Nodes) {
-            auto T = N->ShName.find_first_of('.');
-            if (T != string::npos && T == NumOnes) {
-              return N.get();
-            }
+          for (auto &node : Cfg->Nodes) {
+            auto t = node->ShName.find_first_of('.');
+            if (t != string::npos && t == NumOnes) return node.get();
           }
         }
       }
@@ -347,52 +366,55 @@ ELFCfgNode *Propeller::findCfgNode(uint64_t SymbolOrdinal) {
 }
 
 void Propeller::calculateNodeFreqs() {
-  auto sumEdgeWeights = [](list<ELFCfgEdge *> &Edges) -> uint64_t {
-    return std::accumulate(Edges.begin(), Edges.end(), 0,
-                           [](uint64_t PSum, const ELFCfgEdge *Edge) {
-                             return PSum + Edge->Weight;
+  auto sumEdgeWeights = [](list<ELFCfgEdge *> &edges) -> uint64_t {
+    return std::accumulate(edges.begin(), edges.end(), 0,
+                           [](uint64_t pSum, const ELFCfgEdge *edge) {
+                             return pSum + edge->Weight;
                            });
   };
-  for (auto &P : CfgMap) {
-    auto &Cfg = *P.second.begin();
-    if (Cfg->Nodes.empty())
+  for (auto &cfgP : CfgMap) {
+    auto &cfg = *cfgP.second.begin();
+    if (cfg->Nodes.empty())
       continue;
     bool Hot = false;
-    Cfg->forEachNodeRef([&Hot, &sumEdgeWeights](ELFCfgNode &Node) {
-      uint64_t MaxCallOut =
-          Node.CallOuts.empty() ?
+    cfg->forEachNodeRef([&Hot, &sumEdgeWeights](ELFCfgNode &node) {
+      uint64_t maxCallOut =
+          node.CallOuts.empty() ?
           0 :
-          (*std::max_element(Node.CallOuts.begin(), Node.CallOuts.end(),
+          (*std::max_element(node.CallOuts.begin(), node.CallOuts.end(),
                           [](const ELFCfgEdge *E1, const ELFCfgEdge *E2){
                             return E1->Weight < E2->Weight;
                           }))->Weight;
-      Node.Freq =
-          std::max({sumEdgeWeights(Node.Outs), sumEdgeWeights(Node.Ins),
-                    sumEdgeWeights(Node.CallIns), MaxCallOut});
+      node.Freq =
+          std::max({sumEdgeWeights(node.Outs), sumEdgeWeights(node.Ins),
+                    sumEdgeWeights(node.CallIns), maxCallOut});
 
-      Hot |= (Node.Freq != 0);
+      Hot |= (node.Freq != 0);
     });
-    if (Hot && Cfg->getEntryNode()->Freq == 0)
-      Cfg->getEntryNode()->Freq = 1;
+    if (Hot && cfg->getEntryNode()->Freq == 0)
+      cfg->getEntryNode()->Freq = 1;
   }
 }
 
+// Returns true if linker output target matches propeller profile.
 bool Propeller::checkPropellerTarget() {
   if (config->propeller.empty()) return false;
-  string PropellerFileName = config->propeller.str();
-  FILE *FPtr = fopen(PropellerFileName.c_str(), "r");
-  if (!FPtr) {
-    error(string("[Propeller]: Failed to open '") + PropellerFileName + "'.");
+  string propellerFileName = config->propeller.str();
+  FILE *fPtr = fopen(propellerFileName.c_str(), "r");
+  if (!fPtr) {
+    error(string("[Propeller]: Failed to open '") + propellerFileName + "'.");
     return false;
   }
   // Propfile takes ownership of FPtr.
-  Propf.reset(new Propfile(FPtr, *this));
+  Propf.reset(new Propfile(fPtr, *this));
 
   return Propf->matchesOutputFileName(
       llvm::sys::path::filename(config->outputFile));
 }
 
-bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
+// Entrance of Propeller framework. This processes each elf input file in
+// parallel and stores the result information.
+bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
   auto startReadSymbolTime = system_clock::now();
   if (!Propf->readSymbols()) {
     error(string("[Propeller]: Invalid propfile: '") + config->propeller.str() +
@@ -402,39 +424,39 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   auto startCreateCfgTime = system_clock::now();
 
   // Creating Cfgs.
-  vector<pair<elf::InputFile *, uint32_t>> FileOrdinalPairs;
-  int Ordinal = 0;
-  for (auto &F : Files) {
-    FileOrdinalPairs.emplace_back(F, ++Ordinal);
+  vector<pair<elf::InputFile *, uint32_t>> fileOrdinalPairs;
+  int ordinal = 0;
+  for (auto &F : files) {
+    fileOrdinalPairs.emplace_back(F, ++ordinal);
   }
   llvm::parallel::for_each(
-      llvm::parallel::parallel_execution_policy(), FileOrdinalPairs.begin(),
-      FileOrdinalPairs.end(),
+      llvm::parallel::parallel_execution_policy(), fileOrdinalPairs.begin(),
+      fileOrdinalPairs.end(),
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
   /* Drop alias cfgs. */
-  for(SymbolEntry * F : Propf->FunctionsWithAliases){
+  for(SymbolEntry *funcS : Propf->FunctionsWithAliases){
 
-    ELFCfg * PrimaryCfg = nullptr;
-    CfgMapTy::iterator PrimaryCfgMapEntry;
+    ELFCfg * primaryCfg = nullptr;
+    CfgMapTy::iterator primaryCfgMapEntry;
 
-    for(StringRef& AliasName : F->Aliases){
-      auto L = CfgMap.find(AliasName);
-      if (L == CfgMap.end())
+    for(StringRef& AliasName : funcS->Aliases){
+      auto cfgMapI = CfgMap.find(AliasName);
+      if (cfgMapI == CfgMap.end())
         continue;
 
-      if (L->second.empty())
+      if (cfgMapI->second.empty())
         continue;
 
-      if (!PrimaryCfg ||
-          PrimaryCfg->Nodes.size() < (*L->second.begin())->Nodes.size()) {
-        if (PrimaryCfg)
-          CfgMap.erase(PrimaryCfgMapEntry);
+      if (!primaryCfg ||
+          primaryCfg->Nodes.size() < (*cfgMapI->second.begin())->Nodes.size()) {
+        if (primaryCfg)
+          CfgMap.erase(primaryCfgMapEntry);
 
-        PrimaryCfg = *L->second.begin();
-        PrimaryCfgMapEntry = L;
+        primaryCfg = *cfgMapI->second.begin();
+        primaryCfgMapEntry = cfgMapI;
       } else {
-        CfgMap.erase(L);
+        CfgMap.erase(cfgMapI);
       }
     }
   }
@@ -447,44 +469,44 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   }
 
   if (config->propellerPrintStats) {
-    duration<double> ProcessProfileTime =
+    duration<double> processProfileTime =
         system_clock::now() - startProcessProfileTime;
-    duration<double> ReadSymbolTime = startCreateCfgTime - startReadSymbolTime;
-    duration<double> CreateCfgTime =
+    duration<double> readSymbolTime = startCreateCfgTime - startReadSymbolTime;
+    duration<double> createCfgTime =
         startProcessProfileTime - startCreateCfgTime;
     llvm::outs() << llvm::format(
         "[Propeller] Read all symbols in %f seconds.\n",
-        ReadSymbolTime.count());
+        readSymbolTime.count());
     llvm::outs() << llvm::format(
-        "[Propeller] Created all cfgs in %f seconds.\n", CreateCfgTime.count());
+        "[Propeller] Created all cfgs in %f seconds.\n", createCfgTime.count());
     llvm::outs() << llvm::format(
         "[Propeller] Proccesed the profile in %f seconds.\n",
-        ProcessProfileTime.count());
+        processProfileTime.count());
   }
 
   if (!config->propellerDumpCfgs.empty()) {
-    llvm::SmallString<128> CfgOutputDir(config->outputFile);
-    llvm::sys::path::remove_filename(CfgOutputDir);
-    for (auto &CfgNameToDump : config->propellerDumpCfgs) {
-      auto CfgLI = CfgMap.find(CfgNameToDump);
-      if (CfgLI == CfgMap.end()) {
-        warn("[Propeller] Could not dump cfg for function '" + CfgNameToDump +
+    llvm::SmallString<128> cfgOutputDir(config->outputFile);
+    llvm::sys::path::remove_filename(cfgOutputDir);
+    for (auto &cfgNameToDump : config->propellerDumpCfgs) {
+      auto cfgLI = CfgMap.find(cfgNameToDump);
+      if (cfgLI == CfgMap.end()) {
+        warn("[Propeller] Could not dump cfg for function '" + cfgNameToDump +
              "' : No such function name exists.");
         continue;
       }
       int Index = 0;
-      for (auto *Cfg : CfgLI->second) {
-        if (Cfg->Name == CfgNameToDump) {
-          llvm::SmallString<128> CfgOutput = CfgOutputDir;
+      for (auto *Cfg : cfgLI->second) {
+        if (Cfg->Name == cfgNameToDump) {
+          llvm::SmallString<128> cfgOutput = cfgOutputDir;
           if (++Index <= 1) {
-            llvm::sys::path::append(CfgOutput, (Cfg->Name + ".dot"));
+            llvm::sys::path::append(cfgOutput, (Cfg->Name + ".dot"));
           } else {
             llvm::sys::path::append(
-                CfgOutput,
+                cfgOutput,
                 (Cfg->Name + "." + StringRef(std::to_string(Index) + ".dot")));
           }
-          if (!Cfg->writeAsDotGraph(CfgOutput.c_str())) {
-            warn("[Propeller] Failed to dump Cfg: '" + CfgNameToDump + "'.");
+          if (!Cfg->writeAsDotGraph(cfgOutput.c_str())) {
+            warn("[Propeller] Failed to dump Cfg: '" + cfgNameToDump + "'.");
           }
         }
       }
@@ -497,57 +519,59 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &Files) {
   return true;
 }
 
+// Generate symbol ordering file according to selected optimization pass and
+// feed it to the linker.
 vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
-  list<ELFCfg *> CfgOrder;
+  list<ELFCfg *> cfgOrder;
   if (config->propellerReorderFuncs) {
-    CCubeAlgorithm Algo;
-    Algo.init(*this);
+    CCubeAlgorithm algo;
+    algo.init(*this);
     auto startFuncOrderTime = system_clock::now();
-    auto CfgsReordered = Algo.doOrder(CfgOrder);
+    auto cfgsReordered = algo.doOrder(cfgOrder);
     if (config->propellerPrintStats){
-      duration<double> FuncOrderTime = system_clock::now() - startFuncOrderTime;
+      duration<double> funcOrderTime = system_clock::now() - startFuncOrderTime;
       llvm::outs() << llvm::format(
           "[Propeller] Reordered %u hot functions in %f seconds.\n",
-          CfgsReordered, FuncOrderTime.count());
+          cfgsReordered, funcOrderTime.count());
     }
   } else {
-    forEachCfgRef([&CfgOrder](ELFCfg &Cfg) { CfgOrder.push_back(&Cfg); });
-    CfgOrder.sort([](const ELFCfg *A, const ELFCfg *B) {
-      const auto *AEntry = A->getEntryNode();
-      const auto *BEntry = B->getEntryNode();
-      return AEntry->MappedAddr < BEntry->MappedAddr;
+    forEachCfgRef([&cfgOrder](ELFCfg &cfg) { cfgOrder.push_back(&cfg); });
+    cfgOrder.sort([](const ELFCfg *a, const ELFCfg *b) {
+      const auto *aEntry = a->getEntryNode();
+      const auto *bEntry = b->getEntryNode();
+      return aEntry->MappedAddr < bEntry->MappedAddr;
     });
   }
 
-  list<StringRef> SymbolList(1, "Hot");
-  const auto HotPlaceHolder = SymbolList.begin();
-  const auto ColdPlaceHolder = SymbolList.end();
-  unsigned ReorderedN = 0;
+  list<StringRef> symbolList(1, "Hot");
+  const auto hotPlaceHolder = symbolList.begin();
+  const auto coldPlaceHolder = symbolList.end();
+  unsigned reorderedN = 0;
   auto startBBOrderTime = system_clock::now();
-  for (auto *Cfg : CfgOrder) {
-    if (Cfg->isHot() && config->propellerReorderBlocks) {
-      NodeChainBuilder(Cfg).doSplitOrder(
-          SymbolList, HotPlaceHolder,
-          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder);
-      ReorderedN++;
+  for (auto *cfg : cfgOrder) {
+    if (cfg->isHot() && config->propellerReorderBlocks) {
+      NodeChainBuilder(cfg).doSplitOrder(
+          symbolList, hotPlaceHolder,
+          config->propellerSplitFuncs ? coldPlaceHolder : hotPlaceHolder);
+      reorderedN++;
      } else {
       auto PlaceHolder =
-          config->propellerSplitFuncs ? ColdPlaceHolder : HotPlaceHolder;
-      Cfg->forEachNodeRef([&SymbolList, PlaceHolder](ELFCfgNode &N) {
-        SymbolList.insert(PlaceHolder, N.ShName);
+          config->propellerSplitFuncs ? coldPlaceHolder : hotPlaceHolder;
+      cfg->forEachNodeRef([&symbolList, PlaceHolder](ELFCfgNode &N) {
+        symbolList.insert(PlaceHolder, N.ShName);
       });
     }
   }
   if (config->propellerPrintStats) {
-    duration<double> BBOrderTime = system_clock::now() - startBBOrderTime;
+    duration<double> bbOrderTime = system_clock::now() - startBBOrderTime;
     llvm::outs() << llvm::format(
         "[Propeller] Reordered basic blocks of %u functions in %f seconds.\n",
-        ReorderedN, BBOrderTime.count());
+        reorderedN, bbOrderTime.count());
   }
 
-  calculatePropellerLegacy(SymbolList, HotPlaceHolder, ColdPlaceHolder);
+  calculatePropellerLegacy(symbolList, hotPlaceHolder, coldPlaceHolder);
 
   if (!config->propellerDumpSymbolOrder.empty()) {
     FILE *fp = fopen(config->propellerDumpSymbolOrder.str().c_str(), "w");
@@ -555,8 +579,8 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
       warn(StringRef("[Propeller] Dump symbol order: failed to open ") + "'" +
            config->propellerDumpSymbolOrder + "'");
     } else {
-      for (auto &N : SymbolList) {
-        fprintf(fp, "%s\n", N.str().c_str());
+      for (auto &sym : symbolList) {
+        fprintf(fp, "%s\n", sym.str().c_str());
       }
       fclose(fp);
       llvm::outs() << "[Propeller] Dumped symbol order file to: '"
@@ -564,41 +588,45 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     }
   }
 
-  SymbolList.erase(HotPlaceHolder);
+  symbolList.erase(hotPlaceHolder);
 
   return vector<StringRef>(
-      std::move_iterator<list<StringRef>::iterator>(SymbolList.begin()),
-      std::move_iterator<list<StringRef>::iterator>(SymbolList.end()));
+      std::move_iterator<list<StringRef>::iterator>(symbolList.begin()),
+      std::move_iterator<list<StringRef>::iterator>(symbolList.end()));
 }
 
+// Calculate a list of basicblock symbols that are to be kept in the final
+// binary. For hot bb symbols, all bb symbols are to be dropped, because the
+// content of all hot bb sections are grouped together with the origin function.
+// For cold bb symbols, only the first bb symbols of the same function are kept.
 void Propeller::calculatePropellerLegacy(
-    list<StringRef> &SymList, list<StringRef>::iterator HotPlaceHolder,
-    list<StringRef>::iterator ColdPlaceHolder) {
+    list<StringRef> &symList, list<StringRef>::iterator hotPlaceHolder,
+    list<StringRef>::iterator coldPlaceHolder) {
   // No function split or no cold symbols, all bb symbols shall be removed.
-  if (HotPlaceHolder == ColdPlaceHolder) return ;
+  if (hotPlaceHolder == coldPlaceHolder) return ;
   // For cold bb symbols that are split and placed in cold segements,
   // only the first bb symbol of every function partition is kept.
   StringRef LastFuncName = "";
-  for (auto I = std::next(HotPlaceHolder), J = ColdPlaceHolder; I != J; ++I) {
-    StringRef SName = *I;
-    StringRef FName;
-    if (SymbolEntry::isBBSymbol(SName, &FName)) {
-      if (LastFuncName.empty() || LastFuncName != FName) {
-        PropLeg.BBSymbolsToKeep.insert(SName);
+  for (auto i = std::next(hotPlaceHolder), j = coldPlaceHolder; i != j; ++i) {
+    StringRef sName = *i;
+    StringRef fName;
+    if (SymbolEntry::isBBSymbol(sName, &fName)) {
+      if (LastFuncName.empty() || LastFuncName != fName) {
+        PropLeg.BBSymbolsToKeep.insert(sName);
       }
-      LastFuncName = FName;
+      LastFuncName = fName;
     }
   }
   return;
 }
 
-void Propeller::ELFViewDeleter::operator()(ELFView *V) {
-  delete V;
+void Propeller::ELFViewDeleter::operator()(ELFView *v) {
+  delete v;
 }
 
-bool Propeller::ELFViewOrdinalComparator::operator()(const ELFCfg *A,
-                                                     const ELFCfg *B) const {
-  return A->View->Ordinal < B->View->Ordinal;
+bool Propeller::ELFViewOrdinalComparator::operator()(const ELFCfg *a,
+                                                     const ELFCfg *b) const {
+  return a->View->Ordinal < b->View->Ordinal;
 }
 
 PropellerLegacy PropLeg;

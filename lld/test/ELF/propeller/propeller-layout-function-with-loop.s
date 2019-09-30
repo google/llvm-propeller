@@ -128,4 +128,3 @@ aaaa.BB.foo:
 .section	.text,"ax",@progbits
 .Lfoo_end:
  .size	foo, .Lfoo_end-foo
-# -- End function (foo)

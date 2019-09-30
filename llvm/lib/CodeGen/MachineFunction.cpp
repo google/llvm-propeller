@@ -192,7 +192,7 @@ void MachineFunction::init() {
     BasicBlockLabels = true;
 
   if (AlignAllFunctions)
-    Alignment = llvm::Align(1ULL << AlignAllFunctions);
+    Alignment = Align(1ULL << AlignAllFunctions);
 
   JumpTableInfo = nullptr;
 

@@ -317,6 +317,10 @@ protected:
   /// Defaults to false.
   bool HasLinkOnceDirective = false;
 
+  /// True if we have a .lglobl directive, which is used to emit the information
+  /// of a static symbol into the symbol table. Defaults to false.
+  bool HasDotLGloblDirective = false;
+
   /// This attribute, if not MCSA_Invalid, is used to declare a symbol as having
   /// hidden visibility.  Defaults to MCSA_Hidden.
   MCSymbolAttr HiddenVisibilityAttr = MCSA_Hidden;
@@ -397,6 +401,9 @@ protected:
   // linker.
   bool RelocateWithSymbols = false;
   bool RelocateWithSizeRelocs = false;
+
+  // If true, emit function descriptor symbol on AIX.
+  bool NeedsFunctionDescriptors = false;
 
 public:
   explicit MCAsmInfo();
@@ -571,6 +578,8 @@ public:
 
   bool hasLinkOnceDirective() const { return HasLinkOnceDirective; }
 
+  bool hasDotLGloblDirective() const { return HasDotLGloblDirective; }
+
   MCSymbolAttr getHiddenVisibilityAttr() const { return HiddenVisibilityAttr; }
 
   MCSymbolAttr getHiddenDeclarationVisibilityAttr() const {
@@ -662,6 +671,8 @@ public:
     RelocateWithSymbols = V;
     RelocateWithSizeRelocs = V;
   }
+  bool needsFunctionDescriptors() const { return NeedsFunctionDescriptors; }
+
 };
 
 } // end namespace llvm
