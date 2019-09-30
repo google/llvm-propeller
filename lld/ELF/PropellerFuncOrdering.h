@@ -14,21 +14,21 @@ using std::vector;
 namespace lld {
 namespace propeller {
 
-class ELFCfg;
+class ELFCFG;
 
 class CCubeAlgorithm {
 public:
   class Cluster {
   public:
-    Cluster(ELFCfg *Cfg);
+    Cluster(ELFCFG *CFG);
     ~Cluster();
-    list<ELFCfg *> Cfgs;
+    list<ELFCFG *> CFGs;
     uint64_t       Size;
     uint64_t       Weight;
 
     // Merge "Other" cluster into this cluster.
     Cluster & operator << (Cluster &Other) {
-      Cfgs.insert(Cfgs.end(), Other.Cfgs.begin(), Other.Cfgs.end());
+      CFGs.insert(CFGs.end(), Other.CFGs.begin(), Other.CFGs.end());
       this->Weight += Other.Weight;
       this->Size += Other.Size;
       return *this;
@@ -47,17 +47,17 @@ public:
   template <class CfgContainerTy>
   void init(CfgContainerTy &CfgContainer);
 
-  unsigned doOrder(list<ELFCfg*>& CfgOrder);
+  unsigned doOrder(list<ELFCFG*>& CfgOrder);
 
 private:
-  ELFCfg *getMostLikelyPredecessor(
-      Cluster *Cluster, ELFCfg *Cfg,
-      map<ELFCfg *, CCubeAlgorithm::Cluster *> &ClusterMap);
+  ELFCFG *getMostLikelyPredecessor(
+      Cluster *Cluster, ELFCFG *CFG,
+      map<ELFCFG *, CCubeAlgorithm::Cluster *> &ClusterMap);
 
   void mergeClusters();
   void sortClusters();
 
-  vector<ELFCfg *> HotCfgs, ColdCfgs;
+  vector<ELFCFG *> HotCfgs, ColdCfgs;
   list<unique_ptr<Cluster>> Clusters;
 };
 

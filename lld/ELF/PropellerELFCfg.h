@@ -6,19 +6,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Class definitions for propeller cfg, edge, nodes and CfgBuilder.
+// Class definitions for propeller cfg, edge, nodes and CFGBuilder.
 //
-// The ELFView class represents one ELF file. The ELFCfgBuilder class builds
-// cfg for each function and store it in ELFView::Cfgs, indexed by cfg name.
+// The ELFView class represents one ELF file. The ELFCFGBuilder class builds
+// cfg for each function and store it in ELFView::CFGs, indexed by cfg name.
 //
-// ELFCfgBuilder::buildCfgs works this way:
+// ELFCFGBuilder::buildCFGs works this way:
 //   - groups funcName, a.BB.funcName, aa.BB.funcName and alike into one set, 
-//     for each set, passes the set to "ELFCfgBuilder::buildCfg"
+//     for each set, passes the set to "ELFCFGBuilder::buildCFG"
 //   - each element in the set is a section, we then know from its section
 //     relocations the connections to other sections. (a)
-//   - from (a), we build cfg.
+//   - from (a), we build CFG.
 //
-// Three important functions in ELFCfg:
+// Three important functions in ELFCFG:
 //   mapBranch - apply counter to edge A->B, where A, B belong to the same func
 //
 //   mapCallOut - apply counter to edge A->B, where A, B belong to diff funcs
@@ -34,36 +34,27 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
 
-#include <list>
 #include <map>
 #include <memory>
 #include <ostream>
 #include <set>
+#include <vector>
 
-using llvm::MemoryBufferRef;
 using llvm::object::ObjectFile;
 using llvm::object::SymbolRef;
 using llvm::object::section_iterator;
-using llvm::StringRef;
-
-using std::list;
-using std::map;
-using std::ostream;
-using std::pair;
-using std::set;
-using std::unique_ptr;
 
 namespace lld {
 namespace propeller {
 
 class ELFView;
-class ELFCfgNode;
-class ELFCfg;
+class ELFCFGNode;
+class ELFCFG;
 
-class ELFCfgEdge {
+class ELFCFGEdge {
 public:
-  ELFCfgNode *Src;
-  ELFCfgNode *Sink;
+  ELFCFGNode *Src;
+  ELFCFGNode *Sink;
   uint64_t    Weight;
   // Whether it's an edge introduced by recursive-self-call.  (Usually
   // calls do not split basic blocks and do not introduce new edges.)
@@ -78,28 +69,28 @@ public:
   } Type {INTRA_FUNC};
 
 protected:
-  ELFCfgEdge(ELFCfgNode *N1, ELFCfgNode *N2, EdgeType T)
+  ELFCFGEdge(ELFCFGNode *N1, ELFCFGNode *N2, EdgeType T)
     :Src(N1), Sink(N2), Weight(0), Type(T) {}
 
-  friend class ELFCfg;
+  friend class ELFCFG;
 };
 
-class ELFCfgNode {
+class ELFCFGNode {
  public:
   uint64_t           Shndx;
   StringRef          ShName;
   uint64_t           ShSize;
   uint64_t           MappedAddr;
   uint64_t           Freq;
-  ELFCfg            *Cfg;
+  ELFCFG            *CFG;
   
-  list<ELFCfgEdge *> Outs;      // Intra function edges.
-  list<ELFCfgEdge *> Ins;       // Intra function edges.
-  list<ELFCfgEdge *> CallOuts;  // Callouts/returns to other functions.
-  list<ELFCfgEdge *> CallIns;   // Callins/returns from other functions.
+  std::vector<ELFCFGEdge *> Outs;      // Intra function edges.
+  std::vector<ELFCFGEdge *> Ins;       // Intra function edges.
+  std::vector<ELFCFGEdge *> CallOuts;  // Callouts/returns to other functions.
+  std::vector<ELFCFGEdge *> CallIns;   // Callins/returns from other functions.
   
   // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
-  ELFCfgEdge *       FTEdge;
+  ELFCFGEdge *       FTEdge;
 
   const static uint64_t InvalidAddress = -1l;
 
@@ -112,38 +103,38 @@ class ELFCfgNode {
   }
 
 private:
-  ELFCfgNode(uint64_t _Shndx, const StringRef &_ShName,
-             uint64_t _Size, uint64_t _MappedAddr, ELFCfg *_Cfg)
+  ELFCFGNode(uint64_t _Shndx, const StringRef &_ShName,
+             uint64_t _Size, uint64_t _MappedAddr, ELFCFG *_Cfg)
     : Shndx(_Shndx), ShName(_ShName), ShSize(_Size),
-      MappedAddr(_MappedAddr), Freq(0), Cfg(_Cfg),
+      MappedAddr(_MappedAddr), Freq(0), CFG(_Cfg),
       Outs(), Ins(), CallOuts(), CallIns(), FTEdge(nullptr) {}
 
-  friend class ELFCfg;
-  friend class ELFCfgBuilder;
+  friend class ELFCFG;
+  friend class ELFCFGBuilder;
 };
 
-class ELFCfg {
+class ELFCFG {
 public:
   ELFView    *View;
   StringRef   Name;
   uint64_t    Size;
   
-  // ELFCfg assumes the ownership for all Nodes / Edges.
-  list<unique_ptr<ELFCfgNode>> Nodes;  // Sorted by address.
-  list<unique_ptr<ELFCfgEdge>> IntraEdges;
-  list<unique_ptr<ELFCfgEdge>> InterEdges;
+  // ELFCFG assumes the ownership for all Nodes / Edges.
+  std::vector<std::unique_ptr<ELFCFGNode>> Nodes;  // Sorted by address.
+  std::vector<std::unique_ptr<ELFCFGEdge>> IntraEdges;
+  std::vector<std::unique_ptr<ELFCFGEdge>> InterEdges;
 
-  ELFCfg(ELFView *V, const StringRef &N, uint64_t S)
+  ELFCFG(ELFView *V, const StringRef &N, uint64_t S)
     : View(V), Name(N), Size(S) {}
-  ~ELFCfg() {}
+  ~ELFCFG() {}
 
-  bool markPath(ELFCfgNode *from, ELFCfgNode *to, uint64_t cnt = 1);
-  void mapBranch(ELFCfgNode *from, ELFCfgNode *to, uint64_t cnt = 1,
+  bool markPath(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt = 1);
+  void mapBranch(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt = 1,
                  bool isCall = false, bool isReturn = false);
-  void mapCallOut(ELFCfgNode *from, ELFCfgNode *to, uint64_t toAddr,
+  void mapCallOut(ELFCFGNode *from, ELFCFGNode *to, uint64_t toAddr,
                   uint64_t cnt = 1, bool isCall = false, bool isReturn = false);
 
-  ELFCfgNode *getEntryNode() const {
+  ELFCFGNode *getEntryNode() const {
     assert(!Nodes.empty());
     return Nodes.begin()->get();
   }
@@ -156,58 +147,56 @@ public:
 
   template <class Visitor>
   void forEachNodeRef(Visitor V) {
-    for (auto &N: Nodes) {
+    for (auto &N: Nodes)
       V(*N);
-    }
   }
 
   bool writeAsDotGraph(const char *cfgOutName);
 
 private:
   // Create and take ownership.
-  ELFCfgEdge *createEdge(ELFCfgNode *from,
-                         ELFCfgNode *to,
-                         typename ELFCfgEdge::EdgeType type);
+  ELFCFGEdge *createEdge(ELFCFGNode *from,
+                         ELFCFGNode *to,
+                         typename ELFCFGEdge::EdgeType type);
 
-  void emplaceEdge(ELFCfgEdge *edge) {
-    if (edge->Type < ELFCfgEdge::INTER_FUNC_CALL) {
+  void emplaceEdge(ELFCFGEdge *edge) {
+    if (edge->Type < ELFCFGEdge::INTER_FUNC_CALL)
       IntraEdges.emplace_back(edge);
-    } else {
+    else
       InterEdges.emplace_back(edge);
-    }
   }
 
-  friend class ELFCfgBuilder;
+  friend class ELFCFGBuilder;
 };
 
 
-class ELFCfgBuilder {
+class ELFCFGBuilder {
 public:
   Propeller *Prop;
   ELFView   *View;
 
   uint32_t BB{0};
   uint32_t BBWoutAddr{0};
-  uint32_t InvalidCfgs{0};
+  uint32_t InvalidCFGs{0};
 
-  ELFCfgBuilder(Propeller &prop, ELFView *vw) : Prop(&prop), View(vw) {}
-  void buildCfgs();
+  ELFCFGBuilder(Propeller &prop, ELFView *vw) : Prop(&prop), View(vw) {}
+  void buildCFGs();
 
 protected:
-  void buildCfg(ELFCfg &cfg, const SymbolRef &cfgSym,
-                map<uint64_t, unique_ptr<ELFCfgNode>> &nodeMap);
+  void buildCFG(ELFCFG &cfg, const SymbolRef &cfgSym,
+                std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &nodeMap);
 
-  void
-  calculateFallthroughEdges(ELFCfg &cfg,
-                            map<uint64_t, unique_ptr<ELFCfgNode>> &nodeMap);
+  void calculateFallthroughEdges(
+      ELFCFG &cfg, std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &nodeMap);
 
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
-  void buildRelocationSectionMap(map<uint64_t, section_iterator> &relocSecMap);
+  void
+  buildRelocationSectionMap(std::map<uint64_t, section_iterator> &relocSecMap);
   // Build a map from section "Idx" -> node representing "Idx". Only
   // used during building phase.
-  void buildShndxNodeMap(map<uint64_t, unique_ptr<ELFCfgNode>> &nodeMap,
-                         map<uint64_t, ELFCfgNode *> &shndxNodeMap);
+  void buildShndxNodeMap(std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &nodeMap,
+                         std::map<uint64_t, ELFCFGNode *> &shndxNodeMap);
 };
 
 // ELFView is a structure that corresponds to a single ELF file.
@@ -217,28 +206,27 @@ class ELFView {
                          const uint32_t ordinal,
                          const MemoryBufferRef &fR);
 
-  ELFView(unique_ptr<ObjectFile> &vF,
+  ELFView(std::unique_ptr<ObjectFile> &vF,
           const StringRef &vN,
           const uint32_t vO,
           const MemoryBufferRef &fR) :
-    ViewFile(std::move(vF)), ViewName(vN), Ordinal(vO), FileRef(fR), Cfgs() {}
+    ViewFile(std::move(vF)), ViewName(vN), Ordinal(vO), FileRef(fR), CFGs() {}
   ~ELFView() {}
 
-  void EraseCfg(ELFCfg *&cfgPtr);
+  void EraseCfg(ELFCFG *&cfgPtr);
 
-  unique_ptr<ObjectFile> ViewFile;
-  StringRef              ViewName;
-  const uint32_t         Ordinal;
-  MemoryBufferRef        FileRef;
+  std::unique_ptr<ObjectFile> ViewFile;
+  StringRef                   ViewName;
+  const uint32_t              Ordinal;
+  MemoryBufferRef             FileRef;
 
-  // Name -> ELFCfg mapping.
-  map<StringRef, unique_ptr<ELFCfg>> Cfgs;
+  // Name -> ELFCFG mapping.
+  std::map<StringRef, std::unique_ptr<ELFCFG>> CFGs;
 };
 
-ostream & operator << (ostream &out, const ELFCfgNode &node);
-ostream & operator << (ostream &out, const ELFCfgEdge &edge);
-ostream & operator << (ostream &out, const ELFCfg     &cfg);
-
+std::ostream &operator<<(std::ostream &out, const ELFCFGNode &node);
+std::ostream &operator<<(std::ostream &out, const ELFCFGEdge &edge);
+std::ostream &operator<<(std::ostream &out, const ELFCFG &cfg);
 }
 } // namespace lld
 #endif
