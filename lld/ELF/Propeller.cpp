@@ -53,23 +53,23 @@ namespace propeller {
 // Read the "@" directive in the propeller file, compare it against "-o"
 // filename, return true if positive.
 bool Propfile::matchesOutputFileName(const StringRef &outputFileName) {
-  ssize_t r;
   int outputFileTagSeen = 0;
-  while ((r = getline(&LineBuf, &LineSize, PStream)) != -1) {
-    if (r == 0) continue;
-    if (LineBuf[r - 1] == '\n') {
-      LineBuf[--r] = '\0'; // Drop '\n' character at the end.
-    }
-    if (LineBuf[0] != '@') break;
+  std::string line;
+  while ((std::getline(PropfStream, line)).good()) {
+    ++this->LineNo;
+    if (line.empty()) continue;
+    if (line[0] != '@') break;
     ++outputFileTagSeen;
-    if (StringRef(LineBuf + 1) == outputFileName)
+    if (StringRef(line.c_str() + 1) == outputFileName)
       return true;
   }
   if (outputFileTagSeen)
     return false;
   // If no @outputFileName is specified, reset the stream and assume linker
   // shall proceed propellering.
-  fseek(PStream, 0, SEEK_SET);
+  PropfStream.close();
+  PropfStream.open(this->PropfName);
+  this->LineNo = 0;
   return true;
 }
 
@@ -98,28 +98,24 @@ SymbolEntry *Propfile::findSymbol(StringRef symName) {
 
 // Refer header file for detailed information about symbols section.
 bool Propfile::readSymbols() {
-  ssize_t R;
-  LineNo = 0;
-  LineTag = '\0';
+  std::string line;
   // A list of bbsymbols<ordinal, function_ordinal, bbindex and size> that
   // appears before its wrapping function. This should be rather rare.
   list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t>> bbSymbols;
-  while ((R = getline(&LineBuf, &LineSize, PStream)) != -1) {
+  while (std::getline(this->PropfStream, line).good()) {
     ++LineNo;
-    if (R == 0) continue;
-    if (LineBuf[0] == '#' || LineBuf[0] == '!' || LineBuf[0] == '@')
+    if (line.empty()) continue;
+    if (line[0] == '#' || line[0] == '!' || line[0] == '@')
       continue;
-    if (LineBuf[0] == 'B' || LineBuf[0] == 'F') {
-      LineTag = LineBuf[0];
+    if (line[0] == 'B' || line[0] == 'F') {
+      LineTag = line[0];
       break; // Done symbol section.
     }
-    if (LineBuf[0] == 'S') {
-      LineTag = LineBuf[0];
+    if (line[0] == 'S') {
+      LineTag = line[0];
       continue;
     }
-    if (LineBuf[R - 1] == '\n')
-      LineBuf[--R] = '\0'; // Drop '\n' character at the end.
-    StringRef lineStrRef(LineBuf); // LineBuf is null-terminated.
+    StringRef lineStrRef(line);
 
     uint64_t SOrdinal;
     uint64_t SSize;
@@ -236,24 +232,20 @@ static bool parseBranchOrFallthroughLine(StringRef lineRef,
 
 // Read propeller profile. Refer header file for detail about propeller profile.
 bool Propfile::processProfile() {
-  ssize_t r;
+  std::string line;
   uint64_t branchCnt = 0;
   uint64_t fallthroughCnt = 0;
-  while ((r = getline(&LineBuf, &LineSize, PStream)) != -1) {
+  while (std::getline(this->PropfStream, line).good()) {
     ++LineNo;
-    if (r == 0)
+    if (line[0] == '#' || line[0] == '!')
       continue;
-    if (LineBuf[0] == '#' || LineBuf[0] == '!')
-      continue;
-    if (LineBuf[0] == 'S' || LineBuf[0] == 'B' || LineBuf[0] == 'F') {
-      LineTag = LineBuf[0];
+    if (line[0] == 'S' || line[0] == 'B' || line[0] == 'F') {
+      LineTag = line[0];
       continue;
     }
     if (LineTag != 'B' && LineTag != 'F') break;
-    if (LineBuf[r - 1] == '\n')
-      LineBuf[--r] = '\0'; // drop '\n' character at the end;
 
-    StringRef L(LineBuf); // LineBuf is null-terminated.
+    StringRef L(line); // LineBuf is null-terminated.
     uint64_t from, to, count;
     char tag;
     if (!parseBranchOrFallthroughLine(L, &from, &to, &count, &tag)) {
@@ -384,14 +376,12 @@ void Propeller::calculateNodeFreqs() {
 bool Propeller::checkPropellerTarget() {
   if (config->propeller.empty()) return false;
   string propellerFileName = config->propeller.str();
-  FILE *fPtr = fopen(propellerFileName.c_str(), "r");
-  if (!fPtr) {
+  // Propfile takes ownership of FPtr.
+  Propf.reset(new Propfile(*this, propellerFileName));
+  if (!Propf->openPropf()) {
     error(string("[Propeller]: Failed to open '") + propellerFileName + "'.");
     return false;
   }
-  // Propfile takes ownership of FPtr.
-  Propf.reset(new Propfile(fPtr, *this));
-
   return Propf->matchesOutputFileName(
       llvm::sys::path::filename(config->outputFile));
 }

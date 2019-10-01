@@ -109,6 +109,7 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/StringSaver.h"
 
+#include <fstream>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -187,18 +188,16 @@ class Propeller;
 // generation purpose).
 class Propfile {
 public:
-  Propfile(FILE *pS, Propeller &p)
-      : BPAllocator(), PropfileStrSaver(BPAllocator), PStream(pS), Prop(p),
-        SymbolOrdinalMap(), LineSize(1024) {
-    // LineBuf is to be used w/ getline, which requires the storage allocated by
-    // malloc.
-    LineBuf = (char *)malloc(LineSize);
-  }
-  ~Propfile() {
-    if (LineBuf) free(LineBuf);
-    if (PStream) fclose(PStream);
-  }
+  Propfile(Propeller &p, const string &pName)
+      : BPAllocator(), PropfileStrSaver(BPAllocator), PropfName(pName),
+        PropfStream(), Prop(p), SymbolOrdinalMap() {}
 
+  ~Propfile() {}
+
+  bool openPropf() {
+    this->PropfStream.open(this->PropfName);
+    return this->PropfStream.good();
+  }
   bool matchesOutputFileName(const StringRef &outputFile);
   bool readSymbols();
   SymbolEntry *findSymbol(StringRef symName);
@@ -242,7 +241,8 @@ public:
 
   llvm::BumpPtrAllocator BPAllocator;
   llvm::UniqueStringSaver PropfileStrSaver;
-  FILE *PStream;
+  std::string PropfName;
+  std::ifstream PropfStream;
   Propeller &Prop;
   std::map<uint64_t, std::unique_ptr<SymbolEntry>> SymbolOrdinalMap;
   // SymbolNameMap is ordered in the following way:
@@ -254,7 +254,6 @@ public:
   std::vector<SymbolEntry *> FunctionsWithAliases;
   uint64_t LineNo;
   char LineTag;
-  size_t LineSize;
   char *LineBuf;
 };
 
@@ -275,9 +274,8 @@ public:
                                 std::list<StringRef>::iterator coldPlaceHolder);
   template <class Visitor>
   void forEachCfgRef(Visitor v) {
-    for (auto &p : CFGMap) {
+    for (auto &p : CFGMap)
       v(*(*(p.second.begin())));
-    }
   }
 
   lld::elf::SymbolTable *Symtab;
@@ -295,7 +293,8 @@ public:
   struct ELFViewOrdinalComparator {
     bool operator()(const ELFCFG *a, const ELFCFG *b) const;
   };
-  using CfgMapTy = std::map<StringRef, std::set<ELFCFG *, ELFViewOrdinalComparator>>;
+  using CfgMapTy =
+      std::map<StringRef, std::set<ELFCFG *, ELFViewOrdinalComparator>>;
   CfgMapTy CFGMap;
   std::unique_ptr<Propfile> Propf;
   // We call Propeller::processFile in parallel to create CFGs for
