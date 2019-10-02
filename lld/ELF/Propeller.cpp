@@ -526,10 +526,10 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
 
   list<ELFCfg *> cfgOrder;
   if (config->propellerReorderFuncs) {
-    CCubeAlgorithm algo;
-    algo.init(*this);
+    CallChainClustering c3;
+    c3.init(*this);
     auto startFuncOrderTime = system_clock::now();
-    auto cfgsReordered = algo.doOrder(cfgOrder);
+    auto cfgsReordered = c3.doOrder(cfgOrder);
     if (config->propellerPrintStats){
       duration<double> funcOrderTime = system_clock::now() - startFuncOrderTime;
       llvm::outs() << llvm::format(

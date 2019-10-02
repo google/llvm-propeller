@@ -1,3 +1,12 @@
+//===- PropellerBBReordering.h ----------------------------------------------===//
+////
+//// Part of the LLVM Project, under the Apache License v2.0 with LLVM
+//Exceptions.
+//// See https://llvm.org/LICENSE.txt for license information.
+//// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+////
+////===----------------------------------------------------------------------===//
+
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
@@ -87,7 +96,8 @@ private:
   DenseMap<const ELFCfgNode *, ELFCfgNode *> MutuallyForcedOut;
 
   // This maps every (ordered) pair of chains (with the first chain in the pair
-  // potentially splittable) to the highest-gain NodeChainAssembly for those chains.
+  // potentially splittable) to the highest-gain NodeChainAssembly for those
+  // chains.
   DenseMap<std::pair<NodeChain *, NodeChain *>,
            std::unique_ptr<NodeChainAssembly>>
       NodeChainAssemblies;
@@ -119,8 +129,8 @@ private:
   // Recompute the ExtTSP score of a chain
   double computeExtTSPScore(NodeChain *chain) const;
 
-  // Update the related NodeChainAssembly records for two chains, with the assumption
-  // that UnsplitChain has been merged into SplitChain.
+  // Update the related NodeChainAssembly records for two chains, with the
+  // assumption that UnsplitChain has been merged into SplitChain.
   bool updateNodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain);
 
   void computeChainOrder(std::vector<const NodeChain *> &chainOrder);
@@ -133,13 +143,15 @@ private:
 
   uint32_t getNodeOffset(const ELFCfgNode *node) const {
     auto it = NodeOffsetMap.find(node);
-    assert("Node does not exist in the offset map." && it != NodeOffsetMap.end());
+    assert("Node does not exist in the offset map." &&
+           it != NodeOffsetMap.end());
     return it->second;
   }
 
   NodeChain *getNodeChain(const ELFCfgNode *node) const {
     auto it = NodeToChainMap.find(node);
-    assert("Node does not exist in the chain map." && it != NodeToChainMap.end());
+    assert("Node does not exist in the chain map." &&
+           it != NodeToChainMap.end());
     return it->second;
   }
 
@@ -149,6 +161,12 @@ public:
     initMutuallyForcedEdges();
   }
 
+  // This invokes the Extended TSP algorithm, orders the hot and cold basic
+  // blocks and inserts their associated symbols at the corresponding locations
+  // specified by the parameters (HotPlaceHolder and ColdPlaceHolder) in the
+  // given SymbolList. This function also modifies the alignment of basic blocks
+  // based on the new order if the feature is requested by
+  // -propeller-align-basic-blocks.
   void doSplitOrder(std::list<StringRef> &SymbolList,
                     std::list<StringRef>::iterator HotPlaceHolder,
                     std::list<StringRef>::iterator ColdPlaceHolder);
@@ -167,8 +185,7 @@ private:
 
   // Constructor for building a chain slice from a given chain and the two
   // endpoints of the chain.
-  NodeChainSlice(NodeChain *c,
-                 std::vector<const ELFCfgNode *>::iterator begin,
+  NodeChainSlice(NodeChain *c, std::vector<const ELFCfgNode *>::iterator begin,
                  std::vector<const ELFCfgNode *>::iterator end,
                  const NodeChainBuilder &chainBuilder)
       : Chain(c), Begin(begin), End(end) {
@@ -209,11 +226,15 @@ private:
 
   NodeChainAssembly(NodeChain *chainX, NodeChain *chainY,
                     std::vector<const ELFCfgNode *>::iterator slicePosition,
-                    MergeOrder mergeOrder,
-                    const NodeChainBuilder *chainBuilder) : ChainBuilder(chainBuilder), SplitChain(chainX), UnsplitChain(chainY), SlicePosition(slicePosition) {
-    NodeChainSlice x1(chainX, chainX->Nodes.begin(), SlicePosition, *chainBuilder);
-    NodeChainSlice x2(chainX, SlicePosition, chainX->Nodes.end(), *chainBuilder);
-    NodeChainSlice y(chainY, chainY->Nodes.begin(), chainY->Nodes.end(), *chainBuilder);
+                    MergeOrder mergeOrder, const NodeChainBuilder *chainBuilder)
+      : ChainBuilder(chainBuilder), SplitChain(chainX), UnsplitChain(chainY),
+        SlicePosition(slicePosition) {
+    NodeChainSlice x1(chainX, chainX->Nodes.begin(), SlicePosition,
+                      *chainBuilder);
+    NodeChainSlice x2(chainX, SlicePosition, chainX->Nodes.end(),
+                      *chainBuilder);
+    NodeChainSlice y(chainY, chainY->Nodes.begin(), chainY->Nodes.end(),
+                     *chainBuilder);
 
     switch (mergeOrder) {
     case MergeOrder::X2X1Y:
@@ -248,9 +269,10 @@ private:
     return extTSPScore() - SplitChain->Score - UnsplitChain->Score;
   }
 
-  // Find the NodeChainSlice in this NodeChainAssembly which contains the given node. If the node is not
-  // contained in this NodeChainAssembly, then return false. Otherwise, set idx equal to the index
-  // of the corresponding slice and return true.
+  // Find the NodeChainSlice in this NodeChainAssembly which contains the given
+  // node. If the node is not contained in this NodeChainAssembly, then return
+  // false. Otherwise, set idx equal to the index of the corresponding slice and
+  // return true.
   bool findSliceIndex(const ELFCfgNode *node, uint8_t &idx) const {
     // First find the chain containing the given node.
     NodeChain *chain = ChainBuilder->getNodeChain(node);
@@ -291,7 +313,8 @@ private:
       if (offset == Slices[idx].BeginOffset) {
         // If offset is at the beginning of the slice, iterate forwards over the
         // slice to find the node.
-        for (auto nodeIt = Slices[idx].Begin; nodeIt != Slices[idx].End; nodeIt++) {
+        for (auto nodeIt = Slices[idx].Begin; nodeIt != Slices[idx].End;
+             nodeIt++) {
           if (*nodeIt == node)
             return true;
           // Stop iterating if the node's size is non-zero as this would change
@@ -319,6 +342,8 @@ private:
   friend class NodeChainBuilder;
 
 public:
+  // We delete the copy constructor to make sure NodeChainAssembly is moved
+  // rather than copied.
   NodeChainAssembly(NodeChainAssembly &&) = default;
   // copy constructor is implicitly deleted
   // NodeChainAssembly(const NodeChainAssembly&) = delete;

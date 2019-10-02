@@ -7,8 +7,8 @@
 //===----------------------------------------------------------------------===//
 //
 // This file is part of the Propeller infrastcture for doing code layout
-// optimization and includes the implementation of basic block reordering
-// algorithm based on the Extended TSP metric
+// optimization and includes the implementation of intra-function basic block
+// reordering algorithm based on the Extended TSP metric
 // (https://arxiv.org/abs/1809.04676).
 //
 // The Extend TSP metric (ExtTSP) provides a score for every ordering of basic
@@ -18,16 +18,16 @@
 // Given an ordering of the basic blocks, for a function f, the ExtTSP score is
 // computed as follows.
 //
-// \f\sum_{e \in f} frequency(e) * weight(e)\f
+// sum_{edges e in f} frequency(e) * weight(e)
 //
 // where frequency(e) is the execution frequency and weight(e) is computed as
 // follows:
-//   - 1 if distance(Src[e], Sink[e]) = 0 (i.e. fallthrough)
-//   - 0.1 * (1 - distance(Src[e], Sink[e]) /1024) if Src[e] < Sink[e] and 0 <
-//   distance(Src[e], Sink[e]) < 1024 (i.e. short forward jump)
-//   - 0.1 * (1 - distance(Src[e], Sink[e]) /640) if Src[e] > Sink[e] and 0 <
-//   distance(Src[e], Sink[e]) < 640 (i.e. short backward jump)
-//   - 0 otherwise
+//   *  1 if distance(Src[e], Sink[e]) = 0 (i.e. fallthrough)
+//   *  0.1 * (1 - distance(Src[e], Sink[e]) / 1024) if Src[e] < Sink[e] and
+//   0 < distance(Src[e], Sink[e]) < 1024 (i.e. short forward jump)
+//   *  0.1 * (1 - distance(Src[e], Sink[e]) / 640) if Src[e] > Sink[e] and
+//   0 < distance(Src[e], Sink[e]) < 640 (i.e. short backward jump)
+//   *  0 otherwise
 //
 // In short, it computes a weighted sum of frequencies of all edges in the
 // control flow graph. Each edge gets its weight depending on whether the given
@@ -58,6 +58,19 @@
 // their execution density, i.e., the total profiled frequency of the chain
 // divided by its binary size.
 //
+// The values used by this algorithm are reconfiguriable using lld's propeller
+// flags. Specifically, these parameters are:
+//    * propeller-forward-jump-distance: maximum distance of a forward jump
+//    (default-set to 1024 in the above equation).
+//    * propeller-backward-jump-distance: maximum distance of a backward jump
+//    (default-set to 640 in the above equation).
+//    * propeller-fallthrough-weight: weight of a fallthrough (default-set to 1)
+//    * propeller-forward-jump-weight: weight of a forward jump (default-set to
+//    0.1)
+//    * propeller-backward-jump-weight: weight of a backward jump (default-set
+//    to 0.1)
+//    * propeller-chain-split-threshold: maximum binary size of a BB chain
+//    which the algorithm will consider for splitting (default-set to 128).
 //===----------------------------------------------------------------------===//
 #include "PropellerBBReordering.h"
 
@@ -77,7 +90,9 @@ using llvm::detail::DenseMapPair;
 namespace lld {
 namespace propeller {
 
-double getEdgeExtTSPScore(const ELFCfgEdge *edge, bool isedgeForward,
+// Return the Extended TSP score for one edge, given its source to sink
+// direction and distance in the layout.
+double getEdgeExtTSPScore(const ELFCfgEdge *edge, bool isEdgeForward,
                           uint32_t srcSinkDistance) {
   if (edge->Weight == 0)
     return 0;
@@ -85,18 +100,21 @@ double getEdgeExtTSPScore(const ELFCfgEdge *edge, bool isedgeForward,
   if (srcSinkDistance == 0 && (edge->Type == ELFCfgEdge::EdgeType::INTRA_FUNC))
     return edge->Weight * config->propellerFallthroughWeight;
 
-  if (isedgeForward && srcSinkDistance < config->propellerForwardJumpDistance)
+  if (isEdgeForward && srcSinkDistance < config->propellerForwardJumpDistance)
     return edge->Weight * config->propellerForwardJumpWeight *
            (1.0 -
             ((double)srcSinkDistance) / config->propellerForwardJumpDistance);
 
-  if (!isedgeForward && srcSinkDistance < config->propellerBackwardJumpDistance)
+  if (!isEdgeForward && srcSinkDistance < config->propellerBackwardJumpDistance)
     return edge->Weight * config->propellerBackwardJumpWeight *
            (1.0 -
             ((double)srcSinkDistance) / config->propellerBackwardJumpDistance);
   return 0;
 }
 
+// Sort BB chains in decreasing order of their execution density.
+// NodeChainBuilder calls this function at the end to ensure that hot BB chains
+// are placed at the beginning of the function.
 void NodeChainBuilder::sortChainsByExecutionDensity(
     std::vector<const NodeChain *> &chainOrder) {
   for (auto CI = Chains.begin(), CE = Chains.end(); CI != CE; ++CI) {
@@ -121,19 +139,26 @@ void NodeChainBuilder::sortChainsByExecutionDensity(
       });
 }
 
+// NodeChainBuilder calls this function after building all the chains to attach
+// as many fall-throughs as possible. Given that the algorithm already optimizes
+// the extend TSP score, this function will only affect the cold basic blocks
+// and thus we do not need to consider the edge weights.
 void NodeChainBuilder::attachFallThroughs() {
+  // First, try to keep the fall-throughs from the original order.
   for (auto &node : CFG->Nodes) {
     if (node->FTEdge != nullptr) {
       attachNodes(node.get(), node->FTEdge->Sink);
     }
   }
 
+  // Sometimes, the original fall-throughs cannot be kept. So we try to find new
+  // fall-through opportunities which did not exist in the original order.
   for (auto &edge : CFG->IntraEdges) {
     attachNodes(edge->Src, edge->Sink);
   }
 }
 
-/* Merge two chains in the specified order. */
+// Merge two chains in the specified order.
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
   for (const ELFCfgNode *node : rightChain->Nodes) {
@@ -146,28 +171,37 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
   Chains.erase(rightChain->DelegateNode->Shndx);
 }
 
-/* This function tries to place two nodes immediately adjacent to
- * each other (used for fallthroughs).
- * Returns true if this can be done. */
+// This function tries to place two basic blocks immediately adjacent to each
+// other (used for fallthroughs). Returns true if the basic blocks have been
+// attached this way.
 bool NodeChainBuilder::attachNodes(const ELFCfgNode *src,
                                    const ELFCfgNode *sink) {
+  // No edge cannot fall-through to the entry basic block.
   if (sink == CFG->getEntryNode())
     return false;
+
+  // Ignore edges between hot and cold basic blocks.
   if (src->Freq == 0 ^ sink->Freq == 0)
     return false;
   NodeChain *srcChain = getNodeChain(src);
   NodeChain *sinkChain = getNodeChain(sink);
+  // Skip this edge if the source and sink are in the same chain
   if (srcChain == sinkChain)
     return false;
+
+  // It's only possible to form a fall-through between src and sink if src is
+  // they are respectively located at the end and beginning of their chains.
   if (srcChain->getLastNode() != src || sinkChain->getFirstNode() != sink)
     return false;
+  // Attaching is possible. So we merge the chains in the corresponding order.
   mergeChains(srcChain, sinkChain);
   return true;
 }
 
 // Merge two BB sequences according to the given NodeChainAssembly. A
 // NodeChainAssembly is an ordered triple of three slices from two chains.
-void NodeChainBuilder::mergeChains(std::unique_ptr<NodeChainAssembly> assembly) {
+void NodeChainBuilder::mergeChains(
+    std::unique_ptr<NodeChainAssembly> assembly) {
   // Create the new node order according the given assembly
   std::vector<const ELFCfgNode *> newNodeOrder;
   for (NodeChainSlice &slice : assembly->Slices) {
@@ -187,10 +221,13 @@ void NodeChainBuilder::mergeChains(std::unique_ptr<NodeChainAssembly> assembly) 
 
   // Update the total frequency and ExtTSP score of the aggregated chain
   assembly->SplitChain->Freq += assembly->UnsplitChain->Freq;
-  // We have already computed the gain in the assembly record. So we can just increment the aggregated chain's score by that gain.
+  // We have already computed the gain in the assembly record. So we can just
+  // increment the aggregated chain's score by that gain.
   assembly->SplitChain->Score += assembly->extTSPScoreGain();
 
-  // Merge the assembly candidate chains of the two chains into the candidate chains of the remaining NodeChain and remove the records for the defunct NodeChain.
+  // Merge the assembly candidate chains of the two chains into the candidate
+  // chains of the remaining NodeChain and remove the records for the defunct
+  // NodeChain.
   for (NodeChain *c : CandidateChains[assembly->UnsplitChain]) {
     NodeChainAssemblies.erase(std::make_pair(c, assembly->UnsplitChain));
     NodeChainAssemblies.erase(std::make_pair(assembly->UnsplitChain, c));
@@ -204,7 +241,9 @@ void NodeChainBuilder::mergeChains(std::unique_ptr<NodeChainAssembly> assembly) 
   // NodeChainAssembly update finds no gain.
   auto &splitChainCandidateChains = CandidateChains[assembly->SplitChain];
 
-  for (auto CI = splitChainCandidateChains.begin(), CE = splitChainCandidateChains.end(); CI != CE;) {
+  for (auto CI = splitChainCandidateChains.begin(),
+            CE = splitChainCandidateChains.end();
+       CI != CE;) {
     NodeChain *otherChain = *CI;
     auto &otherChainCandidateChains = CandidateChains[otherChain];
     bool x = updateNodeChainAssembly(otherChain, assembly->SplitChain);
@@ -225,7 +264,9 @@ void NodeChainBuilder::mergeChains(std::unique_ptr<NodeChainAssembly> assembly) 
   Chains.erase(assembly->UnsplitChain->DelegateNode->Shndx);
 }
 
-/* Calculate the Extended TSP metric for a NodeChain */
+// Calculate the Extended TSP metric for a BB chain.
+// This function goes over all the BBs in the chain and for BB chain and
+// aggregates the score of all edges which are contained in the same chain.
 double NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
   double score = 0;
   uint32_t srcOffset = 0;
@@ -238,6 +279,7 @@ double NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
         continue;
       auto sinkOffset = getNodeOffset(edge->Sink);
       bool edgeForward = srcOffset + node->ShSize <= sinkOffset;
+      // Calculate the distance between src and sink
       uint32_t distance = edgeForward ? sinkOffset - srcOffset - node->ShSize
                                       : srcOffset - sinkOffset + node->ShSize;
       score += getEdgeExtTSPScore(edge, edgeForward, distance);
@@ -319,11 +361,11 @@ void NodeChainBuilder::initNodeChains() {
   }
 }
 
+// Find all the mutually-forced edges.
+// These are all the edges which are -- based on the profile -- the only
+// (executed) outgoing edge from their source node and the only (executed)
+// incoming edges to their sink nodes
 void NodeChainBuilder::initMutuallyForcedEdges() {
-  // Find all the mutually-forced edges.
-  // These are all the edges which are -- based on the profile -- the only
-  // (executed) outgoing edge from their source node and the only (executed)
-  // incoming edges to their sink nodes
   DenseMap<const ELFCfgNode *, std::vector<ELFCfgEdge *>> profiledOuts;
   DenseMap<const ELFCfgNode *, std::vector<ELFCfgEdge *>> profiledIns;
 
@@ -392,11 +434,11 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
     MutuallyForcedOut.erase(node);
 }
 
-// This function initializes the ExtTSP algorithm's data.
+// This function initializes the ExtTSP algorithm's data structures. This
+// the NodeChainAssemblies and the CandidateChains maps.
 void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
-
   DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
   for (auto &c : Chains) {
     NodeChain *chain = c.second.get();
@@ -425,8 +467,8 @@ void NodeChainBuilder::initializeExtTSP() {
 
 void NodeChainBuilder::computeChainOrder(
     std::vector<const NodeChain *> &chainOrder) {
-
-  // Attach the mutually-foced edges (which will not be split anymore).
+  // Attach the mutually-foced edges (which will not be split anymore by the
+  // Extended TSP algorithm).
   for (auto &kv : MutuallyForcedOut)
     attachNodes(kv.first, kv.second);
 
@@ -463,7 +505,9 @@ void NodeChainBuilder::computeChainOrder(
   sortChainsByExecutionDensity(chainOrder);
 }
 
-// This function computes the ExtTSP score for a chain assembly record.
+// This function computes the ExtTSP score for a chain assembly record. This
+// goes the three BB slices in the assembly record and considers all edges
+// whose source and sink belongs to the chains in the assembly record.
 double NodeChainBuilder::NodeChainAssembly::computeExtTSPScore() const {
   double score = 0;
   for (uint8_t srcSliceIdx = 0; srcSliceIdx < 3; ++srcSliceIdx) {
@@ -514,7 +558,6 @@ double NodeChainBuilder::NodeChainAssembly::computeExtTSPScore() const {
 void NodeChainBuilder::doSplitOrder(list<StringRef> &symbolList,
                                     list<StringRef>::iterator hotPlaceHolder,
                                     list<StringRef>::iterator coldPlaceHolder) {
-
   std::vector<const NodeChain *> chainOrder;
   computeChainOrder(chainOrder);
 
