@@ -99,9 +99,11 @@ gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
                   -DCMAKE_MODULE_LINKER_FLAGS=$(2)
 
 bb_section_none_flags      := $(call gen_build_flags,,"${LLD_NO_OPT}")
-bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label","-fuse-ld=lld")
-bb_section_all_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fuse-ld=lld")
-bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1)","-fuse-ld=lld")
+relocation_gen_opt         := -Wl,-q
+bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label","-fuse-ld=lld $(relocation_gen_opt)")
+lto_bb_sections_all        := -Wl,--lto-basicblock-sections=all
+bb_section_all_flags        = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all)")
+bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1)","-fuse-ld=lld -fpropeller-optimize=$(1)")
 
 # $1 is compiler name, "stage1", "instrbb", etc;
 # $2 is bin directory that is used to build the compiler, must be absolute path.
@@ -183,7 +185,7 @@ pgo/build/bin/clang-10: stage-pgo.profdata
 	$(call build_compiler,pgo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-plo/build/bin/clang-10: stage-pgo.profdata
-	$(call build_compiler,pgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,pgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
 pgo-plolist/build/bin/clang-10: stage-pgo.profdata pgo-compiler.propeller
 	$(call build_compiler,pgo-plolist,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
@@ -240,7 +242,7 @@ run-commands.sh: | stage1-compiler
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
 	echo "export CCP=\$$1" > run-commands.sh
-	echo "cat commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
+	echo "head -n 500 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
                 >> run-commands.sh
 	chmod +x run-commands.sh
 
