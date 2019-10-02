@@ -1,67 +1,74 @@
+//===- PropellerFuncReordering.h
+//--------------------------------------------===//
+////
+//// Part of the LLVM Project, under the Apache License v2.0 with LLVM
+// Exceptions.
+//// See https://llvm.org/LICENSE.txt for license information.
+//// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+////
+////===----------------------------------------------------------------------===//
+
 #ifndef LLD_ELF_PROPELLER_FUNC_ORDERING_H
 #define LLD_ELF_PROPELLER_FUNC_ORDERING_H
 
+#include "Propeller.h"
+
 #include <list>
 #include <map>
-#include <memory>
 #include <vector>
-
-using std::list;
-using std::map;
-using std::unique_ptr;
-using std::vector;
 
 namespace lld {
 namespace propeller {
 
 class ELFCFG;
 
-class CCubeAlgorithm {
+class CallChainClustering {
 public:
   class Cluster {
   public:
-    Cluster(ELFCFG *CFG);
-    ~Cluster();
-    list<ELFCFG *> CFGs;
-    uint64_t       Size;
-    uint64_t       Weight;
+    Cluster(ELFCFG *cfg, unsigned);
+    // All cfgs in this cluster
+    std::vector<ELFCFG *> CFGs;
+    // Unique id associated with the cluster
+    unsigned Id;
+    // Total binary size of this cluster (only the hot part if using
+    // split-funcs.
+    uint64_t Size;
+    // Total byte-level execution frequency of the cluster
+    uint64_t Weight;
 
-    // Merge "Other" cluster into this cluster.
-    Cluster & operator << (Cluster &Other) {
-      CFGs.insert(CFGs.end(), Other.CFGs.begin(), Other.CFGs.end());
-      this->Weight += Other.Weight;
-      this->Size += Other.Size;
+    // Merge the "other" cluster into this cluster.
+    Cluster &mergeWith(Cluster &other) {
+      CFGs.insert(CFGs.end(), other.CFGs.begin(), other.CFGs.end());
+      this->Weight += other.Weight;
+      this->Size += other.Size;
       return *this;
     }
 
-    double getDensity() {return ((double)Weight)/Size;}
-
-    // Handler is used to remove itself from ownership list without
-    // the need to iterate through the list.
-    typename list<unique_ptr<Cluster>>::iterator Handler;
+    // Returns the per-byte execution density of this cluster
+    double getDensity() { return ((double)Weight) / Size; }
   };
 
-public:
-  CCubeAlgorithm() {}
-  
-  template <class CfgContainerTy>
-  void init(CfgContainerTy &CfgContainer);
+  CallChainClustering() {}
 
-  unsigned doOrder(list<ELFCFG*>& CfgOrder);
+  void init(Propeller &propeller);
+
+  unsigned doOrder(std::list<ELFCFG *> &cfgOrder);
 
 private:
-  ELFCFG *getMostLikelyPredecessor(
-      Cluster *Cluster, ELFCFG *CFG,
-      map<ELFCFG *, CCubeAlgorithm::Cluster *> &ClusterMap);
+  unsigned ClusterCount = 0;
+
+  ELFCFG *getMostLikelyPredecessor(ELFCFG *cfg, Cluster *cluster);
 
   void mergeClusters();
-  void sortClusters();
+  void sortClusters(std::vector<Cluster *> &);
 
-  vector<ELFCFG *> HotCfgs, ColdCfgs;
-  list<unique_ptr<Cluster>> Clusters;
+  std::vector<ELFCFG *> HotCFGs, ColdCFGs;
+  std::map<ELFCFG *, Cluster *> CFGToClusterMap;
+  std::map<unsigned, std::unique_ptr<Cluster>> Clusters;
 };
 
-}
-}
+} // namespace propeller
+} // namespace lld
 
 #endif

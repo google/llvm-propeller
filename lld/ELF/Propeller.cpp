@@ -101,7 +101,7 @@ bool Propfile::readSymbols() {
   std::string line;
   // A list of bbsymbols<ordinal, function_ordinal, bbindex and size> that
   // appears before its wrapping function. This should be rather rare.
-  list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t>> bbSymbols;
+  std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t>> bbSymbols;
   while (std::getline(this->PropfStream, line).good()) {
     ++LineNo;
     if (line.empty()) continue;
@@ -345,7 +345,7 @@ ELFCFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
 }
 
 void Propeller::calculateNodeFreqs() {
-  auto sumEdgeWeights = [](vector<ELFCFGEdge *> &edges) -> uint64_t {
+  auto sumEdgeWeights = [](std::vector<ELFCFGEdge *> &edges) -> uint64_t {
     return std::accumulate(edges.begin(), edges.end(), 0,
                            [](uint64_t pSum, const ELFCFGEdge *edge) {
                              return pSum + edge->Weight;
@@ -401,7 +401,7 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
   }
 
   // Creating CFGs.
-  vector<std::pair<elf::InputFile *, uint32_t>> fileOrdinalPairs;
+  std::vector<std::pair<elf::InputFile *, uint32_t>> fileOrdinalPairs;
   int ordinal = 0;
   for (auto &F : files)
     fileOrdinalPairs.emplace_back(F, ++ordinal);
@@ -478,14 +478,14 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
 
 // Generate symbol ordering file according to selected optimization pass and
 // feed it to the linker.
-vector<StringRef> Propeller::genSymbolOrderingFile() {
+std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
-  list<ELFCFG *> cfgOrder;
+  std::list<ELFCFG *> cfgOrder;
   if (config->propellerReorderFuncs) {
-    CCubeAlgorithm algo;
-    algo.init(*this);
-    auto cfgsReordered = algo.doOrder(cfgOrder);
+    CallChainClustering c3;
+    c3.init(*this);
+    auto cfgsReordered = c3.doOrder(cfgOrder);
     (void)cfgsReordered;
   } else {
     forEachCfgRef([&cfgOrder](ELFCFG &cfg) { cfgOrder.push_back(&cfg); });
@@ -496,7 +496,7 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
     });
   }
 
-  list<StringRef> symbolList(1, "Hot");
+  std::list<StringRef> symbolList(1, "Hot");
   const auto hotPlaceHolder = symbolList.begin();
   const auto coldPlaceHolder = symbolList.end();
   unsigned reorderedN = 0;
@@ -533,18 +533,18 @@ vector<StringRef> Propeller::genSymbolOrderingFile() {
 
   symbolList.erase(hotPlaceHolder);
 
-  return vector<StringRef>(
-      std::move_iterator<list<StringRef>::iterator>(symbolList.begin()),
-      std::move_iterator<list<StringRef>::iterator>(symbolList.end()));
+  return std::vector<StringRef>(
+      std::move_iterator<std::list<StringRef>::iterator>(symbolList.begin()),
+      std::move_iterator<std::list<StringRef>::iterator>(symbolList.end()));
 }
 
-// Calculate a list of basicblock symbols that are to be kept in the final
+// Calculate a std::list of basicblock symbols that are to be kept in the final
 // binary. For hot bb symbols, all bb symbols are to be dropped, because the
 // content of all hot bb sections are grouped together with the origin function.
 // For cold bb symbols, only the first bb symbols of the same function are kept.
 void Propeller::calculatePropellerLegacy(
-    list<StringRef> &symList, list<StringRef>::iterator hotPlaceHolder,
-    list<StringRef>::iterator coldPlaceHolder) {
+    std::list<StringRef> &symList, std::list<StringRef>::iterator hotPlaceHolder,
+    std::list<StringRef>::iterator coldPlaceHolder) {
   // No function split or no cold symbols, all bb symbols shall be removed.
   if (hotPlaceHolder == coldPlaceHolder) return ;
   // For cold bb symbols that are split and placed in cold segements,
