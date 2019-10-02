@@ -633,9 +633,22 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
             << "Linker does not support -fpropeller-optimize=";
       CmdArgs.push_back(
           Args.MakeArgString(Twine("--propeller=") + A->getValue()));
-      if (D.isUsingLTO())
-        CmdArgs.push_back(Args.MakeArgString(
-            Twine("--lto-basicblock-sections=") + A->getValue()));
+      if (D.isUsingLTO()) {
+        bool ltoBasicblockSectionsPresent = false;
+        for (auto *T : CmdArgs) {
+          StringRef SR(T);
+          if (SR.startswith("--lto-basicblock-sections=") ||
+              SR.startswith("-lto-basicblock-sections=")) {
+            ltoBasicblockSectionsPresent = true;
+            break;
+          }
+        }
+        // Only if no --lto-basicblock-sections is present in the command line,
+        // do we append it.
+        if (!ltoBasicblockSectionsPresent)
+          CmdArgs.push_back(Args.MakeArgString(
+              Twine("--lto-basicblock-sections=") + A->getValue()));
+      }
       CmdArgs.push_back("--optimize-bb-jumps");
       CmdArgs.push_back("--no-call-graph-profile-sort");
       CmdArgs.push_back("-z");
