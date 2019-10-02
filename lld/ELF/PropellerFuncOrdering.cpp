@@ -35,55 +35,43 @@ using lld::elf::config;
 namespace lld {
 namespace propeller {
 
-const unsigned ClusterMergeSizeThreshold = 1 << 21;
-
-// Initializes the CallChainClustering algorithm with the cfgs from propeller.
-// It separates cfgs into hot and cold cfgs and initially orders each collection
-// of cfgs based on the address of their corresponding functions in the original
-// binary.
-void CallChainClustering::init(Propeller &propeller) {
-  propeller.forEachCfgRef([this](ELFCfg &cfg) {
-    if (cfg.isHot())
-      this->HotCFGs.push_back(&cfg);
+template <class CfgContainerTy>
+void CCubeAlgorithm::init(CfgContainerTy &CfgContainer) {
+  CfgContainer.forEachCfgRef([this](ELFCFG &CFG) {
+    if (CFG.isHot())
+      this->HotCfgs.push_back(&CFG);
     else
-      this->ColdCFGs.push_back(&cfg);
+      this->ColdCfgs.push_back(&CFG);
   });
 
-  auto cfgComparator = [](ELFCfg *cfg1, ELFCfg *cfg2) -> bool {
-    return cfg1->getEntryNode()->MappedAddr < cfg2->getEntryNode()->MappedAddr;
+  auto CfgComparator = [](ELFCFG *Cfg1, ELFCFG *Cfg2) ->bool {
+    return Cfg1->getEntryNode()->MappedAddr < Cfg2->getEntryNode()->MappedAddr;
   };
-  auto sortCFGs = [&cfgComparator](std::vector<ELFCfg *> &cfgs) {
-    std::sort(cfgs.begin(), cfgs.end(), cfgComparator);
+  auto sortCfg = [&CfgComparator](vector<ELFCFG *> &CFG) {
+    std::sort(CFG.begin(), CFG.end(), CfgComparator);
   };
   sortCFGs(HotCFGs);
   sortCFGs(ColdCFGs);
 }
 
-// Initialize a cluster containing a single cfg an associates it with a unique
-// id.
-CallChainClustering::Cluster::Cluster(ELFCfg *cfg, unsigned id)
-    : CFGs(1, cfg), Id(id) {}
+CCubeAlgorithm::Cluster::Cluster(ELFCFG *CFG)
+    : CFGs(1, CFG) {}
 
-// Returns the most frequent caller of a function. This function also gets as
-// the second parameter the cluster containing this function to save a lookup
-// into the CFGToClusterMap.
-ELFCfg *CallChainClustering::getMostLikelyPredecessor(ELFCfg *cfg,
-                                                      Cluster *cluster) {
-  ELFCfgNode *entry = cfg->getEntryNode();
-  if (!entry)
+CCubeAlgorithm::Cluster::~Cluster() {}
+
+ELFCFG *CCubeAlgorithm::getMostLikelyPredecessor(
+    Cluster *Cluster, ELFCFG *CFG,
+    map<ELFCFG *, CCubeAlgorithm::Cluster *>
+        &ClusterMap) {
+  ELFCFGNode *Entry = CFG->getEntryNode();
+  if (!Entry)
     return nullptr;
-  ELFCfgEdge *bestCallIn = nullptr;
-
-  // Iterate over all callers of the entry basic block of the function.
-  for (ELFCfgEdge *callIn : entry->CallIns) {
-    auto *caller = callIn->Src->Cfg;
-    auto *callerCluster = CFGToClusterMap[caller];
-    assert(caller->isHot());
-    // Ignore callers from the same function, or the same cluster
-    if (caller == cfg || callerCluster == cluster)
-      continue;
-    // Ignore callers with overly large clusters
-    if (callerCluster->Size > ClusterMergeSizeThreshold)
+  ELFCFGEdge *E = nullptr;
+  for (ELFCFGEdge *CallIn : Entry->CallIns) {
+    auto *Caller = CallIn->Src->CFG;
+    auto *CallerCluster = ClusterMap[Caller];
+    assert(Caller->isHot());
+    if (Caller == CFG || CallerCluster == Cluster)
       continue;
     // Ignore calls which are cold relative to the callee
     if (callIn->Weight * 10 < entry->Freq)
@@ -93,65 +81,67 @@ ELFCfg *CallChainClustering::getMostLikelyPredecessor(ELFCfg *cfg,
     if (8 * callerCluster->Size * (cluster->Weight * callerCluster->Weight) <
         callerCluster->Weight * (cluster->Size + callerCluster->Size))
       continue;
-    // Update the best CallIn edge if needed
-    if (!bestCallIn || bestCallIn->Weight < callIn->Weight)
-      bestCallIn = callIn;
+    if (!E || E->Weight < CallIn->Weight) {
+      if (ClusterMap[CallIn->Src->CFG]->Size > (1 << 21)) continue;
+      E = CallIn;
+    }
   }
-  return bestCallIn ? bestCallIn->Src->Cfg : nullptr;
+  return E ? E->Src->CFG : nullptr;
 }
 
-// Merge clusters together based on the CallChainClustering algorithm.
-void CallChainClustering::mergeClusters() {
-  // Build a map for the execution density of each cfg. This value will depend
-  // on whether function-splitting is used or not.
-  std::map<ELFCfg *, double> cfgWeightMap;
-  for (ELFCfg *cfg : HotCFGs) {
-    uint64_t cfgWeight = 0;
-    uint64_t cfgSize = 0;
-    cfg->forEachNodeRef([&cfgSize, &cfgWeight](ELFCfgNode &n) {
-      cfgWeight += n.Freq * n.ShSize;
-      if (!config->propellerSplitFuncs || n.Freq)
-        cfgSize += n.ShSize;
+void CCubeAlgorithm::mergeClusters() {
+  // Signed key is used here, because negated density are used as
+  // sorting keys.
+  map<ELFCFG *, double> CfgWeightMap;
+  map<ELFCFG *, Cluster *> ClusterMap;
+  for(ELFCFG * CFG: HotCfgs){
+    uint64_t CfgWeight = 0;
+    uint64_t CfgSize = config->propellerSplitFuncs ? 0 : (double)CFG->Size;
+    CFG->forEachNodeRef([&CfgSize, &CfgWeight](ELFCFGNode &N) {
+      CfgWeight += N.Freq * N.ShSize;
+      if (config->propellerSplitFuncs && N.Freq)
+        CfgSize += N.ShSize;
     });
 
-    Cluster *c = new Cluster(cfg, ClusterCount++);
-    c->Weight = cfgWeight;
-    c->Size = std::max(cfgSize, (uint64_t)1);
-    cfgWeightMap.emplace(cfg, c->getDensity());
-    Clusters.emplace(c->Id, c);
-    CFGToClusterMap[cfg] = c;
+    assert(CfgSize!=0);
+    Cluster *C = new Cluster(CFG);
+    C->Weight = CfgWeight;
+    C->Size = std::max(CfgSize, (uint64_t)1);
+    CfgWeightMap.emplace(CFG, C->getDensity());
+    C->Handler = Clusters.emplace(Clusters.end(), C);
+    ClusterMap[CFG] = C;
   }
 
-  // Sort the hot cfgs in decreasing order of their execution density.
-  std::stable_sort(HotCFGs.begin(), HotCFGs.end(),
-                   [&cfgWeightMap](ELFCfg *cfg1, ELFCfg *cfg2) {
-                     return cfgWeightMap[cfg1] > cfgWeightMap[cfg2];
-                   });
-
-  for (ELFCfg *cfg : HotCFGs) {
-    if (cfgWeightMap[cfg] <= 0.005)
+  std::stable_sort(HotCfgs.begin(), HotCfgs.end(),
+            [&CfgWeightMap] (ELFCFG* Cfg1, ELFCFG* Cfg2){
+              return CfgWeightMap[Cfg1] > CfgWeightMap[Cfg2];
+            });
+  for (ELFCFG* CFG : HotCfgs){
+    if (CfgWeightMap[CFG] <= 0.005)
       break;
-    auto *cluster = CFGToClusterMap[cfg];
-    // Ignore merging if the cluster containing this function is bigger than
-    // 2MBs (size of a large page).
-    if (cluster->Size > ClusterMergeSizeThreshold)
+    auto *Cluster = ClusterMap[CFG];
+    if (Cluster->Size > (1 << 21))
       continue;
     assert(cluster);
 
-    ELFCfg *predecessorCfg = getMostLikelyPredecessor(cfg, cluster);
-    if (!predecessorCfg)
+    ELFCFG *PredecessorCfg =
+        getMostLikelyPredecessor(Cluster, CFG, ClusterMap);
+    if (!PredecessorCfg)
       continue;
-    auto *predecessorCluster = CFGToClusterMap[predecessorCfg];
+    assert(PredecessorCfg != CFG);
+    // log("propeller: most-likely caller of " + Twine(CFG->Name) + " -> " + Twine(PredecessorCfg->Name));
+    auto *PredecessorCluster = ClusterMap[PredecessorCfg];
+    assert(PredecessorCluster);
 
     assert(predecessorCluster != cluster && predecessorCfg != cfg);
 
     // Join the two clusters into predecessorCluster.
     predecessorCluster->mergeWith(*cluster);
 
-    // Update cfg to cluster mapping, because all cfgs that were
-    // previsously in cluster are now in predecessorCluster.
-    for (ELFCfg *cfg : cluster->CFGs) {
-      CFGToClusterMap[cfg] = predecessorCluster;
+    // Update CFG <-> Cluster mapping, because all cfgs that were
+    // previsously in Cluster are now in PredecessorCluster.
+    for (ELFCFG *CFG : Cluster->CFGs) {
+      ClusterMap[CFG] = PredecessorCluster;
     }
 
     // Delete the defunct cluster
@@ -159,30 +149,20 @@ void CallChainClustering::mergeClusters() {
   }
 }
 
-// This functions sorts all remaining clusters in decreasing order of their
-// execution density.
-void CallChainClustering::sortClusters(std::vector<Cluster *> &clusterOrder) {
-  for (auto &p : Clusters)
-    clusterOrder.push_back(p.second.get());
-  std::sort(clusterOrder.begin(), clusterOrder.end(),
-            [](Cluster *c1, Cluster *c2) {
-              // Set a deterministic order when execution densities are equal.
-              if (c1->getDensity() == c2->getDensity())
-                return c1->CFGs.front()->getEntryNode()->MappedAddr <
-                       c2->CFGs.front()->getEntryNode()->MappedAddr;
-              return c1->getDensity() > c2->getDensity();
-            });
+void CCubeAlgorithm::sortClusters() {
+  Clusters.sort([](unique_ptr<Cluster> &C1, unique_ptr<Cluster> &C2) {
+    if (C1->getDensity() == C2->getDensity())
+      return C1->CFGs.front()->getEntryNode()->MappedAddr <
+             C2->CFGs.front()->getEntryNode()->MappedAddr;
+    return C1->getDensity() > C2->getDensity();
+  });
 }
 
-// This function performs CallChainClustering on all cfgs and then orders all
-// the built clusters based on their execution density. It places all cold
-// functions after hot functions and returns the number of hot functions.
-unsigned CallChainClustering::doOrder(std::list<ELFCfg *> &cfgOrder) {
+unsigned CCubeAlgorithm::doOrder(list<ELFCFG *>& CfgOrder) {
   mergeClusters();
-  std::vector<Cluster *> clusterOrder;
-  sortClusters(clusterOrder);
-  for (Cluster *c : clusterOrder) {
-    cfgOrder.insert(cfgOrder.end(), c->CFGs.begin(), c->CFGs.end());
+  sortClusters();
+  for (auto &Cptr : Clusters) {
+    CfgOrder.insert(CfgOrder.end(), Cptr->CFGs.begin(), Cptr->CFGs.end());
   }
 
   cfgOrder.insert(cfgOrder.end(), ColdCFGs.begin(), ColdCFGs.end());

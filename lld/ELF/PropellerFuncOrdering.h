@@ -20,28 +20,23 @@
 namespace lld {
 namespace propeller {
 
-class ELFCfg;
+class ELFCFG;
 
 class CallChainClustering {
 public:
   class Cluster {
   public:
-    Cluster(ELFCfg *cfg, unsigned);
-    // All cfgs in this cluster
-    std::vector<ELFCfg *> CFGs;
-    // Unique id associated with the cluster
-    unsigned Id;
-    // Total binary size of this cluster (only the hot part if using
-    // split-funcs.
-    uint64_t Size;
-    // Total byte-level execution frequency of the cluster
-    uint64_t Weight;
+    Cluster(ELFCFG *CFG);
+    ~Cluster();
+    list<ELFCFG *> CFGs;
+    uint64_t       Size;
+    uint64_t       Weight;
 
-    // Merge the "other" cluster into this cluster.
-    Cluster &mergeWith(Cluster &other) {
-      CFGs.insert(CFGs.end(), other.CFGs.begin(), other.CFGs.end());
-      this->Weight += other.Weight;
-      this->Size += other.Size;
+    // Merge "Other" cluster into this cluster.
+    Cluster & operator << (Cluster &Other) {
+      CFGs.insert(CFGs.end(), Other.CFGs.begin(), Other.CFGs.end());
+      this->Weight += Other.Weight;
+      this->Size += Other.Size;
       return *this;
     }
 
@@ -51,21 +46,18 @@ public:
 
   CallChainClustering() {}
 
-  void init(Propeller &propeller);
-
-  unsigned doOrder(std::list<ELFCfg *> &cfgOrder);
+  unsigned doOrder(list<ELFCFG*>& CfgOrder);
 
 private:
-  unsigned ClusterCount = 0;
-
-  ELFCfg *getMostLikelyPredecessor(ELFCfg *cfg, Cluster *cluster);
+  ELFCFG *getMostLikelyPredecessor(
+      Cluster *Cluster, ELFCFG *CFG,
+      map<ELFCFG *, CCubeAlgorithm::Cluster *> &ClusterMap);
 
   void mergeClusters();
   void sortClusters(std::vector<Cluster *> &);
 
-  std::vector<ELFCfg *> HotCFGs, ColdCFGs;
-  std::map<ELFCfg *, Cluster *> CFGToClusterMap;
-  std::map<unsigned, std::unique_ptr<Cluster>> Clusters;
+  vector<ELFCFG *> HotCfgs, ColdCfgs;
+  list<unique_ptr<Cluster>> Clusters;
 };
 
 } // namespace propeller

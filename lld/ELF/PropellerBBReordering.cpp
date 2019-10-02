@@ -90,15 +90,23 @@ using llvm::detail::DenseMapPair;
 namespace lld {
 namespace propeller {
 
-// Return the Extended TSP score for one edge, given its source to sink
-// direction and distance in the layout.
-double getEdgeExtTSPScore(const ELFCfgEdge *edge, bool isEdgeForward,
-                          uint32_t srcSinkDistance) {
-  if (edge->Weight == 0)
+ostream &operator<<(ostream &Out, const NodeChain &Chain) {
+  Out << "Chain for CFG Node: {" << *(Chain.DelegateNode) << "}: total binary size: " << Chain.Size
+      << ", total frequency: " << Chain.Freq << "\n";
+  Out << " Nodes: " ;
+
+  for (const ELFCFGNode *N : Chain.Nodes)
+    Out << *N << " ---> " ;
+  return Out;
+}
+
+double GetEdgeExtTSPScore(const ELFCFGEdge *Edge, bool IsEdgeForward,
+                          uint32_t SrcSinkDistance) {
+  if (Edge->Weight == 0)
     return 0;
 
-  if (srcSinkDistance == 0 && (edge->Type == ELFCfgEdge::EdgeType::INTRA_FUNC))
-    return edge->Weight * config->propellerFallthroughWeight;
+  if (SrcSinkDistance == 0 && (Edge->Type == ELFCFGEdge::EdgeType::INTRA_FUNC))
+    return Edge->Weight * config->propellerFallthroughWeight;
 
   if (isEdgeForward && srcSinkDistance < config->propellerForwardJumpDistance)
     return edge->Weight * config->propellerForwardJumpWeight *
@@ -122,11 +130,11 @@ void NodeChainBuilder::sortChainsByExecutionDensity(
   }
 
   std::sort(
-      chainOrder.begin(), chainOrder.end(),
-      [this](const NodeChain *c1, const NodeChain *c2) {
-        if (c1->getFirstNode() == this->CFG->getEntryNode())
+      ChainOrder.begin(), ChainOrder.end(),
+      [this](const NodeChain *C1, const NodeChain *C2) {
+        if (C1->GetFirstNode() == this->CFG->getEntryNode())
           return true;
-        if (c2->getFirstNode() == this->CFG->getEntryNode())
+        if (C2->GetFirstNode() == this->CFG->getEntryNode())
           return false;
         double c1ExecDensity = c1->execDensity();
         double c2ExecDensity = c2->execDensity();
@@ -139,45 +147,37 @@ void NodeChainBuilder::sortChainsByExecutionDensity(
       });
 }
 
-// NodeChainBuilder calls this function after building all the chains to attach
-// as many fall-throughs as possible. Given that the algorithm already optimizes
-// the extend TSP score, this function will only affect the cold basic blocks
-// and thus we do not need to consider the edge weights.
-void NodeChainBuilder::attachFallThroughs() {
-  // First, try to keep the fall-throughs from the original order.
-  for (auto &node : CFG->Nodes) {
-    if (node->FTEdge != nullptr) {
-      attachNodes(node.get(), node->FTEdge->Sink);
+void NodeChainBuilder::AttachFallThroughs() {
+  for (auto &Node : CFG->Nodes) {
+    if (Node->FTEdge != nullptr) {
+      AttachNodes(Node.get(), Node->FTEdge->Sink);
     }
   }
 
-  // Sometimes, the original fall-throughs cannot be kept. So we try to find new
-  // fall-through opportunities which did not exist in the original order.
-  for (auto &edge : CFG->IntraEdges) {
-    attachNodes(edge->Src, edge->Sink);
+  for (auto &Edge : CFG->IntraEdges) {
+    AttachNodes(Edge->Src, Edge->Sink);
   }
 }
 
-// Merge two chains in the specified order.
-void NodeChainBuilder::mergeChains(NodeChain *leftChain,
-                                   NodeChain *rightChain) {
-  for (const ELFCfgNode *node : rightChain->Nodes) {
-    leftChain->Nodes.push_back(node);
-    NodeToChainMap[node] = leftChain;
-    NodeOffsetMap[node] += leftChain->Size;
+/* Merge two chains in the specified order. */
+void NodeChainBuilder::MergeChains(NodeChain *LeftChain,
+                                   NodeChain *RightChain) {
+  for (const ELFCFGNode *Node : RightChain->Nodes) {
+    LeftChain->Nodes.push_back(Node);
+    NodeToChainMap[Node] = LeftChain;
+    NodeOffset[Node] += LeftChain->Size;
   }
   leftChain->Size += rightChain->Size;
   leftChain->Freq += rightChain->Freq;
   Chains.erase(rightChain->DelegateNode->Shndx);
 }
 
-// This function tries to place two basic blocks immediately adjacent to each
-// other (used for fallthroughs). Returns true if the basic blocks have been
-// attached this way.
-bool NodeChainBuilder::attachNodes(const ELFCfgNode *src,
-                                   const ELFCfgNode *sink) {
-  // No edge cannot fall-through to the entry basic block.
-  if (sink == CFG->getEntryNode())
+/* This function tries to place two nodes immediately adjacent to
+ * each other (used for fallthroughs).
+ * Returns true if this can be done. */
+bool NodeChainBuilder::AttachNodes(const ELFCFGNode *Src,
+                                   const ELFCFGNode *Sink) {
+  if (Sink == CFG->getEntryNode())
     return false;
 
   // Ignore edges between hot and cold basic blocks.
@@ -198,24 +198,20 @@ bool NodeChainBuilder::attachNodes(const ELFCfgNode *src,
   return true;
 }
 
-// Merge two BB sequences according to the given NodeChainAssembly. A
-// NodeChainAssembly is an ordered triple of three slices from two chains.
-void NodeChainBuilder::mergeChains(
-    std::unique_ptr<NodeChainAssembly> assembly) {
-  // Create the new node order according the given assembly
-  std::vector<const ELFCfgNode *> newNodeOrder;
-  for (NodeChainSlice &slice : assembly->Slices) {
-    std::copy(slice.Begin, slice.End, std::back_inserter(newNodeOrder));
+void NodeChainBuilder::MergeChains(std::unique_ptr<NodeChainAssembly> A) {
+  /* Merge the Node sequences according to the given NodeChainAssembly.*/
+  list<const ELFCFGNode*> NewNodeOrder;
+  for (NodeChainSlice &Slice : A->Slices){
+    std::copy(Slice.Begin, Slice.End, std::back_inserter(NewNodeOrder));
   }
-  // We merge the nodes into the SplitChain
-  assembly->SplitChain->Nodes = std::move(newNodeOrder);
+  A->SplitChain->Nodes = std::move(NewNodeOrder);
 
-  // Update nodeOffset and nodeToChainMap for all the nodes in the sequence.
-  uint32_t runningOffset = 0;
-  for (const ELFCfgNode *node : assembly->SplitChain->Nodes) {
-    NodeToChainMap[node] = assembly->SplitChain;
-    NodeOffsetMap[node] = runningOffset;
-    runningOffset += node->ShSize;
+  /* Update NodeOffset and NodeToChainMap for all the nodes in the sequence */
+  uint32_t RunningOffset = 0;
+  for (const ELFCFGNode *Node : A->SplitChain->Nodes) {
+    NodeToChainMap[Node] = A->SplitChain;
+    NodeOffset[Node] = RunningOffset;
+    RunningOffset += Node->ShSize;
   }
   assembly->SplitChain->Size = runningOffset;
 
@@ -264,15 +260,13 @@ void NodeChainBuilder::mergeChains(
   Chains.erase(assembly->UnsplitChain->DelegateNode->Shndx);
 }
 
-// Calculate the Extended TSP metric for a BB chain.
-// This function goes over all the BBs in the chain and for BB chain and
-// aggregates the score of all edges which are contained in the same chain.
-double NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
-  double score = 0;
-  uint32_t srcOffset = 0;
-  for (const ELFCfgNode *node : chain->Nodes) {
-    for (const ELFCfgEdge *edge : node->Outs) {
-      if (!edge->Weight)
+/* Calculate the Extended TSP metric for a NodeChain */
+double NodeChainBuilder::ExtTSPScore(NodeChain *Chain) const {
+  double Score = 0;
+  uint32_t SrcOffset = 0;
+  for (const ELFCFGNode *Node : Chain->Nodes) {
+    for (const ELFCFGEdge *Edge : Node->Outs) {
+      if (!Edge->Weight)
         continue;
       NodeChain *sinkChain = getNodeChain(edge->Sink);
       if (sinkChain != chain)
@@ -327,10 +321,10 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
       auto NCA = unique_ptr<NodeChainAssembly>(new NodeChainAssembly(
           splitChain, unsplitChain, slicePos, mOrder, this));
 
-      ELFCfgNode *entryNode = CFG->getEntryNode();
-      if ((NCA->SplitChain->getFirstNode() == entryNode ||
-           NCA->UnsplitChain->getFirstNode() == entryNode) &&
-          NCA->getFirstNode() != entryNode)
+      ELFCFGNode *EntryNode = CFG->getEntryNode();
+      if ((NCA->SplitChain->GetFirstNode() == EntryNode ||
+           NCA->UnsplitChain->GetFirstNode() == EntryNode) &&
+          NCA->GetFirstNode() != EntryNode)
         continue;
       candidateNCAs.push_back(std::move(NCA));
     }
@@ -353,11 +347,13 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
 }
 
 void NodeChainBuilder::initNodeChains() {
-  for (auto &node : CFG->Nodes) {
-    NodeChain *chain = new NodeChain(node.get());
-    NodeToChainMap[node.get()] = chain;
-    NodeOffsetMap[node.get()] = 0;
-    Chains.try_emplace(node->Shndx, chain);
+  for (auto &Node : CFG->Nodes) {
+    NodeChain *Chain = new NodeChain(Node.get());
+    NodeToChainMap[Node.get()] = Chain;
+    NodeOffset[Node.get()] = 0;
+    Chains.emplace(std::piecewise_construct,
+                   std::forward_as_tuple(Node->Shndx),
+                   std::forward_as_tuple(Chain));
   }
 }
 
@@ -366,49 +362,52 @@ void NodeChainBuilder::initNodeChains() {
 // (executed) outgoing edge from their source node and the only (executed)
 // incoming edges to their sink nodes
 void NodeChainBuilder::initMutuallyForcedEdges() {
-  DenseMap<const ELFCfgNode *, std::vector<ELFCfgEdge *>> profiledOuts;
-  DenseMap<const ELFCfgNode *, std::vector<ELFCfgEdge *>> profiledIns;
+  // Find all the mutually-forced edges.
+  // These are all the edges which are -- based on the profile -- the only (executed) outgoing edge
+  // from their source node and the only (executed) incoming edges to their sink nodes
+  unordered_map<const ELFCFGNode *, vector<ELFCFGEdge *>> ProfiledOuts;
+  unordered_map<const ELFCFGNode *, vector<ELFCFGEdge *>> ProfiledIns;
 
-  for (auto &node : CFG->Nodes) {
-    std::copy_if(node->Outs.begin(), node->Outs.end(),
-                 std::back_inserter(profiledOuts[node.get()]),
-                 [](const ELFCfgEdge *edge) {
-                   return edge->Type == ELFCfgEdge::EdgeType::INTRA_FUNC &&
-                          edge->Weight != 0;
+  for (auto &Node : CFG->Nodes) {
+    std::copy_if(Node->Outs.begin(), Node->Outs.end(),
+                 std::back_inserter(ProfiledOuts[Node.get()]),
+                 [](const ELFCFGEdge *Edge) {
+                   return Edge->Type == ELFCFGEdge::EdgeType::INTRA_FUNC &&
+                          Edge->Weight != 0;
                  });
-    std::copy_if(node->Ins.begin(), node->Ins.end(),
-                 std::back_inserter(profiledIns[node.get()]),
-                 [](const ELFCfgEdge *edge) {
-                   return edge->Type == ELFCfgEdge::EdgeType::INTRA_FUNC &&
-                          edge->Weight != 0;
+    std::copy_if(Node->Ins.begin(), Node->Ins.end(),
+                 std::back_inserter(ProfiledIns[Node.get()]),
+                 [](const ELFCFGEdge *Edge) {
+                   return Edge->Type == ELFCFGEdge::EdgeType::INTRA_FUNC &&
+                          Edge->Weight != 0;
                  });
   }
 
-  for (auto &node : CFG->Nodes) {
-    if (profiledOuts[node.get()].size() == 1) {
-      ELFCfgEdge *edge = profiledOuts[node.get()].front();
-      if (profiledIns[edge->Sink].size() == 1)
-        MutuallyForcedOut[node.get()] = edge->Sink;
+  for (auto &Node : CFG->Nodes) {
+    if (ProfiledOuts[Node.get()].size() == 1) {
+      ELFCFGEdge *Edge = ProfiledOuts[Node.get()].front();
+      if (ProfiledIns[Edge->Sink].size() == 1)
+        MutuallyForcedOut[Node.get()] = Edge->Sink;
     }
   }
 
   // Break cycles in the mutually forced edges by cutting the edge sinking to
   // the smallest address in every cycle (hopefully a loop backedge)
-  DenseMap<const ELFCfgNode *, unsigned> nodeToPathMap;
-  SmallVector<const ELFCfgNode *, 16> cycleCutNodes;
-  unsigned pathCount = 0;
-  for (auto it = MutuallyForcedOut.begin(); it != MutuallyForcedOut.end();
-       ++it) {
+  map<const ELFCFGNode *, unsigned> NodeToCycleMap;
+  set<const ELFCFGNode *> CycleCutNodes;
+  unsigned CycleCount = 0;
+  for (auto It = MutuallyForcedOut.begin(); It != MutuallyForcedOut.end();
+       ++It) {
     // Check to see if the node (and its cycle) have already been visited.
     if (nodeToPathMap[it->first])
       continue;
-    const ELFCfgEdge *victimEdge = nullptr;
-    auto nodeIt = it;
-    pathCount++;
-    while (nodeIt != MutuallyForcedOut.end()) {
-      const ELFCfgNode *node = nodeIt->first;
-      unsigned path = nodeToPathMap[node];
-      if (path != 0) {
+    const ELFCFGEdge *VictimEdge = nullptr;
+    auto NodeIt = It;
+    CycleCount++;
+    while (NodeIt != MutuallyForcedOut.end()) {
+      const ELFCFGNode *Node = NodeIt->first;
+      auto NodeCycle = NodeToCycleMap[Node];
+      if (NodeCycle != 0) {
         // If this node is marked with a number, either it is the same number,
         // in which case we have found a cycle. Or it is a different number,
         // which means we have found a path to a previously visited path
@@ -419,19 +418,19 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
         }
         break;
       } else
-        nodeToPathMap[node] = pathCount;
-      const ELFCfgEdge *edge = profiledOuts[node].front();
-      if (!victimEdge ||
-          (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr)) {
-        victimEdge = edge;
+        NodeToCycleMap[Node] = CycleCount;
+      const ELFCFGEdge *Edge = ProfiledOuts[Node].front();
+      if (!VictimEdge ||
+          (Edge->Sink->MappedAddr < VictimEdge->Sink->MappedAddr)) {
+        VictimEdge = Edge;
       }
       nodeIt = MutuallyForcedOut.find(nodeIt->second);
     }
   }
 
-  // Remove the victim edges to break cycles in the mutually forced edges
-  for (const ELFCfgNode *node : cycleCutNodes)
-    MutuallyForcedOut.erase(node);
+  // Remove the victim edges to break cycles
+  for (const ELFCFGNode *Node : CycleCutNodes)
+    MutuallyForcedOut.erase(Node);
 }
 
 // This function initializes the ExtTSP algorithm's data structures. This
@@ -439,13 +438,14 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
 void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
-  DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
-  for (auto &c : Chains) {
-    NodeChain *chain = c.second.get();
-    chain->Score = computeExtTSPScore(chain);
-    for (const ELFCfgNode *node : chain->Nodes) {
-      for (const ELFCfgEdge *edge : node->Outs) {
-        if (!edge->Weight)
+
+  std::set <std::pair<NodeChain*, NodeChain*>> Visited;
+  for (auto &C : Chains) {
+    NodeChain *Chain = C.second.get();
+    Chain->Score = ExtTSPScore(Chain);
+    for (const ELFCFGNode *Node : Chain->Nodes) {
+      for (const ELFCFGEdge *Edge : Node->Outs) {
+        if (!Edge->Weight)
           continue;
         NodeChain *otherChain = getNodeChain(edge->Sink);
         if (chain == otherChain)
@@ -505,19 +505,18 @@ void NodeChainBuilder::computeChainOrder(
   sortChainsByExecutionDensity(chainOrder);
 }
 
-// This function computes the ExtTSP score for a chain assembly record. This
-// goes the three BB slices in the assembly record and considers all edges
-// whose source and sink belongs to the chains in the assembly record.
-double NodeChainBuilder::NodeChainAssembly::computeExtTSPScore() const {
-  double score = 0;
-  for (uint8_t srcSliceIdx = 0; srcSliceIdx < 3; ++srcSliceIdx) {
-    const NodeChainSlice &srcSlice = Slices[srcSliceIdx];
-    uint32_t srcNodeOffset = srcSlice.BeginOffset;
-    for (auto nodeIt = srcSlice.Begin; nodeIt != srcSlice.End;
-         srcNodeOffset += (*nodeIt)->ShSize, ++nodeIt) {
-      const ELFCfgNode *node = *nodeIt;
-      for (const ELFCfgEdge *edge : node->Outs) {
-        if (!edge->Weight)
+
+// This function computes the ExtTSP score for a chain assembly record.
+double NodeChainBuilder::NodeChainAssembly::ExtTSPScore() const {
+  double Score = 0;
+  for (uint8_t SrcSliceIdx = 0; SrcSliceIdx < 3; ++SrcSliceIdx) {
+    const NodeChainSlice &SrcSlice = Slices[SrcSliceIdx];
+    uint32_t SrcNodeOffset = SrcSlice.BeginOffset;
+    for (auto NodeIt = SrcSlice.Begin; NodeIt != SrcSlice.End;
+         SrcNodeOffset += (*NodeIt)->ShSize, ++NodeIt) {
+      const ELFCFGNode *Node = *NodeIt;
+      for (const ELFCFGEdge *Edge : Node->Outs) {
+        if (!Edge->Weight)
           continue;
 
         uint8_t sinkSliceIdx;
@@ -555,22 +554,23 @@ double NodeChainBuilder::NodeChainAssembly::computeExtTSPScore() const {
   return score;
 }
 
-void NodeChainBuilder::doSplitOrder(list<StringRef> &symbolList,
-                                    list<StringRef>::iterator hotPlaceHolder,
-                                    list<StringRef>::iterator coldPlaceHolder) {
-  std::vector<const NodeChain *> chainOrder;
-  computeChainOrder(chainOrder);
+void NodeChainBuilder::doSplitOrder(list<StringRef> &SymbolList,
+                                    list<StringRef>::iterator HotPlaceHolder,
+                                    list<StringRef>::iterator ColdPlaceHolder) {
 
-  DenseMap<const ELFCfgNode *, unsigned> address;
-  unsigned currentAddress = 0;
-  for (const NodeChain *c : chainOrder) {
-    list<StringRef>::iterator insertPos =
-        c->Freq ? hotPlaceHolder : coldPlaceHolder;
-    for (const ELFCfgNode *n : c->Nodes) {
-      symbolList.insert(insertPos, n->ShName);
-      if (c->Freq) {
-        address[n] = currentAddress;
-        currentAddress += n->ShSize;
+  vector<const NodeChain *> ChainOrder;
+  ComputeChainOrder(ChainOrder);
+
+  std::unordered_map<const ELFCFGNode *, unsigned> Address;
+  unsigned CurrentAddress = 0;
+  for (const NodeChain *C : ChainOrder) {
+    list<StringRef>::iterator InsertPos =
+        C->Freq ? HotPlaceHolder : ColdPlaceHolder;
+    for (const ELFCFGNode *N : C->Nodes){
+      SymbolList.insert(InsertPos, N->ShName);
+      if (C->Freq){
+        Address[N]=CurrentAddress;
+        CurrentAddress+=N->ShSize;
       }
     }
   }
@@ -579,44 +579,45 @@ void NodeChainBuilder::doSplitOrder(list<StringRef> &symbolList,
 
     enum VisitStatus { NONE = 0, DURING, FINISHED };
 
-    DenseMap<const ELFCfgNode *, uint64_t> backEdgeFreq;
-    DenseMap<const ELFCfgNode *, VisitStatus> visited;
+    std::unordered_map<const ELFCFGNode *, uint64_t> BackEdgeFreq;
+    std::unordered_map<const ELFCFGNode *, VisitStatus> Visited;
 
-    std::function<void(const ELFCfgNode *)> visit;
-    visit = [&address, &visited, &backEdgeFreq, &visit](const ELFCfgNode *n) {
-      if (visited[n] != NONE)
+    std::function<void(const ELFCFGNode *)> visit;
+    visit = [&Address, &Visited, &BackEdgeFreq, &visit](const ELFCFGNode * N){
+      if (Visited[N]!=NONE)
         return;
       if (!n->Freq)
         return;
-      visited[n] = DURING;
-      if (n->FTEdge)
-        visit(n->FTEdge->Sink);
-      for (const ELFCfgEdge *e : n->Outs) {
-        if (e->Sink->Freq && address[e->Sink] > address[n])
-          visit(e->Sink);
+      Visited[N] = DURING;
+      if(N->FTEdge)
+        visit(N->FTEdge->Sink);
+      for(const ELFCFGEdge * E: N->Outs){
+        if(E->Sink->Freq && Address[E->Sink] > Address[N])
+          visit(E->Sink);
       }
-      for (const ELFCfgEdge *e : n->Outs) {
-        if (e->Sink->Freq && address[e->Sink] <= address[n]) {
-          if (visited[e->Sink] == DURING) {
-            backEdgeFreq[e->Sink] += e->Weight;
+      for(const ELFCFGEdge * E: N->Outs){
+        if(E->Sink->Freq && Address[E->Sink] <= Address[N]){
+          if(Visited[E->Sink]==DURING){
+            BackEdgeFreq[E->Sink]+=E->Weight;
           }
         }
       }
       visited[n] = FINISHED;
     };
 
-    for (const NodeChain *c : chainOrder)
-      if (c->Freq != 0) {
-        for (const ELFCfgNode *n : c->Nodes)
-          visit(n);
+    for(const NodeChain *C: ChainOrder)
+      if (C->Freq != 0){
+        for (const ELFCFGNode *N : C->Nodes)
+          visit(N);
       }
 
-    for (auto &n : CFG->Nodes) {
-      if (n.get() == CFG->getEntryNode())
+    for(auto &N: CFG->Nodes){
+      if(N.get() == CFG->getEntryNode())
         continue;
-      if (n->Freq && (n->Freq >= 10 * CFG->getEntryNode()->Freq) &&
-          (backEdgeFreq[n.get()] * 5 >= n->Freq * 4)) {
-        config->symbolAlignmentFile.insert(std::make_pair(n->ShName, 16));
+      if(N->Freq &&
+         (N->Freq >= 10 * CFG->getEntryNode()->Freq) &&
+         (BackEdgeFreq[N.get()] * 5 >= N->Freq * 4)){
+        config->symbolAlignmentFile.insert(std::make_pair(N->ShName, 16));
       } else
         config->symbolAlignmentFile.insert(std::make_pair(n->ShName, 1));
     }

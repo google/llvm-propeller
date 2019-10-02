@@ -6,6 +6,66 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// A. About the propeller framework.
+
+// Propeller is framework that, with the aid of embedded information
+// in ELF obejct files, does optimization at the linking phase.
+//
+// Some misconections:
+//
+// * Propeller only works on top of ThinLTO (regular PGO, csPGO,
+// etc).
+//
+// The above statement is not correct. Propeller works on any binaries
+// and brings performance improvement on top of the binary, regardless
+// of how the binaries are optimized.
+//
+// * Propeller is an extension to -ffunction-sections and -fdata-sections.
+//
+// The above statement is not correct. Propeller is a *general*
+// framework, it will be able to do things like reodering individual
+// insns, remove/insert spill insns, etc. And we have plans for future
+// optimizations based on propeller framework (not on bb sections).
+//
+// However, current Propeller's main optimization (function-splitting,
+// function-reordering, basicblock-reordering) is done via
+// -fbasicblock-sections, which is an extension of
+// -ffunction-sections.
+//
+// B. How (current) propeller works.
+//
+// [The compiler part]
+//
+// Each basicblock is represented using a standalone elf section.
+//
+// [The profile part]
+// 
+// A propeller-format profile ('propfile') is generated, which
+// contains counters for jumps/calls/returns of each bb.
+//
+// [The lld part]
+//
+// LLD handles execution to propelle (Propeller.h is the interface
+// that works with lld), which does a few things for each ELF object
+// file:
+//
+//   (1). generates control flow graph (CFG) for each function, this
+//   is possible because each basicblock section resides in a single
+//   elf section and we use relocation entries to determine jump/call
+//   targets of each basicblock section
+//
+//   (2). parses propfile (the propeller-format profile), apply
+//   basicblock counters, edge counters to CFGs
+//
+//   (3). passes information in (2) to BBReordering and
+//   FunctionOrdering pass, which generates list of optimal basicblock
+//   symbol ordering
+//
+//   (4). Propeller feeds the list (generated in (3)) back to lld, and
+//   lld continues to work as usual.
+//
+// ==================================================================
+//
 // Propeller.h defines Propeller framework classes:
 //
 //   Propfile - parses and wraps propeller profile
@@ -13,21 +73,24 @@
 //   Propeller - the main propeller framework class
 //
 // Propeller starts by checking if "-o" file matches propeller profile
-// (Propeller::checkPropellerTarget), then it enters Propeller::processFiles(),
-// which builds Cfg for each valid ELF object file (Propeller::processFile ->
-// ELFCfgBuilder::buildCfgs).
+// (Propeller::checkPropellerTarget), then it enters
+// Propeller::processFiles(), which builds control flow graph (CFG)
+// for each valid ELF object file (Propeller::processFile ->
+// ELFCFGBuilder::buildCFGs).
 //
-// After Cfgs are build, Propeller starts parsing Propeller profile (the
-// Propfile class). In this step, bb symbols are created, branch/call counters
-// are read, and *very importantly*, the counters are applied to the Cfg. For
-// example, upon seeing two consecutive branch records in the propeller profile:
-// a->b, c->d, we not only increment edge counters for a->b, c->d, we also walks
-// from b->c, and increment basicblock and edge counters in between. This last
-// step can only be done after we have a complete Cfg for the function.
+// After control flow graphs are build, Propeller starts parsing
+// Propeller profile (the Propfile class). In this step, basicblock
+// (BB) symbols are created, branch/call counters are read, and *very
+// importantly*, the counters are applied to the CFG. For example,
+// upon seeing two consecutive branch records in the propeller
+// profile: a->b, c->d, we not only increment edge counters for a->b,
+// c->d, we also walks from b->c, and increment basicblock and edge
+// counters in between. This last step can only be done after we have
+// a complete CFG for the function.
 //
-// The Cfg information is stored in Propeller::CfgMap.
+// The CFG information is stored in Propeller::CFGMap.
 //
-// After we have Cfgs with complete counters for edges/bbs, we pass the
+// After we have CFGs with complete counters for edges/bbs, we pass the
 // information to optimization passes. For now, depending on 
 // propellerReorderFuncs, propellerReorderBlocks or propellerSplitFuncs,
 // propeller generates a list of basicblock symbol orders and feed it the origin
@@ -40,6 +103,7 @@
 
 #include "InputFiles.h"
 
+#include "lld/Common/LLVM.h"
 #include "lld/Common/PropellerCommon.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
@@ -52,16 +116,6 @@
 #include <tuple>
 #include <vector>
 
-using llvm::StringRef;
-
-using std::list;
-using std::map;
-using std::mutex;
-using std::pair;
-using std::set;
-using std::unique_ptr;
-using std::vector;
-
 namespace lld {
 namespace elf {
 class SymbolTable;
@@ -69,27 +123,21 @@ class SymbolTable;
 
 namespace propeller {
 
-class ELFCfg;
-class ELFCfgEdge;
-class ELFCfgNode;
+class ELFCFG;
+class ELFCFGEdge;
+class ELFCFGNode;
 class ELFView;
 class Propeller;
 
 // Propeller profile parser.
 //
-// a sample propeller profile is like below:
+// A sample propeller profile is like below:
 //
 // Symbols
 // 1 0 N.init/_init
 // 2 0 N.plt
-// 3 0 N.plt.got
-// 4 0 N.text
-// 5 2b N_start
-// 6 0 Nderegister_tm_clones
-// 7 0 Nregister_tm_clones
-// 8 0 N__do_global_dtors_aux
-// 9 0 Nframe_dummy
-// 10 2c Ncompute_flag
+// ...
+// ...
 // 11 7c Nmain
 // 12 f 11.1
 // 13 28 11.2
@@ -103,18 +151,10 @@ class Propeller;
 // 10 12 232590 R
 // 12 10 234842 C
 // 12 14 143608
-// 14 12 227040
 // Fallthroughs
 // 10 10 225131
-// 10 12 2255
-// 12 10 2283
-// 12 12 362886
-// 12 14 77103
-// 14 12 1376
-// 14 14 140856
 // !func1
 // !func2
-// !func3
 //
 // The file consists of 4 parts, "Symbols", "Branches", "Fallthroughs" and
 // Funclist.
@@ -155,10 +195,7 @@ public:
     LineBuf = (char *)malloc(LineSize);
   }
   ~Propfile() {
-    if (LineBuf) {
-      free(LineBuf);
-    }
-    BPAllocator.Reset();
+    if (LineBuf) free(LineBuf);
     if (PStream) fclose(PStream);
   }
 
@@ -207,38 +244,38 @@ public:
   llvm::UniqueStringSaver PropfileStrSaver;
   FILE *PStream;
   Propeller &Prop;
-  map<uint64_t, unique_ptr<SymbolEntry>> SymbolOrdinalMap;
+  std::map<uint64_t, std::unique_ptr<SymbolEntry>> SymbolOrdinalMap;
   // SymbolNameMap is ordered in the following way:
   //   SymbolNameMap[foo][""] = functionSymbol;
   //     SymbolNameMap[foo]["1"] = fun.bb.1.Symbol;
   //     SymbolNameMap[foo]["2"] = fun.bb.2.Symbol;
   //   etc...
-  map<StringRef, map<StringRef, SymbolEntry *>> SymbolNameMap;
-  list<SymbolEntry*> FunctionsWithAliases;
+  std::map<StringRef, std::map<StringRef, SymbolEntry *>> SymbolNameMap;
+  std::vector<SymbolEntry *> FunctionsWithAliases;
   uint64_t LineNo;
-  char     LineTag;
-  size_t   LineSize;
-  char    *LineBuf;
+  char LineTag;
+  size_t LineSize;
+  char *LineBuf;
 };
 
 class Propeller {
 public:
   Propeller(lld::elf::SymbolTable *ST)
-      : Symtab(ST), Views(), CfgMap(), Propf(nullptr) {}
+      : Symtab(ST), Views(), CFGMap(), Propf(nullptr) {}
   ~Propeller() { }
 
   bool checkPropellerTarget();
   bool processFiles(std::vector<lld::elf::InputFile *> &files);
-  void processFile(const pair<elf::InputFile *, uint32_t> &pair);
-  ELFCfgNode *findCfgNode(uint64_t symbolOrdinal);
+  void processFile(const std::pair<elf::InputFile *, uint32_t> &pair);
+  ELFCFGNode *findCfgNode(uint64_t symbolOrdinal);
   void calculateNodeFreqs();
-  vector<StringRef> genSymbolOrderingFile();
-  void calculatePropellerLegacy(list<StringRef> &SymList,
-                                list<StringRef>::iterator hotPlaceHolder,
-                                list<StringRef>::iterator coldPlaceHolder);
+  std::vector<StringRef> genSymbolOrderingFile();
+  void calculatePropellerLegacy(std::list<StringRef> &SymList,
+                                std::list<StringRef>::iterator hotPlaceHolder,
+                                std::list<StringRef>::iterator coldPlaceHolder);
   template <class Visitor>
   void forEachCfgRef(Visitor v) {
-    for (auto &p : CfgMap) {
+    for (auto &p : CFGMap) {
       v(*(*(p.second.begin())));
     }
   }
@@ -250,19 +287,22 @@ public:
   struct ELFViewDeleter {
     void operator()(ELFView *v);
   };
-  list<unique_ptr<ELFView, ELFViewDeleter>> Views;
-  // Same named Cfgs may exist in different object files (e.g. weak
+  std::vector<std::unique_ptr<ELFView, ELFViewDeleter>> Views;
+  // Same named CFGs may exist in different object files (e.g. weak
   // symbols.)  We always choose symbols that appear earlier on the
   // command line.  Note: implementation is in the .cpp file, because
-  // ELFCfg here is an incomplete type.
+  // ELFCFG here is an incomplete type.
   struct ELFViewOrdinalComparator {
-    bool operator()(const ELFCfg *a, const ELFCfg *b) const;
+    bool operator()(const ELFCFG *a, const ELFCFG *b) const;
   };
-  using CfgMapTy = map<StringRef, set<ELFCfg *, ELFViewOrdinalComparator>>;
-  CfgMapTy CfgMap;
-  unique_ptr<Propfile> Propf;
-  // Lock to access / modify global data structure.
-  mutex Lock;
+  using CfgMapTy = std::map<StringRef, std::set<ELFCFG *, ELFViewOrdinalComparator>>;
+  CfgMapTy CFGMap;
+  std::unique_ptr<Propfile> Propf;
+  // We call Propeller::processFile in parallel to create CFGs for
+  // each file, after the CFGs are created, each processFile thread
+  // then puts CFGs into Propeller::CFGMap (see above). Lock is used
+  // to guard this Propeller::CFGMap critical section.
+  std::mutex Lock;
 };
 
 // When no "-propeller-keep-named-symbols" specified, we remove all BB symbols
@@ -283,7 +323,7 @@ public:
 //  bar.bb.4   <= delete
 //  bar.bb.5   <= delete
 struct PropellerLegacy {
-  set<StringRef> BBSymbolsToKeep;
+  std::set<StringRef> BBSymbolsToKeep;
 
   bool shouldKeepBBSymbol(StringRef symName) {
     if (!SymbolEntry::isBBSymbol(symName)) return true;
