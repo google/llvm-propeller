@@ -10,8 +10,6 @@ using llvm::StringRef;
 
 #include <string>
 
-using std::string;
-
 namespace lld {
 namespace propeller {
 
@@ -32,18 +30,23 @@ struct SymbolEntry {
         BBTag(BB), ContainingFunc(FuncPtr) {}
   ~SymbolEntry() {}
 
+  // Unique index number across all symbols that participate linking.
   uint64_t Ordinal;
   // For a function symbol, it's the full name. For a bb symbol this is only the
-  // bbindex part, which is the number of "a"s before the ".bb." part.
+  // bbindex part, which is the number of "a"s before the ".bb." part. For
+  // example "8", "10", etc. Refer to Propfile::createFunctionSymbol and
+  // Propfile::createBasicBlockSymbol.
   StringRef Name;
-  // Aliases[0] always equals to Name.
+  // Only valid for function (BBTag == false) symbols. And aliases[0] always
+  // equals to Name. For example, SymbolEntry.Name = "foo", SymbolEntry.Aliases
+  // = {"foo", "foo2", "foo3"}.
   AliasesTy Aliases;
   uint64_t Addr;
   uint64_t Size;
   uint8_t Type;    // Of type: llvm::objet::SymbolRef::Type.
   bool BBTag;      // Whether this is a basic block section symbol.
-  // For BBTag symbols, this is the containing fuction pointer, for
-  // a normal function symbol, this points to itself.
+  // For BBTag symbols, this is the containing fuction pointer, for a normal
+  // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *ContainingFunc;
 
   bool containsAddress(uint64_t A) const {
@@ -52,9 +55,9 @@ struct SymbolEntry {
 
   bool containsAnotherSymbol(SymbolEntry *O) const {
     if (O->Size == 0) {
-      // Note if O's size is 0, we allow O on the end boundary. For example,
-      // if foo.BB.4 is at address 0x10. foo is [0x0, 0x10), we then assume
-      // foo contains foo.BB.4.
+      // Note if O's size is 0, we allow O on the end boundary. For example, if
+      // foo.BB.4 is at address 0x10. foo is [0x0, 0x10), we then assume foo
+      // contains foo.BB.4.
       return this->Addr <= O->Addr && O->Addr <= this->Addr + this->Size;
     }
     return containsAddress(O->Addr) && containsAddress(O->Addr + O->Size - 1);
@@ -67,8 +70,12 @@ struct SymbolEntry {
   bool isFunction() const {
     return this->Type == llvm::object::SymbolRef::ST_Function;
   }
-  
-  bool isFunctionForBBName(StringRef BBName) {
+
+  // Return true if this SymbolEntry is a containing function for BBName. For
+  // example, if BBName is given as "aa.BB.foo", and SymbolEntry.Name = "foo",
+  // then SymbolEntry.isFunctionForBBName(BBName) == true.  BBNames are from ELF
+  // object files.
+  bool isFunctionForBBName(StringRef BBName) const {
     auto A = BBName.split(BASIC_BLOCK_SEPARATOR);
     if (A.second == Name)
       return true;
@@ -76,14 +83,6 @@ struct SymbolEntry {
       if (A.second == N)
         return true;
     return false;
-  }
-
-  static std::string toCompactBBName(StringRef UnifiedBBName) {
-    StringRef FName, BName;
-    if (isBBSymbol(UnifiedBBName, &FName, &BName)) {
-      return FName.str() + BASIC_BLOCK_SEPARATOR + std::to_string(BName.size());
-    }
-    return "";
   }
 
   static bool isBBSymbol(const StringRef &SymName,

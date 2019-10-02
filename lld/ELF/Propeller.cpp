@@ -77,7 +77,7 @@ SymbolEntry *Propfile::findSymbol(StringRef symName) {
   std::pair<StringRef, StringRef> symNameSplit = symName.split(".llvm.");
   StringRef funcName;
   StringRef bbIndex;
-  string tmpStr;
+  std::string tmpStr;
   if (!SymbolEntry::isBBSymbol(symNameSplit.first, &funcName, &bbIndex)) {
     funcName = symNameSplit.first;
     bbIndex = "";
@@ -167,7 +167,7 @@ bool Propfile::readSymbols() {
       if (existingI != SymbolOrdinalMap.end()) {
         if (existingI->second->BBTag) {
           error(
-              string("[Propeller]: Index '") + std::to_string(funcIndex) +
+              std::string("[Propeller]: Index '") + std::to_string(funcIndex) +
               "' is not a function index, but a bb index, at propfile line: " +
               std::to_string(LineNo) + ".");
           return false;
@@ -249,7 +249,7 @@ bool Propfile::processProfile() {
     uint64_t from, to, count;
     char tag;
     if (!parseBranchOrFallthroughLine(L, &from, &to, &count, &tag)) {
-      error(string("[Propeller]: Unrecognized propfile line: ") +
+      error(std::string("[Propeller]: Unrecognized propfile line: ") +
             std::to_string(LineNo) + ":\n" + L.str());
       return false;
     }
@@ -283,8 +283,7 @@ void Propeller::processFile(const std::pair<elf::InputFile *, uint32_t> &pair) {
   auto *inf = pair.first;
   ELFView *View = ELFView::create(inf->getName(), pair.second, inf->mb);
   if (View) {
-    ELFCFGBuilder(*this, View).buildCFGs();
-    {
+    if (ELFCFGBuilder(*this, View).buildCFGs()) {
       // Updating global data structure.
       std::lock_guard<std::mutex> lock(this->Lock);
       this->Views.emplace_back(View);
@@ -294,6 +293,10 @@ void Propeller::processFile(const std::pair<elf::InputFile *, uint32_t> &pair) {
         (void)(result);
         assert(result.second);
       }
+    } else {
+      warn(Twine("[Propeller]: Skipped building CFG for '" + inf->getName() +
+                 "'."));
+      ++this->ProcessFailureCount;
     }
   }
 }
@@ -304,7 +307,7 @@ ELFCFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
   SymbolEntry *symbol = Propf->SymbolOrdinalMap[symbolOrdinal].get();
   if (!symbol) {
     // This is an internal error, should not happen.
-    error(string("[Propeller]: Invalid symbol ordinal: " +
+    error(std::string("[Propeller]: Invalid symbol ordinal: " +
                  std::to_string(symbolOrdinal)));
     return nullptr;
   }
@@ -327,14 +330,14 @@ ELFCFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
       // Compare the number of "a" in aaa...a.BB.funcname against integer
       // NumOnes.
       if (symbol->Name.getAsInteger(10, NumOnes) || !NumOnes)
-        warn("Internal error, BB name is invalid: '" + symbol->Name.str() +
-             "'.");
+        warn("[Propeller]: Internal error, BB name is invalid: '" +
+             symbol->Name.str() + "'.");
       else
         for (auto *CFG : cfgLI->second)
           for (auto &node : CFG->Nodes) {
             // Check CFG does have name "SymName".
             auto t = node->ShName.find_first_of('.');
-            if (t != string::npos && t == NumOnes) return node.get();
+            if (t != std::string::npos && t == NumOnes) return node.get();
           }
     }
   }
@@ -374,12 +377,14 @@ void Propeller::calculateNodeFreqs() {
 
 // Returns true if linker output target matches propeller profile.
 bool Propeller::checkPropellerTarget() {
-  if (config->propeller.empty()) return false;
-  string propellerFileName = config->propeller.str();
+  if (config->propeller.empty())
+    return false;
+  std::string propellerFileName = config->propeller.str();
   // Propfile takes ownership of FPtr.
   Propf.reset(new Propfile(*this, propellerFileName));
   if (!Propf->openPropf()) {
-    error(string("[Propeller]: Failed to open '") + propellerFileName + "'.");
+    error(std::string("[Propeller]: Failed to open '") + propellerFileName +
+          "'.");
     return false;
   }
   return Propf->matchesOutputFileName(
@@ -390,8 +395,8 @@ bool Propeller::checkPropellerTarget() {
 // parallel and stores the result information.
 bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
   if (!Propf->readSymbols()) {
-    error(string("[Propeller]: Invalid propfile: '") + config->propeller.str() +
-          "'.");
+    error(std::string("[Propeller]: Invalid propfile: '") +
+          config->propeller.str() + "'.");
     return false;
   }
 
@@ -401,17 +406,20 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
   for (auto &F : files)
     fileOrdinalPairs.emplace_back(F, ++ordinal);
 
+  this->ProcessFailureCount = 0;
   llvm::parallel::for_each(
       llvm::parallel::parallel_execution_policy(), fileOrdinalPairs.begin(),
       fileOrdinalPairs.end(),
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
+  if (this->ProcessFailureCount * 100 / files.size() >= 50)
+    warn("[Propeller]: propeller failed to parse more than half the objects, "
+         "optimization would suffer.");
+
   /* Drop alias cfgs. */
   for(SymbolEntry *funcS : Propf->FunctionsWithAliases){
-
     ELFCFG * primaryCfg = nullptr;
     CfgMapTy::iterator primaryCfgMapEntry;
-
     for(StringRef& AliasName : funcS->Aliases){
       auto cfgMapI = CFGMap.find(AliasName);
       if (cfgMapI == CFGMap.end())

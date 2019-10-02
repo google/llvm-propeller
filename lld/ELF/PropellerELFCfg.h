@@ -126,7 +126,6 @@ public:
 
   ELFCFG(ELFView *V, const StringRef &N, uint64_t S)
     : View(V), Name(N), Size(S) {}
-  ~ELFCFG() {}
 
   bool markPath(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt = 1);
   void mapBranch(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt = 1,
@@ -180,7 +179,7 @@ public:
   uint32_t InvalidCFGs{0};
 
   ELFCFGBuilder(Propeller &prop, ELFView *vw) : Prop(&prop), View(vw) {}
-  void buildCFGs();
+  bool buildCFGs();
 
 protected:
   void buildCFG(ELFCFG &cfg, const SymbolRef &cfgSym,
@@ -211,7 +210,6 @@ class ELFView {
           const uint32_t vO,
           const MemoryBufferRef &fR) :
     ViewFile(std::move(vF)), ViewName(vN), Ordinal(vO), FileRef(fR), CFGs() {}
-  ~ELFView() {}
 
   void EraseCfg(ELFCFG *&cfgPtr);
 

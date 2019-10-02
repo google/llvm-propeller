@@ -187,7 +187,7 @@ void ELFCFG::mapCallOut(ELFCFGNode *from, ELFCFGNode *to, uint64_t toAddr,
   createEdge(from, to, edgeType)->Weight += cnt;
 }
 
-void ELFCFGBuilder::buildCFGs() {
+bool ELFCFGBuilder::buildCFGs() {
   auto symbols = View->ViewFile->symbols();
   std::map<StringRef, std::list<SymbolRef>> groups;
   for (const SymbolRef &sym : symbols) {
@@ -254,7 +254,7 @@ void ELFCFGBuilder::buildCFGs() {
         if (sE) {
           if (tmpNodeMap.find(sE->Ordinal) != tmpNodeMap.end()) {
             error("Internal error checking cfg map.");
-            return;
+            return false;
           }
           tmpNodeMap.emplace(
               std::piecewise_construct, std::forward_as_tuple(sE->Ordinal),
@@ -269,21 +269,19 @@ void ELFCFGBuilder::buildCFGs() {
       break;
     }
 
-    if (tmpNodeMap.empty())
-      cfg.reset(nullptr);
+    if (tmpNodeMap.empty()) cfg.reset(nullptr);
 
-    if (!cfg)
-      continue; // to next cfg group.
+    if (!cfg) continue; // to next cfg group.
 
     uint32_t groupShndx = 0;
     for (auto &T : tmpNodeMap) {
       if (groupShndx != 0 && T.second->Shndx == groupShndx) {
         cfg.reset(nullptr);
         tmpNodeMap.clear();
-        error("[Propeller]: Basicblock sections must not have same section "
+        warn("[Propeller]: Basicblock sections must not have same section "
               "index, this is usually caused by -fbasicblock-sections=labels. "
               "Use -fbasicblock-sections=list/all instead.");
-        return ;
+        return false ;
       }
       groupShndx = T.second->Shndx;
     }
@@ -293,6 +291,7 @@ void ELFCFGBuilder::buildCFGs() {
       View->CFGs.emplace(cfg->Name, std::move(cfg));
     }
   } // Enf of processing all groups.
+  return true;
 }
 
 // Build map: TextSection -> It's Relocation Section.

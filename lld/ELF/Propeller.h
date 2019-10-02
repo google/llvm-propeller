@@ -188,11 +188,9 @@ class Propeller;
 // generation purpose).
 class Propfile {
 public:
-  Propfile(Propeller &p, const string &pName)
+  Propfile(Propeller &p, const std::string &pName)
       : BPAllocator(), PropfileStrSaver(BPAllocator), PropfName(pName),
         PropfStream(), Prop(p), SymbolOrdinalMap() {}
-
-  ~Propfile() {}
 
   bool openPropf() {
     this->PropfStream.open(this->PropfName);
@@ -261,7 +259,6 @@ class Propeller {
 public:
   Propeller(lld::elf::SymbolTable *ST)
       : Symtab(ST), Views(), CFGMap(), Propf(nullptr) {}
-  ~Propeller() { }
 
   bool checkPropellerTarget();
   bool processFiles(std::vector<lld::elf::InputFile *> &files);
@@ -297,6 +294,8 @@ public:
       std::map<StringRef, std::set<ELFCFG *, ELFViewOrdinalComparator>>;
   CfgMapTy CFGMap;
   std::unique_ptr<Propfile> Propf;
+  uint32_t ProcessFailureCount; // Number of files that are not processed by
+                                // Propeller.
   // We call Propeller::processFile in parallel to create CFGs for
   // each file, after the CFGs are created, each processFile thread
   // then puts CFGs into Propeller::CFGMap (see above). Lock is used

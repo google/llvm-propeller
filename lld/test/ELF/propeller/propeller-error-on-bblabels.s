@@ -2,8 +2,7 @@
 ## Test propeller fails if it tries to process an object that is built with "-fbasicblock-sections=labels".
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
-# RUN: not ld.lld -propeller=%S/Inputs/propeller.data %t.o -o %t.out 1>%t2.out 2>&1
-# RUN: cat %t2.out | FileCheck %s --check-prefix=CHECK
+# RUN: ld.lld -propeller=%S/Inputs/propeller.data %t.o -o %t.out 2>&1 | FileCheck %s --check-prefix=CHECK
 
 # CHECK: Basicblock sections must not have same section index
 
