@@ -40,14 +40,14 @@ using llvm::object::SymbolRef;
 namespace lld {
 namespace propeller {
 
-bool ELFCFG::writeAsDotGraph(const char *cfgOutName) {
+bool ControlFlowGraph::writeAsDotGraph(const char *cfgOutName) {
   FILE *fp = fopen(cfgOutName, "w");
   if (!fp) {
     warn("[Propeller]: Failed to open: '" + StringRef(cfgOutName) + "'\n");
     return false;
   }
   fprintf(fp, "digraph %s {\n", Name.str().c_str());
-  forEachNodeRef([&fp](ELFCFGNode &n) {
+  forEachNodeRef([&fp](CFGNode &n) {
     fprintf(fp, "%u [size=\"%lu\"];", n.getBBIndex(), n.ShSize);
   });
   fprintf(fp, "\n");
@@ -64,10 +64,10 @@ bool ELFCFG::writeAsDotGraph(const char *cfgOutName) {
 }
 
 // Create an edge for "from->to".
-ELFCFGEdge *ELFCFG::createEdge(ELFCFGNode *from, ELFCFGNode *to,
-                               typename ELFCFGEdge::EdgeType type) {
-  ELFCFGEdge *edge = new ELFCFGEdge(from, to, type);
-  if (type < ELFCFGEdge::EdgeType::INTER_FUNC_CALL) {
+CFGEdge *ControlFlowGraph::createEdge(CFGNode *from, CFGNode *to,
+                               typename CFGEdge::EdgeType type) {
+  CFGEdge *edge = new CFGEdge(from, to, type);
+  if (type < CFGEdge::EdgeType::INTER_FUNC_CALL) {
     from->Outs.push_back(edge);
     to->Ins.push_back(edge);
   } else {
@@ -81,17 +81,17 @@ ELFCFGEdge *ELFCFG::createEdge(ELFCFGNode *from, ELFCFGNode *to,
 
 // Apply counter (CNT) to all edges between node from -> to. Both nodes are from
 // the same cfg.
-bool ELFCFG::markPath(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt) {
+bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
   if (from == nullptr) {
     /* If the from node is null, walk backward from the to node while only
      * one INTRA_FUNC incoming edge is found. */
     assert(to != nullptr);
-    ELFCFGNode *p = to;
+    CFGNode *p = to;
     do {
-      std::vector<ELFCFGEdge *> intraInEdges;
+      std::vector<CFGEdge *> intraInEdges;
       std::copy_if(p->Ins.begin(), p->Ins.end(),
-                   std::back_inserter(intraInEdges), [this](ELFCFGEdge *e) {
-                     return e->Type == ELFCFGEdge::EdgeType::INTRA_FUNC &&
+                   std::back_inserter(intraInEdges), [this](CFGEdge *e) {
+                     return e->Type == CFGEdge::EdgeType::INTRA_FUNC &&
                             e->Sink != getEntryNode();
                    });
       if (intraInEdges.size() == 1)
@@ -106,12 +106,12 @@ bool ELFCFG::markPath(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt) {
     /* If the to node is null, walk forward from the from node while only
      * one INTRA_FUNC outgoing edge is found. */
     assert(from != nullptr);
-    ELFCFGNode *p = from;
+    CFGNode *p = from;
     do {
-      std::vector<ELFCFGEdge *> IntraOutEdges;
+      std::vector<CFGEdge *> IntraOutEdges;
       std::copy_if(p->Outs.begin(), p->Outs.end(),
-                   std::back_inserter(IntraOutEdges), [this](ELFCFGEdge *e) {
-                     return e->Type == ELFCFGEdge::EdgeType::INTRA_FUNC &&
+                   std::back_inserter(IntraOutEdges), [this](CFGEdge *e) {
+                     return e->Type == CFGEdge::EdgeType::INTRA_FUNC &&
                             e->Sink != getEntryNode();
                    });
       if (IntraOutEdges.size() == 1)
@@ -125,7 +125,7 @@ bool ELFCFG::markPath(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt) {
   assert(from->CFG == to->CFG);
   if (from == to)
     return true;
-  ELFCFGNode *p = from;
+  CFGNode *p = from;
   while (p && p != to) {
     if (p->FTEdge) {
       p->FTEdge->Weight += cnt;
@@ -139,46 +139,46 @@ bool ELFCFG::markPath(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt) {
 
 // Apply counter (CNT) to the edge from node from -> to. Both nodes are from the
 // same cfg.
-void ELFCFG::mapBranch(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt,
+void ControlFlowGraph::mapBranch(CFGNode *from, CFGNode *to, uint64_t cnt,
                        bool isCall, bool isReturn) {
   assert(from->CFG == to->CFG);
 
   for (auto &e : from->Outs) {
     bool edgeTypeOk = true;
     if (!isCall && !isReturn)
-      edgeTypeOk = e->Type == ELFCFGEdge::INTRA_FUNC ||
-                   e->Type == ELFCFGEdge::INTRA_DYNA;
+      edgeTypeOk = e->Type == CFGEdge::INTRA_FUNC ||
+                   e->Type == CFGEdge::INTRA_DYNA;
     else
       if (isCall)
-        edgeTypeOk = e->Type == ELFCFGEdge::INTRA_RSC;
+        edgeTypeOk = e->Type == CFGEdge::INTRA_RSC;
       if (isReturn)
-        edgeTypeOk = e->Type == ELFCFGEdge::INTRA_RSR;
+        edgeTypeOk = e->Type == CFGEdge::INTRA_RSR;
     if (edgeTypeOk && e->Sink == to) {
       e->Weight += cnt;
       return;
     }
   }
 
-  ELFCFGEdge::EdgeType type = ELFCFGEdge::INTRA_DYNA;
+  CFGEdge::EdgeType type = CFGEdge::INTRA_DYNA;
   if (isCall)
-    type = ELFCFGEdge::INTRA_RSC;
+    type = CFGEdge::INTRA_RSC;
   else if (isReturn)
-    type = ELFCFGEdge::INTRA_RSR;
+    type = CFGEdge::INTRA_RSR;
 
   createEdge(from, to, type)->Weight += cnt;
 }
 
 // Apply counter (CNT) for calls/returns/ that cross function boundaries.
-void ELFCFG::mapCallOut(ELFCFGNode *from, ELFCFGNode *to, uint64_t toAddr,
+void ControlFlowGraph::mapCallOut(CFGNode *from, CFGNode *to, uint64_t toAddr,
                         uint64_t cnt, bool isCall, bool isReturn) {
   assert(from->CFG == this);
   assert(from->CFG != to->CFG);
-  ELFCFGEdge::EdgeType edgeType = ELFCFGEdge::INTER_FUNC_RETURN;
+  CFGEdge::EdgeType edgeType = CFGEdge::INTER_FUNC_RETURN;
   if (isCall ||
       (toAddr && to->CFG->getEntryNode() == to && toAddr == to->MappedAddr))
-    edgeType = ELFCFGEdge::INTER_FUNC_CALL;
+    edgeType = CFGEdge::INTER_FUNC_CALL;
   if (isReturn)
-    edgeType= ELFCFGEdge::INTER_FUNC_RETURN;
+    edgeType= CFGEdge::INTER_FUNC_RETURN;
   for (auto &e : from->CallOuts)
     if (e->Sink == to && e->Type == edgeType) {
       e->Weight += cnt;
@@ -187,7 +187,32 @@ void ELFCFG::mapCallOut(ELFCFGNode *from, ELFCFGNode *to, uint64_t toAddr,
   createEdge(from, to, edgeType)->Weight += cnt;
 }
 
-bool ELFCFGBuilder::buildCFGs() {
+// This function creates CFGs for a single object file.
+//
+// Step 1 - scan all the symbols, for each function symbols, create an entry in
+// "groups", below is what "groups" looks like:
+//  groups: {
+//    "foo": [],
+//    "bar": [],
+//  }
+//
+// Step 2 - scan all the symbols, for each BB symbol, find it's function's
+// group, and insert the bb symbol into the group. For example, if we have BB
+// symbols "a.BB.foo", "aa.BB.foo" and "a.BB.bar", after step 2, the groups
+// structure looks like:
+//   groups: {
+//     "foo": ["a.BB.foo", "aa.BB.foo"],
+//     "bar": ["a.BB.bar"],
+//   }
+//
+// Step 3 - for each group, create CFG and tmpNodeMap, the latter is an ordered
+// map of CFGNode (index key is Symbol Ordinal). For the above example, the
+// following data structure is created:
+//   CFG[Name=foo], tmpNodeMap={1: CFGNode[BBIndex="1"], 2:CFGNode[BBIndex="2"]}
+//   CFG[Name=bar], tmpNodeMap={3: CFGNode[BBIndex="3"]}
+//
+// For each CFG and tmpNodeMap, call CFGBuilder::buildCFG().
+bool CFGBuilder::buildCFGs() {
   auto symbols = View->ViewFile->symbols();
   std::map<StringRef, std::list<SymbolRef>> groups;
   for (const SymbolRef &sym : symbols) {
@@ -231,10 +256,11 @@ bool ELFCFGBuilder::buildCFGs() {
 
   for (auto &i : groups) {
     assert(i.second.size() >= 1);
-    std::map<uint64_t, std::unique_ptr<ELFCFGNode>> tmpNodeMap;
+    std::map<uint64_t, std::unique_ptr<CFGNode>> tmpNodeMap;
     SymbolRef cfgSym = *(i.second.begin());
     StringRef cfgName = i.first;
-    std::unique_ptr<ELFCFG> cfg(new ELFCFG(View, cfgName, 0));
+    std::unique_ptr<ControlFlowGraph> cfg(
+        new ControlFlowGraph(View, cfgName, 0));
     for (SymbolRef sym : i.second) {
       auto symNameE = sym.getName();
       auto sectionIE = sym.getSection();
@@ -258,8 +284,8 @@ bool ELFCFGBuilder::buildCFGs() {
           }
           tmpNodeMap.emplace(
               std::piecewise_construct, std::forward_as_tuple(sE->Ordinal),
-              std::forward_as_tuple(new ELFCFGNode(symShndx, symName, sE->Size,
-                                                   sE->Ordinal, cfg.get())));
+              std::forward_as_tuple(new CFGNode(symShndx, symName, sE->Size,
+                                                sE->Ordinal, cfg.get())));
           continue;
         }
         // Otherwise fallthrough to ditch cfg & tmpNodeMap.
@@ -269,9 +295,11 @@ bool ELFCFGBuilder::buildCFGs() {
       break;
     }
 
-    if (tmpNodeMap.empty()) cfg.reset(nullptr);
+    if (tmpNodeMap.empty())
+      cfg.reset(nullptr);
 
-    if (!cfg) continue; // to next cfg group.
+    if (!cfg)
+      continue; // to next cfg group.
 
     uint32_t groupShndx = 0;
     for (auto &T : tmpNodeMap) {
@@ -279,9 +307,9 @@ bool ELFCFGBuilder::buildCFGs() {
         cfg.reset(nullptr);
         tmpNodeMap.clear();
         warn("[Propeller]: Basicblock sections must not have same section "
-              "index, this is usually caused by -fbasicblock-sections=labels. "
-              "Use -fbasicblock-sections=list/all instead.");
-        return false ;
+             "index, this is usually caused by -fbasicblock-sections=labels. "
+             "Use -fbasicblock-sections=list/all instead.");
+        return false;
       }
       groupShndx = T.second->Shndx;
     }
@@ -296,7 +324,7 @@ bool ELFCFGBuilder::buildCFGs() {
 
 // Build map: TextSection -> It's Relocation Section.
 // ELF file only contains link from Relocation Section -> It's text section.
-void ELFCFGBuilder::buildRelocationSectionMap(
+void CFGBuilder::buildRelocationSectionMap(
     std::map<uint64_t, section_iterator> &relocationSectionMap) {
   for (section_iterator i = View->ViewFile->section_begin(),
          J = View->ViewFile->section_end(); i != J; ++i) {
@@ -310,9 +338,9 @@ void ELFCFGBuilder::buildRelocationSectionMap(
 }
 
 // Build map: basicblock section index -> basicblock section node.
-void ELFCFGBuilder::buildShndxNodeMap(
-    std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &tmpNodeMap,
-    std::map<uint64_t, ELFCFGNode *> &shndxNodeMap) {
+void CFGBuilder::buildShndxNodeMap(
+    std::map<uint64_t, std::unique_ptr<CFGNode>> &tmpNodeMap,
+    std::map<uint64_t, CFGNode *> &shndxNodeMap) {
   for (auto &nodeL : tmpNodeMap) {
     auto &node = nodeL.second;
     auto insertResult = shndxNodeMap.emplace(node->Shndx, node.get());
@@ -321,23 +349,31 @@ void ELFCFGBuilder::buildShndxNodeMap(
   }
 }
 
-void ELFCFGBuilder::buildCFG(
-    ELFCFG &cfg, const SymbolRef &cfgSym,
-    std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &tmpNodeMap) {
-  std::map<uint64_t, ELFCFGNode *> shndxNodeMap;
+// Build CFG for a single function.
+//
+// For each BB sections of a single function, we iterate all the relocation
+// entries, and for relocations that targets another BB in the same function,
+// we create an edge between these 2 BBs.
+void CFGBuilder::buildCFG(
+    ControlFlowGraph &cfg, const SymbolRef &cfgSym,
+    std::map<uint64_t, std::unique_ptr<CFGNode>> &tmpNodeMap) {
+  std::map<uint64_t, CFGNode *> shndxNodeMap;
   buildShndxNodeMap(tmpNodeMap, shndxNodeMap);
 
   std::map<uint64_t, section_iterator> relocationSectionMap;
   buildRelocationSectionMap(relocationSectionMap);
 
   // Recursive call edges.
-  std::list<ELFCFGEdge *> rscEdges;
+  std::list<CFGEdge *> rscEdges;
+  // Iterate all bb symbols.
   for (auto &nPair : tmpNodeMap) {
-    ELFCFGNode *srcNode = nPair.second.get();
+    CFGNode *srcNode = nPair.second.get();
+    // For each bb section, we find its rela sections.
     auto relaSecRefI = relocationSectionMap.find(srcNode->Shndx);
     if (relaSecRefI == relocationSectionMap.end())
       continue;
 
+    // Iterate all rela entries.
     for (const RelocationRef &rela : relaSecRefI->second->relocations()) {
       SymbolRef rSym = *(rela.getSymbol());
       bool isRSC = (cfgSym == rSym);
@@ -350,15 +386,19 @@ void ELFCFGBuilder::buildCFG(
       auto sectionIE = rSym.getSection();
       if (!sectionIE)
         continue;
+      // Now we have the Shndx of one relocation target.
       uint64_t symShndx((*sectionIE)->getIndex());
-      ELFCFGNode *targetNode{nullptr};
+      CFGNode *targetNode{nullptr};
+      // Check to see if Shndx is another BB section within the same function.
       auto result = shndxNodeMap.find(symShndx);
       if (result != shndxNodeMap.end()) {
         targetNode = result->second;
         if (targetNode) {
-          ELFCFGEdge *e = cfg.createEdge(srcNode, targetNode,
-                                         isRSC ? ELFCFGEdge::INTRA_RSC
-                                               : ELFCFGEdge::INTRA_FUNC);
+          // If so, we create the edge.
+          CFGEdge *e = cfg.createEdge(srcNode, targetNode,
+                                         isRSC ? CFGEdge::INTRA_RSC
+                                               : CFGEdge::INTRA_FUNC);
+          // If it's a recursive call, record it.                                               
           if (isRSC)
             rscEdges.push_back(e);
         }
@@ -366,9 +406,8 @@ void ELFCFGBuilder::buildCFG(
     }
   }
 
-  // Create recursive-self-return edges for all exit edges.
-  // In the following example, create an edge bb5->bb3
-  // FuncA:
+  // For each recursive call, we create a recursive-self-return edges for all
+  // exit edges. In the following example, create an edge bb5->bb3 FuncA:
   //    bb1:            <---+
   //        ...             |
   //    bb2:                |
@@ -388,9 +427,9 @@ void ELFCFGBuilder::buildCFG(
       auto &n = nPair.second;
       if (n->Outs.size() == 0 ||
           (n->Outs.size() == 1 &&
-           (*n->Outs.begin())->Type == ELFCFGEdge::INTRA_RSC)) {
+           (*n->Outs.begin())->Type == CFGEdge::INTRA_RSC)) {
         // Now "n" is the exit node.
-        cfg.createEdge(n.get(), rEdge->Src, ELFCFGEdge::INTRA_RSR);
+        cfg.createEdge(n.get(), rEdge->Src, CFGEdge::INTRA_RSR);
       }
     }
   }
@@ -406,33 +445,34 @@ void ELFCFGBuilder::buildCFG(
   // Set cfg size and re-calculate size of the entry basicblock, which is
   // initially the size of the whole function.
   cfg.Size = cfg.getEntryNode()->ShSize;
-  cfg.forEachNodeRef([&cfg](ELFCFGNode &n) {
+  cfg.forEachNodeRef([&cfg](CFGNode &n) {
     if (&n != cfg.getEntryNode())
       cfg.getEntryNode()->ShSize -= n.ShSize;
   });
 }
 
-// Calculate fallthroughs.  edge p->Q is fallthrough if p & q are
-// adjacent, and there is a NORMAL edge from p->Q.
-void ELFCFGBuilder::calculateFallthroughEdges(
-    ELFCFG &cfg, std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &tmpNodeMap) {
-  /*
-    tmpNodeMap groups nodes according to their address:
-      addr1: [Node1]
-      addr2: [Node2]
-      addr3: [Node3]
-      addr4: [Node4]
-    And addr1 < addr2 < addr3 < addr4.
-  */
-  auto setupFallthrough = [&cfg](ELFCFGNode *n1, ELFCFGNode *n2) {
+// Calculate fallthroughs. Edge p->q is fallthrough if p & q are adjacent (e.g.
+// no other bbs are between p & q), and there is a NORMAL edge from p->Q.
+//
+// tmpNodeMap groups nodes according to their beginning address:
+//      addr1: [Node1]
+//      addr2: [Node2]
+//      addr3: [Node3]
+//      addr4: [Node4]
+//    And addr1 <= addr2 <= addr3 <= addr4.
+void CFGBuilder::calculateFallthroughEdges(
+    ControlFlowGraph &cfg,
+    std::map<uint64_t, std::unique_ptr<CFGNode>> &tmpNodeMap) {
+  
+  auto setupFallthrough = [&cfg](CFGNode *n1, CFGNode *n2) {
     for (auto *e : n1->Outs)
-      if (e->Type == ELFCFGEdge::INTRA_FUNC && e->Sink == n2) {
+      if (e->Type == CFGEdge::INTRA_FUNC && e->Sink == n2) {
         n1->FTEdge = e;
         return;
       }
     if (n1->ShSize == 0)
       // An empty section always fallthrough to the next adjacent section.
-      n1->FTEdge = cfg.createEdge(n1, n2, ELFCFGEdge::INTRA_FUNC);
+      n1->FTEdge = cfg.createEdge(n1, n2, CFGEdge::INTRA_FUNC);
   };
 
   for (auto p = tmpNodeMap.begin(), q = std::next(p), e = tmpNodeMap.end();
@@ -440,20 +480,20 @@ void ELFCFGBuilder::calculateFallthroughEdges(
     setupFallthrough(p->second.get(), q->second.get());
 }
 
-// Create an ELFView instance that corresponds to a single ELF file.
-ELFView *ELFView::create(const StringRef &vN, const uint32_t ordinal,
-                         const MemoryBufferRef &fR) {
+// Create an ObjectView instance that corresponds to a single ELF file.
+ObjectView *ObjectView::create(const StringRef &vN, const uint32_t ordinal,
+                               const MemoryBufferRef &fR) {
   const char *FH = fR.getBufferStart();
   if (fR.getBufferSize() > 6 && FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' &&
       FH[3] == 'F') {
     auto r = ObjectFile::createELFObjectFile(fR);
     if (r)
-      return new ELFView(*r, vN, ordinal, fR);
+      return new ObjectView(*r, vN, ordinal, fR);
   }
   return nullptr;
 }
 
-std::ostream &operator<<(std::ostream &out, const ELFCFGNode &node) {
+std::ostream &operator<<(std::ostream &out, const CFGNode &node) {
   out << "["
       << (node.ShName == node.CFG->Name
               ? "Entry"
@@ -466,7 +506,7 @@ std::ostream &operator<<(std::ostream &out, const ELFCFGNode &node) {
   return out;
 }
 
-std::ostream &operator<<(std::ostream &out, const ELFCFGEdge &edge) {
+std::ostream &operator<<(std::ostream &out, const CFGEdge &edge) {
   static const char *TypeStr[] = {"", " (*RSC*)", " (*RSR*)", " (*DYNA*)"};
   out << "edge: " << *edge.Src << " -> " << *edge.Sink << " [" << std::setw(12)
       << std::setfill('0') << std::noshowbase << std::dec << edge.Weight << "]"
@@ -474,7 +514,7 @@ std::ostream &operator<<(std::ostream &out, const ELFCFGEdge &edge) {
   return out;
 }
 
-std::ostream &operator<<(std::ostream &out, const ELFCFG &cfg) {
+std::ostream &operator<<(std::ostream &out, const ControlFlowGraph &cfg) {
   out << "cfg: '" << cfg.View->ViewName.str() << ":" << cfg.Name.str()
       << "', size=" << std::noshowbase << std::dec << cfg.Size << std::endl;
   for (auto &n : cfg.Nodes) {

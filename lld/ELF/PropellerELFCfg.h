@@ -8,17 +8,17 @@
 //
 // Class definitions for propeller cfg, edge, nodes and CFGBuilder.
 //
-// The ELFView class represents one ELF file. The ELFCFGBuilder class builds
-// cfg for each function and store it in ELFView::CFGs, indexed by cfg name.
+// The ObjectView class represents one ELF file. The CFGBuilder class builds
+// cfg for each function and store it in ObjectView::CFGs, indexed by cfg name.
 //
-// ELFCFGBuilder::buildCFGs works this way:
-//   - groups funcName, a.BB.funcName, aa.BB.funcName and alike into one set, 
-//     for each set, passes the set to "ELFCFGBuilder::buildCFG"
+// CFGBuilder::buildCFGs works this way:
+//   - groups funcName, a.BB.funcName, aa.BB.funcName and alike into one set,
+//     for each set, passes the set to "CFGBuilder::buildCFG"
 //   - each element in the set is a section, we then know from its section
 //     relocations the connections to other sections. (a)
 //   - from (a), we build CFG.
 //
-// Three important functions in ELFCFG:
+// Three important functions in ControlFlowGraph:
 //   mapBranch - apply counter to edge A->B, where A, B belong to the same func
 //
 //   mapCallOut - apply counter to edge A->B, where A, B belong to diff funcs
@@ -41,56 +41,56 @@
 #include <vector>
 
 using llvm::object::ObjectFile;
-using llvm::object::SymbolRef;
 using llvm::object::section_iterator;
+using llvm::object::SymbolRef;
 
 namespace lld {
 namespace propeller {
 
-class ELFView;
-class ELFCFGNode;
-class ELFCFG;
+class ObjectView;
+class CFGNode;
+class ControlFlowGraph;
 
-class ELFCFGEdge {
+class CFGEdge {
 public:
-  ELFCFGNode *Src;
-  ELFCFGNode *Sink;
-  uint64_t    Weight;
+  CFGNode *Src;
+  CFGNode *Sink;
+  uint64_t Weight;
   // Whether it's an edge introduced by recursive-self-call.  (Usually
   // calls do not split basic blocks and do not introduce new edges.)
   enum EdgeType : char {
-      INTRA_FUNC = 0,
-      INTRA_RSC,
-      INTRA_RSR,
-      // Intra edge dynamically created because of indirect jump, etc.
-      INTRA_DYNA,
-      INTER_FUNC_CALL,
-      INTER_FUNC_RETURN,
-  } Type {INTRA_FUNC};
+    INTRA_FUNC = 0,
+    INTRA_RSC,
+    INTRA_RSR,
+    // Intra edge dynamically created because of indirect jump, etc.
+    INTRA_DYNA,
+    INTER_FUNC_CALL,
+    INTER_FUNC_RETURN,
+  } Type{INTRA_FUNC};
 
 protected:
-  ELFCFGEdge(ELFCFGNode *N1, ELFCFGNode *N2, EdgeType T)
-    :Src(N1), Sink(N2), Weight(0), Type(T) {}
+  CFGEdge(CFGNode *N1, CFGNode *N2, EdgeType T)
+      : Src(N1), Sink(N2), Weight(0), Type(T) {}
 
-  friend class ELFCFG;
+  friend class ControlFlowGraph;
 };
 
-class ELFCFGNode {
- public:
-  uint64_t           Shndx;
-  StringRef          ShName;
-  uint64_t           ShSize;
-  uint64_t           MappedAddr;
-  uint64_t           Freq;
-  ELFCFG            *CFG;
-  
-  std::vector<ELFCFGEdge *> Outs;      // Intra function edges.
-  std::vector<ELFCFGEdge *> Ins;       // Intra function edges.
-  std::vector<ELFCFGEdge *> CallOuts;  // Callouts/returns to other functions.
-  std::vector<ELFCFGEdge *> CallIns;   // Callins/returns from other functions.
-  
+class CFGNode {
+public:
+  uint64_t Shndx;
+  StringRef ShName;
+  uint64_t ShSize;
+  uint64_t MappedAddr;
+  uint64_t Freq;
+  ControlFlowGraph *CFG;
+
+  std::vector<CFGEdge *> Outs;     // Intra function edges.
+  std::vector<CFGEdge *> Ins;      // Intra function edges.
+  std::vector<CFGEdge *> CallOuts; // Callouts/returns to other functions.
+  std::vector<CFGEdge *> CallIns;  // Callins/returns from other functions.
+
   // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
-  ELFCFGEdge *       FTEdge;
+  CFGEdge *FTEdge;
 
   const static uint64_t InvalidAddress = -1l;
 
@@ -103,37 +103,37 @@ class ELFCFGNode {
   }
 
 private:
-  ELFCFGNode(uint64_t _Shndx, const StringRef &_ShName,
-             uint64_t _Size, uint64_t _MappedAddr, ELFCFG *_Cfg)
-    : Shndx(_Shndx), ShName(_ShName), ShSize(_Size),
-      MappedAddr(_MappedAddr), Freq(0), CFG(_Cfg),
-      Outs(), Ins(), CallOuts(), CallIns(), FTEdge(nullptr) {}
+  CFGNode(uint64_t _Shndx, const StringRef &_ShName, uint64_t _Size,
+          uint64_t _MappedAddr, ControlFlowGraph *_Cfg)
+      : Shndx(_Shndx), ShName(_ShName), ShSize(_Size), MappedAddr(_MappedAddr),
+        Freq(0), CFG(_Cfg), Outs(), Ins(), CallOuts(), CallIns(),
+        FTEdge(nullptr) {}
 
-  friend class ELFCFG;
-  friend class ELFCFGBuilder;
+  friend class ControlFlowGraph;
+  friend class CFGBuilder;
 };
 
-class ELFCFG {
+class ControlFlowGraph {
 public:
-  ELFView    *View;
-  StringRef   Name;
-  uint64_t    Size;
-  
-  // ELFCFG assumes the ownership for all Nodes / Edges.
-  std::vector<std::unique_ptr<ELFCFGNode>> Nodes;  // Sorted by address.
-  std::vector<std::unique_ptr<ELFCFGEdge>> IntraEdges;
-  std::vector<std::unique_ptr<ELFCFGEdge>> InterEdges;
+  ObjectView *View;
+  StringRef Name;
+  uint64_t Size;
 
-  ELFCFG(ELFView *V, const StringRef &N, uint64_t S)
-    : View(V), Name(N), Size(S) {}
+  // ControlFlowGraph assumes the ownership for all Nodes / Edges.
+  std::vector<std::unique_ptr<CFGNode>> Nodes; // Sorted by address.
+  std::vector<std::unique_ptr<CFGEdge>> IntraEdges;
+  std::vector<std::unique_ptr<CFGEdge>> InterEdges;
 
-  bool markPath(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt = 1);
-  void mapBranch(ELFCFGNode *from, ELFCFGNode *to, uint64_t cnt = 1,
+  ControlFlowGraph(ObjectView *V, const StringRef &N, uint64_t S)
+      : View(V), Name(N), Size(S) {}
+
+  bool markPath(CFGNode *from, CFGNode *to, uint64_t cnt = 1);
+  void mapBranch(CFGNode *from, CFGNode *to, uint64_t cnt = 1,
                  bool isCall = false, bool isReturn = false);
-  void mapCallOut(ELFCFGNode *from, ELFCFGNode *to, uint64_t toAddr,
-                  uint64_t cnt = 1, bool isCall = false, bool isReturn = false);
+  void mapCallOut(CFGNode *from, CFGNode *to, uint64_t toAddr, uint64_t cnt = 1,
+                  bool isCall = false, bool isReturn = false);
 
-  ELFCFGNode *getEntryNode() const {
+  CFGNode *getEntryNode() const {
     assert(!Nodes.empty());
     return Nodes.begin()->get();
   }
@@ -144,9 +144,8 @@ public:
     return (getEntryNode()->Freq != 0);
   }
 
-  template <class Visitor>
-  void forEachNodeRef(Visitor V) {
-    for (auto &N: Nodes)
+  template <class Visitor> void forEachNodeRef(Visitor V) {
+    for (auto &N : Nodes)
       V(*N);
   }
 
@@ -154,39 +153,42 @@ public:
 
 private:
   // Create and take ownership.
-  ELFCFGEdge *createEdge(ELFCFGNode *from,
-                         ELFCFGNode *to,
-                         typename ELFCFGEdge::EdgeType type);
+  CFGEdge *createEdge(CFGNode *from, CFGNode *to,
+                      typename CFGEdge::EdgeType type);
 
-  void emplaceEdge(ELFCFGEdge *edge) {
-    if (edge->Type < ELFCFGEdge::INTER_FUNC_CALL)
+  void emplaceEdge(CFGEdge *edge) {
+    if (edge->Type < CFGEdge::INTER_FUNC_CALL)
       IntraEdges.emplace_back(edge);
     else
       InterEdges.emplace_back(edge);
   }
 
-  friend class ELFCFGBuilder;
+  friend class CFGBuilder;
 };
 
-
-class ELFCFGBuilder {
+class CFGBuilder {
 public:
   Propeller *Prop;
-  ELFView   *View;
+  ObjectView *View;
 
   uint32_t BB{0};
   uint32_t BBWoutAddr{0};
   uint32_t InvalidCFGs{0};
 
-  ELFCFGBuilder(Propeller &prop, ELFView *vw) : Prop(&prop), View(vw) {}
+  CFGBuilder(Propeller &prop, ObjectView *vw) : Prop(&prop), View(vw) {}
+
+  // See implementaion comments in .cpp.
   bool buildCFGs();
 
 protected:
-  void buildCFG(ELFCFG &cfg, const SymbolRef &cfgSym,
-                std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &nodeMap);
+  // See implementaion comments in .cpp.
+  void buildCFG(ControlFlowGraph &cfg, const SymbolRef &cfgSym,
+                std::map<uint64_t, std::unique_ptr<CFGNode>> &nodeMap);
 
+  // See implementation comments in .cpp.
   void calculateFallthroughEdges(
-      ELFCFG &cfg, std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &nodeMap);
+      ControlFlowGraph &cfg,
+      std::map<uint64_t, std::unique_ptr<CFGNode>> &nodeMap);
 
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
@@ -194,37 +196,35 @@ protected:
   buildRelocationSectionMap(std::map<uint64_t, section_iterator> &relocSecMap);
   // Build a map from section "Idx" -> node representing "Idx". Only
   // used during building phase.
-  void buildShndxNodeMap(std::map<uint64_t, std::unique_ptr<ELFCFGNode>> &nodeMap,
-                         std::map<uint64_t, ELFCFGNode *> &shndxNodeMap);
+  void buildShndxNodeMap(std::map<uint64_t, std::unique_ptr<CFGNode>> &nodeMap,
+                         std::map<uint64_t, CFGNode *> &shndxNodeMap);
 };
 
-// ELFView is a structure that corresponds to a single ELF file.
-class ELFView {
- public:
-  static ELFView *create(const StringRef &vN,
-                         const uint32_t ordinal,
-                         const MemoryBufferRef &fR);
+// ObjectView is a structure that corresponds to a single ELF file.
+class ObjectView {
+public:
+  static ObjectView *create(const StringRef &vN, const uint32_t ordinal,
+                            const MemoryBufferRef &fR);
 
-  ELFView(std::unique_ptr<ObjectFile> &vF,
-          const StringRef &vN,
-          const uint32_t vO,
-          const MemoryBufferRef &fR) :
-    ViewFile(std::move(vF)), ViewName(vN), Ordinal(vO), FileRef(fR), CFGs() {}
+  ObjectView(std::unique_ptr<ObjectFile> &vF, const StringRef &vN,
+             const uint32_t vO, const MemoryBufferRef &fR)
+      : ViewFile(std::move(vF)), ViewName(vN), Ordinal(vO), FileRef(fR),
+        CFGs() {}
 
-  void EraseCfg(ELFCFG *&cfgPtr);
+  void EraseCfg(ControlFlowGraph *&cfgPtr);
 
   std::unique_ptr<ObjectFile> ViewFile;
-  StringRef                   ViewName;
-  const uint32_t              Ordinal;
-  MemoryBufferRef             FileRef;
+  StringRef ViewName;
+  const uint32_t Ordinal;
+  MemoryBufferRef FileRef;
 
-  // Name -> ELFCFG mapping.
-  std::map<StringRef, std::unique_ptr<ELFCFG>> CFGs;
+  // Name -> ControlFlowGraph mapping.
+  std::map<StringRef, std::unique_ptr<ControlFlowGraph>> CFGs;
 };
 
-std::ostream &operator<<(std::ostream &out, const ELFCFGNode &node);
-std::ostream &operator<<(std::ostream &out, const ELFCFGEdge &edge);
-std::ostream &operator<<(std::ostream &out, const ELFCFG &cfg);
+std::ostream &operator<<(std::ostream &out, const CFGNode &node);
+std::ostream &operator<<(std::ostream &out, const CFGEdge &edge);
+std::ostream &operator<<(std::ostream &out, const ControlFlowGraph &cfg);
 }
 } // namespace lld
 #endif
