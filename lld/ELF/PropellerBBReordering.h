@@ -1,12 +1,10 @@
-//===- PropellerBBReordering.h ----------------------------------------------===//
-////
-//// Part of the LLVM Project, under the Apache License v2.0 with LLVM
-//Exceptions.
-//// See https://llvm.org/LICENSE.txt for license information.
-//// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-////
-////===----------------------------------------------------------------------===//
-
+//===- PropellerBBReordering.cpp  -----------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
@@ -38,33 +36,26 @@ enum MergeOrder {
 class NodeChain {
 public:
   // Representative node of the chain, with which it is initially constructed.
-  const ELFCFGNode *DelegateNode = nullptr;
+  const ELFCFGNode *DelegateNode;
   std::vector<const ELFCFGNode *> Nodes;
 
   // Total binary size of the chain
-  uint32_t Size = 0;
+  uint32_t Size;
 
   // Total execution frequency of the chain
-  uint64_t Freq = 0;
+  uint64_t Freq;
 
   // Extended TSP score of the chain
-  double Score = 0;
+  double Score;
 
   // Constructor for building a NodeChain from a single Node
-  NodeChain(const ELFCFGNode *Node) {
-    DelegateNode = Node;
-    Nodes.push_back(Node);
-    Size = Node->ShSize;
-    Freq = Node->Freq;
-  }
+  NodeChain(const ELFCFGNode *Node)
+      : DelegateNode(Node), Nodes(1, Node), Size(Node->ShSize),
+        Freq(Node->Freq) {}
 
   double execDensity() const {
     return ((double)Freq) / std::max(Size, (uint32_t)1);
   }
-
-  const ELFCFGNode *getFirstNode() const { return Nodes.front(); }
-
-  const ELFCFGNode *getLastNode() const { return Nodes.back(); }
 };
 
 // BB Chain builder based on the ExtTSP metric

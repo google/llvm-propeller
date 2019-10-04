@@ -7,7 +7,7 @@
 //// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ////
 ////===----------------------------------------------------------------------===//
-// This file is part of the Propeller infrastcture for doing code layout
+// This file is part of the Propeller infrastructure for doing code layout
 // optimization and includes the implementation of function reordering based on
 // the CallChainClustering algorithm as published in [1].
 //

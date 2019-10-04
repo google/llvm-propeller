@@ -6,10 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Propeller infrastcture for doing code layout
+// This file is part of the Propeller infrastructure for doing code layout
 // optimization and includes the implementation of intra-function basic block
-// reordering algorithm based on the Extended TSP metric
-// (https://arxiv.org/abs/1809.04676).
+// reordering algorithm based on the Extended TSP metric as described in [1].
 //
 // The Extend TSP metric (ExtTSP) provides a score for every ordering of basic
 // blocks in a function, by combining the gains from fall-throughs and short
@@ -22,12 +21,12 @@
 //
 // where frequency(e) is the execution frequency and weight(e) is computed as
 // follows:
-//   *  1 if distance(Src[e], Sink[e]) = 0 (i.e. fallthrough)
-//   *  0.1 * (1 - distance(Src[e], Sink[e]) / 1024) if Src[e] < Sink[e] and
-//   0 < distance(Src[e], Sink[e]) < 1024 (i.e. short forward jump)
-//   *  0.1 * (1 - distance(Src[e], Sink[e]) / 640) if Src[e] > Sink[e] and
-//   0 < distance(Src[e], Sink[e]) < 640 (i.e. short backward jump)
-//   *  0 otherwise
+//  * 1 if distance(Src[e], Sink[e]) = 0 (i.e. fallthrough)
+//  * 0.1 * (1 - distance(Src[e], Sink[e]) / 1024) if Src[e] < Sink[e] and 0 <
+//    distance(Src[e], Sink[e]) < 1024 (i.e. short forward jump)
+//  * 0.1 * (1 - distance(Src[e], Sink[e]) / 640) if Src[e] > Sink[e] and 0 <
+//    distance(Src[e], Sink[e]) < 640 (i.e. short backward jump)
+//  * 0 otherwise
 //
 // In short, it computes a weighted sum of frequencies of all edges in the
 // control flow graph. Each edge gets its weight depending on whether the given
@@ -60,24 +59,25 @@
 //
 // The values used by this algorithm are reconfiguriable using lld's propeller
 // flags. Specifically, these parameters are:
-//    * propeller-forward-jump-distance: maximum distance of a forward jump
-//    (default-set to 1024 in the above equation).
-//    * propeller-backward-jump-distance: maximum distance of a backward jump
-//    (default-set to 640 in the above equation).
-//    * propeller-fallthrough-weight: weight of a fallthrough (default-set to 1)
-//    * propeller-forward-jump-weight: weight of a forward jump (default-set to
-//    0.1)
-//    * propeller-backward-jump-weight: weight of a backward jump (default-set
-//    to 0.1)
-//    * propeller-chain-split-threshold: maximum binary size of a BB chain
-//    which the algorithm will consider for splitting (default-set to 128).
+//   * propeller-forward-jump-distance: maximum distance of a forward jump
+//     default-set to 1024 in the above equation).
+//   * propeller-backward-jump-distance: maximum distance of a backward jump
+//     (default-set to 640 in the above equation).
+//   * propeller-fallthrough-weight: weight of a fallthrough (default-set to 1)
+//   * propeller-forward-jump-weight: weight of a forward jump (default-set to
+//     0.1)
+//   * propeller-backward-jump-weight: weight of a backward jump (default-set to
+//     0.1)
+//   * propeller-chain-split-threshold: maximum binary size of a BB chain which
+//     the algorithm will consider for splitting (default-set to 128).
+//
+// [1] A. Newell and S. Pupyrev, Improved Basic Block Reordering, available at
+// https://arxiv.org/abs/1809.04676
 //===----------------------------------------------------------------------===//
 #include "PropellerBBReordering.h"
 
 #include "Config.h"
 #include "llvm/ADT/DenseSet.h"
-
-#include <stdio.h>
 
 #include <numeric>
 #include <vector>
@@ -117,16 +117,15 @@ double getEdgeExtTSPScore(const ELFCFGEdge *edge, bool isEdgeForward,
 // are placed at the beginning of the function.
 void NodeChainBuilder::sortChainsByExecutionDensity(
     std::vector<const NodeChain *> &chainOrder) {
-  for (auto CI = Chains.begin(), CE = Chains.end(); CI != CE; ++CI) {
-    chainOrder.push_back(CI->second.get());
-  }
+  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains)
+    chainOrder.push_back(elem.second.get());
 
   std::sort(
       chainOrder.begin(), chainOrder.end(),
       [this](const NodeChain *c1, const NodeChain *c2) {
-        if (c1->getFirstNode() == this->CFG->getEntryNode())
+        if (c1->Nodes.front() == this->CFG->getEntryNode())
           return true;
-        if (c2->getFirstNode() == this->CFG->getEntryNode())
+        if (c2->Nodes.front() == this->CFG->getEntryNode())
           return false;
         double c1ExecDensity = c1->execDensity();
         double c2ExecDensity = c2->execDensity();
@@ -189,9 +188,9 @@ bool NodeChainBuilder::attachNodes(const ELFCFGNode *src,
   if (srcChain == sinkChain)
     return false;
 
-  // It's only possible to form a fall-through between src and sink if src is
+  // It's possible to form a fall-through between src and sink only if
   // they are respectively located at the end and beginning of their chains.
-  if (srcChain->getLastNode() != src || sinkChain->getFirstNode() != sink)
+  if (srcChain->Nodes.back() != src || sinkChain->Nodes.front() != sink)
     return false;
   // Attaching is possible. So we merge the chains in the corresponding order.
   mergeChains(srcChain, sinkChain);
@@ -210,7 +209,7 @@ void NodeChainBuilder::mergeChains(
   // We merge the nodes into the SplitChain
   assembly->SplitChain->Nodes = std::move(newNodeOrder);
 
-  // Update nodeOffset and nodeToChainMap for all the nodes in the sequence.
+  // Update nodeOffsetMap and nodeToChainMap for all the nodes in the sequence.
   uint32_t runningOffset = 0;
   for (const ELFCFGNode *node : assembly->SplitChain->Nodes) {
     NodeToChainMap[node] = assembly->SplitChain;
@@ -299,8 +298,8 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   // Remove the assembly record
   NodeChainAssemblies.erase(std::make_pair(splitChain, unsplitChain));
 
-  // Only consider split the chain if the size of the chain is smaller than a
-  // treshold.
+  // Only consider splitting the chain if the size of the chain is smaller than
+  // a threshold.
   bool doSplit = (splitChain->Size <= config->propellerChainSplitThreshold);
   auto slicePosEnd =
       doSplit ? splitChain->Nodes.end() : std::next(splitChain->Nodes.begin());
@@ -328,8 +327,8 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
           splitChain, unsplitChain, slicePos, mOrder, this));
 
       ELFCFGNode *entryNode = CFG->getEntryNode();
-      if ((NCA->SplitChain->getFirstNode() == entryNode ||
-           NCA->UnsplitChain->getFirstNode() == entryNode) &&
+      if ((NCA->SplitChain->Nodes.front() == entryNode ||
+           NCA->UnsplitChain->Nodes.front() == entryNode) &&
           NCA->getFirstNode() != entryNode)
         continue;
       candidateNCAs.push_back(std::move(NCA));
@@ -337,11 +336,12 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   }
 
   // Insert the best assembly of the two chains (only if it has positive gain).
-  auto bestCandidate = std::max_element(
-      candidateNCAs.begin(), candidateNCAs.end(),
-      [](std::unique_ptr<NodeChainAssembly> &c1, std::unique_ptr<NodeChainAssembly> &c2) {
-        return c1->extTSPScoreGain() < c2->extTSPScoreGain();
-      });
+  auto bestCandidate =
+      std::max_element(candidateNCAs.begin(), candidateNCAs.end(),
+                       [](std::unique_ptr<NodeChainAssembly> &c1,
+                          std::unique_ptr<NodeChainAssembly> &c2) {
+                         return c1->extTSPScoreGain() < c2->extTSPScoreGain();
+                       });
 
   if (bestCandidate != candidateNCAs.end() &&
       (*bestCandidate)->extTSPScoreGain() > 0) {
@@ -440,8 +440,8 @@ void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
   DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
-  for (auto &c : Chains) {
-    NodeChain *chain = c.second.get();
+  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains){
+    NodeChain *chain = elem.second.get();
     chain->Score = computeExtTSPScore(chain);
     for (const ELFCFGNode *node : chain->Nodes) {
       for (const ELFCFGEdge *edge : node->Outs) {
@@ -555,9 +555,10 @@ double NodeChainBuilder::NodeChainAssembly::computeExtTSPScore() const {
   return score;
 }
 
-void NodeChainBuilder::doSplitOrder(std::list<StringRef> &symbolList,
-                                    std::list<StringRef>::iterator hotPlaceHolder,
-                                    std::list<StringRef>::iterator coldPlaceHolder) {
+void NodeChainBuilder::doSplitOrder(
+    std::list<StringRef> &symbolList,
+    std::list<StringRef>::iterator hotPlaceHolder,
+    std::list<StringRef>::iterator coldPlaceHolder) {
   std::vector<const NodeChain *> chainOrder;
   computeChainOrder(chainOrder);
 
