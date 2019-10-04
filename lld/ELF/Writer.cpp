@@ -1705,7 +1705,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
                  " fall through jumps\n");
     }
 
-    auto startOptBBJumpTime = system_clock::now();
+    //auto startOptBBJumpTime = system_clock::now();
     auto MaxIt = config->shrinkJumpsAggressively ? Sections.end() :
         std::max_element(Sections.begin(), Sections.end(),
                          [](InputSection * const s1, InputSection * const s2) {
@@ -1764,9 +1764,9 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       } while (AnyChanged);
     }
 
-  auto endOptBBJumpTime = system_clock::now();
-  duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
-  warn("[TIME](s) shrink bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
+  //auto endOptBBJumpTime = system_clock::now();
+  //duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+  //warn("[TIME](s) shrink bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
   }
 
   for (OutputSection *OS : outputSections) {
@@ -2122,11 +2122,11 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Relaxation to delete inter-basic block jumps created by basic block
   // sections.
-  auto startOptBBJumpTime = system_clock::now();
+  //auto startOptBBJumpTime = system_clock::now();
   optimizeBasicBlockJumps();
-  auto endOptBBJumpTime = system_clock::now();
-  duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
-  warn("[TIME](s) optimize bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
+  //auto endOptBBJumpTime = system_clock::now();
+  //duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+  //warn("[TIME](s) optimize bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
 
 
   // Fill other section headers. The dynamic table is finalized
