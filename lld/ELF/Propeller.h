@@ -192,10 +192,6 @@ public:
       : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream(),
         Prop(p) {}
 
-  inline bool openPropf() {
-    PropfStream.open(this->PropfName);
-    return PropfStream.good();
-  }
   // Check whether "outputFile" matches "@" directives in the propeller profile.
   bool matchesOutputFileName(const StringRef outputFile);
 
@@ -254,7 +250,7 @@ public:
     return sym;
   }
 
-  void reportProfError(const StringRef msg) const;
+  void reportParseError(StringRef msg) const;
 
   llvm::BumpPtrAllocator BPAllocator;
   llvm::UniqueStringSaver PropfileStrSaver;
@@ -276,18 +272,20 @@ public:
 
 class Propeller {
 public:
-  Propeller(lld::elf::SymbolTable *ST)
-      : Symtab(ST), Views(), CFGMap(), Propf(nullptr) {}
+  Propeller(lld::elf::SymbolTable *ST);
+  ~Propeller();
+      // : Symtab(ST), Views(), CFGMap(), Propf(nullptr) {}
 
-  bool checkPropellerTarget();
+  // Returns true if linker output target matches propeller profile.
+  bool checkTarget();
   bool processFiles(std::vector<lld::elf::InputFile *> &files);
   void processFile(const std::pair<elf::InputFile *, uint32_t> &pair);
   CFGNode *findCfgNode(uint64_t symbolOrdinal);
   void calculateNodeFreqs();
   std::vector<StringRef> genSymbolOrderingFile();
-  void calculatePropellerLegacy(std::list<StringRef> &SymList,
-                                std::list<StringRef>::iterator hotPlaceHolder,
-                                std::list<StringRef>::iterator coldPlaceHolder);
+  void calculateLegacy(std::list<StringRef> &SymList,
+                       std::list<StringRef>::iterator hotPlaceHolder,
+                       std::list<StringRef>::iterator coldPlaceHolder);
   template <class Visitor>
   void forEachCfgRef(Visitor v) {
     for (auto &p : CFGMap)
@@ -296,12 +294,7 @@ public:
 
   lld::elf::SymbolTable *Symtab;
 
-  // ObjectViewDeleter, which has its implementation in .cpp, saves us from
-  // having to have full ObjectView definition visibile here.
-  struct ObjectViewDeleter {
-    void operator()(ObjectView *v);
-  };
-  std::vector<std::unique_ptr<ObjectView, ObjectViewDeleter>> Views;
+  std::vector<std::unique_ptr<ObjectView>> Views;
   // Same named CFGs may exist in different object files (e.g. weak
   // symbols.)  We always choose symbols that appear earlier on the
   // command line.  Note: implementation is in the .cpp file, because
