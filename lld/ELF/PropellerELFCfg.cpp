@@ -15,17 +15,12 @@
 #include "Symbols.h"
 #include "SymbolTable.h"
 
-#include "llvm/Object/ObjectFile.h"
-// Needed by ELFSectionRef & ELFSymbolRef.
-#include "llvm/Object/ELFObjectFile.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Object/ELFObjectFile.h"  // For ELFSectionRef & ELFSymbolRef.
 
-#include <algorithm>
-#include <fstream>
-#include <iomanip>
+#include <algorithm>  // For std::copy_if, etc.
+#include <iomanip>    // For std::setfill, std::setw, etc.
 #include <map>
 #include <memory>
-#include <numeric>
 #include <ostream>
 #include <stdio.h>
 #include <string>
@@ -43,7 +38,7 @@ namespace propeller {
 bool ControlFlowGraph::writeAsDotGraph(const char *cfgOutName) {
   FILE *fp = fopen(cfgOutName, "w");
   if (!fp) {
-    warn("[Propeller]: Failed to open: '" + StringRef(cfgOutName) + "'\n");
+    warn("failed to open: '" + StringRef(cfgOutName) + "'");
     return false;
   }
   fprintf(fp, "digraph %s {\n", Name.str().c_str());
@@ -58,8 +53,8 @@ bool ControlFlowGraph::writeAsDotGraph(const char *cfgOutName) {
   }
   fprintf(fp, "}\n");
   fclose(fp);
-  llvm::outs() << "[Propeller]: Done dumping cfg '" << Name.str() << "' into '"
-               << cfgOutName << "'.\n";
+  llvm::outs() << "done dumping cfg '" << Name.str() << "' into '"
+               << cfgOutName << "'\n";
   return true;
 }
 
@@ -79,7 +74,7 @@ CFGEdge *ControlFlowGraph::createEdge(CFGNode *from, CFGNode *to,
   return edge;
 }
 
-// Apply counter (CNT) to all edges between node from -> to. Both nodes are from
+// Apply counter (cnt) to all edges between node from -> to. Both nodes are from
 // the same cfg.
 bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
   if (from == nullptr) {
@@ -137,7 +132,7 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
   return true;
 }
 
-// Apply counter (CNT) to the edge from node from -> to. Both nodes are from the
+// Apply counter (cnt) to the edge from node from -> to. Both nodes are from the
 // same cfg.
 void ControlFlowGraph::mapBranch(CFGNode *from, CFGNode *to, uint64_t cnt,
                        bool isCall, bool isReturn) {
@@ -168,7 +163,7 @@ void ControlFlowGraph::mapBranch(CFGNode *from, CFGNode *to, uint64_t cnt,
   createEdge(from, to, type)->Weight += cnt;
 }
 
-// Apply counter (CNT) for calls/returns/ that cross function boundaries.
+// Apply counter (cnt) for calls/returns/ that cross function boundaries.
 void ControlFlowGraph::mapCallOut(CFGNode *from, CFGNode *to, uint64_t toAddr,
                         uint64_t cnt, bool isCall, bool isReturn) {
   assert(from->CFG == this);
@@ -306,9 +301,9 @@ bool CFGBuilder::buildCFGs() {
       if (groupShndx != 0 && T.second->Shndx == groupShndx) {
         cfg.reset(nullptr);
         tmpNodeMap.clear();
-        warn("[Propeller]: Basicblock sections must not have same section "
-             "index, this is usually caused by -fbasicblock-sections=labels. "
-             "Use -fbasicblock-sections=list/all instead.");
+        warn("basicblock sections must not have same section index, this is "
+             "usually caused by -fbasicblock-sections=labels. "
+             "Use -fbasicblock-sections=list/all instead");
         return false;
       }
       groupShndx = T.second->Shndx;

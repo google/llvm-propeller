@@ -4,4 +4,4 @@
 # RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: not ld.lld -propeller=%S/Inputs/bad-propeller-1.data %t.o -o %t.out 2>&1 | FileCheck %s --check-prefix=CHECK
 
-# CHECK: Invalid ordinal field.
+# CHECK: invalid ordinal field

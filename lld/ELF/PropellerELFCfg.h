@@ -37,7 +37,6 @@
 #include <map>
 #include <memory>
 #include <ostream>
-#include <set>
 #include <vector>
 
 using llvm::object::ObjectFile;
@@ -51,6 +50,7 @@ class ObjectView;
 class CFGNode;
 class ControlFlowGraph;
 
+// All instances of CFGEdge are owned by their CFG.
 class CFGEdge {
 public:
   CFGNode *Src;
@@ -60,10 +60,11 @@ public:
   // calls do not split basic blocks and do not introduce new edges.)
   enum EdgeType : char {
     INTRA_FUNC = 0,
-    INTRA_RSC,
-    INTRA_RSR,
+    INTRA_RSC,  // Recursive call.
+    INTRA_RSR,  // Return from recursive call.
     // Intra edge dynamically created because of indirect jump, etc.
     INTRA_DYNA,
+    // Inter function jumps / calls.
     INTER_FUNC_CALL,
     INTER_FUNC_RETURN,
   } Type{INTRA_FUNC};
@@ -75,11 +76,15 @@ protected:
   friend class ControlFlowGraph;
 };
 
+// All instances of CFGNode are owned by their CFG.
 class CFGNode {
 public:
   uint64_t Shndx;
   StringRef ShName;
   uint64_t ShSize;
+  // Note, "MappedAddr"s are not real/virtual addresses, they are ordinals from
+  // the propeller file. However, ordinals from propeller do reflect the true
+  // orders of symbol address.
   uint64_t MappedAddr;
   uint64_t Freq;
   ControlFlowGraph *CFG;

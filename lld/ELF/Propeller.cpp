@@ -35,13 +35,10 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <chrono>
-#include <cstdio>
 #include <fstream>
-#include <functional>
 #include <list>
 #include <map>
-#include <numeric>
+#include <numeric>  // For std::accumulate.
 #include <tuple>
 #include <vector>
 

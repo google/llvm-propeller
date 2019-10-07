@@ -114,7 +114,6 @@
 #include <memory>
 #include <mutex>
 #include <set>
-#include <tuple>
 #include <vector>
 
 namespace lld {

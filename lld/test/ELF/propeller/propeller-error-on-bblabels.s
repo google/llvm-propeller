@@ -4,7 +4,7 @@
 # RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: ld.lld -propeller=%S/Inputs/propeller.data %t.o -o %t.out 2>&1 | FileCheck %s --check-prefix=CHECK
 
-# CHECK: Basicblock sections must not have same section index
+# CHECK: basicblock sections must not have same section index
 
 	.text
 	.globl	compute_flag
