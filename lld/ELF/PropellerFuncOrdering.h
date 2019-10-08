@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 //===- PropellerFuncReordering.cpp ----------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -5,6 +6,18 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+=======
+//===- PropellerFuncReordering.h
+//--------------------------------------------===//
+////
+//// Part of the LLVM Project, under the Apache License v2.0 with LLVM
+// Exceptions.
+//// See https://llvm.org/LICENSE.txt for license information.
+//// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+////
+////===--------------------------------------------------------------------===//
+
+>>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 #ifndef LLD_ELF_PROPELLER_FUNC_ORDERING_H
 #define LLD_ELF_PROPELLER_FUNC_ORDERING_H
 
@@ -17,15 +30,15 @@
 namespace lld {
 namespace propeller {
 
-class ELFCFG;
+class ControlFlowGraph;
 
 class CallChainClustering {
 public:
   class Cluster {
   public:
-    Cluster(ELFCFG *cfg, unsigned);
+    Cluster(ControlFlowGraph *cfg, unsigned);
     // All cfgs in this cluster
-    std::vector<ELFCFG *> CFGs;
+    std::vector<ControlFlowGraph *> CFGs;
     // Unique id associated with the cluster
     unsigned Id;
     // Total binary size of this cluster (only the hot part if using
@@ -50,18 +63,19 @@ public:
 
   void init(Propeller &propeller);
 
-  unsigned doOrder(std::list<ELFCFG *> &cfgOrder);
+  unsigned doOrder(std::list<ControlFlowGraph *> &cfgOrder);
 
 private:
   unsigned ClusterCount = 0;
 
-  ELFCFG *getMostLikelyPredecessor(ELFCFG *cfg, Cluster *cluster);
+  ControlFlowGraph *getMostLikelyPredecessor(ControlFlowGraph *cfg,
+                                             Cluster *cluster);
 
   void mergeClusters();
   void sortClusters(std::vector<Cluster *> &);
 
-  std::vector<ELFCFG *> HotCFGs, ColdCFGs;
-  std::map<ELFCFG *, Cluster *> CFGToClusterMap;
+  std::vector<ControlFlowGraph *> HotCFGs, ColdCFGs;
+  std::map<ControlFlowGraph *, Cluster *> CFGToClusterMap;
   std::map<unsigned, std::unique_ptr<Cluster>> Clusters;
 };
 

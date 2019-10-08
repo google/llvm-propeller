@@ -6,8 +6,13 @@
 //// See https://llvm.org/LICENSE.txt for license information.
 //// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ////
+<<<<<<< HEAD
 ////===----------------------------------------------------------------------===//
 // This file is part of the Propeller infrastructure for doing code layout
+=======
+////===--------------------------------------------------------------------===//
+// This file is part of the Propeller infrastcture for doing code layout
+>>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 // optimization and includes the implementation of function reordering based on
 // the CallChainClustering algorithm as published in [1].
 //
@@ -43,17 +48,18 @@ const unsigned ClusterMergeSizeThreshold = 1 << 21;
 // of cfgs based on the address of their corresponding functions in the original
 // binary.
 void CallChainClustering::init(Propeller &propeller) {
-  propeller.forEachCfgRef([this](ELFCFG &cfg) {
+  propeller.forEachCfgRef([this](ControlFlowGraph &cfg) {
     if (cfg.isHot())
       this->HotCFGs.push_back(&cfg);
     else
       this->ColdCFGs.push_back(&cfg);
   });
 
-  auto cfgComparator = [](ELFCFG *cfg1, ELFCFG *cfg2) -> bool {
+  auto cfgComparator = [](ControlFlowGraph *cfg1,
+                          ControlFlowGraph *cfg2) -> bool {
     return cfg1->getEntryNode()->MappedAddr < cfg2->getEntryNode()->MappedAddr;
   };
-  auto sortCFGs = [&cfgComparator](std::vector<ELFCFG *> &cfgs) {
+  auto sortCFGs = [&cfgComparator](std::vector<ControlFlowGraph *> &cfgs) {
     std::sort(cfgs.begin(), cfgs.end(), cfgComparator);
   };
   sortCFGs(HotCFGs);
@@ -62,21 +68,22 @@ void CallChainClustering::init(Propeller &propeller) {
 
 // Initialize a cluster containing a single cfg an associates it with a unique
 // id.
-CallChainClustering::Cluster::Cluster(ELFCFG *cfg, unsigned id)
+CallChainClustering::Cluster::Cluster(ControlFlowGraph *cfg, unsigned id)
     : CFGs(1, cfg), Id(id) {}
 
 // Returns the most frequent caller of a function. This function also gets as
 // the second parameter the cluster containing this function to save a lookup
 // into the CFGToClusterMap.
-ELFCFG *CallChainClustering::getMostLikelyPredecessor(ELFCFG *cfg,
-                                                      Cluster *cluster) {
-  ELFCFGNode *entry = cfg->getEntryNode();
+ControlFlowGraph *
+CallChainClustering::getMostLikelyPredecessor(ControlFlowGraph *cfg,
+                                              Cluster *cluster) {
+  CFGNode *entry = cfg->getEntryNode();
   if (!entry)
     return nullptr;
-  ELFCFGEdge *bestCallIn = nullptr;
+  CFGEdge *bestCallIn = nullptr;
 
   // Iterate over all callers of the entry basic block of the function.
-  for (ELFCFGEdge *callIn : entry->CallIns) {
+  for (CFGEdge *callIn : entry->CallIns) {
     auto *caller = callIn->Src->CFG;
     auto *callerCluster = CFGToClusterMap[caller];
     assert(caller->isHot());
@@ -105,11 +112,11 @@ ELFCFG *CallChainClustering::getMostLikelyPredecessor(ELFCFG *cfg,
 void CallChainClustering::mergeClusters() {
   // Build a map for the execution density of each cfg. This value will depend
   // on whether function-splitting is used or not.
-  std::map<ELFCFG *, double> cfgWeightMap;
-  for (ELFCFG *cfg : HotCFGs) {
+  std::map<ControlFlowGraph *, double> cfgWeightMap;
+  for (ControlFlowGraph *cfg : HotCFGs) {
     uint64_t cfgWeight = 0;
     uint64_t cfgSize = 0;
-    cfg->forEachNodeRef([&cfgSize, &cfgWeight](ELFCFGNode &n) {
+    cfg->forEachNodeRef([&cfgSize, &cfgWeight](CFGNode &n) {
       cfgWeight += n.Freq * n.ShSize;
       if (!config->propellerSplitFuncs || n.Freq)
         cfgSize += n.ShSize;
@@ -124,12 +131,13 @@ void CallChainClustering::mergeClusters() {
   }
 
   // Sort the hot cfgs in decreasing order of their execution density.
-  std::stable_sort(HotCFGs.begin(), HotCFGs.end(),
-                   [&cfgWeightMap](ELFCFG *cfg1, ELFCFG *cfg2) {
-                     return cfgWeightMap[cfg1] > cfgWeightMap[cfg2];
-                   });
+  std::stable_sort(
+      HotCFGs.begin(), HotCFGs.end(),
+      [&cfgWeightMap](ControlFlowGraph *cfg1, ControlFlowGraph *cfg2) {
+        return cfgWeightMap[cfg1] > cfgWeightMap[cfg2];
+      });
 
-  for (ELFCFG *cfg : HotCFGs) {
+  for (ControlFlowGraph *cfg : HotCFGs) {
     if (cfgWeightMap[cfg] <= 0.005)
       break;
     auto *cluster = CFGToClusterMap[cfg];
@@ -139,7 +147,7 @@ void CallChainClustering::mergeClusters() {
       continue;
     assert(cluster);
 
-    ELFCFG *predecessorCfg = getMostLikelyPredecessor(cfg, cluster);
+    ControlFlowGraph *predecessorCfg = getMostLikelyPredecessor(cfg, cluster);
     if (!predecessorCfg)
       continue;
     auto *predecessorCluster = CFGToClusterMap[predecessorCfg];
@@ -151,7 +159,7 @@ void CallChainClustering::mergeClusters() {
 
     // Update cfg to cluster mapping, because all cfgs that were
     // previsously in cluster are now in predecessorCluster.
-    for (ELFCFG *cfg : cluster->CFGs) {
+    for (ControlFlowGraph *cfg : cluster->CFGs) {
       CFGToClusterMap[cfg] = predecessorCluster;
     }
 
@@ -178,7 +186,7 @@ void CallChainClustering::sortClusters(std::vector<Cluster *> &clusterOrder) {
 // This function performs CallChainClustering on all cfgs and then orders all
 // the built clusters based on their execution density. It places all cold
 // functions after hot functions and returns the number of hot functions.
-unsigned CallChainClustering::doOrder(std::list<ELFCFG *> &cfgOrder) {
+unsigned CallChainClustering::doOrder(std::list<ControlFlowGraph *> &cfgOrder) {
   mergeClusters();
   std::vector<Cluster *> clusterOrder;
   sortClusters(clusterOrder);

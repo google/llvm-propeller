@@ -4,3 +4,4 @@
 !plotool.sh
 !sample.c
 !generate-lld-*-patch.sh
+!generate-lld-patch.inc

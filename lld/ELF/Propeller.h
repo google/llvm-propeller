@@ -11,6 +11,38 @@
 // Propeller is framework that, with the aid of embedded information
 // in ELF obejct files, does optimization at the linking phase.
 //
+// B. How (current) propeller works.
+//
+// [The compiler part]
+//
+// Each basicblock is represented using a standalone elf section.
+//
+// [The profile part]
+// 
+// A propeller-format profile ('propfile') is generated, which
+// contains counters for jumps/calls/returns of each bb.
+//
+// [The lld part]
+//
+// LLD handles execution to propeller (Propeller.h is the interface
+// that works with lld), which does a few things for each ELF object
+// file:
+//
+//   (1). generates control flow graph (CFG) for each function, this
+//   is possible because each basicblock section resides in a single
+//   elf section and we use relocation entries to determine jump/call
+//   targets of each basicblock section
+//
+//   (2). parses propfile (the propeller-format profile), apply
+//   basicblock counters, edge counters to CFGs
+//
+//   (3). passes information in (2) to BBReordering and
+//   FunctionOrdering pass, which generates list of optimal basicblock
+//   symbol ordering
+//
+//   (4). Propeller feeds the list (generated in (3)) back to lld, and
+//   lld continues to work as usual.
+//
 // Some misconections:
 //
 // * Propeller only works on top of ThinLTO (regular PGO, csPGO,
@@ -32,39 +64,7 @@
 // -fbasicblock-sections, which is an extension of
 // -ffunction-sections.
 //
-// B. How (current) propeller works.
-//
-// [The compiler part]
-//
-// Each basicblock is represented using a standalone elf section.
-//
-// [The profile part]
-// 
-// A propeller-format profile ('propfile') is generated, which
-// contains counters for jumps/calls/returns of each bb.
-//
-// [The lld part]
-//
-// LLD handles execution to propelle (Propeller.h is the interface
-// that works with lld), which does a few things for each ELF object
-// file:
-//
-//   (1). generates control flow graph (CFG) for each function, this
-//   is possible because each basicblock section resides in a single
-//   elf section and we use relocation entries to determine jump/call
-//   targets of each basicblock section
-//
-//   (2). parses propfile (the propeller-format profile), apply
-//   basicblock counters, edge counters to CFGs
-//
-//   (3). passes information in (2) to BBReordering and
-//   FunctionOrdering pass, which generates list of optimal basicblock
-//   symbol ordering
-//
-//   (4). Propeller feeds the list (generated in (3)) back to lld, and
-//   lld continues to work as usual.
-//
-// ==================================================================
+// =========================================================================
 //
 // Propeller.h defines Propeller framework classes:
 //
@@ -76,7 +76,7 @@
 // (Propeller::checkPropellerTarget), then it enters
 // Propeller::processFiles(), which builds control flow graph (CFG)
 // for each valid ELF object file (Propeller::processFile ->
-// ELFCFGBuilder::buildCFGs).
+// CFGBuilder::buildCFGs).
 //
 // After control flow graphs are build, Propeller starts parsing
 // Propeller profile (the Propfile class). In this step, basicblock
@@ -114,7 +114,6 @@
 #include <memory>
 #include <mutex>
 #include <set>
-#include <tuple>
 #include <vector>
 
 namespace lld {
@@ -124,10 +123,10 @@ class SymbolTable;
 
 namespace propeller {
 
-class ELFCFG;
-class ELFCFGEdge;
-class ELFCFGNode;
-class ELFView;
+class ControlFlowGraph;
+class CFGEdge;
+class CFGNode;
+class ObjectView;
 class Propeller;
 
 // Propeller profile parser.
@@ -167,10 +166,10 @@ class Propeller;
 //              everything after N is the symbol name. In the latter case, it's
 //              in the form of "a.b", "a" is a symbol index, "b" is the bb
 //              identification string (could be an index number). For the above
-//              example, name "14.2" means "main.bb.2", because "14" points to
+//              example, name "11.2" means "main.bb.2", because "11" points to
 //              symbol main. Also note, symbols could have aliases, in such
 //              case, aliases are concatenated with the original name with a
-//              '/'. For example, symbol 17391 contains 2 aliases.
+//              '/'. For example, symbol 19 contains 2 aliases.
 // Note, the symbols listed are in strict non-decreasing address order.
 //
 // Each line in "Branches" section contains the following field:
@@ -189,18 +188,25 @@ class Propeller;
 class Propfile {
 public:
   Propfile(Propeller &p, const std::string &pName)
-      : BPAllocator(), PropfileStrSaver(BPAllocator), PropfName(pName),
-        PropfStream(), Prop(p), SymbolOrdinalMap() {}
+      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream(),
+        Prop(p) {}
 
-  bool openPropf() {
-    this->PropfStream.open(this->PropfName);
-    return this->PropfStream.good();
-  }
-  bool matchesOutputFileName(const StringRef &outputFile);
+  // Check whether "outputFile" matches "@" directives in the propeller profile.
+  bool matchesOutputFileName(const StringRef outputFile);
+
+  // Read "Symbols" sections in the propeller profile and create
+  // SymbolOrdinalMap and SymbolNameMap.
   bool readSymbols();
   SymbolEntry *findSymbol(StringRef symName);
   bool processProfile();
 
+  // For each function symbol line defintion, this function creates a
+  // SymbolEntry instance and places it in SymbolOrdinalMap and SymbolNameMap.
+  // Function symbol defintion line is like below. (See comments at the head of
+  // the file)
+  //    11     7c     Nmain/alias1/alias2
+  //    ^^     ^^      ^^
+  //  Ordinal  Size    Name and aliases
   SymbolEntry *createFunctionSymbol(uint64_t ordinal, const StringRef &name,
                                     SymbolEntry::AliasesTy &&aliases,
                                     uint64_t size) {
@@ -210,9 +216,8 @@ public:
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
-    for (auto &a: sym->Aliases) {
+    for (auto &a: sym->Aliases)
       SymbolNameMap[a][""] = sym;
-    }
 
     if (sym->Aliases.size() > 1)
       FunctionsWithAliases.push_back(sym);
@@ -220,6 +225,13 @@ public:
     return sym;
   }
 
+  // For each bb symbol line defintion, this function creates a
+  // SymbolEntry instance and places it in SymbolOrdinalMap and SymbolNameMap.
+  // Function symbol defintion line is like below. (See comments at the head of
+  // the file)
+  //    12     f      11.1
+  //    ^^     ^      ^^^^
+  //  Ordinal  Size   func_ordinal.bb_index
   SymbolEntry *createBasicBlockSymbol(uint64_t ordinal, SymbolEntry *function,
                                       StringRef &bBIndex, uint64_t size) {
     // bBIndex is of the form "1", "2", it's a stringref to integer.
@@ -237,11 +249,14 @@ public:
     return sym;
   }
 
+  void reportParseError(StringRef msg) const;
+
   llvm::BumpPtrAllocator BPAllocator;
   llvm::UniqueStringSaver PropfileStrSaver;
   std::string PropfName;
   std::ifstream PropfStream;
   Propeller &Prop;
+  // Ordial -> SymbolEntry map. This also owns SymbolEntry instances.
   std::map<uint64_t, std::unique_ptr<SymbolEntry>> SymbolOrdinalMap;
   // SymbolNameMap is ordered in the following way:
   //   SymbolNameMap[foo][""] = functionSymbol;
@@ -252,23 +267,24 @@ public:
   std::vector<SymbolEntry *> FunctionsWithAliases;
   uint64_t LineNo;
   char LineTag;
-  char *LineBuf;
 };
 
 class Propeller {
 public:
-  Propeller(lld::elf::SymbolTable *ST)
-      : Symtab(ST), Views(), CFGMap(), Propf(nullptr) {}
+  Propeller(lld::elf::SymbolTable *ST);
+  ~Propeller();
+      // : Symtab(ST), Views(), CFGMap(), Propf(nullptr) {}
 
-  bool checkPropellerTarget();
+  // Returns true if linker output target matches propeller profile.
+  bool checkTarget();
   bool processFiles(std::vector<lld::elf::InputFile *> &files);
   void processFile(const std::pair<elf::InputFile *, uint32_t> &pair);
-  ELFCFGNode *findCfgNode(uint64_t symbolOrdinal);
+  CFGNode *findCfgNode(uint64_t symbolOrdinal);
   void calculateNodeFreqs();
   std::vector<StringRef> genSymbolOrderingFile();
-  void calculatePropellerLegacy(std::list<StringRef> &SymList,
-                                std::list<StringRef>::iterator hotPlaceHolder,
-                                std::list<StringRef>::iterator coldPlaceHolder);
+  void calculateLegacy(std::list<StringRef> &SymList,
+                       std::list<StringRef>::iterator hotPlaceHolder,
+                       std::list<StringRef>::iterator coldPlaceHolder);
   template <class Visitor>
   void forEachCfgRef(Visitor v) {
     for (auto &p : CFGMap)
@@ -277,21 +293,17 @@ public:
 
   lld::elf::SymbolTable *Symtab;
 
-  // ELFViewDeleter, which has its implementation in .cpp, saves us from having
-  // to have full ELFView definition visibile here.
-  struct ELFViewDeleter {
-    void operator()(ELFView *v);
-  };
-  std::vector<std::unique_ptr<ELFView, ELFViewDeleter>> Views;
+  std::vector<std::unique_ptr<ObjectView>> Views;
   // Same named CFGs may exist in different object files (e.g. weak
   // symbols.)  We always choose symbols that appear earlier on the
   // command line.  Note: implementation is in the .cpp file, because
-  // ELFCFG here is an incomplete type.
-  struct ELFViewOrdinalComparator {
-    bool operator()(const ELFCFG *a, const ELFCFG *b) const;
+  // ControlFlowGraph here is an incomplete type.
+  struct ObjectViewOrdinalComparator {
+    bool operator()(const ControlFlowGraph *a, const ControlFlowGraph *b) const;
   };
   using CfgMapTy =
-      std::map<StringRef, std::set<ELFCFG *, ELFViewOrdinalComparator>>;
+      std::map<StringRef,
+               std::set<ControlFlowGraph *, ObjectViewOrdinalComparator>>;
   CfgMapTy CFGMap;
   std::unique_ptr<Propfile> Propf;
   uint32_t ProcessFailureCount; // Number of files that are not processed by

@@ -1975,7 +1975,7 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
 
   if (!config->propeller.empty()) {
     lld::propeller::Propeller P(symtab);
-    if (P.checkPropellerTarget()) {
+    if (P.checkTarget()) {
       if (P.processFiles(objectFiles)) {
         config->symbolOrderingFile = P.genSymbolOrderingFile();
       } else {

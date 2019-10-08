@@ -36,8 +36,13 @@ enum MergeOrder {
 class NodeChain {
 public:
   // Representative node of the chain, with which it is initially constructed.
+<<<<<<< HEAD
   const ELFCFGNode *DelegateNode;
   std::vector<const ELFCFGNode *> Nodes;
+=======
+  const CFGNode *DelegateNode = nullptr;
+  std::vector<const CFGNode *> Nodes;
+>>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 
   // Total binary size of the chain
   uint32_t Size;
@@ -49,13 +54,29 @@ public:
   double Score;
 
   // Constructor for building a NodeChain from a single Node
+<<<<<<< HEAD
   NodeChain(const ELFCFGNode *Node)
       : DelegateNode(Node), Nodes(1, Node), Size(Node->ShSize),
         Freq(Node->Freq) {}
+=======
+  NodeChain(const CFGNode *Node) {
+    DelegateNode = Node;
+    Nodes.push_back(Node);
+    Size = Node->ShSize;
+    Freq = Node->Freq;
+  }
+>>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 
   double execDensity() const {
     return ((double)Freq) / std::max(Size, (uint32_t)1);
   }
+<<<<<<< HEAD
+=======
+
+  const CFGNode *getFirstNode() const { return Nodes.front(); }
+
+  const CFGNode *getLastNode() const { return Nodes.back(); }
+>>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 };
 
 // BB Chain builder based on the ExtTSP metric
@@ -65,7 +86,7 @@ private:
   class NodeChainSlice;
 
   // Cfg representing a single function.
-  const ELFCFG *CFG;
+  const ControlFlowGraph *CFG;
 
   // Set of built chains, keyed by section index of their Delegate Nodes.
   DenseMap<uint64_t, std::unique_ptr<NodeChain>> Chains;
@@ -73,18 +94,18 @@ private:
   // Map from every node to its containing chain.
   // This map will be updated as chains keep merging together during the
   // algorithm.
-  DenseMap<const ELFCFGNode *, NodeChain *> NodeToChainMap;
+  DenseMap<const CFGNode *, NodeChain *> NodeToChainMap;
 
   // Map from every node to its (binary) offset in its containing chain.
   // This map will be updated as chains keep merging together during the
   // algorithm.
-  DenseMap<const ELFCFGNode *, uint32_t> NodeOffsetMap;
+  DenseMap<const CFGNode *, uint32_t> NodeOffsetMap;
 
   // These represent all the edges which are -- based on the profile -- the only
   // (executed) outgoing edges from their source node and the only (executed)
   // incoming edges to their sink nodes. The algorithm will make sure that these
   // edges form fall-throughs in the final order.
-  DenseMap<const ELFCFGNode *, ELFCFGNode *> MutuallyForcedOut;
+  DenseMap<const CFGNode *, CFGNode *> MutuallyForcedOut;
 
   // This maps every (ordered) pair of chains (with the first chain in the pair
   // potentially splittable) to the highest-gain NodeChainAssembly for those
@@ -110,7 +131,7 @@ private:
   // This function tries to place two nodes immediately adjacent to
   // each other (used for fallthroughs).
   // Returns true if this can be done.
-  bool attachNodes(const ELFCFGNode *src, const ELFCFGNode *sink);
+  bool attachNodes(const CFGNode *src, const CFGNode *sink);
 
   void mergeChainEdges(NodeChain *splitChain, NodeChain *unSplitChain);
 
@@ -132,14 +153,14 @@ private:
   // Initialize basic block chains, with one chain for every node
   void initNodeChains();
 
-  uint32_t getNodeOffset(const ELFCFGNode *node) const {
+  uint32_t getNodeOffset(const CFGNode *node) const {
     auto it = NodeOffsetMap.find(node);
     assert("Node does not exist in the offset map." &&
            it != NodeOffsetMap.end());
     return it->second;
   }
 
-  NodeChain *getNodeChain(const ELFCFGNode *node) const {
+  NodeChain *getNodeChain(const CFGNode *node) const {
     auto it = NodeToChainMap.find(node);
     assert("Node does not exist in the chain map." &&
            it != NodeToChainMap.end());
@@ -147,7 +168,7 @@ private:
   }
 
 public:
-  NodeChainBuilder(const ELFCFG *_CFG) : CFG(_CFG) {
+  NodeChainBuilder(const ControlFlowGraph *_CFG) : CFG(_CFG) {
     initNodeChains();
     initMutuallyForcedEdges();
   }
@@ -169,15 +190,15 @@ private:
   NodeChain *Chain;
 
   // The endpoints of the slice in the corresponding chain
-  std::vector<const ELFCFGNode *>::iterator Begin, End;
+  std::vector<const CFGNode *>::iterator Begin, End;
 
   // The offsets corresponding to the two endpoints
   uint32_t BeginOffset, EndOffset;
 
   // Constructor for building a chain slice from a given chain and the two
   // endpoints of the chain.
-  NodeChainSlice(NodeChain *c, std::vector<const ELFCFGNode *>::iterator begin,
-                 std::vector<const ELFCFGNode *>::iterator end,
+  NodeChainSlice(NodeChain *c, std::vector<const CFGNode *>::iterator begin,
+                 std::vector<const CFGNode *>::iterator end,
                  const NodeChainBuilder &chainBuilder)
       : Chain(c), Begin(begin), End(end) {
 
@@ -210,13 +231,13 @@ private:
   NodeChain *SplitChain, *UnsplitChain;
 
   // The slice position of Splitchain
-  std::vector<const ELFCFGNode *>::iterator SlicePosition;
+  std::vector<const CFGNode *>::iterator SlicePosition;
 
   // The three chain slices
   std::vector<NodeChainSlice> Slices;
 
   NodeChainAssembly(NodeChain *chainX, NodeChain *chainY,
-                    std::vector<const ELFCFGNode *>::iterator slicePosition,
+                    std::vector<const CFGNode *>::iterator slicePosition,
                     MergeOrder mergeOrder, const NodeChainBuilder *chainBuilder)
       : ChainBuilder(chainBuilder), SplitChain(chainX), UnsplitChain(chainY),
         SlicePosition(slicePosition) {
@@ -264,7 +285,7 @@ private:
   // node. If the node is not contained in this NodeChainAssembly, then return
   // false. Otherwise, set idx equal to the index of the corresponding slice and
   // return true.
-  bool findSliceIndex(const ELFCFGNode *node, uint8_t &idx) const {
+  bool findSliceIndex(const CFGNode *node, uint8_t &idx) const {
     // First find the chain containing the given node.
     NodeChain *chain = ChainBuilder->getNodeChain(node);
 
@@ -323,7 +344,7 @@ private:
   double computeExtTSPScore() const;
 
   // First node in the resulting assembled chain.
-  const ELFCFGNode *getFirstNode() const {
+  const CFGNode *getFirstNode() const {
     for (auto &slice : Slices)
       if (slice.Begin != slice.End)
         return *slice.Begin;
