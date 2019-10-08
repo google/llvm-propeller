@@ -10,7 +10,7 @@
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
-#include "PropellerELFCfg.h"
+#include "PropellerCfg.h"
 
 #include "lld/Common/LLVM.h"
 #include "llvm/ADT/DenseMap.h"

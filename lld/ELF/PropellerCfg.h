@@ -26,8 +26,9 @@
 //   markPath - apply counter to all nodes/edges betwee A and B, A and B belong
 //              to same func
 //===----------------------------------------------------------------------===//
-#ifndef LLD_ELF_PROPELLER_ELF_CFG_H
-#define LLD_ELF_PROPELLER_ELF_CFG_H
+
+#ifndef LLD_ELF_PROPELLER_CFG_H
+#define LLD_ELF_PROPELLER_CFG_H
 
 #include "Propeller.h"
 
@@ -59,15 +60,15 @@ public:
   // Whether it's an edge introduced by recursive-self-call.  (Usually
   // calls do not split basic blocks and do not introduce new edges.)
   enum EdgeType : char {
-    INTRA_FUNC = 0,
-    INTRA_RSC,  // Recursive call.
-    INTRA_RSR,  // Return from recursive call.
+    INTRA_FUNC,
+    INTRA_RSC, // Recursive call.
+    INTRA_RSR, // Return from recursive call.
     // Intra edge dynamically created because of indirect jump, etc.
     INTRA_DYNA,
     // Inter function jumps / calls.
     INTER_FUNC_CALL,
     INTER_FUNC_RETURN,
-  } Type{INTRA_FUNC};
+  } Type = INTRA_FUNC;
 
 protected:
   CFGEdge(CFGNode *N1, CFGNode *N2, EdgeType T)
@@ -97,14 +98,13 @@ public:
   // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
   CFGEdge *FTEdge;
 
-  const static uint64_t InvalidAddress = -1l;
+  const static uint64_t InvalidAddress = -1;
 
   unsigned getBBIndex() {
     StringRef FName, BName;
     if (SymbolEntry::isBBSymbol(ShName, &FName, &BName))
       return BName.size();
-    else
-      return 0;
+    return 0;
   }
 
 private:
@@ -154,7 +154,7 @@ public:
       V(*N);
   }
 
-  bool writeAsDotGraph(const char *cfgOutName);
+  bool writeAsDotGraph(StringRef cfgOutName);
 
 private:
   // Create and take ownership.
@@ -176,9 +176,9 @@ public:
   Propeller *Prop;
   ObjectView *View;
 
-  uint32_t BB{0};
-  uint32_t BBWoutAddr{0};
-  uint32_t InvalidCFGs{0};
+  uint32_t BB = 0;
+  uint32_t BBWoutAddr = 0;
+  uint32_t InvalidCFGs = 0;
 
   CFGBuilder(Propeller &prop, ObjectView *vw) : Prop(&prop), View(vw) {}
 
@@ -230,6 +230,6 @@ public:
 std::ostream &operator<<(std::ostream &out, const CFGNode &node);
 std::ostream &operator<<(std::ostream &out, const CFGEdge &edge);
 std::ostream &operator<<(std::ostream &out, const ControlFlowGraph &cfg);
-}
+} // namespace propeller
 } // namespace lld
 #endif

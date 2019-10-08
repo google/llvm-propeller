@@ -26,7 +26,7 @@
 
 #include "Config.h"
 #include "Propeller.h"
-#include "PropellerELFCfg.h"
+#include "PropellerCfg.h"
 
 #include <algorithm>
 #include <map>
