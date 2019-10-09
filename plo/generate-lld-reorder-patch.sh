@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Total 7 files.
-declare -a DD=( ELF/PropellerBBReordering.h
+declare -a THE_FILES=( ELF/PropellerBBReordering.h
                 ELF/PropellerBBReordering.cpp
                 ELF/PropellerFuncOrdering.h
                 ELF/PropellerFuncOrdering.cpp

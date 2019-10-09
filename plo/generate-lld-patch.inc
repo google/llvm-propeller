@@ -20,6 +20,7 @@ echo "Generate lld ${LLD_PATCH_NAME} patch based on ${BASEREV}/r${BASESVN}."
 
 [[ -e "${DDIR}/lld-bbsections.patch" ]] && rm -f ${DDIR}/lld-${LLD_PATCH_NAME}.patch
 for F in "${THE_FILES[@]}" ; do
+    echo "Adding diff for ${F}"
     git diff "${BASEREV}" -- ${F} >> ${DDIR}/lld-${LLD_PATCH_NAME}.patch
 done
 
