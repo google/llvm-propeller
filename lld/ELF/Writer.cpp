@@ -1705,12 +1705,14 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
                  " fall through jumps\n");
     }
 
+    //auto startOptBBJumpTime = system_clock::now();
     auto MaxIt = config->shrinkJumpsAggressively ? Sections.end() :
         std::max_element(Sections.begin(), Sections.end(),
                          [](InputSection * const s1, InputSection * const s2) {
                            return s1->alignment < s2->alignment;
                          });
     uint32_t MaxAlign = (MaxIt != Sections.end()) ? (*MaxIt)->alignment : 0;
+
 
     // Shrink jump Instructions optimistically
     std::vector<unsigned> Shrunk(Sections.size(), 0);
@@ -1761,6 +1763,10 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
           script->assignAddresses();
       } while (AnyChanged);
     }
+
+  //auto endOptBBJumpTime = system_clock::now();
+  //duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+  //warn("[TIME](s) shrink bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
   }
 
   for (OutputSection *OS : outputSections) {
@@ -1770,6 +1776,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
   }
 
   fixSymbolsAfterShrinking();
+
 }
 
 static void finalizeSynthetic(SyntheticSection *sec) {

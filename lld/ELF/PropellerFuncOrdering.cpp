@@ -1,13 +1,12 @@
-//===- PropellerFuncReordering.cpp
-//-------------------------------------------===//
-////
-//// Part of the LLVM Project, under the Apache License v2.0 with LLVM
+//===- PropellerFuncReordering.cpp ----------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM
 // Exceptions.
-//// See https://llvm.org/LICENSE.txt for license information.
-//// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-////
-////===--------------------------------------------------------------------===//
-// This file is part of the Propeller infrastcture for doing code layout
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+// This file is part of the Propeller infrastructure for doing code layout
 // optimization and includes the implementation of function reordering based on
 // the CallChainClustering algorithm as published in [1].
 //
@@ -19,9 +18,11 @@
 // right before the callee's cluster. Finally, all the remaining clusters are
 // ordered in decreasing order of their execution density.
 //
-// [1] G.Ottoni and B.Maher, Optimizing Function Placement for Large-Scale
-// Data-Center Applications, CGO 2017. available at
-// https://research.fb.com/wp-content/uploads/2017/01/cgo2017-hfsort-final1.pdf
+// References:
+//   * [1] G.Ottoni and B.Maher, Optimizing Function Placement for Large-Scale
+//        Data-Center Applications, CGO 2017. available at
+//        https://research.fb.com/wp-content/uploads/2017/01/cgo2017-hfsort-final1.pdf
+//===----------------------------------------------------------------------===//
 #include "PropellerFuncOrdering.h"
 
 #include "Config.h"

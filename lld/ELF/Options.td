@@ -325,10 +325,6 @@ defm propeller_dump_symbol_order: Eq<"propeller-dump-symbol-order",
 defm propeller_dump_cfg: Eq<"propeller-dump-cfg",
     "Dump the cfg of the function in DOT format (in a file named the same as the function).">;
 
-defm propeller_align_basicblocks: B<"propeller-align-basicblocks",
-    "Align basic blocks.",
-    "Do not align basic blocks (default)">;
-
 defm propeller_fallthrough_weight: Eq<"propeller-fallthrough-weight",
     "Fallthrough weight parameter to use in ExtTSP algorithm (default: 1.0).">;
 

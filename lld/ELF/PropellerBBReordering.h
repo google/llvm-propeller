@@ -1,12 +1,10 @@
-//===- PropellerBBReordering.h ----------------------------------------------===//
-////
-//// Part of the LLVM Project, under the Apache License v2.0 with LLVM
-//Exceptions.
-//// See https://llvm.org/LICENSE.txt for license information.
-//// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-////
-////===----------------------------------------------------------------------===//
-
+//===- PropellerBBReordering.cpp  -----------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
@@ -38,33 +36,26 @@ enum MergeOrder {
 class NodeChain {
 public:
   // Representative node of the chain, with which it is initially constructed.
-  const CFGNode *DelegateNode = nullptr;
+  const CFGNode *DelegateNode;
   std::vector<const CFGNode *> Nodes;
 
   // Total binary size of the chain
-  uint32_t Size = 0;
+  uint32_t Size;
 
   // Total execution frequency of the chain
-  uint64_t Freq = 0;
+  uint64_t Freq;
 
   // Extended TSP score of the chain
-  double Score = 0;
+  double Score;
 
   // Constructor for building a NodeChain from a single Node
-  NodeChain(const CFGNode *Node) {
-    DelegateNode = Node;
-    Nodes.push_back(Node);
-    Size = Node->ShSize;
-    Freq = Node->Freq;
-  }
+  NodeChain(const CFGNode *Node)
+      : DelegateNode(Node), Nodes(1, Node), Size(Node->ShSize),
+        Freq(Node->Freq) {}
 
   double execDensity() const {
     return ((double)Freq) / std::max(Size, (uint32_t)1);
   }
-
-  const CFGNode *getFirstNode() const { return Nodes.front(); }
-
-  const CFGNode *getLastNode() const { return Nodes.back(); }
 };
 
 // BB Chain builder based on the ExtTSP metric
@@ -164,9 +155,7 @@ public:
   // This invokes the Extended TSP algorithm, orders the hot and cold basic
   // blocks and inserts their associated symbols at the corresponding locations
   // specified by the parameters (HotPlaceHolder and ColdPlaceHolder) in the
-  // given SymbolList. This function also modifies the alignment of basic blocks
-  // based on the new order if the feature is requested by
-  // -propeller-align-basic-blocks.
+  // given SymbolList.
   void doSplitOrder(std::list<StringRef> &SymbolList,
                     std::list<StringRef>::iterator HotPlaceHolder,
                     std::list<StringRef>::iterator ColdPlaceHolder);
