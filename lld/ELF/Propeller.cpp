@@ -299,7 +299,7 @@ void Propeller::processFile(const std::pair<elf::InputFile *, uint32_t> &pair) {
         assert(result.second);
       }
     } else {
-      warn(Twine("skipped building CFG for '" + inf->getName()));
+      warn("skipped building CFG for '" + inf->getName() +"'");
       ++ProcessFailureCount;
     }
   }
@@ -387,8 +387,7 @@ bool Propeller::checkTarget() {
   Propf.reset(new Propfile(*this, propellerFileName));
   Propf->PropfStream.open(Propf->PropfName);
   if (!Propf->PropfStream.good()) {
-    error(std::string("[Propeller]: Failed to open '") + propellerFileName +
-          "'.");
+    error(std::string("failed to open '") + propellerFileName + "'");
     return false;
   }
   return Propf->matchesOutputFileName(
@@ -399,8 +398,7 @@ bool Propeller::checkTarget() {
 // parallel and stores the result information.
 bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
   if (!Propf->readSymbols()) {
-    error(std::string("[Propeller]: Invalid propfile: '") +
-          config->propeller.str() + "'.");
+    error(std::string("invalid propfile: '") + config->propeller.str() + "'");
     return false;
   }
 
@@ -417,8 +415,8 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
   if (ProcessFailureCount * 100 / files.size() >= 50)
-    warn("[Propeller]: propeller failed to parse more than half the objects, "
-         "optimization would suffer.");
+    warn("propeller failed to parse more than half the objects, "
+         "optimization would suffer");
 
   /* Drop alias cfgs. */
   for (SymbolEntry *funcS : Propf->FunctionsWithAliases) {
@@ -454,8 +452,8 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
     for (auto &cfgNameToDump : config->propellerDumpCfgs) {
       auto cfgLI = CFGMap.find(cfgNameToDump);
       if (cfgLI == CFGMap.end()) {
-        warn("[Propeller] Could not dump cfg for function '" + cfgNameToDump +
-             "' : No such function name exists.");
+        warn("could not dump cfg for function '" + cfgNameToDump +
+             "' : No such function name exists");
         continue;
       }
       int Index = 0;
@@ -525,14 +523,14 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   if (!config->propellerDumpSymbolOrder.empty()) {
     FILE *fp = fopen(config->propellerDumpSymbolOrder.str().c_str(), "w");
     if (!fp)
-      warn(StringRef("[Propeller] Dump symbol order: failed to open ") + "'" +
+      warn(StringRef("dump symbol order: failed to open ") + "'" +
            config->propellerDumpSymbolOrder + "'");
     else {
       for (auto &sym : symbolList)
         fprintf(fp, "%s\n", sym.str().c_str());
       fclose(fp);
-      llvm::outs() << "[Propeller] Dumped symbol order file to: '"
-                   << config->propellerDumpSymbolOrder.str() << "'.\n";
+      llvm::outs() << "dumped symbol order file to: '"
+                   << config->propellerDumpSymbolOrder.str() << "\n";
     }
   }
 
