@@ -36,13 +36,8 @@ enum MergeOrder {
 class NodeChain {
 public:
   // Representative node of the chain, with which it is initially constructed.
-<<<<<<< HEAD
-  const ELFCFGNode *DelegateNode;
-  std::vector<const ELFCFGNode *> Nodes;
-=======
-  const CFGNode *DelegateNode = nullptr;
+  const CFGNode *DelegateNode;
   std::vector<const CFGNode *> Nodes;
->>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 
   // Total binary size of the chain
   uint32_t Size;
@@ -54,29 +49,13 @@ public:
   double Score;
 
   // Constructor for building a NodeChain from a single Node
-<<<<<<< HEAD
-  NodeChain(const ELFCFGNode *Node)
+  NodeChain(const CFGNode *Node)
       : DelegateNode(Node), Nodes(1, Node), Size(Node->ShSize),
         Freq(Node->Freq) {}
-=======
-  NodeChain(const CFGNode *Node) {
-    DelegateNode = Node;
-    Nodes.push_back(Node);
-    Size = Node->ShSize;
-    Freq = Node->Freq;
-  }
->>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 
   double execDensity() const {
     return ((double)Freq) / std::max(Size, (uint32_t)1);
   }
-<<<<<<< HEAD
-=======
-
-  const CFGNode *getFirstNode() const { return Nodes.front(); }
-
-  const CFGNode *getLastNode() const { return Nodes.back(); }
->>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 };
 
 // BB Chain builder based on the ExtTSP metric
@@ -176,9 +155,7 @@ public:
   // This invokes the Extended TSP algorithm, orders the hot and cold basic
   // blocks and inserts their associated symbols at the corresponding locations
   // specified by the parameters (HotPlaceHolder and ColdPlaceHolder) in the
-  // given SymbolList. This function also modifies the alignment of basic blocks
-  // based on the new order if the feature is requested by
-  // -propeller-align-basic-blocks.
+  // given SymbolList.
   void doSplitOrder(std::list<StringRef> &SymbolList,
                     std::list<StringRef>::iterator HotPlaceHolder,
                     std::list<StringRef>::iterator ColdPlaceHolder);

@@ -22,11 +22,15 @@
 // where frequency(e) is the execution frequency and weight(e) is computed as
 // follows:
 //  * 1 if distance(Src[e], Sink[e]) = 0 (i.e. fallthrough)
+//
 //  * 0.1 * (1 - distance(Src[e], Sink[e]) / 1024) if Src[e] < Sink[e] and 0 <
 //    distance(Src[e], Sink[e]) < 1024 (i.e. short forward jump)
+//
 //  * 0.1 * (1 - distance(Src[e], Sink[e]) / 640) if Src[e] > Sink[e] and 0 <
 //    distance(Src[e], Sink[e]) < 640 (i.e. short backward jump)
+//
 //  * 0 otherwise
+//
 //
 // In short, it computes a weighted sum of frequencies of all edges in the
 // control flow graph. Each edge gets its weight depending on whether the given
@@ -59,20 +63,27 @@
 //
 // The values used by this algorithm are reconfiguriable using lld's propeller
 // flags. Specifically, these parameters are:
+//
 //   * propeller-forward-jump-distance: maximum distance of a forward jump
 //     default-set to 1024 in the above equation).
+//
 //   * propeller-backward-jump-distance: maximum distance of a backward jump
 //     (default-set to 640 in the above equation).
+//
 //   * propeller-fallthrough-weight: weight of a fallthrough (default-set to 1)
+//
 //   * propeller-forward-jump-weight: weight of a forward jump (default-set to
 //     0.1)
+//
 //   * propeller-backward-jump-weight: weight of a backward jump (default-set to
 //     0.1)
+//
 //   * propeller-chain-split-threshold: maximum binary size of a BB chain which
 //     the algorithm will consider for splitting (default-set to 128).
 //
-// [1] A. Newell and S. Pupyrev, Improved Basic Block Reordering, available at
-// https://arxiv.org/abs/1809.04676
+// References:
+//   * [1] A. Newell and S. Pupyrev, Improved Basic Block Reordering, available
+//         at https://arxiv.org/abs/1809.04676
 //===----------------------------------------------------------------------===//
 #include "PropellerBBReordering.h"
 
@@ -173,8 +184,7 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
 // This function tries to place two basic blocks immediately adjacent to each
 // other (used for fallthroughs). Returns true if the basic blocks have been
 // attached this way.
-bool NodeChainBuilder::attachNodes(const CFGNode *src,
-                                   const CFGNode *sink) {
+bool NodeChainBuilder::attachNodes(const CFGNode *src, const CFGNode *sink) {
   // No edge cannot fall-through to the entry basic block.
   if (sink == CFG->getEntryNode())
     return false;
@@ -326,15 +336,9 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
       auto NCA = std::unique_ptr<NodeChainAssembly>(new NodeChainAssembly(
           splitChain, unsplitChain, slicePos, mOrder, this));
 
-<<<<<<< HEAD
-      ELFCFGNode *entryNode = CFG->getEntryNode();
-      if ((NCA->SplitChain->Nodes.front() == entryNode ||
-           NCA->UnsplitChain->Nodes.front() == entryNode) &&
-=======
       CFGNode *entryNode = CFG->getEntryNode();
-      if ((NCA->SplitChain->getFirstNode() == entryNode ||
-           NCA->UnsplitChain->getFirstNode() == entryNode) &&
->>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
+      if ((NCA->SplitChain->Nodes.front() == entryNode ||
+           NCA->UnsplitChain->Nodes.back() == entryNode) &&
           NCA->getFirstNode() != entryNode)
         continue;
       candidateNCAs.push_back(std::move(NCA));
@@ -446,7 +450,7 @@ void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
   DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
-  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains){
+  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains) {
     NodeChain *chain = elem.second.get();
     chain->Score = computeExtTSPScore(chain);
     for (const CFGNode *node : chain->Nodes) {
@@ -568,65 +572,11 @@ void NodeChainBuilder::doSplitOrder(
   std::vector<const NodeChain *> chainOrder;
   computeChainOrder(chainOrder);
 
-  DenseMap<const CFGNode *, unsigned> address;
-  unsigned currentAddress = 0;
   for (const NodeChain *c : chainOrder) {
     std::list<StringRef>::iterator insertPos =
         c->Freq ? hotPlaceHolder : coldPlaceHolder;
-    for (const CFGNode *n : c->Nodes) {
+    for (const CFGNode *n : c->Nodes)
       symbolList.insert(insertPos, n->ShName);
-      if (c->Freq) {
-        address[n] = currentAddress;
-        currentAddress += n->ShSize;
-      }
-    }
-  }
-
-  if (config->propellerAlignBasicBlocks) {
-
-    enum VisitStatus { NONE = 0, DURING, FINISHED };
-
-    DenseMap<const CFGNode *, uint64_t> backEdgeFreq;
-    DenseMap<const CFGNode *, VisitStatus> visited;
-
-    std::function<void(const CFGNode *)> visit;
-    visit = [&address, &visited, &backEdgeFreq, &visit](const CFGNode *n) {
-      if (visited[n] != NONE)
-        return;
-      if (!n->Freq)
-        return;
-      visited[n] = DURING;
-      if (n->FTEdge)
-        visit(n->FTEdge->Sink);
-      for (const CFGEdge *e : n->Outs) {
-        if (e->Sink->Freq && address[e->Sink] > address[n])
-          visit(e->Sink);
-      }
-      for (const CFGEdge *e : n->Outs) {
-        if (e->Sink->Freq && address[e->Sink] <= address[n]) {
-          if (visited[e->Sink] == DURING) {
-            backEdgeFreq[e->Sink] += e->Weight;
-          }
-        }
-      }
-      visited[n] = FINISHED;
-    };
-
-    for (const NodeChain *c : chainOrder)
-      if (c->Freq != 0) {
-        for (const CFGNode *n : c->Nodes)
-          visit(n);
-      }
-
-    for (auto &n : CFG->Nodes) {
-      if (n.get() == CFG->getEntryNode())
-        continue;
-      if (n->Freq && (n->Freq >= 10 * CFG->getEntryNode()->Freq) &&
-          (backEdgeFreq[n.get()] * 5 >= n->Freq * 4)) {
-        config->symbolAlignmentFile.insert(std::make_pair(n->ShName, 16));
-      } else
-        config->symbolAlignmentFile.insert(std::make_pair(n->ShName, 1));
-    }
   }
 }
 

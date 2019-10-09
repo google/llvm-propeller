@@ -1,23 +1,10 @@
-<<<<<<< HEAD
-//===- PropellerFuncReordering.cpp ----------------------------------------===//
+//===- PropellerFuncReordering.h ------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-=======
-//===- PropellerFuncReordering.h
-//--------------------------------------------===//
-////
-//// Part of the LLVM Project, under the Apache License v2.0 with LLVM
-// Exceptions.
-//// See https://llvm.org/LICENSE.txt for license information.
-//// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-////
-////===--------------------------------------------------------------------===//
-
->>>>>>> 706775cced9fcc1692c143cf2d6638c7c9c8f868
 #ifndef LLD_ELF_PROPELLER_FUNC_ORDERING_H
 #define LLD_ELF_PROPELLER_FUNC_ORDERING_H
 
