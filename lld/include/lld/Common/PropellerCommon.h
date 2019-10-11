@@ -5,10 +5,10 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
 
+#include <string>
+
 using llvm::SmallVector;
 using llvm::StringRef;
-
-#include <string>
 
 namespace lld {
 namespace propeller {
@@ -30,8 +30,8 @@ struct SymbolEntry {
   SymbolEntry(uint64_t O, const StringRef &N, AliasesTy &&As, uint64_t A,
               uint64_t S, uint8_t T, bool BB = false,
               SymbolEntry *FuncPtr = nullptr)
-      : Ordinal(O), Name(N), Aliases(As), Addr(A), Size(S), Type(T),
-        BBTag(BB), ContainingFunc(FuncPtr) {}
+      : Ordinal(O), Name(N), Aliases(As), Addr(A), Size(S), Type(T), BBTag(BB),
+        ContainingFunc(FuncPtr) {}
 
   // Unique index number across all symbols that participate linking.
   uint64_t Ordinal;
@@ -46,8 +46,8 @@ struct SymbolEntry {
   AliasesTy Aliases;
   uint64_t Addr;
   uint64_t Size;
-  uint8_t Type;    // Of type: llvm::objet::SymbolRef::Type.
-  bool BBTag;      // Whether this is a basic block section symbol.
+  uint8_t Type; // Of type: llvm::objet::SymbolRef::Type.
+  bool BBTag;   // Whether this is a basic block section symbol.
   // For BBTag symbols, this is the containing fuction pointer, for a normal
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *ContainingFunc;
@@ -100,7 +100,8 @@ struct SymbolEntry {
     if (R.second.empty())
       return false;
     for (auto *I = R.first.bytes_begin(), *J = R.first.bytes_end(); I != J; ++I)
-      if (*I != BASIC_BLOCK_UNIFIED_CHARACTER) return false;
+      if (*I != BASIC_BLOCK_UNIFIED_CHARACTER)
+        return false;
     if (FuncName)
       *FuncName = R.second;
     if (BBIndex)
@@ -111,6 +112,6 @@ struct SymbolEntry {
   static const uint64_t INVALID_ADDRESS = uint64_t(-1);
 };
 
-}
-}
+} // namespace propeller
+} // namespace lld
 #endif

@@ -18,7 +18,7 @@
 // Each basicblock is represented using a standalone elf section.
 //
 // [The profile part]
-// 
+//
 // A propeller-format profile ('propfile') is generated, which
 // contains counters for jumps/calls/returns of each bb.
 //
@@ -91,7 +91,7 @@
 // The CFG information is stored in Propeller::CFGMap.
 //
 // After we have CFGs with complete counters for edges/bbs, we pass the
-// information to optimization passes. For now, depending on 
+// information to optimization passes. For now, depending on
 // propellerReorderFuncs, propellerReorderBlocks or propellerSplitFuncs,
 // propeller generates a list of basicblock symbol orders and feed it the origin
 // linker phase. This step is done in Propeller::genSymbolOrderingFile.
@@ -216,7 +216,7 @@ public:
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
-    for (auto &a: sym->Aliases)
+    for (auto &a : sym->Aliases)
       SymbolNameMap[a][""] = sym;
 
     if (sym->Aliases.size() > 1)
@@ -243,7 +243,7 @@ public:
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
-    for (auto &a: function->Aliases) {
+    for (auto &a : function->Aliases) {
       SymbolNameMap[a][bBIndex] = sym;
     }
     return sym;
@@ -273,7 +273,6 @@ class Propeller {
 public:
   Propeller(lld::elf::SymbolTable *ST);
   ~Propeller();
-      // : Symtab(ST), Views(), CFGMap(), Propf(nullptr) {}
 
   // Returns true if linker output target matches propeller profile.
   bool checkTarget();
@@ -285,8 +284,7 @@ public:
   void calculateLegacy(std::list<StringRef> &SymList,
                        std::list<StringRef>::iterator hotPlaceHolder,
                        std::list<StringRef>::iterator coldPlaceHolder);
-  template <class Visitor>
-  void forEachCfgRef(Visitor v) {
+  template <class Visitor> void forEachCfgRef(Visitor v) {
     for (auto &p : CFGMap)
       v(*(*(p.second.begin())));
   }
@@ -336,7 +334,8 @@ struct PropellerLegacy {
   std::set<StringRef> BBSymbolsToKeep;
 
   bool shouldKeepBBSymbol(StringRef symName) {
-    if (!SymbolEntry::isBBSymbol(symName)) return true;
+    if (!SymbolEntry::isBBSymbol(symName))
+      return true;
     return BBSymbolsToKeep.find(symName) != BBSymbolsToKeep.end();
   }
 };

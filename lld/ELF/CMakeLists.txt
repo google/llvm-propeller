@@ -38,7 +38,7 @@ add_lld_library(lldELF
   OutputSections.cpp
   Propeller.cpp
   PropellerBBReordering.cpp
-  PropellerELFCfg.cpp
+  PropellerCfg.cpp
   PropellerFuncOrdering.cpp
   PropellerBBReordering.cpp
   Relocations.cpp
