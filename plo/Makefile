@@ -287,7 +287,7 @@ relink-clang-pgo-plolist.sh: pgo-plolist/build/bin/clang-10 pgo-compiler.propell
 
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	@{ echo "Running $@ for ${ITERATIONS} iterations..." ; \
-		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles,instructions,br_inst_retired.all_branches,br_inst_retired.conditional,br_inst_retired.near_taken,br_inst_retired.not_taken,icache_64b.iftag_hit,icache_64b.iftag_miss,icache_16b.ifdata_stall,itlb_misses.miss_causes_a_walk,itlb_misses.stlb_hit,idq.dsb_uops,idq.mite_uops,idq.ms_uops -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
+		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.all_branches:u,br_inst_retired.conditional:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_hit:u,icache_64b.iftag_miss:u,icache_16b.ifdata_stall:u,itlb_misses.miss_causes_a_walk:u,itlb_misses.stlb_hit:u,idq.dsb_uops:u,idq.mite_uops:u,idq.ms_uops:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
 		awk 'NF {print "${REPOHASH},"$$0}' .$@.pmu ; \
 	} | tee -a $@.result
 
@@ -403,7 +403,7 @@ define append_git_status
 endef
 
 check-pmu-performance: benchmark-pmu-pgo.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-bolt.result
-	@PMU_EVENTS=( "cycles" "br_inst_retired.all_branches" "br_inst_retired.not_taken" "icache_64b.iftag_miss" "itlb_misses.miss_causes_a_walk" ) ; \
+	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "itlb_misses.miss_causes_a_walk:u" ) ; \
 	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
 	printf "VERSIONS" >> $@.${REPOHASH} ; \
 	for event in "$${PMU_EVENTS[@]}" ; do \
