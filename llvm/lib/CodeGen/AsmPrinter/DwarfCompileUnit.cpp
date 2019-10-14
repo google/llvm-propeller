@@ -559,7 +559,7 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
       // section for non-unique-section BBs ends at Asm->getFunctionEnd().
       List.push_back(RangeSpan(BeginLabel, Asm->getFunctionEnd()));
       while (!LastMBBInSection->getNextNode()->isUniqueSection())
-        ++LastMBBInSection;
+        LastMBBInSection = LastMBBInSection->getNextNode();
     }
 
     for (auto *MBB = LastMBBInSection->getNextNode(); MBB != EndBB;
