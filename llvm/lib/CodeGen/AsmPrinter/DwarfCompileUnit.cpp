@@ -558,8 +558,9 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
       // BeginLabel lies in a non-unique section, but EndLabel does not. The
       // section for non-unique-section BBs ends at Asm->getFunctionEnd().
       List.push_back(RangeSpan(BeginLabel, Asm->getFunctionEnd()));
-      while (!LastMBBInSection->getNextNode()->isUniqueSection())
-        ++LastMBBInSection;
+      while (!LastMBBInSection->getNextNode()->isUniqueSection()) {
+        LastMBBInSection = LastMBBInSection->getNextNode();
+      }
     }
 
     for (auto *MBB = LastMBBInSection->getNextNode(); MBB != EndBB;

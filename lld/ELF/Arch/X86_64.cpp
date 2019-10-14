@@ -392,7 +392,6 @@ static void shrinkJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
   if (DoShrinkJmp) {
     // Shrinking Jmp corresponding to relocation R, adjust type and addend.
     R.type = R_X86_64_PC8;
-    assert(R.addend == -4 && "Addend must be -4 to shrink.");
     R.addend += 3;
     BytesShrunk += 3;
   }
