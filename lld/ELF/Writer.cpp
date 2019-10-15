@@ -1687,11 +1687,21 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     return;
 
   script->assignAddresses();
+  // For every output section that has executable input sections, this
+  // does 3 things:
+  //   1.  It deletes all direct jump instructions in input sections that
+  //       jump to the following section as it is not required.  If there
+  //       are two consecutive jump instructions, it checks if they can be
+  //       flipped and one can be deleted.
+  //   2.  It aggressively shrinks jump instructions.
+  //   3.  It aggressively grows back jump instructions.
   for (OutputSection *OS : outputSections) {
     if (!(OS->flags & SHF_EXECINSTR)) continue;
     std::vector<InputSection *> Sections = getInputSections(OS);
     std::vector<bool> Result(Sections.size());
-    // Delete all fall through jump instructions.
+    // Step 1: Delete all fall through jump instructions.  Also, check if two
+    // consecutive jump instructions can be flipped so that a fall through jmp
+    // instruction can be deleted.
     parallelForEachN(0, Sections.size(), [&](size_t I) {
       InputSection *Next = (I + 1) < Sections.size() ?
                            Sections[I + 1] : nullptr;
@@ -1706,6 +1716,13 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     }
 
     //auto startOptBBJumpTime = system_clock::now();
+    // Step 2:  Shrink jump instructions.  If the offset of the jump can fit in
+    // one byte there is a smaller encoding of the jump instruction.  Section
+    // offsets are recomputed only after all the sections have been processed.
+    // Alignment affects computed target offsets, positive target offsets could
+    // be higher by (Alignment - 1) and negative target offsets could be lower
+    // by the same amount. With aggressive shrinking, we make mistakes and
+    // rectify it in the next step.
     auto MaxIt = config->shrinkJumpsAggressively ? Sections.end() :
         std::max_element(Sections.begin(), Sections.end(),
                          [](InputSection * const s1, InputSection * const s2) {
