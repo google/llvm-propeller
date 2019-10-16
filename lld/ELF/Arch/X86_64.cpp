@@ -145,6 +145,8 @@ static JmpInsnOpcode getJmpInsnType(const uint8_t *First,
   return J_UNKNOWN;
 }
 
+// Return the relocation index for input section IS with a specific Offset.
+// Returns the maximum size of the vector if no such relocation is found.
 static unsigned getRelocationWithOffset(const InputSection &IS,
                                         uint64_t Offset) {
   unsigned I = 0;
@@ -167,7 +169,8 @@ static unsigned getJumpRelocationWithOffset(const InputSection &IS,
 }
 
 static bool isRelocationForJmpInsn(Relocation &R) {
-  return (R.type == R_X86_64_PLT32 || R.type == R_X86_64_PC32 || R.type == R_X86_64_PC8);
+  return (R.type == R_X86_64_PLT32 || R.type == R_X86_64_PC32 ||
+          R.type == R_X86_64_PC8);
 }
 
 static bool isDirectJmpInsnOpcode(const uint8_t *Opcode) {
@@ -228,6 +231,9 @@ static JmpInsnOpcode invertJmpOpcode(const JmpInsnOpcode opcode) {
   return J_UNKNOWN;
 }
 
+// Deletes direct jump instruction in input sections that jumps to the
+// following section as it is not required.  If there are two consecutive jump
+// instructions, it checks if they can be flipped and one can be deleted.
 bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
                                    InputSection *NextIS) const {
   const unsigned SizeOfDirectJmpInsn = 5;
@@ -256,7 +262,6 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
     R.expr = R_NONE;
     R.offset = 0;
     IS.drop_back(SizeOfDirectJmpInsn);
-    //IS.Filler =  {0x90, 0x90, 0x90, 0x90};
     IS.SpecialFiller = X86_NOP_INSTRUCTIONS;
     return true;
   }
@@ -295,7 +300,6 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
   R.expr = R_NONE;
   R.offset = 0;
   IS.drop_back(SizeOfDirectJmpInsn);
-  //IS.Filler =  {0x90, 0x90, 0x90, 0x90};
   IS.SpecialFiller = X86_NOP_INSTRUCTIONS;
   return true;
 }
@@ -392,7 +396,6 @@ static void shrinkJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
   if (DoShrinkJmp) {
     // Shrinking Jmp corresponding to relocation R, adjust type and addend.
     R.type = R_X86_64_PC8;
-    //assert(R.addend == -4 && "Addend must be -4 to shrink.");
     R.addend += 3;
     BytesShrunk += 3;
   }
@@ -407,17 +410,15 @@ unsigned X86_64::shrinkJmpInsn(InputSection &IS, InputFile *File,
 
   bool IsShortJmp = false;
 
-  if (IS.getSize() < SizeOfDirectNearJmpInsn){
+  if (IS.getSize() < SizeOfDirectNearJmpInsn)
     return 0;
-  }
 
   unsigned RIndex = getRelocationWithOffset(IS, (IS.getSize() - 4));
 
   if (RIndex == IS.relocations.size()){
     RIndex = getRelocationWithOffset(IS, (IS.getSize() - 1));
-    if (RIndex == IS.relocations.size()) {
+    if (RIndex == IS.relocations.size())
       return 0;
-    }
 
     SizeOfDirectJmpInsn = SizeOfDirectShortJmpInsn;
     IsShortJmp = true;
@@ -508,17 +509,16 @@ unsigned X86_64::growJmpInsn(InputSection &IS, InputFile *File, unsigned MaxAlig
 
   bool IsShortJmp = true;
 
-  unsigned RIndex = getRelocationWithOffset(IS, (IS.getSize() - 1));
+  unsigned RIndex = getRelocationWithOffset(IS, IS.getSize() - 1);
 
   if (RIndex == IS.relocations.size()){
-    if (IS.getSize() < SizeOfDirectNearJmpInsn){
+    if (IS.getSize() < SizeOfDirectNearJmpInsn)
       return 0;
-    }
 
     RIndex = getRelocationWithOffset(IS, (IS.getSize() - 4));
-    if (RIndex == IS.relocations.size()){
+    if (RIndex == IS.relocations.size())
       return 0;
-    }
+
     IsShortJmp = false;
     SizeOfDirectJmpInsn = SizeOfDirectNearJmpInsn;
   }
@@ -561,9 +561,9 @@ unsigned X86_64::growJmpInsn(InputSection &IS, InputFile *File, unsigned MaxAlig
     growJmpWithRelocation(IS, JmpCode, R, BytesGrown, ShouldGrowR);
   }
 
-  if (BytesGrown) {
+  if (BytesGrown)
     IS.push_back(BytesGrown);
-  }
+
   return BytesGrown;
 }
 
