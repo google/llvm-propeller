@@ -101,7 +101,7 @@ using llvm::detail::DenseMapPair;
 namespace lld {
 namespace propeller {
 
-std::string toString(NodeChain& c){
+std::string toString(const NodeChain& c){
   std::string str;
   size_t cfgNameLength = c.DelegateNode->CFG->Name.size();
   str += c.DelegateNode->CFG->Name.str() + " [ ";
@@ -124,7 +124,7 @@ double getEdgeExtTSPScore(const CFGEdge *edge, bool isEdgeForward,
   if (edge->Weight == 0)
     return 0;
 
-  if (srcSinkDistance == 0 && (edge->Type == CFGEdge::EdgeType::INTRA_FUNC))
+  if (srcSinkDistance == 0 && (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA))
     return edge->Weight * config->propellerFallthroughWeight;
 
   if (isEdgeForward && srcSinkDistance < config->propellerForwardJumpDistance)
@@ -194,6 +194,7 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
   }
   leftChain->Size += rightChain->Size;
   leftChain->Freq += rightChain->Freq;
+  leftChain->Score += rightChain->Score;
   Chains.erase(rightChain->DelegateNode->Shndx);
 }
 
@@ -246,9 +247,9 @@ void NodeChainBuilder::mergeChains(
 
   // Update the total frequency and ExtTSP score of the aggregated chain
   assembly->SplitChain->Freq += assembly->UnsplitChain->Freq;
-  // We have already computed the gain in the assembly record. So we can just
-  // increment the aggregated chain's score by that gain.
-  assembly->SplitChain->Score += assembly->extTSPScoreGain();
+  // We have already computed the new score in the assembly record. So we can
+  // just set the new score equal to that.
+  assembly->SplitChain->Score = assembly->extTSPScore();
 
   // Merge the assembly candidate chains of the two chains into the candidate
   // chains of the remaining NodeChain and remove the records for the defunct
@@ -465,10 +466,13 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
 void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
-  DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
   for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains) {
     NodeChain *chain = elem.second.get();
     chain->Score = computeExtTSPScore(chain);
+  }
+  DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
+  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains) {
+    NodeChain *chain = elem.second.get();
     for (const CFGNode *node : chain->Nodes) {
       for (const CFGEdge *edge : node->Outs) {
         if (!edge->Weight)
@@ -514,6 +518,7 @@ void NodeChainBuilder::computeChainOrder(
                         std::unique_ptr<NodeChainAssembly>> &c2) {
           return c1.second->extTSPScoreGain() < c2.second->extTSPScoreGain();
         });
+    auto bestCandidateGain = bestCandidate == NodeChainAssemblies.end() ? 0 : bestCandidate->second->extTSPScoreGain();
 
     if (bestCandidate != NodeChainAssemblies.end() &&
         bestCandidate->second->extTSPScoreGain() > 0) {
@@ -588,12 +593,16 @@ void NodeChainBuilder::doSplitOrder(
   std::vector<const NodeChain *> chainOrder;
   computeChainOrder(chainOrder);
 
+  double Score = 0;
+
   for (const NodeChain *c : chainOrder) {
+    Score += c->Score;
     std::list<StringRef>::iterator insertPos =
         c->Freq ? hotPlaceHolder : coldPlaceHolder;
     for (const CFGNode *n : c->Nodes)
       symbolList.insert(insertPos, n->ShName);
   }
+  log("ExtTSP score: " + CFG->Name + " -> " + std::to_string(Score));
 }
 
 } // namespace propeller
