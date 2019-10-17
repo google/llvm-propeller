@@ -492,7 +492,7 @@ static void growJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
     // Growing Jmp corresponding to relocation R, adjust type and addend.
     J.Size = 4;
     R.type = R_X86_64_PC32;
-    assert(R.addend == -1 && "Addend must be -1 to grow.");
+    //assert(R.addend == -1 && "Addend must be -1 to grow.");
     R.addend -= 3;
     BytesGrown += 3;
   }

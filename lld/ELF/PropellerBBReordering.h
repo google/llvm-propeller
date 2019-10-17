@@ -12,6 +12,7 @@
 
 #include "lld/Common/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
+#include <iostream>
 
 #include <list>
 #include <unordered_map>
@@ -293,7 +294,7 @@ private:
              nodeIt != std::prev(Slices[idx].Begin); nodeIt--) {
           // Stop iterating if the node's size is non-zero as this would change
           // the offset.
-          if (!(*nodeIt)->ShSize)
+          if ((*nodeIt)->ShSize)
             break;
           if (*nodeIt == node)
             return true;
