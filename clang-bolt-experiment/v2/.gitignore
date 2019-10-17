@@ -1,0 +1,7 @@
+*
+!.gitignore
+!clang-10.gz
+!pgo-vanilla.perfdata.gz
+!pgo-vanilla-compiler.yaml
+!commands
+!results
