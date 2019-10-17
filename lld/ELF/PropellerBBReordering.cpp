@@ -400,13 +400,13 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
     std::copy_if(node->Outs.begin(), node->Outs.end(),
                  std::back_inserter(profiledOuts[node.get()]),
                  [](const CFGEdge *edge) {
-                   return edge->Type == CFGEdge::EdgeType::INTRA_FUNC &&
+                   return (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
                           edge->Weight != 0;
                  });
     std::copy_if(node->Ins.begin(), node->Ins.end(),
                  std::back_inserter(profiledIns[node.get()]),
                  [](const CFGEdge *edge) {
-                   return edge->Type == CFGEdge::EdgeType::INTRA_FUNC &&
+                   return (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
                           edge->Weight != 0;
                  });
   }
@@ -414,6 +414,8 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
   for (auto &node : CFG->Nodes) {
     if (profiledOuts[node.get()].size() == 1) {
       CFGEdge *edge = profiledOuts[node.get()].front();
+      if(edge->Type != edge->Type == CFGEdge::EdgeType::INTRA_FUNC)
+        continue;
       if (profiledIns[edge->Sink].size() == 1)
         MutuallyForcedOut[node.get()] = edge->Sink;
     }
@@ -518,7 +520,6 @@ void NodeChainBuilder::computeChainOrder(
                         std::unique_ptr<NodeChainAssembly>> &c2) {
           return c1.second->extTSPScoreGain() < c2.second->extTSPScoreGain();
         });
-    auto bestCandidateGain = bestCandidate == NodeChainAssemblies.end() ? 0 : bestCandidate->second->extTSPScoreGain();
 
     if (bestCandidate != NodeChainAssemblies.end() &&
         bestCandidate->second->extTSPScoreGain() > 0) {
