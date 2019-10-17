@@ -1,0 +1,12 @@
+/usr/bin/time -v ../llvm-bolt clang-10 -o clang-10-bolt -b pgo-vanilla-compiler.yaml \
+         -split-functions=3                     \
+         -reorder-blocks="cache+"               \
+         -split-all-cold                        \
+         -reorder-functions="hfsort+" -relocs=1
+
+/usr/bin/time -v ../llvm-bolt clang-10 -o clang-10-bolt -b pgo-vanilla-compiler.yaml \
+         -split-functions=3                     \
+         -reorder-blocks="cache+"               \
+         -split-all-cold                        \
+	 -update-debug-sections                 \
+         -reorder-functions="hfsort+" -relocs=1
