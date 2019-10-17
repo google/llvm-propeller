@@ -1,3 +1,5 @@
+gunzip --keep -f clang-10.gz
+
 /usr/bin/time -v ../llvm-bolt clang-10 -o clang-10-bolt -b pgo-vanilla-compiler.yaml \
          -split-functions=3                     \
          -reorder-blocks="cache+"               \
