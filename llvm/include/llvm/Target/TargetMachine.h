@@ -263,11 +263,6 @@ public:
   }
 
   bool isFunctionInBasicBlockSectionsList(const StringRef &name) const {
-    return Options.BasicBlockSectionsList.find(name) !=
-        Options.BasicBlockSectionsList.end();
-  }
-
-  SmallSet<unsigned, 4> getBasicBlockSectionsSet(const StringRef &name) const {
     return Options.BasicBlockSectionsList.lookup(name);
   }
 

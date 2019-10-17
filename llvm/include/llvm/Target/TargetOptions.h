@@ -15,7 +15,6 @@
 #define LLVM_TARGET_TARGETOPTIONS_H
 
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/MC/MCTargetOptions.h"
 
 namespace llvm {
@@ -269,7 +268,7 @@ namespace llvm {
     /// Emit basic blocks into separate sections.
     BasicBlockSection::SectionMode BasicBlockSections = BasicBlockSection::None;
 
-    StringMap<SmallSet<unsigned, 4>> BasicBlockSectionsList;
+    StringMap<bool> BasicBlockSectionsList;
 
     /// Emit debug info about parameter's entry values.
     unsigned EnableDebugEntryValues : 1;
