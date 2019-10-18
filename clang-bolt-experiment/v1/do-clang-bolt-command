@@ -1,1 +1,0 @@
-/usr/bin/time -v llvm-bolt clang-10 -o pgo_relocs-bolt-compiler -b pgo_relocs-compiler.yaml -split-functions=3 -reorder-blocks=cache+ -reorder-functions=hfsort -relocs=1 -icf=1 --update-debug-sections
