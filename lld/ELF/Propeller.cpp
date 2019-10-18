@@ -502,16 +502,19 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   std::list<StringRef> symbolList(1, "Hot");
   const auto hotPlaceHolder = symbolList.begin();
   const auto coldPlaceHolder = symbolList.end();
-  fprintf(stderr, "HISTOGRAM: Function.Name,BBs.all,BBs.hot\n");
+  if (config->propellerPrintStats)
+    fprintf(stderr, "HISTOGRAM: Function.Name,BBs.all,BBs.hot\n");
   for (auto *cfg : cfgOrder) {
-    unsigned hotBBs = 0;
-    unsigned allBBs = 0;
-    cfg->forEachNodeRef([&hotBBs, &allBBs] (CFGNode &node) {
-      if (node.Freq)
-        hotBBs++;
-      allBBs++;
-    });
-    fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg->Name.str().c_str(), allBBs, hotBBs);
+    if (config->propellerPrintStats){
+      unsigned hotBBs = 0;
+      unsigned allBBs = 0;
+      cfg->forEachNodeRef([&hotBBs, &allBBs] (CFGNode &node) {
+        if (node.Freq)
+          hotBBs++;
+        allBBs++;
+      });
+      fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg->Name.str().c_str(), allBBs, hotBBs);
+    }
     if (cfg->isHot() && config->propellerReorderBlocks) {
       NodeChainBuilder(cfg).doSplitOrder(
           symbolList, hotPlaceHolder,
