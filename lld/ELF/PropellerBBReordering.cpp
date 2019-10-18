@@ -414,7 +414,7 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
   for (auto &node : CFG->Nodes) {
     if (profiledOuts[node.get()].size() == 1) {
       CFGEdge *edge = profiledOuts[node.get()].front();
-      if(edge->Type != edge->Type == CFGEdge::EdgeType::INTRA_FUNC)
+      if(edge->Type != CFGEdge::EdgeType::INTRA_FUNC)
         continue;
       if (profiledIns[edge->Sink].size() == 1)
         MutuallyForcedOut[node.get()] = edge->Sink;

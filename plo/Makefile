@@ -200,10 +200,11 @@ pgo-compiler.yaml cspgo-compiler.yaml pgo-vanilla-compiler.yaml: %-compiler.yaml
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
 
 pgo/build/bin/clang-10-bolt cspgo/build/bin/clang-10-bolt pgo-vanilla/build/bin/clang-10-bolt: %/build/bin/clang-10-bolt: %-compiler.yaml %-compiler
-	$(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
+	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
+		 -split-all-cold                        \
 		 -reorder-blocks="cache+"               \
-	 	 -reorder-functions="hfsort" -relocs=1  \
+	 	 -reorder-functions="hfsort+" -relocs=1  \
 		 2>&1 | tee $@.autolog
 
 pgo-plo/build/bin/clang-10-plo cspgo-plo/build/bin/clang-10-plo: %-plo/build/bin/clang-10-plo: relink-clang-%-plo.sh stage1-compiler
@@ -313,16 +314,14 @@ sample_bblabels.o: sample.c
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
 
-sample.out: sample_bblabels.o stage1-compiler
+sample.baseline.out: sample_bblabels.o stage1-compiler
 	./stage1-compiler -fuse-ld=lld -Wl,-O2 -o $@ $<
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
 
-sample.perfdata: sample.out
-	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
-
-$(CREATE_LLVM_PROF): $(CREATE_LLVM_PROF_DIR)/*.cc $(CREATE_LLVM_PROF_DIR)/*.h
-	make -C `dirname $@` -j50
+sample.perfdata: sample.baseline.out
+	cp sample.baseline.out sample.out ; \
+	perf record -o $@ -e "cycles:u" -j any,u -- ./sample.out
 
 sample.propeller: sample.perfdata $(CREATE_LLVM_PROF)
 	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=sample.out --logtostderr
@@ -334,21 +333,14 @@ sample_bball.out: sample_bball.o stage1-compiler
 	./stage1-compiler -fuse-ld=lld -flto=thin -O2 -Wl,--lto-basicblock-sections=all  -Wl,--lto-unique-bb-section-names $< -o $@
 
 sample.propeller.out: sample.propeller sample_bball.o stage1-compiler
-	./stage1-compiler -o $@ -Wl,--lto-basicblock-sections=all -fuse-ld=lld -Wl,-propeller=$< -Wl,-propeller-keep-named-symbols -Wl,--lto-unique-bb-section-names $(word 2,$^)
+	./stage1-compiler -o sample.out -Wl,--lto-basicblock-sections=all -fuse-ld=lld -fpropeller-optimize=$< -Wl,-propeller-keep-named-symbols -Wl,--lto-unique-bb-section-names $(word 2,$^) ; \
+	mv sample.out sample.propeller.out
 
 sample.out.symfile: sample.out sample.perfdata
 	./plotool.sh $^
 
-sample.plo.out sample.out.cfg: sample.BB.ll.o sample.out.symfile sample.out.profile stage1-compiler
-	stage1/install/bin/clang -fuse-ld=lld -Wl,-O2 \
-	  -Wl,-plo \
-	  -Wl,-symfile=sample.out.symfile \
-	  -Wl,-profile=sample.out.profile \
-	  -Wl,-cfgdump=sample.out.cfg \
-	  sample.BB.ll.o -o sample.plo.out 2>&1 | tee sample.plo.out.autolog
-
-sample.out.layout: sample.out.cfg stage1-compiler
-	stage1/install/bin/layout -cfg-read $< -layout-dump $@ | tee $@.autolog
+$(CREATE_LLVM_PROF): $(CREATE_LLVM_PROF_DIR)/*.cc $(CREATE_LLVM_PROF_DIR)/*.h
+	make -C `dirname $@` -j50
 
 .phony: clean clean-all
 .phone: $(foreach F,$(FLAVORS),dummy-$(F))
