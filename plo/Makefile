@@ -309,8 +309,8 @@ $(foreach F,nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plolist,$(F).size-
 	cat $@
 
 # ######################################  sample workflow
-sample_bblabels.o: sample.c
-	./stage1-compiler -c -O2 -fbasicblock-sections=labels $< -o $@
+sample_bblabels.o: sample.c stage1-compiler
+	./stage1-compiler -c -O2 -fpropeller-label $< -o $@
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
 
@@ -326,28 +326,22 @@ sample.perfdata: sample.baseline.out
 sample.propeller: sample.perfdata $(CREATE_LLVM_PROF)
 	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=sample.out --logtostderr
 
-sample_bball.o: sample.c
-	./stage1-compiler -flto=thin -c -O2 -fbasicblock-sections=all -funique-bb-section-names $< -o $@
+sample_bb.o: sample.c sample.propeller stage1-compiler
+	./stage1-compiler -flto=thin -c -O2 -fpropeller-optimize=$(word 2,$^) $< -o $@
 
-sample_bball.out: sample_bball.o stage1-compiler
-	./stage1-compiler -fuse-ld=lld -flto=thin -O2 -Wl,--lto-basicblock-sections=all  -Wl,--lto-unique-bb-section-names $< -o $@
-
-sample.propeller.out: sample.propeller sample_bball.o stage1-compiler
-	./stage1-compiler -o sample.out -Wl,--lto-basicblock-sections=all -fuse-ld=lld -fpropeller-optimize=$< -Wl,-propeller-keep-named-symbols -Wl,--lto-unique-bb-section-names $(word 2,$^) ; \
+sample.propeller.out: sample_bb.o sample.propeller stage1-compiler
+	./stage1-compiler -o sample.out -flto=thin -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< ; \
 	mv sample.out sample.propeller.out
-
-sample.out.symfile: sample.out sample.perfdata
-	./plotool.sh $^
 
 $(CREATE_LLVM_PROF): $(CREATE_LLVM_PROF_DIR)/*.cc $(CREATE_LLVM_PROF_DIR)/*.h
 	make -C `dirname $@` -j50
 
-.phony: clean clean-all
+.phony: clean clean-all clean-sample
 .phone: $(foreach F,$(FLAVORS),dummy-$(F))
 $(foreach F,$(FLAVORS),dummy-$(F)):
 
 $(foreach F,$(FLAVORS),clean-$(F)): clean-%: dummy-%
-	rm -fr $(subst dummy-,,$<){,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,.symfile,.yaml,.profile,.cfg,.size-summaries}
+	rm -fr $(subst dummy-,,$<){,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,.yaml,.profile,.cfg,.size-summaries}
 	if [[ "$(subst dummy-,,$<)" == "pgo" ]]; then rm -fr stage-pgo ; fi
 	if [[ "$(subst dummy-,,$<)" == "cspgo" ]]; then rm -fr stage-cspgo ; fi
 
@@ -419,16 +413,17 @@ check-performance: benchmark-pgo.result benchmark-pgo-plolist.result benchmark-p
 	done ; \
 	$(call append_git_status,$@)
 
-clean:
+clean-sample:
+	rm -f sample_bblabels.o sample_bball.o sample.out sample.baseline.out sample.propeller.out sample.perfdata sample.propeller
+
+clean: clean-sample
 	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \
-	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,.symfile,-compiler.yaml,.profile,.cfg,.size-summaries} ; \
+	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,-compiler.yaml,.profile,.cfg,.size-summaries} ; \
 	  rm -f benchmark{-,pmu-}$${F}.result ; \
 	  rm -f benchmark-pmu-$${F}.{result,pmu} ; \
 	done
 	rm -f  check_environment
 	rm -f  commands run-commands.sh relink-clang-{cspgo,pgo}-plo{,list,all}.sh
-	rm -f  sample.out sample.out.{layout,symfile,profile,cfg}
-	rm -f  sample_*.o sample.plo.out sample.perfdata sample.propeller sample.propeller.out
 	rm -f  *.autolog *.log1
 	rm -f check-performance check-performance.*
 	rm -f check-pmu-performance check-pmu-performance.*
@@ -436,3 +431,4 @@ clean:
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
+
