@@ -4,28 +4,32 @@ SHELL := /bin/bash
 
 paths.mk :
 	@if [[ ! -e "paths.mk" ]] ; then \
+		echo "\"paths.mk\" doesn't exist. Creating an initial one!" ; \
 		touch $@ ; \
-		echo "RELEASE_LLVM_BIN=/path/to/llvm/bin" >> $@ ; \
-		echo "CREATE_LLVM_PROF_DIR=/path/to/create_llvm_prof_dir" >> $@ ; \
+		echo "RELEASE_LLVM_BIN=/usr/bin" >> $@ ; \
+		echo "CREATE_LLVM_PROF_DIR=.." >> $@ ; \
 		echo "BOLT=/path/to/llvm-bolt" >> $@ ; \
 		echo "PERF2BOLT=/path/to/perf2bolt" >> $@ ; \
-		exit 1 ; \
 	fi
 
 include paths.mk
 
+BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-bolt.result" )
+BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-bolt.result" )
+
 check_environment: paths.mk
 	@if [[ ! -e "${RELEASE_LLVM_BIN}/clang" ]] || \
-	    [[ ! -e "${BOLT}" ]] || \
-	    [[ ! -e "${PERF2BOLT}" ]] || \
 	    [[ ! -d "${CREATE_LLVM_PROF_DIR}" ]] ; then \
 	  echo "Invalid entries found in \"paths.mk\", please check." ; \
 	  exit 1 ; \
 	fi
+	@if [[ ! -e "${BOLT}" ]] || \
+	    [[ ! -e "${PERF2BOLT}" ]] ; then \
+	  echo "Invalid BOLT entries in \"paths.mk\", BOLT-related targets will not be built." ; \
+	fi
 	touch $@
 
 CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
-
 ITERATIONS ?= 5
 GITHASH := $(shell git rev-parse HEAD)
 $(shell git diff > gitdiff)
@@ -204,7 +208,7 @@ pgo/build/bin/clang-10-bolt cspgo/build/bin/clang-10-bolt pgo-vanilla/build/bin/
 		 -split-functions=3                     \
 		 -split-all-cold                        \
 		 -reorder-blocks="cache+"               \
-	 	 -reorder-functions="hfsort+" -relocs=1  \
+	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $@.autolog
 
 pgo-plo/build/bin/clang-10-plo cspgo-plo/build/bin/clang-10-plo: %-plo/build/bin/clang-10-plo: relink-clang-%-plo.sh stage1-compiler
@@ -333,9 +337,6 @@ sample.propeller.out: sample_bb.o sample.propeller stage1-compiler
 	./stage1-compiler -o sample.out -flto=thin -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< ; \
 	mv sample.out sample.propeller.out
 
-$(CREATE_LLVM_PROF): $(CREATE_LLVM_PROF_DIR)/*.cc $(CREATE_LLVM_PROF_DIR)/*.h
-	make -C `dirname $@` -j50
-
 .phony: clean clean-all clean-sample
 .phone: $(foreach F,$(FLAVORS),dummy-$(F))
 $(foreach F,$(FLAVORS),dummy-$(F)):
@@ -388,7 +389,7 @@ define append_git_status
 	ln -sf $1.${GITHASH} $1
 endef
 
-check-pmu-performance: benchmark-pmu-pgo.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-bolt.result
+check-pmu-performance: benchmark-pmu-pgo.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result $(BOLT_PMU_RESULT)
 	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "itlb_misses.miss_causes_a_walk:u" ) ; \
 	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
 	printf "VERSIONS" >> $@.${REPOHASH} ; \
@@ -406,7 +407,7 @@ check-pmu-performance: benchmark-pmu-pgo.result benchmark-pmu-pgo-plolist.result
 	printf "\n" >> $@.${REPOHASH} ; \
 	$(call append_git_status,$@)
 
-check-performance: benchmark-pgo.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-bolt.result
+check-performance: benchmark-pgo.result benchmark-pgo-plolist.result benchmark-pgo-plo.result ${BOLT_RESULT}
 	@echo "CHECK-PERFORMANCE" > $@.${REPOHASH} ; \
 	for version in $(wordlist 2,$(words $^),$^) ; do \
 		$(call check_against_baseline,$<,$$version) >> $@.${REPOHASH} ; \
