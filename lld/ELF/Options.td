@@ -325,6 +325,9 @@ defm propeller_dump_symbol_order: Eq<"propeller-dump-symbol-order",
 defm propeller_dump_cfg: Eq<"propeller-dump-cfg",
     "Dump the cfg of the function in DOT format (in a file named the same as the function).">;
 
+defm propeller_debug_symbol: Eq<"propeller-debug-symbol",
+    "Print information about propeller actions related to the given symbol.">;
+
 defm propeller_fallthrough_weight: Eq<"propeller-fallthrough-weight",
     "Fallthrough weight parameter to use in ExtTSP algorithm (default: 1.0).">;
 

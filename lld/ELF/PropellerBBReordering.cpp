@@ -93,13 +93,28 @@
 #include <numeric>
 #include <vector>
 
-using lld::elf::config;
 
 using llvm::DenseSet;
 using llvm::detail::DenseMapPair;
 
 namespace lld {
 namespace propeller {
+
+std::string toString(MergeOrder mOrder){
+  switch (mOrder) {
+    case MergeOrder::X2X1Y:
+      return "X2X1Y";
+    case MergeOrder::X1YX2:
+      return "X1YX2";
+    case MergeOrder::X2YX1:
+      return "X2YX1";
+    case MergeOrder::YX2X1:
+      return "YX2X1";
+    default:
+      assert("Invalid MergeOrder!" && false);
+      return "";
+  }
+}
 
 std::string toString(const NodeChain& c){
   std::string str;
@@ -112,10 +127,19 @@ std::string toString(const NodeChain& c){
       str += " -> ";
   }
   str += " ]";
+  str += " score: " + std::to_string(c.Score);
   return str;
 }
 
-
+std::string NodeChainBuilder::toString(const NodeChainAssembly &assembly) const{
+  std::string str("assembly record between: ");
+  str += lld::propeller::toString(*assembly.SplitChain) + " as X\n";
+  str += lld::propeller::toString(*assembly.UnsplitChain) + " as Y\n";
+  str += "split position (X):, " + std::to_string(assembly.SlicePosition - assembly.SplitChain->Nodes.begin()) + "\n";
+  str += "merge order: " + lld::propeller::toString(assembly.MOrder) + "\n";
+  str += "Score: " + std::to_string(assembly.Score);
+  return str;
+}
 
 // Return the Extended TSP score for one edge, given its source to sink
 // direction and distance in the layout.
@@ -249,7 +273,7 @@ void NodeChainBuilder::mergeChains(
   assembly->SplitChain->Freq += assembly->UnsplitChain->Freq;
   // We have already computed the new score in the assembly record. So we can
   // just set the new score equal to that.
-  assembly->SplitChain->Score = assembly->extTSPScore();
+  assembly->SplitChain->Score = assembly->Score;
 
   // Merge the assembly candidate chains of the two chains into the candidate
   // chains of the remaining NodeChain and remove the records for the defunct
@@ -495,6 +519,13 @@ void NodeChainBuilder::initializeExtTSP() {
       }
     }
   }
+  if (DebugCFG) {
+    fprintf(stderr, "Propeller: Finished initializing Ext-TSP score for all assembly records:\n");
+    for(const DenseMapPair<std::pair<NodeChain *, NodeChain *>,
+        std::unique_ptr<NodeChainAssembly>> &elem: NodeChainAssemblies){
+      fprintf(stderr, "%s\n", NodeChainBuilder::toString(*elem.second.get()).c_str());
+    }
+  }
 }
 
 void NodeChainBuilder::computeChainOrder(
@@ -523,6 +554,8 @@ void NodeChainBuilder::computeChainOrder(
 
     if (bestCandidate != NodeChainAssemblies.end() &&
         bestCandidate->second->extTSPScoreGain() > 0) {
+      if (DebugCFG)
+        fprintf(stderr, "MERGING for %s\n", toString(*bestCandidate->second.get()).c_str());
       std::unique_ptr<NodeChainAssembly> bestCandidateNCA =
           std::move(bestCandidate->second);
       NodeChainAssemblies.erase(bestCandidate);
@@ -603,7 +636,8 @@ void NodeChainBuilder::doSplitOrder(
     for (const CFGNode *n : c->Nodes)
       symbolList.insert(insertPos, n->ShName);
   }
-  log("ExtTSP score: " + CFG->Name + " -> " + std::to_string(Score));
+  if(config->propellerPrintStats)
+    fprintf(stderr, "ExtTSP score: %s,%f\n", CFG->Name.str().c_str(), Score);
 }
 
 } // namespace propeller

@@ -947,11 +947,15 @@ static void readConfigs(opt::InputArgList &args) {
   config->propellerDumpSymbolOrder =
       args.getLastArgValue(OPT_propeller_dump_symbol_order);
 
+
   config->propellerPrintStats =
       args.hasFlag(OPT_propeller_print_stats,
                    OPT_no_propeller_print_stats, false);
 
   config->propellerDumpCfgs = args.getAllArgValues(OPT_propeller_dump_cfg);
+
+  config->propellerDebugSymbols =
+      args.getAllArgValues(OPT_propeller_debug_symbol);
 
   config->propellerReorderBlocks = config->propellerReorderFuncs =
       config->propellerSplitFuncs = !config->propeller.empty();
