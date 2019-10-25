@@ -115,6 +115,10 @@ define build_compiler
 	  mkdir -p $(1)/build ;                         \
 	  cd $(1)/build && cmake -G Ninja               \
             -DCMAKE_INSTALL_PREFIX=$(DDIR)/$(1)/install \
+	    -DProtobuf_PROTOC_EXECUTABLE=/usr/local/google/home/shenhan/copt2/protobuf/install-3.10/bin/protoc \
+	    -DProtobuf_SRC_ROOT_FOLDER=/usr/local/google/home/shenhan/copt2/protobuf/protobuf \
+	    -DProtobuf_INCLUDE_DIR=/usr/local/google/home/shenhan/copt2/protobuf/install-3.10/include \
+	    -DProtobuf_LIBRARY=/usr/local/google/home/shenhan/copt2/protobuf/install-3.10/lib/libprotobuf.so \
 	    -DCMAKE_BUILD_TYPE=Release                  \
             -DLLVM_OPTIMIZED_TABLEGEN=On                \
             -DLLVM_TARGETS_TO_BUILD="X86"               \
@@ -432,3 +436,16 @@ clean: clean-sample
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
 
+
+
+#############
+PROTOBUF_THINGS := $(addprefix ../lld/ELF/Propeller/,libprotobuf.so cfg.pb.h cfg.pb.cc)
+
+../lld/ELF/Propeller/libprotobuf.so:
+	cp -v $(PROTOBUF_PREFIX)/lib/libprotobuf.so* $(dir $@)/
+
+../lld/ELF/Propeller/cfg.pb.cc ../lld/ELF/Propeller/cfg.pb.h: cfg.proto $(PROTOBUF_PREFIX)/bin/protoc
+	LD_LIBRARY_PATH=$(PROTOBUF_PREFIX)/lib $(lastword $^) -I=$(DDIR) --cpp_out=$(dir $@) $(DDIR)/$<
+
+proto: $(PROTOBUF_THINGS)
+	touch $@
