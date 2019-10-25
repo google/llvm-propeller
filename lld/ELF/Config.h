@@ -114,6 +114,7 @@ struct Configuration {
   uint64_t propellerBackwardJumpDistance;
   uint64_t propellerChainSplitThreshold;
   std::vector<std::string> propellerDumpCfgs;
+  std::vector<std::string> propellerDebugSymbols;
   std::vector<std::string> propellerOpts;
   llvm::StringRef printSymbolOrder;
   llvm::StringRef soName;

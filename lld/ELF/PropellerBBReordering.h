@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+using lld::elf::config;
 using llvm::DenseMap;
 
 namespace lld {
@@ -32,6 +33,7 @@ enum MergeOrder {
   YX2X1,
   End
 };
+
 
 // Represents a chain of nodes (basic blocks).
 class NodeChain {
@@ -103,6 +105,10 @@ private:
   std::unordered_map<NodeChain *, std::unordered_set<NodeChain *>>
       CandidateChains;
 
+  // Whether propeller should print information about how this CFG is being
+  // reordered.
+  bool DebugCFG;
+
   void sortChainsByExecutionDensity(std::vector<const NodeChain *> &ChainOrder);
 
   void initializeExtTSP();
@@ -149,6 +155,9 @@ private:
 
 public:
   NodeChainBuilder(const ControlFlowGraph *_CFG) : CFG(_CFG) {
+    DebugCFG = std::find(config->propellerDebugSymbols.begin(),
+                         config->propellerDebugSymbols.end(),
+                         CFG->Name.str()) != config->propellerDebugSymbols.end();
     initNodeChains();
     initMutuallyForcedEdges();
   }
@@ -160,6 +169,8 @@ public:
   void doSplitOrder(std::list<StringRef> &SymbolList,
                     std::list<StringRef>::iterator HotPlaceHolder,
                     std::list<StringRef>::iterator ColdPlaceHolder);
+
+  std::string toString(const NodeChainAssembly& assembly) const;
 };
 
 class NodeChainBuilder::NodeChainSlice {
@@ -199,9 +210,6 @@ private:
   // Total ExtTSP score of this NodeChainAssembly
   double Score = 0;
 
-  // Whether the ExtTSP score has been computed for this NodeChainAssembly
-  bool ScoreComputed = false;
-
   // Corresponding NodeChainBuilder of the assembled chains
   const NodeChainBuilder *ChainBuilder;
 
@@ -214,11 +222,14 @@ private:
   // The three chain slices
   std::vector<NodeChainSlice> Slices;
 
+  // The merge order
+  MergeOrder MOrder;
+
   NodeChainAssembly(NodeChain *chainX, NodeChain *chainY,
                     std::vector<const CFGNode *>::iterator slicePosition,
-                    MergeOrder mergeOrder, const NodeChainBuilder *chainBuilder)
+                    MergeOrder mOrder, const NodeChainBuilder *chainBuilder)
       : ChainBuilder(chainBuilder), SplitChain(chainX), UnsplitChain(chainY),
-        SlicePosition(slicePosition) {
+        SlicePosition(slicePosition),  MOrder(mOrder) {
     NodeChainSlice x1(chainX, chainX->Nodes.begin(), SlicePosition,
                       *chainBuilder);
     NodeChainSlice x2(chainX, SlicePosition, chainX->Nodes.end(),
@@ -226,7 +237,7 @@ private:
     NodeChainSlice y(chainY, chainY->Nodes.begin(), chainY->Nodes.end(),
                      *chainBuilder);
 
-    switch (mergeOrder) {
+    switch (MOrder) {
     case MergeOrder::X2X1Y:
       Slices = {x2, x1, y};
       break;
@@ -242,21 +253,14 @@ private:
     default:
       assert("Invalid MergeOrder!" && false);
     }
-  }
 
-  double extTSPScore() {
-    if (ScoreComputed)
-      return Score;
-    else {
-      ScoreComputed = true;
-      return (Score = computeExtTSPScore());
-    }
+    Score = computeExtTSPScore();
   }
 
   // Return the gain in ExtTSP score achieved by this NodeChainAssembly once it
   // is accordingly applied to the two chains.
   double extTSPScoreGain() {
-    return extTSPScore() - SplitChain->Score - UnsplitChain->Score;
+    return this->Score - SplitChain->Score - UnsplitChain->Score;
   }
 
   // Find the NodeChainSlice in this NodeChainAssembly which contains the given
