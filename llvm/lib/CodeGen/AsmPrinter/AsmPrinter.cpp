@@ -1138,7 +1138,8 @@ void AsmPrinter::EmitFunctionBody() {
         }
       }
     }
-    if (MF->getBasicBlockLabels() || MBB.isUniqueSection()) {
+    if (!MBB.pred_empty() &&
+        (MF->getBasicBlockLabels() || MBB.isEndSection())) {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
       MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
@@ -3008,8 +3009,13 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     if (isVerbose() && MBB.hasLabelMustBeEmitted()) {
       OutStreamer->AddComment("Label of block must be emitted");
     }
-    // For -fbasicblock-sections, switch to another section.
-    if (MBB.isUniqueSection()) {
+    // With -fbasicblock-sections, a basic block can start a new section.
+    if (MBB.isExceptionSection()) {
+      OutStreamer->SwitchSection(MF->getSection());
+    } else if (MBB.isColdSection()) {
+      // Create the cold section here.
+      OutStreamer->SwitchSection(MF->getSection());
+    } else if (MBB.isBeginSection() && MBB.isEndSection()) {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
                                                               MBB, TM));
@@ -3019,7 +3025,7 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     OutStreamer->EmitLabel(MBB.getSymbol());
     // With BasicBlockSections, each Basic Block must handle CFI information on
     // its own.
-    if (MBB.isUniqueSection()) {
+    if (MBB.isBeginSection()) {
       for (const HandlerInfo &HI : Handlers) {
         HI.Handler->beginBasicBlock(MBB);
       }
@@ -3033,13 +3039,9 @@ void AsmPrinter::EmitBasicBlockEnd(const MachineBasicBlock &MBB) {
   OutStreamer->EmitCodePaddingBasicBlockEnd(Context);
   // Check if CFI information needs to be updated for this MBB with basic block
   // sections.
-  if (MF->getBasicBlockSections()) {
-    auto I = std::next(MBB.getIterator());
-    const MachineBasicBlock *nextBB = (I != MF->end()) ? &*I : nullptr;
-    if (MBB.isUniqueSection() || !nextBB || nextBB->isUniqueSection()) {
-      for (const HandlerInfo &HI : Handlers) {
-        HI.Handler->endBasicBlock(MBB);
-      }
+  if (MF->getBasicBlockSections() && MBB.isEndSection()) {
+    for (const HandlerInfo &HI : Handlers) {
+      HI.Handler->endBasicBlock(MBB);
     }
   }
 }
@@ -3071,7 +3073,7 @@ void AsmPrinter::EmitVisibility(MCSymbol *Sym, unsigned Visibility,
 bool AsmPrinter::
 isBlockOnlyReachableByFallthrough(const MachineBasicBlock *MBB) const {
   // With BasicBlock Sections, no block is a fall through.
-  if (MBB->isUniqueSection())
+  if (MBB->isBeginSection())
     return false;
 
   // If this is a landing pad, it isn't a fall through.  If it has no preds,

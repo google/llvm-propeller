@@ -394,8 +394,8 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     // handling BBs will be in the [getFunctionBegin(), getFunctionEnd()]
     // range. Ranges for the other BBs have to be emitted separately.
     for (auto &MBB : *Asm->MF) {
-      if (!MBB.pred_empty() && MBB.isUniqueSection()) {
-        BB_List.push_back(RangeSpan(MBB.getSymbol(), MBB.getEndMCSymbol()));
+      if (!MBB.pred_empty() && MBB.isBeginSection()) {
+        BB_List.push_back(RangeSpan(MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()));
       }
     }
     attachRangesOrLowHighPC(*SPDie, BB_List);
@@ -536,44 +536,30 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     auto *EndLabel = DD->getLabelAfterInsn(R.second);
 
     const auto *BeginMBB = R.first->getParent();
-    const auto *EndBB = R.second->getParent();
+    const auto *EndMBB = R.second->getParent();
 
-    if (BeginMBB == EndBB || !EndBB->isUniqueSection() ||
+    if (BeginMBB->sameSection(EndMBB) ||
         Asm->MF->getBasicBlockSections() == llvm::BasicBlockSection::None) {
       // Without basic block sections, there is just one continuous range.
-      // The same holds if EndBB is in the initial non-unique-section BB range.
+      // The same holds if EndMBB is in the initial non-unique-section BB range.
       List.push_back(RangeSpan(BeginLabel, EndLabel));
       continue;
     }
 
-    const auto *LastMBBInSection = BeginMBB;
-
-    if (BeginMBB->isUniqueSection()) {
-      // BeginLabel lies in a unique section ending at the BeginMBB's end
-      // symbol.
-      assert(BeginMBB->getEndMCSymbol() &&
-             "Unique BB sections should have end symbols.");
-      List.push_back(RangeSpan(BeginLabel, BeginMBB->getEndMCSymbol()));
-    } else {
-      // BeginLabel lies in a non-unique section, but EndLabel does not. The
-      // section for non-unique-section BBs ends at Asm->getFunctionEnd().
-      List.push_back(RangeSpan(BeginLabel, Asm->getFunctionEnd()));
-      while (!LastMBBInSection->getNextNode()->isUniqueSection())
-        LastMBBInSection = LastMBBInSection->getNextNode();
+    assert (!BeginMBB->sameSection(EndMBB) &&
+            "BeginMBB and EndMBB are in the same section!");
+    const auto *MBBInSection = BeginMBB->getSectionEndMBB();
+    List.push_back(RangeSpan(BeginLabel, MBBInSection->getEndMCSymbol()));
+    MBBInSection = MBBInSection->getNextNode();
+    while  (!MBBInSection->sameSection(EndMBB)) {
+      assert(MBBInSection->isBeginSection() &&
+             "This should start a new section.");
+      List.push_back(RangeSpan(MBBInSection->getSymbol(), MBBInSection->getEndMCSymbol()));
+      MBBInSection = MBBInSection->getSectionEndMBB()->getNextNode();
     }
 
-    for (auto *MBB = LastMBBInSection->getNextNode(); MBB != EndBB;
-         MBB = MBB->getNextNode()) {
-      assert(MBB->isUniqueSection() && "All non-unique-section BBs should be"
-                                       " before the unique-section ones.");
-      assert(MBB->getSymbol() && "Unique BB sections should have symbols.");
-      assert(MBB->getEndMCSymbol() &&
-             "Unique BB sections should have end symbols.");
-      List.push_back(RangeSpan(MBB->getSymbol(), MBB->getEndMCSymbol()));
-    }
-
-    assert(EndBB->getSymbol() && "Unique BB sections should have symbols.");
-    List.push_back(RangeSpan(EndBB->getSymbol(), EndLabel));
+    assert(MBBInSection->sameSection(EndMBB));
+    List.push_back(RangeSpan(MBBInSection->getSymbol(), EndLabel));
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }
