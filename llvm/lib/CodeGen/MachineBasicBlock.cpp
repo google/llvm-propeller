@@ -543,6 +543,36 @@ void MachineBasicBlock::moveAfter(MachineBasicBlock *NewBefore) {
   getParent()->splice(++NewBefore->getIterator(), getIterator());
 }
 
+// Returns true if this basic block and the Other are in the same section.
+bool MachineBasicBlock::sameSection(const MachineBasicBlock *Other) const {
+  if (this == Other)
+    return true;
+
+  if ((this->isColdSection() != Other->isColdSection())
+      || (this->isExceptionSection() != Other->isExceptionSection()))
+    return false;
+
+  if ((this->isBeginSection() && this->isEndSection())
+      || (Other->isBeginSection() && Other->isEndSection()))
+    return false;
+
+  return true;
+}
+
+const MachineBasicBlock * MachineBasicBlock::getSectionEndMBB() const {
+  if (this->isEndSection())
+    return this;
+  auto I = std::next(this->getIterator());
+  const MachineFunction *MF = getParent();
+  while (I != MF->end()) {
+    const MachineBasicBlock &MBB = *I;
+    if (MBB.isEndSection())
+      return &MBB;
+    I = std::next(I);
+  }
+  llvm_unreachable("No End Basic Block for this section."); 
+}
+
 // Insert unconditional jumps to the basic block to which there is
 // a fall through.
 void MachineBasicBlock::insertUnconditionalFallthroughBranch() {
@@ -553,7 +583,7 @@ void MachineBasicBlock::insertUnconditionalFallthroughBranch() {
 
   // If this basic block and the Fallthrough basic block are in the same
   // section then do not insert the jump.
-  if (!this->isUniqueSection() && !Fallthrough->isUniqueSection())
+  if (this->sameSection(Fallthrough))
     return;
 
   const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
