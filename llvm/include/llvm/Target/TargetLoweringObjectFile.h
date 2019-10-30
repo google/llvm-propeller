@@ -96,6 +96,10 @@ public:
                                  const MachineBasicBlock &MBB,
                                  const TargetMachine &TM) const;
 
+  virtual MCSection *
+  getColdSectionForMachineBasicBlock(const Function &F,
+                                     const MachineBasicBlock &MBB,
+                                     const TargetMachine &TM) const;
   /// Classify the specified global variable into a set of target independent
   /// categories embodied in SectionKind.
   static SectionKind getKindForGlobal(const GlobalObject *GO,

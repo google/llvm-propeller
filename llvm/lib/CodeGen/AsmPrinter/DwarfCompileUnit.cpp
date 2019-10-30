@@ -554,7 +554,9 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     while  (!MBBInSection->sameSection(EndMBB)) {
       assert(MBBInSection->isBeginSection() &&
              "This should start a new section.");
-      List.push_back(RangeSpan(MBBInSection->getSymbol(), MBBInSection->getEndMCSymbol()));
+      List.push_back(
+          RangeSpan(MBBInSection->getSymbol(),
+                    MBBInSection->getSectionEndMBB()->getEndMCSymbol()));
       MBBInSection = MBBInSection->getSectionEndMBB()->getNextNode();
     }
 

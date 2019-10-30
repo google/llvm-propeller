@@ -352,20 +352,26 @@ bool MachineFunction::sortBasicBlockSections() {
   DenseMap<const MachineBasicBlock *, unsigned> MBBOrder;
   unsigned MBBOrderN = 0;
 
+  SmallSet<unsigned, 4> S = Target.getBasicBlockSectionsSet(F.getName());
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.  Entry basic block cannot
     // a section because the function starts one.
     if (MBB.getNumber() == this->front().getNumber())
       continue;
+    // Also, check if this BB is a cold basic block in which case sections
+    // are not required with the list option.
+    bool isColdBB =
+        ((Target.getBasicBlockSections() == llvm::BasicBlockSection::List) &&
+         !S.count(MBB.getNumber()));
     bool UsesEHInfo = HasEHInfo(MBB);
-    if (!UsesEHInfo) {
+    if (UsesEHInfo) {
+      MBB.setExceptionSection();
+    } else if (isColdBB) {
+      MBB.setColdSection();
+    } else {
       MBB.setBeginSection();
       MBB.setEndSection();
-    } else if (UsesEHInfo) {
-      MBB.setExceptionSection();
-    } else {
-      MBB.setColdSection();
     }
     MBBOrder[&MBB] = MBBOrderN++;
   }
