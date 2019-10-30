@@ -6,6 +6,16 @@ if(NOT LLD_BUILT_STANDALONE)
   set(tablegen_deps intrinsics_gen)
 endif()
 
+find_package(Protobuf REQUIRED)
+add_compile_definitions(GOOGLE_PROTOBUF_NO_RTTI)
+include_directories(${Protobuf_INCLUDE_DIRS})
+protobuf_generate_cpp(PROPELLER_PROTO_SRCS PROPELLER_PROTO_HDRS propeller_cfg.proto)
+
+if( Protobuf_FOUND )
+  add_compile_definitions(PROPELLER_PROTOBUF)
+  set(PROPELLER_PROTOBUF_SRCS Propeller/Protobuf.cpp)
+endif()
+
 add_lld_library(lldELF
   AArch64ErrataFix.cpp
   Arch/AArch64.cpp
@@ -41,6 +51,8 @@ add_lld_library(lldELF
   PropellerCfg.cpp
   PropellerFuncOrdering.cpp
   PropellerBBReordering.cpp
+  ${PROPELLER_PROTO_SRCS}
+  ${PROPELLER_PROTOBUF_SRCS}
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp
@@ -66,7 +78,8 @@ add_lld_library(lldELF
   LINK_LIBS
   lldCommon
   ${LLVM_PTHREAD_LIB}
-
+  ${Protobuf_LIBRARIES}
+  
   DEPENDS
   ELFOptionsTableGen
   ${tablegen_deps}

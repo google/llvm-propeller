@@ -440,10 +440,7 @@ clean-all: clean
 
 
 #############
-PROTOBUF_THINGS := $(addprefix ../lld/ELF/Propeller/,libprotobuf.so cfg.pb.h cfg.pb.cc)
-
-../lld/ELF/Propeller/libprotobuf.so:
-	cp -v $(PROTOBUF_PREFIX)/lib/libprotobuf.so* $(dir $@)/
+PROTOBUF_THINGS := $(addprefix ../lld/ELF/Propeller/,cfg.pb.h cfg.pb.cc)
 
 ../lld/ELF/Propeller/cfg.pb.cc ../lld/ELF/Propeller/cfg.pb.h: cfg.proto $(PROTOBUF_PREFIX)/bin/protoc
 	LD_LIBRARY_PATH=$(PROTOBUF_PREFIX)/lib $(lastword $^) -I=$(DDIR) --cpp_out=$(dir $@) $(DDIR)/$<

@@ -102,6 +102,7 @@
 #define LLD_ELF_PROPELLER_H
 
 #include "InputFiles.h"
+#include "Propeller/Protobuf.h"
 
 #include "lld/Common/LLVM.h"
 #include "lld/Common/PropellerCommon.h"
@@ -289,6 +290,8 @@ public:
       v(*(*(p.second.begin())));
   }
 
+  bool dumpCfgs();
+
   lld::elf::SymbolTable *Symtab;
 
   std::vector<std::unique_ptr<ObjectView>> Views;
@@ -311,6 +314,11 @@ public:
   // then puts CFGs into Propeller::CFGMap (see above). Lock is used
   // to guard this Propeller::CFGMap critical section.
   std::mutex Lock;
+
+#ifdef PROPELLER_PROTOBUF
+  std::unique_ptr<lld::propeller::ProtobufPrinter> protobufPrinter;
+#endif
+  
 };
 
 // When no "-propeller-keep-named-symbols" specified, we remove all BB symbols

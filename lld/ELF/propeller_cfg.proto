@@ -1,0 +1,56 @@
+syntax = "proto2";
+
+package llvm.plo.cfg;
+
+// Edge between basic blocks.
+// Next Available: 4.
+message Edge {
+  // Index of the source basic block.
+  optional int32 source = 1;
+
+  // Index of the target basic block.
+  optional int32 target = 2;
+
+  // Frequency count of the jump from profile.
+  optional int32 profile_count = 3;
+}
+
+// Basic block in cfg.
+// Next Available: 6.
+message BasicBlock {
+  // 0-based index that distinguishes between different basic blocks.
+  optional int32 index = 1;
+
+  // Size of the basic block.
+  optional int32 size = 2;
+
+  // Frequency count of the basic block from profile, defined as
+  // max(sum(incoming_edges), sum(outgoing_edges)).
+  optional int32 profile_count = 3;
+
+  // Edges coming into this basic block.
+  repeated Edge incoming_edges = 4;
+
+  // Edges going out of this basic block.
+  repeated Edge outgoing_edges = 5;
+}
+
+// Control flow graph where basic blocks are vertices and jumps are edges.
+// Next Available: 6.
+message CFG {
+  // Name of the function.
+  optional string name = 1;
+
+  // Size of the function.
+  optional int32 size = 2;
+
+  // Basic blocks in the CFG.
+  // The sequence of the repeated field matches the after-propeller layout.
+  repeated BasicBlock basic_blocks = 3;
+
+  // The index of the entry block in the CFG.
+  optional int32 entry_block = 4;
+
+  // Object name of the function belongs to.
+  optional string object_name = 5;
+}
