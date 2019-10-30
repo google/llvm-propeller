@@ -100,7 +100,7 @@ public:
 
   const static uint64_t InvalidAddress = -1;
 
-  unsigned getBBIndex() {
+  unsigned getBBIndex() const {
     StringRef FName, BName;
     if (SymbolEntry::isBBSymbol(ShName, &FName, &BName))
       return BName.size();

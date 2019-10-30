@@ -1,0 +1,171 @@
+# Customizable variables.
+# Vanilla clang/clang++ bin path.
+SHELL := /bin/bash
+
+paths.mk :
+	@if [[ ! -e "paths.mk" ]] ; then \
+		touch $@ ; \
+		echo "RELEASE_LLVM_BIN=/path/to/llvm/bin" >> $@ ; \
+		echo "CREATE_LLVM_PROF_DIR=/path/to/create_llvm_prof_dir" >> $@ ; \
+		echo "BOLT=/path/to/llvm-bolt" >> $@ ; \
+		echo "PERF2BOLT=/path/to/perf2bolt" >> $@ ; \
+		exit 1 ; \
+	fi
+
+include paths.mk
+check_environment: paths.mk
+	@if [[ ! -e "${RELEASE_LLVM_BIN}/clang" ]] || \
+	    [[ ! -e "${BOLT}" ]] || \
+	    [[ ! -e "${PERF2BOLT}" ]] || \
+	    [[ ! -d "${CREATE_LLVM_PROF_DIR}" ]] ; then \
+	  echo "Invalid entries found in \"paths.mk\", please check." ; \
+	  exit 1 ; \
+	fi
+	touch $@
+
+
+CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
+DDIR := $(shell pwd)
+LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
+LLVM_SOURCE := $(shell find $(LLVM_PROJECT)/llvm \
+                            $(LLVM_PROJECT)/clang \
+                            $(LLVM_PROJECT)/lld \
+        '(' -ipath "*/.git"      -o      \
+            -ipath "*/test"      -o      \
+            -ipath "*/tests"     -o      \
+            -ipath "*/unittests" -o      \
+            -ipath "*/gtest"     -o      \
+            -ipath "*/googletest" ')' -type d  -prune -o \
+        -type f '(' -iname "*.cpp" -o -iname "*.cc" -o -iname "*.c" \
+                   -o -iname "*.h" -o -iname "*.td" ')' -print)
+
+ifeq ($(J_NUMBER),)
+J_NUMBER := $(shell grep -Ee "^core id" /proc/cpuinfo | wc -l)
+J_NUMBER := $(shell if [[ "$(J_NUMBER)" -lt "16" ]] ; then \
+                        echo $$(($(J_NUMBER) / 8 * 7)) ; \
+                    else echo $$(($(J_NUMBER) - 5)); fi)
+endif
+
+STAGE1_BIN         := $(DDIR)/stage1/install/bin
+PROFILES_DIR       := $(DDIR)/stage2/build/profiles
+
+# $1 are compiler flags.
+# $2 are ld flags.
+gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
+                  -DCMAKE_EXE_LINKER_FLAGS=$(2) \
+                  -DCMAKE_SHARED_LINKER_FLAGS=$(2) \
+                  -DCMAKE_MODULE_LINKER_FLAGS=$(2)
+
+RELOCATION_GEN_OPT := -fuse-ld=lld -Wl,-q
+
+gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
+                  -DCMAKE_EXE_LINKER_FLAGS=$(2) \
+                  -DCMAKE_SHARED_LINKER_FLAGS=$(2) \
+                  -DCMAKE_MODULE_LINKER_FLAGS=$(2)
+
+# $1 is compiler name, "stage1", "instrbb".
+# $2 is bin directory that is used to build the compiler, must be absolute path.
+# $3 is any other cmake flags (optional)
+# $4 is llvm enabled projects
+# $5 is target
+define build_compiler
+	export COMP_DIR=$$(echo $@ | sed -Ee 's!([^/]+)/.*!\1!') ; \
+	if [[ ! -e "$${COMP_DIR}/build/CMakeCache.txt" ]]; then    \
+	  mkdir -p $${COMP_DIR}/build ;                            \
+	  pushd $${COMP_DIR}/build && cmake -G Ninja               \
+            -DCMAKE_INSTALL_PREFIX=$(DDIR)/$${COMP_DIR}/install    \
+	    -DCMAKE_BUILD_TYPE=Release                             \
+            -DLLVM_OPTIMIZED_TABLEGEN=On                           \
+            -DLLVM_TARGETS_TO_BUILD="X86"                          \
+	    -DLLVM_USE_LINKER="lld"	                           \
+	    -DCMAKE_C_COMPILER=$(1)/clang                          \
+	    -DCMAKE_CXX_COMPILER=$(1)/clang++                      \
+	    -DCMAKE_ASM_COMPILER=$(1)/clang                        \
+	    $(2)                                                   \
+            -DLLVM_ENABLE_PROJECTS=$(3)                            \
+            $(LLVM_PROJECT)/llvm;                                  \
+	  popd ;                                                   \
+	fi ;                                                       \
+        ninja -C $${COMP_DIR}/build -j$(J_NUMBER) $(4) ;           \
+	touch $@
+endef
+
+##
+COMPILER_TARGETS=stage-pgo-compiler pgo_relocs-compiler pgo_vanilla-compiler pgo_labels-compiler pgo_list-compiler pgo_all-compiler
+
+comma := ,
+
+stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
+	$(call build_compiler,$(RELEASE_LLVM_BIN),,"clang;compiler-rt;lld",install)
+
+stage1-compiler: stage1/install/bin/clang
+	ln -sf $< $@
+	touch $@
+
+stage-pgo/build/bin/clang-10: | stage1-compiler
+	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;lld",all)
+
+stage-pgo-compiler.profdata: %.profdata: % run-commands.sh  | stage1-compiler
+	./run-commands.sh $(shell readlink -f $<)
+	$(STAGE1_BIN)/llvm-profdata merge -output=$@ `find $(dir $(shell readlink -f $<))../ -path "*/profiles/*.profraw"`
+
+pgo_relocs/build/bin/clang-10: stage-pgo-compiler.profdata
+	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,,"$(RELOCATION_GEN_OPT)"),"clang;lld",clang lld)
+
+pgo_vanilla/build/bin/clang-10: stage-pgo-compiler.profdata
+	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin,"clang;lld",clang lld)
+
+pgo_labels/build/bin/clang-10: stage-pgo-compiler.profdata
+	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,"-fpropeller-label","-fuse-ld=lld -fpropeller-label"),"clang;lld",clang lld)
+
+pgo_list/build/bin/clang-10: stage-pgo-compiler.profdata pgo_labels-compiler.propeller
+	$(call build_compiler,$(DDIR)/stage1/install/bin,\
+		-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin \
+		$(call gen_build_flags,"-fpropeller-optimize=$(DDIR)/$(lastword $^)","-fuse-ld=lld -fpropeller-optimize=$(DDIR)/$(lastword $^)"),"clang;lld",clang lld)
+
+pgo_all/build/bin/clang-10: stage-pgo-compiler.profdata pgo_labels-compiler.propeller
+	$(call build_compiler,$(DDIR)/stage1/install/bin,\
+		-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin \
+		$(call gen_build_flags,"-fpropeller-optimize=$(DDIR)/$(lastword $^) -fbasicblock-sections=all","-fuse-ld=lld -fpropeller-optimize=$(DDIR)/$(lastword $^) -Wl$(comma)-lto-basicblock-sections=all"),"clang;lld",clang lld)
+
+pgo_relocs-compiler.perfdata pgo_vanilla-compiler.perfdata pgo_labels-compiler.perfdata: %.perfdata: % run-commands.sh
+	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
+
+pgo_relocs-compiler.yaml pgo_vanilla-compiler.yaml pgo_labels-compiler.yaml: %.yaml: %.perfdata %
+	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
+
+pgo_labels-compiler.propeller: pgo_labels-compiler pgo_labels-compiler.perfdata
+	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(lastword $^) --out=$@ --logtostderr
+
+pgo_relocs-bolt-compiler: pgo_relocs-compiler.yaml
+	$(BOLT) $(shell readlink -f "$$(basename $< .yaml)") -o $@ -b $< -split-functions=3 -reorder-blocks="cache+" -reorder-functions="hfsort" -relocs=1 --update-debug-sections 2>&1 | tee $@.autolog
+
+$(COMPILER_TARGETS): %-compiler: %/build/bin/clang-10
+	ln -sf $< $@
+	touch $@
+
+run-commands.sh: | stage1-compiler
+	rsync -a -f "+ */" -f "+ *.inc" -f "+ *.h" -f "+ *.def" -f "- *" \
+            stage1/build/ test-build/
+	ninja -C stage1/build -t commands clang \
+            | grep -E "^$(RELEASE_LLVM_BIN)/clang\+?\+? " \
+            | grep -Fe " -c " \
+            | sed -Ee 's!^$(RELEASE_LLVM_BIN)/clang\+\+ !$${CCP} -x c++ !' \
+                   -e 's!^$(RELEASE_LLVM_BIN)/clang !$${CCP} !' \
+                   -e 's!^!cd $(DDIR)/test-build \&\& !' >> commands
+	if [[ -z `cat commands` ]]; then \
+		echo "Empty commands file, ERROR." ; exit 1 ; \
+	fi
+	echo "export CCP=\$$1" > run-commands.sh
+	echo "head -n 666 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
+                >> run-commands.sh
+	chmod +x run-commands.sh
+
+clean:
+	rm -fr $(foreach C,$(COMPILER_TARGETS),$(C) $(shell basename $(C) -compiler)/ $(C).perfdata $(C).yaml)
+	rm -f run-commands.sh
+	rm -f stage-pgo-compiler.profdata
+	rm -f pgo_labels-compiler.propeller
+
+clean-all: clean
+	rm -fr stage1-compiler stage1/

@@ -34,6 +34,7 @@ enum MergeOrder {
   End
 };
 
+class Propeller;
 
 // Represents a chain of nodes (basic blocks).
 class NodeChain {
@@ -69,6 +70,9 @@ private:
 
   // Cfg representing a single function.
   const ControlFlowGraph *CFG;
+
+  // Propeller reference to global propeller instance.
+  Propeller &Prop;
 
   // Set of built chains, keyed by section index of their Delegate Nodes.
   DenseMap<uint64_t, std::unique_ptr<NodeChain>> Chains;
@@ -154,7 +158,8 @@ private:
   }
 
 public:
-  NodeChainBuilder(const ControlFlowGraph *_CFG) : CFG(_CFG) {
+  NodeChainBuilder(const ControlFlowGraph *_CFG, Propeller &_Prop)
+      : CFG(_CFG), Prop(_Prop) {
     DebugCFG = std::find(config->propellerDebugSymbols.begin(),
                          config->propellerDebugSymbols.end(),
                          CFG->Name.str()) != config->propellerDebugSymbols.end();

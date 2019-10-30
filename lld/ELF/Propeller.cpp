@@ -29,11 +29,18 @@
 #include "PropellerCfg.h"
 #include "PropellerFuncOrdering.h"
 
+#include "propeller_cfg.pb.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Parallel.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 
 #include <fstream>
 #include <list>
@@ -446,42 +453,72 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
   if (!Propf->processProfile())
     return false;
 
-  if (!config->propellerDumpCfgs.empty()) {
-    llvm::SmallString<128> cfgOutputDir(config->outputFile);
-    llvm::sys::path::remove_filename(cfgOutputDir);
-    for (auto &cfgNameToDump : config->propellerDumpCfgs) {
-      auto cfgLI = CFGMap.find(cfgNameToDump);
-      if (cfgLI == CFGMap.end()) {
-        warn("could not dump cfg for function '" + cfgNameToDump +
-             "' : No such function name exists");
-        continue;
-      }
-      int Index = 0;
-      for (auto *CFG : cfgLI->second)
-        if (CFG->Name == cfgNameToDump) {
-          llvm::SmallString<128> cfgOutput = cfgOutputDir;
-          if (++Index <= 1)
-            llvm::sys::path::append(cfgOutput, (CFG->Name + ".dot"));
-          else
-            llvm::sys::path::append(
-                cfgOutput,
-                (CFG->Name + "." + StringRef(std::to_string(Index) + ".dot")));
-          if (!CFG->writeAsDotGraph(StringRef(cfgOutput)))
-            warn("failed to dump CFG: '" + cfgNameToDump + "'");
-        }
-    }
-  }
+  calculateNodeFreqs();
 
+  dumpCfgs();
+  
   // Releasing all support data (symbol ordinal / name map, saved string refs,
   // etc) before moving to reordering.
   Propf.reset(nullptr);
   return true;
 }
 
+bool Propeller::dumpCfgs() {
+  if (config->propellerDumpCfgs.empty()) return true;
+
+  std::set<std::string> cfgToDump(config->propellerDumpCfgs.begin(),
+                                  config->propellerDumpCfgs.end());
+  llvm::SmallString<128> cfgOutputDir(config->outputFile);
+  llvm::sys::path::remove_filename(cfgOutputDir);
+  for (auto &cfgName : cfgToDump) {
+    if (cfgName == "@") {
+#ifdef PROPELLER_PROTOBUF
+      if (!protobufPrinter.get())
+        protobufPrinter.reset(ProtobufPrinter::create(
+            Twine(config->outputFile, ".cfg.pb.txt").str()));
+#else
+      warn("dump to protobuf not supported");
+#endif
+      continue;
+    }
+    auto cfgLI = CFGMap.find(cfgName);
+    if (cfgLI == CFGMap.end()) {
+      warn("could not dump cfg for function '" + cfgName +
+           "' : no such function name exists");
+      continue;
+    }
+    int Index = 0;
+    for (auto *CFG : cfgLI->second)
+      if (CFG->Name == cfgName) {
+        llvm::SmallString<128> cfgOutput = cfgOutputDir;
+        if (++Index <= 1)
+          llvm::sys::path::append(cfgOutput, (CFG->Name + ".dot"));
+        else
+          llvm::sys::path::append(
+              cfgOutput,
+              (CFG->Name + "." + StringRef(std::to_string(Index) + ".dot")));
+        if (!CFG->writeAsDotGraph(StringRef(cfgOutput)))
+          warn("failed to dump CFG: '" + cfgName + "'");
+      }
+  }
+  return true;
+}
+
 // Generate symbol ordering file according to selected optimization pass and
 // feed it to the linker.
 std::vector<StringRef> Propeller::genSymbolOrderingFile() {
-  calculateNodeFreqs();
+  int total_objs = 0;
+  int hot_objs = 0;
+  for (auto &Obj : Views) {
+    for (auto &CP : Obj->CFGs) {
+      auto &C = *(CP.second);
+      if (C.isHot()) {
+        ++hot_objs;
+        break; // process to next object.
+      }
+    }
+    ++total_objs;
+  }
 
   std::list<ControlFlowGraph *> cfgOrder;
   if (config->propellerReorderFuncs) {
@@ -504,6 +541,7 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   const auto coldPlaceHolder = symbolList.end();
   if (config->propellerPrintStats)
     fprintf(stderr, "HISTOGRAM: Function.Name,BBs.all,BBs.hot\n");
+
   for (auto *cfg : cfgOrder) {
     if (config->propellerPrintStats){
       unsigned hotBBs = 0;
@@ -513,10 +551,11 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
           hotBBs++;
         allBBs++;
       });
-      fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg->Name.str().c_str(), allBBs, hotBBs);
+      fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg->Name.str().c_str(), allBBs,
+              hotBBs);
     }
     if (cfg->isHot() && config->propellerReorderBlocks) {
-      NodeChainBuilder(cfg).doSplitOrder(
+      NodeChainBuilder(cfg, *this).doSplitOrder(
           symbolList, hotPlaceHolder,
           config->propellerSplitFuncs ? coldPlaceHolder : hotPlaceHolder);
     } else {
@@ -525,6 +564,10 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
       cfg->forEachNodeRef([&symbolList, PlaceHolder](CFGNode &N) {
         symbolList.insert(PlaceHolder, N.ShName);
       });
+#ifdef PROPELLER_PROTOBUF
+      if (protobufPrinter && cfg->isHot())
+        protobufPrinter->printCFG(*cfg);
+#endif
     }
   }
 

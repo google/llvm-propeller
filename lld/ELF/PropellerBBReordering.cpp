@@ -520,10 +520,13 @@ void NodeChainBuilder::initializeExtTSP() {
     }
   }
   if (DebugCFG) {
-    fprintf(stderr, "Propeller: Finished initializing Ext-TSP score for all assembly records:\n");
-    for(const DenseMapPair<std::pair<NodeChain *, NodeChain *>,
-        std::unique_ptr<NodeChainAssembly>> &elem: NodeChainAssemblies){
-      fprintf(stderr, "%s\n", NodeChainBuilder::toString(*elem.second.get()).c_str());
+    fprintf(stderr, "Propeller: Finished initializing Ext-TSP score for all "
+                    "assembly records:\n");
+    for (const DenseMapPair<std::pair<NodeChain *, NodeChain *>,
+                            std::unique_ptr<NodeChainAssembly>> &elem :
+         NodeChainAssemblies) {
+      fprintf(stderr, "%s\n",
+              NodeChainBuilder::toString(*elem.second.get()).c_str());
     }
   }
 }
@@ -555,7 +558,8 @@ void NodeChainBuilder::computeChainOrder(
     if (bestCandidate != NodeChainAssemblies.end() &&
         bestCandidate->second->extTSPScoreGain() > 0) {
       if (DebugCFG)
-        fprintf(stderr, "MERGING for %s\n", toString(*bestCandidate->second.get()).c_str());
+        fprintf(stderr, "MERGING for %s\n",
+                toString(*bestCandidate->second.get()).c_str());
       std::unique_ptr<NodeChainAssembly> bestCandidateNCA =
           std::move(bestCandidate->second);
       NodeChainAssemblies.erase(bestCandidate);
@@ -629,15 +633,38 @@ void NodeChainBuilder::doSplitOrder(
 
   double Score = 0;
 
+#ifdef PROPELLER_PROTOBUF
+  std::list<const CFGNode *> hotNodes;
+  std::list<const CFGNode *> coldNodes;
+  std::list<const CFGNode *> *selectedNodes;
+#endif
   for (const NodeChain *c : chainOrder) {
     Score += c->Score;
     std::list<StringRef>::iterator insertPos =
         c->Freq ? hotPlaceHolder : coldPlaceHolder;
+#ifdef PROPELLER_PROTOBUF
+    selectedNodes = c->Freq ? &hotNodes : &coldNodes;
+#endif
+
     for (const CFGNode *n : c->Nodes)
       symbolList.insert(insertPos, n->ShName);
+      
+#ifdef PROPELLER_PROTOBUF
+    if (CFG->isHot() && Prop.protobufPrinter) {
+      for (const CFGNode *n : c->Nodes)
+        selectedNodes->push_back(n);
+    }
+#endif
   }
-  if(config->propellerPrintStats)
+  if (config->propellerPrintStats)
     fprintf(stderr, "ExtTSP score: %s,%f\n", CFG->Name.str().c_str(), Score);
+
+#ifdef PROPELLER_PROTOBUF
+  if (Prop.protobufPrinter && CFG->isHot()) {
+    hotNodes.splice(hotNodes.end(), coldNodes);
+    Prop.protobufPrinter->printCFG(*CFG, &hotNodes);    
+  }
+#endif
 }
 
 } // namespace propeller
