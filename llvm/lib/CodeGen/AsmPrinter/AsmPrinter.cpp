@@ -1056,8 +1056,14 @@ void AsmPrinter::EmitFunctionBody() {
   bool HasAnyRealCode = false;
   int NumInstsInFunction = 0;
   bool emitBasicBlockSections = MF->getBasicBlockSections();
-  if (emitBasicBlockSections)
+  MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
+  if (emitBasicBlockSections) {
     MF->sortBasicBlockSections();
+    EndOfRegularSectionMBB =
+        const_cast<MachineBasicBlock *>(MF->front().getSectionEndMBB());
+    assert(EndOfRegularSectionMBB->isEndSection() &&
+           "The MBB at the end of the regular section must end a section");
+  }
 
   for (auto &MBB : *MF) {
     // Print a label for the basic block.
@@ -1138,7 +1144,7 @@ void AsmPrinter::EmitFunctionBody() {
         }
       }
     }
-    if (!MBB.pred_empty() &&
+    if (&MBB != EndOfRegularSectionMBB &&
         (MF->getBasicBlockLabels() || MBB.isEndSection())) {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
@@ -1202,7 +1208,7 @@ void AsmPrinter::EmitFunctionBody() {
   EmitFunctionBodyEnd();
 
   if (needFuncLabelsForEHOrDebugInfo(*MF, MMI) ||
-      MAI->hasDotTypeDotSizeDirective()) {
+      MAI->hasDotTypeDotSizeDirective() || emitBasicBlockSections) {
     // Create a symbol for the end of function.
     CurrentFnEnd = createTempSymbol("func_end");
     OutStreamer->EmitLabel(CurrentFnEnd);
@@ -1224,6 +1230,9 @@ void AsmPrinter::EmitFunctionBody() {
                        HI.TimerGroupDescription, TimePassesIsEnabled);
     HI.Handler->markFunctionEnd();
   }
+
+  if (emitBasicBlockSections)
+    EndOfRegularSectionMBB->setEndMCSymbol(CurrentFnEnd);
 
   // Print out jump tables referenced by the function.
   EmitJumpTableInfo();
