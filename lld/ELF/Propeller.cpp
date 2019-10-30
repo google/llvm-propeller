@@ -29,7 +29,9 @@
 #include "PropellerCfg.h"
 #include "PropellerFuncOrdering.h"
 
+#ifdef PROPELLER_PROTOBUF
 #include "propeller_cfg.pb.h"
+#endif
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Parallel.h"

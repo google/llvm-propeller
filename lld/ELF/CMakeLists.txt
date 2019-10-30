@@ -6,14 +6,13 @@ if(NOT LLD_BUILT_STANDALONE)
   set(tablegen_deps intrinsics_gen)
 endif()
 
-find_package(Protobuf REQUIRED)
-add_compile_definitions(GOOGLE_PROTOBUF_NO_RTTI)
-include_directories(${Protobuf_INCLUDE_DIRS})
-protobuf_generate_cpp(PROPELLER_PROTO_SRCS PROPELLER_PROTO_HDRS propeller_cfg.proto)
-
+find_package(Protobuf)
 if( Protobuf_FOUND )
-  add_compile_definitions(PROPELLER_PROTOBUF)
+  add_compile_definitions(PROPELLER_PROTOBUF GOOGLE_PROTOBUF_NO_RTTI)
+  include_directories(${Protobuf_INCLUDE_DIRS})
+  protobuf_generate_cpp(PROPELLER_PROTO_SRCS PROPELLER_PROTO_HDRS propeller_cfg.proto)
   set(PROPELLER_PROTOBUF_SRCS Propeller/Protobuf.cpp)
+  set(PROPELLER_PROTOBUF_LIBS ${Protobuf_LIBRARIES})
 endif()
 
 add_lld_library(lldELF
@@ -78,7 +77,7 @@ add_lld_library(lldELF
   LINK_LIBS
   lldCommon
   ${LLVM_PTHREAD_LIB}
-  ${Protobuf_LIBRARIES}
+  ${PROPELLER_PROTOBUF_LIBS}
   
   DEPENDS
   ELFOptionsTableGen

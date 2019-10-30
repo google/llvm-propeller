@@ -10,6 +10,7 @@ paths.mk :
 		echo "CREATE_LLVM_PROF_DIR=.." >> $@ ; \
 		echo "BOLT=/path/to/llvm-bolt" >> $@ ; \
 		echo "PERF2BOLT=/path/to/perf2bolt" >> $@ ; \
+		echo "PROTOBUF_PREFIX=" >> $@ ; \
 	fi
 
 include paths.mk
@@ -109,6 +110,12 @@ lto_bb_sections_all        := -Wl,--lto-basicblock-sections=all
 bb_section_all_flags        = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all)")
 bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1)","-fuse-ld=lld -fpropeller-optimize=$(1)")
 
+ifdef PROTOBUF_PREFIX
+cmake_protobuf_statements := -DProtobuf_PROTOC_EXECUTABLE=$(PROTOBUF_PREFIX)/bin/protoc -DProtobuf_INCLUDE_DIR=$(PROTOBUF_PREFIX)/include -DProtobuf_LIBRARY=$(PROTOBUF_PREFIX)/lib/libprotobuf.so
+else
+cmake_protobuf_statements :=
+endif
+
 # $1 is compiler name, "stage1", "instrbb", etc;
 # $2 is bin directory that is used to build the compiler, must be absolute path.
 # $3 is any other cmake flags (optional)
@@ -119,10 +126,7 @@ define build_compiler
 	  mkdir -p $(1)/build ;                         \
 	  cd $(1)/build && cmake -G Ninja               \
             -DCMAKE_INSTALL_PREFIX=$(DDIR)/$(1)/install \
-	    -DProtobuf_PROTOC_EXECUTABLE=/usr/local/google/home/shenhan/copt2/protobuf/install-3.10/bin/protoc \
-	    -DProtobuf_SRC_ROOT_FOLDER=/usr/local/google/home/shenhan/copt2/protobuf/protobuf \
-	    -DProtobuf_INCLUDE_DIR=/usr/local/google/home/shenhan/copt2/protobuf/install-3.10/include \
-	    -DProtobuf_LIBRARY=/usr/local/google/home/shenhan/copt2/protobuf/install-3.10/lib/libprotobuf.so \
+	    $(cmake_protobuf_statements)                \
 	    -DCMAKE_BUILD_TYPE=Release                  \
             -DLLVM_OPTIMIZED_TABLEGEN=On                \
             -DLLVM_TARGETS_TO_BUILD="X86"               \
@@ -338,7 +342,7 @@ sample_bb.o: sample.c sample.propeller stage1-compiler
 	./stage1-compiler -flto=thin -c -O2 -fpropeller-optimize=$(word 2,$^) $< -o $@
 
 sample.propeller.out: sample_bb.o sample.propeller stage1-compiler
-	./stage1-compiler -o sample.out -flto=thin -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< ; \
+	./stage1-compiler -o sample.out -flto=thin -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< -Wl,-propeller-dump-cfg=@; \
 	mv sample.out sample.propeller.out
 
 .phony: clean clean-all clean-sample
@@ -419,7 +423,7 @@ check-performance: benchmark-pgo.result benchmark-pgo-plolist.result benchmark-p
 	$(call append_git_status,$@)
 
 clean-sample:
-	rm -f sample_bblabels.o sample_bball.o sample.out sample.baseline.out sample.propeller.out sample.perfdata sample.propeller
+	rm -f sample_bblabels.o sample_bball.o sample.out sample.baseline.out sample.propeller.out sample.perfdata sample.propeller sample.out.cfg.pb.txt
 
 clean: clean-sample
 	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \
