@@ -3023,7 +3023,9 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
       OutStreamer->SwitchSection(MF->getSection());
     } else if (MBB.isColdSection()) {
       // Create the cold section here.
-      OutStreamer->SwitchSection(MF->getSection());
+      OutStreamer->SwitchSection(
+          getObjFileLowering().getColdSectionForMachineBasicBlock(
+              MF->getFunction(), MBB, TM));
     } else if (MBB.isBeginSection() && MBB.isEndSection()) {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),

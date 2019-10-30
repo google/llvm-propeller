@@ -772,6 +772,24 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
                                     GroupName, UniqueID);
 }
 
+MCSection *TargetLoweringObjectFileELF::getColdSectionForMachineBasicBlock(
+    const Function &F, const MachineBasicBlock &MBB,
+    const TargetMachine &TM) const {
+  SmallString<128> Name;
+  Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
+             ->getSectionName();
+  Name += ".cold";
+
+  unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
+  std::string GroupName = "";
+  if (F.hasComdat()) {
+    Flags |= ELF::SHF_GROUP;
+    GroupName = F.getComdat()->getName();
+  }
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0,
+                                    GroupName);
+}
+
 static MCSectionELF *getStaticStructorSection(MCContext &Ctx, bool UseInitArray,
                                               bool IsCtor, unsigned Priority,
                                               const MCSymbol *KeySym) {
