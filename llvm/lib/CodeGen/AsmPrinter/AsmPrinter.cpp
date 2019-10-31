@@ -1144,7 +1144,7 @@ void AsmPrinter::EmitFunctionBody() {
         }
       }
     }
-    if (&MBB != EndOfRegularSectionMBB &&
+    if (!MBB.pred_empty() && &MBB != EndOfRegularSectionMBB &&
         (MF->getBasicBlockLabels() || MBB.isEndSection())) {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
@@ -3033,6 +3033,8 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     } else if (BasicBlockSections) {
       OutStreamer->SwitchSection(MF->getSection());
     }
+    const Function &F = MF->getFunction();
+    EmitLinkage(&F, MBB.getSymbol());
     OutStreamer->EmitLabel(MBB.getSymbol());
     // With BasicBlockSections, each Basic Block must handle CFI information on
     // its own.
