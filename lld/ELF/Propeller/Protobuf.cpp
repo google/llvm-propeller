@@ -12,9 +12,16 @@
 namespace lld {
 namespace propeller {
 
-void ProtobufPrinter::printCFG(const ControlFlowGraph &cfg,
-                               std::list<const CFGNode *> *orderedBBs) {
-  llvm::plo::cfg::CFG cfgpb;
+void ProtobufPrinter::printCFGGroup() {
+  if (!google::protobuf::TextFormat::Print(cfgGroupPb, &outStream))
+    error("Failed to dump cfg to file.");
+  llvm::outs() << "Printed " << cfgGroupPb.cfg_list_size() << " CFGs to '"
+               << outName << "'.\n";
+}
+
+void ProtobufPrinter::addCFG(const ControlFlowGraph &cfg,
+                             std::list<const CFGNode *> *orderedBBs) {
+  llvm::plo::cfg::CFG &cfgpb = *(cfgGroupPb.add_cfg_list());
   cfgpb.set_name(cfg.Name.str());
   cfgpb.set_size(cfg.Size);
   cfgpb.set_object_name(cfg.View->ViewName.str());
@@ -47,11 +54,6 @@ void ProtobufPrinter::printCFG(const ControlFlowGraph &cfg,
 
   CFGNode *entryNode = cfg.getEntryNode();
   cfgpb.set_entry_block(entryNode ? entryNode->getBBIndex() : 0);
-
-  if (!google::protobuf::TextFormat::Print(cfgpb, &outStream))
-    error("Failed to dump cfg to file.");
-
-  ++cfgPrinted;
 }
 
 } // namespace propeller

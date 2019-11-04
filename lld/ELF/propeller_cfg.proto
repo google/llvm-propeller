@@ -54,3 +54,9 @@ message CFG {
   // Object name of the function belongs to.
   optional string object_name = 5;
 }
+
+// A group of CFGs.
+// Next Available: 2.
+message CFGGroup {
+  repeated CFG cfg_list = 1;
+}

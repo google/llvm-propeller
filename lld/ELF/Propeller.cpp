@@ -65,6 +65,7 @@ Propeller::~Propeller() {}
 bool Propfile::matchesOutputFileName(const StringRef outputFileName) {
   int outputFileTagSeen = 0;
   std::string line;
+  LineNo = 0;
   while ((std::getline(PropfStream, line)).good()) {
     ++LineNo;
     if (line.empty())
@@ -568,10 +569,17 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
       });
 #ifdef PROPELLER_PROTOBUF
       if (protobufPrinter && cfg->isHot())
-        protobufPrinter->printCFG(*cfg);
+        protobufPrinter->addCFG(*cfg);
 #endif
     }
   }
+
+#ifdef PROPELLER_PROTOBUF
+  if (protobufPrinter) {
+    protobufPrinter->printCFGGroup();
+    protobufPrinter.reset();
+  }
+#endif
 
   calculateLegacy(symbolList, hotPlaceHolder, coldPlaceHolder);
 

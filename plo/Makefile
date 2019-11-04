@@ -339,10 +339,10 @@ sample.propeller: sample.perfdata $(CREATE_LLVM_PROF)
 	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=sample.out --logtostderr
 
 sample_bb.o: sample.c sample.propeller stage1-compiler
-	./stage1-compiler -flto=thin -c -O2 -fpropeller-optimize=$(word 2,$^) $< -o $@
+	./stage1-compiler -c -O2 -fpropeller-optimize=$(word 2,$^) $< -o $@
 
 sample.propeller.out: sample_bb.o sample.propeller stage1-compiler
-	./stage1-compiler -o sample.out -flto=thin -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< -Wl,-propeller-dump-cfg=@; \
+	./stage1-compiler -o sample.out -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< -Wl,-propeller-dump-cfg=@; \
 	mv sample.out sample.propeller.out
 
 .phony: clean clean-all clean-sample

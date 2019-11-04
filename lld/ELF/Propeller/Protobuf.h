@@ -32,24 +32,24 @@ public:
     return new ProtobufPrinter(name, fd);
   }
 
-  void printCFG(const ControlFlowGraph &cfg,
+  void addCFG(const ControlFlowGraph &cfg,
                 std::list<const CFGNode *> *orderedBBs = nullptr);
+
+  void printCFGGroup();
 
   ~ProtobufPrinter() {
     outStream.Close();
-    llvm::outs() << "Printed " << cfgPrinted << " CFGs to '" << outName
-                 << "'.\n";
   }
 
 private:
   ProtobufPrinter(const std::string &name, int fd)
-      : outName(name), outStream(fd), cfgPrinted(0) {}
+      : outName(name), outStream(fd) {}
 
   void populateCFGPB(llvm::plo::cfg::CFG &cfgpb, const ControlFlowGraph &cfg);
 
   std::string outName;
   google::protobuf::io::FileOutputStream outStream;
-  uint64_t cfgPrinted;
+  llvm::plo::cfg::CFGGroup cfgGroupPb;
 };
 
 } // namespace propeller

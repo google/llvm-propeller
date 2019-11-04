@@ -662,7 +662,7 @@ void NodeChainBuilder::doSplitOrder(
 #ifdef PROPELLER_PROTOBUF
   if (Prop.protobufPrinter && CFG->isHot()) {
     hotNodes.splice(hotNodes.end(), coldNodes);
-    Prop.protobufPrinter->printCFG(*CFG, &hotNodes);    
+    Prop.protobufPrinter->addCFG(*CFG, &hotNodes);    
   }
 #endif
 }

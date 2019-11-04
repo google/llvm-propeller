@@ -237,9 +237,8 @@ bool CFGBuilder::buildCFGs() {
     StringRef fName;
     if (SymbolEntry::isBBSymbol(sName, &fName, nullptr)) {
       auto L = groups.find(fName);
-      if (L != groups.end()) {
+      if (L != groups.end())
         L->second.push_back(sym);
-      }
     }
   }
 
