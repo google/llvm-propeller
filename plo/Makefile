@@ -15,6 +15,10 @@ paths.mk :
 
 include paths.mk
 
+ifeq '${CREATE_LLVM_PROF_DIR}' ''
+CREATE_LLVM_PROF_DIR=$(shell pwd)/..
+endif
+
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-bolt.result" )
 
