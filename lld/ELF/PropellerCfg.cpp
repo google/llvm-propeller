@@ -319,9 +319,12 @@ void CFGBuilder::buildRelocationSectionMap(
        i != J; ++i) {
     SectionRef secRef = *i;
     if (llvm::object::ELFSectionRef(secRef).getType() == llvm::ELF::SHT_RELA) {
-      section_iterator r = secRef.getRelocatedSection();
-      assert(r != J);
-      relocationSectionMap.emplace(r->getIndex(), *i);
+      Expected<section_iterator> rr = secRef.getRelocatedSection();
+      if (rr) {
+        section_iterator &r = *rr;
+        assert(r != J);
+        relocationSectionMap.emplace(r->getIndex(), *i);
+      }
     }
   }
 }

@@ -10,8 +10,8 @@
 
 #include <AvailabilityMacros.h>
 
-#if !defined(MAC_OS_X_VERSION_10_7) ||                                         \
-    MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_7
+// On device doesn't have supporty for XPC.
+#if defined(__APPLE__) && (defined(__arm64__) || defined(__aarch64__))
 #define NO_XPC_SERVICES 1
 #endif
 
@@ -471,6 +471,12 @@ static bool GetMacOSXProcessCPUType(ProcessInstanceInfo &process_info) {
         break;
 #endif
 
+#if defined(CPU_TYPE_ARM64_32) && defined(CPU_SUBTYPE_ARM64_32_ALL)
+      case CPU_TYPE_ARM64_32:
+        sub = CPU_SUBTYPE_ARM64_32_ALL;
+        break;
+#endif
+
       case CPU_TYPE_ARM: {
         // Note that we fetched the cpu type from the PROCESS but we can't get a
         // cpusubtype of the
@@ -677,14 +683,16 @@ uint32_t Host::FindProcesses(const ProcessInstanceInfoMatch &match_info,
       process_info.SetEffectiveGroupID(UINT32_MAX);
 
     // Make sure our info matches before we go fetch the name and cpu type
-    if (match_info.Matches(process_info)) {
-      // Get CPU type first so we can know to look for iOS simulator is we have
-      // x86 or x86_64
-      if (GetMacOSXProcessCPUType(process_info)) {
-        if (GetMacOSXProcessArgs(&match_info, process_info)) {
-          if (match_info.Matches(process_info))
-            process_infos.Append(process_info);
-        }
+    if (!match_info.UserIDsMatch(process_info) ||
+        !match_info.ProcessIDsMatch(process_info))
+      continue;
+
+    // Get CPU type first so we can know to look for iOS simulator is we have
+    // x86 or x86_64
+    if (GetMacOSXProcessCPUType(process_info)) {
+      if (GetMacOSXProcessArgs(&match_info, process_info)) {
+        if (match_info.Matches(process_info))
+          process_infos.Append(process_info);
       }
     }
   }
@@ -1366,9 +1374,12 @@ Status Host::ShellExpandArguments(ProcessLaunchInfo &launch_info) {
     }
     bool run_in_default_shell = true;
     bool hide_stderr = true;
-    RunShellCommand(expand_command, cwd, &status, nullptr, &output,
-                    std::chrono::seconds(10), run_in_default_shell,
-                    hide_stderr);
+    Status e = RunShellCommand(expand_command, cwd, &status, nullptr, &output,
+                               std::chrono::seconds(10), run_in_default_shell,
+                               hide_stderr);
+
+    if (e.Fail())
+      return e;
 
     if (status != 0) {
       error.SetErrorStringWithFormat("lldb-argdumper exited with error %d",

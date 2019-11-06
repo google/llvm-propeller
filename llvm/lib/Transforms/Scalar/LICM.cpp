@@ -137,7 +137,8 @@ static bool isNotUsedOrFreeInLoop(const Instruction &I, const Loop *CurLoop,
                                   TargetTransformInfo *TTI, bool &FreeInLoop);
 static void hoist(Instruction &I, const DominatorTree *DT, const Loop *CurLoop,
                   BasicBlock *Dest, ICFLoopSafetyInfo *SafetyInfo,
-                  MemorySSAUpdater *MSSAU, OptimizationRemarkEmitter *ORE);
+                  MemorySSAUpdater *MSSAU, ScalarEvolution *SE,
+                  OptimizationRemarkEmitter *ORE);
 static bool sink(Instruction &I, LoopInfo *LI, DominatorTree *DT,
                  const Loop *CurLoop, ICFLoopSafetyInfo *SafetyInfo,
                  MemorySSAUpdater *MSSAU, OptimizationRemarkEmitter *ORE);
@@ -162,7 +163,7 @@ static void eraseInstruction(Instruction &I, ICFLoopSafetyInfo &SafetyInfo,
 
 static void moveInstructionBefore(Instruction &I, Instruction &Dest,
                                   ICFLoopSafetyInfo &SafetyInfo,
-                                  MemorySSAUpdater *MSSAU);
+                                  MemorySSAUpdater *MSSAU, ScalarEvolution *SE);
 
 namespace {
 struct LoopInvariantCodeMotion {
@@ -390,8 +391,9 @@ bool LoopInvariantCodeMotion::runOnLoop(
                           CurAST.get(), MSSAU.get(), &SafetyInfo, Flags, ORE);
   Flags.IsSink = false;
   if (Preheader)
-    Changed |= hoistRegion(DT->getNode(L->getHeader()), AA, LI, DT, TLI, L,
-                           CurAST.get(), MSSAU.get(), &SafetyInfo, Flags, ORE);
+    Changed |=
+        hoistRegion(DT->getNode(L->getHeader()), AA, LI, DT, TLI, L,
+                    CurAST.get(), MSSAU.get(), SE, &SafetyInfo, Flags, ORE);
 
   // Now that all loop invariants have been removed from the loop, promote any
   // memory references to scalars that we can.
@@ -795,7 +797,7 @@ public:
 bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
                        DominatorTree *DT, TargetLibraryInfo *TLI, Loop *CurLoop,
                        AliasSetTracker *CurAST, MemorySSAUpdater *MSSAU,
-                       ICFLoopSafetyInfo *SafetyInfo,
+                       ScalarEvolution *SE, ICFLoopSafetyInfo *SafetyInfo,
                        SinkAndHoistLICMFlags &Flags,
                        OptimizationRemarkEmitter *ORE) {
   // Verify inputs.
@@ -855,7 +857,7 @@ bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
               I, DT, CurLoop, SafetyInfo, ORE,
               CurLoop->getLoopPreheader()->getTerminator())) {
         hoist(I, DT, CurLoop, CFH.getOrCreateHoistedBlock(BB), SafetyInfo,
-              MSSAU, ORE);
+              MSSAU, SE, ORE);
         HoistedInstructions.push_back(&I);
         Changed = true;
         continue;
@@ -882,7 +884,7 @@ bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
         eraseInstruction(I, *SafetyInfo, CurAST, MSSAU);
 
         hoist(*ReciprocalDivisor, DT, CurLoop, CFH.getOrCreateHoistedBlock(BB),
-              SafetyInfo, MSSAU, ORE);
+              SafetyInfo, MSSAU, SE, ORE);
         HoistedInstructions.push_back(ReciprocalDivisor);
         Changed = true;
         continue;
@@ -901,7 +903,7 @@ bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
           CurLoop->hasLoopInvariantOperands(&I) &&
           MustExecuteWithoutWritesBefore(I)) {
         hoist(I, DT, CurLoop, CFH.getOrCreateHoistedBlock(BB), SafetyInfo,
-              MSSAU, ORE);
+              MSSAU, SE, ORE);
         HoistedInstructions.push_back(&I);
         Changed = true;
         continue;
@@ -915,7 +917,7 @@ bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
             PN->setIncomingBlock(
                 i, CFH.getOrCreateHoistedBlock(PN->getIncomingBlock(i)));
           hoist(*PN, DT, CurLoop, CFH.getOrCreateHoistedBlock(BB), SafetyInfo,
-                MSSAU, ORE);
+                MSSAU, SE, ORE);
           assert(DT->dominates(PN, BB) && "Conditional PHIs not expected");
           Changed = true;
           continue;
@@ -952,7 +954,7 @@ bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
         LLVM_DEBUG(dbgs() << "LICM rehoisting to "
                           << HoistPoint->getParent()->getName()
                           << ": " << *I << "\n");
-        moveInstructionBefore(*I, *HoistPoint, *SafetyInfo, MSSAU);
+        moveInstructionBefore(*I, *HoistPoint, *SafetyInfo, MSSAU, SE);
         HoistPoint = I;
         Changed = true;
       }
@@ -1248,12 +1250,22 @@ bool llvm::canSinkOrHoistInst(Instruction &I, AAResults *AA, DominatorTree *DT,
               // FIXME: More precise: no Uses that alias SI.
               if (!Flags->IsSink && !MSSA->dominates(SIMD, MU))
                 return false;
-            } else if (const auto *MD = dyn_cast<MemoryDef>(&MA))
+            } else if (const auto *MD = dyn_cast<MemoryDef>(&MA)) {
               if (auto *LI = dyn_cast<LoadInst>(MD->getMemoryInst())) {
                 (void)LI; // Silence warning.
                 assert(!LI->isUnordered() && "Expected unordered load");
                 return false;
               }
+              // Any call, while it may not be clobbering SI, it may be a use.
+              if (auto *CI = dyn_cast<CallInst>(MD->getMemoryInst())) {
+                // Check if the call may read from the memory locattion written
+                // to by SI. Check CI's attributes and arguments; the number of
+                // such checks performed is limited above by NoOfMemAccTooLarge.
+                ModRefInfo MRI = AA->getModRefInfo(CI, MemoryLocation::get(SI));
+                if (isModOrRefSet(MRI))
+                  return false;
+              }
+            }
         }
 
       auto *Source = MSSA->getSkipSelfWalker()->getClobberingMemoryAccess(SI);
@@ -1383,8 +1395,7 @@ static Instruction *CloneInstructionInExitBlock(
   if (!I.getName().empty())
     New->setName(I.getName() + ".le");
 
-  MemoryAccess *OldMemAcc;
-  if (MSSAU && (OldMemAcc = MSSAU->getMemorySSA()->getMemoryAccess(&I))) {
+  if (MSSAU && MSSAU->getMemorySSA()->getMemoryAccess(&I)) {
     // Create a new MemoryAccess and let MemorySSA set its defining access.
     MemoryAccess *NewMemAcc = MSSAU->createMemoryAccessInBB(
         New, nullptr, New->getParent(), MemorySSA::Beginning);
@@ -1432,7 +1443,8 @@ static void eraseInstruction(Instruction &I, ICFLoopSafetyInfo &SafetyInfo,
 
 static void moveInstructionBefore(Instruction &I, Instruction &Dest,
                                   ICFLoopSafetyInfo &SafetyInfo,
-                                  MemorySSAUpdater *MSSAU) {
+                                  MemorySSAUpdater *MSSAU,
+                                  ScalarEvolution *SE) {
   SafetyInfo.removeInstruction(&I);
   SafetyInfo.insertInstructionTo(&I, Dest.getParent());
   I.moveBefore(&Dest);
@@ -1440,6 +1452,8 @@ static void moveInstructionBefore(Instruction &I, Instruction &Dest,
     if (MemoryUseOrDef *OldMemAcc = cast_or_null<MemoryUseOrDef>(
             MSSAU->getMemorySSA()->getMemoryAccess(&I)))
       MSSAU->moveToPlace(OldMemAcc, Dest.getParent(), MemorySSA::End);
+  if (SE)
+    SE->forgetValue(&I);
 }
 
 static Instruction *sinkThroughTriviallyReplaceablePHI(
@@ -1653,7 +1667,8 @@ static bool sink(Instruction &I, LoopInfo *LI, DominatorTree *DT,
 ///
 static void hoist(Instruction &I, const DominatorTree *DT, const Loop *CurLoop,
                   BasicBlock *Dest, ICFLoopSafetyInfo *SafetyInfo,
-                  MemorySSAUpdater *MSSAU, OptimizationRemarkEmitter *ORE) {
+                  MemorySSAUpdater *MSSAU, ScalarEvolution *SE,
+                  OptimizationRemarkEmitter *ORE) {
   LLVM_DEBUG(dbgs() << "LICM hoisting to " << Dest->getName() << ": " << I
                     << "\n");
   ORE->emit([&]() {
@@ -1674,10 +1689,10 @@ static void hoist(Instruction &I, const DominatorTree *DT, const Loop *CurLoop,
 
   if (isa<PHINode>(I))
     // Move the new node to the end of the phi list in the destination block.
-    moveInstructionBefore(I, *Dest->getFirstNonPHI(), *SafetyInfo, MSSAU);
+    moveInstructionBefore(I, *Dest->getFirstNonPHI(), *SafetyInfo, MSSAU, SE);
   else
     // Move the new node to the destination block, before its terminator.
-    moveInstructionBefore(I, *Dest->getTerminator(), *SafetyInfo, MSSAU);
+    moveInstructionBefore(I, *Dest->getTerminator(), *SafetyInfo, MSSAU, SE);
 
   // Apply line 0 debug locations when we are moving instructions to different
   // basic blocks because we want to avoid jumpy line tables.
@@ -1791,7 +1806,7 @@ public:
       StoreInst *NewSI = new StoreInst(LiveInValue, Ptr, InsertPos);
       if (UnorderedAtomic)
         NewSI->setOrdering(AtomicOrdering::Unordered);
-      NewSI->setAlignment(Alignment);
+      NewSI->setAlignment(MaybeAlign(Alignment));
       NewSI->setDebugLoc(DL);
       if (AATags)
         NewSI->setAAMetadata(AATags);
@@ -2024,7 +2039,8 @@ bool llvm::promoteLoopAccessesToScalars(
         if (!DereferenceableInPH) {
           DereferenceableInPH = isDereferenceableAndAlignedPointer(
               Store->getPointerOperand(), Store->getValueOperand()->getType(),
-              Store->getAlignment(), MDL, Preheader->getTerminator(), DT);
+              MaybeAlign(Store->getAlignment()), MDL,
+              Preheader->getTerminator(), DT);
         }
       } else
         return false; // Not a load or store.
@@ -2109,15 +2125,14 @@ bool llvm::promoteLoopAccessesToScalars(
       SomePtr->getName() + ".promoted", Preheader->getTerminator());
   if (SawUnorderedAtomic)
     PreheaderLoad->setOrdering(AtomicOrdering::Unordered);
-  PreheaderLoad->setAlignment(Alignment);
+  PreheaderLoad->setAlignment(MaybeAlign(Alignment));
   PreheaderLoad->setDebugLoc(DL);
   if (AATags)
     PreheaderLoad->setAAMetadata(AATags);
   SSA.AddAvailableValue(Preheader, PreheaderLoad);
 
-  MemoryAccess *PreheaderLoadMemoryAccess;
   if (MSSAU) {
-    PreheaderLoadMemoryAccess = MSSAU->createMemoryAccessInBB(
+    MemoryAccess *PreheaderLoadMemoryAccess = MSSAU->createMemoryAccessInBB(
         PreheaderLoad, nullptr, PreheaderLoad->getParent(), MemorySSA::End);
     MemoryUse *NewMemUse = cast<MemoryUse>(PreheaderLoadMemoryAccess);
     MSSAU->insertUse(NewMemUse, /*RenameUses=*/true);

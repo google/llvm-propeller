@@ -143,7 +143,7 @@ TargetInstrInfo::ReplaceTailWithBranchTo(MachineBasicBlock::iterator Tail,
   while (Tail != MBB->end()) {
     auto MI = Tail++;
     if (MI->isCall())
-      MBB->getParent()->updateCallSiteInfo(&*MI);
+      MBB->getParent()->eraseCallSiteInfo(&*MI);
     MBB->erase(MI);
   }
 
@@ -880,7 +880,7 @@ void TargetInstrInfo::genAlternativeCodeSequence(
 }
 
 bool TargetInstrInfo::isReallyTriviallyReMaterializableGeneric(
-    const MachineInstr &MI, AliasAnalysis *AA) const {
+    const MachineInstr &MI, AAResults *AA) const {
   const MachineFunction &MF = *MI.getMF();
   const MachineRegisterInfo &MRI = MF.getRegInfo();
 
@@ -1123,16 +1123,15 @@ bool TargetInstrInfo::hasLowDefLatency(const TargetSchedModel &SchedModel,
 Optional<ParamLoadedValue>
 TargetInstrInfo::describeLoadedValue(const MachineInstr &MI) const {
   const MachineFunction *MF = MI.getMF();
-  const MachineOperand *Op = nullptr;
-  DIExpression *Expr = DIExpression::get(MF->getFunction().getContext(), {});;
+  DIExpression *Expr = DIExpression::get(MF->getFunction().getContext(), {});
   const MachineOperand *SrcRegOp, *DestRegOp;
+  int64_t Offset;
 
   if (isCopyInstr(MI, SrcRegOp, DestRegOp)) {
-    Op = SrcRegOp;
-    return ParamLoadedValue(*Op, Expr);
-  } else if (MI.isMoveImmediate()) {
-    Op = &MI.getOperand(1);
-    return ParamLoadedValue(*Op, Expr);
+    return ParamLoadedValue(*SrcRegOp, Expr);
+  } else if (isAddImmediate(MI, DestRegOp, SrcRegOp, Offset)) {
+    Expr = DIExpression::prepend(Expr, DIExpression::ApplyOffset, Offset);
+    return ParamLoadedValue(*SrcRegOp, Expr);
   }
 
   return None;

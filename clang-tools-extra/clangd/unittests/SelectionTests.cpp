@@ -289,7 +289,15 @@ TEST(SelectionTest, CommonAncestor) {
   };
   for (const Case &C : Cases) {
     Annotations Test(C.Code);
-    auto AST = TestTU::withCode(Test.code()).build();
+
+    TestTU TU;
+    TU.Code = Test.code();
+
+    // FIXME: Auto-completion in a template requires disabling delayed template
+    // parsing.
+    TU.ExtraArgs.push_back("-fno-delayed-template-parsing");
+
+    auto AST = TU.build();
     auto T = makeSelectionTree(C.Code, AST);
     EXPECT_EQ("TranslationUnitDecl", nodeKind(&T.root())) << C.Code;
 
@@ -354,6 +362,8 @@ TEST(SelectionTest, Selected) {
         #define ECHO(X) X
         ECHO(EC^HO([[$C[[int]]) EC^HO(a]]));
       ]])cpp",
+      R"cpp( $C[[^$C[[int]] a^]]; )cpp",
+      R"cpp( $C[[^$C[[int]] a = $C[[5]]^]]; )cpp",
   };
   for (const char *C : Cases) {
     Annotations Test(C);

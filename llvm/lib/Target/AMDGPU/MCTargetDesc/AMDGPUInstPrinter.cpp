@@ -196,6 +196,10 @@ void AMDGPUInstPrinter::printSLC(const MCInst *MI, unsigned OpNo,
   printNamedBit(MI, OpNo, O, "slc");
 }
 
+void AMDGPUInstPrinter::printSWZ(const MCInst *MI, unsigned OpNo,
+                                 const MCSubtargetInfo &STI, raw_ostream &O) {
+}
+
 void AMDGPUInstPrinter::printTFE(const MCInst *MI, unsigned OpNo,
                                  const MCSubtargetInfo &STI, raw_ostream &O) {
   printNamedBit(MI, OpNo, O, "tfe");
@@ -595,9 +599,11 @@ void AMDGPUInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
   case AMDGPU::V_ADD_CO_CI_U32_e32_gfx10:
   case AMDGPU::V_SUB_CO_CI_U32_e32_gfx10:
   case AMDGPU::V_SUBREV_CO_CI_U32_e32_gfx10:
+  case AMDGPU::V_CNDMASK_B32_dpp_gfx10:
   case AMDGPU::V_ADD_CO_CI_U32_dpp_gfx10:
   case AMDGPU::V_SUB_CO_CI_U32_dpp_gfx10:
   case AMDGPU::V_SUBREV_CO_CI_U32_dpp_gfx10:
+  case AMDGPU::V_CNDMASK_B32_dpp8_gfx10:
   case AMDGPU::V_ADD_CO_CI_U32_dpp8_gfx10:
   case AMDGPU::V_SUB_CO_CI_U32_dpp8_gfx10:
   case AMDGPU::V_SUBREV_CO_CI_U32_dpp8_gfx10:
@@ -661,6 +667,7 @@ void AMDGPUInstPrinter::printOperandAndIntInputMods(const MCInst *MI,
   switch (MI->getOpcode()) {
   default: break;
 
+  case AMDGPU::V_CNDMASK_B32_sdwa_gfx10:
   case AMDGPU::V_ADD_CO_CI_U32_sdwa_gfx10:
   case AMDGPU::V_SUB_CO_CI_U32_sdwa_gfx10:
   case AMDGPU::V_SUBREV_CO_CI_U32_sdwa_gfx10:

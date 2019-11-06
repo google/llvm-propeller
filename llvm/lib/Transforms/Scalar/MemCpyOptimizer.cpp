@@ -513,9 +513,13 @@ static bool moveUp(AliasAnalysis &AA, StoreInst *SI, Instruction *P,
 
     ToLift.push_back(C);
     for (unsigned k = 0, e = C->getNumOperands(); k != e; ++k)
-      if (auto *A = dyn_cast<Instruction>(C->getOperand(k)))
-        if (A->getParent() == SI->getParent())
+      if (auto *A = dyn_cast<Instruction>(C->getOperand(k))) {
+        if (A->getParent() == SI->getParent()) {
+          // Cannot hoist user of P above P
+          if(A == P) return false;
           Args.insert(A);
+        }
+      }
   }
 
   // We made it, we need to lift
@@ -895,7 +899,7 @@ bool MemCpyOptPass::performCallSlotOptzn(Instruction *cpy, Value *cpyDest,
   // If the destination wasn't sufficiently aligned then increase its alignment.
   if (!isDestSufficientlyAligned) {
     assert(isa<AllocaInst>(cpyDest) && "Can only increase alloca alignment!");
-    cast<AllocaInst>(cpyDest)->setAlignment(srcAlign);
+    cast<AllocaInst>(cpyDest)->setAlignment(MaybeAlign(srcAlign));
   }
 
   // Drop any cached information about the call, because we may have changed

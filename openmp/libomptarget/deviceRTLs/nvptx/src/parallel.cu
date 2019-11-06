@@ -44,13 +44,14 @@ typedef struct ConvergentSimdJob {
 ////////////////////////////////////////////////////////////////////////////////
 // support for convergent simd (team of threads in a warp only)
 ////////////////////////////////////////////////////////////////////////////////
-EXTERN bool __kmpc_kernel_convergent_simd(void *buffer, uint32_t Mask,
+EXTERN bool __kmpc_kernel_convergent_simd(void *buffer,
+                                          __kmpc_impl_lanemask_t Mask,
                                           bool *IsFinal, int32_t *LaneSource,
                                           int32_t *LaneId, int32_t *NumLanes) {
   PRINT0(LD_IO, "call to __kmpc_kernel_convergent_simd\n");
-  uint32_t ConvergentMask = Mask;
+  __kmpc_impl_lanemask_t ConvergentMask = Mask;
   int32_t ConvergentSize = __kmpc_impl_popc(ConvergentMask);
-  uint32_t WorkRemaining = ConvergentMask >> (*LaneSource + 1);
+  __kmpc_impl_lanemask_t WorkRemaining = ConvergentMask >> (*LaneSource + 1);
   *LaneSource += __kmpc_impl_ffs(WorkRemaining);
   *IsFinal = __kmpc_impl_popc(WorkRemaining) == 1;
   __kmpc_impl_lanemask_t lanemask_lt = __kmpc_impl_lanemask_lt();
@@ -117,13 +118,14 @@ typedef struct ConvergentParallelJob {
 ////////////////////////////////////////////////////////////////////////////////
 // support for convergent parallelism (team of threads in a warp only)
 ////////////////////////////////////////////////////////////////////////////////
-EXTERN bool __kmpc_kernel_convergent_parallel(void *buffer, uint32_t Mask,
+EXTERN bool __kmpc_kernel_convergent_parallel(void *buffer,
+                                              __kmpc_impl_lanemask_t Mask,
                                               bool *IsFinal,
                                               int32_t *LaneSource) {
   PRINT0(LD_IO, "call to __kmpc_kernel_convergent_parallel\n");
-  uint32_t ConvergentMask = Mask;
+  __kmpc_impl_lanemask_t ConvergentMask = Mask;
   int32_t ConvergentSize = __kmpc_impl_popc(ConvergentMask);
-  uint32_t WorkRemaining = ConvergentMask >> (*LaneSource + 1);
+  __kmpc_impl_lanemask_t WorkRemaining = ConvergentMask >> (*LaneSource + 1);
   *LaneSource += __kmpc_impl_ffs(WorkRemaining);
   *IsFinal = __kmpc_impl_popc(WorkRemaining) == 1;
   __kmpc_impl_lanemask_t lanemask_lt = __kmpc_impl_lanemask_lt();
@@ -320,7 +322,7 @@ EXTERN bool __kmpc_kernel_parallel(void **WorkFn,
     // can be changed incorrectly because of threads divergence.
     bool IsActiveParallelRegion = threadsInTeam != 1;
     IncParallelLevel(IsActiveParallelRegion,
-                     IsActiveParallelRegion ? 0xFFFFFFFF : 1u);
+                     IsActiveParallelRegion ? __kmpc_impl_all_lanes : 1u);
   }
 
   return isActive;
@@ -347,7 +349,7 @@ EXTERN void __kmpc_kernel_end_parallel() {
   // be changed incorrectly because of threads divergence.
     bool IsActiveParallelRegion = threadsInTeam != 1;
     DecParallelLevel(IsActiveParallelRegion,
-                     IsActiveParallelRegion ? 0xFFFFFFFF : 1u);
+                     IsActiveParallelRegion ? __kmpc_impl_all_lanes : 1u);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -458,7 +460,7 @@ EXTERN void __kmpc_push_simd_limit(kmp_Ident *loc, int32_t tid,
 EXTERN void __kmpc_push_num_teams(kmp_Ident *loc, int32_t tid,
                                   int32_t num_teams, int32_t thread_limit) {
   PRINT(LD_IO, "call kmpc_push_num_teams %d\n", (int)num_teams);
-  ASSERT0(LT_FUSSY, FALSE,
+  ASSERT0(LT_FUSSY, 0,
           "should never have anything with new teams on device");
 }
 

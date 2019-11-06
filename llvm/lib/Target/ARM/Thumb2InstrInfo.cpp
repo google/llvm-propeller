@@ -161,7 +161,7 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     // otherwise).
     if (Register::isVirtualRegister(SrcReg)) {
       MachineRegisterInfo *MRI = &MF.getRegInfo();
-      MRI->constrainRegClass(SrcReg, &ARM::GPRPair_with_gsub_1_in_GPRwithAPSRnospRegClass);
+      MRI->constrainRegClass(SrcReg, &ARM::GPRPairnospRegClass);
     }
 
     MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::t2STRDi8));
@@ -202,8 +202,7 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     // otherwise).
     if (Register::isVirtualRegister(DestReg)) {
       MachineRegisterInfo *MRI = &MF.getRegInfo();
-      MRI->constrainRegClass(DestReg,
-                             &ARM::GPRPair_with_gsub_1_in_GPRwithAPSRnospRegClass);
+      MRI->constrainRegClass(DestReg, &ARM::GPRPairnospRegClass);
     }
 
     MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::t2LDRDi8));
@@ -389,10 +388,8 @@ negativeOffsetOpcode(unsigned opcode)
     return opcode;
 
   default:
-    break;
+    llvm_unreachable("unknown thumb2 opcode.");
   }
-
-  return 0;
 }
 
 static unsigned
@@ -421,10 +418,8 @@ positiveOffsetOpcode(unsigned opcode)
     return opcode;
 
   default:
-    break;
+    llvm_unreachable("unknown thumb2 opcode.");
   }
-
-  return 0;
 }
 
 static unsigned
@@ -462,10 +457,8 @@ immediateOffsetOpcode(unsigned opcode)
     return opcode;
 
   default:
-    break;
+    llvm_unreachable("unknown thumb2 opcode.");
   }
-
-  return 0;
 }
 
 bool llvm::rewriteT2FrameIndex(MachineInstr &MI, unsigned FrameRegIdx,

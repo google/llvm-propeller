@@ -175,7 +175,7 @@ static bool isDereferenceableForAllocaSize(const Value *V, const AllocaInst *AI,
   uint64_t AllocaSize = DL.getTypeStoreSize(AI->getAllocatedType());
   if (!AllocaSize)
     return false;
-  return isDereferenceableAndAlignedPointer(V, AI->getAlignment(),
+  return isDereferenceableAndAlignedPointer(V, Align(AI->getAlignment()),
                                             APInt(64, AllocaSize), DL);
 }
 
@@ -197,7 +197,7 @@ static Instruction *simplifyAllocaArraySize(InstCombiner &IC, AllocaInst &AI) {
     if (C->getValue().getActiveBits() <= 64) {
       Type *NewTy = ArrayType::get(AI.getAllocatedType(), C->getZExtValue());
       AllocaInst *New = IC.Builder.CreateAlloca(NewTy, nullptr, AI.getName());
-      New->setAlignment(AI.getAlignment());
+      New->setAlignment(MaybeAlign(AI.getAlignment()));
 
       // Scan to the end of the allocation instructions, to skip over a block of
       // allocas if possible...also skip interleaved debug info
@@ -345,7 +345,8 @@ Instruction *InstCombiner::visitAllocaInst(AllocaInst &AI) {
   if (AI.getAllocatedType()->isSized()) {
     // If the alignment is 0 (unspecified), assign it the preferred alignment.
     if (AI.getAlignment() == 0)
-      AI.setAlignment(DL.getPrefTypeAlignment(AI.getAllocatedType()));
+      AI.setAlignment(
+          MaybeAlign(DL.getPrefTypeAlignment(AI.getAllocatedType())));
 
     // Move all alloca's of zero byte objects to the entry block and merge them
     // together.  Note that we only do this for alloca's, because malloc should
@@ -377,12 +378,12 @@ Instruction *InstCombiner::visitAllocaInst(AllocaInst &AI) {
         // assign it the preferred alignment.
         if (EntryAI->getAlignment() == 0)
           EntryAI->setAlignment(
-              DL.getPrefTypeAlignment(EntryAI->getAllocatedType()));
+              MaybeAlign(DL.getPrefTypeAlignment(EntryAI->getAllocatedType())));
         // Replace this zero-sized alloca with the one at the start of the entry
         // block after ensuring that the address will be aligned enough for both
         // types.
-        unsigned MaxAlign = std::max(EntryAI->getAlignment(),
-                                     AI.getAlignment());
+        const MaybeAlign MaxAlign(
+            std::max(EntryAI->getAlignment(), AI.getAlignment()));
         EntryAI->setAlignment(MaxAlign);
         if (AI.getType() != EntryAI->getType())
           return new BitCastInst(EntryAI, AI.getType());
@@ -960,9 +961,9 @@ Instruction *InstCombiner::visitLoadInst(LoadInst &LI) {
       LoadAlign != 0 ? LoadAlign : DL.getABITypeAlignment(LI.getType());
 
   if (KnownAlign > EffectiveLoadAlign)
-    LI.setAlignment(KnownAlign);
+    LI.setAlignment(MaybeAlign(KnownAlign));
   else if (LoadAlign == 0)
-    LI.setAlignment(EffectiveLoadAlign);
+    LI.setAlignment(MaybeAlign(EffectiveLoadAlign));
 
   // Replace GEP indices if possible.
   if (Instruction *NewGEPI = replaceGEPIdxWithZero(*this, Op, LI)) {
@@ -1019,11 +1020,11 @@ Instruction *InstCombiner::visitLoadInst(LoadInst &LI) {
     //
     if (SelectInst *SI = dyn_cast<SelectInst>(Op)) {
       // load (select (Cond, &V1, &V2))  --> select(Cond, load &V1, load &V2).
-      unsigned Align = LI.getAlignment();
-      if (isSafeToLoadUnconditionally(SI->getOperand(1), LI.getType(), Align,
-                                      DL, SI) &&
-          isSafeToLoadUnconditionally(SI->getOperand(2), LI.getType(), Align,
-                                      DL, SI)) {
+      const MaybeAlign Alignment(LI.getAlignment());
+      if (isSafeToLoadUnconditionally(SI->getOperand(1), LI.getType(),
+                                      Alignment, DL, SI) &&
+          isSafeToLoadUnconditionally(SI->getOperand(2), LI.getType(),
+                                      Alignment, DL, SI)) {
         LoadInst *V1 =
             Builder.CreateLoad(LI.getType(), SI->getOperand(1),
                                SI->getOperand(1)->getName() + ".val");
@@ -1031,9 +1032,9 @@ Instruction *InstCombiner::visitLoadInst(LoadInst &LI) {
             Builder.CreateLoad(LI.getType(), SI->getOperand(2),
                                SI->getOperand(2)->getName() + ".val");
         assert(LI.isUnordered() && "implied by above");
-        V1->setAlignment(Align);
+        V1->setAlignment(Alignment);
         V1->setAtomic(LI.getOrdering(), LI.getSyncScopeID());
-        V2->setAlignment(Align);
+        V2->setAlignment(Alignment);
         V2->setAtomic(LI.getOrdering(), LI.getSyncScopeID());
         return SelectInst::Create(SI->getCondition(), V1, V2);
       }
@@ -1355,15 +1356,15 @@ Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
     return eraseInstFromFunction(SI);
 
   // Attempt to improve the alignment.
-  unsigned KnownAlign = getOrEnforceKnownAlignment(
-      Ptr, DL.getPrefTypeAlignment(Val->getType()), DL, &SI, &AC, &DT);
-  unsigned StoreAlign = SI.getAlignment();
-  unsigned EffectiveStoreAlign =
-      StoreAlign != 0 ? StoreAlign : DL.getABITypeAlignment(Val->getType());
+  const Align KnownAlign = Align(getOrEnforceKnownAlignment(
+      Ptr, DL.getPrefTypeAlignment(Val->getType()), DL, &SI, &AC, &DT));
+  const MaybeAlign StoreAlign = MaybeAlign(SI.getAlignment());
+  const Align EffectiveStoreAlign =
+      StoreAlign ? *StoreAlign : Align(DL.getABITypeAlignment(Val->getType()));
 
   if (KnownAlign > EffectiveStoreAlign)
     SI.setAlignment(KnownAlign);
-  else if (StoreAlign == 0)
+  else if (!StoreAlign)
     SI.setAlignment(EffectiveStoreAlign);
 
   // Try to canonicalize the stored type.
@@ -1578,8 +1579,8 @@ bool InstCombiner::mergeStoreIntoSuccessor(StoreInst &SI) {
 
   // Advance to a place where it is safe to insert the new store and insert it.
   BBI = DestBB->getFirstInsertionPt();
-  StoreInst *NewSI = new StoreInst(MergedVal, SI.getOperand(1),
-                                   SI.isVolatile(), SI.getAlignment(),
+  StoreInst *NewSI = new StoreInst(MergedVal, SI.getOperand(1), SI.isVolatile(),
+                                   MaybeAlign(SI.getAlignment()),
                                    SI.getOrdering(), SI.getSyncScopeID());
   InsertNewInstBefore(NewSI, *BBI);
   NewSI->setDebugLoc(MergedLoc);

@@ -722,7 +722,7 @@ private:
   /// Converts alignment exponent (i.e. power of two (or zero)) to the
   /// corresponding alignment to use. If alignment is too large, returns
   /// a corresponding error code.
-  Error parseAlignmentValue(uint64_t Exponent, unsigned &Alignment);
+  Error parseAlignmentValue(uint64_t Exponent, MaybeAlign &Alignment);
   Error parseAttrKind(uint64_t Code, Attribute::AttrKind *Kind);
   Error parseModule(uint64_t ResumeBit, bool ShouldLazyLoadMetadata = false);
 
@@ -1055,16 +1055,13 @@ static int getDecodedCastOpcode(unsigned Val) {
 }
 
 static int getDecodedUnaryOpcode(unsigned Val, Type *Ty) {
-  bool IsFP = Ty->isFPOrFPVectorTy();
-  // UnOps are only valid for int/fp or vector of int/fp types
-  if (!IsFP && !Ty->isIntOrIntVectorTy())
-    return -1;
-
   switch (Val) {
   default:
     return -1;
-  case bitc::UNOP_NEG:
-    return IsFP ? Instruction::FNeg : -1;
+  case bitc::UNOP_FNEG:
+    return Ty->isFPOrFPVectorTy() ? Instruction::FNeg : -1;
+  case bitc::UNOP_FREEZE:
+    return Instruction::Freeze;
   }
 }
 
@@ -1544,12 +1541,12 @@ static Attribute::AttrKind getAttrFromCode(uint64_t Code) {
 }
 
 Error BitcodeReader::parseAlignmentValue(uint64_t Exponent,
-                                         unsigned &Alignment) {
+                                         MaybeAlign &Alignment) {
   // Note: Alignment in bitcode files is incremented by 1, so that zero
   // can be used for default alignment.
   if (Exponent > Value::MaxAlignmentExponent + 1)
     return error("Invalid alignment value");
-  Alignment = (1 << static_cast<unsigned>(Exponent)) >> 1;
+  Alignment = decodeMaybeAlign(Exponent);
   return Error::success();
 }
 
@@ -3112,7 +3109,7 @@ Error BitcodeReader::parseGlobalVarRecord(ArrayRef<uint64_t> Record) {
 
   uint64_t RawLinkage = Record[3];
   GlobalValue::LinkageTypes Linkage = getDecodedLinkage(RawLinkage);
-  unsigned Alignment;
+  MaybeAlign Alignment;
   if (Error Err = parseAlignmentValue(Record[4], Alignment))
     return Err;
   std::string Section;
@@ -3243,7 +3240,7 @@ Error BitcodeReader::parseFunctionRecord(ArrayRef<uint64_t> Record) {
                               Context, getPointerElementFlatType(PTy)));
   }
 
-  unsigned Alignment;
+  MaybeAlign Alignment;
   if (Error Err = parseAlignmentValue(Record[5], Alignment))
     return Err;
   Func->setAlignment(Alignment);
@@ -3865,7 +3862,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
     case bitc::FUNC_CODE_INST_UNOP: {    // UNOP: [opval, ty, opcode]
       unsigned OpNum = 0;
       Value *LHS;
-      if (getValueTypePair(Record, OpNum, NextValueNo, LHS) ||
+      if (getValueTypePair(Record, OpNum, NextValueNo, LHS, &FullTy) ||
           OpNum+1 > Record.size())
         return error("Invalid record");
 
@@ -3936,6 +3933,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
       if ((I = UpgradeBitCastInst(Opc, Op, ResTy, Temp))) {
         if (Temp) {
           InstructionList.push_back(Temp);
+          assert(CurBB && "No current BB?");
           CurBB->getInstList().push_back(Temp);
         }
       } else {
@@ -4641,10 +4639,9 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
       // There is an optional final record for fast-math-flags if this phi has a
       // floating-point type.
       size_t NumArgs = (Record.size() - 1) / 2;
-      if ((Record.size() - 1) % 2 == 1 && !Ty->isFloatingPointTy())
-        return error("Invalid record");
-
       PHINode *PN = PHINode::Create(Ty, NumArgs);
+      if ((Record.size() - 1) % 2 == 1 && !isa<FPMathOperator>(PN))
+        return error("Invalid record");
       InstructionList.push_back(PN);
 
       for (unsigned i = 0; i != NumArgs; i++) {
@@ -4750,7 +4747,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
       }
       Type *OpTy = getTypeByID(Record[1]);
       Value *Size = getFnValueByID(Record[2], OpTy);
-      unsigned Align;
+      MaybeAlign Align;
       if (Error Err = parseAlignmentValue(AlignRecord & ~FlagMask, Align)) {
         return Err;
       }
@@ -4789,7 +4786,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
       if (Error Err = typeCheckLoadStoreInst(Ty, Op->getType()))
         return Err;
 
-      unsigned Align;
+      MaybeAlign Align;
       if (Error Err = parseAlignmentValue(Record[OpNum], Align))
         return Err;
       I = new LoadInst(Ty, Op, "", Record[OpNum + 1], Align);
@@ -4826,7 +4823,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
         return error("Invalid record");
       SyncScope::ID SSID = getDecodedSyncScopeID(Record[OpNum + 3]);
 
-      unsigned Align;
+      MaybeAlign Align;
       if (Error Err = parseAlignmentValue(Record[OpNum], Align))
         return Err;
       I = new LoadInst(Ty, Op, "", Record[OpNum + 1], Align, Ordering, SSID);
@@ -4848,10 +4845,10 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
 
       if (Error Err = typeCheckLoadStoreInst(Val->getType(), Ptr->getType()))
         return Err;
-      unsigned Align;
+      MaybeAlign Align;
       if (Error Err = parseAlignmentValue(Record[OpNum], Align))
         return Err;
-      I = new StoreInst(Val, Ptr, Record[OpNum+1], Align);
+      I = new StoreInst(Val, Ptr, Record[OpNum + 1], Align);
       InstructionList.push_back(I);
       break;
     }
@@ -4881,10 +4878,10 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
       if (Ordering != AtomicOrdering::NotAtomic && Record[OpNum] == 0)
         return error("Invalid record");
 
-      unsigned Align;
+      MaybeAlign Align;
       if (Error Err = parseAlignmentValue(Record[OpNum], Align))
         return Err;
-      I = new StoreInst(Val, Ptr, Record[OpNum+1], Align, Ordering, SSID);
+      I = new StoreInst(Val, Ptr, Record[OpNum + 1], Align, Ordering, SSID);
       InstructionList.push_back(I);
       break;
     }
@@ -5139,7 +5136,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
     }
 
     // Non-void values get registered in the value table for future use.
-    if (I && !I->getType()->isVoidTy()) {
+    if (!I->getType()->isVoidTy()) {
       if (!FullTy) {
         FullTy = I->getType();
         assert(
@@ -5905,11 +5902,6 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
           std::move(PendingTypeCheckedLoadVCalls),
           std::move(PendingTypeTestAssumeConstVCalls),
           std::move(PendingTypeCheckedLoadConstVCalls));
-      PendingTypeTests.clear();
-      PendingTypeTestAssumeVCalls.clear();
-      PendingTypeCheckedLoadVCalls.clear();
-      PendingTypeTestAssumeConstVCalls.clear();
-      PendingTypeCheckedLoadConstVCalls.clear();
       auto VIAndOriginalGUID = getValueInfoFromValueId(ValueID);
       FS->setModulePath(getThisModule()->first());
       FS->setOriginalName(VIAndOriginalGUID.second);
@@ -6050,11 +6042,6 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
           std::move(PendingTypeCheckedLoadVCalls),
           std::move(PendingTypeTestAssumeConstVCalls),
           std::move(PendingTypeCheckedLoadConstVCalls));
-      PendingTypeTests.clear();
-      PendingTypeTestAssumeVCalls.clear();
-      PendingTypeCheckedLoadVCalls.clear();
-      PendingTypeTestAssumeConstVCalls.clear();
-      PendingTypeCheckedLoadConstVCalls.clear();
       LastSeenSummary = FS.get();
       LastSeenGUID = VI.getGUID();
       FS->setModulePath(ModuleIdMap[ModuleId]);

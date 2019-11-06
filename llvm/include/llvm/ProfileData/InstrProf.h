@@ -93,10 +93,6 @@ inline StringRef getInstrProfValuesVarPrefix() { return "__profvp_"; }
 /// Return the name of value profile node array variables:
 inline StringRef getInstrProfVNodesVarName() { return "__llvm_prf_vnodes"; }
 
-/// Return the name prefix of the COMDAT group for instrumentation variables
-/// associated with a COMDAT function.
-inline StringRef getInstrProfComdatPrefix() { return "__profv_"; }
-
 /// Return the name of the variable holding the strings (possibly compressed)
 /// of all function's PGO names.
 inline StringRef getInstrProfNamesVarName() {
@@ -634,8 +630,8 @@ struct OverlapStats {
     FuncHash = Hash;
   }
 
-  Error accumuateCounts(const std::string &BaseFilename,
-                        const std::string &TestFilename, bool IsCS);
+  Error accumulateCounts(const std::string &BaseFilename,
+                         const std::string &TestFilename, bool IsCS);
   void addOneMismatch(const CountSumOrPercent &MismatchFunc);
   void addOneUnique(const CountSumOrPercent &UniqueFunc);
 
@@ -772,7 +768,7 @@ struct InstrProfRecord {
   void clearValueData() { ValueData = nullptr; }
 
   /// Compute the sums of all counts and store in Sum.
-  void accumuateCounts(CountSumOrPercent &Sum) const;
+  void accumulateCounts(CountSumOrPercent &Sum) const;
 
   /// Compute the overlap b/w this IntrprofRecord and Other.
   void overlap(InstrProfRecord &Other, OverlapStats &Overlap,
@@ -889,7 +885,7 @@ uint32_t InstrProfRecord::getNumValueDataForSite(uint32_t ValueKind,
 std::unique_ptr<InstrProfValueData[]>
 InstrProfRecord::getValueForSite(uint32_t ValueKind, uint32_t Site,
                                  uint64_t *TotalC) const {
-  uint64_t Dummy;
+  uint64_t Dummy = 0;
   uint64_t &TotalCount = (TotalC == nullptr ? Dummy : *TotalC);
   uint32_t N = getNumValueDataForSite(ValueKind, Site);
   if (N == 0) {

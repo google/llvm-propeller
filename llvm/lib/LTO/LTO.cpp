@@ -762,7 +762,8 @@ LTO::addRegularLTO(BitcodeModule BM, ArrayRef<InputFile::Symbol> Syms,
       // For now they aren't reported correctly by ModuleSymbolTable.
       auto &CommonRes = RegularLTO.Commons[Sym.getIRName()];
       CommonRes.Size = std::max(CommonRes.Size, Sym.getCommonSize());
-      CommonRes.Align = std::max(CommonRes.Align, Sym.getCommonAlignment());
+      CommonRes.Align =
+          std::max(CommonRes.Align, MaybeAlign(Sym.getCommonAlignment()));
       CommonRes.Prevailing |= Res.Prevailing;
     }
 
@@ -1002,6 +1003,8 @@ Error LTO::runRegularLTO(AddStreamFn AddStream) {
       if (EnableLTOInternalization && R.second.Partition == 0)
         GV->setLinkage(GlobalValue::InternalLinkage);
     }
+
+    RegularLTO.CombinedModule->addModuleFlag(Module::Error, "LTOPostLink", 1);
 
     if (Conf.PostInternalizeModuleHook &&
         !Conf.PostInternalizeModuleHook(0, *RegularLTO.CombinedModule))
@@ -1304,11 +1307,6 @@ Error LTO::runThinLTO(AddStreamFn AddStream, NativeObjectCache Cache,
     ComputeCrossModuleImport(ThinLTO.CombinedIndex, ModuleToDefinedGVSummaries,
                              ImportLists, ExportLists);
 
-  // Update local devirtualized targets that were exported by cross-module
-  // importing
-  updateIndexWPDForExports(ThinLTO.CombinedIndex, ExportLists,
-                           LocalWPDTargetsMap);
-
   // Figure out which symbols need to be internalized. This also needs to happen
   // at -O0 because summary-based DCE is implemented using internalization, and
   // we must apply DCE consistently with the full LTO module in order to avoid
@@ -1338,6 +1336,12 @@ Error LTO::runThinLTO(AddStreamFn AddStream, NativeObjectCache Cache,
             ExportList->second.count(GUID)) ||
            ExportedGUIDs.count(GUID);
   };
+
+  // Update local devirtualized targets that were exported by cross-module
+  // importing or by other devirtualizations marked in the ExportedGUIDs set.
+  updateIndexWPDForExports(ThinLTO.CombinedIndex, isExported,
+                           LocalWPDTargetsMap);
+
   auto isPrevailing = [&](GlobalValue::GUID GUID,
                           const GlobalValueSummary *S) {
     return ThinLTO.PrevailingModuleForGUID[GUID] == S->modulePath();

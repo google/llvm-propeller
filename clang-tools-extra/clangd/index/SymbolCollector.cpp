@@ -263,10 +263,6 @@ bool SymbolCollector::handleDeclOccurence(
        Decl::FriendObjectKind::FOK_None) &&
       !(Roles & static_cast<unsigned>(index::SymbolRole::Definition)))
     return true;
-  // Skip non-semantic references, we should start processing these when we
-  // decide to implement renaming with index support.
-  if ((Roles & static_cast<unsigned>(index::SymbolRole::NameReference)))
-    return true;
   // A declaration created for a friend declaration should not be used as the
   // canonical declaration in the index. Use OrigD instead, unless we've already
   // picked a replacement for D
@@ -445,8 +441,7 @@ void SymbolCollector::processRelations(
     //       in the index and find nothing, but that's a situation they
     //       probably need to handle for other reasons anyways.
     // We currently do (B) because it's simpler.
-    this->Relations.insert(
-        Relation{ID, index::SymbolRole::RelationBaseOf, *ObjectID});
+    this->Relations.insert(Relation{ID, RelationKind::BaseOf, *ObjectID});
   }
 }
 

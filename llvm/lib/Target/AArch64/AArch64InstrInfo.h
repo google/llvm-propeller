@@ -265,6 +265,14 @@ public:
   /// on Windows.
   static bool isSEHInstruction(const MachineInstr &MI);
 
+  bool isAddImmediate(const MachineInstr &MI,
+                      const MachineOperand *&Destination,
+                      const MachineOperand *&Source,
+                      int64_t &Offset) const override;
+
+  Optional<ParamLoadedValue>
+  describeLoadedValue(const MachineInstr &MI) const override;
+
 #define GET_INSTRINFO_HELPER_DECLS
 #include "AArch64GenInstrInfo.inc"
 
@@ -335,7 +343,7 @@ enum AArch64FrameOffsetStatus {
 int isAArch64FrameOffsetLegal(const MachineInstr &MI, StackOffset &Offset,
                               bool *OutUseUnscaledOp = nullptr,
                               unsigned *OutUnscaledOp = nullptr,
-                              int *EmittableOffset = nullptr);
+                              int64_t *EmittableOffset = nullptr);
 
 static inline bool isUncondBranchOpcode(int Opc) { return Opc == AArch64::B; }
 

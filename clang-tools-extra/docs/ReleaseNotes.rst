@@ -79,23 +79,40 @@ Improvements to clang-tidy
   Finds obvious infinite loops (loops where the condition variable is not
   changed at all).
 
+- New :doc:`bugprone-not-null-terminated-result
+  <clang-tidy/checks/bugprone-not-null-terminated-result>` check
+
+  Finds function calls where it is possible to cause a not null-terminated
+  result. Usually the proper length of a string is ``strlen(str) + 1`` or equal
+  length of this expression, because the null terminator needs an extra space.
+  Without the null terminator it can result in undefined behaviour when the
+  string is read.
+
+- New :doc:`cppcoreguidelines-init-variables
+  <clang-tidy/checks/cppcoreguidelines-init-variables>` check.
+
 - New :doc:`darwin-dispatch-once-nonstatic
   <clang-tidy/checks/darwin-dispatch-once-nonstatic>` check.
 
   Finds declarations of ``dispatch_once_t`` variables without static or global
   storage.
 
-- New :doc:`linuxkernel-must-use-errs
-  <clang-tidy/checks/linuxkernel-must-use-errs>` check.
-
-  Checks Linux kernel code to see if it uses the results from the functions in
-  ``linux/err.h``.
-
 - New :doc:`google-upgrade-googletest-case
   <clang-tidy/checks/google-upgrade-googletest-case>` check.
 
   Finds uses of deprecated Googletest APIs with names containing ``case`` and
   replaces them with equivalent APIs with ``suite``.
+
+- Improved :doc:`hicpp-signed-bitwise
+  <clang-tidy/checks/hicpp-signed-bitwise>` check.
+
+  The check now supports the ``IgnorePositiveIntegerLiterals`` option.
+
+- New :doc:`linuxkernel-must-use-errs
+  <clang-tidy/checks/linuxkernel-must-use-errs>` check.
+
+  Checks Linux kernel code to see if it uses the results from the functions in
+  ``linux/err.h``.
 
 - New :doc:`llvm-prefer-register-over-unsigned
   <clang-tidy/checks/llvm-prefer-register-over-unsigned>` check.
@@ -109,11 +126,26 @@ Improvements to clang-tidy
   Finds Objective-C implementations that implement ``-isEqual:`` without also
   appropriately implementing ``-hash``.
 
+- New :doc:`performance-trivially-destructible
+  <clang-tidy/checks/performance-trivially-destructible>` check.
+
+  Finds types that could be made trivially-destructible by removing out-of-line
+  defaulted destructor declarations.
+
 - Improved :doc:`bugprone-posix-return
   <clang-tidy/checks/bugprone-posix-return>` check.
 
   Now also checks if any calls to ``pthread_*`` functions expect negative return
   values.
+
+- The 'objc-avoid-spinlock' check was renamed to :doc:`darwin-avoid-spinlock
+  <clang-tidy/checks/darwin-avoid-spinlock>`
+
+- New :doc:`readability-redundant-access-specifiers
+  <clang-tidy/checks/readability-redundant-access-specifiers>` check.
+
+  Finds classes, structs, and unions that contain redundant member
+  access specifiers.
 
 Improvements to include-fixer
 -----------------------------

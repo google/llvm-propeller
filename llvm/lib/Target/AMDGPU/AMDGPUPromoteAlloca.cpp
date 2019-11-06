@@ -648,7 +648,7 @@ bool AMDGPUPromoteAlloca::hasSufficientLocalMem(const Function &F) {
   // Check how much local memory is being used by global objects
   CurrentLocalMemUsage = 0;
   for (GlobalVariable &GV : Mod->globals()) {
-    if (GV.getType()->getAddressSpace() != AMDGPUAS::LOCAL_ADDRESS)
+    if (GV.getAddressSpace() != AMDGPUAS::LOCAL_ADDRESS)
       continue;
 
     for (const User *U : GV.users()) {
@@ -801,7 +801,7 @@ bool AMDGPUPromoteAlloca::handleAlloca(AllocaInst &I, bool SufficientLDS) {
       GlobalVariable::NotThreadLocal,
       AMDGPUAS::LOCAL_ADDRESS);
   GV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
-  GV->setAlignment(I.getAlignment());
+  GV->setAlignment(MaybeAlign(I.getAlignment()));
 
   Value *TCntY, *TCntZ;
 

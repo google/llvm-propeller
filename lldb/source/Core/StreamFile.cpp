@@ -25,11 +25,11 @@ StreamFile::StreamFile(uint32_t flags, uint32_t addr_size, ByteOrder byte_order)
 
 StreamFile::StreamFile(int fd, bool transfer_ownership) : Stream() {
   m_file_sp =
-      std::make_shared<File>(fd, File::eOpenOptionWrite, transfer_ownership);
+      std::make_shared<NativeFile>(fd, File::eOpenOptionWrite, transfer_ownership);
 }
 
 StreamFile::StreamFile(FILE *fh, bool transfer_ownership) : Stream() {
-  m_file_sp = std::make_shared<File>(fh, transfer_ownership);
+  m_file_sp = std::make_shared<NativeFile>(fh, transfer_ownership);
 }
 
 StreamFile::StreamFile(const char *path) : Stream() {
@@ -46,7 +46,8 @@ StreamFile::StreamFile(const char *path) : Stream() {
   }
 }
 
-StreamFile::StreamFile(const char *path, uint32_t options, uint32_t permissions)
+StreamFile::StreamFile(const char *path, File::OpenOptions options,
+                       uint32_t permissions)
     : Stream() {
   auto file = FileSystem::Instance().Open(FileSpec(path), options, permissions);
   if (file)

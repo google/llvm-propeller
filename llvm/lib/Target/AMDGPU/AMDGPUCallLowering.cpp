@@ -37,6 +37,8 @@ struct OutgoingValueHandler : public CallLowering::ValueHandler {
 
   MachineInstrBuilder MIB;
 
+  bool isIncomingArgumentHandler() const override { return false; }
+
   Register getStackAddress(uint64_t Size, int64_t Offset,
                            MachinePointerInfo &MPO) override {
     llvm_unreachable("not implemented");
@@ -354,7 +356,7 @@ Register AMDGPUCallLowering::lowerParameterPtr(MachineIRBuilder &B,
   Register OffsetReg = MRI.createGenericVirtualRegister(LLT::scalar(64));
   B.buildConstant(OffsetReg, Offset);
 
-  B.buildGEP(DstReg, KernArgSegmentVReg, OffsetReg);
+  B.buildPtrAdd(DstReg, KernArgSegmentVReg, OffsetReg);
 
   return DstReg;
 }

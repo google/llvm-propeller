@@ -37,7 +37,7 @@ function(add_lldb_library name)
   cmake_parse_arguments(PARAM
     "MODULE;SHARED;STATIC;OBJECT;PLUGIN"
     "INSTALL_PREFIX;ENTITLEMENTS"
-    "EXTRA_CXXFLAGS;DEPENDS;LINK_LIBS;LINK_COMPONENTS"
+    "EXTRA_CXXFLAGS;DEPENDS;LINK_LIBS;LINK_COMPONENTS;CLANG_LIBS"
     ${ARGN})
   llvm_process_sources(srcs ${PARAM_UNPARSED_ARGUMENTS})
   list(APPEND LLVM_LINK_COMPONENTS ${PARAM_LINK_COMPONENTS})
@@ -91,6 +91,12 @@ function(add_lldb_library name)
       ${pass_ENTITLEMENTS}
       ${pass_NO_INSTALL_RPATH}
     )
+
+    if(CLANG_LINK_CLANG_DYLIB)
+      target_link_libraries(${name} PRIVATE clang-cpp)
+    else()
+      target_link_libraries(${name} PRIVATE ${PARAM_CLANG_LIBS})
+    endif()
   endif()
 
   if(PARAM_SHARED)
@@ -136,7 +142,7 @@ function(add_lldb_executable name)
   cmake_parse_arguments(ARG
     "GENERATE_INSTALL"
     "INSTALL_PREFIX;ENTITLEMENTS"
-    "LINK_LIBS;LINK_COMPONENTS"
+    "LINK_LIBS;CLANG_LIBS;LINK_COMPONENTS;BUILD_RPATH;INSTALL_RPATH"
     ${ARGN}
     )
 
@@ -156,7 +162,22 @@ function(add_lldb_executable name)
   )
 
   target_link_libraries(${name} PRIVATE ${ARG_LINK_LIBS})
+  if(CLANG_LINK_CLANG_DYLIB)
+    target_link_libraries(${name} PRIVATE clang-cpp)
+  else()
+    target_link_libraries(${name} PRIVATE ${ARG_CLANG_LIBS})
+  endif()
   set_target_properties(${name} PROPERTIES FOLDER "lldb executables")
+
+  if (ARG_BUILD_RPATH)
+    set_target_properties(${name} PROPERTIES BUILD_RPATH "${ARG_BUILD_RPATH}")
+  endif()
+
+  if (ARG_INSTALL_RPATH)
+    set_target_properties(${name} PROPERTIES
+      BUILD_WITH_INSTALL_RPATH OFF
+      INSTALL_RPATH "${ARG_INSTALL_RPATH}")
+  endif()
 
   if(ARG_GENERATE_INSTALL)
     set(install_dest bin)
@@ -164,7 +185,10 @@ function(add_lldb_executable name)
       set(install_dest ${ARG_INSTALL_PREFIX})
     endif()
     install(TARGETS ${name} COMPONENT ${name}
-            RUNTIME DESTINATION ${install_dest})
+            RUNTIME DESTINATION ${install_dest}
+            LIBRARY DESTINATION ${install_dest}
+            BUNDLE DESTINATION ${install_dest}
+            FRAMEWORK DESTINATION ${install_dest})
     if (NOT CMAKE_CONFIGURATION_TYPES)
       add_llvm_install_targets(install-${name}
                                DEPENDS ${name}
@@ -260,13 +284,15 @@ function(lldb_add_post_install_steps_darwin name install_prefix)
   install(CODE "execute_process(COMMAND xcrun dsymutil -o=${dsym_name} ${buildtree_name})"
           COMPONENT ${name})
 
-  # Strip distribution binary with -ST (removing debug symbol table entries and
-  # Swift symbols). Avoid CMAKE_INSTALL_DO_STRIP and llvm_externalize_debuginfo()
-  # as they can't be configured sufficiently.
-  set(installtree_name "\$ENV\{DESTDIR\}${install_prefix}/${bundle_subdir}${output_name}")
-  install(CODE "message(STATUS \"Stripping: ${installtree_name}\")" COMPONENT ${name})
-  install(CODE "execute_process(COMMAND xcrun strip -ST ${installtree_name})"
-          COMPONENT ${name})
+  if(NOT LLDB_SKIP_STRIP)
+    # Strip distribution binary with -ST (removing debug symbol table entries and
+    # Swift symbols). Avoid CMAKE_INSTALL_DO_STRIP and llvm_externalize_debuginfo()
+    # as they can't be configured sufficiently.
+    set(installtree_name "\$ENV\{DESTDIR\}${install_prefix}/${bundle_subdir}${output_name}")
+    install(CODE "message(STATUS \"Stripping: ${installtree_name}\")" COMPONENT ${name})
+    install(CODE "execute_process(COMMAND xcrun strip -ST ${installtree_name})"
+            COMPONENT ${name})
+  endif()
 endfunction()
 
 # CMake's set_target_properties() doesn't allow to pass lists for RPATH

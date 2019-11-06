@@ -328,7 +328,7 @@ public:
     PassKind Kind = P->getPassKind();
     StringRef Name = P->getPassName();
 
-    // TODO: Implement Debugify for BasicBlockPass, LoopPass.
+    // TODO: Implement Debugify for LoopPass.
     switch (Kind) {
       case PT_Function:
         super::add(createDebugifyFunctionPass());
@@ -523,7 +523,6 @@ int main(int argc, char **argv) {
   initializeDwarfEHPreparePass(Registry);
   initializeSafeStackLegacyPassPass(Registry);
   initializeSjLjEHPreparePass(Registry);
-  initializeStackProtectorPass(Registry);
   initializePreISelIntrinsicLoweringLegacyPassPass(Registry);
   initializeGlobalMergePass(Registry);
   initializeIndirectBrExpandPassPass(Registry);
@@ -612,7 +611,9 @@ int main(int argc, char **argv) {
       OutputFilename = "-";
 
     std::error_code EC;
-    Out.reset(new ToolOutputFile(OutputFilename, EC, sys::fs::OF_None));
+    sys::fs::OpenFlags Flags = OutputAssembly ? sys::fs::OF_Text
+                                              : sys::fs::OF_None;
+    Out.reset(new ToolOutputFile(OutputFilename, EC, Flags));
     if (EC) {
       errs() << EC.message() << '\n';
       return 1;
@@ -789,9 +790,6 @@ int main(int argc, char **argv) {
 
       if (AnalyzeOnly) {
         switch (Kind) {
-        case PT_BasicBlock:
-          Passes.add(createBasicBlockPassPrinter(PassInf, Out->os(), Quiet));
-          break;
         case PT_Region:
           Passes.add(createRegionPassPrinter(PassInf, Out->os(), Quiet));
           break;

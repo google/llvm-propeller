@@ -2809,8 +2809,8 @@ void X86_64ABIInfo::classify(QualType Ty, uint64_t OffsetBase,
       for (const auto &I : CXXRD->bases()) {
         assert(!I.isVirtual() && !I.getType()->isDependentType() &&
                "Unexpected base class!");
-        const CXXRecordDecl *Base =
-          cast<CXXRecordDecl>(I.getType()->getAs<RecordType>()->getDecl());
+        const auto *Base =
+            cast<CXXRecordDecl>(I.getType()->castAs<RecordType>()->getDecl());
 
         // Classify this field.
         //
@@ -3071,8 +3071,8 @@ static bool BitsContainNoUserData(QualType Ty, unsigned StartBit,
       for (const auto &I : CXXRD->bases()) {
         assert(!I.isVirtual() && !I.getType()->isDependentType() &&
                "Unexpected base class!");
-        const CXXRecordDecl *Base =
-          cast<CXXRecordDecl>(I.getType()->getAs<RecordType>()->getDecl());
+        const auto *Base =
+            cast<CXXRecordDecl>(I.getType()->castAs<RecordType>()->getDecl());
 
         // If the base is after the span we care about, ignore it.
         unsigned BaseOffset = Context.toBits(Layout.getBaseClassOffset(Base));
@@ -7685,6 +7685,42 @@ private:
   bool isHomogeneousAggregateSmallEnough(const Type *Base,
                                          uint64_t Members) const override;
 
+  // Coerce HIP pointer arguments from generic pointers to global ones.
+  llvm::Type *coerceKernelArgumentType(llvm::Type *Ty, unsigned FromAS,
+                                       unsigned ToAS) const {
+    // Structure types.
+    if (auto STy = dyn_cast<llvm::StructType>(Ty)) {
+      SmallVector<llvm::Type *, 8> EltTys;
+      bool Changed = false;
+      for (auto T : STy->elements()) {
+        auto NT = coerceKernelArgumentType(T, FromAS, ToAS);
+        EltTys.push_back(NT);
+        Changed |= (NT != T);
+      }
+      // Skip if there is no change in element types.
+      if (!Changed)
+        return STy;
+      if (STy->hasName())
+        return llvm::StructType::create(
+            EltTys, (STy->getName() + ".coerce").str(), STy->isPacked());
+      return llvm::StructType::get(getVMContext(), EltTys, STy->isPacked());
+    }
+    // Arrary types.
+    if (auto ATy = dyn_cast<llvm::ArrayType>(Ty)) {
+      auto T = ATy->getElementType();
+      auto NT = coerceKernelArgumentType(T, FromAS, ToAS);
+      // Skip if there is no change in that element type.
+      if (NT == T)
+        return ATy;
+      return llvm::ArrayType::get(NT, ATy->getNumElements());
+    }
+    // Single value types.
+    if (Ty->isPointerTy() && Ty->getPointerAddressSpace() == FromAS)
+      return llvm::PointerType::get(
+          cast<llvm::PointerType>(Ty)->getElementType(), ToAS);
+    return Ty;
+  }
+
 public:
   explicit AMDGPUABIInfo(CodeGen::CodeGenTypes &CGT) :
     DefaultABIInfo(CGT) {}
@@ -7694,6 +7730,8 @@ public:
   ABIArgInfo classifyArgumentType(QualType Ty, unsigned &NumRegsLeft) const;
 
   void computeInfo(CGFunctionInfo &FI) const override;
+  Address EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
+                    QualType Ty) const override;
 };
 
 bool AMDGPUABIInfo::isHomogeneousAggregateBaseType(QualType Ty) const {
@@ -7757,6 +7795,11 @@ void AMDGPUABIInfo::computeInfo(CGFunctionInfo &FI) const {
   }
 }
 
+Address AMDGPUABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
+                                 QualType Ty) const {
+  llvm_unreachable("AMDGPU does not support varargs");
+}
+
 ABIArgInfo AMDGPUABIInfo::classifyReturnType(QualType RetTy) const {
   if (isAggregateTypeForABI(RetTy)) {
     // Records with non-trivial destructors/copy-constructors should not be
@@ -7805,14 +7848,22 @@ ABIArgInfo AMDGPUABIInfo::classifyKernelArgumentType(QualType Ty) const {
 
   // TODO: Can we omit empty structs?
 
-  // Coerce single element structs to its element.
+  llvm::Type *LTy = nullptr;
   if (const Type *SeltTy = isSingleElementStruct(Ty, getContext()))
-    return ABIArgInfo::getDirect(CGT.ConvertType(QualType(SeltTy, 0)));
+    LTy = CGT.ConvertType(QualType(SeltTy, 0));
+
+  if (getContext().getLangOpts().HIP) {
+    if (!LTy)
+      LTy = CGT.ConvertType(Ty);
+    LTy = coerceKernelArgumentType(
+        LTy, /*FromAS=*/getContext().getTargetAddressSpace(LangAS::Default),
+        /*ToAS=*/getContext().getTargetAddressSpace(LangAS::cuda_device));
+  }
 
   // If we set CanBeFlattened to true, CodeGen will expand the struct to its
   // individual elements, which confuses the Clover OpenCL backend; therefore we
   // have to set it to false here. Other args of getDirect() are just defaults.
-  return ABIArgInfo::getDirect(nullptr, 0, nullptr, false);
+  return ABIArgInfo::getDirect(LTy, 0, nullptr, false);
 }
 
 ABIArgInfo AMDGPUABIInfo::classifyArgumentType(QualType Ty,
@@ -9438,7 +9489,7 @@ bool RISCVABIInfo::detectFPCCEligibleStruct(QualType Ty, llvm::Type *&Field1Ty,
       Ty, CharUnits::Zero(), Field1Ty, Field1Off, Field2Ty, Field2Off);
   // Not really a candidate if we have a single int but no float.
   if (Field1Ty && !Field2Ty && !Field1Ty->isFloatingPointTy())
-    return IsCandidate = false;
+    return false;
   if (!IsCandidate)
     return false;
   if (Field1Ty && Field1Ty->isFloatingPointTy())
@@ -9532,7 +9583,7 @@ ABIArgInfo RISCVABIInfo::classifyArgumentType(QualType Ty, bool IsFixed,
   // Complex types for the hard float ABI must be passed direct rather than
   // using CoerceAndExpand.
   if (IsFixed && Ty->isComplexType() && FLen && ArgFPRsLeft >= 2) {
-    QualType EltTy = Ty->getAs<ComplexType>()->getElementType();
+    QualType EltTy = Ty->castAs<ComplexType>()->getElementType();
     if (getContext().getTypeSize(EltTy) <= FLen) {
       ArgFPRsLeft -= 2;
       return ABIArgInfo::getDirect();
@@ -9954,7 +10005,7 @@ llvm::Function *AMDGPUTargetCodeGenInfo::createEnqueuedBlockKernel(
   Builder.SetInsertPoint(BB);
   unsigned BlockAlign = CGF.CGM.getDataLayout().getPrefTypeAlignment(BlockTy);
   auto *BlockPtr = Builder.CreateAlloca(BlockTy, nullptr);
-  BlockPtr->setAlignment(BlockAlign);
+  BlockPtr->setAlignment(llvm::MaybeAlign(BlockAlign));
   Builder.CreateAlignedStore(F->arg_begin(), BlockPtr, BlockAlign);
   auto *Cast = Builder.CreatePointerCast(BlockPtr, InvokeFT->getParamType(0));
   llvm::SmallVector<llvm::Value *, 2> Args;

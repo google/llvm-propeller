@@ -20,9 +20,11 @@
 #include "clang/Format/Format.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/Preprocessor.h"
+#include "clang/Lex/Token.h"
 #include "clang/Tooling/Core/Replacement.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -37,6 +39,9 @@
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/xxhash.h"
 #include <algorithm>
+#include <cstddef>
+#include <string>
+#include <vector>
 
 namespace clang {
 namespace clangd {
@@ -237,6 +242,45 @@ llvm::Optional<Range> getTokenRange(const SourceManager &SM,
   return halfOpenToRange(SM, CharSourceRange::getCharRange(TokLoc, End));
 }
 
+namespace {
+
+enum TokenFlavor { Identifier, Operator, Whitespace, Other };
+
+bool isOverloadedOperator(const Token &Tok) {
+  switch (Tok.getKind()) {
+#define OVERLOADED_OPERATOR(Name, Spelling, Token, Unary, Binary, MemOnly)     \
+  case tok::Token:
+#define OVERLOADED_OPERATOR_MULTI(Name, Spelling, Unary, Binary, MemOnly)
+#include "clang/Basic/OperatorKinds.def"
+    return true;
+
+  default:
+    break;
+  }
+  return false;
+}
+
+TokenFlavor getTokenFlavor(SourceLocation Loc, const SourceManager &SM,
+                           const LangOptions &LangOpts) {
+  Token Tok;
+  Tok.setKind(tok::NUM_TOKENS);
+  if (Lexer::getRawToken(Loc, Tok, SM, LangOpts,
+                         /*IgnoreWhiteSpace*/ false))
+    return Other;
+
+  // getRawToken will return false without setting Tok when the token is
+  // whitespace, so if the flag is not set, we are sure this is a whitespace.
+  if (Tok.is(tok::TokenKind::NUM_TOKENS))
+    return Whitespace;
+  if (Tok.is(tok::TokenKind::raw_identifier))
+    return Identifier;
+  if (isOverloadedOperator(Tok))
+    return Operator;
+  return Other;
+}
+
+} // namespace
+
 SourceLocation getBeginningOfIdentifier(const Position &Pos,
                                         const SourceManager &SM,
                                         const LangOptions &LangOpts) {
@@ -247,27 +291,57 @@ SourceLocation getBeginningOfIdentifier(const Position &Pos,
     return SourceLocation();
   }
 
-  // GetBeginningOfToken(pos) is almost what we want, but does the wrong thing
-  // if the cursor is at the end of the identifier.
-  // Instead, we lex at GetBeginningOfToken(pos - 1). The cases are:
-  //  1) at the beginning of an identifier, we'll be looking at something
-  //  that isn't an identifier.
-  //  2) at the middle or end of an identifier, we get the identifier.
-  //  3) anywhere outside an identifier, we'll get some non-identifier thing.
-  // We can't actually distinguish cases 1 and 3, but returning the original
-  // location is correct for both!
+  // GetBeginningOfToken(InputLoc) is almost what we want, but does the wrong
+  // thing if the cursor is at the end of the token (identifier or operator).
+  // The cases are:
+  //   1) at the beginning of the token
+  //   2) at the middle of the token
+  //   3) at the end of the token
+  //   4) anywhere outside the identifier or operator
+  // To distinguish all cases, we lex both at the
+  // GetBeginningOfToken(InputLoc-1) and GetBeginningOfToken(InputLoc), for
+  // cases 1 and 4, we just return the original location.
   SourceLocation InputLoc = SM.getComposedLoc(FID, *Offset);
-  if (*Offset == 0) // Case 1 or 3.
+  if (*Offset == 0) // Case 1 or 4.
     return InputLoc;
   SourceLocation Before = SM.getComposedLoc(FID, *Offset - 1);
+  SourceLocation BeforeTokBeginning =
+      Lexer::GetBeginningOfToken(Before, SM, LangOpts);
+  TokenFlavor BeforeKind = getTokenFlavor(BeforeTokBeginning, SM, LangOpts);
 
-  Before = Lexer::GetBeginningOfToken(Before, SM, LangOpts);
-  Token Tok;
-  if (Before.isValid() &&
-      !Lexer::getRawToken(Before, Tok, SM, LangOpts, false) &&
-      Tok.is(tok::raw_identifier))
-    return Before; // Case 2.
-  return InputLoc; // Case 1 or 3.
+  SourceLocation CurrentTokBeginning =
+      Lexer::GetBeginningOfToken(InputLoc, SM, LangOpts);
+  TokenFlavor CurrentKind = getTokenFlavor(CurrentTokBeginning, SM, LangOpts);
+
+  // At the middle of the token.
+  if (BeforeTokBeginning == CurrentTokBeginning) {
+    // For interesting token, we return the beginning of the token.
+    if (CurrentKind == Identifier || CurrentKind == Operator)
+      return CurrentTokBeginning;
+    // otherwise, we return the original loc.
+    return InputLoc;
+  }
+
+  // Whitespace is not interesting.
+  if (BeforeKind == Whitespace)
+    return CurrentTokBeginning;
+  if (CurrentKind == Whitespace)
+    return BeforeTokBeginning;
+
+  // The cursor is at the token boundary, e.g. "Before^Current", we prefer
+  // identifiers to other tokens.
+  if (CurrentKind == Identifier)
+    return CurrentTokBeginning;
+  if (BeforeKind == Identifier)
+    return BeforeTokBeginning;
+  // Then prefer overloaded operators to other tokens.
+  if (CurrentKind == Operator)
+    return CurrentTokBeginning;
+  if (BeforeKind == Operator)
+    return BeforeTokBeginning;
+
+  // Non-interesting case, we just return the original location.
+  return InputLoc;
 }
 
 bool isValidFileRange(const SourceManager &Mgr, SourceRange R) {
@@ -326,7 +400,6 @@ SourceLocation includeHashLoc(FileID IncludedFile, const SourceManager &SM) {
       return SourceLocation();
   }
 }
-
 
 static unsigned getTokenLengthAtLoc(SourceLocation Loc, const SourceManager &SM,
                                     const LangOptions &LangOpts) {
@@ -646,9 +719,8 @@ cleanupAndFormat(StringRef Code, const tooling::Replacements &Replaces,
   return formatReplacements(Code, std::move(*CleanReplaces), Style);
 }
 
-template <typename Action>
-static void lex(llvm::StringRef Code, const format::FormatStyle &Style,
-                Action A) {
+void lex(llvm::StringRef Code, const format::FormatStyle &Style,
+         llvm::function_ref<void(const clang::Token &, Position)> Action) {
   // FIXME: InMemoryFileAdapter crashes unless the buffer is null terminated!
   std::string NullTerminatedCode = Code.str();
   SourceManagerForFile FileSM("dummy.cpp", NullTerminatedCode);
@@ -658,16 +730,16 @@ static void lex(llvm::StringRef Code, const format::FormatStyle &Style,
   Token Tok;
 
   while (!Lex.LexFromRawLexer(Tok))
-    A(Tok);
+    Action(Tok, sourceLocToPosition(SM, Tok.getLocation()));
   // LexFromRawLexer returns true after it lexes last token, so we still have
   // one more token to report.
-  A(Tok);
+  Action(Tok, sourceLocToPosition(SM, Tok.getLocation()));
 }
 
 llvm::StringMap<unsigned> collectIdentifiers(llvm::StringRef Content,
                                              const format::FormatStyle &Style) {
   llvm::StringMap<unsigned> Identifiers;
-  lex(Content, Style, [&](const clang::Token &Tok) {
+  lex(Content, Style, [&](const clang::Token &Tok, Position) {
     switch (Tok.getKind()) {
     case tok::identifier:
       ++Identifiers[Tok.getIdentifierInfo()->getName()];
@@ -683,15 +755,20 @@ llvm::StringMap<unsigned> collectIdentifiers(llvm::StringRef Content,
 }
 
 namespace {
-enum NamespaceEvent {
-  BeginNamespace, // namespace <ns> {.     Payload is resolved <ns>.
-  EndNamespace,   // } // namespace <ns>.  Payload is resolved *outer* namespace.
-  UsingDirective  // using namespace <ns>. Payload is unresolved <ns>.
+struct NamespaceEvent {
+  enum {
+    BeginNamespace, // namespace <ns> {.     Payload is resolved <ns>.
+    EndNamespace,   // } // namespace <ns>.  Payload is resolved *outer*
+                    // namespace.
+    UsingDirective  // using namespace <ns>. Payload is unresolved <ns>.
+  } Trigger;
+  std::string Payload;
+  Position Pos;
 };
 // Scans C++ source code for constructs that change the visible namespaces.
-void parseNamespaceEvents(
-    llvm::StringRef Code, const format::FormatStyle &Style,
-    llvm::function_ref<void(NamespaceEvent, llvm::StringRef)> Callback) {
+void parseNamespaceEvents(llvm::StringRef Code,
+                          const format::FormatStyle &Style,
+                          llvm::function_ref<void(NamespaceEvent)> Callback) {
 
   // Stack of enclosing namespaces, e.g. {"clang", "clangd"}
   std::vector<std::string> Enclosing; // Contains e.g. "clang", "clangd"
@@ -708,8 +785,10 @@ void parseNamespaceEvents(
   } State = Default;
   std::string NSName;
 
-  lex(Code, Style, [&](const clang::Token &Tok) {
-    switch(Tok.getKind()) {
+  NamespaceEvent Event;
+  lex(Code, Style, [&](const clang::Token &Tok, Position P) {
+    Event.Pos = std::move(P);
+    switch (Tok.getKind()) {
     case tok::raw_identifier:
       // In raw mode, this could be a keyword or a name.
       switch (State) {
@@ -761,7 +840,9 @@ void parseNamespaceEvents(
         // Parsed: namespace <name> {
         BraceStack.push_back(true);
         Enclosing.push_back(NSName);
-        Callback(BeginNamespace, llvm::join(Enclosing, "::"));
+        Event.Trigger = NamespaceEvent::BeginNamespace;
+        Event.Payload = llvm::join(Enclosing, "::");
+        Callback(Event);
       } else {
         // This case includes anonymous namespaces (State = Namespace).
         // For our purposes, they're not namespaces and we ignore them.
@@ -775,15 +856,20 @@ void parseNamespaceEvents(
         if (BraceStack.back()) {
           // Parsed: } // namespace
           Enclosing.pop_back();
-          Callback(EndNamespace, llvm::join(Enclosing, "::"));
+          Event.Trigger = NamespaceEvent::EndNamespace;
+          Event.Payload = llvm::join(Enclosing, "::");
+          Callback(Event);
         }
         BraceStack.pop_back();
       }
       break;
     case tok::semi:
-      if (State == UsingNamespaceName)
+      if (State == UsingNamespaceName) {
         // Parsed: using namespace <name> ;
-        Callback(UsingDirective, llvm::StringRef(NSName));
+        Event.Trigger = NamespaceEvent::UsingDirective;
+        Event.Payload = std::move(NSName);
+        Callback(Event);
+      }
       State = Default;
       break;
     default:
@@ -811,36 +897,34 @@ std::vector<std::string> visibleNamespaces(llvm::StringRef Code,
   // Map from namespace to (resolved) namespaces introduced via using directive.
   llvm::StringMap<llvm::StringSet<>> UsingDirectives;
 
-  parseNamespaceEvents(Code, Style,
-                       [&](NamespaceEvent Event, llvm::StringRef NS) {
-                         switch (Event) {
-                         case BeginNamespace:
-                         case EndNamespace:
-                           Current = NS;
-                           break;
-                         case UsingDirective:
-                           if (NS.consume_front("::"))
-                             UsingDirectives[Current].insert(NS);
-                           else {
-                             for (llvm::StringRef Enclosing :
-                                  ancestorNamespaces(Current)) {
-                               if (Enclosing.empty())
-                                 UsingDirectives[Current].insert(NS);
-                               else
-                                 UsingDirectives[Current].insert(
-                                     (Enclosing + "::" + NS).str());
-                             }
-                           }
-                           break;
-                         }
-                       });
+  parseNamespaceEvents(Code, Style, [&](NamespaceEvent Event) {
+    llvm::StringRef NS = Event.Payload;
+    switch (Event.Trigger) {
+    case NamespaceEvent::BeginNamespace:
+    case NamespaceEvent::EndNamespace:
+      Current = std::move(Event.Payload);
+      break;
+    case NamespaceEvent::UsingDirective:
+      if (NS.consume_front("::"))
+        UsingDirectives[Current].insert(NS);
+      else {
+        for (llvm::StringRef Enclosing : ancestorNamespaces(Current)) {
+          if (Enclosing.empty())
+            UsingDirectives[Current].insert(NS);
+          else
+            UsingDirectives[Current].insert((Enclosing + "::" + NS).str());
+        }
+      }
+      break;
+    }
+  });
 
   std::vector<std::string> Found;
   for (llvm::StringRef Enclosing : ancestorNamespaces(Current)) {
     Found.push_back(Enclosing);
     auto It = UsingDirectives.find(Enclosing);
     if (It != UsingDirectives.end())
-      for (const auto& Used : It->second)
+      for (const auto &Used : It->second)
         Found.push_back(Used.getKey());
   }
 
@@ -969,6 +1053,59 @@ llvm::Error reformatEdit(Edit &E, const format::FormatStyle &Style) {
   else
     return NewEdits.takeError();
   return llvm::Error::success();
+}
+
+EligibleRegion getEligiblePoints(llvm::StringRef Code,
+                                 llvm::StringRef FullyQualifiedName,
+                                 const format::FormatStyle &Style) {
+  EligibleRegion ER;
+  // Start with global namespace.
+  std::vector<std::string> Enclosing = {""};
+  // FIXME: In addition to namespaces try to generate events for function
+  // definitions as well. One might use a closing parantheses(")" followed by an
+  // opening brace "{" to trigger the start.
+  parseNamespaceEvents(Code, Style, [&](NamespaceEvent Event) {
+    // Using Directives only introduces declarations to current scope, they do
+    // not change the current namespace, so skip them.
+    if (Event.Trigger == NamespaceEvent::UsingDirective)
+      return;
+    // Do not qualify the global namespace.
+    if (!Event.Payload.empty())
+      Event.Payload.append("::");
+
+    std::string CurrentNamespace;
+    if (Event.Trigger == NamespaceEvent::BeginNamespace) {
+      Enclosing.emplace_back(std::move(Event.Payload));
+      CurrentNamespace = Enclosing.back();
+      // parseNameSpaceEvents reports the beginning position of a token; we want
+      // to insert after '{', so increment by one.
+      ++Event.Pos.character;
+    } else {
+      // Event.Payload points to outer namespace when exiting a scope, so use
+      // the namespace we've last entered instead.
+      CurrentNamespace = std::move(Enclosing.back());
+      Enclosing.pop_back();
+      assert(Enclosing.back() == Event.Payload);
+    }
+
+    // Ignore namespaces that are not a prefix of the target.
+    if (!FullyQualifiedName.startswith(CurrentNamespace))
+      return;
+
+    // Prefer the namespace that shares the longest prefix with target.
+    if (CurrentNamespace.size() > ER.EnclosingNamespace.size()) {
+      ER.EligiblePoints.clear();
+      ER.EnclosingNamespace = CurrentNamespace;
+    }
+    if (CurrentNamespace.size() == ER.EnclosingNamespace.size())
+      ER.EligiblePoints.emplace_back(std::move(Event.Pos));
+  });
+  // If there were no shared namespaces just return EOF.
+  if (ER.EligiblePoints.empty()) {
+    assert(ER.EnclosingNamespace.empty());
+    ER.EligiblePoints.emplace_back(offsetToPosition(Code, Code.size()));
+  }
+  return ER;
 }
 
 } // namespace clangd

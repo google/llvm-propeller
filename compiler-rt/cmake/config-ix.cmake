@@ -146,6 +146,7 @@ check_library_exists(stdc++ __cxa_throw "" COMPILER_RT_HAS_LIBSTDCXX)
 
 # Linker flags.
 check_linker_flag("-Wl,-z,text" COMPILER_RT_HAS_Z_TEXT)
+check_linker_flag("-fuse-ld=lld" COMPILER_RT_HAS_FUSE_LD_LLD_FLAG)
 
 if(ANDROID)
   check_linker_flag("-Wl,-z,global" COMPILER_RT_HAS_Z_GLOBAL)
@@ -208,6 +209,32 @@ macro(get_test_cc_for_arch arch cc_out cflags_out)
   endif()
 endmacro()
 
+# Returns CFLAGS that should be used to run tests for the
+# specific apple platform and architecture.
+function(get_test_cflags_for_apple_platform platform arch cflags_out)
+  is_valid_apple_platform("${platform}" is_valid_platform)
+  if (NOT is_valid_platform)
+    message(FATAL_ERROR "\"${platform}\" is not a valid apple platform")
+  endif()
+  set(test_cflags "")
+  get_target_flags_for_arch(${arch} test_cflags)
+  list(APPEND test_cflags ${DARWIN_${platform}_CFLAGS})
+  string(REPLACE ";" " " test_cflags_str "${test_cflags}")
+  string(APPEND test_cflags_str "${COMPILER_RT_TEST_COMPILER_CFLAGS}")
+  set(${cflags_out} "${test_cflags_str}" PARENT_SCOPE)
+endfunction()
+
+function(is_valid_apple_platform platform is_valid_out)
+  set(is_valid FALSE)
+  if ("${platform}" STREQUAL "")
+    message(FATAL_ERROR "platform cannot be empty")
+  endif()
+  if ("${platform}" MATCHES "^(osx|((ios|watchos|tvos)(sim)?))$")
+    set(is_valid TRUE)
+  endif()
+  set(${is_valid_out} ${is_valid} PARENT_SCOPE)
+endfunction()
+
 set(ARM64 aarch64)
 set(ARM32 arm armhf)
 set(HEXAGON hexagon)
@@ -230,7 +257,7 @@ if(APPLE)
   set(X86_64 x86_64 x86_64h)
 endif()
 
-set(ALL_SANITIZER_COMMON_SUPPORTED_ARCH ${X86} ${X86_64} ${PPC64}
+set(ALL_SANITIZER_COMMON_SUPPORTED_ARCH ${X86} ${X86_64} ${PPC64} ${RISCV64}
     ${ARM32} ${ARM64} ${MIPS32} ${MIPS64} ${S390X} ${SPARC} ${SPARCV9})
 set(ALL_ASAN_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64}
     ${MIPS32} ${MIPS64} ${PPC64} ${S390X} ${SPARC} ${SPARCV9})
@@ -264,7 +291,7 @@ set(ALL_HWASAN_SUPPORTED_ARCH ${X86_64} ${ARM64})
 set(ALL_PROFILE_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64} ${PPC64}
     ${MIPS32} ${MIPS64} ${S390X} ${SPARC} ${SPARCV9})
 set(ALL_TSAN_SUPPORTED_ARCH ${X86_64} ${MIPS64} ${ARM64} ${PPC64})
-set(ALL_UBSAN_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64}
+set(ALL_UBSAN_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64} ${RISCV64}
     ${MIPS32} ${MIPS64} ${PPC64} ${S390X} ${SPARC} ${SPARCV9})
 set(ALL_SAFESTACK_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM64} ${MIPS32} ${MIPS64})
 set(ALL_CFI_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64} ${MIPS64})
@@ -289,6 +316,7 @@ if(APPLE)
   find_darwin_sdk_dir(DARWIN_tvos_SYSROOT appletvos)
 
   if(NOT DARWIN_osx_SYSROOT)
+    message(WARNING "Could not determine OS X sysroot, trying /usr/include")
     if(EXISTS /usr/include)
       set(DARWIN_osx_SYSROOT /)
     else()

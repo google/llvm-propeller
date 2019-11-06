@@ -29,8 +29,9 @@
 
 using namespace llvm;
 
-RISCVInstrInfo::RISCVInstrInfo()
-    : RISCVGenInstrInfo(RISCV::ADJCALLSTACKDOWN, RISCV::ADJCALLSTACKUP) {}
+RISCVInstrInfo::RISCVInstrInfo(RISCVSubtarget &STI)
+    : RISCVGenInstrInfo(RISCV::ADJCALLSTACKDOWN, RISCV::ADJCALLSTACKUP),
+      STI(STI) {}
 
 unsigned RISCVInstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
                                              int &FrameIndex) const {
@@ -485,4 +486,114 @@ bool RISCVInstrInfo::isAsCheapAsAMove(const MachineInstr &MI) const {
       return (MI.getOperand(1).isReg() && MI.getOperand(1).getReg() == RISCV::X0);
   }
   return MI.isAsCheapAsAMove();
+}
+
+bool RISCVInstrInfo::verifyInstruction(const MachineInstr &MI,
+                                       StringRef &ErrInfo) const {
+  const MCInstrInfo *MCII = STI.getInstrInfo();
+  MCInstrDesc const &Desc = MCII->get(MI.getOpcode());
+
+  for (auto &OI : enumerate(Desc.operands())) {
+    unsigned OpType = OI.value().OperandType;
+    if (OpType >= RISCVOp::OPERAND_FIRST_RISCV_IMM &&
+        OpType <= RISCVOp::OPERAND_LAST_RISCV_IMM) {
+      const MachineOperand &MO = MI.getOperand(OI.index());
+      if (MO.isImm()) {
+        int64_t Imm = MO.getImm();
+        bool Ok;
+        switch (OpType) {
+        default:
+          llvm_unreachable("Unexpected operand type");
+        case RISCVOp::OPERAND_UIMM4:
+          Ok = isUInt<4>(Imm);
+          break;
+        case RISCVOp::OPERAND_UIMM5:
+          Ok = isUInt<5>(Imm);
+          break;
+        case RISCVOp::OPERAND_UIMM12:
+          Ok = isUInt<12>(Imm);
+          break;
+        case RISCVOp::OPERAND_SIMM12:
+          Ok = isInt<12>(Imm);
+          break;
+        case RISCVOp::OPERAND_SIMM13_LSB0:
+          Ok = isShiftedInt<12, 1>(Imm);
+          break;
+        case RISCVOp::OPERAND_UIMM20:
+          Ok = isUInt<20>(Imm);
+          break;
+        case RISCVOp::OPERAND_SIMM21_LSB0:
+          Ok = isShiftedInt<20, 1>(Imm);
+          break;
+        case RISCVOp::OPERAND_UIMMLOG2XLEN:
+          if (STI.getTargetTriple().isArch64Bit())
+            Ok = isUInt<6>(Imm);
+          else
+            Ok = isUInt<5>(Imm);
+          break;
+        }
+        if (!Ok) {
+          ErrInfo = "Invalid immediate";
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+// Return true if get the base operand, byte offset of an instruction and the
+// memory width. Width is the size of memory that is being loaded/stored.
+bool RISCVInstrInfo::getMemOperandWithOffsetWidth(
+    const MachineInstr &LdSt, const MachineOperand *&BaseReg, int64_t &Offset,
+    unsigned &Width, const TargetRegisterInfo *TRI) const {
+  assert(LdSt.mayLoadOrStore() && "Expected a memory operation.");
+
+  // Here we assume the standard RISC-V ISA, which uses a base+offset
+  // addressing mode. You'll need to relax these conditions to support custom
+  // load/stores instructions.
+  if (LdSt.getNumExplicitOperands() != 3)
+    return false;
+  if (!LdSt.getOperand(1).isReg() || !LdSt.getOperand(2).isImm())
+    return false;
+
+  if (!LdSt.hasOneMemOperand())
+    return false;
+
+  Width = (*LdSt.memoperands_begin())->getSize();
+  BaseReg = &LdSt.getOperand(1);
+  Offset = LdSt.getOperand(2).getImm();
+  return true;
+}
+
+bool RISCVInstrInfo::areMemAccessesTriviallyDisjoint(
+    const MachineInstr &MIa, const MachineInstr &MIb) const {
+  assert(MIa.mayLoadOrStore() && "MIa must be a load or store.");
+  assert(MIb.mayLoadOrStore() && "MIb must be a load or store.");
+
+  if (MIa.hasUnmodeledSideEffects() || MIb.hasUnmodeledSideEffects() ||
+      MIa.hasOrderedMemoryRef() || MIb.hasOrderedMemoryRef())
+    return false;
+
+  // Retrieve the base register, offset from the base register and width. Width
+  // is the size of memory that is being loaded/stored (e.g. 1, 2, 4).  If
+  // base registers are identical, and the offset of a lower memory access +
+  // the width doesn't overlap the offset of a higher memory access,
+  // then the memory accesses are different.
+  const TargetRegisterInfo *TRI = STI.getRegisterInfo();
+  const MachineOperand *BaseOpA = nullptr, *BaseOpB = nullptr;
+  int64_t OffsetA = 0, OffsetB = 0;
+  unsigned int WidthA = 0, WidthB = 0;
+  if (getMemOperandWithOffsetWidth(MIa, BaseOpA, OffsetA, WidthA, TRI) &&
+      getMemOperandWithOffsetWidth(MIb, BaseOpB, OffsetB, WidthB, TRI)) {
+    if (BaseOpA->isIdenticalTo(*BaseOpB)) {
+      int LowOffset = std::min(OffsetA, OffsetB);
+      int HighOffset = std::max(OffsetA, OffsetB);
+      int LowWidth = (LowOffset == OffsetA) ? WidthA : WidthB;
+      if (LowOffset + LowWidth <= HighOffset)
+        return true;
+    }
+  }
+  return false;
 }

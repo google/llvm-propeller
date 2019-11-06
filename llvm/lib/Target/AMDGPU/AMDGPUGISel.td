@@ -116,6 +116,9 @@ def : GINodeEquiv<G_ATOMICRMW_UMIN, atomic_load_umin_glue>;
 def : GINodeEquiv<G_ATOMICRMW_UMAX, atomic_load_umax_glue>;
 def : GINodeEquiv<G_ATOMICRMW_FADD, atomic_load_fadd_glue>;
 
+def : GINodeEquiv<G_AMDGPU_FFBH_U32, AMDGPUffbh_u32>;
+def : GINodeEquiv<G_AMDGPU_ATOMIC_CMPXCHG, AMDGPUatomic_cmp_swap>;
+
 
 class GISelSop2Pat <
   SDPatternOperator node,
@@ -202,3 +205,6 @@ def : GISelVop2Pat <or, V_OR_B32_e32, i32>;
 foreach Ty = [i64, p0, p1, p4] in {
   defm : SMRD_Pattern <"S_LOAD_DWORDX2",  Ty>;
 }
+
+def gi_as_i32timm : GICustomOperandRenderer<"renderTruncImm32">,
+  GISDNodeXFormEquiv<as_i32timm>;

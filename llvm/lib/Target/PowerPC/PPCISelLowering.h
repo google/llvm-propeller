@@ -51,6 +51,9 @@ namespace llvm {
       ///
       FSEL,
 
+      /// XSMAXCDP, XSMINCDP - C-type min/max instructions.
+      XSMAXCDP, XSMINCDP,
+
       /// FCFID - The FCFID instruction, taking an f64 operand and producing
       /// and f64 value containing the FP representation of the integer that
       /// was temporarily in the f64 operand.
@@ -733,8 +736,8 @@ namespace llvm {
     SDValue BuildSDIVPow2(SDNode *N, const APInt &Divisor, SelectionDAG &DAG,
                           SmallVectorImpl<SDNode *> &Created) const override;
 
-    unsigned getRegisterByName(const char* RegName, EVT VT,
-                               SelectionDAG &DAG) const override;
+    Register getRegisterByName(const char* RegName, EVT VT,
+                               const MachineFunction &MF) const override;
 
     void computeKnownBitsForTargetNode(const SDValue Op,
                                        KnownBits &Known,

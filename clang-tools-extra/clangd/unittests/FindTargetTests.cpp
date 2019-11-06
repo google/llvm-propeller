@@ -226,18 +226,26 @@ TEST_F(TargetDeclTest, Types) {
   EXPECT_DECLS("TypedefTypeLoc", {"typedef S X", Rel::Alias},
                {"struct S", Rel::Underlying});
 
+  // FIXME: Auto-completion in a template requires disabling delayed template
+  // parsing.
+  Flags = {"-fno-delayed-template-parsing"};
   Code = R"cpp(
     template<class T>
     void foo() { [[T]] x; }
   )cpp";
   // FIXME: We don't do a good job printing TemplateTypeParmDecls, apparently!
   EXPECT_DECLS("TemplateTypeParmTypeLoc", "");
+  Flags.clear();
 
+  // FIXME: Auto-completion in a template requires disabling delayed template
+  // parsing.
+  Flags = {"-fno-delayed-template-parsing"};
   Code = R"cpp(
     template<template<typename> class T>
     void foo() { [[T<int>]] x; }
   )cpp";
   EXPECT_DECLS("TemplateSpecializationTypeLoc", "template <typename> class T");
+  Flags.clear();
 
   Code = R"cpp(
     struct S{};
@@ -393,6 +401,36 @@ TEST_F(TargetDeclTest, Lambda) {
   EXPECT_DECLS("DeclRefExpr", "auto int x = 1");
 }
 
+TEST_F(TargetDeclTest, OverloadExpr) {
+  // FIXME: Auto-completion in a template requires disabling delayed template
+  // parsing.
+  Flags = {"-fno-delayed-template-parsing"};
+
+  Code = R"cpp(
+    void func(int*);
+    void func(char*);
+
+    template <class T>
+    void foo(T t) {
+      [[func]](t);
+    };
+  )cpp";
+  EXPECT_DECLS("UnresolvedLookupExpr", "void func(int *)", "void func(char *)");
+
+  Code = R"cpp(
+    struct X {
+      void func(int*);
+      void func(char*);
+    };
+
+    template <class T>
+    void foo(X x, T t) {
+      x.[[func]](t);
+    };
+  )cpp";
+  EXPECT_DECLS("UnresolvedMemberExpr", "void func(int *)", "void func(char *)");
+}
+
 TEST_F(TargetDeclTest, ObjC) {
   Flags = {"-xobjective-c"};
   Code = R"cpp(
@@ -482,6 +520,10 @@ protected:
   AllRefs annotateReferencesInFoo(llvm::StringRef Code) {
     TestTU TU;
     TU.Code = Code;
+
+    // FIXME: Auto-completion in a template requires disabling delayed template
+    // parsing.
+    TU.ExtraArgs.push_back("-fno-delayed-template-parsing");
 
     auto AST = TU.build();
 
@@ -580,53 +622,61 @@ TEST_F(FindExplicitReferencesTest, All) {
          struct Struct { int a; };
          using Typedef = int;
          void foo() {
-           $0^Struct x;
-           $1^Typedef y;
-           static_cast<$2^Struct*>(0);
+           $0^Struct $1^x;
+           $2^Typedef $3^y;
+           static_cast<$4^Struct*>(0);
          }
        )cpp",
            "0: targets = {Struct}\n"
-           "1: targets = {Typedef}\n"
-           "2: targets = {Struct}\n"},
+           "1: targets = {x}, decl\n"
+           "2: targets = {Typedef}\n"
+           "3: targets = {y}, decl\n"
+           "4: targets = {Struct}\n"},
           // Name qualifiers.
           {R"cpp(
          namespace a { namespace b { struct S { typedef int type; }; } }
          void foo() {
-           $0^a::$1^b::$2^S x;
-           using namespace $3^a::$4^b;
-           $5^S::$6^type y;
+           $0^a::$1^b::$2^S $3^x;
+           using namespace $4^a::$5^b;
+           $6^S::$7^type $8^y;
          }
         )cpp",
            "0: targets = {a}\n"
            "1: targets = {a::b}, qualifier = 'a::'\n"
            "2: targets = {a::b::S}, qualifier = 'a::b::'\n"
-           "3: targets = {a}\n"
-           "4: targets = {a::b}, qualifier = 'a::'\n"
-           "5: targets = {a::b::S}\n"
-           "6: targets = {a::b::S::type}, qualifier = 'struct S::'\n"},
+           "3: targets = {x}, decl\n"
+           "4: targets = {a}\n"
+           "5: targets = {a::b}, qualifier = 'a::'\n"
+           "6: targets = {a::b::S}\n"
+           "7: targets = {a::b::S::type}, qualifier = 'struct S::'\n"
+           "8: targets = {y}, decl\n"},
           // Simple templates.
           {R"cpp(
           template <class T> struct vector { using value_type = T; };
           template <> struct vector<bool> { using value_type = bool; };
           void foo() {
-            $0^vector<int> vi;
-            $1^vector<bool> vb;
+            $0^vector<int> $1^vi;
+            $2^vector<bool> $3^vb;
           }
         )cpp",
            "0: targets = {vector<int>}\n"
-           "1: targets = {vector<bool>}\n"},
+           "1: targets = {vi}, decl\n"
+           "2: targets = {vector<bool>}\n"
+           "3: targets = {vb}, decl\n"},
           // Template type aliases.
           {R"cpp(
             template <class T> struct vector { using value_type = T; };
             template <> struct vector<bool> { using value_type = bool; };
             template <class T> using valias = vector<T>;
             void foo() {
-              $0^valias<int> vi;
-              $1^valias<bool> vb;
+              $0^valias<int> $1^vi;
+              $2^valias<bool> $3^vb;
             }
           )cpp",
            "0: targets = {valias}\n"
-           "1: targets = {valias}\n"},
+           "1: targets = {vi}, decl\n"
+           "2: targets = {valias}\n"
+           "3: targets = {vb}, decl\n"},
           // MemberExpr should know their using declaration.
           {R"cpp(
             struct X { void func(int); }
@@ -668,13 +718,14 @@ TEST_F(FindExplicitReferencesTest, All) {
             };
 
             void foo() {
-              for (int x : $0^vector()) {
-                $1^x = 10;
+              for (int $0^x : $1^vector()) {
+                $2^x = 10;
               }
             }
         )cpp",
-           "0: targets = {vector}\n"
-           "1: targets = {x}\n"},
+           "0: targets = {x}, decl\n"
+           "1: targets = {vector}\n"
+           "2: targets = {x}\n"},
           // Handle UnresolvedLookupExpr.
           {R"cpp(
             namespace ns1 { void func(char*); }
@@ -710,20 +761,149 @@ TEST_F(FindExplicitReferencesTest, All) {
             void foo() {
               static_cast<$0^T>(0);
               $1^T();
-              $2^T t;
+              $2^T $3^t;
             }
         )cpp",
            "0: targets = {T}\n"
            "1: targets = {T}\n"
-           "2: targets = {T}\n"},
+           "2: targets = {T}\n"
+           "3: targets = {t}, decl\n"},
           // Non-type template parameters.
           {R"cpp(
             template <int I>
             void foo() {
-              int x = $0^I;
+              int $0^x = $1^I;
             }
         )cpp",
-           "0: targets = {I}\n"},
+           "0: targets = {x}, decl\n"
+           "1: targets = {I}\n"},
+          // Template template parameters.
+          {R"cpp(
+            template <class T> struct vector {};
+
+            template <template<class> class TT, template<class> class ...TP>
+            void foo() {
+              $0^TT<int> $1^x;
+              $2^foo<$3^TT>();
+              $4^foo<$5^vector>()
+              $6^foo<$7^TP...>();
+            }
+        )cpp",
+           "0: targets = {TT}\n"
+           "1: targets = {x}, decl\n"
+           "2: targets = {foo}\n"
+           "3: targets = {TT}\n"
+           "4: targets = {foo}\n"
+           "5: targets = {vector}\n"
+           "6: targets = {foo}\n"
+           "7: targets = {TP}\n"},
+          // Non-type template parameters with declarations.
+          {R"cpp(
+            int func();
+            template <int(*)()> struct wrapper {};
+
+            template <int(*FuncParam)()>
+            void foo() {
+              $0^wrapper<$1^func> $2^w;
+              $3^FuncParam();
+            }
+        )cpp",
+           "0: targets = {wrapper<&func>}\n"
+           "1: targets = {func}\n"
+           "2: targets = {w}, decl\n"
+           "3: targets = {FuncParam}\n"},
+          // declaration references.
+          {R"cpp(
+             namespace ns {}
+             class S {};
+             void foo() {
+               class $0^Foo { $1^Foo(); ~$2^Foo(); int $3^field; };
+               int $4^Var;
+               enum $5^E { $6^ABC };
+               typedef int $7^INT;
+               using $8^INT2 = int;
+               namespace $9^NS = $10^ns;
+             }
+           )cpp",
+           "0: targets = {Foo}, decl\n"
+           "1: targets = {foo()::Foo::Foo}, decl\n"
+           "2: targets = {Foo}\n"
+           "3: targets = {foo()::Foo::field}, decl\n"
+           "4: targets = {Var}, decl\n"
+           "5: targets = {E}, decl\n"
+           "6: targets = {foo()::ABC}, decl\n"
+           "7: targets = {INT}, decl\n"
+           "8: targets = {INT2}, decl\n"
+           "9: targets = {NS}, decl\n"
+           "10: targets = {ns}\n"},
+          // cxx constructor initializer.
+          {R"cpp(
+             class Base {};
+             void foo() {
+               // member initializer
+               class $0^X {
+                 int $1^abc;
+                 $2^X(): $3^abc() {}
+               };
+               // base initializer
+               class $4^Derived : public $5^Base {
+                 $6^Base $7^B;
+                 $8^Derived() : $9^Base() {}
+               };
+               // delegating initializer
+               class $10^Foo {
+                 $11^Foo(int);
+                 $12^Foo(): $13^Foo(111) {}
+               };
+             }
+           )cpp",
+           "0: targets = {X}, decl\n"
+           "1: targets = {foo()::X::abc}, decl\n"
+           "2: targets = {foo()::X::X}, decl\n"
+           "3: targets = {foo()::X::abc}\n"
+           "4: targets = {Derived}, decl\n"
+           "5: targets = {Base}\n"
+           "6: targets = {Base}\n"
+           "7: targets = {foo()::Derived::B}, decl\n"
+           "8: targets = {foo()::Derived::Derived}, decl\n"
+           "9: targets = {Base}\n"
+           "10: targets = {Foo}, decl\n"
+           "11: targets = {foo()::Foo::Foo}, decl\n"
+           "12: targets = {foo()::Foo::Foo}, decl\n"
+           "13: targets = {Foo}\n"},
+          // Anonymous entities should not be reported.
+          {
+              R"cpp(
+             void foo() {
+              class {} $0^x;
+              int (*$1^fptr)(int $2^a, int) = nullptr;
+             }
+           )cpp",
+              "0: targets = {x}, decl\n"
+              "1: targets = {fptr}, decl\n"
+              "2: targets = {a}, decl\n"},
+          // Namespace aliases should be handled properly.
+          {
+              R"cpp(
+                namespace ns { struct Type {} }
+                namespace alias = ns;
+                namespace rec_alias = alias;
+
+                void foo() {
+                  $0^ns::$1^Type $2^a;
+                  $3^alias::$4^Type $5^b;
+                  $6^rec_alias::$7^Type $8^c;
+                }
+           )cpp",
+              "0: targets = {ns}\n"
+              "1: targets = {ns::Type}, qualifier = 'ns::'\n"
+              "2: targets = {a}, decl\n"
+              "3: targets = {alias}\n"
+              "4: targets = {ns::Type}, qualifier = 'alias::'\n"
+              "5: targets = {b}, decl\n"
+              "6: targets = {rec_alias}\n"
+              "7: targets = {ns::Type}, qualifier = 'rec_alias::'\n"
+              "8: targets = {c}, decl\n"},
       };
 
   for (const auto &C : Cases) {

@@ -25,17 +25,13 @@ llvm::Optional<std::string> filePath(const SymbolLocation &Loc,
                                      llvm::StringRef HintFilePath) {
   if (!Loc)
     return None;
-  auto Uri = URI::parse(Loc.FileURI);
-  if (!Uri) {
-    elog("Could not parse URI {0}: {1}", Loc.FileURI, Uri.takeError());
+  auto Path = URI::resolve(Loc.FileURI, HintFilePath);
+  if (!Path) {
+    elog("Could not resolve URI {0}: {1}", Loc.FileURI, Path.takeError());
     return None;
   }
-  auto U = URIForFile::fromURI(*Uri, HintFilePath);
-  if (!U) {
-    elog("Could not resolve URI {0}: {1}", Loc.FileURI, U.takeError());
-    return None;
-  }
-  return U->file().str();
+
+  return *Path;
 }
 
 // Query the index to find some other files where the Decl is referenced.
@@ -83,9 +79,13 @@ llvm::Optional<ReasonToReject> renamableWithinFile(const Decl &RenameDecl,
   bool MainFileIsHeader = ASTCtx.getLangOpts().IsHeaderFile;
   bool DeclaredInMainFile = isInsideMainFile(RenameDecl.getBeginLoc(), SM);
 
+  if (!DeclaredInMainFile)
+    // We are sure the symbol is used externally, bail out early.
+    return UsedOutsideFile;
+
   // If the symbol is declared in the main file (which is not a header), we
   // rename it.
-  if (DeclaredInMainFile && !MainFileIsHeader)
+  if (!MainFileIsHeader)
     return None;
 
   // Below are cases where the symbol is declared in the header.

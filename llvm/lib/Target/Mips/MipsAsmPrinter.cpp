@@ -623,8 +623,10 @@ bool MipsAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
   assert(OpNum + 1 < MI->getNumOperands() && "Insufficient operands");
   const MachineOperand &BaseMO = MI->getOperand(OpNum);
   const MachineOperand &OffsetMO = MI->getOperand(OpNum + 1);
-  assert(BaseMO.isReg() && "Unexpected base pointer for inline asm memory operand.");
-  assert(OffsetMO.isImm() && "Unexpected offset for inline asm memory operand.");
+  assert(BaseMO.isReg() &&
+         "Unexpected base pointer for inline asm memory operand.");
+  assert(OffsetMO.isImm() &&
+         "Unexpected offset for inline asm memory operand.");
   int Offset = OffsetMO.getImm();
 
   // Currently we are expecting either no ExtraCode or 'D','M','L'.
@@ -781,7 +783,7 @@ void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
   StringRef CPU = MIPS_MC::selectMipsCPU(TT, TM.getTargetCPU());
   StringRef FS = TM.getTargetFeatureString();
   const MipsTargetMachine &MTM = static_cast<const MipsTargetMachine &>(TM);
-  const MipsSubtarget STI(TT, CPU, FS, MTM.isLittleEndian(), MTM, 0);
+  const MipsSubtarget STI(TT, CPU, FS, MTM.isLittleEndian(), MTM, None);
 
   bool IsABICalls = STI.isABICalls();
   const MipsABIInfo &ABI = MTM.getABI();

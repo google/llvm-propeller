@@ -275,12 +275,35 @@ void VPRegionBlock::execute(VPTransformState *State) {
 }
 
 void VPRecipeBase::insertBefore(VPRecipeBase *InsertPos) {
+  assert(!Parent && "Recipe already in some VPBasicBlock");
+  assert(InsertPos->getParent() &&
+         "Insertion position not in any VPBasicBlock");
   Parent = InsertPos->getParent();
   Parent->getRecipeList().insert(InsertPos->getIterator(), this);
 }
 
+void VPRecipeBase::insertAfter(VPRecipeBase *InsertPos) {
+  assert(!Parent && "Recipe already in some VPBasicBlock");
+  assert(InsertPos->getParent() &&
+         "Insertion position not in any VPBasicBlock");
+  Parent = InsertPos->getParent();
+  Parent->getRecipeList().insertAfter(InsertPos->getIterator(), this);
+}
+
+void VPRecipeBase::removeFromParent() {
+  assert(getParent() && "Recipe not in any VPBasicBlock");
+  getParent()->getRecipeList().remove(getIterator());
+  Parent = nullptr;
+}
+
 iplist<VPRecipeBase>::iterator VPRecipeBase::eraseFromParent() {
+  assert(getParent() && "Recipe not in any VPBasicBlock");
   return getParent()->getRecipeList().erase(getIterator());
+}
+
+void VPRecipeBase::moveAfter(VPRecipeBase *InsertPos) {
+  removeFromParent();
+  insertAfter(InsertPos);
 }
 
 void VPInstruction::generateInstruction(VPTransformState &State,
@@ -736,7 +759,7 @@ void VPInterleavedAccessInfo::visitBlock(VPBlockBase *Block, Old2NewTy &Old2New,
       auto NewIGIter = Old2New.find(IG);
       if (NewIGIter == Old2New.end())
         Old2New[IG] = new InterleaveGroup<VPInstruction>(
-            IG->getFactor(), IG->isReverse(), IG->getAlignment());
+            IG->getFactor(), IG->isReverse(), Align(IG->getAlignment()));
 
       if (Inst == IG->getInsertPos())
         Old2New[IG]->setInsertPos(VPInst);
@@ -744,7 +767,8 @@ void VPInterleavedAccessInfo::visitBlock(VPBlockBase *Block, Old2NewTy &Old2New,
       InterleaveGroupMap[VPInst] = Old2New[IG];
       InterleaveGroupMap[VPInst]->insertMember(
           VPInst, IG->getIndex(Inst),
-          IG->isReverse() ? (-1) * int(IG->getFactor()) : IG->getFactor());
+          Align(IG->isReverse() ? (-1) * int(IG->getFactor())
+                                : IG->getFactor()));
     }
   } else if (VPRegionBlock *Region = dyn_cast<VPRegionBlock>(Block))
     visitRegion(Region, Old2New, IAI);

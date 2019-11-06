@@ -22,6 +22,7 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_UNITTESTS_CLANGD_FINDTARGET_H
 #define LLVM_CLANG_TOOLS_EXTRA_UNITTESTS_CLANGD_FINDTARGET_H
 
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/Stmt.h"
@@ -86,6 +87,8 @@ struct ReferenceLoc {
   NestedNameSpecifierLoc Qualifier;
   /// Start location of the last name part, i.e. 'foo' in 'ns::foo<int>'.
   SourceLocation NameLoc;
+  /// True if the reference is a declaration or definition;
+  bool IsDecl = false;
   // FIXME: add info about template arguments.
   /// A list of targets referenced by this name. Normally this has a single
   /// element, but multiple is also possible, e.g. in case of using declarations
@@ -104,6 +107,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, ReferenceLoc R);
 void findExplicitReferences(const Stmt *S,
                             llvm::function_ref<void(ReferenceLoc)> Out);
 void findExplicitReferences(const Decl *D,
+                            llvm::function_ref<void(ReferenceLoc)> Out);
+void findExplicitReferences(const ASTContext &AST,
                             llvm::function_ref<void(ReferenceLoc)> Out);
 
 /// Similar to targetDecl(), however instead of applying a filter, all possible

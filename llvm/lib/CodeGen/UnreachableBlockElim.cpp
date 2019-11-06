@@ -103,7 +103,8 @@ bool UnreachableMachineBlockElim::runOnMachineFunction(MachineFunction &F) {
   df_iterator_default_set<MachineBasicBlock*> Reachable;
   bool ModifiedPHI = false;
 
-  MMI = getAnalysisIfAvailable<MachineModuleInfo>();
+  auto *MMIWP = getAnalysisIfAvailable<MachineModuleInfoWrapperPass>();
+  MMI = MMIWP ? &MMIWP->getMMI() : nullptr;
   MachineDominatorTree *MDT = getAnalysisIfAvailable<MachineDominatorTree>();
   MachineLoopInfo *MLI = getAnalysisIfAvailable<MachineLoopInfo>();
 
@@ -150,7 +151,7 @@ bool UnreachableMachineBlockElim::runOnMachineFunction(MachineFunction &F) {
     // Remove any call site information for calls in the block.
     for (auto &I : DeadBlocks[i]->instrs())
       if (I.isCall(MachineInstr::IgnoreBundle))
-        DeadBlocks[i]->getParent()->updateCallSiteInfo(&I);
+        DeadBlocks[i]->getParent()->eraseCallSiteInfo(&I);
 
     DeadBlocks[i]->eraseFromParent();
   }

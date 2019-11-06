@@ -41,7 +41,22 @@ Non-comprehensive list of changes in this release
    for adding a new subsection.
 
 * The ISD::FP_ROUND_INREG opcode and related code was removed from SelectionDAG.
-* Enabled MemorySSA as a loop dependency.
+* Enabled MemorySSA as a loop dependency. Since
+  `r370957 <https://reviews.llvm.org/rL370957>`_
+  (`D58311 <https://reviews.llvm.org/D58311>`_ ``[MemorySSA & LoopPassManager]
+  Enable MemorySSA as loop dependency. Update tests.``), the MemorySSA analysis
+  is being preserved and used by a series of loop passes. The most significant
+  use is in LICM, where the instruction hoisting and sinking relies on aliasing
+  information provided by MemorySSA vs previously creating an AliasSetTracker.
+  The LICM step of promoting variables to scalars still relies on the creation
+  of an AliasSetTracker, but its use is reduced to only be enabled for loops
+  with a small number of overall memory instructions. This choice was motivated
+  by experimental results showing compile and run time benefits or replacing the
+  AliasSetTracker usage with MemorySSA without any performance penalties.
+  The fact that MemorySSA is now preserved by and available in a series of loop
+  passes, also opens up opportunities for its use in those respective passes.
+* The BasicBlockPass, BBPassManager and all their uses were deleted in
+  `this revision <https://reviews.llvm.org/rG9f0ff0b2634bab6a5be8dace005c9eb24d386dd1>`_.
 
 .. NOTE
    If you would like to document a larger change, then you can add a
@@ -52,6 +67,25 @@ Non-comprehensive list of changes in this release
    -------------------
 
    Makes programs 10x faster by doing Special New Thing.
+
+* As per :ref:`LLVM Language Reference Manual <i_getelementptr>`,
+  ``getelementptr inbounds`` can not change the null status of a pointer,
+  meaning it can not produce non-null pointer given null base pointer, and
+  likewise given non-null base pointer it can not produce null pointer; if it
+  does, the result is a :ref:`poison value <poisonvalues>`.
+  Since `r369789 <https://reviews.llvm.org/rL369789>`_
+  (`D66608 <https://reviews.llvm.org/D66608>`_ ``[InstCombine] icmp eq/ne (gep
+  inbounds P, Idx..), null -> icmp eq/ne P, null``) LLVM uses that for
+  transformations. If the original source violates these requirements this
+  may result in code being miscompiled. If you are using Clang front-end,
+  Undefined Behaviour Sanitizer ``-fsanitize=pointer-overflow`` check
+  will now catch such cases.
+
+
+* Windows Control Flow Guard: the ``-cfguard`` option now emits CFG checks on
+  indirect function calls. The previous behavior is still available with the 
+  ``-cfguard-nochecks`` option. Note that this feature should always be used 
+  with optimizations enabled.
 
 Changes to the LLVM IR
 ----------------------
@@ -100,6 +134,13 @@ Changes to the X86 Target
   Intel CPUs. This tries to limit the use of 512-bit registers which can cause a
   decrease in CPU frequency on these CPUs. This can be re-enabled by passing
   -mprefer-vector-width=512 to clang or passing -mattr=-prefer-256-bit to llc.
+* Deprecated the mpx feature flag for the Intel MPX instructions. There were no
+  intrinsics for this feature. This change only this effects the results
+  returned by getHostCPUFeatures on CPUs that implement the MPX instructions.
+* The feature flag fast-partial-ymm-or-zmm-write which previously disabled
+  vzeroupper insertion has been removed. It has been replaced with a vzeroupper
+  feature flag which has the opposite polarity. So -vzeroupper has the same
+  effect as +fast-partial-ymm-or-zmm-write.
 
 Changes to the AMDGPU Target
 -----------------------------
@@ -108,10 +149,6 @@ Changes to the AVR Target
 -----------------------------
 
  During this release ...
-
-* Deprecated the mpx feature flag for the Intel MPX instructions. There were no
-  intrinsics for this feature. This change only this effects the results
-  returned by getHostCPUFeatures on CPUs that implement the MPX instructions.
 
 Changes to the WebAssembly Target
 ---------------------------------

@@ -2555,7 +2555,23 @@ enum CXCursorKind {
    */
   CXCursor_BuiltinBitCastExpr = 280,
 
-  CXCursor_LastStmt = CXCursor_BuiltinBitCastExpr,
+  /** OpenMP master taskloop directive.
+   */
+  CXCursor_OMPMasterTaskLoopDirective = 281,
+
+  /** OpenMP parallel master taskloop directive.
+   */
+  CXCursor_OMPParallelMasterTaskLoopDirective = 282,
+
+  /** OpenMP master taskloop simd directive.
+   */
+  CXCursor_OMPMasterTaskLoopSimdDirective      = 283,
+
+  /** OpenMP parallel master taskloop simd directive.
+   */
+  CXCursor_OMPParallelMasterTaskLoopSimdDirective      = 284,
+
+  CXCursor_LastStmt = CXCursor_OMPParallelMasterTaskLoopSimdDirective,
 
   /**
    * Cursor that represents the translation unit itself.

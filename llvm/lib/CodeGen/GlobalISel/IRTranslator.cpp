@@ -335,7 +335,7 @@ bool IRTranslator::translateFNeg(const User &U, MachineIRBuilder &MIRBuilder) {
 
 bool IRTranslator::translateCompare(const User &U,
                                     MachineIRBuilder &MIRBuilder) {
-  const CmpInst *CI = dyn_cast<CmpInst>(&U);
+  auto *CI = dyn_cast<CmpInst>(&U);
   Register Op0 = getOrCreateVReg(*U.getOperand(0));
   Register Op1 = getOrCreateVReg(*U.getOperand(1));
   Register Res = getOrCreateVReg(U);
@@ -346,11 +346,12 @@ bool IRTranslator::translateCompare(const User &U,
     MIRBuilder.buildICmp(Pred, Res, Op0, Op1);
   else if (Pred == CmpInst::FCMP_FALSE)
     MIRBuilder.buildCopy(
-        Res, getOrCreateVReg(*Constant::getNullValue(CI->getType())));
+        Res, getOrCreateVReg(*Constant::getNullValue(U.getType())));
   else if (Pred == CmpInst::FCMP_TRUE)
     MIRBuilder.buildCopy(
-        Res, getOrCreateVReg(*Constant::getAllOnesValue(CI->getType())));
+        Res, getOrCreateVReg(*Constant::getAllOnesValue(U.getType())));
   else {
+    assert(CI && "Instruction should be CmpInst");
     MIRBuilder.buildInstr(TargetOpcode::G_FCMP, {Res}, {Pred, Op0, Op1},
                           MachineInstr::copyFlagsFromInstruction(*CI));
   }
@@ -465,7 +466,7 @@ bool IRTranslator::translateSwitch(const User &U, MachineIRBuilder &MIB) {
     return true;
   }
 
-  SL->findJumpTables(Clusters, &SI, DefaultMBB);
+  SL->findJumpTables(Clusters, &SI, DefaultMBB, nullptr, nullptr);
 
   LLVM_DEBUG({
     dbgs() << "Case clusters: ";
@@ -884,7 +885,7 @@ bool IRTranslator::translateLoad(const User &U, MachineIRBuilder &MIRBuilder) {
       Regs.size() == 1 ? LI.getMetadata(LLVMContext::MD_range) : nullptr;
   for (unsigned i = 0; i < Regs.size(); ++i) {
     Register Addr;
-    MIRBuilder.materializeGEP(Addr, Base, OffsetTy, Offsets[i] / 8);
+    MIRBuilder.materializePtrAdd(Addr, Base, OffsetTy, Offsets[i] / 8);
 
     MachinePointerInfo Ptr(LI.getPointerOperand(), Offsets[i] / 8);
     unsigned BaseAlign = getMemOpAlignment(LI);
@@ -925,7 +926,7 @@ bool IRTranslator::translateStore(const User &U, MachineIRBuilder &MIRBuilder) {
 
   for (unsigned i = 0; i < Vals.size(); ++i) {
     Register Addr;
-    MIRBuilder.materializeGEP(Addr, Base, OffsetTy, Offsets[i] / 8);
+    MIRBuilder.materializePtrAdd(Addr, Base, OffsetTy, Offsets[i] / 8);
 
     MachinePointerInfo Ptr(SI.getPointerOperand(), Offsets[i] / 8);
     unsigned BaseAlign = getMemOpAlignment(SI);
@@ -1079,8 +1080,8 @@ bool IRTranslator::translateGetElementPtr(const User &U,
       if (Offset != 0) {
         LLT OffsetTy = getLLTForType(*OffsetIRTy, *DL);
         auto OffsetMIB = MIRBuilder.buildConstant({OffsetTy}, Offset);
-        BaseReg =
-            MIRBuilder.buildGEP(PtrTy, BaseReg, OffsetMIB.getReg(0)).getReg(0);
+        BaseReg = MIRBuilder.buildPtrAdd(PtrTy, BaseReg, OffsetMIB.getReg(0))
+                      .getReg(0);
         Offset = 0;
       }
 
@@ -1099,14 +1100,14 @@ bool IRTranslator::translateGetElementPtr(const User &U,
       } else
         GepOffsetReg = IdxReg;
 
-      BaseReg = MIRBuilder.buildGEP(PtrTy, BaseReg, GepOffsetReg).getReg(0);
+      BaseReg = MIRBuilder.buildPtrAdd(PtrTy, BaseReg, GepOffsetReg).getReg(0);
     }
   }
 
   if (Offset != 0) {
     auto OffsetMIB =
         MIRBuilder.buildConstant(getLLTForType(*OffsetIRTy, *DL), Offset);
-    MIRBuilder.buildGEP(getOrCreateVReg(U), BaseReg, OffsetMIB.getReg(0));
+    MIRBuilder.buildPtrAdd(getOrCreateVReg(U), BaseReg, OffsetMIB.getReg(0));
     return true;
   }
 
@@ -1142,6 +1143,11 @@ bool IRTranslator::translateMemFunc(const CallInst &CI,
     auto *MSI = cast<MemSetInst>(&CI);
     DstAlign = std::max<unsigned>(MSI->getDestAlignment(), 1);
   }
+
+  // We need to propagate the tail call flag from the IR inst as an argument.
+  // Otherwise, we have to pessimize and assume later that we cannot tail call
+  // any memory intrinsics.
+  ICall.addImm(CI.isTailCall() ? 1 : 0);
 
   // Create mem operands to store the alignment and volatile info.
   auto VolFlag = IsVol ? MachineMemOperand::MOVolatile : MachineMemOperand::MONone;
@@ -1372,7 +1378,7 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
     if (!V) {
       // Currently the optimizer can produce this; insert an undef to
       // help debugging.  Probably the optimizer should not do this.
-      MIRBuilder.buildIndirectDbgValue(0, DI.getVariable(), DI.getExpression());
+      MIRBuilder.buildDirectDbgValue(0, DI.getVariable(), DI.getExpression());
     } else if (const auto *CI = dyn_cast<Constant>(V)) {
       MIRBuilder.buildConstDbgValue(*CI, DI.getVariable(), DI.getExpression());
     } else {
@@ -1431,18 +1437,12 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
     MIRBuilder.buildConstant(Reg, TypeID);
     return true;
   }
-  case Intrinsic::objectsize: {
-    // If we don't know by now, we're never going to know.
-    const ConstantInt *Min = cast<ConstantInt>(CI.getArgOperand(1));
+  case Intrinsic::objectsize:
+    llvm_unreachable("llvm.objectsize.* should have been lowered already");
 
-    MIRBuilder.buildConstant(getOrCreateVReg(CI), Min->isZero() ? -1ULL : 0);
-    return true;
-  }
   case Intrinsic::is_constant:
-    // If this wasn't constant-folded away by now, then it's not a
-    // constant.
-    MIRBuilder.buildConstant(getOrCreateVReg(CI), 0);
-    return true;
+    llvm_unreachable("llvm.is.constant.* should have been lowered already");
+
   case Intrinsic::stackguard:
     getStackGuard(getOrCreateVReg(CI), MIRBuilder);
     return true;
@@ -1590,6 +1590,10 @@ bool IRTranslator::translateCall(const User &U, MachineIRBuilder &MIRBuilder) {
   if (F && F->hasDLLImportStorageClass())
     return false;
 
+  // FIXME: support control flow guard targets.
+  if (CI.countOperandBundlesOfType(LLVMContext::OB_cfguardtarget))
+    return false;
+
   if (CI.isInlineAsm())
     return translateInlineAsm(CI, MIRBuilder);
 
@@ -1681,6 +1685,10 @@ bool IRTranslator::translateInvoke(const User &U,
 
   // FIXME: support whatever these are.
   if (I.countOperandBundlesOfType(LLVMContext::OB_deopt))
+    return false;
+
+  // FIXME: support control flow guard targets.
+  if (I.countOperandBundlesOfType(LLVMContext::OB_cfguardtarget))
     return false;
 
   // FIXME: support Windows exception handling.
@@ -2188,6 +2196,20 @@ void IRTranslator::finalizeFunction() {
   FuncInfo.clear();
 }
 
+/// Returns true if a BasicBlock \p BB within a variadic function contains a
+/// variadic musttail call.
+static bool checkForMustTailInVarArgFn(bool IsVarArg, const BasicBlock &BB) {
+  if (!IsVarArg)
+    return false;
+
+  // Walk the block backwards, because tail calls usually only appear at the end
+  // of a block.
+  return std::any_of(BB.rbegin(), BB.rend(), [](const Instruction &I) {
+    const auto *CI = dyn_cast<CallInst>(&I);
+    return CI && CI->isMustTailCall();
+  });
+}
+
 bool IRTranslator::runOnMachineFunction(MachineFunction &CurMF) {
   MF = &CurMF;
   const Function &F = MF->getFunction();
@@ -2249,6 +2271,9 @@ bool IRTranslator::runOnMachineFunction(MachineFunction &CurMF) {
   SwiftError.setFunction(CurMF);
   SwiftError.createEntriesInEntryBlock(DbgLoc);
 
+  bool IsVarArg = F.isVarArg();
+  bool HasMustTailInVarArgFn = false;
+
   // Create all blocks, in IR order, to preserve the layout.
   for (const BasicBlock &BB: F) {
     auto *&MBB = BBToMBB[&BB];
@@ -2258,7 +2283,12 @@ bool IRTranslator::runOnMachineFunction(MachineFunction &CurMF) {
 
     if (BB.hasAddressTaken())
       MBB->setHasAddressTaken();
+
+    if (!HasMustTailInVarArgFn)
+      HasMustTailInVarArgFn = checkForMustTailInVarArgFn(IsVarArg, BB);
   }
+
+  MF->getFrameInfo().setHasMustTailInVarArgFunc(HasMustTailInVarArgFn);
 
   // Make our arguments/constants entry block fallthrough to the IR entry block.
   EntryBB->addSuccessor(&getMBB(F.front()));

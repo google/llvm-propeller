@@ -43,8 +43,8 @@ multiclass V_INTERP_P1_F32_m : VINTRP_m <
   (outs VINTRPDst:$vdst),
   (ins VGPR_32:$vsrc, Attr:$attr, AttrChan:$attrchan),
   "v_interp_p1_f32$vdst, $vsrc, $attr$attrchan",
-  [(set f32:$vdst, (AMDGPUinterp_p1 f32:$vsrc, (i32 timm:$attrchan),
-                                               (i32 timm:$attr)))]
+  [(set f32:$vdst, (int_amdgcn_interp_p1 f32:$vsrc,
+                   (i32 timm:$attrchan), (i32 timm:$attr), M0))]
 >;
 
 let OtherPredicates = [has32BankLDS] in {
@@ -66,8 +66,8 @@ defm V_INTERP_P2_F32 : VINTRP_m <
   (outs VINTRPDst:$vdst),
   (ins VGPR_32:$src0, VGPR_32:$vsrc, Attr:$attr, AttrChan:$attrchan),
   "v_interp_p2_f32$vdst, $vsrc, $attr$attrchan",
-  [(set f32:$vdst, (AMDGPUinterp_p2 f32:$src0, f32:$vsrc, (i32 timm:$attrchan),
-                                                          (i32 timm:$attr)))]>;
+  [(set f32:$vdst, (int_amdgcn_interp_p2 f32:$src0, f32:$vsrc,
+                   (i32 timm:$attrchan), (i32 timm:$attr), M0))]>;
 
 } // End DisableEncoding = "$src0", Constraints = "$src0 = $vdst"
 
@@ -76,8 +76,8 @@ defm V_INTERP_MOV_F32 : VINTRP_m <
   (outs VINTRPDst:$vdst),
   (ins InterpSlot:$vsrc, Attr:$attr, AttrChan:$attrchan),
   "v_interp_mov_f32$vdst, $vsrc, $attr$attrchan",
-  [(set f32:$vdst, (AMDGPUinterp_mov (i32 imm:$vsrc), (i32 timm:$attrchan),
-                                     (i32 timm:$attr)))]>;
+  [(set f32:$vdst, (int_amdgcn_interp_mov (i32 imm:$vsrc),
+                   (i32 timm:$attrchan), (i32 timm:$attr), M0))]>;
 
 } // End Uses = [M0, EXEC]
 
@@ -90,6 +90,11 @@ def ATOMIC_FENCE : SPseudoInstSI<
   "ATOMIC_FENCE $ordering, $scope"> {
   let hasSideEffects = 1;
   let maybeAtomic = 1;
+}
+
+def VOP_I64_I64_DPP : VOPProfile <[i64, i64, untyped, untyped]> {
+  let HasExt = 1;
+  let HasExtDPP = 1;
 }
 
 let hasSideEffects = 0, mayLoad = 0, mayStore = 0, Uses = [EXEC] in {
@@ -106,6 +111,11 @@ def V_CNDMASK_B64_PSEUDO : VOP3Common <(outs VReg_64:$vdst),
 // SIFoldOperands pass to enable folding of inline immediates.
 def V_MOV_B64_PSEUDO : VPseudoInstSI <(outs VReg_64:$vdst),
                                       (ins VSrc_b64:$src0)>;
+
+// 64-bit vector move with dpp. Expanded post-RA.
+def V_MOV_B64_DPP_PSEUDO : VOP_DPP_Pseudo <"v_mov_b64_dpp", VOP_I64_I64_DPP> {
+  let Size = 16; // Requires two 8-byte v_mov_b32_dpp to complete.
+}
 
 // Pseudoinstruction for @llvm.amdgcn.wqm. It is turned into a copy after the
 // WQM pass processes it.
@@ -349,7 +359,8 @@ def SI_INIT_M0 : SPseudoInstSI <(outs), (ins SSrc_b32:$src)> {
 }
 
 def SI_INIT_EXEC : SPseudoInstSI <
-  (outs), (ins i64imm:$src), []> {
+  (outs), (ins i64imm:$src),
+  [(int_amdgcn_init_exec (i64 timm:$src))]> {
   let Defs = [EXEC];
   let usesCustomInserter = 1;
   let isAsCheapAsAMove = 1;
@@ -365,10 +376,18 @@ def SI_INIT_EXEC_LO : SPseudoInstSI <
   let WaveSizePredicate = isWave32;
 }
 
+// FIXME: Wave32 version
 def SI_INIT_EXEC_FROM_INPUT : SPseudoInstSI <
-  (outs), (ins SSrc_b32:$input, i32imm:$shift), []> {
+  (outs), (ins SSrc_b32:$input, i32imm:$shift),
+  [(int_amdgcn_init_exec_from_input i32:$input, (i32 timm:$shift))]> {
   let Defs = [EXEC];
   let usesCustomInserter = 1;
+}
+
+def : GCNPat <
+  (int_amdgcn_init_exec timm:$src),
+  (SI_INIT_EXEC_LO (as_i32imm imm:$src))> {
+  let WaveSizePredicate = isWave32;
 }
 
 // Return for returning shaders to a shader variant epilog.
@@ -607,23 +626,6 @@ def SI_PC_ADD_REL_OFFSET : SPseudoInstSI <
 def : GCNPat <
   (SIpc_add_rel_offset tglobaladdr:$ptr_lo, 0),
   (SI_PC_ADD_REL_OFFSET $ptr_lo, (i32 0))
->;
-
-def : GCNPat <
-  (int_amdgcn_init_exec i64:$src),
-  (SI_INIT_EXEC (as_i64imm $src))> {
-  let WaveSizePredicate = isWave64;
-}
-
-def : GCNPat <
-  (int_amdgcn_init_exec i64:$src),
-  (SI_INIT_EXEC_LO (as_i32imm $src))> {
-  let WaveSizePredicate = isWave32;
-}
-
-def : GCNPat <
-  (int_amdgcn_init_exec_from_input i32:$input, i32:$shift),
-  (SI_INIT_EXEC_FROM_INPUT (i32 $input), (as_i32imm $shift))
 >;
 
 def : GCNPat<
@@ -1619,7 +1621,7 @@ def : GCNPat <
   (V_CVT_F16_F32_e32 (
       V_CNDMASK_B32_e64 /*src0mod*/(i32 0), /*src0*/(i32 0),
                         /*src1mod*/(i32 0), /*src1*/(i32 CONST.FP32_NEG_ONE),
-                        $src))
+                        SSrc_i1:$src))
 >;
 
 def : GCNPat <
@@ -1627,35 +1629,35 @@ def : GCNPat <
   (V_CVT_F16_F32_e32 (
       V_CNDMASK_B32_e64 /*src0mod*/(i32 0), /*src0*/(i32 0),
                         /*src1mod*/(i32 0), /*src1*/(i32 CONST.FP32_ONE),
-                        $src))
+                        SSrc_i1:$src))
 >;
 
 def : GCNPat <
   (f32 (sint_to_fp i1:$src)),
   (V_CNDMASK_B32_e64 /*src0mod*/(i32 0), /*src0*/(i32 0),
                         /*src1mod*/(i32 0), /*src1*/(i32 CONST.FP32_NEG_ONE),
-                        $src)
+                        SSrc_i1:$src)
 >;
 
 def : GCNPat <
   (f32 (uint_to_fp i1:$src)),
   (V_CNDMASK_B32_e64 /*src0mod*/(i32 0), /*src0*/(i32 0),
                         /*src1mod*/(i32 0), /*src1*/(i32 CONST.FP32_ONE),
-                        $src)
+                        SSrc_i1:$src)
 >;
 
 def : GCNPat <
   (f64 (sint_to_fp i1:$src)),
   (V_CVT_F64_I32_e32 (V_CNDMASK_B32_e64 /*src0mod*/(i32 0), /*src0*/(i32 0),
                                         /*src1mod*/(i32 0), /*src1*/(i32 -1),
-                                        $src))
+                                        SSrc_i1:$src))
 >;
 
 def : GCNPat <
   (f64 (uint_to_fp i1:$src)),
   (V_CVT_F64_U32_e32 (V_CNDMASK_B32_e64 /*src0mod*/(i32 0), /*src0*/(i32 0),
                                         /*src1mod*/(i32 0), /*src1*/(i32 1),
-                                        $src))
+                                        SSrc_i1:$src))
 >;
 
 //===----------------------------------------------------------------------===//
@@ -1863,6 +1865,22 @@ def : GCNPat <
   (INSERT_SUBREG (IMPLICIT_DEF), $src0, sub0)
 >;
 
+def : GCNPat <
+  (i64 (int_amdgcn_mov_dpp i64:$src, timm:$dpp_ctrl, timm:$row_mask, timm:$bank_mask,
+                           timm:$bound_ctrl)),
+  (V_MOV_B64_DPP_PSEUDO $src, $src, (as_i32imm $dpp_ctrl),
+                        (as_i32imm $row_mask), (as_i32imm $bank_mask),
+                        (as_i1imm $bound_ctrl))
+>;
+
+def : GCNPat <
+  (i64 (int_amdgcn_update_dpp i64:$old, i64:$src, timm:$dpp_ctrl, timm:$row_mask,
+                              timm:$bank_mask, timm:$bound_ctrl)),
+  (V_MOV_B64_DPP_PSEUDO $old, $src, (as_i32imm $dpp_ctrl),
+                        (as_i32imm $row_mask), (as_i32imm $bank_mask),
+                        (as_i1imm $bound_ctrl))
+>;
+
 //===----------------------------------------------------------------------===//
 // Fract Patterns
 //===----------------------------------------------------------------------===//
@@ -1990,3 +2008,24 @@ def : FP16Med3Pat<f16, V_MED3_F16>;
 defm : Int16Med3Pat<V_MED3_I16, smin, smax, smax_oneuse, smin_oneuse>;
 defm : Int16Med3Pat<V_MED3_U16, umin, umax, umax_oneuse, umin_oneuse>;
 } // End Predicates = [isGFX9Plus]
+
+class AMDGPUGenericInstruction : GenericInstruction {
+  let Namespace = "AMDGPU";
+}
+
+def G_AMDGPU_FFBH_U32 : AMDGPUGenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type1:$src);
+  let hasSideEffects = 0;
+}
+
+// Atomic cmpxchg. $cmpval ad $newval are packed in a single vector
+// operand Expects a MachineMemOperand in addition to explicit
+// operands.
+def G_AMDGPU_ATOMIC_CMPXCHG : AMDGPUGenericInstruction {
+  let OutOperandList = (outs type0:$oldval);
+  let InOperandList = (ins ptype1:$addr, type0:$cmpval_nnenwval);
+  let hasSideEffects = 0;
+  let mayLoad = 1;
+  let mayStore = 1;
+}

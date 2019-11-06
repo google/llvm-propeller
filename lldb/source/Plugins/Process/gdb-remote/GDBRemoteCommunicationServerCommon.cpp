@@ -30,11 +30,12 @@
 #include "lldb/Target/Platform.h"
 #include "lldb/Utility/Endian.h"
 #include "lldb/Utility/GDBRemote.h"
-#include "lldb/Utility/JSON.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
 #include "lldb/Utility/StructuredData.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/Support/JSON.h"
 
 #include "ProcessGDBRemoteLog.h"
 #include "lldb/Utility/StringExtractorGDBRemote.h"
@@ -43,11 +44,10 @@
 #include "lldb/Host/android/HostInfoAndroid.h"
 #endif
 
-#include "llvm/ADT/StringSwitch.h"
 
 using namespace lldb;
-using namespace lldb_private;
 using namespace lldb_private::process_gdb_remote;
+using namespace lldb_private;
 
 #ifdef __ANDROID__
 const static uint32_t g_default_packet_timeout_sec = 20; // seconds
@@ -231,6 +231,7 @@ GDBRemoteCommunicationServerCommon::Handle_qHostInfo(
 
 #else
   if (host_arch.GetMachine() == llvm::Triple::aarch64 ||
+      host_arch.GetMachine() == llvm::Triple::aarch64_32 ||
       host_arch.GetMachine() == llvm::Triple::aarch64_be ||
       host_arch.GetMachine() == llvm::Triple::arm ||
       host_arch.GetMachine() == llvm::Triple::armeb || host_arch.IsMIPS())
@@ -507,7 +508,11 @@ GDBRemoteCommunicationServerCommon::Handle_vFile_Open(
   packet.GetHexByteStringTerminatedBy(path, ',');
   if (!path.empty()) {
     if (packet.GetChar() == ',') {
-      uint32_t flags = packet.GetHexMaxU32(false, 0);
+      // FIXME
+      // The flag values for OpenOptions do not match the values used by GDB
+      // * https://sourceware.org/gdb/onlinedocs/gdb/Open-Flags.html#Open-Flags
+      // * rdar://problem/46788934
+      auto flags = File::OpenOptions(packet.GetHexMaxU32(false, 0));
       if (packet.GetChar() == ',') {
         mode_t mode = packet.GetHexMaxU32(false, 0600);
         FileSpec path_spec(path);
@@ -546,7 +551,7 @@ GDBRemoteCommunicationServerCommon::Handle_vFile_Close(
   int err = -1;
   int save_errno = 0;
   if (fd >= 0) {
-    File file(fd, 0, true);
+    NativeFile file(fd, File::OpenOptions(0), true);
     Status error = file.Close();
     err = 0;
     save_errno = error.GetError();
@@ -577,7 +582,7 @@ GDBRemoteCommunicationServerCommon::Handle_vFile_pRead(
       }
 
       std::string buffer(count, 0);
-      File file(fd, File::eOpenOptionRead, false);
+      NativeFile file(fd, File::eOpenOptionRead, false);
       Status error = file.Read(static_cast<void *>(&buffer[0]), count, offset);
       const ssize_t bytes_read = error.Success() ? count : -1;
       const int save_errno = error.GetError();
@@ -609,7 +614,7 @@ GDBRemoteCommunicationServerCommon::Handle_vFile_pWrite(
     if (packet.GetChar() == ',') {
       std::string buffer;
       if (packet.GetEscapedBinaryData(buffer)) {
-        File file(fd, File::eOpenOptionWrite, false);
+        NativeFile file(fd, File::eOpenOptionWrite, false);
         size_t count = buffer.size();
         Status error =
             file.Write(static_cast<const void *>(&buffer[0]), count, offset);
@@ -1120,6 +1125,8 @@ GDBRemoteCommunicationServerCommon::Handle_qModuleInfo(
 GDBRemoteCommunication::PacketResult
 GDBRemoteCommunicationServerCommon::Handle_jModulesInfo(
     StringExtractorGDBRemote &packet) {
+  namespace json = llvm::json;
+
   packet.SetFilePos(::strlen("jModulesInfo:"));
 
   StructuredData::ObjectSP object_sp = StructuredData::ParseJSON(packet.Peek());
@@ -1130,7 +1137,7 @@ GDBRemoteCommunicationServerCommon::Handle_jModulesInfo(
   if (!packet_array)
     return SendErrorResponse(2);
 
-  JSONArray::SP response_array_sp = std::make_shared<JSONArray>();
+  json::Array response_array;
   for (size_t i = 0; i < packet_array->GetSize(); ++i) {
     StructuredData::Dictionary *query =
         packet_array->GetItemAtIndex(i)->GetAsDictionary();
@@ -1148,27 +1155,22 @@ GDBRemoteCommunicationServerCommon::Handle_jModulesInfo(
     const auto file_offset = matched_module_spec.GetObjectOffset();
     const auto file_size = matched_module_spec.GetObjectSize();
     const auto uuid_str = matched_module_spec.GetUUID().GetAsString("");
-
     if (uuid_str.empty())
       continue;
+    const auto triple_str =
+        matched_module_spec.GetArchitecture().GetTriple().getTriple();
+    const auto file_path = matched_module_spec.GetFileSpec().GetPath();
 
-    JSONObject::SP response = std::make_shared<JSONObject>();
-    response_array_sp->AppendObject(response);
-    response->SetObject("uuid", std::make_shared<JSONString>(uuid_str));
-    response->SetObject(
-        "triple",
-        std::make_shared<JSONString>(
-            matched_module_spec.GetArchitecture().GetTriple().getTriple()));
-    response->SetObject("file_path",
-                        std::make_shared<JSONString>(
-                            matched_module_spec.GetFileSpec().GetPath()));
-    response->SetObject("file_offset",
-                        std::make_shared<JSONNumber>(file_offset));
-    response->SetObject("file_size", std::make_shared<JSONNumber>(file_size));
+    json::Object response{{"uuid", uuid_str},
+                          {"triple", triple_str},
+                          {"file_path", file_path},
+                          {"file_offset", static_cast<int64_t>(file_offset)},
+                          {"file_size", static_cast<int64_t>(file_size)}};
+    response_array.push_back(std::move(response));
   }
 
   StreamString response;
-  response_array_sp->Write(response);
+  response.AsRawOstream() << std::move(response_array);
   StreamGDBRemote escaped_response;
   escaped_response.PutEscapedBytes(response.GetString().data(),
                                    response.GetSize());
@@ -1184,6 +1186,15 @@ void GDBRemoteCommunicationServerCommon::CreateProcessInfoResponse(
       proc_info.GetEffectiveUserID(), proc_info.GetEffectiveGroupID());
   response.PutCString("name:");
   response.PutStringAsRawHex8(proc_info.GetExecutableFile().GetCString());
+
+  response.PutChar(';');
+  response.PutCString("args:");
+  response.PutStringAsRawHex8(proc_info.GetArg0());
+  for (auto &arg : proc_info.GetArguments()) {
+    response.PutChar('-');
+    response.PutStringAsRawHex8(arg.ref());
+  }
+
   response.PutChar(';');
   const ArchSpec &proc_arch = proc_info.GetArchitecture();
   if (proc_arch.IsValid()) {
@@ -1233,6 +1244,7 @@ void GDBRemoteCommunicationServerCommon::
       case llvm::Triple::arm:
       case llvm::Triple::thumb:
       case llvm::Triple::aarch64:
+      case llvm::Triple::aarch64_32:
         ostype = "ios";
         break;
       default:

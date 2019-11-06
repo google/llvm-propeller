@@ -471,6 +471,7 @@ public:
   bool parseOptionalAtomicOrdering(AtomicOrdering &Order);
   bool parseMachineMemoryOperand(MachineMemOperand *&Dest);
   bool parsePreOrPostInstrSymbol(MCSymbol *&Symbol);
+  bool parseHeapAllocMarker(MDNode *&Node);
 
 private:
   /// Convert the integer literal in the current token into an unsigned integer.
@@ -906,6 +907,7 @@ bool MIParser::parse(MachineInstr *&MI) {
   // Parse the remaining machine operands.
   while (!Token.isNewlineOrEOF() && Token.isNot(MIToken::kw_pre_instr_symbol) &&
          Token.isNot(MIToken::kw_post_instr_symbol) &&
+         Token.isNot(MIToken::kw_heap_alloc_marker) &&
          Token.isNot(MIToken::kw_debug_location) &&
          Token.isNot(MIToken::coloncolon) && Token.isNot(MIToken::lbrace)) {
     auto Loc = Token.location();
@@ -931,6 +933,10 @@ bool MIParser::parse(MachineInstr *&MI) {
   MCSymbol *PostInstrSymbol = nullptr;
   if (Token.is(MIToken::kw_post_instr_symbol))
     if (parsePreOrPostInstrSymbol(PostInstrSymbol))
+      return true;
+  MDNode *HeapAllocMarker = nullptr;
+  if (Token.is(MIToken::kw_heap_alloc_marker))
+    if (parseHeapAllocMarker(HeapAllocMarker))
       return true;
 
   DebugLoc DebugLocation;
@@ -985,6 +991,8 @@ bool MIParser::parse(MachineInstr *&MI) {
     MI->setPreInstrSymbol(MF, PreInstrSymbol);
   if (PostInstrSymbol)
     MI->setPostInstrSymbol(MF, PostInstrSymbol);
+  if (HeapAllocMarker)
+    MI->setHeapAllocMarker(MF, HeapAllocMarker);
   if (!MemOperands.empty())
     MI->setMemRefs(MF, MemOperands);
   return false;
@@ -1437,6 +1445,7 @@ bool MIParser::parseRegisterOperand(MachineOperand &Dest,
         if (MRI.getType(Reg).isValid() && MRI.getType(Reg) != Ty)
           return error("inconsistent type for generic virtual register");
 
+        MRI.setRegClassOrRegBank(Reg, static_cast<RegisterBank *>(nullptr));
         MRI.setType(Reg, Ty);
       }
     }
@@ -1455,6 +1464,7 @@ bool MIParser::parseRegisterOperand(MachineOperand &Dest,
     if (MRI.getType(Reg).isValid() && MRI.getType(Reg) != Ty)
       return error("inconsistent type for generic virtual register");
 
+    MRI.setRegClassOrRegBank(Reg, static_cast<RegisterBank *>(nullptr));
     MRI.setType(Reg, Ty);
   } else if (Register::isVirtualRegister(Reg)) {
     // Generic virtual registers must have a type.
@@ -2945,6 +2955,22 @@ bool MIParser::parsePreOrPostInstrSymbol(MCSymbol *&Symbol) {
     return error("expected a symbol after 'pre-instr-symbol'");
   Symbol = getOrCreateMCSymbol(Token.stringValue());
   lex();
+  if (Token.isNewlineOrEOF() || Token.is(MIToken::coloncolon) ||
+      Token.is(MIToken::lbrace))
+    return false;
+  if (Token.isNot(MIToken::comma))
+    return error("expected ',' before the next machine operand");
+  lex();
+  return false;
+}
+
+bool MIParser::parseHeapAllocMarker(MDNode *&Node) {
+  assert(Token.is(MIToken::kw_heap_alloc_marker) &&
+         "Invalid token for a heap alloc marker!");
+  lex();
+  parseMDNode(Node);
+  if (!Node)
+    return error("expected a MDNode after 'heap-alloc-marker'");
   if (Token.isNewlineOrEOF() || Token.is(MIToken::coloncolon) ||
       Token.is(MIToken::lbrace))
     return false;

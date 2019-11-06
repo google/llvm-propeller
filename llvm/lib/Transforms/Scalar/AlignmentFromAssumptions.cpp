@@ -321,7 +321,7 @@ bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall) {
         LI->getPointerOperand(), SE);
 
       if (NewAlignment > LI->getAlignment()) {
-        LI->setAlignment(NewAlignment);
+        LI->setAlignment(MaybeAlign(NewAlignment));
         ++NumLoadAlignChanged;
       }
     } else if (StoreInst *SI = dyn_cast<StoreInst>(J)) {
@@ -329,7 +329,7 @@ bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall) {
         SI->getPointerOperand(), SE);
 
       if (NewAlignment > SI->getAlignment()) {
-        SI->setAlignment(NewAlignment);
+        SI->setAlignment(MaybeAlign(NewAlignment));
         ++NumStoreAlignChanged;
       }
     } else if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(J)) {

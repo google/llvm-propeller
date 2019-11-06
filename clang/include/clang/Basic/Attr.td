@@ -594,6 +594,13 @@ def Alias : Attr {
   let Documentation = [Undocumented];
 }
 
+def ArmMveAlias : InheritableAttr, TargetSpecificAttr<TargetARM> {
+  let Spellings = [Clang<"__clang_arm_mve_alias">];
+  let Args = [IdentifierArgument<"BuiltinName">];
+  let Subjects = SubjectList<[Function], ErrorDiag>;
+  let Documentation = [ArmMveAliasDocs];
+}
+
 def Aligned : InheritableAttr {
   let Spellings = [GCC<"aligned">, Declspec<"align">, Keyword<"alignas">,
                    Keyword<"_Alignas">];
@@ -2020,6 +2027,14 @@ def PragmaClangRodataSection : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
+def PragmaClangRelroSection : InheritableAttr {
+  // This attribute has no spellings as it is only ever created implicitly.
+  let Spellings = [];
+  let Args = [StringArgument<"Name">];
+  let Subjects = SubjectList<[GlobalVar], ErrorDiag>;
+  let Documentation = [Undocumented];
+}
+
 def PragmaClangTextSection : InheritableAttr {
   // This attribute has no spellings as it is only ever created implicitly.
   let Spellings = [];
@@ -3281,14 +3296,16 @@ def OMPAllocateDecl : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
-def OMPDeclareVariant : Attr {
+def OMPDeclareVariant : InheritableAttr {
   let Spellings = [Pragma<"omp", "declare variant">];
   let Subjects = SubjectList<[Function]>;
   let SemaHandler = 0;
   let HasCustomParsing = 1;
+  let InheritEvenIfAlreadyPresent = 1;
   let Documentation = [OMPDeclareVariantDocs];
   let Args = [
     ExprArgument<"VariantFuncRef">,
+    ExprArgument<"Score">,
     EnumArgument<"CtxSelectorSet", "CtxSelectorSetType",
                  [ "", "implementation"
                  ],
@@ -3301,9 +3318,16 @@ def OMPDeclareVariant : Attr {
                  [
                    "CtxUnknown", "CtxVendor"
                  ]>,
-    StringArgument<"ImplVendor", 1>
+    VariadicStringArgument<"ImplVendors">
   ];
   let AdditionalMembers = [{
+    void printScore(raw_ostream & OS, const PrintingPolicy &Policy) const {
+      if (const Expr *E = getScore()) {
+        OS << "score(";
+        E->printPretty(OS, nullptr, Policy);
+        OS << "):";
+      }
+    }
     void printPrettyPragma(raw_ostream & OS, const PrintingPolicy &Policy)
         const {
       assert(getCtxSelectorSet() != CtxSetUnknown &&
@@ -3321,7 +3345,12 @@ def OMPDeclareVariant : Attr {
         switch (getCtxSelector()) {
         case CtxVendor:
           OS << "vendor(";
-          OS << getImplVendor();
+          printScore(OS, Policy);
+          if (implVendors_size() > 0) {
+            OS << *implVendors(). begin();
+            for (StringRef VendorName : llvm::drop_begin(implVendors(), 1))
+              OS << ", " << VendorName;
+          }
           OS << ")";
           break;
         case CtxUnknown:
@@ -3391,4 +3420,11 @@ def ObjCExternallyRetained : InheritableAttr {
   let Spellings = [Clang<"objc_externally_retained">];
   let Subjects = SubjectList<[NonParmVar, Function, Block, ObjCMethod]>;
   let Documentation = [ObjCExternallyRetainedDocs];
+}
+
+def NoBuiltin : Attr {
+  let Spellings = [Clang<"no_builtin">];
+  let Args = [VariadicStringArgument<"BuiltinNames">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [NoBuiltinDocs];
 }

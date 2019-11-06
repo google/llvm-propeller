@@ -480,7 +480,7 @@ static bool regIsPICBase(unsigned BaseReg, const MachineRegisterInfo &MRI) {
 }
 
 bool X86InstrInfo::isReallyTriviallyReMaterializable(const MachineInstr &MI,
-                                                     AliasAnalysis *AA) const {
+                                                     AAResults *AA) const {
   switch (MI.getOpcode()) {
   default:
     // This function should only be called for opcodes with the ReMaterializable
@@ -1122,6 +1122,8 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     return nullptr;
   case X86::SUB32ri8:
   case X86::SUB32ri: {
+    if (!MI.getOperand(2).isImm())
+      return nullptr;
     int64_t Imm = MI.getOperand(2).getImm();
     if (!isInt<32>(-Imm))
       return nullptr;
@@ -1148,6 +1150,8 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
 
   case X86::SUB64ri8:
   case X86::SUB64ri32: {
+    if (!MI.getOperand(2).isImm())
+      return nullptr;
     int64_t Imm = MI.getOperand(2).getImm();
     if (!isInt<32>(-Imm))
       return nullptr;
@@ -3959,9 +3963,7 @@ static bool ExpandMOVImmSExti8(MachineInstrBuilder &MIB,
   MachineFunction &MF = *MBB.getParent();
   const X86FrameLowering *TFL = Subtarget.getFrameLowering();
   bool IsWin64Prologue = MF.getTarget().getMCAsmInfo()->usesWindowsCFI();
-  bool NeedsDwarfCFI =
-      !IsWin64Prologue &&
-      (MF.getMMI().hasDebugInfo() || MF.getFunction().needsUnwindTableEntry());
+  bool NeedsDwarfCFI = !IsWin64Prologue && MF.needsFrameMoves();
   bool EmitCFI = !TFL->hasFP(MF) && NeedsDwarfCFI;
   if (EmitCFI) {
     TFL->BuildCFI(MBB, I, DL,
@@ -7229,8 +7231,8 @@ bool X86InstrInfo::hasHighOperandLatency(const TargetSchedModel &SchedModel,
 
 bool X86InstrInfo::hasReassociableOperands(const MachineInstr &Inst,
                                            const MachineBasicBlock *MBB) const {
-  assert((Inst.getNumOperands() == 3 || Inst.getNumOperands() == 4) &&
-         "Reassociation needs binary operators");
+  assert(Inst.getNumExplicitOperands() == 3 && Inst.getNumExplicitDefs() == 1 &&
+         Inst.getNumDefs() <= 2 && "Reassociation needs binary operators");
 
   // Integer binary math/logic instructions have a third source operand:
   // the EFLAGS register. That operand must be both defined here and never
@@ -7238,13 +7240,11 @@ bool X86InstrInfo::hasReassociableOperands(const MachineInstr &Inst,
   // not change anything because rearranging the operands could affect other
   // instructions that depend on the exact status flags (zero, sign, etc.)
   // that are set by using these particular operands with this operation.
-  if (Inst.getNumOperands() == 4) {
-    assert(Inst.getOperand(3).isReg() &&
-           Inst.getOperand(3).getReg() == X86::EFLAGS &&
-           "Unexpected operand in reassociable instruction");
-    if (!Inst.getOperand(3).isDead())
-      return false;
-  }
+  const MachineOperand *FlagDef = Inst.findRegisterDefOperand(X86::EFLAGS);
+  assert((Inst.getNumDefs() == 1 || FlagDef) &&
+         "Implicit def isn't flags?");
+  if (FlagDef && !FlagDef->isDead())
+    return false;
 
   return TargetInstrInfo::hasReassociableOperands(Inst, MBB);
 }
@@ -7634,12 +7634,17 @@ X86InstrInfo::describeLoadedValue(const MachineInstr &MI) const {
 
     return ParamLoadedValue(*Op, Expr);;
   }
+  case X86::MOV32ri:
+  case X86::MOV64ri:
+  case X86::MOV64ri32:
+    return ParamLoadedValue(MI.getOperand(1), Expr);
   case X86::XOR32rr: {
     if (MI.getOperand(1).getReg() == MI.getOperand(2).getReg())
       return ParamLoadedValue(MachineOperand::CreateImm(0), Expr);
     return None;
   }
   default:
+    assert(!MI.isMoveImmediate() && "Unexpected MoveImm instruction");
     return TargetInstrInfo::describeLoadedValue(MI);
   }
 }
@@ -7650,38 +7655,31 @@ void X86InstrInfo::setSpecialOperandAttr(MachineInstr &OldMI1,
                                          MachineInstr &OldMI2,
                                          MachineInstr &NewMI1,
                                          MachineInstr &NewMI2) const {
-  // Integer instructions define an implicit EFLAGS source register operand as
-  // the third source (fourth total) operand.
-  if (OldMI1.getNumOperands() != 4 || OldMI2.getNumOperands() != 4)
-    return;
+  // Integer instructions may define an implicit EFLAGS dest register operand.
+  MachineOperand *OldFlagDef1 = OldMI1.findRegisterDefOperand(X86::EFLAGS);
+  MachineOperand *OldFlagDef2 = OldMI2.findRegisterDefOperand(X86::EFLAGS);
 
-  assert(NewMI1.getNumOperands() == 4 && NewMI2.getNumOperands() == 4 &&
+  assert(!OldFlagDef1 == !OldFlagDef2 &&
          "Unexpected instruction type for reassociation");
 
-  MachineOperand &OldOp1 = OldMI1.getOperand(3);
-  MachineOperand &OldOp2 = OldMI2.getOperand(3);
-  MachineOperand &NewOp1 = NewMI1.getOperand(3);
-  MachineOperand &NewOp2 = NewMI2.getOperand(3);
+  if (!OldFlagDef1 || !OldFlagDef2)
+    return;
 
-  assert(OldOp1.isReg() && OldOp1.getReg() == X86::EFLAGS && OldOp1.isDead() &&
-         "Must have dead EFLAGS operand in reassociable instruction");
-  assert(OldOp2.isReg() && OldOp2.getReg() == X86::EFLAGS && OldOp2.isDead() &&
+  assert(OldFlagDef1->isDead() && OldFlagDef2->isDead() &&
          "Must have dead EFLAGS operand in reassociable instruction");
 
-  (void)OldOp1;
-  (void)OldOp2;
+  MachineOperand *NewFlagDef1 = NewMI1.findRegisterDefOperand(X86::EFLAGS);
+  MachineOperand *NewFlagDef2 = NewMI2.findRegisterDefOperand(X86::EFLAGS);
 
-  assert(NewOp1.isReg() && NewOp1.getReg() == X86::EFLAGS &&
-         "Unexpected operand in reassociable instruction");
-  assert(NewOp2.isReg() && NewOp2.getReg() == X86::EFLAGS &&
+  assert(NewFlagDef1 && NewFlagDef2 &&
          "Unexpected operand in reassociable instruction");
 
   // Mark the new EFLAGS operands as dead to be helpful to subsequent iterations
   // of this pass or other passes. The EFLAGS operands must be dead in these new
   // instructions because the EFLAGS operands in the original instructions must
   // be dead in order for reassociation to occur.
-  NewOp1.setIsDead();
-  NewOp2.setIsDead();
+  NewFlagDef1->setIsDead();
+  NewFlagDef2->setIsDead();
 }
 
 std::pair<unsigned, unsigned>

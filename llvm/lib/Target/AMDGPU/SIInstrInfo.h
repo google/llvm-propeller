@@ -173,7 +173,7 @@ public:
   }
 
   bool isReallyTriviallyReMaterializable(const MachineInstr &MI,
-                                         AliasAnalysis *AA) const override;
+                                         AAResults *AA) const override;
 
   bool areLoadsFromSameBasePtr(SDNode *Load1, SDNode *Load2,
                                int64_t &Offset1,
@@ -228,6 +228,14 @@ public:
                             const TargetRegisterInfo *TRI) const override;
 
   bool expandPostRAPseudo(MachineInstr &MI) const override;
+
+  // Splits a V_MOV_B64_DPP_PSEUDO opcode into a pair of v_mov_b32_dpp
+  // instructions. Returns a pair of generated instructions.
+  // Can split either post-RA with physical registers or pre-RA with
+  // virtual registers. In latter case IR needs to be in SSA form and
+  // and a REG_SEQUENCE is produced to define original register.
+  std::pair<MachineInstr*, MachineInstr*>
+  expandMovDPP64(MachineInstr &MI) const;
 
   // Returns an opcode that can be used to move a value to a \p DstRC
   // register.  If there is no hardware instruction that can store to \p
@@ -996,6 +1004,8 @@ public:
     return isUInt<12>(Imm);
   }
 
+  unsigned getNumFlatOffsetBits(unsigned AddrSpace, bool Signed) const;
+
   /// Returns if \p Offset is legal for the subtarget as the offset to a FLAT
   /// encoded instruction. If \p Signed, this is for an instruction that
   /// interprets the offset as signed.
@@ -1017,6 +1027,13 @@ public:
   }
 
   void fixImplicitOperands(MachineInstr &MI) const;
+
+  MachineInstr *foldMemoryOperandImpl(MachineFunction &MF, MachineInstr &MI,
+                                      ArrayRef<unsigned> Ops,
+                                      MachineBasicBlock::iterator InsertPt,
+                                      int FrameIndex,
+                                      LiveIntervals *LIS = nullptr,
+                                      VirtRegMap *VRM = nullptr) const override;
 };
 
 /// \brief Returns true if a reg:subreg pair P has a TRC class

@@ -205,9 +205,9 @@ void ARMSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
     NoARM = true;
 
   if (isAAPCS_ABI())
-    stackAlignment = 8;
+    stackAlignment = Align(8);
   if (isTargetNaCl() || isAAPCS16_ABI())
-    stackAlignment = 16;
+    stackAlignment = Align(16);
 
   // FIXME: Completely disable sibcall for Thumb1 since ThumbRegisterInfo::
   // emitEpilogue is not ready for them. Thumb tail calls also use t2B, as
@@ -381,9 +381,19 @@ bool ARMSubtarget::enableMachineScheduler() const {
 
 // This overrides the PostRAScheduler bit in the SchedModel for any CPU.
 bool ARMSubtarget::enablePostRAScheduler() const {
+  if (enableMachineScheduler())
+    return false;
   if (disablePostRAScheduler())
     return false;
-  // Don't reschedule potential IT blocks.
+  // Thumb1 cores will generally not benefit from post-ra scheduling
+  return !isThumb1Only();
+}
+
+bool ARMSubtarget::enablePostRAMachineScheduler() const {
+  if (!enableMachineScheduler())
+    return false;
+  if (disablePostRAScheduler())
+    return false;
   return !isThumb1Only();
 }
 

@@ -132,6 +132,7 @@ enum Kind {
   kw_fastcc,
   kw_coldcc,
   kw_intel_ocl_bicc,
+  kw_cfguard_checkcc,
   kw_x86_stdcallcc,
   kw_x86_fastcallcc,
   kw_x86_thiscallcc,
@@ -168,6 +169,7 @@ enum Kind {
   kw_amdgpu_ps,
   kw_amdgpu_cs,
   kw_amdgpu_kernel,
+  kw_tailcc,
 
   // Attributes:
   kw_attributes,
@@ -277,6 +279,7 @@ enum Kind {
 
   // Instruction Opcodes (Opcode in UIntVal).
   kw_fneg,
+  kw_freeze,
   kw_add,
   kw_fadd,
   kw_sub,

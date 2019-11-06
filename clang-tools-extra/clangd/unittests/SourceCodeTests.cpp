@@ -19,6 +19,7 @@
 #include "llvm/Testing/Support/Error.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <tuple>
 
 namespace clang {
 namespace clangd {
@@ -319,14 +320,29 @@ struct Bar { int func(); };
 Bar* bar;
   )cpp";
   // First ^ is the expected beginning, last is the search position.
-  for (std::string Text : std::vector<std::string>{
+  for (const std::string &Text : std::vector<std::string>{
            "int ^f^oo();", // inside identifier
            "int ^foo();",  // beginning of identifier
            "int ^foo^();", // end of identifier
            "int foo(^);",  // non-identifier
            "^int foo();",  // beginning of file (can't back up)
            "int ^f0^0();", // after a digit (lexing at N-1 is wrong)
-           "int ^λλ^λ();", // UTF-8 handled properly when backing up
+           "/^/ comments", // non-interesting token
+           "void f(int abc) { abc ^ ++; }",    // whitespace
+           "void f(int abc) { ^abc^++; }",     // range of identifier
+           "void f(int abc) { ++^abc^; }",     // range of identifier
+           "void f(int abc) { ++^abc; }",      // range of identifier
+           "void f(int abc) { ^+^+abc; }",     // range of operator
+           "void f(int abc) { ^abc^ ++; }",    // range of identifier
+           "void f(int abc) { abc ^++^; }",    // range of operator
+           "void f(int abc) { ^++^ abc; }",    // range of operator
+           "void f(int abc) { ++ ^abc^; }",    // range of identifier
+           "void f(int abc) { ^++^/**/abc; }", // range of operator
+           "void f(int abc) { ++/**/^abc; }",  // range of identifier
+           "void f(int abc) { ^abc^/**/++; }", // range of identifier
+           "void f(int abc) { abc/**/^++; }",  // range of operator
+           "void f() {^ }", // outside of identifier and operator
+           "int ^λλ^λ();",  // UTF-8 handled properly when backing up
 
            // identifier in macro arg
            "MACRO(bar->^func())",  // beginning of identifier
@@ -603,6 +619,67 @@ $foo^#include "foo.inc"
             Test.llvm::Annotations::point("bar"));
 }
 
+TEST(SourceCodeTests, GetEligiblePoints) {
+  constexpr struct {
+    const char *Code;
+    const char *FullyQualifiedName;
+    const char *EnclosingNamespace;
+  } Cases[] = {
+      {R"cpp(// FIXME: We should also mark positions before and after
+                 //declarations/definitions as eligible.
+              namespace ns1 {
+              namespace a { namespace ns2 {} }
+              namespace ns2 {^
+              void foo();
+              namespace {}
+              void bar() {}
+              namespace ns3 {}
+              class T {};
+              ^}
+              using namespace ns2;
+              })cpp",
+       "ns1::ns2::symbol", "ns1::ns2::"},
+      {R"cpp(
+              namespace ns1 {^
+              namespace a { namespace ns2 {} }
+              namespace b {}
+              namespace ns {}
+              ^})cpp",
+       "ns1::ns2::symbol", "ns1::"},
+      {R"cpp(
+              namespace x {
+              namespace a { namespace ns2 {} }
+              namespace b {}
+              namespace ns {}
+              }^)cpp",
+       "ns1::ns2::symbol", ""},
+      {R"cpp(
+              namespace ns1 {
+              namespace ns2 {^^}
+              namespace b {}
+              namespace ns2 {^^}
+              }
+              namespace ns1 {namespace ns2 {^^}})cpp",
+       "ns1::ns2::symbol", "ns1::ns2::"},
+      {R"cpp(
+              namespace ns1 {^
+              namespace ns {}
+              namespace b {}
+              namespace ns {}
+              ^}
+              namespace ns1 {^namespace ns {}^})cpp",
+       "ns1::ns2::symbol", "ns1::"},
+  };
+  for (auto Case : Cases) {
+    Annotations Test(Case.Code);
+
+    auto Res = getEligiblePoints(Test.code(), Case.FullyQualifiedName,
+                                 format::getLLVMStyle());
+    EXPECT_THAT(Res.EligiblePoints, testing::ElementsAreArray(Test.points()))
+        << Test.code();
+    EXPECT_EQ(Res.EnclosingNamespace, Case.EnclosingNamespace) << Test.code();
+  }
+}
 } // namespace
 } // namespace clangd
 } // namespace clang

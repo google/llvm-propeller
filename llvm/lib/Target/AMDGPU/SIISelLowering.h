@@ -186,6 +186,7 @@ private:
 
   unsigned isCFIntrinsic(const SDNode *Intr) const;
 
+public:
   /// \returns True if fixup needs to be emitted for given global value \p GV,
   /// false otherwise.
   bool shouldEmitFixup(const GlobalValue *GV) const;
@@ -198,11 +199,14 @@ private:
   /// global value \p GV, false otherwise.
   bool shouldEmitPCReloc(const GlobalValue *GV) const;
 
+private:
   // Analyze a combined offset from an amdgcn_buffer_ intrinsic and store the
   // three offsets (voffset, soffset and instoffset) into the SDValue[3] array
   // pointed to by Offsets.
-  void setBufferOffsets(SDValue CombinedOffset, SelectionDAG &DAG,
-                        SDValue *Offsets, unsigned Align = 4) const;
+  /// \returns 0 If there is a non-constant offset or if the offset is 0.
+  /// Otherwise returns the constant offset.
+  unsigned setBufferOffsets(SDValue CombinedOffset, SelectionDAG &DAG,
+                           SDValue *Offsets, unsigned Align = 4) const;
 
   // Handle 8 bit and 16 bit buffer loads
   SDValue handleByteShortBufferLoads(SelectionDAG &DAG, EVT LoadVT, SDLoc DL,
@@ -218,7 +222,8 @@ public:
 
   const GCNSubtarget *getSubtarget() const;
 
-  bool isFPExtFoldable(unsigned Opcode, EVT DestVT, EVT SrcVT) const override;
+  bool isFPExtFoldable(const SelectionDAG &DAG, unsigned Opcode, EVT DestVT,
+                       EVT SrcVT) const override;
 
   bool isShuffleMaskLegal(ArrayRef<int> /*Mask*/, EVT /*VT*/) const override;
 
@@ -256,6 +261,14 @@ public:
 
   bool isMemOpUniform(const SDNode *N) const;
   bool isMemOpHasNoClobberedMemOperand(const SDNode *N) const;
+
+  static bool isFlatGlobalAddrSpace(unsigned AS) {
+    return AS == AMDGPUAS::GLOBAL_ADDRESS ||
+           AS == AMDGPUAS::FLAT_ADDRESS ||
+           AS == AMDGPUAS::CONSTANT_ADDRESS ||
+           AS > AMDGPUAS::MAX_AMDGPU_ADDRESS;
+  }
+
   bool isNoopAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const override;
   bool isFreeAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const override;
 
@@ -317,8 +330,8 @@ public:
   SDValue LowerCall(CallLoweringInfo &CLI,
                     SmallVectorImpl<SDValue> &InVals) const override;
 
-  unsigned getRegisterByName(const char* RegName, EVT VT,
-                             SelectionDAG &DAG) const override;
+  Register getRegisterByName(const char* RegName, EVT VT,
+                             const MachineFunction &MF) const override;
 
   MachineBasicBlock *splitKillBlock(MachineInstr &MI,
                                     MachineBasicBlock *BB) const;
@@ -337,6 +350,9 @@ public:
                          EVT VT) const override;
   MVT getScalarShiftAmountTy(const DataLayout &, EVT) const override;
   bool isFMAFasterThanFMulAndFAdd(EVT VT) const override;
+  bool isFMADLegalForFAddFSub(const SelectionDAG &DAG,
+                              const SDNode *N) const override;
+
   SDValue splitUnaryVectorOp(SDValue Op, SelectionDAG &DAG) const;
   SDValue splitBinaryVectorOp(SDValue Op, SelectionDAG &DAG) const;
   SDValue splitTernaryVectorOp(SDValue Op, SelectionDAG &DAG) const;
@@ -384,6 +400,10 @@ public:
                                     unsigned Depth = 0) const override;
   AtomicExpansionKind shouldExpandAtomicRMWInIR(AtomicRMWInst *) const override;
 
+  virtual const TargetRegisterClass *
+  getRegClassFor(MVT VT, bool isDivergent) const override;
+  virtual bool requiresUniformRegister(MachineFunction &MF,
+                                       const Value *V) const override;
   Align getPrefLoopAlignment(MachineLoop *ML) const override;
 
   void allocateHSAUserSGPRs(CCState &CCInfo,

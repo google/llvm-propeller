@@ -781,6 +781,13 @@ static Value *canonicalizeSaturatedAdd(ICmpInst *Cmp, Value *TVal, Value *FVal,
     return Builder.CreateBinaryIntrinsic(
         Intrinsic::uadd_sat, BO->getOperand(0), BO->getOperand(1));
   }
+  // The overflow may be detected via the add wrapping round.
+  if (match(Cmp0, m_c_Add(m_Specific(Cmp1), m_Value(Y))) &&
+      match(FVal, m_c_Add(m_Specific(Cmp1), m_Specific(Y)))) {
+    // ((X + Y) u< X) ? -1 : (X + Y) --> uadd.sat(X, Y)
+    // ((X + Y) u< Y) ? -1 : (X + Y) --> uadd.sat(X, Y)
+    return Builder.CreateBinaryIntrinsic(Intrinsic::uadd_sat, Cmp1, Y);
+  }
 
   return nullptr;
 }
@@ -1725,6 +1732,36 @@ static Instruction *foldAddSubSelect(SelectInst &SI,
   return nullptr;
 }
 
+/// Turn X + Y overflows ? -1 : X + Y -> uadd_sat X, Y
+/// And X - Y overflows ? 0 : X - Y -> usub_sat X, Y
+static Instruction *
+foldOverflowingAddSubSelect(SelectInst &SI, InstCombiner::BuilderTy &Builder) {
+  Value *CondVal = SI.getCondition();
+  Value *TrueVal = SI.getTrueValue();
+  Value *FalseVal = SI.getFalseValue();
+
+  WithOverflowInst *II;
+  if (!match(CondVal, m_ExtractValue<1>(m_WithOverflowInst(II))) ||
+      !match(FalseVal, m_ExtractValue<0>(m_Specific(II))))
+    return nullptr;
+
+  Intrinsic::ID NewIntrinsicID;
+  if (II->getIntrinsicID() == Intrinsic::uadd_with_overflow &&
+      match(TrueVal, m_AllOnes()))
+    // X + Y overflows ? -1 : X + Y -> uadd_sat X, Y
+    NewIntrinsicID = Intrinsic::uadd_sat;
+  else if (II->getIntrinsicID() == Intrinsic::usub_with_overflow &&
+           match(TrueVal, m_Zero()))
+    // X - Y overflows ? 0 : X - Y -> usub_sat X, Y
+    NewIntrinsicID = Intrinsic::usub_sat;
+  else
+    return nullptr;
+
+  Function *F =
+      Intrinsic::getDeclaration(SI.getModule(), NewIntrinsicID, SI.getType());
+  return CallInst::Create(F, {II->getArgOperand(0), II->getArgOperand(1)});
+}
+
 Instruction *InstCombiner::foldSelectExtConst(SelectInst &Sel) {
   Constant *C;
   if (!match(Sel.getTrueValue(), m_Constant(C)) &&
@@ -2004,6 +2041,71 @@ static Instruction *moveAddAfterMinMax(SelectPatternFlavor SPF, Value *X,
   return nullptr;
 }
 
+/// Match a sadd_sat or ssub_sat which is using min/max to clamp the value.
+Instruction *InstCombiner::matchSAddSubSat(SelectInst &MinMax1) {
+  Type *Ty = MinMax1.getType();
+
+  // We are looking for a tree of:
+  // max(INT_MIN, min(INT_MAX, add(sext(A), sext(B))))
+  // Where the min and max could be reversed
+  Instruction *MinMax2;
+  BinaryOperator *AddSub;
+  const APInt *MinValue, *MaxValue;
+  if (match(&MinMax1, m_SMin(m_Instruction(MinMax2), m_APInt(MaxValue)))) {
+    if (!match(MinMax2, m_SMax(m_BinOp(AddSub), m_APInt(MinValue))))
+      return nullptr;
+  } else if (match(&MinMax1,
+                   m_SMax(m_Instruction(MinMax2), m_APInt(MinValue)))) {
+    if (!match(MinMax2, m_SMin(m_BinOp(AddSub), m_APInt(MaxValue))))
+      return nullptr;
+  } else
+    return nullptr;
+
+  // Check that the constants clamp a saturate, and that the new type would be
+  // sensible to convert to.
+  if (!(*MaxValue + 1).isPowerOf2() || -*MinValue != *MaxValue + 1)
+    return nullptr;
+  // In what bitwidth can this be treated as saturating arithmetics?
+  unsigned NewBitWidth = (*MaxValue + 1).logBase2() + 1;
+  // FIXME: This isn't quite right for vectors, but using the scalar type is a
+  // good first approximation for what should be done there.
+  if (!shouldChangeType(Ty->getScalarType()->getIntegerBitWidth(), NewBitWidth))
+    return nullptr;
+
+  // Also make sure that the number of uses is as expected. The "3"s are for the
+  // the two items of min/max (the compare and the select).
+  if (MinMax2->hasNUsesOrMore(3) || AddSub->hasNUsesOrMore(3))
+    return nullptr;
+
+  // Create the new type (which can be a vector type)
+  Type *NewTy = Ty->getWithNewBitWidth(NewBitWidth);
+  // Match the two extends from the add/sub
+  Value *A, *B;
+  if(!match(AddSub, m_BinOp(m_SExt(m_Value(A)), m_SExt(m_Value(B)))))
+    return nullptr;
+  // And check the incoming values are of a type smaller than or equal to the
+  // size of the saturation. Otherwise the higher bits can cause different
+  // results.
+  if (A->getType()->getScalarSizeInBits() > NewBitWidth ||
+      B->getType()->getScalarSizeInBits() > NewBitWidth)
+    return nullptr;
+
+  Intrinsic::ID IntrinsicID;
+  if (AddSub->getOpcode() == Instruction::Add)
+    IntrinsicID = Intrinsic::sadd_sat;
+  else if (AddSub->getOpcode() == Instruction::Sub)
+    IntrinsicID = Intrinsic::ssub_sat;
+  else
+    return nullptr;
+
+  // Finally create and return the sat intrinsic, truncated to the new type
+  Function *F = Intrinsic::getDeclaration(MinMax1.getModule(), IntrinsicID, NewTy);
+  Value *AT = Builder.CreateSExt(A, NewTy);
+  Value *BT = Builder.CreateSExt(B, NewTy);
+  Value *Sat = Builder.CreateCall(F, {AT, BT});
+  return CastInst::Create(Instruction::SExt, Sat, Ty);
+}
+
 /// Reduce a sequence of min/max with a common operand.
 static Instruction *factorizeMinMaxTree(SelectPatternFlavor SPF, Value *LHS,
                                         Value *RHS,
@@ -2231,7 +2333,9 @@ Instruction *InstCombiner::visitSelectInst(SelectInst &SI) {
 
   // See if we are selecting two values based on a comparison of the two values.
   if (FCmpInst *FCI = dyn_cast<FCmpInst>(CondVal)) {
-    if (FCI->getOperand(0) == TrueVal && FCI->getOperand(1) == FalseVal) {
+    Value *Cmp0 = FCI->getOperand(0), *Cmp1 = FCI->getOperand(1);
+    if ((Cmp0 == TrueVal && Cmp1 == FalseVal) ||
+        (Cmp0 == FalseVal && Cmp1 == TrueVal)) {
       // Canonicalize to use ordered comparisons by swapping the select
       // operands.
       //
@@ -2241,25 +2345,7 @@ Instruction *InstCombiner::visitSelectInst(SelectInst &SI) {
         FCmpInst::Predicate InvPred = FCI->getInversePredicate();
         IRBuilder<>::FastMathFlagGuard FMFG(Builder);
         Builder.setFastMathFlags(FCI->getFastMathFlags());
-        Value *NewCond = Builder.CreateFCmp(InvPred, TrueVal, FalseVal,
-                                            FCI->getName() + ".inv");
-
-        return SelectInst::Create(NewCond, FalseVal, TrueVal,
-                                  SI.getName() + ".p");
-      }
-
-      // NOTE: if we wanted to, this is where to detect MIN/MAX
-    } else if (FCI->getOperand(0) == FalseVal && FCI->getOperand(1) == TrueVal){
-      // Canonicalize to use ordered comparisons by swapping the select
-      // operands.
-      //
-      // e.g.
-      // (X ugt Y) ? X : Y -> (X ole Y) ? X : Y
-      if (FCI->hasOneUse() && FCmpInst::isUnordered(FCI->getPredicate())) {
-        FCmpInst::Predicate InvPred = FCI->getInversePredicate();
-        IRBuilder<>::FastMathFlagGuard FMFG(Builder);
-        Builder.setFastMathFlags(FCI->getFastMathFlags());
-        Value *NewCond = Builder.CreateFCmp(InvPred, FalseVal, TrueVal,
+        Value *NewCond = Builder.CreateFCmp(InvPred, Cmp0, Cmp1,
                                             FCI->getName() + ".inv");
 
         return SelectInst::Create(NewCond, FalseVal, TrueVal,
@@ -2325,6 +2411,8 @@ Instruction *InstCombiner::visitSelectInst(SelectInst &SI) {
       return Result;
 
   if (Instruction *Add = foldAddSubSelect(SI, Builder))
+    return Add;
+  if (Instruction *Add = foldOverflowingAddSubSelect(SI, Builder))
     return Add;
 
   // Turn (select C, (op X, Y), (op X, Z)) -> (op X, (select C, Y, Z))
@@ -2429,6 +2517,8 @@ Instruction *InstCombiner::visitSelectInst(SelectInst &SI) {
         return I;
 
       if (Instruction *I = factorizeMinMaxTree(SPF, LHS, RHS, Builder))
+        return I;
+      if (Instruction *I = matchSAddSubSat(SI))
         return I;
     }
   }

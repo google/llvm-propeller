@@ -615,6 +615,9 @@ namespace llvm {
       // extract_vector_elt, store.
       VEXTRACT_STORE,
 
+      // scalar broadcast from memory
+      VBROADCAST_LOAD,
+
       // Store FP control world into i16 memory.
       FNSTCW16m,
 
@@ -798,6 +801,17 @@ namespace llvm {
     /// i16 is legal, but undesirable since i16 instruction encodings are longer
     /// and some i16 instructions are slow.
     bool IsDesirableToPromoteOp(SDValue Op, EVT &PVT) const override;
+
+    /// Return 1 if we can compute the negated form of the specified expression
+    /// for the same cost as the expression itself, or 2 if we can compute the
+    /// negated form more cheaply than the expression itself. Else return 0.
+    char isNegatibleForFree(SDValue Op, SelectionDAG &DAG, bool LegalOperations,
+                            bool ForCodeSize, unsigned Depth) const override;
+
+    /// If isNegatibleForFree returns true, return the newly negated expression.
+    SDValue getNegatedExpression(SDValue Op, SelectionDAG &DAG,
+                                 bool LegalOperations, bool ForCodeSize,
+                                 unsigned Depth) const override;
 
     MachineBasicBlock *
     EmitInstrWithCustomInserter(MachineInstr &MI,
@@ -1151,8 +1165,8 @@ namespace llvm {
       return nullptr; // nothing to do, move along.
     }
 
-    unsigned getRegisterByName(const char* RegName, EVT VT,
-                               SelectionDAG &DAG) const override;
+    Register getRegisterByName(const char* RegName, EVT VT,
+                               const MachineFunction &MF) const override;
 
     /// If a physical register, this returns the register that receives the
     /// exception address on entry to an EH pad.
@@ -1658,24 +1672,24 @@ namespace llvm {
   /// mask. This is the reverse process to canWidenShuffleElements, but can
   /// always succeed.
   template <typename T>
-  void scaleShuffleMask(int Scale, ArrayRef<T> Mask,
+  void scaleShuffleMask(size_t Scale, ArrayRef<T> Mask,
                         SmallVectorImpl<T> &ScaledMask) {
     assert(0 < Scale && "Unexpected scaling factor");
     size_t NumElts = Mask.size();
     ScaledMask.assign(NumElts * Scale, -1);
 
-    for (int i = 0; i != (int)NumElts; ++i) {
+    for (size_t i = 0; i != NumElts; ++i) {
       int M = Mask[i];
 
       // Repeat sentinel values in every mask element.
       if (M < 0) {
-        for (int s = 0; s != Scale; ++s)
+        for (size_t s = 0; s != Scale; ++s)
           ScaledMask[(Scale * i) + s] = M;
         continue;
       }
 
       // Scale mask element and increment across each mask element.
-      for (int s = 0; s != Scale; ++s)
+      for (size_t s = 0; s != Scale; ++s)
         ScaledMask[(Scale * i) + s] = (Scale * M) + s;
     }
   }

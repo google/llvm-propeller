@@ -168,9 +168,8 @@ protected:
         if (module_list.GetSize() &&
             module_list.GetIndexForModule(module) == LLDB_INVALID_INDEX32)
           continue;
-        if (file_spec &&
-            !lldb_private::FileSpec::Equal(file_spec, line_entry.file,
-                                           has_path))
+        if (file_spec && !lldb_private::FileSpec::Equal(
+                             file_spec, line_entry.file, has_path))
           continue;
         if (start_line > 0 && line_entry.line < start_line)
           continue;
@@ -180,8 +179,7 @@ protected:
           continue;
 
         // Print a new header if the module changed.
-        ConstString module_file_name =
-            module->GetFileSpec().GetFilename();
+        ConstString module_file_name = module->GetFileSpec().GetFilename();
         assert(module_file_name);
         if (module_file_name != last_module_file_name) {
           if (num_matches > 0)
@@ -227,8 +225,7 @@ protected:
         // Dump all matching lines at or above start_line for the file in the
         // CU.
         ConstString file_spec_name = file_spec.GetFilename();
-        ConstString module_file_name =
-            module->GetFileSpec().GetFilename();
+        ConstString module_file_name = module->GetFileSpec().GetFilename();
         bool cu_header_printed = false;
         uint32_t line = start_line;
         while (true) {
@@ -345,9 +342,8 @@ protected:
       if (target->GetSectionLoadList().ResolveLoadAddress(addr, so_addr)) {
         ModuleSP module_sp(so_addr.GetModule());
         // Check to make sure this module is in our list.
-        if (module_sp &&
-            module_list.GetIndexForModule(module_sp.get()) !=
-                LLDB_INVALID_INDEX32) {
+        if (module_sp && module_list.GetIndexForModule(module_sp.get()) !=
+                             LLDB_INVALID_INDEX32) {
           SymbolContext sc;
           sc.Clear(true);
           if (module_sp->ResolveSymbolContextForAddress(
@@ -392,17 +388,18 @@ protected:
     // const.
     ModuleList module_list =
         (m_module_list.GetSize() > 0) ? m_module_list : target->GetImages();
-    size_t num_matches =
-        module_list.FindFunctions(name, eFunctionNameTypeAuto,
-                                  /*include_symbols=*/false,
-                                  /*include_inlines=*/true,
-                                  /*append=*/true, sc_list_funcs);
+    module_list.FindFunctions(name, eFunctionNameTypeAuto,
+                              /*include_symbols=*/false,
+                              /*include_inlines=*/true, sc_list_funcs);
+    size_t num_matches = sc_list_funcs.GetSize();
+
     if (!num_matches) {
       // If we didn't find any functions with that name, try searching for
       // symbols that line up exactly with function addresses.
       SymbolContextList sc_list_symbols;
-      size_t num_symbol_matches = module_list.FindFunctionSymbols(
-          name, eFunctionNameTypeAuto, sc_list_symbols);
+      module_list.FindFunctionSymbols(name, eFunctionNameTypeAuto,
+                                      sc_list_symbols);
+      size_t num_symbol_matches = sc_list_symbols.GetSize();
       for (size_t i = 0; i < num_symbol_matches; i++) {
         SymbolContext sc;
         sc_list_symbols.GetContextAtIndex(i, sc);
@@ -580,7 +577,8 @@ protected:
         FileSpec module_file_spec(m_options.modules[i]);
         if (module_file_spec) {
           ModuleSpec module_spec(module_file_spec);
-          if (target->GetImages().FindModules(module_spec, m_module_list) == 0)
+          target->GetImages().FindModules(module_spec, m_module_list);
+          if (m_module_list.IsEmpty())
             result.AppendWarningWithFormat("No module found for '%s'.\n",
                                            m_options.modules[i].c_str());
         }
@@ -872,13 +870,11 @@ protected:
   // these somewhere, there should probably be a module-filter-list that can be
   // passed to the various ModuleList::Find* calls, which would either be a
   // vector of string names or a ModuleSpecList.
-  size_t FindMatchingFunctions(Target *target, ConstString name,
-                               SymbolContextList &sc_list) {
+  void FindMatchingFunctions(Target *target, ConstString name,
+                             SymbolContextList &sc_list) {
     // Displaying the source for a symbol:
     bool include_inlines = true;
-    bool append = true;
     bool include_symbols = false;
-    size_t num_matches = 0;
 
     if (m_options.num_lines == 0)
       m_options.num_lines = 10;
@@ -892,22 +888,20 @@ protected:
           ModuleSpec module_spec(module_file_spec);
           matching_modules.Clear();
           target->GetImages().FindModules(module_spec, matching_modules);
-          num_matches += matching_modules.FindFunctions(
-              name, eFunctionNameTypeAuto, include_symbols, include_inlines,
-              append, sc_list);
+          matching_modules.FindFunctions(name, eFunctionNameTypeAuto,
+                                         include_symbols, include_inlines,
+                                         sc_list);
         }
       }
     } else {
-      num_matches = target->GetImages().FindFunctions(
-          name, eFunctionNameTypeAuto, include_symbols, include_inlines, append,
-          sc_list);
+      target->GetImages().FindFunctions(name, eFunctionNameTypeAuto,
+                                        include_symbols, include_inlines,
+                                        sc_list);
     }
-    return num_matches;
   }
 
-  size_t FindMatchingFunctionSymbols(Target *target, ConstString name,
-                                     SymbolContextList &sc_list) {
-    size_t num_matches = 0;
+  void FindMatchingFunctionSymbols(Target *target, ConstString name,
+                                   SymbolContextList &sc_list) {
     const size_t num_modules = m_options.modules.size();
     if (num_modules > 0) {
       ModuleList matching_modules;
@@ -917,15 +911,14 @@ protected:
           ModuleSpec module_spec(module_file_spec);
           matching_modules.Clear();
           target->GetImages().FindModules(module_spec, matching_modules);
-          num_matches += matching_modules.FindFunctionSymbols(
-              name, eFunctionNameTypeAuto, sc_list);
+          matching_modules.FindFunctionSymbols(name, eFunctionNameTypeAuto,
+                                               sc_list);
         }
       }
     } else {
-      num_matches = target->GetImages().FindFunctionSymbols(
-          name, eFunctionNameTypeAuto, sc_list);
+      target->GetImages().FindFunctionSymbols(name, eFunctionNameTypeAuto,
+                                              sc_list);
     }
-    return num_matches;
   }
 
   bool DoExecute(Args &command, CommandReturnObject &result) override {
@@ -945,13 +938,15 @@ protected:
       ConstString name(m_options.symbol_name.c_str());
 
       // Displaying the source for a symbol. Search for function named name.
-      size_t num_matches = FindMatchingFunctions(target, name, sc_list);
+      FindMatchingFunctions(target, name, sc_list);
+      size_t num_matches = sc_list.GetSize();
       if (!num_matches) {
         // If we didn't find any functions with that name, try searching for
         // symbols that line up exactly with function addresses.
         SymbolContextList sc_list_symbols;
-        size_t num_symbol_matches =
-            FindMatchingFunctionSymbols(target, name, sc_list_symbols);
+        FindMatchingFunctionSymbols(target, name, sc_list_symbols);
+        size_t num_symbol_matches = sc_list_symbols.GetSize();
+
         for (size_t i = 0; i < num_symbol_matches; i++) {
           SymbolContext sc;
           sc_list_symbols.GetContextAtIndex(i, sc);
@@ -1234,9 +1229,9 @@ protected:
             m_options.num_lines = 10;
           const uint32_t column = 0;
           target->GetSourceManager().DisplaySourceLinesWithLineNumbers(
-              sc.comp_unit, m_options.start_line, column, 
-              0, m_options.num_lines,
-              "", &result.GetOutputStream(), GetBreakpointLocations());
+              sc.comp_unit, m_options.start_line, column, 0,
+              m_options.num_lines, "", &result.GetOutputStream(),
+              GetBreakpointLocations());
 
           result.SetStatus(eReturnStatusSuccessFinishResult);
         } else {
@@ -1266,10 +1261,11 @@ protected:
 
 CommandObjectMultiwordSource::CommandObjectMultiwordSource(
     CommandInterpreter &interpreter)
-    : CommandObjectMultiword(interpreter, "source", "Commands for examining "
-                                                    "source code described by "
-                                                    "debug information for the "
-                                                    "current target process.",
+    : CommandObjectMultiword(interpreter, "source",
+                             "Commands for examining "
+                             "source code described by "
+                             "debug information for the "
+                             "current target process.",
                              "source <subcommand> [<subcommand-options>]") {
   LoadSubCommand("info",
                  CommandObjectSP(new CommandObjectSourceInfo(interpreter)));

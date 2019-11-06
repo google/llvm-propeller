@@ -18,7 +18,7 @@ registers:
   - { id: 3, class: sreg_32_xm0 }
   - { id: 4, class: sreg_32_xm0 }
   - { id: 5, class: sreg_32_xm0 }
-  - { id: 6, class: sreg_128 }
+  - { id: 6, class: sgpr_128 }
   - { id: 7, class: sreg_32_xm0 }
   - { id: 8, class: sreg_32_xm0 }
   - { id: 9, class: sreg_32_xm0 }
@@ -54,7 +54,7 @@ body:             |
     %8 = S_MOV_B32 9999
     %9 = S_AND_B32 killed %7, killed %8, implicit-def dead $scc
     %10 = COPY %9
-    BUFFER_STORE_DWORD_OFFSET killed %10, killed %6, 0, 0, 0, 0, 0, 0, implicit $exec
+    BUFFER_STORE_DWORD_OFFSET killed %10, killed %6, 0, 0, 0, 0, 0, 0, 0, implicit $exec
     S_ENDPGM 0
 
 ...
@@ -185,7 +185,7 @@ registers:
   - { id: 7, class: sreg_32_xm0 }
   - { id: 8, class: sreg_32_xm0 }
   - { id: 9, class: sreg_32_xm0 }
-  - { id: 10, class: sreg_128 }
+  - { id: 10, class: sgpr_128 }
   - { id: 11, class: sreg_32_xm0 }
   - { id: 12, class: sreg_32_xm0 }
   - { id: 13, class: vgpr_32 }
@@ -219,7 +219,7 @@ body:             |
     %10 = REG_SEQUENCE killed %7, 1, killed %6, 2, killed %9, 3, killed %8, 4
     %12 = S_LSHL_B32 killed %5, 12, implicit-def dead $scc
     %13 = COPY %12
-    BUFFER_STORE_DWORD_OFFSET killed %13, killed %10, 0, 0, 0, 0, 0, 0, implicit $exec
+    BUFFER_STORE_DWORD_OFFSET killed %13, killed %10, 0, 0, 0, 0, 0, 0, 0, implicit $exec
     S_ENDPGM 0
 
 ...
@@ -385,7 +385,7 @@ registers:
   - { id: 7, class: sreg_32_xm0 }
   - { id: 8, class: sreg_32_xm0 }
   - { id: 9, class: sreg_32_xm0 }
-  - { id: 10, class: sreg_128 }
+  - { id: 10, class: sgpr_128 }
   - { id: 11, class: sreg_32_xm0 }
   - { id: 12, class: sreg_32_xm0 }
   - { id: 13, class: vgpr_32 }
@@ -419,7 +419,7 @@ body:             |
     %10 = REG_SEQUENCE killed %7, 1, killed %6, 2, killed %9, 3, killed %8, 4
     %12 = S_ASHR_I32 killed %5, 12, implicit-def dead $scc
     %13 = COPY %12
-    BUFFER_STORE_DWORD_OFFSET killed %13, killed %10, 0, 0, 0, 0, 0, 0, implicit $exec
+    BUFFER_STORE_DWORD_OFFSET killed %13, killed %10, 0, 0, 0, 0, 0, 0, 0, implicit $exec
     S_ENDPGM 0
 
 ...
@@ -593,7 +593,7 @@ registers:
   - { id: 7, class: sreg_32_xm0 }
   - { id: 8, class: sreg_32_xm0 }
   - { id: 9, class: sreg_32_xm0 }
-  - { id: 10, class: sreg_128 }
+  - { id: 10, class: sgpr_128 }
   - { id: 11, class: sreg_32_xm0 }
   - { id: 12, class: sreg_32_xm0 }
   - { id: 13, class: vgpr_32 }
@@ -627,7 +627,7 @@ body:             |
     %10 = REG_SEQUENCE killed %7, 1, killed %6, 2, killed %9, 3, killed %8, 4
     %12 = S_LSHR_B32 killed %5, 12, implicit-def dead $scc
     %13 = COPY %12
-    BUFFER_STORE_DWORD_OFFSET killed %13, killed %10, 0, 0, 0, 0, 0, 0, implicit $exec
+    BUFFER_STORE_DWORD_OFFSET killed %13, killed %10, 0, 0, 0, 0, 0, 0, 0, implicit $exec
     S_ENDPGM 0
 
 ...

@@ -100,6 +100,8 @@ ValueObject::ValueObject(ValueObject &parent)
       m_did_calculate_complete_objc_class_type(false),
       m_is_synthetic_children_generated(
           parent.m_is_synthetic_children_generated) {
+  m_data.SetByteOrder(parent.GetDataExtractor().GetByteOrder());
+  m_data.SetAddressByteSize(parent.GetDataExtractor().GetAddressByteSize());
   m_manager->ManageObject(this);
 }
 
@@ -126,12 +128,72 @@ ValueObject::ValueObject(ExecutionContextScope *exe_scope,
       m_is_getting_summary(false),
       m_did_calculate_complete_objc_class_type(false),
       m_is_synthetic_children_generated(false) {
+  if (exe_scope) {
+    TargetSP target_sp(exe_scope->CalculateTarget());
+    if (target_sp) {
+      const ArchSpec &arch = target_sp->GetArchitecture();
+      m_data.SetByteOrder(arch.GetByteOrder());
+      m_data.SetAddressByteSize(arch.GetAddressByteSize());
+    }
+  }
   m_manager = new ValueObjectManager();
   m_manager->ManageObject(this);
 }
 
 // Destructor
 ValueObject::~ValueObject() {}
+
+void ValueObject::UpdateChildrenAddressType() {
+  Value::ValueType value_type = m_value.GetValueType();
+  ExecutionContext exe_ctx(GetExecutionContextRef());
+  Process *process = exe_ctx.GetProcessPtr();
+  const bool process_is_alive = process && process->IsAlive();
+  const uint32_t type_info = GetCompilerType().GetTypeInfo();
+  const bool is_pointer_or_ref =
+      (type_info & (lldb::eTypeIsPointer | lldb::eTypeIsReference)) != 0;
+
+  switch (value_type) {
+  case Value::eValueTypeFileAddress:
+    // If this type is a pointer, then its children will be considered load
+    // addresses if the pointer or reference is dereferenced, but only if
+    // the process is alive.
+    //
+    // There could be global variables like in the following code:
+    // struct LinkedListNode { Foo* foo; LinkedListNode* next; };
+    // Foo g_foo1;
+    // Foo g_foo2;
+    // LinkedListNode g_second_node = { &g_foo2, NULL };
+    // LinkedListNode g_first_node = { &g_foo1, &g_second_node };
+    //
+    // When we aren't running, we should be able to look at these variables
+    // using the "target variable" command. Children of the "g_first_node"
+    // always will be of the same address type as the parent. But children
+    // of the "next" member of LinkedListNode will become load addresses if
+    // we have a live process, or remain a file address if it was a file
+    // address.
+    if (process_is_alive && is_pointer_or_ref)
+      SetAddressTypeOfChildren(eAddressTypeLoad);
+    else
+      SetAddressTypeOfChildren(eAddressTypeFile);
+    break;
+  case Value::eValueTypeHostAddress:
+    // Same as above for load addresses, except children of pointer or refs
+    // are always load addresses. Host addresses are used to store freeze
+    // dried variables. If this type is a struct, the entire struct
+    // contents will be copied into the heap of the
+    // LLDB process, but we do not currently follow any pointers.
+    if (is_pointer_or_ref)
+      SetAddressTypeOfChildren(eAddressTypeLoad);
+    else
+      SetAddressTypeOfChildren(eAddressTypeHost);
+    break;
+  case Value::eValueTypeLoadAddress:
+  case Value::eValueTypeScalar:
+  case Value::eValueTypeVector:
+    SetAddressTypeOfChildren(eAddressTypeLoad);
+    break;
+  }
+}
 
 bool ValueObject::UpdateValueIfNeeded(bool update_format) {
 
@@ -195,6 +257,7 @@ bool ValueObject::UpdateValueIfNeeded(bool update_format) {
       SetValueIsValid(success);
 
       if (success) {
+        UpdateChildrenAddressType();
         const uint64_t max_checksum_size = 128;
         m_data.Checksum(m_value_checksum, max_checksum_size);
       } else {
@@ -526,6 +589,10 @@ ValueObjectSP ValueObject::GetChildMemberWithName(ConstString name,
 
   std::vector<uint32_t> child_indexes;
   bool omit_empty_base_classes = true;
+
+  if (!GetCompilerType().IsValid())
+    return ValueObjectSP();
+
   const size_t num_child_indexes =
       GetCompilerType().GetIndexOfChildMemberWithName(
           name.GetCString(), omit_empty_base_classes, child_indexes);
@@ -1970,15 +2037,14 @@ bool ValueObject::GetBaseClassPath(Stream &s) {
     bool parent_had_base_class =
         GetParent() && GetParent()->GetBaseClassPath(s);
     CompilerType compiler_type = GetCompilerType();
-    std::string cxx_class_name;
-    bool this_had_base_class =
-        ClangASTContext::GetCXXClassName(compiler_type, cxx_class_name);
-    if (this_had_base_class) {
+    llvm::Optional<std::string> cxx_class_name =
+        ClangASTContext::GetCXXClassName(compiler_type);
+    if (cxx_class_name) {
       if (parent_had_base_class)
         s.PutCString("::");
-      s.PutCString(cxx_class_name);
+      s.PutCString(cxx_class_name.getValue());
     }
-    return parent_had_base_class || this_had_base_class;
+    return parent_had_base_class || cxx_class_name;
   }
   return false;
 }

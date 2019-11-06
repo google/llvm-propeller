@@ -284,7 +284,6 @@ private:
 
   FunctionCallee HwasanTagMemoryFunc;
   FunctionCallee HwasanGenerateTagFunc;
-  FunctionCallee HwasanThreadEnterFunc;
 
   Constant *ShadowGlobal;
 
@@ -473,9 +472,6 @@ void HWAddressSanitizer::initializeCallbacks(Module &M) {
 
   HWAsanHandleVfork =
       M.getOrInsertFunction("__hwasan_handle_vfork", IRB.getVoidTy(), IntptrTy);
-
-  HwasanThreadEnterFunc =
-      M.getOrInsertFunction("__hwasan_thread_enter", IRB.getVoidTy());
 }
 
 Value *HWAddressSanitizer::getDynamicShadowIfunc(IRBuilder<> &IRB) {
@@ -934,34 +930,13 @@ void HWAddressSanitizer::emitPrologue(IRBuilder<> &IRB, bool WithFrameRecord) {
   Value *SlotPtr = getHwasanThreadSlotPtr(IRB, IntptrTy);
   assert(SlotPtr);
 
-  Instruction *ThreadLong = IRB.CreateLoad(IntptrTy, SlotPtr);
-
-  Function *F = IRB.GetInsertBlock()->getParent();
-  if (F->getFnAttribute("hwasan-abi").getValueAsString() == "interceptor") {
-    Value *ThreadLongEqZero =
-        IRB.CreateICmpEQ(ThreadLong, ConstantInt::get(IntptrTy, 0));
-    auto *Br = cast<BranchInst>(SplitBlockAndInsertIfThen(
-        ThreadLongEqZero, cast<Instruction>(ThreadLongEqZero)->getNextNode(),
-        false, MDBuilder(*C).createBranchWeights(1, 100000)));
-
-    IRB.SetInsertPoint(Br);
-    // FIXME: This should call a new runtime function with a custom calling
-    // convention to avoid needing to spill all arguments here.
-    IRB.CreateCall(HwasanThreadEnterFunc);
-    LoadInst *ReloadThreadLong = IRB.CreateLoad(IntptrTy, SlotPtr);
-
-    IRB.SetInsertPoint(&*Br->getSuccessor(0)->begin());
-    PHINode *ThreadLongPhi = IRB.CreatePHI(IntptrTy, 2);
-    ThreadLongPhi->addIncoming(ThreadLong, ThreadLong->getParent());
-    ThreadLongPhi->addIncoming(ReloadThreadLong, ReloadThreadLong->getParent());
-    ThreadLong = ThreadLongPhi;
-  }
-
+  Value *ThreadLong = IRB.CreateLoad(IntptrTy, SlotPtr);
   // Extract the address field from ThreadLong. Unnecessary on AArch64 with TBI.
   Value *ThreadLongMaybeUntagged =
       TargetTriple.isAArch64() ? ThreadLong : untagPointer(IRB, ThreadLong);
 
   if (WithFrameRecord) {
+    Function *F = IRB.GetInsertBlock()->getParent();
     StackBaseTag = IRB.CreateAShr(ThreadLong, 3);
 
     // Prepare ring buffer data.
@@ -1184,7 +1159,7 @@ bool HWAddressSanitizer::sanitizeFunction(Function &F) {
     uint64_t Size = getAllocaSizeInBytes(*AI);
     uint64_t AlignedSize = alignTo(Size, Mapping.getObjectAlignment());
     AI->setAlignment(
-        std::max(AI->getAlignment(), Mapping.getObjectAlignment()));
+        MaybeAlign(std::max(AI->getAlignment(), Mapping.getObjectAlignment())));
     if (Size != AlignedSize) {
       Type *AllocatedType = AI->getAllocatedType();
       if (AI->isArrayAllocation()) {
@@ -1197,7 +1172,7 @@ bool HWAddressSanitizer::sanitizeFunction(Function &F) {
       auto *NewAI = new AllocaInst(
           TypeWithPadding, AI->getType()->getAddressSpace(), nullptr, "", AI);
       NewAI->takeName(AI);
-      NewAI->setAlignment(AI->getAlignment());
+      NewAI->setAlignment(MaybeAlign(AI->getAlignment()));
       NewAI->setUsedWithInAlloca(AI->isUsedWithInAlloca());
       NewAI->setSwiftError(AI->isSwiftError());
       NewAI->copyMetadata(*AI);
@@ -1265,7 +1240,7 @@ void HWAddressSanitizer::instrumentGlobal(GlobalVariable *GV, uint8_t Tag) {
   NewGV->setLinkage(GlobalValue::PrivateLinkage);
   NewGV->copyMetadata(GV, 0);
   NewGV->setAlignment(
-      std::max(GV->getAlignment(), Mapping.getObjectAlignment()));
+      MaybeAlign(std::max(GV->getAlignment(), Mapping.getObjectAlignment())));
 
   // It is invalid to ICF two globals that have different tags. In the case
   // where the size of the global is a multiple of the tag granularity the
@@ -1370,7 +1345,7 @@ void HWAddressSanitizer::instrumentGlobals() {
                          GlobalValue::PrivateLinkage, nullptr, kHwasanNoteName);
   Note->setSection(".note.hwasan.globals");
   Note->setComdat(NoteComdat);
-  Note->setAlignment(4);
+  Note->setAlignment(Align(4));
   Note->setDSOLocal(true);
 
   // The pointers in the note need to be relative so that the note ends up being

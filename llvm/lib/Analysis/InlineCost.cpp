@@ -436,7 +436,8 @@ bool CallAnalyzer::visitAlloca(AllocaInst &I) {
     if (auto *AllocSize = dyn_cast_or_null<ConstantInt>(Size)) {
       Type *Ty = I.getAllocatedType();
       AllocatedSize = SaturatingMultiplyAdd(
-          AllocSize->getLimitedValue(), DL.getTypeAllocSize(Ty), AllocatedSize);
+          AllocSize->getLimitedValue(), DL.getTypeAllocSize(Ty).getFixedSize(),
+          AllocatedSize);
       return Base::visitAlloca(I);
     }
   }
@@ -444,7 +445,8 @@ bool CallAnalyzer::visitAlloca(AllocaInst &I) {
   // Accumulate the allocated size.
   if (I.isStaticAlloca()) {
     Type *Ty = I.getAllocatedType();
-    AllocatedSize = SaturatingAdd(DL.getTypeAllocSize(Ty), AllocatedSize);
+    AllocatedSize = SaturatingAdd(DL.getTypeAllocSize(Ty).getFixedSize(),
+                                  AllocatedSize);
   }
 
   // We will happily inline static alloca instructions.
@@ -1454,8 +1456,9 @@ bool CallAnalyzer::visitSwitchInst(SwitchInst &SI) {
   int CostUpperBound = INT_MAX - InlineConstants::InstrCost - 1;
 
   unsigned JumpTableSize = 0;
+  BlockFrequencyInfo *BFI = GetBFI ? &((*GetBFI)(F)) : nullptr;
   unsigned NumCaseCluster =
-      TTI.getEstimatedNumberOfCaseClusters(SI, JumpTableSize);
+      TTI.getEstimatedNumberOfCaseClusters(SI, JumpTableSize, PSI, BFI);
 
   // If suitable for a jump table, consider the cost for the table size and
   // branch to destination.

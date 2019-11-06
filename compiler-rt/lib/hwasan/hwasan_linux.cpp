@@ -34,6 +34,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <unwind.h>
+#include <sys/prctl.h>
+#include <errno.h>
 
 #include "sanitizer_common/sanitizer_common.h"
 #include "sanitizer_common/sanitizer_procmaps.h"
@@ -142,6 +144,43 @@ static uptr GetHighMemEnd() {
 static void InitializeShadowBaseAddress(uptr shadow_size_bytes) {
   __hwasan_shadow_memory_dynamic_address =
       FindDynamicShadowStart(shadow_size_bytes);
+}
+
+void InitPrctl() {
+#define PR_SET_TAGGED_ADDR_CTRL 55
+#define PR_GET_TAGGED_ADDR_CTRL 56
+#define PR_TAGGED_ADDR_ENABLE (1UL << 0)
+  // Check we're running on a kernel that can use the tagged address ABI.
+  if (internal_prctl(PR_GET_TAGGED_ADDR_CTRL, 0, 0, 0, 0) == (uptr)-1 &&
+      errno == EINVAL) {
+#if SANITIZER_ANDROID
+    // Some older Android kernels have the tagged pointer ABI on
+    // unconditionally, and hence don't have the tagged-addr prctl while still
+    // allow the ABI.
+    // If targeting Android and the prctl is not around we assume this is the
+    // case.
+    return;
+#else
+    Printf(
+        "FATAL: "
+        "HWAddressSanitizer requires a kernel with tagged address ABI.\n");
+    Die();
+#endif
+  }
+
+  // Turn on the tagged address ABI.
+  if (internal_prctl(PR_SET_TAGGED_ADDR_CTRL, PR_TAGGED_ADDR_ENABLE, 0, 0, 0) ==
+          (uptr)-1 ||
+      !internal_prctl(PR_GET_TAGGED_ADDR_CTRL, 0, 0, 0, 0)) {
+    Printf(
+        "FATAL: HWAddressSanitizer failed to enable tagged address syscall "
+        "ABI.\nSuggest check `sysctl abi.tagged_addr_disabled` "
+        "configuration.\n");
+    Die();
+  }
+#undef PR_SET_TAGGED_ADDR_CTRL
+#undef PR_GET_TAGGED_ADDR_CTRL
+#undef PR_TAGGED_ADDR_ENABLE
 }
 
 bool InitShadow() {
@@ -315,12 +354,7 @@ void AndroidTestTlsSlot() {}
 #endif
 
 Thread *GetCurrentThread() {
-  uptr *ThreadLong = GetCurrentThreadLongPtr();
-#if HWASAN_WITH_INTERCEPTORS
-  if (!*ThreadLong)
-    __hwasan_thread_enter();
-#endif
-  auto *R = (StackAllocationsRingBuffer *)ThreadLong;
+  auto *R = (StackAllocationsRingBuffer *)GetCurrentThreadLongPtr();
   return hwasanThreadList().GetThreadByBufferAddress((uptr)(R->Next()));
 }
 
@@ -421,21 +455,6 @@ static bool HwasanOnSIGTRAP(int signo, siginfo_t *info, ucontext_t *uc) {
   return true;
 }
 
-// Entry point stub for interoperability between __hwasan_tag_mismatch (ASM) and
-// the rest of the mismatch handling code (C++).
-extern "C" void __hwasan_tag_mismatch_stub(uptr addr, uptr access_info,
-                                           uptr *registers_frame) {
-  AccessInfo ai;
-  ai.is_store = access_info & 0x10;
-  ai.recover = false;
-  ai.addr = addr;
-  ai.size = 1 << (access_info & 0xf);
-
-  HandleTagMismatch(ai, (uptr)__builtin_return_address(0),
-                    (uptr)__builtin_frame_address(0), nullptr, registers_frame);
-  __builtin_unreachable();
-}
-
 static void OnStackUnwind(const SignalContext &sig, const void *,
                           BufferedStackTrace *stack) {
   stack->Unwind(StackTrace::GetNextInstructionPc(sig.pc), sig.bp, sig.context,
@@ -453,5 +472,25 @@ void HwasanOnDeadlySignal(int signo, void *info, void *context) {
 
 
 } // namespace __hwasan
+
+// Entry point for interoperability between __hwasan_tag_mismatch (ASM) and the
+// rest of the mismatch handling code (C++).
+void __hwasan_tag_mismatch4(uptr addr, uptr access_info, uptr *registers_frame,
+                            size_t outsize) {
+  __hwasan::AccessInfo ai;
+  ai.is_store = access_info & 0x10;
+  ai.is_load = !ai.is_store;
+  ai.recover = access_info & 0x20;
+  ai.addr = addr;
+  if ((access_info & 0xf) == 0xf)
+    ai.size = outsize;
+  else
+    ai.size = 1 << (access_info & 0xf);
+
+  __hwasan::HandleTagMismatch(ai, (uptr)__builtin_return_address(0),
+                              (uptr)__builtin_frame_address(0), nullptr,
+                              registers_frame);
+  __builtin_unreachable();
+}
 
 #endif // SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_NETBSD

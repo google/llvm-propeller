@@ -543,10 +543,16 @@ static Value *ThreadCmpOverPHI(CmpInst::Predicate Pred, Value *LHS, Value *RHS,
 
   // Evaluate the BinOp on the incoming phi values.
   Value *CommonValue = nullptr;
-  for (Value *Incoming : PI->incoming_values()) {
+  for (unsigned u = 0, e = PI->getNumIncomingValues(); u < e; ++u) {
+    Value *Incoming = PI->getIncomingValue(u);
+    Instruction *InTI = PI->getIncomingBlock(u)->getTerminator();
     // If the incoming value is the phi node itself, it can safely be skipped.
     if (Incoming == PI) continue;
-    Value *V = SimplifyCmpInst(Pred, Incoming, RHS, Q, MaxRecurse);
+    // Change the context instruction to the "edge" that flows into the phi.
+    // This is important because that is where incoming is actually "evaluated"
+    // even though it is used later somewhere else.
+    Value *V = SimplifyCmpInst(Pred, Incoming, RHS, Q.getWithInstruction(InTI),
+                               MaxRecurse);
     // If the operation failed to simplify, or simplified to a different value
     // to previously, then give up.
     if (!V || (CommonValue && V != CommonValue))
@@ -3903,18 +3909,21 @@ static Value *simplifySelectWithICmpCond(Value *CondVal, Value *TrueVal,
 
 /// Try to simplify a select instruction when its condition operand is a
 /// floating-point comparison.
-static Value *simplifySelectWithFCmp(Value *Cond, Value *T, Value *F) {
+static Value *simplifySelectWithFCmp(Value *Cond, Value *T, Value *F,
+                                     const SimplifyQuery &Q) {
   FCmpInst::Predicate Pred;
   if (!match(Cond, m_FCmp(Pred, m_Specific(T), m_Specific(F))) &&
       !match(Cond, m_FCmp(Pred, m_Specific(F), m_Specific(T))))
     return nullptr;
 
-  // TODO: The transform may not be valid with -0.0. An incomplete way of
-  // testing for that possibility is to check if at least one operand is a
-  // non-zero constant.
+  // This transform is safe if we do not have (do not care about) -0.0 or if
+  // at least one operand is known to not be -0.0. Otherwise, the select can
+  // change the sign of a zero operand.
+  bool HasNoSignedZeros = Q.CxtI && isa<FPMathOperator>(Q.CxtI) &&
+                          Q.CxtI->hasNoSignedZeros();
   const APFloat *C;
-  if ((match(T, m_APFloat(C)) && C->isNonZero()) ||
-      (match(F, m_APFloat(C)) && C->isNonZero())) {
+  if (HasNoSignedZeros || (match(T, m_APFloat(C)) && C->isNonZero()) ||
+                          (match(F, m_APFloat(C)) && C->isNonZero())) {
     // (T == F) ? T : F --> F
     // (F == T) ? T : F --> F
     if (Pred == FCmpInst::FCMP_OEQ)
@@ -3965,7 +3974,7 @@ static Value *SimplifySelectInst(Value *Cond, Value *TrueVal, Value *FalseVal,
           simplifySelectWithICmpCond(Cond, TrueVal, FalseVal, Q, MaxRecurse))
     return V;
 
-  if (Value *V = simplifySelectWithFCmp(Cond, TrueVal, FalseVal))
+  if (Value *V = simplifySelectWithFCmp(Cond, TrueVal, FalseVal, Q))
     return V;
 
   if (Value *V = foldSelectWithBinaryOp(Cond, TrueVal, FalseVal))
@@ -4592,6 +4601,9 @@ static Value *SimplifyFSubInst(Value *Op0, Value *Op1, FastMathFlags FMF,
 
 static Value *SimplifyFMAFMul(Value *Op0, Value *Op1, FastMathFlags FMF,
                               const SimplifyQuery &Q, unsigned MaxRecurse) {
+  if (Constant *C = simplifyFPOp({Op0, Op1}))
+    return C;
+
   // fmul X, 1.0 ==> X
   if (match(Op1, m_FPOne()))
     return Op0;
@@ -4624,9 +4636,6 @@ static Value *SimplifyFMAFMul(Value *Op0, Value *Op1, FastMathFlags FMF,
 static Value *SimplifyFMulInst(Value *Op0, Value *Op1, FastMathFlags FMF,
                                const SimplifyQuery &Q, unsigned MaxRecurse) {
   if (Constant *C = foldOrCommuteConstant(Instruction::FMul, Op0, Op1, Q))
-    return C;
-
-  if (Constant *C = simplifyFPOp({Op0, Op1}))
     return C;
 
   // Now apply simplifications that do not require rounding.
@@ -5184,6 +5193,15 @@ static Value *simplifyIntrinsic(CallBase *Call, const SimplifyQuery &Q) {
       if (ShAmtC->urem(BitWidth).isNullValue())
         return Call->getArgOperand(IID == Intrinsic::fshl ? 0 : 1);
     }
+    return nullptr;
+  }
+  case Intrinsic::fma:
+  case Intrinsic::fmuladd: {
+    Value *Op0 = Call->getArgOperand(0);
+    Value *Op1 = Call->getArgOperand(1);
+    Value *Op2 = Call->getArgOperand(2);
+    if (Value *V = simplifyFPOp({ Op0, Op1, Op2 }))
+      return V;
     return nullptr;
   }
   default:

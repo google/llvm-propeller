@@ -309,7 +309,8 @@ static const Value *getNoopInput(const Value *V,
         NoopInput = Op;
     } else if (isa<TruncInst>(I) &&
                TLI.allowTruncateForTailCall(Op->getType(), I->getType())) {
-      DataBits = std::min(DataBits, I->getType()->getPrimitiveSizeInBits());
+      DataBits = std::min((uint64_t)DataBits,
+                         I->getType()->getPrimitiveSizeInBits().getFixedSize());
       NoopInput = Op;
     } else if (auto CS = ImmutableCallSite(I)) {
       const Value *ReturnedOp = CS.getReturnedArgOperand();
@@ -523,7 +524,8 @@ bool llvm::isInTailCallPosition(ImmutableCallSite CS, const TargetMachine &TM) {
   // longjmp on x86), it can end up causing miscompilation that has not
   // been fully understood.
   if (!Ret &&
-      (!TM.Options.GuaranteedTailCallOpt || !isa<UnreachableInst>(Term)))
+      ((!TM.Options.GuaranteedTailCallOpt &&
+        CS.getCallingConv() != CallingConv::Tail) || !isa<UnreachableInst>(Term)))
     return false;
 
   // If I will have a chain, make sure no other instruction that will have a
@@ -609,6 +611,22 @@ bool llvm::attributesPermitTailCall(const Function *F, const Instruction *I,
   return CallerAttrs == CalleeAttrs;
 }
 
+/// Check whether B is a bitcast of a pointer type to another pointer type,
+/// which is equal to A.
+static bool isPointerBitcastEqualTo(const Value *A, const Value *B) {
+  assert(A && B && "Expected non-null inputs!");
+
+  auto *BitCastIn = dyn_cast<BitCastInst>(B);
+
+  if (!BitCastIn)
+    return false;
+
+  if (!A->getType()->isPointerTy() || !B->getType()->isPointerTy())
+    return false;
+
+  return A == BitCastIn->getOperand(0);
+}
+
 bool llvm::returnTypeIsEligibleForTailCall(const Function *F,
                                            const Instruction *I,
                                            const ReturnInst *Ret,
@@ -641,7 +659,8 @@ bool llvm::returnTypeIsEligibleForTailCall(const Function *F,
           TLI.getLibcallName(RTLIB::MEMMOVE) == StringRef("memmove")) ||
          (IID == Intrinsic::memset &&
           TLI.getLibcallName(RTLIB::MEMSET) == StringRef("memset"))) &&
-        RetVal == Call->getArgOperand(0))
+        (RetVal == Call->getArgOperand(0) ||
+         isPointerBitcastEqualTo(RetVal, Call->getArgOperand(0))))
       return true;
   }
 

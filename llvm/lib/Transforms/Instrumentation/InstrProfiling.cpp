@@ -758,7 +758,6 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
   // of the parent function, that will result in relocations against discarded
   // sections.
   bool NeedComdat = needsComdatForCounter(*Fn, *M);
-  Comdat *Cmdt = nullptr; // Comdat group.
   if (NeedComdat) {
     if (TT.isOSBinFormatCOFF()) {
       // For COFF, put the counters, data, and values each into their own
@@ -767,14 +766,11 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
       // with the same name marked IMAGE_COMDAT_SELECT_ASSOCIATIVE.
       Linkage = GlobalValue::LinkOnceODRLinkage;
       Visibility = GlobalValue::HiddenVisibility;
-    } else {
-      // Otherwise, create one comdat group for everything.
-      Cmdt = M->getOrInsertComdat(getVarName(Inc, getInstrProfComdatPrefix()));
     }
   }
   auto MaybeSetComdat = [=](GlobalVariable *GV) {
     if (NeedComdat)
-      GV->setComdat(Cmdt ? Cmdt : M->getOrInsertComdat(GV->getName()));
+      GV->setComdat(M->getOrInsertComdat(GV->getName()));
   };
 
   uint64_t NumCounters = Inc->getNumCounters()->getZExtValue();
@@ -789,7 +785,7 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
   CounterPtr->setVisibility(Visibility);
   CounterPtr->setSection(
       getInstrProfSectionName(IPSK_cnts, TT.getObjectFormat()));
-  CounterPtr->setAlignment(8);
+  CounterPtr->setAlignment(Align(8));
   MaybeSetComdat(CounterPtr);
   CounterPtr->setLinkage(Linkage);
 
@@ -811,7 +807,7 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
       ValuesVar->setVisibility(Visibility);
       ValuesVar->setSection(
           getInstrProfSectionName(IPSK_vals, TT.getObjectFormat()));
-      ValuesVar->setAlignment(8);
+      ValuesVar->setAlignment(Align(8));
       MaybeSetComdat(ValuesVar);
       ValuesPtrExpr =
           ConstantExpr::getBitCast(ValuesVar, Type::getInt8PtrTy(Ctx));
@@ -844,7 +840,7 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
                                   getVarName(Inc, getInstrProfDataVarPrefix()));
   Data->setVisibility(Visibility);
   Data->setSection(getInstrProfSectionName(IPSK_data, TT.getObjectFormat()));
-  Data->setAlignment(INSTR_PROF_DATA_ALIGNMENT);
+  Data->setAlignment(Align(INSTR_PROF_DATA_ALIGNMENT));
   MaybeSetComdat(Data);
   Data->setLinkage(Linkage);
 
@@ -935,7 +931,7 @@ void InstrProfiling::emitNameData() {
   // On COFF, it's important to reduce the alignment down to 1 to prevent the
   // linker from inserting padding before the start of the names section or
   // between names entries.
-  NamesVar->setAlignment(1);
+  NamesVar->setAlignment(Align::None());
   UsedVars.push_back(NamesVar);
 
   for (auto *NamePtr : ReferencedNames)

@@ -24,16 +24,15 @@ Non-comprehensive list of changes in this release
 ELF Improvements
 ----------------
 
-* ...
+* Glob pattern, which you can use in linker scripts or version scripts,
+  now supports `\` and `[!...]`. Except character classes
+  (e.g. `[[:digit:]]`), lld's glob pattern should be fully compatible
+  with GNU now. (`r375051
+  <https://github.com/llvm/llvm-project/commit/48993d5ab9413f0e5b94dfa292a233ce55b09e3e>`_)
 
 COFF Improvements
 -----------------
 
-* /linkrepro: now takes the filename of the tar archive it writes, instead
-  of the name of a directory that a file called "repro.tar" is created in,
-  matching the behavior of ELF lld.
-* The new `/lldignoreenv` flag makes lld-link ignore environment variables
-  like `%LIB%`.
 * ...
 
 MinGW Improvements

@@ -27,6 +27,8 @@ class ELFDumper {
   typedef typename ELFT::Word Elf_Word;
   typedef typename ELFT::Rel Elf_Rel;
   typedef typename ELFT::Rela Elf_Rela;
+  using Elf_Nhdr = typename ELFT::Nhdr;
+  using Elf_Note = typename ELFT::Note;
 
   ArrayRef<Elf_Shdr> Sections;
   ArrayRef<Elf_Sym> SymTable;
@@ -41,6 +43,7 @@ class ELFDumper {
   Expected<StringRef> getUniquedSymbolName(const Elf_Sym *Sym,
                                            StringRef StrTable,
                                            const Elf_Shdr *SymTab);
+  Expected<StringRef> getSymbolName(uint32_t SymtabNdx, uint32_t SymbolNdx);
 
   const object::ELFFile<ELFT> &Obj;
   ArrayRef<Elf_Word> ShndxTable;
@@ -56,6 +59,7 @@ class ELFDumper {
   Error dumpRelocation(const RelT *Rel, const Elf_Shdr *SymTab,
                        ELFYAML::Relocation &R);
 
+  Expected<ELFYAML::AddrsigSection *> dumpAddrsigSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::DynamicSection *> dumpDynamicSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::RelocationSection *> dumpRelocSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::RawContentSection *>
@@ -63,6 +67,9 @@ class ELFDumper {
   Expected<ELFYAML::SymtabShndxSection *>
   dumpSymtabShndxSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::NoBitsSection *> dumpNoBitsSection(const Elf_Shdr *Shdr);
+  Expected<ELFYAML::HashSection *> dumpHashSection(const Elf_Shdr *Shdr);
+  Expected<ELFYAML::NoteSection *> dumpNoteSection(const Elf_Shdr *Shdr);
+  Expected<ELFYAML::GnuHashSection *> dumpGnuHashSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::VerdefSection *> dumpVerdefSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::SymverSection *> dumpSymverSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::VerneedSection *> dumpVerneedSection(const Elf_Shdr *Shdr);
@@ -197,9 +204,13 @@ template <class ELFT> Expected<ELFYAML::Object *> ELFDumper<ELFT>::dump() {
       return TableOrErr.takeError();
     ShndxTable = *TableOrErr;
   }
-  if (SymTab)
-    if (Error E = dumpSymbols(SymTab, Y->Symbols))
+
+  if (SymTab) {
+    Y->Symbols.emplace();
+    if (Error E = dumpSymbols(SymTab, *Y->Symbols))
       return std::move(E);
+  }
+
   if (DynSymTab)
     if (Error E = dumpSymbols(DynSymTab, Y->DynamicSymbols))
       return std::move(E);
@@ -255,6 +266,27 @@ template <class ELFT> Expected<ELFYAML::Object *> ELFDumper<ELFT>::dump() {
       Y->Sections.emplace_back(*SecOrErr);
       break;
     }
+    case ELF::SHT_NOTE: {
+      Expected<ELFYAML::NoteSection *> SecOrErr = dumpNoteSection(&Sec);
+      if (!SecOrErr)
+        return SecOrErr.takeError();
+      Y->Sections.emplace_back(*SecOrErr);
+      break;
+    }
+    case ELF::SHT_HASH: {
+      Expected<ELFYAML::HashSection *> SecOrErr = dumpHashSection(&Sec);
+      if (!SecOrErr)
+        return SecOrErr.takeError();
+      Y->Sections.emplace_back(*SecOrErr);
+      break;
+    }
+    case ELF::SHT_GNU_HASH: {
+      Expected<ELFYAML::GnuHashSection *> SecOrErr = dumpGnuHashSection(&Sec);
+      if (!SecOrErr)
+        return SecOrErr.takeError();
+      Y->Sections.emplace_back(*SecOrErr);
+      break;
+    }
     case ELF::SHT_GNU_verdef: {
       Expected<ELFYAML::VerdefSection *> SecOrErr = dumpVerdefSection(&Sec);
       if (!SecOrErr)
@@ -271,6 +303,13 @@ template <class ELFT> Expected<ELFYAML::Object *> ELFDumper<ELFT>::dump() {
     }
     case ELF::SHT_GNU_verneed: {
       Expected<ELFYAML::VerneedSection *> SecOrErr = dumpVerneedSection(&Sec);
+      if (!SecOrErr)
+        return SecOrErr.takeError();
+      Y->Sections.emplace_back(*SecOrErr);
+      break;
+    }
+    case ELF::SHT_LLVM_ADDRSIG: {
+      Expected<ELFYAML::AddrsigSection *> SecOrErr = dumpAddrsigSection(&Sec);
       if (!SecOrErr)
         return SecOrErr.takeError();
       Y->Sections.emplace_back(*SecOrErr);
@@ -388,27 +427,25 @@ Error ELFDumper<ELFT>::dumpRelocation(const RelT *Rel, const Elf_Shdr *SymTab,
   auto SymOrErr = Obj.getRelocationSymbol(Rel, SymTab);
   if (!SymOrErr)
     return SymOrErr.takeError();
+
+  // We have might have a relocation with symbol index 0,
+  // e.g. R_X86_64_NONE or R_X86_64_GOTPC32.
   const Elf_Sym *Sym = *SymOrErr;
+  if (!Sym)
+    return Error::success();
+
   auto StrTabSec = Obj.getSection(SymTab->sh_link);
   if (!StrTabSec)
     return StrTabSec.takeError();
   auto StrTabOrErr = Obj.getStringTable(*StrTabSec);
   if (!StrTabOrErr)
     return StrTabOrErr.takeError();
-  StringRef StrTab = *StrTabOrErr;
 
-  if (Sym) {
-    Expected<StringRef> NameOrErr = getUniquedSymbolName(Sym, StrTab, SymTab);
-    if (!NameOrErr)
-      return NameOrErr.takeError();
-    R.Symbol = NameOrErr.get();
-  } else {
-    // We have some edge cases of relocations without a symbol associated,
-    // e.g. an object containing the invalid (according to the System V
-    // ABI) R_X86_64_NONE reloc. Create a symbol with an empty name instead
-    // of crashing.
-    R.Symbol = "";
-  }
+  Expected<StringRef> NameOrErr =
+      getUniquedSymbolName(Sym, *StrTabOrErr, SymTab);
+  if (!NameOrErr)
+    return NameOrErr.takeError();
+  R.Symbol = NameOrErr.get();
 
   return Error::success();
 }
@@ -508,6 +545,46 @@ ELFDumper<ELFT>::dumpStackSizesSection(const Elf_Shdr *Shdr) {
     S->Entries = std::move(Entries);
   }
 
+  return S.release();
+}
+
+template <class ELFT>
+Expected<ELFYAML::AddrsigSection *>
+ELFDumper<ELFT>::dumpAddrsigSection(const Elf_Shdr *Shdr) {
+  auto S = std::make_unique<ELFYAML::AddrsigSection>();
+  if (Error E = dumpCommonSection(Shdr, *S))
+    return std::move(E);
+
+  auto ContentOrErr = Obj.getSectionContents(Shdr);
+  if (!ContentOrErr)
+    return ContentOrErr.takeError();
+
+  ArrayRef<uint8_t> Content = *ContentOrErr;
+  DataExtractor::Cursor Cur(0);
+  DataExtractor Data(Content, Obj.isLE(), /*AddressSize=*/0);
+  std::vector<ELFYAML::AddrsigSymbol> Symbols;
+  while (Cur && Cur.tell() < Content.size()) {
+    uint64_t SymNdx = Data.getULEB128(Cur);
+    if (!Cur)
+      break;
+
+    Expected<StringRef> SymbolName = getSymbolName(Shdr->sh_link, SymNdx);
+    if (!SymbolName || SymbolName->empty()) {
+      consumeError(SymbolName.takeError());
+      Symbols.emplace_back(SymNdx);
+      continue;
+    }
+
+    Symbols.emplace_back(*SymbolName);
+  }
+
+  if (Cur) {
+    S->Symbols = std::move(Symbols);
+    return S.release();
+  }
+
+  consumeError(Cur.takeError());
+  S->Content = yaml::BinaryRef(Content);
   return S.release();
 }
 
@@ -614,6 +691,134 @@ ELFDumper<ELFT>::dumpNoBitsSection(const Elf_Shdr *Shdr) {
   S->Size = Shdr->sh_size;
 
   return S.release();
+}
+
+template <class ELFT>
+Expected<ELFYAML::NoteSection *>
+ELFDumper<ELFT>::dumpNoteSection(const Elf_Shdr *Shdr) {
+  auto S = std::make_unique<ELFYAML::NoteSection>();
+  if (Error E = dumpCommonSection(Shdr, *S))
+    return std::move(E);
+
+  auto ContentOrErr = Obj.getSectionContents(Shdr);
+  if (!ContentOrErr)
+    return ContentOrErr.takeError();
+
+  std::vector<ELFYAML::NoteEntry> Entries;
+  ArrayRef<uint8_t> Content = *ContentOrErr;
+  while (!Content.empty()) {
+    if (Content.size() < sizeof(Elf_Nhdr)) {
+      S->Content = yaml::BinaryRef(*ContentOrErr);
+      return S.release();
+    }
+
+    const Elf_Nhdr *Header = reinterpret_cast<const Elf_Nhdr *>(Content.data());
+    if (Content.size() < Header->getSize()) {
+      S->Content = yaml::BinaryRef(*ContentOrErr);
+      return S.release();
+    }
+
+    Elf_Note Note(*Header);
+    Entries.push_back(
+        {Note.getName(), Note.getDesc(), (llvm::yaml::Hex32)Note.getType()});
+
+    Content = Content.drop_front(Header->getSize());
+  }
+
+  S->Notes = std::move(Entries);
+  return S.release();
+}
+
+template <class ELFT>
+Expected<ELFYAML::HashSection *>
+ELFDumper<ELFT>::dumpHashSection(const Elf_Shdr *Shdr) {
+  auto S = std::make_unique<ELFYAML::HashSection>();
+  if (Error E = dumpCommonSection(Shdr, *S))
+    return std::move(E);
+
+  auto ContentOrErr = Obj.getSectionContents(Shdr);
+  if (!ContentOrErr)
+    return ContentOrErr.takeError();
+
+  ArrayRef<uint8_t> Content = *ContentOrErr;
+  if (Content.size() % 4 != 0 || Content.size() < 8) {
+    S->Content = yaml::BinaryRef(Content);
+    return S.release();
+  }
+
+  DataExtractor::Cursor Cur(0);
+  DataExtractor Data(Content, Obj.isLE(), /*AddressSize=*/0);
+  uint32_t NBucket = Data.getU32(Cur);
+  uint32_t NChain = Data.getU32(Cur);
+  if (Content.size() != (2 + NBucket + NChain) * 4) {
+    S->Content = yaml::BinaryRef(Content);
+    if (Cur)
+      return S.release();
+    llvm_unreachable("entries were not read correctly");
+  }
+
+  S->Bucket.emplace(NBucket);
+  for (uint32_t &V : *S->Bucket)
+    V = Data.getU32(Cur);
+
+  S->Chain.emplace(NChain);
+  for (uint32_t &V : *S->Chain)
+    V = Data.getU32(Cur);
+
+  if (Cur)
+    return S.release();
+  llvm_unreachable("entries were not read correctly");
+}
+
+template <class ELFT>
+Expected<ELFYAML::GnuHashSection *>
+ELFDumper<ELFT>::dumpGnuHashSection(const Elf_Shdr *Shdr) {
+  auto S = std::make_unique<ELFYAML::GnuHashSection>();
+  if (Error E = dumpCommonSection(Shdr, *S))
+    return std::move(E);
+
+  auto ContentOrErr = Obj.getSectionContents(Shdr);
+  if (!ContentOrErr)
+    return ContentOrErr.takeError();
+
+  unsigned AddrSize = ELFT::Is64Bits ? 8 : 4;
+  ArrayRef<uint8_t> Content = *ContentOrErr;
+  DataExtractor Data(Content, Obj.isLE(), AddrSize);
+
+  ELFYAML::GnuHashHeader Header;
+  DataExtractor::Cursor Cur(0);
+  uint32_t NBuckets = Data.getU32(Cur);
+  Header.SymNdx = Data.getU32(Cur);
+  uint32_t MaskWords = Data.getU32(Cur);
+  Header.Shift2 = Data.getU32(Cur);
+
+  // Set just the raw binary content if we were unable to read the header
+  // or when the section data is truncated or malformed.
+  uint64_t Size = Data.getData().size() - Cur.tell();
+  if (!Cur || (Size < MaskWords * AddrSize + NBuckets * 4) ||
+      (Size % 4 != 0)) {
+    consumeError(Cur.takeError());
+    S->Content = yaml::BinaryRef(Content);
+    return S.release();
+  }
+
+  S->Header = Header;
+
+  S->BloomFilter.emplace(MaskWords);
+  for (llvm::yaml::Hex64 &Val : *S->BloomFilter)
+    Val = Data.getAddress(Cur);
+
+  S->HashBuckets.emplace(NBuckets);
+  for (llvm::yaml::Hex32 &Val : *S->HashBuckets)
+    Val = Data.getU32(Cur);
+
+  S->HashValues.emplace((Data.getData().size() - Cur.tell()) / 4);
+  for (llvm::yaml::Hex32 &Val : *S->HashValues)
+    Val = Data.getU32(Cur);
+
+  if (Cur)
+    return S.release();
+  llvm_unreachable("GnuHashSection was not read correctly");
 }
 
 template <class ELFT>
@@ -742,25 +947,31 @@ ELFDumper<ELFT>::dumpVerneedSection(const Elf_Shdr *Shdr) {
 }
 
 template <class ELFT>
+Expected<StringRef> ELFDumper<ELFT>::getSymbolName(uint32_t SymtabNdx,
+                                                   uint32_t SymbolNdx) {
+  auto SymtabOrErr = Obj.getSection(SymtabNdx);
+  if (!SymtabOrErr)
+    return SymtabOrErr.takeError();
+
+  const Elf_Shdr *Symtab = *SymtabOrErr;
+  auto SymOrErr = Obj.getSymbol(Symtab, SymbolNdx);
+  if (!SymOrErr)
+    return SymOrErr.takeError();
+
+  auto StrTabOrErr = Obj.getStringTableForSymtab(*Symtab);
+  if (!StrTabOrErr)
+    return StrTabOrErr.takeError();
+  return getUniquedSymbolName(*SymOrErr, *StrTabOrErr, Symtab);
+}
+
+template <class ELFT>
 Expected<ELFYAML::Group *> ELFDumper<ELFT>::dumpGroup(const Elf_Shdr *Shdr) {
   auto S = std::make_unique<ELFYAML::Group>();
   if (Error E = dumpCommonSection(Shdr, *S))
     return std::move(E);
 
-  auto SymtabOrErr = Obj.getSection(Shdr->sh_link);
-  if (!SymtabOrErr)
-    return SymtabOrErr.takeError();
-  // Get symbol with index sh_info which name is the signature of the group.
-  const Elf_Shdr *Symtab = *SymtabOrErr;
-  auto SymOrErr = Obj.getSymbol(Symtab, Shdr->sh_info);
-  if (!SymOrErr)
-    return SymOrErr.takeError();
-  auto StrTabOrErr = Obj.getStringTableForSymtab(*Symtab);
-  if (!StrTabOrErr)
-    return StrTabOrErr.takeError();
-
-  Expected<StringRef> SymbolName =
-      getUniquedSymbolName(*SymOrErr, *StrTabOrErr, Symtab);
+  // Get symbol with index sh_info. This symbol's name is the signature of the group.
+  Expected<StringRef> SymbolName = getSymbolName(Shdr->sh_link, Shdr->sh_info);
   if (!SymbolName)
     return SymbolName.takeError();
   S->Signature = *SymbolName;

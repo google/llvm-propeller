@@ -139,17 +139,12 @@ static const char *const DbgTimerDescription = "Debug Info Emission";
 static const char *const EHTimerName = "write_exception";
 static const char *const EHTimerDescription = "DWARF Exception Writer";
 static const char *const CFGuardName = "Control Flow Guard";
-static const char *const CFGuardDescription = "Control Flow Guard Tables";
+static const char *const CFGuardDescription = "Control Flow Guard";
 static const char *const CodeViewLineTablesGroupName = "linetables";
 static const char *const CodeViewLineTablesGroupDescription =
   "CodeView Line Tables";
 
 STATISTIC(EmittedInsts, "Number of machine instrs printed");
-
-static cl::opt<bool> EnableRemarksSection(
-    "remarks-section",
-    cl::desc("Emit a section containing remark diagnostics metadata"),
-    cl::init(false));
 
 char AsmPrinter::ID = 0;
 
@@ -250,13 +245,14 @@ const MCSection *AsmPrinter::getCurrentSection() const {
 void AsmPrinter::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   MachineFunctionPass::getAnalysisUsage(AU);
-  AU.addRequired<MachineModuleInfo>();
+  AU.addRequired<MachineModuleInfoWrapperPass>();
   AU.addRequired<MachineOptimizationRemarkEmitterPass>();
   AU.addRequired<GCModuleInfo>();
 }
 
 bool AsmPrinter::doInitialization(Module &M) {
-  MMI = getAnalysisIfAvailable<MachineModuleInfo>();
+  auto *MMIWP = getAnalysisIfAvailable<MachineModuleInfoWrapperPass>();
+  MMI = MMIWP ? &MMIWP->getMMI() : nullptr;
 
   // Initialize TargetLoweringObjectFile.
   const_cast<TargetLoweringObjectFile&>(getObjFileLowering())
@@ -380,12 +376,12 @@ bool AsmPrinter::doInitialization(Module &M) {
                           EHTimerDescription, DWARFGroupName,
                           DWARFGroupDescription);
 
+  // Emit tables for any value of cfguard flag (i.e. cfguard=1 or cfguard=2).
   if (mdconst::extract_or_null<ConstantInt>(
-          MMI->getModule()->getModuleFlag("cfguardtable")))
+          MMI->getModule()->getModuleFlag("cfguard")))
     Handlers.emplace_back(std::make_unique<WinCFGuard>(this), CFGuardName,
                           CFGuardDescription, DWARFGroupName,
                           DWARFGroupDescription);
-
   return false;
 }
 
@@ -941,7 +937,7 @@ AsmPrinter::CFIMoveType AsmPrinter::needsCFIMoves() const {
       MF->getFunction().needsUnwindTableEntry())
     return CFI_M_EH;
 
-  if (MMI->hasDebugInfo())
+  if (MMI->hasDebugInfo() || MF->getTarget().Options.ForceDwarfFrameSection)
     return CFI_M_Debug;
 
   return CFI_M_None;
@@ -1386,14 +1382,14 @@ void AsmPrinter::emitGlobalIndirectSymbol(Module &M,
   }
 }
 
-void AsmPrinter::emitRemarksSection(Module &M) {
-  RemarkStreamer *RS = M.getContext().getRemarkStreamer();
-  if (!RS)
+void AsmPrinter::emitRemarksSection(RemarkStreamer &RS) {
+  if (!RS.needsSection())
     return;
-  remarks::RemarkSerializer &RemarkSerializer = RS->getSerializer();
+
+  remarks::RemarkSerializer &RemarkSerializer = RS.getSerializer();
 
   Optional<SmallString<128>> Filename;
-  if (Optional<StringRef> FilenameRef = RS->getFilename()) {
+  if (Optional<StringRef> FilenameRef = RS.getFilename()) {
     Filename = *FilenameRef;
     sys::fs::make_absolute(*Filename);
     assert(!Filename->empty() && "The filename can't be empty.");
@@ -1406,7 +1402,7 @@ void AsmPrinter::emitRemarksSection(Module &M) {
                : RemarkSerializer.metaSerializer(OS);
   MetaSerializer->emit();
 
-  // Switch to the right section: .remarks/__remarks.
+  // Switch to the remarks section.
   MCSection *RemarksSection =
       OutContext.getObjectFileInfo()->getRemarksSection();
   OutStreamer->SwitchSection(RemarksSection);
@@ -1448,8 +1444,8 @@ bool AsmPrinter::doFinalization(Module &M) {
   // Emit the remarks section contents.
   // FIXME: Figure out when is the safest time to emit this section. It should
   // not come after debug info.
-  if (EnableRemarksSection)
-    emitRemarksSection(M);
+  if (RemarkStreamer *RS = M.getContext().getRemarkStreamer())
+    emitRemarksSection(*RS);
 
   const TargetLoweringObjectFile &TLOF = getObjFileLowering();
 
@@ -2505,6 +2501,7 @@ static void emitGlobalConstantStruct(const DataLayout &DL,
 }
 
 static void emitGlobalConstantFP(APFloat APF, Type *ET, AsmPrinter &AP) {
+  assert(ET && "Unknown float type");
   APInt API = APF.bitcastToAPInt();
 
   // First print a comment with what we think the original floating-point value
@@ -2512,11 +2509,7 @@ static void emitGlobalConstantFP(APFloat APF, Type *ET, AsmPrinter &AP) {
   if (AP.isVerbose()) {
     SmallString<8> StrVal;
     APF.toString(StrVal);
-
-    if (ET)
-      ET->print(AP.OutStreamer->GetCommentOS());
-    else
-      AP.OutStreamer->GetCommentOS() << "Printing <null> Type";
+    ET->print(AP.OutStreamer->GetCommentOS());
     AP.OutStreamer->GetCommentOS() << ' ' << StrVal << '\n';
   }
 

@@ -93,7 +93,7 @@ EnableMachineCombinerPass("ppc-machine-combiner",
 static cl::opt<bool>
   ReduceCRLogical("ppc-reduce-cr-logicals",
                   cl::desc("Expand eligible cr-logical binary ops to branches"),
-                  cl::init(false), cl::Hidden);
+                  cl::init(true), cl::Hidden);
 extern "C" void LLVMInitializePowerPCTarget() {
   // Register the targets
   RegisterTargetMachine<PPCTargetMachine> A(getThePPC32Target());
@@ -119,6 +119,7 @@ extern "C" void LLVMInitializePowerPCTarget() {
   initializePPCPreEmitPeepholePass(PR);
   initializePPCTLSDynamicCallPass(PR);
   initializePPCMIPeepholePass(PR);
+  initializePPCLowerMASSVEntriesPass(PR);
 }
 
 /// Return the datalayout string of a subtarget.
@@ -401,6 +402,9 @@ void PPCPassConfig::addIRPasses() {
     addPass(createPPCBoolRetToIntPass());
   addPass(createAtomicExpandPass());
 
+  // Lower generic MASSV routines to PowerPC subtarget-specific entries.
+  addPass(createPPCLowerMASSVEntriesPass());
+  
   // For the BG/Q (or if explicitly requested), add explicit data prefetch
   // intrinsics.
   bool UsePrefetching = TM->getTargetTriple().getVendor() == Triple::BGQ &&

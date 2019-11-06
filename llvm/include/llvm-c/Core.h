@@ -69,6 +69,7 @@ typedef enum {
 
   /* Standard Unary Operators */
   LLVMFNeg           = 66,
+  LLVMFreeze         = 68,
 
   /* Standard Binary Operators */
   LLVMAdd            = 8,
@@ -1543,6 +1544,7 @@ LLVMTypeRef LLVMX86MMXType(void);
           macro(GlobalVariable)             \
       macro(UndefValue)                     \
     macro(Instruction)                      \
+      macro(UnaryOperator)                  \
       macro(BinaryOperator)                 \
       macro(CallInst)                       \
         macro(IntrinsicInst)                \
@@ -3746,6 +3748,7 @@ LLVMValueRef LLVMBuildNUWNeg(LLVMBuilderRef B, LLVMValueRef V,
                              const char *Name);
 LLVMValueRef LLVMBuildFNeg(LLVMBuilderRef, LLVMValueRef V, const char *Name);
 LLVMValueRef LLVMBuildNot(LLVMBuilderRef, LLVMValueRef V, const char *Name);
+LLVMValueRef LLVMBuildFreeze(LLVMBuilderRef, LLVMValueRef V, const char *Name);
 
 /* Memory */
 LLVMValueRef LLVMBuildMalloc(LLVMBuilderRef, LLVMTypeRef Ty, const char *Name);

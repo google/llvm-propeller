@@ -15,7 +15,9 @@
 // Unary ops.
 //------------------------------------------------------------------------------
 
-class GenericInstruction : StandardPseudoInstruction;
+class GenericInstruction : StandardPseudoInstruction {
+  let isPreISelOpcode = 1;
+}
 
 // Extend the underlying scalar type of an operation, leaving the high bits
 // unspecified.
@@ -328,7 +330,7 @@ def G_SELECT : GenericInstruction {
 }
 
 // Generic pointer offset.
-def G_GEP : GenericInstruction {
+def G_PTR_ADD : GenericInstruction {
   let OutOperandList = (outs type0:$dst);
   let InOperandList = (ins type0:$src1, type1:$src2);
   let hasSideEffects = 0;
@@ -668,7 +670,7 @@ def G_FEXP2 : GenericInstruction {
   let hasSideEffects = 0;
 }
 
-// Floating point base-2 logarithm of a value.
+// Floating point base-e logarithm of a value.
 def G_FLOG : GenericInstruction {
   let OutOperandList = (outs type0:$dst);
   let InOperandList = (ins type0:$src1);
