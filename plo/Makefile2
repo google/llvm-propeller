@@ -14,12 +14,13 @@ paths.mk :
 	fi
 
 include paths.mk
+ifeq '${CREATE_LLVM_PROF_DIR}' ''
+CREATE_LLVM_PROF_DIR=$(shell pwd)/..
+endif
+
 check_environment: paths.mk
 	@if [[ ! -e "${RELEASE_LLVM_BIN}/clang" ]] || \
-	    [[ ! -e "${BOLT}" ]] || \
-	    [[ ! -e "${PERF2BOLT}" ]] || \
-	    [[ ! -d "${CREATE_LLVM_PROF_DIR}" ]] || \
-	    [[ ! -d "${PROTOBUF_PREFIX}" ]] ; then \
+	    [[ ! -d "${CREATE_LLVM_PROF_DIR}" ]] ; then \
 	  echo "Invalid entries found in \"paths.mk\", please check." ; \
 	  exit 1 ; \
 	fi
@@ -75,13 +76,19 @@ endif
 # $2 is any other cmake flags (optional)
 # $3 is llvm enabled projects
 # $4 is target
+# $5 is Release / Debug / RelWithDebInfo
 define build_compiler
 	export COMP_DIR=$$(echo $@ | sed -Ee 's!([^/]+)/.*!\1!') ; \
+        if [[ -z "$(5)" ]]; then                                   \
+           BuildType="Release" ;                                   \
+        else                                                       \
+           BuildType="$(5)" ;                                      \
+        fi ;                                                       \
 	if [[ ! -e "$${COMP_DIR}/build/CMakeCache.txt" ]]; then    \
 	  mkdir -p $${COMP_DIR}/build ;                            \
 	  pushd $${COMP_DIR}/build && cmake -G Ninja               \
             -DCMAKE_INSTALL_PREFIX=$(DDIR)/$${COMP_DIR}/install    \
-	    -DCMAKE_BUILD_TYPE=Release                             \
+	    -DCMAKE_BUILD_TYPE=$${BuildType}                       \
             -DLLVM_OPTIMIZED_TABLEGEN=On                           \
             -DLLVM_TARGETS_TO_BUILD="X86"                          \
 	    -DLLVM_USE_LINKER="lld"	                           \
@@ -99,7 +106,7 @@ define build_compiler
 endef
 
 ##
-COMPILERS=stage_pgo pgo_relocs pgo_vanilla pgo_labels pgo_plolist pgo_ploall
+COMPILERS=stage_pgo debug protobuf pgo_relocs pgo_vanilla pgo_labels pgo_plolist pgo_ploall
 
 comma := ,
 
@@ -109,6 +116,15 @@ stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
 stage1-compiler: stage1/install/bin/clang
 	ln -sf $< $@
 	touch $@
+
+debug/build/bin/clang-10: check_environment $(LLVM_SOURCE)
+	$(call build_compiler,$(RELEASE_LLVM_BIN),,"clang;compiler-rt;lld",clang lld,Debug)
+
+protobuf/build/bin/clang-10: check_environment $(LLVM_SOURCE)
+	if [[ ! -d "$(PROTOBUF_PREFIX)" ]]; then \
+	  echo "Invalid PROTOBUF_PREFIX in paths.mk." ; exit 1 ; \
+	fi
+	$(call build_compiler,$(RELEASE_LLVM_BIN),-DProtobuf_PROTOC_EXECUTABLE=$(PROTOBUF_PREFIX)/bin/protoc -DProtobuf_INCLUDE_DIR=$(PROTOBUF_PREFIX)/include -DProtobuf_LIBRARY=$(PROTOBUF_PREFIX)/lib/libprotobuf.so,"clang;compiler-rt;lld",clang lld,Release)
 
 stage_pgo/build/bin/clang-10: | stage1-compiler
 	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;lld",all)
