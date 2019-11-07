@@ -179,7 +179,7 @@ run-commands.sh: | stage1-compiler
 	chmod +x $@
 
 benchmark-stage1 benchmark-pgo_vanilla benchmark-pgo_plolist benchmark-pgo_ploall: benchmark-%: %-compiler run-commands.sh
-	/usr/bin/time --format "USER:%U SYS:%S WALL:%e STATUS:%x" ./run-commands.sh $(shell readlink -f $<)
+	/usr/bin/time --format "$<: USER:%U SYS:%S WALL:%e STATUS:%x" ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -F "$<: USER:"
 
 clean:
 	rm -fr $(foreach C,$(COMPILERS),$(C)-compiler $(C)/ $(C)-compiler.perfdata{,.old} $(C)-compiler.yaml)

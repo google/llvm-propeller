@@ -53,7 +53,7 @@
 namespace lld {
 namespace propeller {
 
-Propeller::Propeller(lld::elf::SymbolTable *ST) : Symtab(ST), Propf(nullptr) {}
+Propeller::Propeller() : Propf(nullptr) {}
 
 Propeller::~Propeller() {}
 

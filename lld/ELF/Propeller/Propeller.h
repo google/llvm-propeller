@@ -119,10 +119,6 @@
 #include <vector>
 
 namespace lld {
-namespace elf {
-class SymbolTable;
-}
-
 namespace propeller {
 
 class ControlFlowGraph;
@@ -274,7 +270,7 @@ public:
 
 class Propeller {
 public:
-  Propeller(lld::elf::SymbolTable *ST);
+  Propeller();
   ~Propeller();
 
   // Returns true if linker output target matches propeller profile.
@@ -297,8 +293,6 @@ public:
   static ObjectView *createObjectView(const StringRef &vN,
                                       const uint32_t ordinal,
                                       const MemoryBufferRef &fR);
-
-  lld::elf::SymbolTable *Symtab;
 
   std::vector<std::unique_ptr<ObjectView>> Views;
   // Same named CFGs may exist in different object files (e.g. weak
