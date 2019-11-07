@@ -65,12 +65,6 @@ gen_lld_flags = -DCMAKE_EXE_LINKER_FLAGS=$(1) -DCMAKE_SHARED_LINKER_FLAGS=$(1) -
 
 gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) $(call gen_lld_flags,$(2))
 
-ifdef PROTOBUF_PREFIX
-cmake_protobuf_statements := -DProtobuf_PROTOC_EXECUTABLE=$(PROTOBUF_PREFIX)/bin/protoc -DProtobuf_INCLUDE_DIR=$(PROTOBUF_PREFIX)/include -DProtobuf_LIBRARY=$(PROTOBUF_PREFIX)/lib/libprotobuf.so
-else
-cmake_protobuf_statements :=
-endif
-
 # $1 is bin directory that is used to build the compiler, must be absolute path.
 # $2 is any other cmake flags (optional)
 # $3 is llvm enabled projects

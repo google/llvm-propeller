@@ -10,7 +10,6 @@ paths.mk :
 		echo "CREATE_LLVM_PROF_DIR=.." >> $@ ; \
 		echo "BOLT=/path/to/llvm-bolt" >> $@ ; \
 		echo "PERF2BOLT=/path/to/perf2bolt" >> $@ ; \
-		echo "PROTOBUF_PREFIX=" >> $@ ; \
 	fi
 
 include paths.mk
@@ -114,12 +113,6 @@ lto_bb_sections_all        := -Wl,--lto-basicblock-sections=all
 bb_section_all_flags        = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all)")
 bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1)","-fuse-ld=lld -fpropeller-optimize=$(1)")
 
-ifdef PROTOBUF_PREFIX
-cmake_protobuf_statements := -DProtobuf_PROTOC_EXECUTABLE=$(PROTOBUF_PREFIX)/bin/protoc -DProtobuf_INCLUDE_DIR=$(PROTOBUF_PREFIX)/include -DProtobuf_LIBRARY=$(PROTOBUF_PREFIX)/lib/libprotobuf.so
-else
-cmake_protobuf_statements :=
-endif
-
 # $1 is compiler name, "stage1", "instrbb", etc;
 # $2 is bin directory that is used to build the compiler, must be absolute path.
 # $3 is any other cmake flags (optional)
@@ -130,7 +123,6 @@ define build_compiler
 	  mkdir -p $(1)/build ;                         \
 	  cd $(1)/build && cmake -G Ninja               \
             -DCMAKE_INSTALL_PREFIX=$(DDIR)/$(1)/install \
-	    $(cmake_protobuf_statements)                \
 	    -DCMAKE_BUILD_TYPE=Release                  \
             -DLLVM_OPTIMIZED_TABLEGEN=On                \
             -DLLVM_TARGETS_TO_BUILD="X86"               \
@@ -444,14 +436,3 @@ clean: clean-sample
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
-
-
-
-#############
-PROTOBUF_THINGS := $(addprefix ../lld/ELF/Propeller/,cfg.pb.h cfg.pb.cc)
-
-../lld/ELF/Propeller/cfg.pb.cc ../lld/ELF/Propeller/cfg.pb.h: cfg.proto $(PROTOBUF_PREFIX)/bin/protoc
-	LD_LIBRARY_PATH=$(PROTOBUF_PREFIX)/lib $(lastword $^) -I=$(DDIR) --cpp_out=$(dir $@) $(DDIR)/$<
-
-proto: $(PROTOBUF_THINGS)
-	touch $@
