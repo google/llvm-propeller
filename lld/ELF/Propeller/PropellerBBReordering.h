@@ -8,7 +8,8 @@
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
-#include "PropellerCfg.h"
+#include "PropellerConfig.h"
+#include "PropellerCFG.h"
 
 #include "lld/Common/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
@@ -18,7 +19,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-using lld::elf::config;
 using llvm::DenseMap;
 
 namespace lld {
@@ -160,9 +160,10 @@ private:
 public:
   NodeChainBuilder(const ControlFlowGraph *_CFG, Propeller &_Prop)
       : CFG(_CFG), Prop(_Prop) {
-    DebugCFG = std::find(config->propellerDebugSymbols.begin(),
-                         config->propellerDebugSymbols.end(),
-                         CFG->Name.str()) != config->propellerDebugSymbols.end();
+    DebugCFG =
+        std::find(propellerConfig.optDebugSymbols.begin(),
+                  propellerConfig.optDebugSymbols.end(),
+                  CFG->Name.str()) != propellerConfig.optDebugSymbols.end();
     initNodeChains();
     initMutuallyForcedEdges();
   }

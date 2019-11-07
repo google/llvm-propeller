@@ -27,10 +27,11 @@
 #include "ICF.h"
 #include "InputFiles.h"
 #include "InputSection.h"
+#include "LinkerPropeller.h"
 #include "LinkerScript.h"
 #include "MarkLive.h"
 #include "OutputSections.h"
-#include "Propeller.h"
+#include "Propeller/Propeller.h"
 #include "ScriptParser.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
@@ -1989,16 +1990,23 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
       inputSections.push_back(cast<InputSection>(s));
 
   if (!config->propeller.empty()) {
+    lld::propeller::setupConfig();
     lld::propeller::Propeller P(symtab);
     if (P.checkTarget()) {
-      if (P.processFiles(objectFiles)) {
+      std::vector<lld::propeller::ObjectView *> objectViews;
+      std::for_each(objectFiles.begin(), objectFiles.end(),
+                    [&objectViews](const lld::elf::InputFile *inf) {
+                      auto *ov = lld::propeller::Propeller::createObjectView(
+                          inf->getName(), objectViews.size() + 1, inf->mb);
+                      if (ov)
+                        objectViews.push_back(ov);
+                    });
+      if (P.processFiles(objectViews))
         config->symbolOrderingFile = P.genSymbolOrderingFile();
-      } else {
+      else
         error("Propeller stage failed.");
-      }
-    } else {
+    } else
       warn("[Propeller]: Propeller skipped '" + config->outputFile + "'.");
-    }
   }
 
   if (!config->symbolAlignmentFile.empty()) {

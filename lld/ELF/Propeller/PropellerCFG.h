@@ -208,9 +208,6 @@ protected:
 // ObjectView is a structure that corresponds to a single ELF file.
 class ObjectView {
 public:
-  static ObjectView *create(const StringRef &vN, const uint32_t ordinal,
-                            const MemoryBufferRef &fR);
-
   ObjectView(std::unique_ptr<ObjectFile> &vF, const StringRef &vN,
              const uint32_t vO, const MemoryBufferRef &fR)
       : ViewFile(std::move(vF)), ViewName(vN), Ordinal(vO), FileRef(fR),

@@ -25,14 +25,12 @@
 //===----------------------------------------------------------------------===//
 #include "PropellerFuncOrdering.h"
 
-#include "Config.h"
 #include "Propeller.h"
-#include "PropellerCfg.h"
+#include "PropellerConfig.h"
+#include "PropellerCFG.h"
 
 #include <algorithm>
 #include <map>
-
-using lld::elf::config;
 
 namespace lld {
 namespace propeller {
@@ -114,7 +112,7 @@ void CallChainClustering::mergeClusters() {
     uint64_t cfgSize = 0;
     cfg->forEachNodeRef([&cfgSize, &cfgWeight](CFGNode &n) {
       cfgWeight += n.Freq * n.ShSize;
-      if (!config->propellerSplitFuncs || n.Freq)
+      if (!propellerConfig.optSplitFuncs || n.Freq)
         cfgSize += n.ShSize;
     });
 

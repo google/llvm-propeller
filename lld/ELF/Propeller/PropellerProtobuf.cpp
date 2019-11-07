@@ -1,7 +1,7 @@
 #ifdef PROPELLER_PROTOBUF
-#include "Protobuf.h"
+#include "PropellerProtobuf.h"
 
-#include "PropellerCfg.h"
+#include "PropellerCFG.h"
 #include "propeller_cfg.pb.h"
 
 #include "google/protobuf/io/zero_copy_stream_impl.h"

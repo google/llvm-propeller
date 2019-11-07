@@ -101,9 +101,9 @@
 #ifndef LLD_ELF_PROPELLER_H
 #define LLD_ELF_PROPELLER_H
 
-#include "InputFiles.h"
-#include "Propeller/Protobuf.h"
+#include "PropellerProtobuf.h"
 
+#include "lld/Common/ErrorHandler.h"
 #include "lld/Common/LLVM.h"
 #include "lld/Common/PropellerCommon.h"
 #include "llvm/ADT/StringRef.h"
@@ -112,6 +112,7 @@
 
 #include <fstream>
 #include <list>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -129,6 +130,7 @@ class CFGEdge;
 class CFGNode;
 class ObjectView;
 class Propeller;
+struct PropellerConfig;
 
 // Propeller profile parser.
 //
@@ -277,8 +279,8 @@ public:
 
   // Returns true if linker output target matches propeller profile.
   bool checkTarget();
-  bool processFiles(std::vector<lld::elf::InputFile *> &files);
-  void processFile(const std::pair<elf::InputFile *, uint32_t> &pair);
+  bool processFiles(std::vector<ObjectView *> &files);
+  void processFile(ObjectView *view);
   CFGNode *findCfgNode(uint64_t symbolOrdinal);
   void calculateNodeFreqs();
   std::vector<StringRef> genSymbolOrderingFile();
@@ -291,6 +293,10 @@ public:
   }
 
   bool dumpCfgs();
+
+  static ObjectView *createObjectView(const StringRef &vN,
+                                      const uint32_t ordinal,
+                                      const MemoryBufferRef &fR);
 
   lld::elf::SymbolTable *Symtab;
 
@@ -349,6 +355,8 @@ struct PropellerLegacy {
 };
 
 extern PropellerLegacy PropLeg;
+
+extern PropellerConfig propellerConfig;
 
 } // namespace propeller
 } // namespace lld

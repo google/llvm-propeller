@@ -6,15 +6,6 @@ if(NOT LLD_BUILT_STANDALONE)
   set(tablegen_deps intrinsics_gen)
 endif()
 
-find_package(Protobuf)
-if( Protobuf_FOUND )
-  add_compile_definitions(PROPELLER_PROTOBUF GOOGLE_PROTOBUF_NO_RTTI)
-  include_directories(${Protobuf_INCLUDE_DIRS})
-  protobuf_generate_cpp(PROPELLER_PROTO_SRCS PROPELLER_PROTO_HDRS propeller_cfg.proto)
-  set(PROPELLER_PROTOBUF_SRCS Propeller/Protobuf.cpp)
-  set(PROPELLER_PROTOBUF_LIBS ${Protobuf_LIBRARIES})
-endif()
-
 add_lld_library(lldELF
   AArch64ErrataFix.cpp
   Arch/AArch64.cpp
@@ -41,17 +32,11 @@ add_lld_library(lldELF
   InputFiles.cpp
   InputSection.cpp
   LTO.cpp
+  LinkerPropeller.cpp
   LinkerScript.cpp
   MapFile.cpp
   MarkLive.cpp
   OutputSections.cpp
-  Propeller.cpp
-  PropellerBBReordering.cpp
-  PropellerCfg.cpp
-  PropellerFuncOrdering.cpp
-  PropellerBBReordering.cpp
-  ${PROPELLER_PROTO_SRCS}
-  ${PROPELLER_PROTOBUF_SRCS}
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp
@@ -76,10 +61,12 @@ add_lld_library(lldELF
 
   LINK_LIBS
   lldCommon
+  lldPropeller
   ${LLVM_PTHREAD_LIB}
-  ${PROPELLER_PROTOBUF_LIBS}
   
   DEPENDS
   ELFOptionsTableGen
   ${tablegen_deps}
   )
+
+add_subdirectory(Propeller)

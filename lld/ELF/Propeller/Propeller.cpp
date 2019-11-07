@@ -22,16 +22,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "Propeller.h"
-
-#include "Config.h"
-#include "InputFiles.h"
 #include "PropellerBBReordering.h"
-#include "PropellerCfg.h"
+#include "PropellerConfig.h"
+#include "PropellerCFG.h"
 #include "PropellerFuncOrdering.h"
 
 #ifdef PROPELLER_PROTOBUF
 #include "propeller_cfg.pb.h"
 #endif
+#include "lld/Common/ErrorHandler.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Parallel.h"
@@ -50,8 +49,6 @@
 #include <numeric> // For std::accumulate.
 #include <tuple>
 #include <vector>
-
-using lld::elf::config;
 
 namespace lld {
 namespace propeller {
@@ -294,22 +291,20 @@ bool Propfile::processProfile() {
 }
 
 // Parse each ELF file, create CFG and attach profile data to CFG.
-void Propeller::processFile(const std::pair<elf::InputFile *, uint32_t> &pair) {
-  auto *inf = pair.first;
-  ObjectView *View = ObjectView::create(inf->getName(), pair.second, inf->mb);
-  if (View) {
-    if (CFGBuilder(*this, View).buildCFGs()) {
+void Propeller::processFile(ObjectView *view) {
+  if (view) {
+    if (CFGBuilder(*this, view).buildCFGs()) {
       // Updating global data structure.
       std::lock_guard<std::mutex> lock(Lock);
-      Views.emplace_back(View);
+      Views.emplace_back(view);
       for (std::pair<const StringRef, std::unique_ptr<ControlFlowGraph>> &P :
-           View->CFGs) {
+           view->CFGs) {
         auto result = CFGMap[P.first].emplace(P.second.get());
         (void)(result);
         assert(result.second);
       }
     } else {
-      warn("skipped building CFG for '" + inf->getName() +"'");
+      warn("skipped building CFG for '" + view->ViewName +"'");
       ++ProcessFailureCount;
     }
   }
@@ -390,9 +385,9 @@ void Propeller::calculateNodeFreqs() {
 
 // Returns true if linker output target matches propeller profile.
 bool Propeller::checkTarget() {
-  if (config->propeller.empty())
+  if (propellerConfig.optPropeller.empty())
     return false;
-  std::string propellerFileName = config->propeller.str();
+  std::string propellerFileName = propellerConfig.optPropeller.str();
   // Propfile takes ownership of FPtr.
   Propf.reset(new Propfile(*this, propellerFileName));
   Propf->PropfStream.open(Propf->PropfName);
@@ -401,30 +396,24 @@ bool Propeller::checkTarget() {
     return false;
   }
   return Propf->matchesOutputFileName(
-      llvm::sys::path::filename(config->outputFile));
+      llvm::sys::path::filename(propellerConfig.optLinkerOutputFile));
 }
 
 // Entrance of Propeller framework. This processes each elf input file in
 // parallel and stores the result information.
-bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
+bool Propeller::processFiles(std::vector<ObjectView *> &views) {
   if (!Propf->readSymbols()) {
-    error(std::string("invalid propfile: '") + config->propeller.str() + "'");
+    error(std::string("invalid propfile: '") +
+          propellerConfig.optPropeller.str() + "'");
     return false;
   }
 
-  // Creating CFGs.
-  std::vector<std::pair<elf::InputFile *, uint32_t>> fileOrdinalPairs;
-  int ordinal = 0;
-  for (auto &F : files)
-    fileOrdinalPairs.emplace_back(F, ++ordinal);
-
   ProcessFailureCount = 0;
   llvm::parallel::for_each(
-      llvm::parallel::parallel_execution_policy(), fileOrdinalPairs.begin(),
-      fileOrdinalPairs.end(),
+      llvm::parallel::parallel_execution_policy(), views.begin(), views.end(),
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
-  if (ProcessFailureCount * 100 / files.size() >= 50)
+  if (ProcessFailureCount * 100 / views.size() >= 50)
     warn("propeller failed to parse more than half the objects, "
          "optimization would suffer");
 
@@ -467,18 +456,18 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
 }
 
 bool Propeller::dumpCfgs() {
-  if (config->propellerDumpCfgs.empty()) return true;
+  if (propellerConfig.optDumpCfgs.empty()) return true;
 
-  std::set<std::string> cfgToDump(config->propellerDumpCfgs.begin(),
-                                  config->propellerDumpCfgs.end());
-  llvm::SmallString<128> cfgOutputDir(config->outputFile);
+  std::set<std::string> cfgToDump(propellerConfig.optDumpCfgs.begin(),
+                                  propellerConfig.optDumpCfgs.end());
+  llvm::SmallString<128> cfgOutputDir(propellerConfig.optLinkerOutputFile);
   llvm::sys::path::remove_filename(cfgOutputDir);
   for (auto &cfgName : cfgToDump) {
     if (cfgName == "@") {
 #ifdef PROPELLER_PROTOBUF
       if (!protobufPrinter.get())
         protobufPrinter.reset(ProtobufPrinter::create(
-            Twine(config->outputFile, ".cfg.pb.txt").str()));
+            Twine(propellerConfig.optLinkerOutputFile, ".cfg.pb.txt").str()));
 #else
       warn("dump to protobuf not supported");
 #endif
@@ -507,6 +496,19 @@ bool Propeller::dumpCfgs() {
   return true;
 }
 
+ObjectView *Propeller::createObjectView(const StringRef &vN,
+                                        const uint32_t ordinal,
+                                        const MemoryBufferRef &fR) {
+  const char *FH = fR.getBufferStart();
+  if (fR.getBufferSize() > 6 && FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' &&
+      FH[3] == 'F') {
+    auto r = ObjectFile::createELFObjectFile(fR);
+    if (r)
+      return new ObjectView(*r, vN, ordinal, fR);
+  }
+  return nullptr;
+}
+
 // Generate symbol ordering file according to selected optimization pass and
 // feed it to the linker.
 std::vector<StringRef> Propeller::genSymbolOrderingFile() {
@@ -524,7 +526,7 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   }
 
   std::list<ControlFlowGraph *> cfgOrder;
-  if (config->propellerReorderFuncs) {
+  if (propellerConfig.optReorderFuncs) {
     CallChainClustering c3;
     c3.init(*this);
     auto cfgsReordered = c3.doOrder(cfgOrder);
@@ -542,11 +544,11 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   std::list<StringRef> symbolList(1, "Hot");
   const auto hotPlaceHolder = symbolList.begin();
   const auto coldPlaceHolder = symbolList.end();
-  if (config->propellerPrintStats)
+  if (propellerConfig.optPrintStats)
     fprintf(stderr, "HISTOGRAM: Function.Name,BBs.all,BBs.hot\n");
 
   for (auto *cfg : cfgOrder) {
-    if (config->propellerPrintStats){
+    if (propellerConfig.optPrintStats){
       unsigned hotBBs = 0;
       unsigned allBBs = 0;
       cfg->forEachNodeRef([&hotBBs, &allBBs] (CFGNode &node) {
@@ -557,13 +559,13 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
       fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg->Name.str().c_str(), allBBs,
               hotBBs);
     }
-    if (cfg->isHot() && config->propellerReorderBlocks) {
+    if (cfg->isHot() && propellerConfig.optReorderBlocks) {
       NodeChainBuilder(cfg, *this).doSplitOrder(
           symbolList, hotPlaceHolder,
-          config->propellerSplitFuncs ? coldPlaceHolder : hotPlaceHolder);
+          propellerConfig.optSplitFuncs ? coldPlaceHolder : hotPlaceHolder);
     } else {
       auto PlaceHolder =
-          config->propellerSplitFuncs ? coldPlaceHolder : hotPlaceHolder;
+          propellerConfig.optSplitFuncs ? coldPlaceHolder : hotPlaceHolder;
       cfg->forEachNodeRef([&symbolList, PlaceHolder](CFGNode &N) {
         symbolList.insert(PlaceHolder, N.ShName);
       });
@@ -583,17 +585,17 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
 
   calculateLegacy(symbolList, hotPlaceHolder, coldPlaceHolder);
 
-  if (!config->propellerDumpSymbolOrder.empty()) {
-    FILE *fp = fopen(config->propellerDumpSymbolOrder.str().c_str(), "w");
+  if (!propellerConfig.optDumpSymbolOrder.empty()) {
+    FILE *fp = fopen(propellerConfig.optDumpSymbolOrder.str().c_str(), "w");
     if (!fp)
       warn(StringRef("dump symbol order: failed to open ") + "'" +
-           config->propellerDumpSymbolOrder + "'");
+           propellerConfig.optDumpSymbolOrder + "'");
     else {
       for (auto &sym : symbolList)
         fprintf(fp, "%s\n", sym.str().c_str());
       fclose(fp);
       llvm::outs() << "dumped symbol order file to: '"
-                   << config->propellerDumpSymbolOrder.str() << "\n";
+                   << propellerConfig.optDumpSymbolOrder.str() << "\n";
     }
   }
 
@@ -636,6 +638,8 @@ operator()(const ControlFlowGraph *a, const ControlFlowGraph *b) const {
 }
 
 PropellerLegacy PropLeg;
+
+PropellerConfig propellerConfig;
 
 } // namespace propeller
 } // namespace lld

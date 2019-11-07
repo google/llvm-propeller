@@ -87,7 +87,7 @@
 //===----------------------------------------------------------------------===//
 #include "PropellerBBReordering.h"
 
-#include "Config.h"
+#include "PropellerConfig.h"
 #include "llvm/ADT/DenseSet.h"
 
 #include <numeric>
@@ -149,17 +149,17 @@ double getEdgeExtTSPScore(const CFGEdge *edge, bool isEdgeForward,
     return 0;
 
   if (srcSinkDistance == 0 && (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA))
-    return edge->Weight * config->propellerFallthroughWeight;
+    return edge->Weight * propellerConfig.optFallthroughWeight;
 
-  if (isEdgeForward && srcSinkDistance < config->propellerForwardJumpDistance)
-    return edge->Weight * config->propellerForwardJumpWeight *
+  if (isEdgeForward && srcSinkDistance < propellerConfig.optForwardJumpDistance)
+    return edge->Weight * propellerConfig.optForwardJumpWeight *
            (1.0 -
-            ((double)srcSinkDistance) / config->propellerForwardJumpDistance);
+            ((double)srcSinkDistance) / propellerConfig.optForwardJumpDistance);
 
-  if (!isEdgeForward && srcSinkDistance < config->propellerBackwardJumpDistance)
-    return edge->Weight * config->propellerBackwardJumpWeight *
+  if (!isEdgeForward && srcSinkDistance < propellerConfig.optBackwardJumpDistance)
+    return edge->Weight * propellerConfig.optBackwardJumpWeight *
            (1.0 -
-            ((double)srcSinkDistance) / config->propellerBackwardJumpDistance);
+            ((double)srcSinkDistance) / propellerConfig.optBackwardJumpDistance);
   return 0;
 }
 
@@ -351,7 +351,7 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
 
   // Only consider splitting the chain if the size of the chain is smaller than
   // a threshold.
-  bool doSplit = (splitChain->Size <= config->propellerChainSplitThreshold);
+  bool doSplit = (splitChain->Size <= propellerConfig.optChainSplitThreshold);
   auto slicePosEnd =
       doSplit ? splitChain->Nodes.end() : std::next(splitChain->Nodes.begin());
 
@@ -656,7 +656,7 @@ void NodeChainBuilder::doSplitOrder(
     }
 #endif
   }
-  if (config->propellerPrintStats)
+  if (propellerConfig.optPrintStats)
     fprintf(stderr, "ExtTSP score: %s,%f\n", CFG->Name.str().c_str(), Score);
 
 #ifdef PROPELLER_PROTOBUF
