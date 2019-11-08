@@ -418,6 +418,44 @@ static TargetMachine::CodeGenFileType getCodeGenFileType(BackendAction Action) {
   }
 }
 
+static void getBasicBlockSectionsList(llvm::TargetOptions &Options,
+                                      std::string FunctionsListFile) {
+  assert((Options.BasicBlockSections = llvm::BasicBlockSection::List) &&
+         "Invalid BasicBlock Section Type");
+  if (FunctionsListFile.empty())
+    return;
+  auto MBOrErr = llvm::MemoryBuffer::getFile(FunctionsListFile);
+  if (auto EC = MBOrErr.getError()) {
+    errs() << "Cannot open " + FunctionsListFile + ": " + EC.message();
+    return;
+  }
+  std::unique_ptr<MemoryBuffer> &MB = *MBOrErr;
+  MemoryBufferRef MBRef = MB->getMemBufferRef();
+  SmallVector<StringRef, 0> Arr;
+  MBRef.getBuffer().split(Arr, '\n');
+  bool consumeBasicBlockIds = false;
+  StringRef Func;
+  SmallSet<unsigned, 4> s;
+  for (StringRef S : Arr) {
+    // Function names follow a '!' character.
+    // Basic Blocks within functions follow '!!'.
+    if (S.consume_front("!") && !S.empty()) {
+      if (consumeBasicBlockIds && S.consume_front("!")) {
+        Options.BasicBlockSectionsList[Func.str()].insert(std::stoi(S));
+      } else {
+        // Start a new function.
+        Func = S;
+        s.clear();
+        s.insert(0);
+        Options.BasicBlockSectionsList[Func.str()] = s;
+        consumeBasicBlockIds = true;
+      }
+    } else {
+      consumeBasicBlockIds = false;
+    }
+  }
+}
+
 static void initTargetOptions(llvm::TargetOptions &Options,
                               const CodeGenOptions &CodeGenOpts,
                               const clang::TargetOptions &TargetOpts,
@@ -476,9 +514,22 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.NoZerosInBSS = CodeGenOpts.NoZeroInitializedInBSS;
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
+
+  Options.BasicBlockSections =
+      llvm::StringSwitch<llvm::BasicBlockSection::SectionMode>(
+          CodeGenOpts.BasicBlockSections)
+          .Case("all", llvm::BasicBlockSection::All)
+          .Case("labels", llvm::BasicBlockSection::Labels)
+          .Case("none", llvm::BasicBlockSection::None)
+          .Default(llvm::BasicBlockSection::List);
+
+  if (Options.BasicBlockSections == llvm::BasicBlockSection::List)
+    getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections);
+
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;
+  Options.UniqueBBSectionNames = CodeGenOpts.UniqueBBSectionNames;
   Options.EmulatedTLS = CodeGenOpts.EmulatedTLS;
   Options.ExplicitEmulatedTLS = CodeGenOpts.ExplicitEmulatedTLS;
   Options.DebuggerTuning = CodeGenOpts.getDebuggerTuning();
@@ -495,6 +546,7 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.MCOptions.MCIncrementalLinkerCompatible =
       CodeGenOpts.IncrementalLinkerCompatible;
   Options.MCOptions.MCPIECopyRelocations = CodeGenOpts.PIECopyRelocations;
+  Options.MCOptions.MCRelocateWithSymbols = CodeGenOpts.RelocateWithSymbols;
   Options.MCOptions.MCFatalWarnings = CodeGenOpts.FatalWarnings;
   Options.MCOptions.MCNoWarn = CodeGenOpts.NoWarn;
   Options.MCOptions.AsmVerbose = CodeGenOpts.AsmVerbose;

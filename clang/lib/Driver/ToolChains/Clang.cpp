@@ -2213,6 +2213,14 @@ static void CollectArgsForIntegratedAssembler(Compilation &C,
     CmdArgs.push_back(MipsTargetFeature);
   }
 
+  // Basic Block Sections needs relocations via symbols for linker to do
+  // relaxation easily.
+  auto BasicBlockSections =
+      Args.getLastArgValue(options::OPT_fbasicblock_sections_EQ, "none");
+
+  if (BasicBlockSections != "none" && BasicBlockSections != "labels")
+    CmdArgs.push_back("-mrelocate-with-symbols");
+
   // forward -fembed-bitcode to assmebler
   if (C.getDriver().embedBitcodeEnabled() ||
       C.getDriver().embedBitcodeMarkerOnly())
@@ -3699,8 +3707,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         options::OPT_fno_function_sections,
         options::OPT_fdata_sections,
         options::OPT_fno_data_sections,
+        options::OPT_fbasicblock_sections_EQ,
+        options::OPT_funique_internal_funcnames,
+        options::OPT_fno_unique_internal_funcnames,
         options::OPT_funique_section_names,
         options::OPT_fno_unique_section_names,
+        options::OPT_funique_bb_section_names,
+        options::OPT_fno_unique_bb_section_names,
         options::OPT_mrestrict_it,
         options::OPT_mno_restrict_it,
         options::OPT_mstackrealign,
@@ -4219,6 +4232,35 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-ffunction-sections");
   }
 
+  // Handle Propeller optimization flags here.
+  if (Arg *A = Args.getLastArg(options::OPT_fpropeller_optimize_EQ,
+                               options::OPT_fpropeller_label,
+                               options::OPT_fno_propeller)) {
+    // Propeller optimizations work much better with unique
+    // internal func names.
+    // We push "-funique-internal-funcnames" only if no
+    // -f(no-)unique-internal-funcnames is specified.
+    bool NeedExplicitUniqueInternalFuncNames =
+        (nullptr ==
+         Args.getLastArg(options::OPT_funique_internal_funcnames,
+                         options::OPT_fno_unique_internal_funcnames));
+    if (A->getOption().matches(options::OPT_fpropeller_optimize_EQ)) {
+      CmdArgs.push_back(
+          Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
+      if (NeedExplicitUniqueInternalFuncNames)
+        CmdArgs.push_back("-funique-internal-funcnames");
+    } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
+      CmdArgs.push_back("-fbasicblock-sections=labels");
+      if (NeedExplicitUniqueInternalFuncNames)
+        CmdArgs.push_back("-funique-internal-funcnames");
+    }
+  }
+
+  if (Arg *A = Args.getLastArg(options::OPT_fbasicblock_sections_EQ)) {
+    CmdArgs.push_back(
+        Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
+  }
+
   if (Args.hasFlag(options::OPT_fdata_sections, options::OPT_fno_data_sections,
                    UseSeparateSections)) {
     CmdArgs.push_back("-fdata-sections");
@@ -4227,6 +4269,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (!Args.hasFlag(options::OPT_funique_section_names,
                     options::OPT_fno_unique_section_names, true))
     CmdArgs.push_back("-fno-unique-section-names");
+
+  if (Args.hasFlag(options::OPT_funique_internal_funcnames,
+                   options::OPT_fno_unique_internal_funcnames, false))
+    CmdArgs.push_back("-funique-internal-funcnames");
+
+  if (Args.hasFlag(options::OPT_funique_bb_section_names,
+                   options::OPT_fno_unique_bb_section_names, false))
+    CmdArgs.push_back("-funique-bb-section-names");
 
   Args.AddLastArg(CmdArgs, options::OPT_finstrument_functions,
                   options::OPT_finstrument_functions_after_inlining,

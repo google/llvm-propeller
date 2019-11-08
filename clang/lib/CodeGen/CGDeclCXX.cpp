@@ -339,8 +339,15 @@ llvm::Function *CodeGenModule::CreateGlobalInitOrDestructFunction(
                            Name, &getModule());
   if (!getLangOpts().AppleKext && !TLS) {
     // Set the section if needed.
-    if (const char *Section = getTarget().getStaticInitSectionSpecifier())
-      Fn->setSection(Section);
+    if (const char *Section = getTarget().getStaticInitSectionSpecifier()) {
+      if (getCodeGenOpts().FunctionSections) {
+        Twine NewName = Section + Name;
+        Fn->setSection(NewName.str());
+      }
+      else {
+        Fn->setSection(Section);
+      }
+    }
   }
 
   SetInternalFunctionAttributes(GlobalDecl(), Fn, FI);

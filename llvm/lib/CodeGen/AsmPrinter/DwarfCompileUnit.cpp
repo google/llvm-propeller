@@ -383,7 +383,21 @@ void DwarfCompileUnit::attachLowHighPC(DIE &D, const MCSymbol *Begin,
 DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
   DIE *SPDie = getOrCreateSubprogramDIE(SP, includeMinimalInlineScopes());
 
-  attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
+  if (!Asm->MF->getBasicBlockSections())
+    attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
+  else {
+    SmallVector<RangeSpan, 2> BB_List;
+    BB_List.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
+    // If basic block sections are on, only the entry BB and exception
+    // handling BBs will be in the [getFunctionBegin(), getFunctionEnd()]
+    // range. Ranges for the other BBs have to be emitted separately.
+    for (auto &MBB : *Asm->MF) {
+      if (!MBB.pred_empty() && MBB.isBeginSection()) {
+        BB_List.push_back({MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
+      }
+    }
+    attachRangesOrLowHighPC(*SPDie, BB_List);
+  }
   if (DD->useAppleExtensionAttributes() &&
       !DD->getCurrentFunction()->getTarget().Options.DisableFramePointerElim(
           *DD->getCurrentFunction()))
@@ -512,9 +526,37 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     DIE &Die, const SmallVectorImpl<InsnRange> &Ranges) {
   SmallVector<RangeSpan, 2> List;
   List.reserve(Ranges.size());
-  for (const InsnRange &R : Ranges)
-    List.push_back(
-        {DD->getLabelBeforeInsn(R.first), DD->getLabelAfterInsn(R.second)});
+  for (const InsnRange &R : Ranges) {
+    auto *BeginLabel = DD->getLabelBeforeInsn(R.first);
+    auto *EndLabel = DD->getLabelAfterInsn(R.second);
+
+    const auto *BeginMBB = R.first->getParent();
+    const auto *EndMBB = R.second->getParent();
+
+    if (BeginMBB->sameSection(EndMBB) ||
+        Asm->MF->getBasicBlockSections() == llvm::BasicBlockSection::None) {
+      // Without basic block sections, there is just one continuous range.
+      // The same holds if EndMBB is in the initial non-unique-section BB range.
+      List.push_back({BeginLabel, EndLabel});
+      continue;
+    }
+
+    assert (!BeginMBB->sameSection(EndMBB) &&
+            "BeginMBB and EndMBB are in the same section!");
+    const auto *MBBInSection = BeginMBB->getSectionEndMBB();
+    List.push_back({BeginLabel, MBBInSection->getEndMCSymbol()});
+    MBBInSection = MBBInSection->getNextNode();
+    while  (!MBBInSection->sameSection(EndMBB)) {
+      assert(MBBInSection->isBeginSection() &&
+             "This should start a new section.");
+      List.push_back({MBBInSection->getSymbol(),
+                      MBBInSection->getSectionEndMBB()->getEndMCSymbol()});
+      MBBInSection = MBBInSection->getSectionEndMBB()->getNextNode();
+    }
+
+    assert(MBBInSection->sameSection(EndMBB));
+    List.push_back({MBBInSection->getSymbol(), EndLabel});
+  }
   attachRangesOrLowHighPC(Die, std::move(List));
 }
 

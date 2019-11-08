@@ -27,6 +27,7 @@
 #include "ICF.h"
 #include "InputFiles.h"
 #include "InputSection.h"
+#include "LinkerPropeller.h"
 #include "LinkerScript.h"
 #include "MarkLive.h"
 #include "OutputSections.h"
@@ -815,6 +816,24 @@ static std::vector<StringRef> getSymbolOrderingFile(MemoryBufferRef mb) {
   return names.takeVector();
 }
 
+// Parse the symbol alignment file and warn for any duplicate entries.
+static StringMap<unsigned> getSymbolAlignmentFile(MemoryBufferRef mb) {
+  StringMap<unsigned> alignments;
+  for (StringRef s : args::getLines(mb)) {
+    auto entry = s.split(' ');
+    unsigned align = 0;
+    if (!to_integer(entry.second, align)) {
+      warn(mb.getBufferIdentifier() + ": invalid alignment (" + entry.second +
+           ") for symbol: " + entry.first);
+      continue;
+    }
+    if (!alignments.insert(std::make_pair(entry.first, align)).second)
+      warn(mb.getBufferIdentifier() +
+           ": duplicate alignment for symbol: " + entry.first);
+  }
+  return alignments;
+}
+
 static void parseClangOption(StringRef opt, const Twine &msg) {
   std::string err;
   raw_string_ostream os(err);
@@ -852,6 +871,10 @@ static void readConfigs(opt::InputArgList &args) {
   config->cref = args.hasFlag(OPT_cref, OPT_no_cref, false);
   config->defineCommon = args.hasFlag(OPT_define_common, OPT_no_define_common,
                                       !args.hasArg(OPT_relocatable));
+  config->optimizeBBJumps =
+      args.hasFlag(OPT_optimize_bb_jumps,
+                   OPT_no_optimize_bb_jumps, false);
+
   config->demangle = args.hasFlag(OPT_demangle, OPT_no_demangle, true);
   config->dependentLibraries = args.hasFlag(OPT_dependent_libraries, OPT_no_dependent_libraries, true);
   config->disableVerify = args.hasArg(OPT_disable_verify);
@@ -896,6 +919,12 @@ static void readConfigs(opt::InputArgList &args) {
   config->ltoObjPath = args.getLastArgValue(OPT_lto_obj_path_eq);
   config->ltoPartitions = args::getInteger(args, OPT_lto_partitions, 1);
   config->ltoSampleProfile = args.getLastArgValue(OPT_lto_sample_profile);
+  config->ltoBasicBlockSections =
+      args.getLastArgValue(OPT_lto_basicblock_sections);
+  config->ltoUniqueBBSectionNames =
+      args.hasFlag(OPT_lto_unique_bb_section_names,
+                   OPT_no_lto_unique_bb_section_names,
+                   false);
   config->mapFile = args.getLastArgValue(OPT_Map);
   config->mipsGotSize = args::getInteger(args, OPT_mips_got_size, 0xfff0);
   config->mergeArmExidx =
@@ -922,12 +951,86 @@ static void readConfigs(opt::InputArgList &args) {
       args.hasFlag(OPT_print_gc_sections, OPT_no_print_gc_sections, false);
   config->printSymbolOrder =
       args.getLastArgValue(OPT_print_symbol_order);
+
+  config->propeller = args.getLastArgValue(OPT_propeller);
+
+  config->propellerKeepNamedSymbols =
+      args.hasFlag(OPT_propeller_keep_named_symbols,
+                   OPT_no_propeller_keep_named_symbols, false);
+
+  config->propellerDumpSymbolOrder =
+      args.getLastArgValue(OPT_propeller_dump_symbol_order);
+
+
+  config->propellerPrintStats =
+      args.hasFlag(OPT_propeller_print_stats,
+                   OPT_no_propeller_print_stats, false);
+
+  config->propellerDumpCfgs = args.getAllArgValues(OPT_propeller_dump_cfg);
+
+  config->propellerDebugSymbols =
+      args.getAllArgValues(OPT_propeller_debug_symbol);
+
+  config->propellerReorderBlocks = config->propellerReorderFuncs =
+      config->propellerSplitFuncs = !config->propeller.empty();
+
+  config->propellerFallthroughWeight =
+      args::getFloat(args, OPT_propeller_fallthrough_weight, 1.0);
+  config->propellerForwardJumpWeight =
+      args::getFloat(args, OPT_propeller_forward_jump_weight, 0.1);
+  config->propellerBackwardJumpWeight =
+      args::getFloat(args, OPT_propeller_backward_jump_weight, 0.1);
+
+  config->propellerForwardJumpDistance =
+      args::getFloat(args, OPT_propeller_forward_jump_distance, 1024);
+  config->propellerBackwardJumpDistance =
+      args::getFloat(args, OPT_propeller_backward_jump_distance, 640);
+  config->propellerChainSplitThreshold =
+      args::getFloat(args, OPT_propeller_chain_split_threshold, 128);
+
+  // Parse Propeller flags.
+  auto propellerOpts = args.getAllArgValues(OPT_propeller_opt);
+  bool splitFuncsExplicit = false;
+  for(auto& propellerOpt: propellerOpts){
+    StringRef S = StringRef(propellerOpt);
+    if (S == "reorder-funcs"){
+      config->propellerReorderFuncs = true;
+    } else if (S == "no-reorder-funcs") {
+      config->propellerReorderFuncs = false;
+    } else if (S == "reorder-blocks") {
+      config->propellerReorderBlocks = true;
+    } else if (S == "no-reorder-blocks") {
+      config->propellerReorderBlocks = false;
+    } else if (S == "split-funcs") {
+      config->propellerSplitFuncs = true;
+      splitFuncsExplicit = true;
+    } else if (S == "no-split-funcs") {
+      config->propellerSplitFuncs = false;
+    } else
+      error("unknown propeller option: " + S);
+  }
+
+  if (!config->propeller.empty() && !config->propellerReorderBlocks) {
+    if (splitFuncsExplicit){
+      error("propeller: Inconsistent combination of propeller optimizations"
+            " 'split-funcs' and 'no-reorder-blocks'.");
+    } else {
+      warn("propeller: no-reorder-blocks implicitly sets no-split-funcs.");
+      config->propellerSplitFuncs = false;
+    }
+  }
+
   config->rpath = getRpath(args);
   config->relocatable = args.hasArg(OPT_relocatable);
   config->saveTemps = args.hasArg(OPT_save_temps);
   config->searchPaths = args::getStrings(args, OPT_library_path);
   config->sectionStartMap = getSectionStartMap(args);
   config->shared = args.hasArg(OPT_shared);
+
+  config->shrinkJumpsAggressively =
+      args.hasFlag(OPT_shrink_jumps_aggressively,
+                   OPT_no_shrink_jumps_aggressively, true);
+
   config->singleRoRx = args.hasArg(OPT_no_rosegment);
   config->soName = args.getLastArgValue(OPT_soname);
   config->sortSection = getSortSection(args);
@@ -1055,6 +1158,15 @@ static void readConfigs(opt::InputArgList &args) {
       // Also need to disable CallGraphProfileSort to prevent
       // LLD order symbols with CGProfile
       config->callGraphProfileSort = false;
+    }
+  }
+
+  if (auto *arg = args.getLastArg(OPT_symbol_alignment_file)){
+    if (Optional<MemoryBufferRef> buffer = readFile(arg->getValue())){
+      config->symbolAlignmentFile = getSymbolAlignmentFile(*buffer);
+    } else {
+      error(StringRef("Failed to read symbol alignment file: ") +
+            arg->getValue());
     }
   }
 
@@ -1875,6 +1987,31 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   for (BinaryFile *f : binaryFiles)
     for (InputSectionBase *s : f->getSections())
       inputSections.push_back(cast<InputSection>(s));
+
+  lld::propeller::doPropeller();
+
+  if (!config->symbolAlignmentFile.empty()) {
+    auto alignSym = [](Symbol *sym) {
+      auto it = config->symbolAlignmentFile.find(sym->getName());
+      if (it == config->symbolAlignmentFile.end())
+        return;
+      if (auto *d = dyn_cast<Defined>(sym)) {
+        if (auto *sec = dyn_cast_or_null<InputSectionBase>(d->section)) {
+          sec->alignment = it->second;
+        }
+      }
+    };
+
+    for (InputFile *file : objectFiles)
+      for (Symbol *sym : file->getSymbols())
+        if (sym->isLocal())
+          alignSym(sym);
+
+    symtab->forEachSymbol([&alignSym](Symbol *sym) {
+      if (!sym->isLazy())
+        alignSym(sym);
+    });
+  }
 
   llvm::erase_if(inputSections, [](InputSectionBase *s) {
     if (s->type == SHT_LLVM_SYMPART) {

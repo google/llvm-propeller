@@ -1,0 +1,31 @@
+Symbols
+1 2b N_start
+2 1 N_dl_relocate_static_pie
+3 0 Nderegister_tm_clones
+4 0 Nregister_tm_clones
+5 0 N__do_global_dtors_aux
+6 0 Nframe_dummy
+7 2c Ncompute_flag
+8 7b Nmain
+9 b 8.3
+10 12 8.1
+11 26 8.2
+12 8 8.4
+13 5d N__libc_csu_init
+14 1 N__libc_csu_fini
+15 0 N_init
+16 0 N_fini
+Branches
+7 10 282779 R
+10 7 289388 C
+10 9 165714
+11 9 110451
+Fallthroughs
+7 7 280473
+9 10 273908
+10 10 160338
+10 11 106891
+!_start
+!compute_flag
+!main
+!

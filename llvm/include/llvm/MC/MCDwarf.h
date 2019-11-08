@@ -474,6 +474,12 @@ private:
     assert(Op == OpRegister);
   }
 
+  long long GetOffsetOrRegister2() const {
+    if (Operation == OpRegister)
+      return Register2;
+    return Offset;
+  }
+
 public:
   /// .cfi_def_cfa defines a rule for computing CFA as: take address from
   /// Register and add Offset to it.
@@ -600,6 +606,27 @@ public:
   StringRef getValues() const {
     assert(Operation == OpEscape);
     return StringRef(&Values[0], Values.size());
+  }
+
+  friend hash_code hash_value(const MCCFIInstruction &Arg) {
+    return hash_combine(Arg.Label, Arg.Operation, Arg.Register,
+                        Arg.GetOffsetOrRegister2());
+  }
+
+  bool operator<(const MCCFIInstruction &Other) const {
+    return std::make_tuple(Label, Operation, Register, GetOffsetOrRegister2()) <
+           std::make_tuple(Other.Label, Other.Operation, Other.Register,
+                           Other.GetOffsetOrRegister2());
+  }
+
+  bool operator==(const MCCFIInstruction &Other) const {
+    return !(*this < Other) && !(Other < *this);
+  }
+
+  MCCFIInstruction StripLabel() const {
+    MCCFIInstruction Copy = *this;
+    Copy.Label = nullptr;
+    return Copy;
   }
 };
 

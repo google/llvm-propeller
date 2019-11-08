@@ -24,6 +24,7 @@
 #include "Writer.h"
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Memory.h"
+#include "lld/Common/PropellerCommon.h"
 #include "lld/Common/Strings.h"
 #include "lld/Common/Threads.h"
 #include "lld/Common/Version.h"
@@ -2054,9 +2055,29 @@ void SymbolTableBaseSection::sortSymTabSymbols() {
 void SymbolTableBaseSection::addSymbol(Symbol *b) {
   // Adding a local symbol to a .dynsym is a bug.
   assert(this->type != SHT_DYNSYM || !b->isLocal());
+  assert(this->type != SHT_DYNSYM || !b->isLocal());
+  StringRef SName = b->getName();
+  uint64_t EndKey = (uint64_t)(SName.data() + SName.size());
+  auto I = EndsMap.find(EndKey);
+  if (I != EndsMap.end()) {
+    uint64_t offset = I->second.first;
+    uint32_t size = I->second.second;
+    int64_t diff = size - SName.size();
+    if (diff >= 0) {
+      uint64_t new_offset = offset + diff;
+      symbols.push_back({b, new_offset});
+      return;
+    }
+  }
+
 
   bool hashIt = b->isLocal();
-  symbols.push_back({b, strTabSec.addString(b->getName(), hashIt)});
+  uint32_t offset = strTabSec.addString(b->getName(), hashIt);
+  symbols.push_back({b, offset});
+  if (lld::propeller::SymbolEntry::isBBSymbol(b->getName())) {
+    EndsMap.emplace(std::piecewise_construct, std::forward_as_tuple(EndKey),
+                    std::forward_as_tuple(offset, SName.size()));
+  }
 }
 
 size_t SymbolTableBaseSection::getSymbolIndex(Symbol *sym) {

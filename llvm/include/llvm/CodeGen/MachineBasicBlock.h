@@ -129,9 +129,24 @@ private:
   /// Indicate that this basic block is the entry block of a cleanup funclet.
   bool IsCleanupFuncletEntry = false;
 
+  /// Indicate that this basic block begins a new section.
+  bool IsBeginSection = false;
+
+  /// Indicate that this basic block ends the current section.
+  bool IsEndSection = false;
+
+  /// Indicate that this basic block belongs to the cold section.
+  bool IsColdSection = false;
+
+  /// Indicate that this basic block belong to the exception section.
+  bool IsExceptionSection = false;
+
   /// since getSymbol is a relatively heavy-weight operation, the symbol
   /// is only computed once and is cached.
   mutable MCSymbol *CachedMCSymbol = nullptr;
+
+  /// Used during basic block sections to marks the end of a basic block.
+  MCSymbol *EndMCSymbol = nullptr;
 
   // Intrusive list support
   MachineBasicBlock() = default;
@@ -408,6 +423,26 @@ public:
   /// Indicates if this is the entry block of a cleanup funclet.
   void setIsCleanupFuncletEntry(bool V = true) { IsCleanupFuncletEntry = V; }
 
+  /// Indicate that this basic block begins a new section.
+  bool isBeginSection() const { return IsBeginSection; }
+
+  void setBeginSection(bool V = true) { IsBeginSection = V; }
+
+  /// Indicate that this basic block ends a new section.
+  bool isEndSection() const { return IsEndSection; }
+
+  void setEndSection(bool V = true) { IsEndSection = V; }
+
+  /// Indicate that this basic block belongs to the cold section.
+  bool isColdSection() const { return IsColdSection; }
+
+  void setColdSection(bool V = true) { IsColdSection = V; }
+
+  /// Indicate that this basic block belongs to the exception section.
+  bool isExceptionSection() const { return IsExceptionSection; }
+
+  void setExceptionSection(bool V = true) { IsExceptionSection = V; }
+
   /// Returns true if it is legal to hoist instructions into this block.
   bool isLegalToHoistInto() const;
 
@@ -418,6 +453,15 @@ public:
   /// the end of the block.
   void moveBefore(MachineBasicBlock *NewAfter);
   void moveAfter(MachineBasicBlock *NewBefore);
+
+  /// Insert an unconditional jump to a fallthrough block if any.
+  void insertUnconditionalFallthroughBranch();
+
+  /// Returns true if this and MBB belong to the same section.
+  bool sameSection(const MachineBasicBlock *MBB) const;
+
+  /// Returns the basic block that ends the section which contains this one.
+  const MachineBasicBlock *getSectionEndMBB() const ;
 
   /// Update the terminator instructions in block to account for changes to the
   /// layout. If the block previously used a fallthrough, it may now need a
@@ -802,6 +846,10 @@ public:
 
   /// Return the MCSymbol for this basic block.
   MCSymbol *getSymbol() const;
+
+  void setEndMCSymbol(MCSymbol *Sym) { EndMCSymbol = Sym; }
+
+  MCSymbol *getEndMCSymbol() const { return EndMCSymbol; }
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const {
     return IrrLoopHeaderWeight;

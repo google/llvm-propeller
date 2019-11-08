@@ -207,6 +207,8 @@ def massembler_fatal_warnings : Flag<["-"], "massembler-fatal-warnings">,
   HelpText<"Make assembler warnings fatal">;
 def mrelax_relocations : Flag<["--"], "mrelax-relocations">,
     HelpText<"Use relaxable elf relocations">;
+def mrelocate_with_symbols : Flag<["-"], "mrelocate-with-symbols">,
+  HelpText<"Always use Symbols for relocations instead of sections">;
 def msave_temp_labels : Flag<["-"], "msave-temp-labels">,
   HelpText<"Save temporary labels in the symbol table. "
            "Note this may change .s semantics and shouldn't generally be used "

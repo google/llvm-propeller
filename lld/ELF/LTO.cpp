@@ -58,6 +58,33 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef file) {
   return ret;
 }
 
+static void getBasicBlockSectionsList(MemoryBufferRef MBRef,
+                                      TargetOptions &Options) {
+  SmallVector<StringRef, 0> Arr;
+  MBRef.getBuffer().split(Arr, '\n');
+  bool consumeBasicBlockIds = false;
+  StringRef Func;
+  SmallSet<unsigned, 4> s;
+  for (StringRef S : Arr) {
+    // Function names follow a '!' character.
+    // Basic Blocks within functions follow '!!'.
+    if (S.consume_front("!") && !S.empty()) {
+      if (consumeBasicBlockIds && S.consume_front("!")) {
+        Options.BasicBlockSectionsList[Func.str()].insert(std::stoi(S));
+      } else {
+        // Start a new function.
+        Func = S;
+        s.clear();
+        s.insert(0);
+        Options.BasicBlockSectionsList[Func.str()] = s;
+        consumeBasicBlockIds = true;
+      }
+    } else {
+      consumeBasicBlockIds = false;
+    }
+  }
+}
+
 static std::string getThinLTOOutputFile(StringRef modulePath) {
   return lto::getThinLTOOutputFile(modulePath,
                                    config->thinLTOPrefixReplace.first,
@@ -75,6 +102,23 @@ static lto::Config createConfig() {
   // Always emit a section per function/datum with LTO.
   c.Options.FunctionSections = true;
   c.Options.DataSections = true;
+
+  // Check if basic block sections must be used.
+  if (!config->ltoBasicBlockSections.empty()) {
+    if (config->ltoBasicBlockSections.equals("all"))
+      c.Options.BasicBlockSections = BasicBlockSection::All;
+    else if (config->ltoBasicBlockSections.equals("labels"))
+      c.Options.BasicBlockSections = BasicBlockSection::Labels;
+    else if (config->ltoBasicBlockSections.equals("none"))
+      c.Options.BasicBlockSections = BasicBlockSection::None;
+    else if (Optional<MemoryBufferRef> Buffer =
+             readFile(config->ltoBasicBlockSections)) {
+      getBasicBlockSectionsList(*Buffer, c.Options);
+      c.Options.BasicBlockSections = BasicBlockSection::List;
+    }
+  }
+
+  c.Options.UniqueBBSectionNames = config->ltoUniqueBBSectionNames;
 
   if (auto relocModel = getRelocModelFromCMModel())
     c.RelocModel = *relocModel;

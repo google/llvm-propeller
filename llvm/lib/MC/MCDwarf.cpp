@@ -29,6 +29,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/StringTableBuilder.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/EndianStream.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -39,11 +40,17 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
 
 using namespace llvm;
+
+static cl::opt<bool> NoDedupFDEToCIE(
+    "no-dedup-fde-to-cie",
+    cl::desc("Moves FDE instructions at the beginning of an FDE to CIE"),
+    cl::init(false), cl::Hidden);
 
 /// Manage the .debug_line_str section contents, if we use it.
 class llvm::MCDwarfLineStr {
@@ -847,6 +854,20 @@ static void EmitGenDwarfAbbrev(MCStreamer *MCOS) {
   MCOS->EmitIntValue(0, 1);
 }
 
+static const MCExpr *MakeSizeExpr(MCStreamer &MCOS, MCSymbol &Start,
+                                  const MCSymbol &End) {
+  const MCExpr *Range = MakeStartMinusEndExpr(MCOS, Start, End, 0);
+
+  auto MAI = MCOS.getContext().getAsmInfo();
+  if (!MAI->shouldRelocateWithSizeRelocs())
+    return forceExpAbs(MCOS, Range);
+
+  MCOS.emitELFSize(&Start, Range);
+  const MCExpr *RelocatableRange = MCSymbolRefExpr::create(
+      &Start, MCSymbolRefExpr::VK_SIZE, MCOS.getContext());
+  return RelocatableRange;
+}
+
 // When generating dwarf for assembly source files this emits the data for
 // .debug_aranges section. This section contains a header and a table of pairs
 // of PointerSize'ed values for the address and size of section(s) with line
@@ -901,17 +922,16 @@ static void EmitGenDwarfAranges(MCStreamer *MCOS,
   // Now emit the table of pairs of PointerSize'ed values for the section
   // addresses and sizes.
   for (MCSection *Sec : Sections) {
-    const MCSymbol *StartSymbol = Sec->getBeginSymbol();
+    MCSymbol *StartSymbol = Sec->getBeginSymbol();
     MCSymbol *EndSymbol = Sec->getEndSymbol(context);
     assert(StartSymbol && "StartSymbol must not be NULL");
     assert(EndSymbol && "EndSymbol must not be NULL");
 
     const MCExpr *Addr = MCSymbolRefExpr::create(
       StartSymbol, MCSymbolRefExpr::VK_None, context);
-    const MCExpr *Size = MakeStartMinusEndExpr(*MCOS,
-      *StartSymbol, *EndSymbol, 0);
+    const MCExpr *Size = MakeSizeExpr(*MCOS, *StartSymbol, *EndSymbol);
     MCOS->EmitValue(Addr, AddrSize);
-    emitAbsValue(*MCOS, Size, AddrSize);
+    MCOS->EmitValue(Size, AddrSize);
   }
 
   // And finally the pair of terminating zeros.
@@ -1106,7 +1126,7 @@ static void EmitGenDwarfRanges(MCStreamer *MCOS) {
   MCOS->SwitchSection(context.getObjectFileInfo()->getDwarfRangesSection());
 
   for (MCSection *Sec : Sections) {
-    const MCSymbol *StartSymbol = Sec->getBeginSymbol();
+    MCSymbol *StartSymbol = Sec->getBeginSymbol();
     MCSymbol *EndSymbol = Sec->getEndSymbol(context);
     assert(StartSymbol && "StartSymbol must not be NULL");
     assert(EndSymbol && "EndSymbol must not be NULL");
@@ -1118,10 +1138,10 @@ static void EmitGenDwarfRanges(MCStreamer *MCOS) {
     MCOS->EmitValue(SectionStartAddr, AddrSize);
 
     // Emit a range list entry spanning this section
-    const MCExpr *SectionSize = MakeStartMinusEndExpr(*MCOS,
-      *StartSymbol, *EndSymbol, 0);
+    const MCExpr *SectionSize = MakeSizeExpr(*MCOS, *StartSymbol, *EndSymbol);
+
     MCOS->EmitIntValue(0, AddrSize);
-    emitAbsValue(*MCOS, SectionSize, AddrSize);
+    MCOS->EmitValue(SectionSize, AddrSize);
   }
 
   // Emit end of list entry
@@ -1316,7 +1336,8 @@ public:
   void EmitFDE(const MCSymbol &cieStart, const MCDwarfFrameInfo &frame,
                bool LastInSection, const MCSymbol &SectionStart);
   void EmitCFIInstructions(ArrayRef<MCCFIInstruction> Instrs,
-                           MCSymbol *BaseLabel);
+                           MCSymbol *BaseLabel, bool EmitDeduped,
+                           bool EmitNotDeduped);
   void EmitCFIInstruction(const MCCFIInstruction &Instr);
 };
 
@@ -1457,13 +1478,43 @@ void FrameEmitterImpl::EmitCFIInstruction(const MCCFIInstruction &Instr) {
   llvm_unreachable("Unhandled case in switch");
 }
 
+/// Deduping of FDE to CIE is particularly useful with basic block sections
+/// as every basic block gets its own FDE with duplicate CFI instructions. It
+/// is useful in general but the opportunities to dedup are lesser.
+static bool ShouldBeDeduped(const MCCFIInstruction &Instr,
+                            const MCSymbol *BaseLabel,
+                            const MCObjectStreamer &Streamer) {
+  if (NoDedupFDEToCIE ||
+      !Streamer.getContext().getAsmInfo()->shouldRelocateWithSymbols())
+    return false;
+
+  if (!BaseLabel || !BaseLabel->isDefined() || !BaseLabel->isInSection())
+    return false;
+
+  MCSymbol *Label = Instr.getLabel();
+
+  if (!Label || !Label->isDefined() || !Label->isInSection())
+    return false;
+
+  return &Label->getSection() == &BaseLabel->getSection() &&
+         Label->getOffset() == BaseLabel->getOffset();
+}
+
 /// Emit frame instructions to describe the layout of the frame.
 void FrameEmitterImpl::EmitCFIInstructions(ArrayRef<MCCFIInstruction> Instrs,
-                                           MCSymbol *BaseLabel) {
+                                           MCSymbol *BaseLabel,
+                                           bool EmitDeduped = true,
+                                           bool EmitNotDeduped = true) {
+  bool InDedupedRange = true;
   for (const MCCFIInstruction &Instr : Instrs) {
     MCSymbol *Label = Instr.getLabel();
     // Throw out move if the label is invalid.
     if (Label && !Label->isDefined()) continue; // Not emitted, in dead code.
+
+    InDedupedRange &= ShouldBeDeduped(Instr, BaseLabel, Streamer);
+    if ((InDedupedRange && !EmitDeduped) ||
+        (!InDedupedRange && !EmitNotDeduped))
+      continue;
 
     // Advance row if new location.
     if (BaseLabel && Label) {
@@ -1519,9 +1570,8 @@ void FrameEmitterImpl::EmitCompactUnwind(const MCDwarfFrameInfo &Frame) {
   Streamer.EmitSymbolValue(Frame.Begin, Size);
 
   // Range Length
-  const MCExpr *Range = MakeStartMinusEndExpr(Streamer, *Frame.Begin,
-                                              *Frame.End, 0);
-  emitAbsValue(Streamer, Range, 4);
+  const MCExpr *Range = MakeSizeExpr(Streamer, *Frame.Begin, *Frame.End);
+  Streamer.EmitValue(Range, 4);
 
   // Compact Encoding
   Size = getSizeForEncoding(Streamer, dwarf::DW_EH_PE_udata4);
@@ -1661,7 +1711,8 @@ const MCSymbol &FrameEmitterImpl::EmitCIE(const MCDwarfFrameInfo &Frame) {
   if (!Frame.IsSimple) {
     const std::vector<MCCFIInstruction> &Instructions =
         MAI->getInitialFrameState();
-    EmitCFIInstructions(Instructions, nullptr);
+    EmitCFIInstructions(Instructions, nullptr, true, true);
+    EmitCFIInstructions(Frame.Instructions, Frame.Begin, true, false);
   }
 
   InitialCFAOffset = CFAOffset;
@@ -1711,9 +1762,8 @@ void FrameEmitterImpl::EmitFDE(const MCSymbol &cieStart,
   emitFDESymbol(Streamer, *frame.Begin, PCEncoding, IsEH);
 
   // PC Range
-  const MCExpr *Range =
-      MakeStartMinusEndExpr(Streamer, *frame.Begin, *frame.End, 0);
-  emitAbsValue(Streamer, Range, PCSize);
+  const MCExpr *Range = MakeSizeExpr(Streamer, *frame.Begin, *frame.End);
+  Streamer.EmitValue(Range, PCSize);
 
   if (IsEH) {
     // Augmentation Data Length
@@ -1730,7 +1780,7 @@ void FrameEmitterImpl::EmitFDE(const MCSymbol &cieStart,
   }
 
   // Call Frame Instructions
-  EmitCFIInstructions(frame.Instructions, frame.Begin);
+  EmitCFIInstructions(frame.Instructions, frame.Begin, false, true);
 
   // Padding
   // The size of a .eh_frame section has to be a multiple of the alignment
@@ -1747,27 +1797,50 @@ namespace {
 struct CIEKey {
   static const CIEKey getEmptyKey() {
     return CIEKey(nullptr, 0, -1, false, false, static_cast<unsigned>(INT_MAX),
-                  false);
+                  false, nullptr);
   }
 
   static const CIEKey getTombstoneKey() {
     return CIEKey(nullptr, -1, 0, false, false, static_cast<unsigned>(INT_MAX),
-                  false);
+                  false, nullptr);
+  }
+
+  static std::vector<MCCFIInstruction>
+  getDedupedInstructions(const std::vector<MCCFIInstruction> &Instructions,
+                         const MCSymbol *BaseSymbol,
+                         const MCObjectStreamer &Streamer) {
+    std::vector<MCCFIInstruction> DedupedInstructions;
+    for (const auto &Instr : Instructions) {
+      MCSymbol *Label = Instr.getLabel();
+      // Throw out move if the label is invalid.
+      if (Label && !Label->isDefined())
+        continue; // Not emitted, in dead code.
+
+      if (!ShouldBeDeduped(Instr, BaseSymbol, Streamer))
+        break;
+
+      DedupedInstructions.push_back(Instr.StripLabel());
+    }
+    return DedupedInstructions;
   }
 
   CIEKey(const MCSymbol *Personality, unsigned PersonalityEncoding,
          unsigned LSDAEncoding, bool IsSignalFrame, bool IsSimple,
-         unsigned RAReg, bool IsBKeyFrame)
+         unsigned RAReg, bool IsBKeyFrame,
+         const std::vector<MCCFIInstruction> *DedupedInstructions)
       : Personality(Personality), PersonalityEncoding(PersonalityEncoding),
         LsdaEncoding(LSDAEncoding), IsSignalFrame(IsSignalFrame),
-        IsSimple(IsSimple), RAReg(RAReg), IsBKeyFrame(IsBKeyFrame) {}
+        IsSimple(IsSimple), RAReg(RAReg), IsBKeyFrame(IsBKeyFrame),
+        DedupedInstructions(DedupedInstructions) {}
 
-  explicit CIEKey(const MCDwarfFrameInfo &Frame)
+  explicit CIEKey(const MCDwarfFrameInfo &Frame,
+                  const std::vector<MCCFIInstruction> *DedupedInstructions)
       : Personality(Frame.Personality),
         PersonalityEncoding(Frame.PersonalityEncoding),
         LsdaEncoding(Frame.LsdaEncoding), IsSignalFrame(Frame.IsSignalFrame),
         IsSimple(Frame.IsSimple), RAReg(Frame.RAReg),
-        IsBKeyFrame(Frame.IsBKeyFrame) {}
+        IsBKeyFrame(Frame.IsBKeyFrame),
+        DedupedInstructions(DedupedInstructions) {}
 
   StringRef PersonalityName() const {
     if (!Personality)
@@ -1775,12 +1848,20 @@ struct CIEKey {
     return Personality->getName();
   }
 
+  const std::vector<MCCFIInstruction> GetDedupedInstructions() const {
+    if (!DedupedInstructions)
+      return {};
+    return *DedupedInstructions;
+  }
+
   bool operator<(const CIEKey &Other) const {
     return std::make_tuple(PersonalityName(), PersonalityEncoding, LsdaEncoding,
-                           IsSignalFrame, IsSimple, RAReg) <
+                           IsSignalFrame, IsSimple, RAReg,
+                           GetDedupedInstructions()) <
            std::make_tuple(Other.PersonalityName(), Other.PersonalityEncoding,
                            Other.LsdaEncoding, Other.IsSignalFrame,
-                           Other.IsSimple, Other.RAReg);
+                           Other.IsSimple, Other.RAReg,
+                           Other.GetDedupedInstructions());
   }
 
   const MCSymbol *Personality;
@@ -1790,6 +1871,7 @@ struct CIEKey {
   bool IsSimple;
   unsigned RAReg;
   bool IsBKeyFrame;
+  const std::vector<MCCFIInstruction> *DedupedInstructions;
 };
 
 } // end anonymous namespace
@@ -1801,9 +1883,12 @@ template <> struct DenseMapInfo<CIEKey> {
   static CIEKey getTombstoneKey() { return CIEKey::getTombstoneKey(); }
 
   static unsigned getHashValue(const CIEKey &Key) {
+    const auto &DedupedInstructions = Key.GetDedupedInstructions();
     return static_cast<unsigned>(hash_combine(
         Key.Personality, Key.PersonalityEncoding, Key.LsdaEncoding,
-        Key.IsSignalFrame, Key.IsSimple, Key.RAReg, Key.IsBKeyFrame));
+        Key.IsSignalFrame, Key.IsSimple, Key.RAReg, Key.IsBKeyFrame,
+        hash_combine_range(DedupedInstructions.begin(),
+                           DedupedInstructions.end())));
   }
 
   static bool isEqual(const CIEKey &LHS, const CIEKey &RHS) {
@@ -1812,7 +1897,8 @@ template <> struct DenseMapInfo<CIEKey> {
            LHS.LsdaEncoding == RHS.LsdaEncoding &&
            LHS.IsSignalFrame == RHS.IsSignalFrame &&
            LHS.IsSimple == RHS.IsSimple && LHS.RAReg == RHS.RAReg &&
-           LHS.IsBKeyFrame == RHS.IsBKeyFrame;
+           LHS.IsBKeyFrame == RHS.IsBKeyFrame &&
+           LHS.GetDedupedInstructions() == RHS.GetDedupedInstructions();
   }
 };
 
@@ -1856,7 +1942,13 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
   MCSymbol *SectionStart = Context.createTempSymbol();
   Streamer.EmitLabel(SectionStart);
 
+  std::map<const MCSymbol *, std::vector<MCCFIInstruction>> DedupedInstructions;
   DenseMap<CIEKey, const MCSymbol *> CIEStarts;
+
+  for (const auto &Frame : FrameArray) {
+    DedupedInstructions[Frame.Begin] = CIEKey::getDedupedInstructions(
+        Frame.Instructions, Frame.Begin, Streamer);
+  }
 
   const MCSymbol *DummyDebugKey = nullptr;
   bool CanOmitDwarf = MOFI->getOmitDwarfIfHaveCompactUnwind();
@@ -1866,8 +1958,9 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
   // an FDE refers to a CIE other than the closest previous CIE.
   std::vector<MCDwarfFrameInfo> FrameArrayX(FrameArray.begin(), FrameArray.end());
   llvm::stable_sort(FrameArrayX,
-                    [](const MCDwarfFrameInfo &X, const MCDwarfFrameInfo &Y) {
-                      return CIEKey(X) < CIEKey(Y);
+                    [&](const MCDwarfFrameInfo &X, const MCDwarfFrameInfo &Y) {
+                      return CIEKey(X, &DedupedInstructions.at(X.Begin)) <
+                             CIEKey(Y, &DedupedInstructions.at(Y.Begin));
                     });
   for (auto I = FrameArrayX.begin(), E = FrameArrayX.end(); I != E;) {
     const MCDwarfFrameInfo &Frame = *I;
@@ -1878,7 +1971,7 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
       // of by the compact unwind encoding.
       continue;
 
-    CIEKey Key(Frame);
+    CIEKey Key(Frame, &DedupedInstructions.at(Frame.Begin));
     const MCSymbol *&CIEStart = IsEH ? CIEStarts[Key] : DummyDebugKey;
     if (!CIEStart)
       CIEStart = &Emitter.EmitCIE(Frame);

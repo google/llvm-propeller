@@ -27,6 +27,7 @@
 #include "llvm/MC/StringTableBuilder.h"
 #include "llvm/Support/Endian.h"
 #include <functional>
+#include <map>
 
 namespace lld {
 namespace elf {
@@ -585,6 +586,7 @@ public:
   unsigned getNumSymbols() const { return symbols.size() + 1; }
   size_t getSymbolIndex(Symbol *sym);
   ArrayRef<SymbolTableEntry> getSymbols() const { return symbols; }
+  std::map<uint64_t, std::pair<uint64_t, uint32_t>> EndsMap;
 
 protected:
   void sortSymTabSymbols();

@@ -32,6 +32,7 @@ add_lld_library(lldELF
   InputFiles.cpp
   InputSection.cpp
   LTO.cpp
+  LinkerPropeller.cpp
   LinkerScript.cpp
   MapFile.cpp
   MarkLive.cpp
@@ -60,9 +61,12 @@ add_lld_library(lldELF
 
   LINK_LIBS
   lldCommon
+  lldPropeller
   ${LLVM_PTHREAD_LIB}
-
+  
   DEPENDS
   ELFOptionsTableGen
   ${tablegen_deps}
   )
+
+add_subdirectory(Propeller)

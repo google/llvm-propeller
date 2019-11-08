@@ -1316,6 +1316,12 @@ def flto_jobs_EQ : Joined<["-"], "flto-jobs=">,
 def fthinlto_index_EQ : Joined<["-"], "fthinlto-index=">,
   Flags<[CoreOption, CC1Option]>, Group<f_Group>,
   HelpText<"Perform ThinLTO importing using provided function summary index">;
+def fpropeller_optimize_EQ : Joined<["-"], "fpropeller-optimize=">, Flags<[CoreOption, CC1Option]>, Group<f_Group>,
+  HelpText<"Enable Propeller optimization using the given profiles">;
+def fpropeller_label : Flag<["-"], "fpropeller-label">, Group<f_Group>,
+  HelpText<"Label the binary's basic blocks for generating Propeller profiles">;
+def fno_propeller : Flag<["-"], "fno-propeller">, Group<f_Group>,
+  HelpText<"Disable Propeller (default)">;
 def fthin_link_bitcode_EQ : Joined<["-"], "fthin-link-bitcode=">,
   Flags<[CoreOption, CC1Option]>, Group<f_Group>,
   HelpText<"Write minimized bitcode to <file> for the ThinLTO thin link only">;
@@ -1912,6 +1918,8 @@ def ffunction_sections : Flag<["-"], "ffunction-sections">, Group<f_Group>,
   HelpText<"Place each function in its own section (ELF Only)">;
 def fno_function_sections : Flag<["-"], "fno-function-sections">,
   Group<f_Group>, Flags<[CC1Option]>;
+def fbasicblock_sections_EQ : Joined<["-"], "fbasicblock-sections=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>,
+  HelpText<"Place each function's basic blocks in unique sections (ELF Only) : all | labels | none | <filename>">;
 def fdata_sections : Flag <["-"], "fdata-sections">, Group<f_Group>,
  Flags<[CC1Option]>, HelpText<"Place each data in its own section (ELF Only)">;
 def fno_data_sections : Flag <["-"], "fno-data-sections">, Group<f_Group>,
@@ -1927,6 +1935,16 @@ def funique_section_names : Flag <["-"], "funique-section-names">,
 def fno_unique_section_names : Flag <["-"], "fno-unique-section-names">,
   Group<f_Group>, Flags<[CC1Option]>;
 
+def funique_bb_section_names : Flag <["-"], "funique-bb-section-names">,
+  Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Use unique names for basic block sections (ELF Only)">;
+def fno_unique_bb_section_names : Flag <["-"], "fno-unique-bb-section-names">,
+  Group<f_Group>, Flags<[CC1Option]>;
+def funique_internal_funcnames : Flag <["-"], "funique-internal-funcnames">,
+  Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Uniqueify Internal Linkage Function Names">;
+def fno_unique_internal_funcnames : Flag <["-"], "fno-unique-internal-funcnames">,
+  Group<f_Group>, Flags<[CC1Option]>;
 def fstrict_return : Flag<["-"], "fstrict-return">, Group<f_Group>,
   Flags<[CC1Option]>,
   HelpText<"Always treat control flow paths that fall off the end of a "

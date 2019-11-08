@@ -39,6 +39,7 @@
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compression.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/Error.h"
@@ -1344,6 +1345,7 @@ bool ELFObjectWriter::shouldRelocateWithSymbol(const MCAssembler &Asm,
   if (!RefA)
     return false;
 
+  const auto &MAI = Asm.getContext().getAsmInfo();
   MCSymbolRefExpr::VariantKind Kind = RefA->getKind();
   switch (Kind) {
   default:
@@ -1368,6 +1370,12 @@ bool ELFObjectWriter::shouldRelocateWithSymbol(const MCAssembler &Asm,
   case MCSymbolRefExpr::VK_PPC_GOT_HI:
   case MCSymbolRefExpr::VK_PPC_GOT_HA:
     return true;
+
+  case MCSymbolRefExpr::VK_SIZE:
+    if (MAI->shouldRelocateWithSymbols())
+      return true;
+    else
+      break;
   }
 
   // An undefined symbol is not in any section, so the relocation has to point
@@ -1436,7 +1444,7 @@ bool ELFObjectWriter::shouldRelocateWithSymbol(const MCAssembler &Asm,
 
   if (TargetObjectWriter->needsRelocateWithSymbol(*Sym, Type))
     return true;
-  return false;
+  return MAI->shouldRelocateWithSymbols();
 }
 
 void ELFObjectWriter::recordRelocation(MCAssembler &Asm,

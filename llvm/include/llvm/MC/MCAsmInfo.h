@@ -396,6 +396,12 @@ protected:
   // %hi(), and similar unary operators.
   bool HasMipsExpressions = false;
 
+  // If true, then use symbols instead of sections for relocations.  This is
+  // true with basic block sections, as the basic block is relaxed by the
+  // linker.
+  bool RelocateWithSymbols = false;
+  bool RelocateWithSizeRelocs = false;
+
   // If true, emit function descriptor symbol on AIX.
   bool NeedsFunctionDescriptors = false;
 
@@ -656,7 +662,17 @@ public:
   bool canRelaxRelocations() const { return RelaxELFRelocations; }
   void setRelaxELFRelocations(bool V) { RelaxELFRelocations = V; }
   bool hasMipsExpressions() const { return HasMipsExpressions; }
+  bool shouldRelocateWithSymbols() const { return RelocateWithSymbols; }
+  bool shouldRelocateWithSizeRelocs() const { return RelocateWithSizeRelocs; }
+  void setRelocateWithSymbols(bool V = true) {
+    // Relocate with symbols and size relocs.  This is currently active
+    // during basic block sections.  If the target does not support size
+    // relocs, this must be split.
+    RelocateWithSymbols = V;
+    RelocateWithSizeRelocs = V;
+  }
   bool needsFunctionDescriptors() const { return NeedsFunctionDescriptors; }
+
 };
 
 } // end namespace llvm

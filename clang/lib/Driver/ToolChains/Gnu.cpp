@@ -623,6 +623,44 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     }
   }
 
+  if (Arg *A = Args.getLastArg(options::OPT_fpropeller_optimize_EQ,
+                               options::OPT_fpropeller_label,
+                               options::OPT_fno_propeller)) {
+    // With Propeller, trigger the linker flags only with lld.
+    if (A->getOption().matches(options::OPT_fpropeller_optimize_EQ)) {
+      if (!Args.getLastArgValue(options::OPT_fuse_ld_EQ).equals_lower("lld"))
+        D.Diag(clang::diag::err_drv_unsupported_opt)
+            << "Linker does not support -fpropeller-optimize=";
+      CmdArgs.push_back(
+          Args.MakeArgString(Twine("--propeller=") + A->getValue()));
+      if (D.isUsingLTO()) {
+        bool ltoBasicblockSectionsPresent = false;
+        for (auto *T : CmdArgs) {
+          StringRef SR(T);
+          if (SR.startswith("--lto-basicblock-sections=") ||
+              SR.startswith("-lto-basicblock-sections=")) {
+            ltoBasicblockSectionsPresent = true;
+            break;
+          }
+        }
+        // Only if no --lto-basicblock-sections is present in the command line,
+        // do we append it.
+        if (!ltoBasicblockSectionsPresent)
+          CmdArgs.push_back(Args.MakeArgString(
+              Twine("--lto-basicblock-sections=") + A->getValue()));
+      }
+      CmdArgs.push_back("--optimize-bb-jumps");
+      CmdArgs.push_back("--no-call-graph-profile-sort");
+      CmdArgs.push_back("-z");
+      CmdArgs.push_back("nokeep-text-section-prefix");
+      CmdArgs.push_back("--no-warn-symbol-ordering");
+    } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
+      if (D.isUsingLTO())
+        CmdArgs.push_back(Args.MakeArgString(
+            Twine("--lto-basicblock-sections=labels")));
+    }
+  }
+
   // Add HIP offloading linker script args if required.
   AddHIPLinkerScript(getToolChain(), C, Output, Inputs, Args, CmdArgs, JA,
                      *this);

@@ -59,6 +59,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MD5.h"
 #include "llvm/Support/TimeProfiler.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -1026,7 +1027,6 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
         llvm_unreachable("None multiversion type isn't valid here");
       }
     }
-
   return Out.str();
 }
 
@@ -1091,6 +1091,18 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
   // Keep the first result in the case of a mangling collision.
   const auto *ND = cast<NamedDecl>(GD.getDecl());
   std::string MangledName = getMangledNameImpl(*this, GD, ND);
+
+  // With BasicBlockSections, it is important to have a unique name for
+  // internal linkage functions, to differentiate the symbols across
+  // modules.
+  if (getCodeGenOpts().UniqueInternalFuncNames &&
+      dyn_cast<FunctionDecl>(GD.getDecl()) &&
+      this->getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) {
+    std::string UniqueSuffix = getUniqueModuleId(&getModule(), true);
+    if (!UniqueSuffix.empty()) {
+      MangledName = MangledName + '.' + UniqueSuffix;
+    }
+  }
 
   // Adjust kernel stub mangling as we may need to be able to differentiate
   // them from the kernel itself (e.g., for HIP).

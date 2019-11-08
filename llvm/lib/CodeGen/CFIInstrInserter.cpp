@@ -246,6 +246,8 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   bool InsertedCFIInstr = false;
 
+  MF.sortBasicBlockSections();
+
   for (MachineBasicBlock &MBB : MF) {
     // Skip the first MBB in a function
     if (MBB.getNumber() == MF.front().getNumber()) continue;
@@ -254,11 +256,17 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
     auto MBBI = MBBInfo.MBB->begin();
     DebugLoc DL = MBBInfo.MBB->findDebugLoc(MBBI);
 
-    if (PrevMBBInfo->OutgoingCFAOffset != MBBInfo.IncomingCFAOffset) {
+    // If the current MBB will be placed in a unique section, a full DefCfa
+    // must be emitted.
+    const bool ForceFullCFA = MBB.isBeginSection();
+
+    if (PrevMBBInfo->OutgoingCFAOffset != MBBInfo.IncomingCFAOffset ||
+        ForceFullCFA) {
       // If both outgoing offset and register of a previous block don't match
       // incoming offset and register of this block, add a def_cfa instruction
       // with the correct offset and register for this block.
-      if (PrevMBBInfo->OutgoingCFARegister != MBBInfo.IncomingCFARegister) {
+      if (PrevMBBInfo->OutgoingCFARegister != MBBInfo.IncomingCFARegister ||
+          ForceFullCFA) {
         unsigned CFIIndex = MF.addFrameInst(MCCFIInstruction::createDefCfa(
             nullptr, MBBInfo.IncomingCFARegister, getCorrectCFAOffset(&MBB)));
         BuildMI(*MBBInfo.MBB, MBBI, DL, TII->get(TargetOpcode::CFI_INSTRUCTION))
@@ -286,6 +294,13 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
           .addCFIIndex(CFIIndex);
       InsertedCFIInstr = true;
     }
+
+    if (ForceFullCFA) {
+      MF.getSubtarget().getFrameLowering()->emitCalleeSavedFrameMoves(
+          *MBBInfo.MBB, MBBI);
+      InsertedCFIInstr = true;
+    }
+
     PrevMBBInfo = &MBBInfo;
   }
   return InsertedCFIInstr;

@@ -96,6 +96,9 @@ private:
 
   friend class SymbolTableListTraits<Function>;
 
+  bool BasicBlockSections = false;
+  bool BasicBlockLabels = false;
+
   /// hasLazyArguments/CheckLazyArguments - The argument list of a function is
   /// built on demand, so that the list isn't allocated until the first client
   /// needs it.  The hasLazyArguments predicate returns true if the arg list
@@ -158,6 +161,14 @@ public:
   /// This is equivalent to the sum of the sizes of each basic block contained
   /// within this function.
   unsigned getInstructionCount() const;
+
+  bool getBasicBlockSections() const { return BasicBlockSections; }
+
+  void setBasicBlockSections(bool value) { BasicBlockSections = value; }
+
+  bool getBasicBlockLabels() const { return BasicBlockLabels; }
+
+  void setBasicBlockLabels(bool value) { BasicBlockLabels = value; }
 
   /// Returns the FunctionType for me.
   FunctionType *getFunctionType() const {

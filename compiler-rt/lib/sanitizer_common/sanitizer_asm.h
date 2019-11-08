@@ -12,7 +12,7 @@
 
 // Some toolchains do not support .cfi asm directives, so we have to hide
 // them inside macros.
-#if defined(__clang__) ||                                                      \
+#if (defined(__clang__) && defined(_CLANG_NO_BB_SECTIONS)) || \
     (defined(__GNUC__) && defined(__GCC_HAVE_DWARF2_CFI_ASM))
   // GCC defined __GCC_HAVE_DWARF2_CFI_ASM if it supports CFI.
   // Clang seems to support CFI by default (or not?).
