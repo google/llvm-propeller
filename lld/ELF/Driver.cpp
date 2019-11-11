@@ -70,9 +70,6 @@ using namespace llvm::support;
 using namespace lld;
 using namespace lld::elf;
 
-using std::chrono::duration;
-using std::chrono::system_clock;
-
 Configuration *elf::config;
 LinkerDriver *elf::driver;
 
@@ -979,7 +976,9 @@ static void readConfigs(opt::InputArgList &args) {
   bool splitFuncsExplicit = false;
   for(auto& propellerOpt: propellerOpts){
     StringRef S = StringRef(propellerOpt);
-    if (S == "reorder-funcs"){
+    if (S == "reorder-ip"){
+      config->propellerReorderIP = true;
+    } else if (S == "reorder-funcs"){
       config->propellerReorderFuncs = true;
     } else if (S == "no-reorder-funcs") {
       config->propellerReorderFuncs = false;

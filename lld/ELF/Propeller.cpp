@@ -483,50 +483,10 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
 std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   calculateNodeFreqs();
 
-  std::list<ControlFlowGraph *> cfgOrder;
-  if (config->propellerReorderFuncs) {
-    CallChainClustering c3;
-    c3.init(*this);
-    auto cfgsReordered = c3.doOrder(cfgOrder);
-    (void)cfgsReordered;
-  } else {
-    forEachCfgRef(
-        [&cfgOrder](ControlFlowGraph &cfg) { cfgOrder.push_back(&cfg); });
-    cfgOrder.sort([](const ControlFlowGraph *a, const ControlFlowGraph *b) {
-      const auto *aEntry = a->getEntryNode();
-      const auto *bEntry = b->getEntryNode();
-      return aEntry->MappedAddr < bEntry->MappedAddr;
-    });
-  }
-
   std::list<StringRef> symbolList(1, "Hot");
   const auto hotPlaceHolder = symbolList.begin();
   const auto coldPlaceHolder = symbolList.end();
-  if (config->propellerPrintStats)
-    fprintf(stderr, "HISTOGRAM: Function.Name,BBs.all,BBs.hot\n");
-  for (auto *cfg : cfgOrder) {
-    if (config->propellerPrintStats){
-      unsigned hotBBs = 0;
-      unsigned allBBs = 0;
-      cfg->forEachNodeRef([&hotBBs, &allBBs] (CFGNode &node) {
-        if (node.Freq)
-          hotBBs++;
-        allBBs++;
-      });
-      fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg->Name.str().c_str(), allBBs, hotBBs);
-    }
-    if (cfg->isHot() && config->propellerReorderBlocks) {
-      NodeChainBuilder(cfg).doSplitOrder(
-          symbolList, hotPlaceHolder,
-          config->propellerSplitFuncs ? coldPlaceHolder : hotPlaceHolder);
-    } else {
-      auto PlaceHolder =
-          config->propellerSplitFuncs ? coldPlaceHolder : hotPlaceHolder;
-      cfg->forEachNodeRef([&symbolList, PlaceHolder](CFGNode &N) {
-        symbolList.insert(PlaceHolder, N.ShName);
-      });
-    }
-  }
+  PropellerBBReordering(*this).doSplitOrder(symbolList, hotPlaceHolder, coldPlaceHolder);
 
   calculateLegacy(symbolList, hotPlaceHolder, coldPlaceHolder);
 

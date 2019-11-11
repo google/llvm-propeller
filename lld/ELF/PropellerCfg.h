@@ -31,6 +31,7 @@
 #define LLD_ELF_PROPELLER_CFG_H
 
 #include "Propeller.h"
+#include "Config.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
@@ -40,6 +41,7 @@
 #include <ostream>
 #include <vector>
 
+using lld::elf::config;
 using llvm::object::ObjectFile;
 using llvm::object::section_iterator;
 using llvm::object::SymbolRef;
@@ -57,6 +59,7 @@ public:
   CFGNode *Src;
   CFGNode *Sink;
   uint64_t Weight;
+
   // Whether it's an edge introduced by recursive-self-call.  (Usually
   // calls do not split basic blocks and do not introduce new edges.)
   enum EdgeType : char {
@@ -69,6 +72,14 @@ public:
     INTER_FUNC_CALL,
     INTER_FUNC_RETURN,
   } Type = INTRA_FUNC;
+
+  bool isCall() const {
+    return Type == INTER_FUNC_CALL || Type == INTRA_RSC;
+  }
+
+  bool isReturn() const {
+    return Type == INTER_FUNC_RETURN || Type == INTRA_RSR;
+  }
 
 protected:
   CFGEdge(CFGNode *N1, CFGNode *N2, EdgeType T)
@@ -107,6 +118,25 @@ public:
     return 0;
   }
 
+  bool isEntryNode() const;
+
+  template <class Visitor> void forEachInEdgeRef(Visitor V) const {
+    for (auto& edgeList: {Ins, CallIns})
+      for (const CFGEdge * E: edgeList)
+        V(*E);
+  }
+
+  template <class Visitor> void forEachIntraOutEdgeRef(Visitor V) const {
+    for (const CFGEdge * E: Outs)
+      V(*E);
+  }
+
+  template <class Visitor> void forEachOutEdgeRef(Visitor V) const {
+    for (auto& edgeList: {Outs, CallOuts})
+      for (const CFGEdge * E: edgeList)
+        V(*E);
+  }
+
 private:
   CFGNode(uint64_t _Shndx, const StringRef &_ShName, uint64_t _Size,
           uint64_t _MappedAddr, ControlFlowGraph *_Cfg)
@@ -124,13 +154,21 @@ public:
   StringRef Name;
   uint64_t Size;
 
+  // Whether propeller should print information about how this CFG is being
+  // reordered.
+  bool DebugCFG;
+
   // ControlFlowGraph assumes the ownership for all Nodes / Edges.
   std::vector<std::unique_ptr<CFGNode>> Nodes; // Sorted by address.
   std::vector<std::unique_ptr<CFGEdge>> IntraEdges;
   std::vector<std::unique_ptr<CFGEdge>> InterEdges;
 
   ControlFlowGraph(ObjectView *V, const StringRef &N, uint64_t S)
-      : View(V), Name(N), Size(S) {}
+      : View(V), Name(N), Size(S) {
+        DebugCFG = std::find(config->propellerDebugSymbols.begin(),
+                             config->propellerDebugSymbols.end(),
+                             Name.str()) != config->propellerDebugSymbols.end();
+      }
 
   bool markPath(CFGNode *from, CFGNode *to, uint64_t cnt = 1);
   void mapBranch(CFGNode *from, CFGNode *to, uint64_t cnt = 1,

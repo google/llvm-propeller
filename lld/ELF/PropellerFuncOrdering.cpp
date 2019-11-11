@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 // This file is part of the Propeller infrastructure for doing code layout
 // optimization and includes the implementation of function reordering based on
-// the CallChainClustering algorithm as published in [1].
+// the CallChainClustering1 algorithm as published in [1].
 //
 // This algorithm keeps merging functions together into clusters until the
 // cluster sizes reach a limit. The algorithm iterates over functions in
@@ -39,11 +39,11 @@ namespace propeller {
 
 const unsigned ClusterMergeSizeThreshold = 1 << 21;
 
-// Initializes the CallChainClustering algorithm with the cfgs from propeller.
+// Initializes the CallChainClustering1 algorithm with the cfgs from propeller.
 // It separates cfgs into hot and cold cfgs and initially orders each collection
 // of cfgs based on the address of their corresponding functions in the original
 // binary.
-void CallChainClustering::init(Propeller &propeller) {
+void CallChainClustering1::init(Propeller &propeller) {
   propeller.forEachCfgRef([this](ControlFlowGraph &cfg) {
     if (cfg.isHot())
       this->HotCFGs.push_back(&cfg);
@@ -64,14 +64,14 @@ void CallChainClustering::init(Propeller &propeller) {
 
 // Initialize a cluster containing a single cfg an associates it with a unique
 // id.
-CallChainClustering::Cluster::Cluster(ControlFlowGraph *cfg, unsigned id)
+CallChainClustering1::Cluster::Cluster(ControlFlowGraph *cfg, unsigned id)
     : CFGs(1, cfg), Id(id) {}
 
 // Returns the most frequent caller of a function. This function also gets as
 // the second parameter the cluster containing this function to save a lookup
 // into the CFGToClusterMap.
 ControlFlowGraph *
-CallChainClustering::getMostLikelyPredecessor(ControlFlowGraph *cfg,
+CallChainClustering1::getMostLikelyPredecessor(ControlFlowGraph *cfg,
                                               Cluster *cluster) {
   CFGNode *entry = cfg->getEntryNode();
   if (!entry)
@@ -104,8 +104,8 @@ CallChainClustering::getMostLikelyPredecessor(ControlFlowGraph *cfg,
   return bestCallIn ? bestCallIn->Src->CFG : nullptr;
 }
 
-// Merge clusters together based on the CallChainClustering algorithm.
-void CallChainClustering::mergeClusters() {
+// Merge clusters together based on the CallChainClustering1 algorithm.
+void CallChainClustering1::mergeClusters() {
   // Build a map for the execution density of each cfg. This value will depend
   // on whether function-splitting is used or not.
   std::map<ControlFlowGraph *, double> cfgWeightMap;
@@ -166,7 +166,7 @@ void CallChainClustering::mergeClusters() {
 
 // This functions sorts all remaining clusters in decreasing order of their
 // execution density.
-void CallChainClustering::sortClusters(std::vector<Cluster *> &clusterOrder) {
+void CallChainClustering1::sortClusters(std::vector<Cluster *> &clusterOrder) {
   for (auto &p : Clusters)
     clusterOrder.push_back(p.second.get());
   std::sort(clusterOrder.begin(), clusterOrder.end(),
@@ -179,10 +179,10 @@ void CallChainClustering::sortClusters(std::vector<Cluster *> &clusterOrder) {
             });
 }
 
-// This function performs CallChainClustering on all cfgs and then orders all
+// This function performs CallChainClustering1 on all cfgs and then orders all
 // the built clusters based on their execution density. It places all cold
 // functions after hot functions and returns the number of hot functions.
-unsigned CallChainClustering::doOrder(std::list<ControlFlowGraph *> &cfgOrder) {
+unsigned CallChainClustering1::doOrder(std::list<ControlFlowGraph *> &cfgOrder) {
   mergeClusters();
   std::vector<Cluster *> clusterOrder;
   sortClusters(clusterOrder);

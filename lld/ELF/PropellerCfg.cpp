@@ -36,6 +36,10 @@ using llvm::object::SymbolRef;
 namespace lld {
 namespace propeller {
 
+bool CFGNode::isEntryNode() const {
+  return CFG->getEntryNode() == this;
+}
+
 bool ControlFlowGraph::writeAsDotGraph(StringRef cfgOutName) {
   std::error_code ec;
   llvm::raw_fd_ostream os(cfgOutName, ec, llvm::sys::fs::CD_CreateAlways);

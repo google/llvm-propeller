@@ -41,7 +41,7 @@
 # RUN: echo "Fallthroughs" >> %t_prof.propeller
 # RUN: echo "1 2 100" >> %t_prof.propeller
 
-# RUN: ld.lld %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.out
+# RUN: ld.lld %t.o -propeller-debug-symbol=foo -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.out
 # RUN: llvm-nm -nS %t.propeller.out| FileCheck %s --check-prefix=AFTER
 
 # AFTER:	0000000000201120 0000000000000005 t foo

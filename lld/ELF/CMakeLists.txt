@@ -40,7 +40,6 @@ add_lld_library(lldELF
   PropellerBBReordering.cpp
   PropellerCfg.cpp
   PropellerFuncOrdering.cpp
-  PropellerBBReordering.cpp
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp

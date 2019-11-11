@@ -19,7 +19,7 @@ namespace propeller {
 
 class ControlFlowGraph;
 
-class CallChainClustering {
+class CallChainClustering1 {
 public:
   class Cluster {
   public:
@@ -46,7 +46,7 @@ public:
     double getDensity() { return ((double)Weight) / Size; }
   };
 
-  CallChainClustering() {}
+  CallChainClustering1() {}
 
   void init(Propeller &propeller);
 

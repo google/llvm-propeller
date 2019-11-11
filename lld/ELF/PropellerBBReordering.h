@@ -11,18 +11,23 @@
 #include "PropellerCfg.h"
 
 #include "lld/Common/LLVM.h"
+#include "Heap.h"
 #include "llvm/ADT/DenseMap.h"
 #include <iostream>
 
 #include <list>
 #include <unordered_map>
 #include <unordered_set>
+#include <chrono>
 
 using lld::elf::config;
 using llvm::DenseMap;
+using llvm::DenseSet;
 
 namespace lld {
 namespace propeller {
+
+class ChainClustering;
 
 enum MergeOrder {
   Begin,
@@ -41,6 +46,9 @@ public:
   // Representative node of the chain, with which it is initially constructed.
   const CFGNode *DelegateNode;
   std::vector<const CFGNode *> Nodes;
+  std::vector<unsigned> FunctionEntryIndices;
+  std::unordered_map<NodeChain *, std::list<const CFGEdge*>> OutEdges;
+  DenseSet<NodeChain *> InEdges;
 
   // Total binary size of the chain
   uint32_t Size;
@@ -49,12 +57,29 @@ public:
   uint64_t Freq;
 
   // Extended TSP score of the chain
-  double Score;
+  double Score = 0;
+
+  bool DebugChain;
 
   // Constructor for building a NodeChain from a single Node
-  NodeChain(const CFGNode *Node)
-      : DelegateNode(Node), Nodes(1, Node), Size(Node->ShSize),
-        Freq(Node->Freq) {}
+  NodeChain(const CFGNode *node)
+      : DelegateNode(node), Nodes(1, node), Size(node->ShSize),
+        Freq(node->Freq), DebugChain(node->CFG->DebugCFG) {}
+
+  NodeChain(ControlFlowGraph *cfg) : DelegateNode(cfg->getEntryNode()), Size(cfg->Size), Freq(0), DebugChain(cfg->DebugCFG) {
+    cfg->forEachNodeRef([this] (const CFGNode& node) {
+      Nodes.push_back(&node);
+      Freq += node.Freq;
+    });
+  }
+
+  template <class Visitor> void forEachOutEdgeToChain(NodeChain* chain, Visitor V) const {
+    auto it = OutEdges.find(chain);
+    if (it == OutEdges.end())
+      return;
+    for (const CFGEdge *E : it->second)
+      V(*E);
+  }
 
   double execDensity() const {
     return ((double)Freq) / std::max(Size, (uint32_t)1);
@@ -64,11 +89,14 @@ public:
 // BB Chain builder based on the ExtTSP metric
 class NodeChainBuilder {
 private:
+  std::vector<ControlFlowGraph*> CFGs;
+
   class NodeChainAssembly;
+  struct CompareNodeChainAssemblyGain;
   class NodeChainSlice;
 
   // Cfg representing a single function.
-  const ControlFlowGraph *CFG;
+  // const ControlFlowGraph *CFG;
 
   // Set of built chains, keyed by section index of their Delegate Nodes.
   DenseMap<uint64_t, std::unique_ptr<NodeChain>> Chains;
@@ -92,9 +120,10 @@ private:
   // This maps every (ordered) pair of chains (with the first chain in the pair
   // potentially splittable) to the highest-gain NodeChainAssembly for those
   // chains.
-  DenseMap<std::pair<NodeChain *, NodeChain *>,
-           std::unique_ptr<NodeChainAssembly>>
-      NodeChainAssemblies;
+  //DenseMap<std::pair<NodeChain *, NodeChain *>,
+  //         std::unique_ptr<NodeChainAssembly>>
+  //    NodeChainAssemblies;
+  Heap<std::pair<NodeChain*, NodeChain*>, std::unique_ptr<NodeChainAssembly>, std::less<std::pair<NodeChain*,NodeChain*>> , CompareNodeChainAssemblyGain> NodeChainAssemblies;
 
   // This map stores the candidate chains for each chain.
   //
@@ -105,11 +134,7 @@ private:
   std::unordered_map<NodeChain *, std::unordered_set<NodeChain *>>
       CandidateChains;
 
-  // Whether propeller should print information about how this CFG is being
-  // reordered.
-  bool DebugCFG;
-
-  void sortChainsByExecutionDensity(std::vector<const NodeChain *> &ChainOrder);
+  void coalesceChains();
 
   void initializeExtTSP();
   void attachFallThroughs();
@@ -121,6 +146,7 @@ private:
 
   void mergeChainEdges(NodeChain *splitChain, NodeChain *unSplitChain);
 
+  void mergeInOutEdges(NodeChain * mergerChain, NodeChain * mergeeChain);
   void mergeChains(NodeChain *leftChain, NodeChain *rightChain);
   void mergeChains(std::unique_ptr<NodeChainAssembly> assembly);
 
@@ -131,13 +157,15 @@ private:
   // assumption that UnsplitChain has been merged into SplitChain.
   bool updateNodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain);
 
-  void computeChainOrder(std::vector<const NodeChain *> &chainOrder);
+  void mergeAllChains();
+
+  void init();
 
   // Initialize the mutuallyForcedOut map
-  void initMutuallyForcedEdges();
+  void initMutuallyForcedEdges(const ControlFlowGraph &cfg);
 
   // Initialize basic block chains, with one chain for every node
-  void initNodeChains();
+  void initNodeChains(const ControlFlowGraph &cfg);
 
   uint32_t getNodeOffset(const CFGNode *node) const {
     auto it = NodeOffsetMap.find(node);
@@ -154,21 +182,21 @@ private:
   }
 
 public:
-  NodeChainBuilder(const ControlFlowGraph *_CFG) : CFG(_CFG) {
-    DebugCFG = std::find(config->propellerDebugSymbols.begin(),
-                         config->propellerDebugSymbols.end(),
-                         CFG->Name.str()) != config->propellerDebugSymbols.end();
-    initNodeChains();
-    initMutuallyForcedEdges();
+  template <class Visitor> void forEachChainRef(Visitor V) const {
+    for (const auto &C: Chains) {
+      V(*C.second.get());
+    }
   }
 
   // This invokes the Extended TSP algorithm, orders the hot and cold basic
   // blocks and inserts their associated symbols at the corresponding locations
   // specified by the parameters (HotPlaceHolder and ColdPlaceHolder) in the
   // given SymbolList.
-  void doSplitOrder(std::list<StringRef> &SymbolList,
-                    std::list<StringRef>::iterator HotPlaceHolder,
-                    std::list<StringRef>::iterator ColdPlaceHolder);
+  void doOrder(std::unique_ptr<ChainClustering> &CC);
+
+  NodeChainBuilder(std::vector<ControlFlowGraph *>& cfgs): CFGs(cfgs){}
+
+  NodeChainBuilder(ControlFlowGraph *cfg): CFGs(1, cfg){}
 
   std::string toString(const NodeChainAssembly& assembly) const;
 };
@@ -257,6 +285,10 @@ private:
     Score = computeExtTSPScore();
   }
 
+  bool isValid() {
+    return config->propellerReorderIP || (!SplitChain->Nodes.front()->isEntryNode() && !UnsplitChain->Nodes.front()->isEntryNode()) || getFirstNode()->isEntryNode();
+  }
+
   // Return the gain in ExtTSP score achieved by this NodeChainAssembly once it
   // is accordingly applied to the two chains.
   double extTSPScoreGain() {
@@ -333,6 +365,21 @@ private:
     return nullptr;
   }
 
+  struct CompareNodeChainAssembly {
+    bool operator () (const std::unique_ptr<NodeChainAssembly> &a1,
+                      const std::unique_ptr<NodeChainAssembly> &a2) const {
+      if (a1->extTSPScoreGain() == a2->extTSPScoreGain()){
+        if (a1->chainPair() < a2->chainPair())
+            return true;
+        if (a2->chainPair() < a1->chainPair())
+            return false;
+        return a1->assemblyStrategy() < a2->assemblyStrategy();
+      }
+      return a1->extTSPScoreGain() < a2->extTSPScoreGain();
+    }
+  };
+
+
   friend class NodeChainBuilder;
 
 public:
@@ -342,8 +389,197 @@ public:
   // copy constructor is implicitly deleted
   // NodeChainAssembly(const NodeChainAssembly&) = delete;
   NodeChainAssembly() = delete;
+
+  std::pair<NodeChain*, NodeChain*> chainPair() const {
+    return std::make_pair(SplitChain, UnsplitChain);
+  }
+
+  std::pair<uint8_t, size_t> assemblyStrategy() const {
+    return std::make_pair(MOrder, SlicePosition - SplitChain->Nodes.begin());
+  }
+
+  bool split() const {
+    return SlicePosition != SplitChain->Nodes.begin();
+  }
+};
+
+struct NodeChainBuilder::CompareNodeChainAssemblyGain {
+  bool operator() (const std::unique_ptr<NodeChainAssembly> &a1,
+                   const std::unique_ptr<NodeChainAssembly> &a2) const {
+    return a1->extTSPScoreGain() < a2->extTSPScoreGain();
+  }
+};
+
+class ChainClustering {
+ public:
+  class Cluster {
+    public:
+     Cluster(const NodeChain*);
+     std::vector<const NodeChain*> Chains;
+     const NodeChain * DelegateChain;
+     uint64_t Size;
+     uint64_t Weight;
+
+     Cluster &mergeWith(Cluster &other) {
+       Chains.insert(Chains.end(), other.Chains.begin(), other.Chains.end());
+       this->Weight += other.Weight;
+       this->Size += other.Size;
+       return *this;
+     }
+
+     double getDensity() {return ((double)Weight/Size);}
+  };
+
+  void mergeTwoClusters(Cluster * predecessorCluster, Cluster * cluster){
+    // Join the two clusters into predecessorCluster.
+    predecessorCluster->mergeWith(*cluster);
+
+    // Update chain to cluster mapping, because all chains that were
+    // previsously in cluster are now in predecessorCluster.
+    for (const NodeChain * c : cluster->Chains) {
+      ChainToClusterMap[c] = predecessorCluster;
+    }
+
+    // Delete the defunct cluster
+    Clusters.erase(cluster->DelegateChain->DelegateNode->MappedAddr);
+  }
+
+  void addChain(std::unique_ptr<const NodeChain>&& chain_ptr);
+
+  virtual void doOrder(std::vector<const CFGNode*> &hotOrder,
+               std::vector<const CFGNode*> &coldOrder);
+
+  virtual ~ChainClustering() = default;
+
+ protected:
+  virtual void mergeClusters() {};
+  void sortClusters(std::vector<Cluster *> &);
+
+  void initClusters() {
+    for(auto& c_ptr: HotChains){
+      const NodeChain * chain = c_ptr.get();
+      Cluster *cl = new Cluster(chain);
+      cl->Weight = chain->Freq;
+      cl->Size = std::max(chain->Size, (uint32_t)1);
+      ChainToClusterMap[chain] = cl;
+      Clusters.try_emplace(cl->DelegateChain->DelegateNode->MappedAddr, cl);
+    }
+  }
+
+  std::vector<std::unique_ptr<const NodeChain>> HotChains, ColdChains;
+  DenseMap<uint64_t, std::unique_ptr<Cluster>> Clusters;
+  DenseMap<const CFGNode *, const NodeChain *> NodeToChainMap;
+  DenseMap<const NodeChain*, Cluster*> ChainToClusterMap;
+};
+
+class NoOrdering : public ChainClustering {
+ public:
+  void doOrder(std::vector<const CFGNode*> &hotOrder,
+               std::vector<const CFGNode*> &coldOrder);
+};
+
+class CallChainClustering: public ChainClustering {
+ private:
+  Cluster* getMostLikelyPredecessor(const NodeChain *chain,
+                                            Cluster *cluster);
+  void mergeClusters();
+};
+
+class PropellerBBReordering {
+ private:
+  std::vector<ControlFlowGraph *> HotCFGs, ColdCFGs;
+  std::vector<const CFGNode*> HotOrder, ColdOrder;
+  std::unique_ptr<ChainClustering> CC;
+
+ public:
+  template <class CfgContainerTy>
+  PropellerBBReordering(CfgContainerTy &cfgContainer) {
+    cfgContainer.forEachCfgRef([this](ControlFlowGraph &cfg){
+      if(cfg.isHot()){
+        HotCFGs.push_back(&cfg);
+        if (config->propellerPrintStats){
+          unsigned hotBBs = 0;
+          unsigned allBBs = 0;
+          cfg.forEachNodeRef([&hotBBs, &allBBs] (CFGNode &node) {
+            if (node.Freq)
+              hotBBs++;
+            allBBs++;
+          });
+          fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg.Name.str().c_str(), allBBs, hotBBs);
+        }
+      } else
+        ColdCFGs.push_back(&cfg);
+    });
+  }
+
+  void doSplitOrder(std::list<StringRef> &symbolList,
+                      std::list<StringRef>::iterator hotPlaceHolder,
+                      std::list<StringRef>::iterator coldPlaceHolder) {
+
+      std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+      if (config->propellerReorderIP)
+        CC.reset(new CallChainClustering());
+      else if (config->propellerReorderFuncs)
+        CC.reset(new CallChainClustering());
+      else
+        CC.reset(new NoOrdering());
+
+      if (config->propellerReorderIP)
+        NodeChainBuilder(HotCFGs).doOrder(CC);
+      else if (config->propellerReorderBlocks){
+        for(ControlFlowGraph *cfg: HotCFGs)
+          NodeChainBuilder(cfg).doOrder(CC);
+      } else {
+        for(ControlFlowGraph *cfg: HotCFGs)
+          CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+      }
+      for(ControlFlowGraph *cfg: ColdCFGs)
+        CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+
+      CC->doOrder(HotOrder, ColdOrder);
+
+      for(const CFGNode *n: HotOrder){
+        symbolList.insert(hotPlaceHolder, n->ShName);
+        //warn("[PROPELLER] IN HOT ORDER: " + n->ShName);
+      }
+      for(const CFGNode *n: ColdOrder) {
+        symbolList.insert(coldPlaceHolder, n->ShName);
+        //warn("[PROPELLER] IN COLD ORDER: " + n->ShName);
+      }
+
+      std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+      warn("[Propeller]: BB reordering took: " + Twine(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()));
+
+      if (config->propellerPrintStats){
+        printStats();
+      }
+  }
+
+
+  void printStats();
 };
 
 } // namespace propeller
 } // namespace lld
+
+namespace std {
+
+template<>
+    struct less<lld::propeller::NodeChain*> {
+      bool operator()(const lld::propeller::NodeChain* c1,
+                      const lld::propeller::NodeChain* c2) const {
+        return c1->DelegateNode->MappedAddr < c2->DelegateNode->MappedAddr;
+      }
+    };
+
+template<>
+    struct less<lld::propeller::ChainClustering::Cluster*> {
+      bool operator()(const lld::propeller::ChainClustering::Cluster* c1,
+                      const lld::propeller::ChainClustering::Cluster* c2) const {
+        return less<lld::propeller::NodeChain*>()(c1->DelegateChain, c2->DelegateChain);
+      }
+    };
+
+} //namespace std
 #endif
