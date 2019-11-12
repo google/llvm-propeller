@@ -9,6 +9,9 @@
 // This is the interface between LLD/ELF and Propeller. All interactions
 // between LLD/ELF and propeller must be defined here.
 //
+// All dependencies on lld/ELF/*.h must happen in this file and
+// LinkerPropeller.cpp.
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef LLD_ELF_LINKER_PROPELLER_H
