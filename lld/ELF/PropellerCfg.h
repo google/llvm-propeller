@@ -52,6 +52,7 @@ namespace propeller {
 class ObjectView;
 class CFGNode;
 class ControlFlowGraph;
+class NodeChain;
 
 // All instances of CFGEdge are owned by their CFG.
 class CFGEdge {
@@ -101,6 +102,13 @@ public:
   uint64_t Freq;
   ControlFlowGraph *CFG;
 
+  // Containing chain for this node assigned by the ordering algorithm.
+  // This will be updated as chains keep merging together during the algorithm.
+  NodeChain * Chain;
+
+  // Offset of this node in the assigned chain.
+  uint64_t ChainOffset;
+
   std::vector<CFGEdge *> Outs;     // Intra function edges.
   std::vector<CFGEdge *> Ins;      // Intra function edges.
   std::vector<CFGEdge *> CallOuts; // Callouts/returns to other functions.
@@ -120,20 +128,20 @@ public:
 
   bool isEntryNode() const;
 
-  template <class Visitor> void forEachInEdgeRef(Visitor V) const {
+  template <class Visitor> void forEachInEdgeRef(Visitor V) {
     for (auto& edgeList: {Ins, CallIns})
-      for (const CFGEdge * E: edgeList)
+      for (CFGEdge * E: edgeList)
         V(*E);
   }
 
-  template <class Visitor> void forEachIntraOutEdgeRef(Visitor V) const {
-    for (const CFGEdge * E: Outs)
+  template <class Visitor> void forEachIntraOutEdgeRef(Visitor V) {
+    for (CFGEdge * E: Outs)
       V(*E);
   }
 
-  template <class Visitor> void forEachOutEdgeRef(Visitor V) const {
+  template <class Visitor> void forEachOutEdgeRef(Visitor V) {
     for (auto& edgeList: {Outs, CallOuts})
-      for (const CFGEdge * E: edgeList)
+      for (CFGEdge * E: edgeList)
         V(*E);
   }
 
@@ -141,7 +149,7 @@ private:
   CFGNode(uint64_t _Shndx, const StringRef &_ShName, uint64_t _Size,
           uint64_t _MappedAddr, ControlFlowGraph *_Cfg)
       : Shndx(_Shndx), ShName(_ShName), ShSize(_Size), MappedAddr(_MappedAddr),
-        Freq(0), CFG(_Cfg), Outs(), Ins(), CallOuts(), CallIns(),
+        Freq(0), CFG(_Cfg), Chain(nullptr), ChainOffset(0), Outs(), Ins(), CallOuts(), CallIns(),
         FTEdge(nullptr) {}
 
   friend class ControlFlowGraph;

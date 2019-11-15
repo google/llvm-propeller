@@ -68,27 +68,26 @@ class HeapNode {
     }
     return str;
   }
-
 };
 
-namespace std {
 template <class K, class V, class CmpK, class CmpV>
-  struct less <HeapNode<K, V, CmpK, CmpV>> {
-    bool operator() (const HeapNode<K,V,CmpK,CmpV> &n1, const HeapNode<K,V,CmpK,CmpV> &n2) const {
-      if (CmpV()(n1.value,n2.value))
-        return true;
-      if (CmpV()(n2.value,n1.value))
-        return false;
-      return CmpK()(n1.key,n2.key);
-    }
-  };
-}
-
-
+struct CompareHeapNode {
+  CmpK KeyComparator;
+  CmpV ValueComparator;
+  bool operator() (const HeapNode<K,V,CmpK,CmpV> &n1, const HeapNode<K,V,CmpK,CmpV> &n2) const {
+    if (ValueComparator(n1.value,n2.value))
+      return true;
+    if (ValueComparator(n2.value,n1.value))
+      return false;
+    return KeyComparator(n1.key,n2.key);
+  }
+};
 
 template <class K, class V, class CmpK = std::less<K>, class CmpV = std::less<V>>
 class Heap {
  private:
+  CompareHeapNode<K,V,CmpK, CmpV> HeapNodeComparator;
+
   llvm::DenseMap<K, std::unique_ptr<HeapNode<K,V,CmpK,CmpV>>> nodes;
   HeapNode<K,V,CmpK,CmpV> * root = nullptr;
   unsigned Size = 0;
@@ -163,7 +162,7 @@ class Heap {
 
 
   void heapifyUp(HeapNode<K,V,CmpK,CmpV>* node) {
-    if(node->parent && std::less<HeapNode<K,V,CmpK,CmpV>>()(*node->parent,*node)){
+    if(node->parent && HeapNodeComparator(*node->parent,*node)){
       swapWithParent(node);
       heapifyUp(node);
     }
@@ -174,10 +173,10 @@ class Heap {
    if (node->children.empty())
      return;
    auto maxChild = std::max_element(node->children.begin(), node->children.end(),
-                    [] (const HeapNode<K,V,CmpK,CmpV> * c1, const HeapNode<K,V,CmpK,CmpV> *c2){
-                      return c1 == nullptr ? true : (c2 == nullptr ? false : std::less<HeapNode<K,V,CmpK,CmpV>>()(*c1,*c2));
+                    [this] (const HeapNode<K,V,CmpK,CmpV> * c1, const HeapNode<K,V,CmpK,CmpV> *c2){
+                      return c1 == nullptr ? true : (c2 == nullptr ? false : HeapNodeComparator(*c1,*c2));
                     });
-   if (*maxChild != nullptr && std::less<HeapNode<K,V,CmpK,CmpV>>()(*node,**maxChild)) {
+   if (*maxChild != nullptr && HeapNodeComparator(*node,**maxChild)) {
      swapWithParent(*maxChild);
      heapifyDown(node);
    }
