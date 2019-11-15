@@ -1467,7 +1467,26 @@ static void ParseDependencyOutputArgs(DependencyOutputOptions &Opts,
   // Add sanitizer blacklists as extra dependencies.
   // They won't be discovered by the regular preprocessor, so
   // we let make / ninja to know about this implicit dependency.
-  Opts.ExtraDeps = Args.getAllArgValues(OPT_fdepfile_entry);
+  if (!Args.hasArg(OPT_fno_sanitize_blacklist)) {
+    for (const auto *A : Args.filtered(OPT_fsanitize_blacklist)) {
+      StringRef Val = A->getValue();
+      if (Val.find('=') == StringRef::npos)
+        Opts.ExtraDeps.push_back(Val);
+    }
+    if (Opts.IncludeSystemHeaders) {
+      for (const auto *A : Args.filtered(OPT_fsanitize_system_blacklist)) {
+        StringRef Val = A->getValue();
+        if (Val.find('=') == StringRef::npos)
+          Opts.ExtraDeps.push_back(Val);
+      }
+    }
+  }
+
+  // Propagate the extra dependencies.
+  for (const auto *A : Args.filtered(OPT_fdepfile_entry)) {
+    Opts.ExtraDeps.push_back(A->getValue());
+  }
+
   // Only the -fmodule-file=<file> form.
   for (const auto *A : Args.filtered(OPT_fmodule_file)) {
     StringRef Val = A->getValue();
@@ -3149,6 +3168,36 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Diags.Report(diag::err_drv_invalid_value) << A->getAsString(Args) << Val;
   }
 
+  if (Args.hasArg(OPT_frounding_math)) {
+    Opts.setFPRoundingMode(LangOptions::FPR_Dynamic);
+  }
+
+  if (Args.hasArg(OPT_fno_rounding_math)) {
+    Opts.setFPRoundingMode(LangOptions::FPR_ToNearest);
+  }
+
+  if (Args.hasArg(OPT_ftrapping_math)) {
+    Opts.setFPExceptionMode(LangOptions::FPE_Strict);
+  }
+
+  if (Args.hasArg(OPT_fno_trapping_math)) {
+    Opts.setFPExceptionMode(LangOptions::FPE_Ignore);
+  }
+
+  LangOptions::FPExceptionModeKind FPEB = LangOptions::FPE_Ignore;
+  if (Arg *A = Args.getLastArg(OPT_ffp_exception_behavior_EQ)) {
+    StringRef Val = A->getValue();
+    if (Val.equals("ignore"))
+      FPEB = LangOptions::FPE_Ignore;
+    else if (Val.equals("maytrap"))
+      FPEB = LangOptions::FPE_MayTrap;
+    else if (Val.equals("strict"))
+      FPEB = LangOptions::FPE_Strict;
+    else
+      Diags.Report(diag::err_drv_invalid_value) << A->getAsString(Args) << Val;
+    Opts.setFPExceptionMode(FPEB);
+  }
+
   Opts.RetainCommentsFromSystemHeaders =
       Args.hasArg(OPT_fretain_comments_from_system_headers);
 
@@ -3184,6 +3233,11 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.SanitizeAddressFieldPadding =
       getLastArgIntValue(Args, OPT_fsanitize_address_field_padding, 0, Diags);
   Opts.SanitizerBlacklistFiles = Args.getAllArgValues(OPT_fsanitize_blacklist);
+  std::vector<std::string> systemBlacklists =
+      Args.getAllArgValues(OPT_fsanitize_system_blacklist);
+  Opts.SanitizerBlacklistFiles.insert(Opts.SanitizerBlacklistFiles.end(),
+                                      systemBlacklists.begin(),
+                                      systemBlacklists.end());
 
   // -fxray-instrument
   Opts.XRayInstrument =

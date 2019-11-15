@@ -25,7 +25,7 @@ if(NOT DEFINED LLVM_VERSION_PATCH)
   set(LLVM_VERSION_PATCH 0)
 endif()
 if(NOT DEFINED LLVM_VERSION_SUFFIX)
-  set(LLVM_VERSION_SUFFIX svn)
+  set(LLVM_VERSION_SUFFIX git)
 endif()
 
 if (NOT PACKAGE_VERSION)
@@ -530,6 +530,10 @@ option(LLVM_BUILD_EXAMPLES
   "Build the LLVM example programs. If OFF, just generate build targets." OFF)
 option(LLVM_INCLUDE_EXAMPLES "Generate build targets for the LLVM examples" ON)
 
+if(LLVM_BUILD_EXAMPLES)
+  add_definitions(-DBUILD_EXAMPLES)
+endif(LLVM_BUILD_EXAMPLES)
+
 option(LLVM_BUILD_TESTS
   "Build LLVM unit tests. If OFF, just generate build targets." OFF)
 option(LLVM_INCLUDE_TESTS "Generate build targets for the LLVM unit tests." ON)
@@ -564,17 +568,28 @@ if(NOT DEFINED LLVM_DYLIB_COMPONENTS)
   set(LLVM_DYLIB_COMPONENTS "all" CACHE STRING
     "Semicolon-separated list of components to include in libLLVM, or \"all\".")
 endif()
-option(LLVM_LINK_LLVM_DYLIB "Link tools against the libllvm dynamic library" OFF)
+
 if(MSVC)
   option(LLVM_BUILD_LLVM_C_DYLIB "Build LLVM-C.dll (Windows only)" ON)
+  # Set this variable to OFF here so it can't be set with a command-line
+  # argument.
+  set (LLVM_LINK_LLVM_DYLIB OFF)
+  if (BUILD_SHARED_LIBS)
+    message(FATAL_ERROR "BUILD_SHARED_LIBS options is not supported on Windows.")
+  endif()
 else()
+  option(LLVM_LINK_LLVM_DYLIB "Link tools against the libllvm dynamic library" OFF)
   option(LLVM_BUILD_LLVM_C_DYLIB "Build libllvm-c re-export library (Darwin only)" OFF)
+  set(LLVM_BUILD_LLVM_DYLIB_default OFF)
+  if(LLVM_LINK_LLVM_DYLIB OR LLVM_BUILD_LLVM_C_DYLIB)
+    set(LLVM_BUILD_LLVM_DYLIB_default ON)
+  endif()
+  option(LLVM_BUILD_LLVM_DYLIB "Build libllvm dynamic library" ${LLVM_BUILD_LLVM_DYLIB_default})
 endif()
-set(LLVM_BUILD_LLVM_DYLIB_default OFF)
-if(LLVM_LINK_LLVM_DYLIB OR (LLVM_BUILD_LLVM_C_DYLIB AND NOT MSVC))
-  set(LLVM_BUILD_LLVM_DYLIB_default ON)
+
+if (LLVM_LINK_LLVM_DYLIB AND BUILD_SHARED_LIBS)
+  message(FATAL_ERROR "Cannot enable BUILD_SHARED_LIBS with LLVM_LINK_LLVM_DYLIB.  We recommend disabling BUILD_SHARED_LIBS.")
 endif()
-option(LLVM_BUILD_LLVM_DYLIB "Build libllvm dynamic library" ${LLVM_BUILD_LLVM_DYLIB_default})
 
 option(LLVM_OPTIMIZED_TABLEGEN "Force TableGen to be built with optimization" OFF)
 if(CMAKE_CROSSCOMPILING OR (LLVM_OPTIMIZED_TABLEGEN AND (LLVM_ENABLE_ASSERTIONS OR CMAKE_CONFIGURATION_TYPES)))
@@ -805,11 +820,7 @@ set(LLVM_SRPM_DIR "${CMAKE_CURRENT_BINARY_DIR}/srpm")
 
 get_source_info(${CMAKE_CURRENT_SOURCE_DIR} revision repository)
 string(LENGTH "${revision}" revision_length)
-if(revision MATCHES "^[0-9]+$" AND revision_length LESS 40)
-  set(LLVM_RPM_SPEC_REVISION "r${revision}")
-else()
-  set(LLVM_RPM_SPEC_REVISION "${revision}")
-endif()
+set(LLVM_RPM_SPEC_REVISION "${revision}")
 
 configure_file(
   ${LLVM_SRPM_USER_BINARY_SPECFILE}

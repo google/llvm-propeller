@@ -29,6 +29,7 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/ScaledNumber.h"
 #include "llvm/Support/StringSaver.h"
+#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -547,6 +548,8 @@ public:
 
     // Indicate if the global value cannot be inlined.
     unsigned NoInline : 1;
+    // Indicate if function should be always inlined.
+    unsigned AlwaysInline : 1;
   };
 
   /// Create an empty FunctionSummary (with specified call edges).

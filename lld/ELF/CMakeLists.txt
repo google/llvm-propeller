@@ -53,6 +53,7 @@ add_lld_library(lldELF
   BitWriter
   Core
   DebugInfoDWARF
+  Demangle
   LTO
   MC
   Object

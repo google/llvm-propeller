@@ -364,6 +364,9 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   case CallingConv::ARM_AAPCS:     Out << "arm_aapcscc"; break;
   case CallingConv::ARM_AAPCS_VFP: Out << "arm_aapcs_vfpcc"; break;
   case CallingConv::AArch64_VectorCall: Out << "aarch64_vector_pcs"; break;
+  case CallingConv::AArch64_SVE_VectorCall:
+    Out << "aarch64_sve_vector_pcs";
+    break;
   case CallingConv::MSP430_INTR:   Out << "msp430_intrcc"; break;
   case CallingConv::AVR_INTR:      Out << "avr_intrcc "; break;
   case CallingConv::AVR_SIGNAL:    Out << "avr_signalcc "; break;
@@ -2959,6 +2962,7 @@ void AssemblyWriter::printFunctionSummary(const FunctionSummary *FS) {
     Out << ", noRecurse: " << FFlags.NoRecurse;
     Out << ", returnDoesNotAlias: " << FFlags.ReturnDoesNotAlias;
     Out << ", noInline: " << FFlags.NoInline;
+    Out << ", alwaysInline: " << FFlags.AlwaysInline;
     Out << ")";
   }
   if (!FS->calls().empty()) {
@@ -3564,6 +3568,7 @@ void AssemblyWriter::printArgument(const Argument *Arg, AttributeSet Attrs) {
 
 /// printBasicBlock - This member is called for each basic block in a method.
 void AssemblyWriter::printBasicBlock(const BasicBlock *BB) {
+  assert(BB && BB->getParent() && "block without parent!");
   bool IsEntryBlock = BB == &BB->getParent()->getEntryBlock();
   if (BB->hasName()) {              // Print out the label if it exists...
     Out << "\n";
@@ -3578,10 +3583,7 @@ void AssemblyWriter::printBasicBlock(const BasicBlock *BB) {
       Out << "<badref>:";
   }
 
-  if (!BB->getParent()) {
-    Out.PadToColumn(50);
-    Out << "; Error: Block without parent!";
-  } else if (!IsEntryBlock) {
+  if (!IsEntryBlock) {
     // Output predecessors for the block.
     Out.PadToColumn(50);
     Out << ";";

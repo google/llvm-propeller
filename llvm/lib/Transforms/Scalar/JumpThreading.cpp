@@ -55,6 +55,7 @@
 #include "llvm/IR/Use.h"
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/BlockFrequency.h"
 #include "llvm/Support/BranchProbability.h"
@@ -1897,7 +1898,7 @@ bool JumpThreadingPass::MaybeMergeBasicBlockIntoOnlyPred(BasicBlock *BB) {
   LVI->eraseBlock(SinglePred);
   MergeBasicBlockIntoOnlyPred(BB, DTU);
 
-  // Now that BB is merged into SinglePred (i.e. SinglePred Code followed by
+  // Now that BB is merged into SinglePred (i.e. SinglePred code followed by
   // BB code within one basic block `BB`), we need to invalidate the LVI
   // information associated with BB, because the LVI information need not be
   // true for all of BB after the merge. For example,

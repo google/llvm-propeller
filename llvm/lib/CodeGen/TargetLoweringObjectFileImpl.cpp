@@ -1896,6 +1896,16 @@ MCSection *TargetLoweringObjectFileXCOFF::SelectSectionForGlobal(
   if (Kind.isData())
     return DataSection;
 
+  // Zero initialized data must be emitted to the .data section because external
+  // linkage control sections that get mapped to the .bss section will be linked
+  // as tentative defintions, which is only appropriate for SectionKind::Common.
+  if (Kind.isBSS())
+    return DataSection;
+
+  if (Kind.isReadOnly() && !Kind.isMergeableConst() &&
+      !Kind.isMergeableCString())
+    return ReadOnlySection;
+
   report_fatal_error("XCOFF other section types not yet implemented.");
 }
 

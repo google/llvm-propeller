@@ -2963,8 +2963,8 @@ static unsigned CopyToFromAsymmetricReg(unsigned DestReg, unsigned SrcReg,
 
 void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator MI,
-                               const DebugLoc &DL, unsigned DestReg,
-                               unsigned SrcReg, bool KillSrc) const {
+                               const DebugLoc &DL, MCRegister DestReg,
+                               MCRegister SrcReg, bool KillSrc) const {
   // First deal with the normal symmetric copies.
   bool HasAVX = Subtarget.hasAVX();
   bool HasVLX = Subtarget.hasVLX();
@@ -3046,15 +3046,11 @@ void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   report_fatal_error("Cannot emit physreg copy instruction");
 }
 
-bool X86InstrInfo::isCopyInstrImpl(const MachineInstr &MI,
-                                   const MachineOperand *&Src,
-                                   const MachineOperand *&Dest) const {
-  if (MI.isMoveReg()) {
-    Dest = &MI.getOperand(0);
-    Src = &MI.getOperand(1);
-    return true;
-  }
-  return false;
+Optional<DestSourcePair>
+X86InstrInfo::isCopyInstrImpl(const MachineInstr &MI) const {
+  if (MI.isMoveReg())
+    return DestSourcePair{MI.getOperand(0), MI.getOperand(1)};
+  return None;
 }
 
 static unsigned getLoadStoreRegOpcode(unsigned Reg,

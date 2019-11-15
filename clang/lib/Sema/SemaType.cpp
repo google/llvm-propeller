@@ -6325,7 +6325,8 @@ namespace {
       Pointer,
       BlockPointer,
       Reference,
-      MemberPointer
+      MemberPointer,
+      MacroQualified,
     };
 
     QualType Original;
@@ -6356,6 +6357,9 @@ namespace {
         } else if (isa<AttributedType>(Ty)) {
           T = cast<AttributedType>(Ty)->getEquivalentType();
           Stack.push_back(Attributed);
+        } else if (isa<MacroQualifiedType>(Ty)) {
+          T = cast<MacroQualifiedType>(Ty)->getUnderlyingType();
+          Stack.push_back(MacroQualified);
         } else {
           const Type *DTy = Ty->getUnqualifiedDesugaredType();
           if (Ty == DTy) {
@@ -6411,6 +6415,9 @@ namespace {
         QualType New = wrap(C, cast<ParenType>(Old)->getInnerType(), I);
         return C.getParenType(New);
       }
+
+      case MacroQualified:
+        return wrap(C, cast<MacroQualifiedType>(Old)->getUnderlyingType(), I);
 
       case Pointer: {
         QualType New = wrap(C, cast<PointerType>(Old)->getPointeeType(), I);
@@ -7215,6 +7222,7 @@ static bool isPermittedNeonBaseType(QualType &Ty,
   // Signed poly is mathematically wrong, but has been baked into some ABIs by
   // now.
   bool IsPolyUnsigned = Triple.getArch() == llvm::Triple::aarch64 ||
+                        Triple.getArch() == llvm::Triple::aarch64_32 ||
                         Triple.getArch() == llvm::Triple::aarch64_be;
   if (VecKind == VectorType::NeonPolyVector) {
     if (IsPolyUnsigned) {
@@ -7232,10 +7240,8 @@ static bool isPermittedNeonBaseType(QualType &Ty,
 
   // Non-polynomial vector types: the usual suspects are allowed, as well as
   // float64_t on AArch64.
-  bool Is64Bit = Triple.getArch() == llvm::Triple::aarch64 ||
-                 Triple.getArch() == llvm::Triple::aarch64_be;
-
-  if (Is64Bit && BTy->getKind() == BuiltinType::Double)
+  if ((Triple.isArch64Bit() || Triple.getArch() == llvm::Triple::aarch64_32) &&
+      BTy->getKind() == BuiltinType::Double)
     return true;
 
   return BTy->getKind() == BuiltinType::SChar ||

@@ -79,7 +79,6 @@ static void dumpLocation(raw_ostream &OS, DWARFFormValue &FormValue,
                          DWARFUnit *U, unsigned Indent,
                          DIDumpOptions DumpOpts) {
   DWARFContext &Ctx = U->getContext();
-  const DWARFObject &Obj = Ctx.getDWARFObj();
   const MCRegisterInfo *MRI = Ctx.getRegisterInfo();
   if (FormValue.isFormClass(DWARFFormValue::FC_Block) ||
       FormValue.isFormClass(DWARFFormValue::FC_Exprloc)) {
@@ -92,51 +91,13 @@ static void dumpLocation(raw_ostream &OS, DWARFFormValue &FormValue,
   }
 
   if (FormValue.isFormClass(DWARFFormValue::FC_SectionOffset)) {
-    uint64_t Offset = *FormValue.getAsSectionOffset();
-    uint64_t BaseAddr = 0;
-    if (Optional<object::SectionedAddress> BA = U->getBaseAddress())
-      BaseAddr = BA->Address;
     auto LLDumpOpts = DumpOpts;
     LLDumpOpts.Verbose = false;
 
-    if (!U->isDWOUnit() && !U->getLocSection()->Data.empty()) {
-      DWARFDebugLoc DebugLoc;
-      DWARFDataExtractor Data(Obj, *U->getLocSection(), Ctx.isLittleEndian(),
-                              Obj.getAddressSize());
+    uint64_t Offset = *FormValue.getAsSectionOffset();
 
-      FormValue.dump(OS, DumpOpts);
-      OS << ": ";
-
-      if (Expected<DWARFDebugLoc::LocationList> LL =
-              DebugLoc.parseOneLocationList(Data, &Offset)) {
-        LL->dump(OS, BaseAddr, Ctx.isLittleEndian(), Obj.getAddressSize(), MRI,
-                 U, LLDumpOpts, Indent);
-      } else {
-        OS << '\n';
-        OS.indent(Indent);
-        OS << formatv("error extracting location list: {0}",
-                      fmt_consume(LL.takeError()));
-      }
-      return;
-    }
-
-    bool UseLocLists = !U->isDWOUnit();
-    auto Data =
-        UseLocLists
-            ? DWARFDataExtractor(Obj, Obj.getLoclistsSection(),
-                                 Ctx.isLittleEndian(), Obj.getAddressSize())
-            : DWARFDataExtractor(U->getLocSectionData(), Ctx.isLittleEndian(),
-                                 Obj.getAddressSize());
-
-    if (!Data.getData().empty()) {
-      // Old-style location list were used in DWARF v4 (.debug_loc.dwo section).
-      // Modern locations list (.debug_loclists) are used starting from v5.
-      // Ideally we should take the version from the .debug_loclists section
-      // header, but using CU's version for simplicity.
-      DWARFDebugLoclists::dumpLocationList(
-          Data, &Offset, UseLocLists ? U->getVersion() : 4, OS, BaseAddr, MRI,
-          U, LLDumpOpts, Indent);
-    }
+    U->getLocationTable().dumpLocationList(&Offset, OS, U->getBaseAddress(),
+                                           MRI, U, LLDumpOpts, Indent);
     return;
   }
 

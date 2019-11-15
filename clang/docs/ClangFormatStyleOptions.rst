@@ -819,6 +819,7 @@ the configuration (without a prefix: ``Auto``).
         for (int i = 0; i < 10; ++i)
         {}
 
+
   * ``bool AfterEnum`` Wrap enum definitions.
 
     .. code-block:: c++
@@ -1580,11 +1581,32 @@ the configuration (without a prefix: ``Auto``).
   For example, if configured to "(_test)?$", then a header a.h would be seen
   as the "main" include in both a.cc and a_test.cc.
 
+**IncludeIsMainSourceRegex** (``std::string``)
+  Specify a regular expression for files being formatted
+  that are allowed to be considered "main" in the
+  file-to-main-include mapping.
+
+  By default, clang-format considers files as "main" only when they end
+  with: ``.c``, ``.cc``, ``.cpp``, ``.c++``, ``.cxx``, ``.m`` or ``.mm``
+  extensions.
+  For these files a guessing of "main" include takes place
+  (to assign category 0, see above). This config option allows for
+  additional suffixes and extensions for files to be considered as "main".
+
+  For example, if this option is configured to ``(Impl\.hpp)$``,
+  then a file ``ClassImpl.hpp`` is considered "main" (in addition to
+  ``Class.c``, ``Class.cc``, ``Class.cpp`` and so on) and "main
+  include file" logic will be executed (with *IncludeIsMainRegex* setting
+  also being respected in later phase). Without this option set,
+  ``ClassImpl.hpp`` would not have the main include file put on top
+  before any other include.
+
 **IndentCaseLabels** (``bool``)
   Indent case labels one level from the switch statement.
 
-  When ``false``, use the same indentation level as for the switch statement.
-  Switch statement body is always indented one level more than case labels.
+  When ``false``, use the same indentation level as for the switch
+  statement. Switch statement body is always indented one level more than
+  case labels.
 
   .. code-block:: c++
 

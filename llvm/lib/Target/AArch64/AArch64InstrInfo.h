@@ -131,15 +131,15 @@ public:
                            unsigned NumLoads) const override;
 
   void copyPhysRegTuple(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                        const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
-                        bool KillSrc, unsigned Opcode,
+                        const DebugLoc &DL, MCRegister DestReg,
+                        MCRegister SrcReg, bool KillSrc, unsigned Opcode,
                         llvm::ArrayRef<unsigned> Indices) const;
   void copyGPRRegTuple(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                        DebugLoc DL, unsigned DestReg, unsigned SrcReg,
                        bool KillSrc, unsigned Opcode, unsigned ZeroReg,
                        llvm::ArrayRef<unsigned> Indices) const;
   void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
+                   const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
                    bool KillSrc) const override;
 
   void storeRegToStackSlot(MachineBasicBlock &MBB,
@@ -265,10 +265,8 @@ public:
   /// on Windows.
   static bool isSEHInstruction(const MachineInstr &MI);
 
-  bool isAddImmediate(const MachineInstr &MI,
-                      const MachineOperand *&Destination,
-                      const MachineOperand *&Source,
-                      int64_t &Offset) const override;
+  Optional<DestSourcePair> isAddImmediate(const MachineInstr &MI,
+                                          int64_t &Offset) const override;
 
   Optional<ParamLoadedValue>
   describeLoadedValue(const MachineInstr &MI) const override;
@@ -277,11 +275,11 @@ public:
 #include "AArch64GenInstrInfo.inc"
 
 protected:
-  /// If the specific machine instruction is a instruction that moves/copies
-  /// value from one register to another register return true along with
-  /// @Source machine operand and @Destination machine operand.
-  bool isCopyInstrImpl(const MachineInstr &MI, const MachineOperand *&Source,
-                       const MachineOperand *&Destination) const override;
+  /// If the specific machine instruction is an instruction that moves/copies
+  /// value from one register to another register return destination and source
+  /// registers as machine operands.
+  Optional<DestSourcePair>
+  isCopyInstrImpl(const MachineInstr &MI) const override;
 
 private:
   /// Sets the offsets on outlined instructions in \p MBB which use SP

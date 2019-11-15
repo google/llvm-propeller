@@ -1520,8 +1520,6 @@ bool AsmPrinter::doFinalization(Module &M) {
     }
   }
 
-  OutStreamer->AddBlankLine();
-
   // Print aliases in topological order, that is, for each alias a = b,
   // b must be printed before a.
   // This is because on some targets (e.g. PowerPC) linker expects aliases in

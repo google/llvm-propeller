@@ -615,7 +615,7 @@ static void collectCallSiteParameters(const MachineInstr *CallMI,
     ++NumCSParams;
   };
 
-  // Search for a loading value in forwaring registers.
+  // Search for a loading value in forwarding registers.
   for (; I != MBB->rend(); ++I) {
     // If the next instruction is a call we can not interpret parameter's
     // forwarding registers or we finished the interpretation of all parameters.
@@ -2751,33 +2751,21 @@ void DwarfDebug::emitMacroFile(DIMacroFile &F, DwarfCompileUnit &U) {
 
 /// Emit macros into a debug macinfo section.
 void DwarfDebug::emitDebugMacinfo() {
-  if (CUMap.empty())
-    return;
-
-  if (llvm::all_of(CUMap, [](const decltype(CUMap)::value_type &Pair) {
-        return Pair.second->getCUNode()->isDebugDirectivesOnly();
-      }))
-    return;
-
-  // Start the dwarf macinfo section.
-  Asm->OutStreamer->SwitchSection(
-      Asm->getObjFileLowering().getDwarfMacinfoSection());
-
   for (const auto &P : CUMap) {
     auto &TheCU = *P.second;
-    if (TheCU.getCUNode()->isDebugDirectivesOnly())
-      continue;
     auto *SkCU = TheCU.getSkeleton();
     DwarfCompileUnit &U = SkCU ? *SkCU : TheCU;
     auto *CUNode = cast<DICompileUnit>(P.first);
     DIMacroNodeArray Macros = CUNode->getMacros();
-    if (!Macros.empty()) {
-      Asm->OutStreamer->EmitLabel(U.getMacroLabelBegin());
-      handleMacroNodes(Macros, U);
-    }
+    if (Macros.empty())
+      continue;
+    Asm->OutStreamer->SwitchSection(
+        Asm->getObjFileLowering().getDwarfMacinfoSection());
+    Asm->OutStreamer->EmitLabel(U.getMacroLabelBegin());
+    handleMacroNodes(Macros, U);
+    Asm->OutStreamer->AddComment("End Of Macro List Mark");
+    Asm->emitInt8(0);
   }
-  Asm->OutStreamer->AddComment("End Of Macro List Mark");
-  Asm->emitInt8(0);
 }
 
 // DWARF5 Experimental Separate Dwarf emitters.

@@ -59,6 +59,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/MC/LaneBitmask.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInstrDesc.h"
@@ -2303,32 +2304,6 @@ void MachineVerifier::visitMachineFunctionAfter() {
     verifyLiveVariables();
   if (LiveInts)
     verifyLiveIntervals();
-
-  // Check live-in list of each MBB. If a register is live into MBB, check
-  // that the register is in regsLiveOut of each predecessor block. Since
-  // this must come from a definition in the predecesssor or its live-in
-  // list, this will catch a live-through case where the predecessor does not
-  // have the register in its live-in list.  This currently only checks
-  // registers that have no aliases, are not allocatable and are not
-  // reserved, which could mean a condition code register for instance.
-  if (MRI->tracksLiveness())
-    for (const auto &MBB : *MF)
-      for (MachineBasicBlock::RegisterMaskPair P : MBB.liveins()) {
-        MCPhysReg LiveInReg = P.PhysReg;
-        bool hasAliases = MCRegAliasIterator(LiveInReg, TRI, false).isValid();
-        if (hasAliases || isAllocatable(LiveInReg) || isReserved(LiveInReg))
-          continue;
-        for (const MachineBasicBlock *Pred : MBB.predecessors()) {
-          BBInfo &PInfo = MBBInfoMap[Pred];
-          if (!PInfo.regsLiveOut.count(LiveInReg)) {
-            report("Live in register not found to be live out from predecessor.",
-                   &MBB);
-            errs() << TRI->getName(LiveInReg)
-                   << " not found to be live out from "
-                   << printMBBReference(*Pred) << "\n";
-          }
-        }
-      }
 
   for (auto CSInfo : MF->getCallSitesInfo())
     if (!CSInfo.first->isCall())

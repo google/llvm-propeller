@@ -3963,10 +3963,10 @@ ExpectedDecl ASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
 
   ObjCMethodDecl *ToMethod;
   if (GetImportedOrCreateDecl(
-          ToMethod, D, Importer.getToContext(), Loc,
-          ToEndLoc, Name.getObjCSelector(), ToReturnType,
-          ToReturnTypeSourceInfo, DC, D->isInstanceMethod(), D->isVariadic(),
-          D->isPropertyAccessor(), D->isImplicit(), D->isDefined(),
+          ToMethod, D, Importer.getToContext(), Loc, ToEndLoc,
+          Name.getObjCSelector(), ToReturnType, ToReturnTypeSourceInfo, DC,
+          D->isInstanceMethod(), D->isVariadic(), D->isPropertyAccessor(),
+          D->isSynthesizedAccessorStub(), D->isImplicit(), D->isDefined(),
           D->getImplementationControl(), D->hasRelatedResultType()))
     return ToMethod;
 
@@ -5075,6 +5075,8 @@ ExpectedDecl ASTNodeImporter::VisitClassTemplateDecl(ClassTemplateDecl *D) {
       Decl *Found = FoundDecl;
       auto *FoundTemplate = dyn_cast<ClassTemplateDecl>(Found);
       if (FoundTemplate) {
+        if (!hasSameVisibilityContext(FoundTemplate, D))
+          continue;
 
         if (IsStructuralMatch(D, FoundTemplate)) {
           ClassTemplateDecl *TemplateWithDef =
