@@ -39,7 +39,6 @@ add_lld_library(lldELF
   Propeller.cpp
   PropellerBBReordering.cpp
   PropellerCfg.cpp
-  PropellerFuncOrdering.cpp
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp

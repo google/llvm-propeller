@@ -27,7 +27,6 @@
 #include "InputFiles.h"
 #include "PropellerBBReordering.h"
 #include "PropellerCfg.h"
-#include "PropellerFuncOrdering.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Format.h"
