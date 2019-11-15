@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Total 28 files.
-declare -a THE_FILES=( ELF/LinkerPropeller.h
+declare -a THE_FILES=( ELF/Driver.cpp
+		       ELF/LinkerPropeller.h
 		       ELF/LinkerPropeller.cpp
 		       ELF/Propeller/Propeller.h
 		       ELF/Propeller/Propeller.cpp

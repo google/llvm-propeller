@@ -103,7 +103,7 @@ COMPILERS=stage_pgo debug protobuf pgo_relocs pgo_vanilla pgo_labels pgo_plolist
 comma := ,
 
 stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
-	$(call build_compiler,$(RELEASE_LLVM_BIN),,"clang;compiler-rt;lld",install)
+	$(call build_compiler,$(RELEASE_LLVM_BIN),,"clang;compiler-rt;lld",install,Release)
 
 stage1-compiler: stage1/install/bin/clang
 	ln -sf $< $@
@@ -130,7 +130,7 @@ pgo_relocs/build/bin/clang-10: stage_pgo-compiler.profdata
 	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,,"$(RELOCATION_GEN_OPT)"),"clang;lld",clang lld)
 
 pgo_vanilla/build/bin/clang-10: stage_pgo-compiler.profdata
-	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin,"clang;lld",clang lld)
+	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,,-fuse-ld=lld),"clang;lld",clang lld)
 
 pgo_labels/build/bin/clang-10: stage_pgo-compiler.profdata
 	$(call build_compiler,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE="$(DDIR)/$<" -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,"-fpropeller-label","-fuse-ld=lld -fpropeller-label"),"clang;lld",clang lld)
@@ -178,7 +178,7 @@ run-commands.sh: | stage1-compiler
                 >> $@
 	chmod +x $@
 
-benchmark-stage1 benchmark-pgo_vanilla benchmark-pgo_plolist benchmark-pgo_ploall: benchmark-%: %-compiler run-commands.sh
+$(foreach B,stage1 pgo_vanilla pgo_labels pgo_plolist pgo_ploall,benchmark-$(B)): benchmark-%: %-compiler run-commands.sh
 	/usr/bin/time --format "$<: USER:%U SYS:%S WALL:%e STATUS:%x" ./run-commands.sh $(shell readlink -f $<) 2>&1 | grep -F "$<: USER:"
 
 clean:
