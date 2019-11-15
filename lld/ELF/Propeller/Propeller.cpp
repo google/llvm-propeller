@@ -40,8 +40,9 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#if LLVM_ON_UNIX
 #include <unistd.h>
-
+#endif
 
 #include <fstream>
 #include <list>

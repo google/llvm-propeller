@@ -94,7 +94,7 @@ X86_64::X86_64() {
 int X86_64::getTlsGdRelaxSkip(RelType type) const { return 2; }
 
 // Opcodes for the different X86_64 jmp instructions.
-enum JmpInsnOpcode {
+enum JmpInsnOpcode : uint32_t {
   J_JMP_32,
   J_JNE_32,
   J_JE_32,
