@@ -71,6 +71,7 @@
 #include "llvm/Transforms/Utils/EntryExitInstrumenter.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
+#include "fstream"
 #include <memory>
 using namespace clang;
 using namespace llvm;
@@ -424,30 +425,32 @@ static void getBasicBlockSectionsList(llvm::TargetOptions &Options,
          "Invalid BasicBlock Section Type");
   if (FunctionsListFile.empty())
     return;
-  auto MBOrErr = llvm::MemoryBuffer::getFile(FunctionsListFile);
-  if (auto EC = MBOrErr.getError()) {
-    errs() << "Cannot open " + FunctionsListFile + ": " + EC.message();
+  
+  std::ifstream FList(FunctionsListFile);
+  if (!FList.good()) {
+    errs() << "Cannot open " + FunctionsListFile;
     return;
   }
-  std::unique_ptr<MemoryBuffer> &MB = *MBOrErr;
-  MemoryBufferRef MBRef = MB->getMemBufferRef();
-  SmallVector<StringRef, 0> Arr;
-  MBRef.getBuffer().split(Arr, '\n');
+
   bool consumeBasicBlockIds = false;
-  StringRef Func;
+  std::string Func;
   SmallSet<unsigned, 4> s;
-  for (StringRef S : Arr) {
-    // Function names follow a '!' character.
-    // Basic Blocks within functions follow '!!'.
+  
+  std::string Line;
+  while ((std::getline(FList, Line)).good()) {
+    if (Line.empty()) continue;
+    if (Line[0] == '@') continue;
+    if (Line[0] != '!') break;
+    StringRef S(Line);
     if (S.consume_front("!") && !S.empty()) {
       if (consumeBasicBlockIds && S.consume_front("!")) {
-        Options.BasicBlockSectionsList[Func.str()].insert(std::stoi(S));
+        Options.BasicBlockSectionsList[Func].insert(std::stoi(S));
       } else {
         // Start a new function.
-        Func = S;
+        Func = S.str();
         s.clear();
         s.insert(0);
-        Options.BasicBlockSectionsList[Func.str()] = s;
+        Options.BasicBlockSectionsList[Func] = s;
         consumeBasicBlockIds = true;
       }
     } else {

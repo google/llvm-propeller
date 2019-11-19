@@ -75,8 +75,10 @@ void doPropeller() {
 
   setupConfig();
   Propeller propeller;
-  if (!propeller.checkTarget())
+  if (!propeller.checkTarget()) {
     warn("[Propeller]: Propeller skipped '" + config->outputFile + "'.");
+    return;
+  }
 
   std::vector<ObjectView *> objectViews;
   std::for_each(objectFiles.begin(), objectFiles.end(),

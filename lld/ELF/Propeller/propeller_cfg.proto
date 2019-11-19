@@ -36,7 +36,7 @@ message BasicBlock {
 }
 
 // Control flow graph where basic blocks are vertices and jumps are edges.
-// Next Available: 6.
+// Next Available: 7.
 message CFG {
   // Name of the function.
   optional string name = 1;
@@ -47,6 +47,10 @@ message CFG {
   // Basic blocks in the CFG.
   // The sequence of the repeated field matches the after-propeller layout.
   repeated BasicBlock basic_blocks = 3;
+
+  // Basic block layout represented with sequence of bb indices (may only
+  // include hot bbs).
+  repeated int32 basic_block_layout = 6;
 
   // The index of the entry block in the CFG.
   optional int32 entry_block = 4;
