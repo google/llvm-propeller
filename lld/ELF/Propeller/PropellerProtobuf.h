@@ -32,8 +32,8 @@ public:
     return new ProtobufPrinter(name, fd);
   }
 
-  void addCFG(const ControlFlowGraph &cfg,
-                std::list<const CFGNode *> *orderedBBs = nullptr);
+  void addCFG(ControlFlowGraph &cfg,
+                std::list<CFGNode *> *orderedBBs = nullptr);
 
   void printCFGGroup();
 

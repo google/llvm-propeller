@@ -34,6 +34,10 @@ using llvm::object::SymbolRef;
 namespace lld {
 namespace propeller {
 
+bool CFGNode::isEntryNode() const {
+  return CFG->getEntryNode() == this;
+}
+
 bool ControlFlowGraph::writeAsDotGraph(StringRef cfgOutName) {
   std::error_code ec;
   llvm::raw_fd_ostream os(cfgOutName, ec, llvm::sys::fs::CD_CreateAlways);
@@ -262,7 +266,7 @@ bool CFGBuilder::buildCFGs() {
         // Drop bb sections with no code
         if (!symSize)
           continue;
-        auto *sE = Prop->Propf->findSymbol(symName);
+        auto *sE = prop->Propf->findSymbol(symName);
         if (sE) {
           if (tmpNodeMap.find(sE->Ordinal) != tmpNodeMap.end()) {
             error("Internal error checking cfg map.");

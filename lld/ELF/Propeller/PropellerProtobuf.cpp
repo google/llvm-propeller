@@ -19,8 +19,8 @@ void ProtobufPrinter::printCFGGroup() {
                << outName << "'.\n";
 }
 
-void ProtobufPrinter::addCFG(const ControlFlowGraph &cfg,
-                             std::list<const CFGNode *> *orderedBBs) {
+void ProtobufPrinter::addCFG(ControlFlowGraph &cfg,
+                             std::list<CFGNode *> *orderedBBs) {
   llvm::plo::cfg::CFG &cfgpb = *(cfgGroupPb.add_cfg_list());
   cfgpb.set_name(cfg.Name.str());
   cfgpb.set_size(cfg.Size);
@@ -33,7 +33,7 @@ void ProtobufPrinter::addCFG(const ControlFlowGraph &cfg,
   };
 
   auto populateBasicBlockPb =
-      [&populateEdgePb](llvm::plo::cfg::BasicBlock &bbpb, const CFGNode &node) {
+      [&populateEdgePb](llvm::plo::cfg::BasicBlock &bbpb, CFGNode &node) {
         bbpb.set_index(node.getBBIndex());
         bbpb.set_size(node.ShSize);
         bbpb.set_profile_count(node.Freq);
@@ -46,7 +46,7 @@ void ProtobufPrinter::addCFG(const ControlFlowGraph &cfg,
       };
 
   if (orderedBBs)
-    for (const auto *node : *orderedBBs)
+    for (auto *node : *orderedBBs)
       populateBasicBlockPb(*(cfgpb.add_basic_blocks()), *node);
   else
     for (auto &node : cfg.Nodes)

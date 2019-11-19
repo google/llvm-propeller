@@ -25,7 +25,6 @@
 #include "PropellerBBReordering.h"
 #include "PropellerConfig.h"
 #include "PropellerCFG.h"
-#include "PropellerFuncOrdering.h"
 
 #ifdef PROPELLER_PROTOBUF
 #include "propeller_cfg.pb.h"
@@ -265,8 +264,8 @@ bool Propfile::processProfile() {
       reportParseError("unrecognized line:\n" + L.str());
       return false;
     }
-    CFGNode *fromN = Prop.findCfgNode(from);
-    CFGNode *toN = Prop.findCfgNode(to);
+    CFGNode *fromN = prop->findCfgNode(from);
+    CFGNode *toN = prop->findCfgNode(to);
     if (!fromN || !toN)
       continue;
 
@@ -294,7 +293,7 @@ bool Propfile::processProfile() {
 // Parse each ELF file, create CFG and attach profile data to CFG.
 void Propeller::processFile(ObjectView *view) {
   if (view) {
-    if (CFGBuilder(*this, view).buildCFGs()) {
+    if (CFGBuilder(view).buildCFGs()) {
       // Updating global data structure.
       std::lock_guard<std::mutex> lock(Lock);
       Views.emplace_back(view);
@@ -390,7 +389,7 @@ bool Propeller::checkTarget() {
     return false;
   std::string propellerFileName = propellerConfig.optPropeller.str();
   // Propfile takes ownership of FPtr.
-  Propf.reset(new Propfile(*this, propellerFileName));
+  Propf.reset(new Propfile(propellerFileName));
   Propf->PropfStream.open(Propf->PropfName);
   if (!Propf->PropfStream.good()) {
     error(std::string("failed to open '") + propellerFileName + "'");
@@ -526,57 +525,10 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
     ++total_objs;
   }
 
-  std::list<ControlFlowGraph *> cfgOrder;
-  if (propellerConfig.optReorderFuncs) {
-    CallChainClustering c3;
-    c3.init(*this);
-    auto cfgsReordered = c3.doOrder(cfgOrder);
-    (void)cfgsReordered;
-  } else {
-    forEachCfgRef(
-        [&cfgOrder](ControlFlowGraph &cfg) { cfgOrder.push_back(&cfg); });
-    cfgOrder.sort([](const ControlFlowGraph *a, const ControlFlowGraph *b) {
-      const auto *aEntry = a->getEntryNode();
-      const auto *bEntry = b->getEntryNode();
-      return aEntry->MappedAddr < bEntry->MappedAddr;
-    });
-  }
-
   std::list<StringRef> symbolList(1, "Hot");
   const auto hotPlaceHolder = symbolList.begin();
   const auto coldPlaceHolder = symbolList.end();
-  if (propellerConfig.optPrintStats)
-    fprintf(stderr, "HISTOGRAM: Function.Name,BBs.all,BBs.hot\n");
-
-  for (auto *cfg : cfgOrder) {
-    if (propellerConfig.optPrintStats){
-      unsigned hotBBs = 0;
-      unsigned allBBs = 0;
-      cfg->forEachNodeRef([&hotBBs, &allBBs] (CFGNode &node) {
-        if (node.Freq)
-          hotBBs++;
-        allBBs++;
-      });
-      fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg->Name.str().c_str(), allBBs,
-              hotBBs);
-    }
-    if (cfg->isHot() && propellerConfig.optReorderBlocks) {
-      NodeChainBuilder(cfg, *this).doSplitOrder(
-          symbolList, hotPlaceHolder,
-          propellerConfig.optSplitFuncs ? coldPlaceHolder : hotPlaceHolder);
-    } else {
-      auto PlaceHolder =
-          propellerConfig.optSplitFuncs ? coldPlaceHolder : hotPlaceHolder;
-      cfg->forEachNodeRef([&symbolList, PlaceHolder](CFGNode &N) {
-        symbolList.insert(PlaceHolder, N.ShName);
-      });
-#ifdef PROPELLER_PROTOBUF
-      if (protobufPrinter && cfg->isHot())
-        protobufPrinter->addCFG(*cfg);
-#endif
-    }
-  }
-
+  PropellerBBReordering().doSplitOrder(symbolList, hotPlaceHolder, coldPlaceHolder);
 #ifdef PROPELLER_PROTOBUF
   if (protobufPrinter) {
     protobufPrinter->printCFGGroup();

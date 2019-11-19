@@ -93,12 +93,12 @@
 #include <numeric>
 #include <vector>
 
-
 using llvm::DenseSet;
 using llvm::detail::DenseMapPair;
 
 namespace lld {
 namespace propeller {
+const unsigned ClusterMergeSizeThreshold = 1 << 21;
 
 std::string toString(MergeOrder mOrder){
   switch (mOrder) {
@@ -131,62 +131,54 @@ std::string toString(const NodeChain& c){
   return str;
 }
 
-std::string NodeChainBuilder::toString(const NodeChainAssembly &assembly) const{
-  std::string str("assembly record between: ");
-  str += lld::propeller::toString(*assembly.SplitChain) + " as X\n";
-  str += lld::propeller::toString(*assembly.UnsplitChain) + " as Y\n";
-  str += "split position (X):, " + std::to_string(assembly.SlicePosition - assembly.SplitChain->Nodes.begin()) + "\n";
+std::string NodeChainBuilder::toString(NodeChainAssembly &assembly) const{
+  std::string str("assembly record between:\n");
+  str += lld::propeller::toString(*assembly.splitChain()) + " as X\n";
+  str += lld::propeller::toString(*assembly.unsplitChain()) + " as Y\n";
+  //str += "split position (X):, " + std::to_string(assembly.SlicePosition - assembly.splitChain()->Nodes.begin()) + "\n";
   str += "merge order: " + lld::propeller::toString(assembly.MOrder) + "\n";
-  str += "Score: " + std::to_string(assembly.Score);
+  str += "ScoreGain: " + std::to_string(assembly.ScoreGain);
   return str;
 }
 
 // Return the Extended TSP score for one edge, given its source to sink
 // direction and distance in the layout.
-double getEdgeExtTSPScore(const CFGEdge *edge, bool isEdgeForward,
-                          uint32_t srcSinkDistance) {
-  if (edge->Weight == 0)
-    return 0;
+inline double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
+                          uint64_t srcSinkDistance) {
+  if (edge.isCall()){
+    if (isEdgeForward)
+      srcSinkDistance += edge.Src->ShSize / 2;
+    else
+      srcSinkDistance -= edge.Src->ShSize / 2;
+  }
 
-  if (srcSinkDistance == 0 && (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA))
-    return edge->Weight * propellerConfig.optFallthroughWeight;
+  if (edge.isReturn()){
+    if (isEdgeForward)
+      srcSinkDistance += edge.Sink->ShSize / 2;
+    else
+      srcSinkDistance -= edge.Sink->ShSize / 2;
+  }
+
+  if (srcSinkDistance == 0 && (edge.Type == CFGEdge::EdgeType::INTRA_FUNC || edge.Type == CFGEdge::EdgeType::INTRA_DYNA))
+    return edge.Weight * propellerConfig.optFallthroughWeight;
 
   if (isEdgeForward && srcSinkDistance < propellerConfig.optForwardJumpDistance)
-    return edge->Weight * propellerConfig.optForwardJumpWeight *
+    return edge.Weight * propellerConfig.optForwardJumpWeight *
            (1.0 -
             ((double)srcSinkDistance) / propellerConfig.optForwardJumpDistance);
 
   if (!isEdgeForward && srcSinkDistance < propellerConfig.optBackwardJumpDistance)
-    return edge->Weight * propellerConfig.optBackwardJumpWeight *
+    return edge.Weight * propellerConfig.optBackwardJumpWeight *
            (1.0 -
             ((double)srcSinkDistance) / propellerConfig.optBackwardJumpDistance);
   return 0;
 }
 
-// Sort BB chains in decreasing order of their execution density.
-// NodeChainBuilder calls this function at the end to ensure that hot BB chains
-// are placed at the beginning of the function.
-void NodeChainBuilder::sortChainsByExecutionDensity(
-    std::vector<const NodeChain *> &chainOrder) {
-  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains)
-    chainOrder.push_back(elem.second.get());
-
-  std::sort(
-      chainOrder.begin(), chainOrder.end(),
-      [this](const NodeChain *c1, const NodeChain *c2) {
-        if (c1->Nodes.front() == this->CFG->getEntryNode())
-          return true;
-        if (c2->Nodes.front() == this->CFG->getEntryNode())
-          return false;
-        double c1ExecDensity = c1->execDensity();
-        double c2ExecDensity = c2->execDensity();
-        if (c1ExecDensity == c2ExecDensity) {
-          if (c1->DelegateNode->MappedAddr == c2->DelegateNode->MappedAddr)
-            return c1->DelegateNode->Shndx < c2->DelegateNode->Shndx;
-          return c1->DelegateNode->MappedAddr < c2->DelegateNode->MappedAddr;
-        }
-        return c1ExecDensity > c2ExecDensity;
-      });
+void NodeChainBuilder::init() {
+  for (ControlFlowGraph* cfg: CFGs){
+    initNodeChains(*cfg);
+    initMutuallyForcedEdges(*cfg);
+  }
 }
 
 // NodeChainBuilder calls this function after building all the chains to attach
@@ -194,47 +186,93 @@ void NodeChainBuilder::sortChainsByExecutionDensity(
 // the extend TSP score, this function will only affect the cold basic blocks
 // and thus we do not need to consider the edge weights.
 void NodeChainBuilder::attachFallThroughs() {
-  // First, try to keep the fall-throughs from the original order.
-  for (auto &node : CFG->Nodes) {
-    if (node->FTEdge != nullptr) {
-      attachNodes(node.get(), node->FTEdge->Sink);
+  for (ControlFlowGraph* Cfg: CFGs){
+    // First, try to keep the fall-throughs from the original order.
+    for (auto &Node : Cfg->Nodes) {
+      if (Node->FTEdge != nullptr) {
+        attachNodes(Node.get(), Node->FTEdge->Sink);
+      }
+    }
+
+    // Sometimes, the original fall-throughs cannot be kept. So we try to find new
+    // fall-through opportunities which did not exist in the original order.
+    for (auto &Edge : Cfg->IntraEdges) {
+      attachNodes(Edge->Src, Edge->Sink);
     }
   }
+}
 
-  // Sometimes, the original fall-throughs cannot be kept. So we try to find new
-  // fall-through opportunities which did not exist in the original order.
-  for (auto &edge : CFG->IntraEdges) {
-    attachNodes(edge->Src, edge->Sink);
+// Sort BB chains in decreasing order of their execution density.
+// NodeChainBuilder calls this function at the end to ensure that hot BB chains
+// are placed at the beginning of the function.
+void NodeChainBuilder::coalesceChains() {
+  std::vector<NodeChain*> chainOrder;
+  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains)
+    chainOrder.push_back(elem.second.get());
+
+  std::sort(
+      chainOrder.begin(), chainOrder.end(),
+      [](NodeChain *c1, NodeChain *c2) {
+        if (c1->Nodes.front()->isEntryNode())
+          return true;
+        if (c2->Nodes.front()->isEntryNode())
+          return false;
+        double c1ExecDensity = c1->execDensity();
+        double c2ExecDensity = c2->execDensity();
+        if (c1ExecDensity == c2ExecDensity)
+          return c1->DelegateNode->MappedAddr < c2->DelegateNode->MappedAddr;
+        return c1ExecDensity > c2ExecDensity;
+      });
+
+  NodeChain * mergerChain = nullptr;
+
+  for(NodeChain *c: chainOrder){
+    if(!mergerChain){
+      mergerChain = c;
+      continue;
+    }
+    // Create a cold partition when -propeller-split-funcs is set.
+    if(propellerConfig.optSplitFuncs && (mergerChain->Freq==0 ^ c->Freq==0)){
+      mergerChain=c;
+      continue;
+    }
+    mergeChains(mergerChain, c);
   }
 }
+
 
 // Merge two chains in the specified order.
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
-  for (const CFGNode *node : rightChain->Nodes) {
+
+  mergeInOutEdges(leftChain, rightChain);
+
+  for (CFGNode *node : rightChain->Nodes) {
     leftChain->Nodes.push_back(node);
-    NodeToChainMap[node] = leftChain;
-    NodeOffsetMap[node] += leftChain->Size;
+    node->Chain = leftChain;
+    node->ChainOffset += leftChain->Size;
   }
   leftChain->Size += rightChain->Size;
   leftChain->Freq += rightChain->Freq;
-  leftChain->Score += rightChain->Score;
-  Chains.erase(rightChain->DelegateNode->Shndx);
+  leftChain->DebugChain |= rightChain->DebugChain;
+
+
+  Chains.erase(rightChain->DelegateNode->MappedAddr);
 }
 
 // This function tries to place two basic blocks immediately adjacent to each
 // other (used for fallthroughs). Returns true if the basic blocks have been
 // attached this way.
-bool NodeChainBuilder::attachNodes(const CFGNode *src, const CFGNode *sink) {
+bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
   // No edge cannot fall-through to the entry basic block.
-  if (sink == CFG->getEntryNode())
+  if (sink->isEntryNode())
     return false;
 
   // Ignore edges between hot and cold basic blocks.
   if (src->Freq == 0 ^ sink->Freq == 0)
     return false;
-  NodeChain *srcChain = getNodeChain(src);
-  NodeChain *sinkChain = getNodeChain(sink);
+  NodeChain *srcChain = src->Chain;
+  NodeChain *sinkChain = sink->Chain; 
   // Skip this edge if the source and sink are in the same chain
   if (srcChain == sinkChain)
     return false;
@@ -248,70 +286,200 @@ bool NodeChainBuilder::attachNodes(const CFGNode *src, const CFGNode *sink) {
   return true;
 }
 
+void NodeChainBuilder::mergeInOutEdges(NodeChain * mergerChain, NodeChain * mergeeChain){
+  for (auto& elem : mergeeChain->OutEdges) {
+    NodeChain * c = (elem.first == mergeeChain) ? mergerChain : elem.first;
+    auto res = mergerChain->OutEdges.emplace(c, elem.second);
+    if (!res.second)
+      res.first->second.insert(res.first->second.end(), elem.second.begin(), elem.second.end());
+    else
+      c->InEdges.insert(mergerChain);
+
+    c->InEdges.erase(mergeeChain);
+  }
+
+  for (auto * c: mergeeChain->InEdges) {
+    if (c == mergeeChain)
+      continue;
+    auto& mergeeChainEdges = c->OutEdges[mergeeChain];
+    auto& mergerChainEdges = c->OutEdges[mergerChain];
+
+    mergerChainEdges.insert(mergerChainEdges.end(), mergeeChainEdges.begin(), mergeeChainEdges.end());
+    mergerChain->InEdges.insert(c);
+    c->OutEdges.erase(mergeeChain);
+  }
+
+}
+
+
 // Merge two BB sequences according to the given NodeChainAssembly. A
 // NodeChainAssembly is an ordered triple of three slices from two chains.
 void NodeChainBuilder::mergeChains(
     std::unique_ptr<NodeChainAssembly> assembly) {
-  // Create the new node order according the given assembly
-  std::vector<const CFGNode *> newNodeOrder;
-  for (NodeChainSlice &slice : assembly->Slices) {
-    std::copy(slice.Begin, slice.End, std::back_inserter(newNodeOrder));
-  }
-  // We merge the nodes into the SplitChain
-  assembly->SplitChain->Nodes = std::move(newNodeOrder);
 
-  // Update nodeOffsetMap and nodeToChainMap for all the nodes in the sequence.
-  uint32_t runningOffset = 0;
-  for (const CFGNode *node : assembly->SplitChain->Nodes) {
-    NodeToChainMap[node] = assembly->SplitChain;
-    NodeOffsetMap[node] = runningOffset;
-    runningOffset += node->ShSize;
+  // Decide which chain gets merged into the other chain, in order to reduce
+  // computation.
+  NodeChain * mergerChain = (assembly->MOrder == YX2X1) ? assembly->unsplitChain() : assembly->splitChain();
+  NodeChain * mergeeChain = (assembly->MOrder == YX2X1) ? assembly->splitChain() : assembly->unsplitChain();
+
+  // Merge in and out edges of the two chains
+  mergeInOutEdges(mergerChain, mergeeChain);
+
+  // Create the new node order according the given assembly
+  auto X1Begin = assembly->splitChain()->Nodes.begin();
+  auto X2Begin = assembly->SlicePosition;
+  bool X2FuncEntry = X2Begin != assembly->splitChain()->Nodes.begin() && (*std::prev(X2Begin))->CFG != (*X2Begin)->CFG;
+  auto YBegin = assembly->unsplitChain()->Nodes.begin();
+
+  if (assembly->split() &&  (assembly->MOrder == X2X1Y || assembly->MOrder == X2YX1 || assembly->MOrder == YX2X1))
+    assembly->splitChain()->Nodes.splice(X1Begin, assembly->splitChain()->Nodes, X2Begin, assembly->splitChain()->Nodes.end());
+
+  switch(assembly->MOrder){
+    case X2X1Y:
+      assembly->splitChain()->Nodes.splice(assembly->splitChain()->Nodes.end(), assembly->unsplitChain()->Nodes);
+      break;
+    case X1YX2:
+      assembly->splitChain()->Nodes.splice(X2Begin, assembly->unsplitChain()->Nodes);
+      break;
+    case X2YX1:
+      assembly->splitChain()->Nodes.splice(X1Begin, assembly->unsplitChain()->Nodes);
+      break;
+    case YX2X1:
+      assembly->unsplitChain()->Nodes.splice(assembly->unsplitChain()->Nodes.end(), assembly->splitChain()->Nodes);
+      break;
+    default:
+      break;
   }
-  assembly->SplitChain->Size = runningOffset;
+
+  if (propellerConfig.optReorderIP) {
+    std::vector<std::list<CFGNode*>::iterator> allSlicesBegin;
+    if (!X2FuncEntry)
+      allSlicesBegin.push_back(X2Begin);
+    allSlicesBegin.push_back(YBegin);
+    if (assembly->split())
+      allSlicesBegin.push_back(X1Begin);
+
+    for(auto it: allSlicesBegin)
+      if (it != mergerChain->Nodes.begin() && (*std::prev(it))->CFG != (*it)->CFG )
+        mergerChain->FunctionEntryIndices.push_back(it);
+
+    mergerChain->FunctionEntryIndices.splice(mergerChain->FunctionEntryIndices.end(), mergeeChain->FunctionEntryIndices);
+  }
+
+  auto chainBegin = mergerChain->Nodes.begin();
+  auto chainEnd = mergerChain->Nodes.end();
+  uint64_t startOffset = 0;
+
+  if(!assembly->split() || assembly->MOrder == X1YX2)
+    chainBegin = YBegin;
+
+  if(!assembly->split())
+    startOffset = assembly->splitChain()->Size;
+
+  if(assembly->MOrder == YX2X1)
+    chainBegin = X2Begin;
+
+  if(assembly->MOrder == X1YX2 || assembly->MOrder == YX2X1)
+    startOffset = assembly->Slices[0].size();
+
+  auto startSetChainMap = (assembly->MOrder == YX2X1) ? chainBegin : YBegin;
+  auto startSetOffset = chainBegin;
+  auto endSetChainMap = mergerChain->Nodes.end();
+
+  switch(assembly->MOrder){
+    case X2X1Y:
+      break;
+    case X1YX2:
+      endSetChainMap = X2Begin;
+      break;
+    case X2YX1:
+      endSetChainMap = X1Begin;
+      break;
+    case YX2X1:
+      break;
+    default:
+      break;
+  }
+
+  uint64_t runningOffset = startOffset;
+
+  bool settingChain = false;
+  bool settingOffset = false;
+  // Update nodeOffsetMap and nodeToChainMap for all the nodes in the sequence.
+  for (auto it = chainBegin; it!=chainEnd; ++it){
+    CFGNode * node = *it;
+    if (it == startSetChainMap)
+      settingChain = true;
+    if (it == endSetChainMap)
+      settingChain = false;
+    if (it == startSetOffset)
+      settingOffset = true;
+
+    if(settingChain)
+      node->Chain = mergerChain;
+
+    if(settingOffset) {
+      node->ChainOffset = runningOffset;
+      runningOffset += node->ShSize;
+    }
+  }
+  mergerChain->Size = runningOffset;
 
   // Update the total frequency and ExtTSP score of the aggregated chain
-  assembly->SplitChain->Freq += assembly->UnsplitChain->Freq;
+  mergerChain->Freq += mergerChain->Freq;
+
   // We have already computed the new score in the assembly record. So we can
-  // just set the new score equal to that.
-  assembly->SplitChain->Score = assembly->Score;
+  // update the score based on that and the other chain's score.
+  mergerChain->Score += mergeeChain->Score + assembly->ScoreGain;
+
+  mergerChain->DebugChain |= mergeeChain->DebugChain;
 
   // Merge the assembly candidate chains of the two chains into the candidate
   // chains of the remaining NodeChain and remove the records for the defunct
   // NodeChain.
-  for (NodeChain *c : CandidateChains[assembly->UnsplitChain]) {
-    NodeChainAssemblies.erase(std::make_pair(c, assembly->UnsplitChain));
-    NodeChainAssemblies.erase(std::make_pair(assembly->UnsplitChain, c));
-    CandidateChains[c].erase(assembly->UnsplitChain);
-    if (c != assembly->SplitChain)
-      CandidateChains[assembly->SplitChain].insert(c);
+  for (NodeChain *c : CandidateChains[mergeeChain]) {
+    NodeChainAssemblies.erase(std::make_pair(c, mergeeChain));
+    NodeChainAssemblies.erase(std::make_pair(mergeeChain, c));
+    CandidateChains[c].erase(mergeeChain);
+    if (c != mergerChain)
+      CandidateChains[mergerChain].insert(c);
   }
 
   // Update the NodeChainAssembly for all candidate chains of the merged
   // NodeChain. Remove a NodeChain from the merge chain's candidates if the
   // NodeChainAssembly update finds no gain.
-  auto &splitChainCandidateChains = CandidateChains[assembly->SplitChain];
+  auto &mergerChainCandidateChains = CandidateChains[mergerChain];
 
-  for (auto CI = splitChainCandidateChains.begin(),
-            CE = splitChainCandidateChains.end();
+  for (auto CI = mergerChainCandidateChains.begin(),
+            CE = mergerChainCandidateChains.end();
        CI != CE;) {
     NodeChain *otherChain = *CI;
     auto &otherChainCandidateChains = CandidateChains[otherChain];
-    bool x = updateNodeChainAssembly(otherChain, assembly->SplitChain);
-    bool y = updateNodeChainAssembly(assembly->SplitChain, otherChain);
+
+    bool x = updateNodeChainAssembly(otherChain, mergerChain);
+
+    if (!x)
+      NodeChainAssemblies.erase(std::make_pair(otherChain, mergerChain));
+
+    bool y = updateNodeChainAssembly(mergerChain, otherChain);
+
+    if (!y)
+      NodeChainAssemblies.erase(std::make_pair(mergerChain, otherChain));
+
     if (x || y) {
-      otherChainCandidateChains.insert(assembly->SplitChain);
+      otherChainCandidateChains.insert(mergerChain);
       CI++;
     } else {
-      otherChainCandidateChains.erase(assembly->SplitChain);
-      CI = splitChainCandidateChains.erase(CI);
+      otherChainCandidateChains.erase(mergerChain);
+      CI = mergerChainCandidateChains.erase(CI);
     }
   }
 
   // remove all the candidate chain records for the merged-in chain
-  CandidateChains.erase(assembly->UnsplitChain);
+  CandidateChains.erase(mergeeChain);
 
   // Finally, remove the defunct (merged-in) chain record from the chains
-  Chains.erase(assembly->UnsplitChain->DelegateNode->Shndx);
+  Chains.erase(mergeeChain->DelegateNode->MappedAddr);
 }
 
 // Calculate the Extended TSP metric for a BB chain.
@@ -319,23 +487,20 @@ void NodeChainBuilder::mergeChains(
 // aggregates the score of all edges which are contained in the same chain.
 double NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
   double score = 0;
-  uint32_t srcOffset = 0;
-  for (const CFGNode *node : chain->Nodes) {
-    for (const CFGEdge *edge : node->Outs) {
-      if (!edge->Weight)
-        continue;
-      NodeChain *sinkChain = getNodeChain(edge->Sink);
-      if (sinkChain != chain)
-        continue;
-      auto sinkOffset = getNodeOffset(edge->Sink);
-      bool edgeForward = srcOffset + node->ShSize <= sinkOffset;
-      // Calculate the distance between src and sink
-      uint32_t distance = edgeForward ? sinkOffset - srcOffset - node->ShSize
-                                      : srcOffset - sinkOffset + node->ShSize;
-      score += getEdgeExtTSPScore(edge, edgeForward, distance);
-    }
-    srcOffset += node->ShSize;
-  }
+
+  auto visit = [&score] (CFGEdge& edge, NodeChain * srcChain, NodeChain *sinkChain){
+    assert(srcChain == sinkChain);
+    auto srcOffset = edge.Src->ChainOffset;
+    auto sinkOffset = edge.Sink->ChainOffset;
+    bool edgeForward = srcOffset + edge.Src->ShSize <= sinkOffset;
+    // Calculate the distance between src and sink
+    uint64_t distance = edgeForward ? sinkOffset - srcOffset - edge.Src->ShSize
+                                    : srcOffset - sinkOffset + edge.Src->ShSize;
+    score += getEdgeExtTSPScore(edge, edgeForward, distance);
+  };
+
+  chain->forEachOutEdgeToChain(chain, visit);
+
   return score;
 }
 
@@ -346,22 +511,19 @@ double NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
 // returns false.
 bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
                                                NodeChain *unsplitChain) {
-  // Remove the assembly record
-  NodeChainAssemblies.erase(std::make_pair(splitChain, unsplitChain));
-
   // Only consider splitting the chain if the size of the chain is smaller than
   // a threshold.
   bool doSplit = (splitChain->Size <= propellerConfig.optChainSplitThreshold);
   auto slicePosEnd =
       doSplit ? splitChain->Nodes.end() : std::next(splitChain->Nodes.begin());
 
-  SmallVector<std::unique_ptr<NodeChainAssembly>, 128> candidateNCAs;
+  std::unique_ptr<NodeChainAssembly> bestAssembly (nullptr);
 
   for (auto slicePos = splitChain->Nodes.begin(); slicePos != slicePosEnd;
        ++slicePos) {
     // Do not split the mutually-forced edges in the chain.
     if (slicePos != splitChain->Nodes.begin() &&
-        MutuallyForcedOut[*std::prev(slicePos)] == *slicePos)
+        MutuallyForcedOut.count(*std::prev(slicePos)))
       continue;
 
     // If the split position is at the beginning (no splitting), only consider
@@ -375,40 +537,53 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
 
       // Create the NodeChainAssembly representing this particular assembly.
       auto NCA = std::unique_ptr<NodeChainAssembly>(new NodeChainAssembly(
-          splitChain, unsplitChain, slicePos, mOrder, this));
+          splitChain, unsplitChain, slicePos, mOrder));
 
-      CFGNode *entryNode = CFG->getEntryNode();
-      if ((NCA->SplitChain->Nodes.front() == entryNode ||
-           NCA->UnsplitChain->Nodes.back() == entryNode) &&
-          NCA->getFirstNode() != entryNode)
+      if (!NCA->isValid())
         continue;
-      candidateNCAs.push_back(std::move(NCA));
+
+      if (!bestAssembly || NodeChainAssemblyComparator(bestAssembly, NCA))
+        bestAssembly = std::move(NCA);
+    }
+  }
+
+  if (propellerConfig.optReorderIP && !doSplit) {
+    for(auto slicePos : splitChain->FunctionEntryIndices){
+      for (uint8_t MI = MergeOrder::Begin; MI != MergeOrder::End; MI++) {
+        MergeOrder mOrder = static_cast<MergeOrder>(MI);
+
+        // Create the NodeChainAssembly representing this particular assembly.
+        auto NCA = std::unique_ptr<NodeChainAssembly>(new NodeChainAssembly(
+            splitChain, unsplitChain, slicePos, mOrder));
+
+        if (!NCA->isValid())
+          continue;
+
+        if (!bestAssembly || NodeChainAssemblyComparator(bestAssembly, NCA))
+          bestAssembly = std::move(NCA);
+      }
+
     }
   }
 
   // Insert the best assembly of the two chains (only if it has positive gain).
-  auto bestCandidate =
-      std::max_element(candidateNCAs.begin(), candidateNCAs.end(),
-                       [](std::unique_ptr<NodeChainAssembly> &c1,
-                          std::unique_ptr<NodeChainAssembly> &c2) {
-                         return c1->extTSPScoreGain() < c2->extTSPScoreGain();
-                       });
+  if (bestAssembly) {
+    if (splitChain->DebugChain || unsplitChain->DebugChain)
+      fprintf(stderr, "INSERTING ASSEMBLY: %s\n", toString(*bestAssembly).c_str());
 
-  if (bestCandidate != candidateNCAs.end() &&
-      (*bestCandidate)->extTSPScoreGain() > 0) {
-    NodeChainAssemblies.try_emplace(std::make_pair(splitChain, unsplitChain),
-                                    std::move(*bestCandidate));
+    NodeChainAssemblies.insert(bestAssembly->ChainPair,
+                               std::move(bestAssembly));
     return true;
   } else
     return false;
 }
 
-void NodeChainBuilder::initNodeChains() {
-  for (auto &node : CFG->Nodes) {
+void NodeChainBuilder::initNodeChains(ControlFlowGraph &cfg) {
+  for (auto &node : cfg.Nodes) {
     NodeChain *chain = new NodeChain(node.get());
-    NodeToChainMap[node.get()] = chain;
-    NodeOffsetMap[node.get()] = 0;
-    Chains.try_emplace(node->Shndx, chain);
+    node->Chain = chain;
+    node->ChainOffset = 0;
+    Chains.try_emplace(node->MappedAddr, chain);
   }
 }
 
@@ -416,50 +591,51 @@ void NodeChainBuilder::initNodeChains() {
 // These are all the edges which are -- based on the profile -- the only
 // (executed) outgoing edge from their source node and the only (executed)
 // incoming edges to their sink nodes
-void NodeChainBuilder::initMutuallyForcedEdges() {
-  DenseMap<const CFGNode *, std::vector<CFGEdge *>> profiledOuts;
-  DenseMap<const CFGNode *, std::vector<CFGEdge *>> profiledIns;
+void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
+  DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledOuts;
+  DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledIns;
+  DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
 
-  for (auto &node : CFG->Nodes) {
+  for (auto &node : cfg.Nodes) {
     std::copy_if(node->Outs.begin(), node->Outs.end(),
                  std::back_inserter(profiledOuts[node.get()]),
-                 [](const CFGEdge *edge) {
+                 [](CFGEdge *edge) {
                    return (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
                           edge->Weight != 0;
                  });
     std::copy_if(node->Ins.begin(), node->Ins.end(),
                  std::back_inserter(profiledIns[node.get()]),
-                 [](const CFGEdge *edge) {
+                 [](CFGEdge *edge) {
                    return (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
                           edge->Weight != 0;
                  });
   }
 
-  for (auto &node : CFG->Nodes) {
+  for (auto &node : cfg.Nodes) {
     if (profiledOuts[node.get()].size() == 1) {
       CFGEdge *edge = profiledOuts[node.get()].front();
       if(edge->Type != CFGEdge::EdgeType::INTRA_FUNC)
         continue;
       if (profiledIns[edge->Sink].size() == 1)
-        MutuallyForcedOut[node.get()] = edge->Sink;
+        mutuallyForcedOut[node.get()] = edge->Sink;
     }
   }
 
   // Break cycles in the mutually forced edges by cutting the edge sinking to
   // the smallest address in every cycle (hopefully a loop backedge)
-  DenseMap<const CFGNode *, unsigned> nodeToPathMap;
-  SmallVector<const CFGNode *, 16> cycleCutNodes;
+  DenseMap<CFGNode *, unsigned> nodeToPathMap;
+  SmallVector<CFGNode *, 16> cycleCutNodes;
   unsigned pathCount = 0;
-  for (auto it = MutuallyForcedOut.begin(); it != MutuallyForcedOut.end();
+  for (auto it = mutuallyForcedOut.begin(); it != mutuallyForcedOut.end();
        ++it) {
     // Check to see if the node (and its cycle) have already been visited.
     if (nodeToPathMap[it->first])
       continue;
-    const CFGEdge *victimEdge = nullptr;
+    CFGEdge *victimEdge = nullptr;
     auto nodeIt = it;
     pathCount++;
-    while (nodeIt != MutuallyForcedOut.end()) {
-      const CFGNode *node = nodeIt->first;
+    while (nodeIt != mutuallyForcedOut.end()) {
+      CFGNode *node = nodeIt->first;
       unsigned path = nodeToPathMap[node];
       if (path != 0) {
         // If this node is marked with a number, either it is the same number,
@@ -473,18 +649,21 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
         break;
       } else
         nodeToPathMap[node] = pathCount;
-      const CFGEdge *edge = profiledOuts[node].front();
+      CFGEdge *edge = profiledOuts[node].front();
       if (!victimEdge ||
           (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr)) {
         victimEdge = edge;
       }
-      nodeIt = MutuallyForcedOut.find(nodeIt->second);
+      nodeIt = mutuallyForcedOut.find(nodeIt->second);
     }
   }
 
   // Remove the victim edges to break cycles in the mutually forced edges
-  for (const CFGNode *node : cycleCutNodes)
-    MutuallyForcedOut.erase(node);
+  for (CFGNode *node : cycleCutNodes)
+    mutuallyForcedOut.erase(node);
+
+  for(auto& elem: mutuallyForcedOut)
+    MutuallyForcedOut.insert(elem);
 }
 
 // This function initializes the ExtTSP algorithm's data structures. This
@@ -492,179 +671,410 @@ void NodeChainBuilder::initMutuallyForcedEdges() {
 void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
-  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains) {
-    NodeChain *chain = elem.second.get();
-    chain->Score = computeExtTSPScore(chain);
-  }
+  //warn("Started initialization: " + Twine(Chains.size()));
+  for (NodeChain * chain : Components[CurrentComponent])
+    chain->Score = chain->Freq ? computeExtTSPScore(chain) : 0;
+
   DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
-  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains) {
-    NodeChain *chain = elem.second.get();
-    for (const CFGNode *node : chain->Nodes) {
-      for (const CFGEdge *edge : node->Outs) {
-        if (!edge->Weight)
-          continue;
-        NodeChain *otherChain = getNodeChain(edge->Sink);
-        if (chain == otherChain)
-          continue;
-        if (visited.count(std::make_pair(chain, otherChain)))
-          continue;
-        bool x = updateNodeChainAssembly(chain, otherChain);
-        bool y = updateNodeChainAssembly(otherChain, chain);
-        if (x || y) {
-          CandidateChains[chain].insert(otherChain);
-          CandidateChains[otherChain].insert(chain);
-        }
-        visited.insert(std::make_pair(chain, otherChain));
-        visited.insert(std::make_pair(otherChain, chain));
+
+  for (NodeChain * chain: Components[CurrentComponent]){
+    for (auto &chainEdge: chain->OutEdges){
+      NodeChain * otherChain = chainEdge.first;
+      if (chain == otherChain)
+        continue;
+      if (visited.count(std::make_pair(chain, otherChain)))
+        continue;
+
+      bool x = updateNodeChainAssembly(chain, otherChain);
+      bool y = updateNodeChainAssembly(otherChain, chain);
+
+      if (x || y) {
+        CandidateChains[chain].insert(otherChain);
+        CandidateChains[otherChain].insert(chain);
       }
-    }
-  }
-  if (DebugCFG) {
-    fprintf(stderr, "Propeller: Finished initializing Ext-TSP score for all "
-                    "assembly records:\n");
-    for (const DenseMapPair<std::pair<NodeChain *, NodeChain *>,
-                            std::unique_ptr<NodeChainAssembly>> &elem :
-         NodeChainAssemblies) {
-      fprintf(stderr, "%s\n",
-              NodeChainBuilder::toString(*elem.second.get()).c_str());
+      visited.insert(std::make_pair(chain, otherChain));
+      visited.insert(std::make_pair(otherChain, chain));
     }
   }
 }
 
-void NodeChainBuilder::computeChainOrder(
-    std::vector<const NodeChain *> &chainOrder) {
+
+void NodeChainBuilder::initializeComponents() {
+
+  DenseMap<NodeChain *, unsigned> chainToComponentMap;
+  unsigned componentId = 0;
+  for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains) {
+    NodeChain *chain = elem.second.get();
+    if (!chain->Freq)
+      continue;
+    if(chainToComponentMap.count(chain))
+      continue;
+    chainToComponentMap[chain] = componentId;
+    std::vector<NodeChain*> toVisit(1, chain);
+    unsigned index = 0;
+
+    while(index != toVisit.size()){
+      auto * tchain = toVisit[index++];
+      for(auto * c: tchain->InEdges){
+        if(!chainToComponentMap.count(c)){
+          chainToComponentMap[c] = componentId;
+          toVisit.push_back(c);
+        }
+      }
+      for(auto &e: tchain->OutEdges){
+        if(!chainToComponentMap.count(e.first)) {
+          chainToComponentMap[e.first] = componentId;
+          toVisit.push_back(e.first);
+        }
+      }
+    }
+    Components.push_back(std::move(toVisit));
+    componentId++;
+  }
+}
+
+void NodeChainBuilder::mergeAllChains() {
   // Attach the mutually-foced edges (which will not be split anymore by the
   // Extended TSP algorithm).
-  for (auto &kv : MutuallyForcedOut)
-    attachNodes(kv.first, kv.second);
+  for (auto &elem : MutuallyForcedOut)
+    attachNodes(elem.first, elem.second);
 
-  // Initialize the Extended TSP algorithm's data.
-  initializeExtTSP();
+  for(auto& elem: Chains){
+    auto * chain = elem.second.get();
+    if (!chain->Freq)
+      continue;
+    auto visit = [chain] (CFGEdge& edge) {
+      if (!edge.Weight)
+        return;
+      if (edge.isReturn())
+        return;
+      auto* sinkNodeChain = edge.Sink->Chain;
+      chain->OutEdges[sinkNodeChain].push_back(&edge);
+      sinkNodeChain->InEdges.insert(chain);
+    };
 
-  // Keep merging the chain assembly record with the highest ExtTSP gain, until
-  // no more gain is possible.
-  bool merged = false;
-  do {
-    merged = false;
-    auto bestCandidate = std::max_element(
-        NodeChainAssemblies.begin(), NodeChainAssemblies.end(),
-        [](DenseMapPair<std::pair<NodeChain *, NodeChain *>,
-                        std::unique_ptr<NodeChainAssembly>> &c1,
-           DenseMapPair<std::pair<NodeChain *, NodeChain *>,
-                        std::unique_ptr<NodeChainAssembly>> &c2) {
-          return c1.second->extTSPScoreGain() < c2.second->extTSPScoreGain();
-        });
-
-    if (bestCandidate != NodeChainAssemblies.end() &&
-        bestCandidate->second->extTSPScoreGain() > 0) {
-      if (DebugCFG)
-        fprintf(stderr, "MERGING for %s\n",
-                toString(*bestCandidate->second.get()).c_str());
-      std::unique_ptr<NodeChainAssembly> bestCandidateNCA =
-          std::move(bestCandidate->second);
-      NodeChainAssemblies.erase(bestCandidate);
-      mergeChains(std::move(bestCandidateNCA));
-      merged = true;
+    if (propellerConfig.optReorderIP) {
+      for(CFGNode * node: chain->Nodes)
+        node->forEachOutEdgeRef(visit);
+    } else {
+      for(CFGNode * node: chain->Nodes)
+        node->forEachIntraOutEdgeRef(visit);
     }
-  } while (merged);
+  }
+
+  initializeComponents();
+
+
+  for (CurrentComponent=0; CurrentComponent < Components.size(); ++CurrentComponent){
+    // Initialize the Extended TSP algorithm's data.
+    initializeExtTSP();
+
+    // Keep merging the chain assembly record with the highest ExtTSP gain, until
+    // no more gain is possible.
+    while(!NodeChainAssemblies.empty()){
+        auto bestAssembly = NodeChainAssemblies.top();
+        NodeChainAssemblies.pop();
+        if (bestAssembly->splitChain()->DebugChain || bestAssembly->unsplitChain()->DebugChain)
+          fprintf(stderr, "MERGING for %s\n", toString(*bestAssembly.get()).c_str());
+        fprintf(stderr, "MERGING with score %.11f %lu %lu SPLIT(%d)\n", bestAssembly->ScoreGain, bestAssembly->splitChain()->Size, bestAssembly->unsplitChain()->Size, bestAssembly->split());
+        mergeChains(std::move(bestAssembly));
+    }
+  }
 
   // Merge fallthrough basic blocks if we have missed any
   attachFallThroughs();
-
-  sortChainsByExecutionDensity(chainOrder);
 }
 
 // This function computes the ExtTSP score for a chain assembly record. This
 // goes the three BB slices in the assembly record and considers all edges
 // whose source and sink belongs to the chains in the assembly record.
-double NodeChainBuilder::NodeChainAssembly::computeExtTSPScore() const {
+double NodeChainAssembly::computeExtTSPScore() const {
   double score = 0;
-  for (uint8_t srcSliceIdx = 0; srcSliceIdx < 3; ++srcSliceIdx) {
-    const NodeChainSlice &srcSlice = Slices[srcSliceIdx];
-    uint32_t srcNodeOffset = srcSlice.BeginOffset;
-    for (auto nodeIt = srcSlice.Begin; nodeIt != srcSlice.End;
-         srcNodeOffset += (*nodeIt)->ShSize, ++nodeIt) {
-      const CFGNode *node = *nodeIt;
-      for (const CFGEdge *edge : node->Outs) {
-        if (!edge->Weight)
-          continue;
 
-        uint8_t sinkSliceIdx;
+  auto visit = [this, &score] (CFGEdge& edge, NodeChain * srcChain, NodeChain *sinkChain){
+        uint8_t srcSliceIdx, sinkSliceIdx;
+        auto srcNodeOffset = edge.Src->ChainOffset;
+        auto sinkNodeOffset = edge.Sink->ChainOffset;
+        if (!findSliceIndex(edge.Src, srcChain, srcNodeOffset, srcSliceIdx))
+          return;
 
-        if (findSliceIndex(edge->Sink, sinkSliceIdx)) {
-          auto sinkNodeOffset = ChainBuilder->getNodeOffset(edge->Sink);
-          bool edgeForward = (srcSliceIdx < sinkSliceIdx) ||
-                             (srcSliceIdx == sinkSliceIdx &&
-                              (srcNodeOffset + node->ShSize <= sinkNodeOffset));
+        if (!findSliceIndex(edge.Sink, sinkChain, sinkNodeOffset, sinkSliceIdx))
+          return;
 
-          uint32_t distance = 0;
+        bool edgeForward = (srcSliceIdx < sinkSliceIdx) ||
+                           (srcSliceIdx == sinkSliceIdx &&
+                            (srcNodeOffset + edge.Src->ShSize <= sinkNodeOffset));
 
-          if (srcSliceIdx == sinkSliceIdx) {
-            distance = edgeForward
-                           ? sinkNodeOffset - srcNodeOffset - node->ShSize
-                           : srcNodeOffset - sinkNodeOffset + node->ShSize;
-          } else {
+        uint64_t srcSinkDistance = 0;
+
+        if (srcSliceIdx == sinkSliceIdx) {
+          srcSinkDistance = edgeForward
+                       ? sinkNodeOffset - srcNodeOffset - edge.Src->ShSize
+                       : srcNodeOffset - sinkNodeOffset + edge.Src->ShSize;
+        } else {
+            const NodeChainSlice &srcSlice = Slices[srcSliceIdx];
             const NodeChainSlice &sinkSlice = Slices[sinkSliceIdx];
-            distance = edgeForward
-                           ? srcSlice.EndOffset - srcNodeOffset - node->ShSize +
-                                 sinkNodeOffset - sinkSlice.BeginOffset
-                           : srcNodeOffset - srcSlice.BeginOffset +
-                                 node->ShSize + sinkSlice.EndOffset -
-                                 sinkNodeOffset;
-            // Increment the distance by the size of the middle slice if the src
-            // and sink are from the two ends.
-            if (std::abs(sinkSliceIdx - srcSliceIdx) == 2)
-              distance += Slices[1].size();
-          }
-          score += getEdgeExtTSPScore(edge, edgeForward, distance);
+            srcSinkDistance = edgeForward
+                         ? srcSlice.EndOffset - srcNodeOffset - edge.Src->ShSize +
+                               sinkNodeOffset - sinkSlice.BeginOffset
+                         : srcNodeOffset - srcSlice.BeginOffset +
+                               edge.Src->ShSize + sinkSlice.EndOffset -
+                               sinkNodeOffset;
+          // Increment the distance by the size of the middle slice if the src
+          // and sink are from the two ends.
+          if (std::abs(sinkSliceIdx - srcSliceIdx) == 2)
+            srcSinkDistance += Slices[1].size();
         }
-      }
-    }
-  }
+
+        score += getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
+      };
+
+
+  score += unsplitChain()->Score;
+
+  if (split())
+    splitChain()->forEachOutEdgeToChain(splitChain(), visit);
+  else
+    score += splitChain()->Score;
+
+  splitChain()->forEachOutEdgeToChain(unsplitChain(), visit);
+  unsplitChain()->forEachOutEdgeToChain(splitChain(), visit);
+
   return score;
 }
 
-void NodeChainBuilder::doSplitOrder(
-    std::list<StringRef> &symbolList,
-    std::list<StringRef>::iterator hotPlaceHolder,
-    std::list<StringRef>::iterator coldPlaceHolder) {
-  std::vector<const NodeChain *> chainOrder;
-  computeChainOrder(chainOrder);
+void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC){
+  init();
+  mergeAllChains();
 
-  double Score = 0;
+  if(!propellerConfig.optReorderIP){
+    coalesceChains();
+    assert(CFGs.size() == 1 && Chains.size() <= 2);
 
 #ifdef PROPELLER_PROTOBUF
-  std::list<const CFGNode *> hotNodes;
-  std::list<const CFGNode *> coldNodes;
-  std::list<const CFGNode *> *selectedNodes;
-#endif
-  for (const NodeChain *c : chainOrder) {
-    Score += c->Score;
-    std::list<StringRef>::iterator insertPos =
-        c->Freq ? hotPlaceHolder : coldPlaceHolder;
-#ifdef PROPELLER_PROTOBUF
-    selectedNodes = c->Freq ? &hotNodes : &coldNodes;
-#endif
-
-    for (const CFGNode *n : c->Nodes)
-      symbolList.insert(insertPos, n->ShName);
-      
-#ifdef PROPELLER_PROTOBUF
-    if (CFG->isHot() && Prop.protobufPrinter) {
-      for (const CFGNode *n : c->Nodes)
-        selectedNodes->push_back(n);
+    ControlFlowGraph * cfg = CFGs.back();
+    if (prop->protobufPrinter) {
+      std::list<CFGNode *> nodeOrder;
+      for(auto& elem: Chains) {
+        auto * chain = elem.second.get();
+        nodeOrder.insert(chain->Freq ? nodeOrder.begin() : nodeOrder.end(), chain->Nodes.begin(), chain->Nodes.end());
+      }
+      prop->protobufPrinter->addCFG(*cfg, &nodeOrder);
     }
 #endif
   }
-  if (propellerConfig.optPrintStats)
-    fprintf(stderr, "ExtTSP score: %s,%f\n", CFG->Name.str().c_str(), Score);
 
-#ifdef PROPELLER_PROTOBUF
-  if (Prop.protobufPrinter && CFG->isHot()) {
-    hotNodes.splice(hotNodes.end(), coldNodes);
-    Prop.protobufPrinter->addCFG(*CFG, &hotNodes);    
+  for(auto& elem: Chains)
+    CC->addChain(std::move(elem.second));
+}
+
+void ChainClustering::addChain(std::unique_ptr<NodeChain>&& chain_ptr){
+  for(CFGNode *n: chain_ptr->Nodes)
+    n->Chain = chain_ptr.get();
+  auto& chainList = ((propellerConfig.optReorderIP || propellerConfig.optSplitFuncs || propellerConfig.optReorderFuncs) && chain_ptr->Freq==0) ? ColdChains : HotChains;
+  chainList.push_back(std::move(chain_ptr));
+}
+
+// Initialize a cluster containing a single chain an associates it with a unique
+// id.
+ChainClustering::Cluster::Cluster(NodeChain *chain)
+    : Chains(1, chain), DelegateChain(chain) {}
+
+// Returns the most frequent caller of a function. This function also gets as
+// the second parameter the cluster containing this function to save a lookup
+// into the ChainToClusterMap.
+ChainClustering::Cluster *
+CallChainClustering::getMostLikelyPredecessor(NodeChain * chain,
+                                              Cluster *cluster) {
+  DenseMap<Cluster*, uint64_t> clusterEdge;
+
+  for(CFGNode * n: chain->Nodes){
+    auto visit = [&clusterEdge, n, chain, cluster, this] (CFGEdge& edge){
+      if (!edge.Weight)
+        return;
+      if (edge.isReturn())
+        return;
+      auto *caller = edge.Src->Chain;
+      if (!caller)
+        return;
+      auto * callerCluster = ChainToClusterMap[caller];
+      assert(caller->Freq);
+      if (caller == chain || callerCluster == cluster)
+        return;
+      if (callerCluster->Size > ClusterMergeSizeThreshold)
+        return;
+      // Ignore calls which are cold relative to the callee
+      if (edge.Weight * 10 < n->Freq)
+        return;
+      // Do not merge if the caller cluster's density would degrade by more than
+      // 1/8.
+      if (8 * callerCluster->Size * (cluster->Weight * callerCluster->Weight) <
+          callerCluster->Weight * (cluster->Size + callerCluster->Size))
+        return;
+      clusterEdge[callerCluster] += edge.Weight;
+    };
+    n->forEachInEdgeRef(visit);
+
   }
-#endif
+
+  auto bestCaller = std::max_element(clusterEdge.begin(), clusterEdge.end(), [] (const DenseMapPair<Cluster*, uint64_t>& p1,
+                                                               const DenseMapPair<Cluster*, uint64_t>& p2) {
+    if (p1.second == p2.second)
+      return std::less<Cluster*>()(p1.first, p2.first);
+    return p1.second < p2.second;
+  });
+
+  if (bestCaller == clusterEdge.end())
+    return nullptr;
+  return bestCaller->first;
+}
+
+
+void ChainClustering::sortClusters(std::vector<Cluster *> &clusterOrder) {
+  for (auto &p : Clusters)
+    clusterOrder.push_back(p.second.get());
+
+  auto clusterComparator = [](Cluster *c1, Cluster *c2) -> bool {
+    // Set a deterministic order when execution densities are equal.
+    if (c1->getDensity() == c2->getDensity())
+      return c1->DelegateChain->DelegateNode->MappedAddr <
+          c2->DelegateChain->DelegateNode->MappedAddr;
+    return c1->getDensity() > c2->getDensity();
+  };
+
+  std::sort(clusterOrder.begin(), clusterOrder.end(), clusterComparator);
+}
+
+void NoOrdering::doOrder(std::vector<CFGNode*> &hotOrder,
+                                  std::vector<CFGNode*> &coldOrder){
+  auto chainComparator = [](const std::unique_ptr<NodeChain> &c_ptr1,
+                            const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
+    return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
+  };
+
+  std::sort(HotChains.begin(), HotChains.end(), chainComparator);
+  std::sort(ColdChains.begin(), ColdChains.end(), chainComparator);
+
+  for(auto& c_ptr: HotChains)
+    for(CFGNode* n: c_ptr->Nodes)
+      hotOrder.push_back(n);
+
+  for(auto& c_ptr: ColdChains)
+    for(CFGNode* n: c_ptr->Nodes)
+    coldOrder.push_back(n);
+}
+
+// Merge clusters together based on the CallChainClustering algorithm.
+void CallChainClustering::mergeClusters() {
+  // Build a map for the execution density of each chain.
+  DenseMap<NodeChain *, double> chainWeightMap;
+
+  for(auto& c_ptr: HotChains){
+    NodeChain * chain = c_ptr.get();
+    chainWeightMap.try_emplace(chain, chain->execDensity());
+  }
+
+  // Sort the hot chains in decreasing order of their execution density.
+  std::stable_sort(HotChains.begin(), HotChains.end(),
+            [&chainWeightMap] (const std::unique_ptr<NodeChain> &c_ptr1,
+                               const std::unique_ptr<NodeChain> &c_ptr2){
+              return chainWeightMap[c_ptr1.get()] > chainWeightMap[c_ptr2.get()];
+            });
+
+  for (auto& c_ptr : HotChains){
+    NodeChain* chain = c_ptr.get();
+    if (chainWeightMap[chain] <= 0.005)
+      break;
+    auto *cluster = ChainToClusterMap[chain];
+    // Ignore merging if the cluster containing this function is bigger than
+    // 2MBs (size of a large page).
+    if (cluster->Size > ClusterMergeSizeThreshold)
+      continue;
+    assert(cluster);
+
+    Cluster *predecessorCluster = getMostLikelyPredecessor(chain, cluster);
+    if (!predecessorCluster)
+      continue;
+
+    //assert(predecessorCluster != cluster && predecessorChain != chain);
+    mergeTwoClusters(predecessorCluster, cluster);
+  }
+}
+
+
+void ChainClustering::doOrder(std::vector<CFGNode*> &hotOrder,
+                                  std::vector<CFGNode*> &coldOrder){
+  //warn("[propeller]" + Twine(HotChains.size())+ " Hot chains and " + Twine(ColdChains.size()) + " Cold chains.");
+  initClusters();
+  mergeClusters();
+  std::vector<Cluster *> clusterOrder;
+  sortClusters(clusterOrder);
+  for (Cluster *cl: clusterOrder)
+    for(NodeChain* c: cl->Chains)
+      for(CFGNode *n: c->Nodes)
+        hotOrder.push_back(n);
+
+  auto chainComparator = [](const std::unique_ptr<NodeChain> &c_ptr1,
+                            const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
+    return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
+  };
+
+  std::sort(ColdChains.begin(), ColdChains.end(), chainComparator);
+
+  for(auto &c_ptr: ColdChains)
+    for(CFGNode* n: c_ptr->Nodes)
+    coldOrder.push_back(n);
+}
+
+void PropellerBBReordering::printStats() {
+
+  DenseMap<CFGNode*, uint64_t> nodeAddressMap;
+  llvm::StringMap<unsigned> functionPartitions;
+  uint64_t currentAddress = 0;
+  ControlFlowGraph* currentCFG = nullptr;
+  for(CFGNode* n: HotOrder){
+    if (currentCFG != n->CFG){
+      currentCFG = n->CFG;
+      functionPartitions[currentCFG->Name]++;
+    }
+    nodeAddressMap[n]=currentAddress;
+    currentAddress += n->ShSize;
+  }
+
+  for(auto &elem: functionPartitions){
+    fprintf(stderr, "FUNCTION PARTITIONS: %s,%u\n", elem.first().str().c_str(), elem.second);
+  }
+
+  std::vector<uint64_t> distances({0,128, 640, 1028, 4096, 65536, 2 << 20, std::numeric_limits<uint64_t>::max()});
+  std::map<uint64_t, uint64_t> histogram;
+  llvm::StringMap<double> extTSPScoreMap;
+  for(CFGNode* n: HotOrder) {
+    n->forEachOutEdgeRef([&nodeAddressMap, &distances, &histogram, &extTSPScoreMap](CFGEdge& edge){
+      if (!edge.Weight)
+        return;
+      if (edge.isReturn())
+        return;
+      if (nodeAddressMap.find(edge.Src)==nodeAddressMap.end() || nodeAddressMap.find(edge.Sink)==nodeAddressMap.end())
+        return;
+      uint64_t srcOffset = nodeAddressMap[edge.Src];
+      uint64_t sinkOffset = nodeAddressMap[edge.Sink];
+      bool edgeForward = srcOffset + edge.Src->ShSize <= sinkOffset;
+      uint64_t srcSinkDistance = edgeForward ? sinkOffset - srcOffset - edge.Src->ShSize: srcOffset - sinkOffset + edge.Src->ShSize;
+
+      if (edge.Type == CFGEdge::EdgeType::INTRA_FUNC || edge.Type == CFGEdge::EdgeType::INTRA_DYNA)
+        extTSPScoreMap[edge.Src->CFG->Name] += getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
+
+      auto res = std::lower_bound(distances.begin(), distances.end(), srcSinkDistance);
+      histogram[*res] += edge.Weight;
+    });
+  }
+
+  for(auto& elem: extTSPScoreMap)
+    fprintf(stderr, "Ext TSP Score: %s %.6f\n", elem.first().str().c_str(), elem.second);
+  fprintf(stderr, "DISTANCE HISTOGRAM: ");
+  for(auto elem: histogram)
+    fprintf(stderr, "\t[%lu -> %lu]", elem.first, elem.second);
+  fprintf(stderr, "\n");
 }
 
 } // namespace propeller

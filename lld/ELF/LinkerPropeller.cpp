@@ -30,6 +30,7 @@
 
 #include "Config.h"
 #include "InputFiles.h"
+#include "lld/Common/Memory.h"
 #include "Propeller/Propeller.h"
 #include "Propeller/PropellerCFG.h"
 #include "Propeller/PropellerConfig.h"
@@ -46,6 +47,8 @@ using elf::InputFile;
 using elf::objectFiles;
 
 namespace propeller {
+
+Propeller *prop;
 
 static void setupConfig() {
   propellerConfig.optPropeller = config->propeller;
@@ -66,6 +69,7 @@ static void setupConfig() {
   COPY_CONFIG(ReorderBlocks);
   COPY_CONFIG(ReorderFuncs);
   COPY_CONFIG(SplitFuncs);
+  COPY_CONFIG(ReorderIP);
 #undef COPY_CONFIG
 }
 
@@ -74,8 +78,9 @@ void doPropeller() {
     return;
 
   setupConfig();
-  Propeller propeller;
-  if (!propeller.checkTarget()) {
+  prop = make<Propeller>();
+
+  if (!prop->checkTarget()) {
     warn("[Propeller]: Propeller skipped '" + config->outputFile + "'.");
     return;
   }
@@ -88,8 +93,8 @@ void doPropeller() {
                   if (ov)
                     objectViews.push_back(ov);
                 });
-  if (propeller.processFiles(objectViews))
-    config->symbolOrderingFile = propeller.genSymbolOrderingFile();
+  if (prop->processFiles(objectViews))
+    config->symbolOrderingFile = prop->genSymbolOrderingFile();
   else
     error("Propeller stage failed.");
 }

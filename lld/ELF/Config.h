@@ -197,6 +197,7 @@ struct Configuration {
   bool printIcfSections;
   bool propellerKeepNamedSymbols;
   bool propellerPrintStats;
+  bool propellerReorderIP = false;
   bool propellerReorderBlocks;
   bool propellerReorderFuncs;
   bool propellerSplitFuncs;

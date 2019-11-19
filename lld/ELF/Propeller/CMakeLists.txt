@@ -10,7 +10,6 @@ add_lld_library(lldPropeller
   Propeller.cpp
   PropellerBBReordering.cpp
   PropellerCFG.cpp
-  PropellerFuncOrdering.cpp
   PropellerProtobuf.cpp
   ${PROPELLER_PROTO_SRCS}
 

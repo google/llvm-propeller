@@ -121,6 +121,8 @@
 namespace lld {
 namespace propeller {
 
+extern class Propeller *prop;
+
 class ControlFlowGraph;
 class CFGEdge;
 class CFGNode;
@@ -186,9 +188,8 @@ struct PropellerConfig;
 // generation purpose).
 class Propfile {
 public:
-  Propfile(Propeller &p, const std::string &pName)
-      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream(),
-        Prop(p) {}
+  Propfile(const std::string &pName)
+      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream() {}
 
   // Check whether "outputFile" matches "@" directives in the propeller profile.
   bool matchesOutputFileName(const StringRef outputFile);
@@ -254,7 +255,6 @@ public:
   llvm::UniqueStringSaver PropfileStrSaver;
   std::string PropfName;
   std::ifstream PropfStream;
-  Propeller &Prop;
   // Ordial -> SymbolEntry map. This also owns SymbolEntry instances.
   std::map<uint64_t, std::unique_ptr<SymbolEntry>> SymbolOrdinalMap;
   // SymbolNameMap is ordered in the following way:
@@ -318,7 +318,6 @@ public:
 #ifdef PROPELLER_PROTOBUF
   std::unique_ptr<lld::propeller::ProtobufPrinter> protobufPrinter;
 #endif
-  
 };
 
 // When no "-propeller-keep-named-symbols" specified, we remove all BB symbols

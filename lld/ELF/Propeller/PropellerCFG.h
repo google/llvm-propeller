@@ -31,6 +31,7 @@
 #define LLD_ELF_PROPELLER_CFG_H
 
 #include "Propeller.h"
+#include "PropellerConfig.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
@@ -50,6 +51,7 @@ namespace propeller {
 class ObjectView;
 class CFGNode;
 class ControlFlowGraph;
+class NodeChain;
 
 // All instances of CFGEdge are owned by their CFG.
 class CFGEdge {
@@ -57,6 +59,7 @@ public:
   CFGNode *Src;
   CFGNode *Sink;
   uint64_t Weight;
+
   // Whether it's an edge introduced by recursive-self-call.  (Usually
   // calls do not split basic blocks and do not introduce new edges.)
   enum EdgeType : char {
@@ -69,6 +72,14 @@ public:
     INTER_FUNC_CALL,
     INTER_FUNC_RETURN,
   } Type = INTRA_FUNC;
+
+  bool isCall() const {
+    return Type == INTER_FUNC_CALL || Type == INTRA_RSC;
+  }
+
+  bool isReturn() const {
+    return Type == INTER_FUNC_RETURN || Type == INTRA_RSR;
+  }
 
 protected:
   CFGEdge(CFGNode *N1, CFGNode *N2, EdgeType T)
@@ -90,6 +101,13 @@ public:
   uint64_t Freq;
   ControlFlowGraph *CFG;
 
+  // Containing chain for this node assigned by the ordering algorithm.
+  // This will be updated as chains keep merging together during the algorithm.
+  NodeChain * Chain;
+
+  // Offset of this node in the assigned chain.
+  uint64_t ChainOffset;
+
   std::vector<CFGEdge *> Outs;     // Intra function edges.
   std::vector<CFGEdge *> Ins;      // Intra function edges.
   std::vector<CFGEdge *> CallOuts; // Callouts/returns to other functions.
@@ -107,11 +125,30 @@ public:
     return 0;
   }
 
+  bool isEntryNode() const;
+
+  template <class Visitor> void forEachInEdgeRef(Visitor V) {
+    for (auto& edgeList: {Ins, CallIns})
+      for (CFGEdge * E: edgeList)
+        V(*E);
+  }
+
+  template <class Visitor> void forEachIntraOutEdgeRef(Visitor V) {
+    for (CFGEdge * E: Outs)
+      V(*E);
+  }
+
+  template <class Visitor> void forEachOutEdgeRef(Visitor V) {
+    for (auto& edgeList: {Outs, CallOuts})
+      for (CFGEdge * E: edgeList)
+        V(*E);
+  }
+
 private:
   CFGNode(uint64_t _Shndx, const StringRef &_ShName, uint64_t _Size,
           uint64_t _MappedAddr, ControlFlowGraph *_Cfg)
       : Shndx(_Shndx), ShName(_ShName), ShSize(_Size), MappedAddr(_MappedAddr),
-        Freq(0), CFG(_Cfg), Outs(), Ins(), CallOuts(), CallIns(),
+        Freq(0), CFG(_Cfg), Chain(nullptr), ChainOffset(0), Outs(), Ins(), CallOuts(), CallIns(),
         FTEdge(nullptr) {}
 
   friend class ControlFlowGraph;
@@ -124,13 +161,21 @@ public:
   StringRef Name;
   uint64_t Size;
 
+  // Whether propeller should print information about how this CFG is being
+  // reordered.
+  bool DebugCFG;
+
   // ControlFlowGraph assumes the ownership for all Nodes / Edges.
   std::vector<std::unique_ptr<CFGNode>> Nodes; // Sorted by address.
   std::vector<std::unique_ptr<CFGEdge>> IntraEdges;
   std::vector<std::unique_ptr<CFGEdge>> InterEdges;
 
   ControlFlowGraph(ObjectView *V, const StringRef &N, uint64_t S)
-      : View(V), Name(N), Size(S) {}
+      : View(V), Name(N), Size(S) {
+        DebugCFG = std::find(propellerConfig.optDebugSymbols.begin(),
+                             propellerConfig.optDebugSymbols.end(),
+                             Name.str()) != propellerConfig.optDebugSymbols.end();
+      }
 
   bool markPath(CFGNode *from, CFGNode *to, uint64_t cnt = 1);
   void mapBranch(CFGNode *from, CFGNode *to, uint64_t cnt = 1,
@@ -173,14 +218,13 @@ private:
 
 class CFGBuilder {
 public:
-  Propeller *Prop;
   ObjectView *View;
 
   uint32_t BB = 0;
   uint32_t BBWoutAddr = 0;
   uint32_t InvalidCFGs = 0;
 
-  CFGBuilder(Propeller &prop, ObjectView *vw) : Prop(&prop), View(vw) {}
+  CFGBuilder(ObjectView *vw) : View(vw) {}
 
   // See implementaion comments in .cpp.
   bool buildCFGs();

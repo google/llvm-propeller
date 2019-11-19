@@ -31,6 +31,7 @@ struct PropellerConfig {
   bool optReorderBlocks;
   bool optReorderFuncs;
   bool optSplitFuncs;
+  bool optReorderIP;
 };
 
 extern PropellerConfig propellerConfig;
