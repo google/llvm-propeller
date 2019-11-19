@@ -979,7 +979,8 @@ bool MachinePointerInfo::isDereferenceable(unsigned Size, LLVMContext &C,
     return false;
 
   return isDereferenceableAndAlignedPointer(
-      BasePtr, 1, APInt(DL.getPointerSizeInBits(), Offset + Size), DL);
+      BasePtr, Align::None(), APInt(DL.getPointerSizeInBits(), Offset + Size),
+      DL);
 }
 
 /// getConstantPool - Return a MachinePointerInfo record that refers to the
@@ -1063,17 +1064,6 @@ void MachineMemOperand::refineAlignment(const MachineMemOperand *MMO) {
 /// actual memory reference.
 uint64_t MachineMemOperand::getAlignment() const {
   return MinAlign(getBaseAlignment(), getOffset());
-}
-
-void MachineMemOperand::print(raw_ostream &OS) const {
-  ModuleSlotTracker DummyMST(nullptr);
-  print(OS, DummyMST);
-}
-
-void MachineMemOperand::print(raw_ostream &OS, ModuleSlotTracker &MST) const {
-  SmallVector<StringRef, 0> SSNs;
-  LLVMContext Ctx;
-  print(OS, MST, SSNs, Ctx, nullptr, nullptr);
 }
 
 void MachineMemOperand::print(raw_ostream &OS, ModuleSlotTracker &MST,

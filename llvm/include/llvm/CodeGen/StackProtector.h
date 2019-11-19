@@ -61,6 +61,12 @@ private:
   /// protection when -fstack-protection is used.
   unsigned SSPBufferSize = 0;
 
+  /// VisitedPHIs - The set of PHI nodes visited when determining
+  /// if a variable's reference has been taken.  This set
+  /// is maintained to ensure we don't visit the same PHI node multiple
+  /// times.
+  SmallPtrSet<const PHINode *, 16> VisitedPHIs;
+
   // A prologue is generated.
   bool HasPrologue = false;
 
@@ -98,9 +104,7 @@ private:
 public:
   static char ID; // Pass identification, replacement for typeid.
 
-  StackProtector() : FunctionPass(ID), SSPBufferSize(8) {
-    initializeStackProtectorPass(*PassRegistry::getPassRegistry());
-  }
+  StackProtector();
 
   void getAnalysisUsage(AnalysisUsage &AU) const override;
 

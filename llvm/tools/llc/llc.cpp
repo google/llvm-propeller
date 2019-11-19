@@ -34,6 +34,7 @@
 #include "llvm/IR/RemarkStreamer.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
@@ -202,7 +203,7 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
         OutputFilename = IFN;
 
       switch (FileType) {
-      case TargetMachine::CGFT_AssemblyFile:
+      case CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0)
             OutputFilename += ".cbe.c";
@@ -213,13 +214,13 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
         } else
           OutputFilename += ".s";
         break;
-      case TargetMachine::CGFT_ObjectFile:
+      case CGFT_ObjectFile:
         if (OS == Triple::Win32)
           OutputFilename += ".obj";
         else
           OutputFilename += ".o";
         break;
-      case TargetMachine::CGFT_Null:
+      case CGFT_Null:
         OutputFilename += ".null";
         break;
       }
@@ -229,10 +230,10 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
   // Decide if we need "binary" output.
   bool Binary = false;
   switch (FileType) {
-  case TargetMachine::CGFT_AssemblyFile:
+  case CGFT_AssemblyFile:
     break;
-  case TargetMachine::CGFT_ObjectFile:
-  case TargetMachine::CGFT_Null:
+  case CGFT_ObjectFile:
+  case CGFT_Null:
     Binary = true;
     break;
   }
@@ -519,7 +520,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   setFunctionAttributes(CPUStr, FeaturesStr, *M);
 
   if (RelaxAll.getNumOccurrences() > 0 &&
-      FileType != TargetMachine::CGFT_ObjectFile)
+      FileType != CGFT_ObjectFile)
     WithColor::warning(errs(), argv[0])
         << ": warning: ignoring -mc-relax-all because filetype != obj";
 
@@ -530,7 +531,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
     // so we can memcmp the contents in CompileTwice mode
     SmallVector<char, 0> Buffer;
     std::unique_ptr<raw_svector_ostream> BOS;
-    if ((FileType != TargetMachine::CGFT_AssemblyFile &&
+    if ((FileType != CGFT_AssemblyFile &&
          !Out->os().supportsSeeking()) ||
         CompileTwice) {
       BOS = std::make_unique<raw_svector_ostream>(Buffer);
@@ -538,8 +539,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
     }
 
     const char *argv0 = argv[0];
-    LLVMTargetMachine &LLVMTM = static_cast<LLVMTargetMachine&>(*Target);
-    MachineModuleInfo *MMI = new MachineModuleInfo(&LLVMTM);
+    LLVMTargetMachine &LLVMTM = static_cast<LLVMTargetMachine &>(*Target);
+    MachineModuleInfoWrapperPass *MMIWP =
+        new MachineModuleInfoWrapperPass(&LLVMTM);
 
     // Construct a custom pass pipeline that starts after instruction
     // selection.
@@ -559,7 +561,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
       TPC.setDisableVerify(NoVerify);
       PM.add(&TPC);
-      PM.add(MMI);
+      PM.add(MMIWP);
       TPC.printAndVerify("");
       for (const std::string &RunPassName : *RunPassNames) {
         if (addPass(PM, argv0, RunPassName, TPC))
@@ -570,7 +572,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
       PM.add(createFreeMachineFunctionPass());
     } else if (Target->addPassesToEmitFile(PM, *OS,
                                            DwoOut ? &DwoOut->os() : nullptr,
-                                           FileType, NoVerify, MMI)) {
+                                           FileType, NoVerify, MMIWP)) {
       WithColor::warning(errs(), argv[0])
           << "target does not support generation of this"
           << " file type!\n";
@@ -578,8 +580,8 @@ static int compileModule(char **argv, LLVMContext &Context) {
     }
 
     if (MIR) {
-      assert(MMI && "Forgot to create MMI?");
-      if (MIR->parseMachineFunctions(*M, *MMI))
+      assert(MMIWP && "Forgot to create MMIWP?");
+      if (MIR->parseMachineFunctions(*M, MMIWP->getMMI()))
         return 1;
     }
 

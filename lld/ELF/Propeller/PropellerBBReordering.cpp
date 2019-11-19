@@ -87,12 +87,11 @@
 //===----------------------------------------------------------------------===//
 #include "PropellerBBReordering.h"
 
-#include "Config.h"
+#include "PropellerConfig.h"
 #include "llvm/ADT/DenseSet.h"
 
 #include <numeric>
 #include <vector>
-
 
 using llvm::DenseSet;
 using llvm::detail::DenseMapPair;
@@ -160,18 +159,18 @@ inline double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
       srcSinkDistance -= edge.Sink->ShSize / 2;
   }
 
-  if(srcSinkDistance == 0 && (edge.Type == CFGEdge::EdgeType::INTRA_FUNC || edge.Type == CFGEdge::EdgeType::INTRA_DYNA))
-    return edge.Weight * config->propellerFallthroughWeight;
+  if (srcSinkDistance == 0 && (edge.Type == CFGEdge::EdgeType::INTRA_FUNC || edge.Type == CFGEdge::EdgeType::INTRA_DYNA))
+    return edge.Weight * propellerConfig.optFallthroughWeight;
 
-  if (isEdgeForward && srcSinkDistance < config->propellerForwardJumpDistance)
-    return edge.Weight * config->propellerForwardJumpWeight *
+  if (isEdgeForward && srcSinkDistance < propellerConfig.optForwardJumpDistance)
+    return edge.Weight * propellerConfig.optForwardJumpWeight *
            (1.0 -
-            ((double)srcSinkDistance) / config->propellerForwardJumpDistance);
+            ((double)srcSinkDistance) / propellerConfig.optForwardJumpDistance);
 
-  if (!isEdgeForward && srcSinkDistance < config->propellerBackwardJumpDistance)
-    return edge.Weight * config->propellerBackwardJumpWeight *
+  if (!isEdgeForward && srcSinkDistance < propellerConfig.optBackwardJumpDistance)
+    return edge.Weight * propellerConfig.optBackwardJumpWeight *
            (1.0 -
-            ((double)srcSinkDistance) / config->propellerBackwardJumpDistance);
+            ((double)srcSinkDistance) / propellerConfig.optBackwardJumpDistance);
   return 0;
 }
 
@@ -180,7 +179,6 @@ void NodeChainBuilder::init() {
     initNodeChains(*cfg);
     initMutuallyForcedEdges(*cfg);
   }
-
 }
 
 // NodeChainBuilder calls this function after building all the chains to attach
@@ -234,7 +232,7 @@ void NodeChainBuilder::coalesceChains() {
       continue;
     }
     // Create a cold partition when -propeller-split-funcs is set.
-    if(config->propellerSplitFuncs && (mergerChain->Freq==0 ^ c->Freq==0)){
+    if(propellerConfig.optSplitFuncs && (mergerChain->Freq==0 ^ c->Freq==0)){
       mergerChain=c;
       continue;
     }
@@ -353,7 +351,7 @@ void NodeChainBuilder::mergeChains(
       break;
   }
 
-  if (config->propellerReorderIP) {
+  if (propellerConfig.optReorderIP) {
     std::vector<std::list<CFGNode*>::iterator> allSlicesBegin;
     if (!X2FuncEntry)
       allSlicesBegin.push_back(X2Begin);
@@ -515,7 +513,7 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
                                                NodeChain *unsplitChain) {
   // Only consider splitting the chain if the size of the chain is smaller than
   // a threshold.
-  bool doSplit = (splitChain->Size <= config->propellerChainSplitThreshold);
+  bool doSplit = (splitChain->Size <= propellerConfig.optChainSplitThreshold);
   auto slicePosEnd =
       doSplit ? splitChain->Nodes.end() : std::next(splitChain->Nodes.begin());
 
@@ -549,7 +547,7 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
     }
   }
 
-  if (config->propellerReorderIP && !doSplit) {
+  if (propellerConfig.optReorderIP && !doSplit) {
     for(auto slicePos : splitChain->FunctionEntryIndices){
       for (uint8_t MI = MergeOrder::Begin; MI != MergeOrder::End; MI++) {
         MergeOrder mOrder = static_cast<MergeOrder>(MI);
@@ -733,7 +731,6 @@ void NodeChainBuilder::initializeComponents() {
     Components.push_back(std::move(toVisit));
     componentId++;
   }
-
 }
 
 void NodeChainBuilder::mergeAllChains() {
@@ -756,7 +753,7 @@ void NodeChainBuilder::mergeAllChains() {
       sinkNodeChain->InEdges.insert(chain);
     };
 
-    if (config->propellerReorderIP) {
+    if (propellerConfig.optReorderIP) {
       for(CFGNode * node: chain->Nodes)
         node->forEachOutEdgeRef(visit);
     } else {
@@ -850,8 +847,22 @@ void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC){
   init();
   mergeAllChains();
 
-  if(!config->propellerReorderIP)
+  if(!propellerConfig.optReorderIP){
     coalesceChains();
+    assert(CFGs.size() == 1 && Chains.size() <= 2);
+
+#ifdef PROPELLER_PROTOBUF
+    ControlFlowGraph * cfg = CFGs.back();
+    if (prop->protobufPrinter) {
+      std::list<CFGNode *> nodeOrder;
+      for(auto& elem: Chains) {
+        auto * chain = elem.second.get();
+        nodeOrder.insert(chain->Freq ? nodeOrder.begin() : nodeOrder.end(), chain->Nodes.begin(), chain->Nodes.end());
+      }
+      prop->protobufPrinter->addCFG(*cfg, &nodeOrder);
+    }
+#endif
+  }
 
   for(auto& elem: Chains)
     CC->addChain(std::move(elem.second));
@@ -860,7 +871,7 @@ void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC){
 void ChainClustering::addChain(std::unique_ptr<NodeChain>&& chain_ptr){
   for(CFGNode *n: chain_ptr->Nodes)
     n->Chain = chain_ptr.get();
-  auto& chainList = ((config->propellerReorderIP || config->propellerSplitFuncs || config->propellerReorderFuncs) && chain_ptr->Freq==0) ? ColdChains : HotChains;
+  auto& chainList = ((propellerConfig.optReorderIP || propellerConfig.optSplitFuncs || propellerConfig.optReorderFuncs) && chain_ptr->Freq==0) ? ColdChains : HotChains;
   chainList.push_back(std::move(chain_ptr));
 }
 

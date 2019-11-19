@@ -67,7 +67,7 @@ void MemIndex::lookup(const LookupRequest &Req,
   }
 }
 
-void MemIndex::refs(const RefsRequest &Req,
+bool MemIndex::refs(const RefsRequest &Req,
                     llvm::function_ref<void(const Ref &)> Callback) const {
   trace::Span Tracer("MemIndex refs");
   uint32_t Remaining =
@@ -77,12 +77,15 @@ void MemIndex::refs(const RefsRequest &Req,
     if (SymRefs == Refs.end())
       continue;
     for (const auto &O : SymRefs->second) {
-      if (Remaining > 0 && static_cast<int>(Req.Filter & O.Kind)) {
-        --Remaining;
-        Callback(O);
-      }
+      if (!static_cast<int>(Req.Filter & O.Kind))
+        continue;
+      if (Remaining == 0)
+        return true; // More refs were available.
+      --Remaining;
+      Callback(O);
     }
   }
+  return false; // We reported all refs.
 }
 
 void MemIndex::relations(
@@ -92,7 +95,8 @@ void MemIndex::relations(
       Req.Limit.getValueOr(std::numeric_limits<uint32_t>::max());
   for (const SymbolID &Subject : Req.Subjects) {
     LookupRequest LookupReq;
-    auto It = Relations.find(std::make_pair(Subject, Req.Predicate));
+    auto It = Relations.find(
+        std::make_pair(Subject, static_cast<uint8_t>(Req.Predicate)));
     if (It != Relations.end()) {
       for (const auto &Obj : It->second) {
         if (Remaining > 0) {

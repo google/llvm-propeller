@@ -18,6 +18,8 @@
 #include "llvm/Analysis/MemorySSAUpdater.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/InitializePasses.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/LoopPassManager.h"
@@ -94,17 +96,15 @@ public:
     auto *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
     const auto *TTI = &getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
     auto *AC = &getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
-    auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();
-    auto *DT = DTWP ? &DTWP->getDomTree() : nullptr;
-    auto *SEWP = getAnalysisIfAvailable<ScalarEvolutionWrapperPass>();
-    auto *SE = SEWP ? &SEWP->getSE() : nullptr;
+    auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+    auto &SE = getAnalysis<ScalarEvolutionWrapperPass>().getSE();
     const SimplifyQuery SQ = getBestSimplifyQuery(*this, F);
     Optional<MemorySSAUpdater> MSSAU;
     if (EnableMSSALoopDependency) {
       MemorySSA *MSSA = &getAnalysis<MemorySSAWrapperPass>().getMSSA();
       MSSAU = MemorySSAUpdater(MSSA);
     }
-    return LoopRotation(L, LI, TTI, AC, DT, SE,
+    return LoopRotation(L, LI, TTI, AC, &DT, &SE,
                         MSSAU.hasValue() ? MSSAU.getPointer() : nullptr, SQ,
                         false, MaxHeaderSize, false);
   }

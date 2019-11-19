@@ -561,6 +561,71 @@ namespace Union {
     S3 s;
     s.n = 0;
   }
+
+  union ref_member_1 {
+    int a;
+    int b;
+  };
+  struct ref_member_2 {
+    ref_member_1 &&r;
+  };
+  union ref_member_3 {
+    ref_member_2 a, b;
+  };
+  constexpr int ref_member_test_1() {
+    ref_member_3 r = {.a = {.r = {.a = 1}}};
+    r.a.r.b = 2;
+    return r.a.r.b;
+  }
+  static_assert(ref_member_test_1() == 2);
+  constexpr int ref_member_test_2() { // expected-error {{never produces a constant}}
+    ref_member_3 r = {.a = {.r = {.a = 1}}};
+    // FIXME: This note isn't great. The 'read' here is reading the referent of the reference.
+    r.b.r.b = 2; // expected-note {{read of member 'b' of union with active member 'a'}}
+    return r.b.r.b;
+  }
+
+  namespace PR43762 {
+    struct A { int x = 1; constexpr int f() { return 1; } };
+    struct B : A { int y = 1; constexpr int g() { return 2; } };
+    struct C {
+      int x;
+      constexpr virtual int f() = 0;
+    };
+    struct D : C {
+      int y;
+      constexpr virtual int f() override { return 3; }
+    };
+
+    union U {
+      int n;
+      B b;
+      D d;
+    };
+
+    constexpr int test(int which) {
+      U u{.n = 5};
+      switch (which) {
+      case 0:
+        u.b.x = 10; // expected-note {{active member 'n'}}
+        return u.b.f();
+      case 1:
+        u.b.y = 10; // expected-note {{active member 'n'}}
+        return u.b.g();
+      case 2:
+        u.d.x = 10; // expected-note {{active member 'n'}}
+        return u.d.f();
+      case 3:
+        u.d.y = 10; // expected-note {{active member 'n'}}
+        return u.d.f();
+      }
+    }
+
+    static_assert(test(0)); // expected-error {{}} expected-note {{in call}}
+    static_assert(test(1)); // expected-error {{}} expected-note {{in call}}
+    static_assert(test(2)); // expected-error {{}} expected-note {{in call}}
+    static_assert(test(3)); // expected-error {{}} expected-note {{in call}}
+  }
 }
 
 namespace TwosComplementShifts {
@@ -779,6 +844,11 @@ namespace dtor {
     return true;
   }
   static_assert(run_dtors_on_array_filler());
+
+  // Ensure that we can handle temporary cleanups for array temporaries.
+  struct ArrElem { constexpr ~ArrElem() {} };
+  using Arr = ArrElem[3];
+  static_assert((Arr{}, true));
 }
 
 namespace dynamic_alloc {
@@ -1056,6 +1126,12 @@ namespace delete_random_things {
   static_assert((delete &(int&)(int&&)0, true)); // expected-error {{}} expected-note {{delete of pointer '&0' that does not point to a heap-allocated object}} expected-note {{temporary created here}}
 }
 
+namespace value_dependent_delete {
+  template<typename T> void f(T *p) {
+    int arr[(delete p, 0)];
+  }
+}
+
 namespace memory_leaks {
   static_assert(*new bool(true)); // expected-error {{}} expected-note {{allocation performed here was not deallocated}}
 
@@ -1156,6 +1232,25 @@ namespace dtor_call {
   static_assert(virt_dtor(3, "YX"));
   static_assert(virt_dtor(4, "X"));
 
+  constexpr bool virt_delete(bool global) {
+    struct A {
+      virtual constexpr ~A() {}
+    };
+    struct B : A {
+      void operator delete(void *);
+      constexpr ~B() {}
+    };
+
+    A *p = new B;
+    if (global)
+      ::delete p;
+    else
+      delete p; // expected-note {{call to class-specific 'operator delete'}}
+    return true;
+  }
+  static_assert(virt_delete(true));
+  static_assert(virt_delete(false)); // expected-error {{}} expected-note {{in call}}
+
   constexpr void use_after_virt_destroy() {
     char buff[4] = {};
     VU vu;
@@ -1248,5 +1343,42 @@ namespace dtor_call {
     as.a.~A();
     // FIXME: This diagnostic is wrong; the union has no active member now.
     as.b.~A(); // expected-note {{destruction of member 'b' of union with active member 'a'}}
+  }
+
+  constexpr void destroy_pointer() {
+    using T = int*;
+    T p;
+    // We used to think this was an -> member access because its left-hand side
+    // is a pointer. Ensure we don't crash.
+    p.~T();
+  }
+  static_assert((destroy_pointer(), true));
+}
+
+namespace temp_dtor {
+  void f();
+  struct A {
+    bool b;
+    constexpr ~A() { if (b) f(); }
+  };
+
+  // We can't accept either of these unless we start actually registering the
+  // destructors of the A temporaries to run on shutdown. It's unclear what the
+  // intended standard behavior is so we reject this for now.
+  constexpr A &&a = A{false}; // expected-error {{constant}} expected-note {{non-trivial destruction of lifetime-extended temporary}}
+  void f() { a.b = true; }
+
+  constexpr A &&b = A{true}; // expected-error {{constant}} expected-note {{non-trivial destruction of lifetime-extended temporary}}
+
+  // FIXME: We could in prinicple accept this.
+  constexpr const A &c = A{false}; // expected-error {{constant}} expected-note {{non-trivial destruction of lifetime-extended temporary}}
+}
+
+namespace value_dependent_init {
+  struct A {
+    constexpr ~A() {}
+  };
+  template<typename T> void f() {
+    A a = T();
   }
 }

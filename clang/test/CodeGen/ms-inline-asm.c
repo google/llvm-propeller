@@ -592,11 +592,19 @@ void t41(unsigned short a) {
 }
 
 void t42() {
-// CHECK-LABEL: define void @t42
+// CHECK-LABEL: define void @t42(
   int flags;
   __asm mov flags, eax
 // CHECK: mov $0, eax
 // CHECK: "=*m,~{dirflag},~{fpsr},~{flags}"(i32* %flags)
+}
+
+void t42b() {
+// CHECK-LABEL: define void @t42b(
+  int mxcsr;
+  __asm mov mxcsr, eax
+// CHECK: mov $0, eax
+// CHECK: "=*m,~{dirflag},~{fpsr},~{flags}"(i32* %mxcsr)
 }
 
 void t43() {
@@ -752,7 +760,7 @@ void mxcsr() {
   __asm fxrstor buf
 }
 // CHECK-LABEL: define void @mxcsr
-// CHECK: call void asm sideeffect inteldialect "fxrstor $0", "=*m,~{dirflag},~{fpsr},~{flags}"
+// CHECK: call void asm sideeffect inteldialect "fxrstor $0", "=*m,~{fpcr},~{dirflag},~{fpsr},~{flags}"
 
 // Make sure we can find the register for the dirflag for popfd
 void dirflag() {

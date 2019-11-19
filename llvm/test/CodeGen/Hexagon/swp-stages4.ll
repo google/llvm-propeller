@@ -1,9 +1,8 @@
-; RUN: llc -march=hexagon -mcpu=hexagonv5 -enable-pipeliner -pipeliner-max-stages=2 -disable-block-placement=0 -hexagon-bit=0 < %s | FileCheck %s
+; RUN: llc -march=hexagon -mcpu=hexagonv5 -enable-pipeliner -pipeliner-max-stages=2 -disable-block-placement=0 -hexagon-bit=0 < %s -pipeliner-experimental-cg=true | FileCheck %s
 
 ; Test that we rename registers correctly for multiple stages when there is a
 ; Phi and depends upon another Phi.
 
-; CHECK: = and
 ; CHECK: = and
 ; CHECK: = and
 ; CHECK: r[[REG0:[0-9]+]] = and(r[[REG1:[0-9]+]],#255)

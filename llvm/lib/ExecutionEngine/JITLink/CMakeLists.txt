@@ -4,8 +4,9 @@ add_llvm_library(LLVMJITLink
   JITLinkMemoryManager.cpp
   EHFrameSupport.cpp
   MachO.cpp
+  MachO_arm64.cpp
   MachO_x86_64.cpp
-  MachOAtomGraphBuilder.cpp
+  MachOLinkGraphBuilder.cpp
 
   DEPENDS
   intrinsics_gen

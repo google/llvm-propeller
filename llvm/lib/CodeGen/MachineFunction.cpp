@@ -352,26 +352,76 @@ bool MachineFunction::sortBasicBlockSections() {
   DenseMap<const MachineBasicBlock *, unsigned> MBBOrder;
   unsigned MBBOrderN = 0;
 
+  SmallSet<unsigned, 4> S = Target.getBasicBlockSectionsSet(F.getName());
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
-    // used for exception table computations.
-    if (!MBB.pred_empty() && !HasEHInfo(MBB))
-      MBB.setIsUniqueSection();
+    // used for exception table computations.  Entry basic block cannot
+    // a section because the function starts one.
+    if (MBB.getNumber() == this->front().getNumber())
+      continue;
+    // Also, check if this BB is a cold basic block in which case sections
+    // are not required with the list option.
+    bool isColdBB =
+        ((Target.getBasicBlockSections() == llvm::BasicBlockSection::List) &&
+         !S.count(MBB.getNumber()));
+    bool UsesEHInfo = HasEHInfo(MBB);
+    if (UsesEHInfo) {
+      MBB.setExceptionSection();
+    } else if (isColdBB) {
+      MBB.setColdSection();
+    } else {
+      MBB.setBeginSection();
+      MBB.setEndSection();
+    }
     MBBOrder[&MBB] = MBBOrderN++;
   }
 
   // With -fbasicblock-sections, fall through blocks must be made
-  // explicitly reachable.  Do this after unique sections is set as
+  // explicitly reachable.  Do this after sections is set as
   // unnecessary fallthroughs can be avoided.
   for (auto &MBB : *this) {
     MBB.insertUnconditionalFallthroughBranch();
   }
 
+  // Order : Entry Block, Cold Section, Other Unique Sections.
+  auto SectionType = ([&](MachineBasicBlock &X) {
+    if (X.getNumber() == this->front().getNumber()
+        || X.isExceptionSection())
+      return 1;
+    else if (X.isColdSection())
+      return 2;
+    return 3;
+  });
+
   this->sort(([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    return (X.isUniqueSection() == Y.isUniqueSection())
-               ? (MBBOrder[&X] < MBBOrder[&Y])
-               : !X.isUniqueSection();
+    auto TypeX = SectionType(X);
+    auto TypeY = SectionType(Y);
+
+    return (TypeX != TypeY)
+               ? TypeX < TypeY
+               : MBBOrder[&X] < MBBOrder[&Y];
   }));
+
+  // Set begin and end sections for cold basic blocks.  With this more sections
+  // can be added if needed.
+  MachineBasicBlock *PrevMBB = nullptr;
+  for (auto &MBB : *this) {
+    // Entry block
+    if (MBB.getNumber() == this->front().getNumber()) {
+      PrevMBB = &MBB;
+      continue;
+    }
+    assert(PrevMBB != nullptr &&
+           "First block was not a regular block!");
+    int TypeP = SectionType(*PrevMBB);
+    int TypeT = SectionType(MBB);
+    if (TypeP != TypeT) {
+      PrevMBB->setEndSection();
+      MBB.setBeginSection();
+    }
+    PrevMBB = &MBB;
+  }
+  PrevMBB->setEndSection();
 
   this->BBSectionsSorted = true;
   return true;
@@ -502,12 +552,11 @@ MachineFunction::getMachineMemOperand(const MachineMemOperand *MMO,
       MMO->getOrdering(), MMO->getFailureOrdering());
 }
 
-MachineInstr::ExtraInfo *
-MachineFunction::createMIExtraInfo(ArrayRef<MachineMemOperand *> MMOs,
-                                   MCSymbol *PreInstrSymbol,
-                                   MCSymbol *PostInstrSymbol) {
+MachineInstr::ExtraInfo *MachineFunction::createMIExtraInfo(
+    ArrayRef<MachineMemOperand *> MMOs, MCSymbol *PreInstrSymbol,
+    MCSymbol *PostInstrSymbol, MDNode *HeapAllocMarker) {
   return MachineInstr::ExtraInfo::create(Allocator, MMOs, PreInstrSymbol,
-                                         PostInstrSymbol);
+                                         PostInstrSymbol, HeapAllocMarker);
 }
 
 const char *MachineFunction::createExternalSymbolName(StringRef Name) {
@@ -574,6 +623,13 @@ void MachineFunction::print(raw_ostream &OS, const SlotIndexes *Indexes) const {
   }
 
   OS << "\n# End machine code for function " << getName() << ".\n\n";
+}
+
+/// True if this function needs frame moves for debug or exceptions.
+bool MachineFunction::needsFrameMoves() const {
+  return getMMI().hasDebugInfo() ||
+         getTarget().Options.ForceDwarfFrameSection ||
+         F.needsUnwindTableEntry();
 }
 
 namespace llvm {
@@ -879,31 +935,45 @@ try_next:;
   return FilterID;
 }
 
-void MachineFunction::addCodeViewHeapAllocSite(MachineInstr *I,
-                                               const MDNode *MD) {
-  MCSymbol *BeginLabel = Ctx.createTempSymbol("heapallocsite", true);
-  MCSymbol *EndLabel = Ctx.createTempSymbol("heapallocsite", true);
-  I->setPreInstrSymbol(*this, BeginLabel);
-  I->setPostInstrSymbol(*this, EndLabel);
+MachineFunction::CallSiteInfoMap::iterator
+MachineFunction::getCallSiteInfo(const MachineInstr *MI) {
+  assert(MI->isCall() && "Call site info refers only to call instructions!");
 
-  const DIType *DI = dyn_cast<DIType>(MD);
-  CodeViewHeapAllocSites.push_back(std::make_tuple(BeginLabel, EndLabel, DI));
+  if (!Target.Options.EnableDebugEntryValues)
+    return CallSitesInfo.end();
+  return CallSitesInfo.find(MI);
 }
 
-void MachineFunction::updateCallSiteInfo(const MachineInstr *Old,
-                                         const MachineInstr *New) {
-  if (!Target.Options.EnableDebugEntryValues || Old == New)
-    return;
+void MachineFunction::moveCallSiteInfo(const MachineInstr *Old,
+                                       const MachineInstr *New) {
+  assert(New->isCall() && "Call site info refers only to call instructions!");
 
-  assert(Old->isCall() && (!New || New->isCall()) &&
-         "Call site info referes only to call instructions!");
-  CallSiteInfoMap::iterator CSIt = CallSitesInfo.find(Old);
+  CallSiteInfoMap::iterator CSIt = getCallSiteInfo(Old);
   if (CSIt == CallSitesInfo.end())
     return;
+
   CallSiteInfo CSInfo = std::move(CSIt->second);
   CallSitesInfo.erase(CSIt);
-  if (New)
-    CallSitesInfo[New] = CSInfo;
+  CallSitesInfo[New] = CSInfo;
+}
+
+void MachineFunction::eraseCallSiteInfo(const MachineInstr *MI) {
+  CallSiteInfoMap::iterator CSIt = getCallSiteInfo(MI);
+  if (CSIt == CallSitesInfo.end())
+    return;
+  CallSitesInfo.erase(CSIt);
+}
+
+void MachineFunction::copyCallSiteInfo(const MachineInstr *Old,
+                                       const MachineInstr *New) {
+  assert(New->isCall() && "Call site info refers only to call instructions!");
+
+  CallSiteInfoMap::iterator CSIt = getCallSiteInfo(Old);
+  if (CSIt == CallSitesInfo.end())
+    return;
+
+  CallSiteInfo CSInfo = CSIt->second;
+  CallSitesInfo[New] = CSInfo;
 }
 
 /// \}

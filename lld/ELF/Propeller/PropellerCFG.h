@@ -31,7 +31,7 @@
 #define LLD_ELF_PROPELLER_CFG_H
 
 #include "Propeller.h"
-#include "Config.h"
+#include "PropellerConfig.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
@@ -41,7 +41,6 @@
 #include <ostream>
 #include <vector>
 
-using lld::elf::config;
 using llvm::object::ObjectFile;
 using llvm::object::section_iterator;
 using llvm::object::SymbolRef;
@@ -119,7 +118,7 @@ public:
 
   const static uint64_t InvalidAddress = -1;
 
-  unsigned getBBIndex() {
+  unsigned getBBIndex() const {
     StringRef FName, BName;
     if (SymbolEntry::isBBSymbol(ShName, &FName, &BName))
       return BName.size();
@@ -173,9 +172,9 @@ public:
 
   ControlFlowGraph(ObjectView *V, const StringRef &N, uint64_t S)
       : View(V), Name(N), Size(S) {
-        DebugCFG = std::find(config->propellerDebugSymbols.begin(),
-                             config->propellerDebugSymbols.end(),
-                             Name.str()) != config->propellerDebugSymbols.end();
+        DebugCFG = std::find(propellerConfig.optDebugSymbols.begin(),
+                             propellerConfig.optDebugSymbols.end(),
+                             Name.str()) != propellerConfig.optDebugSymbols.end();
       }
 
   bool markPath(CFGNode *from, CFGNode *to, uint64_t cnt = 1);
@@ -219,14 +218,13 @@ private:
 
 class CFGBuilder {
 public:
-  Propeller *Prop;
   ObjectView *View;
 
   uint32_t BB = 0;
   uint32_t BBWoutAddr = 0;
   uint32_t InvalidCFGs = 0;
 
-  CFGBuilder(Propeller &prop, ObjectView *vw) : Prop(&prop), View(vw) {}
+  CFGBuilder(ObjectView *vw) : View(vw) {}
 
   // See implementaion comments in .cpp.
   bool buildCFGs();
@@ -254,9 +252,6 @@ protected:
 // ObjectView is a structure that corresponds to a single ELF file.
 class ObjectView {
 public:
-  static ObjectView *create(const StringRef &vN, const uint32_t ordinal,
-                            const MemoryBufferRef &fR);
-
   ObjectView(std::unique_ptr<ObjectFile> &vF, const StringRef &vN,
              const uint32_t vO, const MemoryBufferRef &fR)
       : ViewFile(std::move(vF)), ViewName(vN), Ordinal(vO), FileRef(fR),

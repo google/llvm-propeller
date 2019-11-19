@@ -286,7 +286,7 @@ EXTERN void omp_get_partition_place_nums(int *place_nums) {
 }
 
 EXTERN int omp_get_cancellation(void) {
-  int rc = FALSE; // currently false only
+  int rc = 0;
   PRINT(LD_IO, "call omp_get_cancellation() returns %d\n", rc);
   return rc;
 }
@@ -364,7 +364,7 @@ EXTERN void omp_set_lock(omp_lock_t *lock) {
     for (;;) {
       now = clock();
       clock_t cycles = now > start ? now - start : now + (0xffffffff - start);
-      if (cycles >= __OMP_SPIN * blockIdx.x) {
+      if (cycles >= __OMP_SPIN * GetBlockIdInKernel()) {
         break;
       }
     }

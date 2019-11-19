@@ -1,10 +1,16 @@
 #!/bin/bash
 
 # Total 28 files.
-declare -a THE_FILES=( ELF/Propeller.h
-		       ELF/Propeller.cpp
-		       ELF/PropellerELFCfg.h
-		       ELF/PropellerELFCfg.cpp
+declare -a THE_FILES=( ELF/Driver.cpp
+		       ELF/LinkerPropeller.h
+		       ELF/LinkerPropeller.cpp
+		       ELF/Propeller/Propeller.h
+		       ELF/Propeller/Propeller.cpp
+		       ELF/Propeller/PropellerCFG.h
+		       ELF/Propeller/PropellerCFG.cpp
+		       ELF/Propeller/PropellerConfig.h
+		       ELF/Propeller/propeller_cfg.proto
+		       ELF/Propeller/CMakeLists.txt
 		       include/lld/Common/PropellerCommon.h
 		       test/ELF/propeller/propeller-bad-profile-1.s
 		       test/ELF/propeller/propeller-bad-profile-2.s

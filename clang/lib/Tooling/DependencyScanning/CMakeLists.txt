@@ -7,6 +7,8 @@ add_clang_library(clangDependencyScanning
   DependencyScanningFilesystem.cpp
   DependencyScanningService.cpp
   DependencyScanningWorker.cpp
+  DependencyScanningTool.cpp
+  ModuleDepCollector.cpp
 
   DEPENDS
   ClangDriverOptions

@@ -235,7 +235,7 @@ void DebugHandlerBase::beginFunction(const MachineFunction *MF) {
         Entries.front().getInstr()->getDebugVariable();
     if (DIVar->isParameter() &&
         getDISubprogram(DIVar->getScope())->describes(&MF->getFunction()) &&
-        !Entries.front().getInstr()->getParent()->isUniqueSection()) {
+        Entries.front().getInstr()->getParent()->sameSection(&MF->front())) {
       if (!IsDescribedByReg(Entries.front().getInstr()))
         LabelsBeforeInsn[Entries.front().getInstr()] = Asm->getFunctionBegin();
       if (Entries.front().getInstr()->getDebugExpression()->isFragment()) {
@@ -349,14 +349,14 @@ void DebugHandlerBase::endFunction(const MachineFunction *MF) {
 }
 
 void DebugHandlerBase::beginBasicBlock(const MachineBasicBlock &MBB) {
-  if (!MBB.isUniqueSection())
+  if (!MBB.isBeginSection())
     return;
 
   PrevLabel = MBB.getSymbol();
 }
 
 void DebugHandlerBase::endBasicBlock(const MachineBasicBlock &MBB) {
-  if (!MBB.isUniqueSection())
+  if (!MBB.isEndSection())
     return;
 
   PrevLabel = nullptr;

@@ -52,6 +52,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/ValueHandle.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -1212,8 +1213,8 @@ bool llvm::isConsecutiveAccess(Value *A, Value *B, const DataLayout &DL,
   const SCEV *OffsetSCEVA = SE.getConstant(OffsetA);
   const SCEV *OffsetSCEVB = SE.getConstant(OffsetB);
   const SCEV *OffsetDeltaSCEV = SE.getMinusSCEV(OffsetSCEVB, OffsetSCEVA);
-  const SCEVConstant *OffsetDeltaC = dyn_cast<SCEVConstant>(OffsetDeltaSCEV);
-  const APInt &OffsetDelta = OffsetDeltaC->getAPInt();
+  const APInt &OffsetDelta = cast<SCEVConstant>(OffsetDeltaSCEV)->getAPInt();
+
   // Check if they are based on the same pointer. That makes the offsets
   // sufficient.
   if (PtrA == PtrB)
@@ -2395,6 +2396,10 @@ void LoopAccessInfo::print(raw_ostream &OS, unsigned Depth) const {
 
   OS.indent(Depth) << "Expressions re-written:\n";
   PSE->print(OS, Depth);
+}
+
+LoopAccessLegacyAnalysis::LoopAccessLegacyAnalysis() : FunctionPass(ID) {
+  initializeLoopAccessLegacyAnalysisPass(*PassRegistry::getPassRegistry());
 }
 
 const LoopAccessInfo &LoopAccessLegacyAnalysis::getInfo(Loop *L) {

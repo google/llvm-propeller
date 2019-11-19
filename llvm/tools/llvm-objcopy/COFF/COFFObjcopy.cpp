@@ -16,8 +16,8 @@
 
 #include "llvm/Object/Binary.h"
 #include "llvm/Object/COFF.h"
+#include "llvm/Support/CRC.h"
 #include "llvm/Support/Errc.h"
-#include "llvm/Support/JamCRC.h"
 #include "llvm/Support/Path.h"
 #include <cassert>
 
@@ -40,22 +40,13 @@ static uint64_t getNextRVA(const Object &Obj) {
                  Obj.IsPE ? Obj.PeHeader.SectionAlignment : 1);
 }
 
-static uint32_t getCRC32(StringRef Data) {
-  JamCRC CRC;
-  CRC.update(ArrayRef<char>(Data.data(), Data.size()));
-  // The CRC32 value needs to be complemented because the JamCRC dosn't
-  // finalize the CRC32 value. It also dosn't negate the initial CRC32 value
-  // but it starts by default at 0xFFFFFFFF which is the complement of zero.
-  return ~CRC.getCRC();
-}
-
 static std::vector<uint8_t> createGnuDebugLinkSectionContents(StringRef File) {
   ErrorOr<std::unique_ptr<MemoryBuffer>> LinkTargetOrErr =
       MemoryBuffer::getFile(File);
   if (!LinkTargetOrErr)
     error("'" + File + "': " + LinkTargetOrErr.getError().message());
   auto LinkTarget = std::move(*LinkTargetOrErr);
-  uint32_t CRC32 = getCRC32(LinkTarget->getBuffer());
+  uint32_t CRC32 = llvm::crc32(arrayRefFromStringRef(LinkTarget->getBuffer()));
 
   StringRef FileName = sys::path::filename(File);
   size_t CRCPos = alignTo(FileName.size() + 1, 4);
@@ -140,6 +131,12 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     if (Error E = Obj.markSymbols())
       return E;
 
+  for (Symbol &Sym : Obj.getMutableSymbols()) {
+    auto I = Config.SymbolsToRename.find(Sym.Name);
+    if (I != Config.SymbolsToRename.end())
+      Sym.Name = I->getValue();
+  }
+
   // Actually do removals of symbols.
   Obj.removeSymbols([&](const Symbol &Sym) {
     // For StripAll, all relocations have been stripped and we remove all
@@ -208,7 +205,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       !Config.SymbolsToGlobalize.empty() || !Config.SymbolsToKeep.empty() ||
       !Config.SymbolsToLocalize.empty() || !Config.SymbolsToWeaken.empty() ||
       !Config.SymbolsToKeepGlobal.empty() || !Config.SectionsToRename.empty() ||
-      !Config.SetSectionFlags.empty() || !Config.SymbolsToRename.empty() ||
+      !Config.SetSectionAlignment.empty() || !Config.SetSectionFlags.empty() ||
       Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
       Config.PreserveDates || Config.StripDWO || Config.StripNonAlloc ||
       Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||

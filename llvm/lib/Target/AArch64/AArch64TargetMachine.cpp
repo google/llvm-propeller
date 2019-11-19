@@ -31,6 +31,7 @@
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Pass.h"
@@ -39,6 +40,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/CFGuard.h"
 #include "llvm/Transforms/Scalar.h"
 #include <memory>
 #include <string>
@@ -459,6 +461,10 @@ void AArch64PassConfig::addIRPasses() {
 
   addPass(createAArch64StackTaggingPass(/* MergeInit = */ TM->getOptLevel() !=
                                         CodeGenOpt::None));
+
+  // Add Control Flow Guard checks.
+  if (TM->getTargetTriple().isOSWindows())
+    addPass(createCFGuardCheckPass());
 }
 
 // Pass Pipeline Configuration
@@ -609,13 +615,18 @@ void AArch64PassConfig::addPreEmitPass() {
 
   if (EnableA53Fix835769)
     addPass(createAArch64A53Fix835769());
+
+  if (EnableBranchTargets)
+    addPass(createAArch64BranchTargetsPass());
+
   // Relax conditional branch instructions if they're otherwise out of
   // range of their destination.
   if (BranchRelaxation)
     addPass(&BranchRelaxationPassID);
 
-  if (EnableBranchTargets)
-    addPass(createAArch64BranchTargetsPass());
+  // Identify valid longjmp targets for Windows Control Flow Guard.
+  if (TM->getTargetTriple().isOSWindows())
+    addPass(createCFGuardLongjmpPass());
 
   if (TM->getOptLevel() != CodeGenOpt::None && EnableCompressJumpTables)
     addPass(createAArch64CompressJumpTablesPass());

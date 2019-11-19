@@ -11,6 +11,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/DebugInfo/CodeView/SymbolRecord.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCAssembler.h"
@@ -163,7 +164,8 @@ public:
   void EmitCOFFSectionIndex(MCSymbol const *Symbol) override;
   void EmitCOFFSecRel32(MCSymbol const *Symbol, uint64_t Offset) override;
   void EmitCOFFImgRel32(MCSymbol const *Symbol, int64_t Offset) override;
-  void EmitXCOFFLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
+  void EmitXCOFFLocalCommonSymbol(MCSymbol *LabelSym, uint64_t Size,
+                                  MCSymbol *CsectSym,
                                   unsigned ByteAlign) override;
   void emitELFSize(MCSymbol *Symbol, const MCExpr *Value) override;
   void EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
@@ -263,19 +265,19 @@ public:
 
   void EmitCVDefRangeDirective(
       ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      codeview::DefRangeRegisterRelSym::Header DRHdr) override;
+      codeview::DefRangeRegisterRelHeader DRHdr) override;
 
   void EmitCVDefRangeDirective(
       ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      codeview::DefRangeSubfieldRegisterSym::Header DRHdr) override;
+      codeview::DefRangeSubfieldRegisterHeader DRHdr) override;
 
   void EmitCVDefRangeDirective(
       ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      codeview::DefRangeRegisterSym::Header DRHdr) override;
+      codeview::DefRangeRegisterHeader DRHdr) override;
 
   void EmitCVDefRangeDirective(
       ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      codeview::DefRangeFramePointerRelSym::Header DRHdr) override;
+      codeview::DefRangeFramePointerRelHeader DRHdr) override;
 
   void EmitCVStringTableDirective() override;
   void EmitCVFileChecksumsDirective() override;
@@ -764,16 +766,18 @@ void MCAsmStreamer::EmitCOFFImgRel32(MCSymbol const *Symbol, int64_t Offset) {
 // We need an XCOFF-specific version of this directive as the AIX syntax
 // requires a QualName argument identifying the csect name and storage mapping
 // class to appear before the alignment if we are specifying it.
-void MCAsmStreamer::EmitXCOFFLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
+void MCAsmStreamer::EmitXCOFFLocalCommonSymbol(MCSymbol *LabelSym,
+                                               uint64_t Size,
+                                               MCSymbol *CsectSym,
                                                unsigned ByteAlignment) {
   assert(MAI->getLCOMMDirectiveAlignmentType() == LCOMM::Log2Alignment &&
          "We only support writing log base-2 alignment format with XCOFF.");
   assert(isPowerOf2_32(ByteAlignment) && "Alignment must be a power of 2.");
 
   OS << "\t.lcomm\t";
-  Symbol->print(OS, MAI);
-  OS << ',' << Size;
-  OS << ',' << Symbol->getName();
+  LabelSym->print(OS, MAI);
+  OS << ',' << Size << ',';
+  CsectSym->print(OS, MAI);
   OS << ',' << Log2_32(ByteAlignment);
 
   EmitEOL();
@@ -1438,7 +1442,7 @@ void MCAsmStreamer::PrintCVDefRangePrefix(
 
 void MCAsmStreamer::EmitCVDefRangeDirective(
     ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    codeview::DefRangeRegisterRelSym::Header DRHdr) {
+    codeview::DefRangeRegisterRelHeader DRHdr) {
   PrintCVDefRangePrefix(Ranges);
   OS << ", reg_rel, ";
   OS << DRHdr.Register << ", " << DRHdr.Flags << ", "
@@ -1448,7 +1452,7 @@ void MCAsmStreamer::EmitCVDefRangeDirective(
 
 void MCAsmStreamer::EmitCVDefRangeDirective(
     ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    codeview::DefRangeSubfieldRegisterSym::Header DRHdr) {
+    codeview::DefRangeSubfieldRegisterHeader DRHdr) {
   PrintCVDefRangePrefix(Ranges);
   OS << ", subfield_reg, ";
   OS << DRHdr.Register << ", " << DRHdr.OffsetInParent;
@@ -1457,7 +1461,7 @@ void MCAsmStreamer::EmitCVDefRangeDirective(
 
 void MCAsmStreamer::EmitCVDefRangeDirective(
     ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    codeview::DefRangeRegisterSym::Header DRHdr) {
+    codeview::DefRangeRegisterHeader DRHdr) {
   PrintCVDefRangePrefix(Ranges);
   OS << ", reg, ";
   OS << DRHdr.Register;
@@ -1466,7 +1470,7 @@ void MCAsmStreamer::EmitCVDefRangeDirective(
 
 void MCAsmStreamer::EmitCVDefRangeDirective(
     ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    codeview::DefRangeFramePointerRelSym::Header DRHdr) {
+    codeview::DefRangeFramePointerRelHeader DRHdr) {
   PrintCVDefRangePrefix(Ranges);
   OS << ", frame_ptr_rel, ";
   OS << DRHdr.Offset;

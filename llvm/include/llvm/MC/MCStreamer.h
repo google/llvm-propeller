@@ -18,7 +18,6 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/DebugInfo/CodeView/SymbolRecord.h"
 #include "llvm/MC/MCDirectives.h"
 #include "llvm/MC/MCLinkerOptimizationHint.h"
 #include "llvm/MC/MCSymbol.h"
@@ -54,6 +53,13 @@ class MCSymbolRefExpr;
 class MCSubtargetInfo;
 class raw_ostream;
 class Twine;
+
+namespace codeview {
+struct DefRangeRegisterRelHeader;
+struct DefRangeSubfieldRegisterHeader;
+struct DefRangeRegisterHeader;
+struct DefRangeFramePointerRelHeader;
+}
 
 using MCSectionSubPair = std::pair<MCSection *, const MCExpr *>;
 
@@ -540,11 +546,13 @@ public:
 
   /// Emits an lcomm directive with XCOFF csect information.
   ///
-  /// \param Symbol - The symbol we are emiting.
+  /// \param LabelSym - Label on the block of storage.
   /// \param Size - The size of the block of storage.
-  /// \param ByteAlignment - The alignment of the symbol in bytes. Must be a power
-  /// of 2.
-  virtual void EmitXCOFFLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
+  /// \param CsectSym - Csect name for the block of storage.
+  /// \param ByteAlignment - The alignment of the symbol in bytes. Must be a
+  /// power of 2.
+  virtual void EmitXCOFFLocalCommonSymbol(MCSymbol *LabelSym, uint64_t Size,
+                                          MCSymbol *CsectSym,
                                           unsigned ByteAlignment);
 
   /// Emit an ELF .size directive.
@@ -873,19 +881,19 @@ public:
 
   virtual void EmitCVDefRangeDirective(
       ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      codeview::DefRangeRegisterRelSym::Header DRHdr);
+      codeview::DefRangeRegisterRelHeader DRHdr);
 
   virtual void EmitCVDefRangeDirective(
       ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      codeview::DefRangeSubfieldRegisterSym::Header DRHdr);
+      codeview::DefRangeSubfieldRegisterHeader DRHdr);
 
   virtual void EmitCVDefRangeDirective(
       ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      codeview::DefRangeRegisterSym::Header DRHdr);
+      codeview::DefRangeRegisterHeader DRHdr);
 
   virtual void EmitCVDefRangeDirective(
       ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      codeview::DefRangeFramePointerRelSym::Header DRHdr);
+      codeview::DefRangeFramePointerRelHeader DRHdr);
 
   /// This implements the CodeView '.cv_stringtable' assembler directive.
   virtual void EmitCVStringTableDirective() {}

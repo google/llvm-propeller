@@ -1,5 +1,7 @@
 ; RUN: llc -march=bpfel -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
 ; RUN: llc -march=bpfeb -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
+; RUN: llc -march=bpfel -mattr=+alu32 -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
+; RUN: llc -march=bpfeb -mattr=+alu32 -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
 ; Source code:
 ;   #define _(x) (__builtin_preserve_access_index(x))
 ;   int get_value(const int *arg);
@@ -21,7 +23,7 @@ entry:
 ; CHECK:             r1 += 16
 ; CHECK:             call get_value
 ; CHECK:             .section        .BTF.ext,"",@progbits
-; CHECK-NOT:         .long   12                      # OffsetReloc
+; CHECK-NOT:         .long   16                      # FieldReloc
 
 declare dso_local i32 @get_value(i32*) local_unnamed_addr #1
 

@@ -25,6 +25,8 @@
 # FULL-NEXT: mode:
 # FULL-NEXT: ieee: true
 # FULL-NEXT: dx10-clamp: true
+# FULL-NEXT: fp32-denormals: true
+# FULL-NEXT: fp64-fp16-denormals: true
 # FULL-NEXT:  highBitsOf32BitAddress: 0
 # FULL-NEXT: body:
 
@@ -76,7 +78,7 @@ body:             |
 # ALL-LABEL: name: no_mfi
 # FULL: machineFunctionInfo:
 # FULL-NEXT: explicitKernArgSize: 0
-# FULL-NEXT: maxKernArgAlign: 0
+# FULL-NEXT: maxKernArgAlign: 1
 # FULL-NEXT: ldsSize: 0
 # FULL-NEXT: isEntryFunction: false
 # FULL-NEXT: noSignedZerosFPMath: false
@@ -92,10 +94,13 @@ body:             |
 # FULL-NEXT: mode:
 # FULL-NEXT: ieee: true
 # FULL-NEXT: dx10-clamp: true
+# FULL-NEXT: fp32-denormals: true
+# FULL-NEXT: fp64-fp16-denormals: true
 # FULL-NEXT:  highBitsOf32BitAddress: 0
 # FULL-NEXT: body:
 
 # SIMPLE: machineFunctionInfo:
+# SIMPLE-NEXT: maxKernArgAlign: 1
 # SIMPLE-NEXT: argumentInfo:
 # SIMPLE-NEXT: privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
 # SIMPLE-NEXT: privateSegmentWaveByteOffset: { reg: '$sgpr33' }
@@ -112,7 +117,7 @@ body:             |
 # ALL-LABEL: name: empty_mfi
 # FULL: machineFunctionInfo:
 # FULL-NEXT: explicitKernArgSize: 0
-# FULL-NEXT: maxKernArgAlign: 0
+# FULL-NEXT: maxKernArgAlign: 1
 # FULL-NEXT: ldsSize: 0
 # FULL-NEXT: isEntryFunction: false
 # FULL-NEXT: noSignedZerosFPMath: false
@@ -128,10 +133,13 @@ body:             |
 # FULL-NEXT: mode:
 # FULL-NEXT: ieee: true
 # FULL-NEXT: dx10-clamp: true
+# FULL-NEXT: fp32-denormals: true
+# FULL-NEXT: fp64-fp16-denormals: true
 # FULL-NEXT:  highBitsOf32BitAddress: 0
 # FULL-NEXT: body:
 
 # SIMPLE: machineFunctionInfo:
+# SIMPLE-NEXT: maxKernArgAlign: 1
 # SIMPLE-NEXT: argumentInfo:
 # SIMPLE-NEXT: privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
 # SIMPLE-NEXT: privateSegmentWaveByteOffset: { reg: '$sgpr33' }
@@ -149,7 +157,7 @@ body:             |
 # ALL-LABEL: name: empty_mfi_entry_func
 # FULL: machineFunctionInfo:
 # FULL-NEXT: explicitKernArgSize: 0
-# FULL-NEXT: maxKernArgAlign: 0
+# FULL-NEXT: maxKernArgAlign: 1
 # FULL-NEXT: ldsSize: 0
 # FULL-NEXT: isEntryFunction: true
 # FULL-NEXT: noSignedZerosFPMath: false
@@ -165,10 +173,13 @@ body:             |
 # FULL-NEXT: mode:
 # FULL-NEXT: ieee: true
 # FULL-NEXT: dx10-clamp: true
+# FULL-NEXT: fp32-denormals: true
+# FULL-NEXT: fp64-fp16-denormals: true
 # FULL-NEXT:  highBitsOf32BitAddress: 0
 # FULL-NEXT: body:
 
 # SIMPLE: machineFunctionInfo:
+# SIMPLE-NEXT: maxKernArgAlign: 1
 # SIMPLE-NEXT: isEntryFunction: true
 # SIMPLE-NEXT: argumentInfo:
 # SIMPLE-NEXT: privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
@@ -236,11 +247,16 @@ body:             |
 # ALL: mode:
 # ALL-NEXT: ieee: false
 # ALL-NEXT: dx10-clamp: false
+# ALL-NEXT: fp32-denormals: false
+# ALL-NEXT: fp64-fp16-denormals: false
+
 name: parse_mode
 machineFunctionInfo:
   mode:
     ieee: false
     dx10-clamp: false
+    fp32-denormals: false
+    fp64-fp16-denormals: false
 
 body:             |
   bb.0:

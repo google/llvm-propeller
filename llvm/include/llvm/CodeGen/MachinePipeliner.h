@@ -40,10 +40,13 @@
 #ifndef LLVM_LIB_CODEGEN_MACHINEPIPELINER_H
 #define LLVM_LIB_CODEGEN_MACHINEPIPELINER_H
 
+#include "llvm/Analysis/AliasAnalysis.h"
+
 #include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/RegisterClassInfo.h"
 #include "llvm/CodeGen/ScheduleDAGInstrs.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/InitializePasses.h"
 
 namespace llvm {
 

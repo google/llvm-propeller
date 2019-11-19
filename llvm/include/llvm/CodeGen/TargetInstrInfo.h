@@ -23,7 +23,6 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineOutliner.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
@@ -39,10 +38,12 @@
 
 namespace llvm {
 
+class AAResults;
 class DFAPacketizer;
 class InstrItineraryData;
 class LiveIntervals;
 class LiveVariables;
+class MachineLoop;
 class MachineMemOperand;
 class MachineRegisterInfo;
 class MCAsmInfo;
@@ -62,6 +63,14 @@ class TargetSubtargetInfo;
 template <class T> class SmallVectorImpl;
 
 using ParamLoadedValue = std::pair<MachineOperand, DIExpression*>;
+
+struct DestSourcePair {
+  const MachineOperand *Destination;
+  const MachineOperand *Source;
+
+  DestSourcePair(const MachineOperand &Dest, const MachineOperand &Src)
+      : Destination(&Dest), Source(&Src) {}
+};
 
 //---------------------------------------------------------------------------
 ///
@@ -95,7 +104,7 @@ public:
   /// registers so that the instructions result is independent of the place
   /// in the function.
   bool isTriviallyReMaterializable(const MachineInstr &MI,
-                                   AliasAnalysis *AA = nullptr) const {
+                                   AAResults *AA = nullptr) const {
     return MI.getOpcode() == TargetOpcode::IMPLICIT_DEF ||
            (MI.getDesc().isRematerializable() &&
             (isReallyTriviallyReMaterializable(MI, AA) ||
@@ -111,7 +120,7 @@ protected:
   /// not always available.
   /// Requirements must be check as stated in isTriviallyReMaterializable() .
   virtual bool isReallyTriviallyReMaterializable(const MachineInstr &MI,
-                                                 AliasAnalysis *AA) const {
+                                                 AAResults *AA) const {
     return false;
   }
 
@@ -154,7 +163,7 @@ private:
   /// this function does target-independent tests to determine if the
   /// instruction is really trivially rematerializable.
   bool isReallyTriviallyReMaterializableGeneric(const MachineInstr &MI,
-                                                AliasAnalysis *AA) const;
+                                                AAResults *AA) const;
 
 public:
   /// These methods return the opcode of the frame setup/destroy instructions
@@ -778,6 +787,19 @@ public:
     return false;
   }
 
+  /// Return the increase in code size needed to predicate a contiguous run of
+  /// NumInsts instructions.
+  virtual unsigned extraSizeToPredicateInstructions(const MachineFunction &MF,
+                                                    unsigned NumInsts) const {
+    return 0;
+  }
+
+  /// Return an estimate for the code size reduction (in bytes) which will be
+  /// caused by removing the given branch instruction during if-conversion.
+  virtual unsigned predictBranchSizeForIfCvt(MachineInstr &MI) const {
+    return getInstSizeInBytes(MI);
+  }
+
   /// Return true if it's profitable to unpredicate
   /// one side of a 'diamond', i.e. two sides of if-else predicated on mutually
   /// exclusive predicates.
@@ -898,36 +920,42 @@ public:
   /// large registers. See for example the ARM target.
   virtual void copyPhysReg(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MI, const DebugLoc &DL,
-                           unsigned DestReg, unsigned SrcReg,
+                           MCRegister DestReg, MCRegister SrcReg,
                            bool KillSrc) const {
     llvm_unreachable("Target didn't implement TargetInstrInfo::copyPhysReg!");
   }
 
 protected:
-  /// Target-dependent implemenation for IsCopyInstr.
+  /// Target-dependent implementation for IsCopyInstr.
   /// If the specific machine instruction is a instruction that moves/copies
-  /// value from one register to another register return true along with
-  /// @Source machine operand and @Destination machine operand.
-  virtual bool isCopyInstrImpl(const MachineInstr &MI,
-                               const MachineOperand *&Source,
-                               const MachineOperand *&Destination) const {
-    return false;
+  /// value from one register to another register return destination and source
+  /// registers as machine operands.
+  virtual Optional<DestSourcePair>
+  isCopyInstrImpl(const MachineInstr &MI) const {
+    return None;
   }
 
 public:
   /// If the specific machine instruction is a instruction that moves/copies
-  /// value from one register to another register return true along with
-  /// @Source machine operand and @Destination machine operand.
-  /// For COPY-instruction the method naturally returns true, for all other
-  /// instructions the method calls target-dependent implementation.
-  bool isCopyInstr(const MachineInstr &MI, const MachineOperand *&Source,
-                   const MachineOperand *&Destination) const {
+  /// value from one register to another register return destination and source
+  /// registers as machine operands.
+  /// For COPY-instruction the method naturally returns destination and source
+  /// registers as machine operands, for all other instructions the method calls
+  /// target-dependent implementation.
+  Optional<DestSourcePair> isCopyInstr(const MachineInstr &MI) const {
     if (MI.isCopy()) {
-      Destination = &MI.getOperand(0);
-      Source = &MI.getOperand(1);
-      return true;
+      return DestSourcePair{MI.getOperand(0), MI.getOperand(1)};
     }
-    return isCopyInstrImpl(MI, Source, Destination);
+    return isCopyInstrImpl(MI);
+  }
+
+  /// If the specific machine instruction is an instruction that adds an
+  /// immediate value to its source operand and stores it in destination,
+  /// return destination and source registers as machine operands along with
+  /// \c Offset which has been added.
+  virtual Optional<DestSourcePair> isAddImmediate(const MachineInstr &MI,
+                                                  int64_t &Offset) const {
+    return None;
   }
 
   /// Store the specified register of the given register class to the specified

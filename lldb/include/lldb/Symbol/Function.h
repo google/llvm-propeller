@@ -68,9 +68,9 @@ public:
   ///     The Right Hand Side const FunctionInfo object reference.
   ///
   /// \return
-  ///     \li -1 if lhs < rhs
-  ///     \li 0 if lhs == rhs
-  ///     \li 1 if lhs > rhs
+  ///     -1 if lhs < rhs
+  ///     0 if lhs == rhs
+  ///     1 if lhs > rhs
   static int Compare(const FunctionInfo &lhs, const FunctionInfo &rhs);
 
   /// Dump a description of this object to a Stream.
@@ -140,7 +140,7 @@ public:
   /// \param[in] call_decl_ptr
   ///     Optional calling location declaration information that
   ///     describes from where this inlined function was called.
-  InlineFunctionInfo(const char *name, const char *mangled,
+  InlineFunctionInfo(const char *name, llvm::StringRef mangled,
                      const Declaration *decl_ptr,
                      const Declaration *call_decl_ptr);
 
@@ -183,9 +183,9 @@ public:
   ///     reference.
   ///
   /// \return
-  ///     \li -1 if lhs < rhs
-  ///     \li 0 if lhs == rhs
-  ///     \li 1 if lhs > rhs
+  ///     -1 if lhs < rhs
+  ///     0 if lhs == rhs
+  ///     1 if lhs > rhs
   int Compare(const InlineFunctionInfo &lhs, const InlineFunctionInfo &rhs);
 
   /// Dump a description of this object to a Stream.

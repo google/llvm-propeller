@@ -775,6 +775,13 @@ Sema::ActOnDecompositionDeclarator(Scope *S, Declarator &D,
       return nullptr;
   }
 
+  // C++2a [dcl.struct.bind]p1:
+  //   A cv that includes volatile is deprecated
+  if ((DS.getTypeQualifiers() & DeclSpec::TQ_volatile) &&
+      getLangOpts().CPlusPlus2a)
+    Diag(DS.getVolatileSpecLoc(),
+         diag::warn_deprecated_volatile_structured_binding);
+
   TypeSourceInfo *TInfo = GetTypeForDeclarator(D, S);
   QualType R = TInfo->getType();
 
@@ -2479,7 +2486,7 @@ Sema::CheckBaseSpecifier(CXXRecordDecl *Class,
   }
 
   // If the base class is polymorphic or isn't empty, the new one is/isn't, too.
-  RecordDecl *BaseDecl = BaseType->getAs<RecordType>()->getDecl();
+  RecordDecl *BaseDecl = BaseType->castAs<RecordType>()->getDecl();
   assert(BaseDecl && "Record type has no declaration");
   BaseDecl = BaseDecl->getDefinition();
   assert(BaseDecl && "Base type is not incomplete, but has no definition");
@@ -6077,6 +6084,67 @@ void Sema::propagateDLLAttrToBaseClassTemplate(
   }
 }
 
+/// Determine the kind of defaulting that would be done for a given function.
+///
+/// If the function is both a default constructor and a copy / move constructor
+/// (due to having a default argument for the first parameter), this picks
+/// CXXDefaultConstructor.
+///
+/// FIXME: Check that case is properly handled by all callers.
+Sema::DefaultedFunctionKind
+Sema::getDefaultedFunctionKind(const FunctionDecl *FD) {
+  if (auto *MD = dyn_cast<CXXMethodDecl>(FD)) {
+    if (const CXXConstructorDecl *Ctor = dyn_cast<CXXConstructorDecl>(FD)) {
+      if (Ctor->isDefaultConstructor())
+        return Sema::CXXDefaultConstructor;
+
+      if (Ctor->isCopyConstructor())
+        return Sema::CXXCopyConstructor;
+
+      if (Ctor->isMoveConstructor())
+        return Sema::CXXMoveConstructor;
+    }
+
+    if (MD->isCopyAssignmentOperator())
+      return Sema::CXXCopyAssignment;
+
+    if (MD->isMoveAssignmentOperator())
+      return Sema::CXXMoveAssignment;
+
+    if (isa<CXXDestructorDecl>(FD))
+      return Sema::CXXDestructor;
+  }
+
+  switch (FD->getDeclName().getCXXOverloadedOperator()) {
+  case OO_EqualEqual:
+    return DefaultedComparisonKind::Equal;
+
+  case OO_ExclaimEqual:
+    return DefaultedComparisonKind::NotEqual;
+
+  case OO_Spaceship:
+    // No point allowing this if <=> doesn't exist in the current language mode.
+    if (!getLangOpts().CPlusPlus2a)
+      break;
+    return DefaultedComparisonKind::ThreeWay;
+
+  case OO_Less:
+  case OO_LessEqual:
+  case OO_Greater:
+  case OO_GreaterEqual:
+    // No point allowing this if <=> doesn't exist in the current language mode.
+    if (!getLangOpts().CPlusPlus2a)
+      break;
+    return DefaultedComparisonKind::Relational;
+
+  default:
+    break;
+  }
+
+  // Not defaultable.
+  return DefaultedFunctionKind();
+}
+
 static void DefineImplicitSpecialMember(Sema &S, CXXMethodDecl *MD,
                                         SourceLocation DefaultLoc) {
   switch (S.getSpecialMember(MD)) {
@@ -6324,9 +6392,9 @@ void Sema::CheckCompletedCXXClass(CXXRecordDecl *Record) {
     Record->setHasTrivialSpecialMemberForCall();
 
   auto CompleteMemberFunction = [&](CXXMethodDecl *M) {
-    // Check whether the explicitly-defaulted special members are valid.
+    // Check whether the explicitly-defaulted members are valid.
     if (!M->isInvalidDecl() && M->isExplicitlyDefaulted())
-      CheckExplicitlyDefaultedSpecialMember(M);
+      CheckExplicitlyDefaultedFunction(M);
 
     // For an explicitly defaulted or deleted special member, we defer
     // determining triviality until the class is complete. That time is now!
@@ -6404,6 +6472,15 @@ void Sema::CheckCompletedCXXClass(CXXRecordDecl *Record) {
     // Diagnose all other overridden methods which do not have 'override' specified on them.
     for (auto *M : Record->methods())
       DiagnoseAbsenceOfOverrideControl(M);
+  }
+
+  // Process any defaulted friends in the member-specification.
+  if (!Record->isDependentType()) {
+    for (FriendDecl *D : Record->friends()) {
+      auto *FD = dyn_cast_or_null<FunctionDecl>(D->getFriendDecl());
+      if (FD && !FD->isInvalidDecl() && FD->isExplicitlyDefaulted())
+        CheckExplicitlyDefaultedFunction(FD);
+    }
   }
 
   // ms_struct is a request to use the same ABI rules as MSVC.  Check
@@ -6759,9 +6836,22 @@ void Sema::EvaluateImplicitExceptionSpec(SourceLocation Loc, CXXMethodDecl *MD) 
     UpdateExceptionSpec(MD->getCanonicalDecl(), ESI);
 }
 
-void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
+void Sema::CheckExplicitlyDefaultedFunction(FunctionDecl *FD) {
+  assert(FD->isExplicitlyDefaulted() && "not explicitly-defaulted");
+
+  DefaultedFunctionKind DefKind = getDefaultedFunctionKind(FD);
+  assert(DefKind && "not a defaultable function");
+
+  if (DefKind.isSpecialMember()
+          ? CheckExplicitlyDefaultedSpecialMember(cast<CXXMethodDecl>(FD),
+                                                  DefKind.asSpecialMember())
+          : CheckExplicitlyDefaultedComparison(FD, DefKind.asComparison()))
+    FD->setInvalidDecl();
+}
+
+bool Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD,
+                                                 CXXSpecialMember CSM) {
   CXXRecordDecl *RD = MD->getParent();
-  CXXSpecialMember CSM = getSpecialMember(MD);
 
   assert(MD->isExplicitlyDefaulted() && CSM != CXXInvalid &&
          "not an explicitly-defaulted special member");
@@ -6774,7 +6864,7 @@ void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
 
   // C++11 [dcl.fct.def.default]p1:
   //   A function that is explicitly defaulted shall
-  //     -- be a special member function (checked elsewhere),
+  //     -- be a special member function [...] (checked elsewhere),
   //     -- have the same type (except for ref-qualifiers, and except that a
   //        copy operation can take a non-const reference) as an implicit
   //        declaration, and
@@ -6953,8 +7043,120 @@ void Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD) {
     }
   }
 
-  if (HadError)
-    MD->setInvalidDecl();
+  return HadError;
+}
+
+bool Sema::CheckExplicitlyDefaultedComparison(FunctionDecl *FD,
+                                              DefaultedComparisonKind DCK) {
+  assert(DCK != DefaultedComparisonKind::None && "not a defaulted comparison");
+
+  // C++2a [class.compare.default]p1:
+  //   A defaulted comparison operator function for some class C shall be a
+  //   non-template function declared in the member-specification of C that is
+  //    -- a non-static const member of C having one parameter of type
+  //       const C&, or
+  //    -- a friend of C having two parameters of type const C&.
+  CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(FD->getLexicalDeclContext());
+  assert(RD && "defaulted comparison is not defaulted in a class");
+
+  QualType ExpectedParmType =
+      Context.getLValueReferenceType(Context.getRecordType(RD).withConst());
+  for (const ParmVarDecl *Param : FD->parameters()) {
+    if (!Context.hasSameType(Param->getType(), ExpectedParmType)) {
+      Diag(FD->getLocation(), diag::err_defaulted_comparison_param)
+          << (int)DCK << Param->getType() << ExpectedParmType
+          << Param->getSourceRange();
+      return true;
+    }
+  }
+
+  // ... non-static const member ...
+  if (auto *MD = dyn_cast<CXXMethodDecl>(FD)) {
+    assert(!MD->isStatic() && "comparison function cannot be a static member");
+    if (!MD->isConst()) {
+      SourceLocation InsertLoc;
+      if (FunctionTypeLoc Loc = MD->getFunctionTypeLoc())
+        InsertLoc = getLocForEndOfToken(Loc.getRParenLoc());
+      Diag(MD->getLocation(), diag::err_defaulted_comparison_non_const)
+        << (int)DCK << FixItHint::CreateInsertion(InsertLoc, " const");
+
+      // Add the 'const' to the type to recover.
+      const auto *FPT = MD->getType()->castAs<FunctionProtoType>();
+      FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
+      EPI.TypeQuals.addConst();
+      MD->setType(Context.getFunctionType(FPT->getReturnType(),
+                                          FPT->getParamTypes(), EPI));
+    }
+  } else {
+    // A non-member function declared in a class must be a friend.
+    assert(FD->getFriendObjectKind() && "expected a friend declaration");
+  }
+
+  // C++2a [class.compare.default]p2:
+  //   A defaulted comparison operator function for class C is defined as
+  //   deleted if any non-static data member of C is of reference type or C is
+  //   a union-like class.
+  llvm::SmallVector<CXXRecordDecl*, 4> Classes(1, RD);
+  FieldDecl *ReferenceMember = nullptr;
+  bool UnionLike = RD->isUnion();
+  while (!Classes.empty()) {
+    if (Classes.back()->isUnion())
+      UnionLike = true;
+    for (FieldDecl *FD : Classes.pop_back_val()->fields()) {
+      if (FD->getType()->isReferenceType())
+        ReferenceMember = FD;
+      if (FD->isAnonymousStructOrUnion())
+        Classes.push_back(FD->getType()->getAsCXXRecordDecl());
+    }
+  }
+  // For non-memberwise comparisons, this rule is unjustified, so we permit
+  // those cases as an extension.
+  bool Memberwise = DCK == DefaultedComparisonKind::Equal ||
+                    DCK == DefaultedComparisonKind::ThreeWay;
+  if (ReferenceMember) {
+    Diag(FD->getLocation(),
+         Memberwise ? diag::err_defaulted_comparison_reference_member
+                    : diag::ext_defaulted_comparison_reference_member)
+        << FD << RD;
+    Diag(ReferenceMember->getLocation(), diag::note_reference_member)
+        << ReferenceMember;
+  } else if (UnionLike) {
+    // If the class actually has no variant members, this rule similarly
+    // is unjustified, so we permit those cases too.
+    Diag(FD->getLocation(),
+         !Memberwise ? diag::ext_defaulted_comparison_union
+                     : !RD->hasVariantMembers()
+                           ? diag::ext_defaulted_comparison_empty_union
+                           : diag::err_defaulted_comparison_union)
+        << FD << RD->isUnion() << RD;
+  }
+
+  // C++2a [class.eq]p1, [class.rel]p1:
+  //   A [defaulted comparison other than <=>] shall have a declared return
+  //   type bool.
+  if (DCK != DefaultedComparisonKind::ThreeWay &&
+      !Context.hasSameType(FD->getDeclaredReturnType(), Context.BoolTy)) {
+    Diag(FD->getLocation(), diag::err_defaulted_comparison_return_type_not_bool)
+        << (int)DCK << FD->getDeclaredReturnType() << Context.BoolTy
+        << FD->getReturnTypeSourceRange();
+    return true;
+  }
+
+  // FIXME: Determine whether the function should be defined as deleted.
+
+  // C++2a [dcl.fct.def.default]p3:
+  //   An explicitly-defaulted function [..] may be declared constexpr or
+  //   consteval only if it would have been implicitly declared constexpr.
+  // FIXME: There are no rules governing when these should be constexpr,
+  // except for the special case of the injected operator==, for which
+  // C++2a [class.compare.default]p3 says:
+  //   The operator is a constexpr function if its definition would satisfy
+  //   the requirements for a constexpr function.
+  // FIXME: Apply this rule to all defaulted comparisons. The only way this
+  // can fail is if the return type of a defaulted operator<=> is not a literal
+  // type. We should additionally consider whether any of the operations
+  // performed by the comparison invokes a non-constexpr function.
+  return false;
 }
 
 void Sema::CheckDelayedMemberExceptionSpecs() {
@@ -8004,7 +8206,7 @@ public:
   /// to be used with CXXRecordDecl::lookupInBases().
   bool operator()(const CXXBaseSpecifier *Specifier, CXXBasePath &Path) {
     RecordDecl *BaseRecord =
-        Specifier->getType()->getAs<RecordType>()->getDecl();
+        Specifier->getType()->castAs<RecordType>()->getDecl();
 
     DeclarationName Name = Method->getDeclName();
     assert(Name.getNameKind() == DeclarationName::Identifier);
@@ -11845,7 +12047,8 @@ buildMemcpyForAssignmentOp(Sema &S, SourceLocation Loc, QualType T,
 
   const Type *E = T->getBaseElementTypeUnsafe();
   bool NeedsCollectableMemCpy =
-    E->isRecordType() && E->getAs<RecordType>()->getDecl()->hasObjectMember();
+      E->isRecordType() &&
+      E->castAs<RecordType>()->getDecl()->hasObjectMember();
 
   // Create a reference to the __builtin_objc_memmove_collectable function
   StringRef MemCpyName = NeedsCollectableMemCpy ?
@@ -13398,6 +13601,20 @@ void Sema::FinalizeVarWithDestructor(VarDecl *VD, const RecordType *Record) {
   }
 
   if (Destructor->isTrivial()) return;
+
+  // If the destructor is constexpr, check whether the variable has constant
+  // destruction now.
+  if (Destructor->isConstexpr() && VD->getInit() &&
+      !VD->getInit()->isValueDependent() && VD->evaluateValue()) {
+    SmallVector<PartialDiagnosticAt, 8> Notes;
+    if (!VD->evaluateDestruction(Notes) && VD->isConstexpr()) {
+      Diag(VD->getLocation(),
+           diag::err_constexpr_var_requires_const_destruction) << VD;
+      for (unsigned I = 0, N = Notes.size(); I != N; ++I)
+        Diag(Notes[I].first, Notes[I].second);
+    }
+  }
+
   if (!VD->hasGlobalStorage()) return;
 
   // Emit warning for non-trivial dtor in global scope (a real global,
@@ -14984,51 +15201,88 @@ void Sema::SetDeclDeleted(Decl *Dcl, SourceLocation DelLoc) {
 }
 
 void Sema::SetDeclDefaulted(Decl *Dcl, SourceLocation DefaultLoc) {
-  CXXMethodDecl *MD = dyn_cast_or_null<CXXMethodDecl>(Dcl);
+  if (!Dcl || Dcl->isInvalidDecl())
+    return;
 
-  if (MD) {
-    if (MD->getParent()->isDependentType()) {
-      MD->setDefaulted();
-      MD->setExplicitlyDefaulted();
-      return;
+  auto *FD = dyn_cast<FunctionDecl>(Dcl);
+  if (!FD) {
+    if (auto *FTD = dyn_cast<FunctionTemplateDecl>(Dcl)) {
+      if (getDefaultedFunctionKind(FTD->getTemplatedDecl()).isComparison()) {
+        Diag(DefaultLoc, diag::err_defaulted_comparison_template);
+        return;
+      }
     }
 
-    CXXSpecialMember Member = getSpecialMember(MD);
-    if (Member == CXXInvalid) {
-      if (!MD->isInvalidDecl())
-        Diag(DefaultLoc, diag::err_default_special_members);
-      return;
-    }
-
-    MD->setDefaulted();
-    MD->setExplicitlyDefaulted();
-
-    // Unset that we will have a body for this function. We might not,
-    // if it turns out to be trivial, and we don't need this marking now
-    // that we've marked it as defaulted.
-    MD->setWillHaveBody(false);
-
-    // If this definition appears within the record, do the checking when
-    // the record is complete.
-    const FunctionDecl *Primary = MD;
-    if (const FunctionDecl *Pattern = MD->getTemplateInstantiationPattern())
-      // Ask the template instantiation pattern that actually had the
-      // '= default' on it.
-      Primary = Pattern;
-
-    // If the method was defaulted on its first declaration, we will have
-    // already performed the checking in CheckCompletedCXXClass. Such a
-    // declaration doesn't trigger an implicit definition.
-    if (Primary->getCanonicalDecl()->isDefaulted())
-      return;
-
-    CheckExplicitlyDefaultedSpecialMember(MD);
-
-    if (!MD->isInvalidDecl())
-      DefineImplicitSpecialMember(*this, MD, DefaultLoc);
-  } else {
-    Diag(DefaultLoc, diag::err_default_special_members);
+    Diag(DefaultLoc, diag::err_default_special_members)
+        << getLangOpts().CPlusPlus2a;
+    return;
   }
+
+  // Reject if this can't possibly be a defaultable function.
+  DefaultedFunctionKind DefKind = getDefaultedFunctionKind(FD);
+  if (!DefKind &&
+      // A dependent function that doesn't locally look defaultable can
+      // still instantiate to a defaultable function if it's a constructor
+      // or assignment operator.
+      (!FD->isDependentContext() ||
+       (!isa<CXXConstructorDecl>(FD) &&
+        FD->getDeclName().getCXXOverloadedOperator() != OO_Equal))) {
+    Diag(DefaultLoc, diag::err_default_special_members)
+        << getLangOpts().CPlusPlus2a;
+    return;
+  }
+
+  if (DefKind.isComparison() &&
+      !isa<CXXRecordDecl>(FD->getLexicalDeclContext())) {
+    Diag(FD->getLocation(), diag::err_defaulted_comparison_out_of_class)
+        << (int)DefKind.asComparison();
+    return;
+  }
+
+  // Issue compatibility warning. We already warned if the operator is
+  // 'operator<=>' when parsing the '<=>' token.
+  if (DefKind.isComparison() &&
+      DefKind.asComparison() != DefaultedComparisonKind::ThreeWay) {
+    Diag(DefaultLoc, getLangOpts().CPlusPlus2a
+                         ? diag::warn_cxx17_compat_defaulted_comparison
+                         : diag::ext_defaulted_comparison);
+  }
+
+  FD->setDefaulted();
+  FD->setExplicitlyDefaulted();
+
+  // Defer checking functions that are defaulted in a dependent context.
+  if (FD->isDependentContext())
+    return;
+
+  // Unset that we will have a body for this function. We might not,
+  // if it turns out to be trivial, and we don't need this marking now
+  // that we've marked it as defaulted.
+  FD->setWillHaveBody(false);
+
+  // If this definition appears within the record, do the checking when
+  // the record is complete. This is always the case for a defaulted
+  // comparison.
+  if (DefKind.isComparison())
+    return;
+  auto *MD = cast<CXXMethodDecl>(FD);
+
+  const FunctionDecl *Primary = FD;
+  if (const FunctionDecl *Pattern = FD->getTemplateInstantiationPattern())
+    // Ask the template instantiation pattern that actually had the
+    // '= default' on it.
+    Primary = Pattern;
+
+  // If the method was defaulted on its first declaration, we will have
+  // already performed the checking in CheckCompletedCXXClass. Such a
+  // declaration doesn't trigger an implicit definition.
+  if (Primary->getCanonicalDecl()->isDefaulted())
+    return;
+
+  if (CheckExplicitlyDefaultedSpecialMember(MD, DefKind.asSpecialMember()))
+    MD->setInvalidDecl();
+  else
+    DefineImplicitSpecialMember(*this, MD, DefaultLoc);
 }
 
 static void SearchForReturnInStmt(Sema &Self, Stmt *S) {
@@ -15521,8 +15775,8 @@ void Sema::MarkVirtualMembersReferenced(SourceLocation Loc,
     return;
 
   for (const auto &I : RD->bases()) {
-    const CXXRecordDecl *Base =
-        cast<CXXRecordDecl>(I.getType()->getAs<RecordType>()->getDecl());
+    const auto *Base =
+        cast<CXXRecordDecl>(I.getType()->castAs<RecordType>()->getDecl());
     if (Base->getNumVBases() == 0)
       continue;
     MarkVirtualMembersReferenced(Loc, Base);

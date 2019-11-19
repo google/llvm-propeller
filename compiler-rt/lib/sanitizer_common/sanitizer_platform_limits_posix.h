@@ -19,11 +19,12 @@
 #include "sanitizer_internal_defs.h"
 #include "sanitizer_platform.h"
 
-# define GET_LINK_MAP_BY_DLOPEN_HANDLE(handle) ((link_map*)(handle))
-
-#ifndef __GLIBC_PREREQ
-#define __GLIBC_PREREQ(x, y) 0
+#if defined(__sparc__)
+// FIXME: This can't be included from tsan which does not support sparc yet.
+#include "sanitizer_glibc_version.h"
 #endif
+
+# define GET_LINK_MAP_BY_DLOPEN_HANDLE(handle) ((link_map*)(handle))
 
 namespace __sanitizer {
 extern unsigned struct_utsname_sz;
@@ -96,6 +97,9 @@ const unsigned struct_kernel_stat64_sz = 144;
 #elif defined(__sparc__) && !defined(__arch64__)
 const unsigned struct___old_kernel_stat_sz = 0;
 const unsigned struct_kernel_stat_sz = 64;
+const unsigned struct_kernel_stat64_sz = 104;
+#elif defined(__riscv) && __riscv_xlen == 64
+const unsigned struct_kernel_stat_sz = 128;
 const unsigned struct_kernel_stat64_sz = 104;
 #endif
 struct __sanitizer_perf_event_attr {
@@ -303,6 +307,7 @@ extern unsigned struct_msqid_ds_sz;
 extern unsigned struct_mq_attr_sz;
 extern unsigned struct_timex_sz;
 extern unsigned struct_statvfs_sz;
+extern unsigned struct_crypt_data_sz;
 #endif  // SANITIZER_LINUX && !SANITIZER_ANDROID
 
 struct __sanitizer_iovec {

@@ -1,14 +1,12 @@
 // REQUIRES: x86-registered-target
-// RUN: %clang -target x86_64-unknown-linux-gnu -o - -emit-interface-stubs \
-// RUN: -interface-stub-version=experimental-ifs-v1 %s | FileCheck %s
 
-// RUN: %clang -target x86_64-unknown-linux-gnu -o - -emit-interface-stubs \
-// RUN: -interface-stub-version=experimental-ifs-v1 \
+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -o - -emit-interface-stubs %s | FileCheck %s
+
+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -o - -emit-interface-stubs \
 // RUN: -DUSE_TEMPLATE_FUNCTION=1 %s | \
 // RUN: FileCheck -check-prefix=CHECK-USES-TEMPLATE-FUNCTION %s
 
-// RUN: %clang -target x86_64-unknown-linux-gnu -o - -emit-interface-stubs \
-// RUN: -interface-stub-version=experimental-ifs-v1 \
+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -o - -emit-interface-stubs \
 // RUN: -DSPECIALIZE_TEMPLATE_FUNCTION=1 %s | \
 // RUN: FileCheck -check-prefix=CHECK-SPECIALIZES-TEMPLATE-FUNCTION %s
 

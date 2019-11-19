@@ -520,7 +520,7 @@ static unsigned getEncodedCastOpcode(unsigned Opcode) {
 static unsigned getEncodedUnaryOpcode(unsigned Opcode) {
   switch (Opcode) {
   default: llvm_unreachable("Unknown binary instruction!");
-  case Instruction::FNeg: return bitc::UNOP_NEG;
+  case Instruction::FNeg: return bitc::UNOP_FNEG;
   }
 }
 
@@ -1005,6 +1005,7 @@ static uint64_t getEncodedFFlags(FunctionSummary::FFlags Flags) {
   RawFlags |= (Flags.NoRecurse << 2);
   RawFlags |= (Flags.ReturnDoesNotAlias << 3);
   RawFlags |= (Flags.NoInline << 4);
+  RawFlags |= (Flags.AlwaysInline << 5);
   return RawFlags;
 }
 
@@ -3033,6 +3034,10 @@ void ModuleBitcodeWriter::writeInstruction(const Instruction &I,
     pushValue(I.getOperand(0), InstID, Vals);                   // valist.
     Vals.push_back(VE.getTypeID(I.getType())); // restype.
     break;
+  case Instruction::Freeze:
+    Code = bitc::FUNC_CODE_INST_FREEZE;
+    pushValueAndType(I.getOperand(0), InstID, Vals);
+    break;
   }
 
   Stream.EmitRecord(Code, Vals, AbbrevToUse);
@@ -3723,7 +3728,7 @@ void ModuleBitcodeWriterBase::writeModuleLevelReferences(
 // Current version for the summary.
 // This is bumped whenever we introduce changes in the way some record are
 // interpreted, like flags for instance.
-static const uint64_t INDEX_VERSION = 7;
+static const uint64_t INDEX_VERSION = 8;
 
 /// Emit the per-module summary section alongside the rest of
 /// the module's bitcode.
@@ -3899,6 +3904,8 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
     Flags |= 0x8;
   if (Index.partiallySplitLTOUnits())
     Flags |= 0x10;
+  if (Index.withAttributePropagation())
+    Flags |= 0x20;
   Stream.EmitRecord(bitc::FS_FLAGS, ArrayRef<uint64_t>{Flags});
 
   for (const auto &GVI : valueIds()) {

@@ -16,18 +16,20 @@
 #include <mutex>
 #include <thread>
 
-TEST(ScudoSecondaryTest, SecondaryBasic) {
+template <class SecondaryT> static void testSecondaryBasic(void) {
   scudo::GlobalStats S;
   S.init();
-  scudo::MapAllocator *L = new scudo::MapAllocator;
+  SecondaryT *L = new SecondaryT;
   L->init(&S);
   const scudo::uptr Size = 1U << 16;
   void *P = L->allocate(Size);
   EXPECT_NE(P, nullptr);
   memset(P, 'A', Size);
-  EXPECT_GE(scudo::MapAllocator::getBlockSize(P), Size);
+  EXPECT_GE(SecondaryT::getBlockSize(P), Size);
   L->deallocate(P);
-  EXPECT_DEATH(memset(P, 'A', Size), "");
+  // If we are not using a free list, blocks are unmapped on deallocation.
+  if (SecondaryT::getMaxFreeListSize() == 0U)
+    EXPECT_DEATH(memset(P, 'A', Size), "");
 
   const scudo::uptr Align = 1U << 16;
   P = L->allocate(Size + Align, Align);
@@ -45,8 +47,18 @@ TEST(ScudoSecondaryTest, SecondaryBasic) {
     L->deallocate(V.back());
     V.pop_back();
   }
-  L->printStats();
+  scudo::ScopedString Str(1024);
+  L->getStats(&Str);
+  Str.output();
 }
+
+TEST(ScudoSecondaryTest, SecondaryBasic) {
+  testSecondaryBasic<scudo::MapAllocator<>>();
+  testSecondaryBasic<scudo::MapAllocator<0U>>();
+  testSecondaryBasic<scudo::MapAllocator<64U>>();
+}
+
+using LargeAllocator = scudo::MapAllocator<>;
 
 // This exercises a variety of combinations of size and alignment for the
 // MapAllocator. The size computation done here mimic the ones done by the
@@ -54,7 +66,7 @@ TEST(ScudoSecondaryTest, SecondaryBasic) {
 TEST(ScudoSecondaryTest, SecondaryCombinations) {
   constexpr scudo::uptr MinAlign = FIRST_32_SECOND_64(8, 16);
   constexpr scudo::uptr HeaderSize = scudo::roundUpTo(8, MinAlign);
-  scudo::MapAllocator *L = new scudo::MapAllocator;
+  LargeAllocator *L = new LargeAllocator;
   L->init(nullptr);
   for (scudo::uptr SizeLog = 0; SizeLog <= 20; SizeLog++) {
     for (scudo::uptr AlignLog = FIRST_32_SECOND_64(3, 4); AlignLog <= 16;
@@ -76,11 +88,13 @@ TEST(ScudoSecondaryTest, SecondaryCombinations) {
       }
     }
   }
-  L->printStats();
+  scudo::ScopedString Str(1024);
+  L->getStats(&Str);
+  Str.output();
 }
 
 TEST(ScudoSecondaryTest, SecondaryIterate) {
-  scudo::MapAllocator *L = new scudo::MapAllocator;
+  LargeAllocator *L = new LargeAllocator;
   L->init(nullptr);
   std::vector<void *> V;
   const scudo::uptr PageSize = scudo::getPageSizeCached();
@@ -97,14 +111,16 @@ TEST(ScudoSecondaryTest, SecondaryIterate) {
     L->deallocate(V.back());
     V.pop_back();
   }
-  L->printStats();
+  scudo::ScopedString Str(1024);
+  L->getStats(&Str);
+  Str.output();
 }
 
 static std::mutex Mutex;
 static std::condition_variable Cv;
 static bool Ready = false;
 
-static void performAllocations(scudo::MapAllocator *L) {
+static void performAllocations(LargeAllocator *L) {
   std::vector<void *> V;
   const scudo::uptr PageSize = scudo::getPageSizeCached();
   {
@@ -121,7 +137,7 @@ static void performAllocations(scudo::MapAllocator *L) {
 }
 
 TEST(ScudoSecondaryTest, SecondaryThreadsRace) {
-  scudo::MapAllocator *L = new scudo::MapAllocator;
+  LargeAllocator *L = new LargeAllocator;
   L->init(nullptr);
   std::thread Threads[10];
   for (scudo::uptr I = 0; I < 10U; I++)
@@ -133,5 +149,7 @@ TEST(ScudoSecondaryTest, SecondaryThreadsRace) {
   }
   for (auto &T : Threads)
     T.join();
-  L->printStats();
+  scudo::ScopedString Str(1024);
+  L->getStats(&Str);
+  Str.output();
 }

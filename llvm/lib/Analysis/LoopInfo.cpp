@@ -34,6 +34,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -360,11 +361,17 @@ bool Loop::isAuxiliaryInductionVariable(PHINode &AuxIndVar,
 }
 
 BranchInst *Loop::getLoopGuardBranch() const {
-  assert(isLoopSimplifyForm() && "Only valid for loop in simplify form");
+  if (!isLoopSimplifyForm())
+    return nullptr;
+
   BasicBlock *Preheader = getLoopPreheader();
-  assert(Preheader && getLoopLatch() &&
+  BasicBlock *Latch = getLoopLatch();
+  assert(Preheader && Latch &&
          "Expecting a loop with valid preheader and latch");
-  assert(isLoopExiting(getLoopLatch()) && "Only valid for rotated loop");
+
+  // Loop should be in rotate form.
+  if (!isLoopExiting(Latch))
+    return nullptr;
 
   // Disallow loops with more than one unique exit block, as we do not verify
   // that GuardOtherSucc post dominates all exit blocks.
@@ -1044,6 +1051,10 @@ MDNode *llvm::makePostTransformationMetadata(LLVMContext &Context,
 //===----------------------------------------------------------------------===//
 // LoopInfo implementation
 //
+
+LoopInfoWrapperPass::LoopInfoWrapperPass() : FunctionPass(ID) {
+  initializeLoopInfoWrapperPassPass(*PassRegistry::getPassRegistry());
+}
 
 char LoopInfoWrapperPass::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopInfoWrapperPass, "loops", "Natural Loop Information",

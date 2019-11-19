@@ -34,11 +34,11 @@ DWARFVerifier::DieRangeInfo::insert(const DWARFAddressRange &R) {
 
   if (Pos != End) {
     if (Pos->intersects(R))
-      return Pos;
+      return std::move(Pos);
     if (Pos != Begin) {
       auto Iter = Pos - 1;
       if (Iter->intersects(R))
-        return Iter;
+        return std::move(Iter);
     }
   }
 
@@ -1302,7 +1302,7 @@ static bool isVariableIndexable(const DWARFDie &Die, DWARFContext &DCtx) {
     if (const DWARFDebugLoc *DebugLoc = DCtx.getDebugLoc()) {
       if (const DWARFDebugLoc::LocationList *LocList =
               DebugLoc->getLocationListAtOffset(*Offset)) {
-        if (any_of(LocList->Entries, [&](const DWARFDebugLoc::Entry &E) {
+        if (any_of(LocList->Entries, [&](const DWARFLocationEntry &E) {
               return ContainsInterestingOperators(E.Loc);
             }))
           return true;

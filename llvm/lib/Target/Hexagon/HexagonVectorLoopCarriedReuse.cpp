@@ -130,6 +130,7 @@
 #include "llvm/IR/Use.h"
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -235,7 +236,7 @@ namespace {
     Instruction *Inst2Replace = nullptr;
 
     // In the new PHI node that we'll construct this is the value that'll be
-    // used over the backedge. This is teh value that gets reused from a
+    // used over the backedge. This is the value that gets reused from a
     // previous iteration.
     Instruction *BackedgeInst = nullptr;
     std::map<Instruction *, DepChain *> DepChains;

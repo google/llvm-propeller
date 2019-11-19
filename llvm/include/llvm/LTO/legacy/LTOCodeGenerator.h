@@ -40,6 +40,7 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetMachine.h"
@@ -87,8 +88,8 @@ struct LTOCodeGenerator {
   void setCodePICModel(Optional<Reloc::Model> Model) { RelocModel = Model; }
 
   /// Set the file type to be emitted (assembly or object code).
-  /// The default is TargetMachine::CGFT_ObjectFile.
-  void setFileType(TargetMachine::CodeGenFileType FT) { FileType = FT; }
+  /// The default is CGFT_ObjectFile.
+  void setFileType(CodeGenFileType FT) { FileType = FT; }
 
   void setCpu(StringRef MCpu) { this->MCpu = MCpu; }
   void setAttr(StringRef MAttr) { this->MAttr = MAttr; }
@@ -113,7 +114,7 @@ struct LTOCodeGenerator {
     ShouldRestoreGlobalsLinkage = Value;
   }
 
-  void addMustPreserveSymbol(StringRef Sym) { MustPreserveSymbols[Sym] = 1; }
+  void addMustPreserveSymbol(StringRef Sym) { MustPreserveSymbols.insert(Sym); }
 
   /// Pass options to the driver and optimization passes.
   ///
@@ -238,7 +239,7 @@ private:
   bool ShouldInternalize = EnableLTOInternalization;
   bool ShouldEmbedUselists = false;
   bool ShouldRestoreGlobalsLinkage = false;
-  TargetMachine::CodeGenFileType FileType = TargetMachine::CGFT_ObjectFile;
+  CodeGenFileType FileType = CGFT_ObjectFile;
   std::unique_ptr<ToolOutputFile> DiagnosticOutputFile;
   bool Freestanding = false;
   std::unique_ptr<ToolOutputFile> StatsFile = nullptr;

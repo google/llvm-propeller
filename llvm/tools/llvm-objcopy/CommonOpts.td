@@ -40,7 +40,8 @@ def p : Flag<["-"], "p">,
 
 def strip_all : Flag<["--"], "strip-all">,
                 HelpText<"Remove non-allocated sections outside segments. "
-                         ".gnu.warning* sections are not removed">;
+                         ".gnu.warning* and .ARM.attribute sections are not "
+                         "removed">;
 
 def strip_all_gnu
     : Flag<["--"], "strip-all-gnu">,
@@ -85,8 +86,9 @@ def keep_file_symbols : Flag<["--"], "keep-file-symbols">,
 
 def only_keep_debug
     : Flag<["--"], "only-keep-debug">,
-      HelpText<"Clear sections that would not be stripped by --strip-debug. "
-               "Currently only implemented for COFF.">;
+      HelpText<
+          "Produce a debug file as the output that only preserves contents of "
+          "sections useful for debugging purposes">;
 
 def discard_locals : Flag<["--"], "discard-locals">,
                      HelpText<"Remove compiler-generated local symbols, (e.g. "
@@ -111,3 +113,13 @@ def version : Flag<["--"], "version">,
 def V : Flag<["-"], "V">,
         Alias<version>,
         HelpText<"Alias for --version">;
+
+def wildcard
+    : Flag<["--"], "wildcard">,
+      HelpText<"Allow wildcard syntax for symbol-related flags. Incompatible "
+               "with --regex. Allows using '*' to match any number of "
+               "characters, '?' to match any single character, '\' to escape "
+               "special characters, and '[]' to define character classes. "
+               "Wildcards beginning with '!' will prevent a match, for example "
+               "\"-N '*' -N '!x'\" will strip all symbols except for \"x\".">;
+def w : Flag<["-"], "w">, Alias<wildcard>, HelpText<"Alias for --wildcard">;

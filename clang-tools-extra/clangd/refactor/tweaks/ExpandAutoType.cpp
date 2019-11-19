@@ -61,7 +61,9 @@ bool ExpandAutoType::prepare(const Selection& Inputs) {
   if (auto *Node = Inputs.ASTSelection.commonAncestor()) {
     if (auto *TypeNode = Node->ASTNode.get<TypeLoc>()) {
       if (const AutoTypeLoc Result = TypeNode->getAs<AutoTypeLoc>()) {
-        CachedLocation = Result;
+        // Code in apply() does handle 'decltype(auto)' yet.
+        if (!Result.getTypePtr()->isDecltypeAuto())
+          CachedLocation = Result;
       }
     }
   }
@@ -80,7 +82,7 @@ Expected<Tweak::Effect> ExpandAutoType::apply(const Selection& Inputs) {
   }
 
   // if it's a lambda expression, return an error message
-  if (isa<RecordType>(*DeducedType) and
+  if (isa<RecordType>(*DeducedType) &&
       dyn_cast<RecordType>(*DeducedType)->getDecl()->isLambda()) {
     return createErrorMessage("Could not expand type of lambda expression",
                               Inputs);

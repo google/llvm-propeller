@@ -237,6 +237,9 @@ public:
 
     for (const auto &TP : *TPL)
       Visit(TP);
+
+    if (const Expr *RC = TPL->getRequiresClause())
+      Visit(RC);
   }
 
   void
@@ -617,7 +620,7 @@ public:
     Visit(E->getControllingExpr());
     Visit(E->getControllingExpr()->getType()); // FIXME: remove
 
-    for (const auto &Assoc : E->associations()) {
+    for (const auto Assoc : E->associations()) {
       Visit(Assoc);
     }
   }

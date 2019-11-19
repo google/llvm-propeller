@@ -290,20 +290,32 @@ static void dumpLoclistsSection(raw_ostream &OS, DIDumpOptions DumpOpts,
                                 const MCRegisterInfo *MRI,
                                 Optional<uint64_t> DumpOffset) {
   uint64_t Offset = 0;
-  DWARFDebugLoclists Loclists;
 
-  DWARFListTableHeader Header(".debug_loclists", "locations");
-  if (Error E = Header.extract(Data, &Offset)) {
-    WithColor::error() << toString(std::move(E)) << '\n';
-    return;
+  while (Data.isValidOffset(Offset)) {
+    DWARFListTableHeader Header(".debug_loclists", "locations");
+    if (Error E = Header.extract(Data, &Offset)) {
+      WithColor::error() << toString(std::move(E)) << '\n';
+      return;
+    }
+
+    Header.dump(OS, DumpOpts);
+
+    uint64_t EndOffset = Header.length() + Header.getHeaderOffset();
+    Data.setAddressSize(Header.getAddrSize());
+    DWARFDebugLoclists Loc(Data, Header.getVersion());
+    if (DumpOffset) {
+      if (DumpOffset >= Offset && DumpOffset < EndOffset) {
+        Offset = *DumpOffset;
+        Loc.dumpLocationList(&Offset, OS, /*BaseAddr=*/None, MRI, nullptr,
+                             DumpOpts, /*Indent=*/0);
+        OS << "\n";
+        return;
+      }
+    } else {
+      Loc.dumpRange(Offset, EndOffset - Offset, OS, MRI, DumpOpts);
+    }
+    Offset = EndOffset;
   }
-
-  Header.dump(OS, DumpOpts);
-  DataExtractor LocData(Data.getData().drop_front(Offset),
-                        Data.isLittleEndian(), Header.getAddrSize());
-
-  Loclists.parse(LocData, Header.getVersion());
-  Loclists.dump(OS, 0, MRI, DumpOffset);
 }
 
 void DWARFContext::dump(
@@ -378,7 +390,7 @@ void DWARFContext::dump(
 
   if (const auto *Off = shouldDump(Explicit, ".debug_loc", DIDT_ID_DebugLoc,
                                    DObj->getLocSection().Data)) {
-    getDebugLoc()->dump(OS, getRegisterInfo(), *Off);
+    getDebugLoc()->dump(OS, getRegisterInfo(), DumpOpts, *Off);
   }
   if (const auto *Off =
           shouldDump(Explicit, ".debug_loclists", DIDT_ID_DebugLoclists,
@@ -390,7 +402,18 @@ void DWARFContext::dump(
   if (const auto *Off =
           shouldDump(ExplicitDWO, ".debug_loc.dwo", DIDT_ID_DebugLoc,
                      DObj->getLocDWOSection().Data)) {
-    getDebugLocDWO()->dump(OS, 0, getRegisterInfo(), *Off);
+    DWARFDataExtractor Data(*DObj, DObj->getLocDWOSection(), isLittleEndian(),
+                            4);
+    DWARFDebugLoclists Loc(Data, /*Version=*/4);
+    if (*Off) {
+      uint64_t Offset = **Off;
+      Loc.dumpLocationList(&Offset, OS,
+                           /*BaseAddr=*/None, getRegisterInfo(), nullptr,
+                           DumpOpts, /*Indent=*/0);
+      OS << "\n";
+    } else {
+      Loc.dumpRange(0, Data.getData().size(), OS, getRegisterInfo(), DumpOpts);
+    }
   }
 
   if (const auto *Off = shouldDump(Explicit, ".debug_frame", DIDT_ID_DebugFrame,
@@ -711,30 +734,15 @@ const DWARFDebugLoc *DWARFContext::getDebugLoc() {
   if (Loc)
     return Loc.get();
 
-  Loc.reset(new DWARFDebugLoc);
   // Assume all units have the same address byte size.
-  if (getNumCompileUnits()) {
-    DWARFDataExtractor LocData(*DObj, DObj->getLocSection(), isLittleEndian(),
-                               getUnitAtIndex(0)->getAddressByteSize());
-    Loc->parse(LocData);
-  }
+  auto LocData =
+      getNumCompileUnits()
+          ? DWARFDataExtractor(*DObj, DObj->getLocSection(), isLittleEndian(),
+                               getUnitAtIndex(0)->getAddressByteSize())
+          : DWARFDataExtractor("", isLittleEndian(), 0);
+  Loc.reset(new DWARFDebugLoc(std::move(LocData)));
+  Loc->parse();
   return Loc.get();
-}
-
-const DWARFDebugLoclists *DWARFContext::getDebugLocDWO() {
-  if (LocDWO)
-    return LocDWO.get();
-
-  LocDWO.reset(new DWARFDebugLoclists());
-  // Assume all compile units have the same address byte size.
-  // FIXME: We don't need AddressSize for split DWARF since relocatable
-  // addresses cannot appear there. At the moment DWARFExpression requires it.
-  DataExtractor LocData(DObj->getLocDWOSection().Data, isLittleEndian(), 4);
-  // Use version 4. DWO does not support the DWARF v5 .debug_loclists yet and
-  // that means we are parsing the new style .debug_loc (pre-standatized version
-  // of the .debug_loclists).
-  LocDWO->parse(LocData, 4 /* Version */);
-  return LocDWO.get();
 }
 
 const DWARFDebugAranges *DWARFContext::getDebugAranges() {
@@ -1523,10 +1531,19 @@ public:
         continue;
 
       StringRef Data;
-      section_iterator RelocatedSection = Section.getRelocatedSection();
+      Expected<section_iterator> SecOrErr = Section.getRelocatedSection();
+      if (!SecOrErr) {
+        ErrorPolicy EP = HandleError(createError(
+            "failed to get relocated section: ", SecOrErr.takeError()));
+        if (EP == ErrorPolicy::Halt)
+          return;
+        continue;
+      }
+
       // Try to obtain an already relocated version of this section.
       // Else use the unrelocated section from the object file. We'll have to
       // apply relocations ourselves later.
+      section_iterator RelocatedSection = *SecOrErr;
       if (!L || !L->getLoadedSectionContents(*RelocatedSection, Data)) {
         Expected<StringRef> E = Section.getContents();
         if (E)

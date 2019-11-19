@@ -170,7 +170,7 @@ public:
       break;
     }
     default: {
-      ASSERT(LT_FUSSY, FALSE, "unknown schedtype %d", (int)schedtype);
+      ASSERT(LT_FUSSY, 0, "unknown schedtype %d", (int)schedtype);
       PRINT(LD_LOOP, "unknown schedtype %d, revert back to static chunk\n",
             (int)schedtype);
       ForStaticChunk(lastiter, lb, ub, stride, chunk, gtid,
@@ -380,7 +380,8 @@ public:
   ////////////////////////////////////////////////////////////////////////////////
   // Support for dispatch next
 
-  INLINE static int64_t Shuffle(unsigned active, int64_t val, int leader) {
+  INLINE static uint64_t Shuffle(__kmpc_impl_lanemask_t active, int64_t val,
+                                 int leader) {
     uint32_t lo, hi;
     __kmpc_impl_unpack(val, lo, hi);
     hi = __kmpc_impl_shfl_sync(active, hi, leader);
@@ -764,7 +765,7 @@ INLINE void syncWorkersInGenericMode(uint32_t NumThreads) {
   // is started, so we don't need a barrier.
   if (NumThreads > 1) {
 #endif
-    named_sync(L1_BARRIER, WARPSIZE * NumWarps);
+    __kmpc_impl_named_sync(L1_BARRIER, WARPSIZE * NumWarps);
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
   }
 #endif
