@@ -81,13 +81,24 @@ ProcessSP ProcessWindows::CreateInstance(lldb::TargetSP target_sp,
   return ProcessSP(new ProcessWindows(target_sp, listener_sp));
 }
 
-void ProcessWindows::Initialize() {
-  static llvm::once_flag g_once_flag;
+static bool ShouldUseLLDBServer() {
+  llvm::StringRef use_lldb_server = ::getenv("LLDB_USE_LLDB_SERVER");
+  return use_lldb_server.equals_lower("on") ||
+         use_lldb_server.equals_lower("yes") ||
+         use_lldb_server.equals_lower("1") ||
+         use_lldb_server.equals_lower("true");
+}
 
-  llvm::call_once(g_once_flag, []() {
-    PluginManager::RegisterPlugin(GetPluginNameStatic(),
-                                  GetPluginDescriptionStatic(), CreateInstance);
-  });
+void ProcessWindows::Initialize() {
+  if (!ShouldUseLLDBServer()) {
+    static llvm::once_flag g_once_flag;
+
+    llvm::call_once(g_once_flag, []() {
+      PluginManager::RegisterPlugin(GetPluginNameStatic(),
+                                    GetPluginDescriptionStatic(),
+                                    CreateInstance);
+    });
+  }
 }
 
 void ProcessWindows::Terminate() {}
@@ -614,16 +625,7 @@ void ProcessWindows::OnExitProcess(uint32_t exit_code) {
   SetProcessExitStatus(GetID(), true, 0, exit_code);
   SetPrivateState(eStateExited);
 
-  // If the process exits before any initial stop then notify the debugger
-  // of the error otherwise WaitForDebuggerConnection() will be blocked.
-  // An example of this issue is when a process fails to load a dependent DLL.
-  if (m_session_data && !m_session_data->m_initial_stop_received) {
-    Status error(exit_code, eErrorTypeWin32);
-    OnDebuggerError(error, 0);
-  }
-
-  // Reset the session.
-  m_session_data.reset();
+  ProcessDebugger::OnExitProcess(exit_code);
 }
 
 void ProcessWindows::OnDebuggerConnected(lldb::addr_t image_base) {

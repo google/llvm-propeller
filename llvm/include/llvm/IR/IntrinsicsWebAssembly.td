@@ -24,6 +24,17 @@ def int_wasm_memory_grow : Intrinsic<[llvm_anyint_ty],
                                      []>;
 
 //===----------------------------------------------------------------------===//
+// Trapping float-to-int conversions
+//===----------------------------------------------------------------------===//
+
+def int_wasm_trunc_signed : Intrinsic<[llvm_anyint_ty],
+                                      [llvm_anyfloat_ty],
+                                      [IntrNoMem]>;
+def int_wasm_trunc_unsigned : Intrinsic<[llvm_anyint_ty],
+                                        [llvm_anyfloat_ty],
+                                        [IntrNoMem]>;
+
+//===----------------------------------------------------------------------===//
 // Saturating float-to-int conversions
 //===----------------------------------------------------------------------===//
 
@@ -89,6 +100,10 @@ def int_wasm_atomic_notify:
 // SIMD intrinsics
 //===----------------------------------------------------------------------===//
 
+def int_wasm_swizzle :
+  Intrinsic<[llvm_v16i8_ty],
+            [llvm_v16i8_ty, llvm_v16i8_ty],
+            [IntrNoMem, IntrSpeculatable]>;
 def int_wasm_sub_saturate_signed :
   Intrinsic<[llvm_anyvector_ty],
             [LLVMMatchType<0>, LLVMMatchType<0>],
@@ -97,6 +112,26 @@ def int_wasm_sub_saturate_unsigned :
   Intrinsic<[llvm_anyvector_ty],
             [LLVMMatchType<0>, LLVMMatchType<0>],
             [IntrNoMem, IntrSpeculatable]>;
+
+// TODO: Remove intrinsics and rely on codegen patterns once these are
+// officially merged to the spec proposal
+def int_wasm_min_signed :
+  Intrinsic<[llvm_anyvector_ty],
+            [LLVMMatchType<0>, LLVMMatchType<0>],
+            [IntrNoMem, IntrSpeculatable]>;
+def int_wasm_min_unsigned :
+  Intrinsic<[llvm_anyvector_ty],
+            [LLVMMatchType<0>, LLVMMatchType<0>],
+            [IntrNoMem, IntrSpeculatable]>;
+def int_wasm_max_signed :
+  Intrinsic<[llvm_anyvector_ty],
+            [LLVMMatchType<0>, LLVMMatchType<0>],
+            [IntrNoMem, IntrSpeculatable]>;
+def int_wasm_max_unsigned :
+  Intrinsic<[llvm_anyvector_ty],
+            [LLVMMatchType<0>, LLVMMatchType<0>],
+            [IntrNoMem, IntrSpeculatable]>;
+
 def int_wasm_bitselect :
   Intrinsic<[llvm_anyvector_ty],
             [LLVMMatchType<0>, LLVMMatchType<0>, LLVMMatchType<0>],
@@ -116,6 +151,10 @@ def int_wasm_qfma :
 def int_wasm_qfms :
   Intrinsic<[llvm_anyvector_ty],
             [LLVMMatchType<0>, LLVMMatchType<0>, LLVMMatchType<0>],
+            [IntrNoMem, IntrSpeculatable]>;
+def int_wasm_dot :
+  Intrinsic<[llvm_v4i32_ty],
+            [llvm_v8i16_ty, llvm_v8i16_ty],
             [IntrNoMem, IntrSpeculatable]>;
 def int_wasm_narrow_signed :
   Intrinsic<[llvm_anyvector_ty],

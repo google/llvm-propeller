@@ -136,17 +136,17 @@ static std::unique_ptr<Writer> createELFWriter(const CopyConfig &Config,
   // Depending on the initial ELFT and OutputFormat we need a different Writer.
   switch (OutputElfType) {
   case ELFT_ELF32LE:
-    return std::make_unique<ELFWriter<ELF32LE>>(Obj, Buf,
-                                                 !Config.StripSections);
+    return std::make_unique<ELFWriter<ELF32LE>>(Obj, Buf, !Config.StripSections,
+                                                Config.OnlyKeepDebug);
   case ELFT_ELF64LE:
-    return std::make_unique<ELFWriter<ELF64LE>>(Obj, Buf,
-                                                 !Config.StripSections);
+    return std::make_unique<ELFWriter<ELF64LE>>(Obj, Buf, !Config.StripSections,
+                                                Config.OnlyKeepDebug);
   case ELFT_ELF32BE:
-    return std::make_unique<ELFWriter<ELF32BE>>(Obj, Buf,
-                                                 !Config.StripSections);
+    return std::make_unique<ELFWriter<ELF32BE>>(Obj, Buf, !Config.StripSections,
+                                                Config.OnlyKeepDebug);
   case ELFT_ELF64BE:
-    return std::make_unique<ELFWriter<ELF64BE>>(Obj, Buf,
-                                                 !Config.StripSections);
+    return std::make_unique<ELFWriter<ELF64BE>>(Obj, Buf, !Config.StripSections,
+                                                Config.OnlyKeepDebug);
   }
   llvm_unreachable("Invalid output format");
 }
@@ -263,7 +263,7 @@ static Error linkToBuildIdDir(const CopyConfig &Config, StringRef ToLink,
 
 static Error splitDWOToFile(const CopyConfig &Config, const Reader &Reader,
                             StringRef File, ElfType OutputElfType) {
-  auto DWOFile = Reader.create();
+  auto DWOFile = Reader.create(false);
   auto OnlyKeepDWOPred = [&DWOFile](const SectionBase &Sec) {
     return onlyKeepDWOPred(*DWOFile, Sec);
   };
@@ -503,6 +503,12 @@ static Error replaceAndRemoveSections(const CopyConfig &Config, Object &Obj) {
         return false;
       if (StringRef(Sec.Name).startswith(".gnu.warning"))
         return false;
+      // We keep the .ARM.attribute section to maintain compatibility
+      // with Debian derived distributions. This is a bug in their
+      // patchset as documented here:
+      // https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=943798
+      if (Sec.Type == SHT_ARM_ATTRIBUTES)
+        return false;
       if (Sec.ParentSegment != nullptr)
         return false;
       return (Sec.Flags & SHF_ALLOC) == 0;
@@ -670,6 +676,14 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj,
     }
   }
 
+  if (!Config.SetSectionAlignment.empty()) {
+    for (SectionBase &Sec : Obj.sections()) {
+      auto I = Config.SetSectionAlignment.find(Sec.Name);
+      if (I != Config.SetSectionAlignment.end())
+        Sec.Align = I->second;
+    }
+  }
+
   if (!Config.SetSectionFlags.empty()) {
     for (auto &Sec : Obj.sections()) {
       const auto Iter = Config.SetSectionFlags.find(Sec.Name);
@@ -679,6 +693,11 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj,
       }
     }
   }
+
+  if (Config.OnlyKeepDebug)
+    for (auto &Sec : Obj.sections())
+      if (Sec.Flags & SHF_ALLOC && Sec.Type != SHT_NOTE)
+        Sec.Type = SHT_NOBITS;
 
   for (const auto &Flag : Config.AddSection) {
     std::pair<StringRef, StringRef> SecPair = Flag.split("=");
@@ -735,7 +754,7 @@ static Error writeOutput(const CopyConfig &Config, Object &Obj, Buffer &Out,
 Error executeObjcopyOnIHex(const CopyConfig &Config, MemoryBuffer &In,
                            Buffer &Out) {
   IHexReader Reader(&In);
-  std::unique_ptr<Object> Obj = Reader.create();
+  std::unique_ptr<Object> Obj = Reader.create(true);
   const ElfType OutputElfType =
     getOutputElfType(Config.OutputArch.getValueOr(MachineInfo()));
   if (Error E = handleArgs(Config, *Obj, Reader, OutputElfType))
@@ -748,7 +767,7 @@ Error executeObjcopyOnRawBinary(const CopyConfig &Config, MemoryBuffer &In,
   uint8_t NewSymbolVisibility =
       Config.ELF->NewSymbolVisibility.getValueOr((uint8_t)ELF::STV_DEFAULT);
   BinaryReader Reader(&In, NewSymbolVisibility);
-  std::unique_ptr<Object> Obj = Reader.create();
+  std::unique_ptr<Object> Obj = Reader.create(true);
 
   // Prefer OutputArch (-O<format>) if set, otherwise fallback to BinaryArch
   // (-B<arch>).
@@ -762,7 +781,7 @@ Error executeObjcopyOnRawBinary(const CopyConfig &Config, MemoryBuffer &In,
 Error executeObjcopyOnBinary(const CopyConfig &Config,
                              object::ELFObjectFileBase &In, Buffer &Out) {
   ELFReader Reader(&In, Config.ExtractPartition);
-  std::unique_ptr<Object> Obj = Reader.create();
+  std::unique_ptr<Object> Obj = Reader.create(!Config.SymbolsToAdd.empty());
   // Prefer OutputArch (-O<format>) if set, otherwise infer it from the input.
   const ElfType OutputElfType =
       Config.OutputArch ? getOutputElfType(Config.OutputArch.getValue())

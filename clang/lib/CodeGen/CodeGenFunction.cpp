@@ -33,6 +33,8 @@
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/FPEnv.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
@@ -87,6 +89,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     FMF.setAllowReassoc();
   }
   Builder.setFastMathFlags(FMF);
+  SetFPModel();
 }
 
 CodeGenFunction::~CodeGenFunction() {
@@ -100,6 +103,51 @@ CodeGenFunction::~CodeGenFunction() {
 
   if (getLangOpts().OpenMP && CurFn)
     CGM.getOpenMPRuntime().functionFinished(*this);
+}
+
+// Map the LangOption for rounding mode into
+// the corresponding enum in the IR.
+static llvm::fp::RoundingMode ToConstrainedRoundingMD(
+  LangOptions::FPRoundingModeKind Kind) {
+
+  switch (Kind) {
+  case LangOptions::FPR_ToNearest:  return llvm::fp::rmToNearest;
+  case LangOptions::FPR_Downward:   return llvm::fp::rmDownward;
+  case LangOptions::FPR_Upward:     return llvm::fp::rmUpward;
+  case LangOptions::FPR_TowardZero: return llvm::fp::rmTowardZero;
+  case LangOptions::FPR_Dynamic:    return llvm::fp::rmDynamic;
+  }
+  llvm_unreachable("Unsupported FP RoundingMode");
+}
+
+// Map the LangOption for exception behavior into
+// the corresponding enum in the IR.
+static llvm::fp::ExceptionBehavior ToConstrainedExceptMD(
+  LangOptions::FPExceptionModeKind Kind) {
+
+  switch (Kind) {
+  case LangOptions::FPE_Ignore:  return llvm::fp::ebIgnore;
+  case LangOptions::FPE_MayTrap: return llvm::fp::ebMayTrap;
+  case LangOptions::FPE_Strict:  return llvm::fp::ebStrict;
+  }
+  llvm_unreachable("Unsupported FP Exception Behavior");
+}
+
+void CodeGenFunction::SetFPModel() {
+  auto fpRoundingMode = ToConstrainedRoundingMD(
+                          getLangOpts().getFPRoundingMode());
+  auto fpExceptionBehavior = ToConstrainedExceptMD(
+                               getLangOpts().getFPExceptionMode());
+
+  if (fpExceptionBehavior == llvm::fp::ebIgnore &&
+      fpRoundingMode == llvm::fp::rmToNearest)
+    // Constrained intrinsics are not used.
+    ;
+  else {
+    Builder.setIsFPConstrained(true);
+    Builder.setDefaultConstrainedRounding(fpRoundingMode);
+    Builder.setDefaultConstrainedExcept(fpExceptionBehavior);
+  }
 }
 
 CharUnits CodeGenFunction::getNaturalPointeeTypeAlignment(QualType T,
@@ -194,7 +242,7 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
 #define NON_CANONICAL_TYPE(name, parent) case Type::name:
 #define DEPENDENT_TYPE(name, parent) case Type::name:
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(name, parent) case Type::name:
-#include "clang/AST/TypeNodes.def"
+#include "clang/AST/TypeNodes.inc"
       llvm_unreachable("non-canonical or dependent type in IR-generation");
 
     case Type::Auto:
@@ -431,13 +479,13 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
   // Scan function arguments for vector width.
   for (llvm::Argument &A : CurFn->args())
     if (auto *VT = dyn_cast<llvm::VectorType>(A.getType()))
-      LargestVectorWidth = std::max(LargestVectorWidth,
-                                    VT->getPrimitiveSizeInBits());
+      LargestVectorWidth = std::max((uint64_t)LargestVectorWidth,
+                                   VT->getPrimitiveSizeInBits().getFixedSize());
 
   // Update vector width based on return type.
   if (auto *VT = dyn_cast<llvm::VectorType>(CurFn->getReturnType()))
-    LargestVectorWidth = std::max(LargestVectorWidth,
-                                  VT->getPrimitiveSizeInBits());
+    LargestVectorWidth = std::max((uint64_t)LargestVectorWidth,
+                                  VT->getPrimitiveSizeInBits().getFixedSize());
 
   // Add the required-vector-width attribute. This contains the max width from:
   // 1. min-vector-width attribute used in the source program.
@@ -635,8 +683,7 @@ static llvm::Constant *getPrologueSignature(CodeGenModule &CGM,
   return CGM.getTargetCodeGenInfo().getUBSanFunctionSignature(CGM);
 }
 
-void CodeGenFunction::StartFunction(GlobalDecl GD,
-                                    QualType RetTy,
+void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
                                     llvm::Function *Fn,
                                     const CGFunctionInfo &FnInfo,
                                     const FunctionArgList &Args,
@@ -764,6 +811,10 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
   Fn->addFnAttr("no-jump-tables",
                 llvm::toStringRef(CGM.getCodeGenOpts().NoUseJumpTables));
 
+  // Add no-inline-line-tables value.
+  if (CGM.getCodeGenOpts().NoInlineLineTables)
+    Fn->addFnAttr("no-inline-line-tables");
+
   // Add profile-sample-accurate value.
   if (CGM.getCodeGenOpts().ProfileSampleAccurate)
     Fn->addFnAttr("profile-sample-accurate");
@@ -888,6 +939,16 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
       else {
         Fn->addFnAttr("instrument-function-entry-inlined",
                       getTarget().getMCountName());
+      }
+      if (CGM.getCodeGenOpts().MNopMCount) {
+        if (getContext().getTargetInfo().getTriple().getArch() !=
+            llvm::Triple::systemz)
+          CGM.getDiags().Report(diag::err_opt_not_valid_on_target)
+            << "-mnop-mcount";
+        if (!CGM.getCodeGenOpts().CallFEntry)
+          CGM.getDiags().Report(diag::err_opt_not_valid_without_opt)
+            << "-mnop-mcount" << "-mfentry";
+        Fn->addFnAttr("mnop-mcount", "true");
       }
     }
   }
@@ -1671,7 +1732,7 @@ CodeGenFunction::EmitNullInitialization(Address DestPtr, QualType Ty) {
                                llvm::GlobalVariable::PrivateLinkage,
                                NullConstant, Twine());
     CharUnits NullAlign = DestPtr.getAlignment();
-    NullVariable->setAlignment(NullAlign.getQuantity());
+    NullVariable->setAlignment(NullAlign.getAsAlign());
     Address SrcPtr(Builder.CreateBitCast(NullVariable, Builder.getInt8PtrTy()),
                    NullAlign);
 
@@ -1871,7 +1932,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
 #define NON_CANONICAL_TYPE(Class, Base)
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base)
-#include "clang/AST/TypeNodes.def"
+#include "clang/AST/TypeNodes.inc"
       llvm_unreachable("unexpected dependent type!");
 
     // These types are never variably-modified.
@@ -2057,24 +2118,9 @@ void CodeGenFunction::EmitAlignmentAssumption(llvm::Value *PtrValue,
 }
 
 void CodeGenFunction::EmitAlignmentAssumption(llvm::Value *PtrValue,
-                                              QualType Ty, SourceLocation Loc,
-                                              SourceLocation AssumptionLoc,
-                                              unsigned Alignment,
-                                              llvm::Value *OffsetValue) {
-  llvm::Value *TheCheck;
-  llvm::Instruction *Assumption = Builder.CreateAlignmentAssumption(
-      CGM.getDataLayout(), PtrValue, Alignment, OffsetValue, &TheCheck);
-  if (SanOpts.has(SanitizerKind::Alignment)) {
-    llvm::Value *AlignmentVal = llvm::ConstantInt::get(IntPtrTy, Alignment);
-    EmitAlignmentAssumptionCheck(PtrValue, Ty, Loc, AssumptionLoc, AlignmentVal,
-                                 OffsetValue, TheCheck, Assumption);
-  }
-}
-
-void CodeGenFunction::EmitAlignmentAssumption(llvm::Value *PtrValue,
                                               const Expr *E,
                                               SourceLocation AssumptionLoc,
-                                              unsigned Alignment,
+                                              llvm::Value *Alignment,
                                               llvm::Value *OffsetValue) {
   if (auto *CE = dyn_cast<CastExpr>(E))
     E = CE->getSubExprAsWritten();

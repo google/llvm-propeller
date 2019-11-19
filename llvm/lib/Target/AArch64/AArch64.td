@@ -285,6 +285,10 @@ def FeatureSEL2 : SubtargetFeature<
     "sel2", "HasSEL2", "true",
     "Enable v8.4-A Secure Exception Level 2 extension">;
 
+def FeaturePMU : SubtargetFeature<
+    "pmu", "HasPMU", "true",
+    "Enable v8.4-A PMU extension">;
+
 def FeatureTLB_RMI : SubtargetFeature<
     "tlb-rmi", "HasTLB_RMI", "true",
     "Enable v8.4-A TLB Range and Maintenance Instructions">;
@@ -380,7 +384,7 @@ def HasV8_3aOps : SubtargetFeature<"v8.3a", "HasV8_3aOps", "true",
 def HasV8_4aOps : SubtargetFeature<"v8.4a", "HasV8_4aOps", "true",
   "Support ARM v8.4a instructions", [HasV8_3aOps, FeatureDotProd,
   FeatureNV, FeatureRASv8_4, FeatureMPAM, FeatureDIT,
-  FeatureTRACEV8_4, FeatureAM, FeatureSEL2, FeatureTLB_RMI,
+  FeatureTRACEV8_4, FeatureAM, FeatureSEL2, FeaturePMU, FeatureTLB_RMI,
   FeatureFMI, FeatureRCPC_IMMO]>;
 
 def HasV8_5aOps : SubtargetFeature<
@@ -406,6 +410,7 @@ include "AArch64Schedule.td"
 include "AArch64InstrInfo.td"
 include "AArch64SchedPredicates.td"
 include "AArch64SchedPredExynos.td"
+include "AArch64Combine.td"
 
 def AArch64InstrInfo : InstrInfo;
 
@@ -443,7 +448,6 @@ include "AArch64SchedA57.td"
 include "AArch64SchedCyclone.td"
 include "AArch64SchedFalkor.td"
 include "AArch64SchedKryo.td"
-include "AArch64SchedExynosM1.td"
 include "AArch64SchedExynosM3.td"
 include "AArch64SchedExynosM4.td"
 include "AArch64SchedThunderX.td"
@@ -576,33 +580,6 @@ def ProcCyclone : SubtargetFeature<"cyclone", "ARMProcFamily", "Cyclone",
                                    FeatureZCZeroing,
                                    FeatureZCZeroingFPWorkaround
                                    ]>;
-
-def ProcExynosM1 : SubtargetFeature<"exynosm1", "ARMProcFamily", "ExynosM1",
-                                    "Samsung Exynos-M1 processors",
-                                    [FeatureSlowPaired128,
-                                     FeatureCRC,
-                                     FeatureCrypto,
-                                     FeatureExynosCheapAsMoveHandling,
-                                     FeatureForce32BitJumpTables,
-                                     FeatureFuseAES,
-                                     FeaturePerfMon,
-                                     FeaturePostRAScheduler,
-                                     FeatureSlowMisaligned128Store,
-                                     FeatureUseRSqrt,
-                                     FeatureZCZeroingFP]>;
-
-def ProcExynosM2 : SubtargetFeature<"exynosm2", "ARMProcFamily", "ExynosM1",
-                                    "Samsung Exynos-M2 processors",
-                                    [FeatureSlowPaired128,
-                                     FeatureCRC,
-                                     FeatureCrypto,
-                                     FeatureExynosCheapAsMoveHandling,
-                                     FeatureForce32BitJumpTables,
-                                     FeatureFuseAES,
-                                     FeaturePerfMon,
-                                     FeaturePostRAScheduler,
-                                     FeatureSlowMisaligned128Store,
-                                     FeatureZCZeroingFP]>;
 
 def ProcExynosM3 : SubtargetFeature<"exynosm3", "ARMProcFamily", "ExynosM3",
                                     "Samsung Exynos-M3 processors",
@@ -811,8 +788,6 @@ def : ProcessorModel<"cortex-a76ae", CortexA57Model, [ProcA76]>;
 def : ProcessorModel<"neoverse-e1", CortexA53Model, [ProcNeoverseE1]>;
 def : ProcessorModel<"neoverse-n1", CortexA57Model, [ProcNeoverseN1]>;
 def : ProcessorModel<"cyclone", CycloneModel, [ProcCyclone]>;
-def : ProcessorModel<"exynos-m1", ExynosM1Model, [ProcExynosM1]>;
-def : ProcessorModel<"exynos-m2", ExynosM1Model, [ProcExynosM2]>;
 def : ProcessorModel<"exynos-m3", ExynosM3Model, [ProcExynosM3]>;
 def : ProcessorModel<"exynos-m4", ExynosM4Model, [ProcExynosM4]>;
 def : ProcessorModel<"exynos-m5", ExynosM4Model, [ProcExynosM4]>;

@@ -139,17 +139,12 @@ static const char *const DbgTimerDescription = "Debug Info Emission";
 static const char *const EHTimerName = "write_exception";
 static const char *const EHTimerDescription = "DWARF Exception Writer";
 static const char *const CFGuardName = "Control Flow Guard";
-static const char *const CFGuardDescription = "Control Flow Guard Tables";
+static const char *const CFGuardDescription = "Control Flow Guard";
 static const char *const CodeViewLineTablesGroupName = "linetables";
 static const char *const CodeViewLineTablesGroupDescription =
   "CodeView Line Tables";
 
 STATISTIC(EmittedInsts, "Number of machine instrs printed");
-
-static cl::opt<bool> EnableRemarksSection(
-    "remarks-section",
-    cl::desc("Emit a section containing remark diagnostics metadata"),
-    cl::init(false));
 
 char AsmPrinter::ID = 0;
 
@@ -250,13 +245,14 @@ const MCSection *AsmPrinter::getCurrentSection() const {
 void AsmPrinter::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   MachineFunctionPass::getAnalysisUsage(AU);
-  AU.addRequired<MachineModuleInfo>();
+  AU.addRequired<MachineModuleInfoWrapperPass>();
   AU.addRequired<MachineOptimizationRemarkEmitterPass>();
   AU.addRequired<GCModuleInfo>();
 }
 
 bool AsmPrinter::doInitialization(Module &M) {
-  MMI = getAnalysisIfAvailable<MachineModuleInfo>();
+  auto *MMIWP = getAnalysisIfAvailable<MachineModuleInfoWrapperPass>();
+  MMI = MMIWP ? &MMIWP->getMMI() : nullptr;
 
   // Initialize TargetLoweringObjectFile.
   const_cast<TargetLoweringObjectFile&>(getObjFileLowering())
@@ -380,12 +376,12 @@ bool AsmPrinter::doInitialization(Module &M) {
                           EHTimerDescription, DWARFGroupName,
                           DWARFGroupDescription);
 
+  // Emit tables for any value of cfguard flag (i.e. cfguard=1 or cfguard=2).
   if (mdconst::extract_or_null<ConstantInt>(
-          MMI->getModule()->getModuleFlag("cfguardtable")))
+          MMI->getModule()->getModuleFlag("cfguard")))
     Handlers.emplace_back(std::make_unique<WinCFGuard>(this), CFGuardName,
                           CFGuardDescription, DWARFGroupName,
                           DWARFGroupDescription);
-
   return false;
 }
 
@@ -941,7 +937,7 @@ AsmPrinter::CFIMoveType AsmPrinter::needsCFIMoves() const {
       MF->getFunction().needsUnwindTableEntry())
     return CFI_M_EH;
 
-  if (MMI->hasDebugInfo())
+  if (MMI->hasDebugInfo() || MF->getTarget().Options.ForceDwarfFrameSection)
     return CFI_M_Debug;
 
   return CFI_M_None;
@@ -1056,8 +1052,14 @@ void AsmPrinter::EmitFunctionBody() {
   bool HasAnyRealCode = false;
   int NumInstsInFunction = 0;
   bool emitBasicBlockSections = MF->getBasicBlockSections();
-  if (emitBasicBlockSections)
+  MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
+  if (emitBasicBlockSections) {
     MF->sortBasicBlockSections();
+    EndOfRegularSectionMBB =
+        const_cast<MachineBasicBlock *>(MF->front().getSectionEndMBB());
+    assert(EndOfRegularSectionMBB->isEndSection() &&
+           "The MBB at the end of the regular section must end a section");
+  }
 
   for (auto &MBB : *MF) {
     // Print a label for the basic block.
@@ -1138,7 +1140,8 @@ void AsmPrinter::EmitFunctionBody() {
         }
       }
     }
-    if (MF->getBasicBlockLabels() || MBB.isUniqueSection()) {
+    if (!MBB.pred_empty() && &MBB != EndOfRegularSectionMBB &&
+        (MF->getBasicBlockLabels() || MBB.isEndSection())) {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
       MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
@@ -1201,7 +1204,7 @@ void AsmPrinter::EmitFunctionBody() {
   EmitFunctionBodyEnd();
 
   if (needFuncLabelsForEHOrDebugInfo(*MF, MMI) ||
-      MAI->hasDotTypeDotSizeDirective()) {
+      MAI->hasDotTypeDotSizeDirective() || emitBasicBlockSections) {
     // Create a symbol for the end of function.
     CurrentFnEnd = createTempSymbol("func_end");
     OutStreamer->EmitLabel(CurrentFnEnd);
@@ -1223,6 +1226,9 @@ void AsmPrinter::EmitFunctionBody() {
                        HI.TimerGroupDescription, TimePassesIsEnabled);
     HI.Handler->markFunctionEnd();
   }
+
+  if (emitBasicBlockSections)
+    EndOfRegularSectionMBB->setEndMCSymbol(CurrentFnEnd);
 
   // Print out jump tables referenced by the function.
   EmitJumpTableInfo();
@@ -1376,14 +1382,14 @@ void AsmPrinter::emitGlobalIndirectSymbol(Module &M,
   }
 }
 
-void AsmPrinter::emitRemarksSection(Module &M) {
-  RemarkStreamer *RS = M.getContext().getRemarkStreamer();
-  if (!RS)
+void AsmPrinter::emitRemarksSection(RemarkStreamer &RS) {
+  if (!RS.needsSection())
     return;
-  remarks::RemarkSerializer &RemarkSerializer = RS->getSerializer();
+
+  remarks::RemarkSerializer &RemarkSerializer = RS.getSerializer();
 
   Optional<SmallString<128>> Filename;
-  if (Optional<StringRef> FilenameRef = RS->getFilename()) {
+  if (Optional<StringRef> FilenameRef = RS.getFilename()) {
     Filename = *FilenameRef;
     sys::fs::make_absolute(*Filename);
     assert(!Filename->empty() && "The filename can't be empty.");
@@ -1396,7 +1402,7 @@ void AsmPrinter::emitRemarksSection(Module &M) {
                : RemarkSerializer.metaSerializer(OS);
   MetaSerializer->emit();
 
-  // Switch to the right section: .remarks/__remarks.
+  // Switch to the remarks section.
   MCSection *RemarksSection =
       OutContext.getObjectFileInfo()->getRemarksSection();
   OutStreamer->SwitchSection(RemarksSection);
@@ -1438,8 +1444,8 @@ bool AsmPrinter::doFinalization(Module &M) {
   // Emit the remarks section contents.
   // FIXME: Figure out when is the safest time to emit this section. It should
   // not come after debug info.
-  if (EnableRemarksSection)
-    emitRemarksSection(M);
+  if (RemarkStreamer *RS = M.getContext().getRemarkStreamer())
+    emitRemarksSection(*RS);
 
   const TargetLoweringObjectFile &TLOF = getObjFileLowering();
 
@@ -1513,8 +1519,6 @@ bool AsmPrinter::doFinalization(Module &M) {
       OutStreamer->EmitSymbolAttribute(getSymbol(&GO), MCSA_WeakReference);
     }
   }
-
-  OutStreamer->AddBlankLine();
 
   // Print aliases in topological order, that is, for each alias a = b,
   // b must be printed before a.
@@ -2495,6 +2499,7 @@ static void emitGlobalConstantStruct(const DataLayout &DL,
 }
 
 static void emitGlobalConstantFP(APFloat APF, Type *ET, AsmPrinter &AP) {
+  assert(ET && "Unknown float type");
   APInt API = APF.bitcastToAPInt();
 
   // First print a comment with what we think the original floating-point value
@@ -2502,11 +2507,7 @@ static void emitGlobalConstantFP(APFloat APF, Type *ET, AsmPrinter &AP) {
   if (AP.isVerbose()) {
     SmallString<8> StrVal;
     APF.toString(StrVal);
-
-    if (ET)
-      ET->print(AP.OutStreamer->GetCommentOS());
-    else
-      AP.OutStreamer->GetCommentOS() << "Printing <null> Type";
+    ET->print(AP.OutStreamer->GetCommentOS());
     AP.OutStreamer->GetCommentOS() << ' ' << StrVal << '\n';
   }
 
@@ -3008,18 +3009,30 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     if (isVerbose() && MBB.hasLabelMustBeEmitted()) {
       OutStreamer->AddComment("Label of block must be emitted");
     }
-    // For -fbasicblock-sections, switch to another section.
-    if (MBB.isUniqueSection()) {
+    // With -fbasicblock-sections, a basic block can start a new section.
+    if (MBB.isExceptionSection()) {
+      OutStreamer->SwitchSection(MF->getSection());
+    } else if (MBB.isColdSection()) {
+      // Create the cold section here.
+      OutStreamer->SwitchSection(
+          getObjFileLowering().getColdSectionForMachineBasicBlock(
+              MF->getFunction(), MBB, TM));
+    } else if (MBB.isBeginSection() && MBB.isEndSection()) {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
                                                               MBB, TM));
     } else if (BasicBlockSections) {
       OutStreamer->SwitchSection(MF->getSection());
     }
+    if (emitBBLabels) {
+      const Function &F = MF->getFunction();
+      if (F.hasWeakLinkage())
+        EmitLinkage(&F, MBB.getSymbol());
+    }
     OutStreamer->EmitLabel(MBB.getSymbol());
     // With BasicBlockSections, each Basic Block must handle CFI information on
     // its own.
-    if (MBB.isUniqueSection()) {
+    if (MBB.isBeginSection()) {
       for (const HandlerInfo &HI : Handlers) {
         HI.Handler->beginBasicBlock(MBB);
       }
@@ -3033,13 +3046,9 @@ void AsmPrinter::EmitBasicBlockEnd(const MachineBasicBlock &MBB) {
   OutStreamer->EmitCodePaddingBasicBlockEnd(Context);
   // Check if CFI information needs to be updated for this MBB with basic block
   // sections.
-  if (MF->getBasicBlockSections()) {
-    auto I = std::next(MBB.getIterator());
-    const MachineBasicBlock *nextBB = (I != MF->end()) ? &*I : nullptr;
-    if (MBB.isUniqueSection() || !nextBB || nextBB->isUniqueSection()) {
-      for (const HandlerInfo &HI : Handlers) {
-        HI.Handler->endBasicBlock(MBB);
-      }
+  if (MF->getBasicBlockSections() && MBB.isEndSection()) {
+    for (const HandlerInfo &HI : Handlers) {
+      HI.Handler->endBasicBlock(MBB);
     }
   }
 }
@@ -3071,7 +3080,7 @@ void AsmPrinter::EmitVisibility(MCSymbol *Sym, unsigned Visibility,
 bool AsmPrinter::
 isBlockOnlyReachableByFallthrough(const MachineBasicBlock *MBB) const {
   // With BasicBlock Sections, no block is a fall through.
-  if (MBB->isUniqueSection())
+  if (MBB->isBeginSection())
     return false;
 
   // If this is a landing pad, it isn't a fall through.  If it has no preds,

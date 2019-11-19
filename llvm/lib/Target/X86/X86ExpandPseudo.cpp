@@ -41,11 +41,11 @@ public:
     MachineFunctionPass::getAnalysisUsage(AU);
   }
 
-  const X86Subtarget *STI;
-  const X86InstrInfo *TII;
-  const X86RegisterInfo *TRI;
-  const X86MachineFunctionInfo *X86FI;
-  const X86FrameLowering *X86FL;
+  const X86Subtarget *STI = nullptr;
+  const X86InstrInfo *TII = nullptr;
+  const X86RegisterInfo *TRI = nullptr;
+  const X86MachineFunctionInfo *X86FI = nullptr;
+  const X86FrameLowering *X86FL = nullptr;
 
   bool runOnMachineFunction(MachineFunction &Fn) override;
 
@@ -275,7 +275,7 @@ bool X86ExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
 
     MachineInstr &NewMI = *std::prev(MBBI);
     NewMI.copyImplicitOps(*MBBI->getParent()->getParent(), *MBBI);
-    MBB.getParent()->updateCallSiteInfo(&*MBBI, &NewMI);
+    MBB.getParent()->moveCallSiteInfo(&*MBBI, &NewMI);
 
     // Delete the pseudo instruction TCRETURN.
     MBB.erase(MBBI);

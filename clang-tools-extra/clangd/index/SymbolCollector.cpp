@@ -263,10 +263,6 @@ bool SymbolCollector::handleDeclOccurence(
        Decl::FriendObjectKind::FOK_None) &&
       !(Roles & static_cast<unsigned>(index::SymbolRole::Definition)))
     return true;
-  // Skip non-semantic references, we should start processing these when we
-  // decide to implement renaming with index support.
-  if ((Roles & static_cast<unsigned>(index::SymbolRole::NameReference)))
-    return true;
   // A declaration created for a friend declaration should not be used as the
   // canonical declaration in the index. Use OrigD instead, unless we've already
   // picked a replacement for D
@@ -308,7 +304,8 @@ bool SymbolCollector::handleDeclOccurence(
   // it's main-file only.
   bool IsMainFileOnly =
       SM.isWrittenInMainFile(SM.getExpansionLoc(ND->getBeginLoc())) &&
-      !ASTCtx->getLangOpts().IsHeaderFile;
+      !isHeaderFile(SM.getFileEntryForID(SM.getMainFileID())->getName(),
+                    ASTCtx->getLangOpts());
   // In C, printf is a redecl of an implicit builtin! So check OrigD instead.
   if (ASTNode.OrigD->isImplicit() ||
       !shouldCollectSymbol(*ND, *ASTCtx, Opts, IsMainFileOnly))
@@ -381,7 +378,7 @@ bool SymbolCollector::handleMacroOccurence(const IdentifierInfo *Name,
         Roles & static_cast<unsigned>(index::SymbolRole::Definition)))
     return true;
 
-  auto ID = getSymbolID(*Name, MI, SM);
+  auto ID = getSymbolID(Name->getName(), MI, SM);
   if (!ID)
     return true;
 
@@ -445,8 +442,7 @@ void SymbolCollector::processRelations(
     //       in the index and find nothing, but that's a situation they
     //       probably need to handle for other reasons anyways.
     // We currently do (B) because it's simpler.
-    this->Relations.insert(
-        Relation{ID, index::SymbolRole::RelationBaseOf, *ObjectID});
+    this->Relations.insert(Relation{ID, RelationKind::BaseOf, *ObjectID});
   }
 }
 
@@ -478,14 +474,14 @@ void SymbolCollector::finish() {
     // First, drop header guards. We can't identify these until EOF.
     for (const IdentifierInfo *II : IndexedMacros) {
       if (const auto *MI = PP->getMacroDefinition(II).getMacroInfo())
-        if (auto ID = getSymbolID(*II, MI, PP->getSourceManager()))
+        if (auto ID = getSymbolID(II->getName(), MI, PP->getSourceManager()))
           if (MI->isUsedForHeaderGuard())
             Symbols.erase(*ID);
     }
     // Now increment refcounts.
     for (const IdentifierInfo *II : ReferencedMacros) {
       if (const auto *MI = PP->getMacroDefinition(II).getMacroInfo())
-        if (auto ID = getSymbolID(*II, MI, PP->getSourceManager()))
+        if (auto ID = getSymbolID(II->getName(), MI, PP->getSourceManager()))
           IncRef(*ID);
     }
   }

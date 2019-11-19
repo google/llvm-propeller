@@ -23,7 +23,6 @@
 #include "lldb/Target/UnixSignals.h"
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/DataBufferHeap.h"
-#include "lldb/Utility/JSON.h"
 #include "lldb/Utility/LLDBAssert.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/State.h"
@@ -35,14 +34,15 @@
 #include "lldb/Utility/StringExtractorGDBRemote.h"
 
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/JSON.h"
 
 #if defined(HAVE_LIBCOMPRESSION)
 #include <compression.h>
 #endif
 
 using namespace lldb;
-using namespace lldb_private;
 using namespace lldb_private::process_gdb_remote;
+using namespace lldb_private;
 using namespace std::chrono;
 
 // GDBRemoteCommunicationClient constructor
@@ -339,7 +339,7 @@ void GDBRemoteCommunicationClient::GetRemoteQSupported() {
                                   // not, we assume no limit
 
   // build the qSupported packet
-  std::vector<std::string> features = {"xmlRegisters=i386,arm,mips"};
+  std::vector<std::string> features = {"xmlRegisters=i386,arm,mips,arc"};
   StreamString packet;
   packet.PutCString("qSupported");
   for (uint32_t i = 0; i < features.size(); ++i) {
@@ -543,19 +543,22 @@ GDBRemoteCommunicationClient::SendThreadSpecificPacketAndWaitForResponse(
 //
 // Takes a valid thread ID because p needs to apply to a thread.
 bool GDBRemoteCommunicationClient::GetpPacketSupported(lldb::tid_t tid) {
-  if (m_supports_p == eLazyBoolCalculate) {
-    m_supports_p = eLazyBoolNo;
-    StreamString payload;
-    payload.PutCString("p0");
-    StringExtractorGDBRemote response;
-    if (SendThreadSpecificPacketAndWaitForResponse(tid, std::move(payload),
-                                                   response, false) ==
-            PacketResult::Success &&
-        response.IsNormalResponse()) {
-      m_supports_p = eLazyBoolYes;
-    }
-  }
+  if (m_supports_p == eLazyBoolCalculate)
+    m_supports_p = GetThreadPacketSupported(tid, "p0");
   return m_supports_p;
+}
+
+LazyBool GDBRemoteCommunicationClient::GetThreadPacketSupported(
+    lldb::tid_t tid, llvm::StringRef packetStr) {
+  StreamString payload;
+  payload.PutCString(packetStr);
+  StringExtractorGDBRemote response;
+  if (SendThreadSpecificPacketAndWaitForResponse(
+          tid, std::move(payload), response, false) == PacketResult::Success &&
+      response.IsNormalResponse()) {
+    return eLazyBoolYes;
+  }
+  return eLazyBoolNo;
 }
 
 StructuredData::ObjectSP GDBRemoteCommunicationClient::GetThreadsInfo() {
@@ -1271,6 +1274,7 @@ bool GDBRemoteCommunicationClient::GetHostInfo(bool force) {
                 host_triple.getOS() == llvm::Triple::Darwin) {
               switch (m_host_arch.GetMachine()) {
               case llvm::Triple::aarch64:
+              case llvm::Triple::aarch64_32:
               case llvm::Triple::arm:
               case llvm::Triple::thumb:
                 host_triple.setOS(llvm::Triple::IOS);
@@ -1906,7 +1910,7 @@ bool GDBRemoteCommunicationClient::DecodeProcessInfoResponse(
       } else if (name.equals("euid")) {
         uint32_t uid = UINT32_MAX;
         value.getAsInteger(0, uid);
-        process_info.SetEffectiveGroupID(uid);
+        process_info.SetEffectiveUserID(uid);
       } else if (name.equals("gid")) {
         uint32_t gid = UINT32_MAX;
         value.getAsInteger(0, gid);
@@ -1927,6 +1931,26 @@ bool GDBRemoteCommunicationClient::DecodeProcessInfoResponse(
         std::string name;
         extractor.GetHexByteString(name);
         process_info.GetExecutableFile().SetFile(name, FileSpec::Style::native);
+      } else if (name.equals("args")) {
+        llvm::StringRef encoded_args(value), hex_arg;
+
+        bool is_arg0 = true;
+        while (!encoded_args.empty()) {
+          std::tie(hex_arg, encoded_args) = encoded_args.split('-');
+          std::string arg;
+          StringExtractor extractor(hex_arg);
+          if (extractor.GetHexByteString(arg) * 2 != hex_arg.size()) {
+            // In case of wrong encoding, we discard all the arguments
+            process_info.GetArguments().Clear();
+            process_info.SetArg0("");
+            break;
+          }
+          if (is_arg0)
+            process_info.SetArg0(arg);
+          else
+            process_info.GetArguments().AppendArgument(arg);
+          is_arg0 = false;
+        }
       } else if (name.equals("cputype")) {
         value.getAsInteger(0, cpu);
       } else if (name.equals("cpusubtype")) {
@@ -2176,8 +2200,7 @@ uint32_t GDBRemoteCommunicationClient::FindProcesses(
       if (match_info.GetProcessInfo().EffectiveGroupIDIsValid())
         packet.Printf("egid:%u;",
                       match_info.GetProcessInfo().GetEffectiveGroupID());
-      if (match_info.GetProcessInfo().EffectiveGroupIDIsValid())
-        packet.Printf("all_users:%u;", match_info.GetMatchAllUsers() ? 1 : 0);
+      packet.Printf("all_users:%u;", match_info.GetMatchAllUsers() ? 1 : 0);
       if (match_info.GetProcessInfo().GetArchitecture().IsValid()) {
         const ArchSpec &match_arch =
             match_info.GetProcessInfo().GetArchitecture();
@@ -2896,7 +2919,7 @@ static uint64_t ParseHostIOPacketResponse(StringExtractorGDBRemote &response,
 }
 lldb::user_id_t
 GDBRemoteCommunicationClient::OpenFile(const lldb_private::FileSpec &file_spec,
-                                       uint32_t flags, mode_t mode,
+                                       File::OpenOptions flags, mode_t mode,
                                        Status &error) {
   std::string path(file_spec.GetPath(false));
   lldb_private::StreamString stream;
@@ -3163,7 +3186,8 @@ bool GDBRemoteCommunicationClient::AvoidGPackets(ProcessGDBRemote *process) {
       if (arch.IsValid() &&
           arch.GetTriple().getVendor() == llvm::Triple::Apple &&
           arch.GetTriple().getOS() == llvm::Triple::IOS &&
-          arch.GetTriple().getArch() == llvm::Triple::aarch64) {
+          (arch.GetTriple().getArch() == llvm::Triple::aarch64 ||
+           arch.GetTriple().getArch() == llvm::Triple::aarch64_32)) {
         m_avoid_g_packets = eLazyBoolYes;
         uint32_t gdb_server_version = GetGDBServerProgramVersion();
         if (gdb_server_version != 0) {
@@ -3609,21 +3633,21 @@ ParseModuleSpec(StructuredData::Dictionary *dict) {
 llvm::Optional<std::vector<ModuleSpec>>
 GDBRemoteCommunicationClient::GetModulesInfo(
     llvm::ArrayRef<FileSpec> module_file_specs, const llvm::Triple &triple) {
+  namespace json = llvm::json;
+
   if (!m_supports_jModulesInfo)
     return llvm::None;
 
-  JSONArray::SP module_array_sp = std::make_shared<JSONArray>();
+  json::Array module_array;
   for (const FileSpec &module_file_spec : module_file_specs) {
-    JSONObject::SP module_sp = std::make_shared<JSONObject>();
-    module_array_sp->AppendObject(module_sp);
-    module_sp->SetObject(
-        "file", std::make_shared<JSONString>(module_file_spec.GetPath(false)));
-    module_sp->SetObject("triple",
-                         std::make_shared<JSONString>(triple.getTriple()));
+    module_array.push_back(
+        json::Object{{"file", module_file_spec.GetPath(false)},
+                     {"triple", triple.getTriple()}});
   }
   StreamString unescaped_payload;
   unescaped_payload.PutCString("jModulesInfo:");
-  module_array_sp->Write(unescaped_payload);
+  unescaped_payload.AsRawOstream() << std::move(module_array);
+
   StreamGDBRemote payload;
   payload.PutEscapedBytes(unescaped_payload.GetString().data(),
                           unescaped_payload.GetSize());
@@ -3813,8 +3837,9 @@ void GDBRemoteCommunicationClient::ServeSymbolLookups(
 
               addr_t symbol_load_addr = LLDB_INVALID_ADDRESS;
               lldb_private::SymbolContextList sc_list;
-              if (process->GetTarget().GetImages().FindSymbolsWithNameAndType(
-                      ConstString(symbol_name), eSymbolTypeAny, sc_list)) {
+              process->GetTarget().GetImages().FindSymbolsWithNameAndType(
+                  ConstString(symbol_name), eSymbolTypeAny, sc_list);
+              if (!sc_list.IsEmpty()) {
                 const size_t num_scs = sc_list.GetSize();
                 for (size_t sc_idx = 0;
                      sc_idx < num_scs &&

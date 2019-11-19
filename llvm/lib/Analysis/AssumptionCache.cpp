@@ -23,6 +23,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/PatternMatch.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -130,7 +131,10 @@ void AssumptionCache::unregisterAssumption(CallInst *CI) {
     if (AVI != AffectedValues.end())
       AffectedValues.erase(AVI);
   }
-  remove_if(AssumeHandles, [CI](WeakTrackingVH &VH) { return CI == VH; });
+
+  AssumeHandles.erase(
+      remove_if(AssumeHandles, [CI](WeakTrackingVH &VH) { return CI == VH; }),
+      AssumeHandles.end());
 }
 
 void AssumptionCache::AffectedValueCallbackVH::deleted() {

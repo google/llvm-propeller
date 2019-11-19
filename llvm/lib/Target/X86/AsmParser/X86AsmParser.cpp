@@ -1112,9 +1112,10 @@ bool X86AsmParser::ParseRegister(unsigned &RegNo,
   if (RegNo == 0)
     RegNo = MatchRegisterName(Tok.getString().lower());
 
-  // The "flags" register cannot be referenced directly.
+  // The "flags" and "mxcsr" registers cannot be referenced directly.
   // Treat it as an identifier instead.
-  if (isParsingInlineAsm() && isParsingIntelSyntax() && RegNo == X86::EFLAGS)
+  if (isParsingInlineAsm() && isParsingIntelSyntax() &&
+      (RegNo == X86::EFLAGS || RegNo == X86::MXCSR))
     RegNo = 0;
 
   if (!is64BitMode()) {
@@ -3749,11 +3750,10 @@ bool X86AsmParser::parseSEHRegisterNumber(unsigned RegClassID,
   SMLoc startLoc = getLexer().getLoc();
   const MCRegisterInfo *MRI = getContext().getRegisterInfo();
 
-  // A percent indicates a symbolic register name. Parse it as usual and check
-  // the register class.
-  if (getLexer().is(AsmToken::Percent)) {
+  // Try parsing the argument as a register first.
+  if (getLexer().getTok().isNot(AsmToken::Integer)) {
     SMLoc endLoc;
-    if (getParser().getTargetParser().ParseRegister(RegNo, startLoc, endLoc))
+    if (ParseRegister(RegNo, startLoc, endLoc))
       return true;
 
     if (!X86MCRegisterClasses[RegClassID].contains(RegNo)) {

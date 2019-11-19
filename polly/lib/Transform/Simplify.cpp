@@ -18,6 +18,7 @@
 #include "polly/Support/ISLTools.h"
 #include "polly/Support/VirtualInstruction.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
 #define DEBUG_TYPE "polly-simplify"
 
@@ -28,8 +29,8 @@ namespace {
 
 #define TWO_STATISTICS(VARNAME, DESC)                                          \
   static llvm::Statistic VARNAME[2] = {                                        \
-      {DEBUG_TYPE, #VARNAME "0", DESC " (first)", {0}, {false}},               \
-      {DEBUG_TYPE, #VARNAME "1", DESC " (second)", {0}, {false}}}
+      {DEBUG_TYPE, #VARNAME "0", DESC " (first)"},                             \
+      {DEBUG_TYPE, #VARNAME "1", DESC " (second)"}}
 
 /// Number of max disjuncts we allow in removeOverwrites(). This is to avoid
 /// that the analysis of accesses in a statement is becoming too complex. Chosen

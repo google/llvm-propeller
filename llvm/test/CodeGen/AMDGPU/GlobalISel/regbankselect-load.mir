@@ -68,6 +68,9 @@
   define amdgpu_kernel void @load_constant_i32_uniform_align4() {ret void}
   define amdgpu_kernel void @load_constant_i32_uniform_align2() {ret void}
   define amdgpu_kernel void @load_constant_i32_uniform_align1() {ret void}
+  define amdgpu_kernel void @load_private_uniform_sgpr_i32() {ret void}
+  define amdgpu_kernel void @load_constant_v8i32_vgpr_crash() { ret void }
+  define amdgpu_kernel void @load_constant_v8i32_vgpr_crash_loop_phi() { ret void }
 
   declare i32 @llvm.amdgcn.workitem.id.x() #0
   attributes #0 = { nounwind readnone }
@@ -84,7 +87,7 @@ body: |
     ; CHECK: [[PTR:%[0-9]+]]:sgpr(p1) = COPY $sgpr0_sgpr1
     ; CHECK: [[LOAD0:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[PTR]](p1) :: (load 16 from %ir.global.not.uniform.v8i32, align 32, addrspace 1)
     ; CHECK: [[OFFSET16:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 16
-    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p1) = G_GEP [[PTR]], [[OFFSET16]](s64)
+    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p1) = G_PTR_ADD [[PTR]], [[OFFSET16]](s64)
     ; CHECK: [[LOAD16:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[GEP16]](p1) :: (load 16 from %ir.global.not.uniform.v8i32 + 16, align 32, addrspace 1)
     ; CHECK: [[LOAD:%[0-9]+]]:vgpr(<8 x s32>) = G_CONCAT_VECTORS [[LOAD0]](<4 x s32>), [[LOAD16]](<4 x s32>)
     ; CHECK: [[IDX0:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
@@ -118,7 +121,7 @@ body: |
     ; CHECK: [[PTR:%[0-9]+]]:sgpr(p1) = COPY $sgpr0_sgpr1
     ; CHECK: [[LOAD0:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[PTR]](p1) :: (load 16 from %ir.global.not.uniform.v4i64, align 32, addrspace 1)
     ; CHECK: [[OFFSET16:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 16
-    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p1) = G_GEP [[PTR]], [[OFFSET16]](s64)
+    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p1) = G_PTR_ADD [[PTR]], [[OFFSET16]](s64)
     ; CHECK: [[LOAD16:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[GEP16]](p1) :: (load 16 from %ir.global.not.uniform.v4i64 + 16, align 32, addrspace 1)
     ; CHECK: [[LOAD:%[0-9]+]]:vgpr(<4 x s64>) = G_CONCAT_VECTORS [[LOAD0]](<2 x s64>), [[LOAD16]](<2 x s64>)
     ; CHECK: [[IDX0:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
@@ -146,13 +149,13 @@ body: |
     ; CHECK: [[PTR:%[0-9]+]]:sgpr(p1) = COPY $sgpr0_sgpr1
     ; CHECK: [[LOAD0:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[PTR]](p1) :: (load 16 from %ir.global.not.uniform.v16i32, align 64, addrspace 1)
     ; CHECK: [[OFFSET16:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 16
-    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p1) = G_GEP [[PTR]], [[OFFSET16]](s64)
+    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p1) = G_PTR_ADD [[PTR]], [[OFFSET16]](s64)
     ; CHECK: [[LOAD16:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[GEP16]](p1) :: (load 16 from %ir.global.not.uniform.v16i32 + 16, align 64, addrspace 1)
     ; CHECK: [[OFFSET32:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 32
-    ; CHECK: [[GEP32:%[0-9]+]]:vgpr(p1) = G_GEP [[PTR]], [[OFFSET32]](s64)
+    ; CHECK: [[GEP32:%[0-9]+]]:vgpr(p1) = G_PTR_ADD [[PTR]], [[OFFSET32]](s64)
     ; CHECK: [[LOAD32:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[GEP32]](p1) :: (load 16 from %ir.global.not.uniform.v16i32 + 32, align 64, addrspace 1)
     ; CHECK: [[OFFSET48:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 48
-    ; CHECK: [[GEP48:%[0-9]+]]:vgpr(p1) = G_GEP [[PTR]], [[OFFSET48]](s64)
+    ; CHECK: [[GEP48:%[0-9]+]]:vgpr(p1) = G_PTR_ADD [[PTR]], [[OFFSET48]](s64)
     ; CHECK: [[LOAD48:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[GEP48]](p1) :: (load 16 from %ir.global.not.uniform.v16i32 + 48, align 64, addrspace 1)
     ; CHECK: [[LOAD:%[0-9]+]]:vgpr(<16 x s32>) = G_CONCAT_VECTORS [[LOAD0]](<4 x s32>), [[LOAD16]](<4 x s32>), [[LOAD32]](<4 x s32>), [[LOAD48]](<4 x s32>)
     ; CHECK: [[IDX0:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
@@ -202,13 +205,13 @@ body: |
     ; CHECK: [[PTR:%[0-9]+]]:sgpr(p1) = COPY $sgpr0_sgpr1
     ; CHECK: [[LOAD0:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[PTR]](p1) :: (load 16 from %ir.global.not.uniform.v8i64, align 64, addrspace 1)
     ; CHECK: [[OFFSET16:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 16
-    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p1) = G_GEP [[PTR]], [[OFFSET16]](s64)
+    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p1) = G_PTR_ADD [[PTR]], [[OFFSET16]](s64)
     ; CHECK: [[LOAD16:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[GEP16]](p1) :: (load 16 from %ir.global.not.uniform.v8i64 + 16, align 64, addrspace 1)
     ; CHECK: [[OFFSET32:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 32
-    ; CHECK: [[GEP32:%[0-9]+]]:vgpr(p1) = G_GEP [[PTR]], [[OFFSET32]](s64)
+    ; CHECK: [[GEP32:%[0-9]+]]:vgpr(p1) = G_PTR_ADD [[PTR]], [[OFFSET32]](s64)
     ; CHECK: [[LOAD32:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[GEP32]](p1) :: (load 16 from %ir.global.not.uniform.v8i64 + 32, align 64, addrspace 1)
     ; CHECK: [[OFFSET48:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 48
-    ; CHECK: [[GEP48:%[0-9]+]]:vgpr(p1) = G_GEP [[PTR]], [[OFFSET48]](s64)
+    ; CHECK: [[GEP48:%[0-9]+]]:vgpr(p1) = G_PTR_ADD [[PTR]], [[OFFSET48]](s64)
     ; CHECK: [[LOAD48:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[GEP48]](p1) :: (load 16 from %ir.global.not.uniform.v8i64 + 48, align 64, addrspace 1)
     ; CHECK: [[LOAD:%[0-9]+]]:vgpr(<8 x s64>) = G_CONCAT_VECTORS [[LOAD0]](<2 x s64>), [[LOAD16]](<2 x s64>), [[LOAD32]](<2 x s64>), [[LOAD48]](<2 x s64>)
     ; CHECK: [[IDX0:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
@@ -295,7 +298,7 @@ body: |
     ; CHECK: [[PTR:%[0-9]+]]:sgpr(p4) = COPY $sgpr0_sgpr1
     ; CHECK: [[LOAD0:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[PTR]](p4) :: (load 16 from %ir.constant.not.uniform.v8i32, align 32, addrspace 4)
     ; CHECK: [[OFFSET16:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 16
-    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p4) = G_GEP [[PTR]], [[OFFSET16]](s64)
+    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p4) = G_PTR_ADD [[PTR]], [[OFFSET16]](s64)
     ; CHECK: [[LOAD16:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[GEP16]](p4) :: (load 16 from %ir.constant.not.uniform.v8i32 + 16, align 32, addrspace 4)
     ; CHECK: [[LOAD:%[0-9]+]]:vgpr(<8 x s32>) = G_CONCAT_VECTORS [[LOAD0]](<4 x s32>), [[LOAD16]](<4 x s32>)
     ; CHECK: [[IDX0:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
@@ -330,7 +333,7 @@ body: |
     ; CHECK: [[PTR:%[0-9]+]]:sgpr(p4) = COPY $sgpr0_sgpr1
     ; CHECK: [[LOAD0:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[PTR]](p4) :: (load 16 from %ir.constant.not.uniform.v4i64, align 32, addrspace 4)
     ; CHECK: [[OFFSET16:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 16
-    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p4) = G_GEP [[PTR]], [[OFFSET16]](s64)
+    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p4) = G_PTR_ADD [[PTR]], [[OFFSET16]](s64)
     ; CHECK: [[LOAD16:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[GEP16]](p4) :: (load 16 from %ir.constant.not.uniform.v4i64 + 16, align 32, addrspace 4)
     ; CHECK: [[LOAD:%[0-9]+]]:vgpr(<4 x s64>) = G_CONCAT_VECTORS [[LOAD0]](<2 x s64>), [[LOAD16]](<2 x s64>)
     ; CHECK: [[IDX0:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
@@ -357,13 +360,13 @@ body: |
     ; CHECK: [[PTR:%[0-9]+]]:sgpr(p4) = COPY $sgpr0_sgpr1
     ; CHECK: [[LOAD0:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[PTR]](p4) :: (load 16 from %ir.constant.not.uniform.v16i32, align 64, addrspace 4)
     ; CHECK: [[OFFSET16:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 16
-    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p4) = G_GEP [[PTR]], [[OFFSET16]](s64)
+    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p4) = G_PTR_ADD [[PTR]], [[OFFSET16]](s64)
     ; CHECK: [[LOAD16:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[GEP16]](p4) :: (load 16 from %ir.constant.not.uniform.v16i32 + 16, align 64, addrspace 4)
     ; CHECK: [[OFFSET32:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 32
-    ; CHECK: [[GEP32:%[0-9]+]]:vgpr(p4) = G_GEP [[PTR]], [[OFFSET32]](s64)
+    ; CHECK: [[GEP32:%[0-9]+]]:vgpr(p4) = G_PTR_ADD [[PTR]], [[OFFSET32]](s64)
     ; CHECK: [[LOAD32:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[GEP32]](p4) :: (load 16 from %ir.constant.not.uniform.v16i32 + 32, align 64, addrspace 4)
     ; CHECK: [[OFFSET48:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 48
-    ; CHECK: [[GEP48:%[0-9]+]]:vgpr(p4) = G_GEP [[PTR]], [[OFFSET48]](s64)
+    ; CHECK: [[GEP48:%[0-9]+]]:vgpr(p4) = G_PTR_ADD [[PTR]], [[OFFSET48]](s64)
     ; CHECK: [[LOAD48:%[0-9]+]]:vgpr(<4 x s32>) = G_LOAD [[GEP48]](p4) :: (load 16 from %ir.constant.not.uniform.v16i32 + 48, align 64, addrspace 4)
     ; CHECK: [[LOAD:%[0-9]+]]:vgpr(<16 x s32>) = G_CONCAT_VECTORS [[LOAD0]](<4 x s32>), [[LOAD16]](<4 x s32>), [[LOAD32]](<4 x s32>), [[LOAD48]](<4 x s32>)
     ; CHECK: [[IDX0:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
@@ -414,13 +417,13 @@ body: |
     ; CHECK: [[PTR:%[0-9]+]]:sgpr(p4) = COPY $sgpr0_sgpr1
     ; CHECK: [[LOAD0:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[PTR]](p4) :: (load 16 from %ir.constant.not.uniform.v8i64, align 64, addrspace 4)
     ; CHECK: [[OFFSET16:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 16
-    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p4) = G_GEP [[PTR]], [[OFFSET16]](s64)
+    ; CHECK: [[GEP16:%[0-9]+]]:vgpr(p4) = G_PTR_ADD [[PTR]], [[OFFSET16]](s64)
     ; CHECK: [[LOAD16:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[GEP16]](p4) :: (load 16 from %ir.constant.not.uniform.v8i64 + 16, align 64, addrspace 4)
     ; CHECK: [[OFFSET32:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 32
-    ; CHECK: [[GEP32:%[0-9]+]]:vgpr(p4) = G_GEP [[PTR]], [[OFFSET32]](s64)
+    ; CHECK: [[GEP32:%[0-9]+]]:vgpr(p4) = G_PTR_ADD [[PTR]], [[OFFSET32]](s64)
     ; CHECK: [[LOAD32:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[GEP32]](p4) :: (load 16 from %ir.constant.not.uniform.v8i64 + 32, align 64, addrspace 4)
     ; CHECK: [[OFFSET48:%[0-9]+]]:vgpr(s64) = G_CONSTANT i64 48
-    ; CHECK: [[GEP48:%[0-9]+]]:vgpr(p4) = G_GEP [[PTR]], [[OFFSET48]](s64)
+    ; CHECK: [[GEP48:%[0-9]+]]:vgpr(p4) = G_PTR_ADD [[PTR]], [[OFFSET48]](s64)
     ; CHECK: [[LOAD48:%[0-9]+]]:vgpr(<2 x s64>) = G_LOAD [[GEP48]](p4) :: (load 16 from %ir.constant.not.uniform.v8i64 + 48, align 64, addrspace 4)
     ; CHECK: [[LOAD:%[0-9]+]]:vgpr(<8 x s64>) = G_CONCAT_VECTORS [[LOAD0]](<2 x s64>), [[LOAD16]](<2 x s64>), [[LOAD32]](<2 x s64>), [[LOAD48]](<2 x s64>)
     ; CHECK: [[IDX0:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
@@ -634,4 +637,64 @@ body: |
     ; CHECK: %1:vgpr(s32) = G_LOAD %2(p4) :: (load 4, align 1, addrspace 4)
     %0:_(p4) = COPY $sgpr0_sgpr1
     %1:_(s32) = G_LOAD %0 :: (load 4, addrspace 4, align 1)
+...
+
+---
+name: load_private_uniform_sgpr_i32
+legalized: true
+
+body: |
+  bb.0:
+    liveins: $sgpr0
+
+    ; CHECK-LABEL: name: load_private_uniform_sgpr_i32
+    ; CHECK: [[COPY:%[0-9]+]]:sgpr(p5) = COPY $sgpr0
+    ; CHECK: [[COPY1:%[0-9]+]]:vgpr(p5) = COPY [[COPY]](p5)
+    ; CHECK: [[LOAD:%[0-9]+]]:vgpr(s32) = G_LOAD [[COPY1]](p5) :: (load 4, addrspace 5)
+    %0:_(p5) = COPY $sgpr0
+    %1:_(s32) = G_LOAD %0 :: (load 4, addrspace 5, align 4)
+...
+
+---
+name: load_constant_v8i32_vgpr_crash
+legalized: true
+tracksRegLiveness: true
+
+body: |
+  bb.0:
+    liveins: $vgpr0_vgpr1
+
+    ; CHECK-LABEL: name: load_constant_v8i32_vgpr_crash
+    ; CHECK: %0:vgpr(p4) = COPY $vgpr0_vgpr1
+    ; CHECK: vgpr(<4 x s32>) = G_LOAD %0(p4)
+    ; CHECK: vgpr(<4 x s32>) = G_LOAD
+    ; CHECK: G_CONCAT_VECTORS
+    %0:_(p4) = COPY $vgpr0_vgpr1
+    %1:_(<8 x s32>) = G_LOAD %0 :: (load 32, addrspace 4)
+...
+
+---
+name: load_constant_v8i32_vgpr_crash_loop_phi
+legalized: true
+tracksRegLiveness: true
+
+body: |
+  bb.0:
+    liveins: $sgpr0_sgpr1, $sgpr2_sgpr3
+
+    ; CHECK-LABEL: name: load_constant_v8i32_vgpr_crash_loop_phi
+    ; CHECK: G_PHI
+    ; CHECK: vgpr(<4 x s32>) = G_LOAD
+    ; CHECK: vgpr(<4 x s32>) = G_LOAD
+    ; CHECK: G_CONCAT_VECTORS
+
+    %0:_(p4) = COPY $sgpr0_sgpr1
+    %1:_(p4) = COPY $sgpr2_sgpr3
+    G_BR %bb.1
+
+  bb.1:
+    %2:_(p4) = G_PHI %0, %bb.0, %4, %bb.1
+    %3:_(<8 x s32>) = G_LOAD %2 :: (load 32, addrspace 4)
+    %4:_(p4) = COPY %1
+    G_BR %bb.1
 ...

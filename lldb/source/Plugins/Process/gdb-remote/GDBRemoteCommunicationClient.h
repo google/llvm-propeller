@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "lldb/Host/File.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/GDBRemote.h"
 #include "lldb/Utility/StructuredData.h"
@@ -88,7 +89,7 @@ public:
   /// Sends a GDB remote protocol 'A' packet that delivers program
   /// arguments to the remote server.
   ///
-  /// \param[in] argv
+  /// \param[in] launch_info
   ///     A NULL terminated array of const C strings to use as the
   ///     arguments.
   ///
@@ -154,7 +155,7 @@ public:
   /// Sets the path to use for stdin/out/err for a process
   /// that will be launched with the 'A' packet.
   ///
-  /// \param[in] path
+  /// \param[in] file_spec
   ///     The path to use for stdin/out/err
   ///
   /// \return
@@ -350,7 +351,7 @@ public:
   size_t GetCurrentThreadIDs(std::vector<lldb::tid_t> &thread_ids,
                              bool &sequence_mutex_unavailable);
 
-  lldb::user_id_t OpenFile(const FileSpec &file_spec, uint32_t flags,
+  lldb::user_id_t OpenFile(const FileSpec &file_spec, File::OpenOptions flags,
                            mode_t mode, Status &error);
 
   bool CloseFile(lldb::user_id_t fd, Status &error);
@@ -594,6 +595,8 @@ protected:
 
   Status GetQXferMemoryMapRegionInfo(lldb::addr_t addr,
                                      MemoryRegionInfo &region);
+
+  LazyBool GetThreadPacketSupported(lldb::tid_t tid, llvm::StringRef packetStr);
 
 private:
   DISALLOW_COPY_AND_ASSIGN(GDBRemoteCommunicationClient);

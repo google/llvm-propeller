@@ -25,7 +25,7 @@ namespace llvm {
 
 class Function;
 class GlobalValue;
-class MachineModuleInfo;
+class MachineModuleInfoWrapperPass;
 class Mangler;
 class MCAsmInfo;
 class MCContext;
@@ -263,6 +263,11 @@ public:
   }
 
   bool isFunctionInBasicBlockSectionsList(const StringRef &name) const {
+    return Options.BasicBlockSectionsList.find(name) !=
+           Options.BasicBlockSectionsList.end();
+  }
+
+  SmallSet<unsigned, 4> getBasicBlockSectionsSet(const StringRef &name) const {
     return Options.BasicBlockSectionsList.lookup(name);
   }
 
@@ -283,25 +288,17 @@ public:
   /// PassManagerBuilder::addExtension.
   virtual void adjustPassManager(PassManagerBuilder &) {}
 
-  /// These enums are meant to be passed into addPassesToEmitFile to indicate
-  /// what type of file to emit, and returned by it to indicate what type of
-  /// file could actually be made.
-  enum CodeGenFileType {
-    CGFT_AssemblyFile,
-    CGFT_ObjectFile,
-    CGFT_Null         // Do not emit any output.
-  };
-
   /// Add passes to the specified pass manager to get the specified file
   /// emitted.  Typically this will involve several steps of code generation.
   /// This method should return true if emission of this file type is not
   /// supported, or false on success.
-  /// \p MMI is an optional parameter that, if set to non-nullptr,
+  /// \p MMIWP is an optional parameter that, if set to non-nullptr,
   /// will be used to set the MachineModuloInfo for this PM.
-  virtual bool addPassesToEmitFile(PassManagerBase &, raw_pwrite_stream &,
-                                   raw_pwrite_stream *, CodeGenFileType,
-                                   bool /*DisableVerify*/ = true,
-                                   MachineModuleInfo *MMI = nullptr) {
+  virtual bool
+  addPassesToEmitFile(PassManagerBase &, raw_pwrite_stream &,
+                      raw_pwrite_stream *, CodeGenFileType,
+                      bool /*DisableVerify*/ = true,
+                      MachineModuleInfoWrapperPass *MMIWP = nullptr) {
     return true;
   }
 
@@ -353,12 +350,13 @@ public:
 
   /// Add passes to the specified pass manager to get the specified file
   /// emitted.  Typically this will involve several steps of code generation.
-  /// \p MMI is an optional parameter that, if set to non-nullptr,
-  /// will be used to set the MachineModuloInfofor this PM.
-  bool addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
-                           raw_pwrite_stream *DwoOut, CodeGenFileType FileType,
-                           bool DisableVerify = true,
-                           MachineModuleInfo *MMI = nullptr) override;
+  /// \p MMIWP is an optional parameter that, if set to non-nullptr,
+  /// will be used to set the MachineModuloInfo for this PM.
+  bool
+  addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
+                      raw_pwrite_stream *DwoOut, CodeGenFileType FileType,
+                      bool DisableVerify = true,
+                      MachineModuleInfoWrapperPass *MMIWP = nullptr) override;
 
   /// Add passes to the specified pass manager to get machine code emitted with
   /// the MCJIT. This method returns true if machine code is not supported. It
@@ -377,7 +375,7 @@ public:
   /// Adds an AsmPrinter pass to the pipeline that prints assembly or
   /// machine code from the MI representation.
   bool addAsmPrinter(PassManagerBase &PM, raw_pwrite_stream &Out,
-                     raw_pwrite_stream *DwoOut, CodeGenFileType FileTYpe,
+                     raw_pwrite_stream *DwoOut, CodeGenFileType FileType,
                      MCContext &Context);
 
   /// True if the target uses physical regs at Prolog/Epilog insertion

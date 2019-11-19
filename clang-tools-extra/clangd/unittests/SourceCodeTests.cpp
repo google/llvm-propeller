@@ -19,6 +19,7 @@
 #include "llvm/Testing/Support/Error.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <tuple>
 
 namespace clang {
 namespace clangd {
@@ -319,14 +320,29 @@ struct Bar { int func(); };
 Bar* bar;
   )cpp";
   // First ^ is the expected beginning, last is the search position.
-  for (std::string Text : std::vector<std::string>{
+  for (const std::string &Text : std::vector<std::string>{
            "int ^f^oo();", // inside identifier
            "int ^foo();",  // beginning of identifier
            "int ^foo^();", // end of identifier
            "int foo(^);",  // non-identifier
            "^int foo();",  // beginning of file (can't back up)
            "int ^f0^0();", // after a digit (lexing at N-1 is wrong)
-           "int ^λλ^λ();", // UTF-8 handled properly when backing up
+           "/^/ comments", // non-interesting token
+           "void f(int abc) { abc ^ ++; }",    // whitespace
+           "void f(int abc) { ^abc^++; }",     // range of identifier
+           "void f(int abc) { ++^abc^; }",     // range of identifier
+           "void f(int abc) { ++^abc; }",      // range of identifier
+           "void f(int abc) { ^+^+abc; }",     // range of operator
+           "void f(int abc) { ^abc^ ++; }",    // range of identifier
+           "void f(int abc) { abc ^++^; }",    // range of operator
+           "void f(int abc) { ^++^ abc; }",    // range of operator
+           "void f(int abc) { ++ ^abc^; }",    // range of identifier
+           "void f(int abc) { ^++^/**/abc; }", // range of operator
+           "void f(int abc) { ++/**/^abc; }",  // range of identifier
+           "void f(int abc) { ^abc^/**/++; }", // range of identifier
+           "void f(int abc) { abc/**/^++; }",  // range of operator
+           "void f() {^ }", // outside of identifier and operator
+           "int ^λλ^λ();",  // UTF-8 handled properly when backing up
 
            // identifier in macro arg
            "MACRO(bar->^func())",  // beginning of identifier
@@ -601,6 +617,112 @@ $foo^#include "foo.inc"
   FileID Bar = SM.getFileID(findDecl(AST, "bar").getLocation());
   EXPECT_EQ(SM.getFileOffset(includeHashLoc(Bar, SM)),
             Test.llvm::Annotations::point("bar"));
+}
+
+TEST(SourceCodeTests, GetEligiblePoints) {
+  constexpr struct {
+    const char *Code;
+    const char *FullyQualifiedName;
+    const char *EnclosingNamespace;
+  } Cases[] = {
+      {R"cpp(// FIXME: We should also mark positions before and after
+                 //declarations/definitions as eligible.
+              namespace ns1 {
+              namespace a { namespace ns2 {} }
+              namespace ns2 {^
+              void foo();
+              namespace {}
+              void bar() {}
+              namespace ns3 {}
+              class T {};
+              ^}
+              using namespace ns2;
+              })cpp",
+       "ns1::ns2::symbol", "ns1::ns2::"},
+      {R"cpp(
+              namespace ns1 {^
+              namespace a { namespace ns2 {} }
+              namespace b {}
+              namespace ns {}
+              ^})cpp",
+       "ns1::ns2::symbol", "ns1::"},
+      {R"cpp(
+              namespace x {
+              namespace a { namespace ns2 {} }
+              namespace b {}
+              namespace ns {}
+              }^)cpp",
+       "ns1::ns2::symbol", ""},
+      {R"cpp(
+              namespace ns1 {
+              namespace ns2 {^^}
+              namespace b {}
+              namespace ns2 {^^}
+              }
+              namespace ns1 {namespace ns2 {^^}})cpp",
+       "ns1::ns2::symbol", "ns1::ns2::"},
+      {R"cpp(
+              namespace ns1 {^
+              namespace ns {}
+              namespace b {}
+              namespace ns {}
+              ^}
+              namespace ns1 {^namespace ns {}^})cpp",
+       "ns1::ns2::symbol", "ns1::"},
+  };
+  for (auto Case : Cases) {
+    Annotations Test(Case.Code);
+
+    auto Res = getEligiblePoints(Test.code(), Case.FullyQualifiedName,
+                                 format::getLLVMStyle());
+    EXPECT_THAT(Res.EligiblePoints, testing::ElementsAreArray(Test.points()))
+        << Test.code();
+    EXPECT_EQ(Res.EnclosingNamespace, Case.EnclosingNamespace) << Test.code();
+  }
+}
+
+TEST(SourceCodeTests, IdentifierRanges) {
+  Annotations Code(R"cpp(
+   class [[Foo]] {};
+   // Foo
+   /* Foo */
+   void f([[Foo]]* foo1) {
+     [[Foo]] foo2;
+     auto S = [[Foo]]();
+// cross-line identifier is not supported.
+F\
+o\
+o foo2;
+   }
+  )cpp");
+  LangOptions LangOpts;
+  LangOpts.CPlusPlus = true;
+  EXPECT_EQ(Code.ranges(),
+            collectIdentifierRanges("Foo", Code.code(), LangOpts));
+}
+
+TEST(SourceCodeTests, isHeaderFile) {
+  // Without lang options.
+  EXPECT_TRUE(isHeaderFile("foo.h"));
+  EXPECT_TRUE(isHeaderFile("foo.hh"));
+  EXPECT_TRUE(isHeaderFile("foo.hpp"));
+
+  EXPECT_FALSE(isHeaderFile("foo.cpp"));
+  EXPECT_FALSE(isHeaderFile("foo.c++"));
+  EXPECT_FALSE(isHeaderFile("foo.cxx"));
+  EXPECT_FALSE(isHeaderFile("foo.cc"));
+  EXPECT_FALSE(isHeaderFile("foo.c"));
+  EXPECT_FALSE(isHeaderFile("foo.mm"));
+  EXPECT_FALSE(isHeaderFile("foo.m"));
+
+  // With lang options
+  LangOptions LangOpts;
+  LangOpts.IsHeaderFile = true;
+  EXPECT_TRUE(isHeaderFile("string", LangOpts));
+  // Emulate cases where there is no "-x header" flag for a .h file, we still
+  // want to treat it as a header.
+  LangOpts.IsHeaderFile = false;
+  EXPECT_TRUE(isHeaderFile("header.h", LangOpts));
 }
 
 } // namespace

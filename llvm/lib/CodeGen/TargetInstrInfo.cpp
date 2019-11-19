@@ -143,7 +143,7 @@ TargetInstrInfo::ReplaceTailWithBranchTo(MachineBasicBlock::iterator Tail,
   while (Tail != MBB->end()) {
     auto MI = Tail++;
     if (MI->isCall())
-      MBB->getParent()->updateCallSiteInfo(&*MI);
+      MBB->getParent()->eraseCallSiteInfo(&*MI);
     MBB->erase(MI);
   }
 
@@ -880,7 +880,7 @@ void TargetInstrInfo::genAlternativeCodeSequence(
 }
 
 bool TargetInstrInfo::isReallyTriviallyReMaterializableGeneric(
-    const MachineInstr &MI, AliasAnalysis *AA) const {
+    const MachineInstr &MI, AAResults *AA) const {
   const MachineFunction &MF = *MI.getMF();
   const MachineRegisterInfo &MRI = MF.getRegInfo();
 
@@ -1123,16 +1123,35 @@ bool TargetInstrInfo::hasLowDefLatency(const TargetSchedModel &SchedModel,
 Optional<ParamLoadedValue>
 TargetInstrInfo::describeLoadedValue(const MachineInstr &MI) const {
   const MachineFunction *MF = MI.getMF();
-  const MachineOperand *Op = nullptr;
-  DIExpression *Expr = DIExpression::get(MF->getFunction().getContext(), {});;
-  const MachineOperand *SrcRegOp, *DestRegOp;
+  DIExpression *Expr = DIExpression::get(MF->getFunction().getContext(), {});
+  int64_t Offset;
 
-  if (isCopyInstr(MI, SrcRegOp, DestRegOp)) {
-    Op = SrcRegOp;
-    return ParamLoadedValue(*Op, Expr);
-  } else if (MI.isMoveImmediate()) {
-    Op = &MI.getOperand(1);
-    return ParamLoadedValue(*Op, Expr);
+  if (auto DestSrc = isCopyInstr(MI)) {
+    return ParamLoadedValue(*DestSrc->Source, Expr);
+  } else if (auto DestSrc = isAddImmediate(MI, Offset)) {
+    Expr = DIExpression::prepend(Expr, DIExpression::ApplyOffset, Offset);
+    return ParamLoadedValue(*DestSrc->Source, Expr);
+  } else if (MI.hasOneMemOperand()) {
+    // Only describe memory which provably does not escape the function. As
+    // described in llvm.org/PR43343, escaped memory may be clobbered by the
+    // callee (or by another thread).
+    const auto &TII = MF->getSubtarget().getInstrInfo();
+    const MachineFrameInfo &MFI = MF->getFrameInfo();
+    const MachineMemOperand *MMO = MI.memoperands()[0];
+    const PseudoSourceValue *PSV = MMO->getPseudoValue();
+
+    // If the address points to "special" memory (e.g. a spill slot), it's
+    // sufficient to check that it isn't aliased by any high-level IR value.
+    if (!PSV || PSV->mayAlias(&MFI))
+      return None;
+
+    const auto &TRI = MF->getSubtarget().getRegisterInfo();
+    const MachineOperand *BaseOp;
+    if (!TII->getMemOperandWithOffset(MI, BaseOp, Offset, TRI))
+      return None;
+
+    Expr = DIExpression::prepend(Expr, DIExpression::DerefAfter, Offset);
+    return ParamLoadedValue(*BaseOp, Expr);
   }
 
   return None;

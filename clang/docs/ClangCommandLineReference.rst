@@ -124,7 +124,11 @@ Output path for the plist report
 
 .. option:: -cfguard
 
-Emit tables required for Windows Control Flow Guard.
+Emit tables and checks for Windows Control Flow Guard.
+
+.. option:: -cfguard-no-checks
+
+Emit tables required for Windows Control Flow Guard without checks.
 
 .. option:: -client\_name<arg>
 
@@ -1942,7 +1946,8 @@ Perform ThinLTO importing using provided function summary index
 
 .. option:: -ftime-trace
 
-Turn on time profiler
+Turn on time profiler. Results can be analyzed with chrome://tracing or
+`Speedscope App <https://www.speedscope.app>`_ for flamegraph visualization
 
 .. option:: -ftime-trace-granularity=<arg>
 

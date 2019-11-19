@@ -1869,7 +1869,7 @@ Here is the table:
 :raw-html:`<td class="no"></td> <!-- ARM -->`
 :raw-html:`<td class="no"></td> <!-- Hexagon -->`
 :raw-html:`<td class="no"></td> <!-- MSP430 -->`
-:raw-html:`<td class="no"></td> <!-- Mips -->`
+:raw-html:`<td class="yes"></td> <!-- Mips -->`
 :raw-html:`<td class="no"></td> <!-- NVPTX -->`
 :raw-html:`<td class="no"></td> <!-- PowerPC -->`
 :raw-html:`<td class="no"></td> <!-- Sparc -->`
@@ -1884,7 +1884,7 @@ Here is the table:
 :raw-html:`<td class="yes"></td> <!-- ARM -->`
 :raw-html:`<td class="no"></td> <!-- Hexagon -->`
 :raw-html:`<td class="no"></td> <!-- MSP430 -->`
-:raw-html:`<td class="no"></td> <!-- Mips -->`
+:raw-html:`<td class="yes"></td> <!-- Mips -->`
 :raw-html:`<td class="na"></td> <!-- NVPTX -->`
 :raw-html:`<td class="no"></td> <!-- PowerPC -->`
 :raw-html:`<td class="yes"></td> <!-- SystemZ -->`
@@ -1899,7 +1899,7 @@ Here is the table:
 :raw-html:`<td class="yes"></td> <!-- ARM -->`
 :raw-html:`<td class="yes"></td> <!-- Hexagon -->`
 :raw-html:`<td class="unknown"></td> <!-- MSP430 -->`
-:raw-html:`<td class="no"></td> <!-- Mips -->`
+:raw-html:`<td class="yes"></td> <!-- Mips -->`
 :raw-html:`<td class="yes"></td> <!-- NVPTX -->`
 :raw-html:`<td class="yes"></td> <!-- PowerPC -->`
 :raw-html:`<td class="unknown"></td> <!-- Sparc -->`
@@ -1929,7 +1929,7 @@ Here is the table:
 :raw-html:`<td class="no"></td> <!-- ARM -->`
 :raw-html:`<td class="no"></td> <!-- Hexagon -->`
 :raw-html:`<td class="no"></td> <!-- MSP430 -->`
-:raw-html:`<td class="no"></td> <!-- Mips -->`
+:raw-html:`<td class="yes"></td> <!-- Mips -->`
 :raw-html:`<td class="na"></td> <!-- NVPTX -->`
 :raw-html:`<td class="no"></td> <!-- PowerPC -->`
 :raw-html:`<td class="no"></td> <!-- Sparc -->`
@@ -1944,7 +1944,7 @@ Here is the table:
 :raw-html:`<td class="yes"></td> <!-- ARM -->`
 :raw-html:`<td class="yes"></td> <!-- Hexagon -->`
 :raw-html:`<td class="unknown"></td> <!-- MSP430 -->`
-:raw-html:`<td class="no"></td> <!-- Mips -->`
+:raw-html:`<td class="yes"></td> <!-- Mips -->`
 :raw-html:`<td class="no"></td> <!-- NVPTX -->`
 :raw-html:`<td class="yes"></td> <!-- PowerPC -->`
 :raw-html:`<td class="unknown"></td> <!-- Sparc -->`
@@ -2068,12 +2068,12 @@ supported on x86/x86-64, PowerPC, and WebAssembly. It is performed on x86/x86-64
 and PowerPC if:
 
 * Caller and callee have the calling convention ``fastcc``, ``cc 10`` (GHC
-  calling convention) or ``cc 11`` (HiPE calling convention).
+  calling convention), ``cc 11`` (HiPE calling convention), or ``tailcc``.
 
 * The call is a tail call - in tail position (ret immediately follows call and
   ret uses value of call or is void).
 
-* Option ``-tailcallopt`` is enabled.
+* Option ``-tailcallopt`` is enabled or the calling convention is ``tailcc``.
 
 * Platform-specific constraints are met.
 

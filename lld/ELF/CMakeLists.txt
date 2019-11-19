@@ -32,13 +32,11 @@ add_lld_library(lldELF
   InputFiles.cpp
   InputSection.cpp
   LTO.cpp
+  LinkerPropeller.cpp
   LinkerScript.cpp
   MapFile.cpp
   MarkLive.cpp
   OutputSections.cpp
-  Propeller.cpp
-  PropellerBBReordering.cpp
-  PropellerCfg.cpp
   Relocations.cpp
   ScriptLexer.cpp
   ScriptParser.cpp
@@ -55,6 +53,7 @@ add_lld_library(lldELF
   BitWriter
   Core
   DebugInfoDWARF
+  Demangle
   LTO
   MC
   Object
@@ -63,9 +62,12 @@ add_lld_library(lldELF
 
   LINK_LIBS
   lldCommon
+  lldPropeller
   ${LLVM_PTHREAD_LIB}
-
+  
   DEPENDS
   ELFOptionsTableGen
   ${tablegen_deps}
   )
+
+add_subdirectory(Propeller)

@@ -232,14 +232,31 @@ bb13:
 ; GCN:     s_cbranch_execz
 ; GCN:   BB{{.*}}:
 ; GCN:   BB{{.*}}:
-; GFX1032: s_andn2_b32 s{{[0-9]+}}, s{{[0-9]+}}, exec_lo
-; GFX1064: s_andn2_b64 s[{{[0-9:]+}}], s[{{[0-9:]+}}], exec
-; GFX1032: s_or_b32 s{{[0-9]+}}, vcc_lo, s{{[0-9]+}}
-; GFX1032: s_or_b32 s{{[0-9]+}}, s{{[0-9]+}}, s{{[0-9]+}}
-; GFX1064: s_or_b64 s[{{[0-9:]+}}], vcc, s[{{[0-9:]+}}]
-; GFX1064: s_or_b64 s[{{[0-9:]+}}], s[{{[0-9:]+}}], s[{{[0-9:]+}}]
+
+; GFX1032: s_or_b32 [[MASK0:s[0-9]+]], [[MASK0]], vcc_lo
+; GFX1064: s_or_b64 [[MASK0:s\[[0-9:]+\]]], [[MASK0]], vcc
+; GFX1032: s_andn2_b32 [[MASK1:s[0-9]+]], [[MASK1]], exec_lo
+; GFX1064: s_andn2_b64 [[MASK1:s\[[0-9:]+\]]], [[MASK1]], exec
+; GCN:     global_store_dword
+; GFX1032: s_and_b32 [[MASK0]], [[MASK0]], exec_lo
+; GFX1064: s_and_b64 [[MASK0]], [[MASK0]], exec
+; GFX1032: s_or_b32 [[MASK1]], [[MASK1]], [[MASK0]]
+; GFX1064: s_or_b64 [[MASK1]], [[MASK1]], [[MASK0]]
+; GCN:   BB{{.*}}: ; %Flow
+; GFX1032: s_and_b32 [[MASK0:s[0-9]+]], exec_lo, [[MASK1]]
+; GFX1064: s_and_b64 [[MASK0:s\[[0-9:]+\]]], exec, [[MASK1]]
+; GFX1032: s_or_b32  [[MASK0]], [[MASK0]], [[ACC:s[0-9]+]]
+; GFX1064: s_or_b64  [[MASK0]], [[MASK0]], [[ACC:s\[[0-9:]+\]]]
+; GFX1032: s_mov_b32 [[ACC]], [[MASK0]]
+; GFX1064: s_mov_b64 [[ACC]], [[MASK0]]
+; GFX1032: s_andn2_b32 exec_lo, exec_lo, [[MASK0]]
+; GFX1064: s_andn2_b64 exec, exec, [[MASK0]]
 ; GCN:     s_cbranch_execz
 ; GCN:   BB{{.*}}:
+; GCN: s_load_dword [[LOAD:s[0-9]+]]
+; GFX1032: s_or_b32 [[MASK1]], [[MASK1]], exec_lo
+; GFX1064: s_or_b64 [[MASK1]], [[MASK1]], exec
+; GCN: s_cmp_lt_i32 [[LOAD]], 11
 define amdgpu_kernel void @test_loop_with_if_else_break(i32 addrspace(1)* %arg) #0 {
 bb:
   %tmp = tail call i32 @llvm.amdgcn.workitem.id.x()
@@ -871,33 +888,6 @@ endif:
   ret void
 }
 
-; GCN-LABEL: {{^}}test_init_exec:
-; GFX1032: s_mov_b32 exec_lo, 0x12345
-; GFX1064: s_mov_b64 exec, 0x12345
-; GCN: v_add_f32_e32 v0,
-define amdgpu_ps float @test_init_exec(float %a, float %b) {
-main_body:
-  %s = fadd float %a, %b
-  call void @llvm.amdgcn.init.exec(i64 74565)
-  ret float %s
-}
-
-; GCN-LABEL: {{^}}test_init_exec_from_input:
-; GCN: s_bfe_u32 s0, s3, 0x70008
-; GFX1032: s_bfm_b32 exec_lo, s0, 0
-; GFX1032: s_cmp_eq_u32 s0, 32
-; GFX1032: s_cmov_b32 exec_lo, -1
-; GFX1064: s_bfm_b64 exec, s0, 0
-; GFX1064: s_cmp_eq_u32 s0, 64
-; GFX1064: s_cmov_b64 exec, -1
-; GCN: v_add_f32_e32 v0,
-define amdgpu_ps float @test_init_exec_from_input(i32 inreg, i32 inreg, i32 inreg, i32 inreg %count, float %a, float %b) {
-main_body:
-  %s = fadd float %a, %b
-  call void @llvm.amdgcn.init.exec.from.input(i32 %count, i32 8)
-  ret float %s
-}
-
 ; GCN-LABEL: {{^}}test_vgprblocks_w32_attr:
 ; Test that the wave size can be overridden in function attributes and that the block size is correct as a result
 ; GFX10DEFWAVE: ; VGPRBlocks: 1
@@ -1132,8 +1122,6 @@ declare i32 @llvm.amdgcn.icmp.i32.i32(i32, i32, i32)
 declare void @llvm.amdgcn.kill(i1)
 declare i1 @llvm.amdgcn.wqm.vote(i1)
 declare i1 @llvm.amdgcn.ps.live()
-declare void @llvm.amdgcn.init.exec(i64)
-declare void @llvm.amdgcn.init.exec.from.input(i32, i32)
 declare i64 @llvm.cttz.i64(i64, i1)
 declare i32 @llvm.cttz.i32(i32, i1)
 

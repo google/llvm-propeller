@@ -101,8 +101,9 @@
 #ifndef LLD_ELF_PROPELLER_H
 #define LLD_ELF_PROPELLER_H
 
-#include "InputFiles.h"
+#include "PropellerProtobuf.h"
 
+#include "lld/Common/ErrorHandler.h"
 #include "lld/Common/LLVM.h"
 #include "lld/Common/PropellerCommon.h"
 #include "llvm/ADT/StringRef.h"
@@ -111,23 +112,23 @@
 
 #include <fstream>
 #include <list>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <vector>
 
 namespace lld {
-namespace elf {
-class SymbolTable;
-}
-
 namespace propeller {
+
+extern class Propeller *prop;
 
 class ControlFlowGraph;
 class CFGEdge;
 class CFGNode;
 class ObjectView;
 class Propeller;
+struct PropellerConfig;
 
 // Propeller profile parser.
 //
@@ -187,9 +188,8 @@ class Propeller;
 // generation purpose).
 class Propfile {
 public:
-  Propfile(Propeller &p, const std::string &pName)
-      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream(),
-        Prop(p) {}
+  Propfile(const std::string &pName)
+      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream() {}
 
   // Check whether "outputFile" matches "@" directives in the propeller profile.
   bool matchesOutputFileName(const StringRef outputFile);
@@ -255,7 +255,6 @@ public:
   llvm::UniqueStringSaver PropfileStrSaver;
   std::string PropfName;
   std::ifstream PropfStream;
-  Propeller &Prop;
   // Ordial -> SymbolEntry map. This also owns SymbolEntry instances.
   std::map<uint64_t, std::unique_ptr<SymbolEntry>> SymbolOrdinalMap;
   // SymbolNameMap is ordered in the following way:
@@ -271,13 +270,13 @@ public:
 
 class Propeller {
 public:
-  Propeller(lld::elf::SymbolTable *ST);
+  Propeller();
   ~Propeller();
 
   // Returns true if linker output target matches propeller profile.
   bool checkTarget();
-  bool processFiles(std::vector<lld::elf::InputFile *> &files);
-  void processFile(const std::pair<elf::InputFile *, uint32_t> &pair);
+  bool processFiles(std::vector<ObjectView *> &files);
+  void processFile(ObjectView *view);
   CFGNode *findCfgNode(uint64_t symbolOrdinal);
   void calculateNodeFreqs();
   std::vector<StringRef> genSymbolOrderingFile();
@@ -289,7 +288,11 @@ public:
       v(*(*(p.second.begin())));
   }
 
-  lld::elf::SymbolTable *Symtab;
+  bool dumpCfgs();
+
+  static ObjectView *createObjectView(const StringRef &vN,
+                                      const uint32_t ordinal,
+                                      const MemoryBufferRef &fR);
 
   std::vector<std::unique_ptr<ObjectView>> Views;
   // Same named CFGs may exist in different object files (e.g. weak
@@ -311,6 +314,10 @@ public:
   // then puts CFGs into Propeller::CFGMap (see above). Lock is used
   // to guard this Propeller::CFGMap critical section.
   std::mutex Lock;
+
+#ifdef PROPELLER_PROTOBUF
+  std::unique_ptr<lld::propeller::ProtobufPrinter> protobufPrinter;
+#endif
 };
 
 // When no "-propeller-keep-named-symbols" specified, we remove all BB symbols
@@ -341,6 +348,8 @@ struct PropellerLegacy {
 };
 
 extern PropellerLegacy PropLeg;
+
+extern PropellerConfig propellerConfig;
 
 } // namespace propeller
 } // namespace lld

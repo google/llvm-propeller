@@ -197,6 +197,7 @@ class VectorType;
       VTRN,         // transpose
       VTBL1,        // 1-register shuffle with mask
       VTBL2,        // 2-register shuffle with mask
+      VMOVN,        // MVE vmovn
 
       // Vector multiply long:
       VMULLs,       // ...signed
@@ -217,6 +218,12 @@ class VectorType;
       SMLSLDX,      // Signed multiply subtract long dual exchange
       SMMLAR,       // Signed multiply long, round and add
       SMMLSR,       // Signed multiply long, subtract and round
+
+      // Single Lane QADD8 and QADD16. Only the bottom lane. That's what the b stands for.
+      QADD8b,
+      QSUB8b,
+      QADD16b,
+      QSUB16b,
 
       // Operands of the standard BUILD_VECTOR node are not legalized, which
       // is fine if BUILD_VECTORs are always lowered to shuffles or other
@@ -370,7 +377,7 @@ class VectorType;
 
     bool isLegalT2ScaledAddressingMode(const AddrMode &AM, EVT VT) const;
 
-    /// Returns true if the addresing mode representing by AM is legal
+    /// Returns true if the addressing mode representing by AM is legal
     /// for the Thumb1 target, for a load/store of the specified type.
     bool isLegalT1ScaledAddressingMode(const AddrMode &AM, EVT VT) const;
 
@@ -610,8 +617,8 @@ class VectorType;
     void finalizeLowering(MachineFunction &MF) const override;
 
     /// Return the correct alignment for the current calling convention.
-    unsigned getABIAlignmentForCallingConv(Type *ArgTy,
-                                           DataLayout DL) const override;
+    Align getABIAlignmentForCallingConv(Type *ArgTy,
+                                        DataLayout DL) const override;
 
     bool isDesirableToCommuteWithShift(const SDNode *N,
                                        CombineLevel Level) const override;
@@ -725,22 +732,13 @@ class VectorType;
     void lowerABS(SDNode *N, SmallVectorImpl<SDValue> &Results,
                   SelectionDAG &DAG) const;
 
-    unsigned getRegisterByName(const char* RegName, EVT VT,
-                               SelectionDAG &DAG) const override;
+    Register getRegisterByName(const char* RegName, EVT VT,
+                               const MachineFunction &MF) const override;
 
     SDValue BuildSDIVPow2(SDNode *N, const APInt &Divisor, SelectionDAG &DAG,
                           SmallVectorImpl<SDNode *> &Created) const override;
 
-    /// isFMAFasterThanFMulAndFAdd - Return true if an FMA operation is faster
-    /// than a pair of fmul and fadd instructions. fmuladd intrinsics will be
-    /// expanded to FMAs when this method returns true, otherwise fmuladd is
-    /// expanded to fmul + fadd.
-    ///
-    /// ARM supports both fused and unfused multiply-add operations; we already
-    /// lower a pair of fmul and fadd to the latter so it's not clear that there
-    /// would be a gain or that the gain would be worthwhile enough to risk
-    /// correctness bugs.
-    bool isFMAFasterThanFMulAndFAdd(EVT VT) const override { return false; }
+    bool isFMAFasterThanFMulAndFAdd(EVT VT) const override;
 
     SDValue ReconstructShuffle(SDValue Op, SelectionDAG &DAG) const;
 
@@ -818,7 +816,7 @@ class VectorType;
     SDValue getARMCmp(SDValue LHS, SDValue RHS, ISD::CondCode CC,
                       SDValue &ARMcc, SelectionDAG &DAG, const SDLoc &dl) const;
     SDValue getVFPCmp(SDValue LHS, SDValue RHS, SelectionDAG &DAG,
-                      const SDLoc &dl, bool InvalidOnQNaN) const;
+                      const SDLoc &dl) const;
     SDValue duplicateCmp(SDValue Cmp, SelectionDAG &DAG) const;
 
     SDValue OptimizeVFPBrcond(SDValue Op, SelectionDAG &DAG) const;

@@ -619,6 +619,9 @@ private:
   llvm::Function *EmitVirtualMemPtrThunk(const CXXMethodDecl *MD,
                                          const MethodVFTableLocation &ML);
 
+  llvm::Constant *EmitMemberDataPointer(const CXXRecordDecl *RD,
+                                        CharUnits offset);
+
 public:
   llvm::Type *ConvertMemberPointerType(const MemberPointerType *MPT) override;
 
@@ -1210,7 +1213,7 @@ static bool hasDefaultCXXMethodCC(ASTContext &Context,
   CallingConv ExpectedCallingConv = Context.getDefaultCallingConvention(
       /*IsVariadic=*/false, /*IsCXXMethod=*/true);
   CallingConv ActualCallingConv =
-      MD->getType()->getAs<FunctionProtoType>()->getCallConv();
+      MD->getType()->castAs<FunctionProtoType>()->getCallConv();
   return ExpectedCallingConv == ActualCallingConv;
 }
 
@@ -2355,7 +2358,7 @@ static ConstantAddress getInitThreadEpochPtr(CodeGenModule &CGM) {
       /*isConstant=*/false, llvm::GlobalVariable::ExternalLinkage,
       /*Initializer=*/nullptr, VarName,
       /*InsertBefore=*/nullptr, llvm::GlobalVariable::GeneralDynamicTLSModel);
-  GV->setAlignment(Align.getQuantity());
+  GV->setAlignment(Align.getAsAlign());
   return ConstantAddress(GV, Align);
 }
 
@@ -2498,7 +2501,7 @@ void MicrosoftCXXABI::EmitGuardedInit(CodeGenFunction &CGF, const VarDecl &D,
                                  GV->getLinkage(), Zero, GuardName.str());
     GuardVar->setVisibility(GV->getVisibility());
     GuardVar->setDLLStorageClass(GV->getDLLStorageClass());
-    GuardVar->setAlignment(GuardAlign.getQuantity());
+    GuardVar->setAlignment(GuardAlign.getAsAlign());
     if (GuardVar->isWeakForLinker())
       GuardVar->setComdat(
           CGM.getModule().getOrInsertComdat(GuardVar->getName()));
@@ -2702,7 +2705,11 @@ MicrosoftCXXABI::EmitFullMemberPointer(llvm::Constant *FirstField,
 llvm::Constant *
 MicrosoftCXXABI::EmitMemberDataPointer(const MemberPointerType *MPT,
                                        CharUnits offset) {
-  const CXXRecordDecl *RD = MPT->getMostRecentCXXRecordDecl();
+  return EmitMemberDataPointer(MPT->getMostRecentCXXRecordDecl(), offset);
+}
+
+llvm::Constant *MicrosoftCXXABI::EmitMemberDataPointer(const CXXRecordDecl *RD,
+                                                       CharUnits offset) {
   if (RD->getMSInheritanceModel() ==
       MSInheritanceAttr::Keyword_virtual_inheritance)
     offset -= getContext().getOffsetOfBaseWithVBPtr(RD);
@@ -2726,8 +2733,17 @@ llvm::Constant *MicrosoftCXXABI::EmitMemberPointer(const APValue &MP,
   if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(MPD)) {
     C = EmitMemberFunctionPointer(MD);
   } else {
+    // For a pointer to data member, start off with the offset of the field in
+    // the class in which it was declared, and convert from there if necessary.
+    // For indirect field decls, get the outermost anonymous field and use the
+    // parent class.
     CharUnits FieldOffset = Ctx.toCharUnitsFromBits(Ctx.getFieldOffset(MPD));
-    C = EmitMemberDataPointer(DstTy, FieldOffset);
+    const FieldDecl *FD = dyn_cast<FieldDecl>(MPD);
+    if (!FD)
+      FD = cast<FieldDecl>(*cast<IndirectFieldDecl>(MPD)->chain_begin());
+    const CXXRecordDecl *RD = cast<CXXRecordDecl>(FD->getParent());
+    RD = RD->getMostRecentNonInjectedDecl();
+    C = EmitMemberDataPointer(RD, FieldOffset);
   }
 
   if (!MemberPointerPath.empty()) {

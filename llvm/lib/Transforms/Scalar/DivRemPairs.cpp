@@ -20,6 +20,7 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/PatternMatch.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/DebugCounter.h"
 #include "llvm/Transforms/Scalar.h"
@@ -233,8 +234,6 @@ static bool optimizeDivRem(Function &F, const TargetTransformInfo &TTI,
     if (!DivDominates && !DT.dominates(RemInst, DivInst)) {
       // We have matching div-rem pair, but they are in two different blocks,
       // neither of which dominates one another.
-      assert(!RemOriginallyWasInExpandedForm &&
-             "Won't happen for expanded-form rem.");
       // FIXME: We could hoist both ops to the common predecessor block?
       continue;
     }

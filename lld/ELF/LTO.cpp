@@ -42,8 +42,8 @@ using namespace llvm;
 using namespace llvm::object;
 using namespace llvm::ELF;
 
-using namespace lld;
-using namespace lld::elf;
+namespace lld {
+namespace elf {
 
 // Creates an empty file to store a list of object files for final
 // linking of distributed ThinLTO.
@@ -62,13 +62,26 @@ static void getBasicBlockSectionsList(MemoryBufferRef MBRef,
                                       TargetOptions &Options) {
   SmallVector<StringRef, 0> Arr;
   MBRef.getBuffer().split(Arr, '\n');
+  bool consumeBasicBlockIds = false;
+  StringRef Func;
+  SmallSet<unsigned, 4> s;
   for (StringRef S : Arr) {
     // Function names follow a '!' character.
-    // Empty '!' implies no more functions.
-    if (S.size() == 1 && S[0] == '!')
-      break;
-    if (S.size() > 1 && S[0] == '!')
-      Options.BasicBlockSectionsList[S.str().substr(1)] = true;
+    // Basic Blocks within functions follow '!!'.
+    if (S.consume_front("!") && !S.empty()) {
+      if (consumeBasicBlockIds && S.consume_front("!")) {
+        Options.BasicBlockSectionsList[Func.str()].insert(std::stoi(S));
+      } else {
+        // Start a new function.
+        Func = S;
+        s.clear();
+        s.insert(0);
+        Options.BasicBlockSectionsList[Func.str()] = s;
+        consumeBasicBlockIds = true;
+      }
+    } else {
+      consumeBasicBlockIds = false;
+    }
   }
 }
 
@@ -334,3 +347,6 @@ std::vector<InputFile *> BitcodeCompiler::compile() {
       ret.push_back(createObjectFile(*file));
   return ret;
 }
+
+} // namespace elf
+} // namespace lld

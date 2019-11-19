@@ -14,6 +14,7 @@
 #define LLVM_ANALYSIS_VECTORUTILS_H
 
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/Analysis/LoopAccessAnalysis.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/CheckedArithmetic.h"
@@ -47,7 +48,9 @@ enum class VFISAKind {
   AVX,          // x86 AVX
   AVX2,         // x86 AVX2
   AVX512,       // x86 AVX512
-  Unknown       // Unknown ISA
+  LLVM,         // LLVM internal ISA for functions that are not
+  // attached to an existing ABI via name mangling.
+  Unknown // Unknown ISA
 };
 
 /// Encapsulates information needed to describe a parameter.
@@ -102,6 +105,9 @@ struct VFInfo {
 };
 
 namespace VFABI {
+/// LLVM Internal VFABI ISA token for vector functions.
+static constexpr char const *_LLVM_ = "_LLVM_";
+
 /// Function to contruct a VFInfo out of a mangled names in the
 /// following format:
 ///
@@ -121,14 +127,20 @@ namespace VFABI {
 /// * x86 (libmvec): https://sourceware.org/glibc/wiki/libmvec and
 ///  https://sourceware.org/glibc/wiki/libmvec?action=AttachFile&do=view&target=VectorABI.txt
 ///
-///
-///
 /// \param MangledName -> input string in the format
 /// _ZGV<isa><mask><vlen><parameters>_<scalarname>[(<redirection>)].
 Optional<VFInfo> tryDemangleForVFABI(StringRef MangledName);
 
 /// Retrieve the `VFParamKind` from a string token.
 VFParamKind getVFParamKindFromString(const StringRef Token);
+
+// Name of the attribute where the variant mappings are stored.
+static constexpr char const *MappingsAttrName = "vector-function-abi-variant";
+
+/// Populates a set of strings representing the Vector Function ABI variants
+/// associated to the CallInst CI.
+void getVectorVariantNames(const CallInst &CI,
+                           SmallVectorImpl<std::string> &VariantMappings);
 } // end namespace VFABI
 
 template <typename T> class ArrayRef;
@@ -137,7 +149,6 @@ class GetElementPtrInst;
 template <typename InstTy> class InterleaveGroup;
 class Loop;
 class ScalarEvolution;
-class TargetLibraryInfo;
 class TargetTransformInfo;
 class Type;
 class Value;
@@ -381,13 +392,12 @@ APInt possiblyDemandedEltsInMask(Value *Mask);
 /// the interleaved store group doesn't allow gaps.
 template <typename InstTy> class InterleaveGroup {
 public:
-  InterleaveGroup(uint32_t Factor, bool Reverse, uint32_t Align)
-      : Factor(Factor), Reverse(Reverse), Align(Align), InsertPos(nullptr) {}
+  InterleaveGroup(uint32_t Factor, bool Reverse, Align Alignment)
+      : Factor(Factor), Reverse(Reverse), Alignment(Alignment),
+        InsertPos(nullptr) {}
 
-  InterleaveGroup(InstTy *Instr, int32_t Stride, uint32_t Align)
-      : Align(Align), InsertPos(Instr) {
-    assert(Align && "The alignment should be non-zero");
-
+  InterleaveGroup(InstTy *Instr, int32_t Stride, Align Alignment)
+      : Alignment(Alignment), InsertPos(Instr) {
     Factor = std::abs(Stride);
     assert(Factor > 1 && "Invalid interleave factor");
 
@@ -397,7 +407,7 @@ public:
 
   bool isReverse() const { return Reverse; }
   uint32_t getFactor() const { return Factor; }
-  uint32_t getAlignment() const { return Align; }
+  uint32_t getAlignment() const { return Alignment.value(); }
   uint32_t getNumMembers() const { return Members.size(); }
 
   /// Try to insert a new member \p Instr with index \p Index and
@@ -405,9 +415,7 @@ public:
   /// negative if it is the new leader.
   ///
   /// \returns false if the instruction doesn't belong to the group.
-  bool insertMember(InstTy *Instr, int32_t Index, uint32_t NewAlign) {
-    assert(NewAlign && "The new member's alignment should be non-zero");
-
+  bool insertMember(InstTy *Instr, int32_t Index, Align NewAlign) {
     // Make sure the key fits in an int32_t.
     Optional<int32_t> MaybeKey = checkedAdd(Index, SmallestKey);
     if (!MaybeKey)
@@ -439,7 +447,7 @@ public:
     }
 
     // It's always safe to select the minimum alignment.
-    Align = std::min(Align, NewAlign);
+    Alignment = std::min(Alignment, NewAlign);
     Members[Key] = Instr;
     return true;
   }
@@ -498,7 +506,7 @@ public:
 private:
   uint32_t Factor; // Interleave Factor.
   bool Reverse;
-  uint32_t Align;
+  Align Alignment;
   DenseMap<int32_t, InstTy *> Members;
   int32_t SmallestKey = 0;
   int32_t LargestKey = 0;
@@ -545,13 +553,10 @@ public:
   /// formation for predicated accesses, we may be able to relax this limitation
   /// in the future once we handle more complicated blocks.
   void reset() {
-    SmallPtrSet<InterleaveGroup<Instruction> *, 4> DelSet;
-    // Avoid releasing a pointer twice.
-    for (auto &I : InterleaveGroupMap)
-      DelSet.insert(I.second);
-    for (auto *Ptr : DelSet)
-      delete Ptr;
     InterleaveGroupMap.clear();
+    for (auto *Ptr : InterleaveGroups)
+      delete Ptr;
+    InterleaveGroups.clear();
     RequiresScalarEpilogue = false;
   }
 
@@ -615,8 +620,8 @@ private:
   struct StrideDescriptor {
     StrideDescriptor() = default;
     StrideDescriptor(int64_t Stride, const SCEV *Scev, uint64_t Size,
-                     unsigned Align)
-        : Stride(Stride), Scev(Scev), Size(Size), Align(Align) {}
+                     Align Alignment)
+        : Stride(Stride), Scev(Scev), Size(Size), Alignment(Alignment) {}
 
     // The access's stride. It is negative for a reverse access.
     int64_t Stride = 0;
@@ -628,7 +633,7 @@ private:
     uint64_t Size = 0;
 
     // The alignment of this access.
-    unsigned Align = 0;
+    Align Alignment;
   };
 
   /// A type for holding instructions and their stride descriptors.
@@ -639,11 +644,11 @@ private:
   ///
   /// \returns the newly created interleave group.
   InterleaveGroup<Instruction> *
-  createInterleaveGroup(Instruction *Instr, int Stride, unsigned Align) {
+  createInterleaveGroup(Instruction *Instr, int Stride, Align Alignment) {
     assert(!InterleaveGroupMap.count(Instr) &&
            "Already in an interleaved access group");
     InterleaveGroupMap[Instr] =
-        new InterleaveGroup<Instruction>(Instr, Stride, Align);
+        new InterleaveGroup<Instruction>(Instr, Stride, Alignment);
     InterleaveGroups.insert(InterleaveGroupMap[Instr]);
     return InterleaveGroupMap[Instr];
   }

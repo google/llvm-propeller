@@ -75,7 +75,7 @@ struct RefsRequest {
 
 struct RelationsRequest {
   llvm::DenseSet<SymbolID> Subjects;
-  index::SymbolRole Predicate;
+  RelationKind Predicate;
   /// If set, limit the number of relations returned from the index.
   llvm::Optional<uint32_t> Limit;
 };
@@ -107,7 +107,9 @@ public:
   ///
   /// Results should be returned in arbitrary order.
   /// The returned result must be deep-copied if it's used outside Callback.
-  virtual void refs(const RefsRequest &Req,
+  ///
+  /// Returns true if there will be more results (limited by Req.Limit);
+  virtual bool refs(const RefsRequest &Req,
                     llvm::function_ref<void(const Ref &)> Callback) const = 0;
 
   /// Finds all relations (S, P, O) stored in the index such that S is among
@@ -136,7 +138,7 @@ public:
                  llvm::function_ref<void(const Symbol &)>) const override;
   void lookup(const LookupRequest &,
               llvm::function_ref<void(const Symbol &)>) const override;
-  void refs(const RefsRequest &,
+  bool refs(const RefsRequest &,
             llvm::function_ref<void(const Ref &)>) const override;
   void relations(const RelationsRequest &,
                  llvm::function_ref<void(const SymbolID &, const Symbol &)>)

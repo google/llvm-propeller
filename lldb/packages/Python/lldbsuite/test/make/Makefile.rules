@@ -25,6 +25,7 @@
 # LD_EXTRAS :=
 # SPLIT_DEBUG_SYMBOLS := YES
 # CROSS_COMPILE :=
+# USE_PRIVATE_MODULE_CACHE := YES
 #
 # And test/functionalities/archives/Makefile:
 # MAKE_DSYM := NO
@@ -36,7 +37,8 @@
 
 SRCDIR := $(shell dirname $(firstword $(MAKEFILE_LIST)))
 BUILDDIR := $(shell pwd)
-THIS_FILE_DIR := $(shell dirname $(lastword $(MAKEFILE_LIST)))
+MAKEFILE_RULES := $(lastword $(MAKEFILE_LIST))
+THIS_FILE_DIR := $(shell dirname $(MAKEFILE_RULES))
 LLDB_BASE_DIR := $(THIS_FILE_DIR)/../../../../../
 
 #----------------------------------------------------------------------
@@ -170,15 +172,8 @@ endif
 #   o cxx_compiler
 #   o cxx_linker
 #----------------------------------------------------------------------
-CC ?= clang
-ifeq "$(CC)" "cc"
-	ifneq "$(shell which clang)" ""
-		CC = clang
-	else ifneq "$(shell which clang-3.5)" ""
-		CC = clang-3.5
-	else ifneq "$(shell which gcc)" ""
-		CC = gcc
-	endif
+ifeq "$(CC)" ""
+$(error "C compiler is not specified. Please run tests through lldb-dotest or lit")
 endif
 
 #----------------------------------------------------------------------
@@ -187,8 +182,8 @@ endif
 
 ifeq "$(OS)" "Darwin"
     ifeq "$(SDKROOT)" ""
-        # We haven't otherwise set the SDKROOT, so set it now to macosx
-        SDKROOT := $(shell xcrun --sdk macosx --show-sdk-path)
+	# We haven't otherwise set the SDKROOT, so set it now to macosx
+	SDKROOT := $(shell xcrun --sdk macosx --show-sdk-path)
     endif
 endif
 
@@ -245,7 +240,7 @@ else
 		override ARCH :=
 		override ARCHFLAG :=
 	endif
-	ifeq "$(ARCH)" "arm"
+	ifeq "$(findstring arm,$(ARCH))" "arm"
 		override ARCH :=
 		override ARCHFLAG :=
 	endif
@@ -312,15 +307,13 @@ ifeq "$(MAKE_DWO)" "YES"
 	CFLAGS += -gsplit-dwarf
 endif
 
-# Use a shared module cache when building in the default test build directory.
-CLANG_MODULE_CACHE_DIR := $(shell echo "$(BUILDDIR)" | sed $(QUOTE)s/lldb-test-build.noindex.*/lldb-test-build.noindex\/module-cache-clang/$(QUOTE))
-
-ifeq "$(findstring lldb-test-build.noindex, $(BUILDDIR))" ""
-CLANG_MODULE_CACHE_DIR := $(BUILDDIR)/module-cache
-$(warning failed to set the shared clang module cache dir)
+ifeq "$(USE_PRIVATE_MODULE_CACHE)" "YES"
+THE_CLANG_MODULE_CACHE_DIR := $(BUILDDIR)/private-module-cache
+else
+THE_CLANG_MODULE_CACHE_DIR := $(CLANG_MODULE_CACHE_DIR)
 endif
 
-MODULE_BASE_FLAGS := -fmodules -gmodules -fmodules-cache-path=$(CLANG_MODULE_CACHE_DIR)
+MODULE_BASE_FLAGS := -fmodules -gmodules -fmodules-cache-path=$(THE_CLANG_MODULE_CACHE_DIR)
 MANDATORY_MODULE_BUILD_CFLAGS := $(MODULE_BASE_FLAGS) -gmodules
 # Build flags for building with C++ modules.
 # -glldb is necessary for emitting information about what modules were imported.
@@ -374,46 +367,46 @@ endif
 
 # Function that returns the counterpart C++ compiler, given $(CC) as arg.
 cxx_compiler_notdir = $(if $(findstring icc,$(1)), \
-                            $(subst icc,icpc,$(1)), \
-                            $(if $(findstring llvm-gcc,$(1)), \
-                                 $(subst llvm-gcc,llvm-g++,$(1)), \
-                                 $(if $(findstring gcc,$(1)), \
-                                      $(subst gcc,g++,$(1)), \
-                                      $(subst cc,c++,$(1)))))
+			$(subst icc,icpc,$(1)), \
+			$(if $(findstring llvm-gcc,$(1)), \
+				$(subst llvm-gcc,llvm-g++,$(1)), \
+				$(if $(findstring gcc,$(1)), \
+					$(subst gcc,g++,$(1)), \
+					$(subst cc,c++,$(1)))))
 cxx_compiler = $(if $(findstring /,$(1)),$(join $(dir $(1)), $(call cxx_compiler_notdir,$(notdir $(1)))),$(call cxx_compiler_notdir,$(1)))
 
 # Function that returns the C++ linker, given $(CC) as arg.
 cxx_linker_notdir = $(if $(findstring icc,$(1)), \
-                          $(subst icc,icpc,$(1)), \
-                          $(if $(findstring llvm-gcc,$(1)), \
-                               $(subst llvm-gcc,llvm-g++,$(1)), \
-                               $(if $(findstring gcc,$(1)), \
-                                    $(subst gcc,g++,$(1)), \
-                                    $(subst cc,c++,$(1)))))
+			$(subst icc,icpc,$(1)), \
+			$(if $(findstring llvm-gcc,$(1)), \
+				$(subst llvm-gcc,llvm-g++,$(1)), \
+				$(if $(findstring gcc,$(1)), \
+					$(subst gcc,g++,$(1)), \
+					$(subst cc,c++,$(1)))))
 cxx_linker = $(if $(findstring /,$(1)),$(join $(dir $(1)), $(call cxx_linker_notdir,$(notdir $(1)))),$(call cxx_linker_notdir,$(1)))
 
 ifneq "$(OS)" "Darwin"
-    CLANG_OR_GCC := $(strip $(if $(findstring clang,$(CC)), \
-                                 $(findstring clang,$(CC)), \
-                                 $(if $(findstring gcc,$(CC)), \
-                                      $(findstring gcc,$(CC)), \
-                                      cc)))
+	CLANG_OR_GCC := $(strip $(if $(findstring clang,$(CC)), \
+				$(findstring clang,$(CC)), \
+				$(if $(findstring gcc,$(CC)), \
+					$(findstring gcc,$(CC)), \
+					cc)))
 
-    CC_LASTWORD := $(strip $(lastword $(subst -, ,$(CC))))
+	CC_LASTWORD := $(strip $(lastword $(subst -, ,$(CC))))
 
-    replace_with = $(strip $(if $(findstring $(3),$(CC_LASTWORD)), \
-                           $(subst $(3),$(1),$(2)), \
-                           $(subst $(3),$(1),$(subst -$(CC_LASTWORD),,$(2)))))
+	replace_with = $(strip $(if $(findstring $(3),$(CC_LASTWORD)), \
+			$(subst $(3),$(1),$(2)), \
+			$(subst $(3),$(1),$(subst -$(CC_LASTWORD),,$(2)))))
 
-    ifeq "$(notdir $(CC))" "$(CC)"
-        replace_cc_with = $(call replace_with,$(1),$(CC),$(CLANG_OR_GCC))
-    else
-        replace_cc_with = $(join $(dir $(CC)),$(call replace_with,$(1),$(notdir $(CC)),$(CLANG_OR_GCC)))
-    endif
+	ifeq "$(notdir $(CC))" "$(CC)"
+		replace_cc_with = $(call replace_with,$(1),$(CC),$(CLANG_OR_GCC))
+	else
+		replace_cc_with = $(join $(dir $(CC)),$(call replace_with,$(1),$(notdir $(CC)),$(CLANG_OR_GCC)))
+	endif
 
-    OBJCOPY ?= $(call replace_cc_with,objcopy)
-    ARCHIVER ?= $(call replace_cc_with,ar)
-    override AR = $(ARCHIVER)
+	OBJCOPY ?= $(call replace_cc_with,objcopy)
+	ARCHIVER ?= $(call replace_cc_with,ar)
+	override AR = $(ARCHIVER)
 endif
 
 ifdef PIE
@@ -608,6 +601,9 @@ ifneq "$(DYLIB_NAME)" ""
 ifeq "$(DYLIB_ONLY)" ""
 $(EXE) : $(OBJECTS) $(ARCHIVE_NAME) $(DYLIB_FILENAME)
 	$(LD) $(OBJECTS) $(ARCHIVE_NAME) -L. -l$(DYLIB_NAME) $(LDFLAGS) -o "$(EXE)"
+ifneq "$(CODESIGN)" ""
+	$(CODESIGN) -s - "$(EXE)"
+endif
 else
 EXE = $(DYLIB_FILENAME)
 endif
@@ -764,29 +760,10 @@ endif
 dsym:	$(DSYM)
 all:	$(EXE) $(DSYM)
 clean::
-	$(RM) -rf $(OBJECTS) $(PREREQS) $(PREREQS:.d=.d.tmp) $(DWOS) $(ARCHIVE_NAME) $(ARCHIVE_OBJECTS) $(CLANG_MODULE_CACHE_DIR)
-ifneq "$(DYLIB_NAME)" ""
-	$(RM) -r $(DYLIB_FILENAME).dSYM
-	$(RM) $(DYLIB_OBJECTS) $(DYLIB_PREREQS) $(DYLIB_PREREQS:.d=.d.tmp) $(DYLIB_DWOS) $(DYLIB_FILENAME) $(DYLIB_FILENAME).debug
-endif
-ifneq "$(FRAMEWORK)" ""
-	$(RM) -rf $(FRAMEWORK).framework
-endif
-ifneq "$(PCH_OUTPUT)" ""
-	$(RM) $(PCH_OUTPUT)
-endif
-ifneq "$(DSYM)" ""
-	$(RM) -r "$(DSYM)"
-endif
-ifeq "$(OS)" "Windows_NT"
-# http://llvm.org/pr24589
-	IF EXIST "$(EXE)" del "$(EXE)"
-	$(RM) $(wildcard *.manifest *.pdb *.ilk)
-ifneq "$(DYLIB_NAME)" ""
-	$(RM) $(DYLIB_NAME).lib $(DYLIB_NAME).exp
-endif
+ifeq "$(findstring lldb-test-build.noindex, $(BUILDDIR))" ""
+	$(error Trying to invoke the clean rule, but not using the default build tree layout)
 else
-	$(RM) "$(EXE)"
+	$(RM) -r $(wildcard $(BUILDDIR)/*)
 endif
 
 #----------------------------------------------------------------------

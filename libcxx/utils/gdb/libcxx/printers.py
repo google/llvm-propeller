@@ -27,6 +27,7 @@ _void_pointer_type = gdb.lookup_type("void").pointer()
 
 _long_int_type = gdb.lookup_type("unsigned long long")
 
+_libcpp_big_endian = False
 
 def addr_as_long(addr):
     return int(addr.cast(_long_int_type))
@@ -136,12 +137,16 @@ class StdTuplePrinter(object):
         def __iter__(self):
             return self
 
-        def next(self):
+        def __next__(self):
             # child_iter raises StopIteration when appropriate.
             field_name = self.child_iter.next()
             child = self.val["__base_"][field_name]["__value_"]
             self.count += 1
             return ("[%d]" % self.count, child)
+
+        # TODO Delete when we drop Python 2.
+        def next(self):
+            return self.__next__()
 
     def __init__(self, val):
         self.val = val
@@ -195,19 +200,14 @@ class StdStringPrinter(object):
         field = short_field.type.fields()[1].type.fields()[0]
         libcpp_abi_alternate_string_layout = field.name and "__padding" in field.name
 
-        # Strictly, this only tells us the current mode, not how libcxx was
-        # compiled.
-        libcpp_big_endian = "big endian" in gdb.execute("show endian",
-                                                        to_string=True)
-
         # This logical structure closely follows the original code (which is clearer
         # in C++).  Keep them parallel to make them easier to compare.
         if libcpp_abi_alternate_string_layout:
-            if libcpp_big_endian:
+            if _libcpp_big_endian:
                 return short_size >> 1
             else:
                 return short_size
-        elif libcpp_big_endian:
+        elif _libcpp_big_endian:
             return short_size
         else:
             return short_size >> 1
@@ -315,7 +315,7 @@ class StdVectorPrinter(object):
         def __iter__(self):
             return self
 
-        def next(self):
+        def __next__(self):
             """Retrieve the next element."""
 
             self.count += 1
@@ -332,6 +332,10 @@ class StdVectorPrinter(object):
                 self.offset = 0
             return ("[%d]" % self.count, outbit)
 
+        # TODO Delete when we drop Python 2.
+        def next(self):
+            return self.__next__()
+
     class _VectorIterator(object):
         """Class to iterate over the non-bool vector's children."""
 
@@ -343,13 +347,17 @@ class StdVectorPrinter(object):
         def __iter__(self):
             return self
 
-        def next(self):
+        def __next__(self):
             self.count += 1
             if self.item == self.end:
                 raise StopIteration
             entry = self.item.dereference()
             self.item += 1
             return ("[%d]" % self.count, entry)
+
+        # TODO Delete when we drop Python 2.
+        def next(self):
+            return self.__next__()
 
     def __init__(self, val):
         """Set val, length, capacity, and iterator for bool and normal vectors."""
@@ -969,6 +977,14 @@ _libcxx_printer_name = "libcxx_pretty_printer"
 # certain pathological cases. Limit our pretty printers to the progspace.
 def _register_libcxx_printers(event):
     progspace = event.new_objfile.progspace
+    # It would be ideal to get the endianness at print time, but
+    # gdb.execute clears gdb's internal wrap buffer, removing any values
+    # already generated as part of a larger data structure, and there is
+    # no python api to get the endianness. Mixed-endianness debugging
+    # rare enough that this workaround should be adequate.
+    _libcpp_big_endian = "big endian" in gdb.execute("show endian",
+                                                     to_string=True)
+
     if not getattr(progspace, _libcxx_printer_name, False):
         print("Loading libc++ pretty-printers.")
         gdb.printing.register_pretty_printer(

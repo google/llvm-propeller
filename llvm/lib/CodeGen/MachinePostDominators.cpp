@@ -12,14 +12,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/MachinePostDominators.h"
-
-#include "llvm/ADT/STLExtras.h"
+#include "llvm/InitializePasses.h"
 
 using namespace llvm;
 
 namespace llvm {
 template class DominatorTreeBase<MachineBasicBlock, true>; // PostDomTreeBase
-}
+
+extern bool VerifyMachineDomInfo;
+} // namespace llvm
 
 char MachinePostDominatorTree::ID = 0;
 
@@ -61,6 +62,15 @@ MachineBasicBlock *MachinePostDominatorTree::findNearestCommonDominator(
   }
 
   return NCD;
+}
+
+void MachinePostDominatorTree::verifyAnalysis() const {
+  if (PDT && VerifyMachineDomInfo)
+    if (!PDT->verify(PostDomTreeT::VerificationLevel::Basic)) {
+      errs() << "MachinePostDominatorTree verification failed\n";
+
+      abort();
+    }
 }
 
 void MachinePostDominatorTree::print(llvm::raw_ostream &OS,

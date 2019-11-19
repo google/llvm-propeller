@@ -19,8 +19,9 @@ using namespace llvm;
 using namespace llvm::object;
 using namespace llvm::support::endian;
 using namespace llvm::ELF;
-using namespace lld;
-using namespace lld::elf;
+
+namespace lld {
+namespace elf {
 
 namespace {
 class X86_64 : public TargetInfo {
@@ -93,7 +94,7 @@ X86_64::X86_64() {
 int X86_64::getTlsGdRelaxSkip(RelType type) const { return 2; }
 
 // Opcodes for the different X86_64 jmp instructions.
-enum JmpInsnOpcode {
+enum JmpInsnOpcode : uint32_t {
   J_JMP_32,
   J_JNE_32,
   J_JE_32,
@@ -1235,4 +1236,7 @@ static TargetInfo *getTargetInfo() {
   return &t;
 }
 
-TargetInfo *elf::getX86_64TargetInfo() { return getTargetInfo(); }
+TargetInfo *getX86_64TargetInfo() { return getTargetInfo(); }
+
+} // namespace elf
+} // namespace lld

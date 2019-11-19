@@ -18,12 +18,6 @@
 #include <set>
 #include <string>
 
-namespace llvm {
-namespace symbolize {
-class LLVMSymbolizer;
-}
-} // namespace llvm
-
 namespace lld {
 namespace coff {
 
@@ -109,6 +103,9 @@ struct Configuration {
   bool debugDwarf = false;
   bool debugGHashes = false;
   bool debugSymtab = false;
+  bool driver = false;
+  bool driverUponly = false;
+  bool driverWdm = false;
   bool showTiming = false;
   bool showSummary = false;
   unsigned debugTypes = static_cast<unsigned>(DebugType::None);
@@ -224,6 +221,7 @@ struct Configuration {
   bool warnMissingOrderSymbol = true;
   bool warnLocallyDefinedImported = true;
   bool warnDebugInfoUnusable = true;
+  bool warnLongSectionNames = true;
   bool incremental = true;
   bool integrityCheck = false;
   bool killAt = false;
@@ -232,8 +230,6 @@ struct Configuration {
   bool swaprunNet = false;
   bool thinLTOEmitImportsFiles;
   bool thinLTOIndexOnly;
-
-  llvm::symbolize::LLVMSymbolizer *symbolizer = nullptr;
 };
 
 extern Configuration *config;

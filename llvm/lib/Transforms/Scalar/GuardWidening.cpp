@@ -39,7 +39,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/GuardWidening.h"
-#include <functional>
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/Statistic.h"
@@ -53,11 +52,14 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/PatternMatch.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/KnownBits.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
+#include <functional>
 
 using namespace llvm;
 
@@ -271,16 +273,17 @@ class GuardWideningImpl {
   void widenGuard(Instruction *ToWiden, Value *NewCondition,
                   bool InvertCondition) {
     Value *Result;
+    
     widenCondCommon(getCondition(ToWiden), NewCondition, ToWiden, Result,
                     InvertCondition);
-    Value *WidenableCondition = nullptr;
     if (isGuardAsWidenableBranch(ToWiden)) {
-      auto *Cond = cast<BranchInst>(ToWiden)->getCondition();
-      WidenableCondition = cast<BinaryOperator>(Cond)->getOperand(1);
+      auto *BI = cast<BranchInst>(ToWiden);
+      auto *And = cast<Instruction>(BI->getCondition());
+      And->setOperand(0, Result);
+      And->moveBefore(ToWiden);
+      assert(isGuardAsWidenableBranch(ToWiden) && "still widenable?");
+      return;
     }
-    if (WidenableCondition)
-      Result = BinaryOperator::CreateAnd(Result, WidenableCondition,
-                                         "guard.chk", ToWiden);
     setCondition(ToWiden, Result);
   }
 
@@ -591,7 +594,7 @@ bool GuardWideningImpl::widenCondCommon(Value *Cond0, Value *Cond1,
           else
             Result = RC.getCheckInst();
         }
-
+        assert(Result && "Failed to find result value");
         Result->setName("wide.chk");
       }
       return true;

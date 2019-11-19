@@ -63,6 +63,7 @@ Sections:
     Address: 0x20000
   - Name:    .hash
     Type:    SHT_HASH
+    Content: ''
     ShSize:  0x40
     Address: 0x10000
   - Name:    .dynamic
@@ -73,6 +74,7 @@ Sections:
     Type:    SHT_NOTE
     ShSize:  0x100
     Address: 0x4000
+    Notes:   []
   - Name:    .nobits
     Type:    SHT_NOBITS
     ShSize:  0x200

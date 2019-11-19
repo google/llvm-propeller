@@ -535,7 +535,7 @@ public:
 
   static const lldb::TargetPropertiesSP &GetGlobalProperties();
 
-  std::recursive_mutex &GetAPIMutex() { return m_mutex; }
+  std::recursive_mutex &GetAPIMutex();
 
   void DeleteCurrentProcess();
 
@@ -906,8 +906,8 @@ public:
   /// The target call at present just consults the Platform's call of the
   /// same name.
   ///
-  /// \param[in] module_sp
-  ///     A shared pointer reference to the module that checked.
+  /// \param[in] module_spec
+  ///     Path to the module.
   ///
   /// \return \b true if the module should be excluded, \b false otherwise.
   bool ModuleIsExcludedForUnconstrainedSearches(const FileSpec &module_spec);
@@ -1288,6 +1288,12 @@ protected:
   lldb::PlatformSP m_platform_sp; ///< The platform for this target.
   std::recursive_mutex m_mutex; ///< An API mutex that is used by the lldb::SB*
                                 /// classes make the SB interface thread safe
+  /// When the private state thread calls SB API's - usually because it is 
+  /// running OS plugin or Python ThreadPlan code - it should not block on the
+  /// API mutex that is held by the code that kicked off the sequence of events
+  /// that led us to run the code.  We hand out this mutex instead when we 
+  /// detect that code is running on the private state thread.
+  std::recursive_mutex m_private_mutex; 
   Arch m_arch;
   ModuleList m_images; ///< The list of images for this process (shared
                        /// libraries and anything dynamically loaded).

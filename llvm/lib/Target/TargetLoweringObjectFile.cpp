@@ -257,6 +257,7 @@ MCSection *TargetLoweringObjectFile::SectionForGlobal(
     auto Attrs = GVar->getAttributes();
     if ((Attrs.hasAttribute("bss-section") && Kind.isBSS()) ||
         (Attrs.hasAttribute("data-section") && Kind.isData()) ||
+        (Attrs.hasAttribute("relro-section") && Kind.isReadOnlyWithRel()) ||
         (Attrs.hasAttribute("rodata-section") && Kind.isReadOnly()))  {
        return getExplicitSectionGlobal(GO, Kind, TM);
     }
@@ -311,6 +312,11 @@ MCSection *TargetLoweringObjectFile::getSectionForMachineBasicBlock(
   return nullptr;
 }
 
+MCSection *TargetLoweringObjectFile::getColdSectionForMachineBasicBlock(
+    const Function &F, const MachineBasicBlock &MBB,
+    const TargetMachine &TM) const {
+  return nullptr;
+}
 /// getTTypeGlobalReference - Return an MCExpr to use for a
 /// reference to the specified global variable from exception
 /// handling information.

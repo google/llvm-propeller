@@ -158,6 +158,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 952,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 41,
 // CHECK-NEXT:   "col": 6,
@@ -165,16 +166,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 947,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 4
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 987,
 // CHECK-NEXT:    "line": 44,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
 // CHECK-NEXT:   }
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "name": "TestThrow",
+// CHECK-NEXT:  "mangledName": "_Z9TestThrowv",
 // CHECK-NEXT:  "type": {
 // CHECK-NEXT:   "qualType": "void ()"
 // CHECK-NEXT:  },
@@ -184,11 +188,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "kind": "CompoundStmt",
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 964,
 // CHECK-NEXT:      "line": 41,
 // CHECK-NEXT:      "col": 18,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 987,
 // CHECK-NEXT:      "line": 44,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -200,11 +206,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXThrowExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 968,
 // CHECK-NEXT:        "line": 42,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 5
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 974,
 // CHECK-NEXT:        "col": 9,
 // CHECK-NEXT:        "tokLen": 2
 // CHECK-NEXT:       }
@@ -219,10 +227,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "IntegerLiteral",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 974,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 974,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         }
@@ -240,11 +250,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXThrowExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 980,
 // CHECK-NEXT:        "line": 43,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 5
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 980,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 5
 // CHECK-NEXT:       }
@@ -262,6 +274,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 995,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 46,
 // CHECK-NEXT:   "col": 6,
@@ -269,16 +282,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 990,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 4
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 1141,
 // CHECK-NEXT:    "line": 51,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
 // CHECK-NEXT:   }
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "name": "TestPointerToMember",
+// CHECK-NEXT:  "mangledName": "_Z19TestPointerToMember1SPS_MS_iMS_FviE",
 // CHECK-NEXT:  "type": {
 // CHECK-NEXT:   "qualType": "void (S, S *, int S::*, void (S::*)(int))"
 // CHECK-NEXT:  },
@@ -287,22 +303,26 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "ParmVarDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1017,
 // CHECK-NEXT:     "line": 46,
 // CHECK-NEXT:     "col": 28,
 // CHECK-NEXT:     "tokLen": 4
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1015,
 // CHECK-NEXT:      "col": 26,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1017,
 // CHECK-NEXT:      "col": 28,
 // CHECK-NEXT:      "tokLen": 4
 // CHECK-NEXT:     }
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "isUsed": true,
 // CHECK-NEXT:    "name": "obj1",
+// CHECK-NEXT:    "mangledName": "_ZZ19TestPointerToMember1SPS_MS_iMS_FviEE4obj1",
 // CHECK-NEXT:    "type": {
 // CHECK-NEXT:     "qualType": "S"
 // CHECK-NEXT:    }
@@ -311,21 +331,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "ParmVarDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1026,
 // CHECK-NEXT:     "col": 37,
 // CHECK-NEXT:     "tokLen": 4
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1023,
 // CHECK-NEXT:      "col": 34,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1026,
 // CHECK-NEXT:      "col": 37,
 // CHECK-NEXT:      "tokLen": 4
 // CHECK-NEXT:     }
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "isUsed": true,
 // CHECK-NEXT:    "name": "obj2",
+// CHECK-NEXT:    "mangledName": "_ZZ19TestPointerToMember1SPS_MS_iMS_FviEE4obj2",
 // CHECK-NEXT:    "type": {
 // CHECK-NEXT:     "qualType": "S *"
 // CHECK-NEXT:    }
@@ -334,21 +358,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "ParmVarDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1041,
 // CHECK-NEXT:     "col": 52,
 // CHECK-NEXT:     "tokLen": 4
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1032,
 // CHECK-NEXT:      "col": 43,
 // CHECK-NEXT:      "tokLen": 3
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1041,
 // CHECK-NEXT:      "col": 52,
 // CHECK-NEXT:      "tokLen": 4
 // CHECK-NEXT:     }
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "isUsed": true,
 // CHECK-NEXT:    "name": "data",
+// CHECK-NEXT:    "mangledName": "_ZZ19TestPointerToMember1SPS_MS_iMS_FviEE4data",
 // CHECK-NEXT:    "type": {
 // CHECK-NEXT:     "qualType": "int S::*"
 // CHECK-NEXT:    }
@@ -357,21 +385,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "ParmVarDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1057,
 // CHECK-NEXT:     "col": 68,
 // CHECK-NEXT:     "tokLen": 4
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1047,
 // CHECK-NEXT:      "col": 58,
 // CHECK-NEXT:      "tokLen": 4
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1066,
 // CHECK-NEXT:      "col": 77,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     }
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "isUsed": true,
 // CHECK-NEXT:    "name": "call",
+// CHECK-NEXT:    "mangledName": "_ZZ19TestPointerToMember1SPS_MS_iMS_FviEE4call",
 // CHECK-NEXT:    "type": {
 // CHECK-NEXT:     "qualType": "void (S::*)(int)"
 // CHECK-NEXT:    }
@@ -381,10 +413,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "kind": "CompoundStmt",
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1069,
 // CHECK-NEXT:      "col": 80,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1141,
 // CHECK-NEXT:      "line": 51,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -396,11 +430,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "BinaryOperator",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1073,
 // CHECK-NEXT:        "line": 47,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 4
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1079,
 // CHECK-NEXT:        "col": 9,
 // CHECK-NEXT:        "tokLen": 4
 // CHECK-NEXT:       }
@@ -416,10 +452,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "DeclRefExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1073,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1073,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         }
@@ -442,10 +480,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1079,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1079,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         }
@@ -461,10 +501,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1079,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1079,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           }
@@ -491,11 +533,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "BinaryOperator",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1087,
 // CHECK-NEXT:        "line": 48,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 4
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1094,
 // CHECK-NEXT:        "col": 10,
 // CHECK-NEXT:        "tokLen": 4
 // CHECK-NEXT:       }
@@ -511,10 +555,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1087,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1087,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         }
@@ -530,10 +576,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1087,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1087,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           }
@@ -558,10 +606,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1094,
 // CHECK-NEXT:          "col": 10,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1094,
 // CHECK-NEXT:          "col": 10,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         }
@@ -577,10 +627,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1094,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1094,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           }
@@ -607,11 +659,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1102,
 // CHECK-NEXT:        "line": 49,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1117,
 // CHECK-NEXT:        "col": 18,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -626,10 +680,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ParenExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1102,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1113,
 // CHECK-NEXT:          "col": 14,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -644,10 +700,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "BinaryOperator",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1103,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1109,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           }
@@ -663,10 +721,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1103,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1103,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             }
@@ -689,10 +749,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ImplicitCastExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1109,
 // CHECK-NEXT:              "col": 10,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1109,
 // CHECK-NEXT:              "col": 10,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             }
@@ -708,10 +770,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1109,
 // CHECK-NEXT:                "col": 10,
 // CHECK-NEXT:                "tokLen": 4
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1109,
 // CHECK-NEXT:                "col": 10,
 // CHECK-NEXT:                "tokLen": 4
 // CHECK-NEXT:               }
@@ -740,10 +804,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "IntegerLiteral",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1115,
 // CHECK-NEXT:          "col": 16,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1115,
 // CHECK-NEXT:          "col": 16,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         }
@@ -761,11 +827,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1122,
 // CHECK-NEXT:        "line": 50,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1138,
 // CHECK-NEXT:        "col": 19,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -780,10 +848,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ParenExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1122,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1134,
 // CHECK-NEXT:          "col": 15,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -798,10 +868,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "BinaryOperator",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1123,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1130,
 // CHECK-NEXT:            "col": 11,
 // CHECK-NEXT:            "tokLen": 4
 // CHECK-NEXT:           }
@@ -817,10 +889,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ImplicitCastExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1123,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1123,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             }
@@ -836,10 +910,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1123,
 // CHECK-NEXT:                "col": 4,
 // CHECK-NEXT:                "tokLen": 4
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1123,
 // CHECK-NEXT:                "col": 4,
 // CHECK-NEXT:                "tokLen": 4
 // CHECK-NEXT:               }
@@ -864,10 +940,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ImplicitCastExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1130,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1130,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             }
@@ -883,10 +961,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1130,
 // CHECK-NEXT:                "col": 11,
 // CHECK-NEXT:                "tokLen": 4
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1130,
 // CHECK-NEXT:                "col": 11,
 // CHECK-NEXT:                "tokLen": 4
 // CHECK-NEXT:               }
@@ -915,10 +995,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "IntegerLiteral",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1136,
 // CHECK-NEXT:          "col": 17,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1136,
 // CHECK-NEXT:          "col": 17,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         }
@@ -939,6 +1021,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 1149,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 53,
 // CHECK-NEXT:   "col": 6,
@@ -946,16 +1029,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 1144,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 4
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 1292,
 // CHECK-NEXT:    "line": 58,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
 // CHECK-NEXT:   }
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "name": "TestCasting",
+// CHECK-NEXT:  "mangledName": "_Z11TestCastingPK1S",
 // CHECK-NEXT:  "type": {
 // CHECK-NEXT:   "qualType": "void (const S *)"
 // CHECK-NEXT:  },
@@ -964,22 +1050,26 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "ParmVarDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1170,
 // CHECK-NEXT:     "line": 53,
 // CHECK-NEXT:     "col": 27,
 // CHECK-NEXT:     "tokLen": 1
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1161,
 // CHECK-NEXT:      "col": 18,
 // CHECK-NEXT:      "tokLen": 5
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1170,
 // CHECK-NEXT:      "col": 27,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     }
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "isUsed": true,
 // CHECK-NEXT:    "name": "s",
+// CHECK-NEXT:    "mangledName": "_ZZ11TestCastingPK1SE1s",
 // CHECK-NEXT:    "type": {
 // CHECK-NEXT:     "qualType": "const S *"
 // CHECK-NEXT:    }
@@ -989,10 +1079,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "kind": "CompoundStmt",
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1173,
 // CHECK-NEXT:      "col": 30,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1292,
 // CHECK-NEXT:      "line": 58,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -1004,11 +1096,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXConstCastExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1177,
 // CHECK-NEXT:        "line": 54,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 10
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1194,
 // CHECK-NEXT:        "col": 20,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -1024,10 +1118,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1193,
 // CHECK-NEXT:          "col": 19,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1193,
 // CHECK-NEXT:          "col": 19,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1044,10 +1140,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1193,
 // CHECK-NEXT:            "col": 19,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1193,
 // CHECK-NEXT:            "col": 19,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1074,11 +1172,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXStaticCastExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1199,
 // CHECK-NEXT:        "line": 55,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 11
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1223,
 // CHECK-NEXT:        "col": 27,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -1099,10 +1199,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1222,
 // CHECK-NEXT:          "col": 26,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1222,
 // CHECK-NEXT:          "col": 26,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1119,10 +1221,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1222,
 // CHECK-NEXT:            "col": 26,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1222,
 // CHECK-NEXT:            "col": 26,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1149,11 +1253,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXDynamicCastExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1228,
 // CHECK-NEXT:        "line": 56,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 12
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1253,
 // CHECK-NEXT:        "col": 28,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -1169,10 +1275,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1252,
 // CHECK-NEXT:          "col": 27,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1252,
 // CHECK-NEXT:          "col": 27,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1189,10 +1297,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1252,
 // CHECK-NEXT:            "col": 27,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1252,
 // CHECK-NEXT:            "col": 27,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1219,11 +1329,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXReinterpretCastExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1258,
 // CHECK-NEXT:        "line": 57,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 16
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1289,
 // CHECK-NEXT:        "col": 34,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -1239,10 +1351,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1288,
 // CHECK-NEXT:          "col": 33,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1288,
 // CHECK-NEXT:          "col": 33,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1259,10 +1373,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1288,
 // CHECK-NEXT:            "col": 33,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1288,
 // CHECK-NEXT:            "col": 33,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1292,6 +1408,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionTemplateDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 1326,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 61,
 // CHECK-NEXT:   "col": 6,
@@ -1299,11 +1416,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 1295,
 // CHECK-NEXT:    "line": 60,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 8
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 1533,
 // CHECK-NEXT:    "line": 75,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
@@ -1315,16 +1434,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "TemplateTypeParmDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1317,
 // CHECK-NEXT:     "line": 60,
 // CHECK-NEXT:     "col": 23,
 // CHECK-NEXT:     "tokLen": 2
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1305,
 // CHECK-NEXT:      "col": 11,
 // CHECK-NEXT:      "tokLen": 8
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1317,
 // CHECK-NEXT:      "col": 23,
 // CHECK-NEXT:      "tokLen": 2
 // CHECK-NEXT:     }
@@ -1340,16 +1462,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "FunctionDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1326,
 // CHECK-NEXT:     "line": 61,
 // CHECK-NEXT:     "col": 6,
 // CHECK-NEXT:     "tokLen": 20
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1321,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 4
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1533,
 // CHECK-NEXT:      "line": 75,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -1364,22 +1489,26 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "id": "0x{{.*}}",
 // CHECK-NEXT:      "kind": "ParmVarDecl",
 // CHECK-NEXT:      "loc": {
+// CHECK-NEXT:       "offset": 1352,
 // CHECK-NEXT:       "line": 61,
 // CHECK-NEXT:       "col": 32,
 // CHECK-NEXT:       "tokLen": 1
 // CHECK-NEXT:      },
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1347,
 // CHECK-NEXT:        "col": 27,
 // CHECK-NEXT:        "tokLen": 3
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1352,
 // CHECK-NEXT:        "col": 32,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
 // CHECK-NEXT:      },
 // CHECK-NEXT:      "isReferenced": true,
 // CHECK-NEXT:      "name": "p",
+// CHECK-NEXT:      "mangledName": "_ZZ20TestUnaryExpressionsPiE1p",
 // CHECK-NEXT:      "type": {
 // CHECK-NEXT:       "qualType": "int *"
 // CHECK-NEXT:      }
@@ -1389,10 +1518,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CompoundStmt",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1355,
 // CHECK-NEXT:        "col": 35,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1533,
 // CHECK-NEXT:        "line": 75,
 // CHECK-NEXT:        "col": 1,
 // CHECK-NEXT:        "tokLen": 1
@@ -1404,11 +1535,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "SizeOfPackExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1359,
 // CHECK-NEXT:          "line": 62,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 6
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1371,
 // CHECK-NEXT:          "col": 15,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1424,11 +1557,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXNoexceptExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1376,
 // CHECK-NEXT:          "line": 63,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 8
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1390,
 // CHECK-NEXT:          "col": 17,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1443,10 +1578,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "BinaryOperator",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1385,
 // CHECK-NEXT:            "col": 12,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1389,
 // CHECK-NEXT:            "col": 16,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1462,10 +1599,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ImplicitCastExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1385,
 // CHECK-NEXT:              "col": 12,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1385,
 // CHECK-NEXT:              "col": 12,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -1481,10 +1620,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1385,
 // CHECK-NEXT:                "col": 12,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1385,
 // CHECK-NEXT:                "col": 12,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -1510,10 +1651,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ImplicitCastExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1389,
 // CHECK-NEXT:              "col": 16,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1389,
 // CHECK-NEXT:              "col": 16,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -1529,10 +1672,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1389,
 // CHECK-NEXT:                "col": 16,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1389,
 // CHECK-NEXT:                "col": 16,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -1562,11 +1707,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXNewExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1396,
 // CHECK-NEXT:          "line": 65,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1402,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         }
@@ -1590,11 +1737,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXNewExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1409,
 // CHECK-NEXT:          "line": 66,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1417,
 // CHECK-NEXT:          "col": 11,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1617,11 +1766,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXNewExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1422,
 // CHECK-NEXT:          "line": 67,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1432,
 // CHECK-NEXT:          "col": 13,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1645,10 +1796,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "InitListExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1429,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1432,
 // CHECK-NEXT:            "col": 13,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1663,10 +1816,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "IntegerLiteral",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1430,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 2
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1430,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 2
 // CHECK-NEXT:             }
@@ -1686,11 +1841,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXNewExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1437,
 // CHECK-NEXT:          "line": 68,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1446,
 // CHECK-NEXT:          "col": 12,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1714,10 +1871,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1445,
 // CHECK-NEXT:            "col": 11,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1445,
 // CHECK-NEXT:            "col": 11,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1733,10 +1892,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "IntegerLiteral",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1445,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1445,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -1756,11 +1917,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXNewExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1451,
 // CHECK-NEXT:          "line": 69,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1466,
 // CHECK-NEXT:          "col": 18,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -1785,10 +1948,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1459,
 // CHECK-NEXT:            "col": 11,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1459,
 // CHECK-NEXT:            "col": 11,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1804,10 +1969,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "IntegerLiteral",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1459,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1459,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -1825,10 +1992,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "InitListExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1461,
 // CHECK-NEXT:            "col": 13,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1466,
 // CHECK-NEXT:            "col": 18,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1843,10 +2012,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "IntegerLiteral",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1462,
 // CHECK-NEXT:              "col": 14,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1462,
 // CHECK-NEXT:              "col": 14,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -1862,10 +2033,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "IntegerLiteral",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1465,
 // CHECK-NEXT:              "col": 17,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1465,
 // CHECK-NEXT:              "col": 17,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -1885,11 +2058,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXNewExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1471,
 // CHECK-NEXT:          "line": 70,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1479,
 // CHECK-NEXT:          "col": 11,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         }
@@ -1913,10 +2088,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1476,
 // CHECK-NEXT:            "col": 8,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1476,
 // CHECK-NEXT:            "col": 8,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -1932,10 +2109,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ImplicitCastExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1476,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1476,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -1951,10 +2130,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1476,
 // CHECK-NEXT:                "col": 8,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1476,
 // CHECK-NEXT:                "col": 8,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -1983,11 +2164,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXNewExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1486,
 // CHECK-NEXT:          "line": 71,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1500,
 // CHECK-NEXT:          "col": 17,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2012,10 +2195,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "InitListExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1497,
 // CHECK-NEXT:            "col": 14,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1500,
 // CHECK-NEXT:            "col": 17,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2030,10 +2215,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "IntegerLiteral",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1498,
 // CHECK-NEXT:              "col": 15,
 // CHECK-NEXT:              "tokLen": 2
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1498,
 // CHECK-NEXT:              "col": 15,
 // CHECK-NEXT:              "tokLen": 2
 // CHECK-NEXT:             }
@@ -2051,10 +2238,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1491,
 // CHECK-NEXT:            "col": 8,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1491,
 // CHECK-NEXT:            "col": 8,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2070,10 +2259,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ImplicitCastExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1491,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1491,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -2089,10 +2280,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1491,
 // CHECK-NEXT:                "col": 8,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1491,
 // CHECK-NEXT:                "col": 8,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -2121,11 +2314,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXDeleteExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1506,
 // CHECK-NEXT:          "line": 73,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1515,
 // CHECK-NEXT:          "col": 12,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2149,10 +2344,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1515,
 // CHECK-NEXT:            "col": 12,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1515,
 // CHECK-NEXT:            "col": 12,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2168,10 +2365,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1515,
 // CHECK-NEXT:              "col": 12,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1515,
 // CHECK-NEXT:              "col": 12,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -2198,11 +2397,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXDeleteExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1520,
 // CHECK-NEXT:          "line": 74,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 6
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1530,
 // CHECK-NEXT:          "col": 13,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2227,10 +2428,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1530,
 // CHECK-NEXT:            "col": 13,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1530,
 // CHECK-NEXT:            "col": 13,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2246,10 +2449,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1530,
 // CHECK-NEXT:              "col": 13,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1530,
 // CHECK-NEXT:              "col": 13,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -2281,6 +2486,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 1541,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 77,
 // CHECK-NEXT:   "col": 6,
@@ -2288,16 +2494,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 1536,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 4
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 1807,
 // CHECK-NEXT:    "line": 90,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
 // CHECK-NEXT:   }
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "name": "TestPostfixExpressions",
+// CHECK-NEXT:  "mangledName": "_Z22TestPostfixExpressions1SPS_P1UIiE",
 // CHECK-NEXT:  "type": {
 // CHECK-NEXT:   "qualType": "void (S, S *, U<int> *)"
 // CHECK-NEXT:  },
@@ -2306,22 +2515,26 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "ParmVarDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1566,
 // CHECK-NEXT:     "line": 77,
 // CHECK-NEXT:     "col": 31,
 // CHECK-NEXT:     "tokLen": 1
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1564,
 // CHECK-NEXT:      "col": 29,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1566,
 // CHECK-NEXT:      "col": 31,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     }
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "isUsed": true,
 // CHECK-NEXT:    "name": "a",
+// CHECK-NEXT:    "mangledName": "_ZZ22TestPostfixExpressions1SPS_P1UIiEE1a",
 // CHECK-NEXT:    "type": {
 // CHECK-NEXT:     "qualType": "S"
 // CHECK-NEXT:    }
@@ -2330,21 +2543,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "ParmVarDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1572,
 // CHECK-NEXT:     "col": 37,
 // CHECK-NEXT:     "tokLen": 1
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1569,
 // CHECK-NEXT:      "col": 34,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1572,
 // CHECK-NEXT:      "col": 37,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     }
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "isUsed": true,
 // CHECK-NEXT:    "name": "p",
+// CHECK-NEXT:    "mangledName": "_ZZ22TestPostfixExpressions1SPS_P1UIiEE1p",
 // CHECK-NEXT:    "type": {
 // CHECK-NEXT:     "qualType": "S *"
 // CHECK-NEXT:    }
@@ -2353,21 +2570,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "ParmVarDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1583,
 // CHECK-NEXT:     "col": 48,
 // CHECK-NEXT:     "tokLen": 1
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1575,
 // CHECK-NEXT:      "col": 40,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1583,
 // CHECK-NEXT:      "col": 48,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     }
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "isUsed": true,
 // CHECK-NEXT:    "name": "r",
+// CHECK-NEXT:    "mangledName": "_ZZ22TestPostfixExpressions1SPS_P1UIiEE1r",
 // CHECK-NEXT:    "type": {
 // CHECK-NEXT:     "qualType": "U<int> *"
 // CHECK-NEXT:    }
@@ -2377,10 +2598,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "kind": "CompoundStmt",
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1586,
 // CHECK-NEXT:      "col": 51,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1807,
 // CHECK-NEXT:      "line": 90,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -2392,11 +2615,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1590,
 // CHECK-NEXT:        "line": 78,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1598,
 // CHECK-NEXT:        "col": 11,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -2411,10 +2636,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1590,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1592,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         }
@@ -2432,10 +2659,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1590,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1590,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2460,10 +2689,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "IntegerLiteral",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1597,
 // CHECK-NEXT:          "col": 10,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1597,
 // CHECK-NEXT:          "col": 10,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2481,11 +2712,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1603,
 // CHECK-NEXT:        "line": 79,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1612,
 // CHECK-NEXT:        "col": 12,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -2500,10 +2733,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1603,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1606,
 // CHECK-NEXT:          "col": 6,
 // CHECK-NEXT:          "tokLen": 4
 // CHECK-NEXT:         }
@@ -2521,10 +2756,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1603,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1603,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2540,10 +2777,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1603,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1603,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -2570,10 +2809,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "IntegerLiteral",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1611,
 // CHECK-NEXT:          "col": 11,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1611,
 // CHECK-NEXT:          "col": 11,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2591,11 +2832,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1617,
 // CHECK-NEXT:        "line": 80,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1638,
 // CHECK-NEXT:        "col": 24,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -2611,10 +2854,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1617,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1636,
 // CHECK-NEXT:          "col": 22,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2632,10 +2877,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1617,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1617,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2651,10 +2898,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1617,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1617,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -2683,11 +2932,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1643,
 // CHECK-NEXT:        "line": 81,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1665,
 // CHECK-NEXT:        "col": 25,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -2703,10 +2954,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1643,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1663,
 // CHECK-NEXT:          "col": 23,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2724,10 +2977,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1643,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1643,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2754,11 +3009,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1670,
 // CHECK-NEXT:        "line": 82,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1676,
 // CHECK-NEXT:        "col": 9,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -2773,10 +3030,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1670,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1674,
 // CHECK-NEXT:          "col": 7,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2794,10 +3053,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1670,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1670,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2813,10 +3074,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1670,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1670,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -2845,11 +3108,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1681,
 // CHECK-NEXT:        "line": 83,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1686,
 // CHECK-NEXT:        "col": 8,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -2864,10 +3129,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1681,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1684,
 // CHECK-NEXT:          "col": 6,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2885,10 +3152,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1681,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1681,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2915,11 +3184,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1691,
 // CHECK-NEXT:        "line": 84,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1706,
 // CHECK-NEXT:        "col": 18,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -2934,10 +3205,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1691,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1693,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -2955,10 +3228,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1691,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1691,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -2985,11 +3260,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1711,
 // CHECK-NEXT:        "line": 85,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1722,
 // CHECK-NEXT:        "col": 14,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -3004,10 +3281,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1711,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1720,
 // CHECK-NEXT:          "col": 12,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -3025,10 +3304,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1711,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1711,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -3044,10 +3325,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1711,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1711,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -3076,11 +3359,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXMemberCallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1727,
 // CHECK-NEXT:        "line": 86,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1750,
 // CHECK-NEXT:        "col": 26,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -3095,10 +3380,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "MemberExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1727,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1748,
 // CHECK-NEXT:          "col": 24,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -3116,10 +3403,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1727,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1727,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -3135,10 +3424,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1727,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1727,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -3167,11 +3458,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXTypeidExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1755,
 // CHECK-NEXT:        "line": 87,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 6
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1763,
 // CHECK-NEXT:        "col": 11,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -3186,10 +3479,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "DeclRefExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1762,
 // CHECK-NEXT:          "col": 10,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1762,
 // CHECK-NEXT:          "col": 10,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -3214,11 +3509,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXTypeidExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1768,
 // CHECK-NEXT:        "line": 88,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 6
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1776,
 // CHECK-NEXT:        "col": 11,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -3236,11 +3533,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CXXTypeidExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1781,
 // CHECK-NEXT:        "line": 89,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 6
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1804,
 // CHECK-NEXT:        "col": 26,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -3264,6 +3563,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionTemplateDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 1841,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 93,
 // CHECK-NEXT:   "col": 6,
@@ -3271,11 +3571,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 1810,
 // CHECK-NEXT:    "line": 92,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 8
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 2257,
 // CHECK-NEXT:    "line": 122,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
@@ -3287,16 +3589,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "TemplateTypeParmDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1832,
 // CHECK-NEXT:     "line": 92,
 // CHECK-NEXT:     "col": 23,
 // CHECK-NEXT:     "tokLen": 2
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1820,
 // CHECK-NEXT:      "col": 11,
 // CHECK-NEXT:      "tokLen": 8
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 1832,
 // CHECK-NEXT:      "col": 23,
 // CHECK-NEXT:      "tokLen": 2
 // CHECK-NEXT:     }
@@ -3312,16 +3617,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "id": "0x{{.*}}",
 // CHECK-NEXT:    "kind": "FunctionDecl",
 // CHECK-NEXT:    "loc": {
+// CHECK-NEXT:     "offset": 1841,
 // CHECK-NEXT:     "line": 93,
 // CHECK-NEXT:     "col": 6,
 // CHECK-NEXT:     "tokLen": 22
 // CHECK-NEXT:    },
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 1836,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 4
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 2257,
 // CHECK-NEXT:      "line": 122,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -3336,22 +3644,26 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "id": "0x{{.*}}",
 // CHECK-NEXT:      "kind": "ParmVarDecl",
 // CHECK-NEXT:      "loc": {
+// CHECK-NEXT:       "offset": 1870,
 // CHECK-NEXT:       "line": 93,
 // CHECK-NEXT:       "col": 35,
 // CHECK-NEXT:       "tokLen": 1
 // CHECK-NEXT:      },
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1864,
 // CHECK-NEXT:        "col": 29,
 // CHECK-NEXT:        "tokLen": 2
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 1870,
 // CHECK-NEXT:        "col": 35,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
 // CHECK-NEXT:      },
 // CHECK-NEXT:      "isReferenced": true,
 // CHECK-NEXT:      "name": "a",
+// CHECK-NEXT:      "mangledName": "_ZZ22TestPrimaryExpressionsDpT_E1a",
 // CHECK-NEXT:      "type": {
 // CHECK-NEXT:       "qualType": "Ts..."
 // CHECK-NEXT:      },
@@ -3362,10 +3674,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CompoundStmt",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 1873,
 // CHECK-NEXT:        "col": 38,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2257,
 // CHECK-NEXT:        "line": 122,
 // CHECK-NEXT:        "col": 1,
 // CHECK-NEXT:        "tokLen": 1
@@ -3377,11 +3691,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "DeclStmt",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1877,
 // CHECK-NEXT:          "line": 94,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 6
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1958,
 // CHECK-NEXT:          "line": 101,
 // CHECK-NEXT:          "col": 4,
 // CHECK-NEXT:          "tokLen": 1
@@ -3392,16 +3708,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 1884,
 // CHECK-NEXT:           "line": 94,
 // CHECK-NEXT:           "col": 10,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1877,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 6
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1957,
 // CHECK-NEXT:            "line": 101,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
@@ -3464,16 +3783,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXRecordDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 1884,
 // CHECK-NEXT:             "line": 94,
 // CHECK-NEXT:             "col": 10,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1877,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 6
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1884,
 // CHECK-NEXT:              "col": 10,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -3486,16 +3808,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 1897,
 // CHECK-NEXT:             "line": 95,
 // CHECK-NEXT:             "col": 10,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1892,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 4
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1953,
 // CHECK-NEXT:              "line": 100,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
@@ -3511,11 +3836,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1901,
 // CHECK-NEXT:                "line": 95,
 // CHECK-NEXT:                "col": 14,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1953,
 // CHECK-NEXT:                "line": 100,
 // CHECK-NEXT:                "col": 5,
 // CHECK-NEXT:                "tokLen": 1
@@ -3527,11 +3854,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "CXXThisExpr",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 1909,
 // CHECK-NEXT:                  "line": 96,
 // CHECK-NEXT:                  "col": 7,
 // CHECK-NEXT:                  "tokLen": 4
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 1909,
 // CHECK-NEXT:                  "col": 7,
 // CHECK-NEXT:                  "tokLen": 4
 // CHECK-NEXT:                 }
@@ -3546,11 +3875,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "LambdaExpr",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 1922,
 // CHECK-NEXT:                  "line": 98,
 // CHECK-NEXT:                  "col": 7,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 1929,
 // CHECK-NEXT:                  "col": 14,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 }
@@ -3564,15 +3895,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "id": "0x{{.*}}",
 // CHECK-NEXT:                  "kind": "CXXRecordDecl",
 // CHECK-NEXT:                  "loc": {
+// CHECK-NEXT:                   "offset": 1922,
 // CHECK-NEXT:                   "col": 7,
 // CHECK-NEXT:                   "tokLen": 1
 // CHECK-NEXT:                  },
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 1922,
 // CHECK-NEXT:                    "col": 7,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 1922,
 // CHECK-NEXT:                    "col": 7,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -3618,15 +3952,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                    "id": "0x{{.*}}",
 // CHECK-NEXT:                    "kind": "CXXMethodDecl",
 // CHECK-NEXT:                    "loc": {
+// CHECK-NEXT:                     "offset": 1922,
 // CHECK-NEXT:                     "col": 7,
 // CHECK-NEXT:                     "tokLen": 1
 // CHECK-NEXT:                    },
 // CHECK-NEXT:                    "range": {
 // CHECK-NEXT:                     "begin": {
+// CHECK-NEXT:                      "offset": 1927,
 // CHECK-NEXT:                      "col": 12,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     },
 // CHECK-NEXT:                     "end": {
+// CHECK-NEXT:                      "offset": 1929,
 // CHECK-NEXT:                      "col": 14,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     }
@@ -3642,10 +3979,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                      "kind": "CompoundStmt",
 // CHECK-NEXT:                      "range": {
 // CHECK-NEXT:                       "begin": {
+// CHECK-NEXT:                        "offset": 1928,
 // CHECK-NEXT:                        "col": 13,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       },
 // CHECK-NEXT:                       "end": {
+// CHECK-NEXT:                        "offset": 1929,
 // CHECK-NEXT:                        "col": 14,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       }
@@ -3657,15 +3996,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                    "id": "0x{{.*}}",
 // CHECK-NEXT:                    "kind": "FieldDecl",
 // CHECK-NEXT:                    "loc": {
+// CHECK-NEXT:                     "offset": 1923,
 // CHECK-NEXT:                     "col": 8,
 // CHECK-NEXT:                     "tokLen": 4
 // CHECK-NEXT:                    },
 // CHECK-NEXT:                    "range": {
 // CHECK-NEXT:                     "begin": {
+// CHECK-NEXT:                      "offset": 1923,
 // CHECK-NEXT:                      "col": 8,
 // CHECK-NEXT:                      "tokLen": 4
 // CHECK-NEXT:                     },
 // CHECK-NEXT:                     "end": {
+// CHECK-NEXT:                      "offset": 1923,
 // CHECK-NEXT:                      "col": 8,
 // CHECK-NEXT:                      "tokLen": 4
 // CHECK-NEXT:                     }
@@ -3682,10 +4024,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "ParenListExpr",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 1923,
 // CHECK-NEXT:                    "col": 8,
 // CHECK-NEXT:                    "tokLen": 4
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 1923,
 // CHECK-NEXT:                    "col": 8,
 // CHECK-NEXT:                    "tokLen": 4
 // CHECK-NEXT:                   }
@@ -3700,10 +4044,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                    "kind": "CXXThisExpr",
 // CHECK-NEXT:                    "range": {
 // CHECK-NEXT:                     "begin": {
+// CHECK-NEXT:                      "offset": 1923,
 // CHECK-NEXT:                      "col": 8,
 // CHECK-NEXT:                      "tokLen": 4
 // CHECK-NEXT:                     },
 // CHECK-NEXT:                     "end": {
+// CHECK-NEXT:                      "offset": 1923,
 // CHECK-NEXT:                      "col": 8,
 // CHECK-NEXT:                      "tokLen": 4
 // CHECK-NEXT:                     }
@@ -3720,10 +4066,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "CompoundStmt",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 1928,
 // CHECK-NEXT:                    "col": 13,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 1929,
 // CHECK-NEXT:                    "col": 14,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -3736,11 +4084,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "LambdaExpr",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 1938,
 // CHECK-NEXT:                  "line": 99,
 // CHECK-NEXT:                  "col": 7,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 1946,
 // CHECK-NEXT:                  "col": 15,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 }
@@ -3754,15 +4104,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "id": "0x{{.*}}",
 // CHECK-NEXT:                  "kind": "CXXRecordDecl",
 // CHECK-NEXT:                  "loc": {
+// CHECK-NEXT:                   "offset": 1938,
 // CHECK-NEXT:                   "col": 7,
 // CHECK-NEXT:                   "tokLen": 1
 // CHECK-NEXT:                  },
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 1938,
 // CHECK-NEXT:                    "col": 7,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 1938,
 // CHECK-NEXT:                    "col": 7,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -3810,15 +4163,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                    "id": "0x{{.*}}",
 // CHECK-NEXT:                    "kind": "CXXMethodDecl",
 // CHECK-NEXT:                    "loc": {
+// CHECK-NEXT:                     "offset": 1938,
 // CHECK-NEXT:                     "col": 7,
 // CHECK-NEXT:                     "tokLen": 1
 // CHECK-NEXT:                    },
 // CHECK-NEXT:                    "range": {
 // CHECK-NEXT:                     "begin": {
+// CHECK-NEXT:                      "offset": 1944,
 // CHECK-NEXT:                      "col": 13,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     },
 // CHECK-NEXT:                     "end": {
+// CHECK-NEXT:                      "offset": 1946,
 // CHECK-NEXT:                      "col": 15,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     }
@@ -3834,10 +4190,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                      "kind": "CompoundStmt",
 // CHECK-NEXT:                      "range": {
 // CHECK-NEXT:                       "begin": {
+// CHECK-NEXT:                        "offset": 1945,
 // CHECK-NEXT:                        "col": 14,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       },
 // CHECK-NEXT:                       "end": {
+// CHECK-NEXT:                        "offset": 1946,
 // CHECK-NEXT:                        "col": 15,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       }
@@ -3849,15 +4207,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                    "id": "0x{{.*}}",
 // CHECK-NEXT:                    "kind": "FieldDecl",
 // CHECK-NEXT:                    "loc": {
+// CHECK-NEXT:                     "offset": 1939,
 // CHECK-NEXT:                     "col": 8,
 // CHECK-NEXT:                     "tokLen": 1
 // CHECK-NEXT:                    },
 // CHECK-NEXT:                    "range": {
 // CHECK-NEXT:                     "begin": {
+// CHECK-NEXT:                      "offset": 1939,
 // CHECK-NEXT:                      "col": 8,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     },
 // CHECK-NEXT:                     "end": {
+// CHECK-NEXT:                      "offset": 1939,
 // CHECK-NEXT:                      "col": 8,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     }
@@ -3874,10 +4235,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "ParenListExpr",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 1939,
 // CHECK-NEXT:                    "col": 8,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 1939,
 // CHECK-NEXT:                    "col": 8,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -3892,10 +4255,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                    "kind": "UnaryOperator",
 // CHECK-NEXT:                    "range": {
 // CHECK-NEXT:                     "begin": {
+// CHECK-NEXT:                      "offset": 1939,
 // CHECK-NEXT:                      "col": 8,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     },
 // CHECK-NEXT:                     "end": {
+// CHECK-NEXT:                      "offset": 1939,
 // CHECK-NEXT:                      "col": 8,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     }
@@ -3913,10 +4278,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                      "kind": "CXXThisExpr",
 // CHECK-NEXT:                      "range": {
 // CHECK-NEXT:                       "begin": {
+// CHECK-NEXT:                        "offset": 1939,
 // CHECK-NEXT:                        "col": 8,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       },
 // CHECK-NEXT:                       "end": {
+// CHECK-NEXT:                        "offset": 1939,
 // CHECK-NEXT:                        "col": 8,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       }
@@ -3935,10 +4302,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "CompoundStmt",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 1945,
 // CHECK-NEXT:                    "col": 14,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 1946,
 // CHECK-NEXT:                    "col": 15,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -3959,11 +4328,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "DeclStmt",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1963,
 // CHECK-NEXT:          "line": 103,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 3
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1971,
 // CHECK-NEXT:          "col": 11,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -3973,21 +4344,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "VarDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 1967,
 // CHECK-NEXT:           "col": 7,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1963,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 3
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1967,
 // CHECK-NEXT:            "col": 7,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "isReferenced": true,
 // CHECK-NEXT:          "name": "b",
+// CHECK-NEXT:          "mangledName": "_ZZ22TestPrimaryExpressionsDpT_E1b",
 // CHECK-NEXT:          "type": {
 // CHECK-NEXT:           "qualType": "int"
 // CHECK-NEXT:          }
@@ -3996,21 +4371,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "VarDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 1970,
 // CHECK-NEXT:           "col": 10,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1963,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 3
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1970,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "isReferenced": true,
 // CHECK-NEXT:          "name": "c",
+// CHECK-NEXT:          "mangledName": "_ZZ22TestPrimaryExpressionsDpT_E1c",
 // CHECK-NEXT:          "type": {
 // CHECK-NEXT:           "qualType": "int"
 // CHECK-NEXT:          }
@@ -4022,11 +4401,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1976,
 // CHECK-NEXT:          "line": 105,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 1981,
 // CHECK-NEXT:          "col": 8,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -4040,15 +4421,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 1976,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1976,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1976,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4098,15 +4482,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 1976,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1979,
 // CHECK-NEXT:              "col": 6,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1981,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4122,10 +4509,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1980,
 // CHECK-NEXT:                "col": 7,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1981,
 // CHECK-NEXT:                "col": 8,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -4137,15 +4526,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXConversionDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 1976,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1976,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1981,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4162,15 +4554,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 1976,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1976,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 1981,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4190,10 +4585,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1980,
 // CHECK-NEXT:            "col": 7,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1981,
 // CHECK-NEXT:            "col": 8,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4206,11 +4603,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 1986,
 // CHECK-NEXT:          "line": 106,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2001,
 // CHECK-NEXT:          "col": 18,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -4224,15 +4623,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 1986,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 1986,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 1986,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4282,15 +4684,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 1986,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1999,
 // CHECK-NEXT:              "col": 16,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2001,
 // CHECK-NEXT:              "col": 18,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4306,20 +4711,24 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "id": "0x{{.*}}",
 // CHECK-NEXT:              "kind": "ParmVarDecl",
 // CHECK-NEXT:              "loc": {
+// CHECK-NEXT:               "offset": 1993,
 // CHECK-NEXT:               "col": 10,
 // CHECK-NEXT:               "tokLen": 1
 // CHECK-NEXT:              },
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1989,
 // CHECK-NEXT:                "col": 6,
 // CHECK-NEXT:                "tokLen": 3
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1993,
 // CHECK-NEXT:                "col": 10,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
 // CHECK-NEXT:              },
 // CHECK-NEXT:              "name": "a",
+// CHECK-NEXT:              "mangledName": "_ZZZ22TestPrimaryExpressionsDpT_ENKUlizE_clEizE1a",
 // CHECK-NEXT:              "type": {
 // CHECK-NEXT:               "qualType": "int"
 // CHECK-NEXT:              }
@@ -4329,10 +4738,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2000,
 // CHECK-NEXT:                "col": 17,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2001,
 // CHECK-NEXT:                "col": 18,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -4344,15 +4755,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXConversionDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 1986,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1986,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2001,
 // CHECK-NEXT:              "col": 18,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4369,15 +4783,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 1986,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 1986,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2001,
 // CHECK-NEXT:              "col": 18,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4395,20 +4812,24 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "id": "0x{{.*}}",
 // CHECK-NEXT:              "kind": "ParmVarDecl",
 // CHECK-NEXT:              "loc": {
+// CHECK-NEXT:               "offset": 1993,
 // CHECK-NEXT:               "col": 10,
 // CHECK-NEXT:               "tokLen": 1
 // CHECK-NEXT:              },
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 1989,
 // CHECK-NEXT:                "col": 6,
 // CHECK-NEXT:                "tokLen": 3
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 1993,
 // CHECK-NEXT:                "col": 10,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
 // CHECK-NEXT:              },
 // CHECK-NEXT:              "name": "a",
+// CHECK-NEXT:              "mangledName": "_ZZZ22TestPrimaryExpressionsDpT_ENUlizE_8__invokeEizE1a",
 // CHECK-NEXT:              "type": {
 // CHECK-NEXT:               "qualType": "int"
 // CHECK-NEXT:              }
@@ -4422,10 +4843,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2000,
 // CHECK-NEXT:            "col": 17,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2001,
 // CHECK-NEXT:            "col": 18,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4438,11 +4861,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2006,
 // CHECK-NEXT:          "line": 107,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2013,
 // CHECK-NEXT:          "col": 10,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -4456,15 +4881,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2006,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2006,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2006,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4510,15 +4938,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2006,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2011,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2013,
 // CHECK-NEXT:              "col": 10,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4534,10 +4965,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2012,
 // CHECK-NEXT:                "col": 9,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2013,
 // CHECK-NEXT:                "col": 10,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -4549,15 +4982,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "FieldDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2007,
 // CHECK-NEXT:             "col": 4,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2007,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2007,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4574,10 +5010,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ParenListExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2007,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2007,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4592,10 +5030,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2007,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2007,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4620,10 +5060,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2012,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2013,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4636,11 +5078,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2018,
 // CHECK-NEXT:          "line": 108,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2022,
 // CHECK-NEXT:          "col": 7,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -4654,15 +5098,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2018,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2018,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2018,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4712,15 +5159,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2018,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2020,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2022,
 // CHECK-NEXT:              "col": 7,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4736,10 +5186,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2021,
 // CHECK-NEXT:                "col": 6,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2022,
 // CHECK-NEXT:                "col": 7,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -4754,10 +5206,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2021,
 // CHECK-NEXT:            "col": 6,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2022,
 // CHECK-NEXT:            "col": 7,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4770,11 +5224,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2027,
 // CHECK-NEXT:          "line": 109,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2043,
 // CHECK-NEXT:          "col": 19,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -4788,15 +5244,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2027,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2027,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2027,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4846,15 +5305,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2027,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2029,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2043,
 // CHECK-NEXT:              "col": 19,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4870,10 +5332,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2031,
 // CHECK-NEXT:                "col": 7,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2043,
 // CHECK-NEXT:                "col": 19,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -4884,10 +5348,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "ReturnStmt",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 2033,
 // CHECK-NEXT:                  "col": 9,
 // CHECK-NEXT:                  "tokLen": 6
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 2040,
 // CHECK-NEXT:                  "col": 16,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 }
@@ -4898,10 +5364,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "DeclRefExpr",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 2040,
 // CHECK-NEXT:                    "col": 16,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 2040,
 // CHECK-NEXT:                    "col": 16,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -4932,10 +5400,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2031,
 // CHECK-NEXT:            "col": 7,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2043,
 // CHECK-NEXT:            "col": 19,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -4946,10 +5416,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ReturnStmt",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2033,
 // CHECK-NEXT:              "col": 9,
 // CHECK-NEXT:              "tokLen": 6
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2040,
 // CHECK-NEXT:              "col": 16,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -4960,10 +5432,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2040,
 // CHECK-NEXT:                "col": 16,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2040,
 // CHECK-NEXT:                "col": 16,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -4992,11 +5466,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2048,
 // CHECK-NEXT:          "line": 110,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2052,
 // CHECK-NEXT:          "col": 7,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -5010,15 +5486,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2048,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2048,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2048,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5068,15 +5547,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2048,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2050,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2052,
 // CHECK-NEXT:              "col": 7,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5092,10 +5574,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2051,
 // CHECK-NEXT:                "col": 6,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2052,
 // CHECK-NEXT:                "col": 7,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -5110,10 +5594,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2051,
 // CHECK-NEXT:            "col": 6,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2052,
 // CHECK-NEXT:            "col": 7,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5126,11 +5612,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2057,
 // CHECK-NEXT:          "line": 111,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2073,
 // CHECK-NEXT:          "col": 19,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -5144,15 +5632,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2057,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2057,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2057,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5202,15 +5693,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2057,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2059,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2073,
 // CHECK-NEXT:              "col": 19,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5226,10 +5720,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2061,
 // CHECK-NEXT:                "col": 7,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2073,
 // CHECK-NEXT:                "col": 19,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -5240,10 +5736,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "ReturnStmt",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 2063,
 // CHECK-NEXT:                  "col": 9,
 // CHECK-NEXT:                  "tokLen": 6
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 2070,
 // CHECK-NEXT:                  "col": 16,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 }
@@ -5254,10 +5752,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "DeclRefExpr",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 2070,
 // CHECK-NEXT:                    "col": 16,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 2070,
 // CHECK-NEXT:                    "col": 16,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -5288,10 +5788,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2061,
 // CHECK-NEXT:            "col": 7,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2073,
 // CHECK-NEXT:            "col": 19,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5302,10 +5804,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ReturnStmt",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2063,
 // CHECK-NEXT:              "col": 9,
 // CHECK-NEXT:              "tokLen": 6
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2070,
 // CHECK-NEXT:              "col": 16,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5316,10 +5820,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "DeclRefExpr",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2070,
 // CHECK-NEXT:                "col": 16,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2070,
 // CHECK-NEXT:                "col": 16,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -5348,11 +5854,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2078,
 // CHECK-NEXT:          "line": 112,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2101,
 // CHECK-NEXT:          "col": 26,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -5366,15 +5874,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2078,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2078,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2078,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5420,15 +5931,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2078,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2084,
 // CHECK-NEXT:              "col": 9,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2101,
 // CHECK-NEXT:              "col": 26,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5444,10 +5958,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2085,
 // CHECK-NEXT:                "col": 10,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2101,
 // CHECK-NEXT:                "col": 26,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -5458,10 +5974,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "ReturnStmt",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 2087,
 // CHECK-NEXT:                  "col": 12,
 // CHECK-NEXT:                  "tokLen": 6
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 2098,
 // CHECK-NEXT:                  "col": 23,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 }
@@ -5472,10 +5990,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "BinaryOperator",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 2094,
 // CHECK-NEXT:                    "col": 19,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 2098,
 // CHECK-NEXT:                    "col": 23,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -5491,10 +6011,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                    "kind": "ImplicitCastExpr",
 // CHECK-NEXT:                    "range": {
 // CHECK-NEXT:                     "begin": {
+// CHECK-NEXT:                      "offset": 2094,
 // CHECK-NEXT:                      "col": 19,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     },
 // CHECK-NEXT:                     "end": {
+// CHECK-NEXT:                      "offset": 2094,
 // CHECK-NEXT:                      "col": 19,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     }
@@ -5510,10 +6032,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                      "kind": "DeclRefExpr",
 // CHECK-NEXT:                      "range": {
 // CHECK-NEXT:                       "begin": {
+// CHECK-NEXT:                        "offset": 2094,
 // CHECK-NEXT:                        "col": 19,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       },
 // CHECK-NEXT:                       "end": {
+// CHECK-NEXT:                        "offset": 2094,
 // CHECK-NEXT:                        "col": 19,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       }
@@ -5538,10 +6062,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                    "kind": "ImplicitCastExpr",
 // CHECK-NEXT:                    "range": {
 // CHECK-NEXT:                     "begin": {
+// CHECK-NEXT:                      "offset": 2098,
 // CHECK-NEXT:                      "col": 23,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     },
 // CHECK-NEXT:                     "end": {
+// CHECK-NEXT:                      "offset": 2098,
 // CHECK-NEXT:                      "col": 23,
 // CHECK-NEXT:                      "tokLen": 1
 // CHECK-NEXT:                     }
@@ -5557,10 +6083,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                      "kind": "DeclRefExpr",
 // CHECK-NEXT:                      "range": {
 // CHECK-NEXT:                       "begin": {
+// CHECK-NEXT:                        "offset": 2098,
 // CHECK-NEXT:                        "col": 23,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       },
 // CHECK-NEXT:                       "end": {
+// CHECK-NEXT:                        "offset": 2098,
 // CHECK-NEXT:                        "col": 23,
 // CHECK-NEXT:                        "tokLen": 1
 // CHECK-NEXT:                       }
@@ -5592,15 +6120,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "FieldDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2079,
 // CHECK-NEXT:             "col": 4,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2079,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2079,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5614,15 +6145,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "FieldDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2083,
 // CHECK-NEXT:             "col": 8,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2083,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2083,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5639,10 +6173,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2079,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2079,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5658,10 +6194,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2079,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2079,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5686,10 +6224,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2083,
 // CHECK-NEXT:            "col": 8,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2083,
 // CHECK-NEXT:            "col": 8,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5712,10 +6252,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2085,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2101,
 // CHECK-NEXT:            "col": 26,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5726,10 +6268,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ReturnStmt",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2087,
 // CHECK-NEXT:              "col": 12,
 // CHECK-NEXT:              "tokLen": 6
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2098,
 // CHECK-NEXT:              "col": 23,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5740,10 +6284,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "BinaryOperator",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2094,
 // CHECK-NEXT:                "col": 19,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2098,
 // CHECK-NEXT:                "col": 23,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -5759,10 +6305,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "ImplicitCastExpr",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 2094,
 // CHECK-NEXT:                  "col": 19,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 2094,
 // CHECK-NEXT:                  "col": 19,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 }
@@ -5778,10 +6326,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "DeclRefExpr",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 2094,
 // CHECK-NEXT:                    "col": 19,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 2094,
 // CHECK-NEXT:                    "col": 19,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -5806,10 +6356,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "ImplicitCastExpr",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 2098,
 // CHECK-NEXT:                  "col": 23,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 2098,
 // CHECK-NEXT:                  "col": 23,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 }
@@ -5825,10 +6377,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "DeclRefExpr",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 2098,
 // CHECK-NEXT:                    "col": 23,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 2098,
 // CHECK-NEXT:                    "col": 23,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -5861,11 +6415,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2106,
 // CHECK-NEXT:          "line": 113,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2121,
 // CHECK-NEXT:          "col": 18,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -5879,15 +6435,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2106,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2106,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2106,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -5933,15 +6492,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2106,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2119,
 // CHECK-NEXT:              "col": 16,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2121,
 // CHECK-NEXT:              "col": 18,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5957,10 +6519,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2120,
 // CHECK-NEXT:                "col": 17,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2121,
 // CHECK-NEXT:                "col": 18,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -5972,15 +6536,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "FieldDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2107,
 // CHECK-NEXT:             "col": 4,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2107,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2107,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -5994,15 +6561,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "FieldDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2113,
 // CHECK-NEXT:             "col": 10,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2113,
 // CHECK-NEXT:              "col": 10,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2113,
 // CHECK-NEXT:              "col": 10,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6020,10 +6590,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ParenListExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2107,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2107,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6038,10 +6610,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2107,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2107,
 // CHECK-NEXT:              "col": 4,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6066,10 +6640,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "IntegerLiteral",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2117,
 // CHECK-NEXT:            "col": 14,
 // CHECK-NEXT:            "tokLen": 2
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2117,
 // CHECK-NEXT:            "col": 14,
 // CHECK-NEXT:            "tokLen": 2
 // CHECK-NEXT:           }
@@ -6085,10 +6661,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2120,
 // CHECK-NEXT:            "col": 17,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2121,
 // CHECK-NEXT:            "col": 18,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6101,11 +6679,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2126,
 // CHECK-NEXT:          "line": 114,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2142,
 // CHECK-NEXT:          "col": 19,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -6119,15 +6699,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2126,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2126,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2126,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6177,15 +6760,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2126,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2131,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 9
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2142,
 // CHECK-NEXT:              "col": 19,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6202,10 +6788,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2141,
 // CHECK-NEXT:                "col": 18,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2142,
 // CHECK-NEXT:                "col": 19,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -6217,15 +6805,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXConversionDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2126,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2126,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2142,
 // CHECK-NEXT:              "col": 19,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6242,15 +6833,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2126,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2126,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2142,
 // CHECK-NEXT:              "col": 19,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6270,10 +6864,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2141,
 // CHECK-NEXT:            "col": 18,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2142,
 // CHECK-NEXT:            "col": 19,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6286,11 +6882,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2147,
 // CHECK-NEXT:          "line": 115,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2161,
 // CHECK-NEXT:          "col": 17,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -6304,15 +6902,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2147,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2147,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2147,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6362,15 +6963,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2147,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2152,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 7
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2161,
 // CHECK-NEXT:              "col": 17,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6386,10 +6990,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2160,
 // CHECK-NEXT:                "col": 16,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2161,
 // CHECK-NEXT:                "col": 17,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -6401,15 +7007,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXConversionDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2147,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2147,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2161,
 // CHECK-NEXT:              "col": 17,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6426,15 +7035,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2147,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2147,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2161,
 // CHECK-NEXT:              "col": 17,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6454,10 +7066,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2160,
 // CHECK-NEXT:            "col": 16,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2161,
 // CHECK-NEXT:            "col": 17,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6470,11 +7084,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2166,
 // CHECK-NEXT:          "line": 116,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2181,
 // CHECK-NEXT:          "col": 18,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -6488,15 +7104,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2166,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2166,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2166,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6546,15 +7165,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2166,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2171,
 // CHECK-NEXT:              "col": 8,
 // CHECK-NEXT:              "tokLen": 8
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2181,
 // CHECK-NEXT:              "col": 18,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6570,10 +7192,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2180,
 // CHECK-NEXT:                "col": 17,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2181,
 // CHECK-NEXT:                "col": 18,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -6585,15 +7209,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXConversionDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2166,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2166,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2181,
 // CHECK-NEXT:              "col": 18,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6610,15 +7237,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2166,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2166,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2181,
 // CHECK-NEXT:              "col": 18,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6638,10 +7268,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2180,
 // CHECK-NEXT:            "col": 17,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2181,
 // CHECK-NEXT:            "col": 18,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6654,11 +7286,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "LambdaExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2186,
 // CHECK-NEXT:          "line": 117,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2210,
 // CHECK-NEXT:          "col": 27,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -6672,15 +7306,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "id": "0x{{.*}}",
 // CHECK-NEXT:          "kind": "CXXRecordDecl",
 // CHECK-NEXT:          "loc": {
+// CHECK-NEXT:           "offset": 2186,
 // CHECK-NEXT:           "col": 3,
 // CHECK-NEXT:           "tokLen": 1
 // CHECK-NEXT:          },
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2186,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2186,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6730,15 +7367,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2186,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2194,
 // CHECK-NEXT:              "col": 11,
 // CHECK-NEXT:              "tokLen": 3
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2210,
 // CHECK-NEXT:              "col": 27,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6754,10 +7394,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "CompoundStmt",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2198,
 // CHECK-NEXT:                "col": 15,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2210,
 // CHECK-NEXT:                "col": 27,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -6768,10 +7410,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                "kind": "ReturnStmt",
 // CHECK-NEXT:                "range": {
 // CHECK-NEXT:                 "begin": {
+// CHECK-NEXT:                  "offset": 2200,
 // CHECK-NEXT:                  "col": 17,
 // CHECK-NEXT:                  "tokLen": 6
 // CHECK-NEXT:                 },
 // CHECK-NEXT:                 "end": {
+// CHECK-NEXT:                  "offset": 2207,
 // CHECK-NEXT:                  "col": 24,
 // CHECK-NEXT:                  "tokLen": 1
 // CHECK-NEXT:                 }
@@ -6782,10 +7426,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:                  "kind": "IntegerLiteral",
 // CHECK-NEXT:                  "range": {
 // CHECK-NEXT:                   "begin": {
+// CHECK-NEXT:                    "offset": 2207,
 // CHECK-NEXT:                    "col": 24,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "end": {
+// CHECK-NEXT:                    "offset": 2207,
 // CHECK-NEXT:                    "col": 24,
 // CHECK-NEXT:                    "tokLen": 1
 // CHECK-NEXT:                   }
@@ -6806,15 +7452,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXConversionDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2186,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2186,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2210,
 // CHECK-NEXT:              "col": 27,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6831,15 +7480,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "id": "0x{{.*}}",
 // CHECK-NEXT:            "kind": "CXXMethodDecl",
 // CHECK-NEXT:            "loc": {
+// CHECK-NEXT:             "offset": 2186,
 // CHECK-NEXT:             "col": 3,
 // CHECK-NEXT:             "tokLen": 1
 // CHECK-NEXT:            },
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2186,
 // CHECK-NEXT:              "col": 3,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2210,
 // CHECK-NEXT:              "col": 27,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6859,10 +7511,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CompoundStmt",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2198,
 // CHECK-NEXT:            "col": 15,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2210,
 // CHECK-NEXT:            "col": 27,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6873,10 +7527,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "ReturnStmt",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2200,
 // CHECK-NEXT:              "col": 17,
 // CHECK-NEXT:              "tokLen": 6
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2207,
 // CHECK-NEXT:              "col": 24,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -6887,10 +7543,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:              "kind": "IntegerLiteral",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:               "begin": {
+// CHECK-NEXT:                "offset": 2207,
 // CHECK-NEXT:                "col": 24,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               },
 // CHECK-NEXT:               "end": {
+// CHECK-NEXT:                "offset": 2207,
 // CHECK-NEXT:                "col": 24,
 // CHECK-NEXT:                "tokLen": 1
 // CHECK-NEXT:               }
@@ -6912,11 +7570,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXFoldExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2216,
 // CHECK-NEXT:          "line": 119,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2224,
 // CHECK-NEXT:          "col": 11,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -6931,10 +7591,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2217,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2217,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -6960,11 +7622,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXFoldExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2229,
 // CHECK-NEXT:          "line": 120,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2237,
 // CHECK-NEXT:          "col": 11,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -6980,10 +7644,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2236,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2236,
 // CHECK-NEXT:            "col": 10,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7008,11 +7674,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXFoldExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2242,
 // CHECK-NEXT:          "line": 121,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2254,
 // CHECK-NEXT:          "col": 15,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7027,10 +7695,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2243,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2243,
 // CHECK-NEXT:            "col": 4,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7053,10 +7723,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2253,
 // CHECK-NEXT:            "col": 14,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2253,
 // CHECK-NEXT:            "col": 14,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7086,6 +7758,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 2336,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 130,
 // CHECK-NEXT:   "col": 6,
@@ -7093,16 +7766,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 2331,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 4
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 2379,
 // CHECK-NEXT:    "line": 134,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
 // CHECK-NEXT:   }
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "name": "TestADLCall",
+// CHECK-NEXT:  "mangledName": "_Z11TestADLCallv",
 // CHECK-NEXT:  "type": {
 // CHECK-NEXT:   "qualType": "void ()"
 // CHECK-NEXT:  },
@@ -7112,11 +7788,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "kind": "CompoundStmt",
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 2350,
 // CHECK-NEXT:      "line": 130,
 // CHECK-NEXT:      "col": 20,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 2379,
 // CHECK-NEXT:      "line": 134,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -7128,11 +7806,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "DeclStmt",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2354,
 // CHECK-NEXT:        "line": 131,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 2
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2361,
 // CHECK-NEXT:        "col": 10,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -7142,21 +7822,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "id": "0x{{.*}}",
 // CHECK-NEXT:        "kind": "VarDecl",
 // CHECK-NEXT:        "loc": {
+// CHECK-NEXT:         "offset": 2360,
 // CHECK-NEXT:         "col": 9,
 // CHECK-NEXT:         "tokLen": 1
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2354,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2360,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "isUsed": true,
 // CHECK-NEXT:        "name": "x",
+// CHECK-NEXT:        "mangledName": "_ZZ11TestADLCallvE1x",
 // CHECK-NEXT:        "type": {
 // CHECK-NEXT:         "desugaredQualType": "NS::X",
 // CHECK-NEXT:         "qualType": "NS::X"
@@ -7168,10 +7852,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CXXConstructExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2360,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2360,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7196,11 +7882,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2365,
 // CHECK-NEXT:        "line": 132,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2368,
 // CHECK-NEXT:        "col": 6,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -7216,10 +7904,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2365,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2365,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7235,10 +7925,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2365,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2365,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7263,10 +7955,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXConstructExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2367,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2367,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7286,10 +7980,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2367,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2367,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7306,10 +8002,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2367,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2367,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -7340,11 +8038,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2373,
 // CHECK-NEXT:        "line": 133,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2376,
 // CHECK-NEXT:        "col": 6,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -7360,10 +8060,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2373,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2373,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7379,10 +8081,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2373,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2373,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7407,10 +8111,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXConstructExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2375,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2375,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7431,10 +8137,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2375,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2375,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7451,10 +8159,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2375,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2375,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -7488,6 +8198,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 2387,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 136,
 // CHECK-NEXT:   "col": 6,
@@ -7495,16 +8206,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 2382,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 4
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 2429,
 // CHECK-NEXT:    "line": 139,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
 // CHECK-NEXT:   }
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "name": "TestNonADLCall",
+// CHECK-NEXT:  "mangledName": "_Z14TestNonADLCallv",
 // CHECK-NEXT:  "type": {
 // CHECK-NEXT:   "qualType": "void ()"
 // CHECK-NEXT:  },
@@ -7514,11 +8228,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "kind": "CompoundStmt",
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 2404,
 // CHECK-NEXT:      "line": 136,
 // CHECK-NEXT:      "col": 23,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 2429,
 // CHECK-NEXT:      "line": 139,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -7530,11 +8246,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "DeclStmt",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2408,
 // CHECK-NEXT:        "line": 137,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 2
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2415,
 // CHECK-NEXT:        "col": 10,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -7544,21 +8262,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "id": "0x{{.*}}",
 // CHECK-NEXT:        "kind": "VarDecl",
 // CHECK-NEXT:        "loc": {
+// CHECK-NEXT:         "offset": 2414,
 // CHECK-NEXT:         "col": 9,
 // CHECK-NEXT:         "tokLen": 1
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2408,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2414,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "isUsed": true,
 // CHECK-NEXT:        "name": "x",
+// CHECK-NEXT:        "mangledName": "_ZZ14TestNonADLCallvE1x",
 // CHECK-NEXT:        "type": {
 // CHECK-NEXT:         "desugaredQualType": "NS::X",
 // CHECK-NEXT:         "qualType": "NS::X"
@@ -7570,10 +8292,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CXXConstructExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2414,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2414,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7598,11 +8322,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2419,
 // CHECK-NEXT:        "line": 138,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 2
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2426,
 // CHECK-NEXT:        "col": 10,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -7617,10 +8343,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2419,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2423,
 // CHECK-NEXT:          "col": 7,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7636,10 +8364,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2419,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 2
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2423,
 // CHECK-NEXT:            "col": 7,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7664,10 +8394,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXConstructExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2425,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2425,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7687,10 +8419,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2425,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2425,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7707,10 +8441,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2425,
 // CHECK-NEXT:              "col": 9,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2425,
 // CHECK-NEXT:              "col": 9,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -7744,6 +8480,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 2437,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 141,
 // CHECK-NEXT:   "col": 6,
@@ -7751,16 +8488,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 2432,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 4
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 2499,
 // CHECK-NEXT:    "line": 146,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
 // CHECK-NEXT:   }
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "name": "TestNonADLCall2",
+// CHECK-NEXT:  "mangledName": "_Z15TestNonADLCall2v",
 // CHECK-NEXT:  "type": {
 // CHECK-NEXT:   "qualType": "void ()"
 // CHECK-NEXT:  },
@@ -7770,11 +8510,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "kind": "CompoundStmt",
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 2455,
 // CHECK-NEXT:      "line": 141,
 // CHECK-NEXT:      "col": 24,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 2499,
 // CHECK-NEXT:      "line": 146,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -7786,11 +8528,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "DeclStmt",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2459,
 // CHECK-NEXT:        "line": 142,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 2
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2466,
 // CHECK-NEXT:        "col": 10,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -7800,21 +8544,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "id": "0x{{.*}}",
 // CHECK-NEXT:        "kind": "VarDecl",
 // CHECK-NEXT:        "loc": {
+// CHECK-NEXT:         "offset": 2465,
 // CHECK-NEXT:         "col": 9,
 // CHECK-NEXT:         "tokLen": 1
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2459,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 2
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2465,
 // CHECK-NEXT:          "col": 9,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "isUsed": true,
 // CHECK-NEXT:        "name": "x",
+// CHECK-NEXT:        "mangledName": "_ZZ15TestNonADLCall2vE1x",
 // CHECK-NEXT:        "type": {
 // CHECK-NEXT:         "desugaredQualType": "NS::X",
 // CHECK-NEXT:         "qualType": "NS::X"
@@ -7826,10 +8574,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CXXConstructExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2465,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2465,
 // CHECK-NEXT:            "col": 9,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7854,11 +8604,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "DeclStmt",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2470,
 // CHECK-NEXT:        "line": 143,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 5
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2481,
 // CHECK-NEXT:        "col": 14,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -7868,15 +8620,18 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "id": "0x{{.*}}",
 // CHECK-NEXT:        "kind": "UsingDecl",
 // CHECK-NEXT:        "loc": {
+// CHECK-NEXT:         "offset": 2480,
 // CHECK-NEXT:         "col": 13,
 // CHECK-NEXT:         "tokLen": 1
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2470,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 5
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2480,
 // CHECK-NEXT:          "col": 13,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7890,11 +8645,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2485,
 // CHECK-NEXT:        "line": 144,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2488,
 // CHECK-NEXT:        "col": 6,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -7909,10 +8666,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2485,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2485,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7928,10 +8687,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2485,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2485,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -7961,10 +8722,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXConstructExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2487,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2487,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -7984,10 +8747,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2487,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2487,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -8004,10 +8769,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2487,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2487,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -8038,11 +8805,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2493,
 // CHECK-NEXT:        "line": 145,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2496,
 // CHECK-NEXT:        "col": 6,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -8058,10 +8827,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2493,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2493,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -8077,10 +8848,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2493,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2493,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -8105,10 +8878,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXConstructExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2495,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2495,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -8129,10 +8904,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2495,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2495,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -8149,10 +8926,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2495,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2495,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }
@@ -8186,6 +8965,7 @@ void TestNonADLCall3() {
 
 // CHECK:  "kind": "FunctionDecl",
 // CHECK-NEXT:  "loc": {
+// CHECK-NEXT:   "offset": 2559,
 // CHECK-NEXT:   "file": "{{.*}}",
 // CHECK-NEXT:   "line": 150,
 // CHECK-NEXT:   "col": 6,
@@ -8193,16 +8973,19 @@ void TestNonADLCall3() {
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "range": {
 // CHECK-NEXT:   "begin": {
+// CHECK-NEXT:    "offset": 2554,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 4
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "end": {
+// CHECK-NEXT:    "offset": 2594,
 // CHECK-NEXT:    "line": 153,
 // CHECK-NEXT:    "col": 1,
 // CHECK-NEXT:    "tokLen": 1
 // CHECK-NEXT:   }
 // CHECK-NEXT:  },
 // CHECK-NEXT:  "name": "TestNonADLCall3",
+// CHECK-NEXT:  "mangledName": "_ZN19test_adl_call_three15TestNonADLCall3Ev",
 // CHECK-NEXT:  "type": {
 // CHECK-NEXT:   "qualType": "void ()"
 // CHECK-NEXT:  },
@@ -8212,11 +8995,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:    "kind": "CompoundStmt",
 // CHECK-NEXT:    "range": {
 // CHECK-NEXT:     "begin": {
+// CHECK-NEXT:      "offset": 2577,
 // CHECK-NEXT:      "line": 150,
 // CHECK-NEXT:      "col": 24,
 // CHECK-NEXT:      "tokLen": 1
 // CHECK-NEXT:     },
 // CHECK-NEXT:     "end": {
+// CHECK-NEXT:      "offset": 2594,
 // CHECK-NEXT:      "line": 153,
 // CHECK-NEXT:      "col": 1,
 // CHECK-NEXT:      "tokLen": 1
@@ -8228,11 +9013,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "DeclStmt",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2581,
 // CHECK-NEXT:        "line": 151,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2584,
 // CHECK-NEXT:        "col": 6,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -8242,21 +9029,25 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "id": "0x{{.*}}",
 // CHECK-NEXT:        "kind": "VarDecl",
 // CHECK-NEXT:        "loc": {
+// CHECK-NEXT:         "offset": 2583,
 // CHECK-NEXT:         "col": 5,
 // CHECK-NEXT:         "tokLen": 1
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2581,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2583,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "isUsed": true,
 // CHECK-NEXT:        "name": "x",
+// CHECK-NEXT:        "mangledName": "_ZZN19test_adl_call_three15TestNonADLCall3EvE1x",
 // CHECK-NEXT:        "type": {
 // CHECK-NEXT:         "qualType": "NS::X"
 // CHECK-NEXT:        },
@@ -8267,10 +9058,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "CXXConstructExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2583,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2583,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -8294,11 +9087,13 @@ void TestNonADLCall3() {
 // CHECK-NEXT:      "kind": "CallExpr",
 // CHECK-NEXT:      "range": {
 // CHECK-NEXT:       "begin": {
+// CHECK-NEXT:        "offset": 2588,
 // CHECK-NEXT:        "line": 152,
 // CHECK-NEXT:        "col": 3,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "end": {
+// CHECK-NEXT:        "offset": 2591,
 // CHECK-NEXT:        "col": 6,
 // CHECK-NEXT:        "tokLen": 1
 // CHECK-NEXT:       }
@@ -8313,10 +9108,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "ImplicitCastExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2588,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2588,
 // CHECK-NEXT:          "col": 3,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -8332,10 +9129,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "DeclRefExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2588,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2588,
 // CHECK-NEXT:            "col": 3,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -8360,10 +9159,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:        "kind": "CXXConstructExpr",
 // CHECK-NEXT:        "range": {
 // CHECK-NEXT:         "begin": {
+// CHECK-NEXT:          "offset": 2590,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         },
 // CHECK-NEXT:         "end": {
+// CHECK-NEXT:          "offset": 2590,
 // CHECK-NEXT:          "col": 5,
 // CHECK-NEXT:          "tokLen": 1
 // CHECK-NEXT:         }
@@ -8383,10 +9184,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:          "kind": "ImplicitCastExpr",
 // CHECK-NEXT:          "range": {
 // CHECK-NEXT:           "begin": {
+// CHECK-NEXT:            "offset": 2590,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "end": {
+// CHECK-NEXT:            "offset": 2590,
 // CHECK-NEXT:            "col": 5,
 // CHECK-NEXT:            "tokLen": 1
 // CHECK-NEXT:           }
@@ -8402,10 +9205,12 @@ void TestNonADLCall3() {
 // CHECK-NEXT:            "kind": "DeclRefExpr",
 // CHECK-NEXT:            "range": {
 // CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 2590,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             },
 // CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 2590,
 // CHECK-NEXT:              "col": 5,
 // CHECK-NEXT:              "tokLen": 1
 // CHECK-NEXT:             }

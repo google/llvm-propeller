@@ -58,6 +58,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -276,9 +277,9 @@ STATISTIC(NumBoxedLoopsOptimized, "Number of boxed loops optimized");
 
 #define THREE_STATISTICS(VARNAME, DESC)                                        \
   static Statistic VARNAME[3] = {                                              \
-      {DEBUG_TYPE, #VARNAME "0", DESC " (original)", {0}, {false}},            \
-      {DEBUG_TYPE, #VARNAME "1", DESC " (after scheduler)", {0}, {false}},     \
-      {DEBUG_TYPE, #VARNAME "2", DESC " (after optimizer)", {0}, {false}}}
+      {DEBUG_TYPE, #VARNAME "0", DESC " (original)"},                          \
+      {DEBUG_TYPE, #VARNAME "1", DESC " (after scheduler)"},                   \
+      {DEBUG_TYPE, #VARNAME "2", DESC " (after optimizer)"}}
 
 THREE_STATISTICS(NumBands, "Number of bands");
 THREE_STATISTICS(NumBandMembers, "Number of band members");

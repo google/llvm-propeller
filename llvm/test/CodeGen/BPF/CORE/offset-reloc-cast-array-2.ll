@@ -1,5 +1,7 @@
 ; RUN: llc -march=bpfel -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
 ; RUN: llc -march=bpfeb -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
+; RUN: llc -march=bpfel -mattr=+alu32 -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
+; RUN: llc -march=bpfeb -mattr=+alu32 -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
 ; Source code:
 ;   struct v1 {int a; int b;};
 ;   typedef struct v1 __v1;
@@ -47,15 +49,17 @@ entry:
 ; CHECK:              .ascii  "v1"                    # string offset=100
 ; CHECK:              .ascii  "11:1"                  # string offset=107
 
-; CHECK:              .long   12                      # OffsetReloc
-; CHECK-NEXT:         .long   46                      # Offset reloc section string offset=46
+; CHECK:              .long   16                      # FieldReloc
+; CHECK-NEXT:         .long   46                      # Field reloc section string offset=46
 ; CHECK-NEXT:         .long   2
 ; CHECK-NEXT:         .long   .Ltmp{{[0-9]+}}
 ; CHECK-NEXT:         .long   [[TID1]]
 ; CHECK-NEXT:         .long   52
+; CHECK-NEXT:         .long   0
 ; CHECK-NEXT:         .long   .Ltmp{{[0-9]+}}
 ; CHECK-NEXT:         .long   [[TID2]]
 ; CHECK-NEXT:         .long   107
+; CHECK-NEXT:         .long   0
 
 declare dso_local i32 @get_value(i32*) local_unnamed_addr #1
 

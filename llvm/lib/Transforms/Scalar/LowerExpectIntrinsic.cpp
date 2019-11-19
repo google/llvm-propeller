@@ -22,6 +22,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -161,7 +162,7 @@ static void handlePhiDef(CallInst *Expect) {
     return Result;
   };
 
-  auto *PhiDef = dyn_cast<PHINode>(V);
+  auto *PhiDef = cast<PHINode>(V);
 
   // Get the first dominating conditional branch of the operand
   // i's incoming block.

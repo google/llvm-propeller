@@ -61,6 +61,8 @@ static const CoreDefinition g_core_definitions[] = {
      "armv6m"},
     {eByteOrderLittle, 4, 2, 4, llvm::Triple::arm, ArchSpec::eCore_arm_armv7,
      "armv7"},
+    {eByteOrderLittle, 4, 2, 4, llvm::Triple::arm, ArchSpec::eCore_arm_armv7l,
+     "armv7l"},
     {eByteOrderLittle, 4, 2, 4, llvm::Triple::arm, ArchSpec::eCore_arm_armv7f,
      "armv7f"},
     {eByteOrderLittle, 4, 2, 4, llvm::Triple::arm, ArchSpec::eCore_arm_armv7s,
@@ -101,6 +103,10 @@ static const CoreDefinition g_core_definitions[] = {
      ArchSpec::eCore_arm_arm64, "arm64"},
     {eByteOrderLittle, 8, 4, 4, llvm::Triple::aarch64,
      ArchSpec::eCore_arm_armv8, "armv8"},
+    {eByteOrderLittle, 4, 2, 4, llvm::Triple::arm,
+      ArchSpec::eCore_arm_armv8l, "armv8l"},
+    {eByteOrderLittle, 4, 4, 4, llvm::Triple::aarch64_32,
+      ArchSpec::eCore_arm_arm64_32, "arm64_32"},
     {eByteOrderLittle, 8, 4, 4, llvm::Triple::aarch64,
      ArchSpec::eCore_arm_aarch64, "aarch64"},
 
@@ -214,6 +220,7 @@ static const CoreDefinition g_core_definitions[] = {
      ArchSpec::eCore_uknownMach32, "unknown-mach-32"},
     {eByteOrderLittle, 8, 4, 4, llvm::Triple::UnknownArch,
      ArchSpec::eCore_uknownMach64, "unknown-mach-64"},
+    {eByteOrderLittle, 4, 2, 4, llvm::Triple::arc, ArchSpec::eCore_arc, "arc"}
 };
 
 // Ensure that we have an entry in the g_core_definitions for each core. If you
@@ -296,6 +303,10 @@ static const ArchDefinitionEntry g_macho_arch_entries[] = {
      SUBTYPE_MASK},
     {ArchSpec::eCore_arm_arm64, llvm::MachO::CPU_TYPE_ARM64, 13, UINT32_MAX,
      SUBTYPE_MASK},
+    {ArchSpec::eCore_arm_arm64_32, llvm::MachO::CPU_TYPE_ARM64_32, 0,
+     UINT32_MAX, SUBTYPE_MASK},
+    {ArchSpec::eCore_arm_arm64_32, llvm::MachO::CPU_TYPE_ARM64_32, 1,
+     UINT32_MAX, SUBTYPE_MASK},
     {ArchSpec::eCore_arm_arm64, llvm::MachO::CPU_TYPE_ARM64, CPU_ANY,
      UINT32_MAX, SUBTYPE_MASK},
     {ArchSpec::eCore_thumb, llvm::MachO::CPU_TYPE_ARM, 0, UINT32_MAX,
@@ -436,6 +447,8 @@ static const ArchDefinitionEntry g_elf_arch_entries[] = {
      ArchSpec::eMIPSSubType_mips64r6el, 0xFFFFFFFFu, 0xFFFFFFFFu}, // mips64r6el
     {ArchSpec::eCore_hexagon_generic, llvm::ELF::EM_HEXAGON,
      LLDB_INVALID_CPUTYPE, 0xFFFFFFFFu, 0xFFFFFFFFu}, // HEXAGON
+    {ArchSpec::eCore_arc, llvm::ELF::EM_ARC_COMPACT2, LLDB_INVALID_CPUTYPE,
+     0xFFFFFFFFu, 0xFFFFFFFFu }, // ARC
 };
 
 static const ArchDefinition g_elf_arch_def = {
@@ -554,20 +567,6 @@ ArchSpec::ArchSpec(ArchitectureType arch_type, uint32_t cpu, uint32_t subtype) {
 }
 
 ArchSpec::~ArchSpec() = default;
-
-//===----------------------------------------------------------------------===//
-// Assignment and initialization.
-
-const ArchSpec &ArchSpec::operator=(const ArchSpec &rhs) {
-  if (this != &rhs) {
-    m_triple = rhs.m_triple;
-    m_core = rhs.m_core;
-    m_byte_order = rhs.m_byte_order;
-    m_distribution_id = rhs.m_distribution_id;
-    m_flags = rhs.m_flags;
-  }
-  return *this;
-}
 
 void ArchSpec::Clear() {
   m_triple = llvm::Triple();
@@ -752,6 +751,7 @@ bool ArchSpec::CharIsSignedByDefault() const {
     return true;
 
   case llvm::Triple::aarch64:
+  case llvm::Triple::aarch64_32:
   case llvm::Triple::aarch64_be:
   case llvm::Triple::arm:
   case llvm::Triple::armeb:
@@ -1192,6 +1192,8 @@ static bool cores_match(const ArchSpec::Core core1, const ArchSpec::Core core2,
   case ArchSpec::eCore_arm_armv7f:
   case ArchSpec::eCore_arm_armv7k:
   case ArchSpec::eCore_arm_armv7s:
+  case ArchSpec::eCore_arm_armv7l:
+  case ArchSpec::eCore_arm_armv8l:
     if (!enforce_exact_match) {
       if (core2 == ArchSpec::eCore_arm_generic)
         return true;
@@ -1234,6 +1236,14 @@ static bool cores_match(const ArchSpec::Core core1, const ArchSpec::Core core2,
       if (core2 == ArchSpec::eCore_arm_aarch64)
         return true;
       if (core2 == ArchSpec::eCore_arm_armv8)
+        return true;
+      try_inverse = false;
+    }
+    break;
+
+  case ArchSpec::eCore_arm_arm64_32:
+    if (!enforce_exact_match) {
+      if (core2 == ArchSpec::eCore_arm_generic)
         return true;
       try_inverse = false;
     }

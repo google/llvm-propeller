@@ -1,4 +1,5 @@
-; RUN: llc -march=bpfel -filetype=asm -o - %s | FileCheck %s
+; RUN: llc -march=bpfel -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK,CHECK-ALU64 %s
+; RUN: llc -march=bpfel -mattr=+alu32 -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK,CHECK-ALU32 %s
 ;
 ; Source Code:
 ;   #define _(x) (__builtin_preserve_access_index(x))
@@ -21,7 +22,8 @@ entry:
 ; CHECK-LABEL: test
 ; CHECK:       r2 = 4
 ; CHECK:       r1 += r2
-; CHECK:       r0 = *(u32 *)(r1 + 0)
+; CHECK-ALU64: r0 = *(u32 *)(r1 + 0)
+; CHECK-ALU32: w0 = *(u32 *)(r1 + 0)
 ; CHECK:       exit
 ;
 ; CHECK:       .long   1                       # BTF_KIND_STRUCT(id = 2)
@@ -30,12 +32,13 @@ entry:
 ; CHECK:       .ascii  ".text"                 # string offset=20
 ; CHECK:       .ascii  "0:1"                   # string offset=26
 ;
-; CHECK:       .long   12                      # OffsetReloc
-; CHECK-NEXT:  .long   20                      # Offset reloc section string offset=20
+; CHECK:       .long   16                      # FieldReloc
+; CHECK-NEXT:  .long   20                      # Field reloc section string offset=20
 ; CHECK-NEXT:  .long   1
 ; CHECK-NEXT:  .long   .Ltmp{{[0-9]+}}
 ; CHECK-NEXT:  .long   2
 ; CHECK-NEXT:  .long   26
+; CHECK-NEXT:  .long   0
 
 ; Function Attrs: nounwind readnone
 declare i32* @llvm.preserve.struct.access.index.p0i32.p0s_struct.ss(%struct.s*, i32, i32) #1

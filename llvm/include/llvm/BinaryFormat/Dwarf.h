@@ -117,9 +117,10 @@ enum LocationAtom {
 #include "llvm/BinaryFormat/Dwarf.def"
   DW_OP_lo_user = 0xe0,
   DW_OP_hi_user = 0xff,
-  DW_OP_LLVM_fragment = 0x1000,   ///< Only used in LLVM metadata.
-  DW_OP_LLVM_convert = 0x1001,    ///< Only used in LLVM metadata.
-  DW_OP_LLVM_tag_offset = 0x1002, ///< Only used in LLVM metadata.
+  DW_OP_LLVM_fragment = 0x1000,    ///< Only used in LLVM metadata.
+  DW_OP_LLVM_convert = 0x1001,     ///< Only used in LLVM metadata.
+  DW_OP_LLVM_tag_offset = 0x1002,  ///< Only used in LLVM metadata.
+  DW_OP_LLVM_entry_value = 0x1003, ///< Only used in LLVM metadata.
 };
 
 enum TypeKind : uint8_t {
@@ -179,6 +180,59 @@ enum SourceLanguage {
   DW_LANG_lo_user = 0x8000,
   DW_LANG_hi_user = 0xffff
 };
+
+inline bool isCPlusPlus(SourceLanguage S) {
+  // Deliberately enumerate all the language options so we get a warning when
+  // new language options are added (-Wswitch) that'll hopefully help keep this
+  // switch up-to-date when new C++ versions are added.
+  switch (S) {
+  case DW_LANG_C_plus_plus:
+  case DW_LANG_C_plus_plus_03:
+  case DW_LANG_C_plus_plus_11:
+  case DW_LANG_C_plus_plus_14:
+    return true;
+  case DW_LANG_C89:
+  case DW_LANG_C:
+  case DW_LANG_Ada83:
+  case DW_LANG_Cobol74:
+  case DW_LANG_Cobol85:
+  case DW_LANG_Fortran77:
+  case DW_LANG_Fortran90:
+  case DW_LANG_Pascal83:
+  case DW_LANG_Modula2:
+  case DW_LANG_Java:
+  case DW_LANG_C99:
+  case DW_LANG_Ada95:
+  case DW_LANG_Fortran95:
+  case DW_LANG_PLI:
+  case DW_LANG_ObjC:
+  case DW_LANG_ObjC_plus_plus:
+  case DW_LANG_UPC:
+  case DW_LANG_D:
+  case DW_LANG_Python:
+  case DW_LANG_OpenCL:
+  case DW_LANG_Go:
+  case DW_LANG_Modula3:
+  case DW_LANG_Haskell:
+  case DW_LANG_OCaml:
+  case DW_LANG_Rust:
+  case DW_LANG_C11:
+  case DW_LANG_Swift:
+  case DW_LANG_Julia:
+  case DW_LANG_Dylan:
+  case DW_LANG_Fortran03:
+  case DW_LANG_Fortran08:
+  case DW_LANG_RenderScript:
+  case DW_LANG_BLISS:
+  case DW_LANG_Mips_Assembler:
+  case DW_LANG_GOOGLE_RenderScript:
+  case DW_LANG_BORLAND_Delphi:
+  case DW_LANG_lo_user:
+  case DW_LANG_hi_user:
+    return false;
+  }
+  llvm_unreachable("Invalid source language");
+}
 
 enum CaseSensitivity {
   // Identifier case codes
@@ -255,8 +309,14 @@ enum MacroEntryType {
 };
 
 /// DWARF v5 range list entry encoding values.
-enum RangeListEntries {
+enum RnglistEntries {
 #define HANDLE_DW_RLE(ID, NAME) DW_RLE_##NAME = ID,
+#include "llvm/BinaryFormat/Dwarf.def"
+};
+
+/// DWARF v5 loc list entry encoding values.
+enum LoclistEntries {
+#define HANDLE_DW_LLE(ID, NAME) DW_LLE_##NAME = ID,
 #include "llvm/BinaryFormat/Dwarf.def"
 };
 
@@ -293,19 +353,6 @@ enum Constants {
   DW_EH_PE_funcrel = 0x40,
   DW_EH_PE_aligned = 0x50,
   DW_EH_PE_indirect = 0x80
-};
-
-/// Constants for location lists in DWARF v5.
-enum LocationListEntry : unsigned char {
-  DW_LLE_end_of_list = 0x00,
-  DW_LLE_base_addressx = 0x01,
-  DW_LLE_startx_endx = 0x02,
-  DW_LLE_startx_length = 0x03,
-  DW_LLE_offset_pair = 0x04,
-  DW_LLE_default_location = 0x05,
-  DW_LLE_base_address = 0x06,
-  DW_LLE_start_end = 0x07,
-  DW_LLE_start_length = 0x08
 };
 
 /// Constants for the DW_APPLE_PROPERTY_attributes attribute.
@@ -411,6 +458,7 @@ StringRef AttributeEncodingString(unsigned Encoding);
 StringRef DecimalSignString(unsigned Sign);
 StringRef EndianityString(unsigned Endian);
 StringRef AccessibilityString(unsigned Access);
+StringRef DefaultedMemberString(unsigned DefaultedEncodings);
 StringRef VisibilityString(unsigned Visibility);
 StringRef VirtualityString(unsigned Virtuality);
 StringRef LanguageString(unsigned Language);
@@ -422,6 +470,7 @@ StringRef LNStandardString(unsigned Standard);
 StringRef LNExtendedString(unsigned Encoding);
 StringRef MacinfoString(unsigned Encoding);
 StringRef RangeListEncodingString(unsigned Encoding);
+StringRef LocListEncodingString(unsigned Encoding);
 StringRef CallFrameString(unsigned Encoding, Triple::ArchType Arch);
 StringRef ApplePropertyString(unsigned);
 StringRef UnitTypeString(unsigned);

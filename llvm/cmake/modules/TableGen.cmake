@@ -58,6 +58,15 @@ function(tablegen project ofn)
     endif()
   endif()
 
+  if (CMAKE_GENERATOR MATCHES "Visual Studio")
+    # Visual Studio has problems with llvm-tblgen's native --write-if-changed
+    # behavior. Since it doesn't do restat optimizations anyway, just don't
+    # pass --write-if-changed there.
+    set(tblgen_change_flag)
+  else()
+    set(tblgen_change_flag "--write-if-changed")
+  endif()
+
   # We need both _TABLEGEN_TARGET and _TABLEGEN_EXE in the  DEPENDS list
   # (both the target and the file) to have .inc files rebuilt on
   # a tablegen change, as cmake does not propagate file-level dependencies
@@ -71,6 +80,7 @@ function(tablegen project ofn)
     COMMAND ${${project}_TABLEGEN_EXE} ${ARGN} -I ${CMAKE_CURRENT_SOURCE_DIR}
     ${LLVM_TABLEGEN_FLAGS}
     ${LLVM_TARGET_DEFINITIONS_ABSOLUTE}
+    ${tblgen_change_flag}
     ${additional_cmdline}
     # The file in LLVM_TARGET_DEFINITIONS may be not in the current
     # directory and local_tds may not contain it, so we must
@@ -159,7 +169,13 @@ macro(add_tablegen target project)
 
     install(TARGETS ${target}
             ${export_to_llvmexports}
+            COMPONENT ${target}
             RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR})
+    if(NOT LLVM_ENABLE_IDE)
+      add_llvm_install_targets("install-${target}"
+                               DEPENDS ${target}
+                               COMPONENT ${target})
+    endif()
   endif()
   set_property(GLOBAL APPEND PROPERTY LLVM_EXPORTS ${target})
 endmacro()

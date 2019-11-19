@@ -126,7 +126,7 @@ public:
 /// Only information available on most platforms is included.
 class directory_entry {
   std::string Path;
-  llvm::sys::fs::file_type Type;
+  llvm::sys::fs::file_type Type = llvm::sys::fs::file_type::type_unknown;
 
 public:
   directory_entry() = default;
@@ -532,7 +532,7 @@ class RedirectingFileSystemParser;
 /// \endverbatim
 ///
 /// All configuration options are optional.
-///   'case-sensitive': <boolean, default=true>
+///   'case-sensitive': <boolean, default=(true for Posix, false for Windows)>
 ///   'use-external-names': <boolean, default=true>
 ///   'overlay-relative': <boolean, default=false>
 ///   'fallthrough': <boolean, default=true>
@@ -647,8 +647,29 @@ private:
   friend class VFSFromYamlDirIterImpl;
   friend class RedirectingFileSystemParser;
 
+  bool shouldUseExternalFS() const {
+    return ExternalFSValidWD && IsFallthrough;
+  }
+
+  // In a RedirectingFileSystem, keys can be specified in Posix or Windows
+  // style (or even a mixture of both), so this comparison helper allows
+  // slashes (representing a root) to match backslashes (and vice versa).  Note
+  // that, other than the root, patch components should not contain slashes or
+  // backslashes.
+  bool pathComponentMatches(llvm::StringRef lhs, llvm::StringRef rhs) const {
+    if ((CaseSensitive ? lhs.equals(rhs) : lhs.equals_lower(rhs)))
+      return true;
+    return (lhs == "/" && rhs == "\\") || (lhs == "\\" && rhs == "/");
+  }
+
   /// The root(s) of the virtual file system.
   std::vector<std::unique_ptr<Entry>> Roots;
+
+  /// The current working directory of the file system.
+  std::string WorkingDirectory;
+
+  /// Whether the current working directory is valid for the external FS.
+  bool ExternalFSValidWD = false;
 
   /// The file system to use for external references.
   IntrusiveRefCntPtr<FileSystem> ExternalFS;
@@ -664,7 +685,12 @@ private:
   /// Whether to perform case-sensitive comparisons.
   ///
   /// Currently, case-insensitive matching only works correctly with ASCII.
-  bool CaseSensitive = true;
+  bool CaseSensitive =
+#ifdef _WIN32
+      false;
+#else
+      true;
+#endif
 
   /// IsRelativeOverlay marks whether a ExternalContentsPrefixDir path must
   /// be prefixed in every 'external-contents' when reading from YAML files.
@@ -689,8 +715,7 @@ private:
       true;
 #endif
 
-  RedirectingFileSystem(IntrusiveRefCntPtr<FileSystem> ExternalFS)
-      : ExternalFS(std::move(ExternalFS)) {}
+  RedirectingFileSystem(IntrusiveRefCntPtr<FileSystem> ExternalFS);
 
   /// Looks up the path <tt>[Start, End)</tt> in \p From, possibly
   /// recursing into the contents of \p From if it is a directory.

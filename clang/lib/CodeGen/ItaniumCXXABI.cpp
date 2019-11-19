@@ -350,7 +350,7 @@ public:
     // If we have the only definition, we don't need a thread wrapper if we
     // will emit the value as a constant.
     if (isUniqueGVALinkage(getContext().GetGVALinkageForVariable(VD)))
-      return !VD->getType().isDestructedType() && InitDecl->evaluateValue();
+      return !VD->needsDestruction(getContext()) && InitDecl->evaluateValue();
 
     // Otherwise, we need a thread wrapper unless we know that every
     // translation unit will emit the value as a constant. We rely on
@@ -360,7 +360,8 @@ public:
   }
 
   bool usesThreadWrapperFunction(const VarDecl *VD) const override {
-    return !isEmittedWithConstantInitializer(VD);
+    return !isEmittedWithConstantInitializer(VD) ||
+           VD->needsDestruction(getContext());
   }
   LValue EmitThreadLocalVarDeclLValue(CodeGenFunction &CGF, const VarDecl *VD,
                                       QualType LValType) override;
@@ -579,8 +580,8 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
 
   const FunctionProtoType *FPT =
     MPT->getPointeeType()->getAs<FunctionProtoType>();
-  const CXXRecordDecl *RD =
-    cast<CXXRecordDecl>(MPT->getClass()->getAs<RecordType>()->getDecl());
+  auto *RD =
+      cast<CXXRecordDecl>(MPT->getClass()->castAs<RecordType>()->getDecl());
 
   llvm::FunctionType *FTy = CGM.getTypes().GetFunctionType(
       CGM.getTypes().arrangeCXXMethodType(RD, FPT, /*FD=*/nullptr));
@@ -643,8 +644,6 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
     VTableOffset = Builder.CreateTrunc(VTableOffset, CGF.Int32Ty);
     VTableOffset = Builder.CreateZExt(VTableOffset, CGM.PtrDiffTy);
   }
-  // Compute the address of the virtual function pointer.
-  llvm::Value *VFPAddr = Builder.CreateGEP(VTable, VTableOffset);
 
   // Check the address of the function pointer if CFI on member function
   // pointers is enabled.
@@ -652,44 +651,81 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
   llvm::Constant *CheckTypeDesc;
   bool ShouldEmitCFICheck = CGF.SanOpts.has(SanitizerKind::CFIMFCall) &&
                             CGM.HasHiddenLTOVisibility(RD);
-  if (ShouldEmitCFICheck) {
+  bool ShouldEmitVFEInfo = CGM.getCodeGenOpts().VirtualFunctionElimination &&
+                           CGM.HasHiddenLTOVisibility(RD);
+  llvm::Value *VirtualFn = nullptr;
+
+  {
     CodeGenFunction::SanitizerScope SanScope(&CGF);
+    llvm::Value *TypeId = nullptr;
+    llvm::Value *CheckResult = nullptr;
 
-    CheckSourceLocation = CGF.EmitCheckSourceLocation(E->getBeginLoc());
-    CheckTypeDesc = CGF.EmitCheckTypeDescriptor(QualType(MPT, 0));
-    llvm::Constant *StaticData[] = {
-        llvm::ConstantInt::get(CGF.Int8Ty, CodeGenFunction::CFITCK_VMFCall),
-        CheckSourceLocation,
-        CheckTypeDesc,
-    };
-
-    llvm::Metadata *MD =
-        CGM.CreateMetadataIdentifierForVirtualMemPtrType(QualType(MPT, 0));
-    llvm::Value *TypeId = llvm::MetadataAsValue::get(CGF.getLLVMContext(), MD);
-
-    llvm::Value *TypeTest = Builder.CreateCall(
-        CGM.getIntrinsic(llvm::Intrinsic::type_test), {VFPAddr, TypeId});
-
-    if (CGM.getCodeGenOpts().SanitizeTrap.has(SanitizerKind::CFIMFCall)) {
-      CGF.EmitTrapCheck(TypeTest);
-    } else {
-      llvm::Value *AllVtables = llvm::MetadataAsValue::get(
-          CGM.getLLVMContext(),
-          llvm::MDString::get(CGM.getLLVMContext(), "all-vtables"));
-      llvm::Value *ValidVtable = Builder.CreateCall(
-          CGM.getIntrinsic(llvm::Intrinsic::type_test), {VTable, AllVtables});
-      CGF.EmitCheck(std::make_pair(TypeTest, SanitizerKind::CFIMFCall),
-                    SanitizerHandler::CFICheckFail, StaticData,
-                    {VTable, ValidVtable});
+    if (ShouldEmitCFICheck || ShouldEmitVFEInfo) {
+      // If doing CFI or VFE, we will need the metadata node to check against.
+      llvm::Metadata *MD =
+          CGM.CreateMetadataIdentifierForVirtualMemPtrType(QualType(MPT, 0));
+      TypeId = llvm::MetadataAsValue::get(CGF.getLLVMContext(), MD);
     }
 
-    FnVirtual = Builder.GetInsertBlock();
-  }
+    llvm::Value *VFPAddr = Builder.CreateGEP(VTable, VTableOffset);
 
-  // Load the virtual function to call.
-  VFPAddr = Builder.CreateBitCast(VFPAddr, FTy->getPointerTo()->getPointerTo());
-  llvm::Value *VirtualFn = Builder.CreateAlignedLoad(
-      VFPAddr, CGF.getPointerAlign(), "memptr.virtualfn");
+    if (ShouldEmitVFEInfo) {
+      // If doing VFE, load from the vtable with a type.checked.load intrinsic
+      // call. Note that we use the GEP to calculate the address to load from
+      // and pass 0 as the offset to the intrinsic. This is because every
+      // vtable slot of the correct type is marked with matching metadata, and
+      // we know that the load must be from one of these slots.
+      llvm::Value *CheckedLoad = Builder.CreateCall(
+          CGM.getIntrinsic(llvm::Intrinsic::type_checked_load),
+          {VFPAddr, llvm::ConstantInt::get(CGM.Int32Ty, 0), TypeId});
+      CheckResult = Builder.CreateExtractValue(CheckedLoad, 1);
+      VirtualFn = Builder.CreateExtractValue(CheckedLoad, 0);
+      VirtualFn = Builder.CreateBitCast(VirtualFn, FTy->getPointerTo(),
+                                        "memptr.virtualfn");
+    } else {
+      // When not doing VFE, emit a normal load, as it allows more
+      // optimisations than type.checked.load.
+      if (ShouldEmitCFICheck) {
+        CheckResult = Builder.CreateCall(
+            CGM.getIntrinsic(llvm::Intrinsic::type_test),
+            {Builder.CreateBitCast(VFPAddr, CGF.Int8PtrTy), TypeId});
+      }
+      VFPAddr =
+          Builder.CreateBitCast(VFPAddr, FTy->getPointerTo()->getPointerTo());
+      VirtualFn = Builder.CreateAlignedLoad(VFPAddr, CGF.getPointerAlign(),
+                                            "memptr.virtualfn");
+    }
+    assert(VirtualFn && "Virtual fuction pointer not created!");
+    assert((!ShouldEmitCFICheck || !ShouldEmitVFEInfo || CheckResult) &&
+           "Check result required but not created!");
+
+    if (ShouldEmitCFICheck) {
+      // If doing CFI, emit the check.
+      CheckSourceLocation = CGF.EmitCheckSourceLocation(E->getBeginLoc());
+      CheckTypeDesc = CGF.EmitCheckTypeDescriptor(QualType(MPT, 0));
+      llvm::Constant *StaticData[] = {
+          llvm::ConstantInt::get(CGF.Int8Ty, CodeGenFunction::CFITCK_VMFCall),
+          CheckSourceLocation,
+          CheckTypeDesc,
+      };
+
+      if (CGM.getCodeGenOpts().SanitizeTrap.has(SanitizerKind::CFIMFCall)) {
+        CGF.EmitTrapCheck(CheckResult);
+      } else {
+        llvm::Value *AllVtables = llvm::MetadataAsValue::get(
+            CGM.getLLVMContext(),
+            llvm::MDString::get(CGM.getLLVMContext(), "all-vtables"));
+        llvm::Value *ValidVtable = Builder.CreateCall(
+            CGM.getIntrinsic(llvm::Intrinsic::type_test), {VTable, AllVtables});
+        CGF.EmitCheck(std::make_pair(CheckResult, SanitizerKind::CFIMFCall),
+                      SanitizerHandler::CFICheckFail, StaticData,
+                      {VTable, ValidVtable});
+      }
+
+      FnVirtual = Builder.GetInsertBlock();
+    }
+  } // End of sanitizer scope
+
   CGF.EmitBranch(FnEnd);
 
   // In the non-virtual path, the function pointer is actually a
@@ -1142,7 +1178,7 @@ void ItaniumCXXABI::emitVirtualObjectDelete(CodeGenFunction &CGF,
 
     // Grab the vtable pointer as an intptr_t*.
     auto *ClassDecl =
-        cast<CXXRecordDecl>(ElementType->getAs<RecordType>()->getDecl());
+        cast<CXXRecordDecl>(ElementType->castAs<RecordType>()->getDecl());
     llvm::Value *VTable =
         CGF.GetVTablePtr(Ptr, CGF.IntPtrTy->getPointerTo(), ClassDecl);
 
@@ -1345,7 +1381,7 @@ llvm::Value *ItaniumCXXABI::EmitTypeid(CodeGenFunction &CGF,
                                        Address ThisPtr,
                                        llvm::Type *StdTypeInfoPtrTy) {
   auto *ClassDecl =
-      cast<CXXRecordDecl>(SrcRecordTy->getAs<RecordType>()->getDecl());
+      cast<CXXRecordDecl>(SrcRecordTy->castAs<RecordType>()->getDecl());
   llvm::Value *Value =
       CGF.GetVTablePtr(ThisPtr, StdTypeInfoPtrTy->getPointerTo(), ClassDecl);
 
@@ -1411,7 +1447,7 @@ llvm::Value *ItaniumCXXABI::EmitDynamicCastToVoid(CodeGenFunction &CGF,
   llvm::Type *DestLTy = CGF.ConvertType(DestTy);
 
   auto *ClassDecl =
-      cast<CXXRecordDecl>(SrcRecordTy->getAs<RecordType>()->getDecl());
+      cast<CXXRecordDecl>(SrcRecordTy->castAs<RecordType>()->getDecl());
   // Get the vtable pointer.
   llvm::Value *VTable = CGF.GetVTablePtr(ThisAddr, PtrDiffLTy->getPointerTo(),
       ClassDecl);
@@ -1633,7 +1669,7 @@ void ItaniumCXXABI::emitVTableDefinitions(CodeGenVTables &CGVT,
     EmitFundamentalRTTIDescriptors(RD);
 
   if (!VTable->isDeclarationForLinker())
-    CGM.EmitVTableTypeMetadata(VTable, VTLayout);
+    CGM.EmitVTableTypeMetadata(RD, VTable, VTLayout);
 }
 
 bool ItaniumCXXABI::isVirtualOffsetNeededForVTableField(
@@ -2193,7 +2229,7 @@ void ItaniumCXXABI::EmitGuardedInit(CodeGenFunction &CGF,
     guard->setVisibility(var->getVisibility());
     // If the variable is thread-local, so is its guard variable.
     guard->setThreadLocalMode(var->getThreadLocalMode());
-    guard->setAlignment(guardAlignment.getQuantity());
+    guard->setAlignment(guardAlignment.getAsAlign());
 
     // The ABI says: "It is suggested that it be emitted in the same COMDAT
     // group as the associated data object." In practice, this doesn't work for
@@ -2546,7 +2582,7 @@ void ItaniumCXXABI::EmitThreadLocalInitFuncs(
     Guard->setThreadLocal(true);
 
     CharUnits GuardAlign = CharUnits::One();
-    Guard->setAlignment(GuardAlign.getQuantity());
+    Guard->setAlignment(GuardAlign.getAsAlign());
 
     CodeGenFunction(CGM).GenerateCXXGlobalInitFunc(
         InitFunc, OrderedInits, ConstantAddress(Guard, GuardAlign));
@@ -2606,7 +2642,7 @@ void ItaniumCXXABI::EmitThreadLocalInitFuncs(
     llvm::GlobalValue *Init = nullptr;
     bool InitIsInitFunc = false;
     bool HasConstantInitialization = false;
-    if (isEmittedWithConstantInitializer(VD)) {
+    if (!usesThreadWrapperFunction(VD)) {
       HasConstantInitialization = true;
     } else if (VD->hasDefinition()) {
       InitIsInitFunc = true;
@@ -3099,8 +3135,8 @@ static bool CanUseSingleInheritance(const CXXRecordDecl *RD) {
     return false;
 
   // Check that the class is dynamic iff the base is.
-  const CXXRecordDecl *BaseDecl =
-    cast<CXXRecordDecl>(Base->getType()->getAs<RecordType>()->getDecl());
+  auto *BaseDecl =
+      cast<CXXRecordDecl>(Base->getType()->castAs<RecordType>()->getDecl());
   if (!BaseDecl->isEmpty() &&
       BaseDecl->isDynamicClass() != RD->isDynamicClass())
     return false;
@@ -3127,7 +3163,7 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
 #define NON_CANONICAL_TYPE(Class, Base) case Type::Class:
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
-#include "clang/AST/TypeNodes.def"
+#include "clang/AST/TypeNodes.inc"
     llvm_unreachable("Non-canonical and dependent types shouldn't get here");
 
   case Type::LValueReference:
@@ -3373,7 +3409,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
 #define NON_CANONICAL_TYPE(Class, Base) case Type::Class:
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
-#include "clang/AST/TypeNodes.def"
+#include "clang/AST/TypeNodes.inc"
     llvm_unreachable("Non-canonical and dependent types shouldn't get here");
 
   // GCC treats vector types as fundamental types.
@@ -3478,7 +3514,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(
 
   CharUnits Align =
       CGM.getContext().toCharUnitsFromBits(CGM.getTarget().getPointerAlign(0));
-  GV->setAlignment(Align.getQuantity());
+  GV->setAlignment(Align.getAsAlign());
 
   // The Itanium ABI specifies that type_info objects must be globally
   // unique, with one exception: if the type is an incomplete class
@@ -3563,8 +3599,8 @@ static unsigned ComputeVMIClassTypeInfoFlags(const CXXBaseSpecifier *Base,
 
   unsigned Flags = 0;
 
-  const CXXRecordDecl *BaseDecl =
-    cast<CXXRecordDecl>(Base->getType()->getAs<RecordType>()->getDecl());
+  auto *BaseDecl =
+      cast<CXXRecordDecl>(Base->getType()->castAs<RecordType>()->getDecl());
 
   if (Base->isVirtual()) {
     // Mark the virtual base as seen.
@@ -3662,8 +3698,8 @@ void ItaniumRTTIBuilder::BuildVMIClassTypeInfo(const CXXRecordDecl *RD) {
     // The __base_type member points to the RTTI for the base type.
     Fields.push_back(ItaniumRTTIBuilder(CXXABI).BuildTypeInfo(Base.getType()));
 
-    const CXXRecordDecl *BaseDecl =
-      cast<CXXRecordDecl>(Base.getType()->getAs<RecordType>()->getDecl());
+    auto *BaseDecl =
+        cast<CXXRecordDecl>(Base.getType()->castAs<RecordType>()->getDecl());
 
     int64_t OffsetFlags = 0;
 

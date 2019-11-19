@@ -37,15 +37,14 @@ using namespace llvm::support;
 using namespace llvm::support::endian;
 using namespace llvm::sys;
 
-using namespace lld;
-using namespace lld::elf;
-
-std::vector<InputSectionBase *> elf::inputSections;
-
+namespace lld {
 // Returns a string to construct an error message.
-std::string lld::toString(const InputSectionBase *sec) {
+std::string toString(const elf::InputSectionBase *sec) {
   return (toString(sec->file) + ":(" + sec->name + ")").str();
 }
+
+namespace elf {
+std::vector<InputSectionBase *> inputSections;
 
 template <class ELFT>
 static ArrayRef<uint8_t> getSectionContents(ObjFile<ELFT> &file,
@@ -73,7 +72,7 @@ InputSectionBase::InputSectionBase(InputFile *file, uint64_t flags,
   areRelocsRela = false;
 
   // The ELF spec states that a value of 0 means the section has
-  // no alignment constraits.
+  // no alignment constraints.
   uint32_t v = std::max<uint32_t>(alignment, 1);
   if (!isPowerOf2_64(v))
     fatal(toString(this) + ": sh_addralign is not a power of 2");
@@ -473,7 +472,7 @@ void InputSection::copyRelocations(uint8_t *buf, ArrayRef<RelTy> rels) {
           target->getRelExpr(type, sym, bufLoc) == R_MIPS_GOTREL) {
         // Some MIPS relocations depend on "gp" value. By default,
         // this value has 0x7ff0 offset from a .got section. But
-        // relocatable files produced by a complier or a linker
+        // relocatable files produced by a compiler or a linker
         // might redefine this default value and we must use it
         // for a calculation of the relocation result. When we
         // generate EXE or DSO it's trivial. Generating a relocatable
@@ -622,7 +621,7 @@ static int64_t getTlsTpOffset(const Symbol &s) {
   // Variant 2. Static TLS blocks, followed by alignment padding are placed
   // before TP. The alignment padding is added so that (TP - padding -
   // p_memsz) is congruent to p_vaddr modulo p_align.
-  elf::PhdrEntry *tls = Out::tlsPhdr;
+  PhdrEntry *tls = Out::tlsPhdr;
   switch (config->emachine) {
     // Variant 1.
   case EM_ARM:
@@ -761,7 +760,7 @@ uint64_t InputSectionBase::getRelocTargetVA(const InputFile *file, RelType type,
   case R_PPC32_PLTREL:
     // R_PPC_PLTREL24 uses the addend (usually 0 or 0x8000) to indicate r30
     // stores _GLOBAL_OFFSET_TABLE_ or .got2+0x8000. The addend is ignored for
-    // target VA compuation.
+    // target VA computation.
     return sym.getPltVA() - p;
   case R_PPC64_CALL: {
     uint64_t symVA = sym.getVA(a);
@@ -829,7 +828,7 @@ uint64_t InputSectionBase::getRelocTargetVA(const InputFile *file, RelType type,
 // Such sections are never mapped to memory at runtime. Debug sections are
 // an example. Relocations in non-alloc sections are much easier to
 // handle than in allocated sections because it will never need complex
-// treatement such as GOT or PLT (because at runtime no one refers them).
+// treatment such as GOT or PLT (because at runtime no one refers them).
 // So, we handle relocations for non-alloc sections directly in this
 // function as a performance optimization.
 template <class ELFT, class RelTy>
@@ -1106,7 +1105,7 @@ void InputSectionBase::adjustSplitStackFunctionPrologues(uint8_t *buf,
                                                    end, f->stOther))
         continue;
       if (!getFile<ELFT>()->someNoSplitStack)
-        error(lld::toString(this) + ": " + f->getName() +
+        error(toString(this) + ": " + f->getName() +
               " (with -fsplit-stack) calls " + rel.sym->getName() +
               " (without -fsplit-stack), but couldn't adjust its prologue");
     }
@@ -1369,3 +1368,6 @@ template void EhInputSection::split<ELF32LE>();
 template void EhInputSection::split<ELF32BE>();
 template void EhInputSection::split<ELF64LE>();
 template void EhInputSection::split<ELF64BE>();
+
+} // namespace elf
+} // namespace lld

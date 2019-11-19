@@ -107,8 +107,6 @@ if(APPLE)
     if(NOT BACKBOARD_LIBRARY)
       set(SKIP_TEST_DEBUGSERVER ON CACHE BOOL "" FORCE)
     endif()
-  else()
-    find_library(COCOA_LIBRARY Cocoa)
   endif()
 endif()
 
@@ -136,7 +134,6 @@ add_custom_command(OUTPUT ${generated_mach_interfaces}
   )
 
 set(DEBUGSERVER_VERS_GENERATED_FILE ${CMAKE_CURRENT_BINARY_DIR}/debugserver_vers.c)
-set_source_files_properties(${DEBUGSERVER_VERS_GENERATED_FILE} PROPERTIES GENERATED 1)
 configure_file(debugserver_vers.c.in
                ${DEBUGSERVER_VERS_GENERATED_FILE} @ONLY)
 
@@ -222,8 +219,7 @@ if (debugserver_codesign_identity AND LLDB_BUILD_FRAMEWORK AND
     set(pass_entitlements --entitlements ${entitlements})
   endif()
 
-  get_target_property(framework_build_dir liblldb LIBRARY_OUTPUT_DIRECTORY)
-  set(copy_location ${framework_build_dir}/LLDB.framework/Versions/${LLDB_FRAMEWORK_VERSION}/Resources/debugserver)
+  set(copy_location ${LLDB_FRAMEWORK_ABSOLUTE_BUILD_DIR}/LLDB.framework/Versions/${LLDB_FRAMEWORK_VERSION}/Resources/debugserver)
 
   add_custom_command(TARGET debugserver POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E

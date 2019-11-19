@@ -22,8 +22,9 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/TargetOpcodes.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/LowLevelTypeImpl.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
 #include <tuple>
@@ -1178,7 +1179,7 @@ private:
   ///            {65, NarrowScalar} // bit sizes [65, +inf[
   ///           });
   /// It may be that only 64-bit pointers are supported on your target:
-  /// setPointerAction(G_GEP, 0, LLT:pointer(1),
+  /// setPointerAction(G_PTR_ADD, 0, LLT:pointer(1),
   ///           {{1, Unsupported},  // bit sizes [ 1, 63[
   ///            {64, Legal},       // bit sizes [64, 65[
   ///            {65, Unsupported}, // bit sizes [65, +inf[

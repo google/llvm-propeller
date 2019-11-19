@@ -12,6 +12,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/BinaryFormat/COFF.h"
+#include "llvm/DebugInfo/CodeView/SymbolRecord.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCCodeView.h"
@@ -347,7 +348,7 @@ void MCStreamer::EmitCVDefRangeDirective(
 
 void MCStreamer::EmitCVDefRangeDirective(
     ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    codeview::DefRangeRegisterRelSym::Header DRHdr) {
+    codeview::DefRangeRegisterRelHeader DRHdr) {
   SmallString<20> BytePrefix;
   copyBytesForDefRange(BytePrefix, codeview::S_DEFRANGE_REGISTER_REL, DRHdr);
   EmitCVDefRangeDirective(Ranges, BytePrefix);
@@ -355,7 +356,7 @@ void MCStreamer::EmitCVDefRangeDirective(
 
 void MCStreamer::EmitCVDefRangeDirective(
     ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    codeview::DefRangeSubfieldRegisterSym::Header DRHdr) {
+    codeview::DefRangeSubfieldRegisterHeader DRHdr) {
   SmallString<20> BytePrefix;
   copyBytesForDefRange(BytePrefix, codeview::S_DEFRANGE_SUBFIELD_REGISTER,
                        DRHdr);
@@ -364,7 +365,7 @@ void MCStreamer::EmitCVDefRangeDirective(
 
 void MCStreamer::EmitCVDefRangeDirective(
     ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    codeview::DefRangeRegisterSym::Header DRHdr) {
+    codeview::DefRangeRegisterHeader DRHdr) {
   SmallString<20> BytePrefix;
   copyBytesForDefRange(BytePrefix, codeview::S_DEFRANGE_REGISTER, DRHdr);
   EmitCVDefRangeDirective(Ranges, BytePrefix);
@@ -372,7 +373,7 @@ void MCStreamer::EmitCVDefRangeDirective(
 
 void MCStreamer::EmitCVDefRangeDirective(
     ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    codeview::DefRangeFramePointerRelSym::Header DRHdr) {
+    codeview::DefRangeFramePointerRelHeader DRHdr) {
   SmallString<20> BytePrefix;
   copyBytesForDefRange(BytePrefix, codeview::S_DEFRANGE_FRAMEPOINTER_REL,
                        DRHdr);
@@ -1062,7 +1063,8 @@ void MCStreamer::EmitCOFFSymbolStorageClass(int StorageClass) {
 void MCStreamer::EmitCOFFSymbolType(int Type) {
   llvm_unreachable("this directive only supported on COFF targets");
 }
-void MCStreamer::EmitXCOFFLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
+void MCStreamer::EmitXCOFFLocalCommonSymbol(MCSymbol *LabelSym, uint64_t Size,
+                                            MCSymbol *CsectSym,
                                             unsigned ByteAlign) {
   llvm_unreachable("this directive only supported on XCOFF targets");
 }

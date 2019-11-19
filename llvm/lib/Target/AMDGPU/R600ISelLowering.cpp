@@ -41,6 +41,7 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MachineValueType.h"
+#include "llvm/Support/MathExtras.h"
 #include <cassert>
 #include <cstdint>
 #include <iterator>
@@ -60,6 +61,9 @@ R600TargetLowering::R600TargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::v2i32, &R600::R600_Reg64RegClass);
   addRegisterClass(MVT::v4f32, &R600::R600_Reg128RegClass);
   addRegisterClass(MVT::v4i32, &R600::R600_Reg128RegClass);
+
+  setBooleanContents(ZeroOrNegativeOneBooleanContent);
+  setBooleanVectorContents(ZeroOrNegativeOneBooleanContent);
 
   computeRegisterProperties(Subtarget->getRegisterInfo());
 
@@ -782,7 +786,7 @@ SDValue R600TargetLowering::LowerTrig(SDValue Op, SelectionDAG &DAG) const {
     return TrigVal;
   // On R600 hw, COS/SIN input must be between -Pi and Pi.
   return DAG.getNode(ISD::FMUL, DL, VT, TrigVal,
-      DAG.getConstantFP(3.14159265359, DL, MVT::f32));
+      DAG.getConstantFP(numbers::pif, DL, MVT::f32));
 }
 
 SDValue R600TargetLowering::LowerSHLParts(SDValue Op, SelectionDAG &DAG) const {
@@ -969,10 +973,10 @@ SDValue R600TargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const 
   //
 
   // Move hardware True/False values to the correct operand.
-  ISD::CondCode CCOpcode = cast<CondCodeSDNode>(CC)->get();
-  ISD::CondCode InverseCC =
-     ISD::getSetCCInverse(CCOpcode, CompareVT == MVT::i32);
   if (isHWTrueValue(False) && isHWFalseValue(True)) {
+    ISD::CondCode CCOpcode = cast<CondCodeSDNode>(CC)->get();
+    ISD::CondCode InverseCC =
+        ISD::getSetCCInverse(CCOpcode, CompareVT == MVT::i32);
     if (isCondCodeLegal(InverseCC, CompareVT.getSimpleVT())) {
       std::swap(False, True);
       CC = DAG.getCondCode(InverseCC);
@@ -1499,7 +1503,6 @@ SDValue R600TargetLowering::LowerLOAD(SDValue Op, SelectionDAG &DAG) const {
   // buffer. However SEXT loads from other address spaces are not supported, so
   // we need to expand them here.
   if (LoadNode->getExtensionType() == ISD::SEXTLOAD) {
-    EVT MemVT = LoadNode->getMemoryVT();
     assert(!MemVT.isVector() && (MemVT == MVT::i16 || MemVT == MVT::i8));
     SDValue NewLoad = DAG.getExtLoad(
         ISD::EXTLOAD, DL, VT, Chain, Ptr, LoadNode->getPointerInfo(), MemVT,
@@ -1714,12 +1717,7 @@ static SDValue CompactSwizzlableVector(
 
     if (NewBldVec[i].isUndef())
       continue;
-    // Fix spurious warning with gcc 7.3 -O3
-    //    warning: array subscript is above array bounds [-Warray-bounds]
-    //    if (NewBldVec[i] == NewBldVec[j]) {
-    //        ~~~~~~~~~~~^
-    if (i >= 4)
-      continue;
+
     for (unsigned j = 0; j < i; j++) {
       if (NewBldVec[i] == NewBldVec[j]) {
         NewBldVec[i] = DAG.getUNDEF(NewBldVec[i].getValueType());
@@ -1888,8 +1886,6 @@ SDValue R600TargetLowering::PerformDAGCombine(SDNode *N,
                            DAG.getConstant(-1, DL, MVT::i32), // True
                            DAG.getConstant(0, DL, MVT::i32),  // False
                            SelectCC.getOperand(4)); // CC
-
-    break;
   }
 
   // insert_vector_elt (build_vector elt0, ... , eltN), NewEltIdx, idx

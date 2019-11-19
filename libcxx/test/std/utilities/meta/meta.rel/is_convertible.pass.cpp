@@ -60,6 +60,8 @@ class CannotInstantiate {
   enum { X = T::ThisExpressionWillBlowUp };
 };
 
+struct abstract { virtual int f() = 0; };
+
 int main(int, char**)
 {
     // void
@@ -244,14 +246,18 @@ int main(int, char**)
     static_assert((std::is_convertible<volatile NonCopyable&, const volatile NonCopyable&>::value), "");
     static_assert((std::is_convertible<const volatile NonCopyable&, const volatile NonCopyable&>::value), "");
     static_assert((!std::is_convertible<const NonCopyable&, NonCopyable&>::value), "");
-// This test requires Access control SFINAE which we only have in C++11 or when
-// we are using the compiler builtin for is_convertible.
+
+    // This test requires Access control SFINAE which we only have in C++11 or when
+    // we are using the compiler builtin for is_convertible.
     test_is_not_convertible<NonCopyable&, NonCopyable>();
 
 
     // Ensure that CannotInstantiate is not instantiated by is_convertible when it is not needed.
-    // For example CannotInstantiate is instatiated as a part of ADL lookup for arguments of type CannotInstantiate*.
+    // For example CannotInstantiate is instantiated as a part of ADL lookup for arguments of type CannotInstantiate*.
     static_assert((std::is_convertible<CannotInstantiate<int>*, CannotInstantiate<int>*>::value), "");
 
-  return 0;
+    // Test for PR13592
+    static_assert(!std::is_convertible<abstract, abstract>::value, "");
+
+    return 0;
 }

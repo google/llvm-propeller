@@ -441,6 +441,15 @@ TEST(LocateSymbol, All) {
           auto x = m^akeX();
         }
       )cpp",
+
+      R"cpp(
+        struct X {
+          X& [[operator]]++() {}
+        };
+        void foo(X& x) {
+          +^+x;
+        }
+      )cpp",
   };
   for (const char *Test : Tests) {
     Annotations T(Test);
@@ -453,7 +462,14 @@ TEST(LocateSymbol, All) {
     if (!T.ranges("def").empty())
       WantDef = T.range("def");
 
-    auto AST = TestTU::withCode(T.code()).build();
+    TestTU TU;
+    TU.Code = T.code();
+
+    // FIXME: Auto-completion in a template requires disabling delayed template
+    // parsing.
+    TU.ExtraArgs.push_back("-fno-delayed-template-parsing");
+
+    auto AST = TU.build();
     auto Results = locateSymbolAt(AST, T.point());
 
     if (!WantDecl) {
@@ -474,7 +490,7 @@ TEST(LocateSymbol, Ambiguous) {
     struct Foo {
       Foo();
       Foo(Foo&&);
-      Foo(const char*);
+      $ConstructorLoc[[Foo]](const char*);
     };
 
     Foo f();
@@ -491,6 +507,8 @@ TEST(LocateSymbol, Ambiguous) {
       Foo ab$7^c;
       Foo ab$8^cd("asdf");
       Foo foox = Fo$9^o("asdf");
+      Foo abcde$10^("asdf");
+      Foo foox2 = Foo$11^("asdf");
     }
   )cpp");
   auto AST = TestTU::withCode(T.code()).build();
@@ -501,12 +519,16 @@ TEST(LocateSymbol, Ambiguous) {
   EXPECT_THAT(locateSymbolAt(AST, T.point("4")), ElementsAre(Sym("g")));
   EXPECT_THAT(locateSymbolAt(AST, T.point("5")), ElementsAre(Sym("f")));
   EXPECT_THAT(locateSymbolAt(AST, T.point("6")), ElementsAre(Sym("str")));
+  // FIXME: Target the constructor as well.
   EXPECT_THAT(locateSymbolAt(AST, T.point("7")), ElementsAre(Sym("abc")));
-  EXPECT_THAT(locateSymbolAt(AST, T.point("8")),
-              ElementsAre(Sym("Foo"), Sym("abcd")));
-  EXPECT_THAT(locateSymbolAt(AST, T.point("9")),
-              // First one is class definition, second is the constructor.
-              ElementsAre(Sym("Foo"), Sym("Foo")));
+  // FIXME: Target the constructor as well.
+  EXPECT_THAT(locateSymbolAt(AST, T.point("8")), ElementsAre(Sym("abcd")));
+  // FIXME: Target the constructor as well.
+  EXPECT_THAT(locateSymbolAt(AST, T.point("9")), ElementsAre(Sym("Foo")));
+  EXPECT_THAT(locateSymbolAt(AST, T.point("10")),
+              ElementsAre(Sym("Foo", T.range("ConstructorLoc"))));
+  EXPECT_THAT(locateSymbolAt(AST, T.point("11")),
+              ElementsAre(Sym("Foo", T.range("ConstructorLoc"))));
 }
 
 TEST(LocateSymbol, TemplateTypedefs) {
@@ -875,6 +897,32 @@ void foo())cpp";
          HI.Definition = "int test";
          HI.Type = "int";
        }},
+      // Partially-specialized class template. (formerly type-parameter-0-0)
+      {R"cpp(
+        template <typename T> class X;
+        template <typename T> class [[^X]]<T*> {};
+        )cpp",
+       [](HoverInfo &HI) {
+         HI.Name = "X<T *>";
+         HI.NamespaceScope = "";
+         HI.Kind = SymbolKind::Class;
+         HI.Definition = "template <typename T> class X<T *> {}";
+       }},
+      // Constructor of partially-specialized class template
+      {R"cpp(
+          template<typename> struct X;
+          template<typename T> struct X<T*>{ [[^X]](); };
+          )cpp",
+       [](HoverInfo &HI) {
+         HI.NamespaceScope = "";
+         HI.Name = "X";
+         HI.LocalScope = "X::";        // FIXME: Should be X<T *>::
+         HI.Kind = SymbolKind::Constructor;
+         HI.Type = "void ()";          // FIXME: Should be None
+         HI.ReturnType = "void";       // FIXME: Should be None or X<T*>
+         HI.Definition = "X()";
+         HI.Parameters.emplace();
+       }},
 
       // auto on lambda
       {R"cpp(
@@ -958,6 +1006,19 @@ void foo())cpp";
          HI.Type = "int";
          HI.NamespaceScope = "";
          HI.Value = "3";
+       }},
+      {R"cpp(
+        enum Color { RED, GREEN, };
+        Color x = [[GR^EEN]];
+       )cpp",
+       [](HoverInfo &HI) {
+         HI.Name = "GREEN";
+         HI.NamespaceScope = "";
+         HI.LocalScope = "Color::";
+         HI.Definition = "GREEN";
+         HI.Kind = SymbolKind::EnumMember;
+         HI.Type = "enum Color";
+         HI.Value = "1";
        }},
       // FIXME: We should use the Decl referenced, even if it comes from an
       // implicit instantiation.
@@ -2139,9 +2200,10 @@ TEST(FindReferences, NeedsIndex) {
 TEST(FindReferences, NoQueryForLocalSymbols) {
   struct RecordingIndex : public MemIndex {
     mutable Optional<llvm::DenseSet<SymbolID>> RefIDs;
-    void refs(const RefsRequest &Req,
+    bool refs(const RefsRequest &Req,
               llvm::function_ref<void(const Ref &)>) const override {
       RefIDs = Req.IDs;
+      return false;
     }
   };
 
@@ -2176,7 +2238,7 @@ TEST(GetDeducedType, KwAutoExpansion) {
     const char *DeducedType;
   } Tests[] = {
       {"^auto i = 0;", "int"},
-      {"^auto f(){ return 1;};", "int"}
+      {"^auto f(){ return 1;};", "int"},
   };
   for (Test T : Tests) {
     Annotations File(T.AnnotatedCode);
@@ -2268,7 +2330,8 @@ TEST(GetNonLocalDeclRefs, All) {
       if (const auto *ND = llvm::dyn_cast<NamedDecl>(D))
         Names.push_back(ND->getQualifiedNameAsString());
     }
-    EXPECT_THAT(Names, UnorderedElementsAreArray(C.ExpectedDecls));
+    EXPECT_THAT(Names, UnorderedElementsAreArray(C.ExpectedDecls))
+        << File.code();
   }
 }
 

@@ -185,7 +185,8 @@ private:
   mutable llvm::FoldingSet<LValueReferenceType> LValueReferenceTypes;
   mutable llvm::FoldingSet<RValueReferenceType> RValueReferenceTypes;
   mutable llvm::FoldingSet<MemberPointerType> MemberPointerTypes;
-  mutable llvm::FoldingSet<ConstantArrayType> ConstantArrayTypes;
+  mutable llvm::ContextualFoldingSet<ConstantArrayType, ASTContext &>
+      ConstantArrayTypes;
   mutable llvm::FoldingSet<IncompleteArrayType> IncompleteArrayTypes;
   mutable std::vector<VariableArrayType*> VariableArrayTypes;
   mutable llvm::FoldingSet<DependentSizedArrayType> DependentSizedArrayTypes;
@@ -513,6 +514,8 @@ private:
   /// need to be consistently numbered for the mangler).
   llvm::DenseMap<const DeclContext *, std::unique_ptr<MangleNumberingContext>>
       MangleNumberingContexts;
+  llvm::DenseMap<const Decl *, std::unique_ptr<MangleNumberingContext>>
+      ExtraMangleNumberingContexts;
 
   /// Side-table of mangling numbers for declarations which rarely
   /// need them (like static local vars).
@@ -1330,6 +1333,7 @@ public:
   /// Return the unique reference to the type for a constant array of
   /// the specified element type.
   QualType getConstantArrayType(QualType EltTy, const llvm::APInt &ArySize,
+                                const Expr *SizeExpr,
                                 ArrayType::ArraySizeModifier ASM,
                                 unsigned IndexTypeQuals) const;
 
@@ -1499,8 +1503,7 @@ public:
                              bool isKindOf) const;
 
   QualType getObjCTypeParamType(const ObjCTypeParamDecl *Decl,
-                                ArrayRef<ObjCProtocolDecl *> protocols,
-                                QualType Canonical = QualType()) const;
+                                ArrayRef<ObjCProtocolDecl *> protocols) const;
 
   bool ObjCObjectAdoptsQTypeProtocols(QualType QT, ObjCInterfaceDecl *Decl);
 
@@ -2810,6 +2813,9 @@ public:
   /// Retrieve the context for computing mangling numbers in the given
   /// DeclContext.
   MangleNumberingContext &getManglingNumberContext(const DeclContext *DC);
+  enum NeedExtraManglingDecl_t { NeedExtraManglingDecl };
+  MangleNumberingContext &getManglingNumberContext(NeedExtraManglingDecl_t,
+                                                   const Decl *D);
 
   std::unique_ptr<MangleNumberingContext> createMangleNumberingContext() const;
 

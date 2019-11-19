@@ -415,7 +415,8 @@ static mode_t GetOpenMode(uint32_t permissions) {
   return mode;
 }
 
-Expected<FileUP> FileSystem::Open(const FileSpec &file_spec, uint32_t options,
+Expected<FileUP> FileSystem::Open(const FileSpec &file_spec,
+                                  File::OpenOptions options,
                                   uint32_t permissions, bool should_close_fd) {
   if (m_collector)
     m_collector->addFile(file_spec.GetPath());
@@ -435,7 +436,8 @@ Expected<FileUP> FileSystem::Open(const FileSpec &file_spec, uint32_t options,
     return llvm::errorCodeToError(
         std::error_code(errno, std::system_category()));
 
-  auto file = std::make_unique<File>(descriptor, options, should_close_fd);
+  auto file = std::unique_ptr<File>(
+      new NativeFile(descriptor, options, should_close_fd));
   assert(file->IsValid());
   return std::move(file);
 }

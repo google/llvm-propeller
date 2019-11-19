@@ -570,6 +570,8 @@ MCSection *TargetLoweringObjectFileELF::getExplicitSectionGlobal(
       SectionName = Attrs.getAttribute("bss-section").getValueAsString();
     } else if (Attrs.hasAttribute("rodata-section") && Kind.isReadOnly()) {
       SectionName = Attrs.getAttribute("rodata-section").getValueAsString();
+    } else if (Attrs.hasAttribute("relro-section") && Kind.isReadOnlyWithRel()) {
+      SectionName = Attrs.getAttribute("relro-section").getValueAsString();
     } else if (Attrs.hasAttribute("data-section") && Kind.isData()) {
       SectionName = Attrs.getAttribute("data-section").getValueAsString();
     }
@@ -770,6 +772,24 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
   }
   return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0,
                                     GroupName, UniqueID);
+}
+
+MCSection *TargetLoweringObjectFileELF::getColdSectionForMachineBasicBlock(
+    const Function &F, const MachineBasicBlock &MBB,
+    const TargetMachine &TM) const {
+  SmallString<128> Name;
+  Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
+             ->getSectionName();
+  Name += ".cold";
+
+  unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
+  std::string GroupName = "";
+  if (F.hasComdat()) {
+    Flags |= ELF::SHF_GROUP;
+    GroupName = F.getComdat()->getName();
+  }
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0,
+                                    GroupName);
 }
 
 static MCSectionELF *getStaticStructorSection(MCContext &Ctx, bool UseInitArray,
@@ -1875,6 +1895,16 @@ MCSection *TargetLoweringObjectFileXCOFF::SelectSectionForGlobal(
 
   if (Kind.isData())
     return DataSection;
+
+  // Zero initialized data must be emitted to the .data section because external
+  // linkage control sections that get mapped to the .bss section will be linked
+  // as tentative defintions, which is only appropriate for SectionKind::Common.
+  if (Kind.isBSS())
+    return DataSection;
+
+  if (Kind.isReadOnly() && !Kind.isMergeableConst() &&
+      !Kind.isMergeableCString())
+    return ReadOnlySection;
 
   report_fatal_error("XCOFF other section types not yet implemented.");
 }

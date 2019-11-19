@@ -742,6 +742,7 @@ private:
   void visitAtomicStore(const StoreInst &I);
   void visitLoadFromSwiftError(const LoadInst &I);
   void visitStoreToSwiftError(const StoreInst &I);
+  void visitFreeze(const FreezeInst &I);
 
   void visitInlineAsm(ImmutableCallSite CS);
   void visitIntrinsicCall(const CallInst &I, unsigned Intrinsic);

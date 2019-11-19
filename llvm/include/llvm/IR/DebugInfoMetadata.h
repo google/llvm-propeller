@@ -1759,6 +1759,12 @@ public:
   bool isElemental() const { return getSPFlags() & SPFlagElemental; }
   bool isRecursive() const { return getSPFlags() & SPFlagRecursive; }
 
+  /// Check if this is deleted member function.
+  ///
+  /// Return true if this subprogram is a C++11 special
+  /// member function declared deleted.
+  bool isDeleted() const { return getSPFlags() & SPFlagDeleted; }
+
   /// Check if this is reference-qualified.
   ///
   /// Return true if this subprogram is a C++11 reference-qualified non-static
@@ -2574,7 +2580,7 @@ public:
   /// (This is the only configuration of entry values that is supported.)
   bool isEntryValue() const {
     return getNumElements() > 0 &&
-           getElement(0) == dwarf::DW_OP_entry_value;
+           getElement(0) == dwarf::DW_OP_LLVM_entry_value;
   }
 };
 

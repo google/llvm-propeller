@@ -22,17 +22,26 @@
 //===----------------------------------------------------------------------===//
 
 #include "Propeller.h"
-
-#include "Config.h"
-#include "InputFiles.h"
 #include "PropellerBBReordering.h"
-#include "PropellerCfg.h"
+#include "PropellerConfig.h"
+#include "PropellerCFG.h"
 
+#ifdef PROPELLER_PROTOBUF
+#include "propeller_cfg.pb.h"
+#endif
+#include "lld/Common/ErrorHandler.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Parallel.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#if LLVM_ON_UNIX
+#include <unistd.h>
+#endif
 
 #include <fstream>
 #include <list>
@@ -41,12 +50,10 @@
 #include <tuple>
 #include <vector>
 
-using lld::elf::config;
-
 namespace lld {
 namespace propeller {
 
-Propeller::Propeller(lld::elf::SymbolTable *ST) : Symtab(ST), Propf(nullptr) {}
+Propeller::Propeller() : Propf(nullptr) {}
 
 Propeller::~Propeller() {}
 
@@ -55,6 +62,7 @@ Propeller::~Propeller() {}
 bool Propfile::matchesOutputFileName(const StringRef outputFileName) {
   int outputFileTagSeen = 0;
   std::string line;
+  LineNo = 0;
   while ((std::getline(PropfStream, line)).good()) {
     ++LineNo;
     if (line.empty())
@@ -256,8 +264,8 @@ bool Propfile::processProfile() {
       reportParseError("unrecognized line:\n" + L.str());
       return false;
     }
-    CFGNode *fromN = Prop.findCfgNode(from);
-    CFGNode *toN = Prop.findCfgNode(to);
+    CFGNode *fromN = prop->findCfgNode(from);
+    CFGNode *toN = prop->findCfgNode(to);
     if (!fromN || !toN)
       continue;
 
@@ -283,22 +291,20 @@ bool Propfile::processProfile() {
 }
 
 // Parse each ELF file, create CFG and attach profile data to CFG.
-void Propeller::processFile(const std::pair<elf::InputFile *, uint32_t> &pair) {
-  auto *inf = pair.first;
-  ObjectView *View = ObjectView::create(inf->getName(), pair.second, inf->mb);
-  if (View) {
-    if (CFGBuilder(*this, View).buildCFGs()) {
+void Propeller::processFile(ObjectView *view) {
+  if (view) {
+    if (CFGBuilder(view).buildCFGs()) {
       // Updating global data structure.
       std::lock_guard<std::mutex> lock(Lock);
-      Views.emplace_back(View);
+      Views.emplace_back(view);
       for (std::pair<const StringRef, std::unique_ptr<ControlFlowGraph>> &P :
-           View->CFGs) {
+           view->CFGs) {
         auto result = CFGMap[P.first].emplace(P.second.get());
         (void)(result);
         assert(result.second);
       }
     } else {
-      warn("skipped building CFG for '" + inf->getName() +"'");
+      warn("skipped building CFG for '" + view->ViewName +"'");
       ++ProcessFailureCount;
     }
   }
@@ -379,41 +385,35 @@ void Propeller::calculateNodeFreqs() {
 
 // Returns true if linker output target matches propeller profile.
 bool Propeller::checkTarget() {
-  if (config->propeller.empty())
+  if (propellerConfig.optPropeller.empty())
     return false;
-  std::string propellerFileName = config->propeller.str();
+  std::string propellerFileName = propellerConfig.optPropeller.str();
   // Propfile takes ownership of FPtr.
-  Propf.reset(new Propfile(*this, propellerFileName));
+  Propf.reset(new Propfile(propellerFileName));
   Propf->PropfStream.open(Propf->PropfName);
   if (!Propf->PropfStream.good()) {
     error(std::string("failed to open '") + propellerFileName + "'");
     return false;
   }
   return Propf->matchesOutputFileName(
-      llvm::sys::path::filename(config->outputFile));
+      llvm::sys::path::filename(propellerConfig.optLinkerOutputFile));
 }
 
 // Entrance of Propeller framework. This processes each elf input file in
 // parallel and stores the result information.
-bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
+bool Propeller::processFiles(std::vector<ObjectView *> &views) {
   if (!Propf->readSymbols()) {
-    error(std::string("invalid propfile: '") + config->propeller.str() + "'");
+    error(std::string("invalid propfile: '") +
+          propellerConfig.optPropeller.str() + "'");
     return false;
   }
 
-  // Creating CFGs.
-  std::vector<std::pair<elf::InputFile *, uint32_t>> fileOrdinalPairs;
-  int ordinal = 0;
-  for (auto &F : files)
-    fileOrdinalPairs.emplace_back(F, ++ordinal);
-
   ProcessFailureCount = 0;
   llvm::parallel::for_each(
-      llvm::parallel::parallel_execution_policy(), fileOrdinalPairs.begin(),
-      fileOrdinalPairs.end(),
+      llvm::parallel::parallel_execution_policy(), views.begin(), views.end(),
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
-  if (ProcessFailureCount * 100 / files.size() >= 50)
+  if (ProcessFailureCount * 100 / views.size() >= 50)
     warn("propeller failed to parse more than half the objects, "
          "optimization would suffer");
 
@@ -445,61 +445,110 @@ bool Propeller::processFiles(std::vector<lld::elf::InputFile *> &files) {
   if (!Propf->processProfile())
     return false;
 
-  if (!config->propellerDumpCfgs.empty()) {
-    llvm::SmallString<128> cfgOutputDir(config->outputFile);
-    llvm::sys::path::remove_filename(cfgOutputDir);
-    for (auto &cfgNameToDump : config->propellerDumpCfgs) {
-      auto cfgLI = CFGMap.find(cfgNameToDump);
-      if (cfgLI == CFGMap.end()) {
-        warn("could not dump cfg for function '" + cfgNameToDump +
-             "' : No such function name exists");
-        continue;
-      }
-      int Index = 0;
-      for (auto *CFG : cfgLI->second)
-        if (CFG->Name == cfgNameToDump) {
-          llvm::SmallString<128> cfgOutput = cfgOutputDir;
-          if (++Index <= 1)
-            llvm::sys::path::append(cfgOutput, (CFG->Name + ".dot"));
-          else
-            llvm::sys::path::append(
-                cfgOutput,
-                (CFG->Name + "." + StringRef(std::to_string(Index) + ".dot")));
-          if (!CFG->writeAsDotGraph(StringRef(cfgOutput)))
-            warn("failed to dump CFG: '" + cfgNameToDump + "'");
-        }
-    }
-  }
+  calculateNodeFreqs();
 
+  dumpCfgs();
+  
   // Releasing all support data (symbol ordinal / name map, saved string refs,
   // etc) before moving to reordering.
   Propf.reset(nullptr);
   return true;
 }
 
+bool Propeller::dumpCfgs() {
+  if (propellerConfig.optDumpCfgs.empty()) return true;
+
+  std::set<std::string> cfgToDump(propellerConfig.optDumpCfgs.begin(),
+                                  propellerConfig.optDumpCfgs.end());
+  llvm::SmallString<128> cfgOutputDir(propellerConfig.optLinkerOutputFile);
+  llvm::sys::path::remove_filename(cfgOutputDir);
+  for (auto &cfgName : cfgToDump) {
+    if (cfgName == "@") {
+#ifdef PROPELLER_PROTOBUF
+      if (!protobufPrinter.get())
+        protobufPrinter.reset(ProtobufPrinter::create(
+            Twine(propellerConfig.optLinkerOutputFile, ".cfg.pb.txt").str()));
+#else
+      warn("dump to protobuf not supported");
+#endif
+      continue;
+    }
+    auto cfgLI = CFGMap.find(cfgName);
+    if (cfgLI == CFGMap.end()) {
+      warn("could not dump cfg for function '" + cfgName +
+           "' : no such function name exists");
+      continue;
+    }
+    int Index = 0;
+    for (auto *CFG : cfgLI->second)
+      if (CFG->Name == cfgName) {
+        llvm::SmallString<128> cfgOutput = cfgOutputDir;
+        if (++Index <= 1)
+          llvm::sys::path::append(cfgOutput, (CFG->Name + ".dot"));
+        else
+          llvm::sys::path::append(
+              cfgOutput,
+              (CFG->Name + "." + StringRef(std::to_string(Index) + ".dot")));
+        if (!CFG->writeAsDotGraph(StringRef(cfgOutput)))
+          warn("failed to dump CFG: '" + cfgName + "'");
+      }
+  }
+  return true;
+}
+
+ObjectView *Propeller::createObjectView(const StringRef &vN,
+                                        const uint32_t ordinal,
+                                        const MemoryBufferRef &fR) {
+  const char *FH = fR.getBufferStart();
+  if (fR.getBufferSize() > 6 && FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' &&
+      FH[3] == 'F') {
+    auto r = ObjectFile::createELFObjectFile(fR);
+    if (r)
+      return new ObjectView(*r, vN, ordinal, fR);
+  }
+  return nullptr;
+}
+
 // Generate symbol ordering file according to selected optimization pass and
 // feed it to the linker.
 std::vector<StringRef> Propeller::genSymbolOrderingFile() {
-  calculateNodeFreqs();
+  int total_objs = 0;
+  int hot_objs = 0;
+  for (auto &Obj : Views) {
+    for (auto &CP : Obj->CFGs) {
+      auto &C = *(CP.second);
+      if (C.isHot()) {
+        ++hot_objs;
+        break; // process to next object.
+      }
+    }
+    ++total_objs;
+  }
 
   std::list<StringRef> symbolList(1, "Hot");
   const auto hotPlaceHolder = symbolList.begin();
   const auto coldPlaceHolder = symbolList.end();
-  PropellerBBReordering(*this).doSplitOrder(symbolList, hotPlaceHolder, coldPlaceHolder);
+  PropellerBBReordering().doSplitOrder(symbolList, hotPlaceHolder, coldPlaceHolder);
+#ifdef PROPELLER_PROTOBUF
+  if (protobufPrinter) {
+    protobufPrinter->printCFGGroup();
+    protobufPrinter.reset();
+  }
+#endif
 
   calculateLegacy(symbolList, hotPlaceHolder, coldPlaceHolder);
 
-  if (!config->propellerDumpSymbolOrder.empty()) {
-    FILE *fp = fopen(config->propellerDumpSymbolOrder.str().c_str(), "w");
+  if (!propellerConfig.optDumpSymbolOrder.empty()) {
+    FILE *fp = fopen(propellerConfig.optDumpSymbolOrder.str().c_str(), "w");
     if (!fp)
       warn(StringRef("dump symbol order: failed to open ") + "'" +
-           config->propellerDumpSymbolOrder + "'");
+           propellerConfig.optDumpSymbolOrder + "'");
     else {
       for (auto &sym : symbolList)
         fprintf(fp, "%s\n", sym.str().c_str());
       fclose(fp);
       llvm::outs() << "dumped symbol order file to: '"
-                   << config->propellerDumpSymbolOrder.str() << "\n";
+                   << propellerConfig.optDumpSymbolOrder.str() << "\n";
     }
   }
 
@@ -542,6 +591,8 @@ operator()(const ControlFlowGraph *a, const ControlFlowGraph *b) const {
 }
 
 PropellerLegacy PropLeg;
+
+PropellerConfig propellerConfig;
 
 } // namespace propeller
 } // namespace lld
