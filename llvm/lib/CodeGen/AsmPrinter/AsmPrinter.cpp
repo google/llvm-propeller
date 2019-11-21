@@ -3024,10 +3024,8 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     } else if (BasicBlockSections) {
       OutStreamer->SwitchSection(MF->getSection());
     }
-    if (emitBBLabels) {
-      const Function &F = MF->getFunction();
-      EmitLinkage(&F, MBB.getSymbol());
-    }
+    const Function &F = MF->getFunction();
+    EmitLinkage(&F, MBB.getSymbol());
     OutStreamer->EmitLabel(MBB.getSymbol());
     // With BasicBlockSections, each Basic Block must handle CFI information on
     // its own.
