@@ -536,45 +536,10 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     if (BeginMBB->sameSection(EndMBB) ||
         Asm->MF->getBasicBlockSections() == llvm::BasicBlockSection::None) {
       // Without basic block sections, there is just one continuous range.
-<<<<<<< HEAD
-      // The same holds if EndBB is in the initial non-unique-section BB range.
-=======
       // The same holds if EndMBB is in the initial non-unique-section BB range.
->>>>>>> plo-dev
       List.push_back({BeginLabel, EndLabel});
       continue;
     }
-
-<<<<<<< HEAD
-    const auto *LastMBBInSection = BeginMBB;
-
-    if (BeginMBB->isUniqueSection()) {
-      // BeginLabel lies in a unique section ending at the BeginMBB's end
-      // symbol.
-      assert(BeginMBB->getEndMCSymbol() &&
-             "Unique BB sections should have end symbols.");
-      List.push_back({BeginLabel, BeginMBB->getEndMCSymbol()});
-    } else {
-      // BeginLabel lies in a non-unique section, but EndLabel does not. The
-      // section for non-unique-section BBs ends at Asm->getFunctionEnd().
-      List.push_back({BeginLabel, Asm->getFunctionEnd()});
-      while (!LastMBBInSection->getNextNode()->isUniqueSection())
-        LastMBBInSection = LastMBBInSection->getNextNode();
-    }
-
-    for (auto *MBB = LastMBBInSection->getNextNode(); MBB != EndBB;
-         MBB = MBB->getNextNode()) {
-      assert(MBB->isUniqueSection() && "All non-unique-section BBs should be"
-                                       " before the unique-section ones.");
-      assert(MBB->getSymbol() && "Unique BB sections should have symbols.");
-      assert(MBB->getEndMCSymbol() &&
-             "Unique BB sections should have end symbols.");
-      List.push_back({MBB->getSymbol(), MBB->getEndMCSymbol()});
-    }
-
-    assert(EndBB->getSymbol() && "Unique BB sections should have symbols.");
-    List.push_back({EndBB->getSymbol(), EndLabel});
-=======
     assert (!BeginMBB->sameSection(EndMBB) &&
             "BeginMBB and EndMBB are in the same section!");
     const auto *MBBInSection = BeginMBB->getSectionEndMBB();
@@ -590,7 +555,6 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
 
     assert(MBBInSection->sameSection(EndMBB));
     List.push_back({MBBInSection->getSymbol(), EndLabel});
->>>>>>> plo-dev
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }
