@@ -117,6 +117,10 @@ def SDT_PPCextswsli : SDTypeProfile<1, 2, [  // extswsli
   SDTCisInt<0>, SDTCisInt<1>, SDTCisOpSmallerThanOp<1, 0>, SDTCisInt<2>
 ]>;
 
+def SDT_PPCFPMinMax : SDTypeProfile<1, 2, [
+  SDTCisSameAs<0, 1>, SDTCisSameAs<0, 2>, SDTCisFP<0>
+]>;
+
 //===----------------------------------------------------------------------===//
 // PowerPC specific DAG Nodes.
 //
@@ -165,7 +169,8 @@ def PPCfsel   : SDNode<"PPCISD::FSEL",
    // Type constraint for fsel.
    SDTypeProfile<1, 3, [SDTCisSameAs<0, 2>, SDTCisSameAs<0, 3>, 
                         SDTCisFP<0>, SDTCisVT<1, f64>]>, []>;
-
+def PPCxsmaxc : SDNode<"PPCISD::XSMAXCDP", SDT_PPCFPMinMax, []>;
+def PPCxsminc : SDNode<"PPCISD::XSMINCDP", SDT_PPCFPMinMax, []>;
 def PPChi       : SDNode<"PPCISD::Hi", SDTIntBinOp, []>;
 def PPClo       : SDNode<"PPCISD::Lo", SDTIntBinOp, []>;
 def PPCtoc_entry: SDNode<"PPCISD::TOC_ENTRY", SDTIntBinOp,
@@ -1025,6 +1030,32 @@ multiclass XOForm_1r<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
   }
 }
 
+// Multiclass for instructions which have a record overflow form as well
+// as a record form but no carry (i.e. mulld, mulldo, subf, subfo, etc.)
+multiclass XOForm_1rx<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
+                      string asmbase, string asmstr, InstrItinClass itin,
+                      list<dag> pattern> {
+  let BaseName = asmbase in {
+    def NAME : XOForm_1<opcode, xo, 0, OOL, IOL,
+                        !strconcat(asmbase, !strconcat(" ", asmstr)), itin,
+                        pattern>, RecFormRel;
+    let Defs = [CR0] in
+    def o    : XOForm_1<opcode, xo, 0, OOL, IOL,
+                        !strconcat(asmbase, !strconcat(". ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
+  }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [XER] in
+    def O    : XOForm_1<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [XER, CR0] in
+    def Oo    : XOForm_1<opcode, xo, 1, OOL, IOL,
+                         !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                         []>, isDOT, RecFormRel;
+  }
+}
+
 // Multiclass for instructions for which the non record form is not cracked
 // and the record form is cracked (i.e. divw, mullw, etc.)
 multiclass XOForm_1rcr<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
@@ -1039,6 +1070,16 @@ multiclass XOForm_1rcr<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
                        !strconcat(asmbase, !strconcat(". ", asmstr)), itin,
                        []>, isDOT, RecFormRel, PPC970_DGroup_First,
                        PPC970_DGroup_Cracked;
+  }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [XER] in
+    def O    : XOForm_1<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [XER, CR0] in
+    def Oo   : XOForm_1<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
   }
 }
 
@@ -1055,6 +1096,16 @@ multiclass XOForm_1rc<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
                        !strconcat(asmbase, !strconcat(". ", asmstr)), itin,
                        []>, isDOT, RecFormRel;
   }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [CARRY, XER] in
+    def O    : XOForm_1<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [CARRY, XER, CR0] in
+    def Oo   : XOForm_1<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
+  }
 }
 
 multiclass XOForm_3r<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
@@ -1068,6 +1119,16 @@ multiclass XOForm_3r<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
     def o    : XOForm_3<opcode, xo, oe, OOL, IOL,
                        !strconcat(asmbase, !strconcat(". ", asmstr)), itin,
                        []>, isDOT, RecFormRel;
+  }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [XER] in
+    def O    : XOForm_3<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [XER, CR0] in
+    def Oo   : XOForm_3<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
   }
 }
 
@@ -1083,6 +1144,16 @@ multiclass XOForm_3rc<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
     def o    : XOForm_3<opcode, xo, oe, OOL, IOL,
                        !strconcat(asmbase, !strconcat(". ", asmstr)), itin,
                        []>, isDOT, RecFormRel;
+  }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [CARRY, XER] in
+    def O    : XOForm_3<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [CARRY, XER, CR0] in
+    def Oo   : XOForm_3<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
   }
 }
 
@@ -2034,6 +2105,7 @@ def LFIWZX : XForm_25_memOp<31, 887, (outs f8rc:$frD), (ins memrr:$src),
 }
 
 // Load Multiple
+let mayLoad = 1, mayStore = 0, hasSideEffects = 0 in 
 def LMW : DForm_1<46, (outs gprc:$rD), (ins memri:$src),
                   "lmw $rD, $src", IIC_LdStLMW, []>;
 
@@ -2188,6 +2260,7 @@ def : Pat<(pre_store f64:$rS, iPTR:$ptrreg, iPTR:$ptroff),
 }
 
 // Store Multiple
+let mayStore = 1, mayLoad = 0, hasSideEffects = 0 in
 def STMW : DForm_1<47, (outs), (ins gprc:$rS, memri:$dst),
                    "stmw $rS, $dst", IIC_LdStLMW, []>;
 
@@ -2778,9 +2851,9 @@ def MODUW : XForm_8<31, 267, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
 let PPC970_Unit = 1, hasSideEffects = 0 in {  // FXU Operations.
 // XO-Form instructions.  Arithmetic instructions that can set overflow bit
 let isCommutable = 1 in
-defm ADD4  : XOForm_1r<31, 266, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
-                       "add", "$rT, $rA, $rB", IIC_IntSimple,
-                       [(set i32:$rT, (add i32:$rA, i32:$rB))]>;
+defm ADD4  : XOForm_1rx<31, 266, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
+                        "add", "$rT, $rA, $rB", IIC_IntSimple,
+                        [(set i32:$rT, (add i32:$rA, i32:$rB))]>;
 let isCodeGenOnly = 1 in
 def ADD4TLS  : XOForm_1<31, 266, 0, (outs gprc:$rT), (ins gprc:$rA, tlsreg32:$rB),
                        "add $rT, $rA, $rB", IIC_IntSimple,
@@ -2797,24 +2870,14 @@ defm DIVW  : XOForm_1rcr<31, 491, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
 defm DIVWU : XOForm_1rcr<31, 459, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
                           "divwu", "$rT, $rA, $rB", IIC_IntDivW,
                           [(set i32:$rT, (udiv i32:$rA, i32:$rB))]>;
-def DIVWE : XOForm_1<31, 427, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
-                     "divwe $rT, $rA, $rB", IIC_IntDivW,
-                     [(set i32:$rT, (int_ppc_divwe gprc:$rA, gprc:$rB))]>,
-                     Requires<[HasExtDiv]>;
-let Defs = [CR0] in
-def DIVWEo : XOForm_1<31, 427, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
-                      "divwe. $rT, $rA, $rB", IIC_IntDivW,
-                      []>, isDOT, PPC970_DGroup_Cracked, PPC970_DGroup_First,
-                      Requires<[HasExtDiv]>;
-def DIVWEU : XOForm_1<31, 395, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
-                      "divweu $rT, $rA, $rB", IIC_IntDivW,
-                      [(set i32:$rT, (int_ppc_divweu gprc:$rA, gprc:$rB))]>,
-                      Requires<[HasExtDiv]>;
-let Defs = [CR0] in
-def DIVWEUo : XOForm_1<31, 395, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
-                       "divweu. $rT, $rA, $rB", IIC_IntDivW,
-                       []>, isDOT, PPC970_DGroup_Cracked, PPC970_DGroup_First,
-                       Requires<[HasExtDiv]>;
+defm DIVWE : XOForm_1rcr<31, 427, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
+                         "divwe", "$rT, $rA, $rB", IIC_IntDivW,
+                         [(set i32:$rT, (int_ppc_divwe gprc:$rA, gprc:$rB))]>,
+                         Requires<[HasExtDiv]>;
+defm DIVWEU : XOForm_1rcr<31, 395, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
+                          "divweu", "$rT, $rA, $rB", IIC_IntDivW,
+                          [(set i32:$rT, (int_ppc_divweu gprc:$rA, gprc:$rB))]>,
+                          Requires<[HasExtDiv]>;
 let isCommutable = 1 in {
 defm MULHW : XOForm_1r<31, 75, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
                        "mulhw", "$rT, $rA, $rB", IIC_IntMulHW,
@@ -2822,13 +2885,13 @@ defm MULHW : XOForm_1r<31, 75, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
 defm MULHWU : XOForm_1r<31, 11, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
                        "mulhwu", "$rT, $rA, $rB", IIC_IntMulHWU,
                        [(set i32:$rT, (mulhu i32:$rA, i32:$rB))]>;
-defm MULLW : XOForm_1r<31, 235, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
-                       "mullw", "$rT, $rA, $rB", IIC_IntMulHW,
-                       [(set i32:$rT, (mul i32:$rA, i32:$rB))]>;
+defm MULLW : XOForm_1rx<31, 235, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
+                        "mullw", "$rT, $rA, $rB", IIC_IntMulHW,
+                        [(set i32:$rT, (mul i32:$rA, i32:$rB))]>;
 } // isCommutable
-defm SUBF  : XOForm_1r<31, 40, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
-                       "subf", "$rT, $rA, $rB", IIC_IntGeneral,
-                       [(set i32:$rT, (sub i32:$rB, i32:$rA))]>;
+defm SUBF  : XOForm_1rx<31, 40, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
+                        "subf", "$rT, $rA, $rB", IIC_IntGeneral,
+                        [(set i32:$rT, (sub i32:$rB, i32:$rA))]>;
 defm SUBFC : XOForm_1rc<31, 8, 0, (outs gprc:$rT), (ins gprc:$rA, gprc:$rB),
                         "subfc", "$rT, $rA, $rB", IIC_IntGeneral,
                         [(set i32:$rT, (subc i32:$rB, i32:$rA))]>,
@@ -3177,6 +3240,11 @@ def ADDIStocHA : PPCEmitTimePseudo<(outs gprc:$rD), (ins gprc_nor0:$reg, tocentr
 // the function label.
 def UpdateGBR : PPCEmitTimePseudo<(outs gprc:$rD, gprc:$rT), (ins gprc:$rI), "#UpdateGBR", []>;
 
+// Pseudo-instruction marked for deletion. When deleting the instruction would
+// cause iterator invalidation in MIR transformation passes, this pseudo can be
+// used instead. It will be removed unconditionally at pre-emit time (prior to
+// branch selection).
+def UNENCODED_NOP: PPCEmitTimePseudo<(outs), (ins), "#UNENCODED_NOP", []>;
 
 // Standard shifts.  These are represented separately from the real shifts above
 // so that we can distinguish between shifts that allow 5-bit and 6-bit shift
@@ -3575,23 +3643,6 @@ def : Pat<(i1 (setcc i32:$s1, imm:$imm, SETEQ)),
           (EXTRACT_SUBREG (CMPLWI (XORIS $s1, (HI16 imm:$imm)),
                                   (LO16 imm:$imm)), sub_eq)>;
 
-defm : CRNotPat<(i1 (setcc i32:$s1, immZExt16:$imm, SETUGE)),
-                (EXTRACT_SUBREG (CMPLWI $s1, imm:$imm), sub_lt)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, imm32SExt16:$imm, SETGE)),
-                (EXTRACT_SUBREG (CMPWI $s1, imm:$imm), sub_lt)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, immZExt16:$imm, SETULE)),
-                (EXTRACT_SUBREG (CMPLWI $s1, imm:$imm), sub_gt)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, imm32SExt16:$imm, SETLE)),
-                (EXTRACT_SUBREG (CMPWI $s1, imm:$imm), sub_gt)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, imm32SExt16:$imm, SETNE)),
-                (EXTRACT_SUBREG (CMPWI $s1, imm:$imm), sub_eq)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, immZExt16:$imm, SETNE)),
-                (EXTRACT_SUBREG (CMPLWI $s1, imm:$imm), sub_eq)>;
-
-defm : CRNotPat<(i1 (setcc i32:$s1, imm:$imm, SETNE)),
-                (EXTRACT_SUBREG (CMPLWI (XORIS $s1, (HI16 imm:$imm)),
-                                        (LO16 imm:$imm)), sub_eq)>;
-
 def : Pat<(i1 (setcc i32:$s1, i32:$s2, SETULT)),
           (EXTRACT_SUBREG (CMPLW $s1, $s2), sub_lt)>;
 def : Pat<(i1 (setcc i32:$s1, i32:$s2, SETLT)),
@@ -3602,17 +3653,6 @@ def : Pat<(i1 (setcc i32:$s1, i32:$s2, SETGT)),
           (EXTRACT_SUBREG (CMPW $s1, $s2), sub_gt)>;
 def : Pat<(i1 (setcc i32:$s1, i32:$s2, SETEQ)),
           (EXTRACT_SUBREG (CMPW $s1, $s2), sub_eq)>;
-
-defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETUGE)),
-                (EXTRACT_SUBREG (CMPLW $s1, $s2), sub_lt)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETGE)),
-                (EXTRACT_SUBREG (CMPW $s1, $s2), sub_lt)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETULE)),
-                (EXTRACT_SUBREG (CMPLW $s1, $s2), sub_gt)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETLE)),
-                (EXTRACT_SUBREG (CMPW $s1, $s2), sub_gt)>;
-defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETNE)),
-                (EXTRACT_SUBREG (CMPW $s1, $s2), sub_eq)>;
 
 // SETCC for i64.
 def : Pat<(i1 (setcc i64:$s1, immZExt16:$imm, SETULT)),
@@ -3643,6 +3683,47 @@ def : Pat<(i1 (setcc i64:$s1, imm64ZExt32:$imm, SETEQ)),
           (EXTRACT_SUBREG (CMPLDI (XORIS8 $s1, (HI16 imm:$imm)),
                                   (LO16 imm:$imm)), sub_eq)>;
 
+def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETULT)),
+          (EXTRACT_SUBREG (CMPLD $s1, $s2), sub_lt)>;
+def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETLT)),
+          (EXTRACT_SUBREG (CMPD $s1, $s2), sub_lt)>;
+def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETUGT)),
+          (EXTRACT_SUBREG (CMPLD $s1, $s2), sub_gt)>;
+def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETGT)),
+          (EXTRACT_SUBREG (CMPD $s1, $s2), sub_gt)>;
+def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETEQ)),
+          (EXTRACT_SUBREG (CMPD $s1, $s2), sub_eq)>;
+
+// Instantiations of CRNotPat for i32.
+defm : CRNotPat<(i1 (setcc i32:$s1, immZExt16:$imm, SETUGE)),
+                (EXTRACT_SUBREG (CMPLWI $s1, imm:$imm), sub_lt)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, imm32SExt16:$imm, SETGE)),
+                (EXTRACT_SUBREG (CMPWI $s1, imm:$imm), sub_lt)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, immZExt16:$imm, SETULE)),
+                (EXTRACT_SUBREG (CMPLWI $s1, imm:$imm), sub_gt)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, imm32SExt16:$imm, SETLE)),
+                (EXTRACT_SUBREG (CMPWI $s1, imm:$imm), sub_gt)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, imm32SExt16:$imm, SETNE)),
+                (EXTRACT_SUBREG (CMPWI $s1, imm:$imm), sub_eq)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, immZExt16:$imm, SETNE)),
+                (EXTRACT_SUBREG (CMPLWI $s1, imm:$imm), sub_eq)>;
+
+defm : CRNotPat<(i1 (setcc i32:$s1, imm:$imm, SETNE)),
+                (EXTRACT_SUBREG (CMPLWI (XORIS $s1, (HI16 imm:$imm)),
+                                        (LO16 imm:$imm)), sub_eq)>;
+
+defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETUGE)),
+                (EXTRACT_SUBREG (CMPLW $s1, $s2), sub_lt)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETGE)),
+                (EXTRACT_SUBREG (CMPW $s1, $s2), sub_lt)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETULE)),
+                (EXTRACT_SUBREG (CMPLW $s1, $s2), sub_gt)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETLE)),
+                (EXTRACT_SUBREG (CMPW $s1, $s2), sub_gt)>;
+defm : CRNotPat<(i1 (setcc i32:$s1, i32:$s2, SETNE)),
+                (EXTRACT_SUBREG (CMPW $s1, $s2), sub_eq)>;
+
+// Instantiations of CRNotPat for i64.
 defm : CRNotPat<(i1 (setcc i64:$s1, immZExt16:$imm, SETUGE)),
                 (EXTRACT_SUBREG (CMPLDI $s1, imm:$imm), sub_lt)>;
 defm : CRNotPat<(i1 (setcc i64:$s1, imm64SExt16:$imm, SETGE)),
@@ -3660,17 +3741,6 @@ defm : CRNotPat<(i1 (setcc i64:$s1, imm64ZExt32:$imm, SETNE)),
                 (EXTRACT_SUBREG (CMPLDI (XORIS8 $s1, (HI16 imm:$imm)),
                                         (LO16 imm:$imm)), sub_eq)>;
 
-def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETULT)),
-          (EXTRACT_SUBREG (CMPLD $s1, $s2), sub_lt)>;
-def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETLT)),
-          (EXTRACT_SUBREG (CMPD $s1, $s2), sub_lt)>;
-def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETUGT)),
-          (EXTRACT_SUBREG (CMPLD $s1, $s2), sub_gt)>;
-def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETGT)),
-          (EXTRACT_SUBREG (CMPD $s1, $s2), sub_gt)>;
-def : Pat<(i1 (setcc i64:$s1, i64:$s2, SETEQ)),
-          (EXTRACT_SUBREG (CMPD $s1, $s2), sub_eq)>;
-
 defm : CRNotPat<(i1 (setcc i64:$s1, i64:$s2, SETUGE)),
                 (EXTRACT_SUBREG (CMPLD $s1, $s2), sub_lt)>;
 defm : CRNotPat<(i1 (setcc i64:$s1, i64:$s2, SETGE)),
@@ -3681,6 +3751,56 @@ defm : CRNotPat<(i1 (setcc i64:$s1, i64:$s2, SETLE)),
                 (EXTRACT_SUBREG (CMPD $s1, $s2), sub_gt)>;
 defm : CRNotPat<(i1 (setcc i64:$s1, i64:$s2, SETNE)),
                 (EXTRACT_SUBREG (CMPD $s1, $s2), sub_eq)>;
+
+let Predicates = [HasFPU] in {
+// Instantiations of CRNotPat for f32.
+defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETUGE)),
+                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_lt)>;
+defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETGE)),
+                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_lt)>;
+defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETULE)),
+                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_gt)>;
+defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETLE)),
+                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_gt)>;
+defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETUNE)),
+                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_eq)>;
+defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETNE)),
+                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_eq)>;
+defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETO)),
+                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_un)>;
+
+// Instantiations of CRNotPat for f64.
+defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETUGE)),
+                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_lt)>;
+defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETGE)),
+                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_lt)>;
+defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETULE)),
+                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_gt)>;
+defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETLE)),
+                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_gt)>;
+defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETUNE)),
+                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_eq)>;
+defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETNE)),
+                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_eq)>;
+defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETO)),
+                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_un)>;
+
+// Instantiations of CRNotPat for f128.
+defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETUGE)),
+                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_lt)>;
+defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETGE)),
+                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_lt)>;
+defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETULE)),
+                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_gt)>;
+defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETLE)),
+                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_gt)>;
+defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETUNE)),
+                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_eq)>;
+defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETNE)),
+                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_eq)>;
+defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETO)),
+                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_un)>;
+}
 
 // SETCC for f32.
 let Predicates = [HasFPU] in {
@@ -3699,21 +3819,6 @@ def : Pat<(i1 (setcc f32:$s1, f32:$s2, SETEQ)),
 def : Pat<(i1 (setcc f32:$s1, f32:$s2, SETUO)),
           (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_un)>;
 
-defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETUGE)),
-                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_lt)>;
-defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETGE)),
-                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_lt)>;
-defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETULE)),
-                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_gt)>;
-defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETLE)),
-                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_gt)>;
-defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETUNE)),
-                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_eq)>;
-defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETNE)),
-                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_eq)>;
-defm : CRNotPat<(i1 (setcc f32:$s1, f32:$s2, SETO)),
-                (EXTRACT_SUBREG (FCMPUS $s1, $s2), sub_un)>;
-
 // SETCC for f64.
 def : Pat<(i1 (setcc f64:$s1, f64:$s2, SETOLT)),
           (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_lt)>;
@@ -3730,21 +3835,6 @@ def : Pat<(i1 (setcc f64:$s1, f64:$s2, SETEQ)),
 def : Pat<(i1 (setcc f64:$s1, f64:$s2, SETUO)),
           (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_un)>;
 
-defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETUGE)),
-                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_lt)>;
-defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETGE)),
-                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_lt)>;
-defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETULE)),
-                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_gt)>;
-defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETLE)),
-                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_gt)>;
-defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETUNE)),
-                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_eq)>;
-defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETNE)),
-                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_eq)>;
-defm : CRNotPat<(i1 (setcc f64:$s1, f64:$s2, SETO)),
-                (EXTRACT_SUBREG (FCMPUD $s1, $s2), sub_un)>;
-
 // SETCC for f128.
 def : Pat<(i1 (setcc f128:$s1, f128:$s2, SETOLT)),
           (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_lt)>;
@@ -3760,21 +3850,6 @@ def : Pat<(i1 (setcc f128:$s1, f128:$s2, SETEQ)),
           (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_eq)>;
 def : Pat<(i1 (setcc f128:$s1, f128:$s2, SETUO)),
           (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_un)>;
-
-defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETUGE)),
-                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_lt)>;
-defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETGE)),
-                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_lt)>;
-defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETULE)),
-                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_gt)>;
-defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETLE)),
-                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_gt)>;
-defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETUNE)),
-                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_eq)>;
-defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETNE)),
-                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_eq)>;
-defm : CRNotPat<(i1 (setcc f128:$s1, f128:$s2, SETO)),
-                (EXTRACT_SUBREG (XSCMPUQP $s1, $s2), sub_un)>;
 
 }
 

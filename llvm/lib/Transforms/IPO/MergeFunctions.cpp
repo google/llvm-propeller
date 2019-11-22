@@ -115,6 +115,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/ValueMap.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -769,7 +770,7 @@ void MergeFunctions::writeAlias(Function *F, Function *G) {
       PtrType->getElementType(), PtrType->getAddressSpace(),
       G->getLinkage(), "", BitcastF, G->getParent());
 
-  F->setAlignment(std::max(F->getAlignment(), G->getAlignment()));
+  F->setAlignment(MaybeAlign(std::max(F->getAlignment(), G->getAlignment())));
   GA->takeName(G);
   GA->setVisibility(G->getVisibility());
   GA->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
@@ -816,7 +817,7 @@ void MergeFunctions::mergeTwoFunctions(Function *F, Function *G) {
     removeUsers(F);
     F->replaceAllUsesWith(NewF);
 
-    unsigned MaxAlignment = std::max(G->getAlignment(), NewF->getAlignment());
+    MaybeAlign MaxAlignment(std::max(G->getAlignment(), NewF->getAlignment()));
 
     writeThunkOrAlias(F, G);
     writeThunkOrAlias(F, NewF);

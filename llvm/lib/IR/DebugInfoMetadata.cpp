@@ -843,7 +843,7 @@ unsigned DIExpression::ExprOperand::getSize() const {
   case dwarf::DW_OP_deref_size:
   case dwarf::DW_OP_plus_uconst:
   case dwarf::DW_OP_LLVM_tag_offset:
-  case dwarf::DW_OP_entry_value:
+  case dwarf::DW_OP_LLVM_entry_value:
   case dwarf::DW_OP_regx:
     return 2;
   default:
@@ -890,10 +890,12 @@ bool DIExpression::isValid() const {
         return false;
       break;
     }
-    case dwarf::DW_OP_entry_value: {
-      // An entry value operator must appear at the begin and the size
-      // of following expression should be 1, because we support only
-      // entry values of a simple register location.
+    case dwarf::DW_OP_LLVM_entry_value: {
+      // An entry value operator must appear at the beginning and the number of
+      // operations it cover can currently only be 1, because we support only
+      // entry values of a simple register location. One reason for this is that
+      // we currently can't calculate the size of the resulting DWARF block for
+      // other expressions.
       return I->get() == expr_op_begin()->get() && I->getArg(0) == 1 &&
              getNumElements() == 2;
     }
@@ -927,17 +929,22 @@ bool DIExpression::isValid() const {
 }
 
 bool DIExpression::isImplicit() const {
-  unsigned N = getNumElements();
-  if (isValid() && N > 0) {
-    switch (getElement(N-1)) {
-      case dwarf::DW_OP_stack_value:
-      case dwarf::DW_OP_LLVM_tag_offset:
-        return true;
-      case dwarf::DW_OP_LLVM_fragment:
-        return N > 1 && getElement(N-2) == dwarf::DW_OP_stack_value;
-      default: break;
+  if (!isValid())
+    return false;
+
+  if (getNumElements() == 0)
+    return false;
+
+  for (const auto &It : expr_ops()) {
+    switch (It.getOp()) {
+    default:
+      break;
+    case dwarf::DW_OP_stack_value:
+    case dwarf::DW_OP_LLVM_tag_offset:
+      return true;
     }
   }
+
   return false;
 }
 
@@ -1011,6 +1018,8 @@ bool DIExpression::extractIfOffset(int64_t &Offset) const {
 
 const DIExpression *DIExpression::extractAddressClass(const DIExpression *Expr,
                                                       unsigned &AddrClass) {
+  // FIXME: This seems fragile. Nothing that verifies that these elements
+  // actually map to ops and not operands.
   const unsigned PatternSize = 4;
   if (Expr->Elements.size() >= PatternSize &&
       Expr->Elements[PatternSize - 4] == dwarf::DW_OP_constu &&
@@ -1050,7 +1059,7 @@ DIExpression *DIExpression::prependOpcodes(const DIExpression *Expr,
   assert(Expr && "Can't prepend ops to this expression");
 
   if (EntryValue) {
-    Ops.push_back(dwarf::DW_OP_entry_value);
+    Ops.push_back(dwarf::DW_OP_LLVM_entry_value);
     // Add size info needed for entry value expression.
     // Add plus one for target register operand.
     Ops.push_back(Expr->getNumElements() + 1);
@@ -1161,6 +1170,7 @@ Optional<DIExpression *> DIExpression::createFragmentExpression(
       Op.appendToVector(Ops);
     }
   }
+  assert(Expr && "Unknown DIExpression");
   Ops.push_back(dwarf::DW_OP_LLVM_fragment);
   Ops.push_back(OffsetInBits);
   Ops.push_back(SizeInBits);

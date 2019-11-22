@@ -22,7 +22,7 @@ class RISCVFrameLowering : public TargetFrameLowering {
 public:
   explicit RISCVFrameLowering(const RISCVSubtarget &STI)
       : TargetFrameLowering(StackGrowsDown,
-                            /*StackAlignment=*/16,
+                            /*StackAlignment=*/Align(16),
                             /*LocalAreaOffset=*/0),
         STI(STI) {}
 
@@ -44,6 +44,11 @@ public:
   MachineBasicBlock::iterator
   eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                                 MachineBasicBlock::iterator MI) const override;
+
+  // Get the first stack adjustment amount for SplitSPAdjust.
+  // Return 0 if we don't want to to split the SP adjustment in prologue and
+  // epilogue.
+  uint64_t getFirstSPAdjustAmount(const MachineFunction &MF) const;
 
 protected:
   const RISCVSubtarget &STI;

@@ -27,10 +27,9 @@ using namespace llvm;
 using namespace llvm::object;
 using namespace llvm::ELF;
 
-using namespace lld;
-using namespace lld::elf;
-
-SymbolTable *elf::symtab;
+namespace lld {
+namespace elf {
+SymbolTable *symtab;
 
 void SymbolTable::wrap(Symbol *sym, Symbol *real, Symbol *wrap) {
   // Swap symbols as instructed by -wrap.
@@ -216,7 +215,7 @@ void SymbolTable::assignExactVersion(SymbolVersion ver, uint16_t versionId,
 }
 
 void SymbolTable::assignWildcardVersion(SymbolVersion ver, uint16_t versionId) {
-  // Exact matching takes precendence over fuzzy matching,
+  // Exact matching takes precedence over fuzzy matching,
   // so we set a version to a symbol only if no version has been assigned
   // to the symbol. This behavior is compatible with GNU.
   for (Symbol *sym : findAllByVersion(ver))
@@ -265,3 +264,6 @@ void SymbolTable::scanVersionScript() {
   // --dynamic-list.
   handleDynamicList();
 }
+
+} // namespace elf
+} // namespace lld

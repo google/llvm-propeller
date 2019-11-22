@@ -11,9 +11,10 @@ endif()
 
 if(LLDB_BUILD_FRAMEWORK)
   set(option_install_prefix INSTALL_PREFIX ${LLDB_FRAMEWORK_INSTALL_DIR})
+  set(option_framework FRAMEWORK)
 endif()
 
-add_lldb_library(liblldb SHARED
+add_lldb_library(liblldb SHARED ${option_framework}
   SBAddress.cpp
   SBAttachInfo.cpp
   SBBlock.cpp
@@ -34,6 +35,7 @@ add_lldb_library(liblldb SHARED
   SBExecutionContext.cpp
   SBExpressionOptions.cpp
   SBFileSpec.cpp
+  SBFile.cpp
   SBFileSpecList.cpp
   SBFrame.cpp
   SBFunction.cpp

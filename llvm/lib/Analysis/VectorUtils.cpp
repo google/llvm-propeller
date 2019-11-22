@@ -24,6 +24,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/CommandLine.h"
 
 #define DEBUG_TYPE "vectorutils"
 
@@ -836,11 +837,11 @@ void InterleavedAccessInfo::collectConstStrideAccesses(
       uint64_t Size = DL.getTypeAllocSize(PtrTy->getElementType());
 
       // An alignment of 0 means target ABI alignment.
-      unsigned Align = getLoadStoreAlignment(&I);
-      if (!Align)
-        Align = DL.getABITypeAlignment(PtrTy->getElementType());
+      MaybeAlign Alignment = MaybeAlign(getLoadStoreAlignment(&I));
+      if (!Alignment)
+        Alignment = Align(DL.getABITypeAlignment(PtrTy->getElementType()));
 
-      AccessStrideInfo[&I] = StrideDescriptor(Stride, Scev, Size, Align);
+      AccessStrideInfo[&I] = StrideDescriptor(Stride, Scev, Size, *Alignment);
     }
 }
 
@@ -927,7 +928,7 @@ void InterleavedAccessInfo::analyzeInterleaving(
       if (!Group) {
         LLVM_DEBUG(dbgs() << "LV: Creating an interleave group with:" << *B
                           << '\n');
-        Group = createInterleaveGroup(B, DesB.Stride, DesB.Align);
+        Group = createInterleaveGroup(B, DesB.Stride, DesB.Alignment);
       }
       if (B->mayWriteToMemory())
         StoreGroups.insert(Group);
@@ -1034,7 +1035,7 @@ void InterleavedAccessInfo::analyzeInterleaving(
           Group->getIndex(B) + DistanceToB / static_cast<int64_t>(DesB.Size);
 
       // Try to insert A into B's group.
-      if (Group->insertMember(A, IndexA, DesA.Align)) {
+      if (Group->insertMember(A, IndexA, DesA.Alignment)) {
         LLVM_DEBUG(dbgs() << "LV: Inserted:" << *A << '\n'
                           << "    into the interleave group with" << *B
                           << '\n');
@@ -1158,4 +1159,26 @@ void InterleaveGroup<Instruction>::addMetadata(Instruction *NewInst) const {
                  [](std::pair<int, Instruction *> p) { return p.second; });
   propagateMetadata(NewInst, VL);
 }
+}
+
+void VFABI::getVectorVariantNames(
+    const CallInst &CI, SmallVectorImpl<std::string> &VariantMappings) {
+  const StringRef S =
+      CI.getAttribute(AttributeList::FunctionIndex, VFABI::MappingsAttrName)
+          .getValueAsString();
+  if (S.empty())
+    return;
+
+  SmallVector<StringRef, 8> ListAttr;
+  S.split(ListAttr, ",");
+
+  for (auto &S : SetVector<StringRef>(ListAttr.begin(), ListAttr.end())) {
+#ifndef NDEBUG
+    Optional<VFInfo> Info = VFABI::tryDemangleForVFABI(S);
+    assert(Info.hasValue() && "Invalid name for a VFABI variant.");
+    assert(CI.getModule()->getFunction(Info.getValue().VectorName) &&
+           "Vector function is missing.");
+#endif
+    VariantMappings.push_back(S);
+  }
 }

@@ -29,6 +29,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include <algorithm>
@@ -851,17 +852,24 @@ bool ScalarizeMaskedMemIntrin::optimizeCallInst(CallInst *CI,
     switch (II->getIntrinsicID()) {
     default:
       break;
-    case Intrinsic::masked_load:
+    case Intrinsic::masked_load: {
       // Scalarize unsupported vector masked load
-      if (TTI->isLegalMaskedLoad(CI->getType()))
+      unsigned Alignment =
+        cast<ConstantInt>(CI->getArgOperand(1))->getZExtValue();
+      if (TTI->isLegalMaskedLoad(CI->getType(), MaybeAlign(Alignment)))
         return false;
       scalarizeMaskedLoad(CI, ModifiedDT);
       return true;
-    case Intrinsic::masked_store:
-      if (TTI->isLegalMaskedStore(CI->getArgOperand(0)->getType()))
+    }
+    case Intrinsic::masked_store: {
+      unsigned Alignment =
+        cast<ConstantInt>(CI->getArgOperand(2))->getZExtValue();
+      if (TTI->isLegalMaskedStore(CI->getArgOperand(0)->getType(),
+                                  MaybeAlign(Alignment)))
         return false;
       scalarizeMaskedStore(CI, ModifiedDT);
       return true;
+    }
     case Intrinsic::masked_gather:
       if (TTI->isLegalMaskedGather(CI->getType()))
         return false;

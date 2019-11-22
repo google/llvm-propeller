@@ -24,6 +24,7 @@
 
 #include "llvm/CodeGen/DFAPacketizer.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBundle.h"
@@ -51,122 +52,22 @@ static cl::opt<unsigned> InstrLimit("dfa-instr-limit", cl::Hidden,
 
 static unsigned InstrCount = 0;
 
-// --------------------------------------------------------------------
-// Definitions shared between DFAPacketizer.cpp and DFAPacketizerEmitter.cpp
-
-static DFAInput addDFAFuncUnits(DFAInput Inp, unsigned FuncUnits) {
-  return (Inp << DFA_MAX_RESOURCES) | FuncUnits;
-}
-
-/// Return the DFAInput for an instruction class input vector.
-/// This function is used in both DFAPacketizer.cpp and in
-/// DFAPacketizerEmitter.cpp.
-static DFAInput getDFAInsnInput(const std::vector<unsigned> &InsnClass) {
-  DFAInput InsnInput = 0;
-  assert((InsnClass.size() <= DFA_MAX_RESTERMS) &&
-         "Exceeded maximum number of DFA terms");
-  for (auto U : InsnClass)
-    InsnInput = addDFAFuncUnits(InsnInput, U);
-  return InsnInput;
-}
-
-// --------------------------------------------------------------------
-
-DFAPacketizer::DFAPacketizer(const InstrItineraryData *I,
-                             const DFAStateInput (*SIT)[2], const unsigned *SET,
-                             const unsigned (*RTT)[2],
-                             const unsigned *RTET)
-    : InstrItins(I), DFAStateInputTable(SIT), DFAStateEntryTable(SET),
-      DFAResourceTransitionTable(RTT), DFAResourceTransitionEntryTable(RTET) {
-  // Make sure DFA types are large enough for the number of terms & resources.
-  static_assert((DFA_MAX_RESTERMS * DFA_MAX_RESOURCES) <=
-                    (8 * sizeof(DFAInput)),
-                "(DFA_MAX_RESTERMS * DFA_MAX_RESOURCES) too big for DFAInput");
-  static_assert(
-      (DFA_MAX_RESTERMS * DFA_MAX_RESOURCES) <= (8 * sizeof(DFAStateInput)),
-      "(DFA_MAX_RESTERMS * DFA_MAX_RESOURCES) too big for DFAStateInput");
-  clearResources();
-}
-
-// Read the DFA transition table and update CachedTable.
-//
-// Format of the transition tables:
-// DFAStateInputTable[][2] = pairs of <Input, Transition> for all valid
-//                           transitions
-// DFAStateEntryTable[i] = Index of the first entry in DFAStateInputTable
-//                         for the ith state
-//
-void DFAPacketizer::ReadTable(unsigned int state) {
-  unsigned ThisStateIdx = DFAStateEntryTable[state];
-  unsigned NextStateIdxInTable = DFAStateEntryTable[state + 1];
-  // Early exit in case CachedTable has already contains this
-  // state's transitions.
-  if (CachedTable.count(UnsignPair(state, DFAStateInputTable[ThisStateIdx][0])))
-    return;
-
-  for (unsigned TransitionIdx = ThisStateIdx;
-       TransitionIdx < NextStateIdxInTable; TransitionIdx++) {
-    auto TransitionPair =
-        UnsignPair(state, DFAStateInputTable[TransitionIdx][0]);
-    CachedTable[TransitionPair] = DFAStateInputTable[TransitionIdx][1];
-
-    if (TrackResources) {
-      unsigned I = DFAResourceTransitionEntryTable[TransitionIdx];
-      unsigned E = DFAResourceTransitionEntryTable[TransitionIdx + 1];
-      CachedResourceTransitions[TransitionPair] = makeArrayRef(
-          &DFAResourceTransitionTable[I], &DFAResourceTransitionTable[E]);
-    }
-  }
-}
-
-// Return the DFAInput for an instruction class.
-DFAInput DFAPacketizer::getInsnInput(unsigned InsnClass) {
-  // Note: this logic must match that in DFAPacketizerDefs.h for input vectors.
-  DFAInput InsnInput = 0;
-  unsigned i = 0;
-  (void)i;
-  for (const InstrStage *IS = InstrItins->beginStage(InsnClass),
-       *IE = InstrItins->endStage(InsnClass); IS != IE; ++IS) {
-    InsnInput = addDFAFuncUnits(InsnInput, IS->getUnits());
-    assert((i++ < DFA_MAX_RESTERMS) && "Exceeded maximum number of DFA inputs");
-  }
-  return InsnInput;
-}
-
-// Return the DFAInput for an instruction class input vector.
-DFAInput DFAPacketizer::getInsnInput(const std::vector<unsigned> &InsnClass) {
-  return getDFAInsnInput(InsnClass);
-}
-
 // Check if the resources occupied by a MCInstrDesc are available in the
 // current state.
 bool DFAPacketizer::canReserveResources(const MCInstrDesc *MID) {
-  unsigned InsnClass = MID->getSchedClass();
-  DFAInput InsnInput = getInsnInput(InsnClass);
-  UnsignPair StateTrans = UnsignPair(CurrentState, InsnInput);
-  ReadTable(CurrentState);
-  return CachedTable.count(StateTrans) != 0;
+  unsigned Action = ItinActions[MID->getSchedClass()];
+  if (MID->getSchedClass() == 0 || Action == 0)
+    return false;
+  return A.canAdd(Action);
 }
 
 // Reserve the resources occupied by a MCInstrDesc and change the current
 // state to reflect that change.
 void DFAPacketizer::reserveResources(const MCInstrDesc *MID) {
-  unsigned InsnClass = MID->getSchedClass();
-  DFAInput InsnInput = getInsnInput(InsnClass);
-  UnsignPair StateTrans = UnsignPair(CurrentState, InsnInput);
-  ReadTable(CurrentState);
-
-  if (TrackResources) {
-    DenseMap<unsigned, SmallVector<unsigned, 8>> NewResourceStates;
-    for (const auto &KV : CachedResourceTransitions[StateTrans]) {
-      assert(ResourceStates.count(KV[0]));
-      NewResourceStates[KV[1]] = ResourceStates[KV[0]];
-      NewResourceStates[KV[1]].push_back(KV[1]);
-    }
-    ResourceStates = NewResourceStates;
-  }
-  assert(CachedTable.count(StateTrans) != 0);
-  CurrentState = CachedTable[StateTrans];
+  unsigned Action = ItinActions[MID->getSchedClass()];
+  if (MID->getSchedClass() == 0 || Action == 0)
+    return;
+  A.add(Action);
 }
 
 // Check if the resources occupied by a machine instruction are available
@@ -184,10 +85,9 @@ void DFAPacketizer::reserveResources(MachineInstr &MI) {
 }
 
 unsigned DFAPacketizer::getUsedResources(unsigned InstIdx) {
-  assert(TrackResources && "getUsedResources requires resource tracking!");
-  // Assert that there is at least one example of a valid bundle format.
-  assert(!ResourceStates.empty() && "Invalid bundle!");
-  SmallVectorImpl<unsigned> &RS = ResourceStates.begin()->second;
+  ArrayRef<NfaPath> NfaPaths = A.getNfaPaths();
+  assert(!NfaPaths.empty() && "Invalid bundle!");
+  const NfaPath &RS = NfaPaths.front();
 
   // RS stores the cumulative resources used up to and including the I'th
   // instruction. The 0th instruction is the base case.
@@ -204,13 +104,13 @@ namespace llvm {
 // to build the dependence graph.
 class DefaultVLIWScheduler : public ScheduleDAGInstrs {
 private:
-  AliasAnalysis *AA;
+  AAResults *AA;
   /// Ordered list of DAG postprocessing steps.
   std::vector<std::unique_ptr<ScheduleDAGMutation>> Mutations;
 
 public:
   DefaultVLIWScheduler(MachineFunction &MF, MachineLoopInfo &MLI,
-                       AliasAnalysis *AA);
+                       AAResults *AA);
 
   // Actual scheduling work.
   void schedule() override;
@@ -228,7 +128,7 @@ protected:
 
 DefaultVLIWScheduler::DefaultVLIWScheduler(MachineFunction &MF,
                                            MachineLoopInfo &MLI,
-                                           AliasAnalysis *AA)
+                                           AAResults *AA)
     : ScheduleDAGInstrs(MF, &MLI), AA(AA) {
   CanHandleTerminators = true;
 }
@@ -246,7 +146,7 @@ void DefaultVLIWScheduler::schedule() {
 }
 
 VLIWPacketizerList::VLIWPacketizerList(MachineFunction &mf,
-                                       MachineLoopInfo &mli, AliasAnalysis *aa)
+                                       MachineLoopInfo &mli, AAResults *aa)
     : MF(mf), TII(mf.getSubtarget().getInstrInfo()), AA(aa) {
   ResourceTracker = TII->CreateTargetScheduleState(MF.getSubtarget());
   ResourceTracker->setTrackResources(true);

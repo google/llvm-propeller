@@ -22,7 +22,6 @@
 // the verifier errors.
 //===----------------------------------------------------------------------===//
 
-#include "LiveRangeCalc.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -37,6 +36,7 @@
 #include "llvm/CodeGen/GlobalISel/RegisterBank.h"
 #include "llvm/CodeGen/LiveInterval.h"
 #include "llvm/CodeGen/LiveIntervals.h"
+#include "llvm/CodeGen/LiveRangeCalc.h"
 #include "llvm/CodeGen/LiveStacks.h"
 #include "llvm/CodeGen/LiveVariables.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -59,6 +59,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/MC/LaneBitmask.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInstrDesc.h"
@@ -1100,7 +1101,7 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {
 
     break;
   }
-  case TargetOpcode::G_GEP: {
+  case TargetOpcode::G_PTR_ADD: {
     LLT DstTy = MRI->getType(MI->getOperand(0).getReg());
     LLT PtrTy = MRI->getType(MI->getOperand(1).getReg());
     LLT OffsetTy = MRI->getType(MI->getOperand(2).getReg());
@@ -1367,6 +1368,20 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {
         report("G_INTRINSIC_W_SIDE_EFFECTS used with readnone intrinsic", MI);
         break;
       }
+    }
+    switch (IntrID) {
+    case Intrinsic::memcpy:
+      if (MI->getNumOperands() != 5)
+        report("Expected memcpy intrinsic to have 5 operands", MI);
+      break;
+    case Intrinsic::memmove:
+      if (MI->getNumOperands() != 5)
+        report("Expected memmove intrinsic to have 5 operands", MI);
+      break;
+    case Intrinsic::memset:
+      if (MI->getNumOperands() != 5)
+        report("Expected memset intrinsic to have 5 operands", MI);
+      break;
     }
     break;
   }

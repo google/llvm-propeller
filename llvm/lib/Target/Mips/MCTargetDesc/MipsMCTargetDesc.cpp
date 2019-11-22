@@ -44,7 +44,6 @@ using namespace llvm;
 #include "MipsGenRegisterInfo.inc"
 
 /// Select the Mips CPU for the given triple and cpu name.
-/// FIXME: Merge with the copy in MipsSubtarget.cpp
 StringRef MIPS_MC::selectMipsCPU(const Triple &TT, StringRef CPU) {
   if (CPU.empty() || CPU == "generic") {
     if (TT.getSubArch() == llvm::Triple::MipsSubArch_r6) {
@@ -81,8 +80,9 @@ static MCSubtargetInfo *createMipsMCSubtargetInfo(const Triple &TT,
 }
 
 static MCAsmInfo *createMipsMCAsmInfo(const MCRegisterInfo &MRI,
-                                      const Triple &TT) {
-  MCAsmInfo *MAI = new MipsMCAsmInfo(TT);
+                                      const Triple &TT,
+                                      const MCTargetOptions &Options) {
+  MCAsmInfo *MAI = new MipsMCAsmInfo(TT, Options);
 
   unsigned SP = MRI.getDwarfRegNum(Mips::SP, true);
   MCCFIInstruction Inst = MCCFIInstruction::createDefCfaRegister(nullptr, SP);
@@ -143,12 +143,15 @@ public:
       return false;
     switch (Info->get(Inst.getOpcode()).OpInfo[NumOps - 1].OperandType) {
     case MCOI::OPERAND_UNKNOWN:
-    case MCOI::OPERAND_IMMEDIATE:
-      // jal, bal ...
-      Target = Inst.getOperand(NumOps - 1).getImm();
+    case MCOI::OPERAND_IMMEDIATE: {
+      // j, jal, jalx, jals
+      // Absolute branch within the current 256 MB-aligned region
+      uint64_t Region = Addr & ~uint64_t(0xfffffff);
+      Target = Region + Inst.getOperand(NumOps - 1).getImm();
       return true;
+    }
     case MCOI::OPERAND_PCREL:
-      // b, j, beq ...
+      // b, beq ...
       Target = Addr + Inst.getOperand(NumOps - 1).getImm();
       return true;
     default:

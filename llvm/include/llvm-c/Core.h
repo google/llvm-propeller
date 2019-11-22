@@ -127,6 +127,7 @@ typedef enum {
   LLVMShuffleVector  = 52,
   LLVMExtractValue   = 53,
   LLVMInsertValue    = 54,
+  LLVMFreeze         = 68,
 
   /* Atomic operators */
   LLVMFence          = 55,
@@ -1543,6 +1544,7 @@ LLVMTypeRef LLVMX86MMXType(void);
           macro(GlobalVariable)             \
       macro(UndefValue)                     \
     macro(Instruction)                      \
+      macro(UnaryOperator)                  \
       macro(BinaryOperator)                 \
       macro(CallInst)                       \
         macro(IntrinsicInst)                \
@@ -1599,6 +1601,7 @@ LLVMTypeRef LLVMX86MMXType(void);
         macro(ExtractValueInst)             \
         macro(LoadInst)                     \
         macro(VAArgInst)                    \
+        macro(FreezeInst)                   \
       macro(AtomicCmpXchgInst)              \
       macro(AtomicRMWInst)                  \
       macro(FenceInst)
@@ -3906,6 +3909,8 @@ LLVMValueRef LLVMBuildExtractValue(LLVMBuilderRef, LLVMValueRef AggVal,
 LLVMValueRef LLVMBuildInsertValue(LLVMBuilderRef, LLVMValueRef AggVal,
                                   LLVMValueRef EltVal, unsigned Index,
                                   const char *Name);
+LLVMValueRef LLVMBuildFreeze(LLVMBuilderRef, LLVMValueRef Val,
+                             const char *Name);
 
 LLVMValueRef LLVMBuildIsNull(LLVMBuilderRef, LLVMValueRef Val,
                              const char *Name);

@@ -636,8 +636,8 @@ static void dumpBasePath(raw_ostream &OS, const CastExpr *Node) {
     if (!First)
       OS << " -> ";
 
-    const CXXRecordDecl *RD =
-        cast<CXXRecordDecl>(Base->getType()->getAs<RecordType>()->getDecl());
+    const auto *RD =
+        cast<CXXRecordDecl>(Base->getType()->castAs<RecordType>()->getDecl());
 
     if (Base->isVirtual())
       OS << "virtual ";
@@ -1384,6 +1384,8 @@ void TextNodeDumper::VisitVarDecl(const VarDecl *D) {
       break;
     }
   }
+  if (D->needsDestruction(D->getASTContext()))
+    OS << " destroyed";
   if (D->isParameterPack())
     OS << " pack";
 }
@@ -1641,6 +1643,7 @@ void TextNodeDumper::VisitCXXRecordDecl(const CXXRecordDecl *D) {
       FLAG(hasTrivialDestructor, trivial);
       FLAG(hasNonTrivialDestructor, non_trivial);
       FLAG(hasUserDeclaredDestructor, user_declared);
+      FLAG(hasConstexprDestructor, constexpr);
       FLAG(needsImplicitDestructor, needs_implicit);
       FLAG(needsOverloadResolutionForDestructor, needs_overload_resolution);
       if (!D->needsOverloadResolutionForDestructor())

@@ -1,5 +1,6 @@
 include(CheckCXXSymbolExists)
 include(CheckTypeSize)
+include(CMakeDependentOption)
 
 set(LLDB_PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(LLDB_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/source")
@@ -51,6 +52,16 @@ option(LLDB_USE_ENTITLEMENTS "When codesigning, use entitlements if available" O
 option(LLDB_BUILD_FRAMEWORK "Build LLDB.framework (Darwin only)" OFF)
 option(LLDB_NO_INSTALL_DEFAULT_RPATH "Disable default RPATH settings in binaries" OFF)
 option(LLDB_USE_SYSTEM_DEBUGSERVER "Use the system's debugserver for testing (Darwin only)." OFF)
+option(LLDB_SKIP_STRIP "Whether to skip stripping of binaries when installing lldb." OFF)
+
+if (LLDB_USE_SYSTEM_DEBUGSERVER)
+  # The custom target for the system debugserver has no install target, so we
+  # need to remove it from the LLVM_DISTRIBUTION_COMPONENTS list.
+  if (LLVM_DISTRIBUTION_COMPONENTS)
+    list(REMOVE_ITEM LLVM_DISTRIBUTION_COMPONENTS debugserver)
+    set(LLVM_DISTRIBUTION_COMPONENTS ${LLVM_DISTRIBUTION_COMPONENTS} CACHE STRING "" FORCE)
+  endif()
+endif()
 
 if(LLDB_BUILD_FRAMEWORK)
   if(NOT APPLE)
@@ -65,6 +76,9 @@ if(LLDB_BUILD_FRAMEWORK)
   set(LLDB_FRAMEWORK_VERSION A CACHE STRING "LLDB.framework version (default is A)")
   set(LLDB_FRAMEWORK_BUILD_DIR bin CACHE STRING "Output directory for LLDB.framework")
   set(LLDB_FRAMEWORK_INSTALL_DIR Library/Frameworks CACHE STRING "Install directory for LLDB.framework")
+
+  get_filename_component(LLDB_FRAMEWORK_ABSOLUTE_BUILD_DIR ${LLDB_FRAMEWORK_BUILD_DIR} ABSOLUTE
+    BASE_DIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR})
 
   # Essentially, emit the framework's dSYM outside of the framework directory.
   set(LLDB_DEBUGINFO_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin CACHE STRING
@@ -266,10 +280,15 @@ function(find_python_libs_windows)
   message(STATUS "LLDB Found PythonIncludeDirs: ${PYTHON_INCLUDE_DIR}")
 endfunction(find_python_libs_windows)
 
+# Call find_python_libs_windows ahead of the rest of the python configuration.
+# It's possible that it won't find a python installation and will then set
+# LLDB_DISABLE_PYTHON to ON.
+if (NOT LLDB_DISABLE_PYTHON AND "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
+  find_python_libs_windows()
+endif()
+
 if (NOT LLDB_DISABLE_PYTHON)
   if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
-    find_python_libs_windows()
-
     if (NOT LLDB_RELOCATABLE_PYTHON)
       file(TO_CMAKE_PATH "${PYTHON_HOME}" LLDB_PYTHON_HOME)
       add_definitions( -DLLDB_PYTHON_HOME="${LLDB_PYTHON_HOME}" )
@@ -383,6 +402,13 @@ if(NOT DEFINED LLDB_VERSION_SUFFIX)
 endif()
 set(LLDB_VERSION "${LLDB_VERSION_MAJOR}.${LLDB_VERSION_MINOR}.${LLDB_VERSION_PATCH}${LLDB_VERSION_SUFFIX}")
 message(STATUS "LLDB version: ${LLDB_VERSION}")
+
+find_package(LibLZMA)
+cmake_dependent_option(LLDB_ENABLE_LZMA "Support LZMA compression" ON "LIBLZMA_FOUND" OFF)
+if (LLDB_ENABLE_LZMA)
+  include_directories(${LIBLZMA_INCLUDE_DIRS})
+endif()
+llvm_canonicalize_cmake_booleans(LLDB_ENABLE_LZMA)
 
 include_directories(BEFORE
   ${CMAKE_CURRENT_BINARY_DIR}/include

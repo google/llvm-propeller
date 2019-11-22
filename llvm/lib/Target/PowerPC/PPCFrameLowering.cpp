@@ -782,8 +782,7 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
   MachineModuleInfo &MMI = MF.getMMI();
   const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
   DebugLoc dl;
-  bool needsCFI = MMI.hasDebugInfo() ||
-    MF.getFunction().needsUnwindTableEntry();
+  bool needsCFI = MF.needsFrameMoves();
 
   // Get processor type.
   bool isPPC64 = Subtarget.isPPC64();
@@ -1776,8 +1775,8 @@ void PPCFrameLowering::determineCalleeSaves(MachineFunction &MF,
 
   //  Save R31 if necessary
   int FPSI = FI->getFramePointerSaveIndex();
-  bool isPPC64 = Subtarget.isPPC64();
-  bool isDarwinABI  = Subtarget.isDarwinABI();
+  const bool isPPC64 = Subtarget.isPPC64();
+  const bool IsDarwinABI  = Subtarget.isDarwinABI();
   MachineFrameInfo &MFI = MF.getFrameInfo();
 
   // If the frame pointer save index hasn't been defined yet.
@@ -1826,7 +1825,7 @@ void PPCFrameLowering::determineCalleeSaves(MachineFunction &MF,
 
   // For 32-bit SVR4, allocate the nonvolatile CR spill slot iff the
   // function uses CR 2, 3, or 4.
-  if (!isPPC64 && !isDarwinABI &&
+  if (!isPPC64 && !IsDarwinABI &&
       (SavedRegs.test(PPC::CR2) ||
        SavedRegs.test(PPC::CR3) ||
        SavedRegs.test(PPC::CR4))) {

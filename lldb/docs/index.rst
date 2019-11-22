@@ -109,12 +109,13 @@ interesting areas to contribute to lldb.
 .. toctree::
    :hidden:
    :maxdepth: 1
-   :caption: Goals & Status
+   :caption: Project
 
    status/goals
    status/features
    status/status
    status/projects
+   status/releases
 
 .. toctree::
    :hidden:
@@ -136,10 +137,9 @@ interesting areas to contribute to lldb.
 .. toctree::
    :hidden:
    :maxdepth: 1
-   :caption: Resources
+   :caption: Development
 
-   resources/download
-   resources/source
+   resources/contributing
    resources/build
    resources/test
    resources/bots
@@ -159,6 +159,6 @@ interesting areas to contribute to lldb.
    :maxdepth: 1
    :caption: External Links
 
-   Source Code <https://llvm.org/viewvc/llvm-project/lldb/trunk/>
+   Source Code <https://github.com/llvm/llvm-project>
    Code Reviews <https://reviews.llvm.org>
    Bug Reports <https://bugs.llvm.org/>

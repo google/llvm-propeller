@@ -65,6 +65,20 @@ template <class Config> static void testAllocator() {
   }
   Allocator->releaseToOS();
 
+  // Ensure that specifying ZeroContents returns a zero'd out block.
+  for (scudo::uptr SizeLog = 0U; SizeLog <= 20U; SizeLog++) {
+    for (scudo::uptr Delta = 0U; Delta <= 4U; Delta++) {
+      const scudo::uptr Size = (1U << SizeLog) + Delta * 128U;
+      void *P = Allocator->allocate(Size, Origin, 1U << MinAlignLog, true);
+      EXPECT_NE(P, nullptr);
+      for (scudo::uptr I = 0; I < Size; I++)
+        EXPECT_EQ((reinterpret_cast<char *>(P))[I], 0);
+      memset(P, 0xaa, Size);
+      Allocator->deallocate(P, Origin, Size);
+    }
+  }
+  Allocator->releaseToOS();
+
   // Verify that a chunk will end up being reused, at some point.
   const scudo::uptr NeedleSize = 1024U;
   void *NeedleP = Allocator->allocate(NeedleSize, Origin);
@@ -101,7 +115,7 @@ template <class Config> static void testAllocator() {
   // returns the same chunk. This requires that all the sizes we iterate on use
   // the same block size, but that should be the case for 2048 with our default
   // class size maps.
-  P  = Allocator->allocate(DataSize, Origin);
+  P = Allocator->allocate(DataSize, Origin);
   memset(P, Marker, DataSize);
   for (scudo::sptr Delta = -32; Delta < 32; Delta += 8) {
     const scudo::uptr NewSize = DataSize + Delta;
@@ -136,7 +150,21 @@ template <class Config> static void testAllocator() {
   }
 
   Allocator->releaseToOS();
-  Allocator->printStats();
+
+  scudo::uptr BufferSize = 8192;
+  std::vector<char> Buffer(BufferSize);
+  scudo::uptr ActualSize = Allocator->getStats(Buffer.data(), BufferSize);
+  while (ActualSize > BufferSize) {
+    BufferSize = ActualSize + 1024;
+    Buffer.resize(BufferSize);
+    ActualSize = Allocator->getStats(Buffer.data(), BufferSize);
+  }
+  std::string Stats(Buffer.begin(), Buffer.end());
+  // Basic checks on the contents of the statistics output, which also allows us
+  // to verify that we got it all.
+  EXPECT_NE(Stats.find("Stats: SizeClassAllocator"), std::string::npos);
+  EXPECT_NE(Stats.find("Stats: MapAllocator"), std::string::npos);
+  EXPECT_NE(Stats.find("Stats: Quarantine"), std::string::npos);
 }
 
 TEST(ScudoCombinedTest, BasicCombined) {
@@ -209,6 +237,7 @@ struct DeathConfig {
   // Tiny allocator, its Primary only serves chunks of 1024 bytes.
   using DeathSizeClassMap = scudo::SizeClassMap<1U, 10U, 10U, 10U, 1U, 10U>;
   typedef scudo::SizeClassAllocator32<DeathSizeClassMap, 18U> Primary;
+  typedef scudo::MapAllocator<0U> Secondary;
   template <class A> using TSDRegistryT = scudo::TSDRegistrySharedT<A, 1U>;
 };
 

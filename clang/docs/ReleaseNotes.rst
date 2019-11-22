@@ -56,9 +56,27 @@ Improvements to Clang's diagnostics
 - -Wtautological-compare for self comparisons and
   -Wtautological-overlap-compare will now look through member and array
   access to determine if two operand expressions are the same.
+- -Wtautological-bitwise-compare is a new warning group.  This group has the
+  current warning which diagnoses the tautological comparison of a bitwise
+  operation and a constant.  The group also has the new warning which diagnoses
+  when a bitwise-or with a non-negative value is converted to a bool, since
+  that bool will always be true.
+- -Wbitwise-conditional-parentheses will warn on operator precedence issues
+  when mixing bitwise-and (&) and bitwise-or (|) operator with the
+  conditional operator (?:).
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
+
+* In both C and C++ (C17 ``6.5.6p8``, C++ ``[expr.add]``), pointer arithmetic is
+  only permitted within arrays. In particular, the behavior of a program is not
+  defined if it adds a non-zero offset (or in C, any offset) to a null pointer,
+  or if it forms a null pointer by subtracting an integer from a non-null
+  pointer, and the LLVM optimizer now uses those guarantees for transformations.
+  This may lead to unintended behavior in code that performs these operations.
+  The Undefined Behavior Sanitizer ``-fsanitize=pointer-overflow`` check has
+  been extended to detect these cases, so that code relying on them can be
+  detected and fixed.
 
 - For X86 target, -march=skylake-avx512, -march=icelake-client,
   -march=icelake-server, -march=cascadelake, -march=cooperlake will default to
@@ -70,7 +88,14 @@ Non-comprehensive list of changes in this release
 New Compiler Flags
 ------------------
 
-- ...
+- The -fgnuc-version= flag now controls the value of ``__GNUC__`` and related
+  macros. This flag does not enable or disable any GCC extensions implemented in
+  Clang. Setting the version to zero causes Clang to leave ``__GNUC__`` and
+  other GNU-namespaced macros, such as ``__GXX_WEAK__``, undefined.
+
+- vzeroupper insertion on X86 targets can now be disabled with -mno-vzeroupper.
+  You can also force vzeroupper insertion to be used on CPUs that normally
+  wouldn't with -mvzeroupper.
 
 Deprecated Compiler Flags
 -------------------------
@@ -141,7 +166,49 @@ C++1z Feature Support
 Objective-C Language Changes in Clang
 -------------------------------------
 
-- ...
+- In both Objective-C and
+  Objective-C++, ``-Wcompare-distinct-pointer-types`` will now warn when
+  comparing ObjC ``Class`` with an ObjC instance type pointer.
+
+  .. code-block:: objc
+
+    Class clz = ...;
+    MyType *instance = ...;
+    bool eq = (clz == instance); // Previously undiagnosed, now warns.
+
+- Objective-C++ now diagnoses conversions between ``Class`` and ObjC
+  instance type pointers. Such conversions already emitted an
+  on-by-default ``-Wincompatible-pointer-types`` warning in Objective-C
+  mode, but had inadvertently been missed entirely in
+  Objective-C++. This has been fixed, and they are now diagnosed as
+  errors, consistent with the usual C++ treatment for conversions
+  between unrelated pointer types.
+
+  .. code-block:: objc
+
+    Class clz = ...;
+    MyType *instance = ...;
+    clz = instance; // Previously undiagnosed, now an error.
+    instance = clz; // Previously undiagnosed, now an error.
+
+  One particular issue you may run into is attempting to use a class
+  as a key in a dictionary literal. This will now result in an error,
+  because ``Class`` is not convertable to ``id<NSCopying>``. (Note that
+  this was already a warning in Objective-C mode.) While an arbitrary
+  ``Class`` object is not guaranteed to implement ``NSCopying``, the
+  default metaclass implementation does. Therefore, the recommended
+  solution is to insert an explicit cast to ``id``, which disables the
+  type-checking here.
+
+ .. code-block:: objc
+
+    Class cls = ...;
+
+    // Error: cannot convert from Class to id<NSCoding>.
+    NSDictionary* d = @{cls : @"Hello"};
+
+    // Fix: add an explicit cast to 'id'.
+    NSDictionary* d = @{(id)cls : @"Hello"};
 
 OpenCL C Language Changes in Clang
 ----------------------------------
@@ -155,6 +222,15 @@ ABI Changes in Clang
   broke the vectors into multiple scalars using two 64-bit values for each
   element. Clang now matches the gcc behavior on Linux and NetBSD. You can
   switch back to old API behavior with flag: -fclang-abi-compat=9.0.
+
+- RISC-V now chooses a default ``-march=`` and ``-mabi=`` to match (in almost
+  all cases) the GCC defaults. On baremetal targets, where neither ``-march=``
+  nor ``-mabi=`` are specified, Clang now differs from GCC by defaulting to
+  ``-march=rv32imac -mabi=ilp32`` or ``-march=rv64imac -mabi=lp64`` depending on
+  the architecture in the target triple. These do not always match the defaults
+  in Clang 9. We strongly suggest that you explicitly pass `-march=` and
+  `-mabi=` when compiling for RISC-V, due to how extensible this architecture
+  is.
 
 OpenMP Support in Clang
 -----------------------
@@ -210,7 +286,38 @@ AST Matchers
 clang-format
 ------------
 
-- ...
+- The ``Standard`` style option specifies which version of C++ should be used
+  when parsing and formatting C++ code. The set of allowed values has changed:
+
+  - ``Latest`` will always enable new C++ language features.
+  - ``c++03``, ``c++11``, ``c++14``, ``c++17``, ``c++20`` will pin to exactly
+    that language version.
+  - ``Auto`` is the default and detects style from the code (this is unchanged).
+
+  The previous values of ``Cpp03`` and ``Cpp11`` are deprecated. Note that
+  ``Cpp11`` is treated as ``Latest``, as this was always clang-format's behavior.
+  (One motivation for this change is the new name describes the behavior better).
+
+- clang-format gets a new option called ``--dry-run`` or ``-n`` to emit a
+  warning.
+
+- Option *IncludeIsMainSourceRegex* added to allow for additional
+  suffixes and file extensions to be considered as a source file
+  for execution of logic that looks for "main *include* file" to put
+  it on top.
+
+  By default, clang-format considers *source* files as "main" only when
+  they end with: ``.c``, ``.cc``, ``.cpp``, ``.c++``, ``.cxx``,
+  ``.m`` or ``.mm`` extensions. This config option allows to
+  extend this set of source files considered as "main".
+            
+  For example, if this option is configured to ``(Impl\.hpp)$``,
+  then a file ``ClassImpl.hpp`` is considered "main" (in addition to
+  ``Class.c``, ``Class.cc``, ``Class.cpp`` and so on) and "main
+  include file" logic will be executed (with *IncludeIsMainRegex* setting
+  also being respected in later phase). Without this option set,
+  ``ClassImpl.hpp`` would not have the main include file put on top
+  before any other include.
 
 libclang
 --------
@@ -221,6 +328,9 @@ libclang
 Static Analyzer
 ---------------
 
+- The Clang analyzer checker ``DeadStores`` gets a new option called
+  ``WarnForDeadNestedAssignments`` to detect nested dead assignments
+  (enabled by default).
 - ...
 
 .. _release-notes-ubsan:
@@ -228,7 +338,40 @@ Static Analyzer
 Undefined Behavior Sanitizer (UBSan)
 ------------------------------------
 
-- ...
+- * The ``pointer-overflow`` check was extended added to catch the cases where
+    a non-zero offset is applied to a null pointer, or the result of
+    applying the offset is a null pointer.
+
+    .. code-block:: c++
+
+      #include <cstdint> // for intptr_t
+
+      static char *getelementpointer_inbounds(char *base, unsigned long offset) {
+        // Potentially UB.
+        return base + offset;
+      }
+
+      char *getelementpointer_unsafe(char *base, unsigned long offset) {
+        // Always apply offset. UB if base is ``nullptr`` and ``offset`` is not
+        // zero, or if ``base`` is non-``nullptr`` and ``offset`` is
+        // ``-reinterpret_cast<intptr_t>(base)``.
+        return getelementpointer_inbounds(base, offset);
+      }
+
+      char *getelementpointer_safe(char *base, unsigned long offset) {
+        // Cast pointer to integer, perform usual arithmetic addition,
+        // and cast to pointer. This is legal.
+        char *computed =
+            reinterpret_cast<char *>(reinterpret_cast<intptr_t>(base) + offset);
+        // If either the pointer becomes non-``nullptr``, or becomes
+        // ``nullptr``, we must use ``computed`` result.
+        if (((base == nullptr) && (computed != nullptr)) ||
+            ((base != nullptr) && (computed == nullptr)))
+          return computed;
+        // Else we can use ``getelementpointer_inbounds()``.
+        return getelementpointer_inbounds(base, offset);
+      }
+
 
 Core Analysis Improvements
 ==========================

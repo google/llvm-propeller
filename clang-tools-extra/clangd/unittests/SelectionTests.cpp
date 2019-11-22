@@ -213,11 +213,18 @@ TEST(SelectionTest, CommonAncestor) {
       {
           R"cpp(
             struct S {
-              int foo;
-              int bar() { return [[f^oo]]; }
+              int foo() const;
+              int bar() { return [[f^oo]](); }
             };
           )cpp",
-          "MemberExpr", // Not implicit CXXThisExpr!
+          "MemberExpr", // Not implicit CXXThisExpr, or its implicit cast!
+      },
+      {
+          R"cpp(
+            auto lambda = [](const char*){ return 0; };
+            int x = lambda([["y^"]]);
+          )cpp",
+          "StringLiteral", // Not DeclRefExpr to operator()!
       },
 
       // Point selections.
@@ -239,6 +246,17 @@ TEST(SelectionTest, CommonAncestor) {
       // Tricky case: two VarDecls share a specifier.
       {"[[int ^a]], b;", "VarDecl"},
       {"[[int a, ^b]];", "VarDecl"},
+      // Tricky case: CXXConstructExpr wants to claim the whole init range.
+      {
+          R"cpp(
+            class X { X(int); };
+            class Y {
+              X x;
+              Y() : [[^x(4)]] {}
+            };
+          )cpp",
+          "CXXCtorInitializer", // Not the CXXConstructExpr!
+      },
       // Tricky case: anonymous struct is a sibling of the VarDecl.
       {"[[st^ruct {int x;}]] y;", "CXXRecordDecl"},
       {"[[struct {int x;} ^y]];", "VarDecl"},
@@ -289,7 +307,15 @@ TEST(SelectionTest, CommonAncestor) {
   };
   for (const Case &C : Cases) {
     Annotations Test(C.Code);
-    auto AST = TestTU::withCode(Test.code()).build();
+
+    TestTU TU;
+    TU.Code = Test.code();
+
+    // FIXME: Auto-completion in a template requires disabling delayed template
+    // parsing.
+    TU.ExtraArgs.push_back("-fno-delayed-template-parsing");
+
+    auto AST = TU.build();
     auto T = makeSelectionTree(C.Code, AST);
     EXPECT_EQ("TranslationUnitDecl", nodeKind(&T.root())) << C.Code;
 
@@ -354,6 +380,8 @@ TEST(SelectionTest, Selected) {
         #define ECHO(X) X
         ECHO(EC^HO([[$C[[int]]) EC^HO(a]]));
       ]])cpp",
+      R"cpp( $C[[^$C[[int]] a^]]; )cpp",
+      R"cpp( $C[[^$C[[int]] a = $C[[5]]^]]; )cpp",
   };
   for (const char *C : Cases) {
     Annotations Test(C);

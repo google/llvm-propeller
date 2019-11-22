@@ -829,8 +829,8 @@ void llvm::addPredicatedMveVpredROp(MachineInstrBuilder &MIB,
 
 void ARMBaseInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                    MachineBasicBlock::iterator I,
-                                   const DebugLoc &DL, unsigned DestReg,
-                                   unsigned SrcReg, bool KillSrc) const {
+                                   const DebugLoc &DL, MCRegister DestReg,
+                                   MCRegister SrcReg, bool KillSrc) const {
   bool GPRDest = ARM::GPRRegClass.contains(DestReg);
   bool GPRSrc = ARM::GPRRegClass.contains(SrcReg);
 
@@ -993,9 +993,8 @@ void ARMBaseInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     Mov->addRegisterKilled(SrcReg, TRI);
 }
 
-bool ARMBaseInstrInfo::isCopyInstrImpl(const MachineInstr &MI,
-                                       const MachineOperand *&Src,
-                                       const MachineOperand *&Dest) const {
+Optional<DestSourcePair>
+ARMBaseInstrInfo::isCopyInstrImpl(const MachineInstr &MI) const {
   // VMOVRRD is also a copy instruction but it requires
   // special way of handling. It is more complex copy version
   // and since that we are not considering it. For recognition
@@ -1006,10 +1005,8 @@ bool ARMBaseInstrInfo::isCopyInstrImpl(const MachineInstr &MI,
   if (!MI.isMoveReg() ||
       (MI.getOpcode() == ARM::VORRq &&
        MI.getOperand(1).getReg() != MI.getOperand(2).getReg()))
-    return false;
-  Dest = &MI.getOperand(0);
-  Src = &MI.getOperand(1);
-  return true;
+    return None;
+  return DestSourcePair{MI.getOperand(0), MI.getOperand(1)};
 }
 
 const MachineInstrBuilder &
@@ -2077,6 +2074,38 @@ isProfitableToIfCvt(MachineBasicBlock &TBB,
   }
 
   return PredCost <= UnpredCost;
+}
+
+unsigned
+ARMBaseInstrInfo::extraSizeToPredicateInstructions(const MachineFunction &MF,
+                                                   unsigned NumInsts) const {
+  // Thumb2 needs a 2-byte IT instruction to predicate up to 4 instructions.
+  // ARM has a condition code field in every predicable instruction, using it
+  // doesn't change code size.
+  return Subtarget.isThumb2() ? divideCeil(NumInsts, 4) * 2 : 0;
+}
+
+unsigned
+ARMBaseInstrInfo::predictBranchSizeForIfCvt(MachineInstr &MI) const {
+  // If this branch is likely to be folded into the comparison to form a
+  // CB(N)Z, then removing it won't reduce code size at all, because that will
+  // just replace the CB(N)Z with a CMP.
+  if (MI.getOpcode() == ARM::t2Bcc &&
+      findCMPToFoldIntoCBZ(&MI, &getRegisterInfo()))
+    return 0;
+
+  unsigned Size = getInstSizeInBytes(MI);
+
+  // For Thumb2, all branches are 32-bit instructions during the if conversion
+  // pass, but may be replaced with 16-bit instructions during size reduction.
+  // Since the branches considered by if conversion tend to be forward branches
+  // over small basic blocks, they are very likely to be in range for the
+  // narrow instructions, so we assume the final code size will be half what it
+  // currently is.
+  if (Subtarget.isThumb2())
+    Size /= 2;
+
+  return Size;
 }
 
 bool
@@ -5316,6 +5345,29 @@ ARMBaseInstrInfo::getSerializableBitmaskMachineOperandTargetFlags() const {
       {MO_SECREL, "arm-secrel"},
       {MO_NONLAZY, "arm-nonlazy"}};
   return makeArrayRef(TargetFlags);
+}
+
+Optional<DestSourcePair>
+ARMBaseInstrInfo::isAddImmediate(const MachineInstr &MI,
+                                 int64_t &Offset) const {
+  int Sign = 1;
+  unsigned Opcode = MI.getOpcode();
+
+  // We describe SUBri or ADDri instructions.
+  if (Opcode == ARM::SUBri)
+    Sign = -1;
+  else if (Opcode != ARM::ADDri)
+    return None;
+
+  // TODO: Third operand can be global address (usually some string). Since
+  //       strings can be relocated we cannot calculate their offsets for
+  //       now.
+  if (!MI.getOperand(0).isReg() || !MI.getOperand(1).isReg() ||
+      !MI.getOperand(2).isImm())
+    return None;
+
+  Offset = MI.getOperand(2).getImm() * Sign;
+  return DestSourcePair{MI.getOperand(0), MI.getOperand(1)};
 }
 
 bool llvm::registerDefinedBetween(unsigned Reg,

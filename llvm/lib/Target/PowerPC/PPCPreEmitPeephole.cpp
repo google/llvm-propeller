@@ -35,6 +35,8 @@ STATISTIC(NumRemovedInPreEmit,
           "Number of instructions deleted in pre-emit peephole");
 STATISTIC(NumberOfSelfCopies,
           "Number of self copy instructions eliminated");
+STATISTIC(NumFrameOffFoldInPreEmit,
+          "Number of folding frame offset by using r+r in pre-emit peephole");
 
 static cl::opt<bool>
 RunPreEmitPeephole("ppc-late-peephole", cl::Hidden, cl::init(true),
@@ -117,8 +119,6 @@ namespace {
 
           if (!AfterBBI->modifiesRegister(Reg, TRI))
             continue;
-          assert(DeadOrKillToUnset &&
-                 "Shouldn't overwrite a register before it is killed");
           // Finish scanning because Reg is overwritten by a non-load
           // instruction.
           if (AfterBBI->getOpcode() != Opc)
@@ -134,12 +134,15 @@ namespace {
           // It loads same immediate value to the same Reg, which is redundant.
           // We would unset kill flag in previous Reg usage to extend live range
           // of Reg first, then remove the redundancy.
-          LLVM_DEBUG(dbgs() << " Unset dead/kill flag of " << *DeadOrKillToUnset
-                            << " from " << *DeadOrKillToUnset->getParent());
-          if (DeadOrKillToUnset->isDef())
-            DeadOrKillToUnset->setIsDead(false);
-          else
-            DeadOrKillToUnset->setIsKill(false);
+          if (DeadOrKillToUnset) {
+            LLVM_DEBUG(dbgs()
+                       << " Unset dead/kill flag of " << *DeadOrKillToUnset
+                       << " from " << *DeadOrKillToUnset->getParent());
+            if (DeadOrKillToUnset->isDef())
+              DeadOrKillToUnset->setIsDead(false);
+            else
+              DeadOrKillToUnset->setIsKill(false);
+          }
           DeadOrKillToUnset =
               AfterBBI->findRegisterDefOperand(Reg, true, true, TRI);
           if (DeadOrKillToUnset)
@@ -160,8 +163,19 @@ namespace {
     }
 
     bool runOnMachineFunction(MachineFunction &MF) override {
-      if (skipFunction(MF.getFunction()) || !RunPreEmitPeephole)
+      if (skipFunction(MF.getFunction()) || !RunPreEmitPeephole) {
+        // Remove UNENCODED_NOP even when this pass is disabled.
+        // This needs to be done unconditionally so we don't emit zeros
+        // in the instruction stream.
+        SmallVector<MachineInstr *, 4> InstrsToErase;
+        for (MachineBasicBlock &MBB : MF)
+          for (MachineInstr &MI : MBB)
+            if (MI.getOpcode() == PPC::UNENCODED_NOP)
+              InstrsToErase.push_back(&MI);
+        for (MachineInstr *MI : InstrsToErase)
+          MI->eraseFromParent();
         return false;
+      }
       bool Changed = false;
       const PPCInstrInfo *TII = MF.getSubtarget<PPCSubtarget>().getInstrInfo();
       const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
@@ -170,6 +184,10 @@ namespace {
         Changed |= removeRedundantLIs(MBB, TRI);
         for (MachineInstr &MI : MBB) {
           unsigned Opc = MI.getOpcode();
+          if (Opc == PPC::UNENCODED_NOP) {
+            InstrsToErase.push_back(&MI);
+            continue;
+          }
           // Detect self copies - these can result from running AADB.
           if (PPCInstrInfo::isSameClassPhysRegCopy(Opc)) {
             const MCInstrDesc &MCID = TII->get(Opc);
@@ -200,6 +218,12 @@ namespace {
             if (DefMIToErase) {
               InstrsToErase.push_back(DefMIToErase);
             }
+          }
+          if (TII->foldFrameOffset(MI)) {
+            Changed = true;
+            NumFrameOffFoldInPreEmit++;
+            LLVM_DEBUG(dbgs() << "Frame offset folding by using index form: ");
+            LLVM_DEBUG(MI.dump());
           }
         }
 

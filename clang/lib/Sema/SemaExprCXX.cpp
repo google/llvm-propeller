@@ -453,6 +453,9 @@ ExprResult Sema::BuildCXXTypeId(QualType TypeInfoType,
   if (T->isVariablyModifiedType())
     return ExprError(Diag(TypeidLoc, diag::err_variably_modified_typeid) << T);
 
+  if (CheckQualifiedFunctionForTypeId(T, TypeidLoc))
+    return ExprError();
+
   return new (Context) CXXTypeidExpr(TypeInfoType.withConst(), Operand,
                                      SourceRange(TypeidLoc, RParenLoc));
 }
@@ -495,6 +498,11 @@ ExprResult Sema::BuildCXXTypeId(QualType TypeInfoType,
         WasEvaluated = true;
       }
     }
+
+    ExprResult Result = CheckUnevaluatedOperand(E);
+    if (Result.isInvalid())
+      return ExprError();
+    E = Result.get();
 
     // C++ [expr.typeid]p4:
     //   [...] If the type of the type-id is a reference to a possibly
@@ -913,7 +921,7 @@ bool Sema::CheckCXXThrowOperand(SourceLocation ThrowLoc,
       // cannot be a simple walk of the class's decls.  Instead, we must perform
       // lookup and overload resolution.
       CXXConstructorDecl *CD = LookupCopyingConstructor(Subobject, 0);
-      if (!CD)
+      if (!CD || CD->isDeleted())
         continue;
 
       // Mark the constructor referenced as it is used by this throw expression.
@@ -2108,9 +2116,10 @@ Sema::BuildCXXNew(SourceRange Range, bool UseGlobal,
     QualType InitType;
     if (KnownArraySize)
       InitType = Context.getConstantArrayType(
-          AllocType, llvm::APInt(Context.getTypeSize(Context.getSizeType()),
-                                 *KnownArraySize),
-          ArrayType::Normal, 0);
+          AllocType,
+          llvm::APInt(Context.getTypeSize(Context.getSizeType()),
+                      *KnownArraySize),
+          *ArraySize, ArrayType::Normal, 0);
     else if (ArraySize)
       InitType =
           Context.getIncompleteArrayType(AllocType, ArrayType::Normal, 0);
@@ -2314,7 +2323,7 @@ static bool resolveAllocationOverload(
           PartialDiagnosticAt(R.getNameLoc(),
                               S.PDiag(diag::err_ovl_ambiguous_call)
                                   << R.getLookupName() << Range),
-          S, OCD_ViableCandidates, Args);
+          S, OCD_AmbiguousCandidates, Args);
     }
     return true;
 
@@ -2457,8 +2466,8 @@ bool Sema::FindAllocationFunctions(SourceLocation StartLoc, SourceRange Range,
   //   deallocation function's name is looked up in the global scope.
   LookupResult FoundDelete(*this, DeleteName, StartLoc, LookupOrdinaryName);
   if (AllocElemType->isRecordType() && DeleteScope != AFS_Global) {
-    CXXRecordDecl *RD
-      = cast<CXXRecordDecl>(AllocElemType->getAs<RecordType>()->getDecl());
+    auto *RD =
+        cast<CXXRecordDecl>(AllocElemType->castAs<RecordType>()->getDecl());
     LookupQualifiedName(FoundDelete, RD);
   }
   if (FoundDelete.isAmbiguous())
@@ -3293,7 +3302,7 @@ Sema::ActOnCXXDelete(SourceLocation StartLoc, bool UseGlobal,
       //        itself in this case.
       return ExprError();
 
-    QualType Pointee = Type->getAs<PointerType>()->getPointeeType();
+    QualType Pointee = Type->castAs<PointerType>()->getPointeeType();
     QualType PointeeElem = Context.getBaseElementType(Pointee);
 
     if (Pointee.getAddressSpace() != LangAS::Default &&
@@ -3504,7 +3513,7 @@ static bool resolveBuiltinNewDeleteOverload(Sema &S, CallExpr *TheCall,
         PartialDiagnosticAt(R.getNameLoc(),
                             S.PDiag(diag::err_ovl_ambiguous_call)
                                 << R.getLookupName() << Range),
-        S, OCD_ViableCandidates, Args);
+        S, OCD_AmbiguousCandidates, Args);
     return true;
 
   case OR_Deleted: {
@@ -4025,8 +4034,8 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
 
   case ICK_Complex_Promotion:
   case ICK_Complex_Conversion: {
-    QualType FromEl = From->getType()->getAs<ComplexType>()->getElementType();
-    QualType ToEl = ToType->getAs<ComplexType>()->getElementType();
+    QualType FromEl = From->getType()->castAs<ComplexType>()->getElementType();
+    QualType ToEl = ToType->castAs<ComplexType>()->getElementType();
     CastKind CK;
     if (FromEl->isRealFloatingType()) {
       if (ToEl->isRealFloatingType())
@@ -5234,7 +5243,13 @@ static bool EvaluateBinaryTypeTrait(Sema &Self, TypeTrait BTT, QualType LhsT,
     Sema::ContextRAII TUContext(Self, Self.Context.getTranslationUnitDecl());
     ExprResult Result = Self.BuildBinOp(/*S=*/nullptr, KeyLoc, BO_Assign, &Lhs,
                                         &Rhs);
-    if (Result.isInvalid() || SFINAE.hasErrorOccurred())
+    if (Result.isInvalid())
+      return false;
+
+    // Treat the assignment as unused for the purpose of -Wdeprecated-volatile.
+    Self.CheckUnusedVolatileAssignment(Result.get());
+
+    if (SFINAE.hasErrorOccurred())
       return false;
 
     if (BTT == BTT_IsAssignable)
@@ -5837,20 +5852,21 @@ QualType Sema::CXXCheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
       LVK == RVK && LVK != VK_RValue) {
     // DerivedToBase was already handled by the class-specific case above.
     // FIXME: Should we allow ObjC conversions here?
-    bool DerivedToBase, ObjCConversion, ObjCLifetimeConversion;
-    if (CompareReferenceRelationship(
-            QuestionLoc, LTy, RTy, DerivedToBase,
-            ObjCConversion, ObjCLifetimeConversion) == Ref_Compatible &&
+    bool DerivedToBase, ObjCConversion, ObjCLifetimeConversion,
+        FunctionConversion;
+    if (CompareReferenceRelationship(QuestionLoc, LTy, RTy, DerivedToBase,
+                                     ObjCConversion, ObjCLifetimeConversion,
+                                     FunctionConversion) == Ref_Compatible &&
         !DerivedToBase && !ObjCConversion && !ObjCLifetimeConversion &&
         // [...] subject to the constraint that the reference must bind
         // directly [...]
-        !RHS.get()->refersToBitField() &&
-        !RHS.get()->refersToVectorElement()) {
+        !RHS.get()->refersToBitField() && !RHS.get()->refersToVectorElement()) {
       RHS = ImpCastExprToType(RHS.get(), LTy, CK_NoOp, RVK);
       RTy = RHS.get()->getType();
     } else if (CompareReferenceRelationship(
-                   QuestionLoc, RTy, LTy, DerivedToBase,
-                   ObjCConversion, ObjCLifetimeConversion) == Ref_Compatible &&
+                   QuestionLoc, RTy, LTy, DerivedToBase, ObjCConversion,
+                   ObjCLifetimeConversion,
+                   FunctionConversion) == Ref_Compatible &&
                !DerivedToBase && !ObjCConversion && !ObjCLifetimeConversion &&
                !LHS.get()->refersToBitField() &&
                !LHS.get()->refersToVectorElement()) {
@@ -6605,6 +6621,11 @@ ExprResult Sema::ActOnDecltypeExpression(Expr *E) {
   ExprEvalContexts.back().ExprContext =
       ExpressionEvaluationContextRecord::EK_Other;
 
+  Result = CheckUnevaluatedOperand(E);
+  if (Result.isInvalid())
+    return ExprError();
+  E = Result.get();
+
   // In MS mode, don't perform any extra checking of call return types within a
   // decltype expression.
   if (getLangOpts().MSVCCompat)
@@ -7229,7 +7250,10 @@ ExprResult Sema::BuildCXXNoexceptExpr(SourceLocation KeyLoc, Expr *Operand,
   if (R.isInvalid())
     return R;
 
-  // The operand may have been modified when checking the placeholder type.
+  R = CheckUnevaluatedOperand(R.get());
+  if (R.isInvalid())
+    return ExprError();
+
   Operand = R.get();
 
   if (!inTemplateInstantiation() && Operand->HasSideEffects(Context, false)) {
@@ -7333,12 +7357,17 @@ ExprResult Sema::IgnoredValueConversions(Expr *E) {
     // volatile lvalue with a special form, we perform an lvalue-to-rvalue
     // conversion.
     if (getLangOpts().CPlusPlus11 && E->isGLValue() &&
-        E->getType().isVolatileQualified() &&
-        IsSpecialDiscardedValue(E)) {
-      ExprResult Res = DefaultLvalueConversion(E);
-      if (Res.isInvalid())
-        return E;
-      E = Res.get();
+        E->getType().isVolatileQualified()) {
+       if (IsSpecialDiscardedValue(E)) {
+        ExprResult Res = DefaultLvalueConversion(E);
+        if (Res.isInvalid())
+          return E;
+        E = Res.get();
+      } else {
+        // Per C++2a [expr.ass]p5, a volatile assignment is not deprecated if
+        // it occurs as a discarded-value expression.
+        CheckUnusedVolatileAssignment(E);
+      }
     }
 
     // C++1z:
@@ -7370,6 +7399,14 @@ ExprResult Sema::IgnoredValueConversions(Expr *E) {
   if (!E->getType()->isVoidType())
     RequireCompleteType(E->getExprLoc(), E->getType(),
                         diag::err_incomplete_type);
+  return E;
+}
+
+ExprResult Sema::CheckUnevaluatedOperand(Expr *E) {
+  // Per C++2a [expr.ass]p5, a volatile assignment is not deprecated if
+  // it occurs as an unevaluated operand.
+  CheckUnusedVolatileAssignment(E);
+
   return E;
 }
 
@@ -7743,8 +7780,9 @@ class TransformTypos : public TreeTransform<TransformTypos> {
 
     // If we found a valid result, double check to make sure it's not ambiguous.
     if (!IsAmbiguous && !Res.isInvalid() && !AmbiguousTypoExprs.empty()) {
-      auto SavedTransformCache = std::move(TransformCache);
-      TransformCache.clear();
+      auto SavedTransformCache =
+          llvm::SmallDenseMap<TypoExpr *, ExprResult, 2>(TransformCache);
+
       // Ensure none of the TypoExprs have multiple typo correction candidates
       // with the same edit length that pass all the checks and filters.
       while (!AmbiguousTypoExprs.empty()) {

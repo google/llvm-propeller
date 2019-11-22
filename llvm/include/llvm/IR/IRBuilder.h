@@ -97,8 +97,8 @@ protected:
   FastMathFlags FMF;
 
   bool IsFPConstrained;
-  ConstrainedFPIntrinsic::ExceptionBehavior DefaultConstrainedExcept;
-  ConstrainedFPIntrinsic::RoundingMode DefaultConstrainedRounding;
+  fp::ExceptionBehavior DefaultConstrainedExcept;
+  fp::RoundingMode DefaultConstrainedRounding;
 
   ArrayRef<OperandBundleDef> DefaultOperandBundles;
 
@@ -106,8 +106,8 @@ public:
   IRBuilderBase(LLVMContext &context, MDNode *FPMathTag = nullptr,
                 ArrayRef<OperandBundleDef> OpBundles = None)
       : Context(context), DefaultFPMathTag(FPMathTag), IsFPConstrained(false),
-        DefaultConstrainedExcept(ConstrainedFPIntrinsic::ebStrict),
-        DefaultConstrainedRounding(ConstrainedFPIntrinsic::rmDynamic),
+        DefaultConstrainedExcept(fp::ebStrict),
+        DefaultConstrainedRounding(fp::rmDynamic),
         DefaultOperandBundles(OpBundles) {
     ClearInsertionPoint();
   }
@@ -234,25 +234,38 @@ public:
   bool getIsFPConstrained() { return IsFPConstrained; }
 
   /// Set the exception handling to be used with constrained floating point
-  void setDefaultConstrainedExcept(
-      ConstrainedFPIntrinsic::ExceptionBehavior NewExcept) {
+  void setDefaultConstrainedExcept(fp::ExceptionBehavior NewExcept) {
     DefaultConstrainedExcept = NewExcept;
   }
 
   /// Set the rounding mode handling to be used with constrained floating point
-  void setDefaultConstrainedRounding(
-      ConstrainedFPIntrinsic::RoundingMode NewRounding) {
+  void setDefaultConstrainedRounding(fp::RoundingMode NewRounding) {
     DefaultConstrainedRounding = NewRounding;
   }
 
   /// Get the exception handling used with constrained floating point
-  ConstrainedFPIntrinsic::ExceptionBehavior getDefaultConstrainedExcept() {
+  fp::ExceptionBehavior getDefaultConstrainedExcept() {
     return DefaultConstrainedExcept;
   }
 
   /// Get the rounding mode handling used with constrained floating point
-  ConstrainedFPIntrinsic::RoundingMode getDefaultConstrainedRounding() {
+  fp::RoundingMode getDefaultConstrainedRounding() {
     return DefaultConstrainedRounding;
+  }
+
+  void setConstrainedFPFunctionAttr() {
+    assert(BB && "Must have a basic block to set any function attributes!");
+
+    Function *F = BB->getParent();
+    if (!F->hasFnAttribute(Attribute::StrictFP)) {
+      F->addFnAttr(Attribute::StrictFP);
+    }
+  }
+
+  void setConstrainedFPCallAttr(CallInst *I) {
+    if (!I->hasFnAttr(Attribute::StrictFP))
+      I->addAttribute(AttributeList::FunctionIndex, Attribute::StrictFP);
+    setConstrainedFPFunctionAttr();
   }
 
   //===--------------------------------------------------------------------===//
@@ -1082,32 +1095,26 @@ private:
     return (LC && RC) ? Insert(Folder.CreateBinOp(Opc, LC, RC), Name) : nullptr;
   }
 
-  Value *getConstrainedFPRounding(
-      Optional<ConstrainedFPIntrinsic::RoundingMode> Rounding) {
-    ConstrainedFPIntrinsic::RoundingMode UseRounding =
-        DefaultConstrainedRounding;
+  Value *getConstrainedFPRounding(Optional<fp::RoundingMode> Rounding) {
+    fp::RoundingMode UseRounding = DefaultConstrainedRounding;
 
     if (Rounding.hasValue())
       UseRounding = Rounding.getValue();
 
-    Optional<StringRef> RoundingStr =
-        ConstrainedFPIntrinsic::RoundingModeToStr(UseRounding);
+    Optional<StringRef> RoundingStr = RoundingModeToStr(UseRounding);
     assert(RoundingStr.hasValue() && "Garbage strict rounding mode!");
     auto *RoundingMDS = MDString::get(Context, RoundingStr.getValue());
 
     return MetadataAsValue::get(Context, RoundingMDS);
   }
 
-  Value *getConstrainedFPExcept(
-      Optional<ConstrainedFPIntrinsic::ExceptionBehavior> Except) {
-    ConstrainedFPIntrinsic::ExceptionBehavior UseExcept =
-        DefaultConstrainedExcept;
+  Value *getConstrainedFPExcept(Optional<fp::ExceptionBehavior> Except) {
+    fp::ExceptionBehavior UseExcept = DefaultConstrainedExcept;
 
     if (Except.hasValue())
       UseExcept = Except.getValue();
 
-    Optional<StringRef> ExceptStr =
-        ConstrainedFPIntrinsic::ExceptionBehaviorToStr(UseExcept);
+    Optional<StringRef> ExceptStr = ExceptionBehaviorToStr(UseExcept);
     assert(ExceptStr.hasValue() && "Garbage strict exception behavior!");
     auto *ExceptMDS = MDString::get(Context, ExceptStr.getValue());
 
@@ -1461,15 +1468,15 @@ public:
     if (Value *V = foldConstant(Opc, LHS, RHS, Name)) return V;
     Instruction *BinOp = BinaryOperator::Create(Opc, LHS, RHS);
     if (isa<FPMathOperator>(BinOp))
-      BinOp = setFPAttrs(BinOp, FPMathTag, FMF);
+      setFPAttrs(BinOp, FPMathTag, FMF);
     return Insert(BinOp, Name);
   }
 
   CallInst *CreateConstrainedFPBinOp(
       Intrinsic::ID ID, Value *L, Value *R, Instruction *FMFSource = nullptr,
       const Twine &Name = "", MDNode *FPMathTag = nullptr,
-      Optional<ConstrainedFPIntrinsic::RoundingMode> Rounding = None,
-      Optional<ConstrainedFPIntrinsic::ExceptionBehavior> Except = None) {
+      Optional<fp::RoundingMode> Rounding = None,
+      Optional<fp::ExceptionBehavior> Except = None) {
     Value *RoundingV = getConstrainedFPRounding(Rounding);
     Value *ExceptV = getConstrainedFPExcept(Except);
 
@@ -1479,7 +1486,9 @@ public:
 
     CallInst *C = CreateIntrinsic(ID, {L->getType()},
                                   {L, R, RoundingV, ExceptV}, nullptr, Name);
-    return cast<CallInst>(setFPAttrs(C, FPMathTag, UseFMF));
+    setConstrainedFPCallAttr(C);
+    setFPAttrs(C, FPMathTag, UseFMF);
+    return C;
   }
 
   Value *CreateNeg(Value *V, const Twine &Name = "",
@@ -1504,7 +1513,7 @@ public:
                     MDNode *FPMathTag = nullptr) {
     if (auto *VC = dyn_cast<Constant>(V))
       return Insert(Folder.CreateFNeg(VC), Name);
-    return Insert(setFPAttrs(BinaryOperator::CreateFNeg(V), FPMathTag, FMF),
+    return Insert(setFPAttrs(UnaryOperator::CreateFNeg(V), FPMathTag, FMF),
                   Name);
   }
 
@@ -1514,9 +1523,7 @@ public:
                        const Twine &Name = "") {
    if (auto *VC = dyn_cast<Constant>(V))
      return Insert(Folder.CreateFNeg(VC), Name);
-   // TODO: This should return UnaryOperator::CreateFNeg(...) once we are
-   // confident that they are optimized sufficiently.
-   return Insert(setFPAttrs(BinaryOperator::CreateFNeg(V), nullptr,
+   return Insert(setFPAttrs(UnaryOperator::CreateFNeg(V), nullptr,
                             FMFSource->getFastMathFlags()),
                  Name);
   }
@@ -1534,7 +1541,7 @@ public:
       return Insert(Folder.CreateUnOp(Opc, VC), Name);
     Instruction *UnOp = UnaryOperator::Create(Opc, V);
     if (isa<FPMathOperator>(UnOp))
-      UnOp = setFPAttrs(UnOp, FPMathTag, FMF);
+      setFPAttrs(UnOp, FPMathTag, FMF);
     return Insert(UnOp, Name);
   }
 
@@ -1612,19 +1619,19 @@ public:
   LoadInst *CreateAlignedLoad(Type *Ty, Value *Ptr, unsigned Align,
                               const char *Name) {
     LoadInst *LI = CreateLoad(Ty, Ptr, Name);
-    LI->setAlignment(Align);
+    LI->setAlignment(MaybeAlign(Align));
     return LI;
   }
   LoadInst *CreateAlignedLoad(Type *Ty, Value *Ptr, unsigned Align,
                               const Twine &Name = "") {
     LoadInst *LI = CreateLoad(Ty, Ptr, Name);
-    LI->setAlignment(Align);
+    LI->setAlignment(MaybeAlign(Align));
     return LI;
   }
   LoadInst *CreateAlignedLoad(Type *Ty, Value *Ptr, unsigned Align,
                               bool isVolatile, const Twine &Name = "") {
     LoadInst *LI = CreateLoad(Ty, Ptr, isVolatile, Name);
-    LI->setAlignment(Align);
+    LI->setAlignment(MaybeAlign(Align));
     return LI;
   }
 
@@ -1649,7 +1656,7 @@ public:
   StoreInst *CreateAlignedStore(Value *Val, Value *Ptr, unsigned Align,
                                 bool isVolatile = false) {
     StoreInst *SI = CreateStore(Val, Ptr, isVolatile);
-    SI->setAlignment(Align);
+    SI->setAlignment(MaybeAlign(Align));
     return SI;
   }
 
@@ -2063,8 +2070,8 @@ public:
       Intrinsic::ID ID, Value *V, Type *DestTy,
       Instruction *FMFSource = nullptr, const Twine &Name = "",
       MDNode *FPMathTag = nullptr,
-      Optional<ConstrainedFPIntrinsic::RoundingMode> Rounding = None,
-      Optional<ConstrainedFPIntrinsic::ExceptionBehavior> Except = None) {
+      Optional<fp::RoundingMode> Rounding = None,
+      Optional<fp::ExceptionBehavior> Except = None) {
     Value *ExceptV = getConstrainedFPExcept(Except);
 
     FastMathFlags UseFMF = FMF;
@@ -2085,8 +2092,10 @@ public:
                           Name);
       break;
     }
+    setConstrainedFPCallAttr(C);
+
     if (isa<FPMathOperator>(C))
-      C = cast<CallInst>(setFPAttrs(C, FPMathTag, UseFMF));
+      setFPAttrs(C, FPMathTag, UseFMF);
     return C;
   }
 
@@ -2233,7 +2242,7 @@ public:
                      const Twine &Name = "") {
     PHINode *Phi = PHINode::Create(Ty, NumReservedValues);
     if (isa<FPMathOperator>(Phi))
-      Phi = cast<PHINode>(setFPAttrs(Phi, nullptr /* MDNode* */, FMF));
+      setFPAttrs(Phi, nullptr /* MDNode* */, FMF);
     return Insert(Phi, Name);
   }
 
@@ -2241,8 +2250,10 @@ public:
                        ArrayRef<Value *> Args = None, const Twine &Name = "",
                        MDNode *FPMathTag = nullptr) {
     CallInst *CI = CallInst::Create(FTy, Callee, Args, DefaultOperandBundles);
+    if (IsFPConstrained)
+      setConstrainedFPCallAttr(CI);
     if (isa<FPMathOperator>(CI))
-      CI = cast<CallInst>(setFPAttrs(CI, FPMathTag, FMF));
+      setFPAttrs(CI, FPMathTag, FMF);
     return Insert(CI, Name);
   }
 
@@ -2250,8 +2261,10 @@ public:
                        ArrayRef<OperandBundleDef> OpBundles,
                        const Twine &Name = "", MDNode *FPMathTag = nullptr) {
     CallInst *CI = CallInst::Create(FTy, Callee, Args, OpBundles);
+    if (IsFPConstrained)
+      setConstrainedFPCallAttr(CI);
     if (isa<FPMathOperator>(CI))
-      CI = cast<CallInst>(setFPAttrs(CI, FPMathTag, FMF));
+      setFPAttrs(CI, FPMathTag, FMF);
     return Insert(CI, Name);
   }
 
@@ -2299,7 +2312,7 @@ public:
       Sel = addBranchMetadata(Sel, Prof, Unpred);
     }
     if (isa<FPMathOperator>(Sel))
-      Sel = cast<SelectInst>(setFPAttrs(Sel, nullptr /* MDNode* */, FMF));
+      setFPAttrs(Sel, nullptr /* MDNode* */, FMF);
     return Insert(Sel, Name);
   }
 
@@ -2369,6 +2382,10 @@ public:
   LandingPadInst *CreateLandingPad(Type *Ty, unsigned NumClauses,
                                    const Twine &Name = "") {
     return Insert(LandingPadInst::Create(Ty, NumClauses), Name);
+  }
+
+  Value *CreateFreeze(Value *V, const Twine &Name = "") {
+    return Insert(new FreezeInst(V), Name);
   }
 
   //===--------------------------------------------------------------------===//
@@ -2500,8 +2517,9 @@ public:
     return V;
   }
 
-  Value *CreatePreserveArrayAccessIndex(Value *Base, unsigned Dimension,
-                                        unsigned LastIndex, MDNode *DbgInfo) {
+  Value *CreatePreserveArrayAccessIndex(Type *ElTy, Value *Base,
+                                        unsigned Dimension, unsigned LastIndex,
+                                        MDNode *DbgInfo) {
     assert(isa<PointerType>(Base->getType()) &&
            "Invalid Base ptr type for preserve.array.access.index.");
     auto *BaseType = Base->getType();
@@ -2514,7 +2532,7 @@ public:
     IdxList.push_back(LastIndexV);
 
     Type *ResultType =
-        GetElementPtrInst::getGEPReturnType(Base, IdxList);
+        GetElementPtrInst::getGEPReturnType(ElTy, Base, IdxList);
 
     Module *M = BB->getParent()->getParent();
     Function *FnPreserveArrayAccessIndex = Intrinsic::getDeclaration(
@@ -2548,8 +2566,9 @@ public:
     return Fn;
   }
 
-  Value *CreatePreserveStructAccessIndex(Value *Base, unsigned Index,
-                                         unsigned FieldIndex, MDNode *DbgInfo) {
+  Value *CreatePreserveStructAccessIndex(Type *ElTy, Value *Base,
+                                         unsigned Index, unsigned FieldIndex,
+                                         MDNode *DbgInfo) {
     assert(isa<PointerType>(Base->getType()) &&
            "Invalid Base ptr type for preserve.struct.access.index.");
     auto *BaseType = Base->getType();
@@ -2557,7 +2576,7 @@ public:
     Value *GEPIndex = getInt32(Index);
     Constant *Zero = ConstantInt::get(Type::getInt32Ty(Context), 0);
     Type *ResultType =
-        GetElementPtrInst::getGEPReturnType(Base, {Zero, GEPIndex});
+        GetElementPtrInst::getGEPReturnType(ElTy, Base, {Zero, GEPIndex});
 
     Module *M = BB->getParent()->getParent();
     Function *FnPreserveStructAccessIndex = Intrinsic::getDeclaration(

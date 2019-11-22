@@ -1305,6 +1305,15 @@ static void CreateCoercedStore(llvm::Value *Src,
     DstTy = Dst.getType()->getElementType();
   }
 
+  llvm::PointerType *SrcPtrTy = llvm::dyn_cast<llvm::PointerType>(SrcTy);
+  llvm::PointerType *DstPtrTy = llvm::dyn_cast<llvm::PointerType>(DstTy);
+  if (SrcPtrTy && DstPtrTy &&
+      SrcPtrTy->getAddressSpace() != DstPtrTy->getAddressSpace()) {
+    Src = CGF.Builder.CreatePointerBitCastOrAddrSpaceCast(Src, DstTy);
+    CGF.Builder.CreateStore(Src, Dst, DstIsVolatile);
+    return;
+  }
+
   // If the source and destination are integer or pointer types, just do an
   // extension or truncation to the desired type.
   if ((isa<llvm::IntegerType>(SrcTy) || isa<llvm::PointerType>(SrcTy)) &&
@@ -1853,11 +1862,27 @@ void CodeGenModule::ConstructAttributeList(
     if (const FunctionDecl *Fn = dyn_cast<FunctionDecl>(TargetDecl)) {
       AddAttributesFromFunctionProtoType(
           getContext(), FuncAttrs, Fn->getType()->getAs<FunctionProtoType>());
-      // Don't use [[noreturn]] or _Noreturn for a call to a virtual function.
-      // These attributes are not inherited by overloads.
       const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
-      if (Fn->isNoReturn() && !(AttrOnCallSite && MD && MD->isVirtual()))
-        FuncAttrs.addAttribute(llvm::Attribute::NoReturn);
+      const bool IsVirtualCall = MD && MD->isVirtual();
+      // Don't use [[noreturn]], _Noreturn or [[no_builtin]] for a call to a
+      // virtual function. These attributes are not inherited by overloads.
+      if (!(AttrOnCallSite && IsVirtualCall)) {
+        if (Fn->isNoReturn())
+          FuncAttrs.addAttribute(llvm::Attribute::NoReturn);
+
+        if (const auto *NBA = TargetDecl->getAttr<NoBuiltinAttr>()) {
+          bool HasWildcard = llvm::is_contained(NBA->builtinNames(), "*");
+          if (HasWildcard)
+            FuncAttrs.addAttribute("no-builtins");
+          else
+            for (StringRef BuiltinName : NBA->builtinNames()) {
+              SmallString<32> AttributeName;
+              AttributeName += "no-builtin-";
+              AttributeName += BuiltinName;
+              FuncAttrs.addAttribute(AttributeName);
+            }
+        }
+      }
     }
 
     // 'const', 'pure' and 'noalias' attributed functions are also nounwind.
@@ -2126,8 +2151,8 @@ void CodeGenModule::ConstructAttributeList(
       if (!PTy->isIncompleteType() && PTy->isConstantSizeType()) {
         auto info = getContext().getTypeInfoInChars(PTy);
         Attrs.addDereferenceableAttr(info.first.getQuantity());
-        Attrs.addAttribute(llvm::Attribute::getWithAlignment(getLLVMContext(),
-                                                 info.second.getQuantity()));
+        Attrs.addAttribute(llvm::Attribute::getWithAlignment(
+            getLLVMContext(), info.second.getAsAlign()));
       }
       break;
     }
@@ -3092,8 +3117,8 @@ void CodeGenFunction::EmitDelegateCallArg(CallArgList &args,
 
   // Deactivate the cleanup for the callee-destructed param that was pushed.
   if (hasAggregateEvaluationKind(type) && !CurFuncIsThunk &&
-      type->getAs<RecordType>()->getDecl()->isParamDestroyedInCallee() &&
-      type.isDestructedType()) {
+      type->castAs<RecordType>()->getDecl()->isParamDestroyedInCallee() &&
+      param->needsDestruction(getContext())) {
     EHScopeStack::stable_iterator cleanup =
         CalleeDestructedParamCleanups.lookup(cast<ParmVarDecl>(param));
     assert(cleanup.isValid() &&
@@ -3577,7 +3602,7 @@ void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
   // However, we still have to push an EH-only cleanup in case we unwind before
   // we make it to the call.
   if (HasAggregateEvalKind &&
-      type->getAs<RecordType>()->getDecl()->isParamDestroyedInCallee()) {
+      type->castAs<RecordType>()->getDecl()->isParamDestroyedInCallee()) {
     // If we're using inalloca, use the argument memory.  Otherwise, use a
     // temporary.
     AggValueSlot Slot;
@@ -3841,7 +3866,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
       AI = CreateTempAlloca(ArgStruct, "argmem");
     }
     auto Align = CallInfo.getArgStructAlignment();
-    AI->setAlignment(Align.getQuantity());
+    AI->setAlignment(Align.getAsAlign());
     AI->setUsedWithInAlloca(true);
     assert(AI->isUsedWithInAlloca() && !AI->isStaticAlloca());
     ArgMemory = Address(AI, Align);
@@ -3877,6 +3902,11 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
   Address swiftErrorTemp = Address::invalid();
   Address swiftErrorArg = Address::invalid();
+
+  // When passing arguments using temporary allocas, we need to add the
+  // appropriate lifetime markers. This vector keeps track of all the lifetime
+  // markers that need to be ended right after the call.
+  SmallVector<CallLifetimeEnd, 2> CallLifetimeEndAfterCall;
 
   // Translate all of the arguments as necessary to match the IR lowering.
   assert(CallInfo.arg_size() == CallArgs.size() &&
@@ -3994,6 +4024,18 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
           Address AI = CreateMemTempWithoutCast(
               I->Ty, ArgInfo.getIndirectAlign(), "byval-temp");
           IRCallArgs[FirstIRArg] = AI.getPointer();
+
+          // Emit lifetime markers for the temporary alloca.
+          uint64_t ByvalTempElementSize =
+              CGM.getDataLayout().getTypeAllocSize(AI.getElementType());
+          llvm::Value *LifetimeSize =
+              EmitLifetimeStart(ByvalTempElementSize, AI.getPointer());
+
+          // Add cleanup code to emit the end lifetime marker after the call.
+          if (LifetimeSize) // In case we disabled lifetime markers.
+            CallLifetimeEndAfterCall.emplace_back(AI, LifetimeSize);
+
+          // Generate the copy.
           I->copyInto(*this, AI);
         } else {
           // Skip the extra memcpy call.
@@ -4277,8 +4319,8 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // Update the largest vector width if any arguments have vector types.
   for (unsigned i = 0; i < IRCallArgs.size(); ++i) {
     if (auto *VT = dyn_cast<llvm::VectorType>(IRCallArgs[i]->getType()))
-      LargestVectorWidth = std::max(LargestVectorWidth,
-                                    VT->getPrimitiveSizeInBits());
+      LargestVectorWidth = std::max((uint64_t)LargestVectorWidth,
+                                   VT->getPrimitiveSizeInBits().getFixedSize());
   }
 
   // Compute the calling convention and attributes.
@@ -4361,8 +4403,8 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
   // Update largest vector width from the return type.
   if (auto *VT = dyn_cast<llvm::VectorType>(CI->getType()))
-    LargestVectorWidth = std::max(LargestVectorWidth,
-                                  VT->getPrimitiveSizeInBits());
+    LargestVectorWidth = std::max((uint64_t)LargestVectorWidth,
+                                  VT->getPrimitiveSizeInBits().getFixedSize());
 
   // Insert instrumentation or attach profile metadata at indirect call sites.
   // For more details, see the comment before the definition of
@@ -4552,7 +4594,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
       llvm::Value *Alignment = EmitScalarExpr(AA->getAlignment());
       llvm::ConstantInt *AlignmentCI = cast<llvm::ConstantInt>(Alignment);
       EmitAlignmentAssumption(Ret.getScalarVal(), RetTy, Loc, AA->getLocation(),
-                              AlignmentCI->getZExtValue(), OffsetValue);
+                              AlignmentCI, OffsetValue);
     } else if (const auto *AA = TargetDecl->getAttr<AllocAlignAttr>()) {
       llvm::Value *AlignmentVal = CallArgs[AA->getParamIndex().getLLVMIndex()]
                                       .getRValue(*this)
@@ -4561,6 +4603,11 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
                               AlignmentVal);
     }
   }
+
+  // Explicitly call CallLifetimeEnd::Emit just to re-use the code even though
+  // we can't use the full cleanup mechanism.
+  for (CallLifetimeEnd &LifetimeEnd : CallLifetimeEndAfterCall)
+    LifetimeEnd.Emit(*this, /*Flags=*/{});
 
   return Ret;
 }

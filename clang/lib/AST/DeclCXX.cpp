@@ -96,14 +96,15 @@ CXXRecordDecl::DefinitionData::DefinitionData(CXXRecordDecl *D)
       DefaultedDefaultConstructorIsConstexpr(true),
       HasConstexprDefaultConstructor(false),
       DefaultedDestructorIsConstexpr(true),
-      HasNonLiteralTypeFieldsOrBases(false), ComputedVisibleConversions(false),
+      HasNonLiteralTypeFieldsOrBases(false),
       UserProvidedDefaultConstructor(false), DeclaredSpecialMembers(0),
       ImplicitCopyConstructorCanHaveConstParamForVBase(true),
       ImplicitCopyConstructorCanHaveConstParamForNonVBase(true),
       ImplicitCopyAssignmentHasConstParam(true),
       HasDeclaredCopyConstructorWithConstParam(false),
       HasDeclaredCopyAssignmentWithConstParam(false), IsLambda(false),
-      IsParsingBaseSpecifiers(false), HasODRHash(false), Definition(D) {}
+      IsParsingBaseSpecifiers(false), ComputedVisibleConversions(false),
+      HasODRHash(false), Definition(D) {}
 
 CXXBaseSpecifier *CXXRecordDecl::DefinitionData::getBasesSlowCase() const {
   return Bases.get(Definition->getASTContext().getExternalSource());
@@ -218,7 +219,7 @@ CXXRecordDecl::setBases(CXXBaseSpecifier const * const *Bases,
     if (BaseType->isDependentType())
       continue;
     auto *BaseClassDecl =
-        cast<CXXRecordDecl>(BaseType->getAs<RecordType>()->getDecl());
+        cast<CXXRecordDecl>(BaseType->castAs<RecordType>()->getDecl());
 
     // C++2a [class]p7:
     //   A standard-layout class is a class that:
@@ -412,7 +413,7 @@ CXXRecordDecl::setBases(CXXBaseSpecifier const * const *Bases,
       data().HasIrrelevantDestructor = false;
 
     // C++11 [class.copy]p18:
-    //   The implicitly-declared copy assignment oeprator for a class X will
+    //   The implicitly-declared copy assignment operator for a class X will
     //   have the form 'X& X::operator=(const X&)' if each direct base class B
     //   of X has a copy assignment operator whose parameter is of type 'const
     //   B&', 'const volatile B&', or 'B' [...]
@@ -1399,17 +1400,29 @@ static bool allLookupResultsAreTheSame(const DeclContext::lookup_result &R) {
 }
 #endif
 
-CXXMethodDecl* CXXRecordDecl::getLambdaCallOperator() const {
-  if (!isLambda()) return nullptr;
+static NamedDecl* getLambdaCallOperatorHelper(const CXXRecordDecl &RD) {
+  if (!RD.isLambda()) return nullptr;
   DeclarationName Name =
-    getASTContext().DeclarationNames.getCXXOperatorName(OO_Call);
-  DeclContext::lookup_result Calls = lookup(Name);
+    RD.getASTContext().DeclarationNames.getCXXOperatorName(OO_Call);
+  DeclContext::lookup_result Calls = RD.lookup(Name);
 
   assert(!Calls.empty() && "Missing lambda call operator!");
   assert(allLookupResultsAreTheSame(Calls) &&
          "More than one lambda call operator!");
+  return Calls.front();
+}
 
-  NamedDecl *CallOp = Calls.front();
+FunctionTemplateDecl* CXXRecordDecl::getDependentLambdaCallOperator() const {
+  NamedDecl *CallOp = getLambdaCallOperatorHelper(*this);
+  return  dyn_cast_or_null<FunctionTemplateDecl>(CallOp);
+}
+
+CXXMethodDecl *CXXRecordDecl::getLambdaCallOperator() const {
+  NamedDecl *CallOp = getLambdaCallOperatorHelper(*this);
+
+  if (CallOp == nullptr)
+    return nullptr;
+
   if (const auto *CallOpTmpl = dyn_cast<FunctionTemplateDecl>(CallOp))
     return cast<CXXMethodDecl>(CallOpTmpl->getTemplatedDecl());
 
@@ -1897,7 +1910,7 @@ bool CXXRecordDecl::mayBeAbstract() const {
 
   for (const auto &B : bases()) {
     const auto *BaseDecl =
-        cast<CXXRecordDecl>(B.getType()->getAs<RecordType>()->getDecl());
+        cast<CXXRecordDecl>(B.getType()->castAs<RecordType>()->getDecl());
     if (BaseDecl->isAbstract())
       return true;
   }
@@ -2554,7 +2567,7 @@ bool CXXConstructorDecl::isConvertingConstructor(bool AllowExplicit) const {
     return false;
 
   return (getNumParams() == 0 &&
-          getType()->getAs<FunctionProtoType>()->isVariadic()) ||
+          getType()->castAs<FunctionProtoType>()->isVariadic()) ||
          (getNumParams() == 1) ||
          (getNumParams() > 1 &&
           (getParamDecl(1)->hasDefaultArg() ||

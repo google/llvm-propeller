@@ -10,6 +10,7 @@
 #define liblldb_ConstString_h_
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include <stddef.h>
@@ -146,8 +147,8 @@ public:
   ///     Another string object to compare this object to.
   ///
   /// \return
-  ///     \li \b true if this object is equal to \a rhs.
-  ///     \li \b false if this object is not equal to \a rhs.
+  ///     true if this object is equal to \a rhs.
+  ///     false if this object is not equal to \a rhs.
   bool operator==(ConstString rhs) const {
     // We can do a pointer compare to compare these strings since they must
     // come from the same pool in order to be equal.
@@ -165,8 +166,8 @@ public:
   ///     Another string object to compare this object to.
   ///
   /// \return
-  ///     \li \b true if this object is equal to \a rhs.
-  ///     \li \b false if this object is not equal to \a rhs.
+  ///     \b true if this object is equal to \a rhs.
+  ///     \b false if this object is not equal to \a rhs.
   bool operator==(const char *rhs) const {
     // ConstString differentiates between empty strings and nullptr strings, but
     // StringRef doesn't. Therefore we have to do this check manually now.
@@ -188,8 +189,8 @@ public:
   ///     Another string object to compare this object to.
   ///
   /// \return
-  ///     \li \b true if this object is not equal to \a rhs.
-  ///     \li \b false if this object is equal to \a rhs.
+  ///     \b true if this object is not equal to \a rhs.
+  ///     \b false if this object is equal to \a rhs.
   bool operator!=(ConstString rhs) const {
     return m_string != rhs.m_string;
   }
@@ -327,15 +328,15 @@ public:
   /// Test for empty string.
   ///
   /// \return
-  ///     \li \b true if the contained string is empty.
-  ///     \li \b false if the contained string is not empty.
+  ///     \b true if the contained string is empty.
+  ///     \b false if the contained string is not empty.
   bool IsEmpty() const { return m_string == nullptr || m_string[0] == '\0'; }
 
   /// Test for null string.
   ///
   /// \return
-  ///     \li \b true if there is no string associated with this instance.
-  ///     \li \b false if there is a string associated with this instance.
+  ///     \b true if there is no string associated with this instance.
+  ///     \b false if there is a string associated with this instance.
   bool IsNull() const { return m_string == nullptr; }
 
   /// Set the C string value.
@@ -437,6 +438,14 @@ public:
   static size_t StaticMemorySize();
 
 protected:
+  template <typename T> friend struct ::llvm::DenseMapInfo;
+  /// Only used by DenseMapInfo.
+  static ConstString FromStringPoolPointer(const char *ptr) {
+    ConstString s;
+    s.m_string = ptr;
+    return s;
+  };
+
   // Member variables
   const char *m_string;
 };
@@ -451,6 +460,27 @@ template <> struct format_provider<lldb_private::ConstString> {
   static void format(const lldb_private::ConstString &CS, llvm::raw_ostream &OS,
                      llvm::StringRef Options);
 };
+
+/// DenseMapInfo implementation.
+/// \{
+template <> struct DenseMapInfo<lldb_private::ConstString> {
+  static inline lldb_private::ConstString getEmptyKey() {
+    return lldb_private::ConstString::FromStringPoolPointer(
+        DenseMapInfo<const char *>::getEmptyKey());
+  }
+  static inline lldb_private::ConstString getTombstoneKey() {
+    return lldb_private::ConstString::FromStringPoolPointer(
+        DenseMapInfo<const char *>::getTombstoneKey());
+  }
+  static unsigned getHashValue(lldb_private::ConstString val) {
+    return DenseMapInfo<const char *>::getHashValue(val.m_string);
+  }
+  static bool isEqual(lldb_private::ConstString LHS,
+                      lldb_private::ConstString RHS) {
+    return LHS == RHS;
+  }
+};
+/// \}
 }
 
 #endif // liblldb_ConstString_h_

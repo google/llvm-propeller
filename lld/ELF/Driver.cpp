@@ -67,17 +67,16 @@ using namespace llvm::object;
 using namespace llvm::sys;
 using namespace llvm::support;
 
-using namespace lld;
-using namespace lld::elf;
+namespace lld {
+namespace elf {
 
-Configuration *elf::config;
-LinkerDriver *elf::driver;
+Configuration *config;
+LinkerDriver *driver;
 
 static void setConfigs(opt::InputArgList &args);
 static void readConfigs(opt::InputArgList &args);
 
-bool elf::link(ArrayRef<const char *> args, bool canExitEarly,
-               raw_ostream &error) {
+bool link(ArrayRef<const char *> args, bool canExitEarly, raw_ostream &error) {
   errorHandler().logName = args::getFilenameWithoutExe(args[0]);
   errorHandler().errorLimitExceededMsg =
       "too many errors emitted, stopping now (use "
@@ -336,6 +335,8 @@ static void checkOptions() {
       error("-r and --icf may not be used together");
     if (config->pie)
       error("-r and -pie may not be used together");
+    if (config->exportDynamic)
+      error("-r and --export-dynamic may not be used together");
   }
 
   if (config->executeOnly) {
@@ -394,6 +395,19 @@ static SeparateSegmentKind getZSeparate(opt::InputArgList &args) {
   return SeparateSegmentKind::None;
 }
 
+static GnuStackKind getZGnuStack(opt::InputArgList &args) {
+  for (auto *arg : args.filtered_reverse(OPT_z)) {
+    if (StringRef("execstack") == arg->getValue())
+      return GnuStackKind::Exec;
+    if (StringRef("noexecstack") == arg->getValue())
+      return GnuStackKind::NoExec;
+    if (StringRef("nognustack") == arg->getValue())
+      return GnuStackKind::None;
+  }
+
+  return GnuStackKind::NoExec;
+}
+
 static bool isKnownZFlag(StringRef s) {
   return s == "combreloc" || s == "copyreloc" || s == "defs" ||
          s == "execstack" || s == "global" || s == "hazardplt" ||
@@ -402,6 +416,7 @@ static bool isKnownZFlag(StringRef s) {
          s == "separate-code" || s == "separate-loadable-segments" ||
          s == "nocombreloc" || s == "nocopyreloc" || s == "nodefaultlib" ||
          s == "nodelete" || s == "nodlopen" || s == "noexecstack" ||
+         s == "nognustack" ||
          s == "nokeep-text-section-prefix" || s == "norelro" ||
          s == "noseparate-code" || s == "notext" || s == "now" ||
          s == "origin" || s == "relro" || s == "retpolineplt" ||
@@ -914,6 +929,8 @@ static void readConfigs(opt::InputArgList &args) {
   config->mipsGotSize = args::getInteger(args, OPT_mips_got_size, 0xfff0);
   config->mergeArmExidx =
       args.hasFlag(OPT_merge_exidx_entries, OPT_no_merge_exidx_entries, true);
+  config->mmapOutputFile =
+      args.hasFlag(OPT_mmap_output_file, OPT_no_mmap_output_file, true);
   config->nmagic = args.hasFlag(OPT_nmagic, OPT_no_nmagic, false);
   config->noinhibitExec = args.hasArg(OPT_noinhibit_exec);
   config->nostdlib = args.hasArg(OPT_nostdlib);
@@ -1055,6 +1072,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->zCopyreloc = getZFlag(args, "copyreloc", "nocopyreloc", true);
   config->zExecstack = getZFlag(args, "execstack", "noexecstack", false);
   config->zGlobal = hasZOption(args, "global");
+  config->zGnustack = getZGnuStack(args);
   config->zHazardplt = hasZOption(args, "hazardplt");
   config->zIfuncNoplt = hasZOption(args, "ifunc-noplt");
   config->zInitfirst = hasZOption(args, "initfirst");
@@ -1483,7 +1501,7 @@ static void handleUndefined(Symbol *sym) {
     sym->fetch();
 }
 
-// As an extention to GNU linkers, lld supports a variant of `-u`
+// As an extension to GNU linkers, lld supports a variant of `-u`
 // which accepts wildcard patterns. All symbols that match a given
 // pattern are handled as if they were given by `-u`.
 static void handleUndefinedGlob(StringRef arg) {
@@ -1878,6 +1896,12 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   for (StringRef pat : args::getStrings(args, OPT_undefined_glob))
     handleUndefinedGlob(pat);
 
+  // Mark -init and -fini symbols so that the LTO doesn't eliminate them.
+  if (Symbol *sym = symtab->find(config->init))
+    sym->isUsedInRegularObj = true;
+  if (Symbol *sym = symtab->find(config->fini))
+    sym->isUsedInRegularObj = true;
+
   // If any of our inputs are bitcode files, the LTO code generator may create
   // references to certain library functions that might not be explicit in the
   // bitcode file's symbol table. If any of those library functions are defined
@@ -2064,9 +2088,10 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   // Replace common symbols with regular symbols.
   replaceCommonSymbols();
 
-  // Do size optimizations: garbage collection, merging of SHF_MERGE sections
-  // and identical code folding.
+  // Split SHF_MERGE and .eh_frame sections into pieces in preparation for garbage collection.
   splitSections<ELFT>();
+
+  // Garbage collection and removal of shared symbols from unused shared objects.
   markLive<ELFT>();
   demoteSharedSymbols();
 
@@ -2120,3 +2145,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   // Write the result to the file.
   writeResult<ELFT>();
 }
+
+} // namespace elf
+} // namespace lld

@@ -213,7 +213,7 @@ Sections:
 # RUN: yaml2obj %s --docnum=11 -o %t11
 # RUN: not llvm-readobj --symbols %t11 2>&1 | FileCheck --check-prefix=INVALID-XINDEX-SIZE %s
 
-# INVALID-XINDEX-SIZE: error: {{.*}}: SHT_SYMTAB_SHNDX section has sh_size (24) which is not equal to the number of symbols (2)
+# INVALID-XINDEX-SIZE: error: {{.*}}: SHT_SYMTAB_SHNDX has 2 entries, but the symbol table associated has 1
 
 --- !ELF
 FileHeader:
@@ -226,6 +226,7 @@ Sections:
     Type: SHT_SYMTAB_SHNDX
     Entries: [ 0, 1 ]
     Link: .symtab
+Symbols: []
 
 ## Check that llvm-readobj reports an error if the e_phentsize field is broken.
 
@@ -234,13 +235,14 @@ Sections:
 
 # INVALID-PH-ENTSIZE: error: '[[FILE]]': invalid e_phentsize: 12336
 
-## Check that llvm-readobj reports an error when we have no SHT_SYMTAB_SHNDX section,
+## Check that llvm-readobj reports a warning when we have no SHT_SYMTAB_SHNDX section,
 ## but have a symbol referencing it.
 
-# RUN: not llvm-readobj --symbols %p/Inputs/invalid-ext-symtab-index.elf-x86-64 2>&1 | \
+# RUN: llvm-readobj --symbols %p/Inputs/invalid-ext-symtab-index.elf-x86-64 2>&1 | \
 # RUN:   FileCheck -DFILE=%p/Inputs/invalid-ext-symtab-index.elf-x86-64 --check-prefix=INVALID-EXT-SYMTAB-INDEX %s
 
-# INVALID-EXT-SYMTAB-INDEX: error: '[[FILE]]': extended symbol index (0) is past the end of the SHT_SYMTAB_SHNDX section of size 0
+# INVALID-EXT-SYMTAB-INDEX: warning: '[[FILE]]': extended symbol index (0) is past the end of the SHT_SYMTAB_SHNDX section of size 0
+# INVALID-EXT-SYMTAB-INDEX: Section: Reserved (0xFFFF)
 
 ## Check that llvm-readobj reports an error if a relocation section
 ## has a broken sh_offset (past the end of the file).
@@ -274,8 +276,8 @@ Sections:
     Type:     SHT_RELA
     ShOffset: 0x10000
 
-## Check that llvm-objdump reports an error when .shstrtab has a broken sh_offset
-## so large that sh_offset + sh_size overflows the platform address size type.
+## Check that llvm-objdump reports an error when we try to print symbols and
+## .shstrtab has a broken sh_offset so large that sh_offset + sh_size overflows the platform address size type.
 
 # RUN: yaml2obj %s --docnum=14 -o %t14
 # RUN: not llvm-readobj --symbols %t14 2>&1 | FileCheck -DFILE=%t14 --check-prefix=INVALID-SECTION-SIZE2 %s
@@ -292,6 +294,7 @@ Sections:
   - Name:     .shstrtab
     Type:     SHT_STRTAB
     ShOffset: 0xFFFFFFFF
+Symbols: []
 
 ## Check that llvm-readobj reports an error when trying to dump sections
 ## when the e_shnum field is broken (is greater than the actual number of sections).
@@ -331,6 +334,7 @@ Sections:
       - Offset: 0x0
         Type:   R_X86_64_64
         Symbol: 0xFFFFFF
+Symbols: []
 
 ## Check llvm-readobj does not crash on a truncated ELF.
 
@@ -565,7 +569,7 @@ Sections:
 # RUN: yaml2obj --docnum=26 %s -o %t26
 # RUN: not llvm-readobj -h %t26 2>&1 | FileCheck -DFILE=%t26 --check-prefix=INVALID-SEC-NUM1 %s
 
-# INVALID-SEC-NUM1: error: '[[FILE]]': invalid section header table offset (e_shoff = 0x78) or invalid number of sections specified in the first section header's sh_size field (0x3ffffffffffffff)
+# INVALID-SEC-NUM1: error: '[[FILE]]': invalid section header table offset (e_shoff = 0x58) or invalid number of sections specified in the first section header's sh_size field (0x3ffffffffffffff)
 
 --- !ELF
 FileHeader:

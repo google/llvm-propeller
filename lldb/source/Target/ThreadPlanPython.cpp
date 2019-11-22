@@ -25,10 +25,11 @@ using namespace lldb_private;
 
 // ThreadPlanPython
 
-ThreadPlanPython::ThreadPlanPython(Thread &thread, const char *class_name)
+ThreadPlanPython::ThreadPlanPython(Thread &thread, const char *class_name, 
+                                   StructuredDataImpl *args_data)
     : ThreadPlan(ThreadPlan::eKindPython, "Python based Thread Plan", thread,
                  eVoteNoOpinion, eVoteNoOpinion),
-      m_class_name(class_name), m_did_push(false) {
+      m_class_name(class_name), m_args_data(args_data), m_did_push(false) {
   SetIsMasterPlan(true);
   SetOkayToDiscard(true);
   SetPrivate(false);
@@ -45,7 +46,9 @@ bool ThreadPlanPython::ValidatePlan(Stream *error) {
 
   if (!m_implementation_sp) {
     if (error)
-      error->Printf("Python thread plan does not have an implementation");
+      error->Printf("Error constructing Python ThreadPlan: %s",
+          m_error_str.empty() ? "<unknown error>"
+                                : m_error_str.c_str());
     return false;
   }
 
@@ -63,7 +66,8 @@ void ThreadPlanPython::DidPush() {
                                            .GetScriptInterpreter();
     if (script_interp) {
       m_implementation_sp = script_interp->CreateScriptedThreadPlan(
-          m_class_name.c_str(), this->shared_from_this());
+          m_class_name.c_str(), m_args_data, m_error_str, 
+          this->shared_from_this());
     }
   }
 }

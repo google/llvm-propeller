@@ -129,7 +129,8 @@ namespace MCID {
 /// not use these directly.  These all correspond to bitfields in the
 /// MCInstrDesc::Flags field.
 enum Flag {
-  Variadic = 0,
+  PreISelOpcode = 0,
+  Variadic,
   HasOptionalDef,
   Pseudo,
   Return,
@@ -242,6 +243,10 @@ public:
   /// Return flags of this instruction.
   uint64_t getFlags() const { return Flags; }
 
+  /// \returns true if this instruction is emitted before instruction selection
+  /// and should be legalized/regbankselected/selected.
+  bool isPreISelOpcode() const { return Flags & (1ULL << MCID::PreISelOpcode); }
+
   /// Return true if this instruction can have a variable number of
   /// operands.  In this case, the variable operands will be after the normal
   /// operands but before the implicit definitions and uses (if any are
@@ -299,7 +304,7 @@ public:
   /// block.  The TargetInstrInfo::AnalyzeBranch method can be used to get more
   /// information about this branch.
   bool isConditionalBranch() const {
-    return isBranch() & !isBarrier() & !isIndirectBranch();
+    return isBranch() && !isBarrier() && !isIndirectBranch();
   }
 
   /// Return true if this is a branch which always
@@ -307,7 +312,7 @@ public:
   /// TargetInstrInfo::AnalyzeBranch method can be used to get more information
   /// about this branch.
   bool isUnconditionalBranch() const {
-    return isBranch() & isBarrier() & !isIndirectBranch();
+    return isBranch() && isBarrier() && !isIndirectBranch();
   }
 
   /// Return true if this is a branch or an instruction which directly

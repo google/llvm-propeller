@@ -54,6 +54,7 @@
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/ValueHandle.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -2530,7 +2531,7 @@ bool RewriteStatepointsForGC::runOnFunction(Function &F, DominatorTree &DT,
   // statepoints surviving this pass.  This makes testing easier and the
   // resulting IR less confusing to human readers.
   DomTreeUpdater DTU(DT, DomTreeUpdater::UpdateStrategy::Lazy);
-  bool MadeChange = removeUnreachableBlocks(F, nullptr, &DTU);
+  bool MadeChange = removeUnreachableBlocks(F, &DTU);
   // Flush the Dominator Tree.
   DTU.getDomTree();
 

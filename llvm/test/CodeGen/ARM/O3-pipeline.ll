@@ -22,6 +22,7 @@
 ; CHECK-NEXT:      Expand memcmp() to load/stores
 ; CHECK-NEXT:      Lower Garbage Collection Instructions
 ; CHECK-NEXT:      Shadow Stack GC Lowering
+; CHECK-NEXT:      Lower constant intrinsics
 ; CHECK-NEXT:      Remove unreachable blocks from the CFG
 ; CHECK-NEXT:      Dominator Tree Construction
 ; CHECK-NEXT:      Natural Loop Information
@@ -51,6 +52,9 @@
 ; CHECK-NEXT:      Dominator Tree Construction
 ; CHECK-NEXT:      Natural Loop Information
 ; CHECK-NEXT:      Scalar Evolution Analysis
+; CHECK-NEXT:      Lazy Branch Probability Analysis
+; CHECK-NEXT:      Lazy Block Frequency Analysis
+; CHECK-NEXT:      Optimization Remark Emitter
 ; CHECK-NEXT:      Hardware Loop Insertion
 ; CHECK-NEXT:      Scalar Evolution Analysis
 ; CHECK-NEXT:      Loop Pass Manager
@@ -74,6 +78,7 @@
 ; CHECK-NEXT:      MachineDominator Tree Construction
 ; CHECK-NEXT:      Machine Natural Loop Construction
 ; CHECK-NEXT:      Early Machine Loop Invariant Code Motion
+; CHECK-NEXT:      MachineDominator Tree Construction
 ; CHECK-NEXT:      Machine Block Frequency Analysis
 ; CHECK-NEXT:      Machine Common Subexpression Elimination
 ; CHECK-NEXT:      MachinePostDominator Tree Construction
@@ -112,6 +117,7 @@
 ; CHECK-NEXT:      Machine Loop Invariant Code Motion
 ; CHECK-NEXT:      PostRA Machine Sink
 ; CHECK-NEXT:      Machine Block Frequency Analysis
+; CHECK-NEXT:      MachineDominator Tree Construction
 ; CHECK-NEXT:      MachinePostDominator Tree Construction
 ; CHECK-NEXT:      Lazy Machine Block Frequency Analysis
 ; CHECK-NEXT:      Machine Optimization Remark Emitter
@@ -135,6 +141,7 @@
 ; CHECK-NEXT:      Thumb IT blocks insertion pass
 ; CHECK-NEXT:      MachineDominator Tree Construction
 ; CHECK-NEXT:      Machine Natural Loop Construction
+; CHECK-NEXT:      PostRA Machine Instruction Scheduler
 ; CHECK-NEXT:      Post RA top-down list latency scheduler
 ; CHECK-NEXT:      Analyze Machine Code For Garbage Collection
 ; CHECK-NEXT:      Machine Block Frequency Analysis

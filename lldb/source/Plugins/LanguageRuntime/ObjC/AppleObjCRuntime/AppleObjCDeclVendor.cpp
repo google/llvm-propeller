@@ -330,7 +330,8 @@ public:
 
     const bool isInstance = instance;
     const bool isVariadic = false;
-    const bool isSynthesized = false;
+    const bool isPropertyAccessor = false;
+    const bool isSynthesizedAccessorStub = false;
     const bool isImplicitlyDeclared = true;
     const bool isDefined = false;
     const clang::ObjCMethodDecl::ImplementationControl impControl =
@@ -377,8 +378,8 @@ public:
     clang::ObjCMethodDecl *ret = clang::ObjCMethodDecl::Create(
         ast_ctx, clang::SourceLocation(), clang::SourceLocation(), sel,
         ret_type, nullptr, interface_decl, isInstance, isVariadic,
-        isSynthesized, isImplicitlyDeclared, isDefined, impControl,
-        HasRelatedResultType);
+        isPropertyAccessor, isSynthesizedAccessorStub, isImplicitlyDeclared,
+        isDefined, impControl, HasRelatedResultType);
 
     std::vector<clang::ParmVarDecl *> parm_vars;
 
@@ -657,8 +658,7 @@ AppleObjCDeclVendor::FindDecls(ConstString name, bool append,
 
 clang::ExternalASTMerger::ImporterSource
 AppleObjCDeclVendor::GetImporterSource() {
-        return {*m_ast_ctx.getASTContext(),
-                *m_ast_ctx.getFileManager(),
-                m_ast_ctx.GetOriginMap()
-        };
+  return clang::ExternalASTMerger::ImporterSource(*m_ast_ctx.getASTContext(),
+                                                  *m_ast_ctx.getFileManager(),
+                                                  m_ast_ctx.GetOriginMap());
 }

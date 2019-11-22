@@ -120,8 +120,8 @@ Thumb2InstrInfo::isLegalToSplitMBBAt(MachineBasicBlock &MBB,
 
 void Thumb2InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                   MachineBasicBlock::iterator I,
-                                  const DebugLoc &DL, unsigned DestReg,
-                                  unsigned SrcReg, bool KillSrc) const {
+                                  const DebugLoc &DL, MCRegister DestReg,
+                                  MCRegister SrcReg, bool KillSrc) const {
   // Handle SPR, DPR, and QPR copies.
   if (!ARM::GPRRegClass.contains(DestReg, SrcReg))
     return ARMBaseInstrInfo::copyPhysReg(MBB, I, DL, DestReg, SrcReg, KillSrc);
@@ -161,7 +161,7 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     // otherwise).
     if (Register::isVirtualRegister(SrcReg)) {
       MachineRegisterInfo *MRI = &MF.getRegInfo();
-      MRI->constrainRegClass(SrcReg, &ARM::GPRPair_with_gsub_1_in_GPRwithAPSRnospRegClass);
+      MRI->constrainRegClass(SrcReg, &ARM::GPRPairnospRegClass);
     }
 
     MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::t2STRDi8));
@@ -202,8 +202,7 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     // otherwise).
     if (Register::isVirtualRegister(DestReg)) {
       MachineRegisterInfo *MRI = &MF.getRegInfo();
-      MRI->constrainRegClass(DestReg,
-                             &ARM::GPRPair_with_gsub_1_in_GPRwithAPSRnospRegClass);
+      MRI->constrainRegClass(DestReg, &ARM::GPRPairnospRegClass);
     }
 
     MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::t2LDRDi8));
@@ -376,6 +375,8 @@ negativeOffsetOpcode(unsigned opcode)
   case ARM::t2STRBi12:  return ARM::t2STRBi8;
   case ARM::t2STRHi12:  return ARM::t2STRHi8;
   case ARM::t2PLDi12:   return ARM::t2PLDi8;
+  case ARM::t2PLDWi12:  return ARM::t2PLDWi8;
+  case ARM::t2PLIi12:   return ARM::t2PLIi8;
 
   case ARM::t2LDRi8:
   case ARM::t2LDRHi8:
@@ -386,13 +387,13 @@ negativeOffsetOpcode(unsigned opcode)
   case ARM::t2STRBi8:
   case ARM::t2STRHi8:
   case ARM::t2PLDi8:
+  case ARM::t2PLDWi8:
+  case ARM::t2PLIi8:
     return opcode;
 
   default:
-    break;
+    llvm_unreachable("unknown thumb2 opcode.");
   }
-
-  return 0;
 }
 
 static unsigned
@@ -408,6 +409,8 @@ positiveOffsetOpcode(unsigned opcode)
   case ARM::t2STRBi8:  return ARM::t2STRBi12;
   case ARM::t2STRHi8:  return ARM::t2STRHi12;
   case ARM::t2PLDi8:   return ARM::t2PLDi12;
+  case ARM::t2PLDWi8:  return ARM::t2PLDWi12;
+  case ARM::t2PLIi8:   return ARM::t2PLIi12;
 
   case ARM::t2LDRi12:
   case ARM::t2LDRHi12:
@@ -418,13 +421,13 @@ positiveOffsetOpcode(unsigned opcode)
   case ARM::t2STRBi12:
   case ARM::t2STRHi12:
   case ARM::t2PLDi12:
+  case ARM::t2PLDWi12:
+  case ARM::t2PLIi12:
     return opcode;
 
   default:
-    break;
+    llvm_unreachable("unknown thumb2 opcode.");
   }
-
-  return 0;
 }
 
 static unsigned
@@ -440,6 +443,8 @@ immediateOffsetOpcode(unsigned opcode)
   case ARM::t2STRBs:  return ARM::t2STRBi12;
   case ARM::t2STRHs:  return ARM::t2STRHi12;
   case ARM::t2PLDs:   return ARM::t2PLDi12;
+  case ARM::t2PLDWs:  return ARM::t2PLDWi12;
+  case ARM::t2PLIs:   return ARM::t2PLIi12;
 
   case ARM::t2LDRi12:
   case ARM::t2LDRHi12:
@@ -450,6 +455,8 @@ immediateOffsetOpcode(unsigned opcode)
   case ARM::t2STRBi12:
   case ARM::t2STRHi12:
   case ARM::t2PLDi12:
+  case ARM::t2PLDWi12:
+  case ARM::t2PLIi12:
   case ARM::t2LDRi8:
   case ARM::t2LDRHi8:
   case ARM::t2LDRBi8:
@@ -459,13 +466,13 @@ immediateOffsetOpcode(unsigned opcode)
   case ARM::t2STRBi8:
   case ARM::t2STRHi8:
   case ARM::t2PLDi8:
+  case ARM::t2PLDWi8:
+  case ARM::t2PLIi8:
     return opcode;
 
   default:
-    break;
+    llvm_unreachable("unknown thumb2 opcode.");
   }
-
-  return 0;
 }
 
 bool llvm::rewriteT2FrameIndex(MachineInstr &MI, unsigned FrameRegIdx,

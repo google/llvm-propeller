@@ -179,7 +179,7 @@ private:
   DenseMap<Edge, BranchProbability> Probs;
 
   /// Track the last function we run over for printing.
-  const Function *LastF;
+  const Function *LastF = nullptr;
 
   /// Track the set of blocks directly succeeded by a returning block.
   SmallPtrSet<const BasicBlock *, 16> PostDominatedByUnreachable;
@@ -233,10 +233,7 @@ class BranchProbabilityInfoWrapperPass : public FunctionPass {
 public:
   static char ID;
 
-  BranchProbabilityInfoWrapperPass() : FunctionPass(ID) {
-    initializeBranchProbabilityInfoWrapperPassPass(
-        *PassRegistry::getPassRegistry());
-  }
+  BranchProbabilityInfoWrapperPass();
 
   BranchProbabilityInfo &getBPI() { return BPI; }
   const BranchProbabilityInfo &getBPI() const { return BPI; }

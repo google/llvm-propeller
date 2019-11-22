@@ -27,17 +27,31 @@
 using namespace llvm;
 using namespace MIPatternMatch;
 
+#define AARCH64PRELEGALIZERCOMBINERHELPER_GENCOMBINERHELPER_DEPS
+#include "AArch64GenGICombiner.inc"
+#undef AARCH64PRELEGALIZERCOMBINERHELPER_GENCOMBINERHELPER_DEPS
+
 namespace {
+#define AARCH64PRELEGALIZERCOMBINERHELPER_GENCOMBINERHELPER_H
+#include "AArch64GenGICombiner.inc"
+#undef AARCH64PRELEGALIZERCOMBINERHELPER_GENCOMBINERHELPER_H
+
 class AArch64PreLegalizerCombinerInfo : public CombinerInfo {
   GISelKnownBits *KB;
   MachineDominatorTree *MDT;
 
 public:
+  AArch64GenPreLegalizerCombinerHelper Generated;
+
   AArch64PreLegalizerCombinerInfo(bool EnableOpt, bool OptSize, bool MinSize,
                                   GISelKnownBits *KB, MachineDominatorTree *MDT)
       : CombinerInfo(/*AllowIllegalOps*/ true, /*ShouldLegalizeIllegal*/ false,
                      /*LegalizerInfo*/ nullptr, EnableOpt, OptSize, MinSize),
-        KB(KB), MDT(MDT) {}
+        KB(KB), MDT(MDT) {
+    if (!Generated.parseCommandLineOption())
+      report_fatal_error("Invalid rule identifier");
+  }
+
   virtual bool combine(GISelChangeObserver &Observer, MachineInstr &MI,
                        MachineIRBuilder &B) const override;
 };
@@ -48,12 +62,10 @@ bool AArch64PreLegalizerCombinerInfo::combine(GISelChangeObserver &Observer,
   CombinerHelper Helper(Observer, B, KB, MDT);
 
   switch (MI.getOpcode()) {
-  default:
-    return false;
-  case TargetOpcode::COPY:
-    return Helper.tryCombineCopy(MI);
-  case TargetOpcode::G_BR:
-    return Helper.tryCombineBr(MI);
+  case TargetOpcode::G_CONCAT_VECTORS:
+    return Helper.tryCombineConcatVectors(MI);
+  case TargetOpcode::G_SHUFFLE_VECTOR:
+    return Helper.tryCombineShuffleVector(MI);
   case TargetOpcode::G_LOAD:
   case TargetOpcode::G_SEXTLOAD:
   case TargetOpcode::G_ZEXTLOAD: {
@@ -73,7 +85,7 @@ bool AArch64PreLegalizerCombinerInfo::combine(GISelChangeObserver &Observer,
       // heuristics decide.
       unsigned MaxLen = EnableOpt ? 0 : 32;
       // Try to inline memcpy type calls if optimizations are enabled.
-      return (!EnableOptSize) ? Helper.tryCombineMemCpyFamily(MI, MaxLen)
+      return (!EnableMinSize) ? Helper.tryCombineMemCpyFamily(MI, MaxLen)
                               : false;
     }
     default:
@@ -81,8 +93,15 @@ bool AArch64PreLegalizerCombinerInfo::combine(GISelChangeObserver &Observer,
     }
   }
 
+  if (Generated.tryCombineAll(Observer, MI, B))
+    return true;
+
   return false;
 }
+
+#define AARCH64PRELEGALIZERCOMBINERHELPER_GENCOMBINERHELPER_CPP
+#include "AArch64GenGICombiner.inc"
+#undef AARCH64PRELEGALIZERCOMBINERHELPER_GENCOMBINERHELPER_CPP
 
 // Pass boilerplate
 // ================
@@ -101,7 +120,7 @@ public:
 private:
   bool IsOptNone;
 };
-}
+} // end anonymous namespace
 
 void AArch64PreLegalizerCombiner::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetPassConfig>();

@@ -1330,6 +1330,7 @@ public:
   void Profile(FoldingSetNodeID &ID) const;
 
   Init *getOperator() const { return Val; }
+  Record *getOperatorAsDef(ArrayRef<SMLoc> Loc) const;
 
   StringInit *getName() const { return ValName; }
 
@@ -1661,6 +1662,12 @@ public:
   /// value as a Record, throwing an exception if the field does not exist or if
   /// the value is not the right type.
   Record *getValueAsDef(StringRef FieldName) const;
+
+  /// This method looks up the specified field and returns its value as a
+  /// Record, returning null if the field exists but is "uninitialized"
+  /// (i.e. set to `?`), and throwing an exception if the field does not
+  /// exist or if its value is not the right type.
+  Record *getValueAsOptionalDef(StringRef FieldName) const;
 
   /// This method looks up the specified field and returns its
   /// value as a bit, throwing an exception if the field does not exist or if

@@ -499,23 +499,18 @@ class _LIBCPP_TEMPLATE_VIS tuple
     template <class _Dummy>
     struct _CheckArgsConstructor<true, _Dummy>
     {
-        template <class ..._Args>
-        struct __enable_implicit_default
-            // In C++03, there's no way to implement the resolution of LWG2510.
-#ifdef _LIBCPP_CXX03_LANG
-            : true_type
-#else
-            : __all<__is_implicitly_default_constructible<_Args>::value...>
-#endif
-        { };
+        template <int&...>
+        static constexpr bool __enable_implicit_default() {
+           return __all<__is_implicitly_default_constructible<_Tp>::value... >::value;
+        }
 
-        template <class ..._Args>
-        struct __enable_explicit_default
-            : integral_constant<bool,
-                __all<is_default_constructible<_Args>::value...>::value &&
-                !__enable_implicit_default<_Args...>::value
-            >
-        { };
+        template <int&...>
+        static constexpr bool __enable_explicit_default() {
+            return
+                __all<is_default_constructible<_Tp>::value...>::value &&
+                !__enable_implicit_default< >();
+        }
+
 
         template <class ..._Args>
         static constexpr bool __enable_explicit() {
@@ -655,14 +650,14 @@ class _LIBCPP_TEMPLATE_VIS tuple
 public:
 
     template <bool _Dummy = true, _EnableIf<
-        _CheckArgsConstructor<_Dummy>::template __enable_implicit_default<_Tp...>::value
+        _CheckArgsConstructor<_Dummy>::__enable_implicit_default()
     , void*> = nullptr>
     _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR
     tuple()
         _NOEXCEPT_(__all<is_nothrow_default_constructible<_Tp>::value...>::value) {}
 
     template <bool _Dummy = true, _EnableIf<
-        _CheckArgsConstructor<_Dummy>::template __enable_explicit_default<_Tp...>::value
+        _CheckArgsConstructor<_Dummy>::__enable_explicit_default()
     , void*> = nullptr>
     explicit _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR
     tuple()
@@ -671,11 +666,8 @@ public:
     tuple(tuple const&) = default;
     tuple(tuple&&) = default;
 
-    template <class _AllocArgT, class _Alloc, bool _Dummy = true, _EnableIf<
-        _And<
-            _IsSame<allocator_arg_t, _AllocArgT>,
-            typename _CheckArgsConstructor<_Dummy>::template __enable_implicit_default<_Tp...>
-       >::value
+    template <class _AllocArgT, class _Alloc, _EnableIf<
+             _CheckArgsConstructor<_IsSame<allocator_arg_t, _AllocArgT>::value >::__enable_implicit_default()
       , void*> = nullptr
     >
     _LIBCPP_INLINE_VISIBILITY
@@ -685,11 +677,8 @@ public:
                     typename __make_tuple_indices<sizeof...(_Tp), 0>::type(),
                     __tuple_types<_Tp...>()) {}
 
-    template <class _AllocArgT, class _Alloc, bool _Dummy = true, _EnableIf<
-        _And<
-            _IsSame<allocator_arg_t, _AllocArgT>,
-            typename _CheckArgsConstructor<_Dummy>::template __enable_explicit_default<_Tp...>
-       >::value
+    template <class _AllocArgT, class _Alloc, _EnableIf<
+             _CheckArgsConstructor<_IsSame<allocator_arg_t, _AllocArgT>::value>::__enable_explicit_default()
       , void*> = nullptr
     >
     explicit _LIBCPP_INLINE_VISIBILITY
@@ -1360,8 +1349,9 @@ struct __tuple_cat<tuple<_Types...>, __tuple_indices<_I0...>, __tuple_indices<_J
     typename __tuple_cat_return_ref<tuple<_Types...>&&, _Tuple0&&>::type
     operator()(tuple<_Types...> __t, _Tuple0&& __t0)
     {
-        return forward_as_tuple(_VSTD::forward<_Types>(_VSTD::get<_I0>(__t))...,
-                                      _VSTD::get<_J0>(_VSTD::forward<_Tuple0>(__t0))...);
+        return _VSTD::forward_as_tuple(
+            _VSTD::forward<_Types>(_VSTD::get<_I0>(__t))...,
+            _VSTD::get<_J0>(_VSTD::forward<_Tuple0>(__t0))...);
     }
 
     template <class _Tuple0, class _Tuple1, class ..._Tuples>
@@ -1372,15 +1362,16 @@ struct __tuple_cat<tuple<_Types...>, __tuple_indices<_I0...>, __tuple_indices<_J
         typedef _LIBCPP_NODEBUG_TYPE typename remove_reference<_Tuple0>::type _T0;
         typedef _LIBCPP_NODEBUG_TYPE typename remove_reference<_Tuple1>::type _T1;
         return __tuple_cat<
-           tuple<_Types..., typename __apply_cv<_Tuple0, typename tuple_element<_J0, _T0>::type>::type&&...>,
-           typename __make_tuple_indices<sizeof ...(_Types) + tuple_size<_T0>::value>::type,
-           typename __make_tuple_indices<tuple_size<_T1>::value>::type>()
-                           (forward_as_tuple(
-                              _VSTD::forward<_Types>(_VSTD::get<_I0>(__t))...,
-                              _VSTD::get<_J0>(_VSTD::forward<_Tuple0>(__t0))...
-                            ),
-                            _VSTD::forward<_Tuple1>(__t1),
-                            _VSTD::forward<_Tuples>(__tpls)...);
+            tuple<_Types...,
+                  typename __apply_cv<_Tuple0, typename tuple_element<
+                                                   _J0, _T0>::type>::type&&...>,
+            typename __make_tuple_indices<sizeof...(_Types) +
+                                          tuple_size<_T0>::value>::type,
+            typename __make_tuple_indices<tuple_size<_T1>::value>::type>()(
+            _VSTD::forward_as_tuple(
+                _VSTD::forward<_Types>(_VSTD::get<_I0>(__t))...,
+                _VSTD::get<_J0>(_VSTD::forward<_Tuple0>(__t0))...),
+            _VSTD::forward<_Tuple1>(__t1), _VSTD::forward<_Tuples>(__tpls)...);
     }
 };
 

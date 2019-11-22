@@ -157,6 +157,32 @@ public:
     return tryFoldImplicitDef(MI, DeadInsts);
   }
 
+  bool tryCombineTrunc(MachineInstr &MI,
+                       SmallVectorImpl<MachineInstr *> &DeadInsts) {
+    assert(MI.getOpcode() == TargetOpcode::G_TRUNC);
+
+    Builder.setInstr(MI);
+    Register DstReg = MI.getOperand(0).getReg();
+    Register SrcReg = lookThroughCopyInstrs(MI.getOperand(1).getReg());
+
+    // Try to fold trunc(g_constant) when the smaller constant type is legal.
+    // Can't use MIPattern because we don't have a specific constant in mind.
+    auto *SrcMI = MRI.getVRegDef(SrcReg);
+    if (SrcMI->getOpcode() == TargetOpcode::G_CONSTANT) {
+      const LLT &DstTy = MRI.getType(DstReg);
+      if (isInstLegal({TargetOpcode::G_CONSTANT, {DstTy}})) {
+        auto &CstVal = SrcMI->getOperand(1);
+        Builder.buildConstant(
+            DstReg, CstVal.getCImm()->getValue().trunc(DstTy.getSizeInBits()));
+        markInstAndDefDead(MI, *SrcMI, DeadInsts);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+
   /// Try to fold G_[ASZ]EXT (G_IMPLICIT_DEF).
   bool tryFoldImplicitDef(MachineInstr &MI,
                           SmallVectorImpl<MachineInstr *> &DeadInsts) {
@@ -191,33 +217,55 @@ public:
     return false;
   }
 
-  static unsigned canFoldMergeOpcode(unsigned MergeOp, unsigned ConvertOp,
-                                     LLT OpTy, LLT DestTy) {
-    if (OpTy.isVector() && DestTy.isVector())
-      return MergeOp == TargetOpcode::G_CONCAT_VECTORS;
-
-    if (OpTy.isVector() && !DestTy.isVector()) {
-      if (MergeOp == TargetOpcode::G_BUILD_VECTOR)
-        return true;
-
-      if (MergeOp == TargetOpcode::G_CONCAT_VECTORS) {
-        if (ConvertOp == 0)
-          return true;
-
-        const unsigned OpEltSize = OpTy.getElementType().getSizeInBits();
-
-        // Don't handle scalarization with a cast that isn't in the same
-        // direction as the vector cast. This could be handled, but it would
-        // require more intermediate unmerges.
-        if (ConvertOp == TargetOpcode::G_TRUNC)
-          return DestTy.getSizeInBits() <= OpEltSize;
-        return DestTy.getSizeInBits() >= OpEltSize;
-      }
-
+  static bool canFoldMergeOpcode(unsigned MergeOp, unsigned ConvertOp,
+                                 LLT OpTy, LLT DestTy) {
+    // Check if we found a definition that is like G_MERGE_VALUES.
+    switch (MergeOp) {
+    default:
       return false;
-    }
+    case TargetOpcode::G_BUILD_VECTOR:
+    case TargetOpcode::G_MERGE_VALUES:
+      // The convert operation that we will need to insert is
+      // going to convert the input of that type of instruction (scalar)
+      // to the destination type (DestTy).
+      // The conversion needs to stay in the same domain (scalar to scalar
+      // and vector to vector), so if we were to allow to fold the merge
+      // we would need to insert some bitcasts.
+      // E.g.,
+      // <2 x s16> = build_vector s16, s16
+      // <2 x s32> = zext <2 x s16>
+      // <2 x s16>, <2 x s16> = unmerge <2 x s32>
+      //
+      // As is the folding would produce:
+      // <2 x s16> = zext s16  <-- scalar to vector
+      // <2 x s16> = zext s16  <-- scalar to vector
+      // Which is invalid.
+      // Instead we would want to generate:
+      // s32 = zext s16
+      // <2 x s16> = bitcast s32
+      // s32 = zext s16
+      // <2 x s16> = bitcast s32
+      //
+      // That is not done yet.
+      if (ConvertOp == 0)
+        return true;
+      return !DestTy.isVector();
+    case TargetOpcode::G_CONCAT_VECTORS: {
+      if (ConvertOp == 0)
+        return true;
+      if (!DestTy.isVector())
+        return false;
 
-    return MergeOp == TargetOpcode::G_MERGE_VALUES;
+      const unsigned OpEltSize = OpTy.getElementType().getSizeInBits();
+
+      // Don't handle scalarization with a cast that isn't in the same
+      // direction as the vector cast. This could be handled, but it would
+      // require more intermediate unmerges.
+      if (ConvertOp == TargetOpcode::G_TRUNC)
+        return DestTy.getSizeInBits() <= OpEltSize;
+      return DestTy.getSizeInBits() >= OpEltSize;
+    }
+    }
   }
 
   bool tryCombineMerges(MachineInstr &MI,
@@ -309,6 +357,10 @@ public:
 
     } else {
       LLT MergeSrcTy = MRI.getType(MergeI->getOperand(1).getReg());
+
+      if (!ConvertOp && DestTy != MergeSrcTy)
+        ConvertOp = TargetOpcode::G_BITCAST;
+
       if (ConvertOp) {
         Builder.setInstr(MI);
 
@@ -321,10 +373,10 @@ public:
         markInstAndDefDead(MI, *MergeI, DeadInsts);
         return true;
       }
-      // FIXME: is a COPY appropriate if the types mismatch? We know both
-      // registers are allocatable by now.
-      if (DestTy != MergeSrcTy)
-        return false;
+
+      assert(DestTy == MergeSrcTy &&
+             "Bitcast and the other kinds of conversions should "
+             "have happened earlier");
 
       for (unsigned Idx = 0; Idx < NumDefs; ++Idx)
         MRI.replaceRegWith(MI.getOperand(Idx).getReg(),
@@ -420,6 +472,9 @@ public:
     case TargetOpcode::G_EXTRACT:
       return tryCombineExtract(MI, DeadInsts);
     case TargetOpcode::G_TRUNC: {
+      if (tryCombineTrunc(MI, DeadInsts))
+        return true;
+
       bool Changed = false;
       for (auto &Use : MRI.use_instructions(MI.getOperand(0).getReg()))
         Changed |= tryCombineInstruction(Use, DeadInsts, WrapperObserver);
