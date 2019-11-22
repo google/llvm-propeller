@@ -387,14 +387,13 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
   else {
     SmallVector<RangeSpan, 2> BB_List;
-    BB_List.push_back(
-        RangeSpan(Asm->getFunctionBegin(), Asm->getFunctionEnd()));
+    BB_List.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
     // If basic block sections are on, only the entry BB and exception
     // handling BBs will be in the [getFunctionBegin(), getFunctionEnd()]
     // range. Ranges for the other BBs have to be emitted separately.
     for (auto &MBB : *Asm->MF) {
       if (!MBB.pred_empty() && MBB.isUniqueSection()) {
-        BB_List.push_back(RangeSpan(MBB.getSymbol(), MBB.getEndMCSymbol()));
+        BB_List.push_back({MBB.getSymbol(), MBB.getEndMCSymbol()});
       }
     }
     attachRangesOrLowHighPC(*SPDie, BB_List);
@@ -538,7 +537,7 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
         Asm->MF->getBasicBlockSections() == llvm::BasicBlockSection::None) {
       // Without basic block sections, there is just one continuous range.
       // The same holds if EndBB is in the initial non-unique-section BB range.
-      List.push_back(RangeSpan(BeginLabel, EndLabel));
+      List.push_back({BeginLabel, EndLabel});
       continue;
     }
 
@@ -549,11 +548,11 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
       // symbol.
       assert(BeginMBB->getEndMCSymbol() &&
              "Unique BB sections should have end symbols.");
-      List.push_back(RangeSpan(BeginLabel, BeginMBB->getEndMCSymbol()));
+      List.push_back({BeginLabel, BeginMBB->getEndMCSymbol()});
     } else {
       // BeginLabel lies in a non-unique section, but EndLabel does not. The
       // section for non-unique-section BBs ends at Asm->getFunctionEnd().
-      List.push_back(RangeSpan(BeginLabel, Asm->getFunctionEnd()));
+      List.push_back({BeginLabel, Asm->getFunctionEnd()});
       while (!LastMBBInSection->getNextNode()->isUniqueSection())
         LastMBBInSection = LastMBBInSection->getNextNode();
     }
@@ -565,11 +564,11 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
       assert(MBB->getSymbol() && "Unique BB sections should have symbols.");
       assert(MBB->getEndMCSymbol() &&
              "Unique BB sections should have end symbols.");
-      List.push_back(RangeSpan(MBB->getSymbol(), MBB->getEndMCSymbol()));
+      List.push_back({MBB->getSymbol(), MBB->getEndMCSymbol()});
     }
 
     assert(EndBB->getSymbol() && "Unique BB sections should have symbols.");
-    List.push_back(RangeSpan(EndBB->getSymbol(), EndLabel));
+    List.push_back({EndBB->getSymbol(), EndLabel});
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }

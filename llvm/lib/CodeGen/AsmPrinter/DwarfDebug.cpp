@@ -1850,7 +1850,7 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   if (MF->getBasicBlockSections()) {
     for (auto &MBB : *MF) {
       if (MBB.isUniqueSection() && !MBB.pred_empty()) {
-        TheCU.addRange(RangeSpan(MBB.getSymbol(), MBB.getEndMCSymbol()));
+        TheCU.addRange({MBB.getSymbol(), MBB.getEndMCSymbol()});
       }
     }
   }
@@ -2489,8 +2489,8 @@ void DwarfDebug::emitDebugLocDWO() {
         // With basic block sections, symbol difference cannot be emitted as
         // the can span sections.
         Asm->emitInt8(dwarf::DW_LLE_startx_endx);
-        Asm->EmitULEB128(AddrPool.getIndex(Entry.BeginSym));
-        Asm->EmitULEB128(AddrPool.getIndex(Entry.EndSym));
+        Asm->EmitULEB128(AddrPool.getIndex(Entry.Begin));
+        Asm->EmitULEB128(AddrPool.getIndex(Entry.End));
       } else {
         Asm->emitInt8(dwarf::DW_LLE_startx_length);
         unsigned idx = AddrPool.getIndex(Entry.Begin);
