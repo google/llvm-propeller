@@ -9,11 +9,9 @@
 // This file creates cfg and maps propeller profile onto cfg nodes / edges.
 //
 //===----------------------------------------------------------------------===//
-#include "PropellerCfg.h"
+#include "PropellerCFG.h"
 
 #include "Propeller.h"
-#include "SymbolTable.h"
-#include "Symbols.h"
 
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/raw_ostream.h"
@@ -241,9 +239,8 @@ bool CFGBuilder::buildCFGs() {
     StringRef fName;
     if (SymbolEntry::isBBSymbol(sName, &fName, nullptr)) {
       auto L = groups.find(fName);
-      if (L != groups.end()) {
+      if (L != groups.end())
         L->second.push_back(sym);
-      }
     }
   }
 
@@ -269,7 +266,7 @@ bool CFGBuilder::buildCFGs() {
         // Drop bb sections with no code
         if (!symSize)
           continue;
-        auto *sE = Prop->Propf->findSymbol(symName);
+        auto *sE = prop->Propf->findSymbol(symName);
         if (sE) {
           if (tmpNodeMap.find(sE->Ordinal) != tmpNodeMap.end()) {
             error("Internal error checking cfg map.");
@@ -475,19 +472,6 @@ void CFGBuilder::calculateFallthroughEdges(
   for (auto p = tmpNodeMap.begin(), q = std::next(p), e = tmpNodeMap.end();
        q != e; ++p, ++q)
     setupFallthrough(p->second.get(), q->second.get());
-}
-
-// Create an ObjectView instance that corresponds to a single ELF file.
-ObjectView *ObjectView::create(const StringRef &vN, const uint32_t ordinal,
-                               const MemoryBufferRef &fR) {
-  const char *FH = fR.getBufferStart();
-  if (fR.getBufferSize() > 6 && FH[0] == 0x7f && FH[1] == 'E' && FH[2] == 'L' &&
-      FH[3] == 'F') {
-    auto r = ObjectFile::createELFObjectFile(fR);
-    if (r)
-      return new ObjectView(*r, vN, ordinal, fR);
-  }
-  return nullptr;
 }
 
 std::ostream &operator<<(std::ostream &out, const CFGNode &node) {

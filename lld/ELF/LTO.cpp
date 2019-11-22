@@ -33,6 +33,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include <algorithm>
 #include <cstddef>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -58,18 +59,42 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef file) {
   return ret;
 }
 
-static void getBasicBlockSectionsList(MemoryBufferRef MBRef,
-                                      TargetOptions &Options) {
-  SmallVector<StringRef, 0> Arr;
-  MBRef.getBuffer().split(Arr, '\n');
-  for (StringRef S : Arr) {
-    // Function names follow a '!' character.
-    // Empty '!' implies no more functions.
-    if (S.size() == 1 && S[0] == '!')
-      break;
-    if (S.size() > 1 && S[0] == '!')
-      Options.BasicBlockSectionsList[S.str().substr(1)] = true;
+bool getBasicBlockSectionsList(TargetOptions &Options) {
+  if (config->ltoBasicBlockSections.empty())
+    return false;
+  
+  std::ifstream FList(config->ltoBasicBlockSections);
+  if (!FList.good()) {
+    errs() << "Cannot open " + config->ltoBasicBlockSections;
+    return false;
   }
+
+  bool consumeBasicBlockIds = false;
+  std::string Func;
+  SmallSet<unsigned, 4> s;
+  
+  std::string Line;
+  while ((std::getline(FList, Line)).good()) {
+    if (Line.empty()) continue;
+    if (Line[0] == '@') continue;
+    if (Line[0] != '!') break;
+    StringRef S(Line);
+    if (S.consume_front("!") && !S.empty()) {
+      if (consumeBasicBlockIds && S.consume_front("!")) {
+        Options.BasicBlockSectionsList[Func].insert(std::stoi(S));
+      } else {
+        // Start a new function.
+        Func = S.str();
+        s.clear();
+        s.insert(0);
+        Options.BasicBlockSectionsList[Func] = s;
+        consumeBasicBlockIds = true;
+      }
+    } else {
+      consumeBasicBlockIds = false;
+    }
+  }
+  return true;
 }
 
 static std::string getThinLTOOutputFile(StringRef modulePath) {
@@ -98,9 +123,7 @@ static lto::Config createConfig() {
       c.Options.BasicBlockSections = BasicBlockSection::Labels;
     else if (config->ltoBasicBlockSections.equals("none"))
       c.Options.BasicBlockSections = BasicBlockSection::None;
-    else if (Optional<MemoryBufferRef> Buffer =
-             readFile(config->ltoBasicBlockSections)) {
-      getBasicBlockSectionsList(*Buffer, c.Options);
+    else if (getBasicBlockSectionsList(c.Options)) {
       c.Options.BasicBlockSections = BasicBlockSection::List;
     }
   }

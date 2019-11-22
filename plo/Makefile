@@ -14,8 +14,16 @@ paths.mk :
 
 include paths.mk
 
+ifeq '${CREATE_LLVM_PROF_DIR}' ''
+CREATE_LLVM_PROF_DIR=$(shell pwd)/..
+endif
+
+DOIP     ?= 0
+
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-bolt.result" )
+IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plolistinterp.result benchmark-pgo-plointerp.result" )
+IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result" )
 
 check_environment: paths.mk
 	@if [[ ! -e "${RELEASE_LLVM_BIN}/clang" ]] || \
@@ -342,10 +350,10 @@ sample.propeller: sample.perfdata $(CREATE_LLVM_PROF)
 	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=sample.out --logtostderr
 
 sample_bb.o: sample.c sample.propeller stage1-compiler
-	./stage1-compiler -flto=thin -c -O2 -fpropeller-optimize=$(word 2,$^) $< -o $@
+	./stage1-compiler -c -O2 -fpropeller-optimize=$(word 2,$^) $< -o $@
 
 sample.propeller.out: sample_bb.o sample.propeller stage1-compiler
-	./stage1-compiler -o sample.out -flto=thin -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< ; \
+	./stage1-compiler -o sample.out -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< -Wl,-propeller-dump-cfg=@; \
 	mv sample.out sample.propeller.out
 
 .phony: clean clean-all clean-sample
@@ -400,7 +408,7 @@ define append_git_status
 	ln -sf $1.${GITHASH} $1
 endef
 
-check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result $(BOLT_PMU_RESULT)
+check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result $(IP_PMU_RESULTS) $(BOLT_PMU_RESULT)
 	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "itlb_misses.miss_causes_a_walk:u" ) ; \
 	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
 	printf "VERSIONS" >> $@.${REPOHASH} ; \
@@ -418,7 +426,7 @@ check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolis
 	printf "\n" >> $@.${REPOHASH} ; \
 	$(call append_git_status,$@)
 
-check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-plolistinterp.result benchmark-pgo-plointerp.result ${BOLT_RESULT}
+check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plo.result $(IP_RESULTS) $(BOLT_RESULT)
 	@echo "CHECK-PERFORMANCE" > $@.${REPOHASH} ; \
 	for version in $(wordlist 2,$(words $^),$^) ; do \
 		$(call check_against_baseline,$<,$$version) >> $@.${REPOHASH} ; \
@@ -426,7 +434,7 @@ check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result ben
 	$(call append_git_status,$@)
 
 clean-sample:
-	rm -f sample_bblabels.o sample_bball.o sample.out sample.baseline.out sample.propeller.out sample.perfdata sample.propeller
+	rm -f sample_bblabels.o sample_bball.o sample.out sample.baseline.out sample.propeller.out sample.perfdata sample.propeller sample.out.cfg.pb.txt
 
 clean: clean-sample
 	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \
@@ -443,4 +451,3 @@ clean: clean-sample
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
-

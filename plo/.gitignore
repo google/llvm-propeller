@@ -1,8 +1,11 @@
 *
 !.gitignore
 !Makefile
+!Makefile2
 !rahmanl-Makefile
 !plotool.sh
 !sample.c
 !generate-lld-*-patch.sh
 !generate-lld-patch.inc
+!generate-core-diff.sh
+

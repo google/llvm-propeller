@@ -56,7 +56,7 @@ just 20% of its memory footprint and time overhead.
 An LLVM branch with propeller patches is available in the git
 repository here: https://github.com/google/llvm-propeller/ We will
 upload patches for review for the various elements
-=======
+
 This directory and its subdirectories contain source code for LLVM,
 a toolkit for the construction of highly optimized compilers,
 optimizers, and runtime environments.

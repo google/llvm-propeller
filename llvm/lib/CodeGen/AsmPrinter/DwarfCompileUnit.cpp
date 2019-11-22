@@ -392,8 +392,8 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     // handling BBs will be in the [getFunctionBegin(), getFunctionEnd()]
     // range. Ranges for the other BBs have to be emitted separately.
     for (auto &MBB : *Asm->MF) {
-      if (!MBB.pred_empty() && MBB.isUniqueSection()) {
-        BB_List.push_back({MBB.getSymbol(), MBB.getEndMCSymbol()});
+      if (!MBB.pred_empty() && MBB.isBeginSection()) {
+        BB_List.push_back({MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
       }
     }
     attachRangesOrLowHighPC(*SPDie, BB_List);
@@ -531,16 +531,21 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     auto *EndLabel = DD->getLabelAfterInsn(R.second);
 
     const auto *BeginMBB = R.first->getParent();
-    const auto *EndBB = R.second->getParent();
+    const auto *EndMBB = R.second->getParent();
 
-    if (BeginMBB == EndBB || !EndBB->isUniqueSection() ||
+    if (BeginMBB->sameSection(EndMBB) ||
         Asm->MF->getBasicBlockSections() == llvm::BasicBlockSection::None) {
       // Without basic block sections, there is just one continuous range.
+<<<<<<< HEAD
       // The same holds if EndBB is in the initial non-unique-section BB range.
+=======
+      // The same holds if EndMBB is in the initial non-unique-section BB range.
+>>>>>>> plo-dev
       List.push_back({BeginLabel, EndLabel});
       continue;
     }
 
+<<<<<<< HEAD
     const auto *LastMBBInSection = BeginMBB;
 
     if (BeginMBB->isUniqueSection()) {
@@ -569,6 +574,23 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
 
     assert(EndBB->getSymbol() && "Unique BB sections should have symbols.");
     List.push_back({EndBB->getSymbol(), EndLabel});
+=======
+    assert (!BeginMBB->sameSection(EndMBB) &&
+            "BeginMBB and EndMBB are in the same section!");
+    const auto *MBBInSection = BeginMBB->getSectionEndMBB();
+    List.push_back({BeginLabel, MBBInSection->getEndMCSymbol()});
+    MBBInSection = MBBInSection->getNextNode();
+    while  (!MBBInSection->sameSection(EndMBB)) {
+      assert(MBBInSection->isBeginSection() &&
+             "This should start a new section.");
+      List.push_back({MBBInSection->getSymbol(),
+                      MBBInSection->getSectionEndMBB()->getEndMCSymbol()});
+      MBBInSection = MBBInSection->getSectionEndMBB()->getNextNode();
+    }
+
+    assert(MBBInSection->sameSection(EndMBB));
+    List.push_back({MBBInSection->getSymbol(), EndLabel});
+>>>>>>> plo-dev
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }

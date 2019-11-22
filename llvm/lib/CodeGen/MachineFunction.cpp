@@ -352,26 +352,76 @@ bool MachineFunction::sortBasicBlockSections() {
   DenseMap<const MachineBasicBlock *, unsigned> MBBOrder;
   unsigned MBBOrderN = 0;
 
+  SmallSet<unsigned, 4> S = Target.getBasicBlockSectionsSet(F.getName());
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
-    // used for exception table computations.
-    if (!MBB.pred_empty() && !HasEHInfo(MBB))
-      MBB.setIsUniqueSection();
+    // used for exception table computations.  Entry basic block cannot
+    // a section because the function starts one.
+    if (MBB.getNumber() == this->front().getNumber())
+      continue;
+    // Also, check if this BB is a cold basic block in which case sections
+    // are not required with the list option.
+    bool isColdBB =
+        ((Target.getBasicBlockSections() == llvm::BasicBlockSection::List) &&
+         !S.count(MBB.getNumber()));
+    bool UsesEHInfo = HasEHInfo(MBB);
+    if (UsesEHInfo) {
+      MBB.setExceptionSection();
+    } else if (isColdBB) {
+      MBB.setColdSection();
+    } else {
+      MBB.setBeginSection();
+      MBB.setEndSection();
+    }
     MBBOrder[&MBB] = MBBOrderN++;
   }
 
   // With -fbasicblock-sections, fall through blocks must be made
-  // explicitly reachable.  Do this after unique sections is set as
+  // explicitly reachable.  Do this after sections is set as
   // unnecessary fallthroughs can be avoided.
   for (auto &MBB : *this) {
     MBB.insertUnconditionalFallthroughBranch();
   }
 
+  // Order : Entry Block, Cold Section, Other Unique Sections.
+  auto SectionType = ([&](MachineBasicBlock &X) {
+    if (X.getNumber() == this->front().getNumber()
+        || X.isExceptionSection())
+      return 1;
+    else if (X.isColdSection())
+      return 2;
+    return 3;
+  });
+
   this->sort(([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    return (X.isUniqueSection() == Y.isUniqueSection())
-               ? (MBBOrder[&X] < MBBOrder[&Y])
-               : !X.isUniqueSection();
+    auto TypeX = SectionType(X);
+    auto TypeY = SectionType(Y);
+
+    return (TypeX != TypeY)
+               ? TypeX < TypeY
+               : MBBOrder[&X] < MBBOrder[&Y];
   }));
+
+  // Set begin and end sections for cold basic blocks.  With this more sections
+  // can be added if needed.
+  MachineBasicBlock *PrevMBB = nullptr;
+  for (auto &MBB : *this) {
+    // Entry block
+    if (MBB.getNumber() == this->front().getNumber()) {
+      PrevMBB = &MBB;
+      continue;
+    }
+    assert(PrevMBB != nullptr &&
+           "First block was not a regular block!");
+    int TypeP = SectionType(*PrevMBB);
+    int TypeT = SectionType(MBB);
+    if (TypeP != TypeT) {
+      PrevMBB->setEndSection();
+      MBB.setBeginSection();
+    }
+    PrevMBB = &MBB;
+  }
+  PrevMBB->setEndSection();
 
   this->BBSectionsSorted = true;
   return true;

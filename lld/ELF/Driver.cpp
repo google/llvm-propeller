@@ -27,10 +27,10 @@
 #include "ICF.h"
 #include "InputFiles.h"
 #include "InputSection.h"
+#include "LinkerPropeller.h"
 #include "LinkerScript.h"
 #include "MarkLive.h"
 #include "OutputSections.h"
-#include "Propeller.h"
 #include "ScriptParser.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
@@ -816,24 +816,6 @@ static std::vector<StringRef> getSymbolOrderingFile(MemoryBufferRef mb) {
   return names.takeVector();
 }
 
-// Parse the symbol alignment file and warn for any duplicate entries.
-static StringMap<unsigned> getSymbolAlignmentFile(MemoryBufferRef mb) {
-  StringMap<unsigned> alignments;
-  for (StringRef s : args::getLines(mb)) {
-    auto entry = s.split(' ');
-    unsigned align = 0;
-    if (!to_integer(entry.second, align)) {
-      warn(mb.getBufferIdentifier() + ": invalid alignment (" + entry.second +
-           ") for symbol: " + entry.first);
-      continue;
-    }
-    if (!alignments.insert(std::make_pair(entry.first, align)).second)
-      warn(mb.getBufferIdentifier() +
-           ": duplicate alignment for symbol: " + entry.first);
-  }
-  return alignments;
-}
-
 static void parseClangOption(StringRef opt, const Twine &msg) {
   std::string err;
   raw_string_ostream os(err);
@@ -1160,15 +1142,6 @@ static void readConfigs(opt::InputArgList &args) {
       // Also need to disable CallGraphProfileSort to prevent
       // LLD order symbols with CGProfile
       config->callGraphProfileSort = false;
-    }
-  }
-
-  if (auto *arg = args.getLastArg(OPT_symbol_alignment_file)){
-    if (Optional<MemoryBufferRef> buffer = readFile(arg->getValue())){
-      config->symbolAlignmentFile = getSymbolAlignmentFile(*buffer);
-    } else {
-      error(StringRef("Failed to read symbol alignment file: ") +
-            arg->getValue());
     }
   }
 
@@ -1996,41 +1969,7 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
     for (InputSectionBase *s : f->getSections())
       inputSections.push_back(cast<InputSection>(s));
 
-  if (!config->propeller.empty()) {
-    lld::propeller::Propeller P(symtab);
-    if (P.checkTarget()) {
-      if (P.processFiles(objectFiles)) {
-        config->symbolOrderingFile = P.genSymbolOrderingFile();
-      } else {
-        error("Propeller stage failed.");
-      }
-    } else {
-      warn("[Propeller]: Propeller skipped '" + config->outputFile + "'.");
-    }
-  }
-
-  if (!config->symbolAlignmentFile.empty()) {
-    auto alignSym = [](Symbol *sym) {
-      auto it = config->symbolAlignmentFile.find(sym->getName());
-      if (it == config->symbolAlignmentFile.end())
-        return;
-      if (auto *d = dyn_cast<Defined>(sym)) {
-        if (auto *sec = dyn_cast_or_null<InputSectionBase>(d->section)) {
-          sec->alignment = it->second;
-        }
-      }
-    };
-
-    for (InputFile *file : objectFiles)
-      for (Symbol *sym : file->getSymbols())
-        if (sym->isLocal())
-          alignSym(sym);
-
-    symtab->forEachSymbol([&alignSym](Symbol *sym) {
-      if (!sym->isLazy())
-        alignSym(sym);
-    });
-  }
+  lld::propeller::doPropeller();
 
   llvm::erase_if(inputSections, [](InputSectionBase *s) {
     if (s->type == SHT_LLVM_SYMPART) {

@@ -259,7 +259,7 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
 
     // If the current MBB will be placed in a unique section, a full DefCfa
     // must be emitted.
-    const bool ForceFullCFA = MBB.isUniqueSection();
+    const bool ForceFullCFA = MBB.isBeginSection();
 
     if (PrevMBBInfo->OutgoingCFAOffset != MBBInfo.IncomingCFAOffset ||
         ForceFullCFA) {

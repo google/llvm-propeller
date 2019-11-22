@@ -1,6 +1,8 @@
 #include "PLOELFView.h"
 
+#if LLVM_ON_UNIX
 #include <unistd.h>
+#endif
 
 #include <iterator>
 #include <list>

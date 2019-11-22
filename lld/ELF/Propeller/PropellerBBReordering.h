@@ -8,7 +8,8 @@
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
-#include "PropellerCfg.h"
+#include "PropellerConfig.h"
+#include "PropellerCFG.h"
 
 #include "lld/Common/LLVM.h"
 #include "Heap.h"
@@ -20,7 +21,6 @@
 #include <unordered_set>
 #include <chrono>
 
-using lld::elf::config;
 using llvm::DenseMap;
 using llvm::DenseSet;
 
@@ -168,7 +168,7 @@ private:
   }
 
   bool isValid() {
-    return ScoreGain > 0.0001 && (config->propellerReorderIP || (!splitChain()->Nodes.front()->isEntryNode() && !unsplitChain()->Nodes.front()->isEntryNode()) || getFirstNode()->isEntryNode());
+    return ScoreGain > 0.0001 && (propellerConfig.optReorderIP || (!splitChain()->Nodes.front()->isEntryNode() && !unsplitChain()->Nodes.front()->isEntryNode()) || getFirstNode()->isEntryNode());
   }
 
   // Find the NodeChainSlice in this NodeChainAssembly which contains the given
@@ -444,12 +444,11 @@ class PropellerBBReordering {
   std::unique_ptr<ChainClustering> CC;
 
  public:
-  template <class CfgContainerTy>
-  PropellerBBReordering(CfgContainerTy &cfgContainer) {
-    cfgContainer.forEachCfgRef([this](ControlFlowGraph &cfg){
-      if(cfg.isHot()){
+  PropellerBBReordering() {
+    prop->forEachCfgRef([this](ControlFlowGraph &cfg){
+      if (cfg.isHot()){
         HotCFGs.push_back(&cfg);
-        if (config->propellerPrintStats){
+        if (propellerConfig.optPrintStats){
           unsigned hotBBs = 0;
           unsigned allBBs = 0;
           cfg.forEachNodeRef([&hotBBs, &allBBs] (CFGNode &node) {
@@ -470,16 +469,16 @@ class PropellerBBReordering {
 
       std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
-      if (config->propellerReorderIP)
+      if (propellerConfig.optReorderIP)
         CC.reset(new CallChainClustering());
-      else if (config->propellerReorderFuncs)
+      else if (propellerConfig.optReorderFuncs)
         CC.reset(new CallChainClustering());
       else
         CC.reset(new NoOrdering());
 
-      if (config->propellerReorderIP)
+      if (propellerConfig.optReorderIP)
         NodeChainBuilder(HotCFGs).doOrder(CC);
-      else if (config->propellerReorderBlocks){
+      else if (propellerConfig.optReorderBlocks){
         for(ControlFlowGraph *cfg: HotCFGs)
           NodeChainBuilder(cfg).doOrder(CC);
       } else {
@@ -500,7 +499,7 @@ class PropellerBBReordering {
       std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
       warn("[Propeller]: BB reordering took: " + Twine(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()));
 
-      if (config->propellerPrintStats)
+      if (propellerConfig.optPrintStats)
         printStats();
   }
 

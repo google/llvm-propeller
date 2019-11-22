@@ -14,7 +14,7 @@
 #include "LinkerScript.h"
 #include "MapFile.h"
 #include "OutputSections.h"
-#include "Propeller.h"
+#include "Propeller/Propeller.h"
 #include "Relocations.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
