@@ -70,10 +70,9 @@ bool getBasicBlockSectionsList(TargetOptions &Options) {
   }
 
   bool consumeBasicBlockIds = false;
-  std::string Func;
-  SmallSet<unsigned, 4> s;
-  
   std::string Line;
+  StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
+      Options.BasicBlockSectionsList.end();
   while ((std::getline(FList, Line)).good()) {
     if (Line.empty()) continue;
     if (Line[0] == '@') continue;
@@ -81,13 +80,15 @@ bool getBasicBlockSectionsList(TargetOptions &Options) {
     StringRef S(Line);
     if (S.consume_front("!") && !S.empty()) {
       if (consumeBasicBlockIds && S.consume_front("!")) {
-        Options.BasicBlockSectionsList[Func].insert(std::stoi(S));
+        assert(currentFuncI != Options.BasicBlockSectionsList.end());
+        currentFuncI->second.insert(std::stoi(S));
       } else {
         // Start a new function.
-        Func = S.str();
-        s.clear();
-        s.insert(0);
-        Options.BasicBlockSectionsList[Func] = s;
+        // S may have aliases encoded, like "foo_1/foo_1a/foo_2a", etc.
+        auto R = Options.BasicBlockSectionsList.try_emplace(S.split('/').first);
+        assert(R.second);
+        currentFuncI = R.first;
+        currentFuncI->second.insert(0);
         consumeBasicBlockIds = true;
       }
     } else {

@@ -4,6 +4,7 @@
 declare -a THE_FILES=( ELF/Driver.cpp
 		       ELF/LinkerPropeller.h
 		       ELF/LinkerPropeller.cpp
+		       ELF/Propeller/README.md
 		       ELF/Propeller/Propeller.h
 		       ELF/Propeller/Propeller.cpp
 		       ELF/Propeller/PropellerCFG.h
