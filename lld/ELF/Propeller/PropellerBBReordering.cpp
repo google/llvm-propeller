@@ -272,7 +272,7 @@ bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
   if (src->Freq == 0 ^ sink->Freq == 0)
     return false;
   NodeChain *srcChain = src->Chain;
-  NodeChain *sinkChain = sink->Chain; 
+  NodeChain *sinkChain = sink->Chain;
   // Skip this edge if the source and sink are in the same chain
   if (srcChain == sinkChain)
     return false;
@@ -776,7 +776,7 @@ void NodeChainBuilder::mergeAllChains() {
         NodeChainAssemblies.pop();
         if (bestAssembly->splitChain()->DebugChain || bestAssembly->unsplitChain()->DebugChain)
           fprintf(stderr, "MERGING for %s\n", toString(*bestAssembly.get()).c_str());
-        fprintf(stderr, "MERGING with score %.11f %lu %lu SPLIT(%d)\n", bestAssembly->ScoreGain, bestAssembly->splitChain()->Size, bestAssembly->unsplitChain()->Size, bestAssembly->split());
+        //fprintf(stderr, "MERGING with score %.11f %lu %lu SPLIT(%d)\n", bestAssembly->ScoreGain, bestAssembly->splitChain()->Size, bestAssembly->unsplitChain()->Size, bestAssembly->split());
         mergeChains(std::move(bestAssembly));
     }
   }
@@ -889,6 +889,8 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain * chain,
   DenseMap<Cluster*, uint64_t> clusterEdge;
 
   for(CFGNode * n: chain->Nodes){
+    if (!propellerConfig.optReorderIP && !n->isEntryNode())
+      continue;
     auto visit = [&clusterEdge, n, chain, cluster, this] (CFGEdge& edge){
       if (!edge.Weight)
         return;
