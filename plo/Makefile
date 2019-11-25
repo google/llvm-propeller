@@ -20,8 +20,8 @@ endif
 
 DOIP     ?= 0
 
-BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-bolt.result" )
-BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-bolt.result" )
+BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
+BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )
 IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plolistinterp.result benchmark-pgo-plointerp.result" )
 IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result" )
 
@@ -55,12 +55,13 @@ REPOHASH := ${GITHASH}.${REPOSTATUS}
 # Important targets:
 #  stage1-compiler: the compiler contains all the patches and used to do benchmark.
 #  pgo-vanilla-compiler: thinlto optimized compiler based on pgo perf data, w/o bblabels
-#  pgo-compiler: thinlto optimized compiler based on pgo perf data, w/ bblabels
+#  pgo-labels-compiler: thinlto optimized compiler based on pgo perf data, w/ bblabels
 #  cspgo-compiler: similar to above, except it's context sensitive pgo optimized binary.
 #  pgo-plo-compiler: plo on top of pgo-compiler using perf.data.
 #  pgo-plolist-compiler: similar to above, but using list.
 #  cspgo-plo-compiler: plo on top of cspgo-compiler
-#  pgo-bolt-compiler: bolt on top of pgo-compiler
+#  pgo-relocs-bolt-compiler: bolt on top of pgo-relocs-compiler
+#  pgo-labels-bolt-compiler: bolt on top of pgo-labels-compiler
 #  cspgo-bolt-compiler: bolt on top of cspgo-compiler
 #  benchmark-*-compiler: benchmarks
 #  all-compilers: build all compilers
@@ -98,28 +99,33 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plointerp pgo-plolist pgo-plolistinterp cspgo cspgo-plo pgo-bolt cspgo-bolt pgo-plo-noorder pgo-plo-align
+FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plointerp pgo-plolist pgo-plolistinterp cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-plo-align
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
 
+gen_compiler_flags  = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1)
+gen_linker_flags    = -DCMAKE_EXE_LINKER_FLAGS=$(1) -DCMAKE_SHARED_LINKER_FLAGS=$(1) -DCMAKE_MODULE_LINKER_FLAGS=$(1)
+
 # $1 are compiler flags.
 # $2 are ld flags.
-gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
-                  -DCMAKE_EXE_LINKER_FLAGS=$(2) \
-                  -DCMAKE_SHARED_LINKER_FLAGS=$(2) \
-                  -DCMAKE_MODULE_LINKER_FLAGS=$(2)
+gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(2))
 
-bb_section_none_flags      := $(call gen_build_flags,"-funique-internal-funcnames","${LLD_NO_OPT}")
+# Use "_opt" suffix to name a bare option, e.g., options that are to be wrapped by -DCMAKE_C_FLAGS="....".
+gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
-interp_flags               := -Wl,--propeller-opt=reorder-ip
-other_flags               := -Wl,--propeller-chain-split-threshold=1024 -Wl,-propeller-print-stats
-bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label","-fuse-ld=lld $(relocation_gen_opt)")
-lto_bb_sections_all        := -Wl,--lto-basicblock-sections=all
-bb_section_all_flags        = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all) $(other_flags)")
-bb_section_list_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_flags)")
-bb_section_listinterp_flags       = $(call gen_build_flags,"-fpropeller-optimize=$(1)","-fuse-ld=lld -fpropeller-optimize=$(1) $(interp_flags) $(other_flags)")
-bb_section_allinterp_flags        = $(call gen_build_flags,"-fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all) $(interp_flags) $(other_flags)")
+interp_opt                 := -Wl,--propeller-opt=reorder-ip
+other_opt                  := -Wl,--propeller-chain-split-threshold=1024 -Wl,-propeller-print-stats
+lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
+
+# Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
+bb_section_none_flags      := $(call gen_build_flags,"-funique-internal-funcnames","${LLD_NO_OPT}")
+bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label -funique-internal-funcnames","-fuse-ld=lld $(relocation_gen_opt) $(gc_sections_opt)")
+relocs_flags               := $(call gen_linker_flags,"$(relocation_gen_opt)")
+bb_section_all_flags        = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(other_opt) $(gc_sections_opt)")
+bb_section_list_flags       = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt)")
+bb_section_listinterp_flags = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1)","-fuse-ld=lld -fpropeller-optimize=$(1) $(interp_opt) $(other_opt) $(gc_sections_opt)")
+bb_section_allinterp_flags  = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(interp_opt) $(other_opt) $(gc_sections_opt)")
 
 # $1 is compiler name, "stage1", "instrbb", etc;
 # $2 is bin directory that is used to build the compiler, must be absolute path.
@@ -157,19 +163,16 @@ stage1-compiler: stage1/install/bin/clang
 	ln -sf $< $@
 	touch $@
 
-stage-pgo/build/bin/clang-10: | stage1-compiler
-	$(call build_compiler,stage-pgo,$(DDIR)/stage1/install/bin,-DCMAKE_C_FLAGS=-funique-internal-funcnames -DCMAKE_CXX_FLAGS=-funique-internal-funcnames -DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
+stage-pgo-relocs/build/bin/clang-10: | stage1-compiler
+	$(call build_compiler,stage-pgo-relocs,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR $(relocs_flags),"clang;compiler-rt;lld",all)
 
-stage-pgo-compiler stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-compiler pgo-vanilla-compiler cspgo-compiler pgo-plolist-compiler pgo-plo-compiler pgo-plolistinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-10 | check_environment
-	ln -sf $< $@
-	touch $@
+stage-pgo-vanilla/build/bin/clang-10: | stage1-compiler
+	$(call build_compiler,stage-pgo-vanilla,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
 
-# pgo-plo-compiler cspgo-plo-compiler: %-compiler: %/build/bin/clang-10-plo
-# 	ln -sf $< $@
-# 	touch $@
+stage-pgo-labels/build/bin/clang-10: | stage1-compiler
+	$(call build_compiler,stage-pgo-labels,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR $(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
 
-
-pgo-plo-align-compiler cspgo-plo-align-compiler: %-align-compiler: %/build/bin/clang-10-plo-align
+stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plolist-compiler pgo-plo-compiler pgo-plolistinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-10 | check_environment
 	ln -sf $< $@
 	touch $@
 
@@ -180,11 +183,11 @@ pgo-plo-noorder-compiler: pgo-plo/build/bin/clang-10
 	ln -sf $< $@
 	touch $@
 
-pgo-bolt-compiler cspgo-bolt-compiler pgo-vanilla-bolt-compiler: %-bolt-compiler: %/build/bin/clang-10-bolt
+pgo-labels-bolt-compiler pgo-relocs-bolt-compiler: %-bolt-compiler: %/build/bin/clang-10-bolt
 	ln -sf $< $@
 	touch $@
 
-stage-cspgo.profdata stage-pgo.profdata: %.profdata: %-compiler run-commands.sh  | stage1-compiler
+stage-cspgo.profdata stage-pgo-labels.profdata stage-pgo-vanilla.profdata stage-pgo-relocs.profdata: %.profdata: %-compiler run-commands.sh  | stage1-compiler
 	./run-commands.sh $(shell readlink -f $<)
 	$(STAGE1_BIN)/llvm-profdata merge -output=$@ `find $(dir $(shell readlink -f $<))../ -path "*/csprofiles/*.profraw" -o -path "*/profiles/*.profraw"`
 
@@ -194,53 +197,44 @@ nonepgo/build/bin/clang-10: | stage1-compiler
 nonepgolabels/build/bin/clang-10: | stage1-compiler
 	$(call build_compiler,nonepgolabels,$(DDIR)/stage1/install/bin,$(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
-pgo-vanilla/build/bin/clang-10: stage-pgo.profdata
-	$(call build_compiler,pgo-vanilla,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_none_flags),"clang;compiler-rt;lld",clang lld)
+pgo-relocs/build/bin/clang-10: stage-pgo-relocs.profdata
+	$(call build_compiler,pgo-relocs,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(relocs_flags),"clang;compiler-rt;lld",clang lld)
 
-pgo/build/bin/clang-10: stage-pgo.profdata
-	$(call build_compiler,pgo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
+pgo-vanilla/build/bin/clang-10: stage-pgo-vanilla.profdata
+	$(call build_compiler,pgo-vanilla,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",clang lld)
 
-pgo-plo/build/bin/clang-10: stage-pgo.profdata pgo-compiler.propeller
-	$(call build_compiler,pgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
+pgo-labels/build/bin/clang-10: stage-pgo-labels.profdata
+	$(call build_compiler,pgo-labels,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
-pgo-plolist/build/bin/clang-10: stage-pgo.profdata pgo-compiler.propeller
-	$(call build_compiler,pgo-plolist,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
+pgo-plo/build/bin/clang-10: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+	$(call build_compiler,pgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
-pgo-plolistinterp/build/bin/clang-10: stage-pgo.profdata pgo-compiler.propeller
-	$(call build_compiler,pgo-plolistinterp,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_listinterp_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
+pgo-plolist/build/bin/clang-10: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+	$(call build_compiler,pgo-plolist,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
-pgo-plointerp/build/bin/clang-10: stage-pgo.profdata pgo-compiler.propeller
-	$(call build_compiler,pgo-plointerp,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_allinterp_flags,$(DDIR)/pgo-compiler.propeller),"clang;compiler-rt;lld",clang lld)
+pgo-plolistinterp/build/bin/clang-10: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+	$(call build_compiler,pgo-plolistinterp,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_listinterp_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
-pgo.perfdata cspgo.perfdata pgo-vanilla.perfdata: %.perfdata: %-compiler run-commands.sh
+pgo-plointerp/build/bin/clang-10: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+	$(call build_compiler,pgo-plointerp,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_allinterp_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
+
+pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler run-commands.sh
 	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
 
-pgo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
+pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr
 
-pgo-compiler.yaml cspgo-compiler.yaml pgo-vanilla-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
+pgo-labels-compiler.yaml cspgo-compiler.yaml pgo-relocs-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
 
-pgo/build/bin/clang-10-bolt cspgo/build/bin/clang-10-bolt pgo-vanilla/build/bin/clang-10-bolt: %/build/bin/clang-10-bolt: %-compiler.yaml %-compiler
+pgo-labels/build/bin/clang-10-bolt cspgo/build/bin/clang-10-bolt pgo-relocs/build/bin/clang-10-bolt: %/build/bin/clang-10-bolt: %-compiler.yaml %-compiler
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
-		 -reorder-blocks="cache+"               \
 		 -cluster-split-threshold=1024          \
+		 -reorder-blocks="cache+"               \
 	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog
-
-pgo-plo/build/bin/clang-10-plo cspgo-plo/build/bin/clang-10-plo: %-plo/build/bin/clang-10-plo: relink-clang-%-plo.sh stage1-compiler
-	./$<
-	[[ -e "$@" ]] || { echo "Failed to link $@" ; exit 1; }
-
-pgo-plo/build/bin/clang-10-plo-align cspgo-plo/build/bin/clang-10-plo-align: %-plo/build/bin/clang-10-plo-align: relink-clang-%-plo-align.sh stage1-compiler
-	./$<
-	[[ -e "$@" ]] || { echo "Failed to link $@" ; exit 1; }
-
-pgo-plolist/build/bin/clang-10-plo: pgo-%/build/bin/clang-10-plo: relink-clang-pgo-%.sh stage1-compiler
-	./$<
-	[[ -e "$@" ]] || { echo "Failed to link $@" ; exit 1; }
 
 stage-cspgo/build/bin/clang-10: stage-pgo.profdata | stage1-compiler
 	$(call build_compiler,stage-cspgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_BUILD_INSTRUMENTED=CSIR -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",all)
@@ -269,45 +263,6 @@ run-commands.sh: | stage1-compiler
 	echo "head -n 500 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
                 >> run-commands.sh
 	chmod +x run-commands.sh
-
-# $1 must be "all"
-define do_relink
-	if [[ "$(2)" == "align" ]]; then \
-	   ALIGNFLAG="-Wl,-propeller-align-basicblocks" ; \
-	   ALIGNSUFFIX="-align" ; \
-	fi ; \
-	echo "pushd $(shell dirname $(shell dirname $<))" > $@ ; \
-	ninja -C "$(shell dirname $(shell dirname $<))" -t commands clang \
-          | grep -Fe " -o bin/clang-10 " \
-          | sed -e "s! -o bin/clang-10 ! -o bin/clang-10-plo$${ALIGNSUFFIX} \
-                     -Wl,--lto-basicblock-sections=$1     \
-		     -Wl,-propeller=$(DDIR)/$(word 2,$^)  \
-		     -Wl,-propeller-keep-named-symbols    \
-		     $${ALIGNFLAG} \
-                     -Wl,--no-call-graph-profile-sort !"   \
-		     -e 's!$(LLD_NO_OPT)!$(LLD_OPT)!g'           \
-	       -e 's! -Wl,-q !!g' | tr '\t' ' ' | tr -s ' ' >> $@
-	echo 'EV=$$? ; popd ; exit $$EV' >> $@
-	@if [[ `wc -l $@ | cut -f1 -d' '` -gt 2 ]] ; then \
-	  chmod +x $@ ; \
-	  echo "Done generating $@." ; \
-	else \
-	  echo "Generate $@ failed."; exit 1; \
-	fi
-endef
-
-
-relink-clang-pgo-plo.sh relink-clang-cspgo-plo.sh: \
-relink-clang-%-plo.sh: %-plo/build/bin/clang-10 %-compiler.propeller
-	$(call do_relink,all)
-
-relink-clang-pgo-plo-align.sh relink-clang-cspgo-plo-align.sh: \
-relink-clang-%-plo-align.sh: %-plo/build/bin/clang-10 %-compiler.propeller
-	$(call do_relink,all,align)
-
-
-relink-clang-pgo-plolist.sh: pgo-plolist/build/bin/clang-10 pgo-compiler.propeller
-	$(call do_relink,$(DDIR)/pgo-compiler.propeller)
 
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	@{ echo "Running $@ for ${ITERATIONS} iterations..." ; \
@@ -365,10 +320,10 @@ $(foreach F,$(FLAVORS),clean-$(F)): clean-%: dummy-%
 	if [[ "$(subst dummy-,,$<)" == "pgo" ]]; then rm -fr stage-pgo ; fi
 	if [[ "$(subst dummy-,,$<)" == "cspgo" ]]; then rm -fr stage-cspgo ; fi
 
-benchmark-pgo-bolt.result benchmark-pgo.result benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-plolistinterp.result benchmark-pgo-plointerp.result: benchmark-%.result: benchmark-%
+benchmark-pgo-relocs-bolt.result benchmark-pgo-labels-bolt.result benchmark-pgo-labels.result benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-plolistinterp.result benchmark-pgo-plointerp.result: benchmark-%.result: benchmark-%
 	touch $@
 
-benchmark-pmu-pgo-bolt.result benchmark-pmu-pgo.result benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result : benchmark-pmu-%.result: benchmark-pmu-%
+benchmark-pmu-pgo-relocs-bolt.result benchmark-pmu-pgo-labels-bolt.result benchmark-pmu-pgo-labels.result benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result : benchmark-pmu-%.result: benchmark-pmu-%
 	touch $@
 
 define check_against_baseline
@@ -383,7 +338,7 @@ define check_against_baseline
 	export IMPROVE=`paste <(echo "$${BASE}") <(echo "$${TEST}") | awk '{print 100*($$1-$$2)/$$1}' ` ; \
 	export IMPROVE_AVG=`echo "$${IMPROVE}" | awk '{ total += $$1 } END { print total/${ITERATIONS} }' ` ; \
 	export IMPROVE_STDDEV=`echo "$${IMPROVE}" | awk -v improve_avg=$${IMPROVE_AVG} '{ total += ($$1-improve_avg)**2 } END { print (total/${ITERATIONS})**0.5 }' ` ; \
-	if [[ `echo "$${IMPROVE_AVG} > 4" | bc -l` == '1' ]]; then \
+	if [[ `echo "$${IMPROVE_AVG} > 3" | bc -l` == '1' ]]; then \
 	  echo "Performance check passed: $2 [$${IMPROVE_AVG}% +-$${IMPROVE_STDDEV} improvement over $1]." ; \
 	else \
 	  echo "*** Performance check failed: $2, regression found." ; exit 1 ; \
@@ -437,13 +392,13 @@ clean-sample:
 	rm -f sample_bblabels.o sample_bball.o sample.out sample.baseline.out sample.propeller.out sample.perfdata sample.propeller sample.out.cfg.pb.txt
 
 clean: clean-sample
-	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo stage-cspgo ; do \
+	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo-labels stage-pgo-vanilla stage-pgo-relocs stage-cspgo ; do \
 	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,-compiler.yaml,.profile,.cfg,.size-summaries} ; \
 	  rm -f benchmark{-,pmu-}$${F}.result ; \
 	  rm -f benchmark-pmu-$${F}.{result,pmu} ; \
 	done
 	rm -f  check_environment
-	rm -f  commands run-commands.sh relink-clang-{cspgo,pgo}-plo{,list,all}.sh
+	rm -f  commands run-commands.sh
 	rm -f  *.autolog *.log1
 	rm -f check-performance check-performance.*
 	rm -f check-pmu-performance check-pmu-performance.*
