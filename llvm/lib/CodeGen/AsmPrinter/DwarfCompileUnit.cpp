@@ -540,6 +540,7 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
       List.push_back({BeginLabel, EndLabel});
       continue;
     }
+
     assert (!BeginMBB->sameSection(EndMBB) &&
             "BeginMBB and EndMBB are in the same section!");
     const auto *MBBInSection = BeginMBB->getSectionEndMBB();

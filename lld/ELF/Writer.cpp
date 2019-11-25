@@ -43,12 +43,6 @@ using namespace llvm::object;
 using namespace llvm::support;
 using namespace llvm::support::endian;
 
-using namespace lld;
-using namespace lld::elf;
-
-using std::chrono::system_clock;
-using std::chrono::duration;
-
 namespace lld {
 namespace elf {
 namespace {
