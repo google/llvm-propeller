@@ -1389,7 +1389,7 @@ ChangeStatus AANoSyncImpl::updateImpl(Attributor &A) {
 
   auto CheckRWInstForNoSync = [&](Instruction &I) {
     /// We are looking for volatile instructions or Non-Relaxed atomics.
-    /// FIXME: We should ipmrove the handling of intrinsics.
+    /// FIXME: We should improve the handling of intrinsics.
 
     if (isa<IntrinsicInst>(&I) && isNoSyncIntrinsic(&I))
       return true;
@@ -2049,6 +2049,34 @@ struct AAWillReturnCallSite final : AAWillReturnImpl {
 
   /// See AbstractAttribute::trackStatistics()
   void trackStatistics() const override { STATS_DECLTRACK_CS_ATTR(willreturn); }
+};
+
+/// -------------------AAReachability Attribute--------------------------
+
+struct AAReachabilityImpl : AAReachability {
+  AAReachabilityImpl(const IRPosition &IRP) : AAReachability(IRP) {}
+
+  const std::string getAsStr() const override {
+    // TODO: Return the number of reachable queries.
+    return "reachable";
+  }
+
+  /// See AbstractAttribute::initialize(...).
+  void initialize(Attributor &A) override {
+    indicatePessimisticFixpoint();
+  }
+
+  /// See AbstractAttribute::updateImpl(...).
+  ChangeStatus updateImpl(Attributor &A) override {
+    return indicatePessimisticFixpoint();
+  }
+};
+
+struct AAReachabilityFunction final : public AAReachabilityImpl {
+  AAReachabilityFunction(const IRPosition &IRP) : AAReachabilityImpl(IRP) {}
+
+  /// See AbstractAttribute::trackStatistics()
+  void trackStatistics() const override { STATS_DECLTRACK_FN_ATTR(reachable); }
 };
 
 /// ------------------------ NoAlias Argument Attribute ------------------------
@@ -4155,11 +4183,6 @@ ChangeStatus AAHeapToStackImpl::updateImpl(Attributor &A) {
         continue;
       }
 
-      // NOTE: Right now, if a function that has malloc pointer as an argument
-      // frees memory, we assume that the malloc pointer is freed.
-
-      // TODO: Add nofree callsite argument attribute to indicate that pointer
-      // argument is not freed.
       if (auto *CB = dyn_cast<CallBase>(UserI)) {
         if (!CB->isArgOperand(U))
           continue;
@@ -4180,15 +4203,16 @@ ChangeStatus AAHeapToStackImpl::updateImpl(Attributor &A) {
           continue;
         }
 
-        // If a function does not free memory we are fine
-        const auto &NoFreeAA =
-            A.getAAFor<AANoFree>(*this, IRPosition::callsite_function(*CB));
-
         unsigned ArgNo = CB->getArgOperandNo(U);
+
         const auto &NoCaptureAA = A.getAAFor<AANoCapture>(
             *this, IRPosition::callsite_argument(*CB, ArgNo));
 
-        if (!NoCaptureAA.isAssumedNoCapture() || !NoFreeAA.isAssumedNoFree()) {
+        // If a callsite argument use is nofree, we are fine.
+        const auto &ArgNoFreeAA = A.getAAFor<AANoFree>(
+            *this, IRPosition::callsite_argument(*CB, ArgNo));
+
+        if (!NoCaptureAA.isAssumedNoCapture() || !ArgNoFreeAA.isAssumedNoFree()) {
           LLVM_DEBUG(dbgs() << "[H2S] Bad user: " << *UserI << "\n");
           ValidUsesOnly = false;
         }
@@ -5684,6 +5708,7 @@ const char AANonNull::ID = 0;
 const char AANoRecurse::ID = 0;
 const char AAWillReturn::ID = 0;
 const char AANoAlias::ID = 0;
+const char AAReachability::ID = 0;
 const char AANoReturn::ID = 0;
 const char AAIsDead::ID = 0;
 const char AADereferenceable::ID = 0;
@@ -5803,6 +5828,7 @@ CREATE_ALL_ABSTRACT_ATTRIBUTE_FOR_POSITION(AAIsDead)
 CREATE_ALL_ABSTRACT_ATTRIBUTE_FOR_POSITION(AANoFree)
 
 CREATE_FUNCTION_ONLY_ABSTRACT_ATTRIBUTE_FOR_POSITION(AAHeapToStack)
+CREATE_FUNCTION_ONLY_ABSTRACT_ATTRIBUTE_FOR_POSITION(AAReachability)
 
 CREATE_NON_RET_ABSTRACT_ATTRIBUTE_FOR_POSITION(AAMemoryBehavior)
 

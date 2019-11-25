@@ -2600,6 +2600,29 @@ static void handleVisibilityAttr(Sema &S, Decl *D, const ParsedAttr &AL,
     D->addAttr(newAttr);
 }
 
+static void handleObjCDirectAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  // objc_direct cannot be set on methods declared in the context of a protocol
+  if (isa<ObjCProtocolDecl>(D->getDeclContext())) {
+    S.Diag(AL.getLoc(), diag::err_objc_direct_on_protocol) << false;
+    return;
+  }
+
+  if (S.getLangOpts().ObjCRuntime.allowsDirectDispatch()) {
+    handleSimpleAttribute<ObjCDirectAttr>(S, D, AL);
+  } else {
+    S.Diag(AL.getLoc(), diag::warn_objc_direct_ignored) << AL;
+  }
+}
+
+static void handleObjCDirectMembersAttr(Sema &S, Decl *D,
+                                        const ParsedAttr &AL) {
+  if (S.getLangOpts().ObjCRuntime.allowsDirectDispatch()) {
+    handleSimpleAttribute<ObjCDirectMembersAttr>(S, D, AL);
+  } else {
+    S.Diag(AL.getLoc(), diag::warn_objc_direct_ignored) << AL;
+  }
+}
+
 static void handleObjCMethodFamilyAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   const auto *M = cast<ObjCMethodDecl>(D);
   if (!AL.isArgIdent(0)) {
@@ -3862,7 +3885,7 @@ void Sema::CheckAlignasUnderalignment(Decl *D) {
 
 bool Sema::checkMSInheritanceAttrOnDefinition(
     CXXRecordDecl *RD, SourceRange Range, bool BestCase,
-    MSInheritanceAttr::Spelling SemanticSpelling) {
+    MSInheritanceModel ExplicitModel) {
   assert(RD->hasDefinition() && "RD has no definition!");
 
   // We may not have seen base specifiers or any virtual methods yet.  We will
@@ -3871,14 +3894,14 @@ bool Sema::checkMSInheritanceAttrOnDefinition(
     return false;
 
   // The unspecified model never matches what a definition could need.
-  if (SemanticSpelling == MSInheritanceAttr::Keyword_unspecified_inheritance)
+  if (ExplicitModel == MSInheritanceModel::Unspecified)
     return false;
 
   if (BestCase) {
-    if (RD->calculateInheritanceModel() == SemanticSpelling)
+    if (RD->calculateInheritanceModel() == ExplicitModel)
       return false;
   } else {
-    if (RD->calculateInheritanceModel() <= SemanticSpelling)
+    if (RD->calculateInheritanceModel() <= ExplicitModel)
       return false;
   }
 
@@ -5435,8 +5458,7 @@ static void handleMSInheritanceAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     return;
   }
   MSInheritanceAttr *IA = S.mergeMSInheritanceAttr(
-      D, AL, /*BestCase=*/true,
-      (MSInheritanceAttr::Spelling)AL.getSemanticSpelling());
+      D, AL, /*BestCase=*/true, (MSInheritanceModel)AL.getSemanticSpelling());
   if (IA) {
     D->addAttr(IA);
     S.Consumer.AssignInheritanceModel(cast<CXXRecordDecl>(D));
@@ -6089,9 +6111,9 @@ static void handleDLLAttr(Sema &S, Decl *D, const ParsedAttr &A) {
 MSInheritanceAttr *
 Sema::mergeMSInheritanceAttr(Decl *D, const AttributeCommonInfo &CI,
                              bool BestCase,
-                             MSInheritanceAttr::Spelling SemanticSpelling) {
+                             MSInheritanceModel Model) {
   if (MSInheritanceAttr *IA = D->getAttr<MSInheritanceAttr>()) {
-    if (IA->getSemanticSpelling() == SemanticSpelling)
+    if (IA->getInheritanceModel() == Model)
       return nullptr;
     Diag(IA->getLocation(), diag::err_mismatched_ms_inheritance)
         << 1 /*previous declaration*/;
@@ -6102,7 +6124,7 @@ Sema::mergeMSInheritanceAttr(Decl *D, const AttributeCommonInfo &CI,
   auto *RD = cast<CXXRecordDecl>(D);
   if (RD->hasDefinition()) {
     if (checkMSInheritanceAttrOnDefinition(RD, CI.getRange(), BestCase,
-                                           SemanticSpelling)) {
+                                           Model)) {
       return nullptr;
     }
   } else {
@@ -6943,6 +6965,13 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case ParsedAttr::AT_ObjCRootClass:
     handleSimpleAttribute<ObjCRootClassAttr>(S, D, AL);
+    break;
+  case ParsedAttr::AT_ObjCDirect:
+    handleObjCDirectAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_ObjCDirectMembers:
+    handleObjCDirectMembersAttr(S, D, AL);
+    handleSimpleAttribute<ObjCDirectMembersAttr>(S, D, AL);
     break;
   case ParsedAttr::AT_ObjCNonLazyClass:
     handleSimpleAttribute<ObjCNonLazyClassAttr>(S, D, AL);
