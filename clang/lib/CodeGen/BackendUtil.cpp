@@ -419,24 +419,31 @@ static CodeGenFileType getCodeGenFileType(BackendAction Action) {
   }
 }
 
-static void getBasicBlockSectionsList(llvm::TargetOptions &Options,
+static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
                                       std::string FunctionsListFile) {
   assert((Options.BasicBlockSections = llvm::BasicBlockSection::List) &&
          "Invalid BasicBlock Section Type");
   if (FunctionsListFile.empty())
-    return;
-  
+    return false;
+
   std::ifstream FList(FunctionsListFile);
   if (!FList.good()) {
     errs() << "Cannot open " + FunctionsListFile;
-    return;
+    return false;
   }
 
   bool consumeBasicBlockIds = false;
   StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
       Options.BasicBlockSectionsList.end();
   std::string Line;
+  bool FirstLine = true;
+  bool AllBasicBlocks = false;
   while ((std::getline(FList, Line)).good()) {
+    if (FirstLine && Line.find("#AllBB") != std::string::npos) {
+      AllBasicBlocks = true;
+      FirstLine = false;
+      continue;
+    }
     if (Line.empty()) continue;
     if (Line[0] == '@') continue;  // Only @ lines can appear before ! lines.
     if (Line[0] != '!') break;
@@ -457,6 +464,7 @@ static void getBasicBlockSectionsList(llvm::TargetOptions &Options,
       consumeBasicBlockIds = false;
     }
   }
+  return AllBasicBlocks;
 }
 
 static void initTargetOptions(llvm::TargetOptions &Options,
@@ -526,8 +534,9 @@ static void initTargetOptions(llvm::TargetOptions &Options,
           .Case("none", llvm::BasicBlockSection::None)
           .Default(llvm::BasicBlockSection::List);
 
-  if (Options.BasicBlockSections == llvm::BasicBlockSection::List)
-    getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections);
+  if (Options.BasicBlockSections == llvm::BasicBlockSection::List
+      && getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections))
+    Options.BasicBlockSections = llvm::BasicBlockSection::Func;
 
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
