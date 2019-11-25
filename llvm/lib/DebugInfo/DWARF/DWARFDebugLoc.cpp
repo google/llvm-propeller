@@ -115,14 +115,20 @@ bool DWARFLocationTable::dumpLocationList(uint64_t *Offset, raw_ostream &OS,
   OS << format("0x%8.8" PRIx64 ": ", *Offset);
   Error E = visitLocationList(Offset, [&](const DWARFLocationEntry &E) {
     Expected<Optional<DWARFLocationExpression>> Loc = Interp.Interpret(E);
-    if (!Loc || DumpOpts.Verbose)
+    if (!Loc || DumpOpts.DisplayRawContents)
       dumpRawEntry(E, OS, Indent);
     if (Loc && *Loc) {
       OS << "\n";
       OS.indent(Indent);
-      if (DumpOpts.Verbose)
+      if (DumpOpts.DisplayRawContents)
         OS << "          => ";
-      Loc.get()->Range->dump(OS, Data.getAddressSize(), DumpOpts);
+
+      DIDumpOptions RangeDumpOpts(DumpOpts);
+      RangeDumpOpts.DisplayRawContents = false;
+      const DWARFObject *Obj = nullptr;
+      if (U)
+        Obj = &U->getContext().getDWARFObj();
+      Loc.get()->Range->dump(OS, Data.getAddressSize(), RangeDumpOpts, Obj);
     }
     if (!Loc)
       consumeError(Loc.takeError());
@@ -145,13 +151,19 @@ bool DWARFLocationTable::dumpLocationList(uint64_t *Offset, raw_ostream &OS,
   return true;
 }
 
-DWARFDebugLoc::LocationList const *
-DWARFDebugLoc::getLocationListAtOffset(uint64_t Offset) const {
-  auto It = partition_point(
-      Locations, [=](const LocationList &L) { return L.Offset < Offset; });
-  if (It != Locations.end() && It->Offset == Offset)
-    return &(*It);
-  return nullptr;
+Error DWARFLocationTable::visitAbsoluteLocationList(
+    uint64_t Offset, Optional<SectionedAddress> BaseAddr,
+    std::function<Optional<SectionedAddress>(uint32_t)> LookupAddr,
+    function_ref<bool(Expected<DWARFLocationExpression>)> Callback) const {
+  DWARFLocationInterpreter Interp(BaseAddr, std::move(LookupAddr));
+  return visitLocationList(&Offset, [&](const DWARFLocationEntry &E) {
+    Expected<Optional<DWARFLocationExpression>> Loc = Interp.Interpret(E);
+    if (!Loc)
+      return Callback(Loc.takeError());
+    if (*Loc)
+      return Callback(**Loc);
+    return true;
+  });
 }
 
 void DWARFDebugLoc::dump(raw_ostream &OS, const MCRegisterInfo *MRI,
@@ -212,32 +224,6 @@ Error DWARFDebugLoc::visitLocationList(
   }
   *Offset = C.tell();
   return Error::success();
-}
-
-Expected<DWARFDebugLoc::LocationList>
-DWARFDebugLoc::parseOneLocationList(uint64_t *Offset) {
-  LocationList LL;
-  LL.Offset = *Offset;
-
-  Error E = visitLocationList(Offset, [&](const DWARFLocationEntry &E) {
-    LL.Entries.push_back(E);
-    return true;
-  });
-  if (E)
-    return std::move(E);
-  return std::move(LL);
-}
-
-void DWARFDebugLoc::parse() {
-  uint64_t Offset = 0;
-  while (Offset < Data.getData().size()) {
-    if (auto LL = parseOneLocationList(&Offset))
-      Locations.push_back(std::move(*LL));
-    else {
-      logAllUnhandledErrors(LL.takeError(), WithColor::error());
-      break;
-    }
-  }
 }
 
 void DWARFDebugLoc::dumpRawEntry(const DWARFLocationEntry &Entry,
