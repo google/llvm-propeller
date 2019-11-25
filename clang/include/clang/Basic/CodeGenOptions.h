@@ -16,6 +16,7 @@
 #include "clang/Basic/DebugInfoOptions.h"
 #include "clang/Basic/Sanitizers.h"
 #include "clang/Basic/XRayInstr.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Target/TargetOptions.h"
@@ -166,7 +167,7 @@ public:
   std::string FloatABI;
 
   /// The floating-point denormal mode to use.
-  std::string FPDenormalMode;
+  llvm::DenormalMode FPDenormalMode = llvm::DenormalMode::Invalid;
 
   /// The float precision limit to use, if non-empty.
   std::string LimitFloatPrecision;

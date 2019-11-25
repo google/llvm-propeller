@@ -2549,7 +2549,7 @@ static bool mergeDeclAttribute(Sema &S, NamedDecl *D,
     NewAttr = S.mergeCodeSegAttr(D, *CSA, CSA->getName());
   else if (const auto *IA = dyn_cast<MSInheritanceAttr>(Attr))
     NewAttr = S.mergeMSInheritanceAttr(D, *IA, IA->getBestCase(),
-                                       IA->getSemanticSpelling());
+                                       IA->getInheritanceModel());
   else if (const auto *AA = dyn_cast<AlwaysInlineAttr>(Attr))
     NewAttr = S.mergeAlwaysInlineAttr(D, *AA,
                                       &S.Context.Idents.get(AA->getSpelling()));
@@ -7009,6 +7009,8 @@ NamedDecl *Sema::ActOnVariableDeclarator(
           Diag(E->getExprLoc(), diag::err_asm_invalid_global_var_reg) << Label;
         else if (HasSizeMismatch)
           Diag(E->getExprLoc(), diag::err_asm_register_size_mismatch) << Label;
+        else if (!TI.isRegisterReservedGlobally(Label))
+          Diag(E->getExprLoc(), diag::err_asm_missing_fixed_reg_opt) << Label;
       }
 
       if (!R->isIntegralType(Context) && !R->isPointerType()) {
@@ -7017,8 +7019,9 @@ NamedDecl *Sema::ActOnVariableDeclarator(
       }
     }
 
-    NewVD->addAttr(::new (Context) AsmLabelAttr(
-        Context, SE->getStrTokenLoc(0), Label, /*IsLiteralLabel=*/true));
+    NewVD->addAttr(AsmLabelAttr::Create(Context, Label,
+                                        /*IsLiteralLabel=*/true,
+                                        SE->getStrTokenLoc(0)));
   } else if (!ExtnameUndeclaredIdentifiers.empty()) {
     llvm::DenseMap<IdentifierInfo*,AsmLabelAttr*>::iterator I =
       ExtnameUndeclaredIdentifiers.find(NewVD->getIdentifier());
@@ -8921,9 +8924,9 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   if (Expr *E = (Expr*) D.getAsmLabel()) {
     // The parser guarantees this is a string.
     StringLiteral *SE = cast<StringLiteral>(E);
-    NewFD->addAttr(::new (Context)
-                       AsmLabelAttr(Context, SE->getStrTokenLoc(0),
-                                    SE->getString(), /*IsLiteralLabel=*/true));
+    NewFD->addAttr(AsmLabelAttr::Create(Context, SE->getString(),
+                                        /*IsLiteralLabel=*/true,
+                                        SE->getStrTokenLoc(0)));
   } else if (!ExtnameUndeclaredIdentifiers.empty()) {
     llvm::DenseMap<IdentifierInfo*,AsmLabelAttr*>::iterator I =
       ExtnameUndeclaredIdentifiers.find(NewFD->getIdentifier());
@@ -13316,8 +13319,10 @@ ShouldWarnAboutMissingPrototype(const FunctionDecl *FD,
     return false;
 
   // Don't warn about 'main'.
-  if (FD->isMain())
-    return false;
+  if (isa<TranslationUnitDecl>(FD->getDeclContext()->getRedeclContext()))
+    if (IdentifierInfo *II = FD->getIdentifier())
+      if (II->isStr("main"))
+        return false;
 
   // Don't warn about inline functions.
   if (FD->isInlined())
@@ -16755,7 +16760,7 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
       if (const MSInheritanceAttr *IA = Record->getAttr<MSInheritanceAttr>())
         checkMSInheritanceAttrOnDefinition(cast<CXXRecordDecl>(Record),
                                            IA->getRange(), IA->getBestCase(),
-                                           IA->getSemanticSpelling());
+                                           IA->getInheritanceModel());
     }
 
     // Check if the structure/union declaration is a type that can have zero

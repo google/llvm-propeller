@@ -25,6 +25,10 @@ BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && 
 IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plolistinterp.result benchmark-pgo-plointerp.result" )
 IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result" )
 
+DDIR := $(shell pwd)
+LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
+CLANG_VERSION := $(shell sed -Ene 's!^\s+set\(LLVM_VERSION_MAJOR\s+([[:digit:]]+)\)$$!\1!p' ${LLVM_PROJECT}/llvm/CMakeLists.txt)
+
 check_environment: paths.mk
 	@if [[ ! -e "${RELEASE_LLVM_BIN}/clang" ]] || \
 	    [[ ! -d "${CREATE_LLVM_PROF_DIR}" ]] ; then \
@@ -35,7 +39,11 @@ check_environment: paths.mk
 	    [[ ! -e "${PERF2BOLT}" ]] ; then \
 	  echo "Invalid BOLT entries in \"paths.mk\", BOLT-related targets will not be built." ; \
 	fi
-	touch $@
+	@if [[ -z "${CLANG_VERSION}" ]]; then \
+	  echo "Invalid clang version found." ; \
+	  exit 1 ; \
+	fi
+	echo "clang version is: ${CLANG_VERSION}" > $@
 
 CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
 ITERATIONS ?= 5
@@ -73,8 +81,6 @@ REPOHASH := ${GITHASH}.${REPOSTATUS}
 #  pgo.perfdata cspgo.perfdata: perfdata collected from running pgo/cspgo-compilers
 #  run-commands.sh / commands: script that runs a compiler over hundreds of compilation jobs.
 
-DDIR := $(shell pwd)
-LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
 LLVM_SOURCE := $(shell find $(LLVM_PROJECT)/llvm \
                             $(LLVM_PROJECT)/clang \
                             $(LLVM_PROJECT)/lld \
@@ -163,27 +169,27 @@ stage1-compiler: stage1/install/bin/clang
 	ln -sf $< $@
 	touch $@
 
-stage-pgo-relocs/build/bin/clang-10: | stage1-compiler
+stage-pgo-relocs/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,stage-pgo-relocs,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR $(relocs_flags),"clang;compiler-rt;lld",all)
 
-stage-pgo-vanilla/build/bin/clang-10: | stage1-compiler
+stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,stage-pgo-vanilla,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
 
-stage-pgo-labels/build/bin/clang-10: | stage1-compiler
+stage-pgo-labels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,stage-pgo-labels,$(DDIR)/stage1/install/bin,-DLLVM_BUILD_INSTRUMENTED=IR $(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
 
-stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plolist-compiler pgo-plo-compiler pgo-plolistinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-10 | check_environment
+stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plolist-compiler pgo-plo-compiler pgo-plolistinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
 	ln -sf $< $@
 	touch $@
 
 pgo-plo-compiler.symorder pgo-compiler.symorder: %.symorder: %
 	llvm-nm -nS $< | sed -nEe '/(.+)\s(.+)\s(W|t|T)\s(.+)/p' | sed -Ee 's!(.+)\s(a+\.BB\.)(.+)!\1 \2 \3!' | awk '$$4~/^a+\.BB\.$$/{print $$1 " " $$2 " " $$3 " " length($$4)-4 ".BB." $$5} $$4!~/^a+\.BB\.$$/{print $$0}' > $@
 
-pgo-plo-noorder-compiler: pgo-plo/build/bin/clang-10
+pgo-plo-noorder-compiler: pgo-plo/build/bin/clang-${CLANG_VERSION}
 	ln -sf $< $@
 	touch $@
 
-pgo-labels-bolt-compiler pgo-relocs-bolt-compiler: %-bolt-compiler: %/build/bin/clang-10-bolt
+pgo-labels-bolt-compiler pgo-relocs-bolt-compiler: %-bolt-compiler: %/build/bin/clang-${CLANG_VERSION}-bolt
 	ln -sf $< $@
 	touch $@
 
@@ -191,31 +197,31 @@ stage-cspgo.profdata stage-pgo-labels.profdata stage-pgo-vanilla.profdata stage-
 	./run-commands.sh $(shell readlink -f $<)
 	$(STAGE1_BIN)/llvm-profdata merge -output=$@ `find $(dir $(shell readlink -f $<))../ -path "*/csprofiles/*.profraw" -o -path "*/profiles/*.profraw"`
 
-nonepgo/build/bin/clang-10: | stage1-compiler
+nonepgo/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,nonepgo,$(DDIR)/stage1/install/bin,$(bb_section_none_flags),"clang;compiler-rt;lld",clang lld)
 
-nonepgolabels/build/bin/clang-10: | stage1-compiler
+nonepgolabels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,nonepgolabels,$(DDIR)/stage1/install/bin,$(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
-pgo-relocs/build/bin/clang-10: stage-pgo-relocs.profdata
+pgo-relocs/build/bin/clang-${CLANG_VERSION}: stage-pgo-relocs.profdata
 	$(call build_compiler,pgo-relocs,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(relocs_flags),"clang;compiler-rt;lld",clang lld)
 
-pgo-vanilla/build/bin/clang-10: stage-pgo-vanilla.profdata
+pgo-vanilla/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
 	$(call build_compiler,pgo-vanilla,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",clang lld)
 
-pgo-labels/build/bin/clang-10: stage-pgo-labels.profdata
+pgo-labels/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
 	$(call build_compiler,pgo-labels,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
-pgo-plo/build/bin/clang-10: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,pgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
-pgo-plolist/build/bin/clang-10: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,pgo-plolist,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
-pgo-plolistinterp/build/bin/clang-10: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+pgo-plolistinterp/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,pgo-plolistinterp,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_listinterp_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
-pgo-plointerp/build/bin/clang-10: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+pgo-plointerp/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,pgo-plointerp,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_allinterp_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
 pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler run-commands.sh
@@ -227,7 +233,7 @@ pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-
 pgo-labels-compiler.yaml cspgo-compiler.yaml pgo-relocs-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
 
-pgo-labels/build/bin/clang-10-bolt cspgo/build/bin/clang-10-bolt pgo-relocs/build/bin/clang-10-bolt: %/build/bin/clang-10-bolt: %-compiler.yaml %-compiler
+pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_VERSION}-bolt pgo-relocs/build/bin/clang-${CLANG_VERSION}-bolt: %/build/bin/clang-${CLANG_VERSION}-bolt: %-compiler.yaml %-compiler
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
@@ -236,14 +242,14 @@ pgo-labels/build/bin/clang-10-bolt cspgo/build/bin/clang-10-bolt pgo-relocs/buil
 	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog
 
-stage-cspgo/build/bin/clang-10: stage-pgo.profdata | stage1-compiler
+stage-cspgo/build/bin/clang-${CLANG_VERSION}: stage-pgo.profdata | stage1-compiler
 	$(call build_compiler,stage-cspgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_BUILD_INSTRUMENTED=CSIR -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",all)
 
-cspgo/build/bin/clang-10: stage-cspgo.profdata stage-pgo.profdata | stage1-compiler
+cspgo/build/bin/clang-${CLANG_VERSION}: stage-cspgo.profdata stage-pgo.profdata | stage1-compiler
 	$(STAGE1_BIN)/llvm-profdata merge -output=stage-cspgo2.profdata stage-cspgo.profdata stage-pgo.profdata
 	$(call build_compiler,cspgo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/stage-cspgo2.profdata -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
-cspgo-plo/build/bin/clang-10: stage-cspgo.profdata stage-pgo.profdata | stage1-compiler
+cspgo-plo/build/bin/clang-${CLANG_VERSION}: stage-cspgo.profdata stage-pgo.profdata | stage1-compiler
 	$(STAGE1_BIN)/llvm-profdata merge -output=stage-cspgo2.profdata stage-cspgo.profdata stage-pgo.profdata
 	$(call build_compiler,cspgo-plo,$(DDIR)/stage1/install/bin,-DLLVM_USE_LINKER=lld -DLLVM_PROFDATA_FILE=$(DDIR)/stage-cspgo2.profdata -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",clang lld)
 
