@@ -757,8 +757,25 @@ void NodeChainBuilder::mergeAllChains() {
       for(CFGNode * node: chain->Nodes)
         node->forEachOutEdgeRef(visit);
     } else {
-      for(CFGNode * node: chain->Nodes)
+      for(CFGNode * node: chain->Nodes) {
         node->forEachIntraOutEdgeRef(visit);
+        uint32_t RSCWeight = 0;
+        uint32_t RSRWeight = 0;
+        for(auto * e : node->Outs){
+          if (e->isCall() && (e->Weight >= 5)){
+            RSCWeight = e->Weight;
+            break;
+          }
+        }
+        for(auto * e: node->Ins) {
+          if (e->isReturn() && e->Weight){
+            RSRWeight = e->Weight;
+            break;
+          }
+        }
+        if (RSCWeight && !RSRWeight)
+          fprintf(stderr, "%s: RSC and RSR don't match: %u && %u\n", node->ShName.str().c_str(), RSCWeight, RSRWeight);
+      }
     }
   }
 
