@@ -52,18 +52,14 @@ endif
 STAGE1_BIN         := $(DDIR)/stage1/install/bin
 PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 
-# $1 are compiler flags.
-# $2 are ld flags.
-gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) \
-                  -DCMAKE_EXE_LINKER_FLAGS=$(2) \
-                  -DCMAKE_SHARED_LINKER_FLAGS=$(2) \
-                  -DCMAKE_MODULE_LINKER_FLAGS=$(2)
-
 RELOCATION_GEN_OPT := -fuse-ld=lld -Wl,-q
 
-gen_lld_flags = -DCMAKE_EXE_LINKER_FLAGS=$(1) -DCMAKE_SHARED_LINKER_FLAGS=$(1) -DCMAKE_MODULE_LINKER_FLAGS=$(1)
+gen_compiler_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1)
+gen_linker_flags   = -DCMAKE_EXE_LINKER_FLAGS=$(1) -DCMAKE_SHARED_LINKER_FLAGS=$(1) -DCMAKE_MODULE_LINKER_FLAGS=$(1)
 
-gen_build_flags = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1) $(call gen_lld_flags,$(2))
+# $1 are compiler flags.
+# $2 are ld flags.
+gen_build_flags = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(2))
 
 # $1 is bin directory that is used to build the compiler, must be absolute path.
 # $2 is any other cmake flags (optional)
