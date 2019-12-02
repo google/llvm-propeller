@@ -62,7 +62,7 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef file) {
 bool getBasicBlockSectionsList(TargetOptions &Options) {
   if (config->ltoBasicBlockSections.empty())
     return false;
-  
+
   std::ifstream FList(config->ltoBasicBlockSections);
   if (!FList.good()) {
     errs() << "Cannot open " + config->ltoBasicBlockSections;
@@ -73,8 +73,18 @@ bool getBasicBlockSectionsList(TargetOptions &Options) {
   std::string Line;
   StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
       Options.BasicBlockSectionsList.end();
+  bool FirstLine = true;
+  bool AllBasicBlocks = false;
+
   while ((std::getline(FList, Line)).good()) {
     if (Line.empty()) continue;
+    if (FirstLine) {
+      FirstLine = false;
+      if (Line.find("#AllBB") != std::string::npos) {
+        AllBasicBlocks = true;
+        continue;
+      }
+    }
     if (Line[0] == '@') continue;
     if (Line[0] != '!') break;
     StringRef S(Line);
@@ -95,7 +105,7 @@ bool getBasicBlockSectionsList(TargetOptions &Options) {
       consumeBasicBlockIds = false;
     }
   }
-  return true;
+  return AllBasicBlocks;
 }
 
 static std::string getThinLTOOutputFile(StringRef modulePath) {
@@ -124,8 +134,11 @@ static lto::Config createConfig() {
       c.Options.BasicBlockSections = BasicBlockSection::Labels;
     else if (config->ltoBasicBlockSections.equals("none"))
       c.Options.BasicBlockSections = BasicBlockSection::None;
-    else if (getBasicBlockSectionsList(c.Options)) {
-      c.Options.BasicBlockSections = BasicBlockSection::List;
+    else  {
+      if (getBasicBlockSectionsList(c.Options))
+        c.Options.BasicBlockSections = BasicBlockSection::Func;
+      else
+        c.Options.BasicBlockSections = BasicBlockSection::List;
     }
   }
 
