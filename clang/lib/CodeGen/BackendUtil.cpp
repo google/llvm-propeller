@@ -436,17 +436,13 @@ static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
   StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
       Options.BasicBlockSectionsList.end();
   std::string Line;
-  bool FirstLine = true;
   bool AllBasicBlocks = false;
 
   while ((std::getline(FList, Line)).good()) {
     if (Line.empty()) continue;
-    if (FirstLine) {
-      FirstLine = false;
-      if (Line.find("#AllBB") != std::string::npos) {
-        AllBasicBlocks = true;
-        continue;
-      }
+    if (Line.find("#AllBB") != std::string::npos) {
+      AllBasicBlocks = true;
+      continue;
     }
     if (Line[0] == '@') continue;  // Only @ lines can appear before ! lines.
     if (Line[0] != '!') break;
