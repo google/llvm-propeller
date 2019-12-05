@@ -3,7 +3,7 @@ syntax = "proto2";
 package llvm.plo.cfg;
 
 // Edge between basic blocks.
-// Next Available: 4.
+// Next Available: 5.
 message Edge {
   // Index of the source basic block.
   optional int32 source = 1;
@@ -13,10 +13,23 @@ message Edge {
 
   // Frequency count of the jump from profile.
   optional int32 profile_count = 3;
+
+  enum Type {
+    INTRA_FUNC = 0;
+    INTRA_RSC  = 1; // Recursive call.
+    INTRA_RSR  = 2; // Return from recursive call.
+    // Intra edge dynamically created because of indirect jump, etc.
+    INTRA_DYNA = 3;
+    // Inter function jumps / calls.
+    INTER_FUNC_CALL = 4;
+  }
+
+  // Edge type
+  optional Type type = 4;
 }
 
 // Basic block in cfg.
-// Next Available: 6.
+// Next Available: 7.
 message BasicBlock {
   // 0-based index that distinguishes between different basic blocks.
   optional int32 index = 1;
@@ -33,6 +46,9 @@ message BasicBlock {
 
   // Edges going out of this basic block.
   repeated Edge outgoing_edges = 5;
+
+  // Fallthrough edge of this basic block.
+  optional Edge fallthrough = 6;
 }
 
 // Control flow graph where basic blocks are vertices and jumps are edges.

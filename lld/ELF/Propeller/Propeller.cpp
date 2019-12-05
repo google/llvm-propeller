@@ -286,7 +286,7 @@ bool Propfile::processProfile() {
   if (!branchCnt)
     warn("propeller processed 0 branch info");
   if (!fallthroughCnt)
-    warn("ropeller processed 0 fallthrough info");
+    warn("propeller processed 0 fallthrough info");
   return true;
 }
 
@@ -463,11 +463,20 @@ bool Propeller::dumpCfgs() {
   llvm::SmallString<128> cfgOutputDir(propellerConfig.optLinkerOutputFile);
   llvm::sys::path::remove_filename(cfgOutputDir);
   for (auto &cfgName : cfgToDump) {
-    if (cfgName == "@") {
+    if (cfgName == "@" || cfgName == "@@") {
 #ifdef PROPELLER_PROTOBUF
       if (!protobufPrinter.get())
         protobufPrinter.reset(ProtobufPrinter::create(
             Twine(propellerConfig.optLinkerOutputFile, ".cfg.pb.txt").str()));
+      if (cfgName == "@@") {
+        protobufPrinter->clearCFGGroup();
+        for (auto &cfgMapEntry: CFGMap)
+          for (auto *cfg: cfgMapEntry.second) {
+            protobufPrinter->addCFG(*cfg);
+          }
+        protobufPrinter->printCFGGroup();
+        protobufPrinter.reset(nullptr);
+      }
 #else
       warn("dump to protobuf not supported");
 #endif

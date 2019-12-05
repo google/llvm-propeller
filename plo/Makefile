@@ -106,7 +106,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plointerp pgo-plolist pgo-plolistprotobuf pgo-plolistinterp cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-plo-align
+FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plointerp pgo-plolist pgo-plo-funcs pgo-plolistinterp cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-plofuncs
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -182,7 +182,7 @@ stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 stage-pgo-labels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR $(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
 
-stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plolist-compiler pgo-plo-compiler pgo-plolistprotobuf-compiler pgo-plolistinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
+stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plolist-compiler pgo-plofuncs-compiler pgo-plo-compiler pgo-plolistinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
 	ln -sf $< $@
 	touch $@
 
@@ -219,14 +219,11 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
 pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
+pgo-plofuncs/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.allbbs.propeller
+	$(call build_compiler,pgo-plofuncs,$(DDIR)/stage1/install/bin,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.allbbs.propeller),"clang;compiler-rt;lld",clang lld)
+
 pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
-
-pgo-plolistprotobuf/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
-	@if [[ ! -d "$(PROTOBUF_PREFIX)" ]]; then \
-	  echo "Invalid PROTOBUF_PREFIX in paths.mk." ; exit 1 ; \
-	fi
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller,,-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib) -DProtobuf_PROTOC_EXECUTABLE=$(PROTOBUF_PREFIX)/bin/protoc -DProtobuf_INCLUDE_DIR=$(PROTOBUF_PREFIX)/include -DProtobuf_LIBRARY=$(PROTOBUF_PREFIX)/lib/libprotobuf.so,"clang;compiler-rt;lld",clang lld)
 
 pgo-plolistinterp/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_listinterp_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
@@ -236,6 +233,9 @@ pgo-plointerp/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-la
 
 pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler run-commands.sh
 	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
+
+pgo-labels-compiler.allbbs.propeller: pgo-labels-compiler.propeller
+	sed '2i#AllBB' $< > $@
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr
@@ -247,7 +247,7 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_V
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
-		 -cluster-split-threshold=1024          \
+		 -chain-split-threshold=1024          \
 		 -reorder-blocks="cache+"               \
 	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog
@@ -302,30 +302,51 @@ $(foreach F,nonepgo nonepgolabels pgo pgo-vanilla pgo-plo pgo-plolist,$(F).size-
 	stage1/build/bin/report-size `readlink -f $<` >> $@
 	cat $@
 
-# ######################################  sample workflow
+# ######################################  sample workflow : make sample.propeller.out
 sample_bblabels.o: sample.c stage1-compiler
 	./stage1-compiler -c -O2 -fpropeller-label $< -o $@
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
 
 sample.baseline.out: sample_bblabels.o stage1-compiler
-	./stage1-compiler -fuse-ld=lld -Wl,-O2 -o $@ $<
+	./stage1-compiler -fpropeller-label -fuse-ld=lld -Wl,-O2 -o $@ $<
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
 
-sample.perfdata: sample.baseline.out
-	cp sample.baseline.out sample.out ; \
-	perf record -o $@ -e "cycles:u" -j any,u -- ./sample.out
+sample.baseline.perfdata: sample.baseline.out
+	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
 
-sample.propeller: sample.perfdata $(CREATE_LLVM_PROF)
-	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=sample.out --logtostderr
+sample.baseline.propeller: sample.baseline.perfdata sample.baseline.out $(CREATE_LLVM_PROF)
+	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=$(word 2,$^) --logtostderr ; \
+		sed -i '1d' $@
 
-sample_bb.o: sample.c sample.propeller stage1-compiler
+sample_bb.o: sample.c sample.baseline.propeller stage1-compiler
 	./stage1-compiler -c -O2 -fpropeller-optimize=$(word 2,$^) $< -o $@
 
-sample.propeller.out: sample_bb.o sample.propeller stage1-compiler
-	./stage1-compiler -o sample.out -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols $< -Wl,-propeller-dump-cfg=@; \
-	mv sample.out sample.propeller.out
+sample.propeller.out: sample_bb.o sample.baseline.propeller stage1-compiler
+	./stage1-compiler -o $@ -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols -Wl,-propeller-print-stats $< -Wl,-propeller-dump-cfg=@; \
+
+# ######################################  sample workflow (thinlto flavor) : make sample.propeller.lto.out
+sample_bblabels.lto.o: sample.c stage1-compiler
+	./stage1-compiler -c -O2 -flto=thin -fpropeller-label $< -o $@
+
+sample.baseline.lto.out: sample_bblabels.lto.o stage1-compiler
+	./stage1-compiler -fpropeller-label -flto=thin -fuse-ld=lld -Wl,-O2 -o $@ $<
+	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
+		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
+
+sample.baseline.lto.perfdata: sample.baseline.lto.out
+	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
+
+sample.baseline.lto.propeller: sample.baseline.lto.perfdata sample.baseline.lto.out $(CREATE_LLVM_PROF)
+	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=$(word 2,$^) --logtostderr ; \
+		sed -i '1d' $@
+
+sample_bb.lto.o: sample.c sample.baseline.lto.propeller stage1-compiler
+	./stage1-compiler -c -O2 -flto=thin -fpropeller-optimize=$(word 2,$^) $< -o $@
+
+sample.propeller.lto.out: sample_bb.lto.o sample.baseline.lto.propeller stage1-compiler
+	./stage1-compiler -o $@ -flto=thin -Wl,--thinlto-cache-dir=sample.lto.cache -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols -Wl,-propeller-print-stats $< -Wl,-propeller-dump-cfg=@; \
 
 .phony: clean clean-all clean-sample
 .phone: $(foreach F,$(FLAVORS),dummy-$(F))
@@ -336,10 +357,10 @@ $(foreach F,$(FLAVORS),clean-$(F)): clean-%: dummy-%
 	if [[ "$(subst dummy-,,$<)" == "pgo" ]]; then rm -fr stage-pgo ; fi
 	if [[ "$(subst dummy-,,$<)" == "cspgo" ]]; then rm -fr stage-cspgo ; fi
 
-benchmark-pgo-relocs-bolt.result benchmark-pgo-labels-bolt.result benchmark-pgo-labels.result benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-plolistinterp.result benchmark-pgo-plointerp.result: benchmark-%.result: benchmark-%
+benchmark-pgo-relocs-bolt.result benchmark-pgo-labels-bolt.result benchmark-pgo-labels.result benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plofuncs.result benchmark-pgo-plo.result benchmark-pgo-plolistinterp.result benchmark-pgo-plointerp.result: benchmark-%.result: benchmark-%
 	touch $@
 
-benchmark-pmu-pgo-relocs-bolt.result benchmark-pmu-pgo-labels-bolt.result benchmark-pmu-pgo-labels.result benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result : benchmark-pmu-%.result: benchmark-pmu-%
+benchmark-pmu-pgo-relocs-bolt.result benchmark-pmu-pgo-labels-bolt.result benchmark-pmu-pgo-labels.result benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plofuncs.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result : benchmark-pmu-%.result: benchmark-pmu-%
 	touch $@
 
 define check_against_baseline
@@ -405,11 +426,11 @@ check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result ben
 	$(call append_git_status,$@)
 
 clean-sample:
-	rm -f sample_bblabels.o sample_bball.o sample.out sample.baseline.out sample.propeller.out sample.perfdata sample.propeller sample.out.cfg.pb.txt
+	rm -f sample_bb.*o sample_bblabels.*o sample_bball.*o sample.*out sample.*perfdata sample.*propeller sample.*out.cfg.pb.txt
 
 clean: clean-sample
 	for F in $(filter-out stage1,$(FLAVORS)) stage-pgo-labels stage-pgo-vanilla stage-pgo-relocs stage-cspgo ; do \
-	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,.fdata,-compiler.yaml,.profile,.cfg,.size-summaries} ; \
+	  rm -fr $${F}{,-compiler,.profdata,.perfdata,-compiler.propeller,-compiler.allbbs.propeller,.fdata,-compiler.yaml,.profile,.cfg,.size-summaries} ; \
 	  rm -f benchmark{-,pmu-}$${F}.result ; \
 	  rm -f benchmark-pmu-$${F}.{result,pmu} ; \
 	done
