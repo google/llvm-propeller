@@ -73,17 +73,13 @@ bool getBasicBlockSectionsList(TargetOptions &Options) {
   std::string Line;
   StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
       Options.BasicBlockSectionsList.end();
-  bool FirstLine = true;
   bool AllBasicBlocks = false;
 
   while ((std::getline(FList, Line)).good()) {
     if (Line.empty()) continue;
-    if (FirstLine) {
-      FirstLine = false;
-      if (Line.find("#AllBB") != std::string::npos) {
-        AllBasicBlocks = true;
-        continue;
-      }
+    if (Line.find("#AllBB") != std::string::npos) {
+      AllBasicBlocks = true;
+      continue;
     }
     if (Line[0] == '@') continue;
     if (Line[0] != '!') break;
