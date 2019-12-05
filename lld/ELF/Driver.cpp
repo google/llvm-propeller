@@ -943,6 +943,8 @@ static void readConfigs(opt::InputArgList &args) {
       args.hasFlag(OPT_propeller_keep_named_symbols,
                    OPT_no_propeller_keep_named_symbols, false);
 
+  config->propellerBBOrderFile = args.getLastArgValue(OPT_propeller_bb_order_file);
+
   config->propellerDumpSymbolOrder =
       args.getLastArgValue(OPT_propeller_dump_symbol_order);
 
@@ -1155,6 +1157,11 @@ static void readConfigs(opt::InputArgList &args) {
       config->callGraphProfileSort = false;
     }
   }
+
+  if (auto *arg = args.getLastArg(OPT_propeller_bb_order_file))
+    if (llvm::Optional<MemoryBufferRef> buffer = readFile(arg->getValue()))
+      for (StringRef s : args::getLines(*buffer))
+        config->propellerBBOrder.push_back(s);
 
   assert(config->versionDefinitions.empty());
   config->versionDefinitions.push_back({"local", (uint16_t)VER_NDX_LOCAL, {}});

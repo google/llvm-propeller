@@ -57,6 +57,7 @@ static void setupConfig() {
 #define COPY_CONFIG(NAME) propellerConfig.opt##NAME = config->propeller##NAME
   COPY_CONFIG(BackwardJumpDistance);
   COPY_CONFIG(BackwardJumpWeight);
+  COPY_CONFIG(BBOrder);
   COPY_CONFIG(ChainSplitThreshold);
   COPY_CONFIG(DebugSymbols);
   COPY_CONFIG(DumpCfgs);

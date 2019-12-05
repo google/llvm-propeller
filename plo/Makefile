@@ -193,6 +193,9 @@ pgo-labels-bolt-compiler pgo-relocs-bolt-compiler: %-bolt-compiler: %/build/bin/
 	ln -sf $< $@
 	touch $@
 
+pgo-mlip-compiler: clang-layout pgo-
+
+
 stage-cspgo.profdata stage-pgo-labels.profdata stage-pgo-vanilla.profdata stage-pgo-relocs.profdata: %.profdata: %-compiler run-commands.sh  | stage1-compiler
 	./run-commands.sh $(shell readlink -f $<)
 	$(STAGE1_BIN)/llvm-profdata merge -output=$@ `find $(dir $(shell readlink -f $<))../ -path "*/csprofiles/*.profraw" -o -path "*/profiles/*.profraw"`
@@ -320,7 +323,7 @@ sample_bb.o: sample.c sample.baseline.propeller stage1-compiler
 	./stage1-compiler -c -O2 -fpropeller-optimize=$(word 2,$^) $< -o $@
 
 sample.propeller.out: sample_bb.o sample.baseline.propeller stage1-compiler
-	./stage1-compiler -o $@ -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols -Wl,-propeller-print-stats $< -Wl,-propeller-dump-cfg=@; \
+	./stage1-compiler -o $@ -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols -Wl,-propeller-print-stats $< -Wl,-propeller-dump-cfg=@
 
 # ######################################  sample workflow (thinlto flavor) : make sample.propeller.lto.out
 sample_bblabels.lto.o: sample.c stage1-compiler
@@ -342,7 +345,7 @@ sample_bb.lto.o: sample.c sample.baseline.lto.propeller stage1-compiler
 	./stage1-compiler -c -O2 -flto=thin -fpropeller-optimize=$(word 2,$^) $< -o $@
 
 sample.propeller.lto.out: sample_bb.lto.o sample.baseline.lto.propeller stage1-compiler
-	./stage1-compiler -o $@ -flto=thin -Wl,--thinlto-cache-dir=sample.lto.cache -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols -Wl,-propeller-print-stats $< -Wl,-propeller-dump-cfg=@; \
+	./stage1-compiler -o $@ -flto=thin -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols -Wl,-propeller-print-stats $< -Wl,-propeller-dump-cfg=@
 
 .phony: clean clean-all clean-sample
 .phone: $(foreach F,$(FLAVORS),dummy-$(F))

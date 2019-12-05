@@ -72,6 +72,7 @@ class CFGEdge;
 class CFGNode;
 class ObjectView;
 class Propeller;
+class PropellerBBReordering;
 struct PropellerConfig;
 
 // Propeller profile parser.
@@ -258,6 +259,10 @@ public:
   // then puts CFGs into Propeller::CFGMap (see above). Lock is used
   // to guard this Propeller::CFGMap critical section.
   std::mutex Lock;
+
+  PropellerBBReordering* propLayout;
+
+  llvm::StringMap<std::vector<uint64_t>> BBLayouts;
 
 #ifdef PROPELLER_PROTOBUF
   std::unique_ptr<lld::propeller::ProtobufPrinter> protobufPrinter;
