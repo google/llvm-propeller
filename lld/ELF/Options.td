@@ -324,6 +324,10 @@ defm propeller_print_stats: B<"propeller-print-stats",
     "Print propeller statistics.",
     "Do not print propeller statistics (default)">;
 
+defm propeller_bb_order_file: Eq<"propeller-bb-order-file",
+    "Intra-procedural bb layout to use.">,
+  MetaVarName<"<file>">;
+
 defm propeller_dump_symbol_order: Eq<"propeller-dump-symbol-order",
     "Dump the propeller-generated symbol ordering into the file.">,
   MetaVarName<"<file>">;

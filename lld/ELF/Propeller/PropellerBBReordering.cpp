@@ -592,23 +592,47 @@ void NodeChainBuilder::initNodeChains(ControlFlowGraph &cfg) {
 // (executed) outgoing edge from their source node and the only (executed)
 // incoming edges to their sink nodes
 void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
+  DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
+  DenseSet<CFGNode *> mutuallyForcedIn;
+
+  auto l = prop->BBLayouts.find(cfg.Name);
+  if (l != prop->BBLayouts.end()) {
+    CFGNode * lastNode = nullptr;
+    for (auto ordinal : l->second) {
+      auto r = Chains.find(ordinal);
+      if (r == Chains.end()) {
+        lastNode = nullptr;
+        continue;
+      }
+      CFGNode * thisNode = r->second->DelegateNode;
+      if (lastNode) {
+        mutuallyForcedOut.try_emplace(lastNode, thisNode);
+        mutuallyForcedIn.insert(thisNode);
+      }
+      lastNode = thisNode;
+    }
+  }
+
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledOuts;
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledIns;
-  DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
 
   for (auto &node : cfg.Nodes) {
-    std::copy_if(node->Outs.begin(), node->Outs.end(),
-                 std::back_inserter(profiledOuts[node.get()]),
-                 [](CFGEdge *edge) {
-                   return (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
-                          edge->Weight != 0;
-                 });
-    std::copy_if(node->Ins.begin(), node->Ins.end(),
-                 std::back_inserter(profiledIns[node.get()]),
-                 [](CFGEdge *edge) {
-                   return (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
-                          edge->Weight != 0;
-                 });
+    if (!mutuallyForcedOut.count(node.get())) {
+      std::copy_if(node->Outs.begin(), node->Outs.end(),
+                   std::back_inserter(profiledOuts[node.get()]),
+                   [&mutuallyForcedIn](CFGEdge *edge) {
+                     return !mutuallyForcedIn.count(edge->Sink) && (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
+                            edge->Weight != 0;
+                   });
+    }
+    if (!mutuallyForcedIn.count(node.get())) {
+      std::copy_if(node->Ins.begin(), node->Ins.end(),
+                   std::back_inserter(profiledIns[node.get()]),
+                   [&mutuallyForcedOut](CFGEdge *edge) {
+                     return !mutuallyForcedOut.count(edge->Src) && (edge->Type == CFGEdge::EdgeType::INTRA_FUNC || edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
+                            edge->Weight != 0;
+                   });
+    }
   }
 
   for (auto &node : cfg.Nodes) {
@@ -617,7 +641,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
       if(edge->Type != CFGEdge::EdgeType::INTRA_FUNC)
         continue;
       if (profiledIns[edge->Sink].size() == 1)
-        mutuallyForcedOut[node.get()] = edge->Sink;
+        mutuallyForcedOut.try_emplace(node.get(), edge->Sink);
     }
   }
 
@@ -649,10 +673,12 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
         break;
       } else
         nodeToPathMap[node] = pathCount;
-      CFGEdge *edge = profiledOuts[node].front();
-      if (!victimEdge ||
-          (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr)) {
-        victimEdge = edge;
+      if (!profiledOuts[node].empty()) {
+        CFGEdge *edge = profiledOuts[node].front();
+        if (!victimEdge ||
+            (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr)) {
+          victimEdge = edge;
+        }
       }
       nodeIt = mutuallyForcedOut.find(nodeIt->second);
     }
@@ -797,9 +823,6 @@ void NodeChainBuilder::mergeAllChains() {
         mergeChains(std::move(bestAssembly));
     }
   }
-
-  // Merge fallthrough basic blocks if we have missed any
-  attachFallThroughs();
 }
 
 // This function computes the ExtTSP score for a chain assembly record. This
@@ -862,7 +885,11 @@ double NodeChainAssembly::computeExtTSPScore() const {
 
 void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC){
   init();
+
   mergeAllChains();
+
+  // Merge fallthrough basic blocks if we have missed any
+  attachFallThroughs();
 
   if(!propellerConfig.optReorderIP){
     coalesceChains();

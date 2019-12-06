@@ -30,6 +30,7 @@
 #include "propeller_cfg.pb.h"
 #endif
 #include "lld/Common/ErrorHandler.h"
+#include "lld/Common/Memory.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Parallel.h"
@@ -408,6 +409,25 @@ bool Propeller::processFiles(std::vector<ObjectView *> &views) {
     return false;
   }
 
+  if(!propellerConfig.optBBOrder.empty()){
+    for (StringRef s: propellerConfig.optBBOrder){
+      auto r = s.split('.');
+      std::string bbIndex = r.first.str() == "0" ? "" : r.first;
+      std::string funcName = r.second;
+      bool found = false;
+      auto l1 = prop->Propf->SymbolNameMap.find(funcName);
+      if (l1 != prop->Propf->SymbolNameMap.end()) {
+        auto l2 = l1->second.find(bbIndex);
+        if (l2 != l1->second.end()) {
+          BBLayouts[funcName].push_back(l2->second->Ordinal);
+          found = true;
+        }
+      }
+      if (!found)
+        warn("Symbol not found: " + s);
+    }
+  }
+
   ProcessFailureCount = 0;
   llvm::parallel::for_each(
       llvm::parallel::parallel_execution_policy(), views.begin(), views.end(),
@@ -537,7 +557,8 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   std::list<StringRef> symbolList(1, "Hot");
   const auto hotPlaceHolder = symbolList.begin();
   const auto coldPlaceHolder = symbolList.end();
-  PropellerBBReordering().doSplitOrder(symbolList, hotPlaceHolder, coldPlaceHolder);
+  propLayout = make<PropellerBBReordering>();
+  propLayout->doSplitOrder(symbolList, hotPlaceHolder, coldPlaceHolder);
 #ifdef PROPELLER_PROTOBUF
   if (protobufPrinter) {
     protobufPrinter->printCFGGroup();

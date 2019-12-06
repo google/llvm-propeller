@@ -14,6 +14,7 @@
 #include "lld/Common/LLVM.h"
 #include "Heap.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include <iostream>
 
 #include <list>
@@ -355,6 +356,7 @@ public:
   // specified by the parameters (HotPlaceHolder and ColdPlaceHolder) in the
   // given SymbolList.
   void doOrder(std::unique_ptr<ChainClustering> &CC);
+
 
   NodeChainBuilder(std::vector<ControlFlowGraph *>& cfgs): CFGs(cfgs){}
 
