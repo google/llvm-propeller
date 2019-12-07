@@ -197,7 +197,8 @@ void NodeChainBuilder::attachFallThroughs() {
     // Sometimes, the original fall-throughs cannot be kept. So we try to find new
     // fall-through opportunities which did not exist in the original order.
     for (auto &Edge : Cfg->IntraEdges) {
-      attachNodes(Edge->Src, Edge->Sink);
+      if (Edge->Type == CFGEdge::EdgeType::INTRA_FUNC || Edge->Type == CFGEdge::EdgeType::INTRA_DYNA)
+        attachNodes(Edge->Src, Edge->Sink);
     }
   }
 }
@@ -213,10 +214,17 @@ void NodeChainBuilder::coalesceChains() {
   std::sort(
       chainOrder.begin(), chainOrder.end(),
       [](NodeChain *c1, NodeChain *c2) {
-        if (c1->Nodes.front()->isEntryNode())
-          return true;
-        if (c2->Nodes.front()->isEntryNode())
-          return false;
+        if (!propellerConfig.optReorderIP) {
+          auto * c1CFG = c1->DelegateNode->CFG;
+          auto * c2CFG = c2->DelegateNode->CFG;
+          if (c1CFG == c2CFG) {
+            auto * entryNode = c1CFG->getEntryNode();
+            if (entryNode->Chain == c1)
+            return true;
+            if (entryNode->Chain == c2)
+            return false;
+          }
+        }
         double c1ExecDensity = c1->execDensity();
         double c2ExecDensity = c2->execDensity();
         if (c1ExecDensity == c2ExecDensity)
@@ -264,9 +272,9 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
 // other (used for fallthroughs). Returns true if the basic blocks have been
 // attached this way.
 bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
-  // No edge cannot fall-through to the entry basic block.
-  if (sink->isEntryNode())
-    return false;
+  // TODO(remove this) No edge cannot fall-through to the entry basic block.
+  //if (sink->isEntryNode())
+  //  return false;
 
   // Ignore edges between hot and cold basic blocks.
   if (src->Freq == 0 ^ sink->Freq == 0)

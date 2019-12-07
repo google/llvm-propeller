@@ -274,7 +274,8 @@ bool CFGBuilder::buildCFGs() {
           }
           tmpNodeMap.emplace(
               std::piecewise_construct, std::forward_as_tuple(sE->Ordinal),
-              std::forward_as_tuple(new CFGNode(symShndx, symName, sE->Size,
+              std::forward_as_tuple(new CFGNode(symShndx, symName, symSize,
+              //std::forward_as_tuple(new CFGNode(symShndx, symName, sE->Size,
                                                 sE->Ordinal, cfg.get())));
           continue;
         }
@@ -438,11 +439,21 @@ void CFGBuilder::buildCFG(
 
   // Set cfg size and re-calculate size of the entry basicblock, which is
   // initially the size of the whole function.
+  /*
   cfg.Size = cfg.getEntryNode()->ShSize;
-  cfg.forEachNodeRef([&cfg](CFGNode &n) {
-    if (&n != cfg.getEntryNode())
-      cfg.getEntryNode()->ShSize -= n.ShSize;
+  auto * entryNode = cfg.getEntryNode();
+  fprintf(stderr, "Initial size of entry bb: %s to %lu\n", cfg.Name.str().c_str(), entryNode->ShSize);
+  cfg.forEachNodeRef([entryNode](CFGNode &n) {
+    if (&n != entryNode)
+      entryNode->ShSize -= n.ShSize;
   });
+  fprintf(stderr, "Resetting the size of entry bb: %s to %lu\n", cfg.Name.str().c_str(), entryNode->ShSize);
+  */
+  cfg.Size = 0;
+  cfg.forEachNodeRef([&cfg](CFGNode &n) {
+    cfg.Size += n.ShSize;
+  });
+
 }
 
 // Calculate fallthroughs. Edge p->q is fallthrough if p & q are adjacent (e.g.
