@@ -30,6 +30,8 @@ void ProtobufPrinter::addCFG(ControlFlowGraph &cfg,
     edgepb.set_source(edge.Src->getBBIndex());
     edgepb.set_target(edge.Sink->getBBIndex());
     edgepb.set_profile_count(edge.Weight);
+    edgepb.set_type(static_cast<llvm::plo::cfg::Edge_Type>(
+        (int)(edge.Type) - (int)(CFGEdge::INTRA_FUNC)));
   };
 
   auto populateBasicBlockPb =
@@ -43,6 +45,9 @@ void ProtobufPrinter::addCFG(ControlFlowGraph &cfg,
 
         for (CFGEdge *e : node.Outs)
           populateEdgePb(*(bbpb.add_outgoing_edges()), *e);
+
+        if (node.FTEdge)
+          populateEdgePb(*(bbpb.mutable_fallthrough()), *node.FTEdge);
       };
 
   if (orderedBBs)

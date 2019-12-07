@@ -33,7 +33,9 @@ public:
   }
 
   void addCFG(ControlFlowGraph &cfg,
-                std::list<CFGNode *> *orderedBBs = nullptr);
+              std::list<CFGNode *> *orderedBBs = nullptr);
+
+  void clearCFGGroup() { cfgGroupPb.clear_cfg_list(); }
 
   void printCFGGroup();
 

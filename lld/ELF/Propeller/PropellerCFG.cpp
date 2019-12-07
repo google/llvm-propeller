@@ -244,6 +244,13 @@ bool CFGBuilder::buildCFGs() {
     }
   }
 
+  // Groups are like
+  //   {
+  //     { "func1", {a.BB.func1, aa.BB.func1, aaa.BB.func1}
+  //     { "func2", {a.BB.func2, aa.BB.func2, aaa.BB.func2}
+  //       ...
+  //       ...
+  //   }
   for (auto &i : groups) {
     assert(i.second.size() >= 1);
     std::map<uint64_t, std::unique_ptr<CFGNode>> tmpNodeMap;
