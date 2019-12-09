@@ -70,12 +70,12 @@ static X86_64RelType getType64(MCFixupKind Kind,
     IsPCRel = true;
     return RT64_32;
   case FK_Data_4:
-  case FK_PCRel_4:
   case X86::reloc_riprel_4byte:
   case X86::reloc_riprel_4byte_relax:
   case X86::reloc_riprel_4byte_relax_rex:
   case X86::reloc_riprel_4byte_movq_load:
     return RT64_32;
+  case FK_PCRel_4:
   case X86::reloc_branch_4byte_pcrel:
     Modifier = MCSymbolRefExpr::VK_PLT;
     return RT64_32;

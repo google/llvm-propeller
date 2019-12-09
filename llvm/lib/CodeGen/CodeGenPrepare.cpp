@@ -439,6 +439,19 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
 
   ProfileSummaryInfo *PSI =
       &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
+
+  if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::All)
+    F.setBasicBlockSections(true);
+
+  if (TM &&
+      (TM->getBasicBlockSections() == llvm::BasicBlockSection::List ||
+       TM->getBasicBlockSections() == llvm::BasicBlockSection::Func) &&
+      TM->isFunctionInBasicBlockSectionsList(F.getName()))
+    F.setBasicBlockSections(true);
+
+  if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::Labels)
+    F.setBasicBlockLabels(true);
+
   if (ProfileGuidedSectionPrefix) {
     if (PSI->isFunctionHotInCallGraph(&F, *BFI))
       F.setSectionPrefix(".hot");

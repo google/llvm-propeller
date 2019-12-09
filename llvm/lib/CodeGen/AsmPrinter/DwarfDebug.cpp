@@ -1443,7 +1443,9 @@ bool DwarfDebug::buildLocationList(SmallVectorImpl<DebugLocEntry> &DebugLoc,
 
     const MCSymbol *EndLabel;
     if (std::next(EI) == Entries.end()) {
-      EndLabel = Asm->getFunctionEnd();
+      const MachineBasicBlock &EndMBB = Asm->MF->back();
+      EndLabel = EndMBB.isEndSection() ? EndMBB.getEndMCSymbol()
+                                       : Asm->getFunctionEnd();
       if (EI->isClobber())
         EndMI = EI->getInstr();
     }
@@ -1869,6 +1871,18 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
 
   // Add the range of this function to the list of ranges for the CU.
   TheCU.addRange({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
+
+  // With basic block sections, add all basic block ranges with unique
+  // sections.
+  if (MF->getBasicBlockSections()) {
+    for (auto &MBB : *MF) {
+      if (MBB.getNumber() == MF->front().getNumber())
+        continue;
+      if (MBB.isBeginSection()) {
+        TheCU.addRange({MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
+      }
+    }
+  }
 
   // Under -gmlt, skip building the subprogram if there are no inlined
   // subroutines inside it. But with -fdebug-info-for-profiling, the subprogram
@@ -2520,6 +2534,19 @@ void DwarfDebug::emitDebugLocDWO() {
       // * as of October 2018, at least
       // Ideally/in v5, this could use SectionLabels to reuse existing addresses
       // in the address pool to minimize object size/relocations.
+      if (Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::None &&
+          Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::Labels) {
+        // With basic block sections, symbol difference cannot be emitted as
+        // the can span sections.
+        Asm->emitInt8(dwarf::DW_LLE_startx_endx);
+        Asm->EmitULEB128(AddrPool.getIndex(Entry.Begin));
+        Asm->EmitULEB128(AddrPool.getIndex(Entry.End));
+      } else {
+        Asm->emitInt8(dwarf::DW_LLE_startx_length);
+        unsigned idx = AddrPool.getIndex(Entry.Begin);
+        Asm->EmitULEB128(idx);
+        Asm->EmitLabelDifference(Entry.End, Entry.Begin, 4);
+      }
       Asm->emitInt8(dwarf::DW_LLE_startx_length);
       unsigned idx = AddrPool.getIndex(Entry.Begin);
       Asm->EmitULEB128(idx);

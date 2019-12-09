@@ -42,6 +42,10 @@ defm compress_debug_sections:
 
 defm defsym: Eq<"defsym", "Define a symbol alias">, MetaVarName<"<symbol>=<value>">;
 
+defm optimize_bb_jumps: B<"optimize-bb-jumps",
+    "Remove direct jumps at the end to the next basic block",
+    "Do not remove any direct jumps at the end to the next basic block">;
+
 defm split_stack_adjust_size
     : Eq<"split-stack-adjust-size",
          "Specify adjustment to stack size when a split-stack function calls a "
@@ -306,6 +310,52 @@ defm print_icf_sections: B<"print-icf-sections",
 defm print_symbol_order: Eq<"print-symbol-order",
   "Print a symbol order specified by --call-graph-ordering-file into the specified file">;
 
+defm propeller: Eq<"propeller", "Propeller profile">;
+
+defm propeller_opt: Eq<"propeller-opt",
+    "Propeller optimization flags: reorder-blocks, reorder-funcs, and split-funcs is on by the default when -propeller is specified.">,
+  MetaVarName<"[reorder-ip, no-reorder-ip, reorder-blocks, no-reorder-blocks, reorder-funcs, no-reorder-funcs, split-funcs, no-split-funcs]">;
+
+defm propeller_keep_named_symbols: B<"propeller-keep-named-symbols",
+    "Do not delete basic block section symbols",
+    "Delete unused basic block section symbols (default)">;
+
+defm propeller_print_stats: B<"propeller-print-stats",
+    "Print propeller statistics.",
+    "Do not print propeller statistics (default)">;
+
+defm propeller_bb_order_file: Eq<"propeller-bb-order-file",
+    "Intra-procedural bb layout to use.">,
+  MetaVarName<"<file>">;
+
+defm propeller_dump_symbol_order: Eq<"propeller-dump-symbol-order",
+    "Dump the propeller-generated symbol ordering into the file.">,
+  MetaVarName<"<file>">;
+
+defm propeller_dump_cfg: Eq<"propeller-dump-cfg",
+    "Dump the cfg of the function in DOT format (in a file named the same as the function).">;
+
+defm propeller_debug_symbol: Eq<"propeller-debug-symbol",
+    "Print information about propeller actions related to the given symbol.">;
+
+defm propeller_fallthrough_weight: Eq<"propeller-fallthrough-weight",
+    "Fallthrough weight parameter to use in ExtTSP algorithm (default: 1.0).">;
+
+defm propeller_forward_jump_weight: Eq<"propeller-forward-jump-weight",
+    "(Near) forward jump weight parameter to use in ExtTSP algorithm (default: 0.1).">;
+
+defm propeller_backward_jump_weight: Eq<"propeller-backward-jump-weight",
+    "(Near) backward jump weight parameter to use in ExtTSP algorithm (default: 0.1).">;
+
+defm propeller_forward_jump_distance: Eq<"propeller-forward-jump-distance",
+    "Maximum distance for a forward jump in ExtTSP algorithm (default: 1024).">;
+
+defm propeller_backward_jump_distance: Eq<"propeller-backward-jump-distance",
+    "Maximum distance for a backward jump in ExtTSP algorithm (default: 640).">;
+
+defm propeller_chain_split_threshold: Eq<"propeller-chain-split-threshold",
+    "Maximum binary size of a chain which could be split in ExtTSP algorithm (default: 128).">;
+
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
 
@@ -332,6 +382,10 @@ defm section_start: Eq<"section-start", "Set address of section">,
 
 def shared: F<"shared">, HelpText<"Build a shared object">;
 
+defm shrink_jumps_aggressively: B<"shrink-jumps-aggressively",
+    "Shrink Jumps aggressively and aligment-agnostic (deafult)",
+    "Do not shrink jumps aggressively">;
+
 defm soname: Eq<"soname", "Set DT_SONAME">;
 
 defm sort_section:
@@ -346,6 +400,9 @@ def start_lib: F<"start-lib">,
 def strip_all: F<"strip-all">, HelpText<"Strip all symbols">;
 
 def strip_debug: F<"strip-debug">, HelpText<"Strip debugging information">;
+
+defm symbol_alignment_file:
+  Eq<"symbol-alignment-file", "Overwrite alignment for symbols.">;
 
 defm symbol_ordering_file:
   Eq<"symbol-ordering-file", "Layout sections to place symbols in the order specified by symbol ordering file">;
@@ -501,6 +558,11 @@ def opt_remarks_format: Separate<["--"], "opt-remarks-format">,
   HelpText<"The format used for serializing remarks (default: YAML)">;
 defm plugin_opt: Eq<"plugin-opt", "specifies LTO options for compatibility with GNU linkers">;
 def save_temps: F<"save-temps">;
+def lto_basicblock_sections: J<"lto-basicblock-sections=">,
+  HelpText<"Enable basic block sections for LTO">;
+defm lto_unique_bb_section_names: B<"lto-unique-bb-section-names",
+    "Give unique names to every basic block section for LTO",
+    "Do not give unique names to every basic block section for LTO">;
 def thinlto_cache_dir: J<"thinlto-cache-dir=">,
   HelpText<"Path to ThinLTO cached object file directory">;
 defm thinlto_cache_policy: Eq<"thinlto-cache-policy", "Pruning policy for the ThinLTO cache">;

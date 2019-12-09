@@ -1,0 +1,2 @@
+clang-10.gz filter=lfs diff=lfs merge=lfs -text
+pgo-vanilla.perfdata.gz filter=lfs diff=lfs merge=lfs -text

@@ -14,6 +14,7 @@
 #include "LinkerScript.h"
 #include "MapFile.h"
 #include "OutputSections.h"
+#include "Propeller/Propeller.h"
 #include "Relocations.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
@@ -21,6 +22,7 @@
 #include "Target.h"
 #include "lld/Common/Filesystem.h"
 #include "lld/Common/Memory.h"
+#include "lld/Common/PropellerCommon.h"
 #include "lld/Common/Strings.h"
 #include "lld/Common/Threads.h"
 #include "llvm/ADT/StringMap.h"
@@ -28,7 +30,12 @@
 #include "llvm/Support/RandomNumberGenerator.h"
 #include "llvm/Support/SHA1.h"
 #include "llvm/Support/xxhash.h"
+#include <chrono>
+#include <cctype>
 #include <climits>
+#include <type_traits>
+
+#define DEBUG_TYPE "lld"
 
 using namespace llvm;
 using namespace llvm::ELF;
@@ -56,6 +63,7 @@ private:
   void sortSections();
   void resolveShfLinkOrder();
   void finalizeAddressDependentContent();
+  void optimizeBasicBlockJumps();
   void sortInputSections();
   void finalizeSections();
   void checkExecuteOnly();
@@ -552,7 +560,11 @@ template <class ELFT> void Writer<ELFT>::run() {
   // completes section contents. For example, we need to add strings
   // to the string table, and add entries to .got and .plt.
   // finalizeSections does that.
+  //auto startFinalizeSectionTime = system_clock::now();
   finalizeSections();
+  //auto endFinalizeSectionTime = system_clock::now();
+  //duration<double> FinalizeSectionTime = endFinalizeSectionTime - startFinalizeSectionTime;
+  //warn("[TIME](s) finalize section (includes section ordering): " + Twine(std::to_string(FinalizeSectionTime.count())));
   checkExecuteOnly();
   if (errorCount())
     return;
@@ -632,12 +644,27 @@ static bool shouldKeepInSymtab(const Defined &sym) {
   if (config->emitRelocs)
     return true;
 
+  StringRef name = sym.getName();
+
+  if (name.empty() && sym.type == llvm::ELF::STT_NOTYPE &&
+      sym.binding == llvm::ELF::STB_LOCAL) {
+    return false;
+  }
+
+  if (!config->propeller.empty() &&
+      lld::propeller::SymbolEntry::isBBSymbol(name)) {
+    if (config->propellerKeepNamedSymbols ||
+        propeller::PropLeg.shouldKeepBBSymbol(name))
+      return true;
+    else
+      return false;
+  }
+
   // In ELF assembly .L symbols are normally discarded by the assembler.
   // If the assembler fails to do so, the linker discards them if
   // * --discard-locals is used.
   // * The symbol is in a SHF_MERGE section, which is normally the reason for
   //   the assembler keeping the .L symbol.
-  StringRef name = sym.getName();
   bool isLocal = name.startswith(".L") || name.empty();
   if (!isLocal)
     return true;
@@ -679,6 +706,8 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
     return;
   for (InputFile *file : objectFiles) {
     ObjFile<ELFT> *f = cast<ObjFile<ELFT>>(file);
+    std::list<Symbol *> localNonBBSymbols;
+    std::list<Symbol *> localBBSymbols;
     for (Symbol *b : f->getLocalSymbols()) {
       if (!b->isLocal())
         fatal(toString(f) +
@@ -692,7 +721,24 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
         continue;
       if (!shouldKeepInSymtab(*dr))
         continue;
-      in.symTab->addSymbol(b);
+
+      if (lld::propeller::SymbolEntry::isBBSymbol(b->getName()))
+        localBBSymbols.emplace_back(b);
+      else
+        localNonBBSymbols.emplace_back(b);
+    }
+
+    localBBSymbols.sort([](Symbol *A, Symbol *B) {
+      return A->getName().size() > B->getName().size();
+    });
+
+    // Add BB symbols to SymTab first.
+    for (auto *S : localBBSymbols) {
+      in.symTab->addSymbol(S);
+    }
+
+    for (auto *S : localNonBBSymbols) {
+      in.symTab->addSymbol(S);
     }
   }
 }
@@ -1598,6 +1644,161 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
   }
 }
 
+// If Input Sections have been shrinked (basic block sections) then
+// update symbol values and sizes associated with these sections.
+static void fixSymbolsAfterShrinking() {
+  for (InputFile *File : objectFiles) {
+    parallelForEach(File->getSymbols(), [&](Symbol *Sym) {
+      auto *Def = dyn_cast<Defined>(Sym);
+      if (!Def)
+        return;
+
+      const auto *Sec = Def->section;
+      if (!Sec)
+        return;
+
+      const auto *InputSec = dyn_cast<InputSectionBase>(Sec->repl);
+      if (!InputSec || !InputSec->BytesDropped)
+        return;
+
+      const auto NewSize = InputSec->data().size();
+
+      if (Def->value > NewSize) {
+        LLVM_DEBUG(llvm::dbgs() << "Moving symbol " << Sym->getName() <<
+                   " from "  << Def->value << " to " <<
+                   Def->value - InputSec->BytesDropped << " bytes\n");
+        Def->value -= InputSec->BytesDropped;
+        return;
+      }
+
+      if (Def->value + Def->size > NewSize) {
+        LLVM_DEBUG(llvm::dbgs() << "Shrinking symbol " << Sym->getName() <<
+                   " from "  << Def->size << " to " <<
+                   Def->size - InputSec->BytesDropped << " bytes\n");
+        Def->size -= InputSec->BytesDropped;
+      }
+    });
+  }
+}
+
+
+// If basic block sections exist, there are opportunities to delete fall thru
+// jumps and shrink jump instructions after basic block reordering.  This
+// relaxation pass does that.
+template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
+  if (!config->optimizeBBJumps || !ELFT::Is64Bits)
+    return;
+
+  script->assignAddresses();
+  // For every output section that has executable input sections, this
+  // does 3 things:
+  //   1.  It deletes all direct jump instructions in input sections that
+  //       jump to the following section as it is not required.  If there
+  //       are two consecutive jump instructions, it checks if they can be
+  //       flipped and one can be deleted.
+  //   2.  It aggressively shrinks jump instructions.
+  //   3.  It aggressively grows back jump instructions.
+  for (OutputSection *OS : outputSections) {
+    if (!(OS->flags & SHF_EXECINSTR)) continue;
+    std::vector<InputSection *> Sections = getInputSections(OS);
+    std::vector<bool> Result(Sections.size());
+    // Step 1: Delete all fall through jump instructions.  Also, check if two
+    // consecutive jump instructions can be flipped so that a fall through jmp
+    // instruction can be deleted.
+    parallelForEachN(0, Sections.size(), [&](size_t I) {
+      InputSection *Next = (I + 1) < Sections.size() ?
+                           Sections[I + 1] : nullptr;
+      InputSection &IS = *Sections[I];
+      Result[I] = target->deleteFallThruJmpInsn(IS, IS.getFile<ELFT>(), Next);
+    });
+    size_t NumDeleted = std::count(Result.begin(), Result.end(), true);
+    if (NumDeleted > 0) {
+      script->assignAddresses();
+      LLVM_DEBUG(llvm::dbgs() << "Removing " << NumDeleted <<
+                 " fall through jumps\n");
+    }
+
+    //auto startOptBBJumpTime = system_clock::now();
+    // Step 2:  Shrink jump instructions.  If the offset of the jump can fit in
+    // one byte there is a smaller encoding of the jump instruction.  Section
+    // offsets are recomputed only after all the sections have been processed.
+    // Alignment affects computed target offsets, positive target offsets could
+    // be higher by (Alignment - 1) and negative target offsets could be lower
+    // by the same amount. With aggressive shrinking, we make mistakes and
+    // rectify it in the next step.
+    auto MaxIt = config->shrinkJumpsAggressively ? Sections.end() :
+        std::max_element(Sections.begin(), Sections.end(),
+                         [](InputSection * const s1, InputSection * const s2) {
+                           return s1->alignment < s2->alignment;
+                         });
+    uint32_t MaxAlign = (MaxIt != Sections.end()) ? (*MaxIt)->alignment : 0;
+
+
+    // Shrink jump Instructions optimistically
+    std::vector<unsigned> Shrunk(Sections.size(), 0);
+    std::vector<bool> Changed(Sections.size(), 0);
+    bool AnyChanged = false;
+    do {
+      AnyChanged = false;
+      parallelForEachN(0, Sections.size(), [&](size_t I) {
+        InputSection &IS = *Sections[I];
+        unsigned BytesShrunk = target->shrinkJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
+        Changed[I] = (BytesShrunk > 0);
+        Shrunk[I] += BytesShrunk;
+      });
+      AnyChanged = std::any_of(Changed.begin(), Changed.end(),
+                               [] (bool e) {return e;});
+      size_t Num = std::count_if(Shrunk.begin(), Shrunk.end(),
+          [] (int e) { return e > 0; });
+      Num += std::count_if(Shrunk.begin(), Shrunk.end(),
+          [] (int e) { return e > 4; });
+      if (Num > 0)
+        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->name <<
+                   " : Shrinking " << Num << " jmp instructions\n");
+      if (AnyChanged)
+        script->assignAddresses();
+    } while (AnyChanged);
+
+    if (config->shrinkJumpsAggressively) {
+      // Grow jump instructions when necessary
+      std::vector<unsigned> Grown(Sections.size(), 0);
+      do {
+        AnyChanged = false;
+        parallelForEachN(0, Sections.size(), [&](size_t I) {
+          InputSection &IS = *Sections[I];
+          unsigned BytesGrown = target->growJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
+          Changed[I] = (BytesGrown > 0);
+          Grown[I] += BytesGrown;
+        });
+        size_t Num = std::count_if(Grown.begin(), Grown.end(),
+            [] (int e) { return e > 0; });
+        Num += std::count_if(Grown.begin(), Grown.end(),
+            [] (int e) { return e > 4; });
+        if (Num > 0)
+          LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->name <<
+                     " : Growing " << Num << " jmp instructions\n");
+        AnyChanged = std::any_of(Changed.begin(), Changed.end(),
+                                 [] (bool e) {return e;});
+        if (AnyChanged)
+          script->assignAddresses();
+      } while (AnyChanged);
+    }
+
+  //auto endOptBBJumpTime = system_clock::now();
+  //duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+  //warn("[TIME](s) shrink bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
+  }
+
+  for (OutputSection *OS : outputSections) {
+    std::vector<InputSection *> Sections = getInputSections(OS);
+    for (InputSection * IS: Sections)
+      IS->trim();
+  }
+
+  fixSymbolsAfterShrinking();
+
+}
+
 static void finalizeSynthetic(SyntheticSection *sec) {
   if (sec && sec->isNeeded() && sec->getParent())
     sec->finalizeContents();
@@ -1937,6 +2138,15 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // finalizeAddressDependentContent may have added local symbols to the static symbol table.
   finalizeSynthetic(in.symTab);
   finalizeSynthetic(in.ppc64LongBranchTarget);
+
+  // Relaxation to delete inter-basic block jumps created by basic block
+  // sections.
+  //auto startOptBBJumpTime = system_clock::now();
+  optimizeBasicBlockJumps();
+  //auto endOptBBJumpTime = system_clock::now();
+  //duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+  //warn("[TIME](s) optimize bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
+
 
   // Fill other section headers. The dynamic table is finalized
   // at the end because some tags like RELSZ depend on result

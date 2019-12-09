@@ -243,6 +243,22 @@ void OutputSection::sort(llvm::function_ref<int(InputSectionBase *s)> order) {
       sortByOrder(isd->sections, order);
 }
 
+static void fill(uint8_t *Buf, size_t Size,
+                 const std::vector<std::vector<uint8_t>> &SFiller) {
+  unsigned I = 0;
+  unsigned NC = Size / SFiller.back().size();
+  for (unsigned C = 0 ; C < NC; ++C){
+    memcpy(Buf + I, SFiller.back().data(), SFiller.back().size());
+    I += SFiller.back().size();
+  }
+  unsigned remaining = Size - I;
+  if (!remaining)
+    return;
+  if (SFiller.at(remaining-1).size() != remaining)
+    fatal("Failed padding with special filler.");
+  memcpy(Buf + I, SFiller.at(remaining-1).data(), remaining);
+}
+
 // Fill [Buf, Buf + Size) with Filler.
 // This is used for linker script "=fillexp" command.
 static void fill(uint8_t *buf, size_t size,
@@ -331,7 +347,13 @@ template <class ELFT> void OutputSection::writeTo(uint8_t *buf) {
         end = buf + size;
       else
         end = buf + sections[i + 1]->outSecOff;
-      fill(start, end - start, filler);
+      // Check if this IS needs a special filler.
+      if (isec->SpecialFiller)
+        fill(start, end - start, *(isec->SpecialFiller));
+      else if (isec->Filler)
+        fill(start, end - start, *(isec->Filler));
+      else
+        fill(start, end - start, filler);
     }
   });
 

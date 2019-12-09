@@ -149,6 +149,10 @@ SectionKind TargetLoweringObjectFile::getKindForGlobal(const GlobalObject *GO,
   if (isa<Function>(GO))
     return SectionKind::getText();
 
+  // Basic blocks are classified as text sections.
+  if (isa<BasicBlock>(GO))
+    return SectionKind::getText();
+
   // Global variables require more detailed analysis.
   const auto *GVar = cast<GlobalVariable>(GO);
 
@@ -302,6 +306,17 @@ MCSection *TargetLoweringObjectFile::getSectionForConstant(
   return DataSection;
 }
 
+MCSection *TargetLoweringObjectFile::getSectionForMachineBasicBlock(
+    const Function &F, const MachineBasicBlock &MBB,
+    const TargetMachine &TM) const {
+  return nullptr;
+}
+
+MCSection *TargetLoweringObjectFile::getColdSectionForMachineBasicBlock(
+    const Function &F, const MachineBasicBlock &MBB,
+    const TargetMachine &TM) const {
+  return nullptr;
+}
 /// getTTypeGlobalReference - Return an MCExpr to use for a
 /// reference to the specified global variable from exception
 /// handling information.

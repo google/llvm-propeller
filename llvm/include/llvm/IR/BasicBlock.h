@@ -19,6 +19,7 @@
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/IR/GlobalObject.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/SymbolTableListTraits.h"
 #include "llvm/IR/Value.h"
@@ -427,6 +428,12 @@ public:
   bool isLegalToHoistInto() const;
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const;
+
+  /// Set the section prefix for this function.
+  void setSectionPrefix(StringRef Prefix);
+
+  /// Get the section prefix for this function.
+  Optional<StringRef> getSectionPrefix() const;
 
 private:
   /// Increment the internal refcount of the number of BlockAddresses

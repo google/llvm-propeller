@@ -14,6 +14,8 @@
 #ifndef LLVM_TARGET_TARGETOPTIONS_H
 #define LLVM_TARGET_TARGETOPTIONS_H
 
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/MC/MCTargetOptions.h"
 
 namespace llvm {
@@ -61,6 +63,16 @@ namespace llvm {
                       // the sign of 0
       PositiveZero    // denormals are flushed to positive zero
     };
+  }
+
+  namespace BasicBlockSection {
+  enum SectionMode {
+    None,   // Do not use Basic Block Sections.
+    All,    // Use Basic Block Sections for all functions.
+    Labels, // Do not use Basic Block Sections but label basic blocks.
+    Func,   // Get list of functions from a file
+    List    // Get list of functions & BBs from a file
+  };
   }
 
   enum class EABI {
@@ -114,9 +126,9 @@ namespace llvm {
           EnableFastISel(false), EnableGlobalISel(false), UseInitArray(false),
           DisableIntegratedAS(false), RelaxELFRelocations(false),
           FunctionSections(false), DataSections(false),
-          UniqueSectionNames(true), TrapUnreachable(false),
-          NoTrapAfterNoreturn(false), EmulatedTLS(false),
-          ExplicitEmulatedTLS(false), EnableIPRA(false),
+          UniqueSectionNames(true), UniqueBBSectionNames(false),
+          TrapUnreachable(false), NoTrapAfterNoreturn(false),
+          EmulatedTLS(false), ExplicitEmulatedTLS(false), EnableIPRA(false),
           EmitStackSizeSection(false), EnableMachineOutliner(false),
           SupportsDefaultOutlining(false), EmitAddrsig(false),
           EnableDebugEntryValues(false), ForceDwarfFrameSection(false) {}
@@ -224,6 +236,8 @@ namespace llvm {
 
     unsigned UniqueSectionNames : 1;
 
+    unsigned UniqueBBSectionNames : 1;
+
     /// Emit target-specific trap instruction for 'unreachable' IR instructions.
     unsigned TrapUnreachable : 1;
 
@@ -252,6 +266,11 @@ namespace llvm {
 
     /// Emit address-significance table.
     unsigned EmitAddrsig : 1;
+
+    /// Emit basic blocks into separate sections.
+    BasicBlockSection::SectionMode BasicBlockSections = BasicBlockSection::None;
+
+    StringMap<SmallSet<unsigned, 4>> BasicBlockSectionsList;
 
     /// Emit debug info about parameter's entry values.
     unsigned EnableDebugEntryValues : 1;

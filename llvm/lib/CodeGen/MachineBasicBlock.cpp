@@ -61,12 +61,26 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     const MachineFunction *MF = getParent();
     MCContext &Ctx = MF->getContext();
     auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
-    assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
-    CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
-                                           Twine(MF->getFunctionNumber()) +
-                                           "_" + Twine(getNumber()));
-  }
 
+    bool BasicBlockSymbols =
+        MF->getBasicBlockSections() || MF->getBasicBlockLabels();
+    auto Delimiter = BasicBlockSymbols ? "." : "_";
+    assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
+
+    // With Basic Block Sections, we emit a symbol for every basic block. To
+    // keep the size of strtab small, we choose a unary encoding which can
+    // compress the symbol names significantly.  The basic blocks for function
+    // foo are named a.BB.foo, aa.BB.foo, and so on.
+    if (BasicBlockSymbols) {
+      CachedMCSymbol = Ctx.getOrCreateSymbol(
+          std::string(getNumber(), 'a') + Twine(Delimiter) + "BB" +
+          Twine(Delimiter) + Twine(MF->getName()));
+    } else {
+      CachedMCSymbol = Ctx.getOrCreateSymbol(
+          Twine(Prefix) + "BB" + Twine(MF->getFunctionNumber()) +
+          Twine(Delimiter) + Twine(getNumber()));
+    }
+  }
   return CachedMCSymbol;
 }
 
@@ -527,6 +541,64 @@ void MachineBasicBlock::moveBefore(MachineBasicBlock *NewAfter) {
 
 void MachineBasicBlock::moveAfter(MachineBasicBlock *NewBefore) {
   getParent()->splice(++NewBefore->getIterator(), getIterator());
+}
+
+// Returns true if this basic block and the Other are in the same section.
+bool MachineBasicBlock::sameSection(const MachineBasicBlock *Other) const {
+  if (this == Other)
+    return true;
+
+  if ((this->isColdSection() != Other->isColdSection())
+      || (this->isExceptionSection() != Other->isExceptionSection()))
+    return false;
+
+  if ((this->isBeginSection() && this->isEndSection())
+      || (Other->isBeginSection() && Other->isEndSection()))
+    return false;
+
+  return true;
+}
+
+const MachineBasicBlock * MachineBasicBlock::getSectionEndMBB() const {
+  if (this->isEndSection())
+    return this;
+  auto I = std::next(this->getIterator());
+  const MachineFunction *MF = getParent();
+  while (I != MF->end()) {
+    const MachineBasicBlock &MBB = *I;
+    if (MBB.isEndSection())
+      return &MBB;
+    I = std::next(I);
+  }
+  llvm_unreachable("No End Basic Block for this section."); 
+}
+
+// Insert unconditional jumps to the basic block to which there is
+// a fall through.
+void MachineBasicBlock::insertUnconditionalFallthroughBranch() {
+  MachineBasicBlock *Fallthrough = getFallThrough();
+
+  if (Fallthrough == nullptr)
+    return;
+
+  // If this basic block and the Fallthrough basic block are in the same
+  // section then do not insert the jump.
+  if (this->sameSection(Fallthrough))
+    return;
+
+  const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
+  SmallVector<MachineOperand, 4> Cond;
+  MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
+
+  // If a branch to the fall through block already exists, return.
+  if (!TII->analyzeBranch(*this, TBB, FBB, Cond) &&
+      (TBB == Fallthrough || FBB == Fallthrough)) {
+    return;
+  }
+
+  Cond.clear();
+  DebugLoc DL = findBranchDebugLoc();
+  TII->insertBranch(*this, Fallthrough, nullptr, Cond, DL);
 }
 
 void MachineBasicBlock::updateTerminator() {

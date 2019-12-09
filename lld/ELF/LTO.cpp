@@ -33,6 +33,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include <algorithm>
 #include <cstddef>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -58,6 +59,51 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef file) {
   return ret;
 }
 
+bool getBasicBlockSectionsList(TargetOptions &Options) {
+  if (config->ltoBasicBlockSections.empty())
+    return false;
+
+  std::ifstream FList(config->ltoBasicBlockSections);
+  if (!FList.good()) {
+    errs() << "Cannot open " + config->ltoBasicBlockSections;
+    return false;
+  }
+
+  bool consumeBasicBlockIds = false;
+  std::string Line;
+  StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
+      Options.BasicBlockSectionsList.end();
+  bool AllBasicBlocks = false;
+
+  while ((std::getline(FList, Line)).good()) {
+    if (Line.empty()) continue;
+    if (Line.find("#AllBB") != std::string::npos) {
+      AllBasicBlocks = true;
+      continue;
+    }
+    if (Line[0] == '@') continue;
+    if (Line[0] != '!') break;
+    StringRef S(Line);
+    if (S.consume_front("!") && !S.empty()) {
+      if (consumeBasicBlockIds && S.consume_front("!")) {
+        assert(currentFuncI != Options.BasicBlockSectionsList.end());
+        currentFuncI->second.insert(std::stoi(S));
+      } else {
+        // Start a new function.
+        // S may have aliases encoded, like "foo_1/foo_1a/foo_2a", etc.
+        auto R = Options.BasicBlockSectionsList.try_emplace(S.split('/').first);
+        assert(R.second);
+        currentFuncI = R.first;
+        currentFuncI->second.insert(0);
+        consumeBasicBlockIds = true;
+      }
+    } else {
+      consumeBasicBlockIds = false;
+    }
+  }
+  return AllBasicBlocks;
+}
+
 static std::string getThinLTOOutputFile(StringRef modulePath) {
   return lto::getThinLTOOutputFile(modulePath,
                                    config->thinLTOPrefixReplace.first,
@@ -75,6 +121,24 @@ static lto::Config createConfig() {
   // Always emit a section per function/datum with LTO.
   c.Options.FunctionSections = true;
   c.Options.DataSections = true;
+
+  // Check if basic block sections must be used.
+  if (!config->ltoBasicBlockSections.empty()) {
+    if (config->ltoBasicBlockSections.equals("all"))
+      c.Options.BasicBlockSections = BasicBlockSection::All;
+    else if (config->ltoBasicBlockSections.equals("labels"))
+      c.Options.BasicBlockSections = BasicBlockSection::Labels;
+    else if (config->ltoBasicBlockSections.equals("none"))
+      c.Options.BasicBlockSections = BasicBlockSection::None;
+    else  {
+      if (getBasicBlockSectionsList(c.Options))
+        c.Options.BasicBlockSections = BasicBlockSection::Func;
+      else
+        c.Options.BasicBlockSections = BasicBlockSection::List;
+    }
+  }
+
+  c.Options.UniqueBBSectionNames = config->ltoUniqueBBSectionNames;
 
   if (auto relocModel = getRelocModelFromCMModel())
     c.RelocModel = *relocModel;

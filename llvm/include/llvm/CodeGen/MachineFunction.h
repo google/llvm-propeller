@@ -64,6 +64,7 @@ class MachineRegisterInfo;
 class MCContext;
 class MCInstrDesc;
 class MCSymbol;
+class MCSection;
 class Pass;
 class PseudoSourceValueManager;
 class raw_ostream;
@@ -243,6 +244,9 @@ class MachineFunction {
   // Keep track of jump tables for switch instructions
   MachineJumpTableInfo *JumpTableInfo;
 
+  // Keep track of the function section.
+  MCSection *Section = nullptr;
+
   // Keeps track of Wasm exception handling related data. This will be null for
   // functions that aren't using a wasm EH personality.
   WasmEHFuncInfo *WasmEHInfo = nullptr;
@@ -330,6 +334,13 @@ class MachineFunction {
   bool CallsUnwindInit = false;
   bool HasEHScopes = false;
   bool HasEHFunclets = false;
+
+  // True if basic block sections that are generated have been sorted.
+  bool BBSectionsSorted = false;
+  // True if sections must be generated for all basic blocks.
+  bool BasicBlockSections = false;
+  // True if labels must be generated for all basic blocks.
+  bool BasicBlockLabels = false;
 
   /// List of C++ TypeInfo used.
   std::vector<const GlobalValue *> TypeInfos;
@@ -446,6 +457,8 @@ public:
 
   MachineModuleInfo &getMMI() const { return MMI; }
   MCContext &getContext() const { return Ctx; }
+  MCSection *getSection() const { return Section; }
+  void setSection(MCSection *S) { Section = S; }
 
   PseudoSourceValueManager &getPSVManager() const { return *PSVManager; }
 
@@ -460,6 +473,10 @@ public:
 
   /// getFunctionNumber - Return a unique ID for the current function.
   unsigned getFunctionNumber() const { return FunctionNumber; }
+
+  bool getBasicBlockSections() const { return BasicBlockSections; }
+  bool sortBasicBlockSections();
+  bool getBasicBlockLabels() const { return BasicBlockLabels; }
 
   /// getTarget - Return the target machine this machine code is compiled with
   const LLVMTargetMachine &getTarget() const { return Target; }

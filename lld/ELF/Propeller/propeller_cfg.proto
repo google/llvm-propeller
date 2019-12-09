@@ -1,0 +1,82 @@
+syntax = "proto2";
+
+package llvm.plo.cfg;
+
+// Edge between basic blocks.
+// Next Available: 5.
+message Edge {
+  // Index of the source basic block.
+  optional int32 source = 1;
+
+  // Index of the target basic block.
+  optional int32 target = 2;
+
+  // Frequency count of the jump from profile.
+  optional int32 profile_count = 3;
+
+  enum Type {
+    INTRA_FUNC = 0;
+    INTRA_RSC  = 1; // Recursive call.
+    INTRA_RSR  = 2; // Return from recursive call.
+    // Intra edge dynamically created because of indirect jump, etc.
+    INTRA_DYNA = 3;
+    // Inter function jumps / calls.
+    INTER_FUNC_CALL = 4;
+  }
+
+  // Edge type
+  optional Type type = 4;
+}
+
+// Basic block in cfg.
+// Next Available: 7.
+message BasicBlock {
+  // 0-based index that distinguishes between different basic blocks.
+  optional int32 index = 1;
+
+  // Size of the basic block.
+  optional int32 size = 2;
+
+  // Frequency count of the basic block from profile, defined as
+  // max(sum(incoming_edges), sum(outgoing_edges)).
+  optional int32 profile_count = 3;
+
+  // Edges coming into this basic block.
+  repeated Edge incoming_edges = 4;
+
+  // Edges going out of this basic block.
+  repeated Edge outgoing_edges = 5;
+
+  // Fallthrough edge of this basic block.
+  optional Edge fallthrough = 6;
+}
+
+// Control flow graph where basic blocks are vertices and jumps are edges.
+// Next Available: 7.
+message CFG {
+  // Name of the function.
+  optional string name = 1;
+
+  // Size of the function.
+  optional int32 size = 2;
+
+  // Basic blocks in the CFG.
+  // The sequence of the repeated field matches the after-propeller layout.
+  repeated BasicBlock basic_blocks = 3;
+
+  // Basic block layout represented with sequence of bb indices (may only
+  // include hot bbs).
+  repeated int32 basic_block_layout = 6;
+
+  // The index of the entry block in the CFG.
+  optional int32 entry_block = 4;
+
+  // Object name of the function belongs to.
+  optional string object_name = 5;
+}
+
+// A group of CFGs.
+// Next Available: 2.
+message CFGGroup {
+  repeated CFG cfg_list = 1;
+}

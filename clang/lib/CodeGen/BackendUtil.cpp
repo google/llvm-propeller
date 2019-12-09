@@ -71,6 +71,7 @@
 #include "llvm/Transforms/Utils/EntryExitInstrumenter.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
+#include "fstream"
 #include <memory>
 using namespace clang;
 using namespace llvm;
@@ -418,6 +419,53 @@ static CodeGenFileType getCodeGenFileType(BackendAction Action) {
   }
 }
 
+static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
+                                      std::string FunctionsListFile) {
+  assert((Options.BasicBlockSections = llvm::BasicBlockSection::List) &&
+         "Invalid BasicBlock Section Type");
+  if (FunctionsListFile.empty())
+    return false;
+
+  std::ifstream FList(FunctionsListFile);
+  if (!FList.good()) {
+    errs() << "Cannot open " + FunctionsListFile;
+    return false;
+  }
+
+  bool consumeBasicBlockIds = false;
+  StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
+      Options.BasicBlockSectionsList.end();
+  std::string Line;
+  bool AllBasicBlocks = false;
+
+  while ((std::getline(FList, Line)).good()) {
+    if (Line.empty()) continue;
+    if (Line.find("#AllBB") != std::string::npos) {
+      AllBasicBlocks = true;
+      continue;
+    }
+    if (Line[0] == '@') continue;  // Only @ lines can appear before ! lines.
+    if (Line[0] != '!') break;
+    StringRef S(Line);
+    if (S.consume_front("!") && !S.empty()) {
+      if (consumeBasicBlockIds && S.consume_front("!")) {
+        assert(currentFuncI != Options.BasicBlockSectionsList.end());
+        currentFuncI->second.insert(std::stoi(S));
+      } else {
+        // Start a new function.
+        auto R = Options.BasicBlockSectionsList.try_emplace(S.split('/').first);
+        assert(R.second);
+        currentFuncI = R.first;
+        currentFuncI->second.insert(0);
+        consumeBasicBlockIds = true;
+      }
+    } else {
+      consumeBasicBlockIds = false;
+    }
+  }
+  return AllBasicBlocks;
+}
+
 static void initTargetOptions(llvm::TargetOptions &Options,
                               const CodeGenOptions &CodeGenOpts,
                               const clang::TargetOptions &TargetOpts,
@@ -476,9 +524,23 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.NoZerosInBSS = CodeGenOpts.NoZeroInitializedInBSS;
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
+
+  Options.BasicBlockSections =
+      llvm::StringSwitch<llvm::BasicBlockSection::SectionMode>(
+          CodeGenOpts.BasicBlockSections)
+          .Case("all", llvm::BasicBlockSection::All)
+          .Case("labels", llvm::BasicBlockSection::Labels)
+          .Case("none", llvm::BasicBlockSection::None)
+          .Default(llvm::BasicBlockSection::List);
+
+  if (Options.BasicBlockSections == llvm::BasicBlockSection::List
+      && getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections))
+    Options.BasicBlockSections = llvm::BasicBlockSection::Func;
+
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;
+  Options.UniqueBBSectionNames = CodeGenOpts.UniqueBBSectionNames;
   Options.EmulatedTLS = CodeGenOpts.EmulatedTLS;
   Options.ExplicitEmulatedTLS = CodeGenOpts.ExplicitEmulatedTLS;
   Options.DebuggerTuning = CodeGenOpts.getDebuggerTuning();
@@ -495,6 +557,7 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.MCOptions.MCIncrementalLinkerCompatible =
       CodeGenOpts.IncrementalLinkerCompatible;
   Options.MCOptions.MCPIECopyRelocations = CodeGenOpts.PIECopyRelocations;
+  Options.MCOptions.MCRelocateWithSymbols = CodeGenOpts.RelocateWithSymbols;
   Options.MCOptions.MCFatalWarnings = CodeGenOpts.FatalWarnings;
   Options.MCOptions.MCNoWarn = CodeGenOpts.NoWarn;
   Options.MCOptions.AsmVerbose = CodeGenOpts.AsmVerbose;

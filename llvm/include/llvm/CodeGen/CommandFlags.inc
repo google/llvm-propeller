@@ -238,6 +238,14 @@ static cl::opt<bool>
                      cl::desc("Emit functions into separate sections"),
                      cl::init(false));
 
+static cl::opt<llvm::BasicBlockSection::SectionMode> BasicBlockSections(
+    "basicblock-sections", cl::desc("Emit basic blocks into separate sections"),
+    cl::init(BasicBlockSection::None),
+    cl::values(clEnumValN(BasicBlockSection::None, "none", "Off"),
+               clEnumValN(BasicBlockSection::All, "all", "All Basic Blocks"),
+               clEnumValN(BasicBlockSection::Labels, "labels",
+                          "Labelled Basic Blocks")));
+
 static cl::opt<bool> EmulatedTLS("emulated-tls",
                                  cl::desc("Use emulated TLS model"),
                                  cl::init(false));
@@ -246,6 +254,11 @@ static cl::opt<bool>
     UniqueSectionNames("unique-section-names",
                        cl::desc("Give unique names to every section"),
                        cl::init(true));
+
+static cl::opt<bool> UniqueBBSectionNames(
+    "unique-bb-section-names",
+    cl::desc("Give unique names to every basic block section"),
+    cl::init(false));
 
 static cl::opt<llvm::EABI>
     EABIVersion("meabi", cl::desc("Set EABI type (default depends on triple):"),
@@ -304,7 +317,9 @@ static TargetOptions InitTargetOptionsFromCodeGenFlags() {
   Options.RelaxELFRelocations = RelaxELFRelocations;
   Options.DataSections = DataSections;
   Options.FunctionSections = FunctionSections;
+  Options.BasicBlockSections = BasicBlockSections;
   Options.UniqueSectionNames = UniqueSectionNames;
+  Options.UniqueBBSectionNames = UniqueBBSectionNames;
   Options.EmulatedTLS = EmulatedTLS;
   Options.ExplicitEmulatedTLS = EmulatedTLS.getNumOccurrences() > 0;
   Options.ExceptionModel = ExceptionModel;
@@ -314,6 +329,8 @@ static TargetOptions InitTargetOptionsFromCodeGenFlags() {
   Options.ForceDwarfFrameSection = ForceDwarfFrameSection;
 
   Options.MCOptions = InitMCTargetOptionsFromFlags();
+  Options.MCOptions.MCRelocateWithSymbols =
+      (BasicBlockSections == BasicBlockSection::All);
 
   Options.ThreadModel = TMModel;
   Options.EABIVersion = EABIVersion;
