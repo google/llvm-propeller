@@ -211,7 +211,7 @@ void ControlFlowGraph::mapCallOut(CFGNode *from, CFGNode *to, uint64_t toAddr,
 //   CFG[Name=bar], tmpNodeMap={3: CFGNode[BBIndex="3"]}
 //
 // For each CFG and tmpNodeMap, call CFGBuilder::buildCFG().
-bool CFGBuilder::buildCFGs() {
+bool CFGBuilder::buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping) {
   auto symbols = View->ViewFile->symbols();
   std::map<StringRef, std::list<SymbolRef>> groups;
   for (const SymbolRef &sym : symbols) {
@@ -258,6 +258,12 @@ bool CFGBuilder::buildCFGs() {
     StringRef cfgName = i.first;
     std::unique_ptr<ControlFlowGraph> cfg(
         new ControlFlowGraph(View, cfgName, 0));
+
+    std::map<uint32_t,
+             std::pair<CFGNode *, std::set<SymbolEntry *,
+                                           SymbolEntryOrdinalLessComparator>>>
+        coldSectionMap;
+
     for (SymbolRef sym : i.second) {
       auto symNameE = sym.getName();
       auto sectionIE = sym.getSection();
@@ -265,28 +271,64 @@ bool CFGBuilder::buildCFGs() {
           (*sectionIE) != sym.getObject()->section_end()) {
         StringRef symName = *symNameE;
         uint64_t symShndx = (*sectionIE)->getIndex();
+        uint64_t symSectionSize = (*sectionIE)->getSize();
         // Note here: BB symbols only carry size information when
         // -fbasicblock-section=all. Objects built with
         // -fbasicblock-section=labels do not have size information
         // for BB symbols.
-        uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
-        // Drop bb sections with no code
-        if (!symSize)
-          continue;
+        // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
         auto *sE = prop->Propf->findSymbol(symName);
         if (sE) {
           if (tmpNodeMap.find(sE->Ordinal) != tmpNodeMap.end()) {
             error("Internal error checking cfg map.");
             return false;
           }
-          tmpNodeMap.emplace(
-              std::piecewise_construct, std::forward_as_tuple(sE->Ordinal),
-              std::forward_as_tuple(new CFGNode(symShndx, symName, sE->Size,
-                                                sE->Ordinal, cfg.get())));
+          {
+            auto coldI = coldSectionMap.find(symShndx);
+            if (coldI != coldSectionMap.end()) {
+              CFGNode *coldNode = coldI->second.first;
+              if (coldNode->ShSize != symSectionSize) {
+                fprintf(stderr, "Check internal size error.\n");
+                return false;
+              }
+              if (coldNode->MappedAddr > sE->Ordinal) {
+                coldNode->MappedAddr = sE->Ordinal;
+                coldNode->ShName = symName;
+                coldNode->ShSize = symSectionSize;
+              }
+              if (!coldI->second.second.insert(sE).second) {
+                error("Internal error grouping cold sections.");
+                return false;
+              }
+              // if (sE->Ordinal == 1178259) {
+              //   fprintf(stderr, "### %s: %s: %lu %lu:%lu\n",
+              //           View->ViewName.str().c_str(), symName.str().c_str(),
+              //           symSectionSize, coldNode->MappedAddr, coldNode->ShSize);
+              // }
+              continue; // to next sym.
+            }
+          }
+          // Drop bb sections with no code
+          if (!symSectionSize || !sE->Size)
+            continue;
+          CFGNode *node = tmpNodeMap
+                              .emplace(std::piecewise_construct,
+                                       std::forward_as_tuple(sE->Ordinal),
+                                       std::forward_as_tuple(new CFGNode(
+                                           symShndx, symName, symSectionSize,
+                                           sE->Ordinal, cfg.get())))
+                              .first->second.get();
+          auto &P = coldSectionMap[symShndx];
+          P.first = node;
+          if (!P.second.insert(sE).second) {
+            error("Internal error grouping duplicated cold sections.");
+            return false;
+          }
           continue;
-        }
+        }  // end of "if (SE) {"
         // Otherwise fallthrough to ditch cfg & tmpNodeMap.
       }
+
       tmpNodeMap.clear();
       cfg.reset(nullptr);
       break;
@@ -298,18 +340,47 @@ bool CFGBuilder::buildCFGs() {
     if (!cfg)
       continue; // to next cfg group.
 
-    uint32_t groupShndx = 0;
-    for (auto &T : tmpNodeMap) {
-      if (groupShndx != 0 && T.second->Shndx == groupShndx) {
-        cfg.reset(nullptr);
-        tmpNodeMap.clear();
-        warn("basicblock sections must not have same section index, this is "
-             "usually caused by -fbasicblock-sections=labels. "
-             "Use -fbasicblock-sections=list/all instead");
-        return false;
+    {
+      for (auto &P : coldSectionMap) {
+        CFGNode *Node = P.second.first;
+        auto &SymSet = P.second.second;
+        if (SymSet.size() > 1) {
+          // fprintf(stderr, "The following are mapped to %s:\n",
+          //         Node->ShName.str().c_str());
+          SymbolEntry *FirstSymbol = *(SymSet.begin());
+          if (FirstSymbol->Ordinal != Node->MappedAddr) {
+            fprintf(stderr, "*** %lu vs. %lu, %s vs. %s", FirstSymbol->Ordinal,
+                    Node->MappedAddr, FirstSymbol->Name.str().c_str(),
+                    Node->ShName.str().c_str());
+            error("Internal error grouping cold sections.");
+            return false;
+          }
+          for (SymbolEntry *SS : SymSet) {
+            // fprintf(stderr, "\t%s\n", SS->Name.str().c_str());
+            // fprintf(stderr, "Map %lu->%lu\n", SS->Ordinal, Node->MappedAddr);
+            if (!OrdinalRemapping.emplace(SS->Ordinal, Node->MappedAddr)
+                     .second) {
+              error("Internal error remapping duplicated cold sections.");
+              return false;
+            }
+          }
+        }
       }
-      groupShndx = T.second->Shndx;
+      coldSectionMap.clear();
     }
+
+    // uint32_t groupShndx = 0;
+    // for (auto &T : tmpNodeMap) {
+    //   if (groupShndx != 0 && T.second->Shndx == groupShndx) {
+    //     cfg.reset(nullptr);
+    //     tmpNodeMap.clear();
+    //     warn("basicblock sections must not have same section index, this is "
+    //          "usually caused by -fbasicblock-sections=labels. "
+    //          "Use -fbasicblock-sections=list/all instead");
+    //     return false;
+    //   }
+    //   groupShndx = T.second->Shndx;
+    // }
 
     if (cfg) {
       buildCFG(*cfg, cfgSym, tmpNodeMap);
@@ -361,6 +432,8 @@ void CFGBuilder::buildCFG(
   std::map<uint64_t, CFGNode *> shndxNodeMap;
   buildShndxNodeMap(tmpNodeMap, shndxNodeMap);
 
+  // TODO(shenhan): move this to file level, do not do it for each cfg, do it
+  // once for a single file.
   std::map<uint64_t, section_iterator> relocationSectionMap;
   buildRelocationSectionMap(relocationSectionMap);
 
@@ -445,10 +518,14 @@ void CFGBuilder::buildCFG(
 
   // Set cfg size and re-calculate size of the entry basicblock, which is
   // initially the size of the whole function.
-  cfg.Size = cfg.getEntryNode()->ShSize;
+  // cfg.Size = cfg.getEntryNode()->ShSize;
+  // cfg.forEachNodeRef([&cfg](CFGNode &n) {
+  //   if (&n != cfg.getEntryNode())
+  //     cfg.getEntryNode()->ShSize -= n.ShSize;
+  // });
+  cfg.Size = 0;
   cfg.forEachNodeRef([&cfg](CFGNode &n) {
-    if (&n != cfg.getEntryNode())
-      cfg.getEntryNode()->ShSize -= n.ShSize;
+    cfg.Size += n.ShSize;
   });
 }
 

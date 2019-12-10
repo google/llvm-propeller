@@ -112,6 +112,16 @@ struct SymbolEntry {
   static const uint64_t INVALID_ADDRESS = uint64_t(-1);
 };
 
+struct SymbolEntryOrdinalLessComparator {
+  bool operator()(SymbolEntry *S1, SymbolEntry *S2) const {
+    if (!S1 && S2)
+      return true;
+    if ((S1 && !S2) || (!S1 && !S2))
+      return false;
+    return S1->Ordinal < S2->Ordinal;
+  }
+};
+
 } // namespace propeller
 } // namespace lld
 #endif

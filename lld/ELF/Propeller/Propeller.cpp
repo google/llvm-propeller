@@ -261,10 +261,20 @@ bool Propfile::processProfile() {
     StringRef L(line); // LineBuf is null-terminated.
     uint64_t from, to, count;
     char tag;
+    auto UpdateOrdinal = [this](uint64_t OriginOrdinal) -> uint64_t {
+      auto I = OrdinalRemapping.find(OriginOrdinal);
+      if (I != OrdinalRemapping.end()) {
+        //fprintf(stderr, "Updated %lu->%lu\n", OriginOrdinal, I->second);
+        return I->second;
+      }
+      return OriginOrdinal;
+    };
     if (!parseBranchOrFallthroughLine(L, &from, &to, &count, &tag)) {
       reportParseError("unrecognized line:\n" + L.str());
       return false;
     }
+    from = UpdateOrdinal(from);
+    to = UpdateOrdinal(to);
     CFGNode *fromN = prop->findCfgNode(from);
     CFGNode *toN = prop->findCfgNode(to);
     if (!fromN || !toN)
@@ -294,7 +304,8 @@ bool Propfile::processProfile() {
 // Parse each ELF file, create CFG and attach profile data to CFG.
 void Propeller::processFile(ObjectView *view) {
   if (view) {
-    if (CFGBuilder(view).buildCFGs()) {
+    std::map<uint64_t, uint64_t> OrdinalRemapping;
+    if (CFGBuilder(view).buildCFGs(OrdinalRemapping)) {
       // Updating global data structure.
       std::lock_guard<std::mutex> lock(Lock);
       Views.emplace_back(view);
@@ -304,6 +315,9 @@ void Propeller::processFile(ObjectView *view) {
         (void)(result);
         assert(result.second);
       }
+      Propf->OrdinalRemapping.insert(OrdinalRemapping.begin(),
+                                     OrdinalRemapping.end());
+
     } else {
       warn("skipped building CFG for '" + view->ViewName +"'");
       ++ProcessFailureCount;

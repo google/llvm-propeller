@@ -211,6 +211,8 @@ public:
   std::vector<SymbolEntry *> FunctionsWithAliases;
   uint64_t LineNo;
   char LineTag;
+
+  std::map<uint64_t, uint64_t> OrdinalRemapping;
 };
 
 class Propeller {

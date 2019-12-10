@@ -148,8 +148,8 @@ private:
   CFGNode(uint64_t _Shndx, const StringRef &_ShName, uint64_t _Size,
           uint64_t _MappedAddr, ControlFlowGraph *_Cfg)
       : Shndx(_Shndx), ShName(_ShName), ShSize(_Size), MappedAddr(_MappedAddr),
-        Freq(0), CFG(_Cfg), Chain(nullptr), ChainOffset(0), Outs(), Ins(), CallOuts(), CallIns(),
-        FTEdge(nullptr) {}
+        Freq(0), CFG(_Cfg), Chain(nullptr), ChainOffset(0), Outs(), Ins(),
+        CallOuts(), CallIns(), FTEdge(nullptr) {}
 
   friend class ControlFlowGraph;
   friend class CFGBuilder;
@@ -227,7 +227,7 @@ public:
   CFGBuilder(ObjectView *vw) : View(vw) {}
 
   // See implementaion comments in .cpp.
-  bool buildCFGs();
+  bool buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping);
 
 protected:
   // See implementaion comments in .cpp.
