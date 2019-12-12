@@ -22,8 +22,8 @@ DOIP     ?= 0
 
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )
-IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plolistinterp.result benchmark-pgo-plofuncsinterp.result benchmark-pgo-plointerp.result" )
-IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plofuncsinterp.result benchmark-pmu-pgo-plointerp.result" )
+IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plofuncsinterp.result" )
+IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plofuncsinterp.result" )
 
 DDIR := $(shell pwd)
 LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
@@ -403,7 +403,7 @@ define append_git_status
 	ln -sf $1.${GITHASH} $1
 endef
 
-check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plofuncs.result benchmark-pmu-pgo-plo.result $(IP_PMU_RESULTS) $(BOLT_PMU_RESULT)
+check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plofuncs.result $(IP_PMU_RESULTS) $(BOLT_PMU_RESULT)
 	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "itlb_misses.miss_causes_a_walk:u" ) ; \
 	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
 	printf "VERSIONS" >> $@.${REPOHASH} ; \
@@ -421,7 +421,7 @@ check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolis
 	printf "\n" >> $@.${REPOHASH} ; \
 	$(call append_git_status,$@)
 
-check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plofuncs.result benchmark-pgo-plo.result $(IP_RESULTS) $(BOLT_RESULT)
+check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plofuncs.result $(IP_RESULTS) $(BOLT_RESULT)
 	@echo "CHECK-PERFORMANCE" > $@.${REPOHASH} ; \
 	for version in $(wordlist 2,$(words $^),$^) ; do \
 		$(call check_against_baseline,$<,$$version) >> $@.${REPOHASH} ; \
