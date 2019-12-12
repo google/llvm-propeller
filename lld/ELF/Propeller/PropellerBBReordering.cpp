@@ -220,9 +220,9 @@ void NodeChainBuilder::coalesceChains() {
           if (c1CFG == c2CFG) {
             auto * entryNode = c1CFG->getEntryNode();
             if (entryNode->Chain == c1)
-            return true;
+              return true;
             if (entryNode->Chain == c2)
-            return false;
+              return false;
           }
         }
         double c1ExecDensity = c1->execDensity();
@@ -1029,10 +1029,14 @@ void CallChainClustering::mergeClusters() {
   }
 
   // Sort the hot chains in decreasing order of their execution density.
-  std::stable_sort(HotChains.begin(), HotChains.end(),
+  std::sort(HotChains.begin(), HotChains.end(),
             [&chainWeightMap] (const std::unique_ptr<NodeChain> &c_ptr1,
                                const std::unique_ptr<NodeChain> &c_ptr2){
-              return chainWeightMap[c_ptr1.get()] > chainWeightMap[c_ptr2.get()];
+              chain1Weight = chainWeightMap[c_ptr1.get()];
+              chain2Weight = chainWeightMap[c_ptr2.get()];
+              if (chain1Weight == chain2Weight)
+                return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
+              return chain1Weight > chain2Weight;
             });
 
   for (auto& c_ptr : HotChains){
