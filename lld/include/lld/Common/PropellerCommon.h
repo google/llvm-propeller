@@ -14,7 +14,7 @@ namespace lld {
 namespace propeller {
 
 static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
-static const char BASIC_BLOCK_UNIFIED_CHARACTER = 'a';
+static const char * BASIC_BLOCK_UNIFIED_CHARACTERS = "ar";
 
 // This data structure is shared between lld propeller components and
 // create_llvm_prof. In short, create_llvm_prof parses the binary, wraps all the
@@ -29,9 +29,10 @@ struct SymbolEntry {
   using AliasesTy = SmallVector<StringRef, 3>;
   SymbolEntry(uint64_t O, const StringRef &N, AliasesTy &&As, uint64_t A,
               uint64_t S, uint8_t T, bool BB = false,
-              SymbolEntry *FuncPtr = nullptr)
+              SymbolEntry *FuncPtr = nullptr,
+              bool R = false)
       : Ordinal(O), Name(N), Aliases(As), Addr(A), Size(S), Type(T), BBTag(BB),
-        ContainingFunc(FuncPtr) {}
+        ContainingFunc(FuncPtr) , IsReturnBlock(R){}
 
   // Unique index number across all symbols that participate linking.
   uint64_t Ordinal;
@@ -51,6 +52,7 @@ struct SymbolEntry {
   // For BBTag symbols, this is the containing fuction pointer, for a normal
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *ContainingFunc;
+  bool IsReturnBlock;
 
   bool containsAddress(uint64_t A) const {
     return Addr <= A && A < Addr + Size;
@@ -99,8 +101,9 @@ struct SymbolEntry {
     auto R = SymName.split(BASIC_BLOCK_SEPARATOR);
     if (R.second.empty())
       return false;
+    const char * BB_CHARACTER = strchr(BASIC_BLOCK_UNIFIED_CHARACTERS, R.first.front());
     for (auto *I = R.first.bytes_begin(), *J = R.first.bytes_end(); I != J; ++I)
-      if (*I != BASIC_BLOCK_UNIFIED_CHARACTER)
+      if (*I != *BB_CHARACTER)
         return false;
     if (FuncName)
       *FuncName = R.second;

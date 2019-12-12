@@ -93,9 +93,10 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
                      return e->Type == CFGEdge::EdgeType::INTRA_FUNC &&
                             e->Sink != getEntryNode();
                    });
-      if (intraInEdges.size() == 1)
+      if (intraInEdges.size() == 1){
+        intraInEdges.front()->Weight += cnt;
         p = intraInEdges.front()->Src;
-      else
+      } else
         p = nullptr;
     } while (p && p != to);
     return true;
@@ -107,15 +108,16 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
     assert(from != nullptr);
     CFGNode *p = from;
     do {
-      std::vector<CFGEdge *> IntraOutEdges;
+      std::vector<CFGEdge *> intraOutEdges;
       std::copy_if(p->Outs.begin(), p->Outs.end(),
-                   std::back_inserter(IntraOutEdges), [this](CFGEdge *e) {
+                   std::back_inserter(intraOutEdges), [this](CFGEdge *e) {
                      return e->Type == CFGEdge::EdgeType::INTRA_FUNC &&
                             e->Sink != getEntryNode();
                    });
-      if (IntraOutEdges.size() == 1)
-        p = IntraOutEdges.front()->Sink;
-      else
+      if (intraOutEdges.size() == 1) {
+        intraOutEdges.front()->Weight += cnt;
+        p = intraOutEdges.front()->Sink;
+      } else
         p = nullptr;
     } while (p && p != from);
     return true;
@@ -281,8 +283,8 @@ bool CFGBuilder::buildCFGs() {
           }
           tmpNodeMap.emplace(
               std::piecewise_construct, std::forward_as_tuple(sE->Ordinal),
-              std::forward_as_tuple(new CFGNode(symShndx, symName, symSize,
-              //std::forward_as_tuple(new CFGNode(symShndx, symName, sE->Size,
+              //std::forward_as_tuple(new CFGNode(symShndx, symName, symSize,
+              std::forward_as_tuple(new CFGNode(symShndx, symName, sE->Size,
                                                 sE->Ordinal, cfg.get())));
           continue;
         }
@@ -408,6 +410,7 @@ void CFGBuilder::buildCFG(
     }
   }
 
+  /*
   // For each recursive call, we create a recursive-self-return edges for all
   // exit edges. In the following example, create an edge bb5->bb3 FuncA:
   //    bb1:            <---+
@@ -435,6 +438,7 @@ void CFGBuilder::buildCFG(
       }
     }
   }
+  */
   calculateFallthroughEdges(cfg, tmpNodeMap);
 
   // Transfer nodes ownership to cfg and destroy tmpNodeMap.
@@ -446,20 +450,20 @@ void CFGBuilder::buildCFG(
 
   // Set cfg size and re-calculate size of the entry basicblock, which is
   // initially the size of the whole function.
-  /*
   cfg.Size = cfg.getEntryNode()->ShSize;
   auto * entryNode = cfg.getEntryNode();
-  fprintf(stderr, "Initial size of entry bb: %s to %lu\n", cfg.Name.str().c_str(), entryNode->ShSize);
+  //fprintf(stderr, "Initial size of entry bb: %s to %lu\n", cfg.Name.str().c_str(), entryNode->ShSize);
   cfg.forEachNodeRef([entryNode](CFGNode &n) {
     if (&n != entryNode)
       entryNode->ShSize -= n.ShSize;
   });
-  fprintf(stderr, "Resetting the size of entry bb: %s to %lu\n", cfg.Name.str().c_str(), entryNode->ShSize);
-  */
+  //fprintf(stderr, "Resetting the size of entry bb: %s to %lu\n", cfg.Name.str().c_str(), entryNode->ShSize);
+  /*
   cfg.Size = 0;
   cfg.forEachNodeRef([&cfg](CFGNode &n) {
     cfg.Size += n.ShSize;
   });
+  */
 
 }
 

@@ -73,7 +73,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // foo are named a.BB.foo, aa.BB.foo, and so on.
     if (BasicBlockSymbols) {
       CachedMCSymbol = Ctx.getOrCreateSymbol(
-          std::string(getNumber(), 'a') + Twine(Delimiter) + "BB" +
+          std::string(getNumber(), isReturnBlock() ? 'r' : 'a') + Twine(Delimiter) + "BB" +
           Twine(Delimiter) + Twine(MF->getName()));
     } else {
       CachedMCSymbol = Ctx.getOrCreateSymbol(

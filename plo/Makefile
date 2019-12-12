@@ -23,7 +23,7 @@ DOIP     ?= 0
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )
 IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plolistinterp.result benchmark-pgo-plofuncsinterp.result benchmark-pgo-plointerp.result" )
-IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result" )
+IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plofuncsinterp.result benchmark-pmu-pgo-plointerp.result" )
 
 DDIR := $(shell pwd)
 LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
@@ -122,7 +122,7 @@ gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(
 gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
-other_opt                  := -Wl,--propeller-chain-split-threshold=1024 -Wl,-propeller-print-stats
+other_opt                  := -Wl,--propeller-chain-split-threshold=1024 -Wl,-propeller-print-stats -Wl,-propeller-keep-named-symbols
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
@@ -217,7 +217,7 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller,,-Wl,$(comma)-propeller-dump-cfg=$@),"clang;compiler-rt;lld",clang lld)
 
 pgo-plofuncs/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.allbb.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.allbb.propeller,,-Wl$(comma)-propeller-dump-cfg=@),"clang;compiler-rt;lld",clang lld)
@@ -250,7 +250,7 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_V
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
-		 -chain-split-threshold=1024          \
+		 -split-threshold=1024          \
 		 -reorder-blocks="cache+"               \
 	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog
@@ -363,7 +363,7 @@ $(foreach F,$(FLAVORS),clean-$(F)): clean-%: dummy-%
 benchmark-pgo-relocs-bolt.result benchmark-pgo-labels-bolt.result benchmark-pgo-labels.result benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plofuncs.result benchmark-pgo-plo.result benchmark-pgo-plolistinterp.result benchmark-pgo-plofuncsinterp.result benchmark-pgo-plointerp.result: benchmark-%.result: benchmark-%
 	touch $@
 
-benchmark-pmu-pgo-relocs-bolt.result benchmark-pmu-pgo-labels-bolt.result benchmark-pmu-pgo-labels.result benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plofuncs.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result : benchmark-pmu-%.result: benchmark-pmu-%
+benchmark-pmu-pgo-relocs-bolt.result benchmark-pmu-pgo-labels-bolt.result benchmark-pmu-pgo-labels.result benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plofuncs.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plofuncsinterp.result benchmark-pmu-pgo-plointerp.result : benchmark-pmu-%.result: benchmark-pmu-%
 	touch $@
 
 define check_against_baseline
@@ -403,7 +403,7 @@ define append_git_status
 	ln -sf $1.${GITHASH} $1
 endef
 
-check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result $(IP_PMU_RESULTS) $(BOLT_PMU_RESULT)
+check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plofuncs.result benchmark-pmu-pgo-plo.result $(IP_PMU_RESULTS) $(BOLT_PMU_RESULT)
 	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "itlb_misses.miss_causes_a_walk:u" ) ; \
 	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
 	printf "VERSIONS" >> $@.${REPOHASH} ; \
