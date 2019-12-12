@@ -250,7 +250,7 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_V
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
-		 -chain-split-threshold=1024          \
+		 -split-threshold=1024          \
 		 -reorder-blocks="cache+"               \
 	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog

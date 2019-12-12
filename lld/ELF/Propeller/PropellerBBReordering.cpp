@@ -252,6 +252,8 @@ void NodeChainBuilder::coalesceChains() {
 // Merge two chains in the specified order.
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
+  if(leftChain->Freq==0 ^ rightChain->Freq==0)
+    warn("Attempting to merge hot and cold chains: \n" + lld::propeller::toString(*leftChain) + "\nAND\n" + lld::propeller::toString(*rightChain));
 
   mergeInOutEdges(leftChain, rightChain);
 
@@ -324,6 +326,9 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain * mergerChain, NodeChain * merg
 // NodeChainAssembly is an ordered triple of three slices from two chains.
 void NodeChainBuilder::mergeChains(
     std::unique_ptr<NodeChainAssembly> assembly) {
+
+  if(assembly->splitChain()->Freq==0 ^ assembly->unsplitChain()->Freq==0)
+    warn("Attempting to merge hot and cold chains: \n" + toString(*assembly.get()));
 
   // Decide which chain gets merged into the other chain, in order to reduce
   // computation.
@@ -1032,8 +1037,8 @@ void CallChainClustering::mergeClusters() {
   std::sort(HotChains.begin(), HotChains.end(),
             [&chainWeightMap] (const std::unique_ptr<NodeChain> &c_ptr1,
                                const std::unique_ptr<NodeChain> &c_ptr2){
-              chain1Weight = chainWeightMap[c_ptr1.get()];
-              chain2Weight = chainWeightMap[c_ptr2.get()];
+              auto chain1Weight = chainWeightMap[c_ptr1.get()];
+              auto chain2Weight = chainWeightMap[c_ptr2.get()];
               if (chain1Weight == chain2Weight)
                 return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
               return chain1Weight > chain2Weight;
