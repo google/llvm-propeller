@@ -29,7 +29,7 @@ message Edge {
 }
 
 // Basic block in cfg.
-// Next Available: 7.
+// Next Available: 8.
 message BasicBlock {
   // 0-based index that distinguishes between different basic blocks.
   optional int32 index = 1;
@@ -49,6 +49,9 @@ message BasicBlock {
 
   // Fallthrough edge of this basic block.
   optional Edge fallthrough = 6;
+
+  //
+  optional bool hot_tag = 7;
 }
 
 // Control flow graph where basic blocks are vertices and jumps are edges.

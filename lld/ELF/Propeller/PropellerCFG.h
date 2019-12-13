@@ -116,6 +116,8 @@ public:
   // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
   CFGEdge *FTEdge;
 
+  bool HotTag;
+
   const static uint64_t InvalidAddress = -1;
 
   unsigned getBBIndex() const {
@@ -146,10 +148,10 @@ public:
 
 private:
   CFGNode(uint64_t _Shndx, const StringRef &_ShName, uint64_t _Size,
-          uint64_t _MappedAddr, ControlFlowGraph *_Cfg)
+          uint64_t _MappedAddr, ControlFlowGraph *_Cfg, bool _HotTag)
       : Shndx(_Shndx), ShName(_ShName), ShSize(_Size), MappedAddr(_MappedAddr),
         Freq(0), CFG(_Cfg), Chain(nullptr), ChainOffset(0), Outs(), Ins(),
-        CallOuts(), CallIns(), FTEdge(nullptr) {}
+        CallOuts(), CallIns(), FTEdge(nullptr), HotTag(_HotTag) {}
 
   friend class ControlFlowGraph;
   friend class CFGBuilder;

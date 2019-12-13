@@ -244,6 +244,10 @@ void NodeChainBuilder::coalesceChains() {
 // Merge two chains in the specified order.
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
+  // if (leftChain->Freq == 0 ^ rightChain->Freq == 0)
+  //   warn("Attempting to merge hot and cold chains: \n" +
+  //        lld::propeller::toString(*leftChain) + "\nAND\n" +
+  //        lld::propeller::toString(*rightChain));
 
   mergeInOutEdges(leftChain, rightChain);
 
@@ -316,6 +320,10 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain * mergerChain, NodeChain * merg
 // NodeChainAssembly is an ordered triple of three slices from two chains.
 void NodeChainBuilder::mergeChains(
     std::unique_ptr<NodeChainAssembly> assembly) {
+
+  // if (assembly->splitChain()->Freq == 0 ^ assembly->unsplitChain()->Freq == 0)
+  //   warn("Attempting to merge hot and cold chains: \n" +
+  //        toString(*assembly.get()));
 
   // Decide which chain gets merged into the other chain, in order to reduce
   // computation.

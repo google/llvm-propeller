@@ -65,7 +65,27 @@ bool ControlFlowGraph::writeAsDotGraph(StringRef cfgOutName) {
 // Create an edge for "from->to".
 CFGEdge *ControlFlowGraph::createEdge(CFGNode *from, CFGNode *to,
                                       typename CFGEdge::EdgeType type) {
-  CFGEdge *edge = new CFGEdge(from, to, type);
+  CFGEdge *edge = nullptr;
+  auto CheckExistingEdge = [from, to,
+                            type, &edge](std::vector<CFGEdge *> &Edges) {
+    for (auto *E : Edges) {
+      if (E->Src == from && E->Sink == to && E->Type == type) {
+        edge = E;
+        return true;
+      }
+    }
+    return false;
+  };
+  if (!from->HotTag || !to->HotTag) {
+    if (type < CFGEdge::EdgeType::INTER_FUNC_CALL &&
+        CheckExistingEdge(from->Outs))
+      return edge;
+    if (type >= CFGEdge::EdgeType::INTER_FUNC_CALL &&
+        CheckExistingEdge(from->CallOuts))
+      return edge;
+  }
+
+  edge = new CFGEdge(from, to, type);
   if (type < CFGEdge::EdgeType::INTER_FUNC_CALL) {
     from->Outs.push_back(edge);
     to->Ins.push_back(edge);
@@ -300,11 +320,6 @@ bool CFGBuilder::buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping) {
                 error("Internal error grouping cold sections.");
                 return false;
               }
-              // if (sE->Ordinal == 1178259) {
-              //   fprintf(stderr, "### %s: %s: %lu %lu:%lu\n",
-              //           View->ViewName.str().c_str(), symName.str().c_str(),
-              //           symSectionSize, coldNode->MappedAddr, coldNode->ShSize);
-              // }
               continue; // to next sym.
             }
           }
@@ -316,7 +331,7 @@ bool CFGBuilder::buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping) {
                                        std::forward_as_tuple(sE->Ordinal),
                                        std::forward_as_tuple(new CFGNode(
                                            symShndx, symName, symSectionSize,
-                                           sE->Ordinal, cfg.get())))
+                                           sE->Ordinal, cfg.get(), sE->HotTag)))
                               .first->second.get();
           auto &P = coldSectionMap[symShndx];
           P.first = node;
@@ -359,7 +374,7 @@ bool CFGBuilder::buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping) {
             // fprintf(stderr, "\t%s\n", SS->Name.str().c_str());
             // fprintf(stderr, "Map %lu->%lu\n", SS->Ordinal, Node->MappedAddr);
             if (!OrdinalRemapping.emplace(SS->Ordinal, Node->MappedAddr)
-                     .second) {
+                     .second || SS->HotTag) {
               error("Internal error remapping duplicated cold sections.");
               return false;
             }
