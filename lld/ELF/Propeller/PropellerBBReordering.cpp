@@ -252,6 +252,8 @@ void NodeChainBuilder::coalesceChains() {
 // Merge two chains in the specified order.
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
+   if(leftChain->Freq==0 ^ rightChain->Freq==0)
+    error("Attempting to merge hot and cold chains: \n" + lld::propeller::toString(*leftChain) + "\nAND\n" + lld::propeller::toString(*rightChain));
 
   mergeInOutEdges(leftChain, rightChain);
 
@@ -273,8 +275,8 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
 // attached this way.
 bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
   // TODO(remove this) No edge cannot fall-through to the entry basic block.
-  //if (sink->isEntryNode())
-  //  return false;
+  if (sink->isEntryNode())
+    return false;
 
   // Ignore edges between hot and cold basic blocks.
   if (src->Freq == 0 ^ sink->Freq == 0)
@@ -324,6 +326,9 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain * mergerChain, NodeChain * merg
 // NodeChainAssembly is an ordered triple of three slices from two chains.
 void NodeChainBuilder::mergeChains(
     std::unique_ptr<NodeChainAssembly> assembly) {
+  if(assembly->splitChain()->Freq==0 ^ assembly->unsplitChain()->Freq==0)
+    error("Attempting to merge hot and cold chains: \n" + toString(*assembly.get()));
+
 
   // Decide which chain gets merged into the other chain, in order to reduce
   // computation.
@@ -646,7 +651,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
   for (auto &node : cfg.Nodes) {
     if (profiledOuts[node.get()].size() == 1) {
       CFGEdge *edge = profiledOuts[node.get()].front();
-      if(edge->Type != CFGEdge::EdgeType::INTRA_FUNC)
+      if(edge->Type != CFGEdge::EdgeType::INTRA_FUNC && edge->Type != CFGEdge::EdgeType::INTRA_DYNA)
         continue;
       if (profiledIns[edge->Sink].size() == 1)
         mutuallyForcedOut.try_emplace(node.get(), edge->Sink);
@@ -1029,10 +1034,14 @@ void CallChainClustering::mergeClusters() {
   }
 
   // Sort the hot chains in decreasing order of their execution density.
-  std::stable_sort(HotChains.begin(), HotChains.end(),
+  std::sort(HotChains.begin(), HotChains.end(),
             [&chainWeightMap] (const std::unique_ptr<NodeChain> &c_ptr1,
                                const std::unique_ptr<NodeChain> &c_ptr2){
-              return chainWeightMap[c_ptr1.get()] > chainWeightMap[c_ptr2.get()];
+              auto chain1Weight = chainWeightMap[c_ptr1.get()];
+              auto chain2Weight = chainWeightMap[c_ptr2.get()];
+              if (chain1Weight == chain2Weight)
+                return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
+              return chain1Weight > chain2Weight;
             });
 
   for (auto& c_ptr : HotChains){

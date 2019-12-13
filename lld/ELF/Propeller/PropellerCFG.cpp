@@ -87,15 +87,9 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
     assert(to != nullptr);
     CFGNode *p = to;
     do {
-      std::vector<CFGEdge *> intraInEdges;
-      std::copy_if(p->Ins.begin(), p->Ins.end(),
-                   std::back_inserter(intraInEdges), [this](CFGEdge *e) {
-                     return e->Type == CFGEdge::EdgeType::INTRA_FUNC &&
-                            e->Sink != getEntryNode();
-                   });
-      if (intraInEdges.size() == 1){
-        intraInEdges.front()->Weight += cnt;
-        p = intraInEdges.front()->Src;
+      if (p->Ins.size() == 1 && p->Ins.front()->isFTEdge()){
+        p->Ins.front()->Weight += cnt;
+        p = p->Ins.front()->Src;
       } else
         p = nullptr;
     } while (p && p != to);
@@ -108,15 +102,9 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
     assert(from != nullptr);
     CFGNode *p = from;
     do {
-      std::vector<CFGEdge *> intraOutEdges;
-      std::copy_if(p->Outs.begin(), p->Outs.end(),
-                   std::back_inserter(intraOutEdges), [this](CFGEdge *e) {
-                     return e->Type == CFGEdge::EdgeType::INTRA_FUNC &&
-                            e->Sink != getEntryNode();
-                   });
-      if (intraOutEdges.size() == 1) {
-        intraOutEdges.front()->Weight += cnt;
-        p = intraOutEdges.front()->Sink;
+      if (p->Outs.size() == 1 && p->Outs.front()->isFTEdge()) {
+        p->Outs.front()->Weight += cnt;
+        p = p->Outs.front()->Sink;
       } else
         p = nullptr;
     } while (p && p != from);
@@ -534,6 +522,10 @@ std::ostream &operator<<(std::ostream &out, const ControlFlowGraph &cfg) {
   }
   out << std::endl;
   return out;
+}
+
+bool CFGEdge::isFTEdge() const {
+  return Src->FTEdge == this;
 }
 
 } // namespace propeller

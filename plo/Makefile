@@ -122,7 +122,7 @@ gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(
 gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
-other_opt                  := -Wl,--propeller-chain-split-threshold=1024 -Wl,-propeller-print-stats -Wl,-propeller-keep-named-symbols
+other_opt                  := -Wl,--propeller-chain-split-threshold=2048 -Wl,-propeller-print-stats -Wl,-propeller-keep-named-symbols
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
@@ -250,9 +250,9 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_V
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
-		 -split-threshold=1024          \
+		 -chain-split-threshold=1024          \
 		 -reorder-blocks="cache+"               \
-	 	 -reorder-functions="hfsort+" -relocs=1 \
+	 	 -reorder-functions="hfsort" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog
 
 stage-cspgo/build/bin/clang-${CLANG_VERSION}: stage-pgo.profdata | stage1-compiler
