@@ -689,7 +689,8 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
       if (!profiledOuts[node].empty()) {
         CFGEdge *edge = profiledOuts[node].front();
         if (!victimEdge ||
-            (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr)) {
+            (edge->Weight < victimEdge->Weight) ||
+            (edge->Weight == victimEdge->Weight && (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr))) {
           victimEdge = edge;
         }
       }
@@ -1138,6 +1139,21 @@ void PropellerBBReordering::printStats() {
   for(auto elem: histogram)
     fprintf(stderr, "\t[%lu -> %lu]", elem.first, elem.second);
   fprintf(stderr, "\n");
+}
+
+
+bool NodeChainAssembly::CompareNodeChainAssembly::operator () (
+    const std::unique_ptr<NodeChainAssembly> &a1,
+    const std::unique_ptr<NodeChainAssembly> &a2) const {
+
+  if (a1->ScoreGain == a2->ScoreGain){
+    if (std::less<std::pair<NodeChain*,NodeChain*>>()(a1->ChainPair,a2->ChainPair))
+        return true;
+    if (std::less<std::pair<NodeChain*,NodeChain*>>()(a2->ChainPair,a1->ChainPair))
+        return false;
+    return a1->assemblyStrategy() < a2->assemblyStrategy();
+  }
+  return a1->ScoreGain < a2->ScoreGain;
 }
 
 } // namespace propeller

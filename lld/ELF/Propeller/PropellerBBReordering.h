@@ -28,7 +28,6 @@ using llvm::DenseSet;
 namespace lld {
 namespace propeller {
 
-class ChainClustering;
 
 enum MergeOrder {
   Begin,
@@ -86,6 +85,114 @@ public:
     return ((double)Freq) / std::max(Size, (uint64_t)1);
   }
 };
+
+} //namespace propeller
+} //namespace lld
+
+namespace std {
+
+template<>
+    struct less<lld::propeller::NodeChain*> {
+      bool operator()(const lld::propeller::NodeChain* c1,
+                      const lld::propeller::NodeChain* c2) const {
+        return c1->DelegateNode->MappedAddr < c2->DelegateNode->MappedAddr;
+      }
+    };
+
+template<>
+    struct less<pair<lld::propeller::NodeChain*, lld::propeller::NodeChain*>> {
+      bool operator()(const pair<lld::propeller::NodeChain*, lld::propeller::NodeChain*> p1,
+                      const pair<lld::propeller::NodeChain*, lld::propeller::NodeChain*> p2) const {
+        if (less<lld::propeller::NodeChain*>()(p1.first, p2.first))
+          return true;
+        if (less<lld::propeller::NodeChain*>()(p2.first, p1.first))
+          return false;
+        return less<lld::propeller::NodeChain*>()(p1.second, p2.second);
+      }
+    };
+} //namespace std
+
+namespace lld {
+namespace propeller {
+
+class ChainClustering {
+ public:
+  class Cluster {
+    public:
+     Cluster(NodeChain*);
+     std::vector<NodeChain*> Chains;
+     NodeChain * DelegateChain;
+     uint64_t Size;
+     uint64_t Weight;
+
+     Cluster &mergeWith(Cluster &other) {
+       Chains.insert(Chains.end(), other.Chains.begin(), other.Chains.end());
+       this->Weight += other.Weight;
+       this->Size += other.Size;
+       return *this;
+     }
+
+     double getDensity() {return ((double)Weight/Size);}
+  };
+
+  void mergeTwoClusters(Cluster * predecessorCluster, Cluster * cluster){
+    // Join the two clusters into predecessorCluster.
+    predecessorCluster->mergeWith(*cluster);
+
+    // Update chain to cluster mapping, because all chains that were
+    // previsously in cluster are now in predecessorCluster.
+    for (NodeChain * c : cluster->Chains) {
+      ChainToClusterMap[c] = predecessorCluster;
+    }
+
+    // Delete the defunct cluster
+    Clusters.erase(cluster->DelegateChain->DelegateNode->MappedAddr);
+  }
+
+  void addChain(std::unique_ptr<NodeChain>&& chain_ptr);
+
+  virtual void doOrder(std::vector<CFGNode*> &hotOrder,
+               std::vector<CFGNode*> &coldOrder);
+
+  virtual ~ChainClustering() = default;
+
+ protected:
+  virtual void mergeClusters() {};
+  void sortClusters(std::vector<Cluster *> &);
+
+  void initClusters() {
+    for(auto& c_ptr: HotChains){
+      NodeChain * chain = c_ptr.get();
+      Cluster *cl = new Cluster(chain);
+      cl->Weight = chain->Freq;
+      cl->Size = std::max(chain->Size, (uint64_t)1);
+      ChainToClusterMap[chain] = cl;
+      Clusters.try_emplace(cl->DelegateChain->DelegateNode->MappedAddr, cl);
+    }
+  }
+
+  std::vector<std::unique_ptr<NodeChain>> HotChains, ColdChains;
+  DenseMap<uint64_t, std::unique_ptr<Cluster>> Clusters;
+  DenseMap<NodeChain*, Cluster*> ChainToClusterMap;
+};
+
+} //namespace propeller
+} //namespace lld
+
+namespace std {
+template<>
+    struct less<lld::propeller::ChainClustering::Cluster*> {
+      bool operator()(const lld::propeller::ChainClustering::Cluster* c1,
+                      const lld::propeller::ChainClustering::Cluster* c2) const {
+        return less<lld::propeller::NodeChain*>()(c1->DelegateChain, c2->DelegateChain);
+      }
+    };
+
+} //namespace std
+
+
+namespace lld {
+namespace propeller {
 
 class NodeChainSlice {
 private:
@@ -234,18 +341,8 @@ private:
 
   struct CompareNodeChainAssembly {
     bool operator () (const std::unique_ptr<NodeChainAssembly> &a1,
-                      const std::unique_ptr<NodeChainAssembly> &a2) const {
-      if (a1->ScoreGain == a2->ScoreGain){
-        if (std::less<std::pair<NodeChain*,NodeChain*>>()(a1->ChainPair,a2->ChainPair))
-            return true;
-        if (std::less<std::pair<NodeChain*,NodeChain*>>()(a2->ChainPair,a1->ChainPair))
-            return false;
-        return a1->assemblyStrategy() < a2->assemblyStrategy();
-      }
-      return a1->ScoreGain < a2->ScoreGain;
-    }
+                      const std::unique_ptr<NodeChainAssembly> &a2) const;
   };
-
 
   friend class NodeChainBuilder;
 
@@ -365,66 +462,6 @@ public:
   std::string toString(NodeChainAssembly& assembly) const;
 };
 
-class ChainClustering {
- public:
-  class Cluster {
-    public:
-     Cluster(NodeChain*);
-     std::vector<NodeChain*> Chains;
-     NodeChain * DelegateChain;
-     uint64_t Size;
-     uint64_t Weight;
-
-     Cluster &mergeWith(Cluster &other) {
-       Chains.insert(Chains.end(), other.Chains.begin(), other.Chains.end());
-       this->Weight += other.Weight;
-       this->Size += other.Size;
-       return *this;
-     }
-
-     double getDensity() {return ((double)Weight/Size);}
-  };
-
-  void mergeTwoClusters(Cluster * predecessorCluster, Cluster * cluster){
-    // Join the two clusters into predecessorCluster.
-    predecessorCluster->mergeWith(*cluster);
-
-    // Update chain to cluster mapping, because all chains that were
-    // previsously in cluster are now in predecessorCluster.
-    for (NodeChain * c : cluster->Chains) {
-      ChainToClusterMap[c] = predecessorCluster;
-    }
-
-    // Delete the defunct cluster
-    Clusters.erase(cluster->DelegateChain->DelegateNode->MappedAddr);
-  }
-
-  void addChain(std::unique_ptr<NodeChain>&& chain_ptr);
-
-  virtual void doOrder(std::vector<CFGNode*> &hotOrder,
-               std::vector<CFGNode*> &coldOrder);
-
-  virtual ~ChainClustering() = default;
-
- protected:
-  virtual void mergeClusters() {};
-  void sortClusters(std::vector<Cluster *> &);
-
-  void initClusters() {
-    for(auto& c_ptr: HotChains){
-      NodeChain * chain = c_ptr.get();
-      Cluster *cl = new Cluster(chain);
-      cl->Weight = chain->Freq;
-      cl->Size = std::max(chain->Size, (uint64_t)1);
-      ChainToClusterMap[chain] = cl;
-      Clusters.try_emplace(cl->DelegateChain->DelegateNode->MappedAddr, cl);
-    }
-  }
-
-  std::vector<std::unique_ptr<NodeChain>> HotChains, ColdChains;
-  DenseMap<uint64_t, std::unique_ptr<Cluster>> Clusters;
-  DenseMap<NodeChain*, Cluster*> ChainToClusterMap;
-};
 
 class NoOrdering : public ChainClustering {
  public:
@@ -511,23 +548,4 @@ class PropellerBBReordering {
 } // namespace propeller
 } // namespace lld
 
-namespace std {
-
-template<>
-    struct less<lld::propeller::NodeChain*> {
-      bool operator()(const lld::propeller::NodeChain* c1,
-                      const lld::propeller::NodeChain* c2) const {
-        return c1->DelegateNode->MappedAddr < c2->DelegateNode->MappedAddr;
-      }
-    };
-
-template<>
-    struct less<lld::propeller::ChainClustering::Cluster*> {
-      bool operator()(const lld::propeller::ChainClustering::Cluster* c1,
-                      const lld::propeller::ChainClustering::Cluster* c2) const {
-        return less<lld::propeller::NodeChain*>()(c1->DelegateChain, c2->DelegateChain);
-      }
-    };
-
-} //namespace std
 #endif
