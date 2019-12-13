@@ -197,7 +197,8 @@ void NodeChainBuilder::attachFallThroughs() {
     // Sometimes, the original fall-throughs cannot be kept. So we try to find new
     // fall-through opportunities which did not exist in the original order.
     for (auto &Edge : Cfg->IntraEdges) {
-      attachNodes(Edge->Src, Edge->Sink);
+      if (Edge->Type == CFGEdge::EdgeType::INTRA_FUNC || Edge->Type == CFGEdge::EdgeType::INTRA_DYNA)
+        attachNodes(Edge->Src, Edge->Sink);
     }
   }
 }
@@ -213,10 +214,17 @@ void NodeChainBuilder::coalesceChains() {
   std::sort(
       chainOrder.begin(), chainOrder.end(),
       [](NodeChain *c1, NodeChain *c2) {
-        if (c1->Nodes.front()->isEntryNode())
-          return true;
-        if (c2->Nodes.front()->isEntryNode())
-          return false;
+        if (!propellerConfig.optReorderIP) {
+          auto * c1CFG = c1->DelegateNode->CFG;
+          auto * c2CFG = c2->DelegateNode->CFG;
+          if (c1CFG == c2CFG) {
+            auto * entryNode = c1CFG->getEntryNode();
+            if (entryNode->Chain == c1)
+              return true;
+            if (entryNode->Chain == c2)
+              return false;
+          }
+        }
         double c1ExecDensity = c1->execDensity();
         double c2ExecDensity = c2->execDensity();
         if (c1ExecDensity == c2ExecDensity)
@@ -244,10 +252,8 @@ void NodeChainBuilder::coalesceChains() {
 // Merge two chains in the specified order.
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
-  // if (leftChain->Freq == 0 ^ rightChain->Freq == 0)
-  //   warn("Attempting to merge hot and cold chains: \n" +
-  //        lld::propeller::toString(*leftChain) + "\nAND\n" +
-  //        lld::propeller::toString(*rightChain));
+  if(leftChain->Freq==0 ^ rightChain->Freq==0)
+    warn("Attempting to merge hot and cold chains: \n" + lld::propeller::toString(*leftChain) + "\nAND\n" + lld::propeller::toString(*rightChain));
 
   mergeInOutEdges(leftChain, rightChain);
 
@@ -268,9 +274,9 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
 // other (used for fallthroughs). Returns true if the basic blocks have been
 // attached this way.
 bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
-  // No edge cannot fall-through to the entry basic block.
-  if (sink->isEntryNode())
-    return false;
+  // TODO(remove this) No edge cannot fall-through to the entry basic block.
+  //if (sink->isEntryNode())
+  //  return false;
 
   // Ignore edges between hot and cold basic blocks.
   if (src->Freq == 0 ^ sink->Freq == 0)
@@ -321,9 +327,8 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain * mergerChain, NodeChain * merg
 void NodeChainBuilder::mergeChains(
     std::unique_ptr<NodeChainAssembly> assembly) {
 
-  // if (assembly->splitChain()->Freq == 0 ^ assembly->unsplitChain()->Freq == 0)
-  //   warn("Attempting to merge hot and cold chains: \n" +
-  //        toString(*assembly.get()));
+  if(assembly->splitChain()->Freq==0 ^ assembly->unsplitChain()->Freq==0)
+    warn("Attempting to merge hot and cold chains: \n" + toString(*assembly.get()));
 
   // Decide which chain gets merged into the other chain, in order to reduce
   // computation.
@@ -684,7 +689,8 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
       if (!profiledOuts[node].empty()) {
         CFGEdge *edge = profiledOuts[node].front();
         if (!victimEdge ||
-            (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr)) {
+            (edge->Weight < victimEdge->Weight) ||
+            (edge->Weight == victimEdge->Weight && (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr))) {
           victimEdge = edge;
         }
       }
@@ -1029,10 +1035,14 @@ void CallChainClustering::mergeClusters() {
   }
 
   // Sort the hot chains in decreasing order of their execution density.
-  std::stable_sort(HotChains.begin(), HotChains.end(),
+  std::sort(HotChains.begin(), HotChains.end(),
             [&chainWeightMap] (const std::unique_ptr<NodeChain> &c_ptr1,
                                const std::unique_ptr<NodeChain> &c_ptr2){
-              return chainWeightMap[c_ptr1.get()] > chainWeightMap[c_ptr2.get()];
+              auto chain1Weight = chainWeightMap[c_ptr1.get()];
+              auto chain2Weight = chainWeightMap[c_ptr2.get()];
+              if (chain1Weight == chain2Weight)
+                return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
+              return chain1Weight > chain2Weight;
             });
 
   for (auto& c_ptr : HotChains){
@@ -1129,6 +1139,21 @@ void PropellerBBReordering::printStats() {
   for(auto elem: histogram)
     fprintf(stderr, "\t[%lu -> %lu]", elem.first, elem.second);
   fprintf(stderr, "\n");
+}
+
+
+bool NodeChainAssembly::CompareNodeChainAssembly::operator () (
+    const std::unique_ptr<NodeChainAssembly> &a1,
+    const std::unique_ptr<NodeChainAssembly> &a2) const {
+
+  if (a1->ScoreGain == a2->ScoreGain){
+    if (std::less<std::pair<NodeChain*,NodeChain*>>()(a1->ChainPair,a2->ChainPair))
+        return true;
+    if (std::less<std::pair<NodeChain*,NodeChain*>>()(a2->ChainPair,a1->ChainPair))
+        return false;
+    return a1->assemblyStrategy() < a2->assemblyStrategy();
+  }
+  return a1->ScoreGain < a2->ScoreGain;
 }
 
 } // namespace propeller

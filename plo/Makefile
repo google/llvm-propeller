@@ -22,8 +22,8 @@ DOIP     ?= 0
 
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )
-IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plolistinterp.result benchmark-pgo-plofuncsinterp.result benchmark-pgo-plointerp.result" )
-IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result benchmark-pmu-pgo-plointerp.result" )
+IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plofuncsinterp.result" )
+IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result" )
 
 DDIR := $(shell pwd)
 LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
@@ -223,7 +223,7 @@ pgo-plofuncs/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-lab
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.allbb.propeller,,-Wl$(comma)-propeller-dump-cfg=@),"clang;compiler-rt;lld",clang lld)
 
 pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller,,-Wl$(comma)-propeller-dump-cfg=@),"clang;compiler-rt;lld",clang lld)
 
 pgo-plofuncs/build/symbol-order pgo-plolist/build/symbol-order: %/build/symbol-order: %/build/bin/clang-$(CLANG_VERSION)
 	cd $(shell dirname $@) ; ninja -t commands clang | grep -Fe " -o bin/clang-${CLANG_VERSION} " | \
@@ -264,7 +264,7 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_V
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
-		 -cluster-split-threshold=1024          \
+		 -chain-split-threshold=1024            \
 		 -reorder-blocks="cache+"               \
 	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog
@@ -428,7 +428,7 @@ define append_git_status
 	ln -sf $1.${GITHASH} $1
 endef
 
-check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result $(IP_PMU_RESULTS) $(BOLT_PMU_RESULT)
+check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result $(IP_PMU_RESULTS) $(BOLT_PMU_RESULT)
 	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "itlb_misses.miss_causes_a_walk:u" ) ; \
 	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
 	printf "VERSIONS" >> $@.${REPOHASH} ; \
@@ -446,7 +446,7 @@ check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolis
 	printf "\n" >> $@.${REPOHASH} ; \
 	$(call append_git_status,$@)
 
-check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plofuncs.result benchmark-pgo-plo.result $(IP_RESULTS) $(BOLT_RESULT)
+check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plofuncs.result $(IP_RESULTS) $(BOLT_RESULT)
 	@echo "CHECK-PERFORMANCE" > $@.${REPOHASH} ; \
 	for version in $(wordlist 2,$(words $^),$^) ; do \
 		$(call check_against_baseline,$<,$$version) >> $@.${REPOHASH} ; \

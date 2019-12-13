@@ -314,7 +314,7 @@ defm propeller: Eq<"propeller", "Propeller profile">;
 
 defm propeller_opt: Eq<"propeller-opt",
     "Propeller optimization flags: reorder-blocks, reorder-funcs, and split-funcs is on by the default when -propeller is specified.">,
-  MetaVarName<"[reorder-all, no-reorder-all, reorder-blocks, no-reorder-blocks, reorder-funcs, no-reorder-funcs, split-funcs, no-split-funcs]">;
+  MetaVarName<"[reorder-ip, no-reorder-ip, reorder-blocks, no-reorder-blocks, reorder-funcs, no-reorder-funcs, split-funcs, no-split-funcs]">;
 
 defm propeller_keep_named_symbols: B<"propeller-keep-named-symbols",
     "Do not delete basic block section symbols",
