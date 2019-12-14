@@ -123,8 +123,8 @@ bool Propfile::readSymbols() {
   // appears before its wrapping function. This should be rather rare.
   std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t>> bbSymbols;
   std::map<std::string, std::set<uint64_t>> HotBBSymbols;
-  auto IsHotBB = [&HotBBSymbols](SymbolEntry *FuncSym,
-                                 StringRef BBIndex) -> bool {
+  auto IsHotBB = [this, &HotBBSymbols](SymbolEntry *FuncSym,
+                                       StringRef BBIndex) -> bool {
     std::string N("");
     for (auto A : FuncSym->Aliases) {
       if (N.empty())
@@ -133,7 +133,10 @@ bool Propfile::readSymbols() {
         N += "/" + A.str();
     }
     auto I0 = HotBBSymbols.find(N);
-    if (I0 == HotBBSymbols.end()) return false;
+    if (I0 == HotBBSymbols.end())
+      return false;
+    // Under AllBBMode, all BBs within a hot function are hotbbs.
+    if (this->AllBBMode) return true;
     uint64_t index = std::stoull(BBIndex.str());
     return I0->second.find(index) != I0->second.end();
   };
@@ -142,6 +145,8 @@ bool Propfile::readSymbols() {
     ++LineNo;
     if (line.empty())
       continue;
+    if (line == "#AllBB")
+      AllBBMode = true;
     if (line[0] == '#' || line[0] == '@')
       continue;
     if (line[0] == '!' && line.size() > 1) {

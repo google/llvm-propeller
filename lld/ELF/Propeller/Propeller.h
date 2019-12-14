@@ -134,7 +134,8 @@ struct PropellerConfig;
 class Propfile {
 public:
   Propfile(const std::string &pName)
-      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream() {}
+      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream(),
+        AllBBMode(false) {}
 
   // Check whether "outputFile" matches "@" directives in the propeller profile.
   bool matchesOutputFileName(const StringRef outputFile);
@@ -217,6 +218,8 @@ public:
   char LineTag;
 
   std::map<uint64_t, uint64_t> OrdinalRemapping;
+
+  bool AllBBMode;
 };
 
 class Propeller {

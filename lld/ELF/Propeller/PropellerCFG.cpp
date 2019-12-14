@@ -373,8 +373,9 @@ bool CFGBuilder::buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping) {
           for (SymbolEntry *SS : SymSet) {
             // fprintf(stderr, "\t%s\n", SS->Name.str().c_str());
             // fprintf(stderr, "Map %lu->%lu\n", SS->Ordinal, Node->MappedAddr);
-            if (!OrdinalRemapping.emplace(SS->Ordinal, Node->MappedAddr)
-                     .second || SS->HotTag) {
+            if (!OrdinalRemapping.emplace(SS->Ordinal, Node->MappedAddr).second
+                /* hot symbols can never be remapped to other symbols */
+                || SS->HotTag) {
               error("Internal error remapping duplicated cold sections.");
               return false;
             }
