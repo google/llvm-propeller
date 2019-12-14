@@ -213,7 +213,7 @@ void NodeChainBuilder::coalesceChains() {
 
   std::sort(
       chainOrder.begin(), chainOrder.end(),
-      [](NodeChain *c1, NodeChain *c2) {
+       [](NodeChain *c1, NodeChain *c2) {
         if (!propellerConfig.optReorderIP) {
           auto * c1CFG = c1->DelegateNode->CFG;
           auto * c2CFG = c2->DelegateNode->CFG;
@@ -225,6 +225,16 @@ void NodeChainBuilder::coalesceChains() {
               return false;
           }
         }
+
+        /*
+        if (!c1->CFG || !c2->CFG || c1->CFG != c2->CFG)
+          error("Attempting to coalesce chains belonging to different functions.");
+        auto * entryNode = c1->CFG->getEntryNode();
+        if (entryNode->Chain == c1)
+          return true;
+        if (entryNode->Chain == c2)
+          return false;
+          */
         double c1ExecDensity = c1->execDensity();
         double c2ExecDensity = c2->execDensity();
         if (c1ExecDensity == c2ExecDensity)
@@ -265,7 +275,8 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
   leftChain->Size += rightChain->Size;
   leftChain->Freq += rightChain->Freq;
   leftChain->DebugChain |= rightChain->DebugChain;
-
+  //if (leftChain->CFG != rightChain->CFG)
+  //  leftChain->CFG = nullptr;
 
   Chains.erase(rightChain->DelegateNode->MappedAddr);
 }
@@ -446,6 +457,9 @@ void NodeChainBuilder::mergeChains(
   mergerChain->Score += mergeeChain->Score + assembly->ScoreGain;
 
   mergerChain->DebugChain |= mergeeChain->DebugChain;
+
+  //if (mergerChain->CFG != mergeeChain->CFG)
+  //  mergerChain->CFG = nullptr;
 
   // Merge the assembly candidate chains of the two chains into the candidate
   // chains of the remaining NodeChain and remove the records for the defunct
@@ -1078,12 +1092,14 @@ void ChainClustering::doOrder(std::vector<CFGNode*> &hotOrder,
       for(CFGNode *n: c->Nodes)
         hotOrder.push_back(n);
 
-  auto chainComparator = [](const std::unique_ptr<NodeChain> &c_ptr1,
-                            const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
+  auto coldChainComparator = [](const std::unique_ptr<NodeChain> &c_ptr1,
+                                const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
+    //if (c_ptr1->CFG && c_ptr2->CFG && (c_ptr1->CFG->isHot() ^ c_ptr2->CFG->isHot()))
+    //  return c_ptr1->CFG->isHot();
     return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
   };
 
-  std::sort(ColdChains.begin(), ColdChains.end(), chainComparator);
+  std::sort(ColdChains.begin(), ColdChains.end(), coldChainComparator);
 
   for(auto &c_ptr: ColdChains)
     for(CFGNode* n: c_ptr->Nodes)
