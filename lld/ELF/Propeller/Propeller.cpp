@@ -364,8 +364,7 @@ void Propeller::calculateNodeFreqs() {
     auto &cfg = *cfgP.second.begin();
     if (cfg->Nodes.empty())
       continue;
-    bool Hot = false;
-    cfg->forEachNodeRef([&Hot, &sumEdgeWeights](CFGNode &node) {
+    cfg->forEachNodeRef([&cfg, &sumEdgeWeights](CFGNode &node) {
       uint64_t maxCallOut =
           node.CallOuts.empty()
               ? 0
@@ -377,10 +376,10 @@ void Propeller::calculateNodeFreqs() {
       node.Freq = std::max({sumEdgeWeights(node.Outs), sumEdgeWeights(node.Ins),
                             sumEdgeWeights(node.CallIns), maxCallOut});
 
-      Hot |= (node.Freq != 0);
+      cfg->Hot |= (node.Freq != 0);
     });
-    if (Hot && cfg->getEntryNode()->Freq == 0)
-      cfg->getEntryNode()->Freq = 1;
+    //if (Hot && cfg->getEntryNode()->Freq == 0)
+    //  cfg->getEntryNode()->Freq = 1;
   }
 }
 

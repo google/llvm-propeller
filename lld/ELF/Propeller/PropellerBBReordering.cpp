@@ -98,7 +98,7 @@ using llvm::detail::DenseMapPair;
 
 namespace lld {
 namespace propeller {
-const unsigned ClusterMergeSizeThreshold = 1 << 21;
+const unsigned ClusterMergeSizeThreshold = 1 << 22;
 
 std::string toString(MergeOrder mOrder){
   switch (mOrder) {
@@ -216,6 +216,8 @@ void NodeChainBuilder::coalesceChains() {
        [](NodeChain *c1, NodeChain *c2) {
         if (!c1->CFG || !c2->CFG || c1->CFG != c2->CFG)
           error("Attempting to coalesce chains belonging to different functions.");
+        if (c1->Freq==0 ^ c2->Freq==0)
+          return c1->Freq!=0;
         auto * entryNode = c1->CFG->getEntryNode();
         if (entryNode->Chain == c1)
           return true;
@@ -689,8 +691,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
       if (!profiledOuts[node].empty()) {
         CFGEdge *edge = profiledOuts[node].front();
         if (!victimEdge ||
-            (edge->Weight < victimEdge->Weight) ||
-            (edge->Weight == victimEdge->Weight && (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr))) {
+            (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr)) {
           victimEdge = edge;
         }
       }
@@ -1072,16 +1073,23 @@ void ChainClustering::doOrder(std::vector<CFGNode*> &hotOrder,
   initClusters();
   mergeClusters();
   std::vector<Cluster *> clusterOrder;
+  DenseMap<ControlFlowGraph *, size_t> ChainOrder;
   sortClusters(clusterOrder);
   for (Cluster *cl: clusterOrder)
     for(NodeChain* c: cl->Chains)
-      for(CFGNode *n: c->Nodes)
+      for(CFGNode *n: c->Nodes) {
+        ChainOrder.try_emplace(n->CFG, hotOrder.size());
         hotOrder.push_back(n);
+      }
 
-  auto coldChainComparator = [](const std::unique_ptr<NodeChain> &c_ptr1,
-                                const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
-    if (c_ptr1->CFG && c_ptr2->CFG && (c_ptr1->CFG->isHot() != c_ptr2->CFG->isHot()))
-      return c_ptr1->CFG->isHot();
+  auto coldChainComparator = [&ChainOrder](const std::unique_ptr<NodeChain> &c_ptr1,
+                                           const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
+    if (c_ptr1->CFG && c_ptr2->CFG) {
+      if (c_ptr1->CFG->isHot() != c_ptr2->CFG->isHot())
+        return c_ptr1->CFG->isHot();
+      if (c_ptr1->CFG->isHot() && c_ptr2->CFG->isHot() && (c_ptr1->CFG != c_ptr2->CFG))
+        return ChainOrder[c_ptr1->CFG] < ChainOrder[c_ptr2->CFG];
+    }
     return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
   };
 
