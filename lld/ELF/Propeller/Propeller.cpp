@@ -140,25 +140,43 @@ bool Propfile::readSymbols() {
     uint64_t index = std::stoull(BBIndex.str());
     return I0->second.find(index) != I0->second.end();
   };
-  std::string LastFunc = "";
+  std::map<std::string, std::set<uint64_t>>::iterator CurrentHotBBSetI =
+      HotBBSymbols.end();
   while (std::getline(PropfStream, line).good()) {
     ++LineNo;
     if (line.empty())
       continue;
-    if (line == "#AllBB")
+    if (line == "#AllBB") {
       AllBBMode = true;
+      continue;
+    }
     if (line[0] == '#' || line[0] == '@')
       continue;
     if (line[0] == '!' && line.size() > 1) {
+      if (AllBBMode) {
+        if (line[1] != '!' &&
+            !HotBBSymbols.emplace(line.substr(1), std::set<uint64_t>())
+                 .second) {
+          reportParseError("duplicated hot bb function field");
+          return false;
+        }
+        continue;
+      }
+      // Now AllBBMode is false, we consider every function and every hot bbs.
       if (line[1] == '!') {
         uint64_t bbindex = std::stoull(line.substr(2));
-        if (LastFunc.empty() || !bbindex) {
+        if (CurrentHotBBSetI == HotBBSymbols.end() || !bbindex) {
           reportParseError("invalid hot bb index field");
           return false;
         }
-        HotBBSymbols[LastFunc].insert(bbindex);
+        CurrentHotBBSetI->second.insert(bbindex);
       } else {
-        LastFunc = line.substr(1);
+        auto RP = HotBBSymbols.emplace(line.substr(1), std::set<uint64_t>());
+        if (!RP.second) {
+          reportParseError("duplicated hot bb function field");
+          return false;
+        }
+        CurrentHotBBSetI = RP.first;
       }
       continue;
     }
@@ -195,7 +213,6 @@ bool Propfile::readSymbols() {
     if (ephemeralStr[0] == 'N') { // Function symbol?
       // Save ephemeralStr for persistency across Propeller lifecycle.
       StringRef savedNameStr = PropfileStrSaver.save(ephemeralStr.substr(1));
-      LastFunc = savedNameStr.str();
       SymbolEntry::AliasesTy sAliases;
       savedNameStr.split(sAliases, '/');
       StringRef sName = sAliases[0];
