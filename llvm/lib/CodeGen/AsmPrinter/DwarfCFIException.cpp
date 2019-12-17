@@ -48,8 +48,10 @@ void DwarfCFIExceptionBase::markFunctionEnd() {
 
 void DwarfCFIExceptionBase::endFragment() {
   // With -fbasicblock-sections, this is handled at each basic block.
-  if (shouldEmitCFI && !Asm->MF->getBasicBlockSections())
+  if (shouldEmitCFI && !Asm->MF->getBasicBlockSections()) {
+    errs() << "Ending CFI for function " << Asm->MF->getName() << "\n";
     Asm->OutStreamer->EmitCFIEndProc();
+  }
 }
 
 DwarfCFIException::DwarfCFIException(AsmPrinter *A)
@@ -87,6 +89,7 @@ static MCSymbol *getExceptionSym(AsmPrinter *Asm) {
 }
 
 void DwarfCFIException::beginFunction(const MachineFunction *MF) {
+  errs() << "Beginning function: " << MF->getName() << "\n";
   shouldEmitMoves = shouldEmitPersonality = shouldEmitLSDA = false;
   const Function &F = MF->getFunction();
 
@@ -129,6 +132,7 @@ void DwarfCFIException::beginFunction(const MachineFunction *MF) {
 
 void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,
                                       ExceptionSymbolProvider ESP) {
+  errs() << "Beginning fragment for: " << MBB->getFullName() << "\n";
   if (!shouldEmitCFI)
     return;
 
@@ -140,6 +144,7 @@ void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,
     hasEmittedCFISections = true;
   }
 
+  errs() << "Starting CFI\n";
   Asm->OutStreamer->EmitCFIStartProc(/*IsSimple=*/false);
 
   // Indicate personality routine, if any.
@@ -163,6 +168,8 @@ void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,
   // Provide LSDA information.
   if (shouldEmitLSDA)
     Asm->OutStreamer->EmitCFILsda(ESP(Asm), TLOF.getLSDAEncoding());
+
+  Asm->setExceptionSym(MBB, ESP(Asm));
 }
 
 /// endFunction - Gather and emit post-function exception information.
@@ -175,11 +182,13 @@ void DwarfCFIException::endFunction(const MachineFunction *MF) {
 }
 
 void DwarfCFIException::beginBasicBlock(const MachineBasicBlock &MBB) {
-  if (shouldEmitCFI)
-    Asm->OutStreamer->EmitCFIStartProc(/*IsSimple=*/false);
+  if (!MBB.pred_empty())
+    beginFragment(&MBB, getExceptionSym);
 }
 
 void DwarfCFIException::endBasicBlock(const MachineBasicBlock &MBB) {
-  if (shouldEmitCFI)
+  if (shouldEmitCFI) {
+    errs() << "Ending CFI for MBB: " << MBB.getFullName() << "\n";
     Asm->OutStreamer->EmitCFIEndProc();
+  }
 }

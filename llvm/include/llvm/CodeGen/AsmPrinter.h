@@ -130,6 +130,7 @@ private:
   MCSymbol *CurrentFnBegin = nullptr;
   MCSymbol *CurrentFnEnd = nullptr;
   MCSymbol *CurExceptionSym = nullptr;
+  DenseMap<const MachineBasicBlock *, MCSymbol *> ExceptionSymbols;
 
   // The garbage collection metadata printer table.
   void *GCMetadataPrinters = nullptr; // Really a DenseMap.
@@ -213,6 +214,18 @@ public:
   MCSymbol *getFunctionBegin() const { return CurrentFnBegin; }
   MCSymbol *getFunctionEnd() const { return CurrentFnEnd; }
   MCSymbol *getCurExceptionSym();
+
+  void setExceptionSym(const MachineBasicBlock *MBB, MCSymbol *Sym) {
+    ExceptionSymbols.try_emplace(MBB, Sym);
+  }
+
+  MCSymbol * getExceptionSym(const MachineBasicBlock *MBB) {
+    auto r = ExceptionSymbols.find(MBB);
+    if (r == ExceptionSymbols.end())
+      return nullptr;
+    else
+      return r->second;
+  }
 
   /// Return information about object file lowering.
   const TargetLoweringObjectFile &getObjFileLowering() const;

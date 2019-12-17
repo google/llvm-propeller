@@ -3053,6 +3053,7 @@ void AsmPrinter::EmitBasicBlockEnd(const MachineBasicBlock &MBB) {
   // Check if CFI information needs to be updated for this MBB with basic block
   // sections.
   if (MF->getBasicBlockSections() && MBB.isEndSection()) {
+    CurExceptionSym = nullptr;
     for (const HandlerInfo &HI : Handlers) {
       HI.Handler->endBasicBlock(MBB);
     }
