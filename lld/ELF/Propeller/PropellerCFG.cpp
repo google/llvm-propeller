@@ -285,7 +285,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     std::map<StringRef, std::list<SymbolRef>>::value_type &GE,
     std::map<uint64_t, std::unique_ptr<CFGNode>> &tmpNodeMap,
     std::map<uint64_t, uint64_t> &OrdinalRemapping) {
-  assert(GI.second.size() >= 1);
+  assert(GE.second.size() >= 1);
   std::map<uint32_t,
            std::pair<CFGNode *,
                      std::set<SymbolEntry *, SymbolEntryOrdinalLessComparator>>>
