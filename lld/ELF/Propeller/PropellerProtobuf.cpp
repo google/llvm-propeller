@@ -48,6 +48,8 @@ void ProtobufPrinter::addCFG(ControlFlowGraph &cfg,
 
         if (node.FTEdge)
           populateEdgePb(*(bbpb.mutable_fallthrough()), *node.FTEdge);
+
+        bbpb.set_hot_tag(node.HotTag);
       };
 
   if (orderedBBs)

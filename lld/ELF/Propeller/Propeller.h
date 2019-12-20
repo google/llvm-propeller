@@ -134,7 +134,8 @@ struct PropellerConfig;
 class Propfile {
 public:
   Propfile(const std::string &pName)
-      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream() {}
+      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream(),
+        AllBBMode(false) {}
 
   // Check whether "outputFile" matches "@" directives in the propeller profile.
   bool matchesOutputFileName(const StringRef outputFile);
@@ -167,6 +168,8 @@ public:
     if (sym->Aliases.size() > 1)
       FunctionsWithAliases.push_back(sym);
 
+    // Function symbols is always hot.
+    sym->HotTag = true;
     return sym;
   }
 
@@ -178,13 +181,15 @@ public:
   //    ^^     ^      ^^^^
   //  Ordinal  Size   func_ordinal.bb_index
   SymbolEntry *createBasicBlockSymbol(uint64_t ordinal, SymbolEntry *function,
-                                      StringRef &bBIndex, uint64_t size) {
+                                      StringRef &bBIndex, uint64_t size,
+                                      bool HotTag) {
     // bBIndex is of the form "1", "2", it's a stringref to integer.
     assert(!function->BBTag && function->isFunction());
     auto *sym =
         new SymbolEntry(ordinal, bBIndex, SymbolEntry::AliasesTy(),
                         SymbolEntry::INVALID_ADDRESS, size,
                         llvm::object::SymbolRef::ST_Unknown, true, function);
+    sym->HotTag = HotTag;
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
@@ -211,6 +216,10 @@ public:
   std::vector<SymbolEntry *> FunctionsWithAliases;
   uint64_t LineNo;
   char LineTag;
+
+  std::map<uint64_t, uint64_t> OrdinalRemapping;
+
+  bool AllBBMode;
 };
 
 class Propeller {

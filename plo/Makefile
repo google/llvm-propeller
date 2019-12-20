@@ -81,11 +81,11 @@ REPOHASH := ${GITHASH}.${REPOSTATUS}
 #  pgo.perfdata cspgo.perfdata: perfdata collected from running pgo/cspgo-compilers
 #  run-commands.sh / commands: script that runs a compiler over hundreds of compilation jobs.
 #
-			    #$(LLVM_PROJECT)/libcxxabi \
 
 LLVM_SOURCE := $(shell find $(LLVM_PROJECT)/llvm \
                             $(LLVM_PROJECT)/clang \
                             $(LLVM_PROJECT)/lld \
+			    $(LLVM_PROJECT)/libcxxabi \
         '(' -ipath "*/.git"      -o      \
             -ipath "*/test"      -o      \
             -ipath "*/tests"     -o      \
@@ -124,7 +124,7 @@ gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(
 gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
-other_opt                  := -Wl,--propeller-chain-split-threshold=1024 -Wl,-propeller-print-stats -Wl,-propeller-keep-named-symbols
+other_opt                  := -Wl,--propeller-chain-split-threshold=1024
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
@@ -169,7 +169,7 @@ all-compilers: $(ALL_COMPILERS)
 all-benchmarks: $(ALL_BENCHMARKS)
 
 stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
-	$(call build_compiler,$(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,\"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib\")"; fi),"clang;compiler-rt;lld;libcxx;libcxxabi",install)
+	$(call build_compiler,$(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,\"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib\")"; fi),"clang;compiler-rt;lld",install)
 
 #-llvm install-clang install-lld install-cxx install-cxxabi)
 
@@ -229,6 +229,20 @@ pgo-plofuncs/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-lab
 pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller,,-Wl$(comma)-propeller-dump-cfg=@),"clang;compiler-rt;lld",clang lld)
 
+pgo-plofuncs/build/symbol-order pgo-plolist/build/symbol-order: %/build/symbol-order: %/build/bin/clang-$(CLANG_VERSION)
+	cd $(shell dirname $@) ; ninja -t commands clang | grep -Fe " -o bin/clang-${CLANG_VERSION} " | \
+		sed -e 's! -o bin/clang-${CLANG_VERSION} ! -o bin/clang-${CLANG_VERSION} -Wl,-propeller-dump-symbol-order=symbol-order -Wl,-propeller-dump-cfg=@@!' > gen-symbol-order.sh ; \
+		if [[ ! -e "gen-symbol-order.sh" ]] || [[ "`wc -l gen-symbol-order.sh | cut -f1 -d' '`" == "0" ]]; then echo "Error extacting link commands." ; exit 1; fi ; \
+		chmod +x ./gen-symbol-order.sh ; \
+		./gen-symbol-order.sh
+	touch $@
+
+pgo-plolist/build/hot-func-list pgo-plofuncs/build/hot-func-list: %/build/hot-func-list: %/build/symbol-order
+	sed -n '0,/^Hot$$/p' $< | grep -vFe '.BB.' > $@
+
+pgo-plolist_vs_plofuncs.hot_func_order.diff: pgo-plolist/build/hot-func-list pgo-plofuncs/build/hot-func-list
+	cat $< | xargs -n 20 -P 50 ./compare_func_bb_order.sh 2>&1 | tee $@
+
 pgo-plolistinterp/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_listinterp_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
@@ -254,7 +268,7 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_V
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
-		 -chain-split-threshold=1024          \
+		 -chain-split-threshold=1024            \
 		 -reorder-blocks="cache+"               \
 	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog
@@ -270,15 +284,26 @@ cspgo-plo/build/bin/clang-${CLANG_VERSION}: stage-cspgo.profdata stage-pgo.profd
 	$(STAGE1_BIN)/llvm-profdata merge -output=stage-cspgo2.profdata stage-cspgo.profdata stage-pgo.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/stage-cspgo2.profdata -DLLVM_ENABLE_LTO=Thin $(bb_section_all_flags),"clang;compiler-rt;lld",clang lld)
 
-run-commands.sh: | stage1-compiler
-	rsync -a -f "+ */" -f "+ *.inc" -f "+ *.h" -f "+ *.def" -f "- *" \
-            stage1/build/ test-build/
-	ninja -C stage1/build -t commands clang \
-            | grep -E "^$(RELEASE_LLVM_BIN)/clang\+?\+? " \
+benchmark-dir.o: | stage1-compiler
+	mkdir -p benchmark-dir/source
+	mkdir -p benchmark-dir/build
+	rsync -av -f "- .git*" -f "+ clang/***" -f "+ lld/***" -f "+ llvm/***" -f "- *" $(DDIR)/../ benchmark-dir/source/
+	cd benchmark-dir/build ; \
+		export TOOLCHAIN="$(DDIR)/stage1/install/bin" ; \
+		cmake -G Ninja -DCMAKE_C_COMPILER=$${TOOLCHAIN}/clang -DCMAKE_CXX_COMPILER=$${TOOLCHAIN}/clang++ -DCMAKE_ASM_COMPILER=$${TOOLCHAIN}/clang \
+			       -DLLVM_ENABLE_PROJECTS="clang;lld" $(DDIR)/benchmark-dir/source/llvm ; \
+		ninja clang lld
+	echo "int main() {return 0;}" | benchmark-dir/build/bin/clang -x c -c - -o $@
+	if [[ -z "benchmark-dir.o" ]]; then rm $@ ; exit 1; fi
+
+run-commands.sh: benchmark-dir.o | stage1-compiler
+	rm -f commands
+	ninja -C benchmark-dir/build -t commands clang \
+            | grep -E "^$(DDIR)/stage1/install/bin/clang\+?\+? " \
             | grep -Fe " -c " \
-            | sed -Ee 's!^$(RELEASE_LLVM_BIN)/clang\+\+ !$${CCP} -x c++ !' \
-                   -e 's!^$(RELEASE_LLVM_BIN)/clang !$${CCP} !' \
-                   -e 's!^!cd $(DDIR)/test-build \&\& !' >> commands
+            | sed -Ee 's!^$(DDIR)/stage1/install/bin/clang\+\+ !$${CCP} -x c++ !' \
+                   -e 's!^$(DDIR)/stage1/install/bin/clang !$${CCP} !' \
+                   -e 's!^!cd $(DDIR)/benchmark-dir/build \&\& !' >> commands
 	if [[ -z `cat commands` ]]; then \
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
@@ -458,3 +483,4 @@ clean: clean-sample
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
+	rm -fr benchmark-dir.o benchmark-dir/

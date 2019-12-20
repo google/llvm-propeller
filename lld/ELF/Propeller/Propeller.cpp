@@ -122,12 +122,64 @@ bool Propfile::readSymbols() {
   // A list of bbsymbols<ordinal, function_ordinal, bbindex and size> that
   // appears before its wrapping function. This should be rather rare.
   std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t>> bbSymbols;
+  std::map<std::string, std::set<uint64_t>> HotBBSymbols;
+  auto IsHotBB = [this, &HotBBSymbols](SymbolEntry *FuncSym,
+                                       StringRef BBIndex) -> bool {
+    std::string N("");
+    for (auto A : FuncSym->Aliases) {
+      if (N.empty())
+        N = A.str(); // Most of the times.
+      else
+        N += "/" + A.str();
+    }
+    auto I0 = HotBBSymbols.find(N);
+    if (I0 == HotBBSymbols.end())
+      return false;
+    // Under AllBBMode, all BBs within a hot function are hotbbs.
+    if (this->AllBBMode) return true;
+    uint64_t index = std::stoull(BBIndex.str());
+    return I0->second.find(index) != I0->second.end();
+  };
+  std::map<std::string, std::set<uint64_t>>::iterator CurrentHotBBSetI =
+      HotBBSymbols.end();
   while (std::getline(PropfStream, line).good()) {
     ++LineNo;
     if (line.empty())
       continue;
-    if (line[0] == '#' || line[0] == '!' || line[0] == '@')
+    if (line == "#AllBB") {
+      AllBBMode = true;
       continue;
+    }
+    if (line[0] == '#' || line[0] == '@')
+      continue;
+    if (line[0] == '!' && line.size() > 1) {
+      if (AllBBMode) {
+        if (line[1] != '!' &&
+            !HotBBSymbols.emplace(line.substr(1), std::set<uint64_t>())
+                 .second) {
+          reportParseError("duplicated hot bb function field");
+          return false;
+        }
+        continue;
+      }
+      // Now AllBBMode is false, we consider every function and every hot bbs.
+      if (line[1] == '!') {
+        uint64_t bbindex = std::stoull(line.substr(2));
+        if (CurrentHotBBSetI == HotBBSymbols.end() || !bbindex) {
+          reportParseError("invalid hot bb index field");
+          return false;
+        }
+        CurrentHotBBSetI->second.insert(bbindex);
+      } else {
+        auto RP = HotBBSymbols.emplace(line.substr(1), std::set<uint64_t>());
+        if (!RP.second) {
+          reportParseError("duplicated hot bb function field");
+          return false;
+        }
+        CurrentHotBBSetI = RP.first;
+      }
+      continue;
+    }
     if (line[0] == 'B' || line[0] == 'F') {
       LineTag = line[0];
       break; // Done symbol section.
@@ -185,7 +237,8 @@ bool Propfile::readSymbols() {
           return false;
         }
         createBasicBlockSymbol(symOrdinal, existingI->second.get(), bbIndex,
-                               symSize);
+                               symSize,
+                               IsHotBB(existingI->second.get(), bbIndex));
       } else
         // A bb symbol appears earlier than its wrapping function, rare, but
         // not impossible, rather play it safely.
@@ -205,8 +258,9 @@ bool Propfile::readSymbols() {
                        std::to_string(funcIndex) + "' does not exist");
       return false;
     }
-    createBasicBlockSymbol(symOrdinal, existingI->second.get(), bbIndex,
-                           symSize);
+    SymbolEntry *FuncSym = existingI->second.get();
+    createBasicBlockSymbol(symOrdinal, FuncSym, bbIndex, symSize,
+                           IsHotBB(FuncSym, bbIndex));
   }
   return true;
 }
@@ -261,10 +315,20 @@ bool Propfile::processProfile() {
     StringRef L(line); // LineBuf is null-terminated.
     uint64_t from, to, count;
     char tag;
+    auto UpdateOrdinal = [this](uint64_t OriginOrdinal) -> uint64_t {
+      auto I = OrdinalRemapping.find(OriginOrdinal);
+      if (I != OrdinalRemapping.end()) {
+        //fprintf(stderr, "Updated %lu->%lu\n", OriginOrdinal, I->second);
+        return I->second;
+      }
+      return OriginOrdinal;
+    };
     if (!parseBranchOrFallthroughLine(L, &from, &to, &count, &tag)) {
       reportParseError("unrecognized line:\n" + L.str());
       return false;
     }
+    from = UpdateOrdinal(from);
+    to = UpdateOrdinal(to);
     CFGNode *fromN = prop->findCfgNode(from);
     CFGNode *toN = prop->findCfgNode(to);
     if (!fromN || !toN)
@@ -294,7 +358,8 @@ bool Propfile::processProfile() {
 // Parse each ELF file, create CFG and attach profile data to CFG.
 void Propeller::processFile(ObjectView *view) {
   if (view) {
-    if (CFGBuilder(view).buildCFGs()) {
+    std::map<uint64_t, uint64_t> OrdinalRemapping;
+    if (CFGBuilder(view).buildCFGs(OrdinalRemapping)) {
       // Updating global data structure.
       std::lock_guard<std::mutex> lock(Lock);
       Views.emplace_back(view);
@@ -304,6 +369,9 @@ void Propeller::processFile(ObjectView *view) {
         (void)(result);
         assert(result.second);
       }
+      Propf->OrdinalRemapping.insert(OrdinalRemapping.begin(),
+                                     OrdinalRemapping.end());
+
     } else {
       warn("skipped building CFG for '" + view->ViewName +"'");
       ++ProcessFailureCount;
@@ -360,11 +428,17 @@ void Propeller::calculateNodeFreqs() {
         edges.begin(), edges.end(), 0,
         [](uint64_t pSum, const CFGEdge *edge) { return pSum + edge->Weight; });
   };
+  auto ZeroOutEdgeWeights = [](std::vector<CFGEdge *> &Es) {
+    for (auto *E : Es)
+      E->Weight = 0;
+  };
+
   for (auto &cfgP : CFGMap) {
     auto &cfg = *cfgP.second.begin();
     if (cfg->Nodes.empty())
       continue;
-    cfg->forEachNodeRef([&cfg, &sumEdgeWeights](CFGNode &node) {
+    cfg->forEachNodeRef([&cfg, &sumEdgeWeights,
+                         &ZeroOutEdgeWeights](CFGNode &node) {
       uint64_t maxCallOut =
           node.CallOuts.empty()
               ? 0
@@ -373,13 +447,25 @@ void Propeller::calculateNodeFreqs() {
                                      return E1->Weight < E2->Weight;
                                    }))
                     ->Weight;
-      node.Freq = std::max({sumEdgeWeights(node.Outs), sumEdgeWeights(node.Ins),
-                            sumEdgeWeights(node.CallIns), maxCallOut});
+      if (node.HotTag)
+        node.Freq =
+            std::max({sumEdgeWeights(node.Outs), sumEdgeWeights(node.Ins),
+                      sumEdgeWeights(node.CallIns), maxCallOut});
+      else {
+        node.Freq = 0;
+        ZeroOutEdgeWeights(node.Ins);
+        ZeroOutEdgeWeights(node.Outs);
+        ZeroOutEdgeWeights(node.CallIns);
+        ZeroOutEdgeWeights(node.CallOuts);
+      }
 
       cfg->Hot |= (node.Freq != 0);
     });
-    //if (Hot && cfg->getEntryNode()->Freq == 0)
-    //  cfg->getEntryNode()->Freq = 1;
+
+    /*
+    if (cfg->Hot && cfg->getEntryNode()->Freq == 0)
+      cfg->getEntryNode()->Freq = 1;
+      */
   }
 }
 
@@ -482,17 +568,19 @@ bool Propeller::dumpCfgs() {
   llvm::SmallString<128> cfgOutputDir(propellerConfig.optLinkerOutputFile);
   llvm::sys::path::remove_filename(cfgOutputDir);
   for (auto &cfgName : cfgToDump) {
-    if (cfgName == "@" || cfgName == "@@") {
+    StringRef cfgNameRef(cfgName);
+    if (cfgName == "@" || cfgNameRef.startswith("@@")) {
 #ifdef PROPELLER_PROTOBUF
       if (!protobufPrinter.get())
         protobufPrinter.reset(ProtobufPrinter::create(
             Twine(propellerConfig.optLinkerOutputFile, ".cfg.pb.txt").str()));
-      if (cfgName == "@@") {
+      if (cfgNameRef.consume_front("@@")) {
         protobufPrinter->clearCFGGroup();
+        const bool cfgNameEmpty = cfgNameRef.empty();
         for (auto &cfgMapEntry: CFGMap)
-          for (auto *cfg: cfgMapEntry.second) {
-            protobufPrinter->addCFG(*cfg);
-          }
+          for (auto *cfg: cfgMapEntry.second)
+            if (cfgNameEmpty || cfg->Name == cfgNameRef)
+              protobufPrinter->addCFG(*cfg);
         protobufPrinter->printCFGGroup();
         protobufPrinter.reset(nullptr);
       }
@@ -573,11 +661,17 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
       warn(StringRef("dump symbol order: failed to open ") + "'" +
            propellerConfig.optDumpSymbolOrder + "'");
     else {
-      for (auto &sym : symbolList)
-        fprintf(fp, "%s\n", sym.str().c_str());
+      for (auto &sym : symbolList) {
+        auto A = sym.split(".BB.");
+        if (A.second.empty()) {
+          fprintf(fp, "%s\n", sym.str().c_str());
+        } else {
+          fprintf(fp, "%zu.BB.%s\n", A.first.size(), A.second.str().c_str());
+        }
+      }
       fclose(fp);
-      llvm::outs() << "dumped symbol order file to: '"
-                   << propellerConfig.optDumpSymbolOrder.str() << "\n";
+      llvm::outs() << "Dumped symbol order file to: '"
+                   << propellerConfig.optDumpSymbolOrder.str() << "'\n";
     }
   }
 

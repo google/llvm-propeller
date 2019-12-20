@@ -116,6 +116,14 @@ public:
   // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
   CFGEdge *FTEdge;
 
+  // In Selective BB mode - if this BB appears in the hot bbs section, then this
+  // is true.
+  // In AllBBMode - this is true if the function it belongs to appears in the
+  // hot bbs sections, even if the BB itself is cold.
+  // If HotTag is false, then the node Freq and all its edges Freqs are zero-ed
+  // out.
+  bool HotTag;
+
   const static uint64_t InvalidAddress = -1;
 
   unsigned getBBIndex() const {
@@ -146,10 +154,10 @@ public:
 
 private:
   CFGNode(uint64_t _Shndx, const StringRef &_ShName, uint64_t _Size,
-          uint64_t _MappedAddr, ControlFlowGraph *_Cfg)
+          uint64_t _MappedAddr, ControlFlowGraph *_Cfg, bool _HotTag)
       : Shndx(_Shndx), ShName(_ShName), ShSize(_Size), MappedAddr(_MappedAddr),
-        Freq(0), CFG(_Cfg), Chain(nullptr), ChainOffset(0), Outs(), Ins(), CallOuts(), CallIns(),
-        FTEdge(nullptr) {}
+        Freq(0), CFG(_Cfg), Chain(nullptr), ChainOffset(0), Outs(), Ins(),
+        CallOuts(), CallIns(), FTEdge(nullptr), HotTag(_HotTag) {}
 
   friend class ControlFlowGraph;
   friend class CFGBuilder;
@@ -229,12 +237,21 @@ public:
   CFGBuilder(ObjectView *vw) : View(vw) {}
 
   // See implementaion comments in .cpp.
-  bool buildCFGs();
+  bool buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping);
 
 protected:
+  // 
+  std::map<StringRef, std::list<SymbolRef>> buildPreCFGGroups();
+
   // See implementaion comments in .cpp.
   void buildCFG(ControlFlowGraph &cfg, const SymbolRef &cfgSym,
-                std::map<uint64_t, std::unique_ptr<CFGNode>> &nodeMap);
+                std::map<uint64_t, std::unique_ptr<CFGNode>> &nodeMap,
+                std::map<uint64_t, section_iterator> &relocationSectionMap);
+
+  std::unique_ptr<ControlFlowGraph>
+  buildCFGNodes(std::map<StringRef, std::list<SymbolRef>>::value_type &GE,
+                std::map<uint64_t, std::unique_ptr<CFGNode>> &tmpNodeMap,
+                std::map<uint64_t, uint64_t> &OrdinalRemapping);
 
   // See implementation comments in .cpp.
   void calculateFallthroughEdges(
@@ -243,8 +260,7 @@ protected:
 
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
-  void
-  buildRelocationSectionMap(std::map<uint64_t, section_iterator> &relocSecMap);
+  std::map<uint64_t, section_iterator> buildRelocationSectionMap();
   // Build a map from section "Idx" -> node representing "Idx". Only
   // used during building phase.
   void buildShndxNodeMap(std::map<uint64_t, std::unique_ptr<CFGNode>> &nodeMap,

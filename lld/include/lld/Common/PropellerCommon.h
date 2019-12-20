@@ -31,7 +31,7 @@ struct SymbolEntry {
               uint64_t S, uint8_t T, bool BB = false,
               SymbolEntry *FuncPtr = nullptr)
       : Ordinal(O), Name(N), Aliases(As), Addr(A), Size(S), Type(T), BBTag(BB),
-        ContainingFunc(FuncPtr) {}
+        HotTag(false), ContainingFunc(FuncPtr) {}
 
   // Unique index number across all symbols that participate linking.
   uint64_t Ordinal;
@@ -48,6 +48,7 @@ struct SymbolEntry {
   uint64_t Size;
   uint8_t Type; // Of type: llvm::objet::SymbolRef::Type.
   bool BBTag;   // Whether this is a basic block section symbol.
+  bool HotTag; // Whether this symbol is listed in the propeller section.
   // For BBTag symbols, this is the containing fuction pointer, for a normal
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *ContainingFunc;
@@ -110,6 +111,16 @@ struct SymbolEntry {
   }
 
   static const uint64_t INVALID_ADDRESS = uint64_t(-1);
+};
+
+struct SymbolEntryOrdinalLessComparator {
+  bool operator()(SymbolEntry *S1, SymbolEntry *S2) const {
+    if (!S1 && S2)
+      return true;
+    if ((S1 && !S2) || (!S1 && !S2))
+      return false;
+    return S1->Ordinal < S2->Ordinal;
+  }
 };
 
 } // namespace propeller

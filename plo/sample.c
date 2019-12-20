@@ -1,6 +1,10 @@
 /* sample.c */
 volatile int count;
 
+static int goose() {
+  return 13;
+}
+
 __attribute__((noinline))
 double this_is_very_code(double tt) {
   volatile double dead = 3434343434, beaf = 56565656; /* Avoid compiler optimizing away */
@@ -14,6 +18,8 @@ int compute_flag(int i)
                 return i + 1;
         return 0;
 }
+
+int sample1_func();
 
 int main(void)
 {
@@ -30,9 +36,9 @@ int main(void)
                 if (flag)
                         x += x / y + y / x;     /* Execute expensive division if flag is set */
 		if (count % 137949234 == 183) {
-		  x += this_is_very_code(count);
+		  x += this_is_very_code(count) + sample1_func();
 		}
 		  
         }
-        return 0;
+        return goose();
 }
