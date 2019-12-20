@@ -49,7 +49,6 @@ void DwarfCFIExceptionBase::markFunctionEnd() {
 void DwarfCFIExceptionBase::endFragment() {
   // With -fbasicblock-sections, this is handled at each basic block.
   if (shouldEmitCFI && !Asm->MF->getBasicBlockSections()) {
-    errs() << "Ending CFI for function " << Asm->MF->getName() << "\n";
     Asm->OutStreamer->EmitCFIEndProc();
   }
 }
@@ -89,7 +88,6 @@ static MCSymbol *getExceptionSym(AsmPrinter *Asm) {
 }
 
 void DwarfCFIException::beginFunction(const MachineFunction *MF) {
-  errs() << "Beginning function: " << MF->getName() << "\n";
   shouldEmitMoves = shouldEmitPersonality = shouldEmitLSDA = false;
   const Function &F = MF->getFunction();
 
@@ -132,7 +130,6 @@ void DwarfCFIException::beginFunction(const MachineFunction *MF) {
 
 void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,
                                       ExceptionSymbolProvider ESP) {
-  errs() << "Beginning fragment for: " << MBB->getFullName() << "\n";
   if (!shouldEmitCFI)
     return;
 
@@ -144,7 +141,6 @@ void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,
     hasEmittedCFISections = true;
   }
 
-  errs() << "Starting CFI\n";
   Asm->OutStreamer->EmitCFIStartProc(/*IsSimple=*/false);
 
   // Indicate personality routine, if any.
@@ -182,13 +178,11 @@ void DwarfCFIException::endFunction(const MachineFunction *MF) {
 }
 
 void DwarfCFIException::beginBasicBlock(const MachineBasicBlock &MBB) {
-  if (!MBB.pred_empty())
-    beginFragment(&MBB, getExceptionSym);
+  beginFragment(&MBB, getExceptionSym);
 }
 
 void DwarfCFIException::endBasicBlock(const MachineBasicBlock &MBB) {
   if (shouldEmitCFI) {
-    errs() << "Ending CFI for MBB: " << MBB.getFullName() << "\n";
     Asm->OutStreamer->EmitCFIEndProc();
   }
 }

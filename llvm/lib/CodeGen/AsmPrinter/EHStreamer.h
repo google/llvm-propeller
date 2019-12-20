@@ -74,7 +74,7 @@ protected:
     MCSymbol *FuncPartBeginLabel = nullptr;
     MCSymbol *FuncPartEndLabel = nullptr;
     MCSymbol *ExceptionLabel = nullptr;
-    bool HasLandingPads = false;
+    bool IsLandingPadRange = false;
   };
 
   /// Compute the actions table and gather the first action index for each

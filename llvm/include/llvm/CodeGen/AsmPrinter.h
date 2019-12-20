@@ -222,7 +222,7 @@ public:
   MCSymbol * getExceptionSym(const MachineBasicBlock *MBB) {
     auto r = ExceptionSymbols.find(MBB);
     if (r == ExceptionSymbols.end())
-      return nullptr;
+      return getCurExceptionSym();
     else
       return r->second;
   }

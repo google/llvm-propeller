@@ -244,31 +244,30 @@ void EHStreamer::computeCallSiteTable(
   bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
 
   // For now, we only have one range for the landing pad region
-  //CallSiteRange *LandingPadRange = nullptr;
+  CallSiteRange *LandingPadRange = nullptr;
 
   // Visit all instructions in order of address.
   for (const auto &MBB : *Asm->MF) {
-    if (MBB.pred_empty() || MBB.isBeginSection()) {
+    if (&MBB == &Asm->MF->front() || MBB.isBeginSection()) {
       CallSiteRanges.push_back(CallSiteRange());
       CurCSRange = &CallSiteRanges.back();
-      CurCSRange->FuncPartBeginLabel = MBB.pred_empty() ? Asm->getFunctionBegin() : MBB.getSymbol();
+      CurCSRange->FuncPartBeginLabel = &MBB == &Asm->MF->front() ? Asm->getFunctionBegin() : MBB.getSymbol();
       CurCSRange->ExceptionLabel = Asm->getExceptionSym(&MBB);
       PreviousIsInvoke = false;
       SawPotentiallyThrowing = false;
       LastLabel = nullptr;
     }
-    /*
+
     if (MBB.isEHPad()) {
       // We have found the landing pad range
       if (LandingPadRange == nullptr) {
-        CurCSRange->HasLandingPads = true;
         LandingPadRange = CurCSRange;
-      } else
+        LandingPadRange->IsLandingPadRange = true;
+       } else
         assert(LandingPadRange->FuncPartBeginLabel ==
                    CurCSRange->FuncPartBeginLabel &&
-               "landing pad range is not this callsite range");
+               "All landing pads should be in the same callsite range.!");
     }
-    */
 
     for (const auto &MI : MBB) {
       if (!MI.isEHLabel()) {
@@ -340,6 +339,7 @@ void EHStreamer::computeCallSiteTable(
           if (CallSites.size() < SiteNo)
             CallSites.resize(SiteNo);
           CallSites[SiteNo - 1] = Site;
+          CurCSRange->CallSiteIndices.push_back(SiteNo - 1);
         }
         PreviousIsInvoke = true;
       }
@@ -347,32 +347,29 @@ void EHStreamer::computeCallSiteTable(
 
     if (MBB.isEndSection()) {
       MCSymbol *FuncPartEndLabel = MBB.getEndMCSymbol();
-      if (CurCSRange != nullptr) {
-        CurCSRange->FuncPartEndLabel = FuncPartEndLabel;
-        if (SawPotentiallyThrowing && !IsSJLJ &&
-            LastLabel != CurCSRange->FuncPartBeginLabel) {
-          CurCSRange->CallSiteIndices.push_back(CallSites.size());
-          CallSiteEntry Site = { LastLabel, FuncPartEndLabel, nullptr, 0 };
-          CallSites.push_back(Site);
-          SawPotentiallyThrowing = false;
-        }
-        CurCSRange = nullptr;
+      CurCSRange->FuncPartEndLabel = FuncPartEndLabel;
+      if (SawPotentiallyThrowing && !IsSJLJ) {
+        CurCSRange->CallSiteIndices.push_back(CallSites.size());
+        CallSiteEntry Site = { LastLabel, FuncPartEndLabel, nullptr, 0 };
+        CallSites.push_back(Site);
+        SawPotentiallyThrowing = false;
       }
+      CurCSRange = nullptr;
     }
   }
 
   if (CurCSRange != nullptr) {
+    // This means we didn't end with MBB.isEndSection
     CurCSRange->FuncPartEndLabel = Asm->getFunctionEnd();
-  }
 
-  // If some instruction between the previous try-range and the end of the
-  // function may throw, create a call-site entry with no landing pad for the
-  // region following the try-range.
-  if (SawPotentiallyThrowing && !IsSJLJ && LastLabel != nullptr &&
-      CurCSRange != nullptr) {
-    CallSiteEntry Site = { LastLabel, nullptr, nullptr, 0 };
-    CurCSRange->CallSiteIndices.push_back(CallSites.size());
-    CallSites.push_back(Site);
+    // If some instruction between the previous try-range and the end of the
+    // function may throw, create a call-site entry with no landing pad for the
+    // region following the try-range.
+    if (SawPotentiallyThrowing && !IsSJLJ) {
+      CallSiteEntry Site = { LastLabel, nullptr, nullptr, 0 };
+      CurCSRange->CallSiteIndices.push_back(CallSites.size());
+      CallSites.push_back(Site);
+    }
   }
 }
 
@@ -428,12 +425,23 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   SmallVector<CallSiteRange, 64> CallSiteRanges;
   computeCallSiteTable(CallSites, CallSiteRanges, LandingPads, FirstActions);
 
+  if (CallSiteRanges.empty()) {
+    CallSiteRange CSRange;
+    CSRange.FuncPartBeginLabel = Asm->getFunctionBegin();
+    CSRange.FuncPartEndLabel = Asm->getFunctionEnd();
+    CSRange.ExceptionLabel = Asm->getCurExceptionSym();
+    for(unsigned i=0; i<CallSites.size(); ++i)
+      CSRange.CallSiteIndices.push_back(i);
+    CallSiteRanges.push_back(CSRange);
+  }
+
+
   bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
   bool IsWasm = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::Wasm;
 
   unsigned CallSiteEncoding =
       IsSJLJ ? static_cast<unsigned>(dwarf::DW_EH_PE_udata4) :
-               Asm->getObjFileLowering().getCallSiteEncoding();
+      Asm->getObjFileLowering().getCallSiteEncoding();
   bool HaveTTData = !TypeInfos.empty() || !FilterIds.empty();
 
   // Type infos.
@@ -569,27 +577,26 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     // A missing entry in the call-site table indicates that a call is not
     // supposed to throw.
 
-
-    /*
     CallSiteRange *LandingPadRange = &CallSiteRanges.back();
 
-    for (unsigned i = 0; i < CallSiteRanges.size(); ++i) {
-      auto &CSRange = CallSiteRanges[i];
-      if (CSRange.HasLandingPads) {
+    for (auto& CSRange: CallSiteRanges) {
+      if (CSRange.IsLandingPadRange) {
         LandingPadRange = &CSRange;
         break;
       }
-    } */
+    }
 
-
-    for (unsigned i = 0; i < CallSiteRanges.size(); ++i) {
-      auto &CSRange = CallSiteRanges[i];
-
+    for (auto& CSRange: CallSiteRanges) {
       Asm->EmitAlignment(Align(4));
       Asm->OutStreamer->EmitLabel(CSRange.ExceptionLabel);
 
       // Emit the LSDA header.
-      Asm->EmitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
+      if (CallSiteRanges.size() == 1)
+        Asm->EmitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
+      else {
+        Asm->EmitEncodingByte(dwarf::DW_EH_PE_absptr, "@LPStart");
+        Asm->OutStreamer->EmitSymbolValue(LandingPadRange->FuncPartBeginLabel, Asm->getDataLayout().getPointerSize());
+      }
       Asm->EmitEncodingByte(TTypeEncoding, "@TType");
 
       if (HaveTTData) {
@@ -642,8 +649,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
           if (VerboseAsm)
             Asm->OutStreamer->AddComment(Twine("    jumps to ") +
                                          S.LPad->LandingPadLabel->getName());
-          Asm->EmitCallSiteOffset(S.LPad->LandingPadLabel, EHFuncBeginSym,
-                                  CallSiteEncoding);
+            Asm->EmitCallSiteOffset(S.LPad->LandingPadLabel, LandingPadRange->FuncPartBeginLabel, CallSiteEncoding);
         }
 
         // Offset of the first associated action record, relative to the start

@@ -75,6 +75,11 @@ public:
                                      const MachineBasicBlock &MBB,
                                      const TargetMachine &TM) const override;
 
+  MCSection *
+  getEHSectionForMachineBasicBlock(const Function &F,
+                                   const MachineBasicBlock &MBB,
+                                   const TargetMachine &TM) const override;
+
   bool shouldPutJumpTableInFunctionSection(bool UsesLabelDifference,
                                            const Function &F) const override;
 

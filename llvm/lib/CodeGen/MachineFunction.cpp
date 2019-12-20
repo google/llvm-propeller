@@ -348,17 +348,16 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
   MBBNumbering.resize(BlockNo);
 }
 
-/// HasEHInfo - Return true is this Machine Basic Block is a landing pad or
-/// it has EHLabels used in exception tables.
-static bool HasEHInfo(const MachineBasicBlock &MBB) {
-  if (MBB.isEHPad() || MBB.isEHFuncletEntry())
-    return true;
-  for (auto &MI : MBB) {
-    if (MI.isEHLabel())
-      return true;
-  }
-  return false;
-}
+/// HasEHInfo - Return true is this Machine Basic Block is a landing pad.
+//static bool HasEHInfo(const MachineBasicBlock &MBB) {
+//  if (MBB.isEHPad() || MBB.isEHFuncletEntry())
+//    return true;
+//  for (auto &MI : MBB) {
+//    if (MI.isEHLabel())
+//      return true;
+//  }
+//  return false;
+//}
 
 bool MachineFunction::sortBasicBlockSections() {
   // This should only be done once no matter how many times it is called.
@@ -373,15 +372,18 @@ bool MachineFunction::sortBasicBlockSections() {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.  Entry basic block cannot
     // a section because the function starts one.
-    if (MBB.getNumber() == this->front().getNumber())
+    //bool UsesEHInfo = HasEHInfo(MBB);
+    if (MBB.getNumber() == this->front().getNumber()) {
+      if (MBB.isEHPad())
+        MBB.setExceptionSection();
       continue;
+    }
     // Also, check if this BB is a cold basic block in which case sections
     // are not required with the list option.
     bool isColdBB =
         ((Target.getBasicBlockSections() == llvm::BasicBlockSection::List) &&
          !S.count(MBB.getNumber()));
-    bool UsesEHInfo = HasEHInfo(MBB);
-    if (UsesEHInfo) {
+    if (MBB.isEHPad()) {
       MBB.setExceptionSection();
     } else if (isColdBB) {
       MBB.setColdSection();
@@ -401,8 +403,10 @@ bool MachineFunction::sortBasicBlockSections() {
 
   // Order : Entry Block, Cold Section, Other Unique Sections.
   auto SectionType = ([&](MachineBasicBlock &X) {
-    if (X.getNumber() == this->front().getNumber()
-        || X.isExceptionSection())
+    if (X.getNumber() == this->front().getNumber() &&
+        !X.isExceptionSection())
+      return 0;
+    if (X.isExceptionSection())
       return 1;
     else if (X.isColdSection())
       return 2;
