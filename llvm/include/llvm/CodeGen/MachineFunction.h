@@ -259,6 +259,7 @@ class MachineFunction {
   // MachineBasicBlock is inserted into a MachineFunction is it automatically
   // numbered and this vector keeps track of the mapping from ID's to MBB's.
   std::vector<MachineBasicBlock*> MBBNumbering;
+  std::vector<char> MBBSymbolPrefix;
 
   // Pool-allocate MachineFunction-lifetime and IR objects.
   BumpPtrAllocator Allocator;
@@ -1026,6 +1027,10 @@ public:
   /// of the instruction stream.
   void copyCallSiteInfo(const MachineInstr *Old,
                         const MachineInstr *New);
+
+  const std::vector<char> &getMBBSymbolPrefix() const {
+    return MBBSymbolPrefix;
+  }
 };
 
 //===--------------------------------------------------------------------===//

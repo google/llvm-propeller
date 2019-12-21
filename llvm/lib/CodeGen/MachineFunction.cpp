@@ -440,6 +440,25 @@ bool MachineFunction::sortBasicBlockSections() {
   PrevMBB->setEndSection();
 
   this->BBSectionsSorted = true;
+
+  this->MBBSymbolPrefix.reserve(getNumBlockIDs());
+  for (unsigned Index = 0; Index < getNumBlockIDs(); ++Index) {
+    // 'a' - Normal block.
+    // 'r' - Return block.
+    // 'l' - Landing Pad.
+    // 'L' - Return and landing pad.
+    auto PtrMBB = MBBNumbering[Index];
+    bool isEHPad = PtrMBB->isEHPad();
+    bool isRetBlock = PtrMBB->isReturnBlock();
+    char type = 'a';
+    if (isEHPad && isRetBlock)
+      type = 'L';
+    else if (isEHPad)
+      type = 'l';
+    else if (isRetBlock)
+      type = 'r';
+    MBBSymbolPrefix[Index] = type;
+  }
   return true;
 }
 
