@@ -35,6 +35,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
+#include <cstdlib>
 using namespace llvm;
 
 #define DEBUG_TYPE "codegen"
@@ -72,8 +73,12 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // compress the symbol names significantly.  The basic blocks for function
     // foo are named a.BB.foo, aa.BB.foo, and so on.
     if (BasicBlockSymbols) {
+      auto Iter = MF->getMBBSymbolPrefix().begin();
+      assert(getNumber() < MF->getMBBSymbolPrefix().size() && "Unreachable MBB");
+      std::string Prefix(Iter + 1, Iter + getNumber() + 1);
+      std::reverse(Prefix.begin(), Prefix.end());
       CachedMCSymbol = Ctx.getOrCreateSymbol(
-          std::string(getNumber(), 'a') + Twine(Delimiter) + "BB" +
+          Prefix + Twine(Delimiter) + "BB" +
           Twine(Delimiter) + Twine(MF->getName()));
     } else {
       CachedMCSymbol = Ctx.getOrCreateSymbol(

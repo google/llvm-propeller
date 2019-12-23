@@ -18,7 +18,9 @@ ifeq '${CREATE_LLVM_PROF_DIR}' ''
 CREATE_LLVM_PROF_DIR=$(shell pwd)/..
 endif
 
-DOIP     ?= 0
+DOIP       ?= 0
+ENABLE_EH  ?= OFF
+BUILD_TYPE ?= Release
 
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )
@@ -140,19 +142,20 @@ bb_section_allinterp_flags  = $(call gen_build_flags,"-funique-internal-funcname
 # $2 is llvm enabled projects
 # $3 is target
 define build_compiler
-	export TOOLCHAIN="$(shell if [[ "$@" == "stage1/install/bin/clang" ]]; then echo "${RELEASE_LLVM_BIN}" ; else echo "${DDIR}/stage1/install/bin" ; fi)" ; \
-	export COMP_DIR="$(shell echo $@ | sed -Ee 's!([^/]+)/.*!\1!')" ; \
+	export TOOLCHAIN="$(shell if [[ "$@" == "stage1/install/bin/clang" ]]; then echo "$(RELEASE_LLVM_BIN)" ; else echo "$(DDIR)/stage1/install/bin" ; fi)" ; \
+	export COMP_DIR="$(DDIR)/$(shell echo $@ | sed -Ee 's!([^/]+)/.*!\1!')" ; \
 	if [[ -z "$${COMP_DIR}" ]]; then echo "Invalid dir name" ; exit 1; fi ; \
 	echo "Building in directory: $${COMP_DIR} ... " ; \
 	if [[ ! -e "$${COMP_DIR}/build/CMakeCache.txt" ]]; then \
 	  mkdir -p $${COMP_DIR}/build ;                  \
 	  cd $${COMP_DIR}/build && cmake -G Ninja        \
-            -DCMAKE_INSTALL_PREFIX=$(DDIR)/$${COMP_DIR}/install \
-	    -DCMAKE_BUILD_TYPE=Release                  \
+            -DCMAKE_INSTALL_PREFIX=$${COMP_DIR}/install \
             -DLLVM_OPTIMIZED_TABLEGEN=On                \
-            -DLLVM_TARGETS_TO_BUILD="X86"               \
+	    -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)            \
+	    -DLLVM_ENABLE_EH=$(ENABLE_EH)               \
 	    -DLLVM_ENABLE_LLD="On"                      \
 	    -DCMAKE_LINKER="lld"                        \
+            -DLLVM_TARGETS_TO_BUILD="X86"               \
 	    -DCMAKE_C_COMPILER=$${TOOLCHAIN}/clang      \
 	    -DCMAKE_CXX_COMPILER=$${TOOLCHAIN}/clang++  \
 	    -DCMAKE_ASM_COMPILER=$${TOOLCHAIN}/clang    \
@@ -160,7 +163,12 @@ define build_compiler
             -DLLVM_ENABLE_PROJECTS=$(2)                 \
             $(LLVM_PROJECT)/llvm;                       \
 	fi ; \
-	ninja -j$(J_NUMBER) -C $(DDIR)/$${COMP_DIR}/build $(3) 2>&1 | tee $(DDIR)/$${COMP_DIR}.autolog
+	ninja -j$(J_NUMBER) -C $${COMP_DIR}/build $(3) 2>&1 | tee $${COMP_DIR}.autolog ; \
+	if ! echo "int main() {return 0;}" | $${COMP_DIR}/build/bin/clang -x c -c - -o ./build_compiler.tmpout ; then \
+		echo Failed; exit 1 ; \
+	else \
+		rm -f ./build_compiler.tmpout ; \
+	fi
 	touch $@
 endef
 
@@ -171,7 +179,8 @@ all-benchmarks: $(ALL_BENCHMARKS)
 stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
 	$(call build_compiler,$(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,\"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib\")"; fi),"clang;compiler-rt;lld",install)
 
-#-llvm install-clang install-lld install-cxx install-cxxabi)
+stage1_with_cxx_unwind/install/bin/clang: stage1-compiler check_environment $(LLVM_SOURCE)
+	$(call build_compiler,-DCMAKE_BUILD_TYPE=Debug -DLIBCXXABI_USE_LLVM_UNWINDER=On -DLLVM_ENABLE_LLD= -DCMAKE_LINKER="gold","clang;compiler-rt;lld;libcxx;libcxxabi;libunwind",install install-cxx install-cxxabi)
 
 stage1-compiler: stage1/install/bin/clang
 	ln -sf $< $@
@@ -224,10 +233,32 @@ pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-c
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
 pgo-plofuncs/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.allbb.propeller
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.allbb.propeller,,-Wl$(comma)-propeller-dump-cfg=@),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.allbb.propeller,,),"clang;compiler-rt;lld",clang lld)
 
 pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller,,-Wl$(comma)-propeller-dump-cfg=@),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller,,),"clang;compiler-rt;lld",clang lld)
+
+# $1 is the COMP name only, without directory, "stage1/pgo-plolist/pgo-plofunsc/etc".
+# $2 is extra options.
+define gen_relink_script
+	cd $(1)/build ; ninja -t commands clang | grep -Fe " -o bin/clang-$(CLANG_VERSION) " | \
+		sed -e 's! -o bin/clang-$(CLANG_VERSION) ! -o bin/clang-$(CLANG_VERSION) $2 !' \
+		    -e 's!: &&!!' -e 's!&& :!!' > $(DDIR)/$@.relink_script
+	chmod +x $(DDIR)/$@.relink_script
+endef
+
+pgo-vanilla/build.resource pgo-labels/build.resource pgo-plolist/build.resource pgo-plofuncs/build.resource: %/build.resource: %/build/bin/clang-$(CLANG_VERSION)
+	$(call gen_relink_script,$(shell dirname $@),)
+	cd $(shell dirname $@)/build; /usr/bin/time -v $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$@
+	cd $(shell dirname $@)/build; find lto.cache/ -type f -name "llvmcache-*" 1>../build.objects 2>/dev/null ; \
+		if [[ -n "`head -1 ../build.objects`" ]]; then \
+			echo "All objects: " >> $(DDIR)/$@ ; \
+			$(DDIR)/stage1/install/bin/report-size @../build.objects  | tee -a $(DDIR)/$@ ; \
+		else \
+			echo No object files found. ; rm -f $@ ; \
+		fi
+	echo "Size of $<:" >> $(DDIR)/$@
+	$(DDIR)/stage1/install/bin/report-size $< | tee -a $(DDIR)/$@
 
 pgo-plofuncs/build/symbol-order pgo-plolist/build/symbol-order: %/build/symbol-order: %/build/bin/clang-$(CLANG_VERSION)
 	cd $(shell dirname $@) ; ninja -t commands clang | grep -Fe " -o bin/clang-${CLANG_VERSION} " | \
@@ -480,7 +511,9 @@ clean: clean-sample
 	rm -f check-performance check-performance.*
 	rm -f check-pmu-performance check-pmu-performance.*
 	rm -f gitdiff
+	rm -f pgo-plolist_vs_plofuncs.hot_func_order.diff
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
 	rm -fr benchmark-dir.o benchmark-dir/
+	rm -fr stage1_with_cxx_unwind
