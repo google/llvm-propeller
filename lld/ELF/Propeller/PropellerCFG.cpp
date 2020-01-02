@@ -312,6 +312,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *sE = prop->Propf->findSymbol(symName);
     if (!sE) {
+      // fprintf(stderr, "Not found: %s:%s\n", this->View->ViewName.str().c_str(),
+      //         symName.str().c_str());
       tmpNodeMap.clear();
       break;
     }
