@@ -477,6 +477,7 @@ public:
 
   bool getBasicBlockSections() const { return BasicBlockSections; }
   bool sortBasicBlockSections();
+  void setBasicBlockLabels();
   bool getBasicBlockLabels() const { return BasicBlockLabels; }
 
   /// getTarget - Return the target machine this machine code is compiled with

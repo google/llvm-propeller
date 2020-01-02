@@ -155,6 +155,14 @@ enum NodeType : unsigned {
   SMAXV,
   UMAXV,
 
+  SMAXV_PRED,
+  UMAXV_PRED,
+  SMINV_PRED,
+  UMINV_PRED,
+  ORV_PRED,
+  EORV_PRED,
+  ANDV_PRED,
+
   // Vector bitwise negation
   NOT,
 
@@ -195,6 +203,17 @@ enum NodeType : unsigned {
   SUNPKLO,
   UUNPKHI,
   UUNPKLO,
+
+  INSR,
+
+  // Unsigned gather loads.
+  GLD1,
+  GLD1_SCALED,
+  GLD1_UXTW,
+  GLD1_SXTW,
+  GLD1_UXTW_SCALED,
+  GLD1_SXTW_SCALED,
+  GLD1_IMM,
 
   // NEON Load/Store with post-increment base updates
   LD2post = ISD::FIRST_TARGET_MEMORY_OPCODE,

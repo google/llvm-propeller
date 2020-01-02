@@ -175,6 +175,9 @@ public:
       RelSet Flags;
       Visitor(TargetFinder &Outer, RelSet Flags) : Outer(Outer), Flags(Flags) {}
 
+      void VisitCallExpr(const CallExpr *CE) {
+        Outer.add(CE->getCalleeDecl(), Flags);
+      }
       void VisitDeclRefExpr(const DeclRefExpr *DRE) {
         const Decl *D = DRE->getDecl();
         // UsingShadowDecl allows us to record the UsingDecl.
@@ -193,6 +196,9 @@ public:
       void VisitOverloadExpr(const OverloadExpr *OE) {
         for (auto *D : OE->decls())
           Outer.add(D, Flags);
+      }
+      void VisitSizeOfPackExpr(const SizeOfPackExpr *SE) {
+        Outer.add(SE->getPack(), Flags);
       }
       void VisitCXXConstructExpr(const CXXConstructExpr *CCE) {
         Outer.add(CCE->getConstructor(), Flags);
@@ -490,6 +496,13 @@ llvm::SmallVector<ReferenceLoc, 2> refInExpr(const Expr *E) {
                                   /*IsDecl=*/false,
                                   llvm::SmallVector<const NamedDecl *, 1>(
                                       E->decls().begin(), E->decls().end())});
+    }
+
+    void VisitSizeOfPackExpr(const SizeOfPackExpr *E) {
+      Refs.push_back(ReferenceLoc{NestedNameSpecifierLoc(),
+                                  E->getPackLoc(),
+                                  /*IsDecl=*/false,
+                                  {E->getPack()}});
     }
   };
 

@@ -1053,6 +1053,9 @@ void AsmPrinter::EmitFunctionBody() {
   int NumInstsInFunction = 0;
   bool emitBasicBlockSections = MF->getBasicBlockSections();
   MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
+  bool emitBBLabels = MF->getBasicBlockSections() || MF->getBasicBlockLabels();
+  if (emitBBLabels)
+    MF->setBasicBlockLabels();
   if (emitBasicBlockSections) {
     MF->sortBasicBlockSections();
     EndOfRegularSectionMBB =

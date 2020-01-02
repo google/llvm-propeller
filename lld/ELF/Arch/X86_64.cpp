@@ -342,6 +342,7 @@ static bool isOneByteOffsetWhenShrunk(uint64_t TargetOffset,
                                          JmpInsnOpcode JmpCode,
                                          unsigned BytesShrunk,
                                          unsigned MaxAlign) {
+  return true;
   // For negative jumps, the jump target will be closer if shrinking
   // is done.
   if ((int64_t) TargetOffset < 0){

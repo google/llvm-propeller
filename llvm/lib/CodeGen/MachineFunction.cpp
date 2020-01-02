@@ -444,16 +444,20 @@ bool MachineFunction::sortBasicBlockSections() {
   PrevMBB->setEndSection();
 
   this->BBSectionsSorted = true;
+  return true;
+}
 
-  this->MBBSymbolPrefix.reserve(getNumBlockIDs());
-  for (unsigned Index = 0; Index < getNumBlockIDs(); ++Index) {
+void MachineFunction::setBasicBlockLabels() {
+  this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
+  for (auto MBBI=begin(), E=end(); MBBI!=E; ++MBBI) {
+    if (MBBI->getNumber() >= getNumBlockIDs() || MBBI->getNumber() < 0)
+      report_fatal_error("BasicBlock number was out of range: " + Twine(MBBI->getNumber()) + " 0 -> " + Twine(getNumBlockIDs()));
     // 'a' - Normal block.
     // 'r' - Return block.
     // 'l' - Landing Pad.
     // 'L' - Return and landing pad.
-    auto PtrMBB = MBBNumbering[Index];
-    bool isEHPad = PtrMBB->isEHPad();
-    bool isRetBlock = PtrMBB->isReturnBlock();
+    bool isEHPad = MBBI->isEHPad();
+    bool isRetBlock = MBBI->isReturnBlock();
     char type = 'a';
     if (isEHPad && isRetBlock)
       type = 'L';
@@ -461,9 +465,8 @@ bool MachineFunction::sortBasicBlockSections() {
       type = 'l';
     else if (isRetBlock)
       type = 'r';
-    MBBSymbolPrefix[Index] = type;
+    MBBSymbolPrefix[MBBI->getNumber()] = type;
   }
-  return true;
 }
 
 /// Allocate a new MachineInstr. Use this instead of `new MachineInstr'.

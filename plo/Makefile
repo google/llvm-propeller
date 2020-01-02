@@ -187,13 +187,13 @@ stage1-compiler: stage1/install/bin/clang
 	touch $@
 
 stage-pgo-relocs/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR $(relocs_flags),"clang;compiler-rt;lld",all)
+	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_ENABLE_LTO=Thin $(relocs_flags),"clang;compiler-rt;lld",all)
 
 stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
+	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",all)
 
 stage-pgo-labels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR $(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
+	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_ENABLE_LTO=Thin -DLLVM_$(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
 
 stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plolist-compiler pgo-plofuncs-compiler pgo-plo-compiler pgo-plolistinterp-compiler pgo-plofuncsinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
 	ln -sf $< $@
@@ -300,6 +300,7 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_V
 		 -split-functions=3                     \
 		 -split-all-cold                        \
 		 -chain-split-threshold=1024            \
+		 -print-cache-metrics                   \
 		 -reorder-blocks="cache+"               \
 	 	 -reorder-functions="hfsort+" -relocs=1 \
 		 2>&1 | tee $(word 2,$^).bolt.autolog

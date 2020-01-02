@@ -107,15 +107,10 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
     assert(to != nullptr);
     CFGNode *p = to;
     do {
-      std::vector<CFGEdge *> intraInEdges;
-      std::copy_if(p->Ins.begin(), p->Ins.end(),
-                   std::back_inserter(intraInEdges), [this](CFGEdge *e) {
-                     return e->Type == CFGEdge::EdgeType::INTRA_FUNC &&
-                            e->Sink != getEntryNode();
-                   });
-      if (intraInEdges.size() == 1)
-        p = intraInEdges.front()->Src;
-      else
+      if (p->Ins.size() == 1 && p->Ins.front()->isFTEdge()){
+        p->Ins.front()->Weight += cnt;
+        p = p->Ins.front()->Src;
+      } else
         p = nullptr;
     } while (p && p != to);
     return true;
@@ -127,15 +122,10 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
     assert(from != nullptr);
     CFGNode *p = from;
     do {
-      std::vector<CFGEdge *> IntraOutEdges;
-      std::copy_if(p->Outs.begin(), p->Outs.end(),
-                   std::back_inserter(IntraOutEdges), [this](CFGEdge *e) {
-                     return e->Type == CFGEdge::EdgeType::INTRA_FUNC &&
-                            e->Sink != getEntryNode();
-                   });
-      if (IntraOutEdges.size() == 1)
-        p = IntraOutEdges.front()->Sink;
-      else
+      if (p->Outs.size() == 1 && p->Outs.front()->isFTEdge()) {
+        p->Outs.front()->Weight += cnt;
+        p = p->Outs.front()->Sink;
+      } else
         p = nullptr;
     } while (p && p != from);
     return true;
@@ -312,6 +302,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *sE = prop->Propf->findSymbol(symName);
     if (!sE) {
+      fprintf(stderr, "WAS NOT ABLE TO FIND: %s\n", symName.str().c_str());
       tmpNodeMap.clear();
       break;
     }
@@ -361,6 +352,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     }
   }
   if (tmpNodeMap.empty()) {
+    warn("DITCH CFG: " + cfg->Name);
     cfg.reset(nullptr);
     return cfg;
   }
@@ -468,7 +460,7 @@ void CFGBuilder::buildCFG(
   buildShndxNodeMap(tmpNodeMap, shndxNodeMap);
 
   // Recursive call edges.
-  std::list<CFGEdge *> rscEdges;
+  //std::list<CFGEdge *> rscEdges;
   // Iterate all bb symbols.
   for (auto &nPair : tmpNodeMap) {
     CFGNode *srcNode = nPair.second.get();
@@ -499,17 +491,18 @@ void CFGBuilder::buildCFG(
         targetNode = result->second;
         if (targetNode) {
           // If so, we create the edge.
-          CFGEdge *e =
-              cfg.createEdge(srcNode, targetNode,
-                             isRSC ? CFGEdge::INTRA_RSC : CFGEdge::INTRA_FUNC);
+          // CFGEdge *e =
+          cfg.createEdge(srcNode, targetNode,
+                            isRSC ? CFGEdge::INTRA_RSC : CFGEdge::INTRA_FUNC);
           // If it's a recursive call, record it.
-          if (isRSC)
-            rscEdges.push_back(e);
+          //if (isRSC)
+          //  rscEdges.push_back(e);
         }
       }
     }
   }
 
+  /*
   // For each recursive call, we create a recursive-self-return edges for all
   // exit edges. In the following example, create an edge bb5->bb3 FuncA:
   //    bb1:            <---+
@@ -537,6 +530,7 @@ void CFGBuilder::buildCFG(
       }
     }
   }
+  */
   calculateFallthroughEdges(cfg, tmpNodeMap);
 
   // Transfer nodes ownership to cfg and destroy tmpNodeMap.
@@ -546,30 +540,11 @@ void CFGBuilder::buildCFG(
   }
   tmpNodeMap.clear();
 
-  // Set cfg size and re-calculate size of the entry basicblock, which is
-  // initially the size of the whole function.
-  // cfg.Size = cfg.getEntryNode()->ShSize;
-  // cfg.forEachNodeRef([&cfg](CFGNode &n) {
-  //   if (&n != cfg.getEntryNode())
-  //     cfg.getEntryNode()->ShSize -= n.ShSize;
-  // });
-  /*
-  cfg.Size = cfg.getEntryNode()->ShSize;
-  auto * entryNode = cfg.getEntryNode();
-  fprintf(stderr, "Initial size of entry bb: %s to %lu\n",
-  cfg.Name.str().c_str(), entryNode->ShSize);
-  cfg.forEachNodeRef([entryNode](CFGNode &n) {
-    if (&n != entryNode)
-      entryNode->ShSize -= n.ShSize;
-  });
-  fprintf(stderr, "Resetting the size of entry bb: %s to %lu\n",
-  cfg.Name.str().c_str(), entryNode->ShSize);
-  */
+  // Calculate the cfg size
   cfg.Size = 0;
   cfg.forEachNodeRef([&cfg](CFGNode &n) {
     cfg.Size += n.ShSize;
   });
-
 }
 
 // Calculate fallthroughs. Edge p->q is fallthrough if p & q are adjacent (e.g.
@@ -639,6 +614,10 @@ std::ostream &operator<<(std::ostream &out, const ControlFlowGraph &cfg) {
   }
   out << std::endl;
   return out;
+}
+
+bool CFGEdge::isFTEdge() const {
+  return Src->FTEdge == this;
 }
 
 } // namespace propeller

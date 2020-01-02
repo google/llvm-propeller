@@ -498,8 +498,10 @@ class PropellerBBReordering {
           });
           fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg.Name.str().c_str(), allBBs, hotBBs);
         }
-      } else
+      } else {
+        fprintf(stderr, "CFG IS COLD: %s\n", cfg.Name.str().c_str());
         ColdCFGs.push_back(&cfg);
+      }
     });
   }
 

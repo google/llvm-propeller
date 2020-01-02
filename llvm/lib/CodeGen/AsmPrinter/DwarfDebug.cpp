@@ -617,6 +617,10 @@ static void collectCallSiteParameters(const MachineInstr *CallMI,
 
   // Search for a loading value in forwarding registers.
   for (; I != MBB->rend(); ++I) {
+    // Skip bundle headers.
+    if (I->isBundle())
+      continue;
+
     // If the next instruction is a call we can not interpret parameter's
     // forwarding registers or we finished the interpretation of all parameters.
     if (I->isCall())
@@ -996,6 +1000,7 @@ void DwarfDebug::beginModule() {
   // Create the symbol that points to the first entry following the debug
   // address table (.debug_addr) header.
   AddrPool.setLabel(Asm->createTempSymbol("addr_table_base"));
+  DebugLocs.setSym(Asm->createTempSymbol("loclists_table_base"));
 
   for (DICompileUnit *CUNode : M->debug_compile_units()) {
     // FIXME: Move local imported entities into a list attached to the
@@ -1099,7 +1104,10 @@ void DwarfDebug::finalizeModuleInfo() {
     // If we're splitting the dwarf out now that we've got the entire
     // CU then add the dwo id to it.
     auto *SkCU = TheCU.getSkeleton();
-    if (useSplitDwarf() && !TheCU.getUnitDie().children().empty()) {
+
+    bool HasSplitUnit = SkCU && !TheCU.getUnitDie().children().empty();
+
+    if (HasSplitUnit) {
       finishUnitAttributes(TheCU.getCUNode(), TheCU);
       TheCU.addString(TheCU.getUnitDie(), dwarf::DW_AT_GNU_dwo_name,
                       Asm->TM.Options.MCOptions.SplitDwarfFile);
@@ -1150,8 +1158,7 @@ void DwarfDebug::finalizeModuleInfo() {
     // We don't keep track of which addresses are used in which CU so this
     // is a bit pessimistic under LTO.
     if (!AddrPool.isEmpty() &&
-        (getDwarfVersion() >= 5 ||
-         (SkCU && !TheCU.getUnitDie().children().empty())))
+        (getDwarfVersion() >= 5 || HasSplitUnit))
       U.addAddrTableBase();
 
     if (getDwarfVersion() >= 5) {
@@ -1159,7 +1166,6 @@ void DwarfDebug::finalizeModuleInfo() {
         U.addRnglistsBase();
 
       if (!DebugLocs.getLists().empty()) {
-        DebugLocs.setSym(Asm->createTempSymbol("loclists_table_base"));
         if (!useSplitDwarf())
           U.addSectionLabel(U.getUnitDie(), dwarf::DW_AT_loclists_base,
                             DebugLocs.getSym(),
@@ -1169,7 +1175,7 @@ void DwarfDebug::finalizeModuleInfo() {
 
     auto *CUNode = cast<DICompileUnit>(P.first);
     // If compile Unit has macros, emit "DW_AT_macro_info" attribute.
-    if (CUNode->getMacros())
+    if (CUNode->getMacros() && !useSplitDwarf())
       U.addSectionLabel(U.getUnitDie(), dwarf::DW_AT_macro_info,
                         U.getMacroLabelBegin(),
                         TLOF.getDwarfMacinfoSection()->getBeginSymbol());
@@ -1208,10 +1214,10 @@ void DwarfDebug::endModule() {
   emitDebugStr();
 
   if (useSplitDwarf())
-    // Handles debug_loc.dwo / debug_loclists.dwo section emission
+    // Emit debug_loc.dwo/debug_loclists.dwo section.
     emitDebugLocDWO();
   else
-    // Handles debug_loc / debug_loclists section emission
+    // Emit debug_loc/debug_loclists section.
     emitDebugLoc();
 
   // Corresponding abbreviations into a abbrev section.
@@ -1227,8 +1233,12 @@ void DwarfDebug::endModule() {
   // Emit info into a debug ranges section.
   emitDebugRanges();
 
+  if (useSplitDwarf())
+  // Emit info into a debug macinfo.dwo section.
+    emitDebugMacinfoDWO();
+  else
   // Emit info into a debug macinfo section.
-  emitDebugMacinfo();
+    emitDebugMacinfo();
 
   if (useSplitDwarf()) {
     emitDebugStrDWO();
@@ -2810,6 +2820,24 @@ void DwarfDebug::emitDebugMacinfo() {
   }
 }
 
+void DwarfDebug::emitDebugMacinfoDWO() {
+  for (const auto &P : CUMap) {
+    auto &TheCU = *P.second;
+    auto *SkCU = TheCU.getSkeleton();
+    DwarfCompileUnit &U = SkCU ? *SkCU : TheCU;
+    auto *CUNode = cast<DICompileUnit>(P.first);
+    DIMacroNodeArray Macros = CUNode->getMacros();
+    if (Macros.empty())
+      continue;
+    Asm->OutStreamer->SwitchSection(
+        Asm->getObjFileLowering().getDwarfMacinfoDWOSection());
+    Asm->OutStreamer->EmitLabel(U.getMacroLabelBegin());
+    handleMacroNodes(Macros, U);
+    Asm->OutStreamer->AddComment("End Of Macro List Mark");
+    Asm->emitInt8(0);
+  }
+}
+
 // DWARF5 Experimental Separate Dwarf emitters.
 
 void DwarfDebug::initSkeletonUnit(const DwarfUnit &U, DIE &Die,
@@ -2826,7 +2854,8 @@ void DwarfDebug::initSkeletonUnit(const DwarfUnit &U, DIE &Die,
 DwarfCompileUnit &DwarfDebug::constructSkeletonCU(const DwarfCompileUnit &CU) {
 
   auto OwnedUnit = std::make_unique<DwarfCompileUnit>(
-      CU.getUniqueID(), CU.getCUNode(), Asm, this, &SkeletonHolder);
+      CU.getUniqueID(), CU.getCUNode(), Asm, this, &SkeletonHolder,
+      UnitKind::Skeleton);
   DwarfCompileUnit &NewCU = *OwnedUnit;
   NewCU.setSection(Asm->getObjFileLowering().getDwarfInfoSection());
 

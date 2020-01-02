@@ -81,6 +81,8 @@ public:
     return Type == INTER_FUNC_RETURN || Type == INTRA_RSR;
   }
 
+  bool isFTEdge() const;
+
 protected:
   CFGEdge(CFGNode *N1, CFGNode *N2, EdgeType T)
       : Src(N1), Sink(N2), Weight(0), Type(T) {}

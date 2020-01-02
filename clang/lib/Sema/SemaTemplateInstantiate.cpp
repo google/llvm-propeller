@@ -363,7 +363,7 @@ Sema::InstantiatingTemplate::InstantiatingTemplate(
 
 Sema::InstantiatingTemplate::InstantiatingTemplate(
     Sema &SemaRef, SourceLocation PointOfInstantiation,
-    ConstraintsCheck, TemplateDecl *Template,
+    ConstraintsCheck, NamedDecl *Template,
     ArrayRef<TemplateArgument> TemplateArgs, SourceRange InstantiationRange)
     : InstantiatingTemplate(
           SemaRef, CodeSynthesisContext::ConstraintsCheck,
@@ -372,7 +372,7 @@ Sema::InstantiatingTemplate::InstantiatingTemplate(
 
 Sema::InstantiatingTemplate::InstantiatingTemplate(
     Sema &SemaRef, SourceLocation PointOfInstantiation,
-    ConstraintSubstitution, TemplateDecl *Template,
+    ConstraintSubstitution, NamedDecl *Template,
     sema::TemplateDeductionInfo &DeductionInfo, SourceRange InstantiationRange)
     : InstantiatingTemplate(
           SemaRef, CodeSynthesisContext::ConstraintSubstitution,
@@ -691,24 +691,27 @@ void Sema::PrintInstantiationStack() {
     case CodeSynthesisContext::Memoization:
       break;
     
-    case CodeSynthesisContext::ConstraintsCheck:
-      if (auto *CD = dyn_cast<ConceptDecl>(Active->Entity)) {
-        SmallVector<char, 128> TemplateArgsStr;
-        llvm::raw_svector_ostream OS(TemplateArgsStr);
-        CD->printName(OS);
-        printTemplateArgumentList(OS, Active->template_arguments(),
-                                  getPrintingPolicy());
-        Diags.Report(Active->PointOfInstantiation,
-                     diag::note_concept_specialization_here)
-          << OS.str()
-          << Active->InstantiationRange;
-        break;
+    case CodeSynthesisContext::ConstraintsCheck: {
+      unsigned DiagID = 0;
+      if (isa<ConceptDecl>(Active->Entity))
+        DiagID = diag::note_concept_specialization_here;
+      else if (isa<TemplateDecl>(Active->Entity))
+        DiagID = diag::note_checking_constraints_for_template_id_here;
+      else if (isa<VarTemplatePartialSpecializationDecl>(Active->Entity))
+        DiagID = diag::note_checking_constraints_for_var_spec_id_here;
+      else {
+        assert(isa<ClassTemplatePartialSpecializationDecl>(Active->Entity));
+        DiagID = diag::note_checking_constraints_for_class_spec_id_here;
       }
-      // TODO: Concepts - implement this for constrained templates and partial
-      // specializations.
-      llvm_unreachable("only concept constraints are supported right now");
+      SmallVector<char, 128> TemplateArgsStr;
+      llvm::raw_svector_ostream OS(TemplateArgsStr);
+      cast<NamedDecl>(Active->Entity)->printName(OS);
+      printTemplateArgumentList(OS, Active->template_arguments(),
+                                getPrintingPolicy());
+      Diags.Report(Active->PointOfInstantiation, DiagID) << OS.str()
+        << Active->InstantiationRange;
       break;
-      
+    }
     case CodeSynthesisContext::ConstraintSubstitution:
       Diags.Report(Active->PointOfInstantiation,
                    diag::note_constraint_substitution_here)
@@ -1514,8 +1517,12 @@ TemplateInstantiator::TransformFunctionTypeParam(ParmVarDecl *OldParm,
                                                  int indexAdjustment,
                                                Optional<unsigned> NumExpansions,
                                                  bool ExpectParameterPack) {
-  return SemaRef.SubstParmVarDecl(OldParm, TemplateArgs, indexAdjustment,
-                                  NumExpansions, ExpectParameterPack);
+  auto NewParm =
+      SemaRef.SubstParmVarDecl(OldParm, TemplateArgs, indexAdjustment,
+                               NumExpansions, ExpectParameterPack);
+  if (NewParm && SemaRef.getLangOpts().OpenCL)
+    SemaRef.deduceOpenCLAddressSpace(NewParm);
+  return NewParm;
 }
 
 QualType
@@ -2222,8 +2229,10 @@ Sema::InstantiateClass(SourceLocation PointOfInstantiation,
   CheckCompletedCXXClass(Instantiation);
 
   // Default arguments are parsed, if not instantiated. We can go instantiate
-  // default arg exprs for default constructors if necessary now.
-  ActOnFinishCXXNonNestedClass(Instantiation);
+  // default arg exprs for default constructors if necessary now. Unless we're
+  // parsing a class, in which case wait until that's finished.
+  if (ParsingClassDepth == 0)
+    ActOnFinishCXXNonNestedClass();
 
   // Instantiate late parsed attributes, and attach them to their decls.
   // See Sema::InstantiateAttrs

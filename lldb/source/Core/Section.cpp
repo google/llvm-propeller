@@ -94,6 +94,8 @@ const char *Section::GetTypeAsCString() const {
     return "dwarf-ranges";
   case eSectionTypeDWARFDebugRngLists:
     return "dwarf-rnglists";
+  case eSectionTypeDWARFDebugRngListsDwo:
+    return "dwarf-rnglists-dwo";
   case eSectionTypeDWARFDebugStr:
     return "dwarf-str";
   case eSectionTypeDWARFDebugStrDwo:
@@ -321,7 +323,7 @@ void Section::Dump(Stream *s, Target *target, uint32_t depth) const {
     }
 
     VMRange range(addr, addr + m_byte_size);
-    range.Dump(s, 0);
+    range.Dump(s->AsRawOstream(), 0);
   }
 
   s->Printf("%c %c%c%c  0x%8.8" PRIx64 " 0x%8.8" PRIx64 " 0x%8.8x ",

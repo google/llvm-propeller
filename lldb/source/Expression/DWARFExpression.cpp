@@ -131,7 +131,7 @@ void DWARFExpression::GetDescription(Stream *s, lldb::DescriptionLevel level,
           s->PutCString(", ");
         VMRange addr_range(curr_base_addr + begin_addr_offset,
                            curr_base_addr + end_addr_offset);
-        addr_range.Dump(s, 0, 8);
+        addr_range.Dump(s->AsRawOstream(), 0, 8);
         s->PutChar('{');
         lldb::offset_t location_length = m_data.GetU16(&offset);
         DumpLocation(s, offset, location_length, level, abi);
@@ -146,7 +146,7 @@ void DWARFExpression::GetDescription(Stream *s, lldb::DescriptionLevel level,
           // We have a new base address
           if (count > 0)
             s->PutCString(", ");
-          *s << "base_addr = " << end_addr_offset;
+          s->Format("base_addr = {0:x}", end_addr_offset);
         }
       }
 
@@ -2929,8 +2929,9 @@ void DWARFExpression::PrintDWARFLocationList(
     s.PutCString("\n            ");
     s.Indent();
     if (cu)
-      s.AddressRange(start_addr + base_addr, end_addr + base_addr,
-                     cu->GetAddressByteSize(), nullptr, ": ");
+      DumpAddressRange(s.AsRawOstream(), start_addr + base_addr,
+                       end_addr + base_addr, cu->GetAddressByteSize(), nullptr,
+                       ": ");
     uint32_t loc_length = debug_loc_data.GetU16(&offset);
 
     DataExtractor locationData(debug_loc_data, offset, loc_length);
