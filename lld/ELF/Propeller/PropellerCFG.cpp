@@ -279,7 +279,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   std::map<uint32_t,
            std::pair<CFGNode *,
                      std::set<SymbolEntry *, SymbolEntryOrdinalLessComparator>>>
-      coldSectionMap;
+      bbGroupSectionMap;
   StringRef cfgName = GE.first;
   std::unique_ptr<ControlFlowGraph> cfg(new ControlFlowGraph(View, cfgName, 0));
 
@@ -302,7 +302,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *sE = prop->Propf->findSymbol(symName);
     if (!sE) {
-      fprintf(stderr, "WAS NOT ABLE TO FIND: %s\n", symName.str().c_str());
+      fprintf(stderr, "WAS NOT ABLE TO FIND: %s:%s\n",
+              this->View->ViewName.str().c_str(), symName.str().c_str());
       tmpNodeMap.clear();
       break;
     }
@@ -312,69 +313,75 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
       error("Internal error checking cfg map.");
       break;
     }
-    if (!sE->HotTag) {
-      auto coldI = coldSectionMap.find(symShndx);
-      if (coldI != coldSectionMap.end()) {
-        CFGNode *coldNode = coldI->second.first;
-        // All codeNodes share the same section, so the ShSize field must equal.
-        if (coldNode->ShSize != symSectionSize) {
+    // All cold BBs go into a single cold section. All landing pads go
+    // into a single landing pad section.
+    bool needGroup =
+        !sE->HotTag || symName.front() == 'l' || symName.front() == 'L';
+    if (needGroup) {
+      auto groupI = bbGroupSectionMap.find(symShndx);
+      if (groupI != bbGroupSectionMap.end()) {
+        CFGNode *groupNode = groupI->second.first;
+        // All group nodes share the same section, so the ShSize field must
+        // equal.
+        if (groupNode->ShSize != symSectionSize) {
           tmpNodeMap.clear();
           error("Check internal size error.");
           break;
         }
-        if (coldNode->MappedAddr > sE->Ordinal) {
-          coldNode->MappedAddr = sE->Ordinal;
-          coldNode->ShName = symName;
-          coldNode->ShSize = symSectionSize;
+        // The first node within the section is the representative node.
+        if (groupNode->MappedAddr > sE->Ordinal) {
+          groupNode->MappedAddr = sE->Ordinal;
+          groupNode->ShName = symName;
+          groupNode->ShSize = symSectionSize;
         }
-        if (!coldI->second.second.insert(sE).second) {
+        if (!groupI->second.second.insert(sE).second) {
           tmpNodeMap.clear();
-          error("Internal error grouping cold sections.");
+          error("Internal error grouping sections.");
           break;
         }
         continue; // to next sym.
       }
     }
+
     // Drop bb sections with no code
     if (!symSectionSize || !sE->Size)
       continue;
     CFGNode *node = new CFGNode(symShndx, symName, symSectionSize, sE->Ordinal,
                                 cfg.get(), sE->HotTag);
     tmpNodeMap.emplace(sE->Ordinal, node);
-    if (!sE->HotTag) {
-      auto &P = coldSectionMap[symShndx];
+    if (needGroup) {
+      auto &P = bbGroupSectionMap[symShndx];
       P.first = node;
       if (!P.second.insert(sE).second) {
-        error("Internal error grouping duplicated cold sections.");
+        error("Internal error grouping duplicated sections.");
         tmpNodeMap.clear();
         break;
       }
     }
   }
+
   if (tmpNodeMap.empty()) {
     warn("DITCH CFG: " + cfg->Name);
     cfg.reset(nullptr);
     return cfg;
   }
 
-  for (auto &P : coldSectionMap) {
-    CFGNode *Node = P.second.first;
+  for (auto &P : bbGroupSectionMap) {
+    auto *Node = P.second.first;
     auto &SymSet = P.second.second;
     if (SymSet.size() > 1) {
       SymbolEntry *FirstSymbol = *(SymSet.begin());
       if (FirstSymbol->Ordinal != Node->MappedAddr) {
-        error("Internal error grouping cold sections.");
+        error("Internal error grouping sections.");
         cfg.reset(nullptr);
         return cfg;
       }
       for (SymbolEntry *SS : SymSet) {
         if (!OrdinalRemapping.emplace(SS->Ordinal, Node->MappedAddr).second
-            /* hot symbols can never be remapped to other symbols */
-            || SS->HotTag
             /* The representative Node must have the smallest MappedAddr
                (Ordinal) */
             || SS->Ordinal < Node->MappedAddr) {
-          error("Internal error remapping duplicated cold sections.");
+          error("Internal error remapping duplicated sections.");
           cfg.reset(nullptr);
           return cfg;
         }
