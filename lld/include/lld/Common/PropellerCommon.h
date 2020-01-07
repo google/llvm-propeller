@@ -14,7 +14,7 @@ namespace lld {
 namespace propeller {
 
 static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
-static const char * BASIC_BLOCK_UNIFIED_CHARACTERS = "ar";
+static const char * BASIC_BLOCK_UNIFIED_CHARACTERS = "arlL";
 
 // This data structure is shared between lld propeller components and
 // create_llvm_prof. In short, create_llvm_prof parses the binary, wraps all the
@@ -26,11 +26,12 @@ static const char * BASIC_BLOCK_UNIFIED_CHARACTERS = "ar";
 // https://github.com/shenhanc78/autofdo/tree/plo-dev]
 struct SymbolEntry {
 
-  enum BBTagTypeEnum : unsigned char { 
-    BB_NONE = 0,  // For functions.
-    BB_NORMAL, 
-    BB_RETURN,
-    BB_LANDING_PAD
+  enum BBTagTypeEnum : unsigned char {
+    BB_NONE = 0,     // For functions.
+    BB_NORMAL,       // Ordinary BB, 'a'.
+    BB_RETURN,       // Return BB, 'r'.
+    BB_LANDING_PAD,  // Landing pad BB, 'l'.
+    BB_RETURN_AND_LANDING_PAD  // Landing pad and return BB, 'L'.
   };
 
   using AliasesTy = SmallVector<StringRef, 3>;
@@ -58,14 +59,15 @@ struct SymbolEntry {
   uint8_t Type; // Of type: llvm::objet::SymbolRef::Type.
   bool BBTag;   // Whether this is a basic block section symbol.
   BBTagTypeEnum BBTagType;
-  
+
   bool HotTag; // Whether this symbol is listed in the propeller section.
   // For BBTag symbols, this is the containing fuction pointer, for a normal
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *ContainingFunc;
 
-  bool isReturnBlock() const {
-    return BBTagType == BBTagTypeEnum::BB_RETURN;
+  bool isReturnBlock() const { return BBTagType == BB_RETURN; }
+  bool isReturnLandingBlock() const {
+    return BBTagType == BB_RETURN_AND_LANDING_PAD;
   }
 
   bool containsAddress(uint64_t A) const {
