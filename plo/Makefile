@@ -24,8 +24,8 @@ BUILD_TYPE ?= Release
 
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )
-IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plofuncsinterp.result" )
-IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pmu-pgo-plolistinterp.result" )
+IP_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plofuncsinterp.result benchmark-pgo-plolistinterp.result" )
+IP_PMU_RESULTS := $(shell ( [[ "${DOIP}" = "1" ]] ) && echo "benchmark-pgo-plofuncsinterp.result benchmark-pmu-pgo-plolistinterp.result" )
 
 DDIR := $(shell pwd)
 LLVM_PROJECT := $(shell cd $(DDIR)/.. && pwd)
@@ -182,18 +182,22 @@ stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
 stage1_with_cxx_unwind/install/bin/clang: stage1-compiler check_environment $(LLVM_SOURCE)
 	$(call build_compiler,-DCMAKE_BUILD_TYPE=Debug -DLIBCXXABI_USE_LLVM_UNWINDER=On -DLLVM_ENABLE_LLD= -DCMAKE_LINKER="gold","clang;compiler-rt;lld;libcxx;libcxxabi;libunwind",install install-cxx install-cxxabi)
 
+stage1_with_cxx_unwind-compiler: stage1_with_cxx_unwind/install/bin/clang
+	ln -sf $< $@
+	touch $@
+
 stage1-compiler: stage1/install/bin/clang
 	ln -sf $< $@
 	touch $@
 
 stage-pgo-relocs/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_ENABLE_LTO=Thin $(relocs_flags),"clang;compiler-rt;lld",all)
+	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR $(relocs_flags),"clang;compiler-rt;lld",all)
 
 stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",all)
+	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
 
 stage-pgo-labels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_ENABLE_LTO=Thin -DLLVM_$(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
+	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_$(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
 
 stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plolist-compiler pgo-plofuncs-compiler pgo-plo-compiler pgo-plolistinterp-compiler pgo-plofuncsinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
 	ln -sf $< $@
@@ -412,13 +416,13 @@ sample_bb.lto.o: sample.c sample.baseline.lto.propeller stage1-compiler
 sample.propeller.lto.out: sample_bb.lto.o sample.baseline.lto.propeller stage1-compiler
 	./stage1-compiler -o $@ -flto=thin -Wl,--thinlto-cache-dir=sample.lto.cache -fuse-ld=lld -fpropeller-optimize=$(word 2,$^) -Wl,-propeller-keep-named-symbols -Wl,-propeller-print-stats $< -Wl,-propeller-dump-cfg=@; \
 
-test_exception: test_exception.cpp stage1-compiler
-	./stage1-compiler -std=c++11 -stdlib=libc++ -nostdinc++  -I./stage1/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include -L./stage1/install/lib -Wl,-rpath,./stage1/install/lib $< -S -o $@.s -lc++
-	./stage1-compiler -std=c++11 -stdlib=libc++ -nostdinc++  -I./stage1/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include -L./stage1/install/lib -Wl,-rpath,./stage1/install/lib $< -o $@ -lc++
+test_exception: test_exception.cpp stage1_with_cxx_unwind-compiler
+	./stage1_with_cxx_unwind-compiler -ffunction-sections -std=c++11 -nostdinc++  -I./stage1_with_cxx_unwind/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include $< -S -o $@.s
+	./stage1_with_cxx_unwind-compiler -stdlib=libc++ -L./stage1_with_cxx_unwind/install/lib -Wl,-rpath,./stage1_with_cxx_unwind/install/lib $@.s -o $@ -lc++
 
-test_exception.plo: test_exception.cpp stage1-compiler
-	./stage1-compiler -std=c++11 -stdlib=libc++ -nostdinc++  -I./stage1/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include -L./stage1/install/lib -Wl,-rpath,./stage1/install/lib $< -fbasicblock-sections=all -S -o $@.s -lc++
-	./stage1-compiler -std=c++11 -stdlib=libc++ -nostdinc++  -I./stage1/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include -L./stage1/install/lib -Wl,-rpath,./stage1/install/lib $< -fbasicblock-sections=all -o $@ -lc++
+test_exception.plo: test_exception.cpp stage1_with_cxx_unwind-compiler
+	./stage1_with_cxx_unwind-compiler -fbasicblock-sections=all -std=c++11 -nostdinc++  -I./stage1_with_cxx_unwind/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include $< -S -o $@.s
+	./stage1_with_cxx_unwind-compiler -stdlib=libc++ -L./stage1_with_cxx_unwind/install/lib -Wl,-rpath,./stage1_with_cxx_unwind/install/lib $@.s -o $@ -lc++
 
 .phony: clean clean-all clean-sample
 .phone: $(foreach F,$(FLAVORS),dummy-$(F))

@@ -301,7 +301,12 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     // for BB symbols.
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *sE = prop->Propf->findSymbol(symName);
+    uint64_t symOffset = sym.getValue();
     if (!sE) {
+      // The symbol is not on its own section, safe to ignore mapping with a
+      // propeller symbol.
+      if (symOffset)
+        continue;
       fprintf(stderr, "WAS NOT ABLE TO FIND: %s\n", symName.str().c_str());
       tmpNodeMap.clear();
       break;
@@ -336,7 +341,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
       }
     }
     // Drop bb sections with no code
-    if (!symSectionSize || !sE->Size)
+    if (!symSectionSize)
       continue;
     CFGNode *node = new CFGNode(symShndx, symName, symSectionSize, sE->Ordinal,
                                 cfg.get(), sE->HotTag);

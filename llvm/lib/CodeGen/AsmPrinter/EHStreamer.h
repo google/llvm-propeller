@@ -70,11 +70,20 @@ protected:
   };
 
   struct CallSiteRange {
-    SmallVector<unsigned, 64> CallSiteIndices;
+    // The index of the first call-site entry in the callsite table which
+    // belongs to this range.
+    unsigned CallSiteBeginIdx = 0;
+    // The index just after the last call-site entry in the callsite table which
+    // belongs to this range.
+    unsigned CallSiteEndIdx = 0;
+    // Beginning of the function part (section).
     MCSymbol *FuncPartBeginLabel = nullptr;
+    // End of the function part (section).
     MCSymbol *FuncPartEndLabel = nullptr;
+    // LSDA symbol
     MCSymbol *ExceptionLabel = nullptr;
-    bool IsLandingPadRange = false;
+    // Whether this is the call-site range containing all the landing pads
+    bool IsLPRange = false;
   };
 
   /// Compute the actions table and gather the first action index for each
