@@ -471,6 +471,11 @@ void Propeller::calculateNodeFreqs() {
       }
 
       cfg->Hot |= (node.Freq != 0);
+
+      if (node.Freq && node.FTEdge && !sumEdgeWeights(node.Outs)) {
+        if (node.FTEdge->Sink->HotTag)
+          node.FTEdge->Weight = node.Freq;
+      }
     });
 
     /*
