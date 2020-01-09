@@ -33,6 +33,7 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/CodeGen/TargetFrameLowering.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -448,6 +449,7 @@ bool MachineFunction::sortBasicBlockSections() {
 }
 
 void MachineFunction::setBasicBlockLabels() {
+  const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
   for (auto MBBI=begin(), E=end(); MBBI!=E; ++MBBI) {
     if (MBBI->getNumber() >= getNumBlockIDs() || MBBI->getNumber() < 0)
@@ -457,7 +459,7 @@ void MachineFunction::setBasicBlockLabels() {
     // 'l' - Landing Pad.
     // 'L' - Return and landing pad.
     bool isEHPad = MBBI->isEHPad();
-    bool isRetBlock = MBBI->isReturnBlock();
+    bool isRetBlock = MBBI->isReturnBlock() && !TII->isTailCall(MBBI->back());
     char type = 'a';
     if (isEHPad && isRetBlock)
       type = 'L';
