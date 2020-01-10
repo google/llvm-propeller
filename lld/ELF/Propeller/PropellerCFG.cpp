@@ -295,15 +295,20 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     StringRef symName = *symNameE;
     uint64_t symShndx = (*sectionIE)->getIndex();
     uint64_t symSectionSize = (*sectionIE)->getSize();
+    uint64_t symValue = sym.getValue();
     // Note here: BB symbols only carry size information when
     // -fbasicblock-section=all. Objects built with
     // -fbasicblock-section=labels do not have size information
     // for BB symbols.
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *sE = prop->Propf->findSymbol(symName);
+    // symValue is the offset of the bb symbol within a bbsection, if
+    // symValue is nonzero, it means this is a symbol grouped together w/ other
+    // bb symbols in the same section (the code section or the landing pad
+    // section), and this bb symbol is not the representative symbol of the bb
+    // section, we can safely ignore the symbol.
     if (!sE) {
-      fprintf(stderr, "WAS NOT ABLE TO FIND: %s:%s\n",
-              this->View->ViewName.str().c_str(), symName.str().c_str());
+      if (symValue != 0) continue;
       tmpNodeMap.clear();
       break;
     }
@@ -344,7 +349,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     }
 
     // Drop bb sections with no code
-    if (!symSectionSize || !sE->Size)
+    if (!symSectionSize)
       continue;
     CFGNode *node = new CFGNode(symShndx, symName, symSectionSize, sE->Ordinal,
                                 cfg.get(), sE->HotTag);
@@ -361,7 +366,6 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   }
 
   if (tmpNodeMap.empty()) {
-    warn("DITCH CFG: " + cfg->Name);
     cfg.reset(nullptr);
     return cfg;
   }
