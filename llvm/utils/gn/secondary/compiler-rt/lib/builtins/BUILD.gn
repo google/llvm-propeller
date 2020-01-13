@@ -216,6 +216,7 @@ static_library("builtins") {
   }
 
   if (current_cpu == "x86" || current_cpu == "x64") {
+    sources -= [ "fp_mode.c" ]
     sources += [
       "cpu_model.c",
       "divxc3.c",
@@ -228,6 +229,7 @@ static_library("builtins") {
       "floattixf.c",
       "floatundixf.c",
       "floatuntixf.c",
+      "i386/fp_mode.c",
       "mulxc3.c",
       "powixf2.c",
     ]
@@ -475,6 +477,7 @@ static_library("builtins") {
     sources += [
       "ppc/divtc3.c",
       "ppc/fixtfdi.c",
+      "ppc/fixtfti.c",
       "ppc/fixunstfdi.c",
       "ppc/fixunstfti.c",
       "ppc/floatditf.c",

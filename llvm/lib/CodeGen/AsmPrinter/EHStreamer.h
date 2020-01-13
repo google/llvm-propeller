@@ -69,6 +69,14 @@ protected:
     unsigned Action;
   };
 
+  struct CallSiteRange {
+    SmallVector<unsigned, 64> CallSiteIndices;
+    MCSymbol *FuncPartBeginLabel = nullptr;
+    MCSymbol *FuncPartEndLabel = nullptr;
+    MCSymbol *ExceptionLabel = nullptr;
+    bool IsLandingPadRange = false;
+  };
+
   /// Compute the actions table and gather the first action index for each
   /// landing pad site.
   void computeActionsTable(const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
@@ -86,6 +94,7 @@ protected:
   /// form gaps in the table.  Entries must be ordered by try-range address.
   virtual void computeCallSiteTable(
       SmallVectorImpl<CallSiteEntry> &CallSites,
+      SmallVectorImpl<CallSiteRange> &CallSiteRanges,
       const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
       const SmallVectorImpl<unsigned> &FirstActions);
 

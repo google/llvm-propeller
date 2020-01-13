@@ -1053,6 +1053,9 @@ void AsmPrinter::EmitFunctionBody() {
   int NumInstsInFunction = 0;
   bool emitBasicBlockSections = MF->getBasicBlockSections();
   MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
+  bool emitBBLabels = MF->getBasicBlockSections() || MF->getBasicBlockLabels();
+  if (emitBBLabels)
+    MF->setBasicBlockLabels();
   if (emitBasicBlockSections) {
     MF->sortBasicBlockSections();
     EndOfRegularSectionMBB =
@@ -1097,6 +1100,17 @@ void AsmPrinter::EmitFunctionBody() {
         break;
       case TargetOpcode::ANNOTATION_LABEL:
       case TargetOpcode::EH_LABEL:
+        if (MBB.isExceptionSection() && MBB.isBeginSection() &&
+              ((*std::prev(MI.getIterator())).getOpcode() ==
+                TargetOpcode::CFI_INSTRUCTION)) {
+          // Emit a NOP here to avoid zero-offset landing pads with
+          // basic block sections.
+          MCInst Noop;
+          MF->getSubtarget().getInstrInfo()->getNoop(Noop);
+          OutStreamer->AddComment("avoids zero-offset landing pad");
+          OutStreamer->EmitInstruction(Noop, getSubtargetInfo());
+        }
+        LLVM_FALLTHROUGH;
       case TargetOpcode::GC_LABEL:
         OutStreamer->EmitLabel(MI.getOperand(0).getMCSymbol());
         break;
@@ -1705,6 +1719,7 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   CurrentFnSymForSize = CurrentFnSym;
   CurrentFnBegin = nullptr;
   CurExceptionSym = nullptr;
+  ExceptionSymbols.clear();
   bool NeedsLocalForSize = MAI->needsLocalForSize();
   if (needFuncLabelsForEHOrDebugInfo(MF, MMI) || NeedsLocalForSize ||
       MF.getTarget().Options.EmitStackSizeSection) {
@@ -3022,7 +3037,14 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     }
     // With -fbasicblock-sections, a basic block can start a new section.
     if (MBB.isExceptionSection()) {
-      OutStreamer->SwitchSection(MF->getSection());
+      if (MF->front().isExceptionSection()) {
+        OutStreamer->SwitchSection(MF->getSection());
+      }
+      else {
+        OutStreamer->SwitchSection(
+            getObjFileLowering().getEHSectionForMachineBasicBlock(
+                MF->getFunction(), MBB, TM));
+      }
     } else if (MBB.isColdSection()) {
       // Create the cold section here.
       OutStreamer->SwitchSection(
@@ -3056,6 +3078,7 @@ void AsmPrinter::EmitBasicBlockEnd(const MachineBasicBlock &MBB) {
     for (const HandlerInfo &HI : Handlers) {
       HI.Handler->endBasicBlock(MBB);
     }
+    CurExceptionSym = nullptr;
   }
 }
 

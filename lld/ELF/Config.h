@@ -226,7 +226,6 @@ struct Configuration {
   bool writeAddends;
   bool zCombreloc;
   bool zCopyreloc;
-  bool zExecstack;
   bool zGlobal;
   bool zHazardplt;
   bool zIfuncNoplt;

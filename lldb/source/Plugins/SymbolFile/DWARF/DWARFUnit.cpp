@@ -287,16 +287,25 @@ void DWARFUnit::AddUnitDIE(const DWARFDebugInfoEntry &cu_die) {
 
   DWARFAttributes attributes;
   size_t num_attributes = cu_die.GetAttributes(this, attributes);
+
+  // Extract DW_AT_addr_base first, as other attributes may need it.
+  for (size_t i = 0; i < num_attributes; ++i) {
+    if (attributes.AttributeAtIndex(i) != DW_AT_addr_base)
+      continue;
+    DWARFFormValue form_value;
+    if (attributes.ExtractFormValueAtIndex(i, form_value)) {
+      addr_base = form_value.Unsigned();
+      SetAddrBase(*addr_base);
+      break;
+    }
+  }
+
   for (size_t i = 0; i < num_attributes; ++i) {
     dw_attr_t attr = attributes.AttributeAtIndex(i);
     DWARFFormValue form_value;
     if (!attributes.ExtractFormValueAtIndex(i, form_value))
       continue;
     switch (attr) {
-    case DW_AT_addr_base:
-      addr_base = form_value.Unsigned();
-      SetAddrBase(*addr_base);
-      break;
     case DW_AT_rnglists_base:
       ranges_base = form_value.Unsigned();
       SetRangesBase(*ranges_base);
@@ -358,10 +367,12 @@ void DWARFUnit::AddUnitDIE(const DWARFDebugInfoEntry &cu_die) {
   else if (gnu_addr_base)
     dwo_cu->SetAddrBase(*gnu_addr_base);
 
-  if (ranges_base)
-    dwo_cu->SetRangesBase(*ranges_base);
-  else if (gnu_ranges_base)
+  if (GetVersion() <= 4 && gnu_ranges_base)
     dwo_cu->SetRangesBase(*gnu_ranges_base);
+  else if (m_dwo_symbol_file->GetDWARFContext()
+               .getOrLoadRngListsData()
+               .GetByteSize() > 0)
+    dwo_cu->SetRangesBase(llvm::DWARFListTableHeader::getHeaderSize(DWARF32));
 
   for (size_t i = 0; i < m_dwo_symbol_file->DebugInfo()->GetNumUnits(); ++i) {
     DWARFUnit *unit = m_dwo_symbol_file->DebugInfo()->GetUnitAtIndex(i);
@@ -417,8 +428,44 @@ dw_offset_t DWARFUnit::GetLineTableOffset() {
 
 void DWARFUnit::SetAddrBase(dw_addr_t addr_base) { m_addr_base = addr_base; }
 
+// Parse the rangelist table header, including the optional array of offsets
+// following it (DWARF v5 and later).
+template <typename ListTableType>
+static llvm::Expected<ListTableType>
+ParseListTableHeader(const llvm::DWARFDataExtractor &data, uint64_t offset,
+                     DwarfFormat format) {
+  // We are expected to be called with Offset 0 or pointing just past the table
+  // header. Correct Offset in the latter case so that it points to the start
+  // of the header.
+  if (offset > 0) {
+    uint64_t HeaderSize = llvm::DWARFListTableHeader::getHeaderSize(format);
+    if (offset < HeaderSize)
+      return llvm::createStringError(errc::invalid_argument,
+                                     "did not detect a valid"
+                                     " list table with base = 0x%" PRIx64 "\n",
+                                     offset);
+    offset -= HeaderSize;
+  }
+  ListTableType Table;
+  if (llvm::Error E = Table.extractHeaderAndOffsets(data, &offset))
+    return std::move(E);
+  return Table;
+}
+
 void DWARFUnit::SetRangesBase(dw_addr_t ranges_base) {
   m_ranges_base = ranges_base;
+
+  if (GetVersion() < 5)
+    return;
+
+  if (auto table_or_error = ParseListTableHeader<llvm::DWARFDebugRnglistTable>(
+          m_dwarf.GetDWARFContext().getOrLoadRngListsData().GetAsLLVM(),
+          ranges_base, DWARF32))
+    m_rnglist_table = std::move(table_or_error.get());
+  else
+    GetSymbolFileDWARF().GetObjectFile()->GetModule()->ReportError(
+        "Failed to extract range list table at offset 0x%" PRIx64 ": %s",
+        ranges_base, toString(table_or_error.takeError()).c_str());
 }
 
 void DWARFUnit::SetStrOffsetsBase(dw_offset_t str_offsets_base) {
@@ -845,30 +892,56 @@ uint32_t DWARFUnit::GetHeaderByteSize() const {
 }
 
 llvm::Expected<DWARFRangeList>
-DWARFUnit::FindRnglistFromOffset(dw_offset_t offset) const {
-  const DWARFDebugRangesBase *debug_ranges;
-  llvm::StringRef section;
+DWARFUnit::FindRnglistFromOffset(dw_offset_t offset) {
   if (GetVersion() <= 4) {
-    debug_ranges = m_dwarf.GetDebugRanges();
-    section = "debug_ranges";
-  } else {
-    debug_ranges = m_dwarf.GetDebugRngLists();
-    section = "debug_rnglists";
+    const DWARFDebugRanges *debug_ranges = m_dwarf.GetDebugRanges();
+    if (!debug_ranges)
+      return llvm::make_error<llvm::object::GenericBinaryError>(
+          "No debug_ranges section");
+    DWARFRangeList ranges;
+    debug_ranges->FindRanges(this, offset, ranges);
+    return ranges;
   }
-  if (!debug_ranges)
-    return llvm::make_error<llvm::object::GenericBinaryError>("No " + section +
-                                                              " section");
+
+  if (!m_rnglist_table)
+    return llvm::createStringError(errc::invalid_argument,
+                                   "missing or invalid range list table");
+
+  auto range_list_or_error = m_rnglist_table->findList(
+      m_dwarf.GetDWARFContext().getOrLoadRngListsData().GetAsLLVM(), offset);
+  if (!range_list_or_error)
+    return range_list_or_error.takeError();
+
+  llvm::Expected<llvm::DWARFAddressRangesVector> llvm_ranges =
+      range_list_or_error->getAbsoluteRanges(
+          llvm::object::SectionedAddress{GetBaseAddress()},
+          [&](uint32_t index) {
+            uint32_t index_size = GetAddressByteSize();
+            dw_offset_t addr_base = GetAddrBase();
+            lldb::offset_t offset = addr_base + index * index_size;
+            return llvm::object::SectionedAddress{
+                m_dwarf.GetDWARFContext().getOrLoadAddrData().GetMaxU64(
+                    &offset, index_size)};
+          });
+  if (!llvm_ranges)
+    return llvm_ranges.takeError();
 
   DWARFRangeList ranges;
-  debug_ranges->FindRanges(this, offset, ranges);
+  for (const llvm::DWARFAddressRange &llvm_range : *llvm_ranges) {
+    ranges.Append(DWARFRangeList::Entry(llvm_range.LowPC,
+                                        llvm_range.HighPC - llvm_range.LowPC));
+  }
   return ranges;
 }
 
 llvm::Expected<DWARFRangeList>
-DWARFUnit::FindRnglistFromIndex(uint32_t index) const {
-  const DWARFDebugRngLists *debug_rnglists = m_dwarf.GetDebugRngLists();
-  if (!debug_rnglists)
-    return llvm::make_error<llvm::object::GenericBinaryError>(
-        "No debug_rnglists section");
-  return FindRnglistFromOffset(debug_rnglists->GetOffset(index));
+DWARFUnit::FindRnglistFromIndex(uint32_t index) {
+  if (llvm::Optional<uint64_t> offset = GetRnglistOffset(index))
+    return FindRnglistFromOffset(*offset);
+  if (m_rnglist_table)
+    return llvm::createStringError(errc::invalid_argument,
+                                   "invalid range list table index %d", index);
+
+  return llvm::createStringError(errc::invalid_argument,
+                                 "missing or invalid range list table");
 }

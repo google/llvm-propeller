@@ -45,6 +45,7 @@ class NodeChain {
 public:
   // Representative node of the chain, with which it is initially constructed.
   CFGNode *DelegateNode;
+  ControlFlowGraph *CFG;
   std::list<CFGNode *> Nodes;
   std::list<std::list<CFGNode*>::iterator> FunctionEntryIndices;
   std::unordered_map<NodeChain *, std::vector<CFGEdge*>> OutEdges;
@@ -63,10 +64,10 @@ public:
 
   // Constructor for building a NodeChain from a single Node
   NodeChain(CFGNode *node)
-      : DelegateNode(node), Nodes(1, node), Size(node->ShSize),
+      : DelegateNode(node), CFG(node->CFG), Nodes(1, node), Size(node->ShSize),
         Freq(node->Freq), DebugChain(node->CFG->DebugCFG) {}
 
-  NodeChain(ControlFlowGraph *cfg) : DelegateNode(cfg->getEntryNode()), Size(cfg->Size), Freq(0), DebugChain(cfg->DebugCFG) {
+  NodeChain(ControlFlowGraph *cfg) : DelegateNode(cfg->getEntryNode()), CFG(cfg), Size(cfg->Size), Freq(0), DebugChain(cfg->DebugCFG) {
     cfg->forEachNodeRef([this] (CFGNode& node) {
       Nodes.push_back(&node);
       Freq += node.Freq;
@@ -497,8 +498,10 @@ class PropellerBBReordering {
           });
           fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg.Name.str().c_str(), allBBs, hotBBs);
         }
-      } else
+      } else {
+        fprintf(stderr, "CFG IS COLD: %s\n", cfg.Name.str().c_str());
         ColdCFGs.push_back(&cfg);
+      }
     });
   }
 

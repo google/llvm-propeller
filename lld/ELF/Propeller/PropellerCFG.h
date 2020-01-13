@@ -81,6 +81,8 @@ public:
     return Type == INTER_FUNC_RETURN || Type == INTRA_RSR;
   }
 
+  bool isFTEdge() const;
+
 protected:
   CFGEdge(CFGNode *N1, CFGNode *N2, EdgeType T)
       : Src(N1), Sink(N2), Weight(0), Type(T) {}
@@ -172,6 +174,7 @@ public:
   // Whether propeller should print information about how this CFG is being
   // reordered.
   bool DebugCFG;
+  bool Hot;
 
   // ControlFlowGraph assumes the ownership for all Nodes / Edges.
   std::vector<std::unique_ptr<CFGNode>> Nodes; // Sorted by address.
@@ -179,7 +182,7 @@ public:
   std::vector<std::unique_ptr<CFGEdge>> InterEdges;
 
   ControlFlowGraph(ObjectView *V, const StringRef &N, uint64_t S)
-      : View(V), Name(N), Size(S) {
+      : View(V), Name(N), Size(S), Hot(false) {
         DebugCFG = std::find(propellerConfig.optDebugSymbols.begin(),
                              propellerConfig.optDebugSymbols.end(),
                              Name.str()) != propellerConfig.optDebugSymbols.end();
@@ -199,7 +202,8 @@ public:
   bool isHot() const {
     if (Nodes.empty())
       return false;
-    return (getEntryNode()->Freq != 0);
+    return Hot;
+    //return (getEntryNode()->Freq != 0);
   }
 
   template <class Visitor> void forEachNodeRef(Visitor V) {

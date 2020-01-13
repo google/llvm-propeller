@@ -74,7 +74,8 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // foo are named a.BB.foo, aa.BB.foo, and so on.
     if (BasicBlockSymbols) {
       auto Iter = MF->getMBBSymbolPrefix().begin();
-      assert(getNumber() < MF->getMBBSymbolPrefix().size() && "Unreachable MBB");
+      if (getNumber() >= MF->getMBBSymbolPrefix().size())
+        report_fatal_error("Unreachable MBB: " + Twine(getNumber()) + " >= " + Twine(MF->getMBBSymbolPrefix().size()));
       std::string Prefix(Iter + 1, Iter + getNumber() + 1);
       std::reverse(Prefix.begin(), Prefix.end());
       CachedMCSymbol = Ctx.getOrCreateSymbol(
@@ -1472,8 +1473,7 @@ MachineBasicBlock::computeRegisterLiveness(const TargetRegisterInfo *TRI,
 
     --N;
 
-    MachineOperandIteratorBase::PhysRegInfo Info =
-        ConstMIOperands(*I).analyzePhysReg(Reg, TRI);
+    PhysRegInfo Info = AnalyzePhysRegInBundle(*I, Reg, TRI);
 
     // Register is live when we read it here.
     if (Info.Read)
@@ -1511,8 +1511,7 @@ MachineBasicBlock::computeRegisterLiveness(const TargetRegisterInfo *TRI,
 
       --N;
 
-      MachineOperandIteratorBase::PhysRegInfo Info =
-          ConstMIOperands(*I).analyzePhysReg(Reg, TRI);
+      PhysRegInfo Info = AnalyzePhysRegInBundle(*I, Reg, TRI);
 
       // Defs happen after uses so they take precedence if both are present.
 

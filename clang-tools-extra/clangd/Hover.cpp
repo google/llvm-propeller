@@ -20,6 +20,8 @@
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/PrettyPrinter.h"
+#include "clang/Index/IndexSymbol.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace clang {
 namespace clangd {
@@ -298,7 +300,7 @@ HoverInfo getHoverContents(const Decl *D, const SymbolIndex *Index) {
     HI.Name = printName(Ctx, *ND);
   }
 
-  HI.Kind = indexSymbolKindToSymbolKind(index::getSymbolInfo(D).Kind);
+  HI.Kind = index::getSymbolInfo(D).Kind;
 
   // Fill in template params.
   if (const TemplateDecl *TD = D->getDescribedTemplate()) {
@@ -347,7 +349,7 @@ HoverInfo getHoverContents(QualType T, const Decl *D, ASTContext &ASTCtx,
   OS.flush();
 
   if (D) {
-    HI.Kind = indexSymbolKindToSymbolKind(index::getSymbolInfo(D).Kind);
+    HI.Kind = index::getSymbolInfo(D).Kind;
     enhanceFromIndex(HI, D, Index);
   }
   return HI;
@@ -358,8 +360,7 @@ HoverInfo getHoverContents(const DefinedMacro &Macro, ParsedAST &AST) {
   HoverInfo HI;
   SourceManager &SM = AST.getSourceManager();
   HI.Name = Macro.Name;
-  HI.Kind = indexSymbolKindToSymbolKind(
-      index::getSymbolInfoForMacro(*Macro.Info).Kind);
+  HI.Kind = index::SymbolKind::Macro;
   // FIXME: Populate documentation
   // FIXME: Pupulate parameters
 
@@ -367,8 +368,7 @@ HoverInfo getHoverContents(const DefinedMacro &Macro, ParsedAST &AST) {
   SourceLocation StartLoc = Macro.Info->getDefinitionLoc();
   SourceLocation EndLoc = Macro.Info->getDefinitionEndLoc();
   if (EndLoc.isValid()) {
-    EndLoc = Lexer::getLocForEndOfToken(EndLoc, 0, SM,
-                                        AST.getASTContext().getLangOpts());
+    EndLoc = Lexer::getLocForEndOfToken(EndLoc, 0, SM, AST.getLangOpts());
     bool Invalid;
     StringRef Buffer = SM.getBufferData(SM.getFileID(StartLoc), &Invalid);
     if (!Invalid) {
@@ -391,7 +391,7 @@ llvm::Optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
   const SourceManager &SM = AST.getSourceManager();
   llvm::Optional<HoverInfo> HI;
   SourceLocation SourceLocationBeg = SM.getMacroArgExpandedLocation(
-      getBeginningOfIdentifier(Pos, SM, AST.getASTContext().getLangOpts()));
+      getBeginningOfIdentifier(Pos, SM, AST.getLangOpts()));
 
   if (auto Deduced = getDeducedType(AST.getASTContext(), SourceLocationBeg)) {
     // Find the corresponding decl to populate kind and fetch documentation.
@@ -435,9 +435,8 @@ llvm::Optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
           tooling::applyAllReplacements(HI->Definition, Replacements))
     HI->Definition = *Formatted;
 
-  HI->SymRange =
-      getTokenRange(AST.getASTContext().getSourceManager(),
-                    AST.getASTContext().getLangOpts(), SourceLocationBeg);
+  HI->SymRange = getTokenRange(AST.getSourceManager(),
+                               AST.getLangOpts(), SourceLocationBeg);
   return HI;
 }
 

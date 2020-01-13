@@ -275,6 +275,12 @@ CsectGroup &XCOFFObjectWriter::getCsectGroup(const MCSectionXCOFF *MCSec) {
            "We should have only one TOC-base, and it should be the first csect "
            "in this CsectGroup.");
     return TOCCsects;
+  case XCOFF::XMC_TC:
+    assert(XCOFF::XTY_SD == MCSec->getCSectType() &&
+           "Only an initialized csect can contain TC entry.");
+    assert(!TOCCsects.empty() &&
+           "We should at least have a TOC-base in this CsectGroup.");
+    return TOCCsects;
   default:
     report_fatal_error("Unhandled mapping of csect to section.");
   }
@@ -362,7 +368,8 @@ void XCOFFObjectWriter::writeSections(const MCAssembler &Asm,
       for (const auto &Csect : *Group) {
         if (uint32_t PaddingSize = Csect.Address - CurrentAddressLocation)
           W.OS.write_zeros(PaddingSize);
-        Asm.writeSectionData(W.OS, Csect.MCCsect, Layout);
+        if (Csect.Size)
+          Asm.writeSectionData(W.OS, Csect.MCCsect, Layout);
         CurrentAddressLocation = Csect.Address + Csect.Size;
       }
     }
@@ -410,7 +417,7 @@ void XCOFFObjectWriter::writeSymbolName(const StringRef &SymbolName) {
     W.write<int32_t>(0);
     W.write<uint32_t>(Strings.getOffset(SymbolName));
   } else {
-    char Name[XCOFF::NameSize];
+    char Name[XCOFF::NameSize+1];
     std::strncpy(Name, SymbolName.data(), XCOFF::NameSize);
     ArrayRef<char> NameRef(Name, XCOFF::NameSize);
     W.write(NameRef);
@@ -574,7 +581,7 @@ void XCOFFObjectWriter::assignAddressesAndIndices(const MCAsmLayout &Layout) {
   // yet, so start at index 0.
   uint32_t SymbolTableIndex = 0;
 
-  // Calculate undefined symbol's indices.
+  // Calculate indices for undefined symbols.
   for (auto &Csect : UndefinedCsects) {
     Csect.Size = 0;
     Csect.Address = 0;

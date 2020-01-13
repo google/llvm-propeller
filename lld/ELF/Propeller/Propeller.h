@@ -159,6 +159,7 @@ public:
     auto *sym = new SymbolEntry(ordinal, name, std::move(aliases),
                                 SymbolEntry::INVALID_ADDRESS, size,
                                 llvm::object::SymbolRef::ST_Function);
+    sym->BBTagType = SymbolEntry::BB_NONE;
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
@@ -190,6 +191,9 @@ public:
                         SymbolEntry::INVALID_ADDRESS, size,
                         llvm::object::SymbolRef::ST_Unknown, true, function);
     sym->HotTag = HotTag;
+    // Note, we do not have knowledge what BB type it is from propeller file, so
+    // we always use BB_NORMAL here.
+    sym->BBTagType = SymbolEntry::BB_NORMAL;
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));

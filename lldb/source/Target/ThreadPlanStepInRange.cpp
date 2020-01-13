@@ -145,8 +145,8 @@ bool ThreadPlanStepInRange::ShouldStop(Event *event_ptr) {
 
   if (log) {
     StreamString s;
-    s.Address(
-        m_thread.GetRegisterContext()->GetPC(),
+    DumpAddress(
+        s.AsRawOstream(), m_thread.GetRegisterContext()->GetPC(),
         m_thread.CalculateTarget()->GetArchitecture().GetAddressByteSize());
     LLDB_LOGF(log, "ThreadPlanStepInRange reached %s.", s.GetData());
   }
@@ -339,7 +339,7 @@ bool ThreadPlanStepInRange::FrameMatchesAvoidCriteria() {
     if (frame_library) {
       for (size_t i = 0; i < num_libraries; i++) {
         const FileSpec &file_spec(libraries_to_avoid.GetFileSpecAtIndex(i));
-        if (FileSpec::Equal(file_spec, frame_library, false)) {
+        if (FileSpec::Match(file_spec, frame_library)) {
           libraries_say_avoid = true;
           break;
         }

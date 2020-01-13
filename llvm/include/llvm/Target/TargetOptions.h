@@ -119,7 +119,7 @@ namespace llvm {
   public:
     TargetOptions()
         : PrintMachineCode(false), UnsafeFPMath(false), NoInfsFPMath(false),
-          NoNaNsFPMath(false), NoTrappingFPMath(false),
+          NoNaNsFPMath(false), NoTrappingFPMath(true),
           NoSignedZerosFPMath(false),
           HonorSignDependentRoundingFPMathOption(false), NoZerosInBSS(false),
           GuaranteedTailCallOpt(false), StackSymbolOrdering(true),

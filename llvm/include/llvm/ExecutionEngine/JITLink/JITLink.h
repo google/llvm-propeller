@@ -324,14 +324,14 @@ private:
   }
 
   static Symbol &constructExternal(void *SymStorage, Addressable &Base,
-                                   StringRef Name, JITTargetAddress Size) {
+                                   StringRef Name, JITTargetAddress Size,
+                                   Linkage L) {
     assert(SymStorage && "Storage cannot be null");
     assert(!Base.isDefined() &&
            "Cannot create external symbol from defined block");
     assert(!Name.empty() && "External symbol name cannot be empty");
     auto *Sym = reinterpret_cast<Symbol *>(SymStorage);
-    new (Sym) Symbol(Base, 0, Name, Size, Linkage::Strong, Scope::Default,
-                     false, false);
+    new (Sym) Symbol(Base, 0, Name, Size, L, Scope::Default, false, false);
     return *Sym;
   }
 
@@ -477,7 +477,7 @@ public:
 
   /// Set the linkage for this Symbol.
   void setLinkage(Linkage L) {
-    assert((L == Linkage::Strong || (Base->isDefined() && !Name.empty())) &&
+    assert((L == Linkage::Strong || (!Base->isAbsolute() && !Name.empty())) &&
            "Linkage can only be applied to defined named symbols");
     this->L = static_cast<uint8_t>(L);
   }
@@ -581,9 +581,6 @@ public:
   /// Return the number of symbols in this section.
   SymbolSet::size_type symbols_size() { return Symbols.size(); }
 
-  /// Return true if this section contains no symbols.
-  bool symbols_empty() const { return Symbols.empty(); }
-
 private:
   void addSymbol(Symbol &Sym) {
     assert(!Symbols.count(&Sym) && "Symbol is already in this section");
@@ -618,21 +615,21 @@ class SectionRange {
 public:
   SectionRange() = default;
   SectionRange(const Section &Sec) {
-    if (Sec.symbols_empty())
+    if (llvm::empty(Sec.blocks()))
       return;
-    First = Last = *Sec.symbols().begin();
-    for (auto *Sym : Sec.symbols()) {
-      if (Sym->getAddress() < First->getAddress())
-        First = Sym;
-      if (Sym->getAddress() > Last->getAddress())
-        Last = Sym;
+    First = Last = *Sec.blocks().begin();
+    for (auto *B : Sec.blocks()) {
+      if (B->getAddress() < First->getAddress())
+        First = B;
+      if (B->getAddress() > Last->getAddress())
+        Last = B;
     }
   }
-  Symbol *getFirstSymbol() const {
+  Block *getFirstBlock() const {
     assert((!Last || First) && "First can not be null if end is non-null");
     return First;
   }
-  Symbol *getLastSymbol() const {
+  Block *getLastBlock() const {
     assert((First || !Last) && "Last can not be null if start is non-null");
     return Last;
   }
@@ -641,17 +638,16 @@ public:
     return !First;
   }
   JITTargetAddress getStart() const {
-    return First ? First->getBlock().getAddress() : 0;
+    return First ? First->getAddress() : 0;
   }
   JITTargetAddress getEnd() const {
-    return Last ? Last->getBlock().getAddress() + Last->getBlock().getSize()
-                : 0;
+    return Last ? Last->getAddress() + Last->getSize() : 0;
   }
   uint64_t getSize() const { return getEnd() - getStart(); }
 
 private:
-  Symbol *First = nullptr;
-  Symbol *Last = nullptr;
+  Block *First = nullptr;
+  Block *Last = nullptr;
 };
 
 class LinkGraph {
@@ -849,9 +845,14 @@ public:
   /// Add an external symbol.
   /// Some formats (e.g. ELF) allow Symbols to have sizes. For Symbols whose
   /// size is not known, you should substitute '0'.
-  Symbol &addExternalSymbol(StringRef Name, uint64_t Size) {
-    auto &Sym = Symbol::constructExternal(
-        Allocator.Allocate<Symbol>(), createAddressable(0, false), Name, Size);
+  /// For external symbols Linkage determines whether the symbol must be
+  /// present during lookup: Externals with strong linkage must be found or
+  /// an error will be emitted. Externals with weak linkage are permitted to
+  /// be undefined, in which case they are assigned a value of 0.
+  Symbol &addExternalSymbol(StringRef Name, uint64_t Size, Linkage L) {
+    auto &Sym =
+        Symbol::constructExternal(Allocator.Allocate<Symbol>(),
+                                  createAddressable(0, false), Name, Size, L);
     ExternalSymbols.insert(&Sym);
     return Sym;
   }
@@ -1189,6 +1190,14 @@ struct PassConfiguration {
   LinkGraphPassList PostFixupPasses;
 };
 
+/// Flags for symbol lookup.
+///
+/// FIXME: These basically duplicate orc::SymbolLookupFlags -- We should merge
+///        the two types once we have an OrcSupport library.
+enum class SymbolLookupFlags { RequiredSymbol, WeaklyReferencedSymbol };
+
+raw_ostream &operator<<(raw_ostream &OS, const SymbolLookupFlags &LF);
+
 /// A map of symbol names to resolved addresses.
 using AsyncLookupResult = DenseMap<StringRef, JITEvaluatedSymbol>;
 
@@ -1223,6 +1232,8 @@ createLookupContinuation(Continuation Cont) {
 /// Holds context for a single jitLink invocation.
 class JITLinkContext {
 public:
+  using LookupMap = DenseMap<StringRef, SymbolLookupFlags>;
+
   /// Destroy a JITLinkContext.
   virtual ~JITLinkContext();
 
@@ -1240,7 +1251,7 @@ public:
   /// Called by JITLink to resolve external symbols. This method is passed a
   /// lookup continutation which it must call with a result to continue the
   /// linking process.
-  virtual void lookup(const DenseSet<StringRef> &Symbols,
+  virtual void lookup(const LookupMap &Symbols,
                       std::unique_ptr<JITLinkAsyncLookupContinuation> LC) = 0;
 
   /// Called by JITLink once all defined symbols in the graph have been assigned

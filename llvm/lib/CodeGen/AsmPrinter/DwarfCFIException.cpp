@@ -48,8 +48,9 @@ void DwarfCFIExceptionBase::markFunctionEnd() {
 
 void DwarfCFIExceptionBase::endFragment() {
   // With -fbasicblock-sections, this is handled at each basic block.
-  if (shouldEmitCFI && !Asm->MF->getBasicBlockSections())
+  if (shouldEmitCFI && !Asm->MF->getBasicBlockSections()) {
     Asm->OutStreamer->EmitCFIEndProc();
+  }
 }
 
 DwarfCFIException::DwarfCFIException(AsmPrinter *A)
@@ -163,6 +164,8 @@ void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,
   // Provide LSDA information.
   if (shouldEmitLSDA)
     Asm->OutStreamer->EmitCFILsda(ESP(Asm), TLOF.getLSDAEncoding());
+
+  Asm->setExceptionSym(MBB, ESP(Asm));
 }
 
 /// endFunction - Gather and emit post-function exception information.
@@ -175,11 +178,11 @@ void DwarfCFIException::endFunction(const MachineFunction *MF) {
 }
 
 void DwarfCFIException::beginBasicBlock(const MachineBasicBlock &MBB) {
-  if (shouldEmitCFI)
-    Asm->OutStreamer->EmitCFIStartProc(/*IsSimple=*/false);
+  beginFragment(&MBB, getExceptionSym);
 }
 
 void DwarfCFIException::endBasicBlock(const MachineBasicBlock &MBB) {
-  if (shouldEmitCFI)
+  if (shouldEmitCFI) {
     Asm->OutStreamer->EmitCFIEndProc();
+  }
 }

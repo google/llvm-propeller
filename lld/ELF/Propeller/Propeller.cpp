@@ -271,27 +271,32 @@ static bool parseBranchOrFallthroughLine(StringRef lineRef,
                                          uint64_t *fromNodeIdx,
                                          uint64_t *toNodeIdx, uint64_t *count,
                                          char *type) {
+  /*
   auto getInt = [](const StringRef &S) -> uint64_t {
     uint64_t r;
-    if (S.getAsInteger(10, r) /* string contains more than numbers */
+    if (S.getAsInteger(10, r) // string contains more than numbers
         || r == 0)
       return 0;
     return r;
   };
+  */
   auto s0 = lineRef.split(' ');
-  *fromNodeIdx = getInt(s0.first);
   auto s1 = s0.second.split(' ');
-  *toNodeIdx = getInt(s1.first);
   auto s2 = s1.second.split(' ');
-  *count = getInt(s2.first);
-  if (!*fromNodeIdx || !*toNodeIdx || !*count)
+  if (s0.first.getAsInteger(10, *fromNodeIdx) ||
+      s1.first.getAsInteger(10, *toNodeIdx) ||
+      s2.first.getAsInteger(10, *count))
     return false;
-  if (!s2.second.empty())
+  if (!*count)
+    return false;
+  if (!s2.second.empty()) {
     if (s2.second == "C" || s2.second == "R")
       *type = s2.second[0];
     else
       return false;
-  else
+    if (!*fromNodeIdx || !*toNodeIdx)
+      return false;
+  } else
     *type = '\0';
   return true;
 }
@@ -335,16 +340,20 @@ bool Propfile::processProfile() {
       continue;
 
     if (LineTag == 'B') {
+      if(!fromN || !toN)
+        continue;
       ++branchCnt;
       if (fromN->CFG == toN->CFG)
         fromN->CFG->mapBranch(fromN, toN, count, tag == 'C', tag == 'R');
       else
         fromN->CFG->mapCallOut(fromN, toN, 0, count, tag == 'C', tag == 'R');
     } else {
+      if (fromN && toN && (fromN->CFG != toN->CFG))
+        continue;
       ++fallthroughCnt;
       // LineTag == 'F'
-      if (fromN->CFG == toN->CFG)
-        fromN->CFG->markPath(fromN, toN, count);
+      ControlFlowGraph * cfg = fromN ? fromN->CFG : toN->CFG;
+      cfg->markPath(fromN, toN, count);
     }
   }
 
@@ -380,6 +389,8 @@ void Propeller::processFile(ObjectView *view) {
 }
 
 CFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
+  if (symbolOrdinal == 0)
+    return nullptr;
   assert(Propf->SymbolOrdinalMap.find(symbolOrdinal) !=
          Propf->SymbolOrdinalMap.end());
   SymbolEntry *symbol = Propf->SymbolOrdinalMap[symbolOrdinal].get();
@@ -432,12 +443,12 @@ void Propeller::calculateNodeFreqs() {
     for (auto *E : Es)
       E->Weight = 0;
   };
+
   for (auto &cfgP : CFGMap) {
     auto &cfg = *cfgP.second.begin();
     if (cfg->Nodes.empty())
       continue;
-    bool Hot = false;
-    cfg->forEachNodeRef([&Hot, &sumEdgeWeights,
+    cfg->forEachNodeRef([&cfg, &sumEdgeWeights,
                          &ZeroOutEdgeWeights](CFGNode &node) {
       uint64_t maxCallOut =
           node.CallOuts.empty()
@@ -459,11 +470,13 @@ void Propeller::calculateNodeFreqs() {
         ZeroOutEdgeWeights(node.CallOuts);
       }
 
-      Hot |= (node.Freq != 0);
+      cfg->Hot |= (node.Freq != 0);
     });
 
-    if (Hot && cfg->getEntryNode()->Freq == 0)
+    /*
+    if (cfg->Hot && cfg->getEntryNode()->Freq == 0)
       cfg->getEntryNode()->Freq = 1;
+      */
   }
 }
 

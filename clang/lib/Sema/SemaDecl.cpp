@@ -6117,6 +6117,41 @@ bool Sema::inferObjCARCLifetime(ValueDecl *decl) {
   return false;
 }
 
+void Sema::deduceOpenCLAddressSpace(ValueDecl *Decl) {
+  if (Decl->getType().hasAddressSpace())
+    return;
+  if (VarDecl *Var = dyn_cast<VarDecl>(Decl)) {
+    QualType Type = Var->getType();
+    if (Type->isSamplerT() || Type->isVoidType())
+      return;
+    LangAS ImplAS = LangAS::opencl_private;
+    if ((getLangOpts().OpenCLCPlusPlus || getLangOpts().OpenCLVersion >= 200) &&
+        Var->hasGlobalStorage())
+      ImplAS = LangAS::opencl_global;
+    // If the original type from a decayed type is an array type and that array
+    // type has no address space yet, deduce it now.
+    if (auto DT = dyn_cast<DecayedType>(Type)) {
+      auto OrigTy = DT->getOriginalType();
+      if (!OrigTy.hasAddressSpace() && OrigTy->isArrayType()) {
+        // Add the address space to the original array type and then propagate
+        // that to the element type through `getAsArrayType`.
+        OrigTy = Context.getAddrSpaceQualType(OrigTy, ImplAS);
+        OrigTy = QualType(Context.getAsArrayType(OrigTy), 0);
+        // Re-generate the decayed type.
+        Type = Context.getDecayedType(OrigTy);
+      }
+    }
+    Type = Context.getAddrSpaceQualType(Type, ImplAS);
+    // Apply any qualifiers (including address space) from the array type to
+    // the element type. This implements C99 6.7.3p8: "If the specification of
+    // an array type includes any type qualifiers, the element type is so
+    // qualified, not the array type."
+    if (Type->isArrayType())
+      Type = QualType(Context.getAsArrayType(Type), 0);
+    Decl->setType(Type);
+  }
+}
+
 static void checkAttributesAfterMerging(Sema &S, NamedDecl &ND) {
   // Ensure that an auto decl is deduced otherwise the checks below might cache
   // the wrong linkage.
@@ -6474,6 +6509,105 @@ static bool isDeclExternC(const Decl *D) {
 
   llvm_unreachable("Unknown type of decl!");
 }
+/// Returns true if there hasn't been any invalid type diagnosed.
+static bool diagnoseOpenCLTypes(Scope *S, Sema &Se, Declarator &D,
+                                DeclContext *DC, QualType R) {
+  // OpenCL v2.0 s6.9.b - Image type can only be used as a function argument.
+  // OpenCL v2.0 s6.13.16.1 - Pipe type can only be used as a function
+  // argument.
+  if (R->isImageType() || R->isPipeType()) {
+    Se.Diag(D.getIdentifierLoc(),
+            diag::err_opencl_type_can_only_be_used_as_function_parameter)
+        << R;
+    D.setInvalidType();
+    return false;
+  }
+
+  // OpenCL v1.2 s6.9.r:
+  // The event type cannot be used to declare a program scope variable.
+  // OpenCL v2.0 s6.9.q:
+  // The clk_event_t and reserve_id_t types cannot be declared in program
+  // scope.
+  if (NULL == S->getParent()) {
+    if (R->isReserveIDT() || R->isClkEventT() || R->isEventT()) {
+      Se.Diag(D.getIdentifierLoc(),
+              diag::err_invalid_type_for_program_scope_var)
+          << R;
+      D.setInvalidType();
+      return false;
+    }
+  }
+
+  // OpenCL v1.0 s6.8.a.3: Pointers to functions are not allowed.
+  QualType NR = R;
+  while (NR->isPointerType()) {
+    if (NR->isFunctionPointerType()) {
+      Se.Diag(D.getIdentifierLoc(), diag::err_opencl_function_pointer);
+      D.setInvalidType();
+      return false;
+    }
+    NR = NR->getPointeeType();
+  }
+
+  if (!Se.getOpenCLOptions().isEnabled("cl_khr_fp16")) {
+    // OpenCL v1.2 s6.1.1.1: reject declaring variables of the half and
+    // half array type (unless the cl_khr_fp16 extension is enabled).
+    if (Se.Context.getBaseElementType(R)->isHalfType()) {
+      Se.Diag(D.getIdentifierLoc(), diag::err_opencl_half_declaration) << R;
+      D.setInvalidType();
+      return false;
+    }
+  }
+
+  // OpenCL v1.2 s6.9.r:
+  // The event type cannot be used with the __local, __constant and __global
+  // address space qualifiers.
+  if (R->isEventT()) {
+    if (R.getAddressSpace() != LangAS::opencl_private) {
+      Se.Diag(D.getBeginLoc(), diag::err_event_t_addr_space_qual);
+      D.setInvalidType();
+      return false;
+    }
+  }
+
+  // C++ for OpenCL does not allow the thread_local storage qualifier.
+  // OpenCL C does not support thread_local either, and
+  // also reject all other thread storage class specifiers.
+  DeclSpec::TSCS TSC = D.getDeclSpec().getThreadStorageClassSpec();
+  if (TSC != TSCS_unspecified) {
+    bool IsCXX = Se.getLangOpts().OpenCLCPlusPlus;
+    Se.Diag(D.getDeclSpec().getThreadStorageClassSpecLoc(),
+            diag::err_opencl_unknown_type_specifier)
+        << IsCXX << Se.getLangOpts().getOpenCLVersionTuple().getAsString()
+        << DeclSpec::getSpecifierName(TSC) << 1;
+    D.setInvalidType();
+    return false;
+  }
+
+  if (R->isSamplerT()) {
+    // OpenCL v1.2 s6.9.b p4:
+    // The sampler type cannot be used with the __local and __global address
+    // space qualifiers.
+    if (R.getAddressSpace() == LangAS::opencl_local ||
+        R.getAddressSpace() == LangAS::opencl_global) {
+      Se.Diag(D.getIdentifierLoc(), diag::err_wrong_sampler_addressspace);
+      D.setInvalidType();
+    }
+
+    // OpenCL v1.2 s6.12.14.1:
+    // A global sampler must be declared with either the constant address
+    // space qualifier or with the const qualifier.
+    if (DC->isTranslationUnit() &&
+        !(R.getAddressSpace() == LangAS::opencl_constant ||
+          R.isConstQualified())) {
+      Se.Diag(D.getIdentifierLoc(), diag::err_opencl_nonconst_global_sampler);
+      D.setInvalidType();
+    }
+    if (D.isInvalidType())
+      return false;
+  }
+  return true;
+}
 
 NamedDecl *Sema::ActOnVariableDeclarator(
     Scope *S, Declarator &D, DeclContext *DC, TypeSourceInfo *TInfo,
@@ -6497,95 +6631,6 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     return nullptr;
   }
 
-  if (getLangOpts().OpenCL) {
-    // OpenCL v2.0 s6.9.b - Image type can only be used as a function argument.
-    // OpenCL v2.0 s6.13.16.1 - Pipe type can only be used as a function
-    // argument.
-    if (R->isImageType() || R->isPipeType()) {
-      Diag(D.getIdentifierLoc(),
-           diag::err_opencl_type_can_only_be_used_as_function_parameter)
-          << R;
-      D.setInvalidType();
-      return nullptr;
-    }
-
-    // OpenCL v1.2 s6.9.r:
-    // The event type cannot be used to declare a program scope variable.
-    // OpenCL v2.0 s6.9.q:
-    // The clk_event_t and reserve_id_t types cannot be declared in program scope.
-    if (NULL == S->getParent()) {
-      if (R->isReserveIDT() || R->isClkEventT() || R->isEventT()) {
-        Diag(D.getIdentifierLoc(),
-             diag::err_invalid_type_for_program_scope_var) << R;
-        D.setInvalidType();
-        return nullptr;
-      }
-    }
-
-    // OpenCL v1.0 s6.8.a.3: Pointers to functions are not allowed.
-    QualType NR = R;
-    while (NR->isPointerType()) {
-      if (NR->isFunctionPointerType()) {
-        Diag(D.getIdentifierLoc(), diag::err_opencl_function_pointer);
-        D.setInvalidType();
-        break;
-      }
-      NR = NR->getPointeeType();
-    }
-
-    if (!getOpenCLOptions().isEnabled("cl_khr_fp16")) {
-      // OpenCL v1.2 s6.1.1.1: reject declaring variables of the half and
-      // half array type (unless the cl_khr_fp16 extension is enabled).
-      if (Context.getBaseElementType(R)->isHalfType()) {
-        Diag(D.getIdentifierLoc(), diag::err_opencl_half_declaration) << R;
-        D.setInvalidType();
-      }
-    }
-
-    if (R->isSamplerT()) {
-      // OpenCL v1.2 s6.9.b p4:
-      // The sampler type cannot be used with the __local and __global address
-      // space qualifiers.
-      if (R.getAddressSpace() == LangAS::opencl_local ||
-          R.getAddressSpace() == LangAS::opencl_global) {
-        Diag(D.getIdentifierLoc(), diag::err_wrong_sampler_addressspace);
-      }
-
-      // OpenCL v1.2 s6.12.14.1:
-      // A global sampler must be declared with either the constant address
-      // space qualifier or with the const qualifier.
-      if (DC->isTranslationUnit() &&
-          !(R.getAddressSpace() == LangAS::opencl_constant ||
-          R.isConstQualified())) {
-        Diag(D.getIdentifierLoc(), diag::err_opencl_nonconst_global_sampler);
-        D.setInvalidType();
-      }
-    }
-
-    // OpenCL v1.2 s6.9.r:
-    // The event type cannot be used with the __local, __constant and __global
-    // address space qualifiers.
-    if (R->isEventT()) {
-      if (R.getAddressSpace() != LangAS::opencl_private) {
-        Diag(D.getBeginLoc(), diag::err_event_t_addr_space_qual);
-        D.setInvalidType();
-      }
-    }
-
-    // C++ for OpenCL does not allow the thread_local storage qualifier.
-    // OpenCL C does not support thread_local either, and
-    // also reject all other thread storage class specifiers.
-    DeclSpec::TSCS TSC = D.getDeclSpec().getThreadStorageClassSpec();
-    if (TSC != TSCS_unspecified) {
-      bool IsCXX = getLangOpts().OpenCLCPlusPlus;
-      Diag(D.getDeclSpec().getThreadStorageClassSpecLoc(),
-           diag::err_opencl_unknown_type_specifier)
-          << IsCXX << getLangOpts().getOpenCLVersionTuple().getAsString()
-          << DeclSpec::getSpecifierName(TSC) << 1;
-      D.setInvalidType();
-      return nullptr;
-    }
-  }
 
   DeclSpec::SCS SCSpec = D.getDeclSpec().getStorageClassSpec();
   StorageClass SC = StorageClassSpecToVarDeclStorageClass(D.getDeclSpec());
@@ -6942,6 +6987,13 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     }
   }
 
+  if (getLangOpts().OpenCL) {
+
+    deduceOpenCLAddressSpace(NewVD);
+
+    diagnoseOpenCLTypes(S, *this, D, DC, NewVD->getType());
+  }
+
   // Handle attributes prior to checking for duplicates in MergeVarDecl
   ProcessDeclAttributes(S, NewVD, D);
 
@@ -7009,8 +7061,6 @@ NamedDecl *Sema::ActOnVariableDeclarator(
           Diag(E->getExprLoc(), diag::err_asm_invalid_global_var_reg) << Label;
         else if (HasSizeMismatch)
           Diag(E->getExprLoc(), diag::err_asm_register_size_mismatch) << Label;
-        else if (!TI.isRegisterReservedGlobally(Label))
-          Diag(E->getExprLoc(), diag::err_asm_missing_fixed_reg_opt) << Label;
       }
 
       if (!R->isIntegralType(Context) && !R->isPointerType()) {
@@ -11285,6 +11335,9 @@ bool Sema::DeduceVariableDeclarationType(VarDecl *VDecl, bool DirectInit,
   if (getLangOpts().ObjCAutoRefCount && inferObjCARCLifetime(VDecl))
     VDecl->setInvalidDecl();
 
+  if (getLangOpts().OpenCL)
+    deduceOpenCLAddressSpace(VDecl);
+
   // If this is a redeclaration, check that the type we just deduced matches
   // the previously declared type.
   if (VarDecl *Old = VDecl->getPreviousDecl()) {
@@ -13107,6 +13160,10 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D) {
   if (New->hasAttr<BlocksAttr>()) {
     Diag(New->getLocation(), diag::err_block_on_nonlocal);
   }
+
+  if (getLangOpts().OpenCL)
+    deduceOpenCLAddressSpace(New);
+
   return New;
 }
 
@@ -16037,7 +16094,7 @@ FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
   }
 
   // TR 18037 does not allow fields to be declared with address space
-  if (T.getQualifiers().hasAddressSpace() || T->isDependentAddressSpaceType() ||
+  if (T.hasAddressSpace() || T->isDependentAddressSpaceType() ||
       T->getBaseElementTypeUnsafe()->isDependentAddressSpaceType()) {
     Diag(Loc, diag::err_field_with_address_space);
     Record->setInvalidDecl();

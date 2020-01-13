@@ -98,7 +98,7 @@ using llvm::detail::DenseMapPair;
 
 namespace lld {
 namespace propeller {
-const unsigned ClusterMergeSizeThreshold = 1 << 21;
+const unsigned ClusterMergeSizeThreshold = 1 << 22;
 
 std::string toString(MergeOrder mOrder){
   switch (mOrder) {
@@ -213,18 +213,16 @@ void NodeChainBuilder::coalesceChains() {
 
   std::sort(
       chainOrder.begin(), chainOrder.end(),
-      [](NodeChain *c1, NodeChain *c2) {
-        if (!propellerConfig.optReorderIP) {
-          auto * c1CFG = c1->DelegateNode->CFG;
-          auto * c2CFG = c2->DelegateNode->CFG;
-          if (c1CFG == c2CFG) {
-            auto * entryNode = c1CFG->getEntryNode();
-            if (entryNode->Chain == c1)
-              return true;
-            if (entryNode->Chain == c2)
-              return false;
-          }
-        }
+       [](NodeChain *c1, NodeChain *c2) {
+        if (!c1->CFG || !c2->CFG || c1->CFG != c2->CFG)
+          error("Attempting to coalesce chains belonging to different functions.");
+        if (c1->Freq==0 ^ c2->Freq==0)
+          return c1->Freq!=0;
+        auto * entryNode = c1->CFG->getEntryNode();
+        if (entryNode->Chain == c1)
+          return true;
+        if (entryNode->Chain == c2)
+          return false;
         double c1ExecDensity = c1->execDensity();
         double c2ExecDensity = c2->execDensity();
         if (c1ExecDensity == c2ExecDensity)
@@ -265,7 +263,8 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
   leftChain->Size += rightChain->Size;
   leftChain->Freq += rightChain->Freq;
   leftChain->DebugChain |= rightChain->DebugChain;
-
+  if (leftChain->CFG != rightChain->CFG)
+    leftChain->CFG = nullptr;
 
   Chains.erase(rightChain->DelegateNode->MappedAddr);
 }
@@ -326,6 +325,9 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain * mergerChain, NodeChain * merg
 // NodeChainAssembly is an ordered triple of three slices from two chains.
 void NodeChainBuilder::mergeChains(
     std::unique_ptr<NodeChainAssembly> assembly) {
+  if(assembly->splitChain()->Freq==0 ^ assembly->unsplitChain()->Freq==0)
+    error("Attempting to merge hot and cold chains: \n" + toString(*assembly.get()));
+
 
   if(assembly->splitChain()->Freq==0 ^ assembly->unsplitChain()->Freq==0)
     warn("Attempting to merge hot and cold chains: \n" + toString(*assembly.get()));
@@ -446,6 +448,9 @@ void NodeChainBuilder::mergeChains(
   mergerChain->Score += mergeeChain->Score + assembly->ScoreGain;
 
   mergerChain->DebugChain |= mergeeChain->DebugChain;
+
+  if (mergerChain->CFG != mergeeChain->CFG)
+    mergerChain->CFG = nullptr;
 
   // Merge the assembly candidate chains of the two chains into the candidate
   // chains of the remaining NodeChain and remove the records for the defunct
@@ -651,7 +656,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
   for (auto &node : cfg.Nodes) {
     if (profiledOuts[node.get()].size() == 1) {
       CFGEdge *edge = profiledOuts[node.get()].front();
-      if(edge->Type != CFGEdge::EdgeType::INTRA_FUNC)
+      if(edge->Type != CFGEdge::EdgeType::INTRA_FUNC && edge->Type != CFGEdge::EdgeType::INTRA_DYNA)
         continue;
       if (profiledIns[edge->Sink].size() == 1)
         mutuallyForcedOut.try_emplace(node.get(), edge->Sink);
@@ -689,8 +694,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
       if (!profiledOuts[node].empty()) {
         CFGEdge *edge = profiledOuts[node].front();
         if (!victimEdge ||
-            (edge->Weight < victimEdge->Weight) ||
-            (edge->Weight == victimEdge->Weight && (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr))) {
+            (edge->Sink->MappedAddr < victimEdge->Sink->MappedAddr)) {
           victimEdge = edge;
         }
       }
@@ -898,6 +902,7 @@ double NodeChainAssembly::computeExtTSPScore() const {
 }
 
 void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC){
+  fprintf(stderr, "ORDERING FOR: %s\n", CFGs.back()->Name.str().c_str());
   init();
 
   mergeAllChains();
@@ -1072,18 +1077,27 @@ void ChainClustering::doOrder(std::vector<CFGNode*> &hotOrder,
   initClusters();
   mergeClusters();
   std::vector<Cluster *> clusterOrder;
+  DenseMap<ControlFlowGraph *, size_t> ChainOrder;
   sortClusters(clusterOrder);
   for (Cluster *cl: clusterOrder)
     for(NodeChain* c: cl->Chains)
-      for(CFGNode *n: c->Nodes)
+      for(CFGNode *n: c->Nodes) {
+        ChainOrder.try_emplace(n->CFG, hotOrder.size());
         hotOrder.push_back(n);
+      }
 
-  auto chainComparator = [](const std::unique_ptr<NodeChain> &c_ptr1,
-                            const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
+  auto coldChainComparator = [&ChainOrder](const std::unique_ptr<NodeChain> &c_ptr1,
+                                           const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
+    if (c_ptr1->CFG && c_ptr2->CFG) {
+      if (c_ptr1->CFG->isHot() != c_ptr2->CFG->isHot())
+        return c_ptr1->CFG->isHot();
+      if (c_ptr1->CFG->isHot() && c_ptr2->CFG->isHot() && (c_ptr1->CFG != c_ptr2->CFG))
+        return ChainOrder[c_ptr1->CFG] < ChainOrder[c_ptr2->CFG];
+    }
     return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
   };
 
-  std::sort(ColdChains.begin(), ColdChains.end(), chainComparator);
+  std::sort(ColdChains.begin(), ColdChains.end(), coldChainComparator);
 
   for(auto &c_ptr: ColdChains)
     for(CFGNode* n: c_ptr->Nodes)
@@ -1113,7 +1127,8 @@ void PropellerBBReordering::printStats() {
   std::map<uint64_t, uint64_t> histogram;
   llvm::StringMap<double> extTSPScoreMap;
   for(CFGNode* n: HotOrder) {
-    n->forEachOutEdgeRef([&nodeAddressMap, &distances, &histogram, &extTSPScoreMap](CFGEdge& edge){
+    auto scoreEntry = extTSPScoreMap.try_emplace(n->CFG->Name, 0).first;
+    n->forEachOutEdgeRef([&nodeAddressMap, &distances, &histogram, &scoreEntry](CFGEdge& edge){
       if (!edge.Weight)
         return;
       if (edge.isReturn())
@@ -1126,7 +1141,7 @@ void PropellerBBReordering::printStats() {
       uint64_t srcSinkDistance = edgeForward ? sinkOffset - srcOffset - edge.Src->ShSize: srcOffset - sinkOffset + edge.Src->ShSize;
 
       if (edge.Type == CFGEdge::EdgeType::INTRA_FUNC || edge.Type == CFGEdge::EdgeType::INTRA_DYNA)
-        extTSPScoreMap[edge.Src->CFG->Name] += getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
+        scoreEntry->second += getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
 
       auto res = std::lower_bound(distances.begin(), distances.end(), srcSinkDistance);
       histogram[*res] += edge.Weight;
