@@ -65,10 +65,8 @@ struct SymbolEntry {
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *ContainingFunc;
 
-  bool isReturnBlock() const { return BBTagType == BB_RETURN; }
-  bool isReturnLandingBlock() const {
-    return BBTagType == BB_RETURN_AND_LANDING_PAD;
-  }
+  bool isReturnBlock() const { return BBTagType == BB_RETURN || BBTagType == BB_RETURN_AND_LANDING_PAD; }
+  bool isLandingPadBlock() const { return BBTagType == BB_LANDING_PAD || BBTagType == BB_RETURN_AND_LANDING_PAD;}
 
   bool containsAddress(uint64_t A) const {
     return Addr <= A && A < Addr + Size;

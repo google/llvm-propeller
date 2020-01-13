@@ -126,7 +126,7 @@ gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(
 gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
-other_opt                  := -Wl,--propeller-chain-split-threshold=1024
+other_opt                  := -Wl,--propeller-chain-split-threshold=1024 -Wl,--propeller-print-stats -Wl,-propeller-dump-cfg=@ -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
@@ -153,6 +153,7 @@ define build_compiler
             -DLLVM_OPTIMIZED_TABLEGEN=On                \
 	    -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)            \
 	    -DLLVM_ENABLE_EH=$(ENABLE_EH)               \
+	    -DLLVM_ENABLE_RTTI=$(ENABLE_EH)             \
 	    -DLLVM_ENABLE_LLD="On"                      \
 	    -DCMAKE_LINKER="lld"                        \
             -DLLVM_TARGETS_TO_BUILD="X86"               \
@@ -294,7 +295,7 @@ pgo-labels-compiler.allbb.propeller: pgo-labels-compiler.propeller
 	sed '2i#AllBB' $< > $@
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr
+	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr 2>&1 | tee $@.autolog
 
 pgo-labels-compiler.yaml cspgo-compiler.yaml pgo-relocs-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
@@ -307,7 +308,9 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_V
 		 -print-cache-metrics                   \
 		 -reorder-blocks="cache+"               \
 	 	 -reorder-functions="hfsort+" -relocs=1 \
+		 -split-eh                              \
 		 2>&1 | tee $(word 2,$^).bolt.autolog
+
 
 stage-cspgo/build/bin/clang-${CLANG_VERSION}: stage-pgo.profdata | stage1-compiler
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_BUILD_INSTRUMENTED=CSIR -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",all)

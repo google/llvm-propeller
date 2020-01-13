@@ -452,8 +452,8 @@ void MachineFunction::setBasicBlockLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
   for (auto MBBI=begin(), E=end(); MBBI!=E; ++MBBI) {
-    if (MBBI->getNumber() >= getNumBlockIDs() || MBBI->getNumber() < 0)
-      report_fatal_error("BasicBlock number was out of range: " + Twine(MBBI->getNumber()) + " 0 -> " + Twine(getNumBlockIDs()));
+    if (MBBI->getNumber() < 0 || MBBI->getNumber() >= (int)getNumBlockIDs())
+      report_fatal_error("BasicBlock number was out of range: " + Twine(MBBI->getNumber()) + " [0 -> " + Twine(getNumBlockIDs()) + "]");
     // 'a' - Normal block.
     // 'r' - Return block.
     // 'l' - Landing Pad.
