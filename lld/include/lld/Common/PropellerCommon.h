@@ -65,9 +65,12 @@ struct SymbolEntry {
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *ContainingFunc;
 
-  bool isReturnBlock() const { return BBTagType == BB_RETURN; }
-  bool isReturnLandingBlock() const {
-    return BBTagType == BB_RETURN_AND_LANDING_PAD;
+  bool isReturnBlock() const {
+    return BBTagType == BB_RETURN || BBTagType == BB_RETURN_AND_LANDING_PAD;
+  }
+  bool isLandingPadBlock() const {
+    return BBTagType == BB_LANDING_PAD ||
+           BBTagType == BB_RETURN_AND_LANDING_PAD;
   }
 
   bool containsAddress(uint64_t A) const {
@@ -125,6 +128,21 @@ struct SymbolEntry {
     if (BBIndex)
       *BBIndex = R.first;
     return true;
+  }
+
+  static BBTagTypeEnum toBBTagType(const char c) {
+    switch (c) {
+    case 'a':
+      return BB_NORMAL;
+    case 'r':
+      return BB_RETURN;
+    case 'l':
+      return BB_LANDING_PAD;
+    case 'L':
+      return BB_RETURN_AND_LANDING_PAD;
+    default:;
+    }
+    return BB_NONE;
   }
 
   static const uint64_t INVALID_ADDRESS = uint64_t(-1);

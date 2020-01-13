@@ -423,6 +423,7 @@ CFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
       else
         for (auto *CFG : cfgLI->second)
           for (auto &node : CFG->Nodes) {
+            // Skip the entry node as we know this is a BB symbol.
             if (node->isEntryNode()) continue;
             // Check CFG does have name "SymName".
             auto t = node->ShName.find_first_of('.');
@@ -472,6 +473,19 @@ void Propeller::calculateNodeFreqs() {
       }
 
       cfg->Hot |= (node.Freq != 0);
+
+      // Find non-zero frequency nodes with fallthroughs and propagate the
+      // weight via the fallthrough edge if no other normal edge carries weight.
+      if (node.Freq && node.FTEdge && node.FTEdge->Sink->HotTag) {
+        uint64_t sumIntraOut = 0;
+        for (auto * e: node.Outs) {
+          if (e->Type == CFGEdge::EdgeType::INTRA_FUNC)
+            sumIntraOut += e->Weight;
+        }
+
+        if (!sumIntraOut)
+          node.FTEdge->Weight = node.Freq;
+      }
     });
 
     /*

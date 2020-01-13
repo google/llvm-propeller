@@ -74,8 +74,8 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // foo are named a.BB.foo, aa.BB.foo, and so on.
     if (BasicBlockSymbols) {
       auto Iter = MF->getMBBSymbolPrefix().begin();
-      if (getNumber() >= MF->getMBBSymbolPrefix().size())
-        report_fatal_error("Unreachable MBB: " + Twine(getNumber()) + " >= " + Twine(MF->getMBBSymbolPrefix().size()));
+      if (getNumber() < 0 || getNumber() >= (int)MF->getMBBSymbolPrefix().size())
+        report_fatal_error("Unreachable MBB: " + Twine(getNumber()));
       std::string Prefix(Iter + 1, Iter + getNumber() + 1);
       std::reverse(Prefix.begin(), Prefix.end());
       CachedMCSymbol = Ctx.getOrCreateSymbol(

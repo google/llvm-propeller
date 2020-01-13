@@ -102,8 +102,8 @@ CFGEdge *ControlFlowGraph::createEdge(CFGNode *from, CFGNode *to,
 // the same cfg.
 bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
   if (from == nullptr) {
-    /* If the from node is null, walk backward from the to node while only
-     * one INTRA_FUNC incoming edge is found. */
+     // If the from node is null, walk backward from the to node while only
+     // one INTRA_FUNC incoming edge is found.
     assert(to != nullptr);
     CFGNode *p = to;
     do {
@@ -117,8 +117,8 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
   }
 
   if (to == nullptr) {
-    /* If the to node is null, walk forward from the from node while only
-     * one INTRA_FUNC outgoing edge is found. */
+     // If the to node is null, walk forward from the from node while only
+     // one INTRA_FUNC outgoing edge is found.
     assert(from != nullptr);
     CFGNode *p = from;
     do {
@@ -135,15 +135,25 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
   if (from == to)
     return true;
   CFGNode *p = from;
+
+  // Iterate over fallthrough edges between from and to, adding every edge in
+  // between to a vector.
+  SmallVector<CFGEdge*, 32> fallThroughEdges;
   while (p && p != to) {
     if (p->FTEdge) {
-      p->FTEdge->Weight += cnt;
+      fallThroughEdges.push_back(p->FTEdge);
       p = p->FTEdge->Sink;
     } else
       p = nullptr;
   }
-  if (!p)
+  if (!p) { // Fallthroughs break between from and to.
+    warn("Fallthrough break between " + from->ShName + " and " + to->ShName);
     return false;
+  }
+
+  for (auto * e : fallThroughEdges)
+    e->Weight += cnt;
+
   return true;
 }
 
@@ -303,10 +313,11 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *sE = prop->Propf->findSymbol(symName);
     // symValue is the offset of the bb symbol within a bbsection, if
-    // symValue is nonzero, it means this is a symbol grouped together w/ other
-    // bb symbols in the same section (the code section or the landing pad
-    // section), and this bb symbol is not the representative symbol of the bb
-    // section, we can safely ignore the symbol.
+    // symValue is nonzero, it means the symbol is not on its own
+    // section, safe to ignore mapping with a propeller symbol. This
+    // is a symbol grouped together w/ other bb symbols in the same
+    // section (the cold section or the landing pad section), and this
+    // bb symbol is not the representative symbol of the bb section.
     if (!sE) {
       if (symValue != 0) continue;
       tmpNodeMap.clear();
@@ -319,7 +330,9 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
       break;
     }
     // All cold BBs go into a single cold section. All landing pads go
-    // into a single landing pad section.
+    // into a single landing pad section.  Note, hot landing pads are
+    // grouped into the landing pad section. A hot land pad does not
+    // have its own section.
     bool needGroup =
         !sE->HotTag || symName.front() == 'l' || symName.front() == 'L';
     if (needGroup) {
