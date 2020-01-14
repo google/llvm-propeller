@@ -225,12 +225,12 @@ int IRTranslator::getOrCreateFrameIndex(const AllocaInst &AI) {
   if (FrameIndices.find(&AI) != FrameIndices.end())
     return FrameIndices[&AI];
 
-  unsigned ElementSize = DL->getTypeAllocSize(AI.getAllocatedType());
-  unsigned Size =
+  uint64_t ElementSize = DL->getTypeAllocSize(AI.getAllocatedType());
+  uint64_t Size =
       ElementSize * cast<ConstantInt>(AI.getArraySize())->getZExtValue();
 
   // Always allocate at least one byte.
-  Size = std::max(Size, 1u);
+  Size = std::max<uint64_t>(Size, 1u);
 
   unsigned Alignment = AI.getAlignment();
   if (!Alignment)
@@ -1256,6 +1256,8 @@ unsigned IRTranslator::getSimpleIntrinsicOpcode(Intrinsic::ID ID) {
       return TargetOpcode::G_FSQRT;
     case Intrinsic::trunc:
       return TargetOpcode::G_INTRINSIC_TRUNC;
+    case Intrinsic::readcyclecounter:
+      return TargetOpcode::G_READCYCLECOUNTER;
   }
   return Intrinsic::not_intrinsic;
 }
@@ -1524,6 +1526,13 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
   case Intrinsic::sideeffect:
     // Discard annotate attributes, assumptions, and artificial side-effects.
     return true;
+  case Intrinsic::read_register: {
+    Value *Arg = CI.getArgOperand(0);
+    MIRBuilder.buildInstr(TargetOpcode::G_READ_REGISTER)
+      .addDef(getOrCreateVReg(CI))
+      .addMetadata(cast<MDNode>(cast<MetadataAsValue>(Arg)->getMetadata()));
+    return true;
+  }
   }
   return false;
 }
@@ -1593,7 +1602,9 @@ bool IRTranslator::translateCall(const User &U, MachineIRBuilder &MIRBuilder) {
   const Function *F = CI.getCalledFunction();
 
   // FIXME: support Windows dllimport function calls.
-  if (F && F->hasDLLImportStorageClass())
+  if (F && (F->hasDLLImportStorageClass() ||
+            (MF->getTarget().getTargetTriple().isOSWindows() &&
+             F->hasExternalWeakLinkage())))
     return false;
 
   // FIXME: support control flow guard targets.
@@ -1922,11 +1933,14 @@ bool IRTranslator::translateExtractElement(const User &U,
 
 bool IRTranslator::translateShuffleVector(const User &U,
                                           MachineIRBuilder &MIRBuilder) {
+  SmallVector<int, 8> Mask;
+  ShuffleVectorInst::getShuffleMask(cast<Constant>(U.getOperand(2)), Mask);
+  ArrayRef<int> MaskAlloc = MF->allocateShuffleMask(Mask);
   MIRBuilder.buildInstr(TargetOpcode::G_SHUFFLE_VECTOR)
       .addDef(getOrCreateVReg(U))
       .addUse(getOrCreateVReg(*U.getOperand(0)))
       .addUse(getOrCreateVReg(*U.getOperand(1)))
-      .addShuffleMask(cast<Constant>(U.getOperand(2)));
+      .addShuffleMask(MaskAlloc);
   return true;
 }
 

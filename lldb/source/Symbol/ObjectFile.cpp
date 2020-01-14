@@ -352,7 +352,9 @@ AddressClass ObjectFile::GetAddressClass(addr_t file_addr) {
           case eSectionTypeDWARFDebugLine:
           case eSectionTypeDWARFDebugLineStr:
           case eSectionTypeDWARFDebugLoc:
+          case eSectionTypeDWARFDebugLocDwo:
           case eSectionTypeDWARFDebugLocLists:
+          case eSectionTypeDWARFDebugLocListsDwo:
           case eSectionTypeDWARFDebugMacInfo:
           case eSectionTypeDWARFDebugMacro:
           case eSectionTypeDWARFDebugNames:
@@ -477,13 +479,7 @@ size_t ObjectFile::GetData(lldb::offset_t offset, size_t length,
                            DataExtractor &data) const {
   // The entire file has already been mmap'ed into m_data, so just copy from
   // there as the back mmap buffer will be shared with shared pointers.
-  size_t ret = data.SetData(m_data, offset, length);
-  // DataExtractor::SetData copies the address byte size from m_data, but
-  // m_data's address byte size is only set from sizeof(void*), and we can't
-  // access subclasses GetAddressByteSize() when setting up m_data in the
-  // constructor.
-  data.SetAddressByteSize(GetAddressByteSize());
-  return ret;
+  return data.SetData(m_data, offset, length);
 }
 
 size_t ObjectFile::CopyData(lldb::offset_t offset, size_t length,

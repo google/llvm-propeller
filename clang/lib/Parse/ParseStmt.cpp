@@ -1201,13 +1201,12 @@ struct MisleadingIndentationChecker {
   SourceLocation PrevLoc;
   unsigned NumDirectives;
   MisleadingStatementKind Kind;
-  bool NeedsChecking;
   bool ShouldSkip;
   MisleadingIndentationChecker(Parser &P, MisleadingStatementKind K,
                                SourceLocation SL)
       : P(P), StmtLoc(SL), PrevLoc(P.getCurToken().getLocation()),
         NumDirectives(P.getPreprocessor().getNumDirectives()), Kind(K),
-        NeedsChecking(true), ShouldSkip(P.getCurToken().is(tok::l_brace)) {
+        ShouldSkip(P.getCurToken().is(tok::l_brace)) {
     if (!P.MisleadingIndentationElseLoc.isInvalid()) {
       StmtLoc = P.MisleadingIndentationElseLoc;
       P.MisleadingIndentationElseLoc = SourceLocation();
@@ -1215,10 +1214,47 @@ struct MisleadingIndentationChecker {
     if (Kind == MSK_else && !ShouldSkip)
       P.MisleadingIndentationElseLoc = SL;
   }
+
+  /// Compute the column number will aligning tabs on TabStop (-ftabstop), this
+  /// gives the visual indentation of the SourceLocation.
+  static unsigned getVisualIndentation(SourceManager &SM, SourceLocation Loc) {
+    unsigned TabStop = SM.getDiagnostics().getDiagnosticOptions().TabStop;
+
+    unsigned ColNo = SM.getSpellingColumnNumber(Loc);
+    if (ColNo == 0 || TabStop == 1)
+      return ColNo;
+
+    std::pair<FileID, unsigned> FIDAndOffset = SM.getDecomposedLoc(Loc);
+
+    bool Invalid;
+    StringRef BufData = SM.getBufferData(FIDAndOffset.first, &Invalid);
+    if (Invalid)
+      return 0;
+
+    const char *EndPos = BufData.data() + FIDAndOffset.second;
+    // FileOffset are 0-based and Column numbers are 1-based
+    assert(FIDAndOffset.second + 1 >= ColNo &&
+           "Column number smaller than file offset?");
+
+    unsigned VisualColumn = 0; // Stored as 0-based column, here.
+    // Loop from beginning of line up to Loc's file position, counting columns,
+    // expanding tabs.
+    for (const char *CurPos = EndPos - (ColNo - 1); CurPos != EndPos;
+         ++CurPos) {
+      if (*CurPos == '\t')
+        // Advance visual column to next tabstop.
+        VisualColumn += (TabStop - VisualColumn % TabStop);
+      else
+        VisualColumn++;
+    }
+    return VisualColumn + 1;
+  }
+
   void Check() {
-    NeedsChecking = false;
     Token Tok = P.getCurToken();
-    if (ShouldSkip || NumDirectives != P.getPreprocessor().getNumDirectives() ||
+    if (P.getActions().getDiagnostics().isIgnored(
+            diag::warn_misleading_indentation, Tok.getLocation()) ||
+        ShouldSkip || NumDirectives != P.getPreprocessor().getNumDirectives() ||
         Tok.isOneOf(tok::semi, tok::r_brace) || Tok.isAnnotation() ||
         Tok.getLocation().isMacroID() || PrevLoc.isMacroID() ||
         StmtLoc.isMacroID() ||
@@ -1226,18 +1262,22 @@ struct MisleadingIndentationChecker {
       P.MisleadingIndentationElseLoc = SourceLocation();
       return;
     }
+    if (Kind == MSK_else)
+      P.MisleadingIndentationElseLoc = SourceLocation();
 
     SourceManager &SM = P.getPreprocessor().getSourceManager();
-    unsigned PrevColNum = SM.getSpellingColumnNumber(PrevLoc);
-    unsigned CurColNum = SM.getSpellingColumnNumber(Tok.getLocation());
-    unsigned StmtColNum = SM.getSpellingColumnNumber(StmtLoc);
+    unsigned PrevColNum = getVisualIndentation(SM, PrevLoc);
+    unsigned CurColNum = getVisualIndentation(SM, Tok.getLocation());
+    unsigned StmtColNum = getVisualIndentation(SM, StmtLoc);
 
     if (PrevColNum != 0 && CurColNum != 0 && StmtColNum != 0 &&
         ((PrevColNum > StmtColNum && PrevColNum == CurColNum) ||
-         !Tok.isAtStartOfLine()) && SM.getPresumedLineNumber(StmtLoc) !=
-          SM.getPresumedLineNumber(Tok.getLocation())) {
-      P.Diag(Tok.getLocation(), diag::warn_misleading_indentation)
-          << Kind;
+         !Tok.isAtStartOfLine()) &&
+        SM.getPresumedLineNumber(StmtLoc) !=
+            SM.getPresumedLineNumber(Tok.getLocation()) &&
+        (Tok.isNot(tok::identifier) ||
+         P.getPreprocessor().LookAhead(0).isNot(tok::colon))) {
+      P.Diag(Tok.getLocation(), diag::warn_misleading_indentation) << Kind;
       P.Diag(StmtLoc, diag::note_previous_statement);
     }
   }

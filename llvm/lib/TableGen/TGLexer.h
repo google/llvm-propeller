@@ -44,14 +44,15 @@ namespace tgtok {
     equal, question,    // = ?
     paste,              // #
 
-    // Keywords.
+    // Keywords. ('ElseKW' is named to distinguish it from the existing 'Else'
+    // that means the preprocessor #else.)
     Bit, Bits, Class, Code, Dag, Def, Foreach, Defm, Field, In, Int, Let, List,
-    MultiClass, String, Defset,
+    MultiClass, String, Defset, Defvar, If, Then, ElseKW,
 
     // !keywords.
     XConcat, XADD, XMUL, XAND, XOR, XSRA, XSRL, XSHL, XListConcat, XListSplat,
     XStrConcat, XCast, XSubst, XForEach, XFoldl, XHead, XTail, XSize, XEmpty,
-    XIf, XCond, XEq, XIsA, XDag, XNe, XLe, XLt, XGe, XGt,
+    XIf, XCond, XEq, XIsA, XDag, XNe, XLe, XLt, XGe, XGt, XSetOp, XGetOp,
 
     // Integer value.
     IntVal,

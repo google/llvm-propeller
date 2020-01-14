@@ -1498,7 +1498,7 @@ class BaseMemOpClusterMutation : public ScheduleDAGMutation {
                                 : BaseOp->getIndex() < RHS.BaseOp->getIndex();
 
         if (Offset != RHS.Offset)
-          return StackGrowsDown ? Offset > RHS.Offset : Offset < RHS.Offset;
+          return Offset < RHS.Offset;
 
         return SU->NodeNum < RHS.SU->NodeNum;
       }
@@ -1598,10 +1598,8 @@ void BaseMemOpClusterMutation::clusterNeighboringMemOps(
 
 /// Callback from DAG postProcessing to create cluster edges for loads.
 void BaseMemOpClusterMutation::apply(ScheduleDAGInstrs *DAG) {
-  // Map DAG NodeNum to store chain ID.
-  DenseMap<unsigned, unsigned> StoreChainIDs;
-  // Map each store chain to a set of dependent MemOps.
-  SmallVector<SmallVector<SUnit*,4>, 32> StoreChainDependents;
+  // Map DAG NodeNum to a set of dependent MemOps in store chain.
+  DenseMap<unsigned, SmallVector<SUnit *, 4>> StoreChains;
   for (SUnit &SU : DAG->SUnits) {
     if ((IsLoad && !SU.getInstr()->mayLoad()) ||
         (!IsLoad && !SU.getInstr()->mayStore()))
@@ -1614,19 +1612,14 @@ void BaseMemOpClusterMutation::apply(ScheduleDAGInstrs *DAG) {
         break;
       }
     }
-    // Check if this chain-like pred has been seen
-    // before. ChainPredID==MaxNodeID at the top of the schedule.
-    unsigned NumChains = StoreChainDependents.size();
-    std::pair<DenseMap<unsigned, unsigned>::iterator, bool> Result =
-      StoreChainIDs.insert(std::make_pair(ChainPredID, NumChains));
-    if (Result.second)
-      StoreChainDependents.resize(NumChains + 1);
-    StoreChainDependents[Result.first->second].push_back(&SU);
+    // Insert the SU to corresponding store chain.
+    auto &Chain = StoreChains.FindAndConstruct(ChainPredID).second;
+    Chain.push_back(&SU);
   }
 
   // Iterate over the store chains.
-  for (auto &SCD : StoreChainDependents)
-    clusterNeighboringMemOps(SCD, DAG);
+  for (auto &SCD : StoreChains)
+    clusterNeighboringMemOps(SCD.second, DAG);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2088,7 +2081,8 @@ getOtherResourceCount(unsigned &OtherCritIdx) {
   return OtherCritCount;
 }
 
-void SchedBoundary::releaseNode(SUnit *SU, unsigned ReadyCycle) {
+void SchedBoundary::releaseNode(SUnit *SU, unsigned ReadyCycle, bool InPQueue,
+                                unsigned Idx) {
   assert(SU->getInstr() && "Scheduled SUnit must have instr");
 
 #ifndef NDEBUG
@@ -2105,11 +2099,19 @@ void SchedBoundary::releaseNode(SUnit *SU, unsigned ReadyCycle) {
   // Check for interlocks first. For the purpose of other heuristics, an
   // instruction that cannot issue appears as if it's not in the ReadyQueue.
   bool IsBuffered = SchedModel->getMicroOpBufferSize() != 0;
-  if ((!IsBuffered && ReadyCycle > CurrCycle) || checkHazard(SU) ||
-      Available.size() >= ReadyListLimit)
-    Pending.push(SU);
-  else
+  bool HazardDetected = (!IsBuffered && ReadyCycle > CurrCycle) ||
+                        checkHazard(SU) || (Available.size() >= ReadyListLimit);
+
+  if (!HazardDetected) {
     Available.push(SU);
+
+    if (InPQueue)
+      Pending.remove(Pending.begin() + Idx);
+    return;
+  }
+
+  if (!InPQueue)
+    Pending.push(SU);
 }
 
 /// Move the boundary of scheduled code by one cycle.
@@ -2349,26 +2351,21 @@ void SchedBoundary::releasePending() {
 
   // Check to see if any of the pending instructions are ready to issue.  If
   // so, add them to the available queue.
-  bool IsBuffered = SchedModel->getMicroOpBufferSize() != 0;
-  for (unsigned i = 0, e = Pending.size(); i != e; ++i) {
-    SUnit *SU = *(Pending.begin()+i);
+  for (unsigned I = 0, E = Pending.size(); I < E; ++I) {
+    SUnit *SU = *(Pending.begin() + I);
     unsigned ReadyCycle = isTop() ? SU->TopReadyCycle : SU->BotReadyCycle;
 
     if (ReadyCycle < MinReadyCycle)
       MinReadyCycle = ReadyCycle;
 
-    if (!IsBuffered && ReadyCycle > CurrCycle)
-      continue;
-
-    if (checkHazard(SU))
-      continue;
-
     if (Available.size() >= ReadyListLimit)
       break;
 
-    Available.push(SU);
-    Pending.remove(Pending.begin()+i);
-    --i; --e;
+    releaseNode(SU, ReadyCycle, true, I);
+    if (E != Pending.size()) {
+      --I;
+      --E;
+    }
   }
   CheckPending = false;
 }

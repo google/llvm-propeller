@@ -162,33 +162,33 @@ static MachineInstr *getVRegDefOrNull(MachineOperand *Op,
 static unsigned
 getKnownLeadingZeroCount(MachineInstr *MI, const PPCInstrInfo *TII) {
   unsigned Opcode = MI->getOpcode();
-  if (Opcode == PPC::RLDICL || Opcode == PPC::RLDICLo ||
-      Opcode == PPC::RLDCL  || Opcode == PPC::RLDCLo)
+  if (Opcode == PPC::RLDICL || Opcode == PPC::RLDICL_rec ||
+      Opcode == PPC::RLDCL || Opcode == PPC::RLDCL_rec)
     return MI->getOperand(3).getImm();
 
-  if ((Opcode == PPC::RLDIC || Opcode == PPC::RLDICo) &&
-       MI->getOperand(3).getImm() <= 63 - MI->getOperand(2).getImm())
+  if ((Opcode == PPC::RLDIC || Opcode == PPC::RLDIC_rec) &&
+      MI->getOperand(3).getImm() <= 63 - MI->getOperand(2).getImm())
     return MI->getOperand(3).getImm();
 
-  if ((Opcode == PPC::RLWINM  || Opcode == PPC::RLWINMo ||
-       Opcode == PPC::RLWNM   || Opcode == PPC::RLWNMo  ||
+  if ((Opcode == PPC::RLWINM || Opcode == PPC::RLWINM_rec ||
+       Opcode == PPC::RLWNM || Opcode == PPC::RLWNM_rec ||
        Opcode == PPC::RLWINM8 || Opcode == PPC::RLWNM8) &&
-       MI->getOperand(3).getImm() <= MI->getOperand(4).getImm())
+      MI->getOperand(3).getImm() <= MI->getOperand(4).getImm())
     return 32 + MI->getOperand(3).getImm();
 
-  if (Opcode == PPC::ANDIo) {
+  if (Opcode == PPC::ANDI_rec) {
     uint16_t Imm = MI->getOperand(2).getImm();
     return 48 + countLeadingZeros(Imm);
   }
 
-  if (Opcode == PPC::CNTLZW  || Opcode == PPC::CNTLZWo ||
-      Opcode == PPC::CNTTZW  || Opcode == PPC::CNTTZWo ||
+  if (Opcode == PPC::CNTLZW || Opcode == PPC::CNTLZW_rec ||
+      Opcode == PPC::CNTTZW || Opcode == PPC::CNTTZW_rec ||
       Opcode == PPC::CNTLZW8 || Opcode == PPC::CNTTZW8)
     // The result ranges from 0 to 32.
     return 58;
 
-  if (Opcode == PPC::CNTLZD  || Opcode == PPC::CNTLZDo ||
-      Opcode == PPC::CNTTZD  || Opcode == PPC::CNTTZDo)
+  if (Opcode == PPC::CNTLZD || Opcode == PPC::CNTLZD_rec ||
+      Opcode == PPC::CNTTZD || Opcode == PPC::CNTTZD_rec)
     // The result ranges from 0 to 64.
     return 57;
 
@@ -333,108 +333,121 @@ bool PPCMIPeephole::simplifyCode(void) {
         // is identified by an immediate value of 0 or 3.
         int Immed = MI.getOperand(3).getImm();
 
-        if (Immed != 1) {
+        if (Immed == 1)
+          break;
 
-          // For each of these simplifications, we need the two source
-          // regs to match.  Unfortunately, MachineCSE ignores COPY and
-          // SUBREG_TO_REG, so for example we can see
-          //   XXPERMDI t, SUBREG_TO_REG(s), SUBREG_TO_REG(s), immed.
-          // We have to look through chains of COPY and SUBREG_TO_REG
-          // to find the real source values for comparison.
-          unsigned TrueReg1 =
-            TRI->lookThruCopyLike(MI.getOperand(1).getReg(), MRI);
-          unsigned TrueReg2 =
-            TRI->lookThruCopyLike(MI.getOperand(2).getReg(), MRI);
+        // For each of these simplifications, we need the two source
+        // regs to match.  Unfortunately, MachineCSE ignores COPY and
+        // SUBREG_TO_REG, so for example we can see
+        //   XXPERMDI t, SUBREG_TO_REG(s), SUBREG_TO_REG(s), immed.
+        // We have to look through chains of COPY and SUBREG_TO_REG
+        // to find the real source values for comparison.
+        unsigned TrueReg1 =
+          TRI->lookThruCopyLike(MI.getOperand(1).getReg(), MRI);
+        unsigned TrueReg2 =
+          TRI->lookThruCopyLike(MI.getOperand(2).getReg(), MRI);
 
-          if (TrueReg1 == TrueReg2 && Register::isVirtualRegister(TrueReg1)) {
-            MachineInstr *DefMI = MRI->getVRegDef(TrueReg1);
-            unsigned DefOpc = DefMI ? DefMI->getOpcode() : 0;
+        if (!(TrueReg1 == TrueReg2 && Register::isVirtualRegister(TrueReg1)))
+          break;
 
-            // If this is a splat fed by a splatting load, the splat is
-            // redundant. Replace with a copy. This doesn't happen directly due
-            // to code in PPCDAGToDAGISel.cpp, but it can happen when converting
-            // a load of a double to a vector of 64-bit integers.
-            auto isConversionOfLoadAndSplat = [=]() -> bool {
-              if (DefOpc != PPC::XVCVDPSXDS && DefOpc != PPC::XVCVDPUXDS)
-                return false;
-              unsigned DefReg =
-                TRI->lookThruCopyLike(DefMI->getOperand(1).getReg(), MRI);
-              if (Register::isVirtualRegister(DefReg)) {
-                MachineInstr *LoadMI = MRI->getVRegDef(DefReg);
-                if (LoadMI && LoadMI->getOpcode() == PPC::LXVDSX)
-                  return true;
-              }
-              return false;
-            };
-            if (DefMI && (Immed == 0 || Immed == 3)) {
-              if (DefOpc == PPC::LXVDSX || isConversionOfLoadAndSplat()) {
-                LLVM_DEBUG(dbgs() << "Optimizing load-and-splat/splat "
-                                     "to load-and-splat/copy: ");
-                LLVM_DEBUG(MI.dump());
-                BuildMI(MBB, &MI, MI.getDebugLoc(), TII->get(PPC::COPY),
-                        MI.getOperand(0).getReg())
-                    .add(MI.getOperand(1));
-                ToErase = &MI;
-                Simplified = true;
-              }
-            }
+        MachineInstr *DefMI = MRI->getVRegDef(TrueReg1);
 
-            // If this is a splat or a swap fed by another splat, we
-            // can replace it with a copy.
-            if (DefOpc == PPC::XXPERMDI) {
-              unsigned FeedImmed = DefMI->getOperand(3).getImm();
-              unsigned FeedReg1 =
-                TRI->lookThruCopyLike(DefMI->getOperand(1).getReg(), MRI);
-              unsigned FeedReg2 =
-                TRI->lookThruCopyLike(DefMI->getOperand(2).getReg(), MRI);
+        if (!DefMI)
+          break;
 
-              if ((FeedImmed == 0 || FeedImmed == 3) && FeedReg1 == FeedReg2) {
-                LLVM_DEBUG(dbgs() << "Optimizing splat/swap or splat/splat "
-                                     "to splat/copy: ");
-                LLVM_DEBUG(MI.dump());
-                BuildMI(MBB, &MI, MI.getDebugLoc(), TII->get(PPC::COPY),
-                        MI.getOperand(0).getReg())
-                    .add(MI.getOperand(1));
-                ToErase = &MI;
-                Simplified = true;
-              }
+        unsigned DefOpc = DefMI->getOpcode();
 
-              // If this is a splat fed by a swap, we can simplify modify
-              // the splat to splat the other value from the swap's input
-              // parameter.
-              else if ((Immed == 0 || Immed == 3)
-                       && FeedImmed == 2 && FeedReg1 == FeedReg2) {
-                LLVM_DEBUG(dbgs() << "Optimizing swap/splat => splat: ");
-                LLVM_DEBUG(MI.dump());
-                MI.getOperand(1).setReg(DefMI->getOperand(1).getReg());
-                MI.getOperand(2).setReg(DefMI->getOperand(2).getReg());
-                MI.getOperand(3).setImm(3 - Immed);
-                Simplified = true;
-              }
-
-              // If this is a swap fed by a swap, we can replace it
-              // with a copy from the first swap's input.
-              else if (Immed == 2 && FeedImmed == 2 && FeedReg1 == FeedReg2) {
-                LLVM_DEBUG(dbgs() << "Optimizing swap/swap => copy: ");
-                LLVM_DEBUG(MI.dump());
-                BuildMI(MBB, &MI, MI.getDebugLoc(), TII->get(PPC::COPY),
-                        MI.getOperand(0).getReg())
-                    .add(DefMI->getOperand(1));
-                ToErase = &MI;
-                Simplified = true;
-              }
-            } else if ((Immed == 0 || Immed == 3) && DefOpc == PPC::XXPERMDIs &&
-                       (DefMI->getOperand(2).getImm() == 0 ||
-                        DefMI->getOperand(2).getImm() == 3)) {
-              // Splat fed by another splat - switch the output of the first
-              // and remove the second.
-              DefMI->getOperand(0).setReg(MI.getOperand(0).getReg());
-              ToErase = &MI;
-              Simplified = true;
-              LLVM_DEBUG(dbgs() << "Removing redundant splat: ");
-              LLVM_DEBUG(MI.dump());
-            }
+        // If this is a splat fed by a splatting load, the splat is
+        // redundant. Replace with a copy. This doesn't happen directly due
+        // to code in PPCDAGToDAGISel.cpp, but it can happen when converting
+        // a load of a double to a vector of 64-bit integers.
+        auto isConversionOfLoadAndSplat = [=]() -> bool {
+          if (DefOpc != PPC::XVCVDPSXDS && DefOpc != PPC::XVCVDPUXDS)
+            return false;
+          unsigned FeedReg1 =
+            TRI->lookThruCopyLike(DefMI->getOperand(1).getReg(), MRI);
+          if (Register::isVirtualRegister(FeedReg1)) {
+            MachineInstr *LoadMI = MRI->getVRegDef(FeedReg1);
+            if (LoadMI && LoadMI->getOpcode() == PPC::LXVDSX)
+              return true;
           }
+          return false;
+        };
+        if ((Immed == 0 || Immed == 3) &&
+            (DefOpc == PPC::LXVDSX || isConversionOfLoadAndSplat())) {
+          LLVM_DEBUG(dbgs() << "Optimizing load-and-splat/splat "
+                               "to load-and-splat/copy: ");
+          LLVM_DEBUG(MI.dump());
+          BuildMI(MBB, &MI, MI.getDebugLoc(), TII->get(PPC::COPY),
+                  MI.getOperand(0).getReg())
+              .add(MI.getOperand(1));
+          ToErase = &MI;
+          Simplified = true;
+        }
+
+        // If this is a splat or a swap fed by another splat, we
+        // can replace it with a copy.
+        if (DefOpc == PPC::XXPERMDI) {
+          unsigned DefReg1 = DefMI->getOperand(1).getReg();
+          unsigned DefReg2 = DefMI->getOperand(2).getReg();
+          unsigned DefImmed = DefMI->getOperand(3).getImm();
+
+          // If the two inputs are not the same register, check to see if
+          // they originate from the same virtual register after only
+          // copy-like instructions.
+          if (DefReg1 != DefReg2) {
+            unsigned FeedReg1 = TRI->lookThruCopyLike(DefReg1, MRI);
+            unsigned FeedReg2 = TRI->lookThruCopyLike(DefReg2, MRI);
+
+            if (!(FeedReg1 == FeedReg2 &&
+                  Register::isVirtualRegister(FeedReg1)))
+              break;
+          }
+
+          if (DefImmed == 0 || DefImmed == 3) {
+            LLVM_DEBUG(dbgs() << "Optimizing splat/swap or splat/splat "
+                                 "to splat/copy: ");
+            LLVM_DEBUG(MI.dump());
+            BuildMI(MBB, &MI, MI.getDebugLoc(), TII->get(PPC::COPY),
+                    MI.getOperand(0).getReg())
+                .add(MI.getOperand(1));
+            ToErase = &MI;
+            Simplified = true;
+          }
+
+          // If this is a splat fed by a swap, we can simplify modify
+          // the splat to splat the other value from the swap's input
+          // parameter.
+          else if ((Immed == 0 || Immed == 3) && DefImmed == 2) {
+            LLVM_DEBUG(dbgs() << "Optimizing swap/splat => splat: ");
+            LLVM_DEBUG(MI.dump());
+            MI.getOperand(1).setReg(DefReg1);
+            MI.getOperand(2).setReg(DefReg2);
+            MI.getOperand(3).setImm(3 - Immed);
+            Simplified = true;
+          }
+
+          // If this is a swap fed by a swap, we can replace it
+          // with a copy from the first swap's input.
+          else if (Immed == 2 && DefImmed == 2) {
+            LLVM_DEBUG(dbgs() << "Optimizing swap/swap => copy: ");
+            LLVM_DEBUG(MI.dump());
+            BuildMI(MBB, &MI, MI.getDebugLoc(), TII->get(PPC::COPY),
+                    MI.getOperand(0).getReg())
+                .add(DefMI->getOperand(1));
+            ToErase = &MI;
+            Simplified = true;
+          }
+        } else if ((Immed == 0 || Immed == 3) && DefOpc == PPC::XXPERMDIs &&
+                   (DefMI->getOperand(2).getImm() == 0 ||
+                    DefMI->getOperand(2).getImm() == 3)) {
+          // Splat fed by another splat - switch the output of the first
+          // and remove the second.
+          DefMI->getOperand(0).setReg(MI.getOperand(0).getReg());
+          ToErase = &MI;
+          Simplified = true;
+          LLVM_DEBUG(dbgs() << "Removing redundant splat: ");
+          LLVM_DEBUG(MI.dump());
         }
         break;
       }
@@ -808,18 +821,18 @@ bool PPCMIPeephole::simplifyCode(void) {
         break;
       }
       case PPC::RLWINM:
-      case PPC::RLWINMo:
+      case PPC::RLWINM_rec:
       case PPC::RLWINM8:
-      case PPC::RLWINM8o: {
+      case PPC::RLWINM8_rec: {
         unsigned FoldingReg = MI.getOperand(1).getReg();
         if (!Register::isVirtualRegister(FoldingReg))
           break;
 
         MachineInstr *SrcMI = MRI->getVRegDef(FoldingReg);
         if (SrcMI->getOpcode() != PPC::RLWINM &&
-            SrcMI->getOpcode() != PPC::RLWINMo &&
+            SrcMI->getOpcode() != PPC::RLWINM_rec &&
             SrcMI->getOpcode() != PPC::RLWINM8 &&
-            SrcMI->getOpcode() != PPC::RLWINM8o)
+            SrcMI->getOpcode() != PPC::RLWINM8_rec)
           break;
         assert((MI.getOperand(2).isImm() && MI.getOperand(3).isImm() &&
                 MI.getOperand(4).isImm() && SrcMI->getOperand(2).isImm() &&
@@ -882,7 +895,9 @@ bool PPCMIPeephole::simplifyCode(void) {
         // If final mask is 0, MI result should be 0 too.
         if (FinalMask.isNullValue()) {
           bool Is64Bit = (MI.getOpcode() == PPC::RLWINM8 ||
-                          MI.getOpcode() == PPC::RLWINM8o);
+                          MI.getOpcode() == PPC::RLWINM8_rec);
+
+          Simplified = true;
 
           LLVM_DEBUG(dbgs() << "Replace Instr: ");
           LLVM_DEBUG(MI.dump());
@@ -895,29 +910,29 @@ bool PPCMIPeephole::simplifyCode(void) {
             MI.getOperand(1).ChangeToImmediate(0);
             MI.setDesc(TII->get(Is64Bit ? PPC::LI8 : PPC::LI));
           } else {
-            // Replace MI with "ANDIo reg, 0"
+            // Replace MI with "ANDI_rec reg, 0"
             MI.RemoveOperand(4);
             MI.RemoveOperand(3);
             MI.getOperand(2).setImm(0);
-            MI.setDesc(TII->get(Is64Bit ? PPC::ANDIo8 : PPC::ANDIo));
+            MI.setDesc(TII->get(Is64Bit ? PPC::ANDI8_rec : PPC::ANDI_rec));
+            MI.getOperand(1).setReg(SrcMI->getOperand(1).getReg());
+            if (SrcMI->getOperand(1).isKill()) {
+              MI.getOperand(1).setIsKill(true);
+              SrcMI->getOperand(1).setIsKill(false);
+            } else
+              // About to replace MI.getOperand(1), clear its kill flag.
+              MI.getOperand(1).setIsKill(false);
           }
-          Simplified = true;
-          NumRotatesCollapsed++;
 
           LLVM_DEBUG(dbgs() << "With: ");
           LLVM_DEBUG(MI.dump());
-        } else if (isRunOfOnes((unsigned)(FinalMask.getZExtValue()), NewMB,
-                               NewME) || SrcMaskFull) {
-          // If FoldingReg has only one use and it it not RLWINMo and
-          // RLWINM8o, safe to delete its def SrcMI. Otherwise keep it.
-          if (MRI->hasOneNonDBGUse(FoldingReg) &&
-              (SrcMI->getOpcode() == PPC::RLWINM ||
-               SrcMI->getOpcode() == PPC::RLWINM8)) {
-            ToErase = SrcMI;
-            LLVM_DEBUG(dbgs() << "Delete dead instruction: ");
-            LLVM_DEBUG(SrcMI->dump());
-          }
+        } else if ((isRunOfOnes((unsigned)(FinalMask.getZExtValue()), NewMB,
+                               NewME) && NewMB <= NewME)|| SrcMaskFull) {
+          // Here we only handle MBMI <= MEMI case, so NewMB must be no bigger
+          // than NewME. Otherwise we get a 64 bit value after folding, but MI
+          // return a 32 bit value.
 
+          Simplified = true;
           LLVM_DEBUG(dbgs() << "Converting Instr: ");
           LLVM_DEBUG(MI.dump());
 
@@ -936,11 +951,19 @@ bool PPCMIPeephole::simplifyCode(void) {
             // About to replace MI.getOperand(1), clear its kill flag.
             MI.getOperand(1).setIsKill(false);
 
-          Simplified = true;
-          NumRotatesCollapsed++;
-
           LLVM_DEBUG(dbgs() << "To: ");
           LLVM_DEBUG(MI.dump());
+        }
+        if (Simplified) {
+          // If FoldingReg has no non-debug use and it has no implicit def (it
+          // is not RLWINMO or RLWINM8o), it's safe to delete its def SrcMI.
+          // Otherwise keep it.
+          ++NumRotatesCollapsed;
+          if (MRI->use_nodbg_empty(FoldingReg) && !SrcMI->hasImplicitDef()) {
+            ToErase = SrcMI;
+            LLVM_DEBUG(dbgs() << "Delete dead instruction: ");
+            LLVM_DEBUG(SrcMI->dump());
+          }
         }
         break;
       }

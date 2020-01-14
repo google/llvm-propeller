@@ -10,7 +10,7 @@
 
 #include <errno.h>
 #include <stdlib.h>
-#ifndef LLDB_DISABLE_POSIX
+#if LLDB_ENABLE_POSIX
 #include <netinet/in.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -279,12 +279,9 @@ ProcessGDBRemote::ProcessGDBRemote(lldb::TargetSP target_sp,
                                    "async thread did exit");
 
   if (repro::Generator *g = repro::Reproducer::Instance().GetGenerator()) {
-    repro::ProcessGDBRemoteProvider &provider =
-        g->GetOrCreate<repro::ProcessGDBRemoteProvider>();
-    // Set the history stream to the stream owned by the provider.
-    m_gdb_comm.SetHistoryStream(provider.GetHistoryStream());
-    // Make sure to clear the stream again when we're finished.
-    provider.SetCallback([&]() { m_gdb_comm.SetHistoryStream(nullptr); });
+    repro::GDBRemoteProvider &provider =
+        g->GetOrCreate<repro::GDBRemoteProvider>();
+    m_gdb_comm.SetPacketRecorder(provider.GetNewPacketRecorder());
   }
 
   Log *log(ProcessGDBRemoteLog::GetLogIfAllCategoriesSet(GDBR_LOG_ASYNC));
@@ -2352,21 +2349,22 @@ void ProcessGDBRemote::RefreshStateAfterStop() {
 
   m_thread_ids.clear();
   m_thread_pcs.clear();
+
   // Set the thread stop info. It might have a "threads" key whose value is a
   // list of all thread IDs in the current process, so m_thread_ids might get
   // set.
+  // Check to see if SetThreadStopInfo() filled in m_thread_ids?
+  if (m_thread_ids.empty()) {
+      // No, we need to fetch the thread list manually
+      UpdateThreadIDList();
+  }
+
+  // We might set some stop info's so make sure the thread list is up to
+  // date before we do that or we might overwrite what was computed here.
+  UpdateThreadListIfNeeded();
 
   // Scope for the lock
   {
-    // Check to see if SetThreadStopInfo() filled in m_thread_ids?
-    if (m_thread_ids.empty()) {
-        // No, we need to fetch the thread list manually
-        UpdateThreadIDList();
-    }
-    // We might set some stop info's so make sure the thread list is up to
-    // date before we do that or we might overwrite what was computed here.
-    UpdateThreadListIfNeeded();
-
     // Lock the thread stack while we access it
     std::lock_guard<std::recursive_mutex> guard(m_last_stop_packet_mutex);
     // Get the number of stop packets on the stack
@@ -3362,23 +3360,29 @@ Status ProcessGDBRemote::ConnectToReplayServer(repro::Loader *loader) {
   if (!loader)
     return Status("No loader provided.");
 
-  // Construct replay history path.
-  FileSpec history_file =
-      loader->GetFile<repro::ProcessGDBRemoteProvider::Info>();
-  if (!history_file)
-    return Status("No provider for gdb-remote.");
+  static std::unique_ptr<repro::MultiLoader<repro::GDBRemoteProvider>>
+      multi_loader = repro::MultiLoader<repro::GDBRemoteProvider>::Create(
+          repro::Reproducer::Instance().GetLoader());
 
-  // Enable replay mode.
-  m_replay_mode = true;
+  if (!multi_loader)
+    return Status("No gdb remote provider found.");
+
+  llvm::Optional<std::string> history_file = multi_loader->GetNextFile();
+  if (!history_file)
+    return Status("No gdb remote packet log found.");
 
   // Load replay history.
-  if (auto error = m_gdb_replay_server.LoadReplayHistory(history_file))
+  if (auto error =
+          m_gdb_replay_server.LoadReplayHistory(FileSpec(*history_file)))
     return Status("Unable to load replay history");
 
   // Make a local connection.
   if (auto error = GDBRemoteCommunication::ConnectLocally(m_gdb_comm,
                                                           m_gdb_replay_server))
     return Status("Unable to connect to replay server");
+
+  // Enable replay mode.
+  m_replay_mode = true;
 
   // Start server thread.
   m_gdb_replay_server.StartAsyncThread();

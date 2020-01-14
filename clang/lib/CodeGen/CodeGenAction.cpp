@@ -249,7 +249,7 @@ namespace clang {
 
     void HandleTranslationUnit(ASTContext &C) override {
       {
-        llvm::TimeTraceScope TimeScope("Frontend", StringRef(""));
+        llvm::TimeTraceScope TimeScope("Frontend");
         PrettyStackTraceString CrashInfo("Per-file LLVM IR generation");
         if (FrontendTimesIsEnabled) {
           LLVMIRGenerationRefCount += 1;
@@ -334,6 +334,10 @@ namespace clang {
 
     void CompleteTentativeDefinition(VarDecl *D) override {
       Gen->CompleteTentativeDefinition(D);
+    }
+
+    void CompleteExternalDeclaration(VarDecl *D) override {
+      Gen->CompleteExternalDeclaration(D);
     }
 
     void AssignInheritanceModel(CXXRecordDecl *RD) override {

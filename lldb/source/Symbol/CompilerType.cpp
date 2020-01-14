@@ -26,12 +26,6 @@
 using namespace lldb;
 using namespace lldb_private;
 
-CompilerType::CompilerType(TypeSystem *type_system,
-                           lldb::opaque_compiler_type_t type)
-    : m_type(type), m_type_system(type_system) {}
-
-CompilerType::~CompilerType() {}
-
 // Tests
 
 bool CompilerType::IsAggregateType() const {
@@ -425,6 +419,12 @@ CompilerType CompilerType::GetRValueReferenceType() const {
     return m_type_system->GetRValueReferenceType(m_type);
   else
     return CompilerType();
+}
+
+CompilerType CompilerType::GetAtomicType() const {
+  if (IsValid())
+    return m_type_system->GetAtomicType(m_type);
+  return CompilerType();
 }
 
 CompilerType CompilerType::AddConstModifier() const {

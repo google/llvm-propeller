@@ -83,9 +83,7 @@ static MCAsmInfo *createPPCMCAsmInfo(const MCRegisterInfo &MRI,
                   TheTriple.getArch() == Triple::ppc64le);
 
   MCAsmInfo *MAI;
-  if (TheTriple.isOSDarwin())
-    MAI = new PPCMCAsmInfoDarwin(isPPC64, TheTriple);
-  else if (TheTriple.isOSBinFormatXCOFF())
+  if (TheTriple.isOSBinFormatXCOFF())
     MAI = new PPCXCOFFMCAsmInfo(isPPC64, TheTriple);
   else
     MAI = new PPCELFMCAsmInfo(isPPC64, TheTriple);
@@ -201,7 +199,8 @@ public:
 
   void finish() override {
     for (auto *Sym : UpdateOther)
-      copyLocalEntry(Sym, Sym->getVariableValue());
+      if (Sym->isVariable())
+        copyLocalEntry(Sym, Sym->getVariableValue());
   }
 
 private:

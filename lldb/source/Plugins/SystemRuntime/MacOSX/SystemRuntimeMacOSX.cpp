@@ -412,9 +412,8 @@ void SystemRuntimeMacOSX::ReadLibdispatchTSDIndexes() {
 #endif
 
     ClangASTContext *ast_ctx =
-        m_process->GetTarget().GetScratchClangASTContext();
-    if (ast_ctx->getASTContext() &&
-        m_dispatch_tsd_indexes_addr != LLDB_INVALID_ADDRESS) {
+        ClangASTContext::GetScratch(m_process->GetTarget());
+    if (m_dispatch_tsd_indexes_addr != LLDB_INVALID_ADDRESS) {
       CompilerType uint16 =
           ast_ctx->GetBuiltinTypeForEncodingAndBitSize(eEncodingUint, 16);
       CompilerType dispatch_tsd_indexes_s = ast_ctx->CreateRecordType(

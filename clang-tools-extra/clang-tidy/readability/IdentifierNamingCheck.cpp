@@ -237,10 +237,26 @@ void IdentifierNamingCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(namedDecl().bind("decl"), this);
   Finder->addMatcher(usingDecl().bind("using"), this);
   Finder->addMatcher(declRefExpr().bind("declRef"), this);
-  Finder->addMatcher(cxxConstructorDecl().bind("classRef"), this);
-  Finder->addMatcher(cxxDestructorDecl().bind("classRef"), this);
+  Finder->addMatcher(cxxConstructorDecl(unless(isImplicit())).bind("classRef"),
+                     this);
+  Finder->addMatcher(cxxDestructorDecl(unless(isImplicit())).bind("classRef"),
+                     this);
   Finder->addMatcher(typeLoc().bind("typeLoc"), this);
   Finder->addMatcher(nestedNameSpecifierLoc().bind("nestedNameLoc"), this);
+  Finder->addMatcher(
+      functionDecl(unless(cxxMethodDecl(isImplicit())),
+                   hasBody(forEachDescendant(memberExpr().bind("memberExpr")))),
+      this);
+  Finder->addMatcher(
+      cxxConstructorDecl(
+          unless(isImplicit()),
+          forEachConstructorInitializer(
+              allOf(isWritten(), withInitializer(forEachDescendant(
+                                     memberExpr().bind("memberExpr")))))),
+      this);
+  Finder->addMatcher(fieldDecl(hasInClassInitializer(
+                         forEachDescendant(memberExpr().bind("memberExpr")))),
+                     this);
 }
 
 void IdentifierNamingCheck::registerPPCallbacks(
@@ -262,26 +278,25 @@ static bool matchesStyle(StringRef Name,
       llvm::Regex("^[a-z]([a-z0-9]*(_[A-Z])?)*"),
   };
 
-  bool Matches = true;
   if (Name.startswith(Style.Prefix))
     Name = Name.drop_front(Style.Prefix.size());
   else
-    Matches = false;
+    return false;
 
   if (Name.endswith(Style.Suffix))
     Name = Name.drop_back(Style.Suffix.size());
   else
-    Matches = false;
+    return false;
 
   // Ensure the name doesn't have any extra underscores beyond those specified
   // in the prefix and suffix.
   if (Name.startswith("_") || Name.endswith("_"))
-    Matches = false;
+    return false;
 
   if (Style.Case && !Matchers[static_cast<size_t>(*Style.Case)].match(Name))
-    Matches = false;
+    return false;
 
-  return Matches;
+  return true;
 }
 
 static std::string fixupWithCase(StringRef Name,
@@ -711,8 +726,6 @@ static void addUsage(IdentifierNamingCheck::NamingCheckFailureMap &Failures,
 void IdentifierNamingCheck::check(const MatchFinder::MatchResult &Result) {
   if (const auto *Decl =
           Result.Nodes.getNodeAs<CXXConstructorDecl>("classRef")) {
-    if (Decl->isImplicit())
-      return;
 
     addUsage(NamingCheckFailures, Decl->getParent(),
              Decl->getNameInfo().getSourceRange());
@@ -731,8 +744,6 @@ void IdentifierNamingCheck::check(const MatchFinder::MatchResult &Result) {
 
   if (const auto *Decl =
           Result.Nodes.getNodeAs<CXXDestructorDecl>("classRef")) {
-    if (Decl->isImplicit())
-      return;
 
     SourceRange Range = Decl->getNameInfo().getSourceRange();
     if (Range.getBegin().isInvalid())
@@ -793,7 +804,7 @@ void IdentifierNamingCheck::check(const MatchFinder::MatchResult &Result) {
   }
 
   if (const auto *Decl = Result.Nodes.getNodeAs<UsingDecl>("using")) {
-    for (const auto &Shadow : Decl->shadows()) {
+    for (const auto *Shadow : Decl->shadows()) {
       addUsage(NamingCheckFailures, Shadow->getTargetDecl(),
                Decl->getNameInfo().getSourceRange());
     }
@@ -803,6 +814,14 @@ void IdentifierNamingCheck::check(const MatchFinder::MatchResult &Result) {
   if (const auto *DeclRef = Result.Nodes.getNodeAs<DeclRefExpr>("declRef")) {
     SourceRange Range = DeclRef->getNameInfo().getSourceRange();
     addUsage(NamingCheckFailures, DeclRef->getDecl(), Range,
+             Result.SourceManager);
+    return;
+  }
+
+  if (const auto *MemberRef =
+          Result.Nodes.getNodeAs<MemberExpr>("memberExpr")) {
+    SourceRange Range = MemberRef->getMemberNameInfo().getSourceRange();
+    addUsage(NamingCheckFailures, MemberRef->getMemberDecl(), Range,
              Result.SourceManager);
     return;
   }

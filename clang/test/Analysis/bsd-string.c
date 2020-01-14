@@ -1,4 +1,4 @@
-// RUN: %clang_analyze_cc1 -verify %s \
+// RUN: %clang_analyze_cc1 -w -verify %s \
 // RUN:   -analyzer-checker=core \
 // RUN:   -analyzer-checker=unix.cstring.NullArg \
 // RUN:   -analyzer-checker=alpha.unix.cstring \
@@ -33,11 +33,11 @@ void f3() {
 }
 
 void f4() {
-  strlcpy(NULL, "abcdef", 6); // expected-warning{{Null pointer argument in call to string copy function}}
+  strlcpy(NULL, "abcdef", 6); // expected-warning{{Null pointer passed as 1st argument to string copy function}}
 }
 
 void f5() {
-  strlcat(NULL, "abcdef", 6); // expected-warning{{Null pointer argument in call to string copy function}}
+  strlcat(NULL, "abcdef", 6); // expected-warning{{Null pointer passed as 1st argument to string concatenation function}}
 }
 
 void f6() {
@@ -130,4 +130,10 @@ void f11() {
   strlcpy(a, "world", sizeof(a));
   strlcpy(b, "hello ", sizeof(b));
   strlcat(b, a, sizeof(b)); // no-warning
+}
+
+int a, b;
+void unknown_val_crash() {
+  // We're unable to evaluate the integer-to-pointer cast.
+  strlcat(&b, a, 0); // no-crash
 }

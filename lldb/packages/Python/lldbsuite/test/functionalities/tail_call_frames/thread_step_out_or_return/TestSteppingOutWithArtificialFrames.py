@@ -71,8 +71,6 @@ class TestArtificialFrameThreadStepOut1(TestBase):
         self.assertFalse(frame2.IsArtificial())
 
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr26265")
-    @expectedFailureAll(archs=["aarch64"], oslist=["linux"],
-                        bugnumber="llvm.org/pr44160")
     def test_return_past_artificial_frame(self):
         self.build()
         thread = self.prepare_thread()
@@ -92,6 +90,3 @@ class TestArtificialFrameThreadStepOut1(TestBase):
         self.assertEqual(frame4.GetDisplayFunctionName(), "main")
         self.assertFalse(frame2.IsArtificial())
 
-    def setUp(self):
-        # Call super's setUp().
-        TestBase.setUp(self)

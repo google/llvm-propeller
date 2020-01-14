@@ -243,6 +243,9 @@ def SDT_AArch64ITOF  : SDTypeProfile<1, 1, [SDTCisFP<0>, SDTCisSameAs<0,1>]>;
 def SDT_AArch64TLSDescCall : SDTypeProfile<0, -2, [SDTCisPtrTy<0>,
                                                  SDTCisPtrTy<1>]>;
 
+def SDT_AArch64ldp : SDTypeProfile<2, 1, [SDTCisVT<0, i64>, SDTCisSameAs<0, 1>, SDTCisPtrTy<2>]>;
+def SDT_AArch64stp : SDTypeProfile<0, 3, [SDTCisVT<0, i64>, SDTCisSameAs<0, 1>, SDTCisPtrTy<2>]>;
+
 // Generates the general dynamic sequences, i.e.
 //  adrp  x0, :tlsdesc:var
 //  ldr   x1, [x0, #:tlsdesc_lo12:var]
@@ -260,12 +263,17 @@ def SDT_AArch64WrapperLarge : SDTypeProfile<1, 4,
                                          SDTCisSameAs<1, 2>, SDTCisSameAs<1, 3>,
                                          SDTCisSameAs<1, 4>]>;
 
+def SDT_AArch64TBL : SDTypeProfile<1, 2, [
+  SDTCisVec<0>, SDTCisSameAs<0, 1>, SDTCisInt<2>
+]>;
+
 // non-extending masked load fragment.
 def nonext_masked_load :
   PatFrag<(ops node:$ptr, node:$pred, node:$def),
           (masked_ld node:$ptr, undef, node:$pred, node:$def), [{
   return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::NON_EXTLOAD &&
-         cast<MaskedLoadSDNode>(N)->isUnindexed();
+         cast<MaskedLoadSDNode>(N)->isUnindexed() &&
+         !cast<MaskedLoadSDNode>(N)->isNonTemporal();
 }]>;
 // sign extending masked load fragments.
 def asext_masked_load :
@@ -313,12 +321,21 @@ def zext_masked_load_i32 :
   return cast<MaskedLoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
 }]>;
 
+def non_temporal_load :
+   PatFrag<(ops node:$ptr, node:$pred, node:$def),
+           (masked_ld node:$ptr, undef, node:$pred, node:$def), [{
+   return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::NON_EXTLOAD &&
+          cast<MaskedLoadSDNode>(N)->isUnindexed() &&
+          cast<MaskedLoadSDNode>(N)->isNonTemporal();
+}]>;
+
 // non-truncating masked store fragment.
 def nontrunc_masked_store :
   PatFrag<(ops node:$val, node:$ptr, node:$pred),
           (masked_st node:$val, node:$ptr, undef, node:$pred), [{
   return !cast<MaskedStoreSDNode>(N)->isTruncatingStore() &&
-         cast<MaskedStoreSDNode>(N)->isUnindexed();
+         cast<MaskedStoreSDNode>(N)->isUnindexed() &&
+         !cast<MaskedStoreSDNode>(N)->isNonTemporal();
 }]>;
 // truncating masked store fragments.
 def trunc_masked_store :
@@ -341,6 +358,14 @@ def trunc_masked_store_i32 :
   PatFrag<(ops node:$val, node:$ptr, node:$pred),
           (trunc_masked_store node:$val, node:$ptr, node:$pred), [{
   return cast<MaskedStoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+}]>;
+
+def non_temporal_store :
+  PatFrag<(ops node:$val, node:$ptr, node:$pred),
+          (masked_st node:$val, node:$ptr, undef, node:$pred), [{
+  return !cast<MaskedStoreSDNode>(N)->isTruncatingStore() &&
+         cast<MaskedStoreSDNode>(N)->isUnindexed() &&
+         cast<MaskedStoreSDNode>(N)->isNonTemporal();
 }]>;
 
 // Node definitions.
@@ -516,6 +541,11 @@ def AArch64sunpkhi : SDNode<"AArch64ISD::SUNPKHI", SDT_AArch64unpk>;
 def AArch64sunpklo : SDNode<"AArch64ISD::SUNPKLO", SDT_AArch64unpk>;
 def AArch64uunpkhi : SDNode<"AArch64ISD::UUNPKHI", SDT_AArch64unpk>;
 def AArch64uunpklo : SDNode<"AArch64ISD::UUNPKLO", SDT_AArch64unpk>;
+
+def AArch64ldp : SDNode<"AArch64ISD::LDP", SDT_AArch64ldp, [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def AArch64stp : SDNode<"AArch64ISD::STP", SDT_AArch64stp, [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
+
+def AArch64tbl : SDNode<"AArch64ISD::TBL", SDT_AArch64TBL>;
 
 //===----------------------------------------------------------------------===//
 
@@ -785,32 +815,56 @@ let Predicates = [HasComplxNum, HasNEON] in {
 
 // v8.3a Pointer Authentication
 // These instructions inhabit part of the hint space and so can be used for
-// armv8 targets
+// armv8 targets. Keeping the old HINT mnemonic when compiling without PA is
+// important for compatibility with other assemblers (e.g. GAS) when building
+// software compatible with both CPUs that do or don't implement PA.
 let Uses = [LR], Defs = [LR] in {
-  def PACIAZ   : SystemNoOperands<0b000, "paciaz">;
-  def PACIBZ   : SystemNoOperands<0b010, "pacibz">;
-  def AUTIAZ   : SystemNoOperands<0b100, "autiaz">;
-  def AUTIBZ   : SystemNoOperands<0b110, "autibz">;
+  def PACIAZ   : SystemNoOperands<0b000, "hint #24">;
+  def PACIBZ   : SystemNoOperands<0b010, "hint #26">;
+  let isAuthenticated = 1 in {
+    def AUTIAZ   : SystemNoOperands<0b100, "hint #28">;
+    def AUTIBZ   : SystemNoOperands<0b110, "hint #30">;
+  }
 }
 let Uses = [LR, SP], Defs = [LR] in {
-  def PACIASP  : SystemNoOperands<0b001, "paciasp">;
-  def PACIBSP  : SystemNoOperands<0b011, "pacibsp">;
-  def AUTIASP  : SystemNoOperands<0b101, "autiasp">;
-  def AUTIBSP  : SystemNoOperands<0b111, "autibsp">;
+  def PACIASP  : SystemNoOperands<0b001, "hint #25">;
+  def PACIBSP  : SystemNoOperands<0b011, "hint #27">;
+  let isAuthenticated = 1 in {
+    def AUTIASP  : SystemNoOperands<0b101, "hint #29">;
+    def AUTIBSP  : SystemNoOperands<0b111, "hint #31">;
+  }
 }
 let Uses = [X16, X17], Defs = [X17], CRm = 0b0001 in {
-  def PACIA1716  : SystemNoOperands<0b000, "pacia1716">;
-  def PACIB1716  : SystemNoOperands<0b010, "pacib1716">;
-  def AUTIA1716  : SystemNoOperands<0b100, "autia1716">;
-  def AUTIB1716  : SystemNoOperands<0b110, "autib1716">;
+  def PACIA1716  : SystemNoOperands<0b000, "hint #8">;
+  def PACIB1716  : SystemNoOperands<0b010, "hint #10">;
+  let isAuthenticated = 1 in {
+    def AUTIA1716  : SystemNoOperands<0b100, "hint #12">;
+    def AUTIB1716  : SystemNoOperands<0b110, "hint #14">;
+  }
 }
 
 let Uses = [LR], Defs = [LR], CRm = 0b0000 in {
-  def XPACLRI   : SystemNoOperands<0b111, "xpaclri">;
+  def XPACLRI   : SystemNoOperands<0b111, "hint #7">;
 }
 
-// These pointer authentication isntructions require armv8.3a
+// These pointer authentication instructions require armv8.3a
 let Predicates = [HasPA] in {
+
+  // When compiling with PA, there is a better mnemonic for these instructions.
+  def : InstAlias<"paciaz", (PACIAZ), 1>;
+  def : InstAlias<"pacibz", (PACIBZ), 1>;
+  def : InstAlias<"autiaz", (AUTIAZ), 1>;
+  def : InstAlias<"autibz", (AUTIBZ), 1>;
+  def : InstAlias<"paciasp", (PACIASP), 1>;
+  def : InstAlias<"pacibsp", (PACIBSP), 1>;
+  def : InstAlias<"autiasp", (AUTIASP), 1>;
+  def : InstAlias<"autibsp", (AUTIBSP), 1>;
+  def : InstAlias<"pacia1716", (PACIA1716), 1>;
+  def : InstAlias<"pacib1716", (PACIB1716), 1>;
+  def : InstAlias<"autia1716", (AUTIA1716), 1>;
+  def : InstAlias<"autib1716", (AUTIB1716), 1>;
+  def : InstAlias<"xpaclri", (XPACLRI), 1>;
+
   multiclass SignAuth<bits<3> prefix, bits<3> prefix_z, string asm> {
     def IA   : SignAuthOneData<prefix, 0b00, !strconcat(asm, "ia")>;
     def IB   : SignAuthOneData<prefix, 0b01, !strconcat(asm, "ib")>;
@@ -1969,6 +2023,9 @@ defm LDNPS : LoadPairNoAlloc<0b00, 1, FPR32Op, simm7s4, "ldnp">;
 defm LDNPD : LoadPairNoAlloc<0b01, 1, FPR64Op, simm7s8, "ldnp">;
 defm LDNPQ : LoadPairNoAlloc<0b10, 1, FPR128Op, simm7s16, "ldnp">;
 
+def : Pat<(AArch64ldp (am_indexed7s64 GPR64sp:$Rn, simm7s8:$offset)),
+          (LDPXi GPR64sp:$Rn, simm7s8:$offset)>;
+
 //---
 // (register offset)
 //---
@@ -2661,6 +2718,9 @@ defm STNPX : StorePairNoAlloc<0b10, 0, GPR64z, simm7s8, "stnp">;
 defm STNPS : StorePairNoAlloc<0b00, 1, FPR32Op, simm7s4, "stnp">;
 defm STNPD : StorePairNoAlloc<0b01, 1, FPR64Op, simm7s8, "stnp">;
 defm STNPQ : StorePairNoAlloc<0b10, 1, FPR128Op, simm7s16, "stnp">;
+
+def : Pat<(AArch64stp GPR64z:$Rt, GPR64z:$Rt2, (am_indexed7s64 GPR64sp:$Rn, simm7s8:$offset)),
+          (STPXi GPR64z:$Rt, GPR64z:$Rt2, GPR64sp:$Rn, simm7s8:$offset)>;
 
 //---
 // (Register offset)
@@ -3616,14 +3676,8 @@ def : Pat<(v4f32 (int_aarch64_neon_vcvthf2fp (extract_subvector (v8i16 V128:$Rn)
                                                               (i64 4)))),
           (FCVTLv8i16 V128:$Rn)>;
 def : Pat<(v2f64 (fpextend (v2f32 V64:$Rn))), (FCVTLv2i32 V64:$Rn)>;
-def : Pat<(v2f64 (fpextend (v2f32 (extract_subvector (v4f32 V128:$Rn),
-                                                    (i64 2))))),
-          (FCVTLv4i32 V128:$Rn)>;
 
 def : Pat<(v4f32 (fpextend (v4f16 V64:$Rn))), (FCVTLv4i16 V64:$Rn)>;
-def : Pat<(v4f32 (fpextend (v4f16 (extract_subvector (v8f16 V128:$Rn),
-                                                    (i64 4))))),
-          (FCVTLv8i16 V128:$Rn)>;
 
 defm FCVTMS : SIMDTwoVectorFPToInt<0,0,0b11011, "fcvtms",int_aarch64_neon_fcvtms>;
 defm FCVTMU : SIMDTwoVectorFPToInt<1,0,0b11011, "fcvtmu",int_aarch64_neon_fcvtmu>;

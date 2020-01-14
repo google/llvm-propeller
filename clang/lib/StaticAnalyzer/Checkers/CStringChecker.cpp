@@ -290,9 +290,9 @@ ProgramStateRef CStringChecker::checkNonNull(CheckerContext &C,
       SmallString<80> buf;
       llvm::raw_svector_ostream OS(buf);
       assert(CurrentFunctionDescription);
-      OS << "Null pointer argument in call to " << CurrentFunctionDescription
-         << ' ' << IdxOfArg << llvm::getOrdinalSuffix(IdxOfArg)
-         << " parameter";
+      OS << "Null pointer passed as " << IdxOfArg
+         << llvm::getOrdinalSuffix(IdxOfArg) << " argument to "
+         << CurrentFunctionDescription;
 
       emitNullArgBug(C, stateNull, S, OS.str());
     }
@@ -1006,12 +1006,9 @@ ProgramStateRef CStringChecker::InvalidateBuffer(CheckerContext &C,
 
 bool CStringChecker::SummarizeRegion(raw_ostream &os, ASTContext &Ctx,
                                      const MemRegion *MR) {
-  const TypedValueRegion *TVR = dyn_cast<TypedValueRegion>(MR);
-
   switch (MR->getKind()) {
   case MemRegion::FunctionCodeRegionKind: {
-    const NamedDecl *FD = cast<FunctionCodeRegion>(MR)->getDecl();
-    if (FD)
+    if (const auto *FD = cast<FunctionCodeRegion>(MR)->getDecl())
       os << "the address of the function '" << *FD << '\'';
     else
       os << "the address of a function";
@@ -1025,16 +1022,20 @@ bool CStringChecker::SummarizeRegion(raw_ostream &os, ASTContext &Ctx,
     return true;
   case MemRegion::CXXThisRegionKind:
   case MemRegion::CXXTempObjectRegionKind:
-    os << "a C++ temp object of type " << TVR->getValueType().getAsString();
+    os << "a C++ temp object of type "
+       << cast<TypedValueRegion>(MR)->getValueType().getAsString();
     return true;
   case MemRegion::VarRegionKind:
-    os << "a variable of type" << TVR->getValueType().getAsString();
+    os << "a variable of type"
+       << cast<TypedValueRegion>(MR)->getValueType().getAsString();
     return true;
   case MemRegion::FieldRegionKind:
-    os << "a field of type " << TVR->getValueType().getAsString();
+    os << "a field of type "
+       << cast<TypedValueRegion>(MR)->getValueType().getAsString();
     return true;
   case MemRegion::ObjCIvarRegionKind:
-    os << "an instance variable of type " << TVR->getValueType().getAsString();
+    os << "an instance variable of type "
+       << cast<TypedValueRegion>(MR)->getValueType().getAsString();
     return true;
   default:
     return false;
@@ -1313,9 +1314,9 @@ void CStringChecker::evalMemcmp(CheckerContext &C, const CallExpr *CE) const {
     ProgramStateRef StSameBuf, StNotSameBuf;
     std::tie(StSameBuf, StNotSameBuf) = state->assume(SameBuf);
 
-    // If the two arguments might be the same buffer, we know the result is 0,
+    // If the two arguments are the same buffer, we know the result is 0,
     // and we only need to check one size.
-    if (StSameBuf) {
+    if (StSameBuf && !StNotSameBuf) {
       state = StSameBuf;
       state = CheckBufferAccess(C, state, Size, Left);
       if (state) {
@@ -1323,20 +1324,19 @@ void CStringChecker::evalMemcmp(CheckerContext &C, const CallExpr *CE) const {
                                     svalBuilder.makeZeroVal(CE->getType()));
         C.addTransition(state);
       }
+      return;
     }
 
-    // If the two arguments might be different buffers, we have to check the
-    // size of both of them.
-    if (StNotSameBuf) {
-      state = StNotSameBuf;
-      state = CheckBufferAccess(C, state, Size, Left, Right);
-      if (state) {
-        // The return value is the comparison result, which we don't know.
-        SVal CmpV = svalBuilder.conjureSymbolVal(nullptr, CE, LCtx,
-                                                 C.blockCount());
-        state = state->BindExpr(CE, LCtx, CmpV);
-        C.addTransition(state);
-      }
+    // If the two arguments might be different buffers, we have to check
+    // the size of both of them.
+    assert(StNotSameBuf);
+    state = CheckBufferAccess(C, state, Size, Left, Right);
+    if (state) {
+      // The return value is the comparison result, which we don't know.
+      SVal CmpV =
+          svalBuilder.conjureSymbolVal(nullptr, CE, LCtx, C.blockCount());
+      state = state->BindExpr(CE, LCtx, CmpV);
+      C.addTransition(state);
     }
   }
 }
@@ -1536,7 +1536,10 @@ void CStringChecker::evalStrcpyCommon(CheckerContext &C, const CallExpr *CE,
                                       bool ReturnEnd, bool IsBounded,
                                       ConcatFnKind appendK,
                                       bool returnPtr) const {
-  CurrentFunctionDescription = "string copy function";
+  if (appendK == ConcatFnKind::none)
+    CurrentFunctionDescription = "string copy function";
+  else
+    CurrentFunctionDescription = "string concatenation function";
   ProgramStateRef state = C.getState();
   const LocationContext *LCtx = C.getLocationContext();
 
@@ -1704,13 +1707,12 @@ void CStringChecker::evalStrcpyCommon(CheckerContext &C, const CallExpr *CE,
           } else {
             if (appendK == ConcatFnKind::none) {
               // strlcpy returns strlen(src)
-              StateZeroSize = StateZeroSize->BindExpr(CE, LCtx, *strLengthNL);
-            } else if (dstStrLengthNL) {
+              StateZeroSize = StateZeroSize->BindExpr(CE, LCtx, strLength);
+            } else {
               // strlcat returns strlen(src) + strlen(dst)
-              SVal retSize = svalBuilder.evalBinOpNN(
-                  state, BO_Add, *strLengthNL, *dstStrLengthNL, sizeTy);
-              StateZeroSize =
-                  StateZeroSize->BindExpr(CE, LCtx, *(retSize.getAs<NonLoc>()));
+              SVal retSize = svalBuilder.evalBinOp(
+                  state, BO_Add, strLength, dstStrLength, sizeTy);
+              StateZeroSize = StateZeroSize->BindExpr(CE, LCtx, retSize);
             }
           }
           C.addTransition(StateZeroSize);

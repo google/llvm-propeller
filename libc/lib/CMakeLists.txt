@@ -2,10 +2,16 @@
 add_entrypoint_library(
   llvmlibc
   DEPENDS
+    # errno.h entrypoints
+    __errno_location
+
     # string.h entrypoints
-    ## C standard library entrypoints
     strcpy
     strcat
+
+    # sys/mman.h entrypoints
+    mmap
+    munmap
 )
 
 add_entrypoint_library(

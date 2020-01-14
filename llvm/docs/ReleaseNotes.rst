@@ -90,6 +90,14 @@ Non-comprehensive list of changes in this release
   ``-cfguard-nochecks`` option. Note that this feature should always be used 
   with optimizations enabled.
 
+* ``Callbacks`` have been added to ``CommandLine Options``.  These can
+  be used to validate of selectively enable other options.
+
+* The function attributes ``no-frame-pointer-elim`` and
+  ``no-frame-pointer-elim-non-leaf`` have been replaced by ``frame-pointer``,
+  which has 3 values: ``none``, ``non-leaf``, and ``all``. The values mean what
+  functions should retain frame pointers.
+
 Changes to the LLVM IR
 ----------------------
 
@@ -167,15 +175,15 @@ Changes to the OCaml bindings
 Changes to the C API
 --------------------
 * C DebugInfo API ``LLVMDIBuilderCreateTypedef`` is updated to include an extra
-argument ``AlignInBits``, to facilitate / propagate specified Alignment information
-present in a ``typedef`` to Debug information in LLVM IR.
+  argument ``AlignInBits``, to facilitate / propagate specified Alignment information
+  present in a ``typedef`` to Debug information in LLVM IR.
 
 
 Changes to the Go bindings
 --------------------------
 * Go DebugInfo API ``CreateTypedef`` is updated to include an extra argument ``AlignInBits``,
-to facilitate / propagate specified Alignment information present in a ``typedef``
-to Debug information in LLVM IR.
+  to facilitate / propagate specified Alignment information present in a ``typedef``
+  to Debug information in LLVM IR.
 
 
 Changes to the DAG infrastructure

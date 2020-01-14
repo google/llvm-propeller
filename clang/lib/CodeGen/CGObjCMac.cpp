@@ -16,8 +16,8 @@
 #include "CGRecordLayout.h"
 #include "CodeGenFunction.h"
 #include "CodeGenModule.h"
-#include "clang/CodeGen/ConstantInitBuilder.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/RecordLayout.h"
@@ -25,6 +25,7 @@
 #include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
+#include "clang/CodeGen/ConstantInitBuilder.h"
 #include "llvm/ADT/CachedHashString.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -927,7 +928,8 @@ protected:
   /// \param[out] NameOut - The return value.
   void GetNameForMethod(const ObjCMethodDecl *OMD,
                         const ObjCContainerDecl *CD,
-                        SmallVectorImpl<char> &NameOut);
+                        SmallVectorImpl<char> &NameOut,
+                        bool ignoreCategoryNamespace = false);
 
   /// GetMethodVarName - Return a unique constant for the given
   /// selector's name. The return value has type char *.
@@ -1314,7 +1316,7 @@ private:
   /// EmitSelector - Return a Value*, of type ObjCTypes.SelectorPtrTy,
   /// for the given selector.
   llvm::Value *EmitSelector(CodeGenFunction &CGF, Selector Sel);
-  Address EmitSelectorAddr(CodeGenFunction &CGF, Selector Sel);
+  Address EmitSelectorAddr(Selector Sel);
 
 public:
   CGObjCMac(CodeGen::CodeGenModule &cgm);
@@ -1542,7 +1544,7 @@ private:
   /// EmitSelector - Return a Value*, of type ObjCTypes.SelectorPtrTy,
   /// for the given selector.
   llvm::Value *EmitSelector(CodeGenFunction &CGF, Selector Sel);
-  Address EmitSelectorAddr(CodeGenFunction &CGF, Selector Sel);
+  Address EmitSelectorAddr(Selector Sel);
 
   /// GetInterfaceEHType - Get the cached ehtype for the given Objective-C
   /// interface. The return value has type EHTypePtrTy.
@@ -1634,7 +1636,7 @@ public:
   llvm::Value *GetSelector(CodeGenFunction &CGF, Selector Sel) override
     { return EmitSelector(CGF, Sel); }
   Address GetAddrOfSelector(CodeGenFunction &CGF, Selector Sel) override
-    { return EmitSelectorAddr(CGF, Sel); }
+    { return EmitSelectorAddr(Sel); }
 
   /// The NeXT/Apple runtimes do not support typed selectors; just emit an
   /// untyped one.
@@ -1902,7 +1904,7 @@ llvm::Value *CGObjCMac::GetSelector(CodeGenFunction &CGF, Selector Sel) {
   return EmitSelector(CGF, Sel);
 }
 Address CGObjCMac::GetAddrOfSelector(CodeGenFunction &CGF, Selector Sel) {
-  return EmitSelectorAddr(CGF, Sel);
+  return EmitSelectorAddr(Sel);
 }
 llvm::Value *CGObjCMac::GetSelector(CodeGenFunction &CGF, const ObjCMethodDecl
                                     *Method) {
@@ -3243,9 +3245,6 @@ PushProtocolProperties(llvm::SmallPtrSet<const IdentifierInfo*,16> &PropertySet,
                        SmallVectorImpl<const ObjCPropertyDecl *> &Properties,
                        const ObjCProtocolDecl *Proto,
                        bool IsClassProperty) {
-  for (const auto *P : Proto->protocols())
-    PushProtocolProperties(PropertySet, Properties, P, IsClassProperty);
-
   for (const auto *PD : Proto->properties()) {
     if (IsClassProperty != PD->isClassProperty())
       continue;
@@ -3253,6 +3252,9 @@ PushProtocolProperties(llvm::SmallPtrSet<const IdentifierInfo*,16> &PropertySet,
       continue;
     Properties.push_back(PD);
   }
+
+  for (const auto *P : Proto->protocols())
+    PushProtocolProperties(PropertySet, Properties, P, IsClassProperty);
 }
 
 /*
@@ -4027,12 +4029,12 @@ llvm::Function *CGObjCCommonMac::GenerateMethod(const ObjCMethodDecl *OMD,
 llvm::Function *
 CGObjCCommonMac::GenerateDirectMethod(const ObjCMethodDecl *OMD,
                                       const ObjCContainerDecl *CD) {
-  auto I = DirectMethodDefinitions.find(OMD);
+  auto I = DirectMethodDefinitions.find(OMD->getCanonicalDecl());
   if (I != DirectMethodDefinitions.end())
     return I->second;
 
   SmallString<256> Name;
-  GetNameForMethod(OMD, CD, Name);
+  GetNameForMethod(OMD, CD, Name, /*ignoreCategoryNamespace*/true);
 
   CodeGenTypes &Types = CGM.getTypes();
   llvm::FunctionType *MethodTy =
@@ -4040,7 +4042,7 @@ CGObjCCommonMac::GenerateDirectMethod(const ObjCMethodDecl *OMD,
   llvm::Function *Method =
       llvm::Function::Create(MethodTy, llvm::GlobalValue::ExternalLinkage,
                              Name.str(), &CGM.getModule());
-  DirectMethodDefinitions.insert(std::make_pair(OMD, Method));
+  DirectMethodDefinitions.insert(std::make_pair(OMD->getCanonicalDecl(), Method));
 
   return Method;
 }
@@ -4087,9 +4089,9 @@ void CGObjCCommonMac::GenerateDirectMethodPrologue(
         nullptr, true);
     Builder.CreateStore(result.getScalarVal(), selfAddr);
 
-	// Nullable `Class` expressions cannot be messaged with a direct method
-	// so the only reason why the receive can be null would be because
-	// of weak linking.
+    // Nullable `Class` expressions cannot be messaged with a direct method
+    // so the only reason why the receive can be null would be because
+    // of weak linking.
     ReceiverCanBeNull = isWeakLinkedClass(OID);
   }
 
@@ -5262,11 +5264,11 @@ llvm::Value *CGObjCMac::EmitNSAutoreleasePoolClassRef(CodeGenFunction &CGF) {
 }
 
 llvm::Value *CGObjCMac::EmitSelector(CodeGenFunction &CGF, Selector Sel) {
-  return CGF.Builder.CreateLoad(EmitSelectorAddr(CGF, Sel));
+  return CGF.Builder.CreateLoad(EmitSelectorAddr(Sel));
 }
 
-Address CGObjCMac::EmitSelectorAddr(CodeGenFunction &CGF, Selector Sel) {
-  CharUnits Align = CGF.getPointerAlign();
+Address CGObjCMac::EmitSelectorAddr(Selector Sel) {
+  CharUnits Align = CGM.getPointerAlign();
 
   llvm::GlobalVariable *&Entry = SelectorReferences[Sel];
   if (!Entry) {
@@ -5686,14 +5688,16 @@ CGObjCCommonMac::GetPropertyTypeString(const ObjCPropertyDecl *PD,
 
 void CGObjCCommonMac::GetNameForMethod(const ObjCMethodDecl *D,
                                        const ObjCContainerDecl *CD,
-                                       SmallVectorImpl<char> &Name) {
+                                       SmallVectorImpl<char> &Name,
+                                       bool ignoreCategoryNamespace) {
   llvm::raw_svector_ostream OS(Name);
   assert (CD && "Missing container decl in GetNameForMethod");
   OS << '\01' << (D->isInstanceMethod() ? '-' : '+')
      << '[' << CD->getName();
-  if (const ObjCCategoryImplDecl *CID =
-      dyn_cast<ObjCCategoryImplDecl>(D->getDeclContext()))
-    OS << '(' << *CID << ')';
+  if (!ignoreCategoryNamespace)
+    if (const ObjCCategoryImplDecl *CID =
+        dyn_cast<ObjCCategoryImplDecl>(D->getDeclContext()))
+      OS << '(' << *CID << ')';
   OS << ' ' << D->getSelector().getAsString() << ']';
 }
 
@@ -7606,7 +7610,7 @@ CGObjCNonFragileABIMac::GenerateMessageSendSuper(CodeGen::CodeGenFunction &CGF,
 
 llvm::Value *CGObjCNonFragileABIMac::EmitSelector(CodeGenFunction &CGF,
                                                   Selector Sel) {
-  Address Addr = EmitSelectorAddr(CGF, Sel);
+  Address Addr = EmitSelectorAddr(Sel);
 
   llvm::LoadInst* LI = CGF.Builder.CreateLoad(Addr);
   LI->setMetadata(CGM.getModule().getMDKindID("invariant.load"),
@@ -7614,11 +7618,9 @@ llvm::Value *CGObjCNonFragileABIMac::EmitSelector(CodeGenFunction &CGF,
   return LI;
 }
 
-Address CGObjCNonFragileABIMac::EmitSelectorAddr(CodeGenFunction &CGF,
-                                                 Selector Sel) {
+Address CGObjCNonFragileABIMac::EmitSelectorAddr(Selector Sel) {
   llvm::GlobalVariable *&Entry = SelectorReferences[Sel];
-
-  CharUnits Align = CGF.getPointerAlign();
+  CharUnits Align = CGM.getPointerAlign();
   if (!Entry) {
     llvm::Constant *Casted =
       llvm::ConstantExpr::getBitCast(GetMethodVarName(Sel),

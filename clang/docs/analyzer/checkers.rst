@@ -292,6 +292,20 @@ Check for memory leaks. Traces memory managed by new/delete.
    int *p = new int;
  } // warn
 
+.. _cplusplus-PlacementNewChecker:
+
+cplusplus.PlacementNewChecker (C++)
+"""""""""""""""""""""""""""""""""""
+Check if default placement new is provided with pointers to sufficient storage capacity.
+
+.. code-block:: cpp
+
+ #include <new>
+
+ void f() {
+   short s;
+   long *lp = ::new (&s) long; // warn
+ }
 
 .. _cplusplus-SelfAssignment:
 
@@ -1333,6 +1347,31 @@ Warns if 'CFArray', 'CFDictionary', 'CFSet' are created with non-pointer-size va
    int x[] = { 1 };
    CFArrayRef A = CFArrayCreate(0, (const void """""""""""""""""""""""")x, 1,
                                 &kCFTypeArrayCallBacks); // warn
+ }
+
+Fuchsia
+^^^^^^^
+
+Fuchsia is an open source capability-based operating system currently being
+developed by Google. This section describes checkers that can find various
+misuses of Fuchsia APIs.
+
+.. _fuchsia-HandleChecker:
+
+fuchsia.HandleChecker
+""""""""""""""""""""""""""""
+Handles identify resources. Similar to pointers they can be leaked,
+double freed, or use after freed. This check attempts to find such problems.
+
+.. code-block:: cpp
+
+ void checkLeak08(int tag) {
+   zx_handle_t sa, sb;
+   zx_channel_create(0, &sa, &sb);
+   if (tag)
+     zx_handle_close(sa);
+   use(sb); // Warn: Potential leak of handle
+   zx_handle_close(sb);
  }
 
 

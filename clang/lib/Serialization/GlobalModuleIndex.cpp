@@ -125,16 +125,17 @@ typedef llvm::OnDiskIterableChainedHashTable<IdentifierIndexReaderTrait>
 
 }
 
-GlobalModuleIndex::GlobalModuleIndex(std::unique_ptr<llvm::MemoryBuffer> Buffer,
-                                     llvm::BitstreamCursor Cursor)
-    : Buffer(std::move(Buffer)), IdentifierIndex(), NumIdentifierLookups(),
+GlobalModuleIndex::GlobalModuleIndex(
+    std::unique_ptr<llvm::MemoryBuffer> IndexBuffer,
+    llvm::BitstreamCursor Cursor)
+    : Buffer(std::move(IndexBuffer)), IdentifierIndex(), NumIdentifierLookups(),
       NumIdentifierLookupHits() {
-  auto Fail = [&Buffer](llvm::Error &&Err) {
+  auto Fail = [&](llvm::Error &&Err) {
     report_fatal_error("Module index '" + Buffer->getBufferIdentifier() +
                        "' failed: " + toString(std::move(Err)));
   };
 
-  llvm::TimeTraceScope TimeScope("Module LoadIndex", StringRef(""));
+  llvm::TimeTraceScope TimeScope("Module LoadIndex");
   // Read the global index.
   bool InGlobalIndexBlock = false;
   bool Done = false;
@@ -770,7 +771,7 @@ bool GlobalModuleIndexBuilder::writeIndex(llvm::BitstreamWriter &Stream) {
   }
 
   using namespace llvm;
-  llvm::TimeTraceScope TimeScope("Module WriteIndex", StringRef(""));
+  llvm::TimeTraceScope TimeScope("Module WriteIndex");
 
   // Emit the file header.
   Stream.Emit((unsigned)'B', 8);

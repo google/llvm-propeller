@@ -127,7 +127,7 @@ TEST_F(ObjCLocalizeStringLiteralTest, Test) {
   ExtraArgs.push_back("-x");
   ExtraArgs.push_back("objective-c");
 
-  // Ensure the the action can be initiated in the string literal.
+  // Ensure the action can be initiated in the string literal.
   EXPECT_AVAILABLE(R"(id x = ^[[@[[^"^t^est^"]]]];)");
 
   // Ensure that the action can't be initiated in other places.
@@ -270,7 +270,7 @@ TEST_F(ExtractVariableTest, Test) {
         a = [[a + 1]];
       // lambda
       auto lamb = [&[[a]], &[[b]]](int r = [[1]]) {return 1;}
-      // assigment
+      // assignment
       xyz([[a = 5]]);
       xyz([[a *= 5]]);
       // Variable DeclRefExpr
@@ -585,8 +585,10 @@ TEST_F(ExtractFunctionTest, FunctionTest) {
   EXPECT_THAT(apply(" for([[int i = 0;]];);"), HasSubstr("extracted"));
   // Don't extract because needs hoisting.
   EXPECT_THAT(apply(" [[int a = 5;]] a++; "), StartsWith("fail"));
-  // Don't extract return
-  EXPECT_THAT(apply(" if(true) [[return;]] "), StartsWith("fail"));
+  // Extract certain return
+  EXPECT_THAT(apply(" if(true) [[{ return; }]] "), HasSubstr("extracted"));
+  // Don't extract uncertain return
+  EXPECT_THAT(apply(" if(true) [[if (false) return;]] "), StartsWith("fail"));
 }
 
 TEST_F(ExtractFunctionTest, FileTest) {
@@ -694,6 +696,42 @@ TEST_F(ExtractFunctionTest, ControlFlow) {
   EXPECT_THAT(apply(" switch(1) { [[break;]] }"), StartsWith("fail"));
   EXPECT_THAT(apply(" for(;;) { [[while(1) break; break;]] }"),
               StartsWith("fail"));
+}
+
+TEST_F(ExtractFunctionTest, ExistingReturnStatement) {
+  Context = File;
+  const char* Before = R"cpp(
+    bool lucky(int N);
+    int getNum(bool Superstitious, int Min, int Max) {
+      if (Superstitious) [[{
+        for (int I = Min; I <= Max; ++I)
+          if (lucky(I))
+            return I;
+        return -1;
+      }]] else {
+        return (Min + Max) / 2;
+      }
+    }
+  )cpp";
+  // FIXME: min/max should be by value.
+  // FIXME: avoid emitting redundant braces
+  const char* After = R"cpp(
+    bool lucky(int N);
+    int extracted(int &Min, int &Max) {
+{
+        for (int I = Min; I <= Max; ++I)
+          if (lucky(I))
+            return I;
+        return -1;
+      }
+}
+int getNum(bool Superstitious, int Min, int Max) {
+      if (Superstitious) return extracted(Min, Max); else {
+        return (Min + Max) / 2;
+      }
+    }
+  )cpp";
+  EXPECT_EQ(apply(Before), After);
 }
 
 TWEAK_TEST(RemoveUsingNamespace);
@@ -1826,6 +1864,74 @@ TEST_F(DefineInlineTest, QualifyWithUsingDirectives) {
   EXPECT_EQ(apply(Test), Expected) << Test;
 }
 
+TEST_F(DefineInlineTest, AddInline) {
+  ExtraArgs.push_back("-fno-delayed-template-parsing");
+  llvm::StringMap<std::string> EditedFiles;
+  ExtraFiles["a.h"] = "void foo();";
+  apply(R"cpp(#include "a.h"
+              void fo^o() {})cpp",
+        &EditedFiles);
+  EXPECT_THAT(EditedFiles, testing::ElementsAre(FileWithContents(
+                               testPath("a.h"), "inline void foo(){}")));
+
+  // Check we put inline before cv-qualifiers.
+  ExtraFiles["a.h"] = "const int foo();";
+  apply(R"cpp(#include "a.h"
+              const int fo^o() {})cpp",
+        &EditedFiles);
+  EXPECT_THAT(EditedFiles, testing::ElementsAre(FileWithContents(
+                               testPath("a.h"), "inline const int foo(){}")));
+
+  // No double inline.
+  ExtraFiles["a.h"] = "inline void foo();";
+  apply(R"cpp(#include "a.h"
+              inline void fo^o() {})cpp",
+        &EditedFiles);
+  EXPECT_THAT(EditedFiles, testing::ElementsAre(FileWithContents(
+                               testPath("a.h"), "inline void foo(){}")));
+
+  // Constexprs don't need "inline".
+  ExtraFiles["a.h"] = "constexpr void foo();";
+  apply(R"cpp(#include "a.h"
+              constexpr void fo^o() {})cpp",
+        &EditedFiles);
+  EXPECT_THAT(EditedFiles, testing::ElementsAre(FileWithContents(
+                               testPath("a.h"), "constexpr void foo(){}")));
+
+  // Class members don't need "inline".
+  ExtraFiles["a.h"] = "struct Foo { void foo(); }";
+  apply(R"cpp(#include "a.h"
+              void Foo::fo^o() {})cpp",
+        &EditedFiles);
+  EXPECT_THAT(EditedFiles,
+              testing::ElementsAre(FileWithContents(
+                  testPath("a.h"), "struct Foo { void foo(){} }")));
+
+  // Function template doesn't need to be "inline"d.
+  ExtraFiles["a.h"] = "template <typename T> void foo();";
+  apply(R"cpp(#include "a.h"
+              template <typename T>
+              void fo^o() {})cpp",
+        &EditedFiles);
+  EXPECT_THAT(EditedFiles,
+              testing::ElementsAre(FileWithContents(
+                  testPath("a.h"), "template <typename T> void foo(){}")));
+
+  // Specializations needs to be marked "inline".
+  ExtraFiles["a.h"] = R"cpp(
+                            template <typename T> void foo();
+                            template <> void foo<int>();)cpp";
+  apply(R"cpp(#include "a.h"
+              template <>
+              void fo^o<int>() {})cpp",
+        &EditedFiles);
+  EXPECT_THAT(EditedFiles,
+              testing::ElementsAre(FileWithContents(testPath("a.h"),
+                                                    R"cpp(
+                            template <typename T> void foo();
+                            template <> inline void foo<int>(){})cpp")));
+}
+
 TWEAK_TEST(DefineOutline);
 TEST_F(DefineOutlineTest, TriggersOnFunctionDecl) {
   FileName = "Test.cpp";
@@ -1934,6 +2040,30 @@ TEST_F(DefineOutlineTest, ApplyTest) {
             template <typename> void foo();
             template <> void foo<int>() ;)cpp",
           "template <> void foo<int>() { return; }",
+      },
+      // Default args.
+      {
+          "void fo^o(int x, int y = 5, int = 2, int (*foo)(int) = nullptr) {}",
+          "void foo(int x, int y = 5, int = 2, int (*foo)(int) = nullptr) ;",
+          "void foo(int x, int y , int , int (*foo)(int) ) {}",
+      },
+      // Ctor initializers.
+      {
+          R"cpp(
+              class Foo {
+                int y = 2;
+                F^oo(int z) __attribute__((weak)) : bar(2){}
+                int bar;
+                int z = 2;
+              };)cpp",
+          R"cpp(
+              class Foo {
+                int y = 2;
+                Foo(int z) __attribute__((weak)) ;
+                int bar;
+                int z = 2;
+              };)cpp",
+          "Foo::Foo(int z) __attribute__((weak)) : bar(2){}\n",
       },
   };
   for (const auto &Case : Cases) {

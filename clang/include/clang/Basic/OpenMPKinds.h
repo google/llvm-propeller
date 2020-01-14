@@ -15,6 +15,7 @@
 #define LLVM_CLANG_BASIC_OPENMPKINDS_H
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Frontend/OpenMP/OMPConstants.h"
 
 namespace clang {
 
@@ -58,14 +59,7 @@ template <typename VectorType, typename ScoreT> struct OpenMPCtxSelectorData {
 };
 
 /// OpenMP directives.
-enum OpenMPDirectiveKind {
-#define OPENMP_DIRECTIVE(Name) \
-  OMPD_##Name,
-#define OPENMP_DIRECTIVE_EXT(Name, Str) \
-  OMPD_##Name,
-#include "clang/Basic/OpenMPKinds.def"
-  OMPD_unknown
-};
+using OpenMPDirectiveKind = llvm::omp::Directive;
 
 /// OpenMP clauses.
 enum OpenMPClauseKind {
@@ -85,14 +79,6 @@ enum OpenMPDefaultClauseKind {
   OMPC_DEFAULT_##Name,
 #include "clang/Basic/OpenMPKinds.def"
   OMPC_DEFAULT_unknown
-};
-
-/// OpenMP attributes for 'proc_bind' clause.
-enum OpenMPProcBindClauseKind {
-#define OPENMP_PROC_BIND_KIND(Name) \
-  OMPC_PROC_BIND_##Name,
-#include "clang/Basic/OpenMPKinds.def"
-  OMPC_PROC_BIND_unknown
 };
 
 /// OpenMP attributes for 'schedule' clause.
@@ -201,15 +187,19 @@ enum OpenMPDeviceType {
   OMPC_DEVICE_TYPE_unknown
 };
 
+/// OpenMP 'lastprivate' clause modifier.
+enum OpenMPLastprivateModifier {
+#define OPENMP_LASTPRIVATE_KIND(Name) OMPC_LASTPRIVATE_##Name,
+#include "clang/Basic/OpenMPKinds.def"
+  OMPC_LASTPRIVATE_unknown,
+};
+
 /// Scheduling data for loop-based OpenMP directives.
 struct OpenMPScheduleTy final {
   OpenMPScheduleClauseKind Schedule = OMPC_SCHEDULE_unknown;
   OpenMPScheduleClauseModifier M1 = OMPC_SCHEDULE_MODIFIER_unknown;
   OpenMPScheduleClauseModifier M2 = OMPC_SCHEDULE_MODIFIER_unknown;
 };
-
-OpenMPDirectiveKind getOpenMPDirectiveKind(llvm::StringRef Str);
-const char *getOpenMPDirectiveName(OpenMPDirectiveKind Kind);
 
 OpenMPClauseKind getOpenMPClauseKind(llvm::StringRef Str);
 const char *getOpenMPClauseName(OpenMPClauseKind Kind);

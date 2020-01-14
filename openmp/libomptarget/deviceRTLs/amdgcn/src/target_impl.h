@@ -16,14 +16,18 @@
 #error "amdgcn target_impl.h expects to be compiled under __AMDGCN__"
 #endif
 
-#include <stdint.h>
 #include "amdgcn_interface.h"
+
+#include <stddef.h>
+#include <stdint.h>
 
 #define DEVICE __attribute__((device))
 #define INLINE inline DEVICE
 #define NOINLINE __attribute__((noinline)) DEVICE
 #define SHARED __attribute__((shared))
 #define ALIGN(N) __attribute__((aligned(N)))
+
+#include "hip_atomics.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 // Kernel options
@@ -101,9 +105,20 @@ INLINE uint32_t __kmpc_impl_smid() {
   return __smid();
 }
 
+INLINE double __kmpc_impl_get_wtick() { return ((double)1E-9); }
+
+EXTERN uint64_t __clock64();
+INLINE double __kmpc_impl_get_wtime() {
+  return ((double)1.0 / 745000000.0) * __clock64();
+}
+
 INLINE uint64_t __kmpc_impl_ffs(uint64_t x) { return __builtin_ffsl(x); }
 
 INLINE uint64_t __kmpc_impl_popc(uint64_t x) { return __builtin_popcountl(x); }
+
+template <typename T> INLINE T __kmpc_impl_min(T x, T y) {
+  return x < y ? x : y;
+}
 
 INLINE __kmpc_impl_lanemask_t __kmpc_impl_activemask() {
   return __ballot64(1);
@@ -117,6 +132,10 @@ EXTERN int32_t __kmpc_impl_shfl_down_sync(__kmpc_impl_lanemask_t, int32_t Var,
 
 INLINE void __kmpc_impl_syncthreads() { __builtin_amdgcn_s_barrier(); }
 
+INLINE void __kmpc_impl_syncwarp(__kmpc_impl_lanemask_t) {
+  // AMDGCN doesn't need to sync threads in a warp
+}
+
 INLINE void __kmpc_impl_named_sync(int barrier, uint32_t num_threads) {
   // we have protected the master warp from releasing from its barrier
   // due to a full workgroup barrier in the middle of a work function.
@@ -127,6 +146,27 @@ INLINE void __kmpc_impl_named_sync(int barrier, uint32_t num_threads) {
 EXTERN void __kmpc_impl_threadfence(void);
 EXTERN void __kmpc_impl_threadfence_block(void);
 EXTERN void __kmpc_impl_threadfence_system(void);
+
+// Calls to the AMDGCN layer (assuming 1D layout)
+EXTERN uint64_t __ockl_get_local_size(uint32_t);
+EXTERN uint64_t __ockl_get_num_groups(uint32_t);
+INLINE int GetThreadIdInBlock() { return __builtin_amdgcn_workitem_id_x(); }
+INLINE int GetBlockIdInKernel() { return __builtin_amdgcn_workgroup_id_x(); }
+INLINE int GetNumberOfBlocksInKernel() { return __ockl_get_num_groups(0); }
+INLINE int GetNumberOfThreadsInBlock() { return __ockl_get_local_size(0); }
+
+EXTERN bool __kmpc_impl_is_first_active_thread();
+
+// Locks
+EXTERN void __kmpc_impl_init_lock(omp_lock_t *lock);
+EXTERN void __kmpc_impl_destroy_lock(omp_lock_t *lock);
+EXTERN void __kmpc_impl_set_lock(omp_lock_t *lock);
+EXTERN void __kmpc_impl_unset_lock(omp_lock_t *lock);
+EXTERN int __kmpc_impl_test_lock(omp_lock_t *lock);
+
+// Memory
+EXTERN void *__kmpc_impl_malloc(size_t x);
+EXTERN void __kmpc_impl_free(void *x);
 
 // DEVICE versions of part of libc
 extern "C" {

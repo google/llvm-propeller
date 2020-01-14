@@ -8,26 +8,26 @@
 declare i32 @target_func()
 
 
-; Test that Control Flow Guard checks are not added to functions with nocf_checks attribute.
-define i32 @func_nocf_checks() #0 {
+; Test that Control Flow Guard checks are not added on calls with the "guard_nocf" attribute.
+define i32 @func_guard_nocf() {
 entry:
   %func_ptr = alloca i32 ()*, align 8
   store i32 ()* @target_func, i32 ()** %func_ptr, align 8
   %0 = load i32 ()*, i32 ()** %func_ptr, align 8
-  %1 = call i32 %0()
+  %1 = call i32 %0() #0
   ret i32 %1
 
-  ; X32-LABEL: func_nocf_checks
+  ; X32-LABEL: func_guard_nocf
   ; X32: 	     movl  $_target_func, %eax
   ; X32-NOT: __guard_check_icall_fptr
 	; X32: 	     calll *%eax
 
-  ; X64-LABEL: func_nocf_checks
+  ; X64-LABEL: func_guard_nocf
   ; X64:       leaq	target_func(%rip), %rax
   ; X64-NOT: __guard_dispatch_icall_fptr
   ; X64:       callq	*%rax
 }
-attributes #0 = { nocf_check }
+attributes #0 = { "guard_nocf" }
 
 
 ; Test that Control Flow Guard checks are added even at -O0.
@@ -171,8 +171,7 @@ entry:
 
   ; X64-LABEL: func_cf_tail
   ; X64:       leaq	target_func(%rip), %rax
-  ; X64:       movq __guard_dispatch_icall_fptr(%rip), %rcx
-  ; X64:       rex64 jmpq *%rcx            # TAILCALL
+  ; X64:       rex64 jmpq *__guard_dispatch_icall_fptr(%rip)         # TAILCALL
   ; X64-NOT:   callq
 }
 
@@ -205,7 +204,6 @@ entry:
   ; X64:            movq (%rcx), %rax
   ; X64-NEXT:       movq 8(%rax), %rax
   ; X64-NEXT:       movq __guard_dispatch_icall_fptr(%rip), %rdx
-  ; X64-NEXT:       addq $40, %rsp
   ; X64-NEXT:       rex64 jmpq *%rdx            # TAILCALL
   ; X64-NOT:   callq
 }

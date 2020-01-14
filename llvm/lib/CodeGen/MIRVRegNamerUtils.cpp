@@ -13,100 +13,123 @@ using namespace llvm;
 
 #define DEBUG_TYPE "mir-vregnamer-utils"
 
-bool VRegRenamer::doVRegRenaming(
-    const std::map<unsigned, unsigned> &VRegRenameMap) {
+using VRegRenameMap = std::map<unsigned, unsigned>;
+
+bool VRegRenamer::doVRegRenaming(const VRegRenameMap &VRM) {
   bool Changed = false;
-  for (auto I = VRegRenameMap.begin(), E = VRegRenameMap.end(); I != E; ++I) {
 
-    auto VReg = I->first;
-    auto Rename = I->second;
-
-    std::vector<MachineOperand *> RenameMOs;
-    for (auto &MO : MRI.reg_operands(VReg)) {
-      RenameMOs.push_back(&MO);
-    }
-
-    for (auto *MO : RenameMOs) {
-      Changed = true;
-      MO->setReg(Rename);
-
-      if (!MO->isDef())
-        MO->setIsKill(false);
-    }
+  for (const auto &E : VRM) {
+    Changed = Changed || !MRI.reg_empty(E.first);
+    MRI.replaceRegWith(E.first, E.second);
   }
 
   return Changed;
 }
 
-std::map<unsigned, unsigned>
+VRegRenameMap
 VRegRenamer::getVRegRenameMap(const std::vector<NamedVReg> &VRegs) {
-  std::map<unsigned, unsigned> VRegRenameMap;
 
-  std::map<std::string, unsigned> VRegNameCollisionMap;
+  StringMap<unsigned> VRegNameCollisionMap;
 
-  auto GetUniqueVRegName =
-      [&VRegNameCollisionMap](const NamedVReg &Reg) -> std::string {
-    auto It = VRegNameCollisionMap.find(Reg.getName());
-    unsigned Counter = 0;
-    if (It != VRegNameCollisionMap.end()) {
-      Counter = It->second;
-    }
-    ++Counter;
-    VRegNameCollisionMap[Reg.getName()] = Counter;
+  auto GetUniqueVRegName = [&VRegNameCollisionMap](const NamedVReg &Reg) {
+    if (VRegNameCollisionMap.find(Reg.getName()) == VRegNameCollisionMap.end())
+      VRegNameCollisionMap[Reg.getName()] = 0;
+    const unsigned Counter = ++VRegNameCollisionMap[Reg.getName()];
     return Reg.getName() + "__" + std::to_string(Counter);
   };
 
-  for (auto &Vreg : VRegs) {
-    auto Reg = Vreg.getReg();
-    assert(Register::isVirtualRegister(Reg) &&
-           "Expecting Virtual Registers Only");
-    auto NewNameForReg = GetUniqueVRegName(Vreg);
-    auto Rename = createVirtualRegisterWithName(Reg, NewNameForReg);
-
-    VRegRenameMap.insert(std::pair<unsigned, unsigned>(Reg, Rename));
+  VRegRenameMap VRM;
+  for (const auto &VReg : VRegs) {
+    const unsigned Reg = VReg.getReg();
+    VRM[Reg] = createVirtualRegisterWithLowerName(Reg, GetUniqueVRegName(VReg));
   }
-  return VRegRenameMap;
+  return VRM;
 }
 
 std::string VRegRenamer::getInstructionOpcodeHash(MachineInstr &MI) {
   std::string S;
   raw_string_ostream OS(S);
-  auto HashOperand = [this](const MachineOperand &MO) -> unsigned {
-    if (MO.isImm())
+
+  // Gets a hashable artifact from a given MachineOperand (ie an unsigned).
+  auto GetHashableMO = [this](const MachineOperand &MO) -> unsigned {
+    switch (MO.getType()) {
+    case MachineOperand::MO_CImmediate:
+      return hash_combine(MO.getType(), MO.getTargetFlags(),
+                          MO.getCImm()->getZExtValue());
+    case MachineOperand::MO_FPImmediate:
+      return hash_combine(
+          MO.getType(), MO.getTargetFlags(),
+          MO.getFPImm()->getValueAPF().bitcastToAPInt().getZExtValue());
+    case MachineOperand::MO_Register:
+      if (Register::isVirtualRegister(MO.getReg()))
+        return MRI.getVRegDef(MO.getReg())->getOpcode();
+      return MO.getReg();
+    case MachineOperand::MO_Immediate:
       return MO.getImm();
-    if (MO.isTargetIndex())
+    case MachineOperand::MO_TargetIndex:
       return MO.getOffset() | (MO.getTargetFlags() << 16);
-    if (MO.isReg()) {
-      return Register::isVirtualRegister(MO.getReg())
-                 ? MRI.getVRegDef(MO.getReg())->getOpcode()
-                 : (unsigned)MO.getReg();
-    }
+    case MachineOperand::MO_FrameIndex:
+      return llvm::hash_value(MO);
+
     // We could explicitly handle all the types of the MachineOperand,
     // here but we can just return a common number until we find a
     // compelling test case where this is bad. The only side effect here
-    // is contributing to a hash collission but there's enough information
+    // is contributing to a hash collision but there's enough information
     // (Opcodes,other registers etc) that this will likely not be a problem.
-    return 0;
+
+    // TODO: Handle the following Index/ID/Predicate cases. They can
+    // be hashed on in a stable manner.
+    case MachineOperand::MO_ConstantPoolIndex:
+    case MachineOperand::MO_JumpTableIndex:
+    case MachineOperand::MO_CFIIndex:
+    case MachineOperand::MO_IntrinsicID:
+    case MachineOperand::MO_Predicate:
+
+    // In the cases below we havn't found a way to produce an artifact that will
+    // result in a stable hash, in most cases because they are pointers. We want
+    // stable hashes because we want the hash to be the same run to run.
+    case MachineOperand::MO_MachineBasicBlock:
+    case MachineOperand::MO_ExternalSymbol:
+    case MachineOperand::MO_GlobalAddress:
+    case MachineOperand::MO_BlockAddress:
+    case MachineOperand::MO_RegisterMask:
+    case MachineOperand::MO_RegisterLiveOut:
+    case MachineOperand::MO_Metadata:
+    case MachineOperand::MO_MCSymbol:
+    case MachineOperand::MO_ShuffleMask:
+      return 0;
+    }
+    llvm_unreachable("Unexpected MachineOperandType.");
   };
-  SmallVector<unsigned, 16> MIOperands;
-  MIOperands.push_back(MI.getOpcode());
-  for (auto &Op : MI.uses()) {
-    MIOperands.push_back(HashOperand(Op));
+
+  SmallVector<unsigned, 16> MIOperands = {MI.getOpcode(), MI.getFlags()};
+  llvm::transform(MI.uses(), std::back_inserter(MIOperands), GetHashableMO);
+
+  for (const auto *Op : MI.memoperands()) {
+    MIOperands.push_back((unsigned)Op->getSize());
+    MIOperands.push_back((unsigned)Op->getFlags());
+    MIOperands.push_back((unsigned)Op->getOffset());
+    MIOperands.push_back((unsigned)Op->getOrdering());
+    MIOperands.push_back((unsigned)Op->getAddrSpace());
+    MIOperands.push_back((unsigned)Op->getSyncScopeID());
+    MIOperands.push_back((unsigned)Op->getBaseAlignment());
+    MIOperands.push_back((unsigned)Op->getFailureOrdering());
   }
+
   auto HashMI = hash_combine_range(MIOperands.begin(), MIOperands.end());
   return std::to_string(HashMI).substr(0, 5);
 }
 
 unsigned VRegRenamer::createVirtualRegister(unsigned VReg) {
-  return createVirtualRegisterWithName(
-      VReg, getInstructionOpcodeHash(*MRI.getVRegDef(VReg)));
+  assert(Register::isVirtualRegister(VReg) && "Expected Virtual Registers");
+  std::string Name = getInstructionOpcodeHash(*MRI.getVRegDef(VReg));
+  return createVirtualRegisterWithLowerName(VReg, Name);
 }
 
 bool VRegRenamer::renameInstsInMBB(MachineBasicBlock *MBB) {
   std::vector<NamedVReg> VRegs;
-  std::string Prefix = "bb" + std::to_string(getCurrentBBNumber()) + "_";
-  for (auto &MII : *MBB) {
-    MachineInstr &Candidate = MII;
+  std::string Prefix = "bb" + std::to_string(CurrentBBNumber) + "_";
+  for (MachineInstr &Candidate : *MBB) {
     // Don't rename stores/branches.
     if (Candidate.mayStore() || Candidate.isBranch())
       continue;
@@ -121,25 +144,13 @@ bool VRegRenamer::renameInstsInMBB(MachineBasicBlock *MBB) {
         NamedVReg(MO.getReg(), Prefix + getInstructionOpcodeHash(Candidate)));
   }
 
-  // If we have populated no vregs to rename then bail.
-  // The rest of this function does the vreg remaping.
-  if (VRegs.size() == 0)
-    return false;
-
-  auto VRegRenameMap = getVRegRenameMap(VRegs);
-  return doVRegRenaming(VRegRenameMap);
+  return VRegs.size() ? doVRegRenaming(getVRegRenameMap(VRegs)) : false;
 }
 
-bool VRegRenamer::renameVRegs(MachineBasicBlock *MBB, unsigned BBNum) {
-  CurrentBBNumber = BBNum;
-  return renameInstsInMBB(MBB);
-}
-
-unsigned VRegRenamer::createVirtualRegisterWithName(unsigned VReg,
-                                                    const std::string &Name) {
-  std::string Temp(Name);
-  std::transform(Temp.begin(), Temp.end(), Temp.begin(), ::tolower);
-  if (auto RC = MRI.getRegClassOrNull(VReg))
-    return MRI.createVirtualRegister(RC, Temp);
-  return MRI.createGenericVirtualRegister(MRI.getType(VReg), Name);
+unsigned VRegRenamer::createVirtualRegisterWithLowerName(unsigned VReg,
+                                                         StringRef Name) {
+  std::string LowerName = Name.lower();
+  const TargetRegisterClass *RC = MRI.getRegClassOrNull(VReg);
+  return RC ? MRI.createVirtualRegister(RC, LowerName)
+            : MRI.createGenericVirtualRegister(MRI.getType(VReg), LowerName);
 }

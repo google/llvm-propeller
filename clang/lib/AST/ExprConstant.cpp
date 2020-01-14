@@ -32,8 +32,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cstring>
-#include <functional>
 #include "Interp/Context.h"
 #include "Interp/Frame.h"
 #include "Interp/State.h"
@@ -41,6 +39,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/ASTLambda.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/CurrentSourceLocExprScope.h"
@@ -57,6 +56,8 @@
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cstring>
+#include <functional>
 
 #define DEBUG_TYPE "exprconstant"
 
@@ -6829,6 +6830,36 @@ public:
     return StmtVisitorTy::Visit(Source);
   }
 
+  bool VisitPseudoObjectExpr(const PseudoObjectExpr *E) {
+    for (const Expr *SemE : E->semantics()) {
+      if (auto *OVE = dyn_cast<OpaqueValueExpr>(SemE)) {
+        // FIXME: We can't handle the case where an OpaqueValueExpr is also the
+        // result expression: there could be two different LValues that would
+        // refer to the same object in that case, and we can't model that.
+        if (SemE == E->getResultExpr())
+          return Error(E);
+
+        // Unique OVEs get evaluated if and when we encounter them when
+        // emitting the rest of the semantic form, rather than eagerly.
+        if (OVE->isUnique())
+          continue;
+
+        LValue LV;
+        if (!Evaluate(Info.CurrentCall->createTemporary(
+                          OVE, getStorageType(Info.Ctx, OVE), false, LV),
+                      Info, OVE->getSourceExpr()))
+          return false;
+      } else if (SemE == E->getResultExpr()) {
+        if (!StmtVisitorTy::Visit(SemE))
+          return false;
+      } else {
+        if (!EvaluateIgnoredValue(Info, SemE))
+          return false;
+      }
+    }
+    return true;
+  }
+
   bool VisitCallExpr(const CallExpr *E) {
     APValue Result;
     if (!handleCallExpr(E, Result, nullptr))
@@ -7049,6 +7080,31 @@ public:
            DerivedSuccess(Result, E);
   }
 
+  bool VisitExtVectorElementExpr(const ExtVectorElementExpr *E) {
+    APValue Val;
+    if (!Evaluate(Val, Info, E->getBase()))
+      return false;
+
+    if (Val.isVector()) {
+      SmallVector<uint32_t, 4> Indices;
+      E->getEncodedElementAccess(Indices);
+      if (Indices.size() == 1) {
+        // Return scalar.
+        return DerivedSuccess(Val.getVectorElt(Indices[0]), E);
+      } else {
+        // Construct new APValue vector.
+        SmallVector<APValue, 4> Elts;
+        for (unsigned I = 0; I < Indices.size(); ++I) {
+          Elts.push_back(Val.getVectorElt(Indices[I]));
+        }
+        APValue VecResult(Elts.data(), Indices.size());
+        return DerivedSuccess(VecResult, E);
+      }
+    }
+
+    return false;
+  }
+
   bool VisitCastExpr(const CastExpr *E) {
     switch (E->getCastKind()) {
     default:
@@ -7086,6 +7142,13 @@ public:
       if (!handleLValueToRValueBitCast(Info, DestValue, SourceValue, E))
         return false;
       return DerivedSuccess(DestValue, E);
+    }
+
+    case CK_AddressSpaceConversion: {
+      APValue Value;
+      if (!Evaluate(Value, Info, E->getSubExpr()))
+        return false;
+      return DerivedSuccess(Value, E);
     }
     }
 
@@ -8112,6 +8175,42 @@ static CharUnits GetAlignOfExpr(EvalInfo &Info, const Expr *E,
   return GetAlignOfType(Info, E->getType(), ExprKind);
 }
 
+static CharUnits getBaseAlignment(EvalInfo &Info, const LValue &Value) {
+  if (const auto *VD = Value.Base.dyn_cast<const ValueDecl *>())
+    return Info.Ctx.getDeclAlign(VD);
+  if (const auto *E = Value.Base.dyn_cast<const Expr *>())
+    return GetAlignOfExpr(Info, E, UETT_AlignOf);
+  return GetAlignOfType(Info, Value.Base.getTypeInfoType(), UETT_AlignOf);
+}
+
+/// Evaluate the value of the alignment argument to __builtin_align_{up,down},
+/// __builtin_is_aligned and __builtin_assume_aligned.
+static bool getAlignmentArgument(const Expr *E, QualType ForType,
+                                 EvalInfo &Info, APSInt &Alignment) {
+  if (!EvaluateInteger(E, Alignment, Info))
+    return false;
+  if (Alignment < 0 || !Alignment.isPowerOf2()) {
+    Info.FFDiag(E, diag::note_constexpr_invalid_alignment) << Alignment;
+    return false;
+  }
+  unsigned SrcWidth = Info.Ctx.getIntWidth(ForType);
+  APSInt MaxValue(APInt::getOneBitSet(SrcWidth, SrcWidth - 1));
+  if (APSInt::compareValues(Alignment, MaxValue) > 0) {
+    Info.FFDiag(E, diag::note_constexpr_alignment_too_big)
+        << MaxValue << ForType << Alignment;
+    return false;
+  }
+  // Ensure both alignment and source value have the same bit width so that we
+  // don't assert when computing the resulting value.
+  APSInt ExtAlignment =
+      APSInt(Alignment.zextOrTrunc(SrcWidth), /*isUnsigned=*/true);
+  assert(APSInt::compareValues(Alignment, ExtAlignment) == 0 &&
+         "Alignment should not be changed by ext/trunc");
+  Alignment = ExtAlignment;
+  assert(Alignment.getBitWidth() == SrcWidth);
+  return true;
+}
+
 // To be clear: this happily visits unsupported builtins. Better name welcomed.
 bool PointerExprEvaluator::visitNonBuiltinCallExpr(const CallExpr *E) {
   if (ExprEvaluatorBaseTy::VisitCallExpr(E))
@@ -8150,7 +8249,8 @@ bool PointerExprEvaluator::VisitBuiltinCallExpr(const CallExpr *E,
 
     LValue OffsetResult(Result);
     APSInt Alignment;
-    if (!EvaluateInteger(E->getArg(1), Alignment, Info))
+    if (!getAlignmentArgument(E->getArg(1), E->getArg(0)->getType(), Info,
+                              Alignment))
       return false;
     CharUnits Align = CharUnits::fromQuantity(Alignment.getZExtValue());
 
@@ -8165,16 +8265,7 @@ bool PointerExprEvaluator::VisitBuiltinCallExpr(const CallExpr *E,
 
     // If there is a base object, then it must have the correct alignment.
     if (OffsetResult.Base) {
-      CharUnits BaseAlignment;
-      if (const ValueDecl *VD =
-          OffsetResult.Base.dyn_cast<const ValueDecl*>()) {
-        BaseAlignment = Info.Ctx.getDeclAlign(VD);
-      } else if (const Expr *E = OffsetResult.Base.dyn_cast<const Expr *>()) {
-        BaseAlignment = GetAlignOfExpr(Info, E, UETT_AlignOf);
-      } else {
-        BaseAlignment = GetAlignOfType(
-            Info, OffsetResult.Base.getTypeInfoType(), UETT_AlignOf);
-      }
+      CharUnits BaseAlignment = getBaseAlignment(Info, OffsetResult);
 
       if (BaseAlignment < Align) {
         Result.Designator.setInvalid();
@@ -8202,6 +8293,43 @@ bool PointerExprEvaluator::VisitBuiltinCallExpr(const CallExpr *E,
     }
 
     return true;
+  }
+  case Builtin::BI__builtin_align_up:
+  case Builtin::BI__builtin_align_down: {
+    if (!evaluatePointer(E->getArg(0), Result))
+      return false;
+    APSInt Alignment;
+    if (!getAlignmentArgument(E->getArg(1), E->getArg(0)->getType(), Info,
+                              Alignment))
+      return false;
+    CharUnits BaseAlignment = getBaseAlignment(Info, Result);
+    CharUnits PtrAlign = BaseAlignment.alignmentAtOffset(Result.Offset);
+    // For align_up/align_down, we can return the same value if the alignment
+    // is known to be greater or equal to the requested value.
+    if (PtrAlign.getQuantity() >= Alignment)
+      return true;
+
+    // The alignment could be greater than the minimum at run-time, so we cannot
+    // infer much about the resulting pointer value. One case is possible:
+    // For `_Alignas(32) char buf[N]; __builtin_align_down(&buf[idx], 32)` we
+    // can infer the correct index if the requested alignment is smaller than
+    // the base alignment so we can perform the computation on the offset.
+    if (BaseAlignment.getQuantity() >= Alignment) {
+      assert(Alignment.getBitWidth() <= 64 &&
+             "Cannot handle > 64-bit address-space");
+      uint64_t Alignment64 = Alignment.getZExtValue();
+      CharUnits NewOffset = CharUnits::fromQuantity(
+          BuiltinOp == Builtin::BI__builtin_align_down
+              ? llvm::alignDown(Result.Offset.getQuantity(), Alignment64)
+              : llvm::alignTo(Result.Offset.getQuantity(), Alignment64));
+      Result.adjustOffset(NewOffset - Result.Offset);
+      // TODO: diagnose out-of-bounds values/only allow for arrays?
+      return true;
+    }
+    // Otherwise, we cannot constant-evaluate the result.
+    Info.FFDiag(E->getArg(0), diag::note_constexpr_alignment_adjust)
+        << Alignment;
+    return false;
   }
   case Builtin::BI__builtin_operator_new:
     return HandleOperatorNewCall(Info, E, Result);
@@ -9250,6 +9378,7 @@ namespace {
     bool VisitUnaryImag(const UnaryOperator *E);
     // FIXME: Missing: unary -, unary ~, binary add/sub/mul/div,
     //                 binary comparisons, binary and/or/xor,
+    //                 conditional operator (for GNU conditional select),
     //                 shufflevector, ExtVectorElementExpr
   };
 } // end anonymous namespace
@@ -10180,7 +10309,7 @@ static QualType getObjectType(APValue::LValueBase B) {
   if (const ValueDecl *D = B.dyn_cast<const ValueDecl*>()) {
     if (const VarDecl *VD = dyn_cast<VarDecl>(D))
       return VD->getType();
-  } else if (const Expr *E = B.get<const Expr*>()) {
+  } else if (const Expr *E = B.dyn_cast<const Expr*>()) {
     if (isa<CompoundLiteralExpr>(E))
       return E->getType();
   } else if (B.is<TypeInfoLValue>()) {
@@ -10501,6 +10630,33 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
   return ExprEvaluatorBaseTy::VisitCallExpr(E);
 }
 
+static bool getBuiltinAlignArguments(const CallExpr *E, EvalInfo &Info,
+                                     APValue &Val, APSInt &Alignment) {
+  QualType SrcTy = E->getArg(0)->getType();
+  if (!getAlignmentArgument(E->getArg(1), SrcTy, Info, Alignment))
+    return false;
+  // Even though we are evaluating integer expressions we could get a pointer
+  // argument for the __builtin_is_aligned() case.
+  if (SrcTy->isPointerType()) {
+    LValue Ptr;
+    if (!EvaluatePointer(E->getArg(0), Ptr, Info))
+      return false;
+    Ptr.moveInto(Val);
+  } else if (!SrcTy->isIntegralOrEnumerationType()) {
+    Info.FFDiag(E->getArg(0));
+    return false;
+  } else {
+    APSInt SrcInt;
+    if (!EvaluateInteger(E->getArg(0), SrcInt, Info))
+      return false;
+    assert(SrcInt.getBitWidth() >= Alignment.getBitWidth() &&
+           "Bit widths must be the same");
+    Val = APValue(SrcInt);
+  }
+  assert(Val.hasValue());
+  return true;
+}
+
 bool IntExprEvaluator::VisitBuiltinCallExpr(const CallExpr *E,
                                             unsigned BuiltinOp) {
   switch (unsigned BuiltinOp = E->getBuiltinCallee()) {
@@ -10541,6 +10697,66 @@ bool IntExprEvaluator::VisitBuiltinCallExpr(const CallExpr *E,
     analyze_os_log::OSLogBufferLayout Layout;
     analyze_os_log::computeOSLogBufferLayout(Info.Ctx, E, Layout);
     return Success(Layout.size().getQuantity(), E);
+  }
+
+  case Builtin::BI__builtin_is_aligned: {
+    APValue Src;
+    APSInt Alignment;
+    if (!getBuiltinAlignArguments(E, Info, Src, Alignment))
+      return false;
+    if (Src.isLValue()) {
+      // If we evaluated a pointer, check the minimum known alignment.
+      LValue Ptr;
+      Ptr.setFrom(Info.Ctx, Src);
+      CharUnits BaseAlignment = getBaseAlignment(Info, Ptr);
+      CharUnits PtrAlign = BaseAlignment.alignmentAtOffset(Ptr.Offset);
+      // We can return true if the known alignment at the computed offset is
+      // greater than the requested alignment.
+      assert(PtrAlign.isPowerOfTwo());
+      assert(Alignment.isPowerOf2());
+      if (PtrAlign.getQuantity() >= Alignment)
+        return Success(1, E);
+      // If the alignment is not known to be sufficient, some cases could still
+      // be aligned at run time. However, if the requested alignment is less or
+      // equal to the base alignment and the offset is not aligned, we know that
+      // the run-time value can never be aligned.
+      if (BaseAlignment.getQuantity() >= Alignment &&
+          PtrAlign.getQuantity() < Alignment)
+        return Success(0, E);
+      // Otherwise we can't infer whether the value is sufficiently aligned.
+      // TODO: __builtin_is_aligned(__builtin_align_{down,up{(expr, N), N)
+      //  in cases where we can't fully evaluate the pointer.
+      Info.FFDiag(E->getArg(0), diag::note_constexpr_alignment_compute)
+          << Alignment;
+      return false;
+    }
+    assert(Src.isInt());
+    return Success((Src.getInt() & (Alignment - 1)) == 0 ? 1 : 0, E);
+  }
+  case Builtin::BI__builtin_align_up: {
+    APValue Src;
+    APSInt Alignment;
+    if (!getBuiltinAlignArguments(E, Info, Src, Alignment))
+      return false;
+    if (!Src.isInt())
+      return Error(E);
+    APSInt AlignedVal =
+        APSInt((Src.getInt() + (Alignment - 1)) & ~(Alignment - 1),
+               Src.getInt().isUnsigned());
+    assert(AlignedVal.getBitWidth() == Src.getInt().getBitWidth());
+    return Success(AlignedVal, E);
+  }
+  case Builtin::BI__builtin_align_down: {
+    APValue Src;
+    APSInt Alignment;
+    if (!getBuiltinAlignArguments(E, Info, Src, Alignment))
+      return false;
+    if (!Src.isInt())
+      return Error(E);
+    APSInt AlignedVal =
+        APSInt(Src.getInt() & ~(Alignment - 1), Src.getInt().isUnsigned());
+    assert(AlignedVal.getBitWidth() == Src.getInt().getBitWidth());
+    return Success(AlignedVal, E);
   }
 
   case Builtin::BI__builtin_bswap16:
@@ -11443,6 +11659,14 @@ public:
     }
   }
 };
+
+enum class CmpResult {
+  Unequal,
+  Less,
+  Equal,
+  Greater,
+  Unordered,
+};
 }
 
 template <class SuccessCB, class AfterCB>
@@ -11458,15 +11682,8 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     return false;
   };
 
-  using CCR = ComparisonCategoryResult;
-  bool IsRelational = E->isRelationalOp();
+  bool IsRelational = E->isRelationalOp() || E->getOpcode() == BO_Cmp;
   bool IsEquality = E->isEqualityOp();
-  if (E->getOpcode() == BO_Cmp) {
-    const ComparisonCategoryInfo &CmpInfo =
-        Info.Ctx.CompCategories.getInfoForType(E->getType());
-    IsRelational = CmpInfo.isOrdered();
-    IsEquality = CmpInfo.isEquality();
-  }
 
   QualType LHSTy = E->getLHS()->getType();
   QualType RHSTy = E->getRHS()->getType();
@@ -11480,10 +11697,10 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     if (!EvaluateInteger(E->getRHS(), RHS, Info) || !LHSOK)
       return false;
     if (LHS < RHS)
-      return Success(CCR::Less, E);
+      return Success(CmpResult::Less, E);
     if (LHS > RHS)
-      return Success(CCR::Greater, E);
-    return Success(CCR::Equal, E);
+      return Success(CmpResult::Greater, E);
+    return Success(CmpResult::Equal, E);
   }
 
   if (LHSTy->isFixedPointType() || RHSTy->isFixedPointType()) {
@@ -11496,10 +11713,10 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     if (!EvaluateFixedPointOrInteger(E->getRHS(), RHSFX, Info) || !LHSOK)
       return false;
     if (LHSFX < RHSFX)
-      return Success(CCR::Less, E);
+      return Success(CmpResult::Less, E);
     if (LHSFX > RHSFX)
-      return Success(CCR::Greater, E);
-    return Success(CCR::Equal, E);
+      return Success(CmpResult::Greater, E);
+    return Success(CmpResult::Equal, E);
   }
 
   if (LHSTy->isAnyComplexType() || RHSTy->isAnyComplexType()) {
@@ -11535,12 +11752,12 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
       APFloat::cmpResult CR_i =
         LHS.getComplexFloatImag().compare(RHS.getComplexFloatImag());
       bool IsEqual = CR_r == APFloat::cmpEqual && CR_i == APFloat::cmpEqual;
-      return Success(IsEqual ? CCR::Equal : CCR::Nonequal, E);
+      return Success(IsEqual ? CmpResult::Equal : CmpResult::Unequal, E);
     } else {
       assert(IsEquality && "invalid complex comparison");
       bool IsEqual = LHS.getComplexIntReal() == RHS.getComplexIntReal() &&
                      LHS.getComplexIntImag() == RHS.getComplexIntImag();
-      return Success(IsEqual ? CCR::Equal : CCR::Nonequal, E);
+      return Success(IsEqual ? CmpResult::Equal : CmpResult::Unequal, E);
     }
   }
 
@@ -11559,13 +11776,13 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     auto GetCmpRes = [&]() {
       switch (LHS.compare(RHS)) {
       case APFloat::cmpEqual:
-        return CCR::Equal;
+        return CmpResult::Equal;
       case APFloat::cmpLessThan:
-        return CCR::Less;
+        return CmpResult::Less;
       case APFloat::cmpGreaterThan:
-        return CCR::Greater;
+        return CmpResult::Greater;
       case APFloat::cmpUnordered:
-        return CCR::Unordered;
+        return CmpResult::Unordered;
       }
       llvm_unreachable("Unrecognised APFloat::cmpResult enum");
     };
@@ -11587,8 +11804,10 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     if (!HasSameBase(LHSValue, RHSValue)) {
       // Inequalities and subtractions between unrelated pointers have
       // unspecified or undefined behavior.
-      if (!IsEquality)
-        return Error(E);
+      if (!IsEquality) {
+        Info.FFDiag(E, diag::note_constexpr_pointer_comparison_unspecified);
+        return false;
+      }
       // A constant address may compare equal to the address of a symbol.
       // The one exception is that address of an object cannot compare equal
       // to a null pointer constant.
@@ -11618,7 +11837,7 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
       if ((RHSValue.Base && isZeroSized(LHSValue)) ||
           (LHSValue.Base && isZeroSized(RHSValue)))
         return Error(E);
-      return Success(CCR::Nonequal, E);
+      return Success(CmpResult::Unequal, E);
     }
 
     const CharUnits &LHSOffset = LHSValue.getLValueOffset();
@@ -11702,10 +11921,10 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     }
 
     if (CompareLHS < CompareRHS)
-      return Success(CCR::Less, E);
+      return Success(CmpResult::Less, E);
     if (CompareLHS > CompareRHS)
-      return Success(CCR::Greater, E);
-    return Success(CCR::Equal, E);
+      return Success(CmpResult::Greater, E);
+    return Success(CmpResult::Equal, E);
   }
 
   if (LHSTy->isMemberPointerType()) {
@@ -11726,7 +11945,7 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     //   null, they compare unequal.
     if (!LHSValue.getDecl() || !RHSValue.getDecl()) {
       bool Equal = !LHSValue.getDecl() && !RHSValue.getDecl();
-      return Success(Equal ? CCR::Equal : CCR::Nonequal, E);
+      return Success(Equal ? CmpResult::Equal : CmpResult::Unequal, E);
     }
 
     //   Otherwise if either is a pointer to a virtual member function, the
@@ -11743,7 +11962,7 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     //   they were dereferenced with a hypothetical object of the associated
     //   class type.
     bool Equal = LHSValue == RHSValue;
-    return Success(Equal ? CCR::Equal : CCR::Nonequal, E);
+    return Success(Equal ? CmpResult::Equal : CmpResult::Unequal, E);
   }
 
   if (LHSTy->isNullPtrType()) {
@@ -11752,7 +11971,7 @@ EvaluateComparisonBinaryOperator(EvalInfo &Info, const BinaryOperator *E,
     // C++11 [expr.rel]p4, [expr.eq]p3: If two operands of type std::nullptr_t
     // are compared, the result is true of the operator is <=, >= or ==, and
     // false otherwise.
-    return Success(CCR::Equal, E);
+    return Success(CmpResult::Equal, E);
   }
 
   return DoAfter();
@@ -11762,14 +11981,29 @@ bool RecordExprEvaluator::VisitBinCmp(const BinaryOperator *E) {
   if (!CheckLiteralType(Info, E))
     return false;
 
-  auto OnSuccess = [&](ComparisonCategoryResult ResKind,
-                       const BinaryOperator *E) {
+  auto OnSuccess = [&](CmpResult CR, const BinaryOperator *E) {
+    ComparisonCategoryResult CCR;
+    switch (CR) {
+    case CmpResult::Unequal:
+      llvm_unreachable("should never produce Unequal for three-way comparison");
+    case CmpResult::Less:
+      CCR = ComparisonCategoryResult::Less;
+      break;
+    case CmpResult::Equal:
+      CCR = ComparisonCategoryResult::Equal;
+      break;
+    case CmpResult::Greater:
+      CCR = ComparisonCategoryResult::Greater;
+      break;
+    case CmpResult::Unordered:
+      CCR = ComparisonCategoryResult::Unordered;
+      break;
+    }
     // Evaluation succeeded. Lookup the information for the comparison category
     // type and fetch the VarDecl for the result.
     const ComparisonCategoryInfo &CmpInfo =
         Info.Ctx.CompCategories.getInfoForType(E->getType());
-    const VarDecl *VD =
-        CmpInfo.getValueInfo(CmpInfo.makeWeakResult(ResKind))->VD;
+    const VarDecl *VD = CmpInfo.getValueInfo(CmpInfo.makeWeakResult(CCR))->VD;
     // Check and evaluate the result as a constant expression.
     LValue LV;
     LV.set(VD);
@@ -11797,14 +12031,14 @@ bool IntExprEvaluator::VisitBinaryOperator(const BinaryOperator *E) {
          "DataRecursiveIntBinOpEvaluator should have handled integral types");
 
   if (E->isComparisonOp()) {
-    // Evaluate builtin binary comparisons by evaluating them as C++2a three-way
+    // Evaluate builtin binary comparisons by evaluating them as three-way
     // comparisons and then translating the result.
-    auto OnSuccess = [&](ComparisonCategoryResult ResKind,
-                         const BinaryOperator *E) {
-      using CCR = ComparisonCategoryResult;
-      bool IsEqual   = ResKind == CCR::Equal,
-           IsLess    = ResKind == CCR::Less,
-           IsGreater = ResKind == CCR::Greater;
+    auto OnSuccess = [&](CmpResult CR, const BinaryOperator *E) {
+      assert((CR != CmpResult::Unequal || E->isEqualityOp()) &&
+             "should only produce Unequal for equality comparisons");
+      bool IsEqual   = CR == CmpResult::Equal,
+           IsLess    = CR == CmpResult::Less,
+           IsGreater = CR == CmpResult::Greater;
       auto Op = E->getOpcode();
       switch (Op) {
       default:
@@ -11812,10 +12046,14 @@ bool IntExprEvaluator::VisitBinaryOperator(const BinaryOperator *E) {
       case BO_EQ:
       case BO_NE:
         return Success(IsEqual == (Op == BO_EQ), E);
-      case BO_LT: return Success(IsLess, E);
-      case BO_GT: return Success(IsGreater, E);
-      case BO_LE: return Success(IsEqual || IsLess, E);
-      case BO_GE: return Success(IsEqual || IsGreater, E);
+      case BO_LT:
+        return Success(IsLess, E);
+      case BO_GT:
+        return Success(IsGreater, E);
+      case BO_LE:
+        return Success(IsEqual || IsLess, E);
+      case BO_GE:
+        return Success(IsEqual || IsGreater, E);
       }
     };
     return EvaluateComparisonBinaryOperator(Info, E, OnSuccess, [&]() {
