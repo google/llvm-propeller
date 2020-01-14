@@ -3070,7 +3070,16 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
   }
 }
 
-void AsmPrinter::EmitBasicBlockEnd(const MachineBasicBlock &MBB) {}
+void AsmPrinter::EmitBasicBlockEnd(const MachineBasicBlock &MBB) {
+  // Check if CFI information needs to be updated for this MBB with basic block
+  // sections.
+  if (MF->getBasicBlockSections() && MBB.isEndSection()) {
+    for (const HandlerInfo &HI : Handlers) {
+      HI.Handler->endBasicBlock(MBB);
+    }
+    CurExceptionSym = nullptr;
+  }
+}
 
 void AsmPrinter::EmitVisibility(MCSymbol *Sym, unsigned Visibility,
                                 bool IsDefinition) const {
