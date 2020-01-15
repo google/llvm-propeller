@@ -13,6 +13,7 @@ add_lld_library(lldPropeller
   PropellerCFG.cpp
   PropellerNodeChain.cpp
   PropellerNodeChainAssembly.cpp
+  PropellerNodeChainBuilder.cpp
   PropellerProtobuf.cpp
   ${PROPELLER_PROTO_SRCS}
 
