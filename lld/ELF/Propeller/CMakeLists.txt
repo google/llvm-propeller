@@ -9,7 +9,10 @@ endif()
 add_lld_library(lldPropeller
   Propeller.cpp
   PropellerBBReordering.cpp
+  PropellerChainClustering.cpp
   PropellerCFG.cpp
+  PropellerNodeChain.cpp
+  PropellerNodeChainAssembly.cpp
   PropellerProtobuf.cpp
   ${PROPELLER_PROTO_SRCS}
 
