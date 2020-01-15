@@ -515,6 +515,9 @@ check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result ben
 bbfilter: bbfilter.cc stage1-compiler
 	./stage1-compiler -x c++ $< -O2 -o $@ -lstdc++
 
+upstream-patches: generate-upstream-patches.sh generate-upstream-patches.filelist $(LLVM_SOURCE)
+	./$< | tee $@
+
 clean-sample:
 	rm -f sample_bb.*o sample_bblabels.*o sample_bball.*o sample.*out sample.*perfdata sample.*propeller sample.*out.cfg.pb.txt
 
@@ -532,6 +535,7 @@ clean: clean-sample
 	rm -f gitdiff
 	rm -f pgo-plolist_vs_plofuncs.hot_func_order.diff
 	rm -f bbfilter
+	rm -f upstream-*.patch upstream-patches
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build
