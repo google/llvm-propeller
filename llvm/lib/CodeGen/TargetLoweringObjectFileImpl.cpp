@@ -780,6 +780,12 @@ MCSection *TargetLoweringObjectFileELF::getColdSectionForMachineBasicBlock(
   SmallString<128> Name;
   Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
              ->getSectionName();
+
+  if (!TM.getUniqueSectionNames()) {
+    Name += ".";
+    Name += MBB.getParent()->getName();
+  }
+
   Name += ".cold";
 
   unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
