@@ -305,20 +305,21 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     StringRef symName = *symNameE;
     uint64_t symShndx = (*sectionIE)->getIndex();
     uint64_t symSectionSize = (*sectionIE)->getSize();
+    uint64_t symValue = sym.getValue();
     // Note here: BB symbols only carry size information when
     // -fbasicblock-section=all. Objects built with
     // -fbasicblock-section=labels do not have size information
     // for BB symbols.
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *sE = prop->Propf->findSymbol(symName);
-    uint64_t symOffset = sym.getValue();
+    // symValue is the offset of the bb symbol within a bbsection, if
+    // symValue is nonzero, it means the symbol is not on its own
+    // section, safe to ignore mapping with a propeller symbol. This
+    // is a symbol grouped together w/ other bb symbols in the same
+    // section (the cold section or the landing pad section), and this
+    // bb symbol is not the representative symbol of the bb section.
     if (!sE) {
-      // The symbol is not on its own section, safe to ignore mapping with a
-      // propeller symbol.
-      if (symOffset)
-        continue;
-      fprintf(stderr, "WAS NOT ABLE TO FIND: %s:%s\n",
-              this->View->ViewName.str().c_str(), symName.str().c_str());
+      if (symValue != 0) continue;
       tmpNodeMap.clear();
       break;
     }
@@ -329,7 +330,9 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
       break;
     }
     // All cold BBs go into a single cold section. All landing pads go
-    // into a single landing pad section.
+    // into a single landing pad section.  Note, hot landing pads are
+    // grouped into the landing pad section. A hot land pad does not
+    // have its own section.
     bool needGroup =
         !sE->HotTag || symName.front() == 'l' || symName.front() == 'L';
     if (needGroup) {
@@ -376,7 +379,6 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   }
 
   if (tmpNodeMap.empty()) {
-    warn("DITCH CFG: " + cfg->Name);
     cfg.reset(nullptr);
     return cfg;
   }

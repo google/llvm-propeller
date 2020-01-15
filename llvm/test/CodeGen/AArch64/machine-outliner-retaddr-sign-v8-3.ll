@@ -1,7 +1,7 @@
 ; RUN: llc -verify-machineinstrs -enable-machine-outliner -mtriple \
 ; RUN: aarch64-arm-linux-gnu %s -o - | FileCheck %s
 
-; Check that outlined functions use the dedicated RETAA/RETAB instructions 
+; Check that outlined functions use the dedicated RETAA/RETAB instructions
 ; to sign their return address if available.
 
 define void @a() #0 {

@@ -1,6 +1,5 @@
 """Show global variables and check that they do indeed have global scopes."""
 
-from __future__ import print_function
 
 
 from lldbsuite.test.decorators import *
@@ -22,10 +21,6 @@ class GlobalVariablesTestCase(TestBase):
         self.shlib_names = ["a"]
 
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr24764")
-    @expectedFailureAll(oslist=["linux"],
-                        archs=["aarch64"],
-                        triple=no_match(".*-android"),
-                        bugnumber="llvm.org/pr37301")
     def test_without_process(self):
         """Test that static initialized variables can be inspected without
         process."""

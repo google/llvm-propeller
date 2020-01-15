@@ -48,7 +48,8 @@
 #include "lldb/Utility/Stream.h"
 #include "lldb/Utility/Timer.h"
 
-#ifndef LLDB_DISABLE_LIBEDIT
+#include "lldb/Host/Config.h"
+#if LLDB_ENABLE_LIBEDIT
 #include "lldb/Host/Editline.h"
 #endif
 #include "lldb/Host/Host.h"
@@ -362,8 +363,8 @@ void CommandInterpreter::Initialize() {
                   "controlled by the type's author.");
       po->SetHelpLong("");
     }
-    CommandAlias *parray_alias = AddAlias("parray", cmd_obj_sp, 
-            "--element-count %1 --");
+    CommandAlias *parray_alias =
+        AddAlias("parray", cmd_obj_sp, "--element-count %1 --");
     if (parray_alias) {
         parray_alias->SetHelp
           ("parray <COUNT> <EXPRESSION> -- lldb will evaluate EXPRESSION "
@@ -2838,8 +2839,7 @@ bool CommandInterpreter::IOHandlerInterrupt(IOHandler &io_handler) {
 }
 
 void CommandInterpreter::GetLLDBCommandsFromIOHandler(
-    const char *prompt, IOHandlerDelegate &delegate, bool asynchronously,
-    void *baton) {
+    const char *prompt, IOHandlerDelegate &delegate, void *baton) {
   Debugger &debugger = GetDebugger();
   IOHandlerSP io_handler_sp(
       new IOHandlerEditline(debugger, IOHandler::Type::CommandList,
@@ -2854,16 +2854,12 @@ void CommandInterpreter::GetLLDBCommandsFromIOHandler(
 
   if (io_handler_sp) {
     io_handler_sp->SetUserData(baton);
-    if (asynchronously)
-      debugger.PushIOHandler(io_handler_sp);
-    else
-      debugger.RunIOHandler(io_handler_sp);
+    debugger.PushIOHandler(io_handler_sp);
   }
 }
 
 void CommandInterpreter::GetPythonCommandsFromIOHandler(
-    const char *prompt, IOHandlerDelegate &delegate, bool asynchronously,
-    void *baton) {
+    const char *prompt, IOHandlerDelegate &delegate, void *baton) {
   Debugger &debugger = GetDebugger();
   IOHandlerSP io_handler_sp(
       new IOHandlerEditline(debugger, IOHandler::Type::PythonCode,
@@ -2878,10 +2874,7 @@ void CommandInterpreter::GetPythonCommandsFromIOHandler(
 
   if (io_handler_sp) {
     io_handler_sp->SetUserData(baton);
-    if (asynchronously)
-      debugger.PushIOHandler(io_handler_sp);
-    else
-      debugger.RunIOHandler(io_handler_sp);
+    debugger.PushIOHandler(io_handler_sp);
   }
 }
 

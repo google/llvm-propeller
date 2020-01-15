@@ -251,7 +251,7 @@ void NodeChainBuilder::coalesceChains() {
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
   if(leftChain->Freq==0 ^ rightChain->Freq==0)
-    warn("Attempting to merge hot and cold chains: \n" + lld::propeller::toString(*leftChain) + "\nAND\n" + lld::propeller::toString(*rightChain));
+    error("Attempting to merge hot and cold chains: \n" + lld::propeller::toString(*leftChain) + "\nAND\n" + lld::propeller::toString(*rightChain));
 
   mergeInOutEdges(leftChain, rightChain);
 
@@ -330,7 +330,7 @@ void NodeChainBuilder::mergeChains(
 
 
   if(assembly->splitChain()->Freq==0 ^ assembly->unsplitChain()->Freq==0)
-    warn("Attempting to merge hot and cold chains: \n" + toString(*assembly.get()));
+    error("Attempting to merge hot and cold chains: \n" + toString(*assembly.get()));
 
   // Decide which chain gets merged into the other chain, in order to reduce
   // computation.

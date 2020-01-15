@@ -360,6 +360,11 @@ public:
 
   /// Check if CSIR profile use is on.
   bool hasProfileCSIRUse() const { return getProfileUse() == ProfileCSIRInstr; }
+
+  /// Check if type and variable info should be emitted.
+  bool hasReducedDebugInfo() const {
+    return getDebugInfo() >= codegenoptions::DebugInfoConstructor;
+  }
 };
 
 }  // end namespace clang

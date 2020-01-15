@@ -715,12 +715,12 @@ DICommonBlock *DICommonBlock::getImpl(LLVMContext &Context, Metadata *Scope,
 
 DIModule *DIModule::getImpl(LLVMContext &Context, Metadata *Scope,
                             MDString *Name, MDString *ConfigurationMacros,
-                            MDString *IncludePath, MDString *ISysRoot,
+                            MDString *IncludePath, MDString *SysRoot,
                             StorageType Storage, bool ShouldCreate) {
   assert(isCanonical(Name) && "Expected canonical MDString");
   DEFINE_GETIMPL_LOOKUP(
-      DIModule, (Scope, Name, ConfigurationMacros, IncludePath, ISysRoot));
-  Metadata *Ops[] = {Scope, Name, ConfigurationMacros, IncludePath, ISysRoot};
+      DIModule, (Scope, Name, ConfigurationMacros, IncludePath, SysRoot));
+  Metadata *Ops[] = {Scope, Name, ConfigurationMacros, IncludePath, SysRoot};
   DEFINE_GETIMPL_STORE_NO_CONSTRUCTOR_ARGS(DIModule, Ops);
 }
 
@@ -1196,13 +1196,18 @@ bool DIExpression::isConstant() const {
   return true;
 }
 
+DIExpression::ExtOps DIExpression::getExtOps(unsigned FromSize, unsigned ToSize,
+                                             bool Signed) {
+  dwarf::TypeKind TK = Signed ? dwarf::DW_ATE_signed : dwarf::DW_ATE_unsigned;
+  DIExpression::ExtOps Ops{{dwarf::DW_OP_LLVM_convert, FromSize, TK,
+                            dwarf::DW_OP_LLVM_convert, ToSize, TK}};
+  return Ops;
+}
+
 DIExpression *DIExpression::appendExt(const DIExpression *Expr,
                                       unsigned FromSize, unsigned ToSize,
                                       bool Signed) {
-  dwarf::TypeKind TK = Signed ? dwarf::DW_ATE_signed : dwarf::DW_ATE_unsigned;
-  uint64_t Ops[] = {dwarf::DW_OP_LLVM_convert, FromSize, TK,
-                    dwarf::DW_OP_LLVM_convert, ToSize,   TK};
-  return appendToStack(Expr, Ops);
+  return appendToStack(Expr, getExtOps(FromSize, ToSize, Signed));
 }
 
 DIGlobalVariableExpression *

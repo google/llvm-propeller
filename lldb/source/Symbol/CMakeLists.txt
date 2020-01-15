@@ -9,8 +9,8 @@ add_lldb_library(lldbSymbol
   Block.cpp
   ClangASTContext.cpp
   ClangASTImporter.cpp
+  ClangASTMetadata.cpp
   ClangExternalASTSourceCallbacks.cpp
-  ClangExternalASTSourceCommon.cpp
   ClangUtil.cpp
   CompactUnwindInfo.cpp
   CompileUnit.cpp

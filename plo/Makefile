@@ -191,14 +191,12 @@ stage1-compiler: stage1/install/bin/clang
 	ln -sf $< $@
 	touch $@
 
-stage-pgo-relocs/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR $(relocs_flags),"clang;compiler-rt;lld",all)
+# Build isntrumented pgo-labels and pgo-relocs using the same pair of options.
+stage-pgo-labels/build/bin/clang-${CLANG_VERSION} stage-pgo-relocs/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
+	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
 
 stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
-
-stage-pgo-labels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_$(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
 
 stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plolist-compiler pgo-plofuncs-compiler pgo-plo-compiler pgo-plolistinterp-compiler pgo-plofuncsinterp-compiler pgo-plointerp-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
 	ln -sf $< $@
@@ -225,14 +223,11 @@ nonepgo/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 nonepgolabels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,$(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
-pgo-relocs/build/bin/clang-${CLANG_VERSION}: stage-pgo-relocs.profdata
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(relocs_flags),"clang;compiler-rt;lld",clang lld)
+pgo-labels/build/bin/clang-${CLANG_VERSION} pgo-relocs/build/bin/clang-${CLANG_VERSION}: pgo-%/build/bin/clang-${CLANG_VERSION}: stage-pgo-%.profdata
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-vanilla/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",clang lld)
-
-pgo-labels/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
@@ -273,6 +268,19 @@ pgo-plofuncs/build/symbol-order pgo-plolist/build/symbol-order: %/build/symbol-o
 		./gen-symbol-order.sh
 	touch $@
 
+pgo-labels/build/bolt-symbol-order: pgo-labels/build/bolt-func-symbol-order pgo-labels/build/bolt-bb-symbol-order
+
+pgo-labels/build/bolt-bb-symbol-order: pgo-labels-compiler.bolt.autolog pgo-labels/build/bin/clang-$(CLANG_VERSION)-bolt bbfilter
+	cat $< | grep -E "^hh: " | sed -e 's!hh: !!' | ./bbfilter | cut -f 2 -d" " > $@
+
+pgo-labels/build/bolt-func-symbol-order: pgo-labels-compiler.bolt.autolog pgo-labels/build/bin/clang-$(CLANG_VERSION)-bolt 
+	grep -E "^hh: " $< | sed -e 's!hh: !!' | grep -vF ".BB." | cut -f 2 -d" " > $@.hot
+	grep -E "^cc: " $< | sed -e 's!cc: !!' | grep -vF ".BB." | cut -f 2 -d" " > $@.cold
+	touch $@
+
+pgo-plolist/build/symbol-order-diff: pgo-plolist/build/hot-func-list pgo-labels/build/bolt-bb-symbol-order pgo-plolist/build/symbol-order
+	cat $< | xargs -n 20 -P 50 ./compare_symbol_order.sh $(word 2,$^) $(word 3,$^) 2>&1 | tee $@
+
 pgo-plolist/build/hot-func-list pgo-plofuncs/build/hot-func-list: %/build/hot-func-list: %/build/symbol-order
 	sed -n '0,/^Hot$$/p' $< | grep -vFe '.BB.' > $@
 
@@ -300,7 +308,7 @@ pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-
 pgo-labels-compiler.yaml cspgo-compiler.yaml pgo-relocs-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
 
-pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_VERSION}-bolt pgo-relocs/build/bin/clang-${CLANG_VERSION}-bolt: %/build/bin/clang-${CLANG_VERSION}-bolt: %-compiler.yaml %-compiler
+pgo-labels/build/bin/clang-${CLANG_VERSION}-bolt cspgo/build/bin/clang-${CLANG_VERSION}-bolt pgo-relocs/build/bin/clang-${CLANG_VERSION}-bolt: %/build/bin/clang-${CLANG_VERSION}-bolt: %-compiler.yaml %-compiler $(BOLT)
 	/usr/bin/time -v $(BOLT) $(shell readlink -f $(word 2,$^)) -o $@ -b $< \
 		 -split-functions=3                     \
 		 -split-all-cold                        \
@@ -507,6 +515,9 @@ check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result ben
 bbfilter: bbfilter.cc stage1-compiler
 	./stage1-compiler -x c++ $< -O2 -o $@ -lstdc++
 
+upstream-patches: generate-upstream-patches.sh generate-upstream-patches.filelist $(LLVM_SOURCE)
+	./$< | tee $@
+
 clean-sample:
 	rm -f sample_bb.*o sample_bblabels.*o sample_bball.*o sample.*out sample.*perfdata sample.*propeller sample.*out.cfg.pb.txt
 
@@ -524,6 +535,7 @@ clean: clean-sample
 	rm -f gitdiff
 	rm -f pgo-plolist_vs_plofuncs.hot_func_order.diff
 	rm -f bbfilter
+	rm -f upstream-*.patch upstream-patches
 
 clean-all: clean
 	rm -fr stage1 ; rm -fr stage1-compiler; rm -fr test-build

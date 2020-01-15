@@ -19,6 +19,7 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "llvm/Support/ScopedPrinter.h"
+#include "llvm/Support/TargetSelect.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -403,6 +404,15 @@ TEST(DiagnosticsTest, NoFixItInMacro) {
   EXPECT_THAT(TU.build().getDiagnostics(),
               ElementsAre(AllOf(Diag(Test.range(), "'main' must return 'int'"),
                                 Not(WithFix(_)))));
+}
+
+TEST(ClangdTest, MSAsm) {
+  // Parsing MS assembly tries to use the target MCAsmInfo, which we don't link.
+  // We used to crash here. Now clang emits a diagnostic, which we filter out.
+  llvm::InitializeAllTargetInfos(); // As in ClangdMain
+  auto TU = TestTU::withCode("void fn() { __asm { cmp cl,64 } }");
+  TU.ExtraArgs = {"-fms-extensions"};
+  EXPECT_THAT(TU.build().getDiagnostics(), IsEmpty());
 }
 
 TEST(DiagnosticsTest, ToLSP) {
@@ -1002,6 +1012,29 @@ TEST(IgnoreDiags, FromNonWrittenInclude) {
   // The diagnostic "main must return int" is from the header, we don't attempt
   // to render it in the main file as there is no written location there.
   EXPECT_THAT(TU.build().getDiagnostics(), UnorderedElementsAre());
+}
+
+TEST(ToLSPDiag, RangeIsInMain) {
+  ClangdDiagnosticOptions Opts;
+  clangd::Diag D;
+  D.Range = {pos(1, 2), pos(3, 4)};
+  D.Notes.emplace_back();
+  Note &N = D.Notes.back();
+  N.Range = {pos(2, 3), pos(3, 4)};
+
+  D.InsideMainFile = true;
+  N.InsideMainFile = false;
+  toLSPDiags(D, {}, Opts,
+             [&](clangd::Diagnostic LSPDiag, ArrayRef<clangd::Fix>) {
+               EXPECT_EQ(LSPDiag.range, D.Range);
+             });
+
+  D.InsideMainFile = false;
+  N.InsideMainFile = true;
+  toLSPDiags(D, {}, Opts,
+             [&](clangd::Diagnostic LSPDiag, ArrayRef<clangd::Fix>) {
+               EXPECT_EQ(LSPDiag.range, N.Range);
+             });
 }
 
 } // namespace

@@ -127,7 +127,7 @@ namespace llvm {
           DisableIntegratedAS(false), RelaxELFRelocations(false),
           FunctionSections(false), DataSections(false),
           UniqueSectionNames(true), UniqueBBSectionNames(false),
-          TrapUnreachable(false), NoTrapAfterNoreturn(false),
+          TrapUnreachable(false), NoTrapAfterNoreturn(false), TLSSize(0),
           EmulatedTLS(false), ExplicitEmulatedTLS(false), EnableIPRA(false),
           EmitStackSizeSection(false), EnableMachineOutliner(false),
           SupportsDefaultOutlining(false), EmitAddrsig(false),
@@ -244,6 +244,9 @@ namespace llvm {
     /// Do not emit a trap instruction for 'unreachable' IR instructions behind
     /// noreturn calls, even if TrapUnreachable is true.
     unsigned NoTrapAfterNoreturn : 1;
+
+    /// Bit size of immediate TLS offsets (0 == use the default).
+    unsigned TLSSize : 8;
 
     /// EmulatedTLS - This flag enables emulated TLS model, using emutls
     /// function in the runtime library..

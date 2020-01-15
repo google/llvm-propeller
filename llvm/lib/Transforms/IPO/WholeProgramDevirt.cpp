@@ -488,7 +488,7 @@ struct DevirtModule {
 
   bool areRemarksEnabled();
 
-  void scanTypeTestUsers(Function *TypeTestFunc, Function *AssumeFunc);
+  void scanTypeTestUsers(Function *TypeTestFunc);
   void scanTypeCheckedLoadUsers(Function *TypeCheckedLoadFunc);
 
   void buildTypeIdentifierMap(
@@ -842,19 +842,14 @@ bool DevirtModule::tryFindVirtualCallTargets(
 bool DevirtIndex::tryFindVirtualCallTargets(
     std::vector<ValueInfo> &TargetsForSlot, const TypeIdCompatibleVtableInfo TIdInfo,
     uint64_t ByteOffset) {
-  for (const TypeIdOffsetVtableInfo P : TIdInfo) {
-    // Ensure that we have at most one external linkage vtable initializer.
-    assert(P.VTableVI.getSummaryList().size() == 1 ||
-           llvm::count_if(
-               P.VTableVI.getSummaryList(),
-               [&](const std::unique_ptr<GlobalValueSummary> &Summary) {
-                 return GlobalValue::isExternalLinkage(Summary->linkage());
-               }) <= 1);
+  for (const TypeIdOffsetVtableInfo &P : TIdInfo) {
     // Find the first non-available_externally linkage vtable initializer.
     // We can have multiple available_externally, linkonce_odr and weak_odr
     // vtable initializers, however we want to skip available_externally as they
     // do not have type metadata attached, and therefore the summary will not
-    // contain any vtable functions.
+    // contain any vtable functions. We can also have multiple external
+    // vtable initializers in the case of comdats, which we cannot check here.
+    // The linker should give an error in this case.
     //
     // Also, handle the case of same-named local Vtables with the same path
     // and therefore the same GUID. This can happen if there isn't enough
@@ -869,7 +864,7 @@ bool DevirtIndex::tryFindVirtualCallTargets(
         LocalFound = true;
       }
       if (!GlobalValue::isAvailableExternallyLinkage(S->linkage()))
-        VS = cast<GlobalVarSummary>(S.get());
+        VS = cast<GlobalVarSummary>(S->getBaseObject());
     }
     if (!VS->isLive())
       continue;
@@ -1253,8 +1248,7 @@ std::string DevirtModule::getGlobalName(VTableSlot Slot,
 
 bool DevirtModule::shouldExportConstantsAsAbsoluteSymbols() {
   Triple T(M.getTargetTriple());
-  return (T.getArch() == Triple::x86 || T.getArch() == Triple::x86_64) &&
-         T.getObjectFormat() == Triple::ELF;
+  return T.isX86() && T.getObjectFormat() == Triple::ELF;
 }
 
 void DevirtModule::exportGlobal(VTableSlot Slot, ArrayRef<uint64_t> Args,
@@ -1568,8 +1562,7 @@ bool DevirtModule::areRemarksEnabled() {
   return false;
 }
 
-void DevirtModule::scanTypeTestUsers(Function *TypeTestFunc,
-                                     Function *AssumeFunc) {
+void DevirtModule::scanTypeTestUsers(Function *TypeTestFunc) {
   // Find all virtual calls via a virtual table pointer %p under an assumption
   // of the form llvm.assume(llvm.type.test(%p, %md)). This indicates that %p
   // points to a member of the type identifier %md. Group calls by (type ID,
@@ -1804,7 +1797,7 @@ bool DevirtModule::run() {
     return false;
 
   if (TypeTestFunc && AssumeFunc)
-    scanTypeTestUsers(TypeTestFunc, AssumeFunc);
+    scanTypeTestUsers(TypeTestFunc);
 
   if (TypeCheckedLoadFunc)
     scanTypeCheckedLoadUsers(TypeCheckedLoadFunc);

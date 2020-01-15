@@ -143,7 +143,9 @@ endif()
 
 # These values are not canonicalized within LLVM.
 llvm_canonicalize_cmake_booleans(
-  LLDB_DISABLE_PYTHON
+  LLDB_ENABLE_PYTHON
+  LLDB_ENABLE_LUA
+  LLDB_ENABLE_LZMA
   LLVM_ENABLE_ZLIB
   LLVM_ENABLE_SHARED_LIBS
   LLDB_IS_64_BITS)

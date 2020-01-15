@@ -27,6 +27,7 @@
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsMips.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -1281,10 +1282,6 @@ SelectInlineAsmMemoryOperand(const SDValue &Op, unsigned ConstraintID,
   default:
     llvm_unreachable("Unexpected asm memory constraint");
   // All memory constraints can at least accept raw pointers.
-  case InlineAsm::Constraint_i:
-    OutOps.push_back(Op);
-    OutOps.push_back(CurDAG->getTargetConstant(0, SDLoc(Op), MVT::i32));
-    return false;
   case InlineAsm::Constraint_m:
   case InlineAsm::Constraint_o:
     if (selectAddrRegImm16(Op, Base, Offset)) {

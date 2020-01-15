@@ -2,7 +2,6 @@
 Test 'watchpoint command'.
 """
 
-from __future__ import print_function
 
 
 import lldb
@@ -14,6 +13,7 @@ from lldbsuite.test import lldbutil
 class WatchpointLLDBCommandTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
+    NO_DEBUG_INFO_TESTCASE = True
 
     def setUp(self):
         # Call super's setUp().
@@ -31,11 +31,6 @@ class WatchpointLLDBCommandTestCase(TestBase):
         self.exe_name = 'a%d.out' % self.test_number
         self.d = {'CXX_SOURCES': self.source, 'EXE': self.exe_name}
 
-    @expectedFailureAll(
-        oslist=["linux"],
-        archs=["aarch64"],
-        triple=no_match(".*-android"),
-        bugnumber="llvm.org/pr27710") # work on android
     def test_watchpoint_command(self):
         """Test 'watchpoint command'."""
         self.build(dictionary=self.d)
@@ -97,11 +92,6 @@ class WatchpointLLDBCommandTestCase(TestBase):
         self.expect("frame variable --show-globals cookie",
                     substrs=['(int32_t)', 'cookie = 777'])
 
-    @expectedFailureAll(
-        oslist=["linux"],
-        archs=["aarch64"],
-        triple=no_match(".*-android"),
-        bugnumber="llvm.org/pr27710") # work on android
     def test_watchpoint_command_can_disable_a_watchpoint(self):
         """Test that 'watchpoint command' action can disable a watchpoint after it is triggered."""
         self.build(dictionary=self.d)

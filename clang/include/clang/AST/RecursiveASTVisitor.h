@@ -304,6 +304,11 @@ public:
   bool TraverseSynOrSemInitListExpr(InitListExpr *S,
                                     DataRecursionQueue *Queue = nullptr);
 
+  /// Recursively visit a reference to a concept with potential arguments.
+  ///
+  /// \returns false if the visitation was terminated early, true otherwise.
+  bool TraverseConceptReference(const ConceptReference &C);
+
   // ---- Methods on Attrs ----
 
   // Visit an attribute.
@@ -1162,11 +1167,13 @@ DEF_TRAVERSE_TYPELOC(LValueReferenceType,
 DEF_TRAVERSE_TYPELOC(RValueReferenceType,
                      { TRY_TO(TraverseTypeLoc(TL.getPointeeLoc())); })
 
-// FIXME: location of base class?
 // We traverse this in the type case as well, but how is it not reached through
 // the pointee type?
 DEF_TRAVERSE_TYPELOC(MemberPointerType, {
-  TRY_TO(TraverseType(QualType(TL.getTypePtr()->getClass(), 0)));
+  if (auto *TSI = TL.getClassTInfo())
+    TRY_TO(TraverseTypeLoc(TSI->getTypeLoc()));
+  else
+    TRY_TO(TraverseType(QualType(TL.getTypePtr()->getClass(), 0)));
   TRY_TO(TraverseTypeLoc(TL.getPointeeLoc()));
 })
 
@@ -1771,9 +1778,8 @@ DEF_TRAVERSE_DECL(TemplateTemplateParmDecl, {
   // D is the "T" in something like
   //   template <template <typename> class T> class container { };
   TRY_TO(TraverseDecl(D->getTemplatedDecl()));
-  if (D->hasDefaultArgument() && !D->defaultArgumentWasInherited()) {
+  if (D->hasDefaultArgument() && !D->defaultArgumentWasInherited())
     TRY_TO(TraverseTemplateArgumentLoc(D->getDefaultArgument()));
-  }
   TRY_TO(TraverseTemplateParameterListHelper(D->getTemplateParameters()));
 })
 
@@ -1785,6 +1791,8 @@ DEF_TRAVERSE_DECL(TemplateTypeParmDecl, {
   // D is the "T" in something like "template<typename T> class vector;"
   if (D->getTypeForDecl())
     TRY_TO(TraverseType(QualType(D->getTypeForDecl(), 0)));
+  if (const auto *TC = D->getTypeConstraint())
+    TRY_TO(TraverseConceptReference(*TC));
   if (D->hasDefaultArgument() && !D->defaultArgumentWasInherited())
     TRY_TO(TraverseTypeLoc(D->getDefaultArgumentInfo()->getTypeLoc()));
 })
@@ -2026,6 +2034,11 @@ bool RecursiveASTVisitor<Derived>::TraverseFunctionHelper(FunctionDecl *D) {
     for (ParmVarDecl *Parameter : D->parameters()) {
       TRY_TO(TraverseDecl(Parameter));
     }
+  }
+
+  // Visit the trailing requires clause, if any.
+  if (Expr *TrailingRequiresClause = D->getTrailingRequiresClause()) {
+    TRY_TO(TraverseStmt(TrailingRequiresClause));
   }
 
   if (CXXConstructorDecl *Ctor = dyn_cast<CXXConstructorDecl>(D)) {
@@ -2320,6 +2333,18 @@ bool RecursiveASTVisitor<Derived>::TraverseSynOrSemInitListExpr(
       TRY_TO_TRAVERSE_OR_ENQUEUE_STMT(SubStmt);
     }
   }
+  return true;
+}
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseConceptReference(
+    const ConceptReference &C) {
+  TRY_TO(TraverseNestedNameSpecifierLoc(C.getNestedNameSpecifierLoc()));
+  TRY_TO(TraverseDeclarationNameInfo(C.getConceptNameInfo()));
+  if (C.hasExplicitTemplateArgs())
+    TRY_TO(TraverseTemplateArgumentLocsHelper(
+        C.getTemplateArgsAsWritten()->getTemplateArgs(),
+        C.getTemplateArgsAsWritten()->NumTemplateArgs));
   return true;
 }
 
@@ -2681,9 +2706,7 @@ DEF_TRAVERSE_STMT(CoyieldExpr, {
 })
 
 DEF_TRAVERSE_STMT(ConceptSpecializationExpr, {
-  TRY_TO(TraverseTemplateArgumentLocsHelper(
-          S->getTemplateArgsAsWritten()->getTemplateArgs(),
-          S->getTemplateArgsAsWritten()->NumTemplateArgs));
+  TRY_TO(TraverseConceptReference(*S));
 })
 
 // These literals (all of them) do not need any action.
@@ -3369,6 +3392,16 @@ template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPIsDevicePtrClause(
     OMPIsDevicePtrClause *C) {
   TRY_TO(VisitOMPClauseList(C));
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPNontemporalClause(
+    OMPNontemporalClause *C) {
+  TRY_TO(VisitOMPClauseList(C));
+  for (auto *E : C->private_refs()) {
+    TRY_TO(TraverseStmt(E));
+  }
   return true;
 }
 

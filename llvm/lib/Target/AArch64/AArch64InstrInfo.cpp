@@ -30,6 +30,7 @@
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/MC/MCAsmInfo.h"
@@ -1981,6 +1982,9 @@ bool AArch64InstrInfo::getMemOperandWithOffset(const MachineInstr &LdSt,
                                           const MachineOperand *&BaseOp,
                                           int64_t &Offset,
                                           const TargetRegisterInfo *TRI) const {
+  if (!LdSt.mayLoadOrStore())
+    return false;
+
   unsigned Width;
   return getMemOperandWithOffsetWidth(LdSt, BaseOp, Offset, Width, TRI);
 }
@@ -2025,9 +2029,8 @@ bool AArch64InstrInfo::getMemOperandWithOffsetWidth(
     Offset = LdSt.getOperand(3).getImm() * Scale;
   }
 
-  assert((BaseOp->isReg() || BaseOp->isFI()) &&
-         "getMemOperandWithOffset only supports base "
-         "operands of type register or frame index.");
+  if (!BaseOp->isReg() && !BaseOp->isFI())
+    return false;
 
   return true;
 }
@@ -2185,10 +2188,17 @@ bool AArch64InstrInfo::getMemOpInfo(unsigned Opcode, unsigned &Scale,
     MaxOffset = 4095;
     break;
   case AArch64::ADDG:
-  case AArch64::TAGPstack:
     Scale = 16;
     Width = 0;
     MinOffset = 0;
+    MaxOffset = 63;
+    break;
+  case AArch64::TAGPstack:
+    Scale = 16;
+    Width = 0;
+    // TAGP with a negative offset turns into SUBP, which has a maximum offset
+    // of 63 (not 64!).
+    MinOffset = -63;
     MaxOffset = 63;
     break;
   case AArch64::LDG:
@@ -2227,54 +2237,82 @@ bool AArch64InstrInfo::getMemOpInfo(unsigned Opcode, unsigned &Scale,
   return true;
 }
 
-static unsigned getOffsetStride(unsigned Opc) {
+// Scaling factor for unscaled load or store.
+int AArch64InstrInfo::getMemScale(unsigned Opc) {
   switch (Opc) {
   default:
-    return 0;
-  case AArch64::LDURQi:
-  case AArch64::STURQi:
-    return 16;
-  case AArch64::LDURXi:
-  case AArch64::LDURDi:
-  case AArch64::STURXi:
-  case AArch64::STURDi:
-    return 8;
-  case AArch64::LDURWi:
+    llvm_unreachable("Opcode has unknown scale!");
+  case AArch64::LDRBBui:
+  case AArch64::LDURBBi:
+  case AArch64::LDRSBWui:
+  case AArch64::LDURSBWi:
+  case AArch64::STRBBui:
+  case AArch64::STURBBi:
+    return 1;
+  case AArch64::LDRHHui:
+  case AArch64::LDURHHi:
+  case AArch64::LDRSHWui:
+  case AArch64::LDURSHWi:
+  case AArch64::STRHHui:
+  case AArch64::STURHHi:
+    return 2;
+  case AArch64::LDRSui:
   case AArch64::LDURSi:
+  case AArch64::LDRSWui:
   case AArch64::LDURSWi:
-  case AArch64::STURWi:
+  case AArch64::LDRWui:
+  case AArch64::LDURWi:
+  case AArch64::STRSui:
   case AArch64::STURSi:
+  case AArch64::STRWui:
+  case AArch64::STURWi:
+  case AArch64::LDPSi:
+  case AArch64::LDPSWi:
+  case AArch64::LDPWi:
+  case AArch64::STPSi:
+  case AArch64::STPWi:
     return 4;
+  case AArch64::LDRDui:
+  case AArch64::LDURDi:
+  case AArch64::LDRXui:
+  case AArch64::LDURXi:
+  case AArch64::STRDui:
+  case AArch64::STURDi:
+  case AArch64::STRXui:
+  case AArch64::STURXi:
+  case AArch64::LDPDi:
+  case AArch64::LDPXi:
+  case AArch64::STPDi:
+  case AArch64::STPXi:
+    return 8;
+  case AArch64::LDRQui:
+  case AArch64::LDURQi:
+  case AArch64::STRQui:
+  case AArch64::STURQi:
+  case AArch64::LDPQi:
+  case AArch64::STPQi:
+  case AArch64::STGOffset:
+  case AArch64::STZGOffset:
+  case AArch64::ST2GOffset:
+  case AArch64::STZ2GOffset:
+  case AArch64::STGPi:
+    return 16;
   }
 }
 
 // Scale the unscaled offsets.  Returns false if the unscaled offset can't be
 // scaled.
 static bool scaleOffset(unsigned Opc, int64_t &Offset) {
-  unsigned OffsetStride = getOffsetStride(Opc);
-  if (OffsetStride == 0)
-    return false;
+  int Scale = AArch64InstrInfo::getMemScale(Opc);
+
   // If the byte-offset isn't a multiple of the stride, we can't scale this
   // offset.
-  if (Offset % OffsetStride != 0)
+  if (Offset % Scale != 0)
     return false;
 
   // Convert the byte-offset used by unscaled into an "element" offset used
   // by the scaled pair load/store instructions.
-  Offset /= OffsetStride;
-  return true;
-}
-
-// Unscale the scaled offsets. Returns false if the scaled offset can't be
-// unscaled.
-static bool unscaleOffset(unsigned Opc, int64_t &Offset) {
-  unsigned OffsetStride = getOffsetStride(Opc);
-  if (OffsetStride == 0)
-    return false;
-
-  // Convert the "element" offset used by scaled pair load/store instructions
-  // into the byte-offset used by unscaled.
-  Offset *= OffsetStride;
+  Offset /= Scale;
   return true;
 }
 
@@ -2305,15 +2343,17 @@ static bool shouldClusterFI(const MachineFrameInfo &MFI, int FI1,
     int64_t ObjectOffset1 = MFI.getObjectOffset(FI1);
     int64_t ObjectOffset2 = MFI.getObjectOffset(FI2);
     assert(ObjectOffset1 <= ObjectOffset2 && "Object offsets are not ordered.");
-    // Get the byte-offset from the object offset.
-    if (!unscaleOffset(Opcode1, Offset1) || !unscaleOffset(Opcode2, Offset2))
+    // Convert to scaled object offsets.
+    int Scale1 = AArch64InstrInfo::getMemScale(Opcode1);
+    if (ObjectOffset1 % Scale1 != 0)
       return false;
+    ObjectOffset1 /= Scale1;
+    int Scale2 = AArch64InstrInfo::getMemScale(Opcode2);
+    if (ObjectOffset2 % Scale2 != 0)
+      return false;
+    ObjectOffset2 /= Scale2;
     ObjectOffset1 += Offset1;
     ObjectOffset2 += Offset2;
-    // Get the "element" index in the object.
-    if (!scaleOffset(Opcode1, ObjectOffset1) ||
-        !scaleOffset(Opcode2, ObjectOffset2))
-      return false;
     return ObjectOffset1 + 1 == ObjectOffset2;
   }
 
@@ -2373,7 +2413,7 @@ bool AArch64InstrInfo::shouldClusterMemOps(const MachineOperand &BaseOp1,
   // The caller should already have ordered First/SecondLdSt by offset.
   // Note: except for non-equal frame index bases
   if (BaseOp1.isFI()) {
-    assert((!BaseOp1.isIdenticalTo(BaseOp2) || Offset1 >= Offset2) &&
+    assert((!BaseOp1.isIdenticalTo(BaseOp2) || Offset1 <= Offset2) &&
            "Caller should have ordered offsets.");
 
     const MachineFrameInfo &MFI =
@@ -2382,8 +2422,7 @@ bool AArch64InstrInfo::shouldClusterMemOps(const MachineOperand &BaseOp1,
                            BaseOp2.getIndex(), Offset2, SecondOpc);
   }
 
-  assert((!BaseOp1.isIdenticalTo(BaseOp2) || Offset1 <= Offset2) &&
-         "Caller should have ordered offsets.");
+  assert(Offset1 <= Offset2 && "Caller should have ordered offsets.");
 
   return Offset1 + 1 == Offset2;
 }
@@ -3108,7 +3147,7 @@ static void emitFrameOffsetAdj(MachineBasicBlock &MBB,
 
   const unsigned MaxEncodableValue = MaxEncoding << ShiftSize;
   do {
-    unsigned ThisVal = std::min<unsigned>(Offset, MaxEncodableValue);
+    uint64_t ThisVal = std::min<uint64_t>(Offset, MaxEncodableValue);
     unsigned LocalShiftSize = 0;
     if (ThisVal > MaxEncoding) {
       ThisVal = ThisVal >> ShiftSize;
@@ -5639,14 +5678,30 @@ outliner::OutlinedFunction AArch64InstrInfo::getOutliningCandidateInfo(
             assert(MBBI->getNumOperands() == 4 && "Wrong number of operands");
             assert(MBBI->getOperand(2).isImm() &&
                    "Expected operand to be immediate");
-            SPValue += MBBI->getOperand(2).getImm();
+            assert(MBBI->getOperand(1).isReg() &&
+                   "Expected operand to be a register");
+            // Check if the add just increments sp. If so, we search for
+            // matching sub instructions that decrement sp. If not, the
+            // modification is illegal
+            if (MBBI->getOperand(1).getReg() == AArch64::SP)
+              SPValue += MBBI->getOperand(2).getImm();
+            else
+              return true;
             break;
           case AArch64::SUBXri:
           case AArch64::SUBWri:
             assert(MBBI->getNumOperands() == 4 && "Wrong number of operands");
             assert(MBBI->getOperand(2).isImm() &&
                    "Expected operand to be immediate");
-            SPValue -= MBBI->getOperand(2).getImm();
+            assert(MBBI->getOperand(1).isReg() &&
+                   "Expected operand to be a register");
+            // Check if the sub just decrements sp. If so, we search for
+            // matching add instructions that increment sp. If not, the
+            // modification is illegal
+            if (MBBI->getOperand(1).getReg() == AArch64::SP)
+              SPValue -= MBBI->getOperand(2).getImm();
+            else
+              return true;
             break;
           default:
             return true;
@@ -5813,11 +5868,21 @@ outliner::OutlinedFunction AArch64InstrInfo::getOutliningCandidateInfo(
     unsigned NumBytesNoStackCalls = 0;
     std::vector<outliner::Candidate> CandidatesWithoutStackFixups;
 
+    // Check if we have to save LR.
     for (outliner::Candidate &C : RepeatedSequenceLocs) {
       C.initLRU(TRI);
 
+      // If we have a noreturn caller, then we're going to be conservative and
+      // say that we have to save LR. If we don't have a ret at the end of the
+      // block, then we can't reason about liveness accurately.
+      //
+      // FIXME: We can probably do better than always disabling this in
+      // noreturn functions by fixing up the liveness info.
+      bool IsNoReturn =
+          C.getMF()->getFunction().hasFnAttribute(Attribute::NoReturn);
+
       // Is LR available? If so, we don't need a save.
-      if (C.LRU.available(AArch64::LR)) {
+      if (C.LRU.available(AArch64::LR) && !IsNoReturn) {
         NumBytesNoStackCalls += 4;
         C.setCallInfo(MachineOutlinerNoLRSave, 4);
         CandidatesWithoutStackFixups.push_back(C);
@@ -6447,10 +6512,16 @@ AArch64InstrInfo::isCopyInstrImpl(const MachineInstr &MI) const {
   return None;
 }
 
-Optional<DestSourcePair>
-AArch64InstrInfo::isAddImmediate(const MachineInstr &MI,
-                                 int64_t &Offset) const {
+Optional<RegImmPair> AArch64InstrInfo::isAddImmediate(const MachineInstr &MI,
+                                                      Register Reg) const {
   int Sign = 1;
+  int64_t Offset = 0;
+
+  // TODO: Handle cases where Reg is a super- or sub-register of the
+  // destination register.
+  if (Reg != MI.getOperand(0).getReg())
+    return None;
+
   switch (MI.getOpcode()) {
   default:
     return None;
@@ -6474,14 +6545,60 @@ AArch64InstrInfo::isAddImmediate(const MachineInstr &MI,
     Offset = Offset << Shift;
   }
   }
-  return DestSourcePair{MI.getOperand(0), MI.getOperand(1)};
+  return RegImmPair{MI.getOperand(1).getReg(), Offset};
+}
+
+/// If the given ORR instruction is a copy, and \p DescribedReg overlaps with
+/// the destination register then, if possible, describe the value in terms of
+/// the source register.
+static Optional<ParamLoadedValue>
+describeORRLoadedValue(const MachineInstr &MI, Register DescribedReg,
+                       const TargetInstrInfo *TII,
+                       const TargetRegisterInfo *TRI) {
+  auto DestSrc = TII->isCopyInstr(MI);
+  if (!DestSrc)
+    return None;
+
+  Register DestReg = DestSrc->Destination->getReg();
+  Register SrcReg = DestSrc->Source->getReg();
+
+  auto Expr = DIExpression::get(MI.getMF()->getFunction().getContext(), {});
+
+  // If the described register is the destination, just return the source.
+  if (DestReg == DescribedReg)
+    return ParamLoadedValue(MachineOperand::CreateReg(SrcReg, false), Expr);
+
+  // ORRWrs zero-extends to 64-bits, so we need to consider such cases.
+  if (MI.getOpcode() == AArch64::ORRWrs &&
+      TRI->isSuperRegister(DestReg, DescribedReg))
+    return ParamLoadedValue(MachineOperand::CreateReg(SrcReg, false), Expr);
+
+  // We may need to describe the lower part of a ORRXrs move.
+  if (MI.getOpcode() == AArch64::ORRXrs &&
+      TRI->isSubRegister(DestReg, DescribedReg)) {
+    Register SrcSubReg = TRI->getSubReg(SrcReg, AArch64::sub_32);
+    return ParamLoadedValue(MachineOperand::CreateReg(SrcSubReg, false), Expr);
+  }
+
+  assert(!TRI->isSuperOrSubRegisterEq(DestReg, DescribedReg) &&
+         "Unhandled ORR[XW]rs copy case");
+
+  return None;
 }
 
 Optional<ParamLoadedValue>
-AArch64InstrInfo::describeLoadedValue(const MachineInstr &MI) const {
+AArch64InstrInfo::describeLoadedValue(const MachineInstr &MI,
+                                      Register Reg) const {
+  const MachineFunction *MF = MI.getMF();
+  const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
   switch (MI.getOpcode()) {
   case AArch64::MOVZWi:
-  case AArch64::MOVZXi:
+  case AArch64::MOVZXi: {
+    // MOVZWi may be used for producing zero-extended 32-bit immediates in
+    // 64-bit parameters, so we need to consider super-registers.
+    if (!TRI->isSuperRegisterEq(MI.getOperand(0).getReg(), Reg))
+      return None;
+
     if (!MI.getOperand(1).isImm())
       return None;
     int64_t Immediate = MI.getOperand(1).getImm();
@@ -6489,7 +6606,12 @@ AArch64InstrInfo::describeLoadedValue(const MachineInstr &MI) const {
     return ParamLoadedValue(MachineOperand::CreateImm(Immediate << Shift),
                             nullptr);
   }
-  return TargetInstrInfo::describeLoadedValue(MI);
+  case AArch64::ORRWrs:
+  case AArch64::ORRXrs:
+    return describeORRLoadedValue(MI, Reg, this, TRI);
+  }
+
+  return TargetInstrInfo::describeLoadedValue(MI, Reg);
 }
 
 #define GET_INSTRINFO_HELPERS

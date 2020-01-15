@@ -1,4 +1,6 @@
 *
+!generate-patches.sh
+!generate-patches.filelist
 !.gitignore
 !Makefile
 !Makefile2
@@ -8,4 +10,3 @@
 !generate-lld-patch.inc
 !generate-core-diff.sh
 !bbfilter.cc
-

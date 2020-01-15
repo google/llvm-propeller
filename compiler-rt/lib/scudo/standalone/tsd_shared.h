@@ -12,8 +12,6 @@
 #include "linux.h" // for getAndroidTlsPtr()
 #include "tsd.h"
 
-#include <pthread.h>
-
 namespace scudo {
 
 template <class Allocator, u32 MaxTSDCount> struct TSDRegistrySharedT {
@@ -51,6 +49,7 @@ template <class Allocator, u32 MaxTSDCount> struct TSDRegistrySharedT {
     unmap(reinterpret_cast<void *>(TSDs),
           sizeof(TSD<Allocator>) * NumberOfTSDs);
     setCurrentTSD(nullptr);
+    pthread_key_delete(PThreadKey);
   }
 
   ALWAYS_INLINE void initThreadMaybe(Allocator *Instance,
@@ -69,6 +68,18 @@ template <class Allocator, u32 MaxTSDCount> struct TSDRegistrySharedT {
       return TSD;
     // If that fails, go down the slow path.
     return getTSDAndLockSlow(TSD);
+  }
+
+  void disable() {
+    Mutex.lock();
+    for (u32 I = 0; I < NumberOfTSDs; I++)
+      TSDs[I].lock();
+  }
+
+  void enable() {
+    for (s32 I = NumberOfTSDs - 1; I >= 0; I--)
+      TSDs[I].unlock();
+    Mutex.unlock();
   }
 
 private:
@@ -106,6 +117,7 @@ private:
     // Initial context assignment is done in a plain round-robin fashion.
     const u32 Index = atomic_fetch_add(&CurrentIndex, 1U, memory_order_relaxed);
     setCurrentTSD(&TSDs[Index % NumberOfTSDs]);
+    Instance->callPostInitCallback();
   }
 
   NOINLINE TSD<Allocator> *getTSDAndLockSlow(TSD<Allocator> *CurrentTSD) {

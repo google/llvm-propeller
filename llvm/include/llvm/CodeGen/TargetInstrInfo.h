@@ -18,6 +18,7 @@
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/None.h"
 #include "llvm/CodeGen/LiveRegUnits.h"
+#include "llvm/CodeGen/MIRFormatter.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineCombinerPattern.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -51,6 +52,7 @@ class MCInst;
 struct MCSchedModel;
 class Module;
 class ScheduleDAG;
+class ScheduleDAGMI;
 class ScheduleHazardRecognizer;
 class SDNode;
 class SelectionDAG;
@@ -70,6 +72,14 @@ struct DestSourcePair {
 
   DestSourcePair(const MachineOperand &Dest, const MachineOperand &Src)
       : Destination(&Dest), Source(&Src) {}
+};
+
+/// Used to describe a register and immediate addition.
+struct RegImmPair {
+  Register Reg;
+  int64_t Imm;
+
+  RegImmPair(Register Reg, int64_t Imm) : Reg(Reg), Imm(Imm) {}
 };
 
 //---------------------------------------------------------------------------
@@ -950,11 +960,11 @@ public:
   }
 
   /// If the specific machine instruction is an instruction that adds an
-  /// immediate value to its source operand and stores it in destination,
-  /// return destination and source registers as machine operands along with
-  /// \c Offset which has been added.
-  virtual Optional<DestSourcePair> isAddImmediate(const MachineInstr &MI,
-                                                  int64_t &Offset) const {
+  /// immediate value and a physical register, and stores the result in
+  /// the given physical register \c Reg, return a pair of the source
+  /// register and the offset which has been added.
+  virtual Optional<RegImmPair> isAddImmediate(const MachineInstr &MI,
+                                              Register Reg) const {
     return None;
   }
 
@@ -1227,6 +1237,10 @@ public:
 
   /// Get the base operand and byte offset of an instruction that reads/writes
   /// memory.
+  /// It returns false if MI does not read/write memory.
+  /// It returns false if no base operand and offset was found.
+  /// It is not guaranteed to always recognize base operand and offsets in all
+  /// cases.
   virtual bool getMemOperandWithOffset(const MachineInstr &MI,
                                        const MachineOperand *&BaseOp,
                                        int64_t &Offset,
@@ -1357,7 +1371,7 @@ public:
   /// scheduling the machine instructions before register allocation.
   virtual ScheduleHazardRecognizer *
   CreateTargetMIHazardRecognizer(const InstrItineraryData *,
-                                 const ScheduleDAG *DAG) const;
+                                 const ScheduleDAGMI *DAG) const;
 
   /// Allocate and return a hazard recognizer to use for this target when
   /// scheduling the machine instructions after register allocation.
@@ -1635,9 +1649,9 @@ public:
   virtual bool
   areMemAccessesTriviallyDisjoint(const MachineInstr &MIa,
                                   const MachineInstr &MIb) const {
-    assert((MIa.mayLoad() || MIa.mayStore()) &&
+    assert(MIa.mayLoadOrStore() &&
            "MIa must load from or modify a memory location");
-    assert((MIb.mayLoad() || MIb.mayStore()) &&
+    assert(MIb.mayLoadOrStore() &&
            "MIb must load from or modify a memory location");
     return false;
   }
@@ -1727,7 +1741,7 @@ public:
   virtual MachineInstr *createPHISourceCopy(MachineBasicBlock &MBB,
                                             MachineBasicBlock::iterator InsPt,
                                             const DebugLoc &DL, Register Src,
-                                            Register SrcSubReg,
+                                            unsigned SrcSubReg,
                                             Register Dst) const {
     return BuildMI(MBB, InsPt, DL, get(TargetOpcode::COPY), Dst)
         .addReg(Src, 0, SrcSubReg);
@@ -1789,11 +1803,21 @@ public:
   }
 
   /// Produce the expression describing the \p MI loading a value into
-  /// the parameter's forwarding register.
-  virtual Optional<ParamLoadedValue>
-  describeLoadedValue(const MachineInstr &MI) const;
+  /// the physical register \p Reg. This hook should only be used with
+  /// \p MIs belonging to VReg-less functions.
+  virtual Optional<ParamLoadedValue> describeLoadedValue(const MachineInstr &MI,
+                                                         Register Reg) const;
+
+  /// Return MIR formatter to format/parse MIR operands.  Target can override
+  /// this virtual function and return target specific MIR formatter.
+  virtual const MIRFormatter *getMIRFormatter() const {
+    if (!Formatter.get())
+      Formatter = std::make_unique<MIRFormatter>();
+    return Formatter.get();
+  }
 
 private:
+  mutable std::unique_ptr<MIRFormatter> Formatter;
   unsigned CallFrameSetupOpcode, CallFrameDestroyOpcode;
   unsigned CatchRetOpcode;
   unsigned ReturnOpcode;

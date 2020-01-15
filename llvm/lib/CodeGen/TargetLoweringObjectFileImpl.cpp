@@ -275,7 +275,7 @@ void TargetLoweringObjectFileELF::emitModuleMetadata(MCStreamer &Streamer,
 
     Streamer.SwitchSection(S);
 
-    for (const auto &Operand : LinkerOptions->operands()) {
+    for (const auto *Operand : LinkerOptions->operands()) {
       if (cast<MDNode>(Operand)->getNumOperands() != 2)
         report_fatal_error("invalid llvm.linker.options");
       for (const auto &Option : cast<MDNode>(Operand)->operands()) {
@@ -291,7 +291,7 @@ void TargetLoweringObjectFileELF::emitModuleMetadata(MCStreamer &Streamer,
 
     Streamer.SwitchSection(S);
 
-    for (const auto &Operand : DependentLibraries->operands()) {
+    for (const auto *Operand : DependentLibraries->operands()) {
       Streamer.EmitBytes(
           cast<MDString>(cast<MDNode>(Operand)->getOperand(0))->getString());
       Streamer.EmitIntValue(0, 1);
@@ -780,6 +780,12 @@ MCSection *TargetLoweringObjectFileELF::getColdSectionForMachineBasicBlock(
   SmallString<128> Name;
   Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
              ->getSectionName();
+
+  if (!TM.getUniqueSectionNames()) {
+    Name += ".";
+    Name += MBB.getParent()->getName();
+  }
+
   Name += ".cold";
 
   unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
@@ -945,7 +951,7 @@ void TargetLoweringObjectFileMachO::emitModuleMetadata(MCStreamer &Streamer,
                                                        Module &M) const {
   // Emit the linker options if present.
   if (auto *LinkerOptions = M.getNamedMetadata("llvm.linker.options")) {
-    for (const auto &Option : LinkerOptions->operands()) {
+    for (const auto *Option : LinkerOptions->operands()) {
       SmallVector<std::string, 4> StrOptions;
       for (const auto &Piece : cast<MDNode>(Option)->operands())
         StrOptions.push_back(cast<MDString>(Piece)->getString());
@@ -1509,7 +1515,7 @@ void TargetLoweringObjectFileCOFF::emitModuleMetadata(MCStreamer &Streamer,
     // linker.
     MCSection *Sec = getDrectveSection();
     Streamer.SwitchSection(Sec);
-    for (const auto &Option : LinkerOptions->operands()) {
+    for (const auto *Option : LinkerOptions->operands()) {
       for (const auto &Piece : cast<MDNode>(Option)->operands()) {
         // Lead with a space for consistency with our dllexport implementation.
         std::string Directive(" ");
@@ -1930,7 +1936,10 @@ MCSection *TargetLoweringObjectFileXCOFF::SelectSectionForGlobal(
   if (Kind.isText())
     return TextSection;
 
-  if (Kind.isData())
+  if (Kind.isData() || Kind.isReadOnlyWithRel())
+    // TODO: We may put this under option control, because user may want to
+    // have read-only data with relocations placed into a read-only section by
+    // the compiler.
     return DataSection;
 
   // Zero initialized data must be emitted to the .data section because external
@@ -1939,7 +1948,7 @@ MCSection *TargetLoweringObjectFileXCOFF::SelectSectionForGlobal(
   if (Kind.isBSS())
     return DataSection;
 
-  if (Kind.isReadOnly() && !Kind.isMergeableConst())
+  if (Kind.isReadOnly())
     return ReadOnlySection;
 
   report_fatal_error("XCOFF other section types not yet implemented.");

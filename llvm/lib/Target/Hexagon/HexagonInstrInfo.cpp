@@ -2147,7 +2147,7 @@ bool HexagonInstrInfo::isDuplexPair(const MachineInstr &MIa,
 }
 
 bool HexagonInstrInfo::isEarlySourceInstr(const MachineInstr &MI) const {
-  if (MI.mayLoad() || MI.mayStore() || MI.isCompare())
+  if (MI.mayLoadOrStore() || MI.isCompare())
     return true;
 
   // Multiply
@@ -2945,10 +2945,7 @@ bool HexagonInstrInfo::getMemOperandWithOffset(
     const TargetRegisterInfo *TRI) const {
   unsigned AccessSize = 0;
   BaseOp = getBaseAndOffset(LdSt, Offset, AccessSize);
-  assert((!BaseOp || BaseOp->isReg()) &&
-         "getMemOperandWithOffset only supports base "
-         "operands of type register.");
-  return BaseOp != nullptr;
+  return BaseOp != nullptr && BaseOp->isReg();
 }
 
 /// Can these instructions execute at the same time in a bundle.

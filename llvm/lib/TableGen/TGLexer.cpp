@@ -350,6 +350,10 @@ tgtok::TokKind TGLexer::LexIdentifier() {
     .Case("field", tgtok::Field)
     .Case("let", tgtok::Let)
     .Case("in", tgtok::In)
+    .Case("defvar", tgtok::Defvar)
+    .Case("if", tgtok::If)
+    .Case("then", tgtok::Then)
+    .Case("else", tgtok::ElseKW)
     .Default(tgtok::Id);
 
   if (Kind == tgtok::Id)
@@ -559,6 +563,8 @@ tgtok::TokKind TGLexer::LexExclaim() {
     .Case("listconcat", tgtok::XListConcat)
     .Case("listsplat", tgtok::XListSplat)
     .Case("strconcat", tgtok::XStrConcat)
+    .Case("setop", tgtok::XSetOp)
+    .Case("getop", tgtok::XGetOp)
     .Default(tgtok::Error);
 
   return Kind != tgtok::Error ? Kind : ReturnError(Start-1, "Unknown operator");

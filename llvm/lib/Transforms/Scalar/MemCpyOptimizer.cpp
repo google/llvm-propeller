@@ -388,16 +388,12 @@ Instruction *MemCpyOptPass::tryMergingIntoMemset(Instruction *StartInst,
     StartPtr = Range.StartPtr;
 
     // Determine alignment
-    unsigned Alignment = Range.Alignment;
-    if (Alignment == 0) {
-      Type *EltType =
-        cast<PointerType>(StartPtr->getType())->getElementType();
-      Alignment = DL.getABITypeAlignment(EltType);
-    }
+    const Align Alignment = DL.getValueOrABITypeAlignment(
+        MaybeAlign(Range.Alignment),
+        cast<PointerType>(StartPtr->getType())->getElementType());
 
-    AMemSet =
-      Builder.CreateMemSet(StartPtr, ByteVal, Range.End-Range.Start, Alignment);
-
+    AMemSet = Builder.CreateMemSet(StartPtr, ByteVal, Range.End - Range.Start,
+                                   Alignment);
     LLVM_DEBUG(dbgs() << "Replace stores:\n"; for (Instruction *SI
                                                    : Range.TheStores) dbgs()
                                               << *SI << '\n';
@@ -417,25 +413,21 @@ Instruction *MemCpyOptPass::tryMergingIntoMemset(Instruction *StartInst,
   return AMemSet;
 }
 
-static unsigned findStoreAlignment(const DataLayout &DL, const StoreInst *SI) {
-  unsigned StoreAlign = SI->getAlignment();
-  if (!StoreAlign)
-    StoreAlign = DL.getABITypeAlignment(SI->getOperand(0)->getType());
-  return StoreAlign;
+static Align findStoreAlignment(const DataLayout &DL, const StoreInst *SI) {
+  return DL.getValueOrABITypeAlignment(MaybeAlign(SI->getAlignment()),
+                                       SI->getOperand(0)->getType());
 }
 
-static unsigned findLoadAlignment(const DataLayout &DL, const LoadInst *LI) {
-  unsigned LoadAlign = LI->getAlignment();
-  if (!LoadAlign)
-    LoadAlign = DL.getABITypeAlignment(LI->getType());
-  return LoadAlign;
+static Align findLoadAlignment(const DataLayout &DL, const LoadInst *LI) {
+  return DL.getValueOrABITypeAlignment(MaybeAlign(LI->getAlignment()),
+                                       LI->getType());
 }
 
-static unsigned findCommonAlignment(const DataLayout &DL, const StoreInst *SI,
-                                     const LoadInst *LI) {
-  unsigned StoreAlign = findStoreAlignment(DL, SI);
-  unsigned LoadAlign = findLoadAlignment(DL, LI);
-  return MinAlign(StoreAlign, LoadAlign);
+static Align findCommonAlignment(const DataLayout &DL, const StoreInst *SI,
+                                 const LoadInst *LI) {
+  Align StoreAlign = findStoreAlignment(DL, SI);
+  Align LoadAlign = findLoadAlignment(DL, LI);
+  return commonAlignment(StoreAlign, LoadAlign);
 }
 
 // This method try to lift a store instruction before position P.
@@ -650,7 +642,7 @@ bool MemCpyOptPass::processStore(StoreInst *SI, BasicBlock::iterator &BBI) {
             LI, SI->getPointerOperand()->stripPointerCasts(),
             LI->getPointerOperand()->stripPointerCasts(),
             DL.getTypeStoreSize(SI->getOperand(0)->getType()),
-            findCommonAlignment(DL, SI, LI), C);
+            findCommonAlignment(DL, SI, LI).value(), C);
         if (changed) {
           MD->removeInstruction(SI);
           SI->eraseFromParent();
@@ -683,12 +675,11 @@ bool MemCpyOptPass::processStore(StoreInst *SI, BasicBlock::iterator &BBI) {
     auto *T = V->getType();
     if (T->isAggregateType()) {
       uint64_t Size = DL.getTypeStoreSize(T);
-      unsigned Align = SI->getAlignment();
-      if (!Align)
-        Align = DL.getABITypeAlignment(T);
+      const Align MA =
+          DL.getValueOrABITypeAlignment(MaybeAlign(SI->getAlignment()), T);
       IRBuilder<> Builder(SI);
       auto *M =
-          Builder.CreateMemSet(SI->getPointerOperand(), ByteVal, Size, Align);
+          Builder.CreateMemSet(SI->getPointerOperand(), ByteVal, Size, MA);
 
       LLVM_DEBUG(dbgs() << "Promoting " << *SI << " to " << *M << "\n");
 
@@ -983,12 +974,12 @@ bool MemCpyOptPass::processMemCpyMemCpyDependence(MemCpyInst *M,
   // example we could be moving from movaps -> movq on x86.
   IRBuilder<> Builder(M);
   if (UseMemMove)
-    Builder.CreateMemMove(M->getRawDest(), M->getDestAlignment(),
-                          MDep->getRawSource(), MDep->getSourceAlignment(),
+    Builder.CreateMemMove(M->getRawDest(), M->getDestAlign(),
+                          MDep->getRawSource(), MDep->getSourceAlign(),
                           M->getLength(), M->isVolatile());
   else
-    Builder.CreateMemCpy(M->getRawDest(), M->getDestAlignment(),
-                         MDep->getRawSource(), MDep->getSourceAlignment(),
+    Builder.CreateMemCpy(M->getRawDest(), M->getDestAlign(),
+                         MDep->getRawSource(), MDep->getSourceAlign(),
                          M->getLength(), M->isVolatile());
 
   // Remove the instruction we're replacing.
@@ -1058,7 +1049,7 @@ bool MemCpyOptPass::processMemSetMemCpyDependence(MemCpyInst *MemCpy,
   Builder.CreateMemSet(
       Builder.CreateGEP(Dest->getType()->getPointerElementType(), Dest,
                         SrcSize),
-      MemSet->getOperand(1), MemsetLen, Align);
+      MemSet->getOperand(1), MemsetLen, MaybeAlign(Align));
 
   MD->removeInstruction(MemSet);
   MemSet->eraseFromParent();
@@ -1126,8 +1117,8 @@ bool MemCpyOptPass::performMemCpyToMemSetOptzn(MemCpyInst *MemCpy,
   }
 
   IRBuilder<> Builder(MemCpy);
-  Builder.CreateMemSet(MemCpy->getRawDest(), MemSet->getOperand(1),
-                       CopySize, MemCpy->getDestAlignment());
+  Builder.CreateMemSet(MemCpy->getRawDest(), MemSet->getOperand(1), CopySize,
+                       MaybeAlign(MemCpy->getDestAlignment()));
   return true;
 }
 
@@ -1154,7 +1145,7 @@ bool MemCpyOptPass::processMemCpy(MemCpyInst *M) {
                                            M->getModule()->getDataLayout())) {
         IRBuilder<> Builder(M);
         Builder.CreateMemSet(M->getRawDest(), ByteVal, M->getLength(),
-                             M->getDestAlignment(), false);
+                             MaybeAlign(M->getDestAlignment()), false);
         MD->removeInstruction(M);
         M->eraseFromParent();
         ++NumCpyToSet;

@@ -89,6 +89,12 @@ public:
   /// if there is a corresponding unscaled variant available.
   static Optional<unsigned> getUnscaledLdSt(unsigned Opc);
 
+  /// Scaling factor for (scaled or unscaled) load or store.
+  static int getMemScale(unsigned Opc);
+  static int getMemScale(const MachineInstr &MI) {
+    return getMemScale(MI.getOpcode());
+  }
+
 
   /// Returns the index for the immediate for a given instruction.
   static unsigned getLoadStoreImmIdx(unsigned Opc);
@@ -265,11 +271,11 @@ public:
   /// on Windows.
   static bool isSEHInstruction(const MachineInstr &MI);
 
-  Optional<DestSourcePair> isAddImmediate(const MachineInstr &MI,
-                                          int64_t &Offset) const override;
+  Optional<RegImmPair> isAddImmediate(const MachineInstr &MI,
+                                      Register Reg) const override;
 
-  Optional<ParamLoadedValue>
-  describeLoadedValue(const MachineInstr &MI) const override;
+  Optional<ParamLoadedValue> describeLoadedValue(const MachineInstr &MI,
+                                                 Register Reg) const override;
 
 #define GET_INSTRINFO_HELPER_DECLS
 #include "AArch64GenInstrInfo.inc"

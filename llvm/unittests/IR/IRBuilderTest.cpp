@@ -12,6 +12,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/IntrinsicsAArch64.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Module.h"
@@ -220,6 +221,16 @@ TEST_F(IRBuilderTest, ConstrainedFP) {
   ASSERT_TRUE(isa<IntrinsicInst>(VInt));
   II = cast<IntrinsicInst>(VInt);
   EXPECT_EQ(II->getIntrinsicID(), Intrinsic::experimental_constrained_fptosi);
+
+  VDouble = Builder.CreateUIToFP(VInt, Builder.getDoubleTy());
+  ASSERT_TRUE(isa<IntrinsicInst>(VDouble));
+  II = cast<IntrinsicInst>(VDouble);
+  EXPECT_EQ(II->getIntrinsicID(), Intrinsic::experimental_constrained_uitofp);
+
+  VDouble = Builder.CreateSIToFP(VInt, Builder.getDoubleTy());
+  ASSERT_TRUE(isa<IntrinsicInst>(VDouble));
+  II = cast<IntrinsicInst>(VDouble);
+  EXPECT_EQ(II->getIntrinsicID(), Intrinsic::experimental_constrained_sitofp);
 
   V = Builder.CreateFPTrunc(VDouble, Type::getFloatTy(Ctx));
   ASSERT_TRUE(isa<IntrinsicInst>(V));

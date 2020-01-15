@@ -289,8 +289,10 @@ void llvm::computePeelCount(Loop *L, unsigned LoopSize,
   if (!canPeel(L))
     return;
 
-  // Only try to peel innermost loops.
-  if (!L->empty())
+  // Only try to peel innermost loops by default.
+  // The constraint can be relaxed by the target in TTI.getUnrollingPreferences
+  // or by the flag -unroll-allow-loop-nests-peeling.
+  if (!UP.AllowLoopNestsPeeling && !L->empty())
     return;
 
   // If the user provided a peel count, use that.
@@ -584,7 +586,7 @@ static void cloneLoopBlocks(
 
   // LastValueMap is updated with the values for the current loop
   // which are used the next time this function is called.
-  for (const auto &KV : VMap)
+  for (auto KV : VMap)
     LVMap[KV.first] = KV.second;
 }
 

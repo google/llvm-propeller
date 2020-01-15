@@ -22,6 +22,8 @@ message Edge {
     INTRA_DYNA = 3;
     // Inter function jumps / calls.
     INTER_FUNC_CALL = 4;
+    // Inter function returns.
+    INTER_FUNC_RETURN = 5;
   }
 
   // Edge type

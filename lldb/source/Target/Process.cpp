@@ -137,18 +137,11 @@ ProcessProperties::ProcessProperties(lldb_private::Process *process)
         Process::GetGlobalProperties().get());
     m_collection_sp->SetValueChangedCallback(
         ePropertyPythonOSPluginPath,
-        ProcessProperties::OptionValueChangedCallback, this);
+        [this] { m_process->LoadOperatingSystemPlugin(true); });
   }
 }
 
 ProcessProperties::~ProcessProperties() = default;
-
-void ProcessProperties::OptionValueChangedCallback(void *baton,
-                                                   OptionValue *option_value) {
-  ProcessProperties *properties = (ProcessProperties *)baton;
-  if (properties->m_process)
-    properties->m_process->LoadOperatingSystemPlugin(true);
-}
 
 bool ProcessProperties::GetDisableMemoryCache() const {
   const uint32_t idx = ePropertyDisableMemCache;
@@ -5800,7 +5793,8 @@ Process::AdvanceAddressToNextBranchInstruction(Address default_stop_addr,
 
   uint32_t branch_index =
       insn_list->GetIndexOfNextBranchInstruction(insn_offset, target,
-                                                 false /* ignore_calls*/);
+                                                 false /* ignore_calls*/,
+                                                 nullptr);
   if (branch_index == UINT32_MAX) {
     return retval;
   }

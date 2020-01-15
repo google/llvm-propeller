@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/LLVMContext.h"
@@ -63,8 +64,10 @@ const char RanlibHelp[] = R"(OVERVIEW: LLVM Ranlib (llvm-ranlib)
 USAGE: llvm-ranlib <archive-file>
 
 OPTIONS:
-  -h --help                         - Display available options
-  --version                         - Display the version of this program
+  -h --help             - Display available options
+  -v --version          - Display the version of this program
+  -D                    - Use zero for timestamps and uids/gids (default)
+  -U                    - Use actual timestamps and uids/gids
 )";
 
 const char ArHelp[] = R"(OVERVIEW: LLVM Archiver
@@ -1155,13 +1158,33 @@ static int ar_main(int argc, char **argv) {
 static int ranlib_main(int argc, char **argv) {
   bool ArchiveSpecified = false;
   for (int i = 1; i < argc; ++i) {
-    if (handleGenericOption(argv[i])) {
+    StringRef arg(argv[i]);
+    if (handleGenericOption(arg)) {
       return 0;
+    } else if (arg.consume_front("-")) {
+      // Handle the -D/-U flag
+      while (!arg.empty()) {
+        if (arg.front() == 'D') {
+          Deterministic = true;
+        } else if (arg.front() == 'U') {
+          Deterministic = false;
+        } else if (arg.front() == 'h') {
+          printHelpMessage();
+          return 0;
+        } else if (arg.front() == 'v') {
+          cl::PrintVersionMessage();
+          return 0;
+        } else {
+          // TODO: GNU ranlib also supports a -t flag
+          fail("Invalid option: '-" + arg + "'");
+        }
+        arg = arg.drop_front(1);
+      }
     } else {
       if (ArchiveSpecified)
         fail("exactly one archive should be specified");
       ArchiveSpecified = true;
-      ArchiveName = argv[i];
+      ArchiveName = arg.str();
     }
   }
   if (!ArchiveSpecified) {
@@ -1179,16 +1202,25 @@ int main(int argc, char **argv) {
   llvm::InitializeAllAsmParsers();
 
   Stem = sys::path::stem(ToolName);
-  if (Stem.contains_lower("dlltool"))
+  auto Is = [](StringRef Tool) {
+    // We need to recognize the following filenames.
+    //
+    // Lib.exe -> lib (see D44808, MSBuild runs Lib.exe)
+    // dlltool.exe -> dlltool
+    // arm-pokymllib32-linux-gnueabi-llvm-ar-10 -> ar
+    auto I = Stem.rfind_lower(Tool);
+    return I != StringRef::npos &&
+           (I + Tool.size() == Stem.size() || !isAlnum(Stem[I + Tool.size()]));
+  };
+
+  if (Is("dlltool"))
     return dlltoolDriverMain(makeArrayRef(argv, argc));
-
-  if (Stem.contains_lower("ranlib"))
+  if (Is("ranlib"))
     return ranlib_main(argc, argv);
-
-  if (Stem.contains_lower("lib"))
+  if (Is("lib"))
     return libDriverMain(makeArrayRef(argv, argc));
-
-  if (Stem.contains_lower("ar"))
+  if (Is("ar"))
     return ar_main(argc, argv);
+
   fail("not ranlib, ar, lib or dlltool");
 }

@@ -424,8 +424,7 @@ CFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
         for (auto *CFG : cfgLI->second)
           for (auto &node : CFG->Nodes) {
             // Skip the entry node as we know this is a BB symbol.
-            if (node->isEntryNode())
-              continue;
+            if (node->isEntryNode()) continue;
             // Check CFG does have name "SymName".
             auto t = node->ShName.find_first_of('.');
             if (t != std::string::npos && t == NumOnes)
