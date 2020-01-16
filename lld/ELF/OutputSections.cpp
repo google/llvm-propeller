@@ -247,16 +247,16 @@ static void fill(uint8_t *Buf, size_t Size,
                  const std::vector<std::vector<uint8_t>> &SFiller) {
   unsigned I = 0;
   unsigned NC = Size / SFiller.back().size();
-  for (unsigned C = 0 ; C < NC; ++C){
+  for (unsigned C = 0; C < NC; ++C) {
     memcpy(Buf + I, SFiller.back().data(), SFiller.back().size());
     I += SFiller.back().size();
   }
   unsigned remaining = Size - I;
   if (!remaining)
     return;
-  if (SFiller.at(remaining-1).size() != remaining)
+  if (SFiller.at(remaining - 1).size() != remaining)
     fatal("Failed padding with special filler.");
-  memcpy(Buf + I, SFiller.at(remaining-1).data(), remaining);
+  memcpy(Buf + I, SFiller.at(remaining - 1).data(), remaining);
 }
 
 // Fill [Buf, Buf + Size) with Filler.

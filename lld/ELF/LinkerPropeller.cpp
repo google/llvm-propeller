@@ -30,10 +30,10 @@
 
 #include "Config.h"
 #include "InputFiles.h"
-#include "lld/Common/Memory.h"
 #include "Propeller/Propeller.h"
 #include "Propeller/PropellerCFG.h"
 #include "Propeller/PropellerConfig.h"
+#include "lld/Common/Memory.h"
 
 #include "lld/Common/ErrorHandler.h"
 

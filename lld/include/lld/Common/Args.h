@@ -28,8 +28,7 @@ llvm::CodeGenOpt::Level getCGOptLevel(int optLevelLTO);
 int64_t getInteger(llvm::opt::InputArgList &args, unsigned key,
                    int64_t Default);
 
-double getFloat(llvm::opt::InputArgList &args, unsigned key,
-                 double Default);
+double getFloat(llvm::opt::InputArgList &args, unsigned key, double Default);
 
 std::vector<StringRef> getStrings(llvm::opt::InputArgList &args, int id);
 

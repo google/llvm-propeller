@@ -73,9 +73,7 @@ public:
     INTER_FUNC_RETURN,
   } Type = INTRA_FUNC;
 
-  bool isCall() const {
-    return Type == INTER_FUNC_CALL || Type == INTRA_RSC;
-  }
+  bool isCall() const { return Type == INTER_FUNC_CALL || Type == INTRA_RSC; }
 
   bool isReturn() const {
     return Type == INTER_FUNC_RETURN || Type == INTRA_RSR;
@@ -105,7 +103,7 @@ public:
 
   // Containing chain for this node assigned by the ordering algorithm.
   // This will be updated as chains keep merging together during the algorithm.
-  NodeChain * Chain;
+  NodeChain *Chain;
 
   // Offset of this node in the assigned chain.
   uint64_t ChainOffset;
@@ -138,19 +136,19 @@ public:
   bool isEntryNode() const;
 
   template <class Visitor> void forEachInEdgeRef(Visitor V) {
-    for (auto& edgeList: {Ins, CallIns})
-      for (CFGEdge * E: edgeList)
+    for (auto &edgeList : {Ins, CallIns})
+      for (CFGEdge *E : edgeList)
         V(*E);
   }
 
   template <class Visitor> void forEachIntraOutEdgeRef(Visitor V) {
-    for (CFGEdge * E: Outs)
+    for (CFGEdge *E : Outs)
       V(*E);
   }
 
   template <class Visitor> void forEachOutEdgeRef(Visitor V) {
-    for (auto& edgeList: {Outs, CallOuts})
-      for (CFGEdge * E: edgeList)
+    for (auto &edgeList : {Outs, CallOuts})
+      for (CFGEdge *E : edgeList)
         V(*E);
   }
 
@@ -183,10 +181,10 @@ public:
 
   ControlFlowGraph(ObjectView *V, const StringRef &N, uint64_t S)
       : View(V), Name(N), Size(S), Hot(false) {
-        DebugCFG = std::find(propellerConfig.optDebugSymbols.begin(),
-                             propellerConfig.optDebugSymbols.end(),
-                             Name.str()) != propellerConfig.optDebugSymbols.end();
-      }
+    DebugCFG = std::find(propellerConfig.optDebugSymbols.begin(),
+                         propellerConfig.optDebugSymbols.end(),
+                         Name.str()) != propellerConfig.optDebugSymbols.end();
+  }
 
   bool markPath(CFGNode *from, CFGNode *to, uint64_t cnt = 1);
   void mapBranch(CFGNode *from, CFGNode *to, uint64_t cnt = 1,
@@ -203,7 +201,7 @@ public:
     if (Nodes.empty())
       return false;
     return Hot;
-    //return (getEntryNode()->Freq != 0);
+    // return (getEntryNode()->Freq != 0);
   }
 
   template <class Visitor> void forEachNodeRef(Visitor V) {
@@ -242,7 +240,7 @@ public:
   bool buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping);
 
 protected:
-  // 
+  //
   std::map<StringRef, std::list<SymbolRef>> buildPreCFGGroups();
 
   // See implementaion comments in .cpp.
