@@ -23,6 +23,10 @@ echo "Generate patches based on: ${BASEINFO}"
 idx=0
 declare -A component_map
 
+if [[ "$(( ${#ALL_FILES[@]} % 2 ))" != "0" ]]; then
+    echo "Invalid files lists."
+fi
+
 while ((idx<"${#ALL_FILES[@]}")); do
     component="${ALL_FILES[$idx]}"
     file="${ALL_FILES[$((idx+1))]}"
