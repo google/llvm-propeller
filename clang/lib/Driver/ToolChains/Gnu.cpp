@@ -656,8 +656,8 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("--no-warn-symbol-ordering");
     } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
       if (D.isUsingLTO())
-        CmdArgs.push_back(Args.MakeArgString(
-            Twine("--lto-basicblock-sections=labels")));
+        CmdArgs.push_back(
+            Args.MakeArgString(Twine("--lto-basicblock-sections=labels")));
     }
   }
 

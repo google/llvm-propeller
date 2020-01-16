@@ -9,7 +9,7 @@
 // RUN: %clang_cc1 -triple x86_64-pc-linux-gnu -S -fbasicblock-sections=all -funique-bb-section-names -o - < %s | FileCheck %s --check-prefix=UNIQUE
 
 int world(int a) {
-  if (a  > 10)
+  if (a > 10)
     return 10;
   else if (a > 5)
     return 5;
