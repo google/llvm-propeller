@@ -345,8 +345,7 @@ llvm::Function *CodeGenModule::CreateGlobalInitOrDestructFunction(
       if (getCodeGenOpts().FunctionSections) {
         Twine NewName = Section + Name;
         Fn->setSection(NewName.str());
-      }
-      else {
+      } else {
         Fn->setSection(Section);
       }
     }
