@@ -10,9 +10,9 @@
 
 #include "Heap.h"
 #include "PropellerCFG.h"
+#include "PropellerChainClustering.h"
 #include "PropellerNodeChain.h"
 #include "PropellerNodeChainAssembly.h"
-#include "PropellerChainClustering.h"
 
 #include "llvm/ADT/DenseMap.h"
 
@@ -113,7 +113,7 @@ public:
   NodeChainBuilder(ControlFlowGraph *cfg) : CFGs(1, cfg) {}
 };
 
-} //namespace propeller
-} //namespace lld
+} // namespace propeller
+} // namespace lld
 
 #endif

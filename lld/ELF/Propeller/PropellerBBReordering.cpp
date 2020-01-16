@@ -5,94 +5,22 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// This file is part of the Propeller infrastructure for doing code layout
-// optimization and includes the implementation of intra-function basic block
-// reordering algorithm based on the Extended TSP metric as described in [1].
-//
-// The Extend TSP metric (ExtTSP) provides a score for every ordering of basic
-// blocks in a function, by combining the gains from fall-throughs and short
-// jumps.
-//
-// Given an ordering of the basic blocks, for a function f, the ExtTSP score is
-// computed as follows.
-//
-// sum_{edges e in f} frequency(e) * weight(e)
-//
-// where frequency(e) is the execution frequency and weight(e) is computed as
-// follows:
-//  * 1 if distance(Src[e], Sink[e]) = 0 (i.e. fallthrough)
-//
-//  * 0.1 * (1 - distance(Src[e], Sink[e]) / 1024) if Src[e] < Sink[e] and 0 <
-//    distance(Src[e], Sink[e]) < 1024 (i.e. short forward jump)
-//
-//  * 0.1 * (1 - distance(Src[e], Sink[e]) / 640) if Src[e] > Sink[e] and 0 <
-//    distance(Src[e], Sink[e]) < 640 (i.e. short backward jump)
-//
-//  * 0 otherwise
-//
-//
-// In short, it computes a weighted sum of frequencies of all edges in the
-// control flow graph. Each edge gets its weight depending on whether the given
-// ordering makes the edge a fallthrough, a short forward jump, or a short
-// backward jump.
-//
-// Although this problem is NP-hard like the regular TSP, an iterative greedy
-// basic-block-chaining algorithm is used to find a close to optimal solution.
-// This algorithm is described as follows.
-//
-// Starting with one basic block sequence (BB chain) for every basic block, the
-// algorithm iteratively joins BB chains together in order to maximize the
-// extended TSP score of all the chains.
-//
-// Initially, it finds all mutually-forced edges in the profiled CFG. These are
-// all the edges which are -- based on the profile -- the only (executed)
-// outgoing edge from their source node and the only (executed) incoming edges
-// to their sink nodes. Next, the source and sink of all mutually-forced edges
-// are attached together as fallthrough edges.
-//
-// Then, at every iteration, the algorithm tries to merge a pair of BB chains
-// which leads to the highest gain in the ExtTSP score. The algorithm extends
-// the search space by considering splitting short (less than 128 bytes in
-// binary size) BB chains into two chains and then merging these two chains with
-// the other chain in four ways. After every merge, the new merge gains are
-// updated. The algorithm repeats joining BB chains until no additional can be
-// achieved. Eventually, it sorts all the existing chains in decreasing order of
-// their execution density, i.e., the total profiled frequency of the chain
-// divided by its binary size.
-//
-// The values used by this algorithm are reconfiguriable using lld's propeller
-// flags. Specifically, these parameters are:
-//
-//   * propeller-forward-jump-distance: maximum distance of a forward jump
-//     default-set to 1024 in the above equation).
-//
-//   * propeller-backward-jump-distance: maximum distance of a backward jump
-//     (default-set to 640 in the above equation).
-//
-//   * propeller-fallthrough-weight: weight of a fallthrough (default-set to 1)
-//
-//   * propeller-forward-jump-weight: weight of a forward jump (default-set to
-//     0.1)
-//
-//   * propeller-backward-jump-weight: weight of a backward jump (default-set to
-//     0.1)
-//
-//   * propeller-chain-split-threshold: maximum binary size of a BB chain which
-//     the algorithm will consider for splitting (default-set to 128).
-//
-// References:
-//   * [1] A. Newell and S. Pupyrev, Improved Basic Block Reordering, available
-//         at https://arxiv.org/abs/1809.04676
-//===----------------------------------------------------------------------===//
 #include "PropellerBBReordering.h"
 
 #include "PropellerConfig.h"
+#include "PropellerCFG.h"
+#include "PropellerNodeChain.h"
+#include "PropellerChainClustering.h"
+#include "PropellerNodeChainAssembly.h"
+#include "PropellerNodeChainBuilder.h"
+
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 
 #include <numeric>
 #include <vector>
 
+using llvm::DenseMap;
 using llvm::DenseSet;
 
 namespace lld {
@@ -150,6 +78,67 @@ void PropellerBBReordering::printStats() {
   fprintf(stderr, "\n");
 }
 
+void PropellerBBReordering::doSplitOrder(std::list<StringRef> &symbolList,
+                    std::list<StringRef>::iterator hotPlaceHolder,
+                    std::list<StringRef>::iterator coldPlaceHolder) {
+    std::chrono::steady_clock::time_point start =
+        std::chrono::steady_clock::now();
+
+    prop->forEachCfgRef([this](ControlFlowGraph &cfg) {
+      if (cfg.isHot()) {
+        HotCFGs.push_back(&cfg);
+        if (propellerConfig.optPrintStats) {
+          unsigned hotBBs = 0;
+          unsigned allBBs = 0;
+          cfg.forEachNodeRef([&hotBBs, &allBBs](CFGNode &node) {
+            if (node.Freq)
+              hotBBs++;
+            allBBs++;
+          });
+          fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg.Name.str().c_str(), allBBs, hotBBs);
+        }
+      } else
+        ColdCFGs.push_back(&cfg);
+    });
+
+
+    if (propellerConfig.optReorderIP)
+      CC.reset(new CallChainClustering());
+    else if (propellerConfig.optReorderFuncs)
+      CC.reset(new CallChainClustering());
+    else
+      CC.reset(new NoOrdering());
+
+    if (propellerConfig.optReorderIP)
+      NodeChainBuilder(HotCFGs).doOrder(CC);
+    else if (propellerConfig.optReorderBlocks) {
+      for (ControlFlowGraph *cfg : HotCFGs)
+        NodeChainBuilder(cfg).doOrder(CC);
+    } else {
+      for (ControlFlowGraph *cfg : HotCFGs)
+        CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+    }
+    for (ControlFlowGraph *cfg : ColdCFGs)
+      CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+
+    CC->doOrder(HotOrder, ColdOrder);
+
+    for (CFGNode *n : HotOrder)
+      symbolList.insert(hotPlaceHolder, n->ShName);
+
+    for (CFGNode *n : ColdOrder)
+      symbolList.insert(coldPlaceHolder, n->ShName);
+
+    std::chrono::steady_clock::time_point end =
+        std::chrono::steady_clock::now();
+    warn(
+        "[Propeller]: BB reordering took: " +
+        Twine(std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+                  .count()));
+
+    if (propellerConfig.optPrintStats)
+      printStats();
+}
 
 } // namespace propeller
 } // namespace lld
