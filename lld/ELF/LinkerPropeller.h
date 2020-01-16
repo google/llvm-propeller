@@ -19,6 +19,7 @@
 
 namespace lld {
 namespace propeller {
+// Propeller interface to lld.
 void doPropeller();
 }
 } // namespace lld

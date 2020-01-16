@@ -50,6 +50,7 @@ namespace propeller {
 
 Propeller *prop;
 
+// Set up PropellerConfig from global lld config instnace.
 static void setupConfig() {
   propellerConfig.optPropeller = config->propeller;
   propellerConfig.optLinkerOutputFile = config->outputFile;
@@ -74,6 +75,7 @@ static void setupConfig() {
 #undef COPY_CONFIG
 }
 
+// Propeller framework entrance.
 void doPropeller() {
   if (config->propeller.empty())
     return;
