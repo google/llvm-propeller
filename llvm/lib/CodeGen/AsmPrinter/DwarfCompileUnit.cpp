@@ -402,7 +402,8 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     // range. Ranges for the other BBs have to be emitted separately.
     for (auto &MBB : *Asm->MF) {
       if (!MBB.pred_empty() && MBB.isBeginSection()) {
-        BB_List.push_back({MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
+        BB_List.push_back(
+            {MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
       }
     }
     attachRangesOrLowHighPC(*SPDie, BB_List);
@@ -550,12 +551,12 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
       continue;
     }
 
-    assert (!BeginMBB->sameSection(EndMBB) &&
-            "BeginMBB and EndMBB are in the same section!");
+    assert(!BeginMBB->sameSection(EndMBB) &&
+           "BeginMBB and EndMBB are in the same section!");
     const auto *MBBInSection = BeginMBB->getSectionEndMBB();
     List.push_back({BeginLabel, MBBInSection->getEndMCSymbol()});
     MBBInSection = MBBInSection->getNextNode();
-    while  (!MBBInSection->sameSection(EndMBB)) {
+    while (!MBBInSection->sameSection(EndMBB)) {
       assert(MBBInSection->isBeginSection() &&
              "This should start a new section.");
       List.push_back({MBBInSection->getSymbol(),

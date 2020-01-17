@@ -350,7 +350,7 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
 }
 
 /// HasEHInfo - Return true is this Machine Basic Block is a landing pad.
-//static bool HasEHInfo(const MachineBasicBlock &MBB) {
+// static bool HasEHInfo(const MachineBasicBlock &MBB) {
 //  if (MBB.isEHPad() || MBB.isEHFuncletEntry())
 //    return true;
 //  for (auto &MI : MBB) {
@@ -373,7 +373,7 @@ bool MachineFunction::sortBasicBlockSections() {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.  Entry basic block cannot
     // a section because the function starts one.
-    //bool UsesEHInfo = HasEHInfo(MBB);
+    // bool UsesEHInfo = HasEHInfo(MBB);
     if (MBB.getNumber() == this->front().getNumber()) {
       if (MBB.isEHPad())
         MBB.setExceptionSection();
@@ -404,8 +404,7 @@ bool MachineFunction::sortBasicBlockSections() {
 
   // Order : Entry Block, Cold Section, Other Unique Sections.
   auto SectionType = ([&](MachineBasicBlock &X) {
-    if (X.getNumber() == this->front().getNumber() &&
-        !X.isExceptionSection())
+    if (X.getNumber() == this->front().getNumber() && !X.isExceptionSection())
       return 0;
     if (X.isExceptionSection())
       return 1;
@@ -418,9 +417,7 @@ bool MachineFunction::sortBasicBlockSections() {
     auto TypeX = SectionType(X);
     auto TypeY = SectionType(Y);
 
-    return (TypeX != TypeY)
-               ? TypeX < TypeY
-               : MBBOrder[&X] < MBBOrder[&Y];
+    return (TypeX != TypeY) ? TypeX < TypeY : MBBOrder[&X] < MBBOrder[&Y];
   }));
 
   // Set begin and end sections for cold basic blocks.  With this more sections
@@ -432,8 +429,7 @@ bool MachineFunction::sortBasicBlockSections() {
       PrevMBB = &MBB;
       continue;
     }
-    assert(PrevMBB != nullptr &&
-           "First block was not a regular block!");
+    assert(PrevMBB != nullptr && "First block was not a regular block!");
     int TypeP = SectionType(*PrevMBB);
     int TypeT = SectionType(MBB);
     if (TypeP != TypeT) {
@@ -451,9 +447,11 @@ bool MachineFunction::sortBasicBlockSections() {
 void MachineFunction::setBasicBlockLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
-  for (auto MBBI=begin(), E=end(); MBBI!=E; ++MBBI) {
+  for (auto MBBI = begin(), E = end(); MBBI != E; ++MBBI) {
     if (MBBI->getNumber() < 0 || MBBI->getNumber() >= (int)getNumBlockIDs())
-      report_fatal_error("BasicBlock number was out of range: " + Twine(MBBI->getNumber()) + " [0 -> " + Twine(getNumBlockIDs()) + "]");
+      report_fatal_error(
+          "BasicBlock number was out of range: " + Twine(MBBI->getNumber()) +
+          " [0 -> " + Twine(getNumBlockIDs()) + "]");
     // 'a' - Normal block.
     // 'r' - Return block.
     // 'l' - Landing Pad.

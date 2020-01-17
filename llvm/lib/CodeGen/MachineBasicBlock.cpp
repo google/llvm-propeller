@@ -74,13 +74,14 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // foo are named a.BB.foo, aa.BB.foo, and so on.
     if (BasicBlockSymbols) {
       auto Iter = MF->getMBBSymbolPrefix().begin();
-      if (getNumber() < 0 || getNumber() >= (int)MF->getMBBSymbolPrefix().size())
+      if (getNumber() < 0 ||
+          getNumber() >= (int)MF->getMBBSymbolPrefix().size())
         report_fatal_error("Unreachable MBB: " + Twine(getNumber()));
       std::string Prefix(Iter + 1, Iter + getNumber() + 1);
       std::reverse(Prefix.begin(), Prefix.end());
-      CachedMCSymbol = Ctx.getOrCreateSymbol(
-          Prefix + Twine(Delimiter) + "BB" +
-          Twine(Delimiter) + Twine(MF->getName()));
+      CachedMCSymbol =
+          Ctx.getOrCreateSymbol(Prefix + Twine(Delimiter) + "BB" +
+                                Twine(Delimiter) + Twine(MF->getName()));
     } else {
       CachedMCSymbol = Ctx.getOrCreateSymbol(
           Twine(Prefix) + "BB" + Twine(MF->getFunctionNumber()) +
@@ -554,18 +555,18 @@ bool MachineBasicBlock::sameSection(const MachineBasicBlock *Other) const {
   if (this == Other)
     return true;
 
-  if ((this->isColdSection() != Other->isColdSection())
-      || (this->isExceptionSection() != Other->isExceptionSection()))
+  if ((this->isColdSection() != Other->isColdSection()) ||
+      (this->isExceptionSection() != Other->isExceptionSection()))
     return false;
 
-  if ((this->isBeginSection() && this->isEndSection())
-      || (Other->isBeginSection() && Other->isEndSection()))
+  if ((this->isBeginSection() && this->isEndSection()) ||
+      (Other->isBeginSection() && Other->isEndSection()))
     return false;
 
   return true;
 }
 
-const MachineBasicBlock * MachineBasicBlock::getSectionEndMBB() const {
+const MachineBasicBlock *MachineBasicBlock::getSectionEndMBB() const {
   if (this->isEndSection())
     return this;
   auto I = std::next(this->getIterator());
@@ -576,7 +577,7 @@ const MachineBasicBlock * MachineBasicBlock::getSectionEndMBB() const {
       return &MBB;
     I = std::next(I);
   }
-  llvm_unreachable("No End Basic Block for this section."); 
+  llvm_unreachable("No End Basic Block for this section.");
 }
 
 // Insert unconditional jumps to the basic block to which there is

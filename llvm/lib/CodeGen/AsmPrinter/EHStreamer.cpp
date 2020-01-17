@@ -89,9 +89,8 @@ void EHStreamer::computeActionsTable(
   FilterOffsets.reserve(FilterIds.size());
   int Offset = -1;
 
-  for (std::vector<unsigned>::const_iterator I = FilterIds.begin(),
-                                             E = FilterIds.end();
-       I != E; ++I) {
+  for (std::vector<unsigned>::const_iterator
+         I = FilterIds.begin(), E = FilterIds.end(); I != E; ++I) {
     FilterOffsets.push_back(Offset);
     Offset -= getULEB128Size(*I);
   }
@@ -103,9 +102,7 @@ void EHStreamer::computeActionsTable(
   const LandingPadInfo *PrevLPI = nullptr;
 
   for (SmallVectorImpl<const LandingPadInfo *>::const_iterator
-           I = LandingPads.begin(),
-           E = LandingPads.end();
-       I != E; ++I) {
+         I = LandingPads.begin(), E = LandingPads.end(); I != E; ++I) {
     const LandingPadInfo *LPI = *I;
     const std::vector<int> &TypeIds = LPI->TypeIds;
     unsigned NumShared = PrevLPI ? sharedTypeIDs(LPI, PrevLPI) : 0;
@@ -143,7 +140,7 @@ void EHStreamer::computeActionsTable(
         SizeActionEntry = SizeTypeID + getSLEB128Size(NextAction);
         SizeSiteActions += SizeActionEntry;
 
-        ActionEntry Action = {ValueForTypeID, NextAction, PrevAction};
+        ActionEntry Action = { ValueForTypeID, NextAction, PrevAction };
         Actions.push_back(Action);
         PrevAction = Actions.size() - 1;
       }
@@ -177,12 +174,10 @@ bool EHStreamer::callToNoUnwindFunction(const MachineInstr *MI) {
   for (unsigned I = 0, E = MI->getNumOperands(); I != E; ++I) {
     const MachineOperand &MO = MI->getOperand(I);
 
-    if (!MO.isGlobal())
-      continue;
+    if (!MO.isGlobal()) continue;
 
     const Function *F = dyn_cast<Function>(MO.getGlobal());
-    if (!F)
-      continue;
+    if (!F) continue;
 
     if (SawFunc) {
       // Be conservative. If we have more than one function operand for this
@@ -213,7 +208,7 @@ void EHStreamer::computePadMap(
     for (unsigned j = 0, E = LandingPad->BeginLabels.size(); j != E; ++j) {
       MCSymbol *BeginLabel = LandingPad->BeginLabels[j];
       assert(!PadMap.count(BeginLabel) && "Duplicate landing pad labels!");
-      PadRange P = {i, j};
+      PadRange P = { i, j };
       PadMap[BeginLabel] = P;
     }
   }
@@ -324,7 +319,7 @@ void EHStreamer::computeCallSiteTable(
       // create a call-site entry with no landing pad for the region between the
       // try-ranges.
       if (SawPotentiallyThrowing && Asm->MAI->usesCFIForEH()) {
-        CallSiteEntry Site = {LastLabel, BeginLabel, nullptr, 0};
+        CallSiteEntry Site = { LastLabel, BeginLabel, nullptr, 0 };
         CallSites.push_back(Site);
         PreviousIsInvoke = false;
       }
@@ -351,9 +346,9 @@ void EHStreamer::computeCallSiteTable(
         }
 
         // Otherwise, create a new call-site.
-        if (!IsSJLJ) {
+        if (!IsSJLJ)
           CallSites.push_back(Site);
-        } else {
+        else {
           // SjLj EH must maintain the call sites in the order assigned
           // to them by the SjLjPrepare pass.
           unsigned SiteNo = Asm->MF->getCallSiteBeginLabel(BeginLabel);
@@ -544,9 +539,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     Asm->EmitLabelDifferenceAsULEB128(CstEndLabel, CstBeginLabel);
     Asm->OutStreamer->EmitLabel(CstBeginLabel);
     unsigned idx = 0;
-    for (SmallVectorImpl<CallSiteEntry>::const_iterator I = CallSites.begin(),
-                                                        E = CallSites.end();
-         I != E; ++I, ++idx) {
+    for (SmallVectorImpl<CallSiteEntry>::const_iterator
+         I = CallSites.begin(), E = CallSites.end(); I != E; ++I, ++idx) {
       const CallSiteEntry &S = *I;
 
       // Index of the call site entry.
@@ -718,8 +712,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
     if (VerboseAsm) {
       // Emit comments that decode the action table.
-      Asm->OutStreamer->AddComment(">> Action Record " + Twine(++Entry) +
-                                   " <<");
+      Asm->OutStreamer->AddComment(">> Action Record " + Twine(++Entry) + " <<");
     }
 
     // Type Filter
@@ -747,8 +740,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
         Asm->OutStreamer->AddComment("  No further actions");
       } else {
         unsigned NextAction = Entry + (Action.NextAction + 1) / 2;
-        Asm->OutStreamer->AddComment("  Continue to action " +
-                                     Twine(NextAction));
+        Asm->OutStreamer->AddComment("  Continue to action "+Twine(NextAction));
       }
     }
     Asm->EmitSLEB128(Action.NextAction);
@@ -778,8 +770,8 @@ void EHStreamer::emitTypeInfos(unsigned TTypeEncoding, MCSymbol *TTBaseLabel) {
     Entry = TypeInfos.size();
   }
 
-  for (const GlobalValue *GV :
-       make_range(TypeInfos.rbegin(), TypeInfos.rend())) {
+  for (const GlobalValue *GV : make_range(TypeInfos.rbegin(),
+                                          TypeInfos.rend())) {
     if (VerboseAsm)
       Asm->OutStreamer->AddComment("TypeInfo " + Twine(Entry--));
     Asm->EmitTTypeReference(GV, TTypeEncoding);
@@ -793,9 +785,8 @@ void EHStreamer::emitTypeInfos(unsigned TTypeEncoding, MCSymbol *TTBaseLabel) {
     Asm->OutStreamer->AddBlankLine();
     Entry = 0;
   }
-  for (std::vector<unsigned>::const_iterator I = FilterIds.begin(),
-                                             E = FilterIds.end();
-       I < E; ++I) {
+  for (std::vector<unsigned>::const_iterator
+         I = FilterIds.begin(), E = FilterIds.end(); I < E; ++I) {
     unsigned TypeID = *I;
     if (VerboseAsm) {
       --Entry;

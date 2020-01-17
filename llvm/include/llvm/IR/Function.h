@@ -162,12 +162,16 @@ public:
   /// within this function.
   unsigned getInstructionCount() const;
 
+  /// Returns true if this function has basic block sections enabled.
   bool getBasicBlockSections() const { return BasicBlockSections; }
 
+  /// Indicates that basic block sections is enabled for this function.
   void setBasicBlockSections(bool value) { BasicBlockSections = value; }
 
+  /// Returns true if this function has basic block labels enabled.
   bool getBasicBlockLabels() const { return BasicBlockLabels; }
 
+  /// Indicates that basic block labels is enabled for this function.
   void setBasicBlockLabels(bool value) { BasicBlockLabels = value; }
 
   /// Returns the FunctionType for me.

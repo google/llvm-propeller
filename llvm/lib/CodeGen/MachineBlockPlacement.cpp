@@ -3148,6 +3148,7 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
     MBFI->view("MBP." + MF.getName(), false);
   }
 
+
   // We always return true as we have no way to track whether the final order
   // differs from the original order.
   return true;

@@ -429,10 +429,10 @@ public:
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const;
 
-  /// Set the section prefix for this function.
+  /// Set the section prefix for this block.
   void setSectionPrefix(StringRef Prefix);
 
-  /// Get the section prefix for this function.
+  /// Get the section prefix for this block.
   Optional<StringRef> getSectionPrefix() const;
 
 private:
