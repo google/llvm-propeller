@@ -18,43 +18,28 @@ using llvm::DenseMap;
 
 namespace lld {
 namespace propeller {
+const unsigned ClusterMergeSizeThreshold = 1 << 22;
 
-// This is the base class for clustering chains. It provides the basic data
-// structures and functions.
 class ChainClustering {
 public:
   class Cluster {
   public:
-    // Constructor for building a cluster from a single chain.
     Cluster(NodeChain *);
-
-    // The chains in this cluster in the merged order.
     std::vector<NodeChain *> Chains;
-
-    // The representative chain for this cluster.
     NodeChain *DelegateChain;
-
-    // Total size of the cluster.
     uint64_t Size;
+    uint64_t Weight;
 
-    // Total frequency of the cluster.
-    uint64_t Freq;
-
-    // This function merges this cluster with another cluster
     Cluster &mergeWith(Cluster &other) {
       Chains.insert(Chains.end(), other.Chains.begin(), other.Chains.end());
-      this->Freq += other.Freq;
+      this->Weight += other.Weight;
       this->Size += other.Size;
       return *this;
     }
 
-    // Returns the execution density of this cluster
-    double getDensity() { return ((double)Freq / Size); }
+    double getDensity() { return ((double)Weight / Size); }
   };
 
-  // This function merges two clusters in the given order, and updates
-  // ChainToClusterMap for the chains in the mergee cluster and also removes the
-  // mergee cluster from the Clusters.
   void mergeTwoClusters(Cluster *predecessorCluster, Cluster *cluster) {
     // Join the two clusters into predecessorCluster.
     predecessorCluster->mergeWith(*cluster);
@@ -69,56 +54,39 @@ public:
     Clusters.erase(cluster->DelegateChain->DelegateNode->MappedAddr);
   }
 
-  // Adds a chain to the input of the clustering process
   void addChain(std::unique_ptr<NodeChain> &&chain_ptr);
 
-  // Any subclass should override this function.
   virtual void doOrder(std::vector<CFGNode *> &hotOrder,
                        std::vector<CFGNode *> &coldOrder);
 
   virtual ~ChainClustering() = default;
 
 protected:
-  // Optional function for merging clusters, which could be overriden by
-  // subclasses.
   virtual void mergeClusters(){};
+  void sortClusters(std::vector<Cluster *> &);
 
-  // This function sorts the final clusters in decreasing order of their execution density.
-  void sortClusters(std::vector<Cluster *>&);
-
-  // This function initializes clusters with each cluster including a single
-  // chain.
   void initClusters() {
     for (auto &c_ptr : HotChains) {
       NodeChain *chain = c_ptr.get();
       Cluster *cl = new Cluster(chain);
-      cl->Freq = chain->Freq;
+      cl->Weight = chain->Freq;
       cl->Size = std::max(chain->Size, (uint64_t)1);
       ChainToClusterMap[chain] = cl;
       Clusters.try_emplace(cl->DelegateChain->DelegateNode->MappedAddr, cl);
     }
   }
 
-  // Chains processed by the clustering algorithm separated into hot and cold
-  // ones based on their frequency.
   std::vector<std::unique_ptr<NodeChain>> HotChains, ColdChains;
-
-  // All clusters currently in process.
   DenseMap<uint64_t, std::unique_ptr<Cluster>> Clusters;
-
-  // This maps every chain to its containing cluster.
   DenseMap<NodeChain *, Cluster *> ChainToClusterMap;
 };
 
-// This class computes an ordering for the input chains which conforms to the
-// initial ordering of nodes in the binary.
 class NoOrdering : public ChainClustering {
 public:
   void doOrder(std::vector<CFGNode *> &hotOrder,
                std::vector<CFGNode *> &coldOrder);
 };
 
-// This class implements the call-chain-clustering algorithm.
 class CallChainClustering : public ChainClustering {
 private:
   Cluster *getMostLikelyPredecessor(NodeChain *chain, Cluster *cluster);
