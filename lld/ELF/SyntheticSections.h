@@ -586,6 +586,8 @@ public:
   unsigned getNumSymbols() const { return symbols.size() + 1; }
   size_t getSymbolIndex(Symbol *sym);
   ArrayRef<SymbolTableEntry> getSymbols() const { return symbols; }
+  // SymName end address -> <strtab_entry_offset, strtab_entry_size> mapping.
+  // See details in SymbolTableBaseSection::addSymbol.
   std::map<uint64_t, std::pair<uint64_t, uint32_t>> EndsMap;
 
 protected:

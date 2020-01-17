@@ -25,6 +25,7 @@ struct PropellerConfig {
   double optFallthroughWeight;
   uint64_t optForwardJumpDistance;
   double optForwardJumpWeight;
+  bool optKeepNamedSymbols;
   StringRef optLinkerOutputFile;
   std::vector<std::string> optOpts;
   bool optPrintStats;

@@ -33,9 +33,9 @@
 #include "Propeller/Propeller.h"
 #include "Propeller/PropellerCFG.h"
 #include "Propeller/PropellerConfig.h"
-#include "lld/Common/Memory.h"
-
 #include "lld/Common/ErrorHandler.h"
+#include "lld/Common/Memory.h"
+#include "lld/Common/PropellerCommon.h"
 
 #include <algorithm>
 #include <vector>
@@ -66,6 +66,7 @@ static void setupConfig() {
   COPY_CONFIG(FallthroughWeight);
   COPY_CONFIG(ForwardJumpDistance);
   COPY_CONFIG(ForwardJumpWeight);
+  COPY_CONFIG(KeepNamedSymbols);
   COPY_CONFIG(Opts);
   COPY_CONFIG(PrintStats);
   COPY_CONFIG(ReorderBlocks);
@@ -100,6 +101,13 @@ void doPropeller() {
     config->symbolOrderingFile = prop->genSymbolOrderingFile();
   else
     error("Propeller stage failed.");
+}
+
+bool isBBSymbolAndKeepIt(llvm::StringRef name) {
+  return !propellerConfig.optPropeller.empty() &&
+         lld::propeller::SymbolEntry::isBBSymbol(name) &&
+         (propellerConfig.optKeepNamedSymbols ||
+          propeller::PropLeg.shouldKeepBBSymbol(name));
 }
 
 } // namespace propeller
