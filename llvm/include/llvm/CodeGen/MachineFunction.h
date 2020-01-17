@@ -259,6 +259,11 @@ class MachineFunction {
   // MachineBasicBlock is inserted into a MachineFunction is it automatically
   // numbered and this vector keeps track of the mapping from ID's to MBB's.
   std::vector<MachineBasicBlock*> MBBNumbering;
+
+  // Unary encoding of basic block symbols is used to reduce size of ".strtab".
+  // Basic block number 'i' gets a prefix of length 'i'.  The ith character also
+  // denotes the type of basic block number 'i'.  Return blocks are marked with
+  // 'r', landing pads with 'l' and regular blocks with 'a'.
   std::vector<char> MBBSymbolPrefix;
 
   // Pool-allocate MachineFunction-lifetime and IR objects.
@@ -458,7 +463,11 @@ public:
 
   MachineModuleInfo &getMMI() const { return MMI; }
   MCContext &getContext() const { return Ctx; }
+
+  /// Returns the Section this function belongs to.
   MCSection *getSection() const { return Section; }
+
+  /// Indicates the Section this function belongs to.
   void setSection(MCSection *S) { Section = S; }
 
   PseudoSourceValueManager &getPSVManager() const { return *PSVManager; }
@@ -475,9 +484,16 @@ public:
   /// getFunctionNumber - Return a unique ID for the current function.
   unsigned getFunctionNumber() const { return FunctionNumber; }
 
+  /// Returns true if this function has basic block sections enabled.
   bool getBasicBlockSections() const { return BasicBlockSections; }
+
+  /// Sort the basic blocks according to the sections they belong to.
   bool sortBasicBlockSections();
+
+  /// Indicates that basic block Labels are to be generated for this function.
   void setBasicBlockLabels();
+
+  /// Returns true if basic block labels are to be generated for this function.
   bool getBasicBlockLabels() const { return BasicBlockLabels; }
 
   /// getTarget - Return the target machine this machine code is compiled with

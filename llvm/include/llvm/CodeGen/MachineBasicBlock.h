@@ -423,24 +423,28 @@ public:
   /// Indicates if this is the entry block of a cleanup funclet.
   void setIsCleanupFuncletEntry(bool V = true) { IsCleanupFuncletEntry = V; }
 
-  /// Indicate that this basic block begins a new section.
+  /// Returns true if this block begins a section.
   bool isBeginSection() const { return IsBeginSection; }
 
+  /// Indicate that this basic block begins a new section.
   void setBeginSection(bool V = true) { IsBeginSection = V; }
 
-  /// Indicate that this basic block ends a new section.
+  /// Returns true if this block ends a section.
   bool isEndSection() const { return IsEndSection; }
 
+  /// Indicate that this basic block ends a section.
   void setEndSection(bool V = true) { IsEndSection = V; }
 
-  /// Indicate that this basic block belongs to the cold section.
+  /// Returns true if this basic block belongs to the cold section.
   bool isColdSection() const { return IsColdSection; }
 
+  /// Indicate that this basic block belongs to the cold section.
   void setColdSection(bool V = true) { IsColdSection = V; }
 
-  /// Indicate that this basic block belongs to the exception section.
+  /// Returns true if this basic block belongs to the exception section.
   bool isExceptionSection() const { return IsExceptionSection; }
 
+  /// Indicate that this basic block belongs to the exception section.
   void setExceptionSection(bool V = true) { IsExceptionSection = V; }
 
   /// Returns true if it is legal to hoist instructions into this block.
@@ -847,8 +851,10 @@ public:
   /// Return the MCSymbol for this basic block.
   MCSymbol *getSymbol() const;
 
+  /// Sets the MCSymbol corresponding to the end of this basic block.
   void setEndMCSymbol(MCSymbol *Sym) { EndMCSymbol = Sym; }
 
+  /// Returns the MCSymbol corresponding to the end of this basic block.
   MCSymbol *getEndMCSymbol() const { return EndMCSymbol; }
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const {
