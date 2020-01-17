@@ -816,7 +816,6 @@ MCSection *TargetLoweringObjectFileELF::getEHSectionForMachineBasicBlock(
                                     GroupName);
 }
 
-
 static MCSectionELF *getStaticStructorSection(MCContext &Ctx, bool UseInitArray,
                                               bool IsCtor, unsigned Priority,
                                               const MCSymbol *KeySym) {

@@ -465,7 +465,7 @@ public:
   bool sameSection(const MachineBasicBlock *MBB) const;
 
   /// Returns the basic block that ends the section which contains this one.
-  const MachineBasicBlock *getSectionEndMBB() const ;
+  const MachineBasicBlock *getSectionEndMBB() const;
 
   /// Update the terminator instructions in block to account for changes to the
   /// layout. If the block previously used a fallthrough, it may now need a

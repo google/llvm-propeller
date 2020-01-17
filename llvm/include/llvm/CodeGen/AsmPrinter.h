@@ -229,7 +229,7 @@ public:
   // Get the exception symbol associated with the function fragment which begins
   // with a given basic block. Falls back to getCurExceptionSym() if no
   // association is found.
-  MCSymbol * getExceptionSym(const MachineBasicBlock *MBB) {
+  MCSymbol *getExceptionSym(const MachineBasicBlock *MBB) {
     auto r = ExceptionSymbols.find(MBB);
     if (r == ExceptionSymbols.end())
       return getCurExceptionSym();

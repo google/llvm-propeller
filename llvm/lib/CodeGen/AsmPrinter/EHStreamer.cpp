@@ -332,11 +332,8 @@ void EHStreamer::computeCallSiteTable(
         PreviousIsInvoke = false;
       } else {
         // This try-range is for an invoke.
-        CallSiteEntry Site = {
-          BeginLabel,
-          LastLabel,
-          LandingPad,
-          FirstActions[P.PadIndex]};
+        CallSiteEntry Site = {BeginLabel, LastLabel, LandingPad,
+                              FirstActions[P.PadIndex]};
 
         // Try to merge with the previous call-site. SJLJ doesn't do this
         if (PreviousIsInvoke && !IsSJLJ) {
@@ -502,9 +499,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   Asm->EmitAlignment(Align(4));
 
   // Emit the LSDA.
-  MCSymbol *GCCETSym =
-    Asm->OutContext.getOrCreateSymbol(Twine("GCC_except_table") +
-                                      Twine(Asm->getFunctionNumber()));
+  MCSymbol *GCCETSym = Asm->OutContext.getOrCreateSymbol(
+      Twine("GCC_except_table") + Twine(Asm->getFunctionNumber()));
   Asm->OutStreamer->EmitLabel(GCCETSym);
   MCSymbol *CstEndLabel = Asm->createTempSymbol("cst_end");
 
@@ -667,7 +663,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
         // Offset of the call site relative to the start of the procedure.
         if (VerboseAsm)
-          Asm->OutStreamer->AddComment(">> Call Site " + Twine(++Entry) + " <<");
+          Asm->OutStreamer->AddComment(">> Call Site " + Twine(++Entry) +
+                                       " <<");
         Asm->EmitCallSiteOffset(BeginLabel, EHFuncBeginSym, CallSiteEncoding);
         if (VerboseAsm)
           Asm->OutStreamer->AddComment(Twine("  Call between ") +
@@ -708,8 +705,9 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
   // Emit the Action Table.
   int Entry = 0;
-  for (SmallVectorImpl<ActionEntry>::const_iterator
-       I = Actions.begin(), E = Actions.end(); I != E; ++I) {
+  for (SmallVectorImpl<ActionEntry>::const_iterator I = Actions.begin(),
+                                                    E = Actions.end();
+       I != E; ++I) {
     const ActionEntry &Action = *I;
 
     if (VerboseAsm) {

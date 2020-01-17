@@ -681,7 +681,6 @@ public:
     RelocateWithSizeRelocs = V;
   }
   bool needsFunctionDescriptors() const { return NeedsFunctionDescriptors; }
-
 };
 
 } // end namespace llvm
