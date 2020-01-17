@@ -1110,8 +1110,8 @@ void AsmPrinter::EmitFunctionBody() {
       case TargetOpcode::ANNOTATION_LABEL:
       case TargetOpcode::EH_LABEL:
         if (MBB.isExceptionSection() && MBB.isBeginSection() &&
-              ((*std::prev(MI.getIterator())).getOpcode() ==
-                TargetOpcode::CFI_INSTRUCTION)) {
+            ((*std::prev(MI.getIterator())).getOpcode() ==
+             TargetOpcode::CFI_INSTRUCTION)) {
           // Emit a NOP here to avoid zero-offset landing pads with
           // basic block sections.
           MCInst Noop;
@@ -3041,8 +3041,7 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     if (MBB.isExceptionSection()) {
       if (MF->front().isExceptionSection()) {
         OutStreamer->SwitchSection(MF->getSection());
-      }
-      else {
+      } else {
         OutStreamer->SwitchSection(
             getObjFileLowering().getEHSectionForMachineBasicBlock(
                 MF->getFunction(), MBB, TM));

@@ -76,13 +76,16 @@ bool getBasicBlockSectionsList(TargetOptions &Options) {
   bool AllBasicBlocks = false;
 
   while ((std::getline(FList, Line)).good()) {
-    if (Line.empty()) continue;
+    if (Line.empty())
+      continue;
     if (Line.find("#AllBB") != std::string::npos) {
       AllBasicBlocks = true;
       continue;
     }
-    if (Line[0] == '@') continue;
-    if (Line[0] != '!') break;
+    if (Line[0] == '@')
+      continue;
+    if (Line[0] != '!')
+      break;
     StringRef S(Line);
     if (S.consume_front("!") && !S.empty()) {
       if (consumeBasicBlockIds && S.consume_front("!")) {
@@ -130,7 +133,7 @@ static lto::Config createConfig() {
       c.Options.BasicBlockSections = BasicBlockSection::Labels;
     else if (config->ltoBasicBlockSections.equals("none"))
       c.Options.BasicBlockSections = BasicBlockSection::None;
-    else  {
+    else {
       if (getBasicBlockSectionsList(c.Options))
         c.Options.BasicBlockSections = BasicBlockSection::Func;
       else

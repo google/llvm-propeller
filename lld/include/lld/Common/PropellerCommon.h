@@ -14,7 +14,7 @@ namespace lld {
 namespace propeller {
 
 static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
-static const char * BASIC_BLOCK_UNIFIED_CHARACTERS = "arlL";
+static const char *BASIC_BLOCK_UNIFIED_CHARACTERS = "arlL";
 
 // This data structure is shared between lld propeller components and
 // create_llvm_prof. In short, create_llvm_prof parses the binary, wraps all the
@@ -27,19 +27,18 @@ static const char * BASIC_BLOCK_UNIFIED_CHARACTERS = "arlL";
 struct SymbolEntry {
 
   enum BBTagTypeEnum : unsigned char {
-    BB_NONE = 0,     // For functions.
-    BB_NORMAL,       // Ordinary BB, 'a'.
-    BB_RETURN,       // Return BB, 'r'.
-    BB_LANDING_PAD,  // Landing pad BB, 'l'.
-    BB_RETURN_AND_LANDING_PAD  // Landing pad and return BB, 'L'.
+    BB_NONE = 0,              // For functions.
+    BB_NORMAL,                // Ordinary BB, 'a'.
+    BB_RETURN,                // Return BB, 'r'.
+    BB_LANDING_PAD,           // Landing pad BB, 'l'.
+    BB_RETURN_AND_LANDING_PAD // Landing pad and return BB, 'L'.
   };
 
   using AliasesTy = SmallVector<StringRef, 3>;
 
   SymbolEntry(uint64_t O, const StringRef &N, AliasesTy &&As, uint64_t A,
               uint64_t S, uint8_t T, bool BB = false,
-              SymbolEntry *FuncPtr = nullptr,
-              bool R = false)
+              SymbolEntry *FuncPtr = nullptr, bool R = false)
       : Ordinal(O), Name(N), Aliases(As), Addr(A), Size(S), Type(T), BBTag(BB),
         BBTagType(BB_NONE), HotTag(false), ContainingFunc(FuncPtr) {}
 

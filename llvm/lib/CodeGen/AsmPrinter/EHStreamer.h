@@ -69,18 +69,20 @@ protected:
     unsigned Action;
   };
 
+  // Structure describing a contiguous range of call-sites which reside
+  // in the same function part.
   struct CallSiteRange {
-    // The index of the first call-site entry in the callsite table which
+    // Index of the first call-site entry in the call-site table which
     // belongs to this range.
     unsigned CallSiteBeginIdx = 0;
-    // The index just after the last call-site entry in the callsite table which
+    // Index just after the last call-site entry in the call-site table which
     // belongs to this range.
     unsigned CallSiteEndIdx = 0;
-    // Beginning of the function part (section).
-    MCSymbol *FuncPartBeginLabel = nullptr;
-    // End of the function part (section).
-    MCSymbol *FuncPartEndLabel = nullptr;
-    // LSDA symbol
+    // Symbol marking the beginning of the precedure fragment (section).
+    MCSymbol *FragmentBeginLabel = nullptr;
+    // Symbol marking the end of the procedure fragment (section).
+    MCSymbol *FragmentEndLabel = nullptr;
+    // LSDA symbol for this call-site range.
     MCSymbol *ExceptionLabel = nullptr;
     // Whether this is the call-site range containing all the landing pads
     bool IsLPRange = false;
@@ -88,19 +90,21 @@ protected:
 
   /// Compute the actions table and gather the first action index for each
   /// landing pad site.
-  void computeActionsTable(const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
-                           SmallVectorImpl<ActionEntry> &Actions,
-                           SmallVectorImpl<unsigned> &FirstActions);
+  void computeActionsTable(
+      const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
+      SmallVectorImpl<ActionEntry> &Actions,
+      SmallVectorImpl<unsigned> &FirstActions);
 
   void computePadMap(const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
                      RangeMapType &PadMap);
 
-  /// Compute the call-site table.  The entry for an invoke has a try-range
-  /// containing the call, a non-zero landing pad and an appropriate action.
-  /// The entry for an ordinary call has a try-range containing the call and
-  /// zero for the landing pad and the action.  Calls marked 'nounwind' have
-  /// no entry and must not be contained in the try-range of any entry - they
-  /// form gaps in the table.  Entries must be ordered by try-range address.
+  /// Compute the call-site table and the call-site ranges. The entry for an
+  /// invoke has a try-range containing the call, a non-zero landing pad and an
+  /// appropriate action. The entry for an ordinary call has a try-range
+  /// containing the call and zero for the landing pad and the action.  Calls
+  /// marked 'nounwind' have no entry and must not be contained in the try-range
+  /// of any entry - they form gaps in the table.  Entries must be ordered by
+  /// try-range address.
   virtual void computeCallSiteTable(
       SmallVectorImpl<CallSiteEntry> &CallSites,
       SmallVectorImpl<CallSiteRange> &CallSiteRanges,

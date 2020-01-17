@@ -1903,7 +1903,8 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
       if (MBB.getNumber() == MF->front().getNumber())
         continue;
       if (MBB.isBeginSection()) {
-        TheCU.addRange({MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
+        TheCU.addRange(
+            {MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
       }
     }
   }

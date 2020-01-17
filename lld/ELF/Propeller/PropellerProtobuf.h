@@ -39,9 +39,7 @@ public:
 
   void printCFGGroup();
 
-  ~ProtobufPrinter() {
-    outStream.Close();
-  }
+  ~ProtobufPrinter() { outStream.Close(); }
 
 private:
   ProtobufPrinter(const std::string &name, int fd)

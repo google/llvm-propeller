@@ -649,8 +649,9 @@ static int64_t getTlsTpOffset(const Symbol &s) {
   }
 }
 
-uint64_t InputSectionBase::getRelocTargetVA(const InputFile *file, RelType type, int64_t a,
-                                 uint64_t p, const Symbol &sym, RelExpr expr) {
+uint64_t InputSectionBase::getRelocTargetVA(const InputFile *file, RelType type,
+                                            int64_t a, uint64_t p,
+                                            const Symbol &sym, RelExpr expr) {
   switch (expr) {
   case R_ABS:
   case R_DTPREL:

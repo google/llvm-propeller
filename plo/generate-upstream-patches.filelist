@@ -52,7 +52,7 @@ declare ALL_FILES=(
         lld-propeller    lld/ELF/LinkerPropeller.cpp
         lld-propeller    lld/ELF/LinkerPropeller.h
         lld-propeller    lld/ELF/Propeller/CMakeLists.txt
-        lld-propeller    lld/ELF/Propeller/Heap.h
+        lld-reorder      lld/ELF/Propeller/Heap.h
         lld-propeller    lld/ELF/Propeller/Propeller.cpp
         lld-propeller    lld/ELF/Propeller/Propeller.h
         lld-propeller    lld/ELF/Propeller/PropellerCFG.cpp

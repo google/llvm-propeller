@@ -14,9 +14,9 @@
 // them inside macros.
 #if (defined(__clang__) && defined(_CLANG_NO_BB_SECTIONS)) || \
     (defined(__GNUC__) && defined(__GCC_HAVE_DWARF2_CFI_ASM))
-  // GCC defined __GCC_HAVE_DWARF2_CFI_ASM if it supports CFI.
-  // Clang seems to support CFI by default (or not?).
-  // We need two versions of macros: for inline asm and standalone asm files.
+// GCC defined __GCC_HAVE_DWARF2_CFI_ASM if it supports CFI.
+// Clang seems to support CFI by default (or not?).
+// We need two versions of macros: for inline asm and standalone asm files.
 # define CFI_INL_ADJUST_CFA_OFFSET(n) ".cfi_adjust_cfa_offset " #n ";"
 
 # define CFI_STARTPROC .cfi_startproc

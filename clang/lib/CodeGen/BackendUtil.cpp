@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/CodeGen/BackendUtil.h"
+#include "fstream"
 #include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/LangOptions.h"
@@ -71,7 +72,6 @@
 #include "llvm/Transforms/Utils/EntryExitInstrumenter.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
-#include "fstream"
 #include <memory>
 using namespace clang;
 using namespace llvm;
@@ -434,13 +434,16 @@ static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
   bool AllBasicBlocks = false;
 
   while ((std::getline(FList, Line)).good()) {
-    if (Line.empty()) continue;
+    if (Line.empty())
+      continue;
     if (Line.find("#AllBB") != std::string::npos) {
       AllBasicBlocks = true;
       continue;
     }
-    if (Line[0] == '@') continue;  // Only @ lines can appear before ! lines.
-    if (Line[0] != '!') break;
+    if (Line[0] == '@')
+      continue; // Only @ lines can appear before ! lines.
+    if (Line[0] != '!')
+      break;
     StringRef S(Line);
     if (S.consume_front("!") && !S.empty()) {
       if (consumeBasicBlockIds && S.consume_front("!")) {
@@ -528,8 +531,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
           .Case("none", llvm::BasicBlockSection::None)
           .Default(llvm::BasicBlockSection::List);
 
-  if (Options.BasicBlockSections == llvm::BasicBlockSection::List
-      && getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections))
+  if (Options.BasicBlockSections == llvm::BasicBlockSection::List &&
+      getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections))
     Options.BasicBlockSections = llvm::BasicBlockSection::Func;
 
   Options.FunctionSections = CodeGenOpts.FunctionSections;

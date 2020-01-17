@@ -223,14 +223,19 @@ void EHStreamer::computePadMap(
 ///
 /// Call-sites are split into one or more call-site ranges associated with
 /// different sections of the function.
-/// With -function-sections, all call-sites are grouped into one call-site-range
-/// corresponding to the function section.
-/// With -basic-block sections, one call-site range is created for each section,
-/// with its FuncPartBeginLabel and FuncPartEndLabel respectively set to the
-/// beginning and ending of the corresponding section and its ExceptionLabel set
-/// to the exception symbol dedicated for this section. Later, one LSDA header
-/// will be emitted for each call-site range with its call-sites following.
-/// The action table and type info table will be shared across all ranges.
+///
+///   - With -function-sections, all call-sites are grouped into one
+///   call-site-range
+///     corresponding to the function section.
+///
+///   - With -basic-block sections, one call-site range is created for each
+///   section,
+///     with its FragmentBeginLabel and FragmentEndLabel respectively set to the
+///     beginning and ending of the corresponding section and its ExceptionLabel
+///     set to the exception symbol dedicated for this section. Later, one LSDA
+///     header will be emitted for each call-site range with its call-sites
+///     following. The action table and type info table will be shared across
+///     all ranges.
 void EHStreamer::computeCallSiteTable(
     SmallVectorImpl<CallSiteEntry> &CallSites,
     SmallVectorImpl<CallSiteRange> &CallSiteRanges,
@@ -242,7 +247,7 @@ void EHStreamer::computeCallSiteTable(
   // The end label of the previous invoke or nounwind try-range.
   MCSymbol *LastLabel = nullptr;
 
-  // Index to the current call-site range.
+  // Pointer to the current call-site range.
   CallSiteRange *CurCSRange = nullptr;
 
   // Whether there is a potentially throwing instruction (currently this means
@@ -265,7 +270,9 @@ void EHStreamer::computeCallSiteTable(
       // every basic block section.
       CallSiteRanges.push_back(CallSiteRange());
       CurCSRange = &CallSiteRanges.back();
-      CurCSRange->FuncPartBeginLabel = ( &MBB == &Asm->MF->front() ) ? Asm->getFunctionBegin() : MBB.getSymbol();
+      CurCSRange->FragmentBeginLabel = (&MBB == &Asm->MF->front())
+                                           ? Asm->getFunctionBegin()
+                                           : MBB.getSymbol();
       CurCSRange->ExceptionLabel = Asm->getExceptionSym(&MBB);
       CurCSRange->CallSiteBeginIdx = CallSites.size();
       PreviousIsInvoke = false;
@@ -278,8 +285,10 @@ void EHStreamer::computeCallSiteTable(
       if (LandingPadRange == nullptr) {
         LandingPadRange = CurCSRange;
         LandingPadRange->IsLPRange = true;
-       } else if(LandingPadRange->FuncPartBeginLabel != CurCSRange->FuncPartBeginLabel)
-         report_fatal_error("Landing pads reside in different callsite ranges (sections).");
+      } else if (LandingPadRange->FragmentBeginLabel !=
+                 CurCSRange->FragmentBeginLabel)
+        report_fatal_error(
+            "Landing pads reside in different callsite ranges (sections).");
     }
 
     for (const auto &MI : MBB) {
@@ -323,12 +332,8 @@ void EHStreamer::computeCallSiteTable(
         PreviousIsInvoke = false;
       } else {
         // This try-range is for an invoke.
-        CallSiteEntry Site = {
-          BeginLabel,
-          LastLabel,
-          LandingPad,
-          FirstActions[P.PadIndex]
-        };
+        CallSiteEntry Site = {BeginLabel, LastLabel, LandingPad,
+                              FirstActions[P.PadIndex]};
 
         // Try to merge with the previous call-site. SJLJ doesn't do this
         if (PreviousIsInvoke && !IsSJLJ) {
@@ -341,9 +346,9 @@ void EHStreamer::computeCallSiteTable(
         }
 
         // Otherwise, create a new call-site.
-        if (!IsSJLJ) {
+        if (!IsSJLJ)
           CallSites.push_back(Site);
-        } else {
+        else {
           // SjLj EH must maintain the call sites in the order assigned
           // to them by the SjLjPrepare pass.
           unsigned SiteNo = Asm->MF->getCallSiteBeginLabel(BeginLabel);
@@ -356,13 +361,17 @@ void EHStreamer::computeCallSiteTable(
     }
 
     if (&MBB == &Asm->MF->back() || MBB.isEndSection()) {
-      CurCSRange->FuncPartEndLabel = MBB.isEndSection() ? MBB.getEndMCSymbol() : Asm->getFunctionEnd();
+      CurCSRange->FragmentEndLabel =
+          MBB.isEndSection() ? MBB.getEndMCSymbol() : Asm->getFunctionEnd();
 
       // If some instruction between the previous try-range and the end of the
-      // function may throw, create a call-site entry with no landing pad for the
-      // region following the try-range.
+      // function may throw, create a call-site entry with no landing pad for
+      // the region following the try-range.
       if (SawPotentiallyThrowing && !IsSJLJ) {
-        CallSiteEntry Site = { LastLabel, MBB.isEndSection() ? CurCSRange->FuncPartEndLabel : nullptr, nullptr, 0 };
+        CallSiteEntry Site = {LastLabel,
+                              MBB.isEndSection() ? CurCSRange->FragmentEndLabel
+                                                 : nullptr,
+                              nullptr, 0};
         CallSites.push_back(Site);
         SawPotentiallyThrowing = false;
       }
@@ -423,25 +432,24 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   SmallVector<CallSiteRange, 64> CallSiteRanges;
   computeCallSiteTable(CallSites, CallSiteRanges, LandingPads, FirstActions);
 
-  // If the call-site range table is empty, add a single range including all the
-  // call-sites.
+  // If the call-site range table is empty, add a single range containing all
+  // the call-sites.
   if (CallSiteRanges.empty()) {
     CallSiteRange CSRange;
-    CSRange.FuncPartBeginLabel = Asm->getFunctionBegin();
-    CSRange.FuncPartEndLabel = Asm->getFunctionEnd();
+    CSRange.FragmentBeginLabel = Asm->getFunctionBegin();
+    CSRange.FragmentEndLabel = Asm->getFunctionEnd();
     CSRange.ExceptionLabel = Asm->getCurExceptionSym();
     CSRange.CallSiteBeginIdx = 0;
     CSRange.CallSiteEndIdx = CallSites.size();
     CallSiteRanges.push_back(CSRange);
   }
 
-
   bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
   bool IsWasm = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::Wasm;
 
   unsigned CallSiteEncoding =
-      IsSJLJ ? static_cast<unsigned>(dwarf::DW_EH_PE_udata4) :
-      Asm->getObjFileLowering().getCallSiteEncoding();
+      IsSJLJ ? static_cast<unsigned>(dwarf::DW_EH_PE_udata4)
+             : Asm->getObjFileLowering().getCallSiteEncoding();
   bool HaveTTData = !TypeInfos.empty() || !FilterIds.empty();
 
   // Type infos.
@@ -491,9 +499,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   Asm->EmitAlignment(Align(4));
 
   // Emit the LSDA.
-  MCSymbol *GCCETSym =
-    Asm->OutContext.getOrCreateSymbol(Twine("GCC_except_table")+
-                                      Twine(Asm->getFunctionNumber()));
+  MCSymbol *GCCETSym = Asm->OutContext.getOrCreateSymbol(
+      Twine("GCC_except_table") + Twine(Asm->getFunctionNumber()));
   Asm->OutStreamer->EmitLabel(GCCETSym);
   MCSymbol *CstEndLabel = Asm->createTempSymbol("cst_end");
 
@@ -519,8 +526,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     if (HaveTTData) {
       // N.B.: There is a dependency loop between the size of the TTBase uleb128
       // here and the amount of padding before the aligned type table. The
-      // assembler must sometimes pad this uleb128 or insert extra padding before
-      // the type table. See PR35809 or GNU as bug 4029.
+      // assembler must sometimes pad this uleb128 or insert extra padding
+      // before the type table. See PR35809 or GNU as bug 4029.
       MCSymbol *TTBaseRefLabel = Asm->createTempSymbol("ttbaseref");
       Asm->EmitLabelDifferenceAsULEB128(TTBaseLabel, TTBaseRefLabel);
       Asm->OutStreamer->EmitLabel(TTBaseRefLabel);
@@ -539,7 +546,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       // Index of the call site entry.
       if (VerboseAsm) {
         Asm->OutStreamer->AddComment(">> Call Site " + Twine(idx) + " <<");
-        Asm->OutStreamer->AddComment("  On exception at call site "+Twine(idx));
+        Asm->OutStreamer->AddComment("  On exception at call site " +
+                                     Twine(idx));
       }
       Asm->EmitULEB128(idx);
 
@@ -580,15 +588,29 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     CallSiteRange *LandingPadRange = &CallSiteRanges.back();
 
     // Find the landing-pad range if more than one call-site ranges exist.
-    for (auto& CSRange: CallSiteRanges) {
+    for (auto &CSRange : CallSiteRanges) {
       if (CSRange.IsLPRange) {
         LandingPadRange = &CSRange;
         break;
       }
     }
 
+    // The call-site table is split into its call-site ranges, each being
+    // emitted as:
+    //              [ LPStartEncoding | LPStart ]
+    //              [ TypeTableEncoding | TypeTableOffset ]
+    //              [ CallSiteEncoding | CallSiteTableEndOffset ]
+    // cst_begin -> { call-site entries contained in this range }
+    //
+    // and is followed by the next call-site range.
+    //
+    // For each call-site range, CallSiteTableEndOffset is computed as the
+    // difference between cst_begin of that range and the last call-site-table's
+    // end. This offset is used to find the action table.
+
     unsigned Entry = 0;
-    for (auto& CSRange: CallSiteRanges) {
+    for (auto &CSRange : CallSiteRanges) {
+      // The call-site range for each range must be aligned.
       Asm->EmitAlignment(Align(4));
       Asm->OutStreamer->EmitLabel(CSRange.ExceptionLabel);
 
@@ -598,35 +620,39 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       if (CallSiteRanges.size() == 1)
         Asm->EmitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
       else {
-        // For more than one call-site range, LPStart should be explicitly
+        // For more than one call-site range, LPStart must explicitly be
         // specified.
         Asm->EmitEncodingByte(dwarf::DW_EH_PE_absptr, "@LPStart");
-        Asm->OutStreamer->EmitSymbolValue(LandingPadRange->FuncPartBeginLabel,
+        Asm->OutStreamer->EmitSymbolValue(LandingPadRange->FragmentBeginLabel,
                                           Asm->MAI->getCodePointerSize());
       }
       Asm->EmitEncodingByte(TTypeEncoding, "@TType");
 
       if (HaveTTData) {
-        // N.B.: There is a dependency loop between the size of the TTBase uleb128
-        // here and the amount of padding before the aligned type table. The
-        // assembler must sometimes pad this uleb128 or insert extra padding before
-        // the type table. See PR35809 or GNU as bug 4029.
+        // N.B.: There is a dependency loop between the size of the TTBase
+        // uleb128 here and the amount of padding before the aligned type table.
+        // The assembler must sometimes pad this uleb128 or insert extra padding
+        // before the type table. See PR35809 or GNU as bug 4029.
         MCSymbol *TTBaseRefLabel = Asm->createTempSymbol("ttbaseref");
         Asm->EmitLabelDifferenceAsULEB128(TTBaseLabel, TTBaseRefLabel);
         Asm->OutStreamer->EmitLabel(TTBaseRefLabel);
       }
 
-      // Emit the landing pad call site table.
+      // Emit the call-site entries in this call-site range.
       MCSymbol *CstBeginLabel = Asm->createTempSymbol("cst_begin");
       Asm->EmitEncodingByte(CallSiteEncoding, "Call site");
+      // Emit the difference between the beginning of the call-site entries for
+      // this range and the end of the whole call-site table (the end of the
+      // last range's call-site entries).
       Asm->EmitLabelDifferenceAsULEB128(CstEndLabel, CstBeginLabel);
       Asm->OutStreamer->EmitLabel(CstBeginLabel);
 
-      for (auto callSiteIdx = CSRange.CallSiteBeginIdx ; callSiteIdx != CSRange.CallSiteEndIdx ; ++callSiteIdx) {
+      for (auto callSiteIdx = CSRange.CallSiteBeginIdx;
+           callSiteIdx != CSRange.CallSiteEndIdx; ++callSiteIdx) {
         const CallSiteEntry &S = CallSites[callSiteIdx];
 
-        MCSymbol *EHFuncBeginSym = CSRange.FuncPartBeginLabel;
-        MCSymbol *EHFuncEndSym = CSRange.FuncPartEndLabel;
+        MCSymbol *EHFuncBeginSym = CSRange.FragmentBeginLabel;
+        MCSymbol *EHFuncEndSym = CSRange.FragmentEndLabel;
 
         MCSymbol *BeginLabel = S.BeginLabel;
         if (!BeginLabel)
@@ -646,7 +672,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
                                        EndLabel->getName());
         Asm->EmitCallSiteOffset(EndLabel, BeginLabel, CallSiteEncoding);
 
-        // Offset of the landing pad relative to the start of the procedure.
+        // Offset of the landing pad relative to the start of the landing pad
+        // fragment.
         if (!S.LPad) {
           if (VerboseAsm)
             Asm->OutStreamer->AddComment("    has no landing pad");
@@ -655,7 +682,9 @@ MCSymbol *EHStreamer::emitExceptionTable() {
           if (VerboseAsm)
             Asm->OutStreamer->AddComment(Twine("    jumps to ") +
                                          S.LPad->LandingPadLabel->getName());
-          Asm->EmitCallSiteOffset(S.LPad->LandingPadLabel, LandingPadRange->FuncPartBeginLabel, CallSiteEncoding);
+          Asm->EmitCallSiteOffset(S.LPad->LandingPadLabel,
+                                  LandingPadRange->FragmentBeginLabel,
+                                  CallSiteEncoding);
         }
 
         // Offset of the first associated action record, relative to the start
@@ -676,8 +705,9 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
   // Emit the Action Table.
   int Entry = 0;
-  for (SmallVectorImpl<ActionEntry>::const_iterator
-         I = Actions.begin(), E = Actions.end(); I != E; ++I) {
+  for (SmallVectorImpl<ActionEntry>::const_iterator I = Actions.begin(),
+                                                    E = Actions.end();
+       I != E; ++I) {
     const ActionEntry &Action = *I;
 
     if (VerboseAsm) {

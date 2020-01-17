@@ -165,6 +165,7 @@ void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,
   if (shouldEmitLSDA)
     Asm->OutStreamer->EmitCFILsda(ESP(Asm), TLOF.getLSDAEncoding());
 
+  // Set the exception symbol associated with this basic block.
   Asm->setExceptionSym(MBB, ESP(Asm));
 }
 
