@@ -16,8 +16,8 @@ message Edge {
 
   enum Type {
     INTRA_FUNC = 0;
-    INTRA_RSC  = 1; // Recursive call.
-    INTRA_RSR  = 2; // Return from recursive call.
+    INTRA_RSC = 1; // Recursive call.
+    INTRA_RSR = 2; // Return from recursive call.
     // Intra edge dynamically created because of indirect jump, etc.
     INTRA_DYNA = 3;
     // Inter function jumps / calls.
@@ -82,6 +82,4 @@ message CFG {
 
 // A group of CFGs.
 // Next Available: 2.
-message CFGGroup {
-  repeated CFG cfg_list = 1;
-}
+message CFGGroup { repeated CFG cfg_list = 1; }

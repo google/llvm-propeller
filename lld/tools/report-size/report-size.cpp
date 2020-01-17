@@ -1,5 +1,5 @@
-#include <stdio.h>
 #include <fstream>
+#include <stdio.h>
 #include <string>
 #include <vector>
 
@@ -46,25 +46,25 @@ int main(int argc, const char *argv[]) {
   ELFSizeInfo TotalSize;
   for (int i = 1; i < argc; ++i) {
     if (argv[i][0] == '@') {
-        ifstream fin(argv[i] +1);
-        if (!fin.good()) {
-          fprintf(stderr, "Failed to process '%s'.\n", argv[i] + 1);
-          return 1;
+      ifstream fin(argv[i] + 1);
+      if (!fin.good()) {
+        fprintf(stderr, "Failed to process '%s'.\n", argv[i] + 1);
+        return 1;
+      }
+      string line;
+      while (std::getline(fin, line).good()) {
+        if (line.empty() || line[0] == '#' || line[0] == ' ') {
+          continue;
         }
-        string line;
-        while (std::getline(fin, line).good()) {
-          if (line.empty() || line[0] == '#' || line[0] == ' ') {
-            continue;
-          }
-          errcnt += getSizeInfo(line, &SizeInfo) ? 0 : 1;
-          // SizeInfo is zeroed in case of error.
-          TotalSize += SizeInfo;
-          ++total;
-        }
-    } else {
-        errcnt += getSizeInfo(argv[i], &SizeInfo) ? 0 : 1;
+        errcnt += getSizeInfo(line, &SizeInfo) ? 0 : 1;
+        // SizeInfo is zeroed in case of error.
         TotalSize += SizeInfo;
         ++total;
+      }
+    } else {
+      errcnt += getSizeInfo(argv[i], &SizeInfo) ? 0 : 1;
+      TotalSize += SizeInfo;
+      ++total;
     }
   }
   auto CommaPrint = [](uint64_t Num) {
@@ -96,7 +96,7 @@ int main(int argc, const char *argv[]) {
   PrintResult("Alloc", TotalSize.OtherAllocSize);
   PrintResult("Rela", TotalSize.RelaSize);
   PrintResult("EHFrames", TotalSize.EhFrameRelatedSize);
-  PrintResult("SymTab",TotalSize.SymTabSize);
+  PrintResult("SymTab", TotalSize.SymTabSize);
   PrintResult("SymEntries", TotalSize.SymTabEntryNum);
   PrintResult("StrTab", TotalSize.StrTabSize);
   PrintResult("FileSize", TotalSize.FileSize);

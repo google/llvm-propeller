@@ -28,52 +28,62 @@ namespace propeller {
 
 void PropellerBBReordering::printStats() {
 
-  DenseMap<CFGNode*, uint64_t> nodeAddressMap;
+  DenseMap<CFGNode *, uint64_t> nodeAddressMap;
   llvm::StringMap<unsigned> functionPartitions;
   uint64_t currentAddress = 0;
-  ControlFlowGraph* currentCFG = nullptr;
-  for(CFGNode* n: HotOrder){
-    if (currentCFG != n->CFG){
+  ControlFlowGraph *currentCFG = nullptr;
+  for (CFGNode *n : HotOrder) {
+    if (currentCFG != n->CFG) {
       currentCFG = n->CFG;
       functionPartitions[currentCFG->Name]++;
     }
-    nodeAddressMap[n]=currentAddress;
+    nodeAddressMap[n] = currentAddress;
     currentAddress += n->ShSize;
   }
 
-  for(auto &elem: functionPartitions){
-    fprintf(stderr, "FUNCTION PARTITIONS: %s,%u\n", elem.first().str().c_str(), elem.second);
+  for (auto &elem : functionPartitions) {
+    fprintf(stderr, "FUNCTION PARTITIONS: %s,%u\n", elem.first().str().c_str(),
+            elem.second);
   }
 
-  std::vector<uint64_t> distances({0,128, 640, 1028, 4096, 65536, 2 << 20, std::numeric_limits<uint64_t>::max()});
+  std::vector<uint64_t> distances({0, 128, 640, 1028, 4096, 65536, 2 << 20,
+                                   std::numeric_limits<uint64_t>::max()});
   std::map<uint64_t, uint64_t> histogram;
   llvm::StringMap<double> extTSPScoreMap;
-  for(CFGNode* n: HotOrder) {
+  for (CFGNode *n : HotOrder) {
     auto scoreEntry = extTSPScoreMap.try_emplace(n->CFG->Name, 0).first;
-    n->forEachOutEdgeRef([&nodeAddressMap, &distances, &histogram, &scoreEntry](CFGEdge& edge){
+    n->forEachOutEdgeRef([&nodeAddressMap, &distances, &histogram,
+                          &scoreEntry](CFGEdge &edge) {
       if (!edge.Weight)
         return;
       if (edge.isReturn())
         return;
-      if (nodeAddressMap.find(edge.Src)==nodeAddressMap.end() || nodeAddressMap.find(edge.Sink)==nodeAddressMap.end())
+      if (nodeAddressMap.find(edge.Src) == nodeAddressMap.end() ||
+          nodeAddressMap.find(edge.Sink) == nodeAddressMap.end())
         return;
       uint64_t srcOffset = nodeAddressMap[edge.Src];
       uint64_t sinkOffset = nodeAddressMap[edge.Sink];
       bool edgeForward = srcOffset + edge.Src->ShSize <= sinkOffset;
-      uint64_t srcSinkDistance = edgeForward ? sinkOffset - srcOffset - edge.Src->ShSize: srcOffset - sinkOffset + edge.Src->ShSize;
+      uint64_t srcSinkDistance =
+          edgeForward ? sinkOffset - srcOffset - edge.Src->ShSize
+                      : srcOffset - sinkOffset + edge.Src->ShSize;
 
-      if (edge.Type == CFGEdge::EdgeType::INTRA_FUNC || edge.Type == CFGEdge::EdgeType::INTRA_DYNA)
-        scoreEntry->second += getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
+      if (edge.Type == CFGEdge::EdgeType::INTRA_FUNC ||
+          edge.Type == CFGEdge::EdgeType::INTRA_DYNA)
+        scoreEntry->second +=
+            getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
 
-      auto res = std::lower_bound(distances.begin(), distances.end(), srcSinkDistance);
+      auto res =
+          std::lower_bound(distances.begin(), distances.end(), srcSinkDistance);
       histogram[*res] += edge.Weight;
     });
   }
 
-  for(auto& elem: extTSPScoreMap)
-    fprintf(stderr, "Ext TSP Score: %s %.6f\n", elem.first().str().c_str(), elem.second);
+  for (auto &elem : extTSPScoreMap)
+    fprintf(stderr, "Ext TSP Score: %s %.6f\n", elem.first().str().c_str(),
+            elem.second);
   fprintf(stderr, "DISTANCE HISTOGRAM: ");
-  for(auto elem: histogram)
+  for (auto elem : histogram)
     fprintf(stderr, "\t[%lu -> %lu]", elem.first, elem.second);
   fprintf(stderr, "\n");
 }

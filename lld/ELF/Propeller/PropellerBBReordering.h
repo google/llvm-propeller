@@ -10,6 +10,7 @@
 
 #include "PropellerChainClustering.h"
 #include "PropellerCFG.h"
+#include "PropellerConfig.h"
 
 #include <list>
 #include <vector>

@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 //
 // See README.md for propeller framework.
-// 
+//
 //=========================================================================
 //
 // Propeller.h defines Propeller framework classes:
@@ -273,7 +273,7 @@ public:
   // to guard this Propeller::CFGMap critical section.
   std::mutex Lock;
 
-  PropellerBBReordering* propLayout;
+  PropellerBBReordering *propLayout;
 
   llvm::StringMap<std::vector<uint64_t>> BBLayouts;
 

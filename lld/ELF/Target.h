@@ -85,7 +85,7 @@ public:
   virtual void relocateOne(uint8_t *loc, RelType type, uint64_t val) const = 0;
 
   virtual void relocateOneJumpRelocation(uint8_t *Loc, JumpRelType Type,
-                                         JumpRelType Val) const { }
+                                         JumpRelType Val) const {}
 
   virtual ~TargetInfo();
 
@@ -95,12 +95,14 @@ public:
   }
 
   virtual unsigned shrinkJmpInsn(InputSection &IS, InputFile *File,
-                                 uint32_t MaxAlignment) const
-  { return 0; }
+                                 uint32_t MaxAlignment) const {
+    return 0;
+  }
 
   virtual unsigned growJmpInsn(InputSection &IS, InputFile *File,
-                               uint32_t MaxAlignment) const
-  { return 0; }
+                               uint32_t MaxAlignment) const {
+    return 0;
+  }
 
   unsigned defaultCommonPageSize = 4096;
   unsigned defaultMaxPageSize = 4096;

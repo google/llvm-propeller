@@ -2069,7 +2069,6 @@ void SymbolTableBaseSection::addSymbol(Symbol *b) {
     }
   }
 
-
   bool hashIt = b->isLocal();
   uint32_t offset = strTabSec.addString(b->getName(), hashIt);
   symbols.push_back({b, offset});

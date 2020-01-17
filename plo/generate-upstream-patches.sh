@@ -20,9 +20,29 @@ fi
 
 echo "Generate patches based on: ${BASEINFO}"
 
+if [[ "$(( ${#ALL_FILES[@]} % 2 ))" != "0" ]]; then
+    echo "Invalid files lists."
+fi
+
+echo "Running clang-format on all files ..."
+idx=0
+declare -a files_to_format=()
+while ((idx<"${#ALL_FILES[@]}")); do
+    files_to_format+=( "${ALL_FILES[$((idx+1))]}" )
+    idx="$((idx+2))"
+done
+
+format_output=`git-clang-format ${BASEREV} -- "${files_to_format[@]}"`
+if echo "${format_output}" | grep -qE "^changed files:" ; then
+    echo "${format_output}"
+    echo Please review by \"git status\" and "(optionally) submit the changes before continue."
+    exit 1
+else
+    echo Great - All files passed clang-format.
+fi
+
 idx=0
 declare -A component_map
-
 while ((idx<"${#ALL_FILES[@]}")); do
     component="${ALL_FILES[$idx]}"
     file="${ALL_FILES[$((idx+1))]}"

@@ -87,7 +87,7 @@ template <class ELFT> bool ELFViewImpl<ELFT>::initSections(const ViewFile &VF) {
       return false;
     }
     const ViewFileShdr *Shdr = *ErrOrShdr;
-    const char  *DataStart;
+    const char *DataStart;
     size_t DataSize;
     if (Shdr->sh_type == llvm::ELF::SHT_NOBITS) {
       DataStart = nullptr;
@@ -166,8 +166,8 @@ bool ELFViewImpl<ELFT>::GetELFSizeInfo(ELFSizeInfo *SizeInfo) {
         Type == llvm::ELF::SHT_REL) {
       StringRef SecName = this->getSectionName(&hdr);
       // .eh_frame_hdr only exists in executables.
-      if (SecName == ".eh_frame" || SecName == ".eh_frame_hdr" || SecName ==
-              ".rela.eh_frame") {
+      if (SecName == ".eh_frame" || SecName == ".eh_frame_hdr" ||
+          SecName == ".rela.eh_frame") {
         SizeInfo->EhFrameRelatedSize += SecSize;
       }
     }
