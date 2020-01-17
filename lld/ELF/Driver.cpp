@@ -968,11 +968,11 @@ static void readConfigs(opt::InputArgList &args) {
       args::getFloat(args, OPT_propeller_backward_jump_weight, 0.1);
 
   config->propellerForwardJumpDistance =
-      args::getFloat(args, OPT_propeller_forward_jump_distance, 1024);
+      args::getInteger(args, OPT_propeller_forward_jump_distance, 1024);
   config->propellerBackwardJumpDistance =
-      args::getFloat(args, OPT_propeller_backward_jump_distance, 640);
+      args::getInteger(args, OPT_propeller_backward_jump_distance, 640);
   config->propellerChainSplitThreshold =
-      args::getFloat(args, OPT_propeller_chain_split_threshold, 128);
+      args::getInteger(args, OPT_propeller_chain_split_threshold, 128);
 
   // Parse Propeller flags.
   auto propellerOpts = args.getAllArgValues(OPT_propeller_opt);
