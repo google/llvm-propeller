@@ -516,7 +516,7 @@ bbfilter: bbfilter.cc stage1-compiler
 	./stage1-compiler -x c++ $< -O2 -o $@ -lstdc++
 
 upstream-patches: generate-upstream-patches.sh generate-upstream-patches.filelist $(LLVM_SOURCE)
-	./$< | tee $@
+	bash -c "set -o pipefail ; ./$< | tee $@ || { rm -f $@; exit 1;}"
 
 clean-sample:
 	rm -f sample_bb.*o sample_bblabels.*o sample_bball.*o sample.*out sample.*perfdata sample.*propeller sample.*out.cfg.pb.txt
