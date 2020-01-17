@@ -1,4 +1,5 @@
 #include "PropellerNodeChainAssembly.h"
+#include "PropellerNodeChain.h"
 
 namespace lld {
 namespace propeller {
@@ -7,6 +8,7 @@ namespace propeller {
 // direction and distance in the layout.
 double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
                           uint64_t srcSinkDistance) {
+  // Approximate callsites to be in the middle of the source basic block.
   if (edge.isCall()){
     if (isEdgeForward)
       srcSinkDistance += edge.Src->ShSize / 2;
@@ -35,8 +37,6 @@ double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
             ((double)srcSinkDistance) / propellerConfig.optBackwardJumpDistance);
   return 0;
 }
-
-
 
 // This function computes the ExtTSP score for a chain assembly record. This
 // goes the three BB slices in the assembly record and considers all edges

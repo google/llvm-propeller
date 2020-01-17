@@ -312,11 +312,11 @@ void NodeChainBuilder::mergeChains(
     for (auto it : allSlicesBegin)
       if (it != mergerChain->Nodes.begin() &&
           (*std::prev(it))->CFG != (*it)->CFG)
-        mergerChain->FunctionEntryIndices.push_back(it);
+        mergerChain->FunctionTransitions.push_back(it);
 
-    mergerChain->FunctionEntryIndices.splice(
-        mergerChain->FunctionEntryIndices.end(),
-        mergeeChain->FunctionEntryIndices);
+    mergerChain->FunctionTransitions.splice(
+        mergerChain->FunctionTransitions.end(),
+        mergeeChain->FunctionTransitions);
   }
 
   auto chainBegin = mergerChain->Nodes.begin();
@@ -507,7 +507,7 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   if (propellerConfig.optReorderIP && !doSplit) {
     // For inter-procedural layout, we always try splitting at the function
     // entries, regardless of the split-chain's size.
-    for (auto slicePos : splitChain->FunctionEntryIndices) {
+    for (auto slicePos : splitChain->FunctionTransitions) {
       for (uint8_t MI = MergeOrder::Begin; MI != MergeOrder::End; MI++) {
         MergeOrder mOrder = static_cast<MergeOrder>(MI);
 

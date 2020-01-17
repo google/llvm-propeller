@@ -942,9 +942,11 @@ static void readConfigs(opt::InputArgList &args) {
 
   config->propellerBBOrderFile = args.getLastArgValue(OPT_propeller_bb_order_file);
 
+  config->propellerClusterMergeSizeThreshold =
+      args::getInteger(args, OPT_propeller_cluster_merge_size_threshold, 1 << 21);
+
   config->propellerDumpSymbolOrder =
       args.getLastArgValue(OPT_propeller_dump_symbol_order);
-
 
   config->propellerPrintStats =
       args.hasFlag(OPT_propeller_print_stats,

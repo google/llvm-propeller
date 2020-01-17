@@ -115,6 +115,7 @@ struct Configuration {
   double propellerFallthroughWeight;
   double propellerForwardJumpWeight;
   double propellerBackwardJumpWeight;
+  uint64_t propellerClusterMergeSizeThreshold;
   uint64_t propellerForwardJumpDistance;
   uint64_t propellerBackwardJumpDistance;
   uint64_t propellerChainSplitThreshold;
