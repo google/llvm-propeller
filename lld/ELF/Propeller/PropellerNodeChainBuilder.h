@@ -8,7 +8,7 @@
 #ifndef LLD_ELF_PROPELLER_NODE_CHAIN_BUILDER_H
 #define LLD_ELF_PROPELLER_NODE_CHAIN_BUILDER_H
 
-#include "Heap.h"
+#include "ModifiablePriorityQueue.h"
 #include "PropellerCFG.h"
 #include "PropellerChainClustering.h"
 #include "PropellerNodeChain.h"
@@ -54,7 +54,7 @@ private:
   // potentially splittable) to the highest-gain NodeChainAssembly for those
   // chains. The Heap data structure allows fast retrieval of the maximum gain
   // NodeChainAssembly, along with fast update.
-  Heap<std::pair<NodeChain *, NodeChain *>, std::unique_ptr<NodeChainAssembly>,
+  ModifiablePriorityQueue<std::pair<NodeChain *, NodeChain *>, std::unique_ptr<NodeChainAssembly>,
        std::less<std::pair<NodeChain *, NodeChain *>>,
        NodeChainAssembly::CompareNodeChainAssembly>
       NodeChainAssemblies;
@@ -70,7 +70,13 @@ private:
 
   void coalesceChains();
   void initializeExtTSP();
-  void initializeComponents();
+
+  // This function separates builds the connected components for the chains so
+  // it can later merge each connected component separately.
+  // Chains which are not connected to each other via profile edges will never
+  // be merged together by NodeChainBuilder. However, the composed chains may
+  // later be interleaved by ChainClustering.
+  void initializeChainComponents();
   void attachFallThroughs();
 
   // This function tries to place two nodes immediately adjacent to

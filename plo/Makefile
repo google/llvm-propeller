@@ -135,7 +135,7 @@ bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label -funique
 relocs_flags               := $(call gen_linker_flags,"$(relocation_gen_opt)")
 bb_section_all_flags        = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(other_opt) $(gc_sections_opt)")
 bb_section_list_flags       = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3)")
-bb_section_listinterp_flags = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1)","-fuse-ld=lld -fpropeller-optimize=$(1) $(interp_opt) $(other_opt) $(gc_sections_opt)")
+bb_section_listinterp_flags = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(interp_opt) $(other_opt) $(gc_sections_opt) $(3)")
 bb_section_allinterp_flags  = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(interp_opt) $(other_opt) $(gc_sections_opt)")
 
 # $1 is any other cmake flags (optional)

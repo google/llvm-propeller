@@ -61,12 +61,15 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
     auto visit = [&clusterEdge, n, chain, cluster, this](CFGEdge &edge) {
       if (!edge.Weight || edge.isReturn())
         return;
-      auto *caller = edge.Src->Chain;
-      if (!caller)
+      if (!propellerConfig.optReorderIP && !edge.isCall())
         return;
-      auto *callerCluster = ChainToClusterMap[caller];
-      assert(caller->Freq);
-      if (caller == chain || callerCluster == cluster)
+      auto *callerChain = edge.Src->Chain;
+      if (!callerChain) {
+        warn("Caller for node: " + n->ShName + " does not have a chain!");
+        return;
+      }
+      auto *callerCluster = ChainToClusterMap[callerChain];
+      if (callerChain == chain || callerCluster == cluster)
         return;
       // Ignore clusters which are too big
       if (callerCluster->Size > propellerConfig.optClusterMergeSizeThreshold)
@@ -170,7 +173,6 @@ void CallChainClustering::mergeClusters() {
     if (!predecessorCluster)
       continue;
 
-    // assert(predecessorCluster != cluster && predecessorChain != chain);
     mergeTwoClusters(predecessorCluster, cluster);
   }
 }

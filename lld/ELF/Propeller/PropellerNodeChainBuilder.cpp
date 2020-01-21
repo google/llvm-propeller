@@ -662,7 +662,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
 void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
-  // warn("Started initialization: " + Twine(Chains.size()));
+  CandidateChains.clear();
   for (NodeChain *chain : Components[CurrentComponent])
     chain->Score = chain->Freq ? computeExtTSPScore(chain) : 0;
 
@@ -689,20 +689,25 @@ void NodeChainBuilder::initializeExtTSP() {
   }
 }
 
-void NodeChainBuilder::initializeComponents() {
+void NodeChainBuilder::initializeChainComponents() {
 
   DenseMap<NodeChain *, unsigned> chainToComponentMap;
   unsigned componentId = 0;
   for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains) {
     NodeChain *chain = elem.second.get();
+    // Cold chains will not be placed in any component.
     if (!chain->Freq)
       continue;
+    // Skip if this chain has already been assigned to a component.
     if (chainToComponentMap.count(chain))
       continue;
+    // Start creating the component containing this chain and its connected
+    // chains.
     chainToComponentMap[chain] = componentId;
     std::vector<NodeChain *> toVisit(1, chain);
     unsigned index = 0;
 
+    // Find the connected component using BFS.
     while (index != toVisit.size()) {
       auto *tchain = toVisit[index++];
       for (auto *c : tchain->InEdges) {
@@ -729,14 +734,16 @@ void NodeChainBuilder::mergeAllChains() {
   for (auto &elem : MutuallyForcedOut)
     attachNodes(elem.first, elem.second);
 
+  // Set up the outgoing edges for every chain
   for (auto &elem : Chains) {
     auto *chain = elem.second.get();
+    // Ignore cold chains as they cannot have any hot edges to other nodes
     if (!chain->Freq)
       continue;
-    auto visit = [chain](CFGEdge &edge) {
-      if (!edge.Weight)
-        return;
-      if (edge.isReturn())
+    auto addEdge = [chain](CFGEdge &edge) {
+      // Ignore returns and zero-frequency edges as these edges will not be used
+      // by the ExtTSP score algorithm.
+      if (!edge.Weight || edge.isReturn())
         return;
       auto *sinkNodeChain = edge.Sink->Chain;
       chain->OutEdges[sinkNodeChain].push_back(&edge);
@@ -745,17 +752,18 @@ void NodeChainBuilder::mergeAllChains() {
 
     if (propellerConfig.optReorderIP) {
       for (CFGNode *node : chain->Nodes)
-        node->forEachOutEdgeRef(visit);
+        node->forEachOutEdgeRef(addEdge);
     } else {
       for (CFGNode *node : chain->Nodes)
-        node->forEachIntraOutEdgeRef(visit);
+        node->forEachIntraOutEdgeRef(addEdge);
     }
   }
 
-  initializeComponents();
+  initializeChainComponents();
 
   for (CurrentComponent = 0; CurrentComponent < Components.size();
        ++CurrentComponent) {
+    fprintf(stderr, "COMPONENT: %u -> SIZE: %zu\n", CurrentComponent, Components[CurrentComponent].size());
     // Initialize the Extended TSP algorithm's data.
     initializeExtTSP();
 
@@ -782,6 +790,8 @@ void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC) {
   attachFallThroughs();
 
   if (!propellerConfig.optReorderIP) {
+    // If this is not inter-procedural, coalesce all hot chains into a single
+    // hot chain and all cold chains into a single cold chain.
     coalesceChains();
     assert(CFGs.size() == 1 && Chains.size() <= 2);
 
@@ -799,6 +809,7 @@ void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC) {
 #endif
   }
 
+  // Hand in the built chains to the chain clustering algorithm
   for (auto &elem : Chains)
     CC->addChain(std::move(elem.second));
 }

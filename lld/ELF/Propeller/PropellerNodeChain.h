@@ -71,8 +71,8 @@ public:
     });
   }
 
-  // Helper function to iterate over the outgoing edges of this chain, while
-  // applying a given function on each edge.
+  // Helper function to iterate over the outgoing edges of this chain to a
+  // specific chain, while applying a given function on each edge.
   template <class Visitor>
   void forEachOutEdgeToChain(NodeChain *chain, Visitor V) {
     auto it = OutEdges.find(chain);
