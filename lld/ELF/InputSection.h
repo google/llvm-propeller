@@ -132,9 +132,7 @@ public:
 
   bool Trimmed = false;
 
-  void drop_back(uint64_t num) {
-    BytesDropped += num;
-  }
+  void drop_back(uint64_t num) { BytesDropped += num; }
 
   void push_back(uint64_t num) {
     assert(BytesDropped >= num);
@@ -144,7 +142,7 @@ public:
   void trim() {
     if (Trimmed)
       return;
-    if (BytesDropped){
+    if (BytesDropped) {
       rawData = rawData.drop_back(BytesDropped);
       Trimmed = true;
     }
@@ -223,9 +221,7 @@ public:
   // These are artificial jump relocations.
   std::vector<JumpRelocation> JumpRelocations;
 
-  void addJumpRelocation(JumpRelocation J) {
-    JumpRelocations.push_back(J);
-  }
+  void addJumpRelocation(JumpRelocation J) { JumpRelocations.push_back(J); }
 
   // A function compiled with -fsplit-stack calling a function
   // compiled without -fsplit-stack needs its prologue adjusted. Find

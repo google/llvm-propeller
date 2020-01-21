@@ -69,8 +69,8 @@ protected:
     unsigned Action;
   };
 
-  // Structure describing a contiguous range of call-sites which reside
-  // in the same function part.
+  /// Structure describing a contiguous range of call-sites which reside
+  /// in the same function part.
   struct CallSiteRange {
     // Index of the first call-site entry in the call-site table which
     // belongs to this range.

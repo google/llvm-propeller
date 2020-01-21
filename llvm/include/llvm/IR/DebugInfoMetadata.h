@@ -1805,10 +1805,6 @@ public:
   }
   void replaceUnit(DICompileUnit *CU) { replaceOperandWith(5, CU); }
 
-  void replaceLinkageName(StringRef NewName) {
-    replaceOperandWith(3, MDString::get(getContext(), NewName));
-  }
-
   DITemplateParameterArray getTemplateParams() const {
     return cast_or_null<MDTuple>(getRawTemplateParams());
   }

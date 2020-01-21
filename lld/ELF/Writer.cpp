@@ -30,8 +30,8 @@
 #include "llvm/Support/RandomNumberGenerator.h"
 #include "llvm/Support/SHA1.h"
 #include "llvm/Support/xxhash.h"
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <climits>
 #include <type_traits>
 
@@ -566,11 +566,12 @@ template <class ELFT> void Writer<ELFT>::run() {
   // completes section contents. For example, we need to add strings
   // to the string table, and add entries to .got and .plt.
   // finalizeSections does that.
-  //auto startFinalizeSectionTime = system_clock::now();
+  // auto startFinalizeSectionTime = system_clock::now();
   finalizeSections();
-  //auto endFinalizeSectionTime = system_clock::now();
-  //duration<double> FinalizeSectionTime = endFinalizeSectionTime - startFinalizeSectionTime;
-  //warn("[TIME](s) finalize section (includes section ordering): " + Twine(std::to_string(FinalizeSectionTime.count())));
+  // auto endFinalizeSectionTime = system_clock::now();
+  // duration<double> FinalizeSectionTime = endFinalizeSectionTime -
+  // startFinalizeSectionTime; warn("[TIME](s) finalize section (includes section
+  // ordering): " + Twine(std::to_string(FinalizeSectionTime.count())));
   checkExecuteOnly();
   if (errorCount())
     return;
@@ -1670,23 +1671,24 @@ static void fixSymbolsAfterShrinking() {
       const auto NewSize = InputSec->data().size();
 
       if (Def->value > NewSize) {
-        LLVM_DEBUG(llvm::dbgs() << "Moving symbol " << Sym->getName() <<
-                   " from "  << Def->value << " to " <<
-                   Def->value - InputSec->BytesDropped << " bytes\n");
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Moving symbol " << Sym->getName() << " from "
+                   << Def->value << " to "
+                   << Def->value - InputSec->BytesDropped << " bytes\n");
         Def->value -= InputSec->BytesDropped;
         return;
       }
 
       if (Def->value + Def->size > NewSize) {
-        LLVM_DEBUG(llvm::dbgs() << "Shrinking symbol " << Sym->getName() <<
-                   " from "  << Def->size << " to " <<
-                   Def->size - InputSec->BytesDropped << " bytes\n");
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Shrinking symbol " << Sym->getName() << " from "
+                   << Def->size << " to " << Def->size - InputSec->BytesDropped
+                   << " bytes\n");
         Def->size -= InputSec->BytesDropped;
       }
     });
   }
 }
-
 
 // If basic block sections exist, there are opportunities to delete fall thru
 // jumps and shrink jump instructions after basic block reordering.  This
@@ -1705,26 +1707,27 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
   //   2.  It aggressively shrinks jump instructions.
   //   3.  It aggressively grows back jump instructions.
   for (OutputSection *OS : outputSections) {
-    if (!(OS->flags & SHF_EXECINSTR)) continue;
+    if (!(OS->flags & SHF_EXECINSTR))
+      continue;
     std::vector<InputSection *> Sections = getInputSections(OS);
     std::vector<bool> Result(Sections.size());
     // Step 1: Delete all fall through jump instructions.  Also, check if two
     // consecutive jump instructions can be flipped so that a fall through jmp
     // instruction can be deleted.
     parallelForEachN(0, Sections.size(), [&](size_t I) {
-      InputSection *Next = (I + 1) < Sections.size() ?
-                           Sections[I + 1] : nullptr;
+      InputSection *Next =
+          (I + 1) < Sections.size() ? Sections[I + 1] : nullptr;
       InputSection &IS = *Sections[I];
       Result[I] = target->deleteFallThruJmpInsn(IS, IS.getFile<ELFT>(), Next);
     });
     size_t NumDeleted = std::count(Result.begin(), Result.end(), true);
     if (NumDeleted > 0) {
       script->assignAddresses();
-      LLVM_DEBUG(llvm::dbgs() << "Removing " << NumDeleted <<
-                 " fall through jumps\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Removing " << NumDeleted << " fall through jumps\n");
     }
 
-    //auto startOptBBJumpTime = system_clock::now();
+    // auto startOptBBJumpTime = system_clock::now();
     // Step 2:  Shrink jump instructions.  If the offset of the jump can fit in
     // one byte there is a smaller encoding of the jump instruction.  Section
     // offsets are recomputed only after all the sections have been processed.
@@ -1732,13 +1735,14 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     // be higher by (Alignment - 1) and negative target offsets could be lower
     // by the same amount. With aggressive shrinking, we make mistakes and
     // rectify it in the next step.
-    auto MaxIt = config->shrinkJumpsAggressively ? Sections.end() :
-        std::max_element(Sections.begin(), Sections.end(),
-                         [](InputSection * const s1, InputSection * const s2) {
-                           return s1->alignment < s2->alignment;
-                         });
+    auto MaxIt = config->shrinkJumpsAggressively
+                     ? Sections.end()
+                     : std::max_element(
+                           Sections.begin(), Sections.end(),
+                           [](InputSection *const s1, InputSection *const s2) {
+                             return s1->alignment < s2->alignment;
+                           });
     uint32_t MaxAlign = (MaxIt != Sections.end()) ? (*MaxIt)->alignment : 0;
-
 
     // Shrink jump Instructions optimistically
     std::vector<unsigned> Shrunk(Sections.size(), 0);
@@ -1748,19 +1752,21 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       AnyChanged = false;
       parallelForEachN(0, Sections.size(), [&](size_t I) {
         InputSection &IS = *Sections[I];
-        unsigned BytesShrunk = target->shrinkJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
+        unsigned BytesShrunk =
+            target->shrinkJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
         Changed[I] = (BytesShrunk > 0);
         Shrunk[I] += BytesShrunk;
       });
-      AnyChanged = std::any_of(Changed.begin(), Changed.end(),
-                               [] (bool e) {return e;});
+      AnyChanged =
+          std::any_of(Changed.begin(), Changed.end(), [](bool e) { return e; });
       size_t Num = std::count_if(Shrunk.begin(), Shrunk.end(),
-          [] (int e) { return e > 0; });
+                                 [](int e) { return e > 0; });
       Num += std::count_if(Shrunk.begin(), Shrunk.end(),
-          [] (int e) { return e > 4; });
+                           [](int e) { return e > 4; });
       if (Num > 0)
-        LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->name <<
-                   " : Shrinking " << Num << " jmp instructions\n");
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Output Section :" << OS->name << " : Shrinking " << Num
+                   << " jmp instructions\n");
       if (AnyChanged)
         script->assignAddresses();
     } while (AnyChanged);
@@ -1772,37 +1778,39 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
         AnyChanged = false;
         parallelForEachN(0, Sections.size(), [&](size_t I) {
           InputSection &IS = *Sections[I];
-          unsigned BytesGrown = target->growJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
+          unsigned BytesGrown =
+              target->growJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
           Changed[I] = (BytesGrown > 0);
           Grown[I] += BytesGrown;
         });
         size_t Num = std::count_if(Grown.begin(), Grown.end(),
-            [] (int e) { return e > 0; });
+                                   [](int e) { return e > 0; });
         Num += std::count_if(Grown.begin(), Grown.end(),
-            [] (int e) { return e > 4; });
+                             [](int e) { return e > 4; });
         if (Num > 0)
-          LLVM_DEBUG(llvm::dbgs() << "Output Section :" << OS->name <<
-                     " : Growing " << Num << " jmp instructions\n");
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Output Section :" << OS->name << " : Growing " << Num
+                     << " jmp instructions\n");
         AnyChanged = std::any_of(Changed.begin(), Changed.end(),
-                                 [] (bool e) {return e;});
+                                 [](bool e) { return e; });
         if (AnyChanged)
           script->assignAddresses();
       } while (AnyChanged);
     }
 
-  //auto endOptBBJumpTime = system_clock::now();
-  //duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
-  //warn("[TIME](s) shrink bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
+    // auto endOptBBJumpTime = system_clock::now();
+    // duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+    // warn("[TIME](s) shrink bb jumps: " +
+    // Twine(std::to_string(OptBBJumpTime.count())));
   }
 
   for (OutputSection *OS : outputSections) {
     std::vector<InputSection *> Sections = getInputSections(OS);
-    for (InputSection * IS: Sections)
+    for (InputSection *IS : Sections)
       IS->trim();
   }
 
   fixSymbolsAfterShrinking();
-
 }
 
 static void finalizeSynthetic(SyntheticSection *sec) {
@@ -2116,12 +2124,12 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Relaxation to delete inter-basic block jumps created by basic block
   // sections.
-  //auto startOptBBJumpTime = system_clock::now();
+  // auto startOptBBJumpTime = system_clock::now();
   optimizeBasicBlockJumps();
-  //auto endOptBBJumpTime = system_clock::now();
-  //duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
-  //warn("[TIME](s) optimize bb jumps: " + Twine(std::to_string(OptBBJumpTime.count())));
-
+  // auto endOptBBJumpTime = system_clock::now();
+  // duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
+  // warn("[TIME](s) optimize bb jumps: " +
+  // Twine(std::to_string(OptBBJumpTime.count())));
 
   // Fill other section headers. The dynamic table is finalized
   // at the end because some tags like RELSZ depend on result

@@ -855,8 +855,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->defineCommon = args.hasFlag(OPT_define_common, OPT_no_define_common,
                                       !args.hasArg(OPT_relocatable));
   config->optimizeBBJumps =
-      args.hasFlag(OPT_optimize_bb_jumps,
-                   OPT_no_optimize_bb_jumps, false);
+      args.hasFlag(OPT_optimize_bb_jumps, OPT_no_optimize_bb_jumps, false);
 
   config->demangle = args.hasFlag(OPT_demangle, OPT_no_demangle, true);
   config->dependentLibraries = args.hasFlag(OPT_dependent_libraries, OPT_no_dependent_libraries, true);
@@ -905,8 +904,7 @@ static void readConfigs(opt::InputArgList &args) {
       args.getLastArgValue(OPT_lto_basicblock_sections);
   config->ltoUniqueBBSectionNames =
       args.hasFlag(OPT_lto_unique_bb_section_names,
-                   OPT_no_lto_unique_bb_section_names,
-                   false);
+                   OPT_no_lto_unique_bb_section_names, false);
   config->mapFile = args.getLastArgValue(OPT_Map);
   config->mipsGotSize = args::getInteger(args, OPT_mips_got_size, 0xfff0);
   config->mergeArmExidx =
@@ -940,7 +938,8 @@ static void readConfigs(opt::InputArgList &args) {
       args.hasFlag(OPT_propeller_keep_named_symbols,
                    OPT_no_propeller_keep_named_symbols, false);
 
-  config->propellerBBOrderFile = args.getLastArgValue(OPT_propeller_bb_order_file);
+  config->propellerBBOrderFile =
+      args.getLastArgValue(OPT_propeller_bb_order_file);
 
   config->propellerClusterMergeSizeThreshold =
       args::getInteger(args, OPT_propeller_cluster_merge_size_threshold, 1 << 21);
@@ -948,9 +947,8 @@ static void readConfigs(opt::InputArgList &args) {
   config->propellerDumpSymbolOrder =
       args.getLastArgValue(OPT_propeller_dump_symbol_order);
 
-  config->propellerPrintStats =
-      args.hasFlag(OPT_propeller_print_stats,
-                   OPT_no_propeller_print_stats, false);
+  config->propellerPrintStats = args.hasFlag(
+      OPT_propeller_print_stats, OPT_no_propeller_print_stats, false);
 
   config->propellerDumpCfgs = args.getAllArgValues(OPT_propeller_dump_cfg);
 
@@ -977,11 +975,11 @@ static void readConfigs(opt::InputArgList &args) {
   // Parse Propeller flags.
   auto propellerOpts = args.getAllArgValues(OPT_propeller_opt);
   bool splitFuncsExplicit = false;
-  for(auto& propellerOpt: propellerOpts){
+  for (auto &propellerOpt : propellerOpts) {
     StringRef S = StringRef(propellerOpt);
-    if (S == "reorder-ip"){
+    if (S == "reorder-ip") {
       config->propellerReorderIP = true;
-    } else if (S == "reorder-funcs"){
+    } else if (S == "reorder-funcs") {
       config->propellerReorderFuncs = true;
     } else if (S == "no-reorder-funcs") {
       config->propellerReorderFuncs = false;
@@ -999,7 +997,7 @@ static void readConfigs(opt::InputArgList &args) {
   }
 
   if (!config->propeller.empty() && !config->propellerReorderBlocks) {
-    if (splitFuncsExplicit){
+    if (splitFuncsExplicit) {
       error("propeller: Inconsistent combination of propeller optimizations"
             " 'split-funcs' and 'no-reorder-blocks'.");
     } else {
@@ -1015,9 +1013,8 @@ static void readConfigs(opt::InputArgList &args) {
   config->sectionStartMap = getSectionStartMap(args);
   config->shared = args.hasArg(OPT_shared);
 
-  config->shrinkJumpsAggressively =
-      args.hasFlag(OPT_shrink_jumps_aggressively,
-                   OPT_no_shrink_jumps_aggressively, true);
+  config->shrinkJumpsAggressively = args.hasFlag(
+      OPT_shrink_jumps_aggressively, OPT_no_shrink_jumps_aggressively, true);
 
   config->singleRoRx = args.hasArg(OPT_no_rosegment);
   config->soName = args.getLastArgValue(OPT_soname);

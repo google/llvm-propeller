@@ -23,8 +23,8 @@
 
 #include "Propeller.h"
 #include "PropellerBBReordering.h"
-#include "PropellerConfig.h"
 #include "PropellerCFG.h"
+#include "PropellerConfig.h"
 
 #ifdef PROPELLER_PROTOBUF
 #include "propeller_cfg.pb.h"
@@ -38,8 +38,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <fcntl.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #if LLVM_ON_UNIX
 #include <unistd.h>
 #endif
@@ -136,7 +136,8 @@ bool Propfile::readSymbols() {
     if (I0 == HotBBSymbols.end())
       return false;
     // Under AllBBMode, all BBs within a hot function are hotbbs.
-    if (this->AllBBMode) return true;
+    if (this->AllBBMode)
+      return true;
     uint64_t index = std::stoull(BBIndex.str());
     return I0->second.find(index) != I0->second.end();
   };
@@ -323,7 +324,7 @@ bool Propfile::processProfile() {
     auto UpdateOrdinal = [this](uint64_t OriginOrdinal) -> uint64_t {
       auto I = OrdinalRemapping.find(OriginOrdinal);
       if (I != OrdinalRemapping.end()) {
-        //fprintf(stderr, "Updated %lu->%lu\n", OriginOrdinal, I->second);
+        // fprintf(stderr, "Updated %lu->%lu\n", OriginOrdinal, I->second);
         return I->second;
       }
       return OriginOrdinal;
@@ -340,7 +341,7 @@ bool Propfile::processProfile() {
       continue;
 
     if (LineTag == 'B') {
-      if(!fromN || !toN)
+      if (!fromN || !toN)
         continue;
       ++branchCnt;
       if (fromN->CFG == toN->CFG)
@@ -352,7 +353,7 @@ bool Propfile::processProfile() {
         continue;
       ++fallthroughCnt;
       // LineTag == 'F'
-      ControlFlowGraph * cfg = fromN ? fromN->CFG : toN->CFG;
+      ControlFlowGraph *cfg = fromN ? fromN->CFG : toN->CFG;
       cfg->markPath(fromN, toN, count);
     }
   }
@@ -382,7 +383,7 @@ void Propeller::processFile(ObjectView *view) {
                                      OrdinalRemapping.end());
 
     } else {
-      warn("skipped building CFG for '" + view->ViewName +"'");
+      warn("skipped building CFG for '" + view->ViewName + "'");
       ++ProcessFailureCount;
     }
   }
@@ -424,7 +425,8 @@ CFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
         for (auto *CFG : cfgLI->second)
           for (auto &node : CFG->Nodes) {
             // Skip the entry node as we know this is a BB symbol.
-            if (node->isEntryNode()) continue;
+            if (node->isEntryNode())
+              continue;
             // Check CFG does have name "SymName".
             auto t = node->ShName.find_first_of('.');
             if (t != std::string::npos && t == NumOnes)
@@ -478,7 +480,7 @@ void Propeller::calculateNodeFreqs() {
       // weight via the fallthrough edge if no other normal edge carries weight.
       if (node.Freq && node.FTEdge && node.FTEdge->Sink->HotTag) {
         uint64_t sumIntraOut = 0;
-        for (auto * e: node.Outs) {
+        for (auto *e : node.Outs) {
           if (e->Type == CFGEdge::EdgeType::INTRA_FUNC)
             sumIntraOut += e->Weight;
         }
@@ -520,8 +522,8 @@ bool Propeller::processFiles(std::vector<ObjectView *> &views) {
     return false;
   }
 
-  if(!propellerConfig.optBBOrder.empty()){
-    for (StringRef s: propellerConfig.optBBOrder){
+  if (!propellerConfig.optBBOrder.empty()) {
+    for (StringRef s : propellerConfig.optBBOrder) {
       auto r = s.split('.');
       std::string bbIndex = r.first.str() == "0" ? "" : r.first;
       std::string funcName = r.second;
@@ -579,7 +581,7 @@ bool Propeller::processFiles(std::vector<ObjectView *> &views) {
   calculateNodeFreqs();
 
   dumpCfgs();
-  
+
   // Releasing all support data (symbol ordinal / name map, saved string refs,
   // etc) before moving to reordering.
   Propf.reset(nullptr);
@@ -587,7 +589,8 @@ bool Propeller::processFiles(std::vector<ObjectView *> &views) {
 }
 
 bool Propeller::dumpCfgs() {
-  if (propellerConfig.optDumpCfgs.empty()) return true;
+  if (propellerConfig.optDumpCfgs.empty())
+    return true;
 
   std::set<std::string> cfgToDump(propellerConfig.optDumpCfgs.begin(),
                                   propellerConfig.optDumpCfgs.end());
@@ -603,8 +606,8 @@ bool Propeller::dumpCfgs() {
       if (cfgNameRef.consume_front("@@")) {
         protobufPrinter->clearCFGGroup();
         const bool cfgNameEmpty = cfgNameRef.empty();
-        for (auto &cfgMapEntry: CFGMap)
-          for (auto *cfg: cfgMapEntry.second)
+        for (auto &cfgMapEntry : CFGMap)
+          for (auto *cfg : cfgMapEntry.second)
             if (cfgNameEmpty || cfg->Name == cfgNameRef)
               protobufPrinter->addCFG(*cfg);
         protobufPrinter->printCFGGroup();
@@ -734,8 +737,8 @@ void Propeller::calculateLegacy(
   return;
 }
 
-bool Propeller::ObjectViewOrdinalComparator::
-operator()(const ControlFlowGraph *a, const ControlFlowGraph *b) const {
+bool Propeller::ObjectViewOrdinalComparator::operator()(
+    const ControlFlowGraph *a, const ControlFlowGraph *b) const {
   return a->View->Ordinal < b->View->Ordinal;
 }
 

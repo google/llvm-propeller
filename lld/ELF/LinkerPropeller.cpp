@@ -30,10 +30,10 @@
 
 #include "Config.h"
 #include "InputFiles.h"
-#include "lld/Common/Memory.h"
 #include "Propeller/Propeller.h"
 #include "Propeller/PropellerCFG.h"
 #include "Propeller/PropellerConfig.h"
+#include "lld/Common/Memory.h"
 
 #include "lld/Common/ErrorHandler.h"
 
@@ -50,6 +50,7 @@ namespace propeller {
 
 Propeller *prop;
 
+// Set up PropellerConfig from global lld config instnace.
 static void setupConfig() {
   propellerConfig.optPropeller = config->propeller;
   propellerConfig.optLinkerOutputFile = config->outputFile;
@@ -75,6 +76,7 @@ static void setupConfig() {
 #undef COPY_CONFIG
 }
 
+// Propeller framework entrance.
 void doPropeller() {
   if (config->propeller.empty())
     return;

@@ -34,9 +34,7 @@ using llvm::object::SymbolRef;
 namespace lld {
 namespace propeller {
 
-bool CFGNode::isEntryNode() const {
-  return CFG->getEntryNode() == this;
-}
+bool CFGNode::isEntryNode() const { return CFG->getEntryNode() == this; }
 
 bool ControlFlowGraph::writeAsDotGraph(StringRef cfgOutName) {
   std::error_code ec;
@@ -66,8 +64,8 @@ bool ControlFlowGraph::writeAsDotGraph(StringRef cfgOutName) {
 CFGEdge *ControlFlowGraph::createEdge(CFGNode *from, CFGNode *to,
                                       typename CFGEdge::EdgeType type) {
   CFGEdge *edge = nullptr;
-  auto CheckExistingEdge = [from, to,
-                            type, &edge](std::vector<CFGEdge *> &Edges) {
+  auto CheckExistingEdge = [from, to, type,
+                            &edge](std::vector<CFGEdge *> &Edges) {
     for (auto *E : Edges) {
       if (E->Src == from && E->Sink == to && E->Type == type) {
         edge = E;
@@ -102,12 +100,12 @@ CFGEdge *ControlFlowGraph::createEdge(CFGNode *from, CFGNode *to,
 // the same cfg.
 bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
   if (from == nullptr) {
-     // If the from node is null, walk backward from the to node while only
-     // one INTRA_FUNC incoming edge is found.
+    // If the from node is null, walk backward from the to node while only
+    // one INTRA_FUNC incoming edge is found.
     assert(to != nullptr);
     CFGNode *p = to;
     do {
-      if (p->Ins.size() == 1 && p->Ins.front()->isFTEdge()){
+      if (p->Ins.size() == 1 && p->Ins.front()->isFTEdge()) {
         p->Ins.front()->Weight += cnt;
         p = p->Ins.front()->Src;
       } else
@@ -117,8 +115,8 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
   }
 
   if (to == nullptr) {
-     // If the to node is null, walk forward from the from node while only
-     // one INTRA_FUNC outgoing edge is found.
+    // If the to node is null, walk forward from the from node while only
+    // one INTRA_FUNC outgoing edge is found.
     assert(from != nullptr);
     CFGNode *p = from;
     do {
@@ -138,7 +136,7 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
 
   // Iterate over fallthrough edges between from and to, adding every edge in
   // between to a vector.
-  SmallVector<CFGEdge*, 32> fallThroughEdges;
+  SmallVector<CFGEdge *, 32> fallThroughEdges;
   while (p && p != to) {
     if (p->FTEdge) {
       fallThroughEdges.push_back(p->FTEdge);
@@ -151,7 +149,7 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
     return false;
   }
 
-  for (auto * e : fallThroughEdges)
+  for (auto *e : fallThroughEdges)
     e->Weight += cnt;
 
   return true;
@@ -277,9 +275,9 @@ std::map<uint64_t, section_iterator> CFGBuilder::buildRelocationSectionMap() {
 //    104 -> 102
 //
 // And tmpNodeMap contains:
-//    100 -> CfgNode(MappedAddr=100) 
-//    101 -> CfgNode(MappedAddr=101) 
-//    102 -> CfgNode(MappedAddr=102) 
+//    100 -> CfgNode(MappedAddr=100)
+//    101 -> CfgNode(MappedAddr=101)
+//    102 -> CfgNode(MappedAddr=102)
 //
 std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     std::map<StringRef, std::list<SymbolRef>>::value_type &GE,
@@ -319,7 +317,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     // section (the cold section or the landing pad section), and this
     // bb symbol is not the representative symbol of the bb section.
     if (!sE) {
-      if (symValue != 0) continue;
+      if (symValue != 0)
+        continue;
       tmpNodeMap.clear();
       break;
     }
@@ -484,7 +483,7 @@ void CFGBuilder::buildCFG(
   buildShndxNodeMap(tmpNodeMap, shndxNodeMap);
 
   // Recursive call edges.
-  //std::list<CFGEdge *> rscEdges;
+  // std::list<CFGEdge *> rscEdges;
   // Iterate all bb symbols.
   for (auto &nPair : tmpNodeMap) {
     CFGNode *srcNode = nPair.second.get();
@@ -517,9 +516,9 @@ void CFGBuilder::buildCFG(
           // If so, we create the edge.
           // CFGEdge *e =
           cfg.createEdge(srcNode, targetNode,
-                            isRSC ? CFGEdge::INTRA_RSC : CFGEdge::INTRA_FUNC);
+                         isRSC ? CFGEdge::INTRA_RSC : CFGEdge::INTRA_FUNC);
           // If it's a recursive call, record it.
-          //if (isRSC)
+          // if (isRSC)
           //  rscEdges.push_back(e);
         }
       }
@@ -566,9 +565,7 @@ void CFGBuilder::buildCFG(
 
   // Calculate the cfg size
   cfg.Size = 0;
-  cfg.forEachNodeRef([&cfg](CFGNode &n) {
-    cfg.Size += n.ShSize;
-  });
+  cfg.forEachNodeRef([&cfg](CFGNode &n) { cfg.Size += n.ShSize; });
 }
 
 // Calculate fallthroughs. Edge p->q is fallthrough if p & q are adjacent (e.g.
@@ -640,9 +637,7 @@ std::ostream &operator<<(std::ostream &out, const ControlFlowGraph &cfg) {
   return out;
 }
 
-bool CFGEdge::isFTEdge() const {
-  return Src->FTEdge == this;
-}
+bool CFGEdge::isFTEdge() const { return Src->FTEdge == this; }
 
 } // namespace propeller
 } // namespace lld

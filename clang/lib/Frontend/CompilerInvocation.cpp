@@ -956,10 +956,9 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.TrapFuncName = Args.getLastArgValue(OPT_ftrap_function_EQ);
   Opts.UseInitArray = !Args.hasArg(OPT_fno_use_init_array);
 
-  Opts.BasicBlockSections = Args.getLastArgValue(OPT_fbasicblock_sections_EQ,
-                                                 "none");
-  if (Opts.BasicBlockSections != "all" &&
-      Opts.BasicBlockSections != "labels" &&
+  Opts.BasicBlockSections =
+      Args.getLastArgValue(OPT_fbasicblock_sections_EQ, "none");
+  if (Opts.BasicBlockSections != "all" && Opts.BasicBlockSections != "labels" &&
       Opts.BasicBlockSections != "none" &&
       !llvm::sys::fs::exists(Opts.BasicBlockSections)) {
     Diags.Report(diag::err_drv_invalid_value)
@@ -968,10 +967,10 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   }
 
   // Basic Block Sections implies Function Sections.
-  Opts.FunctionSections = Args.hasFlag(OPT_ffunction_sections,
-                                       OPT_fno_function_sections, false) ||
-                          (Opts.BasicBlockSections != "none" &&
-                           Opts.BasicBlockSections != "labels");
+  Opts.FunctionSections =
+      Args.hasFlag(OPT_ffunction_sections, OPT_fno_function_sections, false) ||
+      (Opts.BasicBlockSections != "none" &&
+       Opts.BasicBlockSections != "labels");
 
   Opts.DataSections = Args.hasFlag(OPT_fdata_sections,
                                    OPT_fno_data_sections, false);
@@ -979,10 +978,10 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
       Args.hasFlag(OPT_fstack_size_section, OPT_fno_stack_size_section, false);
   Opts.UniqueSectionNames = Args.hasFlag(OPT_funique_section_names,
                                          OPT_fno_unique_section_names, true);
-  Opts.UniqueBBSectionNames = Args.hasFlag(OPT_funique_bb_section_names,
-                                           OPT_fno_unique_bb_section_names, false);
-  Opts.UniqueInternalFuncNames = Args.hasFlag(OPT_funique_internal_funcnames,
-                                              OPT_fno_unique_internal_funcnames, false);
+  Opts.UniqueBBSectionNames = Args.hasFlag(
+      OPT_funique_bb_section_names, OPT_fno_unique_bb_section_names, false);
+  Opts.UniqueInternalFuncNames = Args.hasFlag(
+      OPT_funique_internal_funcnames, OPT_fno_unique_internal_funcnames, false);
 
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
