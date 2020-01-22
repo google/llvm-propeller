@@ -8,8 +8,8 @@
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
-#include "PropellerChainClustering.h"
 #include "PropellerCFG.h"
+#include "PropellerChainClustering.h"
 #include "PropellerConfig.h"
 
 #include <list>
@@ -20,8 +20,13 @@ namespace propeller {
 
 class PropellerBBReordering {
 private:
+  // CFGs that are processed by the reordering algorithm. These are separated
+  // into hot and cold cfgs.
   std::vector<ControlFlowGraph *> HotCFGs, ColdCFGs;
+  // The final hot and cold order containing all cfg nodes.
   std::vector<CFGNode *> HotOrder, ColdOrder;
+  // Handle of the clustering algorithm used to further reorder the computed
+  // chains.
   std::unique_ptr<ChainClustering> CC;
 
 public:
@@ -34,5 +39,4 @@ public:
 
 } // namespace propeller
 } // namespace lld
-
 #endif

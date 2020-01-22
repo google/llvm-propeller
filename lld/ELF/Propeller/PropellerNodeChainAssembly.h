@@ -5,6 +5,16 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+// This file includes the declaration of the NodeChainAssembly class. Each
+// instance of this class gives a recipe for merging two NodeChains together in
+// addition to the ExtTSP score gain that will be achieved by that merge. Each
+// NodeChainAssembly consists of three NodeChainSlices from two node chains: the
+// (potentially) splitted chain, and the unsplit chain. A NodeChainSlice has
+// represents a slice of a NodeChain by storing iterators to the beginning and
+// end of that slice in the node chain, plus the binary offsets at which these
+// slices begin and end. The offsets allow effient computation of the gain in
+// ExtTSP score.
+//===----------------------------------------------------------------------===//
 #ifndef LLD_ELF_PROPELLER_NODE_CHAIN_ASSEMBLY_H
 #define LLD_ELF_PROPELLER_NODE_CHAIN_ASSEMBLY_H
 
@@ -21,7 +31,7 @@ double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
                           uint64_t srcSinkDistance);
 
 class NodeChainSlice {
-private:
+public:
   // Chain from which this slice comes from
   NodeChain *Chain;
 
@@ -46,11 +56,10 @@ private:
 
   // (Binary) size of this slice
   uint64_t size() const { return EndOffset - BeginOffset; }
-
-  friend class NodeChainBuilder;
-  friend class NodeChainAssembly;
 };
 
+// This enum represents the order in which three slices (X1, X2, and Y) are
+// merged together.
 enum MergeOrder {
   Begin,
   X2X1Y = Begin,
@@ -61,9 +70,8 @@ enum MergeOrder {
   End
 };
 
-
 class NodeChainAssembly {
- public:
+public:
   // The gain in ExtTSP score achieved by this NodeChainAssembly once it
   // is accordingly applied to the two chains.
   // This is effectively equal to "Score - splitChain->Score -
@@ -80,9 +88,11 @@ class NodeChainAssembly {
   // The three chain slices
   std::vector<NodeChainSlice> Slices;
 
-  // The merge order
+  // The merge order of the slices
   MergeOrder MOrder;
 
+  // The constructor for creating a NodeChainAssembly. slicePosition must be an
+  // iterator into chainX.
   NodeChainAssembly(NodeChain *chainX, NodeChain *chainY,
                     std::list<CFGNode *>::iterator slicePosition,
                     MergeOrder mOrder)
@@ -109,69 +119,24 @@ class NodeChainAssembly {
       assert("Invalid MergeOrder!" && false);
     }
 
+    // Set the ExtTSP Score gain as the difference between the new score after
+    // merging these chains and the current scores of the two chains.
     ScoreGain =
         computeExtTSPScore() - splitChain()->Score - unsplitChain()->Score;
   }
 
-  bool isValid() {
-    return ScoreGain > 0.0001 &&
-           (propellerConfig.optReorderIP ||
-            (!splitChain()->Nodes.front()->isEntryNode() &&
-             !unsplitChain()->Nodes.front()->isEntryNode()) ||
-            getFirstNode()->isEntryNode());
-  }
+  bool isValid() { return ScoreGain > 0.0001; }
 
   // Find the NodeChainSlice in this NodeChainAssembly which contains the given
   // node. If the node is not contained in this NodeChainAssembly, then return
   // false. Otherwise, set idx equal to the index of the corresponding slice and
   // return true.
-  inline bool findSliceIndex(CFGNode *node, NodeChain *chain, uint64_t offset,
-                             uint8_t &idx) const {
-    for (idx = 0; idx < 3; ++idx) {
-      if (chain != Slices[idx].Chain)
-        continue;
-      if (offset < Slices[idx].EndOffset && offset > Slices[idx].BeginOffset)
-        return true;
-      if (offset < Slices[idx].BeginOffset)
-        continue;
-      if (offset > Slices[idx].EndOffset)
-        continue;
-      // A node can have zero size, which means multiple nodes may be associated
-      // with the same offset. This means that if the node's offset is at the
-      // beginning or the end of the slice, the node may reside in either slices
-      // of the chain.
-      if (offset == Slices[idx].EndOffset) {
-        // If offset is at the end of the slice, iterate backwards over the
-        // slice to find a zero-sized node.
-        for (auto nodeIt = std::prev(Slices[idx].End);
-             nodeIt != std::prev(Slices[idx].Begin); nodeIt--) {
-          // Stop iterating if the node's size is non-zero as this would change
-          // the offset.
-          if ((*nodeIt)->ShSize)
-            break;
-          if (*nodeIt == node)
-            return true;
-        }
-      }
-      if (offset == Slices[idx].BeginOffset) {
-        // If offset is at the beginning of the slice, iterate forwards over the
-        // slice to find the node.
-        for (auto nodeIt = Slices[idx].Begin; nodeIt != Slices[idx].End;
-             nodeIt++) {
-          if (*nodeIt == node)
-            return true;
-          // Stop iterating if the node's size is non-zero as this would change
-          // the offset.
-          if ((*nodeIt)->ShSize)
-            break;
-        }
-      }
-    }
-    return false;
-  }
+  bool findSliceIndex(CFGNode *node, NodeChain *chain, uint64_t offset,
+                      uint8_t &idx) const;
 
-  // Total Extended TSP score of this NodeChainAssembly once it is assembled
-  // accordingly.
+  // This function computes the ExtTSP score for a chain assembly record. This
+  // goes the three BB slices in the assembly record and considers all edges
+  // whose source and sink belongs to the chains in the assembly record.
   double computeExtTSPScore() const;
 
   // First node in the resulting assembled chain.
@@ -208,12 +173,12 @@ class NodeChainAssembly {
 
   inline NodeChain *unsplitChain() const { return ChainPair.second; }
 
-  inline MergeOrder mergeOrder() const {return MOrder;}
+  inline MergeOrder mergeOrder() const { return MOrder; }
 };
 
 std::string toString(NodeChainAssembly &assembly);
 
-} //namespace propeller
-} //namespace lld
+} // namespace propeller
+} // namespace lld
 
 #endif

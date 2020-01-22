@@ -566,12 +566,7 @@ template <class ELFT> void Writer<ELFT>::run() {
   // completes section contents. For example, we need to add strings
   // to the string table, and add entries to .got and .plt.
   // finalizeSections does that.
-  // auto startFinalizeSectionTime = system_clock::now();
   finalizeSections();
-  // auto endFinalizeSectionTime = system_clock::now();
-  // duration<double> FinalizeSectionTime = endFinalizeSectionTime -
-  // startFinalizeSectionTime; warn("[TIME](s) finalize section (includes section
-  // ordering): " + Twine(std::to_string(FinalizeSectionTime.count())));
   checkExecuteOnly();
   if (errorCount())
     return;
@@ -1727,7 +1722,6 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
                  << "Removing " << NumDeleted << " fall through jumps\n");
     }
 
-    // auto startOptBBJumpTime = system_clock::now();
     // Step 2:  Shrink jump instructions.  If the offset of the jump can fit in
     // one byte there is a smaller encoding of the jump instruction.  Section
     // offsets are recomputed only after all the sections have been processed.
@@ -1797,11 +1791,6 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
           script->assignAddresses();
       } while (AnyChanged);
     }
-
-    // auto endOptBBJumpTime = system_clock::now();
-    // duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
-    // warn("[TIME](s) shrink bb jumps: " +
-    // Twine(std::to_string(OptBBJumpTime.count())));
   }
 
   for (OutputSection *OS : outputSections) {
@@ -2124,12 +2113,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Relaxation to delete inter-basic block jumps created by basic block
   // sections.
-  // auto startOptBBJumpTime = system_clock::now();
   optimizeBasicBlockJumps();
-  // auto endOptBBJumpTime = system_clock::now();
-  // duration<double> OptBBJumpTime = endOptBBJumpTime - startOptBBJumpTime;
-  // warn("[TIME](s) optimize bb jumps: " +
-  // Twine(std::to_string(OptBBJumpTime.count())));
 
   // Fill other section headers. The dynamic table is finalized
   // at the end because some tags like RELSZ depend on result

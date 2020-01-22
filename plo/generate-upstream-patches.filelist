@@ -52,7 +52,6 @@ declare ALL_FILES=(
         lld-propeller    lld/ELF/LinkerPropeller.cpp
         lld-propeller    lld/ELF/LinkerPropeller.h
         lld-propeller    lld/ELF/Propeller/CMakeLists.txt
-        lld-reorder      lld/ELF/Propeller/Heap.h
         lld-propeller    lld/ELF/Propeller/Propeller.cpp
         lld-propeller    lld/ELF/Propeller/Propeller.h
         lld-propeller    lld/ELF/Propeller/PropellerCFG.cpp
@@ -81,12 +80,21 @@ declare ALL_FILES=(
         lld-propeller    lld/test/ELF/propeller/propeller-compressed-strtab-lto.s
         lld-propeller    lld/test/ELF/propeller/propeller-compressed-strtab.s
         lld-propeller    lld/test/ELF/propeller/propeller-error-on-bblabels.s
-        lld-propeller    lld/test/ELF/propeller/propeller-keep-bb-symbols.s
+        lld-propeller    lld/test/ELF/propeller/propeller-keep-bb-syAssembly.cpps.s
         lld-propeller    lld/test/ELF/propeller/propeller-lto-bbsections-dump.s
         lld-propeller    lld/test/ELF/propeller/propeller-skip.s
         lld-propeller    lld/test/ELF/propeller/propeller-symbol-order-dump.s
+        lld-reorder      lld/ELF/Propeller/ModifiablePriorityQueue.h
+        lld-reorder      lld/ELF/Propeller/PropellerNodeChain.h
+        lld-reorder      lld/ELF/Propeller/PropellerNodeChain.cpp
+        lld-reorder      lld/ELF/Propeller/PropellerNodeChainAssembly.h
+        lld-reorder      lld/ELF/Propeller/PropellerNodeChainAssembly.cpp
         lld-reorder      lld/ELF/Propeller/PropellerBBReordering.cpp
         lld-reorder      lld/ELF/Propeller/PropellerBBReordering.h
+        lld-reorder      lld/ELF/Propeller/PropellerNodeChainBuilder.h
+        lld-reorder      lld/ELF/Propeller/PropellerNodeChainBuilder.cpp
+        lld-reorder      lld/ELF/Propeller/PropellerChainClustering.h
+        lld-reorder      lld/ELF/Propeller/PropellerChainClustering.cpp
         lld-reorder      lld/test/ELF/propeller/propeller-layout-function-ordering.s
         lld-reorder      lld/test/ELF/propeller/propeller-layout-function-with-loop.s
         lld-reorder      lld/test/ELF/propeller/propeller-layout-optimal-fallthrough.s

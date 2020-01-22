@@ -254,8 +254,8 @@ void NodeChainBuilder::mergeChains(
     error("Attempting to merge hot and cold chains: \n" +
           toString(*assembly.get()));
 
-  // Decide which chain gets merged into the other chain, in order to reduce
-  // computation.
+  // Decide which chain gets merged into the other chain, to make the reordering
+  // more efficient.
   NodeChain *mergerChain = (assembly->MOrder == YX2X1)
                                ? assembly->unsplitChain()
                                : assembly->splitChain();
@@ -269,10 +269,14 @@ void NodeChainBuilder::mergeChains(
   // Create the new node order according the given assembly
   auto X1Begin = assembly->splitChain()->Nodes.begin();
   auto X2Begin = assembly->SlicePosition;
-  bool X2FuncEntry = X2Begin != assembly->splitChain()->Nodes.begin() &&
-                     (*std::prev(X2Begin))->CFG != (*X2Begin)->CFG;
+  // Does X2 mark a function transition ?
+  bool X2FuncTransition = X2Begin != assembly->splitChain()->Nodes.begin() &&
+                          (*std::prev(X2Begin))->CFG != (*X2Begin)->CFG;
   auto YBegin = assembly->unsplitChain()->Nodes.begin();
 
+  // If splitChain is truly splitted, reorder the splitted parts from X1X2 to
+  // X2X1 if needed. We can do this using splice because we are splicing the
+  // same list.
   if (assembly->split() &&
       (assembly->MOrder == X2X1Y || assembly->MOrder == X2YX1 ||
        assembly->MOrder == YX2X1))
@@ -282,18 +286,22 @@ void NodeChainBuilder::mergeChains(
 
   switch (assembly->MOrder) {
   case X2X1Y:
+    // Splice Y at the end of X.
     assembly->splitChain()->Nodes.splice(assembly->splitChain()->Nodes.end(),
                                          assembly->unsplitChain()->Nodes);
     break;
   case X1YX2:
+    // Splice Y in the middle
     assembly->splitChain()->Nodes.splice(X2Begin,
                                          assembly->unsplitChain()->Nodes);
     break;
   case X2YX1:
+    // Splice Y in the middle
     assembly->splitChain()->Nodes.splice(X1Begin,
                                          assembly->unsplitChain()->Nodes);
     break;
   case YX2X1:
+    // Splice X at the end of Y
     assembly->unsplitChain()->Nodes.splice(
         assembly->unsplitChain()->Nodes.end(), assembly->splitChain()->Nodes);
     break;
@@ -302,27 +310,33 @@ void NodeChainBuilder::mergeChains(
   }
 
   if (propellerConfig.optReorderIP) {
+    // Merge function transitions of mergerChain with those of mergeeChain.
+    mergerChain->FunctionTransitions.splice(
+        mergerChain->FunctionTransitions.end(),
+        mergeeChain->FunctionTransitions);
+
+    // Add the beginnings of slices if they now mark a function transition.
     std::vector<std::list<CFGNode *>::iterator> allSlicesBegin;
-    if (!X2FuncEntry)
+    if (!X2FuncTransition)
       allSlicesBegin.push_back(X2Begin);
     allSlicesBegin.push_back(YBegin);
     if (assembly->split())
       allSlicesBegin.push_back(X1Begin);
 
+    // Check if any of the slices mark a function transition position and add
+    // those to the function transition list.
     for (auto it : allSlicesBegin)
       if (it != mergerChain->Nodes.begin() &&
           (*std::prev(it))->CFG != (*it)->CFG)
-        mergerChain->FunctionEntryIndices.push_back(it);
-
-    mergerChain->FunctionEntryIndices.splice(
-        mergerChain->FunctionEntryIndices.end(),
-        mergeeChain->FunctionEntryIndices);
+        mergerChain->FunctionTransitions.push_back(it);
   }
 
   auto chainBegin = mergerChain->Nodes.begin();
   auto chainEnd = mergerChain->Nodes.end();
   uint64_t startOffset = 0;
 
+  // Set the starting point for updating the nodes's chain and offset in the
+  // new chain.
   if (!assembly->split() || assembly->MOrder == X1YX2)
     chainBegin = YBegin;
 
@@ -507,7 +521,7 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   if (propellerConfig.optReorderIP && !doSplit) {
     // For inter-procedural layout, we always try splitting at the function
     // entries, regardless of the split-chain's size.
-    for (auto slicePos : splitChain->FunctionEntryIndices) {
+    for (auto slicePos : splitChain->FunctionTransitions) {
       for (uint8_t MI = MergeOrder::Begin; MI != MergeOrder::End; MI++) {
         MergeOrder mOrder = static_cast<MergeOrder>(MI);
 
@@ -662,7 +676,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
 void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
   // and its merge candidate chain.
-  // warn("Started initialization: " + Twine(Chains.size()));
+  CandidateChains.clear();
   for (NodeChain *chain : Components[CurrentComponent])
     chain->Score = chain->Freq ? computeExtTSPScore(chain) : 0;
 
@@ -689,20 +703,25 @@ void NodeChainBuilder::initializeExtTSP() {
   }
 }
 
-void NodeChainBuilder::initializeComponents() {
+void NodeChainBuilder::initializeChainComponents() {
 
   DenseMap<NodeChain *, unsigned> chainToComponentMap;
   unsigned componentId = 0;
   for (DenseMapPair<uint64_t, std::unique_ptr<NodeChain>> &elem : Chains) {
     NodeChain *chain = elem.second.get();
+    // Cold chains will not be placed in any component.
     if (!chain->Freq)
       continue;
+    // Skip if this chain has already been assigned to a component.
     if (chainToComponentMap.count(chain))
       continue;
+    // Start creating the component containing this chain and its connected
+    // chains.
     chainToComponentMap[chain] = componentId;
     std::vector<NodeChain *> toVisit(1, chain);
     unsigned index = 0;
 
+    // Find the connected component using BFS.
     while (index != toVisit.size()) {
       auto *tchain = toVisit[index++];
       for (auto *c : tchain->InEdges) {
@@ -729,14 +748,16 @@ void NodeChainBuilder::mergeAllChains() {
   for (auto &elem : MutuallyForcedOut)
     attachNodes(elem.first, elem.second);
 
+  // Set up the outgoing edges for every chain
   for (auto &elem : Chains) {
     auto *chain = elem.second.get();
+    // Ignore cold chains as they cannot have any hot edges to other nodes
     if (!chain->Freq)
       continue;
-    auto visit = [chain](CFGEdge &edge) {
-      if (!edge.Weight)
-        return;
-      if (edge.isReturn())
+    auto addEdge = [chain](CFGEdge &edge) {
+      // Ignore returns and zero-frequency edges as these edges will not be used
+      // by the ExtTSP score algorithm.
+      if (!edge.Weight || edge.isReturn())
         return;
       auto *sinkNodeChain = edge.Sink->Chain;
       chain->OutEdges[sinkNodeChain].push_back(&edge);
@@ -745,17 +766,19 @@ void NodeChainBuilder::mergeAllChains() {
 
     if (propellerConfig.optReorderIP) {
       for (CFGNode *node : chain->Nodes)
-        node->forEachOutEdgeRef(visit);
+        node->forEachOutEdgeRef(addEdge);
     } else {
       for (CFGNode *node : chain->Nodes)
-        node->forEachIntraOutEdgeRef(visit);
+        node->forEachIntraOutEdgeRef(addEdge);
     }
   }
 
-  initializeComponents();
+  initializeChainComponents();
 
   for (CurrentComponent = 0; CurrentComponent < Components.size();
        ++CurrentComponent) {
+    fprintf(stderr, "COMPONENT: %u -> SIZE: %zu\n", CurrentComponent,
+            Components[CurrentComponent].size());
     // Initialize the Extended TSP algorithm's data.
     initializeExtTSP();
 
@@ -782,6 +805,8 @@ void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC) {
   attachFallThroughs();
 
   if (!propellerConfig.optReorderIP) {
+    // If this is not inter-procedural, coalesce all hot chains into a single
+    // hot chain and all cold chains into a single cold chain.
     coalesceChains();
     assert(CFGs.size() == 1 && Chains.size() <= 2);
 
@@ -799,6 +824,7 @@ void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &CC) {
 #endif
   }
 
+  // Hand in the built chains to the chain clustering algorithm
   for (auto &elem : Chains)
     CC->addChain(std::move(elem.second));
 }
