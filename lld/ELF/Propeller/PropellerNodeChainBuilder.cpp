@@ -777,7 +777,8 @@ void NodeChainBuilder::mergeAllChains() {
 
   for (CurrentComponent = 0; CurrentComponent < Components.size();
        ++CurrentComponent) {
-    fprintf(stderr, "COMPONENT: %u -> SIZE: %zu\n", CurrentComponent, Components[CurrentComponent].size());
+    fprintf(stderr, "COMPONENT: %u -> SIZE: %zu\n", CurrentComponent,
+            Components[CurrentComponent].size());
     // Initialize the Extended TSP algorithm's data.
     initializeExtTSP();
 

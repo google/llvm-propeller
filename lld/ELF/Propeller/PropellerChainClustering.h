@@ -83,8 +83,9 @@ protected:
   // subclasses.
   virtual void mergeClusters(){};
 
-  // This function sorts the final clusters in decreasing order of their execution density.
-  void sortClusters(std::vector<Cluster *>&);
+  // This function sorts the final clusters in decreasing order of their
+  // execution density.
+  void sortClusters(std::vector<Cluster *> &);
 
   // This function initializes clusters with each cluster including a single
   // chain.
@@ -124,8 +125,6 @@ private:
   Cluster *getMostLikelyPredecessor(NodeChain *chain, Cluster *cluster);
   void mergeClusters();
 };
-
-
 
 } // namespace propeller
 } // namespace lld

@@ -28,6 +28,5 @@ std::string toString(const NodeChain &c) {
   return str;
 }
 
-} //namespace propeller
-} //namespace lld
-
+} // namespace propeller
+} // namespace lld

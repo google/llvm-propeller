@@ -104,8 +104,8 @@ template <> struct less<lld::propeller::NodeChain *> {
   }
 };
 
-// Specialization of std::less for pair<NodeChain,NodeChain>, which allows for consistent
-// tie-breaking in our Map data structures.
+// Specialization of std::less for pair<NodeChain,NodeChain>, which allows for
+// consistent tie-breaking in our Map data structures.
 template <>
 struct less<pair<lld::propeller::NodeChain *, lld::propeller::NodeChain *>> {
   bool operator()(

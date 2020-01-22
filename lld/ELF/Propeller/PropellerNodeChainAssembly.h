@@ -31,7 +31,7 @@ double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
                           uint64_t srcSinkDistance);
 
 class NodeChainSlice {
- public:
+public:
   // Chain from which this slice comes from
   NodeChain *Chain;
 
@@ -70,9 +70,8 @@ enum MergeOrder {
   End
 };
 
-
 class NodeChainAssembly {
- public:
+public:
   // The gain in ExtTSP score achieved by this NodeChainAssembly once it
   // is accordingly applied to the two chains.
   // This is effectively equal to "Score - splitChain->Score -
@@ -92,7 +91,8 @@ class NodeChainAssembly {
   // The merge order of the slices
   MergeOrder MOrder;
 
-  // The constructor for creating a NodeChainAssembly. slicePosition must be an iterator into chainX.
+  // The constructor for creating a NodeChainAssembly. slicePosition must be an
+  // iterator into chainX.
   NodeChainAssembly(NodeChain *chainX, NodeChain *chainY,
                     std::list<CFGNode *>::iterator slicePosition,
                     MergeOrder mOrder)
@@ -125,16 +125,14 @@ class NodeChainAssembly {
         computeExtTSPScore() - splitChain()->Score - unsplitChain()->Score;
   }
 
-  bool isValid() {
-    return ScoreGain > 0.0001;
-  }
+  bool isValid() { return ScoreGain > 0.0001; }
 
   // Find the NodeChainSlice in this NodeChainAssembly which contains the given
   // node. If the node is not contained in this NodeChainAssembly, then return
   // false. Otherwise, set idx equal to the index of the corresponding slice and
   // return true.
   bool findSliceIndex(CFGNode *node, NodeChain *chain, uint64_t offset,
-                             uint8_t &idx) const;
+                      uint8_t &idx) const;
 
   // This function computes the ExtTSP score for a chain assembly record. This
   // goes the three BB slices in the assembly record and considers all edges
@@ -175,12 +173,12 @@ class NodeChainAssembly {
 
   inline NodeChain *unsplitChain() const { return ChainPair.second; }
 
-  inline MergeOrder mergeOrder() const {return MOrder;}
+  inline MergeOrder mergeOrder() const { return MOrder; }
 };
 
 std::string toString(NodeChainAssembly &assembly);
 
-} //namespace propeller
-} //namespace lld
+} // namespace propeller
+} // namespace lld
 
 #endif

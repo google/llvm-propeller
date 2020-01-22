@@ -39,8 +39,8 @@ void ChainClustering::addChain(std::unique_ptr<NodeChain> &&chain_ptr) {
   chainList.push_back(std::move(chain_ptr));
 }
 
-// Initializes a cluster containing a single chain an associates it with a unique
-// id.
+// Initializes a cluster containing a single chain an associates it with a
+// unique id.
 ChainClustering::Cluster::Cluster(NodeChain *chain)
     : Chains(1, chain), DelegateChain(chain) {}
 
@@ -197,7 +197,7 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
 
   auto coldChainComparator =
       [&hotCFGOrder](const std::unique_ptr<NodeChain> &c_ptr1,
-                    const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
+                     const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
     // If each of the chains comes from a single CFG, we can order the chains
     // consistently based on the hot layout
     if (c_ptr1->CFG && c_ptr2->CFG) {
@@ -211,7 +211,8 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
           (c_ptr1->CFG != c_ptr2->CFG))
         return hotCFGOrder[c_ptr1->CFG] < hotCFGOrder[c_ptr2->CFG];
       // Otherwise, use a consistent order based on the representative nodes.
-      return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
+      return c_ptr1->DelegateNode->MappedAddr <
+             c_ptr2->DelegateNode->MappedAddr;
     }
     // Use an order consistent with the initial ordering of the representative
     // nodes.

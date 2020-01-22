@@ -28,7 +28,8 @@ using llvm::DenseSet;
 
 namespace lld {
 namespace propeller {
-extern double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward, uint64_t);
+extern double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
+                                 uint64_t);
 
 // This function iterates over the CFGs included in the Propeller profile and
 // adds them to cold and hot cfg lists. Then it appropriately performs basic
@@ -49,7 +50,8 @@ void PropellerBBReordering::doSplitOrder(
     if (cfg.isHot()) {
       HotCFGs.push_back(&cfg);
       if (propellerConfig.optPrintStats) {
-        // Dump the number of basic blocks and hot basic blocks for every function
+        // Dump the number of basic blocks and hot basic blocks for every
+        // function
         unsigned hotBBs = 0;
         unsigned allBBs = 0;
         cfg.forEachNodeRef([&hotBBs, &allBBs](CFGNode &node) {
@@ -145,7 +147,8 @@ void PropellerBBReordering::printStats() {
         return;
       if (nodeAddressMap.find(edge.Src) == nodeAddressMap.end() ||
           nodeAddressMap.find(edge.Sink) == nodeAddressMap.end()) {
-        warn("Found a hot edge whose source and sink do not show up in the layout!");
+        warn("Found a hot edge whose source and sink do not show up in the "
+             "layout!");
         return;
       }
       uint64_t srcOffset = nodeAddressMap[edge.Src];

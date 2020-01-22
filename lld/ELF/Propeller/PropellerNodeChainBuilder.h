@@ -54,9 +54,10 @@ private:
   // potentially splittable) to the highest-gain NodeChainAssembly for those
   // chains. The Heap data structure allows fast retrieval of the maximum gain
   // NodeChainAssembly, along with fast update.
-  ModifiablePriorityQueue<std::pair<NodeChain *, NodeChain *>, std::unique_ptr<NodeChainAssembly>,
-       std::less<std::pair<NodeChain *, NodeChain *>>,
-       NodeChainAssembly::CompareNodeChainAssembly>
+  ModifiablePriorityQueue<std::pair<NodeChain *, NodeChain *>,
+                          std::unique_ptr<NodeChainAssembly>,
+                          std::less<std::pair<NodeChain *, NodeChain *>>,
+                          NodeChainAssembly::CompareNodeChainAssembly>
       NodeChainAssemblies;
 
   // This map stores the candidate chains for each chain.
