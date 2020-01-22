@@ -261,7 +261,7 @@ private:
     if (node->parent && HeapNodeComparator(*node->parent, *node)) {
       swapWithParent(node);
       heapifyUp(node);
-      returns true;
+      return true;
     }
     return false;
   }
@@ -336,7 +336,7 @@ public:
     auto cur = nodes.find(key);
     if (cur != nodes.end()) {
       cur->second->value = std::move(value);
-      if (!heapifyUp(cur->second.get())
+      if (!heapifyUp(cur->second.get()))
         heapifyDown(cur->second.get());
     } else {
       // If the key is not found, create a new HeapNode and insert it into the

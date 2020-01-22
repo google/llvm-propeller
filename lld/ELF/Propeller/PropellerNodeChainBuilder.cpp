@@ -254,8 +254,8 @@ void NodeChainBuilder::mergeChains(
     error("Attempting to merge hot and cold chains: \n" +
           toString(*assembly.get()));
 
-  // Decide which chain gets merged into the other chain, in order to reduce
-  // computation.
+  // Decide which chain gets merged into the other chain, to make the reordering
+  // more efficient.
   NodeChain *mergerChain = (assembly->MOrder == YX2X1)
                                ? assembly->unsplitChain()
                                : assembly->splitChain();
@@ -269,10 +269,14 @@ void NodeChainBuilder::mergeChains(
   // Create the new node order according the given assembly
   auto X1Begin = assembly->splitChain()->Nodes.begin();
   auto X2Begin = assembly->SlicePosition;
-  bool X2FuncEntry = X2Begin != assembly->splitChain()->Nodes.begin() &&
-                     (*std::prev(X2Begin))->CFG != (*X2Begin)->CFG;
+  // Does X2 mark a function transition ?
+  bool X2FuncTransition = X2Begin != assembly->splitChain()->Nodes.begin() &&
+                          (*std::prev(X2Begin))->CFG != (*X2Begin)->CFG;
   auto YBegin = assembly->unsplitChain()->Nodes.begin();
 
+  // If splitChain is truly splitted, reorder the splitted parts from X1X2 to
+  // X2X1 if needed. We can do this using splice because we are splicing the
+  // same list.
   if (assembly->split() &&
       (assembly->MOrder == X2X1Y || assembly->MOrder == X2YX1 ||
        assembly->MOrder == YX2X1))
@@ -282,18 +286,22 @@ void NodeChainBuilder::mergeChains(
 
   switch (assembly->MOrder) {
   case X2X1Y:
+    // Splice Y at the end of X.
     assembly->splitChain()->Nodes.splice(assembly->splitChain()->Nodes.end(),
                                          assembly->unsplitChain()->Nodes);
     break;
   case X1YX2:
+    // Splice Y in the middle
     assembly->splitChain()->Nodes.splice(X2Begin,
                                          assembly->unsplitChain()->Nodes);
     break;
   case X2YX1:
+    // Splice Y in the middle
     assembly->splitChain()->Nodes.splice(X1Begin,
                                          assembly->unsplitChain()->Nodes);
     break;
   case YX2X1:
+    // Splice X at the end of Y
     assembly->unsplitChain()->Nodes.splice(
         assembly->unsplitChain()->Nodes.end(), assembly->splitChain()->Nodes);
     break;
@@ -302,27 +310,33 @@ void NodeChainBuilder::mergeChains(
   }
 
   if (propellerConfig.optReorderIP) {
+    // Merge function transitions of mergerChain with those of mergeeChain.
+    mergerChain->FunctionTransitions.splice(
+        mergerChain->FunctionTransitions.end(),
+        mergeeChain->FunctionTransitions);
+
+    // Add the beginnings of slices if they now mark a function transition.
     std::vector<std::list<CFGNode *>::iterator> allSlicesBegin;
-    if (!X2FuncEntry)
+    if (!X2FuncTransition)
       allSlicesBegin.push_back(X2Begin);
     allSlicesBegin.push_back(YBegin);
     if (assembly->split())
       allSlicesBegin.push_back(X1Begin);
 
+    // Check if any of the slices mark a function transition position and add
+    // those to the function transition list.
     for (auto it : allSlicesBegin)
       if (it != mergerChain->Nodes.begin() &&
           (*std::prev(it))->CFG != (*it)->CFG)
         mergerChain->FunctionTransitions.push_back(it);
-
-    mergerChain->FunctionTransitions.splice(
-        mergerChain->FunctionTransitions.end(),
-        mergeeChain->FunctionTransitions);
   }
 
   auto chainBegin = mergerChain->Nodes.begin();
   auto chainEnd = mergerChain->Nodes.end();
   uint64_t startOffset = 0;
 
+  // Set the starting point for updating the nodes's chain and offset in the
+  // new chain.
   if (!assembly->split() || assembly->MOrder == X1YX2)
     chainBegin = YBegin;
 
