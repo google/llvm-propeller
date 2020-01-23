@@ -25,21 +25,34 @@ class NodeChain {
 public:
   // Representative node of the chain, with which it is initially constructed.
   CFGNode *DelegateNode;
+
+  // CFG of the nodes in this chain (this will be null if the nodes come from
+  // more than one cfg.
   ControlFlowGraph *CFG;
+
+  // Ordered list of the nodes in this chain.
   std::list<CFGNode *> Nodes;
-  std::list<std::list<CFGNode *>::iterator> FunctionEntryIndices;
+
+  // Iterators to the positions in the chain where the chain transitions from
+  // one function to another.
+  std::list<std::list<CFGNode *>::iterator> FunctionTransitions;
+
+  // Out edges for this chain, to its own nodes and nodes of other chains.
   std::unordered_map<NodeChain *, std::vector<CFGEdge *>> OutEdges;
+
+  // Chains which have outgoing edges to this chain.
   DenseSet<NodeChain *> InEdges;
 
-  // Total binary size of the chain
+  // Total binary size of the chain.
   uint64_t Size;
 
-  // Total execution frequency of the chain
+  // Total execution frequency of the chain.
   uint64_t Freq;
 
-  // Extended TSP score of the chain
+  // Extended TSP score of the chain.
   double Score = 0;
 
+  // Whether to print out information about how this chain joins with others.
   bool DebugChain;
 
   // Constructor for building a NodeChain from a single Node
@@ -47,6 +60,8 @@ public:
       : DelegateNode(node), CFG(node->CFG), Nodes(1, node), Size(node->ShSize),
         Freq(node->Freq), DebugChain(node->CFG->DebugCFG) {}
 
+  // Constructor for building a NodeChain from all nodes in the CFG according to
+  // the initial order.
   NodeChain(ControlFlowGraph *cfg)
       : DelegateNode(cfg->getEntryNode()), CFG(cfg), Size(cfg->Size), Freq(0),
         DebugChain(cfg->DebugCFG) {
@@ -56,6 +71,8 @@ public:
     });
   }
 
+  // Helper function to iterate over the outgoing edges of this chain to a
+  // specific chain, while applying a given function on each edge.
   template <class Visitor>
   void forEachOutEdgeToChain(NodeChain *chain, Visitor V) {
     auto it = OutEdges.find(chain);
@@ -65,17 +82,21 @@ public:
       V(*E, this, chain);
   }
 
+  // This returns the execution density of the chain.
   double execDensity() const {
     return ((double)Freq) / std::max(Size, (uint64_t)1);
   }
 };
 
+// This returns a string representation of the chain
 std::string toString(const NodeChain &c);
+
 } // namespace propeller
 } // namespace lld
 
 namespace std {
-
+// Specialization of std::less for NodeChain, which allows for consistent
+// tie-breaking in our Map data structures.
 template <> struct less<lld::propeller::NodeChain *> {
   bool operator()(const lld::propeller::NodeChain *c1,
                   const lld::propeller::NodeChain *c2) const {
@@ -83,6 +104,8 @@ template <> struct less<lld::propeller::NodeChain *> {
   }
 };
 
+// Specialization of std::less for pair<NodeChain,NodeChain>, which allows for
+// consistent tie-breaking in our Map data structures.
 template <>
 struct less<pair<lld::propeller::NodeChain *, lld::propeller::NodeChain *>> {
   bool operator()(

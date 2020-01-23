@@ -1,3 +1,10 @@
+//===- PropellerNodeChain.cpp  --------------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
 #include "PropellerNodeChain.h"
 
 namespace lld {
@@ -21,6 +28,5 @@ std::string toString(const NodeChain &c) {
   return str;
 }
 
-} //namespace propeller
-} //namespace lld
-
+} // namespace propeller
+} // namespace lld

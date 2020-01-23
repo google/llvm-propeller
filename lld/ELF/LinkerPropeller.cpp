@@ -61,6 +61,7 @@ static void setupConfig() {
   COPY_CONFIG(BBOrder);
   COPY_CONFIG(ChainSplitThreshold);
   COPY_CONFIG(DebugSymbols);
+  COPY_CONFIG(ClusterMergeSizeThreshold);
   COPY_CONFIG(DumpCfgs);
   COPY_CONFIG(DumpSymbolOrder);
   COPY_CONFIG(FallthroughWeight);

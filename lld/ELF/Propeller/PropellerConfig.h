@@ -21,6 +21,7 @@ struct PropellerConfig {
   uint64_t optChainSplitThreshold;
   std::vector<std::string> optDebugSymbols;
   std::vector<std::string> optDumpCfgs;
+  uint64_t optClusterMergeSizeThreshold;
   StringRef optDumpSymbolOrder;
   double optFallthroughWeight;
   uint64_t optForwardJumpDistance;
