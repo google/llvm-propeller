@@ -8,8 +8,8 @@
 #ifndef LLD_ELF_PROPELLER_BB_REORDERING_H
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
-#include "PropellerChainClustering.h"
 #include "PropellerCFG.h"
+#include "PropellerChainClustering.h"
 #include "PropellerConfig.h"
 
 #include <list>

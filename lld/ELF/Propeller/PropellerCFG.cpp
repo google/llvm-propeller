@@ -204,6 +204,24 @@ void ControlFlowGraph::mapCallOut(CFGNode *from, CFGNode *to, uint64_t toAddr,
   createEdge(from, to, edgeType)->Weight += cnt;
 }
 
+// Create a map of cfgName -> a set of bbs that belong to this cfg.
+// This is done in 2 steps:
+//
+// Step 1 - scan all the symbols, for each function symbols, create an entry in
+// "groups", below is what "groups" looks like:
+//  groups: {
+//    "foo": [],
+//    "bar": [],
+//  }
+//
+// Step 2 - scan all the symbols, for each BB symbol, find it's function's
+// group, and insert the bb symbol into the group. For example, if we have BB
+// symbols "a.BB.foo", "aa.BB.foo" and "a.BB.bar", after step 2, the groups
+// structure looks like:
+//   groups: {
+//     "foo": ["a.BB.foo", "aa.BB.foo"],
+//     "bar": ["a.BB.bar"],
+//   }
 std::map<StringRef, std::list<SymbolRef>> CFGBuilder::buildPreCFGGroups() {
   std::map<StringRef, std::list<SymbolRef>> groups;
   auto symbols = View->ViewFile->symbols();
@@ -259,15 +277,20 @@ std::map<uint64_t, section_iterator> CFGBuilder::buildRelocationSectionMap() {
   return relocationSectionMap;
 }
 
-// Helper method, process an entry of group.
-// In selective bb sections, different cold bb lables are grouped into one same
-// cold section. Like below:
+// Helper method, process an entry of cfg.
+// In selective bb sections, different cold bb lables of a function are grouped
+// into one same cold section. Like below:
 //
 //    section .txt.func:        bb1 (ordinal=100)
 //    section .txt.func:        bb2 (ordinal=101)
 //    section .txt.func.cold:   bb3 (ordinal=102)
 //                              bb4 (ordinal=103)
 //                              bb5 (ordinal=104)
+//
+// Similarly all landing pads labels of a function are grouped into one single
+// landing pad section.
+//
+// Each function has a unique cold section (and landing pad section).
 //
 // After processing, OrdinalRemapping contains:
 //    102 -> 102
@@ -279,11 +302,16 @@ std::map<uint64_t, section_iterator> CFGBuilder::buildRelocationSectionMap() {
 //    101 -> CfgNode(MappedAddr=101)
 //    102 -> CfgNode(MappedAddr=102)
 //
+// Parameters:
+//   GE: <cfg name, symbols belong to this cfg>
+//   tmpNodeMap: {ordinal -> tmpCfgNode}
+//   OrdinalRemapping: {old ordinal -> new ordinal} 
 std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     std::map<StringRef, std::list<SymbolRef>>::value_type &GE,
     std::map<uint64_t, std::unique_ptr<CFGNode>> &tmpNodeMap,
     std::map<uint64_t, uint64_t> &OrdinalRemapping) {
   assert(GE.second.size() >= 1);
+  // {Section Idx -> <CfgNode, <code/landing-pad labesl>>} mapping.
   std::map<uint32_t,
            std::pair<CFGNode *,
                      std::set<SymbolEntry *, SymbolEntryOrdinalLessComparator>>>
@@ -303,11 +331,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     StringRef symName = *symNameE;
     uint64_t symShndx = (*sectionIE)->getIndex();
     uint64_t symSectionSize = (*sectionIE)->getSize();
+    // symValue is the offset to the beginning of its section.
     uint64_t symValue = sym.getValue();
-    // Note here: BB symbols only carry size information when
-    // -fbasicblock-section=all. Objects built with
-    // -fbasicblock-section=labels do not have size information
-    // for BB symbols.
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *sE = prop->Propf->findSymbol(symName);
     // symValue is the offset of the bb symbol within a bbsection, if
@@ -333,7 +358,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     // grouped into the landing pad section. A hot land pad does not
     // have its own section.
     bool needGroup =
-        !sE->HotTag || symName.front() == 'l' || symName.front() == 'L';
+        SymbolEntry::isBBSymbol(symName) &&
+        (!sE->HotTag || symName.front() == 'l' || symName.front() == 'L');
     if (needGroup) {
       auto groupI = bbGroupSectionMap.find(symShndx);
       if (groupI != bbGroupSectionMap.end()) {
@@ -358,6 +384,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
         }
         continue; // to next sym.
       }
+      // Otherwise, proceed to create a CFGNode.
     }
 
     // Drop bb sections with no code
@@ -375,7 +402,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
         break;
       }
     }
-  }
+  }  // end of iterating of all symbols in a cfg group.
 
   if (tmpNodeMap.empty()) {
     cfg.reset(nullptr);
@@ -383,7 +410,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   }
 
   for (auto &P : bbGroupSectionMap) {
-    auto *Node = P.second.first;
+    CFGNode *Node = P.second.first;
     auto &SymSet = P.second.second;
     if (SymSet.size() > 1) {
       SymbolEntry *FirstSymbol = *(SymSet.begin());
@@ -407,37 +434,22 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   return cfg;
 }
 
-// This function creates CFGs for a single object file.
+// This function creates CFGs for a single object file. It firstly calls
+// CFGBuilder::buildPreCFGGroups to create a map of cfgname to cfgnode group.
 //
-// Step 1 - scan all the symbols, for each function symbols, create an entry in
-// "groups", below is what "groups" looks like:
-//  groups: {
-//    "foo": [],
-//    "bar": [],
-//  }
-//
-// Step 2 - scan all the symbols, for each BB symbol, find it's function's
-// group, and insert the bb symbol into the group. For example, if we have BB
-// symbols "a.BB.foo", "aa.BB.foo" and "a.BB.bar", after step 2, the groups
-// structure looks like:
-//   groups: {
-//     "foo": ["a.BB.foo", "aa.BB.foo"],
-//     "bar": ["a.BB.bar"],
-//   }
-//
-// Step 3 - for each group, create CFG and tmpNodeMap, the latter is an ordered
-// map of CFGNode (index key is Symbol Ordinal). For the above example, the
-// following data structure is created:
+// Then for each cfg group, it calls CFGBuilder::buildCFGNodes to create CFG and
+// tmpNodeMap, the latter is a map of ordinal -> CFGNode instance.
+// One example of CFG and tmpNodeMap is:
 //   CFG[Name=foo], tmpNodeMap={1: CFGNode[BBIndex="1"], 2:CFGNode[BBIndex="2"]}
 //   CFG[Name=bar], tmpNodeMap={3: CFGNode[BBIndex="3"]}
 //
-// For each CFG and tmpNodeMap, call CFGBuilder::buildCFG().
+// Finally, for each CFG and tmpNodeMap, this calls CFGBuilder::buildCFG().
 bool CFGBuilder::buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping) {
   std::map<StringRef, std::list<SymbolRef>> groups{buildPreCFGGroups()};
   std::map<uint64_t, section_iterator> relocationSectionMap{
       buildRelocationSectionMap()};
 
-  // Groups built in the above step are like:
+  // "groups" built in the above step are like:
   //   {
   //     { "func1", {a.BB.func1, aa.BB.func1, aaa.BB.func1}
   //     { "func2", {a.BB.func2, aa.BB.func2, aaa.BB.func2}

@@ -126,7 +126,7 @@ gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(
 gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
-other_opt                  := -Wl,--propeller-chain-split-threshold=1024 -Wl,--propeller-print-stats -Wl,-propeller-dump-cfg=@ -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
+other_opt                  := -Wl,--propeller-chain-split-threshold=1024 -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".

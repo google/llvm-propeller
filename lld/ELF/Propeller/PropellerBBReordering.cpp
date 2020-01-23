@@ -7,10 +7,10 @@
 //===----------------------------------------------------------------------===//
 #include "PropellerBBReordering.h"
 
-#include "PropellerConfig.h"
 #include "PropellerCFG.h"
-#include "PropellerNodeChain.h"
 #include "PropellerChainClustering.h"
+#include "PropellerConfig.h"
+#include "PropellerNodeChain.h"
 #include "PropellerNodeChainAssembly.h"
 #include "PropellerNodeChainBuilder.h"
 
@@ -88,66 +88,65 @@ void PropellerBBReordering::printStats() {
   fprintf(stderr, "\n");
 }
 
-void PropellerBBReordering::doSplitOrder(std::list<StringRef> &symbolList,
-                    std::list<StringRef>::iterator hotPlaceHolder,
-                    std::list<StringRef>::iterator coldPlaceHolder) {
-    std::chrono::steady_clock::time_point start =
-        std::chrono::steady_clock::now();
+void PropellerBBReordering::doSplitOrder(
+    std::list<StringRef> &symbolList,
+    std::list<StringRef>::iterator hotPlaceHolder,
+    std::list<StringRef>::iterator coldPlaceHolder) {
+  std::chrono::steady_clock::time_point start =
+      std::chrono::steady_clock::now();
 
-    prop->forEachCfgRef([this](ControlFlowGraph &cfg) {
-      if (cfg.isHot()) {
-        HotCFGs.push_back(&cfg);
-        if (propellerConfig.optPrintStats) {
-          unsigned hotBBs = 0;
-          unsigned allBBs = 0;
-          cfg.forEachNodeRef([&hotBBs, &allBBs](CFGNode &node) {
-            if (node.Freq)
-              hotBBs++;
-            allBBs++;
-          });
-          fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg.Name.str().c_str(), allBBs, hotBBs);
-        }
-      } else
-        ColdCFGs.push_back(&cfg);
-    });
+  prop->forEachCfgRef([this](ControlFlowGraph &cfg) {
+    if (cfg.isHot()) {
+      HotCFGs.push_back(&cfg);
+      if (propellerConfig.optPrintStats) {
+        unsigned hotBBs = 0;
+        unsigned allBBs = 0;
+        cfg.forEachNodeRef([&hotBBs, &allBBs](CFGNode &node) {
+          if (node.Freq)
+            hotBBs++;
+          allBBs++;
+        });
+        fprintf(stderr, "HISTOGRAM: %s,%u,%u\n", cfg.Name.str().c_str(), allBBs,
+                hotBBs);
+      }
+    } else
+      ColdCFGs.push_back(&cfg);
+  });
 
+  if (propellerConfig.optReorderIP)
+    CC.reset(new CallChainClustering());
+  else if (propellerConfig.optReorderFuncs)
+    CC.reset(new CallChainClustering());
+  else
+    CC.reset(new NoOrdering());
 
-    if (propellerConfig.optReorderIP)
-      CC.reset(new CallChainClustering());
-    else if (propellerConfig.optReorderFuncs)
-      CC.reset(new CallChainClustering());
-    else
-      CC.reset(new NoOrdering());
-
-    if (propellerConfig.optReorderIP)
-      NodeChainBuilder(HotCFGs).doOrder(CC);
-    else if (propellerConfig.optReorderBlocks) {
-      for (ControlFlowGraph *cfg : HotCFGs)
-        NodeChainBuilder(cfg).doOrder(CC);
-    } else {
-      for (ControlFlowGraph *cfg : HotCFGs)
-        CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
-    }
-    for (ControlFlowGraph *cfg : ColdCFGs)
+  if (propellerConfig.optReorderIP)
+    NodeChainBuilder(HotCFGs).doOrder(CC);
+  else if (propellerConfig.optReorderBlocks) {
+    for (ControlFlowGraph *cfg : HotCFGs)
+      NodeChainBuilder(cfg).doOrder(CC);
+  } else {
+    for (ControlFlowGraph *cfg : HotCFGs)
       CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+  }
+  for (ControlFlowGraph *cfg : ColdCFGs)
+    CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
 
-    CC->doOrder(HotOrder, ColdOrder);
+  CC->doOrder(HotOrder, ColdOrder);
 
-    for (CFGNode *n : HotOrder)
-      symbolList.insert(hotPlaceHolder, n->ShName);
+  for (CFGNode *n : HotOrder)
+    symbolList.insert(hotPlaceHolder, n->ShName);
 
-    for (CFGNode *n : ColdOrder)
-      symbolList.insert(coldPlaceHolder, n->ShName);
+  for (CFGNode *n : ColdOrder)
+    symbolList.insert(coldPlaceHolder, n->ShName);
 
-    std::chrono::steady_clock::time_point end =
-        std::chrono::steady_clock::now();
-    warn(
-        "[Propeller]: BB reordering took: " +
-        Twine(std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-                  .count()));
+  std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+  warn("[Propeller]: BB reordering took: " +
+       Twine(std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+                 .count()));
 
-    if (propellerConfig.optPrintStats)
-      printStats();
+  if (propellerConfig.optPrintStats)
+    printStats();
 }
 
 } // namespace propeller

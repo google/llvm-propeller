@@ -38,7 +38,7 @@ struct SymbolEntry {
 
   SymbolEntry(uint64_t O, const StringRef &N, AliasesTy &&As, uint64_t A,
               uint64_t S, uint8_t T, bool BB = false,
-              SymbolEntry *FuncPtr = nullptr, bool R = false)
+              SymbolEntry *FuncPtr = nullptr)
       : Ordinal(O), Name(N), Aliases(As), Addr(A), Size(S), Type(T), BBTag(BB),
         BBTagType(BB_NONE), HotTag(false), ContainingFunc(FuncPtr) {}
 

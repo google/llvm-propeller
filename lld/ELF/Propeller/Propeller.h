@@ -79,6 +79,13 @@ struct PropellerConfig;
 //
 // A sample propeller profile is like below:
 //
+// @clang
+// !func1
+// !!1
+// !!2
+// !func2
+// !!1
+// !!3
 // Symbols
 // 1 0 N.init/_init
 // 2 0 N.plt
@@ -88,7 +95,7 @@ struct PropellerConfig;
 // 12 f 11.1
 // 13 28 11.2
 // 14 b 11.3
-// 15 a 11.4
+// 15 a 11.4r
 // 16 65 N__libc_csu_init
 // 17 2 N__libc_csu_fini
 // 18 0 N.fini/_fini
@@ -99,25 +106,34 @@ struct PropellerConfig;
 // 12 14 143608
 // Fallthroughs
 // 10 10 225131
-// !func1
-// !func2
 //
-// The file consists of 4 parts, "Symbols", "Branches", "Fallthroughs" and
-// Funclist.
+// The file consists of 4 parts, "hot symbols", "Symbols", "Branches" and
+// "Fallthroughs".
 //
+// [hot symbols] section
+// The "hot symbols" section contains lines that starts with "!" followed by a
+// function name or another "!" followed by a bb index. This section is to guide
+// the compiler in generating BB sections only for hot BBs.
+//
+// [Symbols] section
 // Each line in "Symbols" section contains the following field:
 //   index    - in decimal, unique for each symbol, start from 1
 //   size     - in hex, without "0x"
 //   name     - either starts with "N" or a digit. In the former case,
 //              everything after N is the symbol name. In the latter case, it's
-//              in the form of "a.b", "a" is a symbol index, "b" is the bb
-//              identification string (could be an index number). For the above
-//              example, name "11.2" means "main.bb.2", because "11" points to
-//              symbol main. Also note, symbols could have aliases, in such
-//              case, aliases are concatenated with the original name with a
-//              '/'. For example, symbol 19 contains 2 aliases.
+//              in the form of "a.b[rlL]", "a" is a symbol index, "b" is the bb
+//              index and [rlL] is the optional BB type suffix. For the above
+//              example, name "11.2" means "main.bb.2", as "11" points to
+//              symbol main; name "11.4r" means bb4 is a return BB. Also note,
+//              symbols could have aliases, in such case, aliases are
+//              concatenated with the original name with a '/'. For example,
+//              symbol 19 contains 2 aliases. Also, the optional BB type
+//              suffix l|L|r, which, when exists, indicates that the BB is a
+//              landingpad, return-and-landingpad and return respecitvely.
+//
 // Note, the symbols listed are in strict non-decreasing address order.
 //
+// [Branches] section
 // Each line in "Branches" section contains the following field:
 //   from     - sym_index, in decimal
 //   to       - sym_index, in decimal
@@ -125,12 +141,10 @@ struct PropellerConfig;
 //   C/R      - a field indicate whether this is a function call or a return,
 //              could be empty if it's just a normal branch.
 //
+// [Fallthrough] section
 // Each line in "Fallthroughs" section contains exactly the same fields as in
-// "Branches" section, except the "C" field.
+// "Branches" section, except the "C/R" field.
 //
-// Funclist contains lines that starts with "!", and everything following that
-// will be the function name that's to be consumed by compiler (for bb section
-// generation purpose).
 class Propfile {
 public:
   Propfile(const std::string &pName)
@@ -143,8 +157,28 @@ public:
   // Read "Symbols" sections in the propeller profile and create
   // SymbolOrdinalMap and SymbolNameMap.
   bool readSymbols();
+
+  // Find SymbolEntry instance by name.
   SymbolEntry *findSymbol(StringRef symName);
+
+  // Main method of propeller profile processing.
   bool processProfile();
+
+  // Helper method. Returns true when bbIndex.bb.func is hot.
+  //   func: the function symbole
+  //   bbIndex: a StringRef to an integer number
+  //   hotBBSymbols: hot bb symbols index, which is constructed from the hot bbs 
+  //                 section in the propeller file
+  bool isHotBBSymbol(
+      SymbolEntry *func, StringRef bbIndex,
+      const std::map<std::string, std::set<std::string>> &hotBBSymbols);
+
+  // Helper method - process a symbol line.
+  bool processSymbolLine(
+      StringRef symLine,
+      std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
+                           SymbolEntry::BBTagTypeEnum>> &bbSymbolsToPostProcess,
+      const std::map<std::string, std::set<std::string>> &hotBBSymbols);
 
   // For each function symbol line defintion, this function creates a
   // SymbolEntry instance and places it in SymbolOrdinalMap and SymbolNameMap.
@@ -178,28 +212,33 @@ public:
   // SymbolEntry instance and places it in SymbolOrdinalMap and SymbolNameMap.
   // Function symbol defintion line is like below. (See comments at the head of
   // the file)
-  //    12     f      11.1
+  //    12     f      11.1[rlL]
   //    ^^     ^      ^^^^
   //  Ordinal  Size   func_ordinal.bb_index
+  //  [rlL]: optional suffix BBTagTypeEnum: return / landingpad /
+  //  return-and-landingpad.
   SymbolEntry *createBasicBlockSymbol(uint64_t ordinal, SymbolEntry *function,
-                                      StringRef &bBIndex, uint64_t size,
-                                      bool HotTag) {
-    // bBIndex is of the form "1", "2", it's a stringref to integer.
+                                      StringRef &bbIndex, uint64_t size,
+                                      bool hotTag,
+                                      SymbolEntry::BBTagTypeEnum bbtt) {
+    // bbIndex is of the form "1", "2", it's a stringref to integer.
     assert(!function->BBTag && function->isFunction());
     auto *sym =
-        new SymbolEntry(ordinal, bBIndex, SymbolEntry::AliasesTy(),
+        new SymbolEntry(ordinal, bbIndex, SymbolEntry::AliasesTy(),
                         SymbolEntry::INVALID_ADDRESS, size,
                         llvm::object::SymbolRef::ST_Unknown, true, function);
-    sym->HotTag = HotTag;
-    // Note, we do not have knowledge what BB type it is from propeller file, so
-    // we always use BB_NORMAL here.
-    sym->BBTagType = SymbolEntry::BB_NORMAL;
+    // Landing pads are always treated as cold.
+    if (bbtt == SymbolEntry::BB_RETURN_AND_LANDING_PAD ||
+        bbtt == SymbolEntry::BB_LANDING_PAD)
+      sym->HotTag = false;
+    else
+      sym->HotTag = hotTag;
+    sym->BBTagType = bbtt;
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
-    for (auto &a : function->Aliases) {
-      SymbolNameMap[a][bBIndex] = sym;
-    }
+    for (auto &a : function->Aliases)
+      SymbolNameMap[a][bbIndex] = sym;
     return sym;
   }
 

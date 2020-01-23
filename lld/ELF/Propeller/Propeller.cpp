@@ -116,33 +116,117 @@ void Propfile::reportParseError(const StringRef msg) const {
   error(PropfName + ":" + std::to_string(LineNo) + ": " + msg);
 }
 
+bool Propfile::isHotBBSymbol(
+    SymbolEntry *func, StringRef bbIndex,
+    const std::map<std::string, std::set<std::string>> &hotBBSymbols) {
+  std::string N("");
+  for (auto A : func->Aliases) {
+    if (N.empty())
+      N = A.str(); // Most of the times.
+    else
+      N += "/" + A.str();
+  }
+  auto I0 = hotBBSymbols.find(N);
+  if (I0 == hotBBSymbols.end())
+    return false;
+  // Under AllBBMode, all BBs within a hot function are hotbbs.
+  if (AllBBMode)
+    return true;
+  return I0->second.find(bbIndex) != I0->second.end();
+}
+
+bool Propfile::processSymbolLine(
+    StringRef symLine,
+    std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
+                         SymbolEntry::BBTagTypeEnum>> &bbSymbolsToPostProcess,
+    const std::map<std::string, std::set<std::string>> &hotBBSymbols) {
+  uint64_t symOrdinal;
+  uint64_t symSize;
+  auto l1S = symLine.split(' ');
+  auto l1 = l1S.first;
+  auto l2S = l1S.second.split(' ');
+  auto l2 = l2S.first;
+  auto ephemeralStr = l2S.second;
+  if (l1.getAsInteger(10, symOrdinal) /* means error happens */ ||
+      symOrdinal == 0) {
+    reportParseError("invalid ordinal field");
+    return false;
+  }
+  if (l2.getAsInteger(16, symSize)) {
+    reportParseError("invalid size field");
+    return false;
+  }
+  if (ephemeralStr.empty()) {
+    reportParseError("invalid name field");
+    return false;
+  }
+  if (ephemeralStr[0] == 'N') { // Function symbol?
+    // Save ephemeralStr for persistency across Propeller lifecycle.
+    StringRef savedNameStr = PropfileStrSaver.save(ephemeralStr.substr(1));
+    SymbolEntry::AliasesTy sAliases;
+    savedNameStr.split(sAliases, '/');
+    StringRef sName = sAliases[0];
+    assert(SymbolOrdinalMap.find(symOrdinal) == SymbolOrdinalMap.end());
+    createFunctionSymbol(symOrdinal, sName, std::move(sAliases), symSize);
+    return true;
+  }
+
+  // It's a bb symbol.
+  auto bbParts = ephemeralStr.split('.');
+  uint64_t funcIndex;
+  if (bbParts.first.getAsInteger(10, funcIndex) || funcIndex == 0) {
+    reportParseError("invalid function index field");
+    return false;
+  }
+  // If it ends with 'r', 'l' or 'L' suffix.
+  char optionalSuffix = bbParts.second.back();
+  SymbolEntry::BBTagTypeEnum bbTagType;
+  StringRef ephemeralBBIndex;
+  if (optionalSuffix == 'r' || optionalSuffix == 'l' || optionalSuffix == 'L') {
+    bbTagType = SymbolEntry::toBBTagType(optionalSuffix);
+    ephemeralBBIndex = bbParts.second.drop_back();
+  } else {
+    bbTagType = SymbolEntry::BB_NORMAL;
+    ephemeralBBIndex = bbParts.second;
+  }
+  // Only save the index part, which is highly reusable. Note
+  // PropfileStrSaver is a UniqueStringSaver.
+  StringRef bbIndex = PropfileStrSaver.save(ephemeralBBIndex);
+  auto existingI = SymbolOrdinalMap.find(funcIndex);
+  if (existingI != SymbolOrdinalMap.end()) {
+    if (existingI->second->BBTag) {
+      reportParseError("index '" + std::to_string(funcIndex) +
+                       "' is not a function index, but a bb index");
+      return false;
+    }
+    bool hotTag;
+    if (bbTagType == SymbolEntry::BB_LANDING_PAD ||
+        bbTagType == SymbolEntry::BB_RETURN_AND_LANDING_PAD)
+      hotTag = false;
+    else
+      hotTag = isHotBBSymbol(existingI->second.get(), bbIndex, hotBBSymbols);
+    createBasicBlockSymbol(symOrdinal, existingI->second.get(), bbIndex,
+                           symSize, hotTag, bbTagType);
+  } else {
+    // A bb symbol appears earlier than its wrapping function, rare, but
+    // not impossible, rather play it safely.
+    bbSymbolsToPostProcess.emplace_back(symOrdinal, funcIndex, bbIndex, symSize,
+                                        bbTagType);
+  }
+  return true;
+}
+
 // Refer header file for detailed information about symbols section.
 bool Propfile::readSymbols() {
   std::string line;
-  // A list of bbsymbols<ordinal, function_ordinal, bbindex and size> that
+  // A list of bbsymbols<ordinal, function_ordinal, bbindex, size, type> that
   // appears before its wrapping function. This should be rather rare.
-  std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t>> bbSymbols;
-  std::map<std::string, std::set<uint64_t>> HotBBSymbols;
-  auto IsHotBB = [this, &HotBBSymbols](SymbolEntry *FuncSym,
-                                       StringRef BBIndex) -> bool {
-    std::string N("");
-    for (auto A : FuncSym->Aliases) {
-      if (N.empty())
-        N = A.str(); // Most of the times.
-      else
-        N += "/" + A.str();
-    }
-    auto I0 = HotBBSymbols.find(N);
-    if (I0 == HotBBSymbols.end())
-      return false;
-    // Under AllBBMode, all BBs within a hot function are hotbbs.
-    if (this->AllBBMode)
-      return true;
-    uint64_t index = std::stoull(BBIndex.str());
-    return I0->second.find(index) != I0->second.end();
-  };
-  std::map<std::string, std::set<uint64_t>>::iterator CurrentHotBBSetI =
-      HotBBSymbols.end();
+  std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
+                       SymbolEntry::BBTagTypeEnum>>
+      bbSymbolsToPostProcess;
+  std::map<std::string, std::set<std::string>> hotBBSymbols;
+  std::map<std::string, std::set<std::string>>::iterator currentHotBBSetI =
+      hotBBSymbols.end();
   while (std::getline(PropfStream, line).good()) {
     ++LineNo;
     if (line.empty())
@@ -156,7 +240,7 @@ bool Propfile::readSymbols() {
     if (line[0] == '!' && line.size() > 1) {
       if (AllBBMode) {
         if (line[1] != '!' &&
-            !HotBBSymbols.emplace(line.substr(1), std::set<uint64_t>())
+            !hotBBSymbols.emplace(line.substr(1), std::set<std::string>())
                  .second) {
           reportParseError("duplicated hot bb function field");
           return false;
@@ -165,19 +249,18 @@ bool Propfile::readSymbols() {
       }
       // Now AllBBMode is false, we consider every function and every hot bbs.
       if (line[1] == '!') {
-        uint64_t bbindex = std::stoull(line.substr(2));
-        if (CurrentHotBBSetI == HotBBSymbols.end() || !bbindex) {
+        if (currentHotBBSetI == hotBBSymbols.end()) {
           reportParseError("invalid hot bb index field");
           return false;
         }
-        CurrentHotBBSetI->second.insert(bbindex);
+        currentHotBBSetI->second.insert(line.substr(2));
       } else {
-        auto RP = HotBBSymbols.emplace(line.substr(1), std::set<uint64_t>());
+        auto RP = hotBBSymbols.emplace(line.substr(1), std::set<std::string>());
         if (!RP.second) {
           reportParseError("duplicated hot bb function field");
           return false;
         }
-        CurrentHotBBSetI = RP.first;
+        currentHotBBSetI = RP.first;
       }
       continue;
     }
@@ -186,73 +269,22 @@ bool Propfile::readSymbols() {
       break; // Done symbol section.
     }
     if (line[0] == 'S') {
-      LineTag = line[0];
+      LineTag = 'S';
       continue;
     }
-    StringRef lineStrRef(line);
-
-    uint64_t symOrdinal;
-    uint64_t symSize;
-    auto l1S = lineStrRef.split(' ');
-    auto l1 = l1S.first;
-    auto l2S = l1S.second.split(' ');
-    auto l2 = l2S.first;
-    auto ephemeralStr = l2S.second;
-    if (l1.getAsInteger(10, symOrdinal) /* means error happens */ ||
-        symOrdinal == 0) {
-      reportParseError("invalid ordinal field");
+    if (!processSymbolLine(StringRef(line), bbSymbolsToPostProcess,
+                           hotBBSymbols))
       return false;
-    }
-    if (l2.getAsInteger(16, symSize)) {
-      reportParseError("invalid size field");
-      return false;
-    }
-    if (ephemeralStr.empty()) {
-      reportParseError("invalid name field");
-      return false;
-    }
-    if (ephemeralStr[0] == 'N') { // Function symbol?
-      // Save ephemeralStr for persistency across Propeller lifecycle.
-      StringRef savedNameStr = PropfileStrSaver.save(ephemeralStr.substr(1));
-      SymbolEntry::AliasesTy sAliases;
-      savedNameStr.split(sAliases, '/');
-      StringRef sName = sAliases[0];
-      assert(SymbolOrdinalMap.find(symOrdinal) == SymbolOrdinalMap.end());
-      createFunctionSymbol(symOrdinal, sName, std::move(sAliases), symSize);
-    } else {
-      // It's a bb symbol.
-      auto lineStrRef = ephemeralStr.split('.');
-      uint64_t funcIndex;
-      if (lineStrRef.first.getAsInteger(10, funcIndex) || funcIndex == 0) {
-        reportParseError("invalid function index field");
-        return false;
-      }
-      // Only save the index part, which is highly reusable. Note
-      // PropfileStrSaver is a UniqueStringSaver.
-      StringRef bbIndex = PropfileStrSaver.save(lineStrRef.second);
-      auto existingI = SymbolOrdinalMap.find(funcIndex);
-      if (existingI != SymbolOrdinalMap.end()) {
-        if (existingI->second->BBTag) {
-          reportParseError("index '" + std::to_string(funcIndex) +
-                           "' is not a function index, but a bb index");
-          return false;
-        }
-        createBasicBlockSymbol(symOrdinal, existingI->second.get(), bbIndex,
-                               symSize,
-                               IsHotBB(existingI->second.get(), bbIndex));
-      } else
-        // A bb symbol appears earlier than its wrapping function, rare, but
-        // not impossible, rather play it safely.
-        bbSymbols.emplace_back(symOrdinal, funcIndex, bbIndex, symSize);
-    }
   } // End of iterating all symbols.
 
-  for (std::tuple<uint64_t, uint64_t, StringRef, uint64_t> &sym : bbSymbols) {
+  for (std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
+                  SymbolEntry::BBTagTypeEnum> &sym : bbSymbolsToPostProcess) {
     uint64_t symOrdinal;
     uint64_t funcIndex;
-    uint64_t symSize;
     StringRef bbIndex;
-    std::tie(symOrdinal, funcIndex, bbIndex, symSize) = sym;
+    uint64_t symSize;
+    SymbolEntry::BBTagTypeEnum bbtt;
+    std::tie(symOrdinal, funcIndex, bbIndex, symSize, bbtt) = sym;
     auto existingI = SymbolOrdinalMap.find(funcIndex);
     if (existingI == SymbolOrdinalMap.end()) {
       reportParseError("function with index number '" +
@@ -261,7 +293,7 @@ bool Propfile::readSymbols() {
     }
     SymbolEntry *FuncSym = existingI->second.get();
     createBasicBlockSymbol(symOrdinal, FuncSym, bbIndex, symSize,
-                           IsHotBB(FuncSym, bbIndex));
+                           isHotBBSymbol(FuncSym, bbIndex, hotBBSymbols), bbtt);
   }
   return true;
 }
@@ -272,15 +304,6 @@ static bool parseBranchOrFallthroughLine(StringRef lineRef,
                                          uint64_t *fromNodeIdx,
                                          uint64_t *toNodeIdx, uint64_t *count,
                                          char *type) {
-  /*
-  auto getInt = [](const StringRef &S) -> uint64_t {
-    uint64_t r;
-    if (S.getAsInteger(10, r) // string contains more than numbers
-        || r == 0)
-      return 0;
-    return r;
-  };
-  */
   auto s0 = lineRef.split(' ');
   auto s1 = s0.second.split(' ');
   auto s2 = s1.second.split(' ');
@@ -323,10 +346,8 @@ bool Propfile::processProfile() {
     char tag;
     auto UpdateOrdinal = [this](uint64_t OriginOrdinal) -> uint64_t {
       auto I = OrdinalRemapping.find(OriginOrdinal);
-      if (I != OrdinalRemapping.end()) {
-        // fprintf(stderr, "Updated %lu->%lu\n", OriginOrdinal, I->second);
+      if (I != OrdinalRemapping.end())
         return I->second;
-      }
       return OriginOrdinal;
     };
     if (!parseBranchOrFallthroughLine(L, &from, &to, &count, &tag)) {
@@ -420,7 +441,7 @@ CFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
       // Compare the number of "a" in aaa...a.BB.funcname against integer
       // NumOnes.
       if (symbol->Name.getAsInteger(10, NumOnes) || !NumOnes)
-        warn("internal error, BB name is invalid: '" + symbol->Name.str());
+        warn("internal error, BB name is invalid: " + symbol->Name.str());
       else
         for (auto *CFG : cfgLI->second)
           for (auto &node : CFG->Nodes) {
