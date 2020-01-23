@@ -137,8 +137,7 @@ template <class K, class V, class CmpK, class CmpV> struct CompareHeapNode {
 //
 // Value-update is the simplest, which requires updating the node's value
 // followed by heapifying up the node up and down.
-template <class K, class V, class CmpK = std::less<K>,
-          class CmpV = std::less<V>>
+template <class K, class V, class CmpK, class CmpV>
 class ModifiablePriorityQueue {
 private:
   // Comparator instance for comparing HeapNodes.

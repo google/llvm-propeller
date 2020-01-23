@@ -317,9 +317,14 @@ void NodeChainBuilder::mergeChains(
 
     // Add the beginnings of slices if they now mark a function transition.
     std::vector<std::list<CFGNode *>::iterator> allSlicesBegin;
+    // YBegin should always be examined.
+    allSlicesBegin.push_back(YBegin);
+    // If X2Begin was a function transition point before, we don't examine it
+    // again as it will remain in the transition points.
     if (!X2FuncTransition)
       allSlicesBegin.push_back(X2Begin);
-    allSlicesBegin.push_back(YBegin);
+    // X1Begin will only be examined if this is a splitting assembly. Otherwise,
+    // X1 is empty.
     if (assembly->split())
       allSlicesBegin.push_back(X1Begin);
 
@@ -331,65 +336,36 @@ void NodeChainBuilder::mergeChains(
         mergerChain->FunctionTransitions.push_back(it);
   }
 
-  auto chainBegin = mergerChain->Nodes.begin();
-  auto chainEnd = mergerChain->Nodes.end();
-  uint64_t startOffset = 0;
-
-  // Set the starting point for updating the nodes's chain and offset in the
+  // Set the starting and ending point for updating the nodes's chain and offset in the
   // new chain.
-  if (!assembly->split() || assembly->MOrder == X1YX2)
+  auto chainBegin = mergerChain->Nodes.begin();
+  uint64_t chainBeginOffset = 0;
+
+  if (assembly->MOrder == X1YX2) {
     chainBegin = YBegin;
+    chainBeginOffset = assembly->Slices[0].size();
+  }
 
-  if (!assembly->split())
-    startOffset = assembly->splitChain()->Size;
-
-  if (assembly->MOrder == YX2X1)
+  if (assembly->MOrder == YX2X1) {
     chainBegin = X2Begin;
-
-  if (assembly->MOrder == X1YX2 || assembly->MOrder == YX2X1)
-    startOffset = assembly->Slices[0].size();
-
-  auto startSetChainMap = (assembly->MOrder == YX2X1) ? chainBegin : YBegin;
-  auto startSetOffset = chainBegin;
-  auto endSetChainMap = mergerChain->Nodes.end();
-
-  switch (assembly->MOrder) {
-  case X2X1Y:
-    break;
-  case X1YX2:
-    endSetChainMap = X2Begin;
-    break;
-  case X2YX1:
-    endSetChainMap = X1Begin;
-    break;
-  case YX2X1:
-    break;
-  default:
-    break;
+    chainBeginOffset = assembly->Slices[0].size();
   }
 
-  uint64_t runningOffset = startOffset;
+  if (!assembly->split()) {
+    chainBegin = YBegin;
+    chainBeginOffset = assembly->splitChain()->Size;
+  }
 
-  bool settingChain = false;
-  bool settingOffset = false;
+  uint64_t runningOffset = chainBeginOffset;
+
   // Update nodeOffsetMap and nodeToChainMap for all the nodes in the sequence.
-  for (auto it = chainBegin; it != chainEnd; ++it) {
+  for (auto it = chainBegin; it != mergerChain->Nodes.end(); ++it) {
     CFGNode *node = *it;
-    if (it == startSetChainMap)
-      settingChain = true;
-    if (it == endSetChainMap)
-      settingChain = false;
-    if (it == startSetOffset)
-      settingOffset = true;
-
-    if (settingChain)
-      node->Chain = mergerChain;
-
-    if (settingOffset) {
-      node->ChainOffset = runningOffset;
-      runningOffset += node->ShSize;
-    }
+    node->Chain = mergerChain;
+    node->ChainOffset = runningOffset;
+    runningOffset += node->ShSize;
   }
+
   mergerChain->Size = runningOffset;
 
   // Update the total frequency and ExtTSP score of the aggregated chain
