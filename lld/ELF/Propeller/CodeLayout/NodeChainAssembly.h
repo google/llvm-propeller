@@ -18,8 +18,8 @@
 #ifndef LLD_ELF_PROPELLER_NODE_CHAIN_ASSEMBLY_H
 #define LLD_ELF_PROPELLER_NODE_CHAIN_ASSEMBLY_H
 
-#include "PropellerCFG.h"
 #include "NodeChain.h"
+#include "PropellerCFG.h"
 
 #include <list>
 #include <vector>

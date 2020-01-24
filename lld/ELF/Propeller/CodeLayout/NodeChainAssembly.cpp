@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-#include "NodeChain.h"
 #include "NodeChainAssembly.h"
+#include "NodeChain.h"
 
 namespace lld {
 namespace propeller {

@@ -37,10 +37,9 @@ extern double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
 // -propeller-opt=reorder-ip) or individually on every CFG. After creating all
 // the node chains, it hands the basic block chains to a ChainClustering
 // instance for further rerodering.
-void CodeLayout::doSplitOrder(
-    std::list<StringRef> &symbolList,
-    std::list<StringRef>::iterator hotPlaceHolder,
-    std::list<StringRef>::iterator coldPlaceHolder) {
+void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
+                              std::list<StringRef>::iterator hotPlaceHolder,
+                              std::list<StringRef>::iterator coldPlaceHolder) {
   std::chrono::steady_clock::time_point start =
       std::chrono::steady_clock::now();
 
