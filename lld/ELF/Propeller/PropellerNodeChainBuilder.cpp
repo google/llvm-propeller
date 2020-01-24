@@ -336,8 +336,8 @@ void NodeChainBuilder::mergeChains(
         mergerChain->FunctionTransitions.push_back(it);
   }
 
-  // Set the starting and ending point for updating the nodes's chain and offset in the
-  // new chain.
+  // Set the starting and ending point for updating the nodes's chain and offset
+  // in the new chain.
   auto chainBegin = mergerChain->Nodes.begin();
   uint64_t chainBeginOffset = 0;
 
