@@ -95,10 +95,10 @@ declare ALL_FILES=(
         lld-reorder      lld/ELF/Propeller/CodeLayout/NodeChainBuilder.cpp
         lld-reorder      lld/ELF/Propeller/CodeLayout/NodeChainClustering.h
         lld-reorder      lld/ELF/Propeller/CodeLayout/NodeChainClustering.cpp
-        lld-reorder      lld/test/ELF/propeller/propeller-layout-function-ordering.s
-        lld-reorder      lld/test/ELF/propeller/propeller-layout-function-with-loop.s
-        lld-reorder      lld/test/ELF/propeller/propeller-layout-optimal-fallthrough.s
-        lld-reorder      lld/test/ELF/propeller/propeller-opt-all-combinations.s
+        lld-reorder      lld/test/ELF/propeller/codelayout/function-ordering.s
+        lld-reorder      lld/test/ELF/propeller/codelayout/function-with-loop.s
+        lld-reorder      lld/test/ELF/propeller/codelayout/optimal-fallthrough.s
+        lld-reorder      lld/test/ELF/propeller/codelayout/opt-all-combinations.s
         lld-reorder      lld/test/ELF/symbol-alignment-file.s
         llvm             llvm/include/llvm/CodeGen/AsmPrinter.h
         llvm             llvm/include/llvm/CodeGen/AsmPrinterHandler.h
