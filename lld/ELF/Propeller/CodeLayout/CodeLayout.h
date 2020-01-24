@@ -9,7 +9,7 @@
 #define LLD_ELF_PROPELLER_BB_REORDERING_H
 
 #include "PropellerCFG.h"
-#include "PropellerChainClustering.h"
+#include "NodeChainClustering.h"
 #include "PropellerConfig.h"
 
 #include <list>
@@ -18,7 +18,7 @@
 namespace lld {
 namespace propeller {
 
-class PropellerBBReordering {
+class CodeLayout {
 private:
   // CFGs that are processed by the reordering algorithm. These are separated
   // into hot and cold cfgs.

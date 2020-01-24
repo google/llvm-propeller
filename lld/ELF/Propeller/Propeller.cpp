@@ -22,7 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Propeller.h"
-#include "PropellerBBReordering.h"
+#include "CodeLayout/CodeLayout.h"
 #include "PropellerCFG.h"
 #include "PropellerConfig.h"
 
@@ -673,7 +673,7 @@ std::vector<StringRef> Propeller::genSymbolOrderingFile() {
   std::list<StringRef> symbolList(1, "Hot");
   const auto hotPlaceHolder = symbolList.begin();
   const auto coldPlaceHolder = symbolList.end();
-  propLayout = make<PropellerBBReordering>();
+  propLayout = make<CodeLayout>();
   propLayout->doSplitOrder(symbolList, hotPlaceHolder, coldPlaceHolder);
 #ifdef PROPELLER_PROTOBUF
   if (protobufPrinter) {

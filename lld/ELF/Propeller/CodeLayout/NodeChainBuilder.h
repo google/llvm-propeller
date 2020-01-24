@@ -10,9 +10,9 @@
 
 #include "ModifiablePriorityQueue.h"
 #include "PropellerCFG.h"
-#include "PropellerChainClustering.h"
-#include "PropellerNodeChain.h"
-#include "PropellerNodeChainAssembly.h"
+#include "NodeChainClustering.h"
+#include "NodeChain.h"
+#include "NodeChainAssembly.h"
 
 #include "llvm/ADT/DenseMap.h"
 

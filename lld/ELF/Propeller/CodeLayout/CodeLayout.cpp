@@ -1,4 +1,4 @@
-//===- PropellerBBReordering.cpp  -----------------------------------------===//
+//===- CodeLayout.cpp  ------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,14 +9,14 @@
 // optimization and implements the entry point of code layout optimization
 // (doSplitOrder).
 //===----------------------------------------------------------------------===//
-#include "PropellerBBReordering.h"
+#include "CodeLayout.h"
 
+#include "NodeChain.h"
+#include "NodeChainBuilder.h"
+#include "NodeChainClustering.h"
 #include "Propeller.h"
 #include "PropellerCFG.h"
-#include "PropellerChainClustering.h"
 #include "PropellerConfig.h"
-#include "PropellerNodeChain.h"
-#include "PropellerNodeChainBuilder.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -37,7 +37,7 @@ extern double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
 // -propeller-opt=reorder-ip) or individually on every CFG. After creating all
 // the node chains, it hands the basic block chains to a ChainClustering
 // instance for further rerodering.
-void PropellerBBReordering::doSplitOrder(
+void CodeLayout::doSplitOrder(
     std::list<StringRef> &symbolList,
     std::list<StringRef>::iterator hotPlaceHolder,
     std::list<StringRef>::iterator coldPlaceHolder) {
@@ -116,7 +116,7 @@ void PropellerBBReordering::doSplitOrder(
 // Prints statistics of the computed layout, including the number of partitions
 // for each function across the code layout, the edge count for each distance
 // level, and the ExtTSP score achieved for each function.
-void PropellerBBReordering::printStats() {
+void CodeLayout::printStats() {
 
   DenseMap<CFGNode *, uint64_t> nodeAddressMap;
   llvm::StringMap<unsigned> functionPartitions;

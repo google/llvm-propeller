@@ -19,7 +19,7 @@
 #define LLD_ELF_PROPELLER_NODE_CHAIN_ASSEMBLY_H
 
 #include "PropellerCFG.h"
-#include "PropellerNodeChain.h"
+#include "NodeChain.h"
 
 #include <list>
 #include <vector>
