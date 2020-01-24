@@ -164,14 +164,19 @@ public:
   // Main method of propeller profile processing.
   bool processProfile();
 
-  // Helper method. Returns true when bbIndex.bb.func is hot.
+  // Helper method. Returns true when func or bbIndex.func (when bbIndex is
+  // provided) is hot.
   //   func: the function symbole
-  //   bbIndex: a StringRef to an integer number
-  //   hotBBSymbols: hot bb symbols index, which is constructed from the hot bbs 
+  //   hotBBSymbols: hot bb symbols index, which is constructed from the hot bbs
   //                 section in the propeller file
-  bool isHotBBSymbol(
-      SymbolEntry *func, StringRef bbIndex,
-      const std::map<std::string, std::set<std::string>> &hotBBSymbols);
+  //   bbIndex: an optional StringRef to bbIndex.
+  //   bbtt: basic block tag type, when a basic block is a landing pad, it vetos
+  //         it's hotness.
+  bool
+  isHotSymbol(SymbolEntry *func,
+              const std::map<std::string, std::set<std::string>> &hotBBSymbols,
+              StringRef bbIndex = "",
+              SymbolEntry::BBTagTypeEnum bbtt = SymbolEntry::BB_NONE);
 
   // Helper method - process a symbol line.
   bool processSymbolLine(
@@ -187,9 +192,10 @@ public:
   //    11     7c     Nmain/alias1/alias2
   //    ^^     ^^      ^^
   //  Ordinal  Size    Name and aliases
-  SymbolEntry *createFunctionSymbol(uint64_t ordinal, const StringRef &name,
-                                    SymbolEntry::AliasesTy &&aliases,
-                                    uint64_t size) {
+  SymbolEntry *createFunctionSymbol(
+      uint64_t ordinal, const StringRef &name, SymbolEntry::AliasesTy &&aliases,
+      uint64_t size,
+      const std::map<std::string, std::set<std::string>> &hotBBSymbols) {
     auto *sym = new SymbolEntry(ordinal, name, std::move(aliases),
                                 SymbolEntry::INVALID_ADDRESS, size,
                                 llvm::object::SymbolRef::ST_Function);
@@ -204,7 +210,8 @@ public:
       FunctionsWithAliases.push_back(sym);
 
     // Function symbols is always hot.
-    sym->HotTag = true;
+    // sym->HotTag = true;
+    sym->HotTag = isHotSymbol(sym, hotBBSymbols);
     return sym;
   }
 

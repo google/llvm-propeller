@@ -116,9 +116,11 @@ void Propfile::reportParseError(const StringRef msg) const {
   error(PropfName + ":" + std::to_string(LineNo) + ": " + msg);
 }
 
-bool Propfile::isHotBBSymbol(
-    SymbolEntry *func, StringRef bbIndex,
-    const std::map<std::string, std::set<std::string>> &hotBBSymbols) {
+bool Propfile::isHotSymbol(
+    SymbolEntry *func,
+    const std::map<std::string, std::set<std::string>> &hotBBSymbols,
+    StringRef bbIndex,
+    SymbolEntry::BBTagTypeEnum bbtt) {
   std::string N("");
   for (auto A : func->Aliases) {
     if (N.empty())
@@ -132,6 +134,13 @@ bool Propfile::isHotBBSymbol(
   // Under AllBBMode, all BBs within a hot function are hotbbs.
   if (AllBBMode)
     return true;
+  // If bbIndex is not provided.
+  if (bbIndex.empty())
+    return true;
+  // Landing pads are always cold.
+  if (bbtt == SymbolEntry::BB_LANDING_PAD ||
+      bbtt == SymbolEntry::BB_RETURN_AND_LANDING_PAD)
+    return false;
   return I0->second.find(bbIndex) != I0->second.end();
 }
 
@@ -167,7 +176,9 @@ bool Propfile::processSymbolLine(
     savedNameStr.split(sAliases, '/');
     StringRef sName = sAliases[0];
     assert(SymbolOrdinalMap.find(symOrdinal) == SymbolOrdinalMap.end());
-    createFunctionSymbol(symOrdinal, sName, std::move(sAliases), symSize);
+    SymbolEntry *func = createFunctionSymbol(
+        symOrdinal, sName, std::move(sAliases), symSize, hotBBSymbols);
+    func->HotTag = isHotSymbol(func, hotBBSymbols);
     return true;
   }
 
@@ -199,12 +210,8 @@ bool Propfile::processSymbolLine(
                        "' is not a function index, but a bb index");
       return false;
     }
-    bool hotTag;
-    if (bbTagType == SymbolEntry::BB_LANDING_PAD ||
-        bbTagType == SymbolEntry::BB_RETURN_AND_LANDING_PAD)
-      hotTag = false;
-    else
-      hotTag = isHotBBSymbol(existingI->second.get(), bbIndex, hotBBSymbols);
+    bool hotTag =
+        isHotSymbol(existingI->second.get(), hotBBSymbols, bbIndex, bbTagType);
     createBasicBlockSymbol(symOrdinal, existingI->second.get(), bbIndex,
                            symSize, hotTag, bbTagType);
   } else {
@@ -277,6 +284,7 @@ bool Propfile::readSymbols() {
       return false;
   } // End of iterating all symbols.
 
+  // Post process bb symbols that are listed before its wrapping function.
   for (std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
                   SymbolEntry::BBTagTypeEnum> &sym : bbSymbolsToPostProcess) {
     uint64_t symOrdinal;
@@ -292,8 +300,8 @@ bool Propfile::readSymbols() {
       return false;
     }
     SymbolEntry *FuncSym = existingI->second.get();
-    createBasicBlockSymbol(symOrdinal, FuncSym, bbIndex, symSize,
-                           isHotBBSymbol(FuncSym, bbIndex, hotBBSymbols), bbtt);
+    bool hotTag = isHotSymbol(FuncSym, hotBBSymbols, bbIndex, bbtt);
+    createBasicBlockSymbol(symOrdinal, FuncSym, bbIndex, symSize, hotTag, bbtt);
   }
   return true;
 }
