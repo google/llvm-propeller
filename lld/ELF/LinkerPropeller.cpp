@@ -79,6 +79,7 @@ static void setupConfig() {
 
 // Propeller framework entrance.
 void doPropeller() {
+  prop = nullptr;
   if (config->propeller.empty())
     return;
 
