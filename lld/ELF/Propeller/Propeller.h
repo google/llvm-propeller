@@ -72,7 +72,7 @@ class CFGEdge;
 class CFGNode;
 class ObjectView;
 class Propeller;
-class PropellerBBReordering;
+class CodeLayout;
 struct PropellerConfig;
 
 // Propeller profile parser.
@@ -319,7 +319,7 @@ public:
   // to guard this Propeller::CFGMap critical section.
   std::mutex Lock;
 
-  PropellerBBReordering *propLayout;
+  CodeLayout *propLayout;
 
   llvm::StringMap<std::vector<uint64_t>> BBLayouts;
 

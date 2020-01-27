@@ -8,7 +8,7 @@
 #ifndef LLD_ELF_PROPELLER_CHAIN_CLUSTERING_H
 #define LLD_ELF_PROPELLER_CHAIN_CLUSTERING_H
 
-#include "PropellerNodeChain.h"
+#include "NodeChain.h"
 
 #include "llvm/ADT/DenseMap.h"
 

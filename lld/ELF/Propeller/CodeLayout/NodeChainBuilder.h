@@ -9,10 +9,10 @@
 #define LLD_ELF_PROPELLER_NODE_CHAIN_BUILDER_H
 
 #include "ModifiablePriorityQueue.h"
+#include "NodeChain.h"
+#include "NodeChainAssembly.h"
+#include "NodeChainClustering.h"
 #include "PropellerCFG.h"
-#include "PropellerChainClustering.h"
-#include "PropellerNodeChain.h"
-#include "PropellerNodeChainAssembly.h"
 
 #include "llvm/ADT/DenseMap.h"
 

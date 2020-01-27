@@ -19,7 +19,7 @@
 //   Large-Scale Data-Center Applications. Available at
 //   https://research.fb.com/wp-content/uploads/2017/01/cgo2017-hfsort-final1.pdf
 //===----------------------------------------------------------------------===//
-#include "PropellerChainClustering.h"
+#include "NodeChainClustering.h"
 #include "PropellerConfig.h"
 
 using llvm::detail::DenseMapPair;

@@ -7,15 +7,15 @@ if( Protobuf_FOUND )
 endif()
 
 add_lld_library(lldPropeller
+  CodeLayout/NodeChainClustering.cpp
+  CodeLayout/NodeChain.cpp
+  CodeLayout/NodeChainAssembly.cpp
+  CodeLayout/NodeChainBuilder.cpp
+  CodeLayout/CodeLayout.cpp
   Propeller.cpp
-  PropellerBBReordering.cpp
-  PropellerChainClustering.cpp
   PropellerCFG.cpp
-  PropellerNodeChain.cpp
-  PropellerNodeChainAssembly.cpp
-  PropellerNodeChainBuilder.cpp
   PropellerProtobuf.cpp
-  ${PROPELLER_PROTO_SRCS}
+ ${PROPELLER_PROTO_SRCS}
 
   LINK_LIBS
   ${PROPELLER_PROTOBUF_LIBS}
