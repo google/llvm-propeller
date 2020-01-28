@@ -31,7 +31,6 @@
 #include "llvm/Support/SHA1.h"
 #include "llvm/Support/xxhash.h"
 #include <cctype>
-#include <chrono>
 #include <climits>
 #include <list>
 #include <type_traits>
