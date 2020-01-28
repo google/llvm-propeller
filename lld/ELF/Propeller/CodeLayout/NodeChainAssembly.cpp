@@ -145,7 +145,7 @@ double NodeChainAssembly::computeExtTSPScore() const {
 
   // We need to recompute the score induced by the split chain (if it has really
   // been split) as the offsets of the nodes have changed.
-  if (split())
+  if (splits())
     splitChain()->forEachOutEdgeToChain(splitChain(), addEdgeScore);
   else
     score += splitChain()->Score;
@@ -175,14 +175,14 @@ bool NodeChainAssembly::CompareNodeChainAssembly::operator()(
 
 static std::string toString(MergeOrder mOrder) {
   switch (mOrder) {
-  case MergeOrder::X2X1Y:
-    return "X2X1Y";
-  case MergeOrder::X1YX2:
-    return "X1YX2";
-  case MergeOrder::X2YX1:
-    return "X2YX1";
-  case MergeOrder::YX2X1:
-    return "YX2X1";
+  case MergeOrder::S2S1U:
+    return "S2S1U";
+  case MergeOrder::S1US2:
+    return "S1US2";
+  case MergeOrder::S2US1:
+    return "S2US1";
+  case MergeOrder::US2S1:
+    return "US2S1";
   default:
     assert("Invalid MergeOrder!" && false);
     return "";

@@ -58,15 +58,15 @@ public:
   uint64_t size() const { return EndOffset - BeginOffset; }
 };
 
-// This enum represents the order in which three slices (X1, X2, and Y) are
+// This enum represents the order in which three slices (S1, S2, and U) are
 // merged together.
 enum MergeOrder {
   Begin,
-  X2X1Y = Begin,
+  S2S1U = Begin,
   BeginNext,
-  X1YX2 = BeginNext,
-  X2YX1,
-  YX2X1,
+  S1US2 = BeginNext,
+  S2US1,
+  US2S1,
   End
 };
 
@@ -93,27 +93,27 @@ public:
 
   // The constructor for creating a NodeChainAssembly. slicePosition must be an
   // iterator into chainX.
-  NodeChainAssembly(NodeChain *chainX, NodeChain *chainY,
+  NodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain,
                     std::list<CFGNode *>::iterator slicePosition,
                     MergeOrder mOrder)
-      : ChainPair(chainX, chainY), SlicePosition(slicePosition),
+      : ChainPair(splitChain, unsplitChain), SlicePosition(slicePosition),
         MOrder(mOrder) {
-    NodeChainSlice x1(chainX, chainX->Nodes.begin(), SlicePosition);
-    NodeChainSlice x2(chainX, SlicePosition, chainX->Nodes.end());
-    NodeChainSlice y(chainY, chainY->Nodes.begin(), chainY->Nodes.end());
+    NodeChainSlice s1(splitChain, splitChain->Nodes.begin(), SlicePosition);
+    NodeChainSlice s2(splitChain, SlicePosition, splitChain->Nodes.end());
+    NodeChainSlice u(unsplitChain, unsplitChain->Nodes.begin(), unsplitChain->Nodes.end());
 
     switch (MOrder) {
-    case MergeOrder::X2X1Y:
-      Slices = {std::move(x2), std::move(x1), std::move(y)};
+    case MergeOrder::S2S1U:
+      Slices = {std::move(s2), std::move(s1), std::move(u)};
       break;
-    case MergeOrder::X1YX2:
-      Slices = {std::move(x1), std::move(y), std::move(x2)};
+    case MergeOrder::S1US2:
+      Slices = {std::move(s1), std::move(u), std::move(s2)};
       break;
-    case MergeOrder::X2YX1:
-      Slices = {std::move(x2), std::move(y), std::move(x1)};
+    case MergeOrder::S2US1:
+      Slices = {std::move(s2), std::move(u), std::move(s1)};
       break;
-    case MergeOrder::YX2X1:
-      Slices = {std::move(y), std::move(x2), std::move(x1)};
+    case MergeOrder::US2S1:
+      Slices = {std::move(u), std::move(s2), std::move(s1)};
       break;
     default:
       assert("Invalid MergeOrder!" && false);
@@ -122,7 +122,7 @@ public:
     // Set the ExtTSP Score gain as the difference between the new score after
     // merging these chains and the current scores of the two chains.
     ScoreGain =
-        computeExtTSPScore() - splitChain()->Score - unsplitChain()->Score;
+        computeExtTSPScore() - splitChain->Score - unsplitChain->Score;
   }
 
   bool isValid() { return ScoreGain > 0.0001; }
@@ -165,9 +165,18 @@ public:
     return std::make_pair(MOrder, (*SlicePosition)->MappedAddr);
   }
 
-  inline bool split() const {
+  inline bool splits() const {
     return SlicePosition != splitChain()->Nodes.begin();
   }
+
+  inline bool splitsAtFunctionTransition() const {
+    return splits() && ((*std::prev(SlicePosition))->CFG != (*SlicePosition)->CFG);
+  }
+
+  inline bool needsSplitChainRotation() {
+    return (MOrder == S2S1U && splits()) || MOrder == S2US1 || MOrder == US2S1;
+  }
+
 
   inline NodeChain *splitChain() const { return ChainPair.first; }
 
