@@ -272,7 +272,7 @@ std::string llvm::getUniqueModuleId(Module *M) {
     AddGlobal(IF);
 
   if (!ExportsSymbols)
-      return "";
+    return "";
 
   MD5::MD5Result R;
   Md5.final(R);
