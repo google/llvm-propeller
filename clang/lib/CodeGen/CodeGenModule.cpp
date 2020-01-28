@@ -61,7 +61,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MD5.h"
 #include "llvm/Support/TimeProfiler.h"
-#include "llvm/Transforms/Utils/ModuleUtils.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -1101,16 +1100,21 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
   const auto *ND = cast<NamedDecl>(GD.getDecl());
   std::string MangledName = getMangledNameImpl(*this, GD, ND);
 
-  // With BasicBlockSections, it is important to have a unique name for
-  // internal linkage functions, to differentiate the symbols across
-  // modules.
+  // With option -funique-internal-funcnames, functions with internal linkage
+  // should get unique names.  Use the hash of module name to get a unique
+  // identifier and this is a best effort.
   if (getCodeGenOpts().UniqueInternalFuncNames &&
       dyn_cast<FunctionDecl>(GD.getDecl()) &&
-      this->getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) {
-    std::string UniqueSuffix = getUniqueModuleId(&getModule(), true);
-    if (!UniqueSuffix.empty()) {
-      MangledName = MangledName + '.' + UniqueSuffix;
-    }
+      getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage &&
+      !getModule().getSourceFileName().empty()) {
+    llvm::MD5 Md5;
+    Md5.update(getModule().getSourceFileName());
+    llvm::MD5::MD5Result R;
+    Md5.final(R);
+    SmallString<32> Str;
+    llvm::MD5::stringifyResult(R, Str);
+    std::string UniqueSuffix = ("." + Str).str();
+    MangledName += UniqueSuffix;
   }
 
   // Adjust kernel stub mangling as we may need to be able to differentiate

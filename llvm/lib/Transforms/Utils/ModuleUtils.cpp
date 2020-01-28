@@ -250,7 +250,7 @@ void llvm::filterDeadComdatFunctions(
   });
 }
 
-std::string llvm::getUniqueModuleId(Module *M, bool UseModuleId) {
+std::string llvm::getUniqueModuleId(Module *M) {
   MD5 Md5;
   bool ExportsSymbols = false;
   auto AddGlobal = [&](GlobalValue &GV) {
@@ -271,18 +271,8 @@ std::string llvm::getUniqueModuleId(Module *M, bool UseModuleId) {
   for (auto &IF : M->ifuncs())
     AddGlobal(IF);
 
-  // When UseModuleId is true, we include the module identifier also.  Module
-  // ID helps when there are no globals exported or when multiple definitions
-  // of the same globals are allowed in different modules (with "-z muldefs").
-  // While it is highly likely that Module identifier is unique, it is not
-  // guaranteed.
-  if (UseModuleId && !M->getModuleIdentifier().empty()) {
-    Md5.update(M->getModuleIdentifier());
-    Md5.update(ArrayRef<uint8_t>{0});
-  } else {
-    if (!ExportsSymbols)
-      return "";
-  }
+  if (!ExportsSymbols)
+    return "";
 
   MD5::MD5Result R;
   Md5.final(R);

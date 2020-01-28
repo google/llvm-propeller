@@ -1804,7 +1804,6 @@ public:
     return cast_or_null<DICompileUnit>(getRawUnit());
   }
   void replaceUnit(DICompileUnit *CU) { replaceOperandWith(5, CU); }
-
   DITemplateParameterArray getTemplateParams() const {
     return cast_or_null<MDTuple>(getRawTemplateParams());
   }

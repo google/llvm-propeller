@@ -273,6 +273,8 @@ namespace llvm {
     /// Emit basic blocks into separate sections.
     BasicBlockSection::SectionMode BasicBlockSections = BasicBlockSection::None;
 
+    /// A map from function name to a set of basic block id's that require
+    /// unique basic block sections.
     StringMap<SmallSet<unsigned, 4>> BasicBlockSectionsList;
 
     /// Emit debug info about parameter's entry values.

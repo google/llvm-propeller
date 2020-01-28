@@ -1969,7 +1969,8 @@ def funique_internal_funcnames : Flag <["-"], "funique-internal-funcnames">,
   Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Uniqueify Internal Linkage Function Names">;
 def fno_unique_internal_funcnames : Flag <["-"], "fno-unique-internal-funcnames">,
-  Group<f_Group>, Flags<[CC1Option]>;
+  Group<f_Group>;
+
 def fstrict_return : Flag<["-"], "fstrict-return">, Group<f_Group>,
   Flags<[CC1Option]>,
   HelpText<"Always treat control flow paths that fall off the end of a "
