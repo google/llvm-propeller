@@ -67,9 +67,11 @@ int main(int argc, const char *argv[]) {
       ++total;
     }
   }
+  
   auto CommaPrint = [](uint64_t Num) {
+    const int right_aligned_to_column = 25;
     if (Num == 0) {
-      printf("0");
+      printf("%s0", std::string(right_aligned_to_column-1, ' ').c_str());
       return;
     }
     vector<uint64_t> Nums;
@@ -78,6 +80,10 @@ int main(int argc, const char *argv[]) {
       Nums.push_back(D % 1000);
       D /= 1000;
     }
+    uint64_t FirstNum = *(Nums.rbegin());
+    int space_needed = right_aligned_to_column - ((Nums.size() - 1) << 2) -
+                       (FirstNum >= 100 ? 1 : 0) - (FirstNum >= 10 ? 1 : 0) - 1;
+    printf("%s", std::string(space_needed, ' ').c_str());
     for (auto O = Nums.rbegin(), P = Nums.rbegin(), Q = Nums.rend(); P != Q;
          ++P) {
       if (P != O) {
@@ -88,24 +94,20 @@ int main(int argc, const char *argv[]) {
     }
   };
   auto PrintResult = [&CommaPrint](const char *Prefix, uint64_t Num) {
-    printf("%s: ", Prefix);
+    printf("%s ", Prefix);
     CommaPrint(Num);
     printf("\n");
   };
-  PrintResult("Text", TotalSize.TextSize);
-  PrintResult("Alloc", TotalSize.OtherAllocSize);
-  PrintResult("Rela", TotalSize.RelaSize);
-  PrintResult("EHFrames", TotalSize.EhFrameRelatedSize);
-  PrintResult("SymTab", TotalSize.SymTabSize);
-  PrintResult("SymEntries", TotalSize.SymTabEntryNum);
-  PrintResult("StrTab", TotalSize.StrTabSize);
-  PrintResult("FileSize", TotalSize.FileSize);
+  PrintResult("Text:       ", TotalSize.TextSize);
+  PrintResult("Alloc:      ", TotalSize.OtherAllocSize);
+  PrintResult("Rela:       ", TotalSize.RelaSize);
+  PrintResult("EHFrames:   ", TotalSize.EhFrameRelatedSize);
+  PrintResult("SymTab:     ", TotalSize.SymTabSize);
+  PrintResult("SymEntries: ", TotalSize.SymTabEntryNum);
+  PrintResult("StrTab:     ", TotalSize.StrTabSize);
+  PrintResult("FileSize:   ", TotalSize.FileSize);
   {
-    printf("Files (err/total): ");
-    CommaPrint(errcnt);
-    printf("/");
-    CommaPrint(total);
-    printf("\n");
+    printf("Files (err/total): %u/%u\n", errcnt, total);
   }
   return 0;
 }

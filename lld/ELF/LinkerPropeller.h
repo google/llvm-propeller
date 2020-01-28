@@ -17,10 +17,16 @@
 #ifndef LLD_ELF_LINKER_PROPELLER_H
 #define LLD_ELF_LINKER_PROPELLER_H
 
+#include "llvm/ADT/StringRef.h"
+
 namespace lld {
 namespace propeller {
 // Propeller interface to lld.
 void doPropeller();
+
+// Returns true if this is a BB symbol and shall be kept in the final binary's
+// strtab.
+bool isBBSymbolAndKeepIt(llvm::StringRef N);
 } // namespace propeller
 } // namespace lld
 

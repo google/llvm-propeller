@@ -2051,6 +2051,47 @@ void SymbolTableBaseSection::sortSymTabSymbols() {
       *i++ = entry;
 }
 
+// When calling addSymbol, we add each BB symbol in the reverse order of its
+// index. For example, we add bb symbols in such a way:
+//     addSymbol("aaaa.BB.foo")
+//     addSymbol("aaa.BB.foo")
+//     addSymbol("aa.BB.foo")
+//     addSymbol("a.BB.foo")
+//
+// Note, the compiler makes sure the generated "aaaa.BB.foo", "aaa.BB.foo", etc
+// in the object strtab are stored optimally - that only "aaaa.BB.foo" is stored
+// in the strtab.
+// [Symtab section]
+//    [symbol name]  [strtab offset]
+//    aaaa.BB.foo    0
+//     aaa.BB.foo    1
+//      aa.BB.foo    2
+//       a.BB.foo    3
+// [Strtab section]
+//    aaaa.BB.foo\0\0
+//
+// "EndsMap" here stores the mapping from the end address of StringRef to a pair
+// of <strtab offset, size of the string>. For example:
+// From the object file we have the following StringRefs:
+//     aaaa.BB.foo   [start=400, size=11]
+//      aaa.BB.foo   [start=401, size=10]
+//       aa.BB.foo   [start=402, size=9]
+//        a.BB.foo   [start=403, size=8]
+// Note: the end address for all the 4 symbols are 411.
+// After adding "aaaa.BB.foo", we have the following StrTab and EndMap:
+//
+// Strtab:
+//     dummy\0
+//     aaaa.BB.foo\0     occupies [6-17]
+//     \0
+//
+// EndsMap:
+//   {
+//      411:{6,11}
+//   }
+// Then we try to add "aaa.BB.foo", which has the same "EndKey" 411, so we know
+// we can resue the strtab entry from 6-17, and don't create a new strtabe entry
+// we just reuse the existing one.
 void SymbolTableBaseSection::addSymbol(Symbol *b) {
   // Adding a local symbol to a .dynsym is a bug.
   assert(this->type != SHT_DYNSYM || !b->isLocal());
