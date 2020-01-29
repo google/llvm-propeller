@@ -305,7 +305,7 @@ std::map<uint64_t, section_iterator> CFGBuilder::buildRelocationSectionMap() {
 // Parameters:
 //   GE: <cfg name, symbols belong to this cfg>
 //   tmpNodeMap: {ordinal -> tmpCfgNode}
-//   OrdinalRemapping: {old ordinal -> new ordinal} 
+//   OrdinalRemapping: {old ordinal -> new ordinal}
 std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     std::map<StringRef, std::list<SymbolRef>>::value_type &GE,
     std::map<uint64_t, std::unique_ptr<CFGNode>> &tmpNodeMap,
@@ -395,7 +395,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
       tmpNodeMap.clear();
       break;
     }
-  }  // end of iterating of all symbols in a cfg group.
+  } // end of iterating of all symbols in a cfg group.
 
   if (tmpNodeMap.empty()) {
     cfg.reset(nullptr);
@@ -403,10 +403,10 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   }
 
   fprintf(stderr, "CFG: %s\n", cfg->Name.str().c_str());
-  for (auto &P: bbGroupSectionMap) {
+  for (auto &P : bbGroupSectionMap) {
     CFGNode *node = P.second.first;
     fprintf(stderr, "\t%s(%lu):", node->ShName.str().c_str(), node->Shndx);
-    for (SymbolEntry *SS: P.second.second) {
+    for (SymbolEntry *SS : P.second.second) {
       fprintf(stderr, " %s[%lu]", SS->Name.str().c_str(), SS->Ordinal);
     }
     fprintf(stderr, "\n");

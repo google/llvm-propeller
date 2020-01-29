@@ -184,8 +184,7 @@ void MachineFunction::init() {
 
   if (Target.getBasicBlockSections() == llvm::BasicBlockSection::All ||
       F.getBasicBlockSections() ||
-      ((Target.getBasicBlockSections() == llvm::BasicBlockSection::List ||
-        Target.getBasicBlockSections() == llvm::BasicBlockSection::Func) &&
+      (Target.getBasicBlockSections() == llvm::BasicBlockSection::List &&
        Target.isFunctionInBasicBlockSectionsList(F.getName())))
     BasicBlockSections = true;
 

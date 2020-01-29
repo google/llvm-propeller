@@ -59,34 +59,33 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef file) {
   return ret;
 }
 
-bool getBasicBlockSectionsList(TargetOptions &Options) {
+static bool getBasicBlockSectionsList(TargetOptions &Options) {
   if (config->ltoBasicBlockSections.empty())
     return false;
 
-  std::ifstream FList(config->ltoBasicBlockSections);
-  if (!FList.good()) {
+  std::ifstream fin(config->ltoBasicBlockSections);
+  if (!fin.good()) {
     errs() << "Cannot open " + config->ltoBasicBlockSections;
     return false;
   }
 
   bool consumeBasicBlockIds = false;
-  std::string Line;
+  std::string line;
   StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
       Options.BasicBlockSectionsList.end();
-  bool AllBasicBlocks = false;
 
-  while ((std::getline(FList, Line)).good()) {
-    if (Line.empty())
+  while ((std::getline(fin, line)).good()) {
+    if (line.empty())
       continue;
-    if (Line.find("#AllBB") != std::string::npos) {
-      AllBasicBlocks = true;
-      continue;
+    if (line.find("#AllBB") != std::string::npos) {
+      errs() << "#AllBB is no longer supported.";
+      return false;
     }
-    if (Line[0] == '@')
+    if (line[0] == '@' || line[0] == '#')
       continue;
-    if (Line[0] != '!')
+    if (line[0] != '!')
       break;
-    StringRef S(Line);
+    StringRef S(line);
     if (S.consume_front("!") && !S.empty()) {
       if (consumeBasicBlockIds && S.consume_front("!")) {
         assert(currentFuncI != Options.BasicBlockSectionsList.end());
@@ -100,11 +99,10 @@ bool getBasicBlockSectionsList(TargetOptions &Options) {
         currentFuncI->second.insert(0);
         consumeBasicBlockIds = true;
       }
-    } else {
+    } else
       consumeBasicBlockIds = false;
-    }
   }
-  return AllBasicBlocks;
+  return true;
 }
 
 static std::string getThinLTOOutputFile(StringRef modulePath) {
@@ -134,10 +132,8 @@ static lto::Config createConfig() {
     else if (config->ltoBasicBlockSections.equals("none"))
       c.Options.BasicBlockSections = BasicBlockSection::None;
     else {
-      if (getBasicBlockSectionsList(c.Options))
-        c.Options.BasicBlockSections = BasicBlockSection::Func;
-      else
-        c.Options.BasicBlockSections = BasicBlockSection::List;
+      getBasicBlockSectionsList(c.Options);
+      c.Options.BasicBlockSections = BasicBlockSection::List;
     }
   }
 

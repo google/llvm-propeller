@@ -70,7 +70,6 @@ namespace llvm {
     None,   // Do not use Basic Block Sections.
     All,    // Use Basic Block Sections for all functions.
     Labels, // Do not use Basic Block Sections but label basic blocks.
-    Func,   // Get list of functions from a file
     List    // Get list of functions & BBs from a file
   };
   }
