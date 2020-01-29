@@ -119,8 +119,7 @@ void Propfile::reportParseError(const StringRef msg) const {
 bool Propfile::isHotSymbol(
     SymbolEntry *func,
     const std::map<std::string, std::set<std::string>> &hotBBSymbols,
-    StringRef bbIndex,
-    SymbolEntry::BBTagTypeEnum bbtt) {
+    StringRef bbIndex, SymbolEntry::BBTagTypeEnum bbtt) {
   std::string N("");
   for (auto A : func->Aliases) {
     if (N.empty())

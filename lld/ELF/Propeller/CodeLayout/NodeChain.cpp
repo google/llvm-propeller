@@ -10,14 +10,21 @@
 namespace lld {
 namespace propeller {
 
-std::string toString(const NodeChain &c) {
+std::string toString(const NodeChain &c,
+                     std::list<CFGNode *>::const_iterator slicePos) {
   std::string str;
-  size_t cfgNameLength = c.DelegateNode->CFG->Name.size();
-  str += c.DelegateNode->CFG->Name.str() + " [ ";
-  for (auto *n : c.Nodes) {
+  if (c.CFG)
+    str += c.CFG->Name.str();
+  str += " [ ";
+  for (auto it = c.Nodes.begin(); it != c.Nodes.end(); ++it) {
+    auto *n = *it;
+    if (it == slicePos)
+      str += "\n....SLICE POSITION....\n";
+    if (!c.CFG)
+      str += std::to_string(n->CFG->getEntryNode()->MappedAddr) + ":";
     str += n->CFG->getEntryNode() == n
                ? "Entry"
-               : std::to_string(n->ShName.size() - cfgNameLength - 4);
+               : std::to_string(n->ShName.size() - n->CFG->Name.size() - 4);
     str += " (size=" + std::to_string(n->ShSize) +
            ", freq=" + std::to_string(n->Freq) + ")";
     if (n != c.Nodes.back())
@@ -27,6 +34,8 @@ std::string toString(const NodeChain &c) {
   str += " score: " + std::to_string(c.Score);
   return str;
 }
+
+std::string toString(const NodeChain &c) { return toString(c, c.Nodes.end()); }
 
 } // namespace propeller
 } // namespace lld

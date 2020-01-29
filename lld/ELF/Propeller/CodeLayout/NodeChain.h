@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-#ifndef LLD_ELF_PROPELLER_NODE_CHAIN_H
-#define LLD_ELF_PROPELLER_NODE_CHAIN_H
+#ifndef LLD_ELF_PROPELLER_CODE_LAYOUT_NODE_CHAIN_H
+#define LLD_ELF_PROPELLER_CODE_LAYOUT_NODE_CHAIN_H
 
 #include "PropellerCFG.h"
 #include "llvm/ADT/DenseSet.h"
@@ -27,7 +27,7 @@ public:
   CFGNode *DelegateNode;
 
   // CFG of the nodes in this chain (this will be null if the nodes come from
-  // more than one cfg.
+  // more than one cfg).
   ControlFlowGraph *CFG;
 
   // Ordered list of the nodes in this chain.
@@ -86,9 +86,13 @@ public:
   double execDensity() const {
     return ((double)Freq) / std::max(Size, (uint64_t)1);
   }
+
+  bool isSameCFG(const NodeChain &c) { return CFG && CFG == c.CFG; }
 };
 
 // This returns a string representation of the chain
+std::string toString(const NodeChain &c,
+                     std::list<CFGNode *>::const_iterator slicePos);
 std::string toString(const NodeChain &c);
 
 } // namespace propeller

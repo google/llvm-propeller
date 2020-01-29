@@ -19,12 +19,10 @@
 #include "PropellerConfig.h"
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 
 #include <vector>
 
 using llvm::DenseMap;
-using llvm::DenseSet;
 
 namespace lld {
 namespace propeller {
