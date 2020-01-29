@@ -52,7 +52,7 @@ bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
   for (idx = 0; idx < 3; ++idx) {
     if (chain != Slices[idx].Chain)
       continue;
-    // We find if the node's offset lies with the begin and end offset of this
+    // We find if the node's offset lies within the begin and end offset of this
     // slice.
     if (offset < Slices[idx].BeginOffset || offset > Slices[idx].EndOffset)
       continue;
@@ -132,7 +132,7 @@ double NodeChainAssembly::computeExtTSPScore() const {
                     sinkSlice.EndOffset - sinkNodeOffset;
       // Increment the distance by the size of the middle slice if the src
       // and sink are from the two ends.
-      if (std::abs(sinkSliceIdx - srcSliceIdx) == 2)
+      if (std::abs(((int16_t)sinkSliceIdx) - ((int16_t)srcSliceIdx)) == 2)
         srcSinkDistance += Slices[1].size();
     }
 
@@ -162,12 +162,19 @@ bool NodeChainAssembly::CompareNodeChainAssembly::operator()(
     const std::unique_ptr<NodeChainAssembly> &a2) const {
 
   if (a1->ScoreGain == a2->ScoreGain) {
+    // If score gains are equal, we pick a consistent order based on the chains
+    // in the assembly records
     if (std::less<std::pair<NodeChain *, NodeChain *>>()(a1->ChainPair,
                                                          a2->ChainPair))
       return true;
     if (std::less<std::pair<NodeChain *, NodeChain *>>()(a2->ChainPair,
                                                          a1->ChainPair))
       return false;
+    // When even the chain pairs are the same, we resort to the assembly
+    // strategy to pick a consistent order.
+    if (a1->assemblyStrategy() == a2->assemblyStrategy())
+      warn("Comparing equal assembly records!" + toString(*a1.get()) +
+           "\nAND\n" + toString(*a2.get()));
     return a1->assemblyStrategy() < a2->assemblyStrategy();
   }
   return a1->ScoreGain < a2->ScoreGain;
@@ -191,11 +198,9 @@ static std::string toString(MergeOrder mOrder) {
 
 std::string toString(NodeChainAssembly &assembly) {
   std::string str("assembly record between:\n");
-  str += lld::propeller::toString(*assembly.splitChain()) + " as X\n";
-  str += lld::propeller::toString(*assembly.unsplitChain()) + " as Y\n";
-  // str += "split position (X):, " + std::to_string(assembly.SlicePosition -
-  // assembly.splitChain()->Nodes.begin()) + "\n";
-  str += "merge order: " + lld::propeller::toString(assembly.MOrder) + "\n";
+  str += toString(*assembly.splitChain(), assembly.SlicePosition) + " as S\n";
+  str += toString(*assembly.unsplitChain()) + " as U\n";
+  str += "merge order: " + toString(assembly.MOrder) + "\n";
   str += "ScoreGain: " + std::to_string(assembly.ScoreGain);
   return str;
 }

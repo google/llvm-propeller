@@ -970,7 +970,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->propellerBackwardJumpDistance =
       args::getInteger(args, OPT_propeller_backward_jump_distance, 640);
   config->propellerChainSplitThreshold =
-      args::getInteger(args, OPT_propeller_chain_split_threshold, 128);
+      args::getInteger(args, OPT_propeller_chain_split_threshold, 1024);
 
   // Parse Propeller flags.
   auto propellerOpts = args.getAllArgValues(OPT_propeller_opt);
