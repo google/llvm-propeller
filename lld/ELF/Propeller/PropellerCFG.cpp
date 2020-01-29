@@ -322,7 +322,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   for (SymbolRef sym : GE.second) {
     auto symNameE = sym.getName();
     auto sectionIE = sym.getSection();
-    if (!symNameE && !sectionIE &&
+    if (!symNameE || !sectionIE ||
         (*sectionIE) == sym.getObject()->section_end()) {
       tmpNodeMap.clear();
       break;
