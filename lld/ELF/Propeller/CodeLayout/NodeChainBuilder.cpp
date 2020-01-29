@@ -188,8 +188,7 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
 
   if (leftChain->DebugChain || rightChain->DebugChain)
     fprintf(stderr, "MERGING chains:\n%s\nAND%s\n",
-                toString(*leftChain).c_str(),
-                toString(*rightChain).c_str());
+            toString(*leftChain).c_str(), toString(*rightChain).c_str());
 
   mergeInOutEdges(leftChain, rightChain);
 
@@ -237,7 +236,8 @@ bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
   return true;
 }
 
-// This function merges the in-and-out chain-edges of one chain (mergeeChain) into those of another (mergerChain).
+// This function merges the in-and-out chain-edges of one chain (mergeeChain)
+// into those of another (mergerChain).
 void NodeChainBuilder::mergeInOutEdges(NodeChain *mergerChain,
                                        NodeChain *mergeeChain) {
   // Add out-edges of mergeeChain to the out-edges of mergerChain
@@ -309,8 +309,7 @@ void NodeChainBuilder::mergeChains(
   // Reorder S1S2 to S2S1 if needed. This operation takes O(1) because we're
   // splicing from and into the same list.
   if (assembly->needsSplitChainRotation())
-    assembly->splitChain()->Nodes.splice(S1Begin,
-                                         assembly->splitChain()->Nodes,
+    assembly->splitChain()->Nodes.splice(S1Begin, assembly->splitChain()->Nodes,
                                          S2Begin,
                                          assembly->splitChain()->Nodes.end());
 
@@ -359,8 +358,8 @@ void NodeChainBuilder::mergeChains(
     if (assembly->splits())
       funcTransitionCandids.push_back(S1Begin);
 
-    // Check if any of the candidates mark a function transition position and add
-    // those to the function transition list of the mergerChain.
+    // Check if any of the candidates mark a function transition position and
+    // add those to the function transition list of the mergerChain.
     for (auto it : funcTransitionCandids)
       if (it != mergerChain->Nodes.begin() &&
           (*std::prev(it))->CFG != (*it)->CFG)
@@ -395,7 +394,8 @@ void NodeChainBuilder::mergeChains(
   }
 
   mergerChain->Size += mergeeChain->Size;
-  assert(mergerChain->Size == runningOffset && "Mismatch of merger chain's size and running offset!");
+  assert(mergerChain->Size == runningOffset &&
+         "Mismatch of merger chain's size and running offset!");
 
   // Update the total frequency the aggregated chain
   mergerChain->Freq += mergeeChain->Freq;
@@ -406,7 +406,7 @@ void NodeChainBuilder::mergeChains(
 
   mergerChain->DebugChain |= mergeeChain->DebugChain;
 
-  if (mergerChain->CFG && mergerChain->CFG!=mergeeChain->CFG)
+  if (mergerChain->CFG && mergerChain->CFG != mergeeChain->CFG)
     mergerChain->CFG = nullptr;
 
   // Merge the assembly candidate chains of the two chains into the candidate
@@ -526,9 +526,11 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   if (propellerConfig.optReorderIP && !doSplit) {
     // For inter-procedural layout, we always try splitting at the function
     // transition positions regardless of the split-chain's size.
-    for (auto FTIt = splitChain->FunctionTransitions.begin(); FTIt!=splitChain->FunctionTransitions.end();) {
+    for (auto FTIt = splitChain->FunctionTransitions.begin();
+         FTIt != splitChain->FunctionTransitions.end();) {
       auto slicePos = *FTIt;
-      if (slicePos == splitChain->Nodes.begin() || (*std::prev(slicePos))->CFG == (*slicePos)->CFG){
+      if (slicePos == splitChain->Nodes.begin() ||
+          (*std::prev(slicePos))->CFG == (*slicePos)->CFG) {
         FTIt = splitChain->FunctionTransitions.erase(FTIt);
         continue;
       }
@@ -694,13 +696,17 @@ void NodeChainBuilder::initializeExtTSP() {
   DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
 
   for (NodeChain *chain : Components[CurrentComponent]) {
-    auto& thisCandidateChains = CandidateChains[chain];
+    auto &thisCandidateChains = CandidateChains[chain];
     for (auto &chainEdge : chain->OutEdges) {
       NodeChain *otherChain = chainEdge.first;
       if (chain == otherChain)
         continue;
-      std::pair<NodeChain*, NodeChain*> chainPair1(chain, otherChain), chainPair2(otherChain, chain);
-      auto p = std::less<std::pair<NodeChain*, NodeChain*>>()(chainPair1, chainPair2) ? chainPair1 : chainPair2;
+      std::pair<NodeChain *, NodeChain *> chainPair1(chain, otherChain),
+          chainPair2(otherChain, chain);
+      auto p = std::less<std::pair<NodeChain *, NodeChain *>>()(chainPair1,
+                                                                chainPair2)
+                   ? chainPair1
+                   : chainPair2;
       if (!visited.insert(p).second)
         continue;
 

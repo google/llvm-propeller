@@ -58,12 +58,14 @@ public:
 
   // Constructor for building a chain slice from a node chain containing all of
   // its nodes.
-  NodeChainSlice(NodeChain *c) : Chain(c), Begin(c->Nodes.begin()), End(c->Nodes.end()), BeginOffset(0), EndOffset(c->Size) {}
+  NodeChainSlice(NodeChain *c)
+      : Chain(c), Begin(c->Nodes.begin()), End(c->Nodes.end()), BeginOffset(0),
+        EndOffset(c->Size) {}
 
   // (Binary) size of this slice
   uint64_t size() const { return EndOffset - BeginOffset; }
 
-  bool isEmpty() const {return Begin == End;}
+  bool isEmpty() const { return Begin == End; }
 };
 
 // This enum represents the order in which three slices (S1, S2, and U) are
@@ -133,8 +135,7 @@ public:
 
     // Set the ExtTSP Score gain as the difference between the new score after
     // merging these chains and the current scores of the two chains.
-    ScoreGain =
-        computeExtTSPScore() - splitChain->Score - unsplitChain->Score;
+    ScoreGain = computeExtTSPScore() - splitChain->Score - unsplitChain->Score;
   }
 
   bool isValid() { return ScoreGain > 0.0001; }
@@ -147,8 +148,8 @@ public:
                       uint8_t &idx) const;
 
   // This function computes the ExtTSP score for a chain assembly record. This
-  // goes over the three BB slices in the assembly record and considers all edges
-  // whose source and sink belong to the chains in the assembly record.
+  // goes over the three BB slices in the assembly record and considers all
+  // edges whose source and sink belong to the chains in the assembly record.
   double computeExtTSPScore() const;
 
   // First node in the resulting assembled chain.
@@ -185,7 +186,8 @@ public:
   }
 
   inline bool splitsAtFunctionTransition() const {
-    return splits() && ((*std::prev(SlicePosition))->CFG != (*SlicePosition)->CFG);
+    return splits() &&
+           ((*std::prev(SlicePosition))->CFG != (*SlicePosition)->CFG);
   }
 
   inline bool needsSplitChainRotation() {

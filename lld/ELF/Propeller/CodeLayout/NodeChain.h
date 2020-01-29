@@ -87,13 +87,12 @@ public:
     return ((double)Freq) / std::max(Size, (uint64_t)1);
   }
 
-  bool isSameCFG(const NodeChain& c){
-    return CFG && CFG == c.CFG;
-  }
+  bool isSameCFG(const NodeChain &c) { return CFG && CFG == c.CFG; }
 };
 
 // This returns a string representation of the chain
-std::string toString(const NodeChain &c, std::list<CFGNode*>::const_iterator slicePos);
+std::string toString(const NodeChain &c,
+                     std::list<CFGNode *>::const_iterator slicePos);
 std::string toString(const NodeChain &c);
 
 } // namespace propeller

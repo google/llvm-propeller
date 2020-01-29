@@ -10,7 +10,8 @@
 namespace lld {
 namespace propeller {
 
-std::string toString(const NodeChain &c, std::list<CFGNode*>::const_iterator slicePos) {
+std::string toString(const NodeChain &c,
+                     std::list<CFGNode *>::const_iterator slicePos) {
   std::string str;
   if (c.CFG)
     str += c.CFG->Name.str();
@@ -34,10 +35,7 @@ std::string toString(const NodeChain &c, std::list<CFGNode*>::const_iterator sli
   return str;
 }
 
-std::string toString(const NodeChain &c){
-  return toString(c, c.Nodes.end());
-}
-
+std::string toString(const NodeChain &c) { return toString(c, c.Nodes.end()); }
 
 } // namespace propeller
 } // namespace lld
