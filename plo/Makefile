@@ -184,11 +184,10 @@ stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
 stage1_with_cxx_unwind/install/bin/clang: stage1-compiler check_environment $(LLVM_SOURCE)
 	$(call build_compiler,-DCMAKE_BUILD_TYPE=Debug -DLIBCXXABI_USE_LLVM_UNWINDER=On -DLLVM_ENABLE_LLD= -DCMAKE_LINKER="gold","clang;compiler-rt;lld;libcxx;libcxxabi;libunwind",install install-cxx install-cxxabi)
 
-stage1_with_cxx_unwind-compiler: stage1_with_cxx_unwind/install/bin/clang
-	ln -sf $< $@
-	touch $@
+stage1_debug/install/bin/clang: stage1-compiler check_environment $(LLVM_SOURCE)
+	$(call build_compiler,-DCMAKE_BUILD_TYPE=Debug -DLLVM_ENABLE_ASSERTIONS=On ,"clang;compiler-rt;lld",install)
 
-stage1-compiler: stage1/install/bin/clang
+stage1-compiler stage1_debug-compiler stage1_with_cxx_unwind-compiler : %-compiler : %/install/bin/clang
 	ln -sf $< $@
 	touch $@
 

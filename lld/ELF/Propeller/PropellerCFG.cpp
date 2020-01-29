@@ -74,7 +74,7 @@ CFGEdge *ControlFlowGraph::createEdge(CFGNode *from, CFGNode *to,
     }
     return false;
   };
-  if (!from->HotTag || !to->HotTag) {
+  if (true || !from->HotTag || !to->HotTag) {
     if (type < CFGEdge::EdgeType::INTER_FUNC_CALL &&
         CheckExistingEdge(from->Outs))
       return edge;
@@ -322,7 +322,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   for (SymbolRef sym : GE.second) {
     auto symNameE = sym.getName();
     auto sectionIE = sym.getSection();
-    if (!symNameE && !sectionIE &&
+    if (!symNameE || !sectionIE ||
         (*sectionIE) == sym.getObject()->section_end()) {
       tmpNodeMap.clear();
       break;
@@ -334,73 +334,66 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     // symValue is the offset to the beginning of its section.
     uint64_t symValue = sym.getValue();
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
-    SymbolEntry *sE = prop->Propf->findSymbol(symName);
+    SymbolEntry *symEnt = prop->Propf->findSymbol(symName);
     // symValue is the offset of the bb symbol within a bbsection, if
     // symValue is nonzero, it means the symbol is not on its own
     // section, safe to ignore mapping with a propeller symbol. This
     // is a symbol grouped together w/ other bb symbols in the same
     // section (the cold section or the landing pad section), and this
     // bb symbol is not the representative symbol of the bb section.
-    if (!sE) {
+    if (!symEnt) {
       if (symValue != 0)
         continue;
       tmpNodeMap.clear();
       break;
     }
 
-    if (tmpNodeMap.find(sE->Ordinal) != tmpNodeMap.end()) {
+    if (tmpNodeMap.find(symEnt->Ordinal) != tmpNodeMap.end()) {
       tmpNodeMap.clear();
       error("Internal error checking cfg map.");
       break;
     }
-    // All cold BBs go into a single cold section. All landing pads go
-    // into a single landing pad section.  Note, hot landing pads are
-    // grouped into the landing pad section. A hot land pad does not
-    // have its own section.
-    bool needGroup =
-        SymbolEntry::isBBSymbol(symName) &&
-        (!sE->HotTag || symName.front() == 'l' || symName.front() == 'L');
-    if (needGroup) {
-      auto groupI = bbGroupSectionMap.find(symShndx);
-      if (groupI != bbGroupSectionMap.end()) {
-        CFGNode *groupNode = groupI->second.first;
-        // All group nodes share the same section, so the ShSize field must
-        // equal.
-        if (groupNode->ShSize != symSectionSize) {
-          tmpNodeMap.clear();
-          error("Check internal size error.");
-          break;
-        }
-        // The first node within the section is the representative node.
-        if (groupNode->MappedAddr > sE->Ordinal) {
-          groupNode->MappedAddr = sE->Ordinal;
-          groupNode->ShName = symName;
-          groupNode->ShSize = symSectionSize;
-        }
-        if (!groupI->second.second.insert(sE).second) {
-          tmpNodeMap.clear();
-          error("Internal error grouping sections.");
-          break;
-        }
-        continue; // to next sym.
+
+    auto secI = bbGroupSectionMap.find(symShndx);
+    if (secI != bbGroupSectionMap.end()) {
+      CFGNode *secNode = secI->second.first;
+      // All group nodes share the same section, so the ShSize field must
+      // equal.
+      if (secNode->ShSize != symSectionSize) {
+        tmpNodeMap.clear();
+        error("Check internal size error.");
+        break;
       }
-      // Otherwise, proceed to create a CFGNode.
+      // The first node within the section is the representative node.
+      if (secNode->MappedAddr > symEnt->Ordinal) {
+        secNode->MappedAddr = symEnt->Ordinal;
+        secNode->ShName = symName;
+        secNode->ShSize = symSectionSize;
+      }
+      // Insert the symbol into the set of symbols, those symbols all belong
+      // to the same section.
+      if (!secI->second.second.insert(symEnt).second) {
+        tmpNodeMap.clear();
+        error("Internal error grouping sections.");
+        break;
+      }
+      continue; // to next sym.
     }
+    // Otherwise, proceed to create a CFGNode.
 
     // Drop bb sections with no code
     if (!symSectionSize)
       continue;
-    CFGNode *node = new CFGNode(symShndx, symName, symSectionSize, sE->Ordinal,
-                                cfg.get(), sE->HotTag);
-    tmpNodeMap.emplace(sE->Ordinal, node);
-    if (needGroup) {
-      auto &P = bbGroupSectionMap[symShndx];
-      P.first = node;
-      if (!P.second.insert(sE).second) {
-        error("Internal error grouping duplicated sections.");
-        tmpNodeMap.clear();
-        break;
-      }
+    CFGNode *newNode = new CFGNode(symShndx, symName, symSectionSize,
+                                   symEnt->Ordinal, cfg.get(), symEnt->HotTag);
+    tmpNodeMap.emplace(symEnt->Ordinal, newNode);
+
+    auto &P = bbGroupSectionMap[symShndx];
+    P.first = newNode;
+    if (!P.second.insert(symEnt).second) {
+      error("Internal error grouping duplicated sections.");
+      tmpNodeMap.clear();
+      break;
     }
   }  // end of iterating of all symbols in a cfg group.
 
@@ -409,25 +402,35 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     return cfg;
   }
 
-  for (auto &P : bbGroupSectionMap) {
-    CFGNode *Node = P.second.first;
-    auto &SymSet = P.second.second;
-    if (SymSet.size() > 1) {
-      SymbolEntry *FirstSymbol = *(SymSet.begin());
-      if (FirstSymbol->Ordinal != Node->MappedAddr) {
-        error("Internal error grouping sections.");
+  fprintf(stderr, "CFG: %s\n", cfg->Name.str().c_str());
+  for (auto &P: bbGroupSectionMap) {
+    CFGNode *node = P.second.first;
+    fprintf(stderr, "\t%s(%lu):", node->ShName.str().c_str(), node->Shndx);
+    for (SymbolEntry *SS: P.second.second) {
+      fprintf(stderr, " %s[%lu]", SS->Name.str().c_str(), SS->Ordinal);
+    }
+    fprintf(stderr, "\n");
+  }
+
+  for (auto &groupEntry : bbGroupSectionMap) {
+    CFGNode *node = groupEntry.second.first;
+    auto &symSet = groupEntry.second.second;
+    if (symSet.size() <= 1)
+      continue;
+    SymbolEntry *firstSymbol = *(symSet.begin());
+    if (firstSymbol->Ordinal != node->MappedAddr) {
+      error("Internal error grouping sections.");
+      cfg.reset(nullptr);
+      return cfg;
+    }
+    for (SymbolEntry *symEnt : symSet) {
+      if (!OrdinalRemapping.emplace(symEnt->Ordinal, node->MappedAddr).second
+          /* The representative node must have the smallest MappedAddr
+             (Ordinal) */
+          || symEnt->Ordinal < node->MappedAddr) {
+        error("Internal error remapping duplicated sections.");
         cfg.reset(nullptr);
         return cfg;
-      }
-      for (SymbolEntry *SS : SymSet) {
-        if (!OrdinalRemapping.emplace(SS->Ordinal, Node->MappedAddr).second
-            /* The representative Node must have the smallest MappedAddr
-               (Ordinal) */
-            || SS->Ordinal < Node->MappedAddr) {
-          error("Internal error remapping duplicated sections.");
-          cfg.reset(nullptr);
-          return cfg;
-        }
       }
     }
   }

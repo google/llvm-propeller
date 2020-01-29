@@ -237,10 +237,6 @@ bool GlobalValue::isDeclaration() const {
   if (const Function *F = dyn_cast<Function>(this))
     return F->empty() && !F->isMaterializable();
 
-  // A basic block is always defined.
-  if (dyn_cast<BasicBlock>(this))
-    return false;
-
   // Aliases and ifuncs are always definitions.
   assert(isa<GlobalIndirectSymbol>(this));
   return false;
