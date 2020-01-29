@@ -145,7 +145,7 @@ private:
   /// is only computed once and is cached.
   mutable MCSymbol *CachedMCSymbol = nullptr;
 
-  /// Used during basic block sections to marks the end of a basic block.
+  /// Used during basic block sections to mark the end of a basic block.
   MCSymbol *EndMCSymbol = nullptr;
 
   // Intrusive list support

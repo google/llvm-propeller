@@ -349,17 +349,6 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
   MBBNumbering.resize(BlockNo);
 }
 
-/// HasEHInfo - Return true is this Machine Basic Block is a landing pad.
-// static bool HasEHInfo(const MachineBasicBlock &MBB) {
-//  if (MBB.isEHPad() || MBB.isEHFuncletEntry())
-//    return true;
-//  for (auto &MI : MBB) {
-//    if (MI.isEHLabel())
-//      return true;
-//  }
-//  return false;
-//}
-
 bool MachineFunction::sortBasicBlockSections() {
   // This should only be done once no matter how many times it is called.
   if (this->BBSectionsSorted || !this->getBasicBlockSections())

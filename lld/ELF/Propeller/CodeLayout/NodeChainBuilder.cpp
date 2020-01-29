@@ -136,13 +136,19 @@ void NodeChainBuilder::coalesceChains() {
         if (!c1->CFG || !c2->CFG || c1->CFG != c2->CFG)
           error("Attempting to coalesce chains belonging to different "
                 "functions.");
+        // Always place the hot chains before cold ones
         if (c1->Freq == 0 ^ c2->Freq == 0)
           return c1->Freq != 0;
+
+        // Place the entry node's chain before other chains
         auto *entryNode = c1->CFG->getEntryNode();
         if (entryNode->Chain == c1)
           return true;
         if (entryNode->Chain == c2)
           return false;
+
+        // Sort chains in decreasing order of execution density, and break ties
+        // according to the initial ordering.
         double c1ExecDensity = c1->execDensity();
         double c2ExecDensity = c2->execDensity();
         if (c1ExecDensity == c2ExecDensity)
@@ -150,6 +156,7 @@ void NodeChainBuilder::coalesceChains() {
         return c1ExecDensity > c2ExecDensity;
       });
 
+  // We will merge all chains into at most two chains; a hot and cold one.
   NodeChain *mergerChain = nullptr;
 
   for (NodeChain *c : chainOrder) {
@@ -159,10 +166,11 @@ void NodeChainBuilder::coalesceChains() {
     }
     // Create a cold partition when -propeller-split-funcs is set.
     if (propellerConfig.optSplitFuncs &&
-        (mergerChain->Freq == 0 ^ c->Freq == 0)) {
+        (mergerChain->Freq != 0 && c->Freq == 0)) {
       mergerChain = c;
       continue;
     }
+    // Merge this chain into the merger chain
     mergeChains(mergerChain, c);
   }
 }
@@ -215,29 +223,39 @@ bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
   return true;
 }
 
+// This function merges the in-and-out chain-edges of one chain (mergeeChain) into those of another (mergerChain).
 void NodeChainBuilder::mergeInOutEdges(NodeChain *mergerChain,
                                        NodeChain *mergeeChain) {
+  // Add out-edges of mergeeChain to the out-edges of mergerChain
   for (auto &elem : mergeeChain->OutEdges) {
     NodeChain *c = (elem.first == mergeeChain) ? mergerChain : elem.first;
     auto res = mergerChain->OutEdges.emplace(c, elem.second);
+    // If the chain-edge is already present, just add the CFG edges, otherwise,
+    // add mergerChain to in-edges of the chain.
     if (!res.second)
       res.first->second.insert(res.first->second.end(), elem.second.begin(),
                                elem.second.end());
     else
       c->InEdges.insert(mergerChain);
 
+    // Remove mergeeChain from in-edges
     c->InEdges.erase(mergeeChain);
   }
 
+  // Add in-edges of mergeeChain to in-edges of mergerChain
   for (auto *c : mergeeChain->InEdges) {
+    // Self edges were already handled above.
     if (c == mergeeChain)
       continue;
+    // Move all CFG edges from being mapped to mergeeChain to being mapped to
+    // mergerChain.
     auto &mergeeChainEdges = c->OutEdges[mergeeChain];
     auto &mergerChainEdges = c->OutEdges[mergerChain];
 
     mergerChainEdges.insert(mergerChainEdges.end(), mergeeChainEdges.begin(),
                             mergeeChainEdges.end());
     mergerChain->InEdges.insert(c);
+    // Remove the defunct chain from out edges
     c->OutEdges.erase(mergeeChain);
   }
 }
@@ -256,52 +274,50 @@ void NodeChainBuilder::mergeChains(
 
   // Decide which chain gets merged into the other chain, to make the reordering
   // more efficient.
-  NodeChain *mergerChain = (assembly->MOrder == YX2X1)
+  NodeChain *mergerChain = (assembly->MOrder == US2S1)
                                ? assembly->unsplitChain()
                                : assembly->splitChain();
-  NodeChain *mergeeChain = (assembly->MOrder == YX2X1)
+  NodeChain *mergeeChain = (assembly->MOrder == US2S1)
                                ? assembly->splitChain()
                                : assembly->unsplitChain();
 
   // Merge in and out edges of the two chains
   mergeInOutEdges(mergerChain, mergeeChain);
 
-  // Create the new node order according the given assembly
-  auto X1Begin = assembly->splitChain()->Nodes.begin();
-  auto X2Begin = assembly->SlicePosition;
-  // Does X2 mark a function transition ?
-  bool X2FuncTransition = X2Begin != assembly->splitChain()->Nodes.begin() &&
-                          (*std::prev(X2Begin))->CFG != (*X2Begin)->CFG;
-  auto YBegin = assembly->unsplitChain()->Nodes.begin();
+  // Does S2 mark a function transition?
+  bool S2FuncTransition = assembly->splitsAtFunctionTransition();
 
-  // If splitChain is truly splitted, reorder the splitted parts from X1X2 to
-  // X2X1 if needed. We can do this using splice because we are splicing the
-  // same list.
-  if (assembly->split() &&
-      (assembly->MOrder == X2X1Y || assembly->MOrder == X2YX1 ||
-       assembly->MOrder == YX2X1))
-    assembly->splitChain()->Nodes.splice(X1Begin, assembly->splitChain()->Nodes,
-                                         X2Begin,
+  // Create the new node order according the given assembly
+  auto S1Begin = assembly->splitChain()->Nodes.begin();
+  auto S2Begin = assembly->SlicePosition;
+  auto UBegin = assembly->unsplitChain()->Nodes.begin();
+
+  // Reorder S1S2 to S2S1 if needed. This operation takes O(1) because we're
+  // splicing from and into the same list.
+  if (assembly->needsSplitChainRotation())
+    assembly->splitChain()->Nodes.splice(S1Begin,
+                                         assembly->splitChain()->Nodes,
+                                         S2Begin,
                                          assembly->splitChain()->Nodes.end());
 
   switch (assembly->MOrder) {
-  case X2X1Y:
-    // Splice Y at the end of X.
+  case S2S1U:
+    // Splice U at the end of S.
     assembly->splitChain()->Nodes.splice(assembly->splitChain()->Nodes.end(),
                                          assembly->unsplitChain()->Nodes);
     break;
-  case X1YX2:
-    // Splice Y in the middle
-    assembly->splitChain()->Nodes.splice(X2Begin,
+  case S1US2:
+    // Splice U in the middle
+    assembly->splitChain()->Nodes.splice(S2Begin,
                                          assembly->unsplitChain()->Nodes);
     break;
-  case X2YX1:
-    // Splice Y in the middle
-    assembly->splitChain()->Nodes.splice(X1Begin,
+  case S2US1:
+    // Splice U in the middle
+    assembly->splitChain()->Nodes.splice(S1Begin,
                                          assembly->unsplitChain()->Nodes);
     break;
-  case YX2X1:
-    // Splice X at the end of Y
+  case US2S1:
+    // Splice S at the end of U
     assembly->unsplitChain()->Nodes.splice(
         assembly->unsplitChain()->Nodes.end(), assembly->splitChain()->Nodes);
     break;
@@ -316,49 +332,47 @@ void NodeChainBuilder::mergeChains(
         mergeeChain->FunctionTransitions);
 
     // Add the beginnings of slices if they now mark a function transition.
-    std::vector<std::list<CFGNode *>::iterator> allSlicesBegin;
-    // YBegin should always be examined.
-    allSlicesBegin.push_back(YBegin);
-    // If X2Begin was a function transition point before, we don't examine it
-    // again as it will remain in the transition points.
-    if (!X2FuncTransition)
-      allSlicesBegin.push_back(X2Begin);
-    // X1Begin will only be examined if this is a splitting assembly. Otherwise,
-    // X1 is empty.
-    if (assembly->split())
-      allSlicesBegin.push_back(X1Begin);
+    std::vector<std::list<CFGNode *>::iterator> funcTransitionCandids;
+    // UBegin should always be examined.
+    funcTransitionCandids.push_back(UBegin);
+    // If S2Begin was a function transition point before, we don't examine it
+    // again as it will remain in the transition points (We never remove entries
+    // from FunctionTransitions).
+    if (!S2FuncTransition)
+      funcTransitionCandids.push_back(S2Begin);
+    // S1Begin will only be examined if this is a splitting assembly. Otherwise,
+    // S1 is empty.
+    if (assembly->splits())
+      funcTransitionCandids.push_back(S1Begin);
 
-    // Check if any of the slices mark a function transition position and add
-    // those to the function transition list.
-    for (auto it : allSlicesBegin)
+    // Check if any of the candidates mark a function transition position and add
+    // those to the function transition list of the mergerChain.
+    for (auto it : funcTransitionCandids)
       if (it != mergerChain->Nodes.begin() &&
           (*std::prev(it))->CFG != (*it)->CFG)
         mergerChain->FunctionTransitions.push_back(it);
   }
 
   // Set the starting and ending point for updating the nodes's chain and offset
-  // in the new chain.
+  // in the new chain. This helps to reduce the computation time.
   auto chainBegin = mergerChain->Nodes.begin();
   uint64_t chainBeginOffset = 0;
 
-  if (assembly->MOrder == X1YX2) {
-    chainBegin = YBegin;
+  if (assembly->MOrder == S1US2 || assembly->MOrder == US2S1) {
+    // We can skip the first slice (Slices[0]) in these cases.
+    chainBegin = assembly->Slices[1].Begin;
     chainBeginOffset = assembly->Slices[0].size();
   }
 
-  if (assembly->MOrder == YX2X1) {
-    chainBegin = X2Begin;
-    chainBeginOffset = assembly->Slices[0].size();
-  }
-
-  if (!assembly->split()) {
-    chainBegin = YBegin;
+  if (!assembly->splits()) {
+    // We can skip the S chain in this case.
+    chainBegin = UBegin;
     chainBeginOffset = assembly->splitChain()->Size;
   }
 
   uint64_t runningOffset = chainBeginOffset;
 
-  // Update nodeOffsetMap and nodeToChainMap for all the nodes in the sequence.
+  // Update chainOffset and the chain pointer for all the nodes in the sequence.
   for (auto it = chainBegin; it != mergerChain->Nodes.end(); ++it) {
     CFGNode *node = *it;
     node->Chain = mergerChain;
@@ -366,10 +380,11 @@ void NodeChainBuilder::mergeChains(
     runningOffset += node->ShSize;
   }
 
-  mergerChain->Size = runningOffset;
+  mergerChain->Size += mergeeChain->Size;
+  assert(mergerChain->Size == runningOffset && "Mismatch of merger chain's size and running offset!");
 
-  // Update the total frequency and ExtTSP score of the aggregated chain
-  mergerChain->Freq += mergerChain->Freq;
+  // Update the total frequency the aggregated chain
+  mergerChain->Freq += mergeeChain->Freq;
 
   // We have already computed the new score in the assembly record. So we can
   // update the score based on that and the other chain's score.
@@ -496,8 +511,10 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
 
   if (propellerConfig.optReorderIP && !doSplit) {
     // For inter-procedural layout, we always try splitting at the function
-    // entries, regardless of the split-chain's size.
+    // transition positions regardless of the split-chain's size.
     for (auto slicePos : splitChain->FunctionTransitions) {
+      if (slicePos == splitChain->Nodes.begin())
+        continue;
       for (uint8_t MI = MergeOrder::Begin; MI != MergeOrder::End; MI++) {
         MergeOrder mOrder = static_cast<MergeOrder>(MI);
 
@@ -753,8 +770,9 @@ void NodeChainBuilder::mergeAllChains() {
 
   for (CurrentComponent = 0; CurrentComponent < Components.size();
        ++CurrentComponent) {
-    fprintf(stderr, "COMPONENT: %u -> SIZE: %zu\n", CurrentComponent,
-            Components[CurrentComponent].size());
+    if (propellerConfig.optPrintStats)
+      fprintf(stderr, "COMPONENT: %u -> SIZE: %zu\n", CurrentComponent,
+              Components[CurrentComponent].size());
     // Initialize the Extended TSP algorithm's data.
     initializeExtTSP();
 
