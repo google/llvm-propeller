@@ -15,8 +15,8 @@
 // slices begin and end. The offsets allow effient computation of the gain in
 // ExtTSP score.
 //===----------------------------------------------------------------------===//
-#ifndef LLD_ELF_PROPELLER_NODE_CHAIN_ASSEMBLY_H
-#define LLD_ELF_PROPELLER_NODE_CHAIN_ASSEMBLY_H
+#ifndef LLD_ELF_PROPELLER_CODE_LAYOUT_NODE_CHAIN_ASSEMBLY_H
+#define LLD_ELF_PROPELLER_CODE_LAYOUT_NODE_CHAIN_ASSEMBLY_H
 
 #include "NodeChain.h"
 #include "PropellerCFG.h"
@@ -30,6 +30,8 @@ namespace propeller {
 double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
                           uint64_t srcSinkDistance);
 
+// This class defines a slices of a node chain, specified by iterators to the
+// beginning and end of the slice.
 class NodeChainSlice {
 public:
   // Chain from which this slice comes from
@@ -54,12 +56,19 @@ public:
       EndOffset = (*end)->ChainOffset;
   }
 
+  // Constructor for building a chain slice from a node chain containing all of
+  // its nodes.
+  NodeChainSlice(NodeChain *c) : Chain(c), Begin(c->Nodes.begin()), End(c->Nodes.end()), BeginOffset(0), EndOffset(c->Size) {}
+
   // (Binary) size of this slice
   uint64_t size() const { return EndOffset - BeginOffset; }
+
+  bool isEmpty() const {return Begin == End;}
 };
 
 // This enum represents the order in which three slices (S1, S2, and U) are
-// merged together.
+// merged together. We exclude S1S2U and US1S2 since they are respectively
+// equivalent to S2S1U (with S2 being empty) and U2U1S (with U2 being empty).
 enum MergeOrder {
   Begin,
   S2S1U = Begin,
@@ -70,6 +79,8 @@ enum MergeOrder {
   End
 };
 
+// This class defines a strategy for assembling two chains together with one of
+// the chains potentially split into two chains.
 class NodeChainAssembly {
 public:
   // The gain in ExtTSP score achieved by this NodeChainAssembly once it
@@ -82,7 +93,7 @@ public:
   // unsplitChain.
   std::pair<NodeChain *, NodeChain *> ChainPair;
 
-  // The slice position of splitchain
+  // The splitting position in splitchain
   std::list<CFGNode *>::iterator SlicePosition;
 
   // The three chain slices
@@ -92,15 +103,16 @@ public:
   MergeOrder MOrder;
 
   // The constructor for creating a NodeChainAssembly. slicePosition must be an
-  // iterator into chainX.
+  // iterator into splitChain->Nodes.
   NodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain,
                     std::list<CFGNode *>::iterator slicePosition,
                     MergeOrder mOrder)
       : ChainPair(splitChain, unsplitChain), SlicePosition(slicePosition),
         MOrder(mOrder) {
+    // Construct the slices.
     NodeChainSlice s1(splitChain, splitChain->Nodes.begin(), SlicePosition);
     NodeChainSlice s2(splitChain, SlicePosition, splitChain->Nodes.end());
-    NodeChainSlice u(unsplitChain, unsplitChain->Nodes.begin(), unsplitChain->Nodes.end());
+    NodeChainSlice u(unsplitChain);
 
     switch (MOrder) {
     case MergeOrder::S2S1U:
@@ -135,24 +147,24 @@ public:
                       uint8_t &idx) const;
 
   // This function computes the ExtTSP score for a chain assembly record. This
-  // goes the three BB slices in the assembly record and considers all edges
-  // whose source and sink belongs to the chains in the assembly record.
+  // goes over the three BB slices in the assembly record and considers all edges
+  // whose source and sink belong to the chains in the assembly record.
   double computeExtTSPScore() const;
 
   // First node in the resulting assembled chain.
   CFGNode *getFirstNode() const {
     for (auto &slice : Slices)
-      if (slice.Begin != slice.End)
+      if (!slice.isEmpty())
         return *slice.Begin;
     return nullptr;
   }
 
+  // Comparator for two NodeChainAssemblies. It compare ScoreGain and break ties
+  // consistently.
   struct CompareNodeChainAssembly {
     bool operator()(const std::unique_ptr<NodeChainAssembly> &a1,
                     const std::unique_ptr<NodeChainAssembly> &a2) const;
   };
-
-  friend class NodeChainBuilder;
 
   // We delete the copy constructor to make sure NodeChainAssembly is moved
   // rather than copied.
@@ -161,6 +173,9 @@ public:
   // NodeChainAssembly(NodeChainAssembly&) = delete;
   NodeChainAssembly() = delete;
 
+  // This returns a unique value for every different assembly record between two
+  // chains. When ChainPair is equal, this helps differentiate and compare the
+  // two assembly records.
   std::pair<uint8_t, size_t> assemblyStrategy() const {
     return std::make_pair(MOrder, (*SlicePosition)->MappedAddr);
   }
@@ -177,12 +192,9 @@ public:
     return (MOrder == S2S1U && splits()) || MOrder == S2US1 || MOrder == US2S1;
   }
 
-
   inline NodeChain *splitChain() const { return ChainPair.first; }
 
   inline NodeChain *unsplitChain() const { return ChainPair.second; }
-
-  inline MergeOrder mergeOrder() const { return MOrder; }
 };
 
 std::string toString(NodeChainAssembly &assembly);

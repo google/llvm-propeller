@@ -51,7 +51,7 @@
 //
 // Then, at every iteration, the algorithm tries to merge a pair of BB chains
 // which leads to the highest gain in the ExtTSP score. The algorithm extends
-// the search space by considering splitting short (less than 128 bytes in
+// the search space by considering splitting short (less than 1KBs in
 // binary size) BB chains into two chains and then merging these two chains with
 // the other chain in four ways. After every merge, the new merge gains are
 // updated. The algorithm repeats joining BB chains until no additional can be
@@ -77,7 +77,7 @@
 //     0.1)
 //
 //   * propeller-chain-split-threshold: maximum binary size of a BB chain which
-//     the algorithm will consider for splitting (default-set to 128).
+//     the algorithm will consider for splitting (default-set to 1KB).
 //
 // References:
 //   * [1] A. Newell and S. Pupyrev, Improved Basic Block Reordering, available
@@ -85,6 +85,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "NodeChainBuilder.h"
+
+#include "llvm/ADT/DenseSet.h"
+
+using llvm::DenseSet;
 
 using llvm::detail::DenseMapPair;
 
@@ -133,7 +137,7 @@ void NodeChainBuilder::coalesceChains() {
 
   std::sort(
       chainOrder.begin(), chainOrder.end(), [](NodeChain *c1, NodeChain *c2) {
-        if (!c1->CFG || !c2->CFG || c1->CFG != c2->CFG)
+        if (!c1->isSameCFG(*c2))
           error("Attempting to coalesce chains belonging to different "
                 "functions.");
         // Always place the hot chains before cold ones
@@ -182,17 +186,27 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
     error("Attempting to merge hot and cold chains: \n" + toString(*leftChain) +
           "\nAND\n" + toString(*rightChain));
 
+  if (leftChain->DebugChain || rightChain->DebugChain)
+    fprintf(stderr, "MERGING chains:\n%s\nAND%s\n",
+                toString(*leftChain).c_str(),
+                toString(*rightChain).c_str());
+
   mergeInOutEdges(leftChain, rightChain);
 
-  for (CFGNode *node : rightChain->Nodes) {
-    leftChain->Nodes.push_back(node);
-    node->Chain = leftChain;
-    node->ChainOffset += leftChain->Size;
+  auto rightChainBegin = rightChain->Nodes.begin();
+
+  leftChain->Nodes.splice(leftChain->Nodes.end(), rightChain->Nodes);
+
+  for (auto it = rightChainBegin; it != leftChain->Nodes.end(); ++it) {
+    (*it)->Chain = leftChain;
+    (*it)->ChainOffset += leftChain->Size;
   }
+
   leftChain->Size += rightChain->Size;
   leftChain->Freq += rightChain->Freq;
+
   leftChain->DebugChain |= rightChain->DebugChain;
-  if (leftChain->CFG != rightChain->CFG)
+  if (leftChain->CFG && leftChain->CFG != rightChain->CFG)
     leftChain->CFG = nullptr;
 
   Chains.erase(rightChain->DelegateNode->MappedAddr);
@@ -325,7 +339,7 @@ void NodeChainBuilder::mergeChains(
     break;
   }
 
-  if (propellerConfig.optReorderIP) {
+  if (propellerConfig.optReorderIP && !mergerChain->isSameCFG(*mergeeChain)) {
     // Merge function transitions of mergerChain with those of mergeeChain.
     mergerChain->FunctionTransitions.splice(
         mergerChain->FunctionTransitions.end(),
@@ -392,7 +406,7 @@ void NodeChainBuilder::mergeChains(
 
   mergerChain->DebugChain |= mergeeChain->DebugChain;
 
-  if (mergerChain->CFG != mergeeChain->CFG)
+  if (mergerChain->CFG && mergerChain->CFG!=mergeeChain->CFG)
     mergerChain->CFG = nullptr;
 
   // Merge the assembly candidate chains of the two chains into the candidate
@@ -512,9 +526,12 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   if (propellerConfig.optReorderIP && !doSplit) {
     // For inter-procedural layout, we always try splitting at the function
     // transition positions regardless of the split-chain's size.
-    for (auto slicePos : splitChain->FunctionTransitions) {
-      if (slicePos == splitChain->Nodes.begin())
+    for (auto FTIt = splitChain->FunctionTransitions.begin(); FTIt!=splitChain->FunctionTransitions.end();) {
+      auto slicePos = *FTIt;
+      if (slicePos == splitChain->Nodes.begin() || (*std::prev(slicePos))->CFG == (*slicePos)->CFG){
+        FTIt = splitChain->FunctionTransitions.erase(FTIt);
         continue;
+      }
       for (uint8_t MI = MergeOrder::Begin; MI != MergeOrder::End; MI++) {
         MergeOrder mOrder = static_cast<MergeOrder>(MI);
 
@@ -529,10 +546,11 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
         if (!bestAssembly || NodeChainAssemblyComparator(bestAssembly, NCA))
           bestAssembly = std::move(NCA);
       }
+      FTIt++;
     }
   }
 
-  // Insert the best assembly of the two chains (only if it has positive gain).
+  // Insert the best assembly of the two chains.
   if (bestAssembly) {
     if (splitChain->DebugChain || unsplitChain->DebugChain)
       fprintf(stderr, "INSERTING ASSEMBLY: %s\n",
@@ -664,7 +682,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
     MutuallyForcedOut.insert(elem);
 }
 
-// This function initializes the ExtTSP algorithm's data structures. This
+// This function initializes the ExtTSP algorithm's data structures;
 // the NodeChainAssemblies and the CandidateChains maps.
 void NodeChainBuilder::initializeExtTSP() {
   // For each chain, compute its ExtTSP score, add its chain assembly records
@@ -676,22 +694,23 @@ void NodeChainBuilder::initializeExtTSP() {
   DenseSet<std::pair<NodeChain *, NodeChain *>> visited;
 
   for (NodeChain *chain : Components[CurrentComponent]) {
+    auto& thisCandidateChains = CandidateChains[chain];
     for (auto &chainEdge : chain->OutEdges) {
       NodeChain *otherChain = chainEdge.first;
       if (chain == otherChain)
         continue;
-      if (visited.count(std::make_pair(chain, otherChain)))
+      std::pair<NodeChain*, NodeChain*> chainPair1(chain, otherChain), chainPair2(otherChain, chain);
+      auto p = std::less<std::pair<NodeChain*, NodeChain*>>()(chainPair1, chainPair2) ? chainPair1 : chainPair2;
+      if (!visited.insert(p).second)
         continue;
 
       bool x = updateNodeChainAssembly(chain, otherChain);
       bool y = updateNodeChainAssembly(otherChain, chain);
 
       if (x || y) {
-        CandidateChains[chain].insert(otherChain);
+        thisCandidateChains.insert(otherChain);
         CandidateChains[otherChain].insert(chain);
       }
-      visited.insert(std::make_pair(chain, otherChain));
-      visited.insert(std::make_pair(otherChain, chain));
     }
   }
 }
@@ -706,11 +725,10 @@ void NodeChainBuilder::initializeChainComponents() {
     if (!chain->Freq)
       continue;
     // Skip if this chain has already been assigned to a component.
-    if (chainToComponentMap.count(chain))
+    if (!chainToComponentMap.try_emplace(chain, componentId).second)
       continue;
     // Start creating the component containing this chain and its connected
     // chains.
-    chainToComponentMap[chain] = componentId;
     std::vector<NodeChain *> toVisit(1, chain);
     unsigned index = 0;
 
@@ -718,16 +736,12 @@ void NodeChainBuilder::initializeChainComponents() {
     while (index != toVisit.size()) {
       auto *tchain = toVisit[index++];
       for (auto *c : tchain->InEdges) {
-        if (!chainToComponentMap.count(c)) {
-          chainToComponentMap[c] = componentId;
+        if (chainToComponentMap.try_emplace(c, componentId).second)
           toVisit.push_back(c);
-        }
       }
       for (auto &e : tchain->OutEdges) {
-        if (!chainToComponentMap.count(e.first)) {
-          chainToComponentMap[e.first] = componentId;
+        if (chainToComponentMap.try_emplace(e.first, componentId).second)
           toVisit.push_back(e.first);
-        }
       }
     }
     Components.push_back(std::move(toVisit));
