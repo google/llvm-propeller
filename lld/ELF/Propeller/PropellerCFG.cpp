@@ -402,14 +402,21 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     return cfg;
   }
 
-  fprintf(stderr, "CFG: %s\n", cfg->Name.str().c_str());
-  for (auto &P : bbGroupSectionMap) {
-    CFGNode *node = P.second.first;
-    fprintf(stderr, "\t%s(%lu):", node->ShName.str().c_str(), node->Shndx);
-    for (SymbolEntry *SS : P.second.second) {
-      fprintf(stderr, " %s[%lu]", SS->Name.str().c_str(), SS->Ordinal);
+  if (cfg->DebugCFG) {
+    std::lock_guard<std::mutex> lockGuard(prop->Lock);
+    fprintf(stderr, "CFG node group: %s\n", cfg->Name.str().c_str());
+    for (auto &P : bbGroupSectionMap) {
+      CFGNode *node = P.second.first;
+      auto &symSet = P.second.second;
+      if (symSet.size() > 1) {
+        fprintf(stderr, "\t%s, shndx=%lu:", node->ShName.str().c_str(),
+                node->Shndx);
+        for (SymbolEntry *SS : symSet)
+          fprintf(stderr, " %s[ordinal=%lu]", SS->Name.str().c_str(),
+                  SS->Ordinal);
+        fprintf(stderr, "\n");
+      }
     }
-    fprintf(stderr, "\n");
   }
 
   for (auto &groupEntry : bbGroupSectionMap) {
