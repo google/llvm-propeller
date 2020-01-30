@@ -416,13 +416,13 @@ static CodeGenFileType getCodeGenFileType(BackendAction Action) {
 
 static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
                                       std::string FunctionsListFile) {
-  assert((Options.BasicBlockSections = llvm::BasicBlockSection::List) &&
+  assert((Options.BasicBlockSections == llvm::BasicBlockSection::List) &&
          "Invalid BasicBlock Section Type");
   if (FunctionsListFile.empty())
     return false;
 
-  std::ifstream FList(FunctionsListFile);
-  if (!FList.good()) {
+  std::ifstream fin(FunctionsListFile);
+  if (!fin.good()) {
     errs() << "Cannot open " + FunctionsListFile;
     return false;
   }
@@ -430,21 +430,19 @@ static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
   bool consumeBasicBlockIds = false;
   StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
       Options.BasicBlockSectionsList.end();
-  std::string Line;
-  bool AllBasicBlocks = false;
-
-  while ((std::getline(FList, Line)).good()) {
-    if (Line.empty())
+  std::string line;
+  while ((std::getline(fin, line)).good()) {
+    if (line.empty())
       continue;
-    if (Line.find("#AllBB") != std::string::npos) {
-      AllBasicBlocks = true;
-      continue;
+    if (line.find("#AllBB") != std::string::npos) {
+      errs() << "#AllBB no longer supported.";
+      return false;
     }
-    if (Line[0] == '@')
-      continue; // Only @ lines can appear before ! lines.
-    if (Line[0] != '!')
+    if (line[0] == '@' || line[0] == '#')
+      continue; // Only @, # or empty lines can appear before ! lines.
+    if (line[0] != '!')
       break;
-    StringRef S(Line);
+    StringRef S(line);
     if (S.consume_front("!") && !S.empty()) {
       if (consumeBasicBlockIds && S.consume_front("!")) {
         assert(currentFuncI != Options.BasicBlockSectionsList.end());
@@ -457,11 +455,10 @@ static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
         currentFuncI->second.insert(0);
         consumeBasicBlockIds = true;
       }
-    } else {
+    } else
       consumeBasicBlockIds = false;
-    }
   }
-  return AllBasicBlocks;
+  return true;
 }
 
 static void initTargetOptions(llvm::TargetOptions &Options,
@@ -531,9 +528,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
           .Case("none", llvm::BasicBlockSection::None)
           .Default(llvm::BasicBlockSection::List);
 
-  if (Options.BasicBlockSections == llvm::BasicBlockSection::List &&
-      getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections))
-    Options.BasicBlockSections = llvm::BasicBlockSection::Func;
+  if (Options.BasicBlockSections == llvm::BasicBlockSection::List)
+    getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections);
 
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;

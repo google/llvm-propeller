@@ -143,6 +143,7 @@ bb_section_allinterp_flags  = $(call gen_build_flags,"-funique-internal-funcname
 # $2 is llvm enabled projects
 # $3 is target
 define build_compiler
+	set -o pipefail ; \
 	export TOOLCHAIN="$(shell if [[ "$@" == "stage1/install/bin/clang" ]]; then echo "$(RELEASE_LLVM_BIN)" ; else echo "$(DDIR)/stage1/install/bin" ; fi)" ; \
 	export COMP_DIR="$(DDIR)/$(shell echo $@ | sed -Ee 's!([^/]+)/.*!\1!')" ; \
 	if [[ -z "$${COMP_DIR}" ]]; then echo "Invalid dir name" ; exit 1; fi ; \
@@ -165,7 +166,7 @@ define build_compiler
             -DLLVM_ENABLE_PROJECTS=$(2)                 \
             $(LLVM_PROJECT)/llvm;                       \
 	fi ; \
-	ninja -j$(J_NUMBER) -C $${COMP_DIR}/build $(3) 2>&1 | tee $${COMP_DIR}.autolog ; \
+	ninja -j$(J_NUMBER) -C $${COMP_DIR}/build $(3) 2>&1 | tee $${COMP_DIR}.autolog || exit 1; \
 	if ! echo "int main() {return 0;}" | $${COMP_DIR}/build/bin/clang -x c -c - -o ./build_compiler.tmpout ; then \
 		echo Failed; exit 1 ; \
 	else \

@@ -442,15 +442,20 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
   PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
   OptSize = F.hasOptSize();
 
+  /// Check if basic block sections must be enabled for this function.
+  /// Two basic block section modes are supported:
+  ///  1. "All" mode where where every block is placed in a separate section.
+  ///  2. "List" mode where the list of functions that needs sections is
+  ///  specified in a file.
   if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::All)
     F.setBasicBlockSections(true);
 
-  if (TM &&
-      (TM->getBasicBlockSections() == llvm::BasicBlockSection::List ||
-       TM->getBasicBlockSections() == llvm::BasicBlockSection::Func) &&
+  if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::List &&
       TM->isFunctionInBasicBlockSectionsList(F.getName()))
     F.setBasicBlockSections(true);
 
+  /// Check if basic block labels must be enabled for this function.  Each
+  /// basic block in this function gets a unique symbol (label).
   if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::Labels)
     F.setBasicBlockLabels(true);
 
