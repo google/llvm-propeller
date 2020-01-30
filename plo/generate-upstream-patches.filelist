@@ -102,7 +102,7 @@ declare ALL_FILES=(
         lld-reorder      lld/test/ELF/symbol-alignment-file.s
 # LLVM patch begins here.
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
-        exception        llvm/include/llvm/CodeGen/AsmPrinterHandler.h
+        cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
         base_1           llvm/include/llvm/CodeGen/CommandFlags.inc
         debuginfo        llvm/include/llvm/CodeGen/DebugHandlerBase.h
         base_2           llvm/include/llvm/CodeGen/MachineBasicBlock.h
