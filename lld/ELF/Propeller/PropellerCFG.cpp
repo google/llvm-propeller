@@ -99,36 +99,6 @@ CFGEdge *ControlFlowGraph::createEdge(CFGNode *from, CFGNode *to,
 // Apply counter (cnt) to all edges between node from -> to. Both nodes are from
 // the same cfg.
 bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
-  if (from == nullptr) {
-    // If the from node is null, walk backward from the to node while only
-    // one INTRA_FUNC incoming edge is found.
-    assert(to != nullptr);
-    CFGNode *p = to;
-    do {
-      if (p->Ins.size() == 1 && p->Ins.front()->isFTEdge()) {
-        p->Ins.front()->Weight += cnt;
-        p = p->Ins.front()->Src;
-      } else
-        p = nullptr;
-    } while (p && p != to);
-    return true;
-  }
-
-  if (to == nullptr) {
-    // If the to node is null, walk forward from the from node while only
-    // one INTRA_FUNC outgoing edge is found.
-    assert(from != nullptr);
-    CFGNode *p = from;
-    do {
-      if (p->Outs.size() == 1 && p->Outs.front()->isFTEdge()) {
-        p->Outs.front()->Weight += cnt;
-        p = p->Outs.front()->Sink;
-      } else
-        p = nullptr;
-    } while (p && p != from);
-    return true;
-  }
-
   assert(from->CFG == to->CFG);
   if (from == to)
     return true;
@@ -144,10 +114,8 @@ bool ControlFlowGraph::markPath(CFGNode *from, CFGNode *to, uint64_t cnt) {
     } else
       p = nullptr;
   }
-  if (!p) { // Fallthroughs break between from and to.
-    warn("Fallthrough break between " + from->ShName + " and " + to->ShName);
+  if (!p) // Fallthroughs break between from and to.
     return false;
-  }
 
   for (auto *e : fallThroughEdges)
     e->Weight += cnt;

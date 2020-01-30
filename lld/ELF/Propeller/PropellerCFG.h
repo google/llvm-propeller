@@ -201,7 +201,6 @@ public:
     if (Nodes.empty())
       return false;
     return Hot;
-    // return (getEntryNode()->Freq != 0);
   }
 
   template <class Visitor> void forEachNodeRef(Visitor V) {

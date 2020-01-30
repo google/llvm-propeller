@@ -517,11 +517,6 @@ void Propeller::calculateNodeFreqs() {
           node.FTEdge->Weight = node.Freq;
       }
     });
-
-    /*
-    if (cfg->Hot && cfg->getEntryNode()->Freq == 0)
-      cfg->getEntryNode()->Freq = 1;
-      */
   }
 }
 
