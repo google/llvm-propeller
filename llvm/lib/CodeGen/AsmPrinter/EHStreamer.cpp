@@ -332,8 +332,12 @@ void EHStreamer::computeCallSiteTable(
         PreviousIsInvoke = false;
       } else {
         // This try-range is for an invoke.
-        CallSiteEntry Site = {BeginLabel, LastLabel, LandingPad,
-                              FirstActions[P.PadIndex]};
+        CallSiteEntry Site = {
+          BeginLabel,
+          LastLabel,
+          LandingPad,
+          FirstActions[P.PadIndex]
+        };
 
         // Try to merge with the previous call-site. SJLJ doesn't do this
         if (PreviousIsInvoke && !IsSJLJ) {
@@ -446,10 +450,9 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
   bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
   bool IsWasm = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::Wasm;
-
   unsigned CallSiteEncoding =
-      IsSJLJ ? static_cast<unsigned>(dwarf::DW_EH_PE_udata4)
-             : Asm->getObjFileLowering().getCallSiteEncoding();
+      IsSJLJ ? static_cast<unsigned>(dwarf::DW_EH_PE_udata4) :
+               Asm->getObjFileLowering().getCallSiteEncoding();
   bool HaveTTData = !TypeInfos.empty() || !FilterIds.empty();
 
   // Type infos.
@@ -499,8 +502,9 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   Asm->EmitAlignment(Align(4));
 
   // Emit the LSDA.
-  MCSymbol *GCCETSym = Asm->OutContext.getOrCreateSymbol(
-      Twine("GCC_except_table") + Twine(Asm->getFunctionNumber()));
+  MCSymbol *GCCETSym =
+    Asm->OutContext.getOrCreateSymbol(Twine("GCC_except_table")+
+                                      Twine(Asm->getFunctionNumber()));
   Asm->OutStreamer->EmitLabel(GCCETSym);
   MCSymbol *CstEndLabel = Asm->createTempSymbol("cst_end");
 
@@ -546,8 +550,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       // Index of the call site entry.
       if (VerboseAsm) {
         Asm->OutStreamer->AddComment(">> Call Site " + Twine(idx) + " <<");
-        Asm->OutStreamer->AddComment("  On exception at call site " +
-                                     Twine(idx));
+        Asm->OutStreamer->AddComment("  On exception at call site "+Twine(idx));
       }
       Asm->EmitULEB128(idx);
 
@@ -705,9 +708,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
   // Emit the Action Table.
   int Entry = 0;
-  for (SmallVectorImpl<ActionEntry>::const_iterator I = Actions.begin(),
-                                                    E = Actions.end();
-       I != E; ++I) {
+  for (SmallVectorImpl<ActionEntry>::const_iterator
+         I = Actions.begin(), E = Actions.end(); I != E; ++I) {
     const ActionEntry &Action = *I;
 
     if (VerboseAsm) {
