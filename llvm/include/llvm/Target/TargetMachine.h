@@ -266,8 +266,7 @@ public:
   /// Return true if a given function's name in the list of functions for which
   /// basic block sections must be generated.
   bool isFunctionInBBSectionsList(const StringRef &name) const {
-    return Options.BBSectionsList.find(name) !=
-           Options.BBSectionsList.end();
+    return Options.BBSectionsList.find(name) != Options.BBSectionsList.end();
   }
 
   /// For a given function, return the set of basic block id's that must be

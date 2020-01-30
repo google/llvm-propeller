@@ -63,8 +63,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     MCContext &Ctx = MF->getContext();
     auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
 
-    bool BasicBlockSymbols =
-        MF->getBBSections() || MF->getBasicBlockLabels();
+    bool BasicBlockSymbols = MF->getBBSections() || MF->getBasicBlockLabels();
     auto Delimiter = BasicBlockSymbols ? "." : "_";
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
 
