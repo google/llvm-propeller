@@ -1,4 +1,4 @@
-//===-------------------- PropellerELFCfg.h -------------------------------===//
+//===-------------------- PropellerELFCFG.h -------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -201,7 +201,6 @@ public:
     if (Nodes.empty())
       return false;
     return Hot;
-    // return (getEntryNode()->Freq != 0);
   }
 
   template <class Visitor> void forEachNodeRef(Visitor V) {
@@ -240,7 +239,7 @@ public:
   bool buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping);
 
 protected:
-  //
+  // Group symbols according to function boundary.
   std::map<StringRef, std::list<SymbolRef>> buildPreCFGGroups();
 
   // See implementaion comments in .cpp.
@@ -261,6 +260,7 @@ protected:
   // Build a map from section "Idx" -> Section that relocates this
   // section. Only used during building phase.
   std::map<uint64_t, section_iterator> buildRelocationSectionMap();
+
   // Build a map from section "Idx" -> node representing "Idx". Only
   // used during building phase.
   void buildShndxNodeMap(std::map<uint64_t, std::unique_ptr<CFGNode>> &nodeMap,

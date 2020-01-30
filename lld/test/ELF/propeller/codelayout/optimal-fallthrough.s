@@ -30,7 +30,10 @@
 ## as a fallthrough edge. However, the optimal ordering is foo -> a.BB.foo -> aaa.BB.foo.
 ## This example is motivated by Figure 6 in https://arxiv.org/pdf/1809.04676.pdf.
 
-# RUN: echo "Symbols" > %t_prof.propeller
+# RUN: echo "!foo" > %t_prof.propeller
+# RUN: echo "!!1" >> %t_prof.propeller
+# RUN: echo "!!3" >> %t_prof.propeller
+# RUN: echo "Symbols" >> %t_prof.propeller
 # RUN: echo "1 12 Nfoo" >> %t_prof.propeller
 # RUN: echo "2 5 1.1" >> %t_prof.propeller
 # RUN: echo "3 4 1.2" >> %t_prof.propeller

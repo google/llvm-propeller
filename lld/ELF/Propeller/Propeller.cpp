@@ -399,7 +399,7 @@ void Propeller::processFile(ObjectView *view) {
     std::map<uint64_t, uint64_t> OrdinalRemapping;
     if (CFGBuilder(view).buildCFGs(OrdinalRemapping)) {
       // Updating global data structure.
-      std::lock_guard<std::mutex> lock(Lock);
+      std::lock_guard<std::mutex> lockGuard(Lock);
       Views.emplace_back(view);
       for (std::pair<const StringRef, std::unique_ptr<ControlFlowGraph>> &P :
            view->CFGs) {
@@ -517,11 +517,6 @@ void Propeller::calculateNodeFreqs() {
           node.FTEdge->Weight = node.Freq;
       }
     });
-
-    /*
-    if (cfg->Hot && cfg->getEntryNode()->Freq == 0)
-      cfg->getEntryNode()->Freq = 1;
-      */
   }
 }
 

@@ -51,7 +51,13 @@
 ##                aaa.BB.bar
 ##
 
-# RUN: echo "Symbols" > %t_prof.propeller
+# RUN: echo "!foo" > %t_prof.propeller
+# RUN: echo "!bar" >> %t_prof.propeller
+# RUN: echo "!!1" >> %t_prof.propeller
+# RUN: echo "!!2" >> %t_prof.propeller
+# RUN: echo "!!3" >> %t_prof.propeller
+# RUN: echo "!qux" >> %t_prof.propeller
+# RUN: echo "Symbols" >> %t_prof.propeller
 # RUN: echo "1 8 Nfoo" >> %t_prof.propeller
 # RUN: echo "2 20 Nbar" >> %t_prof.propeller
 # RUN: echo "3 9 2.1" >> %t_prof.propeller
