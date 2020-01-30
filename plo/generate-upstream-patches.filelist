@@ -125,7 +125,7 @@ declare ALL_FILES=(
         exception        llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
         debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfCompileUnit.cpp
         debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfDebug.cpp
-        exception        llvm/lib/CodeGen/AsmPrinter/DwarfException.h
+        cfi              llvm/lib/CodeGen/AsmPrinter/DwarfException.h
         exception        llvm/lib/CodeGen/AsmPrinter/EHStreamer.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/EHStreamer.h
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.cpp
