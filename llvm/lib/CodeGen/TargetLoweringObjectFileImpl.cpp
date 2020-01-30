@@ -753,6 +753,7 @@ MCSection *TargetLoweringObjectFileELF::getSectionForConstant(
   return DataRelROSection;
 }
 
+/// Returns a unique section for the given machine basic block.
 MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
     const Function &F, const MachineBasicBlock &MBB,
     const TargetMachine &TM) const {
@@ -774,6 +775,7 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
                                     GroupName, UniqueID);
 }
 
+/// Returns the cold section in which this basic block belongs.
 MCSection *TargetLoweringObjectFileELF::getColdSectionForMachineBasicBlock(
     const Function &F, const MachineBasicBlock &MBB,
     const TargetMachine &TM) const {
@@ -798,6 +800,7 @@ MCSection *TargetLoweringObjectFileELF::getColdSectionForMachineBasicBlock(
                                     GroupName);
 }
 
+/// Returns the exception section in which this basic block belongs.
 MCSection *TargetLoweringObjectFileELF::getEHSectionForMachineBasicBlock(
     const Function &F, const MachineBasicBlock &MBB,
     const TargetMachine &TM) const {

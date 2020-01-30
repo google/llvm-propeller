@@ -182,12 +182,14 @@ void MachineFunction::init() {
     Alignment = std::max(Alignment,
                          STI->getTargetLowering()->getPrefFunctionAlignment());
 
+  // Check if basic block sections are required for this function.
   if (Target.getBasicBlockSections() == llvm::BasicBlockSection::All ||
       F.getBasicBlockSections() ||
       (Target.getBasicBlockSections() == llvm::BasicBlockSection::List &&
        Target.isFunctionInBasicBlockSectionsList(F.getName())))
     BasicBlockSections = true;
 
+  // Check if basic block labels are required for this function.
   if (Target.getBasicBlockSections() == llvm::BasicBlockSection::Labels ||
       F.getBasicBlockLabels())
     BasicBlockLabels = true;
@@ -348,6 +350,13 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
   MBBNumbering.resize(BlockNo);
 }
 
+/// This function sorts basic blocks according to the sections in which they are
+/// emitted.  Basic block sections automatically turn on function sections so
+/// the entry block is in the function section.  The other sections that are
+/// created are:
+/// 1) Exception section - basic blocks that are landing pads
+/// 2) Cold section - basic blocks that will not have unique sections.
+/// 3) Unique section - one per basic block that is emitted in a unique section.
 bool MachineFunction::sortBasicBlockSections() {
   // This should only be done once no matter how many times it is called.
   if (this->BBSectionsSorted || !this->getBasicBlockSections())
@@ -361,7 +370,6 @@ bool MachineFunction::sortBasicBlockSections() {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.  Entry basic block cannot
     // a section because the function starts one.
-    // bool UsesEHInfo = HasEHInfo(MBB);
     if (MBB.getNumber() == this->front().getNumber()) {
       if (MBB.isEHPad())
         MBB.setExceptionSection();
@@ -390,7 +398,8 @@ bool MachineFunction::sortBasicBlockSections() {
     MBB.insertUnconditionalFallthroughBranch();
   }
 
-  // Order : Entry Block, Cold Section, Other Unique Sections.
+  // Order : Entry Block, Exception Section, Cold Section,
+  // Other Unique Sections.
   auto SectionType = ([&](MachineBasicBlock &X) {
     if (X.getNumber() == this->front().getNumber() && !X.isExceptionSection())
       return 0;
@@ -408,8 +417,8 @@ bool MachineFunction::sortBasicBlockSections() {
     return (TypeX != TypeY) ? TypeX < TypeY : MBBOrder[&X] < MBBOrder[&Y];
   }));
 
-  // Set begin and end sections for cold basic blocks.  With this more sections
-  // can be added if needed.
+  // Set the basic block that begins or ends every section.  For unique
+  // sections, the same basic block begins and ends it.
   MachineBasicBlock *PrevMBB = nullptr;
   for (auto &MBB : *this) {
     // Entry block
@@ -432,6 +441,9 @@ bool MachineFunction::sortBasicBlockSections() {
   return true;
 }
 
+/// This is used with -fbasicblock-sections or -fbasicblock-labels option.
+/// A unary encoding of basic block labels is done to keep ".strtab" sizes
+/// small.  
 void MachineFunction::setBasicBlockLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
