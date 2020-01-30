@@ -118,6 +118,7 @@ declare ALL_FILES=(
         base_1           llvm/include/llvm/Target/TargetOptions.h
         base_2           llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
+        cfi              llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
         debuginfo        llvm/lib/CodeGen/AsmPrinter/DebugHandlerBase.cpp
         debugassert      llvm/lib/CodeGen/AsmPrinter/DebugLocStream.h
         cfi              llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
