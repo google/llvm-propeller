@@ -415,7 +415,7 @@ static CodeGenFileType getCodeGenFileType(BackendAction Action) {
 }
 
 static bool getBBSectionsList(llvm::TargetOptions &Options,
-                                      std::string FunctionsListFile) {
+                              std::string FunctionsListFile) {
   assert((Options.BBSections == llvm::BasicBlockSection::List) &&
          "Invalid BasicBlock Section Type");
   if (FunctionsListFile.empty())
@@ -520,13 +520,12 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
 
-  Options.BBSections =
-      llvm::StringSwitch<llvm::BasicBlockSection::SectionMode>(
-          CodeGenOpts.BBSections)
-          .Case("all", llvm::BasicBlockSection::All)
-          .Case("labels", llvm::BasicBlockSection::Labels)
-          .Case("none", llvm::BasicBlockSection::None)
-          .Default(llvm::BasicBlockSection::List);
+  Options.BBSections = llvm::StringSwitch<llvm::BasicBlockSection::SectionMode>(
+                           CodeGenOpts.BBSections)
+                           .Case("all", llvm::BasicBlockSection::All)
+                           .Case("labels", llvm::BasicBlockSection::Labels)
+                           .Case("none", llvm::BasicBlockSection::None)
+                           .Default(llvm::BasicBlockSection::List);
 
   if (Options.BBSections == llvm::BasicBlockSection::List)
     getBBSectionsList(Options, CodeGenOpts.BBSections);
