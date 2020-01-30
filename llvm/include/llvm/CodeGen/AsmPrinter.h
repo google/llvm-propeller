@@ -233,8 +233,7 @@ public:
     auto r = ExceptionSymbols.find(MBB);
     if (r == ExceptionSymbols.end())
       return getCurExceptionSym();
-    else
-      return r->second;
+    return r->second;
   }
 
   /// Return information about object file lowering.
