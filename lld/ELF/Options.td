@@ -347,7 +347,7 @@ defm propeller_backward_jump_distance: Eq<"propeller-backward-jump-distance",
     "Maximum distance for a backward jump in ExtTSP algorithm (default: 640).">;
 
 defm propeller_chain_split_threshold: Eq<"propeller-chain-split-threshold",
-    "Maximum binary size of a chain which could be split in ExtTSP algorithm (default: 128).">;
+    "Maximum binary size of a chain which could be split in ExtTSP algorithm (default: 1024).">;
 
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
@@ -393,9 +393,6 @@ def start_lib: F<"start-lib">,
 def strip_all: F<"strip-all">, HelpText<"Strip all symbols">;
 
 def strip_debug: F<"strip-debug">, HelpText<"Strip debugging information">;
-
-defm symbol_alignment_file:
-  Eq<"symbol-alignment-file", "Overwrite alignment for symbols.">;
 
 defm symbol_ordering_file:
   Eq<"symbol-ordering-file", "Layout sections to place symbols in the order specified by symbol ordering file">;

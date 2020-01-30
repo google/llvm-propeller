@@ -99,7 +99,6 @@ declare ALL_FILES=(
         lld-reorder      lld/test/ELF/propeller/codelayout/function-with-loop.s
         lld-reorder      lld/test/ELF/propeller/codelayout/optimal-fallthrough.s
         lld-reorder      lld/test/ELF/propeller/codelayout/opt-all-combinations.s
-        lld-reorder      lld/test/ELF/symbol-alignment-file.s
 # LLVM patch begins here.
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h

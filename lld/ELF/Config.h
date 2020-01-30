@@ -135,7 +135,6 @@ struct Configuration {
   std::vector<llvm::StringRef> auxiliaryList;
   std::vector<llvm::StringRef> filterList;
   std::vector<llvm::StringRef> searchPaths;
-  llvm::StringMap<unsigned> symbolAlignmentFile;
   std::vector<llvm::StringRef> symbolOrderingFile;
   std::vector<llvm::StringRef> undefined;
   std::vector<SymbolVersion> dynamicList;
