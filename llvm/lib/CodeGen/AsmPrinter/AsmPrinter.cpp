@@ -1175,6 +1175,10 @@ void AsmPrinter::EmitFunctionBody() {
       MBB.setEndMCSymbol(CurrentBBEnd);
       OutStreamer->emitELFSize(MBB.getSymbol(), SizeExp);
     }
+    // If this is the end of the section, nullify the exception symbol to ensure
+    // a new symbol is created for the next basicblock section.
+    if (emitBasicBlockSections && MBB.isEndSection())
+      CurExceptionSym = nullptr;
     EmitBasicBlockEnd(MBB);
   }
 
@@ -3076,7 +3080,6 @@ void AsmPrinter::EmitBasicBlockEnd(const MachineBasicBlock &MBB) {
     for (const HandlerInfo &HI : Handlers) {
       HI.Handler->endBasicBlock(MBB);
     }
-    CurExceptionSym = nullptr;
   }
 }
 
