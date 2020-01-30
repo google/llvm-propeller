@@ -956,21 +956,21 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.TrapFuncName = Args.getLastArgValue(OPT_ftrap_function_EQ);
   Opts.UseInitArray = !Args.hasArg(OPT_fno_use_init_array);
 
-  Opts.BasicBlockSections =
+  Opts.BBSections =
       Args.getLastArgValue(OPT_fbasicblock_sections_EQ, "none");
-  if (Opts.BasicBlockSections != "all" && Opts.BasicBlockSections != "labels" &&
-      Opts.BasicBlockSections != "none" &&
-      !llvm::sys::fs::exists(Opts.BasicBlockSections)) {
+  if (Opts.BBSections != "all" && Opts.BBSections != "labels" &&
+      Opts.BBSections != "none" &&
+      !llvm::sys::fs::exists(Opts.BBSections)) {
     Diags.Report(diag::err_drv_invalid_value)
         << Args.getLastArg(OPT_fbasicblock_sections_EQ)->getAsString(Args)
-        << Opts.BasicBlockSections;
+        << Opts.BBSections;
   }
 
   // Basic Block Sections implies Function Sections.
   Opts.FunctionSections =
       Args.hasFlag(OPT_ffunction_sections, OPT_fno_function_sections, false) ||
-      (Opts.BasicBlockSections != "none" &&
-       Opts.BasicBlockSections != "labels");
+      (Opts.BBSections != "none" &&
+       Opts.BBSections != "labels");
 
   Opts.DataSections = Args.hasFlag(OPT_fdata_sections,
                                    OPT_fno_data_sections, false);

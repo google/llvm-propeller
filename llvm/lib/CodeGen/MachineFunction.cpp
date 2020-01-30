@@ -183,14 +183,14 @@ void MachineFunction::init() {
                          STI->getTargetLowering()->getPrefFunctionAlignment());
 
   // Check if basic block sections are required for this function.
-  if (Target.getBasicBlockSections() == llvm::BasicBlockSection::All ||
-      F.getBasicBlockSections() ||
-      (Target.getBasicBlockSections() == llvm::BasicBlockSection::List &&
-       Target.isFunctionInBasicBlockSectionsList(F.getName())))
-    BasicBlockSections = true;
+  if (Target.getBBSections() == llvm::BasicBlockSection::All ||
+      F.getBBSections() ||
+      (Target.getBBSections() == llvm::BasicBlockSection::List &&
+       Target.isFunctionInBBSectionsList(F.getName())))
+    BBSections = true;
 
   // Check if basic block labels are required for this function.
-  if (Target.getBasicBlockSections() == llvm::BasicBlockSection::Labels ||
+  if (Target.getBBSections() == llvm::BasicBlockSection::Labels ||
       F.getBasicBlockLabels())
     BasicBlockLabels = true;
 
@@ -357,15 +357,15 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
 /// 1) Exception section - basic blocks that are landing pads
 /// 2) Cold section - basic blocks that will not have unique sections.
 /// 3) Unique section - one per basic block that is emitted in a unique section.
-bool MachineFunction::sortBasicBlockSections() {
+bool MachineFunction::sortBBSections() {
   // This should only be done once no matter how many times it is called.
-  if (this->BBSectionsSorted || !this->getBasicBlockSections())
+  if (this->BBSectionsSorted || !this->getBBSections())
     return false;
 
   DenseMap<const MachineBasicBlock *, unsigned> MBBOrder;
   unsigned MBBOrderN = 0;
 
-  SmallSet<unsigned, 4> S = Target.getBasicBlockSectionsSet(F.getName());
+  SmallSet<unsigned, 4> S = Target.getBBSectionsSet(F.getName());
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.  Entry basic block cannot
@@ -378,7 +378,7 @@ bool MachineFunction::sortBasicBlockSections() {
     // Also, check if this BB is a cold basic block in which case sections
     // are not required with the list option.
     bool isColdBB =
-        ((Target.getBasicBlockSections() == llvm::BasicBlockSection::List) &&
+        ((Target.getBBSections() == llvm::BasicBlockSection::List) &&
          !S.count(MBB.getNumber()));
     if (MBB.isEHPad()) {
       MBB.setExceptionSection();

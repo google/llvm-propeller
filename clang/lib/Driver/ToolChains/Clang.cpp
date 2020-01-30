@@ -2474,10 +2474,10 @@ static void CollectArgsForIntegratedAssembler(Compilation &C,
 
   // Basic Block Sections needs relocations via symbols for linker to do
   // relaxation easily.
-  auto BasicBlockSections =
+  auto BBSections =
       Args.getLastArgValue(options::OPT_fbasicblock_sections_EQ, "none");
 
-  if (BasicBlockSections != "none" && BasicBlockSections != "labels")
+  if (BBSections != "none" && BBSections != "labels")
     CmdArgs.push_back("-mrelocate-with-symbols");
 
   // forward -fembed-bitcode to assmebler

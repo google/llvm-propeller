@@ -344,7 +344,7 @@ class MachineFunction {
   // True if basic block sections that are generated have been sorted.
   bool BBSectionsSorted = false;
   // True if sections must be generated for all basic blocks.
-  bool BasicBlockSections = false;
+  bool BBSections = false;
   // True if labels must be generated for all basic blocks.
   bool BasicBlockLabels = false;
 
@@ -485,10 +485,10 @@ public:
   unsigned getFunctionNumber() const { return FunctionNumber; }
 
   /// Returns true if this function has basic block sections enabled.
-  bool getBasicBlockSections() const { return BasicBlockSections; }
+  bool getBBSections() const { return BBSections; }
 
   /// Sort the basic blocks according to the sections they belong to.
-  bool sortBasicBlockSections();
+  bool sortBBSections();
 
   /// Indicates that basic block Labels are to be generated for this function.
   void setBasicBlockLabels();

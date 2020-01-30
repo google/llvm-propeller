@@ -900,7 +900,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->ltoObjPath = args.getLastArgValue(OPT_lto_obj_path_eq);
   config->ltoPartitions = args::getInteger(args, OPT_lto_partitions, 1);
   config->ltoSampleProfile = args.getLastArgValue(OPT_lto_sample_profile);
-  config->ltoBasicBlockSections =
+  config->ltoBBSections =
       args.getLastArgValue(OPT_lto_basicblock_sections);
   config->ltoUniqueBBSectionNames =
       args.hasFlag(OPT_lto_unique_bb_section_names,

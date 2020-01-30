@@ -414,9 +414,9 @@ static CodeGenFileType getCodeGenFileType(BackendAction Action) {
   }
 }
 
-static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
+static bool getBBSectionsList(llvm::TargetOptions &Options,
                                       std::string FunctionsListFile) {
-  assert((Options.BasicBlockSections == llvm::BasicBlockSection::List) &&
+  assert((Options.BBSections == llvm::BasicBlockSection::List) &&
          "Invalid BasicBlock Section Type");
   if (FunctionsListFile.empty())
     return false;
@@ -429,7 +429,7 @@ static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
 
   bool consumeBasicBlockIds = false;
   StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
-      Options.BasicBlockSectionsList.end();
+      Options.BBSectionsList.end();
   std::string line;
   while ((std::getline(fin, line)).good()) {
     if (line.empty())
@@ -445,11 +445,11 @@ static bool getBasicBlockSectionsList(llvm::TargetOptions &Options,
     StringRef S(line);
     if (S.consume_front("!") && !S.empty()) {
       if (consumeBasicBlockIds && S.consume_front("!")) {
-        assert(currentFuncI != Options.BasicBlockSectionsList.end());
+        assert(currentFuncI != Options.BBSectionsList.end());
         currentFuncI->second.insert(std::stoi(S));
       } else {
         // Start a new function.
-        auto R = Options.BasicBlockSectionsList.try_emplace(S.split('/').first);
+        auto R = Options.BBSectionsList.try_emplace(S.split('/').first);
         assert(R.second);
         currentFuncI = R.first;
         currentFuncI->second.insert(0);
@@ -520,16 +520,16 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
 
-  Options.BasicBlockSections =
+  Options.BBSections =
       llvm::StringSwitch<llvm::BasicBlockSection::SectionMode>(
-          CodeGenOpts.BasicBlockSections)
+          CodeGenOpts.BBSections)
           .Case("all", llvm::BasicBlockSection::All)
           .Case("labels", llvm::BasicBlockSection::Labels)
           .Case("none", llvm::BasicBlockSection::None)
           .Default(llvm::BasicBlockSection::List);
 
-  if (Options.BasicBlockSections == llvm::BasicBlockSection::List)
-    getBasicBlockSectionsList(Options, CodeGenOpts.BasicBlockSections);
+  if (Options.BBSections == llvm::BasicBlockSection::List)
+    getBBSectionsList(Options, CodeGenOpts.BBSections);
 
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
