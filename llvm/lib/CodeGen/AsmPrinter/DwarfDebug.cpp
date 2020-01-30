@@ -1898,7 +1898,7 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
 
   // With basic block sections, add all basic block ranges with unique
   // sections.
-  if (MF->getBasicBlockSections()) {
+  if (MF->getBBSections()) {
     for (auto &MBB : *MF) {
       if (MBB.getNumber() == MF->front().getNumber())
         continue;
@@ -2558,8 +2558,8 @@ void DwarfDebug::emitDebugLocDWO() {
       // * as of October 2018, at least
       // Ideally/in v5, this could use SectionLabels to reuse existing addresses
       // in the address pool to minimize object size/relocations.
-      if (Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::None &&
-          Asm->TM.getBasicBlockSections() != llvm::BasicBlockSection::Labels) {
+      if (Asm->TM.getBBSections() != llvm::BasicBlockSection::None &&
+          Asm->TM.getBBSections() != llvm::BasicBlockSection::Labels) {
         // With basic block sections, symbol difference cannot be emitted as
         // the can span sections.
         Asm->emitInt8(dwarf::DW_LLE_startx_endx);

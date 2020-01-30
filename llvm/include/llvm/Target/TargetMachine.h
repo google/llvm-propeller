@@ -259,21 +259,21 @@ public:
 
   /// If basic blocks should be emitted into their own section,
   /// corresponding to -fbasicblock-sections.
-  llvm::BasicBlockSection::SectionMode getBasicBlockSections() const {
-    return Options.BasicBlockSections;
+  llvm::BasicBlockSection::SectionMode getBBSections() const {
+    return Options.BBSections;
   }
 
   /// Return true if a given function's name in the list of functions for which
   /// basic block sections must be generated.
-  bool isFunctionInBasicBlockSectionsList(const StringRef &name) const {
-    return Options.BasicBlockSectionsList.find(name) !=
-           Options.BasicBlockSectionsList.end();
+  bool isFunctionInBBSectionsList(const StringRef &name) const {
+    return Options.BBSectionsList.find(name) !=
+           Options.BBSectionsList.end();
   }
 
   /// For a given function, return the set of basic block id's that must be
   /// emitted in a unique section.
-  SmallSet<unsigned, 4> getBasicBlockSectionsSet(const StringRef &name) const {
-    return Options.BasicBlockSectionsList.lookup(name);
+  SmallSet<unsigned, 4> getBBSectionsSet(const StringRef &name) const {
+    return Options.BBSectionsList.lookup(name);
   }
 
   /// Get a \c TargetIRAnalysis appropriate for the target.

@@ -447,16 +447,16 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
   ///  1. "All" mode where where every block is placed in a separate section.
   ///  2. "List" mode where the list of functions that needs sections is
   ///  specified in a file.
-  if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::All)
-    F.setBasicBlockSections(true);
+  if (TM && TM->getBBSections() == llvm::BasicBlockSection::All)
+    F.setBBSections(true);
 
-  if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::List &&
-      TM->isFunctionInBasicBlockSectionsList(F.getName()))
-    F.setBasicBlockSections(true);
+  if (TM && TM->getBBSections() == llvm::BasicBlockSection::List &&
+      TM->isFunctionInBBSectionsList(F.getName()))
+    F.setBBSections(true);
 
   /// Check if basic block labels must be enabled for this function.  Each
   /// basic block in this function gets a unique symbol (label).
-  if (TM && TM->getBasicBlockSections() == llvm::BasicBlockSection::Labels)
+  if (TM && TM->getBBSections() == llvm::BasicBlockSection::Labels)
     F.setBasicBlockLabels(true);
 
   if (ProfileGuidedSectionPrefix) {

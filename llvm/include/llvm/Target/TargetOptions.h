@@ -271,11 +271,11 @@ namespace llvm {
     unsigned EmitAddrsig : 1;
 
     /// Emit basic blocks into separate sections.
-    BasicBlockSection::SectionMode BasicBlockSections = BasicBlockSection::None;
+    BasicBlockSection::SectionMode BBSections = BasicBlockSection::None;
 
     /// A map from function name to a set of basic block id's that require
     /// unique basic block sections.
-    StringMap<SmallSet<unsigned, 4>> BasicBlockSectionsList;
+    StringMap<SmallSet<unsigned, 4>> BBSectionsList;
 
     /// Emit debug info about parameter's entry values.
     unsigned EnableDebugEntryValues : 1;

@@ -238,7 +238,7 @@ static cl::opt<bool>
                      cl::desc("Emit functions into separate sections"),
                      cl::init(false));
 
-static cl::opt<llvm::BasicBlockSection::SectionMode> BasicBlockSections(
+static cl::opt<llvm::BasicBlockSection::SectionMode> BBSections(
     "basicblock-sections", cl::desc("Emit basic blocks into separate sections"),
     cl::init(BasicBlockSection::None),
     cl::values(clEnumValN(BasicBlockSection::None, "none", "Off"),
@@ -321,7 +321,7 @@ static TargetOptions InitTargetOptionsFromCodeGenFlags() {
   Options.RelaxELFRelocations = RelaxELFRelocations;
   Options.DataSections = DataSections;
   Options.FunctionSections = FunctionSections;
-  Options.BasicBlockSections = BasicBlockSections;
+  Options.BBSections = BBSections;
   Options.UniqueSectionNames = UniqueSectionNames;
   Options.UniqueBBSectionNames = UniqueBBSectionNames;
   Options.TLSSize = TLSSize;
