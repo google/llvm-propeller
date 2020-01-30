@@ -96,7 +96,9 @@ private:
 
   friend class SymbolTableListTraits<Function>;
 
+  /// Whether Basic Block Sections is enabled for this function.
   bool BasicBlockSections = false;
+  /// Whether Basic Block Labels is enabled for this function.
   bool BasicBlockLabels = false;
 
   /// hasLazyArguments/CheckLazyArguments - The argument list of a function is
