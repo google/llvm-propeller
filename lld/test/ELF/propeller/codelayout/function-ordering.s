@@ -17,7 +17,10 @@
 ##  baz -----> bar -----> foo
 ##
 
-# RUN: echo "Symbols" > %t_prof.propeller
+# RUN: echo "!foo" > %t_prof.propeller
+# RUN: echo "!bar" >> %t_prof.propeller
+# RUN: echo "!baz" >> %t_prof.propeller
+# RUN: echo "Symbols" >> %t_prof.propeller
 # RUN: echo "1 8 Nfoo" >> %t_prof.propeller
 # RUN: echo "2 8 Nbar" >> %t_prof.propeller
 # RUN: echo "3 8 Nbaz" >> %t_prof.propeller

@@ -48,8 +48,12 @@
 ## The optimal layout must include foo -> a.BB.foo -> aaa.BB.foo -> aaaa.BB.foo
 ## as a fallthrough chain in the layout.
 
-# RUN: echo "Symbols" > %t_prof.propeller
-# RUN: echo "1 14 Nfoo" > %t_prof.propeller
+# RUN: echo "!foo" > %t_prof.propeller
+# RUN: echo "!!1" >> %t_prof.propeller
+# RUN: echo "!!3" >> %t_prof.propeller
+# RUN: echo "!!4" >> %t_prof.propeller
+# RUN: echo "Symbols" >> %t_prof.propeller
+# RUN: echo "1 14 Nfoo" >> %t_prof.propeller
 # RUN: echo "2 5 1.1" >> %t_prof.propeller
 # RUN: echo "3 3 1.2" >> %t_prof.propeller
 # RUN: echo "4 5 1.3" >> %t_prof.propeller
