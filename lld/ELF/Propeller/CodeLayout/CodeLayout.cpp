@@ -170,8 +170,11 @@ void CodeLayout::printStats() {
     fprintf(stderr, "Ext TSP Score: %s %.6f\n", elem.first().str().c_str(),
             elem.second);
   fprintf(stderr, "DISTANCE HISTOGRAM: ");
+  uint64_t sumEdgeWeights = 0;
   for (auto elem : histogram)
-    fprintf(stderr, "\t[%lu -> %lu]", elem.first, elem.second);
+    sumEdgeWeights += elem.second;
+  for (auto elem : histogram)
+    fprintf(stderr, "\t[%lu -> %lu (%.2f%%)]", elem.first, elem.second, (double)elem.second * 100 / sumEdgeWeights);
   fprintf(stderr, "\n");
 }
 

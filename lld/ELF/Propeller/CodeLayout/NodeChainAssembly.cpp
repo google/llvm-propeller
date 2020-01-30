@@ -172,9 +172,6 @@ bool NodeChainAssembly::CompareNodeChainAssembly::operator()(
       return false;
     // When even the chain pairs are the same, we resort to the assembly
     // strategy to pick a consistent order.
-    if (a1->assemblyStrategy() == a2->assemblyStrategy())
-      warn("Comparing equal assembly records!" + toString(*a1.get()) +
-           "\nAND\n" + toString(*a2.get()));
     return a1->assemblyStrategy() < a2->assemblyStrategy();
   }
   return a1->ScoreGain < a2->ScoreGain;
