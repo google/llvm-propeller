@@ -174,7 +174,8 @@ void CodeLayout::printStats() {
   for (auto elem : histogram)
     sumEdgeWeights += elem.second;
   for (auto elem : histogram)
-    fprintf(stderr, "\t[%lu -> %lu (%.2f%%)]", elem.first, elem.second, (double)elem.second * 100 / sumEdgeWeights);
+    fprintf(stderr, "\t[%lu -> %lu (%.2f%%)]", elem.first, elem.second,
+            (double)elem.second * 100 / sumEdgeWeights);
   fprintf(stderr, "\n");
 }
 

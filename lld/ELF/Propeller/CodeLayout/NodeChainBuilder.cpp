@@ -182,7 +182,8 @@ void NodeChainBuilder::coalesceChains() {
 // Merge two chains in the specified order.
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
-  if ((propellerConfig.optReorderIP || propellerConfig.optSplitFuncs) && (leftChain->Freq == 0 ^ rightChain->Freq == 0))
+  if ((propellerConfig.optReorderIP || propellerConfig.optSplitFuncs) &&
+      (leftChain->Freq == 0 ^ rightChain->Freq == 0))
     error("Attempting to merge hot and cold chains: \n" + toString(*leftChain) +
           "\nAND\n" + toString(*rightChain));
 

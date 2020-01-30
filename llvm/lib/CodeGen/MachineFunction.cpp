@@ -443,7 +443,7 @@ bool MachineFunction::sortBasicBlockSections() {
 
 /// This is used with -fbasicblock-sections or -fbasicblock-labels option.
 /// A unary encoding of basic block labels is done to keep ".strtab" sizes
-/// small.  
+/// small.
 void MachineFunction::setBasicBlockLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
