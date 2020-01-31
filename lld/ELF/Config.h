@@ -109,8 +109,6 @@ struct Configuration {
   llvm::StringRef optRemarksFormat;
   llvm::StringRef progName;
   llvm::StringRef propeller;
-  llvm::StringRef propellerBBOrderFile;
-  std::vector<llvm::StringRef> propellerBBOrder;
   llvm::StringRef propellerDumpSymbolOrder;
   uint64_t propellerFallthroughWeight;
   uint64_t propellerForwardJumpWeight;

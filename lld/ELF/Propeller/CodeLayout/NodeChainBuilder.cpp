@@ -581,58 +581,30 @@ void NodeChainBuilder::initNodeChains(ControlFlowGraph &cfg) {
 // incoming edges to their sink nodes
 void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
   DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
-  DenseSet<CFGNode *> mutuallyForcedIn;
-
-  auto l = prop->BBLayouts.find(cfg.Name);
-  if (l != prop->BBLayouts.end()) {
-    CFGNode *lastNode = nullptr;
-    for (auto ordinal : l->second) {
-      auto r = Chains.find(ordinal);
-      if (r == Chains.end()) {
-        lastNode = nullptr;
-        continue;
-      }
-      CFGNode *thisNode = r->second->DelegateNode;
-      if (lastNode) {
-        mutuallyForcedOut.try_emplace(lastNode, thisNode);
-        mutuallyForcedIn.insert(thisNode);
-      }
-      lastNode = thisNode;
-    }
-  }
 
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledOuts;
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledIns;
 
   for (auto &node : cfg.Nodes) {
-    if (!mutuallyForcedOut.count(node.get())) {
-      std::copy_if(node->Outs.begin(), node->Outs.end(),
-                   std::back_inserter(profiledOuts[node.get()]),
-                   [&mutuallyForcedIn](CFGEdge *edge) {
-                     return !mutuallyForcedIn.count(edge->Sink) &&
-                            (edge->Type == CFGEdge::EdgeType::INTRA_FUNC ||
-                             edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
-                            edge->Weight != 0;
-                   });
-    }
-    if (!mutuallyForcedIn.count(node.get())) {
-      std::copy_if(node->Ins.begin(), node->Ins.end(),
-                   std::back_inserter(profiledIns[node.get()]),
-                   [&mutuallyForcedOut](CFGEdge *edge) {
-                     return !mutuallyForcedOut.count(edge->Src) &&
-                            (edge->Type == CFGEdge::EdgeType::INTRA_FUNC ||
-                             edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
-                            edge->Weight != 0;
-                   });
-    }
+    std::copy_if(node->Outs.begin(), node->Outs.end(),
+                 std::back_inserter(profiledOuts[node.get()]),
+                 [](CFGEdge *edge) {
+                   return (edge->Type == CFGEdge::EdgeType::INTRA_FUNC ||
+                           edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
+                          edge->Weight != 0;
+                 });
+    std::copy_if(node->Ins.begin(), node->Ins.end(),
+                 std::back_inserter(profiledIns[node.get()]),
+                 [](CFGEdge *edge) {
+                   return (edge->Type == CFGEdge::EdgeType::INTRA_FUNC ||
+                           edge->Type == CFGEdge::EdgeType::INTRA_DYNA) &&
+                          edge->Weight != 0;
+                 });
   }
 
   for (auto &node : cfg.Nodes) {
     if (profiledOuts[node.get()].size() == 1) {
       CFGEdge *edge = profiledOuts[node.get()].front();
-      if (edge->Type != CFGEdge::EdgeType::INTRA_FUNC &&
-          edge->Type != CFGEdge::EdgeType::INTRA_DYNA)
-        continue;
       if (profiledIns[edge->Sink].size() == 1)
         mutuallyForcedOut.try_emplace(node.get(), edge->Sink);
     }

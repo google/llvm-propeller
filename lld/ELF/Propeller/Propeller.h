@@ -321,8 +321,6 @@ public:
 
   CodeLayout *propLayout;
 
-  llvm::StringMap<std::vector<uint64_t>> BBLayouts;
-
 #ifdef PROPELLER_PROTOBUF
   std::unique_ptr<lld::propeller::ProtobufPrinter> protobufPrinter;
 #endif
