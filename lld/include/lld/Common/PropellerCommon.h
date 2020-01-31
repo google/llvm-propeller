@@ -14,7 +14,7 @@ namespace lld {
 namespace propeller {
 
 static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
-static const char *BASIC_BLOCK_UNIFIED_CHARACTERS = "arlL";
+static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arlL";
 
 // This data structure is shared between lld propeller components and
 // create_llvm_prof. In short, create_llvm_prof parses the binary, wraps all the
@@ -73,40 +73,12 @@ struct SymbolEntry {
            BBTagType == BB_RETURN_AND_LANDING_PAD;
   }
 
-  bool containsAddress(uint64_t A) const {
-    return Addr <= A && A < Addr + Size;
-  }
-
-  bool containsAnotherSymbol(SymbolEntry *O) const {
-    if (O->Size == 0) {
-      // Note if O's size is 0, we allow O on the end boundary. For example, if
-      // foo.BB.4 is at address 0x10. foo is [0x0, 0x10), we then assume foo
-      // contains foo.BB.4.
-      return this->Addr <= O->Addr && O->Addr <= this->Addr + this->Size;
-    }
-    return containsAddress(O->Addr) && containsAddress(O->Addr + O->Size - 1);
-  }
-
   bool operator<(const SymbolEntry &Other) const {
     return this->Ordinal < Other.Ordinal;
   }
 
   bool isFunction() const {
     return this->Type == llvm::object::SymbolRef::ST_Function;
-  }
-
-  // Return true if this SymbolEntry is a containing function for BBName. For
-  // example, if BBName is given as "aa.BB.foo", and SymbolEntry.Name = "foo",
-  // then SymbolEntry.isFunctionForBBName(BBName) == true.  BBNames are from ELF
-  // object files.
-  bool isFunctionForBBName(StringRef BBName) const {
-    auto A = BBName.split(BASIC_BLOCK_SEPARATOR);
-    if (A.second == Name)
-      return true;
-    for (auto N : Aliases)
-      if (A.second == N)
-        return true;
-    return false;
   }
 
   // Return true if "SymName" is a BB symbol, e.g., in the form of
@@ -140,7 +112,8 @@ struct SymbolEntry {
       return BB_LANDING_PAD;
     case 'L':
       return BB_RETURN_AND_LANDING_PAD;
-    default:;
+    default:
+      assert(false);
     }
     return BB_NONE;
   }
