@@ -949,10 +949,10 @@ static void readConfigs(opt::InputArgList &args) {
   config->propellerPrintStats = args.hasFlag(
       OPT_propeller_print_stats, OPT_no_propeller_print_stats, false);
 
-  config->propellerDumpCfgs = args.getAllArgValues(OPT_propeller_dump_cfg);
+  config->propellerDumpCfgs = args::getStrings(args, OPT_propeller_dump_cfg);
 
   config->propellerDebugSymbols =
-      args.getAllArgValues(OPT_propeller_debug_symbol);
+      args::getStrings(args, OPT_propeller_debug_symbol);
 
   config->propellerReorderBlocks = config->propellerReorderFuncs =
       config->propellerSplitFuncs = !config->propeller.empty();
@@ -972,7 +972,7 @@ static void readConfigs(opt::InputArgList &args) {
       args::getInteger(args, OPT_propeller_chain_split_threshold, 1024);
 
   // Parse Propeller flags.
-  auto propellerOpts = args.getAllArgValues(OPT_propeller_opt);
+  auto propellerOpts = args::getStrings(args, OPT_propeller_opt);
   bool splitFuncsExplicit = false;
   for (auto &propellerOpt : propellerOpts) {
     StringRef S = StringRef(propellerOpt);
