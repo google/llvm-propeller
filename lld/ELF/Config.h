@@ -112,9 +112,9 @@ struct Configuration {
   llvm::StringRef propellerBBOrderFile;
   std::vector<llvm::StringRef> propellerBBOrder;
   llvm::StringRef propellerDumpSymbolOrder;
-  double propellerFallthroughWeight;
-  double propellerForwardJumpWeight;
-  double propellerBackwardJumpWeight;
+  uint64_t propellerFallthroughWeight;
+  uint64_t propellerForwardJumpWeight;
+  uint64_t propellerBackwardJumpWeight;
   uint64_t propellerClusterMergeSizeThreshold;
   uint64_t propellerForwardJumpDistance;
   uint64_t propellerBackwardJumpDistance;
@@ -135,7 +135,6 @@ struct Configuration {
   std::vector<llvm::StringRef> auxiliaryList;
   std::vector<llvm::StringRef> filterList;
   std::vector<llvm::StringRef> searchPaths;
-  llvm::StringMap<unsigned> symbolAlignmentFile;
   std::vector<llvm::StringRef> symbolOrderingFile;
   std::vector<llvm::StringRef> undefined;
   std::vector<SymbolVersion> dynamicList;

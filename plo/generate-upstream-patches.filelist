@@ -25,7 +25,6 @@ declare ALL_FILES=(
         clang            clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
 # lld starts from here	
-        lld-bb           lld/Common/Args.cpp
         lld-bb           lld/ELF/Arch/X86_64.cpp
         lld-bb           lld/ELF/Config.h
         lld-bb           lld/ELF/Driver.cpp
@@ -39,7 +38,6 @@ declare ALL_FILES=(
         lld-bb           lld/ELF/SyntheticSections.h
         lld-bb           lld/ELF/Target.h
         lld-bb           lld/ELF/Writer.cpp
-        lld-bb           lld/include/lld/Common/Args.h
         lld-bb           lld/test/ELF/bb-sections-optimize-jumps.s
         lld-bb           lld/test/ELF/bb-sections-padding.s
         lld-bb           lld/test/ELF/bb-sections-shrink-jumps-aligned.s
@@ -102,7 +100,6 @@ declare ALL_FILES=(
         lld-reorder      lld/test/ELF/propeller/codelayout/function-with-loop.s
         lld-reorder      lld/test/ELF/propeller/codelayout/optimal-fallthrough.s
         lld-reorder      lld/test/ELF/propeller/codelayout/opt-all-combinations.s
-        lld-reorder      lld/test/ELF/symbol-alignment-file.s
 # LLVM patch begins here.
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
@@ -159,4 +156,5 @@ declare ALL_FILES=(
         /dev/null        lld/tools/report-size/report-size.cpp
 # Double check:
         /dev/null        llvm/lib/IR/Mangler.cpp
+	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
     )

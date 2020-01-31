@@ -958,11 +958,11 @@ static void readConfigs(opt::InputArgList &args) {
       config->propellerSplitFuncs = !config->propeller.empty();
 
   config->propellerFallthroughWeight =
-      args::getFloat(args, OPT_propeller_fallthrough_weight, 1.0);
+      args::getInteger(args, OPT_propeller_fallthrough_weight, 10);
   config->propellerForwardJumpWeight =
-      args::getFloat(args, OPT_propeller_forward_jump_weight, 0.1);
+      args::getInteger(args, OPT_propeller_forward_jump_weight, 1);
   config->propellerBackwardJumpWeight =
-      args::getFloat(args, OPT_propeller_backward_jump_weight, 0.1);
+      args::getInteger(args, OPT_propeller_backward_jump_weight, 1);
 
   config->propellerForwardJumpDistance =
       args::getInteger(args, OPT_propeller_forward_jump_distance, 1024);

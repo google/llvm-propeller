@@ -41,21 +41,6 @@ int64_t lld::args::getInteger(opt::InputArgList &args, unsigned key,
   return 0;
 }
 
-double lld::args::getFloat(opt::InputArgList &args, unsigned key,
-                           double Default) {
-  auto *a = args.getLastArg(key);
-  if (!a)
-    return Default;
-
-  double v;
-  if (to_float(a->getValue(), v))
-    return v;
-
-  StringRef spelling = args.getArgString(a->getIndex());
-  error(spelling + ": number expected, but got '" + a->getValue() + "'");
-  return 0;
-}
-
 std::vector<StringRef> lld::args::getStrings(opt::InputArgList &args, int id) {
   std::vector<StringRef> v;
   for (auto *arg : args.filtered(id))
