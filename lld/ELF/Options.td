@@ -332,13 +332,13 @@ defm propeller_debug_symbol: Eq<"propeller-debug-symbol",
     "Print information about propeller actions related to the given symbol.">;
 
 defm propeller_fallthrough_weight: Eq<"propeller-fallthrough-weight",
-    "Fallthrough weight parameter to use in ExtTSP algorithm (default: 1.0).">;
+    "Fallthrough weight parameter to use in ExtTSP algorithm (default: 10).">;
 
 defm propeller_forward_jump_weight: Eq<"propeller-forward-jump-weight",
-    "(Near) forward jump weight parameter to use in ExtTSP algorithm (default: 0.1).">;
+    "(Near) forward jump weight parameter to use in ExtTSP algorithm (default: 1).">;
 
 defm propeller_backward_jump_weight: Eq<"propeller-backward-jump-weight",
-    "(Near) backward jump weight parameter to use in ExtTSP algorithm (default: 0.1).">;
+    "(Near) backward jump weight parameter to use in ExtTSP algorithm (default: 1).">;
 
 defm propeller_forward_jump_distance: Eq<"propeller-forward-jump-distance",
     "Maximum distance for a forward jump in ExtTSP algorithm (default: 1024).">;
