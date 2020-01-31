@@ -27,8 +27,8 @@
 namespace lld {
 namespace propeller {
 
-double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
-                          uint64_t srcSinkDistance);
+uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
+                            uint64_t srcSinkDistance);
 
 // This class defines a slices of a node chain, specified by iterators to the
 // beginning and end of the slice.
@@ -89,7 +89,7 @@ public:
   // is accordingly applied to the two chains.
   // This is effectively equal to "Score - splitChain->Score -
   // unsplitChain->Score".
-  double ScoreGain = 0;
+  uint64_t ScoreGain = 0;
 
   // The two chains, the first being the splitChain and the second being the
   // unsplitChain.
@@ -135,10 +135,12 @@ public:
 
     // Set the ExtTSP Score gain as the difference between the new score after
     // merging these chains and the current scores of the two chains.
-    ScoreGain = computeExtTSPScore() - splitChain->Score - unsplitChain->Score;
+    auto assemblyScore = computeExtTSPScore();
+    auto chainsScore = splitChain->Score + unsplitChain->Score;
+    ScoreGain = assemblyScore > chainsScore ? assemblyScore - chainsScore : 0;
   }
 
-  bool isValid() { return ScoreGain > 0.0001; }
+  bool isValid() { return ScoreGain; }
 
   // Find the NodeChainSlice in this NodeChainAssembly which contains the given
   // node. If the node is not contained in this NodeChainAssembly, then return
@@ -150,7 +152,7 @@ public:
   // This function computes the ExtTSP score for a chain assembly record. This
   // goes over the three BB slices in the assembly record and considers all
   // edges whose source and sink belong to the chains in the assembly record.
-  double computeExtTSPScore() const;
+  uint64_t computeExtTSPScore() const;
 
   // First node in the resulting assembled chain.
   CFGNode *getFirstNode() const {

@@ -461,8 +461,8 @@ void NodeChainBuilder::mergeChains(
 // Calculate the Extended TSP metric for a BB chain.
 // This function goes over all the BBs in the chain and for BB chain and
 // aggregates the score of all edges which are contained in the same chain.
-double NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
-  double score = 0;
+uint64_t NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
+  uint64_t score = 0;
 
   auto visit = [&score](CFGEdge &edge, NodeChain *srcChain,
                         NodeChain *sinkChain) {

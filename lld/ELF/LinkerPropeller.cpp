@@ -74,6 +74,15 @@ static void setupConfig() {
   COPY_CONFIG(ReorderFuncs);
   COPY_CONFIG(SplitFuncs);
   COPY_CONFIG(ReorderIP);
+
+  // Scale weights for use in the computation of ExtTSP score.
+  propellerConfig.optFallthroughWeight *=
+      propellerConfig.optForwardJumpDistance *
+      propellerConfig.optBackwardJumpDistance;
+  propellerConfig.optBackwardJumpWeight *=
+      propellerConfig.optForwardJumpDistance;
+  propellerConfig.optForwardJumpWeight *=
+      propellerConfig.optBackwardJumpDistance;
 #undef COPY_CONFIG
 }
 

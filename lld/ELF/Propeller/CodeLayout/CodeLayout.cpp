@@ -26,8 +26,8 @@ using llvm::DenseMap;
 
 namespace lld {
 namespace propeller {
-extern double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
-                                 uint64_t);
+extern uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
+                                   uint64_t srcSinkDistance);
 
 // This function iterates over the CFGs included in the Propeller profile and
 // adds them to cold and hot cfg lists. Then it appropriately performs basic
@@ -135,7 +135,7 @@ void CodeLayout::printStats() {
   std::vector<uint64_t> distances({0, 128, 640, 1028, 4096, 65536, 2 << 20,
                                    std::numeric_limits<uint64_t>::max()});
   std::map<uint64_t, uint64_t> histogram;
-  llvm::StringMap<double> extTSPScoreMap;
+  llvm::StringMap<uint64_t> extTSPScoreMap;
   for (CFGNode *n : HotOrder) {
     auto scoreEntry = extTSPScoreMap.try_emplace(n->CFG->Name, 0).first;
     n->forEachOutEdgeRef([&nodeAddressMap, &distances, &histogram,
@@ -167,7 +167,7 @@ void CodeLayout::printStats() {
   }
 
   for (auto &elem : extTSPScoreMap)
-    fprintf(stderr, "Ext TSP Score: %s %.6f\n", elem.first().str().c_str(),
+    fprintf(stderr, "Ext TSP Score: %s %lu\n", elem.first().str().c_str(),
             elem.second);
   fprintf(stderr, "DISTANCE HISTOGRAM: ");
   uint64_t sumEdgeWeights = 0;
