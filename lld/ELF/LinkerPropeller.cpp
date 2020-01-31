@@ -58,10 +58,9 @@ static void setupConfig() {
 #define COPY_CONFIG(NAME) propellerConfig.opt##NAME = config->propeller##NAME
   COPY_CONFIG(BackwardJumpDistance);
   COPY_CONFIG(BackwardJumpWeight);
-  COPY_CONFIG(BBOrder);
   COPY_CONFIG(ChainSplitThreshold);
-  COPY_CONFIG(DebugSymbols);
   COPY_CONFIG(ClusterMergeSizeThreshold);
+  COPY_CONFIG(DebugSymbols);
   COPY_CONFIG(DumpCfgs);
   COPY_CONFIG(DumpSymbolOrder);
   COPY_CONFIG(FallthroughWeight);
@@ -72,9 +71,18 @@ static void setupConfig() {
   COPY_CONFIG(PrintStats);
   COPY_CONFIG(ReorderBlocks);
   COPY_CONFIG(ReorderFuncs);
-  COPY_CONFIG(SplitFuncs);
   COPY_CONFIG(ReorderIP);
+  COPY_CONFIG(SplitFuncs);
 #undef COPY_CONFIG
+
+  // Scale weights for use in the computation of ExtTSP score.
+  propellerConfig.optFallthroughWeight *=
+      propellerConfig.optForwardJumpDistance *
+      propellerConfig.optBackwardJumpDistance;
+  propellerConfig.optBackwardJumpWeight *=
+      propellerConfig.optForwardJumpDistance;
+  propellerConfig.optForwardJumpWeight *=
+      propellerConfig.optBackwardJumpDistance;
 }
 
 // Propeller framework entrance.

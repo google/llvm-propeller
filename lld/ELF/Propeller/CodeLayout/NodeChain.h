@@ -50,7 +50,7 @@ public:
   uint64_t Freq;
 
   // Extended TSP score of the chain.
-  double Score = 0;
+  uint64_t Score = 0;
 
   // Whether to print out information about how this chain joins with others.
   bool DebugChain;

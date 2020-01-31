@@ -23,6 +23,7 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include <fstream>
 #include <string>
 using namespace llvm;
 
@@ -238,13 +239,11 @@ static cl::opt<bool>
                      cl::desc("Emit functions into separate sections"),
                      cl::init(false));
 
-static cl::opt<llvm::BasicBlockSection::SectionMode> BBSections(
-    "basicblock-sections", cl::desc("Emit basic blocks into separate sections"),
-    cl::init(BasicBlockSection::None),
-    cl::values(clEnumValN(BasicBlockSection::None, "none", "Off"),
-               clEnumValN(BasicBlockSection::All, "all", "All Basic Blocks"),
-               clEnumValN(BasicBlockSection::Labels, "labels",
-                          "Labelled Basic Blocks")));
+static cl::opt<std::string>
+    BBSections("basicblock-sections",
+               cl::desc("Emit basic blocks into separate sections"),
+	       cl::value_desc("all | <function list (file)> | none"),
+	       cl::init("none"));
 
 static cl::opt<unsigned> TLSSize("tls-size",
                                  cl::desc("Bit size of immediate TLS offsets"),
@@ -298,6 +297,63 @@ static cl::opt<bool>
                            cl::desc("Always emit a debug frame section."),
                            cl::init(false));
 
+// Basic Block Sections can be enabled for a subset of machine basic blocks.
+// This is done by passing a file containing names of functions for which basic
+// block sections are desired.  Additionally, machine basic block ids of the
+// functions can also be specified for a finer granularity.
+// A file with basic block sections for all of function main and two blocks for
+// function foo looks like this:
+// ----------------------------
+// list.txt:
+// !main
+// !foo
+// !!2
+// !!4
+static bool getBBSectionsList(llvm::TargetOptions &Options) {
+  std::ifstream fin(BBSections);
+  if (!fin.good()) {
+    errs() << "Cannot open " + BBSections;
+    return false;
+  }
+  StringMap<SmallSet<unsigned, 4>>::iterator fi = Options.BBSectionsList.end();
+  std::string line;
+  while ((std::getline(fin, line)).good()) {
+    StringRef S(line);
+    // Lines beginning with @, # are not useful here.
+    if (S.empty() || S[0] == '@' || S[0] == '#')
+      continue;
+    if (!S.consume_front("!") || S.empty())
+      break;
+    if (S.consume_front("!")) {
+      if (fi != Options.BBSectionsList.end())
+        fi->second.insert(std::stoi(S));
+      else {
+        errs() << "Found \"!!\" without preceding \"!\"";
+        return false;
+      }
+    } else {
+      // Start a new function.
+      auto R = Options.BBSectionsList.try_emplace(S.split('/').first);
+      fi = R.first;
+      assert(R.second);
+    }
+  }
+  return true;
+}
+
+static llvm::BasicBlockSection::SectionMode
+getBBSectionsMode(llvm::TargetOptions &Options) {
+  if (BBSections == "all")
+    return BasicBlockSection::All;
+  else if (BBSections == "labels")
+    return BasicBlockSection::Labels;
+  else if (BBSections == "none")
+    return BasicBlockSection::None;
+  getBBSectionsList(Options);
+  return BasicBlockSection::List;
+  // Process the list file 
+}
+
 // Common utility function tightly tied to the options listed here. Initializes
 // a TargetOptions object with CodeGen flags and returns it.
 static TargetOptions InitTargetOptionsFromCodeGenFlags() {
@@ -321,7 +377,7 @@ static TargetOptions InitTargetOptionsFromCodeGenFlags() {
   Options.RelaxELFRelocations = RelaxELFRelocations;
   Options.DataSections = DataSections;
   Options.FunctionSections = FunctionSections;
-  Options.BBSections = BBSections;
+  Options.BBSections = getBBSectionsMode(Options);
   Options.UniqueSectionNames = UniqueSectionNames;
   Options.UniqueBBSectionNames = UniqueBBSectionNames;
   Options.TLSSize = TLSSize;

@@ -937,9 +937,6 @@ static void readConfigs(opt::InputArgList &args) {
       args.hasFlag(OPT_propeller_keep_named_symbols,
                    OPT_no_propeller_keep_named_symbols, false);
 
-  config->propellerBBOrderFile =
-      args.getLastArgValue(OPT_propeller_bb_order_file);
-
   config->propellerClusterMergeSizeThreshold = args::getInteger(
       args, OPT_propeller_cluster_merge_size_threshold, 1 << 21);
 
@@ -949,10 +946,10 @@ static void readConfigs(opt::InputArgList &args) {
   config->propellerPrintStats = args.hasFlag(
       OPT_propeller_print_stats, OPT_no_propeller_print_stats, false);
 
-  config->propellerDumpCfgs = args.getAllArgValues(OPT_propeller_dump_cfg);
+  config->propellerDumpCfgs = args::getStrings(args, OPT_propeller_dump_cfg);
 
   config->propellerDebugSymbols =
-      args.getAllArgValues(OPT_propeller_debug_symbol);
+      args::getStrings(args, OPT_propeller_debug_symbol);
 
   config->propellerReorderBlocks = config->propellerReorderFuncs =
       config->propellerSplitFuncs = !config->propeller.empty();
@@ -972,7 +969,7 @@ static void readConfigs(opt::InputArgList &args) {
       args::getInteger(args, OPT_propeller_chain_split_threshold, 1024);
 
   // Parse Propeller flags.
-  auto propellerOpts = args.getAllArgValues(OPT_propeller_opt);
+  auto propellerOpts = args::getStrings(args, OPT_propeller_opt);
   bool splitFuncsExplicit = false;
   for (auto &propellerOpt : propellerOpts) {
     StringRef S = StringRef(propellerOpt);
@@ -1153,11 +1150,6 @@ static void readConfigs(opt::InputArgList &args) {
       config->callGraphProfileSort = false;
     }
   }
-
-  if (auto *arg = args.getLastArg(OPT_propeller_bb_order_file))
-    if (llvm::Optional<MemoryBufferRef> buffer = readFile(arg->getValue()))
-      for (StringRef s : args::getLines(*buffer))
-        config->propellerBBOrder.push_back(s);
 
   assert(config->versionDefinitions.empty());
   config->versionDefinitions.push_back({"local", (uint16_t)VER_NDX_LOCAL, {}});

@@ -72,6 +72,7 @@
 #include <cstdint>
 #include <iterator>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -379,7 +380,7 @@ bool MachineFunction::sortBBSections() {
     // are not required with the list option.
     bool isColdBB =
         ((Target.getBBSections() == llvm::BasicBlockSection::List) &&
-         !S.count(MBB.getNumber()));
+         !S.empty() && !S.count(MBB.getNumber()));
     if (MBB.isEHPad()) {
       MBB.setExceptionSection();
     } else if (isColdBB) {
@@ -433,6 +434,8 @@ bool MachineFunction::sortBBSections() {
       PrevMBB->setEndSection();
       MBB.setBeginSection();
     }
+    assert((TypeT != 3 || (MBB.isBeginSection() && MBB.isEndSection())) &&
+           "Basic block does not correctly begin or end a section");
     PrevMBB = &MBB;
   }
   PrevMBB->setEndSection();

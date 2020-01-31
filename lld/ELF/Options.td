@@ -314,10 +314,6 @@ defm propeller_print_stats: B<"propeller-print-stats",
     "Print propeller statistics.",
     "Do not print propeller statistics (default)">;
 
-defm propeller_bb_order_file: Eq<"propeller-bb-order-file",
-    "Intra-procedural bb layout to use.">,
-  MetaVarName<"<file>">;
-
 defm propeller_cluster_merge_size_threshold: Eq<"propeller-cluster-merge-size-threshold",
     "Maximum size of a cluster which could be merged with other clusters (default: 2M).">;
 

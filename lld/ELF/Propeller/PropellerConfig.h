@@ -17,10 +17,9 @@ namespace propeller {
 struct PropellerConfig {
   uint64_t optBackwardJumpDistance;
   uint64_t optBackwardJumpWeight;
-  std::vector<StringRef> optBBOrder;
   uint64_t optChainSplitThreshold;
-  std::vector<std::string> optDebugSymbols;
-  std::vector<std::string> optDumpCfgs;
+  std::vector<llvm::StringRef> optDebugSymbols;
+  std::vector<llvm::StringRef> optDumpCfgs;
   uint64_t optClusterMergeSizeThreshold;
   StringRef optDumpSymbolOrder;
   uint64_t optFallthroughWeight;
@@ -28,7 +27,7 @@ struct PropellerConfig {
   uint64_t optForwardJumpWeight;
   bool optKeepNamedSymbols;
   StringRef optLinkerOutputFile;
-  std::vector<std::string> optOpts;
+  std::vector<llvm::StringRef> optOpts;
   bool optPrintStats;
   StringRef optPropeller;
   bool optReorderBlocks;

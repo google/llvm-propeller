@@ -13,8 +13,9 @@ namespace propeller {
 
 // Return the Extended TSP score for one edge, given its source to sink
 // direction and distance in the layout.
-double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
-                          uint64_t srcSinkDistance) {
+uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
+                            uint64_t srcSinkDistance) {
+
   // Approximate callsites to be in the middle of the source basic block.
   if (edge.isCall()) {
     if (isEdgeForward)
@@ -36,14 +37,12 @@ double getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
 
   if (isEdgeForward && srcSinkDistance < propellerConfig.optForwardJumpDistance)
     return edge.Weight * propellerConfig.optForwardJumpWeight *
-           (1.0 -
-            ((double)srcSinkDistance) / propellerConfig.optForwardJumpDistance);
+           (propellerConfig.optForwardJumpDistance - srcSinkDistance);
 
   if (!isEdgeForward &&
       srcSinkDistance < propellerConfig.optBackwardJumpDistance)
     return edge.Weight * propellerConfig.optBackwardJumpWeight *
-           (1.0 - ((double)srcSinkDistance) /
-                      propellerConfig.optBackwardJumpDistance);
+           (propellerConfig.optBackwardJumpDistance - srcSinkDistance);
   return 0;
 }
 
@@ -96,9 +95,9 @@ bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
 // This function computes the ExtTSP score for a chain assembly record. This
 // goes the three BB slices in the assembly record and considers all edges
 // whose source and sink belongs to the chains in the assembly record.
-double NodeChainAssembly::computeExtTSPScore() const {
+uint64_t NodeChainAssembly::computeExtTSPScore() const {
   // Zero-initialize the score.
-  double score = 0;
+  uint64_t score = 0;
 
   auto addEdgeScore = [this, &score](CFGEdge &edge, NodeChain *srcChain,
                                      NodeChain *sinkChain) {
