@@ -67,11 +67,11 @@ int main(int argc, const char *argv[]) {
       ++total;
     }
   }
-  
+
   auto CommaPrint = [](uint64_t Num) {
     const int right_aligned_to_column = 25;
     if (Num == 0) {
-      printf("%s0", std::string(right_aligned_to_column-1, ' ').c_str());
+      printf("%s0", std::string(right_aligned_to_column - 1, ' ').c_str());
       return;
     }
     vector<uint64_t> Nums;
@@ -106,8 +106,6 @@ int main(int argc, const char *argv[]) {
   PrintResult("SymEntries: ", TotalSize.SymTabEntryNum);
   PrintResult("StrTab:     ", TotalSize.StrTabSize);
   PrintResult("FileSize:   ", TotalSize.FileSize);
-  {
-    printf("Files (err/total): %u/%u\n", errcnt, total);
-  }
+  { printf("Files (err/total): %u/%u\n", errcnt, total); }
   return 0;
 }

@@ -24,6 +24,7 @@ declare ALL_FILES=(
         clang            clang/test/Driver/propeller-flags.c
         clang            clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
+# lld starts from here	
         lld-bb           lld/ELF/Arch/X86_64.cpp
         lld-bb           lld/ELF/Config.h
         lld-bb           lld/ELF/Driver.cpp
@@ -46,6 +47,7 @@ declare ALL_FILES=(
         lld-bb           lld/test/ELF/lto/wrap-2.ll
         lld-bb           lld/test/ELF/wrap-plt.s
         lld-bb           lld/test/ELF/x86-64-plt.s
+# lld propeller
         lld-propeller    lld/ELF/CMakeLists.txt
         lld-propeller    lld/ELF/LinkerPropeller.cpp
         lld-propeller    lld/ELF/LinkerPropeller.h
@@ -78,10 +80,11 @@ declare ALL_FILES=(
         lld-propeller    lld/test/ELF/propeller/propeller-compressed-strtab-lto.s
         lld-propeller    lld/test/ELF/propeller/propeller-compressed-strtab.s
         lld-propeller    lld/test/ELF/propeller/propeller-error-on-bblabels.s
-        lld-propeller    lld/test/ELF/propeller/propeller-keep-bb-syAssembly.cpps.s
+        lld-propeller    lld/test/ELF/propeller/propeller-keep-bb-symbols.s
         lld-propeller    lld/test/ELF/propeller/propeller-lto-bbsections-dump.s
         lld-propeller    lld/test/ELF/propeller/propeller-skip.s
         lld-propeller    lld/test/ELF/propeller/propeller-symbol-order-dump.s
+# Reorder
         lld-reorder      lld/ELF/Propeller/CodeLayout/ModifiablePriorityQueue.h
         lld-reorder      lld/ELF/Propeller/CodeLayout/NodeChain.h
         lld-reorder      lld/ELF/Propeller/CodeLayout/NodeChain.cpp
@@ -145,4 +148,13 @@ declare ALL_FILES=(
         cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfi.ll
         cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfiinstr.ll
         debuginfo        llvm/test/DebugInfo/X86/basicblock-sections_1.ll
+#
+        /dev/null        lld/CMakeLists.txt
+        /dev/null        lld/tools/report-size/CMakeLists.txt
+        /dev/null        lld/tools/report-size/PLOELFView.cpp
+        /dev/null        lld/tools/report-size/PLOELFView.h
+        /dev/null        lld/tools/report-size/report-size.cpp
+# Double check:
+        /dev/null        llvm/lib/IR/Mangler.cpp
+	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
     )
