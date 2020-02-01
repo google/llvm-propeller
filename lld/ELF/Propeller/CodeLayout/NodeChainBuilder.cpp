@@ -496,60 +496,48 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
 
   std::unique_ptr<NodeChainAssembly> bestAssembly(nullptr);
 
-  for (auto slicePos = splitChain->Nodes.begin(); slicePos != slicePosEnd;
-       ++slicePos) {
-    // Do not split the mutually-forced edges in the chain.
-    if (slicePos != splitChain->Nodes.begin() &&
-        MutuallyForcedOut.count(*std::prev(slicePos)))
-      continue;
+  // If the split position is at the beginning (no splitting), only consider
+  // one MergeOrder
+  auto updateBestAssembly = [this, splitChain, unsplitChain, &bestAssembly] (std::list<CFGNode*>::iterator slicePos) {
 
-    // If the split position is at the beginning (no splitting), only consider
-    // one MergeOrder
-    auto mergeOrderEnd = (slicePos == splitChain->Nodes.begin())
+      auto mergeOrderEnd = (slicePos == splitChain->Nodes.begin())
                              ? MergeOrder::BeginNext
                              : MergeOrder::End;
-
-    for (uint8_t MI = MergeOrder::Begin; MI != mergeOrderEnd; MI++) {
-      MergeOrder mOrder = static_cast<MergeOrder>(MI);
-
-      // Create the NodeChainAssembly representing this particular assembly.
-      auto NCA = std::unique_ptr<NodeChainAssembly>(
-          new NodeChainAssembly(splitChain, unsplitChain, slicePos, mOrder));
-
-      if (!NCA->isValid())
-        continue;
-
-      if (!bestAssembly || NodeChainAssemblyComparator(bestAssembly, NCA))
-        bestAssembly = std::move(NCA);
-    }
-  }
-
-  if (propellerConfig.optReorderIP && !doSplit) {
-    // For inter-procedural layout, we always try splitting at the function
-    // transition positions regardless of the split-chain's size.
-    for (auto FTIt = splitChain->FunctionTransitions.begin();
-         FTIt != splitChain->FunctionTransitions.end();) {
-      auto slicePos = *FTIt;
-      if (slicePos == splitChain->Nodes.begin() ||
-          (*std::prev(slicePos))->CFG == (*slicePos)->CFG) {
-        FTIt = splitChain->FunctionTransitions.erase(FTIt);
-        continue;
-      }
-      for (uint8_t MI = MergeOrder::Begin; MI != MergeOrder::End; MI++) {
+      for (uint8_t MI = MergeOrder::Begin; MI != mergeOrderEnd; MI++) {
         MergeOrder mOrder = static_cast<MergeOrder>(MI);
 
         // Create the NodeChainAssembly representing this particular assembly.
         auto NCA = std::unique_ptr<NodeChainAssembly>(
             new NodeChainAssembly(splitChain, unsplitChain, slicePos, mOrder));
 
-        if (!NCA->isValid())
-          continue;
-
         // Update bestAssembly if needed
-        if (!bestAssembly || NodeChainAssemblyComparator(bestAssembly, NCA))
+        if (NCA->isValid() && (!bestAssembly || NodeChainAssemblyComparator(bestAssembly, NCA)))
           bestAssembly = std::move(NCA);
       }
-      FTIt++;
+    };
+
+  for (auto slicePos = splitChain->Nodes.begin(); slicePos != slicePosEnd;
+       ++slicePos) {
+    // Do not split the mutually-forced edges in the chain.
+    if (slicePos != splitChain->Nodes.begin() &&
+        MutuallyForcedOut.count(*std::prev(slicePos)))
+      continue;
+    updateBestAssembly(slicePos);
+  }
+
+  if (propellerConfig.optReorderIP && !doSplit) {
+    // For inter-procedural layout, we always try splitting at the function
+    // transition positions regardless of the split-chain's size.
+    for (auto transit = splitChain->FunctionTransitions.begin();
+         transit != splitChain->FunctionTransitions.end();) {
+      auto slicePos = *transit;
+      if (slicePos == splitChain->Nodes.begin() ||
+          (*std::prev(slicePos))->CFG == (*slicePos)->CFG) {
+        transit = splitChain->FunctionTransitions.erase(transit);
+        continue;
+      }
+      updateBestAssembly(slicePos);
+      transit++;
     }
   }
 
