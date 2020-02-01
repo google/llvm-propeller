@@ -491,30 +491,36 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   // Only consider splitting the chain if the size of the chain is smaller than
   // a threshold.
   bool doSplit = (splitChain->Size <= propellerConfig.optChainSplitThreshold);
+  // If we are not splitting, we only consider the slice position at the
+  // beginning of the chain (effectively no splitting).
   auto slicePosEnd =
       doSplit ? splitChain->Nodes.end() : std::next(splitChain->Nodes.begin());
 
   std::unique_ptr<NodeChainAssembly> bestAssembly(nullptr);
 
-  // If the split position is at the beginning (no splitting), only consider
-  // one MergeOrder
-  auto updateBestAssembly = [this, splitChain, unsplitChain, &bestAssembly] (std::list<CFGNode*>::iterator slicePos) {
-
-      auto mergeOrderEnd = (slicePos == splitChain->Nodes.begin())
+  // This function creates the different NodeChainAssemblies for splitChain and
+  // unsplitChain, given a slice position in splitChain, and updates the best
+  // assembly if required.
+  auto updateBestAssembly = [this, splitChain, unsplitChain, &bestAssembly](
+                                std::list<CFGNode *>::iterator slicePos) {
+    // If the split position is at the beginning (no splitting), only consider
+    // one MergeOrder
+    auto mergeOrderEnd = (slicePos == splitChain->Nodes.begin())
                              ? MergeOrder::BeginNext
                              : MergeOrder::End;
-      for (uint8_t MI = MergeOrder::Begin; MI != mergeOrderEnd; MI++) {
-        MergeOrder mOrder = static_cast<MergeOrder>(MI);
+    for (uint8_t MI = MergeOrder::Begin; MI != mergeOrderEnd; MI++) {
+      MergeOrder mOrder = static_cast<MergeOrder>(MI);
 
-        // Create the NodeChainAssembly representing this particular assembly.
-        auto NCA = std::unique_ptr<NodeChainAssembly>(
-            new NodeChainAssembly(splitChain, unsplitChain, slicePos, mOrder));
+      // Create the NodeChainAssembly representing this particular assembly.
+      auto NCA = std::unique_ptr<NodeChainAssembly>(
+          new NodeChainAssembly(splitChain, unsplitChain, slicePos, mOrder));
 
-        // Update bestAssembly if needed
-        if (NCA->isValid() && (!bestAssembly || NodeChainAssemblyComparator(bestAssembly, NCA)))
-          bestAssembly = std::move(NCA);
-      }
-    };
+      // Update bestAssembly if needed
+      if (NCA->isValid() &&
+          (!bestAssembly || NodeChainAssemblyComparator(bestAssembly, NCA)))
+        bestAssembly = std::move(NCA);
+    }
+  };
 
   for (auto slicePos = splitChain->Nodes.begin(); slicePos != slicePosEnd;
        ++slicePos) {
@@ -527,7 +533,7 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
 
   if (propellerConfig.optReorderIP && !doSplit) {
     // For inter-procedural layout, we always try splitting at the function
-    // transition positions regardless of the split-chain's size.
+    // transition positions regardless of the splitChain's size.
     for (auto transit = splitChain->FunctionTransitions.begin();
          transit != splitChain->FunctionTransitions.end();) {
       auto slicePos = *transit;
