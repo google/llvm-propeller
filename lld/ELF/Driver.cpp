@@ -972,24 +972,23 @@ static void readConfigs(opt::InputArgList &args) {
   auto propellerOpts = args::getStrings(args, OPT_propeller_opt);
   bool splitFuncsExplicit = false;
   for (auto &propellerOpt : propellerOpts) {
-    StringRef S = StringRef(propellerOpt);
-    if (S == "reorder-ip") {
+    if (propellerOpt == "reorder-ip") {
       config->propellerReorderIP = true;
-    } else if (S == "reorder-funcs") {
+    } else if (propellerOpt == "reorder-funcs") {
       config->propellerReorderFuncs = true;
-    } else if (S == "no-reorder-funcs") {
+    } else if (propellerOpt == "no-reorder-funcs") {
       config->propellerReorderFuncs = false;
-    } else if (S == "reorder-blocks") {
+    } else if (propellerOpt == "reorder-blocks") {
       config->propellerReorderBlocks = true;
-    } else if (S == "no-reorder-blocks") {
+    } else if (propellerOpt == "no-reorder-blocks") {
       config->propellerReorderBlocks = false;
-    } else if (S == "split-funcs") {
+    } else if (propellerOpt == "split-funcs") {
       config->propellerSplitFuncs = true;
       splitFuncsExplicit = true;
-    } else if (S == "no-split-funcs") {
+    } else if (propellerOpt == "no-split-funcs") {
       config->propellerSplitFuncs = false;
     } else
-      error("unknown propeller option: " + S);
+      error("unknown propeller option: " + propellerOpt);
   }
 
   if (!config->propeller.empty() && !config->propellerReorderBlocks) {
