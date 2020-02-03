@@ -35,21 +35,21 @@ public:
     NodeChain *DelegateChain;
 
     // Total size of the cluster.
-    uint64_t Size;
+    uint64_t size;
 
     // Total frequency of the cluster.
-    uint64_t Freq;
+    uint64_t freq;
 
     // This function merges this cluster with another cluster
     Cluster &mergeWith(Cluster &other) {
       Chains.insert(Chains.end(), other.Chains.begin(), other.Chains.end());
-      this->Freq += other.Freq;
-      this->Size += other.Size;
+      this->freq += other.freq;
+      this->size += other.size;
       return *this;
     }
 
     // Returns the execution density of this cluster
-    double getDensity() { return ((double)Freq / Size); }
+    double getDensity() { return ((double)freq / size); }
   };
 
   // This function merges two clusters in the given order, and updates
@@ -66,7 +66,7 @@ public:
     }
 
     // Delete the defunct cluster
-    Clusters.erase(cluster->DelegateChain->DelegateNode->MappedAddr);
+    Clusters.erase(cluster->DelegateChain->DelegateNode->mappedAddr);
   }
 
   // Adds a chain to the input of the clustering process
@@ -93,10 +93,10 @@ protected:
     for (auto &c_ptr : HotChains) {
       NodeChain *chain = c_ptr.get();
       Cluster *cl = new Cluster(chain);
-      cl->Freq = chain->Freq;
-      cl->Size = std::max(chain->Size, (uint64_t)1);
+      cl->freq = chain->freq;
+      cl->size = std::max(chain->size, (uint64_t)1);
       ChainToClusterMap[chain] = cl;
-      Clusters.try_emplace(cl->DelegateChain->DelegateNode->MappedAddr, cl);
+      Clusters.try_emplace(cl->DelegateChain->DelegateNode->mappedAddr, cl);
     }
   }
 

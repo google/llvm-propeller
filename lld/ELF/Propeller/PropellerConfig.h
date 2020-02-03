@@ -34,7 +34,7 @@ struct PropellerConfig {
   bool optReorderIP;
 };
 
-extern PropellerConfig propellerConfig;
+extern PropellerConfig propConfig;
 
 } // namespace propeller
 } // namespace lld

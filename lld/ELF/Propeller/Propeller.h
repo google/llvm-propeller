@@ -18,23 +18,23 @@
 //
 // Propeller starts by checking if "-o" file matches propeller profile
 // (Propeller::checkPropellerTarget), then it enters
-// Propeller::processFiles(), which builds control flow graph (CFG)
+// Propeller::processFiles(), which builds control flow graph (controlFlowGraph)
 // for each valid ELF object file (Propeller::processFile ->
 // CFGBuilder::buildCFGs).
 //
 // After control flow graphs are build, Propeller starts parsing
 // Propeller profile (the Propfile class). In this step, basicblock
-// (BB) symbols are created, branch/call counters are read, and *very
-// importantly*, the counters are applied to the CFG. For example,
+// (bb) symbols are created, branch/call counters are read, and *very
+// importantly*, the counters are applied to the controlFlowGraph. For example,
 // upon seeing two consecutive branch records in the propeller
 // profile: a->b, c->d, we not only increment edge counters for a->b,
 // c->d, we also walks from b->c, and increment basicblock and edge
 // counters in between. This last step can only be done after we have
-// a complete CFG for the function.
+// a complete controlFlowGraph for the function.
 //
-// The CFG information is stored in Propeller::CFGMap.
+// The controlFlowGraph information is stored in Propeller::cfgMap.
 //
-// After we have CFGs with complete counters for edges/bbs, we pass the
+// After we have cfgs with complete counters for edges/bbs, we pass the
 // information to optimization passes. For now, depending on
 // propellerReorderFuncs, propellerReorderBlocks or propellerSplitFuncs,
 // propeller generates a list of basicblock symbol orders and feed it the origin
@@ -113,7 +113,7 @@ struct PropellerConfig;
 // [hot symbols] section
 // The "hot symbols" section contains lines that starts with "!" followed by a
 // function name or another "!" followed by a bb index. This section is to guide
-// the compiler in generating BB sections only for hot BBs.
+// the compiler in generating bb sections only for hot BBs.
 //
 // [Symbols] section
 // Each line in "Symbols" section contains the following field:
@@ -122,13 +122,13 @@ struct PropellerConfig;
 //   name     - either starts with "N" or a digit. In the former case,
 //              everything after N is the symbol name. In the latter case, it's
 //              in the form of "a.b[rlL]", "a" is a symbol index, "b" is the bb
-//              index and [rlL] is the optional BB type suffix. For the above
+//              index and [rlL] is the optional bb type suffix. For the above
 //              example, name "11.2" means "main.bb.2", as "11" points to
-//              symbol main; name "11.4r" means bb4 is a return BB. Also note,
+//              symbol main; name "11.4r" means bb4 is a return bb. Also note,
 //              symbols could have aliases, in such case, aliases are
 //              concatenated with the original name with a '/'. For example,
-//              symbol 19 contains 2 aliases. Also, the optional BB type
-//              suffix l|L|r, which, when exists, indicates that the BB is a
+//              symbol 19 contains 2 aliases. Also, the optional bb type
+//              suffix l|L|r, which, when exists, indicates that the bb is a
 //              landingpad, return-and-landingpad and return respecitvely.
 //
 // Note, the symbols listed are in strict non-decreasing address order.
@@ -148,14 +148,14 @@ struct PropellerConfig;
 class Propfile {
 public:
   Propfile(const std::string &pName)
-      : PropfileStrSaver(BPAllocator), PropfName(pName), PropfStream(),
-        AllBBMode(false) {}
+      : propfileStrSaver(bpAllocator), propfName(pName), propfStream(),
+        allBBMode(false) {}
 
   // Check whether "outputFile" matches "@" directives in the propeller profile.
   bool matchesOutputFileName(const StringRef outputFile);
 
   // Read "Symbols" sections in the propeller profile and create
-  // SymbolOrdinalMap and SymbolNameMap.
+  // symbolOrdinalMap and symbolNameMap.
   bool readSymbols();
 
   // Find SymbolEntry instance by name.
@@ -186,7 +186,7 @@ public:
       const std::map<std::string, std::set<std::string>> &hotBBSymbols);
 
   // For each function symbol line defintion, this function creates a
-  // SymbolEntry instance and places it in SymbolOrdinalMap and SymbolNameMap.
+  // SymbolEntry instance and places it in symbolOrdinalMap and symbolNameMap.
   // Function symbol defintion line is like below. (See comments at the head of
   // the file)
   //    11     7c     Nmain/alias1/alias2
@@ -199,15 +199,15 @@ public:
     auto *sym = new SymbolEntry(ordinal, name, std::move(aliases),
                                 SymbolEntry::INVALID_ADDRESS, size,
                                 llvm::object::SymbolRef::ST_Function);
-    sym->bBTagType = SymbolEntry::BB_NONE;
-    SymbolOrdinalMap.emplace(std::piecewise_construct,
+    sym->bbTagType = SymbolEntry::BB_NONE;
+    symbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
     for (auto &a : sym->aliases)
-      SymbolNameMap[a][""] = sym;
+      symbolNameMap[a][""] = sym;
 
     if (sym->aliases.size() > 1)
-      FunctionsWithAliases.push_back(sym);
+      functionsWithAliases.push_back(sym);
 
     // Function symbols is always hot.
     // sym->hotTag = true;
@@ -216,7 +216,7 @@ public:
   }
 
   // For each bb symbol line defintion, this function creates a
-  // SymbolEntry instance and places it in SymbolOrdinalMap and SymbolNameMap.
+  // SymbolEntry instance and places it in symbolOrdinalMap and symbolNameMap.
   // Function symbol defintion line is like below. (See comments at the head of
   // the file)
   //    12     f      11.1[rlL]
@@ -229,7 +229,7 @@ public:
                                       bool hotTag,
                                       SymbolEntry::BBTagTypeEnum bbtt) {
     // bbIndex is of the form "1", "2", it's a stringref to integer.
-    assert(!function->bBTag && function->isFunction());
+    assert(!function->bbTag && function->isFunction());
     auto *sym =
         new SymbolEntry(ordinal, bbIndex, SymbolEntry::AliasesTy(),
                         SymbolEntry::INVALID_ADDRESS, size,
@@ -240,36 +240,36 @@ public:
       sym->hotTag = false;
     else
       sym->hotTag = hotTag;
-    sym->bBTagType = bbtt;
-    SymbolOrdinalMap.emplace(std::piecewise_construct,
+    sym->bbTagType = bbtt;
+    symbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
     for (auto &a : function->aliases)
-      SymbolNameMap[a][bbIndex] = sym;
+      symbolNameMap[a][bbIndex] = sym;
     return sym;
   }
 
   void reportParseError(StringRef msg) const;
 
-  llvm::BumpPtrAllocator BPAllocator;
-  llvm::UniqueStringSaver PropfileStrSaver;
-  std::string PropfName;
-  std::ifstream PropfStream;
+  llvm::BumpPtrAllocator bpAllocator;
+  llvm::UniqueStringSaver propfileStrSaver;
+  std::string propfName;
+  std::ifstream propfStream;
   // Ordial -> SymbolEntry map. This also owns SymbolEntry instances.
-  std::map<uint64_t, std::unique_ptr<SymbolEntry>> SymbolOrdinalMap;
-  // SymbolNameMap is ordered in the following way:
-  //   SymbolNameMap[foo][""] = functionSymbol;
-  //     SymbolNameMap[foo]["1"] = fun.bb.1.Symbol;
-  //     SymbolNameMap[foo]["2"] = fun.bb.2.Symbol;
+  std::map<uint64_t, std::unique_ptr<SymbolEntry>> symbolOrdinalMap;
+  // symbolNameMap is ordered in the following way:
+  //   symbolNameMap[foo][""] = functionSymbol;
+  //     symbolNameMap[foo]["1"] = fun.bb.1.Symbol;
+  //     symbolNameMap[foo]["2"] = fun.bb.2.Symbol;
   //   etc...
-  std::map<StringRef, std::map<StringRef, SymbolEntry *>> SymbolNameMap;
-  std::vector<SymbolEntry *> FunctionsWithAliases;
-  uint64_t LineNo;
-  char LineTag;
+  std::map<StringRef, std::map<StringRef, SymbolEntry *>> symbolNameMap;
+  std::vector<SymbolEntry *> functionsWithAliases;
+  uint64_t lineNo;
+  char lineTag;
 
-  std::map<uint64_t, uint64_t> OrdinalRemapping;
+  std::map<uint64_t, uint64_t> ordinalRemapping;
 
-  bool AllBBMode;
+  bool allBBMode;
 };
 
 class Propeller {
@@ -284,22 +284,22 @@ public:
   CFGNode *findCfgNode(uint64_t symbolOrdinal);
   void calculateNodeFreqs();
   std::vector<StringRef> genSymbolOrderingFile();
-  void calculateLegacy(std::list<StringRef> &SymList,
+  void calculateLegacy(std::list<StringRef> &symList,
                        std::list<StringRef>::iterator hotPlaceHolder,
                        std::list<StringRef>::iterator coldPlaceHolder);
   template <class Visitor> void forEachCfgRef(Visitor v) {
-    for (auto &p : CFGMap)
+    for (auto &p : cfgMap)
       v(*(*(p.second.begin())));
   }
 
   bool dumpCfgs();
 
-  static ObjectView *createObjectView(const StringRef &vN,
+  static ObjectView *createObjectView(const StringRef &vn,
                                       const uint32_t ordinal,
-                                      const MemoryBufferRef &fR);
+                                      const MemoryBufferRef &fr);
 
   std::vector<std::unique_ptr<ObjectView>> Views;
-  // Same named CFGs may exist in different object files (e.g. weak
+  // Same named cfgs may exist in different object files (e.g. weak
   // symbols.)  We always choose symbols that appear earlier on the
   // command line.  Note: implementation is in the .cpp file, because
   // ControlFlowGraph here is an incomplete type.
@@ -309,15 +309,15 @@ public:
   using CfgMapTy =
       std::map<StringRef,
                std::set<ControlFlowGraph *, ObjectViewOrdinalComparator>>;
-  CfgMapTy CFGMap;
-  std::unique_ptr<Propfile> Propf;
-  uint32_t ProcessFailureCount; // Number of files that are not processed by
+  CfgMapTy cfgMap;
+  std::unique_ptr<Propfile> propf;
+  uint32_t processFailureCount; // Number of files that are not processed by
                                 // Propeller.
-  // We call Propeller::processFile in parallel to create CFGs for
-  // each file, after the CFGs are created, each processFile thread
-  // then puts CFGs into Propeller::CFGMap (see above). Lock is used
-  // to guard this Propeller::CFGMap critical section.
-  std::mutex Lock;
+  // We call Propeller::processFile in parallel to create cfgs for
+  // each file, after the cfgs are created, each processFile thread
+  // then puts cfgs into Propeller::cfgMap (see above). lock is used
+  // to guard this Propeller::cfgMap critical section.
+  std::mutex lock;
 
   CodeLayout *propLayout;
 
@@ -326,10 +326,10 @@ public:
 #endif
 };
 
-// When no "-propeller-keep-named-symbols" specified, we remove all BB symbols
-// that are hot, and we keep only the first code BB symbol that starts the cold
+// When no "-propeller-keep-named-symbols" specified, we remove all bb symbols
+// that are hot, and we keep only the first code bb symbol that starts the cold
 // code region of the same function. See Below:
-// Hot:
+// hot:
 //  foo
 //  foo.bb.1   <= delete
 //  foo.bb.2   <= delete
@@ -344,18 +344,18 @@ public:
 //  bar.bb.4   <= delete
 //  bar.bb.5   <= delete
 struct PropellerLegacy {
-  std::set<StringRef> BBSymbolsToKeep;
+  std::set<StringRef> bbSymbolsToKeep;
 
   bool shouldKeepBBSymbol(StringRef symName) {
     if (!SymbolEntry::isBBSymbol(symName))
       return true;
-    return BBSymbolsToKeep.find(symName) != BBSymbolsToKeep.end();
+    return bbSymbolsToKeep.find(symName) != bbSymbolsToKeep.end();
   }
 };
 
-extern PropellerLegacy PropLeg;
+extern PropellerLegacy propLeg;
 
-extern PropellerConfig propellerConfig;
+extern PropellerConfig propConfig;
 
 } // namespace propeller
 } // namespace lld

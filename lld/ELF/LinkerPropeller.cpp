@@ -52,10 +52,10 @@ Propeller *prop;
 
 // Set up PropellerConfig from global lld config instnace.
 static void setupConfig() {
-  propellerConfig.optPropeller = config->propeller;
-  propellerConfig.optLinkerOutputFile = config->outputFile;
+  propConfig.optPropeller = config->propeller;
+  propConfig.optLinkerOutputFile = config->outputFile;
 
-#define COPY_CONFIG(NAME) propellerConfig.opt##NAME = config->propeller##NAME
+#define COPY_CONFIG(NAME) propConfig.opt##NAME = config->propeller##NAME
   COPY_CONFIG(BackwardJumpDistance);
   COPY_CONFIG(BackwardJumpWeight);
   COPY_CONFIG(ChainSplitThreshold);
@@ -76,13 +76,13 @@ static void setupConfig() {
 #undef COPY_CONFIG
 
   // Scale weights for use in the computation of ExtTSP score.
-  propellerConfig.optFallthroughWeight *=
-      propellerConfig.optForwardJumpDistance *
-      propellerConfig.optBackwardJumpDistance;
-  propellerConfig.optBackwardJumpWeight *=
-      propellerConfig.optForwardJumpDistance;
-  propellerConfig.optForwardJumpWeight *=
-      propellerConfig.optBackwardJumpDistance;
+  propConfig.optFallthroughWeight *=
+      propConfig.optForwardJumpDistance *
+      propConfig.optBackwardJumpDistance;
+  propConfig.optBackwardJumpWeight *=
+      propConfig.optForwardJumpDistance;
+  propConfig.optForwardJumpWeight *=
+      propConfig.optBackwardJumpDistance;
 }
 
 // Propeller framework entrance.
@@ -114,10 +114,10 @@ void doPropeller() {
 }
 
 bool isBBSymbolAndKeepIt(llvm::StringRef name) {
-  return !propellerConfig.optPropeller.empty() &&
+  return !propConfig.optPropeller.empty() &&
          lld::propeller::SymbolEntry::isBBSymbol(name) &&
-         (propellerConfig.optKeepNamedSymbols ||
-          propeller::PropLeg.shouldKeepBBSymbol(name));
+         (propConfig.optKeepNamedSymbols ||
+          propeller::propLeg.shouldKeepBBSymbol(name));
 }
 
 } // namespace propeller

@@ -38,8 +38,8 @@ struct SymbolEntry {
   SymbolEntry(uint64_t O, const StringRef &N, AliasesTy &&As, uint64_t A,
               uint64_t S, uint8_t T, bool BB = false,
               SymbolEntry *FuncPtr = nullptr)
-      : ordinal(O), name(N), aliases(As), addr(A), size(S), type(T), bBTag(BB),
-        bBTagType(BB_NONE), hotTag(false), containingFunc(FuncPtr) {}
+      : ordinal(O), name(N), aliases(As), addr(A), size(S), type(T), bbTag(BB),
+        bbTagType(BB_NONE), hotTag(false), containingFunc(FuncPtr) {}
 
   // Unique index number across all symbols that participate linking.
   uint64_t ordinal;
@@ -48,28 +48,28 @@ struct SymbolEntry {
   // example "8", "10", etc. Refer to Propfile::createFunctionSymbol and
   // Propfile::createBasicBlockSymbol.
   StringRef name;
-  // Only valid for function (bBTag == false) symbols. And aliases[0] always
+  // Only valid for function (bbTag == false) symbols. And aliases[0] always
   // equals to name. For example, SymbolEntry.name = "foo", SymbolEntry.aliases
   // = {"foo", "foo2", "foo3"}.
   AliasesTy aliases;
   uint64_t addr;
   uint64_t size;
   uint8_t type; // Of type: llvm::objet::SymbolRef::type.
-  bool bBTag;   // Whether this is a basic block section symbol.
-  BBTagTypeEnum bBTagType;
+  bool bbTag;   // Whether this is a basic block section symbol.
+  BBTagTypeEnum bbTagType;
 
   bool hotTag; // Whether this symbol is listed in the propeller section.
-  // For bBTag symbols, this is the containing fuction pointer, for a normal
+  // For bbTag symbols, this is the containing fuction pointer, for a normal
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *containingFunc;
 
   bool isReturnBlock() const {
-    return bBTagType == BB_RETURN || bBTagType == BB_RETURN_AND_LANDING_PAD;
+    return bbTagType == BB_RETURN || bbTagType == BB_RETURN_AND_LANDING_PAD;
   }
 
   bool isLandingPadBlock() const {
-    return bBTagType == BB_LANDING_PAD ||
-           bBTagType == BB_RETURN_AND_LANDING_PAD;
+    return bbTagType == BB_LANDING_PAD ||
+           bbTagType == BB_RETURN_AND_LANDING_PAD;
   }
 
   bool operator<(const SymbolEntry &Other) const {

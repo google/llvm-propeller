@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 // This file is part of the Propeller infrastructure for doing code layout
-// optimization and includes the implementation of the Call-Chain-Clustering
+// optimization and includes the implementation of the Call-chain-Clustering
 // algorithm as described in [1].
 //
 // The algorithm iteratively merges chains into clusters. To do so, it processes
@@ -28,12 +28,12 @@ namespace lld {
 namespace propeller {
 
 void ChainClustering::addChain(std::unique_ptr<NodeChain> &&chain_ptr) {
-  for (CFGNode *n : chain_ptr->Nodes)
-    n->Chain = chain_ptr.get();
+  for (CFGNode *n : chain_ptr->nodes)
+    n->chain = chain_ptr.get();
   auto &chainList =
-      ((propellerConfig.optReorderIP || propellerConfig.optSplitFuncs ||
-        propellerConfig.optReorderFuncs) &&
-       chain_ptr->Freq == 0)
+      ((propConfig.optReorderIP || propConfig.optSplitFuncs ||
+        propConfig.optReorderFuncs) &&
+       chain_ptr->freq == 0)
           ? ColdChains
           : HotChains;
   chainList.push_back(std::move(chain_ptr));
@@ -54,35 +54,35 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
   // from every other cluster.
   DenseMap<Cluster *, uint64_t> clusterEdge;
 
-  for (CFGNode *n : chain->Nodes) {
+  for (CFGNode *n : chain->nodes) {
     // For non-inter-procedural, we only consider the function entries.
-    if (!propellerConfig.optReorderIP && !n->isEntryNode())
+    if (!propConfig.optReorderIP && !n->isEntryNode())
       continue;
     auto visit = [&clusterEdge, n, chain, cluster, this](CFGEdge &edge) {
-      if (!edge.Weight || edge.isReturn())
+      if (!edge.weight || edge.isReturn())
         return;
-      if (!propellerConfig.optReorderIP && !edge.isCall())
+      if (!propConfig.optReorderIP && !edge.isCall())
         return;
-      auto *callerChain = edge.Src->Chain;
+      auto *callerChain = edge.src->chain;
       if (!callerChain) {
-        warn("Caller for node: " + n->ShName + " does not have a chain!");
+        warn("Caller for node: " + n->shName + " does not have a chain!");
         return;
       }
       auto *callerCluster = ChainToClusterMap[callerChain];
       if (callerChain == chain || callerCluster == cluster)
         return;
       // Ignore clusters which are too big
-      if (callerCluster->Size > propellerConfig.optClusterMergeSizeThreshold)
+      if (callerCluster->size > propConfig.optClusterMergeSizeThreshold)
         return;
       // Ignore edges which are cold relative to the sink node
-      if (edge.Weight * 10 < n->Freq)
+      if (edge.weight * 10 < n->freq)
         return;
       // Do not merge if the caller cluster's density would degrade by more than
       // 1/8 by the merge.
-      if (8 * callerCluster->Size * (cluster->Freq * callerCluster->Freq) <
-          callerCluster->Freq * (cluster->Size + callerCluster->Size))
+      if (8 * callerCluster->size * (cluster->freq * callerCluster->freq) <
+          callerCluster->freq * (cluster->size + callerCluster->size))
         return;
-      clusterEdge[callerCluster] += edge.Weight;
+      clusterEdge[callerCluster] += edge.weight;
     };
     n->forEachInEdgeRef(visit);
   }
@@ -109,8 +109,8 @@ void ChainClustering::sortClusters(std::vector<Cluster *> &clusterOrder) {
   auto clusterComparator = [](Cluster *c1, Cluster *c2) -> bool {
     // Set a deterministic order when execution densities are equal.
     if (c1->getDensity() == c2->getDensity())
-      return c1->DelegateChain->DelegateNode->MappedAddr <
-             c2->DelegateChain->DelegateNode->MappedAddr;
+      return c1->DelegateChain->DelegateNode->mappedAddr <
+             c2->DelegateChain->DelegateNode->mappedAddr;
     return c1->getDensity() > c2->getDensity();
   };
 
@@ -121,18 +121,18 @@ void NoOrdering::doOrder(std::vector<CFGNode *> &hotOrder,
                          std::vector<CFGNode *> &coldOrder) {
   auto chainComparator = [](const std::unique_ptr<NodeChain> &c_ptr1,
                             const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
-    return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
+    return c_ptr1->DelegateNode->mappedAddr < c_ptr2->DelegateNode->mappedAddr;
   };
 
   std::sort(HotChains.begin(), HotChains.end(), chainComparator);
   std::sort(ColdChains.begin(), ColdChains.end(), chainComparator);
 
   for (auto &c_ptr : HotChains)
-    for (CFGNode *n : c_ptr->Nodes)
+    for (CFGNode *n : c_ptr->nodes)
       hotOrder.push_back(n);
 
   for (auto &c_ptr : ColdChains)
-    for (CFGNode *n : c_ptr->Nodes)
+    for (CFGNode *n : c_ptr->nodes)
       coldOrder.push_back(n);
 }
 
@@ -153,8 +153,8 @@ void CallChainClustering::mergeClusters() {
               auto chain1Weight = chainWeightMap[c_ptr1.get()];
               auto chain2Weight = chainWeightMap[c_ptr2.get()];
               if (chain1Weight == chain2Weight)
-                return c_ptr1->DelegateNode->MappedAddr <
-                       c_ptr2->DelegateNode->MappedAddr;
+                return c_ptr1->DelegateNode->mappedAddr <
+                       c_ptr2->DelegateNode->mappedAddr;
               return chain1Weight > chain2Weight;
             });
 
@@ -165,7 +165,7 @@ void CallChainClustering::mergeClusters() {
     auto *cluster = ChainToClusterMap[chain];
     // Ignore merging if the cluster containing this function is bigger than
     // 2MBs (size of a large page).
-    if (cluster->Size > propellerConfig.optClusterMergeSizeThreshold)
+    if (cluster->size > propConfig.optClusterMergeSizeThreshold)
       continue;
     assert(cluster);
 
@@ -185,44 +185,44 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
   mergeClusters();
   std::vector<Cluster *> clusterOrder;
   sortClusters(clusterOrder);
-  // This maps every CFG to the position of its first hot node in the layout.
+  // This maps every controlFlowGraph to the position of its first hot node in the layout.
   DenseMap<ControlFlowGraph *, size_t> hotCFGOrder;
 
   for (Cluster *cl : clusterOrder)
     for (NodeChain *c : cl->Chains)
-      for (CFGNode *n : c->Nodes) {
-        hotCFGOrder.try_emplace(n->CFG, hotOrder.size());
+      for (CFGNode *n : c->nodes) {
+        hotCFGOrder.try_emplace(n->controlFlowGraph, hotOrder.size());
         hotOrder.push_back(n);
       }
 
   auto coldChainComparator =
       [&hotCFGOrder](const std::unique_ptr<NodeChain> &c_ptr1,
                      const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
-    // If each of the chains comes from a single CFG, we can order the chains
+    // If each of the chains comes from a single controlFlowGraph, we can order the chains
     // consistently based on the hot layout
-    if (c_ptr1->CFG && c_ptr2->CFG) {
-      // If one CFG is cold and the other is hot, make sure the hot CFG's chain
+    if (c_ptr1->controlFlowGraph && c_ptr2->controlFlowGraph) {
+      // If one controlFlowGraph is cold and the other is hot, make sure the hot controlFlowGraph's chain
       // comes earlier in the order.
-      if (c_ptr1->CFG->isHot() != c_ptr2->CFG->isHot())
-        return c_ptr1->CFG->isHot();
-      // If both CFGs are hot, make the order for cold chains consistent with
+      if (c_ptr1->controlFlowGraph->isHot() != c_ptr2->controlFlowGraph->isHot())
+        return c_ptr1->controlFlowGraph->isHot();
+      // If both cfgs are hot, make the order for cold chains consistent with
       // the order for hot ones.
-      if (c_ptr1->CFG->isHot() && c_ptr2->CFG->isHot() &&
-          (c_ptr1->CFG != c_ptr2->CFG))
-        return hotCFGOrder[c_ptr1->CFG] < hotCFGOrder[c_ptr2->CFG];
+      if (c_ptr1->controlFlowGraph->isHot() && c_ptr2->controlFlowGraph->isHot() &&
+          (c_ptr1->controlFlowGraph != c_ptr2->controlFlowGraph))
+        return hotCFGOrder[c_ptr1->controlFlowGraph] < hotCFGOrder[c_ptr2->controlFlowGraph];
       // Otherwise, use a consistent order based on the representative nodes.
-      return c_ptr1->DelegateNode->MappedAddr <
-             c_ptr2->DelegateNode->MappedAddr;
+      return c_ptr1->DelegateNode->mappedAddr <
+             c_ptr2->DelegateNode->mappedAddr;
     }
     // Use an order consistent with the initial ordering of the representative
     // nodes.
-    return c_ptr1->DelegateNode->MappedAddr < c_ptr2->DelegateNode->MappedAddr;
+    return c_ptr1->DelegateNode->mappedAddr < c_ptr2->DelegateNode->mappedAddr;
   };
 
   std::sort(ColdChains.begin(), ColdChains.end(), coldChainComparator);
 
   for (auto &c_ptr : ColdChains)
-    for (CFGNode *n : c_ptr->Nodes)
+    for (CFGNode *n : c_ptr->nodes)
       coldOrder.push_back(n);
 }
 

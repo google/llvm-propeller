@@ -25,21 +25,21 @@ using llvm::DenseMap;
 namespace lld {
 namespace propeller {
 
-// BB Chain builder based on the ExtTSP metric
+// bb chain builder based on the ExtTSP metric
 class NodeChainBuilder {
 private:
   NodeChainAssembly::CompareNodeChainAssembly NodeChainAssemblyComparator;
   // Cfgs repreresenting the functions that are reordered
-  std::vector<ControlFlowGraph *> CFGs;
+  std::vector<ControlFlowGraph *> cfgs;
 
-  // Set of built chains, keyed by section index of their Delegate Nodes.
+  // Set of built chains, keyed by section index of their Delegate nodes.
   // Chains are removed from this Map once they are merged into other chains.
   DenseMap<uint64_t, std::unique_ptr<NodeChain>> Chains;
 
   // All the initial chains, seperated into connected components
   std::vector<std::vector<NodeChain *>> Components;
 
-  // NodeChainBuilder performs BB ordering component by component.
+  // NodeChainBuilder performs bb ordering component by component.
   // This is the component number that the chain builder is currently working
   // on.
   unsigned CurrentComponent;
@@ -115,9 +115,9 @@ public:
   // given SymbolList.
   void doOrder(std::unique_ptr<ChainClustering> &CC);
 
-  NodeChainBuilder(std::vector<ControlFlowGraph *> &cfgs) : CFGs(cfgs) {}
+  NodeChainBuilder(std::vector<ControlFlowGraph *> &cfgs) : cfgs(cfgs) {}
 
-  NodeChainBuilder(ControlFlowGraph *cfg) : CFGs(1, cfg) {}
+  NodeChainBuilder(ControlFlowGraph *cfg) : cfgs(1, cfg) {}
 };
 
 } // namespace propeller
