@@ -9,8 +9,6 @@
 #include <string>
 #include <vector>
 
-using llvm::StringRef;
-
 namespace lld {
 namespace propeller {
 

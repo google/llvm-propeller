@@ -25,7 +25,6 @@ static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arlL";
 // [create_llvm_prof refer to:
 // https://github.com/shenhanc78/autofdo/tree/plo-dev]
 struct SymbolEntry {
-
   enum BBTagTypeEnum : unsigned char {
     BB_NONE = 0,              // For functions.
     BB_NORMAL,                // Ordinary BB, 'a'.
@@ -78,7 +77,7 @@ struct SymbolEntry {
   }
 
   bool isFunction() const {
-    return this->Type == llvm::object::SymbolRef::ST_Function;
+    return Type == llvm::object::SymbolRef::ST_Function;
   }
 
   // Return true if "SymName" is a BB symbol, e.g., in the form of
@@ -122,12 +121,10 @@ struct SymbolEntry {
 };
 
 struct SymbolEntryOrdinalLessComparator {
-  bool operator()(SymbolEntry *S1, SymbolEntry *S2) const {
-    if (!S1 && S2)
-      return true;
-    if ((S1 && !S2) || (!S1 && !S2))
-      return false;
-    return S1->Ordinal < S2->Ordinal;
+  bool operator()(SymbolEntry *s1, SymbolEntry *s2) const {
+    if (s1 && s2)
+      return s1->Ordinal < s2->Ordinal;
+    return !!s1 < !!s2;
   }
 };
 
