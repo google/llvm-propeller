@@ -370,7 +370,7 @@ bool MachineFunction::sortBBSections() {
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.  Entry basic block cannot
-    // a section because the function starts one.
+    // start another section because the function starts one already.
     if (MBB.getNumber() == this->front().getNumber()) {
       if (MBB.isEHPad())
         MBB.setExceptionSection();
@@ -386,6 +386,8 @@ bool MachineFunction::sortBBSections() {
     } else if (isColdBB) {
       MBB.setColdSection();
     } else {
+      // Place this MBB in a unique section.  A unique section begins and ends
+      // that section.
       MBB.setBeginSection();
       MBB.setEndSection();
     }

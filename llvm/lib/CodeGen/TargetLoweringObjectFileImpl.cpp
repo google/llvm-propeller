@@ -771,24 +771,26 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
     Flags |= ELF::SHF_GROUP;
     GroupName = F.getComdat()->getName();
   }
-  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0,
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0 /* Entry Size */,
                                     GroupName, UniqueID);
 }
 
-/// Returns the cold section in which this basic block belongs.
-MCSection *TargetLoweringObjectFileELF::getColdSectionForMachineBasicBlock(
+MCSection *TargetLoweringObjectFileELF::getNamedSectionForMachineBasicBlock(
     const Function &F, const MachineBasicBlock &MBB,
-    const TargetMachine &TM) const {
+    const TargetMachine &TM, const char *Suffix) const {
   SmallString<128> Name;
   Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
              ->getSectionName();
 
+  // If unique section names is off, explicity add the function name to the
+  // section name to make sure named sections for functions are unique
+  // across the module.
   if (!TM.getUniqueSectionNames()) {
     Name += ".";
     Name += MBB.getParent()->getName();
   }
 
-  Name += ".cold";
+  Name += Suffix;
 
   unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
   std::string GroupName = "";
@@ -796,26 +798,7 @@ MCSection *TargetLoweringObjectFileELF::getColdSectionForMachineBasicBlock(
     Flags |= ELF::SHF_GROUP;
     GroupName = F.getComdat()->getName();
   }
-  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0,
-                                    GroupName);
-}
-
-/// Returns the exception section in which this basic block belongs.
-MCSection *TargetLoweringObjectFileELF::getEHSectionForMachineBasicBlock(
-    const Function &F, const MachineBasicBlock &MBB,
-    const TargetMachine &TM) const {
-  SmallString<128> Name;
-  Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
-             ->getSectionName();
-  Name += ".eh";
-
-  unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
-  std::string GroupName = "";
-  if (F.hasComdat()) {
-    Flags |= ELF::SHF_GROUP;
-    GroupName = F.getComdat()->getName();
-  }
-  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0,
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0 /* Entry Size */,
                                     GroupName);
 }
 
