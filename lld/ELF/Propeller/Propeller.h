@@ -191,7 +191,7 @@ public:
   // the file)
   //    11     7c     Nmain/alias1/alias2
   //    ^^     ^^      ^^
-  //  Ordinal  Size    Name and aliases
+  //  ordinal  size    name and aliases
   SymbolEntry *createFunctionSymbol(
       uint64_t ordinal, const StringRef &name, SymbolEntry::AliasesTy &&aliases,
       uint64_t size,
@@ -199,19 +199,19 @@ public:
     auto *sym = new SymbolEntry(ordinal, name, std::move(aliases),
                                 SymbolEntry::INVALID_ADDRESS, size,
                                 llvm::object::SymbolRef::ST_Function);
-    sym->BBTagType = SymbolEntry::BB_NONE;
+    sym->bBTagType = SymbolEntry::BB_NONE;
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
-    for (auto &a : sym->Aliases)
+    for (auto &a : sym->aliases)
       SymbolNameMap[a][""] = sym;
 
-    if (sym->Aliases.size() > 1)
+    if (sym->aliases.size() > 1)
       FunctionsWithAliases.push_back(sym);
 
     // Function symbols is always hot.
-    // sym->HotTag = true;
-    sym->HotTag = isHotSymbol(sym, hotBBSymbols);
+    // sym->hotTag = true;
+    sym->hotTag = isHotSymbol(sym, hotBBSymbols);
     return sym;
   }
 
@@ -221,7 +221,7 @@ public:
   // the file)
   //    12     f      11.1[rlL]
   //    ^^     ^      ^^^^
-  //  Ordinal  Size   func_ordinal.bb_index
+  //  ordinal  size   func_ordinal.bb_index
   //  [rlL]: optional suffix BBTagTypeEnum: return / landingpad /
   //  return-and-landingpad.
   SymbolEntry *createBasicBlockSymbol(uint64_t ordinal, SymbolEntry *function,
@@ -229,7 +229,7 @@ public:
                                       bool hotTag,
                                       SymbolEntry::BBTagTypeEnum bbtt) {
     // bbIndex is of the form "1", "2", it's a stringref to integer.
-    assert(!function->BBTag && function->isFunction());
+    assert(!function->bBTag && function->isFunction());
     auto *sym =
         new SymbolEntry(ordinal, bbIndex, SymbolEntry::AliasesTy(),
                         SymbolEntry::INVALID_ADDRESS, size,
@@ -237,14 +237,14 @@ public:
     // Landing pads are always treated as cold.
     if (bbtt == SymbolEntry::BB_RETURN_AND_LANDING_PAD ||
         bbtt == SymbolEntry::BB_LANDING_PAD)
-      sym->HotTag = false;
+      sym->hotTag = false;
     else
-      sym->HotTag = hotTag;
-    sym->BBTagType = bbtt;
+      sym->hotTag = hotTag;
+    sym->bBTagType = bbtt;
     SymbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
-    for (auto &a : function->Aliases)
+    for (auto &a : function->aliases)
       SymbolNameMap[a][bbIndex] = sym;
     return sym;
   }

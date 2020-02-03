@@ -316,7 +316,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
       break;
     }
 
-    if (tmpNodeMap.find(symEnt->Ordinal) != tmpNodeMap.end()) {
+    if (tmpNodeMap.find(symEnt->ordinal) != tmpNodeMap.end()) {
       tmpNodeMap.clear();
       error("Internal error checking cfg map.");
       break;
@@ -333,8 +333,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
         break;
       }
       // The first node within the section is the representative node.
-      if (secNode->MappedAddr > symEnt->Ordinal) {
-        secNode->MappedAddr = symEnt->Ordinal;
+      if (secNode->MappedAddr > symEnt->ordinal) {
+        secNode->MappedAddr = symEnt->ordinal;
         secNode->ShName = symName;
         secNode->ShSize = symSectionSize;
       }
@@ -353,8 +353,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     if (!symSectionSize)
       continue;
     CFGNode *newNode = new CFGNode(symShndx, symName, symSectionSize,
-                                   symEnt->Ordinal, cfg.get(), symEnt->HotTag);
-    tmpNodeMap.emplace(symEnt->Ordinal, newNode);
+                                   symEnt->ordinal, cfg.get(), symEnt->hotTag);
+    tmpNodeMap.emplace(symEnt->ordinal, newNode);
 
     auto &P = bbGroupSectionMap[symShndx];
     P.first = newNode;
@@ -380,8 +380,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
         fprintf(stderr, "\t%s, shndx=%lu:", node->ShName.str().c_str(),
                 node->Shndx);
         for (SymbolEntry *SS : symSet)
-          fprintf(stderr, " %s[ordinal=%lu]", SS->Name.str().c_str(),
-                  SS->Ordinal);
+          fprintf(stderr, " %s[ordinal=%lu]", SS->name.str().c_str(),
+                  SS->ordinal);
         fprintf(stderr, "\n");
       }
     }
@@ -393,16 +393,16 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     if (symSet.size() <= 1)
       continue;
     SymbolEntry *firstSymbol = *(symSet.begin());
-    if (firstSymbol->Ordinal != node->MappedAddr) {
+    if (firstSymbol->ordinal != node->MappedAddr) {
       error("Internal error grouping sections.");
       cfg.reset(nullptr);
       return cfg;
     }
     for (SymbolEntry *symEnt : symSet) {
-      if (!OrdinalRemapping.emplace(symEnt->Ordinal, node->MappedAddr).second
+      if (!OrdinalRemapping.emplace(symEnt->ordinal, node->MappedAddr).second
           /* The representative node must have the smallest MappedAddr
              (Ordinal) */
-          || symEnt->Ordinal < node->MappedAddr) {
+          || symEnt->ordinal < node->MappedAddr) {
         error("Internal error remapping duplicated sections.");
         cfg.reset(nullptr);
         return cfg;

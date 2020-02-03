@@ -121,7 +121,7 @@ bool Propfile::isHotSymbol(
     const std::map<std::string, std::set<std::string>> &hotBBSymbols,
     StringRef bbIndex, SymbolEntry::BBTagTypeEnum bbtt) {
   std::string N("");
-  for (auto A : func->Aliases) {
+  for (auto A : func->aliases) {
     if (N.empty())
       N = A.str(); // Most of the times.
     else
@@ -177,7 +177,7 @@ bool Propfile::processSymbolLine(
     assert(SymbolOrdinalMap.find(symOrdinal) == SymbolOrdinalMap.end());
     SymbolEntry *func = createFunctionSymbol(
         symOrdinal, sName, std::move(sAliases), symSize, hotBBSymbols);
-    func->HotTag = isHotSymbol(func, hotBBSymbols);
+    func->hotTag = isHotSymbol(func, hotBBSymbols);
     return true;
   }
 
@@ -204,7 +204,7 @@ bool Propfile::processSymbolLine(
   StringRef bbIndex = PropfileStrSaver.save(ephemeralBBIndex);
   auto existingI = SymbolOrdinalMap.find(funcIndex);
   if (existingI != SymbolOrdinalMap.end()) {
-    if (existingI->second->BBTag) {
+    if (existingI->second->bBTag) {
       reportParseError("index '" + std::to_string(funcIndex) +
                        "' is not a function index, but a bb index");
       return false;
@@ -429,15 +429,15 @@ CFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
                       std::to_string(symbolOrdinal)));
     return nullptr;
   }
-  SymbolEntry *funcSym = symbol->BBTag ? symbol->ContainingFunc : symbol;
-  for (auto &funcAliasName : funcSym->Aliases) {
+  SymbolEntry *funcSym = symbol->bBTag ? symbol->containingFunc : symbol;
+  for (auto &funcAliasName : funcSym->aliases) {
     auto cfgLI = CFGMap.find(funcAliasName);
     if (cfgLI == CFGMap.end())
       continue;
 
     // Objects (CfgLI->second) are sorted in the way they appear on the command
     // line, which is the same as how linker chooses the weak symbol definition.
-    if (!symbol->BBTag) {
+    if (!symbol->bBTag) {
       for (auto *CFG : cfgLI->second)
         // Check CFG does have name "SymName".
         for (auto &node : CFG->Nodes)
@@ -447,8 +447,8 @@ CFGNode *Propeller::findCfgNode(uint64_t symbolOrdinal) {
       uint32_t NumOnes;
       // Compare the number of "a" in aaa...a.BB.funcname against integer
       // NumOnes.
-      if (symbol->Name.getAsInteger(10, NumOnes) || !NumOnes)
-        warn("internal error, BB name is invalid: " + symbol->Name.str());
+      if (symbol->name.getAsInteger(10, NumOnes) || !NumOnes)
+        warn("internal error, BB name is invalid: " + symbol->name.str());
       else
         for (auto *CFG : cfgLI->second)
           for (auto &node : CFG->Nodes) {
@@ -558,7 +558,7 @@ bool Propeller::processFiles(std::vector<ObjectView *> &views) {
   for (SymbolEntry *funcS : Propf->FunctionsWithAliases) {
     ControlFlowGraph *primaryCfg = nullptr;
     CfgMapTy::iterator primaryCfgMapEntry;
-    for (StringRef &AliasName : funcS->Aliases) {
+    for (StringRef &AliasName : funcS->aliases) {
       auto cfgMapI = CFGMap.find(AliasName);
       if (cfgMapI == CFGMap.end())
         continue;
