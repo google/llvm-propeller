@@ -771,13 +771,13 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
     Flags |= ELF::SHF_GROUP;
     GroupName = F.getComdat()->getName();
   }
-  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0 /* Entry Size */,
-                                    GroupName, UniqueID);
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags,
+                                    0 /* Entry Size */, GroupName, UniqueID);
 }
 
 MCSection *TargetLoweringObjectFileELF::getNamedSectionForMachineBasicBlock(
-    const Function &F, const MachineBasicBlock &MBB,
-    const TargetMachine &TM, const char *Suffix) const {
+    const Function &F, const MachineBasicBlock &MBB, const TargetMachine &TM,
+    const char *Suffix) const {
   SmallString<128> Name;
   Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
              ->getSectionName();
@@ -798,8 +798,8 @@ MCSection *TargetLoweringObjectFileELF::getNamedSectionForMachineBasicBlock(
     Flags |= ELF::SHF_GROUP;
     GroupName = F.getComdat()->getName();
   }
-  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags, 0 /* Entry Size */,
-                                    GroupName);
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags,
+                                    0 /* Entry Size */, GroupName);
 }
 
 static MCSectionELF *getStaticStructorSection(MCContext &Ctx, bool UseInitArray,
