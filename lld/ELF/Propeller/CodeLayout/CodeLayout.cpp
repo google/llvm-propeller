@@ -20,6 +20,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 
+#include <chrono>
 #include <vector>
 
 using llvm::DenseMap;

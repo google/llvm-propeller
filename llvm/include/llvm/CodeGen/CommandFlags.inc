@@ -351,7 +351,6 @@ getBBSectionsMode(llvm::TargetOptions &Options) {
     return BasicBlockSection::None;
   getBBSectionsList(Options);
   return BasicBlockSection::List;
-  // Process the list file 
 }
 
 // Common utility function tightly tied to the options listed here. Initializes
