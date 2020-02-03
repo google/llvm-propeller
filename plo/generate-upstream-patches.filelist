@@ -147,6 +147,7 @@ declare ALL_FILES=(
         base_2           llvm/test/CodeGen/X86/basicblock-sections-list.ll
         base_2           llvm/test/CodeGen/X86/basicblock-sections-listbb.ll
         base_2           llvm/test/CodeGen/X86/basicblock-sections-labels.ll
+	base_2           llvm/test/CodeGen/X86/basicblock-sections-eh.ll
         exception        llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections.ll
         cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfi.ll
         cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfiinstr.ll
