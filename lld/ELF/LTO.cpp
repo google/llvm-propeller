@@ -27,6 +27,7 @@
 #include "llvm/LTO/Config.h"
 #include "llvm/LTO/LTO.h"
 #include "llvm/Object/SymbolicFile.h"
+#include "llvm/ProfileData/PropellerProf.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"
@@ -59,41 +60,6 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef file) {
   return ret;
 }
 
-static bool getBBSectionsList(TargetOptions &Options) {
-  if (config->ltoBBSections.empty())
-    return false;
-
-  std::ifstream fin(config->ltoBBSections);
-  if (!fin.good()) {
-    errs() << "Cannot open " + config->ltoBBSections;
-    return false;
-  }
-  StringMap<SmallSet<unsigned, 4>>::iterator fi = Options.BBSectionsList.end();
-  std::string line;
-  while ((std::getline(fin, line)).good()) {
-    StringRef S(line);
-    // Lines beginning with @, # are not useful here.
-    if (S.empty() || S[0] == '@' || S[0] == '#')
-      continue;
-    if (!S.consume_front("!") || S.empty())
-      break;
-    if (S.consume_front("!")) {
-      if (fi != Options.BBSectionsList.end())
-        fi->second.insert(std::stoi(S));
-      else {
-        errs() << "Found \"!!\" without preceding \"!\"";
-        return false;
-      }
-    } else {
-      // Start a new function.
-      auto R = Options.BBSectionsList.try_emplace(S.split('/').first);
-      fi = R.first;
-      assert(R.second);
-    }
-  }
-  return true;
-}
-
 static std::string getThinLTOOutputFile(StringRef modulePath) {
   return lto::getThinLTOOutputFile(modulePath,
                                    config->thinLTOPrefixReplace.first,
@@ -121,7 +87,8 @@ static lto::Config createConfig() {
     else if (config->ltoBBSections.equals("none"))
       c.Options.BBSections = BasicBlockSection::None;
     else {
-      getBBSectionsList(c.Options);
+      llvm::propeller::getBBSectionsList(config->ltoBBSections,
+                                         c.Options.BBSectionsList);
       c.Options.BBSections = BasicBlockSection::List;
     }
   }

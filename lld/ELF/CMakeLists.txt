@@ -54,6 +54,7 @@ add_lld_library(lldELF
   Core
   DebugInfoDWARF
   Demangle
+  ProfileData
   LTO
   MC
   Object
