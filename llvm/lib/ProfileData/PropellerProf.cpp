@@ -14,17 +14,27 @@ using llvm::StringRef;
 namespace llvm {
 namespace propeller {
 
+// Basic Block Sections can be enabled for a subset of machine basic blocks.
+// This is done by passing a file containing names of functions for which basic
+// block sections are desired.  Additionally, machine basic block ids of the
+// functions can also be specified for a finer granularity.
+// A file with basic block sections for all of function main and two blocks for
+// function foo looks like this:
+// ----------------------------
+// list.txt:
+// !main
+// !foo
+// !!2
+// !!4
 bool getBBSectionsList(StringRef profFileName,
-                       StringMap<SmallSet<unsigned, 4>>& bbMap) {
+                       StringMap<SmallSet<unsigned, 4>> &bbMap) {
   if (profFileName.empty())
     return false;
 
   std::ifstream fin(profFileName);
-  if (!fin.good()) {
-    // errs() << "Cannot open " + config->ltoBBSections;
+  if (!fin.good())
     return false;
-  }
-  
+
   StringMap<SmallSet<unsigned, 4>>::iterator fi = bbMap.end();
   std::string line;
   while ((std::getline(fin, line)).good()) {
@@ -37,10 +47,8 @@ bool getBBSectionsList(StringRef profFileName,
     if (S.consume_front("!")) {
       if (fi != bbMap.end())
         fi->second.insert(std::stoi(S));
-      else {
-        // errs() << "Found \"!!\" without preceding \"!\"";
+      else
         return false;
-      }
     } else {
       // Start a new function.
       auto R = bbMap.try_emplace(S.split('/').first);
