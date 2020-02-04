@@ -194,7 +194,7 @@ stage1-compiler stage1_debug-compiler stage1_with_cxx_unwind-compiler : %-compil
 
 # Build isntrumented pgo-labels and pgo-relocs using the same pair of options.
 stage-pgo-labels/build/bin/clang-${CLANG_VERSION} stage-pgo-relocs/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
+	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR $(call gen_build_flags,"-funique-internal-funcnames","$(gc_sections_opt)"),"clang;compiler-rt;lld",all)
 
 stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
