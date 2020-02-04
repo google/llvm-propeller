@@ -59,6 +59,18 @@ static std::unique_ptr<raw_fd_ostream> openFile(StringRef file) {
   return ret;
 }
 
+// Basic Block Sections can be enabled for a subset of machine basic blocks.
+// This is done by passing a file containing names of functions for which basic
+// block sections are desired.  Additionally, machine basic block ids of the
+// functions can also be specified for a finer granularity.
+// A file with basic block sections for all of function main and two blocks for
+// function foo looks like this:
+// ----------------------------
+// list.txt:
+// !main
+// !foo
+// !!2
+// !!4
 static bool getBBSectionsList(TargetOptions &Options) {
   if (config->ltoBBSections.empty())
     return false;
