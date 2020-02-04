@@ -39,8 +39,7 @@ uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
     return edge.weight * propConfig.optForwardJumpWeight *
            (propConfig.optForwardJumpDistance - srcSinkDistance);
 
-  if (!isEdgeForward &&
-      srcSinkDistance < propConfig.optBackwardJumpDistance)
+  if (!isEdgeForward && srcSinkDistance < propConfig.optBackwardJumpDistance)
     return edge.weight * propConfig.optBackwardJumpWeight *
            (propConfig.optBackwardJumpDistance - srcSinkDistance);
   return 0;

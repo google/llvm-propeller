@@ -188,8 +188,8 @@ public:
   }
 
   inline bool splitsAtFunctionTransition() const {
-    return splits() &&
-           ((*std::prev(SlicePosition))->controlFlowGraph != (*SlicePosition)->controlFlowGraph);
+    return splits() && ((*std::prev(SlicePosition))->controlFlowGraph !=
+                        (*SlicePosition)->controlFlowGraph);
   }
 
   inline bool needsSplitChainRotation() {

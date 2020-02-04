@@ -43,11 +43,11 @@
 // algorithm iteratively joins bb chains together in order to maximize the
 // extended TSP score of all the chains.
 //
-// Initially, it finds all mutually-forced edges in the profiled controlFlowGraph. These are
-// all the edges which are -- based on the profile -- the only (executed)
-// outgoing edge from their source node and the only (executed) incoming edges
-// to their sink nodes. Next, the source and sink of all mutually-forced edges
-// are attached together as fallthrough edges.
+// Initially, it finds all mutually-forced edges in the profiled
+// controlFlowGraph. These are all the edges which are -- based on the profile
+// -- the only (executed) outgoing edge from their source node and the only
+// (executed) incoming edges to their sink nodes. Next, the source and sink of
+// all mutually-forced edges are attached together as fallthrough edges.
 //
 // Then, at every iteration, the algorithm tries to merge a pair of bb chains
 // which leads to the highest gain in the ExtTSP score. The algorithm extends
@@ -169,8 +169,7 @@ void NodeChainBuilder::coalesceChains() {
       continue;
     }
     // Create a cold partition when -propeller-split-funcs is set.
-    if (propConfig.optSplitFuncs &&
-        (mergerChain->freq != 0 && c->freq == 0)) {
+    if (propConfig.optSplitFuncs && (mergerChain->freq != 0 && c->freq == 0)) {
       mergerChain = c;
       continue;
     }
@@ -206,7 +205,8 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
   leftChain->freq += rightChain->freq;
 
   leftChain->DebugChain |= rightChain->DebugChain;
-  if (leftChain->controlFlowGraph && leftChain->controlFlowGraph != rightChain->controlFlowGraph)
+  if (leftChain->controlFlowGraph &&
+      leftChain->controlFlowGraph != rightChain->controlFlowGraph)
     leftChain->controlFlowGraph = nullptr;
 
   Chains.erase(rightChain->DelegateNode->mappedAddr);
@@ -245,8 +245,8 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain *mergerChain,
   for (auto &elem : mergeeChain->OutEdges) {
     NodeChain *c = (elem.first == mergeeChain) ? mergerChain : elem.first;
     auto res = mergerChain->OutEdges.emplace(c, elem.second);
-    // If the chain-edge is already present, just add the controlFlowGraph edges, otherwise,
-    // add mergerChain to in-edges of the chain.
+    // If the chain-edge is already present, just add the controlFlowGraph
+    // edges, otherwise, add mergerChain to in-edges of the chain.
     if (!res.second)
       res.first->second.insert(res.first->second.end(), elem.second.begin(),
                                elem.second.end());
@@ -262,8 +262,8 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain *mergerChain,
     // Self edges were already handled above.
     if (c == mergeeChain)
       continue;
-    // Move all controlFlowGraph edges from being mapped to mergeeChain to being mapped to
-    // mergerChain.
+    // Move all controlFlowGraph edges from being mapped to mergeeChain to being
+    // mapped to mergerChain.
     auto &mergeeChainEdges = c->OutEdges[mergeeChain];
     auto &mergerChainEdges = c->OutEdges[mergerChain];
 
@@ -407,7 +407,8 @@ void NodeChainBuilder::mergeChains(
 
   mergerChain->DebugChain |= mergeeChain->DebugChain;
 
-  if (mergerChain->controlFlowGraph && mergerChain->controlFlowGraph != mergeeChain->controlFlowGraph)
+  if (mergerChain->controlFlowGraph &&
+      mergerChain->controlFlowGraph != mergeeChain->controlFlowGraph)
     mergerChain->controlFlowGraph = nullptr;
 
   // Merge the assembly candidate chains of the two chains into the candidate
@@ -538,7 +539,8 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
          transit != splitChain->FunctionTransitions.end();) {
       auto slicePos = *transit;
       if (slicePos == splitChain->nodes.begin() ||
-          (*std::prev(slicePos))->controlFlowGraph == (*slicePos)->controlFlowGraph) {
+          (*std::prev(slicePos))->controlFlowGraph ==
+              (*slicePos)->controlFlowGraph) {
         transit = splitChain->FunctionTransitions.erase(transit);
         continue;
       }

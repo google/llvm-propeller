@@ -26,8 +26,8 @@ public:
   // Representative node of the chain, with which it is initially constructed.
   CFGNode *DelegateNode;
 
-  // controlFlowGraph of the nodes in this chain (this will be null if the nodes come from
-  // more than one cfg).
+  // controlFlowGraph of the nodes in this chain (this will be null if the nodes
+  // come from more than one cfg).
   ControlFlowGraph *controlFlowGraph;
 
   // Ordered list of the nodes in this chain.
@@ -57,14 +57,15 @@ public:
 
   // Constructor for building a NodeChain from a single Node
   NodeChain(CFGNode *node)
-      : DelegateNode(node), controlFlowGraph(node->controlFlowGraph), nodes(1, node), size(node->shSize),
-        freq(node->freq), DebugChain(node->controlFlowGraph->debugCFG) {}
+      : DelegateNode(node), controlFlowGraph(node->controlFlowGraph),
+        nodes(1, node), size(node->shSize), freq(node->freq),
+        DebugChain(node->controlFlowGraph->debugCFG) {}
 
-  // Constructor for building a NodeChain from all nodes in the controlFlowGraph according to
-  // the initial order.
+  // Constructor for building a NodeChain from all nodes in the controlFlowGraph
+  // according to the initial order.
   NodeChain(ControlFlowGraph *cfg)
-      : DelegateNode(cfg->getEntryNode()), controlFlowGraph(cfg), size(cfg->size), freq(0),
-        DebugChain(cfg->debugCFG) {
+      : DelegateNode(cfg->getEntryNode()), controlFlowGraph(cfg),
+        size(cfg->size), freq(0), DebugChain(cfg->debugCFG) {
     cfg->forEachNodeRef([this](CFGNode &node) {
       nodes.push_back(&node);
       freq += node.freq;
@@ -87,7 +88,9 @@ public:
     return ((double)freq) / std::max(size, (uint64_t)1);
   }
 
-  bool isSameCFG(const NodeChain &c) { return controlFlowGraph && controlFlowGraph == c.controlFlowGraph; }
+  bool isSameCFG(const NodeChain &c) {
+    return controlFlowGraph && controlFlowGraph == c.controlFlowGraph;
+  }
 };
 
 // This returns a string representation of the chain
