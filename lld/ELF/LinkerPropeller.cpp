@@ -77,12 +77,9 @@ static void setupConfig() {
 
   // Scale weights for use in the computation of ExtTSP score.
   propConfig.optFallthroughWeight *=
-      propConfig.optForwardJumpDistance *
-      propConfig.optBackwardJumpDistance;
-  propConfig.optBackwardJumpWeight *=
-      propConfig.optForwardJumpDistance;
-  propConfig.optForwardJumpWeight *=
-      propConfig.optBackwardJumpDistance;
+      propConfig.optForwardJumpDistance * propConfig.optBackwardJumpDistance;
+  propConfig.optBackwardJumpWeight *= propConfig.optForwardJumpDistance;
+  propConfig.optForwardJumpWeight *= propConfig.optBackwardJumpDistance;
 }
 
 // Propeller framework entrance.

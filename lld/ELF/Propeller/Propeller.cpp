@@ -383,7 +383,8 @@ bool Propfile::processProfile() {
         continue;
       ++fallthroughCnt;
       // lineTag == 'F'
-      ControlFlowGraph *cfg = fromN ? fromN->controlFlowGraph : toN->controlFlowGraph;
+      ControlFlowGraph *cfg =
+          fromN ? fromN->controlFlowGraph : toN->controlFlowGraph;
       cfg->markPath(fromN, toN, count);
     }
   }
@@ -395,7 +396,8 @@ bool Propfile::processProfile() {
   return true;
 }
 
-// Parse each ELF file, create controlFlowGraph and attach profile data to controlFlowGraph.
+// Parse each ELF file, create controlFlowGraph and attach profile data to
+// controlFlowGraph.
 void Propeller::processFile(ObjectView *view) {
   if (view) {
     std::map<uint64_t, uint64_t> ordinalRemapping;
@@ -542,8 +544,8 @@ bool Propeller::checkTarget() {
 // parallel and stores the result information.
 bool Propeller::processFiles(std::vector<ObjectView *> &views) {
   if (!propf->readSymbols()) {
-    error(std::string("invalid propfile: '") +
-          propConfig.optPropeller.str() + "'");
+    error(std::string("invalid propfile: '") + propConfig.optPropeller.str() +
+          "'");
     return false;
   }
 
@@ -652,7 +654,7 @@ ObjectView *Propeller::createObjectView(const StringRef &vn,
                                         const MemoryBufferRef &mbr) {
   const char *start = mbr.getBufferStart();
   if (mbr.getBufferSize() > 6 && start[0] == 0x7f && start[1] == 'E' &&
-      start[2] == 'lineRef' && start[3] == 'F') {
+      start[2] == 'L' && start[3] == 'F') {
     auto r = ObjectFile::createELFObjectFile(mbr);
     if (r)
       return new ObjectView(*r, vn, ordinal, mbr);

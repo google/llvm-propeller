@@ -35,16 +35,16 @@ struct SymbolEntry {
 
   using AliasesTy = SmallVector<StringRef, 3>;
 
-  SymbolEntry(uint64_t O, const StringRef &N, AliasesTy &&As, uint64_t A,
-              uint64_t S, uint8_t T, bool BB = false,
-              SymbolEntry *FuncPtr = nullptr)
-      : ordinal(O), name(N), aliases(As), addr(A), size(S), type(T), bbTag(BB),
-        bbTagType(BB_NONE), hotTag(false), containingFunc(FuncPtr) {}
+  SymbolEntry(uint64_t o, const StringRef &n, AliasesTy &&as, uint64_t address,
+              uint64_t s, uint8_t t, bool bb = false,
+              SymbolEntry *funcptr = nullptr)
+      : ordinal(o), name(n), aliases(as), addr(address), size(s), type(t),
+        bbTag(bb), bbTagType(BB_NONE), hotTag(false), containingFunc(funcptr) {}
 
   // Unique index number across all symbols that participate linking.
   uint64_t ordinal;
   // For a function symbol, it's the full name. For a bb symbol this is only the
-  // bbindex part, which is the number of "a"s before the ".bb." part. For
+  // bbIndex part, which is the number of "a"s before the ".bb." part. For
   // example "8", "10", etc. Refer to Propfile::createFunctionSymbol and
   // Propfile::createBasicBlockSymbol.
   StringRef name;
@@ -73,31 +73,31 @@ struct SymbolEntry {
   }
 
   bool operator<(const SymbolEntry &Other) const {
-    return this->ordinal < Other.ordinal;
+    return ordinal < Other.ordinal;
   }
 
   bool isFunction() const {
     return type == llvm::object::SymbolRef::ST_Function;
   }
 
-  // Return true if "SymName" is a BB symbol, e.g., in the form of
-  // "a.BB.funcname", and set FuncName to the part after ".BB.", BBIndex to
+  // Return true if "symName" is a BB symbol, e.g., in the form of
+  // "a.BB.funcname", and set funcName to the part after ".BB.", bbIndex to
   // before ".BB.", if the pointers are nonnull.
-  static bool isBBSymbol(const StringRef &SymName,
-                         StringRef *FuncName = nullptr,
-                         StringRef *BBIndex = nullptr) {
-    if (SymName.empty())
+  static bool isBBSymbol(const StringRef &symName,
+                         StringRef *funcName = nullptr,
+                         StringRef *bbIndex = nullptr) {
+    if (symName.empty())
       return false;
-    auto R = SymName.split(BASIC_BLOCK_SEPARATOR);
-    if (R.second.empty())
+    auto r = symName.split(BASIC_BLOCK_SEPARATOR);
+    if (r.second.empty())
       return false;
-    for (auto *I = R.first.bytes_begin(), *J = R.first.bytes_end(); I != J; ++I)
-      if (strchr(BASIC_BLOCK_UNIFIED_CHARACTERS, *I) == NULL)
+    for (auto *i = r.first.bytes_begin(), *j = r.first.bytes_end(); i != j; ++i)
+      if (strchr(BASIC_BLOCK_UNIFIED_CHARACTERS, *i) == NULL)
         return false;
-    if (FuncName)
-      *FuncName = R.second;
-    if (BBIndex)
-      *BBIndex = R.first;
+    if (funcName)
+      *funcName = r.second;
+    if (bbIndex)
+      *bbIndex = r.first;
     return true;
   }
 
