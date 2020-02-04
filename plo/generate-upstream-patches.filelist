@@ -8,21 +8,34 @@
 # respectively.
 
 declare ALL_FILES=(
-        clang            clang/include/clang/Basic/CodeGenOptions.def
-        clang            clang/include/clang/Basic/CodeGenOptions.h
-        clang            clang/include/clang/Driver/CC1Options.td
-        clang            clang/include/clang/Driver/Options.td
-        clang            clang/lib/CodeGen/BackendUtil.cpp
-        clang            clang/lib/CodeGen/CGDeclCXX.cpp
-        clang            clang/lib/CodeGen/CodeGenModule.cpp
-        clang            clang/lib/Driver/ToolChains/Clang.cpp
-        clang            clang/lib/Driver/ToolChains/Gnu.cpp
-        clang            clang/lib/Frontend/CompilerInvocation.cpp
-        clang            clang/test/CodeGen/basicblock-sections.c
-        clang            clang/test/CodeGen/basicblock-sections.funcnames
-        clang            clang/test/CodeGen/unique_internal_funcnames.c
-        clang            clang/test/Driver/propeller-flags.c
-        clang            clang/tools/driver/cc1as_main.cpp
+# clang patches starts
+# clang-uif - unique internal funcs
+# clang-rws - relocate with symbols
+# clang-pro - Propeller
+# clang-sta - clang Standalone
+        clang-base       clang/include/clang/Basic/CodeGenOptions.def
+        clang-uif        clang/include/clang/Basic/CodeGenOptions.def
+        clang-rws        clang/include/clang/Basic/CodeGenOptions.def
+        clang-base       clang/include/clang/Basic/CodeGenOptions.h
+        clang-rws        clang/include/clang/Driver/CC1Options.td
+        clang-base       clang/include/clang/Driver/Options.td
+        clang-pro        clang/include/clang/Driver/Options.td
+        clang-uif        clang/include/clang/Driver/Options.td
+        clang-base       clang/lib/CodeGen/BackendUtil.cpp
+        clang-uif        clang/lib/CodeGen/CGDeclCXX.cpp
+        clang-sta        clang/lib/CodeGen/CGDeclCXX.cpp
+        clang-base       clang/lib/Driver/ToolChains/Clang.cpp
+        clang-rws        clang/lib/Driver/ToolChains/Clang.cpp
+        clang-uif        clang/lib/Driver/ToolChains/Clang.cpp
+	clang-uif        clang/lib/CodeGen/CodeGenModule.cpp
+        clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
+        clang-base       clang/lib/Frontend/CompilerInvocation.cpp
+        clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
+        clang-base       clang/test/CodeGen/basicblock-sections.c
+        clang-uif        clang/test/CodeGen/basicblock-sections.funcnames
+        clang-uif        clang/test/CodeGen/unique_internal_funcnames.c
+        clang-pro        clang/test/Driver/propeller-flags.c
+        clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
 # lld starts from here	
         lld-bb           lld/ELF/Arch/X86_64.cpp

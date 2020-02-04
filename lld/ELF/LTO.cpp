@@ -68,39 +68,28 @@ static bool getBBSectionsList(TargetOptions &Options) {
     errs() << "Cannot open " + config->ltoBBSections;
     return false;
   }
-
-  bool consumeBasicBlockIds = false;
+  StringMap<SmallSet<unsigned, 4>>::iterator fi = Options.BBSectionsList.end();
   std::string line;
-  StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
-      Options.BBSectionsList.end();
-
   while ((std::getline(fin, line)).good()) {
-    if (line.empty())
-      continue;
-    if (line.find("#AllBB") != std::string::npos) {
-      errs() << "#AllBB is no longer supported.";
-      return false;
-    }
-    if (line[0] == '@' || line[0] == '#')
-      continue;
-    if (line[0] != '!')
-      break;
     StringRef S(line);
-    if (S.consume_front("!") && !S.empty()) {
-      if (consumeBasicBlockIds && S.consume_front("!")) {
-        assert(currentFuncI != Options.BBSectionsList.end());
-        currentFuncI->second.insert(std::stoi(S));
-      } else {
-        // Start a new function.
-        // S may have aliases encoded, like "foo_1/foo_1a/foo_2a", etc.
-        auto R = Options.BBSectionsList.try_emplace(S.split('/').first);
-        assert(R.second);
-        currentFuncI = R.first;
-        currentFuncI->second.insert(0);
-        consumeBasicBlockIds = true;
+    // Lines beginning with @, # are not useful here.
+    if (S.empty() || S[0] == '@' || S[0] == '#')
+      continue;
+    if (!S.consume_front("!") || S.empty())
+      break;
+    if (S.consume_front("!")) {
+      if (fi != Options.BBSectionsList.end())
+        fi->second.insert(std::stoi(S));
+      else {
+        errs() << "Found \"!!\" without preceding \"!\"";
+        return false;
       }
-    } else
-      consumeBasicBlockIds = false;
+    } else {
+      // Start a new function.
+      auto R = Options.BBSectionsList.try_emplace(S.split('/').first);
+      fi = R.first;
+      assert(R.second);
+    }
   }
   return true;
 }

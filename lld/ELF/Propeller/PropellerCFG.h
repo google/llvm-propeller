@@ -9,14 +9,14 @@
 // Class definitions for propeller cfg, edge, nodes and CFGBuilder.
 //
 // The ObjectView class represents one ELF file. The CFGBuilder class builds
-// cfg for each function and store it in ObjectView::CFGs, indexed by cfg name.
+// cfg for each function and store it in ObjectView::cfgs, indexed by cfg name.
 //
 // CFGBuilder::buildCFGs works this way:
-//   - groups funcName, a.BB.funcName, aa.BB.funcName and alike into one set,
+//   - groups funcName, a.bb.funcName, aa.bb.funcName and alike into one set,
 //     for each set, passes the set to "CFGBuilder::buildCFG"
 //   - each element in the set is a section, we then know from its section
 //     relocations the connections to other sections. (a)
-//   - from (a), we build CFG.
+//   - from (a), we build controlFlowGraph.
 //
 // Three important functions in ControlFlowGraph:
 //   mapBranch - apply counter to edge A->B, where A, B belong to the same func
@@ -53,12 +53,12 @@ class CFGNode;
 class ControlFlowGraph;
 class NodeChain;
 
-// All instances of CFGEdge are owned by their CFG.
+// All instances of CFGEdge are owned by their controlFlowGraph.
 class CFGEdge {
 public:
-  CFGNode *Src;
-  CFGNode *Sink;
-  uint64_t Weight;
+  CFGNode *src;
+  CFGNode *sink;
+  uint64_t weight;
 
   // Whether it's an edge introduced by recursive-self-call.  (Usually
   // calls do not split basic blocks and do not introduce new edges.)
@@ -71,93 +71,93 @@ public:
     // Inter function jumps / calls.
     INTER_FUNC_CALL,
     INTER_FUNC_RETURN,
-  } Type = INTRA_FUNC;
+  } type = INTRA_FUNC;
 
-  bool isCall() const { return Type == INTER_FUNC_CALL || Type == INTRA_RSC; }
+  bool isCall() const { return type == INTER_FUNC_CALL || type == INTRA_RSC; }
 
   bool isReturn() const {
-    return Type == INTER_FUNC_RETURN || Type == INTRA_RSR;
+    return type == INTER_FUNC_RETURN || type == INTRA_RSR;
   }
 
   bool isFTEdge() const;
 
 protected:
-  CFGEdge(CFGNode *N1, CFGNode *N2, EdgeType T)
-      : Src(N1), Sink(N2), Weight(0), Type(T) {}
+  CFGEdge(CFGNode *n1, CFGNode *n2, EdgeType t)
+      : src(n1), sink(n2), weight(0), type(t) {}
 
   friend class ControlFlowGraph;
 };
 
-// All instances of CFGNode are owned by their CFG.
+// All instances of CFGNode are owned by their controlFlowGraph.
 class CFGNode {
 public:
-  uint64_t Shndx;
-  StringRef ShName;
-  uint64_t ShSize;
-  // Note, "MappedAddr"s are not real/virtual addresses, they are ordinals from
+  uint64_t shndx;
+  StringRef shName;
+  uint64_t shSize;
+  // Note, "mappedAddr"s are not real/virtual addresses, they are ordinals from
   // the propeller file. However, ordinals from propeller do reflect the true
   // orders of symbol address.
-  uint64_t MappedAddr;
-  uint64_t Freq;
-  ControlFlowGraph *CFG;
+  uint64_t mappedAddr;
+  uint64_t freq;
+  ControlFlowGraph *controlFlowGraph;
 
   // Containing chain for this node assigned by the ordering algorithm.
   // This will be updated as chains keep merging together during the algorithm.
-  NodeChain *Chain;
+  NodeChain *chain;
 
   // Offset of this node in the assigned chain.
-  uint64_t ChainOffset;
+  uint64_t chainOffset;
 
-  std::vector<CFGEdge *> Outs;     // Intra function edges.
-  std::vector<CFGEdge *> Ins;      // Intra function edges.
-  std::vector<CFGEdge *> CallOuts; // Callouts/returns to other functions.
-  std::vector<CFGEdge *> CallIns;  // Callins/returns from other functions.
+  std::vector<CFGEdge *> outs;     // Intra function edges.
+  std::vector<CFGEdge *> ins;      // Intra function edges.
+  std::vector<CFGEdge *> callOuts; // Callouts/returns to other functions.
+  std::vector<CFGEdge *> callIns;  // Callins/returns from other functions.
 
-  // Fallthrough edge, could be nullptr. And if not, FTEdge is in Outs.
-  CFGEdge *FTEdge;
+  // Fallthrough edge, could be nullptr. And if not, ftEdge is in outs.
+  CFGEdge *ftEdge;
 
-  // In Selective BB mode - if this BB appears in the hot bbs section, then this
+  // In Selective bb mode - if this bb appears in the hot bbs section, then this
   // is true.
-  // In AllBBMode - this is true if the function it belongs to appears in the
-  // hot bbs sections, even if the BB itself is cold.
-  // If HotTag is false, then the node Freq and all its edges Freqs are zero-ed
+  // In allBBMode - this is true if the function it belongs to appears in the
+  // hot bbs sections, even if the bb itself is cold.
+  // If hotTag is false, then the node freq and all its edges Freqs are zero-ed
   // out.
-  bool HotTag;
+  bool hotTag;
 
   const static uint64_t InvalidAddress = -1;
 
   unsigned getBBIndex() const {
-    StringRef FName, BName;
-    if (SymbolEntry::isBBSymbol(ShName, &FName, &BName))
-      return BName.size();
+    StringRef fName, bName;
+    if (SymbolEntry::isBBSymbol(shName, &fName, &bName))
+      return bName.size();
     return 0;
   }
 
   bool isEntryNode() const;
 
-  template <class Visitor> void forEachInEdgeRef(Visitor V) {
-    for (auto &edgeList : {Ins, CallIns})
+  template <class Visitor> void forEachInEdgeRef(Visitor v) {
+    for (auto &edgeList : {ins, callIns})
       for (CFGEdge *E : edgeList)
-        V(*E);
+        v(*E);
   }
 
-  template <class Visitor> void forEachIntraOutEdgeRef(Visitor V) {
-    for (CFGEdge *E : Outs)
-      V(*E);
+  template <class Visitor> void forEachIntraOutEdgeRef(Visitor v) {
+    for (CFGEdge *E : outs)
+      v(*E);
   }
 
-  template <class Visitor> void forEachOutEdgeRef(Visitor V) {
-    for (auto &edgeList : {Outs, CallOuts})
+  template <class Visitor> void forEachOutEdgeRef(Visitor v) {
+    for (auto &edgeList : {outs, callOuts})
       for (CFGEdge *E : edgeList)
-        V(*E);
+        v(*E);
   }
 
 private:
-  CFGNode(uint64_t _Shndx, const StringRef &_ShName, uint64_t _Size,
-          uint64_t _MappedAddr, ControlFlowGraph *_Cfg, bool _HotTag)
-      : Shndx(_Shndx), ShName(_ShName), ShSize(_Size), MappedAddr(_MappedAddr),
-        Freq(0), CFG(_Cfg), Chain(nullptr), ChainOffset(0), Outs(), Ins(),
-        CallOuts(), CallIns(), FTEdge(nullptr), HotTag(_HotTag) {}
+  CFGNode(uint64_t _shndx, const StringRef &_shName, uint64_t _size,
+          uint64_t _mappedAddr, ControlFlowGraph *_cfg, bool _hotTag)
+      : shndx(_shndx), shName(_shName), shSize(_size), mappedAddr(_mappedAddr),
+        freq(0), controlFlowGraph(_cfg), chain(nullptr), chainOffset(0), outs(),
+        ins(), callOuts(), callIns(), ftEdge(nullptr), hotTag(_hotTag) {}
 
   friend class ControlFlowGraph;
   friend class CFGBuilder;
@@ -165,25 +165,25 @@ private:
 
 class ControlFlowGraph {
 public:
-  ObjectView *View;
-  StringRef Name;
-  uint64_t Size;
+  ObjectView *view;
+  StringRef name;
+  uint64_t size;
 
-  // Whether propeller should print information about how this CFG is being
-  // reordered.
-  bool DebugCFG;
-  bool Hot;
+  // Whether propeller should print information about how this controlFlowGraph
+  // is being reordered.
+  bool debugCFG;
+  bool hot;
 
-  // ControlFlowGraph assumes the ownership for all Nodes / Edges.
-  std::vector<std::unique_ptr<CFGNode>> Nodes; // Sorted by address.
-  std::vector<std::unique_ptr<CFGEdge>> IntraEdges;
-  std::vector<std::unique_ptr<CFGEdge>> InterEdges;
+  // ControlFlowGraph assumes the ownership for all nodes / Edges.
+  std::vector<std::unique_ptr<CFGNode>> nodes; // Sorted by address.
+  std::vector<std::unique_ptr<CFGEdge>> intraEdges;
+  std::vector<std::unique_ptr<CFGEdge>> interEdges;
 
-  ControlFlowGraph(ObjectView *V, const StringRef &N, uint64_t S)
-      : View(V), Name(N), Size(S), Hot(false) {
-    DebugCFG = std::find(propellerConfig.optDebugSymbols.begin(),
-                         propellerConfig.optDebugSymbols.end(),
-                         Name.str()) != propellerConfig.optDebugSymbols.end();
+  ControlFlowGraph(ObjectView *v, const StringRef &n, uint64_t s)
+      : view(v), name(n), size(s), hot(false) {
+    debugCFG = std::find(propConfig.optDebugSymbols.begin(),
+                         propConfig.optDebugSymbols.end(),
+                         name.str()) != propConfig.optDebugSymbols.end();
   }
 
   bool markPath(CFGNode *from, CFGNode *to, uint64_t cnt = 1);
@@ -193,19 +193,19 @@ public:
                   bool isCall = false, bool isReturn = false);
 
   CFGNode *getEntryNode() const {
-    assert(!Nodes.empty());
-    return Nodes.begin()->get();
+    assert(!nodes.empty());
+    return nodes.begin()->get();
   }
 
   bool isHot() const {
-    if (Nodes.empty())
+    if (nodes.empty())
       return false;
-    return Hot;
+    return hot;
   }
 
-  template <class Visitor> void forEachNodeRef(Visitor V) {
-    for (auto &N : Nodes)
-      V(*N);
+  template <class Visitor> void forEachNodeRef(Visitor v) {
+    for (auto &N : nodes)
+      v(*N);
   }
 
   bool writeAsDotGraph(StringRef cfgOutName);
@@ -216,10 +216,10 @@ private:
                       typename CFGEdge::EdgeType type);
 
   void emplaceEdge(CFGEdge *edge) {
-    if (edge->Type < CFGEdge::INTER_FUNC_CALL)
-      IntraEdges.emplace_back(edge);
+    if (edge->type < CFGEdge::INTER_FUNC_CALL)
+      intraEdges.emplace_back(edge);
     else
-      InterEdges.emplace_back(edge);
+      interEdges.emplace_back(edge);
   }
 
   friend class CFGBuilder;
@@ -227,16 +227,16 @@ private:
 
 class CFGBuilder {
 public:
-  ObjectView *View;
+  ObjectView *view;
 
-  uint32_t BB = 0;
-  uint32_t BBWoutAddr = 0;
-  uint32_t InvalidCFGs = 0;
+  uint32_t bb = 0;
+  uint32_t bbWoutAddr = 0;
+  uint32_t invalidCFGs = 0;
 
-  CFGBuilder(ObjectView *vw) : View(vw) {}
+  CFGBuilder(ObjectView *vw) : view(vw) {}
 
   // See implementaion comments in .cpp.
-  bool buildCFGs(std::map<uint64_t, uint64_t> &OrdinalRemapping);
+  bool buildCFGs(std::map<uint64_t, uint64_t> &ordinalRemapping);
 
 protected:
   // Group symbols according to function boundary.
@@ -248,9 +248,9 @@ protected:
                 std::map<uint64_t, section_iterator> &relocationSectionMap);
 
   std::unique_ptr<ControlFlowGraph>
-  buildCFGNodes(std::map<StringRef, std::list<SymbolRef>>::value_type &GE,
+  buildCFGNodes(std::map<StringRef, std::list<SymbolRef>>::value_type &group,
                 std::map<uint64_t, std::unique_ptr<CFGNode>> &tmpNodeMap,
-                std::map<uint64_t, uint64_t> &OrdinalRemapping);
+                std::map<uint64_t, uint64_t> &ordinalRemapping);
 
   // See implementation comments in .cpp.
   void calculateFallthroughEdges(
@@ -270,20 +270,20 @@ protected:
 // ObjectView is a structure that corresponds to a single ELF file.
 class ObjectView {
 public:
-  ObjectView(std::unique_ptr<ObjectFile> &vF, const StringRef &vN,
-             const uint32_t vO, const MemoryBufferRef &fR)
-      : ViewFile(std::move(vF)), ViewName(vN), Ordinal(vO), FileRef(fR),
-        CFGs() {}
+  ObjectView(std::unique_ptr<ObjectFile> &vf, const StringRef &vn,
+             const uint32_t vo, const MemoryBufferRef &mbr)
+      : viewFile(std::move(vf)), viewName(vn), ordinal(vo), fileRef(mbr),
+        cfgs() {}
 
   void EraseCfg(ControlFlowGraph *&cfgPtr);
 
-  std::unique_ptr<ObjectFile> ViewFile;
-  StringRef ViewName;
-  const uint32_t Ordinal;
-  MemoryBufferRef FileRef;
+  std::unique_ptr<ObjectFile> viewFile;
+  StringRef viewName;
+  const uint32_t ordinal;
+  MemoryBufferRef fileRef;
 
-  // Name -> ControlFlowGraph mapping.
-  std::map<StringRef, std::unique_ptr<ControlFlowGraph>> CFGs;
+  // name -> ControlFlowGraph mapping.
+  std::map<StringRef, std::unique_ptr<ControlFlowGraph>> cfgs;
 };
 
 std::ostream &operator<<(std::ostream &out, const CFGNode &node);

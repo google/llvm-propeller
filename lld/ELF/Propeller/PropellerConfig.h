@@ -9,8 +9,6 @@
 #include <string>
 #include <vector>
 
-using llvm::StringRef;
-
 namespace lld {
 namespace propeller {
 
@@ -36,7 +34,7 @@ struct PropellerConfig {
   bool optReorderIP;
 };
 
-extern PropellerConfig propellerConfig;
+extern PropellerConfig propConfig;
 
 } // namespace propeller
 } // namespace lld

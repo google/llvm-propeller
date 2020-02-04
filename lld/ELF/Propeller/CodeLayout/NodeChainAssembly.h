@@ -34,8 +34,8 @@ uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
 // beginning and end of the slice.
 class NodeChainSlice {
 public:
-  // Chain from which this slice comes from
-  NodeChain *Chain;
+  // chain from which this slice comes from
+  NodeChain *chain;
 
   // The endpoints of the slice in the corresponding chain
   std::list<CFGNode *>::iterator Begin, End;
@@ -47,20 +47,20 @@ public:
   // endpoints of the chain.
   NodeChainSlice(NodeChain *c, std::list<CFGNode *>::iterator begin,
                  std::list<CFGNode *>::iterator end)
-      : Chain(c), Begin(begin), End(end) {
+      : chain(c), Begin(begin), End(end) {
 
-    BeginOffset = (*begin)->ChainOffset;
-    if (End == Chain->Nodes.end())
-      EndOffset = Chain->Size;
+    BeginOffset = (*begin)->chainOffset;
+    if (End == chain->nodes.end())
+      EndOffset = chain->size;
     else
-      EndOffset = (*end)->ChainOffset;
+      EndOffset = (*end)->chainOffset;
   }
 
   // Constructor for building a chain slice from a node chain containing all of
   // its nodes.
   NodeChainSlice(NodeChain *c)
-      : Chain(c), Begin(c->Nodes.begin()), End(c->Nodes.end()), BeginOffset(0),
-        EndOffset(c->Size) {}
+      : chain(c), Begin(c->nodes.begin()), End(c->nodes.end()), BeginOffset(0),
+        EndOffset(c->size) {}
 
   // (Binary) size of this slice
   uint64_t size() const { return EndOffset - BeginOffset; }
@@ -105,15 +105,15 @@ public:
   MergeOrder MOrder;
 
   // The constructor for creating a NodeChainAssembly. slicePosition must be an
-  // iterator into splitChain->Nodes.
+  // iterator into splitChain->nodes.
   NodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain,
                     std::list<CFGNode *>::iterator slicePosition,
                     MergeOrder mOrder)
       : ChainPair(splitChain, unsplitChain), SlicePosition(slicePosition),
         MOrder(mOrder) {
     // Construct the slices.
-    NodeChainSlice s1(splitChain, splitChain->Nodes.begin(), SlicePosition);
-    NodeChainSlice s2(splitChain, SlicePosition, splitChain->Nodes.end());
+    NodeChainSlice s1(splitChain, splitChain->nodes.begin(), SlicePosition);
+    NodeChainSlice s2(splitChain, SlicePosition, splitChain->nodes.end());
     NodeChainSlice u(unsplitChain);
 
     switch (MOrder) {
@@ -150,7 +150,7 @@ public:
                       uint8_t &idx) const;
 
   // This function computes the ExtTSP score for a chain assembly record. This
-  // goes over the three BB slices in the assembly record and considers all
+  // goes over the three bb slices in the assembly record and considers all
   // edges whose source and sink belong to the chains in the assembly record.
   uint64_t computeExtTSPScore() const;
 
@@ -180,16 +180,16 @@ public:
   // chains. When ChainPair is equal, this helps differentiate and compare the
   // two assembly records.
   std::pair<uint8_t, size_t> assemblyStrategy() const {
-    return std::make_pair(MOrder, (*SlicePosition)->MappedAddr);
+    return std::make_pair(MOrder, (*SlicePosition)->mappedAddr);
   }
 
   inline bool splits() const {
-    return SlicePosition != splitChain()->Nodes.begin();
+    return SlicePosition != splitChain()->nodes.begin();
   }
 
   inline bool splitsAtFunctionTransition() const {
     return splits() &&
-           ((*std::prev(SlicePosition))->CFG != (*SlicePosition)->CFG);
+           ((*std::prev(SlicePosition))->controlFlowGraph != (*SlicePosition)->controlFlowGraph);
   }
 
   inline bool needsSplitChainRotation() {

@@ -14,7 +14,7 @@ namespace lld {
 namespace propeller {
 
 static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
-static const char *BASIC_BLOCK_UNIFIED_CHARACTERS = "arlL";
+static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arlL";
 
 // This data structure is shared between lld propeller components and
 // create_llvm_prof. In short, create_llvm_prof parses the binary, wraps all the
@@ -25,7 +25,6 @@ static const char *BASIC_BLOCK_UNIFIED_CHARACTERS = "arlL";
 // [create_llvm_prof refer to:
 // https://github.com/shenhanc78/autofdo/tree/plo-dev]
 struct SymbolEntry {
-
   enum BBTagTypeEnum : unsigned char {
     BB_NONE = 0,              // For functions.
     BB_NORMAL,                // Ordinary BB, 'a'.
@@ -39,74 +38,46 @@ struct SymbolEntry {
   SymbolEntry(uint64_t O, const StringRef &N, AliasesTy &&As, uint64_t A,
               uint64_t S, uint8_t T, bool BB = false,
               SymbolEntry *FuncPtr = nullptr)
-      : Ordinal(O), Name(N), Aliases(As), Addr(A), Size(S), Type(T), BBTag(BB),
-        BBTagType(BB_NONE), HotTag(false), ContainingFunc(FuncPtr) {}
+      : ordinal(O), name(N), aliases(As), addr(A), size(S), type(T), bbTag(BB),
+        bbTagType(BB_NONE), hotTag(false), containingFunc(FuncPtr) {}
 
   // Unique index number across all symbols that participate linking.
-  uint64_t Ordinal;
+  uint64_t ordinal;
   // For a function symbol, it's the full name. For a bb symbol this is only the
   // bbindex part, which is the number of "a"s before the ".bb." part. For
   // example "8", "10", etc. Refer to Propfile::createFunctionSymbol and
   // Propfile::createBasicBlockSymbol.
-  StringRef Name;
-  // Only valid for function (BBTag == false) symbols. And aliases[0] always
-  // equals to Name. For example, SymbolEntry.Name = "foo", SymbolEntry.Aliases
+  StringRef name;
+  // Only valid for function (bbTag == false) symbols. And aliases[0] always
+  // equals to name. For example, SymbolEntry.name = "foo", SymbolEntry.aliases
   // = {"foo", "foo2", "foo3"}.
-  AliasesTy Aliases;
-  uint64_t Addr;
-  uint64_t Size;
-  uint8_t Type; // Of type: llvm::objet::SymbolRef::Type.
-  bool BBTag;   // Whether this is a basic block section symbol.
-  BBTagTypeEnum BBTagType;
+  AliasesTy aliases;
+  uint64_t addr;
+  uint64_t size;
+  uint8_t type; // Of type: llvm::objet::SymbolRef::type.
+  bool bbTag;   // Whether this is a basic block section symbol.
+  BBTagTypeEnum bbTagType;
 
-  bool HotTag; // Whether this symbol is listed in the propeller section.
-  // For BBTag symbols, this is the containing fuction pointer, for a normal
+  bool hotTag; // Whether this symbol is listed in the propeller section.
+  // For bbTag symbols, this is the containing fuction pointer, for a normal
   // function symbol, this points to itself. This is neverl nullptr.
-  SymbolEntry *ContainingFunc;
+  SymbolEntry *containingFunc;
 
   bool isReturnBlock() const {
-    return BBTagType == BB_RETURN || BBTagType == BB_RETURN_AND_LANDING_PAD;
+    return bbTagType == BB_RETURN || bbTagType == BB_RETURN_AND_LANDING_PAD;
   }
 
   bool isLandingPadBlock() const {
-    return BBTagType == BB_LANDING_PAD ||
-           BBTagType == BB_RETURN_AND_LANDING_PAD;
-  }
-
-  bool containsAddress(uint64_t A) const {
-    return Addr <= A && A < Addr + Size;
-  }
-
-  bool containsAnotherSymbol(SymbolEntry *O) const {
-    if (O->Size == 0) {
-      // Note if O's size is 0, we allow O on the end boundary. For example, if
-      // foo.BB.4 is at address 0x10. foo is [0x0, 0x10), we then assume foo
-      // contains foo.BB.4.
-      return this->Addr <= O->Addr && O->Addr <= this->Addr + this->Size;
-    }
-    return containsAddress(O->Addr) && containsAddress(O->Addr + O->Size - 1);
+    return bbTagType == BB_LANDING_PAD ||
+           bbTagType == BB_RETURN_AND_LANDING_PAD;
   }
 
   bool operator<(const SymbolEntry &Other) const {
-    return this->Ordinal < Other.Ordinal;
+    return this->ordinal < Other.ordinal;
   }
 
   bool isFunction() const {
-    return this->Type == llvm::object::SymbolRef::ST_Function;
-  }
-
-  // Return true if this SymbolEntry is a containing function for BBName. For
-  // example, if BBName is given as "aa.BB.foo", and SymbolEntry.Name = "foo",
-  // then SymbolEntry.isFunctionForBBName(BBName) == true.  BBNames are from ELF
-  // object files.
-  bool isFunctionForBBName(StringRef BBName) const {
-    auto A = BBName.split(BASIC_BLOCK_SEPARATOR);
-    if (A.second == Name)
-      return true;
-    for (auto N : Aliases)
-      if (A.second == N)
-        return true;
-    return false;
+    return type == llvm::object::SymbolRef::ST_Function;
   }
 
   // Return true if "SymName" is a BB symbol, e.g., in the form of
@@ -140,7 +111,8 @@ struct SymbolEntry {
       return BB_LANDING_PAD;
     case 'L':
       return BB_RETURN_AND_LANDING_PAD;
-    default:;
+    default:
+      assert(false);
     }
     return BB_NONE;
   }
@@ -149,12 +121,10 @@ struct SymbolEntry {
 };
 
 struct SymbolEntryOrdinalLessComparator {
-  bool operator()(SymbolEntry *S1, SymbolEntry *S2) const {
-    if (!S1 && S2)
-      return true;
-    if ((S1 && !S2) || (!S1 && !S2))
-      return false;
-    return S1->Ordinal < S2->Ordinal;
+  bool operator()(SymbolEntry *s1, SymbolEntry *s2) const {
+    if (s1 && s2)
+      return s1->ordinal < s2->ordinal;
+    return !!s1 < !!s2;
   }
 };
 

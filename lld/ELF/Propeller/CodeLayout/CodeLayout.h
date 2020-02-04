@@ -19,7 +19,7 @@ namespace propeller {
 
 class CodeLayout {
 private:
-  // CFGs that are processed by the reordering algorithm. These are separated
+  // cfgs that are processed by the reordering algorithm. These are separated
   // into hot and cold cfgs.
   std::vector<ControlFlowGraph *> HotCFGs, ColdCFGs;
   // The final hot and cold order containing all cfg nodes.

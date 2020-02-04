@@ -13,21 +13,21 @@ namespace propeller {
 std::string toString(const NodeChain &c,
                      std::list<CFGNode *>::const_iterator slicePos) {
   std::string str;
-  if (c.CFG)
-    str += c.CFG->Name.str();
+  if (c.controlFlowGraph)
+    str += c.controlFlowGraph->name.str();
   str += " [ ";
-  for (auto it = c.Nodes.begin(); it != c.Nodes.end(); ++it) {
+  for (auto it = c.nodes.begin(); it != c.nodes.end(); ++it) {
     auto *n = *it;
     if (it == slicePos)
       str += "\n....SLICE POSITION....\n";
-    if (!c.CFG)
-      str += std::to_string(n->CFG->getEntryNode()->MappedAddr) + ":";
-    str += n->CFG->getEntryNode() == n
+    if (!c.controlFlowGraph)
+      str += std::to_string(n->controlFlowGraph->getEntryNode()->mappedAddr) + ":";
+    str += n->controlFlowGraph->getEntryNode() == n
                ? "Entry"
-               : std::to_string(n->ShName.size() - n->CFG->Name.size() - 4);
-    str += " (size=" + std::to_string(n->ShSize) +
-           ", freq=" + std::to_string(n->Freq) + ")";
-    if (n != c.Nodes.back())
+               : std::to_string(n->shName.size() - n->controlFlowGraph->name.size() - 4);
+    str += " (size=" + std::to_string(n->shSize) +
+           ", freq=" + std::to_string(n->freq) + ")";
+    if (n != c.nodes.back())
       str += " -> ";
   }
   str += " ]";
@@ -35,7 +35,7 @@ std::string toString(const NodeChain &c,
   return str;
 }
 
-std::string toString(const NodeChain &c) { return toString(c, c.Nodes.end()); }
+std::string toString(const NodeChain &c) { return toString(c, c.nodes.end()); }
 
 } // namespace propeller
 } // namespace lld

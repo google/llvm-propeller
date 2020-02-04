@@ -26,12 +26,12 @@ public:
   // Representative node of the chain, with which it is initially constructed.
   CFGNode *DelegateNode;
 
-  // CFG of the nodes in this chain (this will be null if the nodes come from
+  // controlFlowGraph of the nodes in this chain (this will be null if the nodes come from
   // more than one cfg).
-  ControlFlowGraph *CFG;
+  ControlFlowGraph *controlFlowGraph;
 
   // Ordered list of the nodes in this chain.
-  std::list<CFGNode *> Nodes;
+  std::list<CFGNode *> nodes;
 
   // Iterators to the positions in the chain where the chain transitions from
   // one function to another.
@@ -44,10 +44,10 @@ public:
   DenseSet<NodeChain *> InEdges;
 
   // Total binary size of the chain.
-  uint64_t Size;
+  uint64_t size;
 
   // Total execution frequency of the chain.
-  uint64_t Freq;
+  uint64_t freq;
 
   // Extended TSP score of the chain.
   uint64_t Score = 0;
@@ -57,17 +57,17 @@ public:
 
   // Constructor for building a NodeChain from a single Node
   NodeChain(CFGNode *node)
-      : DelegateNode(node), CFG(node->CFG), Nodes(1, node), Size(node->ShSize),
-        Freq(node->Freq), DebugChain(node->CFG->DebugCFG) {}
+      : DelegateNode(node), controlFlowGraph(node->controlFlowGraph), nodes(1, node), size(node->shSize),
+        freq(node->freq), DebugChain(node->controlFlowGraph->debugCFG) {}
 
-  // Constructor for building a NodeChain from all nodes in the CFG according to
+  // Constructor for building a NodeChain from all nodes in the controlFlowGraph according to
   // the initial order.
   NodeChain(ControlFlowGraph *cfg)
-      : DelegateNode(cfg->getEntryNode()), CFG(cfg), Size(cfg->Size), Freq(0),
-        DebugChain(cfg->DebugCFG) {
+      : DelegateNode(cfg->getEntryNode()), controlFlowGraph(cfg), size(cfg->size), freq(0),
+        DebugChain(cfg->debugCFG) {
     cfg->forEachNodeRef([this](CFGNode &node) {
-      Nodes.push_back(&node);
-      Freq += node.Freq;
+      nodes.push_back(&node);
+      freq += node.freq;
     });
   }
 
@@ -84,10 +84,10 @@ public:
 
   // This returns the execution density of the chain.
   double execDensity() const {
-    return ((double)Freq) / std::max(Size, (uint64_t)1);
+    return ((double)freq) / std::max(size, (uint64_t)1);
   }
 
-  bool isSameCFG(const NodeChain &c) { return CFG && CFG == c.CFG; }
+  bool isSameCFG(const NodeChain &c) { return controlFlowGraph && controlFlowGraph == c.controlFlowGraph; }
 };
 
 // This returns a string representation of the chain
@@ -104,7 +104,7 @@ namespace std {
 template <> struct less<lld::propeller::NodeChain *> {
   bool operator()(const lld::propeller::NodeChain *c1,
                   const lld::propeller::NodeChain *c2) const {
-    return c1->DelegateNode->MappedAddr < c2->DelegateNode->MappedAddr;
+    return c1->DelegateNode->mappedAddr < c2->DelegateNode->mappedAddr;
   }
 };
 

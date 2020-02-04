@@ -414,49 +414,51 @@ static CodeGenFileType getCodeGenFileType(BackendAction Action) {
   }
 }
 
+// Basic Block Sections can be enabled for a subset of machine basic blocks.
+// This is done by passing a file containing names of functions for which basic
+// block sections are desired.  Additionally, machine basic block ids of the
+// functions can also be specified for a finer granularity.
+// A file with basic block sections for all of function main and two blocks for
+// function foo looks like this:
+// ----------------------------
+// list.txt:
+// !main
+// !foo
+// !!2
+// !!4
 static bool getBBSectionsList(llvm::TargetOptions &Options,
                               std::string FunctionsListFile) {
   assert((Options.BBSections == llvm::BasicBlockSection::List) &&
          "Invalid BasicBlock Section Type");
   if (FunctionsListFile.empty())
     return false;
-
   std::ifstream fin(FunctionsListFile);
   if (!fin.good()) {
     errs() << "Cannot open " + FunctionsListFile;
     return false;
   }
-
-  bool consumeBasicBlockIds = false;
-  StringMap<SmallSet<unsigned, 4>>::iterator currentFuncI =
-      Options.BBSectionsList.end();
+  StringMap<SmallSet<unsigned, 4>>::iterator fi = Options.BBSectionsList.end();
   std::string line;
   while ((std::getline(fin, line)).good()) {
-    if (line.empty())
-      continue;
-    if (line.find("#AllBB") != std::string::npos) {
-      errs() << "#AllBB no longer supported.";
-      return false;
-    }
-    if (line[0] == '@' || line[0] == '#')
-      continue; // Only @, # or empty lines can appear before ! lines.
-    if (line[0] != '!')
-      break;
     StringRef S(line);
-    if (S.consume_front("!") && !S.empty()) {
-      if (consumeBasicBlockIds && S.consume_front("!")) {
-        assert(currentFuncI != Options.BBSectionsList.end());
-        currentFuncI->second.insert(std::stoi(S));
-      } else {
-        // Start a new function.
-        auto R = Options.BBSectionsList.try_emplace(S.split('/').first);
-        assert(R.second);
-        currentFuncI = R.first;
-        currentFuncI->second.insert(0);
-        consumeBasicBlockIds = true;
+    // Lines beginning with @, # are not useful here.
+    if (S.empty() || S[0] == '@' || S[0] == '#')
+      continue;
+    if (!S.consume_front("!") || S.empty())
+      break;
+    if (S.consume_front("!")) {
+      if (fi != Options.BBSectionsList.end())
+        fi->second.insert(std::stoi(S));
+      else {
+        errs() << "Found \"!!\" without preceding \"!\"";
+        return false;
       }
-    } else
-      consumeBasicBlockIds = false;
+    } else {
+      // Start a new function.
+      auto R = Options.BBSectionsList.try_emplace(S.split('/').first);
+      fi = R.first;
+      assert(R.second);
+    }
   }
   return true;
 }
