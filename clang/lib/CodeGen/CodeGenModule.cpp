@@ -1035,6 +1035,7 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
         llvm_unreachable("None multiversion type isn't valid here");
       }
     }
+
   return Out.str();
 }
 
