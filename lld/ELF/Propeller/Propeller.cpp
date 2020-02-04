@@ -188,7 +188,7 @@ bool Propfile::processSymbolLine(
     reportParseError("invalid function index field");
     return false;
   }
-  // If it ends with 'r', 'l' or 'lineRef' suffix.
+  // If it ends with 'r', 'l' or 'L' suffix.
   char optionalSuffix = bbParts.second.back();
   SymbolEntry::BBTagTypeEnum bbTagType;
   StringRef ephemeralBBIndex;
