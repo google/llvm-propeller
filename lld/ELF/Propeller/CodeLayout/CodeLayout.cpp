@@ -46,7 +46,7 @@ void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
   // propeller profile.
   prop->forEachCfgRef([this](ControlFlowGraph &cfg) {
     if (cfg.isHot()) {
-      HotCFGs.push_back(&cfg);
+      hotCFGs.push_back(&cfg);
       if (propConfig.optPrintStats) {
         // Dump the number of basic blocks and hot basic blocks for every
         // function
@@ -61,39 +61,39 @@ void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
                 hotBBs);
       }
     } else
-      ColdCFGs.push_back(&cfg);
+      coldCFGs.push_back(&cfg);
   });
 
   if (propConfig.optReorderIP || propConfig.optReorderFuncs)
-    CC.reset(new CallChainClustering());
+    clustering.reset(new CallChainClustering());
   else {
     // If function ordering is disabled, we want to conform the the initial
     // ordering of functions in both the hot and the cold layout.
-    CC.reset(new NoOrdering());
+    clustering.reset(new NoOrdering());
   }
 
   if (propConfig.optReorderIP) {
     // If -propeller-opt=reorder-ip we want to run basic block reordering on all
     // the basic blocks of the hot cfgs.
-    NodeChainBuilder(HotCFGs).doOrder(CC);
+    NodeChainBuilder(hotCFGs).doOrder(clustering);
   } else if (propConfig.optReorderBlocks) {
     // Otherwise we apply reordering on every controlFlowGraph separately
-    for (ControlFlowGraph *cfg : HotCFGs)
-      NodeChainBuilder(cfg).doOrder(CC);
+    for (ControlFlowGraph *cfg : hotCFGs)
+      NodeChainBuilder(cfg).doOrder(clustering);
   } else {
     // If reordering is not desired, we create changes according to the initial
     // order in the controlFlowGraph.
-    for (ControlFlowGraph *cfg : HotCFGs)
-      CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+    for (ControlFlowGraph *cfg : hotCFGs)
+      clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
   }
 
   // The order for cold cfgs remains unchanged.
-  for (ControlFlowGraph *cfg : ColdCFGs)
-    CC->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+  for (ControlFlowGraph *cfg : coldCFGs)
+    clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
 
   // After building all the chains, let the chain clustering algorithm perform
   // the final reordering and populate the hot and cold cfg node orders.
-  CC->doOrder(HotOrder, ColdOrder);
+  clustering->doOrder(HotOrder, ColdOrder);
 
   // Transfter the order to the symbol list.
   for (CFGNode *n : HotOrder)
@@ -168,7 +168,7 @@ void CodeLayout::printStats() {
   }
 
   for (auto &elem : extTSPScoreMap)
-    fprintf(stderr, "Ext TSP Score: %s %lu\n", elem.first().str().c_str(),
+    fprintf(stderr, "Ext TSP score: %s %lu\n", elem.first().str().c_str(),
             elem.second);
   fprintf(stderr, "DISTANCE HISTOGRAM: ");
   uint64_t sumEdgeWeights = 0;

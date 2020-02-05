@@ -28,27 +28,27 @@ namespace propeller {
 // bb chain builder based on the ExtTSP metric
 class NodeChainBuilder {
 private:
-  NodeChainAssembly::CompareNodeChainAssembly NodeChainAssemblyComparator;
+  NodeChainAssembly::CompareNodeChainAssembly nodeChainAssemblyComparator;
   // Cfgs repreresenting the functions that are reordered
   std::vector<ControlFlowGraph *> cfgs;
 
   // Set of built chains, keyed by section index of their Delegate nodes.
-  // Chains are removed from this Map once they are merged into other chains.
-  DenseMap<uint64_t, std::unique_ptr<NodeChain>> Chains;
+  // chains are removed from this Map once they are merged into other chains.
+  DenseMap<uint64_t, std::unique_ptr<NodeChain>> chains;
 
   // All the initial chains, seperated into connected components
-  std::vector<std::vector<NodeChain *>> Components;
+  std::vector<std::vector<NodeChain *>> components;
 
   // NodeChainBuilder performs bb ordering component by component.
   // This is the component number that the chain builder is currently working
   // on.
-  unsigned CurrentComponent;
+  unsigned currentComponent;
 
   // These represent all the edges which are -- based on the profile -- the only
   // (executed) outgoing edges from their source node and the only (executed)
   // incoming edges to their sink nodes. The algorithm will make sure that these
   // edges form fall-throughs in the final order.
-  DenseMap<CFGNode *, CFGNode *> MutuallyForcedOut;
+  DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
 
   // This maps every (ordered) pair of chains (with the first chain in the pair
   // potentially splittable) to the highest-gain NodeChainAssembly for those
@@ -58,23 +58,23 @@ private:
                           std::unique_ptr<NodeChainAssembly>,
                           std::less<std::pair<NodeChain *, NodeChain *>>,
                           NodeChainAssembly::CompareNodeChainAssembly>
-      NodeChainAssemblies;
+      nodeChainAssemblies;
 
   // This map stores the candidate chains for each chain.
   //
   // For every chain, its candidate chains are the chains which can increase the
   // overall ExtTSP score when merged with that chain. This is used to update
-  // the NodeChainAssemblies map whenever chains merge together. The candidate
+  // the nodeChainAssemblies map whenever chains merge together. The candidate
   // chains of a chain may also be updated as result of a merge.
   std::unordered_map<NodeChain *, std::unordered_set<NodeChain *>>
-      CandidateChains;
+      candidateChains;
 
   void coalesceChains();
   void initializeExtTSP();
 
   // This function separates builds the connected components for the chains so
   // it can later merge each connected component separately.
-  // Chains which are not connected to each other via profile edges will never
+  // chains which are not connected to each other via profile edges will never
   // be merged together by NodeChainBuilder. However, the composed chains may
   // later be interleaved by ChainClustering.
   void initializeChainComponents();
@@ -113,7 +113,7 @@ public:
   // blocks and inserts their associated symbols at the corresponding locations
   // specified by the parameters (HotPlaceHolder and ColdPlaceHolder) in the
   // given SymbolList.
-  void doOrder(std::unique_ptr<ChainClustering> &CC);
+  void doOrder(std::unique_ptr<ChainClustering> &clustering);
 
   NodeChainBuilder(std::vector<ControlFlowGraph *> &cfgs) : cfgs(cfgs) {}
 

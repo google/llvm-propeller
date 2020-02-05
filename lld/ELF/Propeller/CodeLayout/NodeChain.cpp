@@ -31,7 +31,7 @@ std::string toString(const NodeChain &c,
       str += " -> ";
   }
   str += " ]";
-  str += " score: " + std::to_string(c.Score);
+  str += " score: " + std::to_string(c.score);
   return str;
 }
 

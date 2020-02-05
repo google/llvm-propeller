@@ -24,7 +24,7 @@ namespace propeller {
 class NodeChain {
 public:
   // Representative node of the chain, with which it is initially constructed.
-  CFGNode *DelegateNode;
+  CFGNode *delegateNode;
 
   // controlFlowGraph of the nodes in this chain (this will be null if the nodes come from
   // more than one cfg).
@@ -35,13 +35,13 @@ public:
 
   // Iterators to the positions in the chain where the chain transitions from
   // one function to another.
-  std::list<std::list<CFGNode *>::iterator> FunctionTransitions;
+  std::list<std::list<CFGNode *>::iterator> functionTransitions;
 
   // Out edges for this chain, to its own nodes and nodes of other chains.
-  std::unordered_map<NodeChain *, std::vector<CFGEdge *>> OutEdges;
+  std::unordered_map<NodeChain *, std::vector<CFGEdge *>> outEdges;
 
-  // Chains which have outgoing edges to this chain.
-  DenseSet<NodeChain *> InEdges;
+  // chains which have outgoing edges to this chain.
+  DenseSet<NodeChain *> inEdges;
 
   // Total binary size of the chain.
   uint64_t size;
@@ -50,21 +50,21 @@ public:
   uint64_t freq;
 
   // Extended TSP score of the chain.
-  uint64_t Score = 0;
+  uint64_t score = 0;
 
   // Whether to print out information about how this chain joins with others.
-  bool DebugChain;
+  bool debugChain;
 
   // Constructor for building a NodeChain from a single Node
   NodeChain(CFGNode *node)
-      : DelegateNode(node), controlFlowGraph(node->controlFlowGraph), nodes(1, node), size(node->shSize),
-        freq(node->freq), DebugChain(node->controlFlowGraph->debugCFG) {}
+      : delegateNode(node), controlFlowGraph(node->controlFlowGraph), nodes(1, node), size(node->shSize),
+        freq(node->freq), debugChain(node->controlFlowGraph->debugCFG) {}
 
   // Constructor for building a NodeChain from all nodes in the controlFlowGraph according to
   // the initial order.
   NodeChain(ControlFlowGraph *cfg)
-      : DelegateNode(cfg->getEntryNode()), controlFlowGraph(cfg), size(cfg->size), freq(0),
-        DebugChain(cfg->debugCFG) {
+      : delegateNode(cfg->getEntryNode()), controlFlowGraph(cfg), size(cfg->size), freq(0),
+        debugChain(cfg->debugCFG) {
     cfg->forEachNodeRef([this](CFGNode &node) {
       nodes.push_back(&node);
       freq += node.freq;
@@ -75,8 +75,8 @@ public:
   // specific chain, while applying a given function on each edge.
   template <class Visitor>
   void forEachOutEdgeToChain(NodeChain *chain, Visitor V) {
-    auto it = OutEdges.find(chain);
-    if (it == OutEdges.end())
+    auto it = outEdges.find(chain);
+    if (it == outEdges.end())
       return;
     for (CFGEdge *E : it->second)
       V(*E, this, chain);
@@ -104,7 +104,7 @@ namespace std {
 template <> struct less<lld::propeller::NodeChain *> {
   bool operator()(const lld::propeller::NodeChain *c1,
                   const lld::propeller::NodeChain *c2) const {
-    return c1->DelegateNode->mappedAddr < c2->DelegateNode->mappedAddr;
+    return c1->delegateNode->mappedAddr < c2->delegateNode->mappedAddr;
   }
 };
 

@@ -34,19 +34,19 @@ void ChainClustering::addChain(std::unique_ptr<NodeChain> &&chain_ptr) {
       ((propConfig.optReorderIP || propConfig.optSplitFuncs ||
         propConfig.optReorderFuncs) &&
        chain_ptr->freq == 0)
-          ? ColdChains
-          : HotChains;
+          ? coldChains
+          : hotChains;
   chainList.push_back(std::move(chain_ptr));
 }
 
 // Initializes a cluster containing a single chain an associates it with a
 // unique id.
 ChainClustering::Cluster::Cluster(NodeChain *chain)
-    : Chains(1, chain), DelegateChain(chain) {}
+    : chains(1, chain), delegateChain(chain) {}
 
 // Returns the most frequent predecessor of a chain. This function also gets as
 // the second parameter the cluster containing the chain to save a lookup
-// into ChainToClusterMap.
+// into chainToClusterMap.
 ChainClustering::Cluster *
 CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
                                               Cluster *cluster) {
@@ -68,7 +68,7 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
         warn("Caller for node: " + n->shName + " does not have a chain!");
         return;
       }
-      auto *callerCluster = ChainToClusterMap[callerChain];
+      auto *callerCluster = chainToClusterMap[callerChain];
       if (callerChain == chain || callerCluster == cluster)
         return;
       // Ignore clusters which are too big
@@ -103,14 +103,14 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
 }
 
 void ChainClustering::sortClusters(std::vector<Cluster *> &clusterOrder) {
-  for (auto &p : Clusters)
+  for (auto &p : clusters)
     clusterOrder.push_back(p.second.get());
 
   auto clusterComparator = [](Cluster *c1, Cluster *c2) -> bool {
     // Set a deterministic order when execution densities are equal.
     if (c1->getDensity() == c2->getDensity())
-      return c1->DelegateChain->DelegateNode->mappedAddr <
-             c2->DelegateChain->DelegateNode->mappedAddr;
+      return c1->delegateChain->delegateNode->mappedAddr <
+             c2->delegateChain->delegateNode->mappedAddr;
     return c1->getDensity() > c2->getDensity();
   };
 
@@ -121,17 +121,17 @@ void NoOrdering::doOrder(std::vector<CFGNode *> &hotOrder,
                          std::vector<CFGNode *> &coldOrder) {
   auto chainComparator = [](const std::unique_ptr<NodeChain> &c_ptr1,
                             const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
-    return c_ptr1->DelegateNode->mappedAddr < c_ptr2->DelegateNode->mappedAddr;
+    return c_ptr1->delegateNode->mappedAddr < c_ptr2->delegateNode->mappedAddr;
   };
 
-  std::sort(HotChains.begin(), HotChains.end(), chainComparator);
-  std::sort(ColdChains.begin(), ColdChains.end(), chainComparator);
+  std::sort(hotChains.begin(), hotChains.end(), chainComparator);
+  std::sort(coldChains.begin(), coldChains.end(), chainComparator);
 
-  for (auto &c_ptr : HotChains)
+  for (auto &c_ptr : hotChains)
     for (CFGNode *n : c_ptr->nodes)
       hotOrder.push_back(n);
 
-  for (auto &c_ptr : ColdChains)
+  for (auto &c_ptr : coldChains)
     for (CFGNode *n : c_ptr->nodes)
       coldOrder.push_back(n);
 }
@@ -141,28 +141,28 @@ void CallChainClustering::mergeClusters() {
   // Build a map for the execution density of each chain.
   DenseMap<NodeChain *, double> chainWeightMap;
 
-  for (auto &c_ptr : HotChains) {
+  for (auto &c_ptr : hotChains) {
     NodeChain *chain = c_ptr.get();
     chainWeightMap.try_emplace(chain, chain->execDensity());
   }
 
   // Sort the hot chains in decreasing order of their execution density.
-  std::sort(HotChains.begin(), HotChains.end(),
+  std::sort(hotChains.begin(), hotChains.end(),
             [&chainWeightMap](const std::unique_ptr<NodeChain> &c_ptr1,
                               const std::unique_ptr<NodeChain> &c_ptr2) {
               auto chain1Weight = chainWeightMap[c_ptr1.get()];
               auto chain2Weight = chainWeightMap[c_ptr2.get()];
               if (chain1Weight == chain2Weight)
-                return c_ptr1->DelegateNode->mappedAddr <
-                       c_ptr2->DelegateNode->mappedAddr;
+                return c_ptr1->delegateNode->mappedAddr <
+                       c_ptr2->delegateNode->mappedAddr;
               return chain1Weight > chain2Weight;
             });
 
-  for (auto &c_ptr : HotChains) {
+  for (auto &c_ptr : hotChains) {
     NodeChain *chain = c_ptr.get();
     if (chainWeightMap[chain] <= 0.005)
       break;
-    auto *cluster = ChainToClusterMap[chain];
+    auto *cluster = chainToClusterMap[chain];
     // Ignore merging if the cluster containing this function is bigger than
     // 2MBs (size of a large page).
     if (cluster->size > propConfig.optClusterMergeSizeThreshold)
@@ -189,7 +189,7 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
   DenseMap<ControlFlowGraph *, size_t> hotCFGOrder;
 
   for (Cluster *cl : clusterOrder)
-    for (NodeChain *c : cl->Chains)
+    for (NodeChain *c : cl->chains)
       for (CFGNode *n : c->nodes) {
         hotCFGOrder.try_emplace(n->controlFlowGraph, hotOrder.size());
         hotOrder.push_back(n);
@@ -211,17 +211,17 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
           (c_ptr1->controlFlowGraph != c_ptr2->controlFlowGraph))
         return hotCFGOrder[c_ptr1->controlFlowGraph] < hotCFGOrder[c_ptr2->controlFlowGraph];
       // Otherwise, use a consistent order based on the representative nodes.
-      return c_ptr1->DelegateNode->mappedAddr <
-             c_ptr2->DelegateNode->mappedAddr;
+      return c_ptr1->delegateNode->mappedAddr <
+             c_ptr2->delegateNode->mappedAddr;
     }
     // Use an order consistent with the initial ordering of the representative
     // nodes.
-    return c_ptr1->DelegateNode->mappedAddr < c_ptr2->DelegateNode->mappedAddr;
+    return c_ptr1->delegateNode->mappedAddr < c_ptr2->delegateNode->mappedAddr;
   };
 
-  std::sort(ColdChains.begin(), ColdChains.end(), coldChainComparator);
+  std::sort(coldChains.begin(), coldChains.end(), coldChainComparator);
 
-  for (auto &c_ptr : ColdChains)
+  for (auto &c_ptr : coldChains)
     for (CFGNode *n : c_ptr->nodes)
       coldOrder.push_back(n);
 }

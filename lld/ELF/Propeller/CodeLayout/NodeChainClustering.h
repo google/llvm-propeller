@@ -29,10 +29,10 @@ public:
     Cluster(NodeChain *);
 
     // The chains in this cluster in the merged order.
-    std::vector<NodeChain *> Chains;
+    std::vector<NodeChain *> chains;
 
     // The representative chain for this cluster.
-    NodeChain *DelegateChain;
+    NodeChain *delegateChain;
 
     // Total size of the cluster.
     uint64_t size;
@@ -42,7 +42,7 @@ public:
 
     // This function merges this cluster with another cluster
     Cluster &mergeWith(Cluster &other) {
-      Chains.insert(Chains.end(), other.Chains.begin(), other.Chains.end());
+      chains.insert(chains.end(), other.chains.begin(), other.chains.end());
       this->freq += other.freq;
       this->size += other.size;
       return *this;
@@ -53,20 +53,20 @@ public:
   };
 
   // This function merges two clusters in the given order, and updates
-  // ChainToClusterMap for the chains in the mergee cluster and also removes the
-  // mergee cluster from the Clusters.
+  // chainToClusterMap for the chains in the mergee cluster and also removes the
+  // mergee cluster from the clusters.
   void mergeTwoClusters(Cluster *predecessorCluster, Cluster *cluster) {
     // Join the two clusters into predecessorCluster.
     predecessorCluster->mergeWith(*cluster);
 
     // Update chain to cluster mapping, because all chains that were
     // previsously in cluster are now in predecessorCluster.
-    for (NodeChain *c : cluster->Chains) {
-      ChainToClusterMap[c] = predecessorCluster;
+    for (NodeChain *c : cluster->chains) {
+      chainToClusterMap[c] = predecessorCluster;
     }
 
     // Delete the defunct cluster
-    Clusters.erase(cluster->DelegateChain->DelegateNode->mappedAddr);
+    clusters.erase(cluster->delegateChain->delegateNode->mappedAddr);
   }
 
   // Adds a chain to the input of the clustering process
@@ -90,25 +90,25 @@ protected:
   // This function initializes clusters with each cluster including a single
   // chain.
   void initClusters() {
-    for (auto &c_ptr : HotChains) {
+    for (auto &c_ptr : hotChains) {
       NodeChain *chain = c_ptr.get();
       Cluster *cl = new Cluster(chain);
       cl->freq = chain->freq;
       cl->size = std::max(chain->size, (uint64_t)1);
-      ChainToClusterMap[chain] = cl;
-      Clusters.try_emplace(cl->DelegateChain->DelegateNode->mappedAddr, cl);
+      chainToClusterMap[chain] = cl;
+      clusters.try_emplace(cl->delegateChain->delegateNode->mappedAddr, cl);
     }
   }
 
-  // Chains processed by the clustering algorithm separated into hot and cold
+  // chains processed by the clustering algorithm separated into hot and cold
   // ones based on their frequency.
-  std::vector<std::unique_ptr<NodeChain>> HotChains, ColdChains;
+  std::vector<std::unique_ptr<NodeChain>> hotChains, coldChains;
 
   // All clusters currently in process.
-  DenseMap<uint64_t, std::unique_ptr<Cluster>> Clusters;
+  DenseMap<uint64_t, std::unique_ptr<Cluster>> clusters;
 
   // This maps every chain to its containing cluster.
-  DenseMap<NodeChain *, Cluster *> ChainToClusterMap;
+  DenseMap<NodeChain *, Cluster *> chainToClusterMap;
 };
 
 // This class computes an ordering for the input chains which conforms to the
@@ -133,8 +133,8 @@ namespace std {
 template <> struct less<lld::propeller::ChainClustering::Cluster *> {
   bool operator()(const lld::propeller::ChainClustering::Cluster *c1,
                   const lld::propeller::ChainClustering::Cluster *c2) const {
-    return less<lld::propeller::NodeChain *>()(c1->DelegateChain,
-                                               c2->DelegateChain);
+    return less<lld::propeller::NodeChain *>()(c1->delegateChain,
+                                               c2->delegateChain);
   }
 };
 

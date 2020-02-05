@@ -49,23 +49,23 @@ uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
 bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
                                        uint64_t offset, uint8_t &idx) const {
   for (idx = 0; idx < 3; ++idx) {
-    if (chain != Slices[idx].chain)
+    if (chain != slices[idx].chain)
       continue;
     // We find if the node's offset lies within the begin and end offset of this
     // slice.
-    if (offset < Slices[idx].BeginOffset || offset > Slices[idx].EndOffset)
+    if (offset < slices[idx].beginOffset || offset > slices[idx].endOffset)
       continue;
-    if (offset < Slices[idx].EndOffset && offset > Slices[idx].BeginOffset)
+    if (offset < slices[idx].endOffset && offset > slices[idx].beginOffset)
       return true;
     // A node can have zero size, which means multiple nodes may be associated
     // with the same offset. This means that if the node's offset is at the
     // beginning or the end of the slice, the node may reside in either slices
     // of the chain.
-    if (offset == Slices[idx].EndOffset) {
+    if (offset == slices[idx].endOffset) {
       // If offset is at the end of the slice, iterate backwards over the
       // slice to find a zero-sized node.
-      for (auto nodeIt = std::prev(Slices[idx].End);
-           nodeIt != std::prev(Slices[idx].Begin); nodeIt--) {
+      for (auto nodeIt = std::prev(slices[idx].endPosition);
+           nodeIt != std::prev(slices[idx].beginPosition); nodeIt--) {
         // Stop iterating if the node's size is non-zero as this would change
         // the offset.
         if ((*nodeIt)->shSize)
@@ -75,10 +75,10 @@ bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
           return true;
       }
     }
-    if (offset == Slices[idx].BeginOffset) {
+    if (offset == slices[idx].beginOffset) {
       // If offset is at the beginning of the slice, iterate forwards over the
       // slice to find the node.
-      for (auto nodeIt = Slices[idx].Begin; nodeIt != Slices[idx].End;
+      for (auto nodeIt = slices[idx].beginPosition; nodeIt != slices[idx].endPosition;
            nodeIt++) {
         if (*nodeIt == node)
           return true;
@@ -121,18 +121,18 @@ uint64_t NodeChainAssembly::computeExtTSPScore() const {
                             ? sinkNodeOffset - srcNodeOffset - edge.src->shSize
                             : srcNodeOffset - sinkNodeOffset + edge.src->shSize;
     } else {
-      const NodeChainSlice &srcSlice = Slices[srcSliceIdx];
-      const NodeChainSlice &sinkSlice = Slices[sinkSliceIdx];
+      const NodeChainSlice &srcSlice = slices[srcSliceIdx];
+      const NodeChainSlice &sinkSlice = slices[sinkSliceIdx];
       srcSinkDistance =
           edgeForward
-              ? srcSlice.EndOffset - srcNodeOffset - edge.src->shSize +
-                    sinkNodeOffset - sinkSlice.BeginOffset
-              : srcNodeOffset - srcSlice.BeginOffset + edge.src->shSize +
-                    sinkSlice.EndOffset - sinkNodeOffset;
+              ? srcSlice.endOffset - srcNodeOffset - edge.src->shSize +
+                    sinkNodeOffset - sinkSlice.beginOffset
+              : srcNodeOffset - srcSlice.beginOffset + edge.src->shSize +
+                    sinkSlice.endOffset - sinkNodeOffset;
       // Increment the distance by the size of the middle slice if the src
       // and sink are from the two ends.
       if (std::abs(((int16_t)sinkSliceIdx) - ((int16_t)srcSliceIdx)) == 2)
-        srcSinkDistance += Slices[1].size();
+        srcSinkDistance += slices[1].size();
     }
 
     score += getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
@@ -140,14 +140,14 @@ uint64_t NodeChainAssembly::computeExtTSPScore() const {
 
   // No changes will be made to the score that is contributed by the unsplit
   // chain and we can simply increment by the chain's stored score.
-  score += unsplitChain()->Score;
+  score += unsplitChain()->score;
 
   // We need to recompute the score induced by the split chain (if it has really
   // been split) as the offsets of the nodes have changed.
   if (splits())
     splitChain()->forEachOutEdgeToChain(splitChain(), addEdgeScore);
   else
-    score += splitChain()->Score;
+    score += splitChain()->score;
 
   // Consider the contribution to score for inter-chain edges.
   splitChain()->forEachOutEdgeToChain(unsplitChain(), addEdgeScore);
@@ -160,20 +160,20 @@ bool NodeChainAssembly::CompareNodeChainAssembly::operator()(
     const std::unique_ptr<NodeChainAssembly> &a1,
     const std::unique_ptr<NodeChainAssembly> &a2) const {
 
-  if (a1->ScoreGain == a2->ScoreGain) {
+  if (a1->scoreGain == a2->scoreGain) {
     // If score gains are equal, we pick a consistent order based on the chains
     // in the assembly records
-    if (std::less<std::pair<NodeChain *, NodeChain *>>()(a1->ChainPair,
-                                                         a2->ChainPair))
+    if (std::less<std::pair<NodeChain *, NodeChain *>>()(a1->chainPair,
+                                                         a2->chainPair))
       return true;
-    if (std::less<std::pair<NodeChain *, NodeChain *>>()(a2->ChainPair,
-                                                         a1->ChainPair))
+    if (std::less<std::pair<NodeChain *, NodeChain *>>()(a2->chainPair,
+                                                         a1->chainPair))
       return false;
     // When even the chain pairs are the same, we resort to the assembly
     // strategy to pick a consistent order.
     return a1->assemblyStrategy() < a2->assemblyStrategy();
   }
-  return a1->ScoreGain < a2->ScoreGain;
+  return a1->scoreGain < a2->scoreGain;
 }
 
 static std::string toString(MergeOrder mOrder) {
@@ -194,10 +194,10 @@ static std::string toString(MergeOrder mOrder) {
 
 std::string toString(NodeChainAssembly &assembly) {
   std::string str("assembly record between:\n");
-  str += toString(*assembly.splitChain(), assembly.SlicePosition) + " as S\n";
+  str += toString(*assembly.splitChain(), assembly.slicePosition) + " as S\n";
   str += toString(*assembly.unsplitChain()) + " as U\n";
-  str += "merge order: " + toString(assembly.MOrder) + "\n";
-  str += "ScoreGain: " + std::to_string(assembly.ScoreGain);
+  str += "merge order: " + toString(assembly.mergeOrder) + "\n";
+  str += "scoreGain: " + std::to_string(assembly.scoreGain);
   return str;
 }
 

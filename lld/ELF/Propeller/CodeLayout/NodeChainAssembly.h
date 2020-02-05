@@ -38,34 +38,34 @@ public:
   NodeChain *chain;
 
   // The endpoints of the slice in the corresponding chain
-  std::list<CFGNode *>::iterator Begin, End;
+  std::list<CFGNode *>::iterator beginPosition, endPosition;
 
   // The offsets corresponding to the two endpoints
-  uint64_t BeginOffset, EndOffset;
+  uint64_t beginOffset, endOffset;
 
   // Constructor for building a chain slice from a given chain and the two
   // endpoints of the chain.
   NodeChainSlice(NodeChain *c, std::list<CFGNode *>::iterator begin,
                  std::list<CFGNode *>::iterator end)
-      : chain(c), Begin(begin), End(end) {
+      : chain(c), beginPosition(begin), endPosition(end) {
 
-    BeginOffset = (*begin)->chainOffset;
-    if (End == chain->nodes.end())
-      EndOffset = chain->size;
+    beginOffset = (*begin)->chainOffset;
+    if (endPosition == chain->nodes.end())
+      endOffset = chain->size;
     else
-      EndOffset = (*end)->chainOffset;
+      endOffset = (*end)->chainOffset;
   }
 
   // Constructor for building a chain slice from a node chain containing all of
   // its nodes.
   NodeChainSlice(NodeChain *c)
-      : chain(c), Begin(c->nodes.begin()), End(c->nodes.end()), BeginOffset(0),
-        EndOffset(c->size) {}
+      : chain(c), beginPosition(c->nodes.begin()), endPosition(c->nodes.end()), beginOffset(0),
+        endOffset(c->size) {}
 
   // (Binary) size of this slice
-  uint64_t size() const { return EndOffset - BeginOffset; }
+  uint64_t size() const { return endOffset - beginOffset; }
 
-  bool isEmpty() const { return Begin == End; }
+  bool isEmpty() const { return beginPosition == endPosition; }
 };
 
 // This enum represents the order in which three slices (S1, S2, and U) are
@@ -87,60 +87,60 @@ class NodeChainAssembly {
 public:
   // The gain in ExtTSP score achieved by this NodeChainAssembly once it
   // is accordingly applied to the two chains.
-  // This is effectively equal to "Score - splitChain->Score -
-  // unsplitChain->Score".
-  uint64_t ScoreGain = 0;
+  // This is effectively equal to "score - splitChain->score -
+  // unsplitChain->score".
+  uint64_t scoreGain = 0;
 
   // The two chains, the first being the splitChain and the second being the
   // unsplitChain.
-  std::pair<NodeChain *, NodeChain *> ChainPair;
+  std::pair<NodeChain *, NodeChain *> chainPair;
 
   // The splitting position in splitchain
-  std::list<CFGNode *>::iterator SlicePosition;
+  std::list<CFGNode *>::iterator slicePosition;
 
   // The three chain slices
-  std::vector<NodeChainSlice> Slices;
+  std::vector<NodeChainSlice> slices;
 
   // The merge order of the slices
-  MergeOrder MOrder;
+  MergeOrder mergeOrder;
 
-  // The constructor for creating a NodeChainAssembly. slicePosition must be an
+  // The constructor for creating a NodeChainAssembly. slicePos must be an
   // iterator into splitChain->nodes.
   NodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain,
-                    std::list<CFGNode *>::iterator slicePosition,
+                    std::list<CFGNode *>::iterator slicePos,
                     MergeOrder mOrder)
-      : ChainPair(splitChain, unsplitChain), SlicePosition(slicePosition),
-        MOrder(mOrder) {
+      : chainPair(splitChain, unsplitChain), slicePosition(slicePos),
+        mergeOrder(mOrder) {
     // Construct the slices.
-    NodeChainSlice s1(splitChain, splitChain->nodes.begin(), SlicePosition);
-    NodeChainSlice s2(splitChain, SlicePosition, splitChain->nodes.end());
+    NodeChainSlice s1(splitChain, splitChain->nodes.begin(), slicePos);
+    NodeChainSlice s2(splitChain, slicePos, splitChain->nodes.end());
     NodeChainSlice u(unsplitChain);
 
-    switch (MOrder) {
+    switch (mergeOrder) {
     case MergeOrder::S2S1U:
-      Slices = {std::move(s2), std::move(s1), std::move(u)};
+      slices = {std::move(s2), std::move(s1), std::move(u)};
       break;
     case MergeOrder::S1US2:
-      Slices = {std::move(s1), std::move(u), std::move(s2)};
+      slices = {std::move(s1), std::move(u), std::move(s2)};
       break;
     case MergeOrder::S2US1:
-      Slices = {std::move(s2), std::move(u), std::move(s1)};
+      slices = {std::move(s2), std::move(u), std::move(s1)};
       break;
     case MergeOrder::US2S1:
-      Slices = {std::move(u), std::move(s2), std::move(s1)};
+      slices = {std::move(u), std::move(s2), std::move(s1)};
       break;
     default:
       assert("Invalid MergeOrder!" && false);
     }
 
-    // Set the ExtTSP Score gain as the difference between the new score after
+    // Set the ExtTSP score gain as the difference between the new score after
     // merging these chains and the current scores of the two chains.
     auto assemblyScore = computeExtTSPScore();
-    auto chainsScore = splitChain->Score + unsplitChain->Score;
-    ScoreGain = assemblyScore > chainsScore ? assemblyScore - chainsScore : 0;
+    auto chainsScore = splitChain->score + unsplitChain->score;
+    scoreGain = assemblyScore > chainsScore ? assemblyScore - chainsScore : 0;
   }
 
-  bool isValid() { return ScoreGain; }
+  bool isValid() { return scoreGain; }
 
   // Find the NodeChainSlice in this NodeChainAssembly which contains the given
   // node. If the node is not contained in this NodeChainAssembly, then return
@@ -156,13 +156,13 @@ public:
 
   // First node in the resulting assembled chain.
   CFGNode *getFirstNode() const {
-    for (auto &slice : Slices)
+    for (auto &slice : slices)
       if (!slice.isEmpty())
-        return *slice.Begin;
+        return *slice.beginPosition;
     return nullptr;
   }
 
-  // Comparator for two NodeChainAssemblies. It compare ScoreGain and break ties
+  // Comparator for two nodeChainAssemblies. It compare scoreGain and break ties
   // consistently.
   struct CompareNodeChainAssembly {
     bool operator()(const std::unique_ptr<NodeChainAssembly> &a1,
@@ -177,28 +177,28 @@ public:
   NodeChainAssembly() = delete;
 
   // This returns a unique value for every different assembly record between two
-  // chains. When ChainPair is equal, this helps differentiate and compare the
+  // chains. When chainPair is equal, this helps differentiate and compare the
   // two assembly records.
   std::pair<uint8_t, size_t> assemblyStrategy() const {
-    return std::make_pair(MOrder, (*SlicePosition)->mappedAddr);
+    return std::make_pair(mergeOrder, (*slicePosition)->mappedAddr);
   }
 
   inline bool splits() const {
-    return SlicePosition != splitChain()->nodes.begin();
+    return slicePosition != splitChain()->nodes.begin();
   }
 
   inline bool splitsAtFunctionTransition() const {
     return splits() &&
-           ((*std::prev(SlicePosition))->controlFlowGraph != (*SlicePosition)->controlFlowGraph);
+           ((*std::prev(slicePosition))->controlFlowGraph != (*slicePosition)->controlFlowGraph);
   }
 
   inline bool needsSplitChainRotation() {
-    return (MOrder == S2S1U && splits()) || MOrder == S2US1 || MOrder == US2S1;
+    return (mergeOrder == S2S1U && splits()) || mergeOrder == S2US1 || mergeOrder == US2S1;
   }
 
-  inline NodeChain *splitChain() const { return ChainPair.first; }
+  inline NodeChain *splitChain() const { return chainPair.first; }
 
-  inline NodeChain *unsplitChain() const { return ChainPair.second; }
+  inline NodeChain *unsplitChain() const { return chainPair.second; }
 };
 
 std::string toString(NodeChainAssembly &assembly);
