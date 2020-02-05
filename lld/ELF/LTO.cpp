@@ -34,7 +34,6 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include <algorithm>
 #include <cstddef>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <system_error>
