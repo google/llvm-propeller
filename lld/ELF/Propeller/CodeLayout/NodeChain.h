@@ -26,8 +26,8 @@ public:
   // Representative node of the chain, with which it is initially constructed.
   CFGNode *delegateNode;
 
-  // controlFlowGraph of the nodes in this chain (this will be null if the nodes come from
-  // more than one cfg).
+  // controlFlowGraph of the nodes in this chain (this will be null if the nodes
+  // come from more than one cfg).
   ControlFlowGraph *controlFlowGraph;
 
   // Ordered list of the nodes in this chain.
@@ -57,14 +57,15 @@ public:
 
   // Constructor for building a NodeChain from a single Node
   NodeChain(CFGNode *node)
-      : delegateNode(node), controlFlowGraph(node->controlFlowGraph), nodes(1, node), size(node->shSize),
-        freq(node->freq), debugChain(node->controlFlowGraph->debugCFG) {}
+      : delegateNode(node), controlFlowGraph(node->controlFlowGraph),
+        nodes(1, node), size(node->shSize), freq(node->freq),
+        debugChain(node->controlFlowGraph->debugCFG) {}
 
-  // Constructor for building a NodeChain from all nodes in the controlFlowGraph according to
-  // the initial order.
+  // Constructor for building a NodeChain from all nodes in the controlFlowGraph
+  // according to the initial order.
   NodeChain(ControlFlowGraph *cfg)
-      : delegateNode(cfg->getEntryNode()), controlFlowGraph(cfg), size(cfg->size), freq(0),
-        debugChain(cfg->debugCFG) {
+      : delegateNode(cfg->getEntryNode()), controlFlowGraph(cfg),
+        size(cfg->size), freq(0), debugChain(cfg->debugCFG) {
     cfg->forEachNodeRef([this](CFGNode &node) {
       nodes.push_back(&node);
       freq += node.freq;

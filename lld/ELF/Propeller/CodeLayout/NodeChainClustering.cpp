@@ -201,15 +201,18 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
     // If each of the chains comes from a single controlFlowGraph, we can order
     // the chains consistently based on the hot layout
     if (c_ptr1->controlFlowGraph && c_ptr2->controlFlowGraph) {
-      // If one controlFlowGraph is cold and the other is hot, make sure the hot controlFlowGraph's chain
-      // comes earlier in the order.
-      if (c_ptr1->controlFlowGraph->isHot() != c_ptr2->controlFlowGraph->isHot())
+      // If one controlFlowGraph is cold and the other is hot, make sure the hot
+      // controlFlowGraph's chain comes earlier in the order.
+      if (c_ptr1->controlFlowGraph->isHot() !=
+          c_ptr2->controlFlowGraph->isHot())
         return c_ptr1->controlFlowGraph->isHot();
       // If both cfgs are hot, make the order for cold chains consistent with
       // the order for hot ones.
-      if (c_ptr1->controlFlowGraph->isHot() && c_ptr2->controlFlowGraph->isHot() &&
+      if (c_ptr1->controlFlowGraph->isHot() &&
+          c_ptr2->controlFlowGraph->isHot() &&
           (c_ptr1->controlFlowGraph != c_ptr2->controlFlowGraph))
-        return hotCFGOrder[c_ptr1->controlFlowGraph] < hotCFGOrder[c_ptr2->controlFlowGraph];
+        return hotCFGOrder[c_ptr1->controlFlowGraph] <
+               hotCFGOrder[c_ptr2->controlFlowGraph];
       // Otherwise, use a consistent order based on the representative nodes.
       return c_ptr1->delegateNode->mappedAddr <
              c_ptr2->delegateNode->mappedAddr;

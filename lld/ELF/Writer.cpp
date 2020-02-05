@@ -1724,8 +1724,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       AnyChanged = false;
       parallelForEachN(0, Sections.size(), [&](size_t I) {
         InputSection &IS = *Sections[I];
-        unsigned BytesShrunk =
-            target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
+        unsigned BytesShrunk = target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
         Changed[I] = (BytesShrunk > 0);
         Shrunk[I] += BytesShrunk;
       });
@@ -1761,8 +1760,8 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
         LLVM_DEBUG(llvm::dbgs()
                    << "Output Section :" << OS->name << " : Growing " << Num
                    << " jmp instructions\n");
-      AnyChanged = std::any_of(Changed.begin(), Changed.end(),
-                               [](bool e) { return e; });
+      AnyChanged =
+          std::any_of(Changed.begin(), Changed.end(), [](bool e) { return e; });
       if (AnyChanged)
         script->assignAddresses();
     } while (AnyChanged);

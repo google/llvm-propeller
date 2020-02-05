@@ -169,8 +169,7 @@ void NodeChainBuilder::coalesceChains() {
       continue;
     }
     // Create a cold partition when -propeller-split-funcs is set.
-    if (propConfig.optSplitFuncs &&
-        (mergerChain->freq != 0 && c->freq == 0)) {
+    if (propConfig.optSplitFuncs && (mergerChain->freq != 0 && c->freq == 0)) {
       mergerChain = c;
       continue;
     }
@@ -408,7 +407,8 @@ void NodeChainBuilder::mergeChains(
 
   mergerChain->debugChain |= mergeeChain->debugChain;
 
-  if (mergerChain->controlFlowGraph && mergerChain->controlFlowGraph != mergeeChain->controlFlowGraph)
+  if (mergerChain->controlFlowGraph &&
+      mergerChain->controlFlowGraph != mergeeChain->controlFlowGraph)
     mergerChain->controlFlowGraph = nullptr;
 
   // Merge the assembly candidate chains of the two chains into the candidate
@@ -539,7 +539,8 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
          transit != splitChain->functionTransitions.end();) {
       auto slicePos = *transit;
       if (slicePos == splitChain->nodes.begin() ||
-          (*std::prev(slicePos))->controlFlowGraph == (*slicePos)->controlFlowGraph) {
+          (*std::prev(slicePos))->controlFlowGraph ==
+              (*slicePos)->controlFlowGraph) {
         transit = splitChain->functionTransitions.erase(transit);
         continue;
       }

@@ -77,8 +77,8 @@ bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
     if (offset == slices[idx].beginOffset) {
       // If offset is at the beginning of the slice, iterate forwards over the
       // slice to find the node.
-      for (auto nodeIt = slices[idx].beginPosition; nodeIt != slices[idx].endPosition;
-           nodeIt++) {
+      for (auto nodeIt = slices[idx].beginPosition;
+           nodeIt != slices[idx].endPosition; nodeIt++) {
         if (*nodeIt == node)
           return true;
         // Stop iterating if the node's size is non-zero as this would change

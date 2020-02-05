@@ -59,8 +59,8 @@ public:
   // Constructor for building a chain slice from a node chain containing all of
   // its nodes.
   NodeChainSlice(NodeChain *c)
-      : chain(c), beginPosition(c->nodes.begin()), endPosition(c->nodes.end()), beginOffset(0),
-        endOffset(c->size) {}
+      : chain(c), beginPosition(c->nodes.begin()), endPosition(c->nodes.end()),
+        beginOffset(0), endOffset(c->size) {}
 
   // (Binary) size of this slice
   uint64_t size() const { return endOffset - beginOffset; }
@@ -188,12 +188,13 @@ public:
   }
 
   inline bool splitsAtFunctionTransition() const {
-    return splits() &&
-           ((*std::prev(slicePosition))->controlFlowGraph != (*slicePosition)->controlFlowGraph);
+    return splits() && ((*std::prev(slicePosition))->controlFlowGraph !=
+                        (*slicePosition)->controlFlowGraph);
   }
 
   inline bool needsSplitChainRotation() {
-    return (mergeOrder == S2S1U && splits()) || mergeOrder == S2US1 || mergeOrder == US2S1;
+    return (mergeOrder == S2S1U && splits()) || mergeOrder == S2US1 ||
+           mergeOrder == US2S1;
   }
 
   inline NodeChain *splitChain() const { return chainPair.first; }
