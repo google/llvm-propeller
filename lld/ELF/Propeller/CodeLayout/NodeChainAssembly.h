@@ -27,8 +27,7 @@
 namespace lld {
 namespace propeller {
 
-uint64_t getEdgeExtTSPScore(const CFGEdge &edge,
-                            int64_t srcSinkDistance);
+uint64_t getEdgeExtTSPScore(const CFGEdge &edge, int64_t srcSinkDistance);
 
 // This class defines a slices of a node chain, specified by iterators to the
 // beginning and end of the slice.
@@ -136,8 +135,11 @@ public:
     }
 
     splits = slicePosition != splitChain->nodes.begin();
-    splitsAtFunctionTransition = splits && ((*std::prev(slicePosition))->controlFlowGraph != (*slicePosition)->controlFlowGraph);
-    needsSplitChainRotation = (mergeOrder == S2S1U && splits) || mergeOrder == S2US1 || mergeOrder == US2S1;
+    splitsAtFunctionTransition =
+        splits && ((*std::prev(slicePosition))->controlFlowGraph !=
+                   (*slicePosition)->controlFlowGraph);
+    needsSplitChainRotation = (mergeOrder == S2S1U && splits) ||
+                              mergeOrder == S2US1 || mergeOrder == US2S1;
 
     // Set the ExtTSP score gain as the difference between the new score after
     // merging these chains and the current scores of the two chains.

@@ -13,26 +13,27 @@ namespace propeller {
 
 // Return the Extended TSP score for one edge, given its source to sink
 // direction and distance in the layout.
-uint64_t getEdgeExtTSPScore(const CFGEdge &edge,
-                            int64_t srcSinkDistance) {
+uint64_t getEdgeExtTSPScore(const CFGEdge &edge, int64_t srcSinkDistance) {
 
   // Approximate callsites to be in the middle of the source basic block.
   if (edge.isCall())
-      srcSinkDistance += edge.src->shSize / 2;
+    srcSinkDistance += edge.src->shSize / 2;
 
   if (edge.isReturn())
-      srcSinkDistance += edge.sink->shSize / 2;
+    srcSinkDistance += edge.sink->shSize / 2;
 
   if (srcSinkDistance == 0 && (edge.type == CFGEdge::EdgeType::INTRA_FUNC ||
                                edge.type == CFGEdge::EdgeType::INTRA_DYNA))
     return edge.weight * propConfig.optFallthroughWeight;
 
   uint64_t absoluteSrcSinkDistance = (uint64_t)std::abs(srcSinkDistance);
-  if (srcSinkDistance > 0 && absoluteSrcSinkDistance < propConfig.optForwardJumpDistance)
+  if (srcSinkDistance > 0 &&
+      absoluteSrcSinkDistance < propConfig.optForwardJumpDistance)
     return edge.weight * propConfig.optForwardJumpWeight *
            (propConfig.optForwardJumpDistance - absoluteSrcSinkDistance);
 
-  if (srcSinkDistance < 0 && absoluteSrcSinkDistance < propConfig.optBackwardJumpDistance)
+  if (srcSinkDistance < 0 &&
+      absoluteSrcSinkDistance < propConfig.optBackwardJumpDistance)
     return edge.weight * propConfig.optBackwardJumpWeight *
            (propConfig.optBackwardJumpDistance - absoluteSrcSinkDistance);
   return 0;
@@ -115,7 +116,7 @@ uint64_t NodeChainAssembly::computeExtTSPScore() const {
               ? srcSlice.endOffset - srcNodeOffset - edge.src->shSize +
                     sinkNodeOffset - sinkSlice.beginOffset
               : srcSlice.beginOffset - srcNodeOffset - edge.src->shSize +
-                   sinkNodeOffset - sinkSlice.endOffset;
+                    sinkNodeOffset - sinkSlice.endOffset;
       // Increment the distance by the size of the middle slice if the src
       // and sink are from the two ends.
       if (srcSliceIdx == 0 && sinkSliceIdx == 2)

@@ -156,8 +156,7 @@ void CodeLayout::printStats() {
 
       if (edge.type == CFGEdge::EdgeType::INTRA_FUNC ||
           edge.type == CFGEdge::EdgeType::INTRA_DYNA)
-        scoreEntry->second +=
-            getEdgeExtTSPScore(edge, srcSinkDistance);
+        scoreEntry->second += getEdgeExtTSPScore(edge, srcSinkDistance);
 
       auto res =
           std::lower_bound(distances.begin(), distances.end(), srcSinkDistance);

@@ -471,7 +471,8 @@ uint64_t NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
     auto srcOffset = edge.src->chainOffset;
     auto sinkOffset = edge.sink->chainOffset;
     // Calculate the distance between src and sink
-    score += getEdgeExtTSPScore(edge, sinkOffset - srcOffset - edge.src->shSize);
+    score +=
+        getEdgeExtTSPScore(edge, sinkOffset - srcOffset - edge.src->shSize);
   };
 
   chain->forEachOutEdgeToChain(chain, visit);
