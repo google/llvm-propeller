@@ -43,11 +43,11 @@
 // algorithm iteratively joins bb chains together in order to maximize the
 // extended TSP score of all the chains.
 //
-// Initially, it finds all mutually-forced edges in the profiled controlFlowGraph. These are
-// all the edges which are -- based on the profile -- the only (executed)
-// outgoing edge from their source node and the only (executed) incoming edges
-// to their sink nodes. Next, the source and sink of all mutually-forced edges
-// are attached together as fallthrough edges.
+// Initially, it finds all mutually-forced edges in the profiled
+// controlFlowGraph. These are all the edges which are -- based on the profile
+// -- the only (executed) outgoing edge from their source node and the only
+// (executed) incoming edges to their sink nodes. Next, the source and sink of
+// all mutually-forced edges are attached together as fallthrough edges.
 //
 // Then, at every iteration, the algorithm tries to merge a pair of bb chains
 // which leads to the highest gain in the ExtTSP score. The algorithm extends
@@ -206,7 +206,8 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
   leftChain->freq += rightChain->freq;
 
   leftChain->debugChain |= rightChain->debugChain;
-  if (leftChain->controlFlowGraph && leftChain->controlFlowGraph != rightChain->controlFlowGraph)
+  if (leftChain->controlFlowGraph &&
+      leftChain->controlFlowGraph != rightChain->controlFlowGraph)
     leftChain->controlFlowGraph = nullptr;
 
   chains.erase(rightChain->delegateNode->mappedAddr);
@@ -245,8 +246,8 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain *mergerChain,
   for (auto &elem : mergeeChain->outEdges) {
     NodeChain *c = (elem.first == mergeeChain) ? mergerChain : elem.first;
     auto res = mergerChain->outEdges.emplace(c, elem.second);
-    // If the chain-edge is already present, just add the controlFlowGraph edges, otherwise,
-    // add mergerChain to in-edges of the chain.
+    // If the chain-edge is already present, just add the controlFlowGraph
+    // edges, otherwise, add mergerChain to in-edges of the chain.
     if (!res.second)
       res.first->second.insert(res.first->second.end(), elem.second.begin(),
                                elem.second.end());
@@ -262,8 +263,8 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain *mergerChain,
     // Self edges were already handled above.
     if (c == mergeeChain)
       continue;
-    // Move all controlFlowGraph edges from being mapped to mergeeChain to being mapped to
-    // mergerChain.
+    // Move all controlFlowGraph edges from being mapped to mergeeChain to being
+    // mapped to mergerChain.
     auto &mergeeChainEdges = c->outEdges[mergeeChain];
     auto &mergerChainEdges = c->outEdges[mergerChain];
 
@@ -574,7 +575,7 @@ void NodeChainBuilder::initNodeChains(ControlFlowGraph &cfg) {
 // (executed) outgoing edge from their source node and the only (executed)
 // incoming edges to their sink nodes
 void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
-  DenseMap<CFGNode *, CFGNode *> mfo;
+  DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
 
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledOuts;
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledIns;
@@ -600,7 +601,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
     if (profiledOuts[node.get()].size() == 1) {
       CFGEdge *edge = profiledOuts[node.get()].front();
       if (profiledIns[edge->sink].size() == 1)
-        mfo.try_emplace(node.get(), edge->sink);
+        mutuallyForcedOut.try_emplace(node.get(), edge->sink);
     }
   }
 
@@ -609,7 +610,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
   DenseMap<CFGNode *, unsigned> nodeToPathMap;
   SmallVector<CFGNode *, 16> cycleCutNodes;
   unsigned pathCount = 0;
-  for (auto it = mfo.begin(); it != mfo.end();
+  for (auto it = mutuallyForcedOut.begin(); it != mutuallyForcedOut.end();
        ++it) {
     // Check to see if the node (and its cycle) have already been visited.
     if (nodeToPathMap[it->first])
@@ -617,7 +618,7 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
     CFGEdge *victimEdge = nullptr;
     auto nodeIt = it;
     pathCount++;
-    while (nodeIt != mfo.end()) {
+    while (nodeIt != mutuallyForcedOut.end()) {
       CFGNode *node = nodeIt->first;
       unsigned path = nodeToPathMap[node];
       if (path != 0) {
@@ -639,16 +640,15 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg) {
           victimEdge = edge;
         }
       }
-      nodeIt = mfo.find(nodeIt->second);
+      nodeIt = mutuallyForcedOut.find(nodeIt->second);
     }
   }
 
   // Remove the victim edges to break cycles in the mutually forced edges
   for (CFGNode *node : cycleCutNodes)
-    mfo.erase(node);
+    mutuallyForcedOut.erase(node);
 
-  // Finally, insert all the remaining element in the mutuallyForcedOut edges.
-  for (auto &elem : mfo)
+  for (auto &elem : mutuallyForcedOut)
     mutuallyForcedOut.insert(elem);
 }
 

@@ -104,16 +104,16 @@ public:
   // The merge order of the slices
   MergeOrder mergeOrder;
 
-  // The constructor for creating a NodeChainAssembly. slicePos must be an
+  // The constructor for creating a NodeChainAssembly. slicePosition must be an
   // iterator into splitChain->nodes.
   NodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain,
-                    std::list<CFGNode *>::iterator slicePos,
+                    std::list<CFGNode *>::iterator slicePosition,
                     MergeOrder mOrder)
-      : chainPair(splitChain, unsplitChain), slicePosition(slicePos),
+      : chainPair(splitChain, unsplitChain), slicePosition(slicePosition),
         mergeOrder(mOrder) {
     // Construct the slices.
-    NodeChainSlice s1(splitChain, splitChain->nodes.begin(), slicePos);
-    NodeChainSlice s2(splitChain, slicePos, splitChain->nodes.end());
+    NodeChainSlice s1(splitChain, splitChain->nodes.begin(), slicePosition);
+    NodeChainSlice s2(splitChain, slicePosition, splitChain->nodes.end());
     NodeChainSlice u(unsplitChain);
 
     switch (mergeOrder) {

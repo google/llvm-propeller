@@ -33,9 +33,9 @@ extern uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
 // This function iterates over the cfgs included in the Propeller profile and
 // adds them to cold and hot cfg lists. Then it appropriately performs basic
 // block reordering by calling NodeChainBuilder.doOrder() either on all cfgs (if
-// -propeller-opt=reorder-ip) or individually on every controlFlowGraph. After creating all
-// the node chains, it hands the basic block chains to a ChainClustering
-// instance for further rerodering.
+// -propeller-opt=reorder-ip) or individually on every controlFlowGraph. After
+// creating all the node chains, it hands the basic block chains to a
+// ChainClustering instance for further rerodering.
 void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
                               std::list<StringRef>::iterator hotPlaceHolder,
                               std::list<StringRef>::iterator coldPlaceHolder) {
@@ -138,7 +138,8 @@ void CodeLayout::printStats() {
   std::map<uint64_t, uint64_t> histogram;
   llvm::StringMap<uint64_t> extTSPScoreMap;
   for (CFGNode *n : HotOrder) {
-    auto scoreEntry = extTSPScoreMap.try_emplace(n->controlFlowGraph->name, 0).first;
+    auto scoreEntry =
+        extTSPScoreMap.try_emplace(n->controlFlowGraph->name, 0).first;
     n->forEachOutEdgeRef([&nodeAddressMap, &distances, &histogram,
                           &scoreEntry](CFGEdge &edge) {
       if (!edge.weight || edge.isReturn())

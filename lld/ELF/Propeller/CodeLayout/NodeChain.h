@@ -87,7 +87,9 @@ public:
     return ((double)freq) / std::max(size, (uint64_t)1);
   }
 
-  bool isSameCFG(const NodeChain &c) { return controlFlowGraph && controlFlowGraph == c.controlFlowGraph; }
+  bool isSameCFG(const NodeChain &c) {
+    return controlFlowGraph && controlFlowGraph == c.controlFlowGraph;
+  }
 };
 
 // This returns a string representation of the chain

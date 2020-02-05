@@ -30,12 +30,11 @@ namespace propeller {
 void ChainClustering::addChain(std::unique_ptr<NodeChain> &&chain_ptr) {
   for (CFGNode *n : chain_ptr->nodes)
     n->chain = chain_ptr.get();
-  auto &chainList =
-      ((propConfig.optReorderIP || propConfig.optSplitFuncs ||
-        propConfig.optReorderFuncs) &&
-       chain_ptr->freq == 0)
-          ? coldChains
-          : hotChains;
+  auto &chainList = ((propConfig.optReorderIP || propConfig.optSplitFuncs ||
+                      propConfig.optReorderFuncs) &&
+                     chain_ptr->freq == 0)
+                        ? coldChains
+                        : hotChains;
   chainList.push_back(std::move(chain_ptr));
 }
 
@@ -185,7 +184,8 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
   mergeClusters();
   std::vector<Cluster *> clusterOrder;
   sortClusters(clusterOrder);
-  // This maps every controlFlowGraph to the position of its first hot node in the layout.
+  // This maps every controlFlowGraph to the position of its first hot node in
+  // the layout.
   DenseMap<ControlFlowGraph *, size_t> hotCFGOrder;
 
   for (Cluster *cl : clusterOrder)
@@ -198,8 +198,8 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
   auto coldChainComparator =
       [&hotCFGOrder](const std::unique_ptr<NodeChain> &c_ptr1,
                      const std::unique_ptr<NodeChain> &c_ptr2) -> bool {
-    // If each of the chains comes from a single controlFlowGraph, we can order the chains
-    // consistently based on the hot layout
+    // If each of the chains comes from a single controlFlowGraph, we can order
+    // the chains consistently based on the hot layout
     if (c_ptr1->controlFlowGraph && c_ptr2->controlFlowGraph) {
       // If one controlFlowGraph is cold and the other is hot, make sure the hot controlFlowGraph's chain
       // comes earlier in the order.
