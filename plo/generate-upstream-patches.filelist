@@ -118,11 +118,14 @@ declare ALL_FILES=(
         lld-base         lld/ELF/Config.h
         lld-base         lld/ELF/Driver.cpp
         lld-base         lld/ELF/InputSection.cpp
+        lld-base         lld/ELF/InputSection.h
         lld-base         lld/ELF/LTO.cpp
         lld-base         lld/ELF/Options.td
         lld-base         lld/ELF/OutputSections.cpp
+	lld-base         lld/ELF/Relocations.h
         lld-base         lld/ELF/Target.h
         lld-base         lld/ELF/Writer.cpp
+	lld-base         lld/test/ELF/bb-sections-delete-fallthru.s
 # LLVM patch begins here.
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
