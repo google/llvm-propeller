@@ -161,6 +161,9 @@ declare ALL_FILES=(
         debuginfo        llvm/lib/MC/ELFObjectWriter.cpp
         cfi              llvm/lib/MC/MCDwarf.cpp
         debuginfo        llvm/lib/MC/MCDwarf.cpp
+	base_1           llvm/include/llvm/ProfileData/PropellerProf.h
+	base_1           llvm/lib/ProfileData/CMakeLists.txt
+	base_1           llvm/lib/ProfileData/PropellerProf.cpp
         cfi              llvm/lib/Target/AArch64/AArch64FrameLowering.h
         base_2           llvm/lib/Target/TargetLoweringObjectFile.cpp
         base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
