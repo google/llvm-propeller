@@ -1713,18 +1713,8 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     // Step 2:  Shrink jump instructions.  If the offset of the jump can fit in
     // one byte there is a smaller encoding of the jump instruction.  Section
     // offsets are recomputed only after all the sections have been processed.
-    // Alignment affects computed target offsets, positive target offsets could
-    // be higher by (Alignment - 1) and negative target offsets could be lower
-    // by the same amount. With aggressive shrinking, we make mistakes and
-    // rectify it in the next step.
-    auto MaxIt = config->shrinkJumpsAggressively
-                     ? Sections.end()
-                     : std::max_element(
-                           Sections.begin(), Sections.end(),
-                           [](InputSection *const s1, InputSection *const s2) {
-                             return s1->alignment < s2->alignment;
-                           });
-    uint32_t MaxAlign = (MaxIt != Sections.end()) ? (*MaxIt)->alignment : 0;
+    // we first shrink jumps optimistically (possibly making mistakes) and then
+    // rectify it in the next step by growing the jumps if necessary.
 
     // Shrink jump Instructions optimistically
     std::vector<unsigned> Shrunk(Sections.size(), 0);
@@ -1735,7 +1725,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       parallelForEachN(0, Sections.size(), [&](size_t I) {
         InputSection &IS = *Sections[I];
         unsigned BytesShrunk =
-            target->shrinkJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
+            target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
         Changed[I] = (BytesShrunk > 0);
         Shrunk[I] += BytesShrunk;
       });
@@ -1753,32 +1743,29 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
         script->assignAddresses();
     } while (AnyChanged);
 
-    if (config->shrinkJumpsAggressively) {
-      // Grow jump instructions when necessary
-      std::vector<unsigned> Grown(Sections.size(), 0);
-      do {
-        AnyChanged = false;
-        parallelForEachN(0, Sections.size(), [&](size_t I) {
-          InputSection &IS = *Sections[I];
-          unsigned BytesGrown =
-              target->growJmpInsn(IS, IS.getFile<ELFT>(), MaxAlign);
-          Changed[I] = (BytesGrown > 0);
-          Grown[I] += BytesGrown;
-        });
-        size_t Num = std::count_if(Grown.begin(), Grown.end(),
-                                   [](int e) { return e > 0; });
-        Num += std::count_if(Grown.begin(), Grown.end(),
-                             [](int e) { return e > 4; });
-        if (Num > 0)
-          LLVM_DEBUG(llvm::dbgs()
-                     << "Output Section :" << OS->name << " : Growing " << Num
-                     << " jmp instructions\n");
-        AnyChanged = std::any_of(Changed.begin(), Changed.end(),
-                                 [](bool e) { return e; });
-        if (AnyChanged)
-          script->assignAddresses();
-      } while (AnyChanged);
-    }
+    // Grow jump instructions when necessary
+    std::vector<unsigned> Grown(Sections.size(), 0);
+    do {
+      AnyChanged = false;
+      parallelForEachN(0, Sections.size(), [&](size_t I) {
+        InputSection &IS = *Sections[I];
+        unsigned BytesGrown = target->growJmpInsn(IS, IS.getFile<ELFT>());
+        Changed[I] = (BytesGrown > 0);
+        Grown[I] += BytesGrown;
+      });
+      size_t Num = std::count_if(Grown.begin(), Grown.end(),
+                                 [](int e) { return e > 0; });
+      Num += std::count_if(Grown.begin(), Grown.end(),
+                           [](int e) { return e > 4; });
+      if (Num > 0)
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Output Section :" << OS->name << " : Growing " << Num
+                   << " jmp instructions\n");
+      AnyChanged = std::any_of(Changed.begin(), Changed.end(),
+                               [](bool e) { return e; });
+      if (AnyChanged)
+        script->assignAddresses();
+    } while (AnyChanged);
   }
 
   for (OutputSection *OS : outputSections) {

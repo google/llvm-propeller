@@ -371,10 +371,6 @@ defm section_start: Eq<"section-start", "Set address of section">,
 
 def shared: F<"shared">, HelpText<"Build a shared object">;
 
-defm shrink_jumps_aggressively: B<"shrink-jumps-aggressively",
-    "Shrink Jumps aggressively and aligment-agnostic (deafult)",
-    "Do not shrink jumps aggressively">;
-
 defm soname: Eq<"soname", "Set DT_SONAME">;
 
 defm sort_section:

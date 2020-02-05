@@ -205,7 +205,6 @@ struct Configuration {
   bool saveTemps;
   bool singleRoRx;
   bool shared;
-  bool shrinkJumpsAggressively;
   bool isStatic = false;
   bool sysvHash = false;
   bool target1Rel;

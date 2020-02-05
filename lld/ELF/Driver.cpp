@@ -1008,9 +1008,6 @@ static void readConfigs(opt::InputArgList &args) {
   config->sectionStartMap = getSectionStartMap(args);
   config->shared = args.hasArg(OPT_shared);
 
-  config->shrinkJumpsAggressively = args.hasFlag(
-      OPT_shrink_jumps_aggressively, OPT_no_shrink_jumps_aggressively, true);
-
   config->singleRoRx = args.hasArg(OPT_no_rosegment);
   config->soName = args.getLastArgValue(OPT_soname);
   config->sortSection = getSortSection(args);

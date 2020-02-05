@@ -94,13 +94,11 @@ public:
     return false;
   }
 
-  virtual unsigned shrinkJmpInsn(InputSection &IS, InputFile *File,
-                                 uint32_t MaxAlignment) const {
+  virtual unsigned shrinkJmpInsn(InputSection &IS, InputFile *File) const {
     return 0;
   }
 
-  virtual unsigned growJmpInsn(InputSection &IS, InputFile *File,
-                               uint32_t MaxAlignment) const {
+  virtual unsigned growJmpInsn(InputSection &IS, InputFile *File) const {
     return 0;
   }
 
