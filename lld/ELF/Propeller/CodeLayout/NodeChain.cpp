@@ -28,7 +28,8 @@ std::string toString(const NodeChain &c,
                : std::to_string(n->shName.size() -
                                 n->controlFlowGraph->name.size() - 4);
     str += " (size=" + std::to_string(n->shSize) +
-           ", freq=" + std::to_string(n->freq) + ")";
+           ", freq=" + std::to_string(n->freq) +
+           ", offset=" + std::to_string(n->chainOffset) + ")";
     if (n != c.nodes.back())
       str += " -> ";
   }

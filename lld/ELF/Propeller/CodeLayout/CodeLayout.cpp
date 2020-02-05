@@ -27,8 +27,8 @@ using llvm::DenseMap;
 
 namespace lld {
 namespace propeller {
-extern uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
-                                   uint64_t srcSinkDistance);
+extern uint64_t getEdgeExtTSPScore(const CFGEdge &edge,
+                                   int64_t srcSinkDistance);
 
 // This function iterates over the cfgs included in the Propeller profile and
 // adds them to cold and hot cfg lists. Then it appropriately performs basic
@@ -152,15 +152,12 @@ void CodeLayout::printStats() {
       }
       uint64_t srcOffset = nodeAddressMap[edge.src];
       uint64_t sinkOffset = nodeAddressMap[edge.sink];
-      bool edgeForward = srcOffset + edge.src->shSize <= sinkOffset;
-      uint64_t srcSinkDistance =
-          edgeForward ? sinkOffset - srcOffset - edge.src->shSize
-                      : srcOffset - sinkOffset + edge.src->shSize;
+      uint64_t srcSinkDistance = sinkOffset - srcOffset - edge.src->shSize;
 
       if (edge.type == CFGEdge::EdgeType::INTRA_FUNC ||
           edge.type == CFGEdge::EdgeType::INTRA_DYNA)
         scoreEntry->second +=
-            getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
+            getEdgeExtTSPScore(edge, srcSinkDistance);
 
       auto res =
           std::lower_bound(distances.begin(), distances.end(), srcSinkDistance);

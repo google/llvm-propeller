@@ -13,40 +13,33 @@ namespace propeller {
 
 // Return the Extended TSP score for one edge, given its source to sink
 // direction and distance in the layout.
-uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
-                            uint64_t srcSinkDistance) {
+uint64_t getEdgeExtTSPScore(const CFGEdge &edge,
+                            int64_t srcSinkDistance) {
 
   // Approximate callsites to be in the middle of the source basic block.
-  if (edge.isCall()) {
-    if (isEdgeForward)
+  if (edge.isCall())
       srcSinkDistance += edge.src->shSize / 2;
-    else
-      srcSinkDistance -= edge.src->shSize / 2;
-  }
 
-  if (edge.isReturn()) {
-    if (isEdgeForward)
+  if (edge.isReturn())
       srcSinkDistance += edge.sink->shSize / 2;
-    else
-      srcSinkDistance -= edge.sink->shSize / 2;
-  }
 
   if (srcSinkDistance == 0 && (edge.type == CFGEdge::EdgeType::INTRA_FUNC ||
                                edge.type == CFGEdge::EdgeType::INTRA_DYNA))
     return edge.weight * propConfig.optFallthroughWeight;
 
-  if (isEdgeForward && srcSinkDistance < propConfig.optForwardJumpDistance)
+  uint64_t absoluteSrcSinkDistance = (uint64_t)std::abs(srcSinkDistance);
+  if (srcSinkDistance > 0 && absoluteSrcSinkDistance < propConfig.optForwardJumpDistance)
     return edge.weight * propConfig.optForwardJumpWeight *
-           (propConfig.optForwardJumpDistance - srcSinkDistance);
+           (propConfig.optForwardJumpDistance - absoluteSrcSinkDistance);
 
-  if (!isEdgeForward && srcSinkDistance < propConfig.optBackwardJumpDistance)
+  if (srcSinkDistance < 0 && absoluteSrcSinkDistance < propConfig.optBackwardJumpDistance)
     return edge.weight * propConfig.optBackwardJumpWeight *
-           (propConfig.optBackwardJumpDistance - srcSinkDistance);
+           (propConfig.optBackwardJumpDistance - absoluteSrcSinkDistance);
   return 0;
 }
 
 bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
-                                       uint64_t offset, uint8_t &idx) const {
+                                       int64_t offset, uint8_t &idx) const {
   for (idx = 0; idx < 3; ++idx) {
     if (chain != slices[idx].chain)
       continue;
@@ -109,32 +102,29 @@ uint64_t NodeChainAssembly::computeExtTSPScore() const {
     if (!findSliceIndex(edge.sink, sinkChain, sinkNodeOffset, sinkSliceIdx))
       return;
 
-    bool edgeForward = (srcSliceIdx < sinkSliceIdx) ||
-                       (srcSliceIdx == sinkSliceIdx &&
-                        (srcNodeOffset + edge.src->shSize <= sinkNodeOffset));
+    int64_t srcSinkDistance = 0;
 
-    uint64_t srcSinkDistance = 0;
-
-    if (srcSliceIdx == sinkSliceIdx) {
-      srcSinkDistance = edgeForward
-                            ? sinkNodeOffset - srcNodeOffset - edge.src->shSize
-                            : srcNodeOffset - sinkNodeOffset + edge.src->shSize;
-    } else {
+    if (srcSliceIdx == sinkSliceIdx)
+      srcSinkDistance = sinkNodeOffset - srcNodeOffset - edge.src->shSize;
+    else {
+      bool edgeForward = srcSliceIdx < sinkSliceIdx;
       const NodeChainSlice &srcSlice = slices[srcSliceIdx];
       const NodeChainSlice &sinkSlice = slices[sinkSliceIdx];
       srcSinkDistance =
           edgeForward
               ? srcSlice.endOffset - srcNodeOffset - edge.src->shSize +
                     sinkNodeOffset - sinkSlice.beginOffset
-              : srcNodeOffset - srcSlice.beginOffset + edge.src->shSize +
-                    sinkSlice.endOffset - sinkNodeOffset;
+              : srcSlice.beginOffset - srcNodeOffset - edge.src->shSize +
+                   sinkNodeOffset - sinkSlice.endOffset;
       // Increment the distance by the size of the middle slice if the src
       // and sink are from the two ends.
-      if (std::abs(((int16_t)sinkSliceIdx) - ((int16_t)srcSliceIdx)) == 2)
+      if (srcSliceIdx == 0 && sinkSliceIdx == 2)
         srcSinkDistance += slices[1].size();
+      if (srcSliceIdx == 2 && sinkSliceIdx == 0)
+        srcSinkDistance -= slices[1].size();
     }
 
-    score += getEdgeExtTSPScore(edge, edgeForward, srcSinkDistance);
+    score += getEdgeExtTSPScore(edge, srcSinkDistance);
   };
 
   // No changes will be made to the score that is contributed by the unsplit
@@ -143,7 +133,7 @@ uint64_t NodeChainAssembly::computeExtTSPScore() const {
 
   // We need to recompute the score induced by the split chain (if it has really
   // been split) as the offsets of the nodes have changed.
-  if (splits())
+  if (splits)
     splitChain()->forEachOutEdgeToChain(splitChain(), addEdgeScore);
   else
     score += splitChain()->score;

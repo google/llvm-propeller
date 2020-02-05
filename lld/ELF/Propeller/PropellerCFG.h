@@ -106,7 +106,7 @@ public:
   NodeChain *chain;
 
   // Offset of this node in the assigned chain.
-  uint64_t chainOffset;
+  int64_t chainOffset;
 
   std::vector<CFGEdge *> outs;     // Intra function edges.
   std::vector<CFGEdge *> ins;      // Intra function edges.

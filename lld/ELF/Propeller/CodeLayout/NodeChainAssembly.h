@@ -27,8 +27,8 @@
 namespace lld {
 namespace propeller {
 
-uint64_t getEdgeExtTSPScore(const CFGEdge &edge, bool isEdgeForward,
-                            uint64_t srcSinkDistance);
+uint64_t getEdgeExtTSPScore(const CFGEdge &edge,
+                            int64_t srcSinkDistance);
 
 // This class defines a slices of a node chain, specified by iterators to the
 // beginning and end of the slice.
@@ -41,7 +41,7 @@ public:
   std::list<CFGNode *>::iterator beginPosition, endPosition;
 
   // The offsets corresponding to the two endpoints
-  uint64_t beginOffset, endOffset;
+  int64_t beginOffset, endOffset;
 
   // Constructor for building a chain slice from a given chain and the two
   // endpoints of the chain.
@@ -63,7 +63,7 @@ public:
         beginOffset(0), endOffset(c->size) {}
 
   // (Binary) size of this slice
-  uint64_t size() const { return endOffset - beginOffset; }
+  int64_t size() const { return endOffset - beginOffset; }
 
   bool isEmpty() const { return beginPosition == endPosition; }
 };
@@ -104,6 +104,8 @@ public:
   // The merge order of the slices
   MergeOrder mergeOrder;
 
+  bool splits, splitsAtFunctionTransition, needsSplitChainRotation;
+
   // The constructor for creating a NodeChainAssembly. slicePosition must be an
   // iterator into splitChain->nodes.
   NodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain,
@@ -133,6 +135,10 @@ public:
       assert("Invalid MergeOrder!" && false);
     }
 
+    splits = slicePosition != splitChain->nodes.begin();
+    splitsAtFunctionTransition = splits && ((*std::prev(slicePosition))->controlFlowGraph != (*slicePosition)->controlFlowGraph);
+    needsSplitChainRotation = (mergeOrder == S2S1U && splits) || mergeOrder == S2US1 || mergeOrder == US2S1;
+
     // Set the ExtTSP score gain as the difference between the new score after
     // merging these chains and the current scores of the two chains.
     auto assemblyScore = computeExtTSPScore();
@@ -146,7 +152,7 @@ public:
   // node. If the node is not contained in this NodeChainAssembly, then return
   // false. Otherwise, set idx equal to the index of the corresponding slice and
   // return true.
-  bool findSliceIndex(CFGNode *node, NodeChain *chain, uint64_t offset,
+  bool findSliceIndex(CFGNode *node, NodeChain *chain, int64_t offset,
                       uint8_t &idx) const;
 
   // This function computes the ExtTSP score for a chain assembly record. This
@@ -181,20 +187,6 @@ public:
   // two assembly records.
   std::pair<uint8_t, size_t> assemblyStrategy() const {
     return std::make_pair(mergeOrder, (*slicePosition)->mappedAddr);
-  }
-
-  inline bool splits() const {
-    return slicePosition != splitChain()->nodes.begin();
-  }
-
-  inline bool splitsAtFunctionTransition() const {
-    return splits() && ((*std::prev(slicePosition))->controlFlowGraph !=
-                        (*slicePosition)->controlFlowGraph);
-  }
-
-  inline bool needsSplitChainRotation() {
-    return (mergeOrder == S2S1U && splits()) || mergeOrder == S2US1 ||
-           mergeOrder == US2S1;
   }
 
   inline NodeChain *splitChain() const { return chainPair.first; }

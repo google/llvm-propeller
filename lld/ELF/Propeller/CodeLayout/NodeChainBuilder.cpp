@@ -300,7 +300,7 @@ void NodeChainBuilder::mergeChains(
   mergeInOutEdges(mergerChain, mergeeChain);
 
   // Does S2 mark a function transition?
-  bool S2FuncTransition = assembly->splitsAtFunctionTransition();
+  bool S2FuncTransition = assembly->splitsAtFunctionTransition;
 
   // Create the new node order according the given assembly
   auto S1Begin = assembly->splitChain()->nodes.begin();
@@ -309,7 +309,7 @@ void NodeChainBuilder::mergeChains(
 
   // Reorder S1S2 to S2S1 if needed. This operation takes O(1) because we're
   // splicing from and into the same list.
-  if (assembly->needsSplitChainRotation())
+  if (assembly->needsSplitChainRotation)
     assembly->splitChain()->nodes.splice(S1Begin, assembly->splitChain()->nodes,
                                          S2Begin,
                                          assembly->splitChain()->nodes.end());
@@ -356,7 +356,7 @@ void NodeChainBuilder::mergeChains(
       funcTransitionCandids.push_back(S2Begin);
     // S1Begin will only be examined if this is a splitting assembly. Otherwise,
     // S1 is empty.
-    if (assembly->splits())
+    if (assembly->splits)
       funcTransitionCandids.push_back(S1Begin);
 
     // Check if any of the candidates mark a function transition position and
@@ -378,7 +378,7 @@ void NodeChainBuilder::mergeChains(
     chainBeginOffset = assembly->slices[0].size();
   }
 
-  if (!assembly->splits()) {
+  if (!assembly->splits) {
     // We can skip the S chain in this case.
     chainBegin = UBegin;
     chainBeginOffset = assembly->splitChain()->size;
@@ -470,11 +470,8 @@ uint64_t NodeChainBuilder::computeExtTSPScore(NodeChain *chain) const {
     assert(srcChain == sinkChain);
     auto srcOffset = edge.src->chainOffset;
     auto sinkOffset = edge.sink->chainOffset;
-    bool edgeForward = srcOffset + edge.src->shSize <= sinkOffset;
     // Calculate the distance between src and sink
-    uint64_t distance = edgeForward ? sinkOffset - srcOffset - edge.src->shSize
-                                    : srcOffset - sinkOffset + edge.src->shSize;
-    score += getEdgeExtTSPScore(edge, edgeForward, distance);
+    score += getEdgeExtTSPScore(edge, sinkOffset - srcOffset - edge.src->shSize);
   };
 
   chain->forEachOutEdgeToChain(chain, visit);
