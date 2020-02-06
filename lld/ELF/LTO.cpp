@@ -27,7 +27,7 @@
 #include "llvm/LTO/Config.h"
 #include "llvm/LTO/LTO.h"
 #include "llvm/Object/SymbolicFile.h"
-#include "llvm/ProfileData/PropellerProf.h"
+#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"

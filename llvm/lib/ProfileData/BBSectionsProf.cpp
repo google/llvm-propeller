@@ -1,4 +1,4 @@
-#include "llvm/ProfileData/PropellerProf.h"
+#include "llvm/ProfileData/BBSectionsProf.h"
 
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"

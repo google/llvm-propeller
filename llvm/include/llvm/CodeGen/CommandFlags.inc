@@ -18,7 +18,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/MC/MCTargetOptionsCommandFlags.inc"
 #include "llvm/MC/SubtargetFeature.h"
-#include "llvm/ProfileData/PropellerProf.h"
+#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Host.h"
