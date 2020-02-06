@@ -254,8 +254,8 @@ static void fill(uint8_t *Buf, size_t Size,
   unsigned remaining = Size - I;
   if (!remaining)
     return;
-  if (SFiller.at(remaining - 1).size() != remaining)
-    fatal("Failed padding with special filler.");
+  if (SFiller[remaining - 1].size() != remaining)
+    fatal("failed padding with special filler");
   memcpy(Buf + I, SFiller.at(remaining - 1).data(), remaining);
 }
 

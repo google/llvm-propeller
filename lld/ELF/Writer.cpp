@@ -1643,7 +1643,7 @@ static void fixSymbolsAfterShrinking() {
       if (!Def)
         return;
 
-      const auto *Sec = Def->section;
+      const SectionBase *Sec = Def->section;
       if (!Sec)
         return;
 
