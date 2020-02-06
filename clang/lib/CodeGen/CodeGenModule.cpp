@@ -483,6 +483,11 @@ void CodeGenModule::Release() {
     getModule().addModuleFlag(llvm::Module::Max, "Dwarf Version",
                               CodeGenOpts.DwarfVersion);
   }
+
+  if (Context.getLangOpts().SemanticInterposition)
+    // Require various optimization to respect semantic interposition.
+    getModule().setSemanticInterposition(1);
+
   if (CodeGenOpts.EmitCodeView) {
     // Indicate that we want CodeView in the metadata.
     getModule().addModuleFlag(llvm::Module::Warning, "CodeView", 1);
@@ -537,9 +542,24 @@ void CodeGenModule::Release() {
     getModule().addModuleFlag(llvm::Module::Error, "min_enum_size", EnumWidth);
   }
 
+  if (Arch == llvm::Triple::riscv32 || Arch == llvm::Triple::riscv64) {
+    StringRef ABIStr = Target.getABI();
+    llvm::LLVMContext &Ctx = TheModule.getContext();
+    getModule().addModuleFlag(llvm::Module::Error, "target-abi",
+                              llvm::MDString::get(Ctx, ABIStr));
+  }
+
   if (CodeGenOpts.SanitizeCfiCrossDso) {
     // Indicate that we want cross-DSO control flow integrity checks.
     getModule().addModuleFlag(llvm::Module::Override, "Cross-DSO CFI", 1);
+  }
+
+  if (CodeGenOpts.WholeProgramVTables) {
+    // Indicate whether VFE was enabled for this module, so that the
+    // vcall_visibility metadata added under whole program vtables is handled
+    // appropriately in the optimizer.
+    getModule().addModuleFlag(llvm::Module::Error, "Virtual Function Elim",
+                              CodeGenOpts.VirtualFunctionElimination);
   }
 
   if (LangOpts.Sanitize.has(SanitizerKind::CFIICall)) {
@@ -567,7 +587,8 @@ void CodeGenModule::Release() {
     // floating point values to 0.  (This corresponds to its "__CUDA_FTZ"
     // property.)
     getModule().addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
-                              CodeGenOpts.FlushDenorm ? 1 : 0);
+                              CodeGenOpts.FP32DenormalMode.Output !=
+                                  llvm::DenormalMode::IEEE);
   }
 
   // Emit OpenCL specific module metadata: OpenCL/SPIR version.
@@ -856,7 +877,7 @@ static bool shouldAssumeDSOLocal(const CodeGenModule &CGM,
   if (isa<llvm::Function>(GV) && !CGOpts.NoPLT && RM == llvm::Reloc::Static)
     return true;
 
-  // Otherwise don't assue it is local.
+  // Otherwise don't assume it is local.
   return false;
 }
 
@@ -1036,7 +1057,7 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
       }
     }
 
-  return Out.str();
+  return std::string(Out.str());
 }
 
 void CodeGenModule::UpdateMultiVersionNames(GlobalDecl GD,
@@ -1374,7 +1395,7 @@ void CodeGenModule::GenOpenCLArgMetadata(llvm::Function *Fn,
         std::string typeName;
         if (isPipe)
           typeName = ty.getCanonicalType()
-                         ->getAs<PipeType>()
+                         ->castAs<PipeType>()
                          ->getElementType()
                          .getAsString(Policy);
         else
@@ -1388,7 +1409,7 @@ void CodeGenModule::GenOpenCLArgMetadata(llvm::Function *Fn,
         std::string baseTypeName;
         if (isPipe)
           baseTypeName = ty.getCanonicalType()
-                             ->getAs<PipeType>()
+                             ->castAs<PipeType>()
                              ->getElementType()
                              .getCanonicalType()
                              .getAsString(Policy);
@@ -5784,7 +5805,9 @@ llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
   // Return a bogus pointer if RTTI is disabled, unless it's for EH.
   // FIXME: should we even be calling this method if RTTI is disabled
   // and it's not for EH?
-  if ((!ForEH && !getLangOpts().RTTI) || getLangOpts().CUDAIsDevice)
+  if ((!ForEH && !getLangOpts().RTTI) || getLangOpts().CUDAIsDevice ||
+      (getLangOpts().OpenMP && getLangOpts().OpenMPIsDevice &&
+       getTriple().isNVPTX()))
     return llvm::Constant::getNullValue(Int8PtrTy);
 
   if (ForEH && Ty->isObjCObjectPointerType() &&

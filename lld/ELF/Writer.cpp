@@ -29,6 +29,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/RandomNumberGenerator.h"
 #include "llvm/Support/SHA1.h"
+#include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/xxhash.h"
 #include <cctype>
 #include <climits>
@@ -143,11 +144,14 @@ StringRef getOutputSectionName(const InputSectionBase *s) {
 }
 
 static bool needsInterpSection() {
-  return !config->shared && !config->dynamicLinker.empty() &&
-         script->needsInterpSection();
+  return !config->relocatable && !config->shared &&
+         !config->dynamicLinker.empty() && script->needsInterpSection();
 }
 
-template <class ELFT> void writeResult() { Writer<ELFT>().run(); }
+template <class ELFT> void writeResult() {
+  llvm::TimeTraceScope timeScope("Write output file");
+  Writer<ELFT>().run();
+}
 
 static void removeEmptyPTLoad(std::vector<PhdrEntry *> &phdrs) {
   llvm::erase_if(phdrs, [&](const PhdrEntry *p) {
@@ -1643,7 +1647,7 @@ static void fixSymbolsAfterShrinking() {
       if (!Def)
         return;
 
-      const auto *Sec = Def->section;
+      const SectionBase *Sec = Def->section;
       if (!Sec)
         return;
 

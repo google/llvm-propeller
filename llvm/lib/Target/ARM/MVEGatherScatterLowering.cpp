@@ -80,14 +80,24 @@ private:
   // returning the base directly and the offsets indirectly using the Offsets
   // argument
   Value *checkGEP(Value *&Offsets, Type *Ty, Value *Ptr, IRBuilder<> Builder);
+  // Compute the scale of this gather/scatter instruction
+  int computeScale(unsigned GEPElemSize, unsigned MemoryElemSize);
 
   bool lowerGather(IntrinsicInst *I);
   // Create a gather from a base + vector of offsets
   Value *tryCreateMaskedGatherOffset(IntrinsicInst *I, Value *Ptr,
-                                     IRBuilder<> Builder);
+                                     Instruction *&Root, IRBuilder<> Builder);
   // Create a gather from a vector of pointers
   Value *tryCreateMaskedGatherBase(IntrinsicInst *I, Value *Ptr,
                                    IRBuilder<> Builder);
+
+  bool lowerScatter(IntrinsicInst *I);
+  // Create a scatter to a base + vector of offsets
+  Value *tryCreateMaskedScatterOffset(IntrinsicInst *I, Value *Ptr,
+                                      IRBuilder<> Builder);
+  // Create a scatter to a vector of pointers
+  Value *tryCreateMaskedScatterBase(IntrinsicInst *I, Value *Ptr,
+                                    IRBuilder<> Builder);
 };
 
 } // end anonymous namespace
@@ -104,14 +114,14 @@ Pass *llvm::createMVEGatherScatterLoweringPass() {
 bool MVEGatherScatterLowering::isLegalTypeAndAlignment(unsigned NumElements,
                                                        unsigned ElemSize,
                                                        unsigned Alignment) {
-  // Do only allow non-extending gathers for now
-  if (((NumElements == 4 && ElemSize == 32) ||
-       (NumElements == 8 && ElemSize == 16) ||
+  if (((NumElements == 4 &&
+        (ElemSize == 32 || ElemSize == 16 || ElemSize == 8)) ||
+       (NumElements == 8 && (ElemSize == 16 || ElemSize == 8)) ||
        (NumElements == 16 && ElemSize == 8)) &&
       ElemSize / 8 <= Alignment)
     return true;
-  LLVM_DEBUG(dbgs() << "masked gathers: instruction does not have valid "
-                    << "alignment or vector type \n");
+  LLVM_DEBUG(dbgs() << "masked gathers/scatters: instruction does not have "
+                    << "valid alignment or vector type \n");
   return false;
 }
 
@@ -119,20 +129,18 @@ Value *MVEGatherScatterLowering::checkGEP(Value *&Offsets, Type *Ty, Value *Ptr,
                                           IRBuilder<> Builder) {
   GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(Ptr);
   if (!GEP) {
-    LLVM_DEBUG(dbgs() << "masked gathers: no getelementpointer found\n");
+    LLVM_DEBUG(
+        dbgs() << "masked gathers/scatters: no getelementpointer found\n");
     return nullptr;
   }
-  LLVM_DEBUG(dbgs() << "masked gathers: getelementpointer found. Loading"
-                    << " from base + vector of offsets\n");
+  LLVM_DEBUG(dbgs() << "masked gathers/scatters: getelementpointer found."
+                    << " Looking at intrinsic for base + vector of offsets\n");
   Value *GEPPtr = GEP->getPointerOperand();
   if (GEPPtr->getType()->isVectorTy()) {
-    LLVM_DEBUG(dbgs() << "masked gathers: gather from a vector of pointers"
-                      << " hidden behind a getelementptr currently not"
-                      << " supported. Expanding.\n");
     return nullptr;
   }
   if (GEP->getNumOperands() != 2) {
-    LLVM_DEBUG(dbgs() << "masked gathers: getelementptr with too many"
+    LLVM_DEBUG(dbgs() << "masked gathers/scatters: getelementptr with too many"
                       << " operands. Expanding.\n");
     return nullptr;
   }
@@ -143,16 +151,16 @@ Value *MVEGatherScatterLowering::checkGEP(Value *&Offsets, Type *Ty, Value *Ptr,
     Offsets = ZextOffs->getOperand(0);
   Type *OffsType = VectorType::getInteger(cast<VectorType>(Ty));
   // If the offset we found does not have the type the intrinsic expects,
-  // i.e., the same type as the gather itself, we need to convert it (only i
-  // types) or fall back to expanding the gather
+  // i.e., the same type as the gather (or scatter input) itself, we need to
+  // convert it (only i types) or fall back to expanding the gather
   if (OffsType != Offsets->getType()) {
     if (OffsType->getScalarSizeInBits() >
         Offsets->getType()->getScalarSizeInBits()) {
-      LLVM_DEBUG(dbgs() << "masked gathers: extending offsets\n");
+      LLVM_DEBUG(dbgs() << "masked gathers/scatters: extending offsets\n");
       Offsets = Builder.CreateZExt(Offsets, OffsType, "");
     } else {
-      LLVM_DEBUG(dbgs() << "masked gathers: no correct offset type. Can't"
-                        << " create masked gather\n");
+      LLVM_DEBUG(dbgs() << "masked gathers/scatters: no correct offset type."
+                        << " Can't create intrinsic.\n");
       return nullptr;
     }
   }
@@ -166,10 +174,26 @@ void MVEGatherScatterLowering::lookThroughBitcast(Value *&Ptr) {
     Type *BCTy = BitCast->getType();
     Type *BCSrcTy = BitCast->getOperand(0)->getType();
     if (BCTy->getVectorNumElements() == BCSrcTy->getVectorNumElements()) {
-      LLVM_DEBUG(dbgs() << "masked gathers: looking through bitcast\n");
+      LLVM_DEBUG(
+          dbgs() << "masked gathers/scatters: looking through bitcast\n");
       Ptr = BitCast->getOperand(0);
     }
   }
+}
+
+int MVEGatherScatterLowering::computeScale(unsigned GEPElemSize,
+                                           unsigned MemoryElemSize) {
+  // This can be a 32bit load/store scaled by 4, a 16bit load/store scaled by 2,
+  // or a 8bit, 16bit or 32bit load/store scaled by 1
+  if (GEPElemSize == 32 && MemoryElemSize == 32)
+    return 2;
+  else if (GEPElemSize == 16 && MemoryElemSize == 16)
+    return 1;
+  else if (GEPElemSize == 8)
+    return 0;
+  LLVM_DEBUG(dbgs() << "masked gathers/scatters: incorrect scale. Can't "
+                    << "create intrinsic\n");
+  return -1;
 }
 
 bool MVEGatherScatterLowering::lowerGather(IntrinsicInst *I) {
@@ -194,7 +218,9 @@ bool MVEGatherScatterLowering::lowerGather(IntrinsicInst *I) {
   IRBuilder<> Builder(I->getContext());
   Builder.SetInsertPoint(I);
   Builder.SetCurrentDebugLocation(I->getDebugLoc());
-  Value *Load = tryCreateMaskedGatherOffset(I, Ptr, Builder);
+
+  Instruction *Root = I;
+  Value *Load = tryCreateMaskedGatherOffset(I, Ptr, Root, Builder);
   if (!Load)
     Load = tryCreateMaskedGatherBase(I, Ptr, Builder);
   if (!Load)
@@ -206,18 +232,22 @@ bool MVEGatherScatterLowering::lowerGather(IntrinsicInst *I) {
     Load = Builder.CreateSelect(Mask, Load, PassThru);
   }
 
+  Root->replaceAllUsesWith(Load);
+  Root->eraseFromParent();
+  if (Root != I)
+    // If this was an extending gather, we need to get rid of the sext/zext
+    // sext/zext as well as of the gather itself
+    I->eraseFromParent();
   LLVM_DEBUG(dbgs() << "masked gathers: successfully built masked gather\n");
-  I->replaceAllUsesWith(Load);
-  I->eraseFromParent();
   return true;
 }
 
 Value *MVEGatherScatterLowering::tryCreateMaskedGatherBase(
     IntrinsicInst *I, Value *Ptr, IRBuilder<> Builder) {
   using namespace PatternMatch;
-  LLVM_DEBUG(dbgs() << "masked gathers: loading from vector of pointers\n");
   Type *Ty = I->getType();
-  if (Ty->getVectorNumElements() != 4)
+  LLVM_DEBUG(dbgs() << "masked gathers: loading from vector of pointers\n");
+  if (Ty->getVectorNumElements() != 4 || Ty->getScalarSizeInBits() != 32)
     // Can't build an intrinsic for this
     return nullptr;
   Value *Mask = I->getArgOperand(2);
@@ -233,45 +263,177 @@ Value *MVEGatherScatterLowering::tryCreateMaskedGatherBase(
 }
 
 Value *MVEGatherScatterLowering::tryCreateMaskedGatherOffset(
-    IntrinsicInst *I, Value *Ptr, IRBuilder<> Builder) {
+    IntrinsicInst *I, Value *Ptr, Instruction *&Root, IRBuilder<> Builder) {
   using namespace PatternMatch;
-  Type *Ty = I->getType();
+
+  Type *OriginalTy = I->getType();
+  Type *ResultTy = OriginalTy;
+
+  unsigned Unsigned = 1;
+  // The size of the gather was already checked in isLegalTypeAndAlignment;
+  // if it was not a full vector width an appropriate extend should follow.
+  auto *Extend = Root;
+  if (OriginalTy->getPrimitiveSizeInBits() < 128) {
+    // Only transform gathers with exactly one use
+    if (!I->hasOneUse())
+      return nullptr;
+
+    // The correct root to replace is the not the CallInst itself, but the
+    // instruction which extends it
+    Extend = cast<Instruction>(*I->users().begin());
+    if (isa<SExtInst>(Extend)) {
+      Unsigned = 0;
+    } else if (!isa<ZExtInst>(Extend)) {
+      LLVM_DEBUG(dbgs() << "masked gathers: extend needed but not provided. "
+                        << "Expanding\n");
+      return nullptr;
+    }
+    LLVM_DEBUG(dbgs() << "masked gathers: found an extending gather\n");
+    ResultTy = Extend->getType();
+    // The final size of the gather must be a full vector width
+    if (ResultTy->getPrimitiveSizeInBits() != 128) {
+      LLVM_DEBUG(dbgs() << "masked gathers: extending from the wrong type. "
+                        << "Expanding\n");
+      return nullptr;
+    }
+  }
+
   Value *Offsets;
-  Value *BasePtr = checkGEP(Offsets, Ty, Ptr, Builder);
+  Value *BasePtr = checkGEP(Offsets, ResultTy, Ptr, Builder);
   if (!BasePtr)
     return nullptr;
 
-  unsigned Scale;
-  int GEPElemSize =
-      BasePtr->getType()->getPointerElementType()->getPrimitiveSizeInBits();
-  int ResultElemSize = Ty->getScalarSizeInBits();
-  // This can be a 32bit load scaled by 4, a 16bit load scaled by 2, or a
-  // 8bit, 16bit or 32bit load scaled by 1
-  if (GEPElemSize == 32 && ResultElemSize == 32) {
-    Scale = 2;
-  } else if (GEPElemSize == 16 && ResultElemSize == 16) {
-    Scale = 1;
-  } else if (GEPElemSize == 8) {
-    Scale = 0;
-  } else {
-    LLVM_DEBUG(dbgs() << "masked gathers: incorrect scale for load. Can't"
-                      << " create masked gather\n");
+  int Scale = computeScale(
+      BasePtr->getType()->getPointerElementType()->getPrimitiveSizeInBits(),
+      OriginalTy->getScalarSizeInBits());
+  if (Scale == -1)
     return nullptr;
-  }
+  Root = Extend;
 
   Value *Mask = I->getArgOperand(2);
   if (!match(Mask, m_One()))
     return Builder.CreateIntrinsic(
         Intrinsic::arm_mve_vldr_gather_offset_predicated,
-        {Ty, BasePtr->getType(), Offsets->getType(), Mask->getType()},
-        {BasePtr, Offsets, Builder.getInt32(Ty->getScalarSizeInBits()),
-         Builder.getInt32(Scale), Builder.getInt32(1), Mask});
+        {ResultTy, BasePtr->getType(), Offsets->getType(), Mask->getType()},
+        {BasePtr, Offsets, Builder.getInt32(OriginalTy->getScalarSizeInBits()),
+         Builder.getInt32(Scale), Builder.getInt32(Unsigned), Mask});
   else
     return Builder.CreateIntrinsic(
         Intrinsic::arm_mve_vldr_gather_offset,
-        {Ty, BasePtr->getType(), Offsets->getType()},
-        {BasePtr, Offsets, Builder.getInt32(Ty->getScalarSizeInBits()),
-         Builder.getInt32(Scale), Builder.getInt32(1)});
+        {ResultTy, BasePtr->getType(), Offsets->getType()},
+        {BasePtr, Offsets, Builder.getInt32(OriginalTy->getScalarSizeInBits()),
+         Builder.getInt32(Scale), Builder.getInt32(Unsigned)});
+}
+
+bool MVEGatherScatterLowering::lowerScatter(IntrinsicInst *I) {
+  using namespace PatternMatch;
+  LLVM_DEBUG(dbgs() << "masked scatters: checking transform preconditions\n");
+
+  // @llvm.masked.scatter.*(data, ptrs, alignment, mask)
+  // Attempt to turn the masked scatter in I into a MVE intrinsic
+  // Potentially optimising the addressing modes as we do so.
+  Value *Input = I->getArgOperand(0);
+  Value *Ptr = I->getArgOperand(1);
+  unsigned Alignment = cast<ConstantInt>(I->getArgOperand(2))->getZExtValue();
+  Type *Ty = Input->getType();
+
+  if (!isLegalTypeAndAlignment(Ty->getVectorNumElements(),
+                               Ty->getScalarSizeInBits(), Alignment))
+    return false;
+  lookThroughBitcast(Ptr);
+  assert(Ptr->getType()->isVectorTy() && "Unexpected pointer type");
+
+  IRBuilder<> Builder(I->getContext());
+  Builder.SetInsertPoint(I);
+  Builder.SetCurrentDebugLocation(I->getDebugLoc());
+
+  Value *Store = tryCreateMaskedScatterOffset(I, Ptr, Builder);
+  if (!Store)
+    Store = tryCreateMaskedScatterBase(I, Ptr, Builder);
+  if (!Store)
+    return false;
+
+  LLVM_DEBUG(dbgs() << "masked scatters: successfully built masked scatter\n");
+  I->replaceAllUsesWith(Store);
+  I->eraseFromParent();
+  return true;
+}
+
+Value *MVEGatherScatterLowering::tryCreateMaskedScatterBase(
+    IntrinsicInst *I, Value *Ptr, IRBuilder<> Builder) {
+  using namespace PatternMatch;
+  Value *Input = I->getArgOperand(0);
+  Value *Mask = I->getArgOperand(3);
+  Type *Ty = Input->getType();
+  // Only QR variants allow truncating
+  if (!(Ty->getVectorNumElements() == 4 && Ty->getScalarSizeInBits() == 32)) {
+    // Can't build an intrinsic for this
+    return nullptr;
+  }
+  //  int_arm_mve_vstr_scatter_base(_predicated) addr, offset, data(, mask)
+  LLVM_DEBUG(dbgs() << "masked scatters: storing to a vector of pointers\n");
+  if (match(Mask, m_One()))
+    return Builder.CreateIntrinsic(Intrinsic::arm_mve_vstr_scatter_base,
+                                   {Ptr->getType(), Input->getType()},
+                                   {Ptr, Builder.getInt32(0), Input});
+  else
+    return Builder.CreateIntrinsic(
+        Intrinsic::arm_mve_vstr_scatter_base_predicated,
+        {Ptr->getType(), Input->getType(), Mask->getType()},
+        {Ptr, Builder.getInt32(0), Input, Mask});
+}
+
+Value *MVEGatherScatterLowering::tryCreateMaskedScatterOffset(
+    IntrinsicInst *I, Value *Ptr, IRBuilder<> Builder) {
+  using namespace PatternMatch;
+  Value *Input = I->getArgOperand(0);
+  Value *Mask = I->getArgOperand(3);
+  Type *InputTy = Input->getType();
+  Type *MemoryTy = InputTy;
+  LLVM_DEBUG(dbgs() << "masked scatters: getelementpointer found. Storing"
+                    << " to base + vector of offsets\n");
+  // If the input has been truncated, try to integrate that trunc into the
+  // scatter instruction (we don't care about alignment here)
+  if (TruncInst *Trunc = dyn_cast<TruncInst>(Input)) {
+    Value *PreTrunc = Trunc->getOperand(0);
+    Type *PreTruncTy = PreTrunc->getType();
+    if (PreTruncTy->getPrimitiveSizeInBits() == 128) {
+      Input = PreTrunc;
+      InputTy = PreTruncTy;
+    }
+  }
+  if (InputTy->getPrimitiveSizeInBits() != 128) {
+    LLVM_DEBUG(
+        dbgs() << "masked scatters: cannot create scatters for non-standard"
+               << " input types. Expanding.\n");
+    return nullptr;
+  }
+
+  Value *Offsets;
+  Value *BasePtr = checkGEP(Offsets, InputTy, Ptr, Builder);
+  if (!BasePtr)
+    return nullptr;
+  int Scale = computeScale(
+      BasePtr->getType()->getPointerElementType()->getPrimitiveSizeInBits(),
+      MemoryTy->getScalarSizeInBits());
+  if (Scale == -1)
+    return nullptr;
+
+  if (!match(Mask, m_One()))
+    return Builder.CreateIntrinsic(
+        Intrinsic::arm_mve_vstr_scatter_offset_predicated,
+        {BasePtr->getType(), Offsets->getType(), Input->getType(),
+         Mask->getType()},
+        {BasePtr, Offsets, Input,
+         Builder.getInt32(MemoryTy->getScalarSizeInBits()),
+         Builder.getInt32(Scale), Mask});
+  else
+    return Builder.CreateIntrinsic(
+        Intrinsic::arm_mve_vstr_scatter_offset,
+        {BasePtr->getType(), Offsets->getType(), Input->getType()},
+        {BasePtr, Offsets, Input,
+         Builder.getInt32(MemoryTy->getScalarSizeInBits()),
+         Builder.getInt32(Scale)});
 }
 
 bool MVEGatherScatterLowering::runOnFunction(Function &F) {
@@ -283,19 +445,22 @@ bool MVEGatherScatterLowering::runOnFunction(Function &F) {
   if (!ST->hasMVEIntegerOps())
     return false;
   SmallVector<IntrinsicInst *, 4> Gathers;
+  SmallVector<IntrinsicInst *, 4> Scatters;
   for (BasicBlock &BB : F) {
     for (Instruction &I : BB) {
       IntrinsicInst *II = dyn_cast<IntrinsicInst>(&I);
       if (II && II->getIntrinsicID() == Intrinsic::masked_gather)
         Gathers.push_back(II);
+      else if (II && II->getIntrinsicID() == Intrinsic::masked_scatter)
+        Scatters.push_back(II);
     }
   }
 
-  if (Gathers.empty())
-    return false;
-
+  bool Changed = false;
   for (IntrinsicInst *I : Gathers)
-    lowerGather(I);
+    Changed |= lowerGather(I);
+  for (IntrinsicInst *I : Scatters)
+    Changed |= lowerScatter(I);
 
-  return true;
+  return Changed;
 }

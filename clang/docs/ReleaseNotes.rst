@@ -46,11 +46,6 @@ sections with improvements to Clang's support for those languages.
 Major New Features
 ------------------
 
-- clang used to run the actual compilation in a subprocess ("clang -cc1").
-  Now compilations are done in-process by default. ``-fno-integrated-cc1``
-  restores the former behavior. The ``-v`` and ``-###`` flags will print
-  "(in-process)" when compilations are done in-process.
-
 - ...
 
 Improvements to Clang's diagnostics
@@ -157,6 +152,33 @@ AST Matchers
 clang-format
 ------------
 
+
+- Option ``IndentCaseBlocks`` has been added to support treating the block
+  following a switch case label as a scope block which gets indented itself.
+  It helps avoid having the closing bracket align with the switch statement's
+  closing bracket (when ``IndentCaseLabels`` is ``false``).
+
+- Option ``ObjCBreakBeforeNestedBlockParam`` has been added to optionally apply
+  linebreaks for function arguments declarations before nested blocks.
+
+  .. code-block:: c++
+
+    switch (fool) {                vs.     switch (fool) {
+    case 1:                                case 1: {
+      {                                      bar();
+         bar();                            } break;
+      }                                    default: {
+      break;                                 plop();
+    default:                               }
+      {                                    }
+        plop();
+      }
+    }
+
+- Option ``InsertTrailingCommas`` can be set to ``TCS_Wrapped`` to insert
+  trailing commas in container literals (arrays and objects) that wrap across
+  multiple lines. It is currently only available for JavaScript and disabled by
+  default (``TCS_None``).
 
 libclang
 --------

@@ -18,13 +18,12 @@
 #include "llvm/IR/Module.h"
 #include "llvm/MC/MCTargetOptionsCommandFlags.inc"
 #include "llvm/MC/SubtargetFeature.h"
-#include "llvm/ProfileData/PropellerProf.h"
+#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include <fstream>
 #include <string>
 using namespace llvm;
 
@@ -358,8 +357,7 @@ LLVM_ATTRIBUTE_UNUSED static std::string getCPUStr() {
   // If user asked for the 'native' CPU, autodetect here. If autodection fails,
   // this will set the CPU to an empty string which tells the target to
   // pick a basic default.
-  if (MCPU == "native")
-    return sys::getHostCPUName();
+  if (MCPU == "native") return std::string(sys::getHostCPUName());
 
   return MCPU;
 }
@@ -404,6 +402,17 @@ LLVM_ATTRIBUTE_UNUSED static std::vector<std::string> getFeatureList() {
   return Features.getFeatures();
 }
 
+static void renderBoolStringAttr(AttrBuilder &B, StringRef Name, bool Val) {
+  B.addAttribute(Name, Val ? "true" : "false");
+}
+
+#define HANDLE_BOOL_ATTR(CL, AttrName)                              \
+  do {                                                              \
+    if (CL.getNumOccurrences() > 0 && !F.hasFnAttribute(AttrName))  \
+      renderBoolStringAttr(NewAttrs, AttrName, CL);                 \
+  } while (0)
+
+
 /// Set function attributes of function \p F based on CPU, Features, and command
 /// line flags.
 LLVM_ATTRIBUTE_UNUSED static void
@@ -414,9 +423,21 @@ setFunctionAttributes(StringRef CPU, StringRef Features, Function &F) {
 
   if (!CPU.empty() && !F.hasFnAttribute("target-cpu"))
     NewAttrs.addAttribute("target-cpu", CPU);
-  if (!Features.empty())
-    NewAttrs.addAttribute("target-features", Features);
-  if (FramePointerUsage.getNumOccurrences() > 0) {
+  if (!Features.empty()) {
+    // Append the command line features to any that are already on the function.
+    StringRef OldFeatures
+      = F.getFnAttribute("target-features").getValueAsString();
+    if (OldFeatures.empty())
+      NewAttrs.addAttribute("target-features", Features);
+    else {
+      SmallString<256> Appended(OldFeatures);
+      Appended.push_back(',');
+      Appended.append(Features);
+      NewAttrs.addAttribute("target-features", Appended);
+    }
+  }
+  if (FramePointerUsage.getNumOccurrences() > 0 &&
+      !F.hasFnAttribute("frame-pointer")) {
     if (FramePointerUsage == llvm::FramePointer::All)
       NewAttrs.addAttribute("frame-pointer", "all");
     else if (FramePointerUsage == llvm::FramePointer::NonLeaf)
@@ -429,6 +450,11 @@ setFunctionAttributes(StringRef CPU, StringRef Features, Function &F) {
                           toStringRef(DisableTailCalls));
   if (StackRealign)
     NewAttrs.addAttribute("stackrealign");
+
+  HANDLE_BOOL_ATTR(EnableUnsafeFPMath, "unsafe-fp-math");
+  HANDLE_BOOL_ATTR(EnableNoInfsFPMath, "no-infs-fp-math");
+  HANDLE_BOOL_ATTR(EnableNoNaNsFPMath, "no-nans-fp-math");
+  HANDLE_BOOL_ATTR(EnableNoSignedZerosFPMath, "no-signed-zeros-fp-math");
 
   if (TrapFuncName.getNumOccurrences() > 0)
     for (auto &B : F)

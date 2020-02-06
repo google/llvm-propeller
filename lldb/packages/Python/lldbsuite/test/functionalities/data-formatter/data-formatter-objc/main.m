@@ -401,7 +401,7 @@ int main (int argc, const char * argv[])
 
 	    [mutableGetConst length];
 
-	    NSData *immutableData = [[NSData alloc] initWithBytes:"HELLO" length:4];
+	    NSData *immutableData = [[NSData alloc] initWithBytes:"HELLO" length:5];
 	    NSData *mutableData = [[NSMutableData alloc] initWithBytes:"NODATA" length:6];
 
 	    // No-copy versions of NSData initializers use NSConcreteData if over 2^16 elements are specified.
@@ -501,7 +501,7 @@ int main (int argc, const char * argv[])
 	    NSURL *nsurl2 = [NSURL URLWithString:@"page.html" relativeToURL:nsurl];
 	    NSURL *nsurl3 = [NSURL URLWithString:@"?whatever" relativeToURL:nsurl2];
     
-		NSDate *date1 = [NSDate dateWithNaturalLanguageString:@"6pm April 10, 1985"];
+		NSDate *date1 = [NSDate dateWithTimeIntervalSince1970:133890*60*60]; // 6pm April 10, 1985 GMT
 		NSDate *date2 = [NSDate dateWithNaturalLanguageString:@"12am January 1, 2011"];
 		NSDate *date3 = [NSDate date];
 		NSDate *date4 = [NSDate dateWithTimeIntervalSince1970:24*60*60];

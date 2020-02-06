@@ -94,6 +94,7 @@ namespace test_undeclared_nontype_parm_arg {
 template <typename T> struct Bar { T x; };
 
 template <Bar<Xylophone> *P> // expected-error {{use of undeclared identifier 'Xylophone'}}
+// expected-note@-1{{template parameter is declared here}}
 struct Foo { };
 
 typedef int Xylophone;

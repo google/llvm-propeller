@@ -135,7 +135,6 @@ declare ALL_FILES=(
         base_2           llvm/include/llvm/CodeGen/MachineFunction.h
         cfi              llvm/include/llvm/CodeGen/TargetFrameLowering.h
         base_2           llvm/include/llvm/CodeGen/TargetLoweringObjectFileImpl.h
-        base_1           llvm/include/llvm/IR/BasicBlock.h
         base_1           llvm/include/llvm/IR/Function.h
         debuginfo        llvm/include/llvm/MC/MCAsmInfo.h
         cfi              llvm/include/llvm/MC/MCDwarf.h

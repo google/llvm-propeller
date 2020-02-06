@@ -254,8 +254,8 @@ static void fill(uint8_t *Buf, size_t Size,
   unsigned remaining = Size - I;
   if (!remaining)
     return;
-  if (SFiller.at(remaining - 1).size() != remaining)
-    fatal("Failed padding with special filler.");
+  if (SFiller[remaining - 1].size() != remaining)
+    fatal("failed padding with special filler");
   memcpy(Buf + I, SFiller.at(remaining - 1).data(), remaining);
 }
 
@@ -379,8 +379,7 @@ static void finalizeShtGroup(OutputSection *os,
 }
 
 void OutputSection::finalize() {
-  std::vector<InputSection *> v = getInputSections(this);
-  InputSection *first = v.empty() ? nullptr : v[0];
+  InputSection *first = getFirstInputSection(this);
 
   if (flags & SHF_LINK_ORDER) {
     // We must preserve the link order dependency of sections with the
@@ -488,7 +487,15 @@ int getPriority(StringRef s) {
   return v;
 }
 
-std::vector<InputSection *> getInputSections(OutputSection *os) {
+InputSection *getFirstInputSection(const OutputSection *os) {
+  for (BaseCommand *base : os->sectionCommands)
+    if (auto *isd = dyn_cast<InputSectionDescription>(base))
+      if (!isd->sections.empty())
+        return isd->sections[0];
+  return nullptr;
+}
+
+std::vector<InputSection *> getInputSections(const OutputSection *os) {
   std::vector<InputSection *> ret;
   for (BaseCommand *base : os->sectionCommands)
     if (auto *isd = dyn_cast<InputSectionDescription>(base))

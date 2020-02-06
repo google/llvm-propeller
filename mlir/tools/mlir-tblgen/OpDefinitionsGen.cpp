@@ -1,6 +1,6 @@
 //===- OpDefinitionsGen.cpp - MLIR op definitions generator ---------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -11,16 +11,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "OpFormatGen.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Support/StringExtras.h"
 #include "mlir/TableGen/Format.h"
 #include "mlir/TableGen/GenInfo.h"
-#include "mlir/TableGen/ODSDialectHook.h"
 #include "mlir/TableGen/OpClass.h"
 #include "mlir/TableGen/OpInterfaces.h"
 #include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
@@ -28,38 +28,13 @@
 
 #define DEBUG_TYPE "mlir-tblgen-opdefgen"
 
+using namespace llvm;
 using namespace mlir;
 using namespace mlir::tblgen;
 
-using llvm::CodeInit;
-using llvm::DefInit;
-using llvm::formatv;
-using llvm::Init;
-using llvm::ListInit;
-using llvm::Record;
-using llvm::RecordKeeper;
-using llvm::StringInit;
-
-//===----------------------------------------------------------------------===//
-// Dialect hook registration
-//===----------------------------------------------------------------------===//
-
-static llvm::ManagedStatic<llvm::StringMap<DialectEmitFunction>> dialectHooks;
-
-ODSDialectHookRegistration::ODSDialectHookRegistration(
-    StringRef dialectName, DialectEmitFunction emitFn) {
-  bool inserted = dialectHooks->try_emplace(dialectName, emitFn).second;
-  assert(inserted && "Multiple ODS hooks for the same dialect!");
-  (void)inserted;
-}
-
-//===----------------------------------------------------------------------===//
-// Static string definitions
-//===----------------------------------------------------------------------===//
-
 static const char *const tblgenNamePrefix = "tblgen_";
-static const char *const generatedArgName = "tblgen_arg";
-static const char *const builderOpState = "tblgen_state";
+static const char *const generatedArgName = "odsArg";
+static const char *const builderOpState = "odsState";
 
 // The logic to calculate the actual value range for a declared operand/result
 // of an op with variadic operands/results. Note that this logic is not for
@@ -118,6 +93,17 @@ static const char *const opCommentHeader = R"(
 // Utility structs and functions
 //===----------------------------------------------------------------------===//
 
+// Replaces all occurrences of `match` in `str` with `substitute`.
+static std::string replaceAllSubstrs(std::string str, const std::string &match,
+                                     const std::string &substitute) {
+  std::string::size_type scanLoc = 0, matchLoc = std::string::npos;
+  while ((matchLoc = str.find(match, scanLoc)) != std::string::npos) {
+    str = str.replace(matchLoc, match.size(), substitute);
+    scanLoc = matchLoc + substitute.size();
+  }
+  return str;
+}
+
 // Returns whether the record has a value of the given name that can be returned
 // via getValueAsString.
 static inline bool hasStringAttribute(const Record &record,
@@ -129,9 +115,9 @@ static inline bool hasStringAttribute(const Record &record,
 static std::string getArgumentName(const Operator &op, int index) {
   const auto &operand = op.getOperand(index);
   if (!operand.name.empty())
-    return operand.name;
+    return std::string(operand.name);
   else
-    return formatv("{0}_{1}", generatedArgName, index);
+    return std::string(formatv("{0}_{1}", generatedArgName, index));
 }
 
 // Returns true if we can use unwrapped value for the given `attr` in builders.
@@ -306,7 +292,6 @@ OpEmitter::OpEmitter(const Operator &op)
   verifyCtx.withOp("(*this->getOperation())");
 
   genTraits();
-
   // Generate C++ code for various op methods. The order here determines the
   // methods in the generated file.
   genOpAsmInterface();
@@ -322,13 +307,7 @@ OpEmitter::OpEmitter(const Operator &op)
   genCanonicalizerDecls();
   genFolderDecls();
   genOpInterfaceMethods();
-
-  // If a dialect hook is registered for this op's dialect, emit dialect
-  // specific content.
-  auto dialectHookIt = dialectHooks->find(op.getDialectName());
-  if (dialectHookIt != dialectHooks->end()) {
-    dialectHookIt->second(op, opClass);
-  }
+  generateOpFormat(op, opClass);
 }
 
 void OpEmitter::emitDecl(const Operator &op, raw_ostream &os) {
@@ -363,8 +342,8 @@ void OpEmitter::genAttrGetters() {
       // Returns the default value if not set.
       // TODO: this is inefficient, we are recreating the attribute for every
       // call. This should be set instead.
-      std::string defaultValue =
-          tgfmt(attr.getConstBuilderTemplate(), &fctx, attr.getDefaultValue());
+      std::string defaultValue = std::string(
+          tgfmt(attr.getConstBuilderTemplate(), &fctx, attr.getDefaultValue()));
       body << "    if (!attr)\n      return "
            << tgfmt(attr.getConvertFromStorageCall(),
                     &fctx.withSelf(defaultValue))
@@ -627,8 +606,9 @@ void OpEmitter::genSeparateArgParamBuilder() {
       // TODO(jpienaar): Expand to handle regions.
       body << formatv(R"(
         SmallVector<Type, 2> inferedReturnTypes;
-        if (succeeded({0}::inferReturnTypes({1}.location, {1}.operands,
-                      {1}.attributes, /*regions=*/{{}, inferedReturnTypes)))
+        if (succeeded({0}::inferReturnTypes(odsBuilder->getContext(),
+                      {1}.location, {1}.operands, {1}.attributes,
+                      /*regions=*/{{}, inferedReturnTypes)))
           {1}.addTypes(inferedReturnTypes);
         else
           llvm::report_fatal_error("Failed to infer result type(s).");)",
@@ -702,7 +682,7 @@ void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
 void OpEmitter::genInferedTypeCollectiveParamBuilder() {
   // TODO(jpienaar): Expand to support regions.
   const char *params =
-      "Builder *builder, OperationState &{0}, "
+      "Builder *odsBuilder, OperationState &{0}, "
       "ValueRange operands, ArrayRef<NamedAttribute> attributes";
   auto &m =
       opClass.newMethod("void", "build", formatv(params, builderOpState).str(),
@@ -710,9 +690,10 @@ void OpEmitter::genInferedTypeCollectiveParamBuilder() {
   auto &body = m.body();
   body << formatv(R"(
     SmallVector<Type, 2> inferedReturnTypes;
-    if (succeeded({0}::inferReturnTypes({1}.location, operands, attributes,
+    if (succeeded({0}::inferReturnTypes(odsBuilder->getContext(),
+                  {1}.location, operands, attributes,
                   /*regions=*/{{}, inferedReturnTypes)))
-      build(builder, tblgen_state, inferedReturnTypes, operands, attributes);
+      build(odsBuilder, odsState, inferedReturnTypes, operands, attributes);
     else
       llvm::report_fatal_error("Failed to infer result type(s).");)",
                   opClass.getClassName(), builderOpState);
@@ -878,7 +859,7 @@ void OpEmitter::buildParamList(std::string &paramList,
   auto numResults = op.getNumResults();
   resultTypeNames.reserve(numResults);
 
-  paramList = "Builder *tblgen_builder, OperationState &";
+  paramList = "Builder *odsBuilder, OperationState &";
   paramList.append(builderOpState);
 
   switch (typeParamKind) {
@@ -888,9 +869,9 @@ void OpEmitter::buildParamList(std::string &paramList,
     // Add parameters for all return types
     for (int i = 0; i < numResults; ++i) {
       const auto &result = op.getResult(i);
-      std::string resultName = result.name;
+      std::string resultName = std::string(result.name);
       if (resultName.empty())
-        resultName = formatv("resultType{0}", i);
+        resultName = std::string(formatv("resultType{0}", i));
 
       paramList.append(result.isVariadic() ? ", ArrayRef<Type> " : ", Type ");
       paramList.append(resultName);
@@ -951,18 +932,18 @@ void OpEmitter::buildParamList(std::string &paramList,
 
       switch (attrParamKind) {
       case AttrParamKind::WrappedAttr:
-        paramList.append(attr.getStorageType());
+        paramList.append(std::string(attr.getStorageType()));
         break;
       case AttrParamKind::UnwrappedValue:
         if (canUseUnwrappedRawValue(attr)) {
-          paramList.append(attr.getReturnType());
+          paramList.append(std::string(attr.getReturnType()));
         } else {
-          paramList.append(attr.getStorageType());
+          paramList.append(std::string(attr.getStorageType()));
         }
         break;
       }
       paramList.append(" ");
-      paramList.append(namedAttr.name);
+      paramList.append(std::string(namedAttr.name));
 
       // Attach default value if requested and possible.
       if (attrParamKind == AttrParamKind::UnwrappedValue &&
@@ -971,7 +952,7 @@ void OpEmitter::buildParamList(std::string &paramList,
         paramList.append(" = ");
         if (isString)
           paramList.append("\"");
-        paramList.append(attr.getDefaultValue());
+        paramList.append(std::string(attr.getDefaultValue()));
         if (isString)
           paramList.append("\"");
       }
@@ -1000,9 +981,20 @@ void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body,
         // If this is a raw value, then we need to wrap it in an Attribute
         // instance.
         FmtContext fctx;
-        fctx.withBuilder("(*tblgen_builder)");
+        fctx.withBuilder("(*odsBuilder)");
+
+        std::string builderTemplate =
+            std::string(attr.getConstBuilderTemplate());
+
+        // For StringAttr, its constant builder call will wrap the input in
+        // quotes, which is correct for normal string literals, but incorrect
+        // here given we use function arguments. So we need to strip the
+        // wrapping quotes.
+        if (StringRef(builderTemplate).contains("\"$0\""))
+          builderTemplate = replaceAllSubstrs(builderTemplate, "\"$0\"", "$0");
+
         std::string value =
-            tgfmt(attr.getConstBuilderTemplate(), &fctx, namedAttr.name);
+            std::string(tgfmt(builderTemplate, &fctx, namedAttr.name));
         body << formatv("  {0}.addAttribute(\"{1}\", {2});\n", builderOpState,
                         namedAttr.name, value);
       } else {
@@ -1075,7 +1067,8 @@ void OpEmitter::genOpInterfaceMethods() {
 }
 
 void OpEmitter::genParser() {
-  if (!hasStringAttribute(def, "parser"))
+  if (!hasStringAttribute(def, "parser") ||
+      hasStringAttribute(def, "assemblyFormat"))
     return;
 
   auto &method = opClass.newMethod(
@@ -1088,6 +1081,9 @@ void OpEmitter::genParser() {
 }
 
 void OpEmitter::genPrinter() {
+  if (hasStringAttribute(def, "assemblyFormat"))
+    return;
+
   auto valueInit = def.getValueInit("printer");
   CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
   if (!codeInit)
@@ -1263,9 +1259,9 @@ void OpEmitter::genRegionVerifier(OpMethodBody &body) {
   for (unsigned i = 0; i < numRegions; ++i) {
     const auto &region = op.getRegion(i);
 
-    std::string name = formatv("#{0}", i);
+    std::string name = std::string(formatv("#{0}", i));
     if (!region.name.empty()) {
-      name += formatv(" ('{0}')", region.name);
+      name += std::string(formatv(" ('{0}')", region.name));
     }
 
     auto getRegion = formatv("this->getOperation()->getRegion({0})", i).str();

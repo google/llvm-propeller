@@ -403,6 +403,12 @@ defm threads: B<"threads",
     "Run the linker multi-threaded (default)",
     "Do not run the linker multi-threaded">;
 
+def time_trace: F<"time-trace">, HelpText<"Record time trace">;
+def time_trace_file_eq: J<"time-trace-file=">, HelpText<"Specify time trace output file">;
+
+defm time_trace_granularity: Eq<"time-trace-granularity",
+  "Minimum time granularity (in microseconds) traced by time profiler">;
+
 defm toc_optimize : B<"toc-optimize",
     "(PowerPC64) Enable TOC related optimizations (default)",
     "(PowerPC64) Disable TOC related optimizations">;
@@ -528,6 +534,8 @@ def lto_cs_profile_file: J<"lto-cs-profile-file=">,
 def lto_obj_path_eq: J<"lto-obj-path=">;
 def lto_sample_profile: J<"lto-sample-profile=">,
   HelpText<"Sample profile file path">;
+def lto_whole_program_visibility: F<"lto-whole-program-visibility">,
+  HelpText<"Asserts that the LTO link has whole program visibility">;
 def disable_verify: F<"disable-verify">;
 defm mllvm: Eq<"mllvm", "Additional arguments to forward to LLVM's option processing">;
 def opt_remarks_filename: Separate<["--"], "opt-remarks-filename">,

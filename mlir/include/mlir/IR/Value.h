@@ -1,6 +1,6 @@
 //===- Value.h - Base of the SSA Value hierarchy ----------------*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -66,7 +66,7 @@ public:
   struct ImplTypeTraits : public llvm::PointerLikeTypeTraits<void *> {
     // We know that all pointers within the ImplType are aligned by 8-bytes,
     // meaning that we can steal up to 3 bits for the different values.
-    enum { NumLowBitsAvailable = 3 };
+    static constexpr int NumLowBitsAvailable = 3;
   };
   using ImplType = llvm::PointerIntPair<void *, 2, Kind, ImplTypeTraits>;
 

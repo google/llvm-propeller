@@ -134,6 +134,7 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/InjectTLIMappings.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/LoopVersioning.h"
@@ -1640,6 +1641,7 @@ struct LoopVectorize : public FunctionPass {
     AU.addRequired<LoopAccessLegacyAnalysis>();
     AU.addRequired<DemandedBitsWrapperPass>();
     AU.addRequired<OptimizationRemarkEmitterWrapperPass>();
+    AU.addRequired<InjectTLIMappingsLegacy>();
 
     // We currently do not preserve loopinfo/dominator analyses with outer loop
     // vectorization. Until this is addressed, mark these analyses as preserved
@@ -2261,12 +2263,12 @@ void InnerLoopVectorizer::vectorizeInterleaveGroup(Instruction *Instr,
                           : ShuffledMask;
         }
         NewLoad =
-            Builder.CreateMaskedLoad(AddrParts[Part], Group->getAlignment(),
+            Builder.CreateMaskedLoad(AddrParts[Part], Group->getAlign(),
                                      GroupMask, UndefVec, "wide.masked.vec");
       }
       else
         NewLoad = Builder.CreateAlignedLoad(VecTy, AddrParts[Part],
-                                            Group->getAlignment(), "wide.vec");
+                                            Group->getAlign(), "wide.vec");
       Group->addMetadata(NewLoad);
       NewLoads.push_back(NewLoad);
     }
@@ -2341,11 +2343,11 @@ void InnerLoopVectorizer::vectorizeInterleaveGroup(Instruction *Instr,
       Value *ShuffledMask = Builder.CreateShuffleVector(
           BlockInMaskPart, Undefs, RepMask, "interleaved.mask");
       NewStoreInstr = Builder.CreateMaskedStore(
-          IVec, AddrParts[Part], Group->getAlignment(), ShuffledMask);
+          IVec, AddrParts[Part], Group->getAlign(), ShuffledMask);
     }
     else
-      NewStoreInstr = Builder.CreateAlignedStore(IVec, AddrParts[Part],
-                                                 Group->getAlignment());
+      NewStoreInstr =
+          Builder.CreateAlignedStore(IVec, AddrParts[Part], Group->getAlign());
 
     Group->addMetadata(NewStoreInstr);
   }
@@ -2435,8 +2437,8 @@ void InnerLoopVectorizer::vectorizeMemoryInstruction(Instruction *Instr,
       if (CreateGatherScatter) {
         Value *MaskPart = isMaskRequired ? BlockInMaskParts[Part] : nullptr;
         Value *VectorGep = State.get(Addr, Part);
-        NewSI = Builder.CreateMaskedScatter(StoredVal, VectorGep,
-                                            Alignment.value(), MaskPart);
+        NewSI = Builder.CreateMaskedScatter(StoredVal, VectorGep, Alignment,
+                                            MaskPart);
       } else {
         if (Reverse) {
           // If we store to reverse consecutive memory locations, then we need
@@ -2447,11 +2449,10 @@ void InnerLoopVectorizer::vectorizeMemoryInstruction(Instruction *Instr,
         }
         auto *VecPtr = CreateVecPtr(Part, State.get(Addr, {0, 0}));
         if (isMaskRequired)
-          NewSI = Builder.CreateMaskedStore(
-              StoredVal, VecPtr, Alignment.value(), BlockInMaskParts[Part]);
+          NewSI = Builder.CreateMaskedStore(StoredVal, VecPtr, Alignment,
+                                            BlockInMaskParts[Part]);
         else
-          NewSI =
-              Builder.CreateAlignedStore(StoredVal, VecPtr, Alignment.value());
+          NewSI = Builder.CreateAlignedStore(StoredVal, VecPtr, Alignment);
       }
       addMetadata(NewSI, SI);
     }
@@ -2466,18 +2467,18 @@ void InnerLoopVectorizer::vectorizeMemoryInstruction(Instruction *Instr,
     if (CreateGatherScatter) {
       Value *MaskPart = isMaskRequired ? BlockInMaskParts[Part] : nullptr;
       Value *VectorGep = State.get(Addr, Part);
-      NewLI = Builder.CreateMaskedGather(VectorGep, Alignment.value(), MaskPart,
+      NewLI = Builder.CreateMaskedGather(VectorGep, Alignment, MaskPart,
                                          nullptr, "wide.masked.gather");
       addMetadata(NewLI, LI);
     } else {
       auto *VecPtr = CreateVecPtr(Part, State.get(Addr, {0, 0}));
       if (isMaskRequired)
         NewLI = Builder.CreateMaskedLoad(
-            VecPtr, Alignment.value(), BlockInMaskParts[Part],
-            UndefValue::get(DataTy), "wide.masked.load");
+            VecPtr, Alignment, BlockInMaskParts[Part], UndefValue::get(DataTy),
+            "wide.masked.load");
       else
-        NewLI = Builder.CreateAlignedLoad(DataTy, VecPtr, Alignment.value(),
-                                          "wide.load");
+        NewLI =
+            Builder.CreateAlignedLoad(DataTy, VecPtr, Alignment, "wide.load");
 
       // Add metadata to the load, but setVectorValue to the reverse shuffle.
       addMetadata(NewLI, LI);
@@ -3258,7 +3259,6 @@ unsigned LoopVectorizationCostModel::getVectorCallCost(CallInst *CI,
                                                        unsigned VF,
                                                        bool &NeedToScalarize) {
   Function *F = CI->getCalledFunction();
-  StringRef FnName = CI->getCalledFunction()->getName();
   Type *ScalarRetTy = CI->getType();
   SmallVector<Type *, 4> Tys, ScalarTys;
   for (auto &ArgOp : CI->arg_operands())
@@ -3286,7 +3286,7 @@ unsigned LoopVectorizationCostModel::getVectorCallCost(CallInst *CI,
   // If we can't emit a vector call for this function, then the currently found
   // cost is the cost we need to return.
   NeedToScalarize = true;
-  if (!TLI || !TLI->isFunctionVectorizable(FnName, VF) || CI->isNoBuiltin())
+  if (!TLI || CI->isNoBuiltin() || VFDatabase::getMappings(*CI).empty())
     return Cost;
 
   // If the corresponding vector cost is cheaper, return its cost.
@@ -3482,6 +3482,19 @@ void InnerLoopVectorizer::fixVectorizedLoop() {
 
   // Remove redundant induction instructions.
   cse(LoopVectorBody);
+
+  // Set/update profile weights for the vector and remainder loops as original
+  // loop iterations are now distributed among them. Note that original loop
+  // represented by LoopScalarBody becomes remainder loop after vectorization.
+  //
+  // For cases like foldTailByMasking() and requiresScalarEpiloque() we may
+  // end up getting slightly roughened result but that should be OK since
+  // profile is not inherently precise anyway. Note also possible bypass of
+  // vector code caused by legality checks is ignored, assigning all the weight
+  // to the vector loop, optimistically.
+  setProfileInfoAfterUnrolling(LI->getLoopFor(LoopScalarBody),
+                               LI->getLoopFor(LoopVectorBody),
+                               LI->getLoopFor(LoopScalarBody), VF * UF);
 }
 
 void InnerLoopVectorizer::fixCrossIterationPHIs() {
@@ -4339,9 +4352,6 @@ void InnerLoopVectorizer::widenInstruction(Instruction &I) {
     Module *M = I.getParent()->getParent()->getParent();
     auto *CI = cast<CallInst>(&I);
 
-    StringRef FnName = CI->getCalledFunction()->getName();
-    Function *F = CI->getCalledFunction();
-    Type *RetTy = ToVectorTy(CI->getType(), VF);
     SmallVector<Type *, 4> Tys;
     for (Value *ArgOperand : CI->arg_operands())
       Tys.push_back(ToVectorTy(ArgOperand->getType(), VF));
@@ -4377,17 +4387,18 @@ void InnerLoopVectorizer::widenInstruction(Instruction &I) {
           TysForDecl[0] = VectorType::get(CI->getType()->getScalarType(), VF);
         VectorF = Intrinsic::getDeclaration(M, ID, TysForDecl);
       } else {
-        // Use vector version of the library call.
-        StringRef VFnName = TLI->getVectorizedFunction(FnName, VF);
-        assert(!VFnName.empty() && "Vector function name is empty.");
-        VectorF = M->getFunction(VFnName);
-        if (!VectorF) {
-          // Generate a declaration
-          FunctionType *FTy = FunctionType::get(RetTy, Tys, false);
-          VectorF =
-              Function::Create(FTy, Function::ExternalLinkage, VFnName, M);
-          VectorF->copyAttributesFrom(F);
-        }
+        // Use vector version of the function call.
+        const VFShape Shape =
+            VFShape::get(*CI, {VF, false} /*EC*/, false /*HasGlobalPred*/);
+#ifndef NDEBUG
+        const SmallVector<VFInfo, 8> Infos = VFDatabase::getMappings(*CI);
+        assert(std::find_if(Infos.begin(), Infos.end(),
+                            [&Shape](const VFInfo &Info) {
+                              return Info.Shape == Shape;
+                            }) != Infos.end() &&
+               "Vector function shape is missing from the database.");
+#endif
+        VectorF = VFDatabase(*CI).getVectorizedFunction(Shape);
       }
       assert(VectorF && "Can't create vector function.");
 
@@ -6397,6 +6408,7 @@ INITIALIZE_PASS_DEPENDENCY(LoopAccessLegacyAnalysis)
 INITIALIZE_PASS_DEPENDENCY(DemandedBitsWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(OptimizationRemarkEmitterWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(ProfileSummaryInfoWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(InjectTLIMappingsLegacy)
 INITIALIZE_PASS_END(LoopVectorize, LV_NAME, lv_name, false, false)
 
 namespace llvm {
@@ -6716,7 +6728,7 @@ VPValue *VPRecipeBuilder::createEdgeMask(BasicBlock *Src, BasicBlock *Dst,
   BranchInst *BI = dyn_cast<BranchInst>(Src->getTerminator());
   assert(BI && "Unexpected terminator found");
 
-  if (!BI->isConditional())
+  if (!BI->isConditional() || BI->getSuccessor(0) == BI->getSuccessor(1))
     return EdgeMaskCache[Edge] = SrcMask;
 
   VPValue *EdgeMask = Plan->getVPValue(BI->getCondition());
@@ -7118,24 +7130,35 @@ void LoopVectorizationPlanner::buildVPlansWithVPRecipes(unsigned MinVF,
   SmallPtrSet<Instruction *, 4> DeadInstructions;
   collectTriviallyDeadInstructions(DeadInstructions);
 
+  // Add assume instructions we need to drop to DeadInstructions, to prevent
+  // them from being added to the VPlan.
+  // TODO: We only need to drop assumes in blocks that get flattend. If the
+  // control flow is preserved, we should keep them.
+  auto &ConditionalAssumes = Legal->getConditionalAssumes();
+  DeadInstructions.insert(ConditionalAssumes.begin(), ConditionalAssumes.end());
+
+  DenseMap<Instruction *, Instruction *> &SinkAfter = Legal->getSinkAfter();
+  // Dead instructions do not need sinking. Remove them from SinkAfter.
+  for (Instruction *I : DeadInstructions)
+    SinkAfter.erase(I);
+
   for (unsigned VF = MinVF; VF < MaxVF + 1;) {
     VFRange SubRange = {VF, MaxVF + 1};
-    VPlans.push_back(
-        buildVPlanWithVPRecipes(SubRange, NeedDef, DeadInstructions));
+    VPlans.push_back(buildVPlanWithVPRecipes(SubRange, NeedDef,
+                                             DeadInstructions, SinkAfter));
     VF = SubRange.End;
   }
 }
 
 VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
     VFRange &Range, SmallPtrSetImpl<Value *> &NeedDef,
-    SmallPtrSetImpl<Instruction *> &DeadInstructions) {
+    SmallPtrSetImpl<Instruction *> &DeadInstructions,
+    const DenseMap<Instruction *, Instruction *> &SinkAfter) {
 
   // Hold a mapping from predicated instructions to their recipes, in order to
   // fix their AlsoPack behavior if a user is determined to replicate and use a
   // scalar instead of vector value.
   DenseMap<Instruction *, VPReplicateRecipe *> PredInst2Recipe;
-
-  DenseMap<Instruction *, Instruction *> &SinkAfter = Legal->getSinkAfter();
 
   SmallPtrSet<const InterleaveGroup<Instruction> *, 1> InterleaveGroups;
 

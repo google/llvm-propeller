@@ -872,15 +872,12 @@ static inline int sizeOfSCEV(const SCEV *S) {
   return F.Size;
 }
 
-/// Returns true if the subtree of \p S contains at least HugeExprThreshold
-/// nodes.
-static bool isHugeExpression(const SCEV *S) {
-  return S->getExpressionSize() >= HugeExprThreshold;
-}
-
-/// Returns true of \p Ops contains a huge SCEV (see definition above).
+/// Returns true if \p Ops contains a huge SCEV (the subtree of S contains at
+/// least HugeExprThreshold nodes).
 static bool hasHugeExpression(ArrayRef<const SCEV *> Ops) {
-  return any_of(Ops, isHugeExpression);
+  return any_of(Ops, [](const SCEV *S) {
+    return S->getExpressionSize() >= HugeExprThreshold;
+  });
 }
 
 namespace {
@@ -3104,8 +3101,7 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
       // Limit max number of arguments to avoid creation of unreasonably big
       // SCEVAddRecs with very complex operands.
       if (AddRec->getNumOperands() + OtherAddRec->getNumOperands() - 1 >
-          MaxAddRecSize || isHugeExpression(AddRec) ||
-          isHugeExpression(OtherAddRec))
+          MaxAddRecSize || hasHugeExpression({AddRec, OtherAddRec}))
         continue;
 
       bool Overflow = false;
@@ -9226,9 +9222,11 @@ bool ScalarEvolution::isKnownViaInduction(ICmpInst::Predicate Pred,
       !isAvailableAtLoopEntry(SplitRHS.first, MDL))
     return false;
 
-  return isLoopEntryGuardedByCond(MDL, Pred, SplitLHS.first, SplitRHS.first) &&
-         isLoopBackedgeGuardedByCond(MDL, Pred, SplitLHS.second,
-                                     SplitRHS.second);
+  // It seems backedge guard check is faster than entry one so in some cases
+  // it can speed up whole estimation by short circuit
+  return isLoopBackedgeGuardedByCond(MDL, Pred, SplitLHS.second,
+                                     SplitRHS.second) &&
+         isLoopEntryGuardedByCond(MDL, Pred, SplitLHS.first, SplitRHS.first);
 }
 
 bool ScalarEvolution::isKnownPredicate(ICmpInst::Predicate Pred,

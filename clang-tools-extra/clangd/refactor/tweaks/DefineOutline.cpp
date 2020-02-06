@@ -64,10 +64,11 @@ const FunctionDecl *getSelectedFunction(const SelectionTree::Node *SelNode) {
 llvm::Optional<Path> getSourceFile(llvm::StringRef FileName,
                                    const Tweak::Selection &Sel) {
   if (auto Source = getCorrespondingHeaderOrSource(
-          FileName,
+          std::string(FileName),
           &Sel.AST->getSourceManager().getFileManager().getVirtualFileSystem()))
     return *Source;
-  return getCorrespondingHeaderOrSource(FileName, *Sel.AST, Sel.Index);
+  return getCorrespondingHeaderOrSource(std::string(FileName), *Sel.AST,
+                                        Sel.Index);
 }
 
 // Synthesize a DeclContext for TargetNS from CurContext. TargetNS must be empty
@@ -299,7 +300,7 @@ class DefineOutline : public Tweak {
 public:
   const char *id() const override;
 
-  bool hidden() const override { return true; }
+  bool hidden() const override { return false; }
   Intent intent() const override { return Intent::Refactor; }
   std::string title() const override {
     return "Move function body to out-of-line.";

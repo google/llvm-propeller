@@ -1,4 +1,4 @@
-//===-- Process.cpp ---------------------------------------------*- C++ -*-===//
+//===-- Process.cpp -------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -38,6 +38,7 @@
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Target/ABI.h"
+#include "lldb/Target/AssertFrameRecognizer.h"
 #include "lldb/Target/DynamicLoader.h"
 #include "lldb/Target/InstrumentationRuntime.h"
 #include "lldb/Target/JITLoader.h"
@@ -538,6 +539,8 @@ Process::Process(lldb::TargetSP target_sp, ListenerSP listener_sp,
       target_sp->GetPlatform()->GetDefaultMemoryCacheLineSize();
   if (!value_sp->OptionWasSet() && platform_cache_line_size != 0)
     value_sp->SetUInt64Value(platform_cache_line_size);
+
+  RegisterAssertFrameRecognizer(this);
 }
 
 Process::~Process() {
@@ -934,11 +937,17 @@ bool Process::HandleProcessStateChangedEvent(const EventSP &event_sp,
         Debugger &debugger = process_sp->GetTarget().GetDebugger();
         if (debugger.GetTargetList().GetSelectedTarget().get() ==
             &process_sp->GetTarget()) {
+          ThreadSP thread_sp = process_sp->GetThreadList().GetSelectedThread();
+
+          if (!thread_sp || !thread_sp->IsValid())
+            return false;
+
           const bool only_threads_with_stop_reason = true;
-          const uint32_t start_frame = 0;
+          const uint32_t start_frame = thread_sp->GetSelectedFrameIndex();
           const uint32_t num_frames = 1;
           const uint32_t num_frames_with_source = 1;
           const bool stop_format = true;
+
           process_sp->GetStatus(*stream);
           process_sp->GetThreadStatus(*stream, only_threads_with_stop_reason,
                                       start_frame, num_frames,
@@ -949,14 +958,11 @@ bool Process::HandleProcessStateChangedEvent(const EventSP &event_sp,
             ValueObjectSP valobj_sp = StopInfo::GetCrashingDereference(
                 curr_thread_stop_info_sp, &crashing_address);
             if (valobj_sp) {
-              const bool qualify_cxx_base_classes = false;
-
               const ValueObject::GetExpressionPathFormat format =
                   ValueObject::GetExpressionPathFormat::
                       eGetExpressionPathFormatHonorPointers;
               stream->PutCString("Likely cause: ");
-              valobj_sp->GetExpressionPath(*stream, qualify_cxx_base_classes,
-                                           format);
+              valobj_sp->GetExpressionPath(*stream, format);
               stream->Printf(" accessed 0x%" PRIx64 "\n", crashing_address);
             }
           }
@@ -4460,7 +4466,8 @@ bool Process::PushProcessIOHandler() {
     // existing IOHandler that potentially provides the user interface (e.g.
     // the IOHandler for Editline).
     bool cancel_top_handler = !m_mod_id.IsRunningUtilityFunction();
-    GetTarget().GetDebugger().PushIOHandler(io_handler_sp, cancel_top_handler);
+    GetTarget().GetDebugger().RunIOHandlerAsync(io_handler_sp,
+                                                cancel_top_handler);
     return true;
   }
   return false;
@@ -4469,7 +4476,7 @@ bool Process::PushProcessIOHandler() {
 bool Process::PopProcessIOHandler() {
   IOHandlerSP io_handler_sp(m_process_input_reader);
   if (io_handler_sp)
-    return GetTarget().GetDebugger().PopIOHandler(io_handler_sp);
+    return GetTarget().GetDebugger().RemoveIOHandler(io_handler_sp);
   return false;
 }
 

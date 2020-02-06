@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/MachineOperand.h"
+#include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/Loads.h"
 #include "llvm/Analysis/MemoryLocation.h"
@@ -969,8 +970,7 @@ bool MachinePointerInfo::isDereferenceable(unsigned Size, LLVMContext &C,
     return false;
 
   return isDereferenceableAndAlignedPointer(
-      BasePtr, Align::None(), APInt(DL.getPointerSizeInBits(), Offset + Size),
-      DL);
+      BasePtr, Align(1), APInt(DL.getPointerSizeInBits(), Offset + Size), DL);
 }
 
 /// getConstantPool - Return a MachinePointerInfo record that refers to the

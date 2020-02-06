@@ -329,18 +329,6 @@ def AMDGPUfdot2 : SDNode<"AMDGPUISD::FDOT2",
 
 def AMDGPUperm : SDNode<"AMDGPUISD::PERM", AMDGPUDTIntTernaryOp, []>;
 
-def AMDGPUinterp_p1ll_f16 : SDNode<"AMDGPUISD::INTERP_P1LL_F16",
-                            SDTypeProfile<1, 7, [SDTCisFP<0>]>,
-                            [SDNPInGlue, SDNPOutGlue]>;
-
-def AMDGPUinterp_p1lv_f16 : SDNode<"AMDGPUISD::INTERP_P1LV_F16",
-                            SDTypeProfile<1, 9, [SDTCisFP<0>]>,
-                            [SDNPInGlue, SDNPOutGlue]>;
-
-def AMDGPUinterp_p2_f16 : SDNode<"AMDGPUISD::INTERP_P2_F16",
-                          SDTypeProfile<1, 8, [SDTCisFP<0>]>,
-                          [SDNPInGlue]>;
-
 def AMDGPUkill : SDNode<"AMDGPUISD::KILL", AMDGPUKillSDT,
   [SDNPHasChain, SDNPSideEffect]>;
 
@@ -357,12 +345,6 @@ def AMDGPUExportOp : SDTypeProfile<0, 8, [
   SDTCisInt<1>        // i1 vm
 
 ]>;
-
-def AMDGPUexport: SDNode<"AMDGPUISD::EXPORT", AMDGPUExportOp,
-  [SDNPHasChain, SDNPMayStore]>;
-
-def AMDGPUexport_done: SDNode<"AMDGPUISD::EXPORT_DONE", AMDGPUExportOp,
-  [SDNPHasChain, SDNPMayLoad, SDNPMayStore]>;
 
 
 def R600ExportOp : SDTypeProfile<0, 7, [SDTCisFP<0>, SDTCisInt<1>]>;

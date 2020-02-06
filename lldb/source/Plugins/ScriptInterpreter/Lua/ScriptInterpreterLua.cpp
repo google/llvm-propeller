@@ -1,4 +1,4 @@
-//===-- ScriptInterpreterLua.cpp --------------------------------*- C++ -*-===//
+//===-- ScriptInterpreterLua.cpp ------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -80,7 +80,7 @@ void ScriptInterpreterLua::ExecuteInterpreterLoop() {
     return;
 
   IOHandlerSP io_handler_sp(new IOHandlerLuaInterpreter(debugger, *this));
-  debugger.PushIOHandler(io_handler_sp);
+  debugger.RunIOHandlerAsync(io_handler_sp);
 }
 
 bool ScriptInterpreterLua::LoadScriptingModule(

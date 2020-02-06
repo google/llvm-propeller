@@ -52,6 +52,21 @@ public:
     unsigned Reg;
     int Offset; // Offset relative to stack pointer on function entry.
   };
+
+  struct DwarfFrameBase {
+    // The frame base may be either a register (the default), the CFA,
+    // or a WebAssembly-specific location description.
+    enum FrameBaseKind { Register, CFA, WasmFrameBase } Kind;
+    struct WasmFrameBase {
+      unsigned Kind; // Wasm local, global, or value stack
+      unsigned Index;
+    };
+    union {
+      unsigned Reg;
+      struct WasmFrameBase WasmLoc;
+    } Location;
+  };
+
 private:
   StackDirection StackDir;
   Align StackAlignment;
@@ -60,7 +75,7 @@ private:
   bool StackRealignable;
 public:
   TargetFrameLowering(StackDirection D, Align StackAl, int LAO,
-                      Align TransAl = Align::None(), bool StackReal = true)
+                      Align TransAl = Align(1), bool StackReal = true)
       : StackDir(D), StackAlignment(StackAl), TransientStackAlignment(TransAl),
         LocalAreaOffset(LAO), StackRealignable(StackReal) {}
 
@@ -313,6 +328,13 @@ public:
                                              RegScavenger *RS = nullptr) const {
   }
 
+  /// processFunctionBeforeFrameIndicesReplaced - This method is called
+  /// immediately before MO_FrameIndex operands are eliminated, but after the
+  /// frame is finalized. This method is optional.
+  virtual void
+  processFunctionBeforeFrameIndicesReplaced(MachineFunction &MF,
+                                            RegScavenger *RS = nullptr) const {}
+
   virtual unsigned getWinEHParentFrameOffset(const MachineFunction &MF) const {
     report_fatal_error("WinEH not implemented for this target");
   }
@@ -398,6 +420,10 @@ public:
   /// Return initial CFA register value i.e. the one valid at the beginning of
   /// the function (before any stack operations).
   virtual unsigned getInitialCFARegister(const MachineFunction &MF) const;
+
+  /// Return the frame base information to be encoded in the DWARF subprogram
+  /// debug info.
+  virtual DwarfFrameBase getDwarfFrameBase(const MachineFunction &MF) const;
 };
 
 } // End llvm namespace
