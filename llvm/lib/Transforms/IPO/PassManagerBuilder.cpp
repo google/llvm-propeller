@@ -13,6 +13,7 @@
 
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm-c/Transforms/PassManagerBuilder.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/CFLAndersAliasAnalysis.h"
@@ -187,8 +188,13 @@ PassManagerBuilder::~PassManagerBuilder() {
 }
 
 /// Set of global extensions, automatically added as part of the standard set.
-static ManagedStatic<SmallVector<std::pair<PassManagerBuilder::ExtensionPointTy,
-   PassManagerBuilder::ExtensionFn>, 8> > GlobalExtensions;
+static ManagedStatic<
+    SmallVector<std::tuple<PassManagerBuilder::ExtensionPointTy,
+                           PassManagerBuilder::ExtensionFn,
+                           PassManagerBuilder::GlobalExtensionID>,
+                8>>
+    GlobalExtensions;
+static PassManagerBuilder::GlobalExtensionID GlobalExtensionsCounter;
 
 /// Check if GlobalExtensions is constructed and not empty.
 /// Since GlobalExtensions is a managed static, calling 'empty()' will trigger
@@ -197,10 +203,29 @@ static bool GlobalExtensionsNotEmpty() {
   return GlobalExtensions.isConstructed() && !GlobalExtensions->empty();
 }
 
-void PassManagerBuilder::addGlobalExtension(
-    PassManagerBuilder::ExtensionPointTy Ty,
-    PassManagerBuilder::ExtensionFn Fn) {
-  GlobalExtensions->push_back(std::make_pair(Ty, std::move(Fn)));
+PassManagerBuilder::GlobalExtensionID
+PassManagerBuilder::addGlobalExtension(PassManagerBuilder::ExtensionPointTy Ty,
+                                       PassManagerBuilder::ExtensionFn Fn) {
+  auto ExtensionID = GlobalExtensionsCounter++;
+  GlobalExtensions->push_back(std::make_tuple(Ty, std::move(Fn), ExtensionID));
+  return ExtensionID;
+}
+
+void PassManagerBuilder::removeGlobalExtension(
+    PassManagerBuilder::GlobalExtensionID ExtensionID) {
+  // RegisterStandardPasses may try to call this function after GlobalExtensions
+  // has already been destroyed; doing so should not generate an error.
+  if (!GlobalExtensions.isConstructed())
+    return;
+
+  auto GlobalExtension =
+      llvm::find_if(*GlobalExtensions, [ExtensionID](const auto &elem) {
+        return std::get<2>(elem) == ExtensionID;
+      });
+  assert(GlobalExtension != GlobalExtensions->end() &&
+         "The extension ID to be removed should always be valid.");
+
+  GlobalExtensions->erase(GlobalExtension);
 }
 
 void PassManagerBuilder::addExtension(ExtensionPointTy Ty, ExtensionFn Fn) {
@@ -211,8 +236,8 @@ void PassManagerBuilder::addExtensionsToPM(ExtensionPointTy ETy,
                                            legacy::PassManagerBase &PM) const {
   if (GlobalExtensionsNotEmpty()) {
     for (auto &Ext : *GlobalExtensions) {
-      if (Ext.first == ETy)
-        Ext.second(*this, PM);
+      if (std::get<0>(Ext) == ETy)
+        std::get<1>(Ext)(*this, PM);
     }
   }
   for (unsigned i = 0, e = Extensions.size(); i != e; ++i)
@@ -478,6 +503,7 @@ void PassManagerBuilder::populateModulePassManager(
       MPM.add(createBarrierNoopPass());
 
     if (PerformThinLTO) {
+      MPM.add(createLowerTypeTestsPass(nullptr, nullptr, true));
       // Drop available_externally and unreferenced globals. This is necessary
       // with ThinLTO in order to avoid leaving undefined references to dead
       // globals in the object file.
@@ -511,9 +537,11 @@ void PassManagerBuilder::populateModulePassManager(
   // inter-module indirect calls. For that we perform indirect call promotion
   // earlier in the pass pipeline, here before globalopt. Otherwise imported
   // available_externally functions look unreferenced and are removed.
-  if (PerformThinLTO)
+  if (PerformThinLTO) {
     MPM.add(createPGOIndirectCallPromotionLegacyPass(/*InLTO = */ true,
                                                      !PGOSampleUse.empty()));
+    MPM.add(createLowerTypeTestsPass(nullptr, nullptr, true));
+  }
 
   // For SamplePGO in ThinLTO compile phase, we do not want to unroll loops
   // as it will change the CFG too much to make the 2nd profile annotation
@@ -1013,8 +1041,8 @@ void PassManagerBuilder::populateThinLTOPassManager(
     PM.add(createVerifierPass());
 
   if (ImportSummary) {
-    // These passes import type identifier resolutions for whole-program
-    // devirtualization and CFI. They must run early because other passes may
+    // This pass imports type identifier resolutions for whole-program
+    // devirtualization and CFI. It must run early because other passes may
     // disturb the specific instruction patterns that these passes look for,
     // creating dependencies on resolutions that may not appear in the summary.
     //
@@ -1062,6 +1090,9 @@ void PassManagerBuilder::populateLTOPassManager(legacy::PassManagerBase &PM) {
   // control flow integrity mechanisms (-fsanitize=cfi*) and needs to run at
   // link time if CFI is enabled. The pass does nothing if CFI is disabled.
   PM.add(createLowerTypeTestsPass(ExportSummary, nullptr));
+  // Run a second time to clean up any type tests left behind by WPD for use
+  // in ICP (which is performed earlier than this in the regular LTO pipeline).
+  PM.add(createLowerTypeTestsPass(nullptr, nullptr, true));
 
   if (OptLevel != 0)
     addLateLTOOptimizationPasses(PM);

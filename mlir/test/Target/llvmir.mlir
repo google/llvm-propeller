@@ -1067,3 +1067,107 @@ llvm.func @null() -> !llvm<"i32*"> {
   // CHECK: ret i32* null
   llvm.return %0 : !llvm<"i32*">
 }
+
+// Check that dense elements attributes are exported properly in constants.
+// CHECK-LABEL: @elements_constant_3d_vector
+llvm.func @elements_constant_3d_vector() -> !llvm<"[2 x [2 x <2 x i32>]]"> {
+  // CHECK: ret [2 x [2 x <2 x i32>]]
+  // CHECK-SAME: {{\[}}[2 x <2 x i32>] [<2 x i32> <i32 1, i32 2>, <2 x i32> <i32 3, i32 4>],
+  // CHECK-SAME:       [2 x <2 x i32>] [<2 x i32> <i32 42, i32 43>, <2 x i32> <i32 44, i32 45>]]
+  %0 = llvm.mlir.constant(dense<[[[1, 2], [3, 4]], [[42, 43], [44, 45]]]> : vector<2x2x2xi32>) : !llvm<"[2 x [2 x <2 x i32>]]">
+  llvm.return %0 : !llvm<"[2 x [2 x <2 x i32>]]">
+}
+
+// CHECK-LABEL: @elements_constant_3d_array
+llvm.func @elements_constant_3d_array() -> !llvm<"[2 x [2 x [2 x i32]]]"> {
+  // CHECK: ret [2 x [2 x [2 x i32]]]
+  // CHECK-SAME: {{\[}}[2 x [2 x i32]] {{\[}}[2 x i32] [i32 1, i32 2], [2 x i32] [i32 3, i32 4]],
+  // CHECK-SAME:       [2 x [2 x i32]] {{\[}}[2 x i32] [i32 42, i32 43], [2 x i32] [i32 44, i32 45]]]
+  %0 = llvm.mlir.constant(dense<[[[1, 2], [3, 4]], [[42, 43], [44, 45]]]> : tensor<2x2x2xi32>) : !llvm<"[2 x [2 x [2 x i32]]]">
+  llvm.return %0 : !llvm<"[2 x [2 x [2 x i32]]]">
+}
+
+// CHECK-LABEL: @atomicrmw
+llvm.func @atomicrmw(
+    %f32_ptr : !llvm<"float*">, %f32 : !llvm.float,
+    %i32_ptr : !llvm<"i32*">, %i32 : !llvm.i32) {
+  // CHECK: atomicrmw fadd float* %{{.*}}, float %{{.*}} unordered
+  %0 = llvm.atomicrmw fadd %f32_ptr, %f32 unordered : !llvm.float
+  // CHECK: atomicrmw fsub float* %{{.*}}, float %{{.*}} unordered
+  %1 = llvm.atomicrmw fsub %f32_ptr, %f32 unordered : !llvm.float
+  // CHECK: atomicrmw xchg float* %{{.*}}, float %{{.*}} monotonic
+  %2 = llvm.atomicrmw xchg %f32_ptr, %f32 monotonic : !llvm.float
+  // CHECK: atomicrmw add i32* %{{.*}}, i32 %{{.*}} acquire
+  %3 = llvm.atomicrmw add %i32_ptr, %i32 acquire : !llvm.i32
+  // CHECK: atomicrmw sub i32* %{{.*}}, i32 %{{.*}} release
+  %4 = llvm.atomicrmw sub %i32_ptr, %i32 release : !llvm.i32
+  // CHECK: atomicrmw and i32* %{{.*}}, i32 %{{.*}} acq_rel
+  %5 = llvm.atomicrmw _and %i32_ptr, %i32 acq_rel : !llvm.i32
+  // CHECK: atomicrmw nand i32* %{{.*}}, i32 %{{.*}} seq_cst
+  %6 = llvm.atomicrmw nand %i32_ptr, %i32 seq_cst : !llvm.i32
+  // CHECK: atomicrmw or i32* %{{.*}}, i32 %{{.*}} unordered
+  %7 = llvm.atomicrmw _or %i32_ptr, %i32 unordered : !llvm.i32
+  // CHECK: atomicrmw xor i32* %{{.*}}, i32 %{{.*}} unordered
+  %8 = llvm.atomicrmw _xor %i32_ptr, %i32 unordered : !llvm.i32
+  // CHECK: atomicrmw max i32* %{{.*}}, i32 %{{.*}} unordered
+  %9 = llvm.atomicrmw max %i32_ptr, %i32 unordered : !llvm.i32
+  // CHECK: atomicrmw min i32* %{{.*}}, i32 %{{.*}} unordered
+  %10 = llvm.atomicrmw min %i32_ptr, %i32 unordered : !llvm.i32
+  // CHECK: atomicrmw umax i32* %{{.*}}, i32 %{{.*}} unordered
+  %11 = llvm.atomicrmw umax %i32_ptr, %i32 unordered : !llvm.i32
+  // CHECK: atomicrmw umin i32* %{{.*}}, i32 %{{.*}} unordered
+  %12 = llvm.atomicrmw umin %i32_ptr, %i32 unordered : !llvm.i32
+  llvm.return
+}
+
+// CHECK-LABEL: @cmpxchg
+llvm.func @cmpxchg(%ptr : !llvm<"float*">, %cmp : !llvm.float, %val: !llvm.float) {
+  // CHECK: cmpxchg float* %{{.*}}, float %{{.*}}, float %{{.*}} acq_rel monotonic
+  %0 = llvm.cmpxchg %ptr, %cmp, %val acq_rel monotonic : !llvm.float
+  // CHECK: %{{[0-9]+}} = extractvalue { float, i1 } %{{[0-9]+}}, 0
+  %1 = llvm.extractvalue %0[0] : !llvm<"{ float, i1 }">
+  // CHECK: %{{[0-9]+}} = extractvalue { float, i1 } %{{[0-9]+}}, 1
+  %2 = llvm.extractvalue %0[1] : !llvm<"{ float, i1 }">
+  llvm.return
+}
+
+llvm.mlir.global external constant @_ZTIi() : !llvm<"i8*">
+llvm.func @foo(!llvm<"i8*">)
+llvm.func @bar(!llvm<"i8*">) -> !llvm<"i8*">
+llvm.func @__gxx_personality_v0(...) -> !llvm.i32
+
+// CHECK-LABEL: @invokeLandingpad
+llvm.func @invokeLandingpad() -> !llvm.i32 {
+// CHECK: %[[a1:[0-9]+]] = alloca i8
+  %0 = llvm.mlir.constant(0 : i32) : !llvm.i32
+  %1 = llvm.mlir.constant("\01") : !llvm<"[1 x i8]">
+  %2 = llvm.mlir.addressof @_ZTIi : !llvm<"i8**">
+  %3 = llvm.bitcast %2 : !llvm<"i8**"> to !llvm<"i8*">
+  %4 = llvm.mlir.null : !llvm<"i8**">
+  %5 = llvm.mlir.constant(1 : i32) : !llvm.i32
+  %6 = llvm.alloca %5 x !llvm.i8 : (!llvm.i32) -> !llvm<"i8*">
+// CHECK: invoke void @foo(i8* %[[a1]])
+// CHECK-NEXT: to label %[[normal:[0-9]+]] unwind label %[[unwind:[0-9]+]]
+  llvm.invoke @foo(%6) to ^bb2 unwind ^bb1 : (!llvm<"i8*">) -> ()
+
+// CHECK: [[unwind]]:
+^bb1:
+// CHECK: %{{[0-9]+}} = landingpad { i8*, i32 }
+// CHECK-NEXT:             catch i8** null
+// CHECK-NEXT:             catch i8* bitcast (i8** @_ZTIi to i8*)
+// CHECK-NEXT:             filter [1 x i8] c"\01"
+  %7 = llvm.landingpad (catch %4 : !llvm<"i8**">) (catch %3 : !llvm<"i8*">) (filter %1 : !llvm<"[1 x i8]">) : !llvm<"{ i8*, i32 }">
+// CHECK: br label %[[final:[0-9]+]]
+  llvm.br ^bb3
+
+// CHECK: [[normal]]:
+// CHECK-NEXT: ret i32 1
+^bb2:	// 2 preds: ^bb0, ^bb3
+  llvm.return %5 : !llvm.i32
+
+// CHECK: [[final]]:
+// CHECK-NEXT: %{{[0-9]+}} = invoke i8* @bar(i8* %[[a1]])
+// CHECK-NEXT:          to label %[[normal]] unwind label %[[unwind]]
+^bb3:	// pred: ^bb1
+  %8 = llvm.invoke @bar(%6) to ^bb2 unwind ^bb1 : (!llvm<"i8*">) -> !llvm<"i8*">
+}

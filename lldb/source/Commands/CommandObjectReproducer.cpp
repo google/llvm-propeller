@@ -1,4 +1,4 @@
-//===-- CommandObjectReproducer.cpp -----------------------------*- C++ -*-===//
+//===-- CommandObjectReproducer.cpp ---------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -256,6 +256,18 @@ protected:
       result.GetOutputStream() << "Reproducer is in replay mode.\n";
     } else {
       result.GetOutputStream() << "Reproducer is off.\n";
+    }
+
+    if (r.IsCapturing() || r.IsReplaying()) {
+      result.GetOutputStream()
+          << "Path: " << r.GetReproducerPath().GetPath() << '\n';
+    }
+
+    // Auto generate is hidden unless enabled because this is mostly for
+    // development and testing.
+    if (Generator *g = r.GetGenerator()) {
+      if (g->IsAutoGenerate())
+        result.GetOutputStream() << "Auto generate: on\n";
     }
 
     result.SetStatus(eReturnStatusSuccessFinishResult);

@@ -179,10 +179,12 @@ struct Configuration {
   bool ltoDebugPassManager;
   bool ltoNewPassManager;
   bool ltoUniqueBBSectionNames;
+  bool ltoWholeProgramVisibility;
   bool mergeArmExidx;
   bool mipsN32Abi = false;
   bool mmapOutputFile;
   bool nmagic;
+  bool noDynamicLinker = false;
   bool noinhibitExec;
   bool nostdlib;
   bool oFormatBinary;

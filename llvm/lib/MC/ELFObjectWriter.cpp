@@ -641,7 +641,7 @@ void ELFWriter::computeSymbolTable(
       continue;
 
     if (Symbol.isTemporary() && Symbol.isUndefined()) {
-      Ctx.reportError(SMLoc(), "Undefined temporary symbol");
+      Ctx.reportError(SMLoc(), "Undefined temporary symbol " + Symbol.getName());
       continue;
     }
 

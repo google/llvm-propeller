@@ -172,6 +172,9 @@ public:
   bool isZExtFree(EVT Src, EVT Dest) const override;
   bool isZExtFree(SDValue Val, EVT VT2) const override;
 
+  char isNegatibleForFree(SDValue Op, SelectionDAG &DAG, bool LegalOperations,
+                          bool ForCodeSize, unsigned Depth) const override;
+
   bool isNarrowingProfitable(EVT VT1, EVT VT2) const override;
 
   MVT getVectorIdxTy(const DataLayout &) const override;
@@ -433,8 +436,6 @@ enum NodeType : unsigned {
   MUL_LOHI_U24,
   PERM,
   TEXTURE_FETCH,
-  EXPORT, // exp on SI+
-  EXPORT_DONE, // exp on SI+ with done bit set
   R600_EXPORT,
   CONST_ADDRESS,
   REGISTER_LOAD,
@@ -476,9 +477,6 @@ enum NodeType : unsigned {
   BUILD_VERTICAL_VECTOR,
   /// Pointer to the start of the shader's constant data.
   CONST_DATA_PTR,
-  INTERP_P1LL_F16,
-  INTERP_P1LV_F16,
-  INTERP_P2_F16,
   PC_ADD_REL_OFFSET,
   LDS,
   KILL,

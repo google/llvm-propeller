@@ -1,6 +1,6 @@
 //===- Operator.h - Operator class ------------------------------*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -45,9 +45,6 @@ public:
 
   // Returns this op's dialect name.
   StringRef getDialectName() const;
-
-  // Returns the dialect of the op.
-  const Dialect &getDialect() const { return dialect; }
 
   // Returns the operation name. The name will follow the "<dialect>.<op-name>"
   // format if its dialect name is not empty.
@@ -159,7 +156,13 @@ public:
   StringRef getExtraClassDeclaration() const;
 
   // Returns the Tablegen definition this operator was constructed from.
+  // TODO(antiagainst,zinenko): do not expose the TableGen record, this is a
+  // temporary solution to OpEmitter requiring a Record because Operator does
+  // not provide enough methods.
   const llvm::Record &getDef() const;
+
+  // Returns the dialect of the op.
+  const Dialect &getDialect() const { return dialect; }
 
   // Prints the contents in this operator to the given `os`. This is used for
   // debugging purposes.

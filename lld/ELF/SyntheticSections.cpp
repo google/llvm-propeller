@@ -2237,7 +2237,7 @@ template <class ELFT> void SymbolTableSection<ELFT>::writeTo(uint8_t *buf) {
         // We already set the less-significant bit for symbols
         // marked by the `STO_MIPS_MICROMIPS` flag and for microMIPS PLT
         // records. That allows us to distinguish such symbols in
-        // the `MIPS<ELFT>::relocateOne()` routine. Now we should
+        // the `MIPS<ELFT>::relocate()` routine. Now we should
         // clear that bit for non-dynamic symbol table, so tools
         // like `objdump` will be able to deal with a correct
         // symbol position.
@@ -2510,6 +2510,9 @@ PltSection::PltSection()
   if (config->emachine == EM_PPC || config->emachine == EM_PPC64) {
     name = ".glink";
     alignment = 4;
+    // PLTresolve is at the end.
+    if (config->emachine == EM_PPC)
+      footerSize = 64;
   }
 
   // On x86 when IBT is enabled, this section contains the second PLT (lazy
@@ -2547,7 +2550,7 @@ void PltSection::addEntry(Symbol &sym) {
 }
 
 size_t PltSection::getSize() const {
-  return headerSize + entries.size() * target->pltEntrySize;
+  return headerSize + entries.size() * target->pltEntrySize + footerSize;
 }
 
 bool PltSection::isNeeded() const {
@@ -3489,7 +3492,7 @@ void ARMExidxSyntheticSection::writeTo(uint8_t *buf) {
       memcpy(buf + offset, cantUnwindData, sizeof(cantUnwindData));
       uint64_t s = isec->getVA();
       uint64_t p = getVA() + offset;
-      target->relocateOne(buf + offset, R_ARM_PREL31, s - p);
+      target->relocateNoSym(buf + offset, R_ARM_PREL31, s - p);
       offset += 8;
     }
   }
@@ -3497,7 +3500,7 @@ void ARMExidxSyntheticSection::writeTo(uint8_t *buf) {
   memcpy(buf + offset, cantUnwindData, sizeof(cantUnwindData));
   uint64_t s = sentinel->getVA(sentinel->getSize());
   uint64_t p = getVA() + offset;
-  target->relocateOne(buf + offset, R_ARM_PREL31, s - p);
+  target->relocateNoSym(buf + offset, R_ARM_PREL31, s - p);
   assert(size == offset + 8);
 }
 
@@ -3512,19 +3515,14 @@ bool ARMExidxSyntheticSection::classof(const SectionBase *d) {
 }
 
 ThunkSection::ThunkSection(OutputSection *os, uint64_t off)
-    : SyntheticSection(SHF_ALLOC | SHF_EXECINSTR, SHT_PROGBITS,
-                       config->wordsize, ".text.thunk") {
+    : SyntheticSection(SHF_ALLOC | SHF_EXECINSTR, SHT_PROGBITS, 4,
+                       ".text.thunk") {
   this->parent = os;
   this->outSecOff = off;
 }
 
-// When the errata patching is on, we round the size up to a 4 KiB
-// boundary. This limits the effect that adding Thunks has on the addresses
-// of the program modulo 4 KiB. As the errata patching is sensitive to address
-// modulo 4 KiB this can prevent further patches from being needed due to
-// Thunk insertion.
 size_t ThunkSection::getSize() const {
-  if (config->fixCortexA53Errata843419 || config->fixCortexA8)
+  if (roundUpSizeForErrata)
     return alignTo(size, 4096);
   return size;
 }

@@ -757,9 +757,10 @@ private:
 
 public:
   struct GVarFlags {
-    GVarFlags(bool ReadOnly, bool WriteOnly, bool Constant)
+    GVarFlags(bool ReadOnly, bool WriteOnly, bool Constant,
+              GlobalObject::VCallVisibility Vis)
         : MaybeReadOnly(ReadOnly), MaybeWriteOnly(WriteOnly),
-          Constant(Constant) {}
+          Constant(Constant), VCallVisibility(Vis) {}
 
     // If true indicates that this global variable might be accessed
     // purely by non-volatile load instructions. This in turn means
@@ -780,6 +781,9 @@ public:
     // opportunity to make some extra optimizations. Readonly constants
     // are also internalized.
     unsigned Constant : 1;
+    // Set from metadata on vtable definitions during the module summary
+    // analysis.
+    unsigned VCallVisibility : 2;
   } VarFlags;
 
   GlobalVarSummary(GVFlags Flags, GVarFlags VarFlags,
@@ -798,6 +802,12 @@ public:
   bool maybeReadOnly() const { return VarFlags.MaybeReadOnly; }
   bool maybeWriteOnly() const { return VarFlags.MaybeWriteOnly; }
   bool isConstant() const { return VarFlags.Constant; }
+  void setVCallVisibility(GlobalObject::VCallVisibility Vis) {
+    VarFlags.VCallVisibility = Vis;
+  }
+  GlobalObject::VCallVisibility getVCallVisibility() const {
+    return (GlobalObject::VCallVisibility)VarFlags.VCallVisibility;
+  }
 
   void setVTableFuncs(VTableFuncList Funcs) {
     assert(!VTableFuncs);
@@ -823,7 +833,8 @@ struct TypeTestResolution {
     Single,    ///< Single element (last example in "Short Inline Bit Vectors")
     AllOnes,   ///< All-ones bit vector ("Eliminating Bit Vector Checks for
                ///  All-Ones Bit Vectors")
-  } TheKind = Unsat;
+    Unknown,   ///< Unknown (analysis not performed, don't lower)
+  } TheKind = Unknown;
 
   /// Range of size-1 expressed as a bit width. For example, if the size is in
   /// range [1,256], this number will be 8. This helps generate the most compact
@@ -1016,7 +1027,12 @@ public:
   // in the way some record are interpreted, like flags for instance.
   // Note that incrementing this may require changes in both BitcodeReader.cpp
   // and BitcodeWriter.cpp.
-  static constexpr uint64_t BitcodeSummaryVersion = 8;
+  static constexpr uint64_t BitcodeSummaryVersion = 9;
+
+  // Regular LTO module name for ASM writer
+  static constexpr const char *getRegularLTOModuleName() {
+    return "[Regular LTO]";
+  }
 
   bool haveGVs() const { return HaveGVs; }
 
@@ -1280,7 +1296,7 @@ public:
     NewName += ".llvm.";
     NewName += utostr((uint64_t(ModHash[0]) << 32) |
                       ModHash[1]); // Take the first 64 bits
-    return NewName.str();
+    return std::string(NewName.str());
   }
 
   /// Helper to obtain the unpromoted name for a global value (or the original
@@ -1326,7 +1342,7 @@ public:
       if (It->second.first == TypeId)
         return It->second.second;
     auto It = TypeIdMap.insert(
-        {GlobalValue::getGUID(TypeId), {TypeId, TypeIdSummary()}});
+        {GlobalValue::getGUID(TypeId), {std::string(TypeId), TypeIdSummary()}});
     return It->second.second;
   }
 
@@ -1356,14 +1372,14 @@ public:
   /// the ThinLTO backends.
   TypeIdCompatibleVtableInfo &
   getOrInsertTypeIdCompatibleVtableSummary(StringRef TypeId) {
-    return TypeIdCompatibleVtableMap[TypeId];
+    return TypeIdCompatibleVtableMap[std::string(TypeId)];
   }
 
   /// For the given \p TypeId, this returns the TypeIdCompatibleVtableMap
   /// entry if present in the summary map. This may be used when importing.
   Optional<TypeIdCompatibleVtableInfo>
   getTypeIdCompatibleVtableSummary(StringRef TypeId) const {
-    auto I = TypeIdCompatibleVtableMap.find(TypeId);
+    auto I = TypeIdCompatibleVtableMap.find(std::string(TypeId));
     if (I == TypeIdCompatibleVtableMap.end())
       return None;
     return I->second;

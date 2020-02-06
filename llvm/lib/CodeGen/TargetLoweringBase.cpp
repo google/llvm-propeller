@@ -17,6 +17,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Analysis/Loads.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -701,7 +702,7 @@ void TargetLoweringBase::initActions() {
     }
 
     // Constrained floating-point operations default to expand.
-#define INSTRUCTION(NAME, NARG, ROUND_MODE, INTRINSIC, DAGN)                   \
+#define DAG_INSTRUCTION(NAME, NARG, ROUND_MODE, INTRINSIC, DAGN)               \
     setOperationAction(ISD::STRICT_##DAGN, VT, Expand);
 #include "llvm/IR/ConstrainedOps.def"
 
@@ -810,6 +811,7 @@ TargetLoweringBase::getTypeConversion(LLVMContext &Context, EVT VT) const {
     LegalizeTypeAction LA = ValueTypeActions.getTypeAction(SVT);
 
     assert((LA == TypeLegal || LA == TypeSoftenFloat ||
+            LA == TypeSoftPromoteHalf ||
             (NVT.isVector() ||
              ValueTypeActions.getTypeAction(NVT) != TypePromoteInteger)) &&
            "Promote may not follow Expand or Promote");
@@ -1228,10 +1230,18 @@ void TargetLoweringBase::computeRegisterProperties(
   // promote it to f32, because there are no f16 library calls (except for
   // conversions).
   if (!isTypeLegal(MVT::f16)) {
-    NumRegistersForVT[MVT::f16] = NumRegistersForVT[MVT::f32];
-    RegisterTypeForVT[MVT::f16] = RegisterTypeForVT[MVT::f32];
-    TransformToType[MVT::f16] = MVT::f32;
-    ValueTypeActions.setTypeAction(MVT::f16, TypePromoteFloat);
+    // Allow targets to control how we legalize half.
+    if (softPromoteHalfType()) {
+      NumRegistersForVT[MVT::f16] = NumRegistersForVT[MVT::i16];
+      RegisterTypeForVT[MVT::f16] = RegisterTypeForVT[MVT::i16];
+      TransformToType[MVT::f16] = MVT::f32;
+      ValueTypeActions.setTypeAction(MVT::f16, TypeSoftPromoteHalf);
+    } else {
+      NumRegistersForVT[MVT::f16] = NumRegistersForVT[MVT::f32];
+      RegisterTypeForVT[MVT::f16] = RegisterTypeForVT[MVT::f32];
+      TransformToType[MVT::f16] = MVT::f32;
+      ValueTypeActions.setTypeAction(MVT::f16, TypePromoteFloat);
+    }
   }
 
   // Loop over all of the vector value types to see which need transformations.
@@ -2004,4 +2014,59 @@ int TargetLoweringBase::getDivRefinementSteps(EVT VT,
 
 void TargetLoweringBase::finalizeLowering(MachineFunction &MF) const {
   MF.getRegInfo().freezeReservedRegs(MF);
+}
+
+MachineMemOperand::Flags
+TargetLoweringBase::getLoadMemOperandFlags(const LoadInst &LI,
+                                           const DataLayout &DL) const {
+  MachineMemOperand::Flags Flags = MachineMemOperand::MOLoad;
+  if (LI.isVolatile())
+    Flags |= MachineMemOperand::MOVolatile;
+
+  if (LI.hasMetadata(LLVMContext::MD_nontemporal))
+    Flags |= MachineMemOperand::MONonTemporal;
+
+  if (LI.hasMetadata(LLVMContext::MD_invariant_load))
+    Flags |= MachineMemOperand::MOInvariant;
+
+  if (isDereferenceablePointer(LI.getPointerOperand(), LI.getType(), DL))
+    Flags |= MachineMemOperand::MODereferenceable;
+
+  Flags |= getTargetMMOFlags(LI);
+  return Flags;
+}
+
+MachineMemOperand::Flags
+TargetLoweringBase::getStoreMemOperandFlags(const StoreInst &SI,
+                                            const DataLayout &DL) const {
+  MachineMemOperand::Flags Flags = MachineMemOperand::MOStore;
+
+  if (SI.isVolatile())
+    Flags |= MachineMemOperand::MOVolatile;
+
+  if (SI.hasMetadata(LLVMContext::MD_nontemporal))
+    Flags |= MachineMemOperand::MONonTemporal;
+
+  // FIXME: Not preserving dereferenceable
+  Flags |= getTargetMMOFlags(SI);
+  return Flags;
+}
+
+MachineMemOperand::Flags
+TargetLoweringBase::getAtomicMemOperandFlags(const Instruction &AI,
+                                             const DataLayout &DL) const {
+  auto Flags = MachineMemOperand::MOLoad | MachineMemOperand::MOStore;
+
+  if (const AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(&AI)) {
+    if (RMW->isVolatile())
+      Flags |= MachineMemOperand::MOVolatile;
+  } else if (const AtomicCmpXchgInst *CmpX = dyn_cast<AtomicCmpXchgInst>(&AI)) {
+    if (CmpX->isVolatile())
+      Flags |= MachineMemOperand::MOVolatile;
+  } else
+    llvm_unreachable("not an atomic instruction");
+
+  // FIXME: Not preserving dereferenceable
+  Flags |= getTargetMMOFlags(AI);
+  return Flags;
 }

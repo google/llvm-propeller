@@ -1,6 +1,6 @@
 //===- OperationSupport.h ---------------------------------------*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -90,8 +90,8 @@ public:
   /// This is the dialect that this operation belongs to.
   Dialect &dialect;
 
-  /// Return true if this "op class" can match against the specified operation.
-  bool (&classof)(Operation *op);
+  /// The unique identifier of the derived Op class.
+  ClassID *classID;
 
   /// Use the specified object to parse this ops custom assembly format.
   ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result);
@@ -158,15 +158,16 @@ public:
   /// operations they contain.
   template <typename T> static AbstractOperation get(Dialect &dialect) {
     return AbstractOperation(
-        T::getOperationName(), dialect, T::getOperationProperties(), T::classof,
-        T::parseAssembly, T::printAssembly, T::verifyInvariants, T::foldHook,
-        T::getCanonicalizationPatterns, T::getRawInterface, T::hasTrait);
+        T::getOperationName(), dialect, T::getOperationProperties(),
+        ClassID::getID<T>(), T::parseAssembly, T::printAssembly,
+        T::verifyInvariants, T::foldHook, T::getCanonicalizationPatterns,
+        T::getRawInterface, T::hasTrait);
   }
 
 private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
-      bool (&classof)(Operation *op),
+      ClassID *classID,
       ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result),
       void (&printAssembly)(Operation *op, OpAsmPrinter &p),
       LogicalResult (&verifyInvariants)(Operation *op),
@@ -176,7 +177,7 @@ private:
                                           MLIRContext *context),
       void *(&getRawInterface)(ClassID *interfaceID),
       bool (&hasTrait)(ClassID *traitID))
-      : name(name), dialect(dialect), classof(classof),
+      : name(name), dialect(dialect), classID(classID),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), foldHook(foldHook),
         getCanonicalizationPatterns(getCanonicalizationPatterns),
@@ -594,8 +595,8 @@ public:
   ResultRange(Operation *op);
 
   /// Returns the types of the values within this range.
-  using type_iterator = ValueTypeIterator<iterator>;
-  iterator_range<type_iterator> getTypes() const { return {begin(), end()}; }
+  using type_iterator = ArrayRef<Type>::iterator;
+  ArrayRef<Type> getTypes() const;
 
 private:
   /// See `indexed_accessor_range` for details.
@@ -706,10 +707,8 @@ public:
   static inline mlir::OperationName getFromVoidPointer(void *P) {
     return mlir::OperationName::getFromOpaquePointer(P);
   }
-  enum {
-    NumLowBitsAvailable = PointerLikeTypeTraits<
-        mlir::OperationName::RepresentationUnion>::NumLowBitsAvailable
-  };
+  static constexpr int NumLowBitsAvailable = PointerLikeTypeTraits<
+      mlir::OperationName::RepresentationUnion>::NumLowBitsAvailable;
 };
 
 } // end namespace llvm

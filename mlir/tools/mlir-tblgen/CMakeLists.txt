@@ -6,9 +6,11 @@ set(LLVM_LINK_COMPONENTS
 add_tablegen(mlir-tblgen MLIR
   EnumsGen.cpp
   LLVMIRConversionGen.cpp
+  LLVMIRIntrinsicGen.cpp
   mlir-tblgen.cpp
   OpDefinitionsGen.cpp
   OpDocGen.cpp
+  OpFormatGen.cpp
   OpInterfacesGen.cpp
   ReferenceImplGen.cpp
   RewriterGen.cpp

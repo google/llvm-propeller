@@ -153,6 +153,10 @@ inline StringRef getInstrProfRuntimeHookVarUseFuncName() {
   return "__llvm_profile_runtime_user";
 }
 
+inline StringRef getInstrProfCounterBiasVarName() {
+  return "__llvm_profile_counter_bias";
+}
+
 /// Return the marker used to separate PGO names during serialization.
 inline StringRef getInstrProfNameSeparator() { return "\01"; }
 
@@ -558,7 +562,7 @@ StringRef InstrProfSymtab::getFuncName(uint64_t FuncMD5Hash) {
   finalizeSymtab();
   auto Result =
       std::lower_bound(MD5NameMap.begin(), MD5NameMap.end(), FuncMD5Hash,
-                       [](const std::pair<uint64_t, std::string> &LHS,
+                       [](const std::pair<uint64_t, StringRef> &LHS,
                           uint64_t RHS) { return LHS.first < RHS; });
   if (Result != MD5NameMap.end() && Result->first == FuncMD5Hash)
     return Result->second;

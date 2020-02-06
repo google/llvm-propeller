@@ -16,6 +16,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Analysis/LoopAccessAnalysis.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/CheckedArithmetic.h"
 
@@ -116,10 +117,10 @@ struct VFShape {
 
 /// Holds the VFShape for a specific scalar to vector function mapping.
 struct VFInfo {
-  VFShape Shape;        // Classification of the vector function.
-  StringRef ScalarName; // Scalar Function Name.
-  StringRef VectorName; // Vector Function Name associated to this VFInfo.
-  VFISAKind ISA;        // Instruction Set Architecture.
+  VFShape Shape;          /// Classification of the vector function.
+  std::string ScalarName; /// Scalar Function Name.
+  std::string VectorName; /// Vector Function Name associated to this VFInfo.
+  VFISAKind ISA;          /// Instruction Set Architecture.
 
   // Comparison operator.
   bool operator==(const VFInfo &Other) const {
@@ -131,6 +132,13 @@ struct VFInfo {
 namespace VFABI {
 /// LLVM Internal VFABI ISA token for vector functions.
 static constexpr char const *_LLVM_ = "_LLVM_";
+/// Prefix for internal name redirection for vector function that
+/// tells the compiler to scalarize the call using the scalar name
+/// of the function. For example, a mangled name like
+/// `_ZGV_LLVM_N2v_foo(_LLVM_Scalarize_foo)` would tell the
+/// vectorizer to vectorize the scalar call `foo`, and to scalarize
+/// it once vectorization is done.
+static constexpr char const *_LLVM_Scalarize_ = "_LLVM_Scalarize_";
 
 /// Function to contruct a VFInfo out of a mangled names in the
 /// following format:
@@ -153,7 +161,12 @@ static constexpr char const *_LLVM_ = "_LLVM_";
 ///
 /// \param MangledName -> input string in the format
 /// _ZGV<isa><mask><vlen><parameters>_<scalarname>[(<redirection>)].
-Optional<VFInfo> tryDemangleForVFABI(StringRef MangledName);
+/// \param M -> Module used to retrive informations about the vector
+/// function that are not possible to retrieve from the mangled
+/// name. At the moment, this parameter is needed only to retrive the
+/// Vectorization Factor of scalable vector functions from their
+/// respective IR declarations.
+Optional<VFInfo> tryDemangleForVFABI(StringRef MangledName, const Module &M);
 
 /// Retrieve the `VFParamKind` from a string token.
 VFParamKind getVFParamKindFromString(const StringRef Token);
@@ -166,6 +179,76 @@ static constexpr char const *MappingsAttrName = "vector-function-abi-variant";
 void getVectorVariantNames(const CallInst &CI,
                            SmallVectorImpl<std::string> &VariantMappings);
 } // end namespace VFABI
+
+/// The Vector Function Database.
+///
+/// Helper class used to find the vector functions associated to a
+/// scalar CallInst.
+class VFDatabase {
+  /// The Module of the CallInst CI.
+  const Module *M;
+  /// List of vector functions descritors associated to the call
+  /// instruction.
+  const SmallVector<VFInfo, 8> ScalarToVectorMappings;
+
+  /// Retreive the scalar-to-vector mappings associated to the rule of
+  /// a vector Function ABI.
+  static void getVFABIMappings(const CallInst &CI,
+                               SmallVectorImpl<VFInfo> &Mappings) {
+    const StringRef ScalarName = CI.getCalledFunction()->getName();
+    const StringRef S =
+        CI.getAttribute(AttributeList::FunctionIndex, VFABI::MappingsAttrName)
+            .getValueAsString();
+    if (S.empty())
+      return;
+
+    SmallVector<std::string, 8> ListOfStrings;
+    VFABI::getVectorVariantNames(CI, ListOfStrings);
+    for (const auto &MangledName : ListOfStrings) {
+      const Optional<VFInfo> Shape =
+          VFABI::tryDemangleForVFABI(MangledName, *(CI.getModule()));
+      // A match is found via scalar and vector names, and also by
+      // ensuring that the variant described in the attribute has a
+      // corresponding definition or declaration of the vector
+      // function in the Module M.
+      if (Shape.hasValue() && (Shape.getValue().ScalarName == ScalarName)) {
+        assert(CI.getModule()->getFunction(Shape.getValue().VectorName) &&
+               "Vector function is missing.");
+        Mappings.push_back(Shape.getValue());
+      }
+    }
+  }
+
+public:
+  /// Retrieve all the VFInfo instances associated to the CallInst CI.
+  static SmallVector<VFInfo, 8> getMappings(const CallInst &CI) {
+    SmallVector<VFInfo, 8> Ret;
+
+    // Get mappings from the Vector Function ABI variants.
+    getVFABIMappings(CI, Ret);
+
+    // Other non-VFABI variants should be retrieved here.
+
+    return Ret;
+  }
+
+  /// Constructor, requires a CallInst instance.
+  VFDatabase(CallInst &CI)
+      : M(CI.getModule()), ScalarToVectorMappings(VFDatabase::getMappings(CI)) {
+  }
+  /// \defgroup VFDatabase query interface.
+  ///
+  /// @{
+  /// Retrieve the Function with VFShape \p Shape.
+  Function *getVectorizedFunction(const VFShape &Shape) const {
+    for (const auto &Info : ScalarToVectorMappings)
+      if (Info.Shape == Shape)
+        return M->getFunction(Info.VectorName);
+
+    return nullptr;
+  }
+  /// @}
+};
 
 template <typename T> class ArrayRef;
 class DemandedBits;
@@ -218,16 +301,23 @@ Value *getStrideFromPointer(Value *Ptr, ScalarEvolution *SE, Loop *Lp);
 /// from the vector.
 Value *findScalarElement(Value *V, unsigned EltNo);
 
+/// If all non-negative \p Mask elements are the same value, return that value.
+/// If all elements are negative (undefined) or \p Mask contains different
+/// non-negative values, return -1.
+int getSplatIndex(ArrayRef<int> Mask);
+
 /// Get splat value if the input is a splat vector or return nullptr.
 /// The value may be extracted from a splat constants vector or from
 /// a sequence of instructions that broadcast a single value into a vector.
 const Value *getSplatValue(const Value *V);
 
-/// Return true if the input value is known to be a vector with all identical
-/// elements (potentially including undefined elements).
+/// Return true if each element of the vector value \p V is poisoned or equal to
+/// every other non-poisoned element. If an index element is specified, either
+/// every element of the vector is poisoned or the element at that index is not
+/// poisoned and equal to every other non-poisoned element.
 /// This may be more powerful than the related getSplatValue() because it is
 /// not limited by finding a scalar source value to a splatted vector.
-bool isSplatValue(const Value *V, unsigned Depth = 0);
+bool isSplatValue(const Value *V, int Index = -1, unsigned Depth = 0);
 
 /// Compute a map of integer instructions to their minimum legal type
 /// size.
@@ -432,6 +522,7 @@ public:
   bool isReverse() const { return Reverse; }
   uint32_t getFactor() const { return Factor; }
   uint32_t getAlignment() const { return Alignment.value(); }
+  Align getAlign() const { return Alignment; }
   uint32_t getNumMembers() const { return Members.size(); }
 
   /// Try to insert a new member \p Instr with index \p Index and

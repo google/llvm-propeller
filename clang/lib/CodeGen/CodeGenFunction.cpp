@@ -803,7 +803,9 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
     // Apply xray attributes to the function (as a string, for now)
     if (const auto *XRayAttr = D->getAttr<XRayInstrumentAttr>()) {
       if (CGM.getCodeGenOpts().XRayInstrumentationBundle.has(
-              XRayInstrKind::Function)) {
+              XRayInstrKind::FunctionEntry) ||
+          CGM.getCodeGenOpts().XRayInstrumentationBundle.has(
+              XRayInstrKind::FunctionExit)) {
         if (XRayAttr->alwaysXRayInstrument() && ShouldXRayInstrumentFunction())
           Fn->addFnAttr("function-instrument", "xray-always");
         if (XRayAttr->neverXRayInstrument())
@@ -812,21 +814,37 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
           if (ShouldXRayInstrumentFunction())
             Fn->addFnAttr("xray-log-args",
                           llvm::utostr(LogArgs->getArgumentCount()));
+        if (!CGM.getCodeGenOpts().XRayInstrumentationBundle.has(
+                XRayInstrKind::FunctionExit)) {
+          Fn->addFnAttr("xray-skip-exit");
+        }
+        if (!CGM.getCodeGenOpts().XRayInstrumentationBundle.has(
+                XRayInstrKind::FunctionEntry)) {
+          Fn->addFnAttr("xray-skip-entry");
+        }
       }
     } else {
       if (ShouldXRayInstrumentFunction() && !CGM.imbueXRayAttrs(Fn, Loc))
         Fn->addFnAttr(
             "xray-instruction-threshold",
             llvm::itostr(CGM.getCodeGenOpts().XRayInstructionThreshold));
+      if (CGM.getCodeGenOpts().XRayIgnoreLoops) {
+        Fn->addFnAttr("xray-ignore-loops");
+      }
     }
 
+    unsigned Count, Offset;
     if (const auto *Attr = D->getAttr<PatchableFunctionEntryAttr>()) {
-      // Attr->getStart is currently ignored.
-      Fn->addFnAttr("patchable-function-entry",
-                    std::to_string(Attr->getCount()));
-    } else if (unsigned Count = CGM.getCodeGenOpts().PatchableFunctionEntryCount) {
-      Fn->addFnAttr("patchable-function-entry",
-                    std::to_string(Count));
+      Count = Attr->getCount();
+      Offset = Attr->getOffset();
+    } else {
+      Count = CGM.getCodeGenOpts().PatchableFunctionEntryCount;
+      Offset = CGM.getCodeGenOpts().PatchableFunctionEntryOffset;
+    }
+    if (Count && Offset <= Count) {
+      Fn->addFnAttr("patchable-function-entry", std::to_string(Count - Offset));
+      if (Offset)
+        Fn->addFnAttr("patchable-function-prefix", std::to_string(Offset));
     }
   }
 

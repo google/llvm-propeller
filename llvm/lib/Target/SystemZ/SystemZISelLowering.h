@@ -393,6 +393,8 @@ public:
   explicit SystemZTargetLowering(const TargetMachine &TM,
                                  const SystemZSubtarget &STI);
 
+  bool useSoftFloat() const override;
+
   // Override TargetLowering.
   MVT getScalarShiftAmountTy(const DataLayout &, EVT) const override {
     return MVT::i32;
@@ -677,7 +679,8 @@ private:
                                          MachineBasicBlock *MBB,
                                          unsigned Opcode) const;
 
-  MachineMemOperand::Flags getMMOFlags(const Instruction &I) const override;
+  MachineMemOperand::Flags
+  getTargetMMOFlags(const Instruction &I) const override;
   const TargetRegisterClass *getRepRegClassFor(MVT VT) const override;
 };
 

@@ -342,6 +342,10 @@ public:
   /// branches.
   bool hasBranchDivergence() const;
 
+  /// Return true if the target prefers to use GPU divergence analysis to
+  /// replace the legacy version.
+  bool useGPUDivergenceAnalysis() const;
+
   /// Returns whether V is a source of divergence.
   ///
   /// This function provides the target-dependent information for
@@ -490,8 +494,6 @@ public:
     bool UpperBound;
     /// Allow peeling off loop iterations.
     bool AllowPeeling;
-    /// Allow peeling off loop iterations for loop nests.
-    bool AllowLoopNestsPeeling;
     /// Allow unrolling of all the iterations of the runtime loop remainder.
     bool UnrollRemainder;
     /// Allow unroll and jam. Used to enable unroll and jam for the target.
@@ -1200,6 +1202,7 @@ public:
   virtual int
   getUserCost(const User *U, ArrayRef<const Value *> Operands) = 0;
   virtual bool hasBranchDivergence() = 0;
+  virtual bool useGPUDivergenceAnalysis() = 0;
   virtual bool isSourceOfDivergence(const Value *V) = 0;
   virtual bool isAlwaysUniform(const Value *V) = 0;
   virtual unsigned getFlatAddressSpace() = 0;
@@ -1454,6 +1457,7 @@ public:
     return Impl.getUserCost(U, Operands);
   }
   bool hasBranchDivergence() override { return Impl.hasBranchDivergence(); }
+  bool useGPUDivergenceAnalysis() override { return Impl.useGPUDivergenceAnalysis(); }
   bool isSourceOfDivergence(const Value *V) override {
     return Impl.isSourceOfDivergence(V);
   }

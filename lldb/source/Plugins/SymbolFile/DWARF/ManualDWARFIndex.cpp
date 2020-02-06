@@ -1,4 +1,4 @@
-//===-- ManualDWARFIndex.cpp -----------------------------------*- C++ -*-===//
+//===-- ManualDWARFIndex.cpp ----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -100,7 +100,7 @@ void ManualDWARFIndex::IndexUnit(DWARFUnit &unit, IndexSet &set) {
         unit.GetOffset());
   }
 
-  const LanguageType cu_language = unit.GetLanguageType();
+  const LanguageType cu_language = SymbolFileDWARF::GetLanguage(unit);
 
   IndexUnitImpl(unit, cu_language, set);
 

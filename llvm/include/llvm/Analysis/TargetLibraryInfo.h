@@ -129,7 +129,7 @@ public:
   void setAvailableWithName(LibFunc F, StringRef Name) {
     if (StandardNames[F] != Name) {
       setState(F, CustomName);
-      CustomNames[F] = Name;
+      CustomNames[F] = std::string(Name);
       assert(CustomNames.find(F) != CustomNames.end());
     } else {
       setState(F, StandardName);
@@ -390,11 +390,15 @@ public:
                   FunctionAnalysisManager::Invalidator &) {
     return false;
   }
-
   /// Returns the largest vectorization factor used in the list of
   /// vector functions.
   unsigned getWidestVF(StringRef ScalarF) const {
     return Impl->getWidestVF(ScalarF);
+  }
+
+  /// Check if the function "F" is listed in a library known to LLVM.
+  bool isKnownVectorFunctionInLibrary(StringRef F) const {
+    return this->isFunctionVectorizable(F);
   }
 };
 

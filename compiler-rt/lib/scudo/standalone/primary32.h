@@ -46,6 +46,7 @@ public:
   typedef SizeClassAllocator32<SizeClassMapT, RegionSizeLog> ThisT;
   typedef SizeClassAllocatorLocalCache<ThisT> CacheT;
   typedef typename CacheT::TransferBatch TransferBatch;
+  static const bool SupportsMemoryTagging = false;
 
   static uptr getSizeByClassId(uptr ClassId) {
     return (ClassId == SizeClassMap::BatchClassId)
@@ -72,8 +73,7 @@ public:
       SizeClassInfo *Sci = getSizeClassInfo(I);
       Sci->RandState = getRandomU32(&Seed);
       // See comment in the 64-bit primary about releasing smaller size classes.
-      Sci->CanRelease = (ReleaseToOsInterval >= 0) &&
-                        (I != SizeClassMap::BatchClassId) &&
+      Sci->CanRelease = (I != SizeClassMap::BatchClassId) &&
                         (getSizeByClassId(I) >= (PageSize / 32));
     }
     ReleaseToOsIntervalMs = ReleaseToOsInterval;
@@ -177,14 +177,15 @@ public:
   uptr releaseToOS() {
     uptr TotalReleasedBytes = 0;
     for (uptr I = 0; I < NumClasses; I++) {
-      if (I == SizeClassMap::BatchClassId)
-        continue;
       SizeClassInfo *Sci = getSizeClassInfo(I);
       ScopedLock L(Sci->Mutex);
       TotalReleasedBytes += releaseToOSMaybe(Sci, I, /*Force=*/true);
     }
     return TotalReleasedBytes;
   }
+
+  bool useMemoryTagging() { return false; }
+  void disableMemoryTagging() {}
 
 private:
   static const uptr NumClasses = SizeClassMap::NumClasses;
@@ -381,7 +382,7 @@ private:
       if (IntervalMs < 0)
         return 0;
       if (Sci->ReleaseInfo.LastReleaseAtNs +
-              static_cast<uptr>(IntervalMs) * 1000000ULL >
+              static_cast<u64>(IntervalMs) * 1000000 >
           getMonotonicTime()) {
         return 0; // Memory was returned recently.
       }

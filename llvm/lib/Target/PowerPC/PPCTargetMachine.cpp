@@ -158,7 +158,7 @@ static std::string getDataLayoutString(const Triple &T) {
 
 static std::string computeFSAdditions(StringRef FS, CodeGenOpt::Level OL,
                                       const Triple &TT) {
-  std::string FullFS = FS;
+  std::string FullFS = std::string(FS);
 
   // Make sure 64-bit features are available when CPUname is generic
   if (TT.getArch() == Triple::ppc64 || TT.getArch() == Triple::ppc64le) {
@@ -223,6 +223,9 @@ static PPCTargetMachine::PPCABI computeTargetABI(const Triple &TT,
 
 static Reloc::Model getEffectiveRelocModel(const Triple &TT,
                                            Optional<Reloc::Model> RM) {
+  assert((!TT.isOSAIX() || !RM.hasValue() || *RM == Reloc::PIC_) &&
+         "Invalid relocation model for AIX.");
+
   if (RM.hasValue())
     return *RM;
 
@@ -230,8 +233,8 @@ static Reloc::Model getEffectiveRelocModel(const Triple &TT,
   if (TT.isOSDarwin())
     return Reloc::DynamicNoPIC;
 
-  // Big Endian PPC is PIC by default.
-  if (TT.getArch() == Triple::ppc64)
+  // Big Endian PPC and AIX default to PIC.
+  if (TT.getArch() == Triple::ppc64 || TT.isOSAIX())
     return Reloc::PIC_;
 
   // Rest are static by default.

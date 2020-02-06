@@ -1945,6 +1945,7 @@ static void writeDICompileUnit(raw_ostream &Out, const DICompileUnit *N,
                     false);
   Printer.printNameTableKind("nameTableKind", N->getNameTableKind());
   Printer.printBool("rangesBaseAddress", N->getRangesBaseAddress(), false);
+  Printer.printString("sysroot", N->getSysRoot());
   Out << ")";
 }
 
@@ -2057,7 +2058,6 @@ static void writeDIModule(raw_ostream &Out, const DIModule *N,
   Printer.printString("name", N->getName());
   Printer.printString("configMacros", N->getConfigurationMacros());
   Printer.printString("includePath", N->getIncludePath());
-  Printer.printString("sysroot", N->getSysRoot());
   Out << ")";
 }
 
@@ -2651,8 +2651,10 @@ void AssemblyWriter::printModule(const Module *M) {
   printUseLists(nullptr);
 
   // Output all of the functions.
-  for (const Function &F : *M)
+  for (const Function &F : *M) {
+    Out << '\n';
     printFunction(&F);
+  }
   assert(UseListOrders.empty() && "All use-lists should have been consumed");
 
   // Output all attribute groups.
@@ -2683,14 +2685,15 @@ void AssemblyWriter::printModuleSummaryIndex() {
   // Print module path entries. To print in order, add paths to a vector
   // indexed by module slot.
   std::vector<std::pair<std::string, ModuleHash>> moduleVec;
-  std::string RegularLTOModuleName = "[Regular LTO]";
+  std::string RegularLTOModuleName =
+      ModuleSummaryIndex::getRegularLTOModuleName();
   moduleVec.resize(TheIndex->modulePaths().size());
   for (auto &ModPath : TheIndex->modulePaths())
     moduleVec[Machine.getModulePathSlot(ModPath.first())] = std::make_pair(
         // A module id of -1 is a special entry for a regular LTO module created
         // during the thin link.
         ModPath.second.first == -1u ? RegularLTOModuleName
-                                    : (std::string)ModPath.first(),
+                                    : (std::string)std::string(ModPath.first()),
         ModPath.second.second);
 
   unsigned i = 0;
@@ -2769,6 +2772,8 @@ static const char *getWholeProgDevirtResByArgKindName(
 
 static const char *getTTResKindName(TypeTestResolution::Kind K) {
   switch (K) {
+  case TypeTestResolution::Unknown:
+    return "unknown";
   case TypeTestResolution::Unsat:
     return "unsat";
   case TypeTestResolution::ByteArray:
@@ -2900,11 +2905,15 @@ void AssemblyWriter::printAliasSummary(const AliasSummary *AS) {
 }
 
 void AssemblyWriter::printGlobalVarSummary(const GlobalVarSummary *GS) {
+  auto VTableFuncs = GS->vTableFuncs();
   Out << ", varFlags: (readonly: " << GS->VarFlags.MaybeReadOnly << ", "
       << "writeonly: " << GS->VarFlags.MaybeWriteOnly << ", "
-      << "constant: " << GS->VarFlags.Constant << ")";
+      << "constant: " << GS->VarFlags.Constant;
+  if (!VTableFuncs.empty())
+    Out << ", "
+        << "vcall_visibility: " << GS->VarFlags.VCallVisibility;
+  Out << ")";
 
-  auto VTableFuncs = GS->vTableFuncs();
   if (!VTableFuncs.empty()) {
     Out << ", vTableFuncs: (";
     FieldSeparator FS;

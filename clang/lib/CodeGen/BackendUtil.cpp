@@ -53,6 +53,7 @@
 #include "llvm/Transforms/Coroutines.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/IPO/LowerTypeTests.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/IPO/ThinLTOBitcodeWriter.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
@@ -568,6 +569,16 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
   std::unique_ptr<TargetLibraryInfoImpl> TLII(
       createTLII(TargetTriple, CodeGenOpts));
 
+  // If we reached here with a non-empty index file name, then the index file
+  // was empty and we are not performing ThinLTO backend compilation (used in
+  // testing in a distributed build environment). Drop any the type test
+  // assume sequences inserted for whole program vtables so that codegen doesn't
+  // complain.
+  if (!CodeGenOpts.ThinLTOIndexFile.empty())
+    MPM.add(createLowerTypeTestsPass(/*ExportSummary=*/nullptr,
+                                     /*ImportSummary=*/nullptr,
+                                     /*DropTypeTests=*/true));
+
   PassManagerBuilderWrapper PMBuilder(TargetTriple, CodeGenOpts, LangOpts);
 
   // At O0 and O1 we only run the always inliner which is more efficient. At
@@ -733,7 +744,7 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
     if (!CodeGenOpts.InstrProfileOutput.empty())
       PMBuilder.PGOInstrGen = CodeGenOpts.InstrProfileOutput;
     else
-      PMBuilder.PGOInstrGen = DefaultProfileGenName;
+      PMBuilder.PGOInstrGen = std::string(DefaultProfileGenName);
   }
   if (CodeGenOpts.hasProfileIRUse()) {
     PMBuilder.PGOInstrUse = CodeGenOpts.ProfileInstrumentUsePath;
@@ -939,7 +950,7 @@ static PassBuilder::OptimizationLevel mapToLevel(const CodeGenOptions &Opts) {
     llvm_unreachable("Invalid optimization level!");
 
   case 1:
-    return PassBuilder::O1;
+    return PassBuilder::OptimizationLevel::O1;
 
   case 2:
     switch (Opts.OptimizeSize) {
@@ -947,17 +958,17 @@ static PassBuilder::OptimizationLevel mapToLevel(const CodeGenOptions &Opts) {
       llvm_unreachable("Invalid optimization level for size!");
 
     case 0:
-      return PassBuilder::O2;
+      return PassBuilder::OptimizationLevel::O2;
 
     case 1:
-      return PassBuilder::Os;
+      return PassBuilder::OptimizationLevel::Os;
 
     case 2:
-      return PassBuilder::Oz;
+      return PassBuilder::OptimizationLevel::Oz;
     }
 
   case 3:
-    return PassBuilder::O3;
+    return PassBuilder::OptimizationLevel::O3;
   }
 }
 
@@ -1028,7 +1039,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
   if (CodeGenOpts.hasProfileIRInstr())
     // -fprofile-generate.
     PGOOpt = PGOOptions(CodeGenOpts.InstrProfileOutput.empty()
-                            ? DefaultProfileGenName
+                            ? std::string(DefaultProfileGenName)
                             : CodeGenOpts.InstrProfileOutput,
                         "", "", PGOOptions::IRInstr, PGOOptions::NoCSAction,
                         CodeGenOpts.DebugInfoForProfiling);
@@ -1061,13 +1072,13 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
              "Cannot run CSProfileGen pass with ProfileGen or SampleUse "
              " pass");
       PGOOpt->CSProfileGenFile = CodeGenOpts.InstrProfileOutput.empty()
-                                     ? DefaultProfileGenName
+                                     ? std::string(DefaultProfileGenName)
                                      : CodeGenOpts.InstrProfileOutput;
       PGOOpt->CSAction = PGOOptions::CSIRInstr;
     } else
       PGOOpt = PGOOptions("",
                           CodeGenOpts.InstrProfileOutput.empty()
-                              ? DefaultProfileGenName
+                              ? std::string(DefaultProfileGenName)
                               : CodeGenOpts.InstrProfileOutput,
                           "", PGOOptions::NoAction, PGOOptions::CSIRInstr,
                           CodeGenOpts.DebugInfoForProfiling);
@@ -1129,6 +1140,15 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
     bool IsLTO = CodeGenOpts.PrepareForLTO;
 
     if (CodeGenOpts.OptimizationLevel == 0) {
+      // If we reached here with a non-empty index file name, then the index
+      // file was empty and we are not performing ThinLTO backend compilation
+      // (used in testing in a distributed build environment). Drop any the type
+      // test assume sequences inserted for whole program vtables so that
+      // codegen doesn't complain.
+      if (!CodeGenOpts.ThinLTOIndexFile.empty())
+        MPM.addPass(LowerTypeTestsPass(/*ExportSummary=*/nullptr,
+                                       /*ImportSummary=*/nullptr,
+                                       /*DropTypeTests=*/true));
       if (Optional<GCOVOptions> Options = getGCOVOptions(CodeGenOpts))
         MPM.addPass(GCOVProfilerPass(*Options));
       if (Optional<InstrProfOptions> Options =
@@ -1164,6 +1184,18 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
       // Map our optimization levels into one of the distinct levels used to
       // configure the pipeline.
       PassBuilder::OptimizationLevel Level = mapToLevel(CodeGenOpts);
+
+      // If we reached here with a non-empty index file name, then the index
+      // file was empty and we are not performing ThinLTO backend compilation
+      // (used in testing in a distributed build environment). Drop any the type
+      // test assume sequences inserted for whole program vtables so that
+      // codegen doesn't complain.
+      if (!CodeGenOpts.ThinLTOIndexFile.empty())
+        PB.registerPipelineStartEPCallback([](ModulePassManager &MPM) {
+          MPM.addPass(LowerTypeTestsPass(/*ExportSummary=*/nullptr,
+                                         /*ImportSummary=*/nullptr,
+                                         /*DropTypeTests=*/true));
+        });
 
       PB.registerPipelineStartEPCallback([](ModulePassManager &MPM) {
         MPM.addPass(createModuleToFunctionPassAdaptor(
