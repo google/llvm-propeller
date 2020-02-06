@@ -326,7 +326,7 @@ static void getTargetFeatures(const ToolChain &TC, const llvm::Triple &Triple,
   case llvm::Triple::armeb:
   case llvm::Triple::thumb:
   case llvm::Triple::thumbeb:
-    arm::getARMTargetFeatures(TC, Triple, Args, CmdArgs, Features, ForAS);
+    arm::getARMTargetFeatures(D, Triple, Args, CmdArgs, Features, ForAS);
     break;
 
   case llvm::Triple::ppc:
@@ -4030,6 +4030,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-aux-triple");
     CmdArgs.push_back(Args.MakeArgString(NormalizedTriple));
   }
+
+  if (Args.hasFlag(options::OPT_fsycl, options::OPT_fno_sycl, false))
+    CmdArgs.push_back("-fsycl-is-device");
 
   if (IsOpenMPDevice) {
     // We have to pass the triple of the host if compiling for an OpenMP device.
