@@ -103,9 +103,13 @@ CORES := $(shell grep ^cpu\\scores /proc/cpuinfo | uniq |  awk '{print $$4}')
 THREADS  := $(shell grep -Ee "^core id" /proc/cpuinfo | wc -l)
 THREAD_PER_CORE := $(shell echo $$(($(THREADS) / $(CORES))))
 # leave some cores on the machine for other jobs.
-USED_CORES := $(shell if [[ "$(CORES)" -lt "3" ]] ; then \
-	echo $$(($(CORES) - 1)) ; \
-	else echo $$(($(CORES) - 2)); fi)
+USED_CORES := $(shell \
+	if [[ "$(CORES)" -lt "3" ]] ; then \
+	  echo 1 ; \
+	elif [[ "$(CORES)" -lt "9" ]] ; then \
+	  echo $$(($(CORES) * 3 / 4)) ; \
+	else echo $$(($(CORES) * 7 / 8)); \
+	fi )
 J_NUMBER := $(shell echo $$(( $(USED_CORES) * $(THREAD_PER_CORE))))
 endif
 
