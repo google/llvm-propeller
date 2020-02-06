@@ -769,7 +769,7 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
   std::string GroupName = "";
   if (F.hasComdat()) {
     Flags |= ELF::SHF_GROUP;
-    GroupName = F.getComdat()->getName();
+    GroupName = F.getComdat()->getName().str();
   }
   return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags,
                                     0 /* Entry Size */, GroupName, UniqueID);
@@ -796,7 +796,7 @@ MCSection *TargetLoweringObjectFileELF::getNamedSectionForMachineBasicBlock(
   std::string GroupName = "";
   if (F.hasComdat()) {
     Flags |= ELF::SHF_GROUP;
-    GroupName = F.getComdat()->getName();
+    GroupName = F.getComdat()->getName().str();
   }
   return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags,
                                     0 /* Entry Size */, GroupName);

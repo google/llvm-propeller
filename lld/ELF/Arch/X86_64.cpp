@@ -36,7 +36,8 @@ public:
   void writePltHeader(uint8_t *buf) const override;
   void writePlt(uint8_t *buf, const Symbol &sym,
                 uint64_t pltEntryAddr) const override;
-  void relocateOne(uint8_t *loc, RelType type, uint64_t val) const override;
+  void relocate(uint8_t *loc, const Relocation &rel,
+                uint64_t val) const override;
   void relocateOneJumpRelocation(uint8_t *Loc, JumpRelType Type,
                                  unsigned Size) const override;
 
@@ -838,7 +839,6 @@ void X86_64::relaxTlsLdToLe(uint8_t *loc, const Relocation &rel,
         "expected R_X86_64_PLT32 or R_X86_64_GOTPCRELX after R_X86_64_TLSLD");
 }
 
-<<<<<<< HEAD
 void X86_64::relocateOneJumpRelocation(uint8_t *Loc, JumpRelType Type,
                                        unsigned Size) const {
   switch (Type) {
@@ -923,12 +923,8 @@ void X86_64::relocateOneJumpRelocation(uint8_t *Loc, JumpRelType Type,
   }
 }
 
-void X86_64::relocateOne(uint8_t *loc, RelType type, uint64_t val) const {
-  switch (type) {
-=======
 void X86_64::relocate(uint8_t *loc, const Relocation &rel, uint64_t val) const {
   switch (rel.type) {
->>>>>>> master
   case R_X86_64_8:
     checkIntUInt(loc, val, 8, rel);
     *loc = val;

@@ -31,27 +31,27 @@ bool getBBSectionsList(StringRef profFileName,
   if (profFileName.empty())
     return false;
 
-  std::ifstream fin(profFileName);
+  std::ifstream fin(profFileName.str());
   if (!fin.good())
     return false;
 
   StringMap<SmallSet<unsigned, 4>>::iterator fi = bbMap.end();
   std::string line;
   while ((std::getline(fin, line)).good()) {
-    StringRef S(line);
+    StringRef s(line);
     // Lines beginning with @, # are not useful here.
-    if (S.empty() || S[0] == '@' || S[0] == '#')
+    if (s.empty() || s[0] == '@' || s[0] == '#')
       continue;
-    if (!S.consume_front("!") || S.empty())
+    if (!s.consume_front("!") || s.empty())
       break;
-    if (S.consume_front("!")) {
+    if (s.consume_front("!")) {
       if (fi != bbMap.end())
-        fi->second.insert(std::stoi(S));
+        fi->second.insert(std::stoi(s.str()));
       else
         return false;
     } else {
       // Start a new function.
-      auto R = bbMap.try_emplace(S.split('/').first);
+      auto R = bbMap.try_emplace(s.split('/').first);
       fi = R.first;
       assert(R.second);
     }

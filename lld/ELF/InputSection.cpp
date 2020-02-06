@@ -867,8 +867,8 @@ void InputSection::relocateNonAlloc(uint8_t *buf, ArrayRef<RelTy> rels) {
       continue;
 
     if (expr == R_SIZE) {
-      target->relocateOne(bufLoc, type,
-                          SignExtend64<bits>(sym.getSize() + addend));
+      target->relocateNoSym(bufLoc, type,
+			    SignExtend64<bits>(sym.getSize() + addend));
       continue;
     }
 
