@@ -93,6 +93,11 @@ public:
 
   virtual ~TargetInfo();
 
+  //  This deletes a jump insn at the end of the section if it is a fall thru to
+  //  the next section.  Further, if there is a conditional jump and a direct
+  //  jump consecutively, it tries to flip the conditional jump to convert the
+  //  direct jump into a fall thru and delete it.  Returns true if a jump
+  //  instruction can be deleted.
   virtual bool deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
                                      InputSection *NextIS) const {
     return false;

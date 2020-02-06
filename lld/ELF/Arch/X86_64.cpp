@@ -919,7 +919,7 @@ void X86_64::relocateOneJumpRelocation(uint8_t *Loc, JumpRelType Type,
       *Loc = 0x73;
     break;
   default:
-    error(getErrorLocation(Loc) + "unrecognized jump reloc " + Twine(Type));
+    llvm_unreachable("Unknown Jump Relocation");
   }
 }
 

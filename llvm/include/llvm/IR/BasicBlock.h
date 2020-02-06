@@ -437,12 +437,6 @@ public:
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const;
 
-  /// Set the section prefix for this block.
-  void setSectionPrefix(StringRef Prefix);
-
-  /// Get the section prefix for this block.
-  Optional<StringRef> getSectionPrefix() const;
-
 private:
   /// Increment the internal refcount of the number of BlockAddresses
   /// referencing this BasicBlock by \p Amt.
