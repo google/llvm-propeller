@@ -963,7 +963,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.TrapFuncName = std::string(Args.getLastArgValue(OPT_ftrap_function_EQ));
   Opts.UseInitArray = !Args.hasArg(OPT_fno_use_init_array);
 
-  Opts.BBSections = std::string(Args.getLastArgValue(OPT_fbasicblock_sections_EQ, "none"));
+  Opts.BBSections =
+      std::string(Args.getLastArgValue(OPT_fbasicblock_sections_EQ, "none"));
   if (Opts.BBSections != "all" && Opts.BBSections != "labels" &&
       Opts.BBSections != "none" && !llvm::sys::fs::exists(Opts.BBSections)) {
     Diags.Report(diag::err_drv_invalid_value)
@@ -972,7 +973,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   }
 
   // Basic Block Sections implies Function Sections.
-  Opts.FunctionSections = Args.hasArg(OPT_ffunction_sections) ||
+  Opts.FunctionSections =
+      Args.hasArg(OPT_ffunction_sections) ||
       (Opts.BBSections != "none" && Opts.BBSections != "labels");
 
   Opts.DataSections = Args.hasArg(OPT_fdata_sections);

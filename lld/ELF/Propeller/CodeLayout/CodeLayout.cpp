@@ -116,9 +116,9 @@ void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
 // level, and the ExtTSP score achieved for each function.
 void CodeLayout::printStats() {
 
-  DenseMap<CFGNode *, uint64_t> nodeAddressMap;
+  DenseMap<CFGNode *, int64_t> nodeAddressMap;
   llvm::StringMap<unsigned> functionPartitions;
-  uint64_t currentAddress = 0;
+  int64_t currentAddress = 0;
   ControlFlowGraph *currentCFG = nullptr;
   for (CFGNode *n : HotOrder) {
     if (currentCFG != n->controlFlowGraph) {
@@ -140,28 +140,28 @@ void CodeLayout::printStats() {
   for (CFGNode *n : HotOrder) {
     auto scoreEntry =
         extTSPScoreMap.try_emplace(n->controlFlowGraph->name, 0).first;
-    n->forEachOutEdgeRef([&nodeAddressMap, &distances, &histogram,
-                          &scoreEntry](CFGEdge &edge) {
-      if (!edge.weight || edge.isReturn())
-        return;
-      if (nodeAddressMap.find(edge.src) == nodeAddressMap.end() ||
-          nodeAddressMap.find(edge.sink) == nodeAddressMap.end()) {
-        warn("Found a hot edge whose source and sink do not show up in the "
-             "layout!");
-        return;
-      }
-      uint64_t srcOffset = nodeAddressMap[edge.src];
-      uint64_t sinkOffset = nodeAddressMap[edge.sink];
-      uint64_t srcSinkDistance = sinkOffset - srcOffset - edge.src->shSize;
+    n->forEachOutEdgeRef(
+        [&nodeAddressMap, &distances, &histogram, &scoreEntry](CFGEdge &edge) {
+          if (!edge.weight || edge.isReturn())
+            return;
+          if (nodeAddressMap.find(edge.src) == nodeAddressMap.end() ||
+              nodeAddressMap.find(edge.sink) == nodeAddressMap.end()) {
+            warn("Found a hot edge whose source and sink do not show up in the "
+                 "layout!");
+            return;
+          }
+          int64_t srcOffset = nodeAddressMap[edge.src];
+          int64_t sinkOffset = nodeAddressMap[edge.sink];
+          int64_t srcSinkDistance = sinkOffset - srcOffset - edge.src->shSize;
 
-      if (edge.type == CFGEdge::EdgeType::INTRA_FUNC ||
-          edge.type == CFGEdge::EdgeType::INTRA_DYNA)
-        scoreEntry->second += getEdgeExtTSPScore(edge, srcSinkDistance);
+          if (edge.type == CFGEdge::EdgeType::INTRA_FUNC ||
+              edge.type == CFGEdge::EdgeType::INTRA_DYNA)
+            scoreEntry->second += getEdgeExtTSPScore(edge, srcSinkDistance);
 
-      auto res =
-          std::lower_bound(distances.begin(), distances.end(), srcSinkDistance);
-      histogram[*res] += edge.weight;
-    });
+          auto res = std::lower_bound(distances.begin(), distances.end(),
+                                      std::abs(srcSinkDistance));
+          histogram[*res] += edge.weight;
+        });
   }
 
   for (auto &elem : extTSPScoreMap)
