@@ -22,11 +22,11 @@
 #include "Target.h"
 #include "lld/Common/Filesystem.h"
 #include "lld/Common/Memory.h"
-#include "lld/Common/PropellerCommon.h"
 #include "lld/Common/Strings.h"
 #include "lld/Common/Threads.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/RandomNumberGenerator.h"
 #include "llvm/Support/SHA1.h"
 #include "llvm/Support/TimeProfiler.h"
@@ -716,7 +716,7 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
       if (!shouldKeepInSymtab(*dr))
         continue;
 
-      if (lld::propeller::SymbolEntry::isBBSymbol(b->getName()))
+      if (llvm::propeller::SymbolEntry::isBBSymbol(b->getName()))
         localBBSymbols.emplace_back(b);
       else
         localNonBBSymbols.emplace_back(b);

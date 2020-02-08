@@ -49,9 +49,9 @@
 
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/LLVM.h"
-#include "lld/Common/PropellerCommon.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/StringSaver.h"
 
 #include <fstream>
@@ -61,6 +61,8 @@
 #include <mutex>
 #include <set>
 #include <vector>
+
+using llvm::propeller::SymbolEntry;
 
 namespace lld {
 namespace propeller {
@@ -197,9 +199,8 @@ public:
       uint64_t size,
       const std::map<std::string, std::set<std::string>> &hotBBSymbols) {
     auto *sym = new SymbolEntry(ordinal, name, std::move(aliases),
-                                SymbolEntry::INVALID_ADDRESS, size,
-                                llvm::object::SymbolRef::ST_Function);
-    sym->bbTagType = SymbolEntry::BB_NONE;
+                                SymbolEntry::INVALID_ADDRESS, size, false);
+    sym->containingFunc = sym;
     symbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));
@@ -233,7 +234,7 @@ public:
     auto *sym =
         new SymbolEntry(ordinal, bbIndex, SymbolEntry::AliasesTy(),
                         SymbolEntry::INVALID_ADDRESS, size,
-                        llvm::object::SymbolRef::ST_Unknown, true, function);
+                        true, function);
     // Landing pads are always treated as cold.
     if (bbtt == SymbolEntry::BB_RETURN_AND_LANDING_PAD ||
         bbtt == SymbolEntry::BB_LANDING_PAD)

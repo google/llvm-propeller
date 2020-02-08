@@ -35,10 +35,12 @@
 #include "Propeller/PropellerConfig.h"
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Memory.h"
-#include "lld/Common/PropellerCommon.h"
+#include "llvm/ProfileData/BBSectionsProf.h"
 
 #include <algorithm>
 #include <vector>
+
+using llvm::propeller::SymbolEntry;
 
 namespace lld {
 
@@ -111,8 +113,7 @@ void doPropeller() {
 }
 
 bool isBBSymbolAndKeepIt(llvm::StringRef name) {
-  return !propConfig.optPropeller.empty() &&
-         lld::propeller::SymbolEntry::isBBSymbol(name) &&
+  return !propConfig.optPropeller.empty() && SymbolEntry::isBBSymbol(name) &&
          (propConfig.optKeepNamedSymbols ||
           propeller::propLeg.shouldKeepBBSymbol(name));
 }
