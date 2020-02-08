@@ -1705,7 +1705,8 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       InputSection *Next =
           (I + 1) < Sections.size() ? Sections[I + 1] : nullptr;
       InputSection &IS = *Sections[I];
-      Result[I] = target->deleteFallThruJmpInsn(IS, IS.getFile<ELFT>(), Next) ? 1 : 0;
+      Result[I] =
+          target->deleteFallThruJmpInsn(IS, IS.getFile<ELFT>(), Next) ? 1 : 0;
     });
     size_t NumDeleted = std::count(Result.begin(), Result.end(), 1);
     if (NumDeleted > 0) {
@@ -1732,8 +1733,8 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
         Changed[I] = (BytesShrunk > 0) ? 1 : 0;
         Shrunk[I] += BytesShrunk;
       });
-      AnyChanged =
-          std::any_of(Changed.begin(), Changed.end(), [](unsigned e) { return e > 0; });
+      AnyChanged = std::any_of(Changed.begin(), Changed.end(),
+                               [](unsigned e) { return e > 0; });
       size_t Num = std::count_if(Shrunk.begin(), Shrunk.end(),
                                  [](int e) { return e > 0; });
       Num += std::count_if(Shrunk.begin(), Shrunk.end(),
