@@ -1697,7 +1697,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     if (!(OS->flags & SHF_EXECINSTR))
       continue;
     std::vector<InputSection *> Sections = getInputSections(OS);
-    std::vector<bool> Result(Sections.size());
+    std::vector<unsigned> Result(Sections.size());
     // Step 1: Delete all fall through jump instructions.  Also, check if two
     // consecutive jump instructions can be flipped so that a fall through jmp
     // instruction can be deleted.
@@ -1705,9 +1705,9 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       InputSection *Next =
           (I + 1) < Sections.size() ? Sections[I + 1] : nullptr;
       InputSection &IS = *Sections[I];
-      Result[I] = target->deleteFallThruJmpInsn(IS, IS.getFile<ELFT>(), Next);
+      Result[I] = target->deleteFallThruJmpInsn(IS, IS.getFile<ELFT>(), Next) ? 1 : 0;
     });
-    size_t NumDeleted = std::count(Result.begin(), Result.end(), true);
+    size_t NumDeleted = std::count(Result.begin(), Result.end(), 1);
     if (NumDeleted > 0) {
       script->assignAddresses();
       LLVM_DEBUG(llvm::dbgs()
@@ -1722,18 +1722,18 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
 
     // Shrink jump Instructions optimistically
     std::vector<unsigned> Shrunk(Sections.size(), 0);
-    std::vector<bool> Changed(Sections.size(), 0);
+    std::vector<unsigned> Changed(Sections.size(), 0);
     bool AnyChanged = false;
     do {
       AnyChanged = false;
       parallelForEachN(0, Sections.size(), [&](size_t I) {
         InputSection &IS = *Sections[I];
         unsigned BytesShrunk = target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
-        Changed[I] = (BytesShrunk > 0);
+        Changed[I] = (BytesShrunk > 0) ? 1 : 0;
         Shrunk[I] += BytesShrunk;
       });
       AnyChanged =
-          std::any_of(Changed.begin(), Changed.end(), [](bool e) { return e; });
+          std::any_of(Changed.begin(), Changed.end(), [](unsigned e) { return e > 0; });
       size_t Num = std::count_if(Shrunk.begin(), Shrunk.end(),
                                  [](int e) { return e > 0; });
       Num += std::count_if(Shrunk.begin(), Shrunk.end(),

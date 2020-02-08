@@ -183,6 +183,7 @@ static bool isDirectJmpInsnOpcode(const uint8_t *Opcode) {
 
 // Return true if Relocaction R points to the first instruction in the
 // next section.
+// TODO: Delete this once a new relocation is added for this.
 static bool isFallThruRelocation(InputSection &IS, InputFile *File,
                                  InputSection *NextIS, Relocation &R) {
   if (!isRelocationForJmpInsn(R))
@@ -296,11 +297,8 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
   if (JInvert == J_UNKNOWN)
     return false;
   IS.addJumpRelocation({JInvert, (Rb.offset - 1), 4});
-  // Move R's values to Rb
-  Rb.expr = R.expr;
-  Rb.type = R.type;
-  Rb.addend = R.addend;
-  Rb.sym = R.sym;
+  // Move R's values to Rb except the offset.
+  Rb = {R.expr, R.type, Rb.offset, R.addend, R.sym};
   // Cancel R
   R.expr = R_NONE;
   R.offset = 0;
