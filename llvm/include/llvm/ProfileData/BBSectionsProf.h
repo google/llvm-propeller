@@ -55,7 +55,7 @@ struct SymbolEntry {
   AliasesTy aliases;
   uint64_t addr;
   uint64_t size;
-  bool bbTag;   // Whether this is a basic block section symbol.
+  bool bbTag; // Whether this is a basic block section symbol.
   BBTagTypeEnum bbTagType;
 
   bool hotTag; // Whether this symbol is listed in the propeller section.
@@ -126,8 +126,7 @@ struct SymbolEntry {
   static const uint64_t INVALID_ADDRESS = uint64_t(-1);
 };
 
-
-}
+} // namespace propeller
 } // namespace llvm
 
 #endif

@@ -233,8 +233,7 @@ public:
     assert(!function->bbTag && function->isFunction());
     auto *sym =
         new SymbolEntry(ordinal, bbIndex, SymbolEntry::AliasesTy(),
-                        SymbolEntry::INVALID_ADDRESS, size,
-                        true, function);
+                        SymbolEntry::INVALID_ADDRESS, size, true, function);
     // Landing pads are always treated as cold.
     if (bbtt == SymbolEntry::BB_RETURN_AND_LANDING_PAD ||
         bbtt == SymbolEntry::BB_LANDING_PAD)
