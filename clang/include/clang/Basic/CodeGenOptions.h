@@ -118,7 +118,15 @@ public:
 
   enum class SignReturnAddressKeyValue { AKey, BKey };
 
-  // Allowed values are {"all", "labels", "none", "<filename>"}
+  // This field stores one of the allowed values for the option
+  // -fbasicblock-sections=.  The allowed values with this option are:
+  // {"all", "labels", "none", "<filename>"}.
+  // "all" :  Generate basic block sections for all basic blocks.
+  // "labels": Only generate basic block symbols (labels) for all basic blocks,
+  // do not generate unique sections for basic blocks.
+  // "none": Disable sections/labels for basic blocks.
+  // "<filename>":  Generate basic block sections for a subset of basic blocks.
+  // The functions and their basic blocks are specified in the file.
   std::string BBSections;
 
   enum class FramePointerKind {
