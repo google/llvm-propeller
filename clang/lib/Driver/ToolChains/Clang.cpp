@@ -4813,8 +4813,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    options::OPT_fno_unique_internal_funcnames, false))
     CmdArgs.push_back("-funique-internal-funcnames");
 
-  if (Args.hasFlag(options::OPT_funique_bb_section_names,
-                   options::OPT_fno_unique_bb_section_names, false))
+  if (Args.hasArg(options::OPT_funique_bb_section_names))
     CmdArgs.push_back("-funique-bb-section-names");
 
   Args.AddLastArg(CmdArgs, options::OPT_finstrument_functions,
