@@ -3,8 +3,9 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LineIterator.h"
+#include "llvm/Support/MemoryBuffer.h"
 
-#include <fstream>
 #include <string>
 
 using llvm::SmallSet;
@@ -31,19 +32,23 @@ bool getBBSectionsList(StringRef profFileName,
   if (profFileName.empty())
     return false;
 
-  std::ifstream fin(profFileName.str());
-  if (!fin.good())
+  auto MbOrErr = MemoryBuffer::getFile(profFileName);
+  if (MbOrErr.getError())
     return false;
 
+  MemoryBuffer &Buffer = *MbOrErr.get();
+  line_iterator LineIt(Buffer, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
+
   StringMap<SmallSet<unsigned, 4>>::iterator fi = bbMap.end();
-  std::string line;
-  while ((std::getline(fin, line)).good()) {
-    StringRef s(line);
-    // Lines beginning with @, # are not useful here.
-    if (s.empty() || s[0] == '@' || s[0] == '#')
+
+  for (; !LineIt.is_at_eof(); ++LineIt) {
+    StringRef s(*LineIt);
+    if (s[0] == '@')
       continue;
+    // Check for the leading "!"
     if (!s.consume_front("!") || s.empty())
       break;
+    // Check for second "!" which encodes basic block ids.
     if (s.consume_front("!")) {
       if (fi != bbMap.end())
         fi->second.insert(std::stoi(s.str()));
