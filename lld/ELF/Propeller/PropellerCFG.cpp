@@ -284,7 +284,8 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
   // {Section Idx -> <CfgNode, <code/landing-pad labesl>>} mapping.
   std::map<uint32_t,
            std::pair<CFGNode *,
-                     std::set<SymbolEntry *, SymbolEntryOrdinalLessComparator>>>
+                     std::set<SymbolEntry *,
+                              typename SymbolEntry::OrdinalLessComparator>>>
       bbGroupSectionMap;
   StringRef cfgName = groupEntries.first;
   std::unique_ptr<ControlFlowGraph> cfg(new ControlFlowGraph(view, cfgName, 0));

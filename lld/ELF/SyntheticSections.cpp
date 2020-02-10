@@ -24,13 +24,13 @@
 #include "Writer.h"
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Memory.h"
-#include "lld/Common/PropellerCommon.h"
 #include "lld/Common/Strings.h"
 #include "lld/Common/Threads.h"
 #include "lld/Common/Version.h"
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugPubTable.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/Compression.h"
@@ -47,6 +47,7 @@ using namespace llvm::ELF;
 using namespace llvm::object;
 using namespace llvm::support;
 
+using llvm::propeller::SymbolEntry;
 using llvm::support::endian::read32le;
 using llvm::support::endian::write32le;
 using llvm::support::endian::write64le;
@@ -2114,7 +2115,7 @@ void SymbolTableBaseSection::addSymbol(Symbol *b) {
   bool hashIt = b->isLocal();
   uint32_t offset = strTabSec.addString(b->getName(), hashIt);
   symbols.push_back({b, offset});
-  if (lld::propeller::SymbolEntry::isBBSymbol(b->getName())) {
+  if (SymbolEntry::isBBSymbol(b->getName())) {
     EndsMap.emplace(std::piecewise_construct, std::forward_as_tuple(EndKey),
                     std::forward_as_tuple(offset, SName.size()));
   }
