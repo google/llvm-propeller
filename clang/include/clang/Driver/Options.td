@@ -1953,8 +1953,7 @@ def fzero_initialized_in_bss : Flag<["-"], "fzero-initialized-in-bss">, Group<f_
 def ffunction_sections : Flag<["-"], "ffunction-sections">, Group<f_Group>,
   Flags<[CC1Option]>,
   HelpText<"Place each function in its own section (ELF Only)">;
-def fno_function_sections : Flag<["-"], "fno-function-sections">,
-  Group<f_Group>, Flags<[CC1Option]>;
+def fno_function_sections : Flag<["-"], "fno-function-sections">, Group<f_Group>;
 def fbasicblock_sections_EQ : Joined<["-"], "fbasicblock-sections=">, Group<f_Group>, Flags<[CC1Option, CC1AsOption]>,
   HelpText<"Place each function's basic blocks in unique sections (ELF Only) : all | labels | none | <filename>">;
 def fdata_sections : Flag <["-"], "fdata-sections">, Group<f_Group>,
