@@ -64,5 +64,5 @@ bool getBBSectionsList(StringRef profFileName,
   return true;
 }
 
-} // namespace propeller
+} // namespace bbsections
 } // namespace llvm
