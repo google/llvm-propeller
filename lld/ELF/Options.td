@@ -304,46 +304,60 @@ defm propeller: Eq<"propeller", "Propeller profile">;
 
 defm propeller_opt: Eq<"propeller-opt",
     "Propeller optimization flags: reorder-blocks, reorder-funcs, and split-funcs is on by the default when -propeller is specified.">,
-  MetaVarName<"[reorder-ip, no-reorder-ip, reorder-blocks, no-reorder-blocks, reorder-funcs, no-reorder-funcs, split-funcs, no-split-funcs]">;
+  MetaVarName<"[reorder-ip, no-reorder-ip, reorder-blocks, no-reorder-blocks, reorder-funcs, no-reorder-funcs, split-funcs, no-split-funcs]">,
+  Flags<[HelpHidden]>;
 
 defm propeller_keep_named_symbols: B<"propeller-keep-named-symbols",
     "Do not delete basic block section symbols",
-    "Delete unused basic block section symbols (default)">;
+    "Delete unused basic block section symbols (default)">,
+  Flags<[HelpHidden]>;
 
 defm propeller_print_stats: B<"propeller-print-stats",
     "Print propeller statistics.",
-    "Do not print propeller statistics (default)">;
+    "Do not print propeller statistics (default)">,
+  Flags<[HelpHidden]>;
 
 defm propeller_cluster_merge_size_threshold: Eq<"propeller-cluster-merge-size-threshold",
-    "Maximum size of a cluster which could be merged with other clusters (default: 2M).">;
+    "Maximum size of a cluster which could be merged with other clusters (default: 2M).">,
+  Flags<[HelpHidden]>;
 
 defm propeller_dump_symbol_order: Eq<"propeller-dump-symbol-order",
     "Dump the propeller-generated symbol ordering into the file.">,
-  MetaVarName<"<file>">;
+  MetaVarName<"<file>">,
+  Flags<[HelpHidden]>;
 
 defm propeller_dump_cfg: Eq<"propeller-dump-cfg",
-    "Dump the cfg of the function in DOT format (in a file named the same as the function).">;
+    "Dump the cfg of the function in DOT format (in a file named the same as the function).">,
+  Flags<[HelpHidden]>;
 
 defm propeller_debug_symbol: Eq<"propeller-debug-symbol",
-    "Print information about propeller actions related to the given symbol.">;
+    "Print information about propeller actions related to the given symbol.">,
+  Flags<[HelpHidden]>;
 
 defm propeller_fallthrough_weight: Eq<"propeller-fallthrough-weight",
-    "Fallthrough weight parameter to use in ExtTSP algorithm (default: 10).">;
+    "Fallthrough weight parameter to use in ExtTSP algorithm (default: 10).">,
+  Flags<[HelpHidden]>;
 
 defm propeller_forward_jump_weight: Eq<"propeller-forward-jump-weight",
-    "(Near) forward jump weight parameter to use in ExtTSP algorithm (default: 1).">;
+    "(Near) forward jump weight parameter to use in ExtTSP algorithm (default: 1).">,
+  Flags<[HelpHidden]>;
+
 
 defm propeller_backward_jump_weight: Eq<"propeller-backward-jump-weight",
-    "(Near) backward jump weight parameter to use in ExtTSP algorithm (default: 1).">;
+    "(Near) backward jump weight parameter to use in ExtTSP algorithm (default: 1).">,
+  Flags<[HelpHidden]>;
 
 defm propeller_forward_jump_distance: Eq<"propeller-forward-jump-distance",
-    "Maximum distance for a forward jump in ExtTSP algorithm (default: 1024).">;
+    "Maximum distance for a forward jump in ExtTSP algorithm (default: 1024).">,
+  Flags<[HelpHidden]>;
 
 defm propeller_backward_jump_distance: Eq<"propeller-backward-jump-distance",
-    "Maximum distance for a backward jump in ExtTSP algorithm (default: 640).">;
+    "Maximum distance for a backward jump in ExtTSP algorithm (default: 640).">,
+  Flags<[HelpHidden]>;
 
 defm propeller_chain_split_threshold: Eq<"propeller-chain-split-threshold",
-    "Maximum binary size of a chain which could be split in ExtTSP algorithm (default: 1024).">;
+    "Maximum binary size of a chain which could be split in ExtTSP algorithm (default: 1024).">,
+  Flags<[HelpHidden]>;
 
 def pop_state: F<"pop-state">,
   HelpText<"Undo the effect of -push-state">;
