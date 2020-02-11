@@ -218,10 +218,13 @@ public:
   // This has to be ordered by length.
   llvm::Optional<std::vector<std::vector<uint8_t>>> SpecialFiller;
 
-  // These are artificial jump relocations.
-  std::vector<JumpRelocation> JumpRelocations;
+  // These are modifiers to jump instructions that are necessary when basic
+  // block sections are enabled.  Basic block sections creates opportunities to
+  // relax jump instructions at basic block boundaries after reordering the
+  // basic blocks.
+  std::vector<JumpInstrMod> JumpInstrMods;
 
-  void addJumpRelocation(JumpRelocation J) { JumpRelocations.push_back(J); }
+  void addJumpInstrMod(JumpInstrMod J) { JumpInstrMods.push_back(J); }
 
   // A function compiled with -fsplit-stack calling a function
   // compiled without -fsplit-stack needs its prologue adjusted. Find

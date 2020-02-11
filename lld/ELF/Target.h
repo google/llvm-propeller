@@ -88,8 +88,8 @@ public:
     relocate(loc, Relocation{R_NONE, type, 0, 0, nullptr}, val);
   }
 
-  virtual void relocateOneJumpRelocation(uint8_t *Loc, JumpRelType Type,
-                                         JumpRelType Val) const {}
+  virtual void applyJumpInstrMod(uint8_t *Loc, JumpModType Type,
+                                 JumpModType Val) const {}
 
   virtual ~TargetInfo();
 

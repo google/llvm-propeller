@@ -1015,16 +1015,16 @@ void InputSectionBase::relocateAlloc(uint8_t *buf, uint8_t *bufEnd) {
     }
   }
 
-  // Relocate JumpRelocations.  JumpRelocations are created when the opcode of
+  // Apply JumpInstrMods.  JumpInstrMods are created when the opcode of
   // a jmp insn must be modified to shrink the jmp insn or to flip the jmp
-  // insn.  This is primarily used to relax and optimize jumps created to use
+  // insn.  This is primarily used to relax and optimize jumps created with
   // basic block sections.
   if (auto *Sec = dyn_cast<InputSection>(this)) {
-    for (const JumpRelocation &JumpRel : JumpRelocations) {
-      uint64_t Offset = JumpRel.Offset;
+    for (const JumpInstrMod &JumpMod : JumpInstrMods) {
+      uint64_t Offset = JumpMod.Offset;
       Offset += Sec->outSecOff;
       uint8_t *BufLoc = buf + Offset;
-      target->relocateOneJumpRelocation(BufLoc, JumpRel.Original, JumpRel.Size);
+      target->applyJumpInstrMod(BufLoc, JumpMod.Original, JumpMod.Size);
     }
   }
 }
