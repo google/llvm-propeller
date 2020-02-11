@@ -305,7 +305,7 @@ getBBSectionsMode(llvm::TargetOptions &Options) {
     return BasicBlockSection::Labels;
   else if (BBSections == "none")
     return BasicBlockSection::None;
-  llvm::propeller::getBBSectionsList(BBSections, Options.BBSectionsList);
+  llvm::bbsections::getBBSectionsList(BBSections, Options.BBSectionsList);
   return BasicBlockSection::List;
 }
 

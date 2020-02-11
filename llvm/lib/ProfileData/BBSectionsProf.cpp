@@ -13,7 +13,7 @@ using llvm::StringMap;
 using llvm::StringRef;
 
 namespace llvm {
-namespace propeller {
+namespace bbsections {
 
 // Basic Block Sections can be enabled for a subset of machine basic blocks.
 // This is done by passing a file containing names of functions for which basic

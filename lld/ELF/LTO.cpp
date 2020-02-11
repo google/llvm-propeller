@@ -86,8 +86,8 @@ static lto::Config createConfig() {
     else if (config->ltoBBSections.equals("none"))
       c.Options.BBSections = BasicBlockSection::None;
     else {
-      llvm::propeller::getBBSectionsList(config->ltoBBSections,
-                                         c.Options.BBSectionsList);
+      llvm::bbsections::getBBSectionsList(config->ltoBBSections,
+                                          c.Options.BBSectionsList);
       c.Options.BBSections = BasicBlockSection::List;
     }
   }

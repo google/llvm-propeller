@@ -11,9 +11,12 @@ using llvm::StringMap;
 using llvm::StringRef;
 
 namespace llvm {
-namespace propeller {
+namespace bbsections {
 bool getBBSectionsList(StringRef profFileName,
                        StringMap<SmallSet<unsigned, 4>> &bbMap);
+} // namespace bbsections
+
+namespace propeller {
 
 static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
 static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arlL";
