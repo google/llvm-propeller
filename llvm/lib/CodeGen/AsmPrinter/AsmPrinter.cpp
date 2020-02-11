@@ -3089,14 +3089,10 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) {
     }
     // With -fbasicblock-sections, a basic block can start a new section.
     if (MBB.isExceptionSection()) {
-      if (MF->front().isExceptionSection()) {
-        OutStreamer->SwitchSection(MF->getSection());
-      } else {
-        // Create the exception section for this function.
-        OutStreamer->SwitchSection(
-            getObjFileLowering().getNamedSectionForMachineBasicBlock(
-                MF->getFunction(), MBB, TM, ".eh"));
-      }
+      // Create the exception section for this function.
+      OutStreamer->SwitchSection(
+          getObjFileLowering().getNamedSectionForMachineBasicBlock(
+              MF->getFunction(), MBB, TM, ".eh"));
     } else if (MBB.isColdSection()) {
       // Create the cold section here.
       OutStreamer->SwitchSection(
