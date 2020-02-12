@@ -342,7 +342,6 @@ defm propeller_forward_jump_weight: Eq<"propeller-forward-jump-weight",
     "(Near) forward jump weight parameter to use in ExtTSP algorithm (default: 1).">,
   Flags<[HelpHidden]>;
 
-
 defm propeller_backward_jump_weight: Eq<"propeller-backward-jump-weight",
     "(Near) backward jump weight parameter to use in ExtTSP algorithm (default: 1).">,
   Flags<[HelpHidden]>;
