@@ -215,8 +215,9 @@ public:
   llvm::Optional<std::array<uint8_t, 4>> Filler;
 
   // Special filler provides variable-length padding instructions.
-  // This has to be ordered by length.
-  llvm::Optional<std::vector<std::vector<uint8_t>>> SpecialFiller;
+  // This has to be ordered by length and would usually be the various sized
+  // NOP instructions.
+  bool SpecialFiller = false;
 
   // These are modifiers to jump instructions that are necessary when basic
   // block sections are enabled.  Basic block sections creates opportunities to

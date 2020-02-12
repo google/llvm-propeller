@@ -147,6 +147,10 @@ public:
   // executable OutputSections.
   std::array<uint8_t, 4> trapInstr;
 
+  // Stores the NOP instructions of different sizes for the target and is used
+  // to pad sections that are relaxed.
+  llvm::Optional<std::vector<std::vector<uint8_t>>> sizedNOPInstrs;
+
   // If a target needs to rewrite calls to __morestack to instead call
   // __morestack_non_split when a split-stack enabled caller calls a
   // non-split-stack callee this will return true. Otherwise returns false.

@@ -89,6 +89,7 @@ X86_64::X86_64() {
   pltEntrySize = 16;
   ipltEntrySize = 16;
   trapInstr = {0xcc, 0xcc, 0xcc, 0xcc}; // 0xcc = INT3
+  sizedNOPInstrs = X86_NOP_INSTRUCTIONS;
 
   // Align to the large page size (known as a superpage or huge page).
   // FreeBSD automatically promotes large, superpage-aligned allocations.
@@ -266,7 +267,7 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
     R.expr = R_NONE;
     R.offset = 0;
     IS.drop_back(SizeOfDirectJmpInsn);
-    IS.SpecialFiller = X86_NOP_INSTRUCTIONS;
+    IS.SpecialFiller = true;
     return true;
   }
 
@@ -303,7 +304,7 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
   R.expr = R_NONE;
   R.offset = 0;
   IS.drop_back(SizeOfDirectJmpInsn);
-  IS.SpecialFiller = X86_NOP_INSTRUCTIONS;
+  IS.SpecialFiller = true;
   return true;
 }
 
