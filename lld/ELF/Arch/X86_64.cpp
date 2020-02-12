@@ -267,7 +267,7 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
     R.expr = R_NONE;
     R.offset = 0;
     IS.drop_back(SizeOfDirectJmpInsn);
-    IS.SpecialFiller = true;
+    IS.NOPFiller = true;
     return true;
   }
 
@@ -304,7 +304,7 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
   R.expr = R_NONE;
   R.offset = 0;
   IS.drop_back(SizeOfDirectJmpInsn);
-  IS.SpecialFiller = true;
+  IS.NOPFiller = true;
   return true;
 }
 
