@@ -414,7 +414,7 @@ bool MachineFunction::sortBBSections() {
   // Order : Entry Block, Exception Section, Cold Section,
   // Other Unique Sections.
   auto SectionType = ([&](MachineBasicBlock &X) {
-    if (X.getNumber() == this->front().getNumber() && !X.isExceptionSection())
+    if (X.getNumber() == this->front().getNumber())
       return 0;
     if (X.isExceptionSection())
       return 1;
