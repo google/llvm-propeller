@@ -350,8 +350,6 @@ template <class ELFT> void OutputSection::writeTo(uint8_t *buf) {
       // Check if this IS needs a special filler.
       if (isec->NOPFiller && target->sizedNOPInstrs)
         fill(start, end - start, *(target->sizedNOPInstrs));
-      else if (isec->Filler)
-        fill(start, end - start, *(isec->Filler));
       else
         fill(start, end - start, filler);
     }

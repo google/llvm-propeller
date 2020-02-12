@@ -212,8 +212,6 @@ public:
   // This vector contains such "cooked" relocations.
   std::vector<Relocation> relocations;
 
-  llvm::Optional<std::array<uint8_t, 4>> Filler;
-
   // Indicates that this section needs to be padded with a NOP filler if set to
   // true.
   bool NOPFiller = false;
