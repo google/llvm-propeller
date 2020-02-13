@@ -126,6 +126,7 @@ declare ALL_FILES=(
         lld-base         lld/ELF/Target.h
         lld-base         lld/ELF/Writer.cpp
 	lld-base         lld/test/ELF/bb-sections-delete-fallthru.s
+	lld-base         lld/test/ELF/bb-sections-and-icf.s
 # LLVM patch begins here.
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
