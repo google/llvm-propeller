@@ -130,8 +130,8 @@ public:
 
   // If basic block sections are enabled, many code sections could end up with
   // one or two jump instructions at the end that could be relaxed to a smaller
-  // instruction.  We want to trim the trailing jump instruction by shrinking a
-  // section. We have a few members to support that operation.
+  // instruction. The members below help trimming the trailing jump instruction
+  // and shrinking a section.
   unsigned bytesDropped = 0;
 
   bool trimmed = false;
