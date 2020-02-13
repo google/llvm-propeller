@@ -1643,35 +1643,35 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
 static void fixSymbolsAfterShrinking() {
   for (InputFile *File : objectFiles) {
     parallelForEach(File->getSymbols(), [&](Symbol *Sym) {
-      auto *Def = dyn_cast<Defined>(Sym);
-      if (!Def)
+      auto *def = dyn_cast<Defined>(Sym);
+      if (!def)
         return;
 
-      const SectionBase *Sec = Def->section;
-      if (!Sec)
+      const SectionBase *sec = def->section;
+      if (!sec)
         return;
 
-      const auto *InputSec = dyn_cast<InputSectionBase>(Sec->repl);
-      if (!InputSec || !InputSec->BytesDropped)
+      const auto *inputSec = dyn_cast<InputSectionBase>(sec->repl);
+      if (!inputSec || !inputSec->bytesDropped)
         return;
 
-      const auto NewSize = InputSec->data().size();
+      const auto NewSize = inputSec->data().size();
 
-      if (Def->value > NewSize) {
+      if (def->value > NewSize) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Moving symbol " << Sym->getName() << " from "
-                   << Def->value << " to "
-                   << Def->value - InputSec->BytesDropped << " bytes\n");
-        Def->value -= InputSec->BytesDropped;
+                   << def->value << " to "
+                   << def->value - inputSec->bytesDropped << " bytes\n");
+        def->value -= inputSec->bytesDropped;
         return;
       }
 
-      if (Def->value + Def->size > NewSize) {
+      if (def->value + def->size > NewSize) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Shrinking symbol " << Sym->getName() << " from "
-                   << Def->size << " to " << Def->size - InputSec->BytesDropped
+                   << def->size << " to " << def->size - inputSec->BytesDropped
                    << " bytes\n");
-        Def->size -= InputSec->BytesDropped;
+        def->size -= inputSec->bytesDropped;
       }
     });
   }
@@ -1693,26 +1693,26 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
   //       flipped and one can be deleted.
   //   2.  It aggressively shrinks jump instructions.
   //   3.  It aggressively grows back jump instructions.
-  for (OutputSection *OS : outputSections) {
-    if (!(OS->flags & SHF_EXECINSTR))
+  for (OutputSection *os : outputSections) {
+    if (!(os->flags & SHF_EXECINSTR))
       continue;
-    std::vector<InputSection *> Sections = getInputSections(OS);
-    std::vector<unsigned> Result(Sections.size());
+    std::vector<InputSection *> sections = getInputSections(os);
+    std::vector<unsigned> result(sections.size());
     // Step 1: Delete all fall through jump instructions.  Also, check if two
     // consecutive jump instructions can be flipped so that a fall through jmp
     // instruction can be deleted.
-    parallelForEachN(0, Sections.size(), [&](size_t I) {
-      InputSection *Next =
-          (I + 1) < Sections.size() ? Sections[I + 1] : nullptr;
-      InputSection &IS = *Sections[I];
-      Result[I] =
-          target->deleteFallThruJmpInsn(IS, IS.getFile<ELFT>(), Next) ? 1 : 0;
+    parallelForEachN(0, sections.size(), [&](size_t i) {
+      InputSection *next =
+          (i + 1) < sections.size() ? sections[i + 1] : nullptr;
+      InputSection &is = *sections[i];
+      result[i] =
+          target->deleteFallThruJmpInsn(is, is.getFile<ELFT>(), next) ? 1 : 0;
     });
-    size_t NumDeleted = std::count(Result.begin(), Result.end(), 1);
-    if (NumDeleted > 0) {
+    size_t numDeleted = std::count(result.begin(), result.end(), 1);
+    if (numDeleted > 0) {
       script->assignAddresses();
       LLVM_DEBUG(llvm::dbgs()
-                 << "Removing " << NumDeleted << " fall through jumps\n");
+                 << "Removing " << numDeleted << " fall through jumps\n");
     }
 
     // Step 2:  Shrink jump instructions.  If the offset of the jump can fit in
@@ -1722,60 +1722,60 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     // rectify it in the next step by growing the jumps if necessary.
 
     // Shrink jump Instructions optimistically
-    std::vector<unsigned> Shrunk(Sections.size(), 0);
-    std::vector<unsigned> Changed(Sections.size(), 0);
-    bool AnyChanged = false;
+    std::vector<unsigned> shrunk(sections.size(), 0);
+    std::vector<unsigned> changed(sections.size(), 0);
+    bool anyChanged = false;
     do {
-      AnyChanged = false;
-      parallelForEachN(0, Sections.size(), [&](size_t I) {
-        InputSection &IS = *Sections[I];
-        unsigned BytesShrunk = target->shrinkJmpInsn(IS, IS.getFile<ELFT>());
-        Changed[I] = (BytesShrunk > 0) ? 1 : 0;
-        Shrunk[I] += BytesShrunk;
+      anyChanged = false;
+      parallelForEachN(0, sections.size(), [&](size_t i) {
+        InputSection &is = *sections[i];
+        unsigned BytesShrunk = target->shrinkJmpInsn(is, is.getFile<ELFT>());
+        changed[i] = (BytesShrunk > 0) ? 1 : 0;
+        shrunk[i] += BytesShrunk;
       });
-      AnyChanged = std::any_of(Changed.begin(), Changed.end(),
+      anyChanged = std::any_of(changed.begin(), changed.end(),
                                [](unsigned e) { return e > 0; });
-      size_t Num = std::count_if(Shrunk.begin(), Shrunk.end(),
+      size_t num = std::count_if(shrunk.begin(), shrunk.end(),
                                  [](int e) { return e > 0; });
-      Num += std::count_if(Shrunk.begin(), Shrunk.end(),
+      num += std::count_if(shrunk.begin(), shrunk.end(),
                            [](int e) { return e > 4; });
-      if (Num > 0)
+      if (num > 0)
         LLVM_DEBUG(llvm::dbgs()
-                   << "Output Section :" << OS->name << " : Shrinking " << Num
+                   << "Output Section :" << os->name << " : Shrinking " << Num
                    << " jmp instructions\n");
-      if (AnyChanged)
+      if (anyChanged)
         script->assignAddresses();
-    } while (AnyChanged);
+    } while (anyChanged);
 
     // Grow jump instructions when necessary
-    std::vector<unsigned> Grown(Sections.size(), 0);
+    std::vector<unsigned> grown(sections.size(), 0);
     do {
-      AnyChanged = false;
-      parallelForEachN(0, Sections.size(), [&](size_t I) {
-        InputSection &IS = *Sections[I];
-        unsigned BytesGrown = target->growJmpInsn(IS, IS.getFile<ELFT>());
-        Changed[I] = (BytesGrown > 0);
-        Grown[I] += BytesGrown;
+      anyChanged = false;
+      parallelForEachN(0, sections.size(), [&](size_t i) {
+        InputSection &is = *sections[i];
+        unsigned bytesGrown = target->growJmpInsn(is, is.getFile<ELFT>());
+        changed[i] = (bytesGrown > 0);
+        grown[i] += bytesGrown;
       });
-      size_t Num = std::count_if(Grown.begin(), Grown.end(),
+      size_t num = std::count_if(grown.begin(), grown.end(),
                                  [](int e) { return e > 0; });
-      Num += std::count_if(Grown.begin(), Grown.end(),
+      num += std::count_if(grown.begin(), grown.end(),
                            [](int e) { return e > 4; });
-      if (Num > 0)
+      if (num > 0)
         LLVM_DEBUG(llvm::dbgs()
-                   << "Output Section :" << OS->name << " : Growing " << Num
+                   << "Output Section :" << os->name << " : Growing " << Num
                    << " jmp instructions\n");
-      AnyChanged =
-          std::any_of(Changed.begin(), Changed.end(), [](bool e) { return e; });
-      if (AnyChanged)
+      anyChanged =
+          std::any_of(changed.begin(), changed.end(), [](bool e) { return e; });
+      if (anyChanged)
         script->assignAddresses();
-    } while (AnyChanged);
+    } while (anyChanged);
   }
 
-  for (OutputSection *OS : outputSections) {
-    std::vector<InputSection *> Sections = getInputSections(OS);
-    for (InputSection *IS : Sections)
-      IS->trim();
+  for (OutputSection *os : outputSections) {
+    std::vector<InputSection *> sections = getInputSections(os);
+    for (InputSection *is : sections)
+      is->trim();
   }
 
   fixSymbolsAfterShrinking();

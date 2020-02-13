@@ -138,10 +138,10 @@ size_t InputSectionBase::getSize() const {
     return s->getSize();
   if (uncompressedSize >= 0)
     return uncompressedSize;
-  if (Trimmed)
+  if (trimmed)
     return rawData.size();
   else
-    return rawData.size() - BytesDropped;
+    return rawData.size() - bytesDropped;
 }
 
 void InputSectionBase::uncompress() const {
@@ -1015,16 +1015,16 @@ void InputSectionBase::relocateAlloc(uint8_t *buf, uint8_t *bufEnd) {
     }
   }
 
-  // Apply JumpInstrMods.  JumpInstrMods are created when the opcode of
+  // Apply jumpInstrMods.  jumpInstrMods are created when the opcode of
   // a jmp insn must be modified to shrink the jmp insn or to flip the jmp
   // insn.  This is primarily used to relax and optimize jumps created with
   // basic block sections.
-  if (auto *Sec = dyn_cast<InputSection>(this)) {
-    for (const JumpInstrMod &JumpMod : JumpInstrMods) {
-      uint64_t Offset = JumpMod.Offset;
-      Offset += Sec->outSecOff;
-      uint8_t *BufLoc = buf + Offset;
-      target->applyJumpInstrMod(BufLoc, JumpMod.Original, JumpMod.Size);
+  if (auto *sec = dyn_cast<InputSection>(this)) {
+    for (const JumpInstrMod &jumpMod : jumpInstrMods) {
+      uint64_t offset = jumpMod.Offset;
+      offset += sec->outSecOff;
+      uint8_t *bufLoc = buf + offset;
+      target->applyJumpInstrMod(bufLoc, jumpMod.Original, jumpMod.Size);
     }
   }
 }

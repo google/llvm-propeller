@@ -243,20 +243,20 @@ void OutputSection::sort(llvm::function_ref<int(InputSectionBase *s)> order) {
       sortByOrder(isd->sections, order);
 }
 
-static void fill(uint8_t *Buf, size_t Size,
-                 const std::vector<std::vector<uint8_t>> &SFiller) {
-  unsigned I = 0;
-  unsigned NC = Size / SFiller.back().size();
-  for (unsigned C = 0; C < NC; ++C) {
-    memcpy(Buf + I, SFiller.back().data(), SFiller.back().size());
-    I += SFiller.back().size();
+static void nopInstrFill(uint8_t *Buf, size_t Size) {
+  unsigned i = 0;
+  auto nopFiller = *target->nopInstrs;
+  unsigned num = Size / nopFiller.back().size();
+  for (unsigned C = 0; C < num; ++C) {
+    memcpy(Buf + i, nopFiller.back().data(), nopFiller.back().size());
+    i += nopFiller.back().size();
   }
-  unsigned remaining = Size - I;
+  unsigned remaining = Size - i;
   if (!remaining)
     return;
-  if (SFiller[remaining - 1].size() != remaining)
+  if (nopFiller[remaining - 1].size() != remaining)
     fatal("failed padding with special filler");
-  memcpy(Buf + I, SFiller[remaining - 1].data(), remaining);
+  memcpy(Buf + i, nopFiller[remaining - 1].data(), remaining);
 }
 
 // Fill [Buf, Buf + Size) with Filler.
@@ -348,8 +348,8 @@ template <class ELFT> void OutputSection::writeTo(uint8_t *buf) {
       else
         end = buf + sections[i + 1]->outSecOff;
       // Check if this IS needs a special filler.
-      if (isec->NOPFiller && target->sizedNOPInstrs)
-        fill(start, end - start, *(target->sizedNOPInstrs));
+      if (isec->nopFiller && target->nopInstrs)
+        nopInstrFill(start, end - start);
       else
         fill(start, end - start, filler);
     }

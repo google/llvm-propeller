@@ -128,23 +128,27 @@ public:
     return cast_or_null<ObjFile<ELFT>>(file);
   }
 
-  unsigned BytesDropped = 0;
+  // If basic block sections are enabled, many code sections could end up with
+  // one or two jump instructions at the end that could be relaxed to a smaller
+  // instruction.  We want to trim the trailing jump instruction by shrinking a
+  // section. We have a few members to support that operation.
+  unsigned bytesDropped = 0;
 
-  bool Trimmed = false;
+  bool trimmed = false;
 
-  void drop_back(uint64_t num) { BytesDropped += num; }
+  void drop_back(uint64_t num) { bytesDropped += num; }
 
   void push_back(uint64_t num) {
-    assert(BytesDropped >= num);
-    BytesDropped -= num;
+    assert(bytesDropped >= num);
+    bytesDropped -= num;
   }
 
   void trim() {
-    if (Trimmed)
+    if (trimmed)
       return;
-    if (BytesDropped) {
-      rawData = rawData.drop_back(BytesDropped);
-      Trimmed = true;
+    if (bytesDropped) {
+      rawData = rawData.drop_back(bytesDropped);
+      trimmed = true;
     }
   }
 
@@ -214,15 +218,13 @@ public:
 
   // Indicates that this section needs to be padded with a NOP filler if set to
   // true.
-  bool NOPFiller = false;
+  bool nopFiller = false;
 
   // These are modifiers to jump instructions that are necessary when basic
   // block sections are enabled.  Basic block sections creates opportunities to
   // relax jump instructions at basic block boundaries after reordering the
   // basic blocks.
-  std::vector<JumpInstrMod> JumpInstrMods;
-
-  void addJumpInstrMod(JumpInstrMod J) { JumpInstrMods.push_back(J); }
+  std::vector<JumpInstrMod> jumpInstrMods;
 
   // A function compiled with -fsplit-stack calling a function
   // compiled without -fsplit-stack needs its prologue adjusted. Find
