@@ -134,8 +134,6 @@ public:
   // and shrinking a section.
   unsigned bytesDropped = 0;
 
-  bool trimmed = false;
-
   void drop_back(uint64_t num) { bytesDropped += num; }
 
   void push_back(uint64_t num) {
@@ -144,11 +142,9 @@ public:
   }
 
   void trim() {
-    if (trimmed)
-      return;
     if (bytesDropped) {
       rawData = rawData.drop_back(bytesDropped);
-      trimmed = true;
+      bytesDropped = 0;
     }
   }
 

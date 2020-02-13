@@ -178,10 +178,6 @@ static bool isRelocationForJmpInsn(Relocation &R) {
           R.type == R_X86_64_PC8);
 }
 
-static bool isDirectJmpInsnOpcode(const uint8_t *opcode) {
-  return (*opcode == 0xe9);
-}
-
 // Return true if Relocation R points to the first instruction in the
 // next section.
 // TODO: Delete this once a new relocation is added for this.
@@ -227,8 +223,9 @@ static JmpInsnOpcode invertJmpOpcode(const JmpInsnOpcode opcode) {
     return J_JBE_32;
   case J_JAE_32:
     return J_JB_32;
+  default:
+    return J_UNKNOWN;
   }
-  return J_UNKNOWN;
 }
 
 // Deletes direct jump instruction in input sections that jumps to the
@@ -254,7 +251,8 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
 
   // Check if the relocation corresponds to a direct jmp.
   const uint8_t *secContents = is.data().data();
-  if (!isDirectJmpInsnOpcode(secContents + r.offset - 1))
+  // If it is not a direct jmp instruction, there is nothing to do here.
+  if (*(secContents + r.offset - 1) != 0xe9)
     return false;
 
   if (isFallThruRelocation(is, file, nextIS, r)) {

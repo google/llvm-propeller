@@ -245,7 +245,7 @@ void OutputSection::sort(llvm::function_ref<int(InputSectionBase *s)> order) {
 
 static void nopInstrFill(uint8_t *Buf, size_t Size) {
   unsigned i = 0;
-  auto nopFiller = *target->nopInstrs;
+  std::vector<std::vector<uint8_t>> nopFiller = *target->nopInstrs;
   unsigned num = Size / nopFiller.back().size();
   for (unsigned C = 0; C < num; ++C) {
     memcpy(Buf + i, nopFiller.back().data(), nopFiller.back().size());
