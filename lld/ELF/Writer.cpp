@@ -1681,7 +1681,7 @@ static void fixSymbolsAfterShrinking() {
 // jumps and shrink jump instructions after basic block reordering.  This
 // relaxation pass does that.
 template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
-  if (!config->optimizeBBJumps || !ELFT::Is64Bits)
+  if (!config->optimizeBBJumps)
     return;
 
   script->assignAddresses();

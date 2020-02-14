@@ -243,20 +243,20 @@ void OutputSection::sort(llvm::function_ref<int(InputSectionBase *s)> order) {
       sortByOrder(isd->sections, order);
 }
 
-static void nopInstrFill(uint8_t *Buf, size_t Size) {
+static void nopInstrFill(uint8_t *buf, size_t size) {
   unsigned i = 0;
   std::vector<std::vector<uint8_t>> nopFiller = *target->nopInstrs;
-  unsigned num = Size / nopFiller.back().size();
-  for (unsigned C = 0; C < num; ++C) {
-    memcpy(Buf + i, nopFiller.back().data(), nopFiller.back().size());
+  unsigned num = size / nopFiller.back().size();
+  for (unsigned c = 0; c < num; ++c) {
+    memcpy(buf + i, nopFiller.back().data(), nopFiller.back().size());
     i += nopFiller.back().size();
   }
-  unsigned remaining = Size - i;
+  unsigned remaining = size - i;
   if (!remaining)
     return;
   if (nopFiller[remaining - 1].size() != remaining)
     fatal("failed padding with special filler");
-  memcpy(Buf + i, nopFiller[remaining - 1].data(), remaining);
+  memcpy(buf + i, nopFiller[remaining - 1].data(), remaining);
 }
 
 // Fill [Buf, Buf + Size) with Filler.

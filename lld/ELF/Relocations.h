@@ -112,9 +112,9 @@ struct Relocation {
 // jump instruction opcodes at basic block boundaries and are particularly
 // useful when basic block sections are enabled.
 struct JumpInstrMod {
-  JumpModType Original;
-  uint64_t Offset;
-  unsigned Size;
+  JumpModType original;
+  uint64_t offset;
+  unsigned size;
 };
 
 // This function writes undefined symbol diagnostics to an internal buffer.

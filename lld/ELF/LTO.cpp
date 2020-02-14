@@ -78,15 +78,15 @@ static lto::Config createConfig() {
   c.Options.DataSections = true;
 
   // Check if basic block sections must be used.
-  if (!config->ltoBBSections.empty()) {
-    if (config->ltoBBSections == "all")
+  if (!config->ltoBasicBlockSections.empty()) {
+    if (config->ltoBasicBlockSections == "all")
       c.Options.BBSections = BasicBlockSection::All;
-    else if (config->ltoBBSections == "labels")
+    else if (config->ltoBasicBlockSections == "labels")
       c.Options.BBSections = BasicBlockSection::Labels;
-    else if (config->ltoBBSections == "none")
+    else if (config->ltoBasicBlockSections == "none")
       c.Options.BBSections = BasicBlockSection::None;
     else {
-      llvm::bbsections::getBBSectionsList(config->ltoBBSections,
+      llvm::bbsections::getBBSectionsList(config->ltoBasicBlockSections,
                                           c.Options.BBSectionsList);
       c.Options.BBSections = BasicBlockSection::List;
     }

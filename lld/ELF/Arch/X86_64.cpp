@@ -156,7 +156,7 @@ static JmpInsnOpcode getJmpInsnType(const uint8_t *first,
 static unsigned getRelocationWithOffset(const InputSection &is,
                                         uint64_t offset) {
   unsigned i = 0;
-  for (; i < is.relocations.size(); ++i) {
+  for (unsigned e = is.relocations.size(); i < e; ++i) {
     if (is.relocations[i].offset == offset && is.relocations[i].expr != R_NONE)
       break;
   }
@@ -167,7 +167,7 @@ static unsigned getJumpInstrModWithOffset(const InputSection &is,
                                           uint64_t offset) {
   unsigned i = 0;
   for (; i < is.jumpInstrMods.size(); ++i) {
-    if (is.jumpInstrMods[i].Offset == offset)
+    if (is.jumpInstrMods[i].offset == offset)
       break;
   }
   return i;
@@ -278,8 +278,8 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
   Relocation &rB = is.relocations[rbIndex];
 
   const uint8_t *jmpInsnB = secContents + rB.offset - 1;
-  JmpInsnOpcode jmpOpcode_B = getJmpInsnType(jmpInsnB - 1, jmpInsnB);
-  if (jmpOpcode_B == J_UNKNOWN)
+  JmpInsnOpcode jmpOpcodeB = getJmpInsnType(jmpInsnB - 1, jmpInsnB);
+  if (jmpOpcodeB == J_UNKNOWN)
     return false;
 
   if (!isFallThruRelocation(is, file, nextIS, rB))
@@ -287,7 +287,7 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
 
   // jmpCC jumps to the fall thru block, the branch can be flipped and the
   // jmp can be deleted.
-  JmpInsnOpcode jInvert = invertJmpOpcode(jmpOpcode_B);
+  JmpInsnOpcode jInvert = invertJmpOpcode(jmpOpcodeB);
   if (jInvert == J_UNKNOWN)
     return false;
   is.jumpInstrMods.push_back({jInvert, (rB.offset - 1), 4});
@@ -313,7 +313,7 @@ static uint64_t getTargetOffsetForJmp(InputSection &is, InputFile *file,
 
   unsigned JIndex = getJumpInstrModWithOffset(is, (r.offset - 1));
   if (JIndex != is.jumpInstrMods.size()) {
-    jmpCode = static_cast<JmpInsnOpcode>(is.jumpInstrMods[JIndex].Original);
+    jmpCode = static_cast<JmpInsnOpcode>(is.jumpInstrMods[JIndex].original);
   } else {
     const uint8_t *SecContents = is.data().data();
     const uint8_t *JmpInsn = SecContents + r.offset - 1;
@@ -371,9 +371,9 @@ static void shrinkJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
   if (JIndex < IS.jumpInstrMods.size()) {
     JumpInstrMod &J = IS.jumpInstrMods[JIndex];
     assert((!DoShrinkJmp || J.Size == 4) && "Not the right size of jump.");
-    J.Offset = R.offset - 1;
+    J.offset = R.offset - 1;
     if (DoShrinkJmp)
-      J.Size = NewJmpSize;
+      J.size = NewJmpSize;
   } else {
     IS.jumpInstrMods.push_back({JmpCode, R.offset - 1, NewJmpSize});
   }
@@ -471,11 +471,11 @@ static void growJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
   R.offset += BytesGrown;
 
   JumpInstrMod &J = IS.jumpInstrMods[JIndex];
-  assert((!DoGrowJmp || J.Size == 1) && "Not the right size of jump.");
-  J.Offset = R.offset - 1;
+  assert((!DoGrowJmp || J.size == 1) && "Not the right size of jump.");
+  J.offset = R.offset - 1;
   if (DoGrowJmp) {
     // Growing Jmp corresponding to relocation R, adjust type and addend.
-    J.Size = 4;
+    J.size = 4;
     R.type = R_X86_64_PC32;
     // assert(R.addend == -1 && "Addend must be -1 to grow.");
     R.addend -= 3;

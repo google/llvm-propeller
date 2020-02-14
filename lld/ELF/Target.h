@@ -88,8 +88,8 @@ public:
     relocate(loc, Relocation{R_NONE, type, 0, 0, nullptr}, val);
   }
 
-  virtual void applyJumpInstrMod(uint8_t *Loc, JumpModType Type,
-                                 JumpModType Val) const {}
+  virtual void applyJumpInstrMod(uint8_t *loc, JumpModType type,
+                                 JumpModType val) const {}
 
   virtual ~TargetInfo();
 
@@ -98,16 +98,16 @@ public:
   //  jump consecutively, it tries to flip the conditional jump to convert the
   //  direct jump into a fall thru and delete it.  Returns true if a jump
   //  instruction can be deleted.
-  virtual bool deleteFallThruJmpInsn(InputSection &IS, InputFile *File,
-                                     InputSection *NextIS) const {
+  virtual bool deleteFallThruJmpInsn(InputSection &is, InputFile *file,
+                                     InputSection *nextIS) const {
     return false;
   }
 
-  virtual unsigned shrinkJmpInsn(InputSection &IS, InputFile *File) const {
+  virtual unsigned shrinkJmpInsn(InputSection &is, InputFile *file) const {
     return 0;
   }
 
-  virtual unsigned growJmpInsn(InputSection &IS, InputFile *File) const {
+  virtual unsigned growJmpInsn(InputSection &is, InputFile *file) const {
     return 0;
   }
 

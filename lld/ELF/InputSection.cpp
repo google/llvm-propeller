@@ -1018,10 +1018,9 @@ void InputSectionBase::relocateAlloc(uint8_t *buf, uint8_t *bufEnd) {
   // basic block sections.
   if (auto *sec = dyn_cast<InputSection>(this)) {
     for (const JumpInstrMod &jumpMod : jumpInstrMods) {
-      uint64_t offset = jumpMod.Offset;
-      offset += sec->outSecOff;
+      uint64_t offset = jumpMod.offset + sec->outSecOff;
       uint8_t *bufLoc = buf + offset;
-      target->applyJumpInstrMod(bufLoc, jumpMod.Original, jumpMod.Size);
+      target->applyJumpInstrMod(bufLoc, jumpMod.original, jumpMod.size);
     }
   }
 }
