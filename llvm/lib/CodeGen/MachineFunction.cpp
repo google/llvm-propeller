@@ -377,24 +377,24 @@ bool MachineFunction::sortBBSections() {
   unsigned MBBOrderN = 0;
 
   SmallSet<unsigned, 4> S = Target.getBBSectionsSet(F.getName());
+
+  bool EHPadsAreCold = true;
+
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
     // used for exception table computations.  Entry basic block cannot
     // start another section because the function starts one already.
-    if (MBB.getNumber() == this->front().getNumber()) {
-      if (MBB.isEHPad())
-        MBB.setExceptionSection();
+    if (MBB.getNumber() == this->front().getNumber())
       continue;
-    }
     // Also, check if this BB is a cold basic block in which case sections
     // are not required with the list option.
     bool isColdBB =
         ((Target.getBBSections() == llvm::BasicBlockSection::List) &&
          !S.empty() && !S.count(MBB.getNumber()));
-    if (MBB.isEHPad()) {
-      MBB.setExceptionSection();
-    } else if (isColdBB) {
+    if (isColdBB) {
       MBB.setColdSection();
+    } else if (MBB.isEHPad()) {
+      EHPadsAreCold = false;
     } else {
       // Place this MBB in a unique section.  A unique section begins and ends
       // that section.
@@ -404,10 +404,17 @@ bool MachineFunction::sortBBSections() {
     MBBOrder[&MBB] = MBBOrderN++;
   }
 
-  // With -fbasicblock-sections, fall through blocks must be made
-  // explicitly reachable.  Do this after sections is set as
-  // unnecessary fallthroughs can be avoided.
+
   for (auto &MBB : *this) {
+    if (MBB.isEHPad()) {
+      if (EHPadsAreCold)
+        MBB.setColdSection();
+      else
+        MBB.setExceptionSection();
+    }
+    // With -fbasicblock-sections, fall through blocks must be made
+    // explicitly reachable.  Do this after sections is set as
+    // unnecessary fallthroughs can be avoided.
     MBB.insertUnconditionalFallthroughBranch();
   }
 
