@@ -1669,7 +1669,7 @@ static void fixSymbolsAfterShrinking() {
       if (def->value + def->size > NewSize) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Shrinking symbol " << Sym->getName() << " from "
-                   << def->size << " to " << def->size - inputSec->BytesDropped
+                   << def->size << " to " << def->size - inputSec->bytesDropped
                    << " bytes\n");
         def->size -= inputSec->bytesDropped;
       }
