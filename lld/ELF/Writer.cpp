@@ -1651,11 +1651,11 @@ static void fixSymbolsAfterShrinking() {
       if (!sec)
         return;
 
-      const auto *inputSec = dyn_cast<InputSectionBase>(sec->repl);
+      const InputSectionBase *inputSec = dyn_cast<InputSectionBase>(sec->repl);
       if (!inputSec || !inputSec->bytesDropped)
         return;
 
-      const auto NewSize = inputSec->data().size();
+      const size_t NewSize = inputSec->data().size();
 
       if (def->value > NewSize) {
         LLVM_DEBUG(llvm::dbgs()
