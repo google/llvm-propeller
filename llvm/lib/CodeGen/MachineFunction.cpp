@@ -378,7 +378,7 @@ bool MachineFunction::sortBBSections() {
 
   SmallSet<unsigned, 4> S = Target.getBBSectionsSet(F.getName());
 
-  bool EHPadsAreCold = true;
+  bool AllEHPadsAreCold = true;
 
   for (auto &MBB : *this) {
     // A unique BB section can only be created if this basic block is not
@@ -394,7 +394,8 @@ bool MachineFunction::sortBBSections() {
     if (isColdBB) {
       MBB.setColdSection();
     } else if (MBB.isEHPad()) {
-      EHPadsAreCold = false;
+      // We handle non-cold basic eh blocks later.
+      AllEHPadsAreCold = false;
     } else {
       // Place this MBB in a unique section.  A unique section begins and ends
       // that section.
@@ -406,8 +407,12 @@ bool MachineFunction::sortBBSections() {
 
 
   for (auto &MBB : *this) {
+    // Handle eh blocks: if all eh pads are cold, we don't need to create a
+    // separate section for them and we can group them with the cold section.
+    // Otherwise, even if one landing pad is hot, we create a separate section
+    // (which will include all landing pads, hot or cold).
     if (MBB.isEHPad()) {
-      if (EHPadsAreCold)
+      if (AllEHPadsAreCold)
         MBB.setColdSection();
       else
         MBB.setExceptionSection();
