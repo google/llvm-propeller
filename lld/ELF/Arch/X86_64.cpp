@@ -370,7 +370,7 @@ static void shrinkJmpWithRelocation(InputSection &IS, JmpInsnOpcode JmpCode,
 
   if (JIndex < IS.jumpInstrMods.size()) {
     JumpInstrMod &J = IS.jumpInstrMods[JIndex];
-    assert((!DoShrinkJmp || J.Size == 4) && "Not the right size of jump.");
+    assert((!DoShrinkJmp || J.size == 4) && "Not the right size of jump.");
     J.offset = R.offset - 1;
     if (DoShrinkJmp)
       J.size = NewJmpSize;
