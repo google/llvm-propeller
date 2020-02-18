@@ -74,7 +74,7 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
       if (callerCluster->size > propConfig.optClusterMergeSizeThreshold)
         return;
       // Ignore edges which are cold relative to the sink node
-      if (edge.weight * 10 < n->freq)
+      if (!propConfig.optReorderIP && (edge.weight * 10 < n->freq))
         return;
       // Do not merge if the caller cluster's density would degrade by more than
       // 1/8 by the merge.
