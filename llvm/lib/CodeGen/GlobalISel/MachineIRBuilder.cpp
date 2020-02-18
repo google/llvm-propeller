@@ -199,14 +199,14 @@ MachineInstrBuilder MachineIRBuilder::buildJumpTable(const LLT PtrTy,
       .addJumpTableIndex(JTI);
 }
 
-void MachineIRBuilder::validateBinaryOp(const LLT &Res, const LLT &Op0,
-                                        const LLT &Op1) {
+void MachineIRBuilder::validateBinaryOp(const LLT Res, const LLT Op0,
+                                        const LLT Op1) {
   assert((Res.isScalar() || Res.isVector()) && "invalid operand type");
   assert((Res == Op0 && Res == Op1) && "type mismatch");
 }
 
-void MachineIRBuilder::validateShiftOp(const LLT &Res, const LLT &Op0,
-                                       const LLT &Op1) {
+void MachineIRBuilder::validateShiftOp(const LLT Res, const LLT Op0,
+                                       const LLT Op1) {
   assert((Res.isScalar() || Res.isVector()) && "invalid operand type");
   assert((Res == Op0) && "type mismatch");
 }
@@ -223,7 +223,7 @@ MachineInstrBuilder MachineIRBuilder::buildPtrAdd(const DstOp &Res,
 
 Optional<MachineInstrBuilder>
 MachineIRBuilder::materializePtrAdd(Register &Res, Register Op0,
-                                    const LLT &ValueTy, uint64_t Value) {
+                                    const LLT ValueTy, uint64_t Value) {
   assert(Res == 0 && "Res is a result argument");
   assert(ValueTy.isScalar()  && "invalid offset type");
 
@@ -579,6 +579,13 @@ MachineInstrBuilder MachineIRBuilder::buildMerge(const DstOp &Res,
   return buildInstr(TargetOpcode::G_MERGE_VALUES, Res, TmpVec);
 }
 
+MachineInstrBuilder
+MachineIRBuilder::buildMerge(const DstOp &Res,
+                             std::initializer_list<SrcOp> Ops) {
+  assert(Ops.size() > 1);
+  return buildInstr(TargetOpcode::G_MERGE_VALUES, Res, Ops);
+}
+
 MachineInstrBuilder MachineIRBuilder::buildUnmerge(ArrayRef<LLT> Res,
                                                    const SrcOp &Op) {
   // Unfortunately to convert from ArrayRef<LLT> to ArrayRef<DstOp>,
@@ -905,7 +912,7 @@ MachineIRBuilder::buildBlockAddress(Register Res, const BlockAddress *BA) {
   return buildInstr(TargetOpcode::G_BLOCK_ADDR).addDef(Res).addBlockAddress(BA);
 }
 
-void MachineIRBuilder::validateTruncExt(const LLT &DstTy, const LLT &SrcTy,
+void MachineIRBuilder::validateTruncExt(const LLT DstTy, const LLT SrcTy,
                                         bool IsExtend) {
 #ifndef NDEBUG
   if (DstTy.isVector()) {
@@ -924,8 +931,8 @@ void MachineIRBuilder::validateTruncExt(const LLT &DstTy, const LLT &SrcTy,
 #endif
 }
 
-void MachineIRBuilder::validateSelectOp(const LLT &ResTy, const LLT &TstTy,
-                                        const LLT &Op0Ty, const LLT &Op1Ty) {
+void MachineIRBuilder::validateSelectOp(const LLT ResTy, const LLT TstTy,
+                                        const LLT Op0Ty, const LLT Op1Ty) {
 #ifndef NDEBUG
   assert((ResTy.isScalar() || ResTy.isVector() || ResTy.isPointer()) &&
          "invalid operand type");

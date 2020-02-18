@@ -499,13 +499,13 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   // EHABI). In this case LSDASection will be NULL.
   if (LSDASection)
     Asm->OutStreamer->SwitchSection(LSDASection);
-  Asm->EmitAlignment(Align(4));
+  Asm->emitAlignment(Align(4));
 
   // Emit the LSDA.
   MCSymbol *GCCETSym =
     Asm->OutContext.getOrCreateSymbol(Twine("GCC_except_table")+
                                       Twine(Asm->getFunctionNumber()));
-  Asm->OutStreamer->EmitLabel(GCCETSym);
+  Asm->OutStreamer->emitLabel(GCCETSym);
   MCSymbol *CstEndLabel = Asm->createTempSymbol("cst_end");
 
   MCSymbol *TTBaseLabel = nullptr;
@@ -521,11 +521,11 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
   // SjLj / Wasm Exception handling
   if (IsSJLJ || IsWasm) {
-    Asm->OutStreamer->EmitLabel(Asm->getCurExceptionSym());
+    Asm->OutStreamer->emitLabel(Asm->getCurExceptionSym());
 
-    // Emit the LSDA header.
-    Asm->EmitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
-    Asm->EmitEncodingByte(TTypeEncoding, "@TType");
+    // emit the LSDA header.
+    Asm->emitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
+    Asm->emitEncodingByte(TTypeEncoding, "@TType");
 
     if (HaveTTData) {
       // N.B.: There is a dependency loop between the size of the TTBase uleb128
@@ -533,15 +533,15 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       // assembler must sometimes pad this uleb128 or insert extra padding
       // before the type table. See PR35809 or GNU as bug 4029.
       MCSymbol *TTBaseRefLabel = Asm->createTempSymbol("ttbaseref");
-      Asm->EmitLabelDifferenceAsULEB128(TTBaseLabel, TTBaseRefLabel);
-      Asm->OutStreamer->EmitLabel(TTBaseRefLabel);
+      Asm->emitLabelDifferenceAsULEB128(TTBaseLabel, TTBaseRefLabel);
+      Asm->OutStreamer->emitLabel(TTBaseRefLabel);
     }
 
     // Emit the landing pad call site table.
     MCSymbol *CstBeginLabel = Asm->createTempSymbol("cst_begin");
-    Asm->EmitEncodingByte(CallSiteEncoding, "Call site");
-    Asm->EmitLabelDifferenceAsULEB128(CstEndLabel, CstBeginLabel);
-    Asm->OutStreamer->EmitLabel(CstBeginLabel);
+    Asm->emitEncodingByte(CallSiteEncoding, "Call site");
+    Asm->emitLabelDifferenceAsULEB128(CstEndLabel, CstBeginLabel);
+    Asm->OutStreamer->emitLabel(CstBeginLabel);
     unsigned idx = 0;
     for (SmallVectorImpl<CallSiteEntry>::const_iterator
          I = CallSites.begin(), E = CallSites.end(); I != E; ++I, ++idx) {
@@ -552,7 +552,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
         Asm->OutStreamer->AddComment(">> Call Site " + Twine(idx) + " <<");
         Asm->OutStreamer->AddComment("  On exception at call site "+Twine(idx));
       }
-      Asm->EmitULEB128(idx);
+      Asm->emitULEB128(idx);
 
       // Offset of the first associated action record, relative to the start of
       // the action table. This value is biased by 1 (1 indicates the start of
@@ -564,9 +564,9 @@ MCSymbol *EHStreamer::emitExceptionTable() {
           Asm->OutStreamer->AddComment("  Action: " +
                                        Twine((S.Action - 1) / 2 + 1));
       }
-      Asm->EmitULEB128(S.Action);
+      Asm->emitULEB128(S.Action);
     }
-    Asm->OutStreamer->EmitLabel(CstEndLabel);
+    Asm->OutStreamer->emitLabel(CstEndLabel);
   } else {
     // Itanium LSDA exception handling
 
@@ -614,22 +614,22 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     unsigned Entry = 0;
     for (auto &CSRange : CallSiteRanges) {
       // The call-site range for each range must be aligned.
-      Asm->EmitAlignment(Align(4));
-      Asm->OutStreamer->EmitLabel(CSRange.ExceptionLabel);
+      Asm->emitAlignment(Align(4));
+      Asm->OutStreamer->emitLabel(CSRange.ExceptionLabel);
 
       // Emit the LSDA header.
       // If only one call-site range exists, LPStart could be omitted as it is
       // the same as the function entry.
       if (CallSiteRanges.size() == 1)
-        Asm->EmitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
+        Asm->emitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
       else {
         // For more than one call-site range, LPStart must explicitly be
         // specified.
-        Asm->EmitEncodingByte(dwarf::DW_EH_PE_absptr, "@LPStart");
-        Asm->OutStreamer->EmitSymbolValue(LandingPadRange->FragmentBeginLabel,
+        Asm->emitEncodingByte(dwarf::DW_EH_PE_absptr, "@LPStart");
+        Asm->OutStreamer->emitSymbolValue(LandingPadRange->FragmentBeginLabel,
                                           Asm->MAI->getCodePointerSize());
       }
-      Asm->EmitEncodingByte(TTypeEncoding, "@TType");
+      Asm->emitEncodingByte(TTypeEncoding, "@TType");
 
       if (HaveTTData) {
         // N.B.: There is a dependency loop between the size of the TTBase
@@ -637,18 +637,18 @@ MCSymbol *EHStreamer::emitExceptionTable() {
         // The assembler must sometimes pad this uleb128 or insert extra padding
         // before the type table. See PR35809 or GNU as bug 4029.
         MCSymbol *TTBaseRefLabel = Asm->createTempSymbol("ttbaseref");
-        Asm->EmitLabelDifferenceAsULEB128(TTBaseLabel, TTBaseRefLabel);
-        Asm->OutStreamer->EmitLabel(TTBaseRefLabel);
+        Asm->emitLabelDifferenceAsULEB128(TTBaseLabel, TTBaseRefLabel);
+        Asm->OutStreamer->emitLabel(TTBaseRefLabel);
       }
 
       // Emit the call-site entries in this call-site range.
       MCSymbol *CstBeginLabel = Asm->createTempSymbol("cst_begin");
-      Asm->EmitEncodingByte(CallSiteEncoding, "Call site");
+      Asm->emitEncodingByte(CallSiteEncoding, "Call site");
       // Emit the difference between the beginning of the call-site entries for
       // this range and the end of the whole call-site table (the end of the
       // last range's call-site entries).
-      Asm->EmitLabelDifferenceAsULEB128(CstEndLabel, CstBeginLabel);
-      Asm->OutStreamer->EmitLabel(CstBeginLabel);
+      Asm->emitLabelDifferenceAsULEB128(CstEndLabel, CstBeginLabel);
+      Asm->OutStreamer->emitLabel(CstBeginLabel);
 
       for (auto callSiteIdx = CSRange.CallSiteBeginIdx;
            callSiteIdx != CSRange.CallSiteEndIdx; ++callSiteIdx) {
@@ -668,24 +668,24 @@ MCSymbol *EHStreamer::emitExceptionTable() {
         if (VerboseAsm)
           Asm->OutStreamer->AddComment(">> Call Site " + Twine(++Entry) +
                                        " <<");
-        Asm->EmitCallSiteOffset(BeginLabel, EHFuncBeginSym, CallSiteEncoding);
+        Asm->emitCallSiteOffset(BeginLabel, EHFuncBeginSym, CallSiteEncoding);
         if (VerboseAsm)
           Asm->OutStreamer->AddComment(Twine("  Call between ") +
                                        BeginLabel->getName() + " and " +
                                        EndLabel->getName());
-        Asm->EmitCallSiteOffset(EndLabel, BeginLabel, CallSiteEncoding);
+        Asm->emitCallSiteOffset(EndLabel, BeginLabel, CallSiteEncoding);
 
         // Offset of the landing pad relative to the start of the landing pad
         // fragment.
         if (!S.LPad) {
           if (VerboseAsm)
             Asm->OutStreamer->AddComment("    has no landing pad");
-          Asm->EmitCallSiteValue(0, CallSiteEncoding);
+          Asm->emitCallSiteValue(0, CallSiteEncoding);
         } else {
           if (VerboseAsm)
             Asm->OutStreamer->AddComment(Twine("    jumps to ") +
                                          S.LPad->LandingPadLabel->getName());
-          Asm->EmitCallSiteOffset(S.LPad->LandingPadLabel,
+          Asm->emitCallSiteOffset(S.LPad->LandingPadLabel,
                                   LandingPadRange->FragmentBeginLabel,
                                   CallSiteEncoding);
         }
@@ -700,10 +700,10 @@ MCSymbol *EHStreamer::emitExceptionTable() {
             Asm->OutStreamer->AddComment("  On action: " +
                                          Twine((S.Action - 1) / 2 + 1));
         }
-        Asm->EmitULEB128(S.Action);
+        Asm->emitULEB128(S.Action);
       }
     }
-    Asm->OutStreamer->EmitLabel(CstEndLabel);
+    Asm->OutStreamer->emitLabel(CstEndLabel);
   }
 
   // Emit the Action Table.
@@ -731,7 +731,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       else
         Asm->OutStreamer->AddComment("  Cleanup");
     }
-    Asm->EmitSLEB128(Action.ValueForTypeID);
+    Asm->emitSLEB128(Action.ValueForTypeID);
 
     // Action Record
     //
@@ -745,15 +745,15 @@ MCSymbol *EHStreamer::emitExceptionTable() {
         Asm->OutStreamer->AddComment("  Continue to action "+Twine(NextAction));
       }
     }
-    Asm->EmitSLEB128(Action.NextAction);
+    Asm->emitSLEB128(Action.NextAction);
   }
 
   if (HaveTTData) {
-    Asm->EmitAlignment(Align(4));
+    Asm->emitAlignment(Align(4));
     emitTypeInfos(TTypeEncoding, TTBaseLabel);
   }
 
-  Asm->EmitAlignment(Align(4));
+  Asm->emitAlignment(Align(4));
   return GCCETSym;
 }
 
@@ -776,10 +776,10 @@ void EHStreamer::emitTypeInfos(unsigned TTypeEncoding, MCSymbol *TTBaseLabel) {
                                           TypeInfos.rend())) {
     if (VerboseAsm)
       Asm->OutStreamer->AddComment("TypeInfo " + Twine(Entry--));
-    Asm->EmitTTypeReference(GV, TTypeEncoding);
+    Asm->emitTTypeReference(GV, TTypeEncoding);
   }
 
-  Asm->OutStreamer->EmitLabel(TTBaseLabel);
+  Asm->OutStreamer->emitLabel(TTBaseLabel);
 
   // Emit the Exception Specifications.
   if (VerboseAsm && !FilterIds.empty()) {
@@ -796,6 +796,6 @@ void EHStreamer::emitTypeInfos(unsigned TTypeEncoding, MCSymbol *TTBaseLabel) {
         Asm->OutStreamer->AddComment("FilterInfo " + Twine(Entry));
     }
 
-    Asm->EmitULEB128(TypeID);
+    Asm->emitULEB128(TypeID);
   }
 }
