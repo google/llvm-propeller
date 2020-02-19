@@ -247,8 +247,6 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   bool InsertedCFIInstr = false;
 
-  MF.sortBBSections();
-
   for (MachineBasicBlock &MBB : MF) {
     // Skip the first MBB in a function
     if (MBB.getNumber() == MF.front().getNumber()) continue;

@@ -203,6 +203,10 @@ namespace llvm {
   /// than is supported by a branch instruction.
   extern char &BranchRelaxationPassID;
 
+  // BBSectionsPrepare - This pass prepares machine basic blocks to be placed in
+  // different sections based on the propeller profile.
+  extern char &BBSectionsPrepareID;
+
   /// MachineFunctionPrinterPass - This pass prints out MachineInstr's.
   extern char &MachineFunctionPrinterPassID;
 

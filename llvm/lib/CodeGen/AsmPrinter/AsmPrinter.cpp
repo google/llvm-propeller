@@ -1103,7 +1103,6 @@ void AsmPrinter::EmitFunctionBody() {
   if (emitBBLabels)
     MF->setBasicBlockLabels();
   if (emitBBSections) {
-    MF->sortBBSections();
     EndOfRegularSectionMBB =
         const_cast<MachineBasicBlock *>(MF->front().getSectionEndMBB());
     assert(EndOfRegularSectionMBB->isEndSection() &&
