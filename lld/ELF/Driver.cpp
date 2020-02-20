@@ -352,9 +352,9 @@ static void checkOptions() {
     error("-z force-ibt may not be used with -z retpolineplt");
 
   if (config->emachine != EM_AARCH64) {
-    if (config->pacPlt)
+    if (config->zPacPlt)
       error("-z pac-plt only supported on AArch64");
-    if (config->forceBTI)
+    if (config->zForceBti)
       error("-z force-bti only supported on AArch64");
   }
 }
@@ -911,7 +911,6 @@ static void readConfigs(opt::InputArgList &args) {
                                      !args.hasArg(OPT_relocatable);
   config->fixCortexA8 =
       args.hasArg(OPT_fix_cortex_a8) && !args.hasArg(OPT_relocatable);
-  config->forceBTI = hasZOption(args, "force-bti");
   config->gcSections = args.hasFlag(OPT_gc_sections, OPT_no_gc_sections, false);
   config->gnuUnique = args.hasFlag(OPT_gnu_unique, OPT_no_gnu_unique, true);
   config->gdbIndex = args.hasFlag(OPT_gdb_index, OPT_no_gdb_index, false);
@@ -956,7 +955,6 @@ static void readConfigs(opt::InputArgList &args) {
   config->optimize = args::getInteger(args, OPT_O, 1);
   config->orphanHandling = getOrphanHandling(args);
   config->outputFile = args.getLastArgValue(OPT_o);
-  config->pacPlt = hasZOption(args, "pac-plt");
   config->pie = args.hasFlag(OPT_pie, OPT_no_pie, false);
   config->printIcfSections =
       args.hasFlag(OPT_print_icf_sections, OPT_no_print_icf_sections, false);
@@ -1082,6 +1080,7 @@ static void readConfigs(opt::InputArgList &args) {
       args.hasFlag(OPT_warn_symbol_ordering, OPT_no_warn_symbol_ordering, true);
   config->zCombreloc = getZFlag(args, "combreloc", "nocombreloc", true);
   config->zCopyreloc = getZFlag(args, "copyreloc", "nocopyreloc", true);
+  config->zForceBti = hasZOption(args, "force-bti");
   config->zForceIbt = hasZOption(args, "force-ibt");
   config->zGlobal = hasZOption(args, "global");
   config->zGnustack = getZGnuStack(args);
@@ -1096,6 +1095,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->zNodlopen = hasZOption(args, "nodlopen");
   config->zNow = getZFlag(args, "now", "lazy", false);
   config->zOrigin = hasZOption(args, "origin");
+  config->zPacPlt = hasZOption(args, "pac-plt");
   config->zRelro = getZFlag(args, "relro", "norelro", true);
   config->zRetpolineplt = hasZOption(args, "retpolineplt");
   config->zRodynamic = hasZOption(args, "rodynamic");
@@ -1816,7 +1816,7 @@ template <class ELFT> static uint32_t getAndFeatures() {
   uint32_t ret = -1;
   for (InputFile *f : objectFiles) {
     uint32_t features = cast<ObjFile<ELFT>>(f)->andFeatures;
-    if (config->forceBTI && !(features & GNU_PROPERTY_AARCH64_FEATURE_1_BTI)) {
+    if (config->zForceBti && !(features & GNU_PROPERTY_AARCH64_FEATURE_1_BTI)) {
       warn(toString(f) + ": -z force-bti: file does not have BTI property");
       features |= GNU_PROPERTY_AARCH64_FEATURE_1_BTI;
     } else if (config->zForceIbt &&
@@ -1830,7 +1830,7 @@ template <class ELFT> static uint32_t getAndFeatures() {
 
   // Force enable pointer authentication Plt, we don't warn in this case as
   // this does not require support in the object for correctness.
-  if (config->pacPlt)
+  if (config->zPacPlt)
     ret |= GNU_PROPERTY_AARCH64_FEATURE_1_PAC;
   // Force enable Shadow Stack.
   if (config->zShstk)
@@ -1946,10 +1946,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   if (errorCount())
     return;
 
-  // Now when we read all script files, we want to finalize order of linker
-  // script commands, which can be not yet final because of INSERT commands.
-  script->processInsertCommands();
-
   // We want to declare linker script's symbols early,
   // so that we can version them.
   // They also might be exported if referenced by DSOs.
@@ -2025,8 +2021,17 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
 
     // We do not want to emit debug sections if --strip-all
     // or -strip-debug are given.
-    return config->strip != StripPolicy::None &&
-           (s->name.startswith(".debug") || s->name.startswith(".zdebug"));
+    if (config->strip == StripPolicy::None)
+      return false;
+
+    if (isDebugSection(*s))
+      return true;
+    if (auto *isec = dyn_cast<InputSection>(s))
+      if (InputSectionBase *rel = isec->getRelocatedSection())
+        if (isDebugSection(*rel))
+          return true;
+
+    return false;
   });
 
   // Now that the number of partitions is fixed, save a pointer to the main
