@@ -985,7 +985,7 @@ void TargetPassConfig::addMachinePasses() {
 
   if (TM->getBBSections() == llvm::BasicBlockSection::List ||
       TM->getBBSections() == llvm::BasicBlockSection::All)
-  addPass(&BBSectionsPrepareID);
+    addPass(&BBSectionsPrepareID);
 
   // Add passes that directly emit MI after all other MI passes.
   addPreEmitPass2();
