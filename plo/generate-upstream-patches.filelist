@@ -134,8 +134,10 @@ declare ALL_FILES=(
         debuginfo        llvm/include/llvm/CodeGen/DebugHandlerBase.h
         base_2           llvm/include/llvm/CodeGen/MachineBasicBlock.h
         base_2           llvm/include/llvm/CodeGen/MachineFunction.h
+        base_2           llvm/include/llvm/CodeGen/Passes.h
         cfi              llvm/include/llvm/CodeGen/TargetFrameLowering.h
         base_2           llvm/include/llvm/CodeGen/TargetLoweringObjectFileImpl.h
+	base_2           llvm/include/llvm/InitializePasses.h
         base_1           llvm/include/llvm/IR/Function.h
         debuginfo        llvm/include/llvm/MC/MCAsmInfo.h
         cfi              llvm/include/llvm/MC/MCDwarf.h
@@ -156,11 +158,15 @@ declare ALL_FILES=(
         exception        llvm/lib/CodeGen/AsmPrinter/EHStreamer.h
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.h
+	base_2           llvm/lib/CodeGen/BBSectionsPrepare.cpp
         cfi              llvm/lib/CodeGen/CFIInstrInserter.cpp
+	base_2           llvm/lib/CodeGen/CodeGen.cpp
         base_1           llvm/lib/CodeGen/CodeGenPrepare.cpp
+	base_2           llvm/lib/CodeGen/CMakeLists.txt
         base_2           llvm/lib/CodeGen/MachineBasicBlock.cpp
         base_2           llvm/lib/CodeGen/MachineFunction.cpp
         base_2           llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+	base_2           llvm/lib/CodeGen/TargetPassConfig.cpp
         debuginfo        llvm/lib/MC/ELFObjectWriter.cpp
         cfi              llvm/lib/MC/MCDwarf.cpp
         debuginfo        llvm/lib/MC/MCDwarf.cpp

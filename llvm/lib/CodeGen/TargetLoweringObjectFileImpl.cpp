@@ -772,7 +772,8 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
     GroupName = F.getComdat()->getName().str();
   }
   return getContext().getELFSection(Name, ELF::SHT_PROGBITS, Flags,
-                                    0 /* Entry Size */, GroupName, UniqueID, nullptr);
+                                    0 /* Entry Size */, GroupName, UniqueID,
+                                    nullptr);
 }
 
 MCSection *TargetLoweringObjectFileELF::getNamedSectionForMachineBasicBlock(
