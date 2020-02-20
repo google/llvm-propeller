@@ -1661,7 +1661,7 @@ static void fixSymbolsAfterShrinking() {
       if (!inputSec || !inputSec->bytesDropped)
         return;
 
-      const size_t NewSize = inputSec->data().size();
+      const size_t NewSize = inputSec->data().size() - inputSec->bytesDropped;
 
       if (def->value > NewSize) {
         LLVM_DEBUG(llvm::dbgs()
@@ -1778,13 +1778,13 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     } while (anyChanged);
   }
 
+  fixSymbolsAfterShrinking();
+
   for (OutputSection *os : outputSections) {
     std::vector<InputSection *> sections = getInputSections(os);
     for (InputSection *is : sections)
       is->trim();
   }
-
-  fixSymbolsAfterShrinking();
 }
 
 static void finalizeSynthetic(SyntheticSection *sec) {
