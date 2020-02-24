@@ -48,7 +48,7 @@ private:
   // (executed) outgoing edges from their source node and the only (executed)
   // incoming edges to their sink nodes. The algorithm will make sure that these
   // edges form fall-throughs in the final order.
-  DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
+  //DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
 
   // This maps every (ordered) pair of chains (with the first chain in the pair
   // potentially splittable) to the highest-gain NodeChainAssembly for those
@@ -94,6 +94,8 @@ private:
   // Recompute the ExtTSP score of a chain
   uint64_t computeExtTSPScore(NodeChain *chain) const;
 
+  void adjustExtTSPScore(NodeChain *chain) const;
+
   // Update the related NodeChainAssembly records for two chains, with the
   // assumption that unsplitChain has been merged into splitChain.
   bool updateNodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain);
@@ -103,10 +105,12 @@ private:
   void init();
 
   // Initialize the mutuallyForcedOut map
-  void initMutuallyForcedEdges(ControlFlowGraph &cfg);
+  void initMutuallyForcedEdges(ControlFlowGraph &cfg, std::vector<std::vector<CFGNode *>> &paths);
 
   // Initialize basic block chains, with one chain for every node
-  void initNodeChains(ControlFlowGraph &cfg);
+  void initNodeChains(ControlFlowGraph &cfg, std::vector<std::vector<CFGNode *>> &paths);
+
+  void bundleNodes(NodeChain * chain, std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin, std::list<std::unique_ptr<CFGNodeBundle>>::iterator end);
 
 public:
   // This invokes the Extended TSP algorithm, orders the hot and cold basic

@@ -20,6 +20,53 @@ using llvm::DenseSet;
 namespace lld {
 namespace propeller {
 
+class NodeChain;
+
+class CFGNodeBundle {
+ public:
+  CFGNode * delegateNode;
+  std::vector<CFGNode *> nodes;
+
+  NodeChain *chain;
+
+  int64_t chainOffset;
+
+  ControlFlowGraph *controlFlowGraph;
+
+  // Total binary size of the chain.
+  uint64_t size;
+
+  // Total execution frequency of the chain.
+  uint64_t freq;
+
+  CFGNodeBundle(CFGNode * n, NodeChain * c, int64_t o): delegateNode(n), nodes(1, n), chain(c), chainOffset(o), controlFlowGraph (n->controlFlowGraph), size(n->shSize), freq(n->freq) {
+    n->bundle = this;
+    n->bundleOffset = 0;
+  }
+
+  CFGNodeBundle(std::vector<CFGNode *>& ns, NodeChain * c, int64_t o): nodes(ns), chain(c), chainOffset(o), size(0), freq(0) {
+    delegateNode = nodes.front();
+    for (CFGNode * n: nodes) {
+      n->bundle = this;
+      n->bundleOffset = size;
+      size += n->shSize;
+      freq += n->freq;
+    }
+    controlFlowGraph = delegateNode->controlFlowGraph;
+  }
+
+
+  void merge(CFGNodeBundle * other) {
+    for (CFGNode * n: other->nodes) {
+      n->bundle = this;
+      n->bundleOffset += size;
+    }
+    std::move(other->nodes.begin(), other->nodes.end(), std::back_inserter(nodes));
+    size += other->size;
+    freq += other->freq;
+  }
+};
+
 // Represents a chain of nodes (basic blocks).
 class NodeChain {
 public:
@@ -31,11 +78,11 @@ public:
   ControlFlowGraph *controlFlowGraph;
 
   // Ordered list of the nodes in this chain.
-  std::list<CFGNode *> nodes;
+  std::list<std::unique_ptr<CFGNodeBundle>> nodeBundles;
 
   // Iterators to the positions in the chain where the chain transitions from
   // one function to another.
-  std::list<std::list<CFGNode *>::iterator> functionTransitions;
+  std::list<std::list<CFGNodeBundle*>::iterator> functionTransitions;
 
   // Out edges for this chain, to its own nodes and nodes of other chains.
   std::unordered_map<NodeChain *, std::vector<CFGEdge *>> outEdges;
@@ -52,23 +99,42 @@ public:
   // Extended TSP score of the chain.
   uint64_t score = 0;
 
+  uint64_t bundleScore = 0;
+
   // Whether to print out information about how this chain joins with others.
   bool debugChain;
 
+  bool coarseBundled = false;
+
   // Constructor for building a NodeChain from a single Node
-  NodeChain(CFGNode *node)
-      : delegateNode(node), controlFlowGraph(node->controlFlowGraph),
-        nodes(1, node), size(node->shSize), freq(node->freq),
-        debugChain(node->controlFlowGraph->debugCFG) {}
+  NodeChain(CFGNode *node) {
+    nodeBundles.emplace_back(new CFGNodeBundle(node, this, 0));
+    delegateNode = node;
+    controlFlowGraph = node->controlFlowGraph;
+    size = node->shSize;
+    freq = node->freq;
+    debugChain = node->controlFlowGraph->debugCFG;
+  }
+
+  NodeChain(std::vector<CFGNode *> &nodes) {
+    nodeBundles.emplace_back(new CFGNodeBundle(nodes, this, 0));
+    delegateNode = nodes.front();
+    controlFlowGraph = delegateNode->controlFlowGraph;
+    size = nodeBundles.front()->size;
+    freq = nodeBundles.front()->size;
+    debugChain = delegateNode->controlFlowGraph->debugCFG;
+  }
 
   // Constructor for building a NodeChain from all nodes in the controlFlowGraph
   // according to the initial order.
   NodeChain(ControlFlowGraph *cfg)
       : delegateNode(cfg->getEntryNode()), controlFlowGraph(cfg),
         size(cfg->size), freq(0), debugChain(cfg->debugCFG) {
-    cfg->forEachNodeRef([this](CFGNode &node) {
-      nodes.push_back(&node);
+    int64_t offset = 0;
+    cfg->forEachNodeRef([this, &offset](CFGNode &node) {
+      nodeBundles.emplace_back(new CFGNodeBundle(&node, this, offset));
       freq += node.freq;
+      offset += node.shSize;
     });
   }
 
@@ -91,12 +157,25 @@ public:
   bool isSameCFG(const NodeChain &c) {
     return controlFlowGraph && controlFlowGraph == c.controlFlowGraph;
   }
+
+  CFGNode * lastNode() {
+    return nodeBundles.back()->nodes.back();
+  }
+
+  CFGNode * firstNode() {
+    return nodeBundles.front()->nodes.front();
+  }
+
 };
 
 // This returns a string representation of the chain
 std::string toString(const NodeChain &c,
-                     std::list<CFGNode *>::const_iterator slicePos);
+                     std::list<std::unique_ptr<CFGNodeBundle>>::const_iterator slicePos);
 std::string toString(const NodeChain &c);
+
+NodeChain * getNodeChain(CFGNode * n);
+
+int64_t getNodeOffset(CFGNode *n);
 
 } // namespace propeller
 } // namespace lld

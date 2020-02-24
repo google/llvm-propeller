@@ -51,7 +51,7 @@ namespace propeller {
 class ObjectView;
 class CFGNode;
 class ControlFlowGraph;
-class NodeChain;
+class CFGNodeBundle;
 
 // All instances of CFGEdge are owned by their controlFlowGraph.
 class CFGEdge {
@@ -101,12 +101,12 @@ public:
   uint64_t freq;
   ControlFlowGraph *controlFlowGraph;
 
-  // Containing chain for this node assigned by the ordering algorithm.
+  // Containing bundle for this node assigned by the ordering algorithm.
   // This will be updated as chains keep merging together during the algorithm.
-  NodeChain *chain;
+  CFGNodeBundle *bundle;
 
-  // Offset of this node in the assigned chain.
-  int64_t chainOffset;
+  // Offset of this node in the assigned bundle.
+  int64_t bundleOffset;
 
   std::vector<CFGEdge *> outs;     // Intra function edges.
   std::vector<CFGEdge *> ins;      // Intra function edges.
@@ -156,7 +156,7 @@ private:
   CFGNode(uint64_t _shndx, const StringRef &_shName, uint64_t _size,
           uint64_t _mappedAddr, ControlFlowGraph *_cfg, bool _hotTag)
       : shndx(_shndx), shName(_shName), shSize(_size), mappedAddr(_mappedAddr),
-        freq(0), controlFlowGraph(_cfg), chain(nullptr), chainOffset(0), outs(),
+        freq(0), controlFlowGraph(_cfg), bundle(nullptr), bundleOffset(0), outs(),
         ins(), callOuts(), callIns(), ftEdge(nullptr), hotTag(_hotTag) {}
 
   friend class ControlFlowGraph;

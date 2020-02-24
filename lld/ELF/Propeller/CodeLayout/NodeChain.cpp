@@ -10,35 +10,48 @@
 namespace lld {
 namespace propeller {
 
+NodeChain * getNodeChain(CFGNode * n) {
+  return n->bundle->chain;
+}
+
+int64_t getNodeOffset(CFGNode *n) {
+  return n->bundle->chainOffset + n->bundleOffset;
+}
+
+
+
 std::string toString(const NodeChain &c,
-                     std::list<CFGNode *>::const_iterator slicePos) {
+                     std::list<std::unique_ptr<CFGNodeBundle>>::const_iterator slicePos) {
   std::string str;
   if (c.controlFlowGraph)
     str += c.controlFlowGraph->name.str();
   str += " [ ";
-  for (auto it = c.nodes.begin(); it != c.nodes.end(); ++it) {
-    auto *n = *it;
-    if (it == slicePos)
+  for (auto bundleIt = c.nodeBundles.begin(); bundleIt != c.nodeBundles.end(); ++bundleIt) {
+    if (bundleIt == slicePos)
       str += "\n....SLICE POSITION....\n";
-    if (!c.controlFlowGraph)
-      str +=
-          std::to_string(n->controlFlowGraph->getEntryNode()->mappedAddr) + ":";
-    str += n->controlFlowGraph->getEntryNode() == n
-               ? "Entry"
-               : std::to_string(n->shName.size() -
-                                n->controlFlowGraph->name.size() - 4);
-    str += " (size=" + std::to_string(n->shSize) +
-           ", freq=" + std::to_string(n->freq) +
-           ", offset=" + std::to_string(n->chainOffset) + ")";
-    if (n != c.nodes.back())
-      str += " -> ";
+    for (auto * n: (*bundleIt)->nodes) {
+      str += " << bundle [coffset= " + std::to_string((*bundleIt)->chainOffset) + "] ";
+      if (!c.controlFlowGraph)
+        str +=
+            std::to_string(n->controlFlowGraph->getEntryNode()->mappedAddr) + ":";
+      str += n->controlFlowGraph->getEntryNode() == n
+                 ? "Entry"
+                 : std::to_string(n->shName.size() -
+                                  n->controlFlowGraph->name.size() - 4);
+      str += " (size=" + std::to_string(n->shSize) +
+             ", freq=" + std::to_string(n->freq) +
+             ", boffset=" + std::to_string(n->bundleOffset) + ")";
+      if (n != (*bundleIt)->nodes.back())
+        str += " -> ";
+    }
+    str += " >> " ;
   }
   str += " ]";
   str += " score: " + std::to_string(c.score);
   return str;
 }
 
-std::string toString(const NodeChain &c) { return toString(c, c.nodes.end()); }
+std::string toString(const NodeChain &c) { return toString(c, c.nodeBundles.end()); }
 
 } // namespace propeller
 } // namespace lld

@@ -28,8 +28,8 @@ namespace lld {
 namespace propeller {
 
 void ChainClustering::addChain(std::unique_ptr<NodeChain> &&chain_ptr) {
-  for (CFGNode *n : chain_ptr->nodes)
-    n->chain = chain_ptr.get();
+  for (auto &b_ptr : chain_ptr->nodeBundles)
+    b_ptr->chain = chain_ptr.get();
   auto &chainList = ((propConfig.optReorderIP || propConfig.optSplitFuncs ||
                       propConfig.optReorderFuncs) &&
                      chain_ptr->freq == 0)
@@ -53,7 +53,8 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
   // from every other cluster.
   DenseMap<Cluster *, uint64_t> clusterEdge;
 
-  for (CFGNode *n : chain->nodes) {
+  for (auto &b_ptr : chain->nodeBundles)
+  for (CFGNode *n : b_ptr->nodes) {
     // For non-inter-procedural, we only consider the function entries.
     if (!propConfig.optReorderIP && !n->isEntryNode())
       continue;
@@ -62,7 +63,7 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
         return;
       if (!propConfig.optReorderIP && !edge.isCall())
         return;
-      auto *callerChain = edge.src->chain;
+      auto *callerChain = getNodeChain(edge.src);
       if (!callerChain) {
         warn("Caller for node: " + n->shName + " does not have a chain!");
         return;
@@ -127,12 +128,14 @@ void NoOrdering::doOrder(std::vector<CFGNode *> &hotOrder,
   std::sort(coldChains.begin(), coldChains.end(), chainComparator);
 
   for (auto &c_ptr : hotChains)
-    for (CFGNode *n : c_ptr->nodes)
-      hotOrder.push_back(n);
+    for (auto &b_ptr: c_ptr->nodeBundles)
+      for (CFGNode *n : b_ptr->nodes)
+        hotOrder.push_back(n);
 
   for (auto &c_ptr : coldChains)
-    for (CFGNode *n : c_ptr->nodes)
-      coldOrder.push_back(n);
+    for (auto &b_ptr: c_ptr->nodeBundles)
+      for (CFGNode *n : b_ptr->nodes)
+        coldOrder.push_back(n);
 }
 
 // Merge clusters together based on the CallChainClustering algorithm.
@@ -190,10 +193,11 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
 
   for (Cluster *cl : clusterOrder)
     for (NodeChain *c : cl->chains)
-      for (CFGNode *n : c->nodes) {
-        hotCFGOrder.try_emplace(n->controlFlowGraph, hotOrder.size());
-        hotOrder.push_back(n);
-      }
+      for (auto& b_ptr: c->nodeBundles)
+        for (CFGNode *n : b_ptr->nodes) {
+          hotCFGOrder.try_emplace(n->controlFlowGraph, hotOrder.size());
+          hotOrder.push_back(n);
+        }
 
   auto coldChainComparator =
       [&hotCFGOrder](const std::unique_ptr<NodeChain> &c_ptr1,
@@ -225,8 +229,9 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
   std::sort(coldChains.begin(), coldChains.end(), coldChainComparator);
 
   for (auto &c_ptr : coldChains)
-    for (CFGNode *n : c_ptr->nodes)
-      coldOrder.push_back(n);
+    for (auto &b_ptr: c_ptr->nodeBundles)
+      for (CFGNode *n : b_ptr->nodes)
+        coldOrder.push_back(n);
 }
 
 } // namespace propeller

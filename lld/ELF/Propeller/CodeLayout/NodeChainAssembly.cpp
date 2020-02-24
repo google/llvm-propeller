@@ -57,28 +57,32 @@ bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
     if (offset == slices[idx].endOffset) {
       // If offset is at the end of the slice, iterate backwards over the
       // slice to find a zero-sized node.
-      for (auto nodeIt = std::prev(slices[idx].endPosition);
-           nodeIt != std::prev(slices[idx].beginPosition); nodeIt--) {
-        // Stop iterating if the node's size is non-zero as this would change
-        // the offset.
-        if ((*nodeIt)->shSize)
-          break;
-        // Have we found the node?
-        if (*nodeIt == node)
-          return true;
+      for (auto nodeBundleIt = std::prev(slices[idx].endPosition);
+           nodeBundleIt != std::prev(slices[idx].beginPosition); nodeBundleIt--) {
+        for (auto nodeIt = (*nodeBundleIt)->nodes.rbegin(); nodeIt!= (*nodeBundleIt)->nodes.rend(); ++nodeIt) {
+          // Stop iterating if the node's size is non-zero as this would change
+          // the offset.
+          if ((*nodeIt)->shSize)
+            break;
+          // Have we found the node?
+          if (*nodeIt == node)
+            return true;
+        }
       }
     }
     if (offset == slices[idx].beginOffset) {
       // If offset is at the beginning of the slice, iterate forwards over the
       // slice to find the node.
-      for (auto nodeIt = slices[idx].beginPosition;
-           nodeIt != slices[idx].endPosition; nodeIt++) {
-        if (*nodeIt == node)
-          return true;
-        // Stop iterating if the node's size is non-zero as this would change
-        // the offset.
-        if ((*nodeIt)->shSize)
-          break;
+      for (auto nodeBundleIt = slices[idx].beginPosition;
+           nodeBundleIt != slices[idx].endPosition; nodeBundleIt++) {
+        for (auto nodeIt=(*nodeBundleIt)->nodes.begin(); nodeIt!=(*nodeBundleIt)->nodes.end(); ++nodeIt) {
+          if (*nodeIt == node)
+            return true;
+          // Stop iterating if the node's size is non-zero as this would change
+          // the offset.
+          if ((*nodeIt)->shSize)
+            break;
+        }
       }
     }
   }
@@ -95,8 +99,8 @@ uint64_t NodeChainAssembly::computeExtTSPScore() const {
   auto addEdgeScore = [this, &score](CFGEdge &edge, NodeChain *srcChain,
                                      NodeChain *sinkChain) {
     uint8_t srcSliceIdx, sinkSliceIdx;
-    auto srcNodeOffset = edge.src->chainOffset;
-    auto sinkNodeOffset = edge.sink->chainOffset;
+    auto srcNodeOffset = getNodeOffset(edge.src);
+    auto sinkNodeOffset = getNodeOffset(edge.sink);
     if (!findSliceIndex(edge.src, srcChain, srcNodeOffset, srcSliceIdx))
       return;
 
@@ -134,7 +138,7 @@ uint64_t NodeChainAssembly::computeExtTSPScore() const {
 
   // We need to recompute the score induced by the split chain (if it has really
   // been split) as the offsets of the nodes have changed.
-  if (splits)
+  if (this->splits)
     splitChain()->forEachOutEdgeToChain(splitChain(), addEdgeScore);
   else
     score += splitChain()->score;
