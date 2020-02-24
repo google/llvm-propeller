@@ -10,11 +10,11 @@
 namespace lld {
 namespace propeller {
 
-NodeChain * getNodeChain(CFGNode * n) {
+NodeChain * getNodeChain(const CFGNode * n) {
   return n->bundle->chain;
 }
 
-int64_t getNodeOffset(CFGNode *n) {
+int64_t getNodeOffset(const CFGNode *n) {
   return n->bundle->chainOffset + n->bundleOffset;
 }
 

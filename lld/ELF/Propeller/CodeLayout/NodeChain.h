@@ -31,15 +31,13 @@ class CFGNodeBundle {
 
   int64_t chainOffset;
 
-  ControlFlowGraph *controlFlowGraph;
-
   // Total binary size of the chain.
   uint64_t size;
 
   // Total execution frequency of the chain.
   uint64_t freq;
 
-  CFGNodeBundle(CFGNode * n, NodeChain * c, int64_t o): delegateNode(n), nodes(1, n), chain(c), chainOffset(o), controlFlowGraph (n->controlFlowGraph), size(n->shSize), freq(n->freq) {
+  CFGNodeBundle(CFGNode * n, NodeChain * c, int64_t o): delegateNode(n), nodes(1, n), chain(c), chainOffset(o), size(n->shSize), freq(n->freq) {
     n->bundle = this;
     n->bundleOffset = 0;
   }
@@ -52,7 +50,6 @@ class CFGNodeBundle {
       size += n->shSize;
       freq += n->freq;
     }
-    controlFlowGraph = delegateNode->controlFlowGraph;
   }
 
 
@@ -80,10 +77,6 @@ public:
   // Ordered list of the nodes in this chain.
   std::list<std::unique_ptr<CFGNodeBundle>> nodeBundles;
 
-  // Iterators to the positions in the chain where the chain transitions from
-  // one function to another.
-  std::list<std::list<CFGNodeBundle*>::iterator> functionTransitions;
-
   // Out edges for this chain, to its own nodes and nodes of other chains.
   std::unordered_map<NodeChain *, std::vector<CFGEdge *>> outEdges;
 
@@ -99,12 +92,10 @@ public:
   // Extended TSP score of the chain.
   uint64_t score = 0;
 
-  uint64_t bundleScore = 0;
+  //uint64_t bundleScore = 0;
 
   // Whether to print out information about how this chain joins with others.
   bool debugChain;
-
-  bool coarseBundled = false;
 
   // Constructor for building a NodeChain from a single Node
   NodeChain(CFGNode *node) {
@@ -158,11 +149,11 @@ public:
     return controlFlowGraph && controlFlowGraph == c.controlFlowGraph;
   }
 
-  CFGNode * lastNode() {
+  CFGNode * lastNode() const {
     return nodeBundles.back()->nodes.back();
   }
 
-  CFGNode * firstNode() {
+  CFGNode * firstNode() const {
     return nodeBundles.front()->nodes.front();
   }
 
@@ -173,9 +164,9 @@ std::string toString(const NodeChain &c,
                      std::list<std::unique_ptr<CFGNodeBundle>>::const_iterator slicePos);
 std::string toString(const NodeChain &c);
 
-NodeChain * getNodeChain(CFGNode * n);
+NodeChain * getNodeChain(const CFGNode * n);
 
-int64_t getNodeOffset(CFGNode *n);
+int64_t getNodeOffset(const CFGNode *n);
 
 } // namespace propeller
 } // namespace lld

@@ -241,7 +241,7 @@ bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
 void NodeChainBuilder::bundleNodes(NodeChain * chain, std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin, std::list<std::unique_ptr<CFGNodeBundle>>::iterator end) {
   CFGNodeBundle * bundle = (begin == chain->nodeBundles.begin()) ? nullptr : (*std::prev(begin)).get();
   for(auto it=begin; it!=end; ) {
-    if (!bundle || (*it)->controlFlowGraph!=bundle->controlFlowGraph) { // || (*it)->nodes.size() > bundle->nodes.size()) {
+    if (!bundle || (*it)->delegateNode->controlFlowGraph!=bundle->delegateNode->controlFlowGraph) {
       bundle = (*it).get();
       it++;
     } else {
@@ -416,7 +416,7 @@ void NodeChainBuilder::mergeChains(
 
   // We have already computed the new score in the assembly record. So we can
   // update the score based on that and the other chain's score.
-  mergerChain->bundleScore += mergeeChain->bundleScore;
+  //mergerChain->bundleScore += mergeeChain->bundleScore;
   mergerChain->score += mergeeChain->score + assembly->scoreGain;
 
   adjustExtTSPScore(mergerChain);
@@ -491,7 +491,7 @@ void NodeChainBuilder::adjustExtTSPScore(NodeChain *chain) const {
     // Calculate the distance between src and sink
     auto edgeScore =
       getEdgeExtTSPScore(*edge, sinkOffset - srcOffset - edge->src->shSize);
-    chain->bundleScore += edgeScore;
+    //chain->bundleScore += edgeScore;
     chain->score -= edgeScore;
     return true;
   });

@@ -135,9 +135,6 @@ public:
     }
 
     splits = slicePosition != splitChain->nodeBundles.begin();
-    splitsAtFunctionTransition =
-        splits && ((*std::prev(slicePosition))->controlFlowGraph !=
-                   (*slicePosition)->controlFlowGraph);
     needsSplitChainRotation = (mergeOrder == S2S1U && splits) ||
                               mergeOrder == S2US1 || mergeOrder == US2S1;
     // Set the ExtTSP score gain as the difference between the new score after
