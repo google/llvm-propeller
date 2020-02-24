@@ -846,7 +846,7 @@ void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &clustering) {
       std::list<CFGNode *> nodeOrder;
       for (auto &elem : chains) {
         auto *chain = elem.second.get();
-        for (auto *bundle : chain->nodeBundles)
+        for (auto& bundle : chain->nodeBundles)
           nodeOrder.insert(chain->freq ? nodeOrder.begin() : nodeOrder.end(),
                            bundle->nodes.begin(), bundle->nodes.end());
       }
