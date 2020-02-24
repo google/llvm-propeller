@@ -27,13 +27,13 @@ struct BBSectionsPrepare : public MachineFunctionPass {
     initializeBBSectionsPreparePass(*PassRegistry::getPassRegistry());
   };
 
-  /// This function sorts basic blocks according to the sections in which they are
-  /// emitted.  Basic block sections automatically turn on function sections so
-  /// the entry block is in the function section.  The other sections that are
-  /// created are:
-  /// 1) Exception section - basic blocks that are landing pads
+  /// This function sorts basic blocks according to the sections in which they
+  /// are emitted.  Basic block sections automatically turn on function sections
+  /// so the entry block is in the function section.  The other sections that
+  /// are created are: 1) Exception section - basic blocks that are landing pads
   /// 2) Cold section - basic blocks that will not have unique sections.
-  /// 3) Unique section - one per basic block that is emitted in a unique section.
+  /// 3) Unique section - one per basic block that is emitted in a unique
+  /// section.
   bool runOnMachineFunction(MachineFunction &MF) override {
     if (!MF.getBBSections())
       return false;
@@ -131,7 +131,7 @@ struct BBSectionsPrepare : public MachineFunctionPass {
     return true;
   }
 };
-}
+} // namespace
 
 char BBSectionsPrepare::ID = 0;
 char &llvm::BBSectionsPrepareID = BBSectionsPrepare::ID;
