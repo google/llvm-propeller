@@ -99,7 +99,7 @@ namespace propeller {
 // edges.
 void NodeChainBuilder::init() {
   for (ControlFlowGraph *cfg : cfgs) {
-    std::vector<std::vector<CFGNode*>> paths;
+    std::vector<std::vector<CFGNode *>> paths;
     initMutuallyForcedEdges(*cfg, paths);
     initNodeChains(*cfg, paths);
   }
@@ -195,7 +195,8 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
 
   auto rightChainBegin = rightChain->nodeBundles.begin();
 
-  leftChain->nodeBundles.splice(leftChain->nodeBundles.end(), rightChain->nodeBundles);
+  leftChain->nodeBundles.splice(leftChain->nodeBundles.end(),
+                                rightChain->nodeBundles);
 
   for (auto it = rightChainBegin; it != leftChain->nodeBundles.end(); ++it) {
     (*it)->chain = leftChain;
@@ -238,10 +239,15 @@ bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
   return true;
 }
 
-void NodeChainBuilder::bundleNodes(NodeChain * chain, std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin, std::list<std::unique_ptr<CFGNodeBundle>>::iterator end) {
-  CFGNodeBundle * bundle = (begin == chain->nodeBundles.begin()) ? nullptr : (*std::prev(begin)).get();
-  for(auto it=begin; it!=end; ) {
-    if (!bundle || (*it)->delegateNode->controlFlowGraph!=bundle->delegateNode->controlFlowGraph) {
+void NodeChainBuilder::bundleNodes(
+    NodeChain *chain, std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
+    std::list<std::unique_ptr<CFGNodeBundle>>::iterator end) {
+  CFGNodeBundle *bundle = (begin == chain->nodeBundles.begin())
+                              ? nullptr
+                              : (*std::prev(begin)).get();
+  for (auto it = begin; it != end;) {
+    if (!bundle || (*it)->delegateNode->controlFlowGraph !=
+                       bundle->delegateNode->controlFlowGraph) {
       bundle = (*it).get();
       it++;
     } else {
@@ -281,7 +287,8 @@ void NodeChainBuilder::mergeInOutEdges(NodeChain *mergerChain,
     auto &mergeeChainEdges = c->outEdges[mergeeChain];
     auto &mergerChainEdges = c->outEdges[mergerChain];
 
-    mergerChainEdges.insert(mergerChainEdges.end(), mergeeChainEdges.begin(), mergeeChainEdges.end());
+    mergerChainEdges.insert(mergerChainEdges.end(), mergeeChainEdges.begin(),
+                            mergeeChainEdges.end());
     mergerChain->inEdges.insert(c);
     // Remove the defunct chain from out edges
     c->outEdges.erase(mergeeChain);
@@ -313,7 +320,7 @@ void NodeChainBuilder::mergeChains(
   mergeInOutEdges(mergerChain, mergeeChain);
 
   // Does S2 mark a function transition?
-  //bool S2FuncTransition = assembly->splitsAtFunctionTransition;
+  // bool S2FuncTransition = assembly->splitsAtFunctionTransition;
 
   // Create the new node order according the given assembly
   auto S1Begin = assembly->splitChain()->nodeBundles.begin();
@@ -323,30 +330,32 @@ void NodeChainBuilder::mergeChains(
   // Reorder S1S2 to S2S1 if needed. This operation takes O(1) because we're
   // splicing from and into the same list.
   if (assembly->needsSplitChainRotation)
-    assembly->splitChain()->nodeBundles.splice(S1Begin, assembly->splitChain()->nodeBundles,
-                                         S2Begin,
-                                         assembly->splitChain()->nodeBundles.end());
+    assembly->splitChain()->nodeBundles.splice(
+        S1Begin, assembly->splitChain()->nodeBundles, S2Begin,
+        assembly->splitChain()->nodeBundles.end());
 
   switch (assembly->mergeOrder) {
   case S2S1U:
     // Splice U at the end of S.
-    assembly->splitChain()->nodeBundles.splice(assembly->splitChain()->nodeBundles.end(),
-                                         assembly->unsplitChain()->nodeBundles);
+    assembly->splitChain()->nodeBundles.splice(
+        assembly->splitChain()->nodeBundles.end(),
+        assembly->unsplitChain()->nodeBundles);
     break;
   case S1US2:
     // Splice U in the middle
-    assembly->splitChain()->nodeBundles.splice(S2Begin,
-                                         assembly->unsplitChain()->nodeBundles);
+    assembly->splitChain()->nodeBundles.splice(
+        S2Begin, assembly->unsplitChain()->nodeBundles);
     break;
   case S2US1:
     // Splice U in the middle
-    assembly->splitChain()->nodeBundles.splice(S1Begin,
-                                         assembly->unsplitChain()->nodeBundles);
+    assembly->splitChain()->nodeBundles.splice(
+        S1Begin, assembly->unsplitChain()->nodeBundles);
     break;
   case US2S1:
     // Splice S at the end of U
     assembly->unsplitChain()->nodeBundles.splice(
-        assembly->unsplitChain()->nodeBundles.end(), assembly->splitChain()->nodeBundles);
+        assembly->unsplitChain()->nodeBundles.end(),
+        assembly->splitChain()->nodeBundles);
     break;
   default:
     break;
@@ -378,34 +387,39 @@ void NodeChainBuilder::mergeChains(
     runningOffset += (*it)->size;
   }
 
-  if (assembly->splitChain()->size + assembly->unsplitChain()->size > propConfig.optChainSplitThreshold) {
-    if (assembly->splitChain()->size <= propConfig.optChainSplitThreshold && assembly->unsplitChain()->size <= propConfig.optChainSplitThreshold)
-      bundleNodes(mergerChain, mergerChain->nodeBundles.begin(), mergerChain->nodeBundles.end());
-    else if (assembly->unsplitChain()->size <= propConfig.optChainSplitThreshold)
+  if (assembly->splitChain()->size + assembly->unsplitChain()->size >
+      propConfig.optChainSplitThreshold) {
+    if (assembly->splitChain()->size <= propConfig.optChainSplitThreshold &&
+        assembly->unsplitChain()->size <= propConfig.optChainSplitThreshold)
+      bundleNodes(mergerChain, mergerChain->nodeBundles.begin(),
+                  mergerChain->nodeBundles.end());
+    else if (assembly->unsplitChain()->size <=
+             propConfig.optChainSplitThreshold)
       bundleNodes(mergerChain, UBegin, mergerChain->nodeBundles.end());
-    else if (assembly->splitChain()->size <= propConfig.optChainSplitThreshold) {
+    else if (assembly->splitChain()->size <=
+             propConfig.optChainSplitThreshold) {
       switch (assembly->mergeOrder) {
-        case S2S1U:
-          bundleNodes(mergerChain, mergerChain->nodeBundles.begin(), std::next(UBegin));
-          break;
-        case S1US2:
-          bundleNodes(mergerChain, S1Begin, std::next(UBegin));
-          bundleNodes(mergerChain, S2Begin, mergerChain->nodeBundles.end());
-          break;
-        case S2US1:
-          bundleNodes(mergerChain, S2Begin, std::next(UBegin));
-          bundleNodes(mergerChain, S1Begin, mergerChain->nodeBundles.end());
-          break;
-        case US2S1:
-          bundleNodes(mergerChain, S2Begin, mergerChain->nodeBundles.end());
-          break;
-        default:
-          break;
+      case S2S1U:
+        bundleNodes(mergerChain, mergerChain->nodeBundles.begin(),
+                    std::next(UBegin));
+        break;
+      case S1US2:
+        bundleNodes(mergerChain, S1Begin, std::next(UBegin));
+        bundleNodes(mergerChain, S2Begin, mergerChain->nodeBundles.end());
+        break;
+      case S2US1:
+        bundleNodes(mergerChain, S2Begin, std::next(UBegin));
+        bundleNodes(mergerChain, S1Begin, mergerChain->nodeBundles.end());
+        break;
+      case US2S1:
+        bundleNodes(mergerChain, S2Begin, mergerChain->nodeBundles.end());
+        break;
+      default:
+        break;
       }
     } else
       bundleNodes(mergerChain, UBegin, std::next(UBegin));
   }
-
 
   mergerChain->size += mergeeChain->size;
   assert(mergerChain->size == runningOffset &&
@@ -416,7 +430,7 @@ void NodeChainBuilder::mergeChains(
 
   // We have already computed the new score in the assembly record. So we can
   // update the score based on that and the other chain's score.
-  //mergerChain->bundleScore += mergeeChain->bundleScore;
+  // mergerChain->bundleScore += mergeeChain->bundleScore;
   mergerChain->score += mergeeChain->score + assembly->scoreGain;
 
   adjustExtTSPScore(mergerChain);
@@ -480,26 +494,26 @@ void NodeChainBuilder::adjustExtTSPScore(NodeChain *chain) const {
   if (chainEdgesIt == chain->outEdges.end())
     return;
 
-  auto& chainEdges = chainEdgesIt->second;
+  auto &chainEdges = chainEdgesIt->second;
 
-  auto newEnd = std::remove_if(chainEdges.begin(), chainEdges.end(), [chain](const CFGEdge * edge) {
-    if (edge->src->bundle != edge->sink->bundle)
-      return false;
+  auto newEnd = std::remove_if(
+      chainEdges.begin(), chainEdges.end(), [chain](const CFGEdge *edge) {
+        if (edge->src->bundle != edge->sink->bundle)
+          return false;
 
-    auto srcOffset = getNodeOffset(edge->src);
-    auto sinkOffset = getNodeOffset(edge->sink);
-    // Calculate the distance between src and sink
-    auto edgeScore =
-      getEdgeExtTSPScore(*edge, sinkOffset - srcOffset - edge->src->shSize);
-    //chain->bundleScore += edgeScore;
-    chain->score -= edgeScore;
-    return true;
-  });
+        auto srcOffset = getNodeOffset(edge->src);
+        auto sinkOffset = getNodeOffset(edge->sink);
+        // Calculate the distance between src and sink
+        auto edgeScore = getEdgeExtTSPScore(*edge, sinkOffset - srcOffset -
+                                                       edge->src->shSize);
+        // chain->bundleScore += edgeScore;
+        chain->score -= edgeScore;
+        return true;
+      });
   chainEdges.erase(newEnd, chainEdges.end());
   if (chainEdges.empty())
     chain->inEdges.erase(chain);
 }
-
 
 // Calculate the Extended TSP metric for a bb chain.
 // This function goes over all the BBs in the chain and for bb chain and
@@ -532,19 +546,20 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
                                                NodeChain *unsplitChain) {
   // Only consider splitting the chain if the size of the chain is smaller than
   // a threshold.
-  //bool doSplit = (splitChain->size <= propConfig.optChainSplitThreshold);
+  // bool doSplit = (splitChain->size <= propConfig.optChainSplitThreshold);
   // If we are not splitting, we only consider the slice position at the
   // beginning of the chain (effectively no splitting).
   // auto slicePosEnd =
-  //    doSplit ? splitChain->nodeBundles.end() : std::next(splitChain->nodeBundles.begin());
+  //    doSplit ? splitChain->nodeBundles.end() :
+  //    std::next(splitChain->nodeBundles.begin());
 
   std::unique_ptr<NodeChainAssembly> bestAssembly(nullptr);
 
   // This function creates the different nodeChainAssemblies for splitChain and
   // unsplitChain, given a slice position in splitChain, and updates the best
   // assembly if required.
-  for (auto slicePos = splitChain->nodeBundles.begin(); slicePos != splitChain->nodeBundles.end();
-       ++slicePos) {
+  for (auto slicePos = splitChain->nodeBundles.begin();
+       slicePos != splitChain->nodeBundles.end(); ++slicePos) {
     // If the split position is at the beginning (no splitting), only consider
     // one MergeOrder
     auto mergeOrderEnd = (slicePos == splitChain->nodeBundles.begin())
@@ -578,7 +593,8 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   return false;
 }
 
-void NodeChainBuilder::initNodeChains(ControlFlowGraph &cfg, std::vector<std::vector<CFGNode *>> &paths) {
+void NodeChainBuilder::initNodeChains(
+    ControlFlowGraph &cfg, std::vector<std::vector<CFGNode *>> &paths) {
   for (auto &path : paths)
     chains.try_emplace(path.front()->mappedAddr, new NodeChain(path));
 
@@ -592,7 +608,8 @@ void NodeChainBuilder::initNodeChains(ControlFlowGraph &cfg, std::vector<std::ve
 // These are all the edges which are -- based on the profile -- the only
 // (executed) outgoing edge from their source node and the only (executed)
 // incoming edges to their sink nodes
-void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg, std::vector<std::vector<CFGNode*>>& paths){
+void NodeChainBuilder::initMutuallyForcedEdges(
+    ControlFlowGraph &cfg, std::vector<std::vector<CFGNode *>> &paths) {
   DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
 
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledOuts;
@@ -666,18 +683,19 @@ void NodeChainBuilder::initMutuallyForcedEdges(ControlFlowGraph &cfg, std::vecto
   for (CFGNode *node : cycleCutNodes)
     mutuallyForcedOut.erase(node);
 
-
   DenseSet<CFGNode *> mutuallyForcedIn;
   for (auto &elem : mutuallyForcedOut)
     mutuallyForcedIn.insert(elem.second);
 
-  for (auto it = mutuallyForcedOut.begin(); it!=mutuallyForcedOut.end(); ++it) {
+  for (auto it = mutuallyForcedOut.begin(); it != mutuallyForcedOut.end();
+       ++it) {
     if (!mutuallyForcedIn.count(it->first)) {
       std::vector<CFGNode *> path(1, it->first);
       auto itt = it;
       do {
         path.push_back(itt->second);
-      } while((itt = mutuallyForcedOut.find(itt->second)) != mutuallyForcedOut.end());
+      } while ((itt = mutuallyForcedOut.find(itt->second)) !=
+               mutuallyForcedOut.end());
       paths.push_back(std::move(path));
     }
   }
@@ -828,7 +846,7 @@ void NodeChainBuilder::doOrder(std::unique_ptr<ChainClustering> &clustering) {
       std::list<CFGNode *> nodeOrder;
       for (auto &elem : chains) {
         auto *chain = elem.second.get();
-        for (auto * bundle : chain->nodeBundles)
+        for (auto *bundle : chain->nodeBundles)
           nodeOrder.insert(chain->freq ? nodeOrder.begin() : nodeOrder.end(),
                            bundle->nodes.begin(), bundle->nodes.end());
       }

@@ -54,38 +54,38 @@ CallChainClustering::getMostLikelyPredecessor(NodeChain *chain,
   DenseMap<Cluster *, uint64_t> clusterEdge;
 
   for (auto &b_ptr : chain->nodeBundles)
-  for (CFGNode *n : b_ptr->nodes) {
-    // For non-inter-procedural, we only consider the function entries.
-    if (!propConfig.optReorderIP && !n->isEntryNode())
-      continue;
-    auto visit = [&clusterEdge, n, chain, cluster, this](CFGEdge &edge) {
-      if (!edge.weight || edge.isReturn())
-        return;
-      if (!propConfig.optReorderIP && !edge.isCall())
-        return;
-      auto *callerChain = getNodeChain(edge.src);
-      if (!callerChain) {
-        warn("Caller for node: " + n->shName + " does not have a chain!");
-        return;
-      }
-      auto *callerCluster = chainToClusterMap[callerChain];
-      if (callerChain == chain || callerCluster == cluster)
-        return;
-      // Ignore clusters which are too big
-      if (callerCluster->size > propConfig.optClusterMergeSizeThreshold)
-        return;
-      // Ignore edges which are cold relative to the sink node
-      if (!propConfig.optReorderIP && (edge.weight * 10 < n->freq))
-        return;
-      // Do not merge if the caller cluster's density would degrade by more than
-      // 1/8 by the merge.
-      if (8 * callerCluster->size * (cluster->freq * callerCluster->freq) <
-          callerCluster->freq * (cluster->size + callerCluster->size))
-        return;
-      clusterEdge[callerCluster] += edge.weight;
-    };
-    n->forEachInEdgeRef(visit);
-  }
+    for (CFGNode *n : b_ptr->nodes) {
+      // For non-inter-procedural, we only consider the function entries.
+      if (!propConfig.optReorderIP && !n->isEntryNode())
+        continue;
+      auto visit = [&clusterEdge, n, chain, cluster, this](CFGEdge &edge) {
+        if (!edge.weight || edge.isReturn())
+          return;
+        if (!propConfig.optReorderIP && !edge.isCall())
+          return;
+        auto *callerChain = getNodeChain(edge.src);
+        if (!callerChain) {
+          warn("Caller for node: " + n->shName + " does not have a chain!");
+          return;
+        }
+        auto *callerCluster = chainToClusterMap[callerChain];
+        if (callerChain == chain || callerCluster == cluster)
+          return;
+        // Ignore clusters which are too big
+        if (callerCluster->size > propConfig.optClusterMergeSizeThreshold)
+          return;
+        // Ignore edges which are cold relative to the sink node
+        if (!propConfig.optReorderIP && (edge.weight * 10 < n->freq))
+          return;
+        // Do not merge if the caller cluster's density would degrade by more
+        // than 1/8 by the merge.
+        if (8 * callerCluster->size * (cluster->freq * callerCluster->freq) <
+            callerCluster->freq * (cluster->size + callerCluster->size))
+          return;
+        clusterEdge[callerCluster] += edge.weight;
+      };
+      n->forEachInEdgeRef(visit);
+    }
 
   // Get the highest-frequency caller
   auto bestCaller =
@@ -128,12 +128,12 @@ void NoOrdering::doOrder(std::vector<CFGNode *> &hotOrder,
   std::sort(coldChains.begin(), coldChains.end(), chainComparator);
 
   for (auto &c_ptr : hotChains)
-    for (auto &b_ptr: c_ptr->nodeBundles)
+    for (auto &b_ptr : c_ptr->nodeBundles)
       for (CFGNode *n : b_ptr->nodes)
         hotOrder.push_back(n);
 
   for (auto &c_ptr : coldChains)
-    for (auto &b_ptr: c_ptr->nodeBundles)
+    for (auto &b_ptr : c_ptr->nodeBundles)
       for (CFGNode *n : b_ptr->nodes)
         coldOrder.push_back(n);
 }
@@ -193,7 +193,7 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
 
   for (Cluster *cl : clusterOrder)
     for (NodeChain *c : cl->chains)
-      for (auto& b_ptr: c->nodeBundles)
+      for (auto &b_ptr : c->nodeBundles)
         for (CFGNode *n : b_ptr->nodes) {
           hotCFGOrder.try_emplace(n->controlFlowGraph, hotOrder.size());
           hotOrder.push_back(n);
@@ -229,7 +229,7 @@ void ChainClustering::doOrder(std::vector<CFGNode *> &hotOrder,
   std::sort(coldChains.begin(), coldChains.end(), coldChainComparator);
 
   for (auto &c_ptr : coldChains)
-    for (auto &b_ptr: c_ptr->nodeBundles)
+    for (auto &b_ptr : c_ptr->nodeBundles)
       for (CFGNode *n : b_ptr->nodes)
         coldOrder.push_back(n);
 }

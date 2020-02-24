@@ -37,14 +37,16 @@ public:
   NodeChain *chain;
 
   // The endpoints of the slice in the corresponding chain
-  std::list<std::unique_ptr<CFGNodeBundle>>::iterator beginPosition, endPosition;
+  std::list<std::unique_ptr<CFGNodeBundle>>::iterator beginPosition,
+      endPosition;
 
   // The offsets corresponding to the two endpoints
   int64_t beginOffset, endOffset;
 
   // Constructor for building a chain slice from a given chain and the two
   // endpoints of the chain.
-  NodeChainSlice(NodeChain *c, std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
+  NodeChainSlice(NodeChain *c,
+                 std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
                  std::list<std::unique_ptr<CFGNodeBundle>>::iterator end)
       : chain(c), beginPosition(begin), endPosition(end) {
 
@@ -58,8 +60,8 @@ public:
   // Constructor for building a chain slice from a node chain containing all of
   // its nodes.
   NodeChainSlice(NodeChain *c)
-      : chain(c), beginPosition(c->nodeBundles.begin()), endPosition(c->nodeBundles.end()),
-        beginOffset(0), endOffset(c->size) {}
+      : chain(c), beginPosition(c->nodeBundles.begin()),
+        endPosition(c->nodeBundles.end()), beginOffset(0), endOffset(c->size) {}
 
   // (Binary) size of this slice
   int64_t size() const { return endOffset - beginOffset; }
@@ -107,13 +109,15 @@ public:
 
   // The constructor for creating a NodeChainAssembly. slicePosition must be an
   // iterator into splitChain->nodes.
-  NodeChainAssembly(NodeChain *splitChain, NodeChain *unsplitChain,
-                    std::list<std::unique_ptr<CFGNodeBundle>>::iterator slicePosition,
-                    MergeOrder mOrder)
+  NodeChainAssembly(
+      NodeChain *splitChain, NodeChain *unsplitChain,
+      std::list<std::unique_ptr<CFGNodeBundle>>::iterator slicePosition,
+      MergeOrder mOrder)
       : chainPair(splitChain, unsplitChain), slicePosition(slicePosition),
         mergeOrder(mOrder) {
     // Construct the slices.
-    NodeChainSlice s1(splitChain, splitChain->nodeBundles.begin(), slicePosition);
+    NodeChainSlice s1(splitChain, splitChain->nodeBundles.begin(),
+                      slicePosition);
     NodeChainSlice s2(splitChain, slicePosition, splitChain->nodeBundles.end());
     NodeChainSlice u(unsplitChain);
 
@@ -142,7 +146,7 @@ public:
     auto assemblyScore = computeExtTSPScore();
     auto chainsScore = splitChain->score + unsplitChain->score;
     scoreGain = assemblyScore > chainsScore ? assemblyScore - chainsScore : 0;
- }
+  }
 
   bool isValid() { return scoreGain; }
 
@@ -184,7 +188,8 @@ public:
   // chains. When chainPair is equal, this helps differentiate and compare the
   // two assembly records.
   std::pair<uint8_t, size_t> assemblyStrategy() const {
-    return std::make_pair(mergeOrder, (*slicePosition)->delegateNode->mappedAddr);
+    return std::make_pair(mergeOrder,
+                          (*slicePosition)->delegateNode->mappedAddr);
   }
 
   inline NodeChain *splitChain() const { return chainPair.first; }

@@ -58,8 +58,10 @@ bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
       // If offset is at the end of the slice, iterate backwards over the
       // slice to find a zero-sized node.
       for (auto nodeBundleIt = std::prev(slices[idx].endPosition);
-           nodeBundleIt != std::prev(slices[idx].beginPosition); nodeBundleIt--) {
-        for (auto nodeIt = (*nodeBundleIt)->nodes.rbegin(); nodeIt!= (*nodeBundleIt)->nodes.rend(); ++nodeIt) {
+           nodeBundleIt != std::prev(slices[idx].beginPosition);
+           nodeBundleIt--) {
+        for (auto nodeIt = (*nodeBundleIt)->nodes.rbegin();
+             nodeIt != (*nodeBundleIt)->nodes.rend(); ++nodeIt) {
           // Stop iterating if the node's size is non-zero as this would change
           // the offset.
           if ((*nodeIt)->shSize)
@@ -75,7 +77,8 @@ bool NodeChainAssembly::findSliceIndex(CFGNode *node, NodeChain *chain,
       // slice to find the node.
       for (auto nodeBundleIt = slices[idx].beginPosition;
            nodeBundleIt != slices[idx].endPosition; nodeBundleIt++) {
-        for (auto nodeIt=(*nodeBundleIt)->nodes.begin(); nodeIt!=(*nodeBundleIt)->nodes.end(); ++nodeIt) {
+        for (auto nodeIt = (*nodeBundleIt)->nodes.begin();
+             nodeIt != (*nodeBundleIt)->nodes.end(); ++nodeIt) {
           if (*nodeIt == node)
             return true;
           // Stop iterating if the node's size is non-zero as this would change

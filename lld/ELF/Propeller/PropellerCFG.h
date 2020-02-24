@@ -156,8 +156,9 @@ private:
   CFGNode(uint64_t _shndx, const StringRef &_shName, uint64_t _size,
           uint64_t _mappedAddr, ControlFlowGraph *_cfg, bool _hotTag)
       : shndx(_shndx), shName(_shName), shSize(_size), mappedAddr(_mappedAddr),
-        freq(0), controlFlowGraph(_cfg), bundle(nullptr), bundleOffset(0), outs(),
-        ins(), callOuts(), callIns(), ftEdge(nullptr), hotTag(_hotTag) {}
+        freq(0), controlFlowGraph(_cfg), bundle(nullptr), bundleOffset(0),
+        outs(), ins(), callOuts(), callIns(), ftEdge(nullptr), hotTag(_hotTag) {
+  }
 
   friend class ControlFlowGraph;
   friend class CFGBuilder;

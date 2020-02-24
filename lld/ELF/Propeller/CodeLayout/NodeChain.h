@@ -23,8 +23,8 @@ namespace propeller {
 class NodeChain;
 
 class CFGNodeBundle {
- public:
-  CFGNode * delegateNode;
+public:
+  CFGNode *delegateNode;
   std::vector<CFGNode *> nodes;
 
   NodeChain *chain;
@@ -37,14 +37,17 @@ class CFGNodeBundle {
   // Total execution frequency of the chain.
   uint64_t freq;
 
-  CFGNodeBundle(CFGNode * n, NodeChain * c, int64_t o): delegateNode(n), nodes(1, n), chain(c), chainOffset(o), size(n->shSize), freq(n->freq) {
+  CFGNodeBundle(CFGNode *n, NodeChain *c, int64_t o)
+      : delegateNode(n), nodes(1, n), chain(c), chainOffset(o), size(n->shSize),
+        freq(n->freq) {
     n->bundle = this;
     n->bundleOffset = 0;
   }
 
-  CFGNodeBundle(std::vector<CFGNode *>& ns, NodeChain * c, int64_t o): nodes(ns), chain(c), chainOffset(o), size(0), freq(0) {
+  CFGNodeBundle(std::vector<CFGNode *> &ns, NodeChain *c, int64_t o)
+      : nodes(ns), chain(c), chainOffset(o), size(0), freq(0) {
     delegateNode = nodes.front();
-    for (CFGNode * n: nodes) {
+    for (CFGNode *n : nodes) {
       n->bundle = this;
       n->bundleOffset = size;
       size += n->shSize;
@@ -52,13 +55,13 @@ class CFGNodeBundle {
     }
   }
 
-
-  void merge(CFGNodeBundle * other) {
-    for (CFGNode * n: other->nodes) {
+  void merge(CFGNodeBundle *other) {
+    for (CFGNode *n : other->nodes) {
       n->bundle = this;
       n->bundleOffset += size;
     }
-    std::move(other->nodes.begin(), other->nodes.end(), std::back_inserter(nodes));
+    std::move(other->nodes.begin(), other->nodes.end(),
+              std::back_inserter(nodes));
     size += other->size;
     freq += other->freq;
   }
@@ -92,7 +95,7 @@ public:
   // Extended TSP score of the chain.
   uint64_t score = 0;
 
-  //uint64_t bundleScore = 0;
+  // uint64_t bundleScore = 0;
 
   // Whether to print out information about how this chain joins with others.
   bool debugChain;
@@ -149,22 +152,18 @@ public:
     return controlFlowGraph && controlFlowGraph == c.controlFlowGraph;
   }
 
-  CFGNode * lastNode() const {
-    return nodeBundles.back()->nodes.back();
-  }
+  CFGNode *lastNode() const { return nodeBundles.back()->nodes.back(); }
 
-  CFGNode * firstNode() const {
-    return nodeBundles.front()->nodes.front();
-  }
-
+  CFGNode *firstNode() const { return nodeBundles.front()->nodes.front(); }
 };
 
 // This returns a string representation of the chain
-std::string toString(const NodeChain &c,
-                     std::list<std::unique_ptr<CFGNodeBundle>>::const_iterator slicePos);
+std::string
+toString(const NodeChain &c,
+         std::list<std::unique_ptr<CFGNodeBundle>>::const_iterator slicePos);
 std::string toString(const NodeChain &c);
 
-NodeChain * getNodeChain(const CFGNode * n);
+NodeChain *getNodeChain(const CFGNode *n);
 
 int64_t getNodeOffset(const CFGNode *n);
 

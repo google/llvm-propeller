@@ -10,30 +10,30 @@
 namespace lld {
 namespace propeller {
 
-NodeChain * getNodeChain(const CFGNode * n) {
-  return n->bundle->chain;
-}
+NodeChain *getNodeChain(const CFGNode *n) { return n->bundle->chain; }
 
 int64_t getNodeOffset(const CFGNode *n) {
   return n->bundle->chainOffset + n->bundleOffset;
 }
 
-
-
-std::string toString(const NodeChain &c,
-                     std::list<std::unique_ptr<CFGNodeBundle>>::const_iterator slicePos) {
+std::string
+toString(const NodeChain &c,
+         std::list<std::unique_ptr<CFGNodeBundle>>::const_iterator slicePos) {
   std::string str;
   if (c.controlFlowGraph)
     str += c.controlFlowGraph->name.str();
   str += " [ ";
-  for (auto bundleIt = c.nodeBundles.begin(); bundleIt != c.nodeBundles.end(); ++bundleIt) {
+  for (auto bundleIt = c.nodeBundles.begin(); bundleIt != c.nodeBundles.end();
+       ++bundleIt) {
     if (bundleIt == slicePos)
       str += "\n....SLICE POSITION....\n";
-    for (auto * n: (*bundleIt)->nodes) {
-      str += " << bundle [coffset= " + std::to_string((*bundleIt)->chainOffset) + "] ";
+    for (auto *n : (*bundleIt)->nodes) {
+      str +=
+          " << bundle [coffset= " + std::to_string((*bundleIt)->chainOffset) +
+          "] ";
       if (!c.controlFlowGraph)
-        str +=
-            std::to_string(n->controlFlowGraph->getEntryNode()->mappedAddr) + ":";
+        str += std::to_string(n->controlFlowGraph->getEntryNode()->mappedAddr) +
+               ":";
       str += n->controlFlowGraph->getEntryNode() == n
                  ? "Entry"
                  : std::to_string(n->shName.size() -
@@ -44,14 +44,16 @@ std::string toString(const NodeChain &c,
       if (n != (*bundleIt)->nodes.back())
         str += " -> ";
     }
-    str += " >> " ;
+    str += " >> ";
   }
   str += " ]";
   str += " score: " + std::to_string(c.score);
   return str;
 }
 
-std::string toString(const NodeChain &c) { return toString(c, c.nodeBundles.end()); }
+std::string toString(const NodeChain &c) {
+  return toString(c, c.nodeBundles.end());
+}
 
 } // namespace propeller
 } // namespace lld
