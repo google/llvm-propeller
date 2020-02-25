@@ -37,6 +37,7 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Recycler.h"
+#include "llvm/Target/TargetOptions.h"
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -341,12 +342,13 @@ class MachineFunction {
   bool HasEHScopes = false;
   bool HasEHFunclets = false;
 
-  // True if basic block sections that are generated have been sorted.
-  bool BBSectionsSorted = false;
-  // True if sections must be generated for all basic blocks.
-  bool BBSections = false;
-  // True if labels must be generated for all basic blocks.
-  bool BasicBlockLabels = false;
+  /// Section Type for basic blocks, only relevant with basic block sections.
+  BasicBlockSection::SectionMode BBSectionsType = BasicBlockSection::None;
+
+  /// With Basic Block Sections, this stores the bb ranges of cold and
+  /// exception sections.
+  std::pair<int, int> ColdSectionRange = {-1, -1};
+  std::pair<int, int> ExceptionSectionRange = {-1, -1};
 
   /// List of C++ TypeInfo used.
   std::vector<const GlobalValue *> TypeInfos;
@@ -485,16 +487,35 @@ public:
   unsigned getFunctionNumber() const { return FunctionNumber; }
 
   /// Returns true if this function has basic block sections enabled.
-  bool getBBSections() const { return BBSections; }
-
-  /// Sort the basic blocks according to the sections they belong to.
-  bool sortBBSections();
-
-  /// Indicates that basic block Labels are to be generated for this function.
-  void setBasicBlockLabels();
+  bool hasBBSections() const {
+    return (BBSectionsType == BasicBlockSection::All ||
+            BBSectionsType == BasicBlockSection::List);
+  }
 
   /// Returns true if basic block labels are to be generated for this function.
-  bool getBasicBlockLabels() const { return BasicBlockLabels; }
+  bool hasBBLabels() const
+  { return BBSectionsType == BasicBlockSection::Labels; }
+
+  void setBBSectionsType(BasicBlockSection::SectionMode V)
+  { BBSectionsType = V; }
+
+  void setSectionRange(MachineBasicBlockSection E,
+                       std::pair<int, int> V);
+
+  /// Returns true if this basic block number starts a cold or exception section.
+  bool isSectionStartMBB(int N) const {
+    return (N == ColdSectionRange.first ||
+            N == ExceptionSectionRange.first);
+  }
+
+  /// Returns true if this basic block ends a cold or exception section.
+  bool isSectionEndMBB(int N) const {
+    return (N == ColdSectionRange.second ||
+            N == ExceptionSectionRange.second);
+  }
+
+  /// Indicates that basic block Labels are to be generated for this function.
+  void createBBLabels();
 
   /// getTarget - Return the target machine this machine code is compiled with
   const LLVMTargetMachine &getTarget() const { return Target; }

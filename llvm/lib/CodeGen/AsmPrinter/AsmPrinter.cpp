@@ -1097,11 +1097,8 @@ void AsmPrinter::emitFunctionBody() {
   // Print out code for the function.
   bool HasAnyRealCode = false;
   int NumInstsInFunction = 0;
-  bool emitBBSections = MF->getBBSections();
+  bool emitBBSections = MF->hasBBSections();
   MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
-  bool emitBBLabels = MF->getBBSections() || MF->getBasicBlockLabels();
-  if (emitBBLabels)
-    MF->setBasicBlockLabels();
   if (emitBBSections) {
     EndOfRegularSectionMBB =
         const_cast<MachineBasicBlock *>(MF->front().getSectionEndMBB());
@@ -1145,7 +1142,8 @@ void AsmPrinter::emitFunctionBody() {
         break;
       case TargetOpcode::ANNOTATION_LABEL:
       case TargetOpcode::EH_LABEL:
-        if (MBB.isExceptionSection() && MBB.isBeginSection() &&
+        if (MBB.getSectionType() == MachineBasicBlockSection::MBBS_Exception &&
+            MBB.isBeginSection() &&
             ((*std::prev(MI.getIterator())).getOpcode() ==
              TargetOpcode::CFI_INSTRUCTION)) {
           // Emit a NOP here to avoid zero-offset landing pads with
@@ -1200,7 +1198,7 @@ void AsmPrinter::emitFunctionBody() {
       }
     }
     if (&MBB != EndOfRegularSectionMBB &&
-        (MF->getBasicBlockLabels() || MBB.isEndSection())) {
+        (MF->hasBBLabels() || MBB.isEndSection())) {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
       MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
@@ -3032,7 +3030,7 @@ static void emitBasicBlockLoopComments(const MachineBasicBlock &MBB,
 /// MachineBasicBlock, an alignment (if present) and a comment describing
 /// it if appropriate.
 void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
-  bool BBSections = MF->getBBSections();
+  bool BBSections = MF->hasBBSections();
   // End the previous funclet and start a new one.
   if (MBB.isEHFuncletEntry()) {
     for (const HandlerInfo &HI : Handlers) {
@@ -3078,7 +3076,7 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
     emitBasicBlockLoopComments(MBB, MLI, *this);
   }
 
-  bool emitBBLabels = BBSections || MF->getBasicBlockLabels();
+  bool emitBBLabels = BBSections || MF->hasBBLabels();
   if (MBB.pred_empty() ||
       (!emitBBLabels && isBlockOnlyReachableByFallthrough(&MBB) &&
        !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
@@ -3092,16 +3090,16 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
       OutStreamer->AddComment("Label of block must be emitted");
     }
     // With -fbasicblock-sections, a basic block can start a new section.
-    if (MBB.isExceptionSection()) {
+    if (MBB.getSectionType() == MachineBasicBlockSection::MBBS_Exception) {
       // Create the exception section for this function.
       OutStreamer->SwitchSection(
           getObjFileLowering().getNamedSectionForMachineBasicBlock(
               MF->getFunction(), MBB, TM, ".eh"));
-    } else if (MBB.isColdSection()) {
+    } else if (MBB.getSectionType() == MachineBasicBlockSection::MBBS_Cold) {
       // Create the cold section here.
       OutStreamer->SwitchSection(
           getObjFileLowering().getNamedSectionForMachineBasicBlock(
-              MF->getFunction(), MBB, TM, ".cold"));
+              MF->getFunction(), MBB, TM, ".unlikely"));
     } else if (MBB.isBeginSection() && MBB.isEndSection()) {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
@@ -3123,7 +3121,7 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
 void AsmPrinter::emitBasicBlockEnd(const MachineBasicBlock &MBB) {
   // Check if CFI information needs to be updated for this MBB with basic block
   // sections.
-  if (MF->getBBSections() && MBB.isEndSection()) {
+  if (MF->hasBBSections() && MBB.isEndSection()) {
     for (const HandlerInfo &HI : Handlers) {
       HI.Handler->endBasicBlock(MBB);
     }

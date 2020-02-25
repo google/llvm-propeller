@@ -14,8 +14,6 @@
 #ifndef LLVM_TARGET_TARGETOPTIONS_H
 #define LLVM_TARGET_TARGETOPTIONS_H
 
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/MC/MCTargetOptions.h"
 
 namespace llvm {
@@ -273,9 +271,8 @@ namespace llvm {
     /// Emit basic blocks into separate sections.
     BasicBlockSection::SectionMode BBSections = BasicBlockSection::None;
 
-    /// A map from function name to a set of basic block id's that require
-    /// unique basic block sections.
-    StringMap<SmallSet<unsigned, 4>> BBSectionsList;
+    /// Profile file that contains information on sampled basic blocks.
+    std::string BBSectionsFuncList;
 
     /// Emit debug info about parameter's entry values.
     unsigned EnableDebugEntryValues : 1;

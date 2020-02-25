@@ -4,7 +4,6 @@ add_llvm_component_library(LLVMProfileData
   InstrProfReader.cpp
   InstrProfWriter.cpp
   ProfileSummaryBuilder.cpp
-  BBSectionsProf.cpp
   SampleProf.cpp
   SampleProfReader.cpp
   SampleProfWriter.cpp

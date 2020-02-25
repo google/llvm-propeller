@@ -96,11 +96,6 @@ private:
 
   friend class SymbolTableListTraits<Function>;
 
-  /// Whether Basic Block Sections is enabled for this function.
-  bool BBSections = false;
-  /// Whether Basic Block Labels is enabled for this function.
-  bool BasicBlockLabels = false;
-
   /// hasLazyArguments/CheckLazyArguments - The argument list of a function is
   /// built on demand, so that the list isn't allocated until the first client
   /// needs it.  The hasLazyArguments predicate returns true if the arg list
@@ -163,18 +158,6 @@ public:
   /// This is equivalent to the sum of the sizes of each basic block contained
   /// within this function.
   unsigned getInstructionCount() const;
-
-  /// Returns true if this function has basic block sections enabled.
-  bool getBBSections() const { return BBSections; }
-
-  /// Indicates that basic block sections is enabled for this function.
-  void setBBSections(bool value) { BBSections = value; }
-
-  /// Returns true if this function has basic block labels enabled.
-  bool getBasicBlockLabels() const { return BasicBlockLabels; }
-
-  /// Indicates that basic block labels is enabled for this function.
-  void setBasicBlockLabels(bool value) { BasicBlockLabels = value; }
 
   /// Returns the FunctionType for me.
   FunctionType *getFunctionType() const {

@@ -42,6 +42,8 @@ namespace llvm {
   /// the entry block.
   FunctionPass *createUnreachableBlockEliminationPass();
 
+  MachineFunctionPass *createBBSectionsPreparePass(const std::string &ProfileFileName);
+
   /// MachineFunctionPrinter pass - This pass prints out the machine function to
   /// the given stream as a debugging tool.
   MachineFunctionPass *

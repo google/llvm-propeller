@@ -18,7 +18,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/MC/MCTargetOptionsCommandFlags.inc"
 #include "llvm/MC/SubtargetFeature.h"
-#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Host.h"
@@ -305,8 +304,10 @@ getBBSectionsMode(llvm::TargetOptions &Options) {
     return BasicBlockSection::Labels;
   else if (BBSections == "none")
     return BasicBlockSection::None;
-  llvm::bbsections::getBBSectionsList(BBSections, Options.BBSectionsList);
-  return BasicBlockSection::List;
+  else {
+    Options.BBSectionsFuncList = BBSections;
+    return BasicBlockSection::List;
+ }
 }
 
 // Common utility function tightly tied to the options listed here. Initializes

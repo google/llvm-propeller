@@ -35,7 +35,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
-#include <cstdlib>
 using namespace llvm;
 
 #define DEBUG_TYPE "codegen"
@@ -63,7 +62,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     MCContext &Ctx = MF->getContext();
     auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
 
-    bool BasicBlockSymbols = MF->getBBSections() || MF->getBasicBlockLabels();
+    bool BasicBlockSymbols = MF->hasBBSections() || MF->hasBBLabels();
     auto Delimiter = BasicBlockSymbols ? "." : "_";
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
 
@@ -554,12 +553,12 @@ bool MachineBasicBlock::sameSection(const MachineBasicBlock *Other) const {
   if (this == Other)
     return true;
 
-  if ((this->isColdSection() != Other->isColdSection()) ||
-      (this->isExceptionSection() != Other->isExceptionSection()))
+  if (this->getSectionType() != Other->getSectionType())
     return false;
 
-  if ((this->isBeginSection() && this->isEndSection()) ||
-      (Other->isBeginSection() && Other->isEndSection()))
+  // If either is in a unique section, return false.
+  if (this->getSectionType() == llvm::MachineBasicBlockSection::MBBS_Unique ||
+      Other->getSectionType() == llvm::MachineBasicBlockSection::MBBS_Unique)
     return false;
 
   return true;
@@ -579,32 +578,16 @@ const MachineBasicBlock *MachineBasicBlock::getSectionEndMBB() const {
   llvm_unreachable("No End Basic Block for this section.");
 }
 
-// Insert unconditional jumps to the basic block to which there is
-// a fall through.
-void MachineBasicBlock::insertUnconditionalFallthroughBranch() {
-  MachineBasicBlock *Fallthrough = getFallThrough();
+// Returns true if this block begins any section.
+bool MachineBasicBlock::isBeginSection() const {
+  return (SectionType == MBBS_Entry || SectionType == MBBS_Unique ||
+          getParent()->isSectionStartMBB(getNumber()));
+}
 
-  if (Fallthrough == nullptr)
-    return;
-
-  // If this basic block and the Fallthrough basic block are in the same
-  // section then do not insert the jump.
-  if (this->sameSection(Fallthrough))
-    return;
-
-  const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
-  SmallVector<MachineOperand, 4> Cond;
-  MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
-
-  // If a branch to the fall through block already exists, return.
-  if (!TII->analyzeBranch(*this, TBB, FBB, Cond) &&
-      (TBB == Fallthrough || FBB == Fallthrough)) {
-    return;
-  }
-
-  Cond.clear();
-  DebugLoc DL = findBranchDebugLoc();
-  TII->insertBranch(*this, Fallthrough, nullptr, Cond, DL);
+// Returns true if this block begins any section.
+bool MachineBasicBlock::isEndSection() const {
+  return (SectionType == MBBS_Entry || SectionType == MBBS_Unique ||
+          getParent()->isSectionEndMBB(getNumber()));
 }
 
 void MachineBasicBlock::updateTerminator() {

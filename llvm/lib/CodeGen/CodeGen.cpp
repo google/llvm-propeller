@@ -22,7 +22,6 @@ void llvm::initializeCodeGen(PassRegistry &Registry) {
   initializeAtomicExpandPass(Registry);
   initializeBranchFolderPassPass(Registry);
   initializeBranchRelaxationPass(Registry);
-  initializeBBSectionsPreparePass(Registry);
   initializeCFGuardLongjmpPass(Registry);
   initializeCFIInstrInserterPass(Registry);
   initializeCodeGenPreparePass(Registry);

@@ -183,18 +183,6 @@ void MachineFunction::init() {
     Alignment = std::max(Alignment,
                          STI->getTargetLowering()->getPrefFunctionAlignment());
 
-  // Check if basic block sections are required for this function.
-  if (Target.getBBSections() == llvm::BasicBlockSection::All ||
-      F.getBBSections() ||
-      (Target.getBBSections() == llvm::BasicBlockSection::List &&
-       Target.isFunctionInBBSectionsList(F.getName())))
-    BBSections = true;
-
-  // Check if basic block labels are required for this function.
-  if (Target.getBBSections() == llvm::BasicBlockSection::Labels ||
-      F.getBasicBlockLabels())
-    BasicBlockLabels = true;
-
   if (AlignAllFunctions)
     Alignment = Align(1ULL << AlignAllFunctions);
 
@@ -361,17 +349,28 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
   MBBNumbering.resize(BlockNo);
 }
 
+/// This sets the section ranges of cold or exception section with basic block
+/// sections.
+void MachineFunction::setSectionRange(llvm::MachineBasicBlockSection E,
+                                      std::pair<int, int> V) {
+  if (E == llvm::MachineBasicBlockSection::MBBS_Exception)
+    ExceptionSectionRange = V;
+  else if (E == llvm::MachineBasicBlockSection::MBBS_Cold)
+    ColdSectionRange = V;
+  else
+    llvm_unreachable("No such section");
+}
+
+
 /// This is used with -fbasicblock-sections or -fbasicblock-labels option.
 /// A unary encoding of basic block labels is done to keep ".strtab" sizes
 /// small.
-void MachineFunction::setBasicBlockLabels() {
+void MachineFunction::createBBLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
   for (auto MBBI = begin(), E = end(); MBBI != E; ++MBBI) {
-    if (MBBI->getNumber() < 0 || MBBI->getNumber() >= (int)getNumBlockIDs())
-      report_fatal_error(
-          "BasicBlock number was out of range: " + Twine(MBBI->getNumber()) +
-          " [0 -> " + Twine(getNumBlockIDs()) + "]");
+    assert((MBBI->getNumber() > 0 &&  MBBI->getNumber() < getNumBlockIDs()) &&
+           "BasicBlock number was out of range!");
     // 'a' - Normal block.
     // 'r' - Return block.
     // 'l' - Landing Pad.

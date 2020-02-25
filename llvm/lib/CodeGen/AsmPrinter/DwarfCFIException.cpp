@@ -48,7 +48,7 @@ void DwarfCFIExceptionBase::markFunctionEnd() {
 
 void DwarfCFIExceptionBase::endFragment() {
   // With -fbasicblock-sections, this is handled at each basic block.
-  if (shouldEmitCFI && !Asm->MF->getBBSections())
+  if (shouldEmitCFI && !Asm->MF->hasBBSections())
     Asm->OutStreamer->emitCFIEndProc();
 }
 

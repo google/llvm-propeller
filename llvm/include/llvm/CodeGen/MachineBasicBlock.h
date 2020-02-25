@@ -46,6 +46,20 @@ class raw_ostream;
 class TargetRegisterClass;
 class TargetRegisterInfo;
 
+enum MachineBasicBlockSection : unsigned {
+  ///  This is also the order of sections in a function.  Basic blocks that are
+  ///  part of the original function section (entry block) come first, followed
+  ///  by exception handling basic blocks, cold basic blocks and finally basic
+  //   blocks that need unique sections.
+  MBBS_Entry,
+  MBBS_Exception,
+  MBBS_Cold,
+  MBBS_Unique,
+  ///  None implies no sections for any basic block, the default.
+  MBBS_None,
+};
+
+
 template <> struct ilist_traits<MachineInstr> {
 private:
   friend class MachineBasicBlock; // Set by the owning MachineBasicBlock.
@@ -130,17 +144,8 @@ private:
   /// Indicate that this basic block is the entry block of a cleanup funclet.
   bool IsCleanupFuncletEntry = false;
 
-  /// Indicate that this basic block begins a new section.
-  bool IsBeginSection = false;
-
-  /// Indicate that this basic block ends the current section.
-  bool IsEndSection = false;
-
-  /// Indicate that this basic block belongs to the cold section.
-  bool IsColdSection = false;
-
-  /// Indicate that this basic block belong to the exception section.
-  bool IsExceptionSection = false;
+  /// Stores the Section type of the basic block with basic block sections.
+  MachineBasicBlockSection SectionType = MBBS_None;
 
   /// since getSymbol is a relatively heavy-weight operation, the symbol
   /// is only computed once and is cached.
@@ -424,29 +429,17 @@ public:
   /// Indicates if this is the entry block of a cleanup funclet.
   void setIsCleanupFuncletEntry(bool V = true) { IsCleanupFuncletEntry = V; }
 
-  /// Returns true if this block begins a section.
-  bool isBeginSection() const { return IsBeginSection; }
+  /// Returns true if this block begins any section.
+  bool isBeginSection() const;
 
-  /// Indicate that this basic block begins a new section.
-  void setBeginSection(bool V = true) { IsBeginSection = V; }
+  /// Returns true if this block ends any section.
+  bool isEndSection() const;
 
-  /// Returns true if this block ends a section.
-  bool isEndSection() const { return IsEndSection; }
+  /// Returns the type of section this basic block belongs to.
+  MachineBasicBlockSection getSectionType() const { return SectionType; }
 
-  /// Indicate that this basic block ends a section.
-  void setEndSection(bool V = true) { IsEndSection = V; }
-
-  /// Returns true if this basic block belongs to the cold section.
-  bool isColdSection() const { return IsColdSection; }
-
-  /// Indicate that this basic block belongs to the cold section.
-  void setColdSection(bool V = true) { IsColdSection = V; }
-
-  /// Returns true if this basic block belongs to the exception section.
-  bool isExceptionSection() const { return IsExceptionSection; }
-
-  /// Indicate that this basic block belongs to the exception section.
-  void setExceptionSection(bool V = true) { IsExceptionSection = V; }
+  /// Indicate that the basic block belongs to a Section Type.
+  void setSectionType(MachineBasicBlockSection V) { SectionType = V; }
 
   /// Returns true if it is legal to hoist instructions into this block.
   bool isLegalToHoistInto() const;
@@ -458,9 +451,6 @@ public:
   /// the end of the block.
   void moveBefore(MachineBasicBlock *NewAfter);
   void moveAfter(MachineBasicBlock *NewBefore);
-
-  /// Insert an unconditional jump to a fallthrough block if any.
-  void insertUnconditionalFallthroughBranch();
 
   /// Returns true if this and MBB belong to the same section.
   bool sameSection(const MachineBasicBlock *MBB) const;

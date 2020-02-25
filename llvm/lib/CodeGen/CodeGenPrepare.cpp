@@ -440,24 +440,6 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
   BFI.reset(new BlockFrequencyInfo(F, *BPI, *LI));
   PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
   OptSize = F.hasOptSize();
-
-  /// Check if basic block sections must be enabled for this function.
-  /// Two basic block section modes are supported:
-  ///  1. "All" mode where where every block is placed in a separate section.
-  ///  2. "List" mode where the list of functions that needs sections is
-  ///  specified in a file.
-  if (TM && TM->getBBSections() == llvm::BasicBlockSection::All)
-    F.setBBSections(true);
-
-  if (TM && TM->getBBSections() == llvm::BasicBlockSection::List &&
-      TM->isFunctionInBBSectionsList(F.getName()))
-    F.setBBSections(true);
-
-  /// Check if basic block labels must be enabled for this function.  Each
-  /// basic block in this function gets a unique symbol (label).
-  if (TM && TM->getBBSections() == llvm::BasicBlockSection::Labels)
-    F.setBasicBlockLabels(true);
-
   if (ProfileGuidedSectionPrefix) {
     if (PSI->isFunctionHotInCallGraph(&F, *BFI))
       F.setSectionPrefix(".hot");

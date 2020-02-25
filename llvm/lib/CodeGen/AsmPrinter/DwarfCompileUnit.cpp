@@ -395,7 +395,7 @@ void DwarfCompileUnit::attachLowHighPC(DIE &D, const MCSymbol *Begin,
 DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
   DIE *SPDie = getOrCreateSubprogramDIE(SP, includeMinimalInlineScopes());
 
-  if (!Asm->MF->getBBSections())
+  if (!Asm->MF->hasBBSections())
     attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
   else {
     SmallVector<RangeSpan, 2> BB_List;
@@ -564,8 +564,7 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     const auto *BeginMBB = R.first->getParent();
     const auto *EndMBB = R.second->getParent();
 
-    if (BeginMBB->sameSection(EndMBB) ||
-        Asm->MF->getBBSections() == llvm::BasicBlockSection::None) {
+    if (BeginMBB->sameSection(EndMBB) || !Asm->MF->hasBBSections()) {
       // Without basic block sections, there is just one continuous range.
       // The same holds if EndMBB is in the initial non-unique-section BB range.
       List.push_back({BeginLabel, EndLabel});
