@@ -514,7 +514,7 @@ public:
     return (N == ColdSectionRange.second || N == ExceptionSectionRange.second);
   }
 
-  /// Indicates that basic block Labels are to be generated for this function.
+  /// Creates basic block Labels for this function.
   void createBBLabels();
 
   /// getTarget - Return the target machine this machine code is compiled with

@@ -42,6 +42,8 @@ namespace llvm {
   /// the entry block.
   FunctionPass *createUnreachableBlockEliminationPass();
 
+  /// createBBSectionsPrepare Pass - This pass assigns sections to machine basic
+  /// blocks and is enabled with -fbasicblock-sections.
   MachineFunctionPass *
   createBBSectionsPreparePass(const std::string &ProfileFileName);
 
@@ -205,10 +207,6 @@ namespace llvm {
   /// BranchRelaxation - This pass replaces branches that need to jump further
   /// than is supported by a branch instruction.
   extern char &BranchRelaxationPassID;
-
-  // BBSectionsPrepare - This pass prepares machine basic blocks to be placed in
-  // different sections based on the propeller profile.
-  extern char &BBSectionsPrepareID;
 
   /// MachineFunctionPrinterPass - This pass prints out MachineInstr's.
   extern char &MachineFunctionPrinterPassID;

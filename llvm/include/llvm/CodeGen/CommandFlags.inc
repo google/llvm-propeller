@@ -241,8 +241,8 @@ static cl::opt<bool>
 static cl::opt<std::string>
     BBSections("basicblock-sections",
                cl::desc("Emit basic blocks into separate sections"),
-	       cl::value_desc("all | <function list (file)> | none"),
-	       cl::init("none"));
+               cl::value_desc("all | <function list (file)> | none"),
+               cl::init("none"));
 
 static cl::opt<unsigned> TLSSize("tls-size",
                                  cl::desc("Bit size of immediate TLS offsets"),
