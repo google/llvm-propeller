@@ -127,6 +127,7 @@ declare ALL_FILES=(
         lld-base         lld/ELF/Writer.cpp
 	lld-base         lld/test/ELF/bb-sections-delete-fallthru.s
 	lld-base         lld/test/ELF/bb-sections-and-icf.s
+	lld-base         lld/test/ELF/bb-sections-pc32reloc.s
 # LLVM patch begins here.
 # Base Patch files here:
         base_1           llvm/include/llvm/CodeGen/CommandFlags.inc
