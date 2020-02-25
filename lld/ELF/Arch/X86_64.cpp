@@ -188,9 +188,8 @@ static bool isFallThruRelocation(InputSection &is, InputFile *file,
     return false;
 
   uint64_t addrLoc = (is.getOutputSection())->addr + is.outSecOff + r.offset;
-  uint64_t targetOffset = InputSectionBase::getRelocTargetVA(file, r.type,
-                                                             r.addend, addrLoc,
-                                                             *r.sym, r.expr);
+  uint64_t targetOffset = InputSectionBase::getRelocTargetVA(
+      file, r.type, r.addend, addrLoc, *r.sym, r.expr);
 
   // If this jmp is a fall thru, the target offset is the beginning of the
   // next section.
@@ -326,9 +325,8 @@ static uint64_t getTargetOffsetForJmp(InputSection &is, InputFile *file,
   }
 
   uint64_t addrLoc = (is.getOutputSection())->addr + is.outSecOff + r.offset;
-  uint64_t targetOffset = InputSectionBase::getRelocTargetVA(file, r.type,
-                                                             r.addend, addrLoc,
-                                                             *r.sym, r.expr);
+  uint64_t targetOffset = InputSectionBase::getRelocTargetVA(
+      file, r.type, r.addend, addrLoc, *r.sym, r.expr);
 
   return targetOffset;
 }

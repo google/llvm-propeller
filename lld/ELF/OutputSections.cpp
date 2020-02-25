@@ -351,8 +351,7 @@ template <class ELFT> void OutputSection::writeTo(uint8_t *buf) {
       if (isec->nopFiller) {
         assert(target->nopInstrs);
         nopInstrFill(start, end - start);
-      }
-      else
+      } else
         fill(start, end - start, filler);
     }
   });
