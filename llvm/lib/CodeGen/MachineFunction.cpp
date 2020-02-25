@@ -361,7 +361,6 @@ void MachineFunction::setSectionRange(llvm::MachineBasicBlockSection E,
     llvm_unreachable("No such section");
 }
 
-
 /// This is used with -fbasicblock-sections or -fbasicblock-labels option.
 /// A unary encoding of basic block labels is done to keep ".strtab" sizes
 /// small.
@@ -369,7 +368,7 @@ void MachineFunction::createBBLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
   for (auto MBBI = begin(), E = end(); MBBI != E; ++MBBI) {
-    assert((MBBI->getNumber() > 0 &&  MBBI->getNumber() < getNumBlockIDs()) &&
+    assert((MBBI->getNumber() > 0 && MBBI->getNumber() < getNumBlockIDs()) &&
            "BasicBlock number was out of range!");
     // 'a' - Normal block.
     // 'r' - Return block.

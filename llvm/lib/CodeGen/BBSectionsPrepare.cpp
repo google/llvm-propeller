@@ -25,9 +25,9 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/InitializePasses.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Support/LineIterator.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Target/TargetMachine.h"
 
 #include <string>
 
@@ -121,9 +121,9 @@ static bool assignSectionsAndSortBasicBlocks(
     // All Exception landing pads must be in a single section.  If all the
     // landing pads are cold, it can be kept in the cold section.  Otherwise, we
     // create a separate exception section.
-    bool isColdBB =
-        ((MF.getTarget().getBBSectionsType() == llvm::BasicBlockSection::List) &&
-         !S.empty() && !S.count(MBB.getNumber()));
+    bool isColdBB = ((MF.getTarget().getBBSectionsType() ==
+                      llvm::BasicBlockSection::List) &&
+                     !S.empty() && !S.count(MBB.getNumber()));
     if (isColdBB) {
       MBB.setSectionType(MachineBasicBlockSection::MBBS_Cold);
     } else if (MBB.isEHPad()) {
@@ -174,7 +174,7 @@ static bool assignSectionsAndSortBasicBlocks(
                                  [&](MachineBasicBlock &MBB) -> bool {
                                    return MBB.getSectionType() == S;
                                  });
-        assert (MBBQ != MF.rend() && "Section begin not found!");
+        assert(MBBQ != MF.rend() && "Section begin not found!");
         return std::make_pair(MBBP->getNumber(), MBBQ->getNumber());
       });
 

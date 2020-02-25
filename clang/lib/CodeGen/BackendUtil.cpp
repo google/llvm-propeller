@@ -482,7 +482,7 @@ static void initTargetOptions(llvm::TargetOptions &Options,
 
   if (Options.BBSections == llvm::BasicBlockSection::List)
     Options.BBSectionsFuncList = CodeGenOpts.BBSections;
-  
+
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;

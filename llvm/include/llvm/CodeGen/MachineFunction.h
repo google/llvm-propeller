@@ -493,25 +493,25 @@ public:
   }
 
   /// Returns true if basic block labels are to be generated for this function.
-  bool hasBBLabels() const
-  { return BBSectionsType == BasicBlockSection::Labels; }
+  bool hasBBLabels() const {
+    return BBSectionsType == BasicBlockSection::Labels;
+  }
 
-  void setBBSectionsType(BasicBlockSection::SectionMode V)
-  { BBSectionsType = V; }
+  void setBBSectionsType(BasicBlockSection::SectionMode V) {
+    BBSectionsType = V;
+  }
 
-  void setSectionRange(MachineBasicBlockSection E,
-                       std::pair<int, int> V);
+  void setSectionRange(MachineBasicBlockSection E, std::pair<int, int> V);
 
-  /// Returns true if this basic block number starts a cold or exception section.
+  /// Returns true if this basic block number starts a cold or exception
+  /// section.
   bool isSectionStartMBB(int N) const {
-    return (N == ColdSectionRange.first ||
-            N == ExceptionSectionRange.first);
+    return (N == ColdSectionRange.first || N == ExceptionSectionRange.first);
   }
 
   /// Returns true if this basic block ends a cold or exception section.
   bool isSectionEndMBB(int N) const {
-    return (N == ColdSectionRange.second ||
-            N == ExceptionSectionRange.second);
+    return (N == ColdSectionRange.second || N == ExceptionSectionRange.second);
   }
 
   /// Indicates that basic block Labels are to be generated for this function.

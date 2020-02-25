@@ -59,7 +59,6 @@ enum MachineBasicBlockSection : unsigned {
   MBBS_None,
 };
 
-
 template <> struct ilist_traits<MachineInstr> {
 private:
   friend class MachineBasicBlock; // Set by the owning MachineBasicBlock.
