@@ -119,7 +119,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist pgo-plolist-ip cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder
+FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -135,6 +135,7 @@ gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(
 gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
+distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--propeller-backward-jump-distance=2000
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 
@@ -213,6 +214,10 @@ pgo-plolist-ip-compiler pgo-plo-ip-compiler: %-ip-compiler: %/build/bin/clang-${
 	ln -sf $< $@
 	touch $@
 
+pgo-plolist-ip-2000-compiler pgo-plolist-2000-compiler: pgo-plolist-%-compiler: pgo-plolist/build/bin/clang-${CLANG_VERSION}-% | check_environment
+	ln -sf $< $@
+	touch $@
+
 pgo-plo-compiler.symorder pgo-compiler.symorder: %.symorder: %
 	llvm-nm -nS $< | sed -nEe '/(.+)\s(.+)\s(W|t|T)\s(.+)/p' | sed -Ee 's!(.+)\s(a+\.BB\.)(.+)!\1 \2 \3!' | awk '$$4~/^a+\.BB\.$$/{print $$1 " " $$2 " " $$3 " " length($$4)-4 ".BB." $$5} $$4!~/^a+\.BB\.$$/{print $$0}' > $@
 
@@ -249,6 +254,15 @@ pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labe
 pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip pgo-plo/build/bin/clang-${CLANG_VERSION}-ip: %/build/bin/clang-${CLANG_VERSION}-ip: %/build/bin/clang-${CLANG_VERSION}
 	$(call gen_relink_script,$*,$(interp_opt),-ip)
 	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-ip.autolog
+
+pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip-2000: pgo-plolist/build/bin/clang-${CLANG_VERSION}
+	$(call gen_relink_script,pgo-plolist,$(interp_opt) $(distance_cutoff_opt),-ip-2000)
+	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-ip-2000.autolog
+
+pgo-plolist/build/bin/clang-${CLANG_VERSION}-2000: pgo-plolist/build/bin/clang-${CLANG_VERSION}
+	$(call gen_relink_script,pgo-plolist,$(distance_cutoff_opt),-2000)
+	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-2000.autolog
+
 
 # $1 is the COMP name only, without directory, "stage1/pgo-plolist/pgo-plofunsc/etc".
 # $2 is extra options.
@@ -305,7 +319,7 @@ pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler r
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --logtostderr 2>&1 | tee $@.autolog ; \
-	sed -i '1 s/^/@clang-11-ip\n/' $@
+	{ echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; cat "$@" ; } > $@
 
 pgo-labels-compiler.yaml cspgo-compiler.yaml pgo-relocs-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
