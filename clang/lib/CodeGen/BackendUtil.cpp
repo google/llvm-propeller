@@ -38,7 +38,6 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Passes/StandardInstrumentations.h"
-#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -482,9 +481,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
                            .Default(llvm::BasicBlockSection::List);
 
   if (Options.BBSections == llvm::BasicBlockSection::List)
-    llvm::bbsections::getBBSectionsList(CodeGenOpts.BBSections,
-                                        Options.BBSectionsList);
-
+    Options.BBSectionsFuncList = CodeGenOpts.BBSections;
+  
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;

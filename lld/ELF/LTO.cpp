@@ -27,7 +27,6 @@
 #include "llvm/LTO/Config.h"
 #include "llvm/LTO/LTO.h"
 #include "llvm/Object/SymbolicFile.h"
-#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"
@@ -86,8 +85,7 @@ static lto::Config createConfig() {
     else if (config->ltoBasicBlockSections == "none")
       c.Options.BBSections = BasicBlockSection::None;
     else {
-      llvm::bbsections::getBBSectionsList(config->ltoBasicBlockSections,
-                                          c.Options.BBSectionsList);
+      c.Options.BBSectionsFuncList = config->ltoBasicBlockSections.str();
       c.Options.BBSections = BasicBlockSection::List;
     }
   }
