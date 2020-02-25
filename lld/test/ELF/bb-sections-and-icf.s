@@ -19,7 +19,6 @@
 # CHECK-NOT:    aa.BB.bar:
 
 .section	.text.bar,"ax",@progbits
-# -- Begin function bar
 .type	bar,@function
 bar:
  nopl (%rax)
@@ -34,7 +33,6 @@ aa.BB.bar:
  ret
 
 .section	.text.foo,"ax",@progbits
-# -- Begin function foo
 .type	foo,@function
 foo:
  nopl (%rax)

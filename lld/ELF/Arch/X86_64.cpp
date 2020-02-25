@@ -38,7 +38,7 @@ public:
                 uint64_t pltEntryAddr) const override;
   void relocate(uint8_t *loc, const Relocation &rel,
                 uint64_t val) const override;
-  void applyJumpInstrMod(uint8_t *Loc, JumpModType Type,
+  void applyJumpInstrMod(uint8_t *loc, JumpModType type,
                          unsigned size) const override;
 
   RelExpr adjustRelaxExpr(RelType type, const uint8_t *data,
@@ -62,7 +62,7 @@ public:
 };
 } // namespace
 
-static std::vector<std::vector<uint8_t>> X86_NOP_INSTRUCTIONS = {
+static const std::vector<std::vector<uint8_t>> X86_NOP_INSTRUCTIONS = {
     {0x90},
     {0x66, 0x90},
     {0x0f, 0x1f, 0x00},
@@ -180,23 +180,23 @@ static bool isRelocationForJmpInsn(Relocation &R) {
 
 // Return true if Relocation R points to the first instruction in the
 // next section.
-// TODO: Delete this once a new relocation is added for this.
+// TODO: Delete this once psABI reserves a new relocation type for fall thru
+// jumps.
 static bool isFallThruRelocation(InputSection &is, InputFile *file,
                                  InputSection *nextIS, Relocation &r) {
   if (!isRelocationForJmpInsn(r))
     return false;
 
   uint64_t addrLoc = (is.getOutputSection())->addr + is.outSecOff + r.offset;
-  uint64_t targetOffset =
-      SignExtend64(InputSectionBase::getRelocTargetVA(file, r.type, r.addend,
-                                                      addrLoc, *r.sym, r.expr),
-                   (config->wordsize * 8));
+  uint64_t targetOffset = InputSectionBase::getRelocTargetVA(file, r.type,
+                                                             r.addend, addrLoc,
+                                                             *r.sym, r.expr);
 
   // If this jmp is a fall thru, the target offset is the beginning of the
   // next section.
-  uint64_t NextSectionOffset =
+  uint64_t nextSectionOffset =
       nextIS->getOutputSection()->addr + nextIS->outSecOff;
-  return ((addrLoc + 4 + targetOffset) == NextSectionOffset);
+  return (addrLoc + 4 + targetOffset) == nextSectionOffset;
 }
 
 // Return the jmp instruction opcode that is the inverse of the given
@@ -267,7 +267,7 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
   // Now, check if flip and delete is possible.
   const unsigned sizeOfJmpCCInsn = 6;
   // To flip, there must be atleast one JmpCC and one direct jmp.
-  if (is.getSize() < (sizeOfDirectJmpInsn + sizeOfJmpCCInsn))
+  if (is.getSize() < sizeOfDirectJmpInsn + sizeOfJmpCCInsn)
     return 0;
 
   unsigned rbIndex =
@@ -325,13 +325,12 @@ static uint64_t getTargetOffsetForJmp(InputSection &is, InputFile *file,
     return 0;
   }
 
-  uint64_t AddrLoc = (is.getOutputSection())->addr + is.outSecOff + r.offset;
-  uint64_t TargetOffset =
-      SignExtend64(InputSectionBase::getRelocTargetVA(file, r.type, r.addend,
-                                                      AddrLoc, *r.sym, r.expr),
-                   (config->wordsize * 8));
+  uint64_t addrLoc = (is.getOutputSection())->addr + is.outSecOff + r.offset;
+  uint64_t targetOffset = InputSectionBase::getRelocTargetVA(file, r.type,
+                                                             r.addend, addrLoc,
+                                                             *r.sym, r.expr);
 
-  return TargetOffset;
+  return targetOffset;
 }
 
 static bool isOneByteOffsetWhenShrunk(uint64_t TargetOffset,
