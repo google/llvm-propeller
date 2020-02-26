@@ -366,9 +366,9 @@ void MachineFunction::setSectionRange(llvm::MachineBasicBlockSection E,
 /// small.
 void MachineFunction::createBBLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
-  this->MBBSymbolPrefix.resize(getNumBlockIDs(), 'a');
+  this->BBSectionsSymbolPrefix.resize(getNumBlockIDs(), 'a');
   for (auto MBBI = begin(), E = end(); MBBI != E; ++MBBI) {
-    assert((MBBI->getNumber() > 0 && MBBI->getNumber() < getNumBlockIDs()) &&
+    assert((MBBI->getNumber() >= 0 && MBBI->getNumber() < getNumBlockIDs()) &&
            "BasicBlock number was out of range!");
     // 'a' - Normal block.
     // 'r' - Return block.
@@ -383,7 +383,7 @@ void MachineFunction::createBBLabels() {
       type = 'l';
     else if (isRetBlock)
       type = 'r';
-    MBBSymbolPrefix[MBBI->getNumber()] = type;
+    BBSectionsSymbolPrefix[MBBI->getNumber()] = type;
   }
 }
 

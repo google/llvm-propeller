@@ -71,9 +71,9 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // compress the symbol names significantly.  The basic blocks for function
     // foo are named a.BB.foo, aa.BB.foo, and so on.
     if (BasicBlockSymbols) {
-      auto Iter = MF->getMBBSymbolPrefix().begin();
+      auto Iter = MF->getBBSectionsSymbolPrefix().begin();
       if (getNumber() < 0 ||
-          getNumber() >= (int)MF->getMBBSymbolPrefix().size())
+          getNumber() >= (int) MF->getBBSectionsSymbolPrefix().size())
         report_fatal_error("Unreachable MBB: " + Twine(getNumber()));
       std::string Prefix(Iter + 1, Iter + getNumber() + 1);
       std::reverse(Prefix.begin(), Prefix.end());

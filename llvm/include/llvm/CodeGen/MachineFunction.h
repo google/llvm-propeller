@@ -265,7 +265,7 @@ class MachineFunction {
   // Basic block number 'i' gets a prefix of length 'i'.  The ith character also
   // denotes the type of basic block number 'i'.  Return blocks are marked with
   // 'r', landing pads with 'l' and regular blocks with 'a'.
-  std::vector<char> MBBSymbolPrefix;
+  std::vector<char> BBSectionsSymbolPrefix;
 
   // Pool-allocate MachineFunction-lifetime and IR objects.
   BumpPtrAllocator Allocator;
@@ -1072,8 +1072,8 @@ public:
   void copyCallSiteInfo(const MachineInstr *Old,
                         const MachineInstr *New);
 
-  const std::vector<char> &getMBBSymbolPrefix() const {
-    return MBBSymbolPrefix;
+  const std::vector<char> &getBBSectionsSymbolPrefix() const {
+    return BBSectionsSymbolPrefix;
   }
 };
 
