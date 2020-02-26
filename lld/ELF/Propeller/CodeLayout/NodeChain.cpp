@@ -22,15 +22,14 @@ toString(const NodeChain &c,
   std::string str;
   if (c.controlFlowGraph)
     str += c.controlFlowGraph->name.str();
-  str += " [ ";
+  str += " {{{ ";
   for (auto bundleIt = c.nodeBundles.begin(); bundleIt != c.nodeBundles.end();
        ++bundleIt) {
     if (bundleIt == slicePos)
       str += "\n....SLICE POSITION....\n";
+
+    str += " << bundle [offset= " + std::to_string((*bundleIt)->chainOffset) + " size=" + std::to_string((*bundleIt)->size) + " freq="+ std::to_string((*bundleIt)->freq)+ " ] ";
     for (auto *n : (*bundleIt)->nodes) {
-      str +=
-          " << bundle [coffset= " + std::to_string((*bundleIt)->chainOffset) +
-          "] ";
       if (!c.controlFlowGraph)
         str += std::to_string(n->controlFlowGraph->getEntryNode()->mappedAddr) +
                ":";
@@ -40,13 +39,13 @@ toString(const NodeChain &c,
                                   n->controlFlowGraph->name.size() - 4);
       str += " (size=" + std::to_string(n->shSize) +
              ", freq=" + std::to_string(n->freq) +
-             ", boffset=" + std::to_string(n->bundleOffset) + ")";
+             ", offset=" + std::to_string(n->bundleOffset) + ")";
       if (n != (*bundleIt)->nodes.back())
         str += " -> ";
     }
     str += " >> ";
   }
-  str += " ]";
+  str += " }}}";
   str += " score: " + std::to_string(c.score);
   return str;
 }

@@ -99,9 +99,9 @@ namespace propeller {
 // edges.
 void NodeChainBuilder::init() {
   for (ControlFlowGraph *cfg : cfgs) {
-    std::vector<std::vector<CFGNode *>> paths;
-    initMutuallyForcedEdges(*cfg, paths);
-    initNodeChains(*cfg, paths);
+    std::vector<std::vector<CFGNode *>> bundles;
+    initBundles(*cfg, bundles);
+    initNodeChains(*cfg, bundles);
   }
 }
 
@@ -184,7 +184,7 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
   if ((propConfig.optReorderIP || propConfig.optSplitFuncs) &&
       (leftChain->freq == 0 ^ rightChain->freq == 0))
-    error("Attempting to merge hot and cold chains: \n" + toString(*leftChain) +
+    warn("Attempting to merge hot and cold chains: \n" + toString(*leftChain) +
           "\nAND\n" + toString(*rightChain));
 
   if (leftChain->debugChain || rightChain->debugChain)
@@ -604,14 +604,14 @@ void NodeChainBuilder::initNodeChains(
   }
 }
 
-// Find all the mutually-forced edges.
-// These are all the edges which are -- based on the profile -- the only
-// (executed) outgoing edge from their source node and the only (executed)
-// incoming edges to their sink nodes
-void NodeChainBuilder::initMutuallyForcedEdges(
-    ControlFlowGraph &cfg, std::vector<std::vector<CFGNode *>> &paths) {
-  DenseMap<CFGNode *, CFGNode *> mutuallyForcedOut;
+// Compute all the bundles which will be fixed in the layout and won't be split.
+void NodeChainBuilder::initBundles(
+    ControlFlowGraph &cfg, std::vector<std::vector<CFGNode *>> &bundles) {
 
+  // Find all the mutually-forced-edges.
+  // These are all the edges which are -- based on the profile -- the only
+  // (executed) outgoing edge from their source node and the only (executed)
+  // incoming edges to their sink nodes
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledOuts;
   DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledIns;
 
@@ -632,30 +632,30 @@ void NodeChainBuilder::initMutuallyForcedEdges(
                  });
   }
 
+  DenseMap<CFGNode *, CFGNode *> bundleNext;
+
   for (auto &node : cfg.nodes) {
     if (profiledOuts[node.get()].size() == 1) {
       CFGEdge *edge = profiledOuts[node.get()].front();
       if (profiledIns[edge->sink].size() == 1)
-        mutuallyForcedOut.try_emplace(node.get(), edge->sink);
+        bundleNext.try_emplace(node.get(), edge->sink);
     }
   }
 
-  // Break cycles in the mutually forced edges by cutting the edge sinking to
+  // Break cycles in the bundleNext map by cutting the edge sinking to
   // the smallest address in every cycle (hopefully a loop backedge)
   DenseMap<CFGNode *, unsigned> nodeToPathMap;
   SmallVector<CFGNode *, 16> cycleCutNodes;
   unsigned pathCount = 0;
-  for (auto it = mutuallyForcedOut.begin(); it != mutuallyForcedOut.end();
-       ++it) {
+  for (auto it = bundleNext.begin(); it != bundleNext.end(); ++it) {
     // Check to see if the node (and its cycle) have already been visited.
     if (nodeToPathMap[it->first])
       continue;
-    CFGEdge *victimEdge = nullptr;
+    CFGNode *victimNode;
     auto nodeIt = it;
     pathCount++;
-    while (nodeIt != mutuallyForcedOut.end()) {
-      CFGNode *node = nodeIt->first;
-      unsigned path = nodeToPathMap[node];
+    while (nodeIt != bundleNext.end()) {
+      unsigned path = nodeToPathMap[nodeIt->first];
       if (path != 0) {
         // If this node is marked with a number, either it is the same number,
         // in which case we have found a cycle. Or it is a different number,
@@ -663,40 +663,34 @@ void NodeChainBuilder::initMutuallyForcedEdges(
         // (non-cycle).
         if (path == pathCount) {
           // We have found a cycle: add the victim edge
-          cycleCutNodes.push_back(victimEdge->src);
+          cycleCutNodes.push_back(victimNode);
         }
         break;
       } else
-        nodeToPathMap[node] = pathCount;
-      if (!profiledOuts[node].empty()) {
-        CFGEdge *edge = profiledOuts[node].front();
-        if (!victimEdge ||
-            (edge->sink->mappedAddr < victimEdge->sink->mappedAddr)) {
-          victimEdge = edge;
-        }
-      }
-      nodeIt = mutuallyForcedOut.find(nodeIt->second);
+        nodeToPathMap[nodeIt->first] = pathCount;
+
+      if (!victimNode ||
+          (nodeIt->second->mappedAddr < bundleNext[victimNode]->mappedAddr))
+        victimNode = nodeIt->first;
+      nodeIt = bundleNext.find(nodeIt->second);
     }
   }
 
-  // Remove the victim edges to break cycles in the mutually forced edges
+  // Remove the victim nodes to break cycles in the bundles
   for (CFGNode *node : cycleCutNodes)
-    mutuallyForcedOut.erase(node);
+    bundleNext.erase(node);
 
-  DenseSet<CFGNode *> mutuallyForcedIn;
-  for (auto &elem : mutuallyForcedOut)
-    mutuallyForcedIn.insert(elem.second);
+  DenseSet<CFGNode *> hasBundlePrev;
+  for (auto &elem : bundleNext)
+    hasBundlePrev.insert(elem.second);
 
-  for (auto it = mutuallyForcedOut.begin(); it != mutuallyForcedOut.end();
-       ++it) {
-    if (!mutuallyForcedIn.count(it->first)) {
+  // Construct paths based on the bundleNext map
+  for (auto it = bundleNext.begin(); it != bundleNext.end(); ++it) {
+    if (!hasBundlePrev.count(it->first)) {
       std::vector<CFGNode *> path(1, it->first);
-      auto itt = it;
-      do {
+      for (auto itt=it; itt != bundleNext.end(); itt = bundleNext.find(itt->second))
         path.push_back(itt->second);
-      } while ((itt = mutuallyForcedOut.find(itt->second)) !=
-               mutuallyForcedOut.end());
-      paths.push_back(std::move(path));
+      bundles.push_back(std::move(path));
     }
   }
 }

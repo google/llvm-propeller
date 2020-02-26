@@ -101,11 +101,10 @@ public:
   uint64_t freq;
   ControlFlowGraph *controlFlowGraph;
 
-  // Containing bundle for this node assigned by the ordering algorithm.
-  // This will be updated as chains keep merging together during the algorithm.
+  // Containing bundle for this node assigned by the ordering algorithm, and the
+  // offset of the node in that bundle.
+  // These two field are updated as bundles get merged together during the algorithm.
   CFGNodeBundle *bundle;
-
-  // Offset of this node in the assigned bundle.
   int64_t bundleOffset;
 
   std::vector<CFGEdge *> outs;     // Intra function edges.
