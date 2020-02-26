@@ -73,7 +73,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     if (BasicBlockSymbols) {
       auto Iter = MF->getBBSectionsSymbolPrefix().begin();
       if (getNumber() < 0 ||
-          getNumber() >= (int) MF->getBBSectionsSymbolPrefix().size())
+          getNumber() >= (int)MF->getBBSectionsSymbolPrefix().size())
         report_fatal_error("Unreachable MBB: " + Twine(getNumber()));
       std::string Prefix(Iter + 1, Iter + getNumber() + 1);
       std::reverse(Prefix.begin(), Prefix.end());
