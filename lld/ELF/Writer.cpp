@@ -1661,9 +1661,10 @@ static void fixSymbolsAfterShrinking() {
       if (!inputSec || !inputSec->bytesDropped)
         return;
 
-      const size_t NewSize = inputSec->data().size() - inputSec->bytesDropped;
+      const size_t OldSize = inputSec->data().size();
+      const size_t NewSize = OldSize - inputSec->bytesDropped;
 
-      if (def->value > NewSize) {
+      if (def->value > NewSize && def->value <= OldSize) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Moving symbol " << Sym->getName() << " from "
                    << def->value << " to "
@@ -1672,7 +1673,8 @@ static void fixSymbolsAfterShrinking() {
         return;
       }
 
-      if (def->value + def->size > NewSize) {
+      if (def->value + def->size > NewSize && def->value <= OldSize &&
+          def->value + def->size <= OldSize) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Shrinking symbol " << Sym->getName() << " from "
                    << def->size << " to " << def->size - inputSec->bytesDropped
