@@ -1039,7 +1039,6 @@ static void readConfigs(opt::InputArgList &args) {
   config->searchPaths = args::getStrings(args, OPT_library_path);
   config->sectionStartMap = getSectionStartMap(args);
   config->shared = args.hasArg(OPT_shared);
-
   config->singleRoRx = args.hasArg(OPT_no_rosegment);
   config->soName = args.getLastArgValue(OPT_soname);
   config->sortSection = getSortSection(args);

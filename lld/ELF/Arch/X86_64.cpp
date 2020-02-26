@@ -187,7 +187,7 @@ static bool isFallThruRelocation(InputSection &is, InputFile *file,
   if (!isRelocationForJmpInsn(r))
     return false;
 
-  uint64_t addrLoc = (is.getOutputSection())->addr + is.outSecOff + r.offset;
+  uint64_t addrLoc = is.getOutputSection()->addr + is.outSecOff + r.offset;
   uint64_t targetOffset = InputSectionBase::getRelocTargetVA(
       file, r.type, r.addend, addrLoc, *r.sym, r.expr);
 
