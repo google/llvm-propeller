@@ -222,7 +222,7 @@ bool NodeChainBuilder::attachNodes(CFGNode *src, CFGNode *sink) {
     return false;
 
   // Ignore edges between hot and cold basic blocks.
-  if (src->freq == 0 ^ sink->freq == 0)
+  if (getNodeChain(src)->freq == 0 ^ getNodeChain(sink)->freq == 0)
     return false;
   NodeChain *srcChain = getNodeChain(src);
   NodeChain *sinkChain = getNodeChain(sink);
@@ -651,7 +651,7 @@ void NodeChainBuilder::initBundles(
     // Check to see if the node (and its cycle) have already been visited.
     if (nodeToPathMap[it->first])
       continue;
-    CFGNode *victimNode;
+    CFGNode *victimNode = nullptr;
     auto nodeIt = it;
     pathCount++;
     while (nodeIt != bundleNext.end()) {
