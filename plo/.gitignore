@@ -10,3 +10,4 @@
 !generate-lld-patch.inc
 !generate-core-diff.sh
 !bbfilter.cc
+!ab_test.sh
