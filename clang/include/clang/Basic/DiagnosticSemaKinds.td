@@ -193,10 +193,10 @@ def ext_flexible_array_init : Extension<
 
 // C++20 designated initializers
 def ext_cxx_designated_init : Extension<
-  "designated initializers are a C++20 extension">, InGroup<CXX2aDesignator>;
+  "designated initializers are a C++20 extension">, InGroup<CXX20Designator>;
 def warn_cxx17_compat_designated_init : Warning<
   "designated initializers are incompatible with C++ standards before C++20">,
-  InGroup<CXXPre2aCompatPedantic>, DefaultIgnore;
+  InGroup<CXXPre20CompatPedantic>, DefaultIgnore;
 def ext_designated_init_mixed : ExtWarn<
   "mixture of designated and non-designated initializers in the same "
   "initializer list is a C99 extension">, InGroup<C99Designator>;
@@ -444,13 +444,13 @@ def err_decomp_decl_spec : Error<
   "%plural{1:'%1'|:with '%1' specifiers}0">;
 def ext_decomp_decl_spec : ExtWarn<
   "decomposition declaration declared "
-  "%plural{1:'%1'|:with '%1' specifiers}0 is a C++2a extension">,
-  InGroup<CXX2a>;
+  "%plural{1:'%1'|:with '%1' specifiers}0 is a C++20 extension">,
+  InGroup<CXX20>;
 def warn_cxx17_compat_decomp_decl_spec : Warning<
   "decomposition declaration declared "
   "%plural{1:'%1'|:with '%1' specifiers}0 "
-  "is incompatible with C++ standards before C++2a">,
-  InGroup<CXXPre2aCompat>, DefaultIgnore;
+  "is incompatible with C++ standards before C++20">,
+  InGroup<CXXPre20Compat>, DefaultIgnore;
 def err_decomp_decl_type : Error<
   "decomposition declaration cannot be declared with type %0; "
   "declared type must be 'auto' or reference to 'auto'">;
@@ -1019,8 +1019,8 @@ def err_objc_direct_on_protocol : Error<
   "'objc_direct' attribute cannot be applied to %select{methods|properties}0 "
   "declared in an Objective-C protocol">;
 def err_objc_direct_duplicate_decl : Error<
-  "%select{|direct }0method declaration conflicts "
-  "with previous %select{|direct }1declaration of method %2">;
+  "%select{|direct }0%select{method|property}1 declaration conflicts "
+  "with previous %select{|direct }2declaration of %select{method|property}1 %3">;
 def err_objc_direct_impl_decl_mismatch : Error<
   "direct method was declared in %select{the primary interface|an extension|a category}0 "
   "but is implemented in %select{the primary interface|a category|a different category}1">;
@@ -1036,6 +1036,8 @@ def warn_objc_direct_ignored : Warning<
 def warn_objc_direct_property_ignored : Warning<
   "direct attribute on property %0 ignored (not implemented by this Objective-C runtime)">,
   InGroup<IgnoredAttributes>;
+def err_objc_direct_dynamic_property : Error<
+  "direct property cannot be @dynamic">;
 
 def warn_conflicting_overriding_ret_types : Warning<
   "conflicting return type in "
@@ -1939,6 +1941,9 @@ def ext_dtor_name_missing_template_arguments : Extension<
 def ext_qualified_dtor_named_in_lexical_scope : ExtWarn<
   "qualified destructor name only found in lexical scope; omit the qualifier "
   "to find this type name by unqualified lookup">, InGroup<DtorName>;
+def ext_dtor_name_ambiguous : Extension<
+  "ISO C++ considers this destructor name lookup to be ambiguous">,
+  InGroup<DtorName>;
 
 def err_destroy_attr_on_non_static_var : Error<
   "%select{no_destroy|always_destroy}0 attribute can only be applied to a"
@@ -1994,7 +1999,7 @@ def err_init_list_bad_dest_type : Error<
   "list">;
 def warn_cxx2a_compat_aggregate_init_with_ctors : Warning<
   "aggregate initialization of type %0 with user-declared constructors "
-  "is incompatible with C++2a">, DefaultIgnore, InGroup<CXX2aCompat>;
+  "is incompatible with C++20">, DefaultIgnore, InGroup<CXX20Compat>;
 
 def err_reference_bind_to_bitfield : Error<
   "%select{non-const|volatile}0 reference cannot bind to "
@@ -2490,7 +2495,7 @@ def err_constexpr_redecl_mismatch : Error<
 def err_constexpr_virtual : Error<"virtual function cannot be constexpr">;
 def warn_cxx17_compat_constexpr_virtual : Warning<
   "virtual constexpr functions are incompatible with "
-  "C++ standards before C++2a">, InGroup<CXXPre2aCompat>, DefaultIgnore;
+  "C++ standards before C++20">, InGroup<CXXPre20Compat>, DefaultIgnore;
 def err_constexpr_virtual_base : Error<
   "constexpr %select{member function|constructor}0 not allowed in "
   "%select{struct|interface|class}1 with virtual base "
@@ -2516,11 +2521,11 @@ def warn_cxx11_compat_constexpr_body_invalid_stmt : Warning<
   InGroup<CXXPre14Compat>, DefaultIgnore;
 def ext_constexpr_body_invalid_stmt_cxx2a : ExtWarn<
   "use of this statement in a constexpr %select{function|constructor}0 "
-  "is a C++2a extension">, InGroup<CXX2a>;
+  "is a C++20 extension">, InGroup<CXX20>;
 def warn_cxx17_compat_constexpr_body_invalid_stmt : Warning<
   "use of this statement in a constexpr %select{function|constructor}0 "
-  "is incompatible with C++ standards before C++2a">,
-  InGroup<CXXPre2aCompat>, DefaultIgnore;
+  "is incompatible with C++ standards before C++20">,
+  InGroup<CXXPre20Compat>, DefaultIgnore;
 def ext_constexpr_type_definition : ExtWarn<
   "type definition in a constexpr %select{function|constructor}0 "
   "is a C++14 extension">, InGroup<CXX14>;
@@ -2546,11 +2551,11 @@ def err_constexpr_local_var_non_literal_type : Error<
   "%select{function|constructor}0">;
 def ext_constexpr_local_var_no_init : ExtWarn<
   "uninitialized variable in a constexpr %select{function|constructor}0 "
-  "is a C++20 extension">, InGroup<CXX2a>;
+  "is a C++20 extension">, InGroup<CXX20>;
 def warn_cxx17_compat_constexpr_local_var_no_init : Warning<
   "uninitialized variable in a constexpr %select{function|constructor}0 "
   "is incompatible with C++ standards before C++20">,
-  InGroup<CXXPre2aCompat>, DefaultIgnore;
+  InGroup<CXXPre20Compat>, DefaultIgnore;
 def ext_constexpr_function_never_constant_expr : ExtWarn<
   "%select{constexpr|consteval}1 %select{function|constructor}0 never produces a "
   "constant expression">, InGroup<DiagGroup<"invalid-constexpr">>, DefaultError;
@@ -2576,29 +2581,29 @@ def warn_cxx11_compat_constexpr_body_multiple_return : Warning<
 def note_constexpr_body_previous_return : Note<
   "previous return statement is here">;
 
-// C++2a function try blocks in constexpr
+// C++20 function try blocks in constexpr
 def ext_constexpr_function_try_block_cxx2a : ExtWarn<
   "function try block in constexpr %select{function|constructor}0 is "
-  "a C++2a extension">, InGroup<CXX2a>;
+  "a C++20 extension">, InGroup<CXX20>;
 def warn_cxx17_compat_constexpr_function_try_block : Warning<
   "function try block in constexpr %select{function|constructor}0 is "
-  "incompatible with C++ standards before C++2a">,
-  InGroup<CXXPre2aCompat>, DefaultIgnore;
+  "incompatible with C++ standards before C++20">,
+  InGroup<CXXPre20Compat>, DefaultIgnore;
 
 def ext_constexpr_union_ctor_no_init : ExtWarn<
   "constexpr union constructor that does not initialize any member "
-  "is a C++20 extension">, InGroup<CXX2a>;
+  "is a C++20 extension">, InGroup<CXX20>;
 def warn_cxx17_compat_constexpr_union_ctor_no_init : Warning<
   "constexpr union constructor that does not initialize any member "
   "is incompatible with C++ standards before C++20">,
-  InGroup<CXXPre2aCompat>, DefaultIgnore;
+  InGroup<CXXPre20Compat>, DefaultIgnore;
 def ext_constexpr_ctor_missing_init : ExtWarn<
   "constexpr constructor that does not initialize all members "
-  "is a C++20 extension">, InGroup<CXX2a>;
+  "is a C++20 extension">, InGroup<CXX20>;
 def warn_cxx17_compat_constexpr_ctor_missing_init : Warning<
   "constexpr constructor that does not initialize all members "
   "is incompatible with C++ standards before C++20">,
-  InGroup<CXXPre2aCompat>, DefaultIgnore;
+  InGroup<CXXPre20Compat>, DefaultIgnore;
 def note_constexpr_ctor_missing_init : Note<
   "member not initialized by constructor">;
 def note_non_literal_no_constexpr_ctors : Note<
@@ -2730,7 +2735,7 @@ def warn_cxx98_compat_unicode_type : Warning<
   InGroup<CXX98Compat>, DefaultIgnore;
 def warn_cxx17_compat_unicode_type : Warning<
   "'char8_t' type specifier is incompatible with C++ standards before C++20">,
-  InGroup<CXXPre2aCompat>, DefaultIgnore;
+  InGroup<CXXPre20Compat>, DefaultIgnore;
 
 // __make_integer_seq
 def err_integer_sequence_negative_length : Error<
@@ -3031,6 +3036,9 @@ def err_alignment_too_big : Error<
   "requested alignment must be %0 or smaller">;
 def err_alignment_not_power_of_two : Error<
   "requested alignment is not a power of 2">;
+def warn_alignment_not_power_of_two : Warning<
+  err_alignment_not_power_of_two.Text>,
+  InGroup<DiagGroup<"non-power-of-two-alignment">>;
 def err_alignment_dependent_typedef_name : Error<
   "requested alignment is dependent but declaration is not dependent">;
 
@@ -3658,6 +3666,15 @@ def warn_int_to_pointer_cast : Warning<
 def warn_int_to_void_pointer_cast : Warning<
   "cast to %1 from smaller integer type %0">,
   InGroup<IntToVoidPointerCast>;
+def warn_pointer_to_int_cast : Warning<
+  "cast to smaller integer type %1 from %0">,
+  InGroup<PointerToIntCast>;
+def warn_void_pointer_to_int_cast : Warning<
+  "cast to smaller integer type %1 from %0">,
+  InGroup<VoidPointerToIntCast>;
+def ext_ms_pointer_to_int_cast : ExtWarn<
+  "cast to smaller integer type %1 from %0 is a Microsoft extension">,
+InGroup<MicrosoftCast>;
 
 def warn_attribute_ignored_for_field_of_type : Warning<
   "%0 attribute ignored for field of type %1">,
@@ -4259,7 +4276,7 @@ def err_ovl_no_viable_literal_operator : Error<
 def err_template_param_shadow : Error<
   "declaration of %0 shadows template parameter">;
 def ext_template_param_shadow : ExtWarn<
-  err_template_param_shadow.Text>, InGroup<MicrosoftTemplate>;
+  err_template_param_shadow.Text>, InGroup<MicrosoftTemplateShadow>;
 def note_template_param_here : Note<"template parameter is declared here">;
 def warn_template_export_unsupported : Warning<
   "exported templates are unsupported">;
@@ -4338,11 +4355,11 @@ def err_template_tag_noparams : Error<
 def warn_cxx17_compat_adl_only_template_id : Warning<
   "use of function template name with no prior function template "
   "declaration in function call with explicit template arguments "
-  "is incompatible with C++ standards before C++2a">,
-  InGroup<CXXPre2aCompat>, DefaultIgnore;
+  "is incompatible with C++ standards before C++20">,
+  InGroup<CXXPre20Compat>, DefaultIgnore;
 def ext_adl_only_template_id : ExtWarn<
   "use of function template name with no prior declaration in function call "
-  "with explicit template arguments is a C++2a extension">, InGroup<CXX2a>;
+  "with explicit template arguments is a C++20 extension">, InGroup<CXX20>;
 
 // C++ Template Argument Lists
 def err_template_missing_args : Error<
@@ -4484,12 +4501,12 @@ def err_pointer_to_member_oper_value_classify: Error<
   "pointer-to-member function type %0 can only be called on an "
   "%select{rvalue|lvalue}1">;
 def ext_pointer_to_const_ref_member_on_rvalue : Extension<
-  "invoking a pointer to a 'const &' member function on an rvalue is a C++2a extension">,
-  InGroup<CXX2a>, SFINAEFailure;
+  "invoking a pointer to a 'const &' member function on an rvalue is a C++20 extension">,
+  InGroup<CXX20>, SFINAEFailure;
 def warn_cxx17_compat_pointer_to_const_ref_member_on_rvalue : Warning<
   "invoking a pointer to a 'const &' member function on an rvalue is "
-  "incompatible with C++ standards before C++2a">,
-  InGroup<CXXPre2aCompatPedantic>, DefaultIgnore;
+  "incompatible with C++ standards before C++20">,
+  InGroup<CXXPre20CompatPedantic>, DefaultIgnore;
 def ext_ms_deref_template_argument: ExtWarn<
   "non-type template argument containing a dereference operation is a "
   "Microsoft extension">, InGroup<MicrosoftTemplate>;
@@ -6238,7 +6255,7 @@ def err_array_init_utf8_string_into_char : Error<
   "UTF-8 string literal%select{ is not permitted by '-fchar8_t'|}0">;
 def warn_cxx2a_compat_utf8_string : Warning<
   "type of UTF-8 string literal will change from array of const char to "
-  "array of const char8_t in C++2a">, InGroup<CXX2aCompat>, DefaultIgnore;
+  "array of const char8_t in C++20">, InGroup<CXX20Compat>, DefaultIgnore;
 def note_cxx2a_compat_utf8_string_remove_u8 : Note<
   "remove 'u8' prefix to avoid a change of behavior; "
   "Clang encodes unprefixed narrow string literals as UTF-8">;
@@ -7167,9 +7184,9 @@ let CategoryName = "Lambda Issue" in {
     "cannot deduce type for lambda capture %0 from initializer list">;
   def warn_cxx17_compat_init_capture_pack : Warning<
     "initialized lambda capture packs are incompatible with C++ standards "
-    "before C++2a">, InGroup<CXXPre2aCompat>, DefaultIgnore;
+    "before C++20">, InGroup<CXXPre20Compat>, DefaultIgnore;
   def ext_init_capture_pack : ExtWarn<
-    "initialized lambda pack captures are a C++2a extension">, InGroup<CXX2a>;
+    "initialized lambda pack captures are a C++20 extension">, InGroup<CXX20>;
 
   // C++14 generic lambdas.
   def warn_cxx11_compat_generic_lambda : Warning<
@@ -7187,23 +7204,23 @@ let CategoryName = "Lambda Issue" in {
   def err_parameter_shadow_capture : Error<
     "a lambda parameter cannot shadow an explicitly captured entity">;
 
-  // C++2a [=, this] captures.
+  // C++20 [=, this] captures.
   def warn_cxx17_compat_equals_this_lambda_capture : Warning<
     "explicit capture of 'this' with a capture default of '=' is incompatible "
-    "with C++ standards before C++2a">, InGroup<CXXPre2aCompat>, DefaultIgnore;
+    "with C++ standards before C++20">, InGroup<CXXPre20Compat>, DefaultIgnore;
   def ext_equals_this_lambda_capture_cxx2a : ExtWarn<
     "explicit capture of 'this' with a capture default of '=' "
-    "is a C++2a extension">, InGroup<CXX2a>;
+    "is a C++20 extension">, InGroup<CXX20>;
   def warn_deprecated_this_capture : Warning<
     "implicit capture of 'this' with a capture default of '=' is deprecated">,
     InGroup<DeprecatedThisCapture>, DefaultIgnore;
   def note_deprecated_this_capture : Note<
     "add an explicit capture of 'this' to capture '*this' by reference">;
 
-  // C++2a default constructible / assignable lambdas.
+  // C++20 default constructible / assignable lambdas.
   def warn_cxx17_compat_lambda_def_ctor_assign : Warning<
     "%select{default construction|assignment}0 of lambda is incompatible with "
-    "C++ standards before C++2a">, InGroup<CXXPre2aCompat>, DefaultIgnore;
+    "C++ standards before C++20">, InGroup<CXXPre20Compat>, DefaultIgnore;
 }
 
 def err_return_in_captured_stmt : Error<
@@ -7353,6 +7370,21 @@ def warn_incompatible_qualified_id : Warning<
   "sending type to parameter of incompatible type}0,1"
   "|%diff{casting $ to incompatible type $|"
   "casting type to incompatible type}0,1}2">;
+def err_incompatible_qualified_id : Error<
+  "%select{%diff{assigning to $ from incompatible type $|"
+  "assigning to type from incompatible type}0,1"
+  "|%diff{passing $ to parameter of incompatible type $|"
+  "passing type to parameter of incompatible type}0,1"
+  "|%diff{returning $ from a function with incompatible result type $|"
+  "returning type from a function with incompatible result type}0,1"
+  "|%diff{converting $ to incompatible type $|"
+  "converting type to incompatible type}0,1"
+  "|%diff{initializing $ with an expression of incompatible type $|"
+  "initializing type with an expression of incompatible type}0,1"
+  "|%diff{sending $ to parameter of incompatible type $|"
+  "sending type to parameter of incompatible type}0,1"
+  "|%diff{casting $ to incompatible type $|"
+  "casting type to incompatible type}0,1}2">;
 def ext_typecheck_convert_pointer_int : ExtWarn<
   "incompatible pointer to integer conversion "
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
@@ -7371,6 +7403,23 @@ def ext_typecheck_convert_pointer_int : ExtWarn<
   "; remove *|"
   "; remove &}3">,
   InGroup<IntConversion>;
+def err_typecheck_convert_pointer_int : Error<
+  "incompatible pointer to integer conversion "
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  "%select{|; dereference with *|"
+  "; take the address with &|"
+  "; remove *|"
+  "; remove &}3">;
 def ext_typecheck_convert_int_pointer : ExtWarn<
   "incompatible integer to pointer conversion "
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
@@ -7389,7 +7438,37 @@ def ext_typecheck_convert_int_pointer : ExtWarn<
   "; remove *|"
   "; remove &}3">,
   InGroup<IntConversion>, SFINAEFailure;
+def err_typecheck_convert_int_pointer : Error<
+  "incompatible integer to pointer conversion "
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  "%select{|; dereference with *|"
+  "; take the address with &|"
+  "; remove *|"
+  "; remove &}3">;
 def ext_typecheck_convert_pointer_void_func : Extension<
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  " converts between void pointer and function pointer">;
+def err_typecheck_convert_pointer_void_func : Error<
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
   "|%diff{passing $ to parameter of type $|"
   "passing to parameter of different type}0,1"
@@ -7416,6 +7495,19 @@ def ext_typecheck_convert_incompatible_pointer_sign : ExtWarn<
   "|%diff{casting $ to type $|casting between types}0,1}2"
   " converts between pointers to integer types with different sign">,
   InGroup<DiagGroup<"pointer-sign">>;
+def err_typecheck_convert_incompatible_pointer_sign : Error<
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  " converts between pointers to integer types with different sign">;
 def ext_typecheck_convert_incompatible_pointer : ExtWarn<
   "incompatible pointer types "
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
@@ -7434,6 +7526,23 @@ def ext_typecheck_convert_incompatible_pointer : ExtWarn<
   "; remove *|"
   "; remove &}3">,
   InGroup<IncompatiblePointerTypes>;
+def err_typecheck_convert_incompatible_pointer : Error<
+  "incompatible pointer types "
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  "%select{|; dereference with *|"
+  "; take the address with &|"
+  "; remove *|"
+  "; remove &}3">;
 def ext_typecheck_convert_incompatible_function_pointer : ExtWarn<
   "incompatible function pointer types "
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
@@ -7452,6 +7561,23 @@ def ext_typecheck_convert_incompatible_function_pointer : ExtWarn<
   "; remove *|"
   "; remove &}3">,
   InGroup<IncompatibleFunctionPointerTypes>;
+def err_typecheck_convert_incompatible_function_pointer : Error<
+  "incompatible function pointer types "
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  "%select{|; dereference with *|"
+  "; take the address with &|"
+  "; remove *|"
+  "; remove &}3">;
 def ext_typecheck_convert_discards_qualifiers : ExtWarn<
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
   "|%diff{passing $ to parameter of type $|"
@@ -7466,6 +7592,19 @@ def ext_typecheck_convert_discards_qualifiers : ExtWarn<
   "|%diff{casting $ to type $|casting between types}0,1}2"
   " discards qualifiers">,
   InGroup<IncompatiblePointerTypesDiscardsQualifiers>;
+def err_typecheck_convert_discards_qualifiers : Error<
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  " discards qualifiers">;
 def ext_nested_pointer_qualifier_mismatch : ExtWarn<
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
   "|%diff{passing $ to parameter of type $|"
@@ -7480,6 +7619,19 @@ def ext_nested_pointer_qualifier_mismatch : ExtWarn<
   "|%diff{casting $ to type $|casting between types}0,1}2"
   " discards qualifiers in nested pointer types">,
   InGroup<IncompatiblePointerTypesDiscardsQualifiers>;
+def err_nested_pointer_qualifier_mismatch : Error<
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  " discards qualifiers in nested pointer types">;
 def warn_incompatible_vectors : Warning<
   "incompatible vector types "
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
@@ -7494,6 +7646,19 @@ def warn_incompatible_vectors : Warning<
   "sending to parameter of different type}0,1"
   "|%diff{casting $ to type $|casting between types}0,1}2">,
   InGroup<VectorConversion>, DefaultIgnore;
+def err_incompatible_vectors : Error<
+  "incompatible vector types "
+  "%select{%diff{assigning to $ from $|assigning to different types}0,1"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2">;
 def err_int_to_block_pointer : Error<
   "invalid block pointer conversion "
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
@@ -7904,7 +8069,7 @@ def ext_cxx14_attr : Extension<
 def ext_cxx17_attr : Extension<
   "use of the %0 attribute is a C++17 extension">, InGroup<CXX17>;
 def ext_cxx2a_attr : Extension<
-  "use of the %0 attribute is a C++2a extension">, InGroup<CXX2a>;
+  "use of the %0 attribute is a C++20 extension">, InGroup<CXX20>;
 
 def warn_unused_comparison : Warning<
   "%select{equality|inequality|relational|three-way}0 comparison result unused">,
@@ -7918,7 +8083,7 @@ def err_incomplete_type_used_in_type_trait_expr : Error<
 // C++20 constinit and require_constant_initialization attribute
 def warn_cxx20_compat_constinit : Warning<
   "'constinit' specifier is incompatible with C++ standards before C++20">,
-  InGroup<CXX2aCompat>, DefaultIgnore;
+  InGroup<CXX20Compat>, DefaultIgnore;
 def err_constinit_local_variable : Error<
   "local variable cannot be declared 'constinit'">;
 def err_require_constant_init_failed : Error<
@@ -8373,7 +8538,7 @@ def note_deleted_type_mismatch : Note<
 def warn_cxx17_compat_defaulted_method_type_mismatch : Warning<
   "explicitly defaulting this %sub{select_special_member_kind}0 with a type "
   "different from the implicit type is incompatible with C++ standards before "
-  "C++2a">, InGroup<CXXPre2aCompat>, DefaultIgnore;
+  "C++20">, InGroup<CXXPre20Compat>, DefaultIgnore;
 def warn_vbase_moved_multiple_times : Warning<
   "defaulted move assignment operator of %0 will move assign virtual base "
   "class %1 multiple times">, InGroup<DiagGroup<"multiple-move-vbase">>;
@@ -8387,10 +8552,10 @@ def select_defaulted_comparison_kind : TextSubstitution<
   "%select{<ERROR>|equality|three-way|equality|relational}0 comparison "
   "operator">;
 def ext_defaulted_comparison : ExtWarn<
-  "defaulted comparison operators are a C++20 extension">, InGroup<CXX2a>;
+  "defaulted comparison operators are a C++20 extension">, InGroup<CXX20>;
 def warn_cxx17_compat_defaulted_comparison : Warning<
   "defaulted comparison operators are incompatible with C++ standards "
-  "before C++20">, InGroup<CXXPre2aCompat>, DefaultIgnore;
+  "before C++20">, InGroup<CXXPre20Compat>, DefaultIgnore;
 def err_defaulted_comparison_template : Error<
   "comparison operator template cannot be defaulted">;
 def err_defaulted_comparison_out_of_class : Error<

@@ -1235,6 +1235,27 @@ findOrphanPos(std::vector<BaseCommand *>::iterator b,
   return i;
 }
 
+// Adds random priorities to sections not already in the map.
+static void maybeShuffle(DenseMap<const InputSectionBase *, int> &order) {
+  if (!config->shuffleSectionSeed)
+    return;
+
+  std::vector<int> priorities(inputSections.size() - order.size());
+  // Existing priorities are < 0, so use priorities >= 0 for the missing
+  // sections.
+  int curPrio = 0;
+  for (int &prio : priorities)
+    prio = curPrio++;
+  uint32_t seed = *config->shuffleSectionSeed;
+  std::mt19937 g(seed ? seed : std::random_device()());
+  llvm::shuffle(priorities.begin(), priorities.end(), g);
+  int prioIndex = 0;
+  for (InputSectionBase *sec : inputSections) {
+    if (order.try_emplace(sec, priorities[prioIndex]).second)
+      ++prioIndex;
+  }
+}
+
 // Builds section order for handling --symbol-ordering-file.
 static DenseMap<const InputSectionBase *, int> buildSectionOrder() {
   DenseMap<const InputSectionBase *, int> sectionOrder;
@@ -1364,6 +1385,19 @@ static void sortSection(OutputSection *sec,
                         const DenseMap<const InputSectionBase *, int> &order) {
   StringRef name = sec->name;
 
+  // Never sort these.
+  if (name == ".init" || name == ".fini")
+    return;
+
+  // Sort input sections by priority using the list provided by
+  // --symbol-ordering-file or --shuffle-sections=. This is a least significant
+  // digit radix sort. The sections may be sorted stably again by a more
+  // significant key.
+  if (!order.empty())
+    for (BaseCommand *b : sec->sectionCommands)
+      if (auto *isd = dyn_cast<InputSectionDescription>(b))
+        sortISDBySectionOrder(isd, order);
+
   // Sort input sections by section name suffixes for
   // __attribute__((init_priority(N))).
   if (name == ".init_array" || name == ".fini_array") {
@@ -1378,10 +1412,6 @@ static void sortSection(OutputSection *sec,
       sec->sortCtorsDtors();
     return;
   }
-
-  // Never sort these.
-  if (name == ".init" || name == ".fini")
-    return;
 
   // .toc is allocated just after .got and is accessed using GOT-relative
   // relocations. Object files compiled with small code model have an
@@ -1400,13 +1430,6 @@ static void sortSection(OutputSection *sec,
                       });
     return;
   }
-
-  // Sort input sections by priority using the list provided
-  // by --symbol-ordering-file.
-  if (!order.empty())
-    for (BaseCommand *b : sec->sectionCommands)
-      if (auto *isd = dyn_cast<InputSectionDescription>(b))
-        sortISDBySectionOrder(isd, order);
 }
 
 // If no layout was provided by linker script, we want to apply default
@@ -1414,6 +1437,7 @@ static void sortSection(OutputSection *sec,
 template <class ELFT> void Writer<ELFT>::sortInputSections() {
   // Build the order once since it is expensive.
   DenseMap<const InputSectionBase *, int> order = buildSectionOrder();
+  maybeShuffle(order);
   for (BaseCommand *base : script->sectionCommands)
     if (auto *sec = dyn_cast<OutputSection>(base))
       sortSection(sec, order);
@@ -1642,6 +1666,17 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
       }
     }
   }
+
+  // If a SECTIONS command is given, addrExpr, if set, is the specified output
+  // section address. Warn if the computed value is different from the actual
+  // address.
+  if (!script->hasSectionsCommand)
+    return;
+  for (auto changed : script->changedSectionAddresses) {
+    const OutputSection *os = changed.first;
+    warn("start of section " + os->name + " changes from 0x" +
+         utohexstr(changed.second) + " to 0x" + utohexstr(os->addr));
+  }
 }
 
 // If Input Sections have been shrinked (basic block sections) then
@@ -1818,12 +1853,15 @@ static void removeUnusedSyntheticSections() {
     if (!os || ss->isNeeded())
       continue;
 
-    // If we reach here, then SS is an unused synthetic section and we want to
-    // remove it from corresponding input section description of output section.
+    // If we reach here, then ss is an unused synthetic section and we want to
+    // remove it from the corresponding input section description, and
+    // orphanSections.
     for (BaseCommand *b : os->sectionCommands)
       if (auto *isd = dyn_cast<InputSectionDescription>(b))
         llvm::erase_if(isd->sections,
                        [=](InputSection *isec) { return isec == ss; });
+    llvm::erase_if(script->orphanSections,
+                   [=](const InputSectionBase *isec) { return isec == ss; });
   }
 }
 
@@ -1970,6 +2008,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
     in.mipsGot->build();
 
   removeUnusedSyntheticSections();
+  script->diagnoseOrphanHandling();
 
   sortSections();
 
@@ -2393,7 +2432,10 @@ template <class ELFT> void Writer<ELFT>::fixSectionAlignments() {
   const PhdrEntry *prev;
   auto pageAlign = [&](const PhdrEntry *p) {
     OutputSection *cmd = p->firstSec;
-    if (cmd && !cmd->addrExpr) {
+    if (!cmd)
+      return;
+    cmd->alignExpr = [align = cmd->alignment]() { return align; };
+    if (!cmd->addrExpr) {
       // Prefer advancing to align(dot, maxPageSize) + dot%maxPageSize to avoid
       // padding in the file contents.
       //

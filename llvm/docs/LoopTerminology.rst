@@ -43,6 +43,9 @@ Note that there are some important implications of this definition:
 * Any two loops are either fully disjoint (no intersecting blocks), or
   one must be a sub-loop of the other.
 
+* Loops in a function form a forest. One implication of this fact
+  is that a loop either has no parent or a single parent.
+
 A loop may have an arbitrary number of exits, both explicit (via
 control flow) and implicit (via throwing calls which transfer control
 out of the containing function).  There is no special requirement on
@@ -138,10 +141,25 @@ are important for working successfully with this interface.
   reachability of the loop.
   
 
+.. _loop-terminology-loop-simplify:
+
 Loop Simplify Form
 ==================
 
-TBD
+The Loop Simplify Form is a canonical form that makes
+several analyses and transformations simpler and more effective.
+It is ensured by the LoopSimplify
+(:ref:`-loop-simplify <passes-loop-simplify>`) pass and is automatically
+added by the pass managers when scheduling a LoopPass.
+This pass is implemented in
+`LoopInfo.h <http://llvm.org/doxygen/LoopSimplify_8h_source.html>`_.
+When it is successful, the loop has:
+
+* A preheader.
+* A single backedge (which implies that there is a single latch).
+* Dedicated exits. That is, no exit block for the loop
+  has a predecessor that is outside the loop. This implies
+  that all exit blocks are dominated by the loop header.
 
 
 Loop Closed SSA (LCSSA)

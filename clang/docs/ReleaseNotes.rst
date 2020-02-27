@@ -51,7 +51,8 @@ Major New Features
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- ...
+- -Wpointer-to-int-cast is a new warning group. This group warns about C-style
+  casts of pointers to a integer type too small to hold all possible values.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -64,6 +65,13 @@ New Compiler Flags
 - -fstack-clash-protection will provide a protection against the stack clash
   attack for x86 architecture through automatic probing of each page of
   allocated stack.
+
+- -ffp-exception-behavior={ignore,maytrap,strict} allows the user to specify
+  the floating-point exception behavior.  The default setting is ``ignore``.
+
+- -ffp-model={precise,strict,fast} provides the user an umbrella option to
+  simplify access to the many single purpose floating point options. The default
+  setting is ``precise``.
 
 Deprecated Compiler Flags
 -------------------------

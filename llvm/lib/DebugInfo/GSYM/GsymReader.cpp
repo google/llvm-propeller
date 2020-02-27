@@ -225,20 +225,33 @@ Optional<uint64_t> GsymReader::getAddressInfoOffset(size_t Index) const {
 
 Expected<uint64_t>
 GsymReader::getAddressIndex(const uint64_t Addr) const {
-  if (Addr < Hdr->BaseAddress)
-    return createStringError(std::errc::invalid_argument,
-                             "address 0x%" PRIx64 " not in GSYM", Addr);
-  const uint64_t AddrOffset = Addr - Hdr->BaseAddress;
-  switch (Hdr->AddrOffSize) {
-  case 1: return getAddressOffsetIndex<uint8_t>(AddrOffset);
-  case 2: return getAddressOffsetIndex<uint16_t>(AddrOffset);
-  case 4: return getAddressOffsetIndex<uint32_t>(AddrOffset);
-  case 8: return getAddressOffsetIndex<uint64_t>(AddrOffset);
-  default: break;
+  if (Addr >= Hdr->BaseAddress) {
+    const uint64_t AddrOffset = Addr - Hdr->BaseAddress;
+    Optional<uint64_t> AddrOffsetIndex;
+    switch (Hdr->AddrOffSize) {
+    case 1:
+      AddrOffsetIndex = getAddressOffsetIndex<uint8_t>(AddrOffset);
+      break;
+    case 2:
+      AddrOffsetIndex = getAddressOffsetIndex<uint16_t>(AddrOffset);
+      break;
+    case 4:
+      AddrOffsetIndex = getAddressOffsetIndex<uint32_t>(AddrOffset);
+      break;
+    case 8:
+      AddrOffsetIndex = getAddressOffsetIndex<uint64_t>(AddrOffset);
+      break;
+    default:
+      return createStringError(std::errc::invalid_argument,
+                               "unsupported address offset size %u",
+                               Hdr->AddrOffSize);
+    }
+    if (AddrOffsetIndex)
+      return *AddrOffsetIndex;
   }
   return createStringError(std::errc::invalid_argument,
-                           "unsupported address offset size %u",
-                           Hdr->AddrOffSize);
+                           "address 0x%" PRIx64 " is not in GSYM", Addr);
+
 }
 
 llvm::Expected<FunctionInfo> GsymReader::getFunctionInfo(uint64_t Addr) const {
@@ -255,7 +268,7 @@ llvm::Expected<FunctionInfo> GsymReader::getFunctionInfo(uint64_t Addr) const {
       if (ExpectedFI->Range.contains(Addr) || ExpectedFI->Range.size() == 0)
         return ExpectedFI;
       return createStringError(std::errc::invalid_argument,
-                                "address 0x%" PRIx64 " not in GSYM", Addr);
+                                "address 0x%" PRIx64 " is not in GSYM", Addr);
     }
   }
   return createStringError(std::errc::invalid_argument,
@@ -322,10 +335,10 @@ void GsymReader::dump(raw_ostream &OS) {
     dump(OS, getFile(I));
     OS << "\n";
   }
-  OS << "\n" << StrTab;
+  OS << "\n" << StrTab << "\n";
 
   for (uint32_t I = 0; I < Header.NumAddresses; ++I) {
-    OS << "\nFunctionInfo @ " << HEX32(AddrInfoOffsets[I]) << ": ";
+    OS << "FunctionInfo @ " << HEX32(AddrInfoOffsets[I]) << ": ";
     if (auto FI = getFunctionInfo(*getAddress(I)))
       dump(OS, *FI);
     else

@@ -97,6 +97,15 @@ TEST(HighlightsTest, All) {
       R"cpp(// Function parameter in decl
         void foo(int [[^bar]]);
       )cpp",
+      R"cpp(// Not touching any identifiers.
+        struct Foo {
+          [[~]]Foo() {};
+        };
+        void foo() {
+          Foo f;
+          f.[[^~]]Foo();
+        }
+      )cpp",
   };
   for (const char *Test : Tests) {
     Annotations T(Test);
@@ -941,6 +950,32 @@ TEST(FindReferences, WithinAST) {
         #define [[MA^CRO]](X) (X+1)
         void test() {
           int x = [[MACRO]]([[MACRO]](1));
+        }
+      )cpp",
+
+      R"cpp(
+        int [[v^ar]] = 0;
+        void foo(int s = [[var]]);
+      )cpp",
+
+      R"cpp(
+       template <typename T>
+       class [[Fo^o]] {};
+       void func([[Foo]]<int>);
+      )cpp",
+
+      R"cpp(
+       template <typename T>
+       class [[Foo]] {};
+       void func([[Fo^o]]<int>);
+      )cpp",
+      R"cpp(// Not touching any identifiers.
+        struct Foo {
+          [[~]]Foo() {};
+        };
+        void foo() {
+          Foo f;
+          f.[[^~]]Foo();
         }
       )cpp",
   };

@@ -1288,21 +1288,21 @@ TEST(GSYMTest, TestGsymReader) {
   ASSERT_FALSE((bool)Err);
   if (auto ExpectedGR = GsymReader::copyBuffer(OutStrm.str())) {
     const GsymReader &GR = ExpectedGR.get();
-    VerifyFunctionInfoError(GR, Func1Addr-1, "address 0xfff not in GSYM");
+    VerifyFunctionInfoError(GR, Func1Addr-1, "address 0xfff is not in GSYM");
 
     FunctionInfo Func1(Func1Addr, FuncSize, Func1Name);
     VerifyFunctionInfo(GR, Func1Addr, Func1);
     VerifyFunctionInfo(GR, Func1Addr+1, Func1);
     VerifyFunctionInfo(GR, Func1Addr+FuncSize-1, Func1);
     VerifyFunctionInfoError(GR, Func1Addr+FuncSize,
-                            "address 0x1010 not in GSYM");
-    VerifyFunctionInfoError(GR, Func2Addr-1, "address 0x101f not in GSYM");
+                            "address 0x1010 is not in GSYM");
+    VerifyFunctionInfoError(GR, Func2Addr-1, "address 0x101f is not in GSYM");
     FunctionInfo Func2(Func2Addr, FuncSize, Func2Name);
     VerifyFunctionInfo(GR, Func2Addr, Func2);
     VerifyFunctionInfo(GR, Func2Addr+1, Func2);
     VerifyFunctionInfo(GR, Func2Addr+FuncSize-1, Func2);
     VerifyFunctionInfoError(GR, Func2Addr+FuncSize,
-                            "address 0x1030 not in GSYM");
+                            "address 0x1030 is not in GSYM");
   }
 }
 
@@ -1362,45 +1362,45 @@ TEST(GSYMTest, TestGsymLookups) {
   LR = GR->lookup(0x100F);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"main", "/tmp", "main.c", 5}));
+    testing::ElementsAre(SourceLocation{"main", "/tmp", "main.c", 5, 15}));
 
   LR = GR->lookup(0x1010);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
 
   EXPECT_THAT(LR->Locations,
     testing::ElementsAre(SourceLocation{"inline1", "/tmp", "foo.h", 10},
-                         SourceLocation{"main", "/tmp", "main.c", 6}));
+                         SourceLocation{"main", "/tmp", "main.c", 6, 16}));
 
   LR = GR->lookup(0x1012);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
     testing::ElementsAre(SourceLocation{"inline2", "/tmp", "foo.h", 20},
-                         SourceLocation{"inline1", "/tmp", "foo.h", 33},
-                         SourceLocation{"main", "/tmp", "main.c", 6}));
+                         SourceLocation{"inline1", "/tmp", "foo.h", 33, 2},
+                         SourceLocation{"main", "/tmp", "main.c", 6, 18}));
 
   LR = GR->lookup(0x1014);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "foo.h", 11},
-                         SourceLocation{"main", "/tmp", "main.c", 6}));
+    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "foo.h", 11, 4},
+                         SourceLocation{"main", "/tmp", "main.c", 6, 20}));
 
   LR = GR->lookup(0x1016);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
     testing::ElementsAre(SourceLocation{"inline3", "/tmp", "foo.h", 30},
-                         SourceLocation{"inline1", "/tmp", "foo.h", 35},
-                         SourceLocation{"main", "/tmp", "main.c", 6}));
+                         SourceLocation{"inline1", "/tmp", "foo.h", 35, 6},
+                         SourceLocation{"main", "/tmp", "main.c", 6, 22}));
 
   LR = GR->lookup(0x1018);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "foo.h", 12},
-                         SourceLocation{"main", "/tmp", "main.c", 6}));
+    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "foo.h", 12, 8},
+                         SourceLocation{"main", "/tmp", "main.c", 6, 24}));
 
   LR = GR->lookup(0x1020);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"main", "/tmp", "main.c", 8}));
+    testing::ElementsAre(SourceLocation{"main", "/tmp", "main.c", 8, 32}));
 }
 
 
@@ -1765,7 +1765,7 @@ TEST(GSYMTest, TestDWARFTextRanges) {
   // GSYM.
   AddressRanges TextRanges;
   TextRanges.insert(AddressRange(0x1000, 0x2000));
-  DT.SetValidTextRanges(TextRanges);
+  GC.SetValidTextRanges(TextRanges);
   const uint32_t ThreadCount = 1;
   ASSERT_THAT_ERROR(DT.convert(ThreadCount), Succeeded());
   ASSERT_THAT_ERROR(GC.finalize(OS), Succeeded());
@@ -1968,32 +1968,32 @@ TEST(GSYMTest, TestDWARFInlineInfo) {
   LR = GR->lookup(0x1100-1);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"main", "/tmp", "main.c", 10}));
+    testing::ElementsAre(SourceLocation{"main", "/tmp", "main.c", 10, 255}));
 
   LR = GR->lookup(0x1100);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
     testing::ElementsAre(SourceLocation{"inline1", "/tmp", "inline.h", 20},
-                         SourceLocation{"main", "/tmp", "main.c", 10}));
+                         SourceLocation{"main", "/tmp", "main.c", 10, 256}));
   LR = GR->lookup(0x1180-1);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "inline.h", 20},
-                         SourceLocation{"main", "/tmp", "main.c", 10}));
+    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "inline.h", 20, 127},
+                         SourceLocation{"main", "/tmp", "main.c", 10, 383}));
   LR = GR->lookup(0x1180);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "inline.h", 21},
-                         SourceLocation{"main", "/tmp", "main.c", 10}));
+    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "inline.h", 21, 128},
+                         SourceLocation{"main", "/tmp", "main.c", 10, 384}));
   LR = GR->lookup(0x1200-1);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "inline.h", 21},
-                         SourceLocation{"main", "/tmp", "main.c", 10}));
+    testing::ElementsAre(SourceLocation{"inline1", "/tmp", "inline.h", 21, 255},
+                         SourceLocation{"main", "/tmp", "main.c", 10, 511}));
   LR = GR->lookup(0x1200);
   ASSERT_THAT_EXPECTED(LR, Succeeded());
   EXPECT_THAT(LR->Locations,
-    testing::ElementsAre(SourceLocation{"main", "/tmp", "main.c", 11}));
+    testing::ElementsAre(SourceLocation{"main", "/tmp", "main.c", 11, 512}));
 }
 
 

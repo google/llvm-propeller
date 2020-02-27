@@ -411,6 +411,58 @@ static MachineBasicBlock *LowerFPToInt(MachineInstr &MI, DebugLoc DL,
   return DoneMBB;
 }
 
+static MachineBasicBlock *LowerCallResults(MachineInstr &CallResults,
+                                           DebugLoc DL, MachineBasicBlock *BB,
+                                           const TargetInstrInfo &TII) {
+  MachineInstr &CallParams = *CallResults.getPrevNode();
+  assert(CallParams.getOpcode() == WebAssembly::CALL_PARAMS);
+  assert(CallResults.getOpcode() == WebAssembly::CALL_RESULTS ||
+         CallResults.getOpcode() == WebAssembly::RET_CALL_RESULTS);
+
+  bool IsIndirect = CallParams.getOperand(0).isReg();
+  bool IsRetCall = CallResults.getOpcode() == WebAssembly::RET_CALL_RESULTS;
+
+  unsigned CallOp;
+  if (IsIndirect && IsRetCall) {
+    CallOp = WebAssembly::RET_CALL_INDIRECT;
+  } else if (IsIndirect) {
+    CallOp = WebAssembly::CALL_INDIRECT;
+  } else if (IsRetCall) {
+    CallOp = WebAssembly::RET_CALL;
+  } else {
+    CallOp = WebAssembly::CALL;
+  }
+
+  MachineFunction &MF = *BB->getParent();
+  const MCInstrDesc &MCID = TII.get(CallOp);
+  MachineInstrBuilder MIB(MF, MF.CreateMachineInstr(MCID, DL));
+
+  // Move the function pointer to the end of the arguments for indirect calls
+  if (IsIndirect) {
+    auto FnPtr = CallParams.getOperand(0);
+    CallParams.RemoveOperand(0);
+    CallParams.addOperand(FnPtr);
+  }
+
+  for (auto Def : CallResults.defs())
+    MIB.add(Def);
+
+  // Add placeholders for the type index and immediate flags
+  if (IsIndirect) {
+    MIB.addImm(0);
+    MIB.addImm(0);
+  }
+
+  for (auto Use : CallParams.uses())
+    MIB.add(Use);
+
+  BB->insert(CallResults.getIterator(), MIB);
+  CallParams.eraseFromParent();
+  CallResults.eraseFromParent();
+
+  return BB;
+}
+
 MachineBasicBlock *WebAssemblyTargetLowering::EmitInstrWithCustomInserter(
     MachineInstr &MI, MachineBasicBlock *BB) const {
   const TargetInstrInfo &TII = *Subtarget->getInstrInfo();
@@ -443,7 +495,9 @@ MachineBasicBlock *WebAssemblyTargetLowering::EmitInstrWithCustomInserter(
   case WebAssembly::FP_TO_UINT_I64_F64:
     return LowerFPToInt(MI, DL, BB, TII, true, true, true,
                         WebAssembly::I64_TRUNC_U_F64);
-    llvm_unreachable("Unexpected instruction to emit with custom inserter");
+  case WebAssembly::CALL_RESULTS:
+  case WebAssembly::RET_CALL_RESULTS:
+    return LowerCallResults(MI, DL, BB, TII);
   }
 }
 
@@ -699,9 +753,6 @@ WebAssemblyTargetLowering::LowerCall(CallLoweringInfo &CLI,
   }
 
   SmallVectorImpl<ISD::InputArg> &Ins = CLI.Ins;
-  if (Ins.size() > 1)
-    fail(DL, DAG, "WebAssembly doesn't support more than 1 returned value yet");
-
   SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
   SmallVectorImpl<SDValue> &OutVals = CLI.OutVals;
 
@@ -848,17 +899,13 @@ WebAssemblyTargetLowering::LowerCall(CallLoweringInfo &CLI,
 
   InTys.push_back(MVT::Other);
   SDVTList InTyList = DAG.getVTList(InTys);
-  SDValue Res =
-      DAG.getNode(Ins.empty() ? WebAssemblyISD::CALL0 : WebAssemblyISD::CALL1,
-                  DL, InTyList, Ops);
-  if (Ins.empty()) {
-    Chain = Res;
-  } else {
-    InVals.push_back(Res);
-    Chain = Res.getValue(1);
-  }
+  SDValue Res = DAG.getNode(WebAssemblyISD::CALL, DL, InTyList, Ops);
 
-  return Chain;
+  for (size_t I = 0; I < Ins.size(); ++I)
+    InVals.push_back(Res.getValue(I));
+
+  // Return the chain
+  return Res.getValue(Ins.size());
 }
 
 bool WebAssemblyTargetLowering::CanLowerReturn(
@@ -1267,39 +1314,42 @@ WebAssemblyTargetLowering::LowerSIGN_EXTEND_INREG(SDValue Op,
                                                   SelectionDAG &DAG) const {
   SDLoc DL(Op);
   // If sign extension operations are disabled, allow sext_inreg only if operand
-  // is a vector extract. SIMD does not depend on sign extension operations, but
-  // allowing sext_inreg in this context lets us have simple patterns to select
-  // extract_lane_s instructions. Expanding sext_inreg everywhere would be
-  // simpler in this file, but would necessitate large and brittle patterns to
-  // undo the expansion and select extract_lane_s instructions.
+  // is a vector extract of an i8 or i16 lane. SIMD does not depend on sign
+  // extension operations, but allowing sext_inreg in this context lets us have
+  // simple patterns to select extract_lane_s instructions. Expanding sext_inreg
+  // everywhere would be simpler in this file, but would necessitate large and
+  // brittle patterns to undo the expansion and select extract_lane_s
+  // instructions.
   assert(!Subtarget->hasSignExt() && Subtarget->hasSIMD128());
-  if (Op.getOperand(0).getOpcode() == ISD::EXTRACT_VECTOR_ELT) {
-    const SDValue &Extract = Op.getOperand(0);
-    MVT VecT = Extract.getOperand(0).getSimpleValueType();
-    MVT ExtractedLaneT = static_cast<VTSDNode *>(Op.getOperand(1).getNode())
-                             ->getVT()
-                             .getSimpleVT();
-    MVT ExtractedVecT =
-        MVT::getVectorVT(ExtractedLaneT, 128 / ExtractedLaneT.getSizeInBits());
-    if (ExtractedVecT == VecT)
-      return Op;
-    // Bitcast vector to appropriate type to ensure ISel pattern coverage
-    const SDValue &Index = Extract.getOperand(1);
-    unsigned IndexVal =
-        static_cast<ConstantSDNode *>(Index.getNode())->getZExtValue();
-    unsigned Scale =
-        ExtractedVecT.getVectorNumElements() / VecT.getVectorNumElements();
-    assert(Scale > 1);
-    SDValue NewIndex =
-        DAG.getConstant(IndexVal * Scale, DL, Index.getValueType());
-    SDValue NewExtract = DAG.getNode(
-        ISD::EXTRACT_VECTOR_ELT, DL, Extract.getValueType(),
-        DAG.getBitcast(ExtractedVecT, Extract.getOperand(0)), NewIndex);
-    return DAG.getNode(ISD::SIGN_EXTEND_INREG, DL, Op.getValueType(),
-                       NewExtract, Op.getOperand(1));
-  }
-  // Otherwise expand
-  return SDValue();
+  if (Op.getOperand(0).getOpcode() != ISD::EXTRACT_VECTOR_ELT)
+    return SDValue();
+
+  const SDValue &Extract = Op.getOperand(0);
+  MVT VecT = Extract.getOperand(0).getSimpleValueType();
+  if (VecT.getVectorElementType().getSizeInBits() > 32)
+    return SDValue();
+  MVT ExtractedLaneT = static_cast<VTSDNode *>(Op.getOperand(1).getNode())
+                           ->getVT()
+                           .getSimpleVT();
+  MVT ExtractedVecT =
+      MVT::getVectorVT(ExtractedLaneT, 128 / ExtractedLaneT.getSizeInBits());
+  if (ExtractedVecT == VecT)
+    return Op;
+
+  // Bitcast vector to appropriate type to ensure ISel pattern coverage
+  const SDValue &Index = Extract.getOperand(1);
+  unsigned IndexVal =
+      static_cast<ConstantSDNode *>(Index.getNode())->getZExtValue();
+  unsigned Scale =
+      ExtractedVecT.getVectorNumElements() / VecT.getVectorNumElements();
+  assert(Scale > 1);
+  SDValue NewIndex =
+      DAG.getConstant(IndexVal * Scale, DL, Index.getValueType());
+  SDValue NewExtract = DAG.getNode(
+      ISD::EXTRACT_VECTOR_ELT, DL, Extract.getValueType(),
+      DAG.getBitcast(ExtractedVecT, Extract.getOperand(0)), NewIndex);
+  return DAG.getNode(ISD::SIGN_EXTEND_INREG, DL, Op.getValueType(), NewExtract,
+                     Op.getOperand(1));
 }
 
 SDValue WebAssemblyTargetLowering::LowerBUILD_VECTOR(SDValue Op,

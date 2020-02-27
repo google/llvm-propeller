@@ -18,6 +18,7 @@
 
 #include "CoroInternal.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Analysis/PtrUseVisitor.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Config/llvm-config.h"
@@ -784,7 +785,7 @@ static Instruction *insertSpills(const SpillInfo &Spills, coro::Shape &Shape) {
               "Coroutines cannot handle copying of array allocas yet");
 
         auto *G = GetFramePointer(P.second, A);
-        auto *Value = Builder.CreateLoad(A);
+        auto *Value = Builder.CreateLoad(A->getAllocatedType(), A);
         Builder.CreateStore(Value, G);
       }
     }
@@ -1166,7 +1167,7 @@ static Value *emitGetSwiftErrorValue(IRBuilder<> &Builder, Type *ValueTy,
   auto FnTy = FunctionType::get(ValueTy, {}, false);
   auto Fn = ConstantPointerNull::get(FnTy->getPointerTo());
 
-  auto Call = Builder.CreateCall(Fn, {});
+  auto Call = Builder.CreateCall(FnTy, Fn, {});
   Shape.SwiftErrorOps.push_back(Call);
 
   return Call;
@@ -1182,7 +1183,7 @@ static Value *emitSetSwiftErrorValue(IRBuilder<> &Builder, Value *V,
                                 {V->getType()}, false);
   auto Fn = ConstantPointerNull::get(FnTy->getPointerTo());
 
-  auto Call = Builder.CreateCall(Fn, { V });
+  auto Call = Builder.CreateCall(FnTy, Fn, { V });
   Shape.SwiftErrorOps.push_back(Call);
 
   return Call;

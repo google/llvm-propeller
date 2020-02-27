@@ -66,6 +66,12 @@ def FuncExtKhrGlMsaaSharing              : FunctionExtension<"cl_khr_gl_msaa_sha
 // Multiple extensions
 def FuncExtKhrMipmapWritesAndWrite3d     : FunctionExtension<"cl_khr_mipmap_image_writes cl_khr_3d_image_writes">;
 
+// Arm extensions.
+def ArmIntegerDotProductInt8                   : FunctionExtension<"cl_arm_integer_dot_product_int8">;
+def ArmIntegerDotProductAccumulateInt8         : FunctionExtension<"cl_arm_integer_dot_product_accumulate_int8">;
+def ArmIntegerDotProductAccumulateInt16        : FunctionExtension<"cl_arm_integer_dot_product_accumulate_int16">;
+def ArmIntegerDotProductAccumulateSaturateInt8 : FunctionExtension<"cl_arm_integer_dot_product_accumulate_saturate_int8">;
+
 // Qualified Type.  These map to ASTContext::QualType.
 class QualType<string _Name, bit _IsAbstract=0> {
   // Name of the field or function in a clang::ASTContext
@@ -259,7 +265,7 @@ def Half      : Type<"half",      QualType<"HalfTy">>;
 def Size      : Type<"size_t",    QualType<"getSizeType()">>;
 def PtrDiff   : Type<"ptrdiff_t", QualType<"getPointerDiffType()">>;
 def IntPtr    : Type<"intptr_t",  QualType<"getIntPtrType()">>;
-def UIntPtr   : Type<"uintPtr_t", QualType<"getUIntPtrType()">>;
+def UIntPtr   : Type<"uintptr_t", QualType<"getUIntPtrType()">>;
 def Void      : Type<"void",      QualType<"VoidTy">>;
 
 // OpenCL v1.0/1.2/2.0 s6.1.2: Built-in Vector Data Types.
@@ -283,6 +289,18 @@ def Image2dArrayMsaaDepth : Type<"image2d_array_msaa_depth_t", QualType<"OCLImag
 
 def Sampler               : Type<"sampler_t", QualType<"OCLSamplerTy">>;
 def Event                 : Type<"event_t", QualType<"OCLEventTy">>;
+
+// OpenCL v2.0 s6.13.11: Atomic integer and floating-point types.
+def AtomicInt             : Type<"atomic_int", QualType<"getAtomicType(Context.IntTy)">>;
+def AtomicUInt            : Type<"atomic_uint", QualType<"getAtomicType(Context.UnsignedIntTy)">>;
+def AtomicLong            : Type<"atomic_long", QualType<"getAtomicType(Context.LongTy)">>;
+def AtomicULong           : Type<"atomic_ulong", QualType<"getAtomicType(Context.UnsignedLongTy)">>;
+def AtomicFloat           : Type<"atomic_float", QualType<"getAtomicType(Context.FloatTy)">>;
+def AtomicDouble          : Type<"atomic_double", QualType<"getAtomicType(Context.DoubleTy)">>;
+def AtomicIntPtr          : Type<"atomic_intptr_t", QualType<"getAtomicType(Context.getIntPtrType())">>;
+def AtomicUIntPtr         : Type<"atomic_uintptr_t", QualType<"getAtomicType(Context.getUIntPtrType())">>;
+def AtomicSize            : Type<"atomic_size_t", QualType<"getAtomicType(Context.getSizeType())">>;
+def AtomicPtrDiff         : Type<"atomic_ptrdiff_t", QualType<"getAtomicType(Context.getPointerDiffType())">>;
 
 //===----------------------------------------------------------------------===//
 //                 Definitions of OpenCL gentype variants
@@ -372,7 +390,11 @@ foreach RType = [Float, Double, Half, Char, UChar, Short,
                  UShort, Int, UInt, Long, ULong] in {
   foreach IType = [Float, Double, Half, Char, UChar, Short,
                    UShort, Int, UInt, Long, ULong] in {
-    foreach sat = ["", "_sat"] in {
+    // Conversions to integer type have a sat and non-sat variant.
+    foreach sat = !cond(!eq(RType.Name, "float") : [""],
+                        !eq(RType.Name, "double") : [""],
+                        !eq(RType.Name, "half") : [""],
+                        1 : ["", "_sat"]) in {
       foreach rnd = ["", "_rte", "_rtn", "_rtp", "_rtz"] in {
         def : Builtin<"convert_" # RType.Name # sat # rnd, [RType, IType],
                       Attr.Const>;
@@ -974,6 +996,45 @@ foreach AS = [GlobalAS, LocalAS] in {
     }
   }
 }
+// OpenCL v2.0 s6.13.11 - Atomic Functions.
+let MinVersion = CL20 in {
+  foreach TypePair = [[AtomicInt, Int], [AtomicUInt, UInt],
+                      [AtomicLong, Long], [AtomicULong, ULong],
+                      [AtomicFloat, Float], [AtomicDouble, Double]] in {
+    def : Builtin<"atomic_init",
+        [Void, PointerType<VolatileType<TypePair[0]>, GenericAS>, TypePair[1]]>;
+    def : Builtin<"atomic_store",
+        [Void, PointerType<VolatileType<TypePair[0]>, GenericAS>, TypePair[1]]>;
+    def : Builtin<"atomic_load",
+        [TypePair[1], PointerType<VolatileType<TypePair[0]>, GenericAS>]>;
+    def : Builtin<"atomic_exchange",
+        [TypePair[1], PointerType<VolatileType<TypePair[0]>, GenericAS>, TypePair[1]]>;
+    foreach Variant = ["weak", "strong"] in {
+      def : Builtin<"atomic_compare_exchange_" # Variant,
+          [Bool, PointerType<VolatileType<TypePair[0]>, GenericAS>,
+           PointerType<TypePair[1], GenericAS>, TypePair[1]]>;
+    }
+  }
+
+  foreach TypePair = [[AtomicInt, Int, Int], [AtomicUInt, UInt, UInt],
+                      [AtomicLong, Long, Long], [AtomicULong, ULong, ULong],
+                      [AtomicIntPtr, IntPtr, PtrDiff],
+                      [AtomicUIntPtr, UIntPtr, PtrDiff]] in {
+    foreach ModOp = ["add", "sub"] in {
+      def : Builtin<"atomic_fetch_" # ModOp,
+          [TypePair[1], PointerType<VolatileType<TypePair[0]>, GenericAS>, TypePair[2]]>;
+    }
+  }
+  foreach TypePair = [[AtomicInt, Int, Int], [AtomicUInt, UInt, UInt],
+                      [AtomicLong, Long, Long], [AtomicULong, ULong, ULong],
+                      [AtomicIntPtr, IntPtr, IntPtr],
+                      [AtomicUIntPtr, UIntPtr, UIntPtr]] in {
+    foreach ModOp = ["or", "xor", "and", "min", "max"] in {
+      def : Builtin<"atomic_fetch_" # ModOp,
+          [TypePair[1], PointerType<VolatileType<TypePair[0]>, GenericAS>, TypePair[2]]>;
+    }
+  }
+}
 
 //--------------------------------------------------------------------
 // OpenCL v1.1 s6.11.12, v1.2 s6.12.12, v2.0 s6.13.12 - Miscellaneous Vector Functions
@@ -1348,5 +1409,32 @@ let Extension = FuncExtKhrGlMsaaSharing in {
       def : Builtin<"get_image_dim", [VectorType<Int, 2>, ImageType<imgTy, aQual>], Attr.Const>;
     }
     def : Builtin<"get_image_array_size", [Size, ImageType<Image2dArrayMsaaDepth, aQual>], Attr.Const>;
+  }
+}
+
+//--------------------------------------------------------------------
+// Arm extensions.
+let Extension = ArmIntegerDotProductInt8 in {
+  foreach name = ["arm_dot"] in {
+    def : Builtin<name, [UInt, VectorType<UChar, 4>, VectorType<UChar, 4>]>;
+    def : Builtin<name, [Int, VectorType<Char, 4>, VectorType<Char, 4>]>;
+  }
+}
+let Extension = ArmIntegerDotProductAccumulateInt8 in {
+  foreach name = ["arm_dot_acc"] in {
+    def : Builtin<name, [UInt, VectorType<UChar, 4>, VectorType<UChar, 4>, UInt]>;
+    def : Builtin<name, [Int, VectorType<Char, 4>, VectorType<Char, 4>, Int]>;
+  }
+}
+let Extension = ArmIntegerDotProductAccumulateInt16 in {
+  foreach name = ["arm_dot_acc"] in {
+    def : Builtin<name, [UInt, VectorType<UShort, 2>, VectorType<UShort, 2>, UInt]>;
+    def : Builtin<name, [Int, VectorType<Short, 2>, VectorType<Short, 2>, Int]>;
+  }
+}
+let Extension = ArmIntegerDotProductAccumulateSaturateInt8 in {
+  foreach name = ["arm_dot_acc_sat"] in {
+    def : Builtin<name, [UInt, VectorType<UChar, 4>, VectorType<UChar, 4>, UInt]>;
+    def : Builtin<name, [Int, VectorType<Char, 4>, VectorType<Char, 4>, Int]>;
   }
 }

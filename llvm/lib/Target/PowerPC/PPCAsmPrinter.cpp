@@ -1547,9 +1547,10 @@ void PPCLinuxAsmPrinter::emitFunctionBodyEnd() {
 void PPCAIXAsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   // Get the function descriptor symbol.
   CurrentFnDescSym = getSymbol(&MF.getFunction());
-  // Set the containing csect.
+  // Set the alignment and the containing csect.
   MCSectionXCOFF *FnDescSec = cast<MCSectionXCOFF>(
       getObjFileLowering().getSectionForFunctionDescriptor(CurrentFnDescSym));
+  FnDescSec->setAlignment(Align(Subtarget->isPPC64() ? 8 : 4));
   cast<MCSymbolXCOFF>(CurrentFnDescSym)->setContainingCsect(FnDescSec);
 
   return AsmPrinter::SetupMachineFunction(MF);
@@ -1623,7 +1624,7 @@ void PPCAIXAsmPrinter::emitGlobalVariable(const GlobalVariable *GV) {
     uint64_t Size = DL.getTypeAllocSize(GV->getType()->getElementType());
 
     if (GVKind.isBSSLocal())
-      OutStreamer->EmitXCOFFLocalCommonSymbol(
+      OutStreamer->emitXCOFFLocalCommonSymbol(
           GVSym, Size, Csect->getQualNameSymbol(), Align);
     else
       OutStreamer->emitCommonSymbol(Csect->getQualNameSymbol(), Size, Align);

@@ -40,7 +40,8 @@ namespace scudo {
 
 template <class SizeClassMapT, uptr RegionSizeLog,
           s32 MinReleaseToOsIntervalMs = INT32_MIN,
-          s32 MaxReleaseToOsIntervalMs = INT32_MAX> class SizeClassAllocator32 {
+          s32 MaxReleaseToOsIntervalMs = INT32_MAX>
+class SizeClassAllocator32 {
 public:
   typedef SizeClassMapT SizeClassMap;
   // The bytemap can only track UINT8_MAX - 1 classes.
@@ -49,7 +50,8 @@ public:
   static_assert((1UL << RegionSizeLog) >= SizeClassMap::MaxSize, "");
   typedef SizeClassAllocator32<SizeClassMapT, RegionSizeLog,
                                MinReleaseToOsIntervalMs,
-                               MaxReleaseToOsIntervalMs> ThisT;
+                               MaxReleaseToOsIntervalMs>
+      ThisT;
   typedef SizeClassAllocatorLocalCache<ThisT> CacheT;
   typedef typename CacheT::TransferBatch TransferBatch;
   static const bool SupportsMemoryTagging = false;
@@ -384,11 +386,11 @@ private:
         (Sci->Stats.PoppedBlocks - Sci->Stats.PushedBlocks) * BlockSize;
     if (BytesInFreeList < PageSize)
       return 0; // No chance to release anything.
-    if ((Sci->Stats.PushedBlocks - Sci->ReleaseInfo.PushedBlocksAtLastRelease) *
-            BlockSize <
-        PageSize) {
+    const uptr BytesPushed =
+        (Sci->Stats.PushedBlocks - Sci->ReleaseInfo.PushedBlocksAtLastRelease) *
+        BlockSize;
+    if (BytesPushed < PageSize)
       return 0; // Nothing new to release.
-    }
 
     if (!Force) {
       const s32 IntervalMs = getReleaseToOsIntervalMs();
@@ -405,12 +407,13 @@ private:
     // iterate multiple times over the same freelist if a ClassId spans multiple
     // regions. But it will have to do for now.
     uptr TotalReleasedBytes = 0;
+    const uptr Size = (RegionSize / BlockSize) * BlockSize;
     for (uptr I = MinRegionIndex; I <= MaxRegionIndex; I++) {
       if (PossibleRegions[I] - 1U == ClassId) {
         const uptr Region = I * RegionSize;
         ReleaseRecorder Recorder(Region);
-        releaseFreeMemoryToOS(Sci->FreeList, Region, RegionSize / PageSize,
-                              BlockSize, &Recorder);
+        releaseFreeMemoryToOS(Sci->FreeList, Region, Size, BlockSize,
+                              &Recorder);
         if (Recorder.getReleasedRangesCount() > 0) {
           Sci->ReleaseInfo.PushedBlocksAtLastRelease = Sci->Stats.PushedBlocks;
           Sci->ReleaseInfo.RangesReleased += Recorder.getReleasedRangesCount();

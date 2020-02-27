@@ -20,6 +20,7 @@
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -179,7 +180,9 @@ public:
            "expected linalg op with buffer semantics");
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
-    auto maps = loopToOperandRangesMaps(convOp);
+    auto mapsRange = convOp.indexing_maps().getAsRange<AffineMapAttr>();
+    auto maps = functional::map([](AffineMapAttr a) { return a.getValue(); },
+                                mapsRange);
     SmallVector<ValueHandle, 8> fIdx(
         makeCanonicalAffineApplies(b, loc, maps[0], allIvs));
     SmallVector<ValueHandle, 8> imIdx(
@@ -238,9 +241,14 @@ public:
 
     // 1.a. Emit std_load from input views.
     for (unsigned i = 0; i < nInputs; ++i) {
-      ValueHandleArray indexing(makeCanonicalAffineApplies(
-          b, loc, genericOp.getInputIndexingMap(i), allIvs));
-      indexedValues[i] = std_load(genericOp.getInput(i), indexing);
+      Value input = genericOp.getInput(i);
+      if (!input.getType().cast<ShapedType>().getRank()) {
+        indexedValues[i] = std_load(input);
+      } else {
+        ValueHandleArray indexing(makeCanonicalAffineApplies(
+            b, loc, genericOp.getInputIndexingMap(i), allIvs));
+        indexedValues[i] = std_load(input, indexing);
+      }
     }
 
     // 1.b. Emit std_load from output views.
@@ -339,10 +347,14 @@ public:
 
     // 1.a. Emit std_load from input views.
     for (unsigned i = 0; i < nInputs; ++i) {
-      ValueHandleArray indexing(makeCanonicalAffineApplies(
-          b, loc, indexedGenericOp.getInputIndexingMap(i), allIvs));
-      indexedValues[nLoops + i] =
-          std_load(indexedGenericOp.getInput(i), indexing);
+      Value input = indexedGenericOp.getInput(i);
+      if (!input.getType().cast<ShapedType>().getRank()) {
+        indexedValues[nLoops + i] = std_load(input);
+      } else {
+        ValueHandleArray indexing(makeCanonicalAffineApplies(
+            b, loc, indexedGenericOp.getInputIndexingMap(i), allIvs));
+        indexedValues[nLoops + i] = std_load(input, indexing);
+      }
     }
 
     // 1.b. Emit std_load from output views.
@@ -430,8 +442,11 @@ LogicalResult LinalgOpToLoopsImpl<LoopTy, IndexedValueTy, ConcreteOpTy>::doit(
   auto nLoops = nPar + nRed + nWin;
   if (!loweringIsAllowed<LoopTy>(nPar, nLoops))
     return failure();
-  auto invertedMap =
-      inversePermutation(concatAffineMaps(loopToOperandRangesMaps(linalgOp)));
+  auto mapsRange =
+      linalgOp.indexing_maps().template getAsRange<AffineMapAttr>();
+  auto maps =
+      functional::map([](AffineMapAttr a) { return a.getValue(); }, mapsRange);
+  auto invertedMap = inversePermutation(concatAffineMaps(maps));
   if (!invertedMap) {
     LinalgScopedEmitter<IndexedValueTy, ConcreteOpTy>::emitScalarImplementation(
         {}, linalgOp);

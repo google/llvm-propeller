@@ -776,6 +776,11 @@ private:
           Tok->Type = TT_JsTypeColon;
           break;
         }
+      } else if (Style.isCSharp()) {
+        if (Contexts.back().ContextKind == tok::l_paren) {
+          Tok->Type = TT_CSharpNamedArgumentColon;
+          break;
+        }
       }
       if (Contexts.back().ColonIsDictLiteral ||
           Style.Language == FormatStyle::LK_Proto ||
@@ -819,10 +824,15 @@ private:
         Tok->Type = TT_BitFieldColon;
       } else if (Contexts.size() == 1 &&
                  !Line.First->isOneOf(tok::kw_enum, tok::kw_case)) {
-        if (Tok->getPreviousNonComment()->isOneOf(tok::r_paren,
-                                                  tok::kw_noexcept))
+        FormatToken *Prev = Tok->getPreviousNonComment();
+        if (Prev->isOneOf(tok::r_paren, tok::kw_noexcept))
           Tok->Type = TT_CtorInitializerColon;
-        else
+        else if (Prev->is(tok::kw_try)) {
+          // Member initializer list within function try block.
+          FormatToken *PrevPrev = Prev->getPreviousNonComment();
+          if (PrevPrev && PrevPrev->isOneOf(tok::r_paren, tok::kw_noexcept))
+            Tok->Type = TT_CtorInitializerColon;
+        } else
           Tok->Type = TT_InheritanceColon;
       } else if (canBeObjCSelectorComponent(*Tok->Previous) && Tok->Next &&
                  (Tok->Next->isOneOf(tok::r_paren, tok::comma) ||
@@ -2865,21 +2875,38 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
     if (Left.is(tok::numeric_constant) && Right.is(tok::percent))
       return Right.WhitespaceRange.getEnd() != Right.WhitespaceRange.getBegin();
   } else if (Style.isCSharp()) {
+    // Require spaces around '{' and  before '}' unless they appear in
+    // interpolated strings. Interpolated strings are merged into a single token
+    // so cannot have spaces inserted by this function.
+
+    // Space before { (including space within '{ {').
+    if (Right.is(tok::l_brace))
+      return true;
+
+    // Spaces inside braces.
+    if (Left.is(tok::l_brace) && Right.isNot(tok::r_brace))
+      return true;
+
+    if (Left.isNot(tok::l_brace) && Right.is(tok::r_brace))
+      return true;
+
+    // Spaces around '=>'.
+    if (Left.is(TT_JsFatArrow) || Right.is(TT_JsFatArrow))
+      return true;
+
     // space between type and variable e.g. Dictionary<string,string> foo;
     if (Left.is(TT_TemplateCloser) && Right.is(TT_StartOfName))
       return true;
+
+    // space after comma in '[,]'.
+    if (Left.is(tok::comma) && Right.is(tok::r_square))
+      return Style.SpacesInSquareBrackets;
+
     // space between keywords and paren e.g. "using ("
     if (Right.is(tok::l_paren))
-      if (Left.is(tok::kw_using))
+      if (Left.isOneOf(tok::kw_using, Keywords.kw_async, Keywords.kw_when))
         return Style.SpaceBeforeParens == FormatStyle::SBPO_ControlStatements ||
                spaceRequiredBeforeParens(Right);
-    // space between ']' and '{'
-    if (Left.is(tok::r_square) && Right.is(tok::l_brace))
-      return true;
-    // space before '{' in "new MyType {"
-    if (Right.is(tok::l_brace) && Left.Previous &&
-        Left.Previous->is(tok::kw_new))
-      return true;
   } else if (Style.Language == FormatStyle::LK_JavaScript) {
     if (Left.is(TT_JsFatArrow))
       return true;
@@ -3030,6 +3057,8 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
       return Style.SpacesInContainerLiterals;
     if (Right.is(TT_AttributeColon))
       return false;
+    if (Right.is(TT_CSharpNamedArgumentColon))
+      return false;
     return true;
   }
   if (Left.is(TT_UnaryOperator)) {
@@ -3178,7 +3207,11 @@ bool TokenAnnotator::mustBreakBefore(const AnnotatedLine &Line,
   if (Right.NewlinesBefore > 1 && Style.MaxEmptyLinesToKeep > 0)
     return true;
 
-  if (Style.Language == FormatStyle::LK_JavaScript) {
+  if (Style.isCSharp()) {
+    if (Right.is(TT_CSharpNamedArgumentColon) ||
+        Left.is(TT_CSharpNamedArgumentColon))
+      return false;
+  } else if (Style.Language == FormatStyle::LK_JavaScript) {
     // FIXME: This might apply to other languages and token kinds.
     if (Right.is(tok::string_literal) && Left.is(tok::plus) && Left.Previous &&
         Left.Previous->is(tok::string_literal))
@@ -3463,9 +3496,12 @@ bool TokenAnnotator::mustBreakBefore(const AnnotatedLine &Line,
 bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
                                     const FormatToken &Right) {
   const FormatToken &Left = *Right.Previous;
-
   // Language-specific stuff.
-  if (Style.Language == FormatStyle::LK_Java) {
+  if (Style.isCSharp()) {
+    if (Left.is(TT_CSharpNamedArgumentColon) ||
+        Right.is(TT_CSharpNamedArgumentColon))
+      return false;
+  } else if (Style.Language == FormatStyle::LK_Java) {
     if (Left.isOneOf(Keywords.kw_throws, Keywords.kw_extends,
                      Keywords.kw_implements))
       return false;

@@ -495,6 +495,24 @@ bool ARMBaseInstrInfo::isPredicated(const MachineInstr &MI) const {
   return PIdx != -1 && MI.getOperand(PIdx).getImm() != ARMCC::AL;
 }
 
+std::string ARMBaseInstrInfo::createMIROperandComment(const MachineInstr &MI,
+                                                      const MachineOperand &Op,
+                                                      unsigned OpIdx) const {
+  // Only support immediates for now.
+  if (Op.getType() != MachineOperand::MO_Immediate)
+    return std::string();
+
+  // And print its corresponding condition code if the immediate is a
+  // predicate.
+  int FirstPredOp = MI.findFirstPredOperandIdx();
+  if (FirstPredOp != (int) OpIdx)
+    return std::string();
+
+  std::string CC = "CC::";
+  CC += ARMCondCodeToString((ARMCC::CondCodes)Op.getImm());
+  return CC;
+}
+
 bool ARMBaseInstrInfo::PredicateInstruction(
     MachineInstr &MI, ArrayRef<MachineOperand> Pred) const {
   unsigned Opc = MI.getOpcode();
@@ -5353,7 +5371,8 @@ Optional<RegImmPair> ARMBaseInstrInfo::isAddImmediate(const MachineInstr &MI,
 
   // TODO: Handle cases where Reg is a super- or sub-register of the
   // destination register.
-  if (Reg != MI.getOperand(0).getReg())
+  const MachineOperand &Op0 = MI.getOperand(0);
+  if (!Op0.isReg() || Reg != Op0.getReg())
     return None;
 
   // We describe SUBri or ADDri instructions.
@@ -5365,8 +5384,7 @@ Optional<RegImmPair> ARMBaseInstrInfo::isAddImmediate(const MachineInstr &MI,
   // TODO: Third operand can be global address (usually some string). Since
   //       strings can be relocated we cannot calculate their offsets for
   //       now.
-  if (!MI.getOperand(0).isReg() || !MI.getOperand(1).isReg() ||
-      !MI.getOperand(2).isImm())
+  if (!MI.getOperand(1).isReg() || !MI.getOperand(2).isImm())
     return None;
 
   Offset = MI.getOperand(2).getImm() * Sign;

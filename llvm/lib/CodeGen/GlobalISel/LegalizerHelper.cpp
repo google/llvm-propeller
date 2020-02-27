@@ -2174,13 +2174,12 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     return lowerBitcast(MI);
   case TargetOpcode::G_SREM:
   case TargetOpcode::G_UREM: {
-    Register QuotReg = MRI.createGenericVirtualRegister(Ty);
-    MIRBuilder.buildInstr(MI.getOpcode() == G_SREM ? G_SDIV : G_UDIV, {QuotReg},
-                          {MI.getOperand(1), MI.getOperand(2)});
+    auto Quot =
+        MIRBuilder.buildInstr(MI.getOpcode() == G_SREM ? G_SDIV : G_UDIV, {Ty},
+                              {MI.getOperand(1), MI.getOperand(2)});
 
-    Register ProdReg = MRI.createGenericVirtualRegister(Ty);
-    MIRBuilder.buildMul(ProdReg, QuotReg, MI.getOperand(2));
-    MIRBuilder.buildSub(MI.getOperand(0), MI.getOperand(1), ProdReg);
+    auto Prod = MIRBuilder.buildMul(Ty, Quot, MI.getOperand(2));
+    MIRBuilder.buildSub(MI.getOperand(0), MI.getOperand(1), Prod);
     MI.eraseFromParent();
     return Legalized;
   }
@@ -2209,9 +2208,7 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     MIRBuilder.setInsertPt(MIRBuilder.getMBB(), ++MIRBuilder.getInsertPt());
 
     auto HiPart = MIRBuilder.buildInstr(Opcode, {Ty}, {LHS, RHS});
-
-    Register Zero = MRI.createGenericVirtualRegister(Ty);
-    MIRBuilder.buildConstant(Zero, 0);
+    auto Zero = MIRBuilder.buildConstant(Ty, 0);
 
     // For *signed* multiply, overflow is detected by checking:
     // (hi != (lo >> bitwidth-1))
@@ -2433,12 +2430,10 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     Register LHS = MI.getOperand(2).getReg();
     Register RHS = MI.getOperand(3).getReg();
     Register CarryIn = MI.getOperand(4).getReg();
+    LLT Ty = MRI.getType(Res);
 
-    Register TmpRes = MRI.createGenericVirtualRegister(Ty);
-    Register ZExtCarryIn = MRI.createGenericVirtualRegister(Ty);
-
-    MIRBuilder.buildAdd(TmpRes, LHS, RHS);
-    MIRBuilder.buildZExt(ZExtCarryIn, CarryIn);
+    auto TmpRes = MIRBuilder.buildAdd(Ty, LHS, RHS);
+    auto ZExtCarryIn = MIRBuilder.buildZExt(Ty, CarryIn);
     MIRBuilder.buildAdd(Res, TmpRes, ZExtCarryIn);
     MIRBuilder.buildICmp(CmpInst::ICMP_ULT, CarryOut, Res, LHS);
 
@@ -2463,17 +2458,15 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     Register LHS = MI.getOperand(2).getReg();
     Register RHS = MI.getOperand(3).getReg();
     Register BorrowIn = MI.getOperand(4).getReg();
+    const LLT CondTy = MRI.getType(BorrowOut);
+    const LLT Ty = MRI.getType(Res);
 
-    Register TmpRes = MRI.createGenericVirtualRegister(Ty);
-    Register ZExtBorrowIn = MRI.createGenericVirtualRegister(Ty);
-    Register LHS_EQ_RHS = MRI.createGenericVirtualRegister(LLT::scalar(1));
-    Register LHS_ULT_RHS = MRI.createGenericVirtualRegister(LLT::scalar(1));
-
-    MIRBuilder.buildSub(TmpRes, LHS, RHS);
-    MIRBuilder.buildZExt(ZExtBorrowIn, BorrowIn);
+    auto TmpRes = MIRBuilder.buildSub(Ty, LHS, RHS);
+    auto ZExtBorrowIn = MIRBuilder.buildZExt(Ty, BorrowIn);
     MIRBuilder.buildSub(Res, TmpRes, ZExtBorrowIn);
-    MIRBuilder.buildICmp(CmpInst::ICMP_EQ, LHS_EQ_RHS, LHS, RHS);
-    MIRBuilder.buildICmp(CmpInst::ICMP_ULT, LHS_ULT_RHS, LHS, RHS);
+
+    auto LHS_EQ_RHS = MIRBuilder.buildICmp(CmpInst::ICMP_EQ, CondTy, LHS, RHS);
+    auto LHS_ULT_RHS = MIRBuilder.buildICmp(CmpInst::ICMP_ULT, CondTy, LHS, RHS);
     MIRBuilder.buildSelect(BorrowOut, LHS_EQ_RHS, BorrowIn, LHS_ULT_RHS);
 
     MI.eraseFromParent();
@@ -2565,90 +2558,62 @@ LegalizerHelper::LegalizeResult LegalizerHelper::fewerElementsVectorImplicitDef(
 LegalizerHelper::LegalizeResult
 LegalizerHelper::fewerElementsVectorBasic(MachineInstr &MI, unsigned TypeIdx,
                                           LLT NarrowTy) {
+  assert(TypeIdx == 0 && "only one type index expected");
+
   const unsigned Opc = MI.getOpcode();
-  const unsigned NumOps = MI.getNumOperands() - 1;
-  const unsigned NarrowSize = NarrowTy.getSizeInBits();
+  const int NumOps = MI.getNumOperands() - 1;
   const Register DstReg = MI.getOperand(0).getReg();
   const unsigned Flags = MI.getFlags();
-  const LLT DstTy = MRI.getType(DstReg);
-  const unsigned Size = DstTy.getSizeInBits();
-  const int NumParts = Size / NarrowSize;
-  const LLT EltTy = DstTy.getElementType();
-  const unsigned EltSize = EltTy.getSizeInBits();
-  const unsigned BitsForNumParts = NarrowSize * NumParts;
 
-  // Check if we have any leftovers. If we do, then only handle the case where
-  // the leftover is one element.
-  if (BitsForNumParts != Size && BitsForNumParts + EltSize != Size)
-    return UnableToLegalize;
+  assert(NumOps <= 3 && "expected instrution with 1 result and 1-3 sources");
 
-  if (BitsForNumParts != Size) {
-    Register AccumDstReg = MRI.createGenericVirtualRegister(DstTy);
-    MIRBuilder.buildUndef(AccumDstReg);
+  SmallVector<Register, 8> ExtractedRegs[3];
+  SmallVector<Register, 8> Parts;
 
-    // Handle the pieces which evenly divide into the requested type with
-    // extract/op/insert sequence.
-    for (unsigned Offset = 0; Offset < BitsForNumParts; Offset += NarrowSize) {
-      SmallVector<SrcOp, 4> SrcOps;
-      for (unsigned I = 1, E = MI.getNumOperands(); I != E; ++I) {
-        Register PartOpReg = MRI.createGenericVirtualRegister(NarrowTy);
-        MIRBuilder.buildExtract(PartOpReg, MI.getOperand(I), Offset);
-        SrcOps.push_back(PartOpReg);
-      }
+  // Break down all the sources into NarrowTy pieces we can operate on. This may
+  // involve creating merges to a wider type, padded with undef.
+  for (int I = 0; I != NumOps; ++I) {
+    Register SrcReg =  MI.getOperand(I + 1).getReg();
+    LLT SrcTy = MRI.getType(SrcReg);
+    LLT GCDTy = extractGCDType(ExtractedRegs[I], SrcTy, NarrowTy, SrcReg);
 
-      Register PartDstReg = MRI.createGenericVirtualRegister(NarrowTy);
-      MIRBuilder.buildInstr(Opc, {PartDstReg}, SrcOps, Flags);
-
-      Register PartInsertReg = MRI.createGenericVirtualRegister(DstTy);
-      MIRBuilder.buildInsert(PartInsertReg, AccumDstReg, PartDstReg, Offset);
-      AccumDstReg = PartInsertReg;
-    }
-
-    // Handle the remaining element sized leftover piece.
-    SmallVector<SrcOp, 4> SrcOps;
-    for (unsigned I = 1, E = MI.getNumOperands(); I != E; ++I) {
-      Register PartOpReg = MRI.createGenericVirtualRegister(EltTy);
-      MIRBuilder.buildExtract(PartOpReg, MI.getOperand(I), BitsForNumParts);
-      SrcOps.push_back(PartOpReg);
-    }
-
-    Register PartDstReg = MRI.createGenericVirtualRegister(EltTy);
-    MIRBuilder.buildInstr(Opc, {PartDstReg}, SrcOps, Flags);
-    MIRBuilder.buildInsert(DstReg, AccumDstReg, PartDstReg, BitsForNumParts);
-    MI.eraseFromParent();
-
-    return Legalized;
+    // Build a sequence of NarrowTy pieces in ExtractedRegs for this operand.
+    buildLCMMergePieces(SrcTy, NarrowTy, GCDTy, ExtractedRegs[I],
+                        TargetOpcode::G_ANYEXT);
   }
 
-  SmallVector<Register, 2> DstRegs, Src0Regs, Src1Regs, Src2Regs;
+  SmallVector<Register, 8> ResultRegs;
 
-  extractParts(MI.getOperand(1).getReg(), NarrowTy, NumParts, Src0Regs);
+  // Input operands for each sub-instruction.
+  SmallVector<SrcOp, 4> InputRegs(NumOps, Register());
 
-  if (NumOps >= 2)
-    extractParts(MI.getOperand(2).getReg(), NarrowTy, NumParts, Src1Regs);
+  int NumParts = ExtractedRegs[0].size();
+  const unsigned DstSize = MRI.getType(DstReg).getSizeInBits();
+  const unsigned NarrowSize = NarrowTy.getSizeInBits();
 
-  if (NumOps >= 3)
-    extractParts(MI.getOperand(3).getReg(), NarrowTy, NumParts, Src2Regs);
+  // We widened the source registers to satisfy merge/unmerge size
+  // constraints. We'll have some extra fully undef parts.
+  const int NumRealParts = (DstSize + NarrowSize - 1) / NarrowSize;
 
-  for (int i = 0; i < NumParts; ++i) {
-    Register DstReg = MRI.createGenericVirtualRegister(NarrowTy);
+  for (int I = 0; I != NumRealParts; ++I) {
+    // Emit this instruction on each of the split pieces.
+    for (int J = 0; J != NumOps; ++J)
+      InputRegs[J] = ExtractedRegs[J][I];
 
-    if (NumOps == 1)
-      MIRBuilder.buildInstr(Opc, {DstReg}, {Src0Regs[i]}, Flags);
-    else if (NumOps == 2) {
-      MIRBuilder.buildInstr(Opc, {DstReg}, {Src0Regs[i], Src1Regs[i]}, Flags);
-    } else if (NumOps == 3) {
-      MIRBuilder.buildInstr(Opc, {DstReg},
-                            {Src0Regs[i], Src1Regs[i], Src2Regs[i]}, Flags);
-    }
-
-    DstRegs.push_back(DstReg);
+    auto Inst = MIRBuilder.buildInstr(Opc, {NarrowTy}, InputRegs, Flags);
+    ResultRegs.push_back(Inst.getReg(0));
   }
 
-  if (NarrowTy.isVector())
-    MIRBuilder.buildConcatVectors(DstReg, DstRegs);
-  else
-    MIRBuilder.buildBuildVector(DstReg, DstRegs);
+  // Fill out the widened result with undef instead of creating instructions
+  // with undef inputs.
+  int NumUndefParts = NumParts - NumRealParts;
+  if (NumUndefParts != 0)
+    ResultRegs.append(NumUndefParts, MIRBuilder.buildUndef(NarrowTy).getReg(0));
+
+  // Extract the possibly padded result to the original result register.
+  LLT DstTy = MRI.getType(DstReg);
+  LLT LCMTy = getLCMType(DstTy, NarrowTy);
+  buildWidenedRemergeToDst(DstReg, LCMTy, ResultRegs);
 
   MI.eraseFromParent();
   return Legalized;
