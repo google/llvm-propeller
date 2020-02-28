@@ -185,7 +185,7 @@ void NodeChainBuilder::mergeChains(NodeChain *leftChain,
   if ((propConfig.optReorderIP || propConfig.optSplitFuncs) &&
       (leftChain->freq == 0 ^ rightChain->freq == 0))
     warn("Attempting to merge hot and cold chains: \n" + toString(*leftChain) +
-          "\nAND\n" + toString(*rightChain));
+         "\nAND\n" + toString(*rightChain));
 
   if (leftChain->debugChain || rightChain->debugChain)
     fprintf(stderr, "MERGING chains:\n%s\nAND%s\n",
@@ -688,7 +688,8 @@ void NodeChainBuilder::initBundles(
   for (auto it = bundleNext.begin(); it != bundleNext.end(); ++it) {
     if (!hasBundlePrev.count(it->first)) {
       std::vector<CFGNode *> path(1, it->first);
-      for (auto itt=it; itt != bundleNext.end(); itt = bundleNext.find(itt->second))
+      for (auto itt = it; itt != bundleNext.end();
+           itt = bundleNext.find(itt->second))
         path.push_back(itt->second);
       bundles.push_back(std::move(path));
     }

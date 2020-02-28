@@ -103,7 +103,8 @@ public:
 
   // Containing bundle for this node assigned by the ordering algorithm, and the
   // offset of the node in that bundle.
-  // These two field are updated as bundles get merged together during the algorithm.
+  // These two field are updated as bundles get merged together during the
+  // algorithm.
   CFGNodeBundle *bundle;
   int64_t bundleOffset;
 

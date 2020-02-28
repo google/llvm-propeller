@@ -105,7 +105,8 @@ private:
   void init();
 
   // Initialize the bundles
-  void initBundles(ControlFlowGraph &cfg, std::vector<std::vector<CFGNode *>> &bundles);
+  void initBundles(ControlFlowGraph &cfg,
+                   std::vector<std::vector<CFGNode *>> &bundles);
 
   // Initialize basic block chains and bundles with one chain for every bundle,
   // every vector in paths would constitute a bundle which is gauaranteed to

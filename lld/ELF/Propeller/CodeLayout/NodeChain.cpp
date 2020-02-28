@@ -28,7 +28,9 @@ toString(const NodeChain &c,
     if (bundleIt == slicePos)
       str += "\n....SLICE POSITION....\n";
 
-    str += " << bundle [offset= " + std::to_string((*bundleIt)->chainOffset) + " size=" + std::to_string((*bundleIt)->size) + " freq="+ std::to_string((*bundleIt)->freq)+ " ] ";
+    str += " << bundle [offset= " + std::to_string((*bundleIt)->chainOffset) +
+           " size=" + std::to_string((*bundleIt)->size) +
+           " freq=" + std::to_string((*bundleIt)->freq) + " ] ";
     for (auto *n : (*bundleIt)->nodes) {
       if (!c.controlFlowGraph)
         str += std::to_string(n->controlFlowGraph->getEntryNode()->mappedAddr) +
