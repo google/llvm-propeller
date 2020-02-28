@@ -617,9 +617,9 @@ void NodeChainBuilder::initBundles(
 
   for(auto& edge: cfg.intraEdges) {
     if (!edge->weight)
-      return;
+      continue;
     if (edge->isCall() || edge->isReturn())
-      return;
+      continue;
     auto r = singleHotOut.try_emplace(edge->src, edge->sink);
     if (!r.second && r.first->second)
       r.first->second = nullptr;
