@@ -114,10 +114,6 @@ private:
   void initNodeChains(ControlFlowGraph &cfg,
                       std::vector<std::vector<CFGNode *>> &bundles);
 
-  void bundleNodes(NodeChain *chain,
-                   std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
-                   std::list<std::unique_ptr<CFGNodeBundle>>::iterator end);
-
 public:
   // This invokes the Extended TSP algorithm, orders the hot and cold basic
   // blocks and inserts their associated symbols at the corresponding locations

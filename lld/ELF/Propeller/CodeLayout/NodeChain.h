@@ -100,6 +100,8 @@ public:
   // Whether to print out information about how this chain joins with others.
   bool debugChain;
 
+  bool bundled = false;
+
   // Constructor for building a NodeChain from a single Node
   NodeChain(CFGNode *node) {
     nodeBundles.emplace_back(new CFGNodeBundle(node, this, 0));
@@ -152,9 +154,18 @@ public:
     return controlFlowGraph && controlFlowGraph == c.controlFlowGraph;
   }
 
+  bool isHot() {
+    return freq != 0;
+  }
+
   CFGNode *lastNode() const { return nodeBundles.back()->nodes.back(); }
 
   CFGNode *firstNode() const { return nodeBundles.front()->nodes.front(); }
+
+  void bundleNodes(std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
+                   std::list<std::unique_ptr<CFGNodeBundle>>::iterator end);
+
+  void bundleNodes();
 };
 
 // This returns a string representation of the chain

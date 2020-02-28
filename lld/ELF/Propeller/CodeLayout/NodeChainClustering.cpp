@@ -32,7 +32,7 @@ void ChainClustering::addChain(std::unique_ptr<NodeChain> &&chain_ptr) {
     b_ptr->chain = chain_ptr.get();
   auto &chainList = ((propConfig.optReorderIP || propConfig.optSplitFuncs ||
                       propConfig.optReorderFuncs) &&
-                     chain_ptr->freq == 0)
+                     !chain_ptr->isHot())
                         ? coldChains
                         : hotChains;
   chainList.push_back(std::move(chain_ptr));
