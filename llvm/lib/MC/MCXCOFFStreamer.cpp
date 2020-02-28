@@ -10,12 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/MC/MCXCOFFStreamer.h"
 #include "llvm/BinaryFormat/XCOFF.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCCodeEmitter.h"
+#include "llvm/MC/MCDirectives.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSymbolXCOFF.h"
-#include "llvm/MC/MCXCOFFStreamer.h"
 #include "llvm/Support/TargetRegistry.h"
 
 using namespace llvm;
@@ -37,6 +38,10 @@ bool MCXCOFFStreamer::emitSymbolAttribute(MCSymbol *Sym,
     Symbol->setStorageClass(XCOFF::C_EXT);
     Symbol->setExternal(true);
     break;
+  case MCSA_LGlobal:
+    Symbol->setStorageClass(XCOFF::C_HIDEXT);
+    Symbol->setExternal(true);
+    break;
   default:
     report_fatal_error("Not implemented yet.");
   }
@@ -52,7 +57,7 @@ void MCXCOFFStreamer::emitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
 
   // Emit the alignment and storage for the variable to the section.
   emitValueToAlignment(ByteAlignment);
-  EmitZeros(Size);
+  emitZeros(Size);
 }
 
 void MCXCOFFStreamer::emitZerofill(MCSection *Section, MCSymbol *Symbol,
@@ -94,7 +99,7 @@ MCStreamer *llvm::createXCOFFStreamer(MCContext &Context,
   return S;
 }
 
-void MCXCOFFStreamer::EmitXCOFFLocalCommonSymbol(MCSymbol *LabelSym,
+void MCXCOFFStreamer::emitXCOFFLocalCommonSymbol(MCSymbol *LabelSym,
                                                  uint64_t Size,
                                                  MCSymbol *CsectSym,
                                                  unsigned ByteAlignment) {

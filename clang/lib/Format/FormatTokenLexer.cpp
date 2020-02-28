@@ -574,7 +574,7 @@ void FormatTokenLexer::handleCSharpVerbatimAndInterpolatedStrings() {
   size_t LastBreak = LiteralText.rfind('\n');
   if (LastBreak != StringRef::npos) {
     CSharpStringLiteral->IsMultiline = true;
-    unsigned StartColumn = 0; // The template tail spans the entire line.
+    unsigned StartColumn = 0;
     CSharpStringLiteral->LastLineColumnWidth = encoding::columnWidthWithTabs(
         LiteralText.substr(LastBreak + 1, LiteralText.size()), StartColumn,
         Style.TabWidth, Encoding);

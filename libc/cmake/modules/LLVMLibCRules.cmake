@@ -101,6 +101,7 @@ set(ENTRYPOINT_OBJ_TARGET_TYPE "ENTRYPOINT_OBJ")
 #     add_entrypoint_object(
 #       <target_name>
 #       [REDIRECTED] # Specified if the entrypoint is redirected.
+#       [NAME] <the C name of the entrypoint if different from target_name>
 #       SRCS <list of .cpp files>
 #       HDRS <list of .h files>
 #       DEPENDS <list of dependencies>
@@ -109,7 +110,7 @@ function(add_entrypoint_object target_name)
   cmake_parse_arguments(
     "ADD_ENTRYPOINT_OBJ"
     "REDIRECTED" # Optional argument
-    "" # No single value arguments
+    "NAME" # Single value arguments
     "SRCS;HDRS;DEPENDS"  # Multi value arguments
     ${ARGN}
   )
@@ -118,6 +119,11 @@ function(add_entrypoint_object target_name)
   endif()
   if(NOT ADD_ENTRYPOINT_OBJ_HDRS)
     message(FATAL_ERROR "`add_entrypoint_object` rule requires HDRS to be specified.")
+  endif()
+
+  set(entrypoint_name ${target_name})
+  if(ADD_ENTRYPOINT_OBJ_NAME)
+    set(entrypoint_name ${ADD_ENTRYPOINT_OBJ_NAME})
   endif()
 
   add_library(
@@ -168,7 +174,7 @@ function(add_entrypoint_object target_name)
     OUTPUT ${object_file}
     # We llvm-objcopy here as GNU-binutils objcopy does not support the 'hidden' flag.
     DEPENDS ${object_file_raw} ${llvm-objcopy}
-    COMMAND $<TARGET_FILE:llvm-objcopy> --add-symbol "${target_name}=.llvm.libc.entrypoint.${target_name}:${alias_attributes}" ${object_file_raw} ${object_file}
+    COMMAND $<TARGET_FILE:llvm-objcopy> --add-symbol "${entrypoint_name}=.llvm.libc.entrypoint.${entrypoint_name}:${alias_attributes}" ${object_file_raw} ${object_file}
   )
 
   add_custom_target(
@@ -300,7 +306,7 @@ function(add_libc_unittest target_name)
   if(NOT LLVM_INCLUDE_TESTS)
     return()
   endif()
-
+  
   cmake_parse_arguments(
     "LIBC_UNITTEST"
     "" # No optional arguments
@@ -355,7 +361,7 @@ function(add_libc_unittest target_name)
     ${LIBC_UNITTEST_DEPENDS}
   )
 
-  target_link_libraries(${target_name} PRIVATE LibcUnitTest)
+  target_link_libraries(${target_name} PRIVATE LibcUnitTest libc_test_utils)
 
   add_custom_command(
     TARGET ${target_name}
@@ -374,6 +380,71 @@ function(add_libc_testsuite suite_name)
   add_custom_target(${suite_name})
   add_dependencies(check-libc ${suite_name})
 endfunction(add_libc_testsuite)
+
+# Rule to add a fuzzer test.
+# Usage
+#    add_libc_fuzzer(
+#      <target name>
+#      SRCS  <list of .cpp files for the test>
+#      HDRS  <list of .h files for the test>
+#      DEPENDS <list of dependencies>
+#    )
+function(add_libc_fuzzer target_name)
+  cmake_parse_arguments(
+    "LIBC_FUZZER"
+    "" # No optional arguments
+    "" # Single value arguments
+    "SRCS;HDRS;DEPENDS" # Multi-value arguments
+    ${ARGN}
+  )
+  if(NOT LIBC_FUZZER_SRCS)
+    message(FATAL_ERROR "'add_libc_fuzzer' target requires a SRCS list of .cpp files.")
+  endif()
+  if(NOT LIBC_FUZZER_DEPENDS)
+    message(FATAL_ERROR "'add_libc_fuzzer' target requires a DEPENDS list of 'add_entrypoint_object' targets.")
+  endif()
+
+  set(library_deps "")
+  foreach(dep IN LISTS LIBC_FUZZER_DEPENDS)
+    get_target_property(dep_type ${dep} "TARGET_TYPE")
+    if (dep_type)
+      string(COMPARE EQUAL ${dep_type} ${ENTRYPOINT_OBJ_TARGET_TYPE} dep_is_entrypoint)
+      if(dep_is_entrypoint)
+        get_target_property(obj_file ${dep} "OBJECT_FILE_RAW")
+        list(APPEND library_deps ${obj_file})
+        continue()
+      endif()
+    endif()
+    # TODO: Check if the dep is a normal CMake library target. If yes, then add it
+    # to the list of library_deps.
+  endforeach(dep)
+
+  add_executable(
+    ${target_name}
+    EXCLUDE_FROM_ALL
+    ${LIBC_FUZZER_SRCS}
+    ${LIBC_FUZZER_HDRS}
+  )
+  target_include_directories(
+    ${target_name}
+    PRIVATE
+      ${LIBC_SOURCE_DIR}
+      ${LIBC_BUILD_DIR}
+      ${LIBC_BUILD_DIR}/include
+  )
+
+  if(library_deps)
+    target_link_libraries(${target_name} PRIVATE ${library_deps})
+  endif()
+
+  set_target_properties(${target_name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+  add_dependencies(
+    ${target_name}
+    ${LIBC_FUZZER_DEPENDS}
+  )
+  add_dependencies(libc-fuzzer ${target_name})
+endfunction(add_libc_fuzzer)
 
 # Rule to add header only libraries.
 # Usage

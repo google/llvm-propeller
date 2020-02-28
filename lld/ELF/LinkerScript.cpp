@@ -323,7 +323,7 @@ static std::string getFilename(InputFile *file) {
     return "";
   if (file->archiveName.empty())
     return std::string(file->getName());
-  return (file->archiveName + "(" + file->getName() + ")").str();
+  return (file->archiveName + ':' + file->getName()).str();
 }
 
 bool LinkerScript::shouldKeep(InputSectionBase *s) {
@@ -681,13 +681,9 @@ void LinkerScript::addOrphanSections() {
   std::function<void(InputSectionBase *)> add;
   add = [&](InputSectionBase *s) {
     if (s->isLive() && !s->parent) {
+      orphanSections.push_back(s);
+
       StringRef name = getOutputSectionName(s);
-
-      if (config->orphanHandling == OrphanHandlingPolicy::Error)
-        error(toString(s) + " is being placed in '" + name + "'");
-      else if (config->orphanHandling == OrphanHandlingPolicy::Warn)
-        warn(toString(s) + " is being placed in '" + name + "'");
-
       if (OutputSection *sec = findByName(sectionCommands, name)) {
         sec->recordSection(s);
       } else {
@@ -732,6 +728,22 @@ void LinkerScript::addOrphanSections() {
     sectionCommands.insert(sectionCommands.begin(), v.begin(), v.end());
 }
 
+void LinkerScript::diagnoseOrphanHandling() const {
+  for (const InputSectionBase *sec : orphanSections) {
+    // Input SHT_REL[A] retained by --emit-relocs are ignored by
+    // computeInputSections(). Don't warn/error.
+    if (isa<InputSection>(sec) &&
+        cast<InputSection>(sec)->getRelocatedSection())
+      continue;
+
+    StringRef name = getOutputSectionName(sec);
+    if (config->orphanHandling == OrphanHandlingPolicy::Error)
+      error(toString(sec) + " is being placed in '" + name + "'");
+    else if (config->orphanHandling == OrphanHandlingPolicy::Warn)
+      warn(toString(sec) + " is being placed in '" + name + "'");
+  }
+}
+
 uint64_t LinkerScript::advance(uint64_t size, unsigned alignment) {
   bool isTbss =
       (ctx->outSec->flags & SHF_TLS) && ctx->outSec->type == SHT_NOBITS;
@@ -761,9 +773,21 @@ void LinkerScript::output(InputSection *s) {
 void LinkerScript::switchTo(OutputSection *sec) {
   ctx->outSec = sec;
 
-  uint64_t before = advance(0, 1);
-  ctx->outSec->addr = advance(0, ctx->outSec->alignment);
-  expandMemoryRegions(ctx->outSec->addr - before);
+  uint64_t pos = advance(0, 1);
+  if (sec->addrExpr && !sec->alignExpr) {
+    // The alignment is ignored.
+    ctx->outSec->addr = pos;
+  } else {
+    // If ALIGN is specified, advance sh_addr according to ALIGN and ignore the
+    // maximum of input section alignments.
+    //
+    // When no SECTIONS command is given, sec->alignExpr is set to the maximum
+    // of input section alignments.
+    uint32_t align =
+        sec->alignExpr ? sec->alignExpr().getValue() : ctx->outSec->alignment;
+    ctx->outSec->addr = advance(0, align);
+    expandMemoryRegions(ctx->outSec->addr - pos);
+  }
 }
 
 // This function searches for a memory region to place the given output
@@ -827,7 +851,10 @@ void LinkerScript::assignOffsets(OutputSection *sec) {
     expandMemoryRegion(ctx->memRegion, dot - ctx->memRegion->curPos,
                        ctx->memRegion->name, sec->name);
 
+  uint64_t oldDot = dot;
   switchTo(sec);
+  if (sec->addrExpr && oldDot != dot)
+    changedSectionAddresses.push_back({sec, oldDot});
 
   ctx->lmaOffset = 0;
 
@@ -1099,6 +1126,7 @@ const Defined *LinkerScript::assignAddresses() {
   auto deleter = std::make_unique<AddressState>();
   ctx = deleter.get();
   errorOnMissingSection = true;
+  changedSectionAddresses.clear();
   switchTo(aether);
 
   SymbolAssignmentMap oldValues = getSymbolAssignmentValues(sectionCommands);

@@ -216,6 +216,9 @@ enum NodeType : unsigned {
   PTRUE,
 
   DUP_PRED,
+  INDEX_VECTOR,
+
+  REINTERPRET_CAST,
 
   LDNF1,
   LDNF1S,
@@ -239,6 +242,25 @@ enum NodeType : unsigned {
   GLD1S_UXTW_SCALED,
   GLD1S_SXTW_SCALED,
   GLD1S_IMM,
+
+  // Unsigned gather loads.
+  GLDFF1,
+  GLDFF1_SCALED,
+  GLDFF1_UXTW,
+  GLDFF1_SXTW,
+  GLDFF1_UXTW_SCALED,
+  GLDFF1_SXTW_SCALED,
+  GLDFF1_IMM,
+
+  // Signed gather loads.
+  GLDFF1S,
+  GLDFF1S_SCALED,
+  GLDFF1S_UXTW,
+  GLDFF1S_SXTW,
+  GLDFF1S_UXTW_SCALED,
+  GLDFF1S_SXTW_SCALED,
+  GLDFF1S_IMM,
+
   // Scatter store
   SST1,
   SST1_SCALED,
@@ -469,6 +491,13 @@ public:
   /// with this index.
   bool isExtractSubvectorCheap(EVT ResVT, EVT SrcVT,
                                unsigned Index) const override;
+
+  bool shouldFormOverflowOp(unsigned Opcode, EVT VT,
+                            bool MathUsed) const override {
+    // Using overflow ops for overflow checks only should beneficial on
+    // AArch64.
+    return TargetLowering::shouldFormOverflowOp(Opcode, VT, true);
+  }
 
   Value *emitLoadLinked(IRBuilder<> &Builder, Value *Addr,
                         AtomicOrdering Ord) const override;
@@ -737,6 +766,7 @@ private:
   SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSPLAT_VECTOR(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerDUPQLane(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerEXTRACT_SUBVECTOR(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerVectorSRA_SRL_SHL(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerShiftLeftParts(SDValue Op, SelectionDAG &DAG) const;

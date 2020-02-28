@@ -5596,8 +5596,8 @@ void ASTRecordWriter::AddCXXDefinitionData(const CXXRecordDecl *D) {
 
   // getODRHash will compute the ODRHash if it has not been previously computed.
   Record->push_back(D->getODRHash());
-  bool ModulesDebugInfo =
-      Writer->Context->getLangOpts().ModulesDebugInfo && !D->isDependentType();
+  bool ModulesDebugInfo = Writer->Context->getLangOpts().ModulesDebugInfo &&
+                          Writer->WritingModule && !D->isDependentType();
   Record->push_back(ModulesDebugInfo);
   if (ModulesDebugInfo)
     Writer->ModularCodegenDecls.push_back(Writer->GetDeclRef(D));
@@ -6578,9 +6578,9 @@ void OMPClauseWriter::VisitOMPOrderClause(OMPOrderClause *C) {
   Record.AddSourceLocation(C->getKindKwLoc());
 }
 
-void ASTRecordWriter::writeOMPTraitInfo(OMPTraitInfo *TI) {
-  writeUInt32(TI->Sets.size());
-  for (const auto &Set : TI->Sets) {
+void ASTRecordWriter::writeOMPTraitInfo(const OMPTraitInfo &TI) {
+  writeUInt32(TI.Sets.size());
+  for (const auto &Set : TI.Sets) {
     writeEnum(Set.Kind);
     writeUInt32(Set.Selectors.size());
     for (const auto &Selector : Set.Selectors) {

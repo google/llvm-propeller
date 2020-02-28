@@ -74,6 +74,7 @@ class TargetRegisterClass;
 class TargetSubtargetInfo;
 struct WasmEHFuncInfo;
 struct WinEHFuncInfo;
+class GISelChangeObserver;
 
 template <> struct ilist_alloc_traits<MachineBasicBlock> {
   void deleteNode(MachineBasicBlock *MBB);
@@ -415,6 +416,7 @@ public:
 
 private:
   Delegate *TheDelegate = nullptr;
+  GISelChangeObserver *Observer = nullptr;
 
   using CallSiteInfoMap = DenseMap<const MachineInstr *, CallSiteInfo>;
   /// Map a call instruction to call site arguments forwarding info.
@@ -462,6 +464,10 @@ public:
 
     TheDelegate = delegate;
   }
+
+  void setObserver(GISelChangeObserver *O) { Observer = O; }
+
+  GISelChangeObserver *getObserver() const { return Observer; }
 
   MachineModuleInfo &getMMI() const { return MMI; }
   MCContext &getContext() const { return Ctx; }
@@ -1056,16 +1062,9 @@ public:
   /// Following functions update call site info. They should be called before
   /// removing, replacing or copying call instruction.
 
-  /// Move the call site info from \p Old to \New call site info. This function
-  /// is used when we are replacing one call instruction with another one to
-  /// the same callee.
-  void moveCallSiteInfo(const MachineInstr *Old,
-                        const MachineInstr *New);
-
   /// Erase the call site info for \p MI. It is used to remove a call
   /// instruction from the instruction stream.
   void eraseCallSiteInfo(const MachineInstr *MI);
-
   /// Copy the call site info from \p Old to \ New. Its usage is when we are
   /// making a copy of the instruction that will be inserted at different point
   /// of the instruction stream.
@@ -1075,6 +1074,12 @@ public:
   const std::vector<char> &getBBSectionsSymbolPrefix() const {
     return BBSectionsSymbolPrefix;
   }
+
+  /// Move the call site info from \p Old to \New call site info. This function
+  /// is used when we are replacing one call instruction with another one to
+  /// the same callee.
+  void moveCallSiteInfo(const MachineInstr *Old,
+                        const MachineInstr *New);
 };
 
 //===--------------------------------------------------------------------===//

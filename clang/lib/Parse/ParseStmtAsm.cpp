@@ -631,8 +631,8 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
   // Change to the Intel dialect.
   Parser->setAssemblerDialect(1);
   Parser->setTargetParser(*TargetParser.get());
-  Parser->setParsingInlineAsm(true);
-  TargetParser->setParsingInlineAsm(true);
+  Parser->setParsingMSInlineAsm(true);
+  TargetParser->setParsingMSInlineAsm(true);
 
   ClangAsmParserCallback Callback(*this, AsmLoc, AsmString, AsmToks,
                                   TokOffsets);
@@ -780,12 +780,6 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
     // In C++ mode, parse "::" like ": :".
     AteExtraColon = Tok.is(tok::coloncolon);
     ConsumeToken();
-
-    if (!AteExtraColon && isGotoAsm && Tok.isNot(tok::colon)) {
-      Diag(Tok, diag::err_asm_goto_cannot_have_output);
-      SkipUntil(tok::r_paren, StopAtSemi);
-      return StmtError();
-    }
 
     if (!AteExtraColon && ParseAsmOperandsOpt(Names, Constraints, Exprs))
       return StmtError();

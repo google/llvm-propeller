@@ -335,7 +335,7 @@ void darwin::Linker::AddLinkArgs(Compilation &C, const ArgList &Args,
   Args.AddAllArgs(CmdArgs, options::OPT_init);
 
   // Add the deployment target.
-  if (!Version[0] || Version[0] >= 520)
+  if (Version[0] >= 520)
     MachOTC.addPlatformVersionArgs(Args, CmdArgs);
   else
     MachOTC.addMinVersionArgs(Args, CmdArgs);
@@ -1899,7 +1899,7 @@ void DarwinClang::AddClangSystemIncludeArgs(const llvm::opt::ArgList &DriverArgs
     CIncludeDirs.split(dirs, ":");
     for (llvm::StringRef dir : dirs) {
       llvm::StringRef Prefix =
-          llvm::sys::path::is_absolute(dir) ? llvm::StringRef(Sysroot) : "";
+          llvm::sys::path::is_absolute(dir) ? "" : llvm::StringRef(Sysroot);
       addExternCSystemInclude(DriverArgs, CC1Args, Prefix + dir);
     }
   } else {

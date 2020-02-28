@@ -146,6 +146,12 @@ private:
   /// Stores the Section type of the basic block with basic block sections.
   MachineBasicBlockSection SectionType = MBBS_None;
 
+  /// Default target of the callbr of a basic block.
+  bool InlineAsmBrDefaultTarget = false;
+
+  /// List of indirect targets of the callbr of a basic block.
+  SmallPtrSet<const MachineBasicBlock*, 4> InlineAsmBrIndirectTargets;
+
   /// since getSymbol is a relatively heavy-weight operation, the symbol
   /// is only computed once and is cached.
   mutable MCSymbol *CachedMCSymbol = nullptr;
@@ -439,6 +445,33 @@ public:
 
   /// Indicate that the basic block belongs to a Section Type.
   void setSectionType(MachineBasicBlockSection V) { SectionType = V; }
+
+  /// Returns true if this is the indirect dest of an INLINEASM_BR.
+  bool isInlineAsmBrIndirectTarget(const MachineBasicBlock *Tgt) const {
+    return InlineAsmBrIndirectTargets.count(Tgt);
+  }
+
+  /// Indicates if this is the indirect dest of an INLINEASM_BR.
+  void addInlineAsmBrIndirectTarget(const MachineBasicBlock *Tgt) {
+    InlineAsmBrIndirectTargets.insert(Tgt);
+  }
+
+  /// Transfers indirect targets to INLINEASM_BR's copy block.
+  void transferInlineAsmBrIndirectTargets(MachineBasicBlock *CopyBB) {
+    for (auto *Target : InlineAsmBrIndirectTargets)
+      CopyBB->addInlineAsmBrIndirectTarget(Target);
+    return InlineAsmBrIndirectTargets.clear();
+  }
+
+  /// Returns true if this is the default dest of an INLINEASM_BR.
+  bool isInlineAsmBrDefaultTarget() const {
+    return InlineAsmBrDefaultTarget;
+  }
+
+  /// Indicates if this is the default deft of an INLINEASM_BR.
+  void setInlineAsmBrDefaultTarget() {
+    InlineAsmBrDefaultTarget = true;
+  }
 
   /// Returns true if it is legal to hoist instructions into this block.
   bool isLegalToHoistInto() const;

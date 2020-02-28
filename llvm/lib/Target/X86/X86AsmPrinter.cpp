@@ -124,7 +124,7 @@ void X86AsmPrinter::PrintSymbolOperand(const MachineOperand &MO,
         MO.getTargetFlags() == X86II::MO_DARWIN_NONLAZY_PIC_BASE)
       GVSym = getSymbolWithGlobalValueBase(GV, "$non_lazy_ptr");
     else
-      GVSym = getSymbol(GV);
+      GVSym = getSymbolPreferLocal(*GV);
 
     // Handle dllimport linkage.
     if (MO.getTargetFlags() == X86II::MO_DLLIMPORT)
@@ -643,7 +643,7 @@ void X86AsmPrinter::emitStartOfAsmFile(Module &M) {
     OutStreamer->emitAssignment(
         S, MCConstantExpr::create(Feat00Flags, MMI->getContext()));
   }
-  OutStreamer->EmitSyntaxDirective();
+  OutStreamer->emitSyntaxDirective();
 
   // If this is not inline asm and we're in 16-bit
   // mode prefix assembly with .code16.

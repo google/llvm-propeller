@@ -131,8 +131,7 @@ ClangdServer::ClangdServer(const GlobalCompilationDatabase &CDB,
                      : nullptr),
       GetClangTidyOptions(Opts.GetClangTidyOptions),
       SuggestMissingIncludes(Opts.SuggestMissingIncludes),
-      CrossFileRename(Opts.CrossFileRename), TweakFilter(Opts.TweakFilter),
-      WorkspaceRoot(Opts.WorkspaceRoot),
+      TweakFilter(Opts.TweakFilter), WorkspaceRoot(Opts.WorkspaceRoot),
       // Pass a callback into `WorkScheduler` to extract symbols from a newly
       // parsed file and rebuild the file index synchronously each time an AST
       // is parsed.
@@ -319,8 +318,9 @@ ClangdServer::formatOnType(llvm::StringRef Code, PathRef File, Position Pos,
 }
 
 void ClangdServer::prepareRename(PathRef File, Position Pos,
+                                 const RenameOptions &RenameOpts,
                                  Callback<llvm::Optional<Range>> CB) {
-  auto Action = [Pos, File = File.str(), CB = std::move(CB),
+  auto Action = [Pos, File = File.str(), CB = std::move(CB), RenameOpts,
                  this](llvm::Expected<InputsAndAST> InpAST) mutable {
     if (!InpAST)
       return CB(InpAST.takeError());
@@ -338,14 +338,13 @@ void ClangdServer::prepareRename(PathRef File, Position Pos,
         SM, CharSourceRange::getCharRange(TouchingIdentifier->location(),
                                           TouchingIdentifier->endLocation()));
 
-    if (CrossFileRename)
+    if (RenameOpts.AllowCrossFile)
       // FIXME: we now assume cross-file rename always succeeds, revisit this.
       return CB(Range);
 
     // Performing the local rename isn't substantially more expensive than
     // doing an AST-based check, so we just rename and throw away the results.
-    auto Changes = clangd::rename({Pos, "dummy", AST, File, Index,
-                                   /*AllowCrossFile=*/false,
+    auto Changes = clangd::rename({Pos, "dummy", AST, File, Index, RenameOpts,
                                    /*GetDirtyBuffer=*/nullptr});
     if (!Changes) {
       // LSP says to return null on failure, but that will result in a generic
@@ -359,10 +358,10 @@ void ClangdServer::prepareRename(PathRef File, Position Pos,
 }
 
 void ClangdServer::rename(PathRef File, Position Pos, llvm::StringRef NewName,
-                          bool WantFormat, Callback<FileEdits> CB) {
+                          const RenameOptions &Opts, Callback<FileEdits> CB) {
   // A snapshot of all file dirty buffers.
   llvm::StringMap<std::string> Snapshot = WorkScheduler.getAllFileContents();
-  auto Action = [File = File.str(), NewName = NewName.str(), Pos, WantFormat,
+  auto Action = [File = File.str(), NewName = NewName.str(), Pos, Opts,
                  CB = std::move(CB), Snapshot = std::move(Snapshot),
                  this](llvm::Expected<InputsAndAST> InpAST) mutable {
     if (!InpAST)
@@ -374,12 +373,12 @@ void ClangdServer::rename(PathRef File, Position Pos, llvm::StringRef NewName,
         return llvm::None;
       return It->second;
     };
-    auto Edits = clangd::rename({Pos, NewName, InpAST->AST, File, Index,
-                                 CrossFileRename, GetDirtyBuffer});
+    auto Edits = clangd::rename(
+        {Pos, NewName, InpAST->AST, File, Index, Opts, GetDirtyBuffer});
     if (!Edits)
       return CB(Edits.takeError());
 
-    if (WantFormat) {
+    if (Opts.WantFormat) {
       auto Style = getFormatStyleForFile(File, InpAST->Inputs.Contents,
                                          InpAST->Inputs.FS.get());
       llvm::Error Err = llvm::Error::success();
@@ -395,7 +394,17 @@ void ClangdServer::rename(PathRef File, Position Pos, llvm::StringRef NewName,
   WorkScheduler.runWithAST("Rename", File, std::move(Action));
 }
 
-static llvm::Expected<Tweak::Selection>
+void ClangdServer::rename(PathRef File, Position Pos, llvm::StringRef NewName,
+                          bool WantFormat, Callback<FileEdits> CB) {
+  RenameOptions Opts;
+  Opts.WantFormat = WantFormat;
+  Opts.AllowCrossFile = false;
+  rename(File, Pos, NewName, Opts, std::move(CB));
+}
+
+// May generate several candidate selections, due to SelectionTree ambiguity.
+// vector of pointers because GCC doesn't like non-copyable Selection.
+static llvm::Expected<std::vector<std::unique_ptr<Tweak::Selection>>>
 tweakSelection(const Range &Sel, const InputsAndAST &AST) {
   auto Begin = positionToOffset(AST.Inputs.Contents, Sel.start);
   if (!Begin)
@@ -403,7 +412,16 @@ tweakSelection(const Range &Sel, const InputsAndAST &AST) {
   auto End = positionToOffset(AST.Inputs.Contents, Sel.end);
   if (!End)
     return End.takeError();
-  return Tweak::Selection(AST.Inputs.Index, AST.AST, *Begin, *End);
+  std::vector<std::unique_ptr<Tweak::Selection>> Result;
+  SelectionTree::createEach(
+      AST.AST.getASTContext(), AST.AST.getTokens(), *Begin, *End,
+      [&](SelectionTree T) {
+        Result.push_back(std::make_unique<Tweak::Selection>(
+            AST.Inputs.Index, AST.AST, *Begin, *End, std::move(T)));
+        return false;
+      });
+  assert(!Result.empty() && "Expected at least one SelectionTree");
+  return std::move(Result);
 }
 
 void ClangdServer::enumerateTweaks(PathRef File, Range Sel,
@@ -412,12 +430,21 @@ void ClangdServer::enumerateTweaks(PathRef File, Range Sel,
                  this](Expected<InputsAndAST> InpAST) mutable {
     if (!InpAST)
       return CB(InpAST.takeError());
-    auto Selection = tweakSelection(Sel, *InpAST);
-    if (!Selection)
-      return CB(Selection.takeError());
+    auto Selections = tweakSelection(Sel, *InpAST);
+    if (!Selections)
+      return CB(Selections.takeError());
     std::vector<TweakRef> Res;
-    for (auto &T : prepareTweaks(*Selection, TweakFilter))
-      Res.push_back({T->id(), T->title(), T->intent()});
+    // Don't allow a tweak to fire more than once across ambiguous selections.
+    llvm::DenseSet<llvm::StringRef> PreparedTweaks;
+    auto Filter = [&](const Tweak &T) {
+      return TweakFilter(T) && !PreparedTweaks.count(T.id());
+    };
+    for (const auto &Sel : *Selections) {
+      for (auto &T : prepareTweaks(*Sel, Filter)) {
+        Res.push_back({T->id(), T->title(), T->intent()});
+        PreparedTweaks.insert(T->id());
+      }
+    }
 
     CB(std::move(Res));
   };
@@ -432,21 +459,30 @@ void ClangdServer::applyTweak(PathRef File, Range Sel, StringRef TweakID,
        FS = FSProvider.getFileSystem()](Expected<InputsAndAST> InpAST) mutable {
         if (!InpAST)
           return CB(InpAST.takeError());
-        auto Selection = tweakSelection(Sel, *InpAST);
-        if (!Selection)
-          return CB(Selection.takeError());
-        auto A = prepareTweak(TweakID, *Selection);
-        if (!A)
-          return CB(A.takeError());
-        auto Effect = (*A)->apply(*Selection);
-        if (!Effect)
-          return CB(Effect.takeError());
-        for (auto &It : Effect->ApplyEdits) {
-          Edit &E = It.second;
-          format::FormatStyle Style =
-              getFormatStyleForFile(File, E.InitialCode, FS.get());
-          if (llvm::Error Err = reformatEdit(E, Style))
-            elog("Failed to format {0}: {1}", It.first(), std::move(Err));
+        auto Selections = tweakSelection(Sel, *InpAST);
+        if (!Selections)
+          return CB(Selections.takeError());
+        llvm::Optional<llvm::Expected<Tweak::Effect>> Effect;
+        // Try each selection, take the first one that prepare()s.
+        // If they all fail, Effect will hold get the last error.
+        for (const auto &Selection : *Selections) {
+          auto T = prepareTweak(TweakID, *Selection);
+          if (T) {
+            Effect = (*T)->apply(*Selection);
+            break;
+          }
+          Effect = T.takeError();
+        }
+        assert(Effect.hasValue() && "Expected at least one selection");
+        if (*Effect) {
+          // Tweaks don't apply clang-format, do that centrally here.
+          for (auto &It : (*Effect)->ApplyEdits) {
+            Edit &E = It.second;
+            format::FormatStyle Style =
+                getFormatStyleForFile(File, E.InitialCode, FS.get());
+            if (llvm::Error Err = reformatEdit(E, Style))
+              elog("Failed to format {0}: {1}", It.first(), std::move(Err));
+          }
         }
         return CB(std::move(*Effect));
       };

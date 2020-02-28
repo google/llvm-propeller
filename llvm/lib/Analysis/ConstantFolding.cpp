@@ -23,6 +23,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Analysis/TargetFolder.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Analysis/VectorUtils.h"
@@ -38,6 +39,7 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/Type.h"
@@ -1457,6 +1459,8 @@ bool llvm::canConstantFoldCallTo(const CallBase *Call, const Function *F) {
   case Intrinsic::convert_from_fp16:
   case Intrinsic::convert_to_fp16:
   case Intrinsic::bitreverse:
+  case Intrinsic::amdgcn_fmul_legacy:
+  case Intrinsic::amdgcn_fract:
   case Intrinsic::x86_sse_cvtss2si:
   case Intrinsic::x86_sse_cvtss2si64:
   case Intrinsic::x86_sse_cvttss2si:
@@ -1783,10 +1787,23 @@ static Constant *ConstantFoldScalarCall1(StringRef Name,
       return ConstantFP::get(Ty->getContext(), U);
     }
 
+    if (IntrinsicID == Intrinsic::amdgcn_fract) {
+      // The v_fract instruction behaves like the OpenCL spec, which defines
+      // fract(x) as fmin(x - floor(x), 0x1.fffffep-1f): "The min() operator is
+      //   there to prevent fract(-small) from returning 1.0. It returns the
+      //   largest positive floating-point number less than 1.0."
+      APFloat FloorU(U);
+      FloorU.roundToIntegral(APFloat::rmTowardNegative);
+      APFloat FractU(U - FloorU);
+      APFloat AlmostOne(U.getSemantics(), 1);
+      AlmostOne.next(/*nextDown*/ true);
+      return ConstantFP::get(Ty->getContext(), minimum(FractU, AlmostOne));
+    }
+
     /// We only fold functions with finite arguments. Folding NaN and inf is
     /// likely to be aborted with an exception anyway, and some host libms
     /// have known errors raising exceptions.
-    if (Op->getValueAPF().isNaN() || Op->getValueAPF().isInfinity())
+    if (!U.isFinite())
       return nullptr;
 
     /// Currently APFloat versions of these functions do not exist, so we use
@@ -2079,6 +2096,16 @@ static Constant *ConstantFoldScalarCall2(StringRef Name,
         const APFloat &C1 = Op1->getValueAPF();
         const APFloat &C2 = Op2->getValueAPF();
         return ConstantFP::get(Ty->getContext(), maximum(C1, C2));
+      }
+
+      if (IntrinsicID == Intrinsic::amdgcn_fmul_legacy) {
+        const APFloat &C1 = Op1->getValueAPF();
+        const APFloat &C2 = Op2->getValueAPF();
+        // The legacy behaviour is that multiplying zero by anything, even NaN
+        // or infinity, gives +0.0.
+        if (C1.isZero() || C2.isZero())
+          return ConstantFP::getNullValue(Ty);
+        return ConstantFP::get(Ty->getContext(), C1 * C2);
       }
 
       if (!TLI)
@@ -2660,3 +2687,5 @@ bool llvm::isMathLibCallNoop(const CallBase *Call,
 
   return false;
 }
+
+void TargetFolder::anchor() {}

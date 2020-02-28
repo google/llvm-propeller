@@ -64,6 +64,7 @@ set(LLVM_TEST_DEPENDS
           llvm-elfabi
           llvm-exegesis
           llvm-extract
+          llvm-gsymutil
           llvm-isel-fuzzer
           llvm-ifs
           llvm-install-name-tool
@@ -120,6 +121,10 @@ endif( LLVM_USE_INTEL_JITEVENTS )
 
 if(TARGET LLVMgold)
   set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} LLVMgold)
+endif()
+
+if(TARGET llvm-go)
+  set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} llvm-go)
 endif()
 
 if(TARGET LTO)
