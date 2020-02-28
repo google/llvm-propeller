@@ -612,34 +612,26 @@ void NodeChainBuilder::initBundles(
   // These are all the edges which are -- based on the profile -- the only
   // (executed) outgoing edge from their source node and the only (executed)
   // incoming edges to their sink nodes
-  DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledOuts;
-  DenseMap<CFGNode *, std::vector<CFGEdge *>> profiledIns;
+  DenseMap<CFGNode *, CFGNode *> singleHotOut;
+  DenseMap<CFGNode *, unsigned> hotIns;
 
-  for (auto &node : cfg.nodes) {
-    std::copy_if(node->outs.begin(), node->outs.end(),
-                 std::back_inserter(profiledOuts[node.get()]),
-                 [](CFGEdge *edge) {
-                   return (edge->type == CFGEdge::EdgeType::INTRA_FUNC ||
-                           edge->type == CFGEdge::EdgeType::INTRA_DYNA) &&
-                          edge->weight != 0;
-                 });
-    std::copy_if(node->ins.begin(), node->ins.end(),
-                 std::back_inserter(profiledIns[node.get()]),
-                 [](CFGEdge *edge) {
-                   return (edge->type == CFGEdge::EdgeType::INTRA_FUNC ||
-                           edge->type == CFGEdge::EdgeType::INTRA_DYNA) &&
-                          edge->weight != 0;
-                 });
+  for(auto& edge: cfg.intraEdges) {
+    if (!edge->weight)
+      return;
+    if (edge->isCall() || edge->isReturn())
+      return;
+    auto r = singleHotOut.try_emplace(edge->src, edge->sink);
+    if (!r.second && r.first->second)
+      r.first->second = nullptr;
+    hotIns[edge->sink]++;
   }
 
   DenseMap<CFGNode *, CFGNode *> bundleNext;
 
-  for (auto &node : cfg.nodes) {
-    if (profiledOuts[node.get()].size() == 1) {
-      CFGEdge *edge = profiledOuts[node.get()].front();
-      if (profiledIns[edge->sink].size() == 1)
-        bundleNext.try_emplace(node.get(), edge->sink);
-    }
+  for (auto &elem: singleHotOut) {
+    if (!elem.second || hotIns[elem.second]!=1)
+      continue;
+    bundleNext.insert(elem);
   }
 
   // Break cycles in the bundleNext map by cutting the edge sinking to
