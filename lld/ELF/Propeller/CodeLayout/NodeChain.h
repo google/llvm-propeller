@@ -162,10 +162,10 @@ public:
 
   CFGNode *firstNode() const { return nodeBundles.front()->nodes.front(); }
 
-  void bundleNodes(std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
+  bool bundleNodes(std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
                    std::list<std::unique_ptr<CFGNodeBundle>>::iterator end);
 
-  void bundleNodes();
+  bool bundleNodes();
 };
 
 // This returns a string representation of the chain

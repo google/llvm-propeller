@@ -361,32 +361,33 @@ void NodeChainBuilder::mergeChains(
     runningOffset += (*it)->size;
   }
 
+  bool bundlesChanged = false;
   if (assembly->needsBundling) {
     if (assembly->splitChain()->bundled && assembly->unsplitChain()->bundled)
-      mergerChain->bundleNodes(UBegin, std::next(UBegin));
+      bundlesChanged = mergerChain->bundleNodes(UBegin, std::next(UBegin));
     else if (assembly->splitChain()->bundled)
-      mergerChain->bundleNodes(UBegin, mergerChain->nodeBundles.end());
+      bundlesChanged = mergerChain->bundleNodes(UBegin, mergerChain->nodeBundles.end());
     else if (assembly->unsplitChain()->bundled)
       switch (assembly->mergeOrder) {
       case S2S1U:
-        mergerChain->bundleNodes(mergerChain->nodeBundles.begin(), std::next(UBegin));
+        bundlesChanged = mergerChain->bundleNodes(mergerChain->nodeBundles.begin(), std::next(UBegin));
         break;
       case S1US2:
-        mergerChain->bundleNodes(S1Begin, std::next(UBegin));
-        mergerChain->bundleNodes(S2Begin, mergerChain->nodeBundles.end());
+        bundlesChanged = mergerChain->bundleNodes(S1Begin, std::next(UBegin));
+        bundlesChanged |= mergerChain->bundleNodes(S2Begin, mergerChain->nodeBundles.end());
         break;
       case S2US1:
-        mergerChain->bundleNodes(S2Begin, std::next(UBegin));
-        mergerChain->bundleNodes(S1Begin, mergerChain->nodeBundles.end());
+        bundlesChanged = mergerChain->bundleNodes(S2Begin, std::next(UBegin));
+        bundlesChanged |= mergerChain->bundleNodes(S1Begin, mergerChain->nodeBundles.end());
         break;
       case US2S1:
-        mergerChain->bundleNodes(S2Begin, mergerChain->nodeBundles.end());
+        bundlesChanged = mergerChain->bundleNodes(S2Begin, mergerChain->nodeBundles.end());
         break;
       default:
         break;
       }
     else // !assembly->splitChain()->bundled && !assembly->unsplitChain()->bundled
-      mergerChain->bundleNodes();
+      bundlesChanged = mergerChain->bundleNodes();
     mergerChain->bundled = true;
   }
 
@@ -402,7 +403,7 @@ void NodeChainBuilder::mergeChains(
   // mergerChain->bundleScore += mergeeChain->bundleScore;
   mergerChain->score += mergeeChain->score + assembly->scoreGain;
 
-  if (assembly->needsBundling)
+  if (bundlesChanged)
     adjustExtTSPScore(mergerChain);
 
   mergerChain->debugChain |= mergeeChain->debugChain;
@@ -516,7 +517,7 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
                                                NodeChain *unsplitChain) {
   // Only consider splitting the chain if the size of the chain is smaller than
   // a threshold.
-  // bool doSplit = (splitChain->size <= propConfig.optChainSplitThreshold);
+  // bool doSplit = (splitChain->size <= 4096);
   // If we are not splitting, we only consider the slice position at the
   // beginning of the chain (effectively no splitting).
   // auto slicePosEnd =
@@ -532,7 +533,8 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
        slicePos != splitChain->nodeBundles.end(); ++slicePos) {
     // If the split position is at the beginning (no splitting), only consider
     // one MergeOrder
-    auto mergeOrderEnd = (slicePos == splitChain->nodeBundles.begin())
+    auto mergeOrderEnd = (slicePos == splitChain->nodeBundles.begin()
+                          || (*std::prev(slicePos))->delegateNode->controlFlowGraph == (*slicePos)->delegateNode->controlFlowGraph)
                              ? MergeOrder::BeginNext
                              : MergeOrder::End;
     for (uint8_t MI = MergeOrder::Begin; MI != mergeOrderEnd; MI++) {

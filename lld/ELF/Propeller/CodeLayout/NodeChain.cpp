@@ -10,30 +10,39 @@
 namespace lld {
 namespace propeller {
 
-void NodeChain::bundleNodes(std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
+// This merges the bundles between (and including) two bundles in the chain's
+// bundle list. Two bundles can be merged together if they are from the same
+// function (cfg).
+// Returns true if any bundles were merged.
+bool NodeChain::bundleNodes(std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
                             std::list<std::unique_ptr<CFGNodeBundle>>::iterator end) {
   CFGNodeBundle *bundle = (begin == nodeBundles.begin())
                               ? nullptr
                               : (*std::prev(begin)).get();
+  bool changed = false;
   for (auto it = begin; it != end;) {
     if (!bundle || (*it)->delegateNode->controlFlowGraph !=
                        bundle->delegateNode->controlFlowGraph) {
       bundle = (*it).get();
       it++;
     } else {
+      changed = true;
       bundle->merge((*it).get());
       it = nodeBundles.erase(it);
     }
   }
+  return changed;
 }
 
-void NodeChain::bundleNodes() {
-  bundleNodes(nodeBundles.begin(), nodeBundles.end());
+// This merges all the bundles in the chain's bundle list.
+bool NodeChain::bundleNodes() {
+  return bundleNodes(nodeBundles.begin(), nodeBundles.end());
 }
 
-
+// Get the chain containing a given node.
 NodeChain *getNodeChain(const CFGNode *n) { return n->bundle->chain; }
 
+// Get the offset of a node in its containing chain.
 int64_t getNodeOffset(const CFGNode *n) {
   return n->bundle->chainOffset + n->bundleOffset;
 }
