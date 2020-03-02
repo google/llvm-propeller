@@ -507,7 +507,7 @@ public:
     BBSectionsType = V;
   }
 
-  void setSectionRange(MachineBasicBlockSection E, std::pair<int, int> V);
+  void setSectionRange();
 
   /// Returns true if this basic block number starts a cold or exception
   /// section.

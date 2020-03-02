@@ -351,14 +351,28 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
 
 /// This sets the section ranges of cold or exception section with basic block
 /// sections.
-void MachineFunction::setSectionRange(llvm::MachineBasicBlockSection E,
-                                      std::pair<int, int> V) {
-  if (E == llvm::MachineBasicBlockSection::MBBS_Exception)
-    ExceptionSectionRange = V;
-  else if (E == llvm::MachineBasicBlockSection::MBBS_Cold)
-    ColdSectionRange = V;
-  else
-    llvm_unreachable("No such section");
+void MachineFunction::setSectionRange() {
+  // Compute the Section Range of cold and exception basic blocks.  Find the
+  // first and last block of each range.
+  auto SectionRange =
+      ([&](llvm::MachineBasicBlockSection S) -> std::pair<int, int> {
+        auto MBBP =
+            std::find_if(begin(), end(), [&](MachineBasicBlock &MBB) -> bool {
+              return MBB.getSectionType() == S;
+            });
+        if (MBBP == end())
+          return std::make_pair(-1, -1);
+
+        auto MBBQ =
+            std::find_if(rbegin(), rend(), [&](MachineBasicBlock &MBB) -> bool {
+              return MBB.getSectionType() == S;
+            });
+        assert(MBBQ != rend() && "Section end not found!");
+        return std::make_pair(MBBP->getNumber(), MBBQ->getNumber());
+      });
+
+  ExceptionSectionRange = SectionRange(MBBS_Exception);
+  ColdSectionRange = SectionRange(llvm::MBBS_Cold);
 }
 
 /// This is used with -fbasicblock-sections or -fbasicblock-labels option.
@@ -368,8 +382,9 @@ void MachineFunction::createBBLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->BBSectionsSymbolPrefix.resize(getNumBlockIDs(), 'a');
   for (auto MBBI = begin(), E = end(); MBBI != E; ++MBBI) {
-    assert((MBBI->getNumber() >= 0 && MBBI->getNumber() < getNumBlockIDs()) &&
-           "BasicBlock number was out of range!");
+    assert(
+        (MBBI->getNumber() >= 0 && MBBI->getNumber() < (int)getNumBlockIDs()) &&
+        "BasicBlock number was out of range!");
     // 'a' - Normal block.
     // 'r' - Return block.
     // 'l' - Landing Pad.

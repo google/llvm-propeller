@@ -44,8 +44,14 @@ public:
   StringMap<SmallSet<unsigned, 4>> BBSectionsList;
   std::string ProfileFileName;
 
+  BBSectionsPrepare() : MachineFunctionPass(ID) {
+    initializeBBSectionsPreparePass(*PassRegistry::getPassRegistry());
+  }
+
   BBSectionsPrepare(const std::string &ProfileFile)
-      : MachineFunctionPass(ID), ProfileFileName(ProfileFile){};
+      : MachineFunctionPass(ID), ProfileFileName(ProfileFile) {
+    initializeBBSectionsPreparePass(*PassRegistry::getPassRegistry());
+  };
 
   StringRef getPassName() const override {
     return "Basic Block Sections Analysis";
@@ -64,6 +70,9 @@ public:
 } // end anonymous namespace
 
 char BBSectionsPrepare::ID = 0;
+INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
+                "Determine if a basic block needs a special section", false,
+                false);
 
 // This inserts an unconditional branch at the end of MBB to the next basic
 // block S if and only if the control-flow implicitly falls through from MBB to
@@ -159,27 +168,7 @@ static bool assignSectionsAndSortBasicBlocks(
     return (TypeX != TypeY) ? TypeX < TypeY : X.getNumber() < Y.getNumber();
   }));
 
-  // Compute the Section Range of cold and exception basic blocks.  Find the
-  // first and last block of each range.
-  auto SectionRange =
-      ([&](llvm::MachineBasicBlockSection S) -> std::pair<int, int> {
-        auto MBBP = std::find_if(MF.begin(), MF.end(),
-                                 [&](MachineBasicBlock &MBB) -> bool {
-                                   return MBB.getSectionType() == S;
-                                 });
-        if (MBBP == MF.end())
-          return std::make_pair(-1, -1);
-
-        auto MBBQ = std::find_if(MF.rbegin(), MF.rend(),
-                                 [&](MachineBasicBlock &MBB) -> bool {
-                                   return MBB.getSectionType() == S;
-                                 });
-        assert(MBBQ != MF.rend() && "Section begin not found!");
-        return std::make_pair(MBBP->getNumber(), MBBQ->getNumber());
-      });
-
-  MF.setSectionRange(MBBS_Cold, SectionRange(MBBS_Cold));
-  MF.setSectionRange(MBBS_Exception, SectionRange(MBBS_Exception));
+  MF.setSectionRange();
   return true;
 }
 
@@ -197,11 +186,11 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   if (BBSectionsType == BasicBlockSection::Labels) {
     MF.setBBSectionsType(BBSectionsType);
     MF.createBBLabels();
+    return true;
   }
 
-  if (BBSectionsType == BasicBlockSection::Labels ||
-      (BBSectionsType == BasicBlockSection::List &&
-       BBSectionsList.find(MF.getName()) == BBSectionsList.end()))
+  if (BBSectionsType == BasicBlockSection::List &&
+      BBSectionsList.find(MF.getName()) == BBSectionsList.end())
     return true;
 
   MF.setBBSectionsType(BBSectionsType);
