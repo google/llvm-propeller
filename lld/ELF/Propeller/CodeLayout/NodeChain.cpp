@@ -14,11 +14,11 @@ namespace propeller {
 // bundle list. Two bundles can be merged together if they are from the same
 // function (cfg).
 // Returns true if any bundles were merged.
-bool NodeChain::bundleNodes(std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
-                            std::list<std::unique_ptr<CFGNodeBundle>>::iterator end) {
-  CFGNodeBundle *bundle = (begin == nodeBundles.begin())
-                              ? nullptr
-                              : (*std::prev(begin)).get();
+bool NodeChain::bundleNodes(
+    std::list<std::unique_ptr<CFGNodeBundle>>::iterator begin,
+    std::list<std::unique_ptr<CFGNodeBundle>>::iterator end) {
+  CFGNodeBundle *bundle =
+      (begin == nodeBundles.begin()) ? nullptr : (*std::prev(begin)).get();
   bool changed = false;
   for (auto it = begin; it != end;) {
     if (!bundle || (*it)->delegateNode->controlFlowGraph !=

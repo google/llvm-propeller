@@ -179,9 +179,9 @@ void NodeChainBuilder::coalesceChains() {
 void NodeChainBuilder::mergeChains(NodeChain *leftChain,
                                    NodeChain *rightChain) {
   if ((propConfig.optReorderIP || propConfig.optSplitFuncs) &&
-      leftChain->isHot()!=rightChain->isHot())
+      leftChain->isHot() != rightChain->isHot())
     error("Attempting to merge hot and cold chains: \n" + toString(*leftChain) +
-         "\nAND\n" + toString(*rightChain));
+          "\nAND\n" + toString(*rightChain));
 
   if (leftChain->debugChain || rightChain->debugChain)
     fprintf(stderr, "MERGING chains:\n%s\nAND%s\n",
@@ -366,27 +366,33 @@ void NodeChainBuilder::mergeChains(
     if (assembly->splitChain()->bundled && assembly->unsplitChain()->bundled)
       bundlesChanged = mergerChain->bundleNodes(UBegin, std::next(UBegin));
     else if (assembly->splitChain()->bundled)
-      bundlesChanged = mergerChain->bundleNodes(UBegin, mergerChain->nodeBundles.end());
+      bundlesChanged =
+          mergerChain->bundleNodes(UBegin, mergerChain->nodeBundles.end());
     else if (assembly->unsplitChain()->bundled)
       switch (assembly->mergeOrder) {
       case S2S1U:
-        bundlesChanged = mergerChain->bundleNodes(mergerChain->nodeBundles.begin(), std::next(UBegin));
+        bundlesChanged = mergerChain->bundleNodes(
+            mergerChain->nodeBundles.begin(), std::next(UBegin));
         break;
       case S1US2:
         bundlesChanged = mergerChain->bundleNodes(S1Begin, std::next(UBegin));
-        bundlesChanged |= mergerChain->bundleNodes(S2Begin, mergerChain->nodeBundles.end());
+        bundlesChanged |=
+            mergerChain->bundleNodes(S2Begin, mergerChain->nodeBundles.end());
         break;
       case S2US1:
         bundlesChanged = mergerChain->bundleNodes(S2Begin, std::next(UBegin));
-        bundlesChanged |= mergerChain->bundleNodes(S1Begin, mergerChain->nodeBundles.end());
+        bundlesChanged |=
+            mergerChain->bundleNodes(S1Begin, mergerChain->nodeBundles.end());
         break;
       case US2S1:
-        bundlesChanged = mergerChain->bundleNodes(S2Begin, mergerChain->nodeBundles.end());
+        bundlesChanged =
+            mergerChain->bundleNodes(S2Begin, mergerChain->nodeBundles.end());
         break;
       default:
         break;
       }
-    else // !assembly->splitChain()->bundled && !assembly->unsplitChain()->bundled
+    else // !assembly->splitChain()->bundled &&
+         // !assembly->unsplitChain()->bundled
       bundlesChanged = mergerChain->bundleNodes();
     mergerChain->bundled = true;
   }
@@ -533,10 +539,12 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
        slicePos != splitChain->nodeBundles.end(); ++slicePos) {
     // If the split position is at the beginning (no splitting), only consider
     // one MergeOrder
-    auto mergeOrderEnd = (slicePos == splitChain->nodeBundles.begin()
-                          || (*std::prev(slicePos))->delegateNode->controlFlowGraph == (*slicePos)->delegateNode->controlFlowGraph)
-                             ? MergeOrder::BeginNext
-                             : MergeOrder::End;
+    auto mergeOrderEnd =
+        (slicePos == splitChain->nodeBundles.begin() ||
+         (*std::prev(slicePos))->delegateNode->controlFlowGraph ==
+             (*slicePos)->delegateNode->controlFlowGraph)
+            ? MergeOrder::BeginNext
+            : MergeOrder::End;
     for (uint8_t MI = MergeOrder::Begin; MI != mergeOrderEnd; MI++) {
       MergeOrder mOrder = static_cast<MergeOrder>(MI);
 
@@ -587,7 +595,7 @@ void NodeChainBuilder::initBundles(
   DenseMap<CFGNode *, CFGNode *> singleHotOut;
   DenseMap<CFGNode *, unsigned> hotIns;
 
-  for(auto& edge: cfg.intraEdges) {
+  for (auto &edge : cfg.intraEdges) {
     if (!edge->weight)
       continue;
     if (edge->isCall() || edge->isReturn())
@@ -600,8 +608,8 @@ void NodeChainBuilder::initBundles(
 
   DenseMap<CFGNode *, CFGNode *> bundleNext;
 
-  for (auto &elem: singleHotOut) {
-    if (!elem.second || hotIns[elem.second]!=1)
+  for (auto &elem : singleHotOut) {
+    if (!elem.second || hotIns[elem.second] != 1)
       continue;
     bundleNext.insert(elem);
   }

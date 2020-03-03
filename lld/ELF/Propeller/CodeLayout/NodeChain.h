@@ -154,9 +154,7 @@ public:
     return controlFlowGraph && controlFlowGraph == c.controlFlowGraph;
   }
 
-  bool isHot() {
-    return freq != 0;
-  }
+  bool isHot() { return freq != 0; }
 
   CFGNode *lastNode() const { return nodeBundles.back()->nodes.back(); }
 
