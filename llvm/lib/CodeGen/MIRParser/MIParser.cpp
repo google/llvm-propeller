@@ -620,6 +620,7 @@ bool MIParser::consumeIfPresent(MIToken::TokenKind TokenKind) {
   return true;
 }
 
+// Parse Machine Basic Block Section Type.
 MachineBasicBlockSection MIParser::parseMBBS() {
   assert(Token.is(MIToken::kw_bbsections));
   lex();
