@@ -206,7 +206,7 @@ private:
   // Generates the build() method that takes aggregate operands/attributes
   // parameters. This build() method uses inferred types as result types.
   // Requires: The type needs to be inferable via InferTypeOpInterface.
-  void genInferedTypeCollectiveParamBuilder();
+  void genInferredTypeCollectiveParamBuilder();
 
   // Generates the build() method that takes each operand/attribute as a
   // stand-alone parameter. The generated build() method uses first attribute's
@@ -390,6 +390,27 @@ void OpEmitter::genAttrGetters() {
       emitAttrWithStorageType(name, attr);
       emitAttrWithReturnType(name, attr);
     }
+  }
+
+  // Generate helper method to query whether a named attribute is a derived
+  // attribute. This enables, for example, avoiding adding an attribute that
+  // overlaps with a derived attribute.
+  auto &method =
+      opClass.newMethod("bool", "isDerivedAttribute", "StringRef name");
+  auto &body = method.body();
+  auto derivedAttr = make_filter_range(op.getAttributes(),
+                                       [](const NamedAttribute &namedAttr) {
+                                         return namedAttr.attr.isDerivedAttr();
+                                       });
+  if (derivedAttr.empty()) {
+    body << " return false;";
+  } else {
+    body << " return llvm::is_contained(llvm::makeArrayRef<StringRef>({";
+    mlir::interleaveComma(derivedAttr, body,
+                          [&](const NamedAttribute &namedAttr) {
+                            body << "\"" << namedAttr.name << "\"";
+                          });
+    body << "}));";
   }
 }
 
@@ -669,14 +690,14 @@ void OpEmitter::genSeparateArgParamBuilder() {
     if (inferType) {
       // Generate builder that infers type too.
       // TODO(jpienaar): Subsume this with general checking if type can be
-      // infered automatically.
+      // inferred automatically.
       // TODO(jpienaar): Expand to handle regions.
       body << formatv(R"(
-        SmallVector<Type, 2> inferedReturnTypes;
+        SmallVector<Type, 2> inferredReturnTypes;
         if (succeeded({0}::inferReturnTypes(odsBuilder->getContext(),
                       {1}.location, {1}.operands, {1}.attributes,
-                      /*regions=*/{{}, inferedReturnTypes)))
-          {1}.addTypes(inferedReturnTypes);
+                      /*regions=*/{{}, inferredReturnTypes)))
+          {1}.addTypes(inferredReturnTypes);
         else
           llvm::report_fatal_error("Failed to infer result type(s).");)",
                       opClass.getClassName(), builderOpState);
@@ -746,7 +767,7 @@ void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
        << llvm::join(resultTypes, ", ") << "});\n\n";
 }
 
-void OpEmitter::genInferedTypeCollectiveParamBuilder() {
+void OpEmitter::genInferredTypeCollectiveParamBuilder() {
   // TODO(jpienaar): Expand to support regions.
   const char *params =
       "Builder *odsBuilder, OperationState &{0}, "
@@ -756,11 +777,11 @@ void OpEmitter::genInferedTypeCollectiveParamBuilder() {
                         OpMethod::MP_Static);
   auto &body = m.body();
   body << formatv(R"(
-    SmallVector<Type, 2> inferedReturnTypes;
+    SmallVector<Type, 2> inferredReturnTypes;
     if (succeeded({0}::inferReturnTypes(odsBuilder->getContext(),
                   {1}.location, operands, attributes,
-                  /*regions=*/{{}, inferedReturnTypes)))
-      build(odsBuilder, odsState, inferedReturnTypes, operands, attributes);
+                  /*regions=*/{{}, inferredReturnTypes)))
+      build(odsBuilder, odsState, inferredReturnTypes, operands, attributes);
     else
       llvm::report_fatal_error("Failed to infer result type(s).");)",
                   opClass.getClassName(), builderOpState);
@@ -911,12 +932,12 @@ void OpEmitter::genCollectiveParamBuilder() {
   body << "  " << builderOpState << ".addTypes(resultTypes);\n";
 
   // Generate builder that infers type too.
-  // TODO(jpienaar): Subsume this with general checking if type can be infered
+  // TODO(jpienaar): Subsume this with general checking if type can be inferred
   // automatically.
   // TODO(jpienaar): Expand to handle regions and successors.
   if (op.getTrait("InferTypeOpInterface::Trait") && op.getNumRegions() == 0 &&
       op.getNumSuccessors() == 0)
-    genInferedTypeCollectiveParamBuilder();
+    genInferredTypeCollectiveParamBuilder();
 }
 
 void OpEmitter::buildParamList(std::string &paramList,

@@ -120,8 +120,6 @@ class X86AsmBackend : public MCAsmBackend {
 
   bool needAlign(MCObjectStreamer &OS) const;
   bool needAlignInst(const MCInst &Inst) const;
-  MCBoundaryAlignFragment *
-  getOrCreateBoundaryAlignFragment(MCObjectStreamer &OS) const;
   MCInst PrevInst;
 
 public:
@@ -364,10 +362,8 @@ bool X86AsmBackend::needAlign(MCObjectStreamer &OS) const {
     return false;
   assert(allowAutoPadding() && "incorrect initialization!");
 
-  MCAssembler &Assembler = OS.getAssembler();
-  MCSection *Sec = OS.getCurrentSectionOnly();
   // To be Done: Currently don't deal with Bundle cases.
-  if (Assembler.isBundlingEnabled() && Sec->isBundleLocked())
+  if (OS.getAssembler().isBundlingEnabled())
     return false;
 
   // Branches only need to be aligned in 32-bit or 64-bit mode.
@@ -375,6 +371,27 @@ bool X86AsmBackend::needAlign(MCObjectStreamer &OS) const {
     return false;
 
   return true;
+}
+
+/// X86 has certain instructions which enable interrupts exactly one
+/// instruction *after* the instruction which stores to SS.  Return true if the
+/// given instruction has such an interrupt delay slot.
+static bool hasInterruptDelaySlot(const MCInst &Inst) {
+  switch (Inst.getOpcode()) {
+  case X86::POPSS16:
+  case X86::POPSS32:
+  case X86::STI:
+    return true;
+
+  case X86::MOV16sr:
+  case X86::MOV32sr:
+  case X86::MOV64sr:
+  case X86::MOV16sm:
+    if (Inst.getOperand(0).getReg() == X86::SS)
+      return true;
+    break;
+  }
+  return false;
 }
 
 /// Check if the instruction operand needs to be aligned. Padding is disabled
@@ -397,21 +414,6 @@ bool X86AsmBackend::needAlignInst(const MCInst &Inst) const {
           (AlignBranchType & X86::AlignBranchIndirect));
 }
 
-static bool canReuseBoundaryAlignFragment(const MCBoundaryAlignFragment &F) {
-  // If a MCBoundaryAlignFragment has not been used to emit NOP,we can reuse it.
-  return !F.canEmitNops();
-}
-
-MCBoundaryAlignFragment *
-X86AsmBackend::getOrCreateBoundaryAlignFragment(MCObjectStreamer &OS) const {
-  auto *F = dyn_cast_or_null<MCBoundaryAlignFragment>(OS.getCurrentFragment());
-  if (!F || !canReuseBoundaryAlignFragment(*F)) {
-    F = new MCBoundaryAlignFragment(AlignBoundary);
-    OS.insert(F);
-  }
-  return F;
-}
-
 /// Insert MCBoundaryAlignFragment before instructions to align branches.
 void X86AsmBackend::alignBranchesBegin(MCObjectStreamer &OS,
                                        const MCInst &Inst) {
@@ -420,7 +422,10 @@ void X86AsmBackend::alignBranchesBegin(MCObjectStreamer &OS,
 
   MCFragment *CF = OS.getCurrentFragment();
   bool NeedAlignFused = AlignBranchType & X86::AlignBranchFused;
-  if (NeedAlignFused && isMacroFused(PrevInst, Inst) && CF) {
+  if (hasInterruptDelaySlot(PrevInst)) {
+    // If this instruction follows an interrupt enabling instruction with a one
+    // instruction delay, inserting a nop would change behavior.
+  } else if (NeedAlignFused && isMacroFused(PrevInst, Inst) && CF) {
     // Macro fusion actually happens and there is no other fragment inserted
     // after the previous instruction. NOP can be emitted in PF to align fused
     // jcc.
@@ -441,13 +446,15 @@ void X86AsmBackend::alignBranchesBegin(MCObjectStreamer &OS,
     //
     // We will treat the JCC as a unfused branch although it may be fused
     // with the CMP.
-    auto *F = getOrCreateBoundaryAlignFragment(OS);
+    auto *F = OS.getOrCreateBoundaryAlignFragment();
+    F->setAlignment(AlignBoundary);
     F->setEmitNops(true);
     F->setFused(false);
   } else if (NeedAlignFused && isFirstMacroFusibleInst(Inst, *MCII)) {
     // We don't know if macro fusion happens until the reaching the next
     // instruction, so a place holder is put here if necessary.
-    getOrCreateBoundaryAlignFragment(OS);
+    auto *F = OS.getOrCreateBoundaryAlignFragment();
+    F->setAlignment(AlignBoundary);
   }
 
   PrevInst = Inst;
@@ -459,7 +466,7 @@ void X86AsmBackend::alignBranchesEnd(MCObjectStreamer &OS, const MCInst &Inst) {
   if (!needAlign(OS))
     return;
   // If the branch is emitted into a MCRelaxableFragment, we can determine the
-  // size of the branch easily in MCAssembler::relaxBoundaryAlign. When the
+  // size of the branch easily in during the process of layout. When the
   // branch is fused, the fused branch(macro fusion pair) must be emitted into
   // two fragments. Or when the branch is unfused, the branch must be emitted
   // into one fragment. The MCRelaxableFragment naturally marks the end of the

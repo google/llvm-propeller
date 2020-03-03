@@ -561,6 +561,9 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
         EnableMSSALoopDependency, DebugLogging));
   }
 
+  if (PTO.Coroutines)
+    FPM.addPass(CoroElidePass());
+
   for (auto &C : ScalarOptimizerLateEPCallbacks)
     C(FPM, Level);
 
@@ -758,12 +761,6 @@ PassBuilder::buildModuleSimplificationPipeline(OptimizationLevel Level,
   }
   MPM.addPass(AttributorPass());
 
-  // Lower type metadata and the type.test intrinsic in the ThinLTO
-  // post link pipeline after ICP. This is to enable usage of the type
-  // tests in ICP sequences.
-  if (Phase == ThinLTOPhase::PostLink)
-    MPM.addPass(LowerTypeTestsPass(nullptr, nullptr, true));
-
   // Interprocedural constant propagation now that basic cleanup has occurred
   // and prior to optimizing globals.
   // FIXME: This position in the pipeline hasn't been carefully considered in
@@ -847,10 +844,8 @@ PassBuilder::buildModuleSimplificationPipeline(OptimizationLevel Level,
 
   MainCGPipeline.addPass(AttributorCGSCCPass());
 
-  if (PTO.Coroutines) {
+  if (PTO.Coroutines)
     MainCGPipeline.addPass(CoroSplitPass());
-    MainCGPipeline.addPass(createCGSCCToFunctionPassAdaptor(CoroElidePass()));
-  }
 
   // Now deduce any function attributes based in the current code.
   MainCGPipeline.addPass(PostOrderFunctionAttrsPass());
@@ -1210,9 +1205,6 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level, bool DebugLogging,
     // metadata and intrinsics.
     MPM.addPass(WholeProgramDevirtPass(ExportSummary, nullptr));
     MPM.addPass(LowerTypeTestsPass(ExportSummary, nullptr));
-    // Run a second time to clean up any type tests left behind by WPD for use
-    // in ICP.
-    MPM.addPass(LowerTypeTestsPass(nullptr, nullptr, true));
     return MPM;
   }
 
@@ -1279,10 +1271,6 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level, bool DebugLogging,
     // The LowerTypeTestsPass needs to run to lower type metadata and the
     // type.test intrinsics. The pass does nothing if CFI is disabled.
     MPM.addPass(LowerTypeTestsPass(ExportSummary, nullptr));
-    // Run a second time to clean up any type tests left behind by WPD for use
-    // in ICP (which is performed earlier than this in the regular LTO
-    // pipeline).
-    MPM.addPass(LowerTypeTestsPass(nullptr, nullptr, true));
     return MPM;
   }
 
@@ -1410,9 +1398,6 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level, bool DebugLogging,
   // to be run at link time if CFI is enabled. This pass does nothing if
   // CFI is disabled.
   MPM.addPass(LowerTypeTestsPass(ExportSummary, nullptr));
-  // Run a second time to clean up any type tests left behind by WPD for use
-  // in ICP (which is performed earlier than this in the regular LTO pipeline).
-  MPM.addPass(LowerTypeTestsPass(nullptr, nullptr, true));
 
   // Enable splitting late in the FullLTO post-link pipeline. This is done in
   // the same stage in the old pass manager (\ref addLateLTOOptimizationPasses).
