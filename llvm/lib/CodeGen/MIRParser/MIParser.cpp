@@ -495,7 +495,7 @@ public:
   bool parseOffset(int64_t &Offset);
   bool parseAlignment(unsigned &Alignment);
   bool parseAddrspace(unsigned &Addrspace);
-  MachineBasicBlockSection parseMBBS();
+  bool parseMBBS(MachineBasicBlockSection &T);
   bool parseOperandsOffset(MachineOperand &Op);
   bool parseIRValue(const Value *&V);
   bool parseMemoryOperandFlag(MachineMemOperand::Flags &Flags);
@@ -621,11 +621,10 @@ bool MIParser::consumeIfPresent(MIToken::TokenKind TokenKind) {
 }
 
 // Parse Machine Basic Block Section Type.
-MachineBasicBlockSection MIParser::parseMBBS() {
+bool MIParser::parseMBBS(MachineBasicBlockSection &T) {
   assert(Token.is(MIToken::kw_bbsections));
   lex();
   const StringRef &S = Token.stringValue();
-  MachineBasicBlockSection T = MBBS_None;
   if (S == "Entry")
     T = MBBS_Entry;
   else if (S == "Exception")
@@ -635,9 +634,9 @@ MachineBasicBlockSection MIParser::parseMBBS() {
   else if (S == "Unique")
     T = MBBS_Unique;
   else
-    llvm_unreachable("Invalid Section Type!");
+    return error("Unknown Section Type");
   lex();
-  return T;
+  return false;
 }
 
 bool MIParser::parseBasicBlockDefinition(
@@ -677,7 +676,8 @@ bool MIParser::parseBasicBlockDefinition(
         lex();
         break;
       case MIToken::kw_bbsections:
-        SectionType = parseMBBS();
+        if (parseMBBS(SectionType))
+          return true;
         break;
       default:
         break;
