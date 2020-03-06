@@ -541,8 +541,9 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
     // one MergeOrder
     auto mergeOrderEnd =
         (slicePos == splitChain->nodeBundles.begin() ||
-         (*std::prev(slicePos))->delegateNode->controlFlowGraph ==
-             (*slicePos)->delegateNode->controlFlowGraph)
+         (splitChain->bundled &&
+          (*std::prev(slicePos))->delegateNode->controlFlowGraph ==
+             (*slicePos)->delegateNode->controlFlowGraph))
             ? MergeOrder::BeginNext
             : MergeOrder::End;
     for (uint8_t MI = MergeOrder::Begin; MI != mergeOrderEnd; MI++) {
@@ -563,10 +564,10 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
   if (bestAssembly) {
     if (splitChain->debugChain || unsplitChain->debugChain)
       fprintf(stderr, "INSERTING ASSEMBLY: %s\n",
-              toString(*bestAssembly).c_str());
+              toString(*bestAssembly.get()).c_str());
 
-    nodeChainAssemblies.insert(bestAssembly->chainPair,
-                               std::move(bestAssembly));
+    auto p = bestAssembly->chainPair;
+    nodeChainAssemblies.insert(p, std::move(bestAssembly));
     return true;
   }
 
