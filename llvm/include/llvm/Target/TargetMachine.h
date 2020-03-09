@@ -265,8 +265,8 @@ public:
 
   /// Get the file that contains the list of functions and basic block ids that
   /// need unique sections.
-  std::string getBBSectionsFuncList() const {
-    return Options.BBSectionsFuncList;
+  const MemoryBuffer *getBBSectionsFuncListBuf() const {
+    return Options.BBSectionsFuncListBuf.get();
   }
 
   /// Get a \c TargetIRAnalysis appropriate for the target.

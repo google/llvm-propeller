@@ -42,14 +42,14 @@ class BBSectionsPrepare : public MachineFunctionPass {
 public:
   static char ID;
   StringMap<SmallSet<unsigned, 4>> BBSectionsList;
-  std::string ProfileFileName;
+  const MemoryBuffer *MBuf = nullptr;
 
   BBSectionsPrepare() : MachineFunctionPass(ID) {
     initializeBBSectionsPreparePass(*PassRegistry::getPassRegistry());
   }
 
-  BBSectionsPrepare(const std::string &ProfileFile)
-      : MachineFunctionPass(ID), ProfileFileName(ProfileFile) {
+  BBSectionsPrepare(const MemoryBuffer *Buf)
+      : MachineFunctionPass(ID), MBuf(Buf) {
     initializeBBSectionsPreparePass(*PassRegistry::getPassRegistry());
   };
 
@@ -212,17 +212,12 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !foo
 // !!2
 // !!4
-static bool getBBSectionsList(StringRef profFileName,
+static bool getBBSectionsList(const MemoryBuffer *MBuf,
                               StringMap<SmallSet<unsigned, 4>> &bbMap) {
-  if (profFileName.empty())
+  if (!MBuf)
     return false;
 
-  auto MbOrErr = MemoryBuffer::getFile(profFileName);
-  if (MbOrErr.getError())
-    return false;
-
-  MemoryBuffer &Buffer = *MbOrErr.get();
-  line_iterator LineIt(Buffer, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
+  line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
   StringMap<SmallSet<unsigned, 4>>::iterator fi = bbMap.end();
 
@@ -250,8 +245,8 @@ static bool getBBSectionsList(StringRef profFileName,
 }
 
 bool BBSectionsPrepare::doInitialization(Module &M) {
-  if (!ProfileFileName.empty())
-    getBBSectionsList(ProfileFileName, BBSectionsList);
+  if (MBuf)
+    getBBSectionsList(MBuf, BBSectionsList);
   return true;
 }
 
@@ -261,6 +256,6 @@ void BBSectionsPrepare::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 MachineFunctionPass *
-llvm::createBBSectionsPreparePass(const std::string &ProfileFile) {
-  return new BBSectionsPrepare(ProfileFile);
+llvm::createBBSectionsPreparePass(const MemoryBuffer *Buf) {
+  return new BBSectionsPrepare(Buf);
 }

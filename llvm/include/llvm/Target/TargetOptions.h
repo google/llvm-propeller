@@ -15,6 +15,7 @@
 #define LLVM_TARGET_TARGETOPTIONS_H
 
 #include "llvm/MC/MCTargetOptions.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 namespace llvm {
   class MachineFunction;
@@ -271,8 +272,9 @@ namespace llvm {
     /// Emit basic blocks into separate sections.
     BasicBlockSection::SectionMode BBSections = BasicBlockSection::None;
 
-    /// Profile file that contains information on sampled basic blocks.
-    std::string BBSectionsFuncList;
+    /// Memory Buffer that contains information on sampled basic blocks and used
+    /// to selectively generate basic block sections.
+    std::shared_ptr<MemoryBuffer> BBSectionsFuncListBuf;
 
     /// Emit debug info about parameter's entry values.
     unsigned EnableDebugEntryValues : 1;

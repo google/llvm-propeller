@@ -484,8 +484,16 @@ static void initTargetOptions(llvm::TargetOptions &Options,
                            .Case("none", llvm::BasicBlockSection::None)
                            .Default(llvm::BasicBlockSection::List);
 
-  if (Options.BBSections == llvm::BasicBlockSection::List)
-    Options.BBSectionsFuncList = CodeGenOpts.BBSections;
+  if (Options.BBSections == llvm::BasicBlockSection::List) {
+    ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
+        MemoryBuffer::getFile(CodeGenOpts.BBSections);
+    if (!MBOrErr) {
+      errs() << "Error loading basic block sections function list file: "
+             << MBOrErr.getError().message() << "\n";
+    } else {
+      Options.BBSectionsFuncListBuf = std::move(*MBOrErr);
+    }
+  }
 
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;

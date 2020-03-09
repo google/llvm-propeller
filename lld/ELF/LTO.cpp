@@ -85,7 +85,14 @@ static lto::Config createConfig() {
     else if (config->ltoBasicBlockSections == "none")
       c.Options.BBSections = BasicBlockSection::None;
     else {
-      c.Options.BBSectionsFuncList = config->ltoBasicBlockSections.str();
+      ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
+          MemoryBuffer::getFile(config->ltoBasicBlockSections.str());
+      if (!MBOrErr) {
+        errs() << "Error loading basic block sections function list file: "
+               << MBOrErr.getError().message() << "\n";
+      } else {
+        c.Options.BBSectionsFuncListBuf = std::move(*MBOrErr);
+      }
       c.Options.BBSections = BasicBlockSection::List;
     }
   }

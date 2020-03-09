@@ -305,9 +305,16 @@ getBBSectionsMode(llvm::TargetOptions &Options) {
   else if (BBSections == "none")
     return BasicBlockSection::None;
   else {
-    Options.BBSectionsFuncList = BBSections;
+    ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
+        MemoryBuffer::getFile(BBSections);
+    if (!MBOrErr) {
+      errs() << "Error loading basic block sections function list file: "
+             << MBOrErr.getError().message() << "\n";
+    } else {
+      Options.BBSectionsFuncListBuf = std::move(*MBOrErr);
+    }
     return BasicBlockSection::List;
- }
+  }
 }
 
 // Common utility function tightly tied to the options listed here. Initializes
