@@ -3106,7 +3106,9 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
                                                               MBB, TM));
-    }} //else if (BBSections) {
+    }
+    }
+    //else if (BBSections) {
       //OutStreamer->SwitchSection(MF->getSection());
     //}
     OutStreamer->emitLabel(MBB.getSymbol());

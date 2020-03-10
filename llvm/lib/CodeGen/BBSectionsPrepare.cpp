@@ -77,8 +77,8 @@ static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
 
   // If this basic block and the Fallthrough basic block are in the same
   // section then do not insert the jump.
-  if (MBB.sameSection(Fallthrough))
-    return;
+  //if (MBB.sameSection(Fallthrough))
+  //  return;
 
   const TargetInstrInfo *TII = MBB.getParent()->getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
@@ -115,12 +115,14 @@ static bool assignSectionsAndSortBasicBlocks(
       break;
     }
 
+  /*
   errs() << "ASSIGN SECTION: " << MF.getName() << "\n";
   for(unsigned i=0; i<S.size(); ++i) {
     for(unsigned j=0; j<S[i].size(); ++j)
       errs() << S[i][j] << " -> ";
     errs() << "\n";
   }
+  */
 
 
   for(unsigned i=0; i<S.size(); ++i)
@@ -171,10 +173,12 @@ static bool assignSectionsAndSortBasicBlocks(
     });
   }
 
+  /*
   errs() << "INITIAL ORDER : ";
   for (auto &MBB : MF)
     errs() << MBB.getNumber() << " -> ";
   errs() << "\n";
+  */
 
   bool EntryCold = MF.front().getSectionType() == llvm::MBBS_Cold;
 
@@ -191,17 +195,28 @@ static bool assignSectionsAndSortBasicBlocks(
     auto YSectionType = Y.getSectionType();
     if (XSectionType == YSectionType)
       return XSectionType < 0 ? X.getNumber() < Y.getNumber() : BBIndexMap.at(X.getNumber()).second < BBIndexMap.at(Y.getNumber()).second;
-    if ((XSectionType == llvm::MBBS_Cold || YSectionType == llvm::MBBS_Cold) && EntryCold)
-      return XSectionType == llvm::MBBS_Cold;
+    if (XSectionType == llvm::MBBS_Cold || YSectionType == llvm::MBBS_Cold)
+        return EntryCold ? XSectionType == llvm::MBBS_Cold : YSectionType == llvm::MBBS_Cold;
     if (XSectionType < 0 || YSectionType < 0)
       return YSectionType < XSectionType;
     return XSectionType < YSectionType;
   }));
 
+  /*
+  int stype = -3;
+  SmallSet<int, 16> stypes;
   errs() << "SORTED ORDER : ";
-  for (auto &MBB : MF)
-    errs() << MBB.getNumber() << " -> ";
+  for (auto &MBB : MF) {
+    errs() << MBB.getNumber() << ":" << MBB.getSectionType() << " -> ";
+    if (MBB.getSectionType() != stype) {
+      stype = MBB.getSectionType();
+      auto R = stypes.insert(stype);
+      if (!R.second)
+        report_fatal_error("BAD ONE: HERE:");
+    }
+  }
   errs() << "\n";
+  */
 
   // Compute the Section Range of cold and exception basic blocks.  Find the
   // first and last block of each range.
@@ -228,9 +243,11 @@ static bool assignSectionsAndSortBasicBlocks(
       MF.setSectionRange(i, r);
   }
 
+  /*
   errs() << "SECTION RANGES:\n";
   for(auto &elem: MF.SectionRanges)
     errs() << elem.first << " : " << "( " << elem.second.first << " --> " << elem.second.second << ")\n";
+    */
 
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
