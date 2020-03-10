@@ -488,7 +488,7 @@ void X86FrameLowering::BuildCFI(MachineBasicBlock &MBB,
 /// frame pointer.
 void X86FrameLowering::emitCalleeSavedFrameMoves(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) const {
-  emitCalleeSavedFrameMoves(MBB, MBBI);
+  emitCalleeSavedFrameMoves(MBB, MBBI, DebugLoc{}, true);
 
   MachineFunction &MF = *MBB.getParent();
   if (!hasFP(MF))
