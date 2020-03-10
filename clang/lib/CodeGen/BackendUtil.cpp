@@ -477,7 +477,7 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
 
-  Options.BBSections = llvm::StringSwitch<llvm::BasicBlockSection::SectionMode>(
+  Options.BBSections = llvm::StringSwitch<llvm::BasicBlockSection>(
                            CodeGenOpts.BBSections)
                            .Case("all", llvm::BasicBlockSection::All)
                            .Case("labels", llvm::BasicBlockSection::Labels)
