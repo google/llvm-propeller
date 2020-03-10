@@ -296,7 +296,7 @@ static cl::opt<bool>
                            cl::desc("Always emit a debug frame section."),
                            cl::init(false));
 
-static llvm::BasicBlockSection::SectionMode
+static llvm::BasicBlockSection
 getBBSectionsMode(llvm::TargetOptions &Options) {
   if (BBSections == "all")
     return BasicBlockSection::All;

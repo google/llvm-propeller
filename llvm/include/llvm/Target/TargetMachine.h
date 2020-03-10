@@ -259,12 +259,11 @@ public:
 
   /// If basic blocks should be emitted into their own section,
   /// corresponding to -fbasicblock-sections.
-  llvm::BasicBlockSection::SectionMode getBBSectionsType() const {
+  llvm::BasicBlockSection getBBSectionsType() const {
     return Options.BBSections;
   }
 
-  /// Get the file that contains the list of functions and basic block ids that
-  /// need unique sections.
+  /// Get the list of functions and basic block ids that need unique sections.
   const MemoryBuffer *getBBSectionsFuncListBuf() const {
     return Options.BBSectionsFuncListBuf.get();
   }

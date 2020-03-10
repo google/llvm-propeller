@@ -543,7 +543,7 @@ bool NodeChainBuilder::updateNodeChainAssembly(NodeChain *splitChain,
         (slicePos == splitChain->nodeBundles.begin() ||
          (splitChain->bundled &&
           (*std::prev(slicePos))->delegateNode->controlFlowGraph ==
-             (*slicePos)->delegateNode->controlFlowGraph))
+              (*slicePos)->delegateNode->controlFlowGraph))
             ? MergeOrder::BeginNext
             : MergeOrder::End;
     for (uint8_t MI = MergeOrder::Begin; MI != mergeOrderEnd; MI++) {

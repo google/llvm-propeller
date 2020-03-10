@@ -15,10 +15,10 @@
 #define LLVM_TARGET_TARGETOPTIONS_H
 
 #include "llvm/MC/MCTargetOptions.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 namespace llvm {
   class MachineFunction;
+  class MemoryBuffer;
   class Module;
 
   namespace FloatABI {
@@ -64,14 +64,12 @@ namespace llvm {
     };
   }
 
-  namespace BasicBlockSection {
-  enum SectionMode {
+  enum class BasicBlockSection {
     None,   // Do not use Basic Block Sections.
     All,    // Use Basic Block Sections for all functions.
     Labels, // Do not use Basic Block Sections but label basic blocks.
     List    // Get list of functions & BBs from a file
   };
-  }
 
   enum class EABI {
     Unknown,
@@ -270,7 +268,7 @@ namespace llvm {
     unsigned EmitAddrsig : 1;
 
     /// Emit basic blocks into separate sections.
-    BasicBlockSection::SectionMode BBSections = BasicBlockSection::None;
+    BasicBlockSection BBSections = BasicBlockSection::None;
 
     /// Memory Buffer that contains information on sampled basic blocks and used
     /// to selectively generate basic block sections.

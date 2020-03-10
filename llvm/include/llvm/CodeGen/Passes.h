@@ -47,8 +47,7 @@ namespace llvm {
   /// blocks and is enabled with -fbasicblock-sections.
   /// Buf is a memory buffer that contains the list of functions and basic
   /// block ids to selectively enable basic block sections.
-  MachineFunctionPass *
-  createBBSectionsPreparePass(const MemoryBuffer *Buf);
+  MachineFunctionPass *createBBSectionsPreparePass(const MemoryBuffer *Buf);
 
   /// MachineFunctionPrinter pass - This pass prints out the machine function to
   /// the given stream as a debugging tool.

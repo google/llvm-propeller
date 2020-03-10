@@ -344,7 +344,8 @@ class MachineFunction {
   bool HasEHFunclets = false;
 
   /// Section Type for basic blocks, only relevant with basic block sections.
-  BasicBlockSection::SectionMode BBSectionsType = BasicBlockSection::None;
+  BasicBlockSection BBSectionsType =
+      BasicBlockSection::None;
 
   /// With Basic Block Sections, this stores the bb ranges of cold and
   /// exception sections.
@@ -503,7 +504,7 @@ public:
     return BBSectionsType == BasicBlockSection::Labels;
   }
 
-  void setBBSectionsType(BasicBlockSection::SectionMode V) {
+  void setBBSectionsType(BasicBlockSection V) {
     BBSectionsType = V;
   }
 
