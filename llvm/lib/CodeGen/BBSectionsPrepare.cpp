@@ -14,6 +14,60 @@
 // profile information only the subset of basic blocks with profiles are placed
 // in a separate section and the rest are grouped in a cold section.
 //
+// Basic Block Sections
+// ====================
+//
+// With option, -fbasicblock-sections=, each basic block could be placed in a
+// unique ELF text section in the object file along with a symbol labelling the
+// basic block. The linker can then order the basic block sections in any
+// arbitrary sequence which when done correctly can encapsulate block layout,
+// function layout and function splitting optimizations. However, there are a
+// couple of challenges to be addressed for this to be feasible:
+//
+// 1. The compiler must not allow any implicit fall-through between any two
+//    adjacent basic blocks as they could be reordered at link time to be
+//    non-adjacent. In other words, the compiler must make a fall-through
+//    between adjacent basic blocks explicit by retaining the direct jump
+//    instruction that jumps to the next basic block.
+//
+// 2. All inter-basic block branch targets would now need to be resolved by the
+//    linker as they cannot be calculated during compile time. This is done
+//    using static relocations. Further, the compiler tries to use short branch
+//    instructions on some ISAs for small branch offsets. This is not possible
+//    with basic block sections as the offset is not determined at compile time,
+//    and long branch instructions have to be used everywhere.
+//
+// 3. Each additional section bloats object file sizes by tens of bytes.  The
+//    number of basic blocks can be potentially very large compared to the size
+//    of functions and can bloat object sizes significantly. Option
+//    fbasicblock-sections= also takes a file path which can be used to specify
+//    a subset of basic blocks that needs unique sections to keep the bloats
+//    small.
+//
+// 4. Debug Information (DebugInfo) and Call Frame Information (CFI) emission
+//    needs special handling with basic block sections. DebugInfo needs to be
+//    emitted with more relocations as basic block sections can break a
+//    function into potentially several disjoint pieces, and CFI needs to be
+//    emitted per basic block. This also bloats the object file and binary
+//    sizes.
+//
+// Basic Block Labels
+// ==================
+//
+// With -fbasicblock-sections=labels, or when a basic block is placed in a
+// unique section, it is labelled with a symbol.  This allows easy mapping of
+// virtual addresses from PMU profiles back to the corresponding basic blocks.
+// Since the number of basic blocks is large, the labeling bloats the symbol
+// table sizes and the string table sizes significantly. While the binary size
+// does increase, it does not affect performance as the symbol table is not
+// loaded in memory during run-time. The string table size bloat is kept very
+// minimal using a unary naming scheme that uses string suffix compression. The
+// basic blocks for function foo are named "a.BB.foo", "aa.BB.foo", ... This
+// turns out to be very good for string table sizes and the bloat in the string
+// table size for a very large binary is ~8 %.  The naming also allows using
+// the --symbol-ordering-file option in LLD to arbitrarily reorder the
+// sections.
+//
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallSet.h"
