@@ -477,12 +477,12 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
 
-  Options.BBSections = llvm::StringSwitch<llvm::BasicBlockSection>(
-                           CodeGenOpts.BBSections)
-                           .Case("all", llvm::BasicBlockSection::All)
-                           .Case("labels", llvm::BasicBlockSection::Labels)
-                           .Case("none", llvm::BasicBlockSection::None)
-                           .Default(llvm::BasicBlockSection::List);
+  Options.BBSections =
+      llvm::StringSwitch<llvm::BasicBlockSection>(CodeGenOpts.BBSections)
+          .Case("all", llvm::BasicBlockSection::All)
+          .Case("labels", llvm::BasicBlockSection::Labels)
+          .Case("none", llvm::BasicBlockSection::None)
+          .Default(llvm::BasicBlockSection::List);
 
   if (Options.BBSections == llvm::BasicBlockSection::List) {
     ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
