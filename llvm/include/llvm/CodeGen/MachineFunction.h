@@ -348,8 +348,8 @@ class MachineFunction {
 
   /// With Basic Block Sections, this stores the bb ranges of cold and
   /// exception sections.
-  std::pair<int, int> ColdSectionRange = {-1, -1};
-  std::pair<int, int> ExceptionSectionRange = {-1, -1};
+  //std::pair<int, int> ColdSectionRange = {-1, -1};
+  //std::pair<int, int> ExceptionSectionRange = {-1, -1};
 
   /// List of C++ TypeInfo used.
   std::vector<const GlobalValue *> TypeInfos;
@@ -376,6 +376,8 @@ class MachineFunction {
   void init();
 
 public:
+
+  DenseMap<int, std::pair<int, int>> SectionRanges;
   struct VariableDbgInfo {
     const DILocalVariable *Var;
     const DIExpression *Expr;
@@ -507,17 +509,25 @@ public:
     BBSectionsType = V;
   }
 
-  void setSectionRange(MachineBasicBlockSection E, std::pair<int, int> V);
+  void setSectionRange(int E, std::pair<int, int> V);
 
   /// Returns true if this basic block number starts a cold or exception
   /// section.
   bool isSectionStartMBB(int N) const {
-    return (N == ColdSectionRange.first || N == ExceptionSectionRange.first);
+    for(auto& elem: SectionRanges)
+      if (elem.second.first == N)
+        return true;
+    return false;
+    //return (N == ColdSectionRange.first || N == ExceptionSectionRange.first);
   }
 
   /// Returns true if this basic block ends a cold or exception section.
   bool isSectionEndMBB(int N) const {
-    return (N == ColdSectionRange.second || N == ExceptionSectionRange.second);
+    for(auto& elem: SectionRanges)
+      if (elem.second.second == N)
+        return true;
+    return false;
+    //return (N == ColdSectionRange.second || N == ExceptionSectionRange.second);
   }
 
   /// Creates basic block Labels for this function.

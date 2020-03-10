@@ -192,7 +192,7 @@ bool Propfile::processSymbolLine(
   char optionalSuffix = bbParts.second.back();
   SymbolEntry::BBTagTypeEnum bbTagType;
   StringRef ephemeralBBIndex;
-  if (optionalSuffix == 'r' || optionalSuffix == 'l' || optionalSuffix == 'L') {
+  if (optionalSuffix == 'f' || optionalSuffix == 'r' || optionalSuffix == 'l' || optionalSuffix == 'L') {
     bbTagType = SymbolEntry::toBBTagType(optionalSuffix);
     ephemeralBBIndex = bbParts.second.drop_back();
   } else {

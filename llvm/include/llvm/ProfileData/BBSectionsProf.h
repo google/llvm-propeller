@@ -14,7 +14,7 @@ namespace llvm {
 namespace propeller {
 
 static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
-static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arlL";
+static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arflL";
 
 // This data structure is shared between lld propeller components and
 // create_llvm_prof. In short, create_llvm_prof parses the binary, wraps all the
@@ -29,6 +29,7 @@ struct SymbolEntry {
     BB_NONE = 0,              // For functions.
     BB_NORMAL,                // Ordinary BB, 'a'.
     BB_RETURN,                // Return BB, 'r'.
+    BB_FALLTHROUGH,           // BB which falls through 'f'.
     BB_LANDING_PAD,           // Landing pad BB, 'l'.
     BB_RETURN_AND_LANDING_PAD // Landing pad and return BB, 'L'.
   };
@@ -60,6 +61,10 @@ struct SymbolEntry {
   // For bbTag symbols, this is the containing fuction pointer, for a normal
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *containingFunc;
+
+  bool isFallthroughBlock() const {
+    return bbTagType == BB_FALLTHROUGH || bbTagType == BB_NONE;
+  }
 
   bool isReturnBlock() const {
     return bbTagType == BB_RETURN || bbTagType == BB_RETURN_AND_LANDING_PAD;
@@ -103,6 +108,8 @@ struct SymbolEntry {
       return BB_NORMAL;
     case 'r':
       return BB_RETURN;
+    case 'f':
+      return BB_FALLTHROUGH;
     case 'l':
       return BB_LANDING_PAD;
     case 'L':

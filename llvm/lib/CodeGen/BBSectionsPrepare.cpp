@@ -41,7 +41,7 @@ namespace {
 class BBSectionsPrepare : public MachineFunctionPass {
 public:
   static char ID;
-  StringMap<SmallSet<unsigned, 4>> BBSectionsList;
+  StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> BBSectionsList;
   std::string ProfileFileName;
 
   BBSectionsPrepare(const std::string &ProfileFile)
@@ -104,18 +104,38 @@ static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
 /// 3) Unique section - one per basic block that is emitted in a unique section.
 static bool assignSectionsAndSortBasicBlocks(
     MachineFunction &MF,
-    const StringMap<SmallSet<unsigned, 4>> &BBSectionsList) {
-  SmallSet<unsigned, 4> S = BBSectionsList.lookup(MF.getName());
+    const StringMap<SmallVector<SmallVector<unsigned, 4>,2>> &BBSectionsList) {
+  SmallVector<SmallVector<unsigned, 4>,2> S = BBSectionsList.lookup(MF.getName());
+
+  std::map<unsigned, std::pair<unsigned, unsigned>> BBIndexMap;
+
+  for(unsigned i=1; i<S.size(); ++i)
+    if (S[i].front() == 0) {
+      S[0].swap(S[i]);
+      break;
+    }
+
+  errs() << "ASSIGN SECTION: " << MF.getName() << "\n";
+  for(unsigned i=0; i<S.size(); ++i) {
+    for(unsigned j=0; j<S[i].size(); ++j)
+      errs() << S[i][j] << " -> ";
+    errs() << "\n";
+  }
+
+
+  for(unsigned i=0; i<S.size(); ++i)
+    for(unsigned j=0; j<S[i].size(); ++j)
+      BBIndexMap.emplace(S[i][j], std::make_pair(i, j));
 
   bool HasHotEHPads = false;
 
   for (auto &MBB : MF) {
     // Entry basic block cannot start another section because the function
     // starts one already.
-    if (MBB.getNumber() == MF.front().getNumber()) {
-      MBB.setSectionType(MachineBasicBlockSection::MBBS_Entry);
-      continue;
-    }
+    //if (MBB.getNumber() == MF.front().getNumber()) {
+    //  MBB.setSectionType(MachineBasicBlockSection::MBBS_Entry);
+    //  continue;
+    //}
     // Check if this BB is a cold basic block.  With the list option, all cold
     // basic blocks can be clustered in a single cold section.
     // All Exception landing pads must be in a single section.  If all the
@@ -123,27 +143,40 @@ static bool assignSectionsAndSortBasicBlocks(
     // create a separate exception section.
     bool isColdBB = ((MF.getTarget().getBBSectionsType() ==
                       llvm::BasicBlockSection::List) &&
-                     !S.empty() && !S.count(MBB.getNumber()));
+                     !S.empty() && !BBIndexMap.count(MBB.getNumber()));
     if (isColdBB) {
-      MBB.setSectionType(MachineBasicBlockSection::MBBS_Cold);
+      MBB.setSectionType(llvm::MBBS_Cold);
     } else if (MBB.isEHPad()) {
       // We handle non-cold basic eh blocks later.
       HasHotEHPads = true;
     } else {
       // Place this MBB in a unique section.  A unique section begins and ends
       // that section by definition.
-      MBB.setSectionType(MachineBasicBlockSection::MBBS_Unique);
+      MBB.setSectionType(BBIndexMap.at(MBB.getNumber()).first);
+      //MBB.setSectionType(MachineBasicBlockSection::MBBS_Unique);
     }
   }
+
+//  errs() << "BBIndexMap: ";
+ // for(auto &elem: BBIndexMap)
+  //  errs()  << "[ " << elem.first << " --> " << " ( " << elem.second.first << " : " << elem.second.second << " )   ";
+  //errs() << "\n";
 
   // If some EH Pads are not cold then we move all EH Pads to the exception
   // section as we require that all EH Pads be in a single section.
   if (HasHotEHPads) {
     std::for_each(MF.begin(), MF.end(), [&](MachineBasicBlock &MBB) {
       if (MBB.isEHPad())
-        MBB.setSectionType(MachineBasicBlockSection::MBBS_Exception);
+        MBB.setSectionType(llvm::MBBS_Exception);
     });
   }
+
+  errs() << "INITIAL ORDER : ";
+  for (auto &MBB : MF)
+    errs() << MBB.getNumber() << " -> ";
+  errs() << "\n";
+
+  bool EntryCold = MF.front().getSectionType() == llvm::MBBS_Cold;
 
   for (auto &MBB : MF) {
     // With -fbasicblock-sections, fall through blocks must be made
@@ -152,34 +185,62 @@ static bool assignSectionsAndSortBasicBlocks(
     insertUnconditionalFallthroughBranch(MBB);
   }
 
-  MF.sort(([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    unsigned TypeX = X.getSectionType();
-    unsigned TypeY = Y.getSectionType();
 
-    return (TypeX != TypeY) ? TypeX < TypeY : X.getNumber() < Y.getNumber();
+  MF.sort(([&EntryCold, &BBIndexMap](MachineBasicBlock &X, MachineBasicBlock &Y) {
+    auto XSectionType = X.getSectionType();
+    auto YSectionType = Y.getSectionType();
+    if (XSectionType == YSectionType)
+      return XSectionType < 0 ? X.getNumber() < Y.getNumber() : BBIndexMap.at(X.getNumber()).second < BBIndexMap.at(Y.getNumber()).second;
+    if ((XSectionType == llvm::MBBS_Cold || YSectionType == llvm::MBBS_Cold) && EntryCold)
+      return XSectionType == llvm::MBBS_Cold;
+    if (XSectionType < 0 || YSectionType < 0)
+      return YSectionType < XSectionType;
+    return XSectionType < YSectionType;
   }));
+
+  errs() << "SORTED ORDER : ";
+  for (auto &MBB : MF)
+    errs() << MBB.getNumber() << " -> ";
+  errs() << "\n";
 
   // Compute the Section Range of cold and exception basic blocks.  Find the
   // first and last block of each range.
   auto SectionRange =
-      ([&](llvm::MachineBasicBlockSection S) -> std::pair<int, int> {
+      ([&](int SectionType) -> std::pair<int, int> {
         auto MBBP = std::find_if(MF.begin(), MF.end(),
                                  [&](MachineBasicBlock &MBB) -> bool {
-                                   return MBB.getSectionType() == S;
+                                   return MBB.getSectionType() == SectionType;
                                  });
         if (MBBP == MF.end())
           return std::make_pair(-1, -1);
 
         auto MBBQ = std::find_if(MF.rbegin(), MF.rend(),
                                  [&](MachineBasicBlock &MBB) -> bool {
-                                   return MBB.getSectionType() == S;
+                                   return MBB.getSectionType() == SectionType;
                                  });
         assert(MBBQ != MF.rend() && "Section begin not found!");
         return std::make_pair(MBBP->getNumber(), MBBQ->getNumber());
       });
 
-  MF.setSectionRange(MBBS_Cold, SectionRange(MBBS_Cold));
-  MF.setSectionRange(MBBS_Exception, SectionRange(MBBS_Exception));
+  for(int i=-2; i< ((int)S.size()); ++i) {
+    auto r = SectionRange(i);
+    if (r.first != -1)
+      MF.setSectionRange(i, r);
+  }
+
+  errs() << "SECTION RANGES:\n";
+  for(auto &elem: MF.SectionRanges)
+    errs() << elem.first << " : " << "( " << elem.second.first << " --> " << elem.second.second << ")\n";
+
+  const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+  SmallVector<MachineOperand, 4> Cond;
+  for (auto &MBB : MF)
+    if (!MF.isSectionEndMBB(MBB.getNumber())) {
+      Cond.clear();
+      MachineBasicBlock *TBB = nullptr, *FBB = nullptr; // For analyzeBranch.
+      if (!TII->analyzeBranch(MBB, TBB, FBB, Cond))
+        MBB.updateTerminator();
+    }
   return true;
 }
 
@@ -224,7 +285,7 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !!2
 // !!4
 static bool getBBSectionsList(StringRef profFileName,
-                              StringMap<SmallSet<unsigned, 4>> &bbMap) {
+                              StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &bbMap) {
   if (profFileName.empty())
     return false;
 
@@ -235,7 +296,7 @@ static bool getBBSectionsList(StringRef profFileName,
   MemoryBuffer &Buffer = *MbOrErr.get();
   line_iterator LineIt(Buffer, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
-  StringMap<SmallSet<unsigned, 4>>::iterator fi = bbMap.end();
+  StringMap<SmallVector<SmallVector<unsigned, 4>, 2>>::iterator fi = bbMap.end();
 
   for (; !LineIt.is_at_eof(); ++LineIt) {
     StringRef s(*LineIt);
@@ -246,15 +307,21 @@ static bool getBBSectionsList(StringRef profFileName,
       break;
     // Check for second "!" which encodes basic block ids.
     if (s.consume_front("!")) {
-      if (fi != bbMap.end())
-        fi->second.insert(std::stoi(s.str()));
-      else
+      if (fi != bbMap.end()) {
+        unsigned bbIndex;
+        if (s.getAsInteger(10, bbIndex))
+          return false;
+        if (!bbIndex && !fi->second.back().empty())
+          fi->second.emplace_back();
+        fi->second.back().push_back(bbIndex);
+      } else
         return false;
     } else {
       // Start a new function.
       auto R = bbMap.try_emplace(s.split('/').first);
       fi = R.first;
-      assert(R.second);
+      fi->second.emplace_back();
+      //assert(R.second);
     }
   }
   return true;

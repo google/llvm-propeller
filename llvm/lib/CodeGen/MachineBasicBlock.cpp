@@ -557,9 +557,9 @@ bool MachineBasicBlock::sameSection(const MachineBasicBlock *Other) const {
     return false;
 
   // If either is in a unique section, return false.
-  if (this->getSectionType() == llvm::MachineBasicBlockSection::MBBS_Unique ||
-      Other->getSectionType() == llvm::MachineBasicBlockSection::MBBS_Unique)
-    return false;
+  //if (this->getSectionType() == llvm::MachineBasicBlockSection::MBBS_Unique ||
+  //    Other->getSectionType() == llvm::MachineBasicBlockSection::MBBS_Unique)
+  //  return false;
 
   return true;
 }
@@ -578,16 +578,28 @@ const MachineBasicBlock *MachineBasicBlock::getSectionEndMBB() const {
   llvm_unreachable("No End Basic Block for this section.");
 }
 
+const MachineBasicBlock *MachineBasicBlock::getSectionBeginMBB() const {
+  if (this->isBeginSection())
+    return this;
+  auto I = std::next(this->getReverseIterator());
+  const MachineFunction *MF = getParent();
+  while (I != MF->rend()) {
+    const MachineBasicBlock &MBB = *I;
+    if (MBB.isBeginSection())
+      return &MBB;
+    I = std::next(I);
+  }
+  llvm_unreachable("No Begin Basic Block for this section.");
+}
+
 // Returns true if this block begins any section.
 bool MachineBasicBlock::isBeginSection() const {
-  return (SectionType == MBBS_Entry || SectionType == MBBS_Unique ||
-          getParent()->isSectionStartMBB(getNumber()));
+  return getParent()->isSectionStartMBB(getNumber());
 }
 
 // Returns true if this block begins any section.
 bool MachineBasicBlock::isEndSection() const {
-  return (SectionType == MBBS_Entry || SectionType == MBBS_Unique ||
-          getParent()->isSectionEndMBB(getNumber()));
+  return getParent()->isSectionEndMBB(getNumber());
 }
 
 void MachineBasicBlock::updateTerminator() {

@@ -1142,7 +1142,7 @@ void AsmPrinter::emitFunctionBody() {
         break;
       case TargetOpcode::ANNOTATION_LABEL:
       case TargetOpcode::EH_LABEL:
-        if (MBB.getSectionType() == MachineBasicBlockSection::MBBS_Exception &&
+        if (MBB.getSectionType() == llvm::MBBS_Exception &&
             MBB.isBeginSection() &&
             ((*std::prev(MI.getIterator())).getOpcode() ==
              TargetOpcode::CFI_INSTRUCTION)) {
@@ -1202,12 +1202,13 @@ void AsmPrinter::emitFunctionBody() {
       // Emit size directive for the size of this basic block.  Create a symbol
       // for the end of the basic block.
       MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
+      MCSymbol * SectionBegin = emitBBSections ? MBB.getSectionBeginMBB()->getSymbol() : MBB.getSymbol();
       const MCExpr *SizeExp = MCBinaryExpr::createSub(
           MCSymbolRefExpr::create(CurrentBBEnd, OutContext),
-          MCSymbolRefExpr::create(MBB.getSymbol(), OutContext), OutContext);
+          MCSymbolRefExpr::create(SectionBegin, OutContext), OutContext);
       OutStreamer->emitLabel(CurrentBBEnd);
       MBB.setEndMCSymbol(CurrentBBEnd);
-      OutStreamer->emitELFSize(MBB.getSymbol(), SizeExp);
+      OutStreamer->emitELFSize(SectionBegin, SizeExp);
     }
     // If this is the end of the section, nullify the exception symbol to ensure
     // a new symbol is created for the next basicblock section.
@@ -3089,24 +3090,25 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
     if (isVerbose() && MBB.hasLabelMustBeEmitted()) {
       OutStreamer->AddComment("Label of block must be emitted");
     }
+    if (MBB.isBeginSection()) {
     // With -fbasicblock-sections, a basic block can start a new section.
-    if (MBB.getSectionType() == MachineBasicBlockSection::MBBS_Exception) {
+    if (MBB.getSectionType() == llvm::MBBS_Exception) {
       // Create the exception section for this function.
       OutStreamer->SwitchSection(
           getObjFileLowering().getNamedSectionForMachineBasicBlock(
               MF->getFunction(), MBB, TM, ".eh"));
-    } else if (MBB.getSectionType() == MachineBasicBlockSection::MBBS_Cold) {
+    } else if (MBB.getSectionType() == llvm::MBBS_Cold) {
       // Create the cold section here.
       OutStreamer->SwitchSection(
           getObjFileLowering().getNamedSectionForMachineBasicBlock(
               MF->getFunction(), MBB, TM, ".unlikely"));
-    } else if (MBB.isBeginSection() && MBB.isEndSection()) {
+    } else {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
                                                               MBB, TM));
-    } else if (BBSections) {
-      OutStreamer->SwitchSection(MF->getSection());
-    }
+    }} //else if (BBSections) {
+      //OutStreamer->SwitchSection(MF->getSection());
+    //}
     OutStreamer->emitLabel(MBB.getSymbol());
     // With BBSections, each Basic Block must handle CFI information on
     // its own.

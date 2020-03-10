@@ -98,6 +98,9 @@ void doPropeller() {
     return;
   }
 
+  warn("[Skippign propeller for now]");
+  return;
+
   std::vector<ObjectView *> objectViews;
   std::for_each(objectFiles.begin(), objectFiles.end(),
                 [&objectViews](const InputFile *inf) {

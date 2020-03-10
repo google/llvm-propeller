@@ -136,6 +136,7 @@ gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
 distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--propeller-backward-jump-distance=2000
+symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compiler.propeller.inter -Wl,-optimize-bb-jumps
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 
@@ -262,6 +263,12 @@ pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip-2000: pgo-plolist/build/bin/clan
 pgo-plolist/build/bin/clang-${CLANG_VERSION}-2000: pgo-plolist/build/bin/clang-${CLANG_VERSION}
 	$(call gen_relink_script,pgo-plolist,$(distance_cutoff_opt),-2000)
 	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-2000.autolog
+
+pgo-plo/build/bin/clang-${CLANG_VERSION}-order: pgo-plo/build/bin/clang-${CLANG_VERSION}
+	$(call gen_relink_script,pgo-plo,$(symbol_order_opt),-order)
+	cd pgo-plo/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plo-order.autolog
+
+
 
 
 # $1 is the COMP name only, without directory, "stage1/pgo-plolist/pgo-plofunsc/etc".

@@ -46,18 +46,18 @@ class raw_ostream;
 class TargetRegisterClass;
 class TargetRegisterInfo;
 
-enum MachineBasicBlockSection : unsigned {
+//enum MachineBasicBlockSection : unsigned {
   ///  This is also the order of sections in a function.  Basic blocks that are
   ///  part of the original function section (entry block) come first, followed
   ///  by exception handling basic blocks, cold basic blocks and finally basic
   //   blocks that need unique sections.
-  MBBS_Entry,
-  MBBS_Exception,
-  MBBS_Cold,
-  MBBS_Unique,
+//  MBBS_Entry,
+//  MBBS_Exception,
+//  MBBS_Cold,
+//  MBBS_Unique,
   ///  None implies no sections for any basic block, the default.
-  MBBS_None,
-};
+//  MBBS_None,
+//};
 
 template <> struct ilist_traits<MachineInstr> {
 private:
@@ -75,6 +75,11 @@ public:
                              instr_iterator Last);
   void deleteNode(MachineInstr *MI);
 };
+
+const int MBBS_None = -3;
+const int MBBS_Cold = -2;
+const int MBBS_Exception = -1;
+
 
 class MachineBasicBlock
     : public ilist_node_with_parent<MachineBasicBlock, MachineFunction> {
@@ -144,7 +149,7 @@ private:
   bool IsCleanupFuncletEntry = false;
 
   /// Stores the Section type of the basic block with basic block sections.
-  MachineBasicBlockSection SectionType = MBBS_None;
+  int SectionType = MBBS_None;
 
   /// Default target of the callbr of a basic block.
   bool InlineAsmBrDefaultTarget = false;
@@ -441,10 +446,10 @@ public:
   bool isEndSection() const;
 
   /// Returns the type of section this basic block belongs to.
-  MachineBasicBlockSection getSectionType() const { return SectionType; }
+  int getSectionType() const { return SectionType; }
 
   /// Indicate that the basic block belongs to a Section Type.
-  void setSectionType(MachineBasicBlockSection V) { SectionType = V; }
+  void setSectionType(int V) { SectionType = V; }
 
   /// Returns true if this is the indirect dest of an INLINEASM_BR.
   bool isInlineAsmBrIndirectTarget(const MachineBasicBlock *Tgt) const {
@@ -489,6 +494,8 @@ public:
 
   /// Returns the basic block that ends the section which contains this one.
   const MachineBasicBlock *getSectionEndMBB() const;
+
+  const MachineBasicBlock *getSectionBeginMBB() const;
 
   /// Update the terminator instructions in block to account for changes to the
   /// layout. If the block previously used a fallthrough, it may now need a
