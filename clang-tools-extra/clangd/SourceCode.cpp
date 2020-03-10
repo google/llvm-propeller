@@ -225,17 +225,6 @@ bool isSpelledInSource(SourceLocation Loc, const SourceManager &SM) {
   return true;
 }
 
-llvm::Optional<Range> getTokenRange(const SourceManager &SM,
-                                    const LangOptions &LangOpts,
-                                    SourceLocation TokLoc) {
-  if (!TokLoc.isValid())
-    return llvm::None;
-  SourceLocation End = Lexer::getLocForEndOfToken(TokLoc, 0, SM, LangOpts);
-  if (!End.isValid())
-    return llvm::None;
-  return halfOpenToRange(SM, CharSourceRange::getCharRange(TokLoc, End));
-}
-
 bool isValidFileRange(const SourceManager &Mgr, SourceRange R) {
   if (!R.getBegin().isValid() || !R.getEnd().isValid())
     return false;
@@ -431,7 +420,10 @@ static SourceRange getTokenFileRange(SourceLocation Loc,
 }
 
 bool isInsideMainFile(SourceLocation Loc, const SourceManager &SM) {
-  return Loc.isValid() && SM.isWrittenInMainFile(SM.getExpansionLoc(Loc));
+  if (!Loc.isValid())
+    return false;
+  FileID FID = SM.getFileID(SM.getExpansionLoc(Loc));
+  return FID == SM.getMainFileID() || FID == SM.getPreambleFileID();
 }
 
 llvm::Optional<SourceRange> toHalfOpenFileRange(const SourceManager &SM,
@@ -645,8 +637,7 @@ std::vector<Range> collectIdentifierRanges(llvm::StringRef Identifier,
       [&](const syntax::Token &Tok, const SourceManager &SM) {
         if (Tok.kind() != tok::identifier || Tok.text(SM) != Identifier)
           return;
-        if (auto Range = getTokenRange(SM, LangOpts, Tok.location()))
-          Ranges.push_back(*Range);
+        Ranges.push_back(halfOpenToRange(SM, Tok.range(SM).toCharRange(SM)));
       });
   return Ranges;
 }

@@ -210,7 +210,8 @@ def DerivedTypeAttrOp : NS_Op<"derived_type_attr_op", []> {
 
 // DECL: bool isDerivedAttribute
 // DEF: bool DerivedTypeAttrOp::isDerivedAttribute(StringRef name) {
-// DEF:  return llvm::is_contained(llvm::makeArrayRef<StringRef>({"element_dtype"}));
+// DEF:   if (name == "element_dtype") return true;
+// DEF:   return false;
 // DEF: }
 
 // Test that only default valued attributes at the end of the arguments

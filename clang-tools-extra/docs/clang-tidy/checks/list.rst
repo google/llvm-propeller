@@ -80,6 +80,7 @@ Clang-Tidy Checks
    `bugprone-string-integer-assignment <bugprone-string-integer-assignment.html>`_, "Yes"
    `bugprone-string-literal-with-embedded-nul <bugprone-string-literal-with-embedded-nul.html>`_,
    `bugprone-suspicious-enum-usage <bugprone-suspicious-enum-usage.html>`_,
+   `bugprone-suspicious-include <bugprone-suspicious-include.html>`_,
    `bugprone-suspicious-memset-usage <bugprone-suspicious-memset-usage.html>`_, "Yes"
    `bugprone-suspicious-missing-comma <bugprone-suspicious-missing-comma.html>`_,
    `bugprone-suspicious-semicolon <bugprone-suspicious-semicolon.html>`_, "Yes"
@@ -207,7 +208,7 @@ Clang-Tidy Checks
    `modernize-deprecated-headers <modernize-deprecated-headers.html>`_, "Yes"
    `modernize-deprecated-ios-base-aliases <modernize-deprecated-ios-base-aliases.html>`_, "Yes"
    `modernize-loop-convert <modernize-loop-convert.html>`_, "Yes"
-   `modernize-make-shared <modernize-make-shared.html>`_,
+   `modernize-make-shared <modernize-make-shared.html>`_, "Yes"
    `modernize-make-unique <modernize-make-unique.html>`_, "Yes"
    `modernize-pass-by-value <modernize-pass-by-value.html>`_, "Yes"
    `modernize-raw-string-literal <modernize-raw-string-literal.html>`_, "Yes"

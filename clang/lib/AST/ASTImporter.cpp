@@ -5489,6 +5489,10 @@ ExpectedDecl ASTNodeImporter::VisitVarTemplateDecl(VarTemplateDecl *D) {
       continue;
 
     if (VarTemplateDecl *FoundTemplate = dyn_cast<VarTemplateDecl>(FoundDecl)) {
+      // Use the templated decl, some linkage flags are set only there.
+      if (!hasSameVisibilityContextAndLinkage(FoundTemplate->getTemplatedDecl(),
+                                              D->getTemplatedDecl()))
+        continue;
       if (IsStructuralMatch(D, FoundTemplate)) {
         // The Decl in the "From" context has a definition, but in the
         // "To" context we already have a definition.
@@ -8220,11 +8224,7 @@ Expected<Stmt *> ASTImporter::Import(Stmt *FromS) {
     // constructors.
     ToE->setValueKind(FromE->getValueKind());
     ToE->setObjectKind(FromE->getObjectKind());
-    ToE->setTypeDependent(FromE->isTypeDependent());
-    ToE->setValueDependent(FromE->isValueDependent());
-    ToE->setInstantiationDependent(FromE->isInstantiationDependent());
-    ToE->setContainsUnexpandedParameterPack(
-        FromE->containsUnexpandedParameterPack());
+    ToE->setDependence(FromE->getDependence());
   }
 
   // Record the imported statement object.

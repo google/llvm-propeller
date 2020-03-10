@@ -215,6 +215,7 @@ struct Configuration {
   bool timeTraceEnabled;
   bool tocOptimize;
   bool undefinedVersion;
+  bool unique;
   bool useAndroidRelrTags = false;
   bool warnBackrefs;
   bool warnCommon;

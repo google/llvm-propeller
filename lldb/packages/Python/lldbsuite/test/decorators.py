@@ -172,7 +172,7 @@ def _decorateTest(mode,
         skip_for_debug_info = _match_decorator_property(
             debug_info, self.getDebugInfo())
         skip_for_triple = _match_decorator_property(
-            triple, lldb.DBG.GetSelectedPlatform().GetTriple())
+            triple, lldb.selected_platform.GetTriple())
         skip_for_remote = _match_decorator_property(
             remote, lldb.remote_platform is not None)
 
@@ -694,7 +694,7 @@ def skipUnlessHasCallSiteInfo(func):
 
         f = tempfile.NamedTemporaryFile()
         cmd = "echo 'int main() {}' | " \
-              "%s -g -glldb -O1 -Xclang -femit-debug-entry-values -S -emit-llvm -x c -o %s -" % (compiler_path, f.name)
+              "%s -g -glldb -O1 -S -emit-llvm -x c -o %s -" % (compiler_path, f.name)
         if os.popen(cmd).close() is not None:
             return "Compiler can't compile with call site info enabled"
 

@@ -2000,7 +2000,11 @@ XCOFF::StorageClass TargetLoweringObjectFileXCOFF::getStorageClassForGlobal(
   case GlobalValue::CommonLinkage:
     return XCOFF::C_EXT;
   case GlobalValue::ExternalWeakLinkage:
+  case GlobalValue::LinkOnceODRLinkage:
     return XCOFF::C_WEAKEXT;
+  case GlobalValue::AppendingLinkage:
+    report_fatal_error(
+        "There is no mapping that implements AppendingLinkage for XCOFF.");
   default:
     report_fatal_error(
         "Unhandled linkage when mapping linkage to StorageClass.");

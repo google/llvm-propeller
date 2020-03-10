@@ -4317,7 +4317,7 @@ ASTFileSignature ASTWriter::WriteAST(Sema &SemaRef,
   WritingAST = false;
   if (ShouldCacheASTInMemory) {
     // Construct MemoryBuffer and update buffer manager.
-    ModuleCache.addFinalPCM(OutputFile,
+    ModuleCache.addBuiltPCM(OutputFile,
                             llvm::MemoryBuffer::getMemBufferCopy(
                                 StringRef(Buffer.begin(), Buffer.size())));
   }
@@ -6141,7 +6141,14 @@ void OMPClauseWriter::VisitOMPReadClause(OMPReadClause *) {}
 
 void OMPClauseWriter::VisitOMPWriteClause(OMPWriteClause *) {}
 
-void OMPClauseWriter::VisitOMPUpdateClause(OMPUpdateClause *) {}
+void OMPClauseWriter::VisitOMPUpdateClause(OMPUpdateClause *C) {
+  Record.push_back(C->isExtended() ? 1 : 0);
+  if (C->isExtended()) {
+    Record.AddSourceLocation(C->getLParenLoc());
+    Record.AddSourceLocation(C->getArgumentLoc());
+    Record.writeEnum(C->getDependencyKind());
+  }
+}
 
 void OMPClauseWriter::VisitOMPCaptureClause(OMPCaptureClause *) {}
 

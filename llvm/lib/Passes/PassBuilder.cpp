@@ -38,6 +38,7 @@
 #include "llvm/Analysis/LoopAccessAnalysis.h"
 #include "llvm/Analysis/LoopCacheAnalysis.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/LoopNestAnalysis.h"
 #include "llvm/Analysis/MemoryDependenceAnalysis.h"
 #include "llvm/Analysis/MemorySSA.h"
 #include "llvm/Analysis/ModuleSummaryAnalysis.h"
@@ -58,6 +59,7 @@
 #include "llvm/CodeGen/UnreachableBlockElim.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRPrintingPasses.h"
+#include "llvm/IR/KnowledgeRetention.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/SafepointIRVerifier.h"
 #include "llvm/IR/Verifier.h"
@@ -178,7 +180,6 @@
 #include "llvm/Transforms/Utils/CanonicalizeAliases.h"
 #include "llvm/Transforms/Utils/EntryExitInstrumenter.h"
 #include "llvm/Transforms/Utils/InjectTLIMappings.h"
-#include "llvm/Transforms/Utils/KnowledgeRetention.h"
 #include "llvm/Transforms/Utils/LCSSA.h"
 #include "llvm/Transforms/Utils/LibCallsShrinkWrap.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
@@ -965,12 +966,15 @@ ModulePassManager PassBuilder::buildModuleOptimizationPipeline(
   OptimizePM.addPass(LoopVectorizePass(
       LoopVectorizeOptions(!PTO.LoopInterleaving, !PTO.LoopVectorization)));
 
+  // Enhance/cleanup vector code.
+  OptimizePM.addPass(VectorCombinePass());
+  OptimizePM.addPass(EarlyCSEPass());
+
   // Eliminate loads by forwarding stores from the previous iteration to loads
   // of the current iteration.
   OptimizePM.addPass(LoopLoadEliminationPass());
 
   // Cleanup after the loop optimization passes.
-  OptimizePM.addPass(VectorCombinePass());
   OptimizePM.addPass(InstCombinePass());
 
   // Now that we've formed fast to execute loop structures, we do further
@@ -989,10 +993,8 @@ ModulePassManager PassBuilder::buildModuleOptimizationPipeline(
                                      sinkCommonInsts(true)));
 
   // Optimize parallel scalar instruction chains into SIMD instructions.
-  if (PTO.SLPVectorization) {
+  if (PTO.SLPVectorization)
     OptimizePM.addPass(SLPVectorizerPass());
-    OptimizePM.addPass(VectorCombinePass());
-  }
 
   OptimizePM.addPass(InstCombinePass());
 

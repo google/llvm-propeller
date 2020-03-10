@@ -3481,7 +3481,8 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         SmallVector<Value *, 4> IndicesRHS(GRHS->idx_begin(), GRHS->idx_end());
         Constant *NewRHS = ConstantExpr::getGetElementPtr(
             GLHS->getSourceElementType(), Null, IndicesRHS);
-        return ConstantExpr::getICmp(Pred, NewLHS, NewRHS);
+        Constant *NewICmp = ConstantExpr::getICmp(Pred, NewLHS, NewRHS);
+        return ConstantFoldConstant(NewICmp, Q.DL);
       }
     }
   }
@@ -3616,9 +3617,9 @@ static Value *SimplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
     // Check comparison of [minnum/maxnum with constant] with other constant.
     const APFloat *C2;
     if ((match(LHS, m_Intrinsic<Intrinsic::minnum>(m_Value(), m_APFloat(C2))) &&
-         C2->compare(*C) == APFloat::cmpLessThan) ||
+         *C2 < *C) ||
         (match(LHS, m_Intrinsic<Intrinsic::maxnum>(m_Value(), m_APFloat(C2))) &&
-         C2->compare(*C) == APFloat::cmpGreaterThan)) {
+         *C2 > *C)) {
       bool IsMaxNum =
           cast<IntrinsicInst>(LHS)->getIntrinsicID() == Intrinsic::maxnum;
       // The ordered relationship and minnum/maxnum guarantee that we do not
@@ -4167,9 +4168,7 @@ static Value *SimplifyGEPInst(Type *SrcTy, ArrayRef<Value *> Ops,
 
   auto *CE = ConstantExpr::getGetElementPtr(SrcTy, cast<Constant>(Ops[0]),
                                             Ops.slice(1));
-  if (auto *CEFolded = ConstantFoldConstant(CE, Q.DL))
-    return CEFolded;
-  return CE;
+  return ConstantFoldConstant(CE, Q.DL);
 }
 
 Value *llvm::SimplifyGEPInst(Type *SrcTy, ArrayRef<Value *> Ops,
@@ -5331,6 +5330,11 @@ static Value *simplifyIntrinsic(CallBase *Call, const SimplifyQuery &Q) {
 Value *llvm::SimplifyCall(CallBase *Call, const SimplifyQuery &Q) {
   Value *Callee = Call->getCalledValue();
 
+  // musttail calls can only be simplified if they are also DCEd.
+  // As we can't guarantee this here, don't simplify them.
+  if (Call->isMustTailCall())
+    return nullptr;
+
   // call undef -> undef
   // call null -> undef
   if (isa<UndefValue>(Callee) || isa<ConstantPointerNull>(Callee))
@@ -5343,6 +5347,9 @@ Value *llvm::SimplifyCall(CallBase *Call, const SimplifyQuery &Q) {
   if (F->isIntrinsic())
     if (Value *Ret = simplifyIntrinsic(Call, Q))
       return Ret;
+
+  if (Value *ReturnedArg = Call->getReturnedArgOperand())
+    return ReturnedArg;
 
   if (!canConstantFoldCallTo(Call, F))
     return nullptr;
@@ -5361,16 +5368,16 @@ Value *llvm::SimplifyCall(CallBase *Call, const SimplifyQuery &Q) {
 }
 
 /// Given operands for a Freeze, see if we can fold the result.
-static Value *SimplifyFreezeInst(Value *Op0) {
+static Value *SimplifyFreezeInst(Value *Op0, const SimplifyQuery &Q) {
   // Use a utility function defined in ValueTracking.
-  if (llvm::isGuaranteedNotToBeUndefOrPoison(Op0))
+  if (llvm::isGuaranteedNotToBeUndefOrPoison(Op0, Q.CxtI, Q.DT))
     return Op0;
   // We have room for improvement.
   return nullptr;
 }
 
 Value *llvm::SimplifyFreezeInst(Value *Op0, const SimplifyQuery &Q) {
-  return ::SimplifyFreezeInst(Op0);
+  return ::SimplifyFreezeInst(Op0, Q);
 }
 
 /// See if we can compute a simplified version of this instruction.
@@ -5513,6 +5520,9 @@ Value *llvm::SimplifyInstruction(Instruction *I, const SimplifyQuery &SQ,
     break;
   case Instruction::Call: {
     Result = SimplifyCall(cast<CallInst>(I), Q);
+    // Don't perform known bits simplification below for musttail calls.
+    if (cast<CallInst>(I)->isMustTailCall())
+      return Result;
     break;
   }
   case Instruction::Freeze:

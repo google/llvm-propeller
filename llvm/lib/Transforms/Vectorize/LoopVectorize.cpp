@@ -4354,7 +4354,7 @@ void InnerLoopVectorizer::widenInstruction(Instruction &I) {
     // The flag shows whether we use Intrinsic or a usual Call for vectorized
     // version of the instruction.
     // Is it beneficial to perform intrinsic call compared to lib call?
-    bool NeedToScalarize;
+    bool NeedToScalarize = false;
     unsigned CallCost = Cost->getVectorCallCost(CI, VF, NeedToScalarize);
     bool UseVectorIntrinsic =
         ID && Cost->getVectorIntrinsicCost(CI, VF) <= CallCost;
@@ -7193,8 +7193,9 @@ VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
   // ---------------------------------------------------------------------------
 
   // Create a dummy pre-entry VPBasicBlock to start building the VPlan.
+  auto Plan = std::make_unique<VPlan>();
   VPBasicBlock *VPBB = new VPBasicBlock("Pre-Entry");
-  auto Plan = std::make_unique<VPlan>(VPBB);
+  Plan->setEntry(VPBB);
 
   // Represent values that will have defs inside VPlan.
   for (Value *V : NeedDef)
@@ -7346,16 +7347,17 @@ Value *LoopVectorizationPlanner::VPCallbackILV::getOrCreateScalarValue(
   return ILV.getOrCreateScalarValue(V, Instance);
 }
 
-void VPInterleaveRecipe::print(raw_ostream &O, const Twine &Indent) const {
+void VPInterleaveRecipe::print(raw_ostream &O, const Twine &Indent,
+                               VPSlotTracker &SlotTracker) const {
   O << " +\n"
     << Indent << "\"INTERLEAVE-GROUP with factor " << IG->getFactor() << " at ";
   IG->getInsertPos()->printAsOperand(O, false);
   O << ", ";
-  getAddr()->printAsOperand(O);
+  getAddr()->printAsOperand(O, SlotTracker);
   VPValue *Mask = getMask();
   if (Mask) {
     O << ", ";
-    Mask->printAsOperand(O);
+    Mask->printAsOperand(O, SlotTracker);
   }
   O << "\\l\"";
   for (unsigned i = 0; i < IG->getFactor(); ++i)

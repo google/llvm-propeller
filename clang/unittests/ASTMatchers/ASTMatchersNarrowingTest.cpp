@@ -898,6 +898,12 @@ TEST(Matcher, HasOperatorNameForOverloadedOperatorCall) {
   DeclarationMatcher AnyOpStar = functionDecl(hasOverloadedOperatorName("*"));
   EXPECT_TRUE(matches("class Y; int operator*(Y &);", AnyOpStar));
   EXPECT_TRUE(matches("class Y { int operator*(); };", AnyOpStar));
+  DeclarationMatcher AnyAndOp =
+      functionDecl(hasAnyOverloadedOperatorName("&", "&&"));
+  EXPECT_TRUE(matches("class Y; Y operator&(Y &, Y &);", AnyAndOp));
+  EXPECT_TRUE(matches("class Y; Y operator&&(Y &, Y &);", AnyAndOp));
+  EXPECT_TRUE(matches("class Y { Y operator&(Y &); };", AnyAndOp));
+  EXPECT_TRUE(matches("class Y { Y operator&&(Y &); };", AnyAndOp));
 }
 
 
@@ -2007,9 +2013,8 @@ TEST(EachOf, BehavesLikeAnyOfUnlessBothMatch) {
 TEST(Optionally, SubmatchersDoNotMatch) {
   EXPECT_TRUE(matchAndVerifyResultFalse(
       "class A { int a; int b; };",
-      recordDecl(optionally(has(fieldDecl(hasName("c")).bind("v")),
-                            has(fieldDecl(hasName("d")).bind("v")))),
-      std::make_unique<VerifyIdIsBoundTo<FieldDecl>>("v")));
+      recordDecl(optionally(has(fieldDecl(hasName("c")).bind("c")))),
+      std::make_unique<VerifyIdIsBoundTo<FieldDecl>>("c")));
 }
 
 // Regression test.
@@ -2028,14 +2033,8 @@ TEST(Optionally, SubmatchersDoNotMatchButPreserveBindings) {
 TEST(Optionally, SubmatchersMatch) {
   EXPECT_TRUE(matchAndVerifyResultTrue(
       "class A { int a; int c; };",
-      recordDecl(optionally(has(fieldDecl(hasName("a")).bind("v")),
-                            has(fieldDecl(hasName("b")).bind("v")))),
-      std::make_unique<VerifyIdIsBoundTo<FieldDecl>>("v", 1)));
-  EXPECT_TRUE(matchAndVerifyResultTrue(
-      "class A { int c; int b; };",
-      recordDecl(optionally(has(fieldDecl(hasName("c")).bind("v")),
-                            has(fieldDecl(hasName("b")).bind("v")))),
-      std::make_unique<VerifyIdIsBoundTo<FieldDecl>>("v", 2)));
+      recordDecl(optionally(has(fieldDecl(hasName("a")).bind("v")))),
+      std::make_unique<VerifyIdIsBoundTo<FieldDecl>>("v")));
 }
 
 TEST(IsTemplateInstantiation, MatchesImplicitClassTemplateInstantiation) {
@@ -2694,6 +2693,20 @@ TEST(IsAssignmentOperator, Basic) {
                       CXXAsgmtOperator));
   EXPECT_TRUE(
       notMatches("void x() { int a; if(a == 0) return; }", BinAsgmtOperator));
+}
+
+TEST(IsComparisonOperator, Basic) {
+  StatementMatcher BinCompOperator = binaryOperator(isComparisonOperator());
+  StatementMatcher CXXCompOperator =
+      cxxOperatorCallExpr(isComparisonOperator());
+
+  EXPECT_TRUE(matches("void x() { int a; a == 1; }", BinCompOperator));
+  EXPECT_TRUE(matches("void x() { int a; a > 2; }", BinCompOperator));
+  EXPECT_TRUE(matches("struct S { bool operator==(const S&); };"
+                      "void x() { S s1, s2; bool b1 = s1 == s2; }",
+                      CXXCompOperator));
+  EXPECT_TRUE(
+      notMatches("void x() { int a; if(a = 0) return; }", BinCompOperator));
 }
 
 TEST(HasInit, Basic) {
