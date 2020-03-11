@@ -7,16 +7,16 @@
 # RUN: ld.lld  -optimize-bb-jumps --icf=all %t.o -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=CHECK
 
-# CHECK:	foo:
+# CHECK:	<foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} je      3 <aa.BB.foo>
 # CHECK-NOT:    jmp
 
-# CHECK:	a.BB.foo:
+# CHECK:	<a.BB.foo>
 # Explicity check that bar is folded and not emitted.
-# CHECK-NOT:    bar:
-# CHECK-NOT:    a.BB.bar:
-# CHECK-NOT:    aa.BB.bar:
+# CHECK-NOT:    <bar>
+# CHECK-NOT:    <a.BB.bar>
+# CHECK-NOT:    <aa.BB.bar>
 
 .section	.text.bar,"ax",@progbits
 .type	bar,@function

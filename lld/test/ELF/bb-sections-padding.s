@@ -6,23 +6,23 @@
 # RUN: ld.lld -optimize-bb-jumps %t.o -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s
 
-# CHECK:	0000000000201140 _foo1:
+# CHECK:	0000000000201140 <_foo1>
 # CHECK-NEXT:   nop
 # CHECK-NEXT:   nopl	(%rax)
 # CHECK-EMPTY:
-# CHECK-NEXT:	0000000000201148 _foo2:
+# CHECK-NEXT:	0000000000201148 <_foo2>
 # CHECK-NEXT:	nop
 # CHECK-NEXT:	nop
 # CHECK-NEXT:	nopw	(%rax,%rax)
 # CHECK-EMPTY:
-# CHECK-NEXT:	0000000000201150 _foo3:
+# CHECK-NEXT:	0000000000201150 <_foo3>
 # CHECK-NEXT:	nop
 # CHECK-NEXT:	nop
 # CHECK-NEXT:	nop
 # CHECK-NEXT:	nopw	(%rax,%rax)
 # CHECK-NEXT:   nopl	(%rax)
 # CHECK-EMPTY:
-# CHECK-NEXT:	0000000000201160 _foo4:
+# CHECK-NEXT:	0000000000201160 <_foo4>
 # CHECK-NEXT:	nop
 # CHECK-NEXT:	nop
 # CHECK-NEXT:	nop
@@ -32,18 +32,18 @@
 # CHECK-NEXT:	nopw	(%rax,%rax)
 # CHECK-NEXT:	nop
 # CHECK-EMPTY:
-# CHECK-NEXT:	0000000000201180 _foo5:
+# CHECK-NEXT:	0000000000201180 <_foo5>
 # CHECK-NEXT:	jmp	6
 # CHECK-NEXT:	int3
 # CHECK-NEXT:	int3
 # CHECK-EMPTY:
-# CHECK-NEXT:	0000000000201184 _foo6:
+# CHECK-NEXT:	0000000000201184 <_foo6>
 # CHECK-NEXT:	retq
 # CHECK-NEXT:	int3
 # CHECK-NEXT:	int3
 # CHECK-NEXT:	int3
 # CHECK-EMPTY:
-# CHECK-NEXT:	0000000000201188 _foo7:
+# CHECK-NEXT:	0000000000201188 <_foo7>
 
 .section .foo,"ax",@progbits,unique,1
 _foo1:

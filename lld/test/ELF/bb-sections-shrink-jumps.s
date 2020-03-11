@@ -7,26 +7,26 @@
 # RUN: ld.lld -optimize-bb-jumps %t.o -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=CHECK
 
-# CHECK:	foo:
+# CHECK:	<foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	75 45	jne	69 <a.BB.foo>
 # CHECK-NEXT:	e9 88 00 00 00	jmp	136 <aa.BB.foo>
 # CHECK-EMPTY:
 
-# CHECK:	a.BB.foo:
+# CHECK:	<a.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	eb 40	jmp 64 <aa.BB.foo>
 # CHECK-EMPTY:
 
-# CHECK:	aa.BB.foo:
+# CHECK:	<aa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	75 ad	jne     -83 <a.BB.foo>
 # CHECK-EMPTY:
 
-# CHECK:	aaa.BB.foo:
+# CHECK:	<aaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	nopl    (%rax)

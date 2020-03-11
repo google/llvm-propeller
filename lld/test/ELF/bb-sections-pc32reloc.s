@@ -12,7 +12,7 @@
 # RELOC:        jmp
 # RELOC-NEXT:   R_X86_64_PC32
 
-# CHECK:	foo:
+# CHECK:	<foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jne      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -27,7 +27,7 @@ foo:
  .byte  0xe9
  .long  r.BB.foo - . - 4
 
-# CHECK:	a.BB.foo:
+# CHECK:	<a.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 
 .section	.text,"ax",@progbits,unique,3
