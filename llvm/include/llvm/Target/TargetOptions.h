@@ -65,10 +65,15 @@ namespace llvm {
   }
 
   enum class BasicBlockSection {
-    None,   // Do not use Basic Block Sections.
-    All,    // Use Basic Block Sections for all functions.
-    Labels, // Do not use Basic Block Sections but label basic blocks.
-    List    // Get list of functions & BBs from a file
+    All,    // Use Basic Block Sections for all basic blocks.  A section
+            // for every basic block can significantly bloat object file sizes.
+    List,   // Get list of functions & BBs from a file. Selectively enables
+            // basic block sections for a subset of basic blocks which can be
+            // used to control object size bloats from creating sections.
+    Labels, // Do not use Basic Block Sections but label basic blocks.  This
+            // is useful when associating profile counts from virtual addresses
+            // to basic blocks.
+    None    // Do not use Basic Block Sections.
   };
 
   enum class EABI {
