@@ -332,6 +332,17 @@ static bool parseBranchOrFallthroughLine(StringRef lineRef,
   return true;
 }
 
+bool Propfile::processProfile2() {
+  std::string line;
+  uint64_t branchCnt = 0;
+  uint64_t fallthroughCnt = 0;
+  lineNo = 0;
+  while (++lineNO && std::getline(propfStream, line).good()) {
+    
+  }
+  return true;
+}
+
 // Read propeller profile. Refer header file for detail about propeller profile.
 bool Propfile::processProfile() {
   std::string line;
