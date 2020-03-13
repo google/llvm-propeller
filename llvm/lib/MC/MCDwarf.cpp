@@ -1150,8 +1150,8 @@ static MCSymbol *emitGenDwarfRanges(MCStreamer *MCOS) {
       MCSymbol *EndSymbol = Sec->getEndSymbol(context);
       const MCExpr *SectionStartAddr = MCSymbolRefExpr::create(
           StartSymbol, MCSymbolRefExpr::VK_None, context);
-      const MCExpr *SectionEndAddr = MCSymbolRefExpr::create(
-          EndSymbol, MCSymbolRefExpr::VK_None, context);
+      const MCExpr *SectionEndAddr =
+          MCSymbolRefExpr::create(EndSymbol, MCSymbolRefExpr::VK_None, context);
       MCOS->emitInt8(dwarf::DW_RLE_start_end);
       MCOS->emitValue(SectionStartAddr, AddrSize);
       MCOS->emitValue(SectionEndAddr, AddrSize);
