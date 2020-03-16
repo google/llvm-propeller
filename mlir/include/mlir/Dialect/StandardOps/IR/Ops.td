@@ -13,19 +13,20 @@
 #ifndef STANDARD_OPS
 #define STANDARD_OPS
 
-include "mlir/Analysis/CallInterfaces.td"
-include "mlir/Analysis/ControlFlowInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
-include "mlir/IR/SideEffects.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/SideEffects.td"
 
-def Std_Dialect : Dialect {
+def StandardOps_Dialect : Dialect {
   let name = "std";
   let cppNamespace = "";
+  let hasConstantMaterializer = 1;
 }
 
 // Base class for Standard dialect ops.
 class Std_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<Std_Dialect, mnemonic, traits> {
+    Op<StandardOps_Dialect, mnemonic, traits> {
   // For every standard op, there needs to be a:
   //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
@@ -63,7 +64,7 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
 // Base class for unary ops. Requires single operand and result. Individual
 // classes will have `operand` accessor.
 class UnaryOp<string mnemonic, list<OpTrait> traits = []> :
-    Op<Std_Dialect, mnemonic, !listconcat(traits, [NoSideEffect])> {
+    Op<StandardOps_Dialect, mnemonic, !listconcat(traits, [NoSideEffect])> {
   let results = (outs AnyType);
   let printer = [{
     return printStandardUnaryOp(this->getOperation(), p);
@@ -86,7 +87,7 @@ class FloatUnaryOp<string mnemonic, list<OpTrait> traits = []> :
 // results to be of the same type, but does not constrain them to specific
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
 class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
-    Op<Std_Dialect, mnemonic,
+    Op<StandardOps_Dialect, mnemonic,
        !listconcat(traits, [NoSideEffect, SameOperandsAndResultType])> {
 
   let results = (outs AnyType);
@@ -334,7 +335,7 @@ def AtomicRMWOp : Std_Op<"atomic_rmw", [
 //===----------------------------------------------------------------------===//
 
 def BranchOp : Std_Op<"br",
-    [DeclareOpInterfaceMethods<BranchOpInterface>, Terminator]> {
+    [DeclareOpInterfaceMethods<BranchOpInterface>, NoSideEffect, Terminator]> {
   let summary = "branch operation";
   let description = [{
     The "br" operation represents a branch operation in a function.
@@ -678,7 +679,7 @@ def CmpIOp : Std_Op<"cmpi",
 
 def CondBranchOp : Std_Op<"cond_br",
     [AttrSizedOperandSegments, DeclareOpInterfaceMethods<BranchOpInterface>,
-     Terminator]> {
+     NoSideEffect, Terminator]> {
   let summary = "conditional branch operation";
   let description = [{
     The "cond_br" operation represents a conditional branch operation in a
@@ -796,7 +797,7 @@ def CondBranchOp : Std_Op<"cond_br",
 //===----------------------------------------------------------------------===//
 
 def ConstantOp : Std_Op<"constant",
-    [NoSideEffect, DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
+    [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
   let summary = "constant";
 
   let arguments = (ins AnyAttr:$value);
@@ -1288,7 +1289,8 @@ def RemFOp : FloatArithmeticOp<"remf"> {
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
-def ReturnOp : Std_Op<"return", [Terminator, HasParent<"FuncOp">]> {
+def ReturnOp : Std_Op<"return", [NoSideEffect, HasParent<"FuncOp">,
+                                 Terminator]> {
   let summary = "return operation";
   let description = [{
     The "return" operation represents a return operation within a function.

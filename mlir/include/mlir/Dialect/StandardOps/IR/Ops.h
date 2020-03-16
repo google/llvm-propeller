@@ -14,12 +14,13 @@
 #ifndef MLIR_DIALECT_STANDARDOPS_IR_OPS_H
 #define MLIR_DIALECT_STANDARDOPS_IR_OPS_H
 
-#include "mlir/Analysis/CallInterfaces.h"
-#include "mlir/Analysis/ControlFlowInterfaces.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/SideEffects.h"
 
 // Pull in all enum type definitions and utility function declarations.
 #include "mlir/Dialect/StandardOps/IR/OpsEnums.h.inc"
@@ -30,19 +31,10 @@ class Builder;
 class FuncOp;
 class OpBuilder;
 
-class StandardOpsDialect : public Dialect {
-public:
-  StandardOpsDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "std"; }
-
-  /// Materialize a single constant operation from a given attribute value with
-  /// the desired resultant type.
-  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
-                                 Location loc) override;
-};
-
 #define GET_OP_CLASSES
 #include "mlir/Dialect/StandardOps/IR/Ops.h.inc"
+
+#include "mlir/Dialect/StandardOps/IR/OpsDialect.h.inc"
 
 /// This is a refinement of the "constant" op for the case where it is
 /// returning a float value of FloatType.

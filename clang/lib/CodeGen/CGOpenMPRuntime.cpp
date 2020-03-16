@@ -21,6 +21,7 @@
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/BitmaskEnum.h"
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/OpenMPKinds.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/CodeGen/ConstantInitBuilder.h"
@@ -2932,12 +2933,14 @@ bool CGOpenMPRuntime::emitDeclareTargetVarDefinition(const VarDecl *VD,
        HasRequiresUnifiedSharedMemory))
     return CGM.getLangOpts().OpenMPIsDevice;
   VD = VD->getDefinition(CGM.getContext());
-  if (VD && !DeclareTargetWithDefinition.insert(CGM.getMangledName(VD)).second)
+  assert(VD && "Unknown VarDecl");
+
+  if (!DeclareTargetWithDefinition.insert(CGM.getMangledName(VD)).second)
     return CGM.getLangOpts().OpenMPIsDevice;
 
   QualType ASTTy = VD->getType();
-
   SourceLocation Loc = VD->getCanonicalDecl()->getBeginLoc();
+
   // Produce the unique prefix to identify the new target regions. We use
   // the source location of the variable declaration which we know to not
   // conflict with any target region.
@@ -4386,13 +4389,14 @@ QualType CGOpenMPRuntime::getTgtOffloadEntryQTy() {
 
 namespace {
 struct PrivateHelpersTy {
-  PrivateHelpersTy(const VarDecl *Original, const VarDecl *PrivateCopy,
-                   const VarDecl *PrivateElemInit)
-      : Original(Original), PrivateCopy(PrivateCopy),
+  PrivateHelpersTy(const Expr *OriginalRef, const VarDecl *Original,
+                   const VarDecl *PrivateCopy, const VarDecl *PrivateElemInit)
+      : OriginalRef(OriginalRef), Original(Original), PrivateCopy(PrivateCopy),
         PrivateElemInit(PrivateElemInit) {}
-  const VarDecl *Original;
-  const VarDecl *PrivateCopy;
-  const VarDecl *PrivateElemInit;
+  const Expr *OriginalRef = nullptr;
+  const VarDecl *Original = nullptr;
+  const VarDecl *PrivateCopy = nullptr;
+  const VarDecl *PrivateElemInit = nullptr;
 };
 typedef std::pair<CharUnits /*Align*/, PrivateHelpersTy> PrivateDataTy;
 } // anonymous namespace
@@ -4772,7 +4776,7 @@ static void emitPrivatesInit(CodeGenFunction &CGF,
   // For target-based directives skip 3 firstprivate arrays BasePointersArray,
   // PointersArray and SizesArray. The original variables for these arrays are
   // not captured and we get their addresses explicitly.
-  if ((!IsTargetTask && !Data.FirstprivateVars.empty()) ||
+  if ((!IsTargetTask && !Data.FirstprivateVars.empty() && ForDup) ||
       (IsTargetTask && KmpTaskSharedsPtr.isValid())) {
     SrcBase = CGF.MakeAddrLValue(
         CGF.Builder.CreatePointerBitCastOrAddrSpaceCast(
@@ -4804,13 +4808,18 @@ static void emitPrivatesInit(CodeGenFunction &CGF,
                  "Expected artificial target data variable.");
           SharedRefLValue =
               CGF.MakeAddrLValue(CGF.GetAddrOfLocalVar(OriginalVD), Type);
-        } else {
+        } else if (ForDup) {
           SharedRefLValue = CGF.EmitLValueForField(SrcBase, SharedField);
           SharedRefLValue = CGF.MakeAddrLValue(
               Address(SharedRefLValue.getPointer(CGF),
                       C.getDeclAlign(OriginalVD)),
               SharedRefLValue.getType(), LValueBaseInfo(AlignmentSource::Decl),
               SharedRefLValue.getTBAAInfo());
+        } else {
+          InlinedOpenMPRegionRAII Region(
+              CGF, [](CodeGenFunction &, PrePostActionTy &) {}, OMPD_unknown,
+              /*HasCancel=*/false);
+          SharedRefLValue =  CGF.EmitLValue(Pair.second.OriginalRef);
         }
         if (Type->isArrayType()) {
           // Initialize firstprivate array.
@@ -4974,23 +4983,23 @@ CGOpenMPRuntime::emitTaskInit(CodeGenFunction &CGF, SourceLocation Loc,
   ASTContext &C = CGM.getContext();
   llvm::SmallVector<PrivateDataTy, 4> Privates;
   // Aggregate privates and sort them by the alignment.
-  auto I = Data.PrivateCopies.begin();
+  const auto *I = Data.PrivateCopies.begin();
   for (const Expr *E : Data.PrivateVars) {
     const auto *VD = cast<VarDecl>(cast<DeclRefExpr>(E)->getDecl());
     Privates.emplace_back(
         C.getDeclAlign(VD),
-        PrivateHelpersTy(VD, cast<VarDecl>(cast<DeclRefExpr>(*I)->getDecl()),
+        PrivateHelpersTy(E, VD, cast<VarDecl>(cast<DeclRefExpr>(*I)->getDecl()),
                          /*PrivateElemInit=*/nullptr));
     ++I;
   }
   I = Data.FirstprivateCopies.begin();
-  auto IElemInitRef = Data.FirstprivateInits.begin();
+  const auto *IElemInitRef = Data.FirstprivateInits.begin();
   for (const Expr *E : Data.FirstprivateVars) {
     const auto *VD = cast<VarDecl>(cast<DeclRefExpr>(E)->getDecl());
     Privates.emplace_back(
         C.getDeclAlign(VD),
         PrivateHelpersTy(
-            VD, cast<VarDecl>(cast<DeclRefExpr>(*I)->getDecl()),
+            E, VD, cast<VarDecl>(cast<DeclRefExpr>(*I)->getDecl()),
             cast<VarDecl>(cast<DeclRefExpr>(*IElemInitRef)->getDecl())));
     ++I;
     ++IElemInitRef;
@@ -5000,7 +5009,7 @@ CGOpenMPRuntime::emitTaskInit(CodeGenFunction &CGF, SourceLocation Loc,
     const auto *VD = cast<VarDecl>(cast<DeclRefExpr>(E)->getDecl());
     Privates.emplace_back(
         C.getDeclAlign(VD),
-        PrivateHelpersTy(VD, cast<VarDecl>(cast<DeclRefExpr>(*I)->getDecl()),
+        PrivateHelpersTy(E, VD, cast<VarDecl>(cast<DeclRefExpr>(*I)->getDecl()),
                          /*PrivateElemInit=*/nullptr));
     ++I;
   }

@@ -19,7 +19,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/DeclarationName.h"
-#include "clang/AST/DependencyFlags.h"
+#include "clang/AST/DependenceFlags.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/LambdaCapture.h"
 #include "clang/AST/NestedNameSpecifier.h"
@@ -637,7 +637,7 @@ SourceRange CXXOperatorCallExpr::getSourceRangeImpl() const {
       // Postfix operator
       return SourceRange(getArg(0)->getBeginLoc(), getOperatorLoc());
   } else if (Kind == OO_Arrow) {
-    return getArg(0)->getSourceRange();
+    return SourceRange(getArg(0)->getBeginLoc(), getOperatorLoc());
   } else if (Kind == OO_Call) {
     return SourceRange(getArg(0)->getBeginLoc(), getRParenLoc());
   } else if (Kind == OO_Subscript) {

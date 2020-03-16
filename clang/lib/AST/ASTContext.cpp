@@ -55,6 +55,7 @@
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Linkage.h"
+#include "clang/Basic/Module.h"
 #include "clang/Basic/ObjCRuntime.h"
 #include "clang/Basic/SanitizerBlacklist.h"
 #include "clang/Basic/SourceLocation.h"
@@ -1103,6 +1104,15 @@ void ASTContext::deduplicateMergedDefinitonsFor(NamedDecl *ND) {
   Merged.erase(std::remove(Merged.begin(), Merged.end(), nullptr), Merged.end());
 }
 
+ArrayRef<Module *>
+ASTContext::getModulesWithMergedDefinition(const NamedDecl *Def) {
+  auto MergedIt =
+      MergedDefModules.find(cast<NamedDecl>(Def->getCanonicalDecl()));
+  if (MergedIt == MergedDefModules.end())
+    return None;
+  return MergedIt->second;
+}
+
 void ASTContext::PerModuleInitializers::resolve(ASTContext &Ctx) {
   if (LazyInitializers.empty())
     return;
@@ -1606,7 +1616,8 @@ void ASTContext::getOverriddenMethods(
 }
 
 void ASTContext::addedLocalImportDecl(ImportDecl *Import) {
-  assert(!Import->NextLocalImport && "Import declaration already in the chain");
+  assert(!Import->getNextLocalImport() &&
+         "Import declaration already in the chain");
   assert(!Import->isFromASTFile() && "Non-local import declaration");
   if (!FirstLocalImport) {
     FirstLocalImport = Import;
@@ -1614,7 +1625,7 @@ void ASTContext::addedLocalImportDecl(ImportDecl *Import) {
     return;
   }
 
-  LastLocalImport->NextLocalImport = Import;
+  LastLocalImport->setNextLocalImport(Import);
   LastLocalImport = Import;
 }
 
@@ -2089,16 +2100,16 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     // Because the length is only known at runtime, we use a dummy value
     // of 0 for the static length.  The alignment values are those defined
     // by the Procedure Call Standard for the Arm Architecture.
-#define SVE_VECTOR_TYPE(Name, Id, SingletonId, ElKind, ElBits, IsSigned, IsFP)\
-    case BuiltinType::Id: \
-      Width = 0; \
-      Align = 128; \
-      break;
-#define SVE_PREDICATE_TYPE(Name, Id, SingletonId, ElKind) \
-    case BuiltinType::Id: \
-      Width = 0; \
-      Align = 16; \
-      break;
+#define SVE_VECTOR_TYPE(Name, Id, SingletonId, NumEls, ElBits, IsSigned, IsFP) \
+  case BuiltinType::Id:                                                        \
+    Width = 0;                                                                 \
+    Align = 128;                                                               \
+    break;
+#define SVE_PREDICATE_TYPE(Name, Id, SingletonId, NumEls)                      \
+  case BuiltinType::Id:                                                        \
+    Width = 0;                                                                 \
+    Align = 16;                                                                \
+    break;
 #include "clang/Basic/AArch64SVEACLETypes.def"
     }
     break;
@@ -3571,6 +3582,28 @@ QualType ASTContext::getIncompleteArrayType(QualType elementType,
   IncompleteArrayTypes.InsertNode(newType, insertPos);
   Types.push_back(newType);
   return QualType(newType, 0);
+}
+
+/// getScalableVectorType - Return the unique reference to a scalable vector
+/// type of the specified element type and size. VectorType must be a built-in
+/// type.
+QualType ASTContext::getScalableVectorType(QualType EltTy,
+                                           unsigned NumElts) const {
+  if (Target->hasAArch64SVETypes()) {
+    uint64_t EltTySize = getTypeSize(EltTy);
+#define SVE_VECTOR_TYPE(Name, Id, SingletonId, NumEls, ElBits, IsSigned, IsFP) \
+  if (!EltTy->isBooleanType() &&                                               \
+      ((EltTy->hasIntegerRepresentation() &&                                   \
+        EltTy->hasSignedIntegerRepresentation() == IsSigned) ||                \
+       (EltTy->hasFloatingRepresentation() && IsFP)) &&                        \
+      EltTySize == ElBits && NumElts == NumEls)                                \
+    return SingletonId;
+#define SVE_PREDICATE_TYPE(Name, Id, SingletonId, NumEls)                      \
+  if (EltTy->isBooleanType() && NumElts == NumEls)                             \
+    return SingletonId;
+#include "clang/Basic/AArch64SVEACLETypes.def"
+  }
+  return QualType();
 }
 
 /// getVectorType - Return the unique reference to a vector type of
@@ -8687,8 +8720,8 @@ bool ASTContext::areComparableObjCPointerTypes(QualType LHS, QualType RHS) {
 
 bool ASTContext::canBindObjCObjectType(QualType To, QualType From) {
   return canAssignObjCInterfaces(
-                getObjCObjectPointerType(To)->getAs<ObjCObjectPointerType>(),
-                getObjCObjectPointerType(From)->getAs<ObjCObjectPointerType>());
+      getObjCObjectPointerType(To)->castAs<ObjCObjectPointerType>(),
+      getObjCObjectPointerType(From)->castAs<ObjCObjectPointerType>());
 }
 
 /// typesAreCompatible - C99 6.7.3p9: For two qualified types to be compatible,
@@ -9688,6 +9721,19 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
     else
       Type = Context.getLValueReferenceType(Type);
     break;
+  case 'q': {
+    char *End;
+    unsigned NumElements = strtoul(Str, &End, 10);
+    assert(End != Str && "Missing vector size");
+    Str = End;
+
+    QualType ElementType = DecodeTypeFromStr(Str, Context, Error,
+                                             RequiresICE, false);
+    assert(!RequiresICE && "Can't require vector ICE");
+
+    Type = Context.getScalableVectorType(ElementType, NumElements);
+    break;
+  }
   case 'V': {
     char *End;
     unsigned NumElements = strtoul(Str, &End, 10);
