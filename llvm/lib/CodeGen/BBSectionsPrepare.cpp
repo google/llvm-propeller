@@ -126,11 +126,7 @@ public:
 char BBSectionsPrepare::ID = 0;
 INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
                 "Determine if a basic block needs a special section", false,
-<<<<<<< HEAD
-                false);
-=======
                 false)
->>>>>>> master
 
 // This inserts an unconditional branch at the end of MBB to the next basic
 // block S if and only if the control-flow implicitly falls through from MBB to
