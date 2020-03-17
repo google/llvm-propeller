@@ -1683,7 +1683,9 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
 }
 
 // If Input Sections have been shrinked (basic block sections) then
-// update symbol values and sizes associated with these sections.
+// update symbol values and sizes associated with these sections.  With basic
+// block sections, input sections can shrink when the jump instructions at
+// the end of the section are relaxed.
 static void fixSymbolsAfterShrinking() {
   for (InputFile *File : objectFiles) {
     parallelForEach(File->getSymbols(), [&](Symbol *Sym) {
@@ -1725,7 +1727,8 @@ static void fixSymbolsAfterShrinking() {
 
 // If basic block sections exist, there are opportunities to delete fall thru
 // jumps and shrink jump instructions after basic block reordering.  This
-// relaxation pass does that.
+// relaxation pass does that.  It is only enabled when --optimize-bb-jumps
+// option is used.
 template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
   if (!config->optimizeBBJumps)
     return;
