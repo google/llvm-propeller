@@ -244,7 +244,8 @@ void OutputSection::sort(llvm::function_ref<int(InputSectionBase *s)> order) {
 }
 
 static void nopInstrFill(uint8_t *buf, size_t size) {
-  if (size == 0) return;
+  if (size == 0)
+    return;
   unsigned i = 0;
   std::vector<std::vector<uint8_t>> nopFiller = *target->nopInstrs;
   unsigned num = size / nopFiller.back().size();
