@@ -1,8 +1,7 @@
 // REQUIRES: x86-registered-target
 
-// RUN: %clang -target x86_64-pc-linux-gnu -S -o - %s | FileCheck %s --check-prefix=PLAIN
-// RUN: %clang -target x86_64-pc-linux-gnu -S -funique-internal-funcnames -fno-unique-internal-funcnames -o - %s | FileCheck %s --check-prefix=PLAIN
-// RUN: %clang -target x86_64-pc-linux-gnu -S -funique-internal-funcnames -o -  %s | FileCheck %s --check-prefix=UNIQUE
+// RUN: %clang -target x86_64 -S -o - %s | FileCheck %s --check-prefix=PLAIN
+// RUN: %clang -target x86_64 -S -funique-internal-funcnames -o -  %s | FileCheck %s --check-prefix=UNIQUE
 
 static int foo() {
   return 0;
