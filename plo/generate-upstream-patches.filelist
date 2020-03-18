@@ -34,6 +34,7 @@ declare ALL_FILES=(
         clang-base       clang/test/CodeGen/basicblock-sections.c
         clang-uif        clang/test/CodeGen/basicblock-sections.funcnames
         clang-uif        clang/test/CodeGen/unique-internal-funcnames.c
+	clang-uif        clang/test/Driver/funique-internal-funcnames.c
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
