@@ -33,7 +33,7 @@ declare ALL_FILES=(
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
         clang-base       clang/test/CodeGen/basicblock-sections.c
         clang-uif        clang/test/CodeGen/basicblock-sections.funcnames
-        clang-uif        clang/test/CodeGen/unique_internal_funcnames.c
+        clang-uif        clang/test/CodeGen/unique-internal-funcnames.c
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
