@@ -1126,7 +1126,7 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
 
   // With option -funique-internal-funcnames, functions with internal linkage
   // should get unique names.  Use the hash of module name to get a unique
-  // identifier and this is a best effort.
+  // identifier as this is a best-effort solution.
   if (getCodeGenOpts().UniqueInternalFuncNames &&
       dyn_cast<FunctionDecl>(GD.getDecl()) &&
       getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage &&

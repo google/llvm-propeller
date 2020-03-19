@@ -973,7 +973,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.UniqueSectionNames = !Args.hasArg(OPT_fno_unique_section_names);
   Opts.UniqueBBSectionNames = Args.hasArg(OPT_funique_bb_section_names);
   Opts.UniqueInternalFuncNames = Args.hasArg(OPT_funique_internal_funcnames);
-
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
   Opts.NoUseJumpTables = Args.hasArg(OPT_fno_jump_tables);

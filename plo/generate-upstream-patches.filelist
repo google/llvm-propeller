@@ -22,7 +22,6 @@ declare ALL_FILES=(
         clang-pro        clang/include/clang/Driver/Options.td
         clang-uif        clang/include/clang/Driver/Options.td
         clang-base       clang/lib/CodeGen/BackendUtil.cpp
-        clang-uif        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-sta        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-base       clang/lib/Driver/ToolChains/Clang.cpp
         clang-rws        clang/lib/Driver/ToolChains/Clang.cpp
@@ -31,8 +30,9 @@ declare ALL_FILES=(
         clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
+        clang-uif        clang/lib/Frontend/CompilerInvocation.cpp
         clang-base       clang/test/CodeGen/basicblock-sections.c
-        clang-uif        clang/test/CodeGen/basicblock-sections.funcnames
+        clang-base       clang/test/CodeGen/basicblock-sections.funcnames
         clang-uif        clang/test/CodeGen/unique-internal-funcnames.c
 	clang-uif        clang/test/Driver/funique-internal-funcnames.c
         clang-pro        clang/test/Driver/propeller-flags.c
