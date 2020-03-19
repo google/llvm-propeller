@@ -136,16 +136,20 @@ gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
 distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--propeller-backward-jump-distance=2000
-symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compiler.propeller.inter -Wl,-optimize-bb-jumps
+symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compiler.propeller.order
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
+branch_align_opt           := -Wl,-mllvm,-x86-branches-within-32B-boundaries
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
 bb_section_none_flags      := $(call gen_build_flags,"-funique-internal-funcnames","${LLD_NO_OPT}")
+bb_section_labels_align_flags    := $(call gen_build_flags,"-fpropeller-label -funique-internal-funcnames","-fuse-ld=lld $(relocation_gen_opt) $(gc_sections_opt) $(branch_align_opt)")
 bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label -funique-internal-funcnames","-fuse-ld=lld $(relocation_gen_opt) $(gc_sections_opt)")
 relocs_flags               := $(call gen_linker_flags,"$(relocation_gen_opt)")
 bb_section_all_flags        = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(other_opt) $(gc_sections_opt)")
+bb_section_list_align_flags       = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3) $(branch_align_opt)")
 bb_section_list_flags       = $(call gen_build_flags,"-funique-internal-funcnames -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3)")
+
 
 # $1 is any other cmake flags (optional)
 # $2 is llvm enabled projects
@@ -243,6 +247,9 @@ nonepgolabels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 pgo-labels/build/bin/clang-${CLANG_VERSION} pgo-relocs/build/bin/clang-${CLANG_VERSION}: pgo-%/build/bin/clang-${CLANG_VERSION}: stage-pgo-%.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
 
+pgo-labels-align/build/bin/clang-${CLANG_VERSION} pgo-relocs-align/build/bin/clang-${CLANG_VERSION}: pgo-%-align/build/bin/clang-${CLANG_VERSION}: stage-pgo-%.profdata
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_align_flags),"clang;compiler-rt;lld",clang lld)
+
 pgo-vanilla/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",clang lld)
 
@@ -251,6 +258,9 @@ pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-c
 
 pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller,,),"clang;compiler-rt;lld",clang lld)
+
+pgo-plolist-align/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_align_flags,$(DDIR)/pgo-labels-compiler.propeller,,),"clang;compiler-rt;lld",clang lld)
 
 pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip pgo-plo/build/bin/clang-${CLANG_VERSION}-ip: %/build/bin/clang-${CLANG_VERSION}-ip: %/build/bin/clang-${CLANG_VERSION}
 	$(call gen_relink_script,$*,$(interp_opt),-ip)
@@ -264,11 +274,13 @@ pgo-plolist/build/bin/clang-${CLANG_VERSION}-2000: pgo-plolist/build/bin/clang-$
 	$(call gen_relink_script,pgo-plolist,$(distance_cutoff_opt),-2000)
 	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-2000.autolog
 
-pgo-plo/build/bin/clang-${CLANG_VERSION}-order: pgo-plo/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,pgo-plo,$(symbol_order_opt),-order)
-	cd pgo-plo/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plo-order.autolog
+pgo-plo/build/bin/clang-${CLANG_VERSION}-order pgo-plolist/build/bin/clang-${CLANG_VERSION}-order pgo-plolist-align/build/bin/clang-$(CLANG_VERSION)-order: %/build/bin/clang-${CLANG_VERSION}-order: %/build/bin/clang-${CLANG_VERSION}
+	$(call gen_relink_script,$*,$(symbol_order_opt),-order)
+	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-order.autolog
 
-
+pgo-plo/build/bin/clang-${CLANG_VERSION}-order-nopt pgo-plolist/build/bin/clang-${CLANG_VERSION}-order-nopt pgo-plolist-align/build/bin/clang-$(CLANG_VERSION)-order-nopt: %/build/bin/clang-${CLANG_VERSION}-order-nopt: %/build/bin/clang-${CLANG_VERSION}
+	$(call gen_relink_script,$*,$(symbol_order_opt),-order-nopt)
+	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-order-nopt.autolog
 
 
 # $1 is the COMP name only, without directory, "stage1/pgo-plolist/pgo-plofunsc/etc".
@@ -276,7 +288,8 @@ pgo-plo/build/bin/clang-${CLANG_VERSION}-order: pgo-plo/build/bin/clang-${CLANG_
 # $3 suffix to use for binary
 define gen_relink_script
 	cd $(1)/build ; ninja -t commands clang | grep -Fe " -o bin/clang-$(CLANG_VERSION) " | \
-		sed -e 's! -o bin/clang-$(CLANG_VERSION) ! -o bin/clang-$(CLANG_VERSION)$3 $2 !' \
+		sed -e 's! -o bin/clang-$(CLANG_VERSION) ! -o bin/clang-$(CLANG_VERSION)$3 !' \
+		    -e 's!$$! $2!' \
 		    -e 's!: &&!!' -e 's!&& :!!' > $(DDIR)/$@.relink_script
 	chmod +x $(DDIR)/$@.relink_script
 endef
@@ -325,7 +338,7 @@ pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler r
 	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --logtostderr 2>&1 | tee $@.autolog ; \
+	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --sym_order_out=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
 	{ echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 

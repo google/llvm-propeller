@@ -30,6 +30,8 @@
 #include "llvm/Target/TargetMachine.h"
 
 #include <string>
+#include <sstream>
+#include <iterator>
 
 using llvm::SmallSet;
 using llvm::StringMap;
@@ -115,14 +117,12 @@ static bool assignSectionsAndSortBasicBlocks(
       break;
     }
 
-  /*
   errs() << "ASSIGN SECTION: " << MF.getName() << "\n";
   for(unsigned i=0; i<S.size(); ++i) {
     for(unsigned j=0; j<S[i].size(); ++j)
       errs() << S[i][j] << " -> ";
     errs() << "\n";
   }
-  */
 
 
   for(unsigned i=0; i<S.size(); ++i)
@@ -234,6 +234,9 @@ static bool assignSectionsAndSortBasicBlocks(
                                    return MBB.getSectionType() == SectionType;
                                  });
         assert(MBBQ != MF.rend() && "Section begin not found!");
+        for (auto it=MBBP; it->getNumber() != MBBQ->getNumber(); ++it)
+          if(it->getSectionType() != SectionType)
+            report_fatal_error("Not right for: " + MF.getName());
         return std::make_pair(MBBP->getNumber(), MBBQ->getNumber());
       });
 
@@ -242,6 +245,7 @@ static bool assignSectionsAndSortBasicBlocks(
     if (r.first != -1)
       MF.setSectionRange(i, r);
   }
+
 
   /*
   errs() << "SECTION RANGES:\n";
@@ -325,19 +329,26 @@ static bool getBBSectionsList(StringRef profFileName,
     // Check for second "!" which encodes basic block ids.
     if (s.consume_front("!")) {
       if (fi != bbMap.end()) {
-        unsigned bbIndex;
-        if (s.getAsInteger(10, bbIndex))
-          return false;
-        if (!bbIndex && !fi->second.back().empty())
+        std::istringstream iss(s.str());
+        std::vector<std::string> results((std::istream_iterator<std::string>(iss)),
+                                          std::istream_iterator<std::string>());
+        if(!results.empty())
           fi->second.emplace_back();
-        fi->second.back().push_back(bbIndex);
+        for (auto& bbIndexStr : results) {
+          unsigned bbIndex;
+          if (StringRef(bbIndexStr).getAsInteger(10, bbIndex)) {
+            errs() << "COULD NOt turn this into an int: '" << bbIndexStr << "'\n";
+            return false;
+          }
+          fi->second.back().push_back(bbIndex);
+        }
       } else
         return false;
     } else {
       // Start a new function.
       auto R = bbMap.try_emplace(s.split('/').first);
       fi = R.first;
-      fi->second.emplace_back();
+      //fi->second.emplace_back();
       //assert(R.second);
     }
   }

@@ -3102,6 +3102,10 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
       OutStreamer->SwitchSection(
           getObjFileLowering().getNamedSectionForMachineBasicBlock(
               MF->getFunction(), MBB, TM, ".unlikely"));
+
+      MCSymbol *ColdSym =
+          OutContext.getOrCreateSymbol(MF->getName() + Twine(".cold"));
+      OutStreamer->emitLabel(ColdSym);
     } else {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
