@@ -866,8 +866,12 @@ void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
 static bool isFlexibleArrayMemberExpr(const Expr *E) {
   // For compatibility with existing code, we treat arrays of length 0 or
   // 1 as flexible array members.
+  // FIXME: This is inconsistent with the warning code in SemaChecking. Unify
+  // the two mechanisms.
   const ArrayType *AT = E->getType()->castAsArrayTypeUnsafe();
   if (const auto *CAT = dyn_cast<ConstantArrayType>(AT)) {
+    // FIXME: Sema doesn't treat [1] as a flexible array member if the bound
+    // was produced by macro expansion.
     if (CAT->getSize().ugt(1))
       return false;
   } else if (!isa<IncompleteArrayType>(AT))
@@ -880,6 +884,10 @@ static bool isFlexibleArrayMemberExpr(const Expr *E) {
     // FIXME: If the base type of the member expr is not FD->getParent(),
     // this should not be treated as a flexible array member access.
     if (const auto *FD = dyn_cast<FieldDecl>(ME->getMemberDecl())) {
+      // FIXME: Sema doesn't treat a T[1] union member as a flexible array
+      // member, only a T[0] or T[] member gets that treatment.
+      if (FD->getParent()->isUnion())
+        return true;
       RecordDecl::field_iterator FI(
           DeclContext::decl_iterator(const_cast<FieldDecl *>(FD)));
       return ++FI == FD->getParent()->field_end();
@@ -4678,12 +4686,12 @@ CGCallee CodeGenFunction::EmitCallee(const Expr *E) {
   // Resolve direct calls.
   } else if (auto DRE = dyn_cast<DeclRefExpr>(E)) {
     if (auto FD = dyn_cast<FunctionDecl>(DRE->getDecl())) {
-      return EmitDirectCallee(*this, CGM.getGlobalDecl(FD));
+      return EmitDirectCallee(*this, FD);
     }
   } else if (auto ME = dyn_cast<MemberExpr>(E)) {
     if (auto FD = dyn_cast<FunctionDecl>(ME->getMemberDecl())) {
       EmitIgnoredExpr(ME->getBase());
-      return EmitDirectCallee(*this, CGM.getGlobalDecl(FD));
+      return EmitDirectCallee(*this, FD);
     }
 
   // Look through template substitutions.

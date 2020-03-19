@@ -529,6 +529,14 @@ TEST(LocateSymbol, All) {
         void test(unique_ptr<S<T>>& V) {
           V->fo^o();
         }
+      )cpp",
+
+      R"cpp(// Heuristic resolution of dependent enumerator
+        template <typename T>
+        struct Foo {
+          enum class E { [[A]], B };
+          E e = E::A^;
+        };
       )cpp"};
   for (const char *Test : Tests) {
     Annotations T(Test);
@@ -636,7 +644,8 @@ TEST(LocateSymbol, Textual) {
         // Comment mentioning M^yClass
       )cpp",
       R"cpp(// String
-        struct [[MyClass]] {};
+        struct MyClass {};
+        // Not triggered for string literal tokens.
         const char* s = "String literal mentioning M^yClass";
       )cpp",
       R"cpp(// Ifdef'ed out code
@@ -688,7 +697,7 @@ TEST(LocateSymbol, Textual) {
       EXPECT_EQ(Results[0].PreferredDeclaration.range, *WantDecl) << Test;
     }
   }
-}
+} // namespace
 
 TEST(LocateSymbol, Ambiguous) {
   auto T = Annotations(R"cpp(

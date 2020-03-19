@@ -3969,6 +3969,8 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
   if (getLangOpts().CUDA &&
       (IsCUDASharedVar || IsCUDAShadowVar || IsHIPPinnedShadowVar))
     Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
+  else if (D->hasAttr<LoaderUninitializedAttr>())
+    Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
   else if (!InitExpr) {
     // This is a tentative definition; tentative definitions are
     // implicitly initialized with { 0 }.
@@ -5317,7 +5319,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
   case Decl::CXXConversion:
   case Decl::CXXMethod:
   case Decl::Function:
-    EmitGlobal(getGlobalDecl(cast<FunctionDecl>(D)));
+    EmitGlobal(cast<FunctionDecl>(D));
     // Always provide some coverage mapping
     // even for the functions that aren't emitted.
     AddDeferredUnusedCoverageMapping(D);
@@ -5978,11 +5980,4 @@ CodeGenModule::createOpenCLIntToSamplerConversion(const Expr *E,
   return CGF.Builder.CreateCall(CreateRuntimeFunction(FTy,
                                 "__translate_sampler_initializer"),
                                 {C});
-}
-
-GlobalDecl CodeGenModule::getGlobalDecl(const FunctionDecl *FD) {
-  if (FD->hasAttr<CUDAGlobalAttr>())
-    return GlobalDecl::getDefaultKernelReference(FD);
-  else
-    return GlobalDecl(FD);
 }

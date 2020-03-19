@@ -359,6 +359,8 @@ class TargetArch<list<string> arches> : TargetSpec {
   let Arches = arches;
 }
 def TargetARM : TargetArch<["arm", "thumb", "armeb", "thumbeb"]>;
+def TargetAArch64 : TargetArch<["aarch64"]>;
+def TargetAnyArm : TargetArch<!listconcat(TargetARM.Arches, TargetAArch64.Arches)>;
 def TargetAVR : TargetArch<["avr"]>;
 def TargetBPF : TargetArch<["bpfel", "bpfeb"]>;
 def TargetMips32 : TargetArch<["mips", "mipsel"]>;
@@ -623,7 +625,7 @@ def Alias : Attr {
   let Documentation = [Undocumented];
 }
 
-def ArmBuiltinAlias : InheritableAttr, TargetSpecificAttr<TargetARM> {
+def ArmBuiltinAlias : InheritableAttr, TargetSpecificAttr<TargetAnyArm> {
   let Spellings = [Clang<"__clang_arm_builtin_alias">];
   let Args = [IdentifierArgument<"BuiltinName">];
   let Subjects = SubjectList<[Function], ErrorDiag>;
@@ -3311,6 +3313,12 @@ def Uninitialized : InheritableAttr {
   let Spellings = [Clang<"uninitialized", 0>];
   let Subjects = SubjectList<[LocalVar]>;
   let Documentation = [UninitializedDocs];
+}
+
+def LoaderUninitialized : Attr {
+  let Spellings = [Clang<"loader_uninitialized">];
+  let Subjects = SubjectList<[GlobalVar]>;
+  let Documentation = [LoaderUninitializedDocs];
 }
 
 def ObjCExternallyRetained : InheritableAttr {

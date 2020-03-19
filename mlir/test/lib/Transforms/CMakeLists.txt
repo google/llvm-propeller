@@ -45,8 +45,9 @@ target_link_libraries(MLIRTestTransforms
   MLIRLoopOps
   MLIRGPU
   MLIRPass
+  MLIRStandardToStandard
   MLIRTestDialect
   MLIRTransformUtils
   MLIRVectorToLoops
-  MLIRVectorOps
+  MLIRVector
   )
