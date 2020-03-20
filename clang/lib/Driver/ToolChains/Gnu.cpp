@@ -649,7 +649,7 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
           CmdArgs.push_back(Args.MakeArgString(
               Twine("--lto-basicblock-sections=") + A->getValue()));
       }
-      //CmdArgs.push_back("--optimize-bb-jumps");
+      CmdArgs.push_back("--optimize-bb-jumps");
       CmdArgs.push_back("--no-call-graph-profile-sort");
       CmdArgs.push_back("-z");
       CmdArgs.push_back("nokeep-text-section-prefix");
