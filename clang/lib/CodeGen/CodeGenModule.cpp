@@ -176,6 +176,18 @@ CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
   // CoverageMappingModuleGen object.
   if (CodeGenOpts.CoverageMapping)
     CoverageMapping.reset(new CoverageMappingModuleGen(*this, *CoverageInfo));
+
+  // Generate the module name hash here if needed.
+  if (CodeGenOpts.UniqueInternalLinkageNames &&
+      !getModule().getSourceFileName().empty()) {
+    llvm::MD5 Md5;
+    Md5.update(getModule().getSourceFileName());
+    llvm::MD5::MD5Result R;
+    Md5.final(R);
+    SmallString<32> Str;
+    llvm::MD5::stringifyResult(R, Str);
+    ModuleNameHash = ("." + Str).str();
+  }
 }
 
 CodeGenModule::~CodeGenModule() {}
@@ -1018,7 +1030,7 @@ static void AppendTargetMangling(const CodeGenModule &CGM,
   }
 }
 
-static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
+static std::string getMangledNameImpl(CodeGenModule &CGM, GlobalDecl GD,
                                       const NamedDecl *ND,
                                       bool OmitMultiVersionMangling = false) {
   SmallString<256> Buffer;
@@ -1041,6 +1053,17 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
       Out << II->getName();
     }
   }
+
+  // Check if the module name hash should be appended for internal linkage
+  // symbols.
+  const Decl *D = GD.getDecl();
+  if (CGM.getCodeGenOpts().UniqueInternalLinkageNames &&
+      !CGM.getModuleNameHash().empty() &&
+      ((isa<FunctionDecl>(D) && CGM.getFunctionLinkage(GD) ==
+           llvm::GlobalValue::InternalLinkage) ||
+       (isa<VarDecl>(D) && CGM.getContext().GetGVALinkageForVariable(
+          cast<VarDecl>(D)) == GVA_Internal)))
+    Out << CGM.getModuleNameHash();
 
   if (const auto *FD = dyn_cast<FunctionDecl>(ND))
     if (FD->isMultiVersion() && !OmitMultiVersionMangling) {
@@ -1122,24 +1145,8 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
 
   // Keep the first result in the case of a mangling collision.
   const auto *ND = cast<NamedDecl>(GD.getDecl());
-  std::string MangledName = getMangledNameImpl(*this, GD, ND);
 
-  // With option -funique-internal-funcnames, functions with internal linkage
-  // should get unique names.  Use the hash of module name to get a unique
-  // identifier as this is a best-effort solution.
-  if (getCodeGenOpts().UniqueInternalFuncNames &&
-      dyn_cast<FunctionDecl>(GD.getDecl()) &&
-      getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage &&
-      !getModule().getSourceFileName().empty()) {
-    llvm::MD5 Md5;
-    Md5.update(getModule().getSourceFileName());
-    llvm::MD5::MD5Result R;
-    Md5.final(R);
-    SmallString<32> Str;
-    llvm::MD5::stringifyResult(R, Str);
-    std::string UniqueSuffix = ("." + Str).str();
-    MangledName += UniqueSuffix;
-  }
+  std::string MangledName = getMangledNameImpl(*this, GD, ND);
 
   // Ensure either we have different ABIs between host and device compilations,
   // says host compilation following MSVC ABI but device compilation follows

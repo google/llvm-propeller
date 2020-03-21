@@ -1984,10 +1984,10 @@ def funique_bb_section_names : Flag <["-"], "funique-bb-section-names">,
   HelpText<"Use unique names for basic block sections (ELF Only)">;
 def fno_unique_bb_section_names : Flag <["-"], "fno-unique-bb-section-names">,
   Group<f_Group>;
-def funique_internal_funcnames : Flag <["-"], "funique-internal-funcnames">,
+def funique_internal_linkage_names : Flag <["-"], "funique-internal-linkage-names">,
   Group<f_Group>, Flags<[CC1Option]>,
-  HelpText<"Uniqueify Internal Linkage Function Names">;
-def fno_unique_internal_funcnames : Flag <["-"], "fno-unique-internal-funcnames">,
+  HelpText<"Uniqueify Internal Linkage Symbol Names by appending the MD5 hash of the module path">;
+def fno_unique_internal_linkage_names : Flag <["-"], "fno-unique-internal-linkage-names">,
   Group<f_Group>;
 
 def fstrict_return : Flag<["-"], "fstrict-return">, Group<f_Group>,

@@ -307,6 +307,7 @@ private:
   const TargetInfo &Target;
   std::unique_ptr<CGCXXABI> ABI;
   llvm::LLVMContext &VMContext;
+  std::string ModuleNameHash = "";
 
   std::unique_ptr<CodeGenTBAA> TBAA;
 
@@ -577,6 +578,8 @@ public:
 
   /// Return true iff an Objective-C runtime has been configured.
   bool hasObjCRuntime() { return !!ObjCRuntime; }
+
+  const std::string &getModuleNameHash() const { return ModuleNameHash; }
 
   /// Return a reference to the configured OpenCL runtime.
   CGOpenCLRuntime &getOpenCLRuntime() {

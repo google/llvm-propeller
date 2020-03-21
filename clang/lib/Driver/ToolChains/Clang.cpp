@@ -4231,8 +4231,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         options::OPT_fdata_sections,
         options::OPT_fno_data_sections,
         options::OPT_fbasicblock_sections_EQ,
-        options::OPT_funique_internal_funcnames,
-        options::OPT_fno_unique_internal_funcnames,
+        options::OPT_funique_internal_linkage_names,
+        options::OPT_fno_unique_internal_linkage_names,
         options::OPT_funique_section_names,
         options::OPT_fno_unique_section_names,
         options::OPT_funique_bb_section_names,
@@ -4829,21 +4829,21 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                                options::OPT_fno_propeller)) {
     // Propeller optimizations work much better with unique
     // internal func names.
-    // We push "-funique-internal-funcnames" only if no
+    // We push "-funique-internal-linkage-names" only if no
     // -f(no-)unique-internal-funcnames is specified.
-    bool NeedExplicitUniqueInternalFuncNames =
+    bool NeedExplicitUniqueInternalLinkageNames =
         (nullptr ==
-         Args.getLastArg(options::OPT_funique_internal_funcnames,
-                         options::OPT_fno_unique_internal_funcnames));
+         Args.getLastArg(options::OPT_funique_internal_linkage_names,
+                         options::OPT_fno_unique_internal_linkage_names));
     if (A->getOption().matches(options::OPT_fpropeller_optimize_EQ)) {
       CmdArgs.push_back(
           Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
-      if (NeedExplicitUniqueInternalFuncNames)
-        CmdArgs.push_back("-funique-internal-funcnames");
+      if (NeedExplicitUniqueInternalLinkageNames)
+        CmdArgs.push_back("-funique-internal-linkage-names");
     } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
       CmdArgs.push_back("-fbasicblock-sections=labels");
-      if (NeedExplicitUniqueInternalFuncNames)
-        CmdArgs.push_back("-funique-internal-funcnames");
+      if (NeedExplicitUniqueInternalLinkageNames)
+        CmdArgs.push_back("-funique-internal-linkage-names");
     }
   }
 
@@ -4861,9 +4861,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                     options::OPT_fno_unique_section_names, true))
     CmdArgs.push_back("-fno-unique-section-names");
 
-  if (Args.hasFlag(options::OPT_funique_internal_funcnames,
-                   options::OPT_fno_unique_internal_funcnames, false))
-    CmdArgs.push_back("-funique-internal-funcnames");
+  if (Args.hasFlag(options::OPT_funique_internal_linkage_names,
+                   options::OPT_fno_unique_internal_linkage_names, false))
+    CmdArgs.push_back("-funique-internal-linkage-names");
 
   if (Args.hasArg(options::OPT_funique_bb_section_names))
     CmdArgs.push_back("-funique-bb-section-names");
