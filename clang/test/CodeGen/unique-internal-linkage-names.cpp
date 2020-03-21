@@ -17,13 +17,11 @@ int getGlob() {
 }
 
 // Multiversioning symbols
-__attribute__((target("default")))
-static int mver() {
+__attribute__((target("default"))) static int mver() {
   return 0;
 }
 
-__attribute__((target("sse4.2")))
-static int mver() {
+__attribute__((target("sse4.2"))) static int mver() {
   return 1;
 }
 

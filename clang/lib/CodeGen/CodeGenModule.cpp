@@ -1059,10 +1059,10 @@ static std::string getMangledNameImpl(CodeGenModule &CGM, GlobalDecl GD,
   const Decl *D = GD.getDecl();
   if (CGM.getCodeGenOpts().UniqueInternalLinkageNames &&
       !CGM.getModuleNameHash().empty() &&
-      ((isa<FunctionDecl>(D) && CGM.getFunctionLinkage(GD) ==
-           llvm::GlobalValue::InternalLinkage) ||
+      ((isa<FunctionDecl>(D) &&
+        CGM.getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) ||
        (isa<VarDecl>(D) && CGM.getContext().GetGVALinkageForVariable(
-          cast<VarDecl>(D)) == GVA_Internal)))
+                               cast<VarDecl>(D)) == GVA_Internal)))
     Out << CGM.getModuleNameHash();
 
   if (const auto *FD = dyn_cast<FunctionDecl>(ND))
