@@ -83,8 +83,20 @@ void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
   } else {
     // If reordering is not desired, we create changes according to the initial
     // order in the controlFlowGraph.
-    for (ControlFlowGraph *cfg : hotCFGs)
-      clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+    for (ControlFlowGraph *cfg : hotCFGs) {
+      if (propConfig.optSplitFuncs){
+        std::vector<CFGNode*> coldNodes, hotNodes;
+        cfg->forEachNodeRef([&coldNodes, &hotNodes](CFGNode &n) {
+          if (n.freq)
+            hotNodes.emplace_back(&n);
+          else
+            coldNodes.emplace_back(&n);
+        });
+        clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(hotNodes)));
+        clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(coldNodes)));
+      } else
+        clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
+    }
   }
 
   // The order for cold cfgs remains unchanged.
