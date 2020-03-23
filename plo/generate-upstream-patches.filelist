@@ -22,22 +22,26 @@ declare ALL_FILES=(
         clang-pro        clang/include/clang/Driver/Options.td
         clang-uif        clang/include/clang/Driver/Options.td
         clang-base       clang/lib/CodeGen/BackendUtil.cpp
-        clang-uif        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-sta        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-base       clang/lib/Driver/ToolChains/Clang.cpp
         clang-rws        clang/lib/Driver/ToolChains/Clang.cpp
         clang-uif        clang/lib/Driver/ToolChains/Clang.cpp
 	clang-uif        clang/lib/CodeGen/CodeGenModule.cpp
+	clang-uif        clang/lib/CodeGen/CodeGenModule.h
+	clang-uif        clang/docs/UsersManual.rst
         clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
+        clang-uif        clang/lib/Frontend/CompilerInvocation.cpp
         clang-base       clang/test/CodeGen/basicblock-sections.c
-        clang-uif        clang/test/CodeGen/basicblock-sections.funcnames
-        clang-uif        clang/test/CodeGen/unique_internal_funcnames.c
+        clang-base       clang/test/CodeGen/basicblock-sections.funcnames
+        clang-uif        clang/test/CodeGen/unique-internal-linkage-names.cpp
+	clang-uif        clang/test/Driver/funique-internal-linkage-names.c
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
-# lld starts from here	
+# lld starts from here
+        lld-other        lld/test/ELF/bb-cluster-sections-optimize-jumps.s
         lld-bb           lld/ELF/Arch/X86_64.cpp
         lld-bb           lld/ELF/Config.h
         lld-bb           lld/ELF/Driver.cpp
