@@ -999,7 +999,6 @@ static void readConfigs(opt::InputArgList &args) {
 
   // Parse Propeller flags.
   auto propellerOpts = args::getStrings(args, OPT_propeller_opt);
-  bool splitFuncsExplicit = false;
   for (auto &propellerOpt : propellerOpts) {
     if (propellerOpt == "reorder-ip") {
       config->propellerReorderIP = true;
@@ -1013,21 +1012,10 @@ static void readConfigs(opt::InputArgList &args) {
       config->propellerReorderBlocks = false;
     } else if (propellerOpt == "split-funcs") {
       config->propellerSplitFuncs = true;
-      splitFuncsExplicit = true;
     } else if (propellerOpt == "no-split-funcs") {
       config->propellerSplitFuncs = false;
     } else
       error("unknown propeller option: " + propellerOpt);
-  }
-
-  if (!config->propeller.empty() && !config->propellerReorderBlocks) {
-    if (splitFuncsExplicit) {
-      error("propeller: Inconsistent combination of propeller optimizations"
-            " 'split-funcs' and 'no-reorder-blocks'.");
-    } else {
-      warn("propeller: no-reorder-blocks implicitly sets no-split-funcs.");
-      config->propellerSplitFuncs = false;
-    }
   }
 
   config->rpath = getRpath(args);
