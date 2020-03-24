@@ -92,8 +92,15 @@ void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
           else
             coldNodes.emplace_back(&n);
         });
-        clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(hotNodes)));
-        clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(coldNodes)));
+        auto compareNodeAddress = [](CFGNode * n1, CFGNode * n2) {
+          return n1->mappedAddr < n2->mappedAddr;
+        };
+        sort(hotNodes.begin(), hotNodes.end(), compareNodeAddress);
+        sort(coldNodes.begin(), coldNodes.end(), compareNodeAddress);
+        if (!hotNodes.empty())
+          clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(hotNodes)));
+        if (!coldNodes.empty())
+          clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(coldNodes)));
       } else
         clustering->addChain(std::unique_ptr<NodeChain>(new NodeChain(cfg)));
     }
