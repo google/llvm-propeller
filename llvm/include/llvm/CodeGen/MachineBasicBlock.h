@@ -46,19 +46,6 @@ class raw_ostream;
 class TargetRegisterClass;
 class TargetRegisterInfo;
 
-//enum MachineBasicBlockSection : unsigned {
-  ///  This is also the order of sections in a function.  Basic blocks that are
-  ///  part of the original function section (entry block) come first, followed
-  ///  by exception handling basic blocks, cold basic blocks and finally basic
-  //   blocks that need unique sections.
-//  MBBS_Entry,
-//  MBBS_Exception,
-//  MBBS_Cold,
-//  MBBS_Unique,
-  ///  None implies no sections for any basic block, the default.
-//  MBBS_None,
-//};
-
 template <> struct ilist_traits<MachineInstr> {
 private:
   friend class MachineBasicBlock; // Set by the owning MachineBasicBlock.
@@ -76,11 +63,6 @@ public:
   void deleteNode(MachineInstr *MI);
 };
 
-const int MBBS_None = -3;
-const int MBBS_Cold = -2;
-const int MBBS_Exception = -1;
-
-
 class MachineBasicBlock
     : public ilist_node_with_parent<MachineBasicBlock, MachineFunction> {
 public:
@@ -95,6 +77,10 @@ public:
     RegisterMaskPair(MCPhysReg PhysReg, LaneBitmask LaneMask)
         : PhysReg(PhysReg), LaneMask(LaneMask) {}
   };
+
+  // Special section IDs for the cold and exception section
+  const static unsigned ColdSectionID = UINT_MAX;
+  const static unsigned ExceptionSectionID = UINT_MAX-1;
 
 private:
   using Instructions = ilist<MachineInstr, ilist_sentinel_tracking<true>>;
@@ -148,8 +134,8 @@ private:
   /// Indicate that this basic block is the entry block of a cleanup funclet.
   bool IsCleanupFuncletEntry = false;
 
-  /// Stores the Section type of the basic block with basic block sections.
-  int SectionType = MBBS_None;
+  /// Stores the Section ID of the basic block with basic block sections.
+  unsigned SectionID = ColdSectionID;
 
   /// Default target of the callbr of a basic block.
   bool InlineAsmBrDefaultTarget = false;
@@ -445,11 +431,11 @@ public:
   /// Returns true if this block ends any section.
   bool isEndSection() const;
 
-  /// Returns the type of section this basic block belongs to.
-  int getSectionType() const { return SectionType; }
+  /// Returns the the section id that this basic block belongs to.
+  unsigned getSectionID() const { return SectionID; }
 
   /// Indicate that the basic block belongs to a Section Type.
-  void setSectionType(int V) { SectionType = V; }
+  void setSectionID(unsigned V) { SectionID = V; }
 
   /// Returns true if this is the indirect dest of an INLINEASM_BR.
   bool isInlineAsmBrIndirectTarget(const MachineBasicBlock *Tgt) const {
@@ -494,8 +480,6 @@ public:
 
   /// Returns the basic block that ends the section which contains this one.
   const MachineBasicBlock *getSectionEndMBB() const;
-
-  const MachineBasicBlock *getSectionBeginMBB() const;
 
   /// Update the terminator instructions in block to account for changes to the
   /// layout. If the block previously used a fallthrough, it may now need a

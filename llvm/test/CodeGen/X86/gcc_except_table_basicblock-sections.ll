@@ -16,27 +16,29 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 ; CHECK:    jmp	r.BB.main
 ; CHECK:    .cfi_endproc
 
-; CHECK:  lr.BB.main:                             # %lpad
+; CHECK:  r.BB.main:                              # %try.cont
 ; CHECK:    .cfi_startproc
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0
 ; CHECK:    .cfi_lsda 3, .Lexception1
+; CHECK:    xorl %eax, %eax
+; CHECK:    popq %rcx
+; CHECK:    retq
+; CHECK:  .Ltmp3:
+; CHECK:    .cfi_endproc
+
+; CHECK:  lr.BB.main:                             # %lpad
+; CHECK:    .cfi_startproc
+; CHECK:    .cfi_personality 3, __gxx_personality_v0
+; CHECK:    .cfi_lsda 3, .Lexception2
 ; CHECK:    nop                             # avoids zero-offset landing pad
 ; CHECK:  .Ltmp2:
 ; CHECK:    movq %rax, %rdi
 ; CHECK:    callq _Unwind_Resume
-; CHECK:  .Ltmp3:
-; CHECK:    .size lr.BB.main, .Ltmp3-lr.BB.main
+; CHECK:  .Ltmp4:
+; CHECK:    .size lr.BB.main, .Ltmp4-lr.BB.main
 ; CHECK:    .cfi_endproc
 
-; CHECK:  r.BB.main:                              # %try.cont
-; CHECK:    .cfi_startproc
-; CHECK:    .cfi_personality 3, __gxx_personality_v0
-; CHECK:    .cfi_lsda 3, .Lexception2
-; CHECK:    xorl %eax, %eax
-; CHECK:    popq %rcx
-; CHECK:    retq
-; CHECK:  .Ltmp4:
-; CHECK:    .cfi_endproc
+
 
 entry:
   invoke void @_Z1fv() optsize

@@ -1681,7 +1681,7 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
 
 static void getNoneOptimizableSections(DenseSet<const InputSection*>& sectionSet) {
   for (InputFile *File : objectFiles) {
-    parallelForEach(File->getSymbols(), [&](Symbol *Sym) {
+    for_each(File->getSymbols(), [&](Symbol *Sym) {
       auto *def = dyn_cast<Defined>(Sym);
       if (!def)
         return;

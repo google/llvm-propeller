@@ -349,13 +349,6 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
   MBBNumbering.resize(BlockNo);
 }
 
-/// This sets the section ranges of cold or exception section with basic block
-/// sections.
-void MachineFunction::setSectionRange(int E,
-                                      std::pair<int, int> V) {
-  SectionRanges.try_emplace(E, V);
-}
-
 /// This is used with -fbasicblock-sections or -fbasicblock-labels option.
 /// A unary encoding of basic block labels is done to keep ".strtab" sizes
 /// small.
@@ -371,7 +364,6 @@ void MachineFunction::createBBLabels() {
     // 'L' - Return and landing pad.
     bool isEHPad = MBBI->isEHPad();
     bool isRetBlock = MBBI->isReturnBlock() && !TII->isTailCall(MBBI->back());
-    bool isFallthrough = MBBI->canFallThrough();
     char type = 'a';
     if (isEHPad && isRetBlock)
       type = 'L';
@@ -379,8 +371,6 @@ void MachineFunction::createBBLabels() {
       type = 'l';
     else if (isRetBlock)
       type = 'r';
-    else if (isFallthrough)
-      type = 'f';
     BBSectionsSymbolPrefix[MBBI->getNumber()] = type;
   }
 }

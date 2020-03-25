@@ -140,6 +140,7 @@ symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compil
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 branch_align_opt           := -Wl,-mllvm,-x86-branches-within-32B-boundaries
+print_after_flag           := -Wl,-mllvm,-print-after-all
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
 bb_section_none_flags      := $(call gen_build_flags,"-funique-internal-funcnames","${LLD_NO_OPT}")

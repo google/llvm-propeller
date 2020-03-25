@@ -44,6 +44,7 @@ class BBSectionsPrepare : public MachineFunctionPass {
 public:
   static char ID;
   StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> BBSectionsList;
+  StringMap<StringRef> FuncAliases;
   std::string ProfileFileName;
 
   BBSectionsPrepare(const std::string &ProfileFile)
@@ -69,18 +70,12 @@ char BBSectionsPrepare::ID = 0;
 
 // This inserts an unconditional branch at the end of MBB to the next basic
 // block S if and only if the control-flow implicitly falls through from MBB to
-// S and S and MBB belong to different sections.  This is necessary with basic
-// block sections as MBB and S could be potentially reordered.
+// S. This is necessary with basic block sections as MBB and S could be potentially reordered.
 static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
   MachineBasicBlock *Fallthrough = MBB.getFallThrough();
 
   if (Fallthrough == nullptr)
     return;
-
-  // If this basic block and the Fallthrough basic block are in the same
-  // section then do not insert the jump.
-  //if (MBB.sameSection(Fallthrough))
-  //  return;
 
   const TargetInstrInfo *TII = MBB.getParent()->getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
@@ -106,81 +101,45 @@ static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
 /// 3) Unique section - one per basic block that is emitted in a unique section.
 static bool assignSectionsAndSortBasicBlocks(
     MachineFunction &MF,
-    const StringMap<SmallVector<SmallVector<unsigned, 4>,2>> &BBSectionsList) {
-  SmallVector<SmallVector<unsigned, 4>,2> S = BBSectionsList.lookup(MF.getName());
+    const StringMap<SmallVector<SmallVector<unsigned, 4>,2>> &BBSectionsList,
+    const StringMap<StringRef> &FuncAliases) {
+  auto R = FuncAliases.find(MF.getName());
+  auto FuncName = R == FuncAliases.end() ? MF.getName() : R->second ;
+  SmallVector<SmallVector<unsigned, 4>,2> S = BBSectionsList.lookup(FuncName);
 
   std::map<unsigned, std::pair<unsigned, unsigned>> BBIndexMap;
-
-  for(unsigned i=1; i<S.size(); ++i)
-    if (S[i].front() == 0) {
-      S[0].swap(S[i]);
-      break;
-    }
-
-  errs() << "ASSIGN SECTION: " << MF.getName() << "\n";
-  for(unsigned i=0; i<S.size(); ++i) {
-    for(unsigned j=0; j<S[i].size(); ++j)
-      errs() << S[i][j] << " -> ";
-    errs() << "\n";
-  }
-
 
   for(unsigned i=0; i<S.size(); ++i)
     for(unsigned j=0; j<S[i].size(); ++j)
       BBIndexMap.emplace(S[i][j], std::make_pair(i, j));
 
-  bool HasHotEHPads = false;
+  // This is the set of sections which have EHPads in them.
+  SmallSet<unsigned, 2> EHPadsSections;
 
+  // All BBs are initially assigned the cold section. With the list option, all cold BBs can be clustered in a single cold section.
   for (auto &MBB : MF) {
-    // Entry basic block cannot start another section because the function
-    // starts one already.
-    //if (MBB.getNumber() == MF.front().getNumber()) {
-    //  MBB.setSectionType(MachineBasicBlockSection::MBBS_Entry);
-    //  continue;
-    //}
-    // Check if this BB is a cold basic block.  With the list option, all cold
-    // basic blocks can be clustered in a single cold section.
-    // All Exception landing pads must be in a single section.  If all the
-    // landing pads are cold, it can be kept in the cold section.  Otherwise, we
-    // create a separate exception section.
-    bool isColdBB = ((MF.getTarget().getBBSectionsType() ==
-                      llvm::BasicBlockSection::List) &&
-                     !S.empty() && !BBIndexMap.count(MBB.getNumber()));
-    if (isColdBB) {
-      MBB.setSectionType(llvm::MBBS_Cold);
-    } else if (MBB.isEHPad()) {
-      // We handle non-cold basic eh blocks later.
-      HasHotEHPads = true;
-    } else {
-      // Place this MBB in a unique section.  A unique section begins and ends
-      // that section by definition.
-      MBB.setSectionType(BBIndexMap.at(MBB.getNumber()).first);
-      //MBB.setSectionType(MachineBasicBlockSection::MBBS_Unique);
-    }
+    // With the 'all' option, every basic block is placed in a unique section.
+    // With the 'list' option, every basic block is placed in a section
+    // associated with its cluster, unless we want sections for every basic
+    // block in this function (if S is empty).
+    if (MF.getTarget().getBBSectionsType() == llvm::BasicBlockSection::All
+        || S.empty())
+      MBB.setSectionID(MBB.getNumber());
+    else if (BBIndexMap.count(MBB.getNumber()))
+      MBB.setSectionID(BBIndexMap.at(MBB.getNumber()).first);
+
+    if (MBB.isEHPad())
+      EHPadsSections.insert(MBB.getSectionID());
   }
 
-//  errs() << "BBIndexMap: ";
- // for(auto &elem: BBIndexMap)
-  //  errs()  << "[ " << elem.first << " --> " << " ( " << elem.second.first << " : " << elem.second.second << " )   ";
-  //errs() << "\n";
-
-  // If some EH Pads are not cold then we move all EH Pads to the exception
-  // section as we require that all EH Pads be in a single section.
-  if (HasHotEHPads) {
+  // If EHPads are in more than one section, we move all of them to a specific
+  // exception section, as we need all EH Pads to be in a single section.
+  if (EHPadsSections.size() > 1) {
     std::for_each(MF.begin(), MF.end(), [&](MachineBasicBlock &MBB) {
       if (MBB.isEHPad())
-        MBB.setSectionType(llvm::MBBS_Exception);
+        MBB.setSectionID(MachineBasicBlock::ExceptionSectionID);
     });
   }
-
-  /*
-  errs() << "INITIAL ORDER : ";
-  for (auto &MBB : MF)
-    errs() << MBB.getNumber() << " -> ";
-  errs() << "\n";
-  */
-
-  bool EntryCold = MF.front().getSectionType() == llvm::MBBS_Cold;
 
   for (auto &MBB : MF) {
     // With -fbasicblock-sections, fall through blocks must be made
@@ -189,74 +148,33 @@ static bool assignSectionsAndSortBasicBlocks(
     insertUnconditionalFallthroughBranch(MBB);
   }
 
+  auto EntrySectionID = MF.front().getSectionID();
 
-  MF.sort(([&EntryCold, &BBIndexMap](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    auto XSectionType = X.getSectionType();
-    auto YSectionType = Y.getSectionType();
-    if (XSectionType == YSectionType)
-      return XSectionType < 0 ? X.getNumber() < Y.getNumber() : BBIndexMap.at(X.getNumber()).second < BBIndexMap.at(Y.getNumber()).second;
-    if (XSectionType == llvm::MBBS_Cold || YSectionType == llvm::MBBS_Cold)
-        return EntryCold ? XSectionType == llvm::MBBS_Cold : YSectionType == llvm::MBBS_Cold;
-    if (XSectionType < 0 || YSectionType < 0)
-      return YSectionType < XSectionType;
-    return XSectionType < YSectionType;
-  }));
+  // We sort all basic blocks to make sure the basic blocks of every cluster are
+  // contiguous and in the given order. Furthermore, clusters are ordered in
+  // increasing order of their section IDs, with the exception and the
+  // cold section placed at the end of the function.
+  MF.sort([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
+    auto XSectionID = X.getSectionID();
+    auto YSectionID = Y.getSectionID();
+    // If the two basic block are in the same section, the order is decided by
+    // their order within the section.
+    if (XSectionID == YSectionID)
+      return XSectionID < S.size() ? BBIndexMap.at(X.getNumber()).second < BBIndexMap.at(Y.getNumber()).second : X.getNumber() < Y.getNumber();
+    // We make sure that the section containing the entry block precedes all the
+    // other sections.
+    if (XSectionID == EntrySectionID || YSectionID == EntrySectionID)
+      return XSectionID == EntrySectionID;
+    return XSectionID < YSectionID;
+  });
 
-  /*
-  int stype = -3;
-  SmallSet<int, 16> stypes;
-  errs() << "SORTED ORDER : ";
-  for (auto &MBB : MF) {
-    errs() << MBB.getNumber() << ":" << MBB.getSectionType() << " -> ";
-    if (MBB.getSectionType() != stype) {
-      stype = MBB.getSectionType();
-      auto R = stypes.insert(stype);
-      if (!R.second)
-        report_fatal_error("BAD ONE: HERE:");
-    }
-  }
-  errs() << "\n";
-  */
-
-  // Compute the Section Range of cold and exception basic blocks.  Find the
-  // first and last block of each range.
-  auto SectionRange =
-      ([&](int SectionType) -> std::pair<int, int> {
-        auto MBBP = std::find_if(MF.begin(), MF.end(),
-                                 [&](MachineBasicBlock &MBB) -> bool {
-                                   return MBB.getSectionType() == SectionType;
-                                 });
-        if (MBBP == MF.end())
-          return std::make_pair(-1, -1);
-
-        auto MBBQ = std::find_if(MF.rbegin(), MF.rend(),
-                                 [&](MachineBasicBlock &MBB) -> bool {
-                                   return MBB.getSectionType() == SectionType;
-                                 });
-        assert(MBBQ != MF.rend() && "Section begin not found!");
-        for (auto it=MBBP; it->getNumber() != MBBQ->getNumber(); ++it)
-          if(it->getSectionType() != SectionType)
-            report_fatal_error("Not right for: " + MF.getName());
-        return std::make_pair(MBBP->getNumber(), MBBQ->getNumber());
-      });
-
-  for(int i=-2; i< ((int)S.size()); ++i) {
-    auto r = SectionRange(i);
-    if (r.first != -1)
-      MF.setSectionRange(i, r);
-  }
-
-
-  /*
-  errs() << "SECTION RANGES:\n";
-  for(auto &elem: MF.SectionRanges)
-    errs() << elem.first << " : " << "( " << elem.second.first << " --> " << elem.second.second << ")\n";
-    */
-
+  // After the basic blocks are sorted, the branching instructions of every
+  // basic block (except those at the end of the sections) are optimized to
+  // remove the previously inserted branches.
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
   for (auto &MBB : MF)
-    if (!MF.isSectionEndMBB(MBB.getNumber())) {
+    if (!MBB.isEndSection()) {
       Cond.clear();
       MachineBasicBlock *TBB = nullptr, *FBB = nullptr; // For analyzeBranch.
       if (!TII->analyzeBranch(MBB, TBB, FBB, Cond))
@@ -288,7 +206,7 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 
   MF.setBBSectionsType(BBSectionsType);
   MF.createBBLabels();
-  assignSectionsAndSortBasicBlocks(MF, BBSectionsList);
+  assignSectionsAndSortBasicBlocks(MF, BBSectionsList, FuncAliases);
 
   return true;
 }
@@ -296,28 +214,32 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // Basic Block Sections can be enabled for a subset of machine basic blocks.
 // This is done by passing a file containing names of functions for which basic
 // block sections are desired.  Additionally, machine basic block ids of the
-// functions can also be specified for a finer granularity.
-// A file with basic block sections for all of function main and two blocks for
-// function foo looks like this:
+// functions can also be specified for a finer granularity. Moreover, a cluster
+// of basic blocks could be assigned to the same section.
+// A file with basic block sections for all of function main and three blocks for
+// function foo (two of which share a section) looks like this:
 // ----------------------------
 // list.txt:
 // !main
 // !foo
-// !!2
+// !!1 2
 // !!4
 static bool getBBSectionsList(StringRef profFileName,
-                              StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &bbMap) {
+                              StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &bbClusterMap,
+                              StringMap<StringRef> &funcAliasMap) {
   if (profFileName.empty())
     return false;
 
   auto MbOrErr = MemoryBuffer::getFile(profFileName);
-  if (MbOrErr.getError())
+  if (std::error_code EC = MbOrErr.getError()) {
+    errs() << "Could not open profile: " << EC.message();
     return false;
+  }
 
   MemoryBuffer &Buffer = *MbOrErr.get();
   line_iterator LineIt(Buffer, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
-  StringMap<SmallVector<SmallVector<unsigned, 4>, 2>>::iterator fi = bbMap.end();
+  StringMap<SmallVector<SmallVector<unsigned, 4>, 2>>::iterator fi = bbClusterMap.end();
 
   for (; !LineIt.is_at_eof(); ++LineIt) {
     StringRef s(*LineIt);
@@ -326,30 +248,40 @@ static bool getBBSectionsList(StringRef profFileName,
     // Check for the leading "!"
     if (!s.consume_front("!") || s.empty())
       break;
-    // Check for second "!" which encodes basic block ids.
+    // Check for second "!" which indicates a cluster of basic blocks.
     if (s.consume_front("!")) {
-      if (fi != bbMap.end()) {
-        std::istringstream iss(s.str());
-        std::vector<std::string> results((std::istream_iterator<std::string>(iss)),
-                                          std::istream_iterator<std::string>());
-        if(!results.empty())
-          fi->second.emplace_back();
-        for (auto& bbIndexStr : results) {
-          unsigned bbIndex;
-          if (StringRef(bbIndexStr).getAsInteger(10, bbIndex)) {
-            errs() << "COULD NOt turn this into an int: '" << bbIndexStr << "'\n";
-            return false;
-          }
-          fi->second.back().push_back(bbIndex);
-        }
-      } else
+      if (fi == bbClusterMap.end()) {
+        errs() << "Could not process profile: " << profFileName << " at line " << Twine(LineIt.line_number()) << " Does not follow a function name.\n";
         return false;
+      }
+      std::istringstream iss(s.str());
+      std::vector<std::string> BBIndexes((std::istream_iterator<std::string>(iss)),
+                                         std::istream_iterator<std::string>());
+      if(!BBIndexes.empty())
+        fi->second.emplace_back();
+      for (auto& BBIndexStr : BBIndexes) {
+        unsigned BBIndex;
+        if (StringRef(BBIndexStr).getAsInteger(10, BBIndex)) {
+          errs() << "Could not process profile: " << profFileName << " at line " << Twine(LineIt.line_number()) << " " << BBIndexStr << " is not a number!\n";
+          return false;
+        }
+        if(!BBIndex && !fi->second.back().empty()) {
+          errs() << "Could not process profile " << profFileName << " at line " << Twine(LineIt.line_number()) << " Entry BB in the middle of the BB Cluster list!\n";
+          return false;
+        }
+        fi->second.back().push_back(BBIndex);
+      }
     } else {
+      auto P = s.split('/');
       // Start a new function.
-      auto R = bbMap.try_emplace(s.split('/').first);
-      fi = R.first;
-      //fi->second.emplace_back();
-      //assert(R.second);
+      fi = bbClusterMap.try_emplace(P.first).first;
+
+      auto aliasStr = P.second;
+      while(aliasStr!=""){
+        auto Q = aliasStr.split('/');
+        funcAliasMap.try_emplace(Q.first, P.first);
+        aliasStr = Q.second;
+      }
     }
   }
   return true;
@@ -357,8 +289,9 @@ static bool getBBSectionsList(StringRef profFileName,
 
 bool BBSectionsPrepare::doInitialization(Module &M) {
   if (!ProfileFileName.empty())
-    getBBSectionsList(ProfileFileName, BBSectionsList);
-  return true;
+    if (!getBBSectionsList(ProfileFileName, BBSectionsList, FuncAliases))
+      BBSectionsList.clear();
+  return false;
 }
 
 void BBSectionsPrepare::getAnalysisUsage(AnalysisUsage &AU) const {

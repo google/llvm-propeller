@@ -404,7 +404,7 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     // handling BBs will be in the [getFunctionBegin(), getFunctionEnd()]
     // range. Ranges for the other BBs have to be emitted separately.
     for (auto &MBB : *Asm->MF) {
-      if (!MBB.pred_empty() && MBB.isBeginSection()) {
+      if (MBB.isBeginSection()) {
         BB_List.push_back(
             {MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
       }
