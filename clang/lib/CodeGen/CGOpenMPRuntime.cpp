@@ -6992,6 +6992,7 @@ emitNumTeamsForTargetDirective(CodeGenFunction &CGF,
   case OMPD_atomic:
   case OMPD_flush:
   case OMPD_depobj:
+  case OMPD_scan:
   case OMPD_teams:
   case OMPD_target_data:
   case OMPD_target_exit_data:
@@ -7304,6 +7305,7 @@ emitNumThreadsForTargetDirective(CodeGenFunction &CGF,
   case OMPD_atomic:
   case OMPD_flush:
   case OMPD_depobj:
+  case OMPD_scan:
   case OMPD_teams:
   case OMPD_target_data:
   case OMPD_target_exit_data:
@@ -9089,6 +9091,7 @@ getNestedDistributeDirective(ASTContext &Ctx, const OMPExecutableDirective &D) {
     case OMPD_atomic:
     case OMPD_flush:
     case OMPD_depobj:
+    case OMPD_scan:
     case OMPD_teams:
     case OMPD_target_data:
     case OMPD_target_exit_data:
@@ -9867,6 +9870,7 @@ void CGOpenMPRuntime::scanForTargetRegionsFunctions(const Stmt *S,
     case OMPD_atomic:
     case OMPD_flush:
     case OMPD_depobj:
+    case OMPD_scan:
     case OMPD_teams:
     case OMPD_target_data:
     case OMPD_target_exit_data:
@@ -10508,6 +10512,7 @@ void CGOpenMPRuntime::emitTargetDataStandAloneCall(
     case OMPD_atomic:
     case OMPD_flush:
     case OMPD_depobj:
+    case OMPD_scan:
     case OMPD_teams:
     case OMPD_target_data:
     case OMPD_distribute:
@@ -11388,7 +11393,7 @@ static const FunctionDecl *getDeclareVariantFunction(CodeGenModule &CGM,
   SmallVector<Expr *, 8> VariantExprs;
   SmallVector<VariantMatchInfo, 8> VMIs;
   for (const auto *A : FD->specific_attrs<OMPDeclareVariantAttr>()) {
-    const OMPTraitInfo &TI = A->getTraitInfos();
+    const OMPTraitInfo &TI = *A->getTraitInfos();
     VMIs.push_back(VariantMatchInfo());
     TI.getAsVariantMatchInfo(CGM.getContext(), VMIs.back());
     VariantExprs.push_back(A->getVariantFuncRef());

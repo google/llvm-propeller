@@ -38,12 +38,9 @@ static cl::opt<bool> EnableSpillSGPRToVGPR(
   cl::ReallyHidden,
   cl::init(true));
 
-SIRegisterInfo::SIRegisterInfo(const GCNSubtarget &ST) :
-  AMDGPUGenRegisterInfo(0),
-  ST(ST),
-  SpillSGPRToVGPR(EnableSpillSGPRToVGPR),
-  isWave32(ST.isWave32()) {
-}
+SIRegisterInfo::SIRegisterInfo(const GCNSubtarget &ST)
+    : AMDGPUGenRegisterInfo(AMDGPU::PC_REG, ST.getAMDGPUDwarfFlavour()), ST(ST),
+      SpillSGPRToVGPR(EnableSpillSGPRToVGPR), isWave32(ST.isWave32()) {}
 
 void SIRegisterInfo::reserveRegisterTuples(BitVector &Reserved,
                                            unsigned Reg) const {
@@ -1141,8 +1138,8 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
             .addReg(FrameReg);
         } else {
           if (auto MIB = TII->getAddNoCarry(*MBB, MI, DL, ResultReg, *RS)) {
-            Register ScaledReg =
-              RS->scavengeRegister(&AMDGPU::VGPR_32RegClass, MIB, 0);
+            // Reuse ResultReg in intermediate step.
+            Register ScaledReg = ResultReg;
 
             BuildMI(*MBB, *MIB, DL, TII->get(AMDGPU::V_LSHRREV_B32_e64),
                     ScaledReg)

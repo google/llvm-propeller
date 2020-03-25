@@ -13609,6 +13609,13 @@ Value *CodeGenFunction::EmitAMDGPUBuiltinExpr(unsigned BuiltinID,
     return emitRangedBuiltin(*this, Intrinsic::r600_read_tidig_y, 0, 1024);
   case AMDGPU::BI__builtin_r600_read_tidig_z:
     return emitRangedBuiltin(*this, Intrinsic::r600_read_tidig_z, 0, 1024);
+  case AMDGPU::BI__builtin_amdgcn_alignbit: {
+    llvm::Value *Src0 = EmitScalarExpr(E->getArg(0));
+    llvm::Value *Src1 = EmitScalarExpr(E->getArg(1));
+    llvm::Value *Src2 = EmitScalarExpr(E->getArg(2));
+    Function *F = CGM.getIntrinsic(Intrinsic::fshr, Src0->getType());
+    return Builder.CreateCall(F, { Src0, Src1, Src2 });
+  }
   default:
     return nullptr;
   }
@@ -15050,6 +15057,15 @@ Value *CodeGenFunction::EmitWebAssemblyBuiltinExpr(unsigned BuiltinID,
     Function *Callee = CGM.getIntrinsic(IntNo, ConvertType(E->getType()));
     return Builder.CreateCall(Callee, {LHS, RHS});
   }
+  case WebAssembly::BI__builtin_wasm_abs_i8x16:
+  case WebAssembly::BI__builtin_wasm_abs_i16x8:
+  case WebAssembly::BI__builtin_wasm_abs_i32x4: {
+    Value *Vec = EmitScalarExpr(E->getArg(0));
+    Value *Neg = Builder.CreateNeg(Vec, "neg");
+    Constant *Zero = llvm::Constant::getNullValue(Vec->getType());
+    Value *ICmp = Builder.CreateICmpSLT(Vec, Zero, "abscond");
+    return Builder.CreateSelect(ICmp, Neg, Vec, "abs");
+  }
   case WebAssembly::BI__builtin_wasm_min_s_i8x16:
   case WebAssembly::BI__builtin_wasm_min_u_i8x16:
   case WebAssembly::BI__builtin_wasm_max_s_i8x16:
@@ -15140,6 +15156,14 @@ Value *CodeGenFunction::EmitWebAssemblyBuiltinExpr(unsigned BuiltinID,
     }
     Value *Vec = EmitScalarExpr(E->getArg(0));
     Function *Callee = CGM.getIntrinsic(IntNo, Vec->getType());
+    return Builder.CreateCall(Callee, {Vec});
+  }
+  case WebAssembly::BI__builtin_wasm_bitmask_i8x16:
+  case WebAssembly::BI__builtin_wasm_bitmask_i16x8:
+  case WebAssembly::BI__builtin_wasm_bitmask_i32x4: {
+    Value *Vec = EmitScalarExpr(E->getArg(0));
+    Function *Callee =
+        CGM.getIntrinsic(Intrinsic::wasm_bitmask, Vec->getType());
     return Builder.CreateCall(Callee, {Vec});
   }
   case WebAssembly::BI__builtin_wasm_abs_f32x4:

@@ -3373,8 +3373,8 @@ def OMPDeclareVariantDocs : Documentation {
   let Heading = "#pragma omp declare variant";
   let Content = [{
 The `declare variant` directive declares a specialized variant of a base
- function and specifies the context in which that specialized variant is used.
- The declare variant directive is a declarative directive.
+function and specifies the context in which that specialized variant is used.
+The declare variant directive is a declarative directive.
 The syntax of the `declare variant` construct is as follows:
 
   .. code-block:: none
@@ -3391,7 +3391,7 @@ where clause is one of the following:
     match(context-selector-specification)
 
 and where `variant-func-id` is the name of a function variant that is either a
- base language identifier or, for C++, a template-id.
+base language identifier or, for C++, a template-id.
 
   }];
 }
@@ -4076,8 +4076,8 @@ ways:
   including calling the ``+initialize`` method if present.
 
 - The implicit ``_cmd`` parameter containing the method's selector is still defined.
- In order to minimize code-size costs, the implementation will not emit a reference
- to the selector if the parameter is unused within the method.
+  In order to minimize code-size costs, the implementation will not emit a reference
+  to the selector if the parameter is unused within the method.
 
 Symbols for direct method implementations are implicitly given hidden
 visibility, meaning that they can only be called within the same linkage unit.
@@ -4633,7 +4633,7 @@ def LifetimeOwnerDocs : Documentation {
 The attribute ``[[gsl::Owner(T)]]`` applies to structs and classes that own an
 object of type ``T``:
 
-.. code-block:: c++
+.. code::
 
   class [[gsl::Owner(int)]] IntOwner {
   private:
@@ -4659,7 +4659,7 @@ def LifetimePointerDocs : Documentation {
 The attribute ``[[gsl::Pointer(T)]]`` applies to structs and classes that behave
 like pointers to an object of type ``T``:
 
-.. code-block:: c++
+.. code::
 
   class [[gsl::Pointer(int)]] IntPointer {
   private:
@@ -4718,7 +4718,7 @@ def NoBuiltinDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
 .. Note:: This attribute is not yet fully implemented, it is validated but has
-no effect on the generated code.
+          no effect on the generated code.
 
 The ``__attribute__((no_builtin))`` is similar to the ``-fno-builtin`` flag
 except it is specific to the body of a function. The attribute may also be
@@ -4852,4 +4852,29 @@ other than overloading.
   int32x4_t result = function();
 
     }];
+}
+
+def ArmCmseNSCallDocs : Documentation {
+  let Category = DocCatType;
+  let Content = [{
+This attribute declares a non-secure function type.  When compiling for secure
+state, a call to such a function would switch from secure to non-secure state.
+All non-secure function calls must happen only through a function pointer, and
+a non-secure function type should only be used as a base type of a pointer.
+See `ARMv8-M Security Extensions: Requirements on Development
+Tools - Engineering Specification Documentation
+<https://developer.arm.com/docs/ecm0359818/latest/>`_ for more information.
+  }];
+}
+
+def ArmCmseNSEntryDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+This attribute declares a function that can be called from non-secure state, or
+from secure state. Entering from and returning to non-secure state would switch
+to and from secure state, respectively, and prevent flow of information
+to non-secure state, except via return values. See `ARMv8-M Security Extensions:
+Requirements on Development Tools - Engineering Specification Documentation
+<https://developer.arm.com/docs/ecm0359818/latest/>`_ for more information.
+  }];
 }

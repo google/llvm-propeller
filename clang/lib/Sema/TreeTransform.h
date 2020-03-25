@@ -28,6 +28,7 @@
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtOpenMP.h"
+#include "clang/Basic/OpenMPKinds.h"
 #include "clang/Sema/Designator.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
@@ -156,6 +157,13 @@ public:
   /// replaces the original. In this case, we'll reuse mangling numbers from
   /// existing lambdas.
   bool ReplacingOriginal() { return false; }
+
+  /// Wether CXXConstructExpr can be skipped when they are implicit.
+  /// They will be reconstructed when used if needed.
+  /// This is usefull when the user that cause rebuilding of the
+  /// CXXConstructExpr is outside of the expression at which the TreeTransform
+  /// started.
+  bool AllowSkippingCXXConstructExpr() { return true; }
 
   /// Returns the location of the entity being transformed, if that
   /// information was not available elsewhere in the AST.
@@ -1710,17 +1718,16 @@ public:
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
-  OMPClause *RebuildOMPReductionClause(ArrayRef<Expr *> VarList,
-                                       SourceLocation StartLoc,
-                                       SourceLocation LParenLoc,
-                                       SourceLocation ColonLoc,
-                                       SourceLocation EndLoc,
-                                       CXXScopeSpec &ReductionIdScopeSpec,
-                                       const DeclarationNameInfo &ReductionId,
-                                       ArrayRef<Expr *> UnresolvedReductions) {
+  OMPClause *RebuildOMPReductionClause(
+      ArrayRef<Expr *> VarList, OpenMPReductionClauseModifier Modifier,
+      SourceLocation StartLoc, SourceLocation LParenLoc,
+      SourceLocation ModifierLoc, SourceLocation ColonLoc,
+      SourceLocation EndLoc, CXXScopeSpec &ReductionIdScopeSpec,
+      const DeclarationNameInfo &ReductionId,
+      ArrayRef<Expr *> UnresolvedReductions) {
     return getSema().ActOnOpenMPReductionClause(
-        VarList, StartLoc, LParenLoc, ColonLoc, EndLoc, ReductionIdScopeSpec,
-        ReductionId, UnresolvedReductions);
+        VarList, Modifier, StartLoc, LParenLoc, ModifierLoc, ColonLoc, EndLoc,
+        ReductionIdScopeSpec, ReductionId, UnresolvedReductions);
   }
 
   /// Build a new OpenMP 'task_reduction' clause.
@@ -2044,6 +2051,30 @@ public:
                                          SourceLocation EndLoc) {
     return getSema().ActOnOpenMPNontemporalClause(VarList, StartLoc, LParenLoc,
                                                   EndLoc);
+  }
+
+  /// Build a new OpenMP 'inclusive' clause.
+  ///
+  /// By default, performs semantic analysis to build the new OpenMP clause.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPInclusiveClause(ArrayRef<Expr *> VarList,
+                                       SourceLocation StartLoc,
+                                       SourceLocation LParenLoc,
+                                       SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPInclusiveClause(VarList, StartLoc, LParenLoc,
+                                                EndLoc);
+  }
+
+  /// Build a new OpenMP 'exclusive' clause.
+  ///
+  /// By default, performs semantic analysis to build the new OpenMP clause.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPExclusiveClause(ArrayRef<Expr *> VarList,
+                                       SourceLocation StartLoc,
+                                       SourceLocation LParenLoc,
+                                       SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPExclusiveClause(VarList, StartLoc, LParenLoc,
+                                                EndLoc);
   }
 
   /// Build a new OpenMP 'order' clause.
@@ -3471,6 +3502,11 @@ public:
     SourceRange Range{BuiltinLoc, RParenLoc};
     return getSema().BuildAtomicExpr(Range, Range, RParenLoc, SubExprs, Op,
                                      Sema::AtomicArgumentOrder::AST);
+  }
+
+  ExprResult RebuildRecoveryExpr(SourceLocation BeginLoc, SourceLocation EndLoc,
+                                 ArrayRef<Expr *> SubExprs) {
+    return getSema().CreateRecoveryExpr(BeginLoc, EndLoc, SubExprs);
   }
 
 private:
@@ -8298,6 +8334,17 @@ TreeTransform<Derived>::TransformOMPDepobjDirective(OMPDepobjDirective *D) {
 
 template <typename Derived>
 StmtResult
+TreeTransform<Derived>::TransformOMPScanDirective(OMPScanDirective *D) {
+  DeclarationNameInfo DirName;
+  getDerived().getSema().StartOpenMPDSABlock(OMPD_scan, DirName, nullptr,
+                                             D->getBeginLoc());
+  StmtResult Res = getDerived().TransformOMPExecutableDirective(D);
+  getDerived().getSema().EndOpenMPDSABlock(Res.get());
+  return Res;
+}
+
+template <typename Derived>
+StmtResult
 TreeTransform<Derived>::TransformOMPOrderedDirective(OMPOrderedDirective *D) {
   DeclarationNameInfo DirName;
   getDerived().getSema().StartOpenMPDSABlock(OMPD_ordered, DirName, nullptr,
@@ -9041,8 +9088,9 @@ TreeTransform<Derived>::TransformOMPReductionClause(OMPReductionClause *C) {
       UnresolvedReductions.push_back(nullptr);
   }
   return getDerived().RebuildOMPReductionClause(
-      Vars, C->getBeginLoc(), C->getLParenLoc(), C->getColonLoc(),
-      C->getEndLoc(), ReductionIdScopeSpec, NameInfo, UnresolvedReductions);
+      Vars, C->getModifier(), C->getBeginLoc(), C->getLParenLoc(),
+      C->getModifierLoc(), C->getColonLoc(), C->getEndLoc(),
+      ReductionIdScopeSpec, NameInfo, UnresolvedReductions);
 }
 
 template <typename Derived>
@@ -9505,6 +9553,36 @@ TreeTransform<Derived>::TransformOMPNontemporalClause(OMPNontemporalClause *C) {
 
 template <typename Derived>
 OMPClause *
+TreeTransform<Derived>::TransformOMPInclusiveClause(OMPInclusiveClause *C) {
+  llvm::SmallVector<Expr *, 16> Vars;
+  Vars.reserve(C->varlist_size());
+  for (auto *VE : C->varlists()) {
+    ExprResult EVar = getDerived().TransformExpr(cast<Expr>(VE));
+    if (EVar.isInvalid())
+      return nullptr;
+    Vars.push_back(EVar.get());
+  }
+  return getDerived().RebuildOMPInclusiveClause(
+      Vars, C->getBeginLoc(), C->getLParenLoc(), C->getEndLoc());
+}
+
+template <typename Derived>
+OMPClause *
+TreeTransform<Derived>::TransformOMPExclusiveClause(OMPExclusiveClause *C) {
+  llvm::SmallVector<Expr *, 16> Vars;
+  Vars.reserve(C->varlist_size());
+  for (auto *VE : C->varlists()) {
+    ExprResult EVar = getDerived().TransformExpr(cast<Expr>(VE));
+    if (EVar.isInvalid())
+      return nullptr;
+    Vars.push_back(EVar.get());
+  }
+  return getDerived().RebuildOMPExclusiveClause(
+      Vars, C->getBeginLoc(), C->getLParenLoc(), C->getEndLoc());
+}
+
+template <typename Derived>
+OMPClause *
 TreeTransform<Derived>::TransformOMPOrderClause(OMPOrderClause *C) {
   return getDerived().RebuildOMPOrderClause(C->getKind(), C->getKindKwLoc(),
                                             C->getBeginLoc(), C->getLParenLoc(),
@@ -9792,6 +9870,24 @@ template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformTypoExpr(TypoExpr *E) {
   return E;
+}
+
+template <typename Derived>
+ExprResult TreeTransform<Derived>::TransformRecoveryExpr(RecoveryExpr *E) {
+  llvm::SmallVector<Expr *, 8> Children;
+  bool Changed = false;
+  for (Expr *C : E->subExpressions()) {
+    ExprResult NewC = getDerived().TransformExpr(C);
+    if (NewC.isInvalid())
+      return ExprError();
+    Children.push_back(NewC.get());
+
+    Changed |= NewC.get() != C;
+  }
+  if (!getDerived().AlwaysRebuild() && !Changed)
+    return E;
+  return getDerived().RebuildRecoveryExpr(E->getBeginLoc(), E->getEndLoc(),
+                                          Children);
 }
 
 template<typename Derived>
@@ -11658,10 +11754,11 @@ TreeTransform<Derived>::TransformCXXConstructExpr(CXXConstructExpr *E) {
   // CXXConstructExprs other than for list-initialization and
   // CXXTemporaryObjectExpr are always implicit, so when we have
   // a 1-argument construction we just transform that argument.
-  if ((E->getNumArgs() == 1 ||
-       (E->getNumArgs() > 1 && getDerived().DropCallArgument(E->getArg(1)))) &&
-      (!getDerived().DropCallArgument(E->getArg(0))) &&
-      !E->isListInitialization())
+  if (getDerived().AllowSkippingCXXConstructExpr() &&
+      ((E->getNumArgs() == 1 ||
+        (E->getNumArgs() > 1 && getDerived().DropCallArgument(E->getArg(1)))) &&
+       (!getDerived().DropCallArgument(E->getArg(0))) &&
+       !E->isListInitialization()))
     return getDerived().TransformExpr(E->getArg(0));
 
   TemporaryBase Rebase(*this, /*FIXME*/ E->getBeginLoc(), DeclarationName());

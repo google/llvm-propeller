@@ -376,6 +376,7 @@ static Value *simplifyX86immShift(const IntrinsicInst &II,
   auto Amt = II.getArgOperand(1);
   auto VT = cast<VectorType>(Vec->getType());
   auto SVT = VT->getElementType();
+  auto AmtVT = Amt->getType();
   unsigned VWidth = VT->getNumElements();
   unsigned BitWidth = SVT->getPrimitiveSizeInBits();
 
@@ -383,7 +384,7 @@ static Value *simplifyX86immShift(const IntrinsicInst &II,
   // generic shift. If its guaranteed to be out of range, logical shifts combine to
   // zero and arithmetic shifts are clamped to (BitWidth - 1).
   if (IsImm) {
-    assert(Amt->getType()->isIntegerTy(32) &&
+    assert(AmtVT ->isIntegerTy(32) &&
            "Unexpected shift-by-immediate type");
     KnownBits KnownAmtBits =
         llvm::computeKnownBits(Amt, II.getModule()->getDataLayout());
@@ -400,30 +401,47 @@ static Value *simplifyX86immShift(const IntrinsicInst &II,
       Amt = ConstantInt::get(SVT, BitWidth - 1);
       return Builder.CreateAShr(Vec, Builder.CreateVectorSplat(VWidth, Amt));
     }
+  } else {
+    // Ensure the first element has an in-range value and the rest of the
+    // elements in the bottom 64 bits are zero.
+    assert(AmtVT->isVectorTy() && AmtVT->getPrimitiveSizeInBits() == 128 &&
+           cast<VectorType>(AmtVT)->getElementType() == SVT &&
+           "Unexpected shift-by-scalar type");
+    unsigned NumAmtElts = cast<VectorType>(AmtVT)->getNumElements();
+    APInt DemandedLower = APInt::getOneBitSet(NumAmtElts, 0);
+    APInt DemandedUpper = APInt::getBitsSet(NumAmtElts, 1, NumAmtElts / 2);
+    KnownBits KnownLowerBits = llvm::computeKnownBits(
+        Amt, DemandedLower, II.getModule()->getDataLayout());
+    KnownBits KnownUpperBits = llvm::computeKnownBits(
+        Amt, DemandedUpper, II.getModule()->getDataLayout());
+    if (KnownLowerBits.getMaxValue().ult(BitWidth) &&
+        (DemandedUpper.isNullValue() || KnownUpperBits.isZero())) {
+      SmallVector<uint32_t, 16> ZeroSplat(VWidth, 0);
+      Amt = Builder.CreateShuffleVector(Amt, Amt, ZeroSplat);
+      return (LogicalShift ? (ShiftLeft ? Builder.CreateShl(Vec, Amt)
+                                        : Builder.CreateLShr(Vec, Amt))
+                           : Builder.CreateAShr(Vec, Amt));
+    }
   }
 
   // Simplify if count is constant vector.
-  auto CAZ = dyn_cast<ConstantAggregateZero>(Amt);
   auto CDV = dyn_cast<ConstantDataVector>(Amt);
-  if (!CAZ && !CDV)
+  if (!CDV)
     return nullptr;
 
-  APInt Count(64, 0);
-  if (CDV) {
-    // SSE2/AVX2 uses all the first 64-bits of the 128-bit vector
-    // operand to compute the shift amount.
-    auto VT = cast<VectorType>(CDV->getType());
-    unsigned BitWidth = VT->getElementType()->getPrimitiveSizeInBits();
-    assert((64 % BitWidth) == 0 && "Unexpected packed shift size");
-    unsigned NumSubElts = 64 / BitWidth;
+  // SSE2/AVX2 uses all the first 64-bits of the 128-bit vector
+  // operand to compute the shift amount.
+  assert(AmtVT->isVectorTy() && AmtVT->getPrimitiveSizeInBits() == 128 &&
+         cast<VectorType>(AmtVT)->getElementType() == SVT &&
+         "Unexpected shift-by-scalar type");
 
-    // Concatenate the sub-elements to create the 64-bit value.
-    for (unsigned i = 0; i != NumSubElts; ++i) {
-      unsigned SubEltIdx = (NumSubElts - 1) - i;
-      auto SubElt = cast<ConstantInt>(CDV->getElementAsConstant(SubEltIdx));
-      Count <<= BitWidth;
-      Count |= SubElt->getValue().zextOrTrunc(64);
-    }
+  // Concatenate the sub-elements to create the 64-bit value.
+  APInt Count(64, 0);
+  for (unsigned i = 0, NumSubElts = 64 / BitWidth; i != NumSubElts; ++i) {
+    unsigned SubEltIdx = (NumSubElts - 1) - i;
+    auto SubElt = cast<ConstantInt>(CDV->getElementAsConstant(SubEltIdx));
+    Count <<= BitWidth;
+    Count |= SubElt->getValue().zextOrTrunc(64);
   }
 
   // If shift-by-zero then just return the original value.
@@ -1304,19 +1322,39 @@ static Instruction *foldCttzCtlz(IntrinsicInst &II, InstCombiner &IC) {
 static Instruction *foldCtpop(IntrinsicInst &II, InstCombiner &IC) {
   assert(II.getIntrinsicID() == Intrinsic::ctpop &&
          "Expected ctpop intrinsic");
+  Type *Ty = II.getType();
+  unsigned BitWidth = Ty->getScalarSizeInBits();
   Value *Op0 = II.getArgOperand(0);
   Value *X;
+
   // ctpop(bitreverse(x)) -> ctpop(x)
   // ctpop(bswap(x)) -> ctpop(x)
   if (match(Op0, m_BitReverse(m_Value(X))) || match(Op0, m_BSwap(m_Value(X))))
     return IC.replaceOperand(II, 0, X);
 
+  // ctpop(x | -x) -> bitwidth - cttz(x, false)
+  if (Op0->hasOneUse() &&
+      match(Op0, m_c_Or(m_Value(X), m_Neg(m_Deferred(X))))) {
+    Function *F =
+        Intrinsic::getDeclaration(II.getModule(), Intrinsic::cttz, Ty);
+    auto *Cttz = IC.Builder.CreateCall(F, {X, IC.Builder.getFalse()});
+    auto *Bw = ConstantInt::get(Ty, APInt(BitWidth, BitWidth));
+    return IC.replaceInstUsesWith(II, IC.Builder.CreateSub(Bw, Cttz));
+  }
+
+  // ctpop(~x & (x - 1)) -> cttz(x, false)
+  if (match(Op0,
+            m_c_And(m_Not(m_Value(X)), m_Add(m_Deferred(X), m_AllOnes())))) {
+    Function *F =
+        Intrinsic::getDeclaration(II.getModule(), Intrinsic::cttz, Ty);
+    return CallInst::Create(F, {X, IC.Builder.getFalse()});
+  }
+
   // FIXME: Try to simplify vectors of integers.
-  auto *IT = dyn_cast<IntegerType>(Op0->getType());
+  auto *IT = dyn_cast<IntegerType>(Ty);
   if (!IT)
     return nullptr;
 
-  unsigned BitWidth = IT->getBitWidth();
   KnownBits Known(BitWidth);
   IC.computeKnownBits(Op0, Known, 0, &II);
 
@@ -4565,6 +4603,10 @@ Instruction *InstCombiner::visitCallBase(CallBase &Call) {
     // the fallthrough check.
     if (I) return eraseInstFromFunction(*I);
   }
+
+  if (!Call.use_empty() && !Call.isMustTailCall())
+    if (Value *ReturnedArg = Call.getReturnedArgOperand())
+      return replaceInstUsesWith(Call, ReturnedArg);
 
   if (isAllocLikeFn(&Call, &TLI))
     return visitAllocSite(Call);

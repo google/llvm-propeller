@@ -357,6 +357,8 @@ llvm::APSInt ConstantExpr::getResultAsAPSInt() const {
 }
 
 APValue ConstantExpr::getAPValueResult() const {
+  assert(hasAPValueResult());
+
   switch (ConstantExprBits.ResultKind) {
   case ConstantExpr::RSK_APValue:
     return APValueResult();
@@ -2373,6 +2375,7 @@ bool Expr::isUnusedResultAWarning(const Expr *&WarnE, SourceLocation &Loc,
   // If we don't know precisely what we're looking at, let's not warn.
   case UnresolvedLookupExprClass:
   case CXXUnresolvedConstructExprClass:
+  case RecoveryExprClass:
     return false;
 
   case CXXTemporaryObjectExprClass:
@@ -2722,9 +2725,6 @@ static Expr *IgnoreParensSingleStep(Expr *E) {
       return CE->getChosenSubExpr();
   }
 
-  else if (auto *CE = dyn_cast<ConstantExpr>(E))
-    return CE->getSubExpr();
-
   return E;
 }
 
@@ -3010,6 +3010,9 @@ bool Expr::isConstantInitializer(ASTContext &Ctx, bool IsForRef,
 
   switch (getStmtClass()) {
   default: break;
+  case Stmt::ExprWithCleanupsClass:
+    return cast<ExprWithCleanups>(this)->getSubExpr()->isConstantInitializer(
+        Ctx, IsForRef, Culprit);
   case StringLiteralClass:
   case ObjCEncodeExprClass:
     return true;
@@ -3225,6 +3228,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx,
   case SubstNonTypeTemplateParmPackExprClass:
   case FunctionParmPackExprClass:
   case TypoExprClass:
+  case RecoveryExprClass:
   case CXXFoldExprClass:
     llvm_unreachable("shouldn't see dependent / unresolved nodes here");
 
@@ -4464,4 +4468,31 @@ QualType OMPArraySectionExpr::getBaseOriginalType(const Expr *Base) {
     }
   }
   return OriginalTy;
+}
+
+RecoveryExpr::RecoveryExpr(ASTContext &Ctx, SourceLocation BeginLoc,
+                           SourceLocation EndLoc, ArrayRef<Expr *> SubExprs)
+    : Expr(RecoveryExprClass, Ctx.DependentTy, VK_LValue, OK_Ordinary),
+      BeginLoc(BeginLoc), EndLoc(EndLoc), NumExprs(SubExprs.size()) {
+#ifndef NDEBUG
+  for (auto *E : SubExprs)
+    assert(E != nullptr);
+#endif
+
+  llvm::copy(SubExprs, getTrailingObjects<Expr *>());
+  setDependence(computeDependence(this));
+}
+
+RecoveryExpr *RecoveryExpr::Create(ASTContext &Ctx, SourceLocation BeginLoc,
+                                   SourceLocation EndLoc,
+                                   ArrayRef<Expr *> SubExprs) {
+  void *Mem = Ctx.Allocate(totalSizeToAlloc<Expr *>(SubExprs.size()),
+                           alignof(RecoveryExpr));
+  return new (Mem) RecoveryExpr(Ctx, BeginLoc, EndLoc, SubExprs);
+}
+
+RecoveryExpr *RecoveryExpr::CreateEmpty(ASTContext &Ctx, unsigned NumSubExprs) {
+  void *Mem = Ctx.Allocate(totalSizeToAlloc<Expr *>(NumSubExprs),
+                           alignof(RecoveryExpr));
+  return new (Mem) RecoveryExpr(EmptyShell());
 }
