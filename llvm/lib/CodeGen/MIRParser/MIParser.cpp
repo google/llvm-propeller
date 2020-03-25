@@ -495,6 +495,7 @@ public:
   bool parseOffset(int64_t &Offset);
   bool parseAlignment(unsigned &Alignment);
   bool parseAddrspace(unsigned &Addrspace);
+  bool parseSectionID(Optional<unsigned> &SID);
   bool parseOperandsOffset(MachineOperand &Op);
   bool parseIRValue(const Value *&V);
   bool parseMemoryOperandFlag(MachineMemOperand::Flags &Flags);
@@ -619,6 +620,25 @@ bool MIParser::consumeIfPresent(MIToken::TokenKind TokenKind) {
   return true;
 }
 
+// Parse Machine Basic Block Section ID.
+bool MIParser::parseSectionID(Optional<unsigned> &SID) {
+  assert(Token.is(MIToken::kw_bbsections));
+  lex();
+  const StringRef &S = Token.stringValue();
+  if (S == "Exception")
+    SID = MachineBasicBlock::ExceptionSectionID;
+  else if (S == "Cold")
+    SID = MachineBasicBlock::ColdSectionID;
+  else {
+    unsigned V;
+    if (S.getAsInteger(10, V))
+      return error("Unknown Section Type");
+    SID = V;
+  }
+  lex();
+  return false;
+}
+
 bool MIParser::parseBasicBlockDefinition(
     DenseMap<unsigned, MachineBasicBlock *> &MBBSlots) {
   assert(Token.is(MIToken::MachineBasicBlockLabel));
@@ -630,6 +650,7 @@ bool MIParser::parseBasicBlockDefinition(
   lex();
   bool HasAddressTaken = false;
   bool IsLandingPad = false;
+  Optional<unsigned> SectionID;
   unsigned Alignment = 0;
   BasicBlock *BB = nullptr;
   if (consumeIfPresent(MIToken::lparen)) {
@@ -653,6 +674,10 @@ bool MIParser::parseBasicBlockDefinition(
         if (parseIRBlock(BB, MF.getFunction()))
           return true;
         lex();
+        break;
+      case MIToken::kw_bbsections:
+        if (parseSectionID(SectionID))
+          return true;
         break;
       default:
         break;
@@ -683,6 +708,10 @@ bool MIParser::parseBasicBlockDefinition(
   if (HasAddressTaken)
     MBB->setHasAddressTaken();
   MBB->setIsEHPad(IsLandingPad);
+  if (SectionID.hasValue()) {
+    MBB->setSectionID(SectionID.getValue());
+    MF.setBBSectionsType(BasicBlockSection::List);
+  }
   return false;
 }
 
@@ -750,10 +779,10 @@ bool MIParser::parseBasicBlockLiveins(MachineBasicBlock &MBB) {
       if (Token.isNot(MIToken::IntegerLiteral) &&
           Token.isNot(MIToken::HexLiteral))
         return error("expected a lane mask");
-      static_assert(sizeof(LaneBitmask::Type) == sizeof(unsigned),
+      static_assert(sizeof(LaneBitmask::Type) == sizeof(uint64_t),
                     "Use correct get-function for lane mask");
       LaneBitmask::Type V;
-      if (getUnsigned(V))
+      if (getUint64(V))
         return error("invalid lane mask value");
       Mask = LaneBitmask(V);
       lex();

@@ -64,7 +64,7 @@ public:
 
   void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator MBBI,
-                                 const DebugLoc &DL) const;
+                                 const DebugLoc &DL, bool IsPrologue) const;
 
   /// emitProlog/emitEpilog - These methods insert prolog and epilog code into
   /// the function.
@@ -90,10 +90,11 @@ public:
                                  ArrayRef<CalleeSavedInfo> CSI,
                                  const TargetRegisterInfo *TRI) const override;
 
-  bool restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
-                                  MachineBasicBlock::iterator MI,
-                                  std::vector<CalleeSavedInfo> &CSI,
-                                  const TargetRegisterInfo *TRI) const override;
+  bool
+  restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator MI,
+                              MutableArrayRef<CalleeSavedInfo> CSI,
+                              const TargetRegisterInfo *TRI) const override;
 
   bool hasFP(const MachineFunction &MF) const override;
   bool hasReservedCallFrame(const MachineFunction &MF) const override;

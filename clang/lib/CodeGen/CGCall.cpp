@@ -1748,11 +1748,10 @@ void CodeGenModule::ConstructDefaultFnAttrList(StringRef Name, bool HasOptnone,
     if (CodeGenOpts.NullPointerIsValid)
       FuncAttrs.addAttribute("null-pointer-is-valid", "true");
 
-    // TODO: Omit attribute when the default is IEEE.
-    if (CodeGenOpts.FPDenormalMode.isValid())
+    if (CodeGenOpts.FPDenormalMode != llvm::DenormalMode::getIEEE())
       FuncAttrs.addAttribute("denormal-fp-math",
                              CodeGenOpts.FPDenormalMode.str());
-    if (CodeGenOpts.FP32DenormalMode.isValid()) {
+    if (CodeGenOpts.FP32DenormalMode != CodeGenOpts.FPDenormalMode) {
       FuncAttrs.addAttribute(
           "denormal-fp-math-f32",
           CodeGenOpts.FP32DenormalMode.str());
@@ -4497,8 +4496,9 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // Update the largest vector width if any arguments have vector types.
   for (unsigned i = 0; i < IRCallArgs.size(); ++i) {
     if (auto *VT = dyn_cast<llvm::VectorType>(IRCallArgs[i]->getType()))
-      LargestVectorWidth = std::max((uint64_t)LargestVectorWidth,
-                                   VT->getPrimitiveSizeInBits().getFixedSize());
+      LargestVectorWidth =
+          std::max((uint64_t)LargestVectorWidth,
+                   VT->getPrimitiveSizeInBits().getKnownMinSize());
   }
 
   // Compute the calling convention and attributes.
@@ -4612,8 +4612,9 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
   // Update largest vector width from the return type.
   if (auto *VT = dyn_cast<llvm::VectorType>(CI->getType()))
-    LargestVectorWidth = std::max((uint64_t)LargestVectorWidth,
-                                  VT->getPrimitiveSizeInBits().getFixedSize());
+    LargestVectorWidth =
+        std::max((uint64_t)LargestVectorWidth,
+                 VT->getPrimitiveSizeInBits().getKnownMinSize());
 
   // Insert instrumentation or attach profile metadata at indirect call sites.
   // For more details, see the comment before the definition of

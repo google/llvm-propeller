@@ -635,6 +635,21 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
     OS << "align " << MBB.getAlignment().value();
     HasAttributes = true;
   }
+  if (MBB.getSectionID().hasValue()) {
+    OS << (HasAttributes ? ", " : " (");
+    OS << "bbsections ";
+    switch (MBB.getSectionID().getValue()) {
+      case MachineBasicBlock::ExceptionSectionID:
+        OS << "Excetion";
+        break;
+      case MachineBasicBlock::ColdSectionID:
+        OS << "Cold";
+        break;
+      default:
+        OS << MBB.getSectionID();
+    }
+    HasAttributes = true;
+  }
   if (HasAttributes)
     OS << ")";
   OS << ":\n";

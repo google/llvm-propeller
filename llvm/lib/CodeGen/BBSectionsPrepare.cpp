@@ -14,6 +14,60 @@
 // profile information only the subset of basic blocks with profiles are placed
 // in a separate section and the rest are grouped in a cold section.
 //
+// Basic Block Sections
+// ====================
+//
+// With option, -fbasicblock-sections=, each basic block could be placed in a
+// unique ELF text section in the object file along with a symbol labelling the
+// basic block. The linker can then order the basic block sections in any
+// arbitrary sequence which when done correctly can encapsulate block layout,
+// function layout and function splitting optimizations. However, there are a
+// couple of challenges to be addressed for this to be feasible:
+//
+// 1. The compiler must not allow any implicit fall-through between any two
+//    adjacent basic blocks as they could be reordered at link time to be
+//    non-adjacent. In other words, the compiler must make a fall-through
+//    between adjacent basic blocks explicit by retaining the direct jump
+//    instruction that jumps to the next basic block.
+//
+// 2. All inter-basic block branch targets would now need to be resolved by the
+//    linker as they cannot be calculated during compile time. This is done
+//    using static relocations. Further, the compiler tries to use short branch
+//    instructions on some ISAs for small branch offsets. This is not possible
+//    with basic block sections as the offset is not determined at compile time,
+//    and long branch instructions have to be used everywhere.
+//
+// 3. Each additional section bloats object file sizes by tens of bytes.  The
+//    number of basic blocks can be potentially very large compared to the size
+//    of functions and can bloat object sizes significantly. Option
+//    fbasicblock-sections= also takes a file path which can be used to specify
+//    a subset of basic blocks that needs unique sections to keep the bloats
+//    small.
+//
+// 4. Debug Information (DebugInfo) and Call Frame Information (CFI) emission
+//    needs special handling with basic block sections. DebugInfo needs to be
+//    emitted with more relocations as basic block sections can break a
+//    function into potentially several disjoint pieces, and CFI needs to be
+//    emitted per basic block. This also bloats the object file and binary
+//    sizes.
+//
+// Basic Block Labels
+// ==================
+//
+// With -fbasicblock-sections=labels, or when a basic block is placed in a
+// unique section, it is labelled with a symbol.  This allows easy mapping of
+// virtual addresses from PMU profiles back to the corresponding basic blocks.
+// Since the number of basic blocks is large, the labeling bloats the symbol
+// table sizes and the string table sizes significantly. While the binary size
+// does increase, it does not affect performance as the symbol table is not
+// loaded in memory during run-time. The string table size bloat is kept very
+// minimal using a unary naming scheme that uses string suffix compression. The
+// basic blocks for function foo are named "a.BB.foo", "aa.BB.foo", ... This
+// turns out to be very good for string table sizes and the bloat in the string
+// table size for a very large binary is ~8 %.  The naming also allows using
+// the --symbol-ordering-file option in LLD to arbitrarily reorder the
+// sections.
+//
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallSet.h"
@@ -45,10 +99,16 @@ public:
   static char ID;
   StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> BBSectionsList;
   StringMap<StringRef> FuncAliases;
-  std::string ProfileFileName;
+  const MemoryBuffer *MBuf = nullptr;
 
-  BBSectionsPrepare(const std::string &ProfileFile)
-      : MachineFunctionPass(ID), ProfileFileName(ProfileFile){};
+  BBSectionsPrepare(const MemoryBuffer *Buf)
+      : MachineFunctionPass(ID), MBuf(Buf) {
+    initializeBBSectionsPreparePass(*PassRegistry::getPassRegistry());
+  };
+
+  BBSectionsPrepare() : MachineFunctionPass(ID) {
+    initializeBBSectionsPreparePass(*PassRegistry::getPassRegistry());
+  }
 
   StringRef getPassName() const override {
     return "Basic Block Sections Analysis";
@@ -67,6 +127,9 @@ public:
 } // end anonymous namespace
 
 char BBSectionsPrepare::ID = 0;
+INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
+                "Determine if a basic block needs a special section", false,
+                false)
 
 // This inserts an unconditional branch at the end of MBB to the next basic
 // block S if and only if the control-flow implicitly falls through from MBB to
@@ -127,9 +190,11 @@ static bool assignSectionsAndSortBasicBlocks(
       MBB.setSectionID(MBB.getNumber());
     else if (BBIndexMap.count(MBB.getNumber()))
       MBB.setSectionID(BBIndexMap.at(MBB.getNumber()).first);
+    else
+      MBB.setSectionID(MachineBasicBlock::ColdSectionID);
 
     if (MBB.isEHPad())
-      EHPadsSections.insert(MBB.getSectionID());
+      EHPadsSections.insert(MBB.getSectionID().getValue());
   }
 
   // If EHPads are in more than one section, we move all of them to a specific
@@ -148,15 +213,15 @@ static bool assignSectionsAndSortBasicBlocks(
     insertUnconditionalFallthroughBranch(MBB);
   }
 
-  auto EntrySectionID = MF.front().getSectionID();
+  auto EntrySectionID = MF.front().getSectionID().getValue();
 
   // We sort all basic blocks to make sure the basic blocks of every cluster are
   // contiguous and in the given order. Furthermore, clusters are ordered in
   // increasing order of their section IDs, with the exception and the
   // cold section placed at the end of the function.
   MF.sort([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    auto XSectionID = X.getSectionID();
-    auto YSectionID = Y.getSectionID();
+    auto XSectionID = X.getSectionID().getValue();
+    auto YSectionID = Y.getSectionID().getValue();
     // If the two basic block are in the same section, the order is decided by
     // their order within the section.
     if (XSectionID == YSectionID)
@@ -180,6 +245,7 @@ static bool assignSectionsAndSortBasicBlocks(
       if (!TII->analyzeBranch(MBB, TBB, FBB, Cond))
         MBB.updateTerminator();
     }
+
   return true;
 }
 
@@ -197,11 +263,11 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   if (BBSectionsType == BasicBlockSection::Labels) {
     MF.setBBSectionsType(BBSectionsType);
     MF.createBBLabels();
+    return true;
   }
 
-  if (BBSectionsType == BasicBlockSection::Labels ||
-      (BBSectionsType == BasicBlockSection::List &&
-       BBSectionsList.find(MF.getName()) == BBSectionsList.end()))
+  if (BBSectionsType == BasicBlockSection::List &&
+      BBSectionsList.find(MF.getName()) == BBSectionsList.end())
     return true;
 
   MF.setBBSectionsType(BBSectionsType);
@@ -224,20 +290,13 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !foo
 // !!1 2
 // !!4
-static bool getBBSectionsList(StringRef profFileName,
+static bool getBBSectionsList(const MemoryBuffer *MBuf,
                               StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &bbClusterMap,
                               StringMap<StringRef> &funcAliasMap) {
-  if (profFileName.empty())
+  if (!MBuf)
     return false;
 
-  auto MbOrErr = MemoryBuffer::getFile(profFileName);
-  if (std::error_code EC = MbOrErr.getError()) {
-    errs() << "Could not open profile: " << EC.message();
-    return false;
-  }
-
-  MemoryBuffer &Buffer = *MbOrErr.get();
-  line_iterator LineIt(Buffer, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
+  line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
   StringMap<SmallVector<SmallVector<unsigned, 4>, 2>>::iterator fi = bbClusterMap.end();
 
@@ -251,7 +310,7 @@ static bool getBBSectionsList(StringRef profFileName,
     // Check for second "!" which indicates a cluster of basic blocks.
     if (s.consume_front("!")) {
       if (fi == bbClusterMap.end()) {
-        errs() << "Could not process profile: " << profFileName << " at line " << Twine(LineIt.line_number()) << " Does not follow a function name.\n";
+        errs() << "Could not process profile: " << MBuf->getBufferIdentifier()  << " at line " << Twine(LineIt.line_number()) << " Does not follow a function name.\n";
         return false;
       }
       std::istringstream iss(s.str());
@@ -262,11 +321,11 @@ static bool getBBSectionsList(StringRef profFileName,
       for (auto& BBIndexStr : BBIndexes) {
         unsigned BBIndex;
         if (StringRef(BBIndexStr).getAsInteger(10, BBIndex)) {
-          errs() << "Could not process profile: " << profFileName << " at line " << Twine(LineIt.line_number()) << " " << BBIndexStr << " is not a number!\n";
+          errs() << "Could not process profile: " << MBuf->getBufferIdentifier() << " at line " << Twine(LineIt.line_number()) << " " << BBIndexStr << " is not a number!\n";
           return false;
         }
         if(!BBIndex && !fi->second.back().empty()) {
-          errs() << "Could not process profile " << profFileName << " at line " << Twine(LineIt.line_number()) << " Entry BB in the middle of the BB Cluster list!\n";
+          errs() << "Could not process profile " << MBuf->getBufferIdentifier() << " at line " << Twine(LineIt.line_number()) << " Entry BB in the middle of the BB Cluster list!\n";
           return false;
         }
         fi->second.back().push_back(BBIndex);
@@ -288,10 +347,10 @@ static bool getBBSectionsList(StringRef profFileName,
 }
 
 bool BBSectionsPrepare::doInitialization(Module &M) {
-  if (!ProfileFileName.empty())
-    if (!getBBSectionsList(ProfileFileName, BBSectionsList, FuncAliases))
+  if (MBuf)
+    if (!getBBSectionsList(MBuf, BBSectionsList, FuncAliases))
       BBSectionsList.clear();
-  return false;
+  return true;
 }
 
 void BBSectionsPrepare::getAnalysisUsage(AnalysisUsage &AU) const {
@@ -300,6 +359,6 @@ void BBSectionsPrepare::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 MachineFunctionPass *
-llvm::createBBSectionsPreparePass(const std::string &ProfileFile) {
-  return new BBSectionsPrepare(ProfileFile);
+llvm::createBBSectionsPreparePass(const MemoryBuffer *Buf) {
+  return new BBSectionsPrepare(Buf);
 }

@@ -22,7 +22,6 @@ declare ALL_FILES=(
         clang-pro        clang/include/clang/Driver/Options.td
         clang-uif        clang/include/clang/Driver/Options.td
         clang-base       clang/lib/CodeGen/BackendUtil.cpp
-        clang-uif        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-sta        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-base       clang/lib/Driver/ToolChains/Clang.cpp
         clang-rws        clang/lib/Driver/ToolChains/Clang.cpp
@@ -31,9 +30,11 @@ declare ALL_FILES=(
         clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
+        clang-uif        clang/lib/Frontend/CompilerInvocation.cpp
         clang-base       clang/test/CodeGen/basicblock-sections.c
-        clang-uif        clang/test/CodeGen/basicblock-sections.funcnames
-        clang-uif        clang/test/CodeGen/unique_internal_funcnames.c
+        clang-base       clang/test/CodeGen/basicblock-sections.funcnames
+        clang-uif        clang/test/CodeGen/unique-internal-funcnames.c
+	clang-uif        clang/test/Driver/funique-internal-funcnames.c
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
@@ -134,6 +135,7 @@ declare ALL_FILES=(
         base_1           llvm/include/llvm/Target/TargetMachine.h
         base_1           llvm/include/llvm/Target/TargetOptions.h
 	base_1           llvm/lib/ProfileData/CMakeLists.txt
+	base_2           llvm/include/llvm/InitializePasses.h
         base_2           llvm/include/llvm/CodeGen/MachineBasicBlock.h
         base_2           llvm/include/llvm/CodeGen/MachineFunction.h
         base_2           llvm/include/llvm/CodeGen/Passes.h
@@ -147,6 +149,11 @@ declare ALL_FILES=(
         base_2           llvm/lib/CodeGen/MachineFunction.cpp
         base_2           llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
 	base_2           llvm/lib/CodeGen/TargetPassConfig.cpp
+	base_2           llvm/lib/CodeGen/MIRParser/MILexer.h
+	base_2           llvm/lib/CodeGen/MIRParser/MILexer.cpp
+	base_2           llvm/lib/CodeGen/MIRParser/MIParser.cpp
+	base_2           llvm/lib/CodeGen/MIRParser/MIRParser.cpp
+	base_2           llvm/lib/CodeGen/MIRPrinter.cpp
         base_2           llvm/lib/Target/TargetLoweringObjectFile.cpp
         base_2           llvm/test/CodeGen/X86/basicblock-sections.ll
         base_2           llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
@@ -155,6 +162,8 @@ declare ALL_FILES=(
         base_2           llvm/test/CodeGen/X86/basicblock-sections-labels.ll
 	base_2           llvm/test/CodeGen/X86/basicblock-sections-eh.ll
 	base_2           llvm/test/CodeGen/X86/basicblock-sections-cold.ll
+	base_2           llvm/test/CodeGen/X86/basicblock-sections-mir-print.ll
+	base_2           llvm/test/CodeGen/X86/basicblock-sections-mir-parse.mir
 
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h

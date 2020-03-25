@@ -6,21 +6,21 @@
 # RUN: ld.lld  %t.o -optimize-bb-jumps -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=BEFORE
 
-# BEFORE:	0000000000201120 foo:
+# BEFORE:	0000000000201120 <foo>:
 # BEFORE-NEXT:	nopl    (%rax)
 
-# BEFORE:	0000000000201123 a.BB.foo:
+# BEFORE:	0000000000201123 <a.BB.foo>:
 # BEFORE-NEXT:	nopl	(%rax)
 # BEFORE-NEXT:	je      3 <aaa.BB.foo>
 
-# BEFORE:	0000000000201128 aa.BB.foo:
+# BEFORE:	0000000000201128 <aa.BB.foo>:
 # BEFORE-NEXT:	nopl    (%rax)
 
-# BEFORE:	000000000020112b aaa.BB.foo:
+# BEFORE:	000000000020112b <aaa.BB.foo>:
 # BEFORE-NEXT:	nopl    (%rax)
 # BEFORE-NEXT:	jne     -13 <a.BB.foo>
 
-# BEFORE:	0000000000201130 aaaa.BB.foo:
+# BEFORE:	0000000000201130 <aaaa.BB.foo>:
 # BEFORE-NEXT:	nopl    (%rax)
 # BEFORE-NEXT:	retq
 
@@ -68,22 +68,22 @@
 # RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.reorder.out
 # RUN: llvm-objdump -d %t.propeller.reorder.out| FileCheck %s --check-prefix=REORDER
 
-# REORDER:	0000000000201120 foo:
+# REORDER:	0000000000201120 <foo>:
 # REORDER-NEXT:	nopl	(%rax)
 
-# REORDER:	0000000000201123 a.BB.foo:
+# REORDER:	0000000000201123 <a.BB.foo>:
 # REORDER-NEXT:	nopl	(%rax)
 # REORDER-NEXT:	jne      9 <aa.BB.foo>
 
-# REORDER:	0000000000201128 aaa.BB.foo:
+# REORDER:	0000000000201128 <aaa.BB.foo>:
 # REORDER-NEXT:	nopl    (%rax)
 # REORDER-NEXT:	jne     -10 <a.BB.foo>
 
-# REORDER:	000000000020112d aaaa.BB.foo:
+# REORDER:	000000000020112d <aaaa.BB.foo>:
 # REORDER-NEXT:	nopl    (%rax)
 # REORDER-NEXT:	retq
 
-# REORDER:	0000000000201131 aa.BB.foo:
+# REORDER:	0000000000201131 <aa.BB.foo>:
 # REORDER-NEXT:	nopl    (%rax)
 # REORDER-NEXT:	jmp	-14 <aaa.BB.foo>
 

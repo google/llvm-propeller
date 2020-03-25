@@ -48,6 +48,7 @@
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsPowerPC.h"
+#include "llvm/IR/KnowledgeRetention.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PatternMatch.h"
@@ -1787,8 +1788,11 @@ Instruction *InstCombiner::foldIntrinsicWithOverflowCommon(IntrinsicInst *II) {
 /// instructions. For normal calls, it allows visitCallBase to do the heavy
 /// lifting.
 Instruction *InstCombiner::visitCallInst(CallInst &CI) {
-  if (Value *V = SimplifyCall(&CI, SQ.getWithInstruction(&CI)))
-    return replaceInstUsesWith(CI, V);
+  // Don't try to simplify calls without uses. It will not do anything useful,
+  // but will result in the following folds being skipped.
+  if (!CI.use_empty())
+    if (Value *V = SimplifyCall(&CI, SQ.getWithInstruction(&CI)))
+      return replaceInstUsesWith(CI, V);
 
   if (isFreeCall(&CI, &TLI))
     return visitFree(CI);
@@ -1802,6 +1806,18 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
 
   IntrinsicInst *II = dyn_cast<IntrinsicInst>(&CI);
   if (!II) return visitCallBase(CI);
+
+  // For atomic unordered mem intrinsics if len is not a positive or
+  // not a multiple of element size then behavior is undefined.
+  if (auto *AMI = dyn_cast<AtomicMemIntrinsic>(II))
+    if (ConstantInt *NumBytes = dyn_cast<ConstantInt>(AMI->getLength()))
+      if (NumBytes->getSExtValue() < 0 ||
+          (NumBytes->getZExtValue() % AMI->getElementSizeInBytes() != 0)) {
+        CreateNonTerminatorUnreachable(AMI);
+        assert(AMI->getType()->isVoidTy() &&
+               "non void atomic unordered mem intrinsic");
+        return eraseInstFromFunction(*AMI);
+      }
 
   // Intrinsics cannot occur in an invoke or a callbr, so handle them here
   // instead of in visitCallBase.
@@ -2542,50 +2558,6 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       }
     }
     break;
-
-  case Intrinsic::x86_vcvtph2ps_128:
-  case Intrinsic::x86_vcvtph2ps_256: {
-    auto Arg = II->getArgOperand(0);
-    auto ArgType = cast<VectorType>(Arg->getType());
-    auto RetType = cast<VectorType>(II->getType());
-    unsigned ArgWidth = ArgType->getNumElements();
-    unsigned RetWidth = RetType->getNumElements();
-    assert(RetWidth <= ArgWidth && "Unexpected input/return vector widths");
-    assert(ArgType->isIntOrIntVectorTy() &&
-           ArgType->getScalarSizeInBits() == 16 &&
-           "CVTPH2PS input type should be 16-bit integer vector");
-    assert(RetType->getScalarType()->isFloatTy() &&
-           "CVTPH2PS output type should be 32-bit float vector");
-
-    // Constant folding: Convert to generic half to single conversion.
-    if (isa<ConstantAggregateZero>(Arg))
-      return replaceInstUsesWith(*II, ConstantAggregateZero::get(RetType));
-
-    if (isa<ConstantDataVector>(Arg)) {
-      auto VectorHalfAsShorts = Arg;
-      if (RetWidth < ArgWidth) {
-        SmallVector<uint32_t, 8> SubVecMask;
-        for (unsigned i = 0; i != RetWidth; ++i)
-          SubVecMask.push_back((int)i);
-        VectorHalfAsShorts = Builder.CreateShuffleVector(
-            Arg, UndefValue::get(ArgType), SubVecMask);
-      }
-
-      auto VectorHalfType =
-          VectorType::get(Type::getHalfTy(II->getContext()), RetWidth);
-      auto VectorHalfs =
-          Builder.CreateBitCast(VectorHalfAsShorts, VectorHalfType);
-      auto VectorFloats = Builder.CreateFPExt(VectorHalfs, RetType);
-      return replaceInstUsesWith(*II, VectorFloats);
-    }
-
-    // We only use the lowest lanes of the argument.
-    if (Value *V = SimplifyDemandedVectorEltsLow(Arg, ArgWidth, RetWidth)) {
-      II->setArgOperand(0, V);
-      return II;
-    }
-    break;
-  }
 
   case Intrinsic::x86_sse_cvtss2si:
   case Intrinsic::x86_sse_cvtss2si64:
@@ -4122,7 +4094,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     // then this one is redundant, and should be removed.
     KnownBits Known(1);
     computeKnownBits(IIOperand, Known, 0, II);
-    if (Known.isAllOnes())
+    if (Known.isAllOnes() && isAssumeWithEmptyBundle(*II))
       return eraseInstFromFunction(*II);
 
     // Update the cache of affected values for this assumption (we might be

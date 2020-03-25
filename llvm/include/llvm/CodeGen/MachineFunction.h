@@ -344,7 +344,7 @@ class MachineFunction {
   bool HasEHFunclets = false;
 
   /// Section Type for basic blocks, only relevant with basic block sections.
-  BasicBlockSection::SectionMode BBSectionsType = BasicBlockSection::None;
+  BasicBlockSection BBSectionsType = BasicBlockSection::None;
 
   /// List of C++ TypeInfo used.
   std::vector<const GlobalValue *> TypeInfos;
@@ -498,9 +498,7 @@ public:
     return BBSectionsType == BasicBlockSection::Labels;
   }
 
-  void setBBSectionsType(BasicBlockSection::SectionMode V) {
-    BBSectionsType = V;
-  }
+  void setBBSectionsType(BasicBlockSection V) { BBSectionsType = V; }
 
   /// Creates basic block Labels for this function.
   void createBBLabels();

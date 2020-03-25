@@ -16,8 +16,11 @@
 
 #include "llvm/MC/MCTargetOptions.h"
 
+#include <memory>
+
 namespace llvm {
   class MachineFunction;
+  class MemoryBuffer;
   class Module;
 
   namespace FloatABI {
@@ -63,14 +66,17 @@ namespace llvm {
     };
   }
 
-  namespace BasicBlockSection {
-  enum SectionMode {
-    None,   // Do not use Basic Block Sections.
-    All,    // Use Basic Block Sections for all functions.
-    Labels, // Do not use Basic Block Sections but label basic blocks.
-    List    // Get list of functions & BBs from a file
+  enum class BasicBlockSection {
+    All,    // Use Basic Block Sections for all basic blocks.  A section
+            // for every basic block can significantly bloat object file sizes.
+    List,   // Get list of functions & BBs from a file. Selectively enables
+            // basic block sections for a subset of basic blocks which can be
+            // used to control object size bloats from creating sections.
+    Labels, // Do not use Basic Block Sections but label basic blocks.  This
+            // is useful when associating profile counts from virtual addresses
+            // to basic blocks.
+    None    // Do not use Basic Block Sections.
   };
-  }
 
   enum class EABI {
     Unknown,
@@ -128,7 +134,8 @@ namespace llvm {
           EmulatedTLS(false), ExplicitEmulatedTLS(false), EnableIPRA(false),
           EmitStackSizeSection(false), EnableMachineOutliner(false),
           SupportsDefaultOutlining(false), EmitAddrsig(false),
-          EnableDebugEntryValues(false), ForceDwarfFrameSection(false) {}
+          EmitCallSiteInfo(false), EnableDebugEntryValues(false),
+          ForceDwarfFrameSection(false) {}
 
     /// PrintMachineCode - This flag is enabled when the -print-machineinstrs
     /// option is specified on the command line, and should enable debugging
@@ -269,11 +276,16 @@ namespace llvm {
     unsigned EmitAddrsig : 1;
 
     /// Emit basic blocks into separate sections.
-    BasicBlockSection::SectionMode BBSections = BasicBlockSection::None;
+    BasicBlockSection BBSections = BasicBlockSection::None;
 
-    /// Profile file that contains information on sampled basic blocks.
-    std::string BBSectionsFuncList;
+    /// Memory Buffer that contains information on sampled basic blocks and used
+    /// to selectively generate basic block sections.
+    std::shared_ptr<MemoryBuffer> BBSectionsFuncListBuf;
 
+    /// The flag enables call site info production. It is used only for debug
+    /// info, and it is restricted only to optimized code. This can be used for
+    /// something else, so that should be controlled in the frontend.
+    unsigned EmitCallSiteInfo : 1;
     /// Emit debug info about parameter's entry values.
     unsigned EnableDebugEntryValues : 1;
 

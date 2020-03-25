@@ -105,7 +105,8 @@ public:
   // The merge order of the slices
   MergeOrder mergeOrder;
 
-  bool splits, splitsAtFunctionTransition, needsSplitChainRotation, needsBundling;
+  bool splits, splitsAtFunctionTransition, needsSplitChainRotation,
+      needsBundling;
 
   // The constructor for creating a NodeChainAssembly. slicePosition must be an
   // iterator into splitChain->nodes.
@@ -141,7 +142,8 @@ public:
     splits = slicePosition != splitChain->nodeBundles.begin();
     needsSplitChainRotation = (mergeOrder == S2S1U && splits) ||
                               mergeOrder == S2US1 || mergeOrder == US2S1;
-    needsBundling = splitChain->size + unsplitChain->size > propConfig.optChainSplitThreshold;
+    needsBundling = splitChain->size + unsplitChain->size >
+                    propConfig.optChainSplitThreshold;
     // Set the ExtTSP score gain as the difference between the new score after
     // merging these chains and the current scores of the two chains.
     auto assemblyScore = computeExtTSPScore();

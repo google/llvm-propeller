@@ -9,29 +9,29 @@
 
 # BEFORE:	Disassembly of section .text:
 # BEFORE-EMPTY:
-# BEFORE-NEXT:	foo:
+# BEFORE-NEXT:	<foo>:
 # BEFORE-NEXT:	xorb	%al, 0
 # BEFORE-NEXT:	int3
 # BEFORE-EMPTY:
-# BEFORE-NEXT:	bar:
+# BEFORE-NEXT:	<bar>:
 # BEFORE-NEXT:	xorb	%al, 1
 # BEFORE-NEXT:	je	9 <aa.BB.bar>
 # BEFORE-EMPTY:
-# BEFORE-NEXT:	a.BB.bar:
+# BEFORE-NEXT:	<a.BB.bar>:
 # BEFORE-NEXT:	xorb	%al, 2
 # BEFORE-NEXT:	jmp      7 <aaa.BB.bar>
 # BEFORE-EMPTY:
-# BEFORE-NEXT:	aa.BB.bar:
+# BEFORE-NEXT:	<aa.BB.bar>:
 # BEFORE-NEXT:	xorb	%al, 3
 # BEFORE-EMPTY:
-# BEFORE-NEXT:	aaa.BB.bar:
+# BEFORE-NEXT:	<aaa.BB.bar>:
 # BEFORE-NEXT:	xorb	%al, 4
 # BEFORE-EMPTY:
-# BEFORE-NEXT:	baz:
+# BEFORE-NEXT:	<baz>:
 # BEFORE-NEXT:	xorb	%al, 5
 # BEFORE-NEXT:	int3
 # BEFORE-EMPTY:
-# BEFORE-NEXT:	qux:
+# BEFORE-NEXT:	<qux>:
 # BEFORE-NEXT:	xorb	%al, 6
 #
 
@@ -77,29 +77,29 @@
 
 # REORDER:	Disassembly of section .text:
 # REORDER-EMPTY:
-# REORDER-NEXT:	bar:
+# REORDER-NEXT:	<bar>:
 # REORDER-NEXT: xorb	%al, 1
 # REORDER-NEXT:	jne	30 <a.BB.bar>
 # REORDER-EMPTY:
-# REORDER-NEXT:	aa.BB.bar:
+# REORDER-NEXT:	<aa.BB.bar>:
 # REORDER-NEXT:	xorb	%al, 3
 # REORDER-EMPTY:
-# REORDER-NEXT:	aaa.BB.bar:
+# REORDER-NEXT:	<aaa.BB.bar>:
 # REORDER-NEXT:	xorb	%al, 4
 # REORDER-NEXT:	int3
 # REORDER-EMPTY:
-# REORDER-NEXT:	foo:
+# REORDER-NEXT:	<foo>:
 # REORDER-NEXT:	xorb	%al, 0
 # REORDER-NEXT:	int3
 # REORDER-EMPTY:
-# REORDER-NEXT:	qux:
+# REORDER-NEXT:	<qux>:
 # REORDER-NEXT:	xorb	%al, 6
 # REORDER-EMPTY:
-# REORDER-NEXT:	a.BB.bar:
+# REORDER-NEXT:	<a.BB.bar>:
 # REORDER-NEXT:	xorb	%al, 2
 # REORDER-NEXT:	jmp	-32 <aaa.BB.bar>
 # REORDER-EMPTY:
-# REORDER-NEXT:	baz:
+# REORDER-NEXT:	<baz>:
 # REORDER-NEXT:	xorb	%al, 5
 #
 
@@ -111,29 +111,29 @@
 #
 # NO_REORDER_BB:		Disassembly of section .text:
 # NO_REORDER_BB-EMPTY:
-# NO_REORDER_BB-NEXT:	bar:
+# NO_REORDER_BB-NEXT:	<bar>:
 # NO_REORDER_BB-NEXT:	xorb	%al, 1
 # NO_REORDER_BB-NEXT:	je	9 <aa.BB.bar>
 # NO_REORDER_BB-EMPTY:
-# NO_REORDER_BB-NEXT:	a.BB.bar:
+# NO_REORDER_BB-NEXT:	<a.BB.bar>:
 # NO_REORDER_BB-NEXT:	xorb	%al, 2
 # NO_REORDER_BB-NEXT:	jmp	7 <aaa.BB.bar>
 # NO_REORDER_BB-EMPTY:
-# NO_REORDER_BB-NEXT:	aa.BB.bar:
+# NO_REORDER_BB-NEXT:	<aa.BB.bar>:
 # NO_REORDER_BB-NEXT:	xorb	%al, 3
 # NO_REORDER_BB-EMPTY:
-# NO_REORDER_BB-NEXT:	aaa.BB.bar:
+# NO_REORDER_BB-NEXT:	<aaa.BB.bar>:
 # NO_REORDER_BB-NEXT:	xorb	%al, 4
 # NO_REORDER_BB-EMPTY:
-# NO_REORDER_BB-NEXT:	foo:
+# NO_REORDER_BB-NEXT:	<foo>:
 # NO_REORDER_BB-NEXT:	xorb	%al, 0
 # NO_REORDER_BB-NEXT:	int3
 # NO_REORDER_BB-EMPTY:
-# NO_REORDER_BB-NEXT:	qux:
+# NO_REORDER_BB-NEXT:	<qux>:
 # NO_REORDER_BB-NEXT:	xorb	%al, 6
 # NO_REORDER_BB-NEXT:	int3
 # NO_REORDER_BB-EMPTY:
-# NO_REORDER_BB-NEXT:	baz:
+# NO_REORDER_BB-NEXT:	<baz>:
 # NO_REORDER_BB-NEXT:	xorb	%al, 5
 
 # RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-reorder-funcs -propeller-keep-named-symbols -o %t.propeller.noreorderfuncs.out
@@ -141,29 +141,29 @@
 #
 # NO_REORDER_FUNC:	Disassembly of section .text:
 # NO_REORDER_FUNC-EMPTY:
-# NO_REORDER_FUNC-NEXT:	foo:
+# NO_REORDER_FUNC-NEXT:	<foo>:
 # NO_REORDER_FUNC-NEXT:	xorb	%al, 0
 # NO_REORDER_FUNC-NEXT:	int3
 # NO_REORDER_FUNC-EMPTY:
-# NO_REORDER_FUNC-NEXT:	bar:
+# NO_REORDER_FUNC-NEXT:	<bar>:
 # NO_REORDER_FUNC-NEXT: xorb	%al, 1
 # NO_REORDER_FUNC-NEXT:	jne	22 <a.BB.bar>
 # NO_REORDER_FUNC-EMPTY:
-# NO_REORDER_FUNC-NEXT:	aa.BB.bar:
+# NO_REORDER_FUNC-NEXT:	<aa.BB.bar>:
 # NO_REORDER_FUNC-NEXT: xorb	%al, 3
 # NO_REORDER_FUNC-EMPTY:
-# NO_REORDER_FUNC-NEXT:	aaa.BB.bar:
+# NO_REORDER_FUNC-NEXT:	<aaa.BB.bar>:
 # NO_REORDER_FUNC-NEXT: xorb	%al, 4
 # NO_REORDER_FUNC-NEXT:	int3
 # NO_REORDER_FUNC-EMPTY:
-# NO_REORDER_FUNC-NEXT:	qux:
+# NO_REORDER_FUNC-NEXT:	<qux>:
 # NO_REORDER_FUNC-NEXT:	xorb	%al, 6
 # NO_REORDER_FUNC-EMPTY:
-# NO_REORDER_FUNC-NEXT:	a.BB.bar:
+# NO_REORDER_FUNC-NEXT:	<a.BB.bar>:
 # NO_REORDER_FUNC-NEXT: xorb	%al, 2
 # NO_REORDER_FUNC-NEXT:	jmp	-24 <aaa.BB.bar>
 # NO_REORDER_FUNC-EMPTY:
-# NO_REORDER_FUNC-NEXT:	baz:
+# NO_REORDER_FUNC-NEXT:	<baz>:
 # NO_REORDER_FUNC-NEXT:	xorb	%al, 5
 #
 
@@ -172,29 +172,29 @@
 #
 # NO_SPLIT_FUNC:	Disassembly of section .text:
 # NO_SPLIT_FUNC-EMPTY:
-# NO_SPLIT_FUNC-NEXT:	bar:
+# NO_SPLIT_FUNC-NEXT:	<bar>:
 # NO_SPLIT_FUNC-NEXT: 	xorb	%al, 1
 # NO_SPLIT_FUNC-NEXT:	jne	14 <a.BB.bar>
 # NO_SPLIT_FUNC-EMPTY:
-# NO_SPLIT_FUNC-NEXT:	aa.BB.bar:
+# NO_SPLIT_FUNC-NEXT:	<aa.BB.bar>:
 # NO_SPLIT_FUNC-NEXT: 	xorb	%al, 3
 # NO_SPLIT_FUNC-EMPTY:
-# NO_SPLIT_FUNC-NEXT:	aaa.BB.bar:
+# NO_SPLIT_FUNC-NEXT:	<aaa.BB.bar>:
 # NO_SPLIT_FUNC-NEXT: 	xorb	%al, 4
 # NO_SPLIT_FUNC-EMPTY:
-# NO_SPLIT_FUNC-NEXT:	a.BB.bar:
+# NO_SPLIT_FUNC-NEXT:	<a.BB.bar>:
 # NO_SPLIT_FUNC-NEXT: 	xorb	%al, 2
 # NO_SPLIT_FUNC-NEXT:	jmp	-16 <aaa.BB.bar>
 # NO_SPLIT_FUNC-EMPTY:
-# NO_SPLIT_FUNC-NEXT:	foo:
+# NO_SPLIT_FUNC-NEXT:	<foo>:
 # NO_SPLIT_FUNC-NEXT: 	xorb	%al, 0
 # NO_SPLIT_FUNC-NEXT:	int3
 # NO_SPLIT_FUNC-EMPTY:
-# NO_SPLIT_FUNC-NEXT:	qux:
+# NO_SPLIT_FUNC-NEXT:	<qux>:
 # NO_SPLIT_FUNC-NEXT:	xorb	%al, 6
 # NO_SPLIT_FUNC-NEXT:	int3
 # NO_SPLIT_FUNC-EMPTY:
-# NO_SPLIT_FUNC-NEXT:	baz:
+# NO_SPLIT_FUNC-NEXT:	<baz>:
 # NO_SPLIT_FUNC-NEXT:	xorb	%al, 5
 #
 
@@ -208,29 +208,29 @@
 #
 # NO_SPLIT_REORDER_FUNC:	Disassembly of section .text:
 # NO_SPLIT_REORDER_FUNC-EMPTY:
-# NO_SPLIT_REORDER_FUNC-NEXT:	foo:
+# NO_SPLIT_REORDER_FUNC-NEXT:	<foo>:
 # NO_SPLIT_REORDER_FUNC-NEXT:	xorb	%al, 0
 # NO_SPLIT_REORDER_FUNC-NEXT:	int3
 # NO_SPLIT_REORDER_FUNC-EMPTY:
-# NO_SPLIT_REORDER_FUNC-NEXT:	bar:
+# NO_SPLIT_REORDER_FUNC-NEXT:	<bar>:
 # NO_SPLIT_REORDER_FUNC-NEXT: 	xorb	%al, 1
 # NO_SPLIT_REORDER_FUNC-NEXT:	jne	14 <a.BB.bar>
 # NO_SPLIT_REORDER_FUNC-EMPTY:
-# NO_SPLIT_REORDER_FUNC-NEXT:	aa.BB.bar:
+# NO_SPLIT_REORDER_FUNC-NEXT:	<aa.BB.bar>:
 # NO_SPLIT_REORDER_FUNC-NEXT: 	xorb	%al, 3
 # NO_SPLIT_REORDER_FUNC-EMPTY:
-# NO_SPLIT_REORDER_FUNC-NEXT:	aaa.BB.bar:
+# NO_SPLIT_REORDER_FUNC-NEXT:	<aaa.BB.bar>:
 # NO_SPLIT_REORDER_FUNC-NEXT: 	xorb	%al, 4
 # NO_SPLIT_REORDER_FUNC-EMPTY:
-# NO_SPLIT_REORDER_FUNC-NEXT:	a.BB.bar:
+# NO_SPLIT_REORDER_FUNC-NEXT:	<a.BB.bar>:
 # NO_SPLIT_REORDER_FUNC-NEXT: 	xorb	%al, 2
 # NO_SPLIT_REORDER_FUNC-NEXT:	jmp	-16 <aaa.BB.bar>
 # NO_SPLIT_REORDER_FUNC-EMPTY:
-# NO_SPLIT_REORDER_FUNC-NEXT:	baz:
+# NO_SPLIT_REORDER_FUNC-NEXT:	<baz>:
 # NO_SPLIT_REORDER_FUNC-NEXT:	xorb	%al, 5
 # NO_SPLIT_REORDER_FUNC-NEXT:	int3
 # NO_SPLIT_REORDER_FUNC-EMPTY:
-# NO_SPLIT_REORDER_FUNC-NEXT:	qux:
+# NO_SPLIT_REORDER_FUNC-NEXT:	<qux>:
 # NO_SPLIT_REORDER_FUNC-NEXT:	xorb	%al, 6
 
 .section	.text,"ax",@progbits

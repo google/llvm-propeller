@@ -8,7 +8,7 @@
 # RUN: ld.lld  -optimize-bb-jumps %t.o -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=CHECK
 
-# CHECK:	foo:
+# CHECK:	<foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jne      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -22,7 +22,7 @@ foo:
  je	a.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	a.BB.foo:
+# CHECK:	<a.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} je      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -33,7 +33,7 @@ a.BB.foo:
  jne	aa.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	aa.BB.foo:
+# CHECK:	<aa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jle      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -44,7 +44,7 @@ aa.BB.foo:
  jg	aaa.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	aaa.BB.foo:
+# CHECK:	<aaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jl      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -55,7 +55,7 @@ aaa.BB.foo:
  jge	aaaa.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	aaaa.BB.foo:
+# CHECK:	<aaaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jae      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -66,7 +66,7 @@ aaaa.BB.foo:
  jb	aaaaa.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	aaaaa.BB.foo:
+# CHECK:	<aaaaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} ja      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -77,7 +77,7 @@ aaaaa.BB.foo:
  jbe	aaaaaa.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	aaaaaa.BB.foo:
+# CHECK:	<aaaaaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jge      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -88,7 +88,7 @@ aaaaaa.BB.foo:
  jl	aaaaaaa.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	aaaaaaa.BB.foo:
+# CHECK:	<aaaaaaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jg      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -99,7 +99,7 @@ aaaaaaa.BB.foo:
  jle	aaaaaaaa.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	aaaaaaaa.BB.foo:
+# CHECK:	<aaaaaaaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jbe      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
@@ -110,7 +110,7 @@ aaaaaaaa.BB.foo:
  ja	aaaaaaaaa.BB.foo
  jmp	r.BB.foo
 
-# CHECK:	aaaaaaaaa.BB.foo:
+# CHECK:	<aaaaaaaaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 # CHECK-NEXT:	{{[0-9|a-f| ]*}} jb      {{[0-9]+}} <r.BB.foo>
 # CHECK-NOT:    jmp

@@ -62,6 +62,9 @@ public:
 };
 } // namespace
 
+// This is vector of NOP instructions of sizes from 1 to 8 bytes.  The
+// appropriately sized instructions are used to fill the gaps between sections
+// which are executed during fall through.
 static const std::vector<std::vector<uint8_t>> X86_NOP_INSTRUCTIONS = {
     {0x90},
     {0x66, 0x90},
@@ -163,6 +166,8 @@ static unsigned getRelocationWithOffset(const InputSection &is,
   return i;
 }
 
+// Returns the JumpInstrMod at that specific offset if any.  Returns the maximum
+// size of the vector if no such JumpInstrMod is found.
 static unsigned getJumpInstrModWithOffset(const InputSection &is,
                                           uint64_t offset) {
   unsigned i = 0;
@@ -173,6 +178,9 @@ static unsigned getJumpInstrModWithOffset(const InputSection &is,
   return i;
 }
 
+// Returns true if R corresponds to a relocation used for a jump instruction.
+// TODO: Once special relocations for relaxable jump instructions are available,
+// this should be modified to use those relocations.
 static bool isRelocationForJmpInsn(Relocation &R) {
   return (R.type == R_X86_64_PLT32 || R.type == R_X86_64_PC32 ||
           R.type == R_X86_64_PC8);
@@ -230,6 +238,21 @@ static JmpInsnOpcode invertJmpOpcode(const JmpInsnOpcode opcode) {
 // Deletes direct jump instruction in input sections that jumps to the
 // following section as it is not required.  If there are two consecutive jump
 // instructions, it checks if they can be flipped and one can be deleted.
+// For example:
+// .section .text
+// a.BB.foo:
+//    ...
+//    10: jne aa.BB.foo
+//    16: jmp bar
+// aa.BB.foo:
+//    ...
+//
+// can be converted to:
+// a.BB.foo:
+//   ...
+//   10: je bar  #jne flipped to je and the jmp is deleted.
+// aa.BB.foo:
+//   ...
 bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
                                    InputSection *nextIS) const {
   const unsigned sizeOfDirectJmpInsn = 5;
@@ -828,6 +851,10 @@ void X86_64::relaxTlsLdToLe(uint8_t *loc, const Relocation &rel,
         "expected R_X86_64_PLT32 or R_X86_64_GOTPCRELX after R_X86_64_TLSLD");
 }
 
+// A JumpInstrMod at a specific offset indicates that the jump instruction
+// opcode at that offset must be modified.  This is specifically used to relax
+// jump instructions with basic block sections.  This function looks at the
+// JumpMod and effects the change.
 void X86_64::applyJumpInstrMod(uint8_t *loc, JumpModType type,
                                unsigned size) const {
   switch (type) {

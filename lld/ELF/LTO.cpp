@@ -77,6 +77,9 @@ static lto::Config createConfig() {
   c.Options.DataSections = true;
 
   // Check if basic block sections must be used.
+  // Allowed values for --lto-basicblock-sections are "all", "labels",
+  // "<file name specifying basic block ids>", or none.  This is the equivalent
+  // of -fbasicblock-sections= flag in clang.
   if (!config->ltoBasicBlockSections.empty()) {
     if (config->ltoBasicBlockSections == "all")
       c.Options.BBSections = BasicBlockSection::All;
@@ -85,7 +88,14 @@ static lto::Config createConfig() {
     else if (config->ltoBasicBlockSections == "none")
       c.Options.BBSections = BasicBlockSection::None;
     else {
-      c.Options.BBSectionsFuncList = config->ltoBasicBlockSections.str();
+      ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
+          MemoryBuffer::getFile(config->ltoBasicBlockSections.str());
+      if (!MBOrErr) {
+        errs() << "Error loading basic block sections function list file: "
+               << MBOrErr.getError().message() << "\n";
+      } else {
+        c.Options.BBSectionsFuncListBuf = std::move(*MBOrErr);
+      }
       c.Options.BBSections = BasicBlockSection::List;
     }
   }

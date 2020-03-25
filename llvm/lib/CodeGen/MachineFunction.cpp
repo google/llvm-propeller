@@ -286,15 +286,7 @@ DenormalMode MachineFunction::getDenormalMode(const fltSemantics &FPType) const 
   // TODO: Should probably avoid the connection to the IR and store directly
   // in the MachineFunction.
   Attribute Attr = F.getFnAttribute("denormal-fp-math");
-
-  // FIXME: This should assume IEEE behavior on an unspecified
-  // attribute. However, the one current user incorrectly assumes a non-IEEE
-  // target by default.
-  StringRef Val = Attr.getValueAsString();
-  if (Val.empty())
-    return DenormalMode::getInvalid();
-
-  return parseDenormalFPAttribute(Val);
+  return parseDenormalFPAttribute(Attr.getValueAsString());
 }
 
 /// Should we be emitting segmented stack stuff for the function
@@ -356,8 +348,9 @@ void MachineFunction::createBBLabels() {
   const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
   this->BBSectionsSymbolPrefix.resize(getNumBlockIDs(), 'a');
   for (auto MBBI = begin(), E = end(); MBBI != E; ++MBBI) {
-    assert((MBBI->getNumber() >= 0 && MBBI->getNumber() < getNumBlockIDs()) &&
-           "BasicBlock number was out of range!");
+    assert(
+        (MBBI->getNumber() >= 0 && MBBI->getNumber() < (int)getNumBlockIDs()) &&
+        "BasicBlock number was out of range!");
     // 'a' - Normal block.
     // 'r' - Return block.
     // 'l' - Landing Pad.
@@ -894,7 +887,7 @@ MachineFunction::getCallSiteInfo(const MachineInstr *MI) {
   assert(MI->isCandidateForCallSiteEntry() &&
          "Call site info refers only to call (MI) candidates");
 
-  if (!Target.Options.EnableDebugEntryValues)
+  if (!Target.Options.EmitCallSiteInfo)
     return CallSitesInfo.end();
   return CallSitesInfo.find(MI);
 }

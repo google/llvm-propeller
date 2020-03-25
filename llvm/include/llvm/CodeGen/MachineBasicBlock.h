@@ -135,7 +135,7 @@ private:
   bool IsCleanupFuncletEntry = false;
 
   /// Stores the Section ID of the basic block with basic block sections.
-  unsigned SectionID = ColdSectionID;
+  Optional<unsigned> SectionID;
 
   /// Default target of the callbr of a basic block.
   bool InlineAsmBrDefaultTarget = false;
@@ -432,7 +432,7 @@ public:
   bool isEndSection() const;
 
   /// Returns the the section id that this basic block belongs to.
-  unsigned getSectionID() const { return SectionID; }
+  Optional<unsigned> getSectionID() const { return SectionID; }
 
   /// Indicate that the basic block belongs to a Section Type.
   void setSectionID(unsigned V) { SectionID = V; }

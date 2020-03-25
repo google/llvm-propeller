@@ -29,7 +29,6 @@ struct SymbolEntry {
     BB_NONE = 0,              // For functions.
     BB_NORMAL,                // Ordinary BB, 'a'.
     BB_RETURN,                // Return BB, 'r'.
-    BB_FALLTHROUGH,           // BB which falls through 'f'.
     BB_LANDING_PAD,           // Landing pad BB, 'l'.
     BB_RETURN_AND_LANDING_PAD // Landing pad and return BB, 'L'.
   };
@@ -63,7 +62,7 @@ struct SymbolEntry {
   SymbolEntry *containingFunc;
 
   bool isFallthroughBlock() const {
-    return bbTagType == BB_FALLTHROUGH || bbTagType == BB_NONE;
+    return true;
   }
 
   bool isReturnBlock() const {
@@ -108,8 +107,6 @@ struct SymbolEntry {
       return BB_NORMAL;
     case 'r':
       return BB_RETURN;
-    case 'f':
-      return BB_FALLTHROUGH;
     case 'l':
       return BB_LANDING_PAD;
     case 'L':
