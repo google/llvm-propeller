@@ -1573,3 +1573,6 @@ MachineBasicBlock::livein_iterator MachineBasicBlock::livein_begin() const {
       "Liveness information is accurate");
   return LiveIns.begin();
 }
+
+const unsigned MachineBasicBlock::ColdSectionID;
+const unsigned MachineBasicBlock::ExceptionSectionID;

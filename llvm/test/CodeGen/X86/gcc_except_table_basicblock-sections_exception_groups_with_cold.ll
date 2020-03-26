@@ -34,7 +34,7 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 ; CHECK:    movq %rax, %rdi
 ; CHECK:    callq _Unwind_Resume
 ; CHECK:  .Ltmp3:
-; CHECK:    .size lr.BB.main, .Ltmp3-lr.BB.main
+; CHECK:    .size r.BB.main, .Ltmp3-r.BB.main
 ; CHECK:    .cfi_endproc
 
 entry:

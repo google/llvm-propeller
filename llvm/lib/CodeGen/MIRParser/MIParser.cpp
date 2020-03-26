@@ -624,16 +624,19 @@ bool MIParser::consumeIfPresent(MIToken::TokenKind TokenKind) {
 bool MIParser::parseSectionID(Optional<unsigned> &SID) {
   assert(Token.is(MIToken::kw_bbsections));
   lex();
-  const StringRef &S = Token.stringValue();
-  if (S == "Exception")
-    SID = MachineBasicBlock::ExceptionSectionID;
-  else if (S == "Cold")
-    SID = MachineBasicBlock::ColdSectionID;
-  else {
-    unsigned V;
-    if (S.getAsInteger(10, V))
-      return error("Unknown Section Type");
-    SID = V;
+  if (Token.is(MIToken::IntegerLiteral)) {
+    unsigned Value = 0;
+    if(getUnsigned(Value))
+      return error("Uknown Section ID");
+    SID = Value;
+  } else {
+    const StringRef &S = Token.stringValue();
+    if (S == "Exception")
+      SID = MachineBasicBlock::ExceptionSectionID;
+    else if (S == "Cold")
+      SID = MachineBasicBlock::ColdSectionID;
+    else
+      return error("Unknown Section ID");
   }
   lex();
   return false;
@@ -650,6 +653,7 @@ bool MIParser::parseBasicBlockDefinition(
   lex();
   bool HasAddressTaken = false;
   bool IsLandingPad = false;
+  bool IsEHFuncletEntry = false;
   Optional<unsigned> SectionID;
   unsigned Alignment = 0;
   BasicBlock *BB = nullptr;
@@ -663,6 +667,10 @@ bool MIParser::parseBasicBlockDefinition(
         break;
       case MIToken::kw_landing_pad:
         IsLandingPad = true;
+        lex();
+        break;
+      case MIToken::kw_ehfunclet_entry:
+        IsEHFuncletEntry = true;
         lex();
         break;
       case MIToken::kw_align:
@@ -708,6 +716,7 @@ bool MIParser::parseBasicBlockDefinition(
   if (HasAddressTaken)
     MBB->setHasAddressTaken();
   MBB->setIsEHPad(IsLandingPad);
+  MBB->setIsEHFuncletEntry(IsEHFuncletEntry);
   if (SectionID.hasValue()) {
     MBB->setSectionID(SectionID.getValue());
     MF.setBBSectionsType(BasicBlockSection::List);
