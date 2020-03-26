@@ -1734,26 +1734,25 @@ static void fixSymbolsAfterShrinking() {
 // relaxation pass does that.  It is only enabled when --optimize-bb-jumps
 // option is used.
 template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
-  if (!config->optimizeBBJumps)
-    return;
+  assert(config->optimizeBBJumps);
 
   script->assignAddresses();
   // For every output section that has executable input sections, this
-  // does 3 things:
-  //   1.  It deletes all direct jump instructions in input sections that
-  //       jump to the following section as it is not required.  If there
-  //       are two consecutive jump instructions, it checks if they can be
-  //       flipped and one can be deleted.
-  //   2.  It aggressively shrinks jump instructions.
-  //   3.  It aggressively grows back jump instructions.
+  // does the following:
+  //   1. Deletes all direct jump instructions in input sections that
+  //      jump to the following section as it is not required.
+  //   2. If there are two consecutive jump instructions, it checks
+  //      if they can be flipped and one can be deleted.
+  //   3. It aggressively shrinks jump instructions.
+  //   4. It aggressively grows back jump instructions.
   for (OutputSection *os : outputSections) {
     if (!(os->flags & SHF_EXECINSTR))
       continue;
     std::vector<InputSection *> sections = getInputSections(os);
     std::vector<unsigned> result(sections.size());
-    // Step 1: Delete all fall through jump instructions.  Also, check if two
-    // consecutive jump instructions can be flipped so that a fall through jmp
-    // instruction can be deleted.
+    // Delete all fall through jump instructions.  Also, check if two
+    // consecutive jump instructions can be flipped so that a fall
+    // through jmp instruction can be deleted.
     parallelForEachN(0, sections.size(), [&](size_t i) {
       InputSection *next =
           (i + 1) < sections.size() ? sections[i + 1] : nullptr;
@@ -2157,8 +2156,9 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(in.ppc64LongBranchTarget);
 
   // Relaxation to delete inter-basic block jumps created by basic block
-  // sections.
-  optimizeBasicBlockJumps();
+  // sections. Run after in.symTab is finalized.
+  if (config->optimizeBBJumps)
+    optimizeBasicBlockJumps();
 
   // Fill other section headers. The dynamic table is finalized
   // at the end because some tags like RELSZ depend on result

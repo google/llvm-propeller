@@ -65,7 +65,7 @@ public:
 // This is vector of NOP instructions of sizes from 1 to 8 bytes.  The
 // appropriately sized instructions are used to fill the gaps between sections
 // which are executed during fall through.
-static const std::vector<std::vector<uint8_t>> X86_NOP_INSTRUCTIONS = {
+static const std::vector<std::vector<uint8_t>> nopInstructions = {
     {0x90},
     {0x66, 0x90},
     {0x0f, 0x1f, 0x00},
@@ -92,7 +92,7 @@ X86_64::X86_64() {
   pltEntrySize = 16;
   ipltEntrySize = 16;
   trapInstr = {0xcc, 0xcc, 0xcc, 0xcc}; // 0xcc = INT3
-  nopInstrs = X86_NOP_INSTRUCTIONS;
+  nopInstrs = nopInstructions;
 
   // Align to the large page size (known as a superpage or huge page).
   // FreeBSD automatically promotes large, superpage-aligned allocations.
@@ -182,8 +182,8 @@ static unsigned getJumpInstrModWithOffset(const InputSection &is,
 // TODO: Once special relocations for relaxable jump instructions are available,
 // this should be modified to use those relocations.
 static bool isRelocationForJmpInsn(Relocation &R) {
-  return (R.type == R_X86_64_PLT32 || R.type == R_X86_64_PC32 ||
-          R.type == R_X86_64_PC8);
+  return R.type == R_X86_64_PLT32 || R.type == R_X86_64_PC32 ||
+         R.type == R_X86_64_PC8;
 }
 
 // Return true if Relocation R points to the first instruction in the
@@ -265,7 +265,7 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
 
   // If this jmp insn can be removed, it is the last insn and the
   // relocation is 4 bytes before the end.
-  unsigned rIndex = getRelocationWithOffset(is, (is.getSize() - 4));
+  unsigned rIndex = getRelocationWithOffset(is, is.getSize() - 4);
   if (rIndex == is.relocations.size())
     return false;
 

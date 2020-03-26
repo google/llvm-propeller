@@ -258,8 +258,7 @@ static void nopInstrFill(uint8_t *buf, size_t size) {
   unsigned remaining = size - i;
   if (!remaining)
     return;
-  if (nopFiller[remaining - 1].size() != remaining)
-    fatal("failed padding with special filler");
+  assert(nopFiller[remaining - 1].size() == remaining);
   memcpy(buf + i, nopFiller[remaining - 1].data(), remaining);
 }
 
@@ -351,7 +350,6 @@ template <class ELFT> void OutputSection::writeTo(uint8_t *buf) {
         end = buf + size;
       else
         end = buf + sections[i + 1]->outSecOff;
-      // Check if this IS needs a special filler.
       if (isec->nopFiller) {
         assert(target->nopInstrs);
         nopInstrFill(start, end - start);
