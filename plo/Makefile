@@ -119,7 +119,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder
+FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -127,7 +127,7 @@ ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
 gen_compiler_flags  = -DCMAKE_C_FLAGS=$(1) -DCMAKE_CXX_FLAGS=$(1)
 gen_linker_flags    = -DCMAKE_EXE_LINKER_FLAGS=$(1) -DCMAKE_SHARED_LINKER_FLAGS=$(1) -DCMAKE_MODULE_LINKER_FLAGS=$(1)
 
-# $1 are compiler flags.
+# $1 are compiler cluster.
 # $2 are ld flags.
 gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(2))
 
@@ -224,6 +224,10 @@ pgo-plolist-ip-2000-compiler pgo-plolist-2000-compiler: pgo-plolist-%-compiler: 
 	ln -sf $< $@
 	touch $@
 
+pgo-plolist-cluster-compiler: pgo-plolist/build/bin/clang-${CLANG_VERSION}-cluster | check_environment
+	ln -sf $< $@
+	touch $@
+
 pgo-plo-compiler.symorder pgo-compiler.symorder: %.symorder: %
 	llvm-nm -nS $< | sed -nEe '/(.+)\s(.+)\s(W|t|T)\s(.+)/p' | sed -Ee 's!(.+)\s(a+\.BB\.)(.+)!\1 \2 \3!' | awk '$$4~/^a+\.BB\.$$/{print $$1 " " $$2 " " $$3 " " length($$4)-4 ".BB." $$5} $$4!~/^a+\.BB\.$$/{print $$0}' > $@
 
@@ -275,14 +279,9 @@ pgo-plolist/build/bin/clang-${CLANG_VERSION}-2000: pgo-plolist/build/bin/clang-$
 	$(call gen_relink_script,pgo-plolist,$(distance_cutoff_opt),-2000)
 	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-2000.autolog
 
-pgo-plo/build/bin/clang-${CLANG_VERSION}-order pgo-plolist/build/bin/clang-${CLANG_VERSION}-order pgo-plolist-align/build/bin/clang-$(CLANG_VERSION)-order: %/build/bin/clang-${CLANG_VERSION}-order: %/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,$*,$(symbol_order_opt),-order)
-	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-order.autolog
-
-pgo-plo/build/bin/clang-${CLANG_VERSION}-order-nopt pgo-plolist/build/bin/clang-${CLANG_VERSION}-order-nopt pgo-plolist-align/build/bin/clang-$(CLANG_VERSION)-order-nopt: %/build/bin/clang-${CLANG_VERSION}-order-nopt: %/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,$*,$(symbol_order_opt),-order-nopt)
-	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-order-nopt.autolog
-
+pgo-plo/build/bin/clang-${CLANG_VERSION}-cluster pgo-plolist/build/bin/clang-${CLANG_VERSION}-cluster pgo-plolist-align/build/bin/clang-$(CLANG_VERSION)-cluster: %/build/bin/clang-${CLANG_VERSION}-cluster: %/build/bin/clang-${CLANG_VERSION}
+	$(call gen_relink_script,$*,$(symbol_order_opt),-cluster)
+	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-cluster.autolog
 
 # $1 is the COMP name only, without directory, "stage1/pgo-plolist/pgo-plofunsc/etc".
 # $2 is extra options.
@@ -482,7 +481,7 @@ $(foreach F,$(FLAVORS),clean-$(F)): clean-%: dummy-%
 	if [[ "$(subst dummy-,,$<)" == "pgo" ]]; then rm -fr stage-pgo ; fi
 	if [[ "$(subst dummy-,,$<)" == "cspgo" ]]; then rm -fr stage-cspgo ; fi
 
-benchmark-pgo-relocs-bolt.result benchmark-pgo-labels-bolt.result benchmark-pgo-labels.result benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-plolist-ip.result benchmark-pgo-plo-ip.result: benchmark-%.result: benchmark-%
+benchmark-pgo-relocs-bolt.result benchmark-pgo-labels-bolt.result benchmark-pgo-labels.result benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plo.result benchmark-pgo-plolist-cluster.result benchmark-pgo-plolist-ip.result benchmark-pgo-plo-ip.result: benchmark-%.result: benchmark-%
 	touch $@
 
 benchmark-pmu-pgo-relocs-bolt.result benchmark-pmu-pgo-labels-bolt.result benchmark-pmu-pgo-labels.result benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plo.result benchmark-pmu-pgo-plolist-ip.result benchmark-pmu-pgo-plo-ip.result : benchmark-pmu-%.result: benchmark-pmu-%
@@ -543,7 +542,7 @@ check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolis
 	printf "\n" >> $@.${REPOHASH} ; \
 	$(call append_git_status,$@)
 
-check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist.result benchmark-pgo-plolist-ip.result $(PLO_RESULTS) $(BOLT_RESULT)
+check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist-cluster.result $(PLO_RESULTS) $(BOLT_RESULT)
 	@echo "CHECK-PERFORMANCE" > $@.${REPOHASH} ; \
 	for version in $(wordlist 2,$(words $^),$^) ; do \
 		$(call check_against_baseline,$<,$$version) >> $@.${REPOHASH} ; \
