@@ -1975,16 +1975,12 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   // Add the range of this function to the list of ranges for the CU.
   TheCU.addRange({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
 
-  // With basic block sections, add all basic block ranges with unique
-  // sections.
+  // With basic block sections, add ranges for all basic block sections.
   if (MF->hasBBSections()) {
     for (auto &MBB : *MF) {
-      if (MBB.getNumber() == MF->front().getNumber())
-        continue;
-      if (MBB.isBeginSection()) {
+      if (&MBB == &MF->front() && MBB.isBeginSection())
         TheCU.addRange(
             {MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
-      }
     }
   }
 

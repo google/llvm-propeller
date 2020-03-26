@@ -329,6 +329,7 @@ DIE *DwarfCompileUnit::getOrCreateCommonBlock(
 }
 
 void DwarfCompileUnit::addRange(RangeSpan Range) {
+  errs() << "ADDING RANGE: " << Range.Begin->getName() << " --> " << Range.End->getName() << "\n";
   DD->insertSectionLabel(Range.Begin);
 
   bool SameAsPrevCU = this == DD->getPrevCU();
@@ -400,13 +401,14 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
   else {
     SmallVector<RangeSpan, 2> BB_List;
     BB_List.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
-    // If basic block sections are on, only the entry BB and exception
-    // handling BBs will be in the [getFunctionBegin(), getFunctionEnd()]
-    // range. Ranges for the other BBs have to be emitted separately.
-    for (auto &MBB : *Asm->MF) {
-      if (MBB.isBeginSection()) {
-        BB_List.push_back(
-            {MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
+    // If basic block sections are on, the [getFunctionBegin(), getFunctionEnd()] range
+    // will include all BBs which are in the same section as the entry
+    // block. Ranges for the other BBs have to be emitted separately.
+    if (Asm->MF->hasBBSections()) {
+      for (auto &MBB : *Asm->MF) {
+        if (&MBB != &Asm->MF->front() && MBB.isBeginSection())
+          BB_List.push_back(
+              {MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
       }
     }
     attachRangesOrLowHighPC(*SPDie, BB_List);
@@ -515,6 +517,7 @@ void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
 
   HasRangeLists = true;
 
+  errs() << "Add scopre range list\n";
   // Add the range list to the set of ranges to be emitted.
   auto IndexAndList =
       (DD->getDwarfVersion() < 5 && Skeleton ? Skeleton->DU : DU)

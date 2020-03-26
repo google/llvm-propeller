@@ -94,12 +94,27 @@ using namespace llvm;
 
 namespace {
 
+struct BBClusterInfo {
+  unsigned ClusterID;
+  unsigned PositionInCluster;
+};
+
 class BBSectionsPrepare : public MachineFunctionPass {
 public:
   static char ID;
-  StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> BBSectionsList;
-  StringMap<StringRef> FuncAliases;
+  StringMap<DenseMap<unsigned, BBClusterInfo>> BBClusterInfoMap;
+  StringMap<StringRef> FuncAliasMap;
   const MemoryBuffer *MBuf = nullptr;
+
+  bool getBBClusterInfoForFunction(StringRef s, DenseMap<unsigned, BBClusterInfo>& m) {
+    auto r = FuncAliasMap.find(s);
+    StringRef aliasName = r == FuncAliasMap.end() ? s : r->second;
+    auto p = BBClusterInfoMap.find(aliasName);
+    if (p == BBClusterInfoMap.end())
+      return false;
+    m = p->second;
+    return true;
+  }
 
   BBSectionsPrepare(const MemoryBuffer *Buf)
       : MachineFunctionPass(ID), MBuf(Buf) {
@@ -163,20 +178,8 @@ static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
 /// 1) Exception section - basic blocks that are landing pads
 /// 2) Cold section - basic blocks that will not have unique sections.
 /// 3) Unique section - one per basic block that is emitted in a unique section.
-static bool assignSectionsAndSortBasicBlocks(
-    MachineFunction &MF,
-    const StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &BBSectionsList,
-    const StringMap<StringRef> &FuncAliases) {
-  auto R = FuncAliases.find(MF.getName());
-  auto FuncName = R == FuncAliases.end() ? MF.getName() : R->second;
-  SmallVector<SmallVector<unsigned, 4>, 2> S = BBSectionsList.lookup(FuncName);
-
-  std::map<unsigned, std::pair<unsigned, unsigned>> BBIndexMap;
-
-  for (unsigned i = 0; i < S.size(); ++i)
-    for (unsigned j = 0; j < S[i].size(); ++j)
-      BBIndexMap.emplace(S[i][j], std::make_pair(i, j));
-
+static bool assignSectionsAndSortBasicBlocks(MachineFunction &MF,
+                                             DenseMap<unsigned, BBClusterInfo> &FuncBBClusterInfo) {
   // This is the set of sections which have EHPads in them.
   SmallSet<unsigned, 2> EHPadsSections;
 
@@ -188,10 +191,10 @@ static bool assignSectionsAndSortBasicBlocks(
     // associated with its cluster, unless we want sections for every basic
     // block in this function (if S is empty).
     if (MF.getTarget().getBBSectionsType() == llvm::BasicBlockSection::All ||
-        S.empty())
+        FuncBBClusterInfo.empty())
       MBB.setSectionID(MBB.getNumber());
-    else if (BBIndexMap.count(MBB.getNumber()))
-      MBB.setSectionID(BBIndexMap.at(MBB.getNumber()).first);
+    else if (FuncBBClusterInfo.count(MBB.getNumber()))
+      MBB.setSectionID(FuncBBClusterInfo.lookup(MBB.getNumber()).ClusterID);
     else
       MBB.setSectionID(MachineBasicBlock::ColdSectionID);
 
@@ -227,8 +230,8 @@ static bool assignSectionsAndSortBasicBlocks(
     // If the two basic block are in the same section, the order is decided by
     // their order within the section.
     if (XSectionID == YSectionID)
-      return XSectionID < S.size() ? BBIndexMap.at(X.getNumber()).second <
-                                         BBIndexMap.at(Y.getNumber()).second
+      return XSectionID < MachineBasicBlock::ExceptionSectionID ? FuncBBClusterInfo.lookup(X.getNumber()).PositionInCluster <
+                                         FuncBBClusterInfo.lookup(Y.getNumber()).PositionInCluster
                                    : X.getNumber() < Y.getNumber();
     // We make sure that the section containing the entry block precedes all the
     // other sections.
@@ -270,13 +273,12 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
     return true;
   }
 
-  if (BBSectionsType == BasicBlockSection::List &&
-      BBSectionsList.find(MF.getName()) == BBSectionsList.end())
+  DenseMap<unsigned, BBClusterInfo> FuncBBClusterInfo;
+  if (BBSectionsType == BasicBlockSection::List && !getBBClusterInfoForFunction(MF.getName(), FuncBBClusterInfo))
     return true;
-
   MF.setBBSectionsType(BBSectionsType);
   MF.createBBLabels();
-  assignSectionsAndSortBasicBlocks(MF, BBSectionsList, FuncAliases);
+  assignSectionsAndSortBasicBlocks(MF, FuncBBClusterInfo);
 
   return true;
 }
@@ -294,17 +296,20 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !foo
 // !!1 2
 // !!4
-static bool getBBSectionsList(
+static bool getBBClusterInfo(
     const MemoryBuffer *MBuf,
-    StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &bbClusterMap,
+    StringMap<DenseMap<unsigned, BBClusterInfo>> &bbClusterInfoMap,
     StringMap<StringRef> &funcAliasMap) {
   if (!MBuf)
     return false;
 
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
-  StringMap<SmallVector<SmallVector<unsigned, 4>, 2>>::iterator fi =
-      bbClusterMap.end();
+  StringMap<DenseMap<unsigned, BBClusterInfo>>::iterator fi =
+      bbClusterInfoMap.end();
+
+  unsigned CurrentCluster=0;
+  unsigned CurrentPosition=0;
 
   for (; !LineIt.is_at_eof(); ++LineIt) {
     StringRef s(*LineIt);
@@ -315,7 +320,7 @@ static bool getBBSectionsList(
       break;
     // Check for second "!" which indicates a cluster of basic blocks.
     if (s.consume_front("!")) {
-      if (fi == bbClusterMap.end()) {
+      if (fi == bbClusterInfoMap.end()) {
         errs() << "Could not process profile: " << MBuf->getBufferIdentifier()
                << " at line " << Twine(LineIt.line_number())
                << " Does not follow a function name.\n";
@@ -325,8 +330,7 @@ static bool getBBSectionsList(
       std::vector<std::string> BBIndexes(
           (std::istream_iterator<std::string>(iss)),
           std::istream_iterator<std::string>());
-      if (!BBIndexes.empty())
-        fi->second.emplace_back();
+      CurrentPosition = 0;
       for (auto &BBIndexStr : BBIndexes) {
         unsigned BBIndex;
         if (StringRef(BBIndexStr).getAsInteger(10, BBIndex)) {
@@ -335,18 +339,19 @@ static bool getBBSectionsList(
                  << BBIndexStr << " is not a number!\n";
           return false;
         }
-        if (!BBIndex && !fi->second.back().empty()) {
+        if (!BBIndex && CurrentPosition) {
           errs() << "Could not process profile " << MBuf->getBufferIdentifier()
                  << " at line " << Twine(LineIt.line_number())
                  << " Entry BB in the middle of the BB Cluster list!\n";
           return false;
         }
-        fi->second.back().push_back(BBIndex);
+        fi->second.try_emplace(BBIndex, BBClusterInfo{CurrentCluster, CurrentPosition++});
       }
+      CurrentCluster++;
     } else {
       auto P = s.split('/');
       // Start a new function.
-      fi = bbClusterMap.try_emplace(P.first).first;
+      fi = bbClusterInfoMap.try_emplace(P.first).first;
 
       auto aliasStr = P.second;
       while (aliasStr != "") {
@@ -354,6 +359,7 @@ static bool getBBSectionsList(
         funcAliasMap.try_emplace(Q.first, P.first);
         aliasStr = Q.second;
       }
+      CurrentCluster = 0;
     }
   }
   return true;
@@ -361,8 +367,8 @@ static bool getBBSectionsList(
 
 bool BBSectionsPrepare::doInitialization(Module &M) {
   if (MBuf)
-    if (!getBBSectionsList(MBuf, BBSectionsList, FuncAliases))
-      BBSectionsList.clear();
+    if (!getBBClusterInfo(MBuf, BBClusterInfoMap, FuncAliasMap))
+      BBClusterInfoMap.clear();
   return true;
 }
 
