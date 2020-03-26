@@ -80,7 +80,7 @@ public:
 
   // Special section IDs for the cold and exception section
   const static unsigned ColdSectionID = UINT_MAX;
-  const static unsigned ExceptionSectionID = UINT_MAX-1;
+  const static unsigned ExceptionSectionID = UINT_MAX - 1;
 
 private:
   using Instructions = ilist<MachineInstr, ilist_sentinel_tracking<true>>;

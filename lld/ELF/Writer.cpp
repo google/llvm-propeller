@@ -1682,7 +1682,8 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
              Twine(os->alignment) + ")");
 }
 
-static void getNoneOptimizableSections(DenseSet<const InputSection*>& sectionSet) {
+static void
+getNoneOptimizableSections(DenseSet<const InputSection *> &sectionSet) {
   for (InputFile *File : objectFiles) {
     parallelForEach(File->getSymbols(), [&](Symbol *Sym) {
       auto *def = dyn_cast<Defined>(Sym);
@@ -1699,7 +1700,7 @@ static void getNoneOptimizableSections(DenseSet<const InputSection*>& sectionSet
       if (!inputSec)
         return;
       if (def->value + 6 == inputSec->data().size() ||
-          def->value + 5 == inputSec->data().size() )
+          def->value + 5 == inputSec->data().size())
         sectionSet.insert(inputSec);
     });
   }
@@ -1757,7 +1758,7 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     return;
 
   script->assignAddresses();
-  DenseSet<const InputSection*> noneOptimizableSections;
+  DenseSet<const InputSection *> noneOptimizableSections;
   getNoneOptimizableSections(noneOptimizableSections);
   // For every output section that has executable input sections, this
   // does 3 things:

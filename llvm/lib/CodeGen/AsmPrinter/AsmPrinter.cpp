@@ -1099,7 +1099,8 @@ void AsmPrinter::emitFunctionBody() {
   int NumInstsInFunction = 0;
   MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
   if (MF->hasBBSections()) {
-    EndOfRegularSectionMBB = const_cast<MachineBasicBlock *>(MF->front().getSectionEndMBB());
+    EndOfRegularSectionMBB =
+        const_cast<MachineBasicBlock *>(MF->front().getSectionEndMBB());
     assert(EndOfRegularSectionMBB->isEndSection() &&
            "The MBB at the end of the regular section must end a section");
   }
@@ -1205,7 +1206,7 @@ void AsmPrinter::emitFunctionBody() {
       OutStreamer->emitELFSize(MBB.getSymbol(), SizeExp);
     }
 
-    if (MBB.isEndSection())  {
+    if (MBB.isEndSection()) {
       if (MBB.getSectionID() != MF->front().getSectionID()) {
         // Emit size directive for the size of this basic block section. The
         // size directive for the regular section will be emitted as the
@@ -1213,14 +1214,15 @@ void AsmPrinter::emitFunctionBody() {
         MCSymbol *CurrentSectionEnd = OutContext.createTempSymbol();
         const MCExpr *SizeExp = MCBinaryExpr::createSub(
             MCSymbolRefExpr::create(CurrentSectionEnd, OutContext),
-            MCSymbolRefExpr::create(CurrentSectionBeginSym, OutContext), OutContext);
+            MCSymbolRefExpr::create(CurrentSectionBeginSym, OutContext),
+            OutContext);
         OutStreamer->emitLabel(CurrentSectionEnd);
         MBB.setEndMCSymbol(CurrentSectionEnd);
         OutStreamer->emitELFSize(CurrentSectionBeginSym, SizeExp);
       }
 
-      // If this is the end of the section, nullify the exception symbol to ensure
-      // a new symbol is created for the next basicblock section.
+      // If this is the end of the section, nullify the exception symbol to
+      // ensure a new symbol is created for the next basicblock section.
       CurExceptionSym = nullptr;
     }
     emitBasicBlockEnd(MBB);
@@ -3082,7 +3084,8 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
   bool emitBBLabels = MF->hasBBSections() || MF->hasBBLabels();
 
   if (MBB.pred_empty() ||
-      (!emitBBLabels && isBlockOnlyReachableByFallthrough(&MBB) && !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
+      (!emitBBLabels && isBlockOnlyReachableByFallthrough(&MBB) &&
+       !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
     if (isVerbose()) {
       // NOTE: Want this comment at start of line, don't emit with AddComment.
       OutStreamer->emitRawComment(" %bb." + Twine(MBB.getNumber()) + ":",
@@ -3105,7 +3108,9 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
             getObjFileLowering().getNamedSectionForMachineBasicBlock(
                 MF->getFunction(), MBB, TM, ".unlikely"));
       } else
-        OutStreamer->SwitchSection(getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(), MBB, TM));
+        OutStreamer->SwitchSection(
+            getObjFileLowering().getSectionForMachineBasicBlock(
+                MF->getFunction(), MBB, TM));
       CurrentSectionBeginSym = MBB.getSymbol();
     }
 

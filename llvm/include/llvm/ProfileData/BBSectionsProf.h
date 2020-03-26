@@ -61,9 +61,7 @@ struct SymbolEntry {
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *containingFunc;
 
-  bool isFallthroughBlock() const {
-    return true;
-  }
+  bool isFallthroughBlock() const { return true; }
 
   bool isReturnBlock() const {
     return bbTagType == BB_RETURN || bbTagType == BB_RETURN_AND_LANDING_PAD;

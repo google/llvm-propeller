@@ -83,9 +83,9 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
 
-#include <string>
-#include <sstream>
 #include <iterator>
+#include <sstream>
+#include <string>
 
 using llvm::SmallSet;
 using llvm::StringMap;
@@ -133,7 +133,8 @@ INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
 
 // This inserts an unconditional branch at the end of MBB to the next basic
 // block S if and only if the control-flow implicitly falls through from MBB to
-// S. This is necessary with basic block sections as MBB and S could be potentially reordered.
+// S. This is necessary with basic block sections as MBB and S could be
+// potentially reordered.
 static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
   MachineBasicBlock *Fallthrough = MBB.getFallThrough();
 
@@ -164,29 +165,30 @@ static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
 /// 3) Unique section - one per basic block that is emitted in a unique section.
 static bool assignSectionsAndSortBasicBlocks(
     MachineFunction &MF,
-    const StringMap<SmallVector<SmallVector<unsigned, 4>,2>> &BBSectionsList,
+    const StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &BBSectionsList,
     const StringMap<StringRef> &FuncAliases) {
   auto R = FuncAliases.find(MF.getName());
-  auto FuncName = R == FuncAliases.end() ? MF.getName() : R->second ;
-  SmallVector<SmallVector<unsigned, 4>,2> S = BBSectionsList.lookup(FuncName);
+  auto FuncName = R == FuncAliases.end() ? MF.getName() : R->second;
+  SmallVector<SmallVector<unsigned, 4>, 2> S = BBSectionsList.lookup(FuncName);
 
   std::map<unsigned, std::pair<unsigned, unsigned>> BBIndexMap;
 
-  for(unsigned i=0; i<S.size(); ++i)
-    for(unsigned j=0; j<S[i].size(); ++j)
+  for (unsigned i = 0; i < S.size(); ++i)
+    for (unsigned j = 0; j < S[i].size(); ++j)
       BBIndexMap.emplace(S[i][j], std::make_pair(i, j));
 
   // This is the set of sections which have EHPads in them.
   SmallSet<unsigned, 2> EHPadsSections;
 
-  // All BBs are initially assigned the cold section. With the list option, all cold BBs can be clustered in a single cold section.
+  // All BBs are initially assigned the cold section. With the list option, all
+  // cold BBs can be clustered in a single cold section.
   for (auto &MBB : MF) {
     // With the 'all' option, every basic block is placed in a unique section.
     // With the 'list' option, every basic block is placed in a section
     // associated with its cluster, unless we want sections for every basic
     // block in this function (if S is empty).
-    if (MF.getTarget().getBBSectionsType() == llvm::BasicBlockSection::All
-        || S.empty())
+    if (MF.getTarget().getBBSectionsType() == llvm::BasicBlockSection::All ||
+        S.empty())
       MBB.setSectionID(MBB.getNumber());
     else if (BBIndexMap.count(MBB.getNumber()))
       MBB.setSectionID(BBIndexMap.at(MBB.getNumber()).first);
@@ -225,7 +227,9 @@ static bool assignSectionsAndSortBasicBlocks(
     // If the two basic block are in the same section, the order is decided by
     // their order within the section.
     if (XSectionID == YSectionID)
-      return XSectionID < S.size() ? BBIndexMap.at(X.getNumber()).second < BBIndexMap.at(Y.getNumber()).second : X.getNumber() < Y.getNumber();
+      return XSectionID < S.size() ? BBIndexMap.at(X.getNumber()).second <
+                                         BBIndexMap.at(Y.getNumber()).second
+                                   : X.getNumber() < Y.getNumber();
     // We make sure that the section containing the entry block precedes all the
     // other sections.
     if (XSectionID == EntrySectionID || YSectionID == EntrySectionID)
@@ -282,23 +286,25 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // block sections are desired.  Additionally, machine basic block ids of the
 // functions can also be specified for a finer granularity. Moreover, a cluster
 // of basic blocks could be assigned to the same section.
-// A file with basic block sections for all of function main and three blocks for
-// function foo (two of which share a section) looks like this:
+// A file with basic block sections for all of function main and three blocks
+// for function foo (two of which share a section) looks like this:
 // ----------------------------
 // list.txt:
 // !main
 // !foo
 // !!1 2
 // !!4
-static bool getBBSectionsList(const MemoryBuffer *MBuf,
-                              StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &bbClusterMap,
-                              StringMap<StringRef> &funcAliasMap) {
+static bool getBBSectionsList(
+    const MemoryBuffer *MBuf,
+    StringMap<SmallVector<SmallVector<unsigned, 4>, 2>> &bbClusterMap,
+    StringMap<StringRef> &funcAliasMap) {
   if (!MBuf)
     return false;
 
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
-  StringMap<SmallVector<SmallVector<unsigned, 4>, 2>>::iterator fi = bbClusterMap.end();
+  StringMap<SmallVector<SmallVector<unsigned, 4>, 2>>::iterator fi =
+      bbClusterMap.end();
 
   for (; !LineIt.is_at_eof(); ++LineIt) {
     StringRef s(*LineIt);
@@ -310,22 +316,29 @@ static bool getBBSectionsList(const MemoryBuffer *MBuf,
     // Check for second "!" which indicates a cluster of basic blocks.
     if (s.consume_front("!")) {
       if (fi == bbClusterMap.end()) {
-        errs() << "Could not process profile: " << MBuf->getBufferIdentifier()  << " at line " << Twine(LineIt.line_number()) << " Does not follow a function name.\n";
+        errs() << "Could not process profile: " << MBuf->getBufferIdentifier()
+               << " at line " << Twine(LineIt.line_number())
+               << " Does not follow a function name.\n";
         return false;
       }
       std::istringstream iss(s.str());
-      std::vector<std::string> BBIndexes((std::istream_iterator<std::string>(iss)),
-                                         std::istream_iterator<std::string>());
-      if(!BBIndexes.empty())
+      std::vector<std::string> BBIndexes(
+          (std::istream_iterator<std::string>(iss)),
+          std::istream_iterator<std::string>());
+      if (!BBIndexes.empty())
         fi->second.emplace_back();
-      for (auto& BBIndexStr : BBIndexes) {
+      for (auto &BBIndexStr : BBIndexes) {
         unsigned BBIndex;
         if (StringRef(BBIndexStr).getAsInteger(10, BBIndex)) {
-          errs() << "Could not process profile: " << MBuf->getBufferIdentifier() << " at line " << Twine(LineIt.line_number()) << " " << BBIndexStr << " is not a number!\n";
+          errs() << "Could not process profile: " << MBuf->getBufferIdentifier()
+                 << " at line " << Twine(LineIt.line_number()) << " "
+                 << BBIndexStr << " is not a number!\n";
           return false;
         }
-        if(!BBIndex && !fi->second.back().empty()) {
-          errs() << "Could not process profile " << MBuf->getBufferIdentifier() << " at line " << Twine(LineIt.line_number()) << " Entry BB in the middle of the BB Cluster list!\n";
+        if (!BBIndex && !fi->second.back().empty()) {
+          errs() << "Could not process profile " << MBuf->getBufferIdentifier()
+                 << " at line " << Twine(LineIt.line_number())
+                 << " Entry BB in the middle of the BB Cluster list!\n";
           return false;
         }
         fi->second.back().push_back(BBIndex);
@@ -336,7 +349,7 @@ static bool getBBSectionsList(const MemoryBuffer *MBuf,
       fi = bbClusterMap.try_emplace(P.first).first;
 
       auto aliasStr = P.second;
-      while(aliasStr!=""){
+      while (aliasStr != "") {
         auto Q = aliasStr.split('/');
         funcAliasMap.try_emplace(Q.first, P.first);
         aliasStr = Q.second;

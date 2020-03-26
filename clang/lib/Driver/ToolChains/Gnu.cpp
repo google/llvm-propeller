@@ -633,7 +633,8 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       if (!Args.getLastArgValue(options::OPT_fuse_ld_EQ).equals_lower("lld"))
         D.Diag(clang::diag::err_drv_unsupported_opt)
             << "Linker does not support -fpropeller-optimize=";
-      //CmdArgs.push_back(
+      // DO NOT PASS PROFILE TO PROPELELR (BBCLUSTERS)
+      // CmdArgs.push_back(
       //    Args.MakeArgString(Twine("--propeller=") + A->getValue()));
       if (D.isUsingLTO()) {
         bool ltoBasicblockSectionsPresent = false;

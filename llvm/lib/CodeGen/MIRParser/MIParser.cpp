@@ -626,7 +626,7 @@ bool MIParser::parseSectionID(Optional<unsigned> &SID) {
   lex();
   if (Token.is(MIToken::IntegerLiteral)) {
     unsigned Value = 0;
-    if(getUnsigned(Value))
+    if (getUnsigned(Value))
       return error("Uknown Section ID");
     SID = Value;
   } else {
