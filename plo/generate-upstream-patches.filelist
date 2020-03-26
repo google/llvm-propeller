@@ -192,7 +192,7 @@ declare ALL_FILES=(
         debuginfo        llvm/lib/MC/MCDwarf.cpp
 	base_propeller   llvm/include/llvm/ProfileData/BBSectionsProf.h
         cfi              llvm/lib/Target/AArch64/AArch64FrameLowering.h
-        base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
+        #base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
         cfi              llvm/lib/Target/X86/X86FrameLowering.cpp
         cfi              llvm/lib/Target/X86/X86FrameLowering.h
         exception        llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections.ll
