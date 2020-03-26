@@ -1,6 +1,6 @@
-# RUN: llc -mtriple=aarch64--- -run-pass=machine-outliner -machine-outline-runs=2 -verify-machineinstrs %s -o - | FileCheck %s --check-prefix TWO-RUNS
-# RUN: llc -mtriple=aarch64--- -run-pass=machine-outliner -machine-outline-runs=1 -verify-machineinstrs %s -o - | FileCheck %s --check-prefix ONE-RUN
-# RUN: llc -mtriple=aarch64--- -run-pass=machine-outliner -machine-outline-runs=4 -verify-machineinstrs %s -o - | FileCheck %s --check-prefix FOUR-RUNS
+# RUN: llc -mtriple=aarch64 -run-pass=machine-outliner -machine-outline-runs=2 -verify-machineinstrs %s -o - | FileCheck %s --check-prefix TWO-RUNS
+# RUN: llc -mtriple=aarch64 -run-pass=machine-outliner -machine-outline-runs=1 -verify-machineinstrs %s -o - | FileCheck %s --check-prefix ONE-RUN
+# RUN: llc -mtriple=aarch64 -run-pass=machine-outliner -machine-outline-runs=4 -verify-machineinstrs %s -o - | FileCheck %s --check-prefix FOUR-RUNS
 
 # Example of Repeated Instruction Sequence - Iterative Machine Outlining
 #
@@ -33,8 +33,6 @@
 # outlining has performed.
 #
 --- |
-  target triple = "aarch64-apple-darwin"
-
   declare void @foo() local_unnamed_addr
 
   declare void @widget() local_unnamed_addr
@@ -84,17 +82,20 @@ body:             |
 ...
 ---
 name:            baz.15
+tracksRegLiveness: true
 stack:
   - { id: 0, offset: -8, size: 8 }
   - { id: 1, offset: -16, size: 8 }
 body:             |
   bb.0:
+    liveins: $x0, $x19, $lr
+
     early-clobber $sp = frame-setup STPXpre killed $lr, killed $x19, $sp, -2 :: (store 8 into %stack.1), (store 8 into %stack.0)
     frame-setup CFI_INSTRUCTION def_cfa_offset 16
     frame-setup CFI_INSTRUCTION offset $w19, -8
     frame-setup CFI_INSTRUCTION offset $w30, -16
     renamable $x19 = COPY $x0
-    renamable $x0 = nuw ADDXri killed renamable $x1, 16, 0
+    renamable $x0 = nuw ADDXri killed renamable $x0, 16, 0
     $x1 = ADDXri $sp, 0, 0
     dead $w2 = MOVi32imm 33, implicit-def $x2
     $x3 = COPY $xzr

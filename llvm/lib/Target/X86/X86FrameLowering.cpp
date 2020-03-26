@@ -488,7 +488,7 @@ void X86FrameLowering::BuildCFI(MachineBasicBlock &MBB,
 /// frame pointer.
 void X86FrameLowering::emitCalleeSavedFrameMoves(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) const {
-  emitCalleeSavedFrameMoves(MBB, MBBI, DebugLoc{}, true);
+  emitCalleeSavedFrameMoves(MBB, MBBI, DebugLoc{});
 
   MachineFunction &MF = *MBB.getParent();
   if (!hasFP(MF))
@@ -509,7 +509,7 @@ void X86FrameLowering::emitCalleeSavedFrameMoves(
 
 void X86FrameLowering::emitCalleeSavedFrameMoves(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
-    const DebugLoc &DL, bool IsPrologue) const {
+    const DebugLoc &DL) const {
   MachineFunction &MF = *MBB.getParent();
   MachineFrameInfo &MFI = MF.getFrameInfo();
   MachineModuleInfo &MMI = MF.getMMI();
@@ -524,15 +524,10 @@ void X86FrameLowering::emitCalleeSavedFrameMoves(
          I = CSI.begin(), E = CSI.end(); I != E; ++I) {
     int64_t Offset = MFI.getObjectOffset(I->getFrameIdx());
     unsigned Reg = I->getReg();
-    unsigned DwarfReg = MRI->getDwarfRegNum(Reg, true);
 
-    if (IsPrologue) {
-      BuildCFI(MBB, MBBI, DL,
-               MCCFIInstruction::createOffset(nullptr, DwarfReg, Offset));
-    } else {
-      BuildCFI(MBB, MBBI, DL,
-               MCCFIInstruction::createRestore(nullptr, DwarfReg));
-    }
+    unsigned DwarfReg = MRI->getDwarfRegNum(Reg, true);
+    BuildCFI(MBB, MBBI, DL,
+             MCCFIInstruction::createOffset(nullptr, DwarfReg, Offset));
   }
 }
 
@@ -1065,15 +1060,15 @@ static unsigned calculateSetFPREG(uint64_t SPAdjust) {
 // go with the minimum SlotSize.
 uint64_t X86FrameLowering::calculateMaxStackAlign(const MachineFunction &MF) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
-  uint64_t MaxAlign = MFI.getMaxAlignment(); // Desired stack alignment.
-  unsigned StackAlign = getStackAlignment();
+  Align MaxAlign = MFI.getMaxAlign(); // Desired stack alignment.
+  Align StackAlign = getStackAlign();
   if (MF.getFunction().hasFnAttribute("stackrealign")) {
     if (MFI.hasCalls())
       MaxAlign = (StackAlign > MaxAlign) ? StackAlign : MaxAlign;
     else if (MaxAlign < SlotSize)
-      MaxAlign = SlotSize;
+      MaxAlign = Align(SlotSize);
   }
-  return MaxAlign;
+  return MaxAlign.value();
 }
 
 void X86FrameLowering::BuildStackAlignAND(MachineBasicBlock &MBB,
@@ -1703,7 +1698,7 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
     }
 
     // Emit DWARF info specifying the offsets of the callee-saved registers.
-    emitCalleeSavedFrameMoves(MBB, MBBI, DL, true);
+    emitCalleeSavedFrameMoves(MBB, MBBI, DL);
   }
 
   // X86 Interrupt handling function cannot assume anything about the direction
@@ -1792,7 +1787,7 @@ X86FrameLowering::getWinEHFuncletFrameSize(const MachineFunction &MF) const {
   // RBP is not included in the callee saved register block. After pushing RBP,
   // everything is 16 byte aligned. Everything we allocate before an outgoing
   // call must also be 16 byte aligned.
-  unsigned FrameSizeMinusRBP = alignTo(CSSize + UsedSize, getStackAlignment());
+  unsigned FrameSizeMinusRBP = alignTo(CSSize + UsedSize, getStackAlign());
   // Subtract out the size of the callee saved registers. This is how much stack
   // each funclet will allocate.
   return FrameSizeMinusRBP + XMMSize - CSSize;
@@ -1853,8 +1848,6 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   }
   uint64_t SEHStackAllocAmt = NumBytes;
 
-  // AfterPop is the position to insert .cfi_restore.
-  MachineBasicBlock::iterator AfterPop = MBBI;
   if (HasFP) {
     // Pop EBP.
     BuildMI(MBB, MBBI, DL, TII.get(Is64Bit ? X86::POP64r : X86::POP32r),
@@ -1865,13 +1858,6 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
           TRI->getDwarfRegNum(Is64Bit ? X86::RSP : X86::ESP, true);
       BuildCFI(MBB, MBBI, DL, MCCFIInstruction::createDefCfa(
                                   nullptr, DwarfStackPtr, -SlotSize));
-      if (!MBB.succ_empty() && !MBB.isReturnBlock()) {
-        unsigned DwarfFramePtr = TRI->getDwarfRegNum(MachineFramePtr, true);
-        BuildCFI(MBB, AfterPop, DL,
-                 MCCFIInstruction::createRestore(nullptr, DwarfFramePtr));
-        --MBBI;
-        --AfterPop;
-      }
       --MBBI;
     }
   }
@@ -1969,13 +1955,6 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
                  MCCFIInstruction::createDefCfaOffset(nullptr, Offset));
       }
     }
-  }
-
-  // Emit DWARF info specifying the restores of the callee-saved registers.
-  // For epilogue with return inside or being other block without successor,
-  // no need to generate .cfi_restore for callee-saved registers.
-  if (NeedsDwarfCFI && !MBB.succ_empty() && !MBB.isReturnBlock()) {
-    emitCalleeSavedFrameMoves(MBB, AfterPop, DL, false);
   }
 
   if (Terminator == MBB.end() || !isTailCallOpcode(Terminator->getOpcode())) {
@@ -2095,7 +2074,8 @@ int X86FrameLowering::getWin64EHFrameIndexRef(const MachineFunction &MF,
     return getFrameIndexReference(MF, FI, FrameReg);
 
   FrameReg = TRI->getStackRegister();
-  return alignDown(MFI.getMaxCallFrameSize(), getStackAlignment()) + it->second;
+  return alignDown(MFI.getMaxCallFrameSize(), getStackAlign().value()) +
+         it->second;
 }
 
 int X86FrameLowering::getFrameIndexReferenceSP(const MachineFunction &MF,
@@ -2273,16 +2253,16 @@ bool X86FrameLowering::assignCalleeSavedSpillSlots(
 
     const TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(Reg, VT);
     unsigned Size = TRI->getSpillSize(*RC);
-    unsigned Align = TRI->getSpillAlignment(*RC);
+    Align Alignment = TRI->getSpillAlign(*RC);
     // ensure alignment
     assert(SpillSlotOffset < 0 && "SpillSlotOffset should always < 0 on X86");
-    SpillSlotOffset = -alignTo(-SpillSlotOffset, Align);
+    SpillSlotOffset = -alignTo(-SpillSlotOffset, Alignment);
 
     // spill into slot
     SpillSlotOffset -= Size;
     int SlotIndex = MFI.CreateFixedSpillStackObject(Size, SpillSlotOffset);
     CSI[i - 1].setFrameIdx(SlotIndex);
-    MFI.ensureMaxAlignment(Align);
+    MFI.ensureMaxAlignment(Alignment);
 
     // Save the start offset and size of XMM in stack frame for funclets.
     if (X86::VR128RegClass.contains(Reg)) {
@@ -3046,8 +3026,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     // We need to keep the stack aligned properly.  To do this, we round the
     // amount of space needed for the outgoing arguments up to the next
     // alignment boundary.
-    unsigned StackAlign = getStackAlignment();
-    Amount = alignTo(Amount, StackAlign);
+    Amount = alignTo(Amount, getStackAlign());
 
     const Function &F = MF.getFunction();
     bool WindowsCFI = MF.getTarget().getMCAsmInfo()->usesWindowsCFI();

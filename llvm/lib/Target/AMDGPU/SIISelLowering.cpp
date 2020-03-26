@@ -1912,67 +1912,45 @@ static void reservePrivateMemoryRegs(const TargetMachine &TM,
     Info.setScratchRSrcReg(ReservedBufferReg);
   }
 
-  // hasFP should be accurate for kernels even before the frame is finalized.
-  if (ST.getFrameLowering()->hasFP(MF)) {
-    MachineRegisterInfo &MRI = MF.getRegInfo();
+  MachineRegisterInfo &MRI = MF.getRegInfo();
 
-    // Try to use s32 as the SP, but move it if it would interfere with input
-    // arguments. This won't work with calls though.
-    //
-    // FIXME: Move SP to avoid any possible inputs, or find a way to spill input
-    // registers.
-    if (!MRI.isLiveIn(AMDGPU::SGPR32)) {
-      Info.setStackPtrOffsetReg(AMDGPU::SGPR32);
-    } else {
-      assert(AMDGPU::isShader(MF.getFunction().getCallingConv()));
-
-      if (MFI.hasCalls())
-        report_fatal_error("call in graphics shader with too many input SGPRs");
-
-      for (unsigned Reg : AMDGPU::SGPR_32RegClass) {
-        if (!MRI.isLiveIn(Reg)) {
-          Info.setStackPtrOffsetReg(Reg);
-          break;
-        }
-      }
-
-      if (Info.getStackPtrOffsetReg() == AMDGPU::SP_REG)
-        report_fatal_error("failed to find register for SP");
-    }
-
-    if (MFI.hasCalls()) {
-      Info.setScratchWaveOffsetReg(AMDGPU::SGPR33);
-      Info.setFrameOffsetReg(AMDGPU::SGPR33);
-    } else {
-      unsigned ReservedOffsetReg =
-        TRI.reservedPrivateSegmentWaveByteOffsetReg(MF);
-      Info.setScratchWaveOffsetReg(ReservedOffsetReg);
-      Info.setFrameOffsetReg(ReservedOffsetReg);
-    }
-  } else if (RequiresStackAccess) {
-    assert(!MFI.hasCalls());
-    // We know there are accesses and they will be done relative to SP, so just
-    // pin it to the input.
-    //
-    // FIXME: Should not do this if inline asm is reading/writing these
-    // registers.
-    Register PreloadedSP = Info.getPreloadedReg(
-        AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET);
-
-    Info.setStackPtrOffsetReg(PreloadedSP);
-    Info.setScratchWaveOffsetReg(PreloadedSP);
-    Info.setFrameOffsetReg(PreloadedSP);
+  // For entry functions we have to set up the stack pointer if we use it,
+  // whereas non-entry functions get this "for free". This means there is no
+  // intrinsic advantage to using S32 over S34 in cases where we do not have
+  // calls but do need a frame pointer (i.e. if we are requested to have one
+  // because frame pointer elimination is disabled). To keep things simple we
+  // only ever use S32 as the call ABI stack pointer, and so using it does not
+  // imply we need a separate frame pointer.
+  //
+  // Try to use s32 as the SP, but move it if it would interfere with input
+  // arguments. This won't work with calls though.
+  //
+  // FIXME: Move SP to avoid any possible inputs, or find a way to spill input
+  // registers.
+  if (!MRI.isLiveIn(AMDGPU::SGPR32)) {
+    Info.setStackPtrOffsetReg(AMDGPU::SGPR32);
   } else {
-    assert(!MFI.hasCalls());
+    assert(AMDGPU::isShader(MF.getFunction().getCallingConv()));
 
-    // There may not be stack access at all. There may still be spills, or
-    // access of a constant pointer (in which cases an extra copy will be
-    // emitted in the prolog).
-    unsigned ReservedOffsetReg
-      = TRI.reservedPrivateSegmentWaveByteOffsetReg(MF);
-    Info.setStackPtrOffsetReg(ReservedOffsetReg);
-    Info.setScratchWaveOffsetReg(ReservedOffsetReg);
-    Info.setFrameOffsetReg(ReservedOffsetReg);
+    if (MFI.hasCalls())
+      report_fatal_error("call in graphics shader with too many input SGPRs");
+
+    for (unsigned Reg : AMDGPU::SGPR_32RegClass) {
+      if (!MRI.isLiveIn(Reg)) {
+        Info.setStackPtrOffsetReg(Reg);
+        break;
+      }
+    }
+
+    if (Info.getStackPtrOffsetReg() == AMDGPU::SP_REG)
+      report_fatal_error("failed to find register for SP");
+  }
+
+  // hasFP should be accurate for entry functions even before the frame is
+  // finalized, because it does not rely on the known stack size, only
+  // properties like whether variable sized objects are present.
+  if (ST.getFrameLowering()->hasFP(MF)) {
+    Info.setFrameOffsetReg(AMDGPU::SGPR33);
   }
 }
 
@@ -2231,8 +2209,6 @@ SDValue SITargetLowering::LowerFormalArguments(
     allocateSystemSGPRs(CCInfo, MF, *Info, CallConv, IsShader);
   } else {
     CCInfo.AllocateReg(Info->getScratchRSrcReg());
-    CCInfo.AllocateReg(Info->getScratchWaveOffsetReg());
-    CCInfo.AllocateReg(Info->getFrameOffsetReg());
     allocateSpecialInputSGPRs(CCInfo, MF, *TRI, *Info);
   }
 
@@ -2445,20 +2421,19 @@ void SITargetLowering::passSpecialInputs(
   if (!CLI.CS)
     return;
 
-  const Function *CalleeFunc = CLI.CS.getCalledFunction();
-  assert(CalleeFunc);
-
   SelectionDAG &DAG = CLI.DAG;
   const SDLoc &DL = CLI.DL;
 
   const SIRegisterInfo *TRI = Subtarget->getRegisterInfo();
-
-  auto &ArgUsageInfo =
-    DAG.getPass()->getAnalysis<AMDGPUArgumentUsageInfo>();
-  const AMDGPUFunctionArgInfo &CalleeArgInfo
-    = ArgUsageInfo.lookupFuncArgInfo(*CalleeFunc);
-
   const AMDGPUFunctionArgInfo &CallerArgInfo = Info.getArgInfo();
+
+  const AMDGPUFunctionArgInfo *CalleeArgInfo
+    = &AMDGPUArgumentUsageInfo::FixedABIFunctionInfo;
+  if (const Function *CalleeFunc = CLI.CS.getCalledFunction()) {
+    auto &ArgUsageInfo =
+      DAG.getPass()->getAnalysis<AMDGPUArgumentUsageInfo>();
+    CalleeArgInfo = &ArgUsageInfo.lookupFuncArgInfo(*CalleeFunc);
+  }
 
   // TODO: Unify with private memory register handling. This is complicated by
   // the fact that at least in kernels, the input argument is not necessarily
@@ -2477,7 +2452,7 @@ void SITargetLowering::passSpecialInputs(
     const ArgDescriptor *OutgoingArg;
     const TargetRegisterClass *ArgRC;
 
-    std::tie(OutgoingArg, ArgRC) = CalleeArgInfo.getPreloadedValue(InputID);
+    std::tie(OutgoingArg, ArgRC) = CalleeArgInfo->getPreloadedValue(InputID);
     if (!OutgoingArg)
       continue;
 
@@ -2518,13 +2493,13 @@ void SITargetLowering::passSpecialInputs(
   const TargetRegisterClass *ArgRC;
 
   std::tie(OutgoingArg, ArgRC) =
-    CalleeArgInfo.getPreloadedValue(AMDGPUFunctionArgInfo::WORKITEM_ID_X);
+    CalleeArgInfo->getPreloadedValue(AMDGPUFunctionArgInfo::WORKITEM_ID_X);
   if (!OutgoingArg)
     std::tie(OutgoingArg, ArgRC) =
-      CalleeArgInfo.getPreloadedValue(AMDGPUFunctionArgInfo::WORKITEM_ID_Y);
+      CalleeArgInfo->getPreloadedValue(AMDGPUFunctionArgInfo::WORKITEM_ID_Y);
   if (!OutgoingArg)
     std::tie(OutgoingArg, ArgRC) =
-      CalleeArgInfo.getPreloadedValue(AMDGPUFunctionArgInfo::WORKITEM_ID_Z);
+      CalleeArgInfo->getPreloadedValue(AMDGPUFunctionArgInfo::WORKITEM_ID_Z);
   if (!OutgoingArg)
     return;
 
@@ -2539,10 +2514,10 @@ void SITargetLowering::passSpecialInputs(
   SDLoc SL;
 
   // If incoming ids are not packed we need to pack them.
-  if (IncomingArgX && !IncomingArgX->isMasked() && CalleeArgInfo.WorkItemIDX)
+  if (IncomingArgX && !IncomingArgX->isMasked() && CalleeArgInfo->WorkItemIDX)
     InputReg = loadInputValue(DAG, ArgRC, MVT::i32, DL, *IncomingArgX);
 
-  if (IncomingArgY && !IncomingArgY->isMasked() && CalleeArgInfo.WorkItemIDY) {
+  if (IncomingArgY && !IncomingArgY->isMasked() && CalleeArgInfo->WorkItemIDY) {
     SDValue Y = loadInputValue(DAG, ArgRC, MVT::i32, DL, *IncomingArgY);
     Y = DAG.getNode(ISD::SHL, SL, MVT::i32, Y,
                     DAG.getShiftAmountConstant(10, MVT::i32, SL));
@@ -2550,7 +2525,7 @@ void SITargetLowering::passSpecialInputs(
                  DAG.getNode(ISD::OR, SL, MVT::i32, InputReg, Y) : Y;
   }
 
-  if (IncomingArgZ && !IncomingArgZ->isMasked() && CalleeArgInfo.WorkItemIDZ) {
+  if (IncomingArgZ && !IncomingArgZ->isMasked() && CalleeArgInfo->WorkItemIDZ) {
     SDValue Z = loadInputValue(DAG, ArgRC, MVT::i32, DL, *IncomingArgZ);
     Z = DAG.getNode(ISD::SHL, SL, MVT::i32, Z,
                     DAG.getShiftAmountConstant(20, MVT::i32, SL));
@@ -2708,7 +2683,7 @@ SDValue SITargetLowering::LowerCall(CallLoweringInfo &CLI,
   if (!CLI.CS.getInstruction())
     report_fatal_error("unsupported libcall legalization");
 
-  if (!CLI.CS.getCalledFunction()) {
+  if (!AMDGPUTargetMachine::EnableFixedFunctionABI && !CLI.CS.getCalledFunction()) {
     return lowerUnhandledCall(CLI, InVals,
                               "unsupported indirect call to function ");
   }
@@ -2937,9 +2912,12 @@ SDValue SITargetLowering::LowerCall(CallLoweringInfo &CLI,
   Ops.push_back(Callee);
   // Add a redundant copy of the callee global which will not be legalized, as
   // we need direct access to the callee later.
-  GlobalAddressSDNode *GSD = cast<GlobalAddressSDNode>(Callee);
-  const GlobalValue *GV = GSD->getGlobal();
-  Ops.push_back(DAG.getTargetGlobalAddress(GV, DL, MVT::i64));
+  if (GlobalAddressSDNode *GSD = dyn_cast<GlobalAddressSDNode>(Callee)) {
+    const GlobalValue *GV = GSD->getGlobal();
+    Ops.push_back(DAG.getTargetGlobalAddress(GV, DL, MVT::i64));
+  } else {
+    Ops.push_back(DAG.getTargetConstant(0, DL, MVT::i64));
+  }
 
   if (IsTailCall) {
     // Each tail call may have to adjust the stack by a different amount, so
@@ -6040,6 +6018,9 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
                                 DAG.getConstant(1, SL, MVT::i32));
     return DAG.getSetCC(SL, MVT::i1, SrcHi, Aperture, ISD::SETEQ);
   }
+  case Intrinsic::amdgcn_alignbit:
+    return DAG.getNode(ISD::FSHR, DL, VT,
+                       Op.getOperand(1), Op.getOperand(2), Op.getOperand(3));
   default:
     if (const AMDGPU::ImageDimIntrinsicInfo *ImageDimIntr =
             AMDGPU::getImageDimIntrinsicInfo(IntrinsicID))
@@ -10650,11 +10631,6 @@ void SITargetLowering::finalizeLowering(MachineFunction &MF) const {
 
   if (Info->getFrameOffsetReg() != AMDGPU::FP_REG)
     MRI.replaceRegWith(AMDGPU::FP_REG, Info->getFrameOffsetReg());
-
-  if (Info->getScratchWaveOffsetReg() != AMDGPU::SCRATCH_WAVE_OFFSET_REG) {
-    MRI.replaceRegWith(AMDGPU::SCRATCH_WAVE_OFFSET_REG,
-                       Info->getScratchWaveOffsetReg());
-  }
 
   Info->limitOccupancy(MF);
 

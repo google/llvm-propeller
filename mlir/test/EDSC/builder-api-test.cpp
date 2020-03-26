@@ -8,11 +8,11 @@
 
 // RUN: mlir-edsc-builder-api-test | FileCheck %s -dump-input-on-failure
 
-#include "mlir/Dialect/AffineOps/EDSC/Intrinsics.h"
+#include "mlir/Dialect/Affine/EDSC/Intrinsics.h"
 #include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"
 #include "mlir/Dialect/LoopOps/EDSC/Builders.h"
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"
-#include "mlir/Dialect/VectorOps/EDSC/Intrinsics.h"
+#include "mlir/Dialect/Vector/EDSC/Intrinsics.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/IR/AffineExpr.h"
@@ -38,11 +38,11 @@ using namespace mlir::edsc::intrinsics;
 
 static MLIRContext &globalContext() {
   static bool init_once = []() {
-    registerDialect<AffineOpsDialect>();
+    registerDialect<AffineDialect>();
     registerDialect<linalg::LinalgDialect>();
     registerDialect<loop::LoopOpsDialect>();
     registerDialect<StandardOpsDialect>();
-    registerDialect<vector::VectorOpsDialect>();
+    registerDialect<vector::VectorDialect>();
     return true;
   }();
   (void)init_once;

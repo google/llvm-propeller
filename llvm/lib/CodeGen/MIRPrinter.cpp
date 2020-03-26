@@ -334,7 +334,7 @@ void MIRPrinter::convert(ModuleSlotTracker &MST,
   YamlMFI.HasPatchPoint = MFI.hasPatchPoint();
   YamlMFI.StackSize = MFI.getStackSize();
   YamlMFI.OffsetAdjustment = MFI.getOffsetAdjustment();
-  YamlMFI.MaxAlignment = MFI.getMaxAlignment();
+  YamlMFI.MaxAlignment = MFI.getMaxAlign().value();
   YamlMFI.AdjustsStack = MFI.adjustsStack();
   YamlMFI.HasCalls = MFI.hasCalls();
   YamlMFI.MaxCallFrameSize = MFI.isMaxCallFrameSizeComputed()
@@ -628,6 +628,11 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
   if (MBB.isEHPad()) {
     OS << (HasAttributes ? ", " : " (");
     OS << "landing-pad";
+    HasAttributes = true;
+  }
+  if (MBB.isEHFuncletEntry()) {
+    OS << (HasAttributes ? ", " : " (");
+    OS << "ehfunclet-entry";
     HasAttributes = true;
   }
   if (MBB.getAlignment() != Align(1)) {

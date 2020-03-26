@@ -180,12 +180,39 @@ def SysMManAPI : PublicAPI<"sys/mman.h"> {
   ];
 }
 
+def StructSigactionDefn : TypeDecl<"struct sigaction"> {
+  let Decl = [{
+    struct __sigaction {
+      union {
+        void (*sa_handler)(int);
+        void (*sa_action)(int, siginfo_t *, void *);
+      };
+      sigset_t sa_mask;
+      int sa_flags;
+      void (*sa_restorer)(void);
+    };
+  }];
+}
+
+def SighandlerTDefn : TypeDecl<"__sighandler_t"> {
+  let Decl = [{
+    typedef void(*__sighandler_t)(int);
+  }];
+}
+
 def SignalAPI : PublicAPI<"signal.h"> {
+  let TypeDeclarations = [
+    StructSigactionDefn,
+    SighandlerTDefn,
+  ];
+
   let Functions = [
     "raise",
+    "sigaction",
     "sigprocmask",
     "sigemptyset",
     "sigaddset",
+    "signal",
   ];
 }
 

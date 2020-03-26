@@ -307,6 +307,7 @@ private:
   const TargetInfo &Target;
   std::unique_ptr<CGCXXABI> ABI;
   llvm::LLVMContext &VMContext;
+  std::string ModuleNameHash = "";
 
   std::unique_ptr<CodeGenTBAA> TBAA;
 
@@ -578,6 +579,8 @@ public:
   /// Return true iff an Objective-C runtime has been configured.
   bool hasObjCRuntime() { return !!ObjCRuntime; }
 
+  const std::string &getModuleNameHash() const { return ModuleNameHash; }
+
   /// Return a reference to the configured OpenCL runtime.
   CGOpenCLRuntime &getOpenCLRuntime() {
     assert(OpenCLRuntime != nullptr);
@@ -710,9 +713,6 @@ public:
 
   CtorList &getGlobalCtors() { return GlobalCtors; }
   CtorList &getGlobalDtors() { return GlobalDtors; }
-
-  /// get GlobalDecl for non-ctor/dtor functions.
-  GlobalDecl getGlobalDecl(const FunctionDecl *FD);
 
   /// getTBAATypeInfo - Get metadata used to describe accesses to objects of
   /// the given type.
@@ -1514,6 +1514,10 @@ private:
 
   /// Emits target specific Metadata for global declarations.
   void EmitTargetMetadata();
+
+  /// Emit the module flag metadata used to pass options controlling the
+  /// the backend to LLVM.
+  void EmitBackendOptionsMetadata(const CodeGenOptions CodeGenOpts);
 
   /// Emits OpenCL specific Metadata e.g. OpenCL version.
   void EmitOpenCLMetadata();

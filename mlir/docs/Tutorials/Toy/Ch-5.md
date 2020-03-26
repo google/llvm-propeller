@@ -62,7 +62,7 @@ void ToyToAffineLoweringPass::runOnFunction() {
   // We define the specific operations, or dialects, that are legal targets for
   // this lowering. In our case, we are lowering to a combination of the
   // `Affine` and `Standard` dialects.
-  target.addLegalDialect<mlir::AffineOpsDialect, mlir::StandardOpsDialect>();
+  target.addLegalDialect<mlir::AffineDialect, mlir::StandardOpsDialect>();
 
   // We also define the Toy dialect as Illegal so that the conversion will fail
   // if any of these operations are *not* converted. Given that we actually want
@@ -106,7 +106,7 @@ struct TransposeOpLowering : public mlir::ConversionPattern {
 
   /// Match and rewrite the given `toy.transpose` operation, with the given
   /// operands that have been remapped from `tensor<...>` to `memref<...>`.
-  mlir::PatternMatchResult
+  mlir::LogicalResult
   matchAndRewrite(mlir::Operation *op, ArrayRef<mlir::Value> operands,
                   mlir::ConversionPatternRewriter &rewriter) const final {
     auto loc = op->getLoc();
@@ -132,7 +132,7 @@ struct TransposeOpLowering : public mlir::ConversionPattern {
           SmallVector<mlir::Value, 2> reverseIvs(llvm::reverse(loopIvs));
           return rewriter.create<mlir::AffineLoadOp>(loc, input, reverseIvs);
         });
-    return matchSuccess();
+    return success();
   }
 };
 ```

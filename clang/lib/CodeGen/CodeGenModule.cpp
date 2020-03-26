@@ -176,6 +176,18 @@ CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
   // CoverageMappingModuleGen object.
   if (CodeGenOpts.CoverageMapping)
     CoverageMapping.reset(new CoverageMappingModuleGen(*this, *CoverageInfo));
+
+  // Generate the module name hash here if needed.
+  if (CodeGenOpts.UniqueInternalLinkageNames &&
+      !getModule().getSourceFileName().empty()) {
+    llvm::MD5 Md5;
+    Md5.update(getModule().getSourceFileName());
+    llvm::MD5::MD5Result R;
+    Md5.final(R);
+    SmallString<32> Str;
+    llvm::MD5::stringifyResult(R, Str);
+    ModuleNameHash = ("." + Str).str();
+  }
 }
 
 CodeGenModule::~CodeGenModule() {}
@@ -660,6 +672,8 @@ void CodeGenModule::Release() {
     EmitCommandLineMetadata();
 
   EmitTargetMetadata();
+
+  EmitBackendOptionsMetadata(getCodeGenOpts());
 }
 
 void CodeGenModule::EmitOpenCLMetadata() {
@@ -677,6 +691,19 @@ void CodeGenModule::EmitOpenCLMetadata() {
       TheModule.getOrInsertNamedMetadata("opencl.ocl.version");
   llvm::LLVMContext &Ctx = TheModule.getContext();
   OCLVerMD->addOperand(llvm::MDNode::get(Ctx, OCLVerElts));
+}
+
+void CodeGenModule::EmitBackendOptionsMetadata(
+    const CodeGenOptions CodeGenOpts) {
+  switch (getTriple().getArch()) {
+  default:
+    break;
+  case llvm::Triple::riscv32:
+  case llvm::Triple::riscv64:
+    getModule().addModuleFlag(llvm::Module::Error, "SmallDataLimit",
+                              CodeGenOpts.SmallDataLimit);
+    break;
+  }
 }
 
 void CodeGenModule::UpdateCompletedType(const TagDecl *TD) {
@@ -1018,7 +1045,7 @@ static void AppendTargetMangling(const CodeGenModule &CGM,
   }
 }
 
-static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
+static std::string getMangledNameImpl(CodeGenModule &CGM, GlobalDecl GD,
                                       const NamedDecl *ND,
                                       bool OmitMultiVersionMangling = false) {
   SmallString<256> Buffer;
@@ -1040,6 +1067,19 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
     } else {
       Out << II->getName();
     }
+  }
+
+  // Check if the module name hash should be appended for internal linkage
+  // symbols.
+  const Decl *D = GD.getDecl();
+  if (!CGM.getModuleNameHash().empty() &&
+      ((isa<FunctionDecl>(D) &&
+        CGM.getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) ||
+       (isa<VarDecl>(D) && CGM.getContext().GetGVALinkageForVariable(
+                               cast<VarDecl>(D)) == GVA_Internal))) {
+    assert(CGM.getCodeGenOpts().UniqueInternalLinkageNames &&
+           "Hash computed when not explicitly requested");
+    Out << CGM.getModuleNameHash();
   }
 
   if (const auto *FD = dyn_cast<FunctionDecl>(ND))
@@ -1122,24 +1162,8 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
 
   // Keep the first result in the case of a mangling collision.
   const auto *ND = cast<NamedDecl>(GD.getDecl());
-  std::string MangledName = getMangledNameImpl(*this, GD, ND);
 
-  // With option -funique-internal-funcnames, functions with internal linkage
-  // should get unique names.  Use the hash of module name to get a unique
-  // identifier as this is a best-effort solution.
-  if (getCodeGenOpts().UniqueInternalFuncNames &&
-      dyn_cast<FunctionDecl>(GD.getDecl()) &&
-      getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage &&
-      !getModule().getSourceFileName().empty()) {
-    llvm::MD5 Md5;
-    Md5.update(getModule().getSourceFileName());
-    llvm::MD5::MD5Result R;
-    Md5.final(R);
-    SmallString<32> Str;
-    llvm::MD5::stringifyResult(R, Str);
-    std::string UniqueSuffix = ("." + Str).str();
-    MangledName += UniqueSuffix;
-  }
+  std::string MangledName = getMangledNameImpl(*this, GD, ND);
 
   // Ensure either we have different ABIs between host and device compilations,
   // says host compilation following MSVC ABI but device compilation follows
@@ -3969,6 +3993,8 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
   if (getLangOpts().CUDA &&
       (IsCUDASharedVar || IsCUDAShadowVar || IsHIPPinnedShadowVar))
     Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
+  else if (D->hasAttr<LoaderUninitializedAttr>())
+    Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
   else if (!InitExpr) {
     // This is a tentative definition; tentative definitions are
     // implicitly initialized with { 0 }.
@@ -5317,7 +5343,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
   case Decl::CXXConversion:
   case Decl::CXXMethod:
   case Decl::Function:
-    EmitGlobal(getGlobalDecl(cast<FunctionDecl>(D)));
+    EmitGlobal(cast<FunctionDecl>(D));
     // Always provide some coverage mapping
     // even for the functions that aren't emitted.
     AddDeferredUnusedCoverageMapping(D);
@@ -5978,11 +6004,4 @@ CodeGenModule::createOpenCLIntToSamplerConversion(const Expr *E,
   return CGF.Builder.CreateCall(CreateRuntimeFunction(FTy,
                                 "__translate_sampler_initializer"),
                                 {C});
-}
-
-GlobalDecl CodeGenModule::getGlobalDecl(const FunctionDecl *FD) {
-  if (FD->hasAttr<CUDAGlobalAttr>())
-    return GlobalDecl::getDefaultKernelReference(FD);
-  else
-    return GlobalDecl(FD);
 }

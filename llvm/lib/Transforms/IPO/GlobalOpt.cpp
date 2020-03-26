@@ -142,7 +142,7 @@ static bool isLeakCheckerRoot(GlobalVariable *GV) {
                  E = STy->element_end(); I != E; ++I) {
           Type *InnerTy = *I;
           if (isa<PointerType>(InnerTy)) return true;
-          if (isa<CompositeType>(InnerTy))
+          if (isa<StructType>(InnerTy) || isa<SequentialType>(InnerTy))
             Types.push_back(InnerTy);
         }
         break;
@@ -659,9 +659,6 @@ static bool AllUsesOfValueWillTrapIfNull(const Value *V,
       // checked.
       if (PHIs.insert(PN).second && !AllUsesOfValueWillTrapIfNull(PN, PHIs))
         return false;
-    } else if (isa<ICmpInst>(U) &&
-               isa<ConstantPointerNull>(U->getOperand(1))) {
-      // Ignore icmp X, null
     } else {
       //cerr << "NONTRAPPING USE: " << *U;
       return false;

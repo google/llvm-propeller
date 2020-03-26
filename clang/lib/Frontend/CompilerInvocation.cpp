@@ -788,10 +788,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   llvm::Triple T(TargetOpts.Triple);
   if (Opts.OptimizationLevel > 0 && Opts.hasReducedDebugInfo() &&
-      llvm::is_contained(DebugEntryValueArchs, T.getArch())) {
-    Opts.EnableDebugEntryValues = Args.hasArg(OPT_femit_debug_entry_values);
+      llvm::is_contained(DebugEntryValueArchs, T.getArch()))
     Opts.EmitCallSiteInfo = true;
-  }
 
   Opts.DisableO0ImplyOptNone = Args.hasArg(OPT_disable_O0_optnone);
   Opts.DisableRedZone = Args.hasArg(OPT_disable_red_zone);
@@ -923,6 +921,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.NoZeroInitializedInBSS = Args.hasArg(OPT_mno_zero_initialized_in_bss);
   Opts.NumRegisterParameters = getLastArgIntValue(Args, OPT_mregparm, 0, Diags);
   Opts.NoExecStack = Args.hasArg(OPT_mno_exec_stack);
+  Opts.SmallDataLimit =
+      getLastArgIntValue(Args, OPT_msmall_data_limit, 0, Diags);
   Opts.FatalWarnings = Args.hasArg(OPT_massembler_fatal_warnings);
   Opts.NoWarn = Args.hasArg(OPT_massembler_no_warn);
   Opts.EnableSegmentedStacks = Args.hasArg(OPT_split_stacks);
@@ -972,7 +972,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.StackSizeSection = Args.hasArg(OPT_fstack_size_section);
   Opts.UniqueSectionNames = !Args.hasArg(OPT_fno_unique_section_names);
   Opts.UniqueBBSectionNames = Args.hasArg(OPT_funique_bb_section_names);
-  Opts.UniqueInternalFuncNames = Args.hasArg(OPT_funique_internal_funcnames);
+  Opts.UniqueInternalLinkageNames =
+      Args.hasArg(OPT_funique_internal_linkage_names);
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
   Opts.NoUseJumpTables = Args.hasArg(OPT_fno_jump_tables);
@@ -2923,6 +2924,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       !Args.hasArg(OPT_fno_concept_satisfaction_caching);
   if (Args.hasArg(OPT_fconcepts_ts))
     Diags.Report(diag::warn_fe_concepts_ts_flag);
+  Opts.RecoveryAST =
+      Args.hasFlag(OPT_frecovery_ast, OPT_fno_recovery_ast, false);
   Opts.HeinousExtensions = Args.hasArg(OPT_fheinous_gnu_extensions);
   Opts.AccessControl = !Args.hasArg(OPT_fno_access_control);
   Opts.ElideConstructors = !Args.hasArg(OPT_fno_elide_constructors);

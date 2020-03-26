@@ -130,10 +130,6 @@ static cl::opt<bool>
 EnableCodeSinking("instcombine-code-sinking", cl::desc("Enable code sinking"),
                                               cl::init(true));
 
-static cl::opt<bool>
-EnableExpensiveCombines("expensive-combines",
-                        cl::desc("Enable expensive instruction combines"));
-
 static cl::opt<unsigned> LimitMaxIterations(
     "instcombine-max-iterations",
     cl::desc("Limit the maximum number of instruction combining iterations"),
@@ -1961,10 +1957,9 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
         if (J > 0) {
           if (J == 1) {
             CurTy = Op1->getSourceElementType();
-          } else if (auto *CT = dyn_cast<CompositeType>(CurTy)) {
-            CurTy = CT->getTypeAtIndex(Op1->getOperand(J));
           } else {
-            CurTy = nullptr;
+            CurTy =
+                GetElementPtrInst::getTypeAtIndex(CurTy, Op1->getOperand(J));
           }
         }
       }
@@ -2761,6 +2756,12 @@ Instruction *InstCombiner::visitFree(CallInst &FI) {
   return nullptr;
 }
 
+static bool isMustTailCall(Value *V) {
+  if (auto *CI = dyn_cast<CallInst>(V))
+    return CI->isMustTailCall();
+  return false;
+}
+
 Instruction *InstCombiner::visitReturnInst(ReturnInst &RI) {
   if (RI.getNumOperands() == 0) // ret void
     return nullptr;
@@ -2768,6 +2769,10 @@ Instruction *InstCombiner::visitReturnInst(ReturnInst &RI) {
   Value *ResultOp = RI.getOperand(0);
   Type *VTy = ResultOp->getType();
   if (!VTy->isIntegerTy() || isa<Constant>(ResultOp))
+    return nullptr;
+
+  // Don't replace result of musttail calls.
+  if (isMustTailCall(ResultOp))
     return nullptr;
 
   // There might be assume intrinsics dominating this return that completely
@@ -3482,26 +3487,6 @@ bool InstCombiner::run() {
       }
     }
 
-    // In general, it is possible for computeKnownBits to determine all bits in
-    // a value even when the operands are not all constants.
-    Type *Ty = I->getType();
-    if (ExpensiveCombines && !I->use_empty() && Ty->isIntOrIntVectorTy()) {
-      KnownBits Known = computeKnownBits(I, /*Depth*/0, I);
-      if (Known.isConstant()) {
-        Constant *C = ConstantInt::get(Ty, Known.getConstant());
-        LLVM_DEBUG(dbgs() << "IC: ConstFold (all bits known) to: " << *C
-                          << " from: " << *I << '\n');
-
-        // Add operands to the worklist.
-        replaceInstUsesWith(*I, C);
-        ++NumConstProp;
-        if (isInstructionTriviallyDead(I, &TLI))
-          eraseInstFromFunction(*I);
-        MadeIRChange = true;
-        continue;
-      }
-    }
-
     // See if we can trivially sink this instruction to a successor basic block.
     if (EnableCodeSinking && I->hasOneUse()) {
       BasicBlock *BB = I->getParent();
@@ -3753,11 +3738,8 @@ static bool combineInstructionsOverFunction(
     Function &F, InstCombineWorklist &Worklist, AliasAnalysis *AA,
     AssumptionCache &AC, TargetLibraryInfo &TLI, DominatorTree &DT,
     OptimizationRemarkEmitter &ORE, BlockFrequencyInfo *BFI,
-    ProfileSummaryInfo *PSI, bool ExpensiveCombines, unsigned MaxIterations,
-    LoopInfo *LI) {
+    ProfileSummaryInfo *PSI, unsigned MaxIterations, LoopInfo *LI) {
   auto &DL = F.getParent()->getDataLayout();
-  if (EnableExpensiveCombines.getNumOccurrences())
-    ExpensiveCombines = EnableExpensiveCombines;
   MaxIterations = std::min(MaxIterations, LimitMaxIterations.getValue());
 
   /// Builder - This is an IRBuilder that automatically inserts new
@@ -3799,7 +3781,7 @@ static bool combineInstructionsOverFunction(
 
     MadeIRChange |= prepareICWorklistFromFunction(F, DL, &TLI, Worklist);
 
-    InstCombiner IC(Worklist, Builder, F.hasMinSize(), ExpensiveCombines, AA,
+    InstCombiner IC(Worklist, Builder, F.hasMinSize(), AA,
                     AC, TLI, DT, ORE, BFI, PSI, DL, LI);
     IC.MaxArraySizeForCombine = MaxArraySize;
 
@@ -3812,11 +3794,10 @@ static bool combineInstructionsOverFunction(
   return MadeIRChange;
 }
 
-InstCombinePass::InstCombinePass(bool ExpensiveCombines)
-    : ExpensiveCombines(ExpensiveCombines), MaxIterations(LimitMaxIterations) {}
+InstCombinePass::InstCombinePass() : MaxIterations(LimitMaxIterations) {}
 
-InstCombinePass::InstCombinePass(bool ExpensiveCombines, unsigned MaxIterations)
-    : ExpensiveCombines(ExpensiveCombines), MaxIterations(MaxIterations) {}
+InstCombinePass::InstCombinePass(unsigned MaxIterations)
+    : MaxIterations(MaxIterations) {}
 
 PreservedAnalyses InstCombinePass::run(Function &F,
                                        FunctionAnalysisManager &AM) {
@@ -3836,8 +3817,7 @@ PreservedAnalyses InstCombinePass::run(Function &F,
       &AM.getResult<BlockFrequencyAnalysis>(F) : nullptr;
 
   if (!combineInstructionsOverFunction(F, Worklist, AA, AC, TLI, DT, ORE, BFI,
-                                       PSI, ExpensiveCombines, MaxIterations,
-                                       LI))
+                                       PSI, MaxIterations, LI))
     // No changes, all analyses are preserved.
     return PreservedAnalyses::all();
 
@@ -3887,22 +3867,18 @@ bool InstructionCombiningPass::runOnFunction(Function &F) {
       nullptr;
 
   return combineInstructionsOverFunction(F, Worklist, AA, AC, TLI, DT, ORE, BFI,
-                                         PSI, ExpensiveCombines, MaxIterations,
-                                         LI);
+                                         PSI, MaxIterations, LI);
 }
 
 char InstructionCombiningPass::ID = 0;
 
-InstructionCombiningPass::InstructionCombiningPass(bool ExpensiveCombines)
-    : FunctionPass(ID), ExpensiveCombines(ExpensiveCombines),
-      MaxIterations(InstCombineDefaultMaxIterations) {
+InstructionCombiningPass::InstructionCombiningPass()
+    : FunctionPass(ID), MaxIterations(InstCombineDefaultMaxIterations) {
   initializeInstructionCombiningPassPass(*PassRegistry::getPassRegistry());
 }
 
-InstructionCombiningPass::InstructionCombiningPass(bool ExpensiveCombines,
-                                                   unsigned MaxIterations)
-    : FunctionPass(ID), ExpensiveCombines(ExpensiveCombines),
-      MaxIterations(MaxIterations) {
+InstructionCombiningPass::InstructionCombiningPass(unsigned MaxIterations)
+    : FunctionPass(ID), MaxIterations(MaxIterations) {
   initializeInstructionCombiningPassPass(*PassRegistry::getPassRegistry());
 }
 
@@ -3928,13 +3904,12 @@ void LLVMInitializeInstCombine(LLVMPassRegistryRef R) {
   initializeInstructionCombiningPassPass(*unwrap(R));
 }
 
-FunctionPass *llvm::createInstructionCombiningPass(bool ExpensiveCombines) {
-  return new InstructionCombiningPass(ExpensiveCombines);
+FunctionPass *llvm::createInstructionCombiningPass() {
+  return new InstructionCombiningPass();
 }
 
-FunctionPass *llvm::createInstructionCombiningPass(bool ExpensiveCombines,
-                                                   unsigned MaxIterations) {
-  return new InstructionCombiningPass(ExpensiveCombines, MaxIterations);
+FunctionPass *llvm::createInstructionCombiningPass(unsigned MaxIterations) {
+  return new InstructionCombiningPass(MaxIterations);
 }
 
 void LLVMAddInstructionCombiningPass(LLVMPassManagerRef PM) {

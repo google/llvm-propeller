@@ -55,14 +55,6 @@ using llvm::dbgs;
 /// More advanced use cases, analyses as well as profitability heuristics are
 /// left for future work.
 
-static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
-static llvm::cl::list<unsigned> clTileSizes(
-    "linalg-fusion-tile-sizes",
-    llvm::cl::desc(
-        "Tile sizes by which to tile linalg operations during linalg fusion"),
-    llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated,
-    llvm::cl::cat(clOptionsCategory));
-
 // Return a cloned version of `op` that operates on `loopRanges`, assumed to be
 // a subset of the original loop ranges of `op`.
 // This is achieved by applying the `loopToOperandRangesMaps` permutation maps
@@ -534,10 +526,10 @@ namespace {
 struct FuseGenericTensorOps : public OpRewritePattern<GenericOp> {
   using OpRewritePattern<GenericOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GenericOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GenericOp op,
+                                PatternRewriter &rewriter) const override {
     if (!op.hasTensorSemantics())
-      return matchFailure();
+      return failure();
 
     // Find the first operand that is defined by another generic op on tensors.
     for (auto operand : llvm::enumerate(op.getOperation()->getOperands())) {
@@ -551,9 +543,9 @@ struct FuseGenericTensorOps : public OpRewritePattern<GenericOp> {
       if (!fusedOp)
         continue;
       rewriter.replaceOp(op, fusedOp.getValue().getOperation()->getResults());
-      return matchSuccess();
+      return success();
     }
-    return matchFailure();
+    return failure();
   }
 };
 
