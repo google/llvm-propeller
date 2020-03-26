@@ -2014,7 +2014,7 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   // With basic block sections, add ranges for all basic block sections.
   if (MF->hasBBSections()) {
     for (auto &MBB : *MF) {
-      if (&MBB == &MF->front() && MBB.isBeginSection())
+      if (&MBB != &MF->front() && MBB.isBeginSection())
         TheCU.addRange(
             {MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
     }
