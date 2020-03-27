@@ -139,6 +139,7 @@ declare ALL_FILES=(
         base_1           llvm/include/llvm/Target/TargetMachine.h
         base_1           llvm/include/llvm/Target/TargetOptions.h
 	base_1           llvm/lib/ProfileData/CMakeLists.txt
+        base_2           llvm/include/llvm/CodeGen/AsmPrinter.h
 	base_2           llvm/include/llvm/InitializePasses.h
         base_2           llvm/include/llvm/CodeGen/MachineBasicBlock.h
         base_2           llvm/include/llvm/CodeGen/MachineFunction.h
