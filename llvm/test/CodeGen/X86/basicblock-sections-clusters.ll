@@ -1,38 +1,51 @@
-; Fine-grained basic block sections, subset of basic blocks in a function.
-; Only basic block with id 2 must get a section.
-; RUN: echo '!_Z3bazb' > %t
-; RUN: echo '!!0 2' >> %t
-; RUN: llc < %s -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t -unique-bb-section-names | FileCheck %s -check-prefix=LINUX-SECTIONS
+; BB cluster sections.
+; Basic blocks #0 (entry) and #4 will be placed in the same section.
+; Basic block 1 will be placed in a unique section.
+; The rest (BBs #2 and #3) end up in the cold section.
+; RUN: echo '!f' > %t
+; RUN: echo '!!0 4' >> %t
+; RUN: echo '!!1' >> %t
+; RUN: llc < %s -O0 -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t | FileCheck %s -check-prefix=LINUX-SECTIONS
 
-define void @_Z3bazb(i1 zeroext) {
-  %2 = alloca i8, align 1
-  %3 = zext i1 %0 to i8
-  store i8 %3, i8* %2, align 1
-  %4 = load i8, i8* %2, align 1
-  %5 = trunc i8 %4 to i1
-  br i1 %5, label %6, label %8
+declare void @stub(i32*)
 
-6:                                                ; preds = %1
-  %7 = call i32 @_Z3barv()
-  br label %10
+define i32 @f(i32* %ptr, i1 %cond) {
+  entry:
+    br i1 %cond, label %left, label %right
 
-8:                                                ; preds = %1
-  %9 = call i32 @_Z3foov()
-  br label %10
+  left:                                             ; preds = %entry
+    %is_null = icmp eq i32* %ptr, null
+    br i1 %is_null, label %null, label %not_null
 
-10:                                               ; preds = %8, %6
-  ret void
+  not_null:                                         ; preds = %left
+    %val = load i32, i32* %ptr
+    ret i32 %val
+
+  null:                                             ; preds = %left
+    call void @stub(i32* %ptr)
+    unreachable
+
+  right:                                            ; preds = %entry
+    call void @stub(i32* null)
+    unreachable
 }
 
-declare i32 @_Z3barv() #1
-
-declare i32 @_Z3foov() #1
-
-; LINUX-SECTIONS: .section        .text._Z3bazb,"ax",@progbits
-; LINUX-SECTIONS: _Z3bazb:
-; LINUX-SECTIONS: rr.BB._Z3bazb:
-; LINUX-SECTIONS: .section        .text._Z3bazb.unlikely,"ax",@progbits
-; LINUX-SECTIONS: r.BB._Z3bazb:
-; LINUX-SECTIONS: .size   r.BB._Z3bazb, .Ltmp0-r.BB._Z3bazb
-; LINUX-SECTIONS: .size   _Z3bazb, .Lfunc_end0-_Z3bazb
+; LINUX-SECTIONS:	.section        .text.f,"ax",@progbits
+; LINUX-SECTIONS:	f:
+; LINUX-SECTIONS:	jne     a.BB.f
+; LINUX-SECTIONS-NOT:   {{jne|je|jmp}}
+; LINUX-SECTIONS:	aara.BB.f:
+; LINUX-SECTIONS:	.section        .text.f,"ax",@progbits,unique,1
+; LINUX-SECTIONS:	a.BB.f:
+; LINUX-SECTIONS:       je      ara.BB.f
+; LINUX-SECTIONS-NEXT:  jmp     ra.BB.f
+; LINUX-SECTIONS-NOT:   {{jne|je|jmp}}
+; LINUX-SECTIONS:	.size   a.BB.f, .Ltmp0-a.BB.f
+; LINUX-SECTIONS:	.section        .text.f.unlikely,"ax",@progbits
+; LINUX-SECTIONS:	ra.BB.f:
+; LINUX-SECTIONS:	ara.BB.f:
+; LINUX-SECTIONS:	.size   ra.BB.f, .Ltmp1-ra.BB.f
+; LINUX-SECTIONS:	.section        .text.f,"ax",@progbits
+; LINUX-SECTIONS-NEXT:	.Lfunc_end0:
+; LINUX_SECTIONS-NEXT:	.size   f, .Lfunc_end0-f
 

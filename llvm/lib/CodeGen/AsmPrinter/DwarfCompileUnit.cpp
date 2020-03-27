@@ -329,7 +329,6 @@ DIE *DwarfCompileUnit::getOrCreateCommonBlock(
 }
 
 void DwarfCompileUnit::addRange(RangeSpan Range) {
-  errs() << "ADDING RANGE: " << Range.Begin->getName() << " --> " << Range.End->getName() << "\n";
   DD->insertSectionLabel(Range.Begin);
 
   bool SameAsPrevCU = this == DD->getPrevCU();
@@ -514,10 +513,8 @@ void DwarfCompileUnit::constructScopeDIE(
 
 void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
                                          SmallVector<RangeSpan, 2> Range) {
-
   HasRangeLists = true;
 
-  errs() << "Add scopre range list\n";
   // Add the range list to the set of ranges to be emitted.
   auto IndexAndList =
       (DD->getDwarfVersion() < 5 && Skeleton ? Skeleton->DU : DU)
