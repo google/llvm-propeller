@@ -2249,6 +2249,9 @@ bool QualType::isTrivialType(const ASTContext &Context) const {
   if ((*this)->isArrayType())
     return Context.getBaseElementType(*this).isTrivialType(Context);
 
+  if ((*this)->isSizelessBuiltinType())
+    return true;
+
   // Return false for incomplete types after skipping any incomplete array
   // types which are expressly allowed by the standard and thus our API.
   if ((*this)->isIncompleteType())
@@ -2302,6 +2305,9 @@ bool QualType::isTriviallyCopyableType(const ASTContext &Context) const {
   QualType CanonicalType = getCanonicalType();
   if (CanonicalType->isDependentType())
     return false;
+
+  if (CanonicalType->isSizelessBuiltinType())
+    return true;
 
   // Return false for incomplete types after skipping any incomplete array types
   // which are expressly allowed by the standard and thus our API.
@@ -2495,6 +2501,9 @@ bool QualType::isCXX11PODType(const ASTContext &Context) const {
   //   versions of these types are collectively called trivial types.
   const Type *BaseTy = ty->getBaseElementTypeUnsafe();
   assert(BaseTy && "NULL element type");
+
+  if (BaseTy->isSizelessBuiltinType())
+    return true;
 
   // Return false for incomplete types after skipping any incomplete array
   // types which are expressly allowed by the standard and thus our API.

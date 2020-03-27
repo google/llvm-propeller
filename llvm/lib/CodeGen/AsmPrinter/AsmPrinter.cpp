@@ -1775,8 +1775,8 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
                                " initalized first.");
 
     // Get the function entry point symbol.
-    CurrentFnSym =
-        OutContext.getOrCreateSymbol("." + CurrentFnDescSym->getName());
+    CurrentFnSym = OutContext.getOrCreateSymbol(
+        "." + cast<MCSymbolXCOFF>(CurrentFnDescSym)->getUnqualifiedName());
 
     // Set the containing csect.
     MCSectionXCOFF *FnEntryPointSec =

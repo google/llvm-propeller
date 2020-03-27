@@ -140,6 +140,13 @@ Driver::Driver(StringRef ClangExecutable, StringRef TargetTriple,
   Dir = std::string(llvm::sys::path::parent_path(ClangExecutable));
   InstalledDir = Dir; // Provide a sensible default installed dir.
 
+  if ((!SysRoot.empty()) && llvm::sys::path::is_relative(SysRoot)) {
+    // Prepend InstalledDir if SysRoot is relative
+    SmallString<128> P(InstalledDir);
+    llvm::sys::path::append(P, SysRoot);
+    SysRoot = std::string(P);
+  }
+
 #if defined(CLANG_CONFIG_FILE_SYSTEM_DIR)
   SystemConfigDir = CLANG_CONFIG_FILE_SYSTEM_DIR;
 #endif
@@ -1266,10 +1273,6 @@ void Driver::generateCompilationDiagnostics(
 
   // Print the version of the compiler.
   PrintVersion(C, llvm::errs());
-
-  Diag(clang::diag::note_drv_command_failed_diag_msg)
-      << "PLEASE submit a bug report to " BUG_REPORT_URL " and include the "
-         "crash backtrace, preprocessed source, and associated run script.";
 
   // Suppress driver output and emit preprocessor output to temp file.
   Mode = CPPMode;
