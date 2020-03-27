@@ -400,9 +400,10 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
   else {
     SmallVector<RangeSpan, 2> BB_List;
     BB_List.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
-    // If basic block sections are on, the [getFunctionBegin(), getFunctionEnd()] range
-    // will include all BBs which are in the same section as the entry
-    // block. Ranges for the other BBs have to be emitted separately.
+    // If basic block sections are on, the [getFunctionBegin(),
+    // getFunctionEnd()] range will include all BBs which are in the same
+    // section as the entry block. Ranges for the other BBs have to be emitted
+    // separately.
     if (Asm->MF->hasBBSections()) {
       for (auto &MBB : *Asm->MF) {
         if (&MBB != &Asm->MF->front() && MBB.isBeginSection())
