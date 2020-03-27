@@ -21,6 +21,7 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/EvaluatedExprVisitor.h"
+#include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/NonTrivialTypeVisitor.h"
 #include "clang/AST/StmtCXX.h"
@@ -2708,6 +2709,18 @@ static void checkNewAttributesAfterDef(Sema &S, Decl *New, const Decl *Old) {
           << AA;
         S.Diag(NewAttribute->getLocation(), diag::note_alignas_on_declaration)
           << AA;
+        NewAttributes.erase(NewAttributes.begin() + I);
+        --E;
+        continue;
+      }
+    } else if (isa<LoaderUninitializedAttr>(NewAttribute)) {
+      // If there is a C definition followed by a redeclaration with this
+      // attribute then there are two different definitions. In C++, prefer the
+      // standard diagnostics.
+      if (!S.getLangOpts().CPlusPlus) {
+        S.Diag(NewAttribute->getLocation(),
+               diag::err_loader_uninitialized_redeclaration);
+        S.Diag(Def->getLocation(), diag::note_previous_definition);
         NewAttributes.erase(NewAttributes.begin() + I);
         --E;
         continue;
@@ -8749,6 +8762,9 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   QualType R = TInfo->getType();
 
   assert(R->isFunctionType());
+  if (R.getCanonicalType()->castAs<FunctionType>()->getCmseNSCallAttr())
+    Diag(D.getIdentifierLoc(), diag::err_function_decl_cmse_ns_call);
+
   SmallVector<TemplateParameterList *, 4> TemplateParamLists;
   for (TemplateParameterList *TPL : TemplateParamListsRef)
     TemplateParamLists.push_back(TPL);
@@ -11488,6 +11504,7 @@ QualType Sema::deduceVarTypeFromInitializer(VarDecl *VDecl,
 
 bool Sema::DeduceVariableDeclarationType(VarDecl *VDecl, bool DirectInit,
                                          Expr *Init) {
+  assert(!Init || !Init->containsErrors());
   QualType DeducedType = deduceVarTypeFromInitializer(
       VDecl, VDecl->getDeclName(), VDecl->getType(), VDecl->getTypeSourceInfo(),
       VDecl->getSourceRange(), DirectInit, Init);
@@ -11521,6 +11538,9 @@ bool Sema::DeduceVariableDeclarationType(VarDecl *VDecl, bool DirectInit,
 
 void Sema::checkNonTrivialCUnionInInitializer(const Expr *Init,
                                               SourceLocation Loc) {
+  if (auto *EWC = dyn_cast<ExprWithCleanups>(Init))
+    Init = EWC->getSubExpr();
+
   if (auto *CE = dyn_cast<ConstantExpr>(Init))
     Init = CE->getSubExpr();
 
@@ -11822,7 +11842,7 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init, bool DirectInit) {
     // be deduced based on the chosen correction if the original init contains a
     // TypoExpr.
     ExprResult Res = CorrectDelayedTyposInExpr(Init, VDecl);
-    if (!Res.isUsable()) {
+    if (!Res.isUsable() || Res.get()->containsErrors()) {
       RealDecl->setInvalidDecl();
       return;
     }
@@ -11911,6 +11931,13 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init, bool DirectInit) {
   // a kernel function cannot be initialized."
   if (VDecl->getType().getAddressSpace() == LangAS::opencl_local) {
     Diag(VDecl->getLocation(), diag::err_local_cant_init);
+    VDecl->setInvalidDecl();
+    return;
+  }
+
+  // The LoaderUninitialized attribute acts as a definition (of undef).
+  if (VDecl->hasAttr<LoaderUninitializedAttr>()) {
+    Diag(VDecl->getLocation(), diag::err_loader_uninitialized_cant_init);
     VDecl->setInvalidDecl();
     return;
   }
@@ -12225,6 +12252,8 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init, bool DirectInit) {
     VDecl->setInitStyle(VarDecl::ListInit);
   }
 
+  if (LangOpts.OpenMP && VDecl->hasGlobalStorage())
+    DeclsToCheckForDeferredDiags.push_back(VDecl);
   CheckCompleteVariableDeclaration(VDecl);
 }
 
@@ -12326,6 +12355,22 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       Diag(Var->getLocation(), diag::err_opencl_constant_no_init);
       Var->setInvalidDecl();
       return;
+    }
+
+    if (!Var->isInvalidDecl() && RealDecl->hasAttr<LoaderUninitializedAttr>()) {
+      if (CXXRecordDecl *RD = Var->getType()->getAsCXXRecordDecl()) {
+        if (!RD->hasTrivialDefaultConstructor()) {
+          Diag(Var->getLocation(), diag::err_loader_uninitialized_trivial_ctor);
+          Var->setInvalidDecl();
+          return;
+        }
+      }
+      if (Var->getStorageClass() == SC_Extern) {
+        Diag(Var->getLocation(), diag::err_loader_uninitialized_extern_decl)
+            << Var;
+        Var->setInvalidDecl();
+        return;
+      }
     }
 
     VarDecl::DefinitionKind DefKind = Var->isThisDeclarationADefinition();
@@ -14323,6 +14368,13 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
   // deletion in some later function.
   if (getDiagnostics().hasErrorOccurred()) {
     DiscardCleanupsInEvaluationContext();
+  }
+
+  if (LangOpts.OpenMP || LangOpts.CUDA) {
+    auto ES = getEmissionStatus(FD);
+    if (ES == Sema::FunctionEmissionStatus::Emitted ||
+        ES == Sema::FunctionEmissionStatus::Unknown)
+      DeclsToCheckForDeferredDiags.push_back(FD);
   }
 
   return dcl;
@@ -17988,7 +18040,8 @@ Decl *Sema::getObjCDeclContext() const {
   return (dyn_cast_or_null<ObjCContainerDecl>(CurContext));
 }
 
-Sema::FunctionEmissionStatus Sema::getEmissionStatus(FunctionDecl *FD) {
+Sema::FunctionEmissionStatus Sema::getEmissionStatus(FunctionDecl *FD,
+                                                     bool Final) {
   // Templates are emitted when they're instantiated.
   if (FD->isDependentContext())
     return FunctionEmissionStatus::TemplateDiscarded;
@@ -18000,8 +18053,10 @@ Sema::FunctionEmissionStatus Sema::getEmissionStatus(FunctionDecl *FD) {
     if (DevTy.hasValue()) {
       if (*DevTy == OMPDeclareTargetDeclAttr::DT_Host)
         OMPES = FunctionEmissionStatus::OMPDiscarded;
-      else if (DeviceKnownEmittedFns.count(FD) > 0)
+      else if (*DevTy == OMPDeclareTargetDeclAttr::DT_NoHost ||
+               *DevTy == OMPDeclareTargetDeclAttr::DT_Any) {
         OMPES = FunctionEmissionStatus::Emitted;
+      }
     }
   } else if (LangOpts.OpenMP) {
     // In OpenMP 4.5 all the functions are host functions.
@@ -18017,10 +18072,11 @@ Sema::FunctionEmissionStatus Sema::getEmissionStatus(FunctionDecl *FD) {
       if (DevTy.hasValue()) {
         if (*DevTy == OMPDeclareTargetDeclAttr::DT_NoHost) {
           OMPES = FunctionEmissionStatus::OMPDiscarded;
-        } else if (DeviceKnownEmittedFns.count(FD) > 0) {
+        } else if (*DevTy == OMPDeclareTargetDeclAttr::DT_Host ||
+                   *DevTy == OMPDeclareTargetDeclAttr::DT_Any)
           OMPES = FunctionEmissionStatus::Emitted;
-        }
-      }
+      } else if (Final)
+        OMPES = FunctionEmissionStatus::Emitted;
     }
   }
   if (OMPES == FunctionEmissionStatus::OMPDiscarded ||
@@ -18055,9 +18111,7 @@ Sema::FunctionEmissionStatus Sema::getEmissionStatus(FunctionDecl *FD) {
 
   // Otherwise, the function is known-emitted if it's in our set of
   // known-emitted functions.
-  return (DeviceKnownEmittedFns.count(FD) > 0)
-             ? FunctionEmissionStatus::Emitted
-             : FunctionEmissionStatus::Unknown;
+  return FunctionEmissionStatus::Unknown;
 }
 
 bool Sema::shouldIgnoreInHostDeviceCheck(FunctionDecl *Callee) {

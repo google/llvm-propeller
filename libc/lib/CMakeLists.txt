@@ -11,6 +11,7 @@ add_entrypoint_library(
     # string.h entrypoints
     strcpy
     strcat
+    memcpy
 
     # sys/mman.h entrypoints
     mmap
@@ -18,9 +19,11 @@ add_entrypoint_library(
 
     # signal.h entrypoints
     raise
+    sigaction
     sigaddset
     sigemptyset
     sigprocmask
+    signal
 
     # stdlib.h entrypoints
     _Exit

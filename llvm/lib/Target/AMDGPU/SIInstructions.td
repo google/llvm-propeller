@@ -445,8 +445,8 @@ def SI_RETURN : SPseudoInstSI <
 
 // Return for returning function calls without output register.
 //
-// This version is only needed so we can fill in the output regiter in
-// the custom inserter.
+// This version is only needed so we can fill in the output register
+// in the custom inserter.
 def SI_CALL_ISEL : SPseudoInstSI <
   (outs), (ins SSrc_b64:$src0, unknown:$callee),
   [(AMDGPUcall i64:$src0, tglobaladdr:$callee)]> {
@@ -457,6 +457,11 @@ def SI_CALL_ISEL : SPseudoInstSI <
   // TODO: Should really base this on the call target
   let isConvergent = 1;
 }
+
+def : GCNPat<
+  (AMDGPUcall i64:$src0, (i64 0)),
+  (SI_CALL_ISEL $src0, (i64 0))
+>;
 
 // Wrapper around s_swappc_b64 with extra $callee parameter to track
 // the called function after regalloc.
@@ -1484,7 +1489,6 @@ def : UMad24Pat<V_MAD_U32_U24, 1>;
 
 // FIXME: This should only be done for VALU inputs
 defm : BFIPatterns <V_BFI_B32, S_MOV_B32, SReg_64>;
-def : FSHRPattern <V_ALIGNBIT_B32>;
 def : ROTRPattern <V_ALIGNBIT_B32>;
 
 def : GCNPat<(i32 (trunc (srl i64:$src0, (and i32:$src1, (i32 31))))),
@@ -2362,6 +2366,9 @@ def G_AMDGPU_INTRIN_IMAGE_LOAD : AMDGPUGenericInstruction {
   let InOperandList = (ins unknown:$intrin, variable_ops);
   let hasSideEffects = 0;
   let mayLoad = 1;
+
+  // FIXME: Use separate opcode for atomics.
+  let mayStore = 1;
 }
 
 // This is equivalent to the G_INTRINSIC*, but the operands may have

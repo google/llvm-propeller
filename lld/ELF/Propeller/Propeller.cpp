@@ -599,14 +599,10 @@ bool Propeller::processFiles(std::vector<ObjectView *> &views) {
 bool Propeller::dumpCfgs() {
   if (propConfig.optDumpCfgs.empty())
     return true;
-
-  std::set<std::string> cfgToDump(propConfig.optDumpCfgs.begin(),
-                                  propConfig.optDumpCfgs.end());
   llvm::SmallString<128> cfgOutputDir(propConfig.optLinkerOutputFile);
   llvm::sys::path::remove_filename(cfgOutputDir);
-  for (auto &cfgName : cfgToDump) {
-    StringRef cfgNameRef(cfgName);
-    if (cfgName == "@" || cfgNameRef.startswith("@@")) {
+  for (auto &cfgNameRef : propConfig.optDumpCfgs) {
+    if (cfgNameRef == "@" || cfgNameRef.startswith("@@")) {
 #ifdef PROPELLER_PROTOBUF
       if (!protobufPrinter.get())
         protobufPrinter.reset(ProtobufPrinter::create(
@@ -626,15 +622,15 @@ bool Propeller::dumpCfgs() {
 #endif
       continue;
     }
-    auto cfgLI = cfgMap.find(cfgName);
+    auto cfgLI = cfgMap.find(cfgNameRef);
     if (cfgLI == cfgMap.end()) {
-      warn("could not dump cfg for function '" + cfgName +
+      warn("could not dump cfg for function '" + cfgNameRef.str() +
            "' : no such function name exists");
       continue;
     }
     int index = 0;
     for (auto *controlFlowGraph : cfgLI->second)
-      if (controlFlowGraph->name == cfgName) {
+      if (controlFlowGraph->name == cfgNameRef) {
         llvm::SmallString<128> cfgOutput = cfgOutputDir;
         if (++index <= 1)
           llvm::sys::path::append(cfgOutput, (controlFlowGraph->name + ".dot"));
@@ -643,7 +639,7 @@ bool Propeller::dumpCfgs() {
                                   (controlFlowGraph->name + "." +
                                    StringRef(std::to_string(index) + ".dot")));
         if (!controlFlowGraph->writeAsDotGraph(StringRef(cfgOutput)))
-          warn("failed to dump controlFlowGraph: '" + cfgName + "'");
+          warn("failed to dump controlFlowGraph: '" + cfgNameRef.str() + "'");
       }
   }
   return true;

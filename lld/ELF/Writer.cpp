@@ -116,12 +116,21 @@ StringRef getOutputSectionName(const InputSectionBase *s) {
     }
   }
 
-  // This check is for -z keep-text-section-prefix.  This option separates text
-  // sections with prefix ".text.hot", ".text.unlikely", ".text.startup" or
-  // ".text.exit".
-  // When enabled, this allows identifying the hot code region (.text.hot) in
-  // the final binary which can be selectively mapped to huge pages or mlocked,
-  // for instance.
+  // A BssSection created for a common symbol is identified as "COMMON" in
+  // linker scripts. It should go to .bss section.
+  if (s->name == "COMMON")
+    return ".bss";
+
+  if (script->hasSectionsCommand)
+    return s->name;
+
+  // When no SECTIONS is specified, emulate GNU ld's internal linker scripts
+  // by grouping sections with certain prefixes.
+
+  // GNU ld places text sections with prefix ".text.hot.", ".text.unlikely.",
+  // ".text.startup." or ".text.exit." before others. We provide an option -z
+  // keep-text-section-prefix to group such sections into separate output
+  // sections. This is more flexible. See also sortISDBySectionOrder().
   if (config->zKeepTextSectionPrefix)
     for (StringRef v :
          {".text.hot.", ".text.unlikely.", ".text.startup.", ".text.exit."})
@@ -134,11 +143,6 @@ StringRef getOutputSectionName(const InputSectionBase *s) {
         ".gcc_except_table.", ".tdata.", ".ARM.exidx.", ".ARM.extab."})
     if (isSectionPrefix(v, s->name))
       return v.drop_back();
-
-  // CommonSection is identified as "COMMON" in linker scripts.
-  // By default, it should go to .bss section.
-  if (s->name == "COMMON")
-    return ".bss";
 
   return s->name;
 }
@@ -1753,28 +1757,27 @@ static void fixSymbolsAfterShrinking() {
 // relaxation pass does that.  It is only enabled when --optimize-bb-jumps
 // option is used.
 template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
-  if (!config->optimizeBBJumps)
-    return;
+  assert(config->optimizeBBJumps);
 
   script->assignAddresses();
   DenseSet<const InputSection*> noneOptimizableSections;
   getNoneOptimizableSections(noneOptimizableSections);
   // For every output section that has executable input sections, this
-  // does 3 things:
-  //   1.  It deletes all direct jump instructions in input sections that
-  //       jump to the following section as it is not required.  If there
-  //       are two consecutive jump instructions, it checks if they can be
-  //       flipped and one can be deleted.
-  //   2.  It aggressively shrinks jump instructions.
-  //   3.  It aggressively grows back jump instructions.
+  // does the following:
+  //   1. Deletes all direct jump instructions in input sections that
+  //      jump to the following section as it is not required.
+  //   2. If there are two consecutive jump instructions, it checks
+  //      if they can be flipped and one can be deleted.
+  //   3. It aggressively shrinks jump instructions.
+  //   4. It aggressively grows back jump instructions.
   for (OutputSection *os : outputSections) {
     if (!(os->flags & SHF_EXECINSTR))
       continue;
     std::vector<InputSection *> sections = getInputSections(os);
     std::vector<unsigned> result(sections.size());
-    // Step 1: Delete all fall through jump instructions.  Also, check if two
-    // consecutive jump instructions can be flipped so that a fall through jmp
-    // instruction can be deleted.
+    // Delete all fall through jump instructions.  Also, check if two
+    // consecutive jump instructions can be flipped so that a fall
+    // through jmp instruction can be deleted.
     parallelForEachN(0, sections.size(), [&](size_t i) {
       InputSection *next =
           (i + 1) < sections.size() ? sections[i + 1] : nullptr;
@@ -2183,8 +2186,9 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(in.ppc64LongBranchTarget);
 
   // Relaxation to delete inter-basic block jumps created by basic block
-  // sections.
-  optimizeBasicBlockJumps();
+  // sections. Run after in.symTab is finalized.
+  if (config->optimizeBBJumps)
+    optimizeBasicBlockJumps();
 
   // Fill other section headers. The dynamic table is finalized
   // at the end because some tags like RELSZ depend on result

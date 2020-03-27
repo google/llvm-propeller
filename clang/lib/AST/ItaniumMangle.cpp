@@ -1575,14 +1575,8 @@ static GlobalDecl getParentOfLocalEntity(const DeclContext *DC) {
     GD = GlobalDecl(CD, Ctor_Complete);
   else if (auto *DD = dyn_cast<CXXDestructorDecl>(DC))
     GD = GlobalDecl(DD, Dtor_Complete);
-  else {
-    auto *FD = cast<FunctionDecl>(DC);
-    // Local variables can only exist in real kernels.
-    if (FD->hasAttr<CUDAGlobalAttr>())
-      GD = GlobalDecl(FD, KernelReferenceKind::Kernel);
-    else
-      GD = GlobalDecl(FD);
-  }
+  else
+    GD = GlobalDecl(cast<FunctionDecl>(DC));
   return GD;
 }
 
@@ -3678,7 +3672,8 @@ recurse:
   case Expr::LambdaExprClass:
   case Expr::MSPropertyRefExprClass:
   case Expr::MSPropertySubscriptExprClass:
-  case Expr::TypoExprClass:  // This should no longer exist in the AST by now.
+  case Expr::TypoExprClass: // This should no longer exist in the AST by now.
+  case Expr::RecoveryExprClass:
   case Expr::OMPArraySectionExprClass:
   case Expr::CXXInheritedCtorInitExprClass:
     llvm_unreachable("unexpected statement kind");

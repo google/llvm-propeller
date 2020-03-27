@@ -16,6 +16,8 @@ def StdC : StandardSpec<"stdc"> {
 
   PtrType IntPtr = PtrType<IntType>;
 
+  NamedType SigHandlerT = NamedType<"__sighandler_t">;
+
   HeaderSpec Assert = HeaderSpec<
       "assert.h",
       [
@@ -225,12 +227,17 @@ def StdC : StandardSpec<"stdc"> {
         Macro<"SIGTERM">
       ],
       [
-        NamedType<"sigset_t">,
         SizeTType,
+        SigHandlerT,
       ],
       [], // Enumerations
       [
         FunctionSpec<"raise", RetValSpec<IntType>, [ArgSpec<IntType>]>,
+        FunctionSpec<
+          "signal",
+          RetValSpec<SigHandlerT>,
+          [ArgSpec<IntType>, ArgSpec<SigHandlerT>]
+        >,
       ]
   >;
 

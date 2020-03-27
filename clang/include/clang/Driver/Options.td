@@ -466,6 +466,10 @@ def Xanalyzer : Separate<["-"], "Xanalyzer">,
   HelpText<"Pass <arg> to the static analyzer">, MetaVarName<"<arg>">,
   Group<StaticAnalyzer_Group>;
 def Xarch__ : JoinedAndSeparate<["-"], "Xarch_">, Flags<[DriverOption]>;
+def Xarch_host : Separate<["-"], "Xarch_host">, Flags<[DriverOption]>,
+  HelpText<"Pass <arg> to the CUDA/HIP host compilation">, MetaVarName<"<arg>">;
+def Xarch_device : Separate<["-"], "Xarch_device">, Flags<[DriverOption]>,
+  HelpText<"Pass <arg> to the CUDA/HIP device compilation">, MetaVarName<"<arg>">;
 def Xassembler : Separate<["-"], "Xassembler">,
   HelpText<"Pass <arg> to the assembler">, MetaVarName<"<arg>">,
   Group<CompileOnly_Group>;
@@ -1984,10 +1988,10 @@ def funique_bb_section_names : Flag <["-"], "funique-bb-section-names">,
   HelpText<"Use unique names for basic block sections (ELF Only)">;
 def fno_unique_bb_section_names : Flag <["-"], "fno-unique-bb-section-names">,
   Group<f_Group>;
-def funique_internal_funcnames : Flag <["-"], "funique-internal-funcnames">,
+def funique_internal_linkage_names : Flag <["-"], "funique-internal-linkage-names">,
   Group<f_Group>, Flags<[CC1Option]>,
-  HelpText<"Uniqueify Internal Linkage Function Names">;
-def fno_unique_internal_funcnames : Flag <["-"], "fno-unique-internal-funcnames">,
+  HelpText<"Uniqueify Internal Linkage Symbol Names by appending the MD5 hash of the module path">;
+def fno_unique_internal_linkage_names : Flag <["-"], "fno-unique-internal-linkage-names">,
   Group<f_Group>;
 
 def fstrict_return : Flag<["-"], "fstrict-return">, Group<f_Group>,
@@ -2319,6 +2323,9 @@ def mrelax : Flag<["-"], "mrelax">, Group<m_riscv_Features_Group>,
   HelpText<"Enable linker relaxation">;
 def mno_relax : Flag<["-"], "mno-relax">, Group<m_riscv_Features_Group>,
   HelpText<"Disable linker relaxation">;
+def msmall_data_limit_EQ : Joined<["-"], "msmall-data-limit=">, Group<m_Group>,
+  Alias<G>,
+  HelpText<"Put global and static data smaller than the limit into a special section">;
 def msave_restore : Flag<["-"], "msave-restore">, Group<m_riscv_Features_Group>,
   HelpText<"Enable using library calls for save and restore">;
 def mno_save_restore : Flag<["-"], "mno-save-restore">, Group<m_riscv_Features_Group>,
