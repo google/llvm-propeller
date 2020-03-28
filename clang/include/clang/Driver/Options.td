@@ -1988,6 +1988,7 @@ def funique_bb_section_names : Flag <["-"], "funique-bb-section-names">,
   HelpText<"Use unique names for basic block sections (ELF Only)">;
 def fno_unique_bb_section_names : Flag <["-"], "fno-unique-bb-section-names">,
   Group<f_Group>;
+
 def funique_internal_linkage_names : Flag <["-"], "funique-internal-linkage-names">,
   Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Uniqueify Internal Linkage Symbol Names by appending the MD5 hash of the module path">;
