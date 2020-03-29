@@ -9,23 +9,14 @@
 // BBSectionsPrepare implementation.
 //
 // The purpose of this pass is to assign sections to basic blocks when
-// -fbasicblock-sections= option is used.  Further, with
-// profile information only the subset of basic blocks with profiles are placed
-// in separate sections and the rest are grouped in a cold section. The
-// exception handling blocks are treated specially to ensure they are all in one
-// seciton.
+// -fbasicblock-sections= option is used. Further, with profile information only the subset of basic blocks with profiles are placed in separate sections and the rest are grouped in a cold section. The exception handling blocks are treated specially to ensure they are all in one seciton.
 //
 // Basic Block Sections
 // ====================
 //
 // With option, -fbasicblock-sections=list, every function may be split into
 // clusters of basic blocks. Every cluster will be emitted into a separate
-// section with its basic blocks sequenced in the given order.
-// To get the optimized performance, the clusters must form an optimal BB layout
-// for the function.
-// Every cluster's section is labeled with a symbol to allow the linker to
-// reorder the sections in any arbitrary sequence.
-// A global order of these sections would encapsulate the function layout.
+// section with its basic blocks sequenced in the given order. To get the optimized performance, the clusters must form an optimal BB layout for the function. Every cluster's section is labeled with a symbol to allow the linker to reorder the sections in any arbitrary sequence. A global order of these sections would encapsulate the function layout.
 //
 // There are a couple of challenges to be addressed:
 //
