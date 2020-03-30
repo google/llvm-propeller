@@ -89,6 +89,7 @@ using namespace llvm;
 namespace {
 
 struct BBClusterInfo {
+  unsigned MBBNumber;
   unsigned ClusterID;
   unsigned PositionInCluster;
 };
@@ -105,10 +106,10 @@ public:
   // to its cluster information. The cluster information for every basic block
   // includes its cluster ID along with the position of the basic block in that
   // cluster.
-  StringMap<DenseMap<unsigned, BBClusterInfo>> BBClusterInfoMap;
+  StringMap<SmallVector<BBClusterInfo,4>> ProgramBBClusterInfo;
 
   // Some functions have alias names. We use this map to find the main alias
-  // name for which we have mapping in BBClusterInfoMap.
+  // name for which we have mapping in ProgramBBClusterInfoMap.
   StringMap<StringRef> FuncAliasMap;
 
   BBSectionsPrepare(const MemoryBuffer *Buf)
@@ -135,14 +136,14 @@ public:
 
   // This function provides the BBCluster information associated with a function
   // name. It returns true if mapping is found and false otherwise.
-  bool getBBClusterInfoForFunction(StringRef s,
-                                   DenseMap<unsigned, BBClusterInfo> &m) {
-    auto r = FuncAliasMap.find(s);
-    StringRef aliasName = r == FuncAliasMap.end() ? s : r->second;
-    auto p = BBClusterInfoMap.find(aliasName);
-    if (p == BBClusterInfoMap.end())
+  bool getBBClusterInfoForFunction(StringRef S,
+                                   SmallVector<BBClusterInfo, 4> &M) {
+    auto R = FuncAliasMap.find(S);
+    StringRef AliasName = R == FuncAliasMap.end() ? S : R->second;
+    auto P = ProgramBBClusterInfo.find(AliasName);
+    if (P == ProgramBBClusterInfo.end())
       return false;
-    m = p->second;
+    M = P->second;
     return true;
   }
 };
@@ -201,7 +202,13 @@ static void optimizeBBJumps(MachineFunction &MF) {
 // clusters are ordered in increasing order of their IDs, with the "Exception"
 // and "Cold" succeeding all other clusters.
 static bool assignSectionsAndSortBasicBlocks(
-    MachineFunction &MF, DenseMap<unsigned, BBClusterInfo> &FuncBBClusterInfo) {
+    MachineFunction &MF,
+    SmallVector<BBClusterInfo, 4> &FuncBBClusterInfo) {
+
+  std::vector<Optional<BBClusterInfo>> allBBClusterInfo(MF.getNumBlockIDs());
+  for(auto bbClusterInfo: FuncBBClusterInfo)
+    allBBClusterInfo[bbClusterInfo.MBBNumber] = bbClusterInfo;
+
   // This is the set of sections which have EHPads in them.
   SmallSet<unsigned, 2> EHPadsSections;
 
@@ -216,8 +223,8 @@ static bool assignSectionsAndSortBasicBlocks(
       // set every basic block's section ID equal to its number (basic block
       // id). This further ensures that basic blocks are ordered canonically.
       MBB.setSectionID(MBB.getNumber());
-    } else if (FuncBBClusterInfo.count(MBB.getNumber()))
-      MBB.setSectionID(FuncBBClusterInfo.lookup(MBB.getNumber()).ClusterID);
+    } else if (allBBClusterInfo[MBB.getNumber()].hasValue())
+      MBB.setSectionID(allBBClusterInfo[MBB.getNumber()]->ClusterID);
     else {
       // BB goes into the special cold section if it is not specified in the
       // cluster info map.
@@ -258,8 +265,8 @@ static bool assignSectionsAndSortBasicBlocks(
     // their position within the section.
     if (XSectionID == YSectionID)
       return XSectionID < MachineBasicBlock::ExceptionSectionID
-                 ? FuncBBClusterInfo.lookup(X.getNumber()).PositionInCluster <
-                       FuncBBClusterInfo.lookup(Y.getNumber()).PositionInCluster
+                 ? allBBClusterInfo[X.getNumber()]->PositionInCluster <
+                       allBBClusterInfo[Y.getNumber()]->PositionInCluster
                  : X.getNumber() < Y.getNumber();
     // We make sure that the section containing the entry block precedes all the
     // other sections.
@@ -292,7 +299,7 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
     return true;
   }
 
-  DenseMap<unsigned, BBClusterInfo> FuncBBClusterInfo;
+  SmallVector<BBClusterInfo, 4> FuncBBClusterInfo;
   if (BBSectionsType == BasicBlockSection::List &&
       !getBBClusterInfoForFunction(MF.getName(), FuncBBClusterInfo))
     return true;
@@ -318,15 +325,14 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !!4
 static bool
 getBBClusterInfo(const MemoryBuffer *MBuf,
-                 StringMap<DenseMap<unsigned, BBClusterInfo>> &bbClusterInfoMap,
+                 StringMap<SmallVector<BBClusterInfo, 4>> &programBBClusterInfo,
                  StringMap<StringRef> &funcAliasMap) {
   if (!MBuf)
     return false;
 
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
-  StringMap<DenseMap<unsigned, BBClusterInfo>>::iterator fi =
-      bbClusterInfoMap.end();
+  auto fi = programBBClusterInfo.end();
 
   unsigned CurrentCluster = 0;
   unsigned CurrentPosition = 0;
@@ -340,7 +346,7 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
       break;
     // Check for second "!" which indicates a cluster of basic blocks.
     if (s.consume_front("!")) {
-      if (fi == bbClusterInfoMap.end()) {
+      if (fi == programBBClusterInfo.end()) {
         errs() << "Could not process profile: " << MBuf->getBufferIdentifier()
                << " at line " << Twine(LineIt.line_number())
                << ": Does not follow a function name.\n";
@@ -366,8 +372,7 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
                  << ": Entry BB in the middle of the BB Cluster list!\n";
           return false;
         }
-        fi->second.try_emplace(
-            BBIndex, BBClusterInfo{CurrentCluster, CurrentPosition++});
+        fi->second.emplace_back(BBClusterInfo{BBIndex, CurrentCluster, CurrentPosition++});
       }
       CurrentCluster++;
     } else {
@@ -376,7 +381,7 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
       // this one.
       auto P = s.split('/');
       // Start a new function.
-      fi = bbClusterInfoMap.try_emplace(P.first).first;
+      fi = programBBClusterInfo.try_emplace(P.first).first;
 
       auto aliasStr = P.second;
       while (aliasStr != "") {
@@ -392,8 +397,8 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
 
 bool BBSectionsPrepare::doInitialization(Module &M) {
   if (MBuf)
-    if (!getBBClusterInfo(MBuf, BBClusterInfoMap, FuncAliasMap))
-      BBClusterInfoMap.clear();
+    if (!getBBClusterInfo(MBuf, ProgramBBClusterInfo, FuncAliasMap))
+      ProgramBBClusterInfo.clear();
   return true;
 }
 

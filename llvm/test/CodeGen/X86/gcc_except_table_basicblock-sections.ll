@@ -4,6 +4,7 @@
 define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*) {
 ; Verify that each basic block section gets its own LSDA exception symbol.
 ;
+; CHECK:    .text
 ; CHECK:  main:
 ; CHECK:    .Lfunc_begin0:
 ; CHECK:    .cfi_startproc
@@ -16,6 +17,7 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 ; CHECK:    jmp	r.BB.main
 ; CHECK:    .cfi_endproc
 
+; CHECK:    .section        .text,"ax",@progbits,unique,1
 ; CHECK:  r.BB.main:                              # %try.cont
 ; CHECK:    .cfi_startproc
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0
@@ -24,8 +26,10 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 ; CHECK:    popq %rcx
 ; CHECK:    retq
 ; CHECK:  .Ltmp3:
+; CHECK:    .size   r.BB.main, .Ltmp3-r.BB.main
 ; CHECK:    .cfi_endproc
 
+; CHECK:    .section        .text,"ax",@progbits,unique,2
 ; CHECK:  lr.BB.main:                             # %lpad
 ; CHECK:    .cfi_startproc
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0

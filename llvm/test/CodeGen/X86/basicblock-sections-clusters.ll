@@ -40,11 +40,15 @@ define i32 @f(i32* %ptr, i1 %cond) {
 ; LINUX-SECTIONS:       je      ara.BB.f
 ; LINUX-SECTIONS-NEXT:  jmp     ra.BB.f
 ; LINUX-SECTIONS-NOT:   {{jne|je|jmp}}
-; LINUX-SECTIONS:	.size   a.BB.f, .Ltmp0-a.BB.f
-; LINUX-SECTIONS:	.section        .text.f.unlikely,"ax",@progbits
+; LINUX-SECTIONS-NOT:   .section
+; LINUX-SECTIONS:       .Ltmp0:
+; LINUX-SECTIONS-NEXT:	.size   a.BB.f, .Ltmp0-a.BB.f
+; LINUX-SECTIONS:	.section        .text.unlikely.f,"ax",@progbits
 ; LINUX-SECTIONS:	ra.BB.f:
 ; LINUX-SECTIONS:	ara.BB.f:
-; LINUX-SECTIONS:	.size   ra.BB.f, .Ltmp1-ra.BB.f
+; LINUX-SECTIONS-NOT:   .section
+; LINUX-SECTIONS:       .Ltmp1:
+; LINUX-SECTIONS-NEXT:	.size   ra.BB.f, .Ltmp1-ra.BB.f
 ; LINUX-SECTIONS:	.section        .text.f,"ax",@progbits
 ; LINUX-SECTIONS-NEXT:	.Lfunc_end0:
 ; LINUX_SECTIONS-NEXT:	.size   f, .Lfunc_end0-f

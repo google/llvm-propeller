@@ -1097,13 +1097,6 @@ void AsmPrinter::emitFunctionBody() {
   // Print out code for the function.
   bool HasAnyRealCode = false;
   int NumInstsInFunction = 0;
-  MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
-  if (MF->hasBBSections()) {
-    EndOfRegularSectionMBB =
-        const_cast<MachineBasicBlock *>(MF->front().getSectionEndMBB());
-    assert(EndOfRegularSectionMBB->isEndSection() &&
-           "The MBB at the end of the regular section must end a section");
-  }
 
   for (auto &MBB : *MF) {
     // Print a label for the basic block.
@@ -1142,6 +1135,7 @@ void AsmPrinter::emitFunctionBody() {
       case TargetOpcode::ANNOTATION_LABEL:
       case TargetOpcode::EH_LABEL:
         if (MBB.isBeginSection() &&
+            MBB.isEHPad() &&
             ((*std::prev(MI.getIterator())).getOpcode() ==
              TargetOpcode::CFI_INSTRUCTION)) {
           // Emit a NOP here to avoid zero-offset landing pads with
@@ -1195,36 +1189,27 @@ void AsmPrinter::emitFunctionBody() {
         }
       }
     }
-    if (MF->hasBBLabels()) {
-      // Emit size directive for the size of this basic block.  Create a symbol
-      // for the end of the basic block.
+
+    if (MF->hasBBLabels() || (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
+      // Emit size directive for the size of this basic block (or basic block section).
+      // Create a symbol for the end of the basic block.
       MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
+      OutStreamer->emitLabel(CurrentBBEnd);
+      MCSymbol *SymForSize = MBB.isEndSection() ? CurrentSectionBeginSym : MBB.getSymbol();
       const MCExpr *SizeExp = MCBinaryExpr::createSub(
           MCSymbolRefExpr::create(CurrentBBEnd, OutContext),
-          MCSymbolRefExpr::create(MBB.getSymbol(), OutContext), OutContext);
-      OutStreamer->emitLabel(CurrentBBEnd);
-      OutStreamer->emitELFSize(MBB.getSymbol(), SizeExp);
+          MCSymbolRefExpr::create(SymForSize, OutContext), OutContext);
+      OutStreamer->emitELFSize(SymForSize, SizeExp);
+
+      if (MBB.isEndSection())
+        MBB.setEndMCSymbol(CurrentBBEnd);
     }
 
-    if (MBB.isEndSection()) {
-      if (MBB.getSectionID() != MF->front().getSectionID()) {
-        // Emit size directive for the size of this basic block section. The
-        // size directive for the regular section will be emitted as the
-        // function size.
-        MCSymbol *CurrentSectionEnd = OutContext.createTempSymbol();
-        const MCExpr *SizeExp = MCBinaryExpr::createSub(
-            MCSymbolRefExpr::create(CurrentSectionEnd, OutContext),
-            MCSymbolRefExpr::create(CurrentSectionBeginSym, OutContext),
-            OutContext);
-        OutStreamer->emitLabel(CurrentSectionEnd);
-        MBB.setEndMCSymbol(CurrentSectionEnd);
-        OutStreamer->emitELFSize(CurrentSectionBeginSym, SizeExp);
-      }
-
-      // If this is the end of the section, nullify the exception symbol to
-      // ensure a new symbol is created for the next basicblock section.
+    // If this is the end of the section, nullify the exception symbol to
+    // ensure a new symbol is created for the next basicblock section.
+    if (MBB.isEndSection())
       CurExceptionSym = nullptr;
-    }
+
     emitBasicBlockEnd(MBB);
   }
 
@@ -1301,7 +1286,7 @@ void AsmPrinter::emitFunctionBody() {
   }
 
   if (MF->hasBBSections())
-    EndOfRegularSectionMBB->setEndMCSymbol(CurrentFnEnd);
+    (const_cast<MachineBasicBlock*>(MF->front().getSectionEndMBB()))->setEndMCSymbol(CurrentFnEnd);
 
   // Print out jump tables referenced by the function.
   emitJumpTableInfo();
