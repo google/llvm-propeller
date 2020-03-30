@@ -64,6 +64,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -82,9 +84,11 @@
 #include <string>
 
 using llvm::SmallSet;
+using llvm::SmallVector;
 using llvm::StringMap;
 using llvm::StringRef;
 using namespace llvm;
+
 
 namespace {
 
@@ -93,6 +97,8 @@ struct BBClusterInfo {
   unsigned ClusterID;
   unsigned PositionInCluster;
 };
+
+using ProgramBBClusterInfoMapTy = StringMap<SmallVector<BBClusterInfo, 4>>;
 
 class BBSectionsPrepare : public MachineFunctionPass {
 public:
@@ -106,7 +112,7 @@ public:
   // to its cluster information. The cluster information for every basic block
   // includes its cluster ID along with the position of the basic block in that
   // cluster.
-  StringMap<SmallVector<BBClusterInfo, 4>> ProgramBBClusterInfo;
+  ProgramBBClusterInfoMapTy ProgramBBClusterInfo;
 
   // Some functions have alias names. We use this map to find the main alias
   // name for which we have mapping in ProgramBBClusterInfoMap.
@@ -133,19 +139,6 @@ public:
   /// Identify basic blocks that need separate sections and prepare to emit them
   /// accordingly.
   bool runOnMachineFunction(MachineFunction &MF) override;
-
-  // This function provides the BBCluster information associated with a function
-  // name. It returns true if mapping is found and false otherwise.
-  bool getBBClusterInfoForFunction(StringRef S,
-                                   SmallVector<BBClusterInfo, 4> &M) {
-    auto R = FuncAliasMap.find(S);
-    StringRef AliasName = R == FuncAliasMap.end() ? S : R->second;
-    auto P = ProgramBBClusterInfo.find(AliasName);
-    if (P == ProgramBBClusterInfo.end())
-      return false;
-    M = P->second;
-    return true;
-  }
 };
 
 } // end anonymous namespace
@@ -194,6 +187,28 @@ static void optimizeBBJumps(MachineFunction &MF) {
     }
 }
 
+// This function provides the BBCluster information associated with a function
+// name. It returns true if mapping is found and false otherwise.
+static bool getBBClusterInfoForFunction(MachineFunction &MF,
+                                        const StringMap<StringRef> FuncAliasMap,
+                                        const ProgramBBClusterInfoMapTy &programBBClusterInfo,
+                                        std::vector<Optional<BBClusterInfo>> &V) {
+  auto FuncName = MF.getName();
+  auto R = FuncAliasMap.find(FuncName);
+  StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
+  auto P = programBBClusterInfo.find(AliasName);
+  if (P == programBBClusterInfo.end())
+    return false;
+
+  V.resize(MF.getNumBlockIDs());
+  for (auto bbClusterInfo : P->second) {
+    if (bbClusterInfo.MBBNumber >= MF.getNumBlockIDs())
+      return false;
+    V[bbClusterInfo.MBBNumber] = bbClusterInfo;
+  }
+  return true;
+}
+
 // This function sorts basic blocks according to the cluster's information.
 // All explicitly specified clusters of basic blocks will be ordered
 // accordingly. All non-specified BBs go into a separate "Cold" section.
@@ -202,12 +217,7 @@ static void optimizeBBJumps(MachineFunction &MF) {
 // clusters are ordered in increasing order of their IDs, with the "Exception"
 // and "Cold" succeeding all other clusters.
 static bool assignSectionsAndSortBasicBlocks(
-    MachineFunction &MF, SmallVector<BBClusterInfo, 4> &FuncBBClusterInfo) {
-
-  std::vector<Optional<BBClusterInfo>> allBBClusterInfo(MF.getNumBlockIDs());
-  for (auto bbClusterInfo : FuncBBClusterInfo)
-    allBBClusterInfo[bbClusterInfo.MBBNumber] = bbClusterInfo;
-
+    MachineFunction &MF, std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo){
   // This is the set of sections which have EHPads in them.
   SmallSet<unsigned, 2> EHPadsSections;
 
@@ -222,8 +232,8 @@ static bool assignSectionsAndSortBasicBlocks(
       // set every basic block's section ID equal to its number (basic block
       // id). This further ensures that basic blocks are ordered canonically.
       MBB.setSectionID(MBB.getNumber());
-    } else if (allBBClusterInfo[MBB.getNumber()].hasValue())
-      MBB.setSectionID(allBBClusterInfo[MBB.getNumber()]->ClusterID);
+    } else if (FuncBBClusterInfo[MBB.getNumber()].hasValue())
+      MBB.setSectionID(FuncBBClusterInfo[MBB.getNumber()]->ClusterID);
     else {
       // BB goes into the special cold section if it is not specified in the
       // cluster info map.
@@ -264,8 +274,8 @@ static bool assignSectionsAndSortBasicBlocks(
     // their position within the section.
     if (XSectionID == YSectionID)
       return XSectionID < MachineBasicBlock::ExceptionSectionID
-                 ? allBBClusterInfo[X.getNumber()]->PositionInCluster <
-                       allBBClusterInfo[Y.getNumber()]->PositionInCluster
+                 ? FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
+                       FuncBBClusterInfo[Y.getNumber()]->PositionInCluster
                  : X.getNumber() < Y.getNumber();
     // We make sure that the section containing the entry block precedes all the
     // other sections.
@@ -298,9 +308,9 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
     return true;
   }
 
-  SmallVector<BBClusterInfo, 4> FuncBBClusterInfo;
+  std::vector<Optional<BBClusterInfo>> FuncBBClusterInfo;
   if (BBSectionsType == BasicBlockSection::List &&
-      !getBBClusterInfoForFunction(MF.getName(), FuncBBClusterInfo))
+      !getBBClusterInfoForFunction(MF, FuncAliasMap, ProgramBBClusterInfo, FuncBBClusterInfo))
     return true;
   MF.setBBSectionsType(BBSectionsType);
   MF.createBBLabels();
@@ -324,7 +334,7 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !!4
 static bool
 getBBClusterInfo(const MemoryBuffer *MBuf,
-                 StringMap<SmallVector<BBClusterInfo, 4>> &programBBClusterInfo,
+                 ProgramBBClusterInfoMapTy &programBBClusterInfo,
                  StringMap<StringRef> &funcAliasMap) {
   if (!MBuf)
     return false;
@@ -396,10 +406,11 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
 }
 
 bool BBSectionsPrepare::doInitialization(Module &M) {
-  if (MBuf)
-    if (!getBBClusterInfo(MBuf, ProgramBBClusterInfo, FuncAliasMap))
-      ProgramBBClusterInfo.clear();
-  return true;
+  if (!MBuf)
+    return false;
+  if (!getBBClusterInfo(MBuf, ProgramBBClusterInfo, FuncAliasMap))
+    ProgramBBClusterInfo.clear();
+  return false;
 }
 
 void BBSectionsPrepare::getAnalysisUsage(AnalysisUsage &AU) const {
