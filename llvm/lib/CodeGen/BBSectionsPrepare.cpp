@@ -106,7 +106,7 @@ public:
   // to its cluster information. The cluster information for every basic block
   // includes its cluster ID along with the position of the basic block in that
   // cluster.
-  StringMap<SmallVector<BBClusterInfo,4>> ProgramBBClusterInfo;
+  StringMap<SmallVector<BBClusterInfo, 4>> ProgramBBClusterInfo;
 
   // Some functions have alias names. We use this map to find the main alias
   // name for which we have mapping in ProgramBBClusterInfoMap.
@@ -202,11 +202,10 @@ static void optimizeBBJumps(MachineFunction &MF) {
 // clusters are ordered in increasing order of their IDs, with the "Exception"
 // and "Cold" succeeding all other clusters.
 static bool assignSectionsAndSortBasicBlocks(
-    MachineFunction &MF,
-    SmallVector<BBClusterInfo, 4> &FuncBBClusterInfo) {
+    MachineFunction &MF, SmallVector<BBClusterInfo, 4> &FuncBBClusterInfo) {
 
   std::vector<Optional<BBClusterInfo>> allBBClusterInfo(MF.getNumBlockIDs());
-  for(auto bbClusterInfo: FuncBBClusterInfo)
+  for (auto bbClusterInfo : FuncBBClusterInfo)
     allBBClusterInfo[bbClusterInfo.MBBNumber] = bbClusterInfo;
 
   // This is the set of sections which have EHPads in them.
@@ -372,7 +371,8 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
                  << ": Entry BB in the middle of the BB Cluster list!\n";
           return false;
         }
-        fi->second.emplace_back(BBClusterInfo{BBIndex, CurrentCluster, CurrentPosition++});
+        fi->second.emplace_back(
+            BBClusterInfo{BBIndex, CurrentCluster, CurrentPosition++});
       }
       CurrentCluster++;
     } else {

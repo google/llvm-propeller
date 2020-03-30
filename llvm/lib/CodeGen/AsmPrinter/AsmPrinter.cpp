@@ -1134,8 +1134,7 @@ void AsmPrinter::emitFunctionBody() {
         break;
       case TargetOpcode::ANNOTATION_LABEL:
       case TargetOpcode::EH_LABEL:
-        if (MBB.isBeginSection() &&
-            MBB.isEHPad() &&
+        if (MBB.isBeginSection() && MBB.isEHPad() &&
             ((*std::prev(MI.getIterator())).getOpcode() ==
              TargetOpcode::CFI_INSTRUCTION)) {
           // Emit a NOP here to avoid zero-offset landing pads with
@@ -1190,12 +1189,14 @@ void AsmPrinter::emitFunctionBody() {
       }
     }
 
-    if (MF->hasBBLabels() || (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
-      // Emit size directive for the size of this basic block (or basic block section).
-      // Create a symbol for the end of the basic block.
+    if (MF->hasBBLabels() ||
+        (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
+      // Emit size directive for the size of this basic block (or basic block
+      // section). Create a symbol for the end of the basic block.
       MCSymbol *CurrentBBEnd = OutContext.createTempSymbol();
       OutStreamer->emitLabel(CurrentBBEnd);
-      MCSymbol *SymForSize = MBB.isEndSection() ? CurrentSectionBeginSym : MBB.getSymbol();
+      MCSymbol *SymForSize =
+          MBB.isEndSection() ? CurrentSectionBeginSym : MBB.getSymbol();
       const MCExpr *SizeExp = MCBinaryExpr::createSub(
           MCSymbolRefExpr::create(CurrentBBEnd, OutContext),
           MCSymbolRefExpr::create(SymForSize, OutContext), OutContext);
@@ -1286,7 +1287,8 @@ void AsmPrinter::emitFunctionBody() {
   }
 
   if (MF->hasBBSections())
-    (const_cast<MachineBasicBlock*>(MF->front().getSectionEndMBB()))->setEndMCSymbol(CurrentFnEnd);
+    (const_cast<MachineBasicBlock *>(MF->front().getSectionEndMBB()))
+        ->setEndMCSymbol(CurrentFnEnd);
 
   // Print out jump tables referenced by the function.
   emitJumpTableInfo();
