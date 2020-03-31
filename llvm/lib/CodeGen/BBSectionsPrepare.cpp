@@ -198,7 +198,7 @@ static void optimizeBBJumps(MachineFunction &MF) {
 // This function provides the BBCluster information associated with a function.
 // Returns true if a valid association exists and false otherwise.
 static bool getBBClusterInfoForFunction(
-    MachineFunction &MF, const StringMap<StringRef> FuncAliasMap,
+    const MachineFunction &MF, const StringMap<StringRef> FuncAliasMap,
     const ProgramBBClusterInfoMapTy &ProgramBBClusterInfo,
     std::vector<Optional<BBClusterInfo>> &V) {
   // Get the main alias name for the function.
@@ -239,7 +239,7 @@ static bool getBBClusterInfoForFunction(
 // is empty, it means unique sections for all basic blocks in the function.
 static bool assignSectionsAndSortBasicBlocks(
     MachineFunction &MF,
-    std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
+    const std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
   assert(MF.hasBBSections() && "BB Sections is not set for function.");
   // This is the set of sections which have EHPads in them.
   SmallSet<unsigned, 2> EHPadsSections;

@@ -134,7 +134,7 @@ private:
   /// Indicate that this basic block is the entry block of a cleanup funclet.
   bool IsCleanupFuncletEntry = false;
 
-  /// Stores the Section ID of the basic block with basic block sections.
+  /// With basic block sections, this stores the Section ID of the basic block.
   Optional<unsigned> SectionID;
 
   /// Default target of the callbr of a basic block.
@@ -431,7 +431,7 @@ public:
   /// Returns true if this block ends any section.
   bool isEndSection() const;
 
-  /// Returns the the section id that this basic block belongs to.
+  /// Returns the section ID of this basic block.
   Optional<unsigned> getSectionID() const { return SectionID; }
 
   /// Indicate that the basic block belongs to a Section Type.
