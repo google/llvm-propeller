@@ -567,7 +567,7 @@ const MachineBasicBlock *MachineBasicBlock::getSectionEndMBB() const {
   // Iterate over basic blocks looking for a basic block with a different
   // section ID.
   auto I = getIterator();
-  while(I != MF->end() && I->getSectionID() == getSectionID())
+  while (I != MF->end() && I->getSectionID() == getSectionID())
     ++I;
   return I == MF->end() ? &MF->back() : &*std::prev(I);
 }

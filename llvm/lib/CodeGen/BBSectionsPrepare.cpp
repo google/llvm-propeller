@@ -247,8 +247,8 @@ static bool assignSectionsAndSortBasicBlocks(
   for (auto &MBB : MF) {
     // With the 'all' option, every basic block is placed in a unique section.
     // With the 'list' option, every basic block is placed in a section
-    // associated with its cluster, unless we want individual unique sections for
-    // every basic block in this function (if FuncBBClusterInfo is empty).
+    // associated with its cluster, unless we want individual unique sections
+    // for every basic block in this function (if FuncBBClusterInfo is empty).
     if (MF.getTarget().getBBSectionsType() == llvm::BasicBlockSection::All ||
         FuncBBClusterInfo.empty()) {
       // If unique sections are desired for all basic blocks of the function, we
@@ -397,7 +397,7 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
       // Reset current cluster position.
       CurrentPosition = 0;
       std::string BBIndexStr;
-      while(getline(ISS, BBIndexStr, ' ')) {
+      while (getline(ISS, BBIndexStr, ' ')) {
         unsigned long long BBIndex;
         if (getAsUnsignedInteger(BBIndexStr, 10, BBIndex))
           return invalidProfileError(
