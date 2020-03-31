@@ -65,8 +65,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/Optional.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -177,7 +177,8 @@ static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
   TII->insertBranch(MBB, Fallthrough, nullptr, Cond, DL);
 }
 
-// This function optimizes the branching instructions of every basic block (except those at the end of the sections) for a given function.
+// This function optimizes the branching instructions of every basic block
+// (except those at the end of the sections) for a given function.
 static void optimizeBBJumps(MachineFunction &MF) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
@@ -195,10 +196,10 @@ static void optimizeBBJumps(MachineFunction &MF) {
 
 // This function provides the BBCluster information associated with a function.
 // Returns true if a valid association exists and false otherwise.
-static bool getBBClusterInfoForFunction(MachineFunction &MF,
-                                        const StringMap<StringRef> FuncAliasMap,
-                                        const ProgramBBClusterInfoMapTy &programBBClusterInfo,
-                                        std::vector<Optional<BBClusterInfo>> &V) {
+static bool getBBClusterInfoForFunction(
+    MachineFunction &MF, const StringMap<StringRef> FuncAliasMap,
+    const ProgramBBClusterInfoMapTy &programBBClusterInfo,
+    std::vector<Optional<BBClusterInfo>> &V) {
   // Get the main alias name for the function.
   auto FuncName = MF.getName();
   auto R = FuncAliasMap.find(FuncName);
@@ -234,7 +235,8 @@ static bool getBBClusterInfoForFunction(MachineFunction &MF,
 // clusters are ordered in increasing order of their IDs, with the "Exception"
 // and "Cold" succeeding all other clusters.
 static bool assignSectionsAndSortBasicBlocks(
-    MachineFunction &MF, std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo){
+    MachineFunction &MF,
+    std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
   assert(MF.hasBBSections() && "BB Sections is not set for function.");
   // This is the set of sections which have EHPads in them.
   SmallSet<unsigned, 2> EHPadsSections;
@@ -271,7 +273,8 @@ static bool assignSectionsAndSortBasicBlocks(
     });
   }
 
-  // With -fbasicblock-sections, fall through blocks must be made explicitly reachable.
+  // With -fbasicblock-sections, fall through blocks must be made explicitly
+  // reachable.
   for (auto &MBB : MF)
     insertUnconditionalFallthroughBranch(MBB);
 
@@ -326,7 +329,8 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 
   std::vector<Optional<BBClusterInfo>> FuncBBClusterInfo;
   if (BBSectionsType == BasicBlockSection::List &&
-      !getBBClusterInfoForFunction(MF, FuncAliasMap, ProgramBBClusterInfo, FuncBBClusterInfo))
+      !getBBClusterInfoForFunction(MF, FuncAliasMap, ProgramBBClusterInfo,
+                                   FuncBBClusterInfo))
     return true;
   MF.setBBSectionsType(BBSectionsType);
   MF.createBBLabels();
@@ -347,10 +351,9 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !foo
 // !!1 2
 // !!4
-static Error
-getBBClusterInfo(const MemoryBuffer *MBuf,
-                 ProgramBBClusterInfoMapTy &programBBClusterInfo,
-                 StringMap<StringRef> &funcAliasMap) {
+static Error getBBClusterInfo(const MemoryBuffer *MBuf,
+                              ProgramBBClusterInfoMapTy &programBBClusterInfo,
+                              StringMap<StringRef> &funcAliasMap) {
   assert(MBuf);
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
@@ -380,7 +383,8 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
     // Check for second "!" which indicates a cluster of basic blocks.
     if (s.consume_front("!")) {
       if (fi == programBBClusterInfo.end())
-        return invalidProfileError("Cluster list does not follow a function name specifier.");
+        return invalidProfileError(
+            "Cluster list does not follow a function name specifier.");
       std::istringstream iss(s.str());
       std::vector<std::string> BBIndexes(
           (std::istream_iterator<std::string>(iss)),
@@ -390,14 +394,17 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
       for (auto &BBIndexStr : BBIndexes) {
         unsigned long long BBIndex;
         if (getAsUnsignedInteger(BBIndexStr, 10, BBIndex))
-          return invalidProfileError(std::string("Unsigned integer expected: '")+ BBIndexStr +"'.");
+          return invalidProfileError(
+              std::string("Unsigned integer expected: '") + BBIndexStr + "'.");
         if (!funcBBIDs.insert(BBIndex).second)
-          return invalidProfileError(std::string("Duplicate basic block id found '")+ BBIndexStr +"'.");
+          return invalidProfileError(
+              std::string("Duplicate basic block id found '") + BBIndexStr +
+              "'.");
         if (!BBIndex && CurrentPosition)
           return invalidProfileError("Entry BB (0) does not begin a cluster.");
 
-        fi->second.emplace_back(
-            BBClusterInfo{((unsigned)BBIndex), CurrentCluster, CurrentPosition++});
+        fi->second.emplace_back(BBClusterInfo{
+            ((unsigned)BBIndex), CurrentCluster, CurrentPosition++});
       }
       CurrentCluster++;
     } else {
