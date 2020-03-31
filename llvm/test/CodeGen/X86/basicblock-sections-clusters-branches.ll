@@ -1,15 +1,18 @@
-; BB cluster section tests.
+; BB cluster sections test for optimizing basic block branches.
 ;
 ; Test1: Basic blocks #0 (entry) and #2 will be placed in the same section.
-; Basic block 1 will be placed in a unique section.
-; The rest will be placed in the cold section.
+; There should be a jne from #0 to #1 and a fallthrough to #2.
+; BB #1 will be in a unique section. Therefore, it should retain its jmp to #3.
+; #2 must also have an explicit jump to #3.
 ; RUN: echo '!foo' > %t1
 ; RUN: echo '!!0 2' >> %t1
 ; RUN: echo '!!1' >> %t1
 ; RUN: llc < %s -O0 -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t1 | FileCheck %s -check-prefix=LINUX-SECTIONS1
 ;
 ; Test2: Basic blocks #1 and #3 will be placed in the same section.
-; All other BBs (including the entry block) go into the function's section.
+; The rest (#0 and #2) go into the function's section.
+; This means #1 must fall through to #3, and #0 must fall through to #2.
+; #2 must have an explicit jump to #3.
 ; RUN: echo '!foo' > %t2
 ; RUN: echo '!!1 3' >> %t2
 ; RUN: llc < %s -O0 -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t2 | FileCheck %s -check-prefix=LINUX-SECTIONS2
@@ -39,34 +42,24 @@ declare i32 @bar() #1
 declare i32 @baz() #1
 
 ; LINUX-SECTIONS1:	   	.section	.text.foo,"ax",@progbits
-; LINUX-SECTIONS1-NOT:  	.section
 ; LINUX-SECTIONS1-LABEL:	foo:
-; LINUX-SECTIONS1-NOT:  	.section
+; LINUX-SECTIONS1:		jne a.BB.foo
+; LINUX-SECTIONS1-NOT:		{{jne|je|jmp}}
 ; LINUX-SECTIONS1-LABEL:	aa.BB.foo:
-; LINUX-SECTIONS1-NOT:  	.section
+; LINUX-SECTIONS1:		jmp raa.BB.foo
 ; LINUX-SECTIONS1:		.section        .text.foo,"ax",@progbits,unique,1
 ; LINUX-SECTIONS1-LABEL:	a.BB.foo:
-; LINUX-SECTIONS1-LABEL:	.Ltmp0:
-; LINUX-SECTIONS1-NEXT:		.size a.BB.foo, .Ltmp0-a.BB.foo
-; LINUX-SECTIONS1-NOT:  	.section
+; LINUX-SECTIONS1:		jmp raa.BB.foo
 ; LINUX-SECTIONS1:		.section        .text.foo.unlikely,"ax",@progbits
 ; LINUX-SECTIONS1-LABEL:	raa.BB.foo:
-; LINUX-SECTIONS1:	   	.section	.text.foo,"ax",@progbits
-; LINUX-SECTIONS1-LABEL:	.Lfunc_end0:
-; LINUX-SECTIONS1-NEXT:		.size foo, .Lfunc_end0-foo
 
 ; LINUX-SECTIONS2:		.section        .text.foo,"ax",@progbits
-; LINUX-SECTIONS2-NOT:   	.section
 ; LINUX-SECTIONS2-LABEL:	foo:
-; LINUX-SECTIONS2-NOT:   	.section
+; LINUX-SECTIONS2:		jne a.BB.foo
+; LINUX-SECTIONS2-NOT:		{{jne|je|jmp}}
 ; LINUX-SECTIONS2-LABEL:	aa.BB.foo:
+; LINUX-SECTIONS2:		jmp raa.BB.foo
 ; LINUX-SECTIONS2:		.section        .text.foo,"ax",@progbits,unique,1
 ; LINUX-SECTIONS2-NEXT:		a.BB.foo:
-; LINUX-SECTIONS2-NOT:  	.section
+; LINUX-SECTIONS2-NOT:		{{jne|je|jmp}}
 ; LINUX-SECTIONS2-LABEL:	raa.BB.foo:
-; LINUX-SECTIONS2-LABEL:	.Ltmp0:
-; LINUX-SECTIONS2-NEXT:		.size a.BB.foo, .Ltmp0-a.BB.foo
-; LINUX-SECTIONS2:		.section        .text.foo,"ax",@progbits
-; LINUX-SECTIONS2-LABEL:	.Lfunc_end0:
-; LINUX-SECTIONS2-NEXT:		.size foo, .Lfunc_end0-foo
-

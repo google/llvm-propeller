@@ -75,6 +75,7 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/LineIterator.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
@@ -89,9 +90,11 @@ using llvm::StringMap;
 using llvm::StringRef;
 using namespace llvm;
 
-
 namespace {
 
+// This struct represents the cluster information for a machine basic block,
+// including its MBB number within the function, its cluster id, and its
+// position within that cluster.
 struct BBClusterInfo {
   unsigned MBBNumber;
   unsigned ClusterID;
@@ -104,18 +107,19 @@ class BBSectionsPrepare : public MachineFunctionPass {
 public:
   static char ID;
 
-  // This would hold the basic-block-sections profile.
+  // This contains the basic-block-sections profile.
   const MemoryBuffer *MBuf = nullptr;
 
-  // This encapsulates the BB cluster information for every function.
-  // For every function name, we have a map from (some of) its basic block ids
-  // to its cluster information. The cluster information for every basic block
+  // This encapsulates the BB cluster information for the whole program.
+  //
+  // For every function name, it contains the cluster information for (all or
+  // some of) its basic blocks. The cluster information for every basic block
   // includes its cluster ID along with the position of the basic block in that
   // cluster.
   ProgramBBClusterInfoMapTy ProgramBBClusterInfo;
 
   // Some functions have alias names. We use this map to find the main alias
-  // name for which we have mapping in ProgramBBClusterInfoMap.
+  // name for which we have mapping in ProgramBBClusterInfo.
   StringMap<StringRef> FuncAliasMap;
 
   BBSectionsPrepare(const MemoryBuffer *Buf)
@@ -149,7 +153,7 @@ INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
                 "into clusters of basic blocks.",
                 false, false)
 
-// This inserts an unconditional branch at the end of MBB to the next basic
+// This inserts an unconditional branch at the end of MBB to its adjacent
 // block S if and only if the control-flow implicitly falls through from MBB to
 // S. This is necessary with basic block sections as they can be reordered by
 // clustering or by the linker.
@@ -173,35 +177,48 @@ static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
   TII->insertBranch(MBB, Fallthrough, nullptr, Cond, DL);
 }
 
-// This function optimizes the branching instructions of every
-// basic block (except those at the end of the sections) in a given function.
+// This function optimizes the branching instructions of every basic block (except those at the end of the sections) for a given function.
 static void optimizeBBJumps(MachineFunction &MF) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
-  for (auto &MBB : MF)
-    if (!MBB.isEndSection()) {
-      Cond.clear();
-      MachineBasicBlock *TBB = nullptr, *FBB = nullptr; // For analyzeBranch.
-      if (!TII->analyzeBranch(MBB, TBB, FBB, Cond))
-        MBB.updateTerminator();
-    }
+  for (auto &MBB : MF) {
+    // We do not optimize branches for machine basic blocks ending sections, as
+    // their adjacent block might be reordered by the linker.
+    if (MBB.isEndSection())
+      continue;
+    Cond.clear();
+    MachineBasicBlock *TBB = nullptr, *FBB = nullptr; // For analyzeBranch.
+    if (!TII->analyzeBranch(MBB, TBB, FBB, Cond))
+      MBB.updateTerminator();
+  }
 }
 
-// This function provides the BBCluster information associated with a function
-// name. It returns true if mapping is found and false otherwise.
+// This function provides the BBCluster information associated with a function.
+// Returns true if a valid association exists and false otherwise.
 static bool getBBClusterInfoForFunction(MachineFunction &MF,
                                         const StringMap<StringRef> FuncAliasMap,
                                         const ProgramBBClusterInfoMapTy &programBBClusterInfo,
                                         std::vector<Optional<BBClusterInfo>> &V) {
+  // Get the main alias name for the function.
   auto FuncName = MF.getName();
   auto R = FuncAliasMap.find(FuncName);
   StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
+
+  // Find the assoicated cluster information.
   auto P = programBBClusterInfo.find(AliasName);
   if (P == programBBClusterInfo.end())
     return false;
 
+  if (P->second.empty()) {
+    // This indicates that sections are desired for all basic blocks of this
+    // function. We clear the BBClusterInfo vector to denote this.
+    V.clear();
+    return true;
+  }
+
   V.resize(MF.getNumBlockIDs());
   for (auto bbClusterInfo : P->second) {
+    // Bail out if the cluster information contains invalid MBB numbers.
     if (bbClusterInfo.MBBNumber >= MF.getNumBlockIDs())
       return false;
     V[bbClusterInfo.MBBNumber] = bbClusterInfo;
@@ -218,6 +235,7 @@ static bool getBBClusterInfoForFunction(MachineFunction &MF,
 // and "Cold" succeeding all other clusters.
 static bool assignSectionsAndSortBasicBlocks(
     MachineFunction &MF, std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo){
+  assert(MF.hasBBSections() && "BB Sections is not set for function.");
   // This is the set of sections which have EHPads in them.
   SmallSet<unsigned, 2> EHPadsSections;
 
@@ -253,11 +271,9 @@ static bool assignSectionsAndSortBasicBlocks(
     });
   }
 
-  for (auto &MBB : MF) {
-    // With -fbasicblock-sections, fall through blocks must be made
-    // explicitly reachable.
+  // With -fbasicblock-sections, fall through blocks must be made explicitly reachable.
+  for (auto &MBB : MF)
     insertUnconditionalFallthroughBranch(MBB);
-  }
 
   // We make sure that the cluster including the entry basic block precedes all
   // other clusters.
@@ -315,7 +331,6 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   MF.setBBSectionsType(BBSectionsType);
   MF.createBBLabels();
   assignSectionsAndSortBasicBlocks(MF, FuncBBClusterInfo);
-
   return true;
 }
 
@@ -332,20 +347,29 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !foo
 // !!1 2
 // !!4
-static bool
+static Error
 getBBClusterInfo(const MemoryBuffer *MBuf,
                  ProgramBBClusterInfoMapTy &programBBClusterInfo,
                  StringMap<StringRef> &funcAliasMap) {
-  if (!MBuf)
-    return false;
-
+  assert(MBuf);
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
+
+  auto invalidProfileError = [&](auto Message) {
+    SmallString<128> ErrorMessage("Invalid profile ");
+    ErrorMessage += MBuf->getBufferIdentifier();
+    ErrorMessage += " at line ";
+    ErrorMessage += Twine(LineIt.line_number()).str();
+    ErrorMessage += ": ";
+    ErrorMessage += Message;
+    return make_error<StringError>(ErrorMessage, inconvertibleErrorCode());
+  };
 
   auto fi = programBBClusterInfo.end();
 
   unsigned CurrentCluster = 0;
   unsigned CurrentPosition = 0;
 
+  SmallSet<unsigned, 4> funcBBIDs;
   for (; !LineIt.is_at_eof(); ++LineIt) {
     StringRef s(*LineIt);
     if (s[0] == '@')
@@ -355,12 +379,8 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
       break;
     // Check for second "!" which indicates a cluster of basic blocks.
     if (s.consume_front("!")) {
-      if (fi == programBBClusterInfo.end()) {
-        errs() << "Could not process profile: " << MBuf->getBufferIdentifier()
-               << " at line " << Twine(LineIt.line_number())
-               << ": Does not follow a function name.\n";
-        return false;
-      }
+      if (fi == programBBClusterInfo.end())
+        return invalidProfileError("Cluster list does not follow a function name specifier.");
       std::istringstream iss(s.str());
       std::vector<std::string> BBIndexes(
           (std::istream_iterator<std::string>(iss)),
@@ -368,21 +388,16 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
       // Current position in the current cluster of basic blocks.
       CurrentPosition = 0;
       for (auto &BBIndexStr : BBIndexes) {
-        unsigned BBIndex;
-        if (StringRef(BBIndexStr).getAsInteger(10, BBIndex)) {
-          errs() << "Could not process profile: " << MBuf->getBufferIdentifier()
-                 << " at line " << Twine(LineIt.line_number()) << ": "
-                 << BBIndexStr << " is not a number!\n";
-          return false;
-        }
-        if (!BBIndex && CurrentPosition) {
-          errs() << "Could not process profile " << MBuf->getBufferIdentifier()
-                 << " at line " << Twine(LineIt.line_number())
-                 << ": Entry BB in the middle of the BB Cluster list!\n";
-          return false;
-        }
+        unsigned long long BBIndex;
+        if (getAsUnsignedInteger(BBIndexStr, 10, BBIndex))
+          return invalidProfileError(std::string("Unsigned integer expected: '")+ BBIndexStr +"'.");
+        if (!funcBBIDs.insert(BBIndex).second)
+          return invalidProfileError(std::string("Duplicate basic block id found '")+ BBIndexStr +"'.");
+        if (!BBIndex && CurrentPosition)
+          return invalidProfileError("Entry BB (0) does not begin a cluster.");
+
         fi->second.emplace_back(
-            BBClusterInfo{BBIndex, CurrentCluster, CurrentPosition++});
+            BBClusterInfo{((unsigned)BBIndex), CurrentCluster, CurrentPosition++});
       }
       CurrentCluster++;
     } else {
@@ -400,16 +415,17 @@ getBBClusterInfo(const MemoryBuffer *MBuf,
         aliasStr = Q.second;
       }
       CurrentCluster = 0;
+      funcBBIDs.clear();
     }
   }
-  return true;
+  return Error::success();
 }
 
 bool BBSectionsPrepare::doInitialization(Module &M) {
   if (!MBuf)
     return false;
-  if (!getBBClusterInfo(MBuf, ProgramBBClusterInfo, FuncAliasMap))
-    ProgramBBClusterInfo.clear();
+  if (auto Err = getBBClusterInfo(MBuf, ProgramBBClusterInfo, FuncAliasMap))
+    report_fatal_error(std::move(Err));
   return false;
 }
 

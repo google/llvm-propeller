@@ -791,9 +791,9 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
 MCSection *TargetLoweringObjectFileELF::getNamedSectionForMachineBasicBlock(
     const Function &F, const MachineBasicBlock &MBB, const TargetMachine &TM,
     const char *Suffix) const {
-  SmallString<128> Name =
-      (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
-          ->getSectionName();
+  SmallString<128> Name;
+  Name = (static_cast<MCSectionELF *>(MBB.getParent()->getSection()))
+             ->getSectionName();
 
   // If unique section names is off, explicity add the function name to the
   // section name to make sure named sections for functions are unique
@@ -803,13 +803,7 @@ MCSection *TargetLoweringObjectFileELF::getNamedSectionForMachineBasicBlock(
     Name += MBB.getParent()->getName();
   }
 
-  if (Name.startswith(".text.")) {
-    SmallString<128> NameSuffix(Name.substr(5));
-    Name.assign(".text");
-    Name += Suffix;
-    Name += NameSuffix;
-  } else
-    Name += Suffix;
+  Name += Suffix;
 
   unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
   std::string GroupName = "";
