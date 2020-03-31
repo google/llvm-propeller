@@ -35,6 +35,8 @@ declare ALL_FILES=(
         clang-uif        clang/lib/Frontend/CompilerInvocation.cpp
         clang-base       clang/test/CodeGen/basicblock-sections.c
         clang-base       clang/test/CodeGen/basicblock-sections.funcnames
+	clang-base       clang/test/Driver/funique-bb-section-names.c
+	clang-base       clang/test/Driver/fbasicblock-sections.c
         clang-uif        clang/test/CodeGen/unique-internal-linkage-names.cpp
 	clang-uif        clang/test/Driver/funique-internal-linkage-names.c
         clang-pro        clang/test/Driver/propeller-flags.c

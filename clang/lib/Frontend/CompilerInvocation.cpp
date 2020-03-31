@@ -958,11 +958,10 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.BBSections =
       std::string(Args.getLastArgValue(OPT_fbasicblock_sections_EQ, "none"));
   if (Opts.BBSections != "all" && Opts.BBSections != "labels" &&
-      Opts.BBSections != "none" && !llvm::sys::fs::exists(Opts.BBSections)) {
+      Opts.BBSections != "none" && !llvm::sys::fs::exists(Opts.BBSections))
     Diags.Report(diag::err_drv_invalid_value)
         << Args.getLastArg(OPT_fbasicblock_sections_EQ)->getAsString(Args)
         << Opts.BBSections;
-  }
 
   // Basic Block Sections implies Function Sections.
   Opts.FunctionSections =
@@ -975,6 +974,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.UniqueBBSectionNames = Args.hasArg(OPT_funique_bb_section_names);
   Opts.UniqueInternalLinkageNames =
       Args.hasArg(OPT_funique_internal_linkage_names);
+
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
   Opts.NoUseJumpTables = Args.hasArg(OPT_fno_jump_tables);
