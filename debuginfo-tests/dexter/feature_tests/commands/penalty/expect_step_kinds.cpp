@@ -2,6 +2,8 @@
 //      Check that \DexExpectStepKind correctly applies a penalty when
 //      unexpected step kinds are encountered.
 //
+// UNSUPPORTED: system-darwin
+//
 // RUN: not %dexter_regression_test -- %s | FileCheck %s
 // CHECK: expect_step_kinds.cpp:
 

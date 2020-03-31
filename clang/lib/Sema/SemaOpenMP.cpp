@@ -14837,8 +14837,8 @@ static bool actOnOMPReductionKindClause(
     if (ClauseKind == OMPC_in_reduction) {
       SourceRange ParentSR;
       BinaryOperatorKind ParentBOK;
-      const Expr *ParentReductionOp;
-      Expr *ParentBOKTD, *ParentReductionOpTD;
+      const Expr *ParentReductionOp = nullptr;
+      Expr *ParentBOKTD = nullptr, *ParentReductionOpTD = nullptr;
       DSAStackTy::DSAVarData ParentBOKDSA =
           Stack->getTopMostTaskgroupReductionData(D, ParentSR, ParentBOK,
                                                   ParentBOKTD);
@@ -14847,13 +14847,9 @@ static bool actOnOMPReductionKindClause(
               D, ParentSR, ParentReductionOp, ParentReductionOpTD);
       bool IsParentBOK = ParentBOKDSA.DKind != OMPD_unknown;
       bool IsParentReductionOp = ParentReductionOpDSA.DKind != OMPD_unknown;
-      if (!IsParentBOK && !IsParentReductionOp) {
-        S.Diag(ELoc, diag::err_omp_in_reduction_not_task_reduction);
-        continue;
-      }
       if ((DeclareReductionRef.isUnset() && IsParentReductionOp) ||
-          (DeclareReductionRef.isUsable() && IsParentBOK) || BOK != ParentBOK ||
-          IsParentReductionOp) {
+          (DeclareReductionRef.isUsable() && IsParentBOK) ||
+          (IsParentBOK && BOK != ParentBOK) || IsParentReductionOp) {
         bool EmitError = true;
         if (IsParentReductionOp && DeclareReductionRef.isUsable()) {
           llvm::FoldingSetNodeID RedId, ParentRedId;
@@ -14876,7 +14872,6 @@ static bool actOnOMPReductionKindClause(
         }
       }
       TaskgroupDescriptor = IsParentBOK ? ParentBOKTD : ParentReductionOpTD;
-      assert(TaskgroupDescriptor && "Taskgroup descriptor must be defined.");
     }
 
     DeclRefExpr *Ref = nullptr;
@@ -15829,7 +15824,8 @@ Sema::ActOnOpenMPDependClause(OpenMPDependClauseKind DepKind,
             (OMPDependTFound &&
              DSAStack->getOMPDependT().getTypePtr() == ExprTy.getTypePtr())) {
           Diag(ELoc, diag::err_omp_expected_addressable_lvalue_or_array_item)
-              << 1 << RefExpr->getSourceRange();
+              << (LangOpts.OpenMP >= 50 ? 1 : 0) << 1
+              << RefExpr->getSourceRange();
           continue;
         }
 
@@ -15842,6 +15838,7 @@ Sema::ActOnOpenMPDependClause(OpenMPDependClauseKind DepKind,
                   ->isPointerType() &&
              !ASE->getBase()->getType().getNonReferenceType()->isArrayType())) {
           Diag(ELoc, diag::err_omp_expected_addressable_lvalue_or_array_item)
+              << (LangOpts.OpenMP >= 50 ? 1 : 0)
               << (LangOpts.OpenMP >= 50 ? 1 : 0) << RefExpr->getSourceRange();
           continue;
         }
@@ -15852,8 +15849,10 @@ Sema::ActOnOpenMPDependClause(OpenMPDependClauseKind DepKind,
           Res = CreateBuiltinUnaryOp(ELoc, UO_AddrOf,
                                      RefExpr->IgnoreParenImpCasts());
         }
-        if (!Res.isUsable() && !isa<OMPArraySectionExpr>(SimpleExpr)) {
+        if (!Res.isUsable() && !isa<OMPArraySectionExpr>(SimpleExpr) &&
+            !isa<OMPArrayShapingExpr>(SimpleExpr)) {
           Diag(ELoc, diag::err_omp_expected_addressable_lvalue_or_array_item)
+              << (LangOpts.OpenMP >= 50 ? 1 : 0)
               << (LangOpts.OpenMP >= 50 ? 1 : 0) << RefExpr->getSourceRange();
           continue;
         }

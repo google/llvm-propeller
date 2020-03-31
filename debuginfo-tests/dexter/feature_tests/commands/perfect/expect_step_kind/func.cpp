@@ -3,6 +3,8 @@
 //      trivial test. Expect one 'FUNC' per call to a function which is defined
 //      in one of the source files in the test directory.
 //
+// UNSUPPORTED: system-darwin
+//
 // RUN: %dexter_regression_test -- %s | FileCheck %s
 // CHECK: func.cpp:
 

@@ -1128,6 +1128,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
   PTO.LoopInterleaving = CodeGenOpts.UnrollLoops;
   PTO.LoopVectorization = CodeGenOpts.VectorizeLoop;
   PTO.SLPVectorization = CodeGenOpts.VectorizeSLP;
+  PTO.CallGraphProfile = CodeGenOpts.CallGraphProfile;
   PTO.Coroutines = LangOpts.Coroutines;
 
   PassInstrumentationCallbacks PIC;
@@ -1538,6 +1539,7 @@ static void runThinLTOBackend(ModuleSummaryIndex *CombinedIndex, Module *M,
   Conf.PTO.LoopInterleaving = CGOpts.UnrollLoops;
   Conf.PTO.LoopVectorization = CGOpts.VectorizeLoop;
   Conf.PTO.SLPVectorization = CGOpts.VectorizeSLP;
+  Conf.PTO.CallGraphProfile = CGOpts.CallGraphProfile;
 
   // Context sensitive profile.
   if (CGOpts.hasProfileCSIRInstr()) {

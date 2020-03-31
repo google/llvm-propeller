@@ -2,6 +2,8 @@
 //      Check that \DexExpectStepOrder correctly applies a penalty for steps
 //      found out of expected order.
 //
+// UNSUPPORTED: system-darwin
+//
 // RUN: not %dexter_regression_test -- %s | FileCheck %s
 // CHECK: expect_step_order.cpp:
 

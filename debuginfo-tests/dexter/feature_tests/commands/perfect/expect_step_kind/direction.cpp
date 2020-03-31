@@ -5,6 +5,8 @@
 //      'VERTICAL_FORWARD' for every step onto a greater source line number in
 //      the same function.
 //
+// UNSUPPORTED: system-darwin
+//
 // TODO: The dbgeng debugger does not support column step reporting at present.
 // XFAIL: system-windows
 //

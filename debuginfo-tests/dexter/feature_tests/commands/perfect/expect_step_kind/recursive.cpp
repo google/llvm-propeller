@@ -3,6 +3,8 @@
 //      Specifically, ensure recursive calls count towards 'FUNC' and not
 //      'VERTICAL_BACKWARD'.
 //
+// UNSUPPORTED: system-darwin
+//
 // RUN: %dexter_regression_test -- %s | FileCheck %s
 // CHECK: recursive.cpp:
 

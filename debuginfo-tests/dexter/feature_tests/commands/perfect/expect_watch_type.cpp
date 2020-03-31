@@ -2,6 +2,8 @@
 //      Check that \DexExpectWatchType applies no penalties when expected
 //      types are found.
 //
+// UNSUPPORTED: system-darwin
+//
 // TODO: On Windows WITH dbgeng, This test takes a long time to run and doesn't evaluate type values
 // in the same manner as LLDB.
 // XFAIL: system-windows

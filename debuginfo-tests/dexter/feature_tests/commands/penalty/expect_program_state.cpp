@@ -2,6 +2,8 @@
 //      Check that \DexExpectProgramState correctly applies a penalty when
 //      an expected program state is never found.
 //
+// UNSUPPORTED: system-darwin
+//
 // RUN: not %dexter_regression_test -- %s | FileCheck %s
 // CHECK: expect_program_state.cpp:
 

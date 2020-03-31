@@ -2,6 +2,9 @@
 //      Check that \DexExpectWatchValue applies no penalties when expected
 //      program states are found.
 //
+// UNSUPPORTED: system-darwin
+//
+//
 // RUN: %dexter_regression_test -- %s | FileCheck %s
 // CHECK: expect_program_state.cpp:
 

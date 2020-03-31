@@ -1047,7 +1047,7 @@ private:
                        Keywords.kw___has_include_next)) {
         parseHasInclude();
       }
-      if (Tok->is(Keywords.kw_where) && Tok->Next &&
+      if (Style.isCSharp() && Tok->is(Keywords.kw_where) && Tok->Next &&
           Tok->Next->isNot(tok::l_paren)) {
         Tok->Type = TT_CSharpGenericTypeConstraint;
         parseCSharpGenericTypeConstraint();
@@ -1060,15 +1060,20 @@ private:
   }
 
   void parseCSharpGenericTypeConstraint() {
+    int OpenAngleBracketsCount = 0;
     while (CurrentToken) {
       if (CurrentToken->is(tok::less)) {
         // parseAngle is too greedy and will consume the whole line.
         CurrentToken->Type = TT_TemplateOpener;
+        ++OpenAngleBracketsCount;
         next();
       } else if (CurrentToken->is(tok::greater)) {
         CurrentToken->Type = TT_TemplateCloser;
+        --OpenAngleBracketsCount;
         next();
-      } else if (CurrentToken->is(tok::comma)) {
+      } else if (CurrentToken->is(tok::comma) && OpenAngleBracketsCount == 0) {
+        // We allow line breaks after GenericTypeConstraintComma's
+        // so do not flag commas in Generics as GenericTypeConstraintComma's.
         CurrentToken->Type = TT_CSharpGenericTypeConstraintComma;
         next();
       } else if (CurrentToken->is(Keywords.kw_where)) {

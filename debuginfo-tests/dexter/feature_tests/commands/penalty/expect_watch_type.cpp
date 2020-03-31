@@ -2,6 +2,9 @@
 //      Check that \DexExpectWatchType applies penalties when expected
 //      types are not found and unexpected types are.
 //
+// UNSUPPORTED: system-darwin
+//
+//
 // NOTE: This test passes but not in the expected way on Windows.
 // TODO: Reduce this test's coverage and be more specific about
 // expected behaviour.

@@ -18,6 +18,7 @@ from lit.TestRunner import ParserKind, IntegratedTestKeywordParser  \
     # pylint: disable=import-error
 
 from libcxx.test.executor import LocalExecutor as LocalExecutor
+from libcxx.test.executor import SSHExecutor as SSHExecutor
 import libcxx.util
 
 
@@ -46,8 +47,15 @@ class LibcxxTestFormat(object):
             IntegratedTestKeywordParser('MODULES_DEFINES:', ParserKind.LIST,
                                         initial_value=[]),
             IntegratedTestKeywordParser('FILE_DEPENDENCIES:', ParserKind.LIST,
-                                        initial_value=test.file_dependencies)
+                                        initial_value=test.file_dependencies),
+            IntegratedTestKeywordParser('ADDITIONAL_COMPILE_FLAGS:', ParserKind.LIST,
+                                        initial_value=[])
         ]
+
+    # Utility function to add compile flags in lit.local.cfg files.
+    def addCompileFlags(self, config, *flags):
+        self.cxx = copy.deepcopy(self.cxx)
+        self.cxx.compile_flags += flags
 
     @staticmethod
     def _get_parser(key, parsers):
@@ -89,8 +97,6 @@ class LibcxxTestFormat(object):
         is_pass_test = name.endswith('.pass.cpp') or name.endswith('.pass.mm')
         is_fail_test = name.endswith('.fail.cpp') or name.endswith('.fail.mm')
         is_objcxx_test = name.endswith('.mm')
-        is_objcxx_arc_test = name.endswith('.arc.pass.mm') or \
-                             name.endswith('.arc.fail.mm')
         assert is_sh_test or name_ext == '.cpp' or name_ext == '.mm', \
             'non-cpp file must be sh test'
 
@@ -107,8 +113,6 @@ class LibcxxTestFormat(object):
         script = lit.TestRunner.parseIntegratedTestScript(
             test, additional_parsers=parsers, require_script=is_sh_test)
 
-        local_cwd = os.path.dirname(test.getSourcePath())
-        data_files = [os.path.join(local_cwd, f) for f in test.file_dependencies]
         # Check if a result for the test was returned. If so return that
         # result.
         if isinstance(script, lit.Test.Result):
@@ -123,9 +127,16 @@ class LibcxxTestFormat(object):
         tmpDir, tmpBase = lit.TestRunner.getTempPaths(test)
         substitutions = lit.TestRunner.getDefaultSubstitutions(test, tmpDir,
                                                                tmpBase)
+
+        # Apply substitutions in FILE_DEPENDENCIES markup
+        data_files = lit.TestRunner.applySubstitutions(test.file_dependencies, substitutions,
+                                                       recursion_limit=10)
+        local_cwd = os.path.dirname(test.getSourcePath())
+        data_files = [f if os.path.isabs(f) else os.path.join(local_cwd, f) for f in data_files]
         substitutions.append(('%{file_dependencies}', ' '.join(data_files)))
+
         script = lit.TestRunner.applySubstitutions(script, substitutions,
-                                                   recursion_limit=lit_config.recursiveExpansionLimit)
+                                                   recursion_limit=10)
 
         test_cxx = copy.deepcopy(self.cxx)
         if is_fail_test:
@@ -146,18 +157,21 @@ class LibcxxTestFormat(object):
                 if b'#define _LIBCPP_ASSERT' in contents:
                     test_cxx.useModules(False)
 
+        # Handle ADDITIONAL_COMPILE_FLAGS keywords by adding those compilation
+        # flags, but first perform substitutions in those flags.
+        extra_compile_flags = self._get_parser('ADDITIONAL_COMPILE_FLAGS:', parsers).getValue()
+        extra_compile_flags = lit.TestRunner.applySubstitutions(extra_compile_flags, substitutions)
+        test_cxx.compile_flags.extend(extra_compile_flags)
+
         if is_objcxx_test:
             test_cxx.source_lang = 'objective-c++'
-            if is_objcxx_arc_test:
-                test_cxx.compile_flags += ['-fobjc-arc']
-            else:
-                test_cxx.compile_flags += ['-fno-objc-arc']
             test_cxx.link_flags += ['-framework', 'Foundation']
 
         # Dispatch the test based on its suffix.
         if is_sh_test:
-            if not isinstance(self.executor, LocalExecutor):
-                # We can't run ShTest tests with a executor yet.
+            if not isinstance(self.executor, LocalExecutor) and not isinstance(self.executor, SSHExecutor):
+                # We can't run ShTest tests with other executors than
+                # LocalExecutor and SSHExecutor yet.
                 # For now, bail on trying to run them
                 return lit.Test.UNSUPPORTED, 'ShTest format not yet supported'
             test.config.environment = self.executor.merge_environments(os.environ, self.exec_env)

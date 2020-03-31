@@ -2,6 +2,8 @@
 //      Check that \DexExpectStepKind correctly counts 'FUNC_EXTERNAL' steps
 //      for a trivial test. Expect one 'FUNC_EXTERNAL' per external call.
 //
+// UNSUPPORTED: system-darwin
+//
 // XFAIL:*
 // This fails right now on my linux and windows machine, needs examining as to
 // why.
