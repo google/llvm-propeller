@@ -170,6 +170,9 @@ declare ALL_FILES=(
 	base_2           llvm/test/CodeGen/X86/basicblock-sections-mir-print.ll
 	base_2           llvm/test/CodeGen/X86/basicblock-sections-mir-parse.mir
 	base_2           llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
+	base_2           llvm/test/CodeGen/X86/basicblock-sections-clusters-error.ll
+	base_2           llvm/test/CodeGen/X86/basicblock-sections-clusters-eh.ll
+	base_2           llvm/test/CodeGen/X86/basicblock-sections-clusters-branches.ll
 
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h

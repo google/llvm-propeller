@@ -92,12 +92,13 @@ using namespace llvm;
 
 namespace {
 
-// This struct represents the cluster information for a machine basic block,
-// including its MBB number within the function, its cluster id, and its
-// position within that cluster.
+// This struct represents the cluster information for a machine basic block.
 struct BBClusterInfo {
+  // MachineBasicBlock ID.
   unsigned MBBNumber;
+  // Cluster ID this basic block belongs to.
   unsigned ClusterID;
+  // Position of basic block within the cluster.
   unsigned PositionInCluster;
 };
 
@@ -198,7 +199,7 @@ static void optimizeBBJumps(MachineFunction &MF) {
 // Returns true if a valid association exists and false otherwise.
 static bool getBBClusterInfoForFunction(
     MachineFunction &MF, const StringMap<StringRef> FuncAliasMap,
-    const ProgramBBClusterInfoMapTy &programBBClusterInfo,
+    const ProgramBBClusterInfoMapTy &ProgramBBClusterInfo,
     std::vector<Optional<BBClusterInfo>> &V) {
   // Get the main alias name for the function.
   auto FuncName = MF.getName();
@@ -206,8 +207,8 @@ static bool getBBClusterInfoForFunction(
   StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
 
   // Find the assoicated cluster information.
-  auto P = programBBClusterInfo.find(AliasName);
-  if (P == programBBClusterInfo.end())
+  auto P = ProgramBBClusterInfo.find(AliasName);
+  if (P == ProgramBBClusterInfo.end())
     return false;
 
   if (P->second.empty()) {
@@ -234,6 +235,8 @@ static bool getBBClusterInfoForFunction(
 // clusters, they are moved into a single "Exception" section. Eventually,
 // clusters are ordered in increasing order of their IDs, with the "Exception"
 // and "Cold" succeeding all other clusters.
+// FuncBBClusterInfo represent the cluster information for basic blocks. If this
+// is empty, it means unique sections for all basic blocks in the function.
 static bool assignSectionsAndSortBasicBlocks(
     MachineFunction &MF,
     std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
@@ -244,8 +247,8 @@ static bool assignSectionsAndSortBasicBlocks(
   for (auto &MBB : MF) {
     // With the 'all' option, every basic block is placed in a unique section.
     // With the 'list' option, every basic block is placed in a section
-    // associated with its cluster, unless we want sections for every basic
-    // block in this function (if FuncBBClusterInfo is empty).
+    // associated with its cluster, unless we want individual unique sections for
+    // every basic block in this function (if FuncBBClusterInfo is empty).
     if (MF.getTarget().getBBSectionsType() == llvm::BasicBlockSection::All ||
         FuncBBClusterInfo.empty()) {
       // If unique sections are desired for all basic blocks of the function, we
@@ -280,7 +283,7 @@ static bool assignSectionsAndSortBasicBlocks(
 
   // We make sure that the cluster including the entry basic block precedes all
   // other clusters.
-  auto EntrySectionID = MF.front().getSectionID().getValue();
+  auto EntryBBSectionID = MF.front().getSectionID().getValue();
 
   // We sort all basic blocks to make sure the basic blocks of every cluster are
   // contiguous and ordered accordingly. Furthermore, clusters are ordered in
@@ -298,8 +301,8 @@ static bool assignSectionsAndSortBasicBlocks(
                  : X.getNumber() < Y.getNumber();
     // We make sure that the section containing the entry block precedes all the
     // other sections.
-    if (XSectionID == EntrySectionID || YSectionID == EntrySectionID)
-      return XSectionID == EntrySectionID;
+    if (XSectionID == EntryBBSectionID || YSectionID == EntryBBSectionID)
+      return XSectionID == EntryBBSectionID;
     return XSectionID < YSectionID;
   });
 
@@ -352,8 +355,8 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !!1 2
 // !!4
 static Error getBBClusterInfo(const MemoryBuffer *MBuf,
-                              ProgramBBClusterInfoMapTy &programBBClusterInfo,
-                              StringMap<StringRef> &funcAliasMap) {
+                              ProgramBBClusterInfoMapTy &ProgramBBClusterInfo,
+                              StringMap<StringRef> &FuncAliasMap) {
   assert(MBuf);
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
@@ -367,62 +370,66 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
     return make_error<StringError>(ErrorMessage, inconvertibleErrorCode());
   };
 
-  auto fi = programBBClusterInfo.end();
+  auto FI = ProgramBBClusterInfo.end();
 
+  // Current cluster ID corresponding to this function.
   unsigned CurrentCluster = 0;
+  // Current position in the current cluster.
   unsigned CurrentPosition = 0;
 
-  SmallSet<unsigned, 4> funcBBIDs;
+  // Temporary set to ensure every basic block ID appears once in the clusters
+  // of a function.
+  SmallSet<unsigned, 4> FuncBBIDs;
+
   for (; !LineIt.is_at_eof(); ++LineIt) {
-    StringRef s(*LineIt);
-    if (s[0] == '@')
+    StringRef S(*LineIt);
+    if (S[0] == '@')
       continue;
     // Check for the leading "!"
-    if (!s.consume_front("!") || s.empty())
+    if (!S.consume_front("!") || S.empty())
       break;
     // Check for second "!" which indicates a cluster of basic blocks.
-    if (s.consume_front("!")) {
-      if (fi == programBBClusterInfo.end())
+    if (S.consume_front("!")) {
+      if (FI == ProgramBBClusterInfo.end())
         return invalidProfileError(
             "Cluster list does not follow a function name specifier.");
-      std::istringstream iss(s.str());
-      std::vector<std::string> BBIndexes(
-          (std::istream_iterator<std::string>(iss)),
-          std::istream_iterator<std::string>());
-      // Current position in the current cluster of basic blocks.
+      std::istringstream ISS(S.str());
+      // Reset current cluster position.
       CurrentPosition = 0;
-      for (auto &BBIndexStr : BBIndexes) {
+      std::string BBIndexStr;
+      while(getline(ISS, BBIndexStr, ' ')) {
         unsigned long long BBIndex;
         if (getAsUnsignedInteger(BBIndexStr, 10, BBIndex))
           return invalidProfileError(
               std::string("Unsigned integer expected: '") + BBIndexStr + "'.");
-        if (!funcBBIDs.insert(BBIndex).second)
+        if (!FuncBBIDs.insert(BBIndex).second)
           return invalidProfileError(
               std::string("Duplicate basic block id found '") + BBIndexStr +
               "'.");
         if (!BBIndex && CurrentPosition)
           return invalidProfileError("Entry BB (0) does not begin a cluster.");
 
-        fi->second.emplace_back(BBClusterInfo{
+        FI->second.emplace_back(BBClusterInfo{
             ((unsigned)BBIndex), CurrentCluster, CurrentPosition++});
       }
       CurrentCluster++;
-    } else {
+    } else { // This is a function name specifier.
       // Function aliases are separated using '/'. We use the first function
       // name for the cluster info mapping and delegate all other aliases to
       // this one.
-      auto P = s.split('/');
+      auto P = S.split('/');
       // Start a new function.
-      fi = programBBClusterInfo.try_emplace(P.first).first;
+      FI = ProgramBBClusterInfo.try_emplace(P.first).first;
 
-      auto aliasStr = P.second;
-      while (aliasStr != "") {
-        auto Q = aliasStr.split('/');
-        funcAliasMap.try_emplace(Q.first, P.first);
-        aliasStr = Q.second;
+      auto AliasStr = P.second;
+      while (AliasStr != "") {
+        auto Q = AliasStr.split('/');
+        FuncAliasMap.try_emplace(Q.first, P.first);
+        AliasStr = Q.second;
       }
+      // Prepare for parsing clusters of this function name.
       CurrentCluster = 0;
-      funcBBIDs.clear();
+      FuncBBIDs.clear();
     }
   }
   return Error::success();
