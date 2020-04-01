@@ -629,8 +629,7 @@ static void canonicalizePromotedSymbols(MapOrSet *mapOrSet,
 template <class MapOrSet>
 static void canonicalizeMapOrSetAndOperands(MapOrSet *mapOrSet,
                                             SmallVectorImpl<Value> *operands) {
-  static_assert(std::is_same<MapOrSet, AffineMap>::value ||
-                    std::is_same<MapOrSet, IntegerSet>::value,
+  static_assert(llvm::is_one_of<MapOrSet, AffineMap, IntegerSet>::value,
                 "Argument must be either of AffineMap or IntegerSet type");
 
   if (!mapOrSet || operands->empty())
@@ -729,13 +728,10 @@ struct SimplifyAffineOp : public OpRewritePattern<AffineOpTy> {
 
   LogicalResult matchAndRewrite(AffineOpTy affineOp,
                                 PatternRewriter &rewriter) const override {
-    static_assert(std::is_same<AffineOpTy, AffineLoadOp>::value ||
-                      std::is_same<AffineOpTy, AffinePrefetchOp>::value ||
-                      std::is_same<AffineOpTy, AffineStoreOp>::value ||
-                      std::is_same<AffineOpTy, AffineApplyOp>::value ||
-                      std::is_same<AffineOpTy, AffineMinOp>::value ||
-                      std::is_same<AffineOpTy, AffineMaxOp>::value,
-                  "affine load/store/apply op expected");
+    static_assert(llvm::is_one_of<AffineOpTy, AffineLoadOp, AffinePrefetchOp,
+                                  AffineStoreOp, AffineApplyOp, AffineMinOp,
+                                  AffineMaxOp>::value,
+                  "affine load/store/apply/prefetch/min/max op expected");
     auto map = affineOp.getAffineMap();
     AffineMap oldMap = map;
     auto oldOperands = affineOp.getMapOperands();
@@ -2140,7 +2136,7 @@ LogicalResult AffinePrefetchOp::fold(ArrayRef<Attribute> cstOperands,
 
 void AffineParallelOp::build(Builder *builder, OperationState &result,
                              ArrayRef<int64_t> ranges) {
-  // Default initalize empty maps.
+  // Default initialize empty maps.
   auto lbMap = AffineMap::get(builder->getContext());
   auto ubMap = AffineMap::get(builder->getContext());
   // If there are ranges, set each to [0, N).
