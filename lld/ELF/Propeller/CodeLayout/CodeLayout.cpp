@@ -20,7 +20,10 @@
 
 #include "llvm/ADT/DenseMap.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <ctime>
 #include <vector>
 
 using llvm::DenseMap;
@@ -81,6 +84,7 @@ void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
     for (ControlFlowGraph *cfg : hotCFGs)
       NodeChainBuilder(cfg).doOrder(clustering);
   } else {
+    std::srand ( unsigned ( std::time(0) ) );
     // If reordering is not desired, we create changes according to the initial
     // order in the controlFlowGraph.
     for (ControlFlowGraph *cfg : hotCFGs) {
@@ -97,6 +101,8 @@ void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
         };
         sort(hotNodes.begin(), hotNodes.end(), compareNodeAddress);
         sort(coldNodes.begin(), coldNodes.end(), compareNodeAddress);
+        if (propConfig.optReorderBlocksRandom)
+          std::random_shuffle(hotNodes.begin(), hotNodes.end());
         if (!hotNodes.empty())
           clustering->addChain(
               std::unique_ptr<NodeChain>(new NodeChain(hotNodes)));

@@ -75,6 +75,7 @@ static void setupConfig() {
   COPY_CONFIG(ReorderFuncs);
   COPY_CONFIG(ReorderIP);
   COPY_CONFIG(SplitFuncs);
+  COPY_CONFIG(ReorderBlocksRandom);
 #undef COPY_CONFIG
 
   // Scale weights for use in the computation of ExtTSP score.

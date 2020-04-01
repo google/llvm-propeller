@@ -1014,9 +1014,14 @@ static void readConfigs(opt::InputArgList &args) {
       config->propellerSplitFuncs = true;
     } else if (propellerOpt == "no-split-funcs") {
       config->propellerSplitFuncs = false;
+    } else if (propellerOpt == "reorder-blocks-random") {
+      config->propellerReorderBlocksRandom = true;
     } else
       error("unknown propeller option: " + propellerOpt);
   }
+
+  if (config->propellerReorderBlocksRandom)
+    config->propellerReorderBlocks = false;
 
   config->rpath = getRpath(args);
   config->relocatable = args.hasArg(OPT_relocatable);
