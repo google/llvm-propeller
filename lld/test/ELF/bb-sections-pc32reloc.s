@@ -14,7 +14,7 @@
 
 # CHECK:	<foo>
 # CHECK-NEXT:	nopl    (%rax)
-# CHECK-NEXT:	{{[0-9|a-f| ]*}} jne      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT:	{{[0-9|a-f| ]*}} jne      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT:    jmp
 
 

@@ -98,7 +98,7 @@ void doPropeller() {
     return;
   }
 
-  warn("[Skippign propeller for now]");
+  warn("[BBCLUSTERS]: Skipping propeller for now.");
   return;
 
   std::vector<ObjectView *> objectViews;

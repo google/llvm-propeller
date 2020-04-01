@@ -9,8 +9,8 @@
 
 # CHECK:		<foo>
 # CHECK-NEXT:		nopl    (%rax)
-# CHECK-NEXT:		75 7b	jne	123 <a.BB.foo>
-# CHECK-NEXT:		e9 b6 00 00 00	jmp	182 <aa.BB.foo>
+# CHECK-NEXT:		75 7b	jne	{{.*}} <a.BB.foo>
+# CHECK-NEXT:		e9 b6 00 00 00	jmp	{{.*}} <aa.BB.foo>
 # CHECK-COUNT-54:	int3
 # CHECK-NOT:		int3
 # CHECK-EMPTY:
@@ -27,7 +27,7 @@
 # CHECK-NEXT:		nopl    (%rax)
 # CHECK-NEXT:		nopl    (%rax)
 # CHECK-NEXT:		nopl    (%rax)
-# CHECK-NEXT:		75 b5	jne     -75 <a.BB.foo>
+# CHECK-NEXT:		75 b5	jne     {{.*}} <a.BB.foo>
 # CHECK-EMPTY:
 
 # CHECK:	<aaa.BB.foo>
