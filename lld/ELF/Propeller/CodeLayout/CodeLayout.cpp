@@ -84,7 +84,7 @@ void CodeLayout::doSplitOrder(std::list<StringRef> &symbolList,
     for (ControlFlowGraph *cfg : hotCFGs)
       NodeChainBuilder(cfg).doOrder(clustering);
   } else {
-    std::srand ( unsigned ( std::time(0) ) );
+    std::srand(unsigned(std::time(0)));
     // If reordering is not desired, we create changes according to the initial
     // order in the controlFlowGraph.
     for (ControlFlowGraph *cfg : hotCFGs) {
