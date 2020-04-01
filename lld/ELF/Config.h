@@ -199,6 +199,7 @@ struct Configuration {
   bool propellerPrintStats;
   bool propellerReorderIP = false;
   bool propellerReorderBlocks;
+  bool propellerReorderBlocksRandom = false;
   bool propellerReorderFuncs;
   bool propellerSplitFuncs;
   bool relocatable;

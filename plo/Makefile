@@ -135,6 +135,7 @@ gen_build_flags     = $(call gen_compiler_flags,$(1)) $(call gen_linker_flags,$(
 gc_sections_opt            := -Wl,-gc-sections
 relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
+random_opt                 := -Wl,--propeller-opt=reorder-blocks-random
 distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--propeller-backward-jump-distance=2000
 symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compiler.propeller.order
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
@@ -288,6 +289,12 @@ pgo-plolist/build/bin/clang-${CLANG_VERSION}-split: pgo-plolist/build/bin/clang-
 	$(call gen_relink_script,pgo-plolist,$(split_funcs_only),-split)
 	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-split.autolog
 
+pgo-plolist/build/bin/clang-${CLANG_VERSION}-random pgo-plo/build/bin/clang-${CLANG_VERSION}-random: %/build/bin/clang-${CLANG_VERSION}-random: %/build/bin/clang-${CLANG_VERSION}
+	$(call gen_relink_script,$*,$(random_opt),-random)
+	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-random.autolog
+
+pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip-2000: pgo-plolist/build/bin/clang-${CLANG_VERSION}
+
 # $1 is the COMP name only, without directory, "stage1/pgo-plolist/pgo-plofunsc/etc".
 # $2 is extra options.
 # $3 suffix to use for binary
@@ -344,7 +351,7 @@ pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler r
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --sym_order_out=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
-	{ echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
+	{ echo "@clang-11-random" ; "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 
 pgo-labels-compiler.yaml cspgo-compiler.yaml pgo-relocs-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler

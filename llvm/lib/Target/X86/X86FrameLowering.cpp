@@ -2035,7 +2035,7 @@ int X86FrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
       // Skip the saved EBP.
       return Offset + SlotSize + FPDelta;
     } else {
-      assert((-(Offset + StackSize)) % MFI.getObjectAlignment(FI) == 0);
+      assert(isAligned(MFI.getObjectAlign(FI), -(Offset + StackSize)));
       return Offset + StackSize;
     }
   } else if (TRI->needsStackRealignment(MF)) {
@@ -2043,7 +2043,7 @@ int X86FrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
       // Skip the saved EBP.
       return Offset + SlotSize + FPDelta;
     } else {
-      assert((-(Offset + StackSize)) % MFI.getObjectAlignment(FI) == 0);
+      assert(isAligned(MFI.getObjectAlign(FI), -(Offset + StackSize)));
       return Offset + StackSize;
     }
     // FIXME: Support tail calls
@@ -3226,7 +3226,7 @@ struct X86FrameSortingObject {
   bool IsValid = false;         // true if we care about this Object.
   unsigned ObjectIndex = 0;     // Index of Object into MFI list.
   unsigned ObjectSize = 0;      // Size of Object in bytes.
-  unsigned ObjectAlignment = 1; // Alignment of Object in bytes.
+  Align ObjectAlignment = Align(1); // Alignment of Object in bytes.
   unsigned ObjectNumUses = 0;   // Object static number of uses.
 };
 
@@ -3311,7 +3311,7 @@ void X86FrameLowering::orderFrameObjects(
   for (auto &Obj : ObjectsToAllocate) {
     SortingObjects[Obj].IsValid = true;
     SortingObjects[Obj].ObjectIndex = Obj;
-    SortingObjects[Obj].ObjectAlignment = MFI.getObjectAlignment(Obj);
+    SortingObjects[Obj].ObjectAlignment = MFI.getObjectAlign(Obj);
     // Set the size.
     int ObjectSize = MFI.getObjectSize(Obj);
     if (ObjectSize == 0)
@@ -3404,7 +3404,7 @@ void X86FrameLowering::processFunctionBeforeFrameFinalized(
       int FrameIndex = H.CatchObj.FrameIndex;
       if (FrameIndex != INT_MAX) {
         // Ensure alignment.
-        unsigned Align = MFI.getObjectAlignment(FrameIndex);
+        unsigned Align = MFI.getObjectAlign(FrameIndex).value();
         MinFixedObjOffset -= std::abs(MinFixedObjOffset) % Align;
         MinFixedObjOffset -= MFI.getObjectSize(FrameIndex);
         MFI.setObjectOffset(FrameIndex, MinFixedObjOffset);
