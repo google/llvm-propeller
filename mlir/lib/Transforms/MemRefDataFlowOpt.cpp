@@ -16,7 +16,7 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"
@@ -28,7 +28,6 @@
 using namespace mlir;
 
 namespace {
-
 // The store to load forwarding relies on three conditions:
 //
 // 1) they need to have mathematically equivalent affine access functions
@@ -62,6 +61,10 @@ namespace {
 // than dealloc) remain.
 //
 struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
+/// Include the generated pass utilities.
+#define GEN_PASS_MemRefDataFlowOpt
+#include "mlir/Transforms/Passes.h.inc"
+
   void runOnFunction() override;
 
   void forwardStoreToLoad(AffineLoadOp loadOp);
@@ -222,6 +225,3 @@ void MemRefDataFlowOpt::runOnFunction() {
     defInst->erase();
   }
 }
-
-static PassRegistration<MemRefDataFlowOpt>
-    pass("memref-dataflow-opt", "Perform store/load forwarding for memrefs");

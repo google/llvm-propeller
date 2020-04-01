@@ -13,7 +13,7 @@
 #ifndef VECTOR_OPS
 #define VECTOR_OPS
 
-include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+include "mlir/Dialect/Affine/IR/AffineOpsBase.td"
 include "mlir/Interfaces/SideEffects.td"
 
 def Vector_Dialect : Dialect {
@@ -87,58 +87,60 @@ def Vector_ContractionOp :
     and acc arguments. An indexing map attribute specifies a mapping from each
     iterator in the iterator type list, to each dimension of an N-D vector.
 
-    Examples:
+    Example:
 
-      // Simple dot product (K = 0).
-      #contraction_accesses = [
-       affine_map<(i) -> (i)>,
-       affine_map<(i) -> (i)>,
-       affine_map<(i) -> ()>
-      ]
-      #contraction_trait = {
-        indexing_maps = #contraction_accesses,
-        iterator_types = ["reduction"]
-      }
-      %3 = vector.contract #contraction_trait %0, %1, %2
-        : vector<10xf32>, vector<10xf32> into f32
+    ```mlir
+    // Simple dot product (K = 0).
+    #contraction_accesses = [
+     affine_map<(i) -> (i)>,
+     affine_map<(i) -> (i)>,
+     affine_map<(i) -> ()>
+    ]
+    #contraction_trait = {
+      indexing_maps = #contraction_accesses,
+      iterator_types = ["reduction"]
+    }
+    %3 = vector.contract #contraction_trait %0, %1, %2
+      : vector<10xf32>, vector<10xf32> into f32
 
-      // 2D vector contraction with one contracting dimension (matmul, K = 2).
-      #contraction_accesses = [
-        affine_map<(i, j, k) -> (i, k)>,
-        affine_map<(i, j, k) -> (k, j)>,
-        affine_map<(i, j, k) -> (i, j)>
-      ]
-      #contraction_trait = {
-        indexing_maps = #contraction_accesses,
-        iterator_types = ["parallel", "parallel", "reduction"]
-      }
+    // 2D vector contraction with one contracting dimension (matmul, K = 2).
+    #contraction_accesses = [
+      affine_map<(i, j, k) -> (i, k)>,
+      affine_map<(i, j, k) -> (k, j)>,
+      affine_map<(i, j, k) -> (i, j)>
+    ]
+    #contraction_trait = {
+      indexing_maps = #contraction_accesses,
+      iterator_types = ["parallel", "parallel", "reduction"]
+    }
 
-      %3 = vector.contract #contraction_trait %0, %1, %2
-        : vector<4x3xf32>, vector<3x7xf32> into vector<4x7xf32>
+    %3 = vector.contract #contraction_trait %0, %1, %2
+      : vector<4x3xf32>, vector<3x7xf32> into vector<4x7xf32>
 
-      // 4D to 3D vector contraction with two contracting dimensions and
-      // one batch dimension (K = 3).
-      #contraction_accesses = [
-        affine_map<(b0, f0, f1, c0, c1) -> (c0, b0, c1, f0)>,
-        affine_map<(b0, f0, f1, c0, c1) -> (b0, c1, c0, f1)>,
-        affine_map<(b0, f0, f1, c0, c1) -> (b0, f0, f1)>
-      ]
-      #contraction_trait = {
-        indexing_maps = #contraction_accesses,
-        iterator_types = ["parallel", "parallel", "parallel",
-                          "reduction", "reduction"]
-      }
+    // 4D to 3D vector contraction with two contracting dimensions and
+    // one batch dimension (K = 3).
+    #contraction_accesses = [
+      affine_map<(b0, f0, f1, c0, c1) -> (c0, b0, c1, f0)>,
+      affine_map<(b0, f0, f1, c0, c1) -> (b0, c1, c0, f1)>,
+      affine_map<(b0, f0, f1, c0, c1) -> (b0, f0, f1)>
+    ]
+    #contraction_trait = {
+      indexing_maps = #contraction_accesses,
+      iterator_types = ["parallel", "parallel", "parallel",
+                        "reduction", "reduction"]
+    }
 
-      %4 = vector.contract #contraction_trait %0, %1, %2
-          : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x5xf32>
+    %4 = vector.contract #contraction_trait %0, %1, %2
+        : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x5xf32>
 
-      // 4D vector contraction with two contracting dimensions and optional
-      // vector mask arguments.
-      %lhs_mask = vector.constant_mask [7, 8, 16, 15] : vector<7x8x16x15xi1>
-      %rhs_mask = vector.constant_mask [8, 16, 7, 5] : vector<8x16x7x5xi1>
+    // 4D vector contraction with two contracting dimensions and optional
+    // vector mask arguments.
+    %lhs_mask = vector.constant_mask [7, 8, 16, 15] : vector<7x8x16x15xi1>
+    %rhs_mask = vector.constant_mask [8, 16, 7, 5] : vector<8x16x7x5xi1>
 
-      %5 = vector.contract #contraction_trait %0, %1, %2, %lhs_mask, %rhs_mask
-         : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
+    %5 = vector.contract #contraction_trait %0, %1, %2, %lhs_mask, %rhs_mask
+       : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
+    ```
   }];
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value lhs, Value rhs, "
@@ -202,13 +204,14 @@ def Vector_ReductionOp :
 
     http://llvm.org/docs/LangRef.html#experimental-vector-reduction-intrinsics
 
-    Examples:
-    ```
-      %1 = vector.reduction "add", %0 : vector<16xf32> into f32
+    Example:
 
-      %3 = vector.reduction "xor", %2 : vector<4xi32> into i32
+    ```mlir
+    %1 = vector.reduction "add", %0 : vector<16xf32> into f32
 
-      %4 = vector.reduction "mul", %0, %1 : vector<16xf32> into f32
+    %3 = vector.reduction "xor", %2 : vector<4xi32> into i32
+
+    %4 = vector.reduction "mul", %0, %1 : vector<16xf32> into f32
     ```
   }];
   let extraClassDeclaration = [{
@@ -246,11 +249,12 @@ def Vector_BroadcastOp :
     dimension of 1. These rules imply that any scalar broadcast (k=0) to any
     shaped vector with the same element type is always legal.
 
-    Examples:
-    ```
-      %0 = constant 0.0 : f32
-      %1 = vector.broadcast %0 : f32 to vector<16xf32>
-      %2 = vector.broadcast %1 : vector<16xf32> to vector<4x16xf32>
+    Example:
+
+    ```mlir
+    %0 = constant 0.0 : f32
+    %1 = vector.broadcast %0 : f32 to vector<16xf32>
+    %2 = vector.broadcast %1 : vector<16xf32> to vector<4x16xf32>
     ```
   }];
   let extraClassDeclaration = [{
@@ -289,15 +293,15 @@ def Vector_ShuffleOp :
       mask values must be within range, viz. given two k-D operands v1 and v2
       above, all mask values are in the range [0,s_1+t_1)
 
-    Examples:
-    ```
+    Example:
+
+    ```mlir
     %0 = vector.shuffle %a, %b[0, 3]
                : vector<2xf32>, vector<2xf32>       ; yields vector<2xf32>
     %1 = vector.shuffle %c, %b[0, 1, 2]
                : vector<2x16xf32>, vector<1x16xf32> ; yields vector<3x16xf32>
     %2 = vector.shuffle %a, %b[3, 2, 1, 0]
                : vector<2xf32>, vector<2xf32>       ; yields vector<4xf32>
-
     ```
   }];
   let builders = [OpBuilder<"Builder *builder, OperationState &result,"
@@ -332,9 +336,10 @@ def Vector_ExtractElementOp :
     https://llvm.org/docs/LangRef.html#extractelement-instruction
 
     Example:
-    ```
-      %c = constant 15 : i32
-      %1 = vector.extractelement %0[%c : i32]: vector<16xf32>
+
+    ```mlir
+    %c = constant 15 : i32
+    %1 = vector.extractelement %0[%c : i32]: vector<16xf32>
     ```
   }];
   let extraClassDeclaration = [{
@@ -359,10 +364,11 @@ def Vector_ExtractOp :
     Takes an n-D vector and a k-D position and extracts the (n-k)-D vector at
     the proper position. Degenerates to an element type in the 0-D case.
 
-    Examples:
-    ```
-      %1 = vector.extract %0[3]: vector<4x8x16xf32>
-      %2 = vector.extract %0[3, 3, 3]: vector<4x8x16xf32>
+    Example:
+
+    ```mlir
+    %1 = vector.extract %0[3]: vector<4x8x16xf32>
+    %2 = vector.extract %0[3, 3, 3]: vector<4x8x16xf32>
     ```
   }];
   let builders = [OpBuilder<
@@ -395,19 +401,20 @@ def Vector_ExtractSlicesOp :
     linear index of the slice w.r.t the unrolling scheme represented by 'sizes'.
     Currently, only unit strides are supported.
 
-    Examples:
-    ```
-      %0 = vector.transfer_read ...: vector<4x2xf32>
+    Example:
 
-      %1 = vector.extract_slices %0, [2, 2], [1, 1]
-        : vector<4x2xf32> into tuple<vector<2x2xf32>, vector<2x2xf32>>
+    ```mlir
+    %0 = vector.transfer_read ...: vector<4x2xf32>
 
-      // Example with partial slices at dimension boundaries.
-      %2 = vector.transfer_read ...: vector<4x3xf32>
+    %1 = vector.extract_slices %0, [2, 2], [1, 1]
+      : vector<4x2xf32> into tuple<vector<2x2xf32>, vector<2x2xf32>>
 
-      %3 = vector.extract_slices %2, [2, 2], [1, 1]
-        : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
-                                     vector<2x2xf32>, vector<2x1xf32>>
+    // Example with partial slices at dimension boundaries.
+    %2 = vector.transfer_read ...: vector<4x3xf32>
+
+    %3 = vector.extract_slices %2, [2, 2], [1, 1]
+      : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
+                                   vector<2x2xf32>, vector<2x1xf32>>
     ```
   }];
   let builders = [OpBuilder<
@@ -449,8 +456,8 @@ def Vector_FMAOp :
 
     Example:
 
-    ```
-      %3 = vector.fma %0, %1, %2: vector<8x16xf32>
+    ```mlir
+    %3 = vector.fma %0, %1, %2: vector<8x16xf32>
     ```
   }];
   // Fully specified by traits.
@@ -483,10 +490,11 @@ def Vector_InsertElementOp :
     https://llvm.org/docs/LangRef.html#insertelement-instruction
 
     Example:
-    ```
-      %c = constant 15 : i32
-      %f = constant 0.0f : f32
-      %1 = vector.insertelement %f, %0[%c : i32]: vector<16xf32>
+
+    ```mlir
+    %c = constant 15 : i32
+    %f = constant 0.0f : f32
+    %1 = vector.insertelement %f, %0[%c : i32]: vector<16xf32>
     ```
   }];
   let extraClassDeclaration = [{
@@ -515,12 +523,11 @@ def Vector_InsertOp :
     and inserts the n-D source into the (n+k)-D destination at the proper
     position. Degenerates to a scalar source type when n = 0.
 
-    Examples:
-    ```
-      %2 = vector.insert %0, %1[3]:
-        vector<8x16xf32> into vector<4x8x16xf32>
-      %5 = vector.insert %3, %4[3, 3, 3]:
-        f32 into vector<4x8x16xf32>
+    Example:
+
+    ```mlir
+    %2 = vector.insert %0, %1[3] : vector<8x16xf32> into vector<4x8x16xf32>
+    %5 = vector.insert %3, %4[3, 3, 3] : f32 into vector<4x8x16xf32>
     ```
   }];
   let assemblyFormat = [{
@@ -558,22 +565,23 @@ def Vector_InsertSlicesOp :
     linear index of the slice w.r.t the unrolling scheme represented by 'sizes'.
     Currently, only unit strides are supported.
 
-    Examples:
-    ```
-      %0 = vector.extract_slices %0, [2, 2], [1, 1]
-        : vector<4x2xf32> into tuple<vector<2x2xf32>, vector<2x2xf32>>
+    Example:
 
-      %1 = vector.insert_slices %0, [2, 2], [1, 1]
-        : tuple<vector<2x2xf32>, vector<2x2xf32>> into vector<4x2xf32>
+    ```mlir
+    %0 = vector.extract_slices %0, [2, 2], [1, 1]
+      : vector<4x2xf32> into tuple<vector<2x2xf32>, vector<2x2xf32>>
 
-      // Example with partial slices at dimension boundaries.
-      %3 = vector.extract_slices %2, [2, 2], [1, 1]
-        : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
-                                     vector<2x2xf32>, vector<2x1xf32>>
+    %1 = vector.insert_slices %0, [2, 2], [1, 1]
+      : tuple<vector<2x2xf32>, vector<2x2xf32>> into vector<4x2xf32>
 
-      %4 = vector.insert_slices %3, [2, 2], [1, 1]
-        : tuple<vector<2x2xf32>, vector<2x1xf32>,
-                vector<2x2xf32>, vector<2x1xf32>> into vector<4x3xf32>
+    // Example with partial slices at dimension boundaries.
+    %3 = vector.extract_slices %2, [2, 2], [1, 1]
+      : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
+                                   vector<2x2xf32>, vector<2x1xf32>>
+
+    %4 = vector.insert_slices %3, [2, 2], [1, 1]
+      : tuple<vector<2x2xf32>, vector<2x1xf32>,
+              vector<2x2xf32>, vector<2x1xf32>> into vector<4x3xf32>
     ```
   }];
 
@@ -616,11 +624,12 @@ def Vector_InsertStridedSliceOp :
     the last k-D dimensions contain the k-D source vector elements strided at
     the proper location as specified by the offsets.
 
-    Examples:
-    ```
-      %2 = vector.insert_strided_slice %0, %1
-          {offsets = [0, 0, 2], strides = [1, 1]}:
-        vector<2x4xf32> into vector<16x4x8xf32>
+    Example:
+
+    ```mlir
+    %2 = vector.insert_strided_slice %0, %1
+        {offsets = [0, 0, 2], strides = [1, 1]}:
+      vector<2x4xf32> into vector<16x4x8xf32>
     ```
   }];
 
@@ -658,15 +667,15 @@ def Vector_OuterProductOp :
     the LLVMIR dialect, this form emits `llvm.intr.fma`, which is guaranteed to
     lower to actual `fma` instructions on x86.
 
-    Examples:
+    Example:
 
     ```
-      %2 = vector.outerproduct %0, %1: vector<4xf32>, vector<8xf32>
-      return %2: vector<4x8xf32>
+    %2 = vector.outerproduct %0, %1: vector<4xf32>, vector<8xf32>
+    return %2: vector<4x8xf32>
 
-      %3 = vector.outerproduct %0, %1, %2:
-        vector<4xf32>, vector<8xf32>, vector<4x8xf32>
-      return %3: vector<4x8xf32>
+    %3 = vector.outerproduct %0, %1, %2:
+      vector<4xf32>, vector<8xf32>, vector<4x8xf32>
+    return %3: vector<4x8xf32>
     ```
   }];
   let extraClassDeclaration = [{
@@ -827,16 +836,17 @@ def Vector_StridedSliceOp :
     attribute. The returned subvector contains the elements starting at offset
     `offsets` and ending at `offsets + sizes`.
 
-    Examples:
-    ```
-      %1 = vector.strided_slice %0
-          {offsets = [0, 2], sizes = [2, 4], strides = [1, 1]}:
-        vector<4x8x16xf32> to vector<2x4x16xf32>
-    ```
+    Example:
+
+    ```mlir
+    %1 = vector.strided_slice %0
+        {offsets = [0, 2], sizes = [2, 4], strides = [1, 1]}:
+      vector<4x8x16xf32> to vector<2x4x16xf32>
 
     // TODO(ntv) Evolve to a range form syntax similar to:
     %1 = vector.strided_slice %0[0:2:1][2:4:1]
       vector<4x8x16xf32> to vector<2x4x16xf32>
+    ```
   }];
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value source, " #
@@ -952,7 +962,7 @@ def Vector_TransferReadOp :
       `{` attribute-entry `} :` memref-type `,` vector-type
     ```
 
-    Examples:
+    Example:
 
     ```mlir
     // Read the slice `%A[%i0, %i1:%i1+256, %i2:%i2+32]` into vector<32x256xf32>
@@ -1026,14 +1036,7 @@ def Vector_TransferWriteOp :
     valid. Different lowerings may be pertinent depending on the hardware
     support.
 
-    Syntax:
-
-    ```
-    operation ::= `vector.transfer_write` ssa-use-list `{` attribute-entry `} :
-      ` vector-type ', ' memref-type '
-    ```
-
-    Examples:
+    Example:
 
     ```mlir
     // write vector<16x32x64xf32> into the slice
@@ -1099,7 +1102,7 @@ def Vector_ShapeCastOp :
     2-D MLIR vector to a 1-D flattened LLVM vector.shape_cast lowering to LLVM
     is supported in that particular case, for now.
 
-    Examples:
+    Example:
 
     ```mlir
     // Example casting to a lower vector rank.
@@ -1183,19 +1186,22 @@ def Vector_ConstantMaskOp :
     define a hyper-rectangular region within which elements values are set to 1
     (otherwise element values are set to 0).
 
-    Example: create a constant vector mask of size 4x3xi1 with elements in range
-             0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+    Example:
 
-      %1 = vector.constant_mask [3, 2] : vector<4x3xi1>
+    ```mlir
+    // create a constant vector mask of size 4x3xi1 with elements in range
+    // 0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+    %1 = vector.constant_mask [3, 2] : vector<4x3xi1>
 
-      print %1
-                    columns
-                  0    1    2
-                |------------
-              0 | 1    1    0
-        rows  1 | 1    1    0
-              2 | 1    1    0
-              3 | 0    0    0
+    print %1
+                  columns
+                0    1    2
+              |------------
+            0 | 1    1    0
+      rows  1 | 1    1    0
+            2 | 1    1    0
+            3 | 0    0    0
+    ```
   }];
 
   let extraClassDeclaration = [{
@@ -1217,19 +1223,22 @@ def Vector_CreateMaskOp :
     hyper-rectangular region within which elements values are set to 1
     (otherwise element values are set to 0).
 
-    Example: create a vector mask of size 4x3xi1 where elements in range
-             0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+    Example:
 
-      %1 = vector.create_mask %c3, %c2 : vector<4x3xi1>
+    ```mlir
+    // create a vector mask of size 4x3xi1 where elements in range
+    // 0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+    %1 = vector.create_mask %c3, %c2 : vector<4x3xi1>
 
-      print %1
-                    columns
-                  0    1    2
-                |------------
-              0 | 1    1    0
-        rows  1 | 1    1    0
-              2 | 1    1    0
-              3 | 0    0    0
+    print %1
+                  columns
+                0    1    2
+              |------------
+            0 | 1    1    0
+      rows  1 | 1    1    0
+            2 | 1    1    0
+            3 | 0    0    0
+    ```
   }];
 
   let hasCanonicalizer = 1;
@@ -1249,16 +1258,16 @@ def Vector_TupleOp :
     dialects.
 
 
-    Examples:
-    ```
-      %0 = vector.transfer_read ... : vector<2x2xf32>
-      %1 = vector.transfer_read ... : vector<2x1xf32>
-      %2 = vector.transfer_read ... : vector<2x2xf32>
-      %3 = vector.transfer_read ... : vector<2x1xf32>
+    Example:
 
-      %4 = vector.tuple %0, %1, %2, %3
-        : vector<2x2xf32>, vector<2x1xf32>, vector<2x2xf32>, vector<2x1xf32>
+    ```mlir
+    %0 = vector.transfer_read ... : vector<2x2xf32>
+    %1 = vector.transfer_read ... : vector<2x1xf32>
+    %2 = vector.transfer_read ... : vector<2x2xf32>
+    %3 = vector.transfer_read ... : vector<2x1xf32>
 
+    %4 = vector.tuple %0, %1, %2, %3
+      : vector<2x2xf32>, vector<2x1xf32>, vector<2x2xf32>, vector<2x1xf32>
     ```
   }];
 
@@ -1267,6 +1276,51 @@ def Vector_TupleOp :
       return getResult().getType().cast<TupleType>();
     }
   }];
+}
+
+def Vector_TransposeOp :
+  Vector_Op<"transpose", [NoSideEffect,
+    PredOpTrait<"operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
+    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$transp)>,
+    Results<(outs AnyVector:$result)> {
+  let summary = "vector transpose operation";
+  let description = [{
+    Takes a n-D vector and returns the transposed n-D vector defined by
+    the permutation of ranks in the n-sized integer array attribute.
+    In the operation
+
+    ```mlir
+    %1 = vector.transpose %0, [i_1, .., i_n]
+      : vector<d_1 x .. x d_n x f32>
+      to vector<d_trans[0] x .. x d_trans[n-1] x f32>
+    ```
+
+    the transp array [i_1, .., i_n] must be a permutation of [0, .., n-1].
+
+    Example:
+
+    ```mlir
+    %1 = vector.transpose %0, [1, 0] : vector<2x3xf32> to vector<3x2xf32>
+
+     [ [a, b, c],       [ [a, d],
+       [d, e, f] ]  ->    [b, e],
+                          [c, f] ]
+    ```
+  }];
+  let extraClassDeclaration = [{
+    VectorType getVectorType() {
+      return vector().getType().cast<VectorType>();
+    }
+    VectorType getResultType() {
+      return result().getType().cast<VectorType>();
+    }
+    void getTransp(SmallVectorImpl<int64_t> &results);
+  }];
+  let assemblyFormat = [{
+    $vector `,` $transp attr-dict `:` type($vector) `to` type($result)
+  }];
+  let hasFolder = 1;
 }
 
 def Vector_TupleGetOp :
@@ -1281,14 +1335,15 @@ def Vector_TupleGetOp :
     transformation and should be removed before lowering to lower-level
     dialects.
 
-    Examples:
-    ```
-      %4 = vector.tuple %0, %1, %2, %3
-        : vector<2x2xf32>, vector<2x1xf32>, vector<2x2xf32>, vector<2x1xf32>>
+    Example:
 
-      %5 = vector.tuple_get %4, 1
-        : tuple<vector<2x2xf32>, vector<2x1xf32>,
-                vector<2x2xf32>, vector<2x1xf32>>
+    ```mlir
+    %4 = vector.tuple %0, %1, %2, %3
+      : vector<2x2xf32>, vector<2x1xf32>, vector<2x2xf32>, vector<2x1xf32>>
+
+    %5 = vector.tuple_get %4, 1
+      : tuple<vector<2x2xf32>, vector<2x1xf32>,
+              vector<2x2xf32>, vector<2x1xf32>>
     ```
   }];
 
@@ -1311,21 +1366,22 @@ def Vector_PrintOp :
     Prints the source vector (or scalar) to stdout in human readable
     format (for testing and debugging). No return value.
 
-    Examples:
-    ```
-      %0 = constant 0.0 : f32
-      %1 = vector.broadcast %0 : f32 to vector<4xf32>
-      vector.print %1 : vector<4xf32>
+    Example:
 
-      when lowered to LLVM, the vector print is unrolled into
-      elementary printing method calls that at runtime will yield
+    ```mlir
+    %0 = constant 0.0 : f32
+    %1 = vector.broadcast %0 : f32 to vector<4xf32>
+    vector.print %1 : vector<4xf32>
 
-      ( 0.0, 0.0, 0.0, 0.0 )
+    when lowered to LLVM, the vector print is unrolled into
+    elementary printing method calls that at runtime will yield
 
-      on stdout when linked with a small runtime support library,
-      which only needs to provide a few printing methods (single
-      value for all data types, opening/closing bracket, comma,
-      newline).
+    ( 0.0, 0.0, 0.0, 0.0 )
+
+    on stdout when linked with a small runtime support library,
+    which only needs to provide a few printing methods (single
+    value for all data types, opening/closing bracket, comma,
+    newline).
     ```
   }];
   let verifier = ?;
@@ -1375,10 +1431,10 @@ def Vector_MatmulOp : Vector_Op<"matrix_multiply", [NoSideEffect,
 
     Example:
 
-    ```
-      %C = vector.matrix_multiply %A, %B
-        { lhs_rows = 4: i32, lhs_columns = 16: i32 , rhs_columns = 3: i32 } :
-        (vector<64xf64>, vector<48xf64>) -> vector<12xf64>
+    ```mlir
+    %C = vector.matrix_multiply %A, %B
+      { lhs_rows = 4: i32, lhs_columns = 16: i32 , rhs_columns = 3: i32 } :
+      (vector<64xf64>, vector<48xf64>) -> vector<12xf64>
     ```
   }];
   let builders = [

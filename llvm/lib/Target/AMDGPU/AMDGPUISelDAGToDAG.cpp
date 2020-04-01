@@ -1017,8 +1017,14 @@ void AMDGPUDAGToDAGISel::SelectADD_SUB_I64(SDNode *N) {
 
   SDVTList VTList = CurDAG->getVTList(MVT::i32, MVT::Glue);
 
-  unsigned Opc = IsAdd ? AMDGPU::S_ADD_U32 : AMDGPU::S_SUB_U32;
-  unsigned CarryOpc = IsAdd ? AMDGPU::S_ADDC_U32 : AMDGPU::S_SUBB_U32;
+  static const unsigned OpcMap[2][2][2] = {
+      {{AMDGPU::S_SUB_U32, AMDGPU::S_ADD_U32},
+       {AMDGPU::V_SUB_I32_e32, AMDGPU::V_ADD_I32_e32}},
+      {{AMDGPU::S_SUBB_U32, AMDGPU::S_ADDC_U32},
+       {AMDGPU::V_SUBB_U32_e32, AMDGPU::V_ADDC_U32_e32}}};
+
+  unsigned Opc = OpcMap[0][N->isDivergent()][IsAdd];
+  unsigned CarryOpc = OpcMap[1][N->isDivergent()][IsAdd];
 
   SDNode *AddLo;
   if (!ConsumeCarry) {
@@ -1760,11 +1766,23 @@ bool AMDGPUDAGToDAGISel::SelectFlatAtomicSigned(SDNode *N,
 
 bool AMDGPUDAGToDAGISel::SelectSMRDOffset(SDValue ByteOffsetNode,
                                           SDValue &Offset, bool &Imm) const {
-
-  // FIXME: Handle non-constant offsets.
   ConstantSDNode *C = dyn_cast<ConstantSDNode>(ByteOffsetNode);
-  if (!C)
+  if (!C) {
+    if (ByteOffsetNode.getValueType().isScalarInteger() &&
+        ByteOffsetNode.getValueType().getSizeInBits() == 32) {
+      Offset = ByteOffsetNode;
+      Imm = false;
+      return true;
+    }
+    if (ByteOffsetNode.getOpcode() == ISD::ZERO_EXTEND) {
+      if (ByteOffsetNode.getOperand(0).getValueType().getSizeInBits() == 32) {
+        Offset = ByteOffsetNode.getOperand(0);
+        Imm = false;
+        return true;
+      }
+    }
     return false;
+  }
 
   SDLoc SL(ByteOffsetNode);
   GCNSubtarget::Generation Gen = Subtarget->getGeneration();
@@ -1829,7 +1847,8 @@ bool AMDGPUDAGToDAGISel::SelectSMRD(SDValue Addr, SDValue &SBase,
   // wraparound, because s_load instructions perform the addition in 64 bits.
   if ((Addr.getValueType() != MVT::i32 ||
        Addr->getFlags().hasNoUnsignedWrap()) &&
-      CurDAG->isBaseWithConstantOffset(Addr)) {
+      (CurDAG->isBaseWithConstantOffset(Addr) ||
+       Addr.getOpcode() == ISD::ADD)) {
     SDValue N0 = Addr.getOperand(0);
     SDValue N1 = Addr.getOperand(1);
 

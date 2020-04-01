@@ -1154,8 +1154,8 @@ def UnknownArgument : DiagGroup<"unknown-argument">;
 // compiling OpenCL C/C++ but which is not compatible with the SPIR spec.
 def SpirCompat : DiagGroup<"spir-compat">;
 
-// Warning for the experimental-isel options.
-def ExperimentalISel : DiagGroup<"experimental-isel">;
+// Warning for the GlobalISel options.
+def GlobalISel : DiagGroup<"global-isel">;
 
 // A warning group specifically for warnings related to function
 // multiversioning.
@@ -1176,7 +1176,7 @@ The warning is issued if the number of pre-processor tokens exceeds
 the token limit, which can be set in three ways:
 
 1. As a limit at a specific point in a file, using the ``clang max_tokens_here``
-  pragma:
+   pragma:
 
    .. code-block: c++
       #pragma clang max_tokens_here 1234

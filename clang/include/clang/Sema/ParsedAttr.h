@@ -63,12 +63,12 @@ struct ParsedAttrInfo {
   /// The syntaxes supported by this attribute and how they're spelled.
   struct Spelling {
     AttributeCommonInfo::Syntax Syntax;
-    std::string NormalizedFullName;
+    const char *NormalizedFullName;
   };
-  std::vector<Spelling> Spellings;
+  ArrayRef<Spelling> Spellings;
 
   ParsedAttrInfo(AttributeCommonInfo::Kind AttrKind =
-                     AttributeCommonInfo::UnknownAttribute)
+                     AttributeCommonInfo::NoSemaHandlerAttribute)
       : AttrKind(AttrKind), NumArgs(0), OptArgs(0), HasCustomParsing(0),
         IsTargetSpecific(0), IsType(0), IsStmt(0), IsKnownToGCC(0),
         IsSupportedByPragmaAttribute(0) {}
@@ -98,6 +98,18 @@ struct ParsedAttrInfo {
   virtual void getPragmaAttributeMatchRules(
       llvm::SmallVectorImpl<std::pair<attr::SubjectMatchRule, bool>> &Rules,
       const LangOptions &LangOpts) const {
+  }
+  enum AttrHandling {
+    NotHandled,
+    AttributeApplied,
+    AttributeNotApplied
+  };
+  /// If this ParsedAttrInfo knows how to handle this ParsedAttr applied to this
+  /// Decl then do so and return either AttributeApplied if it was applied or
+  /// AttributeNotApplied if it wasn't. Otherwise return NotHandled.
+  virtual AttrHandling handleDeclAttribute(Sema &S, Decl *D,
+                                           const ParsedAttr &Attr) const {
+    return NotHandled;
   }
 
   static const ParsedAttrInfo &get(const AttributeCommonInfo &A);

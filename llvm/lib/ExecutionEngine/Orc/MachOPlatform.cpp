@@ -9,6 +9,7 @@
 #include "llvm/ExecutionEngine/Orc/MachOPlatform.h"
 
 #include "llvm/BinaryFormat/MachO.h"
+#include "llvm/ExecutionEngine/Orc/DebugUtils.h"
 #include "llvm/Support/BinaryByteStream.h"
 #include "llvm/Support/Debug.h"
 
@@ -163,7 +164,8 @@ Error MachOPlatform::notifyAdding(JITDylib &JD, const MaterializationUnit &MU) {
   if (!InitSym)
     return Error::success();
 
-  RegisteredInitSymbols[&JD].add(InitSym);
+  RegisteredInitSymbols[&JD].add(InitSym,
+                                 SymbolLookupFlags::WeaklyReferencedSymbol);
   LLVM_DEBUG({
     dbgs() << "MachOPlatform: Registered init symbol " << *InitSym << " for MU "
            << MU.getName() << "\n";

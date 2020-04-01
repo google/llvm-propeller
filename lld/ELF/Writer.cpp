@@ -116,12 +116,21 @@ StringRef getOutputSectionName(const InputSectionBase *s) {
     }
   }
 
-  // This check is for -z keep-text-section-prefix.  This option separates text
-  // sections with prefix ".text.hot", ".text.unlikely", ".text.startup" or
-  // ".text.exit".
-  // When enabled, this allows identifying the hot code region (.text.hot) in
-  // the final binary which can be selectively mapped to huge pages or mlocked,
-  // for instance.
+  // A BssSection created for a common symbol is identified as "COMMON" in
+  // linker scripts. It should go to .bss section.
+  if (s->name == "COMMON")
+    return ".bss";
+
+  if (script->hasSectionsCommand)
+    return s->name;
+
+  // When no SECTIONS is specified, emulate GNU ld's internal linker scripts
+  // by grouping sections with certain prefixes.
+
+  // GNU ld places text sections with prefix ".text.hot.", ".text.unlikely.",
+  // ".text.startup." or ".text.exit." before others. We provide an option -z
+  // keep-text-section-prefix to group such sections into separate output
+  // sections. This is more flexible. See also sortISDBySectionOrder().
   if (config->zKeepTextSectionPrefix)
     for (StringRef v :
          {".text.hot.", ".text.unlikely.", ".text.startup.", ".text.exit."})
@@ -134,11 +143,6 @@ StringRef getOutputSectionName(const InputSectionBase *s) {
         ".gcc_except_table.", ".tdata.", ".ARM.exidx.", ".ARM.extab."})
     if (isSectionPrefix(v, s->name))
       return v.drop_back();
-
-  // CommonSection is identified as "COMMON" in linker scripts.
-  // By default, it should go to .bss section.
-  if (s->name == "COMMON")
-    return ".bss";
 
   return s->name;
 }
@@ -845,7 +849,8 @@ static bool isRelroSection(const OutputSection *sec) {
   StringRef s = sec->name;
   return s == ".data.rel.ro" || s == ".bss.rel.ro" || s == ".ctors" ||
          s == ".dtors" || s == ".jcr" || s == ".eh_frame" ||
-         s == ".openbsd.randomdata";
+         s == ".fini_array" || s == ".init_array" ||
+         s == ".openbsd.randomdata" || s == ".preinit_array";
 }
 
 // We compute a rank for each section. The rank indicates where the
@@ -1588,17 +1593,30 @@ template <class ELFT> void Writer<ELFT>::resolveShfLinkOrder() {
     // but sort must consider them all at once.
     std::vector<InputSection **> scriptSections;
     std::vector<InputSection *> sections;
+    bool started = false, stopped = false;
     for (BaseCommand *base : sec->sectionCommands) {
       if (auto *isd = dyn_cast<InputSectionDescription>(base)) {
         for (InputSection *&isec : isd->sections) {
-          scriptSections.push_back(&isec);
-          sections.push_back(isec);
+          if (!(isec->flags & SHF_LINK_ORDER)) {
+            if (started)
+              stopped = true;
+          } else if (stopped) {
+            error(toString(isec) + ": SHF_LINK_ORDER sections in " + sec->name +
+                  " are not contiguous");
+          } else {
+            started = true;
 
-          InputSection *link = isec->getLinkOrderDep();
-          if (!link->getParent())
-            error(toString(isec) + ": sh_link points to discarded section " +
-                  toString(link));
+            scriptSections.push_back(&isec);
+            sections.push_back(isec);
+
+            InputSection *link = isec->getLinkOrderDep();
+            if (!link->getParent())
+              error(toString(isec) + ": sh_link points to discarded section " +
+                    toString(link));
+          }
         }
+      } else if (started) {
+        stopped = true;
       }
     }
 

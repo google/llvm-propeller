@@ -13407,6 +13407,48 @@ Value *CodeGenFunction::EmitPPCBuiltinExpr(unsigned BuiltinID,
   }
 }
 
+namespace {
+// If \p E is not null pointer, insert address space cast to match return
+// type of \p E if necessary.
+Value *EmitAMDGPUDispatchPtr(CodeGenFunction &CGF,
+                             const CallExpr *E = nullptr) {
+  auto *F = CGF.CGM.getIntrinsic(Intrinsic::amdgcn_dispatch_ptr);
+  auto *Call = CGF.Builder.CreateCall(F);
+  Call->addAttribute(
+      AttributeList::ReturnIndex,
+      Attribute::getWithDereferenceableBytes(Call->getContext(), 64));
+  Call->addAttribute(AttributeList::ReturnIndex,
+                     Attribute::getWithAlignment(Call->getContext(), Align(4)));
+  if (!E)
+    return Call;
+  QualType BuiltinRetType = E->getType();
+  auto *RetTy = cast<llvm::PointerType>(CGF.ConvertType(BuiltinRetType));
+  if (RetTy == Call->getType())
+    return Call;
+  return CGF.Builder.CreateAddrSpaceCast(Call, RetTy);
+}
+
+// \p Index is 0, 1, and 2 for x, y, and z dimension, respectively.
+Value *EmitAMDGPUWorkGroupSize(CodeGenFunction &CGF, unsigned Index) {
+  const unsigned XOffset = 4;
+  auto *DP = EmitAMDGPUDispatchPtr(CGF);
+  // Indexing the HSA kernel_dispatch_packet struct.
+  auto *Offset = llvm::ConstantInt::get(CGF.Int32Ty, XOffset + Index * 2);
+  auto *GEP = CGF.Builder.CreateGEP(DP, Offset);
+  auto *DstTy =
+      CGF.Int16Ty->getPointerTo(GEP->getType()->getPointerAddressSpace());
+  auto *Cast = CGF.Builder.CreateBitCast(GEP, DstTy);
+  auto *LD = CGF.Builder.CreateLoad(Address(Cast, CharUnits::fromQuantity(2)));
+  llvm::MDBuilder MDHelper(CGF.getLLVMContext());
+  llvm::MDNode *RNode = MDHelper.createRange(APInt(16, 1),
+      APInt(16, CGF.getTarget().getMaxOpenCLWorkGroupSize() + 1));
+  LD->setMetadata(llvm::LLVMContext::MD_range, RNode);
+  LD->setMetadata(llvm::LLVMContext::MD_invariant_load,
+      llvm::MDNode::get(CGF.getLLVMContext(), None));
+  return LD;
+}
+} // namespace
+
 Value *CodeGenFunction::EmitAMDGPUBuiltinExpr(unsigned BuiltinID,
                                               const CallExpr *E) {
   switch (BuiltinID) {
@@ -13489,21 +13531,8 @@ Value *CodeGenFunction::EmitAMDGPUBuiltinExpr(unsigned BuiltinID,
   case AMDGPU::BI__builtin_amdgcn_cosf:
   case AMDGPU::BI__builtin_amdgcn_cosh:
     return emitUnaryBuiltin(*this, E, Intrinsic::amdgcn_cos);
-  case AMDGPU::BI__builtin_amdgcn_dispatch_ptr: {
-    auto *F = CGM.getIntrinsic(Intrinsic::amdgcn_dispatch_ptr);
-    auto *Call = Builder.CreateCall(F);
-    Call->addAttribute(
-        AttributeList::ReturnIndex,
-        Attribute::getWithDereferenceableBytes(Call->getContext(), 64));
-    Call->addAttribute(
-        AttributeList::ReturnIndex,
-        Attribute::getWithAlignment(Call->getContext(), Align(4)));
-    QualType BuiltinRetType = E->getType();
-    auto *RetTy = cast<llvm::PointerType>(ConvertType(BuiltinRetType));
-    if (RetTy == Call->getType())
-      return Call;
-    return Builder.CreateAddrSpaceCast(Call, RetTy);
-  }
+  case AMDGPU::BI__builtin_amdgcn_dispatch_ptr:
+    return EmitAMDGPUDispatchPtr(*this, E);
   case AMDGPU::BI__builtin_amdgcn_log_clampf:
     return emitUnaryBuiltin(*this, E, Intrinsic::amdgcn_log_clamp);
   case AMDGPU::BI__builtin_amdgcn_ldexp:
@@ -13599,6 +13628,14 @@ Value *CodeGenFunction::EmitAMDGPUBuiltinExpr(unsigned BuiltinID,
   case AMDGPU::BI__builtin_amdgcn_workitem_id_z:
     return emitRangedBuiltin(*this, Intrinsic::amdgcn_workitem_id_z, 0, 1024);
 
+  // amdgcn workgroup size
+  case AMDGPU::BI__builtin_amdgcn_workgroup_size_x:
+    return EmitAMDGPUWorkGroupSize(*this, 0);
+  case AMDGPU::BI__builtin_amdgcn_workgroup_size_y:
+    return EmitAMDGPUWorkGroupSize(*this, 1);
+  case AMDGPU::BI__builtin_amdgcn_workgroup_size_z:
+    return EmitAMDGPUWorkGroupSize(*this, 2);
+
   // r600 intrinsics
   case AMDGPU::BI__builtin_r600_recipsqrt_ieee:
   case AMDGPU::BI__builtin_r600_recipsqrt_ieeef:
@@ -13609,6 +13646,13 @@ Value *CodeGenFunction::EmitAMDGPUBuiltinExpr(unsigned BuiltinID,
     return emitRangedBuiltin(*this, Intrinsic::r600_read_tidig_y, 0, 1024);
   case AMDGPU::BI__builtin_r600_read_tidig_z:
     return emitRangedBuiltin(*this, Intrinsic::r600_read_tidig_z, 0, 1024);
+  case AMDGPU::BI__builtin_amdgcn_alignbit: {
+    llvm::Value *Src0 = EmitScalarExpr(E->getArg(0));
+    llvm::Value *Src1 = EmitScalarExpr(E->getArg(1));
+    llvm::Value *Src2 = EmitScalarExpr(E->getArg(2));
+    Function *F = CGM.getIntrinsic(Intrinsic::fshr, Src0->getType());
+    return Builder.CreateCall(F, { Src0, Src1, Src2 });
+  }
   default:
     return nullptr;
   }
@@ -15050,6 +15094,15 @@ Value *CodeGenFunction::EmitWebAssemblyBuiltinExpr(unsigned BuiltinID,
     Function *Callee = CGM.getIntrinsic(IntNo, ConvertType(E->getType()));
     return Builder.CreateCall(Callee, {LHS, RHS});
   }
+  case WebAssembly::BI__builtin_wasm_abs_i8x16:
+  case WebAssembly::BI__builtin_wasm_abs_i16x8:
+  case WebAssembly::BI__builtin_wasm_abs_i32x4: {
+    Value *Vec = EmitScalarExpr(E->getArg(0));
+    Value *Neg = Builder.CreateNeg(Vec, "neg");
+    Constant *Zero = llvm::Constant::getNullValue(Vec->getType());
+    Value *ICmp = Builder.CreateICmpSLT(Vec, Zero, "abscond");
+    return Builder.CreateSelect(ICmp, Neg, Vec, "abs");
+  }
   case WebAssembly::BI__builtin_wasm_min_s_i8x16:
   case WebAssembly::BI__builtin_wasm_min_u_i8x16:
   case WebAssembly::BI__builtin_wasm_max_s_i8x16:
@@ -15140,6 +15193,14 @@ Value *CodeGenFunction::EmitWebAssemblyBuiltinExpr(unsigned BuiltinID,
     }
     Value *Vec = EmitScalarExpr(E->getArg(0));
     Function *Callee = CGM.getIntrinsic(IntNo, Vec->getType());
+    return Builder.CreateCall(Callee, {Vec});
+  }
+  case WebAssembly::BI__builtin_wasm_bitmask_i8x16:
+  case WebAssembly::BI__builtin_wasm_bitmask_i16x8:
+  case WebAssembly::BI__builtin_wasm_bitmask_i32x4: {
+    Value *Vec = EmitScalarExpr(E->getArg(0));
+    Function *Callee =
+        CGM.getIntrinsic(Intrinsic::wasm_bitmask, Vec->getType());
     return Builder.CreateCall(Callee, {Vec});
   }
   case WebAssembly::BI__builtin_wasm_abs_f32x4:

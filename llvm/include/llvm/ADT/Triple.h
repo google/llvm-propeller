@@ -101,6 +101,7 @@ public:
   enum SubArchType {
     NoSubArch,
 
+    ARMSubArch_v8_6a,
     ARMSubArch_v8_5a,
     ARMSubArch_v8_4a,
     ARMSubArch_v8_3a,
@@ -689,6 +690,10 @@ public:
   /// Tests whether the target is NVPTX (32- or 64-bit).
   bool isNVPTX() const {
     return getArch() == Triple::nvptx || getArch() == Triple::nvptx64;
+  }
+
+  bool isAMDGPU() const {
+    return getArch() == Triple::r600 || getArch() == Triple::amdgcn;
   }
 
   /// Tests whether the target is Thumb (little and big endian).

@@ -182,7 +182,7 @@ bool ForOp::isDefinedOutsideOfLoop(Value value) {
 
 LogicalResult ForOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
   for (auto op : ops)
-    op->moveBefore(this->getOperation());
+    op->moveBefore(*this);
   return success();
 }
 
@@ -191,8 +191,8 @@ ForOp mlir::loop::getForInductionVarOwner(Value val) {
   if (!ivArg)
     return ForOp();
   assert(ivArg.getOwner() && "unlinked block argument");
-  auto *containingInst = ivArg.getOwner()->getParentOp();
-  return dyn_cast_or_null<ForOp>(containingInst);
+  auto *containingOp = ivArg.getOwner()->getParentOp();
+  return dyn_cast_or_null<ForOp>(containingOp);
 }
 
 //===----------------------------------------------------------------------===//
@@ -201,12 +201,25 @@ ForOp mlir::loop::getForInductionVarOwner(Value val) {
 
 void IfOp::build(Builder *builder, OperationState &result, Value cond,
                  bool withElseRegion) {
+    build(builder, result, /*resultTypes=*/llvm::None, cond, withElseRegion);
+}
+
+void IfOp::build(Builder *builder, OperationState &result,
+                 TypeRange resultTypes, Value cond, bool withElseRegion) {
   result.addOperands(cond);
+  result.addTypes(resultTypes);
+
   Region *thenRegion = result.addRegion();
+  thenRegion->push_back(new Block());
+  if (resultTypes.empty())
+    IfOp::ensureTerminator(*thenRegion, *builder, result.location);
+
   Region *elseRegion = result.addRegion();
-  IfOp::ensureTerminator(*thenRegion, *builder, result.location);
-  if (withElseRegion)
-    IfOp::ensureTerminator(*elseRegion, *builder, result.location);
+  if (withElseRegion) {
+    elseRegion->push_back(new Block());
+    if (resultTypes.empty())
+      IfOp::ensureTerminator(*elseRegion, *builder, result.location);
+  }
 }
 
 static LogicalResult verify(IfOp op) {
@@ -446,13 +459,25 @@ static void print(OpAsmPrinter &p, ParallelOp op) {
       op.getAttrs(), /*elidedAttrs=*/ParallelOp::getOperandSegmentSizeAttr());
 }
 
+Region &ParallelOp::getLoopBody() { return region(); }
+
+bool ParallelOp::isDefinedOutsideOfLoop(Value value) {
+  return !region().isAncestor(value.getParentRegion());
+}
+
+LogicalResult ParallelOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
+  for (auto op : ops)
+    op->moveBefore(*this);
+  return success();
+}
+
 ParallelOp mlir::loop::getParallelForInductionVarOwner(Value val) {
   auto ivArg = val.dyn_cast<BlockArgument>();
   if (!ivArg)
     return ParallelOp();
   assert(ivArg.getOwner() && "unlinked block argument");
-  auto *containingInst = ivArg.getOwner()->getParentOp();
-  return dyn_cast<ParallelOp>(containingInst);
+  auto *containingOp = ivArg.getOwner()->getParentOp();
+  return dyn_cast<ParallelOp>(containingOp);
 }
 
 //===----------------------------------------------------------------------===//

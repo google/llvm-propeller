@@ -144,7 +144,7 @@ struct Configuration {
   unsigned ltoo = 2;
 
   // Used for /opt:lldltojobs=N
-  unsigned thinLTOJobs = 0;
+  std::string thinLTOJobs;
   // Used for /opt:lldltopartitions=N
   unsigned ltoPartitions = 1;
 
@@ -182,6 +182,9 @@ struct Configuration {
   llvm::StringMap<int> order;
 
   // Used for /lldmap.
+  std::string lldmapFile;
+
+  // Used for /map.
   std::string mapFile;
 
   // Used for /thinlto-index-only:

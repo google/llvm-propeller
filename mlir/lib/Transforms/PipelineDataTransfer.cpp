@@ -15,7 +15,7 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/Utils.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/LoopUtils.h"
@@ -28,8 +28,11 @@
 using namespace mlir;
 
 namespace {
-
 struct PipelineDataTransfer : public FunctionPass<PipelineDataTransfer> {
+/// Include the generated pass utilities.
+#define GEN_PASS_AffinePipelineDataTransfer
+#include "mlir/Transforms/Passes.h.inc"
+
   void runOnFunction() override;
   void runOnAffineForOp(AffineForOp forOp);
 
@@ -366,8 +369,3 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     return;
   }
 }
-
-static PassRegistration<PipelineDataTransfer> pass(
-    "affine-pipeline-data-transfer",
-    "Pipeline non-blocking data transfers between explicitly managed levels of "
-    "the memory hierarchy");

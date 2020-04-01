@@ -39,7 +39,8 @@ is declared using add_mlir_dialect().
 
 ```cmake
 
-add_mlir_dialect(FooOps foo FooOps)
+add_mlir_dialect(FooOps foo)
+add_mlir_doc(FooOps -gen-dialect-doc FooDialect Dialects/)
 
 ```
 
@@ -125,7 +126,7 @@ mlir/lib/Conversion/GPUCommon.
 Each conversion typically exists in a separate library, declared with
 add_mlir_conversion_library().  Conversion libraries typically depend
 on their source and target dialects, but may also depend on other
-dialects (e.g. MLIRStandard).  Typically this dependence is specifid
+dialects (e.g. MLIRStandard).  Typically this dependence is specified
 using target_link_libraries() and the PUBLIC keyword.  For instance:
 
 ```cmake

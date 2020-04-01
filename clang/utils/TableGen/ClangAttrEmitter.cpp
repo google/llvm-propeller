@@ -107,7 +107,7 @@ static std::string ReadPCHRecord(StringRef type) {
       .Case("IdentifierInfo *", "Record.readIdentifier()")
       .Case("StringRef", "Record.readString()")
       .Case("ParamIdx", "ParamIdx::deserialize(Record.readInt())")
-      .Case("OMPTraitInfo", "Record.readOMPTraitInfo()")
+      .Case("OMPTraitInfo *", "Record.readOMPTraitInfo()")
       .Default("Record.readInt()");
 }
 
@@ -131,7 +131,7 @@ static std::string WritePCHRecord(StringRef type, StringRef name) {
              .Case("StringRef", "AddString(" + std::string(name) + ");\n")
              .Case("ParamIdx",
                    "push_back(" + std::string(name) + ".serialize());\n")
-             .Case("OMPTraitInfo",
+             .Case("OMPTraitInfo *",
                    "writeOMPTraitInfo(" + std::string(name) + ");\n")
              .Default("push_back(" + std::string(name) + ");\n");
 }
@@ -363,7 +363,7 @@ namespace {
           OS << "    if (SA->get" << getUpperName() << "().isValid())\n  ";
         OS << "    OS << \" \" << SA->get" << getUpperName()
            << "().getSourceIndex();\n";
-      } else if (type == "OMPTraitInfo") {
+      } else if (type == "OMPTraitInfo *") {
         OS << "    OS << \" \" << SA->get" << getUpperName() << "();\n";
       } else {
         llvm_unreachable("Unknown SimpleArgument type!");
@@ -1331,7 +1331,7 @@ createArgument(const Record &Arg, StringRef Attr,
   else if (ArgName == "VersionArgument")
     Ptr = std::make_unique<VersionArgument>(Arg, Attr);
   else if (ArgName == "OMPTraitInfoArgument")
-    Ptr = std::make_unique<SimpleArgument>(Arg, Attr, "OMPTraitInfo");
+    Ptr = std::make_unique<SimpleArgument>(Arg, Attr, "OMPTraitInfo *");
 
   if (!Ptr) {
     // Search in reverse order so that the most-derived type is handled first.
@@ -3510,7 +3510,7 @@ static void GenerateAppertainsTo(const Record &Attr, raw_ostream &OS) {
   // of the declaration).
   OS << "virtual bool diagAppertainsToDecl(Sema &S, ";
   OS << "const ParsedAttr &Attr, const Decl *D) const {\n";
-  OS << "  if (!D || (";
+  OS << "  if (";
   for (auto I = Subjects.begin(), E = Subjects.end(); I != E; ++I) {
     // If the subject has custom code associated with it, use the generated
     // function for it. The function cannot be inlined into this check (yet)
@@ -3526,7 +3526,7 @@ static void GenerateAppertainsTo(const Record &Attr, raw_ostream &OS) {
     if (I + 1 != E)
       OS << " && ";
   }
-  OS << ")) {\n";
+  OS << ") {\n";
   OS << "    S.Diag(Attr.getLoc(), diag::";
   OS << (Warn ? "warn_attribute_wrong_decl_type_str" :
                "err_attribute_wrong_decl_type_str");
@@ -3661,6 +3661,20 @@ static void GenerateSpellingIndexToSemanticSpelling(const Record &Attr,
   OS << "}\n\n";
 }
 
+static void GenerateHandleDeclAttribute(const Record &Attr, raw_ostream &OS) {
+  // Only generate if Attr can be handled simply.
+  if (!Attr.getValueAsBit("SimpleHandler"))
+    return;
+
+  // Generate a function which just converts from ParsedAttr to the Attr type.
+  OS << "virtual AttrHandling handleDeclAttribute(Sema &S, Decl *D,";
+  OS << "const ParsedAttr &Attr) const {\n";
+  OS << "  D->addAttr(::new (S.Context) " << Attr.getName();
+  OS << "Attr(S.Context, Attr));\n";
+  OS << "  return AttributeApplied;\n";
+  OS << "}\n\n";
+}
+
 static bool IsKnownToGCC(const Record &Attr) {
   // Look at the spellings for this subject; if there are any spellings which
   // claim to be known to GCC, the attribute is known to GCC.
@@ -3705,7 +3719,26 @@ void EmitClangAttrParsedAttrImpl(RecordKeeper &Records, raw_ostream &OS) {
     // ParsedAttr.cpp.
     const std::string &AttrName = I->first;
     const Record &Attr = *I->second;
-    OS << "struct ParsedAttrInfo" << I->first << " : public ParsedAttrInfo {\n";
+    auto Spellings = GetFlattenedSpellings(Attr);
+    if (!Spellings.empty()) {
+      OS << "static constexpr ParsedAttrInfo::Spelling " << I->first
+         << "Spellings[] = {\n";
+      for (const auto &S : Spellings) {
+        const std::string &RawSpelling = S.name();
+        std::string Spelling;
+        if (!S.nameSpace().empty())
+          Spelling += S.nameSpace() + "::";
+        if (S.variety() == "GNU")
+          Spelling += NormalizeGNUAttrSpelling(RawSpelling);
+        else
+          Spelling += RawSpelling;
+        OS << "  {AttributeCommonInfo::AS_" << S.variety();
+        OS << ", \"" << Spelling << "\"},\n";
+      }
+      OS << "};\n";
+    }
+    OS << "struct ParsedAttrInfo" << I->first
+       << " final : public ParsedAttrInfo {\n";
     OS << "  ParsedAttrInfo" << I->first << "() {\n";
     OS << "    AttrKind = ParsedAttr::AT_" << AttrName << ";\n";
     emitArgInfo(Attr, OS);
@@ -3722,26 +3755,15 @@ void EmitClangAttrParsedAttrImpl(RecordKeeper &Records, raw_ostream &OS) {
     OS << IsKnownToGCC(Attr) << ";\n";
     OS << "    IsSupportedByPragmaAttribute = ";
     OS << PragmaAttributeSupport.isAttributedSupported(*I->second) << ";\n";
-    for (const auto &S : GetFlattenedSpellings(Attr)) {
-      const std::string &RawSpelling = S.name();
-      std::string Spelling;
-      if (S.variety() == "CXX11" || S.variety() == "C2x") {
-        Spelling += S.nameSpace();
-        Spelling += "::";
-      }
-      if (S.variety() == "GNU")
-        Spelling += NormalizeGNUAttrSpelling(RawSpelling);
-      else
-        Spelling += RawSpelling;
-      OS << "    Spellings.push_back({AttributeCommonInfo::AS_" << S.variety();
-      OS << ",\"" << Spelling << "\"});\n";
-    }
+    if (!Spellings.empty())
+      OS << "    Spellings = " << I->first << "Spellings;\n";
     OS << "  }\n";
     GenerateAppertainsTo(Attr, OS);
     GenerateLangOptRequirements(Attr, OS);
     GenerateTargetRequirements(Attr, Dupes, OS);
     GenerateSpellingIndexToSemanticSpelling(Attr, OS);
     PragmaAttributeSupport.generateStrictConformsTo(*I->second, OS);
+    GenerateHandleDeclAttribute(Attr, OS);
     OS << "static const ParsedAttrInfo" << I->first << " Instance;\n";
     OS << "};\n";
     OS << "const ParsedAttrInfo" << I->first << " ParsedAttrInfo" << I->first
@@ -3800,12 +3822,12 @@ void EmitClangAttrParsedAttrKinds(RecordKeeper &Records, raw_ostream &OS) {
         const std::string &Variety = S.variety();
         if (Variety == "CXX11") {
           Matches = &CXX11;
-          Spelling += S.nameSpace();
-          Spelling += "::";
+          if (!S.nameSpace().empty())
+            Spelling += S.nameSpace() + "::";
         } else if (Variety == "C2x") {
           Matches = &C2x;
-          Spelling += S.nameSpace();
-          Spelling += "::";
+          if (!S.nameSpace().empty())
+            Spelling += S.nameSpace() + "::";
         } else if (Variety == "GNU")
           Matches = &GNU;
         else if (Variety == "Declspec")

@@ -1567,7 +1567,7 @@ TEST(Hover, All) {
             HI.Kind = index::SymbolKind::Variable;
             HI.NamespaceScope = "";
             HI.Name = "foo";
-            HI.Type = "cls<cls<cls<int> > >";
+            HI.Type = "cls<cls<cls<int>>>";
             HI.Value = "{}";
           }},
       {
@@ -1579,7 +1579,7 @@ TEST(Hover, All) {
             HI.Definition = "template <> struct cls<cls<cls<int>>> {}";
             HI.Kind = index::SymbolKind::Struct;
             HI.NamespaceScope = "";
-            HI.Name = "cls<cls<cls<int> > >";
+            HI.Name = "cls<cls<cls<int>>>";
             HI.Documentation = "type of nested templates.";
           }},
       {
@@ -1880,6 +1880,71 @@ def)",
     HoverInfo HI;
     C.Builder(HI);
     EXPECT_EQ(HI.present().asPlainText(), C.ExpectedRender);
+  }
+}
+
+TEST(Hover, DocCommentLineBreakConversion) {
+  struct Case {
+    llvm::StringRef Documentation;
+    llvm::StringRef ExpectedRenderMarkdown;
+    llvm::StringRef ExpectedRenderPlainText;
+  } Cases[] = {{
+                   " \n foo\nbar",
+                   "foo bar",
+                   "foo bar",
+               },
+               {
+                   "foo\nbar \n  ",
+                   "foo bar",
+                   "foo bar",
+               },
+               {
+                   "foo  \nbar",
+                   "foo bar",
+                   "foo bar",
+               },
+               {
+                   "foo    \nbar",
+                   "foo bar",
+                   "foo bar",
+               },
+               {
+                   "foo\n\n\nbar",
+                   "foo  \nbar",
+                   "foo\nbar",
+               },
+               {
+                   "foo\n\n\n\tbar",
+                   "foo  \nbar",
+                   "foo\nbar",
+               },
+               {
+                   "foo\n\n\n bar",
+                   "foo  \nbar",
+                   "foo\nbar",
+               },
+               {
+                   "foo.\nbar",
+                   "foo.  \nbar",
+                   "foo.\nbar",
+               },
+               {
+                   "foo\n*bar",
+                   "foo  \n\\*bar",
+                   "foo\n*bar",
+               },
+               {
+                   "foo\nbar",
+                   "foo bar",
+                   "foo bar",
+               }};
+
+  for (const auto &C : Cases) {
+    markup::Document Output;
+    parseDocumentation(C.Documentation, Output);
+
+    EXPECT_EQ(Output.asMarkdown(), C.ExpectedRenderMarkdown);
+    EXPECT_EQ(Output.asPlainText(), C.ExpectedRenderPlainText);
   }
 }
 

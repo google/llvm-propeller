@@ -119,6 +119,7 @@ private:
                         Callback<std::vector<SelectionRange>>);
   void onDocumentLink(const DocumentLinkParams &,
                       Callback<std::vector<DocumentLink>>);
+  void onSemanticTokens(const SemanticTokensParams &, Callback<SemanticTokens>);
 
   std::vector<Fix> getFixes(StringRef File, const clangd::Diagnostic &D);
 
@@ -135,7 +136,8 @@ private:
   void applyConfiguration(const ConfigurationSettings &Settings);
 
   /// Sends a "publishSemanticHighlighting" notification to the LSP client.
-  void publishSemanticHighlighting(const SemanticHighlightingParams &);
+  void
+  publishTheiaSemanticHighlighting(const TheiaSemanticHighlightingParams &);
 
   /// Sends a "publishDiagnostics" notification to the LSP client.
   void publishDiagnostics(const PublishDiagnosticsParams &);

@@ -185,7 +185,7 @@ GetFileByIndex(const llvm::DWARFDebugLine::Prologue &prologue, size_t idx,
 
   // Otherwise ask for a relative path.
   std::string rel_path;
-  auto relative = llvm::DILineInfoSpecifier::FileLineInfoKind::Default;
+  auto relative = llvm::DILineInfoSpecifier::FileLineInfoKind::RawValue;
   if (!prologue.getFileNameByIndex(idx, compile_dir, relative, rel_path, style))
     return {};
   return std::move(rel_path);
@@ -631,6 +631,22 @@ DWARFDebugRanges *SymbolFileDWARF::GetDebugRanges() {
   return m_ranges.get();
 }
 
+/// Make an absolute path out of \p file_spec and remap it using the
+/// module's source remapping dictionary.
+static void MakeAbsoluteAndRemap(FileSpec &file_spec, DWARFUnit &dwarf_cu,
+                                 const ModuleSP &module_sp) {
+  if (!file_spec)
+    return;
+  // If we have a full path to the compile unit, we don't need to
+  // resolve the file.  This can be expensive e.g. when the source
+  // files are NFS mounted.
+  file_spec.MakeAbsolute(dwarf_cu.GetCompilationDirectory());
+
+  std::string remapped_file;
+  if (module_sp->RemapSourceFile(file_spec.GetPath(), remapped_file))
+    file_spec.SetFile(remapped_file, FileSpec::Style::native);
+}
+
 lldb::CompUnitSP SymbolFileDWARF::ParseCompileUnit(DWARFCompileUnit &dwarf_cu) {
   CompUnitSP cu_sp;
   CompileUnit *comp_unit = (CompileUnit *)dwarf_cu.GetUserData();
@@ -649,17 +665,7 @@ lldb::CompUnitSP SymbolFileDWARF::ParseCompileUnit(DWARFCompileUnit &dwarf_cu) {
             dwarf_cu.GetNonSkeletonUnit().GetUnitDIEOnly();
         if (cu_die) {
           FileSpec cu_file_spec(cu_die.GetName(), dwarf_cu.GetPathStyle());
-          if (cu_file_spec) {
-            // If we have a full path to the compile unit, we don't need to
-            // resolve the file.  This can be expensive e.g. when the source
-            // files are NFS mounted.
-            cu_file_spec.MakeAbsolute(dwarf_cu.GetCompilationDirectory());
-
-            std::string remapped_file;
-            if (module_sp->RemapSourceFile(cu_file_spec.GetPath(),
-                                           remapped_file))
-              cu_file_spec.SetFile(remapped_file, FileSpec::Style::native);
-          }
+          MakeAbsoluteAndRemap(cu_file_spec, dwarf_cu, module_sp);
 
           LanguageType cu_language = SymbolFileDWARF::LanguageTypeFromDWARF(
               cu_die.GetAttributeValueAsUnsigned(DW_AT_language, 0));
@@ -921,8 +927,11 @@ bool SymbolFileDWARF::ParseImportedModules(
       }
       std::reverse(module.path.begin(), module.path.end());
       if (const char *include_path = module_die.GetAttributeValueAsString(
-              DW_AT_LLVM_include_path, nullptr))
-        module.search_path = ConstString(include_path);
+              DW_AT_LLVM_include_path, nullptr)) {
+        FileSpec include_spec(include_path, dwarf_cu->GetPathStyle());
+        MakeAbsoluteAndRemap(include_spec, *dwarf_cu, m_objfile_sp->GetModule());
+        module.search_path = ConstString(include_spec.GetPath());
+      }
       if (const char *sysroot = dwarf_cu->DIE().GetAttributeValueAsString(
               DW_AT_LLVM_sysroot, nullptr))
         module.sysroot = ConstString(sysroot);
@@ -3737,6 +3746,7 @@ SymbolFileDWARF::CollectCallEdges(ModuleSP module, DWARFDIE function_die) {
     llvm::Optional<DWARFDIE> call_origin;
     llvm::Optional<DWARFExpression> call_target;
     addr_t return_pc = LLDB_INVALID_ADDRESS;
+    addr_t call_inst_pc = LLDB_INVALID_ADDRESS;
 
     DWARFAttributes attributes;
     const size_t num_attributes = child.GetAttributes(attributes);
@@ -3765,6 +3775,12 @@ SymbolFileDWARF::CollectCallEdges(ModuleSP module, DWARFDIE function_die) {
       if (attr == DW_AT_call_return_pc)
         return_pc = form_value.Address();
 
+      // Extract DW_AT_call_pc (the PC at the call/branch instruction). It
+      // should only ever be unavailable for non-tail calls, in which case use
+      // LLDB_INVALID_ADDRESS.
+      if (attr == DW_AT_call_pc)
+        call_inst_pc = form_value.Address();
+
       // Extract DW_AT_call_target (the location of the address of the indirect
       // call).
       if (attr == DW_AT_call_target) {
@@ -3787,10 +3803,11 @@ SymbolFileDWARF::CollectCallEdges(ModuleSP module, DWARFDIE function_die) {
       continue;
     }
 
-    // Adjust the return PC. It needs to be fixed up if the main executable
+    // Adjust any PC forms. It needs to be fixed up if the main executable
     // contains a debug map (i.e. pointers to object files), because we need a
     // file address relative to the executable's text section.
     return_pc = FixupAddress(return_pc);
+    call_inst_pc = FixupAddress(call_inst_pc);
 
     // Extract call site parameters.
     CallSiteParameterArray parameters =
@@ -3798,10 +3815,13 @@ SymbolFileDWARF::CollectCallEdges(ModuleSP module, DWARFDIE function_die) {
 
     std::unique_ptr<CallEdge> edge;
     if (call_origin) {
-      LLDB_LOG(log, "CollectCallEdges: Found call origin: {0} (retn-PC: {1:x})",
-               call_origin->GetPubname(), return_pc);
+      LLDB_LOG(log,
+               "CollectCallEdges: Found call origin: {0} (retn-PC: {1:x}) "
+               "(call-PC: {2:x})",
+               call_origin->GetPubname(), return_pc, call_inst_pc);
       edge = std::make_unique<DirectCallEdge>(call_origin->GetMangledName(),
-                                              return_pc, std::move(parameters));
+                                              return_pc, call_inst_pc,
+                                              std::move(parameters));
     } else {
       if (log) {
         StreamString call_target_desc;
@@ -3810,8 +3830,8 @@ SymbolFileDWARF::CollectCallEdges(ModuleSP module, DWARFDIE function_die) {
         LLDB_LOG(log, "CollectCallEdges: Found indirect call target: {0}",
                  call_target_desc.GetString());
       }
-      edge = std::make_unique<IndirectCallEdge>(*call_target, return_pc,
-                                                std::move(parameters));
+      edge = std::make_unique<IndirectCallEdge>(
+          *call_target, return_pc, call_inst_pc, std::move(parameters));
     }
 
     if (log && parameters.size()) {

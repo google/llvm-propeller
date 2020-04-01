@@ -50,6 +50,7 @@
 #include "clang/Lex/Token.h"
 #include "clang/Serialization/ASTBitCodes.h"
 #include "clang/Serialization/ASTRecordReader.h"
+#include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
@@ -107,7 +108,7 @@ namespace clang {
     /// The number of record fields required for the Expr class
     /// itself.
     static const unsigned NumExprFields =
-        NumStmtFields + ExprDependenceBits + 3;
+        NumStmtFields + llvm::BitWidth<ExprDependence> + 3;
 
     /// Read and initialize a ExplicitTemplateArgumentList structure.
     void ReadTemplateKWAndArgsInfo(ASTTemplateKWAndArgsInfo &Args,
@@ -908,6 +909,22 @@ void ASTStmtReader::VisitOMPArraySectionExpr(OMPArraySectionExpr *E) {
   E->setLength(Record.readSubExpr());
   E->setColonLoc(readSourceLocation());
   E->setRBracketLoc(readSourceLocation());
+}
+
+void ASTStmtReader::VisitOMPArrayShapingExpr(OMPArrayShapingExpr *E) {
+  VisitExpr(E);
+  unsigned NumDims = Record.readInt();
+  E->setBase(Record.readSubExpr());
+  SmallVector<Expr *, 4> Dims(NumDims);
+  for (unsigned I = 0; I < NumDims; ++I)
+    Dims[I] = Record.readSubExpr();
+  E->setDimensions(Dims);
+  SmallVector<SourceRange, 4> SRs(NumDims);
+  for (unsigned I = 0; I < NumDims; ++I)
+    SRs[I] = readSourceRange();
+  E->setBracketsRanges(SRs);
+  E->setLParenLoc(readSourceLocation());
+  E->setRParenLoc(readSourceLocation());
 }
 
 void ASTStmtReader::VisitCallExpr(CallExpr *E) {
@@ -2080,6 +2097,19 @@ void ASTStmtReader::VisitTypoExpr(TypoExpr *E) {
   llvm_unreachable("Cannot read TypoExpr nodes");
 }
 
+void ASTStmtReader::VisitRecoveryExpr(RecoveryExpr *E) {
+  VisitExpr(E);
+  unsigned NumArgs = Record.readInt();
+  E->BeginLoc = readSourceLocation();
+  E->EndLoc = readSourceLocation();
+  assert(
+      (NumArgs == std::distance(E->children().begin(), E->children().end())) &&
+      "Wrong NumArgs!");
+  (void)NumArgs;
+  for (Stmt *&Child : E->children())
+    Child = Record.readSubStmt();
+}
+
 //===----------------------------------------------------------------------===//
 // Microsoft Expressions and Statements
 //===----------------------------------------------------------------------===//
@@ -2371,6 +2401,13 @@ void ASTStmtReader::VisitOMPFlushDirective(OMPFlushDirective *D) {
 }
 
 void ASTStmtReader::VisitOMPDepobjDirective(OMPDepobjDirective *D) {
+  VisitStmt(D);
+  // The NumClauses field was read in ReadStmtFromStream.
+  Record.skipInts(1);
+  VisitOMPExecutableDirective(D);
+}
+
+void ASTStmtReader::VisitOMPScanDirective(OMPScanDirective *D) {
   VisitStmt(D);
   // The NumClauses field was read in ReadStmtFromStream.
   Record.skipInts(1);
@@ -2845,9 +2882,19 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = new (Context) OMPArraySectionExpr(Empty);
       break;
 
+    case EXPR_OMP_ARRAY_SHAPING:
+      S = OMPArrayShapingExpr::CreateEmpty(
+          Context, Record[ASTStmtReader::NumExprFields]);
+      break;
+
     case EXPR_CALL:
       S = CallExpr::CreateEmpty(
           Context, /*NumArgs=*/Record[ASTStmtReader::NumExprFields], Empty);
+      break;
+
+    case EXPR_RECOVERY:
+      S = RecoveryExpr::CreateEmpty(
+          Context, /*NumArgs=*/Record[ASTStmtReader::NumExprFields]);
       break;
 
     case EXPR_MEMBER:
@@ -3210,6 +3257,11 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case STMT_OMP_DEPOBJ_DIRECTIVE:
       S = OMPDepobjDirective::CreateEmpty(
+          Context, Record[ASTStmtReader::NumStmtFields], Empty);
+      break;
+
+    case STMT_OMP_SCAN_DIRECTIVE:
+      S = OMPScanDirective::CreateEmpty(
           Context, Record[ASTStmtReader::NumStmtFields], Empty);
       break;
 

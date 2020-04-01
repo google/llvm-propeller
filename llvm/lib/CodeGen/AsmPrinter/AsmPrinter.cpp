@@ -414,7 +414,7 @@ void AsmPrinter::emitLinkage(const GlobalValue *GV, MCSymbol *GVSym) const {
         OutStreamer->emitSymbolAttribute(GVSym, MCSA_WeakDefinition);
       else
         OutStreamer->emitSymbolAttribute(GVSym, MCSA_WeakDefAutoPrivate);
-    } else if (MAI->hasLinkOnceDirective()) {
+    } else if (MAI->avoidWeakIfComdat() && GV->hasComdat()) {
       // .globl _foo
       OutStreamer->emitSymbolAttribute(GVSym, MCSA_Global);
       //NOTE: linkonce is handled by the section the symbol was assigned to.
@@ -1763,8 +1763,8 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
                                " initalized first.");
 
     // Get the function entry point symbol.
-    CurrentFnSym =
-        OutContext.getOrCreateSymbol("." + CurrentFnDescSym->getName());
+    CurrentFnSym = OutContext.getOrCreateSymbol(
+        "." + cast<MCSymbolXCOFF>(CurrentFnDescSym)->getUnqualifiedName());
 
     // Set the containing csect.
     MCSectionXCOFF *FnEntryPointSec =
@@ -2107,21 +2107,10 @@ void AsmPrinter::emitXXStructorList(const DataLayout &DL, const Constant *List,
   // init priority.
   if (!isa<ConstantArray>(List)) return;
 
-  // Sanity check the structors list.
-  const ConstantArray *InitList = dyn_cast<ConstantArray>(List);
-  if (!InitList) return; // Not an array!
-  StructType *ETy = dyn_cast<StructType>(InitList->getType()->getElementType());
-  if (!ETy || ETy->getNumElements() != 3 ||
-      !isa<IntegerType>(ETy->getTypeAtIndex(0U)) ||
-      !isa<PointerType>(ETy->getTypeAtIndex(1U)) ||
-      !isa<PointerType>(ETy->getTypeAtIndex(2U)))
-    return; // Not (int, ptr, ptr).
-
   // Gather the structors in a form that's convenient for sorting by priority.
   SmallVector<Structor, 8> Structors;
-  for (Value *O : InitList->operands()) {
-    ConstantStruct *CS = dyn_cast<ConstantStruct>(O);
-    if (!CS) continue; // Malformed.
+  for (Value *O : cast<ConstantArray>(List)->operands()) {
+    auto *CS = cast<ConstantStruct>(O);
     if (CS->getOperand(1)->isNullValue())
       break;  // Found a null terminator, skip the rest.
     ConstantInt *Priority = dyn_cast<ConstantInt>(CS->getOperand(0));

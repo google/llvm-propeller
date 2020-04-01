@@ -374,8 +374,14 @@ static bool ShouldUpgradeX86Intrinsic(Function *F, StringRef Name) {
       Name.startswith("avx2.pblendd.") || // Added in 3.7
       Name.startswith("avx.vbroadcastf128") || // Added in 4.0
       Name == "avx2.vbroadcasti128" || // Added in 3.7
-      Name.startswith("avx512.mask.broadcastf") || // Added in 6.0
-      Name.startswith("avx512.mask.broadcasti") || // Added in 6.0
+      Name.startswith("avx512.mask.broadcastf32x4.") || // Added in 6.0
+      Name.startswith("avx512.mask.broadcastf64x2.") || // Added in 6.0
+      Name.startswith("avx512.mask.broadcastf32x8.") || // Added in 6.0
+      Name.startswith("avx512.mask.broadcastf64x4.") || // Added in 6.0
+      Name.startswith("avx512.mask.broadcasti32x4.") || // Added in 6.0
+      Name.startswith("avx512.mask.broadcasti64x2.") || // Added in 6.0
+      Name.startswith("avx512.mask.broadcasti32x8.") || // Added in 6.0
+      Name.startswith("avx512.mask.broadcasti64x4.") || // Added in 6.0
       Name == "xop.vpcmov" || // Added in 3.8
       Name == "xop.vpcmov.256" || // Added in 5.0
       Name.startswith("avx512.mask.move.s") || // Added in 4.0
@@ -2329,11 +2335,12 @@ void llvm::UpgradeIntrinsicCall(CallInst *CI, Function *NewFn) {
                                             PointerType::getUnqual(VT));
       Value *Load = Builder.CreateAlignedLoad(VT, Op, Align(1));
       if (NumSrcElts == 2)
-        Rep = Builder.CreateShuffleVector(Load, UndefValue::get(Load->getType()),
-                                          { 0, 1, 0, 1 });
+        Rep = Builder.CreateShuffleVector(
+            Load, UndefValue::get(Load->getType()), ArrayRef<int>{0, 1, 0, 1});
       else
-        Rep = Builder.CreateShuffleVector(Load, UndefValue::get(Load->getType()),
-                                          { 0, 1, 2, 3, 0, 1, 2, 3 });
+        Rep =
+            Builder.CreateShuffleVector(Load, UndefValue::get(Load->getType()),
+                                        ArrayRef<int>{0, 1, 2, 3, 0, 1, 2, 3});
     } else if (IsX86 && (Name.startswith("avx512.mask.shuf.i") ||
                          Name.startswith("avx512.mask.shuf.f"))) {
       unsigned Imm = cast<ConstantInt>(CI->getArgOperand(2))->getZExtValue();

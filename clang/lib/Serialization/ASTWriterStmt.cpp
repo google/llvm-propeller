@@ -774,6 +774,19 @@ void ASTStmtWriter::VisitOMPArraySectionExpr(OMPArraySectionExpr *E) {
   Code = serialization::EXPR_OMP_ARRAY_SECTION;
 }
 
+void ASTStmtWriter::VisitOMPArrayShapingExpr(OMPArrayShapingExpr *E) {
+  VisitExpr(E);
+  Record.push_back(E->getDimensions().size());
+  Record.AddStmt(E->getBase());
+  for (Expr *Dim : E->getDimensions())
+    Record.AddStmt(Dim);
+  for (SourceRange SR : E->getBracketsRanges())
+    Record.AddSourceRange(SR);
+  Record.AddSourceLocation(E->getLParenLoc());
+  Record.AddSourceLocation(E->getRParenLoc());
+  Code = serialization::EXPR_OMP_ARRAY_SHAPING;
+}
+
 void ASTStmtWriter::VisitCallExpr(CallExpr *E) {
   VisitExpr(E);
   Record.push_back(E->getNumArgs());
@@ -784,6 +797,16 @@ void ASTStmtWriter::VisitCallExpr(CallExpr *E) {
     Record.AddStmt(*Arg);
   Record.push_back(static_cast<unsigned>(E->getADLCallKind()));
   Code = serialization::EXPR_CALL;
+}
+
+void ASTStmtWriter::VisitRecoveryExpr(RecoveryExpr *E) {
+  VisitExpr(E);
+  Record.push_back(std::distance(E->children().begin(), E->children().end()));
+  Record.AddSourceLocation(E->getBeginLoc());
+  Record.AddSourceLocation(E->getEndLoc());
+  for (Stmt *Child : E->children())
+    Record.AddStmt(Child);
+  Code = serialization::EXPR_RECOVERY;
 }
 
 void ASTStmtWriter::VisitMemberExpr(MemberExpr *E) {
@@ -2328,6 +2351,13 @@ void ASTStmtWriter::VisitOMPDepobjDirective(OMPDepobjDirective *D) {
   Record.push_back(D->getNumClauses());
   VisitOMPExecutableDirective(D);
   Code = serialization::STMT_OMP_DEPOBJ_DIRECTIVE;
+}
+
+void ASTStmtWriter::VisitOMPScanDirective(OMPScanDirective *D) {
+  VisitStmt(D);
+  Record.push_back(D->getNumClauses());
+  VisitOMPExecutableDirective(D);
+  Code = serialization::STMT_OMP_SCAN_DIRECTIVE;
 }
 
 void ASTStmtWriter::VisitOMPOrderedDirective(OMPOrderedDirective *D) {

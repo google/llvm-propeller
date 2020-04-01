@@ -105,14 +105,12 @@ static void initialize(TargetLibraryInfoImpl &TLI, const Triple &T,
   TLI.setShouldExtI32Return(ShouldExtI32Return);
   TLI.setShouldSignExtI32Param(ShouldSignExtI32Param);
 
-  if (T.getArch() == Triple::r600 ||
-      T.getArch() == Triple::amdgcn)
+  if (T.isAMDGPU())
     TLI.disableAllFunctions();
 
   // There are no library implementations of memcpy and memset for AMD gpus and
   // these can be difficult to lower in the backend.
-  if (T.getArch() == Triple::r600 ||
-      T.getArch() == Triple::amdgcn) {
+  if (T.isAMDGPU()) {
     TLI.setUnavailable(LibFunc_memcpy);
     TLI.setUnavailable(LibFunc_memset);
     TLI.setUnavailable(LibFunc_memset_pattern16);
@@ -903,6 +901,8 @@ bool TargetLibraryInfoImpl::isValidProtoForLibFunc(const FunctionType &FTy,
             FTy.getParamType(1)->isPointerTy());
   case LibFunc_write:
     return (NumParams == 3 && FTy.getParamType(1)->isPointerTy());
+  case LibFunc_aligned_alloc:
+    return (NumParams == 2 && FTy.getReturnType()->isPointerTy());
   case LibFunc_bcopy:
   case LibFunc_bcmp:
     return (NumParams == 3 && FTy.getParamType(0)->isPointerTy() &&

@@ -1960,6 +1960,36 @@ void Clang::AddPPCTargetArgs(const ArgList &Args,
   }
 }
 
+static void SetRISCVSmallDataLimit(const ToolChain &TC, const ArgList &Args,
+                                   ArgStringList &CmdArgs) {
+  const Driver &D = TC.getDriver();
+  const llvm::Triple &Triple = TC.getTriple();
+  // Default small data limitation is eight.
+  const char *SmallDataLimit = "8";
+  // Get small data limitation.
+  if (Args.getLastArg(options::OPT_shared, options::OPT_fpic,
+                      options::OPT_fPIC)) {
+    // Not support linker relaxation for PIC.
+    SmallDataLimit = "0";
+    if (Args.hasArg(options::OPT_G)) {
+      D.Diag(diag::warn_drv_unsupported_sdata);
+    }
+  } else if (Args.getLastArgValue(options::OPT_mcmodel_EQ)
+                 .equals_lower("large") &&
+             (Triple.getArch() == llvm::Triple::riscv64)) {
+    // Not support linker relaxation for RV64 with large code model.
+    SmallDataLimit = "0";
+    if (Args.hasArg(options::OPT_G)) {
+      D.Diag(diag::warn_drv_unsupported_sdata);
+    }
+  } else if (Arg *A = Args.getLastArg(options::OPT_G)) {
+    SmallDataLimit = A->getValue();
+  }
+  // Forward the -msmall-data-limit= option.
+  CmdArgs.push_back("-msmall-data-limit");
+  CmdArgs.push_back(SmallDataLimit);
+}
+
 void Clang::AddRISCVTargetArgs(const ArgList &Args,
                                ArgStringList &CmdArgs) const {
   const llvm::Triple &Triple = getToolChain().getTriple();
@@ -1967,6 +1997,8 @@ void Clang::AddRISCVTargetArgs(const ArgList &Args,
 
   CmdArgs.push_back("-target-abi");
   CmdArgs.push_back(ABIName.data());
+
+  SetRISCVSmallDataLimit(getToolChain(), Args, CmdArgs);
 }
 
 void Clang::AddSparcTargetArgs(const ArgList &Args,
@@ -3535,9 +3567,9 @@ static void RenderDiagnosticsOptions(const Driver &D, const ArgList &Args,
     CmdArgs.push_back("-fno-diagnostics-fixit-info");
 
   // Enable -fdiagnostics-show-option by default.
-  if (Args.hasFlag(options::OPT_fdiagnostics_show_option,
-                   options::OPT_fno_diagnostics_show_option))
-    CmdArgs.push_back("-fdiagnostics-show-option");
+  if (!Args.hasFlag(options::OPT_fdiagnostics_show_option,
+                    options::OPT_fno_diagnostics_show_option, true))
+    CmdArgs.push_back("-fno-diagnostics-show-option");
 
   if (const Arg *A =
           Args.getLastArg(options::OPT_fdiagnostics_show_category_EQ)) {
@@ -4160,7 +4192,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       StringRef ArgStr =
           Args.hasArg(options::OPT_interface_stub_version_EQ)
               ? Args.getLastArgValue(options::OPT_interface_stub_version_EQ)
-              : "experimental-ifs-v1";
+              : "experimental-ifs-v2";
       CmdArgs.push_back("-emit-interface-stubs");
       CmdArgs.push_back(
           Args.MakeArgString(Twine("-interface-stub-version=") + ArgStr.str()));
@@ -4411,14 +4443,24 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   bool IsPIE;
   std::tie(RelocationModel, PICLevel, IsPIE) = ParsePICArgs(TC, Args);
 
-  const char *RMName = RelocationModelName(RelocationModel);
+  bool IsROPI = RelocationModel == llvm::Reloc::ROPI ||
+                RelocationModel == llvm::Reloc::ROPI_RWPI;
+  bool IsRWPI = RelocationModel == llvm::Reloc::RWPI ||
+                RelocationModel == llvm::Reloc::ROPI_RWPI;
 
-  if ((RelocationModel == llvm::Reloc::ROPI ||
-       RelocationModel == llvm::Reloc::ROPI_RWPI) &&
-      types::isCXX(Input.getType()) &&
+  if (Args.hasArg(options::OPT_mcmse) &&
+      !Args.hasArg(options::OPT_fallow_unsupported)) {
+    if (IsROPI)
+      D.Diag(diag::err_cmse_pi_are_incompatible) << IsROPI;
+    if (IsRWPI)
+      D.Diag(diag::err_cmse_pi_are_incompatible) << !IsRWPI;
+  }
+
+  if (IsROPI && types::isCXX(Input.getType()) &&
       !Args.hasArg(options::OPT_fallow_unsupported))
     D.Diag(diag::err_drv_ropi_incompatible_with_cxx);
 
+  const char *RMName = RelocationModelName(RelocationModel);
   if (RMName) {
     CmdArgs.push_back("-mrelocation-model");
     CmdArgs.push_back(RMName);
@@ -4615,9 +4657,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Decide whether to use verbose asm. Verbose assembly is the default on
   // toolchains which have the integrated assembler on by default.
   bool IsIntegratedAssemblerDefault = TC.IsIntegratedAssemblerDefault();
-  if (Args.hasFlag(options::OPT_fverbose_asm, options::OPT_fno_verbose_asm,
-                   IsIntegratedAssemblerDefault))
-    CmdArgs.push_back("-masm-verbose");
+  if (!Args.hasFlag(options::OPT_fverbose_asm, options::OPT_fno_verbose_asm,
+                    IsIntegratedAssemblerDefault))
+    CmdArgs.push_back("-fno-verbose-asm");
 
   if (!TC.useIntegratedAs())
     CmdArgs.push_back("-no-integrated-as");
@@ -5137,15 +5179,20 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   // Pass -fmessage-length=.
-  CmdArgs.push_back("-fmessage-length");
+  unsigned MessageLength = 0;
   if (Arg *A = Args.getLastArg(options::OPT_fmessage_length_EQ)) {
-    CmdArgs.push_back(A->getValue());
+    StringRef V(A->getValue());
+    if (V.getAsInteger(0, MessageLength))
+      D.Diag(diag::err_drv_invalid_argument_to_option)
+          << V << A->getOption().getName();
   } else {
     // If -fmessage-length=N was not specified, determine whether this is a
     // terminal and, if so, implicitly define -fmessage-length appropriately.
-    unsigned N = llvm::sys::Process::StandardErrColumns();
-    CmdArgs.push_back(Args.MakeArgString(Twine(N)));
+    MessageLength = llvm::sys::Process::StandardErrColumns();
   }
+  if (MessageLength != 0)
+    CmdArgs.push_back(
+        Args.MakeArgString("-fmessage-length=" + Twine(MessageLength)));
 
   // -fvisibility= and -fvisibility-ms-compat are of a piece.
   if (const Arg *A = Args.getLastArg(options::OPT_fvisibility_EQ,
@@ -5615,7 +5662,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_fexperimental_new_pass_manager,
                   options::OPT_fno_experimental_new_pass_manager);
 
-  ObjCRuntime Runtime = AddObjCRuntimeArgs(Args, CmdArgs, rewriteKind);
+  ObjCRuntime Runtime = AddObjCRuntimeArgs(Args, Inputs, CmdArgs, rewriteKind);
   RenderObjCOptions(TC, D, RawTriple, Args, Runtime, rewriteKind != RK_None,
                     Input, CmdArgs);
 
@@ -6069,10 +6116,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (SplitLTOUnit)
     CmdArgs.push_back("-fsplit-lto-unit");
 
-  if (Arg *A = Args.getLastArg(options::OPT_fexperimental_isel,
-                               options::OPT_fno_experimental_isel)) {
+  if (Arg *A = Args.getLastArg(options::OPT_fglobal_isel,
+                               options::OPT_fno_global_isel)) {
     CmdArgs.push_back("-mllvm");
-    if (A->getOption().matches(options::OPT_fexperimental_isel)) {
+    if (A->getOption().matches(options::OPT_fglobal_isel)) {
       CmdArgs.push_back("-global-isel=1");
 
       // GISel is on by default on AArch64 -O0, so don't bother adding
@@ -6091,9 +6138,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         CmdArgs.push_back("-global-isel-abort=2");
 
         if (!IsArchSupported)
-          D.Diag(diag::warn_drv_experimental_isel_incomplete) << Triple.getArchName();
+          D.Diag(diag::warn_drv_global_isel_incomplete) << Triple.getArchName();
         else
-          D.Diag(diag::warn_drv_experimental_isel_incomplete_opt);
+          D.Diag(diag::warn_drv_global_isel_incomplete_opt);
       }
     } else {
       CmdArgs.push_back("-global-isel=0");
@@ -6259,6 +6306,7 @@ Clang::~Clang() {}
 ///
 /// Returns true if the runtime is non-fragile.
 ObjCRuntime Clang::AddObjCRuntimeArgs(const ArgList &args,
+                                      const InputInfoList &inputs,
                                       ArgStringList &cmdArgs,
                                       RewriteKind rewriteKind) const {
   // Look for the controlling runtime option.
@@ -6382,8 +6430,11 @@ ObjCRuntime Clang::AddObjCRuntimeArgs(const ArgList &args,
       runtime = ObjCRuntime(ObjCRuntime::GCC, VersionTuple());
   }
 
-  cmdArgs.push_back(
-      args.MakeArgString("-fobjc-runtime=" + runtime.getAsString()));
+  if (llvm::any_of(inputs, [](const InputInfo &input) {
+        return types::isObjC(input.getType());
+      }))
+    cmdArgs.push_back(
+        args.MakeArgString("-fobjc-runtime=" + runtime.getAsString()));
   return runtime;
 }
 

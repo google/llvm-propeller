@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Support/MlirOptMain.h"
-#include "mlir/Analysis/Passes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
@@ -68,6 +67,7 @@ static LogicalResult performActions(raw_ostream &os, bool verifyDiagnostics,
 static LogicalResult processBuffer(raw_ostream &os,
                                    std::unique_ptr<MemoryBuffer> ownedBuffer,
                                    bool verifyDiagnostics, bool verifyPasses,
+                                   bool allowUnregisteredDialects,
                                    const PassPipelineCLParser &passPipeline) {
   // Tell sourceMgr about this buffer, which is what the parser will pick up.
   SourceMgr sourceMgr;
@@ -75,6 +75,7 @@ static LogicalResult processBuffer(raw_ostream &os,
 
   // Parse the input file.
   MLIRContext context;
+  context.allowUnregisteredDialects(allowUnregisteredDialects);
 
   // If we are in verify diagnostics mode then we have a lot of work to do,
   // otherwise just perform the actions without worrying about it.
@@ -101,7 +102,8 @@ LogicalResult mlir::MlirOptMain(raw_ostream &os,
                                 std::unique_ptr<MemoryBuffer> buffer,
                                 const PassPipelineCLParser &passPipeline,
                                 bool splitInputFile, bool verifyDiagnostics,
-                                bool verifyPasses) {
+                                bool verifyPasses,
+                                bool allowUnregisteredDialects) {
   // The split-input-file mode is a very specific mode that slices the file
   // up into small pieces and checks each independently.
   if (splitInputFile)
@@ -109,10 +111,11 @@ LogicalResult mlir::MlirOptMain(raw_ostream &os,
         std::move(buffer),
         [&](std::unique_ptr<MemoryBuffer> chunkBuffer, raw_ostream &os) {
           return processBuffer(os, std::move(chunkBuffer), verifyDiagnostics,
-                               verifyPasses, passPipeline);
+                               verifyPasses, allowUnregisteredDialects,
+                               passPipeline);
         },
         os);
 
   return processBuffer(os, std::move(buffer), verifyDiagnostics, verifyPasses,
-                       passPipeline);
+                       allowUnregisteredDialects, passPipeline);
 }

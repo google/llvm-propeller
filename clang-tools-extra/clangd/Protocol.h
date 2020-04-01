@@ -433,9 +433,11 @@ struct ClientCapabilities {
   /// textDocument.codeAction.codeActionLiteralSupport.
   bool CodeActionStructure = false;
 
-  /// Client supports semantic highlighting.
+  /// Client supports Theia semantic highlighting extension.
+  /// https://github.com/microsoft/vscode-languageserver-node/pull/367
   /// textDocument.semanticHighlightingCapabilities.semanticHighlighting
-  bool SemanticHighlighting = false;
+  /// FIXME: drop this support once clients support LSP 3.16 Semantic Tokens.
+  bool TheiaSemanticHighlighting = false;
 
   /// Supported encodings for LSP character offsets. (clangd extension).
   llvm::Optional<std::vector<OffsetEncoding>> offsetEncoding;
@@ -1338,11 +1340,51 @@ struct FileStatus {
   std::string state;
   // FIXME: add detail messages.
 };
-llvm::json::Value toJSON(const FileStatus &FStatus);
+llvm::json::Value toJSON(const FileStatus &);
+
+/// Specifies a single semantic token in the document.
+/// This struct is not part of LSP, which just encodes lists of tokens as
+/// arrays of numbers directly.
+struct SemanticToken {
+  /// token line number, relative to the previous token
+  unsigned deltaLine = 0;
+  /// token start character, relative to the previous token
+  /// (relative to 0 or the previous token's start if they are on the same line)
+  unsigned deltaStart = 0;
+  /// the length of the token. A token cannot be multiline
+  unsigned length = 0;
+  /// will be looked up in `SemanticTokensLegend.tokenTypes`
+  unsigned tokenType = 0;
+  /// each set bit will be looked up in `SemanticTokensLegend.tokenModifiers`
+  unsigned tokenModifiers = 0;
+
+  void encode(std::vector<unsigned> &Out) const;
+};
+
+/// A versioned set of tokens.
+struct SemanticTokens {
+  // An optional result id. If provided and clients support delta updating
+  // the client will include the result id in the next semantic token request.
+  // A server can then instead of computing all semantic tokens again simply
+  // send a delta.
+  llvm::Optional<std::string> resultId;
+
+  /// The actual tokens. For a detailed description about how the data is
+  /// structured pls see
+  /// https://github.com/microsoft/vscode-extension-samples/blob/5ae1f7787122812dcc84e37427ca90af5ee09f14/semantic-tokens-sample/vscode.proposed.d.ts#L71
+  std::vector<SemanticToken> data;
+};
+llvm::json::Value toJSON(const SemanticTokens &);
+
+struct SemanticTokensParams {
+  /// The text document.
+  TextDocumentIdentifier textDocument;
+};
+bool fromJSON(const llvm::json::Value &, SemanticTokensParams &);
 
 /// Represents a semantic highlighting information that has to be applied on a
 /// specific line of the text document.
-struct SemanticHighlightingInformation {
+struct TheiaSemanticHighlightingInformation {
   /// The line these highlightings belong to.
   int Line = 0;
   /// The base64 encoded string of highlighting tokens.
@@ -1353,18 +1395,19 @@ struct SemanticHighlightingInformation {
   /// clients should combine line style and token style if possible.
   bool IsInactive = false;
 };
-bool operator==(const SemanticHighlightingInformation &Lhs,
-                const SemanticHighlightingInformation &Rhs);
-llvm::json::Value toJSON(const SemanticHighlightingInformation &Highlighting);
+bool operator==(const TheiaSemanticHighlightingInformation &Lhs,
+                const TheiaSemanticHighlightingInformation &Rhs);
+llvm::json::Value
+toJSON(const TheiaSemanticHighlightingInformation &Highlighting);
 
 /// Parameters for the semantic highlighting (server-side) push notification.
-struct SemanticHighlightingParams {
+struct TheiaSemanticHighlightingParams {
   /// The textdocument these highlightings belong to.
   VersionedTextDocumentIdentifier TextDocument;
   /// The lines of highlightings that should be sent.
-  std::vector<SemanticHighlightingInformation> Lines;
+  std::vector<TheiaSemanticHighlightingInformation> Lines;
 };
-llvm::json::Value toJSON(const SemanticHighlightingParams &Highlighting);
+llvm::json::Value toJSON(const TheiaSemanticHighlightingParams &Highlighting);
 
 struct SelectionRangeParams {
   /// The text document.

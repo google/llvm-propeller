@@ -625,13 +625,31 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
                          SourceRange(Actions.getExprRange(LHS.get()).getBegin(),
                                      Actions.getExprRange(RHS.get()).getEnd()));
 
-        LHS = Actions.ActOnBinOp(getCurScope(), OpToken.getLocation(),
-                                 OpToken.getKind(), LHS.get(), RHS.get());
+        ExprResult BinOp =
+            Actions.ActOnBinOp(getCurScope(), OpToken.getLocation(),
+                               OpToken.getKind(), LHS.get(), RHS.get());
+        if (BinOp.isInvalid())
+          BinOp = Actions.CreateRecoveryExpr(LHS.get()->getBeginLoc(),
+                                             RHS.get()->getEndLoc(),
+                                             {LHS.get(), RHS.get()});
 
+        LHS = BinOp;
       } else {
-        LHS = Actions.ActOnConditionalOp(OpToken.getLocation(), ColonLoc,
-                                         LHS.get(), TernaryMiddle.get(),
-                                         RHS.get());
+        ExprResult CondOp = Actions.ActOnConditionalOp(
+            OpToken.getLocation(), ColonLoc, LHS.get(), TernaryMiddle.get(),
+            RHS.get());
+        if (CondOp.isInvalid()) {
+          std::vector<clang::Expr *> Args;
+          // TernaryMiddle can be null for the GNU conditional expr extension.
+          if (TernaryMiddle.get())
+            Args = {LHS.get(), TernaryMiddle.get(), RHS.get()};
+          else
+            Args = {LHS.get(), RHS.get()};
+          CondOp = Actions.CreateRecoveryExpr(LHS.get()->getBeginLoc(),
+                                              RHS.get()->getEndLoc(), Args);
+        }
+
+        LHS = CondOp;
       }
       // In this case, ActOnBinOp or ActOnConditionalOp performed the
       // CorrectDelayedTyposInExpr check.
@@ -1305,9 +1323,14 @@ ExprResult Parser::ParseCastExpression(CastParseKind ParseKind,
       UnconsumeToken(SavedTok);
       return ExprError();
     }
-    if (!Res.isInvalid())
+    if (!Res.isInvalid()) {
+      Expr *Arg = Res.get();
       Res = Actions.ActOnUnaryOp(getCurScope(), SavedTok.getLocation(),
-                                 SavedKind, Res.get());
+                                 SavedKind, Arg);
+      if (Res.isInvalid())
+        Res = Actions.CreateRecoveryExpr(SavedTok.getLocation(),
+                                         Arg->getEndLoc(), Arg);
+    }
     return Res;
   }
   case tok::amp: {         // unary-expression: '&' cast-expression
@@ -1317,8 +1340,13 @@ ExprResult Parser::ParseCastExpression(CastParseKind ParseKind,
     SourceLocation SavedLoc = ConsumeToken();
     PreferredType.enterUnary(Actions, Tok.getLocation(), tok::amp, SavedLoc);
     Res = ParseCastExpression(AnyCastExpr, true);
-    if (!Res.isInvalid())
-      Res = Actions.ActOnUnaryOp(getCurScope(), SavedLoc, SavedKind, Res.get());
+    if (!Res.isInvalid()) {
+      Expr *Arg = Res.get();
+      Res = Actions.ActOnUnaryOp(getCurScope(), SavedLoc, SavedKind, Arg);
+      if (Res.isInvalid())
+        Res = Actions.CreateRecoveryExpr(Tok.getLocation(), Arg->getEndLoc(),
+                                         Arg);
+    }
     return Res;
   }
 
@@ -1334,8 +1362,12 @@ ExprResult Parser::ParseCastExpression(CastParseKind ParseKind,
     SourceLocation SavedLoc = ConsumeToken();
     PreferredType.enterUnary(Actions, Tok.getLocation(), SavedKind, SavedLoc);
     Res = ParseCastExpression(AnyCastExpr);
-    if (!Res.isInvalid())
-      Res = Actions.ActOnUnaryOp(getCurScope(), SavedLoc, SavedKind, Res.get());
+    if (!Res.isInvalid()) {
+      Expr *Arg = Res.get();
+      Res = Actions.ActOnUnaryOp(getCurScope(), SavedLoc, SavedKind, Arg);
+      if (Res.isInvalid())
+        Res = Actions.CreateRecoveryExpr(SavedLoc, Arg->getEndLoc(), Arg);
+    }
     return Res;
   }
 
@@ -1418,10 +1450,12 @@ ExprResult Parser::ParseCastExpression(CastParseKind ParseKind,
   case tok::kw_this:
     Res = ParseCXXThis();
     break;
-
+  case tok::kw___builtin_unique_stable_name:
+    Res = ParseUniqueStableNameExpression();
+    break;
   case tok::annot_typename:
     if (isStartOfObjCClassMessageMissingOpenBracket()) {
-      ParsedType Type = getTypeAnnotation(Tok);
+      TypeResult Type = getTypeAnnotation(Tok);
 
       // Fake up a Declarator to use with ActOnTypeName.
       DeclSpec DS(AttrFactory);
@@ -1941,12 +1975,18 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
           PT.consumeClose();
         LHS = ExprError();
       } else {
-        assert((ArgExprs.size() == 0 ||
-                ArgExprs.size()-1 == CommaLocs.size())&&
-               "Unexpected number of commas!");
-        LHS = Actions.ActOnCallExpr(getCurScope(), LHS.get(), Loc,
-                                    ArgExprs, Tok.getLocation(),
+        assert(
+            (ArgExprs.size() == 0 || ArgExprs.size() - 1 == CommaLocs.size()) &&
+            "Unexpected number of commas!");
+        Expr *Fn = LHS.get();
+        SourceLocation RParLoc = Tok.getLocation();
+        LHS = Actions.ActOnCallExpr(getCurScope(), Fn, Loc, ArgExprs, RParLoc,
                                     ExecConfig);
+        if (LHS.isInvalid()) {
+          ArgExprs.insert(ArgExprs.begin(), Fn);
+          LHS =
+              Actions.CreateRecoveryExpr(Fn->getBeginLoc(), RParLoc, ArgExprs);
+        }
         PT.consumeClose();
       }
 
@@ -2062,15 +2102,25 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
                                             OpKind, SS, TemplateKWLoc, Name,
                                  CurParsedObjCImpl ? CurParsedObjCImpl->Dcl
                                                    : nullptr);
-      if (!LHS.isInvalid() && Tok.is(tok::less))
-        checkPotentialAngleBracket(LHS);
+      if (!LHS.isInvalid()) {
+        if (Tok.is(tok::less))
+          checkPotentialAngleBracket(LHS);
+      } else if (OrigLHS && Name.isValid()) {
+        // Preserve the LHS if the RHS is an invalid member.
+        LHS = Actions.CreateRecoveryExpr(OrigLHS->getBeginLoc(),
+                                         Name.getEndLoc(), {OrigLHS});
+      }
       break;
     }
     case tok::plusplus:    // postfix-expression: postfix-expression '++'
     case tok::minusminus:  // postfix-expression: postfix-expression '--'
       if (!LHS.isInvalid()) {
+        Expr *Arg = LHS.get();
         LHS = Actions.ActOnPostfixUnaryOp(getCurScope(), Tok.getLocation(),
-                                          Tok.getKind(), LHS.get());
+                                          Tok.getKind(), Arg);
+        if (LHS.isInvalid())
+          LHS = Actions.CreateRecoveryExpr(Arg->getBeginLoc(),
+                                           Tok.getLocation(), Arg);
       }
       ConsumeToken();
       break;
@@ -2179,6 +2229,43 @@ Parser::ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
   return Operand;
 }
 
+
+ExprResult Parser::ParseUniqueStableNameExpression() {
+  assert(Tok.is(tok::kw___builtin_unique_stable_name) &&
+         "Not __bulitin_unique_stable_name");
+
+  SourceLocation OpLoc = ConsumeToken();
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+
+  // typeid expressions are always parenthesized.
+  if (T.expectAndConsume(diag::err_expected_lparen_after,
+                         "__builtin_unique_stable_name"))
+    return ExprError();
+
+  if (isTypeIdInParens()) {
+    TypeResult Ty = ParseTypeName();
+    T.consumeClose();
+
+    if (Ty.isInvalid())
+      return ExprError();
+
+    return Actions.ActOnUniqueStableNameExpr(OpLoc, T.getOpenLocation(),
+                                             T.getCloseLocation(), Ty.get());
+  }
+
+  EnterExpressionEvaluationContext Unevaluated(
+      Actions, Sema::ExpressionEvaluationContext::Unevaluated);
+  ExprResult Result = ParseExpression();
+
+  if (Result.isInvalid()) {
+    SkipUntil(tok::r_paren, StopAtSemi);
+    return Result;
+  }
+
+  T.consumeClose();
+  return Actions.ActOnUniqueStableNameExpr(OpLoc, T.getOpenLocation(),
+                                           T.getCloseLocation(), Result.get());
+}
 
 /// Parse a sizeof or alignof expression.
 ///
@@ -2561,6 +2648,33 @@ ExprResult Parser::ParseBuiltinPrimaryExpression() {
   return ParsePostfixExpressionSuffix(Res.get());
 }
 
+bool Parser::tryParseOpenMPArrayShapingCastPart() {
+  assert(Tok.is(tok::l_square) && "Expected open bracket");
+  bool ErrorFound = true;
+  TentativeParsingAction TPA(*this);
+  do {
+    if (Tok.isNot(tok::l_square))
+      break;
+    // Consume '['
+    ConsumeBracket();
+    // Skip inner expression.
+    while (!SkipUntil(tok::r_square, tok::annot_pragma_openmp_end,
+                      StopAtSemi | StopBeforeMatch))
+      ;
+    if (Tok.isNot(tok::r_square))
+      break;
+    // Consume ']'
+    ConsumeBracket();
+    // Found ')' - done.
+    if (Tok.is(tok::r_paren)) {
+      ErrorFound = false;
+      break;
+    }
+  } while (Tok.isNot(tok::annot_pragma_openmp_end));
+  TPA.Revert();
+  return !ErrorFound;
+}
+
 /// ParseParenExpression - This parses the unit that starts with a '(' token,
 /// based on what is allowed by ExprType.  The actual thing parsed is returned
 /// in ExprType. If stopIfCastExpr is true, it will only return the parsed type,
@@ -2585,6 +2699,8 @@ ExprResult Parser::ParseBuiltinPrimaryExpression() {
 ///         '(' '...' fold-operator cast-expression ')'
 ///         '(' cast-expression fold-operator '...'
 ///                 fold-operator cast-expression ')'
+/// [OPENMP] Array shaping operation
+///       '(' '[' expression ']' { '[' expression ']' } cast-expression
 /// \endverbatim
 ExprResult
 Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
@@ -2861,6 +2977,38 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool stopIfCastExpr,
       Result = Actions.ActOnParenListExpr(OpenLoc, Tok.getLocation(),
                                           ArgExprs);
     }
+  } else if (getLangOpts().OpenMP >= 50 && OpenMPDirectiveParsing &&
+             ExprType == CastExpr && Tok.is(tok::l_square) &&
+             tryParseOpenMPArrayShapingCastPart()) {
+    bool ErrorFound = false;
+    SmallVector<Expr *, 4> OMPDimensions;
+    SmallVector<SourceRange, 4> OMPBracketsRanges;
+    do {
+      BalancedDelimiterTracker TS(*this, tok::l_square);
+      TS.consumeOpen();
+      ExprResult NumElements =
+          Actions.CorrectDelayedTyposInExpr(ParseExpression());
+      if (!NumElements.isUsable()) {
+        ErrorFound = true;
+        while (!SkipUntil(tok::r_square, tok::r_paren,
+                          StopAtSemi | StopBeforeMatch))
+          ;
+      }
+      TS.consumeClose();
+      OMPDimensions.push_back(NumElements.get());
+      OMPBracketsRanges.push_back(TS.getRange());
+    } while (Tok.isNot(tok::r_paren));
+    // Match the ')'.
+    T.consumeClose();
+    RParenLoc = T.getCloseLocation();
+    Result = Actions.CorrectDelayedTyposInExpr(ParseAssignmentExpression());
+    if (ErrorFound) {
+      Result = ExprError();
+    } else if (!Result.isInvalid()) {
+      Result = Actions.ActOnOMPArrayShapingExpr(
+          Result.get(), OpenLoc, RParenLoc, OMPDimensions, OMPBracketsRanges);
+    }
+    return Result;
   } else {
     InMessageExpressionRAIIObject InMessage(*this, false);
 

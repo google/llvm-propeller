@@ -715,8 +715,7 @@ void VPlanPrinter::printAsIngredient(raw_ostream &O, Value *V) {
 void VPWidenRecipe::print(raw_ostream &O, const Twine &Indent,
                           VPSlotTracker &SlotTracker) const {
   O << " +\n" << Indent << "\"WIDEN\\l\"";
-  for (auto &Instr : make_range(Begin, End))
-    O << " +\n" << Indent << "\"  " << VPlanIngredient(&Instr) << "\\l\"";
+  O << "\"  " << VPlanIngredient(&Ingredient) << "\\l\"";
 }
 
 void VPWidenIntOrFpInductionRecipe::print(raw_ostream &O, const Twine &Indent,
@@ -844,7 +843,7 @@ void VPInterleavedAccessInfo::visitBlock(VPBlockBase *Block, Old2NewTy &Old2New,
       auto NewIGIter = Old2New.find(IG);
       if (NewIGIter == Old2New.end())
         Old2New[IG] = new InterleaveGroup<VPInstruction>(
-            IG->getFactor(), IG->isReverse(), Align(IG->getAlignment()));
+            IG->getFactor(), IG->isReverse(), IG->getAlign());
 
       if (Inst == IG->getInsertPos())
         Old2New[IG]->setInsertPos(VPInst);

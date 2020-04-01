@@ -22,15 +22,18 @@
 #include "llvm/ADT/DenseMap.h"
 
 namespace llvm {
+class IntrinsicInst;
 
 /// Build a call to llvm.assume to preserve informations that can be derived
 /// from the given instruction.
 /// If no information derived from \p I, this call returns null.
 /// The returned instruction is not inserted anywhere.
-CallInst *BuildAssumeFromInst(const Instruction *I, Module *M);
-inline CallInst *BuildAssumeFromInst(Instruction *I) {
-  return BuildAssumeFromInst(I, I->getModule());
-}
+IntrinsicInst *buildAssumeFromInst(Instruction *I);
+
+/// Calls BuildAssumeFromInst and if the resulting llvm.assume is valid insert
+/// if before I. This is usually what need to be done to salvage the knowledge
+/// contained in the instruction I.
+void salvageKnowledge(Instruction *I);
 
 /// It is possible to have multiple Value for the argument of an attribute in
 /// the same llvm.assume on the same llvm::Value. This is rare but need to be
@@ -84,7 +87,14 @@ struct MinMax {
   unsigned Max;
 };
 
-using RetainedKnowledgeMap = DenseMap<RetainedKnowledgeKey, MinMax>;
+/// A mapping from intrinsics (=`llvm.assume` calls) to a value range
+/// (=knowledge) that is encoded in them. How the value range is interpreted
+/// depends on the RetainedKnowledgeKey that was used to get this out of the
+/// RetainedKnowledgeMap.
+using Assume2KnowledgeMap = DenseMap<IntrinsicInst *, MinMax>;
+
+using RetainedKnowledgeMap =
+    DenseMap<RetainedKnowledgeKey, Assume2KnowledgeMap>;
 
 /// Insert into the map all the informations contained in the operand bundles of
 /// the llvm.assume. This should be used instead of hasAttributeInAssume when

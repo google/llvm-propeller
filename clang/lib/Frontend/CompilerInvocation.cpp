@@ -823,6 +823,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.RerollLoops = Args.hasArg(OPT_freroll_loops);
 
   Opts.DisableIntegratedAS = Args.hasArg(OPT_fno_integrated_as);
+  Opts.CallGraphProfile = !Opts.DisableIntegratedAS;
   Opts.Autolink = !Args.hasArg(OPT_fno_autolink);
   Opts.SampleProfileFile =
       std::string(Args.getLastArgValue(OPT_fprofile_sample_use_EQ));
@@ -854,7 +855,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.CoverageMapping =
       Args.hasFlag(OPT_fcoverage_mapping, OPT_fno_coverage_mapping, false);
   Opts.DumpCoverageMapping = Args.hasArg(OPT_dump_coverage_mapping);
-  Opts.AsmVerbose = Args.hasArg(OPT_masm_verbose);
+  Opts.AsmVerbose = !Args.hasArg(OPT_fno_verbose_asm);
   Opts.PreserveAsmComments = !Args.hasArg(OPT_fno_preserve_as_comments);
   Opts.AssumeSaneOperatorNew = !Args.hasArg(OPT_fno_assume_sane_operator_new);
   Opts.ObjCAutoRefCountExceptions = Args.hasArg(OPT_fobjc_arc_exceptions);
@@ -921,6 +922,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.NoZeroInitializedInBSS = Args.hasArg(OPT_mno_zero_initialized_in_bss);
   Opts.NumRegisterParameters = getLastArgIntValue(Args, OPT_mregparm, 0, Diags);
   Opts.NoExecStack = Args.hasArg(OPT_mno_exec_stack);
+  Opts.SmallDataLimit =
+      getLastArgIntValue(Args, OPT_msmall_data_limit, 0, Diags);
   Opts.FatalWarnings = Args.hasArg(OPT_massembler_fatal_warnings);
   Opts.NoWarn = Args.hasArg(OPT_massembler_no_warn);
   Opts.EnableSegmentedStacks = Args.hasArg(OPT_split_stacks);
@@ -1560,7 +1563,7 @@ static bool checkVerifyPrefixes(const std::vector<std::string> &VerifyPrefixes,
 
 bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
                                 DiagnosticsEngine *Diags,
-                                bool DefaultDiagColor, bool DefaultShowOpt) {
+                                bool DefaultDiagColor) {
   bool Success = true;
 
   Opts.DiagnosticLogFile =
@@ -1578,9 +1581,7 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
   Opts.ShowFixits = !Args.hasArg(OPT_fno_diagnostics_fixit_info);
   Opts.ShowLocation = !Args.hasArg(OPT_fno_show_source_location);
   Opts.AbsolutePath = Args.hasArg(OPT_fdiagnostics_absolute_paths);
-  Opts.ShowOptionNames =
-      Args.hasFlag(OPT_fdiagnostics_show_option,
-                   OPT_fno_diagnostics_show_option, DefaultShowOpt);
+  Opts.ShowOptionNames = !Args.hasArg(OPT_fno_diagnostics_show_option);
 
   llvm::sys::Process::UseANSIEscapeCodes(Args.hasArg(OPT_fansi_escape_codes));
 
@@ -1688,7 +1689,8 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
       Diags->Report(diag::warn_ignoring_ftabstop_value)
       << Opts.TabStop << DiagnosticOptions::DefaultTabStop;
   }
-  Opts.MessageLength = getLastArgIntValue(Args, OPT_fmessage_length, 0, Diags);
+  Opts.MessageLength =
+      getLastArgIntValue(Args, OPT_fmessage_length_EQ, 0, Diags);
   addDiagnosticArgs(Args, OPT_W_Group, OPT_W_value_Group, Opts.Warnings);
   addDiagnosticArgs(Args, OPT_R_Group, OPT_R_value_Group, Opts.Remarks);
 
@@ -1794,25 +1796,26 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       StringRef ArgStr =
           Args.hasArg(OPT_interface_stub_version_EQ)
               ? Args.getLastArgValue(OPT_interface_stub_version_EQ)
-              : "experimental-ifs-v1";
+              : "experimental-ifs-v2";
       if (ArgStr == "experimental-yaml-elf-v1" ||
+          ArgStr == "experimental-ifs-v1" ||
           ArgStr == "experimental-tapi-elf-v1") {
         std::string ErrorMessage =
             "Invalid interface stub format: " + ArgStr.str() +
             " is deprecated.";
         Diags.Report(diag::err_drv_invalid_value)
             << "Must specify a valid interface stub format type, ie: "
-               "-interface-stub-version=experimental-ifs-v1"
+               "-interface-stub-version=experimental-ifs-v2"
             << ErrorMessage;
-      } else if (ArgStr != "experimental-ifs-v1") {
+      } else if (!ArgStr.startswith("experimental-ifs-")) {
         std::string ErrorMessage =
             "Invalid interface stub format: " + ArgStr.str() + ".";
         Diags.Report(diag::err_drv_invalid_value)
             << "Must specify a valid interface stub format type, ie: "
-               "-interface-stub-version=experimental-ifs-v1"
+               "-interface-stub-version=experimental-ifs-v2"
             << ErrorMessage;
       } else {
-        Opts.ProgramAction = frontend::GenerateInterfaceIfsExpV1;
+        Opts.ProgramAction = frontend::GenerateInterfaceStubs;
       }
       break;
     }
@@ -2922,6 +2925,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       !Args.hasArg(OPT_fno_concept_satisfaction_caching);
   if (Args.hasArg(OPT_fconcepts_ts))
     Diags.Report(diag::warn_fe_concepts_ts_flag);
+  Opts.RecoveryAST =
+      Args.hasFlag(OPT_frecovery_ast, OPT_fno_recovery_ast, false);
   Opts.HeinousExtensions = Args.hasArg(OPT_fheinous_gnu_extensions);
   Opts.AccessControl = !Args.hasArg(OPT_fno_access_control);
   Opts.ElideConstructors = !Args.hasArg(OPT_fno_elide_constructors);
@@ -3379,7 +3384,7 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::GenerateModuleInterface:
   case frontend::GenerateHeaderModule:
   case frontend::GeneratePCH:
-  case frontend::GenerateInterfaceIfsExpV1:
+  case frontend::GenerateInterfaceStubs:
   case frontend::ParseSyntaxOnly:
   case frontend::ModuleFileInfo:
   case frontend::VerifyPCH:
@@ -3607,9 +3612,8 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
     Diags.Report(diag::err_fe_dependency_file_requires_MT);
     Success = false;
   }
-  Success &=
-      ParseDiagnosticArgs(Res.getDiagnosticOpts(), Args, &Diags,
-                          false /*DefaultDiagColor*/, false /*DefaultShowOpt*/);
+  Success &= ParseDiagnosticArgs(Res.getDiagnosticOpts(), Args, &Diags,
+                                 /*DefaultDiagColor=*/false);
   ParseCommentArgs(LangOpts.CommentOpts, Args);
   ParseFileSystemArgs(Res.getFileSystemOpts(), Args);
   // FIXME: We shouldn't have to pass the DashX option around here

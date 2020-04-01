@@ -284,8 +284,6 @@ def no_struct_path_tbaa : Flag<["-"], "no-struct-path-tbaa">,
   HelpText<"Turn off struct-path aware Type Based Alias Analysis">;
 def new_struct_path_tbaa : Flag<["-"], "new-struct-path-tbaa">,
   HelpText<"Enable enhanced struct-path aware Type Based Alias Analysis">;
-def masm_verbose : Flag<["-"], "masm-verbose">,
-  HelpText<"Generate verbose assembly output">;
 def mdebug_pass : Separate<["-"], "mdebug-pass">,
   HelpText<"Enable additional debug output">;
 def mframe_pointer_EQ : Joined<["-"], "mframe-pointer=">,
@@ -315,6 +313,8 @@ def mno_zero_initialized_in_bss : Flag<["-"], "mno-zero-initialized-in-bss">,
   HelpText<"Do not put zero initialized data in the BSS">;
 def mregparm : Separate<["-"], "mregparm">,
   HelpText<"Limit the number of registers available for integer arguments">;
+def msmall_data_limit : Separate<["-"], "msmall-data-limit">,
+  HelpText<"Put global and static data smaller than the limit into a special section">;
 def munwind_tables : Flag<["-"], "munwind-tables">,
   HelpText<"Generate unwinding tables for all functions">;
 def mconstructor_aliases : Flag<["-"], "mconstructor-aliases">,
@@ -453,8 +453,6 @@ def fspell_checking_limit : Separate<["-"], "fspell-checking-limit">, MetaVarNam
 def fcaret_diagnostics_max_lines :
   Separate<["-"], "fcaret-diagnostics-max-lines">, MetaVarName<"<N>">,
   HelpText<"Set the maximum number of source lines to show in a caret diagnostic">;
-def fmessage_length : Separate<["-"], "fmessage-length">, MetaVarName<"<N>">,
-  HelpText<"Format message diagnostics so that they fit within N columns or fewer, when possible.">;
 def verify_EQ : CommaJoined<["-"], "verify=">,
   MetaVarName<"<prefixes>">,
   HelpText<"Verify diagnostic output using comment directives that start with"
@@ -565,6 +563,11 @@ def fconcepts_ts : Flag<["-"], "fconcepts-ts">,
 def fno_concept_satisfaction_caching : Flag<["-"],
                                             "fno-concept-satisfaction-caching">,
   HelpText<"Disable satisfaction caching for C++2a Concepts.">;
+
+def frecovery_ast : Flag<["-"], "frecovery-ast">,
+  HelpText<"Preserve expressions in AST rather than dropping them when "
+           "encountering semantic errors">;
+def fno_recovery_ast : Flag<["-"], "fno-recovery-ast">;
 
 let Group = Action_Group in {
 

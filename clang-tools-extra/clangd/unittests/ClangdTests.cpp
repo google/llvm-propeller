@@ -552,15 +552,13 @@ TEST_F(ClangdVFSTest, InvalidCompileCommand) {
   EXPECT_ERROR(runFindDocumentHighlights(Server, FooCpp, Position()));
   EXPECT_ERROR(runRename(Server, FooCpp, Position(), "new_name",
                          clangd::RenameOptions()));
+  EXPECT_ERROR(runSignatureHelp(Server, FooCpp, Position()));
   // Identifier-based fallback completion.
   EXPECT_THAT(cantFail(runCodeComplete(Server, FooCpp, Position(),
                                        clangd::CodeCompleteOptions()))
                   .Completions,
               ElementsAre(Field(&CodeCompletion::Name, "int"),
                           Field(&CodeCompletion::Name, "main")));
-  auto SigHelp = runSignatureHelp(Server, FooCpp, Position());
-  ASSERT_TRUE(bool(SigHelp)) << "signatureHelp returned an error";
-  EXPECT_THAT(SigHelp->signatures, IsEmpty());
 }
 
 class ClangdThreadingTest : public ClangdVFSTest {};
@@ -1083,6 +1081,9 @@ TEST_F(ClangdVFSTest, FallbackWhenWaitingForCompileCommand) {
                                 Field(&CodeCompletion::Scope, "ns::"))));
 }
 
+// Tests fails when built with asan due to stack overflow. So skip running the
+// test as a workaround.
+#if !defined(__has_feature) || !__has_feature(address_sanitizer)
 TEST_F(ClangdVFSTest, TestStackOverflow) {
   MockFSProvider FS;
   ErrorCheckingCallbacks DiagConsumer;
@@ -1103,6 +1104,7 @@ TEST_F(ClangdVFSTest, TestStackOverflow) {
   // overflow
   EXPECT_TRUE(DiagConsumer.hadErrorInLastDiags());
 }
+#endif
 
 } // namespace
 } // namespace clangd

@@ -198,6 +198,20 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
          { MVT::nxv2i8, MVT::nxv2i16, MVT::nxv2i32, MVT::nxv2i64, MVT::nxv4i8,
            MVT::nxv4i16, MVT::nxv4i32, MVT::nxv8i8, MVT::nxv8i16 })
       setOperationAction(ISD::SIGN_EXTEND_INREG, VT, Legal);
+
+    for (auto VT :
+         { MVT::nxv2f16, MVT::nxv4f16, MVT::nxv8f16, MVT::nxv2f32, MVT::nxv4f32,
+           MVT::nxv2f64 }) {
+      setCondCodeAction(ISD::SETO, VT, Expand);
+      setCondCodeAction(ISD::SETOLT, VT, Expand);
+      setCondCodeAction(ISD::SETOLE, VT, Expand);
+      setCondCodeAction(ISD::SETULT, VT, Expand);
+      setCondCodeAction(ISD::SETULE, VT, Expand);
+      setCondCodeAction(ISD::SETUGE, VT, Expand);
+      setCondCodeAction(ISD::SETUGT, VT, Expand);
+      setCondCodeAction(ISD::SETUEQ, VT, Expand);
+      setCondCodeAction(ISD::SETUNE, VT, Expand);
+    }
   }
 
   // Compute derived properties from the register classes
@@ -7544,9 +7558,15 @@ SDValue AArch64TargetLowering::LowerSPLAT_VECTOR(SDValue Op,
   // FPRs don't have this restriction.
   switch (ElemVT.getSimpleVT().SimpleTy) {
   case MVT::i1: {
+    // The only legal i1 vectors are SVE vectors, so we can use SVE-specific
+    // lowering code.
+    if (auto *ConstVal = dyn_cast<ConstantSDNode>(SplatVal)) {
+      if (ConstVal->isOne())
+        return getPTrue(DAG, dl, VT, AArch64SVEPredPattern::all);
+      // TODO: Add special case for constant false
+    }
     // The general case of i1.  There isn't any natural way to do this,
     // so we use some trickery with whilelo.
-    // TODO: Add special cases for splat of constant true/false.
     SplatVal = DAG.getAnyExtOrTrunc(SplatVal, dl, MVT::i64);
     SplatVal = DAG.getNode(ISD::SIGN_EXTEND_INREG, dl, MVT::i64, SplatVal,
                            DAG.getValueType(MVT::i1));
@@ -8978,6 +8998,7 @@ bool AArch64TargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.align = Align(16);
     Info.flags = MachineMemOperand::MOStore | MachineMemOperand::MOVolatile;
     return true;
+  case Intrinsic::aarch64_sve_ld1:
   case Intrinsic::aarch64_sve_ldnt1: {
     PointerType *PtrTy = cast<PointerType>(I.getArgOperand(1)->getType());
     Info.opc = ISD::INTRINSIC_W_CHAIN;
@@ -8985,9 +9006,12 @@ bool AArch64TargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.ptrVal = I.getArgOperand(1);
     Info.offset = 0;
     Info.align = MaybeAlign(DL.getABITypeAlignment(PtrTy->getElementType()));
-    Info.flags = MachineMemOperand::MOLoad | MachineMemOperand::MONonTemporal;
+    Info.flags = MachineMemOperand::MOLoad;
+    if (Intrinsic == Intrinsic::aarch64_sve_ldnt1)
+      Info.flags |= MachineMemOperand::MONonTemporal;
     return true;
   }
+  case Intrinsic::aarch64_sve_st1:
   case Intrinsic::aarch64_sve_stnt1: {
     PointerType *PtrTy = cast<PointerType>(I.getArgOperand(2)->getType());
     Info.opc = ISD::INTRINSIC_W_CHAIN;
@@ -8995,7 +9019,9 @@ bool AArch64TargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.ptrVal = I.getArgOperand(2);
     Info.offset = 0;
     Info.align = MaybeAlign(DL.getABITypeAlignment(PtrTy->getElementType()));
-    Info.flags = MachineMemOperand::MOStore | MachineMemOperand::MONonTemporal;
+    Info.flags = MachineMemOperand::MOStore;
+    if (Intrinsic == Intrinsic::aarch64_sve_stnt1)
+      Info.flags |= MachineMemOperand::MONonTemporal;
     return true;
   }
   default:
@@ -9181,10 +9207,10 @@ static bool areExtractShuffleVectors(Value *Op1, Value *Op2) {
     return FullVT->getNumElements() == 2 * HalfVT->getNumElements();
   };
 
-  Constant *M1, *M2;
+  ArrayRef<int> M1, M2;
   Value *S1Op1, *S2Op1;
-  if (!match(Op1, m_ShuffleVector(m_Value(S1Op1), m_Undef(), m_Constant(M1))) ||
-      !match(Op2, m_ShuffleVector(m_Value(S2Op1), m_Undef(), m_Constant(M2))))
+  if (!match(Op1, m_ShuffleVector(m_Value(S1Op1), m_Undef(), m_Mask(M1))) ||
+      !match(Op2, m_ShuffleVector(m_Value(S2Op1), m_Undef(), m_Mask(M2))))
     return false;
 
   // Check that the operands are half as wide as the result and we extract
@@ -11514,7 +11540,7 @@ static MVT getSVEContainerType(EVT ContentTy) {
   }
 }
 
-static SDValue performLDNT1Combine(SDNode *N, SelectionDAG &DAG) {
+static SDValue performLD1Combine(SDNode *N, SelectionDAG &DAG) {
   SDLoc DL(N);
   EVT VT = N->getValueType(0);
   EVT PtrTy = N->getOperand(3).getValueType();
@@ -11539,7 +11565,7 @@ static SDValue performLDNT1Combine(SDNode *N, SelectionDAG &DAG) {
   return L;
 }
 
-static SDValue performSTNT1Combine(SDNode *N, SelectionDAG &DAG) {
+static SDValue performST1Combine(SDNode *N, SelectionDAG &DAG) {
   SDLoc DL(N);
 
   SDValue Data = N->getOperand(2);
@@ -13130,8 +13156,9 @@ SDValue AArch64TargetLowering::PerformDAGCombine(SDNode *N,
     case Intrinsic::aarch64_neon_st3lane:
     case Intrinsic::aarch64_neon_st4lane:
       return performNEONPostLDSTCombine(N, DCI, DAG);
+    case Intrinsic::aarch64_sve_ld1:
     case Intrinsic::aarch64_sve_ldnt1:
-      return performLDNT1Combine(N, DAG);
+      return performLD1Combine(N, DAG);
     case Intrinsic::aarch64_sve_ldnt1_gather_scalar_offset:
       return performGatherLoadCombine(N, DAG, AArch64ISD::GLDNT1);
     case Intrinsic::aarch64_sve_ldnt1_gather:
@@ -13144,8 +13171,9 @@ SDValue AArch64TargetLowering::PerformDAGCombine(SDNode *N,
       return performLDNF1Combine(N, DAG, AArch64ISD::LDNF1);
     case Intrinsic::aarch64_sve_ldff1:
       return performLDNF1Combine(N, DAG, AArch64ISD::LDFF1);
+    case Intrinsic::aarch64_sve_st1:
     case Intrinsic::aarch64_sve_stnt1:
-      return performSTNT1Combine(N, DAG);
+      return performST1Combine(N, DAG);
     case Intrinsic::aarch64_sve_stnt1_scatter_scalar_offset:
       return performScatterStoreCombine(N, DAG, AArch64ISD::SSTNT1);
     case Intrinsic::aarch64_sve_stnt1_scatter_uxtw:
@@ -13925,4 +13953,17 @@ void AArch64TargetLowering::finalizeLowering(MachineFunction &MF) const {
 // Unlike X86, we let frame lowering assign offsets to all catch objects.
 bool AArch64TargetLowering::needsFixedCatchObjects() const {
   return false;
+}
+
+bool AArch64TargetLowering::shouldLocalize(
+    const MachineInstr &MI, const TargetTransformInfo *TTI) const {
+  if (MI.getOpcode() == TargetOpcode::G_GLOBAL_VALUE) {
+    // On Darwin, TLS global vars get selected into function calls, which
+    // we don't want localized, as they can get moved into the middle of a
+    // another call sequence.
+    const GlobalValue &GV = *MI.getOperand(1).getGlobal();
+    if (GV.isThreadLocal() && Subtarget->isTargetMachO())
+      return false;
+  }
+  return TargetLoweringBase::shouldLocalize(MI, TTI);
 }

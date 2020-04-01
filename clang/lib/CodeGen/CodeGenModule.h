@@ -1300,11 +1300,6 @@ public:
   /// \param D Requires declaration
   void EmitOMPRequiresDecl(const OMPRequiresDecl *D);
 
-  /// Emits the definition of \p OldGD function with body from \p NewGD.
-  /// Required for proper handling of declare variant directive on the GPU.
-  void emitOpenMPDeviceFunctionRedefinition(GlobalDecl OldGD, GlobalDecl NewGD,
-                                            llvm::GlobalValue *GV);
-
   /// Returns whether the given record has hidden LTO visibility and therefore
   /// may participate in (single-module) CFI and whole-program vtable
   /// optimization.
@@ -1514,6 +1509,10 @@ private:
 
   /// Emits target specific Metadata for global declarations.
   void EmitTargetMetadata();
+
+  /// Emit the module flag metadata used to pass options controlling the
+  /// the backend to LLVM.
+  void EmitBackendOptionsMetadata(const CodeGenOptions CodeGenOpts);
 
   /// Emits OpenCL specific Metadata e.g. OpenCL version.
   void EmitOpenCLMetadata();

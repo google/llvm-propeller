@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "HIP.h"
+#include "AMDGPU.h"
 #include "CommonArgs.h"
 #include "InputInfo.h"
 #include "clang/Basic/Cuda.h"
@@ -16,6 +17,7 @@
 #include "clang/Driver/Options.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/TargetParser.h"
 
 using namespace clang::driver;
 using namespace clang::driver::toolchains;
@@ -266,7 +268,7 @@ void AMDGCN::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
 HIPToolChain::HIPToolChain(const Driver &D, const llvm::Triple &Triple,
                              const ToolChain &HostTC, const ArgList &Args)
-    : ToolChain(D, Triple, Args), HostTC(HostTC) {
+    : AMDGPUToolChain(D, Triple, Args), HostTC(HostTC) {
   // Lookup binaries into the driver directory, this is used to
   // discover the clang-offload-bundler executable.
   getProgramPaths().push_back(getDriver().Dir);
@@ -378,36 +380,6 @@ HIPToolChain::TranslateArgs(const llvm::opt::DerivedArgList &Args,
   const OptTable &Opts = getDriver().getOpts();
 
   for (Arg *A : Args) {
-    if (A->getOption().matches(options::OPT_Xarch__)) {
-      // Skip this argument unless the architecture matches BoundArch.
-      if (BoundArch.empty() || A->getValue(0) != BoundArch)
-        continue;
-
-      unsigned Index = Args.getBaseArgs().MakeIndex(A->getValue(1));
-      unsigned Prev = Index;
-      std::unique_ptr<Arg> XarchArg(Opts.ParseOneArg(Args, Index));
-
-      // If the argument parsing failed or more than one argument was
-      // consumed, the -Xarch_ argument's parameter tried to consume
-      // extra arguments. Emit an error and ignore.
-      //
-      // We also want to disallow any options which would alter the
-      // driver behavior; that isn't going to work in our model. We
-      // use isDriverOption() as an approximation, although things
-      // like -O4 are going to slip through.
-      if (!XarchArg || Index > Prev + 1) {
-        getDriver().Diag(diag::err_drv_invalid_Xarch_argument_with_args)
-            << A->getAsString(Args);
-        continue;
-      } else if (XarchArg->getOption().hasFlag(options::DriverOption)) {
-        getDriver().Diag(diag::err_drv_invalid_Xarch_argument_isdriver)
-            << A->getAsString(Args);
-        continue;
-      }
-      XarchArg->setBaseArg(A);
-      A = XarchArg.release();
-      DAL->AddSynthesizedArg(A);
-    }
     DAL->append(A);
   }
 

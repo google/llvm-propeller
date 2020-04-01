@@ -2935,21 +2935,39 @@ bool llvm::canReplaceOperandWithVariable(const Instruction *I, unsigned OpIdx) {
   default:
     return true;
   case Instruction::Call:
-  case Instruction::Invoke:
+  case Instruction::Invoke: {
+    ImmutableCallSite CS(I);
+
     // Can't handle inline asm. Skip it.
-    if (isa<InlineAsm>(ImmutableCallSite(I).getCalledValue()))
-      return false;
-    // Many arithmetic intrinsics have no issue taking a
-    // variable, however it's hard to distingish these from
-    // specials such as @llvm.frameaddress that require a constant.
-    if (isa<IntrinsicInst>(I))
+    if (CS.isInlineAsm())
       return false;
 
     // Constant bundle operands may need to retain their constant-ness for
     // correctness.
-    if (ImmutableCallSite(I).isBundleOperand(OpIdx))
+    if (CS.isBundleOperand(OpIdx))
       return false;
-    return true;
+
+    if (OpIdx < CS.getNumArgOperands()) {
+      // Some variadic intrinsics require constants in the variadic arguments,
+      // which currently aren't markable as immarg.
+      if (CS.isIntrinsic() && OpIdx >= CS.getFunctionType()->getNumParams()) {
+        // This is known to be OK for stackmap.
+        return CS.getIntrinsicID() == Intrinsic::experimental_stackmap;
+      }
+
+      // gcroot is a special case, since it requires a constant argument which
+      // isn't also required to be a simple ConstantInt.
+      if (CS.getIntrinsicID() == Intrinsic::gcroot)
+        return false;
+
+      // Some intrinsic operands are required to be immediates.
+      return !CS.paramHasAttr(OpIdx, Attribute::ImmArg);
+    }
+
+    // It is never allowed to replace the call argument to an intrinsic, but it
+    // may be possible for a call.
+    return !CS.isIntrinsic();
+  }
   case Instruction::ShuffleVector:
     // Shufflevector masks are constant.
     return OpIdx != 2;
@@ -3012,4 +3030,43 @@ AllocaInst *llvm::findAllocaForValue(Value *V,
   if (Res)
     AllocaForValue[V] = Res;
   return Res;
+}
+
+Value *llvm::invertCondition(Value *Condition) {
+  // First: Check if it's a constant
+  if (Constant *C = dyn_cast<Constant>(Condition))
+    return ConstantExpr::getNot(C);
+
+  // Second: If the condition is already inverted, return the original value
+  Value *NotCondition;
+  if (match(Condition, m_Not(m_Value(NotCondition))))
+    return NotCondition;
+
+  if (Instruction *Inst = dyn_cast<Instruction>(Condition)) {
+    // Third: Check all the users for an invert
+    BasicBlock *Parent = Inst->getParent();
+    for (User *U : Condition->users())
+      if (Instruction *I = dyn_cast<Instruction>(U))
+        if (I->getParent() == Parent && match(I, m_Not(m_Specific(Condition))))
+          return I;
+
+    // Last option: Create a new instruction
+    auto Inverted = BinaryOperator::CreateNot(Inst, "");
+    if (isa<PHINode>(Inst)) {
+      // FIXME: This fails if the inversion is to be used in a
+      // subsequent PHINode in the same basic block.
+      Inverted->insertBefore(&*Parent->getFirstInsertionPt());
+    } else {
+      Inverted->insertAfter(Inst);
+    }
+    return Inverted;
+  }
+
+  if (Argument *Arg = dyn_cast<Argument>(Condition)) {
+    BasicBlock &EntryBlock = Arg->getParent()->getEntryBlock();
+    return BinaryOperator::CreateNot(Condition, Arg->getName() + ".inv",
+                                     &*EntryBlock.getFirstInsertionPt());
+  }
+
+  llvm_unreachable("Unhandled condition to invert");
 }

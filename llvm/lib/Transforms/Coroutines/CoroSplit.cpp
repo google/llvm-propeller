@@ -285,7 +285,7 @@ static void createResumeEntryBlock(Function &F, coro::Shape &Shape) {
   auto *FramePtr = Shape.FramePtr;
   auto *FrameTy = Shape.FrameTy;
   auto *GepIndex = Builder.CreateStructGEP(
-      FrameTy, FramePtr, coro::Shape::SwitchFieldIndex::Index, "index.addr");
+      FrameTy, FramePtr, Shape.getSwitchIndexField(), "index.addr");
   auto *Index = Builder.CreateLoad(Shape.getIndexType(), GepIndex, "index");
   auto *Switch =
       Builder.CreateSwitch(Index, UnreachBB, Shape.CoroSuspends.size());
@@ -311,7 +311,7 @@ static void createResumeEntryBlock(Function &F, coro::Shape &Shape) {
       Builder.CreateStore(NullPtr, GepIndex);
     } else {
       auto *GepIndex = Builder.CreateStructGEP(
-          FrameTy, FramePtr, coro::Shape::SwitchFieldIndex::Index, "index.addr");
+          FrameTy, FramePtr, Shape.getSwitchIndexField(), "index.addr");
       Builder.CreateStore(IndexVal, GepIndex);
     }
     Save->replaceAllUsesWith(ConstantTokenNone::get(C));
@@ -567,8 +567,9 @@ void CoroCloner::replaceEntryBlock() {
   // branching to the original beginning of the coroutine.  Make this 
   // the entry block of the cloned function.
   auto *Entry = cast<BasicBlock>(VMap[Shape.AllocaSpillBlock]);
+  auto *OldEntry = &NewF->getEntryBlock();
   Entry->setName("entry" + Suffix);
-  Entry->moveBefore(&NewF->getEntryBlock());
+  Entry->moveBefore(OldEntry);
   Entry->getTerminator()->eraseFromParent();
 
   // Clear all predecessors of the new entry block.  There should be
@@ -581,8 +582,14 @@ void CoroCloner::replaceEntryBlock() {
   Builder.CreateUnreachable();
   BranchToEntry->eraseFromParent();
 
-  // TODO: move any allocas into Entry that weren't moved into the frame.
-  // (Currently we move all allocas into the frame.)
+  // Move any allocas into Entry that weren't moved into the frame.
+  for (auto IT = OldEntry->begin(), End = OldEntry->end(); IT != End;) {
+    Instruction &I = *IT++;
+    if (!isa<AllocaInst>(&I) || I.getNumUses() == 0)
+      continue;
+
+    I.moveBefore(*Entry, Entry->getFirstInsertionPt());
+  }
 
   // Branch from the entry to the appropriate place.
   Builder.SetInsertPoint(Entry);
@@ -638,6 +645,17 @@ Value *CoroCloner::deriveNewFramePointer() {
   llvm_unreachable("bad ABI");
 }
 
+static void addFramePointerAttrs(AttributeList &Attrs, LLVMContext &Context,
+                                 unsigned ParamIndex,
+                                 uint64_t Size, Align Alignment) {
+  AttrBuilder ParamAttrs;
+  ParamAttrs.addAttribute(Attribute::NonNull);
+  ParamAttrs.addAttribute(Attribute::NoAlias);
+  ParamAttrs.addAlignmentAttr(Alignment);
+  ParamAttrs.addDereferenceableAttr(Size);
+  Attrs = Attrs.addParamAttributes(Context, ParamIndex, ParamAttrs);
+}
+
 /// Clone the body of the original function into a resume function of
 /// some sort.
 void CoroCloner::create() {
@@ -686,6 +704,9 @@ void CoroCloner::create() {
     // original function.  This should include optimization settings and so on.
     NewAttrs = NewAttrs.addAttributes(Context, AttributeList::FunctionIndex,
                                       OrigAttrs.getFnAttributes());
+
+    addFramePointerAttrs(NewAttrs, Context, 0,
+                         Shape.FrameSize, Shape.FrameAlign);
     break;
 
   case coro::ABI::Retcon:
@@ -693,12 +714,12 @@ void CoroCloner::create() {
     // If we have a continuation prototype, just use its attributes,
     // full-stop.
     NewAttrs = Shape.RetconLowering.ResumePrototype->getAttributes();
+
+    addFramePointerAttrs(NewAttrs, Context, 0,
+                         Shape.getRetconCoroId()->getStorageSize(),
+                         Shape.getRetconCoroId()->getStorageAlignment());
     break;
   }
-
-  // Make the frame parameter nonnull and noalias.
-  NewAttrs = NewAttrs.addParamAttribute(Context, 0, Attribute::NonNull);
-  NewAttrs = NewAttrs.addParamAttribute(Context, 0, Attribute::NoAlias);
 
   switch (Shape.ABI) {
   // In these ABIs, the cloned functions always return 'void', and the
@@ -913,7 +934,8 @@ static bool simplifyTerminatorLeadingToRet(Instruction *InitialInst) {
   BasicBlock *UnconditionalSucc = nullptr;
 
   Instruction *I = InitialInst;
-  while (I->isTerminator()) {
+  while (I->isTerminator() ||
+         (isa<CmpInst>(I) && I->getNextNode()->isTerminator())) {
     if (isa<ReturnInst>(I)) {
       if (I != InitialInst) {
         // If InitialInst is an unconditional branch,
@@ -937,6 +959,29 @@ static bool simplifyTerminatorLeadingToRet(Instruction *InitialInst) {
         I = BB->getFirstNonPHIOrDbgOrLifetime();
         continue;
       }
+    } else if (auto *CondCmp = dyn_cast<CmpInst>(I)) {
+      auto *BR = dyn_cast<BranchInst>(I->getNextNode());
+      if (BR && BR->isConditional() && CondCmp == BR->getCondition()) {
+        // If the case number of suspended switch instruction is reduced to
+        // 1, then it is simplified to CmpInst in llvm::ConstantFoldTerminator.
+        // And the comparsion looks like : %cond = icmp eq i8 %V, constant.
+        ConstantInt *CondConst = dyn_cast<ConstantInt>(CondCmp->getOperand(1));
+        if (CondConst && CondCmp->getPredicate() == CmpInst::ICMP_EQ) {
+          Value *V = CondCmp->getOperand(0);
+          auto it = ResolvedValues.find(V);
+          if (it != ResolvedValues.end())
+            V = it->second;
+
+          if (ConstantInt *Cond0 = dyn_cast<ConstantInt>(V)) {
+            BasicBlock *BB = Cond0->equalsInt(CondConst->getZExtValue())
+                                 ? BR->getSuccessor(0)
+                                 : BR->getSuccessor(1);
+            scanPHIsAndUpdateValueMap(I, BB, ResolvedValues);
+            I = BB->getFirstNonPHIOrDbgOrLifetime();
+            continue;
+          }
+        }
+      }
     } else if (auto *SI = dyn_cast<SwitchInst>(I)) {
       Value *V = SI->getCondition();
       auto it = ResolvedValues.find(V);
@@ -954,6 +999,37 @@ static bool simplifyTerminatorLeadingToRet(Instruction *InitialInst) {
   return false;
 }
 
+// Check whether CI obeys the rules of musttail attribute.
+static bool shouldBeMustTail(const CallInst &CI, const Function &F) {
+  if (CI.isInlineAsm())
+    return false;
+
+  // Match prototypes and calling conventions of resume function.
+  FunctionType *CalleeTy = CI.getFunctionType();
+  if (!CalleeTy->getReturnType()->isVoidTy() || (CalleeTy->getNumParams() != 1))
+    return false;
+
+  Type *CalleeParmTy = CalleeTy->getParamType(0);
+  if (!CalleeParmTy->isPointerTy() ||
+      (CalleeParmTy->getPointerAddressSpace() != 0))
+    return false;
+
+  if (CI.getCallingConv() != F.getCallingConv())
+    return false;
+
+  // CI should not has any ABI-impacting function attributes.
+  static const Attribute::AttrKind ABIAttrs[] = {
+      Attribute::StructRet,  Attribute::ByVal,    Attribute::InAlloca,
+      Attribute::InReg,      Attribute::Returned, Attribute::SwiftSelf,
+      Attribute::SwiftError, Attribute::Alignment};
+  AttributeList Attrs = CI.getAttributes();
+  for (auto AK : ABIAttrs)
+    if (Attrs.hasParamAttribute(0, AK))
+      return false;
+
+  return true;
+}
+
 // Add musttail to any resume instructions that is immediately followed by a
 // suspend (i.e. ret). We do this even in -O0 to support guaranteed tail call
 // for symmetrical coroutine control transfer (C++ Coroutines TS extension).
@@ -966,11 +1042,8 @@ static void addMustTailToCoroResumes(Function &F) {
   SmallVector<CallInst *, 4> Resumes;
   for (auto &I : instructions(F))
     if (auto *Call = dyn_cast<CallInst>(&I))
-      if (auto *CalledValue = Call->getCalledValue())
-        // CoroEarly pass replaced coro resumes with indirect calls to an
-        // address return by CoroSubFnInst intrinsic. See if it is one of those.
-        if (isa<CoroSubFnInst>(CalledValue->stripPointerCasts()))
-          Resumes.push_back(Call);
+      if (shouldBeMustTail(*Call, F))
+        Resumes.push_back(Call);
 
   // Set musttail on those that are followed by a ret instruction.
   for (CallInst *Call : Resumes)
@@ -995,8 +1068,8 @@ static void handleNoSuspendCoroutine(coro::Shape &Shape) {
     coro::replaceCoroFree(SwitchId, /*Elide=*/AllocInst != nullptr);
     if (AllocInst) {
       IRBuilder<> Builder(AllocInst);
-      // FIXME: Need to handle overaligned members.
       auto *Frame = Builder.CreateAlloca(Shape.FrameTy);
+      Frame->setAlignment(Shape.FrameAlign);
       auto *VFrame = Builder.CreateBitCast(Frame, Builder.getInt8PtrTy());
       AllocInst->replaceAllUsesWith(Builder.getFalse());
       AllocInst->eraseFromParent();
@@ -1157,7 +1230,10 @@ static void simplifySuspendPoints(coro::Shape &Shape) {
   if (N == 0)
     return;
   while (true) {
-    if (simplifySuspendPoint(cast<CoroSuspendInst>(S[I]), Shape.CoroBegin)) {
+    auto SI = cast<CoroSuspendInst>(S[I]);
+    // Leave final.suspend to handleFinalSuspend since it is undefined behavior
+    // to resume a coroutine suspended at the final suspend point.
+    if (!SI->isFinal() && simplifySuspendPoint(SI, Shape.CoroBegin)) {
       if (--N == I)
         break;
       std::swap(S[I], S[N]);
@@ -1227,6 +1303,7 @@ static void splitRetconCoroutine(Function &F, coro::Shape &Shape,
 
     // Allocate.  We don't need to update the call graph node because we're
     // going to recompute it from scratch after splitting.
+    // FIXME: pass the required alignment
     RawFramePtr = Shape.emitAlloc(Builder, Builder.getInt64(Size), nullptr);
     RawFramePtr =
       Builder.CreateBitCast(RawFramePtr, Shape.CoroBegin->getType());

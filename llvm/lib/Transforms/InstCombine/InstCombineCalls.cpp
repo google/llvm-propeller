@@ -376,6 +376,7 @@ static Value *simplifyX86immShift(const IntrinsicInst &II,
   auto Amt = II.getArgOperand(1);
   auto VT = cast<VectorType>(Vec->getType());
   auto SVT = VT->getElementType();
+  auto AmtVT = Amt->getType();
   unsigned VWidth = VT->getNumElements();
   unsigned BitWidth = SVT->getPrimitiveSizeInBits();
 
@@ -383,7 +384,7 @@ static Value *simplifyX86immShift(const IntrinsicInst &II,
   // generic shift. If its guaranteed to be out of range, logical shifts combine to
   // zero and arithmetic shifts are clamped to (BitWidth - 1).
   if (IsImm) {
-    assert(Amt->getType()->isIntegerTy(32) &&
+    assert(AmtVT ->isIntegerTy(32) &&
            "Unexpected shift-by-immediate type");
     KnownBits KnownAmtBits =
         llvm::computeKnownBits(Amt, II.getModule()->getDataLayout());
@@ -400,30 +401,47 @@ static Value *simplifyX86immShift(const IntrinsicInst &II,
       Amt = ConstantInt::get(SVT, BitWidth - 1);
       return Builder.CreateAShr(Vec, Builder.CreateVectorSplat(VWidth, Amt));
     }
+  } else {
+    // Ensure the first element has an in-range value and the rest of the
+    // elements in the bottom 64 bits are zero.
+    assert(AmtVT->isVectorTy() && AmtVT->getPrimitiveSizeInBits() == 128 &&
+           cast<VectorType>(AmtVT)->getElementType() == SVT &&
+           "Unexpected shift-by-scalar type");
+    unsigned NumAmtElts = cast<VectorType>(AmtVT)->getNumElements();
+    APInt DemandedLower = APInt::getOneBitSet(NumAmtElts, 0);
+    APInt DemandedUpper = APInt::getBitsSet(NumAmtElts, 1, NumAmtElts / 2);
+    KnownBits KnownLowerBits = llvm::computeKnownBits(
+        Amt, DemandedLower, II.getModule()->getDataLayout());
+    KnownBits KnownUpperBits = llvm::computeKnownBits(
+        Amt, DemandedUpper, II.getModule()->getDataLayout());
+    if (KnownLowerBits.getMaxValue().ult(BitWidth) &&
+        (DemandedUpper.isNullValue() || KnownUpperBits.isZero())) {
+      SmallVector<uint32_t, 16> ZeroSplat(VWidth, 0);
+      Amt = Builder.CreateShuffleVector(Amt, Amt, ZeroSplat);
+      return (LogicalShift ? (ShiftLeft ? Builder.CreateShl(Vec, Amt)
+                                        : Builder.CreateLShr(Vec, Amt))
+                           : Builder.CreateAShr(Vec, Amt));
+    }
   }
 
   // Simplify if count is constant vector.
-  auto CAZ = dyn_cast<ConstantAggregateZero>(Amt);
   auto CDV = dyn_cast<ConstantDataVector>(Amt);
-  if (!CAZ && !CDV)
+  if (!CDV)
     return nullptr;
 
-  APInt Count(64, 0);
-  if (CDV) {
-    // SSE2/AVX2 uses all the first 64-bits of the 128-bit vector
-    // operand to compute the shift amount.
-    auto VT = cast<VectorType>(CDV->getType());
-    unsigned BitWidth = VT->getElementType()->getPrimitiveSizeInBits();
-    assert((64 % BitWidth) == 0 && "Unexpected packed shift size");
-    unsigned NumSubElts = 64 / BitWidth;
+  // SSE2/AVX2 uses all the first 64-bits of the 128-bit vector
+  // operand to compute the shift amount.
+  assert(AmtVT->isVectorTy() && AmtVT->getPrimitiveSizeInBits() == 128 &&
+         cast<VectorType>(AmtVT)->getElementType() == SVT &&
+         "Unexpected shift-by-scalar type");
 
-    // Concatenate the sub-elements to create the 64-bit value.
-    for (unsigned i = 0; i != NumSubElts; ++i) {
-      unsigned SubEltIdx = (NumSubElts - 1) - i;
-      auto SubElt = cast<ConstantInt>(CDV->getElementAsConstant(SubEltIdx));
-      Count <<= BitWidth;
-      Count |= SubElt->getValue().zextOrTrunc(64);
-    }
+  // Concatenate the sub-elements to create the 64-bit value.
+  APInt Count(64, 0);
+  for (unsigned i = 0, NumSubElts = 64 / BitWidth; i != NumSubElts; ++i) {
+    unsigned SubEltIdx = (NumSubElts - 1) - i;
+    auto SubElt = cast<ConstantInt>(CDV->getElementAsConstant(SubEltIdx));
+    Count <<= BitWidth;
+    Count |= SubElt->getValue().zextOrTrunc(64);
   }
 
   // If shift-by-zero then just return the original value.
@@ -1146,10 +1164,8 @@ Instruction *InstCombiner::simplifyMaskedStore(IntrinsicInst &II) {
   APInt DemandedElts = possiblyDemandedEltsInMask(ConstMask);
   APInt UndefElts(DemandedElts.getBitWidth(), 0);
   if (Value *V = SimplifyDemandedVectorElts(II.getOperand(0),
-                                            DemandedElts, UndefElts)) {
-    II.setOperand(0, V);
-    return &II;
-  }
+                                            DemandedElts, UndefElts))
+    return replaceOperand(II, 0, V);
 
   return nullptr;
 }
@@ -1184,15 +1200,11 @@ Instruction *InstCombiner::simplifyMaskedScatter(IntrinsicInst &II) {
   APInt DemandedElts = possiblyDemandedEltsInMask(ConstMask);
   APInt UndefElts(DemandedElts.getBitWidth(), 0);
   if (Value *V = SimplifyDemandedVectorElts(II.getOperand(0),
-                                            DemandedElts, UndefElts)) {
-    II.setOperand(0, V);
-    return &II;
-  }
+                                            DemandedElts, UndefElts))
+    return replaceOperand(II, 0, V);
   if (Value *V = SimplifyDemandedVectorElts(II.getOperand(1),
-                                            DemandedElts, UndefElts)) {
-    II.setOperand(1, V);
-    return &II;
-  }
+                                            DemandedElts, UndefElts))
+    return replaceOperand(II, 1, V);
 
   return nullptr;
 }
@@ -1304,19 +1316,39 @@ static Instruction *foldCttzCtlz(IntrinsicInst &II, InstCombiner &IC) {
 static Instruction *foldCtpop(IntrinsicInst &II, InstCombiner &IC) {
   assert(II.getIntrinsicID() == Intrinsic::ctpop &&
          "Expected ctpop intrinsic");
+  Type *Ty = II.getType();
+  unsigned BitWidth = Ty->getScalarSizeInBits();
   Value *Op0 = II.getArgOperand(0);
   Value *X;
+
   // ctpop(bitreverse(x)) -> ctpop(x)
   // ctpop(bswap(x)) -> ctpop(x)
   if (match(Op0, m_BitReverse(m_Value(X))) || match(Op0, m_BSwap(m_Value(X))))
     return IC.replaceOperand(II, 0, X);
 
+  // ctpop(x | -x) -> bitwidth - cttz(x, false)
+  if (Op0->hasOneUse() &&
+      match(Op0, m_c_Or(m_Value(X), m_Neg(m_Deferred(X))))) {
+    Function *F =
+        Intrinsic::getDeclaration(II.getModule(), Intrinsic::cttz, Ty);
+    auto *Cttz = IC.Builder.CreateCall(F, {X, IC.Builder.getFalse()});
+    auto *Bw = ConstantInt::get(Ty, APInt(BitWidth, BitWidth));
+    return IC.replaceInstUsesWith(II, IC.Builder.CreateSub(Bw, Cttz));
+  }
+
+  // ctpop(~x & (x - 1)) -> cttz(x, false)
+  if (match(Op0,
+            m_c_And(m_Not(m_Value(X)), m_Add(m_Deferred(X), m_AllOnes())))) {
+    Function *F =
+        Intrinsic::getDeclaration(II.getModule(), Intrinsic::cttz, Ty);
+    return CallInst::Create(F, {X, IC.Builder.getFalse()});
+  }
+
   // FIXME: Try to simplify vectors of integers.
-  auto *IT = dyn_cast<IntegerType>(Op0->getType());
+  auto *IT = dyn_cast<IntegerType>(Ty);
   if (!IT)
     return nullptr;
 
-  unsigned BitWidth = IT->getBitWidth();
   KnownBits Known(BitWidth);
   IC.computeKnownBits(Op0, Known, 0, &II);
 
@@ -2629,10 +2661,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     // we can simplify the input based on that, do so now.
     Value *Arg = II->getArgOperand(0);
     unsigned VWidth = Arg->getType()->getVectorNumElements();
-    if (Value *V = SimplifyDemandedVectorEltsLow(Arg, VWidth, 1)) {
-      II->setArgOperand(0, V);
-      return II;
-    }
+    if (Value *V = SimplifyDemandedVectorEltsLow(Arg, VWidth, 1))
+      return replaceOperand(*II, 0, V);
     break;
   }
 
@@ -2682,11 +2712,11 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     Value *Arg1 = II->getArgOperand(1);
     unsigned VWidth = Arg0->getType()->getVectorNumElements();
     if (Value *V = SimplifyDemandedVectorEltsLow(Arg0, VWidth, 1)) {
-      II->setArgOperand(0, V);
+      replaceOperand(*II, 0, V);
       MadeChange = true;
     }
     if (Value *V = SimplifyDemandedVectorEltsLow(Arg1, VWidth, 1)) {
-      II->setArgOperand(1, V);
+      replaceOperand(*II, 1, V);
       MadeChange = true;
     }
     if (MadeChange)
@@ -2900,10 +2930,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
            "Unexpected packed shift size");
     unsigned VWidth = Arg1->getType()->getVectorNumElements();
 
-    if (Value *V = SimplifyDemandedVectorEltsLow(Arg1, VWidth, VWidth / 2)) {
-      II->setArgOperand(1, V);
-      return II;
-    }
+    if (Value *V = SimplifyDemandedVectorEltsLow(Arg1, VWidth, VWidth / 2))
+      return replaceOperand(*II, 1, V);
     break;
   }
 
@@ -2974,7 +3002,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
                                             APInt(2, (Imm & 0x01) ? 2 : 1));
       if (Value *V = SimplifyDemandedVectorElts(Arg0, DemandedElts1,
                                                 UndefElts1)) {
-        II->setArgOperand(0, V);
+        replaceOperand(*II, 0, V);
         MadeChange = true;
       }
 
@@ -2983,7 +3011,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
                                             APInt(2, (Imm & 0x10) ? 2 : 1));
       if (Value *V = SimplifyDemandedVectorElts(Arg1, DemandedElts2,
                                                 UndefElts2)) {
-        II->setArgOperand(1, V);
+        replaceOperand(*II, 1, V);
         MadeChange = true;
       }
 
@@ -3030,11 +3058,11 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     // operands and the lowest 16-bits of the second.
     bool MadeChange = false;
     if (Value *V = SimplifyDemandedVectorEltsLow(Op0, VWidth0, 1)) {
-      II->setArgOperand(0, V);
+      replaceOperand(*II, 0, V);
       MadeChange = true;
     }
     if (Value *V = SimplifyDemandedVectorEltsLow(Op1, VWidth1, 2)) {
-      II->setArgOperand(1, V);
+      replaceOperand(*II, 1, V);
       MadeChange = true;
     }
     if (MadeChange)
@@ -3060,10 +3088,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
 
     // EXTRQI only uses the lowest 64-bits of the first 128-bit vector
     // operand.
-    if (Value *V = SimplifyDemandedVectorEltsLow(Op0, VWidth, 1)) {
-      II->setArgOperand(0, V);
-      return II;
-    }
+    if (Value *V = SimplifyDemandedVectorEltsLow(Op0, VWidth, 1))
+      return replaceOperand(*II, 0, V);
     break;
   }
 
@@ -3093,10 +3119,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
 
     // INSERTQ only uses the lowest 64-bits of the first 128-bit vector
     // operand.
-    if (Value *V = SimplifyDemandedVectorEltsLow(Op0, VWidth, 1)) {
-      II->setArgOperand(0, V);
-      return II;
-    }
+    if (Value *V = SimplifyDemandedVectorEltsLow(Op0, VWidth, 1))
+      return replaceOperand(*II, 0, V);
     break;
   }
 
@@ -3128,11 +3152,11 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     // operands.
     bool MadeChange = false;
     if (Value *V = SimplifyDemandedVectorEltsLow(Op0, VWidth0, 1)) {
-      II->setArgOperand(0, V);
+      replaceOperand(*II, 0, V);
       MadeChange = true;
     }
     if (Value *V = SimplifyDemandedVectorEltsLow(Op1, VWidth1, 1)) {
-      II->setArgOperand(1, V);
+      replaceOperand(*II, 1, V);
       MadeChange = true;
     }
     if (MadeChange)
@@ -3931,6 +3955,35 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
 
     break;
   }
+  case Intrinsic::amdgcn_ballot: {
+    if (auto *Src = dyn_cast<ConstantInt>(II->getArgOperand(0))) {
+      if (Src->isZero()) {
+        // amdgcn.ballot(i1 0) is zero.
+        return replaceInstUsesWith(*II, Constant::getNullValue(II->getType()));
+      }
+
+      if (Src->isOne()) {
+        // amdgcn.ballot(i1 1) is exec.
+        const char *RegName = "exec";
+        if (II->getType()->isIntegerTy(32))
+          RegName = "exec_lo";
+        else if (!II->getType()->isIntegerTy(64))
+          break;
+
+        Function *NewF = Intrinsic::getDeclaration(
+            II->getModule(), Intrinsic::read_register, II->getType());
+        Metadata *MDArgs[] = {MDString::get(II->getContext(), RegName)};
+        MDNode *MD = MDNode::get(II->getContext(), MDArgs);
+        Value *Args[] = {MetadataAsValue::get(II->getContext(), MD)};
+        CallInst *NewCall = Builder.CreateCall(NewF, Args);
+        NewCall->addAttribute(AttributeList::FunctionIndex,
+                              Attribute::Convergent);
+        NewCall->takeName(II);
+        return replaceInstUsesWith(*II, NewCall);
+      }
+    }
+    break;
+  }
   case Intrinsic::amdgcn_wqm_vote: {
     // wqm_vote is identity when the argument is constant.
     if (!isa<Constant>(II->getArgOperand(0)))
@@ -4155,7 +4208,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       return replaceOperand(*II, 2,
           ConstantInt::get(OpIntTy, GCR.getBasePtrIndex()));
     }
-    
+
     // Translate facts known about a pointer before relocating into
     // facts about the relocate value, while being careful to
     // preserve relocation semantics.
@@ -4388,7 +4441,8 @@ static void annotateAnyAllocSite(CallBase &Call, const TargetLibraryInfo *TLI) {
   ConstantInt *Op0C = dyn_cast<ConstantInt>(Call.getOperand(0));
   ConstantInt *Op1C =
       (NumArgs == 1) ? nullptr : dyn_cast<ConstantInt>(Call.getOperand(1));
-  // Bail out if the allocation size is zero.
+  // Bail out if the allocation size is zero (or an invalid alignment of zero
+  // with aligned_alloc).
   if ((Op0C && Op0C->isNullValue()) || (Op1C && Op1C->isNullValue()))
     return;
 
@@ -4401,6 +4455,18 @@ static void annotateAnyAllocSite(CallBase &Call, const TargetLibraryInfo *TLI) {
       Call.addAttribute(AttributeList::ReturnIndex,
                         Attribute::getWithDereferenceableOrNullBytes(
                             Call.getContext(), Op0C->getZExtValue()));
+  } else if (isAlignedAllocLikeFn(&Call, TLI) && Op1C) {
+    Call.addAttribute(AttributeList::ReturnIndex,
+                      Attribute::getWithDereferenceableOrNullBytes(
+                          Call.getContext(), Op1C->getZExtValue()));
+    // Add alignment attribute if alignment is a power of two constant.
+    if (Op0C) {
+      uint64_t AlignmentVal = Op0C->getZExtValue();
+      if (llvm::isPowerOf2_64(AlignmentVal))
+        Call.addAttribute(AttributeList::ReturnIndex,
+                          Attribute::getWithAlignment(Call.getContext(),
+                                                      Align(AlignmentVal)));
+    }
   } else if (isReallocLikeFn(&Call, TLI) && Op1C) {
     Call.addAttribute(AttributeList::ReturnIndex,
                       Attribute::getWithDereferenceableOrNullBytes(
@@ -4535,7 +4601,7 @@ Instruction *InstCombiner::visitCallBase(CallBase &Call) {
          I != E; ++I, ++ix) {
       CastInst *CI = dyn_cast<CastInst>(*I);
       if (CI && isSafeToEliminateVarargsCast(Call, DL, CI, ix)) {
-        *I = CI->getOperand(0);
+        replaceUse(*I, CI->getOperand(0));
 
         // Update the byval type to match the argument type.
         if (Call.isByValArgument(ix)) {
@@ -4565,6 +4631,10 @@ Instruction *InstCombiner::visitCallBase(CallBase &Call) {
     // the fallthrough check.
     if (I) return eraseInstFromFunction(*I);
   }
+
+  if (!Call.use_empty() && !Call.isMustTailCall())
+    if (Value *ReturnedArg = Call.getReturnedArgOperand())
+      return replaceInstUsesWith(Call, ReturnedArg);
 
   if (isAllocLikeFn(&Call, &TLI))
     return visitAllocSite(Call);

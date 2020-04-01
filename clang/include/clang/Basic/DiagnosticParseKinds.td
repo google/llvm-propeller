@@ -706,6 +706,8 @@ def err_id_after_template_in_nested_name_spec : Error<
   "expected template name after 'template' keyword in nested name specifier">;
 def err_unexpected_template_in_unqualified_id : Error<
   "'template' keyword not permitted here">;
+def err_unexpected_template_in_destructor_name : Error<
+  "'template' keyword not permitted in destructor name">;
 def err_unexpected_template_after_using : Error<
   "'template' keyword not permitted after 'using' keyword">;
 def err_two_right_angle_brackets_need_space : Error<
@@ -1230,8 +1232,11 @@ def err_omp_map_type_modifier_missing : Error<
   "missing map type modifier">;
 def err_omp_declare_simd_inbranch_notinbranch : Error<
   "unexpected '%0' clause, '%1' is specified already">;
-def err_expected_end_declare_target : Error<
-  "expected '#pragma omp end declare target'">;
+def err_expected_end_declare_target_or_variant : Error<
+  "expected '#pragma omp end declare %select{target|variant}0'">;
+def err_expected_begin_declare_variant
+    : Error<"'#pragma omp end declare variant' with no matching '#pragma omp "
+            "begin declare variant'">;
 def err_omp_declare_target_unexpected_clause: Error<
   "unexpected '%0' clause, only %select{'to' or 'link'|'to', 'link' or 'device_type'}1 clauses expected">;
 def err_omp_expected_clause: Error<

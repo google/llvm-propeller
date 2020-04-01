@@ -258,6 +258,7 @@ CODEGENOPT(UnwindTables      , 1, 0) ///< Emit unwind tables.
 CODEGENOPT(VectorizeLoop     , 1, 0) ///< Run loop vectorizer.
 CODEGENOPT(VectorizeSLP      , 1, 0) ///< Run SLP vectorizer.
 CODEGENOPT(ProfileSampleAccurate, 1, 0) ///< Sample profile is accurate.
+CODEGENOPT(CallGraphProfile  , 1, 0) ///< Run call graph profile.
 
   /// Attempt to use register sized accesses to bit-fields in structures, when
   /// possible.
@@ -309,6 +310,9 @@ CODEGENOPT(LTOVisibilityPublicStd, 1, 0)
 /// The user specified number of registers to be used for integral arguments,
 /// or 0 if unspecified.
 VALUE_CODEGENOPT(NumRegisterParameters, 32, 0)
+
+/// The threshold to put data into small data section.
+VALUE_CODEGENOPT(SmallDataLimit, 32, 0)
 
 /// The lower bound for a buffer to be considered for stack protection.
 VALUE_CODEGENOPT(SSPBufferSize, 32, 0)

@@ -8,7 +8,6 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "AffineMapDetail.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/Functional.h"
@@ -257,7 +256,8 @@ AffineMap AffineMap::replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
     results.push_back(
         expr.replaceDimsAndSymbols(dimReplacements, symReplacements));
 
-  return get(numResultDims, numResultSyms, results);
+  return results.empty() ? get(numResultDims, 0, getContext())
+                         : get(numResultDims, numResultSyms, results);
 }
 
 AffineMap AffineMap::compose(AffineMap map) {

@@ -120,6 +120,9 @@ LegalizerHelper::legalizeInstrStep(MachineInstr &MI) {
   case WidenScalar:
     LLVM_DEBUG(dbgs() << ".. Widen scalar\n");
     return widenScalar(MI, Step.TypeIdx, Step.NewType);
+  case Bitcast:
+    LLVM_DEBUG(dbgs() << ".. Bitcast type\n");
+    return bitcast(MI, Step.TypeIdx, Step.NewType);
   case Lower:
     LLVM_DEBUG(dbgs() << ".. Lower\n");
     return lower(MI, Step.TypeIdx, Step.NewType);
@@ -486,15 +489,14 @@ static bool isLibCallInTailPosition(MachineInstr &MI) {
 }
 
 LegalizerHelper::LegalizeResult
-llvm::createLibcall(MachineIRBuilder &MIRBuilder, RTLIB::Libcall Libcall,
+llvm::createLibcall(MachineIRBuilder &MIRBuilder, const char *Name,
                     const CallLowering::ArgInfo &Result,
-                    ArrayRef<CallLowering::ArgInfo> Args) {
+                    ArrayRef<CallLowering::ArgInfo> Args,
+                    const CallingConv::ID CC) {
   auto &CLI = *MIRBuilder.getMF().getSubtarget().getCallLowering();
-  auto &TLI = *MIRBuilder.getMF().getSubtarget().getTargetLowering();
-  const char *Name = TLI.getLibcallName(Libcall);
 
   CallLowering::CallLoweringInfo Info;
-  Info.CallConv = TLI.getLibcallCallingConv(Libcall);
+  Info.CallConv = CC;
   Info.Callee = MachineOperand::CreateES(Name);
   Info.OrigRet = Result;
   std::copy(Args.begin(), Args.end(), std::back_inserter(Info.OrigArgs));
@@ -502,6 +504,16 @@ llvm::createLibcall(MachineIRBuilder &MIRBuilder, RTLIB::Libcall Libcall,
     return LegalizerHelper::UnableToLegalize;
 
   return LegalizerHelper::Legalized;
+}
+
+LegalizerHelper::LegalizeResult
+llvm::createLibcall(MachineIRBuilder &MIRBuilder, RTLIB::Libcall Libcall,
+                    const CallLowering::ArgInfo &Result,
+                    ArrayRef<CallLowering::ArgInfo> Args) {
+  auto &TLI = *MIRBuilder.getMF().getSubtarget().getTargetLowering();
+  const char *Name = TLI.getLibcallName(Libcall);
+  const CallingConv::ID CC = TLI.getLibcallCallingConv(Libcall);
+  return createLibcall(MIRBuilder, Name, Result, Args, CC);
 }
 
 // Useful for libcalls where all operands have the same type.
@@ -1251,6 +1263,19 @@ void LegalizerHelper::moreElementsVectorSrc(MachineInstr &MI, LLT MoreTy,
   MO.setReg(MoreReg);
 }
 
+void LegalizerHelper::bitcastSrc(MachineInstr &MI, LLT CastTy, unsigned OpIdx) {
+  MachineOperand &Op = MI.getOperand(OpIdx);
+  Op.setReg(MIRBuilder.buildBitcast(CastTy, Op).getReg(0));
+}
+
+void LegalizerHelper::bitcastDst(MachineInstr &MI, LLT CastTy, unsigned OpIdx) {
+  MachineOperand &MO = MI.getOperand(OpIdx);
+  Register CastDst = MRI.createGenericVirtualRegister(CastTy);
+  MIRBuilder.setInsertPt(MIRBuilder.getMBB(), ++MIRBuilder.getInsertPt());
+  MIRBuilder.buildBitcast(MO, CastDst);
+  MO.setReg(CastDst);
+}
+
 LegalizerHelper::LegalizeResult
 LegalizerHelper::widenScalarMergeValues(MachineInstr &MI, unsigned TypeIdx,
                                         LLT WideTy) {
@@ -1390,16 +1415,25 @@ LegalizerHelper::widenScalarUnmergeValues(MachineInstr &MI, unsigned TypeIdx,
   if (!DstTy.isScalar())
     return UnableToLegalize;
 
-  if (WideTy.getSizeInBits() == SrcTy.getSizeInBits()) {
+  if (WideTy.getSizeInBits() >= SrcTy.getSizeInBits()) {
     if (SrcTy.isPointer()) {
       const DataLayout &DL = MIRBuilder.getDataLayout();
       if (DL.isNonIntegralAddressSpace(SrcTy.getAddressSpace())) {
-        LLVM_DEBUG(dbgs() << "Not casting non-integral address space integer\n");
+        LLVM_DEBUG(
+            dbgs() << "Not casting non-integral address space integer\n");
         return UnableToLegalize;
       }
 
       SrcTy = LLT::scalar(SrcTy.getSizeInBits());
       SrcReg = MIRBuilder.buildPtrToInt(SrcTy, SrcReg).getReg(0);
+    }
+
+    // Widen SrcTy to WideTy. This does not affect the result, but since the
+    // user requested this size, it is probably better handled than SrcTy and
+    // should reduce the total number of legalization artifacts
+    if (WideTy.getSizeInBits() > SrcTy.getSizeInBits()) {
+      SrcTy = WideTy;
+      SrcReg = MIRBuilder.buildAnyExt(WideTy, SrcReg).getReg(0);
     }
 
     // Theres no unmerge type to target. Directly extract the bits from the
@@ -1416,10 +1450,6 @@ LegalizerHelper::widenScalarUnmergeValues(MachineInstr &MI, unsigned TypeIdx,
     MI.eraseFromParent();
     return Legalized;
   }
-
-  // TODO
-  if (WideTy.getSizeInBits() > SrcTy.getSizeInBits())
-    return UnableToLegalize;
 
   // Extend the source to a wider type.
   LLT LCMTy = getLCMType(SrcTy, WideTy);
@@ -2097,6 +2127,61 @@ LegalizerHelper::lowerBitcast(MachineInstr &MI) {
   }
 
   return UnableToLegalize;
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::bitcast(MachineInstr &MI, unsigned TypeIdx, LLT CastTy) {
+  MIRBuilder.setInstr(MI);
+
+  switch (MI.getOpcode()) {
+  case TargetOpcode::G_LOAD: {
+    if (TypeIdx != 0)
+      return UnableToLegalize;
+
+    Observer.changingInstr(MI);
+    bitcastDst(MI, CastTy, 0);
+    Observer.changedInstr(MI);
+    return Legalized;
+  }
+  case TargetOpcode::G_STORE: {
+    if (TypeIdx != 0)
+      return UnableToLegalize;
+
+    Observer.changingInstr(MI);
+    bitcastSrc(MI, CastTy, 0);
+    Observer.changedInstr(MI);
+    return Legalized;
+  }
+  case TargetOpcode::G_SELECT: {
+    if (TypeIdx != 0)
+      return UnableToLegalize;
+
+    if (MRI.getType(MI.getOperand(1).getReg()).isVector()) {
+      LLVM_DEBUG(
+          dbgs() << "bitcast action not implemented for vector select\n");
+      return UnableToLegalize;
+    }
+
+    Observer.changingInstr(MI);
+    bitcastSrc(MI, CastTy, 2);
+    bitcastSrc(MI, CastTy, 3);
+    bitcastDst(MI, CastTy, 0);
+    Observer.changedInstr(MI);
+    return Legalized;
+  }
+  case TargetOpcode::G_AND:
+  case TargetOpcode::G_OR:
+  case TargetOpcode::G_XOR: {
+    Observer.changingInstr(MI);
+    bitcastSrc(MI, CastTy, 1);
+    bitcastSrc(MI, CastTy, 2);
+    bitcastDst(MI, CastTy, 0);
+    Observer.changedInstr(MI);
+    return Legalized;
+  }
+  default:
+    return UnableToLegalize;
+  }
 }
 
 LegalizerHelper::LegalizeResult
@@ -3191,6 +3276,8 @@ LegalizerHelper::fewerElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case G_FMAXNUM_IEEE:
   case G_FMINIMUM:
   case G_FMAXIMUM:
+  case G_FSHL:
+  case G_FSHR:
     return fewerElementsVectorBasic(MI, TypeIdx, NarrowTy);
   case G_SHL:
   case G_LSHR:

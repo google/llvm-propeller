@@ -2762,9 +2762,9 @@ void TargetLowering::computeKnownBitsForFrameIndex(const SDValue Op,
                                                    unsigned Depth) const {
   assert(isa<FrameIndexSDNode>(Op) && "expected FrameIndex");
 
-  if (unsigned Align = DAG.InferPtrAlignment(Op)) {
+  if (MaybeAlign Alignment = DAG.InferPtrAlign(Op)) {
     // The low bits are known zero if the pointer is aligned.
-    Known.Zero.setLowBits(Log2_32(Align));
+    Known.Zero.setLowBits(Log2(*Alignment));
   }
 }
 
@@ -2780,6 +2780,12 @@ unsigned TargetLowering::ComputeNumSignBitsForTargetNode(SDValue Op,
           Op.getOpcode() == ISD::INTRINSIC_VOID) &&
          "Should use ComputeNumSignBits if you don't know whether Op"
          " is a target node!");
+  return 1;
+}
+
+unsigned TargetLowering::computeNumSignBitsForTargetInstr(
+  GISelKnownBits &Analysis, Register R, const APInt &DemandedElts,
+  const MachineRegisterInfo &MRI, unsigned Depth) const {
   return 1;
 }
 

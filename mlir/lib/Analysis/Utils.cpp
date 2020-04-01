@@ -14,9 +14,10 @@
 #include "mlir/Analysis/Utils.h"
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
-#include "mlir/Dialect/AffineOps/AffineValueMap.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineValueMap.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/IntegerSet.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -368,16 +369,16 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
   return sizeInBytes;
 }
 
-template <typename LoadOrStoreOpPointer>
-LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
+template <typename LoadOrStoreOp>
+LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOp loadOrStoreOp,
                                             bool emitError) {
-  static_assert(std::is_same<LoadOrStoreOpPointer, AffineLoadOp>::value ||
-                    std::is_same<LoadOrStoreOpPointer, AffineStoreOp>::value,
-                "argument should be either a AffineLoadOp or a AffineStoreOp");
+  static_assert(
+      llvm::is_one_of<LoadOrStoreOp, AffineLoadOp, AffineStoreOp>::value,
+      "argument should be either a AffineLoadOp or a AffineStoreOp");
 
-  Operation *opInst = loadOrStoreOp.getOperation();
-  MemRefRegion region(opInst->getLoc());
-  if (failed(region.compute(opInst, /*loopDepth=*/0, /*sliceState=*/nullptr,
+  Operation *op = loadOrStoreOp.getOperation();
+  MemRefRegion region(op->getLoc());
+  if (failed(region.compute(op, /*loopDepth=*/0, /*sliceState=*/nullptr,
                             /*addMemRefDimBounds=*/false)))
     return success();
 
@@ -1006,4 +1007,16 @@ bool mlir::isLoopParallel(AffineForOp forOp) {
     }
   }
   return true;
+}
+
+IntegerSet mlir::simplifyIntegerSet(IntegerSet set) {
+  FlatAffineConstraints fac(set);
+  if (fac.isEmpty())
+    return IntegerSet::getEmptySet(set.getNumDims(), set.getNumSymbols(),
+                                   set.getContext());
+  fac.removeTrivialRedundancy();
+
+  auto simplifiedSet = fac.getAsIntegerSet(set.getContext());
+  assert(simplifiedSet && "guaranteed to succeed while roundtripping");
+  return simplifiedSet;
 }

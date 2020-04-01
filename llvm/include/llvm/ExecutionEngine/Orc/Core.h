@@ -24,8 +24,6 @@
 #include <memory>
 #include <vector>
 
-#define DEBUG_TYPE "orc"
-
 namespace llvm {
 namespace orc {
 
@@ -309,66 +307,6 @@ struct SymbolAliasMapEntry {
 /// A map of Symbols to (Symbol, Flags) pairs.
 using SymbolAliasMap = DenseMap<SymbolStringPtr, SymbolAliasMapEntry>;
 
-/// Render a SymbolStringPtr.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolStringPtr &Sym);
-
-/// Render a SymbolNameSet.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolNameSet &Symbols);
-
-/// Render a SymbolNameVector.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolNameVector &Symbols);
-
-/// Render a SymbolFlagsMap entry.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolFlagsMap::value_type &KV);
-
-/// Render a SymbolMap entry.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolMap::value_type &KV);
-
-/// Render a SymbolFlagsMap.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolFlagsMap &SymbolFlags);
-
-/// Render a SymbolMap.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolMap &Symbols);
-
-/// Render a SymbolDependenceMap entry.
-raw_ostream &operator<<(raw_ostream &OS,
-                        const SymbolDependenceMap::value_type &KV);
-
-/// Render a SymbolDependendeMap.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolDependenceMap &Deps);
-
-/// Render a MaterializationUnit.
-raw_ostream &operator<<(raw_ostream &OS, const MaterializationUnit &MU);
-
-//// Render a JITDylibLookupFlags instance.
-raw_ostream &operator<<(raw_ostream &OS,
-                        const JITDylibLookupFlags &JDLookupFlags);
-
-/// Rendar a SymbolLookupFlags instance.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolLookupFlags &LookupFlags);
-
-/// Render a JITDylibLookupFlags instance.
-raw_ostream &operator<<(raw_ostream &OS, const LookupKind &K);
-
-/// Render a SymbolLookupSet entry.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolLookupSet::value_type &KV);
-
-/// Render a SymbolLookupSet.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolLookupSet &LookupSet);
-
-/// Render a JITDylibSearchOrder.
-raw_ostream &operator<<(raw_ostream &OS,
-                        const JITDylibSearchOrder &SearchOrder);
-
-/// Render a SymbolAliasMap.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolAliasMap &Aliases);
-
-/// Render a SymbolState.
-raw_ostream &operator<<(raw_ostream &OS, const SymbolState &S);
-
-/// Render a LookupKind.
-raw_ostream &operator<<(raw_ostream &OS, const LookupKind &K);
-
 /// Callback to notify client that symbols have been resolved.
 using SymbolsResolvedCallback = unique_function<void(Expected<SymbolMap>)>;
 
@@ -544,6 +482,20 @@ public:
   /// additional symbols at materialization time (e.g. stubs, compile
   /// callbacks, metadata).
   Error defineMaterializing(SymbolFlagsMap SymbolFlags);
+
+  /// Define the given symbols as non-existent, removing it from the symbol
+  /// table and notifying any pending queries. Queries that lookup up the
+  /// symbol using the SymbolLookupFlags::WeaklyReferencedSymbol flag will
+  /// behave as if the symbol had not been matched in the first place. Queries
+  /// that required this symbol will fail with a missing symbol definition
+  /// error.
+  ///
+  /// This method is intended to support cleanup of special symbols like
+  /// initializer symbols: Queries using
+  /// SymbolLookupFlags::WeaklyReferencedSymbol can be used to trigger their
+  /// emission, and this method can be used to remove them from the JITDylib
+  /// once materialization is complete.
+  void defineNonExistent(ArrayRef<SymbolStringPtr> Symbols);
 
   /// Notify all not-yet-emitted covered by this MaterializationResponsibility
   /// instance that an error has occurred.
@@ -783,15 +735,6 @@ public:
   void notifySymbolMetRequiredState(const SymbolStringPtr &Name,
                                     JITEvaluatedSymbol Sym);
 
-  /// Remove a symbol from the query. This is used to drop weakly referenced
-  /// symbols that are not found.
-  void dropSymbol(const SymbolStringPtr &Name) {
-    assert(ResolvedSymbols.count(Name) &&
-           "Redundant removal of weakly-referenced symbol");
-    ResolvedSymbols.erase(Name);
-    --OutstandingSymbolsCount;
-  }
-
   /// Returns true if all symbols covered by this query have been
   ///        resolved.
   bool isComplete() const { return OutstandingSymbolsCount == 0; }
@@ -808,6 +751,8 @@ private:
   void addQueryDependence(JITDylib &JD, SymbolStringPtr Name);
 
   void removeQueryDependence(JITDylib &JD, const SymbolStringPtr &Name);
+
+  void dropSymbol(const SymbolStringPtr &Name);
 
   bool canStillFail();
 
@@ -1301,11 +1246,8 @@ public:
   /// Materialize the given unit.
   void dispatchMaterialization(JITDylib &JD,
                                std::unique_ptr<MaterializationUnit> MU) {
-    LLVM_DEBUG({
-      runSessionLocked([&]() {
-        dbgs() << "Dispatching " << *MU << " for " << JD.getName() << "\n";
-      });
-    });
+    assert(MU && "MU must be non-null");
+    DEBUG_WITH_TYPE("orc", dumpDispatchInfo(JD, *MU));
     DispatchMaterialization(JD, std::move(MU));
   }
 
@@ -1324,6 +1266,10 @@ private:
   }
 
   void runOutstandingMUs();
+
+#ifndef NDEBUG
+  void dumpDispatchInfo(JITDylib &JD, MaterializationUnit &MU);
+#endif // NDEBUG
 
   mutable std::recursive_mutex SessionMutex;
   std::shared_ptr<SymbolStringPool> SSP;
@@ -1359,6 +1305,16 @@ auto JITDylib::withSearchOrderDo(Func &&F)
 template <typename MaterializationUnitType>
 Error JITDylib::define(std::unique_ptr<MaterializationUnitType> &&MU) {
   assert(MU && "Can not define with a null MU");
+
+  if (MU->getSymbols().empty()) {
+    // Empty MUs are allowable but pathological, so issue a warning.
+    DEBUG_WITH_TYPE("orc", {
+      dbgs() << "Warning: Discarding empty MU " << MU->getName() << "\n";
+    });
+    return Error::success();
+  } else
+    DEBUG_WITH_TYPE("orc", dbgs() << "Defining MU " << MU->getName() << ":\n");
+
   return ES.runSessionLocked([&, this]() -> Error {
     if (auto Err = defineImpl(*MU))
       return Err;
@@ -1380,6 +1336,15 @@ Error JITDylib::define(std::unique_ptr<MaterializationUnitType> &&MU) {
 template <typename MaterializationUnitType>
 Error JITDylib::define(std::unique_ptr<MaterializationUnitType> &MU) {
   assert(MU && "Can not define with a null MU");
+
+  if (MU->getSymbols().empty()) {
+    // Empty MUs are allowable but pathological, so issue a warning.
+    DEBUG_WITH_TYPE("orc", {
+      dbgs() << "Warning: Discarding empty MU " << MU->getName() << "\n";
+    });
+    return Error::success();
+  } else
+    DEBUG_WITH_TYPE("orc", dbgs() << "Defining MU " << MU->getName() << ":\n");
 
   return ES.runSessionLocked([&, this]() -> Error {
     if (auto Err = defineImpl(*MU))
@@ -1424,7 +1389,5 @@ private:
 
 } // End namespace orc
 } // End namespace llvm
-
-#undef DEBUG_TYPE // "orc"
 
 #endif // LLVM_EXECUTIONENGINE_ORC_CORE_H
