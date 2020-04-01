@@ -1085,13 +1085,15 @@ static std::string getMangledNameImpl(CodeGenModule &CGM, GlobalDecl GD,
   // Check if the module name hash should be appended for internal linkage
   // symbols.
   const Decl *D = GD.getDecl();
-  if (CGM.getCodeGenOpts().UniqueInternalLinkageNames &&
-      !CGM.getModuleNameHash().empty() &&
+  if (!CGM.getModuleNameHash().empty() &&
       ((isa<FunctionDecl>(D) &&
         CGM.getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) ||
        (isa<VarDecl>(D) && CGM.getContext().GetGVALinkageForVariable(
-                               cast<VarDecl>(D)) == GVA_Internal)))
+                               cast<VarDecl>(D)) == GVA_Internal))) {
+    assert(CGM.getCodeGenOpts().UniqueInternalLinkageNames &&
+           "Hash computed when not explicitly requested");
     Out << CGM.getModuleNameHash();
+  }
 
   if (const auto *FD = dyn_cast<FunctionDecl>(ND))
     if (FD->isMultiVersion() && !OmitMultiVersionMangling) {

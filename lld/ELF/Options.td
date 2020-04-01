@@ -44,7 +44,7 @@ defm defsym: Eq<"defsym", "Define a symbol alias">, MetaVarName<"<symbol>=<value
 
 defm optimize_bb_jumps: B<"optimize-bb-jumps",
     "Remove direct jumps at the end to the next basic block",
-    "Do not remove any direct jumps at the end to the next basic block">;
+    "Do not remove any direct jumps at the end to the next basic block (default)">;
 
 defm split_stack_adjust_size
     : Eq<"split-stack-adjust-size",
