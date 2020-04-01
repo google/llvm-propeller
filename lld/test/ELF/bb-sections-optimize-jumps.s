@@ -9,14 +9,14 @@
 
 # CHECK:	<foo>
 # CHECK-NEXT:	nopl    (%rax)
-# CHECK-NEXT:	74 03	je      3 <aa.BB.foo>
+# CHECK-NEXT:	74 03	je      {{.*}} <aa.BB.foo>
 
 # CHECK:	<a.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
 
 # CHECK:	<aa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
-# CHECK-NEXT:	75 f8	jne     -8 <a.BB.foo>
+# CHECK-NEXT:	75 f8	jne     {{.*}} <a.BB.foo>
 
 # CHECK:	<aaa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)

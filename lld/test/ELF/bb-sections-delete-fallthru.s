@@ -10,7 +10,7 @@
 
 # CHECK: <foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: jne      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: jne      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 
 
@@ -23,7 +23,7 @@ foo:
 
 # CHECK: <a.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: je      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: je      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 
 .section	.text,"ax",@progbits,unique,3
@@ -34,7 +34,7 @@ a.BB.foo:
 
 # CHECK: <aa.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: jle      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: jle      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 #
 .section	.text,"ax",@progbits,unique,4
@@ -45,7 +45,7 @@ aa.BB.foo:
 
 # CHECK: <aaa.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: jl      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: jl      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 #
 .section	.text,"ax",@progbits,unique,5
@@ -56,7 +56,7 @@ aaa.BB.foo:
 
 # CHECK: <aaaa.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: jae      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: jae      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 #
 .section	.text,"ax",@progbits,unique,6
@@ -67,7 +67,7 @@ aaaa.BB.foo:
 
 # CHECK: <aaaaa.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: ja      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: ja      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 #
 .section	.text,"ax",@progbits,unique,7
@@ -78,7 +78,7 @@ aaaaa.BB.foo:
 
 # CHECK: <aaaaaa.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: jge      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: jge      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 #
 .section	.text,"ax",@progbits,unique,8
@@ -89,7 +89,7 @@ aaaaaa.BB.foo:
 
 # CHECK: <aaaaaaa.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: jg      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: jg      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 #
 .section	.text,"ax",@progbits,unique,9
@@ -100,7 +100,7 @@ aaaaaaa.BB.foo:
 
 # CHECK: <aaaaaaaa.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: jbe      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: jbe      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 #
 .section	.text,"ax",@progbits,unique,10
@@ -111,7 +111,7 @@ aaaaaaaa.BB.foo:
 
 # CHECK: <aaaaaaaaa.BB.foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: jb      {{[0-9]+}} <r.BB.foo>
+# CHECK-NEXT: jb      0x{{[[:xdigit:]]+}} <r.BB.foo>
 # CHECK-NOT: jmp
 #
 .section	.text,"ax",@progbits,unique,11

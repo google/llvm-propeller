@@ -10,14 +10,14 @@
 
 # CHECK:	<foo>
 # CHECK-NEXT:	nopl    (%rax)
-# CHECK-NEXT:	0f 85 05 00 00 00	jne     5 <aa.BB.foo>
+# CHECK-NEXT:	0f 85 05 00 00 00	jne {{.*}} <aa.BB.foo>
 
 # CHECK:	<a.BB.foo>:
-# CHECK-NEXT:	e9 05 00 00 00		jmp    5 <bar>
+# CHECK-NEXT:	e9 05 00 00 00		jmp {{.*}} <bar>
 
 # CHECK:	<aa.BB.foo>
 # CHECK-NEXT:	nopl    (%rax)
-# CHECK-NEXT:	eb f6	jmp     -10 <a.BB.foo>
+# CHECK-NEXT:	eb f6	jmp {{.*}} <a.BB.foo>
 
 # CHECK:	<bar>
 # CHECK-NEXT:	nopl    (%rax)

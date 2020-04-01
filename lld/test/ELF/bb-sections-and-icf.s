@@ -9,7 +9,7 @@
 
 # CHECK: <foo>
 # CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: je      3 <aa.BB.foo>
+# CHECK-NEXT: je      {{.*}} <aa.BB.foo>
 # CHECK-NOT: jmp
 
 # CHECK: <a.BB.foo>
