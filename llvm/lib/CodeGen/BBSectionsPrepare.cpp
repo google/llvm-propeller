@@ -154,40 +154,32 @@ INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
                 "into clusters of basic blocks.",
                 false, false)
 
-// This inserts an unconditional branch at the end of MBB to its adjacent
-// block S if and only if the control-flow implicitly falls through from MBB to
-// S. This is necessary with basic block sections as they can be reordered by
-// clustering or by the linker.
-static void insertUnconditionalFallthroughBranch(MachineBasicBlock &MBB) {
-  MachineBasicBlock *Fallthrough = MBB.getFallThrough();
-  if (Fallthrough == nullptr)
-    return;
-
-  const TargetInstrInfo *TII = MBB.getParent()->getSubtarget().getInstrInfo();
-  SmallVector<MachineOperand, 4> Cond;
-  MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
-
-  // If a branch to the fall through block already exists, return.
-  if (!TII->analyzeBranch(MBB, TBB, FBB, Cond) &&
-      (TBB == Fallthrough || FBB == Fallthrough)) {
-    return;
-  }
-
-  Cond.clear();
-  DebugLoc DL = MBB.findBranchDebugLoc();
-  TII->insertBranch(MBB, Fallthrough, nullptr, Cond, DL);
-}
-
-// This function optimizes the branching instructions of every basic block
-// (except those at the end of the sections) for a given function.
-static void optimizeBBJumps(MachineFunction &MF) {
+// This function updates and optimizes the branching instructions of every basic
+// block in a given function to accout for changes in the layout.
+static void updateBranches(
+    MachineFunction &MF,
+    const SmallVector<MachineBasicBlock *, 4> &PreLayoutFallThroughs) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
   for (auto &MBB : MF) {
+    auto NextMBBI = std::next(MBB.getIterator());
+    auto *FTMBB = PreLayoutFallThroughs[MBB.getNumber()];
+    // If this block had a fallthrough before we need an explicit unconditional
+    // branch to that block if either
+    //     1- the block ends a section, which means its next block may be
+    //        reorderd by the linker, or
+    //     2- the fallthrough block is not adjacent to the block in the new
+    //        order.
+    if (FTMBB && (MBB.isEndSection() || &*NextMBBI != FTMBB))
+      TII->insertUnconditionalBranch(MBB, FTMBB, MBB.findBranchDebugLoc());
+
     // We do not optimize branches for machine basic blocks ending sections, as
     // their adjacent block might be reordered by the linker.
     if (MBB.isEndSection())
       continue;
+
+    // It might be possible to optimize branches by flipping the branch
+    // condition.
     Cond.clear();
     MachineBasicBlock *TBB = nullptr, *FBB = nullptr; // For analyzeBranch.
     if (!TII->analyzeBranch(MBB, TBB, FBB, Cond))
@@ -276,10 +268,10 @@ static bool assignSectionsAndSortBasicBlocks(
     });
   }
 
-  // With -fbasicblock-sections, fall through blocks must be made explicitly
-  // reachable.
+  SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(
+      MF.getNumBlockIDs());
   for (auto &MBB : MF)
-    insertUnconditionalFallthroughBranch(MBB);
+    PreLayoutFallThroughs[MBB.getNumber()] = MBB.getFallThrough();
 
   // We make sure that the cluster including the entry basic block precedes all
   // other clusters.
@@ -306,9 +298,10 @@ static bool assignSectionsAndSortBasicBlocks(
     return XSectionID < YSectionID;
   });
 
-  // After ordering basic blocks, we optimize/remove branches which were
-  // previously added by insertUnconditionalFallthroughBranch.
-  optimizeBBJumps(MF);
+  // After reordering basic blocks, we must update basic block branches to
+  // insert explicit fallthrough branches when required and optimize branches
+  // when possible.
+  updateBranches(MF, PreLayoutFallThroughs);
 
   return true;
 }
