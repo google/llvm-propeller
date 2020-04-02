@@ -163,7 +163,7 @@ static void updateBranches(
   SmallVector<MachineOperand, 4> Cond;
   for (auto &MBB : MF) {
     auto NextMBBI = std::next(MBB.getIterator());
-    auto *FTMBB = MBBFallThroughs[MBB.getNumber()];
+    auto *FTMBB = PreLayoutFallThroughs[MBB.getNumber()];
     // If this block had a fallthrough before we need an explicit unconditional
     // branch to that block if either
     //     1- the block ends a section, which means its next block may be
