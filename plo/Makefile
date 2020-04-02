@@ -403,10 +403,10 @@ run-commands.sh: benchmark-dir.o | stage1-compiler
 	if [[ -z `cat commands` ]]; then \
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
-	echo "export CCP=\$$1" > run-commands.sh
+	echo "export CCP=\$$(cd \$$(dirname \$$1); pwd)/\$$(basename \$$1)" > $@
 	echo "head -n 500 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
-                >> run-commands.sh
-	chmod +x run-commands.sh
+                >> $@
+	chmod +x $@
 
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	@{ echo "Running $@ for ${ITERATIONS} iterations..." ; \
