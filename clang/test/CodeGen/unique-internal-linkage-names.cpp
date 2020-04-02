@@ -18,11 +18,11 @@ int getGlob() {
 
 // Function local static variable and anonymous namespace namespace variable.
 namespace {
-  int anon_m;
-  int getM() {
-    return anon_m;
-  }
+int anon_m;
+int getM() {
+  return anon_m;
 }
+} // namespace
 
 int retAnonM() {
   static int fGlob;
