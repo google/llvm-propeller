@@ -154,9 +154,11 @@ INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
                 "into clusters of basic blocks.",
                 false, false)
 
-// This function updates and optimizes the branching instructions of every basic block
-// in a given function to accout for changes in the layout.
-static void updateBranches(MachineFunction &MF, const SmallVector<MachineBasicBlock*, 4> &PreLayoutFallThroughs) {
+// This function updates and optimizes the branching instructions of every basic
+// block in a given function to accout for changes in the layout.
+static void updateBranches(
+    MachineFunction &MF,
+    const SmallVector<MachineBasicBlock *, 4> &PreLayoutFallThroughs) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
   for (auto &MBB : MF) {
@@ -168,7 +170,7 @@ static void updateBranches(MachineFunction &MF, const SmallVector<MachineBasicBl
     //        reorderd by the linker, or
     //     2- the fallthrough block is not adjacent to the block in the new
     //        order.
-    if (FTMBB && (MBB.isEndSection() || &*NextMBBI!=FTMBB))
+    if (FTMBB && (MBB.isEndSection() || &*NextMBBI != FTMBB))
       TII->insertUnconditionalBranch(MBB, FTMBB, MBB.findBranchDebugLoc());
 
     // We do not optimize branches for machine basic blocks ending sections, as
@@ -266,7 +268,8 @@ static bool assignSectionsAndSortBasicBlocks(
     });
   }
 
-  SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(MF.getNumBlockIDs());
+  SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(
+      MF.getNumBlockIDs());
   for (auto &MBB : MF)
     PreLayoutFallThroughs[MBB.getNumber()] = MBB.getFallThrough();
 
@@ -295,8 +298,9 @@ static bool assignSectionsAndSortBasicBlocks(
     return XSectionID < YSectionID;
   });
 
-  // After reordering basic blocks, we must update basic block branches to insert
-  // explicit fallthrough branches when required and optimize branches when possible.
+  // After reordering basic blocks, we must update basic block branches to
+  // insert explicit fallthrough branches when required and optimize branches
+  // when possible.
   updateBranches(MF, PreLayoutFallThroughs);
 
   return true;
