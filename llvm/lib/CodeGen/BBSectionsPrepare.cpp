@@ -186,6 +186,20 @@ static void updateBranches(
   }
 }
 
+/// This method iterates over the basic blocks and assigns their IsBeginSection
+/// and IsEndSection fields. This must be called after MBB layout is finalized
+/// and the SectionID's are assigned to MBBs.
+static void assignBeginEndSections(MachineFunction &MF) {
+  MF.front().setIsBeginSection();
+  MF.back().setIsEndSection();
+  for (auto MBBI = std::next(MF.begin()), E = MF.end(); MBBI != E; ++MBBI) {
+    auto PrevMBBI = std::prev(MBBI);
+    bool SectionChanged = !MBBI->sameSection(&*PrevMBBI);
+    MBBI->setIsBeginSection(SectionChanged);
+    PrevMBBI->setIsEndSection(SectionChanged);
+  }
+}
+
 // This function provides the BBCluster information associated with a function.
 // Returns true if a valid association exists and false otherwise.
 static bool getBBClusterInfoForFunction(
@@ -233,11 +247,9 @@ static bool assignSectionsAndSortBasicBlocks(
     const std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
   assert(MF.hasBBSections() && "BB Sections is not set for function.");
   // This variable stores the section ID of the cluster containing eh_pads (if
-  // all eh_pads are one cluster). Otherwise it is set as follows:
-  //    *) -1                      If function has no eh_pads.
-  //    *) MachineBasicBlock::ExceptionSectionID      If eh_pads end up in more
-  //    than on cluster.
-  int64_t EHPadsSectionID = -1;
+  // all eh_pads are one cluster). If more than one cluster contain eh_pads, we
+  // set it equal to ExceptionSectionID.
+  Optional<unsigned> EHPadsSectionID;
 
   for (auto &MBB : MF) {
     // With the 'all' option, every basic block is placed in a unique section.
@@ -258,19 +270,22 @@ static bool assignSectionsAndSortBasicBlocks(
       MBB.setSectionID(MachineBasicBlock::ColdSectionID);
     }
 
-    if (MBB.isEHPad() && MBB.getSectionID().getValue() != EHPadsSectionID)
-      EHPadsSectionID = EHPadsSectionID == -1
-                            ? MBB.getSectionID().getValue()
-                            : MachineBasicBlock::ExceptionSectionID;
+    if (MBB.isEHPad() && EHPadsSectionID != MBB.getSectionID() && EHPadsSectionID != MachineBasicBlock::ExceptionSectionID) {
+      // If we already have one cluster containing eh_pads, this must be updated
+      // to ExceptionSectionID. Otherwise, we set it equal to the current
+      // section ID.
+      EHPadsSectionID = EHPadsSectionID.hasValue()
+                            ? MachineBasicBlock::ExceptionSectionID
+                            : MBB.getSectionID();
+    }
   }
 
   // If EHPads are in more than one section, this places all of them in the
   // special exception section.
-  for (auto &MBB : MF) {
-    if (EHPadsSectionID == MachineBasicBlock::ExceptionSectionID &&
-        MBB.isEHPad())
-      MBB.setSectionID(MachineBasicBlock::ExceptionSectionID);
-  }
+  if (EHPadsSectionID == MachineBasicBlock::ExceptionSectionID)
+    for (auto &MBB : MF)
+      if (MBB.isEHPad())
+        MBB.setSectionID(EHPadsSectionID.getValue());
 
   SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(
       MF.getNumBlockIDs());
@@ -304,7 +319,7 @@ static bool assignSectionsAndSortBasicBlocks(
   });
 
   // Set IsBeginSection and IsEndSection according to the assigned section IDs.
-  MF.assignBeginEndSections();
+  assignBeginEndSections(MF);
 
   // After reordering basic blocks, we must update basic block branches to
   // insert explicit fallthrough branches when required and optimize branches
