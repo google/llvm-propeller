@@ -236,7 +236,8 @@ static bool assignSectionsAndSortBasicBlocks(
   // This variable stores the section ID of the cluster containing eh_pads (if
   // all eh_pads are one cluster). Otherwise it is set as follows:
   //    *) -1                      If function has no eh_pads.
-  //    *) MachineBasicBlock::ExceptionSectionID      If eh_pads end up in more than on cluster.
+  //    *) MachineBasicBlock::ExceptionSectionID      If eh_pads end up in more
+  //    than on cluster.
   int64_t EHPadsSectionID = -1;
 
   for (auto &MBB : MF) {
@@ -259,12 +260,16 @@ static bool assignSectionsAndSortBasicBlocks(
     }
 
     if (MBB.isEHPad() && MBB.getSectionID().getValue() != EHPadsSectionID)
-      EHPadsSectionID = EHPadsSectionID == -1 ? MBB.getSectionID().getValue() : MachineBasicBlock::ExceptionSectionID;
+      EHPadsSectionID = EHPadsSectionID == -1
+                            ? MBB.getSectionID().getValue()
+                            : MachineBasicBlock::ExceptionSectionID;
   }
 
-  // If EHPads are in more than one section, this places all of them in the special exception section.
-  for (auto &MBB: MF) {
-    if (EHPadsSectionID == MachineBasicBlock::ExceptionSectionID && MBB.isEHPad())
+  // If EHPads are in more than one section, this places all of them in the
+  // special exception section.
+  for (auto &MBB : MF) {
+    if (EHPadsSectionID == MachineBasicBlock::ExceptionSectionID &&
+        MBB.isEHPad())
       MBB.setSectionID(MachineBasicBlock::ExceptionSectionID);
   }
 
@@ -287,8 +292,11 @@ static bool assignSectionsAndSortBasicBlocks(
     // If the two basic block are in the same section, the order is decided by
     // their position within the section.
     if (XSectionID == YSectionID)
-      return (XSectionID == MachineBasicBlock::ExceptionSectionID || XSectionID == MachineBasicBlock::ColdSectionID) ?
-          X.getNumber() < Y.getNumber() : FuncBBClusterInfo[X.getNumber()]->PositionInCluster < FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
+      return (XSectionID == MachineBasicBlock::ExceptionSectionID ||
+              XSectionID == MachineBasicBlock::ColdSectionID)
+                 ? X.getNumber() < Y.getNumber()
+                 : FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
+                       FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
     // We make sure that the section containing the entry block precedes all the
     // other sections.
     if (XSectionID == EntryBBSectionID || YSectionID == EntryBBSectionID)
@@ -355,7 +363,10 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
   auto invalidProfileError = [&](auto Message) {
-    return make_error<StringError>(Twine("Invalid profile " + MBuf->getBufferIdentifier() + " at line " + Twine(LineIt.line_number()) + ": " + Message), inconvertibleErrorCode());
+    return make_error<StringError>(
+        Twine("Invalid profile " + MBuf->getBufferIdentifier() + " at line " +
+              Twine(LineIt.line_number()) + ": " + Message),
+        inconvertibleErrorCode());
   };
 
   auto FI = ProgramBBClusterInfo.end();
@@ -385,15 +396,14 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
       S.split(BBIndexes, ' ');
       // Reset current cluster position.
       CurrentPosition = 0;
-      for (auto BBIndexStr: BBIndexes) {
+      for (auto BBIndexStr : BBIndexes) {
         unsigned long long BBIndex;
         if (getAsUnsignedInteger(BBIndexStr, 10, BBIndex))
-          return invalidProfileError(
-              Twine("Unsigned integer expected: '") + BBIndexStr + "'.");
+          return invalidProfileError(Twine("Unsigned integer expected: '") +
+                                     BBIndexStr + "'.");
         if (!FuncBBIDs.insert(BBIndex).second)
-          return invalidProfileError(
-              Twine("Duplicate basic block id found '") + BBIndexStr +
-              "'.");
+          return invalidProfileError(Twine("Duplicate basic block id found '") +
+                                     BBIndexStr + "'.");
         if (!BBIndex && CurrentPosition)
           return invalidProfileError("Entry BB (0) does not begin a cluster.");
 
@@ -407,7 +417,7 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
       // this one.
       SmallVector<StringRef, 4> Aliases;
       S.split(Aliases, '/');
-      for(size_t i=1; i<Aliases.size(); ++i)
+      for (size_t i = 1; i < Aliases.size(); ++i)
         FuncAliasMap.try_emplace(Aliases[i], Aliases.front());
 
       // Prepare for parsing clusters of this function name.

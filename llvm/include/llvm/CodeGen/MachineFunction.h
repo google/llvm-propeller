@@ -503,7 +503,8 @@ public:
   /// Creates basic block Labels for this function.
   void createBBLabels();
 
-  /// assignBeginEndSections - This method iterates over the basic blocks and assigns their IsBeginSection and IsEndSection fields.
+  /// assignBeginEndSections - This method iterates over the basic blocks and
+  /// assigns their IsBeginSection and IsEndSection fields.
   void assignBeginEndSections();
 
   /// getTarget - Return the target machine this machine code is compiled with

@@ -432,10 +432,10 @@ public:
   void setIsCleanupFuncletEntry(bool V = true) { IsCleanupFuncletEntry = V; }
 
   /// Returns true if this block begins any section.
-  bool isBeginSection() const { return IsBeginSection;}
+  bool isBeginSection() const { return IsBeginSection; }
 
   /// Returns true if this block ends any section.
-  bool isEndSection() const {return IsEndSection;}
+  bool isEndSection() const { return IsEndSection; }
 
   void setIsBeginSection(bool V = true) { IsBeginSection = V; }
 
