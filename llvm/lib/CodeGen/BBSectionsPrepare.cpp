@@ -81,7 +81,6 @@
 #include "llvm/Target/TargetMachine.h"
 
 #include <iterator>
-#include <string>
 
 using llvm::SmallSet;
 using llvm::SmallVector;

@@ -486,7 +486,9 @@ public:
   void moveAfter(MachineBasicBlock *NewBefore);
 
   /// Returns true if this and MBB belong to the same section.
-  bool sameSection(const MachineBasicBlock *MBB) const;
+  bool sameSection(const MachineBasicBlock *MBB) const {
+    return this == MBB || getSectionID() == MBB->getSectionID();
+  }
 
   /// Returns the basic block that ends the section which contains this one.
   const MachineBasicBlock *getSectionEndMBB() const;

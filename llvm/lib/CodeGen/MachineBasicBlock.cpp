@@ -548,11 +548,6 @@ void MachineBasicBlock::moveAfter(MachineBasicBlock *NewBefore) {
   getParent()->splice(++NewBefore->getIterator(), getIterator());
 }
 
-// Returns true if this basic block and the Other are in the same section.
-bool MachineBasicBlock::sameSection(const MachineBasicBlock *Other) const {
-  return this->getSectionID() == Other->getSectionID();
-}
-
 // Returns the basic block ending the section containing this basic block.
 // Returns null if basic block sections is not enabled for this function.
 // This function has a linear time complexity.
