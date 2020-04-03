@@ -270,7 +270,8 @@ static bool assignSectionsAndSortBasicBlocks(
       MBB.setSectionID(MachineBasicBlock::ColdSectionID);
     }
 
-    if (MBB.isEHPad() && EHPadsSectionID != MBB.getSectionID() && EHPadsSectionID != MachineBasicBlock::ExceptionSectionID) {
+    if (MBB.isEHPad() && EHPadsSectionID != MBB.getSectionID() &&
+        EHPadsSectionID != MachineBasicBlock::ExceptionSectionID) {
       // If we already have one cluster containing eh_pads, this must be updated
       // to ExceptionSectionID. Otherwise, we set it equal to the current
       // section ID.
