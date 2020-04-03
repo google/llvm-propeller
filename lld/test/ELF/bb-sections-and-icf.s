@@ -5,18 +5,18 @@
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: ld.lld --optimize-bb-jumps --icf=all %t.o -o %t.out
-# RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=CHECK
+# RUN: llvm-objdump -d %t.out| FileCheck %s
 
-# CHECK: <foo>
-# CHECK-NEXT: nopl    (%rax)
-# CHECK-NEXT: je      {{.*}} <aa.BB.foo>
-# CHECK-NOT: jmp
+# CHECK:      <foo>:
+# CHECK-NEXT:  nopl (%rax)
+# CHECK-NEXT:  je 0x{{[[:xdigit:]]+}} <aa.BB.foo>
+# CHECK-NOT:   jmp
 
-# CHECK: <a.BB.foo>
+# CHECK:     <a.BB.foo>:
 ## Explicity check that bar is folded and not emitted.
-# CHECK-NOT: <bar>
-# CHECK-NOT: <a.BB.bar>
-# CHECK-NOT: <aa.BB.bar>
+# CHECK-NOT: <bar>:
+# CHECK-NOT: <a.BB.bar>:
+# CHECK-NOT: <aa.BB.bar>:
 
 .section	.text.bar,"ax",@progbits
 .type	bar,@function
