@@ -550,11 +550,7 @@ void MachineBasicBlock::moveAfter(MachineBasicBlock *NewBefore) {
 
 // Returns true if this basic block and the Other are in the same section.
 bool MachineBasicBlock::sameSection(const MachineBasicBlock *Other) const {
-  if (this == Other)
-    return true;
-  if (this->getSectionID() != Other->getSectionID())
-    return false;
-  return true;
+  return this->getSectionID() == Other->getSectionID();
 }
 
 // Returns the basic block ending the section containing this basic block.
@@ -570,28 +566,6 @@ const MachineBasicBlock *MachineBasicBlock::getSectionEndMBB() const {
   while (I != MF->end() && I->getSectionID() == getSectionID())
     ++I;
   return I == MF->end() ? &MF->back() : &*std::prev(I);
-}
-
-// Returns true if this block begins any section (If function has BB sections).
-// Checks only the previous basic block to see if it has a different section ID.
-// The first basic block always begins a section.
-bool MachineBasicBlock::isBeginSection() const {
-  const MachineFunction *MF = getParent();
-  if (!MF->hasBBSections())
-    return false;
-  auto Before = std::next(getReverseIterator());
-  return (Before == MF->rend()) || (Before->getSectionID() != getSectionID());
-}
-
-// Returns true if this block ends any section (If function has BB sections).
-// Checks only the next basic block to see if it has a different section ID.
-// The last basic block always ends a section.
-bool MachineBasicBlock::isEndSection() const {
-  const MachineFunction *MF = getParent();
-  if (!MF->hasBBSections())
-    return false;
-  auto After = std::next(getIterator());
-  return (After == MF->end()) || (After->getSectionID() != getSectionID());
 }
 
 void MachineBasicBlock::updateTerminator() {

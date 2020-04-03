@@ -81,7 +81,6 @@
 #include "llvm/Target/TargetMachine.h"
 
 #include <iterator>
-#include <sstream>
 #include <string>
 
 using llvm::SmallSet;
@@ -155,7 +154,7 @@ INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
                 false, false)
 
 // This function updates and optimizes the branching instructions of every basic
-// block in a given function to accout for changes in the layout.
+// block in a given function to account for changes in the layout.
 static void updateBranches(
     MachineFunction &MF,
     const SmallVector<MachineBasicBlock *, 4> &PreLayoutFallThroughs) {
@@ -182,8 +181,9 @@ static void updateBranches(
     // condition.
     Cond.clear();
     MachineBasicBlock *TBB = nullptr, *FBB = nullptr; // For analyzeBranch.
-    if (!TII->analyzeBranch(MBB, TBB, FBB, Cond))
-      MBB.updateTerminator();
+    if (TII->analyzeBranch(MBB, TBB, FBB, Cond))
+      continue;
+    MBB.updateTerminator();
   }
 }
 
@@ -233,8 +233,11 @@ static bool assignSectionsAndSortBasicBlocks(
     MachineFunction &MF,
     const std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
   assert(MF.hasBBSections() && "BB Sections is not set for function.");
-  // This is the set of sections which have EHPads in them.
-  SmallSet<unsigned, 2> EHPadsSections;
+  // This variable stores the section ID of the cluster containing eh_pads (if
+  // all eh_pads are one cluster). Otherwise it is set as follows:
+  //    *) -1                      If function has no eh_pads.
+  //    *) MachineBasicBlock::ExceptionSectionID      If eh_pads end up in more than on cluster.
+  int64_t EHPadsSectionID = -1;
 
   for (auto &MBB : MF) {
     // With the 'all' option, every basic block is placed in a unique section.
@@ -255,17 +258,14 @@ static bool assignSectionsAndSortBasicBlocks(
       MBB.setSectionID(MachineBasicBlock::ColdSectionID);
     }
 
-    if (MBB.isEHPad())
-      EHPadsSections.insert(MBB.getSectionID().getValue());
+    if (MBB.isEHPad() && MBB.getSectionID().getValue() != EHPadsSectionID)
+      EHPadsSectionID = EHPadsSectionID == -1 ? MBB.getSectionID().getValue() : MachineBasicBlock::ExceptionSectionID;
   }
 
-  // If EHPads are in more than one section, we move all of them to a specific
-  // exception section, as we need all EH Pads to be in a single section.
-  if (EHPadsSections.size() > 1) {
-    std::for_each(MF.begin(), MF.end(), [&](MachineBasicBlock &MBB) {
-      if (MBB.isEHPad())
-        MBB.setSectionID(MachineBasicBlock::ExceptionSectionID);
-    });
+  // If EHPads are in more than one section, this places all of them in the special exception section.
+  for (auto &MBB: MF) {
+    if (EHPadsSectionID == MachineBasicBlock::ExceptionSectionID && MBB.isEHPad())
+      MBB.setSectionID(MachineBasicBlock::ExceptionSectionID);
   }
 
   SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(
@@ -287,16 +287,17 @@ static bool assignSectionsAndSortBasicBlocks(
     // If the two basic block are in the same section, the order is decided by
     // their position within the section.
     if (XSectionID == YSectionID)
-      return XSectionID < MachineBasicBlock::ExceptionSectionID
-                 ? FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
-                       FuncBBClusterInfo[Y.getNumber()]->PositionInCluster
-                 : X.getNumber() < Y.getNumber();
+      return (XSectionID == MachineBasicBlock::ExceptionSectionID || XSectionID == MachineBasicBlock::ColdSectionID) ?
+          X.getNumber() < Y.getNumber() : FuncBBClusterInfo[X.getNumber()]->PositionInCluster < FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
     // We make sure that the section containing the entry block precedes all the
     // other sections.
     if (XSectionID == EntryBBSectionID || YSectionID == EntryBBSectionID)
       return XSectionID == EntryBBSectionID;
     return XSectionID < YSectionID;
   });
+
+  // Set IsBeginSection and IsEndSection according to the assigned section IDs.
+  MF.assignBeginEndSections();
 
   // After reordering basic blocks, we must update basic block branches to
   // insert explicit fallthrough branches when required and optimize branches
@@ -354,13 +355,7 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
 
   auto invalidProfileError = [&](auto Message) {
-    SmallString<128> ErrorMessage("Invalid profile ");
-    ErrorMessage += MBuf->getBufferIdentifier();
-    ErrorMessage += " at line ";
-    ErrorMessage += Twine(LineIt.line_number()).str();
-    ErrorMessage += ": ";
-    ErrorMessage += Message;
-    return make_error<StringError>(ErrorMessage, inconvertibleErrorCode());
+    return make_error<StringError>(Twine("Invalid profile " + MBuf->getBufferIdentifier() + " at line " + Twine(LineIt.line_number()) + ": " + Message), inconvertibleErrorCode());
   };
 
   auto FI = ProgramBBClusterInfo.end();
@@ -386,18 +381,18 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
       if (FI == ProgramBBClusterInfo.end())
         return invalidProfileError(
             "Cluster list does not follow a function name specifier.");
-      std::istringstream ISS(S.str());
+      SmallVector<StringRef, 4> BBIndexes;
+      S.split(BBIndexes, ' ');
       // Reset current cluster position.
       CurrentPosition = 0;
-      std::string BBIndexStr;
-      while (getline(ISS, BBIndexStr, ' ')) {
+      for (auto BBIndexStr: BBIndexes) {
         unsigned long long BBIndex;
         if (getAsUnsignedInteger(BBIndexStr, 10, BBIndex))
           return invalidProfileError(
-              std::string("Unsigned integer expected: '") + BBIndexStr + "'.");
+              Twine("Unsigned integer expected: '") + BBIndexStr + "'.");
         if (!FuncBBIDs.insert(BBIndex).second)
           return invalidProfileError(
-              std::string("Duplicate basic block id found '") + BBIndexStr +
+              Twine("Duplicate basic block id found '") + BBIndexStr +
               "'.");
         if (!BBIndex && CurrentPosition)
           return invalidProfileError("Entry BB (0) does not begin a cluster.");
@@ -410,17 +405,14 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
       // Function aliases are separated using '/'. We use the first function
       // name for the cluster info mapping and delegate all other aliases to
       // this one.
-      auto P = S.split('/');
-      // Start a new function.
-      FI = ProgramBBClusterInfo.try_emplace(P.first).first;
+      SmallVector<StringRef, 4> Aliases;
+      S.split(Aliases, '/');
+      for(size_t i=1; i<Aliases.size(); ++i)
+        FuncAliasMap.try_emplace(Aliases[i], Aliases.front());
 
-      auto AliasStr = P.second;
-      while (AliasStr != "") {
-        auto Q = AliasStr.split('/');
-        FuncAliasMap.try_emplace(Q.first, P.first);
-        AliasStr = Q.second;
-      }
       // Prepare for parsing clusters of this function name.
+      // Start a new cluster map for this function name.
+      FI = ProgramBBClusterInfo.try_emplace(Aliases.front()).first;
       CurrentCluster = 0;
       FuncBBIDs.clear();
     }

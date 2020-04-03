@@ -368,6 +368,21 @@ void MachineFunction::createBBLabels() {
   }
 }
 
+/// This method iterates over the basic blocks and assigns their IsBeginSection and IsEndSection fields. This must be called after MBB layout is finalized and the SectionID's are assigned to MBBs.
+void MachineFunction::assignBeginEndSections() {
+  assert(hasBBSections());
+  auto MBBI = begin();
+  (MBBI++)->setIsBeginSection();
+  for (auto E = end(); MBBI != E; ++MBBI) {
+    auto PrevMBBI = std::prev(MBBI);
+    auto NewSection = !MBBI->sameSection(&*PrevMBBI);
+    MBBI->setIsBeginSection(NewSection);
+    PrevMBBI->setIsEndSection(NewSection);
+  }
+  back().setIsEndSection();
+}
+
+
 /// Allocate a new MachineInstr. Use this instead of `new MachineInstr'.
 MachineInstr *MachineFunction::CreateMachineInstr(const MCInstrDesc &MCID,
                                                   const DebugLoc &DL,

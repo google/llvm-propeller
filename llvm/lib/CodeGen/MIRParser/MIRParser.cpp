@@ -441,8 +441,10 @@ MIRParserImpl::initializeMachineFunction(const yaml::MachineFunction &YamlMF,
   if (MF.getTarget().getBBSectionsType() == BasicBlockSection::Labels) {
     MF.createBBLabels();
     MF.setBBSectionsType(BasicBlockSection::Labels);
-  } else if (MF.hasBBSections())
+  } else if (MF.hasBBSections()) {
     MF.createBBLabels();
+    MF.assignBeginEndSections();
+  }
   PFS.SM = &SM;
 
   // Initialize the frame information after creating all the MBBs so that the
