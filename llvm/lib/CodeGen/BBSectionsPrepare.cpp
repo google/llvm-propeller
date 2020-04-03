@@ -191,13 +191,15 @@ static void updateBranches(
 /// and the SectionID's are assigned to MBBs.
 static void assignBeginEndSections(MachineFunction &MF) {
   MF.front().setIsBeginSection();
-  MF.back().setIsEndSection();
+  auto CurrentSectionID = MF.front().getSectionID();
   for (auto MBBI = std::next(MF.begin()), E = MF.end(); MBBI != E; ++MBBI) {
-    auto PrevMBBI = std::prev(MBBI);
-    bool SectionChanged = !MBBI->sameSection(&*PrevMBBI);
-    MBBI->setIsBeginSection(SectionChanged);
-    PrevMBBI->setIsEndSection(SectionChanged);
+    if (MBBI->getSectionID() == CurrentSectionID)
+      continue;
+    MBBI->setIsBeginSection();
+    std::prev(MBBI)->setIsEndSection();
+    CurrentSectionID = MBBI->getSectionID();
   }
+  MF.back().setIsEndSection();
 }
 
 // This function provides the BBCluster information associated with a function.
