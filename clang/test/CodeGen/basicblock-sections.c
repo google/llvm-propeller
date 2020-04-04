@@ -24,24 +24,24 @@ int another(int a) {
 }
 
 // PLAIN-NOT: section
-// PLAIN: world
+// PLAIN: world:
 //
 // BB_LABELS-NOT: section
-// BB_LABELS: world
-// BB_LABELS-LABEL: a.BB.world
-// BB_LABELS-LABEL: aa.BB.world
-// BB_LABEL-LABEL: a.BB.another
+// BB_LABELS: world:
+// BB_LABELS: a.BB.world:
+// BB_LABELS: aa.BB.world:
+// BB_LABELS: a.BB.another:
 //
-// BB_WORLD: .section .text.world,"ax",@progbits
-// BB_WORLD: world
+// BB_WORLD: .section .text.world,"ax",@progbits{{$}}
+// BB_WORLD: world:
 // BB_WORLD: .section .text.world,"ax",@progbits,unique
-// BB_WORLD: a.BB.world
+// BB_WORLD: a.BB.world:
 // BB_WORLD: .section .text.another,"ax",@progbits
 // BB_ALL: .section .text.another,"ax",@progbits,unique
-// BB_ALL: a.BB.another
+// BB_ALL: a.BB.another:
 // BB_LIST-NOT: .section .text.another,"ax",@progbits,unique
-// BB_LIST: another
-// BB_LIST-NOT: a.BB.another
+// BB_LIST: another:
+// BB_LIST-NOT: a.BB.another:
 //
-// UNIQUE: .section .text.world.a.BB.world
-// UNIQUE: .section .text.another.a.BB.another
+// UNIQUE: .section .text.world.a.BB.world,
+// UNIQUE: .section .text.another.a.BB.another,
