@@ -137,6 +137,12 @@ private:
   /// With basic block sections, this stores the Section ID of the basic block.
   Optional<unsigned> SectionID;
 
+  // Indicate that this basic block begins a section.
+  bool IsBeginSection = false;
+
+  // Indicate that this basic block ends a section.
+  bool IsEndSection = false;
+
   /// Default target of the callbr of a basic block.
   bool InlineAsmBrDefaultTarget = false;
 
@@ -426,10 +432,14 @@ public:
   void setIsCleanupFuncletEntry(bool V = true) { IsCleanupFuncletEntry = V; }
 
   /// Returns true if this block begins any section.
-  bool isBeginSection() const;
+  bool isBeginSection() const { return IsBeginSection; }
 
   /// Returns true if this block ends any section.
-  bool isEndSection() const;
+  bool isEndSection() const { return IsEndSection; }
+
+  void setIsBeginSection(bool V = true) { IsBeginSection = V; }
+
+  void setIsEndSection(bool V = true) { IsEndSection = V; }
 
   /// Returns the section ID of this basic block.
   Optional<unsigned> getSectionID() const { return SectionID; }
@@ -476,7 +486,9 @@ public:
   void moveAfter(MachineBasicBlock *NewBefore);
 
   /// Returns true if this and MBB belong to the same section.
-  bool sameSection(const MachineBasicBlock *MBB) const;
+  bool sameSection(const MachineBasicBlock *MBB) const {
+    return this == MBB || getSectionID() == MBB->getSectionID();
+  }
 
   /// Returns the basic block that ends the section which contains this one.
   const MachineBasicBlock *getSectionEndMBB() const;

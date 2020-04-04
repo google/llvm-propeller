@@ -645,7 +645,7 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
     OS << "bbsections ";
     switch (MBB.getSectionID().getValue()) {
     case MachineBasicBlock::ExceptionSectionID:
-      OS << "Excetion";
+      OS << "Exception";
       break;
     case MachineBasicBlock::ColdSectionID:
       OS << "Cold";

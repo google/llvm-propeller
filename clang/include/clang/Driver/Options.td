@@ -2329,6 +2329,10 @@ def mspeculative_load_hardening : Flag<["-"], "mspeculative-load-hardening">,
   Group<m_Group>, Flags<[CoreOption,CC1Option]>;
 def mno_speculative_load_hardening : Flag<["-"], "mno-speculative-load-hardening">,
   Group<m_Group>, Flags<[CoreOption]>;
+def mlvi_cfi : Flag<["-"], "mlvi-cfi">, Group<m_Group>, Flags<[CoreOption,DriverOption]>,
+  HelpText<"Enable only control-flow mitigations for Load Value Injection (LVI)">;
+def mno_lvi_cfi : Flag<["-"], "mno-lvi-cfi">, Group<m_Group>, Flags<[CoreOption,DriverOption]>,
+  HelpText<"Disable control-flow mitigations for Load Value Injection (LVI)">;
 
 def mrelax : Flag<["-"], "mrelax">, Group<m_riscv_Features_Group>,
   HelpText<"Enable linker relaxation">;
@@ -3238,6 +3242,8 @@ def mrdseed : Flag<["-"], "mrdseed">, Group<m_x86_Features_Group>;
 def mno_rdseed : Flag<["-"], "mno-rdseed">, Group<m_x86_Features_Group>;
 def msahf : Flag<["-"], "msahf">, Group<m_x86_Features_Group>;
 def mno_sahf : Flag<["-"], "mno-sahf">, Group<m_x86_Features_Group>;
+def mserialize : Flag<["-"], "mserialize">, Group<m_x86_Features_Group>;
+def mno_serialize : Flag<["-"], "mno-serialize">, Group<m_x86_Features_Group>;
 def msgx : Flag<["-"], "msgx">, Group<m_x86_Features_Group>;
 def mno_sgx : Flag<["-"], "mno-sgx">, Group<m_x86_Features_Group>;
 def msha : Flag<["-"], "msha">, Group<m_x86_Features_Group>;
