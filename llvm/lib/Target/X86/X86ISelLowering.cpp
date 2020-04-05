@@ -191,12 +191,10 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
   setTruncStoreAction(MVT::f64, MVT::f32, Expand);
 
   // SETOEQ and SETUNE require checking two conditions.
-  setCondCodeAction(ISD::SETOEQ, MVT::f32, Expand);
-  setCondCodeAction(ISD::SETOEQ, MVT::f64, Expand);
-  setCondCodeAction(ISD::SETOEQ, MVT::f80, Expand);
-  setCondCodeAction(ISD::SETUNE, MVT::f32, Expand);
-  setCondCodeAction(ISD::SETUNE, MVT::f64, Expand);
-  setCondCodeAction(ISD::SETUNE, MVT::f80, Expand);
+  for (auto VT : {MVT::f32, MVT::f64, MVT::f80}) {
+    setCondCodeAction(ISD::SETOEQ, VT, Expand);
+    setCondCodeAction(ISD::SETUNE, VT, Expand);
+  }
 
   // Integer absolute.
   if (Subtarget.hasCMov()) {
@@ -361,46 +359,27 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationPromotedToType(ISD::CTLZ           , MVT::i8   , MVT::i32);
     setOperationPromotedToType(ISD::CTLZ_ZERO_UNDEF, MVT::i8   , MVT::i32);
   } else {
-    setOperationAction(ISD::CTLZ           , MVT::i8   , Custom);
-    setOperationAction(ISD::CTLZ           , MVT::i16  , Custom);
-    setOperationAction(ISD::CTLZ           , MVT::i32  , Custom);
-    setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i8   , Custom);
-    setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i16  , Custom);
-    setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i32  , Custom);
-    if (Subtarget.is64Bit()) {
-      setOperationAction(ISD::CTLZ         , MVT::i64  , Custom);
-      setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i64, Custom);
+    for (auto VT : {MVT::i8, MVT::i16, MVT::i32, MVT::i64}) {
+      if (VT == MVT::i64 && !Subtarget.is64Bit())
+        continue;
+      setOperationAction(ISD::CTLZ           , VT, Custom);
+      setOperationAction(ISD::CTLZ_ZERO_UNDEF, VT, Custom);
     }
   }
 
-  // Special handling for half-precision floating point conversions.
-  // If we don't have F16C support, then lower half float conversions
-  // into library calls.
-  if (!Subtarget.useSoftFloat() && Subtarget.hasF16C()) {
-    setOperationAction(ISD::FP16_TO_FP,        MVT::f32, Custom);
-    setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f32, Custom);
-    setOperationAction(ISD::FP_TO_FP16,        MVT::f32, Custom);
-    setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f32, Custom);
-  } else {
-    setOperationAction(ISD::FP16_TO_FP,        MVT::f32, Expand);
-    setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f32, Expand);
-    setOperationAction(ISD::FP_TO_FP16,        MVT::f32, Expand);
-    setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f32, Expand);
+  for (auto Op : {ISD::FP16_TO_FP, ISD::STRICT_FP16_TO_FP, ISD::FP_TO_FP16,
+                  ISD::STRICT_FP_TO_FP16}) {
+    // Special handling for half-precision floating point conversions.
+    // If we don't have F16C support, then lower half float conversions
+    // into library calls.
+    setOperationAction(
+        Op, MVT::f32,
+        (!Subtarget.useSoftFloat() && Subtarget.hasF16C()) ? Custom : Expand);
+    // There's never any support for operations beyond MVT::f32.
+    setOperationAction(Op, MVT::f64, Expand);
+    setOperationAction(Op, MVT::f80, Expand);
+    setOperationAction(Op, MVT::f128, Expand);
   }
-
-  // There's never any support for operations beyond MVT::f32.
-  setOperationAction(ISD::FP16_TO_FP, MVT::f64, Expand);
-  setOperationAction(ISD::FP16_TO_FP, MVT::f80, Expand);
-  setOperationAction(ISD::FP16_TO_FP, MVT::f128, Expand);
-  setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f64, Expand);
-  setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f80, Expand);
-  setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f128, Expand);
-  setOperationAction(ISD::FP_TO_FP16, MVT::f64, Expand);
-  setOperationAction(ISD::FP_TO_FP16, MVT::f80, Expand);
-  setOperationAction(ISD::FP_TO_FP16, MVT::f128, Expand);
-  setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f64, Expand);
-  setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f80, Expand);
-  setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f128, Expand);
 
   setLoadExtAction(ISD::EXTLOAD, MVT::f32, MVT::f16, Expand);
   setLoadExtAction(ISD::EXTLOAD, MVT::f64, MVT::f16, Expand);
@@ -5427,6 +5406,12 @@ static bool isUndefUpperHalf(ArrayRef<int> Mask) {
 /// Return true if Val falls within the specified range (L, H].
 static bool isInRange(int Val, int Low, int Hi) {
   return (Val >= Low && Val < Hi);
+}
+
+/// Return true if every element value in Mask falls within the specified
+/// range (L, H].
+static bool isInRange(ArrayRef<int> Mask, int Low, int Hi) {
+  return llvm::all_of(Mask, [Low, Hi](int M) { return isInRange(M, Low, Hi); });
 }
 
 /// Return true if the value of any element in Mask falls within the specified
@@ -14713,6 +14698,29 @@ static SDValue lowerV8I16Shuffle(const SDLoc &DL, ArrayRef<int> Mask,
                                               Zeroable, Subtarget, DAG))
     return V;
 
+  // Attempt to lower using compaction, SSE41 is necessary for PACKUSDW.
+  // We could use SIGN_EXTEND_INREG+PACKSSDW for older targets but this seems to
+  // be slower than a PSHUFLW+PSHUFHW+PSHUFD chain.
+  int NumEvenDrops = canLowerByDroppingEvenElements(Mask, false);
+  if ((NumEvenDrops == 1 || NumEvenDrops == 2) && Subtarget.hasSSE41() &&
+      !Subtarget.hasVLX()) {
+    SmallVector<SDValue, 8> DWordClearOps(4, DAG.getConstant(0, DL, MVT::i32));
+    for (unsigned i = 0; i != 4; i += 1 << (NumEvenDrops - 1))
+      DWordClearOps[i] = DAG.getConstant(0xFFFF, DL, MVT::i32);
+    SDValue DWordClearMask = DAG.getBuildVector(MVT::v4i32, DL, DWordClearOps);
+    V1 = DAG.getNode(ISD::AND, DL, MVT::v4i32, DAG.getBitcast(MVT::v4i32, V1),
+                     DWordClearMask);
+    V2 = DAG.getNode(ISD::AND, DL, MVT::v4i32, DAG.getBitcast(MVT::v4i32, V2),
+                     DWordClearMask);
+    // Now pack things back together.
+    SDValue Result = DAG.getNode(X86ISD::PACKUS, DL, MVT::v8i16, V1, V2);
+    if (NumEvenDrops == 2) {
+      Result = DAG.getBitcast(MVT::v4i32, Result);
+      Result = DAG.getNode(X86ISD::PACKUS, DL, MVT::v8i16, Result, Result);
+    }
+    return Result;
+  }
+
   // Try to lower by permuting the inputs into an unpack instruction.
   if (SDValue Unpack = lowerShuffleAsPermuteAndUnpack(DL, MVT::v8i16, V1, V2,
                                                       Mask, Subtarget, DAG))
@@ -20213,7 +20221,7 @@ static SDValue truncateVectorWithPACK(unsigned Opcode, EVT DstVT, SDValue In,
     InVT = EVT::getVectorVT(Ctx, InVT, 128 / InVT.getSizeInBits());
     OutVT = EVT::getVectorVT(Ctx, OutVT, 128 / OutVT.getSizeInBits());
     In = DAG.getBitcast(InVT, In);
-    SDValue Res = DAG.getNode(Opcode, DL, OutVT, In, In);
+    SDValue Res = DAG.getNode(Opcode, DL, OutVT, In, DAG.getUNDEF(InVT));
     Res = extractSubVector(Res, 0, DAG, DL, 64);
     return DAG.getBitcast(DstVT, Res);
   }
@@ -35335,31 +35343,43 @@ static SDValue combineTargetShuffle(SDValue N, SelectionDAG &DAG,
   SmallVector<int, 4> Mask;
   unsigned Opcode = N.getOpcode();
 
+  bool IsUnary;
+  SmallVector<int, 64> TargetMask;
+  SmallVector<SDValue, 2> TargetOps;
+  if (isTargetShuffle(Opcode))
+    getTargetShuffleMask(N.getNode(), VT, false, TargetOps, TargetMask, IsUnary);
+
   // Combine binary shuffle of 2 similar 'Horizontal' instructions into a
-  // single instruction.
-  if (VT.getScalarSizeInBits() == 64 &&
-      (Opcode == X86ISD::MOVSD || Opcode == X86ISD::UNPCKH ||
-       Opcode == X86ISD::UNPCKL)) {
-    auto BC0 = peekThroughBitcasts(N.getOperand(0));
-    auto BC1 = peekThroughBitcasts(N.getOperand(1));
-    EVT VT0 = BC0.getValueType();
-    EVT VT1 = BC1.getValueType();
-    unsigned Opcode0 = BC0.getOpcode();
-    unsigned Opcode1 = BC1.getOpcode();
-    if (Opcode0 == Opcode1 && VT0 == VT1 &&
-        (Opcode0 == X86ISD::FHADD || Opcode0 == X86ISD::HADD ||
-         Opcode0 == X86ISD::FHSUB || Opcode0 == X86ISD::HSUB ||
-         Opcode0 == X86ISD::PACKSS || Opcode0 == X86ISD::PACKUS)) {
-      SDValue Lo, Hi;
-      if (Opcode == X86ISD::MOVSD) {
-        Lo = BC1.getOperand(0);
-        Hi = BC0.getOperand(1);
-      } else {
-        Lo = BC0.getOperand(Opcode == X86ISD::UNPCKH ? 1 : 0);
-        Hi = BC1.getOperand(Opcode == X86ISD::UNPCKH ? 1 : 0);
+  // single instruction. Attempt to match a v2X64 repeating shuffle pattern that
+  // represents the LHS/RHS inputs for the lower/upper halves.
+  SmallVector<int, 16> TargetMask128;
+  if (!TargetMask.empty() && TargetOps.size() == 2 &&
+      is128BitLaneRepeatedShuffleMask(VT, TargetMask, TargetMask128)) {
+    SmallVector<int, 16> WidenedMask128 = TargetMask128;
+    while (WidenedMask128.size() > 2) {
+      SmallVector<int, 16> WidenedMask;
+      if (!canWidenShuffleElements(WidenedMask128, WidenedMask))
+        break;
+      WidenedMask128 = std::move(WidenedMask);
+    }
+    if (WidenedMask128.size() == 2 && isInRange(WidenedMask128, 0, 4)) {
+      SDValue BC0 = peekThroughBitcasts(TargetOps[0]);
+      SDValue BC1 = peekThroughBitcasts(TargetOps[1]);
+      EVT VT0 = BC0.getValueType();
+      EVT VT1 = BC1.getValueType();
+      unsigned Opcode0 = BC0.getOpcode();
+      unsigned Opcode1 = BC1.getOpcode();
+      if (Opcode0 == Opcode1 && VT0 == VT1 &&
+          (Opcode0 == X86ISD::FHADD || Opcode0 == X86ISD::HADD ||
+           Opcode0 == X86ISD::FHSUB || Opcode0 == X86ISD::HSUB ||
+           Opcode0 == X86ISD::PACKSS || Opcode0 == X86ISD::PACKUS)) {
+        SDValue Lo = isInRange(WidenedMask128[0], 0, 2) ? BC0 : BC1;
+        SDValue Hi = isInRange(WidenedMask128[1], 0, 2) ? BC0 : BC1;
+        Lo = Lo.getOperand(WidenedMask128[0] & 1);
+        Hi = Hi.getOperand(WidenedMask128[1] & 1);
+        SDValue Horiz = DAG.getNode(Opcode0, DL, VT0, Lo, Hi);
+        return DAG.getBitcast(VT, Horiz);
       }
-      SDValue Horiz = DAG.getNode(Opcode0, DL, VT0, Lo, Hi);
-      return DAG.getBitcast(VT, Horiz);
     }
   }
 

@@ -4563,7 +4563,6 @@ SDValue SITargetLowering::LowerBRCOND(SDValue BRCOND,
     };
     SDValue NewBR = DAG.getNode(ISD::BR, DL, BR->getVTList(), Ops);
     DAG.ReplaceAllUsesWith(BR, NewBR.getNode());
-    BR = NewBR.getNode();
   }
 
   SDValue Chain = SDValue(Result, Result->getNumValues() - 1);
@@ -10862,8 +10861,8 @@ bool SITargetLowering::isSDNodeSourceOfDivergence(const SDNode * N,
       const GCNSubtarget &ST = MF->getSubtarget<GCNSubtarget>();
       const MachineRegisterInfo &MRI = MF->getRegInfo();
       const SIRegisterInfo &TRI = ST.getInstrInfo()->getRegisterInfo();
-      unsigned Reg = R->getReg();
-      if (Register::isPhysicalRegister(Reg))
+      Register Reg = R->getReg();
+      if (Reg.isPhysical())
         return !TRI.isSGPRReg(MRI, Reg);
 
       if (MRI.isLiveIn(Reg)) {

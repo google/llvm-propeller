@@ -35,6 +35,8 @@
 #include "llvm/ADT/PointerEmbeddedInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
+#include <set>
+
 using namespace clang;
 using namespace llvm::omp;
 
@@ -5543,6 +5545,9 @@ static void setPrototype(Sema &S, FunctionDecl *FD, FunctionDecl *FDWithProto,
   FD->setParams(Params);
 }
 
+Sema::OMPDeclareVariantScope::OMPDeclareVariantScope(OMPTraitInfo &TI)
+    : TI(&TI), NameSuffix(TI.getMangledName()) {}
+
 FunctionDecl *
 Sema::ActOnStartOfFunctionDefinitionInOpenMPDeclareVariantScope(Scope *S,
                                                                 Declarator &D) {
@@ -5579,7 +5584,7 @@ void Sema::ActOnFinishedFunctionDefinitionInOpenMPDeclareVariantScope(
   BaseFD->setImplicit(true);
 }
 
-ExprResult Sema::ActOnOpenMPCall(Sema &S, ExprResult Call, Scope *Scope,
+ExprResult Sema::ActOnOpenMPCall(ExprResult Call, Scope *Scope,
                                  SourceLocation LParenLoc,
                                  MultiExprArg ArgExprs,
                                  SourceLocation RParenLoc, Expr *ExecConfig) {
@@ -5596,8 +5601,8 @@ ExprResult Sema::ActOnOpenMPCall(Sema &S, ExprResult Call, Scope *Scope,
   if (!CalleeFnDecl->hasAttr<OMPDeclareVariantAttr>())
     return Call;
 
-  ASTContext &Context = S.getASTContext();
-  OMPContext OMPCtx(S.getLangOpts().OpenMPIsDevice,
+  ASTContext &Context = getASTContext();
+  OMPContext OMPCtx(getLangOpts().OpenMPIsDevice,
                     Context.getTargetInfo().getTriple());
 
   SmallVector<Expr *, 4> Exprs;
@@ -5645,12 +5650,12 @@ ExprResult Sema::ActOnOpenMPCall(Sema &S, ExprResult Call, Scope *Scope,
       if (auto *SpecializedMethod = dyn_cast<CXXMethodDecl>(BestDecl)) {
         auto *MemberCall = dyn_cast<CXXMemberCallExpr>(CE);
         BestExpr = MemberExpr::CreateImplicit(
-            S.Context, MemberCall->getImplicitObjectArgument(),
-            /* IsArrow */ false, SpecializedMethod, S.Context.BoundMemberTy,
+            Context, MemberCall->getImplicitObjectArgument(),
+            /* IsArrow */ false, SpecializedMethod, Context.BoundMemberTy,
             MemberCall->getValueKind(), MemberCall->getObjectKind());
       }
-      NewCall = S.BuildCallExpr(Scope, BestExpr, LParenLoc, ArgExprs, RParenLoc,
-                                ExecConfig);
+      NewCall = BuildCallExpr(Scope, BestExpr, LParenLoc, ArgExprs, RParenLoc,
+                              ExecConfig);
       if (NewCall.isUsable())
         break;
     }
@@ -5661,7 +5666,6 @@ ExprResult Sema::ActOnOpenMPCall(Sema &S, ExprResult Call, Scope *Scope,
 
   if (!NewCall.isUsable())
     return Call;
-
   return PseudoObjectExpr::Create(Context, CE, {NewCall.get()}, 0);
 }
 
@@ -17054,7 +17058,7 @@ OMPClause *Sema::ActOnOpenMPMapClause(
   OpenMPMapModifierKind Modifiers[] = {OMPC_MAP_MODIFIER_unknown,
                                        OMPC_MAP_MODIFIER_unknown,
                                        OMPC_MAP_MODIFIER_unknown};
-  SourceLocation ModifiersLoc[OMPMapClause::NumberOfModifiers];
+  SourceLocation ModifiersLoc[NumberOfOMPMapClauseModifiers];
 
   // Process map-type-modifiers, flag errors for duplicate modifiers.
   unsigned Count = 0;
@@ -17064,7 +17068,7 @@ OMPClause *Sema::ActOnOpenMPMapClause(
       Diag(MapTypeModifiersLoc[I], diag::err_omp_duplicate_map_type_modifier);
       continue;
     }
-    assert(Count < OMPMapClause::NumberOfModifiers &&
+    assert(Count < NumberOfOMPMapClauseModifiers &&
            "Modifiers exceed the allowed number of map type modifiers");
     Modifiers[Count] = MapTypeModifiers[I];
     ModifiersLoc[Count] = MapTypeModifiersLoc[I];
