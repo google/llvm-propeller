@@ -6,6 +6,7 @@
 #
 #===----------------------------------------------------------------------===##
 
+import copy
 import locale
 import os
 import platform
@@ -149,6 +150,8 @@ class Configuration(object):
         self.configure_coverage()
         self.configure_modules()
         self.configure_coroutines()
+        self.configure_blocks()
+        self.configure_objc_arc()
         self.configure_substitutions()
         self.configure_features()
 
@@ -987,6 +990,16 @@ class Configuration(object):
             if intMacroValue(macros['__cpp_coroutines']) >= 201703:
                 self.config.available_features.add('fcoroutines-ts')
 
+    def configure_blocks(self):
+        if self.cxx.hasCompileFlag('-fblocks'):
+            self.config.available_features.add('has-fblocks')
+
+    def configure_objc_arc(self):
+        cxx = copy.deepcopy(self.cxx)
+        cxx.source_lang = 'objective-c++'
+        if cxx.hasCompileFlag('-fobjc-arc'):
+            self.config.available_features.add('has-fobjc-arc')
+
     def configure_modules(self):
         modules_flags = ['-fmodules']
         if not self.target_info.is_darwin():
@@ -1050,7 +1063,6 @@ class Configuration(object):
             exec_args.append('--host {}'.format(self.executor.user_prefix + self.executor.host))
             executor = os.path.join(self.libcxx_src_root, 'utils', 'ssh.py')
         else:
-            exec_args.append('--working_directory "%S"')
             executor = os.path.join(self.libcxx_src_root, 'utils', 'run.py')
         sub.append(('%{exec}', '{} {} {} -- '.format(pipes.quote(sys.executable),
                                                      pipes.quote(executor),

@@ -45,6 +45,22 @@
 
 using namespace llvm;
 
+/// This method iterates over the basic blocks and assigns their IsBeginSection
+/// and IsEndSection fields. This must be called after MBB layout is finalized
+/// and the SectionID's are assigned to MBBs.
+static void assignBeginEndSections(MachineFunction &MF) {
+  MF.front().setIsBeginSection();
+  auto CurrentSectionID = MF.front().getSectionID();
+  for (auto MBBI = std::next(MF.begin()), E = MF.end(); MBBI != E; ++MBBI) {
+    if (MBBI->getSectionID() == CurrentSectionID)
+      continue;
+    MBBI->setIsBeginSection();
+    std::prev(MBBI)->setIsEndSection();
+    CurrentSectionID = MBBI->getSectionID();
+  }
+  MF.back().setIsEndSection();
+}
+
 namespace llvm {
 
 /// This class implements the parsing of LLVM IR that's embedded inside a MIR
@@ -441,8 +457,10 @@ MIRParserImpl::initializeMachineFunction(const yaml::MachineFunction &YamlMF,
   if (MF.getTarget().getBBSectionsType() == BasicBlockSection::Labels) {
     MF.createBBLabels();
     MF.setBBSectionsType(BasicBlockSection::Labels);
-  } else if (MF.hasBBSections())
+  } else if (MF.hasBBSections()) {
     MF.createBBLabels();
+    assignBeginEndSections(MF);
+  }
   PFS.SM = &SM;
 
   // Initialize the frame information after creating all the MBBs so that the

@@ -158,12 +158,12 @@ static JmpInsnOpcode getJmpInsnType(const uint8_t *first,
 // Returns the maximum size of the vector if no such relocation is found.
 static unsigned getRelocationWithOffset(const InputSection &is,
                                         uint64_t offset) {
-  unsigned i = 0;
-  for (unsigned e = is.relocations.size(); i < e; ++i) {
+  unsigned size = is.relocations.size();
+  for (unsigned i = size - 1; i + 1 > 0; --i) {
     if (is.relocations[i].offset == offset && is.relocations[i].expr != R_NONE)
-      break;
+      return i;
   }
-  return i;
+  return size;
 }
 
 // Returns the JumpInstrMod at that specific offset if any.  Returns the maximum

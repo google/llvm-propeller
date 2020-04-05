@@ -41,6 +41,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/TargetParser.h"
 #include "llvm/Support/YAMLParser.h"
+#include <cstdarg>
 
 #ifdef LLVM_ON_UNIX
 #include <unistd.h> // For getuid().
@@ -4890,8 +4891,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   if (Arg *A = Args.getLastArg(options::OPT_fbasicblock_sections_EQ)) {
-    CmdArgs.push_back(
-        Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
+    StringRef Val = A->getValue();
+    if (Val != "all" && Val != "labels" && Val != "none" &&
+        !llvm::sys::fs::exists(Val))
+      D.Diag(diag::err_drv_invalid_value)
+          << A->getAsString(Args) << A->getValue();
+    else
+      A->render(Args, CmdArgs);
   }
 
   if (Args.hasFlag(options::OPT_fdata_sections, options::OPT_fno_data_sections,
