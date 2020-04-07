@@ -180,8 +180,15 @@ CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
   // Generate the module name hash here if needed.
   if (CodeGenOpts.UniqueInternalLinkageNames &&
       !getModule().getSourceFileName().empty()) {
+    std::string Path = getModule().getSourceFileName();
+    // Check if a path substitution is needed from the MacroPrefixMap.
+    for (const auto &Entry : PPO.MacroPrefixMap)
+      if (Path.rfind(Entry.first, 0) != std::string::npos) {
+        Path = Entry.second + Path.substr(Entry.first.size());
+        break;
+      }
     llvm::MD5 Md5;
-    Md5.update(getModule().getSourceFileName());
+    Md5.update(Path);
     llvm::MD5::MD5Result R;
     Md5.final(R);
     SmallString<32> Str;

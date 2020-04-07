@@ -28,6 +28,7 @@
 #include "clang/Basic/SanitizerBlacklist.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/XRayLists.h"
+#include "clang/Lex/PreprocessorOptions.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -72,7 +73,6 @@ class VarDecl;
 class LangOptions;
 class CodeGenOptions;
 class HeaderSearchOptions;
-class PreprocessorOptions;
 class DiagnosticsEngine;
 class AnnotateAttr;
 class CXXDestructorDecl;
