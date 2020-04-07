@@ -334,13 +334,6 @@ static bool parseBranchOrFallthroughLine(StringRef lineRef,
 }
 
 bool Propfile::processProfile2() {
-  std::string line;
-  uint64_t branchCnt = 0;
-  uint64_t fallthroughCnt = 0;
-  lineNo = 0;
-  while (++lineNO && std::getline(propfStream, line).good()) {
-    
-  }
   return true;
 }
 

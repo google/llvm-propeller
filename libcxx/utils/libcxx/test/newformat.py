@@ -28,6 +28,7 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
     FOO.link.pass.cpp       - Compiles and links successfully, run not attempted
     FOO.link.fail.cpp       - Compiles successfully, but fails to link
     FOO.sh.cpp              - A builtin lit Shell test
+    FOO.sh.s                - A builtin lit Shell test
 
     FOO.fail.cpp            - Does not compile successfully -- run with clang-verify
                               if any expected-meow appears in the file, otherwise
@@ -41,12 +42,13 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
         %{cxx}           - A command that can be used to invoke the compiler
         %{compile_flags} - Flags to use when compiling a test case
         %{link_flags}    - Flags to use when linking a test case
+        %{flags}         - Flags to use either when compiling or linking a test case
         %{exec}          - A command to prefix the execution of executables
 
     Note that when building an executable (as opposed to only compiling a source
-    file), both %{compile_flags} and %{link_flags} will be used in the same
-    command line. In other words, the test format doesn't perform separate
-    compilation and linking steps in this case.
+    file), all three of ${flags}, %{compile_flags} and %{link_flags} will be used
+    in the same command line. In other words, the test format doesn't perform
+    separate compilation and linking steps in this case.
 
 
     In addition to everything that's supported in Lit ShTests, this test format
@@ -88,7 +90,7 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
                               '.pass.mm',
                               '.compile.pass.cpp', '.compile.fail.cpp',
                               '.link.pass.cpp', '.link.fail.cpp',
-                              '.sh.cpp',
+                              '.sh.cpp', '.sh.s',
                               '.fail.cpp', '.fail.mm']
         sourcePath = testSuite.getSourcePath(pathInSuite)
         for filename in os.listdir(sourcePath):
@@ -103,7 +105,7 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
 
     def _checkSubstitutions(self, substitutions):
         substitutions = [s for (s, _) in substitutions]
-        for s in ['%{cxx}', '%{compile_flags}', '%{link_flags}', '%{exec}']:
+        for s in ['%{cxx}', '%{compile_flags}', '%{link_flags}', '%{flags}', '%{exec}']:
             assert s in substitutions, "Required substitution {} was not provided".format(s)
 
     # Determine whether -verify should be used for a given test. We use -verify
@@ -130,33 +132,33 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
         self._checkSubstitutions(test.config.substitutions)
         VERIFY_FLAGS = '-Xclang -verify -Xclang -verify-ignore-unexpected=note -ferror-limit=0'
         filename = test.path_in_suite[-1]
-        if filename.endswith('.sh.cpp'):
+        if filename.endswith('.sh.cpp') or filename.endswith('.sh.s'):
             steps = [ ] # The steps are already in the script
             return self._executeShTest(test, litConfig, steps)
         elif filename.endswith('.compile.pass.cpp'):
             steps = [
-                "%dbg(COMPILED WITH) %{cxx} %s %{compile_flags} -fsyntax-only"
+                "%dbg(COMPILED WITH) %{cxx} %s %{flags} %{compile_flags} -fsyntax-only"
             ]
             return self._executeShTest(test, litConfig, steps)
         elif filename.endswith('.compile.fail.cpp'):
             steps = [
-                "%dbg(COMPILED WITH) %{cxx} %s %{compile_flags} -fsyntax-only " + VERIFY_FLAGS
+                "%dbg(COMPILED WITH) %{cxx} %s %{flags} %{compile_flags} -fsyntax-only " + VERIFY_FLAGS
             ]
             return self._executeShTest(test, litConfig, steps)
         elif filename.endswith('.link.pass.cpp'):
             steps = [
-                "%dbg(COMPILED WITH) %{cxx} %s %{compile_flags} %{link_flags} -o %t.exe"
+                "%dbg(COMPILED WITH) %{cxx} %s %{flags} %{compile_flags} %{link_flags} -o %t.exe"
             ]
             return self._executeShTest(test, litConfig, steps)
         elif filename.endswith('.link.fail.cpp'):
             steps = [
-                "%dbg(COMPILED WITH) %{cxx} %s %{compile_flags} -c -o %t.o",
-                "%dbg(LINKED WITH) ! %{cxx} %t.o %{link_flags} -o %t.exe"
+                "%dbg(COMPILED WITH) %{cxx} %s %{flags} %{compile_flags} -c -o %t.o",
+                "%dbg(LINKED WITH) ! %{cxx} %t.o %{flags} %{link_flags} -o %t.exe"
             ]
             return self._executeShTest(test, litConfig, steps)
         elif filename.endswith('.run.fail.cpp'):
             steps = [
-                "%dbg(COMPILED WITH) %{cxx} %s %{compile_flags} %{link_flags} -o %t.exe",
+                "%dbg(COMPILED WITH) %{cxx} %s %{flags} %{compile_flags} %{link_flags} -o %t.exe",
                 "%dbg(EXECUTED AS) %{exec} ! %t.exe"
             ]
             return self._executeShTest(test, litConfig, steps, fileDependencies=['%t.exe'])
@@ -164,7 +166,7 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
         # suffixes above too.
         elif filename.endswith('.pass.cpp') or filename.endswith('.pass.mm'):
             steps = [
-                "%dbg(COMPILED WITH) %{cxx} %s %{compile_flags} %{link_flags} -o %t.exe",
+                "%dbg(COMPILED WITH) %{cxx} %s %{flags} %{compile_flags} %{link_flags} -o %t.exe",
                 "%dbg(EXECUTED AS) %{exec} %t.exe"
             ]
             return self._executeShTest(test, litConfig, steps, fileDependencies=['%t.exe'])
@@ -173,15 +175,15 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
         elif filename.endswith('.fail.cpp') or filename.endswith('.fail.mm'):
             if self._useVerify(test, litConfig):
                 steps = [
-                    "%dbg(COMPILED WITH) %{cxx} %s %{compile_flags} -fsyntax-only " + VERIFY_FLAGS
+                    "%dbg(COMPILED WITH) %{cxx} %s %{flags} %{compile_flags} -fsyntax-only " + VERIFY_FLAGS
                 ]
             else:
                 steps = [
-                    "%dbg(COMPILED WITH) ! %{cxx} %s %{compile_flags} -fsyntax-only"
+                    "%dbg(COMPILED WITH) ! %{cxx} %s %{flags} %{compile_flags} -fsyntax-only"
                 ]
             return self._executeShTest(test, litConfig, steps)
         else:
-            return lit.Test.Result(lit.Test.FAIL, "Unknown test suffix for '{}'".format(filename))
+            return lit.Test.Result(lit.Test.UNRESOLVED, "Unknown test suffix for '{}'".format(filename))
 
     # Utility function to add compile flags in lit.local.cfg files.
     def addCompileFlags(self, config, *flags):
@@ -190,7 +192,6 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
 
     # Modified version of lit.TestRunner.executeShTest to handle custom parsers correctly.
     def _executeShTest(self, test, litConfig, steps, fileDependencies=None):
-        recursiveExpansionLimit = 10 # TODO: Use the value in litConfig once we set it.
         if test.config.unsupported:
             return lit.Test.Result(lit.Test.UNSUPPORTED, 'Test is unsupported')
 
@@ -228,7 +229,7 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
         # need to resolve %{file_dependencies} now, because otherwise we won't be able to
         # make all paths absolute below.
         fileDependencies = lit.TestRunner.applySubstitutions(fileDependencies, substitutions,
-                                                             recursion_limit=recursiveExpansionLimit)
+                                                             recursion_limit=test.config.recursiveExpansionLimit)
 
         # Add the %{file_dependencies} substitution before we perform substitutions
         # inside the script.
@@ -238,6 +239,6 @@ class CxxStandardLibraryTest(lit.formats.TestFormat):
 
         # Perform substitution in the script itself.
         script = lit.TestRunner.applySubstitutions(script, substitutions,
-                                                   recursion_limit=recursiveExpansionLimit)
+                                                   recursion_limit=test.config.recursiveExpansionLimit)
 
         return lit.TestRunner._runShTest(test, litConfig, useExternalSh, script, tmpBase)

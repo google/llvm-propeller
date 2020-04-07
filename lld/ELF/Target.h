@@ -103,14 +103,6 @@ public:
     return false;
   }
 
-  virtual unsigned shrinkJmpInsn(InputSection &is, InputFile *file) const {
-    return 0;
-  }
-
-  virtual unsigned growJmpInsn(InputSection &is, InputFile *file) const {
-    return 0;
-  }
-
   unsigned defaultCommonPageSize = 4096;
   unsigned defaultMaxPageSize = 4096;
 
