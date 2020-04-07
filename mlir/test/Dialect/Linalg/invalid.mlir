@@ -170,7 +170,7 @@ func @generic_symbol_in_map(%arg0: memref<i32>) {
 
 func @foo(%0: i32) -> i32 { return %0: i32 }
 
-func @generic_wrong_dim_in_map(%arg0: memref<i32>) {
+func @generic_wrong_dim_in_map(%arg0: memref<1xi32>) {
   // expected-error @+1 {{op expected indexing_map #0 to have 1 dim(s) to match the number of loops}}
   linalg.generic {
     args_in = 0,
@@ -178,22 +178,7 @@ func @generic_wrong_dim_in_map(%arg0: memref<i32>) {
     fun = @foo,
     indexing_maps =  [ affine_map<() -> (0)> ],
     iterator_types = ["parallel"]
-  } %arg0: memref<i32>
-}
-
-// -----
-
-func @foo(%0: i32) -> i32 { return %0: i32 }
-
-func @generic_zero_d_view(%arg0: memref<i32>) {
-  // expected-error @+1 {{op expected indexing_map #0 to be 0 to match 0-D view: 'memref<i32>'}}
-  linalg.generic {
-    args_in = 0,
-    args_out = 1,
-    fun = @foo,
-    indexing_maps =  [ affine_map<() -> (1)> ],
-    iterator_types = []
-  } %arg0: memref<i32>
+  } %arg0: memref<1xi32>
 }
 
 // -----
@@ -469,7 +454,7 @@ func @generic_result_tensor_type(%arg0: memref<?xf32, affine_map<(i)[off]->(off 
 // -----
 
 func @generic_fun_result_0_element_type(%arg0: memref<?xf32>) {
-  // expected-error @+1 {{'linalg.dot' op expected 3 or more operands}}
+  // expected-error @+1 {{'linalg.dot' op expected 3 operands, but found 2}}
   linalg.dot(%arg0, %arg0): memref<?xf32>, memref<?xf32>
 }
 
@@ -527,4 +512,15 @@ func @reshape(%arg0: memref<?x?x?xf32>) {
   // expected-error @+1 {{expected collapsed type to be 'memref<?x?xf32>', but got 'memref<?x?xf32, affine_map<(d0, d1)[s0] -> (d0 * s0 + d1)>>'}}
   %0 = linalg.reshape %arg0 [affine_map<(i, j, k) -> (i, j)>, affine_map<(i, j, k) -> (k)>] :
     memref<?x?x?xf32> into memref<?x?xf32, affine_map<(d0, d1)[s0] -> (d0 * s0 + d1)>>
+}
+
+// -----
+
+func @pooling_rank_mismatch(%arg0: memref<?x?x?xf32>,
+                            %arg1: memref<2x3xf32>,
+                            %arg2: memref<?x?x?xf32>) {
+  // expected-error @+1 {{expects memref ranks to match}}
+  linalg.pooling_max(%arg0, %arg1, %arg2) {strides = [2, 1, 2]}:
+    memref<?x?x?xf32>, memref<2x3xf32>, memref<?x?x?xf32>
+  return
 }

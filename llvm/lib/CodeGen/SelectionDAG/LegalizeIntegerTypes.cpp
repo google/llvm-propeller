@@ -201,6 +201,10 @@ void DAGTypeLegalizer::PromoteIntegerResult(SDNode *N, unsigned ResNo) {
   case ISD::VECREDUCE_UMIN:
     Res = PromoteIntRes_VECREDUCE(N);
     break;
+
+  case ISD::FREEZE:
+    Res = PromoteIntRes_FREEZE(N);
+    break;
   }
 
   // If the result is null then the sub-method took care of registering it.
@@ -274,8 +278,24 @@ SDValue DAGTypeLegalizer::PromoteIntRes_AtomicCmpSwap(AtomicSDNode *N,
     return Res.getValue(1);
   }
 
-  SDValue Op2 = GetPromotedInteger(N->getOperand(2));
+  // Op2 is used for the comparison and thus must be extended according to the
+  // target's atomic operations. Op3 is merely stored and so can be left alone.
+  SDValue Op2 = N->getOperand(2);
   SDValue Op3 = GetPromotedInteger(N->getOperand(3));
+  switch (TLI.getExtendForAtomicCmpSwapArg()) {
+  case ISD::SIGN_EXTEND:
+    Op2 = SExtPromotedInteger(Op2);
+    break;
+  case ISD::ZERO_EXTEND:
+    Op2 = ZExtPromotedInteger(Op2);
+    break;
+  case ISD::ANY_EXTEND:
+    Op2 = GetPromotedInteger(Op2);
+    break;
+  default:
+    llvm_unreachable("Invalid atomic op extension");
+  }
+
   SDVTList VTs =
       DAG.getVTList(Op2.getValueType(), N->getValueType(1), MVT::Other);
   SDValue Res = DAG.getAtomicCmpSwap(
@@ -399,6 +419,12 @@ static EVT getShiftAmountTyForConstant(EVT VT, const TargetLowering &TLI,
       ShiftVT.getSizeInBits() < Log2_32_Ceil(VT.getSizeInBits()))
     ShiftVT = MVT::i32;
   return ShiftVT;
+}
+
+SDValue DAGTypeLegalizer::PromoteIntRes_FREEZE(SDNode *N) {
+  SDValue V = GetPromotedInteger(N->getOperand(0));
+  return DAG.getNode(ISD::FREEZE, SDLoc(N),
+                     V.getValueType(), V);
 }
 
 SDValue DAGTypeLegalizer::PromoteIntRes_BSWAP(SDNode *N) {
@@ -1868,6 +1894,7 @@ void DAGTypeLegalizer::ExpandIntegerResult(SDNode *N, unsigned ResNo) {
   case ISD::SELECT:       SplitRes_SELECT(N, Lo, Hi); break;
   case ISD::SELECT_CC:    SplitRes_SELECT_CC(N, Lo, Hi); break;
   case ISD::UNDEF:        SplitRes_UNDEF(N, Lo, Hi); break;
+  case ISD::FREEZE:       SplitRes_FREEZE(N, Lo, Hi); break;
 
   case ISD::BITCAST:            ExpandRes_BITCAST(N, Lo, Hi); break;
   case ISD::BUILD_PAIR:         ExpandRes_BUILD_PAIR(N, Lo, Hi); break;

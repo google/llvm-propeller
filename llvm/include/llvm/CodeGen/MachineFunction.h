@@ -344,12 +344,7 @@ class MachineFunction {
   bool HasEHFunclets = false;
 
   /// Section Type for basic blocks, only relevant with basic block sections.
-  BasicBlockSection::SectionMode BBSectionsType = BasicBlockSection::None;
-
-  /// With Basic Block Sections, this stores the bb ranges of cold and
-  /// exception sections.
-  //std::pair<int, int> ColdSectionRange = {-1, -1};
-  //std::pair<int, int> ExceptionSectionRange = {-1, -1};
+  BasicBlockSection BBSectionsType = BasicBlockSection::None;
 
   /// List of C++ TypeInfo used.
   std::vector<const GlobalValue *> TypeInfos;
@@ -376,8 +371,6 @@ class MachineFunction {
   void init();
 
 public:
-
-  DenseMap<int, std::pair<int, int>> SectionRanges;
   struct VariableDbgInfo {
     const DILocalVariable *Var;
     const DIExpression *Expr;
@@ -505,30 +498,7 @@ public:
     return BBSectionsType == BasicBlockSection::Labels;
   }
 
-  void setBBSectionsType(BasicBlockSection::SectionMode V) {
-    BBSectionsType = V;
-  }
-
-  void setSectionRange(int E, std::pair<int, int> V);
-
-  /// Returns true if this basic block number starts a cold or exception
-  /// section.
-  bool isSectionStartMBB(int N) const {
-    for(auto& elem: SectionRanges)
-      if (elem.second.first == N)
-        return true;
-    return false;
-    //return (N == ColdSectionRange.first || N == ExceptionSectionRange.first);
-  }
-
-  /// Returns true if this basic block ends a cold or exception section.
-  bool isSectionEndMBB(int N) const {
-    for(auto& elem: SectionRanges)
-      if (elem.second.second == N)
-        return true;
-    return false;
-    //return (N == ColdSectionRange.second || N == ExceptionSectionRange.second);
-  }
+  void setBBSectionsType(BasicBlockSection V) { BBSectionsType = V; }
 
   /// Creates basic block Labels for this function.
   void createBBLabels();
@@ -825,11 +795,23 @@ public:
   /// explicitly deallocated.
   MachineMemOperand *getMachineMemOperand(
       MachinePointerInfo PtrInfo, MachineMemOperand::Flags f, uint64_t s,
-      unsigned base_alignment, const AAMDNodes &AAInfo = AAMDNodes(),
-      const MDNode *Ranges = nullptr,
-      SyncScope::ID SSID = SyncScope::System,
+      Align base_alignment, const AAMDNodes &AAInfo = AAMDNodes(),
+      const MDNode *Ranges = nullptr, SyncScope::ID SSID = SyncScope::System,
       AtomicOrdering Ordering = AtomicOrdering::NotAtomic,
       AtomicOrdering FailureOrdering = AtomicOrdering::NotAtomic);
+
+  LLVM_ATTRIBUTE_DEPRECATED(
+      inline MachineMemOperand *getMachineMemOperand(
+          MachinePointerInfo PtrInfo, MachineMemOperand::Flags f, uint64_t s,
+          unsigned base_alignment, const AAMDNodes &AAInfo = AAMDNodes(),
+          const MDNode *Ranges = nullptr,
+          SyncScope::ID SSID = SyncScope::System,
+          AtomicOrdering Ordering = AtomicOrdering::NotAtomic,
+          AtomicOrdering FailureOrdering = AtomicOrdering::NotAtomic),
+      "Use the version that takes Align instead") {
+    return getMachineMemOperand(PtrInfo, f, s, Align(base_alignment), AAInfo,
+                                Ranges, SSID, Ordering, FailureOrdering);
+  }
 
   /// getMachineMemOperand - Allocate a new MachineMemOperand by copying
   /// an existing one, adjusting by an offset and using the given size.

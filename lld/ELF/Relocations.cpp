@@ -870,7 +870,7 @@ static void reportUndefinedSymbol(const UndefinedDiag &undef,
   if (msg.empty())
     msg = "undefined " + visibility() + "symbol: " + toString(sym);
 
-  const size_t maxUndefReferences = 10;
+  const size_t maxUndefReferences = 3;
   size_t i = 0;
   for (UndefinedDiag::Loc l : undef.locs) {
     if (i >= maxUndefReferences)
@@ -901,8 +901,9 @@ static void reportUndefinedSymbol(const UndefinedDiag &undef,
   }
 
   if (sym.getName().startswith("_ZTV"))
-    msg += "\nthe vtable symbol may be undefined because the class is missing "
-           "its key function (see https://lld.llvm.org/missingkeyfunction)";
+    msg +=
+        "\n>>> the vtable symbol may be undefined because the class is missing "
+        "its key function (see https://lld.llvm.org/missingkeyfunction)";
 
   if (undef.isWarning)
     warn(msg);
@@ -946,8 +947,12 @@ static bool maybeReportUndefined(Symbol &sym, InputSectionBase &sec,
   // .toc and the .rela.toc are incorrectly not placed in the comdat. The ELF
   // spec says references from outside the group to a STB_LOCAL symbol are not
   // allowed. Work around the bug.
-  if (config->emachine == EM_PPC64 &&
-      cast<Undefined>(sym).discardedSecIdx != 0 && sec.name == ".toc")
+  //
+  // PPC32 .got2 is similar but cannot be fixed. Multiple .got2 is infeasible
+  // because .LC0-.LTOC is not representable if the two labels are in different
+  // .got2
+  if (cast<Undefined>(sym).discardedSecIdx != 0 &&
+      (sec.name == ".got2" || sec.name == ".toc"))
     return false;
 
   bool isWarning =
@@ -1226,6 +1231,7 @@ static void processRelocAux(InputSectionBase &sec, RelExpr expr, RelType type,
           // PPC32 canonical PLT entries are at the beginning of .glink
           cast<Defined>(sym).value = in.plt->headerSize;
           in.plt->headerSize += 16;
+          cast<PPC32GlinkSection>(in.plt)->canonical_plts.push_back(&sym);
         }
       }
       sym.needsPltAddr = true;
@@ -1328,7 +1334,10 @@ static void scanReloc(InputSectionBase &sec, OffsetGetter &getOffset, RelTy *&i,
       // stub type. It should be ignored if optimized to R_PC.
       if (config->emachine == EM_PPC && expr == R_PPC32_PLTREL)
         addend &= ~0x8000;
-      expr = fromPlt(expr);
+      // R_HEX_GD_PLT_B22_PCREL (call a@GDPLT) is transformed into
+      // call __tls_get_addr even if the symbol is non-preemptible.
+      if (!(config->emachine == EM_HEXAGON && type == R_HEX_GD_PLT_B22_PCREL))
+        expr = fromPlt(expr);
     }
   }
 
@@ -1973,6 +1982,44 @@ bool ThunkCreator::createThunks(ArrayRef<OutputSection *> outputSections) {
   mergeThunks(outputSections);
   ++pass;
   return addressesChanged;
+}
+
+// The following aid in the conversion of call x@GDPLT to call __tls_get_addr
+// hexagonNeedsTLSSymbol scans for relocations would require a call to
+// __tls_get_addr.
+// hexagonTLSSymbolUpdate rebinds the relocation to __tls_get_addr.
+bool hexagonNeedsTLSSymbol(ArrayRef<OutputSection *> outputSections) {
+  bool needTlsSymbol = false;
+  forEachInputSectionDescription(
+      outputSections, [&](OutputSection *os, InputSectionDescription *isd) {
+        for (InputSection *isec : isd->sections)
+          for (Relocation &rel : isec->relocations)
+            if (rel.sym->type == llvm::ELF::STT_TLS && rel.expr == R_PLT_PC) {
+              needTlsSymbol = true;
+              return;
+            }
+      });
+  return needTlsSymbol;
+}
+
+void hexagonTLSSymbolUpdate(ArrayRef<OutputSection *> outputSections) {
+  Symbol *sym = symtab->find("__tls_get_addr");
+  if (!sym)
+    return;
+  bool needEntry = true;
+  forEachInputSectionDescription(
+      outputSections, [&](OutputSection *os, InputSectionDescription *isd) {
+        for (InputSection *isec : isd->sections)
+          for (Relocation &rel : isec->relocations)
+            if (rel.sym->type == llvm::ELF::STT_TLS && rel.expr == R_PLT_PC) {
+              if (needEntry) {
+                addPltEntry(in.plt, in.gotPlt, in.relaPlt, target->pltRel,
+                            *sym);
+                needEntry = false;
+              }
+              rel.sym = sym;
+            }
+      });
 }
 
 template void scanRelocations<ELF32LE>(InputSectionBase &);

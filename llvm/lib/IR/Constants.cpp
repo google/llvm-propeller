@@ -370,7 +370,7 @@ Constant *Constant::getIntegerValue(Type *Ty, const APInt &V) {
 
   // Broadcast a scalar to a vector, if necessary.
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    C = ConstantVector::getSplat(VTy->getNumElements(), C);
+    C = ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -387,7 +387,7 @@ Constant *Constant::getAllOnesValue(Type *Ty) {
   }
 
   VectorType *VTy = cast<VectorType>(Ty);
-  return ConstantVector::getSplat(VTy->getNumElements(),
+  return ConstantVector::getSplat(VTy->getElementCount(),
                                   getAllOnesValue(VTy->getElementType()));
 }
 
@@ -681,7 +681,7 @@ Constant *ConstantInt::getTrue(Type *Ty) {
   assert(Ty->isIntOrIntVectorTy(1) && "Type not i1 or vector of i1.");
   ConstantInt *TrueC = ConstantInt::getTrue(Ty->getContext());
   if (auto *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), TrueC);
+    return ConstantVector::getSplat(VTy->getElementCount(), TrueC);
   return TrueC;
 }
 
@@ -689,7 +689,7 @@ Constant *ConstantInt::getFalse(Type *Ty) {
   assert(Ty->isIntOrIntVectorTy(1) && "Type not i1 or vector of i1.");
   ConstantInt *FalseC = ConstantInt::getFalse(Ty->getContext());
   if (auto *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), FalseC);
+    return ConstantVector::getSplat(VTy->getElementCount(), FalseC);
   return FalseC;
 }
 
@@ -712,7 +712,7 @@ Constant *ConstantInt::get(Type *Ty, uint64_t V, bool isSigned) {
 
   // For vectors, broadcast the value.
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -736,7 +736,7 @@ Constant *ConstantInt::get(Type *Ty, const APInt& V) {
 
   // For vectors, broadcast the value.
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -781,7 +781,7 @@ Constant *ConstantFP::get(Type *Ty, double V) {
 
   // For vectors, broadcast the value.
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -793,7 +793,7 @@ Constant *ConstantFP::get(Type *Ty, const APFloat &V) {
 
   // For vectors, broadcast the value.
   if (auto *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -806,7 +806,7 @@ Constant *ConstantFP::get(Type *Ty, StringRef Str) {
 
   // For vectors, broadcast the value.
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -817,7 +817,7 @@ Constant *ConstantFP::getNaN(Type *Ty, bool Negative, uint64_t Payload) {
   Constant *C = get(Ty->getContext(), NaN);
 
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -828,7 +828,7 @@ Constant *ConstantFP::getQNaN(Type *Ty, bool Negative, APInt *Payload) {
   Constant *C = get(Ty->getContext(), NaN);
 
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -839,7 +839,7 @@ Constant *ConstantFP::getSNaN(Type *Ty, bool Negative, APInt *Payload) {
   Constant *C = get(Ty->getContext(), NaN);
 
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -850,7 +850,7 @@ Constant *ConstantFP::getNegativeZero(Type *Ty) {
   Constant *C = get(Ty->getContext(), NegZero);
 
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -898,7 +898,7 @@ Constant *ConstantFP::getInfinity(Type *Ty, bool Negative) {
   Constant *C = get(Ty->getContext(), APFloat::getInf(Semantics, Negative));
 
   if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return ConstantVector::getSplat(VTy->getNumElements(), C);
+    return ConstantVector::getSplat(VTy->getElementCount(), C);
 
   return C;
 }
@@ -1047,19 +1047,20 @@ static Constant *getSequenceIfElementsMatch(Constant *C,
   return nullptr;
 }
 
-ConstantAggregate::ConstantAggregate(CompositeType *T, ValueTy VT,
+ConstantAggregate::ConstantAggregate(Type *T, ValueTy VT,
                                      ArrayRef<Constant *> V)
     : Constant(T, VT, OperandTraits<ConstantAggregate>::op_end(this) - V.size(),
                V.size()) {
   llvm::copy(V, op_begin());
 
   // Check that types match, unless this is an opaque struct.
-  if (auto *ST = dyn_cast<StructType>(T))
+  if (auto *ST = dyn_cast<StructType>(T)) {
     if (ST->isOpaque())
       return;
-  for (unsigned I = 0, E = V.size(); I != E; ++I)
-    assert(V[I]->getType() == T->getTypeAtIndex(I) &&
-           "Initializer for composite element doesn't match!");
+    for (unsigned I = 0, E = V.size(); I != E; ++I)
+      assert(V[I]->getType() == ST->getTypeAtIndex(I) &&
+             "Initializer for struct element doesn't match!");
+  }
 }
 
 ConstantArray::ConstantArray(ArrayType *T, ArrayRef<Constant *> V)
@@ -1204,15 +1205,34 @@ Constant *ConstantVector::getImpl(ArrayRef<Constant*> V) {
   return nullptr;
 }
 
-Constant *ConstantVector::getSplat(unsigned NumElts, Constant *V) {
-  // If this splat is compatible with ConstantDataVector, use it instead of
-  // ConstantVector.
-  if ((isa<ConstantFP>(V) || isa<ConstantInt>(V)) &&
-      ConstantDataSequential::isElementTypeCompatible(V->getType()))
-    return ConstantDataVector::getSplat(NumElts, V);
+Constant *ConstantVector::getSplat(ElementCount EC, Constant *V) {
+  if (!EC.Scalable) {
+    // If this splat is compatible with ConstantDataVector, use it instead of
+    // ConstantVector.
+    if ((isa<ConstantFP>(V) || isa<ConstantInt>(V)) &&
+        ConstantDataSequential::isElementTypeCompatible(V->getType()))
+      return ConstantDataVector::getSplat(EC.Min, V);
 
-  SmallVector<Constant*, 32> Elts(NumElts, V);
-  return get(Elts);
+    SmallVector<Constant *, 32> Elts(EC.Min, V);
+    return get(Elts);
+  }
+
+  Type *VTy = VectorType::get(V->getType(), EC);
+
+  if (V->isNullValue())
+    return ConstantAggregateZero::get(VTy);
+  else if (isa<UndefValue>(V))
+    return UndefValue::get(VTy);
+
+  Type *I32Ty = Type::getInt32Ty(VTy->getContext());
+
+  // Move scalar into vector.
+  Constant *UndefV = UndefValue::get(VTy);
+  V = ConstantExpr::getInsertElement(UndefV, V, ConstantInt::get(I32Ty, 0));
+  // Build shuffle mask to perform the splat.
+  SmallVector<int, 8> Zeros(EC.Min, 0);
+  // Splat.
+  return ConstantExpr::getShuffleVector(V, UndefV, Zeros);
 }
 
 ConstantTokenNone *ConstantTokenNone::get(LLVMContext &Context) {
@@ -1277,6 +1297,14 @@ unsigned ConstantExpr::getPredicate() const {
   return cast<CompareConstantExpr>(this)->predicate;
 }
 
+ArrayRef<int> ConstantExpr::getShuffleMask() const {
+  return cast<ShuffleVectorConstantExpr>(this)->ShuffleMask;
+}
+
+Constant *ConstantExpr::getShuffleMaskForBitcode() const {
+  return cast<ShuffleVectorConstantExpr>(this)->ShuffleMaskForBitcode;
+}
+
 Constant *
 ConstantExpr::getWithOperandReplaced(unsigned OpNo, Constant *Op) const {
   assert(Op->getType() == getOperand(OpNo)->getType() &&
@@ -1328,7 +1356,7 @@ Constant *ConstantExpr::getWithOperands(ArrayRef<Constant *> Ops, Type *Ty,
   case Instruction::ExtractValue:
     return ConstantExpr::getExtractValue(Ops[0], getIndices(), OnlyIfReducedTy);
   case Instruction::ShuffleVector:
-    return ConstantExpr::getShuffleVector(Ops[0], Ops[1], Ops[2],
+    return ConstantExpr::getShuffleVector(Ops[0], Ops[1], getShuffleMask(),
                                           OnlyIfReducedTy);
   case Instruction::GetElementPtr: {
     auto *GEPO = cast<GEPOperator>(this);
@@ -2098,15 +2126,16 @@ Constant *ConstantExpr::getGetElementPtr(Type *Ty, Constant *C,
   unsigned AS = C->getType()->getPointerAddressSpace();
   Type *ReqTy = DestTy->getPointerTo(AS);
 
-  unsigned NumVecElts = 0;
-  if (C->getType()->isVectorTy())
-    NumVecElts = C->getType()->getVectorNumElements();
-  else for (auto Idx : Idxs)
-    if (Idx->getType()->isVectorTy())
-      NumVecElts = Idx->getType()->getVectorNumElements();
+  ElementCount EltCount = {0, false};
+  if (VectorType *VecTy = dyn_cast<VectorType>(C->getType()))
+    EltCount = VecTy->getElementCount();
+  else
+    for (auto Idx : Idxs)
+      if (VectorType *VecTy = dyn_cast<VectorType>(Idx->getType()))
+        EltCount = VecTy->getElementCount();
 
-  if (NumVecElts)
-    ReqTy = VectorType::get(ReqTy, NumVecElts);
+  if (EltCount.Min != 0)
+    ReqTy = VectorType::get(ReqTy, EltCount);
 
   if (OnlyIfReducedTy == ReqTy)
     return nullptr;
@@ -2117,12 +2146,12 @@ Constant *ConstantExpr::getGetElementPtr(Type *Ty, Constant *C,
   ArgVec.push_back(C);
   for (unsigned i = 0, e = Idxs.size(); i != e; ++i) {
     assert((!Idxs[i]->getType()->isVectorTy() ||
-            Idxs[i]->getType()->getVectorNumElements() == NumVecElts) &&
+            Idxs[i]->getType()->getVectorElementCount() == EltCount) &&
            "getelementptr index type missmatch");
 
     Constant *Idx = cast<Constant>(Idxs[i]);
-    if (NumVecElts && !Idxs[i]->getType()->isVectorTy())
-      Idx = ConstantVector::getSplat(NumVecElts, Idx);
+    if (EltCount.Min != 0 && !Idxs[i]->getType()->isVectorTy())
+      Idx = ConstantVector::getSplat(EltCount, Idx);
     ArgVec.push_back(Idx);
   }
 
@@ -2130,7 +2159,7 @@ Constant *ConstantExpr::getGetElementPtr(Type *Ty, Constant *C,
   if (InRangeIndex && *InRangeIndex < 63)
     SubClassOptionalData |= (*InRangeIndex + 1) << 1;
   const ConstantExprKeyType Key(Instruction::GetElementPtr, ArgVec, 0,
-                                SubClassOptionalData, None, Ty);
+                                SubClassOptionalData, None, None, Ty);
 
   LLVMContextImpl *pImpl = C->getContext().pImpl;
   return pImpl->ExprConstants.getOrCreate(ReqTy, Key);
@@ -2155,7 +2184,7 @@ Constant *ConstantExpr::getICmp(unsigned short pred, Constant *LHS,
 
   Type *ResultTy = Type::getInt1Ty(LHS->getContext());
   if (VectorType *VT = dyn_cast<VectorType>(LHS->getType()))
-    ResultTy = VectorType::get(ResultTy, VT->getNumElements());
+    ResultTy = VectorType::get(ResultTy, VT->getElementCount());
 
   LLVMContextImpl *pImpl = LHS->getType()->getContext().pImpl;
   return pImpl->ExprConstants.getOrCreate(ResultTy, Key);
@@ -2180,7 +2209,7 @@ Constant *ConstantExpr::getFCmp(unsigned short pred, Constant *LHS,
 
   Type *ResultTy = Type::getInt1Ty(LHS->getContext());
   if (VectorType *VT = dyn_cast<VectorType>(LHS->getType()))
-    ResultTy = VectorType::get(ResultTy, VT->getNumElements());
+    ResultTy = VectorType::get(ResultTy, VT->getElementCount());
 
   LLVMContextImpl *pImpl = LHS->getType()->getContext().pImpl;
   return pImpl->ExprConstants.getOrCreate(ResultTy, Key);
@@ -2232,23 +2261,25 @@ Constant *ConstantExpr::getInsertElement(Constant *Val, Constant *Elt,
 }
 
 Constant *ConstantExpr::getShuffleVector(Constant *V1, Constant *V2,
-                                         Constant *Mask, Type *OnlyIfReducedTy) {
+                                         ArrayRef<int> Mask,
+                                         Type *OnlyIfReducedTy) {
   assert(ShuffleVectorInst::isValidOperands(V1, V2, Mask) &&
          "Invalid shuffle vector constant expr operands!");
 
   if (Constant *FC = ConstantFoldShuffleVectorInstruction(V1, V2, Mask))
     return FC;          // Fold a few common cases.
 
-  ElementCount NElts = Mask->getType()->getVectorElementCount();
+  unsigned NElts = Mask.size();
   Type *EltTy = V1->getType()->getVectorElementType();
-  Type *ShufTy = VectorType::get(EltTy, NElts);
+  bool TypeIsScalable = V1->getType()->getVectorIsScalable();
+  Type *ShufTy = VectorType::get(EltTy, NElts, TypeIsScalable);
 
   if (OnlyIfReducedTy == ShufTy)
     return nullptr;
 
   // Look up the constant in the table first to ensure uniqueness
-  Constant *ArgVec[] = { V1, V2, Mask };
-  const ConstantExprKeyType Key(Instruction::ShuffleVector, ArgVec);
+  Constant *ArgVec[] = {V1, V2};
+  ConstantExprKeyType Key(Instruction::ShuffleVector, ArgVec, 0, 0, None, Mask);
 
   LLVMContextImpl *pImpl = ShufTy->getContext().pImpl;
   return pImpl->ExprConstants.getOrCreate(ShufTy, Key);
@@ -2759,7 +2790,7 @@ Constant *ConstantDataVector::getSplat(unsigned NumElts, Constant *V) {
       return getFP(V->getContext(), Elts);
     }
   }
-  return ConstantVector::getSplat(NumElts, V);
+  return ConstantVector::getSplat({NumElts, false}, V);
 }
 
 
@@ -2869,7 +2900,7 @@ bool ConstantDataSequential::isCString() const {
   return Str.drop_back().find(0) == StringRef::npos;
 }
 
-bool ConstantDataVector::isSplat() const {
+bool ConstantDataVector::isSplatData() const {
   const char *Base = getRawDataValues().data();
 
   // Compare elements 1+ to the 0'th element.
@@ -2879,6 +2910,14 @@ bool ConstantDataVector::isSplat() const {
       return false;
 
   return true;
+}
+
+bool ConstantDataVector::isSplat() const {
+  if (!IsSplatSet) {
+    IsSplatSet = true;
+    IsSplat = isSplatData();
+  }
+  return IsSplat;
 }
 
 Constant *ConstantDataVector::getSplatValue() const {
@@ -3087,7 +3126,7 @@ Instruction *ConstantExpr::getAsInstruction() const {
   case Instruction::ExtractValue:
     return ExtractValueInst::Create(Ops[0], getIndices());
   case Instruction::ShuffleVector:
-    return new ShuffleVectorInst(Ops[0], Ops[1], Ops[2]);
+    return new ShuffleVectorInst(Ops[0], Ops[1], getShuffleMask());
 
   case Instruction::GetElementPtr: {
     const auto *GO = cast<GEPOperator>(this);

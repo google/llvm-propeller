@@ -281,6 +281,11 @@ def FeatureAM : SubtargetFeature<
     "am", "HasAM", "true",
     "Enable v8.4-A Activity Monitors extension">;
 
+def FeatureAMVS : SubtargetFeature<
+    "amvs", "HasAMVS", "true",
+    "Enable v8.6-A Activity Monitors Virtualization support",
+    [FeatureAM]>;
+
 def FeatureSEL2 : SubtargetFeature<
     "sel2", "HasSEL2", "true",
     "Enable v8.4-A Secure Exception Level 2 extension">;
@@ -365,6 +370,17 @@ def FeatureTaggedGlobals : SubtargetFeature<"tagged-globals",
     "true", "Use an instruction sequence for taking the address of a global "
     "that allows a memory tag in the upper address bits">;
 
+def FeatureBF16 : SubtargetFeature<"bf16", "HasBF16",
+    "true", "Enable BFloat16 Extension" >;
+
+def FeatureFineGrainedTraps : SubtargetFeature<"fgt", "HasFineGrainedTraps",
+    "true", "Enable fine grained virtualization traps extension">;
+
+def FeatureEnhancedCounterVirtualization :
+      SubtargetFeature<"ecv", "HasEnhancedCounterVirtualization",
+      "true", "Enable enhanced counter virtualization extension">;
+
+
 //===----------------------------------------------------------------------===//
 // Architectures.
 //
@@ -391,8 +407,13 @@ def HasV8_5aOps : SubtargetFeature<
   "v8.5a", "HasV8_5aOps", "true", "Support ARM v8.5a instructions",
   [HasV8_4aOps, FeatureAltFPCmp, FeatureFRInt3264, FeatureSpecRestrict,
    FeatureSSBS, FeatureSB, FeaturePredRes, FeatureCacheDeepPersist,
-   FeatureBranchTargetId]
->;
+   FeatureBranchTargetId]>;
+
+def HasV8_6aOps : SubtargetFeature<
+  "v8.6a", "HasV8_6aOps", "true", "Support ARM v8.6a instructions",
+
+  [HasV8_5aOps, FeatureAMVS, FeatureBF16, FeatureFineGrainedTraps,
+   FeatureEnhancedCounterVirtualization]>;
 
 //===----------------------------------------------------------------------===//
 // Register File Description
@@ -562,6 +583,19 @@ def ProcA76     : SubtargetFeature<"a76", "ARMProcFamily", "CortexA76",
                                     FeatureDotProd,
                                     FeatureSSBS
                                     ]>;
+
+def ProcA64FX : SubtargetFeature<"a64fx", "ARMProcFamily", "A64FX",
+                                 "Fujitsu A64FX processors", [
+                                  HasV8_2aOps,
+                                  FeatureFPARMv8,
+                                  FeatureNEON,
+                                  FeatureSHA2,
+                                  FeaturePerfMon,
+                                  FeatureFullFP16,
+                                  FeatureSVE,
+                                  FeaturePostRAScheduler,
+                                  FeatureComplxNum
+                                  ]>;
 
 // Note that cyclone does not fuse AES instructions, but newer apple chips do
 // perform the fusion and cyclone is used by default when targetting apple OSes.
@@ -900,6 +934,10 @@ def : ProcessorModel<"apple-s5", CycloneModel, [ProcAppleA12]>;
 
 // Alias for the latest Apple processor model supported by LLVM.
 def : ProcessorModel<"apple-latest", CycloneModel, [ProcAppleA13]>;
+
+// Fujitsu A64FX
+// FIXME: Scheduling model is not implemented yet.
+def : ProcessorModel<"a64fx", NoSchedModel, [ProcA64FX]>;
 
 //===----------------------------------------------------------------------===//
 // Assembly parser

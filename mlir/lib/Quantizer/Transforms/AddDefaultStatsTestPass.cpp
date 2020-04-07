@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/QuantOps/QuantOps.h"
-#include "mlir/Dialect/QuantOps/QuantTypes.h"
+#include "mlir/Dialect/Quant/QuantOps.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Quantizer/Configurations/FxpMathConfig.h"
@@ -29,9 +29,12 @@ using namespace mlir::quantizer;
 using namespace mlir::quant;
 
 namespace {
-
 class AddDefaultStatsPass : public FunctionPass<AddDefaultStatsPass> {
 public:
+/// Include the generated pass utilities.
+#define GEN_PASS_QuantizerAddDefaultStats
+#include "mlir/Quantizer/Transforms/Passes.h.inc"
+
   AddDefaultStatsPass() = default;
   AddDefaultStatsPass(SolverContext &solverContext,
                       const TargetConfiguration &config)
@@ -113,8 +116,3 @@ std::unique_ptr<OpPassBase<FuncOp>>
 mlir::quantizer::createAddDefaultStatsPass() {
   return std::make_unique<AddDefaultStatsPass>();
 }
-
-static PassRegistration<AddDefaultStatsPass> pass(
-    "quantizer-add-default-stats-test",
-    "Adds default (dummy) statistics to all ops that can benefit from "
-    "runtime statistics. This is meant to help in early stage bootstrapping.");

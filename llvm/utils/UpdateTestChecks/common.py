@@ -67,16 +67,16 @@ UTC_ARGS_KEY = 'UTC_ARGS:'
 UTC_ARGS_CMD = re.compile(r'.*' + UTC_ARGS_KEY + '\s*(?P<cmd>.*)\s*$')
 
 OPT_FUNCTION_RE = re.compile(
-    r'^\s*define\s+(?:internal\s+)?[^@]*@(?P<func>[\w-]+?)\s*'
-    r'(?P<args_and_sig>\((\)|(.*?[\w\.\-]+?)\))[^{]*)\{\n(?P<body>.*?)^\}$',
+    r'^\s*define\s+(?:internal\s+)?[^@]*@(?P<func>[\w.-]+?)\s*'
+    r'(?P<args_and_sig>\((\)|(.*?[\w.-]+?)\))[^{]*)\{\n(?P<body>.*?)^\}$',
     flags=(re.M | re.S))
 
 ANALYZE_FUNCTION_RE = re.compile(
-    r'^\s*\'(?P<analysis>[\w\s-]+?)\'\s+for\s+function\s+\'(?P<func>[\w-]+?)\':'
+    r'^\s*\'(?P<analysis>[\w\s-]+?)\'\s+for\s+function\s+\'(?P<func>[\w.-]+?)\':'
     r'\s*\n(?P<body>.*)$',
     flags=(re.X | re.S))
 
-IR_FUNCTION_RE = re.compile(r'^\s*define\s+(?:internal\s+)?[^@]*@([\w.]+)\s*\(')
+IR_FUNCTION_RE = re.compile(r'^\s*define\s+(?:internal\s+)?[^@]*@([\w.-]+)\s*\(')
 TRIPLE_IR_RE = re.compile(r'^\s*target\s+triple\s*=\s*"([^"]+)"$')
 TRIPLE_ARG_RE = re.compile(r'-mtriple[= ]([^ ]+)')
 MARCH_ARG_RE = re.compile(r'-march[= ]([^ ]+)')
@@ -215,7 +215,7 @@ SCRUB_IR_COMMENT_RE = re.compile(r'\s*;.*')
 
 # Match things that look at identifiers, but only if they are followed by
 # spaces, commas, paren, or end of the string
-IR_VALUE_RE = re.compile(r'(\s+)%([\w\.\-]+?)([,\s\(\)]|\Z)')
+IR_VALUE_RE = re.compile(r'(\s+)%([\w.-]+?)([,\s\(\)]|\Z)')
 
 # Create a FileCheck variable name based on an IR name.
 def get_value_name(var):
@@ -283,22 +283,17 @@ def add_checks(output_lines, comment_marker, prefix_list, func_dict, func_name, 
   # prefix_blacklist is constructed, we can now emit the output
   for p in prefix_list:
     checkprefixes = p[0]
-    saved_output = None
     for checkprefix in checkprefixes:
       if checkprefix in printed_prefixes:
         break
 
-      # prefix is blacklisted. We remember the output as we might need it later but we will not emit anything for the prefix.
+      # Check if the prefix is blacklisted.
       if checkprefix in prefix_blacklist:
-          if not saved_output and func_name in func_dict[checkprefix]:
-              saved_output = func_dict[checkprefix][func_name]
-          continue
+        continue
 
-      # If we do not have output for this prefix but there is one saved, we go ahead with this prefix and the saved output.
+      # If we do not have output for this prefix we skip it.
       if not func_dict[checkprefix][func_name]:
-        if not saved_output:
-            continue
-        func_dict[checkprefix][func_name] = saved_output
+        continue
 
       # Add some space between different check prefixes, but not after the last
       # check line (before the test code).

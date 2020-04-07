@@ -17,6 +17,7 @@
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Analysis/VectorUtils.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -38,18 +39,24 @@ static cl::opt<bool> DisableVectorCombine(
     "disable-vector-combine", cl::init(false), cl::Hidden,
     cl::desc("Disable all vector combine transforms"));
 
-/// Compare the relative costs of extracts followed by scalar operation vs.
-/// vector operation followed by extract:
-/// opcode (extelt V0, C), (extelt V1, C) --> extelt (opcode V0, V1), C
-/// Unless the vector op is much more expensive than the scalar op, this
-/// eliminates an extract.
+static cl::opt<bool> DisableBinopExtractShuffle(
+    "disable-binop-extract-shuffle", cl::init(false), cl::Hidden,
+    cl::desc("Disable binop extract to shuffle transforms"));
+
+
+/// Compare the relative costs of 2 extracts followed by scalar operation vs.
+/// vector operation(s) followed by extract. Return true if the existing
+/// instructions are cheaper than a vector alternative. Otherwise, return false
+/// and if one of the extracts should be transformed to a shufflevector, set
+/// \p ConvertToShuffle to that extract instruction.
 static bool isExtractExtractCheap(Instruction *Ext0, Instruction *Ext1,
                                   unsigned Opcode,
-                                  const TargetTransformInfo &TTI) {
-  assert(Ext0->getOperand(1) == Ext1->getOperand(1) &&
-         isa<ConstantInt>(Ext0->getOperand(1)) &&
-         "Expected same constant extract index");
-
+                                  const TargetTransformInfo &TTI,
+                                  Instruction *&ConvertToShuffle,
+                                  unsigned PreferredExtractIndex) {
+  assert(isa<ConstantInt>(Ext0->getOperand(1)) &&
+         isa<ConstantInt>(Ext1->getOperand(1)) &&
+         "Expected constant extract indexes");
   Type *ScalarTy = Ext0->getType();
   Type *VecTy = Ext0->getOperand(0)->getType();
   int ScalarOpCost, VectorOpCost;
@@ -68,31 +75,78 @@ static bool isExtractExtractCheap(Instruction *Ext0, Instruction *Ext1,
                                           CmpInst::makeCmpResultType(VecTy));
   }
 
-  // Get cost estimate for the extract element. This cost will factor into
+  // Get cost estimates for the extract elements. These costs will factor into
   // both sequences.
-  unsigned ExtIndex = cast<ConstantInt>(Ext0->getOperand(1))->getZExtValue();
-  int ExtractCost = TTI.getVectorInstrCost(Instruction::ExtractElement,
-                                           VecTy, ExtIndex);
+  unsigned Ext0Index = cast<ConstantInt>(Ext0->getOperand(1))->getZExtValue();
+  unsigned Ext1Index = cast<ConstantInt>(Ext1->getOperand(1))->getZExtValue();
+
+  int Extract0Cost = TTI.getVectorInstrCost(Instruction::ExtractElement,
+                                            VecTy, Ext0Index);
+  int Extract1Cost = TTI.getVectorInstrCost(Instruction::ExtractElement,
+                                            VecTy, Ext1Index);
+
+  // A more expensive extract will always be replaced by a splat shuffle.
+  // For example, if Ext0 is more expensive:
+  // opcode (extelt V0, Ext0), (ext V1, Ext1) -->
+  // extelt (opcode (splat V0, Ext0), V1), Ext1
+  // TODO: Evaluate whether that always results in lowest cost. Alternatively,
+  //       check the cost of creating a broadcast shuffle and shuffling both
+  //       operands to element 0.
+  int CheapExtractCost = std::min(Extract0Cost, Extract1Cost);
 
   // Extra uses of the extracts mean that we include those costs in the
   // vector total because those instructions will not be eliminated.
   int OldCost, NewCost;
-  if (Ext0->getOperand(0) == Ext1->getOperand(0)) {
-    // Handle a special case. If the 2 operands are identical, adjust the
+  if (Ext0->getOperand(0) == Ext1->getOperand(0) && Ext0Index == Ext1Index) {
+    // Handle a special case. If the 2 extracts are identical, adjust the
     // formulas to account for that. The extra use charge allows for either the
     // CSE'd pattern or an unoptimized form with identical values:
     // opcode (extelt V, C), (extelt V, C) --> extelt (opcode V, V), C
     bool HasUseTax = Ext0 == Ext1 ? !Ext0->hasNUses(2)
                                   : !Ext0->hasOneUse() || !Ext1->hasOneUse();
-    OldCost = ExtractCost + ScalarOpCost;
-    NewCost = VectorOpCost + ExtractCost + HasUseTax * ExtractCost;
+    OldCost = CheapExtractCost + ScalarOpCost;
+    NewCost = VectorOpCost + CheapExtractCost + HasUseTax * CheapExtractCost;
   } else {
     // Handle the general case. Each extract is actually a different value:
-    // opcode (extelt V0, C), (extelt V1, C) --> extelt (opcode V0, V1), C
-    OldCost = 2 * ExtractCost + ScalarOpCost;
-    NewCost = VectorOpCost + ExtractCost + !Ext0->hasOneUse() * ExtractCost +
-              !Ext1->hasOneUse() * ExtractCost;
+    // opcode (extelt V0, C0), (extelt V1, C1) --> extelt (opcode V0, V1), C
+    OldCost = Extract0Cost + Extract1Cost + ScalarOpCost;
+    NewCost = VectorOpCost + CheapExtractCost +
+              !Ext0->hasOneUse() * Extract0Cost +
+              !Ext1->hasOneUse() * Extract1Cost;
   }
+
+  if (Ext0Index == Ext1Index) {
+    // If the extract indexes are identical, no shuffle is needed.
+    ConvertToShuffle = nullptr;
+  } else {
+    if (IsBinOp && DisableBinopExtractShuffle)
+      return true;
+
+    // If we are extracting from 2 different indexes, then one operand must be
+    // shuffled before performing the vector operation. The shuffle mask is
+    // undefined except for 1 lane that is being translated to the remaining
+    // extraction lane. Therefore, it is a splat shuffle. Ex:
+    // ShufMask = { undef, undef, 0, undef }
+    // TODO: The cost model has an option for a "broadcast" shuffle
+    //       (splat-from-element-0), but no option for a more general splat.
+    NewCost +=
+        TTI.getShuffleCost(TargetTransformInfo::SK_PermuteSingleSrc, VecTy);
+
+    // The more expensive extract will be replaced by a shuffle. If the costs
+    // are equal and there is a preferred extract index, shuffle the opposite
+    // operand. Otherwise, replace the extract with the higher index.
+    if (Extract0Cost > Extract1Cost)
+      ConvertToShuffle = Ext0;
+    else if (Extract1Cost > Extract0Cost)
+      ConvertToShuffle = Ext1;
+    else if (PreferredExtractIndex == Ext0Index)
+      ConvertToShuffle = Ext1;
+    else if (PreferredExtractIndex == Ext1Index)
+      ConvertToShuffle = Ext0;
+    else
+      ConvertToShuffle = Ext0Index > Ext1Index ? Ext0 : Ext1;
+  }
+
   // Aggressively form a vector op if the cost is equal because the transform
   // may enable further optimization.
   // Codegen can reverse this transform (scalarize) if it was not profitable.
@@ -161,18 +215,93 @@ static bool foldExtractExtract(Instruction &I, const TargetTransformInfo &TTI) {
       V0->getType() != V1->getType())
     return false;
 
-  // TODO: Handle C0 != C1 by shuffling 1 of the operands.
-  if (C0 != C1)
+  // If the scalar value 'I' is going to be re-inserted into a vector, then try
+  // to create an extract to that same element. The extract/insert can be
+  // reduced to a "select shuffle".
+  // TODO: If we add a larger pattern match that starts from an insert, this
+  //       probably becomes unnecessary.
+  uint64_t InsertIndex = std::numeric_limits<uint64_t>::max();
+  if (I.hasOneUse())
+    match(I.user_back(), m_InsertElement(m_Value(), m_Value(),
+                                         m_ConstantInt(InsertIndex)));
+
+  Instruction *ConvertToShuffle;
+  if (isExtractExtractCheap(Ext0, Ext1, I.getOpcode(), TTI, ConvertToShuffle,
+                            InsertIndex))
     return false;
 
-  if (isExtractExtractCheap(Ext0, Ext1, I.getOpcode(), TTI))
-    return false;
+  if (ConvertToShuffle) {
+    // The shuffle mask is undefined except for 1 lane that is being translated
+    // to the cheap extraction lane. Example:
+    // ShufMask = { 2, undef, undef, undef }
+    uint64_t SplatIndex = ConvertToShuffle == Ext0 ? C0 : C1;
+    uint64_t CheapExtIndex = ConvertToShuffle == Ext0 ? C1 : C0;
+    Type *VecTy = V0->getType();
+    Type *I32Ty = IntegerType::getInt32Ty(I.getContext());
+    UndefValue *Undef = UndefValue::get(I32Ty);
+    SmallVector<Constant *, 32> ShufMask(VecTy->getVectorNumElements(), Undef);
+    ShufMask[CheapExtIndex] = ConstantInt::get(I32Ty, SplatIndex);
+    IRBuilder<> Builder(ConvertToShuffle);
+
+    // extelt X, C --> extelt (splat X), C'
+    Value *Shuf = Builder.CreateShuffleVector(ConvertToShuffle->getOperand(0),
+                                              UndefValue::get(VecTy),
+                                              ConstantVector::get(ShufMask));
+    Value *NewExt = Builder.CreateExtractElement(Shuf, CheapExtIndex);
+    if (ConvertToShuffle == Ext0)
+      Ext0 = cast<Instruction>(NewExt);
+    else
+      Ext1 = cast<Instruction>(NewExt);
+  }
 
   if (Pred != CmpInst::BAD_ICMP_PREDICATE)
     foldExtExtCmp(Ext0, Ext1, I, TTI);
   else
     foldExtExtBinop(Ext0, Ext1, I, TTI);
 
+  return true;
+}
+
+/// If this is a bitcast to narrow elements from a shuffle of wider elements,
+/// try to bitcast the source vector to the narrow type followed by shuffle.
+/// This can enable further transforms by moving bitcasts or shuffles together.
+static bool foldBitcastShuf(Instruction &I, const TargetTransformInfo &TTI) {
+  Value *V;
+  ArrayRef<int> Mask;
+  if (!match(&I, m_BitCast(m_OneUse(m_ShuffleVector(m_Value(V), m_Undef(),
+                                                    m_Mask(Mask))))))
+    return false;
+
+  Type *DestTy = I.getType();
+  Type *SrcTy = V->getType();
+  if (!DestTy->isVectorTy() || I.getOperand(0)->getType() != SrcTy)
+    return false;
+
+  // TODO: Handle bitcast from narrow element type to wide element type.
+  assert(SrcTy->isVectorTy() && "Shuffle of non-vector type?");
+  unsigned DestNumElts = DestTy->getVectorNumElements();
+  unsigned SrcNumElts = SrcTy->getVectorNumElements();
+  if (SrcNumElts > DestNumElts)
+    return false;
+
+  // The new shuffle must not cost more than the old shuffle. The bitcast is
+  // moved ahead of the shuffle, so assume that it has the same cost as before.
+  if (TTI.getShuffleCost(TargetTransformInfo::SK_PermuteSingleSrc, DestTy) >
+      TTI.getShuffleCost(TargetTransformInfo::SK_PermuteSingleSrc, SrcTy))
+    return false;
+
+  // Bitcast the source vector and expand the shuffle mask to the equivalent for
+  // narrow elements.
+  // bitcast (shuf V, MaskC) --> shuf (bitcast V), MaskC'
+  IRBuilder<> Builder(&I);
+  Value *CastV = Builder.CreateBitCast(V, DestTy);
+  SmallVector<int, 16> NewMask;
+  assert(DestNumElts % SrcNumElts == 0 && "Unexpected shuffle mask");
+  unsigned ScaleFactor = DestNumElts / SrcNumElts;
+  scaleShuffleMask(ScaleFactor, Mask, NewMask);
+  Value *Shuf = Builder.CreateShuffleVector(CastV, UndefValue::get(DestTy),
+                                            NewMask);
+  I.replaceAllUsesWith(Shuf);
   return true;
 }
 
@@ -193,8 +322,12 @@ static bool runImpl(Function &F, const TargetTransformInfo &TTI,
     // use->defs, so we're more likely to succeed by starting from the bottom.
     // TODO: It could be more efficient to remove dead instructions
     //       iteratively in this loop rather than waiting until the end.
-    for (Instruction &I : make_range(BB.rbegin(), BB.rend()))
+    for (Instruction &I : make_range(BB.rbegin(), BB.rend())) {
+      if (isa<DbgInfoIntrinsic>(I))
+        continue;
       MadeChange |= foldExtractExtract(I, TTI);
+      MadeChange |= foldBitcastShuf(I, TTI);
+    }
   }
 
   // We're done with transforms, so remove dead instructions.

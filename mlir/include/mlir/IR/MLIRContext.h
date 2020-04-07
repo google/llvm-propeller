@@ -49,6 +49,28 @@ public:
     return static_cast<T *>(getRegisteredDialect(T::getDialectNamespace()));
   }
 
+  /// Return true if we allow to create operation for unregistered dialects.
+  bool allowsUnregisteredDialects();
+
+  /// Enables creating operations in unregistered dialects.
+  void allowUnregisteredDialects(bool allow = true);
+
+  /// Return true if we should attach the operation to diagnostics emitted via
+  /// Operation::emit.
+  bool shouldPrintOpOnDiagnostic();
+
+  /// Set the flag specifying if we should attach the operation to diagnostics
+  /// emitted via Operation::emit.
+  void printOpOnDiagnostic(bool enable);
+
+  /// Return true if we should attach the current stacktrace to diagnostics when
+  /// emitted.
+  bool shouldPrintStackTraceOnDiagnostic();
+
+  /// Set the flag specifying if we should attach the current stacktrace when
+  /// emitting diagnostics.
+  void printStackTraceOnDiagnostic(bool enable);
+
   /// Return information about all registered operations.  This isn't very
   /// efficient: typically you should ask the operations about their properties
   /// directly.

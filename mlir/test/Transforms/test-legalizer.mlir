@@ -1,4 +1,4 @@
-// RUN: mlir-opt -split-input-file -test-legalize-patterns -verify-diagnostics %s | FileCheck %s
+// RUN: mlir-opt -allow-unregistered-dialect -split-input-file -test-legalize-patterns -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: verifyDirectPattern
 func @verifyDirectPattern() -> i32 {
@@ -21,6 +21,13 @@ func @remap_input_1_to_0(i16)
 func @remap_input_1_to_1(%arg0: i64) {
   // CHECK-NEXT: "test.valid"{{.*}} : (f64)
   "test.invalid"(%arg0) : (i64) -> ()
+}
+
+// CHECK-LABEL: func @remap_call_1_to_1(%arg0: f64)
+func @remap_call_1_to_1(%arg0: i64) {
+  // CHECK-NEXT: call @remap_input_1_to_1(%arg0) : (f64) -> ()
+  call @remap_input_1_to_1(%arg0) : (i64) -> ()
+  return
 }
 
 // CHECK-LABEL: func @remap_input_1_to_N({{.*}}f16, {{.*}}f16)
@@ -123,6 +130,19 @@ func @remove_foldable_op(%arg0 : i32) -> (i32) {
   return %0 : i32
 }
 
+// CHECK-LABEL: @create_block
+func @create_block() {
+  "test.container"() ({
+    // Check that we created a block with arguments.
+    // CHECK-NOT: test.create_block
+    // CHECK: ^{{.*}}(%{{.*}}: i32, %{{.*}}: i32):
+    // CHECK: test.finish
+    "test.create_block"() : () -> ()
+    "test.finish"() : () -> ()
+  }) : () -> ()
+  return
+}
+
 // -----
 
 func @fail_to_convert_illegal_op() -> i32 {
@@ -153,6 +173,20 @@ func @fail_to_convert_region() {
       // expected-error@+1 {{failed to legalize operation 'test.region_builder'}}
       "test.region_builder"() : () -> ()
       "test.valid"() : () -> ()
+  }) : () -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @create_illegal_block
+func @create_illegal_block() {
+  "test.container"() ({
+    // Check that we can undo block creation, i.e. that the block was removed.
+    // CHECK: test.create_illegal_block
+    // CHECK-NOT: ^{{.*}}(%{{.*}}: i32, %{{.*}}: i32):
+    "test.create_illegal_block"() : () -> ()
+    "test.finish"() : () -> ()
   }) : () -> ()
   return
 }

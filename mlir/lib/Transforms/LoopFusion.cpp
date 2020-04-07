@@ -14,8 +14,7 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/Utils.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -69,7 +68,6 @@ static llvm::cl::opt<unsigned long long> clFusionLocalBufThreshold(
     llvm::cl::cat(clOptionsCategory));
 
 namespace {
-
 /// Loop fusion pass. This pass currently supports a greedy fusion policy,
 /// which fuses loop nests with single-writer/single-reader memref dependences
 /// with the goal of improving locality.
@@ -80,6 +78,10 @@ namespace {
 // and add support for more general loop fusion algorithms.
 
 struct LoopFusion : public FunctionPass<LoopFusion> {
+/// Include the generated pass utilities.
+#define GEN_PASS_AffineLoopFusion
+#include "mlir/Transforms/Passes.h.inc"
+
   LoopFusion(unsigned fastMemorySpace = 0, uint64_t localBufSizeThreshold = 0,
              bool maximalFusion = false)
       : localBufSizeThreshold(localBufSizeThreshold),
@@ -869,7 +871,7 @@ static unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
   auto elementType = memRefType.getElementType();
 
   unsigned sizeInBits;
-  if (elementType.isSignlessIntOrFloat()) {
+  if (elementType.isIntOrFloat()) {
     sizeInBits = elementType.getIntOrFloatBitWidth();
   } else {
     auto vectorType = elementType.cast<VectorType>();
@@ -1974,6 +1976,3 @@ void LoopFusion::runOnFunction() {
     GreedyFusion(&g, localBufSizeThreshold, fastMemorySpace, maximalFusion)
         .run();
 }
-
-static PassRegistration<LoopFusion> pass("affine-loop-fusion",
-                                         "Fuse loop nests");

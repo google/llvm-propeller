@@ -30,13 +30,17 @@ void tools::PS4cpu::addProfileRTArgs(const ToolChain &TC, const ArgList &Args,
   if ((Args.hasFlag(options::OPT_fprofile_arcs, options::OPT_fno_profile_arcs,
                     false) ||
        Args.hasFlag(options::OPT_fprofile_generate,
-                    options::OPT_fno_profile_instr_generate, false) ||
+                    options::OPT_fno_profile_generate, false) ||
        Args.hasFlag(options::OPT_fprofile_generate_EQ,
-                    options::OPT_fno_profile_instr_generate, false) ||
+                    options::OPT_fno_profile_generate, false) ||
        Args.hasFlag(options::OPT_fprofile_instr_generate,
                     options::OPT_fno_profile_instr_generate, false) ||
        Args.hasFlag(options::OPT_fprofile_instr_generate_EQ,
                     options::OPT_fno_profile_instr_generate, false) ||
+       Args.hasFlag(options::OPT_fcs_profile_generate,
+                    options::OPT_fno_profile_generate, false) ||
+       Args.hasFlag(options::OPT_fcs_profile_generate_EQ,
+                    options::OPT_fno_profile_generate, false) ||
        Args.hasArg(options::OPT_fcreate_profile) ||
        Args.hasArg(options::OPT_coverage)))
     CmdArgs.push_back("--dependent-lib=libclang_rt.profile-x86_64.a");
@@ -429,4 +433,18 @@ SanitizerMask toolchains::PS4CPU::getSupportedSanitizers() const {
   Res |= SanitizerKind::PointerSubtract;
   Res |= SanitizerKind::Vptr;
   return Res;
+}
+
+void toolchains::PS4CPU::addClangTargetOptions(
+      const ArgList &DriverArgs,
+      ArgStringList &CC1Args,
+      Action::OffloadKind DeviceOffloadingKind) const {
+  // PS4 does not use init arrays.
+  if (DriverArgs.hasArg(options::OPT_fuse_init_array)) {
+    Arg *A = DriverArgs.getLastArg(options::OPT_fuse_init_array);
+    getDriver().Diag(clang::diag::err_drv_unsupported_opt_for_target)
+        << A->getAsString(DriverArgs) << getTriple().str();
+  }
+
+  CC1Args.push_back("-fno-use-init-array");
 }

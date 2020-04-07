@@ -114,9 +114,11 @@ public:
   function_ref(std::nullptr_t) {}
 
   template <typename Callable>
-  function_ref(Callable &&callable,
-               std::enable_if_t<!std::is_same<std::remove_reference_t<Callable>,
-                                              function_ref>::value> * = nullptr)
+  function_ref(
+      Callable &&callable,
+      std::enable_if_t<
+          !std::is_same<std::remove_cv_t<std::remove_reference_t<Callable>>,
+                        function_ref>::value> * = nullptr)
       : callback(callback_fn<typename std::remove_reference<Callable>::type>),
         callable(reinterpret_cast<intptr_t>(&callable)) {}
 
@@ -124,7 +126,7 @@ public:
     return callback(callable, std::forward<Params>(params)...);
   }
 
-  operator bool() const { return callback; }
+  explicit operator bool() const { return callback; }
 };
 
 // deleter - Very very very simple method that is used to invoke operator
@@ -1103,14 +1105,34 @@ inline void array_pod_sort(
         reinterpret_cast<int (*)(const void *, const void *)>(Compare));
 }
 
+namespace detail {
+template <typename T>
+// We can use qsort if the iterator type is a pointer and the underlying value
+// is trivially copyable.
+using sort_trivially_copyable = conjunction<
+    std::is_pointer<T>,
+    is_trivially_copyable<typename std::iterator_traits<T>::value_type>>;
+} // namespace detail
+
 // Provide wrappers to std::sort which shuffle the elements before sorting
 // to help uncover non-deterministic behavior (PR35135).
-template <typename IteratorTy>
+template <typename IteratorTy,
+          std::enable_if_t<!detail::sort_trivially_copyable<IteratorTy>::value,
+                           int> = 0>
 inline void sort(IteratorTy Start, IteratorTy End) {
 #ifdef EXPENSIVE_CHECKS
   detail::presortShuffle<IteratorTy>(Start, End);
 #endif
   std::sort(Start, End);
+}
+
+// Forward trivially copyable types to array_pod_sort. This avoids a large
+// amount of code bloat for a minor performance hit.
+template <typename IteratorTy,
+          std::enable_if_t<detail::sort_trivially_copyable<IteratorTy>::value,
+                           int> = 0>
+inline void sort(IteratorTy Start, IteratorTy End) {
+  array_pod_sort(Start, End);
 }
 
 template <typename Container> inline void sort(Container &&C) {
@@ -1520,33 +1542,45 @@ decltype(auto) apply_tuple(F &&f, Tuple &&t) {
 
 /// Return true if the sequence [Begin, End) has exactly N items. Runs in O(N)
 /// time. Not meant for use with random-access iterators.
-template <typename IterTy>
+/// Can optionally take a predicate to filter lazily some items.
+template<typename IterTy,
+         typename Pred = bool (*)(const decltype(*std::declval<IterTy>()) &)>
 bool hasNItems(
     IterTy &&Begin, IterTy &&End, unsigned N,
+    Pred &&ShouldBeCounted =
+        [](const decltype(*std::declval<IterTy>()) &) { return true; },
     std::enable_if_t<
         !std::is_same<typename std::iterator_traits<std::remove_reference_t<
                           decltype(Begin)>>::iterator_category,
                       std::random_access_iterator_tag>::value,
         void> * = nullptr) {
-  for (; N; --N, ++Begin)
+  for (; N; ++Begin) {
     if (Begin == End)
       return false; // Too few.
+    N -= ShouldBeCounted(*Begin);
+  }
   return Begin == End;
 }
 
 /// Return true if the sequence [Begin, End) has N or more items. Runs in O(N)
 /// time. Not meant for use with random-access iterators.
-template <typename IterTy>
+/// Can optionally take a predicate to filter lazily some items.
+template<typename IterTy,
+         typename Pred = bool (*)(const decltype(*std::declval<IterTy>()) &)>
 bool hasNItemsOrMore(
     IterTy &&Begin, IterTy &&End, unsigned N,
+    Pred &&ShouldBeCounted =
+        [](const decltype(*std::declval<IterTy>()) &) { return true; },
     std::enable_if_t<
         !std::is_same<typename std::iterator_traits<std::remove_reference_t<
                           decltype(Begin)>>::iterator_category,
                       std::random_access_iterator_tag>::value,
         void> * = nullptr) {
-  for (; N; --N, ++Begin)
+  for (; N; ++Begin) {
     if (Begin == End)
       return false; // Too few.
+    N -= ShouldBeCounted(*Begin);
+  }
   return true;
 }
 

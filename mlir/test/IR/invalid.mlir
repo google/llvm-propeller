@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -verify-diagnostics
+// RUN: mlir-opt -allow-unregistered-dialect %s -split-input-file -verify-diagnostics
 
 // Check different error cases.
 // -----
@@ -22,10 +22,6 @@ func @indexvector(vector<4 x index>) -> () // expected-error {{vector elements m
 // -----
 
 func @indexmemref(memref<? x index>) -> () // expected-error {{invalid memref element type}}
-
-// -----
-
-func @indextensor(tensor<4 x index>) -> () // expected-error {{invalid tensor element type}}
 
 // -----
 // Test no map in memref type.
@@ -153,7 +149,7 @@ func @block_arg_no_type() {
 
 func @block_arg_no_close_paren() {
 ^bb42:
-  br ^bb2( // expected-error@+1 {{expected ')' to close argument list}}
+  br ^bb2( // expected-error@+1 {{expected ':'}}
   return
 }
 
@@ -535,7 +531,7 @@ func @undefined_function() {
 
 func @bound_symbol_mismatch(%N : index) {
   affine.for %i = #map1(%N) to 100 {
-  // expected-error@-1 {{symbol operand count and integer set symbol count must match}}
+  // expected-error@-1 {{symbol operand count and affine map symbol count must match}}
   }
   return
 }
@@ -546,7 +542,7 @@ func @bound_symbol_mismatch(%N : index) {
 
 func @bound_dim_mismatch(%N : index) {
   affine.for %i = #map1(%N, %N)[%N] to 100 {
-  // expected-error@-1 {{dim operand count and integer set dim count must match}}
+  // expected-error@-1 {{dim operand count and affine map dim count must match}}
   }
   return
 }
@@ -1230,4 +1226,244 @@ func @negative_value_in_unsigned_int_attr() {
 func @negative_value_in_unsigned_vector_attr() {
   // expected-error @+1 {{expected unsigned integer elements, but parsed negative value}}
   "foo"() {bar = dense<[5, -5]> : vector<2xui32>} : () -> ()
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = -129 : i8
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 256 : i8
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = -129 : si8
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 129 : si8
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{negative integer literal not valid for unsigned integer type}}
+    attr = -1 : ui8
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 256 : ui8
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = -32769 : i16
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 65536 : i16
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = -32769 : si16
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 32768 : si16
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{negative integer literal not valid for unsigned integer type}}
+    attr = -1 : ui16
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 65536: ui16
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = -2147483649 : i32
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 4294967296 : i32
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = -2147483649 : si32
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 2147483648 : si32
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{negative integer literal not valid for unsigned integer type}}
+    attr = -1 : ui32
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 4294967296 : ui32
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = -9223372036854775809 : i64
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 18446744073709551616 : i64
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = -9223372036854775809 : si64
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 9223372036854775808 : si64
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{negative integer literal not valid for unsigned integer type}}
+    attr = -1 : ui64
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @large_bound() {
+  "test.out_of_range_attribute"() {
+    // expected-error @+1 {{integer constant out of range for attribute}}
+    attr = 18446744073709551616 : ui64
+  } : () -> ()
+  return
 }

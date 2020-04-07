@@ -1259,7 +1259,7 @@ ASM Goto with Output Constraints
 ================================
 
 In addition to the functionality provided by `GCC's extended
-assembly`<https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html>`_, clang
+assembly <https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html>`_, clang
 supports output constraints with the `goto` form.
 
 The goto form of GCC's extended assembly allows the programmer to branch to a C
@@ -2129,20 +2129,31 @@ object that overloads ``operator&``.
 ``__builtin_operator_new`` and ``__builtin_operator_delete``
 ------------------------------------------------------------
 
-``__builtin_operator_new`` allocates memory just like a non-placement non-class
-*new-expression*. This is exactly like directly calling the normal
-non-placement ``::operator new``, except that it allows certain optimizations
+A call to ``__builtin_operator_new(args)`` is exactly the same as a call to
+``::operator new(args)``, except that it allows certain optimizations
 that the C++ standard does not permit for a direct function call to
 ``::operator new`` (in particular, removing ``new`` / ``delete`` pairs and
-merging allocations).
+merging allocations), and that the call is required to resolve to a
+`replaceable global allocation function
+<https://en.cppreference.com/w/cpp/memory/new/operator_new>`_.
 
-Likewise, ``__builtin_operator_delete`` deallocates memory just like a
-non-class *delete-expression*, and is exactly like directly calling the normal
-``::operator delete``, except that it permits optimizations. Only the unsized
-form of ``__builtin_operator_delete`` is currently available.
+Likewise, ``__builtin_operator_delete`` is exactly the same as a call to
+``::operator delete(args)``, except that it permits optimizations
+and that the call is required to resolve to a
+`replaceable global deallocation function
+<https://en.cppreference.com/w/cpp/memory/new/operator_delete>`_.
 
 These builtins are intended for use in the implementation of ``std::allocator``
 and other similar allocation libraries, and are only available in C++.
+
+Query for this feature with ``__has_builtin(__builtin_operator_new)`` or
+``__has_builtin(__builtin_operator_delete)``:
+
+  * If the value is at least ``201802L``, the builtins behave as described above.
+
+  * If the value is non-zero, the builtins may not support calling arbitrary
+    replaceable global (de)allocation functions, but do support calling at least
+    ``::operator new(size_t)`` and ``::operator delete(void*)``.
 
 ``__builtin_preserve_access_index``
 -----------------------------------
@@ -2175,6 +2186,30 @@ argument.
   struct t *v = ...;
   int *pb =__builtin_preserve_access_index(&v->c[3].b);
   __builtin_preserve_access_index(v->j);
+
+``__builtin_unique_stable_name``
+------------------------
+
+``__builtin_unique_stable_name()`` is a builtin that takes a type or expression and
+produces a string literal containing a unique name for the type (or type of the
+expression) that is stable across split compilations.
+
+In cases where the split compilation needs to share a unique token for a type
+across the boundary (such as in an offloading situation), this name can be used
+for lookup purposes.
+
+This builtin is superior to RTTI for this purpose for two reasons.  First, this
+value is computed entirely at compile time, so it can be used in constant
+expressions. Second, this value encodes lambda functions based on line-number
+rather than the order in which it appears in a function. This is valuable
+because it is stable in cases where an unrelated lambda is introduced
+conditionally in the same function.
+
+The current implementation of this builtin uses a slightly modified Itanium
+Mangler to produce the unique name. The lambda ordinal is replaced with one or
+more line/column pairs in the format ``LINE->COL``, separated with a ``~``
+character. Typically, only one pair will be included, however in the case of
+macro expansions the entire macro expansion stack is expressed.
 
 Multiprecision Arithmetic Builtins
 ----------------------------------
@@ -2298,10 +2333,11 @@ String builtins
 ---------------
 
 Clang provides constant expression evaluation support for builtins forms of
-the following functions from the C standard library ``<string.h>`` header:
+the following functions from the C standard library headers
+``<string.h>`` and ``<wchar.h>``:
 
 * ``memchr``
-* ``memcmp``
+* ``memcmp`` (and its deprecated BSD / POSIX alias ``bcmp``)
 * ``strchr``
 * ``strcmp``
 * ``strlen``
@@ -2331,7 +2367,11 @@ In addition to the above, one further builtin is provided:
 constant expressions in C++11 onwards (where a cast from ``void*`` to ``char*``
 is disallowed in general).
 
-Support for constant expression evaluation for the above builtins be detected
+Constant evaluation support for the ``__builtin_mem*`` functions is provided
+only for arrays of ``char``, ``signed char``, or ``unsigned char``, despite
+these functions accepting an argument of type ``const void*``.
+
+Support for constant expression evaluation for the above builtins can be detected
 with ``__has_feature(cxx_constexpr_string_builtins)``.
 
 Memory builtins
@@ -2350,6 +2390,25 @@ Intrinsic](https://llvm.org/docs/LangRef.html#llvm-memcpy-inline-intrinsic) for
 more information.
 
 Note that the `size` argument must be a compile time constant.
+
+Clang provides constant expression evaluation support for builtin forms of the
+following functions from the C standard library headers
+``<string.h>`` and ``<wchar.h>``:
+
+* ``memcpy``
+* ``memmove``
+* ``wmemcpy``
+* ``wmemmove``
+
+In each case, the builtin form has the name of the C library function prefixed
+by ``__builtin_``.
+
+Constant evaluation support is only provided when the source and destination
+are pointers to arrays with the same trivially copyable element type, and the
+given size is an exact multiple of the element size that is no greater than
+the number of elements accessible through the source and destination operands.
+
+Constant evaluation support is not yet provided for ``__builtin_memcpy_inline``.
 
 Atomic Min/Max builtins with memory ordering
 --------------------------------------------

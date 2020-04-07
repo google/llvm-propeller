@@ -42,6 +42,8 @@ e:
   ret void
 }
 
+; Note that while the load is removed (because it's unused), the block
+; is not changed to unreachable
 define void @load_null_pointer_is_defined() "null-pointer-is-valid"="true" {
 ; ATTRIBUTOR-LABEL: @load_null_pointer_is_defined(
 ; ATTRIBUTOR-NEXT:    ret void
@@ -54,16 +56,13 @@ define internal i32* @ret_null() {
   ret i32* null
 }
 
-; FIXME: null is propagated but the instruction
-; is not changed to unreachable.
-define i32 @load_null_propagated() {
+define void @load_null_propagated() {
 ; ATTRIBUTOR-LABEL: @load_null_propagated(
-; ATTRIBUTOR-NEXT:    [[A:%.*]] = load i32, i32* null
-; ATTRIBUTOR-NEXT:    ret i32 [[A]]
+; ATTRIBUTOR-NEXT:    unreachable
 ;
   %ptr = call i32* @ret_null()
   %a = load i32, i32* %ptr
-  ret i32 %a
+  ret void
 }
 
 ; -- Store tests --
@@ -98,6 +97,15 @@ define void @store_null_pointer_is_defined() "null-pointer-is-valid"="true" {
 ; ATTRIBUTOR-NEXT:    ret void
 ;
   store i32 5, i32* null
+  ret void
+}
+
+define void @store_null_propagated() {
+; ATTRIBUTOR-LABEL: @store_null_propagated(
+; ATTRIBUTOR-NEXT:    unreachable
+;
+  %ptr = call i32* @ret_null()
+  store i32 5, i32* %ptr
   ret void
 }
 
@@ -136,6 +144,15 @@ define void @atomicrmw_null_pointer_is_defined() "null-pointer-is-valid"="true" 
   ret void
 }
 
+define void @atomicrmw_null_propagated() {
+; ATTRIBUTOR-LABEL: @atomicrmw_null_propagated(
+; ATTRIBUTOR-NEXT:    unreachable
+;
+  %ptr = call i32* @ret_null()
+  %a = atomicrmw add i32* %ptr, i32 1 acquire
+  ret void
+}
+
 ; -- AtomicCmpXchg tests --
 
 define void @atomiccmpxchg_wholly_unreachable() {
@@ -170,6 +187,17 @@ define void @atomiccmpxchg_null_pointer_is_defined() "null-pointer-is-valid"="tr
   %a = cmpxchg i32* null, i32 2, i32 3 acq_rel monotonic
   ret void
 }
+
+define void @atomiccmpxchg_null_propagated() {
+; ATTRIBUTOR-LABEL: @atomiccmpxchg_null_propagated(
+; ATTRIBUTOR-NEXT:    unreachable
+;
+  %ptr = call i32* @ret_null()
+  %a = cmpxchg i32* %ptr, i32 2, i32 3 acq_rel monotonic
+  ret void
+}
+
+; -- Conditional branching tests --
 
 ; Note: The unreachable on %t and %e is _not_ from AAUndefinedBehavior
 
@@ -297,4 +325,28 @@ t:
   ret i32 1
 e:
   ret i32 2
+}
+
+; Note that the `load` has UB (so it will be changed to unreachable)
+; and the branch is a terminator that can be constant-folded.
+; We want to test that doing both won't cause a segfault.
+define internal i32 @callee(i1 %C, i32* %A) {
+; ATTRIBUTOR-NOT: @callee(
+;
+entry:
+  %A.0 = load i32, i32* null
+  br i1 %C, label %T, label %F
+
+T:
+  ret i32 %A.0
+
+F:
+  ret i32 1
+}
+
+define i32 @foo() {
+; ATTRIBUTOR-LABEL: @foo()
+; ATTRIBUTOR-NEXT:    ret i32 1
+  %X = call i32 @callee(i1 false, i32* null)
+  ret i32 %X
 }

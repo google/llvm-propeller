@@ -1022,7 +1022,7 @@ private:
 struct SemaCompleteInput {
   PathRef FileName;
   const tooling::CompileCommand &Command;
-  const PreambleData *Preamble;
+  const PreambleData &Preamble;
   llvm::StringRef Contents;
   size_t Offset;
   llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS;
@@ -1054,8 +1054,8 @@ bool semaCodeComplete(std::unique_ptr<CodeCompleteConsumer> Consumer,
                       IncludeStructure *Includes = nullptr) {
   trace::Span Tracer("Sema completion");
   llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS = Input.VFS;
-  if (Input.Preamble && Input.Preamble->StatCache)
-    VFS = Input.Preamble->StatCache->getConsumingFS(std::move(VFS));
+  if (Input.Preamble.StatCache)
+    VFS = Input.Preamble.StatCache->getConsumingFS(std::move(VFS));
   ParseInputs ParseInput;
   ParseInput.CompileCommand = Input.Command;
   ParseInput.FS = VFS;
@@ -1072,6 +1072,10 @@ bool semaCodeComplete(std::unique_ptr<CodeCompleteConsumer> Consumer,
   FrontendOpts.SkipFunctionBodies = true;
   // Disable typo correction in Sema.
   CI->getLangOpts()->SpellChecking = false;
+  // Code completion won't trigger in delayed template bodies.
+  // This is on-by-default in windows to allow parsing SDK headers; we're only
+  // disabling it for the main-file (not preamble).
+  CI->getLangOpts()->DelayedTemplateParsing = false;
   // Setup code completion.
   FrontendOpts.CodeCompleteOpts = Options;
   FrontendOpts.CodeCompletionAt.FileName = std::string(Input.FileName);
@@ -1095,9 +1099,7 @@ bool semaCodeComplete(std::unique_ptr<CodeCompleteConsumer> Consumer,
   // NOTE: we must call BeginSourceFile after prepareCompilerInstance. Otherwise
   // the remapped buffers do not get freed.
   auto Clang = prepareCompilerInstance(
-      std::move(CI),
-      (Input.Preamble && !CompletingInPreamble) ? &Input.Preamble->Preamble
-                                                : nullptr,
+      std::move(CI), !CompletingInPreamble ? &Input.Preamble.Preamble : nullptr,
       std::move(ContentsBuffer), std::move(VFS), IgnoreDiags);
   Clang->getPreprocessorOpts().SingleFileParseMode = CompletingInPreamble;
   Clang->setCodeCompletionConsumer(Consumer.release());
@@ -1114,8 +1116,7 @@ bool semaCodeComplete(std::unique_ptr<CodeCompleteConsumer> Consumer,
   //  - but Sema code complete won't see them: as part of the preamble, they're
   //    deserialized only when mentioned.
   // Force them to be deserialized so SemaCodeComplete sees them.
-  if (Input.Preamble)
-    loadMainFilePreambleMacros(Clang->getPreprocessor(), *Input.Preamble);
+  loadMainFilePreambleMacros(Clang->getPreprocessor(), Input.Preamble);
   if (Includes)
     Clang->getPreprocessor().addPPCallbacks(
         collectIncludeStructureCallback(Clang->getSourceManager(), Includes));
@@ -1373,8 +1374,8 @@ public:
     //  - accessible scopes are determined heuristically.
     //  - all-scopes query if no qualifier was typed (and it's allowed).
     SpecifiedScope Scopes;
-    Scopes.AccessibleScopes =
-        visibleNamespaces(Content.take_front(Offset), Style);
+    Scopes.AccessibleScopes = visibleNamespaces(
+        Content.take_front(Offset), format::getFormattingLangOpts(Style));
     for (std::string &S : Scopes.AccessibleScopes)
       if (!S.empty())
         S.append("::"); // visibleNamespaces doesn't include trailing ::.
@@ -1660,6 +1661,10 @@ private:
                                ? Scores.Total / Relevance.NameMatch
                                : Scores.Quality;
 
+    if (Opts.RecordCCResult)
+      Opts.RecordCCResult(toCodeCompletion(Bundle), Quality, Relevance,
+                          Scores.Total);
+
     dlog("CodeComplete: {0} ({1}) = {2}\n{3}{4}\n", First.Name,
          llvm::to_string(Origin), Scores.Total, llvm::to_string(Quality),
          llvm::to_string(Relevance));
@@ -1750,12 +1755,12 @@ codeComplete(PathRef FileName, const tooling::CompileCommand &Command,
   return (!Preamble || Opts.RunParser == CodeCompleteOptions::NeverParse)
              ? std::move(Flow).runWithoutSema(Contents, *Offset, VFS)
              : std::move(Flow).run(
-                   {FileName, Command, Preamble, Contents, *Offset, VFS});
+                   {FileName, Command, *Preamble, Contents, *Offset, VFS});
 }
 
 SignatureHelp signatureHelp(PathRef FileName,
                             const tooling::CompileCommand &Command,
-                            const PreambleData *Preamble,
+                            const PreambleData &Preamble,
                             llvm::StringRef Contents, Position Pos,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS,
                             const SymbolIndex *Index) {
@@ -1772,8 +1777,7 @@ SignatureHelp signatureHelp(PathRef FileName,
   Options.IncludeBriefComments = false;
   IncludeStructure PreambleInclusions; // Unused for signatureHelp
   semaCodeComplete(
-      std::make_unique<SignatureHelpCollector>(Options, Index, Result),
-      Options,
+      std::make_unique<SignatureHelpCollector>(Options, Index, Result), Options,
       {FileName, Command, Preamble, Contents, *Offset, std::move(VFS)});
   return Result;
 }

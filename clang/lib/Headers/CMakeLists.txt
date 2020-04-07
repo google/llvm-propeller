@@ -37,6 +37,7 @@ set(files
   bmi2intrin.h
   bmiintrin.h
   __clang_cuda_builtin_vars.h
+  __clang_cuda_math.h
   __clang_cuda_cmath.h
   __clang_cuda_complex_builtins.h
   __clang_cuda_device_functions.h
@@ -87,6 +88,7 @@ set(files
   ptwriteintrin.h
   rdseedintrin.h
   rtmintrin.h
+  serializeintrin.h
   sgxintrin.h
   s390intrin.h
   shaintrin.h
@@ -109,6 +111,7 @@ set(files
   vecintrin.h
   vpclmulqdqintrin.h
   waitpkgintrin.h
+  wasm_simd128.h
   wbnoinvdintrin.h
   wmmintrin.h
   __wmmintrin_aes.h
@@ -184,8 +187,12 @@ endforeach( f )
 clang_generate_header(-gen-arm-neon arm_neon.td arm_neon.h)
 # Generate arm_fp16.h
 clang_generate_header(-gen-arm-fp16 arm_fp16.td arm_fp16.h)
+# Generate arm_sve.h
+clang_generate_header(-gen-arm-sve-header arm_sve.td arm_sve.h)
 # Generate arm_mve.h
 clang_generate_header(-gen-arm-mve-header arm_mve.td arm_mve.h)
+# Generate arm_cde.h
+clang_generate_header(-gen-arm-cde-header arm_cde.td arm_cde.h)
 
 add_custom_target(clang-resource-headers ALL DEPENDS ${out_files})
 set_target_properties(clang-resource-headers PROPERTIES

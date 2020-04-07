@@ -288,7 +288,7 @@ promotion to deeper levels of the memory hierarchy.
 Tensor Comprehensions showed that, fixing a few predefined strategies
 with parametric transformations and tuning knobs, can already provide
 great results. In that previous work, simple
-genetic search combined with an autotining framework was sufficient
+genetic search combined with an autotuning framework was sufficient
 to find good implementations in the ***non-compute bound regime***.
 This requires code versions obtainable by the
 various transformations to encompass versions that get close to the
@@ -309,9 +309,9 @@ problems than could be solved with a small tactical investment.
 - Tensor Comprehensions emitted CUDA code which was then JIT compiled
 with NVCC from a textual representation. While this was a pragmatic
 short-term solution it made it hard to perform low-level rewrites that
-would have helped with register reuse in the ***comput-bound regime***.
+would have helped with register reuse in the ***compute-bound regime***.
 - The same reliance on emitting CUDA code made it difficult to
-create cost models when time came. This made it artifically harder to
+create cost models when time came. This made it artificially harder to
 prune out bad solutions than necessary. This resulted in excessive
 runtime evaluation, as reported in the paper [Machine Learning Systems
 are Stuck in a Rut](https://dl.acm.org/doi/10.1145/3317550.3321441).
@@ -532,7 +532,7 @@ with [Tensor Comprehensions](#lessonstc).
 Of course, we are not advocating for using ML everywhere in the stack
 immediately: low-level compilation and machine models are still quite performant
 in LLVM. However, for the high-level and mid-level optimization problems,
-models need to be conditioned (probalistically) on the low-level
+models need to be conditioned (probabilistically) on the low-level
 compiler which acts as a blackbox. For these reasons we prioritize the
 design of IR and transformations with search-friendly properties over
 building cost models.

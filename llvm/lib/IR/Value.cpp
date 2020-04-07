@@ -141,6 +141,51 @@ bool Value::hasNUsesOrMore(unsigned N) const {
   return hasNItemsOrMore(use_begin(), use_end(), N);
 }
 
+static bool isUnDroppableUser(const User *U) { return !U->isDroppable(); }
+
+Use *Value::getSingleUndroppableUse() {
+  Use *Result = nullptr;
+  for (Use &U : uses()) {
+    if (!U.getUser()->isDroppable()) {
+      if (Result)
+        return nullptr;
+      Result = &U;
+    }
+  }
+  return Result;
+}
+
+bool Value::hasNUndroppableUses(unsigned int N) const {
+  return hasNItems(user_begin(), user_end(), N, isUnDroppableUser);
+}
+
+bool Value::hasNUndroppableUsesOrMore(unsigned int N) const {
+  return hasNItemsOrMore(user_begin(), user_end(), N, isUnDroppableUser);
+}
+
+void Value::dropDroppableUses(
+    llvm::function_ref<bool(const Use *)> ShouldDrop) {
+  SmallVector<Use *, 8> ToBeEdited;
+  for (Use &U : uses())
+    if (U.getUser()->isDroppable() && ShouldDrop(&U))
+      ToBeEdited.push_back(&U);
+  for (Use *U : ToBeEdited) {
+    U->removeFromList();
+    if (auto *Assume = dyn_cast<IntrinsicInst>(U->getUser())) {
+      assert(Assume->getIntrinsicID() == Intrinsic::assume);
+      unsigned OpNo = U->getOperandNo();
+      if (OpNo == 0)
+        Assume->setOperand(0, ConstantInt::getTrue(Assume->getContext()));
+      else {
+        Assume->setOperand(OpNo, UndefValue::get(U->get()->getType()));
+        CallInst::BundleOpInfo &BOI = Assume->getBundleOpInfoForOperand(OpNo);
+        BOI.Tag = getContext().pImpl->getOrInsertBundleTag("ignore");
+      }
+    } else
+      llvm_unreachable("unkown droppable use");
+  }
+}
+
 bool Value::isUsedInBasicBlock(const BasicBlock *BB) const {
   // This can be computed either by scanning the instructions in BB, or by
   // scanning the use list of this Value. Both lists can be very long, but
@@ -621,7 +666,7 @@ uint64_t Value::getPointerDereferenceableBytes(const DataLayout &DL,
     if (DerefBytes == 0 && (A->hasByValAttr() || A->hasStructRetAttr())) {
       Type *PT = cast<PointerType>(A->getType())->getElementType();
       if (PT->isSized())
-        DerefBytes = DL.getTypeStoreSize(PT);
+        DerefBytes = DL.getTypeStoreSize(PT).getKnownMinSize();
     }
     if (DerefBytes == 0) {
       DerefBytes = A->getDereferenceableOrNullBytes();
@@ -662,14 +707,15 @@ uint64_t Value::getPointerDereferenceableBytes(const DataLayout &DL,
     }
   } else if (auto *AI = dyn_cast<AllocaInst>(this)) {
     if (!AI->isArrayAllocation()) {
-      DerefBytes = DL.getTypeStoreSize(AI->getAllocatedType());
+      DerefBytes =
+          DL.getTypeStoreSize(AI->getAllocatedType()).getKnownMinSize();
       CanBeNull = false;
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(this)) {
     if (GV->getValueType()->isSized() && !GV->hasExternalWeakLinkage()) {
       // TODO: Don't outright reject hasExternalWeakLinkage but set the
       // CanBeNull flag.
-      DerefBytes = DL.getTypeStoreSize(GV->getValueType());
+      DerefBytes = DL.getTypeStoreSize(GV->getValueType()).getFixedSize();
       CanBeNull = false;
     }
   }
@@ -700,22 +746,22 @@ MaybeAlign Value::getPointerAlignment(const DataLayout &DL) const {
           if (GVar->isStrongDefinitionForLinker())
             return MaybeAlign(DL.getPreferredAlignment(GVar));
           else
-            return Align(DL.getABITypeAlignment(ObjectType));
+            return DL.getABITypeAlign(ObjectType);
         }
       }
     }
     return Alignment;
   } else if (const Argument *A = dyn_cast<Argument>(this)) {
-    const MaybeAlign Alignment(A->getParamAlignment());
+    const MaybeAlign Alignment = A->getParamAlign();
     if (!Alignment && A->hasStructRetAttr()) {
       // An sret parameter has at least the ABI alignment of the return type.
       Type *EltTy = cast<PointerType>(A->getType())->getElementType();
       if (EltTy->isSized())
-        return Align(DL.getABITypeAlignment(EltTy));
+        return DL.getABITypeAlign(EltTy);
     }
     return Alignment;
   } else if (const AllocaInst *AI = dyn_cast<AllocaInst>(this)) {
-    const MaybeAlign Alignment(AI->getAlignment());
+    const MaybeAlign Alignment = AI->getAlign();
     if (!Alignment) {
       Type *AllocatedType = AI->getAllocatedType();
       if (AllocatedType->isSized())
@@ -723,7 +769,7 @@ MaybeAlign Value::getPointerAlignment(const DataLayout &DL) const {
     }
     return Alignment;
   } else if (const auto *Call = dyn_cast<CallBase>(this)) {
-    const MaybeAlign Alignment(Call->getRetAlignment());
+    const MaybeAlign Alignment = Call->getRetAlign();
     if (!Alignment && Call->getCalledFunction())
       return MaybeAlign(
           Call->getCalledFunction()->getAttributes().getRetAlignment());

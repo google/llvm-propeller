@@ -9,6 +9,7 @@
 #include "llvm/CodeGen/GlobalISel/Combiner.h"
 #include "llvm/CodeGen/GlobalISel/GISelChangeObserver.h"
 #include "llvm/CodeGen/GlobalISel/GISelKnownBits.h"
+#include "llvm/CodeGen/GlobalISel/MIPatternMatch.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/GlobalISel/Utils.h"
 #include "llvm/CodeGen/MachineDominators.h"
@@ -23,6 +24,7 @@
 #define DEBUG_TYPE "gi-combiner"
 
 using namespace llvm;
+using namespace MIPatternMatch;
 
 // Option to allow testing of the combiner while no targets know about indexed
 // addressing.
@@ -1268,7 +1270,7 @@ bool CombinerHelper::tryCombineMemCpyFamily(MachineInstr &MI, unsigned MaxLen) {
   if (IsVolatile)
     return false;
 
-  Align DstAlign(MemOp->getBaseAlignment());
+  Align DstAlign = MemOp->getBaseAlign();
   Align SrcAlign;
   Register Dst = MI.getOperand(1).getReg();
   Register Src = MI.getOperand(2).getReg();
@@ -1277,7 +1279,7 @@ bool CombinerHelper::tryCombineMemCpyFamily(MachineInstr &MI, unsigned MaxLen) {
   if (ID != Intrinsic::memset) {
     assert(MMOIt != MI.memoperands_end() && "Expected a second MMO on MI");
     MemOp = *(++MMOIt);
-    SrcAlign = Align(MemOp->getBaseAlignment());
+    SrcAlign = MemOp->getBaseAlign();
   }
 
   // See if this is a constant length copy
@@ -1481,6 +1483,125 @@ bool CombinerHelper::tryCombineShiftToUnmerge(MachineInstr &MI,
   }
 
   return false;
+}
+
+bool CombinerHelper::matchAnyExplicitUseIsUndef(MachineInstr &MI) {
+  return any_of(MI.explicit_uses(), [this](const MachineOperand &MO) {
+    return MO.isReg() &&
+           getOpcodeDef(TargetOpcode::G_IMPLICIT_DEF, MO.getReg(), MRI);
+  });
+}
+
+bool CombinerHelper::matchAllExplicitUsesAreUndef(MachineInstr &MI) {
+  return all_of(MI.explicit_uses(), [this](const MachineOperand &MO) {
+    return !MO.isReg() ||
+           getOpcodeDef(TargetOpcode::G_IMPLICIT_DEF, MO.getReg(), MRI);
+  });
+}
+
+bool CombinerHelper::matchUndefShuffleVectorMask(MachineInstr &MI) {
+  assert(MI.getOpcode() == TargetOpcode::G_SHUFFLE_VECTOR);
+  ArrayRef<int> Mask = MI.getOperand(3).getShuffleMask();
+  return all_of(Mask, [](int Elt) { return Elt < 0; });
+}
+
+bool CombinerHelper::matchEqualDefs(const MachineOperand &MOP1,
+                                    const MachineOperand &MOP2) {
+  if (!MOP1.isReg() || !MOP2.isReg())
+    return false;
+  MachineInstr *I1 = getDefIgnoringCopies(MOP1.getReg(), MRI);
+  if (!I1)
+    return false;
+  MachineInstr *I2 = getDefIgnoringCopies(MOP2.getReg(), MRI);
+  if (!I2)
+    return false;
+
+  // Check for physical registers on the instructions first to avoid cases like
+  // this:
+  //
+  // %a = COPY $physreg
+  // ...
+  // SOMETHING implicit-def $physreg
+  // ...
+  // %b = COPY $physreg
+  //
+  // These copies are not equivalent.
+  if (any_of(I1->uses(), [](const MachineOperand &MO) {
+        return MO.isReg() && MO.getReg().isPhysical();
+      })) {
+    // Check if we have a case like this:
+    //
+    // %a = COPY $physreg
+    // %b = COPY %a
+    //
+    // In this case, I1 and I2 will both be equal to %a = COPY $physreg.
+    // From that, we know that they must have the same value, since they must
+    // have come from the same COPY.
+    return I1->isIdenticalTo(*I2);
+  }
+
+  // We don't have any physical registers, so we don't necessarily need the
+  // same vreg defs.
+  //
+  // On the off-chance that there's some target instruction feeding into the
+  // instruction, let's use produceSameValue instead of isIdenticalTo.
+  return Builder.getTII().produceSameValue(*I1, *I2, &MRI);
+}
+
+bool CombinerHelper::matchConstantOp(const MachineOperand &MOP, int64_t C) {
+  if (!MOP.isReg())
+    return false;
+  int64_t Cst;
+  return mi_match(MOP.getReg(), MRI, m_ICst(Cst)) && Cst == C;
+}
+
+bool CombinerHelper::replaceSingleDefInstWithOperand(MachineInstr &MI,
+                                                     unsigned OpIdx) {
+  assert(MI.getNumExplicitDefs() == 1 && "Expected one explicit def?");
+  Register OldReg = MI.getOperand(0).getReg();
+  Register Replacement = MI.getOperand(OpIdx).getReg();
+  assert(canReplaceReg(OldReg, Replacement, MRI) && "Cannot replace register?");
+  MI.eraseFromParent();
+  replaceRegWith(MRI, OldReg, Replacement);
+  return true;
+}
+
+bool CombinerHelper::matchSelectSameVal(MachineInstr &MI) {
+  assert(MI.getOpcode() == TargetOpcode::G_SELECT);
+  // Match (cond ? x : x)
+  return matchEqualDefs(MI.getOperand(2), MI.getOperand(3)) &&
+         canReplaceReg(MI.getOperand(0).getReg(), MI.getOperand(2).getReg(),
+                       MRI);
+}
+
+bool CombinerHelper::matchBinOpSameVal(MachineInstr &MI) {
+  return matchEqualDefs(MI.getOperand(1), MI.getOperand(2)) &&
+         canReplaceReg(MI.getOperand(0).getReg(), MI.getOperand(1).getReg(),
+                       MRI);
+}
+
+bool CombinerHelper::replaceInstWithFConstant(MachineInstr &MI, double C) {
+  assert(MI.getNumDefs() == 1 && "Expected only one def?");
+  Builder.setInstr(MI);
+  Builder.buildFConstant(MI.getOperand(0), C);
+  MI.eraseFromParent();
+  return true;
+}
+
+bool CombinerHelper::replaceInstWithConstant(MachineInstr &MI, int64_t C) {
+  assert(MI.getNumDefs() == 1 && "Expected only one def?");
+  Builder.setInstr(MI);
+  Builder.buildConstant(MI.getOperand(0), C);
+  MI.eraseFromParent();
+  return true;
+}
+
+bool CombinerHelper::replaceInstWithUndef(MachineInstr &MI) {
+  assert(MI.getNumDefs() == 1 && "Expected only one def?");
+  Builder.setInstr(MI);
+  Builder.buildUndef(MI.getOperand(0));
+  MI.eraseFromParent();
+  return true;
 }
 
 bool CombinerHelper::tryCombine(MachineInstr &MI) {

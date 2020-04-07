@@ -37,6 +37,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
+#include <iterator>
 #include <utility>
 #include <vector>
 
@@ -76,6 +77,11 @@ std::vector<const NamedDecl *> getMembersReferencedViaDependentName(
     bool IsNonstaticMember) {
   if (!T)
     return {};
+  if (auto *ET = T->getAs<EnumType>()) {
+    auto Result =
+        ET->getDecl()->lookup(NameFactory(ET->getDecl()->getASTContext()));
+    return {Result.begin(), Result.end()};
+  }
   if (auto *ICNT = T->getAs<InjectedClassNameType>()) {
     T = ICNT->getInjectedSpecializationType().getTypePtrOrNull();
   }
@@ -541,7 +547,7 @@ llvm::SmallVector<const NamedDecl *, 1>
 explicitReferenceTargets(DynTypedNode N, DeclRelationSet Mask) {
   assert(!(Mask & (DeclRelation::TemplatePattern |
                    DeclRelation::TemplateInstantiation)) &&
-         "explicitRefenceTargets handles templates on its own");
+         "explicitReferenceTargets handles templates on its own");
   auto Decls = allTargetDecls(N);
 
   // We prefer to return template instantiation, but fallback to template

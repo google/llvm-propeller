@@ -28,6 +28,7 @@
 #ifdef _WIN32
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Chrono.h"
+#include "llvm/Support/Windows/WindowsSupport.h"
 #include <windows.h>
 #include <winerror.h>
 #endif
@@ -1253,21 +1254,14 @@ TEST(Support, ReplacePathPrefix) {
   path::replace_path_prefix(Path, OldPrefix, EmptyPrefix);
   EXPECT_EQ(Path, "/foo");
   Path = Path2;
-  path::replace_path_prefix(Path, OldPrefix, EmptyPrefix, path::Style::native,
-                            true);
+  path::replace_path_prefix(Path, OldPrefixSep, EmptyPrefix);
   EXPECT_EQ(Path, "foo");
   Path = Path3;
-  path::replace_path_prefix(Path, OldPrefix, NewPrefix, path::Style::native,
-                            false);
+  path::replace_path_prefix(Path, OldPrefix, NewPrefix);
   EXPECT_EQ(Path, "/newnew/foo");
   Path = Path3;
-  path::replace_path_prefix(Path, OldPrefix, NewPrefix, path::Style::native,
-                            true);
-  EXPECT_EQ(Path, "/oldnew/foo");
-  Path = Path3;
-  path::replace_path_prefix(Path, OldPrefixSep, NewPrefix, path::Style::native,
-                            true);
-  EXPECT_EQ(Path, "/oldnew/foo");
+  path::replace_path_prefix(Path, OldPrefix, NewPrefix2);
+  EXPECT_EQ(Path, "/longernewnew/foo");
   Path = Path1;
   path::replace_path_prefix(Path, EmptyPrefix, NewPrefix);
   EXPECT_EQ(Path, "/new/foo");
@@ -1278,13 +1272,8 @@ TEST(Support, ReplacePathPrefix) {
   path::replace_path_prefix(Path, OldPrefix, NewPrefix);
   EXPECT_EQ(Path, "/new/");
   Path = OldPrefix;
-  path::replace_path_prefix(Path, OldPrefixSep, NewPrefix, path::Style::native,
-                            false);
+  path::replace_path_prefix(Path, OldPrefixSep, NewPrefix);
   EXPECT_EQ(Path, "/old");
-  Path = OldPrefix;
-  path::replace_path_prefix(Path, OldPrefixSep, NewPrefix, path::Style::native,
-                            true);
-  EXPECT_EQ(Path, "/new");
 }
 
 TEST_F(FileSystemTest, OpenFileForRead) {
@@ -1874,5 +1863,75 @@ TEST_F(FileSystemTest, permissions) {
   EXPECT_TRUE(CheckPermissions(fs::all_perms & ~fs::sticky_bit));
 #endif
 }
+
+#ifdef _WIN32
+TEST_F(FileSystemTest, widenPath) {
+  const std::wstring LongPathPrefix(L"\\\\?\\");
+
+  // Test that the length limit is checked against the UTF-16 length and not the
+  // UTF-8 length.
+  std::string Input("C:\\foldername\\");
+  const std::string Pi("\xcf\x80"); // UTF-8 lower case pi.
+  // Add Pi up to the MAX_PATH limit.
+  const size_t NumChars = MAX_PATH - Input.size() - 1;
+  for (size_t i = 0; i < NumChars; ++i)
+    Input += Pi;
+  // Check that UTF-8 length already exceeds MAX_PATH.
+  EXPECT_TRUE(Input.size() > MAX_PATH);
+  SmallVector<wchar_t, MAX_PATH + 16> Result;
+  ASSERT_NO_ERROR(windows::widenPath(Input, Result));
+  // Result should not start with the long path prefix.
+  EXPECT_TRUE(std::wmemcmp(Result.data(), LongPathPrefix.c_str(),
+                           LongPathPrefix.size()) != 0);
+  EXPECT_EQ(Result.size(), (size_t)MAX_PATH - 1);
+
+  // Add another Pi to exceed the MAX_PATH limit.
+  Input += Pi;
+  // Construct the expected result.
+  SmallVector<wchar_t, MAX_PATH + 16> Expected;
+  ASSERT_NO_ERROR(windows::UTF8ToUTF16(Input, Expected));
+  Expected.insert(Expected.begin(), LongPathPrefix.begin(),
+                  LongPathPrefix.end());
+
+  ASSERT_NO_ERROR(windows::widenPath(Input, Result));
+  EXPECT_EQ(Result, Expected);
+
+  // Test that UNC paths are handled correctly.
+  const std::string ShareName("\\\\sharename\\");
+  const std::string FileName("\\filename");
+  // Initialize directory name so that the input is within the MAX_PATH limit.
+  const char DirChar = 'x';
+  std::string DirName(MAX_PATH - ShareName.size() - FileName.size() - 1,
+                      DirChar);
+
+  Input = ShareName + DirName + FileName;
+  ASSERT_NO_ERROR(windows::widenPath(Input, Result));
+  // Result should not start with the long path prefix.
+  EXPECT_TRUE(std::wmemcmp(Result.data(), LongPathPrefix.c_str(),
+                           LongPathPrefix.size()) != 0);
+  EXPECT_EQ(Result.size(), (size_t)MAX_PATH - 1);
+
+  // Extend the directory name so the input exceeds the MAX_PATH limit.
+  DirName += DirChar;
+  Input = ShareName + DirName + FileName;
+  // Construct the expected result.
+  ASSERT_NO_ERROR(windows::UTF8ToUTF16(StringRef(Input).substr(2), Expected));
+  const std::wstring UNCPrefix(LongPathPrefix + L"UNC\\");
+  Expected.insert(Expected.begin(), UNCPrefix.begin(), UNCPrefix.end());
+
+  ASSERT_NO_ERROR(windows::widenPath(Input, Result));
+  EXPECT_EQ(Result, Expected);
+
+  // Check that Unix separators are handled correctly.
+  std::replace(Input.begin(), Input.end(), '\\', '/');
+  ASSERT_NO_ERROR(windows::widenPath(Input, Result));
+  EXPECT_EQ(Result, Expected);
+
+  // Check the removal of "dots".
+  Input = ShareName + DirName + "\\.\\foo\\.\\.." + FileName;
+  ASSERT_NO_ERROR(windows::widenPath(Input, Result));
+  EXPECT_EQ(Result, Expected);
+}
+#endif
 
 } // anonymous namespace

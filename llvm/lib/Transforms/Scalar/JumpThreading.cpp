@@ -2125,6 +2125,18 @@ bool JumpThreadingPass::MaybeThreadThroughTwoBasicBlocks(BasicBlock *BB,
   if (PredBB->getSinglePredecessor())
     return false;
 
+  // Don't thread through PredBB if it contains a successor edge to itself, in
+  // which case we would infinite loop.  Suppose we are threading an edge from
+  // PredPredBB through PredBB and BB to SuccBB with PredBB containing a
+  // successor edge to itself.  If we allowed jump threading in this case, we
+  // could duplicate PredBB and BB as, say, PredBB.thread and BB.thread.  Since
+  // PredBB.thread has a successor edge to PredBB, we would immediately come up
+  // with another jump threading opportunity from PredBB.thread through PredBB
+  // and BB to SuccBB.  This jump threading would repeatedly occur.  That is, we
+  // would keep peeling one iteration from PredBB.
+  if (llvm::is_contained(successors(PredBB), PredBB))
+    return false;
+
   // Don't thread across a loop header.
   if (LoopHeaders.count(PredBB))
     return false;
@@ -2821,6 +2833,16 @@ bool JumpThreadingPass::TryToUnfoldSelect(CmpInst *CondCmp, BasicBlock *BB) {
 /// select is not jump-threaded, it will be folded again in the later
 /// optimizations.
 bool JumpThreadingPass::TryToUnfoldSelectInCurrBB(BasicBlock *BB) {
+  // This transform can introduce a UB (a conditional branch that depends on a
+  // poison value) that was not present in the original program. See
+  // @TryToUnfoldSelectInCurrBB test in test/Transforms/JumpThreading/select.ll.
+  // Disable this transform under MemorySanitizer.
+  // FIXME: either delete it or replace with a valid transform. This issue is
+  // not limited to MemorySanitizer (but has only been observed as an MSan false
+  // positive in practice so far).
+  if (BB->getParent()->hasFnAttribute(Attribute::SanitizeMemory))
+    return false;
+
   // If threading this would thread across a loop header, don't thread the edge.
   // See the comments above FindLoopHeaders for justifications and caveats.
   if (LoopHeaders.count(BB))

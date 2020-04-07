@@ -21,13 +21,20 @@ using namespace mlir::fxpmath::detail;
 using namespace mlir::quant;
 
 namespace {
-
 struct LowerUniformRealMathPass
     : public FunctionPass<LowerUniformRealMathPass> {
+/// Include the generated pass utilities.
+#define GEN_PASS_FxpMathLowerUniformRealMath
+#include "mlir/Dialect/FxpMathOps/Passes.h.inc"
+
   void runOnFunction() override;
 };
 
 struct LowerUniformCastsPass : public FunctionPass<LowerUniformCastsPass> {
+/// Include the generated pass utilities.
+#define GEN_PASS_FxpMathLowerUniformCasts
+#include "mlir/Dialect/FxpMathOps/Passes.h.inc"
+
   void runOnFunction() override;
 };
 
@@ -111,8 +118,8 @@ namespace {
 struct UniformDequantizePattern : public OpRewritePattern<DequantizeCastOp> {
   using OpRewritePattern<DequantizeCastOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(DequantizeCastOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(DequantizeCastOp op,
+                                PatternRewriter &rewriter) const override {
     Type inputType = op.arg().getType();
     Type outputType = op.getResult().getType();
 
@@ -121,16 +128,16 @@ struct UniformDequantizePattern : public OpRewritePattern<DequantizeCastOp> {
     Type expressedOutputType = inputElementType.castToExpressedType(inputType);
     if (expressedOutputType != outputType) {
       // Not a valid uniform cast.
-      return matchFailure();
+      return failure();
     }
 
     Value dequantizedValue = emitDequantize(op.getLoc(), op.arg(), rewriter);
     if (!dequantizedValue) {
-      return matchFailure();
+      return failure();
     }
 
     rewriter.replaceOp(op, dequantizedValue);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -313,40 +320,40 @@ namespace {
 struct UniformRealAddEwPattern : public OpRewritePattern<RealAddEwOp> {
   using OpRewritePattern<RealAddEwOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(RealAddEwOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(RealAddEwOp op,
+                                PatternRewriter &rewriter) const override {
     const UniformBinaryOpInfo info(op, op.lhs(), op.rhs(), op.clamp_min(),
                                    op.clamp_max());
     if (!info.isValid()) {
-      return matchFailure();
+      return failure();
     }
 
     // Try all of the permutations we support.
     if (succeeded(tryRewriteAffineAddEwIsomorphicSigned(info, rewriter))) {
-      return matchSuccess();
+      return success();
     }
 
-    return matchFailure();
+    return failure();
   }
 };
 
 struct UniformRealMulEwPattern : public OpRewritePattern<RealMulEwOp> {
   using OpRewritePattern<RealMulEwOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(RealMulEwOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(RealMulEwOp op,
+                                PatternRewriter &rewriter) const override {
     const UniformBinaryOpInfo info(op, op.lhs(), op.rhs(), op.clamp_min(),
                                    op.clamp_max());
     if (!info.isValid()) {
-      return matchFailure();
+      return failure();
     }
 
     // Try all of the permutations we support.
     if (succeeded(tryRewriteAffineMulEwSigned(info, rewriter))) {
-      return matchSuccess();
+      return success();
     }
 
-    return matchFailure();
+    return failure();
   }
 };
 
@@ -364,13 +371,10 @@ void LowerUniformRealMathPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformRealMathPass() {
-  return new LowerUniformRealMathPass();
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::fxpmath::createLowerUniformRealMathPass() {
+  return std::make_unique<LowerUniformRealMathPass>();
 }
-
-static PassRegistration<LowerUniformRealMathPass> lowerUniformRealMathPass(
-    "fxpmath-lower-uniform-real-math",
-    "Lowers uniform-quantized real math ops to integer arithmetic.");
 
 //===----------------------------------------------------------------------===//
 // LowerUniformCasts pass
@@ -384,10 +388,7 @@ void LowerUniformCastsPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformCastsPass() {
-  return new LowerUniformCastsPass();
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::fxpmath::createLowerUniformCastsPass() {
+  return std::make_unique<LowerUniformCastsPass>();
 }
-
-static PassRegistration<LowerUniformCastsPass>
-    lowerUniformCastsPass("fxpmath-lower-uniform-casts",
-                          "Lowers uniform-quantized casts.");

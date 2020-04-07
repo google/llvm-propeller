@@ -909,6 +909,8 @@ void TypePrinter::printFunctionAfter(const FunctionType::ExtInfo &Info,
 
   if (Info.getNoReturn())
     OS << " __attribute__((noreturn))";
+  if (Info.getCmseNSCall())
+    OS << " __attribute__((cmse_nonsecure_call))";
   if (Info.getProducesResult())
     OS << " __attribute__((ns_returns_retained))";
   if (Info.getRegParm())
@@ -1519,6 +1521,7 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
   case attr::SPtr:
   case attr::UPtr:
   case attr::AddressSpace:
+  case attr::CmseNSCall:
     llvm_unreachable("This attribute should have been handled already");
 
   case attr::NSReturnsRetained:
@@ -1719,13 +1722,13 @@ static void printTo(raw_ostream &OS, ArrayRef<TA> Args,
 
     OS << ArgString;
 
-    NeedSpace = (!ArgString.empty() && ArgString.back() == '>');
+    // If the last character of our string is '>', add another space to
+    // keep the two '>''s separate tokens.
+    NeedSpace = Policy.SplitTemplateClosers && !ArgString.empty() &&
+                ArgString.back() == '>';
     FirstArg = false;
   }
 
-  // If the last character of our string is '>', add another space to
-  // keep the two '>''s separate tokens. We don't *have* to do this in
-  // C++0x, but it's still good hygiene.
   if (NeedSpace)
     OS << ' ';
 

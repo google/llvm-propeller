@@ -80,7 +80,7 @@ Basic Usage
 Intro to how to use a C compiler for newbies.
 
 compile + link compile then link debug info enabling optimizations
-picking a language to use, defaults to C11 by default. Autosenses based
+picking a language to use, defaults to C17 by default. Autosenses based
 on extension. using a makefile
 
 Command Line Options
@@ -1677,6 +1677,27 @@ are listed below.
    on ELF targets when using the integrated assembler. This flag currently
    only has an effect on ELF targets.
 
+**-f[no]-unique-internal-linkage-names**
+
+   Controls whether Clang emits a unique (best-effort) symbol name for internal
+   linkage symbols.  When this option is set, compiler hashes the main source
+   file path from the command line and appends it to all internal symbols. If a
+   program contains multiple objects compiled with the same command-line source
+   file path, the symbols are not guaranteed to be unique.  This option is
+   particularly useful in attributing profile information to the correct
+   function when multiple functions with the same private linkage name exist
+   in the binary.
+
+   It should be noted that this option cannot guarantee uniqueness and the
+   following is an example where it is not unique when two modules contain
+   symbols with the same private linkage name:
+
+   .. code-block:: console
+
+     $ cd $P/foo && clang -c -funique-internal-linkage-names name_conflict.c
+     $ cd $P/bar && clang -c -funique-internal-linkage-names name_conflict.c
+     $ cd $P && clang foo/name_conflict.o && bar/name_conflict.o
+
 Profile Guided Optimization
 ---------------------------
 
@@ -2399,10 +2420,10 @@ See :doc:`LanguageExtensions`.
 Differences between various standard modes
 ------------------------------------------
 
-clang supports the -std option, which changes what language mode clang
-uses. The supported modes for C are c89, gnu89, c99, gnu99, c11, gnu11,
-c17, gnu17, and various aliases for those modes. If no -std option is
-specified, clang defaults to gnu11 mode. Many C99 and C11 features are
+clang supports the -std option, which changes what language mode clang uses.
+The supported modes for C are c89, gnu89, c99, gnu99, c11, gnu11, c17, gnu17,
+c2x, gnu2x, and various aliases for those modes. If no -std option is
+specified, clang defaults to gnu17 mode. Many C99 and C11 features are
 supported in earlier modes as a conforming extension, with a warning. Use
 ``-pedantic-errors`` to request an error if a feature from a later standard
 revision is used in an earlier mode.

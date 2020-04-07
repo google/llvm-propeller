@@ -75,6 +75,7 @@ static void setupConfig() {
   COPY_CONFIG(ReorderFuncs);
   COPY_CONFIG(ReorderIP);
   COPY_CONFIG(SplitFuncs);
+  COPY_CONFIG(ReorderBlocksRandom);
 #undef COPY_CONFIG
 
   // Scale weights for use in the computation of ExtTSP score.
@@ -98,16 +99,7 @@ void doPropeller() {
     return;
   }
 
-  prop->propf->processProfile2();
-
-  // warn("[Skippign propeller for now]");
-  // if (prop->processFiles(objectViews)) {
-    // config->symbolOrderingFile = prop->genSymbolOrderingFile();
-    // Done
-    
-  //  }
-  // else
-  // error("Propeller stage failed.");
+  warn("[BBCLUSTERS]: Skipping propeller for now.");
   return;
 
   // std::vector<ObjectView *> objectViews;

@@ -116,12 +116,21 @@ StringRef getOutputSectionName(const InputSectionBase *s) {
     }
   }
 
-  // This check is for -z keep-text-section-prefix.  This option separates text
-  // sections with prefix ".text.hot", ".text.unlikely", ".text.startup" or
-  // ".text.exit".
-  // When enabled, this allows identifying the hot code region (.text.hot) in
-  // the final binary which can be selectively mapped to huge pages or mlocked,
-  // for instance.
+  // A BssSection created for a common symbol is identified as "COMMON" in
+  // linker scripts. It should go to .bss section.
+  if (s->name == "COMMON")
+    return ".bss";
+
+  if (script->hasSectionsCommand)
+    return s->name;
+
+  // When no SECTIONS is specified, emulate GNU ld's internal linker scripts
+  // by grouping sections with certain prefixes.
+
+  // GNU ld places text sections with prefix ".text.hot.", ".text.unlikely.",
+  // ".text.startup." or ".text.exit." before others. We provide an option -z
+  // keep-text-section-prefix to group such sections into separate output
+  // sections. This is more flexible. See also sortISDBySectionOrder().
   if (config->zKeepTextSectionPrefix)
     for (StringRef v :
          {".text.hot.", ".text.unlikely.", ".text.startup.", ".text.exit."})
@@ -134,11 +143,6 @@ StringRef getOutputSectionName(const InputSectionBase *s) {
         ".gcc_except_table.", ".tdata.", ".ARM.exidx.", ".ARM.extab."})
     if (isSectionPrefix(v, s->name))
       return v.drop_back();
-
-  // CommonSection is identified as "COMMON" in linker scripts.
-  // By default, it should go to .bss section.
-  if (s->name == "COMMON")
-    return ".bss";
 
   return s->name;
 }
@@ -533,7 +537,8 @@ template <class ELFT> void createSyntheticSections() {
     add(in.ibtPlt);
   }
 
-  in.plt = make<PltSection>();
+  in.plt = config->emachine == EM_PPC ? make<PPC32GlinkSection>()
+                                      : make<PltSection>();
   add(in.plt);
   in.iplt = make<IpltSection>();
   add(in.iplt);
@@ -602,6 +607,12 @@ template <class ELFT> void Writer<ELFT>::run() {
     for (OutputSection *sec : outputSections)
       sec->addr = 0;
 
+  // Handle --print-map(-M)/--Map and --cref. Dump them before checkSections()
+  // because the files may be useful in case checkSections() or openFile()
+  // fails, for example, due to an erroneous file size.
+  writeMapFile();
+  writeCrossReferenceTable();
+
   if (config->checkSections)
     checkSections();
 
@@ -625,12 +636,6 @@ template <class ELFT> void Writer<ELFT>::run() {
   // Backfill .note.gnu.build-id section content. This is done at last
   // because the content is usually a hash value of the entire output file.
   writeBuildId();
-  if (errorCount())
-    return;
-
-  // Handle -Map and -cref options.
-  writeMapFile();
-  writeCrossReferenceTable();
   if (errorCount())
     return;
 
@@ -844,7 +849,8 @@ static bool isRelroSection(const OutputSection *sec) {
   StringRef s = sec->name;
   return s == ".data.rel.ro" || s == ".bss.rel.ro" || s == ".ctors" ||
          s == ".dtors" || s == ".jcr" || s == ".eh_frame" ||
-         s == ".openbsd.randomdata";
+         s == ".fini_array" || s == ".init_array" ||
+         s == ".openbsd.randomdata" || s == ".preinit_array";
 }
 
 // We compute a rank for each section. The rank indicates where the
@@ -1587,17 +1593,30 @@ template <class ELFT> void Writer<ELFT>::resolveShfLinkOrder() {
     // but sort must consider them all at once.
     std::vector<InputSection **> scriptSections;
     std::vector<InputSection *> sections;
+    bool started = false, stopped = false;
     for (BaseCommand *base : sec->sectionCommands) {
       if (auto *isd = dyn_cast<InputSectionDescription>(base)) {
         for (InputSection *&isec : isd->sections) {
-          scriptSections.push_back(&isec);
-          sections.push_back(isec);
+          if (!(isec->flags & SHF_LINK_ORDER)) {
+            if (started)
+              stopped = true;
+          } else if (stopped) {
+            error(toString(isec) + ": SHF_LINK_ORDER sections in " + sec->name +
+                  " are not contiguous");
+          } else {
+            started = true;
 
-          InputSection *link = isec->getLinkOrderDep();
-          if (!link->getParent())
-            error(toString(isec) + ": sh_link points to discarded section " +
-                  toString(link));
+            scriptSections.push_back(&isec);
+            sections.push_back(isec);
+
+            InputSection *link = isec->getLinkOrderDep();
+            if (!link->getParent())
+              error(toString(isec) + ": sh_link points to discarded section " +
+                    toString(link));
+          }
         }
+      } else if (started) {
+        stopped = true;
       }
     }
 
@@ -1620,6 +1639,10 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
   AArch64Err843419Patcher a64p;
   ARMErr657417Patcher a32p;
   script->assignAddresses();
+
+  // Converts call x@GDPLT to call __tls_get_addr
+  if (config->emachine == EM_HEXAGON)
+    hexagonTLSSymbolUpdate(outputSections);
 
   int assignPasses = 0;
   for (;;) {
@@ -1667,20 +1690,44 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
     }
   }
 
-  // If a SECTIONS command is given, addrExpr, if set, is the specified output
-  // section address. Warn if the computed value is different from the actual
-  // address.
-  if (!script->hasSectionsCommand)
-    return;
-  for (auto changed : script->changedSectionAddresses) {
-    const OutputSection *os = changed.first;
-    warn("start of section " + os->name + " changes from 0x" +
-         utohexstr(changed.second) + " to 0x" + utohexstr(os->addr));
+  // If addrExpr is set, the address may not be a multiple of the alignment.
+  // Warn because this is error-prone.
+  for (BaseCommand *cmd : script->sectionCommands)
+    if (auto *os = dyn_cast<OutputSection>(cmd))
+      if (os->addr % os->alignment != 0)
+        warn("address (0x" + Twine::utohexstr(os->addr) + ") of section " +
+             os->name + " is not a multiple of alignment (" +
+             Twine(os->alignment) + ")");
+}
+
+static void
+getNoneOptimizableSections(DenseSet<const InputSection *> &sectionSet) {
+  for (InputFile *File : objectFiles) {
+    parallelForEach(File->getSymbols(), [&](Symbol *Sym) {
+      auto *def = dyn_cast<Defined>(Sym);
+      if (!def)
+        return;
+      if (!def->value)
+        return;
+
+      const SectionBase *sec = def->section;
+      if (!sec)
+        return;
+
+      const InputSection *inputSec = dyn_cast_or_null<InputSection>(sec->repl);
+      if (!inputSec)
+        return;
+      if (def->value + 6 == inputSec->data().size() ||
+          def->value + 5 == inputSec->data().size())
+        sectionSet.insert(inputSec);
+    });
   }
 }
 
 // If Input Sections have been shrinked (basic block sections) then
-// update symbol values and sizes associated with these sections.
+// update symbol values and sizes associated with these sections.  With basic
+// block sections, input sections can shrink when the jump instructions at
+// the end of the section are relaxed.
 static void fixSymbolsAfterShrinking() {
   for (InputFile *File : objectFiles) {
     parallelForEach(File->getSymbols(), [&](Symbol *Sym) {
@@ -1722,34 +1769,36 @@ static void fixSymbolsAfterShrinking() {
 
 // If basic block sections exist, there are opportunities to delete fall thru
 // jumps and shrink jump instructions after basic block reordering.  This
-// relaxation pass does that.
+// relaxation pass does that.  It is only enabled when --optimize-bb-jumps
+// option is used.
 template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
-  if (!config->optimizeBBJumps)
-    return;
+  assert(config->optimizeBBJumps);
 
   script->assignAddresses();
+  DenseSet<const InputSection *> noneOptimizableSections;
+  getNoneOptimizableSections(noneOptimizableSections);
   // For every output section that has executable input sections, this
-  // does 3 things:
-  //   1.  It deletes all direct jump instructions in input sections that
-  //       jump to the following section as it is not required.  If there
-  //       are two consecutive jump instructions, it checks if they can be
-  //       flipped and one can be deleted.
-  //   2.  It aggressively shrinks jump instructions.
-  //   3.  It aggressively grows back jump instructions.
+  // does the following:
+  //   1. Deletes all direct jump instructions in input sections that
+  //      jump to the following section as it is not required.
+  //   2. If there are two consecutive jump instructions, it checks
+  //      if they can be flipped and one can be deleted.
+  //   3. It aggressively shrinks jump instructions.
+  //   4. It aggressively grows back jump instructions.
   for (OutputSection *os : outputSections) {
     if (!(os->flags & SHF_EXECINSTR))
       continue;
     std::vector<InputSection *> sections = getInputSections(os);
     std::vector<unsigned> result(sections.size());
-    // Step 1: Delete all fall through jump instructions.  Also, check if two
-    // consecutive jump instructions can be flipped so that a fall through jmp
-    // instruction can be deleted.
+    // Delete all fall through jump instructions.  Also, check if two
+    // consecutive jump instructions can be flipped so that a fall
+    // through jmp instruction can be deleted.
     parallelForEachN(0, sections.size(), [&](size_t i) {
-      InputSection *next =
-          (i + 1) < sections.size() ? sections[i + 1] : nullptr;
+      InputSection *next = i + 1 < sections.size() ? sections[i + 1] : nullptr;
       InputSection &is = *sections[i];
-      result[i] =
-          target->deleteFallThruJmpInsn(is, is.getFile<ELFT>(), next) ? 1 : 0;
+      if (!noneOptimizableSections.count(&is))
+        result[i] =
+            target->deleteFallThruJmpInsn(is, is.getFile<ELFT>(), next) ? 1 : 0;
     });
     size_t numDeleted = std::count(result.begin(), result.end(), 1);
     if (numDeleted > 0) {
@@ -1772,9 +1821,11 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       anyChanged = false;
       parallelForEachN(0, sections.size(), [&](size_t i) {
         InputSection &is = *sections[i];
-        unsigned BytesShrunk = target->shrinkJmpInsn(is, is.getFile<ELFT>());
-        changed[i] = (BytesShrunk > 0) ? 1 : 0;
-        shrunk[i] += BytesShrunk;
+        if (!noneOptimizableSections.count(&is)) {
+          unsigned BytesShrunk = target->shrinkJmpInsn(is, is.getFile<ELFT>());
+          changed[i] = (BytesShrunk > 0) ? 1 : 0;
+          shrunk[i] += BytesShrunk;
+        }
       });
       anyChanged = std::any_of(changed.begin(), changed.end(),
                                [](unsigned e) { return e > 0; });
@@ -1796,9 +1847,11 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       anyChanged = false;
       parallelForEachN(0, sections.size(), [&](size_t i) {
         InputSection &is = *sections[i];
-        unsigned bytesGrown = target->growJmpInsn(is, is.getFile<ELFT>());
-        changed[i] = (bytesGrown > 0);
-        grown[i] += bytesGrown;
+        if (!noneOptimizableSections.count(&is)) {
+          unsigned bytesGrown = target->growJmpInsn(is, is.getFile<ELFT>());
+          changed[i] = (bytesGrown > 0);
+          grown[i] += bytesGrown;
+        }
       });
       size_t num = std::count_if(grown.begin(), grown.end(),
                                  [](int e) { return e > 0; });
@@ -2025,6 +2078,15 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
       sec->addrExpr = [=] { return i->second; };
   }
 
+  // With the outputSections available check for GDPLT relocations
+  // and add __tls_get_addr symbol if needed.
+  if (config->emachine == EM_HEXAGON && hexagonNeedsTLSSymbol(outputSections)) {
+    Symbol *sym = symtab->addSymbol(Undefined{
+        nullptr, "__tls_get_addr", STB_GLOBAL, STV_DEFAULT, STT_NOTYPE});
+    sym->isPreemptible = true;
+    partitions[0].dynSymTab->addSymbol(sym);
+  }
+
   // This is a bit of a hack. A value of 0 means undef, so we set it
   // to 1 to make __ehdr_start defined. The section number is not
   // particularly relevant.
@@ -2138,8 +2200,10 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(in.ppc64LongBranchTarget);
 
   // Relaxation to delete inter-basic block jumps created by basic block
-  // sections.
-  optimizeBasicBlockJumps();
+  // sections. Run after in.symTab is finalized as optimizeBasicBlockJumps
+  // relaxes jump instructions based on symbol offset.
+  if (config->optimizeBBJumps)
+    optimizeBasicBlockJumps();
 
   // Fill other section headers. The dynamic table is finalized
   // at the end because some tags like RELSZ depend on result

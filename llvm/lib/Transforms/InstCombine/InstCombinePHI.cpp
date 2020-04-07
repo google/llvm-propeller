@@ -218,13 +218,21 @@ Instruction *InstCombiner::FoldIntegerTypedPHI(PHINode &PN) {
     return nullptr;
 
   // If any of the operand that requires casting is a terminator
-  // instruction, do not do it.
+  // instruction, do not do it. Similarly, do not do the transform if the value
+  // is PHI in a block with no insertion point, for example, a catchswitch
+  // block, since we will not be able to insert a cast after the PHI.
   if (any_of(AvailablePtrVals, [&](Value *V) {
         if (V->getType() == IntToPtr->getType())
           return false;
-
         auto *Inst = dyn_cast<Instruction>(V);
-        return Inst && Inst->isTerminator();
+        if (!Inst)
+          return false;
+        if (Inst->isTerminator())
+          return true;
+        auto *BB = Inst->getParent();
+        if (isa<PHINode>(Inst) && BB->getFirstInsertionPt() == BB->end())
+          return true;
+        return false;
       }))
     return nullptr;
 
@@ -264,8 +272,10 @@ Instruction *InstCombiner::FoldIntegerTypedPHI(PHINode &PN) {
       if (auto *IncomingI = dyn_cast<Instruction>(IncomingVal)) {
         BasicBlock::iterator InsertPos(IncomingI);
         InsertPos++;
+        BasicBlock *BB = IncomingI->getParent();
         if (isa<PHINode>(IncomingI))
-          InsertPos = IncomingI->getParent()->getFirstInsertionPt();
+          InsertPos = BB->getFirstInsertionPt();
+        assert(InsertPos != BB->end() && "should have checked above");
         InsertNewInstBefore(CI, *InsertPos);
       } else {
         auto *InsertBB = &IncomingBB->getParent()->getEntryBlock();
@@ -1184,15 +1194,22 @@ Instruction *InstCombiner::visitPHINode(PHINode &PN) {
     if (CmpInst && isa<IntegerType>(PN.getType()) && CmpInst->isEquality() &&
         match(CmpInst->getOperand(1), m_Zero())) {
       ConstantInt *NonZeroConst = nullptr;
+      bool MadeChange = false;
       for (unsigned i = 0, e = PN.getNumIncomingValues(); i != e; ++i) {
         Instruction *CtxI = PN.getIncomingBlock(i)->getTerminator();
         Value *VA = PN.getIncomingValue(i);
         if (isKnownNonZero(VA, DL, 0, &AC, CtxI, &DT)) {
           if (!NonZeroConst)
             NonZeroConst = GetAnyNonZeroConstInt(PN);
-          PN.setIncomingValue(i, NonZeroConst);
+
+          if (NonZeroConst != VA) {
+            replaceOperand(PN, i, NonZeroConst);
+            MadeChange = true;
+          }
         }
       }
+      if (MadeChange)
+        return &PN;
     }
   }
 

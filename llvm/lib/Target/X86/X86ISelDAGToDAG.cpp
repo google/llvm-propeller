@@ -259,6 +259,8 @@ namespace {
                           SDValue &Index, SDValue &Disp,
                           SDValue &Segment);
 
+    bool isProfitableToFormMaskedOp(SDNode *N) const;
+
     /// Implement addressing mode selection for inline asm expressions.
     bool SelectInlineAsmMemoryOperand(const SDValue &Op,
                                       unsigned ConstraintID,
@@ -722,6 +724,20 @@ X86DAGToDAGISel::IsProfitableToFold(SDValue N, SDNode *U, SDNode *Root) const {
   return true;
 }
 
+// Indicates it is profitable to form an AVX512 masked operation. Returning
+// false will favor a masked register-register masked move or vblendm and the
+// operation will be selected separately.
+bool X86DAGToDAGISel::isProfitableToFormMaskedOp(SDNode *N) const {
+  assert(
+      (N->getOpcode() == ISD::VSELECT || N->getOpcode() == X86ISD::SELECTS) &&
+      "Unexpected opcode!");
+
+  // If the operation has additional users, the operation will be duplicated.
+  // Check the use count to prevent that.
+  // FIXME: Are there cheap opcodes we might want to duplicate?
+  return N->getOperand(1).hasOneUse();
+}
+
 /// Replace the original chain operand of the call with
 /// load's chain operand and move load below the call's chain operand.
 static void moveBelowOrigChain(SelectionDAG *CurDAG, SDValue Load,
@@ -1023,7 +1039,7 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
     if (OptLevel != CodeGenOpt::None &&
         // Only do this when the target can fold the load into the call or
         // jmp.
-        !Subtarget->useRetpolineIndirectCalls() &&
+        !Subtarget->useIndirectThunkCalls() &&
         ((N->getOpcode() == X86ISD::CALL && !Subtarget->slowTwoMemOps()) ||
          (N->getOpcode() == X86ISD::TC_RETURN &&
           (Subtarget->is64Bit() ||
@@ -1169,7 +1185,7 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
         SDVTList VTs = CurDAG->getVTList(MVT::Other);
         SDValue Ops[] = {N->getOperand(0), N->getOperand(1), MemTmp};
         Store = CurDAG->getMemIntrinsicNode(X86ISD::FST, dl, VTs, Ops, MemVT,
-                                            MPI, /*Align*/ 0,
+                                            MPI, /*Align*/ None,
                                             MachineMemOperand::MOStore);
         if (N->getFlags().hasNoFPExcept()) {
           SDNodeFlags Flags = Store->getFlags();
@@ -1185,9 +1201,9 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
       if (!DstIsSSE) {
         SDVTList VTs = CurDAG->getVTList(DstVT, MVT::Other);
         SDValue Ops[] = {Store, MemTmp};
-        Result =
-            CurDAG->getMemIntrinsicNode(X86ISD::FLD, dl, VTs, Ops, MemVT, MPI,
-                                        /*Align*/ 0, MachineMemOperand::MOLoad);
+        Result = CurDAG->getMemIntrinsicNode(
+            X86ISD::FLD, dl, VTs, Ops, MemVT, MPI,
+            /*Align*/ None, MachineMemOperand::MOLoad);
         if (N->getFlags().hasNoFPExcept()) {
           SDNodeFlags Flags = Result->getFlags();
           Flags.setNoFPExcept(true);
@@ -1826,7 +1842,7 @@ static bool foldMaskAndShiftToScale(SelectionDAG &DAG, SDValue N,
 
   // There is nothing we can do here unless the mask is removing some bits.
   // Also, the addressing mode can only represent shifts of 1, 2, or 3 bits.
-  if (AMShiftAmt <= 0 || AMShiftAmt > 3) return true;
+  if (AMShiftAmt == 0 || AMShiftAmt > 3) return true;
 
   // We also need to ensure that mask is a continuous run of bits.
   if (countTrailingOnes(Mask >> MaskTZ) + MaskTZ + MaskLZ != 64) return true;
@@ -1921,7 +1937,7 @@ static bool foldMaskedShiftToBEXTR(SelectionDAG &DAG, SDValue N,
 
   // There is nothing we can do here unless the mask is removing some bits.
   // Also, the addressing mode can only represent shifts of 1, 2, or 3 bits.
-  if (AMShiftAmt <= 0 || AMShiftAmt > 3) return true;
+  if (AMShiftAmt == 0 || AMShiftAmt > 3) return true;
 
   MVT VT = N.getSimpleValueType();
   SDLoc DL(N);
@@ -4845,23 +4861,23 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
     SDValue N0 = Node->getOperand(0);
     SDValue N1 = Node->getOperand(1);
 
-    unsigned Opc, MOpc;
+    unsigned ROpc, MOpc;
     bool isSigned = Opcode == ISD::SDIVREM;
     if (!isSigned) {
       switch (NVT.SimpleTy) {
       default: llvm_unreachable("Unsupported VT!");
-      case MVT::i8:  Opc = X86::DIV8r;  MOpc = X86::DIV8m;  break;
-      case MVT::i16: Opc = X86::DIV16r; MOpc = X86::DIV16m; break;
-      case MVT::i32: Opc = X86::DIV32r; MOpc = X86::DIV32m; break;
-      case MVT::i64: Opc = X86::DIV64r; MOpc = X86::DIV64m; break;
+      case MVT::i8:  ROpc = X86::DIV8r;  MOpc = X86::DIV8m;  break;
+      case MVT::i16: ROpc = X86::DIV16r; MOpc = X86::DIV16m; break;
+      case MVT::i32: ROpc = X86::DIV32r; MOpc = X86::DIV32m; break;
+      case MVT::i64: ROpc = X86::DIV64r; MOpc = X86::DIV64m; break;
       }
     } else {
       switch (NVT.SimpleTy) {
       default: llvm_unreachable("Unsupported VT!");
-      case MVT::i8:  Opc = X86::IDIV8r;  MOpc = X86::IDIV8m;  break;
-      case MVT::i16: Opc = X86::IDIV16r; MOpc = X86::IDIV16m; break;
-      case MVT::i32: Opc = X86::IDIV32r; MOpc = X86::IDIV32m; break;
-      case MVT::i64: Opc = X86::IDIV64r; MOpc = X86::IDIV64m; break;
+      case MVT::i8:  ROpc = X86::IDIV8r;  MOpc = X86::IDIV8m;  break;
+      case MVT::i16: ROpc = X86::IDIV16r; MOpc = X86::IDIV16m; break;
+      case MVT::i32: ROpc = X86::IDIV32r; MOpc = X86::IDIV32m; break;
+      case MVT::i64: ROpc = X86::IDIV64r; MOpc = X86::IDIV64m; break;
       }
     }
 
@@ -4970,7 +4986,7 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
       CurDAG->setNodeMemRefs(CNode, {cast<LoadSDNode>(N1)->getMemOperand()});
     } else {
       InFlag =
-        SDValue(CurDAG->getMachineNode(Opc, dl, MVT::Glue, N1, InFlag), 0);
+        SDValue(CurDAG->getMachineNode(ROpc, dl, MVT::Glue, N1, InFlag), 0);
     }
 
     // Prevent use of AH in a REX instruction by explicitly copying it to

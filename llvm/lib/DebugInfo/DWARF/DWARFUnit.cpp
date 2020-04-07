@@ -139,7 +139,7 @@ DWARFUnit *DWARFUnitVector::getUnitForOffset(uint64_t Offset) const {
 
 DWARFUnit *
 DWARFUnitVector::getUnitForIndexEntry(const DWARFUnitIndex::Entry &E) {
-  const auto *CUOff = E.getOffset(DW_SECT_INFO);
+  const auto *CUOff = E.getContribution(DW_SECT_INFO);
   if (!CUOff)
     return nullptr;
 
@@ -183,7 +183,7 @@ DWARFUnit::DWARFUnit(DWARFContext &DC, const DWARFSection &Section,
     // data based on the index entries.
     StringRef Data = LocSection->Data;
     if (auto *IndexEntry = Header.getIndexEntry())
-      if (const auto *C = IndexEntry->getOffset(DW_SECT_LOC))
+      if (const auto *C = IndexEntry->getContribution(DW_SECT_LOC))
         Data = Data.substr(C->Offset, C->Length);
 
     DWARFDataExtractor DWARFData =
@@ -262,12 +262,8 @@ bool DWARFUnitHeader::extract(DWARFContext &Context,
   IndexEntry = Entry;
   if (!IndexEntry && Index)
     IndexEntry = Index->getFromOffset(*offset_ptr);
-  Length = debug_info.getRelocatedValue(4, offset_ptr, nullptr, &Err);
-  FormParams.Format = DWARF32;
-  if (Length == dwarf::DW_LENGTH_DWARF64) {
-    Length = debug_info.getU64(offset_ptr, &Err);
-    FormParams.Format = DWARF64;
-  }
+  std::tie(Length, FormParams.Format) =
+      debug_info.getInitialLength(offset_ptr, &Err);
   FormParams.Version = debug_info.getU16(offset_ptr, &Err);
   if (FormParams.Version >= 5) {
     UnitType = debug_info.getU8(offset_ptr, &Err);
@@ -285,17 +281,6 @@ bool DWARFUnitHeader::extract(DWARFContext &Context,
     else
       UnitType = DW_UT_compile;
   }
-  if (IndexEntry) {
-    if (AbbrOffset)
-      return false;
-    auto *UnitContrib = IndexEntry->getOffset();
-    if (!UnitContrib || UnitContrib->Length != (Length + 4))
-      return false;
-    auto *AbbrEntry = IndexEntry->getOffset(DW_SECT_ABBREV);
-    if (!AbbrEntry)
-      return false;
-    AbbrOffset = AbbrEntry->Offset;
-  }
   if (isTypeUnit()) {
     TypeHash = debug_info.getU64(offset_ptr, &Err);
     TypeOffset = debug_info.getUnsigned(
@@ -305,6 +290,19 @@ bool DWARFUnitHeader::extract(DWARFContext &Context,
 
   if (errorToBool(std::move(Err)))
     return false;
+
+  if (IndexEntry) {
+    if (AbbrOffset)
+      return false;
+    auto *UnitContrib = IndexEntry->getContribution();
+    if (!UnitContrib ||
+        UnitContrib->Length != (Length + getUnitLengthFieldByteSize()))
+      return false;
+    auto *AbbrEntry = IndexEntry->getContribution(DW_SECT_ABBREV);
+    if (!AbbrEntry)
+      return false;
+    AbbrOffset = AbbrEntry->Offset;
+  }
 
   // Header fields all parsed, capture the size of this unit header.
   assert(*offset_ptr - Offset <= 255 && "unexpected header size");
@@ -968,7 +966,7 @@ DWARFUnit::determineStringOffsetsTableContributionDWO(DWARFDataExtractor & DA) {
   uint64_t Offset = 0;
   auto IndexEntry = Header.getIndexEntry();
   const auto *C =
-      IndexEntry ? IndexEntry->getOffset(DW_SECT_STR_OFFSETS) : nullptr;
+      IndexEntry ? IndexEntry->getContribution(DW_SECT_STR_OFFSETS) : nullptr;
   if (C)
     Offset = C->Offset;
   if (getVersion() >= 5) {

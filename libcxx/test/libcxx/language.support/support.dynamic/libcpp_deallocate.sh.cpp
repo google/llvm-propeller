@@ -39,14 +39,15 @@
 // GCC doesn't support the aligned-allocation flags.
 // XFAIL: gcc
 
-// RUN: %build -faligned-allocation -fsized-deallocation
-// RUN: %run
-// RUN: %build -faligned-allocation -fno-sized-deallocation -DNO_SIZE
-// RUN: %run
-// RUN: %build -fno-aligned-allocation -fsized-deallocation -DNO_ALIGN
-// RUN: %run
-// RUN: %build -fno-aligned-allocation -fno-sized-deallocation -DNO_ALIGN -DNO_SIZE
-// RUN: %run
+// FILE_DEPENDENCIES: %t.exe
+// RUN: %{build} -faligned-allocation -fsized-deallocation
+// RUN: %{run}
+// RUN: %{build} -faligned-allocation -fno-sized-deallocation -DNO_SIZE
+// RUN: %{run}
+// RUN: %{build} -fno-aligned-allocation -fsized-deallocation -DNO_ALIGN
+// RUN: %{run}
+// RUN: %{build} -fno-aligned-allocation -fno-sized-deallocation -DNO_ALIGN -DNO_SIZE
+// RUN: %{run}
 
 #include <new>
 #include <typeinfo>
@@ -141,7 +142,11 @@ void operator delete(void* p, size_t n, std::align_val_t a)TEST_NOEXCEPT {
 
 void test_libcpp_dealloc() {
   void* p = nullptr;
+#ifdef __STDCPP_DEFAULT_NEW_ALIGNMENT__
+  size_t over_align_val = __STDCPP_DEFAULT_NEW_ALIGNMENT__ * 2;
+#else
   size_t over_align_val = TEST_ALIGNOF(std::max_align_t) * 2;
+#endif
   size_t under_align_val = TEST_ALIGNOF(int);
   size_t with_size_val = 2;
 

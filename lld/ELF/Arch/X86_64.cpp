@@ -62,7 +62,10 @@ public:
 };
 } // namespace
 
-static const std::vector<std::vector<uint8_t>> X86_NOP_INSTRUCTIONS = {
+// This is vector of NOP instructions of sizes from 1 to 8 bytes.  The
+// appropriately sized instructions are used to fill the gaps between sections
+// which are executed during fall through.
+static const std::vector<std::vector<uint8_t>> nopInstructions = {
     {0x90},
     {0x66, 0x90},
     {0x0f, 0x1f, 0x00},
@@ -89,7 +92,7 @@ X86_64::X86_64() {
   pltEntrySize = 16;
   ipltEntrySize = 16;
   trapInstr = {0xcc, 0xcc, 0xcc, 0xcc}; // 0xcc = INT3
-  nopInstrs = X86_NOP_INSTRUCTIONS;
+  nopInstrs = nopInstructions;
 
   // Align to the large page size (known as a superpage or huge page).
   // FreeBSD automatically promotes large, superpage-aligned allocations.
@@ -155,14 +158,16 @@ static JmpInsnOpcode getJmpInsnType(const uint8_t *first,
 // Returns the maximum size of the vector if no such relocation is found.
 static unsigned getRelocationWithOffset(const InputSection &is,
                                         uint64_t offset) {
-  unsigned i = 0;
-  for (unsigned e = is.relocations.size(); i < e; ++i) {
+  unsigned size = is.relocations.size();
+  for (unsigned i = size - 1; i + 1 > 0; --i) {
     if (is.relocations[i].offset == offset && is.relocations[i].expr != R_NONE)
-      break;
+      return i;
   }
-  return i;
+  return size;
 }
 
+// Returns the JumpInstrMod at that specific offset if any.  Returns the maximum
+// size of the vector if no such JumpInstrMod is found.
 static unsigned getJumpInstrModWithOffset(const InputSection &is,
                                           uint64_t offset) {
   unsigned i = 0;
@@ -173,9 +178,12 @@ static unsigned getJumpInstrModWithOffset(const InputSection &is,
   return i;
 }
 
+// Returns true if R corresponds to a relocation used for a jump instruction.
+// TODO: Once special relocations for relaxable jump instructions are available,
+// this should be modified to use those relocations.
 static bool isRelocationForJmpInsn(Relocation &R) {
-  return (R.type == R_X86_64_PLT32 || R.type == R_X86_64_PC32 ||
-          R.type == R_X86_64_PC8);
+  return R.type == R_X86_64_PLT32 || R.type == R_X86_64_PC32 ||
+         R.type == R_X86_64_PC8;
 }
 
 // Return true if Relocation R points to the first instruction in the
@@ -230,6 +238,21 @@ static JmpInsnOpcode invertJmpOpcode(const JmpInsnOpcode opcode) {
 // Deletes direct jump instruction in input sections that jumps to the
 // following section as it is not required.  If there are two consecutive jump
 // instructions, it checks if they can be flipped and one can be deleted.
+// For example:
+// .section .text
+// a.BB.foo:
+//    ...
+//    10: jne aa.BB.foo
+//    16: jmp bar
+// aa.BB.foo:
+//    ...
+//
+// can be converted to:
+// a.BB.foo:
+//   ...
+//   10: je bar  #jne flipped to je and the jmp is deleted.
+// aa.BB.foo:
+//   ...
 bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
                                    InputSection *nextIS) const {
   const unsigned sizeOfDirectJmpInsn = 5;
@@ -242,7 +265,7 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
 
   // If this jmp insn can be removed, it is the last insn and the
   // relocation is 4 bytes before the end.
-  unsigned rIndex = getRelocationWithOffset(is, (is.getSize() - 4));
+  unsigned rIndex = getRelocationWithOffset(is, is.getSize() - 4);
   if (rIndex == is.relocations.size())
     return false;
 
@@ -828,6 +851,10 @@ void X86_64::relaxTlsLdToLe(uint8_t *loc, const Relocation &rel,
         "expected R_X86_64_PLT32 or R_X86_64_GOTPCRELX after R_X86_64_TLSLD");
 }
 
+// A JumpInstrMod at a specific offset indicates that the jump instruction
+// opcode at that offset must be modified.  This is specifically used to relax
+// jump instructions with basic block sections.  This function looks at the
+// JumpMod and effects the change.
 void X86_64::applyJumpInstrMod(uint8_t *loc, JumpModType type,
                                unsigned size) const {
   switch (type) {

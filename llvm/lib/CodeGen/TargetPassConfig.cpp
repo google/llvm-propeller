@@ -695,7 +695,7 @@ void TargetPassConfig::addPassesToHandleExceptions() {
     // removed from the parent invoke(s). This could happen when a landing
     // pad is shared by multiple invokes and is also a target of a normal
     // edge from elsewhere.
-    addPass(createSjLjEHPreparePass());
+    addPass(createSjLjEHPreparePass(TM));
     LLVM_FALLTHROUGH;
   case ExceptionHandling::DwarfCFI:
   case ExceptionHandling::ARM:
@@ -984,7 +984,7 @@ void TargetPassConfig::addMachinePasses() {
   }
 
   if (TM->getBBSectionsType() != llvm::BasicBlockSection::None)
-    addPass(llvm::createBBSectionsPreparePass(TM->getBBSectionsFuncList()));
+    addPass(llvm::createBBSectionsPreparePass(TM->getBBSectionsFuncListBuf()));
 
   // Add passes that directly emit MI after all other MI passes.
   addPreEmitPass2();

@@ -114,8 +114,7 @@ void OutputSection::commitSection(InputSection *isec) {
     flags = isec->flags;
   } else {
     // Otherwise, check if new type or flags are compatible with existing ones.
-    unsigned mask = SHF_TLS | SHF_LINK_ORDER;
-    if ((flags & mask) != (isec->flags & mask))
+    if ((flags ^ isec->flags) & SHF_TLS)
       error("incompatible section flags for " + name + "\n>>> " + toString(isec) +
             ": 0x" + utohexstr(isec->flags) + "\n>>> output section " + name +
             ": 0x" + utohexstr(flags));
@@ -244,7 +243,11 @@ void OutputSection::sort(llvm::function_ref<int(InputSectionBase *s)> order) {
 }
 
 static void nopInstrFill(uint8_t *buf, size_t size) {
+  if (size == 0)
+    return;
   unsigned i = 0;
+  if (size == 0)
+    return;
   std::vector<std::vector<uint8_t>> nopFiller = *target->nopInstrs;
   unsigned num = size / nopFiller.back().size();
   for (unsigned c = 0; c < num; ++c) {
@@ -254,8 +257,7 @@ static void nopInstrFill(uint8_t *buf, size_t size) {
   unsigned remaining = size - i;
   if (!remaining)
     return;
-  if (nopFiller[remaining - 1].size() != remaining)
-    fatal("failed padding with special filler");
+  assert(nopFiller[remaining - 1].size() == remaining);
   memcpy(buf + i, nopFiller[remaining - 1].data(), remaining);
 }
 
@@ -347,7 +349,6 @@ template <class ELFT> void OutputSection::writeTo(uint8_t *buf) {
         end = buf + size;
       else
         end = buf + sections[i + 1]->outSecOff;
-      // Check if this IS needs a special filler.
       if (isec->nopFiller) {
         assert(target->nopInstrs);
         nopInstrFill(start, end - start);
@@ -387,8 +388,9 @@ void OutputSection::finalize() {
     // all InputSections in the OutputSection have the same dependency.
     if (auto *ex = dyn_cast<ARMExidxSyntheticSection>(first))
       link = ex->getLinkOrderDep()->getParent()->sectionIndex;
-    else if (auto *d = first->getLinkOrderDep())
-      link = d->getParent()->sectionIndex;
+    else if (first->flags & SHF_LINK_ORDER)
+      if (auto *d = first->getLinkOrderDep())
+        link = d->getParent()->sectionIndex;
   }
 
   if (type == SHT_GROUP) {

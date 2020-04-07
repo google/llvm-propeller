@@ -3,7 +3,7 @@ import * as vscodelc from 'vscode-languageclient';
 import * as semanticHighlighting from './semantic-highlighting';
 
 /**
- * Method to get workspace configuration option
+ * Get an option from workspace configuration.
  * @param option name of the option (e.g. for clangd.path should be path)
  * @param defaultValue default value to return if option is not set
  */
@@ -65,9 +65,18 @@ class ClangdLanguageClient extends vscodelc.LanguageClient {
   }
 }
 
+class EnableEditsNearCursorFeature implements vscodelc.StaticFeature {
+  initialize() {}
+  fillClientCapabilities(capabilities: vscodelc.ClientCapabilities): void {
+    const extendedCompletionCapabilities: any =
+        capabilities.textDocument.completion;
+    extendedCompletionCapabilities.editsNearCursor = true;
+  }
+}
+
 /**
- *  this method is called when your extension is activate
- *  your extension is activated the very first time the command is executed
+ *  This method is called when the extension is activated. The extension is
+ *  activated the very first time a command is executed.
  */
 export function activate(context: vscode.ExtensionContext) {
   const syncFileEvents = getConfig<boolean>('syncFileEvents', true);
@@ -88,7 +97,7 @@ export function activate(context: vscode.ExtensionContext) {
         documentSelector: [
             { scheme: 'file', language: 'c' },
             { scheme: 'file', language: 'cpp' },
-            // cuda is not supported by vscode, but our extension does.
+            // CUDA is not supported by vscode, but our extension does supports it.
             { scheme: 'file', language: 'cuda' },
             { scheme: 'file', language: 'objective-c'},
             { scheme: 'file', language: 'objective-cpp'}
@@ -97,8 +106,35 @@ export function activate(context: vscode.ExtensionContext) {
         // FIXME: send sync file events when clangd provides implementations.
         },
         initializationOptions: { clangdFileStatus: true },
-        // Do not switch to output window when clangd returns output
-        revealOutputChannelOn: vscodelc.RevealOutputChannelOn.Never
+        // Do not switch to output window when clangd returns output.
+        revealOutputChannelOn: vscodelc.RevealOutputChannelOn.Never,
+
+        // We hack up the completion items a bit to prevent VSCode from re-ranking them
+        // and throwing away all our delicious signals like type information.
+        //
+        // VSCode sorts by (fuzzymatch(prefix, item.filterText), item.sortText)
+        // By adding the prefix to the beginning of the filterText, we get a perfect
+        // fuzzymatch score for every item.
+        // The sortText (which reflects clangd ranking) breaks the tie.
+        // This also prevents VSCode from filtering out any results due to the
+        // differences in how fuzzy filtering is applies, e.g. enable dot-to-arrow
+        // fixes in completion.
+        //
+        // We also have to mark the list as incomplete to force retrieving new rankings.
+        // See https://github.com/microsoft/language-server-protocol/issues/898
+        middleware: {
+          provideCompletionItem: async (document, position, context, token, next) => {
+            let list = await next(document, position, context, token);
+            let items = (Array.isArray(list) ? list : list.items).map(item => {
+              // Gets the prefix used by VSCode when doing fuzzymatch.
+              let prefix = document.getText(new vscode.Range(item.range.start, position))
+              if (prefix)
+                item.filterText = prefix + "_" + item.filterText;
+              return item;
+            })
+            return new vscode.CompletionList(items, /*isIncomplete=*/true);
+          }
+        },
     };
 
   const clangdClient = new ClangdLanguageClient('Clang Language Server',
@@ -111,6 +147,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.Disposable.from(semanticHighlightingFeature));
     clangdClient.registerFeature(semanticHighlightingFeature);
   }
+  clangdClient.registerFeature(new EnableEditsNearCursorFeature);
   console.log('Clang Language Server is now active!');
   context.subscriptions.push(clangdClient.start());
   context.subscriptions.push(vscode.commands.registerCommand(

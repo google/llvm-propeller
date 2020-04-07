@@ -74,6 +74,8 @@ public:
   bool isTruncateFree(EVT SrcVT, EVT DstVT) const override;
   bool isZExtFree(SDValue Val, EVT VT2) const override;
   bool isSExtCheaperThanZExt(EVT SrcVT, EVT DstVT) const override;
+  bool isFPImmLegal(const APFloat &Imm, EVT VT,
+                    bool ForCodeSize) const override;
 
   bool hasBitPreservingFPLogic(EVT VT) const override;
 
@@ -124,6 +126,10 @@ public:
                                  AtomicOrdering Ord) const override;
 
   ISD::NodeType getExtendForAtomicOps() const override {
+    return ISD::SIGN_EXTEND;
+  }
+
+  ISD::NodeType getExtendForAtomicCmpSwapArg() const override {
     return ISD::SIGN_EXTEND;
   }
 
@@ -201,6 +207,7 @@ private:
   SDValue lowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerShiftLeftParts(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerShiftRightParts(SDValue Op, SelectionDAG &DAG, bool IsSRA) const;
+  SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const;
 
   bool isEligibleForTailCallOptimization(
       CCState &CCInfo, CallLoweringInfo &CLI, MachineFunction &MF,

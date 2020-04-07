@@ -138,8 +138,10 @@ static bool isCompatible(InputFile *file) {
       return true;
   }
 
-  if (!config->emulation.empty()) {
-    error(toString(file) + " is incompatible with " + config->emulation);
+  StringRef target =
+      !config->bfdname.empty() ? config->bfdname : config->emulation;
+  if (!target.empty()) {
+    error(toString(file) + " is incompatible with " + target);
     return false;
   }
 
@@ -148,8 +150,11 @@ static bool isCompatible(InputFile *file) {
     existing = objectFiles[0];
   else if (!sharedFiles.empty())
     existing = sharedFiles[0];
-  else
+  else if (!bitcodeFiles.empty())
     existing = bitcodeFiles[0];
+  else
+    llvm_unreachable("Must have -m, OUTPUT_FORMAT or existing input file to "
+                     "determine target emulation");
 
   error(toString(file) + " is incompatible with " + toString(existing));
   return false;
@@ -264,9 +269,17 @@ std::string InputFile::getSrcMsg(const Symbol &sym, InputSectionBase &sec,
   }
 }
 
-template <class ELFT> void ObjFile<ELFT>::initializeDwarf() {
-  dwarf = make<DWARFCache>(std::make_unique<DWARFContext>(
-      std::make_unique<LLDDwarfObj<ELFT>>(this)));
+template <class ELFT> DWARFCache *ObjFile<ELFT>::getDwarf() {
+  llvm::call_once(initDwarf, [this]() {
+    dwarf = std::make_unique<DWARFCache>(std::make_unique<DWARFContext>(
+        std::make_unique<LLDDwarfObj<ELFT>>(this), "",
+        [&](Error err) { warn(getName() + ": " + toString(std::move(err))); },
+        [&](Error warning) {
+          warn(getName() + ": " + toString(std::move(warning)));
+        }));
+  });
+
+  return dwarf.get();
 }
 
 // Returns the pair of file name and line number describing location of data
@@ -274,9 +287,7 @@ template <class ELFT> void ObjFile<ELFT>::initializeDwarf() {
 template <class ELFT>
 Optional<std::pair<std::string, unsigned>>
 ObjFile<ELFT>::getVariableLoc(StringRef name) {
-  llvm::call_once(initDwarfLine, [this]() { initializeDwarf(); });
-
-  return dwarf->getVariableLoc(name);
+  return getDwarf()->getVariableLoc(name);
 }
 
 // Returns source line information for a given offset
@@ -284,8 +295,6 @@ ObjFile<ELFT>::getVariableLoc(StringRef name) {
 template <class ELFT>
 Optional<DILineInfo> ObjFile<ELFT>::getDILineInfo(InputSectionBase *s,
                                                   uint64_t offset) {
-  llvm::call_once(initDwarfLine, [this]() { initializeDwarf(); });
-
   // Detect SectionIndex for specified section.
   uint64_t sectionIndex = object::SectionedAddress::UndefSection;
   ArrayRef<InputSectionBase *> sections = s->file->getSections();
@@ -296,9 +305,7 @@ Optional<DILineInfo> ObjFile<ELFT>::getDILineInfo(InputSectionBase *s,
     }
   }
 
-  // Use fake address calculated by adding section file offset and offset in
-  // section. See comments for ObjectInfo class.
-  return dwarf->getDILineInfo(s->getOffsetInFile() + offset, sectionIndex);
+  return getDwarf()->getDILineInfo(offset, sectionIndex);
 }
 
 ELFFileBase::ELFFileBase(Kind k, MemoryBufferRef mb) : InputFile(k, mb) {
@@ -417,6 +424,9 @@ StringRef ObjFile<ELFT>::getShtGroupSignature(ArrayRef<Elf_Shdr> sections,
 
 template <class ELFT>
 bool ObjFile<ELFT>::shouldMerge(const Elf_Shdr &sec, StringRef name) {
+  if (!(sec.sh_flags & SHF_MERGE))
+    return false;
+
   // On a regular link we don't merge sections if -O0 (default is -O1). This
   // sometimes makes the linker significantly faster, although the output will
   // be bigger.
@@ -452,10 +462,7 @@ bool ObjFile<ELFT>::shouldMerge(const Elf_Shdr &sec, StringRef name) {
           Twine(sec.sh_size) + ") must be a multiple of sh_entsize (" +
           Twine(entSize) + ")");
 
-  uint64_t flags = sec.sh_flags;
-  if (!(flags & SHF_MERGE))
-    return false;
-  if (flags & SHF_WRITE)
+  if (sec.sh_flags & SHF_WRITE)
     fatal(toString(this) + ":(" + name +
           "): writable SHF_MERGE section is not supported");
 
@@ -662,7 +669,9 @@ void ObjFile<ELFT>::initializeSections(bool ignoreComdats) {
 // the input objects have been compiled.
 static void updateARMVFPArgs(const ARMAttributeParser &attributes,
                              const InputFile *f) {
-  if (!attributes.hasAttribute(ARMBuildAttrs::ABI_VFP_args))
+  Optional<unsigned> attr =
+      attributes.getAttributeValue(ARMBuildAttrs::ABI_VFP_args);
+  if (!attr.hasValue())
     // If an ABI tag isn't present then it is implicitly given the value of 0
     // which maps to ARMBuildAttrs::BaseAAPCS. However many assembler files,
     // including some in glibc that don't use FP args (and should have value 3)
@@ -670,7 +679,7 @@ static void updateARMVFPArgs(const ARMAttributeParser &attributes,
     // as a clash.
     return;
 
-  unsigned vfpArgs = attributes.getAttributeValue(ARMBuildAttrs::ABI_VFP_args);
+  unsigned vfpArgs = attr.getValue();
   ARMVFPArgKind arg;
   switch (vfpArgs) {
   case ARMBuildAttrs::BaseAAPCS:
@@ -707,9 +716,11 @@ static void updateARMVFPArgs(const ARMAttributeParser &attributes,
 // is compiled with an architecture that supports these features then lld is
 // permitted to use them.
 static void updateSupportedARMFeatures(const ARMAttributeParser &attributes) {
-  if (!attributes.hasAttribute(ARMBuildAttrs::CPU_arch))
+  Optional<unsigned> attr =
+      attributes.getAttributeValue(ARMBuildAttrs::CPU_arch);
+  if (!attr.hasValue())
     return;
-  auto arch = attributes.getAttributeValue(ARMBuildAttrs::CPU_arch);
+  auto arch = attr.getValue();
   switch (arch) {
   case ARMBuildAttrs::Pre_v4:
   case ARMBuildAttrs::v4:
@@ -842,8 +853,13 @@ InputSectionBase *ObjFile<ELFT>::createInputSection(const Elf_Shdr &sec) {
       break;
     ARMAttributeParser attributes;
     ArrayRef<uint8_t> contents = check(this->getObj().getSectionContents(&sec));
-    attributes.parse(contents, config->ekind == ELF32LEKind ? support::little
-                                                            : support::big);
+    if (Error e = attributes.parse(contents, config->ekind == ELF32LEKind
+                                                 ? support::little
+                                                 : support::big)) {
+      auto *isec = make<InputSection>(*this, sec, name);
+      warn(toString(isec) + ": " + llvm::toString(std::move(e)));
+      break;
+    }
     updateSupportedARMFeatures(attributes);
     updateARMVFPArgs(attributes, this);
 
@@ -1418,10 +1434,11 @@ BitcodeFile::BitcodeFile(MemoryBufferRef mb, StringRef archiveName,
   // into consideration at LTO time (which very likely causes undefined
   // symbols later in the link stage). So we append file offset to make
   // filename unique.
-  StringRef name = archiveName.empty()
-                       ? saver.save(path)
-                       : saver.save(archiveName + "(" + path + " at " +
-                                    utostr(offsetInArchive) + ")");
+  StringRef name =
+      archiveName.empty()
+          ? saver.save(path)
+          : saver.save(archiveName + "(" + path::filename(path) + " at " +
+                       utostr(offsetInArchive) + ")");
   MemoryBufferRef mbref(mb.getBuffer(), name);
 
   obj = CHECK(lto::InputFile::create(mbref), this);

@@ -131,7 +131,7 @@ void SuspiciousEnumUsageCheck::registerMatchers(MatchFinder *Finder) {
       this);
 
   Finder->addMatcher(
-      binaryOperator(anyOf(hasOperatorName("+"), hasOperatorName("|")),
+      binaryOperator(hasAnyOperatorName("+", "|"),
                      hasLHS(enumExpr("lhsExpr", "enumDecl")),
                      hasRHS(expr(enumExpr("rhsExpr", ""),
                                  ignoringImpCasts(hasType(
@@ -139,16 +139,15 @@ void SuspiciousEnumUsageCheck::registerMatchers(MatchFinder *Finder) {
       this);
 
   Finder->addMatcher(
-      binaryOperator(anyOf(hasOperatorName("+"), hasOperatorName("|")),
+      binaryOperator(hasAnyOperatorName("+", "|"),
                      hasEitherOperand(
                          expr(hasType(isInteger()), unless(enumExpr("", "")))),
                      hasEitherOperand(enumExpr("enumExpr", "enumDecl"))),
       this);
 
-  Finder->addMatcher(
-      binaryOperator(anyOf(hasOperatorName("|="), hasOperatorName("+=")),
-                     hasRHS(enumExpr("enumExpr", "enumDecl"))),
-      this);
+  Finder->addMatcher(binaryOperator(hasAnyOperatorName("|=", "+="),
+                                    hasRHS(enumExpr("enumExpr", "enumDecl"))),
+                     this);
 }
 
 void SuspiciousEnumUsageCheck::checkSuspiciousBitmaskUsage(
@@ -157,7 +156,7 @@ void SuspiciousEnumUsageCheck::checkSuspiciousBitmaskUsage(
   const auto *EnumConst =
       EnumExpr ? dyn_cast<EnumConstantDecl>(EnumExpr->getDecl()) : nullptr;
 
-  // Report the parameter if neccessary.
+  // Report the parameter if necessary.
   if (!EnumConst) {
     diag(EnumDec->getInnerLocStart(), BitmaskVarErrorMessage)
         << countNonPowOfTwoLiteralNum(EnumDec);

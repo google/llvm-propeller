@@ -146,6 +146,13 @@ public:
     return static_cast<Intrinsic::ID>(0);
   }
 
+  /// Return if this call is to an intrinsic.
+  bool isIntrinsic() const {
+    if (auto *F = getCalledFunction())
+      return F->isIntrinsic();
+    return false;
+  }
+
   /// Determine whether the passed iterator points to the callee operand's Use.
   bool isCallee(Value::const_user_iterator UI) const {
     return isCallee(&UI.getUse());
@@ -406,13 +413,27 @@ public:
   }
 
   /// Extract the alignment of the return value.
+  /// FIXME: Remove when the transition to Align is over.
   unsigned getRetAlignment() const {
-    CALLSITE_DELEGATE_GETTER(getRetAlignment());
+    if (auto MA = getRetAlign())
+      return MA->value();
+    return 0;
+  }
+
+  /// Extract the alignment of the return value.
+  MaybeAlign getRetAlign() const { CALLSITE_DELEGATE_GETTER(getRetAlign()); }
+
+  /// Extract the alignment for a call or parameter (0=unknown).
+  /// FIXME: Remove when the transition to Align is over.
+  unsigned getParamAlignment(unsigned ArgNo) const {
+    if (auto MA = getParamAlign(ArgNo))
+      return MA->value();
+    return 0;
   }
 
   /// Extract the alignment for a call or parameter (0=unknown).
-  unsigned getParamAlignment(unsigned ArgNo) const {
-    CALLSITE_DELEGATE_GETTER(getParamAlignment(ArgNo));
+  MaybeAlign getParamAlign(unsigned ArgNo) const {
+    CALLSITE_DELEGATE_GETTER(getParamAlign(ArgNo));
   }
 
   /// Extract the byval type for a call or parameter (nullptr=unknown).

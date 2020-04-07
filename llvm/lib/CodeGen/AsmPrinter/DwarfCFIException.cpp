@@ -47,7 +47,6 @@ void DwarfCFIExceptionBase::markFunctionEnd() {
 }
 
 void DwarfCFIExceptionBase::endFragment() {
-  // With -fbasicblock-sections, this is handled at each basic block.
   if (shouldEmitCFI && !Asm->MF->hasBBSections())
     Asm->OutStreamer->emitCFIEndProc();
 }
@@ -124,7 +123,7 @@ void DwarfCFIException::beginFunction(const MachineFunction *MF) {
 
   shouldEmitCFI = MF->getMMI().getContext().getAsmInfo()->usesCFIForEH() &&
                   (shouldEmitPersonality || shouldEmitMoves);
-  beginFragment(&*MF->begin(), getExceptionSym);
+  beginFragment(&MF->front(), getExceptionSym);
 }
 
 void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,

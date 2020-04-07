@@ -86,10 +86,10 @@ struct IncomingArgHandler : public CallLowering::ValueHandler {
 
   void assignValueToAddress(Register ValVReg, Register Addr, uint64_t Size,
                             MachinePointerInfo &MPO, CCValAssign &VA) override {
-    // FIXME: Get alignment
-    auto MMO = MIRBuilder.getMF().getMachineMemOperand(
+    MachineFunction &MF = MIRBuilder.getMF();
+    auto MMO = MF.getMachineMemOperand(
         MPO, MachineMemOperand::MOLoad | MachineMemOperand::MOInvariant, Size,
-        1);
+        inferAlignFromPtrInfo(MF, MPO));
     MIRBuilder.buildLoad(ValVReg, Addr, *MMO);
   }
 
@@ -175,8 +175,9 @@ struct OutgoingArgHandler : public CallLowering::ValueHandler {
       ValVReg = MIRBuilder.buildAnyExt(LLT::scalar(Size * 8), ValVReg)
                     .getReg(0);
     }
-    auto MMO = MIRBuilder.getMF().getMachineMemOperand(
-        MPO, MachineMemOperand::MOStore, Size, 1);
+    MachineFunction &MF = MIRBuilder.getMF();
+    auto MMO = MF.getMachineMemOperand(MPO, MachineMemOperand::MOStore, Size,
+                                       inferAlignFromPtrInfo(MF, MPO));
     MIRBuilder.buildStore(ValVReg, Addr, *MMO);
   }
 
@@ -417,7 +418,7 @@ bool AArch64CallLowering::lowerFormalArguments(
   SmallVector<ArgInfo, 8> SplitArgs;
   unsigned i = 0;
   for (auto &Arg : F.args()) {
-    if (DL.getTypeStoreSize(Arg.getType()) == 0)
+    if (DL.getTypeStoreSize(Arg.getType()).isZero())
       continue;
 
     ArgInfo OrigArg{VRegs[i], Arg.getType()};

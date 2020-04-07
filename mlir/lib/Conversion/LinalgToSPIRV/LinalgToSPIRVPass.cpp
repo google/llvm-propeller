@@ -17,6 +17,10 @@ using namespace mlir;
 namespace {
 /// A pass converting MLIR Linalg ops into SPIR-V ops.
 class LinalgToSPIRVPass : public ModulePass<LinalgToSPIRVPass> {
+/// Include the generated pass utilities.
+#define GEN_PASS_ConvertLinalgToSPIRV
+#include "mlir/Conversion/Passes.h.inc"
+
   void runOnModule() override;
 };
 } // namespace
@@ -25,14 +29,14 @@ void LinalgToSPIRVPass::runOnModule() {
   MLIRContext *context = &getContext();
   ModuleOp module = getModule();
 
-  SPIRVTypeConverter typeConverter;
+  auto targetAttr = spirv::lookupTargetEnvOrDefault(module);
+  std::unique_ptr<ConversionTarget> target =
+      spirv::SPIRVConversionTarget::get(targetAttr);
+
+  SPIRVTypeConverter typeConverter(targetAttr);
   OwningRewritePatternList patterns;
   populateLinalgToSPIRVPatterns(context, typeConverter, patterns);
   populateBuiltinFuncToSPIRVPatterns(context, typeConverter, patterns);
-
-  auto targetEnv = spirv::lookupTargetEnvOrDefault(module);
-  std::unique_ptr<ConversionTarget> target =
-      spirv::SPIRVConversionTarget::get(targetEnv, context);
 
   // Allow builtin ops.
   target->addLegalOp<ModuleOp, ModuleTerminatorOp>();
@@ -46,6 +50,3 @@ void LinalgToSPIRVPass::runOnModule() {
 std::unique_ptr<OpPassBase<ModuleOp>> mlir::createLinalgToSPIRVPass() {
   return std::make_unique<LinalgToSPIRVPass>();
 }
-
-static PassRegistration<LinalgToSPIRVPass>
-    pass("convert-linalg-to-spirv", "Convert Linalg ops to SPIR-V ops");

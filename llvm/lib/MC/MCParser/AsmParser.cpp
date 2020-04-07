@@ -2854,18 +2854,18 @@ bool AsmParser::parseIdentifier(StringRef &Res) {
     AsmToken Buf[1];
     Lexer.peekTokens(Buf, false);
 
-    if (Buf[0].isNot(AsmToken::Identifier))
+    if (Buf[0].isNot(AsmToken::Identifier) && Buf[0].isNot(AsmToken::Integer))
       return true;
 
-    // We have a '$' or '@' followed by an identifier, make sure they are adjacent.
+    // We have a '$' or '@' followed by an identifier or integer token, make
+    // sure they are adjacent.
     if (PrefixLoc.getPointer() + 1 != Buf[0].getLoc().getPointer())
       return true;
 
     // eat $ or @
     Lexer.Lex(); // Lexer's Lex guarantees consecutive token.
     // Construct the joined identifier and consume the token.
-    Res =
-        StringRef(PrefixLoc.getPointer(), getTok().getIdentifier().size() + 1);
+    Res = StringRef(PrefixLoc.getPointer(), getTok().getString().size() + 1);
     Lex(); // Parser Lex to maintain invariants.
     return false;
   }
@@ -3104,11 +3104,11 @@ bool AsmParser::parseDirectiveOctaValue(StringRef IDVal) {
     if (parseHexOcta(*this, hi, lo))
       return true;
     if (MAI.isLittleEndian()) {
-      getStreamer().emitIntValue(lo, 8);
-      getStreamer().emitIntValue(hi, 8);
+      getStreamer().emitInt64(lo);
+      getStreamer().emitInt64(hi);
     } else {
-      getStreamer().emitIntValue(hi, 8);
-      getStreamer().emitIntValue(lo, 8);
+      getStreamer().emitInt64(hi);
+      getStreamer().emitInt64(lo);
     }
     return false;
   };
@@ -3993,7 +3993,7 @@ bool AsmParser::parseDirectiveCVString() {
   // Put the string in the table and emit the offset.
   std::pair<StringRef, unsigned> Insertion =
       getCVContext().addToStringTable(Data);
-  getStreamer().emitIntValue(Insertion.second, 4);
+  getStreamer().emitInt32(Insertion.second);
   return false;
 }
 

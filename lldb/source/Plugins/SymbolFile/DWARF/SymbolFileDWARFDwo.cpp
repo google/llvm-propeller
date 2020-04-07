@@ -38,7 +38,7 @@ SymbolFileDWARFDwo::SymbolFileDWARFDwo(SymbolFileDWARF &base_symbol_file,
 DWARFCompileUnit *SymbolFileDWARFDwo::GetDWOCompileUnitForHash(uint64_t hash) {
   if (const llvm::DWARFUnitIndex &index = m_context.GetAsLLVM().getCUIndex()) {
     if (const llvm::DWARFUnitIndex::Entry *entry = index.getFromHash(hash)) {
-      if (auto *unit_contrib = entry->getOffset())
+      if (auto *unit_contrib = entry->getContribution())
         return llvm::dyn_cast_or_null<DWARFCompileUnit>(
             DebugInfo().GetUnitAtOffset(DIERef::Section::DebugInfo,
                                         unit_contrib->Offset));
@@ -125,7 +125,7 @@ SymbolFileDWARFDwo::GetTypeSystemForLanguage(LanguageType language) {
 
 DWARFDIE
 SymbolFileDWARFDwo::GetDIE(const DIERef &die_ref) {
-  if (*die_ref.dwo_num() == GetDwoNum())
+  if (die_ref.dwo_num() == GetDwoNum())
     return DebugInfo().GetDIE(die_ref);
   return GetBaseSymbolFile().GetDIE(die_ref);
 }

@@ -365,6 +365,10 @@ private:
   /// Current block predicate - null if the block does not need a predicate.
   VPValue *Predicate = nullptr;
 
+  /// VPlan containing the block. Can only be set on the entry block of the
+  /// plan.
+  VPlan *Plan = nullptr;
+
   /// Add \p Successor as the last successor to this block.
   void appendSuccessor(VPBlockBase *Successor) {
     assert(Successor && "Cannot add nullptr successor!");
@@ -417,6 +421,14 @@ public:
 
   VPRegionBlock *getParent() { return Parent; }
   const VPRegionBlock *getParent() const { return Parent; }
+
+  /// \return A pointer to the plan containing the current block.
+  VPlan *getPlan();
+  const VPlan *getPlan() const;
+
+  /// Sets the pointer of the plan containing the block. The block must be the
+  /// entry block into the VPlan.
+  void setPlan(VPlan *ParentPlan);
 
   void setParent(VPRegionBlock *P) { Parent = P; }
 
@@ -621,7 +633,9 @@ public:
   virtual void execute(struct VPTransformState &State) = 0;
 
   /// Each recipe prints itself.
-  virtual void print(raw_ostream &O, const Twine &Indent) const = 0;
+  void print(raw_ostream &O, const Twine &Indent);
+  virtual void print(raw_ostream &O, const Twine &Indent,
+                     VPSlotTracker &SlotTracker) const = 0;
 
   /// Insert an unlinked recipe into a basic block immediately before
   /// the specified recipe.
@@ -707,10 +721,12 @@ public:
   void execute(VPTransformState &State) override;
 
   /// Print the Recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 
   /// Print the VPInstruction.
   void print(raw_ostream &O) const;
+  void print(raw_ostream &O, VPSlotTracker &SlotTracker) const;
 
   /// Return true if this instruction may modify memory.
   bool mayWriteToMemory() const {
@@ -719,23 +735,38 @@ public:
     return Opcode == Instruction::Store || Opcode == Instruction::Call ||
            Opcode == Instruction::Invoke || Opcode == SLPStore;
   }
+
+  bool hasResult() const {
+    // CallInst may or may not have a result, depending on the called function.
+    // Conservatively return calls have results for now.
+    switch (getOpcode()) {
+    case Instruction::Ret:
+    case Instruction::Br:
+    case Instruction::Store:
+    case Instruction::Switch:
+    case Instruction::IndirectBr:
+    case Instruction::Resume:
+    case Instruction::CatchRet:
+    case Instruction::Unreachable:
+    case Instruction::Fence:
+    case Instruction::AtomicRMW:
+      return false;
+    default:
+      return true;
+    }
+  }
 };
 
-/// VPWidenRecipe is a recipe for producing a copy of vector type for each
-/// Instruction in its ingredients independently, in order. This recipe covers
-/// most of the traditional vectorization cases where each ingredient transforms
-/// into a vectorized version of itself.
+/// VPWidenRecipe is a recipe for producing a copy of vector type its
+/// ingredient. This recipe covers most of the traditional vectorization cases
+/// where each ingredient transforms into a vectorized version of itself.
 class VPWidenRecipe : public VPRecipeBase {
 private:
-  /// Hold the ingredients by pointing to their original BasicBlock location.
-  BasicBlock::iterator Begin;
-  BasicBlock::iterator End;
+  /// Hold the instruction to be widened.
+  Instruction &Ingredient;
 
 public:
-  VPWidenRecipe(Instruction *I) : VPRecipeBase(VPWidenSC) {
-    End = I->getIterator();
-    Begin = End++;
-  }
+  VPWidenRecipe(Instruction &I) : VPRecipeBase(VPWidenSC), Ingredient(I) {}
 
   ~VPWidenRecipe() override = default;
 
@@ -747,16 +778,9 @@ public:
   /// Produce widened copies of all Ingredients.
   void execute(VPTransformState &State) override;
 
-  /// Augment the recipe to include Instr, if it lies at its End.
-  bool appendInstruction(Instruction *Instr) {
-    if (End != Instr->getIterator())
-      return false;
-    End++;
-    return true;
-  }
-
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 };
 
 /// A recipe for handling GEP instructions.
@@ -786,7 +810,8 @@ public:
   void execute(VPTransformState &State) override;
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 };
 
 /// A recipe for handling phi nodes of integer and floating-point inductions,
@@ -811,7 +836,8 @@ public:
   void execute(VPTransformState &State) override;
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 };
 
 /// A recipe for handling all phi nodes except for integer and FP inductions.
@@ -832,7 +858,8 @@ public:
   void execute(VPTransformState &State) override;
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 };
 
 /// A recipe for vectorizing a phi-node as a sequence of mask-based select
@@ -863,7 +890,8 @@ public:
   void execute(VPTransformState &State) override;
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 };
 
 /// VPInterleaveRecipe is a recipe for transforming an interleave group of load
@@ -903,7 +931,8 @@ public:
   void execute(VPTransformState &State) override;
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 
   const InterleaveGroup<Instruction> *getInterleaveGroup() { return IG; }
 };
@@ -953,7 +982,8 @@ public:
   void setAlsoPack(bool Pack) { AlsoPack = Pack; }
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 };
 
 /// A recipe for generating conditional branches on the bits of a mask.
@@ -977,10 +1007,11 @@ public:
   void execute(VPTransformState &State) override;
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override {
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override {
     O << " +\n" << Indent << "\"BRANCH-ON-MASK ";
     if (User)
-      O << *User->getOperand(0);
+      User->getOperand(0)->print(O, SlotTracker);
     else
       O << " All-One";
     O << "\\l\"";
@@ -1012,10 +1043,14 @@ public:
   void execute(VPTransformState &State) override;
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 };
 
 /// A Recipe for widening load/store operations.
+/// The recipe uses the following VPValues:
+/// - For load: Address, optional mask
+/// - For store: Address, stored value, optional mask
 /// TODO: We currently execute only per-part unless a specific instance is
 /// provided.
 class VPWidenMemoryInstructionRecipe : public VPRecipeBase {
@@ -1023,12 +1058,28 @@ private:
   Instruction &Instr;
   VPUser User;
 
+  void setMask(VPValue *Mask) {
+    if (!Mask)
+      return;
+    User.addOperand(Mask);
+  }
+
+  bool isMasked() const {
+    return (isa<LoadInst>(Instr) && User.getNumOperands() == 2) ||
+           (isa<StoreInst>(Instr) && User.getNumOperands() == 3);
+  }
+
 public:
-  VPWidenMemoryInstructionRecipe(Instruction &Instr, VPValue *Addr,
-                                 VPValue *Mask)
-      : VPRecipeBase(VPWidenMemoryInstructionSC), Instr(Instr), User({Addr}) {
-    if (Mask)
-      User.addOperand(Mask);
+  VPWidenMemoryInstructionRecipe(LoadInst &Load, VPValue *Addr, VPValue *Mask)
+      : VPRecipeBase(VPWidenMemoryInstructionSC), Instr(Load), User({Addr}) {
+    setMask(Mask);
+  }
+
+  VPWidenMemoryInstructionRecipe(StoreInst &Store, VPValue *Addr,
+                                 VPValue *StoredValue, VPValue *Mask)
+      : VPRecipeBase(VPWidenMemoryInstructionSC), Instr(Store),
+        User({Addr, StoredValue}) {
+    setMask(Mask);
   }
 
   /// Method to support type inquiry through isa, cast, and dyn_cast.
@@ -1044,15 +1095,23 @@ public:
   /// Return the mask used by this recipe. Note that a full mask is represented
   /// by a nullptr.
   VPValue *getMask() const {
-    // Mask is optional and therefore the last, currently 2nd operand.
-    return User.getNumOperands() == 2 ? User.getOperand(1) : nullptr;
+    // Mask is optional and therefore the last operand.
+    return isMasked() ? User.getOperand(User.getNumOperands() - 1) : nullptr;
+  }
+
+  /// Return the address accessed by this recipe.
+  VPValue *getStoredValue() const {
+    assert(isa<StoreInst>(Instr) &&
+           "Stored value only available for store instructions");
+    return User.getOperand(1); // Stored value is the 2nd, mandatory operand.
   }
 
   /// Generate the wide load/store.
   void execute(VPTransformState &State) override;
 
   /// Print the recipe.
-  void print(raw_ostream &O, const Twine &Indent) const override;
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
 };
 
 /// VPBasicBlock serves as the leaf of the Hierarchical Control-Flow Graph. It
@@ -1340,6 +1399,7 @@ struct GraphTraits<Inverse<VPRegionBlock *>>
   }
 };
 
+class VPSlotTracker;
 /// VPlan models a candidate for vectorization, encoding various decisions take
 /// to produce efficient output IR, including which branches, basic-blocks and
 /// output IR instructions to generate, and their cost. VPlan holds a
@@ -1347,6 +1407,7 @@ struct GraphTraits<Inverse<VPRegionBlock *>>
 /// VPBlock.
 class VPlan {
   friend class VPlanPrinter;
+  friend class VPSlotTracker;
 
 private:
   /// Hold the single entry to the Hierarchical CFG of the VPlan.
@@ -1380,7 +1441,10 @@ private:
   SmallVector<VPValue *, 4> VPCBVs;
 
 public:
-  VPlan(VPBlockBase *Entry = nullptr) : Entry(Entry) {}
+  VPlan(VPBlockBase *Entry = nullptr) : Entry(Entry) {
+    if (Entry)
+      Entry->setPlan(this);
+  }
 
   ~VPlan() {
     if (Entry)
@@ -1402,7 +1466,11 @@ public:
   VPBlockBase *getEntry() { return Entry; }
   const VPBlockBase *getEntry() const { return Entry; }
 
-  VPBlockBase *setEntry(VPBlockBase *Block) { return Entry = Block; }
+  VPBlockBase *setEntry(VPBlockBase *Block) {
+    Entry = Block;
+    Block->setPlan(this);
+    return Entry;
+  }
 
   /// The backedge taken count of the original loop.
   VPValue *getOrCreateBackedgeTakenCount() {
@@ -1433,7 +1501,7 @@ public:
   void addVPValue(Value *V) {
     assert(V && "Trying to add a null Value to VPlan");
     assert(!Value2VPValue.count(V) && "Value already exists in VPlan");
-    Value2VPValue[V] = new VPValue();
+    Value2VPValue[V] = new VPValue(V);
   }
 
   VPValue *getVPValue(Value *V) {
@@ -1480,7 +1548,10 @@ private:
   unsigned BID = 0;
   SmallDenseMap<const VPBlockBase *, unsigned> BlockID;
 
-  VPlanPrinter(raw_ostream &O, const VPlan &P) : OS(O), Plan(P) {}
+  VPSlotTracker SlotTracker;
+
+  VPlanPrinter(raw_ostream &O, const VPlan &P)
+      : OS(O), Plan(P), SlotTracker(&P) {}
 
   /// Handle indentation.
   void bumpIndent(int b) { Indent = std::string((Depth += b) * TabWidth, ' '); }

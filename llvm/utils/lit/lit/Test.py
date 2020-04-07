@@ -220,12 +220,30 @@ class Test:
         # triple parts. All of them must be False for the test to run.
         self.unsupported = []
 
+        # An optional number of retries allowed before the test finally succeeds.
+        # The test is run at most once plus the number of retries specified here.
+        self.allowed_retries = getattr(config, 'test_retry_attempts', 0)
+
         # The test result, once complete.
         self.result = None
 
     def setResult(self, result):
         assert self.result is None, "result already set"
         assert isinstance(result, Result), "unexpected result type"
+        try:
+            expected_to_fail = self.isExpectedToFail()
+        except ValueError as err:
+            # Syntax error in an XFAIL line.
+            result.code = UNRESOLVED
+            result.output = str(err)
+        else:
+            if expected_to_fail:
+                # pass -> unexpected pass
+                if result.code is PASS:
+                    result.code = XPASS
+                # fail -> expected fail
+                elif result.code is FAIL:
+                    result.code = XFAIL
         self.result = result
 
     def isFailure(self):

@@ -69,6 +69,18 @@ FunctionPass *llvm::createWebAssemblyExplicitLocals() {
   return new WebAssemblyExplicitLocals();
 }
 
+static void checkFrameBase(WebAssemblyFunctionInfo &MFI, unsigned Local,
+                           unsigned Reg) {
+  // Mark a local for the frame base vreg.
+  if (MFI.isFrameBaseVirtual() && Reg == MFI.getFrameBaseVreg()) {
+    LLVM_DEBUG({
+      dbgs() << "Allocating local " << Local << "for VReg "
+             << Register::virtReg2Index(Reg) << '\n';
+    });
+    MFI.setFrameBaseLocal(Local);
+  }
+}
+
 /// Return a local id number for the given register, assigning it a new one
 /// if it doesn't yet have one.
 static unsigned getLocalId(DenseMap<unsigned, unsigned> &Reg2Local,
@@ -76,14 +88,7 @@ static unsigned getLocalId(DenseMap<unsigned, unsigned> &Reg2Local,
                            unsigned Reg) {
   auto P = Reg2Local.insert(std::make_pair(Reg, CurLocal));
   if (P.second) {
-    // Mark the local allocated for the frame base vreg.
-    if (MFI.isFrameBaseVirtual() && Reg == MFI.getFrameBaseVreg()) {
-      LLVM_DEBUG({
-        dbgs() << "Allocating local " << CurLocal << "for VReg "
-               << Register::virtReg2Index(Reg) << '\n';
-      });
-      MFI.setFrameBaseLocal(CurLocal);
-    }
+    checkFrameBase(MFI, CurLocal, Reg);
     ++CurLocal;
   }
   return P.first->second;
@@ -227,7 +232,9 @@ bool WebAssemblyExplicitLocals::runOnMachineFunction(MachineFunction &MF) {
       break;
     Register Reg = MI.getOperand(0).getReg();
     assert(!MFI.isVRegStackified(Reg));
-    Reg2Local[Reg] = static_cast<unsigned>(MI.getOperand(1).getImm());
+    auto Local = static_cast<unsigned>(MI.getOperand(1).getImm());
+    Reg2Local[Reg] = Local;
+    checkFrameBase(MFI, Local, Reg);
     MI.eraseFromParent();
     Changed = true;
   }
@@ -306,6 +313,8 @@ bool WebAssemblyExplicitLocals::runOnMachineFunction(MachineFunction &MF) {
                     .addReg(NewReg);
             // After the drop instruction, this reg operand will not be used
             Drop->getOperand(0).setIsKill();
+            if (MFI.isFrameBaseVirtual() && OldReg == MFI.getFrameBaseVreg())
+              MFI.clearFrameBaseVreg();
           } else {
             unsigned LocalId = getLocalId(Reg2Local, MFI, CurLocal, OldReg);
             unsigned Opc = getLocalSetOpcode(RC);

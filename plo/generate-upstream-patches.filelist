@@ -22,22 +22,28 @@ declare ALL_FILES=(
         clang-pro        clang/include/clang/Driver/Options.td
         clang-uif        clang/include/clang/Driver/Options.td
         clang-base       clang/lib/CodeGen/BackendUtil.cpp
-        clang-uif        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-sta        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-base       clang/lib/Driver/ToolChains/Clang.cpp
         clang-rws        clang/lib/Driver/ToolChains/Clang.cpp
         clang-uif        clang/lib/Driver/ToolChains/Clang.cpp
 	clang-uif        clang/lib/CodeGen/CodeGenModule.cpp
+	clang-uif        clang/lib/CodeGen/CodeGenModule.h
+	clang-uif        clang/docs/UsersManual.rst
         clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
+        clang-uif        clang/lib/Frontend/CompilerInvocation.cpp
         clang-base       clang/test/CodeGen/basicblock-sections.c
-        clang-uif        clang/test/CodeGen/basicblock-sections.funcnames
-        clang-uif        clang/test/CodeGen/unique_internal_funcnames.c
+        clang-base       clang/test/CodeGen/basicblock-sections.funcnames
+	clang-base       clang/test/Driver/funique-bb-section-names.c
+	clang-base       clang/test/Driver/fbasicblock-sections.c
+        clang-uif        clang/test/CodeGen/unique-internal-linkage-names.cpp
+	clang-uif        clang/test/Driver/funique-internal-linkage-names.c
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
-# lld starts from here	
+# lld starts from here
+        lld-other        lld/test/ELF/bb-cluster-sections-optimize-jumps.s
         lld-bb           lld/ELF/Arch/X86_64.cpp
         lld-bb           lld/ELF/Config.h
         lld-bb           lld/ELF/Driver.cpp
@@ -125,36 +131,32 @@ declare ALL_FILES=(
 	lld-base         lld/ELF/Relocations.h
         lld-base         lld/ELF/Target.h
         lld-base         lld/ELF/Writer.cpp
+	lld-base         lld/test/ELF/bb-cluster-sections-optimize-jumps.s
 	lld-base         lld/test/ELF/bb-sections-delete-fallthru.s
 	lld-base         lld/test/ELF/bb-sections-and-icf.s
 	lld-base         lld/test/ELF/bb-sections-pc32reloc.s
 # LLVM patch begins here.
 # Base Patch files here:
-        base_1           llvm/include/llvm/CodeGen/CommandFlags.inc
-        base_1           llvm/include/llvm/Target/TargetMachine.h
-        base_1           llvm/include/llvm/Target/TargetOptions.h
-	base_1           llvm/lib/ProfileData/CMakeLists.txt
-        base_2           llvm/include/llvm/CodeGen/MachineBasicBlock.h
-        base_2           llvm/include/llvm/CodeGen/MachineFunction.h
-        base_2           llvm/include/llvm/CodeGen/Passes.h
-        base_2           llvm/include/llvm/CodeGen/TargetLoweringObjectFileImpl.h
-        base_2           llvm/include/llvm/Target/TargetLoweringObjectFile.h
-        base_2           llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-	base_2           llvm/lib/CodeGen/BBSectionsPrepare.cpp
-	base_2           llvm/lib/CodeGen/CodeGen.cpp
-	base_2           llvm/lib/CodeGen/CMakeLists.txt
-        base_2           llvm/lib/CodeGen/MachineBasicBlock.cpp
-        base_2           llvm/lib/CodeGen/MachineFunction.cpp
-        base_2           llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
-	base_2           llvm/lib/CodeGen/TargetPassConfig.cpp
-        base_2           llvm/lib/Target/TargetLoweringObjectFile.cpp
-        base_2           llvm/test/CodeGen/X86/basicblock-sections.ll
-        base_2           llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
-        base_2           llvm/test/CodeGen/X86/basicblock-sections-list.ll
-        base_2           llvm/test/CodeGen/X86/basicblock-sections-listbb.ll
-        base_2           llvm/test/CodeGen/X86/basicblock-sections-labels.ll
-	base_2           llvm/test/CodeGen/X86/basicblock-sections-eh.ll
-	base_2           llvm/test/CodeGen/X86/basicblock-sections-cold.ll
+        bbclusters           llvm/include/llvm/CodeGen/AsmPrinter.h
+        bbclusters           llvm/include/llvm/CodeGen/MachineBasicBlock.h
+        bbclusters           llvm/include/llvm/CodeGen/MachineFunction.h
+        bbclusters           llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
+	bbclusters           llvm/lib/CodeGen/BBSectionsPrepare.cpp
+	bbclusters           llvm/lib/CodeGen/CodeGen.cpp
+        bbclusters           llvm/lib/CodeGen/MachineBasicBlock.cpp
+        bbclusters           llvm/lib/CodeGen/MachineFunction.cpp
+	bbclusters           llvm/lib/CodeGen/MIRParser/MIParser.cpp
+	bbclusters           llvm/lib/CodeGen/MIRParser/MIRParser.cpp
+	bbclusters           llvm/lib/CodeGen/MIRPrinter.cpp
+        bbclusters           llvm/test/CodeGen/X86/basicblock-sections.ll
+        bbclusters           llvm/test/CodeGen/X86/basicblock-sections-listbb.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-eh.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-mir-print.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-mir-parse.mir
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-clusters-error.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-clusters-eh.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-clusters-branches.ll
 
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
@@ -176,13 +178,12 @@ declare ALL_FILES=(
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.h
         cfi              llvm/lib/CodeGen/CFIInstrInserter.cpp
-        base_1           llvm/lib/CodeGen/CodeGenPrepare.cpp
         debuginfo        llvm/lib/MC/ELFObjectWriter.cpp
         cfi              llvm/lib/MC/MCDwarf.cpp
         debuginfo        llvm/lib/MC/MCDwarf.cpp
 	base_propeller   llvm/include/llvm/ProfileData/BBSectionsProf.h
         cfi              llvm/lib/Target/AArch64/AArch64FrameLowering.h
-        base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
+        #base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
         cfi              llvm/lib/Target/X86/X86FrameLowering.cpp
         cfi              llvm/lib/Target/X86/X86FrameLowering.h
         exception        llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections.ll

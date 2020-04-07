@@ -198,7 +198,7 @@ bool X86CallFrameOptimization::isProfitable(MachineFunction &MF,
   if (CannotReserveFrame)
     return true;
 
-  unsigned StackAlign = TFL->getStackAlignment();
+  Align StackAlign = TFL->getStackAlign();
 
   int64_t Advantage = 0;
   for (auto CC : CallSeqVector) {
@@ -221,7 +221,7 @@ bool X86CallFrameOptimization::isProfitable(MachineFunction &MF,
       // We'll need a add after the call.
       Advantage -= 3;
       // If we have to realign the stack, we'll also need a sub before
-      if (CC.ExpectedDist % StackAlign)
+      if (!isAligned(StackAlign, CC.ExpectedDist))
         Advantage -= 3;
       // Now, for each push, we save ~3 bytes. For small constants, we actually,
       // save more (up to 5 bytes), but 3 should be a good approximation.
@@ -549,7 +549,7 @@ void X86CallFrameOptimization::adjustCallSequence(MachineFunction &MF,
 
       // If PUSHrmm is not slow on this target, try to fold the source of the
       // push into the instruction.
-      bool SlowPUSHrmm = STI->isAtom() || STI->isSLM();
+      bool SlowPUSHrmm = STI->slowTwoMemOps();
 
       // Check that this is legal to fold. Right now, we're extremely
       // conservative about that.

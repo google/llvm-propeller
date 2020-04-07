@@ -189,7 +189,7 @@ computeInsertions(const CXXConstructorDecl::init_const_range &Inits,
               ? static_cast<const NamedDecl *>(Init->getAnyMember())
               : Init->getBaseClass()->getAsCXXRecordDecl();
 
-      // Add all fields between current field up until the next intializer.
+      // Add all fields between current field up until the next initializer.
       for (; Decl != std::end(OrderedDecls) && *Decl != InitDecl; ++Decl) {
         if (const auto *D = dyn_cast<T>(*Decl)) {
           if (DeclsToInit.count(D) > 0)
@@ -254,9 +254,6 @@ ProTypeMemberInitCheck::ProTypeMemberInitCheck(StringRef Name,
       UseAssignment(Options.getLocalOrGlobal("UseAssignment", false)) {}
 
 void ProTypeMemberInitCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   auto IsUserProvidedNonDelegatingConstructor =
       allOf(isUserProvided(),
             unless(anyOf(isInstantiated(), isDelegatingConstructor())));

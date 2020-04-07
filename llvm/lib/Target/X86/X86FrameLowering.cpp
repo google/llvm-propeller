@@ -979,10 +979,10 @@ void X86FrameLowering::emitStackProbeCall(MachineFunction &MF,
                                           bool InProlog) const {
   bool IsLargeCodeModel = MF.getTarget().getCodeModel() == CodeModel::Large;
 
-  // FIXME: Add retpoline support and remove this.
-  if (Is64Bit && IsLargeCodeModel && STI.useRetpolineIndirectCalls())
+  // FIXME: Add indirect thunk support and remove this.
+  if (Is64Bit && IsLargeCodeModel && STI.useIndirectThunkCalls())
     report_fatal_error("Emitting stack probe calls on 64-bit with the large "
-                       "code model and retpoline not yet implemented.");
+                       "code model and indirect thunks not yet implemented.");
 
   unsigned CallOp;
   if (Is64Bit)
@@ -1060,15 +1060,15 @@ static unsigned calculateSetFPREG(uint64_t SPAdjust) {
 // go with the minimum SlotSize.
 uint64_t X86FrameLowering::calculateMaxStackAlign(const MachineFunction &MF) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
-  uint64_t MaxAlign = MFI.getMaxAlignment(); // Desired stack alignment.
-  unsigned StackAlign = getStackAlignment();
+  Align MaxAlign = MFI.getMaxAlign(); // Desired stack alignment.
+  Align StackAlign = getStackAlign();
   if (MF.getFunction().hasFnAttribute("stackrealign")) {
     if (MFI.hasCalls())
       MaxAlign = (StackAlign > MaxAlign) ? StackAlign : MaxAlign;
     else if (MaxAlign < SlotSize)
-      MaxAlign = SlotSize;
+      MaxAlign = Align(SlotSize);
   }
-  return MaxAlign;
+  return MaxAlign.value();
 }
 
 void X86FrameLowering::BuildStackAlignAND(MachineBasicBlock &MBB,
@@ -1537,17 +1537,17 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
       addRegOffset(BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64rm), Establisher),
                    Establisher, false, PSPSlotOffset)
           .addMemOperand(MF.getMachineMemOperand(
-              NoInfo, MachineMemOperand::MOLoad, SlotSize, SlotSize));
+              NoInfo, MachineMemOperand::MOLoad, SlotSize, Align(SlotSize)));
       ;
       // Save the root establisher back into the current funclet's (mostly
       // empty) frame, in case a sub-funclet or the GC needs it.
       addRegOffset(BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64mr)), StackPtr,
                    false, PSPSlotOffset)
           .addReg(Establisher)
-          .addMemOperand(
-              MF.getMachineMemOperand(NoInfo, MachineMemOperand::MOStore |
-                                                  MachineMemOperand::MOVolatile,
-                                      SlotSize, SlotSize));
+          .addMemOperand(MF.getMachineMemOperand(
+              NoInfo,
+              MachineMemOperand::MOStore | MachineMemOperand::MOVolatile,
+              SlotSize, Align(SlotSize)));
     }
     SPOrEstablisher = Establisher;
   } else {
@@ -1637,7 +1637,7 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
         .addReg(StackPtr)
         .addMemOperand(MF.getMachineMemOperand(
             PSPInfo, MachineMemOperand::MOStore | MachineMemOperand::MOVolatile,
-            SlotSize, SlotSize));
+            SlotSize, Align(SlotSize)));
   }
 
   // Realign stack after we spilled callee-saved registers (so that we'll be
@@ -1787,7 +1787,7 @@ X86FrameLowering::getWinEHFuncletFrameSize(const MachineFunction &MF) const {
   // RBP is not included in the callee saved register block. After pushing RBP,
   // everything is 16 byte aligned. Everything we allocate before an outgoing
   // call must also be 16 byte aligned.
-  unsigned FrameSizeMinusRBP = alignTo(CSSize + UsedSize, getStackAlignment());
+  unsigned FrameSizeMinusRBP = alignTo(CSSize + UsedSize, getStackAlign());
   // Subtract out the size of the callee saved registers. This is how much stack
   // each funclet will allocate.
   return FrameSizeMinusRBP + XMMSize - CSSize;
@@ -2035,7 +2035,7 @@ int X86FrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
       // Skip the saved EBP.
       return Offset + SlotSize + FPDelta;
     } else {
-      assert((-(Offset + StackSize)) % MFI.getObjectAlignment(FI) == 0);
+      assert(isAligned(MFI.getObjectAlign(FI), -(Offset + StackSize)));
       return Offset + StackSize;
     }
   } else if (TRI->needsStackRealignment(MF)) {
@@ -2043,7 +2043,7 @@ int X86FrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
       // Skip the saved EBP.
       return Offset + SlotSize + FPDelta;
     } else {
-      assert((-(Offset + StackSize)) % MFI.getObjectAlignment(FI) == 0);
+      assert(isAligned(MFI.getObjectAlign(FI), -(Offset + StackSize)));
       return Offset + StackSize;
     }
     // FIXME: Support tail calls
@@ -2074,7 +2074,8 @@ int X86FrameLowering::getWin64EHFrameIndexRef(const MachineFunction &MF,
     return getFrameIndexReference(MF, FI, FrameReg);
 
   FrameReg = TRI->getStackRegister();
-  return alignDown(MFI.getMaxCallFrameSize(), getStackAlignment()) + it->second;
+  return alignDown(MFI.getMaxCallFrameSize(), getStackAlign().value()) +
+         it->second;
 }
 
 int X86FrameLowering::getFrameIndexReferenceSP(const MachineFunction &MF,
@@ -2199,7 +2200,7 @@ bool X86FrameLowering::assignCalleeSavedSpillSlots(
   if (this->TRI->hasBasePointer(MF)) {
     // Allocate a spill slot for EBP if we have a base pointer and EH funclets.
     if (MF.hasEHFunclets()) {
-      int FI = MFI.CreateSpillStackObject(SlotSize, SlotSize);
+      int FI = MFI.CreateSpillStackObject(SlotSize, Align(SlotSize));
       X86FI->setHasSEHFramePtrSave(true);
       X86FI->setSEHFramePtrSaveIndex(FI);
     }
@@ -2252,16 +2253,16 @@ bool X86FrameLowering::assignCalleeSavedSpillSlots(
 
     const TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(Reg, VT);
     unsigned Size = TRI->getSpillSize(*RC);
-    unsigned Align = TRI->getSpillAlignment(*RC);
+    Align Alignment = TRI->getSpillAlign(*RC);
     // ensure alignment
     assert(SpillSlotOffset < 0 && "SpillSlotOffset should always < 0 on X86");
-    SpillSlotOffset = -alignTo(-SpillSlotOffset, Align);
+    SpillSlotOffset = -alignTo(-SpillSlotOffset, Alignment);
 
     // spill into slot
     SpillSlotOffset -= Size;
     int SlotIndex = MFI.CreateFixedSpillStackObject(Size, SpillSlotOffset);
     CSI[i - 1].setFrameIdx(SlotIndex);
-    MFI.ensureMaxAlignment(Align);
+    MFI.ensureMaxAlignment(Alignment);
 
     // Save the start offset and size of XMM in stack frame for funclets.
     if (X86::VR128RegClass.contains(Reg)) {
@@ -2374,10 +2375,9 @@ void X86FrameLowering::emitCatchRetReturnValue(MachineBasicBlock &MBB,
   CatchRetTarget->setHasAddressTaken();
 }
 
-bool X86FrameLowering::restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
-                                               MachineBasicBlock::iterator MI,
-                                          std::vector<CalleeSavedInfo> &CSI,
-                                          const TargetRegisterInfo *TRI) const {
+bool X86FrameLowering::restoreCalleeSavedRegisters(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+    MutableArrayRef<CalleeSavedInfo> CSI, const TargetRegisterInfo *TRI) const {
   if (CSI.empty())
     return false;
 
@@ -2706,9 +2706,9 @@ void X86FrameLowering::adjustForSegmentedStacks(
     // is laid out within 2^31 bytes of each function body, but this seems
     // to be sufficient for JIT.
     // FIXME: Add retpoline support and remove the error here..
-    if (STI.useRetpolineIndirectCalls())
+    if (STI.useIndirectThunkCalls())
       report_fatal_error("Emitting morestack calls on 64-bit with the large "
-                         "code model and retpoline not yet implemented.");
+                         "code model and thunks not yet implemented.");
     BuildMI(allocMBB, DL, TII.get(X86::CALL64m))
         .addReg(X86::RIP)
         .addImm(0)
@@ -3012,6 +3012,12 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
   I = MBB.erase(I);
   auto InsertPos = skipDebugInstructionsForward(I, MBB.end());
 
+  // Try to avoid emitting dead SP adjustments if the block end is unreachable,
+  // typically because the function is marked noreturn (abort, throw,
+  // assert_fail, etc).
+  if (isDestroy && blockEndIsUnreachable(MBB, I))
+    return I;
+
   if (!reserveCallFrame) {
     // If the stack pointer can be changed after prologue, turn the
     // adjcallstackup instruction into a 'sub ESP, <amt>' and the
@@ -3020,8 +3026,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     // We need to keep the stack aligned properly.  To do this, we round the
     // amount of space needed for the outgoing arguments up to the next
     // alignment boundary.
-    unsigned StackAlign = getStackAlignment();
-    Amount = alignTo(Amount, StackAlign);
+    Amount = alignTo(Amount, getStackAlign());
 
     const Function &F = MF.getFunction();
     bool WindowsCFI = MF.getTarget().getMCAsmInfo()->usesWindowsCFI();
@@ -3094,13 +3099,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     return I;
   }
 
-  if (isDestroy && InternalAmt && !blockEndIsUnreachable(MBB, I)) {
-    // If we are performing frame pointer elimination and if the callee pops
-    // something off the stack pointer, add it back.  We do this until we have
-    // more advanced stack pointer tracking ability.
-    // We are not tracking the stack pointer adjustment by the callee, so make
-    // sure we restore the stack pointer immediately after the call, there may
-    // be spill code inserted between the CALL and ADJCALLSTACKUP instructions.
+  if (InternalAmt) {
     MachineBasicBlock::iterator CI = I;
     MachineBasicBlock::iterator B = MBB.begin();
     while (CI != B && !std::prev(CI)->isCall())
@@ -3227,7 +3226,7 @@ struct X86FrameSortingObject {
   bool IsValid = false;         // true if we care about this Object.
   unsigned ObjectIndex = 0;     // Index of Object into MFI list.
   unsigned ObjectSize = 0;      // Size of Object in bytes.
-  unsigned ObjectAlignment = 1; // Alignment of Object in bytes.
+  Align ObjectAlignment = Align(1); // Alignment of Object in bytes.
   unsigned ObjectNumUses = 0;   // Object static number of uses.
 };
 
@@ -3312,7 +3311,7 @@ void X86FrameLowering::orderFrameObjects(
   for (auto &Obj : ObjectsToAllocate) {
     SortingObjects[Obj].IsValid = true;
     SortingObjects[Obj].ObjectIndex = Obj;
-    SortingObjects[Obj].ObjectAlignment = MFI.getObjectAlignment(Obj);
+    SortingObjects[Obj].ObjectAlignment = MFI.getObjectAlign(Obj);
     // Set the size.
     int ObjectSize = MFI.getObjectSize(Obj);
     if (ObjectSize == 0)
@@ -3405,7 +3404,7 @@ void X86FrameLowering::processFunctionBeforeFrameFinalized(
       int FrameIndex = H.CatchObj.FrameIndex;
       if (FrameIndex != INT_MAX) {
         // Ensure alignment.
-        unsigned Align = MFI.getObjectAlignment(FrameIndex);
+        unsigned Align = MFI.getObjectAlign(FrameIndex).value();
         MinFixedObjOffset -= std::abs(MinFixedObjOffset) % Align;
         MinFixedObjOffset -= MFI.getObjectSize(FrameIndex);
         MFI.setObjectOffset(FrameIndex, MinFixedObjOffset);

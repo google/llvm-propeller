@@ -24,6 +24,11 @@ struct Sigset {
   sigset_t nativeSigset;
 
   constexpr static Sigset fullset() { return {-1UL}; }
+  constexpr static Sigset emptySet() { return {0}; }
+
+  constexpr void addset(int signal) { nativeSigset |= (1L << (signal - 1)); }
+
+  constexpr void delset(int signal) { nativeSigset &= ~(1L << (signal - 1)); }
 
   operator sigset_t() const { return nativeSigset; }
 };
@@ -33,15 +38,16 @@ constexpr static Sigset all = Sigset::fullset();
 static inline int block_all_signals(Sigset &set) {
   sigset_t nativeSigset = all;
   sigset_t oldSet = set;
-  return __llvm_libc::syscall(SYS_rt_sigprocmask, SIG_BLOCK, &nativeSigset,
-                              &oldSet, sizeof(sigset_t));
+  int ret = __llvm_libc::syscall(SYS_rt_sigprocmask, SIG_BLOCK, &nativeSigset,
+                                 &oldSet, sizeof(sigset_t));
+  set = {oldSet};
+  return ret;
 }
 
 static inline int restore_signals(const Sigset &set) {
   sigset_t nativeSigset = set;
-  return __llvm_libc::syscall(SYS_rt_sigprocmask, SIG_SETMASK,
-                              &nativeSigset, nullptr,
-                              sizeof(sigset_t));
+  return __llvm_libc::syscall(SYS_rt_sigprocmask, SIG_SETMASK, &nativeSigset,
+                              nullptr, sizeof(sigset_t));
 }
 
 } // namespace __llvm_libc

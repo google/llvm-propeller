@@ -501,6 +501,7 @@ bool llvm::sinkRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
         if (sink(I, LI, DT, CurLoop, SafetyInfo, MSSAU, ORE)) {
           if (!FreeInLoop) {
             ++II;
+            salvageDebugInfoOrMarkUndef(I);
             eraseInstruction(I, *SafetyInfo, CurAST, MSSAU);
           }
           Changed = true;
@@ -818,9 +819,8 @@ bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
 
       // Attempt to remove floating point division out of the loop by
       // converting it to a reciprocal multiplication.
-      if (I.getOpcode() == Instruction::FDiv &&
-          CurLoop->isLoopInvariant(I.getOperand(1)) &&
-          I.hasAllowReciprocal()) {
+      if (I.getOpcode() == Instruction::FDiv && I.hasAllowReciprocal() &&
+          CurLoop->isLoopInvariant(I.getOperand(1))) {
         auto Divisor = I.getOperand(1);
         auto One = llvm::ConstantFP::get(Divisor->getType(), 1.0);
         auto ReciprocalDivisor = BinaryOperator::CreateFDiv(One, Divisor);
@@ -988,12 +988,12 @@ namespace {
 bool isHoistableAndSinkableInst(Instruction &I) {
   // Only these instructions are hoistable/sinkable.
   return (isa<LoadInst>(I) || isa<StoreInst>(I) || isa<CallInst>(I) ||
-          isa<FenceInst>(I) || isa<CastInst>(I) ||
-          isa<UnaryOperator>(I) || isa<BinaryOperator>(I) ||
-          isa<SelectInst>(I) || isa<GetElementPtrInst>(I) || isa<CmpInst>(I) ||
+          isa<FenceInst>(I) || isa<CastInst>(I) || isa<UnaryOperator>(I) ||
+          isa<BinaryOperator>(I) || isa<SelectInst>(I) ||
+          isa<GetElementPtrInst>(I) || isa<CmpInst>(I) ||
           isa<InsertElementInst>(I) || isa<ExtractElementInst>(I) ||
           isa<ShuffleVectorInst>(I) || isa<ExtractValueInst>(I) ||
-          isa<InsertValueInst>(I));
+          isa<InsertValueInst>(I) || isa<FreezeInst>(I));
 }
 /// Return true if all of the alias sets within this AST are known not to
 /// contain a Mod, or if MSSA knows thare are no MemoryDefs in the loop.

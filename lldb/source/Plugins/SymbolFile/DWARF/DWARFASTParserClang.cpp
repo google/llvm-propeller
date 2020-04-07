@@ -35,6 +35,8 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
 
+#include "llvm/Demangle/Demangle.h"
+
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
@@ -1167,12 +1169,22 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
       }
 
       if (!function_decl) {
+        const char *name = attrs.name.GetCString();
+
+        // We currently generate function templates with template parameters in
+        // their name. In order to get closer to the AST that clang generates
+        // we want to strip these from the name when creating the AST.
+        if (attrs.mangled_name) {
+          llvm::ItaniumPartialDemangler D;
+          if (!D.partialDemangle(attrs.mangled_name))
+            name = D.getFunctionBaseName(nullptr, nullptr);
+        }
+
         // We just have a function that isn't part of a class
         function_decl = m_ast.CreateFunctionDeclaration(
             ignore_containing_context ? m_ast.GetTranslationUnitDecl()
                                       : containing_decl_ctx,
-            attrs.name.GetCString(), clang_type, attrs.storage,
-            attrs.is_inline);
+            name, clang_type, attrs.storage, attrs.is_inline);
 
         if (has_template_params) {
           TypeSystemClang::TemplateParameterInfos template_param_infos;
@@ -1180,14 +1192,14 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
           template_function_decl = m_ast.CreateFunctionDeclaration(
               ignore_containing_context ? m_ast.GetTranslationUnitDecl()
                                         : containing_decl_ctx,
-              attrs.name.GetCString(), clang_type, attrs.storage,
-              attrs.is_inline);
+              name, clang_type, attrs.storage, attrs.is_inline);
+
           clang::FunctionTemplateDecl *func_template_decl =
-              m_ast.CreateFunctionTemplateDecl(
-                  containing_decl_ctx, template_function_decl,
-                  attrs.name.GetCString(), template_param_infos);
+              m_ast.CreateFunctionTemplateDecl(containing_decl_ctx,
+                                               template_function_decl, name,
+                                               template_param_infos);
           m_ast.CreateFunctionTemplateSpecializationInfo(
-              function_decl, func_template_decl, template_param_infos);
+              template_function_decl, func_template_decl, template_param_infos);
         }
 
         lldbassert(function_decl);
@@ -1622,12 +1634,11 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
   // parameters in any class methods need it for the clang types for
   // function prototypes.
   LinkDeclContextToDIE(m_ast.GetDeclContextForType(clang_type), die);
-  type_sp = std::make_shared<Type>(die.GetID(), dwarf, attrs.name,
-                                   attrs.byte_size, nullptr, LLDB_INVALID_UID,
-                                   Type::eEncodingIsUID, &attrs.decl,
-                                   clang_type, Type::ResolveState::Forward);
-
-  type_sp->SetIsCompleteObjCClass(attrs.is_complete_objc_class);
+  type_sp = std::make_shared<Type>(
+      die.GetID(), dwarf, attrs.name, attrs.byte_size, nullptr,
+      LLDB_INVALID_UID, Type::eEncodingIsUID, &attrs.decl, clang_type,
+      Type::ResolveState::Forward,
+      TypePayloadClang(attrs.is_complete_objc_class));
 
   // Add our type to the unique type map so we don't end up creating many
   // copies of the same type over and over in the ASTContext for our
@@ -2656,9 +2667,19 @@ void DWARFASTParserClang::ParseSingleMember(
               }
 
               // If we have a gap between the last_field_end and the current
-              // field we have an unnamed bit-field
+              // field we have an unnamed bit-field.
+              // If we have a base class, we assume there is no unnamed
+              // bit-field if this is the first field since the gap can be
+              // attributed to the members from the base class. This assumption
+              // is not correct if the first field of the derived class is
+              // indeed an unnamed bit-field. We currently do not have the
+              // machinary to track the offset of the last field of classes we
+              // have seen before, so we are not handling this case.
               if (this_field_info.bit_offset != last_field_end &&
-                  !(this_field_info.bit_offset < last_field_end)) {
+                  this_field_info.bit_offset > last_field_end &&
+                  !(last_field_info.bit_offset == 0 &&
+                    last_field_info.bit_size == 0 &&
+                    layout_info.base_offsets.size() != 0)) {
                 unnamed_field_info = FieldInfo{};
                 unnamed_field_info->bit_size =
                     this_field_info.bit_offset - last_field_end;
@@ -3638,9 +3659,11 @@ bool DWARFASTParserClang::CopyUniqueClassMethodTypes(
   }
 
   DWARFASTParserClang *src_dwarf_ast_parser =
-      (DWARFASTParserClang *)SymbolFileDWARF::GetDWARFParser(*src_die.GetCU());
+      static_cast<DWARFASTParserClang *>(
+          SymbolFileDWARF::GetDWARFParser(*src_die.GetCU()));
   DWARFASTParserClang *dst_dwarf_ast_parser =
-      (DWARFASTParserClang *)SymbolFileDWARF::GetDWARFParser(*dst_die.GetCU());
+      static_cast<DWARFASTParserClang *>(
+          SymbolFileDWARF::GetDWARFParser(*dst_die.GetCU()));
 
   // Now do the work of linking the DeclContexts and Types.
   if (fast_path) {

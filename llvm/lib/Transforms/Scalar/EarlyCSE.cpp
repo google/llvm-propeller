@@ -54,6 +54,7 @@
 #include "llvm/Support/RecyclingAllocator.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Utils/AssumeBundleBuilder.h"
 #include "llvm/Transforms/Utils/GuardUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <cassert>
@@ -114,7 +115,7 @@ struct SimpleValue {
            isa<CmpInst>(Inst) || isa<SelectInst>(Inst) ||
            isa<ExtractElementInst>(Inst) || isa<InsertElementInst>(Inst) ||
            isa<ShuffleVectorInst>(Inst) || isa<ExtractValueInst>(Inst) ||
-           isa<InsertValueInst>(Inst);
+           isa<InsertValueInst>(Inst) || isa<FreezeInst>(Inst);
   }
 };
 
@@ -268,6 +269,9 @@ static unsigned getHashValueImpl(SimpleValue Val) {
   if (CastInst *CI = dyn_cast<CastInst>(Inst))
     return hash_combine(CI->getOpcode(), CI->getType(), CI->getOperand(0));
 
+  if (FreezeInst *FI = dyn_cast<FreezeInst>(Inst))
+    return hash_combine(FI->getOpcode(), FI->getOperand(0));
+
   if (const ExtractValueInst *EVI = dyn_cast<ExtractValueInst>(Inst))
     return hash_combine(EVI->getOpcode(), EVI->getOperand(0),
                         hash_combine_range(EVI->idx_begin(), EVI->idx_end()));
@@ -279,7 +283,8 @@ static unsigned getHashValueImpl(SimpleValue Val) {
 
   assert((isa<CallInst>(Inst) || isa<GetElementPtrInst>(Inst) ||
           isa<ExtractElementInst>(Inst) || isa<InsertElementInst>(Inst) ||
-          isa<ShuffleVectorInst>(Inst) || isa<UnaryOperator>(Inst)) &&
+          isa<ShuffleVectorInst>(Inst) || isa<UnaryOperator>(Inst) ||
+          isa<FreezeInst>(Inst)) &&
          "Invalid/unknown instruction");
 
   // Mix in the opcode.
@@ -943,6 +948,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
         continue;
       }
 
+      salvageKnowledge(&Inst);
       salvageDebugInfoOrMarkUndef(Inst);
       removeMSSA(Inst);
       Inst.eraseFromParent();
@@ -1009,6 +1015,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
                 cast<ConstantInt>(KnownCond)->isOne()) {
               LLVM_DEBUG(dbgs()
                          << "EarlyCSE removing guard: " << Inst << '\n');
+              salvageKnowledge(&Inst);
               removeMSSA(Inst);
               Inst.eraseFromParent();
               Changed = true;
@@ -1044,6 +1051,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
           Changed = true;
         }
         if (isInstructionTriviallyDead(&Inst, &TLI)) {
+          salvageKnowledge(&Inst);
           removeMSSA(Inst);
           Inst.eraseFromParent();
           Changed = true;
@@ -1069,6 +1077,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
         if (auto *I = dyn_cast<Instruction>(V))
           I->andIRFlags(&Inst);
         Inst.replaceAllUsesWith(V);
+        salvageKnowledge(&Inst);
         removeMSSA(Inst);
         Inst.eraseFromParent();
         Changed = true;
@@ -1129,6 +1138,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
           }
           if (!Inst.use_empty())
             Inst.replaceAllUsesWith(Op);
+          salvageKnowledge(&Inst);
           removeMSSA(Inst);
           Inst.eraseFromParent();
           Changed = true;
@@ -1172,6 +1182,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
         }
         if (!Inst.use_empty())
           Inst.replaceAllUsesWith(InVal.first);
+        salvageKnowledge(&Inst);
         removeMSSA(Inst);
         Inst.eraseFromParent();
         Changed = true;
@@ -1224,6 +1235,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
           LLVM_DEBUG(dbgs() << "Skipping due to debug counter\n");
           continue;
         }
+        salvageKnowledge(&Inst);
         removeMSSA(Inst);
         Inst.eraseFromParent();
         Changed = true;
@@ -1259,6 +1271,7 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
             if (!DebugCounter::shouldExecute(CSECounter)) {
               LLVM_DEBUG(dbgs() << "Skipping due to debug counter\n");
             } else {
+              salvageKnowledge(&Inst);
               removeMSSA(*LastStore);
               LastStore->eraseFromParent();
               Changed = true;

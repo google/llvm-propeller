@@ -70,12 +70,12 @@ static X86_64RelType getType64(MCFixupKind Kind,
     IsPCRel = true;
     return RT64_32;
   case FK_Data_4:
+  case FK_PCRel_4:
   case X86::reloc_riprel_4byte:
   case X86::reloc_riprel_4byte_relax:
   case X86::reloc_riprel_4byte_relax_rex:
   case X86::reloc_riprel_4byte_movq_load:
     return RT64_32;
-  case FK_PCRel_4:
   case X86::reloc_branch_4byte_pcrel:
     Modifier = MCSymbolRefExpr::VK_PLT;
     return RT64_32;
@@ -317,8 +317,10 @@ static unsigned getRelocType32(MCContext &Ctx,
 unsigned X86ELFObjectWriter::getRelocType(MCContext &Ctx, const MCValue &Target,
                                           const MCFixup &Fixup,
                                           bool IsPCRel) const {
-  MCSymbolRefExpr::VariantKind Modifier = Target.getAccessVariant();
   MCFixupKind Kind = Fixup.getKind();
+  if (Kind >= FirstLiteralRelocationKind)
+    return Kind - FirstLiteralRelocationKind;
+  MCSymbolRefExpr::VariantKind Modifier = Target.getAccessVariant();
   X86_64RelType Type = getType64(Kind, Modifier, IsPCRel);
   if (getEMachine() == ELF::EM_X86_64)
     return getRelocType64(Ctx, Fixup.getLoc(), Modifier, Type, IsPCRel, Kind);

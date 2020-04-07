@@ -86,6 +86,15 @@ static void GetObjCImageInfo(Module &M, unsigned &Version, unsigned &Flags,
     } else if (Key == "Objective-C Image Info Section") {
       Section = cast<MDString>(MFE.Val)->getString();
     }
+    // Backend generates L_OBJC_IMAGE_INFO from Swift ABI version + major + minor +
+    // "Objective-C Garbage Collection".
+    else if (Key == "Swift ABI Version") {
+      Flags |= (mdconst::extract<ConstantInt>(MFE.Val)->getZExtValue()) << 8;
+    } else if (Key == "Swift Major Version") {
+      Flags |= (mdconst::extract<ConstantInt>(MFE.Val)->getZExtValue()) << 24;
+    } else if (Key == "Swift Minor Version") {
+      Flags |= (mdconst::extract<ConstantInt>(MFE.Val)->getZExtValue()) << 16;
+    }
   }
 }
 
@@ -99,6 +108,7 @@ void TargetLoweringObjectFileELF::Initialize(MCContext &Ctx,
   TM = &TgtM;
 
   CodeModel::Model CM = TgtM.getCodeModel();
+  InitializeELF(TgtM.Options.UseInitArray);
 
   switch (TgtM.getTargetTriple().getArch()) {
   case Triple::arm:
@@ -280,7 +290,7 @@ void TargetLoweringObjectFileELF::emitModuleMetadata(MCStreamer &Streamer,
         report_fatal_error("invalid llvm.linker.options");
       for (const auto &Option : cast<MDNode>(Operand)->operands()) {
         Streamer.emitBytes(cast<MDString>(Option)->getString());
-        Streamer.emitIntValue(0, 1);
+        Streamer.emitInt8(0);
       }
     }
   }
@@ -294,7 +304,7 @@ void TargetLoweringObjectFileELF::emitModuleMetadata(MCStreamer &Streamer,
     for (const auto *Operand : DependentLibraries->operands()) {
       Streamer.emitBytes(
           cast<MDString>(cast<MDNode>(Operand)->getOperand(0))->getString());
-      Streamer.emitIntValue(0, 1);
+      Streamer.emitInt8(0);
     }
   }
 
@@ -307,8 +317,8 @@ void TargetLoweringObjectFileELF::emitModuleMetadata(MCStreamer &Streamer,
     auto *S = C.getELFSection(Section, ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
     Streamer.SwitchSection(S);
     Streamer.emitLabel(C.getOrCreateSymbol(StringRef("OBJC_IMAGE_INFO")));
-    Streamer.emitIntValue(Version, 4);
-    Streamer.emitIntValue(Flags, 4);
+    Streamer.emitInt32(Version);
+    Streamer.emitInt32(Flags);
     Streamer.AddBlankLine();
   }
 
@@ -422,6 +432,8 @@ static SectionKind getELFKindForNamedSection(StringRef Name, SectionKind K) {
   //   .section   .eh_frame,"a",@progbits
 
   if (Name == getInstrProfSectionName(IPSK_covmap, Triple::ELF,
+                                      /*AddSegmentInfo=*/false) ||
+      Name == getInstrProfSectionName(IPSK_covfun, Triple::ELF,
                                       /*AddSegmentInfo=*/false))
     return SectionKind::getMetadata();
 
@@ -972,8 +984,8 @@ void TargetLoweringObjectFileMachO::emitModuleMetadata(MCStreamer &Streamer,
   Streamer.SwitchSection(S);
   Streamer.emitLabel(getContext().
                      getOrCreateSymbol(StringRef("L_OBJC_IMAGE_INFO")));
-  Streamer.emitIntValue(VersionVal, 4);
-  Streamer.emitIntValue(ImageInfoFlags, 4);
+  Streamer.emitInt32(VersionVal);
+  Streamer.emitInt32(ImageInfoFlags);
   Streamer.AddBlankLine();
 }
 
@@ -1525,8 +1537,8 @@ void TargetLoweringObjectFileCOFF::emitModuleMetadata(MCStreamer &Streamer,
       SectionKind::getReadOnly());
   Streamer.SwitchSection(S);
   Streamer.emitLabel(C.getOrCreateSymbol(StringRef("OBJC_IMAGE_INFO")));
-  Streamer.emitIntValue(Version, 4);
-  Streamer.emitIntValue(Flags, 4);
+  Streamer.emitInt32(Version);
+  Streamer.emitInt32(Flags);
   Streamer.AddBlankLine();
 }
 
@@ -1998,7 +2010,11 @@ XCOFF::StorageClass TargetLoweringObjectFileXCOFF::getStorageClassForGlobal(
   case GlobalValue::CommonLinkage:
     return XCOFF::C_EXT;
   case GlobalValue::ExternalWeakLinkage:
+  case GlobalValue::LinkOnceODRLinkage:
     return XCOFF::C_WEAKEXT;
+  case GlobalValue::AppendingLinkage:
+    report_fatal_error(
+        "There is no mapping that implements AppendingLinkage for XCOFF.");
   default:
     report_fatal_error(
         "Unhandled linkage when mapping linkage to StorageClass.");
@@ -2006,9 +2022,11 @@ XCOFF::StorageClass TargetLoweringObjectFileXCOFF::getStorageClassForGlobal(
 }
 
 MCSection *TargetLoweringObjectFileXCOFF::getSectionForFunctionDescriptor(
-    const MCSymbol *FuncSym) const {
-  return getContext().getXCOFFSection(FuncSym->getName(), XCOFF::XMC_DS,
-                                      XCOFF::XTY_SD, XCOFF::C_HIDEXT,
+    const Function *F, const TargetMachine &TM) const {
+  SmallString<128> NameStr;
+  getNameWithPrefix(NameStr, F, TM);
+  return getContext().getXCOFFSection(NameStr, XCOFF::XMC_DS, XCOFF::XTY_SD,
+                                      getStorageClassForGlobal(F),
                                       SectionKind::getData());
 }
 

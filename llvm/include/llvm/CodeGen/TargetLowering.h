@@ -278,7 +278,7 @@ public:
     bool IsSwiftSelf : 1;
     bool IsSwiftError : 1;
     bool IsCFGuardTarget : 1;
-    uint16_t Alignment = 0;
+    MaybeAlign Alignment = None;
     Type *ByValType = nullptr;
 
     ArgListEntry()
@@ -1962,6 +1962,18 @@ public:
     return ISD::ZERO_EXTEND;
   }
 
+  /// Returns how the platform's atomic compare and swap expects its comparison
+  /// value to be extended (ZERO_EXTEND, SIGN_EXTEND, or ANY_EXTEND). This is
+  /// separate from getExtendForAtomicOps, which is concerned with the
+  /// sign-extension of the instruction's output, whereas here we are concerned
+  /// with the sign-extension of the input. For targets with compare-and-swap
+  /// instructions (or sub-word comparisons in their LL/SC loop expansions),
+  /// the input can be ANY_EXTEND, but the output will still have a specific
+  /// extension.
+  virtual ISD::NodeType getExtendForAtomicCmpSwapArg() const {
+    return ISD::ANY_EXTEND;
+  }
+
   /// @}
 
   /// Returns true if we should normalize
@@ -2754,6 +2766,13 @@ public:
   /// The default implementation just freezes the set of reserved registers.
   virtual void finalizeLowering(MachineFunction &MF) const;
 
+  //===----------------------------------------------------------------------===//
+  //  GlobalISel Hooks
+  //===----------------------------------------------------------------------===//
+  /// Check whether or not \p MI needs to be moved close to its uses.
+  virtual bool shouldLocalize(const MachineInstr &MI, const TargetTransformInfo *TTI) const;
+
+
 private:
   const TargetMachine &TM;
 
@@ -3324,6 +3343,16 @@ public:
                                                    const APInt &DemandedElts,
                                                    const SelectionDAG &DAG,
                                                    unsigned Depth = 0) const;
+
+  /// This method can be implemented by targets that want to expose additional
+  /// information about sign bits to GlobalISel combiners. The DemandedElts
+  /// argument allows us to only collect the minimum sign bits that are shared
+  /// by the requested vector elements.
+  virtual unsigned computeNumSignBitsForTargetInstr(GISelKnownBits &Analysis,
+                                                    Register R,
+                                                    const APInt &DemandedElts,
+                                                    const MachineRegisterInfo &MRI,
+                                                    unsigned Depth = 0) const;
 
   /// Attempt to simplify any target nodes based on the demanded vector
   /// elements, returning true on success. Otherwise, analyze the expression and

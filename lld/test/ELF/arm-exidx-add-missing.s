@@ -3,14 +3,14 @@
 // RUN: ld.lld %t --no-merge-exidx-entries -o %t2
 // RUN: llvm-objdump -s %t2 | FileCheck %s
 // RUN: ld.lld %t -o %t3
-// RUN: llvm-objdump -s %t3 | FileCheck %s -check-prefix=CHECK-MERGE
+// RUN: llvm-objdump -s %t3 | FileCheck %s --check-prefix=CHECK-MERGE
 
 // The ARM.exidx section is a table of 8-byte entries of the form:
 // | PREL31 Relocation to start of function | Unwinding information |
 // The range of addresses covered by the table entry is terminated by the
 // next table entry. This means that an executable section without a .ARM.exidx
 // section does not terminate the range of addresses. To fix this the linker
-// synthesises an EXIDX_CANTUNWIND entry for each section wihout a .ARM.exidx
+// synthesises an EXIDX_CANTUNWIND entry for each section without a .ARM.exidx
 // section.
 
         .syntax unified

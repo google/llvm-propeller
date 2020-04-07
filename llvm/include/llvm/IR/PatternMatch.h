@@ -50,6 +50,10 @@ template <typename Val, typename Pattern> bool match(Val *V, const Pattern &P) {
   return const_cast<Pattern &>(P).match(V);
 }
 
+template <typename Pattern> bool match(ArrayRef<int> Mask, const Pattern &P) {
+  return const_cast<Pattern &>(P).match(Mask);
+}
+
 template <typename SubPattern_t> struct OneUse_match {
   SubPattern_t SubPattern;
 
@@ -70,6 +74,11 @@ template <typename Class> struct class_match {
 
 /// Match an arbitrary value and ignore it.
 inline class_match<Value> m_Value() { return class_match<Value>(); }
+
+/// Match an arbitrary unary operation and ignore it.
+inline class_match<UnaryOperator> m_UnOp() {
+  return class_match<UnaryOperator>();
+}
 
 /// Match an arbitrary binary operation and ignore it.
 inline class_match<BinaryOperator> m_BinOp() {
@@ -565,6 +574,15 @@ inline cstfp_pred_ty<is_nan> m_NaN() {
   return cstfp_pred_ty<is_nan>();
 }
 
+struct is_inf {
+  bool isValue(const APFloat &C) { return C.isInfinity(); }
+};
+/// Match a positive or negative infinity FP constant.
+/// For vectors, this includes constants with undefined elements.
+inline cstfp_pred_ty<is_inf> m_Inf() {
+  return cstfp_pred_ty<is_inf>();
+}
+
 struct is_any_zero_fp {
   bool isValue(const APFloat &C) { return C.isZero(); }
 };
@@ -614,6 +632,8 @@ inline bind_ty<const Value> m_Value(const Value *&V) { return V; }
 
 /// Match an instruction, capturing it if we match.
 inline bind_ty<Instruction> m_Instruction(Instruction *&I) { return I; }
+/// Match a unary operator, capturing it if we match.
+inline bind_ty<UnaryOperator> m_UnOp(UnaryOperator *&I) { return I; }
 /// Match a binary operator, capturing it if we match.
 inline bind_ty<BinaryOperator> m_BinOp(BinaryOperator *&I) { return I; }
 /// Match a with overflow intrinsic, capturing it if we match.
@@ -783,6 +803,26 @@ struct AnyBinaryOp_match {
 template <typename LHS, typename RHS>
 inline AnyBinaryOp_match<LHS, RHS> m_BinOp(const LHS &L, const RHS &R) {
   return AnyBinaryOp_match<LHS, RHS>(L, R);
+}
+
+//===----------------------------------------------------------------------===//
+// Matcher for any unary operator.
+// TODO fuse unary, binary matcher into n-ary matcher
+//
+template <typename OP_t> struct AnyUnaryOp_match {
+  OP_t X;
+
+  AnyUnaryOp_match(const OP_t &X) : X(X) {}
+
+  template <typename OpTy> bool match(OpTy *V) {
+    if (auto *I = dyn_cast<UnaryOperator>(V))
+      return X.match(I->getOperand(0));
+    return false;
+  }
+};
+
+template <typename OP_t> inline AnyUnaryOp_match<OP_t> m_UnOp(const OP_t &X) {
+  return AnyUnaryOp_match<OP_t>(X);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1314,12 +1354,69 @@ m_ExtractElement(const Val_t &Val, const Idx_t &Idx) {
   return TwoOps_match<Val_t, Idx_t, Instruction::ExtractElement>(Val, Idx);
 }
 
-/// Matches ShuffleVectorInst.
+/// Matches shuffle.
+template <typename T0, typename T1, typename T2> struct Shuffle_match {
+  T0 Op1;
+  T1 Op2;
+  T2 Mask;
+
+  Shuffle_match(const T0 &Op1, const T1 &Op2, const T2 &Mask)
+      : Op1(Op1), Op2(Op2), Mask(Mask) {}
+
+  template <typename OpTy> bool match(OpTy *V) {
+    if (auto *I = dyn_cast<ShuffleVectorInst>(V)) {
+      return Op1.match(I->getOperand(0)) && Op2.match(I->getOperand(1)) &&
+             Mask.match(I->getShuffleMask());
+    }
+    return false;
+  }
+};
+
+struct m_Mask {
+  ArrayRef<int> &MaskRef;
+  m_Mask(ArrayRef<int> &MaskRef) : MaskRef(MaskRef) {}
+  bool match(ArrayRef<int> Mask) {
+    MaskRef = Mask;
+    return true;
+  }
+};
+
+struct m_ZeroMask {
+  bool match(ArrayRef<int> Mask) {
+    return all_of(Mask, [](int Elem) { return Elem == 0 || Elem == -1; });
+  }
+};
+
+struct m_SpecificMask {
+  ArrayRef<int> &MaskRef;
+  m_SpecificMask(ArrayRef<int> &MaskRef) : MaskRef(MaskRef) {}
+  bool match(ArrayRef<int> Mask) { return MaskRef == Mask; }
+};
+
+struct m_SplatOrUndefMask {
+  int &SplatIndex;
+  m_SplatOrUndefMask(int &SplatIndex) : SplatIndex(SplatIndex) {}
+  bool match(ArrayRef<int> Mask) {
+    auto First = find_if(Mask, [](int Elem) { return Elem != -1; });
+    if (First == Mask.end())
+      return false;
+    SplatIndex = *First;
+    return all_of(Mask,
+                  [First](int Elem) { return Elem == *First || Elem == -1; });
+  }
+};
+
+/// Matches ShuffleVectorInst independently of mask value.
+template <typename V1_t, typename V2_t>
+inline TwoOps_match<V1_t, V2_t, Instruction::ShuffleVector>
+m_ShuffleVector(const V1_t &v1, const V2_t &v2) {
+  return TwoOps_match<V1_t, V2_t, Instruction::ShuffleVector>(v1, v2);
+}
+
 template <typename V1_t, typename V2_t, typename Mask_t>
-inline ThreeOps_match<V1_t, V2_t, Mask_t, Instruction::ShuffleVector>
-m_ShuffleVector(const V1_t &v1, const V2_t &v2, const Mask_t &m) {
-  return ThreeOps_match<V1_t, V2_t, Mask_t, Instruction::ShuffleVector>(v1, v2,
-                                                                        m);
+inline Shuffle_match<V1_t, V2_t, Mask_t>
+m_ShuffleVector(const V1_t &v1, const V2_t &v2, const Mask_t &mask) {
+  return Shuffle_match<V1_t, V2_t, Mask_t>(v1, v2, mask);
 }
 
 /// Matches LoadInst.

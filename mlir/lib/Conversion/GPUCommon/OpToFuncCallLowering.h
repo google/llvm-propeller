@@ -34,7 +34,7 @@ public:
                              lowering_.getDialect()->getContext(), lowering_),
         f32Func(f32Func), f64Func(f64Func) {}
 
-  PatternMatchResult
+  LogicalResult
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     using LLVM::LLVMFuncOp;
@@ -49,13 +49,13 @@ public:
     LLVMType funcType = getFunctionType(resultType, operands);
     StringRef funcName = getFunctionName(resultType);
     if (funcName.empty())
-      return matchFailure();
+      return failure();
 
     LLVMFuncOp funcOp = appendOrGetFuncOp(funcName, funcType, op);
     auto callOp = rewriter.create<LLVM::CallOp>(
         op->getLoc(), resultType, rewriter.getSymbolRefAttr(funcOp), operands);
     rewriter.replaceOp(op, {callOp.getResult(0)});
-    return matchSuccess();
+    return success();
   }
 
 private:
@@ -94,24 +94,6 @@ private:
   const std::string f32Func;
   const std::string f64Func;
 };
-
-namespace gpu {
-/// Returns a predicate to be used with addDynamicallyLegalOp. The predicate
-/// returns false for calls to the provided intrinsics and true otherwise.
-inline std::function<bool(Operation *)>
-filterIllegalLLVMIntrinsics(ArrayRef<StringRef> intrinsics, MLIRContext *ctx) {
-  SmallVector<StringRef, 4> illegalIds(intrinsics.begin(), intrinsics.end());
-  return [illegalIds](Operation *op) -> bool {
-    LLVM::CallOp callOp = dyn_cast<LLVM::CallOp>(op);
-    if (!callOp || !callOp.callee())
-      return true;
-    StringRef callee = callOp.callee().getValue();
-    return !llvm::any_of(illegalIds, [callee](StringRef intrinsic) {
-      return callee.equals(intrinsic);
-    });
-  };
-}
-} // namespace gpu
 
 } // namespace mlir
 

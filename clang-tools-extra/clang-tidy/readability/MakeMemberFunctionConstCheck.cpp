@@ -125,7 +125,7 @@ public:
     if (Member->isBoundMemberFunction(Ctxt)) {
       if (!OnConstObject || Member->getFoundDecl().getAccess() != AS_public) {
         // Non-public non-static member functions might not preserve the
-        // logical costness. E.g. in
+        // logical constness. E.g. in
         // class C {
         //   int &data() const;
         // public:
@@ -209,9 +209,6 @@ AST_MATCHER(CXXMethodDecl, usesThisAsConst) {
 }
 
 void MakeMemberFunctionConstCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   Finder->addMatcher(
       cxxMethodDecl(
           isDefinition(), isUserProvided(),

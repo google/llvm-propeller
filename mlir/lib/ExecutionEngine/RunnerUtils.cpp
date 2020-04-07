@@ -1,4 +1,4 @@
-//===- RunnerUtils.cpp - Utils for MLIR CPU execution ---------------------===//
+//===- RunnerUtils.cpp - Utils for MLIR exec on targets with a C++ runtime ===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,15 +6,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Utilities for interfacing MLIR types with C code as well as printing,
-// debugging etc.
+// This file implements basic functions to debug structured MLIR types at
+// runtime. Entities in this file may not be compatible with targets without a
+// C++ runtime. These may be progressively migrated to CRunnerUtils.cpp over
+// time.
 //
 //===----------------------------------------------------------------------===//
 
 #include "mlir/ExecutionEngine/RunnerUtils.h"
 
-#include <cinttypes>
-#include <cstdio>
+#ifndef _WIN32
+#include <sys/time.h>
+#endif // _WIN32
 
 extern "C" void _mlir_ciface_print_memref_vector_4x4xf32(
     StridedMemRefType<Vector2D<4, 4, float>, 2> *M) {
@@ -28,7 +31,7 @@ extern "C" void _mlir_ciface_print_memref_vector_4x4xf32(
 
 extern "C" void _mlir_ciface_print_memref_i8(UnrankedMemRefType<int8_t> *M) {
   printUnrankedMemRefMetaData(std::cout, *M);
-  int rank = M->rank;
+  int64_t rank = M->rank;
   void *ptr = M->descriptor;
 
   switch (rank) {
@@ -42,9 +45,25 @@ extern "C" void _mlir_ciface_print_memref_i8(UnrankedMemRefType<int8_t> *M) {
   }
 }
 
+extern "C" void _mlir_ciface_print_memref_i32(UnrankedMemRefType<int32_t> *M) {
+  printUnrankedMemRefMetaData(std::cout, *M);
+  int64_t rank = M->rank;
+  void *ptr = M->descriptor;
+
+  switch (rank) {
+    MEMREF_CASE(int32_t, 0);
+    MEMREF_CASE(int32_t, 1);
+    MEMREF_CASE(int32_t, 2);
+    MEMREF_CASE(int32_t, 3);
+    MEMREF_CASE(int32_t, 4);
+  default:
+    assert(0 && "Unsupported rank to print");
+  }
+}
+
 extern "C" void _mlir_ciface_print_memref_f32(UnrankedMemRefType<float> *M) {
   printUnrankedMemRefMetaData(std::cout, *M);
-  int rank = M->rank;
+  int64_t rank = M->rank;
   void *ptr = M->descriptor;
 
   switch (rank) {
@@ -58,10 +77,13 @@ extern "C" void _mlir_ciface_print_memref_f32(UnrankedMemRefType<float> *M) {
   }
 }
 
+extern "C" void print_memref_i32(int64_t rank, void *ptr) {
+  UnrankedMemRefType<int32_t> descriptor = {rank, ptr};
+  _mlir_ciface_print_memref_i32(&descriptor);
+}
+
 extern "C" void print_memref_f32(int64_t rank, void *ptr) {
-  UnrankedMemRefType<float> descriptor;
-  descriptor.rank = rank;
-  descriptor.descriptor = ptr;
+  UnrankedMemRefType<float> descriptor = {rank, ptr};
   _mlir_ciface_print_memref_f32(&descriptor);
 }
 
@@ -86,15 +108,21 @@ _mlir_ciface_print_memref_4d_f32(StridedMemRefType<float, 4> *M) {
   impl::printMemRef(*M);
 }
 
-// Small runtime support "lib" for vector.print lowering.
-// By providing elementary printing methods only, this
-// library can remain fully unaware of low-level implementation
-// details of our vectors. Also useful for direct LLVM IR output.
-extern "C" void print_i32(int32_t i) { fprintf(stdout, "%" PRId32, i); }
-extern "C" void print_i64(int64_t l) { fprintf(stdout, "%" PRId64, l); }
-extern "C" void print_f32(float f) { fprintf(stdout, "%g", f); }
-extern "C" void print_f64(double d) { fprintf(stdout, "%lg", d); }
-extern "C" void print_open() { fputs("( ", stdout); }
-extern "C" void print_close() { fputs(" )", stdout); }
-extern "C" void print_comma() { fputs(", ", stdout); }
-extern "C" void print_newline() { fputc('\n', stdout); }
+/// Prints GFLOPS rating.
+extern "C" void print_flops(double flops) {
+  fprintf(stderr, "%lf GFLOPS\n", flops / 1.0E9);
+}
+
+/// Returns the number of seconds since Epoch 1970-01-01 00:00:00 +0000 (UTC).
+extern "C" double rtclock() {
+#ifndef _WIN32
+  struct timeval tp;
+  int stat = gettimeofday(&tp, NULL);
+  if (stat != 0)
+    fprintf(stderr, "Error returning time from gettimeofday: %d\n", stat);
+  return (tp.tv_sec + tp.tv_usec * 1.0e-6);
+#else
+  fprintf(stderr, "Timing utility not implemented on Windows\n");
+  return 0.0;
+#endif // _WIN32
+}

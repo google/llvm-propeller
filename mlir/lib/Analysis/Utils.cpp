@@ -14,9 +14,10 @@
 #include "mlir/Analysis/Utils.h"
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
-#include "mlir/Dialect/AffineOps/AffineValueMap.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineValueMap.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/IntegerSet.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -314,7 +315,7 @@ static unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
   auto elementType = memRefType.getElementType();
 
   unsigned sizeInBits;
-  if (elementType.isSignlessIntOrFloat()) {
+  if (elementType.isIntOrFloat()) {
     sizeInBits = elementType.getIntOrFloatBitWidth();
   } else {
     auto vectorType = elementType.cast<VectorType>();
@@ -358,7 +359,7 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
   if (!memRefType.hasStaticShape())
     return None;
   auto elementType = memRefType.getElementType();
-  if (!elementType.isSignlessIntOrFloat() && !elementType.isa<VectorType>())
+  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
     return None;
 
   uint64_t sizeInBytes = getMemRefEltSizeInBytes(memRefType);
@@ -368,16 +369,16 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
   return sizeInBytes;
 }
 
-template <typename LoadOrStoreOpPointer>
-LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
+template <typename LoadOrStoreOp>
+LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOp loadOrStoreOp,
                                             bool emitError) {
-  static_assert(std::is_same<LoadOrStoreOpPointer, AffineLoadOp>::value ||
-                    std::is_same<LoadOrStoreOpPointer, AffineStoreOp>::value,
-                "argument should be either a AffineLoadOp or a AffineStoreOp");
+  static_assert(
+      llvm::is_one_of<LoadOrStoreOp, AffineLoadOp, AffineStoreOp>::value,
+      "argument should be either a AffineLoadOp or a AffineStoreOp");
 
-  Operation *opInst = loadOrStoreOp.getOperation();
-  MemRefRegion region(opInst->getLoc());
-  if (failed(region.compute(opInst, /*loopDepth=*/0, /*sliceState=*/nullptr,
+  Operation *op = loadOrStoreOp.getOperation();
+  MemRefRegion region(op->getLoc());
+  if (failed(region.compute(op, /*loopDepth=*/0, /*sliceState=*/nullptr,
                             /*addMemRefDimBounds=*/false)))
     return success();
 
@@ -974,11 +975,12 @@ void mlir::getSequentialLoops(AffineForOp forOp,
 bool mlir::isLoopParallel(AffineForOp forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
-  auto walkResult = forOp.walk([&](Operation *opInst) {
+  auto walkResult = forOp.walk([&](Operation *opInst) -> WalkResult {
     if (isa<AffineLoadOp>(opInst) || isa<AffineStoreOp>(opInst))
       loadAndStoreOpInsts.push_back(opInst);
     else if (!isa<AffineForOp>(opInst) && !isa<AffineTerminatorOp>(opInst) &&
-             !isa<AffineIfOp>(opInst) && !opInst->hasNoSideEffect())
+             !isa<AffineIfOp>(opInst) &&
+             !MemoryEffectOpInterface::hasNoEffect(opInst))
       return WalkResult::interrupt();
 
     return WalkResult::advance();
@@ -1005,4 +1007,16 @@ bool mlir::isLoopParallel(AffineForOp forOp) {
     }
   }
   return true;
+}
+
+IntegerSet mlir::simplifyIntegerSet(IntegerSet set) {
+  FlatAffineConstraints fac(set);
+  if (fac.isEmpty())
+    return IntegerSet::getEmptySet(set.getNumDims(), set.getNumSymbols(),
+                                   set.getContext());
+  fac.removeTrivialRedundancy();
+
+  auto simplifiedSet = fac.getAsIntegerSet(set.getContext());
+  assert(simplifiedSet && "guaranteed to succeed while roundtripping");
+  return simplifiedSet;
 }

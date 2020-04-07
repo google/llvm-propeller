@@ -69,7 +69,7 @@ public:
 
     /// Called by ClangdServer when \p Diagnostics for \p File are ready.
     /// May be called concurrently for separate files, not for a single file.
-    virtual void onDiagnosticsReady(PathRef File,
+    virtual void onDiagnosticsReady(PathRef File, llvm::StringRef Version,
                                     std::vector<Diag> Diagnostics) {}
     /// Called whenever the file status is updated.
     /// May be called concurrently for separate files, not for a single file.
@@ -78,7 +78,7 @@ public:
     /// Called by ClangdServer when some \p Highlightings for \p File are ready.
     /// May be called concurrently for separate files, not for a single file.
     virtual void
-    onHighlightingsReady(PathRef File,
+    onHighlightingsReady(PathRef File, llvm::StringRef Version,
                          std::vector<HighlightingToken> Highlightings) {}
 
     /// Called when background indexing tasks are enqueued/started/completed.
@@ -118,6 +118,9 @@ public:
     /// enabled.
     ClangTidyOptionsBuilder GetClangTidyOptions;
 
+    /// If true, turn on the `-frecovery-ast` clang flag.
+    bool BuildRecoveryAST = false;
+
     /// Clangd's workspace root. Relevant for "workspace" operations not bound
     /// to a particular file.
     /// FIXME: If not set, should use the current working directory.
@@ -142,8 +145,8 @@ public:
     /// fetch system include path.
     std::vector<std::string> QueryDriverGlobs;
 
-    /// Enable semantic highlighting features.
-    bool SemanticHighlighting = false;
+    /// Enable notification-based semantic highlighting.
+    bool TheiaSemanticHighlighting = false;
 
     /// Returns true if the tweak should be enabled.
     std::function<bool(const Tweak &)> TweakFilter = [](const Tweak &T) {
@@ -171,16 +174,17 @@ public:
   /// \p File is already tracked. Also schedules parsing of the AST for it on a
   /// separate thread. When the parsing is complete, DiagConsumer passed in
   /// constructor will receive onDiagnosticsReady callback.
+  /// Version identifies this snapshot and is propagated to ASTs, preambles,
+  /// diagnostics etc built from it.
   void addDocument(PathRef File, StringRef Contents,
+                   llvm::StringRef Version = "null",
                    WantDiagnostics WD = WantDiagnostics::Auto,
                    bool ForceRebuild = false);
-
-  /// Get the contents of \p File, which should have been added.
-  llvm::StringRef getDocument(PathRef File) const;
 
   /// Remove \p File from list of tracked files, schedule a request to free
   /// resources associated with it. Pending diagnostics for closed files may not
   /// be delivered, even if requested with WantDiags::Auto or WantDiags::Yes.
+  /// An empty set of diagnostics will be delivered, with Version = "".
   void removeDocument(PathRef File);
 
   /// Run code completion for \p File at \p Pos.
@@ -264,9 +268,6 @@ public:
   /// highlighting them in prepare stage).
   void rename(PathRef File, Position Pos, llvm::StringRef NewName,
               const RenameOptions &Opts, Callback<FileEdits> CB);
-  // FIXME: remove this compatibility method in favor above.
-  void rename(PathRef File, Position Pos, llvm::StringRef NewName,
-              bool WantFormat, Callback<FileEdits> CB);
 
   struct TweakRef {
     std::string ID;    /// ID to pass for applyTweak.
@@ -294,12 +295,15 @@ public:
                   Callback<std::vector<SymbolDetails>> CB);
 
   /// Get semantic ranges around a specified position in a file.
-  void semanticRanges(PathRef File, Position Pos,
-                      Callback<std::vector<Range>> CB);
+  void semanticRanges(PathRef File, const std::vector<Position> &Pos,
+                      Callback<std::vector<SelectionRange>> CB);
 
   /// Get all document links in a file.
   void documentLinks(PathRef File, Callback<std::vector<DocumentLink>> CB);
- 
+
+  void semanticHighlights(PathRef File,
+                          Callback<std::vector<HighlightingToken>>);
+
   /// Returns estimated memory usage for each of the currently open files.
   /// The order of results is unspecified.
   /// Overall memory usage of clangd may be significantly more than reported
@@ -343,6 +347,9 @@ private:
   // If this is true, suggest include insertion fixes for diagnostic errors that
   // can be caused by missing includes (e.g. member access in incomplete type).
   bool SuggestMissingIncludes = false;
+
+  // If true, preserve expressions in AST for broken code.
+  bool BuildRecoveryAST = false;
 
   std::function<bool(const Tweak &)> TweakFilter;
 

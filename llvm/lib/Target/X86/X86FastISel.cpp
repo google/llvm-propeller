@@ -3207,8 +3207,8 @@ bool X86FastISel::fastLowerCall(CallLoweringInfo &CLI) {
       (CalledFn && CalledFn->hasFnAttribute("no_caller_saved_registers")))
     return false;
 
-  // Functions using retpoline for indirect calls need to use SDISel.
-  if (Subtarget->useRetpolineIndirectCalls())
+  // Functions using thunks for indirect calls need to use SDISel.
+  if (Subtarget->useIndirectThunkCalls())
     return false;
 
   // Handle only C, fastcc, and webkit_js calling conventions for now.
@@ -3289,7 +3289,8 @@ bool X86FastISel::fastLowerCall(CallLoweringInfo &CLI) {
       ResultReg =
         fastEmit_ri(VT, VT, ISD::AND, ResultReg, hasTrivialKill(PrevVal), 1);
     } else {
-      if (!isTypeLegal(Val->getType(), VT))
+      if (!isTypeLegal(Val->getType(), VT) ||
+          (VT.isVector() && VT.getVectorElementType() == MVT::i1))
         return false;
       ResultReg = getRegForValue(Val);
     }
@@ -3422,7 +3423,7 @@ bool X86FastISel::fastLowerCall(CallLoweringInfo &CLI) {
       AM.Base.Reg = RegInfo->getStackRegister();
       AM.Disp = LocMemOffset;
       ISD::ArgFlagsTy Flags = OutFlags[VA.getValNo()];
-      unsigned Alignment = DL.getABITypeAlignment(ArgVal->getType());
+      Align Alignment = DL.getABITypeAlign(ArgVal->getType());
       MachineMemOperand *MMO = FuncInfo.MF->getMachineMemOperand(
           MachinePointerInfo::getStack(*FuncInfo.MF, LocMemOffset),
           MachineMemOperand::MOStore, ArgVT.getStoreSize(), Alignment);
@@ -3774,11 +3775,7 @@ unsigned X86FastISel::X86MaterializeFP(const ConstantFP *CFP, MVT VT) {
   }
 
   // MachineConstantPool wants an explicit alignment.
-  unsigned Align = DL.getPrefTypeAlignment(CFP->getType());
-  if (Align == 0) {
-    // Alignment of vector types. FIXME!
-    Align = DL.getTypeAllocSize(CFP->getType());
-  }
+  Align Alignment = DL.getPrefTypeAlign(CFP->getType());
 
   // x86-32 PIC requires a PIC base register for constant pools.
   unsigned PICBase = 0;
@@ -3791,7 +3788,7 @@ unsigned X86FastISel::X86MaterializeFP(const ConstantFP *CFP, MVT VT) {
     PICBase = X86::RIP;
 
   // Create the load from the constant pool.
-  unsigned CPI = MCP.getConstantPoolIndex(CFP, Align);
+  unsigned CPI = MCP.getConstantPoolIndex(CFP, Alignment.value());
   unsigned ResultReg = createResultReg(TLI.getRegClassFor(VT.SimpleTy));
 
   if (CM == CodeModel::Large) {
@@ -3804,7 +3801,7 @@ unsigned X86FastISel::X86MaterializeFP(const ConstantFP *CFP, MVT VT) {
     addDirectMem(MIB, AddrReg);
     MachineMemOperand *MMO = FuncInfo.MF->getMachineMemOperand(
         MachinePointerInfo::getConstantPool(*FuncInfo.MF),
-        MachineMemOperand::MOLoad, DL.getPointerSize(), Align);
+        MachineMemOperand::MOLoad, DL.getPointerSize(), Alignment);
     MIB->addMemOperand(*FuncInfo.MF, MMO);
     return ResultReg;
   }
@@ -3937,10 +3934,8 @@ bool X86FastISel::tryToFoldLoadIntoMI(MachineInstr *MI, unsigned OpNo,
   const X86InstrInfo &XII = (const X86InstrInfo &)TII;
 
   unsigned Size = DL.getTypeAllocSize(LI->getType());
-  unsigned Alignment = LI->getAlignment();
-
-  if (Alignment == 0)  // Ensure that codegen never sees alignment 0
-    Alignment = DL.getABITypeAlignment(LI->getType());
+  Align Alignment =
+      DL.getValueOrABITypeAlignment(LI->getAlign(), LI->getType());
 
   SmallVector<MachineOperand, 8> AddrOps;
   AM.getFullAddress(AddrOps);

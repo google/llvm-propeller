@@ -15,8 +15,9 @@
 #ifndef SPIRV_STRUCTURE_OPS
 #define SPIRV_STRUCTURE_OPS
 
-include "mlir/Analysis/CallInterfaces.td"
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/SideEffects.td"
 
 // -----
 
@@ -32,16 +33,16 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
     type, this op returns a pointer type as well, and the type is the same as
     the variable referenced.
 
-    ### Custom assembly form
+    <!-- End of AutoGen section -->
 
     ```
     spv-address-of-op ::= ssa-id `=` `spv._address_of` symbol-ref-id
                                      `:` spirv-pointer-type
     ```
 
-    For example:
+    #### Example:
 
-    ```
+    ```mlir
     %0 = spv._address_of @global_var : !spv.ptr<f32, Input>
     ```
   }];
@@ -66,7 +67,7 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
 
 // -----
 
-def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
+def SPV_ConstantOp : SPV_Op<"constant", [ConstantLike, NoSideEffect]> {
   let summary = "The op that declares a SPIR-V normal constant";
 
   let description = [{
@@ -85,16 +86,16 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
     and this op is purely mechanical; so it can be scoped to the binary
     (de)serialization process.
 
-    ### Custom assembly form
+    <!-- End of AutoGen section -->
 
     ```
     spv-constant-op ::= ssa-id `=` `spv.constant` attribute-value
                         (`:` spirv-type)?
     ```
 
-    For example:
+    #### Example:
 
-    ```
+    ```mlir
     %0 = spv.constant true
     %1 = spv.constant dense<[2, 3]> : vector<2xf32>
     %2 = spv.constant [dense<3.0> : vector<2xf32>] : !spv.array<1xvector<2xf32>>
@@ -158,7 +159,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
     storage classes are all storage classes used in declaring all
     global variables referenced by the entry point’s call tree.
 
-    ### Custom assembly form
+    <!-- End of AutoGen section -->
 
     ```
     execution-model ::= "Vertex" | "TesellationControl" |
@@ -168,9 +169,9 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
                        symbol-reference (`, ` symbol-reference)*
     ```
 
-    For example:
+    #### Example:
 
-    ```
+    ```mlir
     spv.EntryPoint "GLCompute" @foo
     spv.EntryPoint "Kernel" @foo, @var1, @var2
 
@@ -213,7 +214,7 @@ def SPV_FuncOp : SPV_Op<"func", [
     This op itself takes no operands and generates no results. Its region
     can take zero or more arguments and return zero or one values.
 
-    ### Custom assembly form
+    <!-- End of AutoGen section -->
 
     ```
     spv-function-control ::= "None" | "Inline" | "DontInline" | ...
@@ -221,9 +222,9 @@ def SPV_FuncOp : SPV_Op<"func", [
                          spv-function-control region
     ```
 
-    For example:
+    #### Example:
 
-    ```
+    ```mlir
     spv.func @foo() -> () "None" { ... }
     spv.func @bar() -> () "Inline|Pure" { ... }
     ```
@@ -298,7 +299,7 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
     `spv.globalVariable` operation in module scope. Initializer must
     have the same type as the type of the defined symbol.
 
-    ### Custom assembly form
+    <!-- End of AutoGen section -->
 
     ```
     variable-op ::= `spv.globalVariable` spirv-type symbol-ref-id
@@ -312,9 +313,9 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
     descriptor set and binding number. `built_in` specifies SPIR-V
     BuiltIn decoration associated with the op.
 
-    For example:
+    #### Example:
 
-    ```
+    ```mlir
     spv.globalVariable @var0 : !spv.ptr<f32, Input> @var0
     spv.globalVariable @var1 initializer(@var0) : !spv.ptr<f32, Output>
     spv.globalVariable @var2 bind(1, 2) : !spv.ptr<f32, Uniform>
@@ -378,28 +379,28 @@ def SPV_ModuleOp : SPV_Op<"module",
     This op has only one region, which only contains one block. The block
     must be terminated via the `spv._module_end` op.
 
-    ### Custom assembly form
+    <!-- End of AutoGen section -->
 
     ```
-    addressing-model ::= `"Logical"` | `"Physical32"` | `"Physical64"`
-    memory-model ::= `"Simple"` | `"GLSL450"` | `"OpenCL"` | `"VulkanKHR"`
+    addressing-model ::= `Logical` | `Physical32` | `Physical64` | ...
+    memory-model ::= `Simple` | `GLSL450` | `OpenCL` | `Vulkan` | ...
     spv-module-op ::= `spv.module` addressing-model memory-model
-                      region
+                      (requires  spirv-vce-attribute)?
                       (`attributes` attribute-dict)?
+                      region
     ```
 
-    For example:
+    #### Example:
 
-    ```
-    spv.module "Logical" "VulkanKHR" { }
+    ```mlir
+    spv.module Logical GLSL450  {}
 
-    spv.module "Logical" "VulkanKHR" {
-      func @do_nothing() -> () {
+    spv.module Logical Vulkan
+        requires #spv.vce<v1.0, [Shader], [SPV_KHR_vulkan_memory_model]>
+        attributes { some_additional_attr = ... } {
+      spv.func @do_nothing() -> () {
         spv.Return
       }
-    } attributes {
-      capability = ["Shader"],
-      extension = ["SPV_KHR_16bit_storage"]
     }
     ```
   }];
@@ -407,26 +408,19 @@ def SPV_ModuleOp : SPV_Op<"module",
   let arguments = (ins
     SPV_AddressingModelAttr:$addressing_model,
     SPV_MemoryModelAttr:$memory_model,
-    OptionalAttr<StrArrayAttr>:$capabilities,
-    OptionalAttr<StrArrayAttr>:$extensions,
-    OptionalAttr<StrArrayAttr>:$extended_instruction_sets
+    OptionalAttr<SPV_VerCapExtAttr>:$vce_triple
   );
 
   let results = (outs);
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders =
-    [OpBuilder<"Builder *, OperationState &state">,
-     OpBuilder<[{Builder *, OperationState &state,
-                 IntegerAttr addressing_model,
-                 IntegerAttr memory_model}]>,
-     OpBuilder<[{Builder *, OperationState &state,
-                 spirv::AddressingModel addressing_model,
-                 spirv::MemoryModel memory_model,
-                 /*optional*/ ArrayRef<spirv::Capability> capabilities = {},
-                 /*optional*/ ArrayRef<spirv::Extension> extensions = {},
-                 /*optional*/ ArrayAttr extended_instruction_sets = nullptr}]>];
+  let builders = [
+    OpBuilder<[{Builder *, OperationState &state}]>,
+    OpBuilder<[{Builder *, OperationState &state,
+                spirv::AddressingModel addressing_model,
+                spirv::MemoryModel memory_model}]>
+  ];
 
   // We need to ensure the block inside the region is properly terminated;
   // the auto-generated builders do not guarantee that.
@@ -437,6 +431,8 @@ def SPV_ModuleOp : SPV_Op<"module",
   let autogenSerialization = 0;
 
   let extraClassDeclaration = [{
+    static StringRef getVCETripleAttrName() { return "vce_triple"; }
+
     Block& getBlock() {
       return this->getOperation()->getRegion(0).front();
     }
@@ -481,16 +477,16 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
     for modelling purpose in the SPIR-V dialect. This op's return type is
     the same as the specialization constant.
 
-    ### Custom assembly form
+    <!-- End of AutoGen section -->
 
     ```
     spv-reference-of-op ::= ssa-id `=` `spv._reference_of` symbol-ref-id
                                        `:` spirv-scalar-type
     ```
 
-    For example:
+    #### Example:
 
-    ```
+    ```mlir
     %0 = spv._reference_of @spec_const : f32
     ```
   }];
@@ -526,7 +522,7 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope, Symbol]> {
     `OpSpecConstantComposite` and `OpSpecConstantOp` are modelled with
     separate ops.
 
-    ### Custom assembly form
+    <!-- End of AutoGen section -->
 
     ```
     spv-spec-constant-op ::= `spv.specConstant` symbol-ref-id
@@ -537,9 +533,9 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope, Symbol]> {
     where `spec_id` specifies the SPIR-V SpecId decoration associated with
     the op.
 
-    For example:
+    #### Example:
 
-    ```
+    ```mlir
     spv.specConstant @spec_const1 = true
     spv.specConstant @spec_const2 spec_id(5) = 42 : i32
     ```

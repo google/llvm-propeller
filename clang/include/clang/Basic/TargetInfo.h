@@ -16,7 +16,7 @@
 
 #include "clang/Basic/AddressSpaces.h"
 #include "clang/Basic/LLVM.h"
-#include "clang/Basic/CodeGenOptions.h"
+#include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TargetCXXABI.h"
 #include "clang/Basic/TargetOptions.h"
@@ -159,6 +159,18 @@ protected:
   unsigned ZeroLengthBitfieldBoundary;
 };
 
+/// OpenCL type kinds.
+enum OpenCLTypeKind : uint8_t {
+  OCLTK_Default,
+  OCLTK_ClkEvent,
+  OCLTK_Event,
+  OCLTK_Image,
+  OCLTK_Pipe,
+  OCLTK_Queue,
+  OCLTK_ReserveID,
+  OCLTK_Sampler,
+};
+
 /// Exposes information about the current target.
 ///
 class TargetInfo : public virtual TransferrableTargetInfo,
@@ -197,6 +209,10 @@ protected:
   unsigned IsRenderScriptTarget : 1;
 
   unsigned HasAArch64SVETypes : 1;
+
+  unsigned ARMCDECoprocMask : 8;
+
+  unsigned MaxOpenCLWorkGroupSize;
 
   // TargetInfo Constructor.  Default initializes all fields.
   TargetInfo(const llvm::Triple &T);
@@ -259,7 +275,14 @@ public:
     //     void *__overflow_arg_area;
     //     void *__reg_save_area;
     //   } va_list[1];
-    SystemZBuiltinVaList
+    SystemZBuiltinVaList,
+
+    // typedef struct __va_list_tag {
+    //    void *__current_saved_reg_area_pointer;
+    //    void *__saved_reg_area_end_pointer;
+    //    void *__overflow_area_pointer;
+    //} va_list;
+    HexagonBuiltinVaList
   };
 
 protected:
@@ -642,6 +665,8 @@ public:
   /// types for the given target.
   unsigned getSimdDefaultAlign() const { return SimdDefaultAlign; }
 
+  unsigned getMaxOpenCLWorkGroupSize() const { return MaxOpenCLWorkGroupSize; }
+
   /// Return the alignment (in bits) of the thrown exception object. This is
   /// only meaningful for targets that allocate C++ exceptions in a system
   /// runtime, such as those using the Itanium C++ ABI.
@@ -795,6 +820,10 @@ public:
   /// Returns whether or not the AArch64 SVE built-in types are
   /// available on this target.
   bool hasAArch64SVETypes() const { return HasAArch64SVETypes; }
+
+  /// For ARM targets returns a mask defining which coprocessors are configured
+  /// as Custom Datapath.
+  uint32_t getARMCDECoprocMask() const { return ARMCDECoprocMask; }
 
   /// Returns whether the passed in string is a valid clobber in an
   /// inline asm statement.
@@ -1109,10 +1138,10 @@ public:
   }
 
   struct BranchProtectionInfo {
-    CodeGenOptions::SignReturnAddressScope SignReturnAddr =
-        CodeGenOptions::SignReturnAddressScope::None;
-    CodeGenOptions::SignReturnAddressKeyValue SignKey =
-        CodeGenOptions::SignReturnAddressKeyValue::AKey;
+    LangOptions::SignReturnAddressScopeKind SignReturnAddr =
+        LangOptions::SignReturnAddressScopeKind::None;
+    LangOptions::SignReturnAddressKeyKind SignKey =
+        LangOptions::SignReturnAddressKeyKind::AKey;
     bool BranchTargetEnforcement = false;
   };
 
@@ -1187,6 +1216,10 @@ public:
     llvm_unreachable(
         "cpu_specific Multiversioning not implemented on this target");
   }
+
+  // Get the cache line size of a given cpu. This method switches over
+  // the given cpu and returns "None" if the CPU is not found.
+  virtual Optional<unsigned> getCPUCacheLineSize() const { return None; }
 
   // Returns maximal number of args passed in registers.
   unsigned getRegParmMax() const {
@@ -1346,17 +1379,6 @@ public:
   const OpenCLOptions &getSupportedOpenCLOpts() const {
       return getTargetOpts().SupportedOpenCLOptions;
   }
-
-  enum OpenCLTypeKind {
-    OCLTK_Default,
-    OCLTK_ClkEvent,
-    OCLTK_Event,
-    OCLTK_Image,
-    OCLTK_Pipe,
-    OCLTK_Queue,
-    OCLTK_ReserveID,
-    OCLTK_Sampler,
-  };
 
   /// Get address space for OpenCL type.
   virtual LangAS getOpenCLTypeAddrSpace(OpenCLTypeKind TK) const;

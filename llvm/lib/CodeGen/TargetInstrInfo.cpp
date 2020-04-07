@@ -408,7 +408,7 @@ bool TargetInstrInfo::getStackSlotRange(const TargetRegisterClass *RC,
 
 void TargetInstrInfo::reMaterialize(MachineBasicBlock &MBB,
                                     MachineBasicBlock::iterator I,
-                                    unsigned DestReg, unsigned SubIdx,
+                                    Register DestReg, unsigned SubIdx,
                                     const MachineInstr &Orig,
                                     const TargetRegisterInfo &TRI) const {
   MachineInstr *MI = MBB.getParent()->CloneMachineInstr(&Orig);
@@ -591,9 +591,9 @@ MachineInstr *TargetInstrInfo::foldMemoryOperand(MachineInstr &MI,
             NewMI->mayLoad()) &&
            "Folded a use to a non-load!");
     assert(MFI.getObjectOffset(FI) != -1);
-    MachineMemOperand *MMO = MF.getMachineMemOperand(
-        MachinePointerInfo::getFixedStack(MF, FI), Flags, MemSize,
-        MFI.getObjectAlignment(FI));
+    MachineMemOperand *MMO =
+        MF.getMachineMemOperand(MachinePointerInfo::getFixedStack(MF, FI),
+                                Flags, MemSize, MFI.getObjectAlign(FI));
     NewMI->addMemOperand(MF, MMO);
 
     return NewMI;
@@ -699,10 +699,13 @@ bool TargetInstrInfo::hasReassociableSibling(const MachineInstr &Inst,
     std::swap(MI1, MI2);
 
   // 1. The previous instruction must be the same type as Inst.
-  // 2. The previous instruction must have virtual register definitions for its
+  // 2. The previous instruction must also be associative/commutative (this can
+  //    be different even for instructions with the same opcode if traits like
+  //    fast-math-flags are included).
+  // 3. The previous instruction must have virtual register definitions for its
   //    operands in the same basic block as Inst.
-  // 3. The previous instruction's result must only be used by Inst.
-  return MI1->getOpcode() == AssocOpcode &&
+  // 4. The previous instruction's result must only be used by Inst.
+  return MI1->getOpcode() == AssocOpcode && isAssociativeAndCommutative(*MI1) &&
          hasReassociableOperands(*MI1, MBB) &&
          MRI.hasOneNonDBGUse(MI1->getOperand(0).getReg());
 }
@@ -1147,6 +1150,11 @@ TargetInstrInfo::describeLoadedValue(const MachineInstr &MI,
   if (auto DestSrc = isCopyInstr(MI)) {
     Register DestReg = DestSrc->Destination->getReg();
 
+    // If the copy destination is the forwarding reg, describe the forwarding
+    // reg using the copy source as the backup location. Example:
+    //
+    //   x0 = MOV x7
+    //   call callee(x0)      ; x0 described as x7
     if (Reg == DestReg)
       return ParamLoadedValue(*DestSrc->Source, Expr);
 

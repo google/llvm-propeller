@@ -1180,14 +1180,14 @@ def X86tcret_6regs : PatFrag<(ops node:$ptr, node:$off),
 
 def : Pat<(X86tcret ptr_rc_tailcall:$dst, imm:$off),
           (TCRETURNri ptr_rc_tailcall:$dst, imm:$off)>,
-          Requires<[Not64BitMode, NotUseRetpolineIndirectCalls]>;
+          Requires<[Not64BitMode, NotUseIndirectThunkCalls]>;
 
 // FIXME: This is disabled for 32-bit PIC mode because the global base
 // register which is part of the address mode may be assigned a
 // callee-saved register.
 def : Pat<(X86tcret (load addr:$dst), imm:$off),
           (TCRETURNmi addr:$dst, imm:$off)>,
-          Requires<[Not64BitMode, IsNotPIC, NotUseRetpolineIndirectCalls]>;
+          Requires<[Not64BitMode, IsNotPIC, NotUseIndirectThunkCalls]>;
 
 def : Pat<(X86tcret (i32 tglobaladdr:$dst), imm:$off),
           (TCRETURNdi tglobaladdr:$dst, imm:$off)>,
@@ -1199,21 +1199,21 @@ def : Pat<(X86tcret (i32 texternalsym:$dst), imm:$off),
 
 def : Pat<(X86tcret ptr_rc_tailcall:$dst, imm:$off),
           (TCRETURNri64 ptr_rc_tailcall:$dst, imm:$off)>,
-          Requires<[In64BitMode, NotUseRetpolineIndirectCalls]>;
+          Requires<[In64BitMode, NotUseIndirectThunkCalls]>;
 
 // Don't fold loads into X86tcret requiring more than 6 regs.
 // There wouldn't be enough scratch registers for base+index.
 def : Pat<(X86tcret_6regs (load addr:$dst), imm:$off),
           (TCRETURNmi64 addr:$dst, imm:$off)>,
-          Requires<[In64BitMode, NotUseRetpolineIndirectCalls]>;
+          Requires<[In64BitMode, NotUseIndirectThunkCalls]>;
 
 def : Pat<(X86tcret ptr_rc_tailcall:$dst, imm:$off),
-          (RETPOLINE_TCRETURN64 ptr_rc_tailcall:$dst, imm:$off)>,
-          Requires<[In64BitMode, UseRetpolineIndirectCalls]>;
+          (INDIRECT_THUNK_TCRETURN64 ptr_rc_tailcall:$dst, imm:$off)>,
+          Requires<[In64BitMode, UseIndirectThunkCalls]>;
 
 def : Pat<(X86tcret ptr_rc_tailcall:$dst, imm:$off),
-          (RETPOLINE_TCRETURN32 ptr_rc_tailcall:$dst, imm:$off)>,
-          Requires<[Not64BitMode, UseRetpolineIndirectCalls]>;
+          (INDIRECT_THUNK_TCRETURN32 ptr_rc_tailcall:$dst, imm:$off)>,
+          Requires<[Not64BitMode, UseIndirectThunkCalls]>;
 
 def : Pat<(X86tcret (i64 tglobaladdr:$dst), imm:$off),
           (TCRETURNdi64 tglobaladdr:$dst, imm:$off)>,
@@ -1782,21 +1782,24 @@ multiclass MaskedRotateAmountPats<SDNode frag, string name> {
 defm : MaskedRotateAmountPats<rotl, "ROL">;
 defm : MaskedRotateAmountPats<rotr, "ROR">;
 
-// Double shift amount is implicitly masked.
-multiclass MaskedDoubleShiftAmountPats<SDNode frag, string name> {
-  // (shift x (and y, 31)) ==> (shift x, y)
-  def : Pat<(frag GR16:$src1, GR16:$src2, (shiftMask32 CL)),
-            (!cast<Instruction>(name # "16rrCL") GR16:$src1, GR16:$src2)>;
-  def : Pat<(frag GR32:$src1, GR32:$src2, (shiftMask32 CL)),
-            (!cast<Instruction>(name # "32rrCL") GR32:$src1, GR32:$src2)>;
+// Double "funnel" shift amount is implicitly masked.
+// (fshl/fshr x (and y, 31)) ==> (fshl/fshr x, y) (NOTE: modulo32)
+def : Pat<(X86fshl GR16:$src1, GR16:$src2, (shiftMask32 CL)),
+          (SHLD16rrCL GR16:$src1, GR16:$src2)>;
+def : Pat<(X86fshr GR16:$src2, GR16:$src1, (shiftMask32 CL)),
+          (SHRD16rrCL GR16:$src1, GR16:$src2)>;
 
-  // (shift x (and y, 63)) ==> (shift x, y)
-  def : Pat<(frag GR64:$src1, GR64:$src2, (shiftMask32 CL)),
-            (!cast<Instruction>(name # "64rrCL") GR64:$src1, GR64:$src2)>;
-}
+// (fshl/fshr x (and y, 31)) ==> (fshl/fshr x, y)
+def : Pat<(fshl GR32:$src1, GR32:$src2, (shiftMask32 CL)),
+          (SHLD32rrCL GR32:$src1, GR32:$src2)>;
+def : Pat<(fshr GR32:$src2, GR32:$src1, (shiftMask32 CL)),
+          (SHRD32rrCL GR32:$src1, GR32:$src2)>;
 
-defm : MaskedDoubleShiftAmountPats<X86shld, "SHLD">;
-defm : MaskedDoubleShiftAmountPats<X86shrd, "SHRD">;
+// (fshl/fshr x (and y, 63)) ==> (fshl/fshr x, y)
+def : Pat<(fshl GR64:$src1, GR64:$src2, (shiftMask64 CL)),
+          (SHLD64rrCL GR64:$src1, GR64:$src2)>;
+def : Pat<(fshr GR64:$src2, GR64:$src1, (shiftMask64 CL)),
+          (SHRD64rrCL GR64:$src1, GR64:$src2)>;
 
 let Predicates = [HasBMI2] in {
   let AddedComplexity = 1 in {

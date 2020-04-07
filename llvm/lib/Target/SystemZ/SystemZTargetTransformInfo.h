@@ -60,8 +60,12 @@ public:
   unsigned getRegisterBitWidth(bool Vector) const;
 
   unsigned getCacheLineSize() const override { return 256; }
-  unsigned getPrefetchDistance() const override { return 2000; }
-  unsigned getMinPrefetchStride() const override { return 2048; }
+  unsigned getPrefetchDistance() const override { return 4500; }
+  unsigned getMinPrefetchStride(unsigned NumMemAccesses,
+                                unsigned NumStridedMemAccesses,
+                                unsigned NumPrefetches,
+                                bool HasCall) const override;
+  bool enableWritePrefetching() const override { return true; }
 
   bool hasDivRemOp(Type *DataType, bool IsSigned);
   bool prefersVectorizedAddressing() { return false; }
@@ -101,10 +105,11 @@ public:
 
   int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
                             ArrayRef<Value *> Args, FastMathFlags FMF,
-                            unsigned VF = 1);
-  int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                            ArrayRef<Type *> Tys, FastMathFlags FMF,
-                            unsigned ScalarizationCostPassed = UINT_MAX);
+                            unsigned VF = 1, const Instruction *I = nullptr);
+  int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy, ArrayRef<Type *> Tys,
+                            FastMathFlags FMF,
+                            unsigned ScalarizationCostPassed = UINT_MAX,
+                            const Instruction *I = nullptr);
   /// @}
 };
 

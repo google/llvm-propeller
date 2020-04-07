@@ -53,22 +53,18 @@ void populateStdToLLVMBarePtrConversionPatterns(
     LLVMTypeConverter &converter, OwningRewritePatternList &patterns,
     bool useAlloca = false);
 
+/// Value to pass as bitwidth for the index type when the converter is expected
+/// to derive the bitwidth from the LLVM data layout.
+static constexpr unsigned kDeriveIndexBitwidthFromDataLayout = 0;
+
 /// Creates a pass to convert the Standard dialect into the LLVMIR dialect.
 /// By default stdlib malloc/free are used for allocating MemRef payloads.
 /// Specifying `useAlloca-true` emits stack allocations instead. In the future
 /// this may become an enum when we have concrete uses for other options.
-std::unique_ptr<OpPassBase<ModuleOp>>
-createLowerToLLVMPass(bool useAlloca = false, bool useBarePtrCallConv = false,
-                      bool emitCWrappers = false);
-
-namespace LLVM {
-/// Make argument-taking successors of each block distinct.  PHI nodes in LLVM
-/// IR use the predecessor ID to identify which value to take.  They do not
-/// support different values coming from the same predecessor.  If a block has
-/// another block as a successor more than once with different values, insert
-/// a new dummy block for LLVM PHI nodes to tell the sources apart.
-void ensureDistinctSuccessors(ModuleOp m);
-} // namespace LLVM
+std::unique_ptr<OpPassBase<ModuleOp>> createLowerToLLVMPass(
+    bool useAlloca = false, bool useBarePtrCallConv = false,
+    bool emitCWrappers = false,
+    unsigned indexBitwidth = kDeriveIndexBitwidthFromDataLayout);
 
 } // namespace mlir
 

@@ -497,7 +497,7 @@ private:
         RetainedTypes, GlobalVariables, ImportedEntities, CU->getMacros(),
         CU->getDWOId(), CU->getSplitDebugInlining(),
         CU->getDebugInfoForProfiling(), CU->getNameTableKind(),
-        CU->getRangesBaseAddress(), CU->getSysRoot());
+        CU->getRangesBaseAddress(), CU->getSysRoot(), CU->getSDK());
   }
 
   DILocation *getReplacementMDLocation(DILocation *MLD) {
@@ -606,7 +606,9 @@ bool llvm::stripNonLineTableDebugInfo(Module &M) {
       Changed = true;
     }
   };
+  RemoveUses("llvm.dbg.addr");
   RemoveUses("llvm.dbg.declare");
+  RemoveUses("llvm.dbg.label");
   RemoveUses("llvm.dbg.value");
 
   // Delete non-CU debug info named metadata nodes.
@@ -765,7 +767,8 @@ LLVMMetadataRef LLVMDIBuilderCreateCompileUnit(
     LLVMBool isOptimized, const char *Flags, size_t FlagsLen,
     unsigned RuntimeVer, const char *SplitName, size_t SplitNameLen,
     LLVMDWARFEmissionKind Kind, unsigned DWOId, LLVMBool SplitDebugInlining,
-    LLVMBool DebugInfoForProfiling, const char *SysRoot, size_t SysRootLen) {
+    LLVMBool DebugInfoForProfiling, const char *SysRoot, size_t SysRootLen,
+    const char *SDK, size_t SDKLen) {
   auto File = unwrapDI<DIFile>(FileRef);
 
   return wrap(unwrap(Builder)->createCompileUnit(
@@ -775,7 +778,7 @@ LLVMMetadataRef LLVMDIBuilderCreateCompileUnit(
       static_cast<DICompileUnit::DebugEmissionKind>(Kind), DWOId,
       SplitDebugInlining, DebugInfoForProfiling,
       DICompileUnit::DebugNameTableKind::Default, false,
-      StringRef(SysRoot, SysRootLen)));
+      StringRef(SysRoot, SysRootLen), StringRef(SDK, SDKLen)));
 }
 
 LLVMMetadataRef
@@ -790,11 +793,13 @@ LLVMMetadataRef
 LLVMDIBuilderCreateModule(LLVMDIBuilderRef Builder, LLVMMetadataRef ParentScope,
                           const char *Name, size_t NameLen,
                           const char *ConfigMacros, size_t ConfigMacrosLen,
-                          const char *IncludePath, size_t IncludePathLen) {
+                          const char *IncludePath, size_t IncludePathLen,
+                          const char *APINotesFile, size_t APINotesFileLen) {
   return wrap(unwrap(Builder)->createModule(
       unwrapDI<DIScope>(ParentScope), StringRef(Name, NameLen),
       StringRef(ConfigMacros, ConfigMacrosLen),
-      StringRef(IncludePath, IncludePathLen)));
+      StringRef(IncludePath, IncludePathLen),
+      StringRef(APINotesFile, APINotesFileLen)));
 }
 
 LLVMMetadataRef LLVMDIBuilderCreateNameSpace(LLVMDIBuilderRef Builder,

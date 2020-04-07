@@ -40,10 +40,6 @@
 ; DEBUG_FRAME: DW_CFA_def_cfa_offset
 ; DEBUG_FRAME: DW_CFA_def_cfa_register
 
-; DEBUG_FRAME: CIE
-; DEBUG_FRAME: DW_CFA_def_cfa
-; DEBUG_FRAME: DW_CFA_def_cfa
-
 ; DEBUG_FRAME: FDE cie=
 
 ; DEBUG_FRAME: FDE cie=

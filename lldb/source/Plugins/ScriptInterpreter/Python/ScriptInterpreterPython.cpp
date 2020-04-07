@@ -953,7 +953,7 @@ bool ScriptInterpreterPythonImpl::ExecuteOneLine(
                                            true));
 #endif
           if (conn_up->IsConnected()) {
-            output_comm.SetConnection(conn_up.release());
+            output_comm.SetConnection(std::move(conn_up));
             output_comm.SetReadThreadBytesReceivedCallback(
                 ReadThreadBytesReceived, &result->GetOutputStream());
             output_comm.StartReadThread();
@@ -2772,6 +2772,7 @@ bool ScriptInterpreterPythonImpl::LoadScriptingModule(
   {
     FileSpec target_file(pathname);
     FileSystem::Instance().Resolve(target_file);
+    FileSystem::Instance().Collect(target_file);
     std::string basename(target_file.GetFilename().GetCString());
 
     StreamString command_stream;

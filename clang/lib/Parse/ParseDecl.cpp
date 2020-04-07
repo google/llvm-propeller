@@ -3162,9 +3162,19 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
       // We are looking for a qualified typename.
       Token Next = NextToken();
-      if (Next.is(tok::annot_template_id) &&
-          static_cast<TemplateIdAnnotation *>(Next.getAnnotationValue())
-            ->Kind == TNK_Type_template) {
+
+      TemplateIdAnnotation *TemplateId = Next.is(tok::annot_template_id)
+                                             ? takeTemplateIdAnnotation(Next)
+                                             : nullptr;
+      if (TemplateId && TemplateId->hasInvalidName()) {
+        // We found something like 'T::U<Args> x', but U is not a template.
+        // Assume it was supposed to be a type.
+        DS.SetTypeSpecError();
+        ConsumeAnnotationToken();
+        break;
+      }
+
+      if (TemplateId && TemplateId->Kind == TNK_Type_template) {
         // We have a qualified template-id, e.g., N::A<int>
 
         // If this would be a valid constructor declaration with template
@@ -3174,7 +3184,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
         //
         // To improve diagnostics for this case, parse the declaration as a
         // constructor (and reject the extra template arguments later).
-        TemplateIdAnnotation *TemplateId = takeTemplateIdAnnotation(Next);
         if ((DSContext == DeclSpecContext::DSC_top_level ||
              DSContext == DeclSpecContext::DSC_class) &&
             TemplateId->Name &&
@@ -3195,9 +3204,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
         continue;
       }
 
-      if (Next.is(tok::annot_template_id) &&
-          static_cast<TemplateIdAnnotation *>(Next.getAnnotationValue())
-            ->Kind == TNK_Concept_template &&
+      if (TemplateId && TemplateId->Kind == TNK_Concept_template &&
           GetLookAheadToken(2).isOneOf(tok::kw_auto, tok::kw_decltype)) {
         DS.getTypeSpecScope() = SS;
         // This is a qualified placeholder-specifier, e.g., ::C<int> auto ...
@@ -3210,16 +3217,12 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       if (Next.is(tok::annot_typename)) {
         DS.getTypeSpecScope() = SS;
         ConsumeAnnotationToken(); // The C++ scope.
-        if (Tok.getAnnotationValue()) {
-          ParsedType T = getTypeAnnotation(Tok);
-          isInvalid = DS.SetTypeSpecType(DeclSpec::TST_typename,
-                                         Tok.getAnnotationEndLoc(),
-                                         PrevSpec, DiagID, T, Policy);
-          if (isInvalid)
-            break;
-        }
-        else
-          DS.SetTypeSpecError();
+        TypeResult T = getTypeAnnotation(Tok);
+        isInvalid = DS.SetTypeSpecType(DeclSpec::TST_typename,
+                                       Tok.getAnnotationEndLoc(),
+                                       PrevSpec, DiagID, T, Policy);
+        if (isInvalid)
+          break;
         DS.SetRangeEnd(Tok.getAnnotationEndLoc());
         ConsumeAnnotationToken(); // The typename
       }
@@ -3251,7 +3254,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       if (!TypeRep) {
         if (TryAnnotateTypeConstraint())
           goto DoneWithDeclSpec;
-        if (isTypeConstraintAnnotation())
+        if (Tok.isNot(tok::annot_cxxscope) ||
+            NextToken().isNot(tok::identifier))
           continue;
         // Eat the scope spec so the identifier is current.
         ConsumeAnnotationToken();
@@ -3286,13 +3290,9 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       if (DS.hasTypeSpecifier() && DS.hasTagDefinition())
         goto DoneWithDeclSpec;
 
-      if (Tok.getAnnotationValue()) {
-        ParsedType T = getTypeAnnotation(Tok);
-        isInvalid = DS.SetTypeSpecType(DeclSpec::TST_typename, Loc, PrevSpec,
-                                       DiagID, T, Policy);
-      } else
-        DS.SetTypeSpecError();
-
+      TypeResult T = getTypeAnnotation(Tok);
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_typename, Loc, PrevSpec,
+                                     DiagID, T, Policy);
       if (isInvalid)
         break;
 
@@ -3404,7 +3404,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       if (!TypeRep) {
         if (TryAnnotateTypeConstraint())
           goto DoneWithDeclSpec;
-        if (isTypeConstraintAnnotation())
+        if (Tok.isNot(tok::identifier))
           continue;
         ParsedAttributesWithRange Attrs(AttrFactory);
         if (ParseImplicitInt(DS, nullptr, TemplateInfo, AS, DSContext, Attrs)) {
@@ -3458,7 +3458,18 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // type-name or placeholder-specifier
     case tok::annot_template_id: {
       TemplateIdAnnotation *TemplateId = takeTemplateIdAnnotation(Tok);
+
+      if (TemplateId->hasInvalidName()) {
+        DS.SetTypeSpecError();
+        break;
+      }
+
       if (TemplateId->Kind == TNK_Concept_template) {
+        // If we've already diagnosed that this type-constraint has invalid
+        // arguemnts, drop it and just form 'auto' or 'decltype(auto)'.
+        if (TemplateId->hasInvalidArgs())
+          TemplateId = nullptr;
+
         if (NextToken().is(tok::identifier)) {
           Diag(Loc, diag::err_placeholder_expected_auto_or_decltype_auto)
               << FixItHint::CreateInsertion(NextToken().getLocation(), "auto");
@@ -4415,7 +4426,8 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
     ColonProtectionRAIIObject X(*this, AllowDeclaration);
 
     CXXScopeSpec Spec;
-    if (ParseOptionalCXXScopeSpecifier(Spec, nullptr,
+    if (ParseOptionalCXXScopeSpecifier(Spec, /*ObjectType=*/nullptr,
+                                       /*ObjectHadErrors=*/false,
                                        /*EnteringContext=*/true))
       return;
 
@@ -5195,14 +5207,30 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
 
     // placeholder-type-specifier
   case tok::annot_template_id: {
+    TemplateIdAnnotation *TemplateId = takeTemplateIdAnnotation(Tok);
+    if (TemplateId->hasInvalidName())
+      return true;
+    // FIXME: What about type templates that have only been annotated as
+    // annot_template_id, not as annot_typename?
     return isTypeConstraintAnnotation() &&
-        (NextToken().is(tok::kw_auto) || NextToken().is(tok::kw_decltype));
+           (NextToken().is(tok::kw_auto) || NextToken().is(tok::kw_decltype));
   }
-  case tok::annot_cxxscope:
+
+  case tok::annot_cxxscope: {
+    TemplateIdAnnotation *TemplateId =
+        NextToken().is(tok::annot_template_id)
+            ? takeTemplateIdAnnotation(NextToken())
+            : nullptr;
+    if (TemplateId && TemplateId->hasInvalidName())
+      return true;
+    // FIXME: What about type templates that have only been annotated as
+    // annot_template_id, not as annot_typename?
     if (NextToken().is(tok::identifier) && TryAnnotateTypeConstraint())
       return true;
     return isTypeConstraintAnnotation() &&
         GetLookAheadToken(2).isOneOf(tok::kw_auto, tok::kw_decltype);
+  }
+
   case tok::kw___declspec:
   case tok::kw___cdecl:
   case tok::kw___stdcall:
@@ -5248,7 +5276,8 @@ bool Parser::isConstructorDeclarator(bool IsUnqualified, bool DeductionGuide) {
 
   // Parse the C++ scope specifier.
   CXXScopeSpec SS;
-  if (ParseOptionalCXXScopeSpecifier(SS, nullptr,
+  if (ParseOptionalCXXScopeSpecifier(SS, /*ObjectType=*/nullptr,
+                                     /*ObjectHadErrors=*/false,
                                      /*EnteringContext=*/true)) {
     TPA.Revert();
     return false;
@@ -5628,7 +5657,8 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
         D.getContext() == DeclaratorContext::FileContext ||
         D.getContext() == DeclaratorContext::MemberContext;
     CXXScopeSpec SS;
-    ParseOptionalCXXScopeSpecifier(SS, nullptr, EnteringContext);
+    ParseOptionalCXXScopeSpecifier(SS, /*ObjectType=*/nullptr,
+                                   /*ObjectHadErrors=*/false, EnteringContext);
 
     if (SS.isNotEmpty()) {
       if (Tok.isNot(tok::star)) {
@@ -5643,8 +5673,8 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
         return;
       }
 
-      SourceLocation Loc = ConsumeToken();
-      D.SetRangeEnd(Loc);
+      SourceLocation StarLoc = ConsumeToken();
+      D.SetRangeEnd(StarLoc);
       DeclSpec DS(AttrFactory);
       ParseTypeQualifierListOpt(DS);
       D.ExtendWithDeclSpec(DS);
@@ -5655,7 +5685,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
       // Sema will have to catch (syntactically invalid) pointers into global
       // scope. It has to catch pointers into namespace scope anyway.
       D.AddTypeInfo(DeclaratorChunk::getMemberPointer(
-                        SS, DS.getTypeQualifiers(), DS.getEndLoc()),
+                        SS, DS.getTypeQualifiers(), StarLoc, DS.getEndLoc()),
                     std::move(DS.getAttributes()),
                     /* Don't replace range end. */ SourceLocation());
       return;
@@ -5851,8 +5881,9 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       bool EnteringContext =
           D.getContext() == DeclaratorContext::FileContext ||
           D.getContext() == DeclaratorContext::MemberContext;
-      ParseOptionalCXXScopeSpecifier(D.getCXXScopeSpec(), nullptr,
-                                     EnteringContext);
+      ParseOptionalCXXScopeSpecifier(
+          D.getCXXScopeSpec(), /*ObjectType=*/nullptr,
+          /*ObjectHadErrors=*/false, EnteringContext);
     }
 
     if (D.getCXXScopeSpec().isValid()) {
@@ -5926,10 +5957,11 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
 
       bool HadScope = D.getCXXScopeSpec().isValid();
       if (ParseUnqualifiedId(D.getCXXScopeSpec(),
+                             /*ObjectType=*/nullptr,
+                             /*ObjectHadErrors=*/false,
                              /*EnteringContext=*/true,
                              /*AllowDestructorName=*/true, AllowConstructorName,
-                             AllowDeductionGuide, nullptr, nullptr,
-                             D.getName()) ||
+                             AllowDeductionGuide, nullptr, D.getName()) ||
           // Once we're past the identifier, if the scope was bad, mark the
           // whole declarator bad.
           D.getCXXScopeSpec().isInvalid()) {

@@ -22,6 +22,7 @@ namespace llvm {
 class FunctionPass;
 class MachineFunction;
 class MachineFunctionPass;
+class MemoryBuffer;
 class ModulePass;
 class Pass;
 class TargetMachine;
@@ -44,8 +45,9 @@ namespace llvm {
 
   /// createBBSectionsPrepare Pass - This pass assigns sections to machine basic
   /// blocks and is enabled with -fbasicblock-sections.
-  MachineFunctionPass *
-  createBBSectionsPreparePass(const std::string &ProfileFileName);
+  /// Buf is a memory buffer that contains the list of functions and basic
+  /// block ids to selectively enable basic block sections.
+  MachineFunctionPass *createBBSectionsPreparePass(const MemoryBuffer *Buf);
 
   /// MachineFunctionPrinter pass - This pass prints out the machine function to
   /// the given stream as a debugging tool.
@@ -347,7 +349,7 @@ namespace llvm {
   /// createSjLjEHPreparePass - This pass adapts exception handling code to use
   /// the GCC-style builtin setjmp/longjmp (sjlj) to handling EH control flow.
   ///
-  FunctionPass *createSjLjEHPreparePass();
+  FunctionPass *createSjLjEHPreparePass(const TargetMachine *TM);
 
   /// createWasmEHPass - This pass adapts exception handling code to use
   /// WebAssembly's exception handling scheme.

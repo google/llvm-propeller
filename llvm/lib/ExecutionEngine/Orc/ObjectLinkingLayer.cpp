@@ -145,34 +145,50 @@ public:
       if (auto Err = MR.defineMaterializing(ExtraSymbolsToClaim))
         return notifyFailed(std::move(Err));
 
-    if (const auto &InitSym = MR.getInitializerSymbol())
-      InternedResult[InitSym] = JITEvaluatedSymbol();
-
     {
+
       // Check that InternedResult matches up with MR.getSymbols().
       // This guards against faulty transformations / compilers / object caches.
 
-      if (InternedResult.size() > MR.getSymbols().size()) {
-        SymbolNameVector ExtraSymbols;
-        for (auto &KV : InternedResult)
-          if (!MR.getSymbols().count(KV.first))
+      // First check that there aren't any missing symbols.
+      size_t NumMaterializationSideEffectsOnlySymbols = 0;
+      SymbolNameVector ExtraSymbols;
+      SymbolNameVector MissingSymbols;
+      for (auto &KV : MR.getSymbols()) {
+
+        // If this is a materialization-side-effects only symbol then bump
+        // the counter and make sure it's *not* defined, otherwise make
+        // sure that it is defined.
+        if (KV.second.hasMaterializationSideEffectsOnly()) {
+          ++NumMaterializationSideEffectsOnlySymbols;
+          if (InternedResult.count(KV.first))
             ExtraSymbols.push_back(KV.first);
-        ES.reportError(
-          make_error<UnexpectedSymbolDefinitions>(G.getName(),
-                                                  std::move(ExtraSymbols)));
+          continue;
+        } else if (!InternedResult.count(KV.first))
+          MissingSymbols.push_back(KV.first);
+      }
+
+      // If there were missing symbols then report the error.
+      if (!MissingSymbols.empty()) {
+        ES.reportError(make_error<MissingSymbolDefinitions>(
+            G.getName(), std::move(MissingSymbols)));
         MR.failMaterialization();
         return;
       }
 
-      SymbolNameVector MissingSymbols;
-      for (auto &KV : MR.getSymbols())
-        if (!InternedResult.count(KV.first))
-          MissingSymbols.push_back(KV.first);
+      // If there are more definitions than expected, add them to the
+      // ExtraSymbols vector.
+      if (InternedResult.size() >
+          MR.getSymbols().size() - NumMaterializationSideEffectsOnlySymbols) {
+        for (auto &KV : InternedResult)
+          if (!MR.getSymbols().count(KV.first))
+            ExtraSymbols.push_back(KV.first);
+      }
 
-      if (!MissingSymbols.empty()) {
-        ES.reportError(
-          make_error<MissingSymbolDefinitions>(G.getName(),
-                                               std::move(MissingSymbols)));
+      // If there were extra definitions then report the error.
+      if (!ExtraSymbols.empty()) {
+        ES.reportError(make_error<UnexpectedSymbolDefinitions>(
+            G.getName(), std::move(ExtraSymbols)));
         MR.failMaterialization();
         return;
       }
@@ -529,18 +545,21 @@ EHFrameRegistrationPlugin::EHFrameRegistrationPlugin(
 void EHFrameRegistrationPlugin::modifyPassConfig(
     MaterializationResponsibility &MR, const Triple &TT,
     PassConfiguration &PassConfig) {
-  assert(!InProcessLinks.count(&MR) && "Link for MR already being tracked?");
 
-  PassConfig.PostFixupPasses.push_back(
-      createEHFrameRecorderPass(TT, [this, &MR](JITTargetAddress Addr,
-                                                size_t Size) {
-        if (Addr)
-          InProcessLinks[&MR] = { Addr, Size };
+  PassConfig.PostFixupPasses.push_back(createEHFrameRecorderPass(
+      TT, [this, &MR](JITTargetAddress Addr, size_t Size) {
+        if (Addr) {
+          std::lock_guard<std::mutex> Lock(EHFramePluginMutex);
+          assert(!InProcessLinks.count(&MR) &&
+                 "Link for MR already being tracked?");
+          InProcessLinks[&MR] = {Addr, Size};
+        }
       }));
 }
 
 Error EHFrameRegistrationPlugin::notifyEmitted(
     MaterializationResponsibility &MR) {
+  std::lock_guard<std::mutex> Lock(EHFramePluginMutex);
 
   auto EHFrameRangeItr = InProcessLinks.find(&MR);
   if (EHFrameRangeItr == InProcessLinks.end())
@@ -560,6 +579,8 @@ Error EHFrameRegistrationPlugin::notifyEmitted(
 }
 
 Error EHFrameRegistrationPlugin::notifyRemovingModule(VModuleKey K) {
+  std::lock_guard<std::mutex> Lock(EHFramePluginMutex);
+
   auto EHFrameRangeItr = TrackedEHFrameRanges.find(K);
   if (EHFrameRangeItr == TrackedEHFrameRanges.end())
     return Error::success();
@@ -573,6 +594,7 @@ Error EHFrameRegistrationPlugin::notifyRemovingModule(VModuleKey K) {
 }
 
 Error EHFrameRegistrationPlugin::notifyRemovingAllModules() {
+  std::lock_guard<std::mutex> Lock(EHFramePluginMutex);
 
   std::vector<EHFrameRange> EHFrameRanges =
     std::move(UntrackedEHFrameRanges);

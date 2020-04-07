@@ -295,6 +295,13 @@ def StdCLibraryFunctionsChecker : Checker<"StdCLibraryFunctions">,
   HelpText<"Improve modeling of the C standard library functions">,
   Documentation<NotDocumented>;
 
+def StdCLibraryFunctionArgsChecker : Checker<"StdCLibraryFunctionArgs">,
+  HelpText<"Check constraints of arguments of C standard library functions, "
+           "such as whether the parameter of isalpha is in the range [0, 255] "
+           "or is EOF.">,
+  Dependencies<[StdCLibraryFunctionsChecker, CallAndMessageChecker]>,
+  Documentation<NotDocumented>;
+
 def TrustNonnullChecker : Checker<"TrustNonnull">,
   HelpText<"Trust that returns from framework methods annotated with _Nonnull "
            "are not null">,
@@ -1413,6 +1420,12 @@ def DebugContainerModeling : Checker<"DebugContainerModeling">,
 def DebugIteratorModeling : Checker<"DebugIteratorModeling">,
   HelpText<"Check the analyzer's understanding of C++ iterators">,
   Dependencies<[DebugContainerModeling, IteratorModeling]>,
+  Documentation<NotDocumented>;
+
+def StdCLibraryFunctionsTesterChecker : Checker<"StdCLibraryFunctionsTester">,
+  HelpText<"Add test functions to the summary map, so testing of individual "
+           "summary constituents becomes possible.">,
+  Dependencies<[StdCLibraryFunctionsChecker]>,
   Documentation<NotDocumented>;
 
 } // end "debug"

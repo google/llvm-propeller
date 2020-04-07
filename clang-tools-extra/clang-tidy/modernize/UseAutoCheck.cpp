@@ -325,11 +325,7 @@ void UseAutoCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
 }
 
 void UseAutoCheck::registerMatchers(MatchFinder *Finder) {
-  // Only register the matchers for C++; the functionality currently does not
-  // provide any benefit to other languages, despite being benign.
-  if (getLangOpts().CPlusPlus) {
     Finder->addMatcher(makeCombinedMatcher(), this);
-  }
 }
 
 void UseAutoCheck::replaceIterators(const DeclStmt *D, ASTContext *Context) {
@@ -337,7 +333,7 @@ void UseAutoCheck::replaceIterators(const DeclStmt *D, ASTContext *Context) {
     const auto *V = cast<VarDecl>(Dec);
     const Expr *ExprInit = V->getInit();
 
-    // Skip expressions with cleanups from the intializer expression.
+    // Skip expressions with cleanups from the initializer expression.
     if (const auto *E = dyn_cast<ExprWithCleanups>(ExprInit))
       ExprInit = E->getSubExpr();
 

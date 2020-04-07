@@ -495,6 +495,9 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
     if (!LargeOffsetGEPMap.empty())
       MadeChange |= splitLargeGEPOffsets();
 
+    if (MadeChange)
+      eliminateFallThrough(F);
+
     // Really free removed instructions during promotion.
     for (Instruction *I : RemovedInsts)
       I->deleteValue();
@@ -1964,6 +1967,11 @@ bool CodeGenPrepare::optimizeCallInst(CallInst *CI, bool &ModifiedDT) {
   if (II) {
     switch (II->getIntrinsicID()) {
     default: break;
+    case Intrinsic::assume: {
+      II->eraseFromParent();
+      return true;
+    }
+
     case Intrinsic::experimental_widenable_condition: {
       // Give up on future widening oppurtunties so that we can fold away dead
       // paths and merge blocks before going into block-local instruction
@@ -2102,12 +2110,21 @@ bool CodeGenPrepare::dupRetToEnableTailCallOpts(BasicBlock *BB, bool &ModifiedDT
     return false;
 
   PHINode *PN = nullptr;
+  ExtractValueInst *EVI = nullptr;
   BitCastInst *BCI = nullptr;
   Value *V = RetI->getReturnValue();
   if (V) {
     BCI = dyn_cast<BitCastInst>(V);
     if (BCI)
       V = BCI->getOperand(0);
+
+    EVI = dyn_cast<ExtractValueInst>(V);
+    if (EVI) {
+      V = EVI->getOperand(0);
+      if (!std::all_of(EVI->idx_begin(), EVI->idx_end(),
+                       [](unsigned idx) { return idx == 0; }))
+        return false;
+    }
 
     PN = dyn_cast<PHINode>(V);
     if (!PN)
@@ -2122,7 +2139,9 @@ bool CodeGenPrepare::dupRetToEnableTailCallOpts(BasicBlock *BB, bool &ModifiedDT
   if (PN) {
     BasicBlock::iterator BI = BB->begin();
     // Skip over debug and the bitcast.
-    do { ++BI; } while (isa<DbgInfoIntrinsic>(BI) || &*BI == BCI);
+    do {
+      ++BI;
+    } while (isa<DbgInfoIntrinsic>(BI) || &*BI == BCI || &*BI == EVI);
     if (&*BI != RetI)
       return false;
   } else {
@@ -6120,7 +6139,8 @@ bool CodeGenPrepare::optimizeSelectInst(SelectInst *SI) {
   // Into:
   //    start:
   //       %cmp = cmp uge i32 %a, %b
-  //       br i1 %cmp, label %select.true, label %select.false
+  //       %cmp.frozen = freeze %cmp
+  //       br i1 %cmp.frozen, label %select.true, label %select.false
   //    select.true:
   //       br label %select.end
   //    select.false:
@@ -6128,6 +6148,7 @@ bool CodeGenPrepare::optimizeSelectInst(SelectInst *SI) {
   //    select.end:
   //       %sel = phi i32 [ %c, %select.true ], [ %d, %select.false ]
   //
+  // %cmp should be frozen, otherwise it may introduce undefined behavior.
   // In addition, we may sink instructions that produce %c or %d from
   // the entry block into the destination(s) of the new branch.
   // If the true or false blocks do not contain a sunken instruction, that
@@ -6206,7 +6227,9 @@ bool CodeGenPrepare::optimizeSelectInst(SelectInst *SI) {
     TT = TrueBlock;
     FT = FalseBlock;
   }
-  IRBuilder<>(SI).CreateCondBr(SI->getCondition(), TT, FT, SI);
+  IRBuilder<> IB(SI);
+  auto CondFr = IB.CreateFreeze(SI->getCondition(), SI->getName() + ".frozen");
+  IB.CreateCondBr(CondFr, TT, FT, SI);
 
   SmallPtrSet<const Instruction *, 2> INS;
   INS.insert(ASI.begin(), ASI.end());
@@ -6234,7 +6257,7 @@ bool CodeGenPrepare::optimizeSelectInst(SelectInst *SI) {
 }
 
 static bool isBroadcastShuffle(ShuffleVectorInst *SVI) {
-  SmallVector<int, 16> Mask(SVI->getShuffleMask());
+  ArrayRef<int> Mask(SVI->getShuffleMask());
   int SplatElem = -1;
   for (unsigned i = 0; i < Mask.size(); ++i) {
     if (SplatElem != -1 && Mask[i] != -1 && Mask[i] != SplatElem)
@@ -6284,7 +6307,7 @@ bool CodeGenPrepare::optimizeShuffleVectorInst(ShuffleVectorInst *SVI) {
       assert(InsertPt != UserBB->end());
       InsertedShuffle =
           new ShuffleVectorInst(SVI->getOperand(0), SVI->getOperand(1),
-                                SVI->getOperand(2), "", &*InsertPt);
+                                SVI->getShuffleMask(), "", &*InsertPt);
       InsertedShuffle->setDebugLoc(SVI->getDebugLoc());
     }
 
@@ -6554,19 +6577,23 @@ class VectorPromoteHelper {
         UseSplat = true;
     }
 
-    unsigned End = getTransitionType()->getVectorNumElements();
+    ElementCount EC = getTransitionType()->getVectorElementCount();
     if (UseSplat)
-      return ConstantVector::getSplat(End, Val);
+      return ConstantVector::getSplat(EC, Val);
 
-    SmallVector<Constant *, 4> ConstVec;
-    UndefValue *UndefVal = UndefValue::get(Val->getType());
-    for (unsigned Idx = 0; Idx != End; ++Idx) {
-      if (Idx == ExtractIdx)
-        ConstVec.push_back(Val);
-      else
-        ConstVec.push_back(UndefVal);
-    }
-    return ConstantVector::get(ConstVec);
+    if (!EC.Scalable) {
+      SmallVector<Constant *, 4> ConstVec;
+      UndefValue *UndefVal = UndefValue::get(Val->getType());
+      for (unsigned Idx = 0; Idx != EC.Min; ++Idx) {
+        if (Idx == ExtractIdx)
+          ConstVec.push_back(Val);
+        else
+          ConstVec.push_back(UndefVal);
+      }
+      return ConstantVector::get(ConstVec);
+    } else
+      llvm_unreachable(
+          "Generate scalable vector for non-splat is unimplemented");
   }
 
   /// Check if promoting to a vector type an operand at \p OperandIdx
@@ -7176,6 +7203,35 @@ bool CodeGenPrepare::optimizeInst(Instruction *I, bool &ModifiedDT) {
     }
     if (tryUnmergingGEPsAcrossIndirectBr(GEPI, TTI)) {
       return true;
+    }
+    return false;
+  }
+
+  if (FreezeInst *FI = dyn_cast<FreezeInst>(I)) {
+    // freeze(icmp a, const)) -> icmp (freeze a), const
+    // This helps generate efficient conditional jumps.
+    Instruction *CmpI = nullptr;
+    if (ICmpInst *II = dyn_cast<ICmpInst>(FI->getOperand(0)))
+      CmpI = II;
+    else if (FCmpInst *F = dyn_cast<FCmpInst>(FI->getOperand(0)))
+      CmpI = F->getFastMathFlags().none() ? F : nullptr;
+
+    if (CmpI && CmpI->hasOneUse()) {
+      auto Op0 = CmpI->getOperand(0), Op1 = CmpI->getOperand(1);
+      bool Const0 = isa<ConstantInt>(Op0) || isa<ConstantFP>(Op0) ||
+                    isa<ConstantPointerNull>(Op0);
+      bool Const1 = isa<ConstantInt>(Op1) || isa<ConstantFP>(Op1) ||
+                    isa<ConstantPointerNull>(Op1);
+      if (Const0 || Const1) {
+        if (!Const0 || !Const1) {
+          auto *F = new FreezeInst(Const0 ? Op1 : Op0, "", CmpI);
+          F->takeName(FI);
+          CmpI->setOperand(Const0 ? 1 : 0, F);
+        }
+        FI->replaceAllUsesWith(CmpI);
+        FI->eraseFromParent();
+        return true;
+      }
     }
     return false;
   }

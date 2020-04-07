@@ -72,6 +72,9 @@ Changes to the ARM Backend
 
 During this release ...
 
+* Implemented C-language intrinsics for the full Arm v8.1-M MVE instruction
+  set. ``<arm_mve.h>`` now supports the complete API defined in the Arm C
+  Language Extensions.
 
 Changes to the MIPS Target
 --------------------------
@@ -97,10 +100,17 @@ During this release ...
 Changes to the AMDGPU Target
 -----------------------------
 
+* The backend default denormal handling mode has been switched to on
+  for all targets for all compute function types. Frontends wishing to
+  retain the old behavior should explicitly request f32 denormal
+  flushing.
+
 Changes to the AVR Target
 -----------------------------
 
-During this release ...
+* Moved from an experimental backend to an official backend. AVR support is now
+  included by default in all LLVM builds and releases and is available under
+  the "avr-unknown-unknown" target triple.
 
 Changes to the WebAssembly Target
 ---------------------------------

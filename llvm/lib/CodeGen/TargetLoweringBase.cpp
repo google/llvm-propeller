@@ -18,6 +18,7 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/Loads.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -1065,7 +1066,7 @@ TargetLoweringBase::emitPatchPoint(MachineInstr &InitialMI,
       auto Flags = MachineMemOperand::MOLoad;
       MachineMemOperand *MMO = MF.getMachineMemOperand(
           MachinePointerInfo::getFixedStack(MF, FI), Flags,
-          MF.getDataLayout().getPointerSize(), MFI.getObjectAlignment(FI));
+          MF.getDataLayout().getPointerSize(), MFI.getObjectAlign(FI));
       MIB->addMemOperand(MF, MMO);
     }
 
@@ -1529,7 +1530,7 @@ void llvm::GetReturnInfo(CallingConv::ID CC, Type *ReturnType,
 /// alignment, not its logarithm.
 unsigned TargetLoweringBase::getByValTypeAlignment(Type *Ty,
                                                    const DataLayout &DL) const {
-  return DL.getABITypeAlignment(Ty);
+  return DL.getABITypeAlign(Ty).value();
 }
 
 bool TargetLoweringBase::allowsMemoryAccessForAlignment(
@@ -1541,7 +1542,7 @@ bool TargetLoweringBase::allowsMemoryAccessForAlignment(
   // For example, the ABI alignment may change based on software platform while
   // this function should only be affected by hardware implementation.
   Type *Ty = VT.getTypeForEVT(Context);
-  if (Alignment >= DL.getABITypeAlignment(Ty)) {
+  if (Alignment >= DL.getABITypeAlign(Ty).value()) {
     // Assume that an access that meets the ABI-specified alignment is fast.
     if (Fast != nullptr)
       *Fast = true;
@@ -1556,7 +1557,7 @@ bool TargetLoweringBase::allowsMemoryAccessForAlignment(
     LLVMContext &Context, const DataLayout &DL, EVT VT,
     const MachineMemOperand &MMO, bool *Fast) const {
   return allowsMemoryAccessForAlignment(Context, DL, VT, MMO.getAddrSpace(),
-                                        MMO.getAlignment(), MMO.getFlags(),
+                                        MMO.getAlign().value(), MMO.getFlags(),
                                         Fast);
 }
 
@@ -1572,7 +1573,7 @@ bool TargetLoweringBase::allowsMemoryAccess(LLVMContext &Context,
                                             const MachineMemOperand &MMO,
                                             bool *Fast) const {
   return allowsMemoryAccess(Context, DL, VT, MMO.getAddrSpace(),
-                            MMO.getAlignment(), MMO.getFlags(), Fast);
+                            MMO.getAlign().value(), MMO.getFlags(), Fast);
 }
 
 BranchProbability TargetLoweringBase::getPredictableBranchThreshold() const {
@@ -1656,7 +1657,7 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   case ExtractValue:   return ISD::MERGE_VALUES;
   case InsertValue:    return ISD::MERGE_VALUES;
   case LandingPad:     return 0;
-  case Freeze:         return 0;
+  case Freeze:         return ISD::FREEZE;
   }
 
   llvm_unreachable("Unknown instruction type encountered!");
@@ -2071,4 +2072,65 @@ TargetLoweringBase::getAtomicMemOperandFlags(const Instruction &AI,
   // FIXME: Not preserving dereferenceable
   Flags |= getTargetMMOFlags(AI);
   return Flags;
+}
+
+//===----------------------------------------------------------------------===//
+//  GlobalISel Hooks
+//===----------------------------------------------------------------------===//
+
+bool TargetLoweringBase::shouldLocalize(const MachineInstr &MI,
+                                        const TargetTransformInfo *TTI) const {
+  auto &MF = *MI.getMF();
+  auto &MRI = MF.getRegInfo();
+  // Assuming a spill and reload of a value has a cost of 1 instruction each,
+  // this helper function computes the maximum number of uses we should consider
+  // for remat. E.g. on arm64 global addresses take 2 insts to materialize. We
+  // break even in terms of code size when the original MI has 2 users vs
+  // choosing to potentially spill. Any more than 2 users we we have a net code
+  // size increase. This doesn't take into account register pressure though.
+  auto maxUses = [](unsigned RematCost) {
+    // A cost of 1 means remats are basically free.
+    if (RematCost == 1)
+      return UINT_MAX;
+    if (RematCost == 2)
+      return 2U;
+
+    // Remat is too expensive, only sink if there's one user.
+    if (RematCost > 2)
+      return 1U;
+    llvm_unreachable("Unexpected remat cost");
+  };
+
+  // Helper to walk through uses and terminate if we've reached a limit. Saves
+  // us spending time traversing uses if all we want to know is if it's >= min.
+  auto isUsesAtMost = [&](unsigned Reg, unsigned MaxUses) {
+    unsigned NumUses = 0;
+    auto UI = MRI.use_instr_nodbg_begin(Reg), UE = MRI.use_instr_nodbg_end();
+    for (; UI != UE && NumUses < MaxUses; ++UI) {
+      NumUses++;
+    }
+    // If we haven't reached the end yet then there are more than MaxUses users.
+    return UI == UE;
+  };
+
+  switch (MI.getOpcode()) {
+  default:
+    return false;
+  // Constants-like instructions should be close to their users.
+  // We don't want long live-ranges for them.
+  case TargetOpcode::G_CONSTANT:
+  case TargetOpcode::G_FCONSTANT:
+  case TargetOpcode::G_FRAME_INDEX:
+  case TargetOpcode::G_INTTOPTR:
+    return true;
+  case TargetOpcode::G_GLOBAL_VALUE: {
+    unsigned RematCost = TTI->getGISelRematGlobalCost();
+    Register Reg = MI.getOperand(0).getReg();
+    unsigned MaxUses = maxUses(RematCost);
+    if (MaxUses == UINT_MAX)
+      return true; // Remats are "free" so always localize.
+    bool B = isUsesAtMost(Reg, MaxUses);
+    return B;
+  }
+  }
 }

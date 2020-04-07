@@ -297,7 +297,9 @@ ObjectFile *Module::GetMemoryObjectFile(const lldb::ProcessSP &process_sp,
       const size_t bytes_read =
           process_sp->ReadMemory(header_addr, data_up->GetBytes(),
                                  data_up->GetByteSize(), readmem_error);
-      if (bytes_read == size_to_read) {
+      if (bytes_read < size_to_read)
+        data_up->SetByteSize(bytes_read);
+      if (data_up->GetByteSize() > 0) {
         DataBufferSP data_sp(data_up.release());
         m_objfile_sp = ObjectFile::FindPlugin(shared_from_this(), process_sp,
                                               header_addr, data_sp);
@@ -1412,7 +1414,7 @@ void Module::SetSymbolFileFileSpec(const FileSpec &file) {
         if (FileSystem::Instance().IsDirectory(file)) {
           std::string new_path(file.GetPath());
           std::string old_path(obj_file->GetFileSpec().GetPath());
-          if (old_path.find(new_path) == 0) {
+          if (llvm::StringRef(old_path).startswith(new_path)) {
             // We specified the same bundle as the symbol file that we already
             // have
             return;

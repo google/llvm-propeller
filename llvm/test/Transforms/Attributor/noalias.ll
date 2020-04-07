@@ -255,10 +255,8 @@ define void @test12_1() {
 define void @test12_2(){
 ; CHECK-LABEL: @test12_2(
 ; CHECK-NEXT:    [[A:%.*]] = tail call noalias i8* @malloc(i64 4)
-; FIXME: This should be @use_nocapture(i8* noalias [[A]])
-; CHECK-NEXT:    tail call void @use_nocapture(i8* nocapture [[A]])
-; FIXME: This should be @use_nocapture(i8* noalias nocapture [[A]])
-; CHECK-NEXT:    tail call void @use_nocapture(i8* nocapture [[A]])
+; CHECK-NEXT:    tail call void @use_nocapture(i8* noalias nocapture [[A]])
+; CHECK-NEXT:    tail call void @use_nocapture(i8* noalias nocapture [[A]])
 ; CHECK-NEXT:    tail call void @use(i8* [[A]])
 ; CHECK-NEXT:    tail call void @use_nocapture(i8* nocapture [[A]])
 ; CHECK-NEXT:    ret void
@@ -348,3 +346,127 @@ define internal i32 @ret(i32* %arg) {
   ret i32 %l
 }
 
+; Test to propagate noalias where value is assumed to be no-capture in all the
+; uses possibly executed before this callsite.
+; IR referred from musl/src/strtod.c file
+
+%struct._IO_FILE = type { i32, i8*, i8*, i32 (%struct._IO_FILE*)*, i8*, i8*, i8*, i8*, i32 (%struct._IO_FILE*, i8*, i32)*, i32 (%struct._IO_FILE*, i8*, i32)*, i64 (%struct._IO_FILE*, i64, i32)*, i8*, i32, %struct._IO_FILE*, %struct._IO_FILE*, i32, i32, i32, i16, i8, i8, i32, i32, i8*, i64, i8*, i8*, i8*, [4 x i8], i64, i64, %struct._IO_FILE*, %struct._IO_FILE*, %struct.__locale_struct*, [4 x i8] }
+%struct.__locale_struct = type { [6 x %struct.__locale_map*] }
+%struct.__locale_map = type opaque
+
+; Function Attrs: nounwind optsize
+; CHECK: define internal fastcc double @strtox(i8* noalias %s) unnamed_addr
+define internal fastcc double @strtox(i8* %s, i8** %p, i32 %prec) unnamed_addr {
+entry:
+  %f = alloca %struct._IO_FILE, align 8
+  %0 = bitcast %struct._IO_FILE* %f to i8*
+  call void @llvm.lifetime.start.p0i8(i64 144, i8* nonnull %0)
+  %call = call i32 bitcast (i32 (...)* @sh_fromstring to i32 (%struct._IO_FILE*, i8*)*)(%struct._IO_FILE* nonnull %f, i8* %s)
+  call void @__shlim(%struct._IO_FILE* nonnull %f, i64 0)
+  %call1 = call double @__floatscan(%struct._IO_FILE* nonnull %f, i32 %prec, i32 1)
+  call void @llvm.lifetime.end.p0i8(i64 144, i8* nonnull %0)
+
+  ret double %call1
+}
+
+; Function Attrs: nounwind optsize
+define dso_local double @strtod(i8* noalias %s, i8** noalias %p) {
+entry:
+; CHECK: %call = tail call fastcc double @strtox(i8* noalias %s)
+  %call = tail call fastcc double @strtox(i8* %s, i8** %p, i32 1)
+  ret double %call
+}
+
+; Function Attrs: argmemonly nounwind willreturn
+declare void @llvm.lifetime.start.p0i8(i64 immarg, i8* nocapture)
+
+; Function Attrs: optsize
+declare dso_local i32 @sh_fromstring(...) local_unnamed_addr
+
+; Function Attrs: optsize
+declare dso_local void @__shlim(%struct._IO_FILE*, i64) local_unnamed_addr
+
+; Function Attrs: optsize
+declare dso_local double @__floatscan(%struct._IO_FILE*, i32, i32) local_unnamed_addr
+
+; Function Attrs: argmemonly nounwind willreturn
+declare void @llvm.lifetime.end.p0i8(i64 immarg, i8* nocapture)
+
+; Test 15
+; propagate noalias to some callsite arguments that there is no possibly reachable capture before it 
+
+@alias_of_p = external global i32*
+
+define void @make_alias(i32* %p) {
+  store i32* %p, i32** @alias_of_p
+  ret void
+}
+
+define void @only_store(i32* %p) {
+  store i32 0, i32* %p
+  ret void
+}
+
+; CHECK-LABEL define void @test15_caller(i32* noalias %p, i32 %c)
+define void @test15_caller(i32* noalias %p, i32 %c) {
+  %tobool = icmp eq i32 %c, 0
+  br i1 %tobool, label %if.end, label %if.then
+
+; CHECK tail call void @only_store(i32* noalias %p)
+; CHECK tail call void @make_alias(i32* %p)
+
+if.then:
+  tail call void @only_store(i32* %p)
+  br label %if.end
+
+if.end:
+  tail call void @make_alias(i32* %p)
+  ret void
+}
+
+; Test 16
+;
+; __attribute__((noinline)) static void test16_sub(int * restrict p, int c1, int c2) {
+;   if (c1) {
+;     only_store(p);
+;     make_alias(p);
+;   }
+;   if (!c2) {
+;     only_store(p);
+;   }
+; }
+; void test16_caller(int * restrict p, int c) {
+;   test16_sub(p, c, c);
+; }
+
+; CHECK-LABEL define internal void @test16_sub(i32* noalias %p, i32 %c1, i32 %c2)
+define internal void @test16_sub(i32* noalias %p, i32 %c1, i32 %c2) {
+  %tobool = icmp eq i32 %c1, 0
+  br i1 %tobool, label %if.end, label %if.then
+
+; CHECK tail call void @only_store(i32* noalias %p)
+if.then:
+  tail call void @only_store(i32* %p) 
+  tail call void @make_alias(i32* %p) 
+  br label %if.end
+if.end:
+
+  %tobool1 = icmp eq i32 %c2, 0
+  br i1 %tobool1, label %if.then2, label %if.end3
+
+; FIXME: this should be tail @only_store(i32* noalias %p)
+;        when test16_caller is called, c1 always equals to c2. (Note that linkage is internal)
+;        Therefore, only one of the two conditions of if statementes will be fulfilled.
+; CHECK tail call void @only_store(i32* %p)
+if.then2:
+  tail call void @only_store(i32* %p)
+  br label %if.end3
+if.end3:
+
+  ret void
+}
+
+define void @test16_caller(i32* %p, i32 %c) {
+  tail call void @test16_sub(i32* %p, i32 %c, i32 %c)
+  ret void
+}

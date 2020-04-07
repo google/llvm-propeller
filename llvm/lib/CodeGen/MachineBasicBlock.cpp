@@ -548,58 +548,19 @@ void MachineBasicBlock::moveAfter(MachineBasicBlock *NewBefore) {
   getParent()->splice(++NewBefore->getIterator(), getIterator());
 }
 
-// Returns true if this basic block and the Other are in the same section.
-bool MachineBasicBlock::sameSection(const MachineBasicBlock *Other) const {
-  if (this == Other)
-    return true;
-
-  if (this->getSectionType() != Other->getSectionType())
-    return false;
-
-  // If either is in a unique section, return false.
-  //if (this->getSectionType() == llvm::MachineBasicBlockSection::MBBS_Unique ||
-  //    Other->getSectionType() == llvm::MachineBasicBlockSection::MBBS_Unique)
-  //  return false;
-
-  return true;
-}
-
+// Returns the basic block ending the section containing this basic block.
+// Returns null if basic block sections is not enabled for this function.
+// This function has a linear time complexity.
 const MachineBasicBlock *MachineBasicBlock::getSectionEndMBB() const {
-  if (this->isEndSection())
-    return this;
-  auto I = std::next(this->getIterator());
   const MachineFunction *MF = getParent();
-  while (I != MF->end()) {
-    const MachineBasicBlock &MBB = *I;
-    if (MBB.isEndSection())
-      return &MBB;
-    I = std::next(I);
-  }
-  llvm_unreachable("No End Basic Block for this section.");
-}
-
-const MachineBasicBlock *MachineBasicBlock::getSectionBeginMBB() const {
-  if (this->isBeginSection())
-    return this;
-  auto I = std::next(this->getReverseIterator());
-  const MachineFunction *MF = getParent();
-  while (I != MF->rend()) {
-    const MachineBasicBlock &MBB = *I;
-    if (MBB.isBeginSection())
-      return &MBB;
-    I = std::next(I);
-  }
-  llvm_unreachable("No Begin Basic Block for this section.");
-}
-
-// Returns true if this block begins any section.
-bool MachineBasicBlock::isBeginSection() const {
-  return getParent()->isSectionStartMBB(getNumber());
-}
-
-// Returns true if this block begins any section.
-bool MachineBasicBlock::isEndSection() const {
-  return getParent()->isSectionEndMBB(getNumber());
+  if (!MF->hasBBSections())
+    return nullptr;
+  // Iterate over basic blocks looking for a basic block with a different
+  // section ID.
+  auto I = getIterator();
+  while (I != MF->end() && I->getSectionID() == getSectionID())
+    ++I;
+  return I == MF->end() ? &MF->back() : &*std::prev(I);
 }
 
 void MachineBasicBlock::updateTerminator() {
@@ -1584,3 +1545,6 @@ MachineBasicBlock::livein_iterator MachineBasicBlock::livein_begin() const {
       "Liveness information is accurate");
   return LiveIns.begin();
 }
+
+const unsigned MachineBasicBlock::ColdSectionID;
+const unsigned MachineBasicBlock::ExceptionSectionID;

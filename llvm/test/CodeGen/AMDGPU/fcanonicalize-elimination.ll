@@ -1,8 +1,8 @@
-; RUN: llc -march=amdgcn -mcpu=gfx801 -verify-machineinstrs -mattr=-fp32-denormals < %s | FileCheck -enable-var-scope -check-prefixes=GCN,VI,VI-FLUSH,GCN-FLUSH,GCN-NOEXCEPT %s
-; RUN: llc -march=amdgcn -mcpu=gfx801 -verify-machineinstrs -mattr=-fp32-denormals,+fp-exceptions < %s | FileCheck -enable-var-scope -check-prefixes=GCN,GCN-EXCEPT,VI,VI-FLUSH,GCN-FLUSH %s
-; RUN: llc -march=amdgcn -mcpu=gfx801 -verify-machineinstrs -mattr=+fp32-denormals < %s | FileCheck -enable-var-scope -check-prefixes=GCN,VI,VI-DENORM,GCN-DENORM,GCN-NOEXCEPT %s
-; RUN: llc -march=amdgcn -mcpu=gfx900 -verify-machineinstrs -mattr=+fp32-denormals < %s | FileCheck -enable-var-scope -check-prefixes=GCN,GFX9,GFX9-DENORM,GCN-DENORM,GCN-NOEXCEPT %s
-; RUN: llc -march=amdgcn -mcpu=gfx900 -verify-machineinstrs -mattr=-fp32-denormals < %s | FileCheck -enable-var-scope -check-prefixes=GCN,GFX9,GFX9-FLUSH,GCN-FLUSH,GCN-NOEXCEPT %s
+; RUN: llc -march=amdgcn -mcpu=gfx801 -verify-machineinstrs -denormal-fp-math-f32=preserve-sign < %s | FileCheck -enable-var-scope -check-prefixes=GCN,VI,VI-FLUSH,GCN-FLUSH,GCN-NOEXCEPT %s
+; RUN: llc -march=amdgcn -mcpu=gfx801 -verify-machineinstrs -mattr=+fp-exceptions -denormal-fp-math-f32=preserve-sign < %s | FileCheck -enable-var-scope -check-prefixes=GCN,GCN-EXCEPT,VI,VI-FLUSH,GCN-FLUSH %s
+; RUN: llc -march=amdgcn -mcpu=gfx801 -verify-machineinstrs -denormal-fp-math-f32=ieee < %s | FileCheck -enable-var-scope -check-prefixes=GCN,VI,VI-DENORM,GCN-DENORM,GCN-NOEXCEPT %s
+; RUN: llc -march=amdgcn -mcpu=gfx900 -verify-machineinstrs -denormal-fp-math-f32=ieee < %s | FileCheck -enable-var-scope -check-prefixes=GCN,GFX9,GFX9-DENORM,GCN-DENORM,GCN-NOEXCEPT %s
+; RUN: llc -march=amdgcn -mcpu=gfx900 -verify-machineinstrs -denormal-fp-math-f32=preserve-sign < %s | FileCheck -enable-var-scope -check-prefixes=GCN,GFX9,GFX9-FLUSH,GCN-FLUSH,GCN-NOEXCEPT %s
 
 ; GCN-LABEL: {{^}}test_no_fold_canonicalize_loaded_value_f32:
 ; GCN-FLUSH:   v_mul_f32_e32 v{{[0-9]+}}, 1.0, v{{[0-9]+}}
@@ -137,8 +137,8 @@ define amdgpu_kernel void @test_fold_canonicalize_fma_value_f32(float addrspace(
 }
 
 ; GCN-LABEL: test_fold_canonicalize_fmad_ftz_value_f32:
-; GCN: s_mov_b32 [[SGPR:s[0-9]+]], 0x41700000
-; GCN: v_mad_f32 [[V:v[0-9]+]], v{{[0-9]+}}, [[SGPR]], [[SGPR]]
+; GCN: v_mov_b32_e32 [[V:v[0-9]+]], 0x41700000
+; GCN: v_mac_f32_e32 [[V]], v{{[0-9]+}}, v{{[0-9]+$}}
 ; GCN-NOT: v_mul
 ; GCN-NOT: v_max
 ; GCN: {{flat|global}}_store_dword v[{{[0-9:]+}}], [[V]]
@@ -907,4 +907,4 @@ declare float @llvm.amdgcn.frexp.mant.f32(float) #0
 
 attributes #0 = { nounwind readnone }
 attributes #1 = { "no-nans-fp-math"="true" }
-attributes #2 = { "target-features"="-fp64-fp16-denormals" }
+attributes #2 = { "denormal-fp-math"="preserve-sign,preserve-sign" "denormal-fp-math-f32"="ieee,ieee" }

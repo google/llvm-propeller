@@ -10,9 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/SideEffects.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseMap.h"
@@ -162,12 +161,11 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
       if (op == nullptr)
         continue;
 
-      // If the operation has no side effects, and no users, then it is
-      // trivially dead - remove it.
-      if (op->hasNoSideEffect() && op->use_empty()) {
-        // Be careful to update bookkeeping.
+      // If the operation is trivially dead - remove it.
+      if (isOpTriviallyDead(op)) {
         notifyOperationRemoved(op);
         op->erase();
+        changed = true;
         continue;
       }
 
@@ -181,15 +179,15 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
         // Add all the users of the result to the worklist so we make sure
         // to revisit them.
         for (auto result : op->getResults())
-          for (auto *operand : result.getUsers())
-            addToWorklist(operand);
+          for (auto *userOp : result.getUsers())
+            addToWorklist(userOp);
 
         notifyOperationRemoved(op);
       };
 
       // Try to fold this op.
       if (succeeded(folder.tryToFold(op, collectOps, preReplaceAction))) {
-        changed |= true;
+        changed = true;
         continue;
       }
 
@@ -203,7 +201,10 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
 
     // After applying patterns, make sure that the CFG of each of the regions is
     // kept up to date.
-    changed |= succeeded(simplifyRegions(regions));
+    if (succeeded(simplifyRegions(regions))) {
+      folder.clear();
+      changed = true;
+    }
   } while (changed && ++i < maxIterations);
   // Whether the rewrite converges, i.e. wasn't changed in the last iteration.
   return !changed;

@@ -132,6 +132,10 @@ public:
   /// default, this is equal to CurrentFnSym.
   MCSymbol *CurrentFnSymForSize = nullptr;
 
+  // The symbol used to represent the start of the current BB section of the
+  // function. This is used to calculate the size of the BB section.
+  MCSymbol *CurrentSectionBeginSym = nullptr;
+
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
   using GOTEquivUsePair = std::pair<const GlobalVariable *, unsigned>;

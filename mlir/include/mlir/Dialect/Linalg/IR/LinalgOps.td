@@ -13,8 +13,9 @@
 #ifndef LINALG_OPS
 #define LINALG_OPS
 
-include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+include "mlir/Dialect/Affine/IR/AffineOpsBase.td"
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
+include "mlir/Interfaces/SideEffects.td"
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
 class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
@@ -43,7 +44,7 @@ def Linalg_RangeOp :
     Example:
 
     ```mlir
-      %3 = linalg.range %0:%1:%2 : !linalg.range
+    %3 = linalg.range %0:%1:%2 : !linalg.range
     ````
   }];
   let builders = [OpBuilder<
@@ -90,15 +91,15 @@ def Linalg_ReshapeOp : Linalg_Op<"reshape", [NoSideEffect]>,
     Examples:
 
     ```mlir
-       // Dimension collapse (i, j) -> i' and k -> k'
-       %1 = linalg.reshape %0 [(i, j, k) -> (i, j), (i, j, k) -> (k)] :
-         memref<?x?x?xf32, stride_spec> into memref<?x?xf32, stride_spec_2>
+    // Dimension collapse (i, j) -> i' and k -> k'
+    %1 = linalg.reshape %0 [(i, j, k) -> (i, j), (i, j, k) -> (k)] :
+      memref<?x?x?xf32, stride_spec> into memref<?x?xf32, stride_spec_2>
     ```
 
     ```mlir
-       // Dimension expansion i -> (i', j') and (k) -> (k')
-       %1 = linalg.reshape %0 [(i, j, k) -> (i, j), (i, j, k) -> (k)] :
-         memref<?x?xf32, stride_spec> into memref<?x?x?xf32, stride_spec_2>
+    // Dimension expansion i -> (i', j') and (k) -> (k')
+    %1 = linalg.reshape %0 [(i, j, k) -> (i, j), (i, j, k) -> (k)] :
+      memref<?x?xf32, stride_spec> into memref<?x?x?xf32, stride_spec_2>
     ```
   }];
 
@@ -150,22 +151,22 @@ def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
       1. rank-preserving `slice`:
 
       ```mlir
-        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
-          !linalg.range, !linalg.range, memref<?x?xf32, stride_spec>
-       ```
+      %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
+        !linalg.range, !linalg.range, memref<?x?xf32, stride_spec>
+      ```
 
       2. rank-reducing `slice` (from 2-D to 1-D):
 
       ```mlir
-        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
-          index, !linalg.range, memref<?x?xf32, stride_spec>
+      %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
+        index, !linalg.range, memref<?x?xf32, stride_spec>
       ```
 
       3. rank-reducing `slice` (from 2-D to 0-D):
 
       ```mlir
-        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
-          index, index, memref<?x?xf32, stride_spec>
+      %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
+        index, index, memref<?x?xf32, stride_spec>
       ```
   }];
 
@@ -209,7 +210,7 @@ def Linalg_TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
     Example:
 
     ```mlir
-       %1 = linalg.transpose %0 (i, j) -> (j, i) : memref<?x?xf32, stride_spec>
+    %1 = linalg.transpose %0 (i, j) -> (j, i) : memref<?x?xf32, stride_spec>
     ```
   }];
 
@@ -233,7 +234,7 @@ def Linalg_TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
   let hasFolder = 1;
 }
 
-def Linalg_YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
+def Linalg_YieldOp : Linalg_Op<"yield", [NoSideEffect, Terminator]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Linalg yield operation";
   let description = [{
@@ -244,7 +245,7 @@ def Linalg_YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
     Example:
 
     ```mlir
-       linalg.yield %f0, %f1 : f32, f32
+    linalg.yield %f0, %f1 : f32, f32
     ```
   }];
 }

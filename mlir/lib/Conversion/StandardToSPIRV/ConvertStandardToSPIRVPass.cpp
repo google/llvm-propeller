@@ -23,6 +23,10 @@ namespace {
 /// A pass converting MLIR Standard operations into the SPIR-V dialect.
 class ConvertStandardToSPIRVPass
     : public ModulePass<ConvertStandardToSPIRVPass> {
+/// Include the generated pass utilities.
+#define GEN_PASS_ConvertStandardToSPIRV
+#include "mlir/Conversion/Passes.h.inc"
+
   void runOnModule() override;
 };
 } // namespace
@@ -31,13 +35,14 @@ void ConvertStandardToSPIRVPass::runOnModule() {
   MLIRContext *context = &getContext();
   ModuleOp module = getModule();
 
-  SPIRVTypeConverter typeConverter;
+  auto targetAttr = spirv::lookupTargetEnvOrDefault(module);
+  std::unique_ptr<ConversionTarget> target =
+      spirv::SPIRVConversionTarget::get(targetAttr);
+
+  SPIRVTypeConverter typeConverter(targetAttr);
   OwningRewritePatternList patterns;
   populateStandardToSPIRVPatterns(context, typeConverter, patterns);
   populateBuiltinFuncToSPIRVPatterns(context, typeConverter, patterns);
-
-  std::unique_ptr<ConversionTarget> target = spirv::SPIRVConversionTarget::get(
-      spirv::lookupTargetEnvOrDefault(module), context);
 
   if (failed(applyPartialConversion(module, *target, patterns))) {
     return signalPassFailure();
@@ -47,6 +52,3 @@ void ConvertStandardToSPIRVPass::runOnModule() {
 std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertStandardToSPIRVPass() {
   return std::make_unique<ConvertStandardToSPIRVPass>();
 }
-
-static PassRegistration<ConvertStandardToSPIRVPass>
-    pass("convert-std-to-spirv", "Convert Standard Ops to SPIR-V dialect");

@@ -13,8 +13,9 @@ namespace clang {
 namespace clangd {
 
 void runAddDocument(ClangdServer &Server, PathRef File,
-                    llvm::StringRef Contents, WantDiagnostics WantDiags) {
-  Server.addDocument(File, Contents, WantDiags);
+                    llvm::StringRef Contents, llvm::StringRef Version,
+                    WantDiagnostics WantDiags, bool ForceRebuild) {
+  Server.addDocument(File, Contents, Version, WantDiags, ForceRebuild);
   if (!Server.blockUntilIdleForTest())
     llvm_unreachable("not idle after addDocument");
 }
@@ -145,9 +146,10 @@ RefSlab getRefs(const SymbolIndex &Index, SymbolID ID) {
   return std::move(Slab).build();
 }
 
-llvm::Expected<std::vector<Range>>
-runSemanticRanges(ClangdServer &Server, PathRef File, Position Pos) {
-  llvm::Optional<llvm::Expected<std::vector<Range>>> Result;
+llvm::Expected<std::vector<SelectionRange>>
+runSemanticRanges(ClangdServer &Server, PathRef File,
+                  const std::vector<Position> &Pos) {
+  llvm::Optional<llvm::Expected<std::vector<SelectionRange>>> Result;
   Server.semanticRanges(File, Pos, capture(Result));
   return std::move(*Result);
 }

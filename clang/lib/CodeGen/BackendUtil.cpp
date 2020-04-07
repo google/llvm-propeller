@@ -18,6 +18,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/Analysis/StackSafetyAnalysis.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -345,6 +346,11 @@ static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
   PM.add(createDataFlowSanitizerPass(LangOpts.SanitizerBlacklistFiles));
 }
 
+static void addMemTagOptimizationPasses(const PassManagerBuilder &Builder,
+                                        legacy::PassManagerBase &PM) {
+  PM.add(createStackSafetyGlobalInfoWrapperPass(/*SetMetadata=*/true));
+}
+
 static TargetLibraryInfoImpl *createTLII(llvm::Triple &TargetTriple,
                                          const CodeGenOptions &CodeGenOpts) {
   TargetLibraryInfoImpl *TLII = new TargetLibraryInfoImpl(TargetTriple);
@@ -477,15 +483,22 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
 
-  Options.BBSections = llvm::StringSwitch<llvm::BasicBlockSection::SectionMode>(
-                           CodeGenOpts.BBSections)
-                           .Case("all", llvm::BasicBlockSection::All)
-                           .Case("labels", llvm::BasicBlockSection::Labels)
-                           .Case("none", llvm::BasicBlockSection::None)
-                           .Default(llvm::BasicBlockSection::List);
+  Options.BBSections =
+      llvm::StringSwitch<llvm::BasicBlockSection>(CodeGenOpts.BBSections)
+          .Case("all", llvm::BasicBlockSection::All)
+          .Case("labels", llvm::BasicBlockSection::Labels)
+          .Case("none", llvm::BasicBlockSection::None)
+          .Default(llvm::BasicBlockSection::List);
 
-  if (Options.BBSections == llvm::BasicBlockSection::List)
-    Options.BBSectionsFuncList = CodeGenOpts.BBSections;
+  if (Options.BBSections == llvm::BasicBlockSection::List) {
+    ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
+        MemoryBuffer::getFile(CodeGenOpts.BBSections);
+    if (!MBOrErr)
+      errs() << "Error loading basic block sections function list file: "
+             << MBOrErr.getError().message() << "\n";
+    else
+      Options.BBSectionsFuncListBuf = std::move(*MBOrErr);
+  }
 
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
@@ -497,8 +510,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.DebuggerTuning = CodeGenOpts.getDebuggerTuning();
   Options.EmitStackSizeSection = CodeGenOpts.StackSizeSection;
   Options.EmitAddrsig = CodeGenOpts.Addrsig;
-  Options.EnableDebugEntryValues = CodeGenOpts.EnableDebugEntryValues;
   Options.ForceDwarfFrameSection = CodeGenOpts.ForceDwarfFrameSection;
+  Options.EmitCallSiteInfo = CodeGenOpts.EmitCallSiteInfo;
 
   Options.MCOptions.SplitDwarfFile = CodeGenOpts.SplitDwarfFile;
   Options.MCOptions.MCRelaxAll = CodeGenOpts.RelaxAll;
@@ -585,8 +598,9 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
   // At O0 and O1 we only run the always inliner which is more efficient. At
   // higher optimization levels we run the normal inliner.
   if (CodeGenOpts.OptimizationLevel <= 1) {
-    bool InsertLifetimeIntrinsics = (CodeGenOpts.OptimizationLevel != 0 &&
-                                     !CodeGenOpts.DisableLifetimeMarkers);
+    bool InsertLifetimeIntrinsics = ((CodeGenOpts.OptimizationLevel != 0 &&
+                                      !CodeGenOpts.DisableLifetimeMarkers) ||
+                                     LangOpts.Coroutines);
     PMBuilder.Inliner = createAlwaysInlinerLegacyPass(InsertLifetimeIntrinsics);
   } else {
     // We do not want to inline hot callsites for SamplePGO module-summary build
@@ -705,6 +719,11 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
                            addDataFlowSanitizerPass);
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
                            addDataFlowSanitizerPass);
+  }
+
+  if (LangOpts.Sanitize.has(SanitizerKind::MemTag)) {
+    PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
+                           addMemTagOptimizationPasses);
   }
 
   // Set up the per-function pass manager.
@@ -1108,6 +1127,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
   PTO.LoopInterleaving = CodeGenOpts.UnrollLoops;
   PTO.LoopVectorization = CodeGenOpts.VectorizeLoop;
   PTO.SLPVectorization = CodeGenOpts.VectorizeSLP;
+  PTO.CallGraphProfile = CodeGenOpts.CallGraphProfile;
   PTO.Coroutines = LangOpts.Coroutines;
 
   PassInstrumentationCallbacks PIC;
@@ -1177,7 +1197,10 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
       // which is just that always inlining occurs. Further, disable generating
       // lifetime intrinsics to avoid enabling further optimizations during
       // code generation.
-      MPM.addPass(AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/false));
+      // However, we need to insert lifetime intrinsics to avoid invalid access
+      // caused by multithreaded coroutines.
+      MPM.addPass(
+          AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/LangOpts.Coroutines));
 
       // At -O0, we can still do PGO. Add all the requested passes for
       // instrumentation PGO, if requested.
@@ -1309,6 +1332,11 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
     if (LangOpts.Sanitize.has(SanitizerKind::KernelHWAddress)) {
       MPM.addPass(HWAddressSanitizerPass(
           /*CompileKernel=*/true, /*Recover=*/true));
+    }
+
+    if (CodeGenOpts.OptimizationLevel > 0 &&
+        LangOpts.Sanitize.has(SanitizerKind::MemTag)) {
+      MPM.addPass(StackSafetyGlobalAnnotatorPass());
     }
 
     if (CodeGenOpts.OptimizationLevel == 0) {
@@ -1510,6 +1538,7 @@ static void runThinLTOBackend(ModuleSummaryIndex *CombinedIndex, Module *M,
   Conf.PTO.LoopInterleaving = CGOpts.UnrollLoops;
   Conf.PTO.LoopVectorization = CGOpts.VectorizeLoop;
   Conf.PTO.SLPVectorization = CGOpts.VectorizeSLP;
+  Conf.PTO.CallGraphProfile = CGOpts.CallGraphProfile;
 
   // Context sensitive profile.
   if (CGOpts.hasProfileCSIRInstr()) {

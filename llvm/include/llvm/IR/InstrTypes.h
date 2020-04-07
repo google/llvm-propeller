@@ -1577,10 +1577,8 @@ public:
            dataOperandHasImpliedAttr(OpNo + 1, Attribute::ReadNone);
   }
 
-  /// Extract the alignment of the return value.
-  /// FIXME: Remove this function once transition to Align is over.
-  /// Use getRetAlign() instead.
-  unsigned getRetAlignment() const {
+  LLVM_ATTRIBUTE_DEPRECATED(unsigned getRetAlignment() const,
+                            "Use getRetAlign() instead") {
     if (const auto MA = Attrs.getRetAlignment())
       return MA->value();
     return 0;
@@ -1590,9 +1588,8 @@ public:
   MaybeAlign getRetAlign() const { return Attrs.getRetAlignment(); }
 
   /// Extract the alignment for a call or parameter (0=unknown).
-  /// FIXME: Remove this function once transition to Align is over.
-  /// Use getParamAlign() instead.
-  unsigned getParamAlignment(unsigned ArgNo) const {
+  LLVM_ATTRIBUTE_DEPRECATED(unsigned getParamAlignment(unsigned ArgNo) const,
+                            "Use getParamAlign() instead") {
     if (const auto MA = Attrs.getParamAlignment(ArgNo))
       return MA->value();
     return 0;
@@ -2097,16 +2094,14 @@ public:
   op_iterator populateBundleOperandInfos(ArrayRef<OperandBundleDef> Bundles,
                                          const unsigned BeginIndex);
 
+public:
   /// Return the BundleOpInfo for the operand at index OpIdx.
   ///
   /// It is an error to call this with an OpIdx that does not correspond to an
   /// bundle operand.
+  BundleOpInfo &getBundleOpInfoForOperand(unsigned OpIdx);
   const BundleOpInfo &getBundleOpInfoForOperand(unsigned OpIdx) const {
-    for (auto &BOI : bundle_op_infos())
-      if (BOI.Begin <= OpIdx && OpIdx < BOI.End)
-        return BOI;
-
-    llvm_unreachable("Did not find operand bundle for operand!");
+    return const_cast<CallBase *>(this)->getBundleOpInfoForOperand(OpIdx);
   }
 
 protected:

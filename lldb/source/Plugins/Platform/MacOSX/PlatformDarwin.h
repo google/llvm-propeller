@@ -25,6 +25,11 @@ public:
 
   ~PlatformDarwin() override;
 
+  lldb_private::Status PutFile(const lldb_private::FileSpec &source,
+                               const lldb_private::FileSpec &destination,
+                               uint32_t uid = UINT32_MAX,
+                               uint32_t gid = UINT32_MAX) override;
+
   // lldb_private::Platform functions
   lldb_private::Status
   ResolveSymbolFile(lldb_private::Target &target,
@@ -79,14 +84,34 @@ public:
   static std::tuple<llvm::VersionTuple, llvm::StringRef>
   ParseVersionBuildDir(llvm::StringRef str);
 
-  enum SDKType : unsigned {
+  enum SDKType : int {
     MacOSX = 0,
     iPhoneSimulator,
     iPhoneOS,
+    AppleTVSimulator,
+    AppleTVOS,
+    WatchSimulator,
+    watchOS,
+    bridgeOS,
+    Linux,
+    numSDKTypes,
+    unknown = -1
   };
 
   llvm::Expected<lldb_private::StructuredData::DictionarySP>
   FetchExtendedCrashInformation(lldb_private::Process &process) override;
+
+  static llvm::StringRef GetSDKNameForType(SDKType type);
+  static lldb_private::FileSpec GetXcodeSDK(SDKType type);
+  static lldb_private::FileSpec GetXcodeContentsDirectory();
+  static lldb_private::FileSpec GetXcodeDeveloperDirectory();
+
+  /// Return the toolchain directroy the current LLDB instance is located in.
+  static lldb_private::FileSpec GetCurrentToolchainDirectory();
+
+  /// Return the command line tools directory the current LLDB instance is
+  /// located in.
+  static lldb_private::FileSpec GetCurrentCommandLineToolsDirectory();
 
 protected:
   struct CrashInfoAnnotations {
@@ -152,14 +177,16 @@ protected:
                                              std::vector<std::string> &options,
                                              SDKType sdk_type);
 
-  const char *GetDeveloperDirectory();
 
-  lldb_private::Status
-  FindBundleBinaryInExecSearchPaths (const lldb_private::ModuleSpec &module_spec, lldb_private::Process *process,
-                                     lldb::ModuleSP &module_sp, const lldb_private::FileSpecList *module_search_paths_ptr, 
-                                     lldb::ModuleSP *old_module_sp_ptr, bool *did_create_ptr);
+  lldb_private::Status FindBundleBinaryInExecSearchPaths(
+      const lldb_private::ModuleSpec &module_spec,
+      lldb_private::Process *process, lldb::ModuleSP &module_sp,
+      const lldb_private::FileSpecList *module_search_paths_ptr,
+      lldb::ModuleSP *old_module_sp_ptr, bool *did_create_ptr);
 
-  std::string m_developer_directory;
+  static std::string FindComponentInPath(llvm::StringRef path,
+                                         llvm::StringRef component);
+  static std::string FindXcodeContentsDirectoryInPath(llvm::StringRef path);
 
 
 private:

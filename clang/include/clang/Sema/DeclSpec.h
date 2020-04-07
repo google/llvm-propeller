@@ -186,14 +186,14 @@ public:
   SourceLocation getLastQualifierNameLoc() const;
 
   /// No scope specifier.
-  bool isEmpty() const { return !Range.isValid(); }
+  bool isEmpty() const { return Range.isInvalid() && getScopeRep() == nullptr; }
   /// A scope specifier is present, but may be valid or invalid.
   bool isNotEmpty() const { return !isEmpty(); }
 
   /// An error occurred during parsing of the scope specifier.
-  bool isInvalid() const { return isNotEmpty() && getScopeRep() == nullptr; }
+  bool isInvalid() const { return Range.isValid() && getScopeRep() == nullptr; }
   /// A scope specifier is present, and it refers to a real scope.
-  bool isValid() const { return isNotEmpty() && getScopeRep() != nullptr; }
+  bool isValid() const { return getScopeRep() != nullptr; }
 
   /// Indicate that this nested-name-specifier is invalid.
   void SetInvalid(SourceRange R) {
@@ -667,6 +667,13 @@ public:
   bool SetTypeSpecType(TST T, SourceLocation Loc, const char *&PrevSpec,
                        unsigned &DiagID, ParsedType Rep,
                        const PrintingPolicy &Policy);
+  bool SetTypeSpecType(TST T, SourceLocation Loc, const char *&PrevSpec,
+                       unsigned &DiagID, TypeResult Rep,
+                       const PrintingPolicy &Policy) {
+    if (Rep.isInvalid())
+      return SetTypeSpecError();
+    return SetTypeSpecType(T, Loc, PrevSpec, DiagID, Rep.get(), Policy);
+  }
   bool SetTypeSpecType(TST T, SourceLocation Loc, const char *&PrevSpec,
                        unsigned &DiagID, Decl *Rep, bool Owned,
                        const PrintingPolicy &Policy);
@@ -1518,6 +1525,8 @@ struct DeclaratorChunk {
   struct MemberPointerTypeInfo {
     /// The type qualifiers: const/volatile/restrict/__unaligned/_Atomic.
     unsigned TypeQuals : 5;
+    /// Location of the '*' token.
+    unsigned StarLoc;
     // CXXScopeSpec has a constructor, so it can't be a direct member.
     // So we need some pointer-aligned storage and a bit of trickery.
     alignas(CXXScopeSpec) char ScopeMem[sizeof(CXXScopeSpec)];
@@ -1660,11 +1669,13 @@ struct DeclaratorChunk {
 
   static DeclaratorChunk getMemberPointer(const CXXScopeSpec &SS,
                                           unsigned TypeQuals,
-                                          SourceLocation Loc) {
+                                          SourceLocation StarLoc,
+                                          SourceLocation EndLoc) {
     DeclaratorChunk I;
     I.Kind          = MemberPointer;
     I.Loc           = SS.getBeginLoc();
-    I.EndLoc        = Loc;
+    I.EndLoc = EndLoc;
+    I.Mem.StarLoc = StarLoc.getRawEncoding();
     I.Mem.TypeQuals = TypeQuals;
     new (I.Mem.ScopeMem) CXXScopeSpec(SS);
     return I;

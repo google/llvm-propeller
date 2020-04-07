@@ -10,9 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Analysis/Passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
@@ -33,12 +34,16 @@ void registerMemRefBoundCheck();
 void registerPassManagerTestPass();
 void registerPatternsTestPass();
 void registerPrintOpAvailabilityPass();
+void registerSideEffectTestPasses();
 void registerSimpleParametricTilingPass();
 void registerSymbolTestPasses();
 void registerTestAffineDataCopyPass();
 void registerTestAllReduceLoweringPass();
+void registerTestLoopPermutationPass();
 void registerTestCallGraphPass();
 void registerTestConstantFold();
+void registerTestConvertGPUKernelToCubinPass();
+void registerTestDominancePass();
 void registerTestFunc();
 void registerTestGpuMemoryPromotionPass();
 void registerTestLinalgTransforms();
@@ -80,6 +85,10 @@ static cl::opt<bool>
                  cl::desc("Run the verifier after each transformation pass"),
                  cl::init(true));
 
+static cl::opt<bool> allowUnregisteredDialects(
+    "allow-unregistered-dialect",
+    cl::desc("Allow operation with no registered dialects"), cl::init(false));
+
 void registerTestPasses() {
   registerConvertToTargetEnvPass();
   registerInliner();
@@ -87,12 +96,18 @@ void registerTestPasses() {
   registerPassManagerTestPass();
   registerPatternsTestPass();
   registerPrintOpAvailabilityPass();
+  registerSideEffectTestPasses();
   registerSimpleParametricTilingPass();
   registerSymbolTestPasses();
   registerTestAffineDataCopyPass();
   registerTestAllReduceLoweringPass();
+  registerTestLoopPermutationPass();
   registerTestCallGraphPass();
   registerTestConstantFold();
+#if MLIR_CUDA_CONVERSIONS_ENABLED
+  registerTestConvertGPUKernelToCubinPass();
+#endif
+  registerTestDominancePass();
   registerTestFunc();
   registerTestGpuMemoryPromotionPass();
   registerTestLinalgTransforms();
@@ -108,15 +123,12 @@ void registerTestPasses() {
   registerTestVectorConversions();
   registerTestVectorToLoopsPass();
   registerVectorizerTestPass();
-
-  // The following passes are using global initializers, just link them in.
-  if (std::getenv("bar") != (char *)-1)
-    return;
-
-  // TODO: move these to the test folder.
-  createTestMemRefBoundCheckPass();
-  createTestMemRefDependenceCheckPass();
 }
+
+static cl::opt<bool>
+    showDialects("show-dialects",
+                 cl::desc("Print the list of registered dialects"),
+                 cl::init(false));
 
 int main(int argc, char **argv) {
   registerAllDialects();
@@ -130,6 +142,15 @@ int main(int argc, char **argv) {
 
   // Parse pass names in main to ensure static initialization completed.
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
+
+  MLIRContext context;
+  if(showDialects) {
+    llvm::outs() << "Registered Dialects:\n";
+    for(Dialect *dialect : context.getRegisteredDialects()) {
+      llvm::outs() << dialect->getNamespace() << "\n";
+    }
+    return 0;
+  }
 
   // Set up the input file.
   std::string errorMessage;
@@ -146,5 +167,6 @@ int main(int argc, char **argv) {
   }
 
   return failed(MlirOptMain(output->os(), std::move(file), passPipeline,
-                            splitInputFile, verifyDiagnostics, verifyPasses));
+                            splitInputFile, verifyDiagnostics, verifyPasses,
+                            allowUnregisteredDialects));
 }

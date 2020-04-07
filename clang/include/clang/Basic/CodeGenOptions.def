@@ -66,7 +66,8 @@ CODEGENOPT(ExperimentalNewPassManager, 1, 0) ///< Enables the new, experimental
 CODEGENOPT(DebugPassManager, 1, 0) ///< Prints debug information for the new
                                    ///< pass manager.
 CODEGENOPT(DisableRedZone    , 1, 0) ///< Set when -mno-red-zone is enabled.
-CODEGENOPT(EnableDebugEntryValues, 1, 0) ///< Emit call site parameter dbg info
+CODEGENOPT(EmitCallSiteInfo, 1, 0) ///< Emit call site info only in the case of
+                                   ///< '-g' + 'O>0' level.
 CODEGENOPT(IndirectTlsSegRefs, 1, 0) ///< Set when -mno-tls-direct-seg-refs
                                      ///< is specified.
 CODEGENOPT(DisableTailCalls  , 1, 0) ///< Do not emit tail calls.
@@ -163,7 +164,7 @@ CODEGENOPT(ReciprocalMath    , 1, 0) ///< Allow FP divisions to be reassociated.
 CODEGENOPT(NoTrappingMath    , 1, 0) ///< Set when -fno-trapping-math is enabled.
 CODEGENOPT(NoNaNsFPMath      , 1, 0) ///< Assume FP arguments, results not NaN.
 CODEGENOPT(CorrectlyRoundedDivSqrt, 1, 0) ///< -cl-fp32-correctly-rounded-divide-sqrt
-CODEGENOPT(UniqueInternalFuncNames, 1, 0) ///< Internal Linkage functions get unique names.
+CODEGENOPT(UniqueInternalLinkageNames, 1, 0) ///< Internal Linkage symbols get unique names.
 
 /// When false, this attempts to generate code as if the result of an
 /// overflowing conversion matches the overflowing behavior of a target's native
@@ -257,6 +258,7 @@ CODEGENOPT(UnwindTables      , 1, 0) ///< Emit unwind tables.
 CODEGENOPT(VectorizeLoop     , 1, 0) ///< Run loop vectorizer.
 CODEGENOPT(VectorizeSLP      , 1, 0) ///< Run SLP vectorizer.
 CODEGENOPT(ProfileSampleAccurate, 1, 0) ///< Sample profile is accurate.
+CODEGENOPT(CallGraphProfile  , 1, 0) ///< Run call graph profile.
 
   /// Attempt to use register sized accesses to bit-fields in structures, when
   /// possible.
@@ -308,6 +310,9 @@ CODEGENOPT(LTOVisibilityPublicStd, 1, 0)
 /// The user specified number of registers to be used for integral arguments,
 /// or 0 if unspecified.
 VALUE_CODEGENOPT(NumRegisterParameters, 32, 0)
+
+/// The threshold to put data into small data section.
+VALUE_CODEGENOPT(SmallDataLimit, 32, 0)
 
 /// The lower bound for a buffer to be considered for stack protection.
 VALUE_CODEGENOPT(SSPBufferSize, 32, 0)
@@ -391,10 +396,6 @@ CODEGENOPT(ForceEmitVTables, 1, 0)
 /// Whether to emit an address-significance table into the object file.
 CODEGENOPT(Addrsig, 1, 0)
 
-ENUM_CODEGENOPT(SignReturnAddress, SignReturnAddressScope, 2, SignReturnAddressScope::None)
-ENUM_CODEGENOPT(SignReturnAddressKey, SignReturnAddressKeyValue, 1, SignReturnAddressKeyValue::AKey)
-CODEGENOPT(BranchTargetEnforcement, 1, 0)
-
 /// Whether to emit unused static constants.
 CODEGENOPT(KeepStaticConsts, 1, 0)
 
@@ -404,4 +405,3 @@ CODEGENOPT(ForceAAPCSBitfieldLoad, 1, 0)
 #undef CODEGENOPT
 #undef ENUM_CODEGENOPT
 #undef VALUE_CODEGENOPT
-

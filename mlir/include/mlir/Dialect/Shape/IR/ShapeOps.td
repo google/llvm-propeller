@@ -14,6 +14,8 @@
 #define SHAPE_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffects.td"
 
 // TODO(jpienaar): Move to base.
 def AnyShaped: ShapedContainerType<[AnyType], IsShapedTypePred, "shaped">;
@@ -33,27 +35,31 @@ def ShapeDialect : Dialect {
     shapes as input, return the invalid shape if one of its operands is an
     invalid shape. This avoids flagging multiple errors for one verification
     failure. The dialect itself does not specify how errors should be combined
-    (there are multiple different options, from always chosing first operand,
+    (there are multiple different options, from always choosing first operand,
     concatting etc. on how to combine them).
   }];
 
   let cppNamespace = "shape";
 }
 
-def Shape_SizeType : DialectType<ShapeDialect,
-    CPred<"$_self.isa<DimType>()">, "dim"> {
+def Shape_ComponentType : DialectType<ShapeDialect,
+    CPred<"$_self.isa<::mlir::shape::ComponentType>()">, "component type"> {
   let typeDescription = [{
-    `shape.size` represents a non-negative integer with support for being
-    unknown and invalid.
+    `shape.element_type` represents the element type of the ShapedType. It may
+    be unknown, error or regular element type supported by ShapedType.
+  }];
+}
 
-    Operations on `shape.size` types are specialized to handle unknown/dynamic
-    value. So, for example, `<unknown> + x == <unknown>` for all non-error `x :
-    !shape.size` (e.g., an unknown value does not become known due to addition).
+def Shape_ElementType : DialectType<ShapeDialect,
+    CPred<"$_self.isa<::mlir::shape::ElementType>()">, "element type"> {
+  let typeDescription = [{
+    `shape.element_type` represents the element type of the ShapedType. It may
+    be unknown, error or regular element type supported by ShapedType.
   }];
 }
 
 def Shape_ShapeType : DialectType<ShapeDialect,
-    CPred<"$_self.isa<ShapeType>()">, "shape"> {
+    CPred<"$_self.isa<::mlir::shape::ShapeType>()">, "shape"> {
   let typeDescription = [{
     `shape.type` represents either an unranked shape, a ranked shape with
     possibly unknown dimensions or an invalid shape. The rank is of type
@@ -70,24 +76,20 @@ def Shape_ShapeType : DialectType<ShapeDialect,
   }];
 }
 
-def Shape_ElementType : DialectType<ShapeDialect,
-    CPred<"$_self.isa<ElementType>()">, "element type"> {
+def Shape_SizeType : DialectType<ShapeDialect,
+    CPred<"$_self.isa<::mlir::shape::SizeType>()">, "size"> {
   let typeDescription = [{
-    `shape.element_type` represents the element type of the ShapedType. It may
-    be unknown, error or regular element type supported by ShapedType.
-  }];
-}
+    `shape.size` represents a non-negative integer with support for being
+    unknown and invalid.
 
-def Shape_ComponentType : DialectType<ShapeDialect,
-    CPred<"$_self.isa<ComponentType>()">, "component type"> {
-  let typeDescription = [{
-    `shape.element_type` represents the element type of the ShapedType. It may
-    be unknown, error or regular element type supported by ShapedType.
+    Operations on `shape.size` types are specialized to handle unknown/dynamic
+    value. So, for example, `<unknown> + x == <unknown>` for all non-error `x :
+    !shape.size` (e.g., an unknown value does not become known due to addition).
   }];
 }
 
 def Shape_ValueShapeType : DialectType<ShapeDialect,
-    CPred<"$_self.isa<ValueShapeType>()">, "value shape"> {
+    CPred<"$_self.isa<::mlir::shape::ValueShapeType>()">, "value shape"> {
   let typeDescription = [{
     `shape.value_shape` represents the value produced by an operation (this
     corresponds to `Value` in the compiler) and a shape. Conceptually this is a
@@ -116,8 +118,8 @@ def Shape_AddOp : Shape_Op<"add", [SameOperandsAndResultType]> {
     * lhs + rhs = (int)lhs + (int)rhs if known;
   }];
 
-  let arguments = (ins Shape_ShapeType:$lhs, Shape_ShapeType:$rhs);
-  let results = (outs Shape_ShapeType:$result);
+  let arguments = (ins Shape_SizeType:$lhs, Shape_SizeType:$rhs);
+  let results = (outs Shape_SizeType:$result);
 }
 
 def Shape_BroadcastOp : Shape_Op<"broadcast", []> {
@@ -158,19 +160,44 @@ def Shape_ConstantOp : Shape_Op<"constant", []> {
 
   // TODO(jpienaar): Change to a more specialized attribute that would
   // encapsulate the unknown parsing while using denser packing.
-  let arguments = (ins ArrayAttr:$value);
+  let arguments = (ins AnyAttr:$value);
   let results = (outs Shape_ShapeOrSizeType:$result);
+
+  // TODO: Move this to main so that all shape ops implement these.
+  let printer = [{ return ::print(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+  let parser = [{ return ::parse$cppClass(parser, result); }];
 }
 
-def Shape_CreateShapeOp : Shape_Op<"create_shape", []> {
-  let summary = "Creates a shape descriptor from a tensor";
+def Shape_FromExtentTensorOp : Shape_Op<"from_extent_tensor", []> {
+  let summary = "Creates a shape from a tensor of extents";
   let description = [{
-    Creates a shape from a 1D integral tensor. The rank equals the number of
-    elements in the tensor, and extent matches the values of the elements.
+    Creates a shape from a 1D integral tensor of extents. The rank of the
+    resulting shape equals the number of elements in the tensor, and the
+    extents match the values of the elements.
   }];
 
   let arguments = (ins I32Tensor:$input);
   let results = (outs Shape_ShapeType:$result);
+}
+
+def Shape_ToExtentTensorOp : Shape_Op<"to_tensor", []> {
+  let summary = "Creates a dimension tensor from a shape";
+  // TODO: Think more about the error situation. Perhaps factor out the
+  // error detection into a separate op so downstream consumers can control
+  // their error behavior. Then this op would assume that the input has
+  // been properly checked to not be an error (and could thus be a
+  // NoSideEffect op).
+  let description = [{
+    Converts a shape to a 1D integral tensor of extents. The number of elements
+    in the tensor equals the rank of the shape, and the elements equal the
+    extents of the shape.
+
+    If the shape represents an error, then this op currently aborts the program.
+  }];
+
+  let arguments = (ins Shape_ShapeType:$input);
+  let results = (outs I32Tensor:$result);
 }
 
 def Shape_JoinOp : Shape_Op<"join", []> {
@@ -214,8 +241,8 @@ def Shape_MulOp : Shape_Op<"mul", [SameOperandsAndResultType]> {
     - lhs * rhs = (int)lhs * (int)rhs if both known;
   }];
 
-  let arguments = (ins Shape_ShapeType:$lhs, Shape_ShapeType:$rhs);
-  let results = (outs Shape_ShapeType:$result);
+  let arguments = (ins Shape_SizeType:$lhs, Shape_SizeType:$rhs);
+  let results = (outs Shape_SizeType:$result);
 }
 
 def Shape_ReduceOp : Shape_Op<"reduce", []> {
@@ -244,7 +271,7 @@ def Shape_ReduceOp : Shape_Op<"reduce", []> {
         ^bb0(%index: i32, %dim: !shape.size, %lci: !shape.size):
           %acc = "shape.mul"(%lci, %dim) :
             (!shape.size, !shape.size) -> !shape.size
-          "shape.return"(%acc) : (!shape.size) -> ()
+          shape.yield %acc : !shape.size
         }) : (!shape.type, !shape.size) -> (!shape.size)
       return %1 : !shape.size
     }
@@ -266,6 +293,18 @@ def Shape_ShapeOfOp : Shape_Op<"shape_of", []> {
   let results = (outs Shape_ShapeType:$result);
 }
 
+def Shape_YieldOp : Shape_Op<"yield", [NoSideEffect, Terminator]> {
+  let summary = "Returns the value to parent op";
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+
+  let builders = [OpBuilder<
+    "Builder *b, OperationState &result", [{ build(b, result, llvm::None); }]
+  >];
+
+  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+}
+
 // TODO: Add Ops: if_static, if_ranked
 
 // For testing usage.
@@ -279,6 +318,52 @@ def Shape_DebugPrintOp : Shape_Op<"debug_print", []> {
 
   let arguments = (ins Shape_ShapeOrSizeType:$input);
   let results =  (outs Shape_ShapeOrSizeType:$output);
+}
+
+def Shape_SplitAtOp : Shape_Op<"split_at",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Splits a shape at a given index.";
+  let description = [{
+    Splits a shape at a given dimension `index`, returning two shapes.
+    If `index` is negative, it is treated as indexing from the back of the
+    shape. This negative-handling behavior is important when handling unranked
+    shapes, where the positive index is not necessarily knowable due to a
+    dynamic number of leading dimensions.
+
+    Examples:
+    - split_at([4,5,6], index=0) -> [], [4,5,6]
+    - split_at([4,5,6], index=1) -> [4], [5,6]
+    - split_at([4,5,6], index=2) -> [4,5], [6]
+    - split_at([4,5,6], index=3) -> [4,5,6], []
+    - split_at([4,5,6], index=4) -> error
+    - split_at([4,5,6], index=-1) -> [4,5], [6]
+    - split_at([4,5,6], index=-2) -> [4], [5,6]
+    - split_at([4,5,6], index=-3) -> [], [4,5,6]
+    - split_at([4,5,6], index=-4) -> error
+
+    Requires:
+    - `index` is in the range [-rank(operand),rank(operand)]
+  }];
+
+  let arguments = (ins Shape_ShapeType:$operand, I32:$index);
+  let results = (outs Shape_ShapeType:$head, Shape_ShapeType:$tail);
+}
+
+def Shape_ConcatOp : Shape_Op<"concat",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Concatenates two shapes.";
+  let description = [{
+    Creates a shape whose dimensions consist of first the dimensions from `lhs`
+    followed by the dimensions of `rhs`.
+
+    Example:
+    concat([2,3], [4,5]) -> [2,3,4,5]
+    concat([], []) -> []
+    concat([], [4,5,6]) -> [4,5,6]
+  }];
+
+  let arguments = (ins Shape_ShapeType:$lhs, Shape_ShapeType:$rhs);
+  let results = (outs Shape_ShapeType:$result);
 }
 
 #endif // SHAPE_OPS

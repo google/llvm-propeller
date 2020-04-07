@@ -110,23 +110,20 @@ public:
     Embed_Marker    // Embed a marker as a placeholder for bitcode.
   };
 
-  enum class SignReturnAddressScope {
-    None,    // No signing for any function
-    NonLeaf, // Sign the return address of functions that spill LR
-    All      // Sign the return address of all functions
-  };
-
-  enum class SignReturnAddressKeyValue { AKey, BKey };
-
   // This field stores one of the allowed values for the option
   // -fbasicblock-sections=.  The allowed values with this option are:
-  // {"all", "labels", "none", "<filename>"}.
-  // "all" :  Generate basic block sections for all basic blocks.
-  // "labels": Only generate basic block symbols (labels) for all basic blocks,
-  // do not generate unique sections for basic blocks.
-  // "none": Disable sections/labels for basic blocks.
-  // "<filename>":  Generate basic block sections for a subset of basic blocks.
-  // The functions and their basic blocks are specified in the file.
+  // {"labels", "all", "<filename>", "none"}.
+  //
+  // "labels":     Only generate basic block symbols (labels) for all basic
+  //               blocks, do not generate unique sections for basic blocks.
+  //               Use the machine basic block id in the symbol name to
+  //               associate profile info from virtual address to machine
+  //               basic block.
+  // "all" :       Generate basic block sections for all basic blocks.
+  // "<filename>": Generate basic block sections for a subset of basic blocks.
+  //               The functions and the machine basic block ids are specified
+  //               in the file.
+  // "none":       Disable sections/labels for basic blocks.
   std::string BBSections;
 
   enum class FramePointerKind {
@@ -175,10 +172,10 @@ public:
   std::string FloatABI;
 
   /// The floating-point denormal mode to use.
-  llvm::DenormalMode FPDenormalMode;
+  llvm::DenormalMode FPDenormalMode = llvm::DenormalMode::getIEEE();
 
-  /// The floating-point subnormal mode to use, for float.
-  llvm::DenormalMode FP32DenormalMode;
+  /// The floating-point denormal mode to use, for float.
+  llvm::DenormalMode FP32DenormalMode = llvm::DenormalMode::getIEEE();
 
   /// The float precision limit to use, if non-empty.
   std::string LimitFloatPrecision;

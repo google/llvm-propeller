@@ -4,6 +4,7 @@ add_llvm_component_library(LLVMAnalysis
   AliasAnalysisSummary.cpp
   AliasSetTracker.cpp
   Analysis.cpp
+  AssumeBundleQueries.cpp
   AssumptionCache.cpp
   BasicAliasAnalysis.cpp
   BlockFrequencyInfo.cpp
@@ -53,6 +54,7 @@ add_llvm_component_library(LLVMAnalysis
   LoopAccessAnalysis.cpp
   LoopAnalysisManager.cpp
   LoopCacheAnalysis.cpp
+  LoopNestAnalysis.cpp
   LoopUnrollAnalyzer.cpp
   LoopInfo.cpp
   LoopPass.cpp

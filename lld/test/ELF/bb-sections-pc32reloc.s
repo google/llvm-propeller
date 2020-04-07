@@ -4,18 +4,18 @@
 ## implicit fallthrus when PC32 reloc is present.  The jcc's must be converted
 ## to their inverted opcode, for instance jne to je and jmp must be deleted.
 
-# RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
+# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
 # RUN: llvm-objdump -dr %t.o| FileCheck %s --check-prefix=RELOC
-# RUN: ld.lld  -optimize-bb-jumps %t.o -o %t.out
-# RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=CHECK
+# RUN: ld.lld  --optimize-bb-jumps %t.o -o %t.out
+# RUN: llvm-objdump -d %t.out| FileCheck %s
 
-# RELOC:        jmp
-# RELOC-NEXT:   R_X86_64_PC32
+# RELOC:      jmp
+# RELOC-NEXT: R_X86_64_PC32
 
-# CHECK:	foo:
-# CHECK-NEXT:	nopl    (%rax)
-# CHECK-NEXT:	{{[0-9|a-f| ]*}} jne      {{[0-9]+}} <r.BB.foo>
-# CHECK-NOT:    jmp
+# CHECK:      <foo>:
+# CHECK-NEXT:  nopl (%rax)
+# CHECK-NEXT:  jne 0x{{[[:xdigit:]]+}} <r.BB.foo>
+# CHECK-NOT:   jmp
 
 
 .section	.text,"ax",@progbits
@@ -27,8 +27,8 @@ foo:
  .byte  0xe9
  .long  r.BB.foo - . - 4
 
-# CHECK:	a.BB.foo:
-# CHECK-NEXT:	nopl    (%rax)
+# CHECK:      <a.BB.foo>:
+# CHECK-NEXT:  nopl (%rax)
 
 .section	.text,"ax",@progbits,unique,3
 a.BB.foo:

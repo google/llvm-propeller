@@ -392,7 +392,7 @@ public:
 /// use operands.
 class ConstantAggregate : public Constant {
 protected:
-  ConstantAggregate(CompositeType *T, ValueTy VT, ArrayRef<Constant *> V);
+  ConstantAggregate(Type *T, ValueTy VT, ArrayRef<Constant *> V);
 
 public:
   /// Transparently provide more efficient getOperand methods.
@@ -517,7 +517,7 @@ private:
 
 public:
   /// Return a ConstantVector with the specified constant in each element.
-  static Constant *getSplat(unsigned NumElts, Constant *Elt);
+  static Constant *getSplat(ElementCount EC, Constant *Elt);
 
   /// Specialize the getType() method to always return a VectorType,
   /// which reduces the amount of casting needed in parts of the compiler.
@@ -766,7 +766,12 @@ class ConstantDataVector final : public ConstantDataSequential {
   friend class ConstantDataSequential;
 
   explicit ConstantDataVector(Type *ty, const char *Data)
-      : ConstantDataSequential(ty, ConstantDataVectorVal, Data) {}
+      : ConstantDataSequential(ty, ConstantDataVectorVal, Data),
+        IsSplatSet(false) {}
+  // Cache whether or not the constant is a splat.
+  mutable bool IsSplatSet : 1;
+  mutable bool IsSplat : 1;
+  bool isSplatData() const;
 
 public:
   ConstantDataVector(const ConstantDataVector &) = delete;
@@ -1201,7 +1206,8 @@ public:
                                      Type *OnlyIfReducedTy = nullptr);
   static Constant *getInsertElement(Constant *Vec, Constant *Elt, Constant *Idx,
                                     Type *OnlyIfReducedTy = nullptr);
-  static Constant *getShuffleVector(Constant *V1, Constant *V2, Constant *Mask,
+  static Constant *getShuffleVector(Constant *V1, Constant *V2,
+                                    ArrayRef<int> Mask,
                                     Type *OnlyIfReducedTy = nullptr);
   static Constant *getExtractValue(Constant *Agg, ArrayRef<unsigned> Idxs,
                                    Type *OnlyIfReducedTy = nullptr);
@@ -1219,6 +1225,16 @@ public:
   /// Assert that this is an insertvalue or exactvalue
   /// expression and return the list of indices.
   ArrayRef<unsigned> getIndices() const;
+
+  /// Assert that this is a shufflevector and return the mask. See class
+  /// ShuffleVectorInst for a description of the mask representation.
+  ArrayRef<int> getShuffleMask() const;
+
+  /// Assert that this is a shufflevector and return the mask.
+  ///
+  /// TODO: This is a temporary hack until we update the bitcode format for
+  /// shufflevector.
+  Constant *getShuffleMaskForBitcode() const;
 
   /// Return a string representation for an opcode.
   const char *getOpcodeName() const;

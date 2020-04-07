@@ -17,6 +17,12 @@ namespace clang {
 namespace tidy {
 namespace modernize {
 
+namespace {
+AST_MATCHER_P(InitListExpr, initCountIs, unsigned, N) {
+  return Node.getNumInits() == N;
+}
+} // namespace
+
 static StringRef getValueOfValueInit(const QualType InitType) {
   switch (InitType->getScalarTypeKind()) {
   case Type::STK_CPointer:
@@ -190,18 +196,21 @@ void UseDefaultMemberInitCheck::storeOptions(
 }
 
 void UseDefaultMemberInitCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus11)
-    return;
-
-  auto Init =
+  auto InitBase =
       anyOf(stringLiteral(), characterLiteral(), integerLiteral(),
-            unaryOperator(anyOf(hasOperatorName("+"), hasOperatorName("-")),
+            unaryOperator(hasAnyOperatorName("+", "-"),
                           hasUnaryOperand(integerLiteral())),
             floatLiteral(),
-            unaryOperator(anyOf(hasOperatorName("+"), hasOperatorName("-")),
+            unaryOperator(hasAnyOperatorName("+", "-"),
                           hasUnaryOperand(floatLiteral())),
             cxxBoolLiteral(), cxxNullPtrLiteralExpr(), implicitValueInitExpr(),
-            initListExpr(), declRefExpr(to(enumConstantDecl())));
+            declRefExpr(to(enumConstantDecl())));
+
+  auto Init =
+      anyOf(initListExpr(anyOf(
+                allOf(initCountIs(1), hasInit(0, ignoringImplicit(InitBase))),
+                initCountIs(0))),
+            InitBase);
 
   Finder->addMatcher(
       cxxConstructorDecl(

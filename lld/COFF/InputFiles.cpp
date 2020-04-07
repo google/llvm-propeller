@@ -829,7 +829,7 @@ Optional<DILineInfo> ObjFile::getDILineInfo(uint32_t offset,
   return dwarf->getDILineInfo(offset, sectionIndex);
 }
 
-StringRef ltrim1(StringRef s, const char *chars) {
+static StringRef ltrim1(StringRef s, const char *chars) {
   if (!s.empty() && strchr(chars, s[0]))
     return s.substr(1);
   return s;
@@ -905,8 +905,9 @@ BitcodeFile::BitcodeFile(MemoryBufferRef mb, StringRef archiveName,
   // filename unique.
   MemoryBufferRef mbref(
       mb.getBuffer(),
-      saver.save(archiveName + path +
-                 (archiveName.empty() ? "" : utostr(offsetInArchive))));
+      saver.save(archiveName.empty() ? path
+                                     : archiveName + sys::path::filename(path) +
+                                           utostr(offsetInArchive)));
 
   obj = check(lto::InputFile::create(mbref));
 }

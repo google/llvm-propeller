@@ -11,7 +11,7 @@ int main(const int argc, const char *argv[]) {
         !strcmp(argv[i], "-exp"))
       exp = true;
   string line;
-  regex R("\\b([alLr]+)(\\.BB\\.[a-zA-Z0-9_$-]+)\\b");
+  regex R("\\b([aflLr]+)(\\.BB\\.[a-zA-Z0-9_$-]+)\\b");
   while (getline(cin, line)) {
     smatch result;
     auto begin = line.cbegin(), end = line.cend();

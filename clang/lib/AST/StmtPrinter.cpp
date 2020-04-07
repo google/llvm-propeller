@@ -753,6 +753,16 @@ void StmtPrinter::VisitOMPFlushDirective(OMPFlushDirective *Node) {
   PrintOMPExecutableDirective(Node);
 }
 
+void StmtPrinter::VisitOMPDepobjDirective(OMPDepobjDirective *Node) {
+  Indent() << "#pragma omp depobj";
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPScanDirective(OMPScanDirective *Node) {
+  Indent() << "#pragma omp scan";
+  PrintOMPExecutableDirective(Node);
+}
+
 void StmtPrinter::VisitOMPOrderedDirective(OMPOrderedDirective *Node) {
   Indent() << "#pragma omp ordered";
   PrintOMPExecutableDirective(Node, Node->hasClausesOfKind<OMPDependClause>());
@@ -1338,6 +1348,37 @@ void StmtPrinter::VisitOMPArraySectionExpr(OMPArraySectionExpr *Node) {
       PrintExpr(Node->getLength());
   }
   OS << "]";
+}
+
+void StmtPrinter::VisitOMPArrayShapingExpr(OMPArrayShapingExpr *Node) {
+  OS << "(";
+  for (Expr *E : Node->getDimensions()) {
+    OS << "[";
+    PrintExpr(E);
+    OS << "]";
+  }
+  OS << ")";
+  PrintExpr(Node->getBase());
+}
+
+void StmtPrinter::VisitOMPIteratorExpr(OMPIteratorExpr *Node) {
+  OS << "iterator(";
+  for (unsigned I = 0, E = Node->numOfIterators(); I < E; ++I) {
+    auto *VD = cast<ValueDecl>(Node->getIteratorDecl(I));
+    VD->getType().print(OS, Policy);
+    const OMPIteratorExpr::IteratorRange Range = Node->getIteratorRange(I);
+    OS << " " << VD->getName() << " = ";
+    PrintExpr(Range.Begin);
+    OS << ":";
+    PrintExpr(Range.End);
+    if (Range.Step) {
+      OS << ":";
+      PrintExpr(Range.Step);
+    }
+    if (I < E - 1)
+      OS << ", ";
+  }
+  OS << ")";
 }
 
 void StmtPrinter::PrintCallArgs(CallExpr *Call) {
@@ -2494,6 +2535,17 @@ void StmtPrinter::VisitOpaqueValueExpr(OpaqueValueExpr *Node) {
 void StmtPrinter::VisitTypoExpr(TypoExpr *Node) {
   // TODO: Print something reasonable for a TypoExpr, if necessary.
   llvm_unreachable("Cannot print TypoExpr nodes");
+}
+
+void StmtPrinter::VisitRecoveryExpr(RecoveryExpr *Node) {
+  OS << "<recovery-expr>(";
+  const char *Sep = "";
+  for (Expr *E : Node->subExpressions()) {
+    OS << Sep;
+    PrintExpr(E);
+    Sep = ", ";
+  }
+  OS << ')';
 }
 
 void StmtPrinter::VisitAsTypeExpr(AsTypeExpr *Node) {

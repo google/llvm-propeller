@@ -162,12 +162,12 @@ MachineInstrBuilder MachineIRBuilder::buildDbgLabel(const MDNode *Label) {
 
 MachineInstrBuilder MachineIRBuilder::buildDynStackAlloc(const DstOp &Res,
                                                          const SrcOp &Size,
-                                                         unsigned Align) {
+                                                         Align Alignment) {
   assert(Res.getLLTTy(*getMRI()).isPointer() && "expected ptr dst type");
   auto MIB = buildInstr(TargetOpcode::G_DYN_STACKALLOC);
   Res.addDefToMIB(*getMRI(), MIB);
   Size.addSrcToMIB(MIB);
-  MIB.addImm(Align);
+  MIB.addImm(Alignment.value());
   return MIB;
 }
 
@@ -388,22 +388,6 @@ MachineInstrBuilder MachineIRBuilder::buildStore(const SrcOp &Val,
   Addr.addSrcToMIB(MIB);
   MIB.addMemOperand(&MMO);
   return MIB;
-}
-
-MachineInstrBuilder MachineIRBuilder::buildUAddo(const DstOp &Res,
-                                                 const DstOp &CarryOut,
-                                                 const SrcOp &Op0,
-                                                 const SrcOp &Op1) {
-  return buildInstr(TargetOpcode::G_UADDO, {Res, CarryOut}, {Op0, Op1});
-}
-
-MachineInstrBuilder MachineIRBuilder::buildUAdde(const DstOp &Res,
-                                                 const DstOp &CarryOut,
-                                                 const SrcOp &Op0,
-                                                 const SrcOp &Op1,
-                                                 const SrcOp &CarryIn) {
-  return buildInstr(TargetOpcode::G_UADDE, {Res, CarryOut},
-                    {Op0, Op1, CarryIn});
 }
 
 MachineInstrBuilder MachineIRBuilder::buildAnyExt(const DstOp &Res,
@@ -975,7 +959,11 @@ MachineInstrBuilder MachineIRBuilder::buildInstr(unsigned Opc,
   case TargetOpcode::G_SMIN:
   case TargetOpcode::G_SMAX:
   case TargetOpcode::G_UMIN:
-  case TargetOpcode::G_UMAX: {
+  case TargetOpcode::G_UMAX:
+  case TargetOpcode::G_UADDSAT:
+  case TargetOpcode::G_SADDSAT:
+  case TargetOpcode::G_USUBSAT:
+  case TargetOpcode::G_SSUBSAT: {
     // All these are binary ops.
     assert(DstOps.size() == 1 && "Invalid Dst");
     assert(SrcOps.size() == 2 && "Invalid Srcs");

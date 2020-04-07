@@ -313,6 +313,12 @@ CsectGroup &XCOFFObjectWriter::getCsectGroup(const MCSectionXCOFF *MCSec) {
   }
 }
 
+static MCSectionXCOFF *getContainingCsect(const MCSymbolXCOFF *XSym) {
+  if (XSym->isDefined())
+    return cast<MCSectionXCOFF>(XSym->getFragment()->getParent());
+  return XSym->getRepresentedCsect();
+}
+
 void XCOFFObjectWriter::executePostLayoutBinding(MCAssembler &Asm,
                                                  const MCAsmLayout &Layout) {
   if (TargetObjectWriter->is64Bit())
@@ -341,7 +347,7 @@ void XCOFFObjectWriter::executePostLayoutBinding(MCAssembler &Asm,
       continue;
 
     const MCSymbolXCOFF *XSym = cast<MCSymbolXCOFF>(&S);
-    const MCSectionXCOFF *ContainingCsect = XSym->getContainingCsect();
+    const MCSectionXCOFF *ContainingCsect = getContainingCsect(XSym);
 
     if (ContainingCsect->getCSectType() == XCOFF::XTY_ER) {
       // Handle undefined symbol.
@@ -394,7 +400,7 @@ void XCOFFObjectWriter::recordRelocation(MCAssembler &Asm,
       TargetObjectWriter->getRelocTypeAndSignSize(Target, Fixup, IsPCRel);
 
   const MCSectionXCOFF *SymASec =
-      cast<MCSymbolXCOFF>(SymA).getContainingCsect();
+      getContainingCsect(cast<MCSymbolXCOFF>(&SymA));
   assert(SectionMap.find(SymASec) != SectionMap.end() &&
          "Expected containing csect to exist in map.");
 
@@ -439,8 +445,14 @@ void XCOFFObjectWriter::writeSections(const MCAssembler &Asm,
     if (Section->Index == Section::UninitializedIndex || Section->IsVirtual)
       continue;
 
-    assert(CurrentAddressLocation == Section->Address &&
-           "Sections should be written consecutively.");
+    // There could be a gap (without corresponding zero padding) between
+    // sections.
+    assert(CurrentAddressLocation <= Section->Address &&
+           "CurrentAddressLocation should be less than or equal to section "
+           "address.");
+
+    CurrentAddressLocation = Section->Address;
+
     for (const auto *Group : Section->Groups) {
       for (const auto &Csect : *Group) {
         if (uint32_t PaddingSize = Csect.Address - CurrentAddressLocation)

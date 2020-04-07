@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/QuantOps/QuantOps.h"
+#include "mlir/Dialect/Quant/QuantOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -23,9 +23,12 @@ using namespace mlir::quantizer;
 using namespace mlir::quant;
 
 namespace {
-
 class RemoveInstrumentationPass
     : public FunctionPass<RemoveInstrumentationPass> {
+/// Include the generated pass utilities.
+#define GEN_PASS_QuantizerRemoveInstrumentation
+#include "mlir/Quantizer/Transforms/Passes.h.inc"
+
   void runOnFunction() override;
 };
 
@@ -35,13 +38,13 @@ public:
   RemoveIdentityOpRewrite(MLIRContext *context)
       : RewritePattern(OpTy::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     assert(op->getNumOperands() == 1);
     assert(op->getNumResults() == 1);
 
     rewriter.replaceOp(op, op->getOperand(0));
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -61,8 +64,3 @@ std::unique_ptr<OpPassBase<FuncOp>>
 mlir::quantizer::createRemoveInstrumentationPass() {
   return std::make_unique<RemoveInstrumentationPass>();
 }
-
-static PassRegistration<RemoveInstrumentationPass>
-    pass("quantizer-remove-instrumentation",
-         "Removes instrumentation and hints which have no effect on final "
-         "execution");

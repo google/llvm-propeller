@@ -38,6 +38,7 @@ public:
 struct ParseOptions {
   tidy::ClangTidyOptions ClangTidyOpts;
   bool SuggestMissingIncludes = false;
+  bool BuildRecoveryAST = false;
 };
 
 /// Information required to run clang, e.g. to parse AST or do code completion.
@@ -45,6 +46,8 @@ struct ParseInputs {
   tooling::CompileCommand CompileCommand;
   IntrusiveRefCntPtr<llvm::vfs::FileSystem> FS;
   std::string Contents;
+  // Version identifier for Contents, provided by the client and opaque to us.
+  std::string Version = "null";
   // Prevent reuse of the cached preamble/AST. Slow! Useful to workaround
   // clangd's assumption that missing header files will stay missing.
   bool ForceRebuild = false;

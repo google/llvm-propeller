@@ -95,6 +95,10 @@ static cl::opt<bool> UseDwarfRangesBaseAddressSpecifier(
     "use-dwarf-ranges-base-address-specifier", cl::Hidden,
     cl::desc("Use base address specifiers in debug_ranges"), cl::init(false));
 
+static cl::opt<bool> EmitDwarfDebugEntryValues(
+    "emit-debug-entry-values", cl::Hidden,
+    cl::desc("Emit the debug entry values"), cl::init(false));
+
 static cl::opt<bool> GenerateARangeSection("generate-arange-section",
                                            cl::Hidden,
                                            cl::desc("Generate dwarf aranges"),
@@ -419,6 +423,12 @@ DwarfDebug::DwarfDebug(AsmPrinter *A, Module *M)
   // a monolithic string offsets table without any header.
   UseSegmentedStringOffsetsTable = DwarfVersion >= 5;
 
+  // Emit call-site-param debug info for GDB and LLDB, if the target supports
+  // the debug entry values feature. It can also be enabled explicitly.
+  EmitDebugEntryValues = (Asm->TM.Options.ShouldEmitDebugEntryValues() &&
+                          (tuneForGDB() || tuneForLLDB())) ||
+                         EmitDwarfDebugEntryValues;
+
   Asm->OutStreamer->getContext().setDwarfVersion(DwarfVersion);
 }
 
@@ -562,6 +572,18 @@ struct FwdRegParamInfo {
 /// Register worklist for finding call site values.
 using FwdRegWorklist = MapVector<unsigned, SmallVector<FwdRegParamInfo, 2>>;
 
+/// Append the expression \p Addition to \p Original and return the result.
+static const DIExpression *combineDIExpressions(const DIExpression *Original,
+                                                const DIExpression *Addition) {
+  std::vector<uint64_t> Elts = Addition->getElements().vec();
+  // Avoid multiple DW_OP_stack_values.
+  if (Original->isImplicit() && Addition->isImplicit())
+    erase_if(Elts, [](uint64_t Op) { return Op == dwarf::DW_OP_stack_value; });
+  const DIExpression *CombinedExpr =
+      (Elts.size() > 0) ? DIExpression::append(Original, Elts) : Original;
+  return CombinedExpr;
+}
+
 /// Emit call site parameter entries that are described by the given value and
 /// debug expression.
 template <typename ValT>
@@ -581,9 +603,8 @@ static void finishCallSiteParams(ValT Val, const DIExpression *Expr,
     // parameter when walking through the instructions. Append that to the
     // base expression.
     const DIExpression *CombinedExpr =
-        ShouldCombineExpressions
-            ? DIExpression::append(Expr, Param.Expr->getElements())
-            : Expr;
+        ShouldCombineExpressions ? combineDIExpressions(Expr, Param.Expr)
+                                 : Expr;
     assert((!CombinedExpr || CombinedExpr->isValid()) &&
            "Combined debug expression is invalid");
 
@@ -613,12 +634,7 @@ static void addToFwdRegWorklist(FwdRegWorklist &Worklist, unsigned Reg,
     // instructions we may have already created an expression for the
     // parameter when walking through the instructions. Append that to the
     // new expression.
-    const DIExpression *CombinedExpr =
-        (Param.Expr->getNumElements() > 0)
-            ? DIExpression::append(Expr, Param.Expr->getElements())
-            : Expr;
-    assert(CombinedExpr->isValid() && "Combined debug expression is invalid");
-
+    const DIExpression *CombinedExpr = combineDIExpressions(Expr, Param.Expr);
     ParamsForFwdReg.push_back({Param.ParamReg, CombinedExpr});
   }
 }
@@ -862,16 +878,21 @@ void DwarfDebug::constructCallSiteEntryDIEs(const DISubprogram &SP,
       const MachineInstr *TopLevelCallMI =
           MI.isInsideBundle() ? &*getBundleStart(MI.getIterator()) : &MI;
 
-      // For tail calls, no return PC information is needed.
-      // For regular calls (and tail calls in GDB tuning), the return PC
-      // is needed to disambiguate paths in the call graph which could lead to
-      // some target function.
+      // For non-tail calls, the return PC is needed to disambiguate paths in
+      // the call graph which could lead to some target function. For tail
+      // calls, no return PC information is needed, unless tuning for GDB in
+      // DWARF4 mode in which case we fake a return PC for compatibility.
       const MCSymbol *PCAddr =
-          (IsTail && !tuneForGDB())
-              ? nullptr
-              : const_cast<MCSymbol *>(getLabelAfterInsn(TopLevelCallMI));
+          (!IsTail || CU.useGNUAnalogForDwarf5Feature())
+              ? const_cast<MCSymbol *>(getLabelAfterInsn(TopLevelCallMI))
+              : nullptr;
 
-      assert((IsTail || PCAddr) && "Call without return PC information");
+      // For tail calls, it's necessary to record the address of the branch
+      // instruction so that the debugger can show where the tail call occurred.
+      const MCSymbol *CallAddr =
+          IsTail ? getLabelBeforeInsn(TopLevelCallMI) : nullptr;
+
+      assert((IsTail || PCAddr) && "Non-tail call without return PC");
 
       LLVM_DEBUG(dbgs() << "CallSiteEntry: " << MF.getName() << " -> "
                         << (CalleeDecl ? CalleeDecl->getName()
@@ -880,12 +901,11 @@ void DwarfDebug::constructCallSiteEntryDIEs(const DISubprogram &SP,
                                                        ->getName(CallReg)))
                         << (IsTail ? " [IsTail]" : "") << "\n");
 
-      DIE &CallSiteDIE = CU.constructCallSiteEntryDIE(ScopeDIE, CalleeDIE,
-                                                      IsTail, PCAddr, CallReg);
+      DIE &CallSiteDIE = CU.constructCallSiteEntryDIE(
+          ScopeDIE, CalleeDIE, IsTail, PCAddr, CallAddr, CallReg);
 
-      // GDB and LLDB support call site parameter debug info.
-      if (Asm->TM.Options.EnableDebugEntryValues &&
-          (tuneForGDB() || tuneForLLDB())) {
+      // Optionally emit call-site-param debug info.
+      if (emitDebugEntryValues()) {
         ParamSet Params;
         // Try to interpret values of call site parameters.
         collectCallSiteParameters(&MI, Params);
@@ -921,6 +941,9 @@ void DwarfDebug::finishUnitAttributes(const DICompileUnit *DIUnit,
   StringRef SysRoot = DIUnit->getSysRoot();
   if (!SysRoot.empty())
     NewCU.addString(Die, dwarf::DW_AT_LLVM_sysroot, SysRoot);
+  StringRef SDK = DIUnit->getSDK();
+  if (!SDK.empty())
+    NewCU.addString(Die, dwarf::DW_AT_APPLE_sdk, SDK);
 
   // Add DW_str_offsets_base to the unit DIE, except for split units.
   if (useSegmentedStringOffsetsTable() && !useSplitDwarf())
@@ -1770,11 +1793,32 @@ void DwarfDebug::collectEntityInfo(DwarfCompileUnit &TheCU,
 
 // Process beginning of an instruction.
 void DwarfDebug::beginInstruction(const MachineInstr *MI) {
+  const MachineFunction &MF = *MI->getMF();
+  const auto *SP = MF.getFunction().getSubprogram();
+  bool NoDebug =
+      !SP || SP->getUnit()->getEmissionKind() == DICompileUnit::NoDebug;
+
+  // When describing calls, we need a label for the call instruction.
+  // TODO: Add support for targets with delay slots.
+  if (!NoDebug && SP->areAllCallsDescribed() &&
+      MI->isCandidateForCallSiteEntry(MachineInstr::AnyInBundle) &&
+      !MI->hasDelaySlot()) {
+    const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+    bool IsTail = TII->isTailCall(*MI);
+    // For tail calls, we need the address of the branch instruction for
+    // DW_AT_call_pc.
+    if (IsTail)
+      requestLabelBeforeInsn(MI);
+    // For non-tail calls, we need the return address for the call for
+    // DW_AT_call_return_pc. Under GDB tuning, this information is needed for
+    // tail calls as well.
+    requestLabelAfterInsn(MI);
+  }
+
   DebugHandlerBase::beginInstruction(MI);
   assert(CurMI);
 
-  const auto *SP = MI->getMF()->getFunction().getSubprogram();
-  if (!SP || SP->getUnit()->getEmissionKind() == DICompileUnit::NoDebug)
+  if (NoDebug)
     return;
 
   // Check if source location changes, but ignore DBG_VALUE and CFI locations.
@@ -1787,11 +1831,6 @@ void DwarfDebug::beginInstruction(const MachineInstr *MI) {
   // the last line number actually emitted, to see if it was line 0.
   unsigned LastAsmLine =
       Asm->OutStreamer->getContext().getCurrentDwarfLoc().getLine();
-
-  // Request a label after the call in order to emit AT_return_pc information
-  // in call site entries. TODO: Add support for targets with delay slots.
-  if (SP->areAllCallsDescribed() && MI->isCall() && !MI->hasDelaySlot())
-    requestLabelAfterInsn(MI);
 
   if (DL == PrevInstLoc) {
     // If we have an ongoing unspecified location, nothing to do here.
@@ -1972,16 +2011,12 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   // Add the range of this function to the list of ranges for the CU.
   TheCU.addRange({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
 
-  // With basic block sections, add all basic block ranges with unique
-  // sections.
+  // With basic block sections, add ranges for all basic block sections.
   if (MF->hasBBSections()) {
     for (auto &MBB : *MF) {
-      if (MBB.getNumber() == MF->front().getNumber())
-        continue;
-      if (MBB.isBeginSection()) {
+      if (&MBB != &MF->front() && MBB.isBeginSection())
         TheCU.addRange(
             {MBB.getSymbol(), MBB.getSectionEndMBB()->getEndMCSymbol()});
-      }
     }
   }
 
@@ -2415,33 +2450,12 @@ void DwarfDebug::emitDebugLocEntryLocation(const DebugLocStream::Entry &Entry,
   emitDebugLocEntry(Streamer, Entry, CU);
 }
 
-// Emit the common part of the DWARF 5 range/locations list tables header.
-static void emitListsTableHeaderStart(AsmPrinter *Asm,
-                                      MCSymbol *TableStart,
-                                      MCSymbol *TableEnd) {
-  // Build the table header, which starts with the length field.
-  Asm->OutStreamer->AddComment("Length");
-  Asm->emitLabelDifference(TableEnd, TableStart, 4);
-  Asm->OutStreamer->emitLabel(TableStart);
-  // Version number (DWARF v5 and later).
-  Asm->OutStreamer->AddComment("Version");
-  Asm->emitInt16(Asm->OutStreamer->getContext().getDwarfVersion());
-  // Address size.
-  Asm->OutStreamer->AddComment("Address size");
-  Asm->emitInt8(Asm->MAI->getCodePointerSize());
-  // Segment selector size.
-  Asm->OutStreamer->AddComment("Segment selector size");
-  Asm->emitInt8(0);
-}
-
 // Emit the header of a DWARF 5 range list table list table. Returns the symbol
 // that designates the end of the table for the caller to emit when the table is
 // complete.
 static MCSymbol *emitRnglistsTableHeader(AsmPrinter *Asm,
                                          const DwarfFile &Holder) {
-  MCSymbol *TableStart = Asm->createTempSymbol("debug_rnglist_table_start");
-  MCSymbol *TableEnd = Asm->createTempSymbol("debug_rnglist_table_end");
-  emitListsTableHeaderStart(Asm, TableStart, TableEnd);
+  MCSymbol *TableEnd = mcdwarf::emitListsTableHeaderStart(*Asm->OutStreamer);
 
   Asm->OutStreamer->AddComment("Offset entry count");
   Asm->emitInt32(Holder.getRangeLists().size());
@@ -2458,9 +2472,7 @@ static MCSymbol *emitRnglistsTableHeader(AsmPrinter *Asm,
 // complete.
 static MCSymbol *emitLoclistsTableHeader(AsmPrinter *Asm,
                                          const DwarfDebug &DD) {
-  MCSymbol *TableStart = Asm->createTempSymbol("debug_loclist_table_start");
-  MCSymbol *TableEnd = Asm->createTempSymbol("debug_loclist_table_end");
-  emitListsTableHeaderStart(Asm, TableStart, TableEnd);
+  MCSymbol *TableEnd = mcdwarf::emitListsTableHeaderStart(*Asm->OutStreamer);
 
   const auto &DebugLocs = DD.getDebugLocs();
 
