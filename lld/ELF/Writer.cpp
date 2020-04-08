@@ -1702,7 +1702,6 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
              Twine(os->alignment) + ")");
 }
 
-<<<<<<< HEAD
 static void
 getNoneOptimizableSections(DenseSet<const InputSection *> &sectionSet) {
   for (InputFile *File : objectFiles) {
@@ -1727,8 +1726,6 @@ getNoneOptimizableSections(DenseSet<const InputSection *> &sectionSet) {
   }
 }
 
-=======
->>>>>>> master
 // If Input Sections have been shrinked (basic block sections) then
 // update symbol values and sizes associated with these sections.  With basic
 // block sections, input sections can shrink when the jump instructions at
@@ -1780,22 +1777,16 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
   assert(config->optimizeBBJumps);
 
   script->assignAddresses();
-<<<<<<< HEAD
   DenseSet<const InputSection *> noneOptimizableSections;
   getNoneOptimizableSections(noneOptimizableSections);
-=======
->>>>>>> master
   // For every output section that has executable input sections, this
   // does the following:
   //   1. Deletes all direct jump instructions in input sections that
   //      jump to the following section as it is not required.
   //   2. If there are two consecutive jump instructions, it checks
   //      if they can be flipped and one can be deleted.
-<<<<<<< HEAD
   //   3. It aggressively shrinks jump instructions.
   //   4. It aggressively grows back jump instructions.
-=======
->>>>>>> master
   for (OutputSection *os : outputSections) {
     if (!(os->flags & SHF_EXECINSTR))
       continue;
@@ -1807,14 +1798,9 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
     parallelForEachN(0, sections.size(), [&](size_t i) {
       InputSection *next = i + 1 < sections.size() ? sections[i + 1] : nullptr;
       InputSection &is = *sections[i];
-<<<<<<< HEAD
       if (!noneOptimizableSections.count(&is))
         result[i] =
             target->deleteFallThruJmpInsn(is, is.getFile<ELFT>(), next) ? 1 : 0;
-=======
-      result[i] =
-          target->deleteFallThruJmpInsn(is, is.getFile<ELFT>(), next) ? 1 : 0;
->>>>>>> master
     });
     size_t numDeleted = std::count(result.begin(), result.end(), 1);
     if (numDeleted > 0) {
@@ -1822,7 +1808,6 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       LLVM_DEBUG(llvm::dbgs()
                  << "Removing " << numDeleted << " fall through jumps\n");
     }
-<<<<<<< HEAD
 
     // Step 2:  Shrink jump instructions.  If the offset of the jump can fit in
     // one byte there is a smaller encoding of the jump instruction.  Section
@@ -1883,8 +1868,6 @@ template <class ELFT> void Writer<ELFT>::optimizeBasicBlockJumps() {
       if (anyChanged)
         script->assignAddresses();
     } while (anyChanged);
-=======
->>>>>>> master
   }
 
   fixSymbolsAfterShrinking();
@@ -2220,11 +2203,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Relaxation to delete inter-basic block jumps created by basic block
   // sections. Run after in.symTab is finalized as optimizeBasicBlockJumps
-<<<<<<< HEAD
-  // relaxes jump instructions based on symbol offset.
-=======
   // can relax jump instructions based on symbol offset.
->>>>>>> master
   if (config->optimizeBBJumps)
     optimizeBasicBlockJumps();
 

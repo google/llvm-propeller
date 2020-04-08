@@ -882,10 +882,6 @@ static void readConfigs(opt::InputArgList &args) {
                                       !args.hasArg(OPT_relocatable));
   config->optimizeBBJumps =
       args.hasFlag(OPT_optimize_bb_jumps, OPT_no_optimize_bb_jumps, false);
-<<<<<<< HEAD
-
-=======
->>>>>>> master
   config->demangle = args.hasFlag(OPT_demangle, OPT_no_demangle, true);
   config->dependentLibraries = args.hasFlag(OPT_dependent_libraries, OPT_no_dependent_libraries, true);
   config->disableVerify = args.hasArg(OPT_disable_verify);

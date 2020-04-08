@@ -57,11 +57,8 @@ public:
                                         uint8_t stOther) const override;
   bool deleteFallThruJmpInsn(InputSection &is, InputFile *file,
                              InputSection *nextIS) const override;
-<<<<<<< HEAD
   unsigned shrinkJmpInsn(InputSection &is, InputFile *file) const override;
   unsigned growJmpInsn(InputSection &is, InputFile *file) const override;
-=======
->>>>>>> master
 };
 } // namespace
 
@@ -169,7 +166,6 @@ static unsigned getRelocationWithOffset(const InputSection &is,
   return size;
 }
 
-<<<<<<< HEAD
 // Returns the JumpInstrMod at that specific offset if any.  Returns the maximum
 // size of the vector if no such JumpInstrMod is found.
 static unsigned getJumpInstrModWithOffset(const InputSection &is,
@@ -182,8 +178,6 @@ static unsigned getJumpInstrModWithOffset(const InputSection &is,
   return i;
 }
 
-=======
->>>>>>> master
 // Returns true if R corresponds to a relocation used for a jump instruction.
 // TODO: Once special relocations for relaxable jump instructions are available,
 // this should be modified to use those relocations.
@@ -329,7 +323,6 @@ bool X86_64::deleteFallThruJmpInsn(InputSection &is, InputFile *file,
   return true;
 }
 
-<<<<<<< HEAD
 // Returns target offset if the Relocation R corresponds to a jmp instruction
 // and the offset of the relocation is 1 byte wide.
 static uint64_t getTargetOffsetForJmp(InputSection &is, InputFile *file,
@@ -580,8 +573,6 @@ unsigned X86_64::growJmpInsn(InputSection &IS, InputFile *File) const {
   return BytesGrown;
 }
 
-=======
->>>>>>> master
 RelExpr X86_64::getRelExpr(RelType type, const Symbol &s,
                            const uint8_t *loc) const {
   if (type == R_X86_64_GOTTPOFF)
