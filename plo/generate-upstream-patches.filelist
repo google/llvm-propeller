@@ -38,6 +38,7 @@ declare ALL_FILES=(
 	clang-base       clang/test/Driver/funique-bb-section-names.c
 	clang-base       clang/test/Driver/fbasicblock-sections.c
         clang-uif        clang/test/CodeGen/unique-internal-linkage-names.cpp
+        clang-uif        clang/test/CodeGen/unique-internal-linkage-names2.c
 	clang-uif        clang/test/Driver/funique-internal-linkage-names.c
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
