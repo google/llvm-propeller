@@ -45,21 +45,10 @@
 
 using namespace llvm;
 
-/// This method iterates over the basic blocks and assigns their IsBeginSection
-/// and IsEndSection fields. This must be called after MBB layout is finalized
-/// and the SectionID's are assigned to MBBs.
-static void assignBeginEndSections(MachineFunction &MF) {
-  MF.front().setIsBeginSection();
-  auto CurrentSectionID = MF.front().getSectionID();
-  for (auto MBBI = std::next(MF.begin()), E = MF.end(); MBBI != E; ++MBBI) {
-    if (MBBI->getSectionID() == CurrentSectionID)
-      continue;
-    MBBI->setIsBeginSection();
-    std::prev(MBBI)->setIsEndSection();
-    CurrentSectionID = MBBI->getSectionID();
-  }
-  MF.back().setIsEndSection();
-}
+/// This assigns IsBeginSection and IsEndSection fields for all basic blocks of a
+/// function.
+/// Defined in BBSectionsPrepare.
+extern void assignBeginEndSections(MachineFunction &MF);
 
 namespace llvm {
 

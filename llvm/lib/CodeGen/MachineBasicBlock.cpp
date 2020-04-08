@@ -62,7 +62,9 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     MCContext &Ctx = MF->getContext();
     auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
 
-    bool BasicBlockSymbols = MF->hasBBSections() || MF->hasBBLabels();
+    // We emit a non-temporary symbol for every basic block if we have BBLabels
+    // or -- with basic block sections -- when a basic block begins a section.
+    bool BasicBlockSymbols = isBeginSection() || MF->hasBBLabels();
     auto Delimiter = BasicBlockSymbols ? "." : "_";
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
 

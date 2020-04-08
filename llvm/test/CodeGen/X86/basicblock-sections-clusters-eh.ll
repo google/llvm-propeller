@@ -55,17 +55,17 @@ declare i32 @__gxx_personality_v0(...)
 ; LINUX-SECTIONS1:		.section	.text.main,"ax",@progbits
 ; LINUX-SECTIONS1-LABEL:	main:
 ; LINUX-SECTIONS1-NOT: 		.section
-; LINUX-SECTIONS1-LABEL:	alal.BB.main:
+; LINUX-SECTIONS1-LABEL:	.LBB0_4:
 ; LINUX-SECTIONS1-NOT: 		.section
-; LINUX-SECTIONS1-LABEL:	aalal.BB.main:
+; LINUX-SECTIONS1-LABEL:	.LBB0_5:
 ; LINUX-SECTIONS1-NOT: 		.section
-; LINUX-SECTIONS1-LABEL:	aaalal.BB.main:
+; LINUX-SECTIONS1-LABEL:	.LBB0_6:
 ; LINUX-SECTIONS1: 		.section	.text.main,"ax",@progbits,unique,1
 ; LINUX-SECTIONS1-LABEL:	al.BB.main:
 ; LINUX-SECTIONS1:		.section	.text.main.eh,"ax",@progbits
 ; LINUX-SECTIONS1-LABEL: 	l.BB.main:
 ; LINUX-SECTIONS1-NOT: 		.section
-; LINUX-SECTIONS1-LABEL:	lal.BB.main:
+; LINUX-SECTIONS1-LABEL:	.LBB0_3:
 ; LINUX-SECTIONS1-NOT:		.section
 ; LINUX-SECTIONS1:		.section	.text.main,"ax",@progbits
 ; LINUX-SECTIONS1-LABEL: 	.Lfunc_end0
@@ -74,16 +74,16 @@ declare i32 @__gxx_personality_v0(...)
 ; LINUX-SECTIONS2:		.section	.text.main,"ax",@progbits
 ; LINUX-SECTIONS2-LABEL:	main:
 ; LINUX-SECTIONS2-NOT: 		.section
-; LINUX-SECTIONS2-LABEL:	alal.BB.main:
+; LINUX-SECTIONS2-LABEL:	.LBB0_4:
 ; LINUX-SECTIONS2-NOT: 		.section
-; LINUX-SECTIONS2-LABEL:	aalal.BB.main:
+; LINUX-SECTIONS2-LABEL:	.LBB0_5:
 ; LINUX-SECTIONS2-NOT: 		.section
-; LINUX-SECTIONS2-LABEL:	aaalal.BB.main:
+; LINUX-SECTIONS2-LABEL:	.LBB0_6:
 ; LINUX-SECTIONS2: 		.section	.text.main,"ax",@progbits,unique,1
 ; LINUX-SECTIONS2-LABEL: 	l.BB.main:
 ; LINUX-SECTIONS2-NOT: 		.section
-; LINUX-SECTIONS2-LABEL:	al.BB.main:
+; LINUX-SECTIONS2-LABEL:	.LBB0_2:
 ; LINUX-SECTIONS2-NOT: 		.section
-; LINUX-SECTIONS2-LABEL:	lal.BB.main:
+; LINUX-SECTIONS2-LABEL:	.LBB0_3:
 ; LINUX-SECTIONS2:		.section	.text.main,"ax",@progbits
 ; LINUX-SECTIONS2-LABEL: 	.Lfunc_end0

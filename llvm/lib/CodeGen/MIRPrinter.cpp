@@ -643,10 +643,10 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
     OS << "align " << MBB.getAlignment().value();
     HasAttributes = true;
   }
-  if (MBB.getSectionID().hasValue()) {
+  if (MBB.getParent()->hasBBSections()) {
     OS << (HasAttributes ? ", " : " (");
     OS << "bbsections ";
-    switch (MBB.getSectionID().getValue()) {
+    switch (MBB.getSectionID()) {
     case MachineBasicBlock::ExceptionSectionID:
       OS << "Exception";
       break;
