@@ -19,7 +19,7 @@ int compute_flag(int i)
         return 0;
 }
 
-int sample1_func();
+int sample1_func() { return 13; }
 
 int main(void)
 {

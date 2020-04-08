@@ -7,13 +7,6 @@ import lit.util
 import lit.worker
 
 
-# No-operation semaphore for supporting `None` for parallelism_groups.
-#   lit_config.parallelism_groups['my_group'] = None
-class NopSemaphore(object):
-    def acquire(self): pass
-    def release(self): pass
-
-
 class MaxFailuresError(Exception):
     pass
 class TimeoutError(Exception):
@@ -66,22 +59,14 @@ class Run(object):
                 test.setResult(lit.Test.Result(lit.Test.UNRESOLVED, '', 0.0))
 
     def _execute(self, deadline):
-        semaphores = {
-            k: NopSemaphore() if v is None else
-            multiprocessing.BoundedSemaphore(v) for k, v in
-            self.lit_config.parallelism_groups.items()}
-
         self._increase_process_limit()
 
-        # Start a process pool. Copy over the data shared between all test runs.
-        # FIXME: Find a way to capture the worker process stderr. If the user
-        # interrupts the workers before we make it into our task callback, they
-        # will each raise a KeyboardInterrupt exception and print to stderr at
-        # the same time.
+        semaphores = {k: multiprocessing.BoundedSemaphore(v)
+                      for k, v in self.lit_config.parallelism_groups.items()
+                      if v is not None}
+
         pool = multiprocessing.Pool(self.workers, lit.worker.initialize,
                                     (self.lit_config, semaphores))
-
-        self._install_win32_signal_handler(pool)
 
         async_results = [
             pool.apply_async(lit.worker.execute, args=[test],
@@ -135,13 +120,3 @@ class Run(object):
             # Warn, unless this is Windows, in which case this is expected.
             if os.name != 'nt':
                 self.lit_config.warning('Failed to raise process limit: %s' % ex)
-
-    def _install_win32_signal_handler(self, pool):
-        if lit.util.win32api is not None:
-            def console_ctrl_handler(type):
-                print('\nCtrl-C detected, terminating.')
-                pool.terminate()
-                pool.join()
-                lit.util.abort_now()
-                return True
-            lit.util.win32api.SetConsoleCtrlHandler(console_ctrl_handler, True)

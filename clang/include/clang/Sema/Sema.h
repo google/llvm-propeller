@@ -58,6 +58,7 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TinyPtrVector.h"
@@ -1501,9 +1502,6 @@ public:
   public:
   // Emit all deferred diagnostics.
   void emitDeferredDiags();
-  // Emit any deferred diagnostics for FD and erase them from the map in which
-  // they're stored.
-  void emitDeferredDiags(FunctionDecl *FD, bool ShowCallStack);
 
   enum TUFragmentKind {
     /// The global module fragment, between 'module;' and a module-declaration.
@@ -9861,8 +9859,7 @@ private:
     /// The associated OpenMP context selector mangling.
     std::string NameSuffix;
 
-    OMPDeclareVariantScope(OMPTraitInfo &TI)
-        : TI(&TI), NameSuffix(TI.getMangledName()) {}
+    OMPDeclareVariantScope(OMPTraitInfo &TI);
   };
 
   /// The current `omp begin/end declare variant` scopes.
@@ -9892,7 +9889,7 @@ public:
   /// specialization via the OpenMP declare variant mechanism available. If
   /// there is, return the specialized call expression, otherwise return the
   /// original \p Call.
-  ExprResult ActOnOpenMPCall(Sema &S, ExprResult Call, Scope *Scope,
+  ExprResult ActOnOpenMPCall(ExprResult Call, Scope *Scope,
                              SourceLocation LParenLoc, MultiExprArg ArgExprs,
                              SourceLocation RParenLoc, Expr *ExecConfig);
 

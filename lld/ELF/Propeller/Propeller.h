@@ -166,6 +166,8 @@ public:
   // Main method of propeller profile processing.
   bool processProfile();
 
+  bool processProfile2();
+
   // Helper method. Returns true when func or bbIndex.func (when bbIndex is
   // provided) is hot.
   //   func: the function symbole

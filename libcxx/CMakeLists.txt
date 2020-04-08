@@ -207,7 +207,6 @@ option(LIBCXX_ENABLE_NEW_DELETE_DEFINITIONS
 # Build libc++abi with libunwind. We need this option to determine whether to
 # link with libunwind or libgcc_s while running the test cases.
 option(LIBCXXABI_USE_LLVM_UNWINDER "Build and use the LLVM unwinder." OFF)
-option(LIBCXXABI_ENABLE_STATIC_UNWINDER "Statically link the LLVM unwinder." OFF)
 
 # Target options --------------------------------------------------------------
 option(LIBCXX_BUILD_32_BITS "Build 32 bit libc++." ${LLVM_BUILD_32_BITS})
@@ -678,6 +677,9 @@ function(get_sanitizer_flags OUT_VAR  USE_SANITIZER)
       endif()
     elseif (USE_SANITIZER STREQUAL "Undefined")
       append_flags(SANITIZER_FLAGS "-fsanitize=undefined -fno-sanitize=vptr,function -fno-sanitize-recover=all")
+    elseif (USE_SANITIZER STREQUAL "Address;Undefined" OR
+            USE_SANITIZER STREQUAL "Undefined;Address")
+      append_flags(SANITIZER_FLAGS "-fsanitize=address,undefined -fno-sanitize=vptr,function -fno-sanitize-recover=all")
     elseif (USE_SANITIZER STREQUAL "Thread")
       append_flags(SANITIZER_FLAGS -fsanitize=thread)
     else()

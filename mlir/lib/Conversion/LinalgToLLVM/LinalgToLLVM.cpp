@@ -164,7 +164,7 @@ public:
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto reshapeOp = cast<ReshapeOp>(op);
-    MemRefType dstType = reshapeOp.getResult().getType().cast<MemRefType>();
+    MemRefType dstType = reshapeOp.getResultType();
 
     if (!dstType.hasStaticShape())
       return failure();
@@ -179,7 +179,7 @@ public:
 
     edsc::ScopedContext context(rewriter, op->getLoc());
     ReshapeOpOperandAdaptor adaptor(operands);
-    BaseViewConversionHelper baseDesc(adaptor.view());
+    BaseViewConversionHelper baseDesc(adaptor.src());
     BaseViewConversionHelper desc(typeConverter.convertType(dstType));
     desc.setAllocatedPtr(baseDesc.allocatedPtr());
     desc.setAlignedPtr(baseDesc.alignedPtr());
@@ -400,8 +400,13 @@ static FlatSymbolRefAttr getLibraryCallSymbolRef(Operation *op,
   // Insert before module terminator.
   rewriter.setInsertionPoint(module.getBody(),
                              std::prev(module.getBody()->end()));
-  rewriter.create<FuncOp>(op->getLoc(), fnNameAttr.getValue(), libFnType,
-                          ArrayRef<NamedAttribute>{});
+  FuncOp funcOp =
+      rewriter.create<FuncOp>(op->getLoc(), fnNameAttr.getValue(), libFnType,
+                              ArrayRef<NamedAttribute>{});
+  // Insert a function attribute that will trigger the emission of the
+  // corresponding `_mlir_ciface_xxx` interface so that external libraries see
+  // a normalized ABI. This interface is added during std to llvm conversion.
+  funcOp.setAttr("llvm.emit_c_interface", UnitAttr::get(op->getContext()));
   return fnNameAttr;
 }
 
@@ -573,8 +578,7 @@ void ConvertLinalgToLLVMPass::runOnModule() {
   LLVMTypeConverter converter(&getContext());
   populateAffineToStdConversionPatterns(patterns, &getContext());
   populateLoopToStdConversionPatterns(patterns, &getContext());
-  populateStdToLLVMConversionPatterns(converter, patterns, /*useAlloca=*/false,
-                                      /*emitCWrappers=*/true);
+  populateStdToLLVMConversionPatterns(converter, patterns);
   populateVectorToLLVMMatrixConversionPatterns(converter, patterns);
   populateVectorToLLVMConversionPatterns(converter, patterns);
   populateLinalgToStandardConversionPatterns(patterns, &getContext());

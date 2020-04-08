@@ -144,7 +144,8 @@ static T *coerceAvailableValueToLoadTypeHelper(T *StoredVal, Type *LoadedTy,
 ///
 /// If we can't do it, return null.
 Value *coerceAvailableValueToLoadType(Value *StoredVal, Type *LoadedTy,
-                                      IRBuilder<> &IRB, const DataLayout &DL) {
+                                      IRBuilderBase &IRB,
+                                      const DataLayout &DL) {
   return coerceAvailableValueToLoadTypeHelper(StoredVal, LoadedTy, IRB, DL);
 }
 
@@ -512,7 +513,7 @@ Value *getLoadValueForLoad(LoadInst *SrcVal, unsigned Offset, Type *LoadTy,
     PtrVal = Builder.CreateBitCast(PtrVal, DestPTy);
     LoadInst *NewLoad = Builder.CreateLoad(DestTy, PtrVal);
     NewLoad->takeName(SrcVal);
-    NewLoad->setAlignment(MaybeAlign(SrcVal->getAlignment()));
+    NewLoad->setAlignment(SrcVal->getAlign());
 
     LLVM_DEBUG(dbgs() << "GVN WIDENED LOAD: " << *SrcVal << "\n");
     LLVM_DEBUG(dbgs() << "TO: " << *NewLoad << "\n");
