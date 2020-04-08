@@ -1194,14 +1194,16 @@ void AsmPrinter::emitFunctionBody() {
     // if this basic blocks marks the end of a section (except the section
     // containing the entry basic block as the end symbol for that section is
     // CurrentFnEnd).
-    MCSymbol * CurrentBBEnd = nullptr;
-    if ((MAI->hasDotTypeDotSizeDirective() && MF->hasBBLabels()) || (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
+    MCSymbol *CurrentBBEnd = nullptr;
+    if ((MAI->hasDotTypeDotSizeDirective() && MF->hasBBLabels()) ||
+        (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
       CurrentBBEnd = OutContext.createTempSymbol();
       OutStreamer->emitLabel(CurrentBBEnd);
     }
 
-    // Helper for emitting the size directive associated with a basic block symbol.
-    auto emitELFSizeDirective = [&](MCSymbol* SymForSize) {
+    // Helper for emitting the size directive associated with a basic block
+    // symbol.
+    auto emitELFSizeDirective = [&](MCSymbol *SymForSize) {
       assert(CurrentBBEnd && "Basicblock end symbol not set!");
       const MCExpr *SizeExp = MCBinaryExpr::createSub(
           MCSymbolRefExpr::create(CurrentBBEnd, OutContext),
@@ -1219,7 +1221,7 @@ void AsmPrinter::emitFunctionBody() {
     if (MBB.isEndSection()) {
       if (MBB.sameSection(&MF->front())) {
         // The function size will be used as the size of this section.
-        EndOfRegularSectionMBB = &MBB;
+        EntrySectionEndMBB = &MBB;
       } else {
         if (MAI->hasDotTypeDotSizeDirective())
           emitELFSizeDirective(CurrentSectionBeginSym);
@@ -1304,8 +1306,8 @@ void AsmPrinter::emitFunctionBody() {
     HI.Handler->markFunctionEnd();
   }
 
-  if (EndOfRegularSectionMBB)
-    EndOfRegularSectionMBB->setEndMCSymbol(CurrentFnEnd);
+  if (EntrySectionEndMBB)
+    EntrySectionEndMBB->setEndMCSymbol(CurrentFnEnd);
 
   // Print out jump tables referenced by the function.
   emitJumpTableInfo();
@@ -1786,7 +1788,7 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   CurrentFnSymForSize = CurrentFnSym;
   CurrentFnBegin = nullptr;
   CurrentSectionBeginSym = nullptr;
-  EndOfRegularSectionMBB = nullptr;
+  EntrySectionEndMBB = nullptr;
   CurExceptionSym = nullptr;
   ExceptionSymbols.clear();
   bool NeedsLocalForSize = MAI->needsLocalForSize();
@@ -3073,11 +3075,14 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
     }
     // Switch to a new section if this basic block must begin a section.
     if (MBB.isBeginSection()) {
-      OutStreamer->SwitchSection(getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(), MBB, TM));
+      OutStreamer->SwitchSection(
+          getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
+                                                              MBB, TM));
       CurrentSectionBeginSym = MBB.getSymbol();
     }
     OutStreamer->emitLabel(MBB.getSymbol());
-    // With BB sections, each basic block must handle CFI information on its own if it begins a section.
+    // With BB sections, each basic block must handle CFI information on its own
+    // if it begins a section.
     if (MBB.isBeginSection()) {
       for (const HandlerInfo &HI : Handlers) {
         HI.Handler->beginBasicBlock(MBB);

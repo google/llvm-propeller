@@ -141,6 +141,8 @@ declare ALL_FILES=(
         bbclusters           llvm/include/llvm/CodeGen/AsmPrinter.h
         bbclusters           llvm/include/llvm/CodeGen/MachineBasicBlock.h
         bbclusters           llvm/include/llvm/CodeGen/MachineFunction.h
+	bbclusters           llvm/include/llvm/CodeGen/TargetLoweringObjectFileImpl.h
+	bbclusters           llvm/include/llvm/Target/TargetLoweringObjectFile.h
         bbclusters           llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
 	bbclusters           llvm/lib/CodeGen/BBSectionsPrepare.cpp
 	bbclusters           llvm/lib/CodeGen/CodeGen.cpp
@@ -149,6 +151,8 @@ declare ALL_FILES=(
 	bbclusters           llvm/lib/CodeGen/MIRParser/MIParser.cpp
 	bbclusters           llvm/lib/CodeGen/MIRParser/MIRParser.cpp
 	bbclusters           llvm/lib/CodeGen/MIRPrinter.cpp
+	bbclusters           llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+	bbclusters           llvm/lib/Target/TargetLoweringObjectFile.cpp
         bbclusters           llvm/test/CodeGen/X86/basicblock-sections.ll
         bbclusters           llvm/test/CodeGen/X86/basicblock-sections-listbb.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-eh.ll
@@ -158,6 +162,9 @@ declare ALL_FILES=(
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-clusters-error.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-clusters-eh.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-clusters-branches.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-cold.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
+	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-list.ll
 
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h

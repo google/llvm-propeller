@@ -775,23 +775,23 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
              ->getSectionName();
   unsigned UniqueID = MCContext::GenericSectionID;
 
-  switch(MBB.getSectionID()) {
-    // Append suffixes to represent special cold and exception sections.
-    case MachineBasicBlock::ExceptionSectionID:
-      Name += ".eh";
-      break;
-    case MachineBasicBlock::ColdSectionID:
-      Name += ".unlikely";
-      break;
-    // For regular sections, either use a unique name, or a unique ID for the
-    // section.
-    default:
-      if (TM.getUniqueBBSectionNames()) {
-        Name += ".";
-        Name += MBB.getSymbol()->getName();
-      } else
-        UniqueID = NextUniqueID++;
-      break;
+  switch (MBB.getSectionID()) {
+  // Append suffixes to represent special cold and exception sections.
+  case MachineBasicBlock::ExceptionSectionID:
+    Name += ".eh";
+    break;
+  case MachineBasicBlock::ColdSectionID:
+    Name += ".unlikely";
+    break;
+  // For regular sections, either use a unique name, or a unique ID for the
+  // section.
+  default:
+    if (TM.getUniqueBBSectionNames()) {
+      Name += ".";
+      Name += MBB.getSymbol()->getName();
+    } else
+      UniqueID = NextUniqueID++;
+    break;
   }
 
   unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;

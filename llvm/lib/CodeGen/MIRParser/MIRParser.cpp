@@ -45,9 +45,8 @@
 
 using namespace llvm;
 
-/// This assigns IsBeginSection and IsEndSection fields for all basic blocks of a
-/// function.
-/// Defined in BBSectionsPrepare.
+/// This assigns IsBeginSection and IsEndSection fields for all basic blocks of
+/// a function. Defined in BBSectionsPrepare.
 extern void assignBeginEndSections(MachineFunction &MF);
 
 namespace llvm {

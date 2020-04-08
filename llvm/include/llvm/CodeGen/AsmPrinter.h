@@ -138,7 +138,7 @@ public:
 
   // For basic block sections, this represents the end of BB section which
   // includes the function entry.
-  MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
+  MachineBasicBlock *EntrySectionEndMBB = nullptr;
 
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
