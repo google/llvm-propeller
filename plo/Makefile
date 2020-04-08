@@ -196,7 +196,7 @@ all-compilers: $(ALL_COMPILERS)
 all-benchmarks: $(ALL_BENCHMARKS)
 
 stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
-	$(call build_compiler,-DLLVM_ENABLE_ASSERTIONS=$(ENABLE_ASSERTS) $(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,\"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib\")"; fi),"clang;compiler-rt;lld",install)
+	$(call build_compiler,-DLLVM_ENABLE_ASSERTIONS=$(ENABLE_ASSERTS) $(call gen_linker_flags,"-Wl$(comma)-build-id") $(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,\"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib\ -Wl$(comma)-build-id")"; fi),"clang;compiler-rt;lld",install)
 
 stage1_with_cxx_unwind/install/bin/clang: stage1-compiler check_environment $(LLVM_SOURCE)
 	$(call build_compiler,-DCMAKE_BUILD_TYPE=Debug -DLIBCXXABI_USE_LLVM_UNWINDER=On -DLLVM_ENABLE_LLD= -DCMAKE_LINKER="gold","clang;compiler-rt;lld;libcxx;libcxxabi;libunwind",install install-cxx install-cxxabi)
