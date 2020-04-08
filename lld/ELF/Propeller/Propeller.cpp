@@ -333,9 +333,7 @@ static bool parseBranchOrFallthroughLine(StringRef lineRef,
   return true;
 }
 
-bool Propfile::processProfile2() {
-  return true;
-}
+bool Propfile::processProfile2() { return true; }
 
 // Read propeller profile. Refer header file for detail about propeller profile.
 bool Propfile::processProfile() {
