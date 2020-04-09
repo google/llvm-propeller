@@ -42,8 +42,7 @@ declare i32 @baz() #1
 ; LINUX-SECTIONS1-NOT:  	.section
 ; LINUX-SECTIONS1-LABEL:	foo:
 ; LINUX-SECTIONS1-NOT:  	.section
-; LINUX-SECTIONS1-LABEL:	aa.BB.foo:
-; LINUX-SECTIONS1-NOT:  	.section
+; LINUX-SECTIONS1-LABEL:	# %bb.2:
 ; LINUX-SECTIONS1:		.section        .text.foo,"ax",@progbits,unique,1
 ; LINUX-SECTIONS1-LABEL:	a.BB.foo:
 ; LINUX-SECTIONS1-LABEL:	.Ltmp0:
@@ -59,11 +58,11 @@ declare i32 @baz() #1
 ; LINUX-SECTIONS2-NOT:   	.section
 ; LINUX-SECTIONS2-LABEL:	foo:
 ; LINUX-SECTIONS2-NOT:   	.section
-; LINUX-SECTIONS2-LABEL:	aa.BB.foo:
+; LINUX-SECTIONS2-LABEL:	# %bb.2:
 ; LINUX-SECTIONS2:		.section        .text.foo,"ax",@progbits,unique,1
 ; LINUX-SECTIONS2-NEXT:		a.BB.foo:
 ; LINUX-SECTIONS2-NOT:  	.section
-; LINUX-SECTIONS2-LABEL:	raa.BB.foo:
+; LINUX-SECTIONS2-LABEL:	.LBB0_3:
 ; LINUX-SECTIONS2-LABEL:	.Ltmp0:
 ; LINUX-SECTIONS2-NEXT:		.size a.BB.foo, .Ltmp0-a.BB.foo
 ; LINUX-SECTIONS2:		.section        .text.foo,"ax",@progbits

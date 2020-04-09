@@ -189,7 +189,7 @@ static void updateBranches(
 /// This method iterates over the basic blocks and assigns their IsBeginSection
 /// and IsEndSection fields. This must be called after MBB layout is finalized
 /// and the SectionID's are assigned to MBBs.
-static void assignBeginEndSections(MachineFunction &MF) {
+void assignBeginEndSections(MachineFunction &MF) {
   MF.front().setIsBeginSection();
   auto CurrentSectionID = MF.front().getSectionID();
   for (auto MBBI = std::next(MF.begin()), E = MF.end(); MBBI != E; ++MBBI) {
@@ -297,15 +297,15 @@ static bool assignSectionsAndSortBasicBlocks(
 
   // We make sure that the cluster including the entry basic block precedes all
   // other clusters.
-  auto EntryBBSectionID = MF.front().getSectionID().getValue();
+  auto EntryBBSectionID = MF.front().getSectionID();
 
   // We sort all basic blocks to make sure the basic blocks of every cluster are
   // contiguous and ordered accordingly. Furthermore, clusters are ordered in
   // increasing order of their section IDs, with the exception and the
   // cold section placed at the end of the function.
   MF.sort([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    auto XSectionID = X.getSectionID().getValue();
-    auto YSectionID = Y.getSectionID().getValue();
+    auto XSectionID = X.getSectionID();
+    auto YSectionID = Y.getSectionID();
     // If the two basic block are in the same section, the order is decided by
     // their position within the section.
     if (XSectionID == YSectionID)

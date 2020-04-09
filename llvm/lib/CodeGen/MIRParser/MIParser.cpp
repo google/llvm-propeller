@@ -627,7 +627,7 @@ bool MIParser::parseSectionID(Optional<unsigned> &SID) {
   if (Token.is(MIToken::IntegerLiteral)) {
     unsigned Value = 0;
     if (getUnsigned(Value))
-      return error("Uknown Section ID");
+      return error("Unknown Section ID");
     SID = Value;
   } else {
     const StringRef &S = Token.stringValue();

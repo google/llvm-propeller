@@ -79,8 +79,8 @@ public:
   };
 
   // Special section IDs for the cold and exception section
-  const static unsigned ColdSectionID = UINT_MAX;
-  const static unsigned ExceptionSectionID = UINT_MAX - 1;
+  const static unsigned ColdSectionID = (unsigned)-1;
+  const static unsigned ExceptionSectionID = (unsigned)-2;
 
 private:
   using Instructions = ilist<MachineInstr, ilist_sentinel_tracking<true>>;
@@ -135,7 +135,7 @@ private:
   bool IsCleanupFuncletEntry = false;
 
   /// With basic block sections, this stores the Section ID of the basic block.
-  Optional<unsigned> SectionID;
+  unsigned SectionID = 0;
 
   // Indicate that this basic block begins a section.
   bool IsBeginSection = false;
@@ -442,7 +442,7 @@ public:
   void setIsEndSection(bool V = true) { IsEndSection = V; }
 
   /// Returns the section ID of this basic block.
-  Optional<unsigned> getSectionID() const { return SectionID; }
+  unsigned getSectionID() const { return SectionID; }
 
   /// Indicate that the basic block belongs to a Section Type.
   void setSectionID(unsigned V) { SectionID = V; }
@@ -487,7 +487,7 @@ public:
 
   /// Returns true if this and MBB belong to the same section.
   bool sameSection(const MachineBasicBlock *MBB) const {
-    return this == MBB || getSectionID() == MBB->getSectionID();
+    return getSectionID() == MBB->getSectionID();
   }
 
   /// Returns the basic block that ends the section which contains this one.

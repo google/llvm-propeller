@@ -136,6 +136,10 @@ public:
   // function. This is used to calculate the size of the BB section.
   MCSymbol *CurrentSectionBeginSym = nullptr;
 
+  // For basic block sections, this represents the end of BB section which
+  // includes the function entry.
+  MachineBasicBlock *EndOfRegularSectionMBB = nullptr;
+
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
   using GOTEquivUsePair = std::pair<const GlobalVariable *, unsigned>;

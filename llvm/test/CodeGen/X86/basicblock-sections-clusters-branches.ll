@@ -45,7 +45,7 @@ declare i32 @baz() #1
 ; LINUX-SECTIONS1-LABEL:	foo:
 ; LINUX-SECTIONS1:		jne a.BB.foo
 ; LINUX-SECTIONS1-NOT:		{{jne|je|jmp}}
-; LINUX-SECTIONS1-LABEL:	aa.BB.foo:
+; LINUX-SECTIONS1-LABEL:	# %bb.2:
 ; LINUX-SECTIONS1:		jmp raa.BB.foo
 ; LINUX-SECTIONS1:		.section        .text.foo,"ax",@progbits,unique,1
 ; LINUX-SECTIONS1-LABEL:	a.BB.foo:
@@ -57,9 +57,9 @@ declare i32 @baz() #1
 ; LINUX-SECTIONS2-LABEL:	foo:
 ; LINUX-SECTIONS2:		jne a.BB.foo
 ; LINUX-SECTIONS2-NOT:		{{jne|je|jmp}}
-; LINUX-SECTIONS2-LABEL:	aa.BB.foo:
-; LINUX-SECTIONS2:		jmp raa.BB.foo
+; LINUX-SECTIONS2-LABEL:	# %bb.2:
+; LINUX-SECTIONS2:		jmp .LBB0_3
 ; LINUX-SECTIONS2:		.section        .text.foo,"ax",@progbits,unique,1
-; LINUX-SECTIONS2-NEXT:		a.BB.foo:
+; LINUX-SECTIONS2:		a.BB.foo:
 ; LINUX-SECTIONS2-NOT:		{{jne|je|jmp}}
-; LINUX-SECTIONS2-LABEL:	raa.BB.foo:
+; LINUX-SECTIONS2:		.LBB0_3:
