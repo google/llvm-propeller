@@ -1229,7 +1229,6 @@ void AsmPrinter::emitFunctionBody() {
       // ensure a new symbol is created for the next basicblock section.
       CurExceptionSym = nullptr;
     }
-
     emitBasicBlockEnd(MBB);
   }
 
