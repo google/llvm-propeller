@@ -1549,4 +1549,5 @@ MachineBasicBlock::livein_iterator MachineBasicBlock::livein_begin() const {
 }
 
 const MBBSectionID MBBSectionID::ColdSectionID(MBBSectionID::SectionType::Cold);
-const MBBSectionID MBBSectionID::ExceptionSectionID(MBBSectionID::SectionType::Exception);
+const MBBSectionID
+    MBBSectionID::ExceptionSectionID(MBBSectionID::SectionType::Exception);

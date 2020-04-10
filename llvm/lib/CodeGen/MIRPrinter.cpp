@@ -647,10 +647,10 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
     OS << (HasAttributes ? ", " : " (");
     OS << "bbsections ";
     switch (MBB.getSectionID().Type) {
-      case MBBSectionID::SectionType::Exception:
+    case MBBSectionID::SectionType::Exception:
       OS << "Exception";
       break;
-      case MBBSectionID::SectionType::Cold:
+    case MBBSectionID::SectionType::Cold:
       OS << "Cold";
       break;
     default:

@@ -134,7 +134,9 @@ public:
   /// default, this is equal to CurrentFnSym.
   MCSymbol *CurrentFnSymForSize = nullptr;
 
-  struct Range {MCSymbol *BeginLabel, *EndLabel;};
+  struct Range {
+    MCSymbol *BeginLabel, *EndLabel;
+  };
   SmallVector<Range, 4> SectionRanges;
 
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
