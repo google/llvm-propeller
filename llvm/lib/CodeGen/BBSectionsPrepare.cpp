@@ -289,7 +289,8 @@ static bool assignSectionsAndSortBasicBlocks(
   //     ...
   //   * Exception section
   //   * Cold section
-  auto MBBSectionOrder = [EntryBBSectionID] (const MBBSectionID &LHS, const MBBSectionID &RHS) {
+  auto MBBSectionOrder = [EntryBBSectionID](const MBBSectionID &LHS,
+                                            const MBBSectionID &RHS) {
     // We make sure that the section containing the entry block precedes all the
     // other sections.
     if (LHS == EntryBBSectionID || RHS == EntryBBSectionID)

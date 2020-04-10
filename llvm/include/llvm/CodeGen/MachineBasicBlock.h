@@ -53,9 +53,10 @@ class TargetRegisterInfo;
 //  {Type: Cold, Number: 0}  (ColdSectionID)
 struct MBBSectionID {
   enum SectionType {
-    Default = 0,  // Regular section (these sections are distinguished by the Number field).
-    Exception,  // Special section type for exception handling blocks
-    Cold,  // Special section type for cold blocks
+    Default = 0, // Regular section (these sections are distinguished by the
+                 // Number field).
+    Exception,   // Special section type for exception handling blocks
+    Cold,        // Special section type for cold blocks
   } Type;
   unsigned Number;
 
@@ -75,9 +76,7 @@ struct MBBSectionID {
            Number;
   }
 
-  static unsigned indexSize(unsigned NumBlockIDs) {
-    return NumBlockIDs + 2;
-  }
+  static unsigned indexSize(unsigned NumBlockIDs) { return NumBlockIDs + 2; }
 
 private:
   // This is only used to construct the special cold and exception sections.
