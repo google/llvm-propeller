@@ -775,12 +775,12 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
              ->getSectionName();
   unsigned UniqueID = MCContext::GenericSectionID;
 
-  switch (MBB.getSectionID()) {
+  switch (MBB.getSectionID().Type) {
   // Append suffixes to represent special cold and exception sections.
-  case MachineBasicBlock::ExceptionSectionID:
+    case MBBSectionID::SectionType::Exception:
     Name += ".eh";
     break;
-  case MachineBasicBlock::ColdSectionID:
+    case MBBSectionID::SectionType::Cold:
     Name += ".unlikely";
     break;
   // For regular sections, either use a unique name, or a unique ID for the

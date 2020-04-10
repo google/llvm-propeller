@@ -251,7 +251,7 @@ static bool assignSectionsAndSortBasicBlocks(
   // This variable stores the section ID of the cluster containing eh_pads (if
   // all eh_pads are one cluster). If more than one cluster contain eh_pads, we
   // set it equal to ExceptionSectionID.
-  Optional<unsigned> EHPadsSectionID;
+  Optional<MBBSectionID> EHPadsSectionID;
 
   for (auto &MBB : MF) {
     // With the 'all' option, every basic block is placed in a unique section.
@@ -263,29 +263,29 @@ static bool assignSectionsAndSortBasicBlocks(
       // If unique sections are desired for all basic blocks of the function, we
       // set every basic block's section ID equal to its number (basic block
       // id). This further ensures that basic blocks are ordered canonically.
-      MBB.setSectionID(MBB.getNumber());
+      MBB.setSectionID({static_cast<unsigned int>(MBB.getNumber())});
     } else if (FuncBBClusterInfo[MBB.getNumber()].hasValue())
       MBB.setSectionID(FuncBBClusterInfo[MBB.getNumber()]->ClusterID);
     else {
       // BB goes into the special cold section if it is not specified in the
       // cluster info map.
-      MBB.setSectionID(MachineBasicBlock::ColdSectionID);
+      MBB.setSectionID(MBBSectionID::ColdSectionID);
     }
 
     if (MBB.isEHPad() && EHPadsSectionID != MBB.getSectionID() &&
-        EHPadsSectionID != MachineBasicBlock::ExceptionSectionID) {
+        EHPadsSectionID != MBBSectionID::ExceptionSectionID) {
       // If we already have one cluster containing eh_pads, this must be updated
       // to ExceptionSectionID. Otherwise, we set it equal to the current
       // section ID.
       EHPadsSectionID = EHPadsSectionID.hasValue()
-                            ? MachineBasicBlock::ExceptionSectionID
+                            ? MBBSectionID::ExceptionSectionID
                             : MBB.getSectionID();
     }
   }
 
   // If EHPads are in more than one section, this places all of them in the
   // special exception section.
-  if (EHPadsSectionID == MachineBasicBlock::ExceptionSectionID)
+  if (EHPadsSectionID == MBBSectionID::ExceptionSectionID)
     for (auto &MBB : MF)
       if (MBB.isEHPad())
         MBB.setSectionID(EHPadsSectionID.getValue());
@@ -309,8 +309,7 @@ static bool assignSectionsAndSortBasicBlocks(
     // If the two basic block are in the same section, the order is decided by
     // their position within the section.
     if (XSectionID == YSectionID)
-      return (XSectionID == MachineBasicBlock::ExceptionSectionID ||
-              XSectionID == MachineBasicBlock::ColdSectionID)
+      return (XSectionID.Type != MBBSectionID::SectionType::Default)
                  ? X.getNumber() < Y.getNumber()
                  : FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
                        FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
@@ -336,7 +335,6 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   auto BBSectionsType = MF.getTarget().getBBSectionsType();
   assert(BBSectionsType != BasicBlockSection::None &&
          "BB Sections not enabled!");
-
   // Renumber blocks before sorting them for basic block sections.  This is
   // useful during sorting, basic blocks in the same section will retain the
   // default order.  This renumbering should also be done for basic block

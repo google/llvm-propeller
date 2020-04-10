@@ -46,6 +46,34 @@ class raw_ostream;
 class TargetRegisterClass;
 class TargetRegisterInfo;
 
+struct MBBSectionID {
+  enum SectionType {
+    Default = 0,
+    Exception,
+    Cold,
+  } Type;
+  unsigned Number;
+
+  MBBSectionID(unsigned N) : Type(Default), Number(N) {}
+  const static MBBSectionID ColdSectionID;
+  const static MBBSectionID ExceptionSectionID;
+
+  bool operator==(const MBBSectionID &Other) const {
+    return Type == Other.Type && Number == Other.Number;
+  }
+
+  bool operator <(const MBBSectionID &Other) const {
+    return Type == Other.Type ? Number < Other.Number : Type < Other.Type;
+  }
+
+  unsigned toIndex() {
+    return ((unsigned)MBBSectionID::SectionType::Cold) - ((unsigned)Type) + Number;
+  }
+
+ private:
+  MBBSectionID(SectionType T) : Type(T), Number(0) {}
+};
+
 template <> struct ilist_traits<MachineInstr> {
 private:
   friend class MachineBasicBlock; // Set by the owning MachineBasicBlock.
@@ -77,10 +105,6 @@ public:
     RegisterMaskPair(MCPhysReg PhysReg, LaneBitmask LaneMask)
         : PhysReg(PhysReg), LaneMask(LaneMask) {}
   };
-
-  // Special section IDs for the cold and exception section
-  const static unsigned ColdSectionID = (unsigned)-1;
-  const static unsigned ExceptionSectionID = (unsigned)-2;
 
 private:
   using Instructions = ilist<MachineInstr, ilist_sentinel_tracking<true>>;
@@ -135,7 +159,7 @@ private:
   bool IsCleanupFuncletEntry = false;
 
   /// With basic block sections, this stores the Section ID of the basic block.
-  unsigned SectionID = 0;
+  MBBSectionID SectionID{0};
 
   // Indicate that this basic block begins a section.
   bool IsBeginSection = false;
@@ -442,10 +466,10 @@ public:
   void setIsEndSection(bool V = true) { IsEndSection = V; }
 
   /// Returns the section ID of this basic block.
-  unsigned getSectionID() const { return SectionID; }
+  MBBSectionID getSectionID() const { return SectionID; }
 
-  /// Indicate that the basic block belongs to a Section Type.
-  void setSectionID(unsigned V) { SectionID = V; }
+  /// Sets the section ID for this basic block.
+  void setSectionID(MBBSectionID V) { SectionID = V; }
 
   /// Returns true if this is the indirect dest of an INLINEASM_BR.
   bool isInlineAsmBrIndirectTarget(const MachineBasicBlock *Tgt) const {
@@ -878,12 +902,6 @@ public:
 
   /// Return the MCSymbol for this basic block.
   MCSymbol *getSymbol() const;
-
-  /// Sets the MCSymbol corresponding to the end of this basic block.
-  void setEndMCSymbol(MCSymbol *Sym) { EndMCSymbol = Sym; }
-
-  /// Returns the MCSymbol corresponding to the end of this basic block.
-  MCSymbol *getEndMCSymbol() const { return EndMCSymbol; }
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const {
     return IrrLoopHeaderWeight;

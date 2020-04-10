@@ -15,6 +15,7 @@
 #ifndef LLVM_CODEGEN_ASMPRINTER_H
 #define LLVM_CODEGEN_ASMPRINTER_H
 
+#include "llvm/ADT/IndexedMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -27,6 +28,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SourceMgr.h"
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -132,13 +134,8 @@ public:
   /// default, this is equal to CurrentFnSym.
   MCSymbol *CurrentFnSymForSize = nullptr;
 
-  // The symbol used to represent the start of the current BB section of the
-  // function. This is used to calculate the size of the BB section.
-  MCSymbol *CurrentSectionBeginSym = nullptr;
-
-  // For basic block sections, this represents the end of BB section which
-  // includes the function entry.
-  MachineBasicBlock *EntrySectionEndMBB = nullptr;
+  struct Range {MCSymbol *BeginLabel, *EndLabel;};
+  SmallVector<Range, 4> SectionRanges;
 
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
@@ -149,6 +146,10 @@ private:
   MCSymbol *CurrentFnEnd = nullptr;
   MCSymbol *CurExceptionSym = nullptr;
   DenseMap<const MachineBasicBlock *, MCSymbol *> ExceptionSymbols;
+
+  // The symbol used to represent the start of the current BB section of the
+  // function. This is used to calculate the size of the BB section.
+  MCSymbol *CurrentSectionBeginSym = nullptr;
 
   // The garbage collection metadata printer table.
   void *GCMetadataPrinters = nullptr; // Really a DenseMap.
