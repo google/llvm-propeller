@@ -2026,7 +2026,8 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
     for (auto &MBB : *MF) {
       if (&MBB != &MF->front() && MBB.isBeginSection())
         TheCU.addRange(
-            {MBB.getSymbol(), Asm->SectionRanges[MBB.getSectionID().toIndex()].EndLabel});
+            {MBB.getSymbol(),
+             Asm->SectionRanges[MBB.getSectionID().toIndex()].EndLabel});
     }
   }
 

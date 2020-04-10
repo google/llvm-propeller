@@ -62,15 +62,16 @@ struct MBBSectionID {
     return Type == Other.Type && Number == Other.Number;
   }
 
-  bool operator <(const MBBSectionID &Other) const {
+  bool operator<(const MBBSectionID &Other) const {
     return Type == Other.Type ? Number < Other.Number : Type < Other.Type;
   }
 
   unsigned toIndex() {
-    return ((unsigned)MBBSectionID::SectionType::Cold) - ((unsigned)Type) + Number;
+    return ((unsigned)MBBSectionID::SectionType::Cold) - ((unsigned)Type) +
+           Number;
   }
 
- private:
+private:
   MBBSectionID(SectionType T) : Type(T), Number(0) {}
 };
 
