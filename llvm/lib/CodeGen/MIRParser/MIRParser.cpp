@@ -45,10 +45,6 @@
 
 using namespace llvm;
 
-/// This assigns IsBeginSection and IsEndSection fields for all basic blocks of
-/// a function. Defined in BBSectionsPrepare.
-extern void assignBeginEndSections(MachineFunction &MF);
-
 namespace llvm {
 
 /// This class implements the parsing of LLVM IR that's embedded inside a MIR
@@ -447,7 +443,7 @@ MIRParserImpl::initializeMachineFunction(const yaml::MachineFunction &YamlMF,
     MF.setBBSectionsType(BasicBlockSection::Labels);
   } else if (MF.hasBBSections()) {
     MF.createBBLabels();
-    assignBeginEndSections(MF);
+    MF.assignBeginEndSections();
   }
   PFS.SM = &SM;
 

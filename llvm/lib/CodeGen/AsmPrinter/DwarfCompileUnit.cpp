@@ -409,7 +409,7 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
         if (&MBB != &Asm->MF->front() && MBB.isBeginSection())
           BB_List.push_back(
               {MBB.getSymbol(),
-               Asm->SectionRanges[MBB.getSectionID().toIndex()].EndLabel});
+               Asm->MBBSectionRanges[MBB.getSectionID().toIndex()].EndLabel});
       }
     }
     attachRangesOrLowHighPC(*SPDie, BB_List);
@@ -577,14 +577,14 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
            "BeginMBB and EndMBB are in the same section!");
     List.push_back(
         {BeginLabel,
-         Asm->SectionRanges[BeginMBB->getSectionID().toIndex()].EndLabel});
+         Asm->MBBSectionRanges[BeginMBB->getSectionID().toIndex()].EndLabel});
     const auto *NextSectionMBB = BeginMBB->getSectionEndMBB()->getNextNode();
     while (NextSectionMBB && !NextSectionMBB->sameSection(EndMBB)) {
       assert(NextSectionMBB->isBeginSection() &&
              "This should start a new section.");
       List.push_back(
           {NextSectionMBB->getSymbol(),
-           Asm->SectionRanges[NextSectionMBB->getSectionID().toIndex()]
+           Asm->MBBSectionRanges[NextSectionMBB->getSectionID().toIndex()]
                .EndLabel});
       NextSectionMBB = NextSectionMBB->getSectionEndMBB()->getNextNode();
     }

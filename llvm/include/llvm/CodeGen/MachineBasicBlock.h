@@ -46,15 +46,22 @@ class raw_ostream;
 class TargetRegisterClass;
 class TargetRegisterInfo;
 
+// This structure uniquely identifies a basic block section.
+// Possible values are
+//  {Type: Default, Number: (unsigned)} (These are regular section IDs)
+//  {Type: Exception, Number: 0}  (ExceptionSectionID)
+//  {Type: Cold, Number: 0}  (ColdSectionID)
 struct MBBSectionID {
   enum SectionType {
-    Default = 0,
-    Exception,
-    Cold,
+    Default = 0,  // Regular section (these sections are distinguished by the Number field).
+    Exception,  // Special section type for exception handling blocks
+    Cold,  // Special section type for cold blocks
   } Type;
   unsigned Number;
 
   MBBSectionID(unsigned N) : Type(Default), Number(N) {}
+
+  // Special unique sections for cold and exception blocks.
   const static MBBSectionID ColdSectionID;
   const static MBBSectionID ExceptionSectionID;
 
@@ -62,16 +69,18 @@ struct MBBSectionID {
     return Type == Other.Type && Number == Other.Number;
   }
 
-  bool operator<(const MBBSectionID &Other) const {
-    return Type == Other.Type ? Number < Other.Number : Type < Other.Type;
-  }
-
+  // This returns a unique index for the section in the range [0, max(Number)+2]
   unsigned toIndex() {
     return ((unsigned)MBBSectionID::SectionType::Cold) - ((unsigned)Type) +
            Number;
   }
 
+  static unsigned indexSize(unsigned NumBlockIDs) {
+    return NumBlockIDs + 2;
+  }
+
 private:
+  // This is only used to construct the special cold and exception sections.
   MBBSectionID(SectionType T) : Type(T), Number(0) {}
 };
 

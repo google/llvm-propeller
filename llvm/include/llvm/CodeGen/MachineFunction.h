@@ -506,6 +506,10 @@ public:
   /// Creates basic block Labels for this function.
   void createBBLabels();
 
+  /// Aassigns their IsBeginSection IsEndSection fields for basic blocks.
+  void assignBeginEndSections();
+
+
   /// getTarget - Return the target machine this machine code is compiled with
   const LLVMTargetMachine &getTarget() const { return Target; }
 

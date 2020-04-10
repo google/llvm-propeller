@@ -186,22 +186,6 @@ static void updateBranches(
   }
 }
 
-/// This method iterates over the basic blocks and assigns their IsBeginSection
-/// and IsEndSection fields. This must be called after MBB layout is finalized
-/// and the SectionID's are assigned to MBBs.
-void assignBeginEndSections(MachineFunction &MF) {
-  MF.front().setIsBeginSection();
-  auto CurrentSectionID = MF.front().getSectionID();
-  for (auto MBBI = std::next(MF.begin()), E = MF.end(); MBBI != E; ++MBBI) {
-    if (MBBI->getSectionID() == CurrentSectionID)
-      continue;
-    MBBI->setIsBeginSection();
-    std::prev(MBBI)->setIsEndSection();
-    CurrentSectionID = MBBI->getSectionID();
-  }
-  MF.back().setIsEndSection();
-}
-
 // This function provides the BBCluster information associated with a function.
 // Returns true if a valid association exists and false otherwise.
 static bool getBBClusterInfoForFunction(
@@ -299,6 +283,20 @@ static bool assignSectionsAndSortBasicBlocks(
   // other clusters.
   auto EntryBBSectionID = MF.front().getSectionID();
 
+  // Helper function for ordering BB sections as follows:
+  //   * Entry section (section including the entry block).
+  //   * Regular sections (in increasing order of their Number).
+  //     ...
+  //   * Exception section
+  //   * Cold section
+  auto MBBSectionOrder = [EntryBBSectionID] (const MBBSectionID &LHS, const MBBSectionID &RHS) {
+    // We make sure that the section containing the entry block precedes all the
+    // other sections.
+    if (LHS == EntryBBSectionID || RHS == EntryBBSectionID)
+      return LHS == EntryBBSectionID;
+    return LHS.Type == RHS.Type ? LHS.Number < RHS.Number : LHS.Type < RHS.Type;
+  };
+
   // We sort all basic blocks to make sure the basic blocks of every cluster are
   // contiguous and ordered accordingly. Furthermore, clusters are ordered in
   // increasing order of their section IDs, with the exception and the
@@ -313,15 +311,11 @@ static bool assignSectionsAndSortBasicBlocks(
                  ? X.getNumber() < Y.getNumber()
                  : FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
                        FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
-    // We make sure that the section containing the entry block precedes all the
-    // other sections.
-    if (XSectionID == EntryBBSectionID || YSectionID == EntryBBSectionID)
-      return XSectionID == EntryBBSectionID;
-    return XSectionID < YSectionID;
+    return MBBSectionOrder(XSectionID, YSectionID);
   });
 
   // Set IsBeginSection and IsEndSection according to the assigned section IDs.
-  assignBeginEndSections(MF);
+  MF.assignBeginEndSections();
 
   // After reordering basic blocks, we must update basic block branches to
   // insert explicit fallthrough branches when required and optimize branches
