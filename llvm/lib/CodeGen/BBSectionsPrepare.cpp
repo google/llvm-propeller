@@ -80,8 +80,6 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
 
-//#include <iterator>
-
 using llvm::SmallSet;
 using llvm::SmallVector;
 using llvm::StringMap;
