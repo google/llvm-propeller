@@ -151,10 +151,6 @@ private:
   // function. This is used to calculate the size of the BB section.
   MCSymbol *CurrentSectionBeginSym = nullptr;
 
-  // The symbol used to represent the start of the current BB section of the
-  // function. This is used to calculate the size of the BB section.
-  MCSymbol *CurrentSectionBeginSym = nullptr;
-
   // The garbage collection metadata printer table.
   void *GCMetadataPrinters = nullptr; // Really a DenseMap.
 
