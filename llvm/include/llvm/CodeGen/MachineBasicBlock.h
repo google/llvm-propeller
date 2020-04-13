@@ -471,19 +471,11 @@ public:
 
   /// Returns true if this block ends any section.
   bool isEndSection() const { return IsEndSection; }
-<<<<<<< HEAD
 
   void setIsBeginSection(bool V = true) { IsBeginSection = V; }
 
   void setIsEndSection(bool V = true) { IsEndSection = V; }
 
-=======
-
-  void setIsBeginSection(bool V = true) { IsBeginSection = V; }
-
-  void setIsEndSection(bool V = true) { IsEndSection = V; }
-
->>>>>>> master
   /// Returns the section ID of this basic block.
   MBBSectionID getSectionID() const { return SectionID; }
 
