@@ -643,7 +643,7 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
     OS << "align " << MBB.getAlignment().value();
     HasAttributes = true;
   }
-  if (MBB.getParent()->hasBBSections()) {
+  if (MBB.getSectionID() != MBBSectionID(0)) {
     OS << (HasAttributes ? ", " : " (");
     OS << "bbsections ";
     switch (MBB.getSectionID().Type) {

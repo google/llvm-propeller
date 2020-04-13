@@ -1,6 +1,7 @@
 ; Stop after bbsections-prepare and check MIR output for section type.
 ; RUN: echo '!_Z3foob' > %t
 ; RUN: echo '!!1' >> %t
+; RUN: echo '!!2' >> %t
 ; RUN: llc < %s -O0 -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t -stop-after=bbsections-prepare | FileCheck %s -check-prefix=CHECK
 
 @_ZTIb = external constant i8*
@@ -27,6 +28,6 @@ define dso_local i32 @_Z3foob(i1 zeroext %0) {
 }
 
 ; CHECK: bb.0 (%ir-block.1, bbsections Cold):
-; CHECK: bb.2 (%ir-block.8, bbsections Cold):
 ; CHECK: bb.3 (%ir-block.9, bbsections Cold):
-; CHECK: bb.1 (%ir-block.7, bbsections 0)
+; CHECK: bb.1 (%ir-block.7)
+; CHECK: bb.2 (%ir-block.8, bbsections 1):

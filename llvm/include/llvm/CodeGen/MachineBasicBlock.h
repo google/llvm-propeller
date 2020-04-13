@@ -70,6 +70,10 @@ struct MBBSectionID {
     return Type == Other.Type && Number == Other.Number;
   }
 
+  bool operator!=(const MBBSectionID &Other) const {
+    return !(*this == Other);
+  }
+
   // This returns a unique index for the section in the range [0, max(Number)+2]
   unsigned toIndex() {
     return ((unsigned)MBBSectionID::SectionType::Cold) - ((unsigned)Type) +
@@ -522,9 +526,6 @@ public:
   bool sameSection(const MachineBasicBlock *MBB) const {
     return getSectionID() == MBB->getSectionID();
   }
-
-  /// Returns the basic block that ends the section which contains this one.
-  const MachineBasicBlock *getSectionEndMBB() const;
 
   /// Update the terminator instructions in block to account for changes to the
   /// layout. If the block previously used a fallthrough, it may now need a

@@ -550,21 +550,6 @@ void MachineBasicBlock::moveAfter(MachineBasicBlock *NewBefore) {
   getParent()->splice(++NewBefore->getIterator(), getIterator());
 }
 
-// Returns the basic block ending the section containing this basic block.
-// Returns null if basic block sections is not enabled for this function.
-// This function has a linear time complexity.
-const MachineBasicBlock *MachineBasicBlock::getSectionEndMBB() const {
-  const MachineFunction *MF = getParent();
-  if (!MF->hasBBSections())
-    return nullptr;
-  // Iterate over basic blocks looking for a basic block with a different
-  // section ID.
-  auto I = getIterator();
-  while (I != MF->end() && I->getSectionID() == getSectionID())
-    ++I;
-  return I == MF->end() ? &MF->back() : &*std::prev(I);
-}
-
 void MachineBasicBlock::updateTerminator() {
   const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
   // A block with no successors has no concerns with fall-through edges.

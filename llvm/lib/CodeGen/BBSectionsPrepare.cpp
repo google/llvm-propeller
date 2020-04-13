@@ -80,7 +80,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
 
-#include <iterator>
+//#include <iterator>
 
 using llvm::SmallSet;
 using llvm::SmallVector;
@@ -305,14 +305,13 @@ static bool assignSectionsAndSortBasicBlocks(
   MF.sort([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
     auto XSectionID = X.getSectionID();
     auto YSectionID = Y.getSectionID();
+    if (XSectionID != YSectionID)
+      return MBBSectionOrder(XSectionID, YSectionID);
     // If the two basic block are in the same section, the order is decided by
     // their position within the section.
-    if (XSectionID == YSectionID)
-      return (XSectionID.Type != MBBSectionID::SectionType::Default)
-                 ? X.getNumber() < Y.getNumber()
-                 : FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
-                       FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
-    return MBBSectionOrder(XSectionID, YSectionID);
+    if (XSectionID.Type == MBBSectionID::SectionType::Default)
+      return FuncBBClusterInfo[X.getNumber()]->PositionInCluster < FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
+    return X.getNumber() < Y.getNumber();
   });
 
   // Set IsBeginSection and IsEndSection according to the assigned section IDs.

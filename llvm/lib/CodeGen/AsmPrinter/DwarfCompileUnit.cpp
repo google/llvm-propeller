@@ -578,7 +578,9 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     List.push_back(
         {BeginLabel,
          Asm->MBBSectionRanges[BeginMBB->getSectionID().toIndex()].EndLabel});
-    const auto *NextSectionMBB = BeginMBB->getSectionEndMBB()->getNextNode();
+    const auto *NextSectionMBB = BeginMBB->getNextNode();
+    while(NextSectionMBB->sameSection(BeginMBB))
+      NextSectionMBB = NextSectionMBB->getNextNode();
     while (NextSectionMBB && !NextSectionMBB->sameSection(EndMBB)) {
       assert(NextSectionMBB->isBeginSection() &&
              "This should start a new section.");
@@ -586,7 +588,10 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
           {NextSectionMBB->getSymbol(),
            Asm->MBBSectionRanges[NextSectionMBB->getSectionID().toIndex()]
                .EndLabel});
-      NextSectionMBB = NextSectionMBB->getSectionEndMBB()->getNextNode();
+      const auto *NextNextSectionMBB = NextSectionMBB->getNextNode();
+      while(NextNextSectionMBB->sameSection(NextSectionMBB))
+        NextNextSectionMBB = NextNextSectionMBB->getNextNode();
+      NextSectionMBB = NextNextSectionMBB;
     }
 
     assert(NextSectionMBB->sameSection(EndMBB));
