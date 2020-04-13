@@ -70,9 +70,7 @@ struct MBBSectionID {
     return Type == Other.Type && Number == Other.Number;
   }
 
-  bool operator!=(const MBBSectionID &Other) const {
-    return !(*this == Other);
-  }
+  bool operator!=(const MBBSectionID &Other) const { return !(*this == Other); }
 
   // This returns a unique index for the section in the range [0, max(Number)+2]
   unsigned toIndex() {

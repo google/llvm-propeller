@@ -579,7 +579,7 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
         {BeginLabel,
          Asm->MBBSectionRanges[BeginMBB->getSectionID().toIndex()].EndLabel});
     const auto *NextSectionMBB = BeginMBB->getNextNode();
-    while(NextSectionMBB->sameSection(BeginMBB))
+    while (NextSectionMBB->sameSection(BeginMBB))
       NextSectionMBB = NextSectionMBB->getNextNode();
     while (NextSectionMBB && !NextSectionMBB->sameSection(EndMBB)) {
       assert(NextSectionMBB->isBeginSection() &&
@@ -589,7 +589,7 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
            Asm->MBBSectionRanges[NextSectionMBB->getSectionID().toIndex()]
                .EndLabel});
       const auto *NextNextSectionMBB = NextSectionMBB->getNextNode();
-      while(NextNextSectionMBB->sameSection(NextSectionMBB))
+      while (NextNextSectionMBB->sameSection(NextSectionMBB))
         NextNextSectionMBB = NextNextSectionMBB->getNextNode();
       NextSectionMBB = NextNextSectionMBB;
     }

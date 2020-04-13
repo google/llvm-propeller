@@ -310,7 +310,8 @@ static bool assignSectionsAndSortBasicBlocks(
     // If the two basic block are in the same section, the order is decided by
     // their position within the section.
     if (XSectionID.Type == MBBSectionID::SectionType::Default)
-      return FuncBBClusterInfo[X.getNumber()]->PositionInCluster < FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
+      return FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
+             FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
     return X.getNumber() < Y.getNumber();
   });
 
