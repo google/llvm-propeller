@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "PassDetail.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
@@ -24,7 +25,6 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -573,13 +573,8 @@ namespace {
 
 /// Base state for the vectorize pass.
 /// Command line arguments are preempted by non-empty pass arguments.
-struct Vectorize : public FunctionPass<Vectorize> {
-/// Include the generated pass utilities.
-#define GEN_PASS_AffineVectorize
-#include "mlir/Dialect/Affine/Passes.h.inc"
-
+struct Vectorize : public AffineVectorizeBase<Vectorize> {
   Vectorize() = default;
-  Vectorize(const Vectorize &) {}
   Vectorize(ArrayRef<int64_t> virtualVectorSize);
   void runOnFunction() override;
 };
@@ -587,7 +582,7 @@ struct Vectorize : public FunctionPass<Vectorize> {
 } // end anonymous namespace
 
 Vectorize::Vectorize(ArrayRef<int64_t> virtualVectorSize) {
-  vectorSizes->assign(virtualVectorSize.begin(), virtualVectorSize.end());
+  vectorSizes = virtualVectorSize;
 }
 
 /////// TODO(ntv): Hoist to a VectorizationStrategy.cpp when appropriate.
@@ -1252,10 +1247,10 @@ void Vectorize::runOnFunction() {
   LLVM_DEBUG(dbgs() << "\n");
 }
 
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 mlir::createSuperVectorizePass(ArrayRef<int64_t> virtualVectorSize) {
   return std::make_unique<Vectorize>(virtualVectorSize);
 }
-std::unique_ptr<OpPassBase<FuncOp>> mlir::createSuperVectorizePass() {
+std::unique_ptr<OperationPass<FuncOp>> mlir::createSuperVectorizePass() {
   return std::make_unique<Vectorize>();
 }

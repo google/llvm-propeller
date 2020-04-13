@@ -15,8 +15,26 @@
 
 include "mlir/Pass/PassBase.td"
 
-def AffinePipelineDataTransfer : Pass<
-    "affine-pipeline-data-transfer"> {
+def AffineLoopFusion : FunctionPass<"affine-loop-fusion"> {
+  let summary = "Fuse affine loop nests";
+  let constructor = "mlir::createLoopFusionPass()";
+  let options = [
+    Option<"computeToleranceThreshold", "fusion-compute-tolerance", "double",
+           /*default=*/"0.30f", "Fractional increase in additional computation "
+                                "tolerated while fusing">,
+    Option<"fastMemorySpace", "fusion-fast-mem-space", "unsigned",
+           /*default=*/"0",
+           "Faster memory space number to promote fusion buffers to">,
+    Option<"localBufSizeThreshold", "fusion-local-buf-threshold", "uint64_t",
+           /*default=*/"0", "Threshold size (KiB) for promoting local buffers "
+                            "to fast memory space">,
+    Option<"maximalFusion", "fusion-maximal", "bool", /*default=*/"false",
+           "Enables maximal loop fusion">,
+  ];
+}
+
+def AffinePipelineDataTransfer
+    : FunctionPass<"affine-pipeline-data-transfer"> {
   let summary = "Pipeline non-blocking data transfers between explicitly "
                 "managed levels of the memory hierarchy";
   let description = [{
@@ -84,11 +102,6 @@ def AffinePipelineDataTransfer : Pass<
   let constructor = "mlir::createPipelineDataTransferPass()";
 }
 
-def AffineLoopFusion : Pass<"affine-loop-fusion"> {
-  let summary = "Fuse affine loop nests";
-  let constructor = "mlir::createLoopFusionPass()";
-}
-
 def Canonicalizer : Pass<"canonicalize"> {
   let summary = "Canonicalize operations";
   let constructor = "mlir::createCanonicalizerPass()";
@@ -106,6 +119,14 @@ def CSE : Pass<"cse"> {
 def Inliner : Pass<"inline"> {
   let summary = "Inline function calls";
   let constructor = "mlir::createInlinerPass()";
+  let options = [
+    Option<"disableCanonicalization", "disable-simplify", "bool",
+           /*default=*/"false",
+           "Disable running simplifications during inlining">,
+    Option<"maxInliningIterations", "max-iterations", "unsigned",
+           /*default=*/"4",
+           "Maximum number of iterations when inlining within an SCC">,
+  ];
 }
 
 def LocationSnapshot : Pass<"snapshot-op-locations"> {
@@ -113,14 +134,14 @@ def LocationSnapshot : Pass<"snapshot-op-locations"> {
   let constructor = "mlir::createLocationSnapshotPass()";
   let options = [
     Option<"fileName", "filename", "std::string", /*default=*/"",
-           "The filename to print the generated IR.">,
+           "The filename to print the generated IR">,
     Option<"tag", "tag", "std::string", /*default=*/"",
            "A tag to use when fusing the new locations with the "
            "original. If unset, the locations are replaced.">,
   ];
 }
 
-def LoopCoalescing : Pass<"loop-coalescing"> {
+def LoopCoalescing : FunctionPass<"loop-coalescing"> {
   let summary = "Coalesce nested loops with independent bounds into a single "
                 "loop";
   let constructor = "mlir::createLoopCoalescingPass()";
@@ -131,7 +152,7 @@ def LoopInvariantCodeMotion : Pass<"loop-invariant-code-motion"> {
   let constructor = "mlir::createLoopInvariantCodeMotionPass()";
 }
 
-def MemRefDataFlowOpt : Pass<"memref-dataflow-opt"> {
+def MemRefDataFlowOpt : FunctionPass<"memref-dataflow-opt"> {
   let summary = "Perform store/load forwarding for memrefs";
   let description = [{
     This pass performs store to load forwarding for memref's to eliminate memory
@@ -192,17 +213,17 @@ def ParallelLoopCollapsing : Pass<"parallel-loop-collapsing"> {
   ];
 }
 
-def PrintCFG : Pass<"print-cfg-graph"> {
+def PrintCFG : FunctionPass<"print-cfg-graph"> {
   let summary = "Print CFG graph per-Region";
   let constructor = "mlir::createPrintCFGGraphPass()";
 }
 
-def PrintOpStats : Pass<"print-op-stats"> {
+def PrintOpStats : Pass<"print-op-stats", "ModuleOp"> {
   let summary = "Print statistics of operations";
   let constructor = "mlir::createPrintOpStatsPass()";
 }
 
-def PrintOp : Pass<"print-op-graph"> {
+def PrintOp : Pass<"print-op-graph", "ModuleOp"> {
   let summary = "Print op graph per-Region";
   let constructor = "mlir::createPrintOpGraphPass()";
 }

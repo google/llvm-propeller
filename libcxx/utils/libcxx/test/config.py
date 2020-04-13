@@ -472,6 +472,10 @@ class Configuration(object):
                 intMacroValue(macros['__cpp_deduction_guides']) < 201611:
             self.config.available_features.add('libcpp-no-deduction-guides')
 
+        if '__cpp_concepts' not in macros or \
+                intMacroValue(macros['__cpp_concepts']) < 201811:
+            self.config.available_features.add('libcpp-no-concepts')
+
         if self.target_info.is_windows():
             self.config.available_features.add('windows')
             if self.cxx_stdlib_under_test == 'libc++':
@@ -1036,7 +1040,8 @@ class Configuration(object):
         sub.append(('%{cxx}', '{} {}'.format(tool_env, pipes.quote(self.cxx.path))))
         sub.append(('%{libcxx_src_root}', self.libcxx_src_root))
         # Configure flags substitutions
-        sub.append(('%{flags}',         ' '.join(map(pipes.quote, self.cxx.flags))))
+        flags = self.cxx.flags + (self.cxx.modules_flags if self.cxx.use_modules else [])
+        sub.append(('%{flags}',         ' '.join(map(pipes.quote, flags))))
         sub.append(('%{compile_flags}', ' '.join(map(pipes.quote, self.cxx.compile_flags))))
         sub.append(('%{link_flags}',    ' '.join(map(pipes.quote, self.cxx.link_flags))))
         sub.append(('%{link_libcxxabi}', pipes.quote(self.cxx.link_libcxxabi_flag)))
@@ -1063,14 +1068,12 @@ class Configuration(object):
             exec_args.append('--host {}'.format(self.executor.user_prefix + self.executor.host))
             executor = os.path.join(self.libcxx_src_root, 'utils', 'ssh.py')
         else:
+            exec_args.append('--execdir %t.execdir')
             executor = os.path.join(self.libcxx_src_root, 'utils', 'run.py')
         sub.append(('%{exec}', '{} {} {} -- '.format(pipes.quote(sys.executable),
                                                      pipes.quote(executor),
                                                      ' '.join(exec_args))))
         sub.append(('%{run}', '%{exec} %t.exe'))
-        # Configure not program substitutions
-        not_py = os.path.join(self.libcxx_src_root, 'utils', 'not.py')
-        sub.append(('%{not}', '{} {}'.format(pipes.quote(sys.executable), pipes.quote(not_py))))
         if self.get_lit_conf('libcxx_gdb'):
             sub.append(('%{libcxx_gdb}', self.get_lit_conf('libcxx_gdb')))
 

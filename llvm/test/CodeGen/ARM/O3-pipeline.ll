@@ -7,11 +7,11 @@
 ; CHECK-NEXT:    FunctionPass Manager
 ; CHECK-NEXT:      Expand Atomic instructions
 ; CHECK-NEXT:      Simplify the CFG
-; CHECK-NEXT:      MVE gather/scatter lowering
 ; CHECK-NEXT:      Dominator Tree Construction
+; CHECK-NEXT:      Natural Loop Information
+; CHECK-NEXT:      MVE gather/scatter lowering
 ; CHECK-NEXT:      Basic Alias Analysis (stateless AA impl)
 ; CHECK-NEXT:      Module Verifier
-; CHECK-NEXT:      Natural Loop Information
 ; CHECK-NEXT:      Canonicalize natural loops
 ; CHECK-NEXT:      Scalar Evolution Analysis
 ; CHECK-NEXT:      Loop Pass Manager
@@ -122,9 +122,11 @@
 ; CHECK-NEXT:      Stack Slot Coloring
 ; CHECK-NEXT:      Machine Copy Propagation Pass
 ; CHECK-NEXT:      Machine Loop Invariant Code Motion
+; CHECK-NEXT:      Fixup Statepoint Caller Saved
 ; CHECK-NEXT:      PostRA Machine Sink
-; CHECK-NEXT:      Machine Block Frequency Analysis
 ; CHECK-NEXT:      MachineDominator Tree Construction
+; CHECK-NEXT:      Machine Natural Loop Construction
+; CHECK-NEXT:      Machine Block Frequency Analysis
 ; CHECK-NEXT:      MachinePostDominator Tree Construction
 ; CHECK-NEXT:      Lazy Machine Block Frequency Analysis
 ; CHECK-NEXT:      Machine Optimization Remark Emitter

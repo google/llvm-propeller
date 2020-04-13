@@ -26,7 +26,8 @@ static llvm::cl::OptionCategory clOptionsCategory(PASS_NAME " options");
 
 namespace {
 
-struct TestAffineDataCopy : public FunctionPass<TestAffineDataCopy> {
+struct TestAffineDataCopy
+    : public PassWrapper<TestAffineDataCopy, FunctionPass> {
   TestAffineDataCopy() = default;
   TestAffineDataCopy(const TestAffineDataCopy &pass){};
 
@@ -96,7 +97,7 @@ void TestAffineDataCopy::runOnFunction() {
   OwningRewritePatternList patterns;
   AffineLoadOp::getCanonicalizationPatterns(patterns, &getContext());
   AffineStoreOp::getCanonicalizationPatterns(patterns, &getContext());
-  applyPatternsGreedily(getFunction(), std::move(patterns));
+  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 namespace mlir {
