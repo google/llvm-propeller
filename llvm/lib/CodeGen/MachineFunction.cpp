@@ -363,6 +363,8 @@ void MachineFunction::createBBLabels() {
       type = 'l';
     else if (isRetBlock)
       type = 'r';
+    else if (MBBI->canFallThrough())
+      type = 'f';
     BBSectionsSymbolPrefix[MBBI->getNumber()] = type;
   }
 }
