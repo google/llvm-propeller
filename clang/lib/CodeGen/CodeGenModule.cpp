@@ -176,25 +176,6 @@ CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
   // CoverageMappingModuleGen object.
   if (CodeGenOpts.CoverageMapping)
     CoverageMapping.reset(new CoverageMappingModuleGen(*this, *CoverageInfo));
-
-  // Generate the module name hash here if needed.
-  if (CodeGenOpts.UniqueInternalLinkageNames &&
-      !getModule().getSourceFileName().empty()) {
-    std::string Path = getModule().getSourceFileName();
-    // Check if a path substitution is needed from the MacroPrefixMap.
-    for (const auto &Entry : PPO.MacroPrefixMap)
-      if (Path.rfind(Entry.first, 0) != std::string::npos) {
-        Path = Entry.second + Path.substr(Entry.first.size());
-        break;
-      }
-    llvm::MD5 Md5;
-    Md5.update(Path);
-    llvm::MD5::MD5Result R;
-    Md5.final(R);
-    SmallString<32> Str;
-    llvm::MD5::stringifyResult(R, Str);
-    ModuleNameHash = ("." + Str).str();
-  }
 }
 
 CodeGenModule::~CodeGenModule() {}
@@ -1065,7 +1046,7 @@ static void AppendTargetMangling(const CodeGenModule &CGM,
   }
 }
 
-static std::string getMangledNameImpl(CodeGenModule &CGM, GlobalDecl GD,
+static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
                                       const NamedDecl *ND,
                                       bool OmitMultiVersionMangling = false) {
   SmallString<256> Buffer;
@@ -1087,19 +1068,6 @@ static std::string getMangledNameImpl(CodeGenModule &CGM, GlobalDecl GD,
     } else {
       Out << II->getName();
     }
-  }
-
-  // Check if the module name hash should be appended for internal linkage
-  // symbols.
-  const Decl *D = GD.getDecl();
-  if (!CGM.getModuleNameHash().empty() &&
-      ((isa<FunctionDecl>(D) &&
-        CGM.getFunctionLinkage(GD) == llvm::GlobalValue::InternalLinkage) ||
-       (isa<VarDecl>(D) && CGM.getContext().GetGVALinkageForVariable(
-                               cast<VarDecl>(D)) == GVA_Internal))) {
-    assert(CGM.getCodeGenOpts().UniqueInternalLinkageNames &&
-           "Hash computed when not explicitly requested");
-    Out << CGM.getModuleNameHash();
   }
 
   if (const auto *FD = dyn_cast<FunctionDecl>(ND))
@@ -1182,7 +1150,6 @@ StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
 
   // Keep the first result in the case of a mangling collision.
   const auto *ND = cast<NamedDecl>(GD.getDecl());
-
   std::string MangledName = getMangledNameImpl(*this, GD, ND);
 
   // Ensure either we have different ABIs between host and device compilations,

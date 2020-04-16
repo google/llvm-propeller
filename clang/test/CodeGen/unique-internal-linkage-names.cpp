@@ -2,6 +2,7 @@
 // -funique-internal-linkage-names option.
 // RUN: %clang_cc1 -triple x86_64 -x c++ -S -emit-llvm -o - < %s | FileCheck %s --check-prefix=PLAIN
 // RUN: %clang_cc1 -triple x86_64 -x c++ -S -emit-llvm -funique-internal-linkage-names -o - < %s | FileCheck %s --check-prefix=UNIQUE
+// RUN: %clang_cc1 -triple x86_64 -x c++ -S -emit-llvm -fexperimental-new-pass-manager -funique-internal-linkage-names -o - < %s | FileCheck %s --check-prefix=UNIQUE
 
 static int glob;
 static int foo() {
@@ -43,26 +44,18 @@ int mver_call() {
 }
 
 // PLAIN: @_ZL4glob = internal global
-// PLAIN: @_ZL3foov()
-// PLAIN: @_ZN12_GLOBAL__N_14getMEv
-// PLAIN: @_ZZ8retAnonMvE5fGlob
-// PLAIN: @_ZN12_GLOBAL__N_16anon_mE
-// PLAIN: @_ZL4mverv.resolver()
-// PLAIN: @_ZL4mverv()
-// PLAIN: @_ZL4mverv.sse4.2()
-// UNIQUE-NOT: @_ZL4glob = internal global
-// UNIQUE-NOT: @_ZL3foov()
-// UNIQUE-NOT: @_ZN12_GLOBAL__N_14getMEv
-// UNIQUE-NOT: @_ZZ8retAnonMvE5fGlob
-// UNIQUE-NOT: @_ZN12_GLOBAL__N_16anon_mE
-// UNIQUE-NOT: @_ZL4mverv.resolver()
-// UNIQUE-NOT: @_ZL4mverv()
-// UNIQUE-NOT: @_ZL4mverv.sse4.2()
+// PLAIN: @_ZZ8retAnonMvE5fGlob = internal global
+// PLAIN: @_ZN12_GLOBAL__N_16anon_mE = internal global
+// PLAIN: define internal i32 @_ZL3foov()
+// PLAIN: define internal i32 @_ZN12_GLOBAL__N_14getMEv
+// PLAIN: define weak_odr i32 ()* @_ZL4mverv.resolver()
+// PLAIN: define internal i32 @_ZL4mverv()
+// PLAIN: define internal i32 @_ZL4mverv.sse4.2()
 // UNIQUE: @_ZL4glob.{{[0-9a-f]+}} = internal global
-// UNIQUE: @_ZL3foov.{{[0-9a-f]+}}()
-// UNIQUE: @_ZN12_GLOBAL__N_14getMEv.{{[0-9a-f]+}}
-// UNIQUE: @_ZZ8retAnonMvE5fGlob.{{[0-9a-f]+}}
-// UNIQUE: @_ZN12_GLOBAL__N_16anon_mE.{{[0-9a-f]+}}
-// UNIQUE: @_ZL4mverv.{{[0-9a-f]+}}.resolver()
-// UNIQUE: @_ZL4mverv.{{[0-9a-f]+}}()
-// UNIQUE: @_ZL4mverv.{{[0-9a-f]+}}.sse4.2()
+// UNIQUE: @_ZZ8retAnonMvE5fGlob.{{[0-9a-f]+}} = internal global
+// UNIQUE: @_ZN12_GLOBAL__N_16anon_mE.{{[0-9a-f]+}} = internal global
+// UNIQUE: define internal i32 @_ZL3foov.{{[0-9a-f]+}}()
+// UNIQUE: define internal i32 @_ZN12_GLOBAL__N_14getMEv.{{[0-9a-f]+}}
+// UNIQUE: define weak_odr i32 ()* @_ZL4mverv.resolver()
+// UNIQUE: define internal i32 @_ZL4mverv.{{[0-9a-f]+}}()
+// UNIQUE: define internal i32 @_ZL4mverv.sse4.2.{{[0-9a-f]+}}
