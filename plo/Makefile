@@ -354,7 +354,7 @@ pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler r
 	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --sym_order_out=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
+	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --sym_order_out=$@.order --propeller_backward_jump_distance=1500 --propeller_forward_jump_distance=1500 --logtostderr 2>&1 | tee $@.autolog ; \
 	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 
