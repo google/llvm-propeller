@@ -350,19 +350,17 @@ void MachineFunction::createBBLabels() {
     assert(
         (MBBI->getNumber() >= 0 && MBBI->getNumber() < (int)getNumBlockIDs()) &&
         "BasicBlock number was out of range!");
-    // 'a' - Normal block.
-    // 'r' - Return block.
-    // 'l' - Landing Pad.
-    // 'L' - Return and landing pad.
-    bool isEHPad = MBBI->isEHPad();
-    bool isRetBlock = MBBI->isReturnBlock() && !TII->isTailCall(MBBI->back());
+    // 'f' or 'F' - Fallthrough block (A block which can fallthrough to its next).
+    // 'r' or 'R' - Return block.
+    // 'a' or 'A' - All other blocks.
     char type = 'a';
-    if (isEHPad && isRetBlock)
-      type = 'L';
-    else if (isEHPad)
-      type = 'l';
-    else if (isRetBlock)
+    if (MBBI->isReturnBlock() && !TII->isTailCall(MBBI->back()))
       type = 'r';
+    else if (MBBI->canFallThrough())
+      type = 'f';
+    // We use the uppercase letter to indicate EH block.
+    if (MBBI->isEHPad())
+      type = toUpper(type);
     BBSectionsSymbolPrefix[MBBI->getNumber()] = type;
   }
 }

@@ -174,19 +174,19 @@ public:
   //   hotBBSymbols: hot bb symbols index, which is constructed from the hot bbs
   //                 section in the propeller file
   //   bbIndex: an optional StringRef to bbIndex.
-  //   bbtt: basic block tag type, when a basic block is a landing pad, it vetos
+  //   bbInfo: basic block tag type, when a basic block is a landing pad, it vetos
   //         it's hotness.
   bool
   isHotSymbol(SymbolEntry *func,
               const std::map<std::string, std::set<std::string>> &hotBBSymbols,
               StringRef bbIndex = "",
-              SymbolEntry::BBTagTypeEnum bbtt = SymbolEntry::BB_NONE);
+              SymbolEntry::BBInfo bbInfo = {SymbolEntry::BBInfo::BB_NONE, false});
 
   // Helper method - process a symbol line.
   bool processSymbolLine(
       StringRef symLine,
       std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
-                           SymbolEntry::BBTagTypeEnum>> &bbSymbolsToPostProcess,
+                           SymbolEntry::BBInfo>> &bbSymbolsToPostProcess,
       const std::map<std::string, std::set<std::string>> &hotBBSymbols);
 
   // For each function symbol line defintion, this function creates a
@@ -230,19 +230,18 @@ public:
   SymbolEntry *createBasicBlockSymbol(uint64_t ordinal, SymbolEntry *function,
                                       StringRef &bbIndex, uint64_t size,
                                       bool hotTag,
-                                      SymbolEntry::BBTagTypeEnum bbtt) {
+                                      SymbolEntry::BBInfo bbInfo) {
     // bbIndex is of the form "1", "2", it's a stringref to integer.
     assert(!function->bbTag && function->isFunction());
     auto *sym =
         new SymbolEntry(ordinal, bbIndex, SymbolEntry::AliasesTy(),
                         SymbolEntry::INVALID_ADDRESS, size, true, function);
     // Landing pads are always treated as cold.
-    if (bbtt == SymbolEntry::BB_RETURN_AND_LANDING_PAD ||
-        bbtt == SymbolEntry::BB_LANDING_PAD)
+    if (bbInfo.isLandingPad)
       sym->hotTag = false;
     else
       sym->hotTag = hotTag;
-    sym->bbTagType = bbtt;
+    sym->bbInfo = bbInfo;
     symbolOrdinalMap.emplace(std::piecewise_construct,
                              std::forward_as_tuple(ordinal),
                              std::forward_as_tuple(sym));

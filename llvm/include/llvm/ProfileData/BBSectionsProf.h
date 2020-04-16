@@ -3,6 +3,7 @@
 
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -14,7 +15,7 @@ namespace llvm {
 namespace propeller {
 
 static const char BASIC_BLOCK_SEPARATOR[] = ".BB.";
-static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arflL";
+static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arf";
 
 // This data structure is shared between lld propeller components and
 // create_llvm_prof. In short, create_llvm_prof parses the binary, wraps all the
@@ -25,12 +26,14 @@ static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arflL";
 // [create_llvm_prof refer to:
 // https://github.com/shenhanc78/autofdo/tree/plo-dev]
 struct SymbolEntry {
-  enum BBTagTypeEnum : unsigned char {
-    BB_NONE = 0,              // For functions.
-    BB_NORMAL,                // Ordinary BB, 'a'.
-    BB_RETURN,                // Return BB, 'r'.
-    BB_LANDING_PAD,           // Landing pad BB, 'l'.
-    BB_RETURN_AND_LANDING_PAD // Landing pad and return BB, 'L'.
+  struct BBInfo {
+    enum BBInfoType : unsigned char {
+      BB_NONE = 0,              // For functions.
+      BB_NORMAL,                // Ordinary BB
+      BB_RETURN,                // Return BB
+      BB_FALLTHROUGH,           // Fallthrough BB
+    } type;
+    bool isLandingPad;
   };
 
   using AliasesTy = SmallVector<StringRef, 3>;
@@ -38,7 +41,7 @@ struct SymbolEntry {
   SymbolEntry(uint64_t o, const StringRef &n, AliasesTy &&as, uint64_t address,
               uint64_t s, bool bb = false, SymbolEntry *funcptr = nullptr)
       : ordinal(o), name(n), aliases(as), addr(address), size(s), bbTag(bb),
-        bbTagType(BB_NONE), hotTag(false), containingFunc(funcptr) {}
+        bbInfo({BBInfo::BB_NONE, false}), hotTag(false), containingFunc(funcptr) {}
 
   // Unique index number across all symbols that participate linking.
   uint64_t ordinal;
@@ -54,22 +57,21 @@ struct SymbolEntry {
   uint64_t addr;
   uint64_t size;
   bool bbTag; // Whether this is a basic block section symbol.
-  BBTagTypeEnum bbTagType;
+  BBInfo bbInfo;
 
   bool hotTag; // Whether this symbol is listed in the propeller section.
   // For bbTag symbols, this is the containing fuction pointer, for a normal
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *containingFunc;
 
-  bool isFallthroughBlock() const { return true; }
+  bool canFallthrough() const { return bbInfo.type == BBInfo::BB_FALLTHROUGH || bbInfo.type == BBInfo::BB_NONE; }
 
   bool isReturnBlock() const {
-    return bbTagType == BB_RETURN || bbTagType == BB_RETURN_AND_LANDING_PAD;
+    return bbInfo.type == BBInfo::BB_RETURN;
   }
 
   bool isLandingPadBlock() const {
-    return bbTagType == BB_LANDING_PAD ||
-           bbTagType == BB_RETURN_AND_LANDING_PAD;
+    return bbInfo.isLandingPad;
   }
 
   bool operator<(const SymbolEntry &Other) const {
@@ -90,7 +92,7 @@ struct SymbolEntry {
     if (r.second.empty())
       return false;
     for (auto *i = r.first.bytes_begin(), *j = r.first.bytes_end(); i != j; ++i)
-      if (strchr(BASIC_BLOCK_UNIFIED_CHARACTERS, *i) == NULL)
+      if (strchr(BASIC_BLOCK_UNIFIED_CHARACTERS, toLower(*i)) == NULL)
         return false;
     if (funcName)
       *funcName = r.second;
@@ -99,20 +101,19 @@ struct SymbolEntry {
     return true;
   }
 
-  static BBTagTypeEnum toBBTagType(const char c) {
-    switch (c) {
+  static BBInfo toBBInfo(const char c) {
+    bool isLandingPad = toLower(c) != c;
+    switch (toLower(c)) {
     case 'a':
-      return BB_NORMAL;
+      return {BBInfo::BB_NORMAL, isLandingPad};
     case 'r':
-      return BB_RETURN;
-    case 'l':
-      return BB_LANDING_PAD;
-    case 'L':
-      return BB_RETURN_AND_LANDING_PAD;
+      return {BBInfo::BB_RETURN, isLandingPad};
+    case 'f':
+      return {BBInfo::BB_FALLTHROUGH, isLandingPad};
     default:
       assert(false);
     }
-    return BB_NONE;
+    return {BBInfo::BB_NONE, false};
   }
 
   struct OrdinalLessComparator {

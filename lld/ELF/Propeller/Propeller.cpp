@@ -119,7 +119,7 @@ void Propfile::reportParseError(const StringRef msg) const {
 bool Propfile::isHotSymbol(
     SymbolEntry *func,
     const std::map<std::string, std::set<std::string>> &hotBBSymbols,
-    StringRef bbIndex, SymbolEntry::BBTagTypeEnum bbtt) {
+    StringRef bbIndex, SymbolEntry::BBInfo bbInfo) {
   std::string N("");
   for (auto A : func->aliases) {
     if (N.empty())
@@ -137,8 +137,7 @@ bool Propfile::isHotSymbol(
   if (bbIndex.empty())
     return true;
   // Landing pads are always cold.
-  if (bbtt == SymbolEntry::BB_LANDING_PAD ||
-      bbtt == SymbolEntry::BB_RETURN_AND_LANDING_PAD)
+  if (bbInfo.isLandingPad)
     return false;
   return I0->second.find(bbIndex.str()) != I0->second.end();
 }
@@ -146,7 +145,7 @@ bool Propfile::isHotSymbol(
 bool Propfile::processSymbolLine(
     StringRef symLine,
     std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
-                         SymbolEntry::BBTagTypeEnum>> &bbSymbolsToPostProcess,
+                         SymbolEntry::BBInfo>> &bbSymbolsToPostProcess,
     const std::map<std::string, std::set<std::string>> &hotBBSymbols) {
   uint64_t symOrdinal;
   uint64_t symSize;
@@ -188,18 +187,12 @@ bool Propfile::processSymbolLine(
     reportParseError("invalid function index field");
     return false;
   }
-  // If it ends with 'r', 'l' or 'L' suffix.
   char optionalSuffix = bbParts.second.back();
-  SymbolEntry::BBTagTypeEnum bbTagType;
+  SymbolEntry::BBInfo bbInfo;
   StringRef ephemeralBBIndex;
-  if (optionalSuffix == 'f' || optionalSuffix == 'r' || optionalSuffix == 'l' ||
-      optionalSuffix == 'L') {
-    bbTagType = SymbolEntry::toBBTagType(optionalSuffix);
-    ephemeralBBIndex = bbParts.second.drop_back();
-  } else {
-    bbTagType = SymbolEntry::BB_NORMAL;
-    ephemeralBBIndex = bbParts.second;
-  }
+  bbInfo = SymbolEntry::toBBInfo(optionalSuffix);
+  ephemeralBBIndex = bbInfo.type == SymbolEntry::BBInfo::BB_NORMAL ? bbParts.second : bbParts.second.drop_back();
+
   // Only save the index part, which is highly reusable. Note
   // propfileStrSaver is a UniqueStringSaver.
   StringRef bbIndex = propfileStrSaver.save(ephemeralBBIndex);
@@ -211,14 +204,14 @@ bool Propfile::processSymbolLine(
       return false;
     }
     bool hotTag =
-        isHotSymbol(existingI->second.get(), hotBBSymbols, bbIndex, bbTagType);
+        isHotSymbol(existingI->second.get(), hotBBSymbols, bbIndex, bbInfo);
     createBasicBlockSymbol(symOrdinal, existingI->second.get(), bbIndex,
-                           symSize, hotTag, bbTagType);
+                           symSize, hotTag, bbInfo);
   } else {
     // A bb symbol appears earlier than its wrapping function, rare, but
     // not impossible, rather play it safely.
     bbSymbolsToPostProcess.emplace_back(symOrdinal, funcIndex, bbIndex, symSize,
-                                        bbTagType);
+                                        bbInfo);
   }
   return true;
 }
@@ -229,7 +222,7 @@ bool Propfile::readSymbols() {
   // A list of bbsymbols<ordinal, function_ordinal, bbindex, size, type> that
   // appears before its wrapping function. This should be rather rare.
   std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
-                       SymbolEntry::BBTagTypeEnum>>
+                       SymbolEntry::BBInfo>>
       bbSymbolsToPostProcess;
   std::map<std::string, std::set<std::string>> hotBBSymbols;
   std::map<std::string, std::set<std::string>>::iterator currentHotBBSetI =
@@ -286,13 +279,13 @@ bool Propfile::readSymbols() {
 
   // Post process bb symbols that are listed before its wrapping function.
   for (std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
-                  SymbolEntry::BBTagTypeEnum> &sym : bbSymbolsToPostProcess) {
+                  SymbolEntry::BBInfo> &sym : bbSymbolsToPostProcess) {
     uint64_t symOrdinal;
     uint64_t funcIndex;
     StringRef bbIndex;
     uint64_t symSize;
-    SymbolEntry::BBTagTypeEnum bbtt;
-    std::tie(symOrdinal, funcIndex, bbIndex, symSize, bbtt) = sym;
+    SymbolEntry::BBInfo bbInfo;
+    std::tie(symOrdinal, funcIndex, bbIndex, symSize, bbInfo) = sym;
     auto existingI = symbolOrdinalMap.find(funcIndex);
     if (existingI == symbolOrdinalMap.end()) {
       reportParseError("function with index number '" +
@@ -300,8 +293,8 @@ bool Propfile::readSymbols() {
       return false;
     }
     SymbolEntry *FuncSym = existingI->second.get();
-    bool hotTag = isHotSymbol(FuncSym, hotBBSymbols, bbIndex, bbtt);
-    createBasicBlockSymbol(symOrdinal, FuncSym, bbIndex, symSize, hotTag, bbtt);
+    bool hotTag = isHotSymbol(FuncSym, hotBBSymbols, bbIndex, bbInfo);
+    createBasicBlockSymbol(symOrdinal, FuncSym, bbIndex, symSize, hotTag, bbInfo);
   }
   return true;
 }
