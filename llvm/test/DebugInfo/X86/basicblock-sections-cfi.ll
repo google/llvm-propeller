@@ -1,5 +1,5 @@
-; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=asm -o - | FileCheck --check-prefix=SECTIONS_CFI %s
-; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=obj -o - | llvm-dwarfdump --debug-frame  - | FileCheck --check-prefix=DEBUG_FRAME %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=asm -dedup-fde-to-cie -o - | FileCheck --check-prefix=SECTIONS_CFI %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=obj -dedup-fde-to-cie -o - | llvm-dwarfdump --debug-frame  - | FileCheck --check-prefix=DEBUG_FRAME %s
 
 ; From:
 ; int foo(int a) {
@@ -39,6 +39,10 @@
 ; DEBUG_FRAME: FDE cie=
 ; DEBUG_FRAME: DW_CFA_def_cfa_offset
 ; DEBUG_FRAME: DW_CFA_def_cfa_register
+
+; DEBUG_FRAME: CIE
+; DEBUG_FRAME: DW_CFA_def_cfa
+; DEBUG_FRAME: DW_CFA_def_cfa
 
 ; DEBUG_FRAME: FDE cie=
 

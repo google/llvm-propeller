@@ -47,8 +47,8 @@
 
 using namespace llvm;
 
-static cl::opt<bool> NoDedupFDEToCIE(
-    "no-dedup-fde-to-cie",
+static cl::opt<bool> DedupFDEToCIE(
+    "dedup-fde-to-cie",
     cl::desc("Moves FDE instructions at the beginning of an FDE to CIE"),
     cl::init(false), cl::Hidden);
 
@@ -1513,8 +1513,7 @@ void FrameEmitterImpl::emitCFIInstruction(const MCCFIInstruction &Instr) {
 static bool ShouldBeDeduped(const MCCFIInstruction &Instr,
                             const MCSymbol *BaseLabel,
                             const MCObjectStreamer &Streamer) {
-  if (NoDedupFDEToCIE ||
-      !Streamer.getContext().getAsmInfo()->shouldRelocateWithSymbols())
+  if (!DedupFDEToCIE)
     return false;
 
   if (!BaseLabel || !BaseLabel->isDefined() || !BaseLabel->isInSection())
