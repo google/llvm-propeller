@@ -398,20 +398,10 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
   else {
     SmallVector<RangeSpan, 2> BB_List;
+    for (auto MBBSectionRange: Asm->MBBSectionRanges)
+      BB_List.push_back(
+          {MBBSectionRange.BeginLabel, MBBSectionRange.EndLabel});
 
-    BB_List.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
-    // If basic block sections are on, the [getFunctionBegin(),
-    // getFunctionEnd()] range will include all BBs which are in the same
-    // section as the entry block. Ranges for the other BBs have to be emitted
-    // separately.
-    if (Asm->MF->hasBBSections()) {
-      for (auto &MBB : *Asm->MF) {
-        if (&MBB != &Asm->MF->front() && MBB.isBeginSection())
-          BB_List.push_back(
-              {MBB.getSymbol(),
-               Asm->MBBSectionRanges[MBB.getSectionID().toIndex()].EndLabel});
-      }
-    }
     attachRangesOrLowHighPC(*SPDie, BB_List);
   }
   if (DD->useAppleExtensionAttributes() &&
@@ -566,36 +556,21 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     const auto *BeginMBB = R.first->getParent();
     const auto *EndMBB = R.second->getParent();
 
-    if (BeginMBB->sameSection(EndMBB) || !Asm->MF->hasBBSections()) {
-      // Without basic block sections, there is just one continuous range.
-      // The same holds if EndMBB is in the initial non-unique-section BB range.
+    if (BeginMBB->sameSection(EndMBB)) {
+      // If begin and end share their section, there is just one continuous range.
       List.push_back({BeginLabel, EndLabel});
       continue;
     }
 
-    assert(!BeginMBB->sameSection(EndMBB) &&
-           "BeginMBB and EndMBB are in the same section!");
-    List.push_back(
-        {BeginLabel,
-         Asm->MBBSectionRanges[BeginMBB->getSectionID().toIndex()].EndLabel});
-    const auto *NextSectionMBB = BeginMBB->getNextNode();
-    while (NextSectionMBB->sameSection(BeginMBB))
-      NextSectionMBB = NextSectionMBB->getNextNode();
-    while (NextSectionMBB && !NextSectionMBB->sameSection(EndMBB)) {
-      assert(NextSectionMBB->isBeginSection() &&
-             "This should start a new section.");
-      List.push_back(
-          {NextSectionMBB->getSymbol(),
-           Asm->MBBSectionRanges[NextSectionMBB->getSectionID().toIndex()]
-               .EndLabel});
-      const auto *NextNextSectionMBB = NextSectionMBB->getNextNode();
-      while (NextNextSectionMBB->sameSection(NextSectionMBB))
-        NextNextSectionMBB = NextNextSectionMBB->getNextNode();
-      NextSectionMBB = NextNextSectionMBB;
-    }
+    const auto *MBB = BeginMBB;
+    do {
+      if (MBB->sameSection(EndMBB) || MBB->isEndSection()) {
+        auto MBBSectionRange = Asm->MBBSectionRanges[MBB->getSectionID().toIndex()];
+        List.push_back({MBB->sameSection(BeginMBB) ? BeginLabel : MBBSectionRange.BeginLabel, MBB->sameSection(EndMBB) ? EndLabel : MBBSectionRange.EndLabel});
+      }
+      MBB = MBB->getNextNode();
+    } while (!MBB->sameSection(EndMBB));
 
-    assert(NextSectionMBB->sameSection(EndMBB));
-    List.push_back({NextSectionMBB->getSymbol(), EndLabel});
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }
