@@ -41,6 +41,7 @@ void llvm::initializeTransformUtils(PassRegistry &Registry) {
   initializePredicateInfoPrinterLegacyPassPass(Registry);
   initializeInjectTLIMappingsLegacyPass(Registry);
   initializeUnifyLoopExitsPass(Registry);
+  initializeUniqueInternalLinkageNamesLegacyPassPass(Registry);
 }
 
 /// LLVMInitializeTransformUtils - C binding for initializeTransformUtilsPasses.
