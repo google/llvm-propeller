@@ -32,6 +32,8 @@ declare ALL_FILES=(
         clang-uif2       clang/test/CodeGen/unique-internal-linkage-names2.c
 	clang-uif        clang/test/Driver/funique-internal-linkage-names.c
 	llvm-uif         llvm/lib/Transforms/Utils/UniqueInternalLinkageNames.cpp
+	llvm-uif         llvm/lib/Transforms/Utils/Utils.cpp
+	llvm-uif         llvm/test/Transforms/UniqueInternalLinkageNames/unique_symbol_names.ll
 	llvm-uif         llvm/include/llvm/Transforms/Utils/UniqueInternalLinkageNames.h
 	llvm-uif         llvm/include/llvm/InitializePasses.h
 	llvm-uif         llvm/include/llvm/Transforms/Utils.h

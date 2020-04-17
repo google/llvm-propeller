@@ -28,19 +28,24 @@ static bool uniqueifyInternalLinkageNames(Module &M) {
   SmallString<32> Str;
   llvm::MD5::stringifyResult(R, Str);
   std::string ModuleNameHash = ("." + Str).str();
+  bool Changed = false;
 
   // Append the module hash to all internal linkage functions.
   for (auto &F : M) {
-    if (F.hasInternalLinkage())
+    if (F.hasInternalLinkage()) {
       F.setName(F.getName() + ModuleNameHash);
+      Changed = true;
+    }
   }
 
   // Append the module hash to all internal linkage globals.
   for (auto &GV : M.globals()) {
-    if (GV.hasInternalLinkage())
+    if (GV.hasInternalLinkage()) {
       GV.setName(GV.getName() + ModuleNameHash);
+      Changed = true;
+    }
   }
-  return true;
+  return Changed;
 }
 
 namespace {
