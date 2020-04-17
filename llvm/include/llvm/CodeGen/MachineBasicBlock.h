@@ -76,8 +76,8 @@ struct MBBSectionID {
   struct ToIndexFunctor {
     using argument_type = MBBSectionID;
     unsigned operator()(MBBSectionID SectionID) const {
-      return ((unsigned)MBBSectionID::SectionType::Cold) - ((unsigned)SectionID.Type) +
-           SectionID.Number;
+      return ((unsigned)MBBSectionID::SectionType::Cold) -
+             ((unsigned)SectionID.Type) + SectionID.Number;
     }
     static unsigned indexSize(unsigned NumBlockIDs) { return NumBlockIDs + 2; }
   };

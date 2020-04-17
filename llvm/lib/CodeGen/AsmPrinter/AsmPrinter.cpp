@@ -1786,7 +1786,8 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   CurrentFnBegin = nullptr;
   CurrentSectionBeginSym = nullptr;
   MBBSectionRanges.clear();
-  MBBSectionRanges.resize(MBBSectionID::ToIndexFunctor::indexSize(MF.getNumBlockIDs()));
+  MBBSectionRanges.resize(
+      MBBSectionID::ToIndexFunctor::indexSize(MF.getNumBlockIDs()));
   CurExceptionSym = nullptr;
   ExceptionSymbols.clear();
   bool NeedsLocalForSize = MAI->needsLocalForSize();
