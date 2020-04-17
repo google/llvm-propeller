@@ -28,10 +28,10 @@ static const char BASIC_BLOCK_UNIFIED_CHARACTERS[] = "arf";
 struct SymbolEntry {
   struct BBInfo {
     enum BBInfoType : unsigned char {
-      BB_NONE = 0,              // For functions.
-      BB_NORMAL,                // Ordinary BB
-      BB_RETURN,                // Return BB
-      BB_FALLTHROUGH,           // Fallthrough BB
+      BB_NONE = 0,    // For functions.
+      BB_NORMAL,      // Ordinary BB
+      BB_RETURN,      // Return BB
+      BB_FALLTHROUGH, // Fallthrough BB
     } type;
     bool isLandingPad;
   };
@@ -41,7 +41,8 @@ struct SymbolEntry {
   SymbolEntry(uint64_t o, const StringRef &n, AliasesTy &&as, uint64_t address,
               uint64_t s, bool bb = false, SymbolEntry *funcptr = nullptr)
       : ordinal(o), name(n), aliases(as), addr(address), size(s), bbTag(bb),
-        bbInfo({BBInfo::BB_NONE, false}), hotTag(false), containingFunc(funcptr) {}
+        bbInfo({BBInfo::BB_NONE, false}), hotTag(false),
+        containingFunc(funcptr) {}
 
   // Unique index number across all symbols that participate linking.
   uint64_t ordinal;
@@ -64,15 +65,14 @@ struct SymbolEntry {
   // function symbol, this points to itself. This is neverl nullptr.
   SymbolEntry *containingFunc;
 
-  bool canFallthrough() const { return bbInfo.type == BBInfo::BB_FALLTHROUGH || bbInfo.type == BBInfo::BB_NONE; }
-
-  bool isReturnBlock() const {
-    return bbInfo.type == BBInfo::BB_RETURN;
+  bool canFallthrough() const {
+    return bbInfo.type == BBInfo::BB_FALLTHROUGH ||
+           bbInfo.type == BBInfo::BB_NONE;
   }
 
-  bool isLandingPadBlock() const {
-    return bbInfo.isLandingPad;
-  }
+  bool isReturnBlock() const { return bbInfo.type == BBInfo::BB_RETURN; }
+
+  bool isLandingPadBlock() const { return bbInfo.isLandingPad; }
 
   bool operator<(const SymbolEntry &Other) const {
     return ordinal < Other.ordinal;

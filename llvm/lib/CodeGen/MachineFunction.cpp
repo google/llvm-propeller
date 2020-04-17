@@ -350,9 +350,8 @@ void MachineFunction::createBBLabels() {
     assert(
         (MBBI->getNumber() >= 0 && MBBI->getNumber() < (int)getNumBlockIDs()) &&
         "BasicBlock number was out of range!");
-    // 'f' or 'F' - Fallthrough block (A block which can fallthrough to its next).
-    // 'r' or 'R' - Return block.
-    // 'a' or 'A' - All other blocks.
+    // 'f' or 'F' - Fallthrough block (A block which can fallthrough to its
+    // next). 'r' or 'R' - Return block. 'a' or 'A' - All other blocks.
     char type = 'a';
     if (MBBI->isReturnBlock() && !TII->isTailCall(MBBI->back()))
       type = 'r';

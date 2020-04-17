@@ -191,7 +191,9 @@ bool Propfile::processSymbolLine(
   SymbolEntry::BBInfo bbInfo;
   StringRef ephemeralBBIndex;
   bbInfo = SymbolEntry::toBBInfo(optionalSuffix);
-  ephemeralBBIndex = bbInfo.type == SymbolEntry::BBInfo::BB_NORMAL ? bbParts.second : bbParts.second.drop_back();
+  ephemeralBBIndex = bbInfo.type == SymbolEntry::BBInfo::BB_NORMAL
+                         ? bbParts.second
+                         : bbParts.second.drop_back();
 
   // Only save the index part, which is highly reusable. Note
   // propfileStrSaver is a UniqueStringSaver.
@@ -221,8 +223,8 @@ bool Propfile::readSymbols() {
   std::string line;
   // A list of bbsymbols<ordinal, function_ordinal, bbindex, size, type> that
   // appears before its wrapping function. This should be rather rare.
-  std::list<std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
-                       SymbolEntry::BBInfo>>
+  std::list<
+      std::tuple<uint64_t, uint64_t, StringRef, uint64_t, SymbolEntry::BBInfo>>
       bbSymbolsToPostProcess;
   std::map<std::string, std::set<std::string>> hotBBSymbols;
   std::map<std::string, std::set<std::string>>::iterator currentHotBBSetI =
@@ -278,8 +280,8 @@ bool Propfile::readSymbols() {
   } // End of iterating all symbols.
 
   // Post process bb symbols that are listed before its wrapping function.
-  for (std::tuple<uint64_t, uint64_t, StringRef, uint64_t,
-                  SymbolEntry::BBInfo> &sym : bbSymbolsToPostProcess) {
+  for (std::tuple<uint64_t, uint64_t, StringRef, uint64_t, SymbolEntry::BBInfo>
+           &sym : bbSymbolsToPostProcess) {
     uint64_t symOrdinal;
     uint64_t funcIndex;
     StringRef bbIndex;
@@ -294,7 +296,8 @@ bool Propfile::readSymbols() {
     }
     SymbolEntry *FuncSym = existingI->second.get();
     bool hotTag = isHotSymbol(FuncSym, hotBBSymbols, bbIndex, bbInfo);
-    createBasicBlockSymbol(symOrdinal, FuncSym, bbIndex, symSize, hotTag, bbInfo);
+    createBasicBlockSymbol(symOrdinal, FuncSym, bbIndex, symSize, hotTag,
+                           bbInfo);
   }
   return true;
 }

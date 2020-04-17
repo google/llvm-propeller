@@ -174,13 +174,14 @@ public:
   //   hotBBSymbols: hot bb symbols index, which is constructed from the hot bbs
   //                 section in the propeller file
   //   bbIndex: an optional StringRef to bbIndex.
-  //   bbInfo: basic block tag type, when a basic block is a landing pad, it vetos
+  //   bbInfo: basic block tag type, when a basic block is a landing pad, it
+  //   vetos
   //         it's hotness.
-  bool
-  isHotSymbol(SymbolEntry *func,
-              const std::map<std::string, std::set<std::string>> &hotBBSymbols,
-              StringRef bbIndex = "",
-              SymbolEntry::BBInfo bbInfo = {SymbolEntry::BBInfo::BB_NONE, false});
+  bool isHotSymbol(
+      SymbolEntry *func,
+      const std::map<std::string, std::set<std::string>> &hotBBSymbols,
+      StringRef bbIndex = "",
+      SymbolEntry::BBInfo bbInfo = {SymbolEntry::BBInfo::BB_NONE, false});
 
   // Helper method - process a symbol line.
   bool processSymbolLine(
@@ -229,8 +230,7 @@ public:
   //  return-and-landingpad.
   SymbolEntry *createBasicBlockSymbol(uint64_t ordinal, SymbolEntry *function,
                                       StringRef &bbIndex, uint64_t size,
-                                      bool hotTag,
-                                      SymbolEntry::BBInfo bbInfo) {
+                                      bool hotTag, SymbolEntry::BBInfo bbInfo) {
     // bbIndex is of the form "1", "2", it's a stringref to integer.
     assert(!function->bbTag && function->isFunction());
     auto *sym =

@@ -398,9 +398,8 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
   else {
     SmallVector<RangeSpan, 2> BB_List;
-    for (auto MBBSectionRange: Asm->MBBSectionRanges)
-      BB_List.push_back(
-          {MBBSectionRange.BeginLabel, MBBSectionRange.EndLabel});
+    for (auto MBBSectionRange : Asm->MBBSectionRanges)
+      BB_List.push_back({MBBSectionRange.BeginLabel, MBBSectionRange.EndLabel});
 
     attachRangesOrLowHighPC(*SPDie, BB_List);
   }
@@ -557,7 +556,8 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     const auto *EndMBB = R.second->getParent();
 
     if (BeginMBB->sameSection(EndMBB)) {
-      // If begin and end share their section, there is just one continuous range.
+      // If begin and end share their section, there is just one continuous
+      // range.
       List.push_back({BeginLabel, EndLabel});
       continue;
     }
@@ -565,12 +565,15 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     const auto *MBB = BeginMBB;
     do {
       if (MBB->sameSection(EndMBB) || MBB->isEndSection()) {
-        auto MBBSectionRange = Asm->MBBSectionRanges[MBB->getSectionID().toIndex()];
-        List.push_back({MBB->sameSection(BeginMBB) ? BeginLabel : MBBSectionRange.BeginLabel, MBB->sameSection(EndMBB) ? EndLabel : MBBSectionRange.EndLabel});
+        auto MBBSectionRange =
+            Asm->MBBSectionRanges[MBB->getSectionID().toIndex()];
+        List.push_back(
+            {MBB->sameSection(BeginMBB) ? BeginLabel
+                                        : MBBSectionRange.BeginLabel,
+             MBB->sameSection(EndMBB) ? EndLabel : MBBSectionRange.EndLabel});
       }
       MBB = MBB->getNextNode();
     } while (!MBB->sameSection(EndMBB));
-
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }
