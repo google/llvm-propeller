@@ -356,7 +356,7 @@ void MachineFunction::createBBLabels() {
     if (MBBI->isReturnBlock() && !TII->isTailCall(MBBI->back()))
       type = 'r';
     else if (MBBI->canFallThrough())
-      type = 'f';
+      type = 'a'; // CHANGE THIS to 'f' later to fix b/154263650
     // We use the uppercase letter to indicate EH block.
     if (MBBI->isEHPad())
       type = toUpper(type);

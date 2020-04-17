@@ -67,6 +67,7 @@ struct SymbolEntry {
 
   bool canFallthrough() const {
     return bbInfo.type == BBInfo::BB_FALLTHROUGH ||
+           bbInfo.type == BBInfo::BB_NORMAL ||
            bbInfo.type == BBInfo::BB_NONE;
   }
 
