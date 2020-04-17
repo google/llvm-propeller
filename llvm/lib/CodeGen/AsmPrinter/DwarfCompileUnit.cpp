@@ -407,7 +407,7 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
       if (&MBB != &Asm->MF->front() && MBB.isBeginSection())
         BB_List.push_back(
             {MBB.getSymbol(),
-             Asm->MBBSectionRanges[MBB.getSectionID().toIndex()].EndLabel});
+             Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
     }
 
     attachRangesOrLowHighPC(*SPDie, BB_List);
@@ -575,7 +575,7 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     do {
       if (MBB->sameSection(EndMBB) || MBB->isEndSection()) {
         auto MBBSectionRange =
-            Asm->MBBSectionRanges[MBB->getSectionID().toIndex()];
+            Asm->MBBSectionRanges[MBB->getSectionID()];
         List.push_back(
             {MBB->sameSection(BeginMBB) ? BeginLabel
                                         : MBBSectionRange.BeginLabel,

@@ -1222,7 +1222,7 @@ void AsmPrinter::emitFunctionBody() {
       if (!MBB.sameSection(&MF->front())) {
         if (MAI->hasDotTypeDotSizeDirective())
           emitELFSizeDirective(CurrentSectionBeginSym);
-        MBBSectionRanges[MBB.getSectionID().toIndex()] =
+        MBBSectionRanges[MBB.getSectionID()] =
             MBBSectionRange{CurrentSectionBeginSym, CurrentBBEnd};
       }
       // If this is the end of the section, nullify the exception symbol to
@@ -1303,7 +1303,7 @@ void AsmPrinter::emitFunctionBody() {
     HI.Handler->markFunctionEnd();
   }
 
-  MBBSectionRanges[MF->front().getSectionID().toIndex()] =
+  MBBSectionRanges[MF->front().getSectionID()] =
       MBBSectionRange{CurrentFnBegin, CurrentFnEnd};
 
   // Print out jump tables referenced by the function.
@@ -1786,7 +1786,7 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   CurrentFnBegin = nullptr;
   CurrentSectionBeginSym = nullptr;
   MBBSectionRanges.clear();
-  MBBSectionRanges.resize(MBBSectionID::indexSize(MF.getNumBlockIDs()));
+  MBBSectionRanges.resize(MBBSectionID::ToIndexFunctor::indexSize(MF.getNumBlockIDs()));
   CurExceptionSym = nullptr;
   ExceptionSymbols.clear();
   bool NeedsLocalForSize = MAI->needsLocalForSize();

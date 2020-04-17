@@ -1590,7 +1590,7 @@ bool DwarfDebug::buildLocationList(SmallVectorImpl<DebugLocEntry> &DebugLoc,
     if (std::next(EI) == Entries.end()) {
       const MachineBasicBlock &EndMBB = Asm->MF->back();
       EndLabel =
-          Asm->MBBSectionRanges[EndMBB.getSectionID().toIndex()].EndLabel;
+          Asm->MBBSectionRanges[EndMBB.getSectionID()].EndLabel;
       if (EI->isClobber())
         EndMI = EI->getInstr();
     }
@@ -2036,7 +2036,7 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
       if (&MBB != &MF->front() && MBB.isBeginSection())
         TheCU.addRange(
             {MBB.getSymbol(),
-             Asm->MBBSectionRanges[MBB.getSectionID().toIndex()].EndLabel});
+             Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
     }
   }
 

@@ -73,12 +73,14 @@ struct MBBSectionID {
   bool operator!=(const MBBSectionID &Other) const { return !(*this == Other); }
 
   // This returns a unique index for the section in the range [0, max(Number)+2]
-  unsigned toIndex() {
-    return ((unsigned)MBBSectionID::SectionType::Cold) - ((unsigned)Type) +
-           Number;
-  }
-
-  static unsigned indexSize(unsigned NumBlockIDs) { return NumBlockIDs + 2; }
+  struct ToIndexFunctor {
+    using argument_type = MBBSectionID;
+    unsigned operator()(MBBSectionID SectionID) const {
+      return ((unsigned)MBBSectionID::SectionType::Cold) - ((unsigned)SectionID.Type) +
+           SectionID.Number;
+    }
+    static unsigned indexSize(unsigned NumBlockIDs) { return NumBlockIDs + 2; }
+  };
 
 private:
   // This is only used to construct the special cold and exception sections.
