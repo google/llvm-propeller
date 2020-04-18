@@ -15,6 +15,7 @@
 #ifndef LLVM_CODEGEN_ASMPRINTER_H
 #define LLVM_CODEGEN_ASMPRINTER_H
 
+#include "llvm/ADT/IndexedMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -135,7 +136,7 @@ public:
   struct MBBSectionRange {
     MCSymbol *BeginLabel, *EndLabel;
   };
-  SmallVector<MBBSectionRange, 4> MBBSectionRanges;
+  IndexedMap<MBBSectionRange, MBBSectionID::ToIndexFunctor> MBBSectionRanges;
 
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
