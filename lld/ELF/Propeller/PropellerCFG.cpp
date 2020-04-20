@@ -211,7 +211,7 @@ std::map<StringRef, std::list<SymbolRef>> CFGBuilder::buildPreCFGGroups() {
   // Now we have a map of function names, group "x.bb.funcname".
   for (const SymbolRef &sym : symbols) {
     // All bb symbols are local, upon seeing the first global, exit.
-    if ((sym.getFlags() & SymbolRef::SF_Global) != 0)
+    if ((sym.getFlags().get() & SymbolRef::SF_Global) != 0)
       break;
     auto nameOrErr = sym.getName();
     if (!nameOrErr)
@@ -493,7 +493,7 @@ void CFGBuilder::buildCFG(
 
       // All bb section symbols are local symbols.
       if (!isRSC &&
-          ((rSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
+          ((rSym.getFlags().get() & llvm::object::BasicSymbolRef::SF_Global) != 0))
         continue;
 
       auto sectionIE = rSym.getSection();
