@@ -492,8 +492,8 @@ void CFGBuilder::buildCFG(
       bool isRSC = (cfgSym == rSym);
 
       // All bb section symbols are local symbols.
-      if (!isRSC &&
-          ((rSym.getFlags().get() & llvm::object::BasicSymbolRef::SF_Global) != 0))
+      if (!isRSC && ((rSym.getFlags().get() &
+                      llvm::object::BasicSymbolRef::SF_Global) != 0))
         continue;
 
       auto sectionIE = rSym.getSection();
