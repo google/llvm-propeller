@@ -140,6 +140,13 @@ FunctionPass *createInjectTLIMappingsLegacyPass();
 // exit blocks.
 //
 FunctionPass *createUnifyLoopExitsPass();
+
+//===----------------------------------------------------------------------===//
+//
+// FixIrreducible - Convert each SCC with irreducible control-flow
+// into a natural loop.
+//
+FunctionPass *createFixIrreduciblePass();
 }
 
 #endif

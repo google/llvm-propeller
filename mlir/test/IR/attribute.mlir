@@ -8,6 +8,8 @@ func @int_attrs_pass() {
   "test.int_attrs"() {
     // CHECK: any_i32_attr = 5 : ui32
     any_i32_attr = 5 : ui32,
+    // CHECK-SAME: index_attr = 8 : index
+    index_attr = 8 : index,
     // CHECK-SAME: si32_attr = 7 : si32
     si32_attr = 7 : si32,
     // CHECK-SAME: ui32_attr = 6 : ui32
@@ -17,6 +19,7 @@ func @int_attrs_pass() {
   "test.int_attrs"() {
     // CHECK: any_i32_attr = 5 : si32
     any_i32_attr = 5 : si32,
+    index_attr = 8 : index,
     si32_attr = 7 : si32,
     ui32_attr = 6 : ui32
   } : () -> ()
@@ -24,6 +27,7 @@ func @int_attrs_pass() {
   "test.int_attrs"() {
     // CHECK: any_i32_attr = 5 : i32
     any_i32_attr = 5 : i32,
+    index_attr = 8 : index,
     si32_attr = 7 : si32,
     ui32_attr = 6 : ui32
   } : () -> ()
@@ -83,8 +87,11 @@ func @int_attrs_pass() {
     // CHECK-SAME: attr_20 = 1 : ui1
     attr_20 = 1 : ui1,
     // CHECK-SAME: attr_21 = -1 : si1
-    attr_21 = -1 : si1
-
+    attr_21 = -1 : si1,
+    // CHECK-SAME: attr_22 = 79228162514264337593543950335 : ui96
+    attr_22 = 79228162514264337593543950335 : ui96,
+    // CHECK-SAME: attr_23 = -39614081257132168796771975168 : si96
+    attr_23 = -39614081257132168796771975168 : si96
   } : () -> ()
 
   return
@@ -119,6 +126,7 @@ func @wrong_int_attrs_signedness_fail() {
   // expected-error @+1 {{'si32_attr' failed to satisfy constraint: 32-bit signed integer attribute}}
   "test.int_attrs"() {
     any_i32_attr = 5 : i32,
+    index_attr = 8 : index,
     si32_attr = 7 : ui32,
     ui32_attr = 6 : ui32
   } : () -> ()
@@ -131,6 +139,7 @@ func @wrong_int_attrs_signedness_fail() {
   // expected-error @+1 {{'ui32_attr' failed to satisfy constraint: 32-bit unsigned integer attribute}}
   "test.int_attrs"() {
     any_i32_attr = 5 : i32,
+    index_attr = 8 : index,
     si32_attr = 7 : si32,
     ui32_attr = 6 : si32
   } : () -> ()

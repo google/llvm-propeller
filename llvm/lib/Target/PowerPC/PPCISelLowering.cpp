@@ -2588,17 +2588,19 @@ bool PPCTargetLowering::SelectAddressRegRegOnly(SDValue N, SDValue &Base,
 }
 
 /// Returns true if this address is a PC Relative address.
-/// PC Relative addresses are marked with the flag PPCII::MO_PCREL_FLAG.
+/// PC Relative addresses are marked with the flag PPCII::MO_PCREL_FLAG
+/// or if the node opcode is PPCISD::MAT_PCREL_ADDR.
 bool PPCTargetLowering::SelectAddressPCRel(SDValue N, SDValue &Base) const {
-  ConstantPoolSDNode *ConstPoolNode =
-      dyn_cast<ConstantPoolSDNode>(N.getNode());
-  bool HasFlag = ConstPoolNode &&
-                 ConstPoolNode->getTargetFlags() == PPCII::MO_PCREL_FLAG;
-  bool HasNode = N.getOpcode() == PPCISD::MAT_PCREL_ADDR;
-  if (HasFlag || HasNode) {
-    Base = N;
+  // This is a materialize PC Relative node. Always select this as PC Relative.
+  Base = N;
+  if (N.getOpcode() == PPCISD::MAT_PCREL_ADDR)
     return true;
-  }
+  if (ConstantPoolSDNode *CPN = dyn_cast<ConstantPoolSDNode>(N))
+    if (CPN->getTargetFlags() & PPCII::MO_PCREL_FLAG)
+      return true;
+  if (GlobalAddressSDNode *GAN = dyn_cast<GlobalAddressSDNode>(N))
+    if (GAN->getTargetFlags() & PPCII::MO_PCREL_FLAG)
+      return true;
   return false;
 }
 
@@ -3049,6 +3051,22 @@ SDValue PPCTargetLowering::LowerGlobalAddress(SDValue Op,
   // 64-bit SVR4 ABI & AIX ABI code is always position-independent.
   // The actual address of the GlobalValue is stored in the TOC.
   if (Subtarget.is64BitELFABI() || Subtarget.isAIXABI()) {
+    if (Subtarget.isUsingPCRelativeCalls()) {
+      EVT Ty = getPointerTy(DAG.getDataLayout());
+      if (isAccessedAsGotIndirect(Op)) {
+        SDValue GA = DAG.getTargetGlobalAddress(GV, DL, Ty, GSDN->getOffset(),
+                                                PPCII::MO_PCREL_FLAG |
+                                                    PPCII::MO_GOT_FLAG);
+        SDValue MatPCRel = DAG.getNode(PPCISD::MAT_PCREL_ADDR, DL, Ty, GA);
+        SDValue Load = DAG.getLoad(MVT::i64, DL, DAG.getEntryNode(), MatPCRel,
+                                   MachinePointerInfo());
+        return Load;
+      } else {
+        SDValue GA = DAG.getTargetGlobalAddress(GV, DL, Ty, GSDN->getOffset(),
+                                                PPCII::MO_PCREL_FLAG);
+        return DAG.getNode(PPCISD::MAT_PCREL_ADDR, DL, Ty, GA);
+      }
+    }
     setUsesTOCBasePtr(DAG);
     SDValue GA = DAG.getTargetGlobalAddress(GV, DL, PtrVT, GSDN->getOffset());
     return getTOCEntry(DAG, DL, GA);
@@ -6936,14 +6954,18 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
       return false;
     }
 
-    State.AllocateStack(alignTo(ByValSize, PtrByteSize), PtrByteSize);
-
-    for (unsigned I = 0, E = ByValSize; I < E; I += PtrByteSize) {
+    const unsigned StackSize = alignTo(ByValSize, PtrByteSize);
+    unsigned Offset = State.AllocateStack(StackSize, PtrByteSize);
+    for (const unsigned E = Offset + StackSize; Offset < E;
+         Offset += PtrByteSize) {
       if (unsigned Reg = State.AllocateReg(IsPPC64 ? GPR_64 : GPR_32))
         State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, RegVT, LocInfo));
-      else
-        report_fatal_error(
-            "Pass-by-value arguments are only supported in registers.");
+      else {
+        State.addLoc(CCValAssign::getMem(ValNo, MVT::INVALID_SIMPLE_VALUE_TYPE,
+                                         Offset, MVT::INVALID_SIMPLE_VALUE_TYPE,
+                                         LocInfo));
+        break;
+      }
     }
     return false;
   }
@@ -7119,12 +7141,11 @@ SDValue PPCTargetLowering::LowerFormalArguments_AIX(
       continue;
 
     if (Flags.isByVal() && VA.isMemLoc()) {
-      if (Flags.getByValSize() != 0)
-        report_fatal_error(
-            "ByVal arguments passed on stack not implemented yet");
-
+      const unsigned Size =
+          alignTo(Flags.getByValSize() ? Flags.getByValSize() : PtrByteSize,
+                  PtrByteSize);
       const int FI = MF.getFrameInfo().CreateFixedObject(
-          PtrByteSize, VA.getLocMemOffset(), /* IsImmutable */ false,
+          Size, VA.getLocMemOffset(), /* IsImmutable */ false,
           /* IsAliased */ true);
       SDValue FIN = DAG.getFrameIndex(FI, PtrVT);
       InVals.push_back(FIN);
@@ -7370,12 +7391,12 @@ SDValue PPCTargetLowering::LowerCall_AIX(
       unsigned LoadOffset = 0;
 
       // Initialize registers, which are fully occupied by the by-val argument.
-      while (I != E && LoadOffset + PtrByteSize <= ByValSize) {
+      while (LoadOffset + PtrByteSize <= ByValSize && ArgLocs[I].isRegLoc()) {
         SDValue Load = GetLoad(PtrVT, LoadOffset);
         MemOpChains.push_back(Load.getValue(1));
         LoadOffset += PtrByteSize;
         const CCValAssign &ByValVA = ArgLocs[I++];
-        assert(ByValVA.isRegLoc() && ByValVA.getValNo() == ValNo &&
+        assert(ByValVA.getValNo() == ValNo &&
                "Unexpected location for pass-by-value argument.");
         RegsToPass.push_back(std::make_pair(ByValVA.getLocReg(), Load));
       }
@@ -7383,15 +7404,32 @@ SDValue PPCTargetLowering::LowerCall_AIX(
       if (LoadOffset == ByValSize)
         continue;
 
-      const unsigned ResidueBytes = ByValSize % PtrByteSize;
-      assert(ResidueBytes != 0 && LoadOffset + PtrByteSize > ByValSize &&
-             "Unexpected register residue for by-value argument.");
+      // There must be one more loc to handle the remainder.
+      assert(ArgLocs[I].getValNo() == ValNo &&
+             "Expected additional location for by-value argument.");
+
+      if (ArgLocs[I].isMemLoc()) {
+        assert(LoadOffset < ByValSize && "Unexpected memloc for by-val arg.");
+        const CCValAssign &ByValVA = ArgLocs[I++];
+        ISD::ArgFlagsTy MemcpyFlags = Flags;
+        // Only memcpy the bytes that don't pass in register.
+        MemcpyFlags.setByValSize(ByValSize - LoadOffset);
+        Chain = CallSeqStart = createMemcpyOutsideCallSeq(
+            (LoadOffset != 0) ? DAG.getObjectPtrOffset(dl, Arg, LoadOffset)
+                              : Arg,
+            DAG.getObjectPtrOffset(dl, StackPtr, ByValVA.getLocMemOffset()),
+            CallSeqStart, MemcpyFlags, DAG, dl);
+        continue;
+      }
 
       // Initialize the final register residue.
       // Any residue that occupies the final by-val arg register must be
       // left-justified on AIX. Loads must be a power-of-2 size and cannot be
       // larger than the ByValSize. For example: a 7 byte by-val arg requires 4,
       // 2 and 1 byte loads.
+      const unsigned ResidueBytes = ByValSize % PtrByteSize;
+      assert(ResidueBytes != 0 && LoadOffset + PtrByteSize > ByValSize &&
+             "Unexpected register residue for by-value argument.");
       SDValue ResidueVal;
       for (unsigned Bytes = 0; Bytes != ResidueBytes;) {
         const unsigned N = PowerOf2Floor(ResidueBytes - Bytes);
@@ -7421,8 +7459,6 @@ SDValue PPCTargetLowering::LowerCall_AIX(
       }
 
       const CCValAssign &ByValVA = ArgLocs[I++];
-      assert(ByValVA.isRegLoc() && ByValVA.getValNo() == ValNo &&
-             "Additional register location expected for by-value argument.");
       RegsToPass.push_back(std::make_pair(ByValVA.getLocReg(), ResidueVal));
       continue;
     }
@@ -8174,9 +8210,10 @@ bool PPCTargetLowering::canReuseLoadAddress(SDValue Op, EVT MemVT,
                                             SelectionDAG &DAG,
                                             ISD::LoadExtType ET) const {
   SDLoc dl(Op);
+  bool ValidFPToUint = Op.getOpcode() == ISD::FP_TO_UINT &&
+                       (Subtarget.hasFPCVT() || Op.getValueType() == MVT::i32);
   if (ET == ISD::NON_EXTLOAD &&
-      (Op.getOpcode() == ISD::FP_TO_UINT ||
-       Op.getOpcode() == ISD::FP_TO_SINT) &&
+      (ValidFPToUint || Op.getOpcode() == ISD::FP_TO_SINT) &&
       isOperationLegalOrCustom(Op.getOpcode(),
                                Op.getOperand(0).getValueType())) {
 

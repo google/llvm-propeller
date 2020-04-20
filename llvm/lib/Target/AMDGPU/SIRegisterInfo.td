@@ -253,19 +253,27 @@ def FLAT_SCR : FlatReg<FLAT_SCR_LO, FLAT_SCR_HI, 0>;
 
 // SGPR registers
 foreach Index = 0-105 in {
-  def SGPR#Index :
-    SIReg <"s"#Index, Index>,
+  def SGPR#Index#_LO16 : SIReg <"s"#Index#".l", Index>,
     DwarfRegNum<[!if(!le(Index, 63), !add(Index, 32), !add(Index, 1024)),
                  !if(!le(Index, 63), !add(Index, 32), !add(Index, 1024))]>;
+
+  // This is a placeholder to fill high lane in mask.
+  def SGPR#Index#_HI16 : SIReg <"", Index> {
+    let isArtificial = 1;
+  }
+
+  def SGPR#Index :
+    SIRegWithSubRegs <"s"#Index, [!cast<Register>("SGPR"#Index#"_LO16"),
+                                  !cast<Register>("SGPR"#Index#"_HI16")],
+                      Index>,
+    DwarfRegNum<[!if(!le(Index, 63), !add(Index, 32), !add(Index, 1024)),
+                 !if(!le(Index, 63), !add(Index, 32), !add(Index, 1024))]> {
+    let SubRegIndices = [lo16, hi16];
+  }
 }
 
 // VGPR registers
 foreach Index = 0-255 in {
-  // Set a cost value for vgprs other than the argument registers (v0-v31).
-  // The ratio of index/allocation_granularity is taken as the cost value.
-  // Considered the allocation granularity as 4 here.
-  let CostPerUse=!if(!gt(Index, 31), !srl(Index, 2), 0) in {
-
   // There is no special encoding for low 16 bit subreg, this not a real
   // register but rather an operand for instructions preserving high 16 bits
   // of the result or reading just low 16 bits of a 32 bit VGPR.
@@ -288,7 +296,6 @@ foreach Index = 0-255 in {
     DwarfRegNum<[!add(Index, 2560), !add(Index, 1536)]> {
     let HWEncoding{8} = 1;
     let SubRegIndices = [lo16, hi16];
-  }
   }
 }
 
@@ -316,6 +323,20 @@ def M0_CLASS : RegisterClass<"AMDGPU", [i32], 32, (add M0)> {
 }
 
 // TODO: Do we need to set DwarfRegAlias on register tuples?
+
+def SGPR_LO16 : RegisterClass<"AMDGPU", [i16, f16], 16,
+                              (add (sequence "SGPR%u_LO16", 0, 105))> {
+  let AllocationPriority = 1;
+  let Size = 16;
+  let GeneratePressureSet = 0;
+}
+
+def SGPR_HI16 : RegisterClass<"AMDGPU", [i16, f16], 16,
+                              (add (sequence "SGPR%u_HI16", 0, 105))> {
+  let isAllocatable = 0;
+  let Size = 16;
+  let GeneratePressureSet = 0;
+}
 
 // SGPR 32-bit registers
 def SGPR_32 : RegisterClass<"AMDGPU", [i32, f32, i16, f16, v2i16, v2f16], 32,

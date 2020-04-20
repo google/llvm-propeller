@@ -371,14 +371,14 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
     .legalFor({S32, S64, S16})
     .clampScalar(0, S16, S64);
 
-  getActionDefinitionsBuilder(G_IMPLICIT_DEF)
-    .legalFor({S1, S32, S64, S16, V2S32, V4S32, V2S16, V4S16, GlobalPtr,
-               ConstantPtr, LocalPtr, FlatPtr, PrivatePtr})
-    .moreElementsIf(isSmallOddVector(0), oneMoreElement(0))
-    .clampScalarOrElt(0, S32, S1024)
-    .legalIf(isMultiple32(0))
-    .widenScalarToNextPow2(0, 32)
-    .clampMaxNumElements(0, S32, 16);
+  getActionDefinitionsBuilder({G_IMPLICIT_DEF, G_FREEZE})
+      .legalFor({S1, S32, S64, S16, V2S32, V4S32, V2S16, V4S16, GlobalPtr,
+                 ConstantPtr, LocalPtr, FlatPtr, PrivatePtr})
+      .moreElementsIf(isSmallOddVector(0), oneMoreElement(0))
+      .clampScalarOrElt(0, S32, S1024)
+      .legalIf(isMultiple32(0))
+      .widenScalarToNextPow2(0, 32)
+      .clampMaxNumElements(0, S32, 16);
 
   setAction({G_FRAME_INDEX, PrivatePtr}, Legal);
   getActionDefinitionsBuilder(G_GLOBAL_VALUE)
@@ -2905,15 +2905,15 @@ bool AMDGPULegalizerInfo::legalizeFDIV32(MachineInstr &MI,
 
   auto DenominatorScaled =
     B.buildIntrinsic(Intrinsic::amdgcn_div_scale, {S32, S1}, false)
-      .addUse(RHS)
       .addUse(LHS)
-      .addImm(1)
+      .addUse(RHS)
+      .addImm(0)
       .setMIFlags(Flags);
   auto NumeratorScaled =
     B.buildIntrinsic(Intrinsic::amdgcn_div_scale, {S32, S1}, false)
       .addUse(LHS)
       .addUse(RHS)
-      .addImm(0)
+      .addImm(1)
       .setMIFlags(Flags);
 
   auto ApproxRcp = B.buildIntrinsic(Intrinsic::amdgcn_rcp, {S32}, false)
@@ -2971,7 +2971,7 @@ bool AMDGPULegalizerInfo::legalizeFDIV64(MachineInstr &MI,
   auto DivScale0 = B.buildIntrinsic(Intrinsic::amdgcn_div_scale, {S64, S1}, false)
     .addUse(LHS)
     .addUse(RHS)
-    .addImm(1)
+    .addImm(0)
     .setMIFlags(Flags);
 
   auto NegDivScale0 = B.buildFNeg(S64, DivScale0.getReg(0), Flags);
@@ -2987,7 +2987,7 @@ bool AMDGPULegalizerInfo::legalizeFDIV64(MachineInstr &MI,
   auto DivScale1 = B.buildIntrinsic(Intrinsic::amdgcn_div_scale, {S64, S1}, false)
     .addUse(LHS)
     .addUse(RHS)
-    .addImm(0)
+    .addImm(1)
     .setMIFlags(Flags);
 
   auto Fma3 = B.buildFMA(S64, Fma1, Fma2, Fma1, Flags);

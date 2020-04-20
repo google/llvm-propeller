@@ -8,7 +8,7 @@
 
 #include "PassDetail.h"
 #include "mlir/Dialect/Affine/EDSC/Intrinsics.h"
-#include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"
+#include "mlir/Dialect/Linalg/EDSC/FoldedIntrinsics.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -20,7 +20,6 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/FoldUtils.h"
 
@@ -253,7 +252,8 @@ public:
       // so having a max op is enough.
       auto maxMap = AffineMap::get(/*dimCount=*/1, 0,
                                    {getAffineDimExpr(/*position=*/0, context),
-                                    getAffineConstantExpr(0, context)});
+                                    getAffineConstantExpr(0, context)},
+                                   context);
       clampedImIdx.push_back(
           affine_max(dim.getType(), maxMap, ValueRange{dim}));
     }
@@ -400,21 +400,6 @@ public:
       indexedValues[nInputs + i] = std_load(output, indexing);
     }
 
-    auto funcOp = genericOp.getFunction();
-    if (funcOp) {
-      // 2. Emit call.
-      Operation *callOp = std_call(funcOp, indexedValues);
-      assert(callOp->getNumResults() == genericOp.getNumOutputs());
-
-      // 3. Emit std_store.
-      for (unsigned i = 0; i < nOutputs; ++i) {
-        Value output = genericOp.getOutputBuffer(i);
-        ValueHandleArray indexing(makeCanonicalAffineApplies(
-            b, loc, genericOp.getOutputIndexingMap(i), allIvs));
-        std_store(callOp->getResult(i), output, indexing);
-      }
-      return;
-    }
     // TODO(ntv): When a region inliner exists, use it.
     // 2. Inline region, currently only works for a single basic block.
     // 3. Emit std_store.
@@ -495,20 +480,6 @@ public:
       indexedValues[nLoops + nInputs + i] = std_load(output, indexing);
     }
 
-    if (auto funcOp = indexedGenericOp.getFunction()) {
-      // 2. Emit call.
-      Operation *callOp = std_call(funcOp, indexedValues);
-      assert(callOp->getNumResults() == indexedGenericOp.getNumOutputs());
-
-      // 3. Emit std_store.
-      for (unsigned i = 0; i < nOutputs; ++i) {
-        Value output = indexedGenericOp.getOutputBuffer(i);
-        ValueHandleArray indexing(makeCanonicalAffineApplies(
-            b, loc, indexedGenericOp.getOutputIndexingMap(i), allIvs));
-        std_store(callOp->getResult(i), output, indexing);
-      }
-      return;
-    }
     // TODO(ntv): When a region inliner exists, use it.
     // 2. Inline region, currently only works for a single basic block.
     // 3. Emit std_store.
@@ -652,6 +623,8 @@ LinalgOpToLoopsImpl<LoopTy, ConcreteOpTy>::doit(Operation *op,
   auto maps = llvm::to_vector<8>(
       llvm::map_range(mapsRange, [](AffineMapAttr a) { return a.getValue(); }));
   AffineMap invertedMap = inversePermutation(concatAffineMaps(maps));
+  if (!invertedMap)
+    return {};
   if (invertedMap.isEmpty()) {
     LinalgScopedEmitter<IndexedValueTy, ConcreteOpTy>::emitScalarImplementation(
         {}, linalgOp);

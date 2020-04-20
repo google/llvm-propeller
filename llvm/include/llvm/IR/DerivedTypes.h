@@ -420,7 +420,7 @@ public:
 
   /// For scalable vectors, this will return the minimum number of elements
   /// in the vector.
-  uint64_t getNumElements() const { return NumElements; }
+  unsigned getNumElements() const { return NumElements; }
   Type *getElementType() const { return ContainedType; }
 
   /// This static method is the primary way to construct an VectorType.
@@ -531,18 +531,6 @@ public:
   }
 };
 
-unsigned Type::getVectorNumElements() const {
-  return cast<VectorType>(this)->getNumElements();
-}
-
-bool Type::getVectorIsScalable() const {
-  return cast<VectorType>(this)->isScalable();
-}
-
-ElementCount Type::getVectorElementCount() const {
-  return cast<VectorType>(this)->getElementCount();
-}
-
 bool Type::isVectorTy() const { return isa<VectorType>(this); }
 
 /// Class to represent pointers.
@@ -597,13 +585,19 @@ Type *Type::getWithNewBitWidth(unsigned NewBitWidth) const {
       isIntOrIntVectorTy() &&
       "Original type expected to be a vector of integers or a scalar integer.");
   Type *NewType = getIntNTy(getContext(), NewBitWidth);
-  if (isVectorTy())
-    NewType = VectorType::get(NewType, getVectorElementCount());
+  if (auto *VTy = dyn_cast<VectorType>(this))
+    NewType = VectorType::get(NewType, VTy->getElementCount());
   return NewType;
 }
 
 unsigned Type::getPointerAddressSpace() const {
   return cast<PointerType>(getScalarType())->getAddressSpace();
+}
+
+Type *Type::getScalarType() const {
+  if (isVectorTy())
+    return cast<VectorType>(this)->getElementType();
+  return const_cast<Type *>(this);
 }
 
 } // end namespace llvm
