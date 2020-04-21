@@ -1698,6 +1698,16 @@ are listed below.
      $ cd $P/bar && clang -c -funique-internal-linkage-names name_conflict.c
      $ cd $P && clang foo/name_conflict.o && bar/name_conflict.o
 
+**-fbasic-block-sections=[labels, all, list=<arg>, none]**
+
+  Controls whether Clang emits a label for each basic block.  Further, with
+  values "all" and "list=arg", each basic block or a subset of basic blocks
+  can be placed in its own unique section.
+
+  Basic block sections allows the linker to reorder basic blocks which enables
+  link-time optimizations like whole program inter-procedural basic block
+  reordering.
+
 Profile Guided Optimization
 ---------------------------
 
