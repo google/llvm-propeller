@@ -261,7 +261,7 @@ public:
   }
 
   /// If basic blocks should be emitted into their own section,
-  /// corresponding to -fbasicblock-sections.
+  /// corresponding to -fbasic-block-sections.
   llvm::BasicBlockSection getBBSectionsType() const {
     return Options.BBSections;
   }

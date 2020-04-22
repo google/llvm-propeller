@@ -957,7 +957,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.UseInitArray = !Args.hasArg(OPT_fno_use_init_array);
 
   Opts.BBSections =
-      std::string(Args.getLastArgValue(OPT_fbasicblock_sections_EQ, "none"));
+      std::string(Args.getLastArgValue(OPT_fbasic_block_sections_EQ, "none"));
 
   // Basic Block Sections implies Function Sections.
   Opts.FunctionSections =

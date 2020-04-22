@@ -1,11 +1,11 @@
 # REQUIRES: x86
 ## Test control flow graph is created.
 
-# RUN: clang -c -flto=thin -fbasicblock-sections=all -O2 %S/Inputs/sample.c -o %t.o
+# RUN: clang -c -flto=thin -fbasic-block-sections=all -O2 %S/Inputs/sample.c -o %t.o
 # RUN: file %t.o | FileCheck %s --check-prefix=FILETYPE 
 # FILETYPE: LLVM IR bitcode
 
-# RUN: clang -fuse-ld=lld -fbasicblock-sections=all -Wl,-lto-basicblock-sections=all -Wl,-propeller=%S/Inputs/propeller.data -Wl,-propeller-keep-named-symbols -O2 %t.o -o %t.out
+# RUN: clang -fuse-ld=lld -fbasic-block-sections=all -Wl,-lto-basicblock-sections=all -Wl,-propeller=%S/Inputs/propeller.data -Wl,-propeller-keep-named-symbols -O2 %t.o -o %t.out
 
 ## We shall have "a.BB.main", "aa.BB.main", "aaa.BB.main", "aaaa.BB.main" in the symbol table.
 # RUN: llvm-nm %t.out | grep -cF ".BB.main" | FileCheck %s --check-prefix=SYM_COUNT
@@ -34,10 +34,10 @@ main:
 	.section	.text.main,"ax",@progbits,unique,1
 aaa.BB.main:
 	je	aaaa.BB.main   # 3 -> 4
-	jmp	a.BB.main      # 3 -> 1  
+	jmp	a.BB.main      # 3 -> 1
 .Ltmp0:
 	.size	aaa.BB.main, .Ltmp0-aaa.BB.main
-        
+
 	.section	.text.main,"ax",@progbits,unique,2
 a.BB.main:
 	je	aaa.BB.main   # 1 -> 3
