@@ -167,6 +167,7 @@ declare ALL_FILES=(
 
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
+        debuginfo        llvm/include/llvm/CodeGen/AsmPrinterHandler.h
         cfi              llvm/include/llvm/CodeGen/MachineBasicBlock.h
         debuginfo        llvm/include/llvm/CodeGen/DebugHandlerBase.h
         debuginfo        llvm/include/llvm/CodeGen/MachineBasicBlock.h
