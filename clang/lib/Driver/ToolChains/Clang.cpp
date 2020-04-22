@@ -4877,7 +4877,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                          options::OPT_fno_unique_internal_linkage_names));
     if (A->getOption().matches(options::OPT_fpropeller_optimize_EQ)) {
       CmdArgs.push_back(
-          Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
+          Args.MakeArgString(Twine("-fbasicblock-sections=list=") + A->getValue()));
       if (NeedExplicitUniqueInternalLinkageNames)
         CmdArgs.push_back("-funique-internal-linkage-names");
     } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
@@ -4890,7 +4890,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Arg *A = Args.getLastArg(options::OPT_fbasicblock_sections_EQ)) {
     StringRef Val = A->getValue();
     if (Val != "all" && Val != "labels" && Val != "none" &&
-        !llvm::sys::fs::exists(Val))
+        !(Val.startswith("list=") && llvm::sys::fs::exists(Val.substr(5))))
       D.Diag(diag::err_drv_invalid_value)
           << A->getAsString(Args) << A->getValue();
     else
