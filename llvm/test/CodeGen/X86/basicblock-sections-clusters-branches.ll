@@ -7,7 +7,7 @@
 ; RUN: echo '!foo' > %t1
 ; RUN: echo '!!0 2' >> %t1
 ; RUN: echo '!!1' >> %t1
-; RUN: llc < %s -O0 -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t1 | FileCheck %s -check-prefix=LINUX-SECTIONS1
+; RUN: llc < %s -O0 -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t1 | FileCheck --dump-input=always %s -check-prefix=LINUX-SECTIONS1
 ;
 ; Test2: Basic blocks #1 and #3 will be placed in the same section.
 ; The rest (#0 and #2) go into the function's section.
@@ -50,7 +50,7 @@ declare i32 @baz() #1
 ; LINUX-SECTIONS1:		.section        .text.foo,"ax",@progbits,unique,1
 ; LINUX-SECTIONS1-LABEL:	a.BB.foo:
 ; LINUX-SECTIONS1:		jmp raa.BB.foo
-; LINUX-SECTIONS1:		.section        .text.foo.unlikely,"ax",@progbits
+; LINUX-SECTIONS1:		.section        .text.unlikely.foo,"ax",@progbits
 ; LINUX-SECTIONS1-LABEL:	raa.BB.foo:
 
 ; LINUX-SECTIONS2:		.section        .text.foo,"ax",@progbits

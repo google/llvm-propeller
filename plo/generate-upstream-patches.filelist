@@ -163,7 +163,13 @@ declare ALL_FILES=(
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-cold.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-list.ll
-
+#
+        coldprefix   lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+        coldprefix   test/CodeGen/X86/basicblock-sections-clusters-branches.ll
+        coldprefix   test/CodeGen/X86/basicblock-sections-clusters.ll
+        coldprefix   test/CodeGen/X86/basicblock-sections-cold.ll
+        coldprefix   test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
+#
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
         debuginfo        llvm/include/llvm/CodeGen/AsmPrinterHandler.h
