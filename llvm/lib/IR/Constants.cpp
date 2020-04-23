@@ -352,7 +352,8 @@ Constant *Constant::getNullValue(Type *Ty) {
     return ConstantPointerNull::get(cast<PointerType>(Ty));
   case Type::StructTyID:
   case Type::ArrayTyID:
-  case Type::VectorTyID:
+  case Type::FixedVectorTyID:
+  case Type::ScalableVectorTyID:
     return ConstantAggregateZero::get(Ty);
   case Type::TokenTyID:
     return ConstantTokenNone::get(Ty->getContext());
@@ -1780,8 +1781,8 @@ Constant *ConstantExpr::getFPCast(Constant *C, Type *Ty) {
 
 Constant *ConstantExpr::getTrunc(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isIntOrIntVectorTy() && "Trunc operand must be integer");
@@ -1794,8 +1795,8 @@ Constant *ConstantExpr::getTrunc(Constant *C, Type *Ty, bool OnlyIfReduced) {
 
 Constant *ConstantExpr::getSExt(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isIntOrIntVectorTy() && "SExt operand must be integral");
@@ -1808,8 +1809,8 @@ Constant *ConstantExpr::getSExt(Constant *C, Type *Ty, bool OnlyIfReduced) {
 
 Constant *ConstantExpr::getZExt(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isIntOrIntVectorTy() && "ZEXt operand must be integral");
@@ -1822,8 +1823,8 @@ Constant *ConstantExpr::getZExt(Constant *C, Type *Ty, bool OnlyIfReduced) {
 
 Constant *ConstantExpr::getFPTrunc(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isFPOrFPVectorTy() && Ty->isFPOrFPVectorTy() &&
@@ -1834,8 +1835,8 @@ Constant *ConstantExpr::getFPTrunc(Constant *C, Type *Ty, bool OnlyIfReduced) {
 
 Constant *ConstantExpr::getFPExtend(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isFPOrFPVectorTy() && Ty->isFPOrFPVectorTy() &&
@@ -1846,8 +1847,8 @@ Constant *ConstantExpr::getFPExtend(Constant *C, Type *Ty, bool OnlyIfReduced) {
 
 Constant *ConstantExpr::getUIToFP(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isIntOrIntVectorTy() && Ty->isFPOrFPVectorTy() &&
@@ -1857,8 +1858,8 @@ Constant *ConstantExpr::getUIToFP(Constant *C, Type *Ty, bool OnlyIfReduced) {
 
 Constant *ConstantExpr::getSIToFP(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isIntOrIntVectorTy() && Ty->isFPOrFPVectorTy() &&
@@ -1868,8 +1869,8 @@ Constant *ConstantExpr::getSIToFP(Constant *C, Type *Ty, bool OnlyIfReduced) {
 
 Constant *ConstantExpr::getFPToUI(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isFPOrFPVectorTy() && Ty->isIntOrIntVectorTy() &&
@@ -1879,8 +1880,8 @@ Constant *ConstantExpr::getFPToUI(Constant *C, Type *Ty, bool OnlyIfReduced) {
 
 Constant *ConstantExpr::getFPToSI(Constant *C, Type *Ty, bool OnlyIfReduced) {
 #ifndef NDEBUG
-  bool fromVec = C->getType()->getTypeID() == Type::VectorTyID;
-  bool toVec = Ty->getTypeID() == Type::VectorTyID;
+  bool fromVec = isa<VectorType>(C->getType());
+  bool toVec = isa<VectorType>(Ty);
 #endif
   assert((fromVec == toVec) && "Cannot convert from scalar to/from vector");
   assert(C->getType()->isFPOrFPVectorTy() && Ty->isIntOrIntVectorTy() &&
@@ -1895,8 +1896,8 @@ Constant *ConstantExpr::getPtrToInt(Constant *C, Type *DstTy,
   assert(DstTy->isIntOrIntVectorTy() &&
          "PtrToInt destination must be integer or integer vector");
   assert(isa<VectorType>(C->getType()) == isa<VectorType>(DstTy));
-  if (auto *CVTy = dyn_cast<VectorType>(C->getType()))
-    assert(CVTy->getNumElements() ==
+  if (isa<VectorType>(C->getType()))
+    assert(cast<VectorType>(C->getType())->getNumElements() ==
                cast<VectorType>(DstTy)->getNumElements() &&
            "Invalid cast between a different number of vector elements");
   return getFoldedCast(Instruction::PtrToInt, C, DstTy, OnlyIfReduced);
@@ -1909,8 +1910,8 @@ Constant *ConstantExpr::getIntToPtr(Constant *C, Type *DstTy,
   assert(DstTy->isPtrOrPtrVectorTy() &&
          "IntToPtr destination must be a pointer or pointer vector");
   assert(isa<VectorType>(C->getType()) == isa<VectorType>(DstTy));
-  if (auto *CVTy = dyn_cast<VectorType>(C->getType()))
-    assert(CVTy->getNumElements() ==
+  if (isa<VectorType>(C->getType()))
+    assert(cast<VectorType>(C->getType())->getNumElements() ==
                cast<VectorType>(DstTy)->getNumElements() &&
            "Invalid cast between a different number of vector elements");
   return getFoldedCast(Instruction::IntToPtr, C, DstTy, OnlyIfReduced);
