@@ -1,10 +1,10 @@
 # REQUIRES: x86
 ## Test control flow graph is created.
 
-# RUN: clang -c -flto=thin -fbasicblock-sections=all -O2 %S/Inputs/sample.c -o %t.o
+# RUN: clang -c -flto=thin -fbasic-block-sections=all -O2 %S/Inputs/sample.c -o %t.o
 # RUN: file %t.o | FileCheck %s --check-prefix=FILE_TYPE
 # FILE_TYPE: LLVM IR bitcode
-# RUN: clang -fuse-ld=lld -fbasicblock-sections=all -Wl,-lto-basicblock-sections=all -Wl,-propeller-dump-cfg=main -Wl,-propeller=%S/Inputs/propeller.data -O2 %t.o -o %t.out
+# RUN: clang -fuse-ld=lld -fbasic-block-sections=all -Wl,-lto-basicblock-sections=all -Wl,-propeller-dump-cfg=main -Wl,-propeller=%S/Inputs/propeller.data -O2 %t.o -o %t.out
 # RUN: cat %T/main.dot | FileCheck %s --check-prefix=LTO_CFG
 
 # LTO_CFG: 0 [size="48"];3 [size="11"];1 [size="18"];2 [size="38"];4 [size="8"];

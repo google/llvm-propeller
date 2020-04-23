@@ -957,7 +957,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.UseInitArray = !Args.hasArg(OPT_fno_use_init_array);
 
   Opts.BBSections =
-      std::string(Args.getLastArgValue(OPT_fbasicblock_sections_EQ, "none"));
+      std::string(Args.getLastArgValue(OPT_fbasic_block_sections_EQ, "none"));
 
   // Basic Block Sections implies Function Sections.
   Opts.FunctionSections =
@@ -967,7 +967,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.DataSections = Args.hasArg(OPT_fdata_sections);
   Opts.StackSizeSection = Args.hasArg(OPT_fstack_size_section);
   Opts.UniqueSectionNames = !Args.hasArg(OPT_fno_unique_section_names);
-  Opts.UniqueBBSectionNames = Args.hasArg(OPT_funique_bb_section_names);
+  Opts.UniqueBasicBlockSectionNames =
+      Args.hasArg(OPT_funique_basic_block_section_names);
   Opts.UniqueInternalLinkageNames =
       Args.hasArg(OPT_funique_internal_linkage_names);
 

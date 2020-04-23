@@ -34,10 +34,23 @@ declare ALL_FILES=(
         clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
-        clang-base       clang/test/CodeGen/basicblock-sections.c
-        clang-base       clang/test/CodeGen/basicblock-sections.funcnames
+        clang-base       clang/test/CodeGen/basic-block-sections.c
+        clang-base       clang/test/CodeGen/basic-block-sections.funcnames
 	clang-base       clang/test/Driver/funique-bb-section-names.c
-	clang-base       clang/test/Driver/fbasicblock-sections.c
+	clang-base       clang/test/Driver/fbasic-block-sections.c
+	clang-base       llvm/include/llvm/Target/TargetOptions.h
+	clang-base       llvm/include/llvm/CodeGen/Passes.h
+	clang-base       llvm/include/llvm/Target/TargetMachine.h
+	clang-base       llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+        clang-base       llvm/lib/CodeGen/CommandFlags.cpp
+        clang-base       llvm/include/llvm/CodeGen/CommandFlags.h
+	clang-base       llvm/lib/CodeGen/BBSectionsPrepare.cpp
+	clang-base       llvm/lib/CodeGen/MachineFunction.cpp
+	clang-base       lld/ELF/LTO.cpp
+	clang-base       lld/ELF/Config.h
+	clang-base       lld/ELF/Driver.cpp
+	clang-base       clang/docs/ClangCommandLineReference.rst
+	clang-base       clang/docs/UsersManual.rst
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h

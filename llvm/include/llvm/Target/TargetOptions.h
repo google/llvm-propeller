@@ -59,6 +59,7 @@ namespace llvm {
   }
 
   enum class BasicBlockSection {
+    Unknown,
     All,    // Use Basic Block Sections for all basic blocks.  A section
             // for every basic block can significantly bloat object file sizes.
     List,   // Get list of functions & BBs from a file. Selectively enables
@@ -121,7 +122,7 @@ namespace llvm {
           EnableFastISel(false), EnableGlobalISel(false), UseInitArray(false),
           DisableIntegratedAS(false), RelaxELFRelocations(false),
           FunctionSections(false), DataSections(false),
-          UniqueSectionNames(true), UniqueBBSectionNames(false),
+          UniqueSectionNames(true), UniqueBasicBlockSectionNames(false),
           TrapUnreachable(false), NoTrapAfterNoreturn(false), TLSSize(0),
           EmulatedTLS(false), ExplicitEmulatedTLS(false), EnableIPRA(false),
           EmitStackSizeSection(false), EnableMachineOutliner(false),
@@ -234,7 +235,7 @@ namespace llvm {
     unsigned UniqueSectionNames : 1;
 
     /// Use unique names for basic block sections.
-    unsigned UniqueBBSectionNames : 1;
+    unsigned UniqueBasicBlockSectionNames : 1;
 
     /// Emit target-specific trap instruction for 'unreachable' IR instructions.
     unsigned TrapUnreachable : 1;
