@@ -510,7 +510,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;
-  Options.UniqueBBSectionNames = CodeGenOpts.UniqueBBSectionNames;
+  Options.UniqueBasicBlockSectionNames =
+      CodeGenOpts.UniqueBasicBlockSectionNames;
   Options.TLSSize = CodeGenOpts.TLSSize;
   Options.EmulatedTLS = CodeGenOpts.EmulatedTLS;
   Options.ExplicitEmulatedTLS = CodeGenOpts.ExplicitEmulatedTLS;

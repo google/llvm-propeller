@@ -100,7 +100,8 @@ static lto::Config createConfig() {
     }
   }
 
-  c.Options.UniqueBBSectionNames = config->ltoUniqueBBSectionNames;
+  c.Options.UniqueBasicBlockSectionNames =
+      config->ltoUniqueBasicBlockSectionNames;
 
   if (auto relocModel = getRelocModelFromCMModel())
     c.RelocModel = *relocModel;

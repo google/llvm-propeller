@@ -179,7 +179,7 @@ struct Configuration {
   bool ltoCSProfileGenerate;
   bool ltoDebugPassManager;
   bool ltoNewPassManager;
-  bool ltoUniqueBBSectionNames;
+  bool ltoUniqueBasicBlockSectionNames;
   bool ltoWholeProgramVisibility;
   bool mergeArmExidx;
   bool mipsN32Abi = false;

@@ -74,7 +74,7 @@ CGOPT(std::string, BBSections)
 CGOPT(unsigned, TLSSize)
 CGOPT(bool, EmulatedTLS)
 CGOPT(bool, UniqueSectionNames)
-CGOPT(bool, UniqueBBSectionNames)
+CGOPT(bool, UniqueBasicBlockSectionNames)
 CGOPT(EABI, EABIVersion)
 CGOPT(DebuggerKind, DebuggerTuningOpt)
 CGOPT(bool, EnableStackSizeSection)
@@ -346,11 +346,11 @@ codegen::RegisterCodeGenFlags::RegisterCodeGenFlags() {
       cl::init(true));
   CGBINDOPT(UniqueSectionNames);
 
-  static cl::opt<bool> UniqueBBSectionNames(
+  static cl::opt<bool> UniqueBasicBlockSectionNames(
       "unique-bb-section-names",
       cl::desc("Give unique names to every basic block section"),
       cl::init(false));
-  CGBINDOPT(UniqueBBSectionNames);
+  CGBINDOPT(UniqueBasicBlockSectionNames);
 
   static cl::opt<EABI> EABIVersion(
       "meabi", cl::desc("Set EABI type (default depends on triple):"),
@@ -456,7 +456,7 @@ TargetOptions codegen::InitTargetOptionsFromCodeGenFlags() {
   Options.FunctionSections = getFunctionSections();
   Options.BBSections = getBBSectionsMode(Options);
   Options.UniqueSectionNames = getUniqueSectionNames();
-  Options.UniqueBBSectionNames = getUniqueBBSectionNames();
+  Options.UniqueBasicBlockSectionNames = getUniqueBasicBlockSectionNames();
   Options.TLSSize = getTLSSize();
   Options.EmulatedTLS = getEmulatedTLS();
   Options.ExplicitEmulatedTLS = EmulatedTLSView->getNumOccurrences() > 0;

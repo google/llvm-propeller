@@ -246,7 +246,9 @@ public:
   bool getUniqueSectionNames() const { return Options.UniqueSectionNames; }
 
   /// Return true if unique basic block section names must be generated.
-  bool getUniqueBBSectionNames() const { return Options.UniqueBBSectionNames; }
+  bool getUniqueBasicBlockSectionNames() const {
+    return Options.UniqueBasicBlockSectionNames;
+  }
 
   /// Return true if data objects should be emitted into their own section,
   /// corresponds to -fdata-sections.
