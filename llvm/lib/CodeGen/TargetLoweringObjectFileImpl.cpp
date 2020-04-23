@@ -863,27 +863,23 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
 
   // For cold sections use the .text.unlikely prefix along with the parent
   // function name. All cold blocks for the same function go to the same
-  // section. For exception blocks add a suffix to identify. For regular
-  // sections, either use a unique name, or a unique ID for the section.
+  // section. Similarly all exception blocks are grouped by symbol name
+  // under the .text.eh prefix. For regular sections, we either use a unique
+  // name, or a unique ID for the section.
   SmallString<128> Name;
   if (MBB.getSectionID() == MBBSectionID::ColdSectionID) {
     Name += ".text.unlikely.";
     Name += MBB.getParent()->getName();
+  } else if(MBB.getSectionID() == MBBSectionID::ExceptionSectionID) {
+    Name += ".text.eh.";
+    Name += MBB.getParent()->getName();
   } else {
     Name += MBB.getParent()->getSection()->getName();
-    switch (MBB.getSectionID().Type) {
-    case MBBSectionID::SectionType::Exception: {
-      Name += ".eh";
-      break;
-    }
-    default:
-      if (TM.getUniqueBBSectionNames()) {
-        Name += ".";
-        Name += MBB.getSymbol()->getName();
-      } else
-        UniqueID = NextUniqueID++;
-      break;
-    }
+    if (TM.getUniqueBasicBlockSectionNames()) {
+      Name += ".";
+      Name += MBB.getSymbol()->getName();
+    } else
+      UniqueID = NextUniqueID++;
   }
 
   unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
