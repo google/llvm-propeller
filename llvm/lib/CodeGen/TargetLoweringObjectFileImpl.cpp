@@ -870,7 +870,7 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
   if (MBB.getSectionID() == MBBSectionID::ColdSectionID) {
     Name += ".text.unlikely.";
     Name += MBB.getParent()->getName();
-  } else if(MBB.getSectionID() == MBBSectionID::ExceptionSectionID) {
+  } else if (MBB.getSectionID() == MBBSectionID::ExceptionSectionID) {
     Name += ".text.eh.";
     Name += MBB.getParent()->getName();
   } else {
