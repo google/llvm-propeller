@@ -2009,10 +2009,10 @@ def funique_section_names : Flag <["-"], "funique-section-names">,
 def fno_unique_section_names : Flag <["-"], "fno-unique-section-names">,
   Group<f_Group>, Flags<[CC1Option]>;
 
-def funique_bb_section_names : Flag <["-"], "funique-bb-section-names">,
+def funique_basic_block_section_names : Flag <["-"], "funique-basic-block-section-names">,
   Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Use unique names for basic block sections (ELF Only)">;
-def fno_unique_bb_section_names : Flag <["-"], "fno-unique-bb-section-names">,
+def fno_unique_basic_block_section_names : Flag <["-"], "fno-unique-basic-block-section-names">,
   Group<f_Group>;
 
 def funique_internal_linkage_names : Flag <["-"], "funique-internal-linkage-names">,
