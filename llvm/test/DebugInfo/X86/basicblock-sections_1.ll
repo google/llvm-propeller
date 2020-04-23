@@ -1,9 +1,6 @@
-; RUN: llc -O0 %s -mtriple=x86_64-unknown-linux-gnu -filetype=obj -o %t
-; llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=NO-NOSECTIONS %s
+; RUN: llc -O0 %s -mtriple=x86_64-unknown-linux-gnu -filetype=obj -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=NO-SECTIONS %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=obj -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
 
-; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=obj -o %t
-; llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
-; RUN: llvm-readobj --relocations %t | FileCheck --check-prefix=BB-SECTIONS-RELOCS %s
 ; From:
 ; int foo(int a) {
 ;   if (a > 20)
@@ -13,14 +10,9 @@
 ; }
 
 ; NO-SECTIONS: DW_AT_low_pc
-; NOSECTIONS: DW_AT_high_pc
+; NO-SECTIONS: DW_AT_high_pc
 ; BB-SECTIONS: DW_AT_low_pc
 ; BB-SECTIONS: DW_AT_ranges
-; BB-SECTIONS-RELOCS: R_X86_64_64 a.BB._Z3fooi
-; BB-SECTIONS-RELOCS-NEXT: R_X86_64_64
-; BB-SECTIONS-RELOCS-NEXT: R_X86_64_64 aa.BB._Z3fooi
-; BB-SECTIONS-RELOCS-NEXT: R_X86_64_64
-; BB-SECTIONS-RELOCS: R_X86_64_SIZE32
 
 source_filename = "debuginfo.cc"
 target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"

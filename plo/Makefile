@@ -150,7 +150,7 @@ bb_section_none_flags      := $(call gen_build_flags,"-funique-internal-linkage-
 bb_section_labels_align_flags    := $(call gen_build_flags,"-fpropeller-label -funique-internal-linkage-names","-fuse-ld=lld $(relocation_gen_opt) $(gc_sections_opt) $(branch_align_opt) $(keep_section_opt)")
 bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label -funique-internal-linkage-names","-fuse-ld=lld $(relocation_gen_opt) $(gc_sections_opt) $(keep_section_opt)")
 relocs_flags               := $(call gen_linker_flags,"$(relocation_gen_opt)")
-bb_section_all_flags        = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(other_opt) $(gc_sections_opt)")
+bb_section_all_flags        = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) -fbasic-block-sections=all","-fpropeller-optimize=$(1) -fbasic-block-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(other_opt) $(gc_sections_opt)")
 bb_section_list_align_flags       = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3) $(branch_align_opt)")
 bb_section_list_flags       = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3)")
 
@@ -485,7 +485,7 @@ test_exception: test_exception.cpp stage1_with_cxx_unwind-compiler
 	./stage1_with_cxx_unwind-compiler -stdlib=libc++ -L./stage1_with_cxx_unwind/install/lib -Wl,-rpath,./stage1_with_cxx_unwind/install/lib $@.s -o $@ -lc++
 
 test_exception.plo: test_exception.cpp stage1_with_cxx_unwind-compiler
-	./stage1_with_cxx_unwind-compiler -fbasicblock-sections=all -std=c++11 -nostdinc++  -I./stage1_with_cxx_unwind/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include $< -S -o $@.s
+	./stage1_with_cxx_unwind-compiler -fbasic-block-sections=all -std=c++11 -nostdinc++  -I./stage1_with_cxx_unwind/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include $< -S -o $@.s
 	./stage1_with_cxx_unwind-compiler -stdlib=libc++ -L./stage1_with_cxx_unwind/install/lib -Wl,-rpath,./stage1_with_cxx_unwind/install/lib $@.s -o $@ -lc++
 
 .phony: clean clean-all clean-sample

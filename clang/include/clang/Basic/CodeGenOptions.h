@@ -111,7 +111,7 @@ public:
   };
 
   // This field stores one of the allowed values for the option
-  // -fbasicblock-sections=.  The allowed values with this option are:
+  // -fbasic-block-sections=.  The allowed values with this option are:
   // {"labels", "all", "<filename>", "none"}.
   //
   // "labels":     Only generate basic block symbols (labels) for all basic

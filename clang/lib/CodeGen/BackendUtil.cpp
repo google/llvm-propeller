@@ -491,12 +491,15 @@ static void initTargetOptions(llvm::TargetOptions &Options,
       llvm::StringSwitch<llvm::BasicBlockSection>(CodeGenOpts.BBSections)
           .Case("all", llvm::BasicBlockSection::All)
           .Case("labels", llvm::BasicBlockSection::Labels)
+          .StartsWith("list=", llvm::BasicBlockSection::List)
           .Case("none", llvm::BasicBlockSection::None)
-          .Default(llvm::BasicBlockSection::List);
+          .Default(llvm::BasicBlockSection::Unknown);
 
+  assert(Options.BBSections != llvm::BasicBlockSection::Unknown &&
+         "Invalid Basic Block Sections Value!");
   if (Options.BBSections == llvm::BasicBlockSection::List) {
     ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
-        MemoryBuffer::getFile(CodeGenOpts.BBSections);
+        MemoryBuffer::getFile(CodeGenOpts.BBSections.substr(5));
     if (!MBOrErr)
       errs() << "Error loading basic block sections function list file: "
              << MBOrErr.getError().message() << "\n";
@@ -507,7 +510,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;
-  Options.UniqueBBSectionNames = CodeGenOpts.UniqueBBSectionNames;
+  Options.UniqueBasicBlockSectionNames =
+      CodeGenOpts.UniqueBasicBlockSectionNames;
   Options.TLSSize = CodeGenOpts.TLSSize;
   Options.EmulatedTLS = CodeGenOpts.EmulatedTLS;
   Options.ExplicitEmulatedTLS = CodeGenOpts.ExplicitEmulatedTLS;

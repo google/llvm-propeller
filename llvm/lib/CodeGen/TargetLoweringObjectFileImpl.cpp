@@ -875,7 +875,7 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
   // For regular sections, either use a unique name, or a unique ID for the
   // section.
   default:
-    if (TM.getUniqueBBSectionNames()) {
+    if (TM.getUniqueBasicBlockSectionNames()) {
       Name += ".";
       Name += MBB.getSymbol()->getName();
     } else

@@ -56,7 +56,7 @@ in ELF obejct files, does optimization at the linking phase.
 
     However, current Propeller's main optimization
     (function-splitting, function-reordering, basicblock-reordering)
-    is done via -fbasicblock-sections, which is an extension of
+    is done via -fbasic-block-sections, which is an extension of
     -ffunction-sections.
 
 # 3. Where are other propeller related files?

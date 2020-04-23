@@ -31,21 +31,26 @@ declare ALL_FILES=(
         clang-uif        clang/test/CodeGen/unique-internal-linkage-names.cpp
         clang-uif2       clang/test/CodeGen/unique-internal-linkage-names2.c
 	clang-uif        clang/test/Driver/funique-internal-linkage-names.c
-	llvm-uif         llvm/lib/Transforms/Utils/UniqueInternalLinkageNames.cpp
-	llvm-uif         llvm/lib/Transforms/Utils/Utils.cpp
-	llvm-uif         llvm/test/Transforms/UniqueInternalLinkageNames/unique_symbol_names.ll
-	llvm-uif         llvm/include/llvm/Transforms/Utils/UniqueInternalLinkageNames.h
-	llvm-uif         llvm/include/llvm/InitializePasses.h
-	llvm-uif         llvm/include/llvm/Transforms/Utils.h
-	llvm-uif         llvm/lib/Transforms/Utils/CMakeLists.txt
-	llvm-uif         llvm/utils/gn/secondary/llvm/lib/Transforms/Utils/BUILD.gn
         clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
-        clang-base       clang/test/CodeGen/basicblock-sections.c
-        clang-base       clang/test/CodeGen/basicblock-sections.funcnames
+        clang-base       clang/test/CodeGen/basic-block-sections.c
+        clang-base       clang/test/CodeGen/basic-block-sections.funcnames
 	clang-base       clang/test/Driver/funique-bb-section-names.c
-	clang-base       clang/test/Driver/fbasicblock-sections.c
+	clang-base       clang/test/Driver/fbasic-block-sections.c
+	clang-base       llvm/include/llvm/Target/TargetOptions.h
+	clang-base       llvm/include/llvm/CodeGen/Passes.h
+	clang-base       llvm/include/llvm/Target/TargetMachine.h
+	clang-base       llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+        clang-base       llvm/lib/CodeGen/CommandFlags.cpp
+        clang-base       llvm/include/llvm/CodeGen/CommandFlags.h
+	clang-base       llvm/lib/CodeGen/BBSectionsPrepare.cpp
+	clang-base       llvm/lib/CodeGen/MachineFunction.cpp
+	clang-base       lld/ELF/LTO.cpp
+	clang-base       lld/ELF/Config.h
+	clang-base       lld/ELF/Driver.cpp
+	clang-base       clang/docs/ClangCommandLineReference.rst
+	clang-base       clang/docs/UsersManual.rst
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
@@ -174,6 +179,7 @@ declare ALL_FILES=(
 
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
+        debuginfo        llvm/include/llvm/CodeGen/AsmPrinterHandler.h
         cfi              llvm/include/llvm/CodeGen/MachineBasicBlock.h
         debuginfo        llvm/include/llvm/CodeGen/DebugHandlerBase.h
         debuginfo        llvm/include/llvm/CodeGen/MachineBasicBlock.h

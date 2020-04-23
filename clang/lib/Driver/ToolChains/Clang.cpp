@@ -2505,7 +2505,7 @@ static void CollectArgsForIntegratedAssembler(Compilation &C,
   // Basic Block Sections needs relocations via symbols for linker to do
   // relaxation easily.
   auto BBSections =
-      Args.getLastArgValue(options::OPT_fbasicblock_sections_EQ, "none");
+      Args.getLastArgValue(options::OPT_fbasic_block_sections_EQ, "none");
 
   if (BBSections != "none" && BBSections != "labels")
     CmdArgs.push_back("-mrelocate-with-symbols");
@@ -4261,13 +4261,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         options::OPT_fno_function_sections,
         options::OPT_fdata_sections,
         options::OPT_fno_data_sections,
-        options::OPT_fbasicblock_sections_EQ,
+        options::OPT_fbasic_block_sections_EQ,
         options::OPT_funique_internal_linkage_names,
         options::OPT_fno_unique_internal_linkage_names,
         options::OPT_funique_section_names,
         options::OPT_fno_unique_section_names,
-        options::OPT_funique_bb_section_names,
-        options::OPT_fno_unique_bb_section_names,
+        options::OPT_funique_basic_block_section_names,
+        options::OPT_fno_unique_basic_block_section_names,
         options::OPT_mrestrict_it,
         options::OPT_mno_restrict_it,
         options::OPT_mstackrealign,
@@ -4876,21 +4876,21 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
          Args.getLastArg(options::OPT_funique_internal_linkage_names,
                          options::OPT_fno_unique_internal_linkage_names));
     if (A->getOption().matches(options::OPT_fpropeller_optimize_EQ)) {
-      CmdArgs.push_back(
-          Args.MakeArgString(Twine("-fbasicblock-sections=") + A->getValue()));
+      CmdArgs.push_back(Args.MakeArgString(
+          Twine("-fbasic-block-sections=list=") + A->getValue()));
       if (NeedExplicitUniqueInternalLinkageNames)
         CmdArgs.push_back("-funique-internal-linkage-names");
     } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
-      CmdArgs.push_back("-fbasicblock-sections=labels");
+      CmdArgs.push_back("-fbasic-block-sections=labels");
       if (NeedExplicitUniqueInternalLinkageNames)
         CmdArgs.push_back("-funique-internal-linkage-names");
     }
   }
 
-  if (Arg *A = Args.getLastArg(options::OPT_fbasicblock_sections_EQ)) {
+  if (Arg *A = Args.getLastArg(options::OPT_fbasic_block_sections_EQ)) {
     StringRef Val = A->getValue();
     if (Val != "all" && Val != "labels" && Val != "none" &&
-        !llvm::sys::fs::exists(Val))
+        !(Val.startswith("list=") && llvm::sys::fs::exists(Val.substr(5))))
       D.Diag(diag::err_drv_invalid_value)
           << A->getAsString(Args) << A->getValue();
     else
@@ -4910,9 +4910,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    options::OPT_fno_unique_internal_linkage_names, false))
     CmdArgs.push_back("-funique-internal-linkage-names");
 
-  if (Args.hasFlag(options::OPT_funique_bb_section_names,
-                   options::OPT_fno_unique_bb_section_names, false))
-    CmdArgs.push_back("-funique-bb-section-names");
+  if (Args.hasFlag(options::OPT_funique_basic_block_section_names,
+                   options::OPT_fno_unique_basic_block_section_names, false))
+    CmdArgs.push_back("-funique-basic-block-section-names");
 
   Args.AddLastArg(CmdArgs, options::OPT_finstrument_functions,
                   options::OPT_finstrument_functions_after_inlining,
