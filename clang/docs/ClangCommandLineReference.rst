@@ -2739,6 +2739,8 @@ Specify bit size of immediate TLS offsets (AArch64 ELF only): 12 (for 4KB) \| 24
 .. option:: -mtune=<arg>
 .. program:: clang
 
+Accepted for compatibility with GCC. Currently has no effect.
+
 .. option:: -mtvos-version-min=<arg>, -mappletvos-version-min=<arg>
 
 .. option:: -municode<arg>
@@ -2977,6 +2979,11 @@ Enable MT ASE (MIPS only)
 
 PowerPC
 -------
+.. option:: -maix-struct-return
+
+Override the default ABI for 32-bit targets to return all structs in memory,
+as in the Power 32-bit ABI for Linux (2011), and on AIX and Darwin.
+
 .. option:: -maltivec, -mno-altivec
 
 .. option:: -mcmpb, -mno-cmpb
@@ -3012,6 +3019,11 @@ PowerPC
 .. option:: -msecure-plt
 
 .. option:: -mspe, -mno-spe
+
+.. option:: -msvr4-struct-return
+
+Override the default ABI for 32-bit targets to return small structs in
+registers, as in the System V ABI (1995).
 
 .. option:: -mvsx, -mno-vsx
 

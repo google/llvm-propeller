@@ -28772,8 +28772,7 @@ static SDValue LowerMLOAD(SDValue Op, const X86Subtarget &Subtarget,
         N->getMemOperand(), N->getAddressingMode(), N->getExtensionType(),
         N->isExpandingLoad());
     // Emit a blend.
-    SDValue Select = DAG.getNode(ISD::VSELECT, dl, MaskVT, Mask, NewLoad,
-                                 PassThru);
+    SDValue Select = DAG.getNode(ISD::VSELECT, dl, VT, Mask, NewLoad, PassThru);
     return DAG.getMergeValues({ Select, NewLoad.getValue(1) }, dl);
   }
 
@@ -28809,10 +28808,10 @@ static SDValue LowerMLOAD(SDValue Op, const X86Subtarget &Subtarget,
       PassThru, N->getMemoryVT(), N->getMemOperand(), N->getAddressingMode(),
       N->getExtensionType(), N->isExpandingLoad());
 
-  SDValue Exract = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, VT,
-                               NewLoad.getValue(0),
-                               DAG.getIntPtrConstant(0, dl));
-  SDValue RetOps[] = {Exract, NewLoad.getValue(1)};
+  SDValue Extract =
+      DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, VT, NewLoad.getValue(0),
+                  DAG.getIntPtrConstant(0, dl));
+  SDValue RetOps[] = {Extract, NewLoad.getValue(1)};
   return DAG.getMergeValues(RetOps, dl);
 }
 
@@ -31495,8 +31494,7 @@ X86TargetLowering::EmitLoweredSelect(MachineInstr &MI,
            (NextMIIt->getOperand(3).getImm() == CC ||
             NextMIIt->getOperand(3).getImm() == OppCC)) {
       LastCMOV = &*NextMIIt;
-      ++NextMIIt;
-      NextMIIt = skipDebugInstructionsForward(NextMIIt, ThisMBB->end());
+      NextMIIt = next_nodbg(NextMIIt, ThisMBB->end());
     }
   }
 
@@ -47304,9 +47302,11 @@ static SDValue combineExtInVec(SDNode *N, SelectionDAG &DAG,
     auto *Ld = cast<LoadSDNode>(In);
     if (Ld->isSimple()) {
       MVT SVT = In.getSimpleValueType().getVectorElementType();
-      ISD::LoadExtType Ext = N->getOpcode() == ISD::SIGN_EXTEND_VECTOR_INREG ? ISD::SEXTLOAD : ISD::ZEXTLOAD;
-      EVT MemVT = EVT::getVectorVT(*DAG.getContext(), SVT,
-                                   VT.getVectorNumElements());
+      ISD::LoadExtType Ext = N->getOpcode() == ISD::SIGN_EXTEND_VECTOR_INREG
+                                 ? ISD::SEXTLOAD
+                                 : ISD::ZEXTLOAD;
+      EVT MemVT =
+          EVT::getVectorVT(*DAG.getContext(), SVT, VT.getVectorNumElements());
       if (TLI.isLoadExtLegal(Ext, VT, MemVT)) {
         SDValue Load =
             DAG.getExtLoad(Ext, SDLoc(N), VT, Ld->getChain(), Ld->getBasePtr(),

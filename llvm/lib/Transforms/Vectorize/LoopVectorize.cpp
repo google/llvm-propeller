@@ -407,7 +407,8 @@ public:
   BasicBlock *createVectorizedLoopSkeleton();
 
   /// Widen a single instruction within the innermost loop.
-  void widenInstruction(Instruction &I);
+  void widenInstruction(Instruction &I, VPUser &Operands,
+                        VPTransformState &State);
 
   /// Widen a single call instruction within the innermost loop.
   void widenCallInstruction(CallInst &I, VPUser &ArgOperands,
@@ -4231,7 +4232,8 @@ static bool mayDivideByZero(Instruction &I) {
   return !CInt || CInt->isZero();
 }
 
-void InnerLoopVectorizer::widenInstruction(Instruction &I) {
+void InnerLoopVectorizer::widenInstruction(Instruction &I, VPUser &User,
+                                           VPTransformState &State) {
   switch (I.getOpcode()) {
   case Instruction::Call:
   case Instruction::Br:
@@ -4263,8 +4265,8 @@ void InnerLoopVectorizer::widenInstruction(Instruction &I) {
 
     for (unsigned Part = 0; Part < UF; ++Part) {
       SmallVector<Value *, 2> Ops;
-      for (Value *Op : I.operands())
-        Ops.push_back(getOrCreateVectorValue(Op, Part));
+      for (VPValue *VPOp : User.operands())
+        Ops.push_back(State.get(VPOp, Part));
 
       Value *V = Builder.CreateNAryOp(I.getOpcode(), Ops);
 
@@ -4285,8 +4287,8 @@ void InnerLoopVectorizer::widenInstruction(Instruction &I) {
     auto *Cmp = cast<CmpInst>(&I);
     setDebugLocFromInst(Builder, Cmp);
     for (unsigned Part = 0; Part < UF; ++Part) {
-      Value *A = getOrCreateVectorValue(Cmp->getOperand(0), Part);
-      Value *B = getOrCreateVectorValue(Cmp->getOperand(1), Part);
+      Value *A = State.get(User.getOperand(0), Part);
+      Value *B = State.get(User.getOperand(1), Part);
       Value *C = nullptr;
       if (FCmp) {
         // Propagate fast math flags.
@@ -4323,7 +4325,7 @@ void InnerLoopVectorizer::widenInstruction(Instruction &I) {
         (VF == 1) ? CI->getType() : VectorType::get(CI->getType(), VF);
 
     for (unsigned Part = 0; Part < UF; ++Part) {
-      Value *A = getOrCreateVectorValue(CI->getOperand(0), Part);
+      Value *A = State.get(User.getOperand(0), Part);
       Value *Cast = Builder.CreateCast(CI->getOpcode(), A, DestTy);
       VectorLoopValueMap.setVectorValue(&I, Part, Cast);
       addMetadata(Cast, &I);
@@ -6850,7 +6852,7 @@ VPRecipeBuilder::tryToWidenMemory(Instruction *I, VFRange &Range,
 }
 
 VPWidenIntOrFpInductionRecipe *
-VPRecipeBuilder::tryToOptimizeInductionPHI(PHINode *Phi) {
+VPRecipeBuilder::tryToOptimizeInductionPHI(PHINode *Phi) const {
   // Check if this is an integer or fp induction. If so, build the recipe that
   // produces its scalar and vector values.
   InductionDescriptor II = Legal->getInductionVars().lookup(Phi);
@@ -6862,7 +6864,8 @@ VPRecipeBuilder::tryToOptimizeInductionPHI(PHINode *Phi) {
 }
 
 VPWidenIntOrFpInductionRecipe *
-VPRecipeBuilder::tryToOptimizeInductionTruncate(TruncInst *I, VFRange &Range) {
+VPRecipeBuilder::tryToOptimizeInductionTruncate(TruncInst *I,
+                                                VFRange &Range) const {
   // Optimize the special case where the source is a constant integer
   // induction variable. Notice that we can only optimize the 'trunc' case
   // because (a) FP conversions lose precision, (b) sext/zext may wrap, and
@@ -6905,7 +6908,7 @@ VPBlendRecipe *VPRecipeBuilder::tryToBlend(PHINode *Phi, VPlanPtr &Plan) {
 }
 
 VPWidenCallRecipe *VPRecipeBuilder::tryToWidenCall(CallInst *CI, VFRange &Range,
-                                                   VPlan &Plan) {
+                                                   VPlan &Plan) const {
 
   bool IsPredicated = LoopVectorizationPlanner::getDecisionAndClampRange(
       [this, CI](unsigned VF) { return CM.isScalarWithPredication(CI, VF); },
@@ -6935,12 +6938,7 @@ VPWidenCallRecipe *VPRecipeBuilder::tryToWidenCall(CallInst *CI, VFRange &Range,
   if (!LoopVectorizationPlanner::getDecisionAndClampRange(willWiden, Range))
     return nullptr;
 
-  // Success: widen this call.
-  auto VPValues = map_range(CI->arg_operands(), [&Plan](Value *Op) {
-    return Plan.getOrAddVPValue(Op);
-  });
-
-  return new VPWidenCallRecipe(*CI, VPValues);
+  return new VPWidenCallRecipe(*CI, Plan.mapToVPValues(CI->arg_operands()));
 }
 
 bool VPRecipeBuilder::shouldWiden(Instruction *I, VFRange &Range) const {
@@ -6957,7 +6955,7 @@ bool VPRecipeBuilder::shouldWiden(Instruction *I, VFRange &Range) const {
                                                              Range);
 }
 
-VPWidenRecipe *VPRecipeBuilder::tryToWiden(Instruction *I, VPlan &Plan) {
+VPWidenRecipe *VPRecipeBuilder::tryToWiden(Instruction *I, VPlan &Plan) const {
   auto IsVectorizableOpcode = [](unsigned Opcode) {
     switch (Opcode) {
     case Instruction::Add:
@@ -7003,7 +7001,7 @@ VPWidenRecipe *VPRecipeBuilder::tryToWiden(Instruction *I, VPlan &Plan) {
     return nullptr;
 
   // Success: widen this instruction.
-  return new VPWidenRecipe(*I);
+  return new VPWidenRecipe(*I, Plan.mapToVPValues(I->operands()));
 }
 
 VPBasicBlock *VPRecipeBuilder::handleReplication(
@@ -7410,7 +7408,7 @@ void VPWidenSelectRecipe::execute(VPTransformState &State) {
 }
 
 void VPWidenRecipe::execute(VPTransformState &State) {
-  State.ILV->widenInstruction(Ingredient);
+  State.ILV->widenInstruction(Ingredient, User, State);
 }
 
 void VPWidenGEPRecipe::execute(VPTransformState &State) {

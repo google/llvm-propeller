@@ -11,7 +11,6 @@
 #include "llvm/Analysis/LoopIterator.h"
 #include "llvm/Analysis/TargetTransformInfoImpl.h"
 #include "llvm/IR/CFG.h"
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
@@ -144,13 +143,6 @@ TargetTransformInfo::TargetTransformInfo(TargetTransformInfo &&Arg)
 TargetTransformInfo &TargetTransformInfo::operator=(TargetTransformInfo &&RHS) {
   TTIImpl = std::move(RHS.TTIImpl);
   return *this;
-}
-
-int TargetTransformInfo::getOperationCost(unsigned Opcode, Type *Ty,
-                                          Type *OpTy) const {
-  int Cost = TTIImpl->getOperationCost(Opcode, Ty, OpTy);
-  assert(Cost >= 0 && "TTI should not produce negative costs!");
-  return Cost;
 }
 
 unsigned TargetTransformInfo::getInliningThresholdMultiplier() const {

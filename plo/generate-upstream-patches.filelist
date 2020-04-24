@@ -176,7 +176,13 @@ declare ALL_FILES=(
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-cold.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-list.ll
-
+#
+        coldprefix   llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters-branches.ll
+        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
+        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters-eh.ll
+        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-cold.ll
+#
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
         debuginfo        llvm/include/llvm/CodeGen/AsmPrinterHandler.h
@@ -222,4 +228,6 @@ declare ALL_FILES=(
 # Double check:
         /dev/null        llvm/lib/IR/Mangler.cpp
 	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
+# This test was not committed as part of https://reviews.llvm.org/rG05192e585ce175b55f2a26b83b4ed7882785c8e6 
+        /dev/null llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
     )
