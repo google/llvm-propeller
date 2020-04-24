@@ -180,6 +180,7 @@ declare ALL_FILES=(
         coldprefix   llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
         coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters-branches.ll
         coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
+        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters-eh.ll
         coldprefix   llvm/test/CodeGen/X86/basicblock-sections-cold.ll
 #
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h

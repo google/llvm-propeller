@@ -878,8 +878,9 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
     if (TM.getUniqueBasicBlockSectionNames()) {
       Name += ".";
       Name += MBB.getSymbol()->getName();
-    } else
+    } else {
       UniqueID = NextUniqueID++;
+    }
   }
 
   unsigned Flags = ELF::SHF_ALLOC | ELF::SHF_EXECINSTR;
