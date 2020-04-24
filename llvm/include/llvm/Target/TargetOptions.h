@@ -59,7 +59,6 @@ namespace llvm {
   }
 
   enum class BasicBlockSection {
-    Unknown,
     All,    // Use Basic Block Sections for all basic blocks.  A section
             // for every basic block can significantly bloat object file sizes.
     List,   // Get list of functions & BBs from a file. Selectively enables

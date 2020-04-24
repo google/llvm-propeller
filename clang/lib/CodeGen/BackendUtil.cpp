@@ -493,10 +493,8 @@ static void initTargetOptions(llvm::TargetOptions &Options,
           .Case("labels", llvm::BasicBlockSection::Labels)
           .StartsWith("list=", llvm::BasicBlockSection::List)
           .Case("none", llvm::BasicBlockSection::None)
-          .Default(llvm::BasicBlockSection::Unknown);
+          .Default(llvm::BasicBlockSection::None);
 
-  assert(Options.BBSections != llvm::BasicBlockSection::Unknown &&
-         "Invalid Basic Block Sections Value!");
   if (Options.BBSections == llvm::BasicBlockSection::List) {
     ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
         MemoryBuffer::getFile(CodeGenOpts.BBSections.substr(5));

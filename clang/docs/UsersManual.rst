@@ -1704,7 +1704,7 @@ are listed below.
   values "all" and "list=arg", each basic block or a subset of basic blocks
   can be placed in its own unique section.
 
-  Basic block sections allows the linker to reorder basic blocks which enables
+  Basic block sections allow the linker to reorder basic blocks and enables
   link-time optimizations like whole program inter-procedural basic block
   reordering.
 
