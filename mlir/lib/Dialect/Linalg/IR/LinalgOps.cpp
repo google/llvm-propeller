@@ -554,7 +554,7 @@ computeTensorReshapeCollapsedType(RankedTensorType type,
   unsigned currentDim = 0;
   for (AffineMap m : reassociation) {
     unsigned dim = m.getNumResults();
-    auto band = shape.drop_front(currentDim).take_front(dim);
+    auto band = shape.slice(currentDim, dim);
     int64_t size = 1;
     if (llvm::is_contained(band, ShapedType::kDynamicSize))
       size = ShapedType::kDynamicSize;
@@ -679,6 +679,8 @@ static LogicalResult verify(SliceOp op) {
                             << ") to be the number of ranges(" << rank << ")";
   return success();
 }
+
+Value SliceOp::getViewSource() { return view(); }
 
 //===----------------------------------------------------------------------===//
 // TransposeOp

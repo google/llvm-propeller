@@ -24,6 +24,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/GuardUtils.h"
 #include "llvm/Analysis/InstructionSimplify.h"
@@ -34,7 +35,6 @@
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Constants.h"
@@ -168,7 +168,7 @@ static bool getShuffleDemandedElts(const ShuffleVectorInst *Shuf,
                                    APInt &DemandedLHS, APInt &DemandedRHS) {
   // The length of scalable vectors is unknown at compile time, thus we
   // cannot check their values
-  if (Shuf->getType()->isScalable())
+  if (isa<ScalableVectorType>(Shuf->getType()))
     return false;
 
   int NumElts =
@@ -688,6 +688,16 @@ static bool isKnownNonZeroFromAssume(const Value *V, const Query &Q) {
         ConstantRange::makeAllowedICmpRegion(Pred, RHSRange);
     return !TrueValues.contains(APInt::getNullValue(CI->getBitWidth()));
   };
+
+  if (Q.CxtI && V->getType()->isPointerTy()) {
+    SmallVector<Attribute::AttrKind, 2> AttrKinds{Attribute::NonNull};
+    if (!NullPointerIsDefined(Q.CxtI->getFunction(),
+                              V->getType()->getPointerAddressSpace()))
+      AttrKinds.push_back(Attribute::Dereferenceable);
+
+    if (getKnowledgeValidInContext(V, AttrKinds, Q.CxtI, Q.DT, Q.AC))
+      return true;
+  }
 
   for (auto &AssumeVH : Q.AC->assumptionsFor(V)) {
     if (!AssumeVH)
@@ -1618,7 +1628,7 @@ static void computeKnownBitsFromOperator(const Operator *I,
     if (MDNode *MD =
             Q.IIQ.getMetadata(cast<Instruction>(I), LLVMContext::MD_range))
       computeKnownBitsFromRangeMetadata(*MD, Known);
-    if (const Value *RV = ImmutableCallSite(I).getReturnedArgOperand()) {
+    if (const Value *RV = cast<CallBase>(I)->getReturnedArgOperand()) {
       computeKnownBits(RV, Known2, Depth + 1, Q);
       Known.Zero |= Known2.Zero;
       Known.One |= Known2.One;
@@ -2169,11 +2179,11 @@ static bool isKnownNonNullFromDominatingCondition(const Value *V,
 
     // If the value is used as an argument to a call or invoke, then argument
     // attributes may provide an answer about null-ness.
-    if (auto CS = ImmutableCallSite(U))
-      if (auto *CalledFunc = CS.getCalledFunction())
+    if (const auto *CB = dyn_cast<CallBase>(U))
+      if (auto *CalledFunc = CB->getCalledFunction())
         for (const Argument &Arg : CalledFunc->args())
-          if (CS.getArgOperand(Arg.getArgNo()) == V &&
-              Arg.hasNonNullAttr() && DT->dominates(CS.getInstruction(), CtxI))
+          if (CB->getArgOperand(Arg.getArgNo()) == V &&
+              Arg.hasNonNullAttr() && DT->dominates(CB, CtxI))
             return true;
 
     // If the value is used as a load/store, then the pointer must be non null.
@@ -2907,7 +2917,11 @@ static unsigned ComputeNumSignBitsImpl(const Value *V,
     case Instruction::ShuffleVector: {
       // Collect the minimum number of sign bits that are shared by every vector
       // element referenced by the shuffle.
-      auto *Shuf = cast<ShuffleVectorInst>(U);
+      auto *Shuf = dyn_cast<ShuffleVectorInst>(U);
+      if (!Shuf) {
+        // FIXME: Add support for shufflevector constant expressions.
+        return 1;
+      }
       APInt DemandedLHS, DemandedRHS;
       // For undef elements, we don't know anything about the common state of
       // the shuffle result.
@@ -4642,7 +4656,7 @@ bool llvm::canCreatePoison(const Instruction *I) {
   case Instruction::CallBr:
   case Instruction::Invoke:
     // Function calls can return a poison value even if args are non-poison
-    // values. CallBr returns poison when jumping to indirect labels.
+    // values.
     return true;
   case Instruction::InsertElement:
   case Instruction::ExtractElement: {
@@ -4789,14 +4803,14 @@ bool llvm::isGuaranteedToTransferExecutionToSuccessor(const Instruction *I) {
     return false;
 
   // Calls can throw, or contain an infinite loop, or kill the process.
-  if (auto CS = ImmutableCallSite(I)) {
+  if (const auto *CB = dyn_cast<CallBase>(I)) {
     // Call sites that throw have implicit non-local control flow.
-    if (!CS.doesNotThrow())
+    if (!CB->doesNotThrow())
       return false;
 
     // A function which doens't throw and has "willreturn" attribute will
     // always return.
-    if (CS.hasFnAttr(Attribute::WillReturn))
+    if (CB->hasFnAttr(Attribute::WillReturn))
       return true;
 
     // Non-throwing call sites can loop infinitely, call exit/pthread_exit
@@ -4815,7 +4829,7 @@ bool llvm::isGuaranteedToTransferExecutionToSuccessor(const Instruction *I) {
 
     // FIXME: This isn't aggressive enough; a call which only writes to a global
     // is guaranteed to return.
-    return CS.onlyReadsMemory() || CS.onlyAccessesArgMemory();
+    return CB->onlyReadsMemory() || CB->onlyAccessesArgMemory();
   }
 
   // Other instructions return normally.
