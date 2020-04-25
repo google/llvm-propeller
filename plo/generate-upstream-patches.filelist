@@ -185,30 +185,33 @@ declare ALL_FILES=(
 #
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
+        debuginfo        llvm/include/llvm/CodeGen/AsmPrinter.h
+        debuginfo        llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
         debuginfo        llvm/include/llvm/CodeGen/AsmPrinterHandler.h
-        cfi              llvm/include/llvm/CodeGen/MachineBasicBlock.h
         debuginfo        llvm/include/llvm/CodeGen/DebugHandlerBase.h
-        debuginfo        llvm/include/llvm/CodeGen/MachineBasicBlock.h
+        debuginfo_2      llvm/include/llvm/CodeGen/MachineBasicBlock.h
+        debuginfo_2      llvm/include/llvm/MC/MCAsmInfo.h
+        debuginfo        llvm/lib/CodeGen/AsmPrinter/DebugHandlerBase.cpp
+        debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfCompileUnit.cpp
+        debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfDebug.cpp
+        debuginfo_2      llvm/lib/MC/ELFObjectWriter.cpp
+        debuginfo_2      llvm/lib/MC/MCDwarf.cpp
+        debuginfo        llvm/test/DebugInfo/X86/basicblock-sections_1.ll
+        cfi              llvm/include/llvm/CodeGen/MachineBasicBlock.h
         cfi              llvm/include/llvm/CodeGen/TargetFrameLowering.h
-        debuginfo        llvm/include/llvm/MC/MCAsmInfo.h
         cfi              llvm/include/llvm/MC/MCDwarf.h
         exception        llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
         cfi              llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-        debuginfo        llvm/lib/CodeGen/AsmPrinter/DebugHandlerBase.cpp
         debugassert      llvm/lib/CodeGen/AsmPrinter/DebugLocStream.h
         cfi              llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
-        debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfCompileUnit.cpp
-        debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfDebug.cpp
         cfi              llvm/lib/CodeGen/AsmPrinter/DwarfException.h
         exception        llvm/lib/CodeGen/AsmPrinter/EHStreamer.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/EHStreamer.h
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.h
         cfi              llvm/lib/CodeGen/CFIInstrInserter.cpp
-        debuginfo        llvm/lib/MC/ELFObjectWriter.cpp
         cfi              llvm/lib/MC/MCDwarf.cpp
-        debuginfo        llvm/lib/MC/MCDwarf.cpp
 	base_propeller   llvm/include/llvm/ProfileData/BBSectionsProf.h
         cfi              llvm/lib/Target/AArch64/AArch64FrameLowering.h
         #base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
@@ -218,7 +221,6 @@ declare ALL_FILES=(
 	exception        llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
         cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfi.ll
         cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfiinstr.ll
-        debuginfo        llvm/test/DebugInfo/X86/basicblock-sections_1.ll
 #
         /dev/null        lld/CMakeLists.txt
         /dev/null        lld/tools/report-size/CMakeLists.txt
