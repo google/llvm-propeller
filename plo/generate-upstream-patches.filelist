@@ -189,7 +189,7 @@ declare ALL_FILES=(
         debuginfo        llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
         debuginfo        llvm/include/llvm/CodeGen/AsmPrinterHandler.h
         debuginfo        llvm/include/llvm/CodeGen/DebugHandlerBase.h
-        debuginfo_2      llvm/include/llvm/CodeGen/MachineBasicBlock.h
+        debuginfo        llvm/include/llvm/CodeGen/MachineBasicBlock.h
         debuginfo_2      llvm/include/llvm/MC/MCAsmInfo.h
         debuginfo        llvm/lib/CodeGen/AsmPrinter/DebugHandlerBase.cpp
         debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfCompileUnit.cpp
