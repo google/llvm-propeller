@@ -64,15 +64,13 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
 
     // We emit a non-temporary symbol for every basic block if we have BBLabels
     // or -- with basic block sections -- when a basic block begins a section.
-    bool BasicBlockSymbols = isBeginSection() || MF->hasBBLabels();
-    auto Delimiter = BasicBlockSymbols ? "." : "_";
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
 
     // With Basic Block Sections, we emit a symbol for every basic block. To
     // keep the size of strtab small, we choose a unary encoding which can
     // compress the symbol names significantly.  The basic blocks for function
     // foo are named a.BB.foo, aa.BB.foo, and so on.
-    if (BasicBlockSymbols) {
+    if (MF->hasBBLabels()) {
       auto Iter = MF->getBBSectionsSymbolPrefix().begin();
       if (getNumber() < 0 ||
           getNumber() >= (int)MF->getBBSectionsSymbolPrefix().size())
@@ -80,12 +78,21 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
       std::string Prefix(Iter + 1, Iter + getNumber() + 1);
       std::reverse(Prefix.begin(), Prefix.end());
       CachedMCSymbol =
-          Ctx.getOrCreateSymbol(Prefix + Twine(Delimiter) + "BB" +
-                                Twine(Delimiter) + Twine(MF->getName()));
+          Ctx.getOrCreateSymbol(Prefix + Twine(".BB.") + Twine(MF->getName()));
+    } else if(MF->hasBBSections() && isBeginSection()) {
+      SmallString<5> Suffix;
+      if(SectionID == MBBSectionID::ColdSectionID) {
+        Suffix += ".cold";
+      } else if(SectionID == MBBSectionID::ExceptionSectionID) {
+        Suffix += ".eh";
+      } else {
+        Suffix += "." + std::to_string(SectionID.Number);  
+      }
+      CachedMCSymbol = Ctx.getOrCreateSymbol(getParent()->getName() + Suffix);
     } else {
       CachedMCSymbol = Ctx.getOrCreateSymbol(
           Twine(Prefix) + "BB" + Twine(MF->getFunctionNumber()) +
-          Twine(Delimiter) + Twine(getNumber()));
+          Twine("_") + Twine(getNumber()));
     }
   }
   return CachedMCSymbol;
