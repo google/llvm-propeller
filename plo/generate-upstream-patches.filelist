@@ -177,11 +177,23 @@ declare ALL_FILES=(
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-list.ll
 #
-        coldprefix   llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
-        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters-branches.ll
-        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
-        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-clusters-eh.ll
-        coldprefix   llvm/test/CodeGen/X86/basicblock-sections-cold.ll
+  descsym    llvm/lib/CodeGen/MachineBasicBlock.cpp
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-clusters-branches.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-clusters-eh.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-cold.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-eh.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-list.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-listbb.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-mir-parse.mir
+  descsym    llvm/test/CodeGen/X86/basicblock-sections.ll
+#
+  funcsplit    llvm/include/llvm/CodeGen/BasicBlockSectionUtils.h
+  funcsplit    llvm/include/llvm/InitializePasses.h
+  funcsplit    llvm/lib/CodeGen/CMakeLists.txt
+  funcsplit    llvm/lib/CodeGen/MachineFunctionSplitter.cpp
+  funcsplit    llvm/lib/CodeGen/TargetPassConfig.cpp
 #
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h

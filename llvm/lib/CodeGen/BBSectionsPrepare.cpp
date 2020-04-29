@@ -69,13 +69,13 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/CodeGen/BasicBlockSectionUtils.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/InitializePasses.h"
-#include "llvm/CodeGen/BasicBlockSectionUtils.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/LineIterator.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -227,9 +227,9 @@ static bool getBBClusterInfoForFunction(
 // and "Cold" succeeding all other clusters.
 // FuncBBClusterInfo represent the cluster information for basic blocks. If this
 // is empty, it means unique sections for all basic blocks in the function.
-static void assignSections(
-    MachineFunction &MF,
-    const std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
+static void
+assignSections(MachineFunction &MF,
+               const std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
   assert(MF.hasBBSections() && "BB Sections is not set for function.");
   // This variable stores the section ID of the cluster containing eh_pads (if
   // all eh_pads are one cluster). If more than one cluster contain eh_pads, we
@@ -275,7 +275,8 @@ static void assignSections(
 }
 
 // This function is exposed externally by BasicBlockSectionUtils.h
-void llvm::sortBasicBlocksAndUpdateBranches(MachineFunction& MF, MachineBasicBlockComparator MBBCmp) { 
+void llvm::sortBasicBlocksAndUpdateBranches(
+    MachineFunction &MF, MachineBasicBlockComparator MBBCmp) {
   SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(
       MF.getNumBlockIDs());
   for (auto &MBB : MF)
@@ -340,7 +341,8 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   // contiguous and ordered accordingly. Furthermore, clusters are ordered in
   // increasing order of their section IDs, with the exception and the
   // cold section placed at the end of the function.
-  auto Comparator = [&](const MachineBasicBlock &X, const MachineBasicBlock &Y) {
+  auto Comparator = [&](const MachineBasicBlock &X,
+                        const MachineBasicBlock &Y) {
     auto XSectionID = X.getSectionID();
     auto YSectionID = Y.getSectionID();
     if (XSectionID != YSectionID)

@@ -49,8 +49,8 @@ namespace llvm {
   /// block ids to selectively enable basic block sections.
   MachineFunctionPass *createBBSectionsPreparePass(const MemoryBuffer *Buf);
 
-  /// createMachineFunctionSplitterPass - This pass splits machine functions using
-  /// profile information.
+  /// createMachineFunctionSplitterPass - This pass splits machine functions
+  /// using profile information.
   MachineFunctionPass *createMachineFunctionSplitterPass();
 
   /// MachineFunctionPrinter pass - This pass prints out the machine function to

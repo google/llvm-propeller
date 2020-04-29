@@ -81,20 +81,20 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
       std::reverse(Prefix.begin(), Prefix.end());
       CachedMCSymbol =
           Ctx.getOrCreateSymbol(Prefix + Twine(".BB.") + Twine(MF->getName()));
-    } else if(MF->hasBBSections() && isBeginSection()) {
+    } else if (MF->hasBBSections() && isBeginSection()) {
       SmallString<5> Suffix;
-      if(SectionID == MBBSectionID::ColdSectionID) {
+      if (SectionID == MBBSectionID::ColdSectionID) {
         Suffix += ".cold";
-      } else if(SectionID == MBBSectionID::ExceptionSectionID) {
+      } else if (SectionID == MBBSectionID::ExceptionSectionID) {
         Suffix += ".eh";
       } else {
         Suffix += "." + std::to_string(SectionID.Number);
       }
       CachedMCSymbol = Ctx.getOrCreateSymbol(getParent()->getName() + Suffix);
     } else {
-      CachedMCSymbol = Ctx.getOrCreateSymbol(
-          Twine(Prefix) + "BB" + Twine(MF->getFunctionNumber()) +
-          Twine("_") + Twine(getNumber()));
+      CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
+                                             Twine(MF->getFunctionNumber()) +
+                                             Twine("_") + Twine(getNumber()));
     }
   }
   return CachedMCSymbol;

@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #ifndef LLVM_CODEGEN_BASICBLOCKSECTIONUTILS_H
 #define LLVM_CODEGEN_BASICBLOCKSECTIONUTILS_H
 
@@ -17,10 +16,11 @@ namespace llvm {
 class MachineFunction;
 class MachineBasicBlock;
 
-using MachineBasicBlockComparator = 
-  function_ref<bool(const MachineBasicBlock&, const MachineBasicBlock&)>;
+using MachineBasicBlockComparator =
+    function_ref<bool(const MachineBasicBlock &, const MachineBasicBlock &)>;
 
-void sortBasicBlocksAndUpdateBranches(MachineFunction& MF,  MachineBasicBlockComparator MBBCmp);
+void sortBasicBlocksAndUpdateBranches(MachineFunction &MF,
+                                      MachineBasicBlockComparator MBBCmp);
 
 } // end namespace llvm
 
