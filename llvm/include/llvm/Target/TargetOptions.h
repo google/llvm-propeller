@@ -126,6 +126,7 @@ namespace llvm {
           TrapUnreachable(false), NoTrapAfterNoreturn(false), TLSSize(0),
           EmulatedTLS(false), ExplicitEmulatedTLS(false), EnableIPRA(false),
           EmitStackSizeSection(false), EnableMachineOutliner(false),
+          EnableMachineFunctionSplitter(false),
           SupportsDefaultOutlining(false), EmitAddrsig(false),
           EmitCallSiteInfo(false), SupportsDebugEntryValues(false),
           EnableDebugEntryValues(false), ForceDwarfFrameSection(false),
@@ -262,6 +263,9 @@ namespace llvm {
 
     /// Enables the MachineOutliner pass.
     unsigned EnableMachineOutliner : 1;
+
+    /// Enables the MachineFunctionSplitter pass.
+    unsigned EnableMachineFunctionSplitter : 1;
 
     /// Set if the target supports default outlining behaviour.
     unsigned SupportsDefaultOutlining : 1;

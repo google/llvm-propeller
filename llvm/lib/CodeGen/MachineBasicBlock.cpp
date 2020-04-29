@@ -62,19 +62,21 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     MCContext &Ctx = MF->getContext();
     auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
 
-    // We emit a non-temporary symbol for every basic block if we have BBLabels
-    // or -- with basic block sections -- when a basic block begins a section.
     assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
 
-    // With Basic Block Sections, we emit a symbol for every basic block. To
-    // keep the size of strtab small, we choose a unary encoding which can
-    // compress the symbol names significantly.  The basic blocks for function
-    // foo are named a.BB.foo, aa.BB.foo, and so on.
+    // We emit a non-temporary symbol for every basic block if we have BBLabels
+    // or -- with basic block sections -- when a basic block begins a section.
+    // With basic block symbols, we use a unary encoding which can
+    // compress the symbol names significantly. For basic block sections where
+    // this block is the first in a cluster, we use a non-temp descriptive name.
+    // Otherwise we fall back to use temp label.
     if (MF->hasBBLabels()) {
       auto Iter = MF->getBBSectionsSymbolPrefix().begin();
       if (getNumber() < 0 ||
           getNumber() >= (int)MF->getBBSectionsSymbolPrefix().size())
         report_fatal_error("Unreachable MBB: " + Twine(getNumber()));
+      // The basic blocks for function foo are named a.BB.foo, aa.BB.foo, and
+      // so on.
       std::string Prefix(Iter + 1, Iter + getNumber() + 1);
       std::reverse(Prefix.begin(), Prefix.end());
       CachedMCSymbol =
@@ -86,7 +88,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
       } else if(SectionID == MBBSectionID::ExceptionSectionID) {
         Suffix += ".eh";
       } else {
-        Suffix += "." + std::to_string(SectionID.Number);  
+        Suffix += "." + std::to_string(SectionID.Number);
       }
       CachedMCSymbol = Ctx.getOrCreateSymbol(getParent()->getName() + Suffix);
     } else {
