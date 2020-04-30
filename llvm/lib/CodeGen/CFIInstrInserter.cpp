@@ -376,6 +376,7 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
       }
       BuildMI(*MBBInfo.MBB, MBBI, DL, TII->get(TargetOpcode::CFI_INSTRUCTION))
           .addCFIIndex(CFIIndex);
+    }
 
     if (ForceFullCFA) {
       MF.getSubtarget().getFrameLowering()->emitCalleeSavedFrameMoves(
