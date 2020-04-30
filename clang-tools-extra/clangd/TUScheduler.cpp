@@ -47,18 +47,18 @@
 // requests will receive latest build preamble, which might possibly be stale.
 
 #include "TUScheduler.h"
-#include "Cancellation.h"
 #include "Compiler.h"
-#include "Context.h"
 #include "Diagnostics.h"
 #include "GlobalCompilationDatabase.h"
-#include "Logger.h"
 #include "ParsedAST.h"
-#include "Path.h"
 #include "Preamble.h"
-#include "Threading.h"
-#include "Trace.h"
 #include "index/CanonicalIncludes.h"
+#include "support/Cancellation.h"
+#include "support/Context.h"
+#include "support/Logger.h"
+#include "support/Path.h"
+#include "support/Threading.h"
+#include "support/Trace.h"
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "llvm/ADT/FunctionExtras.h"
@@ -665,9 +665,9 @@ void ASTWorker::runWithAST(
       // return a compatible preamble as ASTWorker::update blocks.
       llvm::Optional<ParsedAST> NewAST;
       if (Invocation) {
-        NewAST = buildAST(FileName, std::move(Invocation),
-                          CompilerInvocationDiagConsumer.take(), FileInputs,
-                          getPossiblyStalePreamble());
+        NewAST = ParsedAST::build(FileName, FileInputs, std::move(Invocation),
+                                  CompilerInvocationDiagConsumer.take(),
+                                  getPossiblyStalePreamble());
         ++ASTBuildCount;
       }
       AST = NewAST ? std::make_unique<ParsedAST>(std::move(*NewAST)) : nullptr;
@@ -804,8 +804,8 @@ void ASTWorker::generateDiagnostics(
   llvm::Optional<std::unique_ptr<ParsedAST>> AST = IdleASTs.take(this);
   if (!AST || !InputsAreLatest) {
     auto RebuildStartTime = DebouncePolicy::clock::now();
-    llvm::Optional<ParsedAST> NewAST = buildAST(
-        FileName, std::move(Invocation), CIDiags, Inputs, LatestPreamble);
+    llvm::Optional<ParsedAST> NewAST = ParsedAST::build(
+        FileName, Inputs, std::move(Invocation), CIDiags, LatestPreamble);
     auto RebuildDuration = DebouncePolicy::clock::now() - RebuildStartTime;
     ++ASTBuildCount;
     // Try to record the AST-build time, to inform future update debouncing.

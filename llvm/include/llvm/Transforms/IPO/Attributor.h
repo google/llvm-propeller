@@ -111,7 +111,7 @@
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/IR/CallSite.h"
+#include "llvm/IR/AbstractCallSite.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Support/Allocator.h"
@@ -1246,7 +1246,7 @@ private:
   ///}
 
   /// Map to remember all requested signature changes (= argument replacements).
-  DenseMap<Function *, SmallVector<ArgumentReplacementInfo *, 8>>
+  DenseMap<Function *, SmallVector<std::unique_ptr<ArgumentReplacementInfo>, 8>>
       ArgumentReplacementMap;
 
   /// The set of functions we are deriving attributes for.

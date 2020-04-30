@@ -6862,7 +6862,7 @@ public:
                                     bool IgnoreAccess = false);
   bool CheckDerivedToBaseConversion(QualType Derived, QualType Base,
                                     unsigned InaccessibleBaseID,
-                                    unsigned AmbigiousBaseConvID,
+                                    unsigned AmbiguousBaseConvID,
                                     SourceLocation Loc, SourceRange Range,
                                     DeclarationName Name,
                                     CXXCastPath *BasePath,
@@ -11992,6 +11992,7 @@ private:
   bool CheckX86BuiltinGatherScatterScale(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckX86BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckPPCBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
+  bool CheckAMDGCNBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
 
   bool SemaBuiltinVAStart(unsigned BuiltinID, CallExpr *TheCall);
   bool SemaBuiltinVAStartARMMicrosoft(CallExpr *Call);

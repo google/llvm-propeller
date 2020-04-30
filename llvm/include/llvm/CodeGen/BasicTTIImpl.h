@@ -548,12 +548,19 @@ public:
   unsigned getRegisterBitWidth(bool Vector) const { return 32; }
 
   /// Estimate the overhead of scalarizing an instruction. Insert and Extract
-  /// are set if the result needs to be inserted and/or extracted from vectors.
-  unsigned getScalarizationOverhead(Type *Ty, bool Insert, bool Extract) {
+  /// are set if the demanded result elements need to be inserted and/or
+  /// extracted from vectors.
+  unsigned getScalarizationOverhead(Type *Ty, const APInt &DemandedElts,
+                                    bool Insert, bool Extract) {
     auto *VTy = cast<VectorType>(Ty);
+    assert(DemandedElts.getBitWidth() == VTy->getNumElements() &&
+           "Vector size mismatch");
+
     unsigned Cost = 0;
 
     for (int i = 0, e = VTy->getNumElements(); i < e; ++i) {
+      if (!DemandedElts[i])
+        continue;
       if (Insert)
         Cost += static_cast<T *>(this)->getVectorInstrCost(
             Instruction::InsertElement, VTy, i);
@@ -563,6 +570,14 @@ public:
     }
 
     return Cost;
+  }
+
+  /// Helper wrapper for the DemandedElts variant of getScalarizationOverhead.
+  unsigned getScalarizationOverhead(Type *Ty, bool Insert, bool Extract) {
+    auto *VTy = cast<VectorType>(Ty);
+    APInt DemandedElts = APInt::getAllOnesValue(VTy->getNumElements());
+    return static_cast<T *>(this)->getScalarizationOverhead(Ty, DemandedElts,
+                                                            Insert, Extract);
   }
 
   /// Estimate the overhead of scalarizing an instructions unique
@@ -702,24 +717,25 @@ public:
     case Instruction::ZExt:
       if (TLI->isZExtFree(SrcLT.second, DstLT.second))
         return 0;
-      break;
-    case Instruction::AddrSpaceCast:
-      if (TLI->isFreeAddrSpaceCast(Src->getPointerAddressSpace(),
-                                   Dst->getPointerAddressSpace()))
-        return 0;
-      break;
-    }
-
-    // If this is a zext/sext of a load, return 0 if the corresponding
-    // extending load exists on target.
-    if ((Opcode == Instruction::ZExt || Opcode == Instruction::SExt) &&
-        I && isa<LoadInst>(I->getOperand(0))) {
+      LLVM_FALLTHROUGH;
+    case Instruction::SExt: {
+      // If this is a zext/sext of a load, return 0 if the corresponding
+      // extending load exists on target.
+      if (I && isa<LoadInst>(I->getOperand(0))) {
         EVT ExtVT = EVT::getEVT(Dst);
         EVT LoadVT = EVT::getEVT(Src);
         unsigned LType =
           ((Opcode == Instruction::ZExt) ? ISD::ZEXTLOAD : ISD::SEXTLOAD);
         if (TLI->isLoadExtLegal(LType, ExtVT, LoadVT))
           return 0;
+      }
+      break;
+    }
+    case Instruction::AddrSpaceCast:
+      if (TLI->isFreeAddrSpaceCast(Src->getPointerAddressSpace(),
+                                   Dst->getPointerAddressSpace()))
+        return 0;
+      break;
     }
 
     // If the cast is marked as legal (or promote) then assume low cost.

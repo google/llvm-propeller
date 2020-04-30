@@ -505,6 +505,7 @@ void SVEType::applyModifier(char Mod) {
     Bitwidth = 16;
     ElementBitwidth = 1;
     break;
+  case 's':
   case 'a':
     Bitwidth = ElementBitwidth;
     NumVectors = 0;
@@ -604,6 +605,12 @@ void SVEType::applyModifier(char Mod) {
     Predicate = false;
     Float = true;
     ElementBitwidth = 64;
+    break;
+  case 'Q':
+    Constant = true;
+    Pointer = true;
+    Void = true;
+    NumVectors = 0;
     break;
   case 'S':
     Constant = true;

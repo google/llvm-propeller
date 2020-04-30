@@ -706,10 +706,6 @@ void OperationFormat::genParser(Operator &op, OpClass &opClass) {
   genParserSuccessorResolution(op, body);
   genParserVariadicSegmentResolution(op, body);
 
-  // Mark the operation as having resizable operand list if required.
-  if (op.hasResizableOperandList())
-    body << "  result.setOperandListToResizable();\n";
-
   body << "  return success();\n";
 }
 
@@ -745,10 +741,8 @@ void OperationFormat::genParserTypeResolution(Operator &op,
 
   // Initialize the set of buildable types.
   if (!buildableTypes.empty()) {
-    body << "  Builder &builder = parser.getBuilder();\n";
-
     FmtContext typeBuilderCtx;
-    typeBuilderCtx.withBuilder("builder");
+    typeBuilderCtx.withBuilder("parser.getBuilder()");
     for (auto &it : buildableTypes)
       body << "  Type odsBuildableType" << it.second << " = "
            << tgfmt(it.first, &typeBuilderCtx) << ";\n";
@@ -871,7 +865,7 @@ void OperationFormat::genParserVariadicSegmentResolution(Operator &op,
                                                          OpMethodBody &body) {
   if (!allOperands && op.getTrait("OpTrait::AttrSizedOperandSegments")) {
     body << "  result.addAttribute(\"operand_segment_sizes\", "
-         << "builder.getI32VectorAttr({";
+         << "parser.getBuilder().getI32VectorAttr({";
     auto interleaveFn = [&](const NamedTypeConstraint &operand) {
       // If the operand is variadic emit the parsed size.
       if (operand.isVariableLength())

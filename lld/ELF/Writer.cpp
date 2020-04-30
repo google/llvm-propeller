@@ -608,11 +608,13 @@ template <class ELFT> void Writer<ELFT>::run() {
     for (OutputSection *sec : outputSections)
       sec->addr = 0;
 
-  // Handle --print-map(-M)/--Map and --cref. Dump them before checkSections()
-  // because the files may be useful in case checkSections() or openFile()
-  // fails, for example, due to an erroneous file size.
+  // Handle --print-map(-M)/--Map, --cref and --print-archive-stats=. Dump them
+  // before checkSections() because the files may be useful in case
+  // checkSections() or openFile() fails, for example, due to an erroneous file
+  // size.
   writeMapFile();
   writeCrossReferenceTable();
+  writeArchiveStats();
 
   if (config->checkSections)
     checkSections();
@@ -644,14 +646,58 @@ template <class ELFT> void Writer<ELFT>::run() {
     error("failed to write to the output file: " + toString(std::move(e)));
 }
 
+template <class ELFT, class RelTy>
+static void markUsedLocalSymbolsImpl(ObjFile<ELFT> *file,
+                                     llvm::ArrayRef<RelTy> rels) {
+  for (const RelTy &rel : rels) {
+    Symbol &sym = file->getRelocTargetSym(rel);
+    if (sym.isLocal())
+      sym.used = true;
+  }
+}
+
+// The function ensures that the "used" field of local symbols reflects the fact
+// that the symbol is used in a relocation from a live section.
+template <class ELFT> static void markUsedLocalSymbols() {
+  // With --gc-sections, the field is already filled.
+  // See MarkLive<ELFT>::resolveReloc().
+  if (config->gcSections)
+    return;
+  // Without --gc-sections, the field is initialized with "true".
+  // Drop the flag first and then rise for symbols referenced in relocations.
+  for (InputFile *file : objectFiles) {
+    ObjFile<ELFT> *f = cast<ObjFile<ELFT>>(file);
+    for (Symbol *b : f->getLocalSymbols())
+      b->used = false;
+    for (InputSectionBase *s : f->getSections()) {
+      InputSection *isec = dyn_cast_or_null<InputSection>(s);
+      if (!isec)
+        continue;
+      if (isec->type == SHT_REL)
+        markUsedLocalSymbolsImpl(f, isec->getDataAs<typename ELFT::Rel>());
+      else if (isec->type == SHT_RELA)
+        markUsedLocalSymbolsImpl(f, isec->getDataAs<typename ELFT::Rela>());
+    }
+  }
+}
+
 static bool shouldKeepInSymtab(const Defined &sym) {
   if (sym.isSection())
     return false;
 
-  // If --emit-reloc or -r is given, all symbols including local ones need to be
-  // copied because they may be referenced by relocations.
-  if (config->copyRelocs)
+  // If --emit-reloc or -r is given, preserve symbols referenced by relocations
+  // from live sections.
+  if (config->copyRelocs && sym.used)
     return true;
+
+  // Exclude local symbols pointing to .ARM.exidx sections.
+  // They are probably mapping symbols "$d", which are optional for these
+  // sections. After merging the .ARM.exidx sections, some of these symbols
+  // may become dangling. The easiest way to avoid the issue is not to add
+  // them to the symbol table from the beginning.
+  if (config->emachine == EM_ARM && sym.section &&
+      sym.section->type == SHT_ARM_EXIDX)
+    return false;
 
   if (config->discard == DiscardPolicy::None)
     return true;
@@ -706,6 +752,8 @@ static bool includeInSymtab(const Symbol &b) {
 template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
   if (!in.symTab)
     return;
+  if (config->copyRelocs && config->discard != DiscardPolicy::None)
+    markUsedLocalSymbols<ELFT>();
   for (InputFile *file : objectFiles) {
     ObjFile<ELFT> *f = cast<ObjFile<ELFT>>(file);
     std::list<Symbol *> localNonBBSymbols;

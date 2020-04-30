@@ -122,6 +122,7 @@ struct Configuration {
   std::vector<llvm::StringRef> propellerDumpCfgs;
   std::vector<llvm::StringRef> propellerDebugSymbols;
   std::vector<llvm::StringRef> propellerOpts;
+  llvm::StringRef printArchiveStats;
   llvm::StringRef printSymbolOrder;
   llvm::StringRef soName;
   llvm::StringRef sysroot;
@@ -178,6 +179,7 @@ struct Configuration {
   bool ignoreFunctionAddressEquality;
   bool ltoCSProfileGenerate;
   bool ltoDebugPassManager;
+  bool ltoEmitAsm;
   bool ltoNewPassManager;
   bool ltoUniqueBasicBlockSectionNames;
   bool ltoWholeProgramVisibility;

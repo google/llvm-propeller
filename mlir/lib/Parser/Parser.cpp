@@ -1676,6 +1676,7 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
   if (parseToken(Token::l_brace, "expected '{' in attribute dictionary"))
     return failure();
 
+  llvm::SmallDenseSet<Identifier> seenKeys;
   auto parseElt = [&]() -> ParseResult {
     // The name of an attribute can either be a bare identifier, or a string.
     Optional<Identifier> nameId;
@@ -1686,6 +1687,8 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
       nameId = builder.getIdentifier(getTokenSpelling());
     else
       return emitError("expected attribute name");
+    if (!seenKeys.insert(*nameId).second)
+      return emitError("duplicate key in dictionary attribute");
     consumeToken();
 
     // Try to parse the '=' for the attribute value.
@@ -3788,8 +3791,7 @@ Value OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
   auto name = OperationName("placeholder", getContext());
   auto *op = Operation::create(
       getEncodedSourceLocation(loc), name, type, /*operands=*/{},
-      /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0,
-      /*resizableOperandList=*/false);
+      /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0);
   forwardRefPlaceholders[op->getResult(0)] = loc;
   return op->getResult(0);
 }
@@ -3949,9 +3951,6 @@ Operation *OperationParser::parseGenericOperation() {
   consumeToken(Token::string);
 
   OperationState result(srcLocation, name);
-
-  // Generic operations have a resizable operation list.
-  result.setOperandListToResizable();
 
   // Parse the operand list.
   SmallVector<SSAUseInfo, 8> operandInfos;
@@ -5031,7 +5030,7 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
       if (nested && std::next(operations.begin(), 2) == operations.end()) {
         // Merge the data of the nested module operation into 'module'.
         module.setLoc(nested.getLoc());
-        module.setAttrs(nested.getOperation()->getAttrList());
+        module.setAttrs(nested.getOperation()->getMutableAttrDict());
         bodyBlocks.splice(bodyBlocks.end(), nested.getBodyRegion().getBlocks());
 
         // Erase the original module body.

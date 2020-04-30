@@ -34,16 +34,14 @@ public:
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes, ArrayRef<Value> operands,
                            ArrayRef<NamedAttribute> attributes,
-                           ArrayRef<Block *> successors, unsigned numRegions,
-                           bool resizableOperandList);
+                           ArrayRef<Block *> successors, unsigned numRegions);
 
-  /// Overload of create that takes an existing NamedAttributeList to avoid
+  /// Overload of create that takes an existing MutableDictionaryAttr to avoid
   /// unnecessarily uniquing a list of attributes.
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes, ArrayRef<Value> operands,
-                           NamedAttributeList attributes,
-                           ArrayRef<Block *> successors, unsigned numRegions,
-                           bool resizableOperandList);
+                           MutableDictionaryAttr attributes,
+                           ArrayRef<Block *> successors, unsigned numRegions);
 
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
@@ -51,10 +49,9 @@ public:
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes, ArrayRef<Value> operands,
-                           NamedAttributeList attributes,
+                           MutableDictionaryAttr attributes,
                            ArrayRef<Block *> successors = {},
-                           RegionRange regions = {},
-                           bool resizableOperandList = false);
+                           RegionRange regions = {});
 
   /// The name of an operation is the key identifier for it.
   OperationName getName() { return name; }
@@ -204,20 +201,34 @@ public:
   // Operands
   //===--------------------------------------------------------------------===//
 
-  /// Returns if the operation has a resizable operation list, i.e. operands can
-  /// be added.
-  bool hasResizableOperandsList() { return getOperandStorage().isResizable(); }
-
   /// Replace the current operands of this operation with the ones provided in
-  /// 'operands'. If the operands list is not resizable, the size of 'operands'
-  /// must be less than or equal to the current number of operands.
+  /// 'operands'.
   void setOperands(ValueRange operands);
 
-  unsigned getNumOperands() { return getOperandStorage().size(); }
+  /// Replace the operands beginning at 'start' and ending at 'start' + 'length'
+  /// with the ones provided in 'operands'. 'operands' may be smaller or larger
+  /// than the range pointed to by 'start'+'length'.
+  void setOperands(unsigned start, unsigned length, ValueRange operands);
+
+  /// Insert the given operands into the operand list at the given 'index'.
+  void insertOperands(unsigned index, ValueRange operands);
+
+  unsigned getNumOperands() {
+    return LLVM_LIKELY(hasOperandStorage) ? getOperandStorage().size() : 0;
+  }
 
   Value getOperand(unsigned idx) { return getOpOperand(idx).get(); }
   void setOperand(unsigned idx, Value value) {
     return getOpOperand(idx).set(value);
+  }
+
+  /// Erase the operand at position `idx`.
+  void eraseOperand(unsigned idx) { eraseOperands(idx); }
+
+  /// Erase the operands starting at position `idx` and ending at position
+  /// 'idx'+'length'.
+  void eraseOperands(unsigned idx, unsigned length = 1) {
+    getOperandStorage().eraseOperands(idx, length);
   }
 
   // Support operand iteration.
@@ -227,14 +238,12 @@ public:
   operand_iterator operand_begin() { return getOperands().begin(); }
   operand_iterator operand_end() { return getOperands().end(); }
 
-  /// Returns an iterator on the underlying Value's (Value ).
+  /// Returns an iterator on the underlying Value's.
   operand_range getOperands() { return operand_range(this); }
 
-  /// Erase the operand at position `idx`.
-  void eraseOperand(unsigned idx) { getOperandStorage().eraseOperand(idx); }
-
   MutableArrayRef<OpOperand> getOpOperands() {
-    return getOperandStorage().getOperands();
+    return LLVM_LIKELY(hasOperandStorage) ? getOperandStorage().getOperands()
+                                          : MutableArrayRef<OpOperand>();
   }
 
   OpOperand &getOpOperand(unsigned idx) { return getOpOperands()[idx]; }
@@ -285,13 +294,13 @@ public:
   /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() { return attrs.getAttrs(); }
 
-  /// Return the internal attribute list on this operation.
-  NamedAttributeList &getAttrList() { return attrs; }
+  /// Return mutable container of all the attributes on this operation.
+  MutableDictionaryAttr &getMutableAttrDict() { return attrs; }
 
-  /// Set the attribute list on this operation.
-  /// Using a NamedAttributeList is more efficient as it does not require new
+  /// Set the attribute dictionary on this operation.
+  /// Using a MutableDictionaryAttr is more efficient as it does not require new
   /// uniquing in the MLIRContext.
-  void setAttrs(NamedAttributeList newAttrs) { attrs = newAttrs; }
+  void setAttrs(MutableDictionaryAttr newAttrs) { attrs = newAttrs; }
 
   /// Return the specified attribute if present, null otherwise.
   Attribute getAttr(Identifier name) { return attrs.get(name); }
@@ -314,7 +323,7 @@ public:
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
-  NamedAttributeList::RemoveResult removeAttr(Identifier name) {
+  MutableDictionaryAttr::RemoveResult removeAttr(Identifier name) {
     return attrs.remove(name);
   }
 
@@ -601,7 +610,7 @@ private:
 private:
   Operation(Location location, OperationName name, ArrayRef<Type> resultTypes,
             unsigned numSuccessors, unsigned numRegions,
-            const NamedAttributeList &attributes);
+            const MutableDictionaryAttr &attributes, bool hasOperandStorage);
 
   // Operations are deleted through the destroy() member because they are
   // allocated with malloc.
@@ -609,6 +618,7 @@ private:
 
   /// Returns the operand storage object.
   detail::OperandStorage &getOperandStorage() {
+    assert(hasOperandStorage && "expected operation to have operand storage");
     return *getTrailingObjects<detail::OperandStorage>();
   }
 
@@ -641,7 +651,12 @@ private:
   mutable unsigned orderIndex = 0;
 
   const unsigned numSuccs;
-  const unsigned numRegions : 31;
+  const unsigned numRegions : 30;
+
+  /// This bit signals whether this operation has an operand storage or not. The
+  /// operand storage may be elided for operations that are known to never have
+  /// operands.
+  bool hasOperandStorage : 1;
 
   /// This holds the result types of the operation. There are three different
   /// states recorded here:
@@ -657,7 +672,7 @@ private:
   OperationName name;
 
   /// This holds general named attributes for the operation.
-  NamedAttributeList attrs;
+  MutableDictionaryAttr attrs;
 
   // allow ilist_traits access to 'block' field.
   friend struct llvm::ilist_traits<Operation>;
