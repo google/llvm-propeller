@@ -448,6 +448,20 @@ sample.baseline.out: sample_bblabels.o stage1-compiler
 sample.baseline.perfdata: sample.baseline.out
 	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
 
+sample.inst.out: sample.c stage1-compiler 
+	./stage1-compiler -g -O2 -fprofile-instr-generate=default.profraw $< -o $@
+
+sample.inst.profdata: sample.inst.out
+	./sample.inst.out && \
+	$(STAGE1_BIN)/llvm-profdata merge -output=$@ default.profraw
+
+sample.goal.o: sample.c sample.inst.profdata stage1-compiler
+	./stage1-compiler -O2 -fprofile-instr-use=sample.inst.profdata -ffunction-sections -emit-llvm -c $< -o sample.ll && \
+	./stage1/install/bin/llc -split-machine-functions sample.ll -o $@ 
+
+sample.goal.out: sample.goal.o stage1-compiler
+	./stage1-compiler -fuse-ld=lld -O2 -fprofile-instr-use=sample.inst.profdata -Wl,-z,keep-text-section-prefix $< -o $@
+
 sample.baseline.propeller: sample.baseline.perfdata sample.baseline.out $(CREATE_LLVM_PROF)
 	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=$(word 2,$^) --logtostderr ; \
 		sed -i '1d' $@

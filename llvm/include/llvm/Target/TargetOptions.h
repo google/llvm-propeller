@@ -67,6 +67,9 @@ namespace llvm {
     Labels, // Do not use Basic Block Sections but label basic blocks.  This
             // is useful when associating profile counts from virtual addresses
             // to basic blocks.
+    Preset, // Similar to list but the blocks are identified by passes which
+            // seek to use Basic Block Sections, e.g. MachineFunctionSplitter.
+            // This option cannot be set via the command line.
     None    // Do not use Basic Block Sections.
   };
 

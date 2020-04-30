@@ -67,13 +67,13 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     }
   }
 
-  MF.setBBSectionsType(BasicBlockSection::List);
+  MF.setBBSectionsType(BasicBlockSection::Preset);
   // All cold blocks are grouped together at the end.
   auto Comparator = [](const MachineBasicBlock &X, const MachineBasicBlock &Y) {
     return X.getSectionID().Type < Y.getSectionID().Type;
   };
   llvm::sortBasicBlocksAndUpdateBranches(MF, Comparator);
-  MF.createBBLabels();
+  //MF.createBBLabels();
 
   // for(auto& MBB: MF) {
   //   errs() << MBB.getNumber() << " " << MBB.getSectionID().Type << " " <<

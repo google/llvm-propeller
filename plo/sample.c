@@ -2,7 +2,7 @@
 volatile int count;
 
 static int goose() {
-  return 13;
+  return 0;
 }
 
 __attribute__((noinline))
