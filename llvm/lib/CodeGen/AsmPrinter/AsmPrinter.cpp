@@ -1789,6 +1789,8 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   ExceptionSymbols.clear();
   bool NeedsLocalForSize = MAI->needsLocalForSize();
   if (F.hasFnAttribute("patchable-function-entry") ||
+      F.hasFnAttribute("function-instrument") ||
+      F.hasFnAttribute("xray-instruction-threshold") ||
       needFuncLabelsForEHOrDebugInfo(MF, MMI) || NeedsLocalForSize ||
       MF.getTarget().Options.EmitStackSizeSection) {
     CurrentFnBegin = createTempSymbol("func_begin");
@@ -2637,9 +2639,10 @@ static void emitGlobalConstantLargeInt(const ConstantInt *CI, AsmPrinter &AP) {
       // [chunk1][chunk2] ... [chunkN].
       // The most significant chunk is chunkN and it should be emitted first.
       // However, due to the alignment issue chunkN contains useless bits.
-      // Realign the chunks so that they contain only useless information:
+      // Realign the chunks so that they contain only useful information:
       // ExtraBits     0       1       (BitWidth / 64) - 1
       //       chu[nk1 chu][nk2 chu] ... [nkN-1 chunkN]
+      ExtraBitsSize = alignTo(ExtraBitsSize, 8);
       ExtraBits = Realigned.getRawData()[0] &
         (((uint64_t)-1) >> (64 - ExtraBitsSize));
       Realigned.lshrInPlace(ExtraBitsSize);
@@ -2660,7 +2663,7 @@ static void emitGlobalConstantLargeInt(const ConstantInt *CI, AsmPrinter &AP) {
     // Emit the extra bits after the 64-bits chunks.
 
     // Emit a directive that fills the expected size.
-    uint64_t Size = AP.getDataLayout().getTypeAllocSize(CI->getType());
+    uint64_t Size = AP.getDataLayout().getTypeStoreSize(CI->getType());
     Size -= (BitWidth / 64) * 8;
     assert(Size && Size * 8 >= ExtraBitsSize &&
            (ExtraBits & (((uint64_t)-1) >> (64 - ExtraBitsSize)))
@@ -2775,20 +2778,22 @@ static void emitGlobalConstantImpl(const DataLayout &DL, const Constant *CV,
     return AP.OutStreamer->emitZeros(Size);
 
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
-    switch (Size) {
-    case 1:
-    case 2:
-    case 4:
-    case 8:
+    const uint64_t StoreSize = DL.getTypeStoreSize(CV->getType());
+
+    if (StoreSize < 8) {
       if (AP.isVerbose())
         AP.OutStreamer->GetCommentOS() << format("0x%" PRIx64 "\n",
                                                  CI->getZExtValue());
-      AP.OutStreamer->emitIntValue(CI->getZExtValue(), Size);
-      return;
-    default:
+      AP.OutStreamer->emitIntValue(CI->getZExtValue(), StoreSize);
+    } else {
       emitGlobalConstantLargeInt(CI, AP);
-      return;
     }
+
+    // Emit tail padding if needed
+    if (Size != StoreSize)
+      AP.OutStreamer->emitZeros(Size - StoreSize);
+
+    return;
   }
 
   if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV))
@@ -3216,14 +3221,7 @@ void AsmPrinterHandler::markFunctionEnd() {}
 // In the binary's "xray_instr_map" section, an array of these function entries
 // describes each instrumentation point.  When XRay patches your code, the index
 // into this table will be given to your handler as a patch point identifier.
-void AsmPrinter::XRayFunctionEntry::emit(int Bytes, MCStreamer *Out,
-                                         const MCExpr *Location,
-                                         const MCSymbol *CurrentFnSym) const {
-  if (Location)
-    Out->emitValueImpl(Location, Bytes);
-  else
-    Out->emitSymbolValue(Sled, Bytes);
-  Out->emitSymbolValue(CurrentFnSym, Bytes);
+void AsmPrinter::XRayFunctionEntry::emit(int Bytes, MCStreamer *Out) const {
   auto Kind8 = static_cast<uint8_t>(Kind);
   Out->emitBinaryData(StringRef(reinterpret_cast<const char *>(&Kind8), 1));
   Out->emitBinaryData(
@@ -3243,8 +3241,9 @@ void AsmPrinter::emitXRayTable() {
   MCSection *InstMap = nullptr;
   MCSection *FnSledIndex = nullptr;
   const Triple &TT = TM.getTargetTriple();
-  // Version 2 uses a PC-relative address on all supported targets.
-  bool PCRel = TT.isX86();
+  // Use PC-relative addresses on all targets except MIPS (MIPS64 cannot use
+  // PC-relative addresses because R_MIPS_PC64 does not exist).
+  bool PCRel = !TT.isMIPS();
   if (TT.isOSBinFormatELF()) {
     auto LinkedToSym = cast<MCSymbolELF>(CurrentFnSym);
     auto Flags = ELF::SHF_ALLOC | ELF::SHF_LINK_ORDER;
@@ -3275,19 +3274,31 @@ void AsmPrinter::emitXRayTable() {
   // Now we switch to the instrumentation map section. Because this is done
   // per-function, we are able to create an index entry that will represent the
   // range of sleds associated with a function.
+  auto &Ctx = OutContext;
   MCSymbol *SledsStart = OutContext.createTempSymbol("xray_sleds_start", true);
   OutStreamer->SwitchSection(InstMap);
   OutStreamer->emitLabel(SledsStart);
   for (const auto &Sled : Sleds) {
-    const MCExpr *Location = nullptr;
     if (PCRel) {
-      MCSymbol *Dot = OutContext.createTempSymbol();
+      MCSymbol *Dot = Ctx.createTempSymbol();
       OutStreamer->emitLabel(Dot);
-      Location = MCBinaryExpr::createSub(
-          MCSymbolRefExpr::create(Sled.Sled, OutContext),
-          MCSymbolRefExpr::create(Dot, OutContext), OutContext);
+      OutStreamer->emitValueImpl(
+          MCBinaryExpr::createSub(MCSymbolRefExpr::create(Sled.Sled, Ctx),
+                                  MCSymbolRefExpr::create(Dot, Ctx), Ctx),
+          WordSizeBytes);
+      OutStreamer->emitValueImpl(
+          MCBinaryExpr::createSub(
+              MCSymbolRefExpr::create(CurrentFnBegin, Ctx),
+              MCBinaryExpr::createAdd(
+                  MCSymbolRefExpr::create(Dot, Ctx),
+                  MCConstantExpr::create(WordSizeBytes, Ctx), Ctx),
+              Ctx),
+          WordSizeBytes);
+    } else {
+      OutStreamer->emitSymbolValue(Sled.Sled, WordSizeBytes);
+      OutStreamer->emitSymbolValue(CurrentFnSym, WordSizeBytes);
     }
-    Sled.emit(WordSizeBytes, OutStreamer.get(), Location, CurrentFnSym);
+    Sled.emit(WordSizeBytes, OutStreamer.get());
   }
   MCSymbol *SledsEnd = OutContext.createTempSymbol("xray_sleds_end", true);
   OutStreamer->emitLabel(SledsEnd);

@@ -15,6 +15,7 @@
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/Analysis/LazyValueInfo.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
@@ -905,10 +906,13 @@ ChangeStatus AAReturnedValuesImpl::manifest(Attributor &A) {
 
   // If the assumed unique return value is an argument, annotate it.
   if (auto *UniqueRVArg = dyn_cast<Argument>(UniqueRV.getValue())) {
-    // TODO: This should be handled differently!
-    this->AnchorVal = UniqueRVArg;
-    this->KindOrArgNo = UniqueRVArg->getArgNo();
-    Changed = IRAttribute::manifest(A);
+    if (UniqueRVArg->getType()->canLosslesslyBitCastTo(
+            getAssociatedFunction()->getReturnType())) {
+      // TODO: This should be handled differently!
+      this->AnchorVal = UniqueRVArg;
+      this->KindOrArgNo = UniqueRVArg->getArgNo();
+      Changed = IRAttribute::manifest(A);
+    }
   } else if (auto *RVC = dyn_cast<Constant>(UniqueRV.getValue())) {
     // We can replace the returned value with the unique returned constant.
     Value &AnchorValue = getAnchorValue();
@@ -1581,8 +1585,15 @@ static int64_t getKnownNonNullAndDerefBytesForUse(
       F ? llvm::NullPointerIsDefined(F, PtrTy->getPointerAddressSpace()) : true;
   const DataLayout &DL = A.getInfoCache().getDL();
   if (const auto *CB = dyn_cast<CallBase>(I)) {
-    if (CB->isBundleOperand(U))
+    if (CB->isBundleOperand(U)) {
+      if (RetainedKnowledge RK = getKnowledgeFromUse(
+              U, {Attribute::NonNull, Attribute::Dereferenceable})) {
+        IsNonNull |=
+            (RK.AttrKind == Attribute::NonNull || !NullPointerIsDefined);
+        return RK.ArgValue;
+      }
       return 0;
+    }
 
     if (CB->isCallee(U)) {
       IsNonNull |= !NullPointerIsDefined;
@@ -6008,6 +6019,7 @@ std::string AAMemoryLocation::getMemoryLocationsAsStr(
   return S;
 }
 
+namespace {
 struct AAMemoryLocationImpl : public AAMemoryLocation {
 
   AAMemoryLocationImpl(const IRPosition &IRP, Attributor &A)
@@ -6970,6 +6982,7 @@ struct AAValueConstantRangeCallSiteArgument : AAValueConstantRangeFloating {
     STATS_DECLTRACK_CSARG_ATTR(value_range)
   }
 };
+} // namespace
 
 const char AAReturnedValues::ID = 0;
 const char AANoUnwind::ID = 0;

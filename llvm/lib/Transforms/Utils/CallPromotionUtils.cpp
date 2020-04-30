@@ -264,9 +264,9 @@ static CallBase &versionCallSite(CallBase &CB, Value *Callee,
 
   // Create the compare. The called value and callee must have the same type to
   // be compared.
-  if (CB.getCalledValue()->getType() != Callee->getType())
-    Callee = Builder.CreateBitCast(Callee, CB.getCalledValue()->getType());
-  auto *Cond = Builder.CreateICmpEQ(CB.getCalledValue(), Callee);
+  if (CB.getCalledOperand()->getType() != Callee->getType())
+    Callee = Builder.CreateBitCast(Callee, CB.getCalledOperand()->getType());
+  auto *Cond = Builder.CreateICmpEQ(CB.getCalledOperand(), Callee);
 
   // Create an if-then-else structure. The original instruction is moved into
   // the "else" block, and a clone of the original instruction is placed in the
@@ -317,7 +317,7 @@ static CallBase &versionCallSite(CallBase &CB, Value *Callee,
   return *NewInst;
 }
 
-bool llvm::isLegalToPromote(CallBase &CB, Function *Callee,
+bool llvm::isLegalToPromote(const CallBase &CB, Function *Callee,
                             const char **FailureReason) {
   assert(!CB.getCalledFunction() && "Only indirect call sites can be promoted");
 
@@ -462,7 +462,7 @@ bool llvm::tryPromoteCall(CallBase &CB) {
   assert(!CB.getCalledFunction());
   Module *M = CB.getCaller()->getParent();
   const DataLayout &DL = M->getDataLayout();
-  Value *Callee = CB.getCalledValue();
+  Value *Callee = CB.getCalledOperand();
 
   LoadInst *VTableEntryLoad = dyn_cast<LoadInst>(Callee);
   if (!VTableEntryLoad)

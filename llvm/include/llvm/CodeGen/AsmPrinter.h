@@ -127,6 +127,8 @@ public:
   /// default, this is equal to CurrentFnSym.
   MCSymbol *CurrentFnSymForSize = nullptr;
 
+  /// Map a basic block section ID to the begin and end symbols of that section
+  ///  which determine the section's range.
   struct MBBSectionRange {
     MCSymbol *BeginLabel, *EndLabel;
   };
@@ -303,7 +305,7 @@ public:
     const class Function *Fn;
     uint8_t Version;
 
-    void emit(int, MCStreamer *, const MCExpr *, const MCSymbol *) const;
+    void emit(int, MCStreamer *) const;
   };
 
   // All the sleds to be emitted.

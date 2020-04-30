@@ -222,7 +222,7 @@ static bool valueDominatesPHI(Value *V, PHINode *P, const DominatorTree *DT) {
   // Otherwise, if the instruction is in the entry block and is not an invoke,
   // then it obviously dominates all phi nodes.
   if (I->getParent() == &I->getFunction()->getEntryBlock() &&
-      !isa<InvokeInst>(I))
+      !isa<InvokeInst>(I) && !isa<CallBrInst>(I))
     return true;
 
   return false;
@@ -4151,8 +4151,7 @@ static Value *SimplifyGEPInst(Type *SrcTy, ArrayRef<Value *> Ops,
   if (isa<UndefValue>(Ops[0]))
     return UndefValue::get(GEPTy);
 
-  bool IsScalableVec =
-      isa<VectorType>(SrcTy) && cast<VectorType>(SrcTy)->isScalable();
+  bool IsScalableVec = isa<ScalableVectorType>(SrcTy);
 
   if (Ops.size() == 2) {
     // getelementptr P, 0 -> P.
@@ -4294,8 +4293,8 @@ Value *llvm::SimplifyInsertElementInst(Value *Vec, Value *Val, Value *Idx,
 
   // For fixed-length vector, fold into undef if index is out of bounds.
   if (auto *CI = dyn_cast<ConstantInt>(Idx)) {
-    if (!cast<VectorType>(Vec->getType())->isScalable() &&
-        CI->uge(cast<VectorType>(Vec->getType())->getNumElements()))
+    if (isa<FixedVectorType>(Vec->getType()) &&
+        CI->uge(cast<FixedVectorType>(Vec->getType())->getNumElements()))
       return UndefValue::get(Vec->getType());
   }
 
@@ -4368,7 +4367,8 @@ static Value *SimplifyExtractElementInst(Value *Vec, Value *Idx, const SimplifyQ
   // find a previously computed scalar that was inserted into the vector.
   if (auto *IdxC = dyn_cast<ConstantInt>(Idx)) {
     // For fixed-length vector, fold into undef if index is out of bounds.
-    if (!VecVTy->isScalable() && IdxC->getValue().uge(VecVTy->getNumElements()))
+    if (isa<FixedVectorType>(VecVTy) &&
+        IdxC->getValue().uge(VecVTy->getNumElements()))
       return UndefValue::get(VecVTy->getElementType());
     if (Value *Elt = findScalarElement(Vec, IdxC->getZExtValue()))
       return Elt;
@@ -5407,7 +5407,7 @@ static Value *simplifyIntrinsic(CallBase *Call, const SimplifyQuery &Q) {
 }
 
 Value *llvm::SimplifyCall(CallBase *Call, const SimplifyQuery &Q) {
-  Value *Callee = Call->getCalledValue();
+  Value *Callee = Call->getCalledOperand();
 
   // musttail calls can only be simplified if they are also DCEd.
   // As we can't guarantee this here, don't simplify them.

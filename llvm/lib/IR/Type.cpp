@@ -511,11 +511,9 @@ StringRef StructType::getName() const {
 }
 
 bool StructType::isValidElementType(Type *ElemTy) {
-  if (auto *VTy = dyn_cast<VectorType>(ElemTy))
-    return !VTy->isScalable();
   return !ElemTy->isVoidTy() && !ElemTy->isLabelTy() &&
          !ElemTy->isMetadataTy() && !ElemTy->isFunctionTy() &&
-         !ElemTy->isTokenTy();
+         !ElemTy->isTokenTy() && !isa<ScalableVectorType>(ElemTy);
 }
 
 bool StructType::isLayoutIdentical(StructType *Other) const {
@@ -573,19 +571,18 @@ ArrayType *ArrayType::get(Type *ElementType, uint64_t NumElements) {
 }
 
 bool ArrayType::isValidElementType(Type *ElemTy) {
-  if (auto *VTy = dyn_cast<VectorType>(ElemTy))
-    return !VTy->isScalable();
   return !ElemTy->isVoidTy() && !ElemTy->isLabelTy() &&
          !ElemTy->isMetadataTy() && !ElemTy->isFunctionTy() &&
-         !ElemTy->isTokenTy();
+         !ElemTy->isTokenTy() && !isa<ScalableVectorType>(ElemTy);
 }
 
 //===----------------------------------------------------------------------===//
 //                          VectorType Implementation
 //===----------------------------------------------------------------------===//
 
-VectorType::VectorType(Type *ElType, ElementCount EC, Type::TypeID TID)
-    : Type(ElType->getContext(), TID), ContainedType(ElType), EC(EC) {
+VectorType::VectorType(Type *ElType, unsigned EQ, Type::TypeID TID)
+    : Type(ElType->getContext(), TID), ContainedType(ElType),
+      ElementQuantity(EQ) {
   ContainedTys = &ContainedType;
   NumContainedTys = 1;
 }

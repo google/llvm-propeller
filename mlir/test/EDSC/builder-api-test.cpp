@@ -15,7 +15,6 @@
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"
 #include "mlir/Dialect/Vector/EDSC/Intrinsics.h"
 #include "mlir/EDSC/Builders.h"
-#include "mlir/EDSC/Intrinsics.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"
@@ -183,6 +182,8 @@ TEST_FUNC(builder_blocks) {
   OpBuilder builder(f.getBody());
   ScopedContext scope(builder, f.getLoc());
   Value c1(std_constant_int(42, 32)), c2(std_constant_int(1234, 32));
+  ReturnOp ret = std_ret();
+
   Value r;
   Value args12[2];
   Value &arg1 = args12[0], &arg2 = args12[1];
@@ -205,6 +206,7 @@ TEST_FUNC(builder_blocks) {
   });
   // Get back to entry block and add a branch into b1
   BlockBuilder(functionBlock, Append())([&] { std_br(b1, {c1, c2}); });
+  ret.erase();
 
   // clang-format off
   // CHECK-LABEL: @builder_blocks
@@ -274,6 +276,8 @@ TEST_FUNC(builder_cond_branch) {
   Value funcArg(f.getArgument(0));
   Value c32(std_constant_int(32, 32)), c64(std_constant_int(64, 64)),
       c42(std_constant_int(42, 32));
+  ReturnOp ret = std_ret();
+
   Value arg1;
   Value args23[2];
   BlockHandle b1, b2, functionBlock(&f.front());
@@ -283,6 +287,7 @@ TEST_FUNC(builder_cond_branch) {
   BlockBuilder(functionBlock, Append())([&] {
     std_cond_br(funcArg, b1, {c32}, b2, {c64, c42});
   });
+  ret.erase();
 
   // clang-format off
   // CHECK-LABEL: @builder_cond_branch
@@ -470,13 +475,16 @@ TEST_FUNC(operator_and) {
   ScopedContext scope(builder, f.getLoc());
 
   using op::operator&&;
+  using op::negate;
   Value lhs(f.getArgument(0));
   Value rhs(f.getArgument(1));
-  lhs &&rhs;
+  negate(lhs && rhs);
 
   // CHECK-LABEL: @operator_and
   //       CHECK: [[ARG0:%.*]]: i1, [[ARG1:%.*]]: i1
-  //       CHECK: and [[ARG0]], [[ARG1]]
+  //       CHECK: [[AND:%.*]] = and [[ARG0]], [[ARG1]]
+  //       CHECK: [[TRUE:%.*]] = constant 1 : i1
+  //       CHECK: subi [[TRUE]], [[AND]] : i1
   f.print(llvm::outs());
   f.erase();
 }

@@ -1074,8 +1074,8 @@ static Type *DecodeFixedType(ArrayRef<Intrinsic::IITDescriptor> &Infos,
     // Return the overloaded type (which determines the pointers address space)
     return Tys[D.getOverloadArgNumber()];
   case IITDescriptor::ScalableVecArgument: {
-    auto *Ty = cast<VectorType>(DecodeFixedType(Infos, Tys, Context));
-    return VectorType::get(Ty->getElementType(), {Ty->getNumElements(), true});
+    auto *Ty = cast<FixedVectorType>(DecodeFixedType(Infos, Tys, Context));
+    return ScalableVectorType::get(Ty->getElementType(), Ty->getNumElements());
   }
   }
   llvm_unreachable("unhandled");
@@ -1354,10 +1354,9 @@ static bool matchIntrinsicType(
       return true;
     }
     case IITDescriptor::ScalableVecArgument: {
-      VectorType *VTy = dyn_cast<VectorType>(Ty);
-      if (!VTy || !VTy->isScalable())
+      if (!isa<ScalableVectorType>(Ty))
         return true;
-      return matchIntrinsicType(VTy, Infos, ArgTys, DeferredChecks,
+      return matchIntrinsicType(Ty, Infos, ArgTys, DeferredChecks,
                                 IsDeferredCheck);
     }
     case IITDescriptor::VecOfBitcastsToInt: {

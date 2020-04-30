@@ -199,6 +199,7 @@ static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
                                 parser.getCurrentLocation(), result.operands);
 }
 
+namespace {
 template <typename GenericOpType>
 struct BlockArgsVerifier {
   static LogicalResult verify(GenericOpType op, Block &block);
@@ -255,6 +256,7 @@ LogicalResult BlockArgsVerifier<IndexedGenericOp>::verify(IndexedGenericOp op,
   }
   return success();
 }
+} // namespace
 
 template <typename GenericOpType>
 static LogicalResult verifyGenericOp(GenericOpType op) {
@@ -468,7 +470,7 @@ getSymbolLessAffineMaps(ArrayRef<ArrayRef<AffineExpr>> reassociation) {
 }
 
 void mlir::linalg::ReshapeOp::build(
-    Builder *b, OperationState &result, Value src,
+    OpBuilder &b, OperationState &result, Value src,
     ArrayRef<ArrayRef<AffineExpr>> reassociation,
     ArrayRef<NamedAttribute> attrs) {
   auto maps = getSymbolLessAffineMaps(reassociation);
@@ -476,23 +478,24 @@ void mlir::linalg::ReshapeOp::build(
   auto resultType = computeReshapeCollapsedType(memRefType, maps);
   build(b, result, resultType, src, attrs);
   result.addAttribute(ReshapeOp::getReassociationAttrName(),
-                      b->getAffineMapArrayAttr(maps));
+                      b.getAffineMapArrayAttr(maps));
 }
 
 void mlir::linalg::ReshapeOp::build(
-    Builder *b, OperationState &result, Type resultType, Value src,
+    OpBuilder &b, OperationState &result, Type resultType, Value src,
     ArrayRef<ArrayRef<AffineExpr>> reassociation,
     ArrayRef<NamedAttribute> attrs) {
   auto maps = getSymbolLessAffineMaps(reassociation);
   build(b, result, resultType, src, attrs);
   result.addAttribute(ReshapeOp::getReassociationAttrName(),
-                      b->getAffineMapArrayAttr(maps));
+                      b.getAffineMapArrayAttr(maps));
 }
 
 // Common verifier for reshape-like types. Fills `expandedType` and
 // `collapsedType` with the proper `src` or `result` type.
 template <typename Op, typename T>
-LogicalResult verifyReshapeLikeTypes(Op op, T &expandedType, T &collapsedType) {
+static LogicalResult verifyReshapeLikeTypes(Op op, T &expandedType,
+                                            T &collapsedType) {
   expandedType = op.getSrcType();
   collapsedType = op.getResultType();
   unsigned expandedRank = expandedType.getRank();
@@ -554,7 +557,7 @@ computeTensorReshapeCollapsedType(RankedTensorType type,
   unsigned currentDim = 0;
   for (AffineMap m : reassociation) {
     unsigned dim = m.getNumResults();
-    auto band = shape.drop_front(currentDim).take_front(dim);
+    auto band = shape.slice(currentDim, dim);
     int64_t size = 1;
     if (llvm::is_contained(band, ShapedType::kDynamicSize))
       size = ShapedType::kDynamicSize;
@@ -569,7 +572,7 @@ computeTensorReshapeCollapsedType(RankedTensorType type,
 }
 
 void mlir::linalg::TensorReshapeOp::build(
-    Builder *b, OperationState &result, Value src,
+    OpBuilder &b, OperationState &result, Value src,
     ArrayRef<ArrayRef<AffineExpr>> reassociation,
     ArrayRef<NamedAttribute> attrs) {
   auto maps = getSymbolLessAffineMaps(reassociation);
@@ -577,17 +580,17 @@ void mlir::linalg::TensorReshapeOp::build(
       src.getType().cast<RankedTensorType>(), maps);
   build(b, result, resultType, src, attrs);
   result.addAttribute(TensorReshapeOp::getReassociationAttrName(),
-                      b->getAffineMapArrayAttr(maps));
+                      b.getAffineMapArrayAttr(maps));
 }
 
 void mlir::linalg::TensorReshapeOp::build(
-    Builder *b, OperationState &result, Type resultType, Value src,
+    OpBuilder &b, OperationState &result, Type resultType, Value src,
     ArrayRef<ArrayRef<AffineExpr>> reassociation,
     ArrayRef<NamedAttribute> attrs) {
   auto maps = getSymbolLessAffineMaps(reassociation);
   build(b, result, resultType, src, attrs);
   result.addAttribute(TensorReshapeOp::getReassociationAttrName(),
-                      b->getAffineMapArrayAttr(maps));
+                      b.getAffineMapArrayAttr(maps));
 }
 
 static LogicalResult verify(TensorReshapeOp op) {
@@ -608,7 +611,7 @@ static LogicalResult verify(TensorReshapeOp op) {
 //===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
-void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
+void mlir::linalg::SliceOp::build(OpBuilder &b, OperationState &result,
                                   Value base, ValueRange indexings) {
   result.addOperands(base);
   result.addOperands(indexings);
@@ -626,7 +629,7 @@ void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
   result.addTypes({MemRefType::Builder(memRefType)
                        .setShape(sizes)
                        .setAffineMaps(makeStridedLinearLayoutMap(
-                           strides, offset, b->getContext()))});
+                           strides, offset, b.getContext()))});
 }
 
 static void print(OpAsmPrinter &p, SliceOp op) {
@@ -680,10 +683,12 @@ static LogicalResult verify(SliceOp op) {
   return success();
 }
 
+Value SliceOp::getViewSource() { return view(); }
+
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
-void mlir::linalg::TransposeOp::build(Builder *b, OperationState &result,
+void mlir::linalg::TransposeOp::build(OpBuilder &b, OperationState &result,
                                       Value view, AffineMapAttr permutation,
                                       ArrayRef<NamedAttribute> attrs) {
   auto permutationMap = permutation.getValue();
@@ -704,7 +709,7 @@ void mlir::linalg::TransposeOp::build(Builder *b, OperationState &result,
   auto res = getStridesAndOffset(memRefType, strides, offset);
   assert(succeeded(res) && strides.size() == static_cast<unsigned>(rank));
   (void)res;
-  auto map = makeStridedLinearLayoutMap(strides, offset, b->getContext());
+  auto map = makeStridedLinearLayoutMap(strides, offset, b.getContext());
   map = permutationMap ? map.compose(permutationMap) : map;
   // Compute result type.
   MemRefType resultType =

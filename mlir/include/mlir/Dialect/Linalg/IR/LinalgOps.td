@@ -16,6 +16,7 @@
 include "mlir/Dialect/Affine/IR/AffineOpsBase.td"
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
 include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
 class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
@@ -48,10 +49,10 @@ def Linalg_RangeOp :
     ````
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value min, Value max, "
+    "OpBuilder &builder, OperationState &result, Value min, Value max, "
     "Value step",
     [{
-      auto rangeType = RangeType::get(builder->getContext());
+      auto rangeType = RangeType::get(builder.getContext());
       build(builder, result, rangeType, min, max, step);
     }]>];
 
@@ -65,12 +66,12 @@ class Linalg_ReshapeLikeOp<string mnemonic> :
   let builders = [
     // Builder for a contracting reshape whose result type is computed from
     // `src` and `reassociation`.
-    OpBuilder<"Builder *b, OperationState &result, Value src, "
+    OpBuilder<"OpBuilder &b, OperationState &result, Value src, "
     "ArrayRef<ArrayRef<AffineExpr>> reassociation, "
     "ArrayRef<NamedAttribute> attrs = {}">,
     // Builder for a reshape whose result type is passed explicitly. This may be
     // either a contracting or expanding reshape.
-    OpBuilder<"Builder *b, OperationState &result, Type resultType, Value src,"
+    OpBuilder<"OpBuilder &b, OperationState &result, Type resultType, Value src,"
     "ArrayRef<ArrayRef<AffineExpr>> reassociation, "
     "ArrayRef<NamedAttribute> attrs = {}">];
 
@@ -172,10 +173,15 @@ def Linalg_TensorReshapeOp : Linalg_ReshapeLikeOp<"tensor_reshape">,
     RankedTensorType getResultType() {
       return result().getType().cast<RankedTensorType>();
     }
+    SmallVector<AffineMap, 4> getReassociationMaps() {
+      return llvm::to_vector<4>(llvm::map_range(reassociation(),
+        [](Attribute a) { return a.cast<AffineMapAttr>().getValue(); }));
+    }
   }];
 }
 
-def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
+def Linalg_SliceOp : Linalg_Op<"slice", [
+      DeclareOpInterfaceMethods<ViewLikeOpInterface>, NoSideEffect]>,
     Arguments<(ins AnyStridedMemRef:$view,
                    Variadic<AnyTypeOf<[Range, Index]>>:$indexings)>,
     Results<(outs AnyStridedMemRef)> {
@@ -221,7 +227,7 @@ def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value base, "
+    "OpBuilder &b, OperationState &result, Value base, "
     "ValueRange indexings">];
 
   let extraClassDeclaration = [{
@@ -265,7 +271,7 @@ def Linalg_TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value view, "
+    "OpBuilder &b, OperationState &result, Value view, "
     "AffineMapAttr permutation, ArrayRef<NamedAttribute> attrs = {}">];
 
   let verifier = [{

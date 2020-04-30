@@ -161,7 +161,7 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf,
 
           // Scalable vectors may need a special StackID to distinguish
           // them from other (fixed size) stack objects.
-          if (Ty->isVectorTy() && cast<VectorType>(Ty)->isScalable())
+          if (isa<ScalableVectorType>(Ty))
             MF->getFrameInfo().setStackID(FrameIndex,
                                           TFI->getStackIDForScalableVectors());
 
@@ -183,7 +183,7 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf,
 
       // Look for inline asm that clobbers the SP register.
       if (auto *Call = dyn_cast<CallBase>(&I)) {
-        if (isa<InlineAsm>(Call->getCalledValue())) {
+        if (Call->isInlineAsm()) {
           unsigned SP = TLI->getStackPointerRegisterToSaveRestore();
           const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
           std::vector<TargetLowering::AsmOperandInfo> Ops =

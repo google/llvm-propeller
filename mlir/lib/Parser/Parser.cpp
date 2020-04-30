@@ -1676,6 +1676,7 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
   if (parseToken(Token::l_brace, "expected '{' in attribute dictionary"))
     return failure();
 
+  llvm::SmallDenseSet<Identifier> seenKeys;
   auto parseElt = [&]() -> ParseResult {
     // The name of an attribute can either be a bare identifier, or a string.
     Optional<Identifier> nameId;
@@ -1686,6 +1687,8 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
       nameId = builder.getIdentifier(getTokenSpelling());
     else
       return emitError("expected attribute name");
+    if (!seenKeys.insert(*nameId).second)
+      return emitError("duplicate key in dictionary attribute");
     consumeToken();
 
     // Try to parse the '=' for the attribute value.
@@ -1797,7 +1800,8 @@ static Optional<APInt> buildAttributeAPInt(Type type, bool isNegative,
     return llvm::None;
 
   // Extend or truncate the bitwidth to the right size.
-  unsigned width = type.isIndex() ? 64 : type.getIntOrFloatBitWidth();
+  unsigned width = type.isIndex() ? IndexType::kInternalStorageBitWidth
+                                  : type.getIntOrFloatBitWidth();
   if (width > result.getBitWidth()) {
     result = result.zext(width);
   } else if (width < result.getBitWidth()) {
@@ -1952,7 +1956,7 @@ public:
   ArrayRef<int64_t> getShape() const { return shape; }
 
 private:
-  enum class ElementKind { Boolean, Integer, Float };
+  enum class ElementKind { Boolean, Integer, Float, String };
 
   /// Return a string to represent the given element kind.
   const char *getElementKindStr(ElementKind kind) {
@@ -1963,17 +1967,21 @@ private:
       return "'integer'";
     case ElementKind::Float:
       return "'float'";
+    case ElementKind::String:
+      return "'string'";
     }
     llvm_unreachable("unknown element kind");
   }
 
   /// Build a Dense Integer attribute for the given type.
-  DenseElementsAttr getIntAttr(llvm::SMLoc loc, ShapedType type,
-                               IntegerType eltTy);
+  DenseElementsAttr getIntAttr(llvm::SMLoc loc, ShapedType type, Type eltTy);
 
   /// Build a Dense Float attribute for the given type.
   DenseElementsAttr getFloatAttr(llvm::SMLoc loc, ShapedType type,
                                  FloatType eltTy);
+
+  /// Build a Dense String attribute for the given type.
+  DenseElementsAttr getStringAttr(llvm::SMLoc loc, ShapedType type, Type eltTy);
 
   /// Build a Dense attribute with hex data for the given type.
   DenseElementsAttr getHexAttr(llvm::SMLoc loc, ShapedType type);
@@ -2030,8 +2038,10 @@ ParseResult TensorLiteralParser::parse(bool allowHex) {
 /// shaped type.
 DenseElementsAttr TensorLiteralParser::getAttr(llvm::SMLoc loc,
                                                ShapedType type) {
-  // Check to see if we parsed the literal from a hex string.
-  if (hexStorage.hasValue())
+  Type eltType = type.getElementType();
+
+  // Check to see if we parse the literal from a hex string.
+  if (hexStorage.hasValue() && eltType.isIntOrFloat())
     return getHexAttr(loc, type);
 
   // Check that the parsed storage size has the same number of elements to the
@@ -2044,23 +2054,22 @@ DenseElementsAttr TensorLiteralParser::getAttr(llvm::SMLoc loc,
 
   // If the type is an integer, build a set of APInt values from the storage
   // with the correct bitwidth.
-  if (auto intTy = type.getElementType().dyn_cast<IntegerType>())
+  if (auto intTy = eltType.dyn_cast<IntegerType>())
     return getIntAttr(loc, type, intTy);
+  if (auto indexTy = eltType.dyn_cast<IndexType>())
+    return getIntAttr(loc, type, indexTy);
 
-  // Otherwise, this must be a floating point type.
-  auto floatTy = type.getElementType().dyn_cast<FloatType>();
-  if (!floatTy) {
-    p.emitError(loc) << "expected floating-point or integer element type, got "
-                     << type.getElementType();
-    return nullptr;
-  }
-  return getFloatAttr(loc, type, floatTy);
+  // If parsing a floating point type.
+  if (auto floatTy = eltType.dyn_cast<FloatType>())
+    return getFloatAttr(loc, type, floatTy);
+
+  // Other types are assumed to be string representations.
+  return getStringAttr(loc, type, type.getElementType());
 }
 
 /// Build a Dense Integer attribute for the given type.
 DenseElementsAttr TensorLiteralParser::getIntAttr(llvm::SMLoc loc,
-                                                  ShapedType type,
-                                                  IntegerType eltTy) {
+                                                  ShapedType type, Type eltTy) {
   std::vector<APInt> intElements;
   intElements.reserve(storage.size());
   auto isUintType = type.getElementType().isUnsignedInteger();
@@ -2085,11 +2094,12 @@ DenseElementsAttr TensorLiteralParser::getIntAttr(llvm::SMLoc loc,
     assert(token.isAny(Token::integer, Token::kw_true, Token::kw_false) &&
            "unexpected token type");
     if (token.isAny(Token::kw_true, Token::kw_false)) {
-      if (!eltTy.isInteger(1))
+      if (!eltTy.isInteger(1)) {
         p.emitError(tokenLoc)
             << "expected i1 type for 'true' or 'false' values";
-      APInt apInt(eltTy.getWidth(), token.is(Token::kw_true),
-                  /*isSigned=*/false);
+        return nullptr;
+      }
+      APInt apInt(1, token.is(Token::kw_true), /*isSigned=*/false);
       intElements.push_back(apInt);
       continue;
     }
@@ -2160,6 +2170,28 @@ DenseElementsAttr TensorLiteralParser::getFloatAttr(llvm::SMLoc loc,
   return DenseElementsAttr::get(type, floatValues);
 }
 
+/// Build a Dense String attribute for the given type.
+DenseElementsAttr TensorLiteralParser::getStringAttr(llvm::SMLoc loc,
+                                                     ShapedType type,
+                                                     Type eltTy) {
+  if (hexStorage.hasValue()) {
+    auto stringValue = hexStorage.getValue().getStringValue();
+    return DenseStringElementsAttr::get(type, {stringValue});
+  }
+
+  std::vector<std::string> stringValues;
+  std::vector<StringRef> stringRefValues;
+  stringValues.reserve(storage.size());
+  stringRefValues.reserve(storage.size());
+
+  for (auto val : storage) {
+    stringValues.push_back(val.second.getStringValue());
+    stringRefValues.push_back(stringValues.back());
+  }
+
+  return DenseStringElementsAttr::get(type, stringRefValues);
+}
+
 /// Build a Dense attribute with hex data for the given type.
 DenseElementsAttr TensorLiteralParser::getHexAttr(llvm::SMLoc loc,
                                                   ShapedType type) {
@@ -2211,6 +2243,10 @@ ParseResult TensorLiteralParser::parseElement() {
     p.consumeToken();
     break;
 
+  case Token::string:
+    storage.emplace_back(/*isNegative=*/ false, p.getToken());
+    p.consumeToken();
+    break;
   default:
     return p.emitError("expected element literal of primitive type");
   }
@@ -3755,8 +3791,7 @@ Value OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
   auto name = OperationName("placeholder", getContext());
   auto *op = Operation::create(
       getEncodedSourceLocation(loc), name, type, /*operands=*/{},
-      /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0,
-      /*resizableOperandList=*/false);
+      /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0);
   forwardRefPlaceholders[op->getResult(0)] = loc;
   return op->getResult(0);
 }
@@ -3916,9 +3951,6 @@ Operation *OperationParser::parseGenericOperation() {
   consumeToken(Token::string);
 
   OperationState result(srcLocation, name);
-
-  // Generic operations have a resizable operation list.
-  result.setOperandListToResizable();
 
   // Parse the operand list.
   SmallVector<SSAUseInfo, 8> operandInfos;
@@ -4998,7 +5030,7 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
       if (nested && std::next(operations.begin(), 2) == operations.end()) {
         // Merge the data of the nested module operation into 'module'.
         module.setLoc(nested.getLoc());
-        module.setAttrs(nested.getOperation()->getAttrList());
+        module.setAttrs(nested.getOperation()->getMutableAttrDict());
         bodyBlocks.splice(bodyBlocks.end(), nested.getBodyRegion().getBlocks());
 
         // Erase the original module body.

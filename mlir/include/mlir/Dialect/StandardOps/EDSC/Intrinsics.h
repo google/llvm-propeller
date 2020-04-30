@@ -9,14 +9,15 @@
 #define MLIR_DIALECT_STANDARDOPS_EDSC_INTRINSICS_H_
 
 #include "mlir/Dialect/StandardOps/EDSC/Builders.h"
-#include "mlir/EDSC/Intrinsics.h"
 
 namespace mlir {
 namespace edsc {
 namespace intrinsics {
 
+using std_addi = ValueBuilder<AddIOp>;
 using std_addf = ValueBuilder<AddFOp>;
 using std_alloc = ValueBuilder<AllocOp>;
+using std_alloca = ValueBuilder<AllocaOp>;
 using std_call = OperationBuilder<CallOp>;
 using std_constant = ValueBuilder<ConstantOp>;
 using std_constant_float = ValueBuilder<ConstantFloatOp>;
@@ -32,6 +33,7 @@ using std_memref_cast = ValueBuilder<MemRefCastOp>;
 using std_ret = OperationBuilder<ReturnOp>;
 using std_select = ValueBuilder<SelectOp>;
 using std_load = ValueBuilder<LoadOp>;
+using std_splat = ValueBuilder<SplatOp>;
 using std_store = OperationBuilder<StoreOp>;
 using std_subi = ValueBuilder<SubIOp>;
 using std_sub_view = ValueBuilder<SubViewOp>;
@@ -46,7 +48,7 @@ using std_sign_extendi = ValueBuilder<SignExtendIOp>;
 ///
 /// Prerequisites:
 ///   All Handles have already captured previously constructed IR objects.
-OperationHandle std_br(BlockHandle bh, ArrayRef<Value> operands);
+BranchOp std_br(BlockHandle bh, ValueRange operands);
 
 /// Creates a new mlir::Block* and branches to it from the current block.
 /// Argument types are specified by `operands`.
@@ -61,9 +63,8 @@ OperationHandle std_br(BlockHandle bh, ArrayRef<Value> operands);
 ///   All `operands` have already captured an mlir::Value
 ///   captures.size() == operands.size()
 ///   captures and operands are pairwise of the same type.
-OperationHandle std_br(BlockHandle *bh, ArrayRef<Type> types,
-                       MutableArrayRef<Value> captures,
-                       ArrayRef<Value> operands);
+BranchOp std_br(BlockHandle *bh, ArrayRef<Type> types,
+                MutableArrayRef<Value> captures, ValueRange operands);
 
 /// Branches into the mlir::Block* captured by BlockHandle `trueBranch` with
 /// `trueOperands` if `cond` evaluates to `true` (resp. `falseBranch` and
@@ -71,10 +72,9 @@ OperationHandle std_br(BlockHandle *bh, ArrayRef<Type> types,
 ///
 /// Prerequisites:
 ///   All Handles have captured previously constructed IR objects.
-OperationHandle std_cond_br(Value cond, BlockHandle trueBranch,
-                            ArrayRef<Value> trueOperands,
-                            BlockHandle falseBranch,
-                            ArrayRef<Value> falseOperands);
+CondBranchOp std_cond_br(Value cond, BlockHandle trueBranch,
+                         ValueRange trueOperands, BlockHandle falseBranch,
+                         ValueRange falseOperands);
 
 /// Eagerly creates new mlir::Block* with argument types specified by
 /// `trueOperands`/`falseOperands`.
@@ -92,13 +92,11 @@ OperationHandle std_cond_br(Value cond, BlockHandle trueBranch,
 ///   `falseCaptures`.size() == `falseOperands`.size()
 ///   `trueCaptures` and `trueOperands` are pairwise of the same type
 ///   `falseCaptures` and `falseOperands` are pairwise of the same type.
-OperationHandle std_cond_br(Value cond, BlockHandle *trueBranch,
-                            ArrayRef<Type> trueTypes,
-                            MutableArrayRef<Value> trueCaptures,
-                            ArrayRef<Value> trueOperands,
-                            BlockHandle *falseBranch, ArrayRef<Type> falseTypes,
-                            MutableArrayRef<Value> falseCaptures,
-                            ArrayRef<Value> falseOperands);
+CondBranchOp
+std_cond_br(Value cond, BlockHandle *trueBranch, ArrayRef<Type> trueTypes,
+            MutableArrayRef<Value> trueCaptures, ValueRange trueOperands,
+            BlockHandle *falseBranch, ArrayRef<Type> falseTypes,
+            MutableArrayRef<Value> falseCaptures, ValueRange falseOperands);
 
 /// Provide an index notation around sdt_load and std_store.
 using StdIndexedValue =

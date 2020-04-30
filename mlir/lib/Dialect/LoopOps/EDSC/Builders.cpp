@@ -79,36 +79,34 @@ mlir::edsc::LoopNestBuilder::LoopNestBuilder::operator()(
 }
 
 LoopBuilder mlir::edsc::makeParallelLoopBuilder(MutableArrayRef<Value> ivs,
-                                                ArrayRef<Value> lbHandles,
-                                                ArrayRef<Value> ubHandles,
+                                                ArrayRef<Value> lbs,
+                                                ArrayRef<Value> ubs,
                                                 ArrayRef<Value> steps) {
-  LoopBuilder result;
-  auto opHandle = OperationHandle::create<loop::ParallelOp>(
-      SmallVector<Value, 4>(lbHandles.begin(), lbHandles.end()),
-      SmallVector<Value, 4>(ubHandles.begin(), ubHandles.end()),
+  loop::ParallelOp parallelOp = OperationBuilder<loop::ParallelOp>(
+      SmallVector<Value, 4>(lbs.begin(), lbs.end()),
+      SmallVector<Value, 4>(ubs.begin(), ubs.end()),
       SmallVector<Value, 4>(steps.begin(), steps.end()));
-
-  loop::ParallelOp parallelOp =
-      cast<loop::ParallelOp>(*opHandle.getOperation());
   for (size_t i = 0, e = ivs.size(); i < e; ++i)
     ivs[i] = parallelOp.getBody()->getArgument(i);
-  result.enter(parallelOp.getBody(), /*prev=*/1);
+  LoopBuilder result;
+  result.enter(parallelOp.getBody());
   return result;
 }
 
-mlir::edsc::LoopBuilder mlir::edsc::makeLoopBuilder(
-    Value *iv, Value lbHandle, Value ubHandle, Value stepHandle,
-    MutableArrayRef<Value> iterArgsHandles, ValueRange iterArgsInitValues) {
+mlir::edsc::LoopBuilder
+mlir::edsc::makeLoopBuilder(Value *iv, Value lb, Value ub, Value step,
+                            MutableArrayRef<Value> iterArgsHandles,
+                            ValueRange iterArgsInitValues) {
   mlir::edsc::LoopBuilder result;
-  auto forOp = OperationHandle::createOp<loop::ForOp>(
-      lbHandle, ubHandle, stepHandle, iterArgsInitValues);
-  *iv = forOp.getInductionVar();
+  loop::ForOp forOp =
+      OperationBuilder<loop::ForOp>(lb, ub, step, iterArgsInitValues);
+  *iv = Value(forOp.getInductionVar());
   auto *body = loop::getForInductionVarOwner(*iv).getBody();
   for (size_t i = 0, e = iterArgsHandles.size(); i < e; ++i) {
     // Skipping the induction variable.
     iterArgsHandles[i] = body->getArgument(i + 1);
   }
   result.setOp(forOp);
-  result.enter(body, /*prev=*/1);
+  result.enter(body);
   return result;
 }

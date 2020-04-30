@@ -45,7 +45,7 @@ bool HexagonTTIImpl::useHVX() const {
 
 bool HexagonTTIImpl::isTypeForHVX(Type *VecTy) const {
   assert(VecTy->isVectorTy());
-  if (cast<VectorType>(VecTy)->isScalable())
+  if (isa<ScalableVectorType>(VecTy))
     return false;
   // Avoid types like <2 x i32*>.
   if (!cast<VectorType>(VecTy)->getElementType()->isIntegerTy())
@@ -115,9 +115,10 @@ unsigned HexagonTTIImpl::getMinimumVF(unsigned ElemWidth) const {
   return (8 * ST.getVectorLength()) / ElemWidth;
 }
 
-unsigned HexagonTTIImpl::getScalarizationOverhead(Type *Ty, bool Insert,
-      bool Extract) {
-  return BaseT::getScalarizationOverhead(Ty, Insert, Extract);
+unsigned HexagonTTIImpl::getScalarizationOverhead(Type *Ty,
+                                                  const APInt &DemandedElts,
+                                                  bool Insert, bool Extract) {
+  return BaseT::getScalarizationOverhead(Ty, DemandedElts, Insert, Extract);
 }
 
 unsigned HexagonTTIImpl::getOperandsScalarizationOverhead(
@@ -298,8 +299,10 @@ unsigned HexagonTTIImpl::getCacheLineSize() const {
   return ST.getL1CacheLineSize();
 }
 
-int HexagonTTIImpl::getUserCost(const User *U,
-                                ArrayRef<const Value *> Operands) {
+int
+HexagonTTIImpl::getUserCost(const User *U,
+                            ArrayRef<const Value *> Operands,
+                            TTI::TargetCostKind CostKind) {
   auto isCastFoldedIntoLoad = [this](const CastInst *CI) -> bool {
     if (!CI->isIntegerCast())
       return false;
@@ -321,7 +324,7 @@ int HexagonTTIImpl::getUserCost(const User *U,
   if (const CastInst *CI = dyn_cast<const CastInst>(U))
     if (isCastFoldedIntoLoad(CI))
       return TargetTransformInfo::TCC_Free;
-  return BaseT::getUserCost(U, Operands);
+  return BaseT::getUserCost(U, Operands, CostKind);
 }
 
 bool HexagonTTIImpl::shouldBuildLookupTables() const {

@@ -50,7 +50,7 @@ LoopBuilder mlir::edsc::makeAffineLoopBuilder(Value *iv, ArrayRef<Value> lbs,
   }
 
   auto *body = getForInductionVarOwner(*iv).getBody();
-  result.enter(body, /*prev=*/1);
+  result.enter(body);
   return result;
 }
 
@@ -189,6 +189,11 @@ Value mlir::edsc::op::floorDiv(Value lhs, Value rhs) {
 Value mlir::edsc::op::ceilDiv(Value lhs, Value rhs) {
   return createBinaryIndexHandle(
       lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0.ceilDiv(d1); });
+}
+
+Value mlir::edsc::op::negate(Value value) {
+  assert(value.getType().isInteger(1) && "expected boolean expression");
+  return ValueBuilder<ConstantIntOp>(1, 1) - value;
 }
 
 Value mlir::edsc::op::operator&&(Value lhs, Value rhs) {

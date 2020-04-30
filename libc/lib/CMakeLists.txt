@@ -11,9 +11,11 @@ add_entrypoint_library(
     # signal.h entrypoints
     libc.src.signal.raise
     libc.src.signal.sigaction
+    libc.src.signal.sigdelset
     libc.src.signal.sigaddset
     libc.src.signal.sigemptyset
     libc.src.signal.sigprocmask
+    libc.src.signal.sigfillset
     libc.src.signal.signal
 
     # stdlib.h entrypoints
@@ -24,6 +26,7 @@ add_entrypoint_library(
     libc.src.string.memcpy
     libc.src.string.strcpy
     libc.src.string.strcat
+    libc.src.string.strlen
 
     # sys/mman.h entrypoints
     libc.src.sys.mman.mmap
