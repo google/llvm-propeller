@@ -12,8 +12,7 @@
 ; All other BBs (including the entry block) go into the function's section.
 ; RUN: echo '!foo' > %t2
 ; RUN: echo '!!1 3' >> %t2
-; RUN: llc < %s -O0 -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t2 > %t44 
-; RUN: FileCheck %s -check-prefix=LINUX-SECTIONS2 --input-file=%t44
+; RUN: llc < %s -O0 -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t2 | FileCheck %s -check-prefix=LINUX-SECTIONS2
 
 define void @foo(i1 zeroext) nounwind {
   %2 = alloca i8, align 1

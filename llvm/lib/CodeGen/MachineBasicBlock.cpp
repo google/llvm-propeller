@@ -90,7 +90,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
       } else {
         Suffix += "." + std::to_string(SectionID.Number);
       }
-      CachedMCSymbol = Ctx.getOrCreateSymbol(getParent()->getName() + Suffix);
+      CachedMCSymbol = Ctx.getOrCreateSymbol(MF->getName() + Suffix);
     } else {
       CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
                                              Twine(MF->getFunctionNumber()) +
