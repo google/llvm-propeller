@@ -934,7 +934,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->ltoUniqueBasicBlockSectionNames =
       args.hasFlag(OPT_lto_unique_bb_section_names,
                    OPT_no_lto_unique_bb_section_names, false);
-  config->ltoSplitMachineFunctions = 
+  config->ltoSplitMachineFunctions =
       args.hasFlag(OPT_lto_split_machine_functions,
                    OPT_no_lto_split_machine_functions, false);
   config->mapFile = args.getLastArgValue(OPT_Map);

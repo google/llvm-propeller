@@ -103,8 +103,7 @@ static lto::Config createConfig() {
   c.Options.UniqueBasicBlockSectionNames =
       config->ltoUniqueBasicBlockSectionNames;
 
-  c.Options.EnableMachineFunctionSplitter =
-    config->ltoSplitMachineFunctions;
+  c.Options.EnableMachineFunctionSplitter = config->ltoSplitMachineFunctions;
 
   if (auto relocModel = getRelocModelFromCMModel())
     c.RelocModel = *relocModel;
