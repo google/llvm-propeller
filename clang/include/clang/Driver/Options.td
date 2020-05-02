@@ -2016,6 +2016,12 @@ def funique_basic_block_section_names : Flag <["-"], "funique-basic-block-sectio
 def fno_unique_basic_block_section_names : Flag <["-"], "fno-unique-basic-block-section-names">,
   Group<f_Group>;
 
+def fsplit_machine_functions : Flag <["-"], "fsplit-machine-functions">,
+  Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Split machine functions using profile information (ELF Only)">;
+def fno_split_machine_functions: Flag <["-"], "fno-split-machine-functions">,
+  Group<f_Group>;
+
 def funique_internal_linkage_names : Flag <["-"], "funique-internal-linkage-names">,
   Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Uniqueify Internal Linkage Symbol Names by appending the MD5 hash of the module path">;

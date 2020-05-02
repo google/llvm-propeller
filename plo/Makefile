@@ -455,9 +455,12 @@ sample.inst.profdata: sample.inst.out
 	./sample.inst.out && \
 	$(STAGE1_BIN)/llvm-profdata merge -output=$@ default.profraw
 
+# sample.goal.o: sample.c sample.inst.profdata stage1-compiler
+# 	./stage1-compiler -O2 -fprofile-instr-use=sample.inst.profdata -ffunction-sections -emit-llvm -c $< -o sample.ll && \
+# 	./stage1/install/bin/llc -split-machine-functions sample.ll -o $@ 
+
 sample.goal.o: sample.c sample.inst.profdata stage1-compiler
-	./stage1-compiler -O2 -fprofile-instr-use=sample.inst.profdata -ffunction-sections -emit-llvm -c $< -o sample.ll && \
-	./stage1/install/bin/llc -split-machine-functions sample.ll -o $@ 
+	./stage1-compiler -O2 -fprofile-instr-use=sample.inst.profdata -ffunction-sections -fsplit-machine-functions -c $< -o $@ 
 
 sample.goal.out: sample.goal.o stage1-compiler
 	./stage1-compiler -fuse-ld=lld -O2 -fprofile-instr-use=sample.inst.profdata -Wl,-z,keep-text-section-prefix $< -o $@

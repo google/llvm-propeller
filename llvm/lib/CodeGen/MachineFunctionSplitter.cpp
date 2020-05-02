@@ -73,7 +73,6 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     return X.getSectionID().Type < Y.getSectionID().Type;
   };
   llvm::sortBasicBlocksAndUpdateBranches(MF, Comparator);
-  // MF.createBBLabels();
 
   // for(auto& MBB: MF) {
   //   errs() << MBB.getNumber() << " " << MBB.getSectionID().Type << " " <<
