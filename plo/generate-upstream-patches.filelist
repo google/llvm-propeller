@@ -197,8 +197,6 @@ declare ALL_FILES=(
         debuginfo_2      llvm/lib/MC/MCDwarf.cpp
         debuginfo        llvm/test/DebugInfo/X86/basicblock-sections_1.ll
         cfi              llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-        cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
-        cfi              llvm/include/llvm/CodeGen/MachineBasicBlock.h
         cfi              llvm/include/llvm/CodeGen/TargetFrameLowering.h
         cfi              llvm/include/llvm/MC/MCDwarf.h
         cfi              llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
