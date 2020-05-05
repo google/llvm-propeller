@@ -1034,6 +1034,10 @@ void TargetPassConfig::addMachinePasses() {
       addPass(createMachineOutlinerPass(RunOnAllFunctions));
   }
 
+  if (TM->Options.EnableMachineFunctionSplitter) {
+    addPass(createMachineFunctionSplitterPass());
+  }
+
   if (TM->getBBSectionsType() != llvm::BasicBlockSection::None)
     addPass(llvm::createBBSectionsPreparePass(TM->getBBSectionsFuncListBuf()));
 

@@ -183,6 +183,7 @@ struct Configuration {
   bool ltoNewPassManager;
   bool ltoUniqueBasicBlockSectionNames;
   bool ltoWholeProgramVisibility;
+  bool ltoSplitMachineFunctions;
   bool mergeArmExidx;
   bool mipsN32Abi = false;
   bool mmapOutputFile;

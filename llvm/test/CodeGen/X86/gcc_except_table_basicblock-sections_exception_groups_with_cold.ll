@@ -2,6 +2,7 @@
 ; RUN: echo '!main' > %t
 ; RUN: echo '!!0' >> %t
 ; RUN: llc -function-sections -basicblock-sections=%t -mtriple x86_64-pc-linux-gnu < %s | FileCheck %s
+; XFAIL: *
 @_ZTIi = external constant i8*
 
 define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*) {

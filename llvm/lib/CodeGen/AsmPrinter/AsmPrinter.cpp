@@ -3067,14 +3067,19 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
     if (isVerbose() && MBB.hasLabelMustBeEmitted()) {
       OutStreamer->AddComment("Label of block must be emitted");
     }
+    auto *BBSymbol = MBB.getSymbol();
     // Switch to a new section if this basic block must begin a section.
     if (MBB.isBeginSection()) {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
                                                               MBB, TM));
-      CurrentSectionBeginSym = MBB.getSymbol();
+      // Use a more meaningful name if we have basicblock clusters.
+      // if(MBB.getParent()->getBBSectionsType() == BasicBlockSection::List) {
+      //   BBSymbol = getSymbolForBasicBlockCluster(OutContext, MBB);
+      // }
+      CurrentSectionBeginSym = BBSymbol;
     }
-    OutStreamer->emitLabel(MBB.getSymbol());
+    OutStreamer->emitLabel(BBSymbol);
     // With BB sections, each basic block must handle CFI information on its own
     // if it begins a section.
     if (MBB.isBeginSection()) {

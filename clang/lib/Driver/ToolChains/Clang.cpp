@@ -4269,6 +4269,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         options::OPT_fno_unique_section_names,
         options::OPT_funique_basic_block_section_names,
         options::OPT_fno_unique_basic_block_section_names,
+        options::OPT_fsplit_machine_functions,
+        options::OPT_fno_split_machine_functions,
         options::OPT_mrestrict_it,
         options::OPT_mno_restrict_it,
         options::OPT_mstackrealign,
@@ -4923,6 +4925,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasFlag(options::OPT_funique_internal_linkage_names,
                    options::OPT_fno_unique_internal_linkage_names, false))
     CmdArgs.push_back("-funique-internal-linkage-names");
+
+  if (Args.hasFlag(options::OPT_fsplit_machine_functions,
+                   options::OPT_fno_split_machine_functions, false))
+    CmdArgs.push_back("-fsplit-machine-functions");
 
   if (Args.hasFlag(options::OPT_funique_basic_block_section_names,
                    options::OPT_fno_unique_basic_block_section_names, false))
