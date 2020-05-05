@@ -303,7 +303,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     uint64_t symShndx = (*sectionIE)->getIndex();
     uint64_t symSectionSize = (*sectionIE)->getSize();
     // symValue is the offset to the beginning of its section.
-    uint64_t symValue = sym.getValue();
+    uint64_t symValue = sym.getValue().get();
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *symEnt = prop->propf->findSymbol(symName);
     // symValue is the offset of the bb symbol within a bbsection, if
