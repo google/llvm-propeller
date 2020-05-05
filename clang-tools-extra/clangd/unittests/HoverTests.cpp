@@ -2019,15 +2019,14 @@ TEST(Hover, ParseDocumentation) {
                    "foo bar",
                },
                {
-                   // FIXME: we insert spaces between code and text chunk.
                    "Tests primality of `p`.",
-                   "Tests primality of `p` .",
-                   "Tests primality of p .",
+                   "Tests primality of `p`.",
+                   "Tests primality of `p`.",
                },
                {
                    "'`' should not occur in `Code`",
                    "'\\`' should not occur in `Code`",
-                   "'`' should not occur in Code",
+                   "'`' should not occur in `Code`",
                },
                {
                    "`not\nparsed`",

@@ -22,6 +22,7 @@
 #include "index/Symbol.h"
 #include "index/SymbolOrigin.h"
 #include "support/Logger.h"
+#include "support/Markup.h"
 #include "support/Path.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "clang/Sema/CodeCompleteOptions.h"
@@ -72,6 +73,9 @@ struct CodeCompleteOptions {
   /// Limit the number of results returned (0 means no limit).
   /// If more results are available, we set CompletionList.isIncomplete.
   size_t Limit = 0;
+
+  /// Whether to present doc comments as plain-text or markdown.
+  MarkupKind DocumentationFormat = MarkupKind::PlainText;
 
   enum IncludeInsertion {
     IWYU,
@@ -161,7 +165,8 @@ struct CodeCompletion {
   std::string SnippetSuffix;
   // Type to be displayed for this completion.
   std::string ReturnType;
-  std::string Documentation;
+  // The parsed documentation comment.
+  llvm::Optional<markup::Document> Documentation;
   CompletionItemKind Kind = CompletionItemKind::Missing;
   // This completion item may represent several symbols that can be inserted in
   // the same way, such as function overloads. In this case BundleSize > 1, and

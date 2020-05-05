@@ -343,7 +343,13 @@ TEST_F(FormatTestCSharp, CSharpRegions) {
 }
 
 TEST_F(FormatTestCSharp, CSharpKeyWordEscaping) {
-  verifyFormat("public enum var { none, @string, bool, @enum }");
+  verifyFormat("public enum var\n"
+               "{\n"
+               "    none,\n"
+               "    @string,\n"
+               "    bool,\n"
+               "    @enum\n"
+               "}");
 }
 
 TEST_F(FormatTestCSharp, CSharpNullCoalescing) {
@@ -755,7 +761,8 @@ TEST_F(FormatTestCSharp, CSharpGenericTypeConstraints) {
 
   verifyFormat(R"(//
 class ItemFactory<T>
-    where T : new() {})", Style);
+    where T : new() {})",
+               Style);
 
   verifyFormat(R"(//
 class Dictionary<TKey, TVal>
