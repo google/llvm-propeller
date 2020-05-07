@@ -549,8 +549,7 @@ bool Propeller::processFiles(std::vector<ObjectView *> &views) {
   }
 
   processFailureCount = 0;
-  llvm::parallel::for_each(
-      llvm::parallel::parallel_execution_policy(), views.begin(), views.end(),
+  llvm::parallelForEach(views.begin(), views.end(),
       std::bind(&Propeller::processFile, this, std::placeholders::_1));
 
   if (processFailureCount * 100 / views.size() >= 50)

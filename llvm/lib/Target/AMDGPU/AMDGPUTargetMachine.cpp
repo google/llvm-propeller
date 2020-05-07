@@ -16,6 +16,7 @@
 #include "AMDGPU.h"
 #include "AMDGPUAliasAnalysis.h"
 #include "AMDGPUCallLowering.h"
+#include "AMDGPUExportClustering.h"
 #include "AMDGPUInstructionSelector.h"
 #include "AMDGPULegalizerInfo.h"
 #include "AMDGPUMacroFusion.h"
@@ -283,6 +284,7 @@ createGCNMaxOccupancyMachineScheduler(MachineSchedContext *C) {
   DAG->addMutation(createLoadClusterDAGMutation(DAG->TII, DAG->TRI));
   DAG->addMutation(createStoreClusterDAGMutation(DAG->TII, DAG->TRI));
   DAG->addMutation(createAMDGPUMacroFusionDAGMutation());
+  DAG->addMutation(createAMDGPUExportClusteringDAGMutation());
   return DAG;
 }
 
@@ -916,6 +918,12 @@ bool GCNPassConfig::addInstSelector() {
   AMDGPUPassConfig::addInstSelector();
   addPass(&SIFixSGPRCopiesID);
   addPass(createSILowerI1CopiesPass());
+  // TODO: We have to add FinalizeISel
+  // to expand V_ADD/SUB_U64_PSEUDO before SIFixupVectorISel
+  // that expects V_ADD/SUB -> A_ADDC/SUBB pairs expanded.
+  // Will be removed as soon as SIFixupVectorISel is changed
+  // to work with V_ADD/SUB_U64_PSEUDO instead.
+  addPass(&FinalizeISelID);
   addPass(createSIFixupVectorISelPass());
   addPass(createSIAddIMGInitPass());
   return false;

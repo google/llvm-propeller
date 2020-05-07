@@ -188,10 +188,6 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
       setOperationAction(ISD::UADDSAT, VT, Legal);
       setOperationAction(ISD::SSUBSAT, VT, Legal);
       setOperationAction(ISD::USUBSAT, VT, Legal);
-      setOperationAction(ISD::SMAX, VT, Legal);
-      setOperationAction(ISD::UMAX, VT, Legal);
-      setOperationAction(ISD::SMIN, VT, Legal);
-      setOperationAction(ISD::UMIN, VT, Legal);
     }
 
     for (auto VT :
@@ -887,6 +883,13 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
         setOperationAction(ISD::SPLAT_VECTOR, VT, Custom);
         setOperationAction(ISD::SDIV, VT, Custom);
         setOperationAction(ISD::UDIV, VT, Custom);
+        setOperationAction(ISD::SMIN, VT, Custom);
+        setOperationAction(ISD::UMIN, VT, Custom);
+        setOperationAction(ISD::SMAX, VT, Custom);
+        setOperationAction(ISD::UMAX, VT, Custom);
+        setOperationAction(ISD::SHL, VT, Custom);
+        setOperationAction(ISD::SRL, VT, Custom);
+        setOperationAction(ISD::SRA, VT, Custom);
       }
     }
     setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i8, Custom);
@@ -991,10 +994,12 @@ void AArch64TargetLowering::addQRTypeForNEON(MVT VT) {
   addTypeForNEON(VT, MVT::v4i32);
 }
 
-EVT AArch64TargetLowering::getSetCCResultType(const DataLayout &, LLVMContext &,
-                                              EVT VT) const {
+EVT AArch64TargetLowering::getSetCCResultType(const DataLayout &,
+                                              LLVMContext &C, EVT VT) const {
   if (!VT.isVector())
     return MVT::i32;
+  if (VT.isScalableVector())
+    return EVT::getVectorVT(C, MVT::i1, VT.getVectorElementCount());
   return VT.changeVectorElementTypeToInteger();
 }
 
@@ -1285,6 +1290,13 @@ const char *AArch64TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case AArch64ISD::TLSDESC_CALLSEQ:   return "AArch64ISD::TLSDESC_CALLSEQ";
   case AArch64ISD::SDIV_PRED:         return "AArch64ISD::SDIV_PRED";
   case AArch64ISD::UDIV_PRED:         return "AArch64ISD::UDIV_PRED";
+  case AArch64ISD::SMIN_PRED:         return "AArch64ISD::SMIN_PRED";
+  case AArch64ISD::UMIN_PRED:         return "AArch64ISD::UMIN_PRED";
+  case AArch64ISD::SMAX_PRED:         return "AArch64ISD::SMAX_PRED";
+  case AArch64ISD::UMAX_PRED:         return "AArch64ISD::UMAX_PRED";
+  case AArch64ISD::SHL_PRED:          return "AArch64ISD::SHL_PRED";
+  case AArch64ISD::SRL_PRED:          return "AArch64ISD::SRL_PRED";
+  case AArch64ISD::SRA_PRED:          return "AArch64ISD::SRA_PRED";
   case AArch64ISD::ADC:               return "AArch64ISD::ADC";
   case AArch64ISD::SBC:               return "AArch64ISD::SBC";
   case AArch64ISD::ADDS:              return "AArch64ISD::ADDS";
@@ -3354,9 +3366,17 @@ SDValue AArch64TargetLowering::LowerOperation(SDValue Op,
   case ISD::EXTRACT_SUBVECTOR:
     return LowerEXTRACT_SUBVECTOR(Op, DAG);
   case ISD::SDIV:
-    return LowerDIV(Op, DAG, AArch64ISD::SDIV_PRED);
+    return LowerToPredicatedOp(Op, DAG, AArch64ISD::SDIV_PRED);
   case ISD::UDIV:
-    return LowerDIV(Op, DAG, AArch64ISD::UDIV_PRED);
+    return LowerToPredicatedOp(Op, DAG, AArch64ISD::UDIV_PRED);
+  case ISD::SMIN:
+    return LowerToPredicatedOp(Op, DAG, AArch64ISD::SMIN_PRED);
+  case ISD::UMIN:
+    return LowerToPredicatedOp(Op, DAG, AArch64ISD::UMIN_PRED);
+  case ISD::SMAX:
+    return LowerToPredicatedOp(Op, DAG, AArch64ISD::SMAX_PRED);
+  case ISD::UMAX:
+    return LowerToPredicatedOp(Op, DAG, AArch64ISD::UMAX_PRED);
   case ISD::SRA:
   case ISD::SRL:
   case ISD::SHL:
@@ -7663,7 +7683,7 @@ SDValue AArch64TargetLowering::LowerDUPQLane(SDValue Op,
   return DAG.getNode(ISD::BITCAST, DL, VT, TBL);
 }
 
-SDValue AArch64TargetLowering::LowerDIV(SDValue Op,
+SDValue AArch64TargetLowering::LowerToPredicatedOp(SDValue Op,
                                         SelectionDAG &DAG,
                                         unsigned NewOp) const {
   EVT VT = Op.getValueType();
@@ -8585,6 +8605,9 @@ SDValue AArch64TargetLowering::LowerVectorSRA_SRL_SHL(SDValue Op,
     llvm_unreachable("unexpected shift opcode");
 
   case ISD::SHL:
+    if (VT.isScalableVector())
+      return LowerToPredicatedOp(Op, DAG, AArch64ISD::SHL_PRED);
+
     if (isVShiftLImm(Op.getOperand(1), VT, false, Cnt) && Cnt < EltSize)
       return DAG.getNode(AArch64ISD::VSHL, DL, VT, Op.getOperand(0),
                          DAG.getConstant(Cnt, DL, MVT::i32));
@@ -8594,6 +8617,12 @@ SDValue AArch64TargetLowering::LowerVectorSRA_SRL_SHL(SDValue Op,
                        Op.getOperand(0), Op.getOperand(1));
   case ISD::SRA:
   case ISD::SRL:
+    if (VT.isScalableVector()) {
+      unsigned Opc = Op.getOpcode() == ISD::SRA ? AArch64ISD::SRA_PRED
+                                                : AArch64ISD::SRL_PRED;
+      return LowerToPredicatedOp(Op, DAG, Opc);
+    }
+
     // Right shift immediate
     if (isVShiftRImm(Op.getOperand(1), VT, false, Cnt) && Cnt < EltSize) {
       unsigned Opc =
@@ -11435,7 +11464,28 @@ static SDValue performIntrinsicCombine(SDNode *N,
     return DAG.getNode(AArch64ISD::SDIV_PRED, SDLoc(N), N->getValueType(0),
                        N->getOperand(1), N->getOperand(2), N->getOperand(3));
   case Intrinsic::aarch64_sve_udiv:
-     return DAG.getNode(AArch64ISD::UDIV_PRED, SDLoc(N), N->getValueType(0),
+    return DAG.getNode(AArch64ISD::UDIV_PRED, SDLoc(N), N->getValueType(0),
+                       N->getOperand(1), N->getOperand(2), N->getOperand(3));
+  case Intrinsic::aarch64_sve_smin:
+    return DAG.getNode(AArch64ISD::SMIN_PRED, SDLoc(N), N->getValueType(0),
+                       N->getOperand(1), N->getOperand(2), N->getOperand(3));
+  case Intrinsic::aarch64_sve_umin:
+    return DAG.getNode(AArch64ISD::UMIN_PRED, SDLoc(N), N->getValueType(0),
+                       N->getOperand(1), N->getOperand(2), N->getOperand(3));
+  case Intrinsic::aarch64_sve_smax:
+    return DAG.getNode(AArch64ISD::SMAX_PRED, SDLoc(N), N->getValueType(0),
+                       N->getOperand(1), N->getOperand(2), N->getOperand(3));
+  case Intrinsic::aarch64_sve_umax:
+    return DAG.getNode(AArch64ISD::UMAX_PRED, SDLoc(N), N->getValueType(0),
+                       N->getOperand(1), N->getOperand(2), N->getOperand(3));
+  case Intrinsic::aarch64_sve_lsl:
+    return DAG.getNode(AArch64ISD::SHL_PRED, SDLoc(N), N->getValueType(0),
+                       N->getOperand(1), N->getOperand(2), N->getOperand(3));
+  case Intrinsic::aarch64_sve_lsr:
+    return DAG.getNode(AArch64ISD::SRL_PRED, SDLoc(N), N->getValueType(0),
+                       N->getOperand(1), N->getOperand(2), N->getOperand(3));
+  case Intrinsic::aarch64_sve_asr:
+    return DAG.getNode(AArch64ISD::SRA_PRED, SDLoc(N), N->getValueType(0),
                        N->getOperand(1), N->getOperand(2), N->getOperand(3));
   case Intrinsic::aarch64_sve_fadda:
     return combineSVEReductionOrderedFP(N, AArch64ISD::FADDA_PRED, DAG);
