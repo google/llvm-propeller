@@ -1,5 +1,6 @@
 ; RUN: llc -O0 %s -mtriple=x86_64-* -filetype=obj -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=NO-SECTIONS %s
 ; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-* -filetype=obj -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-* -filetype=obj -split-dwarf-file=%t.dwo -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
 
 ; From:
 ; int foo(int a) {
