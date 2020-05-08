@@ -23,15 +23,7 @@ declare ALL_FILES=(
         clang-sta        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-base       clang/lib/Driver/ToolChains/Clang.cpp
         clang-rws        clang/lib/Driver/ToolChains/Clang.cpp
-        clang-uif        clang/include/clang/Basic/CodeGenOptions.def
-        clang-uif        clang/include/clang/Driver/Options.td
-        clang-uif        clang/lib/Driver/ToolChains/Clang.cpp
-	clang-uif        clang/docs/UsersManual.rst
-        clang-uif        clang/lib/Frontend/CompilerInvocation.cpp
-        clang-uif        clang/lib/CodeGen/BackendUtil.cpp
-        clang-uif        clang/test/CodeGen/unique-internal-linkage-names.cpp
         clang-uif2       clang/test/CodeGen/unique-internal-linkage-names2.c
-	clang-uif        clang/test/Driver/funique-internal-linkage-names.c
         clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
