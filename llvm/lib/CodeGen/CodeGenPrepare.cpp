@@ -177,6 +177,17 @@ static cl::opt<bool> ProfileGuidedSectionPrefix(
     "profile-guided-section-prefix", cl::Hidden, cl::init(true), cl::ZeroOrMore,
     cl::desc("Use profile info to add section prefix for hot/cold functions"));
 
+static cl::opt<bool> ProfileUnknownInSpecialSection(
+    "profile-unknown-in-special-section", cl::Hidden, cl::init(false),
+    cl::ZeroOrMore,
+    cl::desc("In profiling mode like sampleFDO, if a function doesn't have "
+             "profile, we cannot tell the function is cold for sure because "
+             "it may be a function newly added without ever being sampled. "
+             "With the flag enabled, compiler can put such profile unknown "
+             "functions into a special section, so runtime system can choose "
+             "to handle it in a different way than .text section, to save "
+             "RAM for example. "));
+
 static cl::opt<unsigned> FreqRatioToSkipMerge(
     "cgp-freq-ratio-to-skip-merge", cl::Hidden, cl::init(2),
     cl::desc("Skip merging empty blocks if (frequency of empty block) / "
@@ -452,6 +463,9 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
       F.setSectionPrefix(".hot");
     else if (PSI->isFunctionColdInCallGraph(&F, *BFI))
       F.setSectionPrefix(".unlikely");
+    else if (ProfileUnknownInSpecialSection && PSI->hasPartialSampleProfile() &&
+             PSI->isFunctionHotnessUnknown(F))
+      F.setSectionPrefix(".unknown");
   }
 
   /// This optimization identifies DIV instructions that can be
@@ -6401,18 +6415,6 @@ bool CodeGenPrepare::optimizeSelectInst(SelectInst *SI) {
   return true;
 }
 
-static bool isBroadcastShuffle(ShuffleVectorInst *SVI) {
-  ArrayRef<int> Mask(SVI->getShuffleMask());
-  int SplatElem = -1;
-  for (unsigned i = 0; i < Mask.size(); ++i) {
-    if (SplatElem != -1 && Mask[i] != -1 && Mask[i] != SplatElem)
-      return false;
-    SplatElem = Mask[i];
-  }
-
-  return true;
-}
-
 /// Some targets have expensive vector shifts if the lanes aren't all the same
 /// (e.g. x86 only introduced "vpsllvd" and friends with AVX2). In these cases
 /// it's often worth sinking a shufflevector splat down to its use so that
@@ -6426,7 +6428,7 @@ bool CodeGenPrepare::optimizeShuffleVectorInst(ShuffleVectorInst *SVI) {
 
   // We only expect better codegen by sinking a shuffle if we can recognise a
   // constant splat.
-  if (!isBroadcastShuffle(SVI))
+  if (getSplatIndex(SVI->getShuffleMask()) < 0)
     return false;
 
   // InsertedShuffles - Only insert a shuffle in each block once.
