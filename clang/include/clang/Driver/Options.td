@@ -1996,7 +1996,8 @@ def ffunction_sections : Flag<["-"], "ffunction-sections">, Group<f_Group>,
 def fno_function_sections : Flag<["-"], "fno-function-sections">, Group<f_Group>;
 def fbasic_block_sections_EQ : Joined<["-"], "fbasic-block-sections=">, Group<f_Group>,
   Flags<[CC1Option, CC1AsOption]>,
-  HelpText<"Place each function's basic blocks in unique sections (ELF Only) : all | labels | none | <filename>">;
+  HelpText<"Place each function's basic blocks in unique sections (ELF Only) : all | labels | none | list=<file>">,
+  Values<"all,labels,none,list=">;
 def fdata_sections : Flag <["-"], "fdata-sections">, Group<f_Group>,
  Flags<[CC1Option]>, HelpText<"Place each data in its own section">;
 def fno_data_sections : Flag <["-"], "fno-data-sections">, Group<f_Group>;
