@@ -28,7 +28,7 @@ declare ALL_FILES=(
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
         clang-base       clang/test/CodeGen/basic-block-sections.c
-        clang-base       clang/test/CodeGen/basic-block-sections.funcnames
+        clang-base       clang/test/CodeGen/Inputs/basic-block-sections.funcnames
 	clang-base       clang/test/Driver/funique-basic-block-section-names.c
 	clang-base       clang/test/Driver/fbasic-block-sections.c
 	clang-base       llvm/include/llvm/Target/TargetOptions.h
