@@ -537,6 +537,7 @@ void DwarfCompileUnit::constructScopeDIE(
 
 void DwarfCompileUnit::addScopeRangeList(DIE &ScopeDIE,
                                          SmallVector<RangeSpan, 2> Range) {
+
   HasRangeLists = true;
 
   // Add the range list to the set of ranges to be emitted.
