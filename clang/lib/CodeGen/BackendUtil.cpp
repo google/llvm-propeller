@@ -500,14 +500,11 @@ static void initTargetOptions(DiagnosticsEngine &Diags,
   if (Options.BBSections == llvm::BasicBlockSection::List) {
     ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
         MemoryBuffer::getFile(CodeGenOpts.BBSections.substr(5));
-    if (!MBOrErr) {
-      unsigned DiagID = Diags.getCustomDiagID(
-          DiagnosticsEngine::Error, "unable to load basic block sections "
-                                    "function list : '%0'");
-      Diags.Report(DiagID) << MBOrErr.getError().message();
-    } else {
+    if (!MBOrErr)
+      Diags.Report(diag::err_fe_unable_to_load_basic_block_sections_file)
+          << MBOrErr.getError().message();
+    else
       Options.BBSectionsFuncListBuf = std::move(*MBOrErr);
-    }
   }
 
   Options.FunctionSections = CodeGenOpts.FunctionSections;
