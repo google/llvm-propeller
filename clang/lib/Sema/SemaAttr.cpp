@@ -420,8 +420,8 @@ void Sema::ActOnPragmaFloatControl(SourceLocation Loc,
   auto NewValue = FpPragmaStack.CurrentValue;
   FPOptions NewFPFeatures(NewValue);
   if ((Action == PSK_Push_Set || Action == PSK_Push || Action == PSK_Pop) &&
-      !CurContext->isTranslationUnit()) {
-    // Push and pop can only occur at file scope.
+      !(CurContext->isTranslationUnit()) && !CurContext->isNamespace()) {
+    // Push and pop can only occur at file or namespace scope.
     Diag(Loc, diag::err_pragma_fc_pp_scope);
     return;
   }
@@ -457,8 +457,12 @@ void Sema::ActOnPragmaFloatControl(SourceLocation Loc,
     FpPragmaStack.Act(Loc, Action, StringRef(), NewValue);
     break;
   case PFC_Push:
-    Action = Sema::PSK_Push_Set;
-    FpPragmaStack.Act(Loc, Action, StringRef(), NewFPFeatures.getAsOpaqueInt());
+    if (FpPragmaStack.Stack.empty()) {
+      FpPragmaStack.Act(Loc, Sema::PSK_Set, StringRef(),
+                        CurFPFeatures.getAsOpaqueInt());
+    }
+    FpPragmaStack.Act(Loc, Sema::PSK_Push_Set, StringRef(),
+                      NewFPFeatures.getAsOpaqueInt());
     break;
   case PFC_Pop:
     if (FpPragmaStack.Stack.empty()) {

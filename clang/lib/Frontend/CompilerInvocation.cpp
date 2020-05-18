@@ -783,7 +783,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   const llvm::Triple::ArchType DebugEntryValueArchs[] = {
       llvm::Triple::x86, llvm::Triple::x86_64, llvm::Triple::aarch64,
-      llvm::Triple::arm, llvm::Triple::armeb};
+      llvm::Triple::arm, llvm::Triple::armeb, llvm::Triple::mips,
+      llvm::Triple::mipsel, llvm::Triple::mips64, llvm::Triple::mips64el};
 
   llvm::Triple T(TargetOpts.Triple);
   if (Opts.OptimizationLevel > 0 && Opts.hasReducedDebugInfo() &&
@@ -1033,8 +1034,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
         std::string(Args.getLastArgValue(OPT_fprofile_filter_files_EQ));
     Opts.ProfileExcludeFiles =
         std::string(Args.getLastArgValue(OPT_fprofile_exclude_files_EQ));
-    Opts.CoverageExitBlockBeforeBody =
-        Args.hasArg(OPT_coverage_exit_block_before_body);
     if (Args.hasArg(OPT_coverage_version_EQ)) {
       StringRef CoverageVersion = Args.getLastArgValue(OPT_coverage_version_EQ);
       if (CoverageVersion.size() != 4) {
@@ -3395,6 +3394,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   Opts.BranchTargetEnforcement = Args.hasArg(OPT_mbranch_target_enforce);
   Opts.SpeculativeLoadHardening = Args.hasArg(OPT_mspeculative_load_hardening);
+
+  Opts.CompatibilityQualifiedIdBlockParamTypeChecking =
+      Args.hasArg(OPT_fcompatibility_qualified_id_block_param_type_checking);
 }
 
 static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {

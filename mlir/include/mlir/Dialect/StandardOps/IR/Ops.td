@@ -16,7 +16,7 @@
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 
 def StandardOps_Dialect : Dialect {
@@ -143,12 +143,14 @@ class ComplexFloatArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
 //
 //   %0 = alloclike(%m)[%s] : memref<8x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1)>
 //
-class AllocLikeOp<string mnemonic, list<OpTrait> traits = []> :
-    Std_Op<mnemonic, !listconcat(traits, [MemoryEffects<[MemAlloc]>])> {
+class AllocLikeOp<string mnemonic,
+                  Resource resource,
+                  list<OpTrait> traits = []> :
+    Std_Op<mnemonic, !listconcat([MemoryEffects<[MemAlloc<resource>]>], traits)> {
 
   let arguments = (ins Variadic<Index>:$value,
                    Confined<OptionalAttr<I64Attr>, [IntMinValue<0>]>:$alignment);
-  let results = (outs Res<AnyMemRef, "", [MemAlloc]>);
+  let results = (outs Res<AnyMemRef, "", [MemAlloc<resource>]>);
 
   let builders = [OpBuilder<
     "OpBuilder &builder, OperationState &result, MemRefType memrefType", [{
@@ -310,7 +312,7 @@ def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
 // AllocOp
 //===----------------------------------------------------------------------===//
 
-def AllocOp : AllocLikeOp<"alloc"> {
+def AllocOp : AllocLikeOp<"alloc", DefaultResource> {
   let summary = "memory allocation operation";
   let description = [{
     The `alloc` operation allocates a region of memory, as specified by its
@@ -357,7 +359,7 @@ def AllocOp : AllocLikeOp<"alloc"> {
 // AllocaOp
 //===----------------------------------------------------------------------===//
 
-def AllocaOp : AllocLikeOp<"alloca"> {
+def AllocaOp : AllocLikeOp<"alloca", AutomaticAllocationScopeResource> {
   let summary = "stack memory allocation operation";
   let description = [{
     The `alloca` operation allocates memory on the stack, to be automatically
@@ -1743,12 +1745,16 @@ def MemRefCastOp : CastOp<"memref_cast"> {
     The `memref_cast` operation converts a memref from one type to an equivalent
     type with a compatible shape. The source and destination types are
     compatible if:
-    a. both are ranked memref types with the same element type, affine mappings,
-    address space, and rank but where the individual dimensions may add or
-    remove constant dimensions from the memref type.
+
+    a. Both are ranked memref types with the same element type, address space,
+    and rank and:
+      1. Both have the same layout or both have compatible strided layouts.
+      2. The individual sizes (resp. offset and strides in the case of strided
+         memrefs) may convert constant dimensions to dynamic dimensions and
+         vice-versa.
 
     If the cast converts any dimensions from an unknown to a known size, then it
-    acts as an assertion that fails at runtime of the dynamic dimensions
+    acts as an assertion that fails at runtime if the dynamic dimensions
     disagree with resultant destination size.
 
     Example:
@@ -1770,7 +1776,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
                           memref<12x4xf32, offset:?, strides: [?, ?]>
     ```
 
-    b. either or both memref types are unranked with the same element type, and
+    b. Either or both memref types are unranked with the same element type, and
     address space.
 
     Example:
@@ -1977,7 +1983,7 @@ def RankOp : Std_Op<"rank", [NoSideEffect]> {
     Example:
 
     ```mlir
-    %1 = rank %0 : index
+    %1 = rank %0 : tensor<*xf32>
     ```
   }];
 
@@ -2534,7 +2540,7 @@ def SubViewOp : Std_Op<"subview", [
     // dynamic sizes for each dimension, and stride arguments '%c1'.
     %1 = subview %0[%c0, %c0][%size0, %size1][%c1, %c1]
       : memref<64x4xf32, (d0, d1) -> (d0 * 4 + d1) > to
-        memref<?x?xf32, (d0, d1)[s0, s1, s2] -> (d0 * s1 + d1 * s2 + s0)>
+        memref<?x?xf32, (d0, d1)[s0, s1] -> (d0 * s1 + d1 + s0)>
     ```
 
     Example 2:
@@ -2561,7 +2567,7 @@ def SubViewOp : Std_Op<"subview", [
     %0 = alloc() : memref<8x16x4xf32, (d0, d1, d1) -> (d0 * 64 + d1 * 4 + d2)>
 
     // Subview with constant offsets, sizes and strides.
-    %1 = subview %0[0, 2, 0][4, 4, 4][1, 1, 1]
+    %1 = subview %0[0, 2, 0][4, 4, 4][64, 4, 1]
       : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
         memref<4x4x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2 + 8)>
     ```
@@ -2674,10 +2680,69 @@ def SubViewOp : Std_Op<"subview", [
     struct Range {
       Value offset, size, stride;
     };
-    SmallVector<Range, 8> getRanges();
+    /// Return the list of SubViewOp::Range (i.e. offset, size, stride). Each
+    /// Range entry contains either the dynamic value or a ConstantIndexOp
+    /// constructed with `b` at location `loc`.
+    SmallVector<Range, 8> getOrCreateRanges(OpBuilder &b, Location loc);
+
+    /// A subview result type can be fully inferred from the source type and the
+    /// static representation of offsets, sizes and strides. Special sentinels
+    /// encode the dynamic case.
+    static Type inferSubViewResultType(MemRefType sourceMemRefType,
+                                       ArrayRef<int64_t> staticOffsets,
+                                       ArrayRef<int64_t> staticSizes,
+                                       ArrayRef<int64_t> staticStrides);
 
     /// Return the rank of the result MemRefType.
     unsigned getRank() { return getType().getRank(); }
+
+    /// Return true if the offset `idx` is a static constant.
+    bool isDynamicOffset(unsigned idx);
+    /// Return true if the size `idx` is a static constant.
+    bool isDynamicSize(unsigned idx);
+    /// Return true if the stride `idx` is a static constant.
+    bool isDynamicStride(unsigned idx);
+
+    /// Assert the offset `idx` is a static constant and return its value.
+    int64_t getStaticOffset(unsigned idx) {
+      assert(!isDynamicOffset(idx) && "expected static offset");
+      return
+        static_offsets().cast<ArrayAttr>()[idx].cast<IntegerAttr>().getInt();
+    }
+    /// Assert the size `idx` is a static constant and return its value.
+    int64_t getStaticSize(unsigned idx) {
+      assert(!isDynamicSize(idx) && "expected static size");
+      return static_sizes().cast<ArrayAttr>()[idx].cast<IntegerAttr>().getInt();
+    }
+    /// Assert the stride `idx` is a static constant and return its value.
+    int64_t getStaticStride(unsigned idx) {
+      assert(!isDynamicStride(idx) && "expected static stride");
+      return
+        static_strides().cast<ArrayAttr>()[idx].cast<IntegerAttr>().getInt();
+    }
+
+    /// Assert the offset `idx` is dynamic and return the position of the
+    /// corresponding operand.
+    unsigned getIndexOfDynamicOffset(unsigned idx);
+    /// Assert the size `idx` is dynamic and return the position of the
+    /// corresponding operand.
+    unsigned getIndexOfDynamicSize(unsigned idx);
+    /// Assert the stride `idx` is dynamic and return the position of the
+    /// corresponding operand.
+    unsigned getIndexOfDynamicStride(unsigned idx);
+
+    /// Assert the offset `idx` is dynamic and return its value.
+    Value getDynamicOffset(unsigned idx) {
+      return getOperand(getIndexOfDynamicOffset(idx));
+    }
+    /// Assert the size `idx` is dynamic and return its value.
+    Value getDynamicSize(unsigned idx) {
+      return getOperand(getIndexOfDynamicSize(idx));
+    }
+    /// Assert the stride `idx` is dynamic and return its value.
+    Value getDynamicStride(unsigned idx) {
+      return getOperand(getIndexOfDynamicStride(idx));
+    }
 
     static StringRef getStaticOffsetsAttrName() {
       return "static_offsets";
@@ -2699,7 +2764,6 @@ def SubViewOp : Std_Op<"subview", [
   }];
 
   let hasCanonicalizer = 1;
-  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

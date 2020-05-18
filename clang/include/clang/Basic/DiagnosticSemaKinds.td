@@ -860,7 +860,7 @@ def warn_pragma_pack_pop_identifier_and_alignment : Warning<
 def warn_pragma_pop_failed : Warning<"#pragma %0(pop, ...) failed: %1">,
   InGroup<IgnoredPragmas>;
 def err_pragma_fc_pp_scope : Error<
-  "'#pragma float_control push/pop' can only appear at file scope">;
+  "'#pragma float_control push/pop' can only appear at file scope or namespace scope">;
 def err_pragma_fc_noprecise_requires_nofenv : Error<
   "'#pragma float_control(precise, off)' is illegal when fenv_access is enabled">;
 def err_pragma_fc_except_requires_precise : Error<
@@ -10749,6 +10749,8 @@ def err_preserve_field_info_not_field : Error<
   "__builtin_preserve_field_info argument %0 not a field access">;
 def err_preserve_field_info_not_const: Error<
   "__builtin_preserve_field_info argument %0 not a constant">;
+def err_btf_type_id_not_const: Error<
+  "__builtin_btf_type_id argument %0 not a constant">;
 
 def err_bit_cast_non_trivially_copyable : Error<
   "__builtin_bit_cast %select{source|destination}0 type must be trivially copyable">;

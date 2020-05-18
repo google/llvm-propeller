@@ -48,6 +48,24 @@ define <2 x i64> @ins1_ins1_xor(i64 %x, i64 %y) {
   ret <2 x i64> %r
 }
 
+define <2 x i64> @ins1_ins1_iterate(i64 %w, i64 %x, i64 %y, i64 %z) {
+; CHECK-LABEL: @ins1_ins1_iterate(
+; CHECK-NEXT:    [[S0_SCALAR:%.*]] = sub i64 [[W:%.*]], [[X:%.*]]
+; CHECK-NEXT:    [[S1_SCALAR:%.*]] = or i64 [[S0_SCALAR]], [[Y:%.*]]
+; CHECK-NEXT:    [[S2_SCALAR:%.*]] = shl i64 [[Z:%.*]], [[S1_SCALAR]]
+; CHECK-NEXT:    [[S2:%.*]] = insertelement <2 x i64> undef, i64 [[S2_SCALAR]], i64 1
+; CHECK-NEXT:    ret <2 x i64> [[S2]]
+;
+  %i0 = insertelement <2 x i64> undef, i64 %w, i64 1
+  %i1 = insertelement <2 x i64> undef, i64 %x, i32 1
+  %s0 = sub <2 x i64> %i0, %i1
+  %i2 = insertelement <2 x i64> undef, i64 %y, i32 1
+  %s1 = or <2 x i64> %s0, %i2
+  %i3 = insertelement <2 x i64> undef, i64 %z, i32 1
+  %s2 = shl <2 x i64> %i3, %s1
+  ret <2 x i64> %s2
+}
+
 ; The inserts are free, but it's still better to scalarize.
 
 define <2 x double> @ins0_ins0_fadd(double %x, double %y) {

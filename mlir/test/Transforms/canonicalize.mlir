@@ -429,8 +429,13 @@ func @dyn_shape_fold(%L : index, %M : index) -> (memref<? x ? x i32>, memref<? x
 
 #map1 = affine_map<(d0, d1)[s0, s1, s2] -> (d0 * s1 + s0 + d1 * s2)>
 #map2 = affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 * s2 + d1 * s1 + d2 + s0)>
+#map3 = affine_map<(d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)>
 
-// CHECK-LABEL: func @dim_op_fold(%arg0: index, %arg1: index, %arg2: index,
+// CHECK-LABEL: func @dim_op_fold(
+// CHECK-SAME: %[[ARG0:[a-z0-9]*]]: index
+// CHECK-SAME: %[[ARG1:[a-z0-9]*]]: index
+// CHECK-SAME: %[[ARG2:[a-z0-9]*]]: index
+// CHECK-SAME: %[[BUF:[a-z0-9]*]]: memref<?xi8>
 func @dim_op_fold(%arg0: index, %arg1: index, %arg2: index, %BUF: memref<?xi8>, %M : index, %N : index, %K : index) {
 // CHECK-SAME: [[M:arg[0-9]+]]: index
 // CHECK-SAME: [[N:arg[0-9]+]]: index
@@ -452,11 +457,20 @@ func @dim_op_fold(%arg0: index, %arg1: index, %arg2: index, %BUF: memref<?xi8>, 
       affine.for %arg5 = %l to %u {
         "foo"() : () -> ()
       }
+      %sv2 = subview %0[0, 0][17, %arg4][1, 1] : memref<?x?xf32> to memref<17x?xf32, #map3>
+      %l2 = dim %v, 1 : memref<?x?xf32>
+      %u2 = dim %sv2, 1 : memref<17x?xf32, #map3>
+      scf.for %arg5 = %l2 to %u2 step %c1 {
+        "foo"() : () -> ()
+      }
     }
   }
-  // CHECK-NEXT: affine.for %arg7 = 0 to %arg2 {
-  // CHECK-NEXT:   affine.for %arg8 = 0 to %arg0 {
-  // CHECK-NEXT:     affine.for %arg9 = %arg0 to %arg0 {
+  //      CHECK: affine.for %[[I:.*]] = 0 to %[[ARG2]] {
+  // CHECK-NEXT:   affine.for %[[J:.*]] = 0 to %[[ARG0]] {
+  // CHECK-NEXT:     affine.for %[[K:.*]] = %[[ARG0]] to %[[ARG0]] {
+  // CHECK-NEXT:       "foo"() : () -> ()
+  // CHECK-NEXT:     }
+  // CHECK-NEXT:     scf.for %[[KK:.*]] = %[[ARG0]] to %[[J]] step %{{.*}} {
   // CHECK-NEXT:       "foo"() : () -> ()
   // CHECK-NEXT:     }
   // CHECK-NEXT:   }
@@ -469,9 +483,9 @@ func @dim_op_fold(%arg0: index, %arg1: index, %arg2: index, %BUF: memref<?xi8>, 
   %M_ = dim %A, 0 : memref<?x?xf32>
   %K_ = dim %A, 1 : memref<?x?xf32>
   %N_ = dim %C, 1 : memref<?x?xf32>
-  loop.for %i = %c0 to %M_ step %c1 {
-    loop.for %j = %c0 to %N_ step %c1 {
-      loop.for %k = %c0 to %K_ step %c1 {
+  scf.for %i = %c0 to %M_ step %c1 {
+    scf.for %j = %c0 to %N_ step %c1 {
+      scf.for %k = %c0 to %K_ step %c1 {
       }
     }
   }
@@ -928,4 +942,32 @@ func @tensor_divi_unsigned_by_one(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
   %res = divi_unsigned %arg0, %c1 : tensor<4x5xi32>
   // CHECK: return %[[ARG]]
   return %res : tensor<4x5xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @memref_cast_folding_subview
+func @memref_cast_folding_subview(%arg0: memref<4x5xf32>, %i: index) -> (memref<?x?xf32, offset:? , strides: [?, ?]>) {
+  %0 = memref_cast %arg0 : memref<4x5xf32> to memref<?x?xf32>
+  // CHECK-NEXT: subview %{{.*}}: memref<4x5xf32>
+  %1 = subview %0[%i, %i][%i, %i][%i, %i]: memref<?x?xf32> to memref<?x?xf32, offset:? , strides: [?, ?]>
+  // CHECK-NEXT: return %{{.*}}
+  return %1: memref<?x?xf32, offset:? , strides: [?, ?]>
+}
+
+// -----
+
+// CHECK-DAG: #[[map0:.*]] = affine_map<(d0, d1) -> (d0 * 16 + d1)>
+// CHECK-DAG: #[[map1:.*]] = affine_map<(d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)>
+
+// CHECK-LABEL: func @memref_cast_folding_subview_static(
+func @memref_cast_folding_subview_static(%V: memref<16x16xf32>, %a: index, %b: index)
+  -> memref<3x4xf32, offset:?, strides:[?, 1]>
+{
+  %0 = memref_cast %V : memref<16x16xf32> to memref<?x?xf32>
+  %1 = subview %0[0, 0][3, 4][1, 1] : memref<?x?xf32> to memref<3x4xf32, offset:?, strides:[?, 1]>
+
+  // CHECK:  subview{{.*}}: memref<16x16xf32> to memref<3x4xf32, #[[map0]]>
+  // CHECK:  memref_cast{{.*}}: memref<3x4xf32, #[[map0]]> to memref<3x4xf32, #[[map1]]>
+  return %1: memref<3x4xf32, offset:?, strides:[?, 1]>
 }

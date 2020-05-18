@@ -652,9 +652,9 @@ static void collectCallSiteParameters(const MachineInstr *CallMI,
     return;
 
   auto *MBB = CallMI->getParent();
-  const TargetRegisterInfo &TRI = *MF->getSubtarget().getRegisterInfo();
-  const TargetInstrInfo &TII = *MF->getSubtarget().getInstrInfo();
-  const TargetLowering &TLI = *MF->getSubtarget().getTargetLowering();
+  const auto &TRI = *MF->getSubtarget().getRegisterInfo();
+  const auto &TII = *MF->getSubtarget().getInstrInfo();
+  const auto &TLI = *MF->getSubtarget().getTargetLowering();
 
   // Skip the call instruction.
   auto I = std::next(CallMI->getReverseIterator());
@@ -706,21 +706,20 @@ static void collectCallSiteParameters(const MachineInstr *CallMI,
 
   // If the MI is an instruction defining one or more parameters' forwarding
   // registers, add those defines.
-  auto getForwardingRegsDefinedByMI =
-      [&TRI](const MachineInstr &MI, SmallSetVector<unsigned, 4> &Defs,
-             const FwdRegWorklist &ForwardedRegWorklist) {
-        if (MI.isDebugInstr())
-          return;
+  auto getForwardingRegsDefinedByMI = [&](const MachineInstr &MI,
+                                          SmallSetVector<unsigned, 4> &Defs) {
+    if (MI.isDebugInstr())
+      return;
 
-        for (const MachineOperand &MO : MI.operands()) {
-          if (MO.isReg() && MO.isDef() &&
-              Register::isPhysicalRegister(MO.getReg())) {
-            for (auto FwdReg : ForwardedRegWorklist)
-              if (TRI.regsOverlap(FwdReg.first, MO.getReg()))
-                Defs.insert(FwdReg.first);
-          }
-        }
-      };
+    for (const MachineOperand &MO : MI.operands()) {
+      if (MO.isReg() && MO.isDef() &&
+          Register::isPhysicalRegister(MO.getReg())) {
+        for (auto FwdReg : ForwardedRegWorklist)
+          if (TRI.regsOverlap(FwdReg.first, MO.getReg()))
+            Defs.insert(FwdReg.first);
+      }
+    }
+  };
 
   // Search for a loading value in forwarding registers.
   for (; I != MBB->rend(); ++I) {
@@ -739,7 +738,7 @@ static void collectCallSiteParameters(const MachineInstr *CallMI,
     // Set of worklist registers that are defined by this instruction.
     SmallSetVector<unsigned, 4> FwdRegDefs;
 
-    getForwardingRegsDefinedByMI(*I, FwdRegDefs, ForwardedRegWorklist);
+    getForwardingRegsDefinedByMI(*I, FwdRegDefs);
     if (FwdRegDefs.empty())
       continue;
 
@@ -1272,8 +1271,7 @@ void DwarfDebug::finalizeModuleInfo() {
 
     // We don't keep track of which addresses are used in which CU so this
     // is a bit pessimistic under LTO.
-    if ((!AddrPool.isEmpty() || TheCU.hasRangeLists()) &&
-        (getDwarfVersion() >= 5 || HasSplitUnit))
+    if ((HasSplitUnit || getDwarfVersion() >= 5) && !AddrPool.isEmpty())
       U.addAddrTableBase();
 
     if (getDwarfVersion() >= 5) {
@@ -3291,5 +3289,7 @@ const MCSymbol *DwarfDebug::getSectionLabel(const MCSection *S) {
   return SectionLabels.find(S)->second;
 }
 void DwarfDebug::insertSectionLabel(const MCSymbol *S) {
-  SectionLabels.insert(std::make_pair(&S->getSection(), S));
+  if (SectionLabels.insert(std::make_pair(&S->getSection(), S)).second)
+    if (useSplitDwarf() || getDwarfVersion() >= 5)
+      AddrPool.getIndex(S);
 }
