@@ -867,7 +867,10 @@ MCSection *TargetLoweringObjectFileELF::getSectionForMachineBasicBlock(
   // under the .text.eh prefix. For regular sections, we either use a unique
   // name, or a unique ID for the section.
   SmallString<128> Name;
-  if (MBB.getSectionID() == MBBSectionID::ColdSectionID) {
+  if (MBB.getSectionID() == MBBSectionID::UnknownSectionID) {
+    Name += ".text.unknown.";
+    Name += MBB.getParent()->getName();
+  } else if (MBB.getSectionID() == MBBSectionID::ColdSectionID) {
     Name += ".text.unlikely.";
     Name += MBB.getParent()->getName();
   } else if (MBB.getSectionID() == MBBSectionID::ExceptionSectionID) {
