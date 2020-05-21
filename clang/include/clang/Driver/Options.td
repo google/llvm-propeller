@@ -1997,6 +1997,7 @@ def fno_function_sections : Flag<["-"], "fno-function-sections">, Group<f_Group>
 def fbasic_block_sections_EQ : Joined<["-"], "fbasic-block-sections=">, Group<f_Group>,
   Flags<[CC1Option, CC1AsOption]>,
   HelpText<"Place each function's basic blocks in unique sections (ELF Only) : all | labels | none | list=<file>">,
+  DocBrief<[{Generate labels for each basic block or place each basic block or a subset of basic blocks in its own section.}]>,
   Values<"all,labels,none,list=">;
 def fdata_sections : Flag <["-"], "fdata-sections">, Group<f_Group>,
  Flags<[CC1Option]>, HelpText<"Place each data in its own section">;
@@ -2826,6 +2827,8 @@ def print_resource_dir : Flag<["-", "--"], "print-resource-dir">,
   HelpText<"Print the resource directory pathname">;
 def print_search_dirs : Flag<["-", "--"], "print-search-dirs">,
   HelpText<"Print the paths used for finding libraries and programs">;
+def print_targets : Flag<["-", "--"], "print-targets">,
+  HelpText<"Print the registered targets">;
 def private__bundle : Flag<["-"], "private_bundle">;
 def pthreads : Flag<["-"], "pthreads">;
 def pthread : Flag<["-"], "pthread">, Flags<[CC1Option]>,

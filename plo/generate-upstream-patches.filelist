@@ -20,6 +20,7 @@ declare ALL_FILES=(
         clang-base       clang/include/clang/Driver/Options.td
         clang-pro        clang/include/clang/Driver/Options.td
         clang-base       clang/lib/CodeGen/BackendUtil.cpp
+	clang-base       clang/include/clang/Basic/DiagnosticFrontendKinds.td
         clang-sta        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-base       clang/lib/Driver/ToolChains/Clang.cpp
         clang-rws        clang/lib/Driver/ToolChains/Clang.cpp

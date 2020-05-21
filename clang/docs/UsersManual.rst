@@ -1704,6 +1704,34 @@ are listed below.
   values "all" and "list=arg", each basic block or a subset of basic blocks
   can be placed in its own unique section.
 
+  With the ``list=<arg>`` option, a file containing the subset of basic blocks
+  that need to placed in unique sections can be specified.  The format of the
+  file is as follows.  For example, ``list=spec.txt`` where ``spec.txt`` is the
+  following:
+
+  ::
+
+        !foo
+        !!2
+        !_Z3barv
+
+  will place the machine basic block with ``id 2`` in function ``foo`` in a
+  unique section.  It will also place all basic blocks of functions ``bar``
+  in unique sections.
+
+  Further, section clusters can also be specified using the ``list=<arg>``
+  option.  For example, ``list=spec.txt`` where ``spec.txt`` contains:
+
+  ::
+
+        !foo
+        !!1 !!3 !!5
+        !!2 !!4 !!6
+
+  will create two unique sections for function ``foo`` with the first
+  containing the odd numbered basic blocks and the second containing the
+  even numbered basic blocks.
+
   Basic block sections allow the linker to reorder basic blocks and enables
   link-time optimizations like whole program inter-procedural basic block
   reordering.

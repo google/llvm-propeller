@@ -65,6 +65,9 @@ public:
 
   Register getFrameRegister(const MachineFunction &MF) const override;
 
+  bool hasBasePointer(const MachineFunction &MF) const;
+  Register getBaseRegister() const;
+
   bool canRealignStack(const MachineFunction &MF) const override;
   bool requiresRegisterScavenging(const MachineFunction &Fn) const override;
 
@@ -133,9 +136,9 @@ public:
     return isSGPRClass(getRegClass(RCID));
   }
 
-  bool isSGPRReg(const MachineRegisterInfo &MRI, unsigned Reg) const {
+  bool isSGPRReg(const MachineRegisterInfo &MRI, Register Reg) const {
     const TargetRegisterClass *RC;
-    if (Register::isVirtualRegister(Reg))
+    if (Reg.isVirtual())
       RC = MRI.getRegClass(Reg);
     else
       RC = getPhysRegClass(Reg);
@@ -196,7 +199,8 @@ public:
 
   MCRegister findUnusedRegister(const MachineRegisterInfo &MRI,
                                 const TargetRegisterClass *RC,
-                                const MachineFunction &MF) const;
+                                const MachineFunction &MF,
+                                bool ReserveHighestVGPR = false) const;
 
   const TargetRegisterClass *getRegClassForReg(const MachineRegisterInfo &MRI,
                                                Register Reg) const;

@@ -1315,21 +1315,17 @@ static LogicalResult verify(DimOp op) {
 OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
   // Constant fold dim when the size along the index referred to is a constant.
   auto opType = memrefOrTensor().getType();
-  int64_t dimSize = ShapedType::kDynamicSize;
-  if (auto tensorType = opType.dyn_cast<RankedTensorType>())
-    dimSize = tensorType.getShape()[getIndex()];
-  else if (auto memrefType = opType.dyn_cast<MemRefType>())
-    dimSize = memrefType.getShape()[getIndex()];
-
-  if (!ShapedType::isDynamic(dimSize))
-    return IntegerAttr::get(IndexType::get(getContext()), dimSize);
+  if (auto shapedType = opType.dyn_cast<ShapedType>())
+    if (!shapedType.isDynamicDim(getIndex()))
+      return IntegerAttr::get(IndexType::get(getContext()),
+                              shapedType.getShape()[getIndex()]);
 
   // Fold dim to the size argument for an AllocOp/ViewOp/SubViewOp.
   auto memrefType = opType.dyn_cast<MemRefType>();
   if (!memrefType)
     return {};
 
-  // The size at getIndex() is now a dynamic size of a memref.
+  // The size at getIndex() is now known to be a dynamic size of a memref.
   auto memref = memrefOrTensor().getDefiningOp();
   if (auto alloc = dyn_cast_or_null<AllocOp>(memref))
     return *(alloc.getDynamicSizes().begin() +
@@ -1339,11 +1335,10 @@ OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
     return *(view.getDynamicSizes().begin() +
              memrefType.getDynamicDimIndex(getIndex()));
 
-  // The subview op here is expected to have rank dynamic sizes now.
   if (auto subview = dyn_cast_or_null<SubViewOp>(memref)) {
-    auto sizes = subview.sizes();
-    if (!sizes.empty())
-      return *(sizes.begin() + getIndex());
+    assert(subview.isDynamicSize(getIndex()) &&
+           "Expected dynamic subview size");
+    return subview.getDynamicSize(getIndex());
   }
 
   /// dim(memrefcast) -> dim
@@ -1448,7 +1443,6 @@ ParseResult DmaStartOp::parse(OpAsmParser &parser, OperationState &result) {
     if (parser.resolveOperands(strideInfo, indexType, result.operands))
       return failure();
   }
-
 
   return success();
 }
@@ -2276,10 +2270,10 @@ Wrapper operator*(Wrapper a, int64_t b) {
 /// A subview result type can be fully inferred from the source type and the
 /// static representation of offsets, sizes and strides. Special sentinels
 /// encode the dynamic case.
-static Type inferSubViewResultType(MemRefType sourceMemRefType,
-                                   ArrayRef<int64_t> staticOffsets,
-                                   ArrayRef<int64_t> staticSizes,
-                                   ArrayRef<int64_t> staticStrides) {
+Type SubViewOp::inferSubViewResultType(MemRefType sourceMemRefType,
+                                       ArrayRef<int64_t> staticOffsets,
+                                       ArrayRef<int64_t> staticSizes,
+                                       ArrayRef<int64_t> staticStrides) {
   unsigned rank = sourceMemRefType.getRank();
   (void)rank;
   assert(staticOffsets.size() == rank &&
@@ -2338,7 +2332,7 @@ static void print(OpAsmPrinter &p, SubViewOp op) {
   printSubViewListOfOperandsOrIntegers(p, op.strides(), op.static_strides(),
                                        ShapedType::isDynamicStrideOrOffset);
   p.printOptionalAttrDict(op.getAttrs(),
-                          /*elided=*/{SubViewOp::getSpecialAttrNames()});
+                          /*elidedAttrs=*/{SubViewOp::getSpecialAttrNames()});
   p << " : " << op.getOperand(0).getType() << " to " << op.getType();
 }
 
@@ -2475,7 +2469,7 @@ static LogicalResult verify(SubViewOp op) {
     return failure();
 
   // Verify result type against inferred type.
-  auto expectedType = inferSubViewResultType(
+  auto expectedType = SubViewOp::inferSubViewResultType(
       op.getBaseMemRefType(), extractFromI64ArrayAttr(op.static_offsets()),
       extractFromI64ArrayAttr(op.static_sizes()),
       extractFromI64ArrayAttr(op.static_strides()));
@@ -2490,13 +2484,67 @@ raw_ostream &mlir::operator<<(raw_ostream &os, SubViewOp::Range &range) {
             << range.stride;
 }
 
-SmallVector<SubViewOp::Range, 8> SubViewOp::getRanges() {
+static unsigned getNumDynamicEntriesUpToIdx(
+    ArrayAttr attr, llvm::function_ref<bool(int64_t)> isDynamic, unsigned idx) {
+  return std::count_if(attr.getValue().begin(), attr.getValue().begin() + idx,
+                       [&](Attribute attr) {
+                         return isDynamic(attr.cast<IntegerAttr>().getInt());
+                       });
+}
+
+bool SubViewOp::isDynamicOffset(unsigned idx) {
+  return ShapedType::isDynamicStrideOrOffset(
+      extractFromI64ArrayAttr(static_offsets())[idx]);
+}
+bool SubViewOp::isDynamicSize(unsigned idx) {
+  return ShapedType::isDynamic(extractFromI64ArrayAttr(static_sizes())[idx]);
+}
+bool SubViewOp::isDynamicStride(unsigned idx) {
+  return ShapedType::isDynamicStrideOrOffset(
+      extractFromI64ArrayAttr(static_strides())[idx]);
+}
+
+unsigned SubViewOp::getIndexOfDynamicOffset(unsigned idx) {
+  assert(isDynamicOffset(idx) && "expected static offset");
+  auto numDynamic =
+      getNumDynamicEntriesUpToIdx(static_offsets().cast<ArrayAttr>(),
+                                  ShapedType::isDynamicStrideOrOffset, idx);
+  return 1 + numDynamic;
+}
+unsigned SubViewOp::getIndexOfDynamicSize(unsigned idx) {
+  assert(isDynamicSize(idx) && "expected static size");
+  auto numDynamic = getNumDynamicEntriesUpToIdx(
+      static_sizes().cast<ArrayAttr>(), ShapedType::isDynamic, idx);
+  return 1 + offsets().size() + numDynamic;
+}
+unsigned SubViewOp::getIndexOfDynamicStride(unsigned idx) {
+  assert(isDynamicStride(idx) && "expected static stride");
+  auto numDynamic =
+      getNumDynamicEntriesUpToIdx(static_strides().cast<ArrayAttr>(),
+                                  ShapedType::isDynamicStrideOrOffset, idx);
+  return 1 + offsets().size() + sizes().size() + numDynamic;
+}
+
+/// Return the list of SubViewOp::Range (i.e. offset, size, stride). Each Range
+/// entry contains either the dynamic value or a ConstantIndexOp constructed
+/// with `b` at location `loc`.
+SmallVector<SubViewOp::Range, 8> SubViewOp::getOrCreateRanges(OpBuilder &b,
+                                                              Location loc) {
   SmallVector<Range, 8> res;
   unsigned rank = getType().getRank();
   res.reserve(rank);
-  for (unsigned i = 0; i < rank; ++i)
-    res.emplace_back(Range{*(offsets().begin() + i), *(sizes().begin() + i),
-                           *(strides().begin() + i)});
+  for (unsigned idx = 0; idx < rank; ++idx) {
+    auto offset = isDynamicOffset(idx)
+                      ? getDynamicOffset(idx)
+                      : b.create<ConstantIndexOp>(loc, getStaticOffset(idx));
+    auto size = isDynamicSize(idx)
+                    ? getDynamicSize(idx)
+                    : b.create<ConstantIndexOp>(loc, getStaticSize(idx));
+    auto stride = isDynamicStride(idx)
+                      ? getDynamicStride(idx)
+                      : b.create<ConstantIndexOp>(loc, getStaticStride(idx));
+    res.emplace_back(Range{offset, size, stride});
+  }
   return res;
 }
 
@@ -2543,7 +2591,8 @@ void canonicalizeSubViewPart(SmallVectorImpl<Value> &values,
 }
 
 /// Pattern to rewrite a subview op with constant arguments.
-class SubViewOpFolder final : public OpRewritePattern<SubViewOp> {
+class SubViewOpConstantArgumentFolder final
+    : public OpRewritePattern<SubViewOp> {
 public:
   using OpRewritePattern<SubViewOp>::OpRewritePattern;
 
@@ -2678,27 +2727,63 @@ bool mlir::canFoldIntoConsumerOp(MemRefCastOp castOp) {
   return true;
 }
 
-OpFoldResult SubViewOp::fold(ArrayRef<Attribute>) {
-  auto folds = [](Operation *op) {
-    bool folded = false;
-    for (OpOperand &operand : op->getOpOperands()) {
-      auto castOp = operand.get().getDefiningOp<MemRefCastOp>();
-      if (castOp && canFoldIntoConsumerOp(castOp)) {
-        operand.set(castOp.getOperand());
-        folded = true;
-      }
-    }
-    return folded ? success() : failure();
-  };
+/// Pattern to rewrite a subview op with MemRefCast arguments.
+/// This essentially pushes memref_cast past its consuming subview when
+/// `canFoldIntoConsumerOp` is true.
+///
+/// Example:
+/// ```
+///   %0 = memref_cast %V : memref<16x16xf32> to memref<?x?xf32>
+///   %1 = subview %0[0, 0][3, 4][1, 1] :
+///     memref<?x?xf32> to memref<3x4xf32, offset:?, strides:[?, 1]>
+/// ```
+/// is rewritten into:
+/// ```
+///   %0 = subview %V: memref<16x16xf32> to memref<3x4xf32, #[[map0]]>
+///   %1 = memref_cast %0: memref<3x4xf32, offset:0, strides:[16, 1]> to
+///     memref<3x4xf32, offset:?, strides:[?, 1]>
+/// ```
+class SubViewOpMemRefCastFolder final : public OpRewritePattern<SubViewOp> {
+public:
+  using OpRewritePattern<SubViewOp>::OpRewritePattern;
 
-  if (succeeded(folds(*this)))
-    return getResult();
-  return {};
-}
+  LogicalResult matchAndRewrite(SubViewOp subViewOp,
+                                PatternRewriter &rewriter) const override {
+    // Any constant operand, just return to let SubViewOpConstantFolder kick in.
+    if (llvm::any_of(subViewOp.getOperands(), [](Value operand) {
+          return matchPattern(operand, m_ConstantIndex());
+        }))
+      return failure();
+
+    auto castOp = subViewOp.source().getDefiningOp<MemRefCastOp>();
+    if (!castOp)
+      return failure();
+
+    if (!canFoldIntoConsumerOp(castOp))
+      return failure();
+
+    /// Deduce the resultType of the SubViewOp using `inferSubViewResultType` on
+    /// the cast source operand type and the SubViewOp static information. This
+    /// is the resulting type if the MemRefCastOp were folded.
+    Type resultType = SubViewOp::inferSubViewResultType(
+        castOp.source().getType().cast<MemRefType>(),
+        extractFromI64ArrayAttr(subViewOp.static_offsets()),
+        extractFromI64ArrayAttr(subViewOp.static_sizes()),
+        extractFromI64ArrayAttr(subViewOp.static_strides()));
+    Value newSubView = rewriter.create<SubViewOp>(
+        subViewOp.getLoc(), resultType, castOp.source(), subViewOp.offsets(),
+        subViewOp.sizes(), subViewOp.strides(), subViewOp.static_offsets(),
+        subViewOp.static_sizes(), subViewOp.static_strides());
+    rewriter.replaceOpWithNewOp<MemRefCastOp>(subViewOp, subViewOp.getType(),
+                                              newSubView);
+    return success();
+  }
+};
 
 void SubViewOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.insert<SubViewOpFolder>(context);
+  results.insert<SubViewOpConstantArgumentFolder, SubViewOpMemRefCastFolder>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//

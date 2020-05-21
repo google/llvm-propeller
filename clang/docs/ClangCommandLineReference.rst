@@ -1333,7 +1333,7 @@ Restrict code to those available for App Extensions
 
 .. option:: -fbasic-block-sections=labels, -fbasic-block-sections=all, -fbasic-block-sections=list=<arg>, -fbasic-block-sections=none
 
-Generate labels for each basic block or place each basic block or a subset of basic blocks in its own section
+Generate labels for each basic block or place each basic block or a subset of basic blocks in its own section.
 
 .. option:: -fblocks, -fno-blocks
 
