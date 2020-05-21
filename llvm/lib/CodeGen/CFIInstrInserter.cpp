@@ -345,6 +345,12 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
       InsertedCFIInstr = true;
     }
 
+    if (ForceFullCFA) {
+      MF.getSubtarget().getFrameLowering()->emitCalleeSavedFrameMoves(
+          *MBBInfo.MBB, MBBI);
+      InsertedCFIInstr = true;
+    }
+
     BitVector SetDifference = PrevMBBInfo->OutgoingCSRSaved;
     SetDifference.reset(MBBInfo.IncomingCSRSaved);
     for (int Reg : SetDifference.set_bits()) {
@@ -373,11 +379,6 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
       }
       BuildMI(*MBBInfo.MBB, MBBI, DL, TII->get(TargetOpcode::CFI_INSTRUCTION))
           .addCFIIndex(CFIIndex);
-    }
-
-    if (ForceFullCFA) {
-      MF.getSubtarget().getFrameLowering()->emitCalleeSavedFrameMoves(
-          *MBBInfo.MBB, MBBI);
       InsertedCFIInstr = true;
     }
 
