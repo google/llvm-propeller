@@ -314,8 +314,8 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
     const bool ForceFullCFA = MBB.isBeginSection();
 
     if ((PrevMBBInfo->OutgoingCFAOffset != MBBInfo.IncomingCFAOffset &&
-         PrevMBBInfo->OutgoingCFARegister != MBBInfo.IncomingCFARegister)
-        || ForceFullCFA) {
+         PrevMBBInfo->OutgoingCFARegister != MBBInfo.IncomingCFARegister) ||
+        ForceFullCFA) {
       // If both outgoing offset and register of a previous block don't match
       // incoming offset and register of this block, or if this block begins a
       // section, add a def_cfa instruction with the correct offset and
@@ -329,9 +329,8 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
       // If outgoing offset of a previous block doesn't match incoming offset
       // of this block, add a def_cfa_offset instruction with the correct
       // offset for this block.
-      unsigned CFIIndex =
-          MF.addFrameInst(MCCFIInstruction::createDefCfaOffset(
-              nullptr, getCorrectCFAOffset(&MBB)));
+      unsigned CFIIndex = MF.addFrameInst(MCCFIInstruction::createDefCfaOffset(
+          nullptr, getCorrectCFAOffset(&MBB)));
       BuildMI(*MBBInfo.MBB, MBBI, DL, TII->get(TargetOpcode::CFI_INSTRUCTION))
           .addCFIIndex(CFIIndex);
       InsertedCFIInstr = true;
