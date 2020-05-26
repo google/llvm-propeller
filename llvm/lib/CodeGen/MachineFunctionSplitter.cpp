@@ -25,6 +25,8 @@
 
 using namespace llvm;
 
+extern cl::opt<bool> TreatUnknownAsCold;
+
 namespace {
 
 class MachineFunctionSplitter : public MachineFunctionPass {
@@ -63,7 +65,8 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
   MF.RenumberBlocks();
   for (auto &MBB : MF) {
     if (!MBB.pred_empty() && isColdBlock(MBB, PSI, MBFI)) {
-      MBB.setSectionID(MBBSectionID::ColdSectionID);
+      MBB.setSectionID( TreatUnknownAsCold ?
+        MBBSectionID::ColdSectionID : MBBSectionID::UnknownSectionID);
     }
   }
 

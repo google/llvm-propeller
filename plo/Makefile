@@ -117,8 +117,8 @@ comma              := ,
 STAGE1_BIN         := $(DDIR)/stage1/install/bin
 PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
-LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
-LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
+LLD_NO_OPT         := -fuse-ld=lld -Wl,--no-optimize-bb-jumps
+LLD_OPT            := -fuse-ld=lld -Wl,--optimize-bb-jumps
 FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
@@ -168,15 +168,15 @@ define build_compiler
 	echo "Building in directory: $${COMP_DIR} ... " ; \
 	if [[ ! -e "$${COMP_DIR}/build/CMakeCache.txt" ]]; then \
 	  mkdir -p $${COMP_DIR}/build ;                  \
-	  cd $${COMP_DIR}/build && cmake -G Ninja        \
-            -DCMAKE_INSTALL_PREFIX=$${COMP_DIR}/install \
-            -DLLVM_OPTIMIZED_TABLEGEN=On                \
+	  cd $${COMP_DIR}/build && cmake -G Ninja \
+      -DCMAKE_INSTALL_PREFIX=$${COMP_DIR}/install \
+      -DLLVM_OPTIMIZED_TABLEGEN=On                \
 	    -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)            \
 	    -DLLVM_ENABLE_EH=$(ENABLE_EH)               \
 	    -DLLVM_ENABLE_RTTI=$(ENABLE_EH)             \
 	    -DLLVM_ENABLE_LLD="On"                      \
 	    -DCMAKE_LINKER="lld"                        \
-            -DLLVM_TARGETS_TO_BUILD="X86"               \
+      -DLLVM_TARGETS_TO_BUILD="X86"               \
 	    -DCMAKE_C_COMPILER=$${TOOLCHAIN}/clang      \
 	    -DCMAKE_CXX_COMPILER=$${TOOLCHAIN}/clang++  \
 	    -DCMAKE_ASM_COMPILER=$${TOOLCHAIN}/clang    \

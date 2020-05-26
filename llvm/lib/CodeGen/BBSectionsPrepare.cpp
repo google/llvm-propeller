@@ -87,7 +87,7 @@ using llvm::StringMap;
 using llvm::StringRef;
 using namespace llvm;
 
-static cl::opt<bool> TreatUnknownAsCold(
+cl::opt<bool> TreatUnknownAsCold(
     "bbsection-unknown-as-cold", cl::Hidden,
     cl::desc("Treat unseen blocks as cold, this may be too aggressive for sampled (or inaccurate profiles)."),
     cl::init(false));
