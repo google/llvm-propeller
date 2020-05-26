@@ -2,7 +2,7 @@
 ;
 ; Test1: Basic blocks #0 (entry) and #2 will be placed in the same section.
 ; Basic block 1 will be placed in a unique section.
-; The rest will be placed in the cold section.
+; The rest will be placed in the unknown section.
 ; RUN: echo '!foo' > %t1
 ; RUN: echo '!!0 2' >> %t1
 ; RUN: echo '!!1' >> %t1
@@ -48,8 +48,8 @@ declare i32 @baz() #1
 ; LINUX-SECTIONS1-LABEL:	.Ltmp0:
 ; LINUX-SECTIONS1-NEXT:        .size   foo.1, .Ltmp0-foo.1
 ; LINUX-SECTIONS1-NOT:  	.section
-; LINUX-SECTIONS1:		.section        .text.unlikely.foo,"ax",@progbits
-; LINUX-SECTIONS1-LABEL:	foo.cold:
+; LINUX-SECTIONS1:		.section        .text.unknown.foo,"ax",@progbits
+; LINUX-SECTIONS1-LABEL:	foo.unknown:
 ; LINUX-SECTIONS1:	   	.section	.text.foo,"ax",@progbits
 ; LINUX-SECTIONS1-LABEL:	.Lfunc_end0:
 ; LINUX-SECTIONS1-NEXT:		.size foo, .Lfunc_end0-foo

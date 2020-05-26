@@ -653,6 +653,9 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
     case MBBSectionID::SectionType::Cold:
       OS << "Cold";
       break;
+    case MBBSectionID::SectionType::Unknown:
+      OS << "Unknown";
+      break;
     default:
       OS << MBB.getSectionID().Number;
     }

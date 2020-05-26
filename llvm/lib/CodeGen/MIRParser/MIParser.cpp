@@ -627,7 +627,7 @@ bool MIParser::parseSectionID(Optional<MBBSectionID> &SID) {
   if (Token.is(MIToken::IntegerLiteral)) {
     unsigned Value = 0;
     if (getUnsigned(Value))
-      return error("Unknown Section ID");
+      return error("Could not parse token as unsigned int");
     SID = MBBSectionID{Value};
   } else {
     const StringRef &S = Token.stringValue();
@@ -635,8 +635,10 @@ bool MIParser::parseSectionID(Optional<MBBSectionID> &SID) {
       SID = MBBSectionID::ExceptionSectionID;
     else if (S == "Cold")
       SID = MBBSectionID::ColdSectionID;
+    else if (S == "Unknown")
+      SID = MBBSectionID::UnknownSectionID;
     else
-      return error("Unknown Section ID");
+      return error("Token does not match any MBBSection type");
   }
   lex();
   return false;
