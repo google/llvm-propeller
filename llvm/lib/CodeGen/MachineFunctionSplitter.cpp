@@ -62,6 +62,13 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     return false;
   }
 
+  // We don't want to split funciton which are marked cold already. Based
+  // on the TreatUnknownAsCold flag below it may move blocks from unlikely
+  // to unknown.
+  if (PSI->isFunctionEntryCold(&MF.getFunction())) {
+    return false;
+  }
+
   MF.RenumberBlocks();
   for (auto &MBB : MF) {
     if (!MBB.pred_empty() && isColdBlock(MBB, PSI, MBFI)) {
@@ -76,12 +83,6 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     return X.getSectionID().Type < Y.getSectionID().Type;
   };
   llvm::sortBasicBlocksAndUpdateBranches(MF, Comparator);
-
-  // for(auto& MBB: MF) {
-  //   errs() << MBB.getNumber() << " " << MBB.getSectionID().Type << " " <<
-  //   MBB.isBeginSection() << MBB.isEndSection() << "\n"; errs() <<
-  //   MBB.getSymbol() << "\n";
-  // }
 
   return true;
 }
