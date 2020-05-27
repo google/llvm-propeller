@@ -861,7 +861,7 @@ static void EmitGenDwarfAbbrev(MCStreamer *MCOS) {
 
 static const MCExpr *MakeSizeExpr(MCStreamer &MCOS, MCSymbol &Start,
                                   const MCSymbol &End) {
-  const MCExpr *Range = MakeStartMinusEndExpr(MCOS, Start, End, 0);
+  const MCExpr *Range = MakeStartMinusEndExpr(MCOS.getContext(), Start, End, 0);
 
   auto MAI = MCOS.getContext().getAsmInfo();
   if (!MAI->shouldRelocateWithSizeRelocs())
