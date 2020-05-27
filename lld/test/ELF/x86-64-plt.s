@@ -1,9 +1,9 @@
 // REQUIRES: x86
 // RUN: llvm-mc -filetype=obj -triple=x86_64-unknown-linux %s -o %t.o
 // RUN: llvm-mc -filetype=obj -triple=x86_64-unknown-linux %p/Inputs/shared.s -o %t2.o
-// RUN: ld.lld -shared -soname=so %t2.o -o %t2.so -no-optimize-bb-jumps
-// RUN: ld.lld -shared %t.o %t2.so -o %t -no-optimize-bb-jumps
-// RUN: ld.lld %t.o %t2.so -o %t3 -no-optimize-bb-jumps
+// RUN: ld.lld -shared -soname=so %t2.o -o %t2.so --no-optimize-bb-jumps
+// RUN: ld.lld -shared %t.o %t2.so -o %t --no-optimize-bb-jumps
+// RUN: ld.lld %t.o %t2.so -o %t3 --no-optimize-bb-jumps
 // RUN: llvm-readobj -S -r %t | FileCheck %s
 // RUN: llvm-objdump -d --no-show-raw-insn %t | FileCheck --check-prefix=DISASM %s
 // RUN: llvm-readobj -S -r %t3 | FileCheck --check-prefix=CHECK2 %s

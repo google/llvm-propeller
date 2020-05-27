@@ -3,7 +3,7 @@
 ## This test exercises optimal basic block reordering one a single function.
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
-# RUN: ld.lld  %t.o -optimize-bb-jumps -o %t.out
+# RUN: ld.lld  %t.o --optimize-bb-jumps -o %t.out
 # RUN: llvm-nm -Sn %t.out| FileCheck %s --check-prefix=BEFORE
 
 # BEFORE:	0000000000201120 0000000000000005 t foo
@@ -44,7 +44,7 @@
 # RUN: echo "Fallthroughs" >> %t_prof.propeller
 # RUN: echo "1 2 100" >> %t_prof.propeller
 
-# RUN: ld.lld %t.o -propeller-debug-symbol=foo -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.out
+# RUN: ld.lld %t.o -propeller-debug-symbol=foo --optimize-bb-jumps -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.out
 # RUN: llvm-nm -nS %t.propeller.out| FileCheck %s --check-prefix=AFTER
 
 # AFTER:	0000000000201120 0000000000000005 t foo

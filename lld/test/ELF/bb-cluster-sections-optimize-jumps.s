@@ -5,7 +5,7 @@
 # no optimization should be performed.
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
-# RUN: ld.lld  -optimize-bb-jumps %t.o -o %t.out
+# RUN: ld.lld  --optimize-bb-jumps %t.o -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=CHECK
 
 # CHECK:	<foo>

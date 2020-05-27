@@ -4,7 +4,7 @@
 ## and split-funcs) on four functions.
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
-# RUN: ld.lld %t.o -optimize-bb-jumps -o %t.out
+# RUN: ld.lld %t.o --optimize-bb-jumps -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=BEFORE
 
 # BEFORE:	Disassembly of section .text:
@@ -72,7 +72,7 @@
 # RUN: echo "Fallthroughs" >> %t_prof.propeller
 # RUN: echo "4 5 100" >> %t_prof.propeller
 
-# RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller --verbose -propeller-keep-named-symbols -o %t.propeller.reorder.out
+# RUN: ld.lld  %t.o --optimize-bb-jumps -propeller=%t_prof.propeller --verbose -propeller-keep-named-symbols -o %t.propeller.reorder.out
 # RUN: llvm-objdump -d %t.propeller.reorder.out| FileCheck %s --check-prefix=REORDER
 
 # REORDER:	Disassembly of section .text:
@@ -103,7 +103,7 @@
 # REORDER-NEXT:	xorb	%al, 5
 #
 
-# RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-reorder-blocks -propeller-keep-named-symbols -o %t.propeller.noreorderblocks.out  2>&1 | FileCheck %s --check-prefixes=WARN,IMPLICITNOSPLIT
+# RUN: ld.lld  %t.o --optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-reorder-blocks -propeller-keep-named-symbols -o %t.propeller.noreorderblocks.out  2>&1 | FileCheck %s --check-prefixes=WARN,IMPLICITNOSPLIT
 # WARN-NOT:		warning:
 # IMPLICITNOSPLIT:	warning: propeller: no-reorder-blocks implicitly sets no-split-funcs.
 #
@@ -136,7 +136,7 @@
 # NO_REORDER_BB-NEXT:	<baz>:
 # NO_REORDER_BB-NEXT:	xorb	%al, 5
 
-# RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-reorder-funcs -propeller-keep-named-symbols -o %t.propeller.noreorderfuncs.out
+# RUN: ld.lld  %t.o --optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-reorder-funcs -propeller-keep-named-symbols -o %t.propeller.noreorderfuncs.out
 # RUN: llvm-objdump -d %t.propeller.noreorderfuncs.out| FileCheck %s --check-prefix=NO_REORDER_FUNC
 #
 # NO_REORDER_FUNC:	Disassembly of section .text:
@@ -167,7 +167,7 @@
 # NO_REORDER_FUNC-NEXT:	xorb	%al, 5
 #
 
-# RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-split-funcs -propeller-keep-named-symbols -o %t.propeller.nosplitfuncs.out
+# RUN: ld.lld  %t.o --optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-split-funcs -propeller-keep-named-symbols -o %t.propeller.nosplitfuncs.out
 # RUN: llvm-objdump -d %t.propeller.nosplitfuncs.out| FileCheck %s --check-prefix=NO_SPLIT_FUNC
 #
 # NO_SPLIT_FUNC:	Disassembly of section .text:
@@ -203,7 +203,7 @@
 # FAIL:		propeller: Inconsistent combination of propeller optimizations 'split-funcs' and 'no-reorder-blocks'.
 
 
-# RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-split-funcs -propeller-opt=no-reorder-funcs -propeller-keep-named-symbols -o %t.propeller.nosplitreorderfuncs.out
+# RUN: ld.lld  %t.o --optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-split-funcs -propeller-opt=no-reorder-funcs -propeller-keep-named-symbols -o %t.propeller.nosplitreorderfuncs.out
 # RUN: llvm-objdump -d %t.propeller.nosplitreorderfuncs.out| FileCheck %s --check-prefix=NO_SPLIT_REORDER_FUNC
 #
 # NO_SPLIT_REORDER_FUNC:	Disassembly of section .text:
