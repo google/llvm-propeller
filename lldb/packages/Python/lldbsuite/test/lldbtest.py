@@ -505,6 +505,10 @@ class Base(unittest2.TestCase):
         """Returns True if we are in trace mode (tracing detailed test execution)."""
         return traceAlways
 
+    def trace(self, *args,**kwargs):
+        with recording(self, self.TraceOn()) as sbuf:
+            print(*args, **kwargs, file=sbuf)
+
     @classmethod
     def setUpClass(cls):
         """
@@ -667,6 +671,13 @@ class Base(unittest2.TestCase):
         return os.path.join(os.environ["LLDB_BUILD"], self.mydir,
                             self.getBuildDirBasename())
 
+    def getReproducerDir(self):
+        """Return the full path to the reproducer if enabled."""
+        if configuration.capture_path:
+            return configuration.capture_path
+        if configuration.replay_path:
+            return configuration.replay_path
+        return None
 
     def makeBuildDir(self):
         """Create the test-specific working directory, deleting any previous
@@ -684,6 +695,9 @@ class Base(unittest2.TestCase):
     def getSourcePath(self, name):
         """Return absolute path to a file in the test's source directory."""
         return os.path.join(self.getSourceDir(), name)
+
+    def getReproducerArtifact(self, name):
+        return os.path.join(self.getReproducerDir(), name)
 
     @classmethod
     def setUpCommands(cls):

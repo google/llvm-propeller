@@ -629,7 +629,7 @@ public:
   /// the stored value. Otherwise, the size is the width of the largest loaded
   /// value reaching V. This method is used by the vectorizer to calculate
   /// vectorization factors.
-  unsigned getVectorElementSize(Value *V) const;
+  unsigned getVectorElementSize(Value *V);
 
   /// Compute the minimum type sizes required to represent the entries in a
   /// vectorizable tree.
@@ -843,8 +843,8 @@ public:
       // the extracts could be optimized away.
       Value *EV;
       ConstantInt *Ex1Idx, *Ex2Idx;
-      if (match(V1, m_ExtractElement(m_Value(EV), m_ConstantInt(Ex1Idx))) &&
-          match(V2, m_ExtractElement(m_Deferred(EV), m_ConstantInt(Ex2Idx))) &&
+      if (match(V1, m_ExtractElt(m_Value(EV), m_ConstantInt(Ex1Idx))) &&
+          match(V2, m_ExtractElt(m_Deferred(EV), m_ConstantInt(Ex2Idx))) &&
           Ex1Idx->getZExtValue() + 1 == Ex2Idx->getZExtValue())
         return VLOperands::ScoreConsecutiveExtracts;
 
@@ -1715,6 +1715,9 @@ private:
   /// Maps a specific scalar to its tree entry.
   SmallDenseMap<Value*, TreeEntry *> ScalarToTreeEntry;
 
+  /// Maps a value to the proposed vectorizable size.
+  SmallDenseMap<Value *, unsigned> InstrElementSize;
+
   /// A list of scalars that we found that we need to keep as scalars.
   ValueSet MustGather;
 
@@ -2362,6 +2365,7 @@ BoUpSLP::~BoUpSLP() {
            "trying to erase instruction with users.");
     Pair.getFirst()->eraseFromParent();
   }
+  assert(!verifyFunction(*F, &dbgs()));
 }
 
 void BoUpSLP::eraseInstructions(ArrayRef<Value *> AV) {
@@ -3247,13 +3251,9 @@ getVectorCallCosts(CallInst *CI, VectorType *VecTy, TargetTransformInfo *TTI,
   Intrinsic::ID ID = getVectorIntrinsicIDForCall(CI, TLI);
 
   // Calculate the cost of the scalar and vector calls.
-  FastMathFlags FMF;
-  if (auto *FPMO = dyn_cast<FPMathOperator>(CI))
-    FMF = FPMO->getFastMathFlags();
-
-  SmallVector<Value *, 4> Args(CI->arg_operands());
-  int IntrinsicCost = TTI->getIntrinsicInstrCost(ID, CI->getType(), Args, FMF,
-                                                 VecTy->getNumElements());
+  IntrinsicCostAttributes CostAttrs(ID, *CI, VecTy->getNumElements());
+  int IntrinsicCost =
+    TTI->getIntrinsicInstrCost(CostAttrs, TTI::TCK_RecipThroughput);
 
   auto Shape =
       VFShape::get(*CI, {static_cast<unsigned>(VecTy->getNumElements()), false},
@@ -3540,7 +3540,7 @@ int BoUpSLP::getEntryCost(TreeEntry *E) {
     }
     case Instruction::Load: {
       // Cost of wide load - cost of scalar loads.
-      MaybeAlign alignment(cast<LoadInst>(VL0)->getAlignment());
+      Align alignment = cast<LoadInst>(VL0)->getAlign();
       int ScalarEltCost =
           TTI->getMemoryOpCost(Instruction::Load, ScalarTy, alignment, 0,
                                CostKind, VL0);
@@ -3563,7 +3563,7 @@ int BoUpSLP::getEntryCost(TreeEntry *E) {
       bool IsReorder = !E->ReorderIndices.empty();
       auto *SI =
           cast<StoreInst>(IsReorder ? VL[E->ReorderIndices.front()] : VL0);
-      MaybeAlign Alignment(SI->getAlignment());
+      Align Alignment = SI->getAlign();
       int ScalarEltCost =
           TTI->getMemoryOpCost(Instruction::Store, ScalarTy, Alignment, 0,
                                CostKind, VL0);
@@ -3584,16 +3584,8 @@ int BoUpSLP::getEntryCost(TreeEntry *E) {
       Intrinsic::ID ID = getVectorIntrinsicIDForCall(CI, TLI);
 
       // Calculate the cost of the scalar and vector calls.
-      SmallVector<Type *, 4> ScalarTys;
-      for (unsigned op = 0, opc = CI->getNumArgOperands(); op != opc; ++op)
-        ScalarTys.push_back(CI->getArgOperand(op)->getType());
-
-      FastMathFlags FMF;
-      if (auto *FPMO = dyn_cast<FPMathOperator>(CI))
-        FMF = FPMO->getFastMathFlags();
-
-      int ScalarEltCost =
-          TTI->getIntrinsicInstrCost(ID, ScalarTy, ScalarTys, FMF, 1, CostKind);
+      IntrinsicCostAttributes CostAttrs(ID, *CI, 1, 1);
+      int ScalarEltCost = TTI->getIntrinsicInstrCost(CostAttrs, CostKind);
       if (NeedToShuffleReuses) {
         ReuseShuffleCost -= (ReuseShuffleNumbers - VL.size()) * ScalarEltCost;
       }
@@ -4797,6 +4789,7 @@ BoUpSLP::vectorizeTree(ExtraValueToDebugLocsMap &ExternallyUsedValues) {
   }
 
   Builder.ClearInsertionPoint();
+  InstrElementSize.clear();
 
   return VectorizableTree[0]->VectorizedValue;
 }
@@ -5333,11 +5326,15 @@ void BoUpSLP::scheduleBlock(BlockScheduling *BS) {
   BS->ScheduleStart = nullptr;
 }
 
-unsigned BoUpSLP::getVectorElementSize(Value *V) const {
+unsigned BoUpSLP::getVectorElementSize(Value *V) {
   // If V is a store, just return the width of the stored value without
   // traversing the expression tree. This is the common case.
   if (auto *Store = dyn_cast<StoreInst>(V))
     return DL->getTypeSizeInBits(Store->getValueOperand()->getType());
+
+  auto E = InstrElementSize.find(V);
+  if (E != InstrElementSize.end())
+    return E->second;
 
   // If V is not a store, we can traverse the expression tree to find loads
   // that feed it. The type of the loaded value may indicate a more suitable
@@ -5384,13 +5381,17 @@ unsigned BoUpSLP::getVectorElementSize(Value *V) const {
       FoundUnknownInst = true;
   }
 
+  int Width = MaxWidth;
   // If we didn't encounter a memory access in the expression tree, or if we
-  // gave up for some reason, just return the width of V.
+  // gave up for some reason, just return the width of V. Otherwise, return the
+  // maximum width we found.
   if (!MaxWidth || FoundUnknownInst)
-    return DL->getTypeSizeInBits(V->getType());
+    Width = DL->getTypeSizeInBits(V->getType());
 
-  // Otherwise, return the maximum width we found.
-  return MaxWidth;
+  for (Instruction *I : Visited)
+    InstrElementSize[I] = Width;
+
+  return Width;
 }
 
 // Determine if a value V in a vectorizable expression Expr can be demoted to a
@@ -5743,7 +5744,6 @@ bool SLPVectorizerPass::runImpl(Function &F, ScalarEvolution *SE_,
   if (Changed) {
     R.optimizeGatherSequence();
     LLVM_DEBUG(dbgs() << "SLP: vectorized \"" << F.getName() << "\"\n");
-    LLVM_DEBUG(verifyFunction(F));
   }
   return Changed;
 }

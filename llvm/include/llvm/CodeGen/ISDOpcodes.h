@@ -376,6 +376,7 @@ enum NodeType {
   STRICT_FCEIL,
   STRICT_FFLOOR,
   STRICT_FROUND,
+  STRICT_FROUNDEVEN,
   STRICT_FTRUNC,
   STRICT_LROUND,
   STRICT_LLROUND,
@@ -752,6 +753,7 @@ enum NodeType {
   FRINT,
   FNEARBYINT,
   FROUND,
+  FROUNDEVEN,
   FFLOOR,
   LROUND,
   LLROUND,
@@ -905,6 +907,13 @@ enum NodeType {
   /// pointer, and a SRCVALUE.
   VAEND,
   VASTART,
+
+  // PREALLOCATED_SETUP - This has 2 operands: an input chain and a SRCVALUE
+  // with the preallocated call Value.
+  PREALLOCATED_SETUP,
+  // PREALLOCATED_ARG - This has 3 operands: an input chain, a SRCVALUE
+  // with the preallocated call Value, and a constant int.
+  PREALLOCATED_ARG,
 
   /// SRCVALUE - This is a node type that holds a Value* that is used to
   /// make reference to a value in the LLVM IR.

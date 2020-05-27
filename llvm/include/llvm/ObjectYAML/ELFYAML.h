@@ -26,6 +26,7 @@ namespace llvm {
 namespace ELFYAML {
 
 StringRef dropUniqueSuffix(StringRef S);
+std::string appendUniqueSuffix(StringRef Name, const Twine& Msg);
 
 // These types are invariant across 32/64-bit ELF, so for simplicity just
 // directly give them their exact sizes. We don't need to worry about
@@ -89,18 +90,6 @@ struct SectionName {
   StringRef Section;
 };
 
-struct ProgramHeader {
-  ELF_PT Type;
-  ELF_PF Flags;
-  llvm::yaml::Hex64 VAddr;
-  llvm::yaml::Hex64 PAddr;
-  Optional<llvm::yaml::Hex64> Align;
-  Optional<llvm::yaml::Hex64> FileSize;
-  Optional<llvm::yaml::Hex64> MemSize;
-  Optional<llvm::yaml::Hex64> Offset;
-  std::vector<SectionName> Sections;
-};
-
 struct Symbol {
   StringRef Name;
   ELF_STT Type;
@@ -160,6 +149,7 @@ struct Chunk {
 
   ChunkKind Kind;
   StringRef Name;
+  Optional<llvm::yaml::Hex64> Offset;
 
   Chunk(ChunkKind K) : Kind(K) {}
   virtual ~Chunk();
@@ -172,7 +162,6 @@ struct Section : public Chunk {
   StringRef Link;
   llvm::yaml::Hex64 AddressAlign;
   Optional<llvm::yaml::Hex64> EntSize;
-  Optional<llvm::yaml::Hex64> Offset;
 
   // Usually sections are not created implicitly, but loaded from YAML.
   // When they are, this flag is used to signal about that.
@@ -211,11 +200,6 @@ struct Section : public Chunk {
 struct Fill : Chunk {
   Optional<yaml::BinaryRef> Pattern;
   llvm::yaml::Hex64 Size;
-
-  // We have to remember the offset of the fill, because it does not have
-  // a corresponding section header, unlike a section. We might need this
-  // information when writing the output.
-  uint64_t ShOffset;
 
   Fill() : Chunk(ChunkKind::Fill) {}
 
@@ -505,6 +489,21 @@ struct MipsABIFlags : Section {
   static bool classof(const Chunk *S) {
     return S->Kind == ChunkKind::MipsABIFlags;
   }
+};
+
+struct ProgramHeader {
+  ELF_PT Type;
+  ELF_PF Flags;
+  llvm::yaml::Hex64 VAddr;
+  llvm::yaml::Hex64 PAddr;
+  Optional<llvm::yaml::Hex64> Align;
+  Optional<llvm::yaml::Hex64> FileSize;
+  Optional<llvm::yaml::Hex64> MemSize;
+  Optional<llvm::yaml::Hex64> Offset;
+
+  std::vector<SectionName> Sections;
+  // This vector is parallel to Sections and contains corresponding chunks.
+  std::vector<Chunk *> Chunks;
 };
 
 struct Object {

@@ -212,7 +212,8 @@ int PPCTTIImpl::getIntImmCostInst(unsigned Opcode, unsigned Idx,
 unsigned
 PPCTTIImpl::getUserCost(const User *U, ArrayRef<const Value *> Operands,
                         TTI::TargetCostKind CostKind) {
-  if (U->getType()->isVectorTy()) {
+  // We already implement getCastInstrCost and perform the vector adjustment there.
+  if (!isa<CastInst>(U) && U->getType()->isVectorTy()) {
     // Instructions that need to be split should cost more.
     std::pair<int, MVT> LT = TLI->getTypeLegalizationCost(DL, U->getType());
     return LT.first * BaseT::getUserCost(U, Operands, CostKind);
@@ -759,8 +760,12 @@ int PPCTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
                                  const Instruction *I) {
   assert(TLI->InstructionOpcodeToISD(Opcode) && "Invalid opcode");
 
-  int Cost = BaseT::getCastInstrCost(Opcode, Dst, Src, CostKind);
-  return vectorCostAdjustment(Cost, Opcode, Dst, Src);
+  int Cost = BaseT::getCastInstrCost(Opcode, Dst, Src, CostKind, I);
+  Cost = vectorCostAdjustment(Cost, Opcode, Dst, Src);
+  // TODO: Allow non-throughput costs that aren't binary.
+  if (CostKind != TTI::TCK_RecipThroughput)
+    return Cost == 0 ? 0 : 1;
+  return Cost;
 }
 
 int PPCTTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,
@@ -875,7 +880,7 @@ int PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
 
   // Aligned loads and stores are easy.
   unsigned SrcBytes = LT.second.getStoreSize();
-  if (!SrcBytes || !Alignment || Alignment >= SrcBytes)
+  if (!SrcBytes || !Alignment || *Alignment >= SrcBytes)
     return Cost;
 
   // If we can use the permutation-based load sequence, then this is also
@@ -887,7 +892,7 @@ int PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
   // longer true.
   if (Opcode == Instruction::Load &&
       ((!ST->hasP8Vector() && IsAltivecType) || IsQPXType) &&
-      Alignment >= LT.second.getScalarType().getStoreSize())
+      *Alignment >= LT.second.getScalarType().getStoreSize())
     return Cost + LT.first; // Add the cost of the permutations.
 
   // For VSX, we can do unaligned loads and stores on Altivec/VSX types. On the
@@ -953,24 +958,9 @@ int PPCTTIImpl::getInterleavedMemoryOpCost(unsigned Opcode, Type *VecTy,
   return Cost;
 }
 
-unsigned PPCTTIImpl::getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                                           ArrayRef<Value *> Args,
-                                           FastMathFlags FMF, unsigned VF,
-                                           TTI::TargetCostKind CostKind,
-                                           const Instruction *I) {
-  return BaseT::getIntrinsicInstrCost(ID, RetTy, Args, FMF, VF, CostKind, I);
-}
-
-unsigned PPCTTIImpl::getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                                           ArrayRef<Type *> Tys,
-                                           FastMathFlags FMF,
-                                           unsigned ScalarizationCostPassed,
-                                           TTI::TargetCostKind CostKind,
-                                           const Instruction *I) {
-  if (ID == Intrinsic::bswap && ST->hasP9Vector())
-    return TLI->getTypeLegalizationCost(DL, RetTy).first;
-  return BaseT::getIntrinsicInstrCost(ID, RetTy, Tys, FMF,
-                                      ScalarizationCostPassed, CostKind, I);
+unsigned PPCTTIImpl::getIntrinsicInstrCost(const IntrinsicCostAttributes &ICA,
+                                           TTI::TargetCostKind CostKind) {
+  return BaseT::getIntrinsicInstrCost(ICA, CostKind);
 }
 
 bool PPCTTIImpl::canSaveCmp(Loop *L, BranchInst **BI, ScalarEvolution *SE,
