@@ -26,6 +26,10 @@
 using namespace llvm;
 
 extern cl::opt<bool> TreatUnknownAsCold;
+static cl::opt<bool> HotFunctionsOnly(
+    "mfs-hot-funcs-only", cl::Hidden,
+    cl::desc("Split hot functions only."),
+    cl::init(true));
 
 namespace {
 
@@ -62,12 +66,21 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     return false;
   }
 
-  // We don't want to split funciton which are marked cold already. Based
-  // on the TreatUnknownAsCold flag below it may move blocks from unlikely
-  // to unknown.
-  if (PSI->isFunctionEntryCold(&MF.getFunction())) {
+  // We don't want to proceed further for cold functions 
+  // (or functions of unknown hotness).
+  Optional<StringRef> SectionPrefix = MF.getFunction().getSectionPrefix();
+  if (!SectionPrefix.hasValue() || 
+      SectionPrefix.getValue().equals(".unlikely") ||
+      SectionPrefix.getValue().equals(".unknown")) {
     return false;
   }
+
+  // Further constrain the functions we split to hot functions only if the flag
+  // is set.
+  if (HotFunctionsOnly && !SectionPrefix.getValue().equals(".hot")) {
+    return false;
+  }
+
 
   MF.RenumberBlocks();
   for (auto &MBB : MF) {
