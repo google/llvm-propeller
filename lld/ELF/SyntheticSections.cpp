@@ -1319,6 +1319,8 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     dtFlags1 |= DF_1_NODELETE;
   if (config->zNodlopen)
     dtFlags1 |= DF_1_NOOPEN;
+  if (config->pie)
+    dtFlags1 |= DF_1_PIE;
   if (config->zNow) {
     dtFlags |= DF_BIND_NOW;
     dtFlags1 |= DF_1_NOW;

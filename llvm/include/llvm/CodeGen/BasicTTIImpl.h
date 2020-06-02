@@ -222,9 +222,9 @@ public:
     return false;
   }
 
-  bool rewriteIntrinsicWithAddressSpace(IntrinsicInst *II,
-                                        Value *OldV, Value *NewV) const {
-    return false;
+  Value *rewriteIntrinsicWithAddressSpace(IntrinsicInst *II, Value *OldV,
+                                          Value *NewV) const {
+    return nullptr;
   }
 
   bool isLegalAddImmediate(int64_t imm) {
@@ -460,6 +460,11 @@ public:
                                    DominatorTree *DT,
                                    const LoopAccessInfo *LAI) {
     return BaseT::preferPredicateOverEpilogue(L, LI, SE, AC, TLI, DT, LAI);
+  }
+
+  bool emitGetActiveLaneMask(Loop *L, LoopInfo *LI, ScalarEvolution &SE,
+                             bool TailFold) {
+    return BaseT::emitGetActiveLaneMask(L, LI, SE, TailFold);
   }
 
   int getInstructionLatency(const Instruction *I) {
