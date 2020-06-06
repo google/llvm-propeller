@@ -15,17 +15,13 @@
 
 #include "llvm/ADT/GraphTraits.h"
 #include "llvm/ADT/ilist.h"
-#include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/iterator_range.h"
-#include "llvm/ADT/simple_ilist.h"
 #include "llvm/ADT/SparseBitVector.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBundleIterator.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/MC/LaneBitmask.h"
-#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/BranchProbability.h"
-#include "llvm/Support/Printable.h"
 #include <cassert>
 #include <cstdint>
 #include <functional>
@@ -40,6 +36,7 @@ class MachineFunction;
 class MCSymbol;
 class ModuleSlotTracker;
 class Pass;
+class Printable;
 class SlotIndexes;
 class StringRef;
 class raw_ostream;
@@ -56,13 +53,15 @@ struct MBBSectionID {
     Default = 0, // Regular section (these sections are distinguished by the
                  // Number field).
     Exception,   // Special section type for exception handling blocks
+    Unknown,     // Special section type for blocks with unknown hotness
     Cold,        // Special section type for cold blocks
   } Type;
   unsigned Number;
 
   MBBSectionID(unsigned N) : Type(Default), Number(N) {}
 
-  // Special unique sections for cold and exception blocks.
+  // Special unique sections for cold, unknown and exception blocks.
+  const static MBBSectionID UnknownSectionID;
   const static MBBSectionID ColdSectionID;
   const static MBBSectionID ExceptionSectionID;
 
@@ -72,14 +71,14 @@ struct MBBSectionID {
 
   bool operator!=(const MBBSectionID &Other) const { return !(*this == Other); }
 
-  // This returns a unique index for the section in the range [0, max(Number)+2]
+  // This returns a unique index for the section in the range [0, max(Number)+3]
   struct ToIndexFunctor {
     using argument_type = MBBSectionID;
     unsigned operator()(MBBSectionID SectionID) const {
       return ((unsigned)MBBSectionID::SectionType::Cold) -
              ((unsigned)SectionID.Type) + SectionID.Number;
     }
-    static unsigned indexSize(unsigned NumBlockIDs) { return NumBlockIDs + 2; }
+    static unsigned indexSize(unsigned NumBlockIDs) { return NumBlockIDs + 3; }
   };
 
 private:

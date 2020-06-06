@@ -13,6 +13,8 @@
 #ifndef MLIR_DIALECT_SPIRV_SPIRVTYPES_H_
 #define MLIR_DIALECT_SPIRV_SPIRVTYPES_H_
 
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
@@ -54,16 +56,21 @@ SmallVector<Capability, 0> getRecursiveImpliedCapabilities(Capability cap);
 
 namespace detail {
 struct ArrayTypeStorage;
+struct CooperativeMatrixTypeStorage;
 struct ImageTypeStorage;
+struct MatrixTypeStorage;
 struct PointerTypeStorage;
 struct RuntimeArrayTypeStorage;
 struct StructTypeStorage;
+
 } // namespace detail
 
 namespace TypeKind {
 enum Kind {
   Array = Type::FIRST_SPIRV_TYPE,
+  CooperativeMatrix,
   Image,
+  Matrix,
   Pointer,
   RuntimeArray,
   Struct,
@@ -132,9 +139,15 @@ public:
   /// Returns true if the given vector type is valid for the SPIR-V dialect.
   static bool isValid(VectorType);
 
+  /// Return the number of elements of the type. This should only be called if
+  /// hasCompileTimeKnownNumElements is true.
   unsigned getNumElements() const;
 
   Type getElementType(unsigned) const;
+
+  /// Return true if the number of elements is known at compile time and is not
+  /// implementation dependent.
+  bool hasCompileTimeKnownNumElements() const;
 
   void getExtensions(SPIRVType::ExtensionArrayRefVector &extensions,
                      Optional<spirv::StorageClass> storage = llvm::None);
@@ -323,6 +336,64 @@ public:
   // Offset) associated with the `i`-th member of the StructType.
   void getMemberDecorations(
       unsigned i, SmallVectorImpl<spirv::Decoration> &memberDecorations) const;
+
+  void getExtensions(SPIRVType::ExtensionArrayRefVector &extensions,
+                     Optional<spirv::StorageClass> storage = llvm::None);
+  void getCapabilities(SPIRVType::CapabilityArrayRefVector &capabilities,
+                       Optional<spirv::StorageClass> storage = llvm::None);
+};
+
+// SPIR-V cooperative matrix type
+class CooperativeMatrixNVType
+    : public Type::TypeBase<CooperativeMatrixNVType, CompositeType,
+                            detail::CooperativeMatrixTypeStorage> {
+public:
+  using Base::Base;
+
+  static bool kindof(unsigned kind) {
+    return kind == TypeKind::CooperativeMatrix;
+  }
+
+  static CooperativeMatrixNVType get(Type elementType, spirv::Scope scope,
+                                     unsigned rows, unsigned columns);
+  Type getElementType() const;
+
+  /// Return the scope of the cooperative matrix.
+  spirv::Scope getScope() const;
+  /// return the number of rows of the matrix.
+  unsigned getRows() const;
+  /// return the number of columns of the matrix.
+  unsigned getColumns() const;
+
+  void getExtensions(SPIRVType::ExtensionArrayRefVector &extensions,
+                     Optional<spirv::StorageClass> storage = llvm::None);
+  void getCapabilities(SPIRVType::CapabilityArrayRefVector &capabilities,
+                       Optional<spirv::StorageClass> storage = llvm::None);
+};
+
+// SPIR-V matrix type
+class MatrixType : public Type::TypeBase<MatrixType, CompositeType,
+                                         detail::MatrixTypeStorage> {
+public:
+  using Base::Base;
+
+  static bool kindof(unsigned kind) { return kind == TypeKind::Matrix; }
+
+  static MatrixType get(Type columnType, uint32_t columnCount);
+
+  static MatrixType getChecked(Type columnType, uint32_t columnCount,
+                               Location location);
+
+  static LogicalResult verifyConstructionInvariants(Location loc,
+                                                    Type columnType,
+                                                    uint32_t columnCount);
+
+  /// Returns true if the matrix elements are vectors of float elements
+  static bool isValidColumnType(Type columnType);
+
+  Type getElementType() const;
+
+  unsigned getNumElements() const;
 
   void getExtensions(SPIRVType::ExtensionArrayRefVector &extensions,
                      Optional<spirv::StorageClass> storage = llvm::None);

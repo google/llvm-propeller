@@ -2009,7 +2009,7 @@ static Instruction *canonicalizeScalarSelectOfVecs(
 
   // We can replace a single-use extract with constant index.
   Value *Cond = Sel.getCondition();
-  if (!match(Cond, m_OneUse(m_ExtractElement(m_Value(), m_ConstantInt()))))
+  if (!match(Cond, m_OneUse(m_ExtractElt(m_Value(), m_ConstantInt()))))
     return nullptr;
 
   // select (extelt V, Index), T, F --> select (splat V, Index), T, F
@@ -2387,6 +2387,23 @@ static Instruction *foldSelectToCopysign(SelectInst &Sel,
   Instruction *CopySign = IntrinsicInst::Create(F, { MagArg, X });
   CopySign->setFastMathFlags(Sel.getFastMathFlags());
   return CopySign;
+}
+
+Instruction *InstCombiner::foldVectorSelect(SelectInst &Sel) {
+  auto *VecTy = dyn_cast<FixedVectorType>(Sel.getType());
+  if (!VecTy)
+    return nullptr;
+
+  unsigned NumElts = VecTy->getNumElements();
+  APInt UndefElts(NumElts, 0);
+  APInt AllOnesEltMask(APInt::getAllOnesValue(NumElts));
+  if (Value *V = SimplifyDemandedVectorElts(&Sel, AllOnesEltMask, UndefElts)) {
+    if (V != &Sel)
+      return replaceInstUsesWith(Sel, V);
+    return &Sel;
+  }
+
+  return nullptr;
 }
 
 Instruction *InstCombiner::visitSelectInst(SelectInst &SI) {
@@ -2817,16 +2834,8 @@ Instruction *InstCombiner::visitSelectInst(SelectInst &SI) {
     return &SI;
   }
 
-  if (VectorType *VecTy = dyn_cast<VectorType>(SelType)) {
-    unsigned VWidth = VecTy->getNumElements();
-    APInt UndefElts(VWidth, 0);
-    APInt AllOnesEltMask(APInt::getAllOnesValue(VWidth));
-    if (Value *V = SimplifyDemandedVectorElts(&SI, AllOnesEltMask, UndefElts)) {
-      if (V != &SI)
-        return replaceInstUsesWith(SI, V);
-      return &SI;
-    }
-  }
+  if (Instruction *I = foldVectorSelect(SI))
+    return I;
 
   // If we can compute the condition, there's no need for a select.
   // Like the above fold, we are attempting to reduce compile-time cost by

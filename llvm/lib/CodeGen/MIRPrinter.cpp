@@ -653,6 +653,9 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
     case MBBSectionID::SectionType::Cold:
       OS << "Cold";
       break;
+    case MBBSectionID::SectionType::Unknown:
+      OS << "Unknown";
+      break;
     default:
       OS << MBB.getSectionID().Number;
     }
@@ -778,6 +781,8 @@ void MIPrinter::print(const MachineInstr &MI) {
     OS << "exact ";
   if (MI.getFlag(MachineInstr::NoFPExcept))
     OS << "nofpexcept ";
+  if (MI.getFlag(MachineInstr::NoMerge))
+    OS << "nomerge ";
 
   OS << TII->getName(MI.getOpcode());
   if (I < E)

@@ -87,6 +87,12 @@ using llvm::StringMap;
 using llvm::StringRef;
 using namespace llvm;
 
+cl::opt<bool> TreatUnknownAsCold(
+    "bbsection-unknown-as-cold", cl::Hidden,
+    cl::desc("Treat unseen blocks as cold, this may be too aggressive for "
+             "sampled (or inaccurate profiles)."),
+    cl::init(false));
+
 namespace {
 
 // This struct represents the cluster information for a machine basic block.
@@ -250,9 +256,10 @@ assignSections(MachineFunction &MF,
     } else if (FuncBBClusterInfo[MBB.getNumber()].hasValue())
       MBB.setSectionID(FuncBBClusterInfo[MBB.getNumber()]->ClusterID);
     else {
-      // BB goes into the special cold section if it is not specified in the
-      // cluster info map.
-      MBB.setSectionID(MBBSectionID::ColdSectionID);
+      // BB is treated as unknown if it is not specified in the cluster info
+      // map. If bbsection-unknown-as-cold is set then, treat them as cold.
+      MBB.setSectionID(TreatUnknownAsCold ? MBBSectionID::ColdSectionID
+                                          : MBBSectionID::UnknownSectionID);
     }
 
     if (MBB.isEHPad() && EHPadsSectionID != MBB.getSectionID() &&
@@ -327,6 +334,7 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   //   * Regular sections (in increasing order of their Number).
   //     ...
   //   * Exception section
+  //   * Unknown section
   //   * Cold section
   auto MBBSectionOrder = [EntryBBSectionID](const MBBSectionID &LHS,
                                             const MBBSectionID &RHS) {

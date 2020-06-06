@@ -3,7 +3,7 @@
 ## This test exercises basic block reordering on a single function with a simple loop.
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
-# RUN: ld.lld  %t.o -optimize-bb-jumps -o %t.out
+# RUN: ld.lld  %t.o --optimize-bb-jumps -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s --check-prefix=BEFORE
 
 # BEFORE:	0000000000201120 <foo>:
@@ -65,7 +65,7 @@
 # RUN: echo "4 5 10" >> %t_prof.propeller
 # RUN: echo "1 2 5" >> %t_prof.propeller
 
-# RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.reorder.out
+# RUN: ld.lld  %t.o --optimize-bb-jumps -propeller=%t_prof.propeller -propeller-keep-named-symbols -o %t.propeller.reorder.out
 # RUN: llvm-objdump -d %t.propeller.reorder.out| FileCheck %s --check-prefix=REORDER
 
 # REORDER:	0000000000201120 <foo>:
@@ -89,7 +89,7 @@
 
 ## Disable basic block reordering and expect that the original bb order is retained.
 #
-# RUN: ld.lld  %t.o -optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-reorder-blocks -propeller-keep-named-symbols -o %t.propeller.noreorder.out
+# RUN: ld.lld  %t.o --optimize-bb-jumps -propeller=%t_prof.propeller -propeller-opt=no-reorder-blocks -propeller-keep-named-symbols -o %t.propeller.noreorder.out
 # RUN: diff %t.propeller.noreorder.out %t.out
 
 .section	.text,"ax",@progbits

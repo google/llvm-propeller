@@ -1,6 +1,6 @@
 # Customizable variables.
 # Vanilla clang/clang++ bin path.
-SHELL := /bin/bash
+SHELL := /bin/bash -o pipefail
 
 paths.mk :
 	@if [[ ! -e "paths.mk" ]] ; then \
@@ -117,8 +117,8 @@ comma              := ,
 STAGE1_BIN         := $(DDIR)/stage1/install/bin
 PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
-LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
-LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
+LLD_NO_OPT         := -fuse-ld=lld -Wl,--no-optimize-bb-jumps
+LLD_OPT            := -fuse-ld=lld -Wl,--optimize-bb-jumps
 FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
@@ -161,32 +161,33 @@ split_flags := $(call gen_build_flags,"","${LLD_OPT} $(split_linker_opt)")
 # $2 is llvm enabled projects
 # $3 is target
 define build_compiler
-	set -o pipefail ; \
-	export TOOLCHAIN="$(shell if [[ "$@" == "stage1/install/bin/clang" ]]; then echo "$(RELEASE_LLVM_BIN)" ; else echo "$(DDIR)/stage1/install/bin" ; fi)" ; \
-	export COMP_DIR="$(DDIR)/$(shell echo $@ | sed -Ee 's!([^/]+)/.*!\1!')" ; \
-	if [[ -z "$${COMP_DIR}" ]]; then echo "Invalid dir name" ; exit 1; fi ; \
-	echo "Building in directory: $${COMP_DIR} ... " ; \
-	if [[ ! -e "$${COMP_DIR}/build/CMakeCache.txt" ]]; then \
-	  mkdir -p $${COMP_DIR}/build ;                  \
-	  cd $${COMP_DIR}/build && cmake -G Ninja        \
-            -DCMAKE_INSTALL_PREFIX=$${COMP_DIR}/install \
-            -DLLVM_OPTIMIZED_TABLEGEN=On                \
-	    -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)            \
-	    -DLLVM_ENABLE_EH=$(ENABLE_EH)               \
-	    -DLLVM_ENABLE_RTTI=$(ENABLE_EH)             \
-	    -DLLVM_ENABLE_LLD="On"                      \
-	    -DCMAKE_LINKER="lld"                        \
-            -DLLVM_TARGETS_TO_BUILD="X86"               \
-	    -DCMAKE_C_COMPILER=$${TOOLCHAIN}/clang      \
-	    -DCMAKE_CXX_COMPILER=$${TOOLCHAIN}/clang++  \
-	    -DCMAKE_ASM_COMPILER=$${TOOLCHAIN}/clang    \
-	    $(1)                                        \
-            -DLLVM_ENABLE_PROJECTS=$(2)                 \
-            $(LLVM_PROJECT)/llvm;                       \
-	fi ; \
-	ninja -j$(J_NUMBER) -C $${COMP_DIR}/build $(3) 2>&1 | tee $${COMP_DIR}.autolog || exit 1; \
-	if ! echo "int main() {return 0;}" | $${COMP_DIR}/build/bin/clang -x c -c - -o ./build_compiler.tmpout ; then \
-		echo Failed; exit 1 ; \
+	$(eval __toolchain=$(shell if [[ "$@" == "stage1/install/bin/clang" ]]; then echo "$(RELEASE_LLVM_BIN)" ; else echo "$(DDIR)/stage1/install/bin" ; fi))
+	$(eval __comp_dir=$(DDIR)/$(shell echo $@ | sed -Ee 's!([^/]+)/.*!\1!'))
+	if [[ -z "$(__comp_dir)" ]]; then echo "Invalid dir name" ; exit 1; fi
+	echo "Building in directory: $(__comp_dir) ... " ;
+	if [[ ! -e "$(__comp_dir)/build/CMakeCache.txt" ]]; then \
+	    mkdir -p $(__comp_dir)/build ;                       \
+	    cd $(__comp_dir)/build && cmake -G Ninja             \
+		-DCMAKE_INSTALL_PREFIX=$(__comp_dir)/install     \
+		-DLLVM_OPTIMIZED_TABLEGEN=On                     \
+		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE)                 \
+		-DLLVM_ENABLE_EH=$(ENABLE_EH)                    \
+		-DLLVM_ENABLE_RTTI=$(ENABLE_EH)                  \
+		-DLLVM_ENABLE_LLD="On"                           \
+		-DCMAKE_LINKER="lld"                             \
+		-DLLVM_TARGETS_TO_BUILD="X86"                    \
+		-DCMAKE_C_COMPILER="$(__toolchain)/clang"        \
+		-DCMAKE_CXX_COMPILER="$(__toolchain)/clang++"    \
+		-DCMAKE_ASM_COMPILER="$(__toolchain)/clang"      \
+		$(1)                                             \
+		-DLLVM_ENABLE_PROJECTS=$(2)                      \
+		$(LLVM_PROJECT)/llvm;                            \
+	fi
+	ninja -j$(J_NUMBER) -C $(__comp_dir)/build $(3) 2>&1 | tee $(DDIR)/$(shell basename $(__comp_dir)).autolog || exit 1
+	if ! echo "int main() {return 0;}" | $(__comp_dir)/build/bin/clang -x c -c - -o ./build_compiler.tmpout ; then \
+		rm -f ./build_compiler.tmpout ; \
+		echo Failed; \
+		exit 1 ; \
 	else \
 		rm -f ./build_compiler.tmpout ; \
 	fi
@@ -198,7 +199,7 @@ all-compilers: $(ALL_COMPILERS)
 all-benchmarks: $(ALL_BENCHMARKS)
 
 stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
-	$(call build_compiler,-DLLVM_ENABLE_ASSERTIONS=$(ENABLE_ASSERTS) $(call gen_linker_flags,"-Wl$(comma)-build-id") $(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib\ -Wl$(comma)-build-id")"; fi),"clang;compiler-rt;lld",install)
+	$(call build_compiler,-DLLVM_ENABLE_ASSERTIONS=$(ENABLE_ASSERTS) $(call gen_linker_flags,"-Wl$(comma)-build-id") $(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,\"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib -Wl$(comma)-build-id\")"; fi),"clang;compiler-rt;lld",install)
 
 stage1_with_cxx_unwind/install/bin/clang: stage1-compiler check_environment $(LLVM_SOURCE)
 	$(call build_compiler,-DCMAKE_BUILD_TYPE=Debug -DLIBCXXABI_USE_LLVM_UNWINDER=On -DLLVM_ENABLE_LLD= -DCMAKE_LINKER="gold","clang;compiler-rt;lld;libcxx;libcxxabi;libunwind",install install-cxx install-cxxabi)
@@ -538,7 +539,7 @@ define check_against_baseline
 	export IMPROVE=`paste <(echo "$${BASE}") <(echo "$${TEST}") | awk '{print 100*($$1-$$2)/$$1}' ` ; \
 	export IMPROVE_AVG=`echo "$${IMPROVE}" | awk '{ total += $$1 } END { print total/${ITERATIONS} }' ` ; \
 	export IMPROVE_STDDEV=`echo "$${IMPROVE}" | awk -v improve_avg=$${IMPROVE_AVG} '{ total += ($$1-improve_avg)**2 } END { print (total/${ITERATIONS})**0.5 }' ` ; \
-	if [[ `echo "$${IMPROVE_AVG} > 3" | bc -l` == '1' ]]; then \
+	if [[ `echo "$${IMPROVE_AVG} > 5.5" | bc -l` == '1' ]]; then \
 	  echo "Performance check passed: $2 [$${IMPROVE_AVG}% +-$${IMPROVE_STDDEV} improvement over $1]." ; \
 	else \
 	  echo "*** Performance check failed: $2, regression found." ; exit 1 ; \

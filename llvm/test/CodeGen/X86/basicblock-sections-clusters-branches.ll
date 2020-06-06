@@ -46,12 +46,12 @@ declare i32 @baz() #1
 ; LINUX-SECTIONS1:		jne foo.1
 ; LINUX-SECTIONS1-NOT:		{{jne|je|jmp}}
 ; LINUX-SECTIONS1-LABEL:	# %bb.2:
-; LINUX-SECTIONS1:		jmp foo.cold
+; LINUX-SECTIONS1:		jmp foo.unknown
 ; LINUX-SECTIONS1:		.section        .text.foo,"ax",@progbits,unique,1
 ; LINUX-SECTIONS1-LABEL:	foo.1:
-; LINUX-SECTIONS1:		jmp foo.cold
-; LINUX-SECTIONS1:		.section        .text.unlikely.foo,"ax",@progbits
-; LINUX-SECTIONS1-LABEL:	foo.cold:
+; LINUX-SECTIONS1:		jmp foo.unknown
+; LINUX-SECTIONS1:		.section        .text.unknown.foo,"ax",@progbits
+; LINUX-SECTIONS1-LABEL:	foo.unknown:
 
 ; LINUX-SECTIONS2:		.section        .text.foo,"ax",@progbits
 ; LINUX-SECTIONS2-LABEL:	foo:

@@ -907,6 +907,14 @@ void ASTStmtReader::VisitArraySubscriptExpr(ArraySubscriptExpr *E) {
   E->setRBracketLoc(readSourceLocation());
 }
 
+void ASTStmtReader::VisitMatrixSubscriptExpr(MatrixSubscriptExpr *E) {
+  VisitExpr(E);
+  E->setBase(Record.readSubExpr());
+  E->setRowIdx(Record.readSubExpr());
+  E->setColumnIdx(Record.readSubExpr());
+  E->setRBracketLoc(readSourceLocation());
+}
+
 void ASTStmtReader::VisitOMPArraySectionExpr(OMPArraySectionExpr *E) {
   VisitExpr(E);
   E->setBase(Record.readSubExpr());
@@ -1718,6 +1726,10 @@ void ASTStmtReader::VisitCXXDynamicCastExpr(CXXDynamicCastExpr *E) {
 }
 
 void ASTStmtReader::VisitCXXReinterpretCastExpr(CXXReinterpretCastExpr *E) {
+  return VisitCXXNamedCastExpr(E);
+}
+
+void ASTStmtReader::VisitCXXAddrspaceCastExpr(CXXAddrspaceCastExpr *E) {
   return VisitCXXNamedCastExpr(E);
 }
 
@@ -2922,6 +2934,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = new (Context) ArraySubscriptExpr(Empty);
       break;
 
+    case EXPR_MATRIX_SUBSCRIPT:
+      S = new (Context) MatrixSubscriptExpr(Empty);
+      break;
+
     case EXPR_OMP_ARRAY_SECTION:
       S = new (Context) OMPArraySectionExpr(Empty);
       break;
@@ -3591,6 +3607,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case EXPR_CXX_CONST_CAST:
       S = CXXConstCastExpr::CreateEmpty(Context);
+      break;
+
+    case EXPR_CXX_ADDRSPACE_CAST:
+      S = CXXAddrspaceCastExpr::CreateEmpty(Context);
       break;
 
     case EXPR_CXX_FUNCTIONAL_CAST:
