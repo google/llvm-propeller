@@ -1482,7 +1482,8 @@ MachineBasicBlock::livein_iterator MachineBasicBlock::livein_begin() const {
   return LiveIns.begin();
 }
 
-const MBBSectionID MBBSectionID::UnknownSectionID(MBBSectionID::SectionType::Unknown);
+const MBBSectionID
+    MBBSectionID::UnknownSectionID(MBBSectionID::SectionType::Unknown);
 const MBBSectionID MBBSectionID::ColdSectionID(MBBSectionID::SectionType::Cold);
 const MBBSectionID
     MBBSectionID::ExceptionSectionID(MBBSectionID::SectionType::Exception);

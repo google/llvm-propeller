@@ -86,9 +86,9 @@ public:
     return false;
   }
 
-  bool rewriteIntrinsicWithAddressSpace(IntrinsicInst *II, Value *OldV,
-                                        Value *NewV) const {
-    return false;
+  Value *rewriteIntrinsicWithAddressSpace(IntrinsicInst *II, Value *OldV,
+                                          Value *NewV) const {
+    return nullptr;
   }
 
   bool isLoweredToCall(const Function *F) {
@@ -137,6 +137,11 @@ public:
                                    AssumptionCache &AC, TargetLibraryInfo *TLI,
                                    DominatorTree *DT,
                                    const LoopAccessInfo *LAI) const {
+    return false;
+  }
+
+  bool emitGetActiveLaneMask(Loop *L, LoopInfo *LI, ScalarEvolution &SE,
+                             bool TailFold) const {
     return false;
   }
 

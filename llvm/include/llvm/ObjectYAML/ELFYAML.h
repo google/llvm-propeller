@@ -16,6 +16,7 @@
 #define LLVM_OBJECTYAML_ELFYAML_H
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ObjectYAML/DWARFYAML.h"
 #include "llvm/ObjectYAML/YAML.h"
 #include "llvm/Support/YAMLTraits.h"
 #include <cstdint>
@@ -84,6 +85,14 @@ struct FileHeader {
   Optional<llvm::yaml::Hex64> SHOff;
   Optional<llvm::yaml::Hex16> SHNum;
   Optional<llvm::yaml::Hex16> SHStrNdx;
+};
+
+struct SectionHeader {
+  StringRef Name;
+};
+
+struct SectionHeaderTable {
+  std::vector<SectionHeader> Sections;
 };
 
 struct SectionName {
@@ -508,6 +517,7 @@ struct ProgramHeader {
 
 struct Object {
   FileHeader Header;
+  Optional<SectionHeaderTable> SectionHeaders;
   std::vector<ProgramHeader> ProgramHeaders;
 
   // An object might contain output section descriptions as well as
@@ -520,6 +530,7 @@ struct Object {
   // being a single SHT_SYMTAB section are upheld.
   Optional<std::vector<Symbol>> Symbols;
   Optional<std::vector<Symbol>> DynamicSymbols;
+  Optional<DWARFYAML::Data> DWARF;
 
   std::vector<Section *> getSections() {
     std::vector<Section *> Ret;
@@ -539,6 +550,7 @@ LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::ELFYAML::LinkerOption)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::ELFYAML::CallGraphEntry)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::ELFYAML::NoteEntry)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::ELFYAML::ProgramHeader)
+LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::ELFYAML::SectionHeader)
 LLVM_YAML_IS_SEQUENCE_VECTOR(std::unique_ptr<llvm::ELFYAML::Chunk>)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::ELFYAML::Symbol)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::ELFYAML::VerdefEntry)
@@ -668,6 +680,14 @@ struct ScalarBitSetTraits<ELFYAML::MIPS_AFL_FLAGS1> {
 template <>
 struct MappingTraits<ELFYAML::FileHeader> {
   static void mapping(IO &IO, ELFYAML::FileHeader &FileHdr);
+};
+
+template <> struct MappingTraits<ELFYAML::SectionHeaderTable> {
+  static void mapping(IO &IO, ELFYAML::SectionHeaderTable &SecHdrTable);
+};
+
+template <> struct MappingTraits<ELFYAML::SectionHeader> {
+  static void mapping(IO &IO, ELFYAML::SectionHeader &SHdr);
 };
 
 template <> struct MappingTraits<ELFYAML::ProgramHeader> {

@@ -14,6 +14,7 @@
 #include "Propeller.h"
 
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>

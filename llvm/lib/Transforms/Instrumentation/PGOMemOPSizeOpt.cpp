@@ -95,8 +95,8 @@ extern cl::opt<std::string> MemOPSizeRange;
 // This option sets the value that groups large memop sizes
 extern cl::opt<unsigned> MemOPSizeLarge;
 
-static cl::opt<bool>
-    MemOPOptMemcmpBcmp("pgo-memop-optimize-memcmp-bcmp", cl::init(false),
+cl::opt<bool>
+    MemOPOptMemcmpBcmp("pgo-memop-optimize-memcmp-bcmp", cl::init(true),
                        cl::Hidden,
                        cl::desc("Size-specialize memcmp and bcmp calls"));
 

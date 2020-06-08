@@ -3224,6 +3224,15 @@ unsigned FunctionDecl::getBuiltinID(bool ConsiderWrapperFunctions) const {
       !(BuiltinID == Builtin::BIprintf || BuiltinID == Builtin::BImalloc))
     return 0;
 
+  // As AMDGCN implementation of OpenMP does not have a device-side standard
+  // library, none of the predefined library functions except printf and malloc
+  // should be treated as a builtin i.e. 0 should be returned for them.
+  if (Context.getTargetInfo().getTriple().isAMDGCN() &&
+      Context.getLangOpts().OpenMPIsDevice &&
+      Context.BuiltinInfo.isPredefinedLibFunction(BuiltinID) &&
+      !(BuiltinID == Builtin::BIprintf || BuiltinID == Builtin::BImalloc))
+    return 0;
+
   return BuiltinID;
 }
 
@@ -3255,11 +3264,25 @@ unsigned FunctionDecl::getMinRequiredArguments() const {
   if (!getASTContext().getLangOpts().CPlusPlus)
     return getNumParams();
 
+  // Note that it is possible for a parameter with no default argument to
+  // follow a parameter with a default argument.
   unsigned NumRequiredArgs = 0;
-  for (auto *Param : parameters())
-    if (!Param->isParameterPack() && !Param->hasDefaultArg())
-      ++NumRequiredArgs;
+  unsigned MinParamsSoFar = 0;
+  for (auto *Param : parameters()) {
+    if (!Param->isParameterPack()) {
+      ++MinParamsSoFar;
+      if (!Param->hasDefaultArg())
+        NumRequiredArgs = MinParamsSoFar;
+    }
+  }
   return NumRequiredArgs;
+}
+
+bool FunctionDecl::hasOneParamOrDefaultArgs() const {
+  return getNumParams() == 1 ||
+         (getNumParams() > 1 &&
+          std::all_of(param_begin() + 1, param_end(),
+                      [](ParmVarDecl *P) { return P->hasDefaultArg(); }));
 }
 
 /// The combination of the extern and inline keywords under MSVC forces

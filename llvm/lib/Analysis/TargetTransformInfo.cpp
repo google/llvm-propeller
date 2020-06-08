@@ -290,9 +290,8 @@ bool TargetTransformInfo::collectFlatAddressOperands(
   return TTIImpl->collectFlatAddressOperands(OpIndexes, IID);
 }
 
-bool TargetTransformInfo::rewriteIntrinsicWithAddressSpace(IntrinsicInst *II,
-                                                           Value *OldV,
-                                                           Value *NewV) const {
+Value *TargetTransformInfo::rewriteIntrinsicWithAddressSpace(
+    IntrinsicInst *II, Value *OldV, Value *NewV) const {
   return TTIImpl->rewriteIntrinsicWithAddressSpace(II, OldV, NewV);
 }
 
@@ -311,6 +310,11 @@ bool TargetTransformInfo::preferPredicateOverEpilogue(
     TargetLibraryInfo *TLI, DominatorTree *DT,
     const LoopAccessInfo *LAI) const {
   return TTIImpl->preferPredicateOverEpilogue(L, LI, SE, AC, TLI, DT, LAI);
+}
+
+bool TargetTransformInfo::emitGetActiveLaneMask(Loop *L, LoopInfo *LI,
+    ScalarEvolution &SE, bool TailFolded) const {
+  return TTIImpl->emitGetActiveLaneMask(L, LI, SE, TailFolded);
 }
 
 void TargetTransformInfo::getUnrollingPreferences(
