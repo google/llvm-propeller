@@ -2067,15 +2067,11 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   collectEntityInfo(TheCU, SP, Processed);
 
   // Add the range of this function to the list of ranges for the CU.
-  TheCU.addRange({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
-
   // With basic block sections, add ranges for all basic block sections.
-  if (MF->hasBBSections()) {
-    for (auto &MBB : *MF) {
-      if (&MBB != &MF->front() && MBB.isBeginSection())
-        TheCU.addRange({MBB.getSymbol(),
-                        Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
-    }
+  for (auto &MBB : *MF) {
+    if (&MBB == &MF->front() || MBB.isBeginSection())
+      TheCU.addRange({Asm->MBBSectionRanges[MBB.getSectionID()].BeginLabel,
+                      Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
   }
 
   // Under -gmlt, skip building the subprogram if there are no inlined
