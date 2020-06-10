@@ -1,4 +1,4 @@
-//===-- UniqueInternalLinkageNames.h --------*- C++ -*-===//
+//===-- UniqueInternalLinkageNames.h - Uniq. Int. Linkage Names -*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -22,9 +22,7 @@ namespace llvm {
 /// Simple pass that provides a name to every anonymous globals.
 class UniqueInternalLinkageNamesPass
     : public PassInfoMixin<UniqueInternalLinkageNamesPass> {
-
 public:
-  UniqueInternalLinkageNamesPass() = default;
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 };
 

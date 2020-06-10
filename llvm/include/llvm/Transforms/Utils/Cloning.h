@@ -171,19 +171,19 @@ void CloneAndPruneFunctionInto(Function *NewFunc, const Function *OldFunc,
 /// the auxiliary results produced by it.
 class InlineFunctionInfo {
 public:
-  explicit InlineFunctionInfo(CallGraph *cg = nullptr,
-                              std::function<AssumptionCache &(Function &)>
-                                  *GetAssumptionCache = nullptr,
-                              ProfileSummaryInfo *PSI = nullptr,
-                              BlockFrequencyInfo *CallerBFI = nullptr,
-                              BlockFrequencyInfo *CalleeBFI = nullptr)
+  explicit InlineFunctionInfo(
+      CallGraph *cg = nullptr,
+      function_ref<AssumptionCache &(Function &)> GetAssumptionCache = nullptr,
+      ProfileSummaryInfo *PSI = nullptr,
+      BlockFrequencyInfo *CallerBFI = nullptr,
+      BlockFrequencyInfo *CalleeBFI = nullptr)
       : CG(cg), GetAssumptionCache(GetAssumptionCache), PSI(PSI),
         CallerBFI(CallerBFI), CalleeBFI(CalleeBFI) {}
 
   /// If non-null, InlineFunction will update the callgraph to reflect the
   /// changes it makes.
   CallGraph *CG;
-  std::function<AssumptionCache &(Function &)> *GetAssumptionCache;
+  function_ref<AssumptionCache &(Function &)> GetAssumptionCache;
   ProfileSummaryInfo *PSI;
   BlockFrequencyInfo *CallerBFI, *CalleeBFI;
 
@@ -228,10 +228,7 @@ public:
 /// and all varargs at the callsite will be passed to any calls to
 /// ForwardVarArgsTo. The caller of InlineFunction has to make sure any varargs
 /// are only used by ForwardVarArgsTo.
-InlineResult InlineFunction(CallBase *CB, InlineFunctionInfo &IFI,
-                            AAResults *CalleeAAR = nullptr,
-                            bool InsertLifetime = true);
-InlineResult InlineFunction(CallSite CS, InlineFunctionInfo &IFI,
+InlineResult InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
                             AAResults *CalleeAAR = nullptr,
                             bool InsertLifetime = true,
                             Function *ForwardVarArgsTo = nullptr);

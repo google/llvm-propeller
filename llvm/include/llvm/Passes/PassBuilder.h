@@ -19,6 +19,7 @@
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Transforms/IPO/Inliner.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/Scalar/LoopPassManager.h"
 #include <vector>
@@ -73,16 +74,15 @@ public:
   /// can be set in the PassBuilder when using a LLVM as a library.
   PipelineTuningOptions();
 
-  /// Tuning option to set loop interleaving on/off. Its default value is that
-  /// of the flag: `-interleave-loops`.
+  /// Tuning option to set loop interleaving on/off, set based on opt level.
   bool LoopInterleaving;
 
-  /// Tuning option to enable/disable loop vectorization. Its default value is
-  /// that of the flag: `-vectorize-loops`.
+  /// Tuning option to enable/disable loop vectorization, set based on opt
+  /// level.
   bool LoopVectorization;
 
-  /// Tuning option to enable/disable slp loop vectorization. Its default value
-  /// is that of the flag: `vectorize-slp`.
+  /// Tuning option to enable/disable slp loop vectorization, set based on opt
+  /// level.
   bool SLPVectorization;
 
   /// Tuning option to enable/disable loop unrolling. Its default value is true.
@@ -344,6 +344,12 @@ public:
                                     ThinLTOPhase Phase,
                                     bool DebugLogging = false);
 
+  /// Construct the module pipeline that performs inlining as well as
+  /// the inlining-driven cleanups.
+  ModuleInlinerWrapperPass buildInlinerPipeline(OptimizationLevel Level,
+                                                ThinLTOPhase Phase,
+                                                bool DebugLogging = false);
+
   /// Construct the core LLVM module optimization pipeline.
   ///
   /// This pipeline focuses on optimizing the execution speed of the IR. It
@@ -594,7 +600,7 @@ public:
   /// is not triggered at O0. Extensions to the O0 pipeline should append their
   /// passes to the end of the overall pipeline.
   void registerOptimizerLastEPCallback(
-      const std::function<void(FunctionPassManager &, OptimizationLevel)> &C) {
+      const std::function<void(ModulePassManager &, OptimizationLevel)> &C) {
     OptimizerLastEPCallbacks.push_back(C);
   }
 
@@ -677,6 +683,10 @@ public:
   }
 
 private:
+  // O1 pass pipeline
+  FunctionPassManager buildO1FunctionSimplificationPipeline(
+      OptimizationLevel Level, ThinLTOPhase Phase, bool DebugLogging = false);
+
   static Optional<std::vector<PipelineElement>>
   parsePipelineText(StringRef Text);
 
@@ -722,7 +732,7 @@ private:
       CGSCCOptimizerLateEPCallbacks;
   SmallVector<std::function<void(FunctionPassManager &, OptimizationLevel)>, 2>
       VectorizerStartEPCallbacks;
-  SmallVector<std::function<void(FunctionPassManager &, OptimizationLevel)>, 2>
+  SmallVector<std::function<void(ModulePassManager &, OptimizationLevel)>, 2>
       OptimizerLastEPCallbacks;
   // Module callbacks
   SmallVector<std::function<void(ModulePassManager &)>, 2>

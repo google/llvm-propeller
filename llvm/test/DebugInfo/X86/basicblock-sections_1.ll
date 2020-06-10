@@ -1,9 +1,8 @@
-; RUN: llc -O0 %s -mtriple=x86_64-unknown-linux-gnu -filetype=obj -o %t
-; llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=NO-NOSECTIONS %s
+; RUN: llc -O0 %s -mtriple=x86_64-* -filetype=obj -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=NO-SECTIONS %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-* -filetype=asm -o - | FileCheck --check-prefix=BB-SECTIONS-ASM %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-* -filetype=obj -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-* -filetype=obj -split-dwarf-file=%t.dwo -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
 
-; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=obj -o %t
-; llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
-; RUN: llvm-readobj --relocations %t | FileCheck --check-prefix=BB-SECTIONS-RELOCS %s
 ; From:
 ; int foo(int a) {
 ;   if (a > 20)
@@ -12,22 +11,41 @@
 ;     return 0;
 ; }
 
-; NO-SECTIONS: DW_AT_low_pc
-; NOSECTIONS: DW_AT_high_pc
-; BB-SECTIONS: DW_AT_low_pc
-; BB-SECTIONS: DW_AT_ranges
-; BB-SECTIONS-RELOCS: R_X86_64_64 a.BB._Z3fooi
-; BB-SECTIONS-RELOCS-NEXT: R_X86_64_64
-; BB-SECTIONS-RELOCS-NEXT: R_X86_64_64 aa.BB._Z3fooi
-; BB-SECTIONS-RELOCS-NEXT: R_X86_64_64
-; BB-SECTIONS-RELOCS: R_X86_64_SIZE32
-
-source_filename = "debuginfo.cc"
-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
-target triple = "x86_64-unknown-linux-gnu"
+; NO-SECTIONS: DW_AT_low_pc     DW_FORM_addr
+; NO-SECTIONS: DW_AT_high_pc    DW_FORM_data4
+; BB-SECTIONS-ASM: _Z3fooi:
+; BB-SECTIONS-ASM: .Ltmp0:
+; BB-SECTIONS-ASM-NEXT: .loc 1 2 9 prologue_end
+; BB-SECTIONS-ASM: .Ltmp1:
+; BB-SECTIONS-ASM-NEXT: .loc 1 2 7 is_stmt
+; BB-SECTIONS-ASM: _Z3fooi.1:
+; BB-SECTIONS-ASM: .Ltmp2:
+; BB-SECTIONS-ASM-NEXT: .size	_Z3fooi.1, .Ltmp2-_Z3fooi.1
+; BB-SECTIONS-ASM: _Z3fooi.2:
+; BB-SECTIONS-ASM: .Ltmp3:
+; BB-SECTIONS-ASM-NEXT: .Ltmp4:
+; BB-SECTIONS-ASM-NEXT: .size	_Z3fooi.2, .Ltmp4-_Z3fooi.2
+; BB-SECTIONS-ASM: _Z3fooi.3:
+; BB-SECTIONS-ASM: .Ltmp5:
+; BB-SECTIONS-ASM-NEXT: .Ltmp6:
+; BB-SECTIONS-ASM-NEXT: .size	_Z3fooi.3, .Ltmp6-_Z3fooi.3
+; BB-SECTIONS-ASM: .Lfunc_end0:
+; BB-SECTIONS-ASM: .Ldebug_ranges0:
+; BB-SECTIONS-ASM-NEXT:	.quad	.Lfunc_begin0
+; BB-SECTIONS-ASM-NEXT:	.quad	.Lfunc_end0
+; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.1
+; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp2
+; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.2
+; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp4
+; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.3
+; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp6
+; BB-SECTIONS-ASM-NEXT:	.quad	0
+; BB-SECTIONS-ASM-NEXT:	.quad	0
+; BB-SECTIONS: DW_AT_low_pc     DW_FORM_addr
+; BB-SECTIONS: DW_AT_ranges	DW_FORM_sec_offset
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local i32 @_Z3fooi(i32 %0) #0 !dbg !7 {
+define dso_local i32 @_Z3fooi(i32 %0) !dbg !7 {
   %2 = alloca i32, align 4
   %3 = alloca i32, align 4
   store i32 %0, i32* %3, align 4
@@ -50,23 +68,16 @@ define dso_local i32 @_Z3fooi(i32 %0) #0 !dbg !7 {
 }
 
 ; Function Attrs: nounwind readnone speculatable willreturn
-declare void @llvm.dbg.declare(metadata, metadata, metadata) #1
-
-;attributes #0 = { noinline nounwind optnone uwtable  "frame-pointer"="all" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
-attributes #0 = { noinline nounwind optnone uwtable   }
-attributes #1 = { nounwind readnone speculatable willreturn }
+declare void @llvm.dbg.declare(metadata, metadata, metadata)
 
 !llvm.dbg.cu = !{!0}
-!llvm.module.flags = !{!3, !4, !5}
-!llvm.ident = !{!6}
+!llvm.module.flags = !{!3, !4}
 
 !0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: "clang version 10.0.0 (git@github.com:google/llvm-propeller.git f9421ebf4b3d8b64678bf6c49d1607fdce3f50c5)", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug, enums: !2, nameTableKind: None)
-!1 = !DIFile(filename: "debuginfo.cc", directory: "/g/tmsriram/Projects_2019/github_repo/Examples")
+!1 = !DIFile(filename: "debuginfo.cc", directory: "/")
 !2 = !{}
 !3 = !{i32 2, !"Dwarf Version", i32 4}
 !4 = !{i32 2, !"Debug Info Version", i32 3}
-!5 = !{i32 1, !"wchar_size", i32 4}
-!6 = !{!"clang version 10.0.0 (git@github.com:google/llvm-propeller.git f9421ebf4b3d8b64678bf6c49d1607fdce3f50c5)"}
 !7 = distinct !DISubprogram(name: "foo", linkageName: "_Z3fooi", scope: !1, file: !1, line: 1, type: !8, scopeLine: 1, flags: DIFlagPrototyped, spFlags: DISPFlagDefinition, unit: !0, retainedNodes: !2)
 !8 = !DISubroutineType(types: !9)
 !9 = !{!10, !10}

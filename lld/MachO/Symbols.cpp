@@ -8,12 +8,12 @@
 
 #include "Symbols.h"
 #include "InputFiles.h"
-#include "lld/Common/ErrorHandler.h"
-#include "lld/Common/Strings.h"
 
 using namespace llvm;
 using namespace lld;
 using namespace lld::macho;
+
+void LazySymbol::fetchArchiveMember() { file->fetch(sym); }
 
 // Returns a symbol for an error message.
 std::string lld::toString(const Symbol &sym) {

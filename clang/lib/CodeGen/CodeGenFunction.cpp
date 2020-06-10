@@ -71,26 +71,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   if (!suppressNewContext)
     CGM.getCXXABI().getMangleContext().startNewFunction();
 
-  llvm::FastMathFlags FMF;
-  if (CGM.getLangOpts().FastMath)
-    FMF.setFast();
-  if (CGM.getLangOpts().FiniteMathOnly) {
-    FMF.setNoNaNs();
-    FMF.setNoInfs();
-  }
-  if (CGM.getCodeGenOpts().NoNaNsFPMath) {
-    FMF.setNoNaNs();
-  }
-  if (CGM.getCodeGenOpts().NoSignedZeros) {
-    FMF.setNoSignedZeros();
-  }
-  if (CGM.getCodeGenOpts().ReciprocalMath) {
-    FMF.setAllowReciprocal();
-  }
-  if (CGM.getCodeGenOpts().Reassociate) {
-    FMF.setAllowReassoc();
-  }
-  Builder.setFastMathFlags(FMF);
+  SetFastMathFlags(FPOptions(CGM.getLangOpts()));
   SetFPModel();
 }
 
@@ -117,8 +98,8 @@ CodeGenFunction::~CodeGenFunction() {
 
 // Map the LangOption for exception behavior into
 // the corresponding enum in the IR.
-static llvm::fp::ExceptionBehavior ToConstrainedExceptMD(
-  LangOptions::FPExceptionModeKind Kind) {
+llvm::fp::ExceptionBehavior
+clang::ToConstrainedExceptMD(LangOptions::FPExceptionModeKind Kind) {
 
   switch (Kind) {
   case LangOptions::FPE_Ignore:  return llvm::fp::ebIgnore;
@@ -133,76 +114,28 @@ void CodeGenFunction::SetFPModel() {
   auto fpExceptionBehavior = ToConstrainedExceptMD(
                                getLangOpts().getFPExceptionMode());
 
-  if (fpExceptionBehavior == llvm::fp::ebIgnore &&
-      RM == llvm::RoundingMode::NearestTiesToEven)
-    // Constrained intrinsics are not used.
-    ;
-  else {
-    Builder.setIsFPConstrained(true);
-    Builder.setDefaultConstrainedRounding(RM);
-    Builder.setDefaultConstrainedExcept(fpExceptionBehavior);
-  }
+  Builder.setDefaultConstrainedRounding(RM);
+  Builder.setDefaultConstrainedExcept(fpExceptionBehavior);
+  Builder.setIsFPConstrained(fpExceptionBehavior != llvm::fp::ebIgnore ||
+                             RM != llvm::RoundingMode::NearestTiesToEven);
 }
 
-CharUnits CodeGenFunction::getNaturalPointeeTypeAlignment(QualType T,
-                                                    LValueBaseInfo *BaseInfo,
-                                                    TBAAAccessInfo *TBAAInfo) {
-  return getNaturalTypeAlignment(T->getPointeeType(), BaseInfo, TBAAInfo,
-                                 /* forPointeeType= */ true);
-}
-
-CharUnits CodeGenFunction::getNaturalTypeAlignment(QualType T,
-                                                   LValueBaseInfo *BaseInfo,
-                                                   TBAAAccessInfo *TBAAInfo,
-                                                   bool forPointeeType) {
-  if (TBAAInfo)
-    *TBAAInfo = CGM.getTBAAAccessInfo(T);
-
-  // Honor alignment typedef attributes even on incomplete types.
-  // We also honor them straight for C++ class types, even as pointees;
-  // there's an expressivity gap here.
-  if (auto TT = T->getAs<TypedefType>()) {
-    if (auto Align = TT->getDecl()->getMaxAlignment()) {
-      if (BaseInfo)
-        *BaseInfo = LValueBaseInfo(AlignmentSource::AttributedType);
-      return getContext().toCharUnitsFromBits(Align);
-    }
-  }
-
-  if (BaseInfo)
-    *BaseInfo = LValueBaseInfo(AlignmentSource::Type);
-
-  CharUnits Alignment;
-  if (T->isIncompleteType()) {
-    Alignment = CharUnits::One(); // Shouldn't be used, but pessimistic is best.
-  } else {
-    // For C++ class pointees, we don't know whether we're pointing at a
-    // base or a complete object, so we generally need to use the
-    // non-virtual alignment.
-    const CXXRecordDecl *RD;
-    if (forPointeeType && (RD = T->getAsCXXRecordDecl())) {
-      Alignment = CGM.getClassPointerAlignment(RD);
-    } else {
-      Alignment = getContext().getTypeAlignInChars(T);
-      if (T.getQualifiers().hasUnaligned())
-        Alignment = CharUnits::One();
-    }
-
-    // Cap to the global maximum type alignment unless the alignment
-    // was somehow explicit on the type.
-    if (unsigned MaxAlign = getLangOpts().MaxTypeAlign) {
-      if (Alignment.getQuantity() > MaxAlign &&
-          !getContext().isAlignmentRequired(T))
-        Alignment = CharUnits::fromQuantity(MaxAlign);
-    }
-  }
-  return Alignment;
+void CodeGenFunction::SetFastMathFlags(FPOptions FPFeatures) {
+  llvm::FastMathFlags FMF;
+  FMF.setAllowReassoc(FPFeatures.allowAssociativeMath());
+  FMF.setNoNaNs(FPFeatures.noHonorNaNs());
+  FMF.setNoInfs(FPFeatures.noHonorInfs());
+  FMF.setNoSignedZeros(FPFeatures.noSignedZeros());
+  FMF.setAllowReciprocal(FPFeatures.allowReciprocalMath());
+  FMF.setApproxFunc(FPFeatures.allowApproximateFunctions());
+  FMF.setAllowContract(FPFeatures.allowFPContractAcrossStatement());
+  Builder.setFastMathFlags(FMF);
 }
 
 LValue CodeGenFunction::MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T) {
   LValueBaseInfo BaseInfo;
   TBAAAccessInfo TBAAInfo;
-  CharUnits Alignment = getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo);
+  CharUnits Alignment = CGM.getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo);
   return LValue::MakeAddr(Address(V, Alignment), T, getContext(), BaseInfo,
                           TBAAInfo);
 }
@@ -213,8 +146,8 @@ LValue
 CodeGenFunction::MakeNaturalAlignPointeeAddrLValue(llvm::Value *V, QualType T) {
   LValueBaseInfo BaseInfo;
   TBAAAccessInfo TBAAInfo;
-  CharUnits Align = getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo,
-                                            /* forPointeeType= */ true);
+  CharUnits Align = CGM.getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo,
+                                                /* forPointeeType= */ true);
   return MakeAddrLValue(Address(V, Align), T, BaseInfo, TBAAInfo);
 }
 
@@ -252,11 +185,13 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
     case Type::MemberPointer:
     case Type::Vector:
     case Type::ExtVector:
+    case Type::ConstantMatrix:
     case Type::FunctionProto:
     case Type::FunctionNoProto:
     case Type::Enum:
     case Type::ObjCObjectPointer:
     case Type::Pipe:
+    case Type::ExtInt:
       return TEK_Scalar;
 
     // Complexes.
@@ -918,9 +853,11 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
       Fn->addFnAttr(llvm::Attribute::NoRecurse);
   }
 
-  if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D))
+  if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D)) {
+    Builder.setIsFPConstrained(FD->usesFPIntrin());
     if (FD->usesFPIntrin())
       Fn->addFnAttr(llvm::Attribute::StrictFP);
+  }
 
   // If a custom alignment is used, force realigning to this alignment on
   // any main function which certainly will need it.
@@ -1045,7 +982,7 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
     llvm::Value *Addr = Builder.CreateStructGEP(nullptr, &*EI, Idx);
     ReturnValuePointer = Address(Addr, getPointerAlign());
     Addr = Builder.CreateAlignedLoad(Addr, getPointerAlign(), "agg.result");
-    ReturnValue = Address(Addr, getNaturalTypeAlignment(RetTy));
+    ReturnValue = Address(Addr, CGM.getNaturalTypeAlignment(RetTy));
   } else {
     ReturnValue = CreateIRTemp(RetTy, "retval");
 
@@ -2002,6 +1939,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::Complex:
     case Type::Vector:
     case Type::ExtVector:
+    case Type::ConstantMatrix:
     case Type::Record:
     case Type::Enum:
     case Type::Elaborated:
@@ -2010,6 +1948,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::ObjCObject:
     case Type::ObjCInterface:
     case Type::ObjCObjectPointer:
+    case Type::ExtInt:
       llvm_unreachable("type class is never variably-modified!");
 
     case Type::Adjusted:
@@ -2462,7 +2401,7 @@ void CodeGenFunction::emitAlignmentAssumptionCheck(
     llvm::Value *OffsetValue, llvm::Value *TheCheck,
     llvm::Instruction *Assumption) {
   assert(Assumption && isa<llvm::CallInst>(Assumption) &&
-         cast<llvm::CallInst>(Assumption)->getCalledValue() ==
+         cast<llvm::CallInst>(Assumption)->getCalledOperand() ==
              llvm::Intrinsic::getDeclaration(
                  Builder.GetInsertBlock()->getParent()->getParent(),
                  llvm::Intrinsic::assume) &&

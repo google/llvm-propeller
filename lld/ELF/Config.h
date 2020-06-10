@@ -17,6 +17,7 @@
 #include "llvm/Support/CachePruning.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Endian.h"
+#include "llvm/Support/GlobPattern.h"
 #include <atomic>
 #include <vector>
 
@@ -121,6 +122,7 @@ struct Configuration {
   std::vector<llvm::StringRef> propellerDumpCfgs;
   std::vector<llvm::StringRef> propellerDebugSymbols;
   std::vector<llvm::StringRef> propellerOpts;
+  llvm::StringRef printArchiveStats;
   llvm::StringRef printSymbolOrder;
   llvm::StringRef soName;
   llvm::StringRef sysroot;
@@ -171,15 +173,16 @@ struct Configuration {
   bool gdbIndex;
   bool gnuHash = false;
   bool gnuUnique;
-  bool hasDynamicList = false;
   bool hasDynSymTab;
   bool ignoreDataAddressEquality;
   bool ignoreFunctionAddressEquality;
   bool ltoCSProfileGenerate;
   bool ltoDebugPassManager;
+  bool ltoEmitAsm;
   bool ltoNewPassManager;
-  bool ltoUniqueBBSectionNames;
+  bool ltoUniqueBasicBlockSectionNames;
   bool ltoWholeProgramVisibility;
+  bool ltoSplitMachineFunctions;
   bool mergeArmExidx;
   bool mipsN32Abi = false;
   bool mmapOutputFile;
@@ -208,6 +211,7 @@ struct Configuration {
   llvm::Optional<uint32_t> shuffleSectionSeed;
   bool singleRoRx;
   bool shared;
+  bool symbolic;
   bool isStatic = false;
   bool sysvHash = false;
   bool target1Rel;
@@ -220,6 +224,7 @@ struct Configuration {
   bool unique;
   bool useAndroidRelrTags = false;
   bool warnBackrefs;
+  std::vector<llvm::GlobPattern> warnBackrefsExclude;
   bool warnCommon;
   bool warnIfuncTextrel;
   bool warnMissingEntry;

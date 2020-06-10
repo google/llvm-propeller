@@ -328,9 +328,9 @@ class LowerMatrixIntrinsics {
                          IRBuilder<> &Builder) const {
       Value *Vec = isColumnMajor() ? getColumn(J) : getRow(I);
       Value *Undef = UndefValue::get(Vec->getType());
-      Constant *Mask =
-          createSequentialMask(Builder, isColumnMajor() ? I : J, NumElts, 0);
-      return Builder.CreateShuffleVector(Vec, Undef, Mask, "block");
+      return Builder.CreateShuffleVector(
+          Vec, Undef, createSequentialMask(isColumnMajor() ? I : J, NumElts, 0),
+          "block");
     }
   };
 
@@ -442,9 +442,9 @@ public:
     Value *Undef = UndefValue::get(VType);
     for (unsigned MaskStart = 0; MaskStart < VType->getNumElements();
          MaskStart += SI.getStride()) {
-      Constant *Mask =
-          createSequentialMask(Builder, MaskStart, SI.getStride(), 0);
-      Value *V = Builder.CreateShuffleVector(MatrixVal, Undef, Mask, "split");
+      Value *V = Builder.CreateShuffleVector(
+          MatrixVal, Undef, createSequentialMask(MaskStart, SI.getStride(), 0),
+          "split");
       SplitVecs.push_back(V);
     }
 
@@ -909,28 +909,26 @@ public:
     unsigned NumElts = cast<VectorType>(Col->getType())->getNumElements();
     assert(NumElts >= BlockNumElts && "Too few elements for current block");
 
-    Value *ExtendMask =
-        createSequentialMask(Builder, 0, BlockNumElts, NumElts - BlockNumElts);
     Value *Undef = UndefValue::get(Block->getType());
-    Block = Builder.CreateShuffleVector(Block, Undef, ExtendMask);
+    Block = Builder.CreateShuffleVector(
+        Block, Undef,
+        createSequentialMask(0, BlockNumElts, NumElts - BlockNumElts));
 
     // If Col is 7 long and I is 2 and BlockNumElts is 2 the mask is: 0, 1, 7,
     // 8, 4, 5, 6
-    SmallVector<Constant *, 16> Mask;
+    SmallVector<int, 16> Mask;
     unsigned i;
     for (i = 0; i < I; i++)
-      Mask.push_back(Builder.getInt32(i));
+      Mask.push_back(i);
 
     unsigned VecNumElts = cast<VectorType>(Col->getType())->getNumElements();
     for (; i < I + BlockNumElts; i++)
-      Mask.push_back(Builder.getInt32(i - I + VecNumElts));
+      Mask.push_back(i - I + VecNumElts);
 
     for (; i < VecNumElts; i++)
-      Mask.push_back(Builder.getInt32(i));
+      Mask.push_back(i);
 
-    Value *MaskVal = ConstantVector::get(Mask);
-
-    return Builder.CreateShuffleVector(Col, Block, MaskVal);
+    return Builder.CreateShuffleVector(Col, Block, Mask);
   }
 
   Value *createMulAdd(Value *Sum, Value *A, Value *B, bool UseFPOp,
@@ -1296,24 +1294,24 @@ public:
     VectorType *VectorTy = cast<VectorType>(InputVal->getType());
     ShapeInfo ArgShape(Inst->getArgOperand(1), Inst->getArgOperand(2));
     MatrixTy InputMatrix = getMatrix(InputVal, ArgShape, Builder);
-    assert(InputMatrix.isColumnMajor() &&
-           "Row-major code-gen not supported yet!");
 
-    for (unsigned Row = 0; Row < ArgShape.NumRows; ++Row) {
-      // Build a single column vector for this row. First initialize it.
-      Value *ResultColumn = UndefValue::get(
-          VectorType::get(VectorTy->getElementType(), ArgShape.NumColumns));
+    const unsigned NewNumVecs =
+        InputMatrix.isColumnMajor() ? ArgShape.NumRows : ArgShape.NumColumns;
+    const unsigned NewNumElts =
+        InputMatrix.isColumnMajor() ? ArgShape.NumColumns : ArgShape.NumRows;
 
-      // Go through the elements of this row and insert it into the resulting
-      // column vector.
-      for (auto C : enumerate(InputMatrix.columns())) {
-        Value *Elt = Builder.CreateExtractElement(C.value(), Row);
-        // We insert at index Column since that is the row index after the
-        // transpose.
-        ResultColumn =
-            Builder.CreateInsertElement(ResultColumn, Elt, C.index());
+    for (unsigned I = 0; I < NewNumVecs; ++I) {
+      // Build a single result vector. First initialize it.
+      Value *ResultVector = UndefValue::get(
+          VectorType::get(VectorTy->getElementType(), NewNumElts));
+      // Go through the old elements and insert it into the resulting vector.
+      for (auto J : enumerate(InputMatrix.vectors())) {
+        Value *Elt = Builder.CreateExtractElement(J.value(), I);
+        // Row and column indices are transposed.
+        ResultVector =
+            Builder.CreateInsertElement(ResultVector, Elt, J.index());
       }
-      Result.addVector(ResultColumn);
+      Result.addVector(ResultVector);
     }
 
     // TODO: Improve estimate of operations needed for transposes. Currently we
@@ -1614,8 +1612,7 @@ public:
       if (auto *CI = dyn_cast<CallInst>(I)) {
         writeFnName(CI);
 
-        Ops.append(CallSite(CI).arg_begin(),
-                   CallSite(CI).arg_end() - getNumShapeArgs(CI));
+        Ops.append(CI->arg_begin(), CI->arg_end() - getNumShapeArgs(CI));
       } else if (isa<BitCastInst>(Expr)) {
         // Special case bitcasts, which are used to materialize matrixes from
         // non-matrix ops.

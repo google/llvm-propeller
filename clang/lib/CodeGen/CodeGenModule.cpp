@@ -493,6 +493,9 @@ void CodeGenModule::Release() {
   if (Context.getLangOpts().SemanticInterposition)
     // Require various optimization to respect semantic interposition.
     getModule().setSemanticInterposition(1);
+  else if (Context.getLangOpts().ExplicitNoSemanticInterposition)
+    // Allow dso_local on applicable targets.
+    getModule().setSemanticInterposition(0);
 
   if (CodeGenOpts.EmitCodeView) {
     // Indicate that we want CodeView in the metadata.
@@ -524,7 +527,7 @@ void CodeGenModule::Release() {
                               "StrictVTablePointersRequirement",
                               llvm::MDNode::get(VMContext, Ops));
   }
-  if (DebugInfo)
+  if (getModuleDebugInfo())
     // We support a single version in the linked module. The LLVM
     // parser will drop debug info with a different version number
     // (and warn about it, too).
@@ -650,8 +653,8 @@ void CodeGenModule::Release() {
   if (getCodeGenOpts().EmitGcovArcs || getCodeGenOpts().EmitGcovNotes)
     EmitCoverageFile();
 
-  if (DebugInfo)
-    DebugInfo->finalize();
+  if (CGDebugInfo *DI = getModuleDebugInfo())
+    DI->finalize();
 
   if (getCodeGenOpts().EmitVersionIdentMetadata)
     EmitVersionIdentMetadata();
@@ -1908,9 +1911,16 @@ void CodeGenModule::SetFunctionAttributes(GlobalDecl GD, llvm::Function *F,
   else if (const auto *SA = FD->getAttr<SectionAttr>())
      F->setSection(SA->getName());
 
+  // If we plan on emitting this inline builtin, we can't treat it as a builtin.
   if (FD->isInlineBuiltinDeclaration()) {
-    F->addAttribute(llvm::AttributeList::FunctionIndex,
-                    llvm::Attribute::NoBuiltin);
+    const FunctionDecl *FDBody;
+    bool HasBody = FD->hasBody(FDBody);
+    (void)HasBody;
+    assert(HasBody && "Inline builtin declarations should always have an "
+                      "available body!");
+    if (shouldEmitFunction(FDBody))
+      F->addAttribute(llvm::AttributeList::FunctionIndex,
+                      llvm::Attribute::NoBuiltin);
   }
 
   if (FD->isReplaceableGlobalAllocationFunction()) {
@@ -2434,13 +2444,8 @@ bool CodeGenModule::MayBeEmittedEagerly(const ValueDecl *Global) {
   return true;
 }
 
-ConstantAddress CodeGenModule::GetAddrOfUuidDescriptor(
-    const CXXUuidofExpr* E) {
-  // Sema has verified that IIDSource has a __declspec(uuid()), and that its
-  // well-formed.
-  StringRef Uuid = E->getUuidStr();
-  std::string Name = "_GUID_" + Uuid.lower();
-  std::replace(Name.begin(), Name.end(), '-', '_');
+ConstantAddress CodeGenModule::GetAddrOfMSGuidDecl(const MSGuidDecl *GD) {
+  StringRef Name = getMangledName(GD);
 
   // The UUID descriptor should be pointer aligned.
   CharUnits Alignment = CharUnits::fromQuantity(PointerAlignInBytes);
@@ -2449,8 +2454,30 @@ ConstantAddress CodeGenModule::GetAddrOfUuidDescriptor(
   if (llvm::GlobalVariable *GV = getModule().getNamedGlobal(Name))
     return ConstantAddress(GV, Alignment);
 
-  llvm::Constant *Init = EmitUuidofInitializer(Uuid);
-  assert(Init && "failed to initialize as constant");
+  ConstantEmitter Emitter(*this);
+  llvm::Constant *Init;
+
+  APValue &V = GD->getAsAPValue();
+  if (!V.isAbsent()) {
+    // If possible, emit the APValue version of the initializer. In particular,
+    // this gets the type of the constant right.
+    Init = Emitter.emitForInitializer(
+        GD->getAsAPValue(), GD->getType().getAddressSpace(), GD->getType());
+  } else {
+    // As a fallback, directly construct the constant.
+    // FIXME: This may get padding wrong under esoteric struct layout rules.
+    // MSVC appears to create a complete type 'struct __s_GUID' that it
+    // presumably uses to represent these constants.
+    MSGuidDecl::Parts Parts = GD->getParts();
+    llvm::Constant *Fields[4] = {
+        llvm::ConstantInt::get(Int32Ty, Parts.Part1),
+        llvm::ConstantInt::get(Int16Ty, Parts.Part2),
+        llvm::ConstantInt::get(Int16Ty, Parts.Part3),
+        llvm::ConstantDataArray::getRaw(
+            StringRef(reinterpret_cast<char *>(Parts.Part4And5), 8), 8,
+            Int8Ty)};
+    Init = llvm::ConstantStruct::getAnon(Fields);
+  }
 
   auto *GV = new llvm::GlobalVariable(
       getModule(), Init->getType(),
@@ -2458,7 +2485,16 @@ ConstantAddress CodeGenModule::GetAddrOfUuidDescriptor(
   if (supportsCOMDAT())
     GV->setComdat(TheModule.getOrInsertComdat(GV->getName()));
   setDSOLocal(GV);
-  return ConstantAddress(GV, Alignment);
+
+  llvm::Constant *Addr = GV;
+  if (!V.isAbsent()) {
+    Emitter.finalize(GV);
+  } else {
+    llvm::Type *Ty = getTypes().ConvertTypeForMem(GD->getType());
+    Addr = llvm::ConstantExpr::getBitCast(
+        GV, Ty->getPointerTo(GV->getAddressSpace()));
+  }
+  return ConstantAddress(Addr, Alignment);
 }
 
 ConstantAddress CodeGenModule::GetWeakRefReference(const ValueDecl *VD) {
@@ -2796,8 +2832,8 @@ bool CodeGenModule::shouldEmitFunction(GlobalDecl GD) {
 
   // PR9614. Avoid cases where the source code is lying to us. An available
   // externally function should have an equivalent function somewhere else,
-  // but a function that calls itself is clearly not equivalent to the real
-  // implementation.
+  // but a function that calls itself through asm label/`__builtin_` trickery is
+  // clearly not equivalent to the real implementation.
   // This happens in glibc's btowc and in some configure checks.
   return !isTriviallyRecursive(F);
 }
@@ -4100,17 +4136,24 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
 
   GV->setAlignment(getContext().getDeclAlign(D).getAsAlign());
 
-  // On Darwin, if the normal linkage of a C++ thread_local variable is
-  // LinkOnce or Weak, we keep the normal linkage to prevent multiple
-  // copies within a linkage unit; otherwise, the backing variable has
-  // internal linkage and all accesses should just be calls to the
-  // Itanium-specified entry point, which has the normal linkage of the
-  // variable. This is to preserve the ability to change the implementation
-  // behind the scenes.
-  if (!D->isStaticLocal() && D->getTLSKind() == VarDecl::TLS_Dynamic &&
+  // On Darwin, unlike other Itanium C++ ABI platforms, the thread-wrapper
+  // function is only defined alongside the variable, not also alongside
+  // callers. Normally, all accesses to a thread_local go through the
+  // thread-wrapper in order to ensure initialization has occurred, underlying
+  // variable will never be used other than the thread-wrapper, so it can be
+  // converted to internal linkage.
+  //
+  // However, if the variable has the 'constinit' attribute, it _can_ be
+  // referenced directly, without calling the thread-wrapper, so the linkage
+  // must not be changed.
+  //
+  // Additionally, if the variable isn't plain external linkage, e.g. if it's
+  // weak or linkonce, the de-duplication semantics are important to preserve,
+  // so we don't change the linkage.
+  if (D->getTLSKind() == VarDecl::TLS_Dynamic &&
+      Linkage == llvm::GlobalValue::ExternalLinkage &&
       Context.getTargetInfo().getTriple().isOSDarwin() &&
-      !llvm::GlobalVariable::isLinkOnceLinkage(Linkage) &&
-      !llvm::GlobalVariable::isWeakLinkage(Linkage))
+      !D->hasAttr<ConstInitAttr>())
     Linkage = llvm::GlobalValue::InternalLinkage;
 
   GV->setLinkage(Linkage);
@@ -4536,8 +4579,9 @@ void CodeGenModule::EmitAliasDefinition(GlobalDecl GD) {
   }
 
   // Create the new alias itself, but don't set a name yet.
+  unsigned AS = Aliasee->getType()->getPointerAddressSpace();
   auto *GA =
-      llvm::GlobalAlias::create(DeclTy, 0, LT, "", Aliasee, &getModule());
+      llvm::GlobalAlias::create(DeclTy, AS, LT, "", Aliasee, &getModule());
 
   if (Entry) {
     if (GA->getAliasee() == Entry) {
@@ -5320,17 +5364,17 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     break;
   case Decl::ClassTemplateSpecialization: {
     const auto *Spec = cast<ClassTemplateSpecializationDecl>(D);
-    if (DebugInfo &&
-        Spec->getSpecializationKind() == TSK_ExplicitInstantiationDefinition &&
-        Spec->hasDefinition())
-      DebugInfo->completeTemplateDefinition(*Spec);
+    if (CGDebugInfo *DI = getModuleDebugInfo())
+      if (Spec->getSpecializationKind() ==
+              TSK_ExplicitInstantiationDefinition &&
+          Spec->hasDefinition())
+        DI->completeTemplateDefinition(*Spec);
   } LLVM_FALLTHROUGH;
   case Decl::CXXRecord:
-    if (DebugInfo) {
+    if (CGDebugInfo *DI = getModuleDebugInfo())
       if (auto *ES = D->getASTContext().getExternalSource())
         if (ES->hasExternalDefinitions(D) == ExternalASTSource::EK_Never)
-          DebugInfo->completeUnusedClass(cast<CXXRecordDecl>(*D));
-    }
+          DI->completeUnusedClass(cast<CXXRecordDecl>(*D));
     // Emit any static data members, they may be definitions.
     for (auto *I : cast<CXXRecordDecl>(D)->decls())
       if (isa<VarDecl>(I) || isa<CXXRecordDecl>(I))
@@ -5351,15 +5395,15 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
   case Decl::Using:          // using X; [C++]
     if (CGDebugInfo *DI = getModuleDebugInfo())
         DI->EmitUsingDecl(cast<UsingDecl>(*D));
-    return;
+    break;
   case Decl::NamespaceAlias:
     if (CGDebugInfo *DI = getModuleDebugInfo())
         DI->EmitNamespaceAlias(cast<NamespaceAliasDecl>(*D));
-    return;
+    break;
   case Decl::UsingDirective: // using namespace X; [C++]
     if (CGDebugInfo *DI = getModuleDebugInfo())
       DI->EmitUsingDirective(cast<UsingDirectiveDecl>(*D));
-    return;
+    break;
   case Decl::CXXConstructor:
     getCXXABI().EmitCXXConstructors(cast<CXXConstructorDecl>(D));
     break;
@@ -5542,10 +5586,10 @@ void CodeGenModule::AddDeferredUnusedCoverageMapping(Decl *D) {
   case Decl::CXXConstructor:
   case Decl::CXXDestructor: {
     if (!cast<FunctionDecl>(D)->doesThisDeclarationHaveABody())
-      return;
+      break;
     SourceManager &SM = getContext().getSourceManager();
     if (LimitedCoverage && SM.getMainFileID() != SM.getFileID(D->getBeginLoc()))
-      return;
+      break;
     auto I = DeferredEmptyCoverageMappingDecls.find(D);
     if (I == DeferredEmptyCoverageMappingDecls.end())
       DeferredEmptyCoverageMappingDecls[D] = true;
@@ -5773,33 +5817,6 @@ void CodeGenModule::EmitCoverageFile() {
   }
 }
 
-llvm::Constant *CodeGenModule::EmitUuidofInitializer(StringRef Uuid) {
-  // Sema has checked that all uuid strings are of the form
-  // "12345678-1234-1234-1234-1234567890ab".
-  assert(Uuid.size() == 36);
-  for (unsigned i = 0; i < 36; ++i) {
-    if (i == 8 || i == 13 || i == 18 || i == 23) assert(Uuid[i] == '-');
-    else                                         assert(isHexDigit(Uuid[i]));
-  }
-
-  // The starts of all bytes of Field3 in Uuid. Field 3 is "1234-1234567890ab".
-  const unsigned Field3ValueOffsets[8] = { 19, 21, 24, 26, 28, 30, 32, 34 };
-
-  llvm::Constant *Field3[8];
-  for (unsigned Idx = 0; Idx < 8; ++Idx)
-    Field3[Idx] = llvm::ConstantInt::get(
-        Int8Ty, Uuid.substr(Field3ValueOffsets[Idx], 2), 16);
-
-  llvm::Constant *Fields[4] = {
-    llvm::ConstantInt::get(Int32Ty, Uuid.substr(0,  8), 16),
-    llvm::ConstantInt::get(Int16Ty, Uuid.substr(9,  4), 16),
-    llvm::ConstantInt::get(Int16Ty, Uuid.substr(14, 4), 16),
-    llvm::ConstantArray::get(llvm::ArrayType::get(Int8Ty, 8), Field3)
-  };
-
-  return llvm::ConstantStruct::getAnon(Fields);
-}
-
 llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
                                                        bool ForEH) {
   // Return a bogus pointer if RTTI is disabled, unless it's for EH.
@@ -5950,4 +5967,58 @@ CodeGenModule::createOpenCLIntToSamplerConversion(const Expr *E,
   return CGF.Builder.CreateCall(CreateRuntimeFunction(FTy,
                                 "__translate_sampler_initializer"),
                                 {C});
+}
+
+CharUnits CodeGenModule::getNaturalPointeeTypeAlignment(
+    QualType T, LValueBaseInfo *BaseInfo, TBAAAccessInfo *TBAAInfo) {
+  return getNaturalTypeAlignment(T->getPointeeType(), BaseInfo, TBAAInfo,
+                                 /* forPointeeType= */ true);
+}
+
+CharUnits CodeGenModule::getNaturalTypeAlignment(QualType T,
+                                                 LValueBaseInfo *BaseInfo,
+                                                 TBAAAccessInfo *TBAAInfo,
+                                                 bool forPointeeType) {
+  if (TBAAInfo)
+    *TBAAInfo = getTBAAAccessInfo(T);
+
+  // Honor alignment typedef attributes even on incomplete types.
+  // We also honor them straight for C++ class types, even as pointees;
+  // there's an expressivity gap here.
+  if (auto TT = T->getAs<TypedefType>()) {
+    if (auto Align = TT->getDecl()->getMaxAlignment()) {
+      if (BaseInfo)
+        *BaseInfo = LValueBaseInfo(AlignmentSource::AttributedType);
+      return getContext().toCharUnitsFromBits(Align);
+    }
+  }
+
+  if (BaseInfo)
+    *BaseInfo = LValueBaseInfo(AlignmentSource::Type);
+
+  CharUnits Alignment;
+  if (T->isIncompleteType()) {
+    Alignment = CharUnits::One(); // Shouldn't be used, but pessimistic is best.
+  } else {
+    // For C++ class pointees, we don't know whether we're pointing at a
+    // base or a complete object, so we generally need to use the
+    // non-virtual alignment.
+    const CXXRecordDecl *RD;
+    if (forPointeeType && (RD = T->getAsCXXRecordDecl())) {
+      Alignment = getClassPointerAlignment(RD);
+    } else {
+      Alignment = getContext().getTypeAlignInChars(T);
+      if (T.getQualifiers().hasUnaligned())
+        Alignment = CharUnits::One();
+    }
+
+    // Cap to the global maximum type alignment unless the alignment
+    // was somehow explicit on the type.
+    if (unsigned MaxAlign = getLangOpts().MaxTypeAlign) {
+      if (Alignment.getQuantity() > MaxAlign &&
+          !getContext().isAlignmentRequired(T))
+        Alignment = CharUnits::fromQuantity(MaxAlign);
+    }
+  }
+  return Alignment;
 }

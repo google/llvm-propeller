@@ -892,6 +892,10 @@ LinkageComputer::getLVForNamespaceScopeDecl(const NamedDecl *D,
     if (!TD->getAnonDeclWithTypedefName(/*AnyRedecl*/true))
       return LinkageInfo::none();
 
+  } else if (isa<MSGuidDecl>(D)) {
+    // A GUID behaves like an inline variable with external linkage. Fall
+    // through.
+
   // Everything not covered here has no linkage.
   } else {
     return LinkageInfo::none();
@@ -1542,10 +1546,19 @@ void NamedDecl::printQualifiedName(raw_ostream &OS,
     return;
   }
   printNestedNameSpecifier(OS, P);
-  if (getDeclName() || isa<DecompositionDecl>(this))
+  if (getDeclName())
     OS << *this;
-  else
-    OS << "(anonymous)";
+  else {
+    // Give the printName override a chance to pick a different name before we
+    // fall back to "(anonymous)".
+    SmallString<64> NameBuffer;
+    llvm::raw_svector_ostream NameOS(NameBuffer);
+    printName(NameOS);
+    if (NameBuffer.empty())
+      OS << "(anonymous)";
+    else
+      OS << NameBuffer;
+  }
 }
 
 void NamedDecl::printNestedNameSpecifier(raw_ostream &OS) const {
@@ -1558,13 +1571,16 @@ void NamedDecl::printNestedNameSpecifier(raw_ostream &OS,
 
   // For ObjC methods and properties, look through categories and use the
   // interface as context.
-  if (auto *MD = dyn_cast<ObjCMethodDecl>(this))
+  if (auto *MD = dyn_cast<ObjCMethodDecl>(this)) {
     if (auto *ID = MD->getClassInterface())
       Ctx = ID;
-  if (auto *PD = dyn_cast<ObjCPropertyDecl>(this)) {
+  } else if (auto *PD = dyn_cast<ObjCPropertyDecl>(this)) {
     if (auto *MD = PD->getGetterMethodDecl())
       if (auto *ID = MD->getClassInterface())
         Ctx = ID;
+  } else if (auto *ID = dyn_cast<ObjCIvarDecl>(this)) {
+    if (auto *CI = ID->getContainingInterface())
+      Ctx = CI;
   }
 
   if (Ctx->isFunctionOrMethod())
@@ -3208,6 +3224,15 @@ unsigned FunctionDecl::getBuiltinID(bool ConsiderWrapperFunctions) const {
       !(BuiltinID == Builtin::BIprintf || BuiltinID == Builtin::BImalloc))
     return 0;
 
+  // As AMDGCN implementation of OpenMP does not have a device-side standard
+  // library, none of the predefined library functions except printf and malloc
+  // should be treated as a builtin i.e. 0 should be returned for them.
+  if (Context.getTargetInfo().getTriple().isAMDGCN() &&
+      Context.getLangOpts().OpenMPIsDevice &&
+      Context.BuiltinInfo.isPredefinedLibFunction(BuiltinID) &&
+      !(BuiltinID == Builtin::BIprintf || BuiltinID == Builtin::BImalloc))
+    return 0;
+
   return BuiltinID;
 }
 
@@ -3239,11 +3264,25 @@ unsigned FunctionDecl::getMinRequiredArguments() const {
   if (!getASTContext().getLangOpts().CPlusPlus)
     return getNumParams();
 
+  // Note that it is possible for a parameter with no default argument to
+  // follow a parameter with a default argument.
   unsigned NumRequiredArgs = 0;
-  for (auto *Param : parameters())
-    if (!Param->isParameterPack() && !Param->hasDefaultArg())
-      ++NumRequiredArgs;
+  unsigned MinParamsSoFar = 0;
+  for (auto *Param : parameters()) {
+    if (!Param->isParameterPack()) {
+      ++MinParamsSoFar;
+      if (!Param->hasDefaultArg())
+        NumRequiredArgs = MinParamsSoFar;
+    }
+  }
   return NumRequiredArgs;
+}
+
+bool FunctionDecl::hasOneParamOrDefaultArgs() const {
+  return getNumParams() == 1 ||
+         (getNumParams() > 1 &&
+          std::all_of(param_begin() + 1, param_end(),
+                      [](ParmVarDecl *P) { return P->hasDefaultArg(); }));
 }
 
 /// The combination of the extern and inline keywords under MSVC forces
@@ -4395,6 +4434,21 @@ bool RecordDecl::isCapturedRecord() const {
 
 void RecordDecl::setCapturedRecord() {
   addAttr(CapturedRecordAttr::CreateImplicit(getASTContext()));
+}
+
+bool RecordDecl::isOrContainsUnion() const {
+  if (isUnion())
+    return true;
+
+  if (const RecordDecl *Def = getDefinition()) {
+    for (const FieldDecl *FD : Def->fields()) {
+      const RecordType *RT = FD->getType()->getAs<RecordType>();
+      if (RT && RT->getDecl()->isOrContainsUnion())
+        return true;
+    }
+  }
+
+  return false;
 }
 
 RecordDecl::field_iterator RecordDecl::field_begin() const {

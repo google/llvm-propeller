@@ -7,9 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "OpFormatGen.h"
-#include "mlir/ADT/TypeSwitch.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Support/STLExtras.h"
 #include "mlir/TableGen/Format.h"
 #include "mlir/TableGen/GenInfo.h"
 #include "mlir/TableGen/OpClass.h"
@@ -20,6 +18,7 @@
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
@@ -373,7 +372,7 @@ const char *const attrParserCode = R"(
 const char *const enumAttrParserCode = R"(
   {
     StringAttr attrVal;
-    SmallVector<NamedAttribute, 1> attrStorage;
+    NamedAttrList attrStorage;
     auto loc = parser.getCurrentLocation();
     if (parser.parseAttribute(attrVal, parser.getBuilder().getNoneType(),
                               "{0}", attrStorage))
@@ -742,10 +741,8 @@ void OperationFormat::genParserTypeResolution(Operator &op,
 
   // Initialize the set of buildable types.
   if (!buildableTypes.empty()) {
-    body << "  Builder &builder = parser.getBuilder();\n";
-
     FmtContext typeBuilderCtx;
-    typeBuilderCtx.withBuilder("builder");
+    typeBuilderCtx.withBuilder("parser.getBuilder()");
     for (auto &it : buildableTypes)
       body << "  Type odsBuildableType" << it.second << " = "
            << tgfmt(it.first, &typeBuilderCtx) << ";\n";
@@ -795,7 +792,7 @@ void OperationFormat::genParserTypeResolution(Operator &op,
     body << "  if (parser.resolveOperands(";
     if (op.getNumOperands() > 1) {
       body << "llvm::concat<const OpAsmParser::OperandType>(";
-      interleaveComma(op.getOperands(), body, [&](auto &operand) {
+      llvm::interleaveComma(op.getOperands(), body, [&](auto &operand) {
         body << operand.name << "Operands";
       });
       body << ")";
@@ -815,11 +812,12 @@ void OperationFormat::genParserTypeResolution(Operator &op,
     // the case of a single range, so guard it here.
     if (op.getNumOperands() > 1) {
       body << "llvm::concat<const Type>(";
-      interleaveComma(llvm::seq<int>(0, op.getNumOperands()), body, [&](int i) {
-        body << "ArrayRef<Type>(";
-        emitTypeResolver(operandTypes[i], op.getOperand(i).name);
-        body << ")";
-      });
+      llvm::interleaveComma(
+          llvm::seq<int>(0, op.getNumOperands()), body, [&](int i) {
+            body << "ArrayRef<Type>(";
+            emitTypeResolver(operandTypes[i], op.getOperand(i).name);
+            body << ")";
+          });
       body << ")";
     } else {
       emitTypeResolver(operandTypes.front(), op.getOperand(0).name);
@@ -867,7 +865,7 @@ void OperationFormat::genParserVariadicSegmentResolution(Operator &op,
                                                          OpMethodBody &body) {
   if (!allOperands && op.getTrait("OpTrait::AttrSizedOperandSegments")) {
     body << "  result.addAttribute(\"operand_segment_sizes\", "
-         << "builder.getI32VectorAttr({";
+         << "parser.getBuilder().getI32VectorAttr({";
     auto interleaveFn = [&](const NamedTypeConstraint &operand) {
       // If the operand is variadic emit the parsed size.
       if (operand.isVariableLength())
@@ -875,7 +873,7 @@ void OperationFormat::genParserVariadicSegmentResolution(Operator &op,
       else
         body << "1";
     };
-    interleaveComma(op.getOperands(), body, interleaveFn);
+    llvm::interleaveComma(op.getOperands(), body, interleaveFn);
     body << "}));\n";
   }
 }
@@ -888,16 +886,24 @@ static void genAttrDictPrinter(OperationFormat &fmt, Operator &op,
                                OpMethodBody &body, bool withKeyword) {
   // Collect all of the attributes used in the format, these will be elided.
   SmallVector<const NamedAttribute *, 1> usedAttributes;
-  for (auto &it : fmt.elements)
+  for (auto &it : fmt.elements) {
     if (auto *attr = dyn_cast<AttributeVariable>(it.get()))
       usedAttributes.push_back(attr->getVar());
+    // Collect the optional attributes.
+    if (auto *opt = dyn_cast<OptionalElement>(it.get())) {
+      for (auto &elem : opt->getElements()) {
+        if (auto *attr = dyn_cast<AttributeVariable>(&elem))
+          usedAttributes.push_back(attr->getVar());
+      }
+    }
+  }
 
   body << "  p.printOptionalAttrDict" << (withKeyword ? "WithKeyword" : "")
        << "(getAttrs(), /*elidedAttrs=*/{";
   // Elide the variadic segment size attributes if necessary.
   if (!fmt.allOperands && op.getTrait("OpTrait::AttrSizedOperandSegments"))
     body << "\"operand_segment_sizes\", ";
-  interleaveComma(usedAttributes, body, [&](const NamedAttribute *attr) {
+  llvm::interleaveComma(usedAttributes, body, [&](const NamedAttribute *attr) {
     body << "\"" << attr->name << "\"";
   });
   body << "});\n";
@@ -1016,13 +1022,13 @@ static void genElementPrinter(Element *element, OpMethodBody &body,
   } else if (auto *successor = dyn_cast<SuccessorVariable>(element)) {
     const NamedSuccessor *var = successor->getVar();
     if (var->isVariadic())
-      body << "  interleaveComma(" << var->name << "(), p);\n";
+      body << "  llvm::interleaveComma(" << var->name << "(), p);\n";
     else
       body << "  p << " << var->name << "();\n";
   } else if (isa<OperandsDirective>(element)) {
     body << "  p << getOperation()->getOperands();\n";
   } else if (isa<SuccessorsDirective>(element)) {
-    body << "  interleaveComma(getOperation()->getSuccessors(), p);\n";
+    body << "  llvm::interleaveComma(getOperation()->getSuccessors(), p);\n";
   } else if (auto *dir = dyn_cast<TypeDirective>(element)) {
     body << "  p << ";
     genTypeOperandPrinter(dir->getOperand(), body) << ";\n";

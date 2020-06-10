@@ -517,7 +517,7 @@ void MIRPrinter::convert(yaml::MachineFunction &MF,
     yaml::MachineConstantPoolValue YamlConstant;
     YamlConstant.ID = ID++;
     YamlConstant.Value = StrOS.str();
-    YamlConstant.Alignment = MaybeAlign(Constant.getAlignment());
+    YamlConstant.Alignment = Constant.getAlign();
     YamlConstant.IsTargetSpecific = Constant.isMachineConstantPoolEntry();
 
     MF.Constants.push_back(YamlConstant);
@@ -653,6 +653,9 @@ void MIPrinter::print(const MachineBasicBlock &MBB) {
     case MBBSectionID::SectionType::Cold:
       OS << "Cold";
       break;
+    case MBBSectionID::SectionType::Unknown:
+      OS << "Unknown";
+      break;
     default:
       OS << MBB.getSectionID().Number;
     }
@@ -778,6 +781,8 @@ void MIPrinter::print(const MachineInstr &MI) {
     OS << "exact ";
   if (MI.getFlag(MachineInstr::NoFPExcept))
     OS << "nofpexcept ";
+  if (MI.getFlag(MachineInstr::NoMerge))
+    OS << "nomerge ";
 
   OS << TII->getName(MI.getOpcode());
   if (I < E)
@@ -860,7 +865,7 @@ void MIPrinter::print(const MachineInstr &MI, unsigned OpIdx,
                       bool ShouldPrintRegisterTies, LLT TypeToPrint,
                       bool PrintDef) {
   const MachineOperand &Op = MI.getOperand(OpIdx);
-  std::string MOComment = TII->createMIROperandComment(MI, Op, OpIdx);
+  std::string MOComment = TII->createMIROperandComment(MI, Op, OpIdx, TRI);
 
   switch (Op.getType()) {
   case MachineOperand::MO_Immediate:

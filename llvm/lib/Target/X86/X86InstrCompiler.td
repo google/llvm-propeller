@@ -130,6 +130,11 @@ def PROBED_ALLOCA_64 : I<0, Pseudo, (outs GR64:$dst), (ins GR64:$size),
                     Requires<[In64BitMode]>;
 }
 
+let hasNoSchedulingInfo = 1 in
+def STACKALLOC_W_PROBING : I<0, Pseudo, (outs), (ins i64imm:$stacksize),
+                             "# fixed size alloca with probing",
+                             []>;
+
 // Dynamic stack allocation yields a _chkstk or _alloca call for all Windows
 // targets.  These calls are needed to probe the stack when allocating more than
 // 4k bytes in one go. Touching the stack at 4K increments is necessary to
@@ -847,7 +852,7 @@ defm LCMPXCHG8B : LCMPXCHG_UnOp<0xC7, MRM1m, "cmpxchg8b", X86cas8, i64mem>;
 // it. In other words, the register will not fix the clobbering of
 // RBX that will happen when setting the arguments for the instrucion.
 //
-// Unlike the actual related instuction, we mark that this one
+// Unlike the actual related instruction, we mark that this one
 // defines EBX (instead of using EBX).
 // The rationale is that we will define RBX during the expansion of
 // the pseudo. The argument feeding EBX is ebx_input.

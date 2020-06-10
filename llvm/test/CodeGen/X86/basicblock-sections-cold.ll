@@ -1,11 +1,16 @@
+; Check if basic blocks that don't get unique sections are placed in unknown sections.
+; Basic block with id 1 and 2 must be in the unknown section.
+; RUN: echo '!_Z3bazb' > %t
+; RUN: echo '!!0' >> %t
+; RUN: llc < %s -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t -unique-bb-section-names | FileCheck %s -check-prefix=LINUX-SECTIONS1
+
 ; Check if basic blocks that don't get unique sections are placed in cold sections.
 ; Basic block with id 1 and 2 must be in the cold section.
 ; RUN: echo '!_Z3bazb' > %t
 ; RUN: echo '!!0' >> %t
-; RUN: cat %t
-; RUN: llc < %s -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t -unique-bb-section-names | FileCheck %s -check-prefix=LINUX-SECTIONS
+; RUN: llc < %s -mtriple=x86_64-pc-linux -function-sections -basicblock-sections=%t -unique-bb-section-names -bbsection-unknown-as-cold | FileCheck %s -check-prefix=LINUX-SECTIONS2
 
-define void @_Z3bazb(i1 zeroext) {
+define void @_Z3bazb(i1 zeroext) nounwind {
   %2 = alloca i8, align 1
   %3 = zext i1 %0 to i8
   store i8 %3, i8* %2, align 1
@@ -29,13 +34,25 @@ declare i32 @_Z3barv() #1
 
 declare i32 @_Z3foov() #1
 
-; LINUX-SECTIONS: .section        .text._Z3bazb,"ax",@progbits
-; LINUX-SECTIONS: _Z3bazb:
+; LINUX-SECTIONS1: .section        .text._Z3bazb,"ax",@progbits
+; LINUX-SECTIONS1: _Z3bazb:
 ; Check that the basic block with id 1 doesn't get a section.
-; LINUX-SECTIONS-NOT: .section        .text._Z3bazb.r.BB._Z3bazb,"ax",@progbits,unique
+; LINUX-SECTIONS1-NOT: .section        .text._Z3bazb._Z3bazb.1,"ax",@progbits,unique
+; Check that a single unknown section is started here and id 1 and 2 blocks are placed here.
+; LINUX-SECTIONS1: .section	.text.unknown._Z3bazb,"ax",@progbits
+; LINUX-SECTIONS1: _Z3bazb.unknown:
+; LINUX-SECTIONS1-NOT: .section        .text._Z3bazb._Z3bazb.2,"ax",@progbits,unique
+; LINUX-SECTIONS1: .LBB0_2:
+; LINUX-SECTIONS1: .size   _Z3bazb, .Lfunc_end{{[0-9]}}-_Z3bazb
+;
+; Similar to the test above, but treats unseen blocks as cold.
+; LINUX-SECTIONS2: .section        .text._Z3bazb,"ax",@progbits
+; LINUX-SECTIONS2: _Z3bazb:
+; Check that the basic block with id 1 doesn't get a section.
+; LINUX-SECTIONS2-NOT: .section        .text._Z3bazb._Z3bazb.1,"ax",@progbits,unique
 ; Check that a single cold section is started here and id 1 and 2 blocks are placed here.
-; LINUX-SECTIONS: .section	.text._Z3bazb.unlikely,"ax",@progbits
-; LINUX-SECTIONS: r.BB._Z3bazb:
-; LINUX-SECTIONS-NOT: .section        .text._Z3bazb.rr.BB._Z3bazb,"ax",@progbits,unique
-; LINUX-SECTIONS: .LBB0_2:
-; LINUX-SECTIONS: .size   _Z3bazb, .Lfunc_end{{[0-9]}}-_Z3bazb
+; LINUX-SECTIONS2: .section	.text.unlikely._Z3bazb,"ax",@progbits
+; LINUX-SECTIONS2: _Z3bazb.cold:
+; LINUX-SECTIONS2-NOT: .section        .text._Z3bazb._Z3bazb.2,"ax",@progbits,unique
+; LINUX-SECTIONS2: .LBB0_2:
+; LINUX-SECTIONS2: .size   _Z3bazb, .Lfunc_end{{[0-9]}}-_Z3bazb

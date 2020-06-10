@@ -137,7 +137,7 @@ static unsigned getOptimizationLevel(ArgList &Args, InputKind IK,
     assert(A->getOption().matches(options::OPT_O));
 
     StringRef S(A->getValue());
-    if (S == "s" || S == "z" || S.empty())
+    if (S == "s" || S == "z")
       return llvm::CodeGenOpt::Default;
 
     if (S == "g")
@@ -766,9 +766,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.DebugExplicitImport = Args.hasArg(OPT_dwarf_explicit_import);
   Opts.DebugFwdTemplateParams = Args.hasArg(OPT_debug_forward_template_params);
   Opts.EmbedSource = Args.hasArg(OPT_gembed_source);
-
-  Opts.ForceDwarfFrameSection =
-      Args.hasFlag(OPT_fforce_dwarf_frame, OPT_fno_force_dwarf_frame, false);
+  Opts.ForceDwarfFrameSection = Args.hasArg(OPT_fforce_dwarf_frame);
 
   for (const auto &Arg : Args.getAllArgValues(OPT_fdebug_prefix_map_EQ)) {
     auto Split = StringRef(Arg).split('=');
@@ -785,7 +783,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   const llvm::Triple::ArchType DebugEntryValueArchs[] = {
       llvm::Triple::x86, llvm::Triple::x86_64, llvm::Triple::aarch64,
-      llvm::Triple::arm, llvm::Triple::armeb};
+      llvm::Triple::arm, llvm::Triple::armeb, llvm::Triple::mips,
+      llvm::Triple::mipsel, llvm::Triple::mips64, llvm::Triple::mips64el};
 
   llvm::Triple T(TargetOpts.Triple);
   if (Opts.OptimizationLevel > 0 && Opts.hasReducedDebugInfo() &&
@@ -898,25 +897,11 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                           Args.hasArg(OPT_cl_fast_relaxed_math);
   Opts.LimitFloatPrecision =
       std::string(Args.getLastArgValue(OPT_mlimit_float_precision));
-  Opts.NoInfsFPMath = (Args.hasArg(OPT_menable_no_infinities) ||
-                       Args.hasArg(OPT_cl_finite_math_only) ||
-                       Args.hasArg(OPT_cl_fast_relaxed_math));
-  Opts.NoNaNsFPMath = (Args.hasArg(OPT_menable_no_nans) ||
-                       Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
-                       Args.hasArg(OPT_cl_finite_math_only) ||
-                       Args.hasArg(OPT_cl_fast_relaxed_math));
-  Opts.NoSignedZeros = (Args.hasArg(OPT_fno_signed_zeros) ||
-                        Args.hasArg(OPT_cl_no_signed_zeros) ||
-                        Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
-                        Args.hasArg(OPT_cl_fast_relaxed_math));
-  Opts.Reassociate = Args.hasArg(OPT_mreassociate);
   Opts.CorrectlyRoundedDivSqrt =
       Args.hasArg(OPT_cl_fp32_correctly_rounded_divide_sqrt);
   Opts.UniformWGSize =
       Args.hasArg(OPT_cl_uniform_work_group_size);
   Opts.Reciprocals = Args.getAllArgValues(OPT_mrecip_EQ);
-  Opts.ReciprocalMath = Args.hasArg(OPT_freciprocal_math);
-  Opts.NoTrappingMath = Args.hasArg(OPT_fno_trapping_math);
   Opts.StrictFloatCastOverflow =
       !Args.hasArg(OPT_fno_strict_float_cast_overflow);
 
@@ -942,9 +927,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.StrictReturn = !Args.hasArg(OPT_fno_strict_return);
   Opts.StrictVTablePointers = Args.hasArg(OPT_fstrict_vtable_pointers);
   Opts.ForceEmitVTables = Args.hasArg(OPT_fforce_emit_vtables);
-  Opts.UnsafeFPMath = Args.hasArg(OPT_menable_unsafe_fp_math) ||
-                      Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
-                      Args.hasArg(OPT_cl_fast_relaxed_math);
   Opts.UnwindTables = Args.hasArg(OPT_munwind_tables);
   Opts.RelocationModel = getRelocModel(Args, Diags);
   Opts.ThreadModel =
@@ -957,7 +939,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.UseInitArray = !Args.hasArg(OPT_fno_use_init_array);
 
   Opts.BBSections =
-      std::string(Args.getLastArgValue(OPT_fbasicblock_sections_EQ, "none"));
+      std::string(Args.getLastArgValue(OPT_fbasic_block_sections_EQ, "none"));
 
   // Basic Block Sections implies Function Sections.
   Opts.FunctionSections =
@@ -967,9 +949,12 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.DataSections = Args.hasArg(OPT_fdata_sections);
   Opts.StackSizeSection = Args.hasArg(OPT_fstack_size_section);
   Opts.UniqueSectionNames = !Args.hasArg(OPT_fno_unique_section_names);
-  Opts.UniqueBBSectionNames = Args.hasArg(OPT_funique_bb_section_names);
+  Opts.UniqueBasicBlockSectionNames =
+      Args.hasArg(OPT_funique_basic_block_section_names);
   Opts.UniqueInternalLinkageNames =
       Args.hasArg(OPT_funique_internal_linkage_names);
+
+  Opts.SplitMachineFunctions = Args.hasArg(OPT_fsplit_machine_functions);
 
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
@@ -1028,15 +1013,10 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
         std::string(Args.getLastArgValue(OPT_coverage_data_file));
     Opts.CoverageNotesFile =
         std::string(Args.getLastArgValue(OPT_coverage_notes_file));
-    Opts.CoverageExtraChecksum = Args.hasArg(OPT_coverage_cfg_checksum);
-    Opts.CoverageNoFunctionNamesInData =
-        Args.hasArg(OPT_coverage_no_function_names_in_data);
     Opts.ProfileFilterFiles =
         std::string(Args.getLastArgValue(OPT_fprofile_filter_files_EQ));
     Opts.ProfileExcludeFiles =
         std::string(Args.getLastArgValue(OPT_fprofile_exclude_files_EQ));
-    Opts.CoverageExitBlockBeforeBody =
-        Args.hasArg(OPT_coverage_exit_block_before_body);
     if (Args.hasArg(OPT_coverage_version_EQ)) {
       StringRef CoverageVersion = Args.getLastArgValue(OPT_coverage_version_EQ);
       if (CoverageVersion.size() != 4) {
@@ -1308,11 +1288,24 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
       Diags.Report(diag::err_drv_invalid_value) << A->getAsString(Args) << Val;
   }
 
-  if (Arg *A = Args.getLastArg(OPT_fpcc_struct_return, OPT_freg_struct_return)) {
-    if (A->getOption().matches(OPT_fpcc_struct_return)) {
+  // X86_32 has -fppc-struct-return and -freg-struct-return.
+  // PPC32 has -maix-struct-return and -msvr4-struct-return.
+  if (Arg *A =
+          Args.getLastArg(OPT_fpcc_struct_return, OPT_freg_struct_return,
+                          OPT_maix_struct_return, OPT_msvr4_struct_return)) {
+    // TODO: We might want to consider enabling these options on AIX in the
+    // future.
+    if (T.isOSAIX())
+      Diags.Report(diag::err_drv_unsupported_opt_for_target)
+          << A->getSpelling() << T.str();
+
+    const Option &O = A->getOption();
+    if (O.matches(OPT_fpcc_struct_return) ||
+        O.matches(OPT_maix_struct_return)) {
       Opts.setStructReturnConvention(CodeGenOptions::SRCK_OnStack);
     } else {
-      assert(A->getOption().matches(OPT_freg_struct_return));
+      assert(O.matches(OPT_freg_struct_return) ||
+             O.matches(OPT_msvr4_struct_return));
       Opts.setStructReturnConvention(CodeGenOptions::SRCK_InRegs);
     }
   }
@@ -2298,7 +2291,7 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.CPlusPlus11 = Std.isCPlusPlus11();
   Opts.CPlusPlus14 = Std.isCPlusPlus14();
   Opts.CPlusPlus17 = Std.isCPlusPlus17();
-  Opts.CPlusPlus2a = Std.isCPlusPlus2a();
+  Opts.CPlusPlus20 = Std.isCPlusPlus20();
   Opts.Digraphs = Std.hasDigraphs();
   Opts.GNUMode = Std.isGNUMode();
   Opts.GNUInline = !Opts.C99 && !Opts.CPlusPlus;
@@ -2324,7 +2317,7 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     Opts.AltiVec = 0;
     Opts.ZVector = 0;
     Opts.setLaxVectorConversions(LangOptions::LaxVectorConversionKind::None);
-    Opts.setDefaultFPContractMode(LangOptions::FPC_On);
+    Opts.setDefaultFPContractMode(LangOptions::FPM_On);
     Opts.NativeHalfType = 1;
     Opts.NativeHalfArgsAndReturns = 1;
     Opts.OpenCLCPlusPlus = Opts.CPlusPlus;
@@ -2344,7 +2337,7 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.CUDA = IK.getLanguage() == Language::CUDA || Opts.HIP;
   if (Opts.CUDA)
     // Set default FP_CONTRACT to FAST.
-    Opts.setDefaultFPContractMode(LangOptions::FPC_Fast);
+    Opts.setDefaultFPContractMode(LangOptions::FPM_Fast);
 
   Opts.RenderScript = IK.getLanguage() == Language::RenderScript;
   if (Opts.RenderScript) {
@@ -2827,7 +2820,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.Blocks = Args.hasArg(OPT_fblocks) || (Opts.OpenCL
     && Opts.OpenCLVersion == 200);
   Opts.BlocksRuntimeOptional = Args.hasArg(OPT_fblocks_runtime_optional);
-  Opts.Coroutines = Opts.CPlusPlus2a || Args.hasArg(OPT_fcoroutines_ts);
+  Opts.Coroutines = Opts.CPlusPlus20 || Args.hasArg(OPT_fcoroutines_ts);
 
   Opts.ConvergentFunctions = Opts.OpenCL || (Opts.CUDA && Opts.CUDAIsDevice) ||
     Args.hasArg(OPT_fconvergent_functions);
@@ -2837,7 +2830,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                    OPT_fno_double_square_bracket_attributes,
                    Opts.DoubleSquareBracketAttributes);
 
-  Opts.CPlusPlusModules = Opts.CPlusPlus2a;
+  Opts.CPlusPlusModules = Opts.CPlusPlus20;
   Opts.ModulesTS = Args.hasArg(OPT_fmodules_ts);
   Opts.Modules =
       Args.hasArg(OPT_fmodules) || Opts.ModulesTS || Opts.CPlusPlusModules;
@@ -2858,7 +2851,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.ImplicitModules = !Args.hasArg(OPT_fno_implicit_modules);
   Opts.CharIsSigned = Opts.OpenCL || !Args.hasArg(OPT_fno_signed_char);
   Opts.WChar = Opts.CPlusPlus && !Args.hasArg(OPT_fno_wchar);
-  Opts.Char8 = Args.hasFlag(OPT_fchar8__t, OPT_fno_char8__t, Opts.CPlusPlus2a);
+  Opts.Char8 = Args.hasFlag(OPT_fchar8__t, OPT_fno_char8__t, Opts.CPlusPlus20);
   if (const Arg *A = Args.getLastArg(OPT_fwchar_type_EQ)) {
     Opts.WCharSize = llvm::StringSwitch<unsigned>(A->getValue())
                          .Case("char", 1)
@@ -2897,6 +2890,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     Diags.Report(diag::warn_fe_concepts_ts_flag);
   Opts.RecoveryAST =
       Args.hasFlag(OPT_frecovery_ast, OPT_fno_recovery_ast, false);
+  Opts.RecoveryASTType =
++      Args.hasFlag(OPT_frecovery_ast_type, OPT_fno_recovery_ast_type, false);
   Opts.HeinousExtensions = Args.hasArg(OPT_fheinous_gnu_extensions);
   Opts.AccessControl = !Args.hasArg(OPT_fno_access_control);
   Opts.ElideConstructors = !Args.hasArg(OPT_fno_elide_constructors);
@@ -2944,6 +2939,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.NoBitFieldTypeAlign = Args.hasArg(OPT_fno_bitfield_type_align);
   Opts.SinglePrecisionConstants = Args.hasArg(OPT_cl_single_precision_constant);
   Opts.FastRelaxedMath = Args.hasArg(OPT_cl_fast_relaxed_math);
+  if (Opts.FastRelaxedMath)
+    Opts.setDefaultFPContractMode(LangOptions::FPM_Fast);
   Opts.HexagonQdsp6Compat = Args.hasArg(OPT_mqdsp6_compat);
   Opts.FakeAddressSpaceMap = Args.hasArg(OPT_ffake_address_space_map);
   Opts.ParseUnknownAnytype = Args.hasArg(OPT_funknown_anytype);
@@ -3047,6 +3044,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   }
 
   Opts.SemanticInterposition = Args.hasArg(OPT_fsemantic_interposition);
+  // An explicit -fno-semantic-interposition infers dso_local.
+  Opts.ExplicitNoSemanticInterposition =
+      Args.hasArg(OPT_fno_semantic_interposition);
 
   // -mrtd option
   if (Arg *A = Args.getLastArg(OPT_mrtd)) {
@@ -3104,7 +3104,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   // Set the flag to prevent the implementation from emitting device exception
   // handling code for those requiring so.
-  if ((Opts.OpenMPIsDevice && T.isNVPTX()) || Opts.OpenCLCPlusPlus) {
+  if ((Opts.OpenMPIsDevice && (T.isNVPTX() || T.isAMDGCN())) ||
+      Opts.OpenCLCPlusPlus) {
     Opts.Exceptions = 0;
     Opts.CXXExceptions = 0;
   }
@@ -3138,6 +3139,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
             TT.getArch() == llvm::Triple::ppc64le ||
             TT.getArch() == llvm::Triple::nvptx ||
             TT.getArch() == llvm::Triple::nvptx64 ||
+            TT.getArch() == llvm::Triple::amdgcn ||
             TT.getArch() == llvm::Triple::x86 ||
             TT.getArch() == llvm::Triple::x86_64))
         Diags.Report(diag::err_drv_invalid_omp_target) << A->getValue(i);
@@ -3155,13 +3157,13 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
           << Opts.OMPHostIRFile;
   }
 
-  // Set CUDA mode for OpenMP target NVPTX if specified in options
-  Opts.OpenMPCUDAMode = Opts.OpenMPIsDevice && T.isNVPTX() &&
+  // Set CUDA mode for OpenMP target NVPTX/AMDGCN if specified in options
+  Opts.OpenMPCUDAMode = Opts.OpenMPIsDevice && (T.isNVPTX() || T.isAMDGCN()) &&
                         Args.hasArg(options::OPT_fopenmp_cuda_mode);
 
-  // Set CUDA mode for OpenMP target NVPTX if specified in options
+  // Set CUDA mode for OpenMP target NVPTX/AMDGCN if specified in options
   Opts.OpenMPCUDAForceFullRuntime =
-      Opts.OpenMPIsDevice && T.isNVPTX() &&
+      Opts.OpenMPIsDevice && (T.isNVPTX() || T.isAMDGCN()) &&
       Args.hasArg(options::OPT_fopenmp_cuda_force_full_runtime);
 
   // Record whether the __DEPRECATED define was requested.
@@ -3185,23 +3187,55 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     if (InlineArg->getOption().matches(options::OPT_fno_inline))
       Opts.NoInlineDefine = true;
 
-  Opts.FastMath = Args.hasArg(OPT_ffast_math) ||
-      Args.hasArg(OPT_cl_fast_relaxed_math);
+  Opts.FastMath =
+      Args.hasArg(OPT_ffast_math) || Args.hasArg(OPT_cl_fast_relaxed_math);
   Opts.FiniteMathOnly = Args.hasArg(OPT_ffinite_math_only) ||
-      Args.hasArg(OPT_cl_finite_math_only) ||
-      Args.hasArg(OPT_cl_fast_relaxed_math);
+                        Args.hasArg(OPT_ffast_math) ||
+                        Args.hasArg(OPT_cl_finite_math_only) ||
+                        Args.hasArg(OPT_cl_fast_relaxed_math);
   Opts.UnsafeFPMath = Args.hasArg(OPT_menable_unsafe_fp_math) ||
+                      Args.hasArg(OPT_ffast_math) ||
                       Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
                       Args.hasArg(OPT_cl_fast_relaxed_math);
+  Opts.AllowFPReassoc = Args.hasArg(OPT_mreassociate) ||
+                        Args.hasArg(OPT_menable_unsafe_fp_math) ||
+                        Args.hasArg(OPT_ffast_math) ||
+                        Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
+                        Args.hasArg(OPT_cl_fast_relaxed_math);
+  Opts.NoHonorNaNs =
+      Args.hasArg(OPT_menable_no_nans) || Args.hasArg(OPT_ffinite_math_only) ||
+      Args.hasArg(OPT_ffast_math) || Args.hasArg(OPT_cl_finite_math_only) ||
+      Args.hasArg(OPT_cl_fast_relaxed_math);
+  Opts.NoHonorInfs = Args.hasArg(OPT_menable_no_infinities) ||
+                     Args.hasArg(OPT_ffinite_math_only) ||
+                     Args.hasArg(OPT_ffast_math) ||
+                     Args.hasArg(OPT_cl_finite_math_only) ||
+                     Args.hasArg(OPT_cl_fast_relaxed_math);
+  Opts.NoSignedZero = Args.hasArg(OPT_fno_signed_zeros) ||
+                      Args.hasArg(OPT_menable_unsafe_fp_math) ||
+                      Args.hasArg(OPT_ffast_math) ||
+                      Args.hasArg(OPT_cl_no_signed_zeros) ||
+                      Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
+                      Args.hasArg(OPT_cl_fast_relaxed_math);
+  Opts.AllowRecip = Args.hasArg(OPT_freciprocal_math) ||
+                    Args.hasArg(OPT_menable_unsafe_fp_math) ||
+                    Args.hasArg(OPT_ffast_math) ||
+                    Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
+                    Args.hasArg(OPT_cl_fast_relaxed_math);
+  // Currently there's no clang option to enable this individually
+  Opts.ApproxFunc = Args.hasArg(OPT_menable_unsafe_fp_math) ||
+                    Args.hasArg(OPT_ffast_math) ||
+                    Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
+                    Args.hasArg(OPT_cl_fast_relaxed_math);
 
   if (Arg *A = Args.getLastArg(OPT_ffp_contract)) {
     StringRef Val = A->getValue();
     if (Val == "fast")
-      Opts.setDefaultFPContractMode(LangOptions::FPC_Fast);
+      Opts.setDefaultFPContractMode(LangOptions::FPM_Fast);
     else if (Val == "on")
-      Opts.setDefaultFPContractMode(LangOptions::FPC_On);
+      Opts.setDefaultFPContractMode(LangOptions::FPM_On);
     else if (Val == "off")
-      Opts.setDefaultFPContractMode(LangOptions::FPC_Off);
+      Opts.setDefaultFPContractMode(LangOptions::FPM_Off);
     else
       Diags.Report(diag::err_drv_invalid_value) << A->getAsString(Args) << Val;
   }
@@ -3333,6 +3367,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.CompleteMemberPointers = Args.hasArg(OPT_fcomplete_member_pointers);
   Opts.BuildingPCHWithObjectFile = Args.hasArg(OPT_building_pch_with_obj);
 
+  Opts.MatrixTypes = Args.hasArg(OPT_fenable_matrix);
+
   Opts.MaxTokens = getLastArgIntValue(Args, OPT_fmax_tokens_EQ, 0, Diags);
 
   if (Arg *A = Args.getLastArg(OPT_msign_return_address_EQ)) {
@@ -3368,6 +3404,10 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   }
 
   Opts.BranchTargetEnforcement = Args.hasArg(OPT_mbranch_target_enforce);
+  Opts.SpeculativeLoadHardening = Args.hasArg(OPT_mspeculative_load_hardening);
+
+  Opts.CompatibilityQualifiedIdBlockParamTypeChecking =
+      Args.hasArg(OPT_fcompatibility_qualified_id_block_param_type_checking);
 }
 
 static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {

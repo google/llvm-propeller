@@ -3,7 +3,7 @@
 # A section will be padded by nops when it has a fallthrough to the next basic block.
 #
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
-# RUN: ld.lld -optimize-bb-jumps %t.o -o %t.out
+# RUN: ld.lld --optimize-bb-jumps %t.o -o %t.out
 # RUN: llvm-objdump -d %t.out| FileCheck %s
 
 # CHECK:	0000000000201140 <_foo1>

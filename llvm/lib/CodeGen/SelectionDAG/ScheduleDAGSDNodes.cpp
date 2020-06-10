@@ -31,6 +31,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
 using namespace llvm;
 
 #define DEBUG_TYPE "pre-RA-sched"
@@ -474,6 +475,7 @@ void ScheduleDAGSDNodes::AddSchedEdges() {
 
       for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i) {
         SDNode *OpN = N->getOperand(i).getNode();
+        unsigned DefIdx = N->getOperand(i).getResNo();
         if (isPassiveNode(OpN)) continue;   // Not scheduled.
         SUnit *OpSU = &SUnits[OpN->getNodeId()];
         assert(OpSU && "Node has no SUnit!");
@@ -508,7 +510,7 @@ void ScheduleDAGSDNodes::AddSchedEdges() {
         Dep.setLatency(OpLatency);
         if (!isChain && !UnitLatencies) {
           computeOperandLatency(OpN, N, i, Dep);
-          ST.adjustSchedDependency(OpSU, SU, Dep);
+          ST.adjustSchedDependency(OpSU, DefIdx, SU, i, Dep);
         }
 
         if (!SU->addPred(Dep) && !Dep.isCtrl() && OpSU->NumRegDefsLeft > 1) {
@@ -869,6 +871,10 @@ EmitSchedule(MachineBasicBlock::iterator &InsertPos) {
     if (MI->isCandidateForCallSiteEntry() &&
         DAG->getTarget().Options.EmitCallSiteInfo)
       MF.addCallArgsForwardingRegs(MI, DAG->getSDCallSiteInfo(Node));
+
+    if (DAG->getNoMergeSiteInfo(Node)) {
+      MI->setFlag(MachineInstr::MIFlag::NoMerge);
+    }
 
     return MI;
   };

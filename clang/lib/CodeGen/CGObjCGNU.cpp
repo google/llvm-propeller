@@ -255,11 +255,11 @@ protected:
       isDynamic=true) {
     int attrs = property->getPropertyAttributes();
     // For read-only properties, clear the copy and retain flags
-    if (attrs & ObjCPropertyDecl::OBJC_PR_readonly) {
-      attrs &= ~ObjCPropertyDecl::OBJC_PR_copy;
-      attrs &= ~ObjCPropertyDecl::OBJC_PR_retain;
-      attrs &= ~ObjCPropertyDecl::OBJC_PR_weak;
-      attrs &= ~ObjCPropertyDecl::OBJC_PR_strong;
+    if (attrs & ObjCPropertyAttribute::kind_readonly) {
+      attrs &= ~ObjCPropertyAttribute::kind_copy;
+      attrs &= ~ObjCPropertyAttribute::kind_retain;
+      attrs &= ~ObjCPropertyAttribute::kind_weak;
+      attrs &= ~ObjCPropertyAttribute::kind_strong;
     }
     // The first flags field has the same attribute values as clang uses internally
     Fields.addInt(Int8Ty, attrs & 0xff);
@@ -1564,7 +1564,7 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     // We have to do this by hand, rather than with @llvm.ctors, so that the
     // linker can remove the duplicate invocations.
     auto *InitVar = new llvm::GlobalVariable(TheModule, LoadFunction->getType(),
-        /*isConstant*/true, llvm::GlobalValue::LinkOnceAnyLinkage,
+        /*isConstant*/false, llvm::GlobalValue::LinkOnceAnyLinkage,
         LoadFunction, ".objc_ctor");
     // Check that this hasn't been renamed.  This shouldn't happen, because
     // this function should be called precisely once.

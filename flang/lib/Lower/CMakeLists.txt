@@ -1,13 +1,8 @@
-add_library(FortranLower
+
+add_flang_library(FortranLower
+  OpenMP.cpp
   PFTBuilder.cpp
-)
 
-target_link_libraries(FortranLower
-  LLVMSupport
-)
-
-install (TARGETS FortranLower
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
+  LINK_COMPONENTS
+  Support
 )

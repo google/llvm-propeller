@@ -140,6 +140,27 @@ FunctionPass *createInjectTLIMappingsLegacyPass();
 // exit blocks.
 //
 FunctionPass *createUnifyLoopExitsPass();
-}
+
+//===----------------------------------------------------------------------===//
+//
+// FixIrreducible - Convert each SCC with irreducible control-flow
+// into a natural loop.
+//
+FunctionPass *createFixIrreduciblePass();
+
+//===----------------------------------------------------------------------===//
+//
+// AssumeSimplify - remove redundant assumes and merge assumes in the same
+// BasicBlock when possible.
+//
+FunctionPass *createAssumeSimplifyPass();
+
+//===----------------------------------------------------------------------===//
+//
+// CanonicalizeFreezeInLoops - Canonicalize freeze instructions in loops so they
+// don't block SCEV.
+//
+Pass *createCanonicalizeFreezeInLoopsPass();
+} // namespace llvm
 
 #endif

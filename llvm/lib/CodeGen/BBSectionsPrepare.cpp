@@ -9,15 +9,15 @@
 // BBSectionsPrepare implementation.
 //
 // The purpose of this pass is to assign sections to basic blocks when
-// -fbasicblock-sections= option is used. Further, with profile information only
-// the subset of basic blocks with profiles are placed in separate sections and
-// the rest are grouped in a cold section. The exception handling blocks are
+// -fbasic-block-sections= option is used. Further, with profile information
+// only the subset of basic blocks with profiles are placed in separate sections
+// and the rest are grouped in a cold section. The exception handling blocks are
 // treated specially to ensure they are all in one seciton.
 //
 // Basic Block Sections
 // ====================
 //
-// With option, -fbasicblock-sections=list, every function may be split into
+// With option, -fbasic-block-sections=list, every function may be split into
 // clusters of basic blocks. Every cluster will be emitted into a separate
 // section with its basic blocks sequenced in the given order. To get the
 // optimized performance, the clusters must form an optimal BB layout for the
@@ -48,7 +48,7 @@
 // Basic Block Labels
 // ==================
 //
-// With -fbasicblock-sections=labels, or when a basic block is placed in a
+// With -fbasic-block-sections=labels, or when a basic block is placed in a
 // unique section, it is labelled with a symbol.  This allows easy mapping of
 // virtual addresses from PMU profiles back to the corresponding basic blocks.
 // Since the number of basic blocks is large, the labeling bloats the symbol
@@ -69,6 +69,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/CodeGen/BasicBlockSectionUtils.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
@@ -85,6 +86,12 @@ using llvm::SmallVector;
 using llvm::StringMap;
 using llvm::StringRef;
 using namespace llvm;
+
+cl::opt<bool> TreatUnknownAsCold(
+    "bbsection-unknown-as-cold", cl::Hidden,
+    cl::desc("Treat unseen blocks as cold, this may be too aggressive for "
+             "sampled (or inaccurate profiles)."),
+    cl::init(false));
 
 namespace {
 
@@ -226,9 +233,9 @@ static bool getBBClusterInfoForFunction(
 // and "Cold" succeeding all other clusters.
 // FuncBBClusterInfo represent the cluster information for basic blocks. If this
 // is empty, it means unique sections for all basic blocks in the function.
-static bool assignSectionsAndSortBasicBlocks(
-    MachineFunction &MF,
-    const std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
+static void
+assignSections(MachineFunction &MF,
+               const std::vector<Optional<BBClusterInfo>> &FuncBBClusterInfo) {
   assert(MF.hasBBSections() && "BB Sections is not set for function.");
   // This variable stores the section ID of the cluster containing eh_pads (if
   // all eh_pads are one cluster). If more than one cluster contain eh_pads, we
@@ -249,9 +256,10 @@ static bool assignSectionsAndSortBasicBlocks(
     } else if (FuncBBClusterInfo[MBB.getNumber()].hasValue())
       MBB.setSectionID(FuncBBClusterInfo[MBB.getNumber()]->ClusterID);
     else {
-      // BB goes into the special cold section if it is not specified in the
-      // cluster info map.
-      MBB.setSectionID(MBBSectionID::ColdSectionID);
+      // BB is treated as unknown if it is not specified in the cluster info
+      // map. If bbsection-unknown-as-cold is set then, treat them as cold.
+      MBB.setSectionID(TreatUnknownAsCold ? MBBSectionID::ColdSectionID
+                                          : MBBSectionID::UnknownSectionID);
     }
 
     if (MBB.isEHPad() && EHPadsSectionID != MBB.getSectionID() &&
@@ -271,47 +279,17 @@ static bool assignSectionsAndSortBasicBlocks(
     for (auto &MBB : MF)
       if (MBB.isEHPad())
         MBB.setSectionID(EHPadsSectionID.getValue());
+}
 
+// This function is exposed externally by BasicBlockSectionUtils.h
+void llvm::sortBasicBlocksAndUpdateBranches(
+    MachineFunction &MF, MachineBasicBlockComparator MBBCmp) {
   SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(
       MF.getNumBlockIDs());
   for (auto &MBB : MF)
     PreLayoutFallThroughs[MBB.getNumber()] = MBB.getFallThrough();
 
-  // We make sure that the cluster including the entry basic block precedes all
-  // other clusters.
-  auto EntryBBSectionID = MF.front().getSectionID();
-
-  // Helper function for ordering BB sections as follows:
-  //   * Entry section (section including the entry block).
-  //   * Regular sections (in increasing order of their Number).
-  //     ...
-  //   * Exception section
-  //   * Cold section
-  auto MBBSectionOrder = [EntryBBSectionID](const MBBSectionID &LHS,
-                                            const MBBSectionID &RHS) {
-    // We make sure that the section containing the entry block precedes all the
-    // other sections.
-    if (LHS == EntryBBSectionID || RHS == EntryBBSectionID)
-      return LHS == EntryBBSectionID;
-    return LHS.Type == RHS.Type ? LHS.Number < RHS.Number : LHS.Type < RHS.Type;
-  };
-
-  // We sort all basic blocks to make sure the basic blocks of every cluster are
-  // contiguous and ordered accordingly. Furthermore, clusters are ordered in
-  // increasing order of their section IDs, with the exception and the
-  // cold section placed at the end of the function.
-  MF.sort([&](MachineBasicBlock &X, MachineBasicBlock &Y) {
-    auto XSectionID = X.getSectionID();
-    auto YSectionID = Y.getSectionID();
-    if (XSectionID != YSectionID)
-      return MBBSectionOrder(XSectionID, YSectionID);
-    // If the two basic block are in the same section, the order is decided by
-    // their position within the section.
-    if (XSectionID.Type == MBBSectionID::SectionType::Default)
-      return FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
-             FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
-    return X.getNumber() < Y.getNumber();
-  });
+  MF.sort(MBBCmp);
 
   // Set IsBeginSection and IsEndSection according to the assigned section IDs.
   MF.assignBeginEndSections();
@@ -320,8 +298,6 @@ static bool assignSectionsAndSortBasicBlocks(
   // insert explicit fallthrough branches when required and optimize branches
   // when possible.
   updateBranches(MF, PreLayoutFallThroughs);
-
-  return true;
 }
 
 bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
@@ -347,7 +323,47 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
     return true;
   MF.setBBSectionsType(BBSectionsType);
   MF.createBBLabels();
-  assignSectionsAndSortBasicBlocks(MF, FuncBBClusterInfo);
+  assignSections(MF, FuncBBClusterInfo);
+
+  // We make sure that the cluster including the entry basic block precedes all
+  // other clusters.
+  auto EntryBBSectionID = MF.front().getSectionID();
+
+  // Helper function for ordering BB sections as follows:
+  //   * Entry section (section including the entry block).
+  //   * Regular sections (in increasing order of their Number).
+  //     ...
+  //   * Exception section
+  //   * Unknown section
+  //   * Cold section
+  auto MBBSectionOrder = [EntryBBSectionID](const MBBSectionID &LHS,
+                                            const MBBSectionID &RHS) {
+    // We make sure that the section containing the entry block precedes all the
+    // other sections.
+    if (LHS == EntryBBSectionID || RHS == EntryBBSectionID)
+      return LHS == EntryBBSectionID;
+    return LHS.Type == RHS.Type ? LHS.Number < RHS.Number : LHS.Type < RHS.Type;
+  };
+
+  // We sort all basic blocks to make sure the basic blocks of every cluster are
+  // contiguous and ordered accordingly. Furthermore, clusters are ordered in
+  // increasing order of their section IDs, with the exception and the
+  // cold section placed at the end of the function.
+  auto Comparator = [&](const MachineBasicBlock &X,
+                        const MachineBasicBlock &Y) {
+    auto XSectionID = X.getSectionID();
+    auto YSectionID = Y.getSectionID();
+    if (XSectionID != YSectionID)
+      return MBBSectionOrder(XSectionID, YSectionID);
+    // If the two basic block are in the same section, the order is decided by
+    // their position within the section.
+    if (XSectionID.Type == MBBSectionID::SectionType::Default)
+      return FuncBBClusterInfo[X.getNumber()]->PositionInCluster <
+             FuncBBClusterInfo[Y.getNumber()]->PositionInCluster;
+    return X.getNumber() < Y.getNumber();
+  };
+
+  sortBasicBlocksAndUpdateBranches(MF, Comparator);
   return true;
 }
 

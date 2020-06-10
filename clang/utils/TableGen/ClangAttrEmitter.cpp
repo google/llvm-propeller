@@ -48,7 +48,7 @@ namespace {
 
 class FlattenedSpelling {
   std::string V, N, NS;
-  bool K;
+  bool K = false;
 
 public:
   FlattenedSpelling(const std::string &Variety, const std::string &Name,
@@ -61,8 +61,6 @@ public:
            "Given a GCC spelling, which means this hasn't been flattened!");
     if (V == "CXX11" || V == "C2x" || V == "Pragma")
       NS = std::string(Spelling.getValueAsString("Namespace"));
-    bool Unset;
-    K = Spelling.getValueAsBitOrUnset("KnownToGCC", Unset);
   }
 
   const std::string &variety() const { return V; }
@@ -82,9 +80,10 @@ GetFlattenedSpellings(const Record &Attr) {
     StringRef Variety = Spelling->getValueAsString("Variety");
     StringRef Name = Spelling->getValueAsString("Name");
     if (Variety == "GCC") {
-      // Gin up two new spelling objects to add into the list.
       Ret.emplace_back("GNU", std::string(Name), "", true);
       Ret.emplace_back("CXX11", std::string(Name), "gnu", true);
+      if (Spelling->getValueAsBit("AllowInC"))
+        Ret.emplace_back("C2x", std::string(Name), "gnu", true);
     } else if (Variety == "Clang") {
       Ret.emplace_back("GNU", std::string(Name), "", false);
       Ret.emplace_back("CXX11", std::string(Name), "clang", false);
@@ -339,7 +338,7 @@ namespace {
     }
 
     void writeDump(raw_ostream &OS) const override {
-      if (type == "FunctionDecl *" || type == "NamedDecl *") {
+      if (StringRef(type).endswith("Decl *")) {
         OS << "    OS << \" \";\n";
         OS << "    dumpBareDeclRef(SA->get" << getUpperName() << "());\n";
       } else if (type == "IdentifierInfo *") {
@@ -481,6 +480,7 @@ namespace {
 
     void writeAccessors(raw_ostream &OS) const override {
       OS << "  bool is" << getUpperName() << "Dependent() const;\n";
+      OS << "  bool is" << getUpperName() << "ErrorDependent() const;\n";
 
       OS << "  unsigned get" << getUpperName() << "(ASTContext &Ctx) const;\n";
 
@@ -509,6 +509,15 @@ namespace {
       OS << "  else\n";
       OS << "    return " << getLowerName()
          << "Type->getType()->isDependentType();\n";
+      OS << "}\n";
+
+      OS << "bool " << getAttrName() << "Attr::is" << getUpperName()
+         << "ErrorDependent() const {\n";
+      OS << "  if (is" << getLowerName() << "Expr)\n";
+      OS << "    return " << getLowerName() << "Expr && " << getLowerName()
+         << "Expr->containsErrors();\n";
+      OS << "  return " << getLowerName()
+         << "Type->getType()->containsErrors();\n";
       OS << "}\n";
 
       // FIXME: Do not do the calculation here
@@ -1290,10 +1299,9 @@ createArgument(const Record &Arg, StringRef Attr,
     Ptr = std::make_unique<EnumArgument>(Arg, Attr);
   else if (ArgName == "ExprArgument")
     Ptr = std::make_unique<ExprArgument>(Arg, Attr);
-  else if (ArgName == "FunctionArgument")
-    Ptr = std::make_unique<SimpleArgument>(Arg, Attr, "FunctionDecl *");
-  else if (ArgName == "NamedArgument")
-    Ptr = std::make_unique<SimpleArgument>(Arg, Attr, "NamedDecl *");
+  else if (ArgName == "DeclArgument")
+    Ptr = std::make_unique<SimpleArgument>(
+        Arg, Attr, (Arg.getValueAsDef("Kind")->getName() + "Decl *").str());
   else if (ArgName == "IdentifierArgument")
     Ptr = std::make_unique<SimpleArgument>(Arg, Attr, "IdentifierInfo *");
   else if (ArgName == "DefaultBoolArgument")

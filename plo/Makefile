@@ -1,6 +1,6 @@
 # Customizable variables.
 # Vanilla clang/clang++ bin path.
-SHELL := /bin/bash
+SHELL := /bin/bash -o pipefail
 
 paths.mk :
 	@if [[ ! -e "paths.mk" ]] ; then \
@@ -21,7 +21,7 @@ endif
 DO_PLO     ?= 0
 ENABLE_EH  ?= OFF
 BUILD_TYPE ?= Release
-ENABLE_ASSERTS ?= OFF
+ENABLE_ASSERTS ?= ON
 
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )
@@ -117,9 +117,9 @@ comma              := ,
 STAGE1_BIN         := $(DDIR)/stage1/install/bin
 PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
-LLD_NO_OPT         := -fuse-ld=lld -Wl,-no-optimize-bb-jumps
-LLD_OPT            := -fuse-ld=lld -Wl,-optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old
+LLD_NO_OPT         := -fuse-ld=lld -Wl,--no-optimize-bb-jumps
+LLD_OPT            := -fuse-ld=lld -Wl,--optimize-bb-jumps
+FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-labels-bolt pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -144,47 +144,50 @@ lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 branch_align_opt           := -Wl,-mllvm,-x86-branches-within-32B-boundaries
 print_after_flag           := -Wl,-mllvm,-print-after-all
 keep_section_opt 					 := -Wl,-z,keep-text-section-prefix
+split_linker_opt				 := -Wl,-lto-split-machine-functions -Wl,-z,keep-text-section-prefix
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
 bb_section_none_flags      := $(call gen_build_flags,"-funique-internal-linkage-names","${LLD_NO_OPT}")
 bb_section_labels_align_flags    := $(call gen_build_flags,"-fpropeller-label -funique-internal-linkage-names","-fuse-ld=lld $(relocation_gen_opt) $(gc_sections_opt) $(branch_align_opt) $(keep_section_opt)")
 bb_section_labels_flags    := $(call gen_build_flags,"-fpropeller-label -funique-internal-linkage-names","-fuse-ld=lld $(relocation_gen_opt) $(gc_sections_opt) $(keep_section_opt)")
 relocs_flags               := $(call gen_linker_flags,"$(relocation_gen_opt)")
-bb_section_all_flags        = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) -fbasicblock-sections=all","-fpropeller-optimize=$(1) -fbasicblock-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(other_opt) $(gc_sections_opt)")
+bb_section_all_flags        = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) -fbasic-block-sections=all","-fpropeller-optimize=$(1) -fbasic-block-sections=all -fuse-ld=lld $(lto_bb_sections_all_opt) $(other_opt) $(gc_sections_opt)")
 bb_section_list_align_flags       = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3) $(branch_align_opt)")
 bb_section_list_flags       = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3)")
+split_flags := $(call gen_build_flags,"","${LLD_OPT} $(split_linker_opt)") 
 
 
 # $1 is any other cmake flags (optional)
 # $2 is llvm enabled projects
 # $3 is target
 define build_compiler
-	set -o pipefail ; \
-	export TOOLCHAIN="$(shell if [[ "$@" == "stage1/install/bin/clang" ]]; then echo "$(RELEASE_LLVM_BIN)" ; else echo "$(DDIR)/stage1/install/bin" ; fi)" ; \
-	export COMP_DIR="$(DDIR)/$(shell echo $@ | sed -Ee 's!([^/]+)/.*!\1!')" ; \
-	if [[ -z "$${COMP_DIR}" ]]; then echo "Invalid dir name" ; exit 1; fi ; \
-	echo "Building in directory: $${COMP_DIR} ... " ; \
-	if [[ ! -e "$${COMP_DIR}/build/CMakeCache.txt" ]]; then \
-	  mkdir -p $${COMP_DIR}/build ;                  \
-	  cd $${COMP_DIR}/build && cmake -G Ninja        \
-            -DCMAKE_INSTALL_PREFIX=$${COMP_DIR}/install \
-            -DLLVM_OPTIMIZED_TABLEGEN=On                \
-	    -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)            \
-	    -DLLVM_ENABLE_EH=$(ENABLE_EH)               \
-	    -DLLVM_ENABLE_RTTI=$(ENABLE_EH)             \
-	    -DLLVM_ENABLE_LLD="On"                      \
-	    -DCMAKE_LINKER="lld"                        \
-            -DLLVM_TARGETS_TO_BUILD="X86"               \
-	    -DCMAKE_C_COMPILER=$${TOOLCHAIN}/clang      \
-	    -DCMAKE_CXX_COMPILER=$${TOOLCHAIN}/clang++  \
-	    -DCMAKE_ASM_COMPILER=$${TOOLCHAIN}/clang    \
-	    $(1)                                        \
-            -DLLVM_ENABLE_PROJECTS=$(2)                 \
-            $(LLVM_PROJECT)/llvm;                       \
-	fi ; \
-	ninja -j$(J_NUMBER) -C $${COMP_DIR}/build $(3) 2>&1 | tee $${COMP_DIR}.autolog || exit 1; \
-	if ! echo "int main() {return 0;}" | $${COMP_DIR}/build/bin/clang -x c -c - -o ./build_compiler.tmpout ; then \
-		echo Failed; exit 1 ; \
+	$(eval __toolchain=$(shell if [[ "$@" == "stage1/install/bin/clang" ]]; then echo "$(RELEASE_LLVM_BIN)" ; else echo "$(DDIR)/stage1/install/bin" ; fi))
+	$(eval __comp_dir=$(DDIR)/$(shell echo $@ | sed -Ee 's!([^/]+)/.*!\1!'))
+	if [[ -z "$(__comp_dir)" ]]; then echo "Invalid dir name" ; exit 1; fi
+	echo "Building in directory: $(__comp_dir) ... " ;
+	if [[ ! -e "$(__comp_dir)/build/CMakeCache.txt" ]]; then \
+	    mkdir -p $(__comp_dir)/build ;                       \
+	    cd $(__comp_dir)/build && cmake -G Ninja             \
+		-DCMAKE_INSTALL_PREFIX=$(__comp_dir)/install     \
+		-DLLVM_OPTIMIZED_TABLEGEN=On                     \
+		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE)                 \
+		-DLLVM_ENABLE_EH=$(ENABLE_EH)                    \
+		-DLLVM_ENABLE_RTTI=$(ENABLE_EH)                  \
+		-DLLVM_ENABLE_LLD="On"                           \
+		-DCMAKE_LINKER="lld"                             \
+		-DLLVM_TARGETS_TO_BUILD="X86"                    \
+		-DCMAKE_C_COMPILER="$(__toolchain)/clang"        \
+		-DCMAKE_CXX_COMPILER="$(__toolchain)/clang++"    \
+		-DCMAKE_ASM_COMPILER="$(__toolchain)/clang"      \
+		$(1)                                             \
+		-DLLVM_ENABLE_PROJECTS=$(2)                      \
+		$(LLVM_PROJECT)/llvm;                            \
+	fi
+	ninja -j$(J_NUMBER) -C $(__comp_dir)/build $(3) 2>&1 | tee $(DDIR)/$(shell basename $(__comp_dir)).autolog || exit 1
+	if ! echo "int main() {return 0;}" | $(__comp_dir)/build/bin/clang -x c -c - -o ./build_compiler.tmpout ; then \
+		rm -f ./build_compiler.tmpout ; \
+		echo Failed; \
+		exit 1 ; \
 	else \
 		rm -f ./build_compiler.tmpout ; \
 	fi
@@ -196,7 +199,7 @@ all-compilers: $(ALL_COMPILERS)
 all-benchmarks: $(ALL_BENCHMARKS)
 
 stage1/install/bin/clang: check_environment $(LLVM_SOURCE)
-	$(call build_compiler,-DLLVM_ENABLE_ASSERTIONS=$(ENABLE_ASSERTS) $(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,\"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib\")"; fi),"clang;compiler-rt;lld",install)
+	$(call build_compiler,-DLLVM_ENABLE_ASSERTIONS=$(ENABLE_ASSERTS) $(call gen_linker_flags,"-Wl$(comma)-build-id") $(shell if [[ -d "$(PROTOBUF_PREFIX)" ]]; then echo "-DProtobuf_PROTOC_EXECUTABLE=\"$(PROTOBUF_PREFIX)/bin/protoc\" -DProtobuf_INCLUDE_DIR=\"$(PROTOBUF_PREFIX)/include\" -DProtobuf_LIBRARY=\"$(PROTOBUF_PREFIX)/lib/libprotobuf.so\" $(call gen_linker_flags,\"-Wl$(comma)-rpath=$(PROTOBUF_PREFIX)/lib -Wl$(comma)-build-id\")"; fi),"clang;compiler-rt;lld",install)
 
 stage1_with_cxx_unwind/install/bin/clang: stage1-compiler check_environment $(LLVM_SOURCE)
 	$(call build_compiler,-DCMAKE_BUILD_TYPE=Debug -DLIBCXXABI_USE_LLVM_UNWINDER=On -DLLVM_ENABLE_LLD= -DCMAKE_LINKER="gold","clang;compiler-rt;lld;libcxx;libcxxabi;libunwind",install install-cxx install-cxxabi)
@@ -215,7 +218,7 @@ stage-pgo-labels/build/bin/clang-${CLANG_VERSION} stage-pgo-relocs/build/bin/cla
 stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
 
-stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-old-compiler pgo-vanilla-compiler pgo-relocs-compiler cspgo-compiler pgo-plo-compiler pgo-plolist-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
+stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-old-compiler pgo-vanilla-compiler pgo-split-compiler pgo-relocs-compiler cspgo-compiler pgo-plo-compiler pgo-plolist-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
 	ln -sf $< $@
 	touch $@
 
@@ -264,6 +267,9 @@ pgo-vanilla-old/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
 pgo-vanilla/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call gen_linker_flags,$(keep_section_opt)),"clang;compiler-rt;lld",clang lld)
 
+pgo-split/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata stage1-compiler
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call split_flags),"clang;compiler-rt;lld",clang lld)
+
 pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
@@ -303,10 +309,11 @@ pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip-2000: pgo-plolist/build/bin/clan
 # $2 is extra options.
 # $3 suffix to use for binary
 define gen_relink_script
+	echo '#!/bin/bash -x' > $(DDIR)/$@.relink_script
 	cd $(1)/build ; ninja -t commands clang | grep -Fe " -o bin/clang-$(CLANG_VERSION) " | \
 		sed -e 's! -o bin/clang-$(CLANG_VERSION) ! -o bin/clang-$(CLANG_VERSION)$3 !' \
 		    -e 's!$$! $2!' \
-		    -e 's!: &&!!' -e 's!&& :!!' > $(DDIR)/$@.relink_script
+		    -e 's!: &&!!' -e 's!&& :!!' >> $(DDIR)/$@.relink_script
 	chmod +x $(DDIR)/$@.relink_script
 endef
 
@@ -449,6 +456,23 @@ sample.baseline.out: sample_bblabels.o stage1-compiler
 sample.baseline.perfdata: sample.baseline.out
 	perf record -o $@ -e "cycles:u" -j any,u -- ./$<
 
+sample.inst.out: sample.c stage1-compiler 
+	./stage1-compiler -g -O2 -fprofile-instr-generate=default.profraw $< -o $@
+
+sample.inst.profdata: sample.inst.out
+	./sample.inst.out && \
+	$(STAGE1_BIN)/llvm-profdata merge -output=$@ default.profraw
+
+# sample.goal.o: sample.c sample.inst.profdata stage1-compiler
+# 	./stage1-compiler -O2 -fprofile-instr-use=sample.inst.profdata -ffunction-sections -emit-llvm -c $< -o sample.ll && \
+# 	./stage1/install/bin/llc -split-machine-functions sample.ll -o $@ 
+
+sample.goal.o: sample.c sample.inst.profdata stage1-compiler
+	./stage1-compiler -O2 -fprofile-instr-use=sample.inst.profdata -flto=thin -c $< -o $@ 
+
+sample.goal.out: sample.goal.o stage1-compiler
+	./stage1-compiler -fuse-ld=lld -O2 -fprofile-instr-use=sample.inst.profdata -flto=thin -Wl,-lto-split-machine-functions -Wl,-z,keep-text-section-prefix $< -o $@
+
 sample.baseline.propeller: sample.baseline.perfdata sample.baseline.out $(CREATE_LLVM_PROF)
 	$(CREATE_LLVM_PROF) --profile=$< --out=$@ --format=propeller --binary=$(word 2,$^) --logtostderr ; \
 		sed -i '1d' $@
@@ -486,7 +510,7 @@ test_exception: test_exception.cpp stage1_with_cxx_unwind-compiler
 	./stage1_with_cxx_unwind-compiler -stdlib=libc++ -L./stage1_with_cxx_unwind/install/lib -Wl,-rpath,./stage1_with_cxx_unwind/install/lib $@.s -o $@ -lc++
 
 test_exception.plo: test_exception.cpp stage1_with_cxx_unwind-compiler
-	./stage1_with_cxx_unwind-compiler -fbasicblock-sections=all -std=c++11 -nostdinc++  -I./stage1_with_cxx_unwind/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include $< -S -o $@.s
+	./stage1_with_cxx_unwind-compiler -fbasic-block-sections=all -std=c++11 -nostdinc++  -I./stage1_with_cxx_unwind/install/include/c++/v1/ -I/usr/lib/clang/8.0.1/include $< -S -o $@.s
 	./stage1_with_cxx_unwind-compiler -stdlib=libc++ -L./stage1_with_cxx_unwind/install/lib -Wl,-rpath,./stage1_with_cxx_unwind/install/lib $@.s -o $@ -lc++
 
 .phony: clean clean-all clean-sample
@@ -516,7 +540,7 @@ define check_against_baseline
 	export IMPROVE=`paste <(echo "$${BASE}") <(echo "$${TEST}") | awk '{print 100*($$1-$$2)/$$1}' ` ; \
 	export IMPROVE_AVG=`echo "$${IMPROVE}" | awk '{ total += $$1 } END { print total/${ITERATIONS} }' ` ; \
 	export IMPROVE_STDDEV=`echo "$${IMPROVE}" | awk -v improve_avg=$${IMPROVE_AVG} '{ total += ($$1-improve_avg)**2 } END { print (total/${ITERATIONS})**0.5 }' ` ; \
-	if [[ `echo "$${IMPROVE_AVG} > 3" | bc -l` == '1' ]]; then \
+	if [[ `echo "$${IMPROVE_AVG} > 5.5" | bc -l` == '1' ]]; then \
 	  echo "Performance check passed: $2 [$${IMPROVE_AVG}% +-$${IMPROVE_STDDEV} improvement over $1]." ; \
 	else \
 	  echo "*** Performance check failed: $2, regression found." ; exit 1 ; \

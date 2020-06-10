@@ -150,7 +150,7 @@ const unsigned Sema::MaximumAlignment;
 Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
            TranslationUnitKind TUKind, CodeCompleteConsumer *CodeCompleter)
     : ExternalSource(nullptr), isMultiplexExternalSource(false),
-      FPFeatures(pp.getLangOpts()), LangOpts(pp.getLangOpts()), PP(pp),
+      CurFPFeatures(pp.getLangOpts()), LangOpts(pp.getLangOpts()), PP(pp),
       Context(ctxt), Consumer(consumer), Diags(PP.getDiagnostics()),
       SourceMgr(PP.getSourceManager()), CollectStats(false),
       CodeCompleter(CodeCompleter), CurContext(nullptr),
@@ -159,7 +159,8 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
           LangOpts.getMSPointerToMemberRepresentationMethod()),
       VtorDispStack(LangOpts.getVtorDispMode()), PackStack(0),
       DataSegStack(nullptr), BSSSegStack(nullptr), ConstSegStack(nullptr),
-      CodeSegStack(nullptr), CurInitSeg(nullptr), VisContext(nullptr),
+      CodeSegStack(nullptr), FpPragmaStack(CurFPFeatures.getAsOpaqueInt()),
+      CurInitSeg(nullptr), VisContext(nullptr),
       PragmaAttributeCurrentTargetDecl(nullptr),
       IsBuildingRecoveryCallExpr(false), Cleanup{}, LateTemplateParser(nullptr),
       LateTemplateParserCleanup(nullptr), OpaqueParser(nullptr), IdResolver(pp),
@@ -1538,7 +1539,7 @@ public:
   }
 
   void checkFunc(SourceLocation Loc, FunctionDecl *FD) {
-    auto &Done = DoneMap[InOMPDeviceContext];
+    auto &Done = DoneMap[InOMPDeviceContext > 0 ? 1 : 0];
     FunctionDecl *Caller = UsePath.empty() ? nullptr : UsePath.back();
     if ((!ShouldEmitRootNode && !S.getLangOpts().OpenMP && !Caller) ||
         S.shouldIgnoreInHostDeviceCheck(FD) || InUsePath.count(FD))
@@ -1697,8 +1698,57 @@ Sema::DeviceDiagBuilder Sema::targetDiag(SourceLocation Loc, unsigned DiagID) {
   if (getLangOpts().CUDA)
     return getLangOpts().CUDAIsDevice ? CUDADiagIfDeviceCode(Loc, DiagID)
                                       : CUDADiagIfHostCode(Loc, DiagID);
+
+  if (getLangOpts().SYCLIsDevice)
+    return SYCLDiagIfDeviceCode(Loc, DiagID);
+
   return DeviceDiagBuilder(DeviceDiagBuilder::K_Immediate, Loc, DiagID,
                            getCurFunctionDecl(), *this);
+}
+
+void Sema::checkDeviceDecl(const ValueDecl *D, SourceLocation Loc) {
+  if (isUnevaluatedContext())
+    return;
+
+  Decl *C = cast<Decl>(getCurLexicalContext());
+
+  // Memcpy operations for structs containing a member with unsupported type
+  // are ok, though.
+  if (const auto *MD = dyn_cast<CXXMethodDecl>(C)) {
+    if ((MD->isCopyAssignmentOperator() || MD->isMoveAssignmentOperator()) &&
+        MD->isTrivial())
+      return;
+
+    if (const auto *Ctor = dyn_cast<CXXConstructorDecl>(MD))
+      if (Ctor->isCopyOrMoveConstructor() && Ctor->isTrivial())
+        return;
+  }
+
+  auto CheckType = [&](QualType Ty) {
+    if (Ty->isDependentType())
+      return;
+
+    if ((Ty->isFloat16Type() && !Context.getTargetInfo().hasFloat16Type()) ||
+        ((Ty->isFloat128Type() ||
+          (Ty->isRealFloatingType() && Context.getTypeSize(Ty) == 128)) &&
+         !Context.getTargetInfo().hasFloat128Type()) ||
+        (Ty->isIntegerType() && Context.getTypeSize(Ty) == 128 &&
+         !Context.getTargetInfo().hasInt128Type())) {
+      targetDiag(Loc, diag::err_device_unsupported_type)
+          << D << static_cast<unsigned>(Context.getTypeSize(Ty)) << Ty
+          << Context.getTargetInfo().getTriple().str();
+      targetDiag(D->getLocation(), diag::note_defined_here) << D;
+    }
+  };
+
+  QualType Ty = D->getType();
+  CheckType(Ty);
+
+  if (const auto *FPTy = dyn_cast<FunctionProtoType>(Ty)) {
+    for (const auto &ParamTy : FPTy->param_types())
+      CheckType(ParamTy);
+    CheckType(FPTy->getReturnType());
+  }
 }
 
 /// Looks through the macro-expansion chain for the given

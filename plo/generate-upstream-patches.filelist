@@ -20,32 +20,31 @@ declare ALL_FILES=(
         clang-base       clang/include/clang/Driver/Options.td
         clang-pro        clang/include/clang/Driver/Options.td
         clang-base       clang/lib/CodeGen/BackendUtil.cpp
+	clang-base       clang/include/clang/Basic/DiagnosticFrontendKinds.td
         clang-sta        clang/lib/CodeGen/CGDeclCXX.cpp
         clang-base       clang/lib/Driver/ToolChains/Clang.cpp
         clang-rws        clang/lib/Driver/ToolChains/Clang.cpp
-        clang-uif        clang/include/clang/Basic/CodeGenOptions.def
-        clang-uif        clang/include/clang/Driver/Options.td
-        clang-uif        clang/lib/Driver/ToolChains/Clang.cpp
-	clang-uif        clang/docs/UsersManual.rst
-        clang-uif        clang/lib/Frontend/CompilerInvocation.cpp
-        clang-uif        clang/test/CodeGen/unique-internal-linkage-names.cpp
         clang-uif2       clang/test/CodeGen/unique-internal-linkage-names2.c
-	clang-uif        clang/test/Driver/funique-internal-linkage-names.c
-	llvm-uif         llvm/lib/Transforms/Utils/UniqueInternalLinkageNames.cpp
-	llvm-uif         llvm/lib/Transforms/Utils/Utils.cpp
-	llvm-uif         llvm/test/Transforms/UniqueInternalLinkageNames/unique_symbol_names.ll
-	llvm-uif         llvm/include/llvm/Transforms/Utils/UniqueInternalLinkageNames.h
-	llvm-uif         llvm/include/llvm/InitializePasses.h
-	llvm-uif         llvm/include/llvm/Transforms/Utils.h
-	llvm-uif         llvm/lib/Transforms/Utils/CMakeLists.txt
-	llvm-uif         llvm/utils/gn/secondary/llvm/lib/Transforms/Utils/BUILD.gn
         clang-pro        clang/lib/Driver/ToolChains/Gnu.cpp
         clang-base       clang/lib/Frontend/CompilerInvocation.cpp
         clang-rws        clang/lib/Frontend/CompilerInvocation.cpp
-        clang-base       clang/test/CodeGen/basicblock-sections.c
-        clang-base       clang/test/CodeGen/basicblock-sections.funcnames
-	clang-base       clang/test/Driver/funique-bb-section-names.c
-	clang-base       clang/test/Driver/fbasicblock-sections.c
+        clang-base       clang/test/CodeGen/basic-block-sections.c
+        clang-base       clang/test/CodeGen/Inputs/basic-block-sections.funcnames
+	clang-base       clang/test/Driver/funique-basic-block-section-names.c
+	clang-base       clang/test/Driver/fbasic-block-sections.c
+	clang-base       llvm/include/llvm/Target/TargetOptions.h
+	clang-base       llvm/include/llvm/CodeGen/Passes.h
+	clang-base       llvm/include/llvm/Target/TargetMachine.h
+	clang-base       llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
+        clang-base       llvm/lib/CodeGen/CommandFlags.cpp
+        clang-base       llvm/include/llvm/CodeGen/CommandFlags.h
+	clang-base       llvm/lib/CodeGen/BBSectionsPrepare.cpp
+	clang-base       llvm/lib/CodeGen/MachineFunction.cpp
+	clang-base       lld/ELF/LTO.cpp
+	clang-base       lld/ELF/Config.h
+	clang-base       lld/ELF/Driver.cpp
+	clang-base       clang/docs/ClangCommandLineReference.rst
+	clang-base       clang/docs/UsersManual.rst
         clang-pro        clang/test/Driver/propeller-flags.c
         clang-rws        clang/tools/driver/cc1as_main.cpp
         compiler-rt      compiler-rt/lib/sanitizer_common/sanitizer_asm.h
@@ -171,42 +170,61 @@ declare ALL_FILES=(
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-cold.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
 	bbclusters           llvm/test/CodeGen/X86/basicblock-sections-list.ll
-
+#
+  descsym    llvm/lib/CodeGen/MachineBasicBlock.cpp
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-clusters-branches.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-clusters-eh.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-cold.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-directjumps.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-eh.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-list.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-listbb.ll
+  descsym    llvm/test/CodeGen/X86/basicblock-sections-mir-parse.mir
+  descsym    llvm/test/CodeGen/X86/basicblock-sections.ll
+#
+  funcsplit    llvm/include/llvm/CodeGen/BasicBlockSectionUtils.h
+  funcsplit    llvm/include/llvm/InitializePasses.h
+  funcsplit    llvm/lib/CodeGen/CMakeLists.txt
+  funcsplit    llvm/lib/CodeGen/MachineFunctionSplitter.cpp
+  funcsplit    llvm/lib/CodeGen/TargetPassConfig.cpp
+#
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
-        cfi              llvm/include/llvm/CodeGen/AsmPrinterHandler.h
-        cfi              llvm/include/llvm/CodeGen/MachineBasicBlock.h
+        debuginfo        llvm/include/llvm/CodeGen/AsmPrinter.h
+        debuginfo        llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
+        debuginfo        llvm/include/llvm/CodeGen/AsmPrinterHandler.h
         debuginfo        llvm/include/llvm/CodeGen/DebugHandlerBase.h
         debuginfo        llvm/include/llvm/CodeGen/MachineBasicBlock.h
-        cfi              llvm/include/llvm/CodeGen/TargetFrameLowering.h
-        debuginfo        llvm/include/llvm/MC/MCAsmInfo.h
-        cfi              llvm/include/llvm/MC/MCDwarf.h
-        exception        llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-        cfi              llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
+        debuginfo_2      llvm/include/llvm/MC/MCAsmInfo.h
         debuginfo        llvm/lib/CodeGen/AsmPrinter/DebugHandlerBase.cpp
-        debugassert      llvm/lib/CodeGen/AsmPrinter/DebugLocStream.h
-        cfi              llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
-        exception        llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
         debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfCompileUnit.cpp
         debuginfo        llvm/lib/CodeGen/AsmPrinter/DwarfDebug.cpp
+        debuginfo_2      llvm/lib/MC/ELFObjectWriter.cpp
+        debuginfo_2      llvm/lib/MC/MCDwarf.cpp
+        debuginfo        llvm/test/DebugInfo/X86/basicblock-sections_1.ll
+        cfi              llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
+        cfi              llvm/include/llvm/CodeGen/TargetFrameLowering.h
+        cfi              llvm/include/llvm/MC/MCDwarf.h
+        cfi              llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
         cfi              llvm/lib/CodeGen/AsmPrinter/DwarfException.h
+        cfi              llvm/lib/CodeGen/CFIInstrInserter.cpp
+        cfi              llvm/lib/MC/MCDwarf.cpp
+        cfi              llvm/lib/Target/AArch64/AArch64FrameLowering.h
+        cfi              llvm/lib/Target/X86/X86FrameLowering.cpp
+        cfi              llvm/lib/Target/X86/X86FrameLowering.h
+        cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfi.ll
+        cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfiinstr.ll
+        exception        llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
+        debugassert      llvm/lib/CodeGen/AsmPrinter/DebugLocStream.h
+        exception        llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/EHStreamer.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/EHStreamer.h
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.cpp
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.h
-        cfi              llvm/lib/CodeGen/CFIInstrInserter.cpp
-        debuginfo        llvm/lib/MC/ELFObjectWriter.cpp
-        cfi              llvm/lib/MC/MCDwarf.cpp
-        debuginfo        llvm/lib/MC/MCDwarf.cpp
 	base_propeller   llvm/include/llvm/ProfileData/BBSectionsProf.h
-        cfi              llvm/lib/Target/AArch64/AArch64FrameLowering.h
         #base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
-        cfi              llvm/lib/Target/X86/X86FrameLowering.cpp
-        cfi              llvm/lib/Target/X86/X86FrameLowering.h
         exception        llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections.ll
 	exception        llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
-        cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfi.ll
-        cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfiinstr.ll
-        debuginfo        llvm/test/DebugInfo/X86/basicblock-sections_1.ll
 #
         /dev/null        lld/CMakeLists.txt
         /dev/null        lld/tools/report-size/CMakeLists.txt
@@ -216,4 +234,6 @@ declare ALL_FILES=(
 # Double check:
         /dev/null        llvm/lib/IR/Mangler.cpp
 	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
+# This test was not committed as part of https://reviews.llvm.org/rG05192e585ce175b55f2a26b83b4ed7882785c8e6 
+        /dev/null llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
     )

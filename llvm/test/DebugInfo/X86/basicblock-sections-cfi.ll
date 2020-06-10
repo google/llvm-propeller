@@ -15,13 +15,13 @@
 ; SECTIONS_CFI: .cfi_def_cfa_register
 ; SECTIONS_CFI: .cfi_endproc
 
-; SECTIONS_CFI: a.BB._Z3fooi
+; SECTIONS_CFI: _Z3fooi.1
 ; SECTIONS_CFI-NEXT: .cfi_startproc
 ; SECTIONS_CFI-NEXT: .cfi_def_cfa
 ; SECTIONS_CFI-NEXT: .cfi_offset
 ; SECTIONS_CFI: .cfi_endproc
 
-; SECTIONS_CFI: aa.BB._Z3fooi
+; SECTIONS_CFI: _Z3fooi.2
 ; SECTIONS_CFI-NEXT: .cfi_startproc
 ; SECTIONS_CFI-NEXT: .cfi_def_cfa
 ; SECTIONS_CFI-NEXT: .cfi_offset

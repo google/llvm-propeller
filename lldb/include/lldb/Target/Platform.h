@@ -26,7 +26,6 @@
 #include "lldb/Utility/StructuredData.h"
 #include "lldb/Utility/Timeout.h"
 #include "lldb/Utility/UserIDResolver.h"
-#include "lldb/Utility/XcodeSDK.h"
 #include "lldb/lldb-private-forward.h"
 #include "lldb/lldb-public.h"
 #include "llvm/Support/VersionTuple.h"
@@ -433,10 +432,6 @@ public:
   virtual lldb_private::ConstString
   GetSDKDirectory(lldb_private::Target &target) {
     return lldb_private::ConstString();
-  }
-
-  virtual llvm::StringRef GetSDKPath(lldb_private::XcodeSDK sdk) {
-    return {};
   }
 
   const std::string &GetRemoteURL() const { return m_remote_url; }
@@ -933,7 +928,8 @@ private:
 
   FileSpec GetModuleCacheRoot();
 
-  DISALLOW_COPY_AND_ASSIGN(Platform);
+  Platform(const Platform &) = delete;
+  const Platform &operator=(const Platform &) = delete;
 };
 
 class PlatformList {
@@ -1000,7 +996,8 @@ protected:
   lldb::PlatformSP m_selected_platform_sp;
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(PlatformList);
+  PlatformList(const PlatformList &) = delete;
+  const PlatformList &operator=(const PlatformList &) = delete;
 };
 
 class OptionGroupPlatformRSync : public lldb_private::OptionGroup {
@@ -1025,7 +1022,9 @@ public:
   bool m_ignores_remote_hostname;
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(OptionGroupPlatformRSync);
+  OptionGroupPlatformRSync(const OptionGroupPlatformRSync &) = delete;
+  const OptionGroupPlatformRSync &
+  operator=(const OptionGroupPlatformRSync &) = delete;
 };
 
 class OptionGroupPlatformSSH : public lldb_private::OptionGroup {
@@ -1048,7 +1047,9 @@ public:
   std::string m_ssh_opts;
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(OptionGroupPlatformSSH);
+  OptionGroupPlatformSSH(const OptionGroupPlatformSSH &) = delete;
+  const OptionGroupPlatformSSH &
+  operator=(const OptionGroupPlatformSSH &) = delete;
 };
 
 class OptionGroupPlatformCaching : public lldb_private::OptionGroup {
@@ -1070,7 +1071,9 @@ public:
   std::string m_cache_dir;
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(OptionGroupPlatformCaching);
+  OptionGroupPlatformCaching(const OptionGroupPlatformCaching &) = delete;
+  const OptionGroupPlatformCaching &
+  operator=(const OptionGroupPlatformCaching &) = delete;
 };
 
 } // namespace lldb_private

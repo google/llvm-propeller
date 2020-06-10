@@ -122,6 +122,10 @@ project(Flang)
          "Generate build targets for the Flang unit tests."
          ON)
   add_custom_target(check-all DEPENDS check-flang)
+  if (LLVM_BUILD_DOCS)
+    add_custom_target(doxygen ALL)
+  endif()
+
 else()
   option(FLANG_INCLUDE_TESTS
          "Generate build targets for the Flang unit tests."
@@ -268,19 +272,9 @@ if (LLVM_COMPILER_IS_GCC_COMPATIBLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-nested-anon-types")
   endif()
 
-  # Add to or adjust build type flags.
-  #
-  # TODO: This needs some extra thought.  CMake's default for release builds
-  # is -O3, which can cause build failures on certain platforms (and compilers)
-  # with the current code base -- some templated functions are inlined and don't
-  # become available at link time when using -O3 (with Clang under MacOS/darwin).
-  # If we reset CMake's default flags we also clobber any user provided settings;
-  # make it difficult to customize a build in this regard...   The setup below
-  # has this side effect but enables successful builds across multiple platforms
-  # in release mode...
+  # Add to build type flags.
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUGF18")
-  set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DCHECK=\"(void)\"")  # do we need -O2 here?
-  set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+  set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DCHECK=\"(void)\"")
 
   # Building shared libraries is bad for performance with GCC by default
   # due to the need to preserve the right to override external entry points
@@ -332,12 +326,11 @@ if (FLANG_INCLUDE_TESTS)
   add_subdirectory(unittests)
 endif()
 
-# TODO: Add doxygen support.
-#option(FLANG_INCLUDE_DOCS "Generate build targets for the Flang docs."
-#       ${LLVM_INCLUDE_DOCS})
-#if (FLANG_INCLUDE_DOCS)
-#  add_subdirectory(documentation)
-#endif()
+option(FLANG_INCLUDE_DOCS "Generate build targets for the Flang docs."
+       ${LLVM_INCLUDE_DOCS})
+if (FLANG_INCLUDE_DOCS)
+  add_subdirectory(docs)
+endif()
 
 # Custom target to install Flang libraries.
 add_custom_target(flang-libraries)

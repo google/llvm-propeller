@@ -427,6 +427,11 @@ protected:
 
     unsigned Opc : 5;
     unsigned CanOverflow : 1;
+    //
+    /// This is only meaningful for operations on floating point
+    /// types when additional values need to be in trailing storage.
+    /// It is 0 otherwise.
+    unsigned HasFPFeatures : 1;
 
     SourceLocation Loc;
   };
@@ -440,8 +445,9 @@ protected:
     unsigned IsType : 1; // true if operand is a type, false if an expression.
   };
 
-  class ArraySubscriptExprBitfields {
+  class ArrayOrMatrixSubscriptExprBitfields {
     friend class ArraySubscriptExpr;
+    friend class MatrixSubscriptExpr;
 
     unsigned : NumExprBits;
 
@@ -525,8 +531,9 @@ protected:
     unsigned Opc : 6;
 
     /// This is only meaningful for operations on floating point
-    /// types and 0 otherwise.
-    unsigned FPFeatures : 8;
+    /// types when additional values need to be in trailing storage.
+    /// It is 0 otherwise.
+    unsigned HasFPFeatures : 1;
 
     SourceLocation OpLoc;
   };
@@ -609,7 +616,7 @@ protected:
     unsigned OperatorKind : 6;
 
     // Only meaningful for floating point types.
-    unsigned FPFeatures : 8;
+    unsigned FPFeatures : 14;
   };
 
   class CXXRewrittenBinaryOperatorBitfields {
@@ -993,7 +1000,7 @@ protected:
     CharacterLiteralBitfields CharacterLiteralBits;
     UnaryOperatorBitfields UnaryOperatorBits;
     UnaryExprOrTypeTraitExprBitfields UnaryExprOrTypeTraitExprBits;
-    ArraySubscriptExprBitfields ArraySubscriptExprBits;
+    ArrayOrMatrixSubscriptExprBitfields ArrayOrMatrixSubscriptExprBits;
     CallExprBitfields CallExprBits;
     MemberExprBitfields MemberExprBits;
     CastExprBitfields CastExprBits;

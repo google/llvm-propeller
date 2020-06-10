@@ -95,7 +95,7 @@ static MCAsmInfo *createPPCMCAsmInfo(const MCRegisterInfo &MRI,
   // Initial state of the frame pointer is R1.
   unsigned Reg = isPPC64 ? PPC::X1 : PPC::R1;
   MCCFIInstruction Inst =
-      MCCFIInstruction::createDefCfa(nullptr, MRI.getDwarfRegNum(Reg, true), 0);
+      MCCFIInstruction::cfiDefCfa(nullptr, MRI.getDwarfRegNum(Reg, true), 0);
   MAI->addInitialFrameState(Inst);
 
   return MAI;
@@ -210,6 +210,10 @@ public:
     for (auto *Sym : UpdateOther)
       if (Sym->isVariable())
         copyLocalEntry(Sym, Sym->getVariableValue());
+
+    // Clear the set of symbols that needs to be updated so the streamer can
+    // be reused without issues.
+    UpdateOther.clear();
   }
 
 private:

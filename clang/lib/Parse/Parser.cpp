@@ -752,6 +752,9 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
   case tok::annot_pragma_fenv_access:
     HandlePragmaFEnvAccess();
     return nullptr;
+  case tok::annot_pragma_float_control:
+    HandlePragmaFloatControl();
+    return nullptr;
   case tok::annot_pragma_fp:
     HandlePragmaFP();
     break;
@@ -1691,7 +1694,8 @@ Parser::TryAnnotateName(CorrectionCandidateCallback *CCC) {
   }
 
   case Sema::NC_ContextIndependentExpr:
-    Tok.setKind(tok::annot_primary_expr);
+    Tok.setKind(Actions.isUnevaluatedContext() ? tok::annot_uneval_primary_expr
+                                               : tok::annot_primary_expr);
     setExprAnnotation(Tok, Classification.getExpression());
     Tok.setAnnotationEndLoc(NameLoc);
     if (SS.isNotEmpty())

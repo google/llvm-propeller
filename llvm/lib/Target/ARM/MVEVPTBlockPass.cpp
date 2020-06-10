@@ -94,37 +94,6 @@ static MachineInstr *findVCMPToFoldIntoVPST(MachineBasicBlock::iterator MI,
   return &*CmpMI;
 }
 
-static ARM::PredBlockMask ExpandBlockMask(ARM::PredBlockMask BlockMask,
-                                          ARMVCC::VPTCodes Kind) {
-  using PredBlockMask = ARM::PredBlockMask;
-  assert(Kind != ARMVCC::None && "Cannot expand mask with 'None'");
-  assert(countTrailingZeros((unsigned)BlockMask) != 0 &&
-         "Mask is already full");
-
-  auto ChooseMask = [&](PredBlockMask AddedThen, PredBlockMask AddedElse) {
-    return (Kind == ARMVCC::Then) ? AddedThen : AddedElse;
-  };
-
-  switch (BlockMask) {
-  case PredBlockMask::T:
-    return ChooseMask(PredBlockMask::TT, PredBlockMask::TE);
-  case PredBlockMask::TT:
-    return ChooseMask(PredBlockMask::TTT, PredBlockMask::TTE);
-  case PredBlockMask::TE:
-    return ChooseMask(PredBlockMask::TET, PredBlockMask::TEE);
-  case PredBlockMask::TTT:
-    return ChooseMask(PredBlockMask::TTTT, PredBlockMask::TTTE);
-  case PredBlockMask::TTE:
-    return ChooseMask(PredBlockMask::TTET, PredBlockMask::TTEE);
-  case PredBlockMask::TET:
-    return ChooseMask(PredBlockMask::TETT, PredBlockMask::TETE);
-  case PredBlockMask::TEE:
-    return ChooseMask(PredBlockMask::TEET, PredBlockMask::TEEE);
-  default:
-    llvm_unreachable("Unknown Mask");
-  }
-}
-
 // Advances Iter past a block of predicated instructions.
 // Returns true if it successfully skipped the whole block of predicated
 // instructions. Returns false when it stopped early (due to MaxSteps), or if
@@ -162,6 +131,22 @@ static bool IsVPRDefinedOrKilledByBlock(MachineBasicBlock::iterator Iter,
   return false;
 }
 
+// Creates a T, TT, TTT or TTTT BlockMask depending on BlockSize.
+static ARM::PredBlockMask GetInitialBlockMask(unsigned BlockSize) {
+  switch (BlockSize) {
+  case 1:
+    return ARM::PredBlockMask::T;
+  case 2:
+    return ARM::PredBlockMask::TT;
+  case 3:
+    return ARM::PredBlockMask::TTT;
+  case 4:
+    return ARM::PredBlockMask::TTTT;
+  default:
+    llvm_unreachable("Invalid BlockSize!");
+  }
+}
+
 // Given an iterator (Iter) that points at an instruction with a "Then"
 // predicate, tries to create the largest block of continuous predicated
 // instructions possible, and returns the VPT Block Mask of that block.
@@ -190,11 +175,11 @@ CreateVPTBlock(MachineBasicBlock::instr_iterator &Iter,
   });
 
   // Generate the initial BlockMask
-  ARM::PredBlockMask BlockMask = getARMVPTBlockMask(BlockSize);
+  ARM::PredBlockMask BlockMask = GetInitialBlockMask(BlockSize);
 
   // Remove VPNOTs while there's still room in the block, so we can make the
   // largest block possible.
-  ARMVCC::VPTCodes CurrentPredicate = ARMVCC::Then;
+  ARMVCC::VPTCodes CurrentPredicate = ARMVCC::Else;
   while (BlockSize < 4 && Iter != EndIter &&
          Iter->getOpcode() == ARM::MVE_VPNOT) {
 
@@ -222,28 +207,19 @@ CreateVPTBlock(MachineBasicBlock::instr_iterator &Iter,
     DeadInstructions.push_back(&*Iter);
     ++Iter;
 
-    // Replace "then" by "elses" in the block until we find an instruction that
-    // defines VPR, then after that leave everything to "t".
+    // Replace the predicates of the instructions we're adding.
     // Note that we are using "Iter" to iterate over the block so we can update
     // it at the same time.
-    bool ChangeToElse = (CurrentPredicate == ARMVCC::Then);
     for (; Iter != VPNOTBlockEndIter; ++Iter) {
       // Find the register in which the predicate is
       int OpIdx = findFirstVPTPredOperandIdx(*Iter);
       assert(OpIdx != -1);
 
-      // Update the mask + change the predicate to an else if needed.
-      if (ChangeToElse) {
-        // Change the predicate and update the mask
-        Iter->getOperand(OpIdx).setImm(ARMVCC::Else);
-        BlockMask = ExpandBlockMask(BlockMask, ARMVCC::Else);
-        // Reset back to a "then" predicate if this instruction defines VPR.
-        if (Iter->definesRegister(ARM::VPR))
-          ChangeToElse = false;
-      } else
-        BlockMask = ExpandBlockMask(BlockMask, ARMVCC::Then);
+      // Change the predicate and update the mask
+      Iter->getOperand(OpIdx).setImm(CurrentPredicate);
+      BlockMask = expandPredBlockMask(BlockMask, CurrentPredicate);
 
-      LLVM_DEBUG(dbgs() << "  adding: "; Iter->dump());
+      LLVM_DEBUG(dbgs() << "  adding : "; Iter->dump());
     }
 
     CurrentPredicate =

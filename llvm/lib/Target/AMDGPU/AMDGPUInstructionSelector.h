@@ -92,6 +92,7 @@ private:
   bool selectG_SZA_EXT(MachineInstr &I) const;
   bool selectG_CONSTANT(MachineInstr &I) const;
   bool selectG_FNEG(MachineInstr &I) const;
+  bool selectG_FABS(MachineInstr &I) const;
   bool selectG_AND_OR_XOR(MachineInstr &I) const;
   bool selectG_ADD_SUB(MachineInstr &I) const;
   bool selectG_UADDO_USUBO_UADDE_USUBE(MachineInstr &I) const;
@@ -129,7 +130,7 @@ private:
   bool selectG_SELECT(MachineInstr &I) const;
   bool selectG_BRCOND(MachineInstr &I) const;
   bool selectG_FRAME_INDEX_GLOBAL_VALUE(MachineInstr &I) const;
-  bool selectG_PTR_MASK(MachineInstr &I) const;
+  bool selectG_PTRMASK(MachineInstr &I) const;
   bool selectG_EXTRACT_VECTOR_ELT(MachineInstr &I) const;
   bool selectG_INSERT_VECTOR_ELT(MachineInstr &I) const;
   bool selectG_SHUFFLE_VECTOR(MachineInstr &I) const;

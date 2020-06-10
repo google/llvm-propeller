@@ -49,13 +49,13 @@ public:
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
                        MLIRContext *context);
 
-  /// Returns an affine map with `dimCount` dimensions and `symbolCount` symbols
-  /// mapping to the given results. The array of results cannot be empty.
+  /// Returns an affine map with `dimCount` dimensions and `symbolCount` mapping
+  /// to a single output dimension
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
-                       ArrayRef<AffineExpr> results);
+                       AffineExpr result);
 
   /// Returns an affine map with `dimCount` dimensions and `symbolCount` mapping
-  /// to the given results, where the number of results can be zero.
+  /// to the given results.
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
                        ArrayRef<AffineExpr> results, MLIRContext *context);
 
@@ -65,6 +65,11 @@ public:
   /// Returns an AffineMap with 'numDims' identity result dim exprs.
   static AffineMap getMultiDimIdentityMap(unsigned numDims,
                                           MLIRContext *context);
+
+  /// Returns an identity affine map (d0, ..., dn) -> (dp, ..., dn) on the most
+  /// minor dimensions.
+  static AffineMap getMinorIdentityMap(unsigned dims, unsigned results,
+                                       MLIRContext *context);
 
   /// Returns an AffineMap representing a permutation.
   /// The permutation is expressed as a non-empty vector of integers.
@@ -93,6 +98,10 @@ public:
   /// An identity affine map corresponds to an identity affine function on the
   /// dimensional identifiers.
   bool isIdentity() const;
+
+  /// Returns true if the map is a minor identity map, i.e. an identity affine
+  /// map (d0, ..., dn) -> (dp, ..., dn) on the most minor dimensions.
+  static bool isMinorIdentity(AffineMap map);
 
   /// Returns true if this affine map is an empty map, i.e., () -> ().
   bool isEmpty() const;
@@ -128,12 +137,22 @@ public:
   AffineMap replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
                                   ArrayRef<AffineExpr> symReplacements,
                                   unsigned numResultDims,
-                                  unsigned numResultSyms);
+                                  unsigned numResultSyms) const;
 
   /// Folds the results of the application of an affine map on the provided
   /// operands to a constant if possible.
   LogicalResult constantFold(ArrayRef<Attribute> operandConstants,
                              SmallVectorImpl<Attribute> &results) const;
+
+  /// Propagates the constant operands into this affine map. Operands are
+  /// allowed to be null, at which point they are treated as non-constant. This
+  /// does not change the number of symbols and dimensions. Returns a new map,
+  /// which may be equal to the old map if no folding happened. If `results` is
+  /// provided and if all expressions in the map were folded to constants,
+  /// `results` will contain the values of these constants.
+  AffineMap
+  partialConstantFold(ArrayRef<Attribute> operandConstants,
+                      SmallVectorImpl<int64_t> *results = nullptr) const;
 
   /// Returns the AffineMap resulting from composing `this` with `map`.
   /// The resulting AffineMap has as many AffineDimExpr as `map` and as many
@@ -224,9 +243,9 @@ AffineMap removeDuplicateExprs(AffineMap map);
 
 /// Returns a map of codomain to domain dimensions such that the first codomain
 /// dimension for a particular domain dimension is selected.
-/// Returns an empty map if the input map is empty or if `map` is not invertible
-/// (i.e. `map` does not contain a subset that is a permutation of full domain
-/// rank).
+/// Returns an empty map if the input map is empty.
+/// Returns null map (not empty map) if `map` is not invertible (i.e. `map` does
+/// not contain a subset that is a permutation of full domain rank).
 ///
 /// Prerequisites:
 ///   1. `map` has no symbols.

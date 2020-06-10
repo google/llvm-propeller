@@ -10,6 +10,7 @@ add_llvm_component_library(LLVMTransformUtils
   CallPromotionUtils.cpp
   CallGraphUpdater.cpp
   CanonicalizeAliases.cpp
+  CanonicalizeFreezeInLoops.cpp
   CloneFunction.cpp
   CloneModule.cpp
   CodeExtractor.cpp
@@ -20,6 +21,7 @@ add_llvm_component_library(LLVMTransformUtils
   EntryExitInstrumenter.cpp
   EscapeEnumerator.cpp
   Evaluator.cpp
+  FixIrreducible.cpp
   FlattenCFG.cpp
   FunctionComparator.cpp
   FunctionImportUtils.cpp
@@ -51,6 +53,7 @@ add_llvm_component_library(LLVMTransformUtils
   NameAnonGlobals.cpp
   PredicateInfo.cpp
   PromoteMemoryToRegister.cpp
+  ScalarEvolutionExpander.cpp
   StripGCRelocates.cpp
   SSAUpdater.cpp
   SSAUpdaterBulk.cpp

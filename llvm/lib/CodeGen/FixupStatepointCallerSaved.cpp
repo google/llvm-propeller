@@ -57,6 +57,7 @@ public:
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.setPreservesCFG();
     MachineFunctionPass::getAnalysisUsage(AU);
   }
 
@@ -82,6 +83,7 @@ static unsigned getRegisterSize(const TargetRegisterInfo &TRI, Register Reg) {
   return TRI.getSpillSize(*RC);
 }
 
+namespace {
 // Cache used frame indexes during statepoint re-write to re-use them in
 // processing next statepoint instruction.
 // Two strategies. One is to preserve the size of spill slot while another one
@@ -264,14 +266,12 @@ public:
         CacheFI(MF.getFrameInfo(), TRI) {}
 
   bool process(MachineInstr &MI) {
-    unsigned VarIdx = StatepointOpers(&MI).getVarIdx();
-    uint64_t Flags =
-        MI.getOperand(VarIdx + StatepointOpers::FlagsOffset).getImm();
+    StatepointOpers SO(&MI);
+    uint64_t Flags = SO.getFlags();
     // Do nothing for LiveIn, it supports all registers.
     if (Flags & (uint64_t)StatepointFlags::DeoptLiveIn)
       return false;
-    CallingConv::ID CC =
-        MI.getOperand(VarIdx + StatepointOpers::CCOffset).getImm();
+    CallingConv::ID CC = SO.getCallingConv();
     const uint32_t *Mask = TRI.getCallPreservedMask(MF, CC);
     CacheFI.reset();
     StatepointState SS(MI, Mask, CacheFI);
@@ -284,6 +284,7 @@ public:
     return true;
   }
 };
+} // namespace
 
 bool FixupStatepointCallerSaved::runOnMachineFunction(MachineFunction &MF) {
   if (skipFunction(MF.getFunction()))

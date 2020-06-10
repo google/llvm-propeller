@@ -39,16 +39,13 @@ entry:
 ;        goes away.
 define dso_local signext i32 @AsmClobberX2WithTOC(i32 signext %a, i32 signext %b) local_unnamed_addr {
 ; CHECK-ALL-LABEL: AsmClobberX2WithTOC:
-; CHECK-S:         addis r2, r12, .TOC.-.Lfunc_gep2@ha
-; CHECK-S-NEXT:    addi r2, r2, .TOC.-.Lfunc_gep2@l
 ; CHECK-LARGE:     ld r2, .Lfunc_toc2-.Lfunc_gep2(r12)
 ; CHECK-LARGE:     add r2, r2, r12
-; CHECK-S:         .localentry     AsmClobberX2WithTOC, .Lfunc_lep2-.Lfunc_gep2
+; CHECK-S:         .localentry     AsmClobberX2WithTOC
 ; CHECK-S:         #APP
 ; CHECK-S-NEXT:    li r2, 0
 ; CHECK-S-NEXT:    #NO_APP
-; CHECK-S-NEXT:    addis r5, r2, global_int@toc@ha
-; CHECK-S-NEXT:    lwz r5, global_int@toc@l(r5)
+; CHECK-S-NEXT:    plwz r5, global_int@PCREL(0), 1
 ; CHECK-S-NEXT:    add r3, r4, r3
 ; CHECK-S-NEXT:    add r3, r3, r5
 ; CHECK-S-NEXT:    extsw r3, r3
@@ -105,19 +102,19 @@ define dso_local signext i32 @X2IsCallerSaved(i32 signext %a, i32 signext %b, i3
 ; CHECK-ALL:       # %bb.0: # %entry
 ; CHECK-S-NEXT:    std r29, -24(r1) # 8-byte Folded Spill
 ; CHECK-S-NEXT:    add r11, r4, r3
-; CHECK-S-NEXT:    subf r29, r9, r8
+; CHECK-S-NEXT:    sub r29, r8, r9
 ; CHECK-S-NEXT:    add r9, r10, r9
-; CHECK-S-NEXT:    subf r10, r3, r10
+; CHECK-S-NEXT:    sub r10, r10, r3
 ; CHECK-S-NEXT:    mullw r3, r4, r3
 ; CHECK-S-NEXT:    mullw r3, r3, r11
 ; CHECK-S-NEXT:    mullw r3, r3, r5
-; CHECK-S-NEXT:    subf r12, r5, r4
+; CHECK-S-NEXT:    sub r12, r4, r5
 ; CHECK-S-NEXT:    mullw r3, r3, r6
 ; CHECK-S-NEXT:    add r0, r6, r5
 ; CHECK-S-NEXT:    mullw r3, r3, r12
 ; CHECK-S-NEXT:    mullw r3, r3, r0
 ; CHECK-S-NEXT:    mullw r3, r3, r7
-; CHECK-S-NEXT:    subf r2, r7, r6
+; CHECK-S-NEXT:    sub r2, r6, r7
 ; CHECK-S-NEXT:    mullw r3, r3, r8
 ; CHECK-S-NEXT:    std r30, -16(r1) # 8-byte Folded Spill
 ; CHECK-S-NEXT:    add r30, r8, r7
@@ -158,15 +155,9 @@ entry:
 
 define dso_local signext i32 @UsesX2AsTOC() local_unnamed_addr {
 ; CHECK-ALL-LABEL: UsesX2AsTOC:
-; CHECK-S:         addis r2, r12, .TOC.-.Lfunc_gep6@ha
-; CHECK-S-NEXT:    addi r2, r2, .TOC.-.Lfunc_gep6@l
 ; CHECK-LARGE:     ld r2, .Lfunc_toc6-.Lfunc_gep6(r12)
 ; CHECK-LARGE:     add r2, r2, r12
-; CHECK-S:       .localentry     UsesX2AsTOC, .Lfunc_lep6-.Lfunc_gep6
 ; CHECK-ALL:       # %bb.0: # %entry
-; CHECK-S-NEXT:    addis r3, r2, global_int@toc@ha
-; CHECK-S-NEXT:    lwa r3, global_int@toc@l(r3)
-; CHECK-S-NEXT:    blr
 entry:
   %0 = load i32, i32* @global_int, align 4
   ret i32 %0

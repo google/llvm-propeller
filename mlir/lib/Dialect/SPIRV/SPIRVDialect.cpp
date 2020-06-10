@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
+#include "mlir/Dialect/SPIRV/ParserUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/Dialect/SPIRV/TargetAndABI.h"
@@ -19,7 +20,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
-#include "mlir/Support/StringExtras.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Sequence.h"
@@ -116,7 +116,8 @@ struct SPIRVInlinerInterface : public DialectInlinerInterface {
 
 SPIRVDialect::SPIRVDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addTypes<ArrayType, ImageType, PointerType, RuntimeArrayType, StructType>();
+  addTypes<ArrayType, CooperativeMatrixNVType, ImageType, MatrixType,
+           PointerType, RuntimeArrayType, StructType>();
 
   addAttributes<InterfaceVarABIAttr, TargetEnvAttr, VerCapExtAttr>();
 
@@ -133,7 +134,7 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
 }
 
 std::string SPIRVDialect::getAttributeName(Decoration decoration) {
-  return convertToSnakeCase(stringifyDecoration(decoration));
+  return llvm::convertToSnakeFromCamelCase(stringifyDecoration(decoration));
 }
 
 //===----------------------------------------------------------------------===//
@@ -190,6 +191,42 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect,
   } else {
     parser.emitError(typeLoc, "cannot use ")
         << type << " to compose SPIR-V types";
+    return Type();
+  }
+
+  return type;
+}
+
+static Type parseAndVerifyMatrixType(SPIRVDialect const &dialect,
+                                     DialectAsmParser &parser) {
+  Type type;
+  llvm::SMLoc typeLoc = parser.getCurrentLocation();
+  if (parser.parseType(type))
+    return Type();
+
+  if (auto t = type.dyn_cast<VectorType>()) {
+    if (t.getRank() != 1) {
+      parser.emitError(typeLoc, "only 1-D vector allowed but found ") << t;
+      return Type();
+    }
+    if (t.getNumElements() > 4 || t.getNumElements() < 2) {
+      parser.emitError(typeLoc,
+                       "matrix columns size has to be less than or equal "
+                       "to 4 and greater than or equal 2, but found ")
+          << t.getNumElements();
+      return Type();
+    }
+
+    if (!t.getElementType().isa<FloatType>()) {
+      parser.emitError(typeLoc, "matrix columns' elements must be of "
+                                "Float type, got ")
+          << t.getElementType();
+      return Type();
+    }
+  } else {
+    parser.emitError(typeLoc, "matrix must be composed using vector "
+                              "type, got ")
+        << type;
     return Type();
   }
 
@@ -265,6 +302,36 @@ static Type parseArrayType(SPIRVDialect const &dialect,
   return ArrayType::get(elementType, count, stride);
 }
 
+// cooperative-matrix-type ::= `!spv.coopmatrix` `<` element-type ',' scope ','
+//                                                   rows ',' coloumns>`
+static Type parseCooperativeMatrixType(SPIRVDialect const &dialect,
+                                       DialectAsmParser &parser) {
+  if (parser.parseLess())
+    return Type();
+
+  SmallVector<int64_t, 2> dims;
+  llvm::SMLoc countLoc = parser.getCurrentLocation();
+  if (parser.parseDimensionList(dims, /*allowDynamic=*/false))
+    return Type();
+
+  if (dims.size() != 2) {
+    parser.emitError(countLoc, "expected rows and columns size");
+    return Type();
+  }
+
+  auto elementTy = parseAndVerifyType(dialect, parser);
+  if (!elementTy)
+    return Type();
+
+  Scope scope;
+  if (parser.parseComma() || parseEnumKeywordAttr(scope, parser, "scope <id>"))
+    return Type();
+
+  if (parser.parseGreater())
+    return Type();
+  return CooperativeMatrixNVType::get(elementTy, scope, dims[0], dims[1]);
+}
+
 // TODO(ravishankarm) : Reorder methods to be utilities first and parse*Type
 // methods in alphabetical order
 //
@@ -317,6 +384,40 @@ static Type parseRuntimeArrayType(SPIRVDialect const &dialect,
   if (parser.parseGreater())
     return Type();
   return RuntimeArrayType::get(elementType, stride);
+}
+
+// matrix-type ::= `!spv.matrix` `<` integer-literal `x` element-type `>`
+static Type parseMatrixType(SPIRVDialect const &dialect,
+                            DialectAsmParser &parser) {
+  if (parser.parseLess())
+    return Type();
+
+  SmallVector<int64_t, 1> countDims;
+  llvm::SMLoc countLoc = parser.getCurrentLocation();
+  if (parser.parseDimensionList(countDims, /*allowDynamic=*/false))
+    return Type();
+  if (countDims.size() != 1) {
+    parser.emitError(countLoc, "expected single unsigned "
+                               "integer for number of columns");
+    return Type();
+  }
+
+  int64_t columnCount = countDims[0];
+  // According to the specification, Matrices can have 2, 3, or 4 columns
+  if (columnCount < 2 || columnCount > 4) {
+    parser.emitError(countLoc, "matrix is expected to have 2, 3, or 4 "
+                               "columns");
+    return Type();
+  }
+
+  Type columnType = parseAndVerifyMatrixType(dialect, parser);
+  if (!columnType)
+    return Type();
+
+  if (parser.parseGreater())
+    return Type();
+
+  return MatrixType::get(columnType, columnCount);
 }
 
 // Specialize this function to parse each of the parameters that define an
@@ -526,6 +627,8 @@ Type SPIRVDialect::parseType(DialectAsmParser &parser) const {
 
   if (keyword == "array")
     return parseArrayType(*this, parser);
+  if (keyword == "coopmatrix")
+    return parseCooperativeMatrixType(*this, parser);
   if (keyword == "image")
     return parseImageType(*this, parser);
   if (keyword == "ptr")
@@ -534,7 +637,8 @@ Type SPIRVDialect::parseType(DialectAsmParser &parser) const {
     return parseRuntimeArrayType(*this, parser);
   if (keyword == "struct")
     return parseStructType(*this, parser);
-
+  if (keyword == "matrix")
+    return parseMatrixType(*this, parser);
   parser.emitError(parser.getNameLoc(), "unknown SPIR-V type: ") << keyword;
   return Type();
 }
@@ -587,12 +691,23 @@ static void print(StructType type, DialectAsmPrinter &os) {
       auto eachFn = [&os](spirv::Decoration decoration) {
         os << stringifyDecoration(decoration);
       };
-      interleaveComma(decorations, os, eachFn);
+      llvm::interleaveComma(decorations, os, eachFn);
       os << "]";
     }
   };
-  interleaveComma(llvm::seq<unsigned>(0, type.getNumElements()), os,
-                  printMember);
+  llvm::interleaveComma(llvm::seq<unsigned>(0, type.getNumElements()), os,
+                        printMember);
+  os << ">";
+}
+
+static void print(CooperativeMatrixNVType type, DialectAsmPrinter &os) {
+  os << "coopmatrix<" << type.getRows() << "x" << type.getColumns() << "x";
+  os << type.getElementType() << ", " << stringifyScope(type.getScope());
+  os << ">";
+}
+
+static void print(MatrixType type, DialectAsmPrinter &os) {
+  os << "matrix<" << type.getNumElements() << " x " << type.getElementType();
   os << ">";
 }
 
@@ -600,6 +715,9 @@ void SPIRVDialect::printType(Type type, DialectAsmPrinter &os) const {
   switch (type.getKind()) {
   case TypeKind::Array:
     print(type.cast<ArrayType>(), os);
+    return;
+  case TypeKind::CooperativeMatrix:
+    print(type.cast<CooperativeMatrixNVType>(), os);
     return;
   case TypeKind::Pointer:
     print(type.cast<PointerType>(), os);
@@ -612,6 +730,9 @@ void SPIRVDialect::printType(Type type, DialectAsmPrinter &os) const {
     return;
   case TypeKind::Struct:
     print(type.cast<StructType>(), os);
+    return;
+  case TypeKind::Matrix:
+    print(type.cast<MatrixType>(), os);
     return;
   default:
     llvm_unreachable("unhandled SPIR-V type");
@@ -856,11 +977,11 @@ static void print(spirv::VerCapExtAttr triple, DialectAsmPrinter &printer) {
   auto &os = printer.getStream();
   printer << spirv::VerCapExtAttr::getKindName() << "<"
           << spirv::stringifyVersion(triple.getVersion()) << ", [";
-  interleaveComma(triple.getCapabilities(), os, [&](spirv::Capability cap) {
-    os << spirv::stringifyCapability(cap);
-  });
+  llvm::interleaveComma(
+      triple.getCapabilities(), os,
+      [&](spirv::Capability cap) { os << spirv::stringifyCapability(cap); });
   printer << "], [";
-  interleaveComma(triple.getExtensionsAttr(), os, [&](Attribute attr) {
+  llvm::interleaveComma(triple.getExtensionsAttr(), os, [&](Attribute attr) {
     os << attr.cast<StringAttr>().getValue();
   });
   printer << "]>";

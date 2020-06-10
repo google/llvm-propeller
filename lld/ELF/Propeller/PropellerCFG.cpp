@@ -14,6 +14,7 @@
 #include "Propeller.h"
 
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
@@ -211,7 +212,7 @@ std::map<StringRef, std::list<SymbolRef>> CFGBuilder::buildPreCFGGroups() {
   // Now we have a map of function names, group "x.bb.funcname".
   for (const SymbolRef &sym : symbols) {
     // All bb symbols are local, upon seeing the first global, exit.
-    if ((sym.getFlags() & SymbolRef::SF_Global) != 0)
+    if ((sym.getFlags().get() & SymbolRef::SF_Global) != 0)
       break;
     auto nameOrErr = sym.getName();
     if (!nameOrErr)
@@ -303,7 +304,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::buildCFGNodes(
     uint64_t symShndx = (*sectionIE)->getIndex();
     uint64_t symSectionSize = (*sectionIE)->getSize();
     // symValue is the offset to the beginning of its section.
-    uint64_t symValue = sym.getValue();
+    uint64_t symValue = sym.getValue().get();
     // uint64_t symSize = llvm::object::ELFSymbolRef(sym).getSize();
     SymbolEntry *symEnt = prop->propf->findSymbol(symName);
     // symValue is the offset of the bb symbol within a bbsection, if
@@ -492,8 +493,8 @@ void CFGBuilder::buildCFG(
       bool isRSC = (cfgSym == rSym);
 
       // All bb section symbols are local symbols.
-      if (!isRSC &&
-          ((rSym.getFlags() & llvm::object::BasicSymbolRef::SF_Global) != 0))
+      if (!isRSC && ((rSym.getFlags().get() &
+                      llvm::object::BasicSymbolRef::SF_Global) != 0))
         continue;
 
       auto sectionIE = rSym.getSection();

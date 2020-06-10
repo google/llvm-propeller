@@ -19,7 +19,6 @@
 #include "lld/Common/Memory.h"
 #include "lld/Common/Reproduce.h"
 #include "lld/Common/Strings.h"
-#include "lld/Common/Threads.h"
 #include "lld/Common/Version.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Object/Wasm.h"
@@ -27,6 +26,7 @@
 #include "llvm/Option/ArgList.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Host.h"
+#include "llvm/Support/Parallel.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/TarWriter.h"
@@ -453,6 +453,8 @@ static void checkOptions(opt::InputArgList &args) {
       error("-r -and --undefined may not be used together");
     if (config->pie)
       error("-r and -pie may not be used together");
+    if (config->sharedMemory)
+      error("-r and --shared-memory may not be used together");
   }
 }
 

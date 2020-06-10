@@ -24,14 +24,10 @@ namespace llvm {
 
 class MCAsmBackend;
 class MCCodeEmitter;
-class MCContext;
 class MCInstrInfo;
 class MCObjectTargetWriter;
-class MCSubtargetInfo;
 class MVT;
-class Target;
 class Triple;
-class raw_pwrite_stream;
 
 MCCodeEmitter *createWebAssemblyMCCodeEmitter(const MCInstrInfo &MCII);
 
@@ -457,6 +453,18 @@ inline bool isCallIndirect(unsigned Opc) {
   case WebAssembly::CALL_INDIRECT_S:
   case WebAssembly::RET_CALL_INDIRECT:
   case WebAssembly::RET_CALL_INDIRECT_S:
+    return true;
+  default:
+    return false;
+  }
+}
+
+inline bool isBrTable(const MachineInstr &MI) {
+  switch (MI.getOpcode()) {
+  case WebAssembly::BR_TABLE_I32:
+  case WebAssembly::BR_TABLE_I32_S:
+  case WebAssembly::BR_TABLE_I64:
+  case WebAssembly::BR_TABLE_I64_S:
     return true;
   default:
     return false;

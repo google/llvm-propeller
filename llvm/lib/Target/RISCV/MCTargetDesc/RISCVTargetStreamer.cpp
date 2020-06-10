@@ -21,6 +21,22 @@ RISCVTargetStreamer::RISCVTargetStreamer(MCStreamer &S) : MCTargetStreamer(S) {}
 
 void RISCVTargetStreamer::finish() { finishAttributeSection(); }
 
+void RISCVTargetStreamer::emitDirectiveOptionPush() {}
+void RISCVTargetStreamer::emitDirectiveOptionPop() {}
+void RISCVTargetStreamer::emitDirectiveOptionPIC() {}
+void RISCVTargetStreamer::emitDirectiveOptionNoPIC() {}
+void RISCVTargetStreamer::emitDirectiveOptionRVC() {}
+void RISCVTargetStreamer::emitDirectiveOptionNoRVC() {}
+void RISCVTargetStreamer::emitDirectiveOptionRelax() {}
+void RISCVTargetStreamer::emitDirectiveOptionNoRelax() {}
+void RISCVTargetStreamer::emitAttribute(unsigned Attribute, unsigned Value) {}
+void RISCVTargetStreamer::finishAttributeSection() {}
+void RISCVTargetStreamer::emitTextAttribute(unsigned Attribute,
+                                            StringRef String) {}
+void RISCVTargetStreamer::emitIntTextAttribute(unsigned Attribute,
+                                               unsigned IntValue,
+                                               StringRef StringValue) {}
+
 void RISCVTargetStreamer::emitTargetAttributes(const MCSubtargetInfo &STI) {
   if (STI.hasFeature(RISCV::FeatureRV32E))
     emitAttribute(RISCVAttrs::STACK_ALIGN, RISCVAttrs::ALIGN_4);
@@ -59,6 +75,14 @@ void RISCVTargetAsmStreamer::emitDirectiveOptionPush() {
 
 void RISCVTargetAsmStreamer::emitDirectiveOptionPop() {
   OS << "\t.option\tpop\n";
+}
+
+void RISCVTargetAsmStreamer::emitDirectiveOptionPIC() {
+  OS << "\t.option\tpic\n";
+}
+
+void RISCVTargetAsmStreamer::emitDirectiveOptionNoPIC() {
+  OS << "\t.option\tnopic\n";
 }
 
 void RISCVTargetAsmStreamer::emitDirectiveOptionRVC() {

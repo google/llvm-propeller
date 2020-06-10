@@ -224,6 +224,21 @@ isAsmClobberable(const MachineFunction &MF, MCRegister PhysReg) const {
   return !getReservedRegs(MF).test(PhysReg);
 }
 
+bool ARMBaseRegisterInfo::isInlineAsmReadOnlyReg(const MachineFunction &MF,
+                                                 unsigned PhysReg) const {
+  const ARMSubtarget &STI = MF.getSubtarget<ARMSubtarget>();
+  const ARMFrameLowering *TFI = getFrameLowering(MF);
+
+  BitVector Reserved(getNumRegs());
+  markSuperRegs(Reserved, ARM::PC);
+  if (TFI->hasFP(MF))
+    markSuperRegs(Reserved, getFramePointerReg(STI));
+  if (hasBasePointer(MF))
+    markSuperRegs(Reserved, BasePtr);
+  assert(checkAllSuperRegsMarked(Reserved));
+  return Reserved.test(PhysReg);
+}
+
 const TargetRegisterClass *
 ARMBaseRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC,
                                                const MachineFunction &MF) const {
@@ -462,7 +477,7 @@ void ARMBaseRegisterInfo::emitLoadConstPool(
   MachineConstantPool *ConstantPool = MF.getConstantPool();
   const Constant *C =
         ConstantInt::get(Type::getInt32Ty(MF.getFunction().getContext()), Val);
-  unsigned Idx = ConstantPool->getConstantPoolIndex(C, 4);
+  unsigned Idx = ConstantPool->getConstantPoolIndex(C, Align(4));
 
   BuildMI(MBB, MBBI, dl, TII.get(ARM::LDRcp))
       .addReg(DestReg, getDefRegState(true), SubIdx)

@@ -13,6 +13,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/IR/Module.h"
+#include "llvm/MC/SubtargetFeature.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Host.h"
 
 using namespace llvm;
 
@@ -74,12 +78,13 @@ CGOPT(std::string, BBSections)
 CGOPT(unsigned, TLSSize)
 CGOPT(bool, EmulatedTLS)
 CGOPT(bool, UniqueSectionNames)
-CGOPT(bool, UniqueBBSectionNames)
+CGOPT(bool, UniqueBasicBlockSectionNames)
 CGOPT(EABI, EABIVersion)
 CGOPT(DebuggerKind, DebuggerTuningOpt)
 CGOPT(bool, EnableStackSizeSection)
 CGOPT(bool, EnableAddrsig)
 CGOPT(bool, EmitCallSiteInfo)
+CGOPT(bool, EnableMachineFunctionSplitter)
 CGOPT(bool, EnableDebugEntryValues)
 CGOPT(bool, ForceDwarfFrameSection)
 
@@ -346,11 +351,11 @@ codegen::RegisterCodeGenFlags::RegisterCodeGenFlags() {
       cl::init(true));
   CGBINDOPT(UniqueSectionNames);
 
-  static cl::opt<bool> UniqueBBSectionNames(
+  static cl::opt<bool> UniqueBasicBlockSectionNames(
       "unique-bb-section-names",
       cl::desc("Give unique names to every basic block section"),
       cl::init(false));
-  CGBINDOPT(UniqueBBSectionNames);
+  CGBINDOPT(UniqueBasicBlockSectionNames);
 
   static cl::opt<EABI> EABIVersion(
       "meabi", cl::desc("Set EABI type (default depends on triple):"),
@@ -394,6 +399,12 @@ codegen::RegisterCodeGenFlags::RegisterCodeGenFlags() {
       cl::desc("Enable debug info for the debug entry values."),
       cl::init(false));
   CGBINDOPT(EnableDebugEntryValues);
+
+  static cl::opt<bool> EnableMachineFunctionSplitter(
+      "split-machine-functions",
+      cl::desc("Split machine functions based on profile information"),
+      cl::init(false));
+  CGBINDOPT(EnableMachineFunctionSplitter);
 
   static cl::opt<bool> ForceDwarfFrameSection(
       "force-dwarf-frame-section",
@@ -456,12 +467,13 @@ TargetOptions codegen::InitTargetOptionsFromCodeGenFlags() {
   Options.FunctionSections = getFunctionSections();
   Options.BBSections = getBBSectionsMode(Options);
   Options.UniqueSectionNames = getUniqueSectionNames();
-  Options.UniqueBBSectionNames = getUniqueBBSectionNames();
+  Options.UniqueBasicBlockSectionNames = getUniqueBasicBlockSectionNames();
   Options.TLSSize = getTLSSize();
   Options.EmulatedTLS = getEmulatedTLS();
   Options.ExplicitEmulatedTLS = EmulatedTLSView->getNumOccurrences() > 0;
   Options.ExceptionModel = getExceptionModel();
   Options.EmitStackSizeSection = getEnableStackSizeSection();
+  Options.EnableMachineFunctionSplitter = getEnableMachineFunctionSplitter();
   Options.EmitAddrsig = getEnableAddrsig();
   Options.EmitCallSiteInfo = getEmitCallSiteInfo();
   Options.EnableDebugEntryValues = getEnableDebugEntryValues();

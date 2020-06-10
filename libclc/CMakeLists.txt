@@ -58,9 +58,11 @@ list( SORT LIBCLC_TARGETS_TO_BUILD )
 execute_process( COMMAND ${LLVM_CONFIG} "--system-libs"
 	OUTPUT_VARIABLE LLVM_SYSTEM_LIBS
 	OUTPUT_STRIP_TRAILING_WHITESPACE )
+separate_arguments( LLVM_SYSTEM_LIBS )
 execute_process( COMMAND ${LLVM_CONFIG} "--libs" "core" "bitreader" "bitwriter"
 	OUTPUT_VARIABLE LLVM_LIBS
 	OUTPUT_STRIP_TRAILING_WHITESPACE )
+separate_arguments( LLVM_LIBS )
 execute_process( COMMAND ${LLVM_CONFIG} "--libdir"
 	OUTPUT_VARIABLE LLVM_LIBDIR
 	OUTPUT_STRIP_TRAILING_WHITESPACE )
@@ -76,7 +78,7 @@ execute_process( COMMAND ${LLVM_CONFIG} "--bindir"
 	OUTPUT_STRIP_TRAILING_WHITESPACE )
 
 # These were not properly reported in early LLVM and we don't need them
-set( LLVM_CXX_FLAGS ${LLVM_CXX_FLAGS} -fno-rtti -fno-exceptions )
+list( APPEND LLVM_CXX_FLAGS -fno-rtti -fno-exceptions )
 
 # Print LLVM variables
 message( "LLVM system libs: ${LLVM_SYSTEM_LIBS}" )
@@ -123,8 +125,8 @@ link_directories( ${LLVM_LIBDIR} )
 add_executable( prepare_builtins utils/prepare-builtins.cpp )
 target_compile_options( prepare_builtins PRIVATE ${LLVM_CXX_FLAGS} )
 target_compile_definitions( prepare_builtins PRIVATE ${LLVM_VERSION_DEFINE} )
-target_link_libraries( prepare_builtins PRIVATE ${LLVM_SYSTEM_LIBS} )
 target_link_libraries( prepare_builtins PRIVATE ${LLVM_LIBS} )
+target_link_libraries( prepare_builtins PRIVATE ${LLVM_SYSTEM_LIBS} )
 
 # Setup arch devices
 set( r600--_devices cedar cypress barts cayman )
@@ -260,7 +262,7 @@ foreach( t ${LIBCLC_TARGETS_TO_BUILD} )
 		target_compile_definitions( builtins.link.${arch_suffix} PRIVATE
 			"__CLC_INTERNAL" )
 		target_compile_options( builtins.link.${arch_suffix} PRIVATE  -target
-			${t} ${mcpu} -fno-builtin )
+			${t} ${mcpu} -fno-builtin -nostdlib )
 		set_target_properties( builtins.link.${arch_suffix} PROPERTIES
 			LINKER_LANGUAGE CLC )
 

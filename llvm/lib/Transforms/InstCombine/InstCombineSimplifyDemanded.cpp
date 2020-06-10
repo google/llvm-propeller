@@ -1144,7 +1144,8 @@ Value *InstCombiner::simplifyAMDGCNMemoryIntrinsicDemanded(IntrinsicInst *II,
 
   Module *M = II->getParent()->getParent()->getParent();
   Type *EltTy = IIVTy->getElementType();
-  Type *NewTy = (NewNumElts == 1) ? EltTy : VectorType::get(EltTy, NewNumElts);
+  Type *NewTy =
+      (NewNumElts == 1) ? EltTy : FixedVectorType::get(EltTy, NewNumElts);
 
   OverloadTys[0] = NewTy;
   Function *NewIntrin = Intrinsic::getDeclaration(M, IID, OverloadTys);
@@ -1158,7 +1159,7 @@ Value *InstCombiner::simplifyAMDGCNMemoryIntrinsicDemanded(IntrinsicInst *II,
                                        DemandedElts.countTrailingZeros());
   }
 
-  SmallVector<uint32_t, 8> EltMask;
+  SmallVector<int, 8> EltMask;
   unsigned NewLoadIdx = 0;
   for (unsigned OrigLoadIdx = 0; OrigLoadIdx < VWidth; ++OrigLoadIdx) {
     if (!!DemandedElts[OrigLoadIdx])
@@ -1190,7 +1191,12 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
                                                 APInt &UndefElts,
                                                 unsigned Depth,
                                                 bool AllowMultipleUsers) {
-  unsigned VWidth = cast<VectorType>(V->getType())->getNumElements();
+  // Cannot analyze scalable type. The number of vector elements is not a
+  // compile-time constant.
+  if (isa<ScalableVectorType>(V->getType()))
+    return nullptr;
+
+  unsigned VWidth = cast<FixedVectorType>(V->getType())->getNumElements();
   APInt EltMask(APInt::getAllOnesValue(VWidth));
   assert((DemandedElts & ~EltMask) == 0 && "Invalid DemandedElts!");
 
