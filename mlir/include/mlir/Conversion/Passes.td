@@ -197,6 +197,25 @@ def ConvertParallelLoopToGpu : Pass<"convert-parallel-loops-to-gpu"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ShapeToStandard
+//===----------------------------------------------------------------------===//
+
+def ConvertShapeToStandard : Pass<"convert-shape-to-std", "ModuleOp"> {
+  let summary = "Convert operations from the shape dialect into the standard "
+                "dialect";
+  let constructor = "mlir::createConvertShapeToStandardPass()";
+}
+
+//===----------------------------------------------------------------------===//
+// SPIRVToLLVM
+//===----------------------------------------------------------------------===//
+
+def ConvertSPIRVToLLVM : Pass<"convert-spirv-to-llvm", "ModuleOp"> {
+  let summary = "Convert SPIR-V dialect to LLVM dialect";
+  let constructor = "mlir::createConvertSPIRVToLLVMPass()";
+}
+
+//===----------------------------------------------------------------------===//
 // StandardToLLVM
 //===----------------------------------------------------------------------===//
 

@@ -100,7 +100,7 @@ LegalizerHelper::LegalizerHelper(MachineFunction &MF, const LegalizerInfo &LI,
 }
 LegalizerHelper::LegalizeResult
 LegalizerHelper::legalizeInstrStep(MachineInstr &MI) {
-  LLVM_DEBUG(dbgs() << "Legalizing: "; MI.print(dbgs()));
+  LLVM_DEBUG(dbgs() << "Legalizing: " << MI);
 
   if (MI.getOpcode() == TargetOpcode::G_INTRINSIC ||
       MI.getOpcode() == TargetOpcode::G_INTRINSIC_W_SIDE_EFFECTS)
@@ -5029,16 +5029,19 @@ LegalizerHelper::lowerShuffleVector(MachineInstr &MI) {
 
 LegalizerHelper::LegalizeResult
 LegalizerHelper::lowerDynStackAlloc(MachineInstr &MI) {
+  const auto &MF = *MI.getMF();
+  const auto &TFI = *MF.getSubtarget().getFrameLowering();
+  if (TFI.getStackGrowthDirection() == TargetFrameLowering::StackGrowsUp)
+    return UnableToLegalize;
+
   Register Dst = MI.getOperand(0).getReg();
   Register AllocSize = MI.getOperand(1).getReg();
   Align Alignment = assumeAligned(MI.getOperand(2).getImm());
 
-  const auto &MF = *MI.getMF();
-  const auto &TLI = *MF.getSubtarget().getTargetLowering();
-
   LLT PtrTy = MRI.getType(Dst);
   LLT IntPtrTy = LLT::scalar(PtrTy.getSizeInBits());
 
+  const auto &TLI = *MF.getSubtarget().getTargetLowering();
   Register SPReg = TLI.getStackPointerRegisterToSaveRestore();
   auto SPTmp = MIRBuilder.buildCopy(PtrTy, SPReg);
   SPTmp = MIRBuilder.buildCast(IntPtrTy, SPTmp);

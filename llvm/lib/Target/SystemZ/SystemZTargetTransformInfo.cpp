@@ -663,7 +663,7 @@ static Type *getCmpOpsType(const Instruction *I, unsigned VF = 1) {
     // Return the potentially vectorized type based on 'I' and 'VF'.  'I' may
     // be either scalar or already vectorized with a same or lesser VF.
     Type *ElTy = OpTy->getScalarType();
-    return VectorType::get(ElTy, VF);
+    return FixedVectorType::get(ElTy, VF);
   }
 
   return nullptr;
@@ -837,6 +837,9 @@ int SystemZTTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
                                        Type *CondTy,
                                        TTI::TargetCostKind CostKind,
                                        const Instruction *I) {
+  if (CostKind != TTI::TCK_RecipThroughput)
+    return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, CostKind);
+
   if (!ValTy->isVectorTy()) {
     switch (Opcode) {
     case Instruction::ICmp: {
@@ -1028,6 +1031,10 @@ int SystemZTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
                                     TTI::TargetCostKind CostKind,
                                     const Instruction *I) {
   assert(!Src->isVoidTy() && "Invalid type");
+
+  // TODO: Handle other cost kinds.
+  if (CostKind != TTI::TCK_RecipThroughput)
+    return 1;
 
   if (!Src->isVectorTy() && Opcode == Instruction::Load && I != nullptr) {
     // Store the load or its truncated or extended value in FoldedValue.
