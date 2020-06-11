@@ -589,13 +589,6 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     const auto *BeginMBB = R.first->getParent();
     const auto *EndMBB = R.second->getParent();
 
-    if (BeginMBB->sameSection(EndMBB)) {
-      // If begin and end share their section, there is just one continuous
-      // range.
-      List.push_back({BeginLabel, EndLabel});
-      continue;
-    }
-
     const auto *MBB = BeginMBB;
     // Basic block sections allows basic block subsets to be placed in unique
     // sections.  For each section, the begin and end label must be added to the
@@ -609,8 +602,9 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
                                         : MBBSectionRange.BeginLabel,
              MBB->sameSection(EndMBB) ? EndLabel : MBBSectionRange.EndLabel});
       }
+      if (MBB->sameSection(EndMBB)) break;
       MBB = MBB->getNextNode();
-    } while (!MBB->sameSection(EndMBB));
+    } while (true);
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }
