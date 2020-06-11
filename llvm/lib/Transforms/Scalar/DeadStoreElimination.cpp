@@ -146,7 +146,7 @@ deleteDeadInstruction(Instruction *I, BasicBlock::iterator *BBI,
     ++NumFastOther;
 
     // Try to preserve debug information attached to the dead instruction.
-    salvageDebugInfoOrMarkUndef(*DeadInst);
+    salvageDebugInfo(*DeadInst);
     salvageKnowledge(DeadInst);
 
     // This instruction is dead, zap it, in stages.  Start by removing it from
@@ -1792,7 +1792,7 @@ struct DSEState {
       return false;
 
     if (SI->getParent() == NI->getParent())
-      return ThrowingBlocks.find(SI->getParent()) != ThrowingBlocks.end();
+      return ThrowingBlocks.count(SI->getParent());
     return !ThrowingBlocks.empty();
   }
 
@@ -1859,6 +1859,7 @@ bool eliminateDeadStoresMemorySSA(Function &F, AliasAnalysis &AA,
         LLVM_DEBUG(dbgs() << "DSE: Remove Dead Store:\n  DEAD: " << *SI
                           << '\n');
         NumNoopStores++;
+        MadeChange = true;
         continue;
       }
     }
@@ -2051,7 +2052,7 @@ public:
       PostDominatorTree &PDT =
           getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree();
 
-      eliminateDeadStoresMemorySSA(F, AA, MSSA, DT, PDT, TLI);
+      Changed = eliminateDeadStoresMemorySSA(F, AA, MSSA, DT, PDT, TLI);
     } else {
       MemoryDependenceResults &MD =
           getAnalysis<MemoryDependenceWrapperPass>().getMemDep();

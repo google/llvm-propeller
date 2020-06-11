@@ -268,7 +268,7 @@ class TypePromotionTransaction;
     const TargetMachine *TM = nullptr;
     const TargetSubtargetInfo *SubtargetInfo;
     const TargetLowering *TLI = nullptr;
-    const TargetRegisterInfo *TRI = nullptr;
+    const TargetRegisterInfo *TRI;
     const TargetTransformInfo *TTI = nullptr;
     const TargetLibraryInfo *TLInfo;
     const LoopInfo *LI;
@@ -413,7 +413,7 @@ class TypePromotionTransaction;
         bool HasPromoted, TypePromotionTransaction &TPT,
         SmallVectorImpl<Instruction *> &SpeculativelyMovedExts);
     bool splitBranchCondition(Function &F, bool &ModifiedDT);
-    bool simplifyOffsetableRelocate(Instruction &I);
+    bool simplifyOffsetableRelocate(GCStatepointInst &I);
 
     bool tryToSinkFreeOperands(Instruction *I);
     bool replaceMathCmpWithIntrinsic(BinaryOperator *BO, Value *Arg0,
@@ -573,11 +573,11 @@ bool CodeGenPrepare::runOnFunction(Function &F) {
   }
 
   if (!DisableGCOpts) {
-    SmallVector<Instruction *, 2> Statepoints;
+    SmallVector<GCStatepointInst *, 2> Statepoints;
     for (BasicBlock &BB : F)
       for (Instruction &I : BB)
-        if (isa<GCStatepointInst>(I))
-          Statepoints.push_back(&I);
+        if (auto *SP = dyn_cast<GCStatepointInst>(&I))
+          Statepoints.push_back(SP);
     for (auto &I : Statepoints)
       EverMadeChange |= simplifyOffsetableRelocate(*I);
   }
@@ -1087,10 +1087,9 @@ simplifyRelocatesOffABase(GCRelocateInst *RelocatedBase,
 // %base' = gc.relocate(%tok, i32 4, i32 4)
 // %ptr' = gep %base' + 15
 // %val = load %ptr'
-bool CodeGenPrepare::simplifyOffsetableRelocate(Instruction &I) {
+bool CodeGenPrepare::simplifyOffsetableRelocate(GCStatepointInst &I) {
   bool MadeChange = false;
   SmallVector<GCRelocateInst *, 2> AllRelocateCalls;
-
   for (auto *U : I.users())
     if (GCRelocateInst *Relocate = dyn_cast<GCRelocateInst>(U))
       // Collect all the relocate calls associated with a statepoint
@@ -5322,7 +5321,7 @@ bool CodeGenPrepare::optimizeGatherScatterInst(Instruction *MemoryInst,
   // and a vector GEP with all zeroes final index.
   if (!Ops[FinalIndex]->getType()->isVectorTy()) {
     NewAddr = Builder.CreateGEP(Ops[0], makeArrayRef(Ops).drop_front());
-    Type *IndexTy = VectorType::get(ScalarIndexTy, NumElts);
+    auto *IndexTy = FixedVectorType::get(ScalarIndexTy, NumElts);
     NewAddr = Builder.CreateGEP(NewAddr, Constant::getNullValue(IndexTy));
   } else {
     Value *Base = Ops[0];
@@ -6472,7 +6471,8 @@ bool CodeGenPrepare::optimizeShuffleVectorInst(ShuffleVectorInst *SVI) {
   assert(!NewType->isVectorTy() && "Expected a scalar type!");
   assert(NewType->getScalarSizeInBits() == SVIVecType->getScalarSizeInBits() &&
          "Expected a type of the same size!");
-  Type *NewVecType = VectorType::get(NewType, SVIVecType->getNumElements());
+  auto *NewVecType =
+      FixedVectorType::get(NewType, SVIVecType->getNumElements());
 
   // Create a bitcast (shuffle (insert (bitcast(..))))
   IRBuilder<> Builder(SVI->getContext());
@@ -7084,13 +7084,13 @@ static bool splitMergedValStore(StoreInst &SI, const DataLayout &DL,
     Value *Addr = Builder.CreateBitCast(
         SI.getOperand(1),
         SplitStoreType->getPointerTo(SI.getPointerAddressSpace()));
+    Align Alignment = SI.getAlign();
     const bool IsOffsetStore = (IsLE && Upper) || (!IsLE && !Upper);
-    if (IsOffsetStore)
+    if (IsOffsetStore) {
       Addr = Builder.CreateGEP(
           SplitStoreType, Addr,
           ConstantInt::get(Type::getInt32Ty(SI.getContext()), 1));
-    MaybeAlign Alignment = SI.getAlign();
-    if (IsOffsetStore && Alignment) {
+
       // When splitting the store in half, naturally one half will retain the
       // alignment of the original wider store, regardless of whether it was
       // over-aligned or not, while the other will require adjustment.

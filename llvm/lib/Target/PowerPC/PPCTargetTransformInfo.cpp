@@ -212,8 +212,12 @@ int PPCTTIImpl::getIntImmCostInst(unsigned Opcode, unsigned Idx,
 unsigned
 PPCTTIImpl::getUserCost(const User *U, ArrayRef<const Value *> Operands,
                         TTI::TargetCostKind CostKind) {
-  // We already implement getCastInstrCost and perform the vector adjustment there.
-  if (!isa<CastInst>(U) && U->getType()->isVectorTy()) {
+  // We already implement getCastInstrCost and getMemoryOpCost where we perform
+  // the vector adjustment there.
+  if (isa<CastInst>(U) || isa<LoadInst>(U) || isa<StoreInst>(U))
+    return BaseT::getUserCost(U, Operands, CostKind);
+
+  if (U->getType()->isVectorTy()) {
     // Instructions that need to be split should cost more.
     std::pair<int, MVT> LT = TLI->getTypeLegalizationCost(DL, U->getType());
     return LT.first * BaseT::getUserCost(U, Operands, CostKind);
@@ -775,6 +779,9 @@ int PPCTTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,
                                    TTI::TargetCostKind CostKind,
                                    const Instruction *I) {
   int Cost = BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, CostKind, I);
+  // TODO: Handle other cost kinds.
+  if (CostKind != TTI::TCK_RecipThroughput)
+    return Cost;
   return vectorCostAdjustment(Cost, Opcode, ValTy, nullptr);
 }
 
@@ -855,6 +862,9 @@ int PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
                                 MaybeAlign Alignment, unsigned AddressSpace,
                                 TTI::TargetCostKind CostKind,
                                 const Instruction *I) {
+  if (TLI->getValueType(DL, Src,  true) == MVT::Other)
+    return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace,
+                                  CostKind);
   // Legalize the type.
   std::pair<int, MVT> LT = TLI->getTypeLegalizationCost(DL, Src);
   assert((Opcode == Instruction::Load || Opcode == Instruction::Store) &&
@@ -862,6 +872,10 @@ int PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
 
   int Cost = BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace,
                                     CostKind);
+  // TODO: Handle other cost kinds.
+  if (CostKind != TTI::TCK_RecipThroughput)
+    return Cost;
+
   Cost = vectorCostAdjustment(Cost, Opcode, Src, nullptr);
 
   bool IsAltivecType = ST->hasAltivec() &&

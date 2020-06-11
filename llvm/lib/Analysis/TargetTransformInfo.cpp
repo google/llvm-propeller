@@ -12,6 +12,7 @@
 #include "llvm/Analysis/TargetTransformInfoImpl.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -1295,29 +1296,13 @@ int TargetTransformInfo::getInstructionThroughput(const Instruction *I) const {
                                   Op1VK, Op2VK,
                                   Op1VP, Op2VP, Operands, I);
   }
-  case Instruction::Select: {
-    const SelectInst *SI = cast<SelectInst>(I);
-    Type *CondTy = SI->getCondition()->getType();
-    return getCmpSelInstrCost(I->getOpcode(), I->getType(), CondTy,
-                              CostKind, I);
-  }
+  case Instruction::Select:
   case Instruction::ICmp:
-  case Instruction::FCmp: {
-    Type *ValTy = I->getOperand(0)->getType();
-    return getCmpSelInstrCost(I->getOpcode(), ValTy, I->getType(),
-                              CostKind, I);
-  }
-  case Instruction::Store: {
-    const StoreInst *SI = cast<StoreInst>(I);
-    Type *ValTy = SI->getValueOperand()->getType();
-    return getMemoryOpCost(I->getOpcode(), ValTy, SI->getAlign(),
-                           SI->getPointerAddressSpace(), CostKind, I);
-  }
-  case Instruction::Load: {
-    const LoadInst *LI = cast<LoadInst>(I);
-    return getMemoryOpCost(I->getOpcode(), I->getType(), LI->getAlign(),
-                           LI->getPointerAddressSpace(), CostKind, I);
-  }
+  case Instruction::FCmp:
+    return getUserCost(I, CostKind);
+  case Instruction::Store:
+  case Instruction::Load:
+    return getUserCost(I, CostKind);
   case Instruction::ZExt:
   case Instruction::SExt:
   case Instruction::FPToUI:

@@ -14,8 +14,6 @@
 #define LLVM_CODEGEN_GLOBALISEL_MACHINEIRBUILDER_H
 
 #include "llvm/CodeGen/GlobalISel/CSEInfo.h"
-#include "llvm/CodeGen/GlobalISel/Types.h"
-
 #include "llvm/CodeGen/LowLevelType.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -387,13 +385,6 @@ public:
   /// \return a MachineInstrBuilder for the newly created instruction.
   MachineInstrBuilder buildDynStackAlloc(const DstOp &Res, const SrcOp &Size,
                                          Align Alignment);
-
-  LLVM_ATTRIBUTE_DEPRECATED(inline MachineInstrBuilder buildDynStackAlloc(
-                                const DstOp &Res, const SrcOp &Size,
-                                unsigned Align),
-                            "Use the version that takes MaybeAlign instead") {
-    return buildDynStackAlloc(Res, Size, assumeAligned(Align));
-  }
 
   /// Build and insert \p Res = G_FRAME_INDEX \p Idx
   ///
@@ -803,6 +794,14 @@ public:
   /// \return a MachineInstrBuilder for the newly created instruction.
   MachineInstrBuilder buildLoadInstr(unsigned Opcode, const DstOp &Res,
                                      const SrcOp &Addr, MachineMemOperand &MMO);
+
+  /// Helper to create a load from a constant offset given a base address. Load
+  /// the type of \p Dst from \p Offset from the given base address and memory
+  /// operand.
+  MachineInstrBuilder buildLoadFromOffset(const DstOp &Dst,
+                                          const SrcOp &BasePtr,
+                                          MachineMemOperand &BaseMMO,
+                                          int64_t Offset);
 
   /// Build and insert `G_STORE Val, Addr, MMO`.
   ///

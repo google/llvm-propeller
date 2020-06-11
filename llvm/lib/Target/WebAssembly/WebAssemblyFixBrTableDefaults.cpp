@@ -52,7 +52,7 @@ MachineBasicBlock *fixBrTable(MachineInstr &MI, MachineBasicBlock *MBB,
 
   // Find the conditional jump to the default target. If it doesn't exist, the
   // default target is unreachable anyway, so we can choose anything.
-  auto &JumpMII = --HeaderMBB->end();
+  auto JumpMII = --HeaderMBB->end();
   while (JumpMII->getOpcode() != WebAssembly::BR_IF &&
          JumpMII != HeaderMBB->begin()) {
     --JumpMII;
@@ -122,7 +122,7 @@ bool WebAssemblyFixBrTableDefaults::runOnMachineFunction(MachineFunction &MF) {
 
 INITIALIZE_PASS(WebAssemblyFixBrTableDefaults, DEBUG_TYPE,
                 "Removes range checks and sets br_table default targets", false,
-                false);
+                false)
 
 FunctionPass *llvm::createWebAssemblyFixBrTableDefaults() {
   return new WebAssemblyFixBrTableDefaults();

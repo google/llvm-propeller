@@ -156,7 +156,8 @@ DIE *DwarfCompileUnit::getOrCreateGlobalVariableDIE(
     DeclContext = GV->getScope();
     // Add name and type.
     addString(*VariableDIE, dwarf::DW_AT_name, GV->getDisplayName());
-    addType(*VariableDIE, GTy);
+    if (GTy)
+      addType(*VariableDIE, GTy);
 
     // Add scoping info.
     if (!GV->isLocalToUnit())
@@ -602,8 +603,9 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
                                         : MBBSectionRange.BeginLabel,
              MBB->sameSection(EndMBB) ? EndLabel : MBBSectionRange.EndLabel});
       }
+      if (MBB->sameSection(EndMBB)) break;
       MBB = MBB->getNextNode();
-    } while (!MBB->sameSection(EndMBB));
+    } while (true);
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }

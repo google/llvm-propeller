@@ -715,6 +715,14 @@ void TextNodeDumper::VisitCallExpr(const CallExpr *Node) {
     OS << " adl";
 }
 
+void TextNodeDumper::VisitCXXOperatorCallExpr(const CXXOperatorCallExpr *Node) {
+  const char *OperatorSpelling = clang::getOperatorSpelling(Node->getOperator());
+  if (OperatorSpelling)
+    OS << " '" << OperatorSpelling << "'";
+
+  VisitCallExpr(Node);
+}
+
 void TextNodeDumper::VisitCastExpr(const CastExpr *Node) {
   OS << " <";
   {
@@ -1663,6 +1671,7 @@ void TextNodeDumper::VisitCXXRecordDecl(const CXXRecordDecl *D) {
         ColorScope Color(OS, ShowColors, DeclKindNameColor);
         OS << "CopyAssignment";
       }
+      FLAG(hasSimpleCopyAssignment, simple);
       FLAG(hasTrivialCopyAssignment, trivial);
       FLAG(hasNonTrivialCopyAssignment, non_trivial);
       FLAG(hasCopyAssignmentWithConstParam, has_const_param);
