@@ -603,7 +603,8 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
                                         : MBBSectionRange.BeginLabel,
              MBB->sameSection(EndMBB) ? EndLabel : MBBSectionRange.EndLabel});
       }
-      if (MBB->sameSection(EndMBB)) break;
+      if (MBB->sameSection(EndMBB))
+        break;
       MBB = MBB->getNextNode();
     } while (true);
   }
