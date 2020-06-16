@@ -608,6 +608,13 @@ public:
     int ISD = TLI->InstructionOpcodeToISD(Opcode);
     assert(ISD && "Invalid opcode");
 
+    // TODO: Handle more cost kinds.
+    if (CostKind != TTI::TCK_RecipThroughput)
+      return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind,
+                                           Opd1Info, Opd2Info,
+                                           Opd1PropInfo, Opd2PropInfo,
+                                           Args, CxtI);
+
     std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(DL, Ty);
 
     bool IsFloat = Ty->isFPOrFPVectorTy();
@@ -827,8 +834,7 @@ public:
   }
 
   unsigned getCFInstrCost(unsigned Opcode, TTI::TargetCostKind CostKind) {
-    // Branches are assumed to be predicted.
-    return 0;
+    return BaseT::getCFInstrCost(Opcode, CostKind);
   }
 
   unsigned getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,

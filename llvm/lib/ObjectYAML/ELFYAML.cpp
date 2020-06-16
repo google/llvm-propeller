@@ -839,8 +839,19 @@ void MappingTraits<ELFYAML::SectionHeader>::mapping(
 
 void MappingTraits<ELFYAML::SectionHeaderTable>::mapping(
     IO &IO, ELFYAML::SectionHeaderTable &SectionHeader) {
-  IO.mapRequired("Sections", SectionHeader.Sections);
+  IO.mapOptional("Sections", SectionHeader.Sections);
   IO.mapOptional("Excluded", SectionHeader.Excluded);
+  IO.mapOptional("NoHeaders", SectionHeader.NoHeaders, false);
+}
+
+StringRef MappingTraits<ELFYAML::SectionHeaderTable>::validate(
+    IO &IO, ELFYAML::SectionHeaderTable &SecHdrTable) {
+  if (SecHdrTable.NoHeaders && (SecHdrTable.Sections || SecHdrTable.Excluded))
+    return "NoHeaders can't be used together with Sections/Excluded";
+  if (!SecHdrTable.NoHeaders && !SecHdrTable.Sections && !SecHdrTable.Excluded)
+    return "SectionHeaderTable can't be empty. Use 'NoHeaders' key to drop the "
+           "section header table";
+  return StringRef();
 }
 
 void MappingTraits<ELFYAML::FileHeader>::mapping(IO &IO,
@@ -1655,9 +1666,12 @@ void MappingTraits<ELFYAML::Object>::mapping(IO &IO, ELFYAML::Object &Object) {
   IO.mapOptional("Symbols", Object.Symbols);
   IO.mapOptional("DynamicSymbols", Object.DynamicSymbols);
   IO.mapOptional("DWARF", Object.DWARF);
-  if (Object.DWARF)
+  if (Object.DWARF) {
     Object.DWARF->IsLittleEndian =
         Object.Header.Data == ELFYAML::ELF_ELFDATA(ELF::ELFDATA2LSB);
+    Object.DWARF->Is64bit =
+        Object.Header.Class == ELFYAML::ELF_ELFCLASS(ELF::ELFCLASS64);
+  }
   IO.setContext(nullptr);
 }
 

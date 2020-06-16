@@ -423,12 +423,13 @@ TEST_P(DebugLineParameterisedFixture, ErrorForTooLargePrologueLength) {
       Prologue.TotalLength + 1 + Prologue.sizeofTotalLength();
   EXPECT_THAT_ERROR(
       std::move(Recoverable),
-      FailedWithMessage(("parsing line table prologue at 0x00000000 should "
-                         "have ended at 0x000000" +
-                         Twine::utohexstr(ExpectedEnd) +
-                         " but it ended at 0x000000" +
-                         Twine::utohexstr(ExpectedEnd - 1))
-                            .str()));
+      FailedWithMessage(
+          ("unknown data in line table prologue at offset 0x00000000: "
+           "parsing ended (at offset 0x000000" +
+           Twine::utohexstr(ExpectedEnd - 1) +
+           ") before reaching the prologue end at offset 0x000000" +
+           Twine::utohexstr(ExpectedEnd))
+              .str()));
 }
 
 TEST_P(DebugLineParameterisedFixture, ErrorForTooShortPrologueLength) {
@@ -450,37 +451,28 @@ TEST_P(DebugLineParameterisedFixture, ErrorForTooShortPrologueLength) {
   ASSERT_THAT_EXPECTED(ExpectedLineTable, Succeeded());
   DWARFDebugLine::LineTable Result(**ExpectedLineTable);
 
-  if (Version != 5) {
-    // Parsing will stop before reading a complete file entry.
-    ASSERT_EQ(Result.Prologue.IncludeDirectories.size(), 1u);
-    EXPECT_EQ(toStringRef(Result.Prologue.IncludeDirectories[0]), "a dir");
-    EXPECT_EQ(Result.Prologue.FileNames.size(), 0u);
-  } else {
-    // Parsing will continue past the presumed end of prologue.
-    ASSERT_EQ(Result.Prologue.FileNames.size(), 1u);
-    ASSERT_EQ(Result.Prologue.FileNames[0].Name.getForm(), DW_FORM_string);
-    ASSERT_EQ(Result.Prologue.FileNames[0].DirIdx, 0u);
-    EXPECT_EQ(toStringRef(Result.Prologue.FileNames[0].Name), "a file");
-  }
+  // Parsing will stop before reading a complete file entry.
+  ASSERT_EQ(Result.Prologue.IncludeDirectories.size(), 1u);
+  EXPECT_EQ(toStringRef(Result.Prologue.IncludeDirectories[0]), "a dir");
+  EXPECT_EQ(Result.Prologue.FileNames.size(), 0u);
 
-  uint64_t ExpectedEnd =
-      Prologue.TotalLength - 2 + Prologue.sizeofTotalLength();
+  // The exact place where the parsing will stop depends on the structure of the
+  // prologue and the last complete field we are able to read. Before V5 we stop
+  // before reading the file length. In V5, we stop before the filename.
+  uint64_t ExpectedEnd = Prologue.TotalLength + Prologue.sizeofTotalLength() -
+                         (Version < 5 ? 2 : 8);
   std::vector<std::string> Errs;
-  if (Version != 5) {
-    Errs.emplace_back(
-        (Twine("parsing line table prologue at 0x00000000 found an invalid "
-               "directory or file table description at 0x000000") +
-         Twine::utohexstr(ExpectedEnd + 1))
-            .str());
+  Errs.emplace_back(
+      (Twine("parsing line table prologue at 0x00000000 found an invalid "
+             "directory or file table description at 0x000000") +
+       Twine::utohexstr(ExpectedEnd))
+          .str());
+  if (Version < 5) {
     Errs.emplace_back("file names table was not null terminated before the end "
                       "of the prologue");
   } else {
     Errs.emplace_back(
-        (Twine("parsing line table prologue at 0x00000000 should have ended at "
-               "0x000000") +
-         Twine::utohexstr(ExpectedEnd) + " but it ended at 0x000000" +
-         Twine::utohexstr(ExpectedEnd + 2))
-            .str());
+        "failed to parse file entry because extracting the form value failed");
   }
   EXPECT_THAT_ERROR(std::move(Recoverable),
                     FailedWithMessageArray(testing::ElementsAreArray(Errs)));
@@ -1390,25 +1382,27 @@ TEST_F(DebugLineBasicFixture, VerboseOutput) {
 
 using ValueAndLengths = std::vector<LineTable::ValueAndLength>;
 
-struct TruncatedExtendedOpcodeFixture
-    : public TestWithParam<std::tuple<uint64_t, uint64_t, uint8_t,
-                                      ValueAndLengths, StringRef, StringRef>>,
-      public CommonFixture {
-  void SetUp() {
-    std::tie(BodyLength, OpcodeLength, Opcode, Operands, ExpectedOutput,
-             ExpectedErr) = GetParam();
-  }
-
-  void runTest() {
+struct TruncatedOpcodeFixtureBase : public CommonFixture {
+  LineTable &setupTable() {
     LineTable &LT = Gen->addLineTable();
-    // Creating the prologue before adding the opcode ensures that the unit
+
+    // Creating the prologue before adding any opcodes ensures that the unit
     // length does not include the table body.
     DWARFDebugLine::Prologue Prologue = LT.createBasicPrologue();
-    Prologue.TotalLength += BodyLength;
-    LT.setPrologue(Prologue);
-    LT.addExtendedOpcode(OpcodeLength, Opcode, Operands);
-    generate();
 
+    // Add an unrecognised standard opcode, and adjust prologue properties
+    // accordingly.
+    Prologue.TotalLength += BodyLength + 1;
+    ++Prologue.PrologueLength;
+    ++Prologue.OpcodeBase;
+    Prologue.StandardOpcodeLengths.push_back(2);
+    LT.setPrologue(Prologue);
+
+    return LT;
+  }
+
+  void runTest(uint8_t OpcodeValue) {
+    generate();
     DWARFDebugLine::SectionParser Parser(LineData, *Context, CUs, TUs);
     std::string Output;
     raw_string_ostream OS(Output);
@@ -1416,28 +1410,52 @@ struct TruncatedExtendedOpcodeFixture
                      /*Verbose=*/true);
     OS.flush();
 
-    StringRef LinePrefix = "0x0000002e: 00 ";
+    std::string LinePrefix =
+        ("0x0000002f: 0" + Twine::utohexstr(OpcodeValue) + " ").str();
     StringRef OutputRef(Output);
     StringRef OutputToCheck = OutputRef.split(LinePrefix).second;
     // Each extended opcode ends with a new line and then the table ends with an
     // additional blank line.
     EXPECT_EQ((ExpectedOutput + "\n\n").str(), OutputToCheck);
-    EXPECT_THAT_ERROR(std::move(Recoverable),
-                      FailedWithMessage(ExpectedErr.str()));
   }
 
   uint64_t BodyLength;
-  uint64_t OpcodeLength;
   uint8_t Opcode;
   ValueAndLengths Operands;
   StringRef ExpectedOutput;
   StringRef ExpectedErr;
 };
 
+struct TruncatedStandardOpcodeFixture
+    : public TestWithParam<
+          std::tuple<uint64_t, uint8_t, ValueAndLengths, StringRef, StringRef>>,
+      public TruncatedOpcodeFixtureBase {
+  void SetUp() {
+    std::tie(BodyLength, Opcode, Operands, ExpectedOutput, ExpectedErr) =
+        GetParam();
+  }
+};
+
+struct TruncatedExtendedOpcodeFixture
+    : public TestWithParam<std::tuple<uint64_t, uint64_t, uint8_t,
+                                      ValueAndLengths, StringRef, StringRef>>,
+      public TruncatedOpcodeFixtureBase {
+  void SetUp() {
+    std::tie(BodyLength, OpcodeLength, Opcode, Operands, ExpectedOutput,
+             ExpectedErr) = GetParam();
+  }
+
+  uint64_t OpcodeLength;
+};
+
 TEST_P(TruncatedExtendedOpcodeFixture, ErrorForTruncatedExtendedOpcode) {
   if (!setupGenerator())
     return;
-  runTest();
+  LineTable &LT = setupTable();
+  LT.addExtendedOpcode(OpcodeLength, Opcode, Operands);
+  runTest(0);
+  EXPECT_THAT_ERROR(std::move(Recoverable),
+                    FailedWithMessage(ExpectedErr.str()));
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -1445,18 +1463,18 @@ INSTANTIATE_TEST_CASE_P(
     Values(
         std::make_tuple(1, 1, DW_LNE_end_sequence, ValueAndLengths(),
                         "Badly formed extended line op (length 0)",
-                        "unable to decode LEB128 at offset 0x0000002f: "
+                        "unable to decode LEB128 at offset 0x00000030: "
                         "malformed uleb128, extends past end"),
         std::make_tuple(
             2, 9, DW_LNE_set_address,
             ValueAndLengths{{0x12345678, LineTable::Quad}},
             "Unrecognized extended op 0x00 length 9",
-            "unexpected end of data at offset 0x30 while reading [0x30, 0x31)"),
+            "unexpected end of data at offset 0x31 while reading [0x31, 0x32)"),
         std::make_tuple(
             3, 9, DW_LNE_set_address,
             ValueAndLengths{{0x12345678, LineTable::Quad}},
             "DW_LNE_set_address (0x0000000000000000)",
-            "unexpected end of data at offset 0x31 while reading [0x31, 0x39)"),
+            "unexpected end of data at offset 0x32 while reading [0x32, 0x3a)"),
         std::make_tuple(3, 5, DW_LNE_define_file,
                         ValueAndLengths{{'a', LineTable::Byte},
                                         {'\0', LineTable::Byte},
@@ -1465,7 +1483,7 @@ INSTANTIATE_TEST_CASE_P(
                                         {1, LineTable::ULEB}},
                         "DW_LNE_define_file (, dir=0, "
                         "mod_time=(0x0000000000000000), length=0)",
-                        "no null terminated string at offset 0x31"),
+                        "no null terminated string at offset 0x32"),
         std::make_tuple(5, 5, DW_LNE_define_file,
                         ValueAndLengths{{'a', LineTable::Byte},
                                         {'\0', LineTable::Byte},
@@ -1474,7 +1492,7 @@ INSTANTIATE_TEST_CASE_P(
                                         {1, LineTable::ULEB}},
                         "DW_LNE_define_file (a, dir=0, "
                         "mod_time=(0x0000000000000000), length=0)",
-                        "unable to decode LEB128 at offset 0x00000033: "
+                        "unable to decode LEB128 at offset 0x00000034: "
                         "malformed uleb128, extends past end"),
         std::make_tuple(6, 5, DW_LNE_define_file,
                         ValueAndLengths{{'a', LineTable::Byte},
@@ -1484,7 +1502,7 @@ INSTANTIATE_TEST_CASE_P(
                                         {1, LineTable::ULEB}},
                         "DW_LNE_define_file (a, dir=1, "
                         "mod_time=(0x0000000000000000), length=0)",
-                        "unable to decode LEB128 at offset 0x00000034: "
+                        "unable to decode LEB128 at offset 0x00000035: "
                         "malformed uleb128, extends past end"),
         std::make_tuple(7, 5, DW_LNE_define_file,
                         ValueAndLengths{{'a', LineTable::Byte},
@@ -1494,13 +1512,69 @@ INSTANTIATE_TEST_CASE_P(
                                         {1, LineTable::ULEB}},
                         "DW_LNE_define_file (a, dir=1, "
                         "mod_time=(0x0000000000000001), length=0)",
-                        "unable to decode LEB128 at offset 0x00000035: "
+                        "unable to decode LEB128 at offset 0x00000036: "
                         "malformed uleb128, extends past end"),
         std::make_tuple(3, 2, DW_LNE_set_discriminator,
                         ValueAndLengths{{1, LineTable::ULEB}},
                         "DW_LNE_set_discriminator (0)",
-                        "unable to decode LEB128 at offset 0x00000031: "
+                        "unable to decode LEB128 at offset 0x00000032: "
                         "malformed uleb128, extends past end")), );
+
+TEST_P(TruncatedStandardOpcodeFixture, ErrorForTruncatedStandardOpcode) {
+  if (!setupGenerator())
+    return;
+  LineTable &LT = setupTable();
+  LT.addStandardOpcode(Opcode, Operands);
+  runTest(Opcode);
+  EXPECT_THAT_ERROR(std::move(Unrecoverable),
+                    FailedWithMessage(ExpectedErr.str()));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    TruncatedStandardOpcodeParams, TruncatedStandardOpcodeFixture,
+    Values(
+        std::make_tuple(2, DW_LNS_advance_pc,
+                        ValueAndLengths{{0x100, LineTable::ULEB}},
+                        "DW_LNS_advance_pc",
+                        "unable to decode LEB128 at offset 0x00000030: "
+                        "malformed uleb128, extends past end"),
+        std::make_tuple(2, DW_LNS_advance_line,
+                        ValueAndLengths{{0x200, LineTable::SLEB}},
+                        "DW_LNS_advance_line",
+                        "unable to decode LEB128 at offset 0x00000030: "
+                        "malformed sleb128, extends past end"),
+        std::make_tuple(2, DW_LNS_set_file,
+                        ValueAndLengths{{0x300, LineTable::ULEB}},
+                        "DW_LNS_set_file",
+                        "unable to decode LEB128 at offset 0x00000030: "
+                        "malformed uleb128, extends past end"),
+        std::make_tuple(2, DW_LNS_set_column,
+                        ValueAndLengths{{0x400, LineTable::ULEB}},
+                        "DW_LNS_set_column",
+                        "unable to decode LEB128 at offset 0x00000030: "
+                        "malformed uleb128, extends past end"),
+        std::make_tuple(
+            2, DW_LNS_fixed_advance_pc,
+            ValueAndLengths{{0x500, LineTable::Half}},
+            "DW_LNS_fixed_advance_pc",
+            "unexpected end of data at offset 0x31 while reading [0x30, 0x32)"),
+        std::make_tuple(2, DW_LNS_set_isa,
+                        ValueAndLengths{{0x600, LineTable::ULEB}},
+                        "DW_LNS_set_isa",
+                        "unable to decode LEB128 at offset 0x00000030: "
+                        "malformed uleb128, extends past end"),
+        std::make_tuple(2, 0xd,
+                        ValueAndLengths{{0x700, LineTable::ULEB},
+                                        {0x800, LineTable::ULEB}},
+                        "Unrecognized standard opcode",
+                        "unable to decode LEB128 at offset 0x00000030: "
+                        "malformed uleb128, extends past end"),
+        std::make_tuple(
+            4, 0xd,
+            ValueAndLengths{{0x900, LineTable::ULEB}, {0xa00, LineTable::ULEB}},
+            "Unrecognized standard opcode (operands: 0x0000000000000900)",
+            "unable to decode LEB128 at offset 0x00000032: "
+            "malformed uleb128, extends past end")), );
 
 TEST_F(DebugLineBasicFixture, PrintPathsProperly) {
   if (!setupGenerator(5))
@@ -1514,6 +1588,7 @@ TEST_F(DebugLineBasicFixture, PrintPathsProperly) {
   P.FileNames.back().Name =
       DWARFFormValue::createFromPValue(DW_FORM_string, "b file");
   P.FileNames.back().DirIdx = 1;
+  P.TotalLength += 14;
   P.PrologueLength += 14;
   LT.setPrologue(P);
   generate();

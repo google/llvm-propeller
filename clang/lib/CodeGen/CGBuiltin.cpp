@@ -47,7 +47,7 @@
 #include "llvm/IR/MatrixBuilder.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/ScopedPrinter.h"
-#include "llvm/Support/TargetParser.h"
+#include "llvm/Support/X86TargetParser.h"
 #include <sstream>
 
 using namespace clang;
@@ -589,7 +589,9 @@ static WidthAndSignedness
 getIntegerWidthAndSignedness(const clang::ASTContext &context,
                              const clang::QualType Type) {
   assert(Type->isIntegerType() && "Given type is not an integer.");
-  unsigned Width = Type->isBooleanType() ? 1 : context.getTypeInfo(Type).Width;
+  unsigned Width = Type->isBooleanType()  ? 1
+                   : Type->isExtIntType() ? context.getIntWidth(Type)
+                                          : context.getTypeInfo(Type).Width;
   bool Signed = Type->isSignedIntegerType();
   return {Width, Signed};
 }
@@ -8036,6 +8038,8 @@ Value *CodeGenFunction::EmitAArch64SVEBuiltinExpr(unsigned BuiltinID,
     return EmitSVEPrefetchLoad(TypeFlags, Ops, Builtin->LLVMIntrinsic);
   else if (TypeFlags.isGatherPrefetch())
     return EmitSVEGatherPrefetch(TypeFlags, Ops, Builtin->LLVMIntrinsic);
+  else if (TypeFlags.isUndef())
+    return UndefValue::get(Ty);
   else if (Builtin->LLVMIntrinsic != 0) {
     if (TypeFlags.getMergeType() == SVETypeFlags::MergeZeroExp)
       InsertExplicitZeroOperand(Builder, Ty, Ops);
@@ -15950,6 +15954,39 @@ Value *CodeGenFunction::EmitWebAssemblyBuiltinExpr(unsigned BuiltinID,
     Function *Callee =
         CGM.getIntrinsic(Intrinsic::wasm_pmax, ConvertType(E->getType()));
     return Builder.CreateCall(Callee, {LHS, RHS});
+  }
+  case WebAssembly::BI__builtin_wasm_ceil_f32x4:
+  case WebAssembly::BI__builtin_wasm_floor_f32x4:
+  case WebAssembly::BI__builtin_wasm_trunc_f32x4:
+  case WebAssembly::BI__builtin_wasm_nearest_f32x4:
+  case WebAssembly::BI__builtin_wasm_ceil_f64x2:
+  case WebAssembly::BI__builtin_wasm_floor_f64x2:
+  case WebAssembly::BI__builtin_wasm_trunc_f64x2:
+  case WebAssembly::BI__builtin_wasm_nearest_f64x2: {
+    unsigned IntNo;
+    switch (BuiltinID) {
+    case WebAssembly::BI__builtin_wasm_ceil_f32x4:
+    case WebAssembly::BI__builtin_wasm_ceil_f64x2:
+      IntNo = Intrinsic::wasm_ceil;
+      break;
+    case WebAssembly::BI__builtin_wasm_floor_f32x4:
+    case WebAssembly::BI__builtin_wasm_floor_f64x2:
+      IntNo = Intrinsic::wasm_floor;
+      break;
+    case WebAssembly::BI__builtin_wasm_trunc_f32x4:
+    case WebAssembly::BI__builtin_wasm_trunc_f64x2:
+      IntNo = Intrinsic::wasm_trunc;
+      break;
+    case WebAssembly::BI__builtin_wasm_nearest_f32x4:
+    case WebAssembly::BI__builtin_wasm_nearest_f64x2:
+      IntNo = Intrinsic::wasm_nearest;
+      break;
+    default:
+      llvm_unreachable("unexpected builtin ID");
+    }
+    Value *Value = EmitScalarExpr(E->getArg(0));
+    Function *Callee = CGM.getIntrinsic(IntNo, ConvertType(E->getType()));
+    return Builder.CreateCall(Callee, Value);
   }
   case WebAssembly::BI__builtin_wasm_swizzle_v8x16: {
     Value *Src = EmitScalarExpr(E->getArg(0));
