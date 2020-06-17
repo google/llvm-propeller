@@ -1122,7 +1122,7 @@ def loadi16 : PatFrag<(ops node:$ptr), (i16 (unindexedload node:$ptr)), [{
   ISD::LoadExtType ExtType = LD->getExtensionType();
   if (ExtType == ISD::NON_EXTLOAD)
     return true;
-  if (ExtType == ISD::EXTLOAD)
+  if (ExtType == ISD::EXTLOAD && EnablePromoteAnyextLoad)
     return LD->getAlignment() >= 2 && LD->isSimple();
   return false;
 }]>;
@@ -1132,7 +1132,7 @@ def loadi32 : PatFrag<(ops node:$ptr), (i32 (unindexedload node:$ptr)), [{
   ISD::LoadExtType ExtType = LD->getExtensionType();
   if (ExtType == ISD::NON_EXTLOAD)
     return true;
-  if (ExtType == ISD::EXTLOAD)
+  if (ExtType == ISD::EXTLOAD && EnablePromoteAnyextLoad)
     return LD->getAlignment() >= 4 && LD->isSimple();
   return false;
 }]>;
@@ -2793,11 +2793,11 @@ let SchedRW = [WriteStore] in {
 def MOVDIRI32 : I<0xF9, MRMDestMem, (outs), (ins i32mem:$dst, GR32:$src),
                   "movdiri\t{$src, $dst|$dst, $src}",
                   [(int_x86_directstore32 addr:$dst, GR32:$src)]>,
-                 T8, Requires<[HasMOVDIRI]>;
+                 T8PS, Requires<[HasMOVDIRI]>;
 def MOVDIRI64 : RI<0xF9, MRMDestMem, (outs), (ins i64mem:$dst, GR64:$src),
                    "movdiri\t{$src, $dst|$dst, $src}",
                    [(int_x86_directstore64 addr:$dst, GR64:$src)]>,
-                  T8, Requires<[In64BitMode, HasMOVDIRI]>;
+                  T8PS, Requires<[In64BitMode, HasMOVDIRI]>;
 } // SchedRW
 
 //===----------------------------------------------------------------------===//
@@ -3004,7 +3004,7 @@ def CLWB       : I<0xAE, MRM6m, (outs), (ins i8mem:$src), "clwb\t$src",
 
 let Predicates = [HasCLDEMOTE], SchedRW = [WriteLoad] in
 def CLDEMOTE : I<0x1C, MRM0m, (outs), (ins i8mem:$src), "cldemote\t$src",
-                   [(int_x86_cldemote addr:$src)]>, TB;
+                   [(int_x86_cldemote addr:$src)]>, PS;
 
 //===----------------------------------------------------------------------===//
 // Subsystems.

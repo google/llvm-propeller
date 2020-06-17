@@ -1070,6 +1070,8 @@ static void readConfigs(opt::InputArgList &args) {
       getOldNewOptions(args, OPT_thinlto_object_suffix_replace_eq);
   config->thinLTOPrefixReplace =
       getOldNewOptions(args, OPT_thinlto_prefix_replace_eq);
+  config->thinLTOModulesToCompile =
+      args::getStrings(args, OPT_thinlto_single_module_eq);
   config->timeTraceEnabled = args.hasArg(OPT_time_trace);
   config->timeTraceGranularity =
       args::getInteger(args, OPT_time_trace_granularity, 500);
@@ -1538,15 +1540,11 @@ static void excludeLibs(opt::InputArgList &args) {
     visit(file);
 }
 
-// Force Sym to be entered in the output. Used for -u or equivalent.
+// Force Sym to be entered in the output.
 static void handleUndefined(Symbol *sym) {
   // Since a symbol may not be used inside the program, LTO may
   // eliminate it. Mark the symbol as "used" to prevent it.
   sym->isUsedInRegularObj = true;
-
-  // GNU linkers allow -u foo -ldef -lref. We should not treat it as a backward
-  // reference.
-  backwardReferences.erase(sym);
 
   if (sym->isLazy())
     sym->fetch();
@@ -1743,6 +1741,12 @@ static Symbol *addUndefined(StringRef name) {
       Undefined{nullptr, name, STB_GLOBAL, STV_DEFAULT, 0});
 }
 
+static Symbol *addUnusedUndefined(StringRef name) {
+  Undefined sym{nullptr, name, STB_GLOBAL, STV_DEFAULT, 0};
+  sym.isUsedInRegularObj = false;
+  return symtab->addSymbol(sym);
+}
+
 // This function is where all the optimizations of link-time
 // optimization takes place. When LTO is in use, some input files are
 // not in native object file format but in the LLVM bitcode format.
@@ -1919,6 +1923,11 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   for (auto *arg : args.filtered(OPT_trace_symbol))
     symtab->insert(arg->getValue())->traced = true;
 
+  // Handle -u/--undefined before input files. If both a.a and b.so define foo,
+  // -u foo a.a b.so will fetch a.a.
+  for (StringRef name : config->undefined)
+    addUnusedUndefined(name);
+
   // Add all files to the symbol table. This will add almost all
   // symbols that we need to the symbol table. This process might
   // add files to the link, via autolinking, these files are always
@@ -1943,10 +1952,10 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   for (StringRef name : script->referencedSymbols)
     addUndefined(name);
 
-  // Handle the `--undefined <sym>` options.
-  for (StringRef arg : config->undefined)
-    if (Symbol *sym = symtab->find(arg))
-      handleUndefined(sym);
+  // Prevent LTO from removing any definition referenced by -u.
+  for (StringRef name : config->undefined)
+    if (Defined *sym = dyn_cast_or_null<Defined>(symtab->find(name)))
+      sym->isUsedInRegularObj = true;
 
   // If an entry symbol is in a static archive, pull out that file now.
   if (Symbol *sym = symtab->find(config->entry))
@@ -2034,7 +2043,10 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   // Likewise, --plugin-opt=emit-llvm and --plugin-opt=emit-asm are the
   // options to create output files in bitcode or assembly code
   // repsectively. No object files are generated.
-  if (config->thinLTOIndexOnly || config->emitLLVM || config->ltoEmitAsm)
+  // Also bail out here when only certain thinLTO modules are specified for
+  // compilation. The intermediate object file are the expected output.
+  if (config->thinLTOIndexOnly || config->emitLLVM || config->ltoEmitAsm ||
+      !config->thinLTOModulesToCompile.empty())
     return;
 
   // Apply symbol renames for -wrap.

@@ -1,4 +1,5 @@
 ; RUN: llc -O0 %s -mtriple=x86_64-* -filetype=obj -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=NO-SECTIONS %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-* -filetype=asm -o - | FileCheck --check-prefix=BB-SECTIONS-ASM %s
 ; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-* -filetype=obj -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
 ; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-* -filetype=obj -split-dwarf-file=%t.dwo -o %t && llvm-dwarfdump  -debug-abbrev %t | FileCheck --check-prefix=BB-SECTIONS %s
 
@@ -12,6 +13,34 @@
 
 ; NO-SECTIONS: DW_AT_low_pc     DW_FORM_addr
 ; NO-SECTIONS: DW_AT_high_pc    DW_FORM_data4
+; BB-SECTIONS-ASM: _Z3fooi:
+; BB-SECTIONS-ASM: .Ltmp0:
+; BB-SECTIONS-ASM-NEXT: .loc 1 2 9 prologue_end
+; BB-SECTIONS-ASM: .Ltmp1:
+; BB-SECTIONS-ASM-NEXT: .loc 1 2 7 is_stmt
+; BB-SECTIONS-ASM: _Z3fooi.1:
+; BB-SECTIONS-ASM: .Ltmp2:
+; BB-SECTIONS-ASM-NEXT: .size	_Z3fooi.1, .Ltmp2-_Z3fooi.1
+; BB-SECTIONS-ASM: _Z3fooi.2:
+; BB-SECTIONS-ASM: .Ltmp3:
+; BB-SECTIONS-ASM-NEXT: .Ltmp4:
+; BB-SECTIONS-ASM-NEXT: .size	_Z3fooi.2, .Ltmp4-_Z3fooi.2
+; BB-SECTIONS-ASM: _Z3fooi.3:
+; BB-SECTIONS-ASM: .Ltmp5:
+; BB-SECTIONS-ASM-NEXT: .Ltmp6:
+; BB-SECTIONS-ASM-NEXT: .size	_Z3fooi.3, .Ltmp6-_Z3fooi.3
+; BB-SECTIONS-ASM: .Lfunc_end0:
+; BB-SECTIONS-ASM: .Ldebug_ranges0:
+; BB-SECTIONS-ASM-NEXT:	.quad	.Lfunc_begin0
+; BB-SECTIONS-ASM-NEXT:	.quad	.Lfunc_end0
+; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.1
+; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp2
+; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.2
+; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp4
+; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.3
+; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp6
+; BB-SECTIONS-ASM-NEXT:	.quad	0
+; BB-SECTIONS-ASM-NEXT:	.quad	0
 ; BB-SECTIONS: DW_AT_low_pc     DW_FORM_addr
 ; BB-SECTIONS: DW_AT_ranges	DW_FORM_sec_offset
 

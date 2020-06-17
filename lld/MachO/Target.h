@@ -22,7 +22,7 @@ class DylibSymbol;
 class InputSection;
 struct Reloc;
 
-enum {
+enum : uint64_t {
   // We are currently only supporting 64-bit targets since macOS and iOS are
   // deprecating 32-bit apps.
   WordSize = 8,
@@ -39,7 +39,7 @@ public:
   virtual uint64_t
   getImplicitAddend(llvm::MemoryBufferRef, const llvm::MachO::section_64 &,
                     const llvm::MachO::relocation_info &) const = 0;
-  virtual void relocateOne(uint8_t *loc, uint8_t type, uint64_t val) const = 0;
+  virtual void relocateOne(uint8_t *loc, const Reloc &, uint64_t val) const = 0;
 
   // Write code for lazy binding. See the comments on StubsSection for more
   // details.

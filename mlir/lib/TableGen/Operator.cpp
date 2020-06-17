@@ -60,7 +60,7 @@ std::string tblgen::Operator::getOperationName() const {
 }
 
 std::string tblgen::Operator::getAdaptorName() const {
-  return std::string(llvm::formatv("{0}OperandAdaptor", getCppClassName()));
+  return std::string(llvm::formatv("{0}Adaptor", getCppClassName()));
 }
 
 StringRef tblgen::Operator::getDialectName() const { return dialect.getName(); }
@@ -315,7 +315,7 @@ void tblgen::Operator::populateTypeInferenceInfo(
         continue;
       }
 
-      if (auto *attr = getArg(*mi).dyn_cast<NamedAttribute *>()) {
+      if (getArg(*mi).is<NamedAttribute *>()) {
         // TODO: Handle attributes.
         continue;
       } else {

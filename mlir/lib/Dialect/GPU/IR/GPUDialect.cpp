@@ -675,13 +675,10 @@ static LogicalResult verifyAttributions(Operation *op,
 LogicalResult GPUFuncOp::verifyBody() {
   unsigned numFuncArguments = getNumArguments();
   unsigned numWorkgroupAttributions = getNumWorkgroupAttributions();
-  unsigned numPrivateAttributions = getNumPrivateAttributions();
   unsigned numBlockArguments = front().getNumArguments();
-  if (numBlockArguments <
-      numFuncArguments + numWorkgroupAttributions + numPrivateAttributions)
+  if (numBlockArguments < numFuncArguments + numWorkgroupAttributions)
     return emitOpError() << "expected at least "
-                         << numFuncArguments + numWorkgroupAttributions +
-                                numPrivateAttributions
+                         << numFuncArguments + numWorkgroupAttributions
                          << " arguments to body region";
 
   ArrayRef<Type> funcArgTypes = getType().getInputs();
@@ -782,7 +779,7 @@ static void print(OpAsmPrinter &p, GPUModuleOp op) {
                 /*printBlockTerminators=*/false);
 }
 
-// Namespace avoids ambiguous ReturnOpOperandAdaptor.
+// Namespace avoids ambiguous ReturnOpAdaptor.
 namespace mlir {
 namespace gpu {
 #define GET_OP_CLASSES

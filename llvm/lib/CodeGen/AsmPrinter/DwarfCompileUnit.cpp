@@ -156,7 +156,8 @@ DIE *DwarfCompileUnit::getOrCreateGlobalVariableDIE(
     DeclContext = GV->getScope();
     // Add name and type.
     addString(*VariableDIE, dwarf::DW_AT_name, GV->getDisplayName());
-    addType(*VariableDIE, GTy);
+    if (GTy)
+      addType(*VariableDIE, GTy);
 
     // Add scoping info.
     if (!GV->isLocalToUnit())
@@ -589,14 +590,11 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
     const auto *BeginMBB = R.first->getParent();
     const auto *EndMBB = R.second->getParent();
 
-    if (BeginMBB->sameSection(EndMBB)) {
-      // If begin and end share their section, there is just one continuous
-      // range.
-      List.push_back({BeginLabel, EndLabel});
-      continue;
-    }
-
     const auto *MBB = BeginMBB;
+    // Basic block sections allows basic block subsets to be placed in unique
+    // sections.  For each section, the begin and end label must be added to the
+    // list.  If there is more than one range, debug ranges must be used.
+    // Otherwise, High PC can be used.
     do {
       if (MBB->sameSection(EndMBB) || MBB->isEndSection()) {
         auto MBBSectionRange = Asm->MBBSectionRanges[MBB->getSectionID()];
@@ -605,8 +603,10 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
                                         : MBBSectionRange.BeginLabel,
              MBB->sameSection(EndMBB) ? EndLabel : MBBSectionRange.EndLabel});
       }
+      if (MBB->sameSection(EndMBB))
+        break;
       MBB = MBB->getNextNode();
-    } while (!MBB->sameSection(EndMBB));
+    } while (true);
   }
   attachRangesOrLowHighPC(Die, std::move(List));
 }

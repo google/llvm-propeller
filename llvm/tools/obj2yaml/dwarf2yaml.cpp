@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Error.h"
+#include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugArangeSet.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugRangeList.h"
@@ -68,7 +69,8 @@ Error dumpDebugARanges(DWARFContext &DCtx, DWARFYAML::Data &Y) {
     if (Error E = Set.extract(ArangesData, &Offset))
       return E;
     DWARFYAML::ARange Range;
-    Range.Length.setLength(Set.getHeader().Length);
+    Range.Format = Set.getHeader().Format;
+    Range.Length = Set.getHeader().Length;
     Range.Version = Set.getHeader().Version;
     Range.CuOffset = Set.getHeader().CuOffset;
     Range.AddrSize = Set.getHeader().AddrSize;
@@ -295,9 +297,17 @@ void dumpDebugLines(DWARFContext &DCtx, DWARFYAML::Data &Y) {
       DataExtractor LineData(DCtx.getDWARFObj().getLineSection().Data,
                              DCtx.isLittleEndian(), CU->getAddressByteSize());
       uint64_t Offset = *StmtOffset;
-      dumpInitialLength(LineData, Offset, DebugLines.Length);
-      uint64_t LineTableLength = DebugLines.Length.getLength();
-      uint64_t SizeOfPrologueLength = DebugLines.Length.isDWARF64() ? 8 : 4;
+      uint64_t LengthOrDWARF64Prefix = LineData.getU32(&Offset);
+      if (LengthOrDWARF64Prefix == dwarf::DW_LENGTH_DWARF64) {
+        DebugLines.Format = dwarf::DWARF64;
+        DebugLines.Length = LineData.getU64(&Offset);
+      } else {
+        DebugLines.Format = dwarf::DWARF32;
+        DebugLines.Length = LengthOrDWARF64Prefix;
+      }
+      uint64_t LineTableLength = DebugLines.Length;
+      uint64_t SizeOfPrologueLength =
+          DebugLines.Format == dwarf::DWARF64 ? 8 : 4;
       DebugLines.Version = LineData.getU16(&Offset);
       DebugLines.PrologueLength =
           LineData.getUnsigned(&Offset, SizeOfPrologueLength);
