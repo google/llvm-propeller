@@ -174,6 +174,8 @@ protected:
   /// Section containing metadata on function stack sizes.
   MCSection *StackSizesSection = nullptr;
 
+  MCSection *BBInfoSection = nullptr;
+
   // ELF specific sections.
   MCSection *DataRelROSection = nullptr;
   MCSection *MergeableConst4Section = nullptr;
@@ -337,6 +339,8 @@ public:
   MCSection *getRemarksSection() const { return RemarksSection; }
 
   MCSection *getStackSizesSection(const MCSection &TextSec) const;
+
+  MCSection *getBBInfoSection(const MCSection &TextSec) const;
 
   // ELF specific sections.
   MCSection *getDataRelROSection() const { return DataRelROSection; }

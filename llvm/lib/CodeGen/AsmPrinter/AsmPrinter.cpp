@@ -143,6 +143,11 @@ static const char *const CodeViewLineTablesGroupName = "linetables";
 static const char *const CodeViewLineTablesGroupDescription =
   "CodeView Line Tables";
 
+static cl::opt<bool> EmitBBInfoSection(
+      "bb-info-section",
+      cl::desc("Emit a section containing basic block metadata."),
+      cl::init(false));
+
 STATISTIC(EmittedInsts, "Number of machine instrs printed");
 
 char AsmPrinter::ID = 0;
@@ -1026,6 +1031,32 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
                              MCConstantExpr::create(FrameOffset, OutContext));
 }
 
+void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
+  if (!EmitBBInfoSection)
+    return;
+
+  MCSection *BBInfoSection = getObjFileLowering().getBBInfoSection(*getCurrentSection());
+  if (!BBInfoSection)
+    return;
+
+  const MCSymbol *FunctionSymbol = getFunctionBegin();
+
+  OutStreamer->PushSection();
+  OutStreamer->SwitchSection(BBInfoSection);
+
+  size_t PointerSize = getPointerSize();
+  emitAlignment(Align(PointerSize));
+  OutStreamer->emitSymbolValue(FunctionSymbol, PointerSize);
+  OutStreamer->emitULEB128IntValue(MF.getNumBlockIDs());
+  for (auto &MBB: MF) {
+    const MCSymbol *MBBBeginSymbol = &MBB == &MF.front() ? FunctionSymbol : MBB.getSymbol();
+    OutStreamer->emitULEB128IntValue(MBB.getBBInfoMetadata());
+    emitLabelDifferenceAsULEB128(MBBBeginSymbol, FunctionSymbol);
+    emitLabelDifferenceAsULEB128(MBB.getEndSymbol(), MBBBeginSymbol);
+  }
+  OutStreamer->PopSection();
+}
+
 void AsmPrinter::emitStackSizeSection(const MachineFunction &MF) {
   if (!MF.getTarget().Options.EmitStackSizeSection)
     return;
@@ -1194,9 +1225,11 @@ void AsmPrinter::emitFunctionBody() {
     // CurrentFnEnd).
     MCSymbol *CurrentBBEnd = nullptr;
     if ((MAI->hasDotTypeDotSizeDirective() && MF->hasBBLabels()) ||
+         EmitBBInfoSection ||
         (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
       CurrentBBEnd = OutContext.createTempSymbol();
       OutStreamer->emitLabel(CurrentBBEnd);
+      MBB.setEndSymbol(CurrentBBEnd);
     }
 
     // Helper for emitting the size directive associated with a basic block
@@ -1313,6 +1346,8 @@ void AsmPrinter::emitFunctionBody() {
                        HI.TimerGroupDescription, TimePassesIsEnabled);
     HI.Handler->endFunction(MF);
   }
+
+  emitBBInfoSection(*MF);
 
   // Emit section containing stack size metadata.
   emitStackSizeSection(*MF);
@@ -1812,7 +1847,8 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
       F.hasFnAttribute("function-instrument") ||
       F.hasFnAttribute("xray-instruction-threshold") ||
       needFuncLabelsForEHOrDebugInfo(MF, MMI) || NeedsLocalForSize ||
-      MF.getTarget().Options.EmitStackSizeSection) {
+      MF.getTarget().Options.EmitStackSizeSection ||
+      EmitBBInfoSection) {
     CurrentFnBegin = createTempSymbol("func_begin");
     if (NeedsLocalForSize)
       CurrentFnSymForSize = CurrentFnBegin;

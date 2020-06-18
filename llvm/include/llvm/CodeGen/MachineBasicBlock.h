@@ -173,6 +173,9 @@ private:
   /// With basic block sections, this stores the Section ID of the basic block.
   MBBSectionID SectionID{0};
 
+  // Symbol marking the end of the basic block. (assigned by AsmPrinter).
+  MCSymbol *EndSymbol = nullptr;
+
   // Indicate that this basic block begins a section.
   bool IsBeginSection = false;
 
@@ -482,6 +485,12 @@ public:
 
   /// Sets the section ID for this basic block.
   void setSectionID(MBBSectionID V) { SectionID = V; }
+
+  void setEndSymbol(MCSymbol * V) { EndSymbol = V;}
+
+  MCSymbol* getEndSymbol() const {return EndSymbol;}
+
+  unsigned getBBInfoMetadata();
 
   /// Returns true if this is the indirect dest of an INLINEASM_BR.
   bool isInlineAsmBrIndirectTarget(const MachineBasicBlock *Tgt) const {
