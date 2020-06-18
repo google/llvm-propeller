@@ -144,9 +144,9 @@ static const char *const CodeViewLineTablesGroupDescription =
   "CodeView Line Tables";
 
 static cl::opt<bool> EmitBBInfoSection(
-      "bb-info-section",
-      cl::desc("Emit a section containing basic block metadata."),
-      cl::init(false));
+    "bb-info-section",
+    cl::desc("Emit a section containing basic block metadata."),
+    cl::init(false));
 
 STATISTIC(EmittedInsts, "Number of machine instrs printed");
 
@@ -1035,7 +1035,8 @@ void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
   if (!EmitBBInfoSection)
     return;
 
-  MCSection *BBInfoSection = getObjFileLowering().getBBInfoSection(*getCurrentSection());
+  MCSection *BBInfoSection =
+      getObjFileLowering().getBBInfoSection(*getCurrentSection());
   if (!BBInfoSection)
     return;
 
@@ -1048,8 +1049,9 @@ void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
   emitAlignment(Align(PointerSize));
   OutStreamer->emitSymbolValue(FunctionSymbol, PointerSize);
   OutStreamer->emitULEB128IntValue(MF.getNumBlockIDs());
-  for (auto &MBB: MF) {
-    const MCSymbol *MBBBeginSymbol = &MBB == &MF.front() ? FunctionSymbol : MBB.getSymbol();
+  for (auto &MBB : MF) {
+    const MCSymbol *MBBBeginSymbol =
+        &MBB == &MF.front() ? FunctionSymbol : MBB.getSymbol();
     OutStreamer->emitULEB128IntValue(MBB.getBBInfoMetadata());
     emitLabelDifferenceAsULEB128(MBBBeginSymbol, FunctionSymbol);
     emitLabelDifferenceAsULEB128(MBB.getEndSymbol(), MBBBeginSymbol);
@@ -1225,7 +1227,7 @@ void AsmPrinter::emitFunctionBody() {
     // CurrentFnEnd).
     MCSymbol *CurrentBBEnd = nullptr;
     if ((MAI->hasDotTypeDotSizeDirective() && MF->hasBBLabels()) ||
-         EmitBBInfoSection ||
+        EmitBBInfoSection ||
         (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
       CurrentBBEnd = OutContext.createTempSymbol();
       OutStreamer->emitLabel(CurrentBBEnd);
@@ -1847,8 +1849,7 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
       F.hasFnAttribute("function-instrument") ||
       F.hasFnAttribute("xray-instruction-threshold") ||
       needFuncLabelsForEHOrDebugInfo(MF, MMI) || NeedsLocalForSize ||
-      MF.getTarget().Options.EmitStackSizeSection ||
-      EmitBBInfoSection) {
+      MF.getTarget().Options.EmitStackSizeSection || EmitBBInfoSection) {
     CurrentFnBegin = createTempSymbol("func_begin");
     if (NeedsLocalForSize)
       CurrentFnSymForSize = CurrentFnBegin;

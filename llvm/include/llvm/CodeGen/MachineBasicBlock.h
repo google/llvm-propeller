@@ -486,9 +486,9 @@ public:
   /// Sets the section ID for this basic block.
   void setSectionID(MBBSectionID V) { SectionID = V; }
 
-  void setEndSymbol(MCSymbol * V) { EndSymbol = V;}
+  void setEndSymbol(MCSymbol *V) { EndSymbol = V; }
 
-  MCSymbol* getEndSymbol() const {return EndSymbol;}
+  MCSymbol *getEndSymbol() const { return EndSymbol; }
 
   unsigned getBBInfoMetadata();
 

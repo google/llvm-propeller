@@ -57,7 +57,8 @@ MachineBasicBlock::~MachineBasicBlock() {
 
 unsigned MachineBasicBlock::getBBInfoMetadata() {
   const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
-  return ((unsigned) isReturnBlock()) | ((!empty() && TII->isTailCall(back())) << 1) | (canFallThrough() << 2);
+  return ((unsigned)isReturnBlock()) |
+         ((!empty() && TII->isTailCall(back())) << 1) | (canFallThrough() << 2);
 }
 
 /// Return the MCSymbol for this basic block.

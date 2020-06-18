@@ -2121,7 +2121,8 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
     if (&MBB == &MF->front() || MBB.isBeginSection())
       TheCU.addRange({Asm->MBBSectionRanges[MBB.getSectionID()].BeginLabel,
                       Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
-    if (!MF->hasBBSections()) break;
+    if (!MF->hasBBSections())
+      break;
   }
 
   // Under -gmlt, skip building the subprogram if there are no inlined

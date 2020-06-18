@@ -405,7 +405,8 @@ DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
     if (&MBB == &Asm->MF->front() && MBB.isBeginSection())
       BB_List.push_back({Asm->MBBSectionRanges[MBB.getSectionID()].BeginLabel,
                          Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
-    if (!Asm->MF->hasBBSections()) break;
+    if (!Asm->MF->hasBBSections())
+      break;
   }
   attachRangesOrLowHighPC(*SPDie, BB_List);
 
