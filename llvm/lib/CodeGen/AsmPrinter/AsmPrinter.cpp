@@ -1043,10 +1043,11 @@ void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
 
   OutStreamer->PushSection();
   OutStreamer->SwitchSection(BBInfoSection);
+  // Uncomment For debug purposes
+  //MCSymbol *BBInfoSymbol = OutContext.getOrCreateSymbol(MF.getName() + Twine(".bb_info"));
+  //OutStreamer->emitLabel(BBInfoSymbol);
 
-  size_t PointerSize = getPointerSize();
-  emitAlignment(Align(PointerSize));
-  OutStreamer->emitSymbolValue(FunctionSymbol, PointerSize);
+  OutStreamer->emitSymbolValue(FunctionSymbol, getPointerSize());
   OutStreamer->emitULEB128IntValue(MF.getNumBlockIDs());
   for (auto &MBB: MF) {
     const MCSymbol *MBBBeginSymbol = &MBB == &MF.front() ? FunctionSymbol : MBB.getSymbol();
