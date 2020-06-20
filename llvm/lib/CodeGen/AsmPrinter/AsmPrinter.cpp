@@ -3114,6 +3114,7 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
 
   if (MBB.pred_empty() ||
       (!MF->hasBBLabels() && isBlockOnlyReachableByFallthrough(&MBB) &&
+       !EmitBBInfoSection &&
        !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
     if (isVerbose()) {
       // NOTE: Want this comment at start of line, don't emit with AddComment.
