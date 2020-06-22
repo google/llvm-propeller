@@ -1044,10 +1044,11 @@ void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
 
   OutStreamer->PushSection();
   OutStreamer->SwitchSection(BBInfoSection);
+  // Uncomment For debug purposes
+  //MCSymbol *BBInfoSymbol = OutContext.getOrCreateSymbol(MF.getName() + Twine(".bb_info"));
+  //OutStreamer->emitLabel(BBInfoSymbol);
 
-  size_t PointerSize = getPointerSize();
-  emitAlignment(Align(PointerSize));
-  OutStreamer->emitSymbolValue(FunctionSymbol, PointerSize);
+  OutStreamer->emitSymbolValue(FunctionSymbol, getPointerSize());
   OutStreamer->emitULEB128IntValue(MF.getNumBlockIDs());
   for (auto &MBB : MF) {
     const MCSymbol *MBBBeginSymbol =
@@ -3114,6 +3115,7 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
 
   if (MBB.pred_empty() ||
       (!MF->hasBBLabels() && isBlockOnlyReachableByFallthrough(&MBB) &&
+       !EmitBBInfoSection &&
        !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
     if (isVerbose()) {
       // NOTE: Want this comment at start of line, don't emit with AddComment.
