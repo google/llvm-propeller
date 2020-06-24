@@ -1665,7 +1665,7 @@ bool DwarfDebug::buildLocationList(SmallVectorImpl<DebugLocEntry> &DebugLoc,
     const MCSymbol *EndLabel;
     if (std::next(EI) == Entries.end()) {
       const MachineBasicBlock &EndMBB = Asm->MF->back();
-      EndLabel = Asm->MBBSectionRanges[EndMBB.getSectionID()].EndLabel;
+      EndLabel = Asm->MBBSectionRanges[EndMBB.getSectionIDNum()].EndLabel;
       if (EI->isClobber())
         EndMI = EI->getInstr();
     }
@@ -2117,13 +2117,8 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
 
   // Add the range of this function to the list of ranges for the CU.
   // With basic block sections, add ranges for all basic block sections.
-  for (auto &MBB : *MF) {
-    if (&MBB == &MF->front() || MBB.isBeginSection())
-      TheCU.addRange({Asm->MBBSectionRanges[MBB.getSectionID()].BeginLabel,
-                      Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
-    if (!MF->hasBBSections())
-      break;
-  }
+  for (const auto &R : Asm->MBBSectionRanges)
+    TheCU.addRange({R.second.BeginLabel, R.second.EndLabel});
 
   // Under -gmlt, skip building the subprogram if there are no inlined
   // subroutines inside it. But with -fdebug-info-for-profiling, the subprogram

@@ -14,11 +14,11 @@
 ; NO-SECTIONS: DW_AT_low_pc [DW_FORM_addr] (0x0000000000000000 ".text")
 ; NO-SECTIONS: DW_AT_high_pc [DW_FORM_data4] ({{.*}})
 ; BB-SECTIONS: DW_AT_low_pc [DW_FORM_addr] (0x0000000000000000) 
-; BB-SECTIONS-NEXT: DW_AT_ranges [DW_FORM_sec_offset] (0x00000000
-; BB-SECTIONS-NEXT: [{{.*}}) ".text"
+; BB-SECTIONS-NEXT: DW_AT_ranges [DW_FORM_sec_offset]
 ; BB-SECTIONS-NEXT: [{{.*}}) ".text._Z3fooi.1"
 ; BB-SECTIONS-NEXT: [{{.*}}) ".text._Z3fooi.2"
 ; BB-SECTIONS-NEXT: [{{.*}}) ".text._Z3fooi.3"
+; BB-SECTIONS-NEXT: [{{.*}}) ".text"
 ; BB-SECTIONS-ASM: _Z3fooi:
 ; BB-SECTIONS-ASM: .Ltmp0:
 ; BB-SECTIONS-ASM-NEXT: .loc 1 2 9 prologue_end
@@ -37,14 +37,14 @@
 ; BB-SECTIONS-ASM-NEXT: .size	_Z3fooi.3, .Ltmp6-_Z3fooi.3
 ; BB-SECTIONS-ASM: .Lfunc_end0:
 ; BB-SECTIONS-ASM: .Ldebug_ranges0:
-; BB-SECTIONS-ASM-NEXT:	.quad	.Lfunc_begin0
-; BB-SECTIONS-ASM-NEXT:	.quad	.Lfunc_end0
 ; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.1
 ; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp2
 ; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.2
 ; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp4
 ; BB-SECTIONS-ASM-NEXT:	.quad	_Z3fooi.3
 ; BB-SECTIONS-ASM-NEXT:	.quad	.Ltmp6
+; BB-SECTIONS-ASM-NEXT:	.quad	.Lfunc_begin0
+; BB-SECTIONS-ASM-NEXT:	.quad	.Lfunc_end0
 ; BB-SECTIONS-ASM-NEXT:	.quad	0
 ; BB-SECTIONS-ASM-NEXT:	.quad	0
 

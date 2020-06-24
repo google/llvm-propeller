@@ -366,7 +366,7 @@ void EHStreamer::computeCallSiteTable(
 
     if (&MBB == &Asm->MF->back() || MBB.isEndSection()) {
       CurCSRange->FragmentEndLabel =
-          Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel;
+          Asm->MBBSectionRanges[MBB.getSectionIDNum()].EndLabel;
 
       // If some instruction between the previous try-range and the end of the
       // function may throw, create a call-site entry with no landing pad for
