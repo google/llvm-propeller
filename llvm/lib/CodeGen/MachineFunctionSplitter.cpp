@@ -82,7 +82,11 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
 
   MF.RenumberBlocks();
   for (auto &MBB : MF) {
-    if (!MBB.pred_empty() && isColdBlock(MBB, PSI, MBFI)) {
+    // We do not split out the entry block or eh pads even if they are cold.
+    if(MBB.pred_empty() || MBB.isEHPad()) {
+      continue;
+    }
+    if (isColdBlock(MBB, PSI, MBFI)) {
       MBB.setSectionID(TreatUnknownAsCold ? MBBSectionID::ColdSectionID
                                           : MBBSectionID::UnknownSectionID);
     }
