@@ -236,4 +236,6 @@ declare ALL_FILES=(
 	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
 # This test was not committed as part of https://reviews.llvm.org/rG05192e585ce175b55f2a26b83b4ed7882785c8e6 
         /dev/null llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
+	other            llvm/include/llvm/MC/MCObjectFileInfo.h
+	other            llvm/lib/MC/MCObjectFileInfo.cpp
     )

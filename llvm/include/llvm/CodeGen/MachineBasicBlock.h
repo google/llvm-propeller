@@ -71,16 +71,6 @@ struct MBBSectionID {
 
   bool operator!=(const MBBSectionID &Other) const { return !(*this == Other); }
 
-  // This returns a unique index for the section in the range [0, max(Number)+3]
-  struct ToIndexFunctor {
-    using argument_type = MBBSectionID;
-    unsigned operator()(MBBSectionID SectionID) const {
-      return ((unsigned)MBBSectionID::SectionType::Cold) -
-             ((unsigned)SectionID.Type) + SectionID.Number;
-    }
-    static unsigned indexSize(unsigned NumBlockIDs) { return NumBlockIDs + 3; }
-  };
-
 private:
   // This is only used to construct the special cold and exception sections.
   MBBSectionID(SectionType T) : Type(T), Number(0) {}
@@ -483,12 +473,18 @@ public:
   /// Returns the section ID of this basic block.
   MBBSectionID getSectionID() const { return SectionID; }
 
+  /// Returns the unique section ID number of this basic block.
+  unsigned getSectionIDNum() const {
+    return ((unsigned)MBBSectionID::SectionType::Cold) -
+           ((unsigned)SectionID.Type) + SectionID.Number;
+  }
+
   /// Sets the section ID for this basic block.
   void setSectionID(MBBSectionID V) { SectionID = V; }
 
-  void setEndSymbol(MCSymbol * V) { EndSymbol = V;}
+  void setEndSymbol(MCSymbol *V) { EndSymbol = V; }
 
-  MCSymbol* getEndSymbol() const {return EndSymbol;}
+  MCSymbol *getEndSymbol() const { return EndSymbol; }
 
   unsigned getBBInfoMetadata();
 

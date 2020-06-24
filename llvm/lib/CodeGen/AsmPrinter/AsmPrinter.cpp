@@ -144,9 +144,9 @@ static const char *const CodeViewLineTablesGroupDescription =
   "CodeView Line Tables";
 
 static cl::opt<bool> EmitBBInfoSection(
-      "bb-info-section",
-      cl::desc("Emit a section containing basic block metadata."),
-      cl::init(false));
+    "bb-info-section",
+    cl::desc("Emit a section containing basic block metadata."),
+    cl::init(false));
 
 STATISTIC(EmittedInsts, "Number of machine instrs printed");
 
@@ -1035,7 +1035,8 @@ void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
   if (!EmitBBInfoSection)
     return;
 
-  MCSection *BBInfoSection = getObjFileLowering().getBBInfoSection(*getCurrentSection());
+  MCSection *BBInfoSection =
+      getObjFileLowering().getBBInfoSection(*getCurrentSection());
   if (!BBInfoSection)
     return;
 
@@ -1043,13 +1044,15 @@ void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
 
   OutStreamer->PushSection();
   OutStreamer->SwitchSection(BBInfoSection);
+  // Uncomment For debug purposes
+  // MCSymbol *BBInfoSymbol = OutContext.getOrCreateSymbol(MF.getName() +
+  // Twine(".bb_info")); OutStreamer->emitLabel(BBInfoSymbol);
 
-  size_t PointerSize = getPointerSize();
-  emitAlignment(Align(PointerSize));
-  OutStreamer->emitSymbolValue(FunctionSymbol, PointerSize);
+  OutStreamer->emitSymbolValue(FunctionSymbol, getPointerSize());
   OutStreamer->emitULEB128IntValue(MF.getNumBlockIDs());
-  for (auto &MBB: MF) {
-    const MCSymbol *MBBBeginSymbol = &MBB == &MF.front() ? FunctionSymbol : MBB.getSymbol();
+  for (auto &MBB : MF) {
+    const MCSymbol *MBBBeginSymbol =
+        &MBB == &MF.front() ? FunctionSymbol : MBB.getSymbol();
     OutStreamer->emitULEB128IntValue(MBB.getBBInfoMetadata());
     emitLabelDifferenceAsULEB128(MBBBeginSymbol, FunctionSymbol);
     emitLabelDifferenceAsULEB128(MBB.getEndSymbol(), MBBBeginSymbol);
@@ -1225,7 +1228,7 @@ void AsmPrinter::emitFunctionBody() {
     // CurrentFnEnd).
     MCSymbol *CurrentBBEnd = nullptr;
     if ((MAI->hasDotTypeDotSizeDirective() && MF->hasBBLabels()) ||
-         EmitBBInfoSection ||
+        EmitBBInfoSection ||
         (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
       CurrentBBEnd = OutContext.createTempSymbol();
       OutStreamer->emitLabel(CurrentBBEnd);
@@ -1253,7 +1256,7 @@ void AsmPrinter::emitFunctionBody() {
       if (!MBB.sameSection(&MF->front())) {
         if (MAI->hasDotTypeDotSizeDirective())
           emitELFSizeDirective(CurrentSectionBeginSym);
-        MBBSectionRanges[MBB.getSectionID()] =
+        MBBSectionRanges[MBB.getSectionIDNum()] =
             MBBSectionRange{CurrentSectionBeginSym, CurrentBBEnd};
       }
       // If this is the end of the section, nullify the exception symbol to
@@ -1334,7 +1337,7 @@ void AsmPrinter::emitFunctionBody() {
     HI.Handler->markFunctionEnd();
   }
 
-  MBBSectionRanges[MF->front().getSectionID()] =
+  MBBSectionRanges[MF->front().getSectionIDNum()] =
       MBBSectionRange{CurrentFnBegin, CurrentFnEnd};
 
   // Print out jump tables referenced by the function.
@@ -1838,8 +1841,6 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   CurrentFnBegin = nullptr;
   CurrentSectionBeginSym = nullptr;
   MBBSectionRanges.clear();
-  MBBSectionRanges.resize(
-      MBBSectionID::ToIndexFunctor::indexSize(MF.getNumBlockIDs()));
   CurExceptionSym = nullptr;
   ExceptionSymbols.clear();
   bool NeedsLocalForSize = MAI->needsLocalForSize();
@@ -1847,8 +1848,7 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
       F.hasFnAttribute("function-instrument") ||
       F.hasFnAttribute("xray-instruction-threshold") ||
       needFuncLabelsForEHOrDebugInfo(MF, MMI) || NeedsLocalForSize ||
-      MF.getTarget().Options.EmitStackSizeSection ||
-      EmitBBInfoSection) {
+      MF.getTarget().Options.EmitStackSizeSection || EmitBBInfoSection) {
     CurrentFnBegin = createTempSymbol("func_begin");
     if (NeedsLocalForSize)
       CurrentFnSymForSize = CurrentFnBegin;
@@ -3113,7 +3113,8 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
 
   if (MBB.pred_empty() ||
       (!MF->hasBBLabels() && isBlockOnlyReachableByFallthrough(&MBB) &&
-       !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
+       !EmitBBInfoSection && !MBB.isEHFuncletEntry() &&
+       !MBB.hasLabelMustBeEmitted())) {
     if (isVerbose()) {
       // NOTE: Want this comment at start of line, don't emit with AddComment.
       OutStreamer->emitRawComment(" %bb." + Twine(MBB.getNumber()) + ":",

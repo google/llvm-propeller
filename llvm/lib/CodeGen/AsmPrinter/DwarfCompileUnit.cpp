@@ -396,23 +396,14 @@ void DwarfCompileUnit::attachLowHighPC(DIE &D, const MCSymbol *Begin,
 DIE &DwarfCompileUnit::updateSubprogramScopeDIE(const DISubprogram *SP) {
   DIE *SPDie = getOrCreateSubprogramDIE(SP, includeMinimalInlineScopes());
 
-  if (!Asm->MF->hasBBSections())
-    attachLowHighPC(*SPDie, Asm->getFunctionBegin(), Asm->getFunctionEnd());
-  else {
-    SmallVector<RangeSpan, 2> BB_List;
-    BB_List.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd()});
-    // If basic block sections are on, the [getFunctionBegin(),
-    // getFunctionEnd()] range will include all BBs which are in the same
-    // section as the entry block. Ranges for the other BBs have to be emitted
-    // separately.
-    for (auto &MBB : *Asm->MF) {
-      if (&MBB != &Asm->MF->front() && MBB.isBeginSection())
-        BB_List.push_back({MBB.getSymbol(),
-                           Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
-    }
+  SmallVector<RangeSpan, 2> BB_List;
+  // If basic block sections are on, ranges for each basic block section has
+  // to be emitted separately.
+  for (const auto &R : Asm->MBBSectionRanges)
+    BB_List.push_back({R.second.BeginLabel, R.second.EndLabel});
 
-    attachRangesOrLowHighPC(*SPDie, BB_List);
-  }
+  attachRangesOrLowHighPC(*SPDie, BB_List);
+
   if (DD->useAppleExtensionAttributes() &&
       !DD->getCurrentFunction()->getTarget().Options.DisableFramePointerElim(
           *DD->getCurrentFunction()))
@@ -592,12 +583,14 @@ void DwarfCompileUnit::attachRangesOrLowHighPC(
 
     const auto *MBB = BeginMBB;
     // Basic block sections allows basic block subsets to be placed in unique
-    // sections.  For each section, the begin and end label must be added to the
-    // list.  If there is more than one range, debug ranges must be used.
-    // Otherwise, High PC can be used.
+    // sections. For each section, the begin and end label must be added to the
+    // list. If there is more than one range, debug ranges must be used.
+    // Otherwise, low/high PC can be used.
+    // FIXME: Debug Info Emission depends on block order and this assumes that
+    // the order of blocks will be frozen beyond this point.
     do {
       if (MBB->sameSection(EndMBB) || MBB->isEndSection()) {
-        auto MBBSectionRange = Asm->MBBSectionRanges[MBB->getSectionID()];
+        auto MBBSectionRange = Asm->MBBSectionRanges[MBB->getSectionIDNum()];
         List.push_back(
             {MBB->sameSection(BeginMBB) ? BeginLabel
                                         : MBBSectionRange.BeginLabel,

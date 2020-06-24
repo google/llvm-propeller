@@ -952,8 +952,7 @@ MCObjectFileInfo::getStackSizesSection(const MCSection &TextSec) const {
                             cast<MCSymbolELF>(TextSec.getBeginSymbol()));
 }
 
-MCSection *
-MCObjectFileInfo::getBBInfoSection(const MCSection &TextSec) const {
+MCSection *MCObjectFileInfo::getBBInfoSection(const MCSection &TextSec) const {
   if (Env != IsELF)
     return BBInfoSection;
 
@@ -965,7 +964,7 @@ MCObjectFileInfo::getBBInfoSection(const MCSection &TextSec) const {
     Flags |= ELF::SHF_GROUP;
   }
 
-  return Ctx->getELFSection(".bb_info", ELF::SHT_PROGBITS, Flags, 0,
-                            GroupName, MCSection::NonUniqueID,
+  return Ctx->getELFSection(".bb_info", ELF::SHT_PROGBITS, Flags, 0, GroupName,
+                            MCSection::NonUniqueID,
                             cast<MCSymbolELF>(TextSec.getBeginSymbol()));
 }
