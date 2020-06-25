@@ -1586,7 +1586,7 @@ def AnyRegion : Region<CPred<"true">, "any region">;
 
 // A region with the given number of blocks.
 class SizedRegion<int numBlocks> : Region<
-  CPred<"$_self.getBlocks().size() == " # numBlocks>,
+  CPred<"llvm::hasNItems($_self, " # numBlocks # ")">,
   "region with " # numBlocks # " blocks">;
 
 // A variadic region constraint. It expands to zero or more of the base region.
@@ -1683,6 +1683,9 @@ class SingleBlockImplicitTerminator<string op>
 // Op's parent operation is the provided one.
 class HasParent<string op>
     : ParamNativeOpTrait<"HasParent", op>;
+
+class ParentOneOf<list<string> ops>
+    : ParamNativeOpTrait<"HasParent", StrJoin<ops>.result>;
 
 // Op result type is derived from the first attribute. If the attribute is an
 // subclass of `TypeAttrBase`, its value is used, otherwise, the type of the
@@ -2070,7 +2073,7 @@ class ElementTypeIs<string name, Type type> : PredOpTrait<
 // Type Constraint operand `i`'s Element type is Same As operand `j`'s Element
 // type.
 class TCopVTEtIsSameAs<int i, int j> : And<[
-    CPred<"$_op.getNumOperands() > std::max(" # i # "u," # j # "u)">,
+    CPred<"$_op.getNumOperands() > " # !if(!gt(i,j),i,j)>,
     SubstLeaves<"$_self", "$_op.getOperand(" # i # ").getType()",
       IsShapedTypePred>,
     SubstLeaves<"$_self", "$_op.getOperand(" # j # ").getType()",

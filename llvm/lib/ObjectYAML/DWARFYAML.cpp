@@ -32,14 +32,22 @@ SetVector<StringRef> DWARFYAML::Data::getUsedSectionNames() const {
     SecNames.insert("debug_ranges");
   if (!DebugLines.empty())
     SecNames.insert("debug_line");
+  if (!DebugAddr.empty())
+    SecNames.insert("debug_addr");
+  if (!AbbrevDecls.empty())
+    SecNames.insert("debug_abbrev");
+  if (!CompileUnits.empty())
+    SecNames.insert("debug_info");
+  if (PubNames)
+    SecNames.insert("debug_pubnames");
+  if (PubTypes)
+    SecNames.insert("debug_pubtypes");
   return SecNames;
 }
 
 namespace yaml {
 
 void MappingTraits<DWARFYAML::Data>::mapping(IO &IO, DWARFYAML::Data &DWARF) {
-  auto oldContext = IO.getContext();
-  IO.setContext(&DWARF);
   IO.mapOptional("debug_str", DWARF.DebugStrings);
   IO.mapOptional("debug_abbrev", DWARF.AbbrevDecls);
   if (!DWARF.ARanges.empty() || !IO.outputting())
@@ -52,12 +60,12 @@ void MappingTraits<DWARFYAML::Data>::mapping(IO &IO, DWARFYAML::Data &DWARF) {
   IO.mapOptional("debug_gnu_pubtypes", DWARF.GNUPubTypes);
   IO.mapOptional("debug_info", DWARF.CompileUnits);
   IO.mapOptional("debug_line", DWARF.DebugLines);
-  IO.setContext(&oldContext);
+  IO.mapOptional("debug_addr", DWARF.DebugAddr);
 }
 
 void MappingTraits<DWARFYAML::Abbrev>::mapping(IO &IO,
                                                DWARFYAML::Abbrev &Abbrev) {
-  IO.mapRequired("Code", Abbrev.Code);
+  IO.mapOptional("Code", Abbrev.Code);
   IO.mapRequired("Tag", Abbrev.Tag);
   IO.mapRequired("Children", Abbrev.Children);
   IO.mapRequired("Attributes", Abbrev.Attributes);
@@ -190,6 +198,22 @@ void MappingTraits<DWARFYAML::LineTable>::mapping(
   IO.mapRequired("IncludeDirs", LineTable.IncludeDirs);
   IO.mapRequired("Files", LineTable.Files);
   IO.mapRequired("Opcodes", LineTable.Opcodes);
+}
+
+void MappingTraits<DWARFYAML::SegAddrPair>::mapping(
+    IO &IO, DWARFYAML::SegAddrPair &SegAddrPair) {
+  IO.mapOptional("Segment", SegAddrPair.Segment, 0);
+  IO.mapOptional("Address", SegAddrPair.Address, 0);
+}
+
+void MappingTraits<DWARFYAML::AddrTableEntry>::mapping(
+    IO &IO, DWARFYAML::AddrTableEntry &AddrTable) {
+  IO.mapOptional("Format", AddrTable.Format, dwarf::DWARF32);
+  IO.mapOptional("Length", AddrTable.Length);
+  IO.mapRequired("Version", AddrTable.Version);
+  IO.mapOptional("AddressSize", AddrTable.AddrSize);
+  IO.mapOptional("SegmentSelectorSize", AddrTable.SegSelectorSize, 0);
+  IO.mapOptional("Entries", AddrTable.SegAddrPairs);
 }
 
 void MappingTraits<DWARFYAML::InitialLength>::mapping(

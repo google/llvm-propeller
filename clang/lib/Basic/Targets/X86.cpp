@@ -1518,14 +1518,14 @@ bool X86TargetInfo::hasFeature(StringRef Feature) const {
 // X86TargetInfo::hasFeature for a somewhat comprehensive list).
 bool X86TargetInfo::validateCpuSupports(StringRef FeatureStr) const {
   return llvm::StringSwitch<bool>(FeatureStr)
-#define X86_FEATURE_COMPAT(VAL, ENUM, STR) .Case(STR, true)
+#define X86_FEATURE_COMPAT(ENUM, STR) .Case(STR, true)
 #include "llvm/Support/X86TargetParser.def"
       .Default(false);
 }
 
 static llvm::X86::ProcessorFeatures getFeature(StringRef Name) {
   return llvm::StringSwitch<llvm::X86::ProcessorFeatures>(Name)
-#define X86_FEATURE_COMPAT(VAL, ENUM, STR) .Case(STR, llvm::X86::ENUM)
+#define X86_FEATURE_COMPAT(ENUM, STR) .Case(STR, llvm::X86::ENUM)
 #include "llvm/Support/X86TargetParser.def"
       ;
   // Note, this function should only be used after ensuring the value is
@@ -1553,15 +1553,8 @@ unsigned X86TargetInfo::multiVersionSortPriority(StringRef Name) const {
   using namespace llvm::X86;
   CPUKind Kind = parseArchX86(Name);
   if (Kind != CK_None) {
-    switch (Kind) {
-    default:
-      llvm_unreachable(
-          "CPU Type without a key feature used in 'target' attribute");
-#define PROC_WITH_FEAT(ENUM, STR, IS64, KEY_FEAT)                              \
-  case CK_##ENUM:                                                              \
-    return (getFeaturePriority(llvm::X86::KEY_FEAT) << 1) + 1;
-#include "llvm/Support/X86TargetParser.def"
-    }
+    ProcessorFeatures KeyFeature = getKeyFeature(Kind);
+    return (getFeaturePriority(KeyFeature) << 1) + 1;
   }
 
   // Now we know we have a feature, so get its priority and shift it a few so

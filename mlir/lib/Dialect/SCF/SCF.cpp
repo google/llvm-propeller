@@ -19,9 +19,44 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 using namespace mlir;
 using namespace mlir::scf;
+
+//===----------------------------------------------------------------------===//
+// SCFDialect Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct SCFInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // We don't have any special restrictions on what can be inlined into
+  // destination regions (e.g. while/conditional bodies). Always allow it.
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    return true;
+  }
+  // Operations in scf dialect are always legal to inline since they are
+  // pure.
+  bool isLegalToInline(Operation *, Region *,
+                       BlockAndValueMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {
+    auto retValOp = dyn_cast<YieldOp>(op);
+    if (!retValOp)
+      return;
+
+    for (auto retValue : llvm::zip(valuesToRepl, retValOp.getOperands())) {
+      std::get<0>(retValue).replaceAllUsesWith(std::get<1>(retValue));
+    }
+  }
+};
+} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // SCFDialect
@@ -33,6 +68,7 @@ SCFDialect::SCFDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/SCF/SCFOps.cpp.inc"
       >();
+  addInterfaces<SCFInlinerInterface>();
 }
 
 /// Default callback for IfOp builders. Inserts a yield without arguments.
@@ -495,25 +531,56 @@ void IfOp::getSuccessorRegions(Optional<unsigned> index,
 // ParallelOp
 //===----------------------------------------------------------------------===//
 
-void ParallelOp::build(OpBuilder &builder, OperationState &result,
-                       ValueRange lbs, ValueRange ubs, ValueRange steps,
-                       ValueRange initVals) {
-  result.addOperands(lbs);
-  result.addOperands(ubs);
+void ParallelOp::build(
+    OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
+    ValueRange upperBounds, ValueRange steps, ValueRange initVals,
+    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
+        bodyBuilderFn) {
+  result.addOperands(lowerBounds);
+  result.addOperands(upperBounds);
   result.addOperands(steps);
   result.addOperands(initVals);
   result.addAttribute(
       ParallelOp::getOperandSegmentSizeAttr(),
-      builder.getI32VectorAttr({static_cast<int32_t>(lbs.size()),
-                                static_cast<int32_t>(ubs.size()),
+      builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
+                                static_cast<int32_t>(upperBounds.size()),
                                 static_cast<int32_t>(steps.size()),
                                 static_cast<int32_t>(initVals.size())}));
+  result.addTypes(initVals.getTypes());
+
+  OpBuilder::InsertionGuard guard(builder);
+  unsigned numIVs = steps.size();
+  SmallVector<Type, 8> argTypes(numIVs, builder.getIndexType());
   Region *bodyRegion = result.addRegion();
+  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes);
+
+  if (bodyBuilderFn) {
+    builder.setInsertionPointToStart(bodyBlock);
+    bodyBuilderFn(builder, result.location,
+                  bodyBlock->getArguments().take_front(numIVs),
+                  bodyBlock->getArguments().drop_front(numIVs));
+  }
   ParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
-  for (size_t i = 0, e = steps.size(); i < e; ++i)
-    bodyRegion->front().addArgument(builder.getIndexType());
-  for (Value init : initVals)
-    result.addTypes(init.getType());
+}
+
+void ParallelOp::build(
+    OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
+    ValueRange upperBounds, ValueRange steps,
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
+  // Only pass a non-null wrapper if bodyBuilderFn is non-null itself. Make sure
+  // we don't capture a reference to a temporary by constructing the lambda at
+  // function level.
+  auto wrappedBuilderFn = [&bodyBuilderFn](OpBuilder &nestedBuilder,
+                                           Location nestedLoc, ValueRange ivs,
+                                           ValueRange) {
+    bodyBuilderFn(nestedBuilder, nestedLoc, ivs);
+  };
+  function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)> wrapper;
+  if (bodyBuilderFn)
+    wrapper = wrappedBuilderFn;
+
+  build(builder, result, lowerBounds, upperBounds, steps, ValueRange(),
+        wrapper);
 }
 
 static LogicalResult verify(ParallelOp op) {
@@ -679,15 +746,18 @@ ParallelOp mlir::scf::getParallelForInductionVarOwner(Value val) {
 // ReduceOp
 //===----------------------------------------------------------------------===//
 
-void ReduceOp::build(OpBuilder &builder, OperationState &result,
-                     Value operand) {
+void ReduceOp::build(
+    OpBuilder &builder, OperationState &result, Value operand,
+    function_ref<void(OpBuilder &, Location, Value, Value)> bodyBuilderFn) {
   auto type = operand.getType();
   result.addOperands(operand);
-  Region *bodyRegion = result.addRegion();
 
-  Block *b = new Block();
-  b->addArguments(ArrayRef<Type>{type, type});
-  bodyRegion->getBlocks().insert(bodyRegion->end(), b);
+  OpBuilder::InsertionGuard guard(builder);
+  Region *bodyRegion = result.addRegion();
+  Block *body = builder.createBlock(bodyRegion, {}, ArrayRef<Type>{type, type});
+  if (bodyBuilderFn)
+    bodyBuilderFn(builder, result.location, body->getArgument(0),
+                  body->getArgument(1));
 }
 
 static LogicalResult verify(ReduceOp op) {

@@ -225,42 +225,45 @@ names from both the *Processor* and *Alternative Processor* can be used.
                                                                                  names.
      ``gfx906``                  ``amdgcn``   dGPU  - xnack                   - Radeon Instinct MI50
                                                       [off]                   - Radeon Instinct MI60
+                                                                              - Radeon VII
+                                                                              - Radeon Pro VII
      ``gfx908``                  ``amdgcn``   dGPU  - xnack                   *TBA*
                                                       [off]
                                                       sram-ecc
                                                       [on]
-     ``gfx909``                  ``amdgcn``   APU   - xnack                   *TBA* (Raven Ridge 2)
+                                                                              .. TODO::
+                                                                                 Add product
+                                                                                 names.
+     ``gfx909``                  ``amdgcn``   APU   - xnack                   *TBA*
                                                       [on]
                                                                               .. TODO::
                                                                                  Add product
                                                                                  names.
      **GCN GFX10** [AMD-GCN-GFX10]_
      -----------------------------------------------------------------------------------------------
-     ``gfx1010``                 ``amdgcn``   dGPU  - xnack                   *TBA*
+     ``gfx1010``                 ``amdgcn``   dGPU  - xnack                   - Radeon RX 5700
+                                                      [off]                   - Radeon RX 5700 XT
+                                                    - wavefrontsize64         - Radeon Pro 5600 XT
+                                                      [off]
+                                                    - cumode
+                                                      [off]
+     ``gfx1011``                 ``amdgcn``   dGPU  - xnack                   - Radeon Pro 5600M
                                                       [off]
                                                     - wavefrontsize64
                                                       [off]
                                                     - cumode
                                                       [off]
-                                                                              .. TODO::
-                                                                                 Add product
-                                                                                 names.
-     ``gfx1011``                 ``amdgcn``   dGPU  - xnack                   *TBA*
-                                                      [off]
+     ``gfx1012``                 ``amdgcn``   dGPU  - xnack                   - Radeon RX 5500
+                                                      [off]                   - Radeon RX 5500 XT
                                                     - wavefrontsize64
                                                       [off]
                                                     - cumode
                                                       [off]
-                                                                              .. TODO::
-                                                                                 Add product
-                                                                                 names.
-     ``gfx1012``                 ``amdgcn``   dGPU  - xnack                   *TBA*
-                                                      [off]
-                                                    - wavefrontsize64
+     ``gfx1030``                 ``amdgcn``   dGPU  - wavefrontsize64         *TBA*
                                                       [off]
                                                     - cumode
                                                       [off]
-                                                                              .. TODO::
+                                                                              .. TODO
                                                                                  Add product
                                                                                  names.
      =========== =============== ============ ===== ================= ======= ======================
@@ -356,8 +359,8 @@ supported for the ``amdgcn`` target.
      Region                            2               N/A         GDS              32      *not implemented for AMDHSA*
      Local                             3               group       LDS              32      0xFFFFFFFF
      Constant                          4               constant    *same as global* 64      0x0000000000000000
-     Private                           5               private     scratch          32      0x00000000
-     Constant 32-bit                   6               *TODO*
+     Private                           5               private     scratch          32      0xFFFFFFFF
+     Constant 32-bit                   6               *TODO*                               0x00000000
      Buffer Fat Pointer (experimental) 7               *TODO*
      ================================= =============== =========== ================ ======= ============================
 
@@ -806,6 +809,7 @@ The AMDGPU backend uses the following ELF header:
      ``EF_AMDGPU_MACH_AMDGCN_GFX1010`` 0x033      ``gfx1010``
      ``EF_AMDGPU_MACH_AMDGCN_GFX1011`` 0x034      ``gfx1011``
      ``EF_AMDGPU_MACH_AMDGCN_GFX1012`` 0x035      ``gfx1012``
+     ``EF_AMDGPU_MACH_AMDGCN_GFX1030`` 0x036      ``gfx1030``
      ================================= ========== =============================
 
 Sections

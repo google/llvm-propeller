@@ -333,7 +333,6 @@ public:
   ///     global lookup for performance reasons.
   bool IgnoreName(const ConstString name, bool ignore_all_dollar_names);
 
-public:
   /// Copies a single Decl into the parser's AST context.
   ///
   /// \param[in] src_decl
@@ -372,6 +371,8 @@ protected:
   /// \param namespace_decl The DeclContext in which to search for namespaces.
   void FillNamespaceMap(NameSearchContext &context, lldb::ModuleSP module_sp,
                         const CompilerDeclContext &namespace_decl);
+
+  clang::TagDecl *FindCompleteType(const clang::TagDecl *decl);
 
   friend struct NameSearchContext;
 

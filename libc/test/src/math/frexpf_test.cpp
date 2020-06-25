@@ -1,5 +1,4 @@
-//===-- Unittests for frexpf
-//-----------------------------------------------===//
+//===-- Unittests for frexpf ----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,7 +8,9 @@
 
 #include "include/math.h"
 #include "src/math/frexpf.h"
+#include "utils/FPUtil/BasicOperations.h"
 #include "utils/FPUtil/BitPatterns.h"
+#include "utils/FPUtil/ClassificationFunctions.h"
 #include "utils/FPUtil/FloatOperations.h"
 #include "utils/FPUtil/FloatProperties.h"
 #include "utils/MPFRWrapper/MPFRUtils.h"

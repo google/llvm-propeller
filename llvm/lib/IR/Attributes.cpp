@@ -780,17 +780,11 @@ AttributeSetNode::AttributeSetNode(ArrayRef<Attribute> Attrs)
   // There's memory after the node where we can store the entries in.
   llvm::copy(Attrs, getTrailingObjects<Attribute>());
 
-  static_assert(Attribute::EndAttrKinds <=
-                    sizeof(AvailableAttrs) * CHAR_BIT,
-                "Too many attributes");
-
   for (const auto &I : *this) {
-    if (I.isStringAttribute()) {
+    if (I.isStringAttribute())
       StringAttrs.insert({ I.getKindAsString(), I });
-    } else {
-      Attribute::AttrKind Kind = I.getKindAsEnum();
-      AvailableAttrs[Kind / 8] |= 1ULL << (Kind % 8);
-    }
+    else
+      AvailableAttrs.addAttribute(I.getKindAsEnum());
   }
 }
 
@@ -971,11 +965,9 @@ std::string AttributeSetNode::getAsString(bool InAttrGrp) const {
 //===----------------------------------------------------------------------===//
 
 /// Map from AttributeList index to the internal array index. Adding one happens
-/// to work, but it relies on unsigned integer wrapping. MSVC warns about
-/// unsigned wrapping in constexpr functions, so write out the conditional. LLVM
-/// folds it to add anyway.
+/// to work, because -1 wraps around to 0.
 static constexpr unsigned attrIdxToArrayIdx(unsigned Index) {
-  return Index == AttributeList::FunctionIndex ? 0 : Index + 1;
+  return Index + 1;
 }
 
 AttributeListImpl::AttributeListImpl(ArrayRef<AttributeSet> Sets)
@@ -986,16 +978,11 @@ AttributeListImpl::AttributeListImpl(ArrayRef<AttributeSet> Sets)
   llvm::copy(Sets, getTrailingObjects<AttributeSet>());
 
   // Initialize AvailableFunctionAttrs summary bitset.
-  static_assert(Attribute::EndAttrKinds <=
-                    sizeof(AvailableFunctionAttrs) * CHAR_BIT,
-                "Too many attributes");
   static_assert(attrIdxToArrayIdx(AttributeList::FunctionIndex) == 0U,
                 "function should be stored in slot 0");
   for (const auto &I : Sets[0]) {
-    if (!I.isStringAttribute()) {
-      Attribute::AttrKind Kind = I.getKindAsEnum();
-      AvailableFunctionAttrs[Kind / 8] |= 1ULL << (Kind % 8);
-    }
+    if (!I.isStringAttribute())
+      AvailableFunctionAttrs.addAttribute(I.getKindAsEnum());
   }
 }
 

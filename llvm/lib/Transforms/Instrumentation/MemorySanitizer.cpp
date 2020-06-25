@@ -543,10 +543,6 @@ private:
   /// (x86_64-specific).
   Value *VAArgOverflowSizeTLS;
 
-  /// Thread-local space used to pass origin value to the UMR reporting
-  /// function.
-  Value *OriginTLS;
-
   /// Are the instrumentation callbacks set up?
   bool CallbacksInitialized = false;
 
@@ -599,9 +595,6 @@ private:
 
   /// Branch weights for origin store.
   MDNode *OriginStoreWeights;
-
-  /// An empty volatile inline asm that prevents callback merge.
-  InlineAsm *EmptyAsm;
 };
 
 void insertModuleCtor(Module &M) {
@@ -715,10 +708,7 @@ void MemorySanitizer::createKernelApi(Module &M) {
   VAArgTLS = nullptr;
   VAArgOriginTLS = nullptr;
   VAArgOverflowSizeTLS = nullptr;
-  // OriginTLS is unused in the kernel.
-  OriginTLS = nullptr;
 
-  // __msan_warning() in the kernel takes an origin.
   WarningFn = M.getOrInsertFunction("__msan_warning", IRB.getVoidTy(),
                                     IRB.getInt32Ty());
   // Requests the per-task context state (kmsan_context_state*) from the
@@ -773,12 +763,14 @@ static Constant *getOrInsertGlobal(Module &M, StringRef Name, Type *Ty) {
 /// Insert declarations for userspace-specific functions and globals.
 void MemorySanitizer::createUserspaceApi(Module &M) {
   IRBuilder<> IRB(*C);
+
   // Create the callback.
   // FIXME: this function should have "Cold" calling conv,
   // which is not yet implemented.
-  StringRef WarningFnName = Recover ? "__msan_warning"
-                                    : "__msan_warning_noreturn";
-  WarningFn = M.getOrInsertFunction(WarningFnName, IRB.getVoidTy());
+  StringRef WarningFnName = Recover ? "__msan_warning_with_origin"
+                                    : "__msan_warning_with_origin_noreturn";
+  WarningFn =
+      M.getOrInsertFunction(WarningFnName, IRB.getVoidTy(), IRB.getInt32Ty());
 
   // Create the global TLS variables.
   RetvalTLS =
@@ -805,7 +797,6 @@ void MemorySanitizer::createUserspaceApi(Module &M) {
 
   VAArgOverflowSizeTLS =
       getOrInsertGlobal(M, "__msan_va_arg_overflow_size_tls", IRB.getInt64Ty());
-  OriginTLS = getOrInsertGlobal(M, "__msan_origin_tls", IRB.getInt32Ty());
 
   for (size_t AccessSizeIndex = 0; AccessSizeIndex < kNumberOfAccessSizes;
        AccessSizeIndex++) {
@@ -860,10 +851,6 @@ void MemorySanitizer::initializeCallbacks(Module &M) {
   MemsetFn = M.getOrInsertFunction(
     "__msan_memset", IRB.getInt8PtrTy(), IRB.getInt8PtrTy(), IRB.getInt32Ty(),
     IntptrTy);
-  // We insert an empty inline asm after __msan_report* to avoid callback merge.
-  EmptyAsm = InlineAsm::get(FunctionType::get(IRB.getVoidTy(), false),
-                            StringRef(""), StringRef(""),
-                            /*hasSideEffects=*/true);
 
   MsanInstrumentAsmStoreFn =
       M.getOrInsertFunction("__msan_instrument_asm_store", IRB.getVoidTy(),
@@ -1057,7 +1044,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   BasicBlock *ActualFnStart;
 
   // The following flags disable parts of MSan instrumentation based on
-  // blacklist contents and command-line options.
+  // exclusion list contents and command-line options.
   bool InsertChecks;
   bool PropagateShadow;
   bool PoisonStack;
@@ -1216,15 +1203,8 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   void insertWarningFn(IRBuilder<> &IRB, Value *Origin) {
     if (!Origin)
       Origin = (Value *)IRB.getInt32(0);
-    if (MS.CompileKernel) {
-      IRB.CreateCall(MS.WarningFn, Origin);
-    } else {
-      if (MS.TrackOrigins) {
-        IRB.CreateStore(Origin, MS.OriginTLS);
-      }
-      IRB.CreateCall(MS.WarningFn, {});
-    }
-    IRB.CreateCall(MS.EmptyAsm, {});
+    assert(Origin->getType()->isIntegerTy());
+    IRB.CreateCall(MS.WarningFn, Origin)->setCannotMerge();
     // FIXME: Insert UnreachableInst if !MS.Recover?
     // This may invalidate some of the following checks and needs to be done
     // at the very end.

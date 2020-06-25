@@ -723,12 +723,6 @@ static LogicalResult verifyShiftOp(Operation *op) {
 //===----------------------------------------------------------------------===//
 
 static Type getElementPtrType(Type type, ValueRange indices, Location baseLoc) {
-  if (indices.empty()) {
-    emitError(baseLoc, "'spv.AccessChain' op expected at least "
-                       "one index ");
-    return nullptr;
-  }
-
   auto ptrType = type.dyn_cast<spirv::PointerType>();
   if (!ptrType) {
     emitError(baseLoc, "'spv.AccessChain' op expected a pointer "
@@ -791,18 +785,36 @@ static ParseResult parseAccessChainOp(OpAsmParser &parser,
   OpAsmParser::OperandType ptrInfo;
   SmallVector<OpAsmParser::OperandType, 4> indicesInfo;
   Type type;
-  // TODO(denis0x0D): regarding to the spec an index must be any integer type,
-  // figure out how to use resolveOperand with a range of types and do not
-  // fail on first attempt.
-  Type indicesType = parser.getBuilder().getIntegerType(32);
+  auto loc = parser.getCurrentLocation();
+  SmallVector<Type, 4> indicesTypes;
 
   if (parser.parseOperand(ptrInfo) ||
       parser.parseOperandList(indicesInfo, OpAsmParser::Delimiter::Square) ||
       parser.parseColonType(type) ||
-      parser.resolveOperand(ptrInfo, type, state.operands) ||
-      parser.resolveOperands(indicesInfo, indicesType, state.operands)) {
+      parser.resolveOperand(ptrInfo, type, state.operands)) {
     return failure();
   }
+
+  // Check that the provided indices list is not empty before parsing their
+  // type list.
+  if (indicesInfo.empty()) {
+    return emitError(state.location, "'spv.AccessChain' op expected at "
+                                     "least one index ");
+  }
+
+  if (parser.parseComma() || parser.parseTypeList(indicesTypes))
+    return failure();
+
+  // Check that the indices types list is not empty and that it has a one-to-one
+  // mapping to the provided indices.
+  if (indicesTypes.size() != indicesInfo.size()) {
+    return emitError(state.location, "'spv.AccessChain' op indices "
+                                     "types' count must be equal to indices "
+                                     "info count");
+  }
+
+  if (parser.resolveOperands(indicesInfo, indicesTypes, loc, state.operands))
+    return failure();
 
   auto resultType = getElementPtrType(
       type, llvm::makeArrayRef(state.operands).drop_front(), state.location);
@@ -816,7 +828,8 @@ static ParseResult parseAccessChainOp(OpAsmParser &parser,
 
 static void print(spirv::AccessChainOp op, OpAsmPrinter &printer) {
   printer << spirv::AccessChainOp::getOperationName() << ' ' << op.base_ptr()
-          << '[' << op.indices() << "] : " << op.base_ptr().getType();
+          << '[' << op.indices() << "] : " << op.base_ptr().getType() << ", "
+          << op.indices().getTypes();
 }
 
 static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
@@ -2753,10 +2766,52 @@ verifyCoopMatrixMulAdd(spirv::CooperativeMatrixMulAddNVOp op) {
       typeR.getScope() != typeB.getScope() ||
       typeR.getScope() != typeC.getScope())
     return op.emitOpError("matrix scope must match");
-  if (typeR.getElementType() != typeA.getElementType() ||
-      typeR.getElementType() != typeB.getElementType() ||
+  if (typeA.getElementType() != typeB.getElementType() ||
       typeR.getElementType() != typeC.getElementType())
     return op.emitOpError("matrix element type must match");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.MatrixTimesScalar
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verifyMatrixTimesScalar(spirv::MatrixTimesScalarOp op) {
+  // We already checked that result and matrix are both of matrix type in the
+  // auto-generated verify method.
+
+  auto inputMatrix = op.matrix().getType().cast<spirv::MatrixType>();
+  // Check that the scalar type is the same as the matrix components type.
+  if (auto inputMatrixColumns =
+          inputMatrix.getElementType().dyn_cast<VectorType>()) {
+    if (op.scalar().getType() != inputMatrixColumns.getElementType())
+      return op.emitError("input matrix components' type and scaling "
+                          "value must have the same type");
+
+    // Note that the next three checks could be done using the AllTypesMatch
+    // trait in the Op definition file but it generates a vague error message.
+
+    // Check that the input and result matrices have the same size
+    auto resultMatrix = op.result().getType().cast<spirv::MatrixType>();
+    if (inputMatrix.getNumElements() != resultMatrix.getNumElements())
+      return op.emitError("input and result matrices must have "
+                          "the same number of columns");
+
+    if (auto resultMatrixColumns =
+            resultMatrix.getElementType().dyn_cast<VectorType>()) {
+      // Check that the input and result matrices' columns have the same type
+      if (inputMatrixColumns.getElementType() !=
+          resultMatrixColumns.getElementType())
+        return op.emitError("input and result matrices' columns must "
+                            "have the same component type");
+
+      // Check that the input and result matrices' columns have the same size
+      if (inputMatrixColumns.getNumElements() !=
+          resultMatrixColumns.getNumElements())
+        return op.emitError("input and result matrices' columns must "
+                            "have the same size");
+    }
+  }
   return success();
 }
 

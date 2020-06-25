@@ -570,8 +570,9 @@ void Verifier::visitGlobalValue(const GlobalValue &GV) {
   Assert(!GV.isDeclaration() || GV.hasValidDeclarationLinkage(),
          "Global is external, but doesn't have external or weak linkage!", &GV);
 
-  Assert(GV.getAlignment() <= Value::MaximumAlignment,
-         "huge alignment values are unsupported", &GV);
+  if (const GlobalObject *GO = dyn_cast<GlobalObject>(&GV))
+    Assert(GO->getAlignment() <= Value::MaximumAlignment,
+           "huge alignment values are unsupported", GO);
   Assert(!GV.hasAppendingLinkage() || isa<GlobalVariable>(GV),
          "Only global variables can have appending linkage!", &GV);
 
@@ -2743,8 +2744,8 @@ void Verifier::visitUIToFPInst(UIToFPInst &I) {
          &I);
 
   if (SrcVec && DstVec)
-    Assert(cast<VectorType>(SrcTy)->getNumElements() ==
-               cast<VectorType>(DestTy)->getNumElements(),
+    Assert(cast<VectorType>(SrcTy)->getElementCount() ==
+               cast<VectorType>(DestTy)->getElementCount(),
            "UIToFP source and dest vector length mismatch", &I);
 
   visitInstruction(I);
@@ -2766,8 +2767,8 @@ void Verifier::visitSIToFPInst(SIToFPInst &I) {
          &I);
 
   if (SrcVec && DstVec)
-    Assert(cast<VectorType>(SrcTy)->getNumElements() ==
-               cast<VectorType>(DestTy)->getNumElements(),
+    Assert(cast<VectorType>(SrcTy)->getElementCount() ==
+               cast<VectorType>(DestTy)->getElementCount(),
            "SIToFP source and dest vector length mismatch", &I);
 
   visitInstruction(I);
@@ -2789,8 +2790,8 @@ void Verifier::visitFPToUIInst(FPToUIInst &I) {
          "FPToUI result must be integer or integer vector", &I);
 
   if (SrcVec && DstVec)
-    Assert(cast<VectorType>(SrcTy)->getNumElements() ==
-               cast<VectorType>(DestTy)->getNumElements(),
+    Assert(cast<VectorType>(SrcTy)->getElementCount() ==
+               cast<VectorType>(DestTy)->getElementCount(),
            "FPToUI source and dest vector length mismatch", &I);
 
   visitInstruction(I);
@@ -2812,8 +2813,8 @@ void Verifier::visitFPToSIInst(FPToSIInst &I) {
          "FPToSI result must be integer or integer vector", &I);
 
   if (SrcVec && DstVec)
-    Assert(cast<VectorType>(SrcTy)->getNumElements() ==
-               cast<VectorType>(DestTy)->getNumElements(),
+    Assert(cast<VectorType>(SrcTy)->getElementCount() ==
+               cast<VectorType>(DestTy)->getElementCount(),
            "FPToSI source and dest vector length mismatch", &I);
 
   visitInstruction(I);
@@ -2835,9 +2836,9 @@ void Verifier::visitPtrToIntInst(PtrToIntInst &I) {
          &I);
 
   if (SrcTy->isVectorTy()) {
-    VectorType *VSrc = cast<VectorType>(SrcTy);
-    VectorType *VDest = cast<VectorType>(DestTy);
-    Assert(VSrc->getNumElements() == VDest->getNumElements(),
+    auto *VSrc = cast<VectorType>(SrcTy);
+    auto *VDest = cast<VectorType>(DestTy);
+    Assert(VSrc->getElementCount() == VDest->getElementCount(),
            "PtrToInt Vector width mismatch", &I);
   }
 
@@ -2860,9 +2861,9 @@ void Verifier::visitIntToPtrInst(IntToPtrInst &I) {
   Assert(SrcTy->isVectorTy() == DestTy->isVectorTy(), "IntToPtr type mismatch",
          &I);
   if (SrcTy->isVectorTy()) {
-    VectorType *VSrc = cast<VectorType>(SrcTy);
-    VectorType *VDest = cast<VectorType>(DestTy);
-    Assert(VSrc->getNumElements() == VDest->getNumElements(),
+    auto *VSrc = cast<VectorType>(SrcTy);
+    auto *VDest = cast<VectorType>(DestTy);
+    Assert(VSrc->getElementCount() == VDest->getElementCount(),
            "IntToPtr Vector width mismatch", &I);
   }
   visitInstruction(I);
@@ -4992,8 +4993,8 @@ void Verifier::visitIntrinsicCall(Intrinsic::ID ID, CallBase &Call) {
   }
   case Intrinsic::matrix_multiply:
   case Intrinsic::matrix_transpose:
-  case Intrinsic::matrix_columnwise_load:
-  case Intrinsic::matrix_columnwise_store: {
+  case Intrinsic::matrix_column_major_load:
+  case Intrinsic::matrix_column_major_store: {
     ConstantInt *NumRows;
     ConstantInt *NumColumns;
     VectorType *TypeToCheck;
@@ -5008,14 +5009,14 @@ void Verifier::visitIntrinsicCall(Intrinsic::ID ID, CallBase &Call) {
       NumColumns = cast<ConstantInt>(Call.getArgOperand(2));
       TypeToCheck = cast<VectorType>(Call.getType());
       break;
-    case Intrinsic::matrix_columnwise_load:
-      NumRows = cast<ConstantInt>(Call.getArgOperand(2));
-      NumColumns = cast<ConstantInt>(Call.getArgOperand(3));
-      TypeToCheck = cast<VectorType>(Call.getType());
-      break;
-    case Intrinsic::matrix_columnwise_store:
+    case Intrinsic::matrix_column_major_load:
       NumRows = cast<ConstantInt>(Call.getArgOperand(3));
       NumColumns = cast<ConstantInt>(Call.getArgOperand(4));
+      TypeToCheck = cast<VectorType>(Call.getType());
+      break;
+    case Intrinsic::matrix_column_major_store:
+      NumRows = cast<ConstantInt>(Call.getArgOperand(4));
+      NumColumns = cast<ConstantInt>(Call.getArgOperand(5));
       TypeToCheck = cast<VectorType>(Call.getArgOperand(0)->getType());
       break;
     default:

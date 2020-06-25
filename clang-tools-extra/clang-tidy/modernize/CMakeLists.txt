@@ -40,12 +40,19 @@ add_clang_library(clangTidyModernizeModule
   UseUsingCheck.cpp
 
   LINK_LIBS
+  clangTidy
+  clangTidyReadabilityModule
+  clangTidyUtils
+
+  DEPENDS
+  omp_gen
+  )
+
+clang_target_link_libraries(clangTidyModernizeModule
+  PRIVATE
   clangAST
   clangASTMatchers
   clangBasic
   clangLex
-  clangTidy
-  clangTidyReadabilityModule
-  clangTidyUtils
   clangTooling
   )

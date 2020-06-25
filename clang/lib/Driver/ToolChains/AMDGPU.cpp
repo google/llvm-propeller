@@ -25,16 +25,23 @@ void RocmInstallationDetector::scanLibDevicePath() {
   assert(!LibDevicePath.empty());
 
   const StringRef Suffix(".bc");
+  const StringRef Suffix2(".amdgcn.bc");
 
   std::error_code EC;
-  for (llvm::sys::fs::directory_iterator LI(LibDevicePath, EC), LE;
+  for (llvm::vfs::directory_iterator
+           LI = D.getVFS().dir_begin(LibDevicePath, EC),
+           LE;
        !EC && LI != LE; LI = LI.increment(EC)) {
     StringRef FilePath = LI->path();
     StringRef FileName = llvm::sys::path::filename(FilePath);
     if (!FileName.endswith(Suffix))
       continue;
 
-    StringRef BaseName = FileName.drop_back(Suffix.size());
+    StringRef BaseName;
+    if (FileName.endswith(Suffix2))
+      BaseName = FileName.drop_back(Suffix2.size());
+    else if (FileName.endswith(Suffix))
+      BaseName = FileName.drop_back(Suffix.size());
 
     if (BaseName == "ocml") {
       OCML = FilePath;
@@ -137,11 +144,12 @@ RocmInstallationDetector::RocmInstallationDetector(
     LibDevicePath = LibPathEnv;
   }
 
+  auto &FS = D.getVFS();
   if (!LibDevicePath.empty()) {
     // Maintain compatability with HIP flag/envvar pointing directly at the
     // bitcode library directory. This points directly at the library path instead
     // of the rocm root installation.
-    if (!D.getVFS().exists(LibDevicePath))
+    if (!FS.exists(LibDevicePath))
       return;
 
     scanLibDevicePath();
@@ -151,7 +159,7 @@ RocmInstallationDetector::RocmInstallationDetector(
 
   for (const auto &Candidate : Candidates) {
     InstallPath = Candidate.Path;
-    if (InstallPath.empty() || !D.getVFS().exists(InstallPath))
+    if (InstallPath.empty() || !FS.exists(InstallPath))
       continue;
 
     // The install path situation in old versions of ROCm is a real mess, and
@@ -166,8 +174,6 @@ RocmInstallationDetector::RocmInstallationDetector(
     // BinPath = InstallPath + "/bin";
     llvm::sys::path::append(IncludePath, InstallPath, "include");
     llvm::sys::path::append(LibDevicePath, InstallPath, "amdgcn", "bitcode");
-
-    auto &FS = D.getVFS();
 
     // We don't need the include path for OpenCL, since clang already ships with
     // the default header.
@@ -217,8 +223,6 @@ void RocmInstallationDetector::AddHIPIncludeArgs(const ArgList &DriverArgs,
     llvm::sys::path::append(P, "cuda_wrappers");
     CC1Args.push_back("-internal-isystem");
     CC1Args.push_back(DriverArgs.MakeArgString(P));
-    CC1Args.push_back("-include");
-    CC1Args.push_back("__clang_hip_runtime_wrapper.h");
   }
 
   if (DriverArgs.hasArg(options::OPT_nogpuinc))
@@ -231,6 +235,8 @@ void RocmInstallationDetector::AddHIPIncludeArgs(const ArgList &DriverArgs,
 
   CC1Args.push_back("-internal-isystem");
   CC1Args.push_back(DriverArgs.MakeArgString(getIncludePath()));
+  CC1Args.push_back("-include");
+  CC1Args.push_back("__clang_hip_runtime_wrapper.h");
 }
 
 void amdgpu::Linker::ConstructJob(Compilation &C, const JobAction &JA,

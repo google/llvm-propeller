@@ -363,6 +363,10 @@ bool Linux::HasNativeLLVMSupport() const { return true; }
 
 Tool *Linux::buildLinker() const { return new tools::gnutools::Linker(*this); }
 
+Tool *Linux::buildStaticLibTool() const {
+  return new tools::gnutools::StaticLibTool(*this);
+}
+
 Tool *Linux::buildAssembler() const {
   return new tools::gnutools::Assembler(*this);
 }
@@ -537,6 +541,8 @@ std::string Linux::getDynamicLinker(const ArgList &Args) const {
     Loader = X32 ? "ld-linux-x32.so.2" : "ld-linux-x86-64.so.2";
     break;
   }
+  case llvm::Triple::ve:
+    return "/opt/nec/ve/lib/ld-linux-ve.so.1";
   }
 
   if (Distro == Distro::Exherbo &&
@@ -840,6 +846,7 @@ SanitizerMask Linux::getSupportedSanitizers() const {
                          getTriple().getArch() == llvm::Triple::thumb ||
                          getTriple().getArch() == llvm::Triple::armeb ||
                          getTriple().getArch() == llvm::Triple::thumbeb;
+  const bool IsSystemZ = getTriple().getArch() == llvm::Triple::systemz;
   SanitizerMask Res = ToolChain::getSupportedSanitizers();
   Res |= SanitizerKind::Address;
   Res |= SanitizerKind::PointerCompare;
@@ -852,7 +859,8 @@ SanitizerMask Linux::getSupportedSanitizers() const {
   Res |= SanitizerKind::SafeStack;
   if (IsX86_64 || IsMIPS64 || IsAArch64)
     Res |= SanitizerKind::DataFlow;
-  if (IsX86_64 || IsMIPS64 || IsAArch64 || IsX86 || IsArmArch || IsPowerPC64)
+  if (IsX86_64 || IsMIPS64 || IsAArch64 || IsX86 || IsArmArch || IsPowerPC64 ||
+      IsSystemZ)
     Res |= SanitizerKind::Leak;
   if (IsX86_64 || IsMIPS64 || IsAArch64 || IsPowerPC64)
     Res |= SanitizerKind::Thread;

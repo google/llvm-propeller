@@ -132,6 +132,7 @@ namespace llvm {
           EmitAddrsig(false), EmitCallSiteInfo(false),
           SupportsDebugEntryValues(false), EnableDebugEntryValues(false),
           ForceDwarfFrameSection(false),
+          XRayOmitFunctionIndex(false),
           FPDenormalMode(DenormalMode::IEEE, DenormalMode::IEEE) {}
 
     /// PrintMachineCode - This flag is enabled when the -print-machineinstrs
@@ -299,6 +300,9 @@ namespace llvm {
 
     /// Emit DWARF debug frame section.
     unsigned ForceDwarfFrameSection : 1;
+
+    /// Emit XRay Function Index section
+    unsigned XRayOmitFunctionIndex : 1;
 
     /// FloatABIType - This setting is set by -float-abi=xxx option is specfied
     /// on the command line. This setting may either be Default, Soft, or Hard.

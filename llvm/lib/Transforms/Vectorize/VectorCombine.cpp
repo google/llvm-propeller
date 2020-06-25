@@ -37,6 +37,7 @@ STATISTIC(NumVecCmp, "Number of vector compares formed");
 STATISTIC(NumVecBO, "Number of vector binops formed");
 STATISTIC(NumShufOfBitcast, "Number of shuffles moved after bitcast");
 STATISTIC(NumScalarBO, "Number of scalar binops formed");
+STATISTIC(NumScalarCmp, "Number of scalar compares formed");
 
 static cl::opt<bool> DisableVectorCombine(
     "disable-vector-combine", cl::init(false), cl::Hidden,
@@ -46,17 +47,50 @@ static cl::opt<bool> DisableBinopExtractShuffle(
     "disable-binop-extract-shuffle", cl::init(false), cl::Hidden,
     cl::desc("Disable binop extract to shuffle transforms"));
 
+static const unsigned InvalidIndex = std::numeric_limits<unsigned>::max();
+
+class VectorCombine {
+public:
+  VectorCombine(Function &F, const TargetTransformInfo &TTI,
+                const DominatorTree &DT)
+      : F(F), Builder(F.getContext()), TTI(TTI), DT(DT) {}
+
+  bool run();
+
+private:
+  Function &F;
+  IRBuilder<> Builder;
+  const TargetTransformInfo &TTI;
+  const DominatorTree &DT;
+
+  bool isExtractExtractCheap(ExtractElementInst *Ext0, ExtractElementInst *Ext1,
+                             unsigned Opcode,
+                             ExtractElementInst *&ConvertToShuffle,
+                             unsigned PreferredExtractIndex);
+  void foldExtExtCmp(ExtractElementInst *Ext0, ExtractElementInst *Ext1,
+                     Instruction &I);
+  void foldExtExtBinop(ExtractElementInst *Ext0, ExtractElementInst *Ext1,
+                       Instruction &I);
+  bool foldExtractExtract(Instruction &I);
+  bool foldBitcastShuf(Instruction &I);
+  bool scalarizeBinopOrCmp(Instruction &I);
+};
+
+static void replaceValue(Value &Old, Value &New) {
+  Old.replaceAllUsesWith(&New);
+  New.takeName(&Old);
+}
 
 /// Compare the relative costs of 2 extracts followed by scalar operation vs.
 /// vector operation(s) followed by extract. Return true if the existing
 /// instructions are cheaper than a vector alternative. Otherwise, return false
 /// and if one of the extracts should be transformed to a shufflevector, set
 /// \p ConvertToShuffle to that extract instruction.
-static bool isExtractExtractCheap(Instruction *Ext0, Instruction *Ext1,
-                                  unsigned Opcode,
-                                  const TargetTransformInfo &TTI,
-                                  Instruction *&ConvertToShuffle,
-                                  unsigned PreferredExtractIndex) {
+bool VectorCombine::isExtractExtractCheap(ExtractElementInst *Ext0,
+                                          ExtractElementInst *Ext1,
+                                          unsigned Opcode,
+                                          ExtractElementInst *&ConvertToShuffle,
+                                          unsigned PreferredExtractIndex) {
   assert(isa<ConstantInt>(Ext0->getOperand(1)) &&
          isa<ConstantInt>(Ext1->getOperand(1)) &&
          "Expected constant extract indexes");
@@ -83,10 +117,10 @@ static bool isExtractExtractCheap(Instruction *Ext0, Instruction *Ext1,
   unsigned Ext0Index = cast<ConstantInt>(Ext0->getOperand(1))->getZExtValue();
   unsigned Ext1Index = cast<ConstantInt>(Ext1->getOperand(1))->getZExtValue();
 
-  int Extract0Cost = TTI.getVectorInstrCost(Instruction::ExtractElement,
-                                            VecTy, Ext0Index);
-  int Extract1Cost = TTI.getVectorInstrCost(Instruction::ExtractElement,
-                                            VecTy, Ext1Index);
+  int Extract0Cost =
+      TTI.getVectorInstrCost(Instruction::ExtractElement, VecTy, Ext0Index);
+  int Extract1Cost =
+      TTI.getVectorInstrCost(Instruction::ExtractElement, VecTy, Ext1Index);
 
   // A more expensive extract will always be replaced by a splat shuffle.
   // For example, if Ext0 is more expensive:
@@ -156,36 +190,72 @@ static bool isExtractExtractCheap(Instruction *Ext0, Instruction *Ext1,
   return OldCost < NewCost;
 }
 
+/// Create a shuffle that translates (shifts) 1 element from the input vector
+/// to a new element location.
+static Value *createShiftShuffle(Value *Vec, unsigned OldIndex,
+                                 unsigned NewIndex, IRBuilder<> &Builder) {
+  // The shuffle mask is undefined except for 1 lane that is being translated
+  // to the new element index. Example for OldIndex == 2 and NewIndex == 0:
+  // ShufMask = { 2, undef, undef, undef }
+  auto *VecTy = cast<FixedVectorType>(Vec->getType());
+  SmallVector<int, 32> ShufMask(VecTy->getNumElements(), UndefMaskElem);
+  ShufMask[NewIndex] = OldIndex;
+  Value *Undef = UndefValue::get(VecTy);
+  return Builder.CreateShuffleVector(Vec, Undef, ShufMask, "shift");
+}
+
+/// Given an extract element instruction with constant index operand, shuffle
+/// the source vector (shift the scalar element) to a NewIndex for extraction.
+/// Return null if the input can be constant folded, so that we are not creating
+/// unnecessary instructions.
+static ExtractElementInst *translateExtract(ExtractElementInst *ExtElt,
+                                            unsigned NewIndex,
+                                            IRBuilder<> &Builder) {
+  // If the extract can be constant-folded, this code is unsimplified. Defer
+  // to other passes to handle that.
+  Value *X = ExtElt->getVectorOperand();
+  Value *C = ExtElt->getIndexOperand();
+  assert(isa<ConstantInt>(C) && "Expected a constant index operand");
+  if (isa<Constant>(X))
+    return nullptr;
+
+  Value *Shuf = createShiftShuffle(X, cast<ConstantInt>(C)->getZExtValue(),
+                                   NewIndex, Builder);
+  return cast<ExtractElementInst>(Builder.CreateExtractElement(Shuf, NewIndex));
+}
+
 /// Try to reduce extract element costs by converting scalar compares to vector
 /// compares followed by extract.
 /// cmp (ext0 V0, C), (ext1 V1, C)
-static void foldExtExtCmp(Instruction *Ext0, Instruction *Ext1,
-                          Instruction &I) {
+void VectorCombine::foldExtExtCmp(ExtractElementInst *Ext0,
+                                  ExtractElementInst *Ext1, Instruction &I) {
   assert(isa<CmpInst>(&I) && "Expected a compare");
+  assert(cast<ConstantInt>(Ext0->getIndexOperand())->getZExtValue() ==
+             cast<ConstantInt>(Ext1->getIndexOperand())->getZExtValue() &&
+         "Expected matching constant extract indexes");
 
   // cmp Pred (extelt V0, C), (extelt V1, C) --> extelt (cmp Pred V0, V1), C
   ++NumVecCmp;
-  IRBuilder<> Builder(&I);
   CmpInst::Predicate Pred = cast<CmpInst>(&I)->getPredicate();
-  Value *V0 = Ext0->getOperand(0), *V1 = Ext1->getOperand(0);
-  Value *VecCmp =
-      Ext0->getType()->isFloatingPointTy() ? Builder.CreateFCmp(Pred, V0, V1)
-                                           : Builder.CreateICmp(Pred, V0, V1);
-  Value *Extract = Builder.CreateExtractElement(VecCmp, Ext0->getOperand(1));
-  I.replaceAllUsesWith(Extract);
+  Value *V0 = Ext0->getVectorOperand(), *V1 = Ext1->getVectorOperand();
+  Value *VecCmp = Builder.CreateCmp(Pred, V0, V1);
+  Value *NewExt = Builder.CreateExtractElement(VecCmp, Ext0->getIndexOperand());
+  replaceValue(I, *NewExt);
 }
 
 /// Try to reduce extract element costs by converting scalar binops to vector
 /// binops followed by extract.
 /// bo (ext0 V0, C), (ext1 V1, C)
-static void foldExtExtBinop(Instruction *Ext0, Instruction *Ext1,
-                            Instruction &I) {
+void VectorCombine::foldExtExtBinop(ExtractElementInst *Ext0,
+                                    ExtractElementInst *Ext1, Instruction &I) {
   assert(isa<BinaryOperator>(&I) && "Expected a binary operator");
+  assert(cast<ConstantInt>(Ext0->getIndexOperand())->getZExtValue() ==
+             cast<ConstantInt>(Ext1->getIndexOperand())->getZExtValue() &&
+         "Expected matching constant extract indexes");
 
   // bo (extelt V0, C), (extelt V1, C) --> extelt (bo V0, V1), C
   ++NumVecBO;
-  IRBuilder<> Builder(&I);
-  Value *V0 = Ext0->getOperand(0), *V1 = Ext1->getOperand(0);
+  Value *V0 = Ext0->getVectorOperand(), *V1 = Ext1->getVectorOperand();
   Value *VecBO =
       Builder.CreateBinOp(cast<BinaryOperator>(&I)->getOpcode(), V0, V1);
 
@@ -194,27 +264,27 @@ static void foldExtExtBinop(Instruction *Ext0, Instruction *Ext1,
   if (auto *VecBOInst = dyn_cast<Instruction>(VecBO))
     VecBOInst->copyIRFlags(&I);
 
-  Value *Extract = Builder.CreateExtractElement(VecBO, Ext0->getOperand(1));
-  I.replaceAllUsesWith(Extract);
+  Value *NewExt = Builder.CreateExtractElement(VecBO, Ext0->getIndexOperand());
+  replaceValue(I, *NewExt);
 }
 
 /// Match an instruction with extracted vector operands.
-static bool foldExtractExtract(Instruction &I, const TargetTransformInfo &TTI) {
+bool VectorCombine::foldExtractExtract(Instruction &I) {
   // It is not safe to transform things like div, urem, etc. because we may
   // create undefined behavior when executing those on unknown vector elements.
   if (!isSafeToSpeculativelyExecute(&I))
     return false;
 
-  Instruction *Ext0, *Ext1;
+  Instruction *I0, *I1;
   CmpInst::Predicate Pred = CmpInst::BAD_ICMP_PREDICATE;
-  if (!match(&I, m_Cmp(Pred, m_Instruction(Ext0), m_Instruction(Ext1))) &&
-      !match(&I, m_BinOp(m_Instruction(Ext0), m_Instruction(Ext1))))
+  if (!match(&I, m_Cmp(Pred, m_Instruction(I0), m_Instruction(I1))) &&
+      !match(&I, m_BinOp(m_Instruction(I0), m_Instruction(I1))))
     return false;
 
   Value *V0, *V1;
   uint64_t C0, C1;
-  if (!match(Ext0, m_ExtractElt(m_Value(V0), m_ConstantInt(C0))) ||
-      !match(Ext1, m_ExtractElt(m_Value(V1), m_ConstantInt(C1))) ||
+  if (!match(I0, m_ExtractElt(m_Value(V0), m_ConstantInt(C0))) ||
+      !match(I1, m_ExtractElt(m_Value(V1), m_ConstantInt(C1))) ||
       V0->getType() != V1->getType())
     return false;
 
@@ -223,35 +293,28 @@ static bool foldExtractExtract(Instruction &I, const TargetTransformInfo &TTI) {
   // reduced to a "select shuffle".
   // TODO: If we add a larger pattern match that starts from an insert, this
   //       probably becomes unnecessary.
-  uint64_t InsertIndex = std::numeric_limits<uint64_t>::max();
+  auto *Ext0 = cast<ExtractElementInst>(I0);
+  auto *Ext1 = cast<ExtractElementInst>(I1);
+  uint64_t InsertIndex = InvalidIndex;
   if (I.hasOneUse())
     match(I.user_back(),
           m_InsertElt(m_Value(), m_Value(), m_ConstantInt(InsertIndex)));
 
-  Instruction *ConvertToShuffle;
-  if (isExtractExtractCheap(Ext0, Ext1, I.getOpcode(), TTI, ConvertToShuffle,
+  ExtractElementInst *ExtractToChange;
+  if (isExtractExtractCheap(Ext0, Ext1, I.getOpcode(), ExtractToChange,
                             InsertIndex))
     return false;
 
-  if (ConvertToShuffle) {
-    // The shuffle mask is undefined except for 1 lane that is being translated
-    // to the cheap extraction lane. Example:
-    // ShufMask = { 2, undef, undef, undef }
-    uint64_t SplatIndex = ConvertToShuffle == Ext0 ? C0 : C1;
-    uint64_t CheapExtIndex = ConvertToShuffle == Ext0 ? C1 : C0;
-    auto *VecTy = cast<VectorType>(V0->getType());
-    SmallVector<int, 32> ShufMask(VecTy->getNumElements(), -1);
-    ShufMask[CheapExtIndex] = SplatIndex;
-    IRBuilder<> Builder(ConvertToShuffle);
-
-    // extelt X, C --> extelt (splat X), C'
-    Value *Shuf = Builder.CreateShuffleVector(ConvertToShuffle->getOperand(0),
-                                              UndefValue::get(VecTy), ShufMask);
-    Value *NewExt = Builder.CreateExtractElement(Shuf, CheapExtIndex);
-    if (ConvertToShuffle == Ext0)
-      Ext0 = cast<Instruction>(NewExt);
+  if (ExtractToChange) {
+    unsigned CheapExtractIdx = ExtractToChange == Ext0 ? C1 : C0;
+    ExtractElementInst *NewExtract =
+        translateExtract(ExtractToChange, CheapExtractIdx, Builder);
+    if (!NewExtract)
+      return false;
+    if (ExtractToChange == Ext0)
+      Ext0 = NewExtract;
     else
-      Ext1 = cast<Instruction>(NewExt);
+      Ext1 = NewExtract;
   }
 
   if (Pred != CmpInst::BAD_ICMP_PREDICATE)
@@ -265,7 +328,7 @@ static bool foldExtractExtract(Instruction &I, const TargetTransformInfo &TTI) {
 /// If this is a bitcast of a shuffle, try to bitcast the source vector to the
 /// destination type followed by shuffle. This can enable further transforms by
 /// moving bitcasts or shuffles together.
-static bool foldBitcastShuf(Instruction &I, const TargetTransformInfo &TTI) {
+bool VectorCombine::foldBitcastShuf(Instruction &I) {
   Value *V;
   ArrayRef<int> Mask;
   if (!match(&I, m_BitCast(
@@ -304,26 +367,37 @@ static bool foldBitcastShuf(Instruction &I, const TargetTransformInfo &TTI) {
   }
   // bitcast (shuf V, MaskC) --> shuf (bitcast V), MaskC'
   ++NumShufOfBitcast;
-  IRBuilder<> Builder(&I);
   Value *CastV = Builder.CreateBitCast(V, DestTy);
   Value *Shuf =
       Builder.CreateShuffleVector(CastV, UndefValue::get(DestTy), NewMask);
-  I.replaceAllUsesWith(Shuf);
+  replaceValue(I, *Shuf);
   return true;
 }
 
-/// Match a vector binop instruction with inserted scalar operands and convert
-/// to scalar binop followed by insertelement.
-static bool scalarizeBinop(Instruction &I, const TargetTransformInfo &TTI) {
+/// Match a vector binop or compare instruction with at least one inserted
+/// scalar operand and convert to scalar binop/cmp followed by insertelement.
+bool VectorCombine::scalarizeBinopOrCmp(Instruction &I) {
+  CmpInst::Predicate Pred = CmpInst::BAD_ICMP_PREDICATE;
   Value *Ins0, *Ins1;
-  if (!match(&I, m_BinOp(m_Value(Ins0), m_Value(Ins1))))
+  if (!match(&I, m_BinOp(m_Value(Ins0), m_Value(Ins1))) &&
+      !match(&I, m_Cmp(Pred, m_Value(Ins0), m_Value(Ins1))))
     return false;
+
+  // Do not convert the vector condition of a vector select into a scalar
+  // condition. That may cause problems for codegen because of differences in
+  // boolean formats and register-file transfers.
+  // TODO: Can we account for that in the cost model?
+  bool IsCmp = Pred != CmpInst::Predicate::BAD_ICMP_PREDICATE;
+  if (IsCmp)
+    for (User *U : I.users())
+      if (match(U, m_Select(m_Specific(&I), m_Value(), m_Value())))
+        return false;
 
   // Match against one or both scalar values being inserted into constant
   // vectors:
-  // vec_bo VecC0, (inselt VecC1, V1, Index)
-  // vec_bo (inselt VecC0, V0, Index), VecC1
-  // vec_bo (inselt VecC0, V0, Index), (inselt VecC1, V1, Index)
+  // vec_op VecC0, (inselt VecC1, V1, Index)
+  // vec_op (inselt VecC0, V0, Index), VecC1
+  // vec_op (inselt VecC0, V0, Index), (inselt VecC1, V1, Index)
   // TODO: Deal with mismatched index constants and variable indexes?
   Constant *VecC0 = nullptr, *VecC1 = nullptr;
   Value *V0 = nullptr, *V1 = nullptr;
@@ -357,12 +431,19 @@ static bool scalarizeBinop(Instruction &I, const TargetTransformInfo &TTI) {
   Type *VecTy = I.getType();
   assert(VecTy->isVectorTy() &&
          (IsConst0 || IsConst1 || V0->getType() == V1->getType()) &&
-         (ScalarTy->isIntegerTy() || ScalarTy->isFloatingPointTy()) &&
-         "Unexpected types for insert into binop");
+         (ScalarTy->isIntegerTy() || ScalarTy->isFloatingPointTy() ||
+          ScalarTy->isPointerTy()) &&
+         "Unexpected types for insert element into binop or cmp");
 
-  Instruction::BinaryOps Opcode = cast<BinaryOperator>(&I)->getOpcode();
-  int ScalarOpCost = TTI.getArithmeticInstrCost(Opcode, ScalarTy);
-  int VectorOpCost = TTI.getArithmeticInstrCost(Opcode, VecTy);
+  unsigned Opcode = I.getOpcode();
+  int ScalarOpCost, VectorOpCost;
+  if (IsCmp) {
+    ScalarOpCost = TTI.getCmpSelInstrCost(Opcode, ScalarTy);
+    VectorOpCost = TTI.getCmpSelInstrCost(Opcode, VecTy);
+  } else {
+    ScalarOpCost = TTI.getArithmeticInstrCost(Opcode, ScalarTy);
+    VectorOpCost = TTI.getArithmeticInstrCost(Opcode, VecTy);
+  }
 
   // Get cost estimate for the insert element. This cost will factor into
   // both sequences.
@@ -378,10 +459,12 @@ static bool scalarizeBinop(Instruction &I, const TargetTransformInfo &TTI) {
   if (OldCost < NewCost)
     return false;
 
-  // vec_bo (inselt VecC0, V0, Index), (inselt VecC1, V1, Index) -->
-  // inselt NewVecC, (scalar_bo V0, V1), Index
-  ++NumScalarBO;
-  IRBuilder<> Builder(&I);
+  // vec_op (inselt VecC0, V0, Index), (inselt VecC1, V1, Index) -->
+  // inselt NewVecC, (scalar_op V0, V1), Index
+  if (IsCmp)
+    ++NumScalarCmp;
+  else
+    ++NumScalarBO;
 
   // For constant cases, extract the scalar element, this should constant fold.
   if (IsConst0)
@@ -389,7 +472,11 @@ static bool scalarizeBinop(Instruction &I, const TargetTransformInfo &TTI) {
   if (IsConst1)
     V1 = ConstantExpr::getExtractElement(VecC1, Builder.getInt64(Index));
 
-  Value *Scalar = Builder.CreateBinOp(Opcode, V0, V1, I.getName() + ".scalar");
+  Value *Scalar =
+      IsCmp ? Builder.CreateCmp(Pred, V0, V1)
+            : Builder.CreateBinOp((Instruction::BinaryOps)Opcode, V0, V1);
+
+  Scalar->setName(I.getName() + ".scalar");
 
   // All IR flags are safe to back-propagate. There is no potential for extra
   // poison to be created by the scalar instruction.
@@ -397,17 +484,16 @@ static bool scalarizeBinop(Instruction &I, const TargetTransformInfo &TTI) {
     ScalarInst->copyIRFlags(&I);
 
   // Fold the vector constants in the original vectors into a new base vector.
-  Constant *NewVecC = ConstantExpr::get(Opcode, VecC0, VecC1);
+  Constant *NewVecC = IsCmp ? ConstantExpr::getCompare(Pred, VecC0, VecC1)
+                            : ConstantExpr::get(Opcode, VecC0, VecC1);
   Value *Insert = Builder.CreateInsertElement(NewVecC, Scalar, Index);
-  I.replaceAllUsesWith(Insert);
-  Insert->takeName(&I);
+  replaceValue(I, *Insert);
   return true;
 }
 
 /// This is the entry point for all transforms. Pass manager differences are
 /// handled in the callers of this function.
-static bool runImpl(Function &F, const TargetTransformInfo &TTI,
-                    const DominatorTree &DT) {
+bool VectorCombine::run() {
   if (DisableVectorCombine)
     return false;
 
@@ -423,9 +509,10 @@ static bool runImpl(Function &F, const TargetTransformInfo &TTI,
     for (Instruction &I : BB) {
       if (isa<DbgInfoIntrinsic>(I))
         continue;
-      MadeChange |= foldExtractExtract(I, TTI);
-      MadeChange |= foldBitcastShuf(I, TTI);
-      MadeChange |= scalarizeBinop(I, TTI);
+      Builder.SetInsertPoint(&I);
+      MadeChange |= foldExtractExtract(I);
+      MadeChange |= foldBitcastShuf(I);
+      MadeChange |= scalarizeBinopOrCmp(I);
     }
   }
 
@@ -463,7 +550,8 @@ public:
       return false;
     auto &TTI = getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
     auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-    return runImpl(F, TTI, DT);
+    VectorCombine Combiner(F, TTI, DT);
+    return Combiner.run();
   }
 };
 } // namespace
@@ -483,7 +571,8 @@ PreservedAnalyses VectorCombinePass::run(Function &F,
                                          FunctionAnalysisManager &FAM) {
   TargetTransformInfo &TTI = FAM.getResult<TargetIRAnalysis>(F);
   DominatorTree &DT = FAM.getResult<DominatorTreeAnalysis>(F);
-  if (!runImpl(F, TTI, DT))
+  VectorCombine Combiner(F, TTI, DT);
+  if (!Combiner.run())
     return PreservedAnalyses::all();
   PreservedAnalyses PA;
   PA.preserveSet<CFGAnalyses>();

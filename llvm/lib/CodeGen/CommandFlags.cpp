@@ -87,6 +87,7 @@ CGOPT(bool, EmitCallSiteInfo)
 CGOPT(bool, EnableMachineFunctionSplitter)
 CGOPT(bool, EnableDebugEntryValues)
 CGOPT(bool, ForceDwarfFrameSection)
+CGOPT(bool, XRayOmitFunctionIndex)
 
 codegen::RegisterCodeGenFlags::RegisterCodeGenFlags() {
 #define CGBINDOPT(NAME)                                                        \
@@ -411,6 +412,11 @@ codegen::RegisterCodeGenFlags::RegisterCodeGenFlags() {
       cl::desc("Always emit a debug frame section."), cl::init(false));
   CGBINDOPT(ForceDwarfFrameSection);
 
+  static cl::opt<bool> XRayOmitFunctionIndex(
+      "no-xray-index", cl::desc("Don't emit xray_fn_idx section"),
+      cl::init(false));
+  CGBINDOPT(XRayOmitFunctionIndex);
+
 #undef CGBINDOPT
 
   mc::RegisterMCTargetOptionsFlags();
@@ -478,6 +484,7 @@ TargetOptions codegen::InitTargetOptionsFromCodeGenFlags() {
   Options.EmitCallSiteInfo = getEmitCallSiteInfo();
   Options.EnableDebugEntryValues = getEnableDebugEntryValues();
   Options.ForceDwarfFrameSection = getForceDwarfFrameSection();
+  Options.XRayOmitFunctionIndex = getXRayOmitFunctionIndex();
 
   Options.MCOptions = mc::InitMCTargetOptionsFromFlags();
 
