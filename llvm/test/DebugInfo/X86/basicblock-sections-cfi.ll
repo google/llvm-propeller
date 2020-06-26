@@ -27,6 +27,12 @@
 ; SECTIONS_CFI-NEXT: .cfi_offset
 ; SECTIONS_CFI: .cfi_endproc
 
+; SECTIONS_CFI: _Z3fooi.3
+; SECTIONS_CFI-NEXT: .cfi_startproc
+; SECTIONS_CFI-NEXT: .cfi_def_cfa
+; SECTIONS_CFI-NEXT: .cfi_offset
+; SECTIONS_CFI: .cfi_def_cfa
+; SECTIONS_CFI: .cfi_endproc
 
 ; There must be 2 CIEs and 4 FDEs
 
