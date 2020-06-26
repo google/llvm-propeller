@@ -131,8 +131,7 @@ namespace llvm {
           EnableMachineFunctionSplitter(false), SupportsDefaultOutlining(false),
           EmitAddrsig(false), EmitCallSiteInfo(false),
           SupportsDebugEntryValues(false), EnableDebugEntryValues(false),
-          ForceDwarfFrameSection(false),
-          XRayOmitFunctionIndex(false),
+          ForceDwarfFrameSection(false), XRayOmitFunctionIndex(false),
           FPDenormalMode(DenormalMode::IEEE, DenormalMode::IEEE) {}
 
     /// PrintMachineCode - This flag is enabled when the -print-machineinstrs
