@@ -3111,7 +3111,10 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
     emitBasicBlockLoopComments(MBB, MLI, *this);
   }
 
-  if (MBB.pred_empty() ||
+  // Check if this is an unreachable MBB requiring a section.
+  bool UnreachableMBBSection =
+      MBB.pred_empty() && (&MBB != &this->MF->front()) && MBB.isBeginSection();
+  if ((MBB.pred_empty() && !UnreachableMBBSection) ||
       (!MF->hasBBLabels() && isBlockOnlyReachableByFallthrough(&MBB) &&
        !EmitBBInfoSection && !MBB.isEHFuncletEntry() &&
        !MBB.hasLabelMustBeEmitted())) {
