@@ -90,6 +90,10 @@ def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
   );
 }
 
+def TEST_TestType : DialectType<Test_Dialect,
+    CPred<"$_self.isa<::mlir::TestType>()">, "test">,
+    BuildableType<"$_builder.getType<::mlir::TestType>()">;
+
 //===----------------------------------------------------------------------===//
 // Test Symbols
 //===----------------------------------------------------------------------===//
@@ -123,6 +127,12 @@ def MixedNormalVariadicOperandOp : TEST_Op<
     AnyTensor:$input2,
     Variadic<AnyTensor>:$input3
   );
+}
+def VariadicWithSameOperandsResult :
+      TEST_Op<"variadic_with_same_operand_results",
+              [SameOperandsAndResultType]> {
+  let arguments = (ins Variadic<AnySignlessInteger>:$operands);
+  let results = (outs AnySignlessInteger:$result);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1341,6 +1351,49 @@ def FormatTwoVariadicOperandsNoBuildableTypeOp
 def SideEffectOp : TEST_Op<"side_effect_op",
     [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let results = (outs AnyType:$result);
+}
+
+//===----------------------------------------------------------------------===//
+// Test RegionBranchOpInterface
+//===----------------------------------------------------------------------===//
+
+def RegionIfYieldOp : TEST_Op<"region_if_yield",
+      [NoSideEffect, ReturnLike, Terminator]> {
+  let arguments = (ins Variadic<AnyType>:$results);
+  let assemblyFormat = [{
+    $results `:` type($results) attr-dict
+  }];
+}
+
+def RegionIfOp : TEST_Op<"region_if",
+      [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       SingleBlockImplicitTerminator<"RegionIfYieldOp">,
+       RecursiveSideEffects]> {
+  let description =[{
+    Represents an abstract if-then-else-join pattern. In this context, the then
+    and else regions jump to the join region, which finally returns to its
+    parent op.
+    }];
+
+  let printer = [{ return ::print(p, *this); }];
+  let parser = [{ return ::parseRegionIfOp(parser, result); }];
+  let arguments = (ins Variadic<AnyType>);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$thenRegion,
+                        AnyRegion:$elseRegion,
+                        AnyRegion:$joinRegion);
+  let extraClassDeclaration = [{
+    Block::BlockArgListType getThenArgs() {
+      return getBody(0)->getArguments();
+    }
+    Block::BlockArgListType getElseArgs() {
+      return getBody(1)->getArguments();
+    }
+    Block::BlockArgListType getJoinArgs() {
+      return getBody(2)->getArguments();
+    }
+    OperandRange getSuccessorEntryOperands(unsigned index);
+  }];
 }
 
 #endif // TEST_OPS

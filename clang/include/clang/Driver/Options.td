@@ -483,6 +483,9 @@ def Wnonportable_cfstrings : Joined<["-"], "Wnonportable-cfstrings">, Group<W_Gr
 def Wp_COMMA : CommaJoined<["-"], "Wp,">,
   HelpText<"Pass the comma separated arguments in <arg> to the preprocessor">,
   MetaVarName<"<arg>">, Group<Preprocessor_Group>;
+def Wundef_prefix_EQ : CommaJoined<["-"], "Wundef-prefix=">, Group<W_value_Group>,
+  Flags<[CC1Option, CoreOption, HelpHidden]>, MetaVarName<"<arg>">,
+  HelpText<"Enable warnings for undefined macros with a prefix in the comma separated list <arg>">;
 def Wwrite_strings : Flag<["-"], "Wwrite-strings">, Group<W_Group>, Flags<[CC1Option, HelpHidden]>;
 def Wno_write_strings : Flag<["-"], "Wno-write-strings">, Group<W_Group>, Flags<[CC1Option, HelpHidden]>;
 def W_Joined : Joined<["-"], "W">, Group<W_Group>, Flags<[CC1Option, CoreOption]>,
@@ -1693,6 +1696,12 @@ def fopenmp_optimistic_collapse : Flag<["-"], "fopenmp-optimistic-collapse">, Gr
   Flags<[CC1Option, NoArgumentUnused, HelpHidden]>;
 def fno_openmp_optimistic_collapse : Flag<["-"], "fno-openmp-optimistic-collapse">, Group<f_Group>,
   Flags<[NoArgumentUnused, HelpHidden]>;
+def fopenmp_cuda_parallel_target_regions : Flag<["-"], "fopenmp-cuda-parallel-target-regions">, Group<f_Group>,
+  Flags<[CC1Option, NoArgumentUnused, HelpHidden]>,
+  HelpText<"Support parallel execution of target regions on Cuda-based devices.">;
+def fno_openmp_cuda_parallel_target_regions : Flag<["-"], "fno-openmp-cuda-parallel-target-regions">, Group<f_Group>,
+  Flags<[NoArgumentUnused, HelpHidden]>,
+  HelpText<"Support only serial execution of target regions on Cuda-based devices.">;
 def static_openmp: Flag<["-"], "static-openmp">,
   HelpText<"Use the static host OpenMP runtime while linking.">;
 def fno_optimize_sibling_calls : Flag<["-"], "fno-optimize-sibling-calls">, Group<f_Group>;

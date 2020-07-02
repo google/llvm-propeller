@@ -2480,6 +2480,7 @@ static bool isAllocSiteRemovable(Instruction *AI,
               return false;
             LLVM_FALLTHROUGH;
           }
+          case Intrinsic::assume:
           case Intrinsic::invariant_start:
           case Intrinsic::invariant_end:
           case Intrinsic::lifetime_start:
@@ -3354,6 +3355,12 @@ static bool TryToSinkInstruction(Instruction *I, BasicBlock *DestBlock) {
   BasicBlock::iterator InsertPos = DestBlock->getFirstInsertionPt();
   I->moveBefore(&*InsertPos);
   ++NumSunkInst;
+
+  // Drop the debug loc of non-inlinable instructions. This prevents
+  // single-stepping from going backwards. See HowToUpdateDebugInfo.rst for
+  // the full rationale.
+  if (!isa<CallBase>(I))
+    I->setDebugLoc(DebugLoc());
 
   // Also sink all related debug uses from the source basic block. Otherwise we
   // get debug use before the def. Attempt to salvage debug uses first, to

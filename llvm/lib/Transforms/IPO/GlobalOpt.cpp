@@ -443,7 +443,7 @@ static bool IsSRASequential(Type *T) {
 static uint64_t GetSRASequentialNumElements(Type *T) {
   if (ArrayType *AT = dyn_cast<ArrayType>(T))
     return AT->getNumElements();
-  return cast<VectorType>(T)->getNumElements();
+  return cast<FixedVectorType>(T)->getNumElements();
 }
 static Type *GetSRASequentialElementType(Type *T) {
   if (ArrayType *AT = dyn_cast<ArrayType>(T))
@@ -555,8 +555,7 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const DataLayout &DL) {
       // propagate info to each field.
       uint64_t FieldOffset = Layout.getElementOffset(ElementIdx);
       Align NewAlign(MinAlign(StartAlignment, FieldOffset));
-      if (NewAlign >
-          Align(DL.getABITypeAlignment(STy->getElementType(ElementIdx))))
+      if (NewAlign > DL.getABITypeAlign(STy->getElementType(ElementIdx)))
         NGV->setAlignment(NewAlign);
 
       // Copy over the debug info for the variable.
@@ -565,7 +564,7 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const DataLayout &DL) {
       transferSRADebugInfo(GV, NGV, FragmentOffsetInBits, Size);
     } else {
       uint64_t EltSize = DL.getTypeAllocSize(ElTy);
-      Align EltAlign(DL.getABITypeAlignment(ElTy));
+      Align EltAlign = DL.getABITypeAlign(ElTy);
       uint64_t FragmentSizeInBits = DL.getTypeAllocSizeInBits(ElTy);
 
       // Calculate the known alignment of the field.  If the original aggregate
@@ -2570,7 +2569,7 @@ static Constant *EvaluateStoreInto(Constant *Init, Constant *Val,
   if (ArrayType *ATy = dyn_cast<ArrayType>(Init->getType()))
     NumElts = ATy->getNumElements();
   else
-    NumElts = cast<VectorType>(Init->getType())->getNumElements();
+    NumElts = cast<FixedVectorType>(Init->getType())->getNumElements();
 
   // Break up the array into elements.
   for (uint64_t i = 0, e = NumElts; i != e; ++i)
@@ -2706,7 +2705,7 @@ static void BatchCommitValueTo(const DenseMap<Constant*, Constant*> &Mem) {
       else if (auto *ATy = dyn_cast<ArrayType>(Ty))
         NumElts = ATy->getNumElements();
       else
-        NumElts = cast<VectorType>(Ty)->getNumElements();
+        NumElts = cast<FixedVectorType>(Ty)->getNumElements();
       for (unsigned i = 0, e = NumElts; i != e; ++i)
         Elts.push_back(Init->getAggregateElement(i));
     }

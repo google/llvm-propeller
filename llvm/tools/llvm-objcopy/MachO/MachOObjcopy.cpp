@@ -22,16 +22,33 @@ using namespace object;
 using SectionPred = std::function<bool(const std::unique_ptr<Section> &Sec)>;
 using LoadCommandPred = std::function<bool(const LoadCommand &LC)>;
 
+#ifndef NDEBUG
+static bool isLoadCommandWithPayloadString(const LoadCommand &LC) {
+  // TODO: Add support for LC_REEXPORT_DYLIB, LC_LOAD_UPWARD_DYLIB and
+  // LC_LAZY_LOAD_DYLIB
+  return LC.MachOLoadCommand.load_command_data.cmd == MachO::LC_RPATH ||
+         LC.MachOLoadCommand.load_command_data.cmd == MachO::LC_ID_DYLIB ||
+         LC.MachOLoadCommand.load_command_data.cmd == MachO::LC_LOAD_DYLIB ||
+         LC.MachOLoadCommand.load_command_data.cmd == MachO::LC_LOAD_WEAK_DYLIB;
+}
+#endif
+
+static StringRef getPayloadString(const LoadCommand &LC) {
+  assert(isLoadCommandWithPayloadString(LC) &&
+         "unsupported load command encountered");
+
+  return StringRef(reinterpret_cast<const char *>(LC.Payload.data()),
+                   LC.Payload.size())
+      .rtrim('\0');
+}
+
 static Error removeLoadCommands(const CopyConfig &Config, Object &Obj) {
   DenseSet<StringRef> RPathsToRemove(Config.RPathsToRemove.begin(),
                                      Config.RPathsToRemove.end());
 
   LoadCommandPred RemovePred = [&RPathsToRemove](const LoadCommand &LC) {
     if (LC.MachOLoadCommand.load_command_data.cmd == MachO::LC_RPATH) {
-      StringRef RPath =
-          StringRef(reinterpret_cast<const char *>(LC.Payload.data()),
-                    LC.Payload.size())
-              .rtrim('\0');
+      StringRef RPath = getPayloadString(LC);
       if (RPathsToRemove.count(RPath)) {
         RPathsToRemove.erase(RPath);
         return true;
@@ -114,6 +131,18 @@ static void updateAndRemoveSymbols(const CopyConfig &Config, Object &Obj) {
   };
 
   Obj.SymTable.removeSymbols(RemovePred);
+}
+
+template <typename LCType>
+static void updateLoadCommandPayloadString(LoadCommand &LC, StringRef S) {
+  assert(isLoadCommandWithPayloadString(LC) &&
+         "unsupported load command encountered");
+
+  uint32_t NewCmdsize = alignTo(sizeof(LCType) + S.size() + 1, 8);
+
+  LC.MachOLoadCommand.load_command_data.cmdsize = NewCmdsize;
+  LC.Payload.assign(NewCmdsize - sizeof(LCType), 0);
+  std::copy(S.begin(), S.end(), LC.Payload.begin());
 }
 
 static LoadCommand buildRPathLoadCommand(StringRef Path) {
@@ -244,6 +273,34 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       for (std::unique_ptr<Section> &Sec : LC.Sections)
         Sec->Relocations.clear();
 
+  for (LoadCommand &LC : Obj.LoadCommands) {
+    switch (LC.MachOLoadCommand.load_command_data.cmd) {
+    case MachO::LC_ID_DYLIB:
+      if (Config.SharedLibId) {
+        StringRef Id = Config.SharedLibId.getValue();
+        if (Id.empty())
+          return createStringError(errc::invalid_argument,
+                                   "cannot specify an empty id");
+        updateLoadCommandPayloadString<MachO::dylib_command>(LC, Id);
+      }
+      break;
+
+    // TODO: Add LC_REEXPORT_DYLIB, LC_LAZY_LOAD_DYLIB, and LC_LOAD_UPWARD_DYLIB
+    // here once llvm-objcopy supports them.
+    case MachO::LC_LOAD_DYLIB:
+    case MachO::LC_LOAD_WEAK_DYLIB:
+      StringRef Old, New;
+      StringRef CurrentInstallName = getPayloadString(LC);
+      for (const auto &InstallNamePair : Config.InstallNamesToUpdate) {
+        std::tie(Old, New) = InstallNamePair;
+        if (CurrentInstallName == Old) {
+          updateLoadCommandPayloadString<MachO::dylib_command>(LC, New);
+          break;
+        }
+      }
+    }
+  }
+
   for (const auto &Flag : Config.AddSection) {
     std::pair<StringRef, StringRef> SecPair = Flag.split("=");
     StringRef SecName = SecPair.first;
@@ -257,12 +314,35 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Error E = removeLoadCommands(Config, Obj))
     return E;
 
+  StringRef Old, New;
+  for (const auto &OldNew : Config.RPathsToUpdate) {
+    std::tie(Old, New) = OldNew;
+
+    auto FindRPathLC = [&Obj](StringRef RPath) {
+      return find_if(Obj.LoadCommands, [=](const LoadCommand &LC) {
+        return LC.MachOLoadCommand.load_command_data.cmd == MachO::LC_RPATH &&
+               getPayloadString(LC) == RPath;
+      });
+    };
+
+    auto NewIt = FindRPathLC(New);
+    if (NewIt != Obj.LoadCommands.end())
+      return createStringError(errc::invalid_argument,
+                               "rpath " + New +
+                                   " would create a duplicate load command");
+
+    auto OldIt = FindRPathLC(Old);
+    if (OldIt == Obj.LoadCommands.end())
+      return createStringError(errc::invalid_argument,
+                               "no LC_RPATH load command with path: " + Old);
+
+    updateLoadCommandPayloadString<MachO::rpath_command>(*OldIt, New);
+  }
+
   for (StringRef RPath : Config.RPathToAdd) {
     for (LoadCommand &LC : Obj.LoadCommands) {
       if (LC.MachOLoadCommand.load_command_data.cmd == MachO::LC_RPATH &&
-          RPath == StringRef(reinterpret_cast<char *>(LC.Payload.data()),
-                             LC.Payload.size())
-                       .trim(0)) {
+          RPath == getPayloadString(LC)) {
         return createStringError(errc::invalid_argument,
                                  "rpath " + RPath +
                                      " would create a duplicate load command");
@@ -286,9 +366,18 @@ Error executeObjcopyOnBinary(const CopyConfig &Config,
   if (Error E = handleArgs(Config, *O))
     return createFileError(Config.InputFilename, std::move(E));
 
-  // TODO: Support 16KB pages which are employed in iOS arm64 binaries:
-  //       https://github.com/llvm/llvm-project/commit/1bebb2832ee312d3b0316dacff457a7a29435edb
-  const uint64_t PageSize = 4096;
+  // Page size used for alignment of segment sizes in Mach-O executables and
+  // dynamic libraries.
+  uint64_t PageSize;
+  switch (In.getArch()) {
+  case Triple::ArchType::arm:
+  case Triple::ArchType::aarch64:
+  case Triple::ArchType::aarch64_32:
+    PageSize = 16384;
+    break;
+  default:
+    PageSize = 4096;
+  }
 
   MachOWriter Writer(*O, In.is64Bit(), In.isLittleEndian(), PageSize, Out);
   if (auto E = Writer.finalize())

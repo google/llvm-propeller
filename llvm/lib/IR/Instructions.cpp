@@ -53,7 +53,7 @@ Optional<uint64_t>
 AllocaInst::getAllocationSizeInBits(const DataLayout &DL) const {
   uint64_t Size = DL.getTypeAllocSizeInBits(getAllocatedType());
   if (isArrayAllocation()) {
-    auto C = dyn_cast<ConstantInt>(getArraySize());
+    auto *C = dyn_cast<ConstantInt>(getArraySize());
     if (!C)
       return None;
     Size *= C->getZExtValue();
@@ -1542,6 +1542,13 @@ AtomicCmpXchgInst::AtomicCmpXchgInst(Value *Ptr, Value *Cmp, Value *NewVal,
   Init(Ptr, Cmp, NewVal, SuccessOrdering, FailureOrdering, SSID);
 }
 
+Align AtomicCmpXchgInst::getAlign() const {
+  // The default here is to assume it has NATURAL alignment, not
+  // DataLayout-specified alignment.
+  const DataLayout &DL = getModule()->getDataLayout();
+  return Align(DL.getTypeStoreSize(getCompareOperand()->getType()));
+}
+
 //===----------------------------------------------------------------------===//
 //                       AtomicRMWInst Implementation
 //===----------------------------------------------------------------------===//
@@ -1623,6 +1630,13 @@ StringRef AtomicRMWInst::getOperationName(BinOp Op) {
   llvm_unreachable("invalid atomicrmw operation");
 }
 
+Align AtomicRMWInst::getAlign() const {
+  // The default here is to assume it has NATURAL alignment, not
+  // DataLayout-specified alignment.
+  const DataLayout &DL = getModule()->getDataLayout();
+  return Align(DL.getTypeStoreSize(getValOperand()->getType()));
+}
+
 //===----------------------------------------------------------------------===//
 //                       FenceInst Implementation
 //===----------------------------------------------------------------------===//
@@ -1668,29 +1682,29 @@ GetElementPtrInst::GetElementPtrInst(const GetElementPtrInst &GEPI)
 }
 
 Type *GetElementPtrInst::getTypeAtIndex(Type *Ty, Value *Idx) {
-  if (auto Struct = dyn_cast<StructType>(Ty)) {
+  if (auto *Struct = dyn_cast<StructType>(Ty)) {
     if (!Struct->indexValid(Idx))
       return nullptr;
     return Struct->getTypeAtIndex(Idx);
   }
   if (!Idx->getType()->isIntOrIntVectorTy())
     return nullptr;
-  if (auto Array = dyn_cast<ArrayType>(Ty))
+  if (auto *Array = dyn_cast<ArrayType>(Ty))
     return Array->getElementType();
-  if (auto Vector = dyn_cast<VectorType>(Ty))
+  if (auto *Vector = dyn_cast<VectorType>(Ty))
     return Vector->getElementType();
   return nullptr;
 }
 
 Type *GetElementPtrInst::getTypeAtIndex(Type *Ty, uint64_t Idx) {
-  if (auto Struct = dyn_cast<StructType>(Ty)) {
+  if (auto *Struct = dyn_cast<StructType>(Ty)) {
     if (Idx >= Struct->getNumElements())
       return nullptr;
     return Struct->getElementType(Idx);
   }
-  if (auto Array = dyn_cast<ArrayType>(Ty))
+  if (auto *Array = dyn_cast<ArrayType>(Ty))
     return Array->getElementType();
-  if (auto Vector = dyn_cast<VectorType>(Ty))
+  if (auto *Vector = dyn_cast<VectorType>(Ty))
     return Vector->getElementType();
   return nullptr;
 }

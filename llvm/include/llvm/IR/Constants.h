@@ -41,11 +41,6 @@
 
 namespace llvm {
 
-class ArrayType;
-class IntegerType;
-class PointerType;
-class StructType;
-class VectorType;
 template <class ConstantClass> struct ConstantAggrKeyType;
 
 /// Base class for constants with no operands.
@@ -903,6 +898,8 @@ protected:
     // Operation type (an Instruction opcode) is stored as the SubclassData.
     setValueSubclassData(Opcode);
   }
+
+  ~ConstantExpr() = default;
 
 public:
   // Static methods to construct a ConstantExpr of different kinds.  Note that

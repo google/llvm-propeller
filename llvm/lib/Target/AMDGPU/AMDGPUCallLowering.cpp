@@ -518,7 +518,7 @@ bool AMDGPUCallLowering::lowerFormalArgumentsKernel(
     if (AllocSize == 0)
       continue;
 
-    unsigned ABIAlign = DL.getABITypeAlignment(ArgTy);
+    Align ABIAlign = DL.getABITypeAlign(ArgTy);
 
     uint64_t ArgOffset = alignTo(ExplicitArgOffset, ABIAlign) + BaseOffset;
     ExplicitArgOffset = alignTo(ExplicitArgOffset, ABIAlign) + AllocSize;
@@ -528,8 +528,8 @@ bool AMDGPUCallLowering::lowerFormalArgumentsKernel(
       OrigArgRegs.size() == 1
       ? OrigArgRegs[0]
       : MRI.createGenericVirtualRegister(getLLTForType(*ArgTy, DL));
+
     Align Alignment = commonAlignment(KernArgBaseAlign, ArgOffset);
-    ArgOffset = alignTo(ArgOffset, DL.getABITypeAlignment(ArgTy));
     lowerParameter(B, ArgTy, ArgOffset, Alignment, ArgReg);
     if (OrigArgRegs.size() > 1)
       unpackRegs(OrigArgRegs, ArgReg, ArgTy, B);

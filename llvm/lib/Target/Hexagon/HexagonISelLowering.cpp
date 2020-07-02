@@ -1990,8 +1990,7 @@ bool HexagonTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     // The offset value comes through Modifier register. For now, assume the
     // offset is 0.
     Info.offset = 0;
-    Info.align =
-        MaybeAlign(DL.getABITypeAlignment(Info.memVT.getTypeForEVT(Cont)));
+    Info.align = DL.getABITypeAlign(Info.memVT.getTypeForEVT(Cont));
     Info.flags = MachineMemOperand::MOLoad;
     return true;
   }
@@ -3394,12 +3393,12 @@ EVT HexagonTargetLowering::getOptimalMemOpType(
   return MVT::Other;
 }
 
-bool HexagonTargetLowering::allowsMemoryAccess(LLVMContext &Context,
-      const DataLayout &DL, EVT VT, unsigned AddrSpace, unsigned Alignment,
-      MachineMemOperand::Flags Flags, bool *Fast) const {
+bool HexagonTargetLowering::allowsMemoryAccess(
+    LLVMContext &Context, const DataLayout &DL, EVT VT, unsigned AddrSpace,
+    Align Alignment, MachineMemOperand::Flags Flags, bool *Fast) const {
   MVT SVT = VT.getSimpleVT();
   if (Subtarget.isHVXVectorType(SVT, true))
-    return allowsHvxMemoryAccess(SVT, Alignment, Flags, Fast);
+    return allowsHvxMemoryAccess(SVT, Flags, Fast);
   return TargetLoweringBase::allowsMemoryAccess(
               Context, DL, VT, AddrSpace, Alignment, Flags, Fast);
 }
@@ -3409,7 +3408,7 @@ bool HexagonTargetLowering::allowsMisalignedMemoryAccesses(
       MachineMemOperand::Flags Flags, bool *Fast) const {
   MVT SVT = VT.getSimpleVT();
   if (Subtarget.isHVXVectorType(SVT, true))
-    return allowsHvxMisalignedMemoryAccesses(SVT, Alignment, Flags, Fast);
+    return allowsHvxMisalignedMemoryAccesses(SVT, Flags, Fast);
   if (Fast)
     *Fast = false;
   return false;
