@@ -1018,6 +1018,8 @@ void TargetPassConfig::addMachinePasses() {
     addPass(createMachineFunctionSplitterPass());
   }
 
+  addPass(llvm::createHotPathPass());
+
   if (TM->getBBSectionsType() != llvm::BasicBlockSection::None)
     addPass(llvm::createBBSectionsPreparePass(TM->getBBSectionsFuncListBuf()));
 

@@ -44,6 +44,7 @@ void llvm::initializeCodeGen(PassRegistry &Registry) {
   initializeGCMachineCodeAnalysisPass(Registry);
   initializeGCModuleInfoPass(Registry);
   initializeHardwareLoopsPass(Registry);
+  initializeHotPathPass(Registry);
   initializeIfConverterPass(Registry);
   initializeImplicitNullChecksPass(Registry);
   initializeIndirectBrExpandPassPass(Registry);
