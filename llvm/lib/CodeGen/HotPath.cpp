@@ -12,6 +12,21 @@
 using namespace llvm;
 
 namespace {
+MachineBasicBlock *CloneMachineBasicBlock(MachineBasicBlock &bb) {
+  auto MF = bb.getParent();
+
+  // Pass nullptr as this new block doesn't directly correspond to an LLVM basic
+  // block.
+  auto MBB = MF->CreateMachineBasicBlock(nullptr);
+  MF->push_back(MBB);
+
+  for (auto &instr : bb.instrs()) {
+    MBB->push_back(MF->CloneMachineInstr(&instr));
+  }
+
+  return MBB;
+}
+
 class HotPath : public MachineFunctionPass {
 public:
   static char ID;
