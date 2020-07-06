@@ -50,6 +50,8 @@ namespace llvm {
   /// selectively enable basic block sections.
   MachineFunctionPass *createBasicBlockSectionsPass(const MemoryBuffer *Buf);
 
+  MachineFunctionPass *createHotPathPass();
+
   /// createMachineFunctionSplitterPass - This pass splits machine functions
   /// using profile information.
   MachineFunctionPass *createMachineFunctionSplitterPass();

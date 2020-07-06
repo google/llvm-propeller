@@ -38,6 +38,7 @@ add_llvm_component_library(LLVMCodeGen
   GCStrategy.cpp
   GlobalMerge.cpp
   HardwareLoops.cpp
+  HotPath.cpp
   IfConversion.cpp
   ImplicitNullChecks.cpp
   IndirectBrExpandPass.cpp
