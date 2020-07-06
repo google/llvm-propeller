@@ -745,12 +745,16 @@ static void getCopyToPartsVector(SelectionDAG &DAG, const SDLoc &DL,
   NumParts = NumRegs; // Silence a compiler warning.
   assert(RegisterVT == PartVT && "Part type doesn't match vector breakdown!");
 
-  unsigned IntermediateNumElts = IntermediateVT.isVector() ?
-    IntermediateVT.getVectorNumElements() : 1;
+  assert(IntermediateVT.isScalableVector() == ValueVT.isScalableVector() &&
+         "Mixing scalable and fixed vectors when copying in parts");
 
-  // Convert the vector to the appropriate type if necessary.
-  auto DestEltCnt = ElementCount(NumIntermediates * IntermediateNumElts,
-                                 ValueVT.isScalableVector());
+  ElementCount DestEltCnt;
+
+  if (IntermediateVT.isVector())
+    DestEltCnt = IntermediateVT.getVectorElementCount() * NumIntermediates;
+  else
+    DestEltCnt = ElementCount(NumIntermediates, false);
+
   EVT BuiltVectorTy = EVT::getVectorVT(
       *DAG.getContext(), IntermediateVT.getScalarType(), DestEltCnt);
   if (ValueVT != BuiltVectorTy) {
@@ -764,6 +768,9 @@ static void getCopyToPartsVector(SelectionDAG &DAG, const SDLoc &DL,
   SmallVector<SDValue, 8> Ops(NumIntermediates);
   for (unsigned i = 0; i != NumIntermediates; ++i) {
     if (IntermediateVT.isVector()) {
+      // This does something sensible for scalable vectors - see the
+      // definition of EXTRACT_SUBVECTOR for further details.
+      unsigned IntermediateNumElts = IntermediateVT.getVectorMinNumElements();
       Ops[i] =
           DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, IntermediateVT, Val,
                       DAG.getVectorIdxConstant(i * IntermediateNumElts, DL));
@@ -2296,7 +2303,9 @@ void SelectionDAGBuilder::visitBr(const BranchInst &I) {
 
   // If this is a series of conditions that are or'd or and'd together, emit
   // this as a sequence of branches instead of setcc's with and/or operations.
-  // As long as jumps are not expensive, this should improve performance.
+  // As long as jumps are not expensive (exceptions for multi-use logic ops,
+  // unpredictable branches, and vector extracts because those jumps are likely
+  // expensive for any target), this should improve performance.
   // For example, instead of something like:
   //     cmp A, B
   //     C = seteq
@@ -2311,9 +2320,12 @@ void SelectionDAGBuilder::visitBr(const BranchInst &I) {
   //     jle foo
   if (const BinaryOperator *BOp = dyn_cast<BinaryOperator>(CondVal)) {
     Instruction::BinaryOps Opcode = BOp->getOpcode();
+    Value *Vec, *BOp0 = BOp->getOperand(0), *BOp1 = BOp->getOperand(1);
     if (!DAG.getTargetLoweringInfo().isJumpExpensive() && BOp->hasOneUse() &&
         !I.hasMetadata(LLVMContext::MD_unpredictable) &&
-        (Opcode == Instruction::And || Opcode == Instruction::Or)) {
+        (Opcode == Instruction::And || Opcode == Instruction::Or) &&
+        !(match(BOp0, m_ExtractElt(m_Value(Vec), m_Value())) &&
+          match(BOp1, m_ExtractElt(m_Specific(Vec), m_Value())))) {
       FindMergedConditions(BOp, Succ0MBB, Succ1MBB, BrMBB, BrMBB,
                            Opcode,
                            getEdgeProbability(BrMBB, Succ0MBB),
@@ -2885,14 +2897,13 @@ void SelectionDAGBuilder::visitCallBr(const CallBrInst &I) {
 
   // Retrieve successors.
   MachineBasicBlock *Return = FuncInfo.MBBMap[I.getDefaultDest()];
-  Return->setInlineAsmBrDefaultTarget();
 
   // Update successor info.
   addSuccessorWithProb(CallBrMBB, Return, BranchProbability::getOne());
   for (unsigned i = 0, e = I.getNumIndirectDests(); i < e; ++i) {
     MachineBasicBlock *Target = FuncInfo.MBBMap[I.getIndirectDest(i)];
     addSuccessorWithProb(CallBrMBB, Target, BranchProbability::getZero());
-    CallBrMBB->addInlineAsmBrIndirectTarget(Target);
+    Target->setIsInlineAsmBrIndirectTarget();
   }
   CallBrMBB->normalizeSuccProbs();
 
@@ -2965,16 +2976,6 @@ void SelectionDAGBuilder::UpdateSplitBlock(MachineBasicBlock *First,
   for (unsigned i = 0, e = SL->BitTestCases.size(); i != e; ++i)
     if (SL->BitTestCases[i].Parent == First)
       SL->BitTestCases[i].Parent = Last;
-
-  // SelectionDAGISel::FinishBasicBlock will add PHI operands for the
-  // successors of the fallthrough block. Here, we add PHI operands for the
-  // successors of the INLINEASM_BR block itself.
-  if (First->getFirstTerminator()->getOpcode() == TargetOpcode::INLINEASM_BR)
-    for (std::pair<MachineInstr *, unsigned> &pair : FuncInfo.PHINodesToUpdate)
-      if (First->isSuccessor(pair.first->getParent()))
-        MachineInstrBuilder(*First->getParent(), pair.first)
-            .addReg(pair.second)
-            .addMBB(First);
 }
 
 void SelectionDAGBuilder::visitIndirectBr(const IndirectBrInst &I) {
@@ -4213,8 +4214,7 @@ void SelectionDAGBuilder::visitMaskedStore(const CallInst &I,
     // llvm.masked.store.*(Src0, Ptr, alignment, Mask)
     Src0 = I.getArgOperand(0);
     Ptr = I.getArgOperand(1);
-    Alignment =
-        MaybeAlign(cast<ConstantInt>(I.getArgOperand(2))->getZExtValue());
+    Alignment = cast<ConstantInt>(I.getArgOperand(2))->getMaybeAlignValue();
     Mask = I.getArgOperand(3);
   };
   auto getCompressingStoreOps = [&](Value *&Ptr, Value *&Mask, Value *&Src0,
@@ -4328,9 +4328,9 @@ void SelectionDAGBuilder::visitMaskedScatter(const CallInst &I) {
   SDValue Src0 = getValue(I.getArgOperand(0));
   SDValue Mask = getValue(I.getArgOperand(3));
   EVT VT = Src0.getValueType();
-  MaybeAlign Alignment(cast<ConstantInt>(I.getArgOperand(2))->getZExtValue());
-  if (!Alignment)
-    Alignment = DAG.getEVTAlign(VT);
+  Align Alignment = cast<ConstantInt>(I.getArgOperand(2))
+                        ->getMaybeAlignValue()
+                        .getValueOr(DAG.getEVTAlign(VT));
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
 
   AAMDNodes AAInfo;
@@ -4348,7 +4348,7 @@ void SelectionDAGBuilder::visitMaskedScatter(const CallInst &I) {
       MachinePointerInfo(AS), MachineMemOperand::MOStore,
       // TODO: Make MachineMemOperands aware of scalable
       // vectors.
-      MemoryLocation::UnknownSize, *Alignment, AAInfo);
+      MemoryLocation::UnknownSize, Alignment, AAInfo);
   if (!UniformBase) {
     Base = DAG.getConstant(0, sdl, TLI.getPointerTy(DAG.getDataLayout()));
     Index = getValue(Ptr);
@@ -4369,8 +4369,7 @@ void SelectionDAGBuilder::visitMaskedLoad(const CallInst &I, bool IsExpanding) {
                               MaybeAlign &Alignment) {
     // @llvm.masked.load.*(Ptr, alignment, Mask, Src0)
     Ptr = I.getArgOperand(0);
-    Alignment =
-        MaybeAlign(cast<ConstantInt>(I.getArgOperand(1))->getZExtValue());
+    Alignment = cast<ConstantInt>(I.getArgOperand(1))->getMaybeAlignValue();
     Mask = I.getArgOperand(2);
     Src0 = I.getArgOperand(3);
   };
@@ -4439,9 +4438,9 @@ void SelectionDAGBuilder::visitMaskedGather(const CallInst &I) {
 
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   EVT VT = TLI.getValueType(DAG.getDataLayout(), I.getType());
-  MaybeAlign Alignment(cast<ConstantInt>(I.getArgOperand(1))->getZExtValue());
-  if (!Alignment)
-    Alignment = DAG.getEVTAlign(VT);
+  Align Alignment = cast<ConstantInt>(I.getArgOperand(1))
+                        ->getMaybeAlignValue()
+                        .getValueOr(DAG.getEVTAlign(VT));
 
   AAMDNodes AAInfo;
   I.getAAMetadata(AAInfo);
@@ -4459,7 +4458,7 @@ void SelectionDAGBuilder::visitMaskedGather(const CallInst &I) {
       MachinePointerInfo(AS), MachineMemOperand::MOLoad,
       // TODO: Make MachineMemOperands aware of scalable
       // vectors.
-      MemoryLocation::UnknownSize, *Alignment, AAInfo, Ranges);
+      MemoryLocation::UnknownSize, Alignment, AAInfo, Ranges);
 
   if (!UniformBase) {
     Base = DAG.getConstant(0, sdl, TLI.getPointerTy(DAG.getDataLayout()));
@@ -7845,7 +7844,6 @@ public:
   }
 };
 
-using SDISelAsmOperandInfoVector = SmallVector<SDISelAsmOperandInfo, 16>;
 
 } // end anonymous namespace
 
@@ -8091,7 +8089,7 @@ void SelectionDAGBuilder::visitInlineAsm(const CallBase &Call) {
   const InlineAsm *IA = cast<InlineAsm>(Call.getCalledOperand());
 
   /// ConstraintOperands - Information about all of the constraints.
-  SDISelAsmOperandInfoVector ConstraintOperands;
+  SmallVector<SDISelAsmOperandInfo, 16> ConstraintOperands;
 
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   TargetLowering::AsmOperandInfoVector TargetConstraints = TLI.ParseConstraints(

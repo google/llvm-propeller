@@ -10957,8 +10957,9 @@ SDValue DAGCombiner::visitSIGN_EXTEND_INREG(SDNode *N) {
   unsigned VTBits = VT.getScalarSizeInBits();
   unsigned ExtVTBits = ExtVT.getScalarSizeInBits();
 
+  // sext_vector_inreg(undef) = 0 because the top bit will all be the same.
   if (N0.isUndef())
-    return DAG.getUNDEF(VT);
+    return DAG.getConstant(0, SDLoc(N), VT);
 
   // fold (sext_in_reg c1) -> c1
   if (DAG.isConstantIntBuildVectorOrConstantInt(N0))
@@ -11086,8 +11087,9 @@ SDValue DAGCombiner::visitSIGN_EXTEND_VECTOR_INREG(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   EVT VT = N->getValueType(0);
 
+  // sext_vector_inreg(undef) = 0 because the top bit will all be the same.
   if (N0.isUndef())
-    return DAG.getUNDEF(VT);
+    return DAG.getConstant(0, SDLoc(N), VT);
 
   if (SDValue Res = tryToFoldExtendOfConstant(N, TLI, DAG, LegalTypes))
     return Res;
@@ -11102,8 +11104,9 @@ SDValue DAGCombiner::visitZERO_EXTEND_VECTOR_INREG(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   EVT VT = N->getValueType(0);
 
+  // zext_vector_inreg(undef) = 0 because the top bits will be zero.
   if (N0.isUndef())
-    return DAG.getUNDEF(VT);
+    return DAG.getConstant(0, SDLoc(N), VT);
 
   if (SDValue Res = tryToFoldExtendOfConstant(N, TLI, DAG, LegalTypes))
     return Res;
@@ -19218,13 +19221,13 @@ SDValue DAGCombiner::visitEXTRACT_SUBVECTOR(SDNode *N) {
       V.getOperand(0).getValueType().isVector()) {
     SDValue SrcOp = V.getOperand(0);
     EVT SrcVT = SrcOp.getValueType();
-    unsigned SrcNumElts = SrcVT.getVectorNumElements();
-    unsigned DestNumElts = V.getValueType().getVectorNumElements();
+    unsigned SrcNumElts = SrcVT.getVectorMinNumElements();
+    unsigned DestNumElts = V.getValueType().getVectorMinNumElements();
     if ((SrcNumElts % DestNumElts) == 0) {
       unsigned SrcDestRatio = SrcNumElts / DestNumElts;
-      unsigned NewExtNumElts = NVT.getVectorNumElements() * SrcDestRatio;
+      ElementCount NewExtEC = NVT.getVectorElementCount() * SrcDestRatio;
       EVT NewExtVT = EVT::getVectorVT(*DAG.getContext(), SrcVT.getScalarType(),
-                                      NewExtNumElts);
+                                      NewExtEC);
       if (TLI.isOperationLegalOrCustom(ISD::EXTRACT_SUBVECTOR, NewExtVT)) {
         SDLoc DL(N);
         SDValue NewIndex = DAG.getVectorIdxConstant(ExtIdx * SrcDestRatio, DL);
@@ -19235,14 +19238,14 @@ SDValue DAGCombiner::visitEXTRACT_SUBVECTOR(SDNode *N) {
     }
     if ((DestNumElts % SrcNumElts) == 0) {
       unsigned DestSrcRatio = DestNumElts / SrcNumElts;
-      if ((NVT.getVectorNumElements() % DestSrcRatio) == 0) {
-        unsigned NewExtNumElts = NVT.getVectorNumElements() / DestSrcRatio;
+      if ((NVT.getVectorMinNumElements() % DestSrcRatio) == 0) {
+        ElementCount NewExtEC = NVT.getVectorElementCount() / DestSrcRatio;
         EVT ScalarVT = SrcVT.getScalarType();
         if ((ExtIdx % DestSrcRatio) == 0) {
           SDLoc DL(N);
           unsigned IndexValScaled = ExtIdx / DestSrcRatio;
           EVT NewExtVT =
-              EVT::getVectorVT(*DAG.getContext(), ScalarVT, NewExtNumElts);
+              EVT::getVectorVT(*DAG.getContext(), ScalarVT, NewExtEC);
           if (TLI.isOperationLegalOrCustom(ISD::EXTRACT_SUBVECTOR, NewExtVT)) {
             SDValue NewIndex = DAG.getVectorIdxConstant(IndexValScaled, DL);
             SDValue NewExtract =
@@ -19250,7 +19253,7 @@ SDValue DAGCombiner::visitEXTRACT_SUBVECTOR(SDNode *N) {
                             V.getOperand(0), NewIndex);
             return DAG.getBitcast(NVT, NewExtract);
           }
-          if (NewExtNumElts == 1 &&
+          if (NewExtEC == 1 &&
               TLI.isOperationLegalOrCustom(ISD::EXTRACT_VECTOR_ELT, ScalarVT)) {
             SDValue NewIndex = DAG.getVectorIdxConstant(IndexValScaled, DL);
             SDValue NewExtract =
@@ -20267,7 +20270,9 @@ SDValue DAGCombiner::visitSCALAR_TO_VECTOR(SDNode *N) {
 
   // Replace a SCALAR_TO_VECTOR(EXTRACT_VECTOR_ELT(V,C0)) pattern
   // with a VECTOR_SHUFFLE and possible truncate.
-  if (InVal.getOpcode() == ISD::EXTRACT_VECTOR_ELT) {
+  if (InVal.getOpcode() == ISD::EXTRACT_VECTOR_ELT &&
+      VT.isFixedLengthVector() &&
+      InVal->getOperand(0).getValueType().isFixedLengthVector()) {
     SDValue InVec = InVal->getOperand(0);
     SDValue EltNo = InVal->getOperand(1);
     auto InVecT = InVec.getValueType();

@@ -130,7 +130,8 @@ def CallAndMessageModeling : Checker<"CallAndMessageModeling">,
            "function/method call. For instance, if we can't reason about the "
            "nullability of the implicit this parameter after a method call, "
            "this checker conservatively assumes it to be non-null">,
-  Documentation<HasDocumentation>;
+  Documentation<HasDocumentation>,
+  Hidden;
 
 def CallAndMessageChecker : Checker<"CallAndMessage">,
   HelpText<"Check for logical errors for function calls and Objective-C "
@@ -220,7 +221,8 @@ def StackAddrEscapeChecker : Checker<"StackAddressEscape">,
 
 def DynamicTypePropagation : Checker<"DynamicTypePropagation">,
   HelpText<"Generate dynamic type information">,
-  Documentation<NotDocumented>;
+  Documentation<NotDocumented>,
+  Hidden;
 
 def NonnullGlobalConstantsChecker: Checker<"NonnilStringConstants">,
   HelpText<"Assume that const string-like globals are non-null">,
@@ -354,9 +356,17 @@ def StdCLibraryFunctionsChecker : Checker<"StdCLibraryFunctions">,
                   "If set to true, the checker displays the found summaries "
                   "for the given translation unit.",
                   "false",
-                  Released>
+                  Released,
+                  Hide>,
+    CmdLineOption<Boolean,
+                  "ModelPOSIX",
+                  "If set to true, the checker models functions from the "
+                  "POSIX standard.",
+                  "false",
+                  InAlpha>
   ]>,
-  Documentation<NotDocumented>;
+  Documentation<NotDocumented>,
+  Hidden;
 
 def TrustNonnullChecker : Checker<"TrustNonnull">,
   HelpText<"Trust that returns from framework methods annotated with _Nonnull "

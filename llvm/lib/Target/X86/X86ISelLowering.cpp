@@ -1039,8 +1039,10 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::ROTL,               MVT::v4i32, Custom);
     setOperationAction(ISD::ROTL,               MVT::v8i16, Custom);
 
-    // With AVX512, expanding (and promoting the shifts) is better.
-    if (!Subtarget.hasAVX512())
+    // With 512-bit registers or AVX512VL+BW, expanding (and promoting the
+    // shifts) is better.
+    if (!Subtarget.useAVX512Regs() &&
+        !(Subtarget.hasBWI() && Subtarget.hasVLX()))
       setOperationAction(ISD::ROTL,             MVT::v16i8, Custom);
 
     setOperationAction(ISD::STRICT_FSQRT,       MVT::v2f64, Legal);
@@ -1227,7 +1229,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::ROTL,              MVT::v16i16, Custom);
 
     // With BWI, expanding (and promoting the shifts) is the better.
-    if (!Subtarget.hasBWI())
+    if (!Subtarget.useBWIRegs())
       setOperationAction(ISD::ROTL,            MVT::v32i8,  Custom);
 
     setOperationAction(ISD::SELECT,            MVT::v4f64, Custom);
@@ -5584,6 +5586,36 @@ static bool canWidenShuffleElements(ArrayRef<int> Mask,
 static bool canWidenShuffleElements(ArrayRef<int> Mask) {
   SmallVector<int, 32> WidenedMask;
   return canWidenShuffleElements(Mask, WidenedMask);
+}
+
+// Attempt to narrow/widen shuffle mask until it matches the target number of
+// elements.
+static bool scaleShuffleElements(ArrayRef<int> Mask, unsigned NumDstElts,
+                                 SmallVectorImpl<int> &ScaledMask) {
+  unsigned NumSrcElts = Mask.size();
+  assert(((NumSrcElts % NumDstElts) == 0 || (NumDstElts % NumSrcElts) == 0) &&
+         "Illegal shuffle scale factor");
+
+  // Narrowing is guaranteed to work.
+  if (NumDstElts >= NumSrcElts) {
+    int Scale = NumDstElts / NumSrcElts;
+    llvm::narrowShuffleMaskElts(Scale, Mask, ScaledMask);
+    return true;
+  }
+
+  // We have to repeat the widening until we reach the target size, but we can
+  // split out the first widening as it sets up ScaledMask for us.
+  if (canWidenShuffleElements(Mask, ScaledMask)) {
+    while (ScaledMask.size() > NumDstElts) {
+      SmallVector<int, 16> WidenedMask;
+      if (!canWidenShuffleElements(ScaledMask, WidenedMask))
+        return false;
+      ScaledMask = std::move(WidenedMask);
+    }
+    return true;
+  }
+
+  return false;
 }
 
 /// Returns true if Elt is a constant zero or a floating point constant +0.0.
@@ -11699,6 +11731,12 @@ static SDValue lowerShuffleAsBlend(const SDLoc &DL, MVT VT, SDValue V1,
       return getVectorMaskingNode(V2, MaskNode, V1, Subtarget, DAG);
     }
 
+    // If we have VPTERNLOG, we can use that as a bit blend.
+    if (Subtarget.hasVLX())
+      if (SDValue BitBlend =
+              lowerShuffleAsBitBlend(DL, VT, V1, V2, Mask, DAG))
+        return BitBlend;
+
     // Scale the blend by the number of bytes per element.
     int Scale = VT.getScalarSizeInBits() / 8;
 
@@ -17485,8 +17523,17 @@ static SDValue lower512BitShuffle(const SDLoc &DL, ArrayRef<int> Mask,
                                                   Subtarget, DAG))
     return Broadcast;
 
-  if ((VT == MVT::v32i16 || VT == MVT::v64i8) && !Subtarget.hasBWI())
+  if ((VT == MVT::v32i16 || VT == MVT::v64i8) && !Subtarget.hasBWI()) {
+    // Try using bit ops for masking and blending before falling back to
+    // splitting.
+    if (SDValue V = lowerShuffleAsBitMask(DL, VT, V1, V2, Mask, Zeroable,
+                                          Subtarget, DAG))
+      return V;
+    if (SDValue V = lowerShuffleAsBitBlend(DL, VT, V1, V2, Mask, DAG))
+      return V;
+
     return splitAndLowerShuffle(DL, VT, V1, V2, Mask, DAG);
+  }
 
   // Dispatch to each element type for lowering. If we don't have support for
   // specific element type shuffles at 512 bits, immediately split them and
@@ -31789,8 +31836,8 @@ X86TargetLowering::EmitLoweredProbedAlloca(MachineInstr &MI,
 
   BuildMI(testMBB, DL,
           TII->get(TFI.Uses64BitFramePtr ? X86::CMP64rr : X86::CMP32rr))
-      .addReg(physSPReg)
-      .addReg(FinalStackPtr);
+      .addReg(FinalStackPtr)
+      .addReg(physSPReg);
 
   BuildMI(testMBB, DL, TII->get(X86::JCC_1))
       .addMBB(tailMBB)
@@ -40184,6 +40231,31 @@ static SDValue combineSelect(SDNode *N, SelectionDAG &DAG,
     }
   }
 
+  // If this is "((X & C) == 0) ? Y : Z" and C is a constant mask vector of
+  // single bits, then invert the predicate and swap the select operands.
+  // This can lower using a vector shift bit-hack rather than mask and compare.
+  if (DCI.isBeforeLegalize() && !Subtarget.hasAVX512() &&
+      N->getOpcode() == ISD::VSELECT && Cond.getOpcode() == ISD::SETCC &&
+      Cond.hasOneUse() && CondVT.getVectorElementType() == MVT::i1 &&
+      Cond.getOperand(0).getOpcode() == ISD::AND &&
+      isNullOrNullSplat(Cond.getOperand(1)) &&
+      cast<CondCodeSDNode>(Cond.getOperand(2))->get() == ISD::SETEQ &&
+      Cond.getOperand(0).getValueType() == VT) {
+    // The 'and' mask must be composed of power-of-2 constants.
+    // TODO: This is limited to splats because the availability/lowering of
+    //       non-uniform shifts and variable blend types is lumpy. Supporting
+    //       arbitrary power-of-2 vector constants will make the code more
+    //       complicated and may require target limitations to ensure that the
+    //       transform is profitable.
+    auto *C = isConstOrConstSplat(Cond.getOperand(0).getOperand(1));
+    if (C && C->getAPIntValue().isPowerOf2()) {
+      // vselect (X & C == 0), LHS, RHS --> vselect (X & C != 0), RHS, LHS
+      SDValue NotCond = DAG.getSetCC(DL, CondVT, Cond.getOperand(0),
+                                     Cond.getOperand(1), ISD::SETNE);
+      return DAG.getSelect(DL, VT, NotCond, RHS, LHS);
+    }
+  }
+
   return SDValue();
 }
 
@@ -41727,6 +41799,7 @@ static SDValue combineVectorPack(SDNode *N, SelectionDAG &DAG,
   EVT VT = N->getValueType(0);
   SDValue N0 = N->getOperand(0);
   SDValue N1 = N->getOperand(1);
+  unsigned NumDstElts = VT.getVectorNumElements();
   unsigned DstBitsPerElt = VT.getScalarSizeInBits();
   unsigned SrcBitsPerElt = 2 * DstBitsPerElt;
   assert(N0.getScalarValueSizeInBits() == SrcBitsPerElt &&
@@ -41743,7 +41816,6 @@ static SDValue combineVectorPack(SDNode *N, SelectionDAG &DAG,
       getTargetConstantBitsFromNode(N0, SrcBitsPerElt, UndefElts0, EltBits0) &&
       getTargetConstantBitsFromNode(N1, SrcBitsPerElt, UndefElts1, EltBits1)) {
     unsigned NumLanes = VT.getSizeInBits() / 128;
-    unsigned NumDstElts = VT.getVectorNumElements();
     unsigned NumSrcElts = NumDstElts / 2;
     unsigned NumDstEltsPerLane = NumDstElts / NumLanes;
     unsigned NumSrcEltsPerLane = NumSrcElts / NumLanes;
@@ -41788,6 +41860,37 @@ static SDValue combineVectorPack(SDNode *N, SelectionDAG &DAG,
     }
 
     return getConstVector(Bits, Undefs, VT.getSimpleVT(), DAG, SDLoc(N));
+  }
+
+  // Attempt to fold PACK(LOSUBVECTOR(SHUFFLE(X)),HISUBVECTOR(SHUFFLE(X)))
+  // to SHUFFLE(PACK(LOSUBVECTOR(X),HISUBVECTOR(X))), this is mainly for
+  // truncation trees that help us avoid lane crossing shuffles.
+  // TODO: There's a lot more we can do for PACK/HADD style shuffle combines.
+  if (N0.getOpcode() == ISD::EXTRACT_SUBVECTOR &&
+      N1.getOpcode() == ISD::EXTRACT_SUBVECTOR &&
+      N0.getConstantOperandAPInt(1) == 0 &&
+      N1.getConstantOperandAPInt(1) == (NumDstElts / 2) &&
+      N0.getOperand(0) == N1.getOperand(0) && VT.is128BitVector() &&
+      N0.getOperand(0).getValueType().is256BitVector()) {
+    // TODO - support target/faux shuffles.
+    SDValue Vec = peekThroughBitcasts(N0.getOperand(0));
+    if (auto *SVN = dyn_cast<ShuffleVectorSDNode>(Vec)) {
+      // To keep the PACK LHS/RHS coherency, we must be able to scale the unary
+      // shuffle to a vXi64 width - we can probably relax this in the future.
+      SmallVector<int, 4> ShuffleMask;
+      if (SVN->getOperand(1).isUndef() &&
+          scaleShuffleElements(SVN->getMask(), 4, ShuffleMask)) {
+        SDLoc DL(N);
+        SDValue Lo, Hi;
+        std::tie(Lo, Hi) = DAG.SplitVector(SVN->getOperand(0), DL);
+        Lo = DAG.getBitcast(N0.getValueType(), Lo);
+        Hi = DAG.getBitcast(N1.getValueType(), Hi);
+        SDValue Res = DAG.getNode(Opcode, DL, VT, Lo, Hi);
+        Res = DAG.getBitcast(MVT::v4i32, Res);
+        Res = DAG.getVectorShuffle(MVT::v4i32, DL, Res, Res, ShuffleMask);
+        return DAG.getBitcast(VT, Res);
+      }
+    }
   }
 
   // Try to combine a PACKUSWB/PACKSSWB implemented truncate with a regular
@@ -42746,6 +42849,16 @@ static SDValue canonicalizeBitSelect(SDNode *N, SelectionDAG &DAG,
   }
 
   SDLoc DL(N);
+
+  if (UseVPTERNLOG) {
+    // Emit a VPTERNLOG node directly.
+    SDValue A = DAG.getBitcast(VT, N0.getOperand(1));
+    SDValue B = DAG.getBitcast(VT, N0.getOperand(0));
+    SDValue C = DAG.getBitcast(VT, N1.getOperand(0));
+    SDValue Imm = DAG.getTargetConstant(0xCA, DL, MVT::i8);
+    return DAG.getNode(X86ISD::VPTERNLOG, DL, VT, A, B, C, Imm);
+  }
+
   SDValue X = N->getOperand(0);
   SDValue Y =
       DAG.getNode(X86ISD::ANDNP, DL, VT, DAG.getBitcast(VT, N0.getOperand(1)),
@@ -42827,6 +42940,10 @@ static SDValue combineLogicBlendIntoPBLENDV(SDNode *N, SelectionDAG &DAG,
 
   // PBLENDVB is only available on SSE 4.1.
   if (!Subtarget.hasSSE41())
+    return SDValue();
+
+  // If we have VPTERNLOG we should prefer that since PBLENDVB is multiple uops.
+  if (Subtarget.hasVLX())
     return SDValue();
 
   MVT BlendVT = VT.is256BitVector() ? MVT::v32i8 : MVT::v16i8;

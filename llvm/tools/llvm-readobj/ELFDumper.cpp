@@ -336,7 +336,8 @@ public:
   Elf_Rel_Range dyn_rels() const;
   Elf_Rela_Range dyn_relas() const;
   Elf_Relr_Range dyn_relrs() const;
-  std::string getFullSymbolName(const Elf_Sym *Symbol, StringRef StrTable,
+  std::string getFullSymbolName(const Elf_Sym *Symbol,
+                                Optional<StringRef> StrTable,
                                 bool IsDynamic) const;
   Expected<unsigned> getSymbolSectionIndex(const Elf_Sym *Symbol,
                                            const Elf_Sym *FirstSym) const;
@@ -670,7 +671,8 @@ ELFDumper<ELFT>::getVersionDependencies(const Elf_Shdr *Sec) const {
 
 template <class ELFT>
 void ELFDumper<ELFT>::printSymbolsHelper(bool IsDynamic) const {
-  StringRef StrTable, SymtabName;
+  Optional<StringRef> StrTable;
+  StringRef SymtabName;
   size_t Entries = 0;
   Elf_Sym_Range Syms(nullptr, nullptr);
   const ELFFile<ELFT> *Obj = ObjF->getELFFile();
@@ -682,11 +684,32 @@ void ELFDumper<ELFT>::printSymbolsHelper(bool IsDynamic) const {
   } else {
     if (!DotSymtabSec)
       return;
-    StrTable = unwrapOrError(ObjF->getFileName(),
-                             Obj->getStringTableForSymtab(*DotSymtabSec));
-    Syms = unwrapOrError(ObjF->getFileName(), Obj->symbols(DotSymtabSec));
-    SymtabName =
-        unwrapOrError(ObjF->getFileName(), Obj->getSectionName(DotSymtabSec));
+
+    if (Expected<StringRef> StrTableOrErr =
+            Obj->getStringTableForSymtab(*DotSymtabSec))
+      StrTable = *StrTableOrErr;
+    else
+      reportUniqueWarning(createError(
+          "unable to get the string table for the SHT_SYMTAB section: " +
+          toString(StrTableOrErr.takeError())));
+
+    if (Expected<Elf_Sym_Range> SymsOrErr = Obj->symbols(DotSymtabSec))
+      Syms = *SymsOrErr;
+    else
+      reportUniqueWarning(
+          createError("unable to read symbols from the SHT_SYMTAB section: " +
+                      toString(SymsOrErr.takeError())));
+
+    if (Expected<StringRef> SymtabNameOrErr =
+            Obj->getSectionName(DotSymtabSec)) {
+      SymtabName = *SymtabNameOrErr;
+    } else {
+      reportUniqueWarning(
+          createError("unable to get the name of the SHT_SYMTAB section: " +
+                      toString(SymtabNameOrErr.takeError())));
+      SymtabName = "<?>";
+    }
+
     Entries = DotSymtabSec->getEntityCount();
   }
   if (Syms.begin() == Syms.end())
@@ -732,8 +755,9 @@ public:
   virtual void printSymtabMessage(const ELFFile<ELFT> *Obj, StringRef Name,
                                   size_t Offset, bool NonVisibilityBitsUsed) {}
   virtual void printSymbol(const ELFFile<ELFT> *Obj, const Elf_Sym *Symbol,
-                           const Elf_Sym *FirstSym, StringRef StrTable,
-                           bool IsDynamic, bool NonVisibilityBitsUsed) = 0;
+                           const Elf_Sym *FirstSym,
+                           Optional<StringRef> StrTable, bool IsDynamic,
+                           bool NonVisibilityBitsUsed) = 0;
   virtual void printProgramHeaders(const ELFFile<ELFT> *Obj,
                                    bool PrintProgramHeaders,
                                    cl::boolOrDefault PrintSectionMapping) = 0;
@@ -886,7 +910,7 @@ private:
   void printRelocation(const ELFO *Obj, const Elf_Sym *Sym,
                        StringRef SymbolName, const Elf_Rela &R, bool IsRela);
   void printSymbol(const ELFO *Obj, const Elf_Sym *Symbol, const Elf_Sym *First,
-                   StringRef StrTable, bool IsDynamic,
+                   Optional<StringRef> StrTable, bool IsDynamic,
                    bool NonVisibilityBitsUsed) override;
   std::string getSymbolSectionNdx(const ELFO *Obj, const Elf_Sym *Symbol,
                                   const Elf_Sym *FirstSym);
@@ -955,7 +979,7 @@ private:
   void printDynamicSymbols(const ELFO *Obj);
   void printSymbolSection(const Elf_Sym *Symbol, const Elf_Sym *First);
   void printSymbol(const ELFO *Obj, const Elf_Sym *Symbol, const Elf_Sym *First,
-                   StringRef StrTable, bool IsDynamic,
+                   Optional<StringRef> StrTable, bool IsDynamic,
                    bool /*NonVisibilityBitsUsed*/) override;
   void printProgramHeaders(const ELFO *Obj);
   void printSectionMapping(const ELFO *Obj) {}
@@ -1154,10 +1178,18 @@ ELFDumper<ELFT>::getSymbolVersionByIndex(uint32_t SymbolVersionIndex,
 
 template <typename ELFT>
 std::string ELFDumper<ELFT>::getFullSymbolName(const Elf_Sym *Symbol,
-                                               StringRef StrTable,
+                                               Optional<StringRef> StrTable,
                                                bool IsDynamic) const {
-  std::string SymbolName = maybeDemangle(
-      unwrapOrError(ObjF->getFileName(), Symbol->getName(StrTable)));
+  if (!StrTable)
+    return "<?>";
+
+  std::string SymbolName;
+  if (Expected<StringRef> NameOrErr = Symbol->getName(*StrTable)) {
+    SymbolName = maybeDemangle(*NameOrErr);
+  } else {
+    reportUniqueWarning(NameOrErr.takeError());
+    return "<?>";
+  }
 
   if (SymbolName.empty() && Symbol->getType() == ELF::STT_SECTION) {
     Elf_Sym_Range Syms = unwrapOrError(
@@ -1237,7 +1269,7 @@ template <class ELFO>
 static const typename ELFO::Elf_Shdr *
 findNotEmptySectionByAddress(const ELFO *Obj, StringRef FileName,
                              uint64_t Addr) {
-  for (const auto &Shdr : unwrapOrError(FileName, Obj->sections()))
+  for (const typename ELFO::Elf_Shdr &Shdr : cantFail(Obj->sections()))
     if (Shdr.sh_addr == Addr && Shdr.sh_size > 0)
       return &Shdr;
   return nullptr;
@@ -1246,7 +1278,7 @@ findNotEmptySectionByAddress(const ELFO *Obj, StringRef FileName,
 template <class ELFO>
 static const typename ELFO::Elf_Shdr *
 findSectionByName(const ELFO &Obj, StringRef FileName, StringRef Name) {
-  for (const auto &Shdr : unwrapOrError(FileName, Obj.sections()))
+  for (const typename ELFO::Elf_Shdr &Shdr : cantFail(Obj.sections()))
     if (Name == unwrapOrError(FileName, Obj.getSectionName(&Shdr)))
       return &Shdr;
   return nullptr;
@@ -1867,8 +1899,7 @@ ELFDumper<ELFT>::findDynamic(const ELFFile<ELFT> *Obj) {
 
   // Try to locate the .dynamic section in the sections header table.
   const Elf_Shdr *DynamicSec = nullptr;
-  for (const Elf_Shdr &Sec :
-       unwrapOrError(ObjF->getFileName(), Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     if (Sec.sh_type != ELF::SHT_DYNAMIC)
       continue;
     DynamicSec = &Sec;
@@ -2011,8 +2042,7 @@ ELFDumper<ELFT>::ELFDumper(const object::ELFObjectFile<ELFT> *ObjF,
     ELFDumperStyle.reset(new LLVMStyle<ELFT>(Writer, this));
 
   const ELFFile<ELFT> *Obj = ObjF->getELFFile();
-  typename ELFT::ShdrRange Sections =
-      unwrapOrError(ObjF->getFileName(), Obj->sections());
+  typename ELFT::ShdrRange Sections = cantFail(Obj->sections());
   for (const Elf_Shdr &Sec : Sections) {
     switch (Sec.sh_type) {
     case ELF::SHT_SYMTAB:
@@ -2850,7 +2880,7 @@ template <class ELFT> void ELFDumper<ELFT>::printAttributes() {
          "Attributes not implemented.");
 
   DictScope BA(W, "BuildAttributes");
-  for (const auto &Sec : unwrapOrError(ObjF->getFileName(), Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     if (Sec.sh_type != ELF::SHT_ARM_ATTRIBUTES &&
         Sec.sh_type != ELF::SHT_RISCV_ATTRIBUTES)
       continue;
@@ -3288,7 +3318,7 @@ template <class ELFT> void ELFDumper<ELFT>::printMipsOptions() {
 template <class ELFT> void ELFDumper<ELFT>::printStackMap() const {
   const ELFFile<ELFT> *Obj = ObjF->getELFFile();
   const Elf_Shdr *StackMapSection = nullptr;
-  for (const auto &Sec : unwrapOrError(ObjF->getFileName(), Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     StringRef Name =
         unwrapOrError(ObjF->getFileName(), Obj->getSectionName(&Sec));
     if (Name == ".llvm_stackmaps") {
@@ -3331,7 +3361,7 @@ static std::string getSectionHeadersNumString(const ELFFile<ELFT> *Obj,
   if (ElfHeader->e_shnum != 0)
     return to_string(ElfHeader->e_shnum);
 
-  ArrayRef<typename ELFT::Shdr> Arr = unwrapOrError(FileName, Obj->sections());
+  ArrayRef<typename ELFT::Shdr> Arr = cantFail(Obj->sections());
   if (Arr.empty())
     return "0";
   return "0 (" + to_string(Arr[0].sh_size) + ")";
@@ -3344,7 +3374,7 @@ static std::string getSectionHeaderTableIndexString(const ELFFile<ELFT> *Obj,
   if (ElfHeader->e_shstrndx != SHN_XINDEX)
     return to_string(ElfHeader->e_shstrndx);
 
-  ArrayRef<typename ELFT::Shdr> Arr = unwrapOrError(FileName, Obj->sections());
+  ArrayRef<typename ELFT::Shdr> Arr = cantFail(Obj->sections());
   if (Arr.empty())
     return "65535 (corrupt: out of range)";
   return to_string(ElfHeader->e_shstrndx) + " (" + to_string(Arr[0].sh_link) +
@@ -3438,7 +3468,7 @@ std::vector<GroupSection> getGroups(const ELFFile<ELFT> *Obj,
 
   std::vector<GroupSection> Ret;
   uint64_t I = 0;
-  for (const Elf_Shdr &Sec : unwrapOrError(FileName, Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     ++I;
     if (Sec.sh_type != ELF::SHT_GROUP)
       continue;
@@ -3589,7 +3619,7 @@ template <class ELFT> void GNUStyle<ELFT>::printRelocHeader(unsigned SType) {
 
 template <class ELFT> void GNUStyle<ELFT>::printRelocations(const ELFO *Obj) {
   bool HasRelocSections = false;
-  for (const Elf_Shdr &Sec : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     if (Sec.sh_type != ELF::SHT_REL && Sec.sh_type != ELF::SHT_RELA &&
         Sec.sh_type != ELF::SHT_RELR && Sec.sh_type != ELF::SHT_ANDROID_REL &&
         Sec.sh_type != ELF::SHT_ANDROID_RELA &&
@@ -3815,7 +3845,7 @@ static void printSectionDescription(formatted_raw_ostream &OS,
 template <class ELFT>
 void GNUStyle<ELFT>::printSectionHeaders(const ELFO *Obj) {
   unsigned Bias = ELFT::Is64Bits ? 0 : 8;
-  ArrayRef<Elf_Shdr> Sections = unwrapOrError(this->FileName, Obj->sections());
+  ArrayRef<Elf_Shdr> Sections = cantFail(Obj->sections());
   OS << "There are " << to_string(Sections.size())
      << " section headers, starting at offset "
      << "0x" << to_hexString(Obj->getHeader()->e_shoff, false) << ":\n\n";
@@ -3940,8 +3970,9 @@ std::string GNUStyle<ELFT>::getSymbolSectionNdx(const ELFO *Obj,
 
 template <class ELFT>
 void GNUStyle<ELFT>::printSymbol(const ELFO *Obj, const Elf_Sym *Symbol,
-                                 const Elf_Sym *FirstSym, StringRef StrTable,
-                                 bool IsDynamic, bool NonVisibilityBitsUsed) {
+                                 const Elf_Sym *FirstSym,
+                                 Optional<StringRef> StrTable, bool IsDynamic,
+                                 bool NonVisibilityBitsUsed) {
   static int Idx = 0;
   static bool Dynamic = true;
 
@@ -4276,7 +4307,7 @@ void GNUStyle<ELFT>::printSectionMapping(const ELFO *Obj) {
     std::string Sections;
     OS << format("   %2.2d     ", Phnum++);
     // Check if each section is in a segment and then print mapping.
-    for (const Elf_Shdr &Sec : unwrapOrError(this->FileName, Obj->sections())) {
+    for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
       if (Sec.sh_type == ELF::SHT_NULL)
         continue;
 
@@ -4297,7 +4328,7 @@ void GNUStyle<ELFT>::printSectionMapping(const ELFO *Obj) {
 
   // Display sections that do not belong to a segment.
   std::string Sections;
-  for (const Elf_Shdr &Sec : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     if (BelongsToSegment.find(&Sec) == BelongsToSegment.end())
       Sections +=
           unwrapOrError(this->FileName, Obj->getSectionName(&Sec)).str() + ' ';
@@ -5374,7 +5405,7 @@ void GNUStyle<ELFT>::printNotes(const ELFFile<ELFT> *Obj) {
     }
   };
 
-  ArrayRef<Elf_Shdr> Sections = unwrapOrError(this->FileName, Obj->sections());
+  ArrayRef<Elf_Shdr> Sections = cantFail(Obj->sections());
   if (Obj->getHeader()->e_type != ELF::ET_CORE && !Sections.empty()) {
     for (const auto &S : Sections) {
       if (S.sh_type != SHT_NOTE)
@@ -5419,7 +5450,7 @@ void DumpStyle<ELFT>::printDependentLibsHelper(
   };
 
   unsigned I = -1;
-  for (const Elf_Shdr &Shdr : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Shdr : cantFail(Obj->sections())) {
     ++I;
     if (Shdr.sh_type != ELF::SHT_LLVM_DEPENDENT_LIBRARIES)
       continue;
@@ -6043,7 +6074,7 @@ template <class ELFT> void LLVMStyle<ELFT>::printRelocations(const ELFO *Obj) {
   ListScope D(W, "Relocations");
 
   int SectionNumber = -1;
-  for (const Elf_Shdr &Sec : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     ++SectionNumber;
 
     if (Sec.sh_type != ELF::SHT_REL && Sec.sh_type != ELF::SHT_RELA &&
@@ -6145,10 +6176,9 @@ void LLVMStyle<ELFT>::printSectionHeaders(const ELFO *Obj) {
   ListScope SectionsD(W, "Sections");
 
   int SectionIndex = -1;
-  ArrayRef<Elf_Shdr> Sections = unwrapOrError(this->FileName, Obj->sections());
   std::vector<EnumEntry<unsigned>> FlagsList =
       getSectionFlagsForTarget(Obj->getHeader()->e_machine);
-  for (const Elf_Shdr &Sec : Sections) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     StringRef Name = "<?>";
     if (Expected<StringRef> SecNameOrErr =
             Obj->getSectionName(&Sec, this->dumper()->WarningHandler))
@@ -6237,8 +6267,8 @@ void LLVMStyle<ELFT>::printSymbolSection(const Elf_Sym *Symbol,
 
 template <class ELFT>
 void LLVMStyle<ELFT>::printSymbol(const ELFO *Obj, const Elf_Sym *Symbol,
-                                  const Elf_Sym *First, StringRef StrTable,
-                                  bool IsDynamic,
+                                  const Elf_Sym *First,
+                                  Optional<StringRef> StrTable, bool IsDynamic,
                                   bool /*NonVisibilityBitsUsed*/) {
   std::string FullSymbolName =
       this->dumper()->getFullSymbolName(Symbol, StrTable, IsDynamic);
@@ -6683,7 +6713,7 @@ void LLVMStyle<ELFT>::printNotes(const ELFFile<ELFT> *Obj) {
     }
   };
 
-  ArrayRef<Elf_Shdr> Sections = unwrapOrError(this->FileName, Obj->sections());
+  ArrayRef<Elf_Shdr> Sections = cantFail(Obj->sections());
   if (Obj->getHeader()->e_type != ELF::ET_CORE && !Sections.empty()) {
     for (const auto &S : Sections) {
       if (S.sh_type != SHT_NOTE)
@@ -6718,7 +6748,7 @@ void LLVMStyle<ELFT>::printELFLinkerOptions(const ELFFile<ELFT> *Obj) {
   ListScope L(W, "LinkerOptions");
 
   unsigned I = -1;
-  for (const Elf_Shdr &Shdr : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Shdr : cantFail(Obj->sections())) {
     ++I;
     if (Shdr.sh_type != ELF::SHT_LLVM_LINKER_OPTIONS)
       continue;

@@ -144,6 +144,8 @@ bool SIInstrInfo::isReallyTriviallyReMaterializable(const MachineInstr &MI,
   case AMDGPU::V_MOV_B32_e32:
   case AMDGPU::V_MOV_B32_e64:
   case AMDGPU::V_MOV_B64_PSEUDO:
+  case AMDGPU::V_ACCVGPR_READ_B32:
+  case AMDGPU::V_ACCVGPR_WRITE_B32:
     // No implicit operands.
     return MI.getNumOperands() == MI.getDesc().getNumOperands();
   default:
@@ -1857,8 +1859,14 @@ static MachineInstr *swapRegAndNonRegOperand(MachineInstr &MI,
     RegOp.ChangeToImmediate(NonRegOp.getImm());
   else if (NonRegOp.isFI())
     RegOp.ChangeToFrameIndex(NonRegOp.getIndex());
-  else
+  else if (NonRegOp.isGlobal()) {
+    RegOp.ChangeToGA(NonRegOp.getGlobal(), NonRegOp.getOffset(),
+                     NonRegOp.getTargetFlags());
+  } else
     return nullptr;
+
+  // Make sure we don't reinterpret a subreg index in the target flags.
+  RegOp.setTargetFlags(NonRegOp.getTargetFlags());
 
   NonRegOp.ChangeToRegister(Reg, false, false, IsKill, IsDead, IsUndef, IsDebug);
   NonRegOp.setSubReg(SubReg);
@@ -2986,6 +2994,10 @@ bool SIInstrInfo::isSchedulingBoundary(const MachineInstr &MI,
   // Copied from base implementation.
   // Terminators and labels can't be scheduled around.
   if (MI.isTerminator() || MI.isPosition())
+    return true;
+
+  // INLINEASM_BR can jump to another block
+  if (MI.getOpcode() == TargetOpcode::INLINEASM_BR)
     return true;
 
   // Target-independent instructions do not have an implicit-use of EXEC, even
