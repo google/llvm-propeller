@@ -1755,7 +1755,8 @@ const MCSymbol &FrameEmitterImpl::EmitCIE(const MCDwarfFrameInfo &Frame) {
   if (!Frame.IsSimple) {
     const std::vector<MCCFIInstruction> &Instructions =
         MAI->getInitialFrameState();
-    emitCFIInstructions(Instructions, nullptr);
+    emitCFIInstructions(Instructions, nullptr, true, true);
+    emitCFIInstructions(Frame.Instructions, Frame.Begin, true, false);
   }
 
   InitialCFAOffset = CFAOffset;
@@ -1832,7 +1833,7 @@ void FrameEmitterImpl::EmitFDE(const MCSymbol &cieStart,
   }
 
   // Call Frame Instructions
-  emitCFIInstructions(frame.Instructions, frame.Begin);
+  emitCFIInstructions(frame.Instructions, frame.Begin, false, true);
 
   // Padding
   // The size of a .eh_frame section has to be a multiple of the alignment
@@ -1849,27 +1850,50 @@ namespace {
 struct CIEKey {
   static const CIEKey getEmptyKey() {
     return CIEKey(nullptr, 0, -1, false, false, static_cast<unsigned>(INT_MAX),
-                  false);
+                  false, nullptr);
   }
 
   static const CIEKey getTombstoneKey() {
     return CIEKey(nullptr, -1, 0, false, false, static_cast<unsigned>(INT_MAX),
-                  false);
+                  false, nullptr);
+  }
+
+  static std::vector<MCCFIInstruction>
+  getDedupedInstructions(const std::vector<MCCFIInstruction> &Instructions,
+                         const MCSymbol *BaseSymbol,
+                         const MCObjectStreamer &Streamer) {
+    std::vector<MCCFIInstruction> DedupedInstructions;
+    for (const auto &Instr : Instructions) {
+      MCSymbol *Label = Instr.getLabel();
+      // Throw out move if the label is invalid.
+      if (Label && !Label->isDefined())
+        continue; // Not emitted, in dead code.
+
+      if (!ShouldBeDeduped(Instr, BaseSymbol, Streamer))
+        break;
+
+      DedupedInstructions.push_back(Instr.StripLabel());
+    }
+    return DedupedInstructions;
   }
 
   CIEKey(const MCSymbol *Personality, unsigned PersonalityEncoding,
          unsigned LSDAEncoding, bool IsSignalFrame, bool IsSimple,
-         unsigned RAReg, bool IsBKeyFrame)
+         unsigned RAReg, bool IsBKeyFrame,
+         const std::vector<MCCFIInstruction> *DedupedInstructions)
       : Personality(Personality), PersonalityEncoding(PersonalityEncoding),
         LsdaEncoding(LSDAEncoding), IsSignalFrame(IsSignalFrame),
-        IsSimple(IsSimple), RAReg(RAReg), IsBKeyFrame(IsBKeyFrame) {}
+        IsSimple(IsSimple), RAReg(RAReg), IsBKeyFrame(IsBKeyFrame),
+        DedupedInstructions(DedupedInstructions) {}
 
-  explicit CIEKey(const MCDwarfFrameInfo &Frame)
+  explicit CIEKey(const MCDwarfFrameInfo &Frame,
+                  const std::vector<MCCFIInstruction> *DedupedInstructions)
       : Personality(Frame.Personality),
         PersonalityEncoding(Frame.PersonalityEncoding),
         LsdaEncoding(Frame.LsdaEncoding), IsSignalFrame(Frame.IsSignalFrame),
         IsSimple(Frame.IsSimple), RAReg(Frame.RAReg),
-        IsBKeyFrame(Frame.IsBKeyFrame) {}
+        IsBKeyFrame(Frame.IsBKeyFrame),
+        DedupedInstructions(DedupedInstructions) {}
 
   StringRef PersonalityName() const {
     if (!Personality)
@@ -1877,12 +1901,20 @@ struct CIEKey {
     return Personality->getName();
   }
 
+  const std::vector<MCCFIInstruction> GetDedupedInstructions() const {
+    if (!DedupedInstructions)
+      return {};
+    return *DedupedInstructions;
+  }
+
   bool operator<(const CIEKey &Other) const {
     return std::make_tuple(PersonalityName(), PersonalityEncoding, LsdaEncoding,
-                           IsSignalFrame, IsSimple, RAReg) <
+                           IsSignalFrame, IsSimple, RAReg,
+                           GetDedupedInstructions()) <
            std::make_tuple(Other.PersonalityName(), Other.PersonalityEncoding,
                            Other.LsdaEncoding, Other.IsSignalFrame,
-                           Other.IsSimple, Other.RAReg);
+                           Other.IsSimple, Other.RAReg,
+                           Other.GetDedupedInstructions());
   }
 
   const MCSymbol *Personality;
@@ -1892,6 +1924,7 @@ struct CIEKey {
   bool IsSimple;
   unsigned RAReg;
   bool IsBKeyFrame;
+  const std::vector<MCCFIInstruction> *DedupedInstructions;
 };
 
 } // end anonymous namespace
@@ -1903,9 +1936,12 @@ template <> struct DenseMapInfo<CIEKey> {
   static CIEKey getTombstoneKey() { return CIEKey::getTombstoneKey(); }
 
   static unsigned getHashValue(const CIEKey &Key) {
+    const auto &DedupedInstructions = Key.GetDedupedInstructions();
     return static_cast<unsigned>(hash_combine(
         Key.Personality, Key.PersonalityEncoding, Key.LsdaEncoding,
-        Key.IsSignalFrame, Key.IsSimple, Key.RAReg, Key.IsBKeyFrame));
+        Key.IsSignalFrame, Key.IsSimple, Key.RAReg, Key.IsBKeyFrame,
+        hash_combine_range(DedupedInstructions.begin(),
+                           DedupedInstructions.end())));
   }
 
   static bool isEqual(const CIEKey &LHS, const CIEKey &RHS) {
@@ -1914,7 +1950,8 @@ template <> struct DenseMapInfo<CIEKey> {
            LHS.LsdaEncoding == RHS.LsdaEncoding &&
            LHS.IsSignalFrame == RHS.IsSignalFrame &&
            LHS.IsSimple == RHS.IsSimple && LHS.RAReg == RHS.RAReg &&
-           LHS.IsBKeyFrame == RHS.IsBKeyFrame;
+           LHS.IsBKeyFrame == RHS.IsBKeyFrame &&
+           LHS.GetDedupedInstructions() == RHS.GetDedupedInstructions();
   }
 };
 
@@ -1958,7 +1995,13 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
   MCSymbol *SectionStart = Context.createTempSymbol();
   Streamer.emitLabel(SectionStart);
 
+  std::map<const MCSymbol *, std::vector<MCCFIInstruction>> DedupedInstructions;
   DenseMap<CIEKey, const MCSymbol *> CIEStarts;
+
+  for (const auto &Frame : FrameArray) {
+    DedupedInstructions[Frame.Begin] = CIEKey::getDedupedInstructions(
+        Frame.Instructions, Frame.Begin, Streamer);
+  }
 
   const MCSymbol *DummyDebugKey = nullptr;
   bool CanOmitDwarf = MOFI->getOmitDwarfIfHaveCompactUnwind();
@@ -1968,8 +2011,9 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
   // an FDE refers to a CIE other than the closest previous CIE.
   std::vector<MCDwarfFrameInfo> FrameArrayX(FrameArray.begin(), FrameArray.end());
   llvm::stable_sort(FrameArrayX,
-                    [](const MCDwarfFrameInfo &X, const MCDwarfFrameInfo &Y) {
-                      return CIEKey(X) < CIEKey(Y);
+                    [&](const MCDwarfFrameInfo &X, const MCDwarfFrameInfo &Y) {
+                      return CIEKey(X, &DedupedInstructions.at(X.Begin)) <
+                             CIEKey(Y, &DedupedInstructions.at(Y.Begin));
                     });
   for (auto I = FrameArrayX.begin(), E = FrameArrayX.end(); I != E;) {
     const MCDwarfFrameInfo &Frame = *I;
@@ -1980,7 +2024,7 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
       // of by the compact unwind encoding.
       continue;
 
-    CIEKey Key(Frame);
+    CIEKey Key(Frame, &DedupedInstructions.at(Frame.Begin));
     const MCSymbol *&CIEStart = IsEH ? CIEStarts[Key] : DummyDebugKey;
     if (!CIEStart)
       CIEStart = &Emitter.EmitCIE(Frame);

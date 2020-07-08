@@ -483,12 +483,11 @@ void X86FrameLowering::BuildCFI(MachineBasicBlock &MBB,
 /// frame pointer.
 void X86FrameLowering::emitCalleeSavedFrameMoves(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) const {
-  emitCalleeSavedFrameMoves(MBB, MBBI, DebugLoc{}, true);
-
   MachineFunction &MF = *MBB.getParent();
-  if (!hasFP(MF))
+  if (!hasFP(MF)) {
+    emitCalleeSavedFrameMoves(MBB, MBBI, DebugLoc{}, true);
     return;
-
+  }
   const MachineModuleInfo &MMI = MF.getMMI();
   const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
   const unsigned FramePtr = TRI->getFrameRegister(MF);
@@ -500,6 +499,7 @@ void X86FrameLowering::emitCalleeSavedFrameMoves(
   unsigned Offset = (Is64Bit ? 8 : 4) + (Uses64BitFramePtr ? 8 : 4);
   BuildCFI(MBB, MBBI, DebugLoc{},
            MCCFIInstruction::createOffset(nullptr, DwarfReg, -Offset));
+  emitCalleeSavedFrameMoves(MBB, MBBI, DebugLoc{}, true);
 }
 
 void X86FrameLowering::emitCalleeSavedFrameMoves(
