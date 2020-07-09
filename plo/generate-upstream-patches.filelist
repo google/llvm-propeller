@@ -210,8 +210,8 @@ declare ALL_FILES=(
         cfi              llvm/lib/Target/AArch64/AArch64FrameLowering.h
         cfi              llvm/lib/Target/X86/X86FrameLowering.cpp
         cfi              llvm/lib/Target/X86/X86FrameLowering.h
-        cfi              llvm/test/DebugInfo/X86/basic-block-sections-cfi-1.ll
-        cfi              llvm/test/DebugInfo/X86/basic-block-sections-cfiinstr-1.ll
+	cfi              llvm/test/CodeGen/X86/cfi-basic-block-sections-1.ll
+        cfi              llvm/test/CodeGen/X86/cfi-inserter-basic-block-sections-callee-save-registers.ll
 	cfi-dedup        llvm/include/llvm/MC/MCDwarf.h
         cfi-dedup        llvm/lib/MC/MCDwarf.cpp
         cfi-dedup        llvm/test/DebugInfo/X86/basicblock-sections-cfi.ll
