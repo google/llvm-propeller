@@ -53,15 +53,13 @@ struct MBBSectionID {
     Default = 0, // Regular section (these sections are distinguished by the
                  // Number field).
     Exception,   // Special section type for exception handling blocks
-    Unknown,     // Special section type for blocks with unknown hotness
     Cold,        // Special section type for cold blocks
   } Type;
   unsigned Number;
 
   MBBSectionID(unsigned N) : Type(Default), Number(N) {}
 
-  // Special unique sections for cold, unknown and exception blocks.
-  const static MBBSectionID UnknownSectionID;
+  // Special unique sections for cold and exception blocks.
   const static MBBSectionID ColdSectionID;
   const static MBBSectionID ExceptionSectionID;
 
