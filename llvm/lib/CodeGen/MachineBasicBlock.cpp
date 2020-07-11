@@ -89,9 +89,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
           Ctx.getOrCreateSymbol(Twine(Prefix) + ".BB." + Twine(MF->getName()));
     } else if (MF->hasBBSections() && isBeginSection()) {
       SmallString<5> Suffix;
-      if (SectionID == MBBSectionID::UnknownSectionID) {
-        Suffix += ".unknown";
-      } else if (SectionID == MBBSectionID::ColdSectionID) {
+      if (SectionID == MBBSectionID::ColdSectionID) {
         Suffix += ".cold";
       } else if (SectionID == MBBSectionID::ExceptionSectionID) {
         Suffix += ".eh";
@@ -1483,8 +1481,6 @@ MachineBasicBlock::livein_iterator MachineBasicBlock::livein_begin() const {
   return LiveIns.begin();
 }
 
-const MBBSectionID
-    MBBSectionID::UnknownSectionID(MBBSectionID::SectionType::Unknown);
 const MBBSectionID MBBSectionID::ColdSectionID(MBBSectionID::SectionType::Cold);
 const MBBSectionID
     MBBSectionID::ExceptionSectionID(MBBSectionID::SectionType::Exception);

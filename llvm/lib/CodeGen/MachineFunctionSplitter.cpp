@@ -26,7 +26,6 @@
 
 using namespace llvm;
 
-extern cl::opt<bool> TreatUnknownAsCold;
 static cl::opt<bool> HotFunctionsOnly("mfs-hot-funcs-only", cl::Hidden,
                                       cl::desc("Split hot functions only."),
                                       cl::init(true));
@@ -88,8 +87,7 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
       continue;
     }
     if (isColdBlock(MBB, PSI, MBFI)) {
-      MBB.setSectionID(TreatUnknownAsCold ? MBBSectionID::ColdSectionID
-                                          : MBBSectionID::UnknownSectionID);
+      MBB.setSectionID(MBBSectionID::ColdSectionID);
     }
   }
 
