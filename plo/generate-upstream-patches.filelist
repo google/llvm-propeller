@@ -225,8 +225,8 @@ declare ALL_FILES=(
         exception        llvm/lib/CodeGen/AsmPrinter/WasmException.h
 	base_propeller   llvm/include/llvm/ProfileData/BBSectionsProf.h
         #base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
-        exception        llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections.ll
-	exception        llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
+        exception        llvm/test/CodeGen/X86/gcc_except_table_bb_sections.ll
+	exception        llvm/test/CodeGen/X86/gcc_except_table_bb_sections_ehpad_groups_with_cold.ll
 #
         /dev/null        lld/CMakeLists.txt
         /dev/null        lld/tools/report-size/CMakeLists.txt
@@ -237,7 +237,6 @@ declare ALL_FILES=(
         /dev/null        llvm/lib/IR/Mangler.cpp
 	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
 # This test was not committed as part of https://reviews.llvm.org/rG05192e585ce175b55f2a26b83b4ed7882785c8e6 
-        /dev/null llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
 	other            llvm/include/llvm/MC/MCObjectFileInfo.h
 	other            llvm/lib/MC/MCObjectFileInfo.cpp
     )
