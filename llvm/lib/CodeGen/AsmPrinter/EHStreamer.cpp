@@ -268,7 +268,8 @@ void EHStreamer::computeCallSiteTable(
       // every basic block section.
       CallSiteRanges.push_back(CallSiteRange());
       CurCSRange = &CallSiteRanges.back();
-      CurCSRange->FragmentBeginLabel = Asm->MBBSectionRanges[MBB.getSectionIDNum()].BeginLabel;
+      CurCSRange->FragmentBeginLabel =
+          Asm->MBBSectionRanges[MBB.getSectionIDNum()].BeginLabel;
       CurCSRange->ExceptionLabel = Asm->getExceptionSym(&MBB);
       CurCSRange->CallSiteBeginIdx = CallSites.size();
       PreviousIsInvoke = false;
