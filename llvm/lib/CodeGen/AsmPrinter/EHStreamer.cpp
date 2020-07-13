@@ -225,17 +225,15 @@ void EHStreamer::computePadMap(
 /// different sections of the function.
 ///
 ///   - With -function-sections, all call-sites are grouped into one
-///   call-site-range
-///     corresponding to the function section.
+///     call-site-range corresponding to the function section.
 ///
-///   - With -basic-block sections, one call-site range is created for each
-///   section,
-///     with its FragmentBeginLabel and FragmentEndLabel respectively set to the
-///     beginning and ending of the corresponding section and its ExceptionLabel
-///     set to the exception symbol dedicated for this section. Later, one LSDA
-///     header will be emitted for each call-site range with its call-sites
-///     following. The action table and type info table will be shared across
-///     all ranges.
+///   - With -basicblock-sections, one call-site range is created for each
+///     section, with its FragmentBeginLabel and FragmentEndLabel respectively
+//      set to the beginning and ending of the corresponding section and its
+//      ExceptionLabel set to the exception symbol dedicated for this section.
+//      Later, one LSDA header will be emitted for each call-site range with its
+//      call-sites following. The action table and type info table will be
+//      shared across all ranges.
 void EHStreamer::computeCallSiteTable(
     SmallVectorImpl<CallSiteEntry> &CallSites,
     SmallVectorImpl<CallSiteRange> &CallSiteRanges,
@@ -270,9 +268,7 @@ void EHStreamer::computeCallSiteTable(
       // every basic block section.
       CallSiteRanges.push_back(CallSiteRange());
       CurCSRange = &CallSiteRanges.back();
-      CurCSRange->FragmentBeginLabel = (&MBB == &Asm->MF->front())
-                                           ? Asm->getFunctionBegin()
-                                           : MBB.getSymbol();
+      CurCSRange->FragmentBeginLabel = Asm->MBBSectionRanges[MBB.getSectionIDNum()].BeginLabel;
       CurCSRange->ExceptionLabel = Asm->getExceptionSym(&MBB);
       CurCSRange->CallSiteBeginIdx = CallSites.size();
       PreviousIsInvoke = false;
@@ -364,6 +360,8 @@ void EHStreamer::computeCallSiteTable(
       }
     }
 
+    // We end the call-site range upon function exit and at the end of every
+    // basic block section.
     if (&MBB == &Asm->MF->back() || MBB.isEndSection()) {
       CurCSRange->FragmentEndLabel =
           Asm->MBBSectionRanges[MBB.getSectionIDNum()].EndLabel;
@@ -436,7 +434,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   SmallVector<CallSiteRange, 64> CallSiteRanges;
   computeCallSiteTable(CallSites, CallSiteRanges, LandingPads, FirstActions);
 
-  // If the call-site range table is empty, add a single range containing all
+  // If the call-site range vector is empty, add a single range containing all
   // the call-sites.
   if (CallSiteRanges.empty()) {
     CallSiteRange CSRange;
@@ -609,7 +607,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     //
     // For each call-site range, CallSiteTableEndOffset is computed as the
     // difference between cst_begin of that range and the last call-site-table's
-    // end. This offset is used to find the action table.
+    // end label. This offset is used to find the action table.
 
     unsigned Entry = 0;
     for (auto &CSRange : CallSiteRanges) {
@@ -618,12 +616,12 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       Asm->OutStreamer->emitLabel(CSRange.ExceptionLabel);
 
       // Emit the LSDA header.
-      // If only one call-site range exists, LPStart could be omitted as it is
-      // the same as the function entry.
+      // If only one call-site range exists, LPStart is omitted as it is the
+      // same as the function entry.
       if (CallSiteRanges.size() == 1)
         Asm->emitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
       else {
-        // For more than one call-site range, LPStart must explicitly be
+        // For more than one call-site ranges, LPStart must be explicitly
         // specified.
         Asm->emitEncodingByte(dwarf::DW_EH_PE_absptr, "@LPStart");
         Asm->OutStreamer->emitSymbolValue(LandingPadRange->FragmentBeginLabel,

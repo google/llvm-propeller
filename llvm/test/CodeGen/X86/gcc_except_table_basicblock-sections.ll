@@ -5,44 +5,30 @@
 define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*) {
 ; Verify that each basic block section gets its own LSDA exception symbol.
 ;
-; CHECK:    .text
-; CHECK:  main:
-; CHECK:    .Lfunc_begin0:
-; CHECK:    .cfi_startproc
+; CHECK-LABEL:  main:
+; CHECK-LABEL:    .Lfunc_begin0:
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0
 ; CHECK:    .cfi_lsda 3, .Lexception0
-; CHECK:    pushq %rax
-; CHECK:  .Ltmp0:
-; CHECK:    callq _Z1fv
-; CHECK:  .Ltmp1:
-; CHECK:    jmp	r.BB.main
-; CHECK:    .cfi_endproc
+; CHECK-LABEL:  .Ltmp0:
+; CHECK-LABEL:  .Ltmp1:
 
-; CHECK:    .section        .text,"ax",@progbits,unique,1
-; CHECK:  r.BB.main:                              # %try.cont
+; CHECK-NOT: .cfi_lsda
+
+; CHECK-LABEL:  r.BB.main:
 ; CHECK:    .cfi_startproc
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0
 ; CHECK:    .cfi_lsda 3, .Lexception1
-; CHECK:    xorl %eax, %eax
-; CHECK:    popq %rcx
-; CHECK:    retq
-; CHECK:  .Ltmp3:
-; CHECK:    .size   r.BB.main, .Ltmp3-r.BB.main
-; CHECK:    .cfi_endproc
 
-; CHECK:    .section        .text,"ax",@progbits,unique,2
-; CHECK:  Ar.BB.main:                             # %lpad
-; CHECK:    .cfi_startproc
+; CHECK-NOT: .cfi_lsda
+
+; CHECK-LABEL:  Ar.BB.main:
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0
 ; CHECK:    .cfi_lsda 3, .Lexception2
 ; CHECK:    nop                             # avoids zero-offset landing pad
-; CHECK:  .Ltmp2:
-; CHECK:    movq %rax, %rdi
-; CHECK:    callq _Unwind_Resume
-; CHECK:  .Ltmp4:
-; CHECK:    .size Ar.BB.main, .Ltmp4-Ar.BB.main
-; CHECK:    .cfi_endproc
+; CHECK-LABEL:  .Ltmp2:
+; CHECK-LABEL:  .Ltmp4:
 
+; CHECK-NOT: .cfi_lsda
 
 
 entry:
