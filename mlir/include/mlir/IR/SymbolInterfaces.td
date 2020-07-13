@@ -33,7 +33,7 @@ def Symbol : OpInterface<"SymbolOpInterface"> {
       "StringRef", "getName", (ins), [{
         // Don't rely on the trait implementation as optional symbol operations
         // may override this.
-        return mlir::SymbolTable::getSymbolName(op);
+        return mlir::SymbolTable::getSymbolName($_op);
       }], /*defaultImplementation=*/[{
         return mlir::SymbolTable::getSymbolName(this->getOperation());
       }]
@@ -56,6 +56,24 @@ def Symbol : OpInterface<"SymbolOpInterface"> {
       "void", "setVisibility", (ins "mlir::SymbolTable::Visibility":$vis), [{}],
       /*defaultImplementation=*/[{
         mlir::SymbolTable::setSymbolVisibility(this->getOperation(), vis);
+      }]
+    >,
+    InterfaceMethod<"Returns true if this symbol has nested visibility.",
+      "bool", "isNested", (ins),  [{}],
+      /*defaultImplementation=*/[{
+        return getVisibility() == mlir::SymbolTable::Visibility::Nested;
+      }]
+    >,
+    InterfaceMethod<"Returns true if this symbol has private visibility.",
+      "bool", "isPrivate", (ins),  [{}],
+      /*defaultImplementation=*/[{
+        return getVisibility() == mlir::SymbolTable::Visibility::Private;
+      }]
+    >,
+    InterfaceMethod<"Returns true if this symbol has public visibility.",
+      "bool", "isPublic", (ins),  [{}],
+      /*defaultImplementation=*/[{
+        return getVisibility() == mlir::SymbolTable::Visibility::Public;
       }]
     >,
     InterfaceMethod<[{
@@ -124,20 +142,11 @@ def Symbol : OpInterface<"SymbolOpInterface"> {
   }];
 
   let extraClassDeclaration = [{
-    using Visibility = mlir::SymbolTable::Visibility;
-
     /// Custom classof that handles the case where the symbol is optional.
     static bool classof(Operation *op) {
       return Base::classof(op)
         && op->getAttr(::mlir::SymbolTable::getSymbolAttrName());
     }
-
-    /// Returns true if this symbol has nested visibility.
-    bool isNested() { return getVisibility() == Visibility::Nested; }
-    /// Returns true if this symbol has private visibility.
-    bool isPrivate() { return getVisibility() == Visibility::Private; }
-    /// Returns true if this symbol has public visibility.
-    bool isPublic() { return getVisibility() == Visibility::Public; }
   }];
 
   let extraTraitClassDeclaration = [{

@@ -1,3 +1,5 @@
+#include "CompileCommands.h"
+#include "Config.h"
 #include "Headers.h"
 #include "SyncAPI.h"
 #include "TestFS.h"
@@ -5,6 +7,7 @@
 #include "TestTU.h"
 #include "index/Background.h"
 #include "index/BackgroundRebuild.h"
+#include "clang/Tooling/ArgumentsAdjusters.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/Threading.h"
@@ -24,6 +27,7 @@ namespace clang {
 namespace clangd {
 
 MATCHER_P(Named, N, "") { return arg.Name == N; }
+MATCHER_P(QName, N, "") { return (arg.Scope + arg.Name).str() == N; }
 MATCHER(Declared, "") {
   return !StringRef(arg.CanonicalDeclaration.FileURI).empty();
 }
@@ -86,7 +90,7 @@ protected:
 };
 
 TEST_F(BackgroundIndexTest, NoCrashOnErrorFile) {
-  MockFSProvider FS;
+  MockFS FS;
   FS.Files[testPath("root/A.cc")] = "error file";
   llvm::StringMap<std::string> Storage;
   size_t CacheHits = 0;
@@ -104,8 +108,55 @@ TEST_F(BackgroundIndexTest, NoCrashOnErrorFile) {
   ASSERT_TRUE(Idx.blockUntilIdleForTest());
 }
 
+TEST_F(BackgroundIndexTest, Config) {
+  MockFS FS;
+  // Set up two identical TUs, foo and bar.
+  // They define foo::one and bar::one.
+  std::vector<tooling::CompileCommand> Cmds;
+  for (std::string Name : {"foo", "bar"}) {
+    std::string Filename = Name + ".cpp";
+    std::string Header = Name + ".h";
+    FS.Files[Filename] = "#include \"" + Header + "\"";
+    FS.Files[Header] = "namespace " + Name + " { int one; }";
+    tooling::CompileCommand Cmd;
+    Cmd.Filename = Filename;
+    Cmd.Directory = testRoot();
+    Cmd.CommandLine = {"clang++", Filename};
+    Cmds.push_back(std::move(Cmd));
+  }
+  // Context provider that installs a configuration mutating foo's command.
+  // This causes it to define foo::two instead of foo::one.
+  auto ContextProvider = [](PathRef P) {
+    Config C;
+    if (P.endswith("foo.cpp"))
+      C.CompileFlags.Edits.push_back(
+          [](std::vector<std::string> &Argv) { Argv.push_back("-Done=two"); });
+    return Context::current().derive(Config::Key, std::move(C));
+  };
+  // Create the background index.
+  llvm::StringMap<std::string> Storage;
+  size_t CacheHits = 0;
+  MemoryShardStorage MSS(Storage, CacheHits);
+  // We need the CommandMangler, because that applies the config we're testing.
+  OverlayCDB CDB(/*Base=*/nullptr, /*FallbackFlags=*/{},
+                 tooling::ArgumentsAdjuster(CommandMangler::forTests()));
+  BackgroundIndex Idx(
+      Context::empty(), FS, CDB, [&](llvm::StringRef) { return &MSS; },
+      /*ThreadPoolSize=*/4, /*OnProgress=*/nullptr, std::move(ContextProvider));
+  // Index the two files.
+  for (auto &Cmd : Cmds) {
+    std::string FullPath = testPath(Cmd.Filename);
+    CDB.setCompileCommand(FullPath, std::move(Cmd));
+  }
+  // Wait for both files to be indexed.
+  ASSERT_TRUE(Idx.blockUntilIdleForTest());
+  EXPECT_THAT(runFuzzyFind(Idx, ""),
+              UnorderedElementsAre(QName("foo"), QName("foo::two"),
+                                   QName("bar"), QName("bar::one")));
+}
+
 TEST_F(BackgroundIndexTest, IndexTwoFiles) {
-  MockFSProvider FS;
+  MockFS FS;
   // a.h yields different symbols when included by A.cc vs B.cc.
   FS.Files[testPath("root/A.h")] = R"cpp(
       void common();
@@ -175,7 +226,7 @@ TEST_F(BackgroundIndexTest, IndexTwoFiles) {
 }
 
 TEST_F(BackgroundIndexTest, ShardStorageTest) {
-  MockFSProvider FS;
+  MockFS FS;
   FS.Files[testPath("root/A.h")] = R"cpp(
       void common();
       void f_b();
@@ -246,7 +297,7 @@ TEST_F(BackgroundIndexTest, ShardStorageTest) {
 }
 
 TEST_F(BackgroundIndexTest, DirectIncludesTest) {
-  MockFSProvider FS;
+  MockFS FS;
   FS.Files[testPath("root/B.h")] = "";
   FS.Files[testPath("root/A.h")] = R"cpp(
       #include "B.h"
@@ -297,7 +348,7 @@ TEST_F(BackgroundIndexTest, DirectIncludesTest) {
 }
 
 TEST_F(BackgroundIndexTest, ShardStorageLoad) {
-  MockFSProvider FS;
+  MockFS FS;
   FS.Files[testPath("root/A.h")] = R"cpp(
       void common();
       void f_b();
@@ -368,7 +419,7 @@ TEST_F(BackgroundIndexTest, ShardStorageLoad) {
 }
 
 TEST_F(BackgroundIndexTest, ShardStorageEmptyFile) {
-  MockFSProvider FS;
+  MockFS FS;
   FS.Files[testPath("root/A.h")] = R"cpp(
       void common();
       void f_b();
@@ -436,7 +487,7 @@ TEST_F(BackgroundIndexTest, ShardStorageEmptyFile) {
 }
 
 TEST_F(BackgroundIndexTest, NoDotsInAbsPath) {
-  MockFSProvider FS;
+  MockFS FS;
   llvm::StringMap<std::string> Storage;
   size_t CacheHits = 0;
   MemoryShardStorage MSS(Storage, CacheHits);
@@ -467,7 +518,7 @@ TEST_F(BackgroundIndexTest, NoDotsInAbsPath) {
 }
 
 TEST_F(BackgroundIndexTest, UncompilableFiles) {
-  MockFSProvider FS;
+  MockFS FS;
   llvm::StringMap<std::string> Storage;
   size_t CacheHits = 0;
   MemoryShardStorage MSS(Storage, CacheHits);
@@ -530,7 +581,7 @@ TEST_F(BackgroundIndexTest, UncompilableFiles) {
 }
 
 TEST_F(BackgroundIndexTest, CmdLineHash) {
-  MockFSProvider FS;
+  MockFS FS;
   llvm::StringMap<std::string> Storage;
   size_t CacheHits = 0;
   MemoryShardStorage MSS(Storage, CacheHits);

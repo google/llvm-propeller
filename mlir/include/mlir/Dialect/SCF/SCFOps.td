@@ -328,7 +328,15 @@ def ParallelOp : SCF_Op<"parallel",
   let builders = [
     OpBuilder<"OpBuilder &builder, OperationState &result, "
               "ValueRange lowerBounds, ValueRange upperBounds, "
-              "ValueRange steps, ValueRange initVals = {}">,
+              "ValueRange steps, ValueRange initVals, "
+              "function_ref<void (OpBuilder &, Location, "
+                                 "ValueRange, ValueRange)>"
+              "  bodyBuilderFn = nullptr">,
+    OpBuilder<"OpBuilder &builder, OperationState &result, "
+              "ValueRange lowerBounds, ValueRange upperBounds, "
+              "ValueRange steps, "
+              "function_ref<void (OpBuilder &, Location, ValueRange)>"
+              "  bodyBuilderFn = nullptr">,
   ];
 
   let extraClassDeclaration = [{
@@ -338,6 +346,8 @@ def ParallelOp : SCF_Op<"parallel",
     unsigned getNumLoops() { return step().size(); }
     unsigned getNumReductions() { return initVals().size(); }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def ReduceOp : SCF_Op<"reduce", [HasParent<"ParallelOp">]> {
@@ -380,7 +390,9 @@ def ReduceOp : SCF_Op<"reduce", [HasParent<"ParallelOp">]> {
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<"OpBuilder &builder, OperationState &result, "
-              "Value operand">
+              "Value operand, "
+              "function_ref<void (OpBuilder &, Location, Value, Value)>"
+              "  bodyBuilderFn = nullptr">
   ];
 
   let arguments = (ins AnyType:$operand);

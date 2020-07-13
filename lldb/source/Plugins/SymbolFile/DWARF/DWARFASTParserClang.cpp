@@ -90,7 +90,7 @@ static bool DeclKindIsCXXClass(clang::Decl::Kind decl_kind) {
 
 ClangASTImporter &DWARFASTParserClang::GetClangASTImporter() {
   if (!m_clang_ast_importer_up) {
-    m_clang_ast_importer_up.reset(new ClangASTImporter);
+    m_clang_ast_importer_up = std::make_unique<ClangASTImporter>();
   }
   return *m_clang_ast_importer_up;
 }
@@ -1267,32 +1267,20 @@ TypeSP DWARFASTParserClang::ParseArrayType(const DWARFDIE &die,
   if (TypeSystemClang::IsCXXClassType(array_element_type) &&
       !array_element_type.GetCompleteType()) {
     ModuleSP module_sp = die.GetModule();
-    if (module_sp) {
-      if (die.GetCU()->GetProducer() == eProducerClang)
-        module_sp->ReportError(
-            "DWARF DW_TAG_array_type DIE at 0x%8.8x has a "
-            "class/union/struct element type DIE 0x%8.8x that is a "
-            "forward declaration, not a complete definition.\nTry "
-            "compiling the source file with -fstandalone-debug or "
-            "disable -gmodules",
-            die.GetOffset(), type_die.GetOffset());
-      else
-        module_sp->ReportError(
-            "DWARF DW_TAG_array_type DIE at 0x%8.8x has a "
-            "class/union/struct element type DIE 0x%8.8x that is a "
-            "forward declaration, not a complete definition.\nPlease "
-            "file a bug against the compiler and include the "
-            "preprocessed output for %s",
-            die.GetOffset(), type_die.GetOffset(), GetUnitName(die).c_str());
-    }
 
-    // We have no choice other than to pretend that the element class
-    // type is complete. If we don't do this, clang will crash when
-    // trying to layout the class. Since we provide layout
-    // assistance, all ivars in this class and other classes will be
-    // fine, this is the best we can do short of crashing.
+    // Mark the class as complete, but we make a note of the fact that
+    // this class is not _really_ complete so we can later search for a
+    // definition in a different module.
+    // Since we provide layout assistance, all ivars in this class and other
+    // classes will be fine even if we are not able to find the definition
+    // elsewhere.
     if (TypeSystemClang::StartTagDeclarationDefinition(array_element_type)) {
       TypeSystemClang::CompleteTagDeclarationDefinition(array_element_type);
+      const auto *td =
+          TypeSystemClang::GetQualType(array_element_type.GetOpaqueQualType())
+              .getTypePtr()
+              ->getAsTagDecl();
+      m_ast.GetMetadata(td)->SetIsForcefullyCompleted();
     } else {
       module_sp->ReportError("DWARF DIE at 0x%8.8x was not able to "
                              "start its definition.\nPlease file a "
@@ -1783,7 +1771,7 @@ public:
         m_property_getter_name(property_getter_name),
         m_property_attributes(property_attributes) {
     if (metadata != nullptr) {
-      m_metadata_up.reset(new ClangASTMetadata());
+      m_metadata_up = std::make_unique<ClangASTMetadata>();
       *m_metadata_up = *metadata;
     }
   }
@@ -1803,7 +1791,7 @@ public:
     m_property_attributes = rhs.m_property_attributes;
 
     if (rhs.m_metadata_up) {
-      m_metadata_up.reset(new ClangASTMetadata());
+      m_metadata_up = std::make_unique<ClangASTMetadata>();
       *m_metadata_up = *rhs.m_metadata_up;
     }
     return *this;
@@ -1835,8 +1823,8 @@ bool DWARFASTParserClang::ParseTemplateDIE(
 
   switch (tag) {
   case DW_TAG_GNU_template_parameter_pack: {
-    template_param_infos.packed_args.reset(
-      new TypeSystemClang::TemplateParameterInfos);
+    template_param_infos.packed_args =
+        std::make_unique<TypeSystemClang::TemplateParameterInfos>();
     for (DWARFDIE child_die = die.GetFirstChild(); child_die.IsValid();
          child_die = child_die.GetSibling()) {
       if (!ParseTemplateDIE(child_die, *template_param_infos.packed_args))
@@ -2061,26 +2049,19 @@ bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
           CompilerType base_class_type =
               m_ast.GetType(type_source_info->getType());
           if (!base_class_type.GetCompleteType()) {
-            auto module = dwarf->GetObjectFile()->GetModule();
-            module->ReportError(":: Class '%s' has a base class '%s' which "
-                                "does not have a complete definition.",
-                                die.GetName(),
-                                base_class_type.GetTypeName().GetCString());
-            if (die.GetCU()->GetProducer() == eProducerClang)
-              module->ReportError(":: Try compiling the source file with "
-                                  "-fstandalone-debug.");
-
-            // We have no choice other than to pretend that the base class
-            // is complete. If we don't do this, clang will crash when we
-            // call setBases() inside of
-            // "clang_type.TransferBaseClasses()" below. Since we
-            // provide layout assistance, all ivars in this class and other
-            // classes will be fine, this is the best we can do short of
-            // crashing.
+            // We mark the class as complete to allow the TransferBaseClasses
+            // call to succeed. But we make a note of the fact that this class
+            // is not _really_ complete so we can later search for a definition
+            // in a different module.
             if (TypeSystemClang::StartTagDeclarationDefinition(
                     base_class_type)) {
               TypeSystemClang::CompleteTagDeclarationDefinition(
                   base_class_type);
+              const auto *td = TypeSystemClang::GetQualType(
+                                   base_class_type.GetOpaqueQualType())
+                                   .getTypePtr()
+                                   ->getAsTagDecl();
+              m_ast.GetMetadata(td)->SetIsForcefullyCompleted();
             }
           }
         }
@@ -2354,8 +2335,8 @@ Function *DWARFASTParserClang::ParseFunctionFromDWARF(CompileUnit &comp_unit,
       FunctionSP func_sp;
       std::unique_ptr<Declaration> decl_up;
       if (decl_file != 0 || decl_line != 0 || decl_column != 0)
-        decl_up.reset(new Declaration(die.GetCU()->GetFile(decl_file),
-                                      decl_line, decl_column));
+        decl_up = std::make_unique<Declaration>(die.GetCU()->GetFile(decl_file),
+                                                decl_line, decl_column);
 
       SymbolFileDWARF *dwarf = die.GetDWARF();
       // Supply the type _only_ if it has already been parsed
@@ -2748,31 +2729,21 @@ void DWARFASTParserClang::ParseSingleMember(
 
           if (TypeSystemClang::IsCXXClassType(member_clang_type) &&
               !member_clang_type.GetCompleteType()) {
-            if (die.GetCU()->GetProducer() == eProducerClang)
-              module_sp->ReportError(
-                  "DWARF DIE at 0x%8.8x (class %s) has a member variable "
-                  "0x%8.8x (%s) whose type is a forward declaration, not a "
-                  "complete definition.\nTry compiling the source file "
-                  "with -fstandalone-debug",
-                  parent_die.GetOffset(), parent_die.GetName(), die.GetOffset(),
-                  name);
-            else
-              module_sp->ReportError(
-                  "DWARF DIE at 0x%8.8x (class %s) has a member variable "
-                  "0x%8.8x (%s) whose type is a forward declaration, not a "
-                  "complete definition.\nPlease file a bug against the "
-                  "compiler and include the preprocessed output for %s",
-                  parent_die.GetOffset(), parent_die.GetName(), die.GetOffset(),
-                  name, GetUnitName(parent_die).c_str());
-            // We have no choice other than to pretend that the member
-            // class is complete. If we don't do this, clang will crash
-            // when trying to layout the class. Since we provide layout
-            // assistance, all ivars in this class and other classes will
-            // be fine, this is the best we can do short of crashing.
+            // Mark the class as complete, but we make a note of the fact that
+            // this class is not _really_ complete so we can later search for a
+            // definition in a different module.
+            // Since we provide layout assistance, all ivars in this class and
+            // other classes will be fine even if we are not able to find the
+            // definition elsewhere.
             if (TypeSystemClang::StartTagDeclarationDefinition(
                     member_clang_type)) {
               TypeSystemClang::CompleteTagDeclarationDefinition(
                   member_clang_type);
+              const auto *td = TypeSystemClang::GetQualType(
+                                   member_clang_type.GetOpaqueQualType())
+                                   .getTypePtr()
+                                   ->getAsTagDecl();
+              m_ast.GetMetadata(td)->SetIsForcefullyCompleted();
             } else {
               module_sp->ReportError(
                   "DWARF DIE at 0x%8.8x (class %s) has a member variable "

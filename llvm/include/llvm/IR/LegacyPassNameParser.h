@@ -73,6 +73,11 @@ public:
       llvm_unreachable(nullptr);
     }
     addLiteralOption(P->getPassArgument().data(), P, P->getPassName().data());
+
+    // Temporary alias for basicaa -> basic-aa
+    // TODO: remove once everything is migrated to basic-aa
+    if (P->getPassArgument() == "basic-aa")
+      addLiteralOption("basicaa", P, "deprecated alias for basic-aa");
   }
   void passEnumerate(const PassInfo *P) override { passRegistered(P); }
 
@@ -89,47 +94,6 @@ private:
   static int ValCompare(const PassNameParser::OptionInfo *VT1,
                         const PassNameParser::OptionInfo *VT2) {
     return VT1->Name.compare(VT2->Name);
-  }
-};
-
-///===----------------------------------------------------------------------===//
-/// FilteredPassNameParser class - Make use of the pass registration
-/// mechanism to automatically add a command line argument to opt for
-/// each pass that satisfies a filter criteria.  Filter should return
-/// true for passes to be registered as command-line options.
-///
-template<typename Filter>
-class FilteredPassNameParser : public PassNameParser {
-private:
-  Filter filter;
-
-public:
-  bool ignorablePassImpl(const PassInfo *P) const override {
-    return !filter(*P);
-  }
-};
-
-///===----------------------------------------------------------------------===//
-/// PassArgFilter - A filter for use with PassNameFilterParser that only
-/// accepts a Pass whose Arg matches certain strings.
-///
-/// Use like this:
-///
-/// extern const char AllowedPassArgs[] = "-anders_aa -dse";
-///
-/// static cl::list<
-///   const PassInfo*,
-///   bool,
-///   FilteredPassNameParser<PassArgFilter<AllowedPassArgs> > >
-/// PassList(cl::desc("Passes available:"));
-///
-/// Only the -anders_aa and -dse options will be available to the user.
-///
-template<const char *Args>
-class PassArgFilter {
-public:
-  bool operator()(const PassInfo &P) const {
-    return StringRef(Args).contains(P.getPassArgument());
   }
 };
 

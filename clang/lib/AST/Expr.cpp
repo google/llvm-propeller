@@ -244,6 +244,7 @@ static void AssertResultStorageKind(ConstantExpr::ResultStorageKind Kind) {
   assert((Kind == ConstantExpr::RSK_APValue ||
           Kind == ConstantExpr::RSK_Int64 || Kind == ConstantExpr::RSK_None) &&
          "Invalid StorageKind Value");
+  (void)Kind;
 }
 
 ConstantExpr::ResultStorageKind
@@ -268,17 +269,18 @@ ConstantExpr::getStorageKind(const Type *T, const ASTContext &Context) {
   return ConstantExpr::RSK_APValue;
 }
 
-void ConstantExpr::DefaultInit(ResultStorageKind StorageKind) {
+ConstantExpr::ConstantExpr(Expr *SubExpr, ResultStorageKind StorageKind,
+                           bool IsImmediateInvocation)
+    : FullExpr(ConstantExprClass, SubExpr) {
   ConstantExprBits.ResultKind = StorageKind;
   ConstantExprBits.APValueKind = APValue::None;
+  ConstantExprBits.IsUnsigned = false;
+  ConstantExprBits.BitWidth = 0;
   ConstantExprBits.HasCleanup = false;
+  ConstantExprBits.IsImmediateInvocation = IsImmediateInvocation;
+
   if (StorageKind == ConstantExpr::RSK_APValue)
     ::new (getTrailingObjects<APValue>()) APValue();
-}
-
-ConstantExpr::ConstantExpr(Expr *subexpr, ResultStorageKind StorageKind)
-    : FullExpr(ConstantExprClass, subexpr) {
-  DefaultInit(StorageKind);
 }
 
 ConstantExpr *ConstantExpr::Create(const ASTContext &Context, Expr *E,
@@ -286,14 +288,12 @@ ConstantExpr *ConstantExpr::Create(const ASTContext &Context, Expr *E,
                                    bool IsImmediateInvocation) {
   assert(!isa<ConstantExpr>(E));
   AssertResultStorageKind(StorageKind);
+
   unsigned Size = totalSizeToAlloc<APValue, uint64_t>(
       StorageKind == ConstantExpr::RSK_APValue,
       StorageKind == ConstantExpr::RSK_Int64);
   void *Mem = Context.Allocate(Size, alignof(ConstantExpr));
-  ConstantExpr *Self = new (Mem) ConstantExpr(E, StorageKind);
-  Self->ConstantExprBits.IsImmediateInvocation =
-      IsImmediateInvocation;
-  return Self;
+  return new (Mem) ConstantExpr(E, StorageKind, IsImmediateInvocation);
 }
 
 ConstantExpr *ConstantExpr::Create(const ASTContext &Context, Expr *E,
@@ -304,21 +304,23 @@ ConstantExpr *ConstantExpr::Create(const ASTContext &Context, Expr *E,
   return Self;
 }
 
-ConstantExpr::ConstantExpr(ResultStorageKind StorageKind, EmptyShell Empty)
+ConstantExpr::ConstantExpr(EmptyShell Empty, ResultStorageKind StorageKind)
     : FullExpr(ConstantExprClass, Empty) {
-  DefaultInit(StorageKind);
+  ConstantExprBits.ResultKind = StorageKind;
+
+  if (StorageKind == ConstantExpr::RSK_APValue)
+    ::new (getTrailingObjects<APValue>()) APValue();
 }
 
 ConstantExpr *ConstantExpr::CreateEmpty(const ASTContext &Context,
-                                        ResultStorageKind StorageKind,
-                                        EmptyShell Empty) {
+                                        ResultStorageKind StorageKind) {
   AssertResultStorageKind(StorageKind);
+
   unsigned Size = totalSizeToAlloc<APValue, uint64_t>(
       StorageKind == ConstantExpr::RSK_APValue,
       StorageKind == ConstantExpr::RSK_Int64);
   void *Mem = Context.Allocate(Size, alignof(ConstantExpr));
-  ConstantExpr *Self = new (Mem) ConstantExpr(StorageKind, Empty);
-  return Self;
+  return new (Mem) ConstantExpr(EmptyShell(), StorageKind);
 }
 
 void ConstantExpr::MoveIntoResult(APValue &Value, const ASTContext &Context) {
@@ -1535,7 +1537,10 @@ UnaryExprOrTypeTraitExpr::UnaryExprOrTypeTraitExpr(
     SourceLocation op, SourceLocation rp)
     : Expr(UnaryExprOrTypeTraitExprClass, resultType, VK_RValue, OK_Ordinary),
       OpLoc(op), RParenLoc(rp) {
+  assert(ExprKind <= UETT_Last && "invalid enum value!");
   UnaryExprOrTypeTraitExprBits.Kind = ExprKind;
+  assert(static_cast<unsigned>(ExprKind) == UnaryExprOrTypeTraitExprBits.Kind &&
+         "UnaryExprOrTypeTraitExprBits.Kind overflow!");
   UnaryExprOrTypeTraitExprBits.IsType = false;
   Argument.Ex = E;
   setDependence(computeDependence(this));
@@ -3807,6 +3812,11 @@ Expr::isNullPointerConstant(ASTContext &Ctx,
       return Source->isNullPointerConstant(Ctx, NPC);
   }
 
+  // If the expression has no type information, it cannot be a null pointer
+  // constant.
+  if (getType().isNull())
+    return NPCK_NotNull;
+
   // C++11 nullptr_t is always a null pointer constant.
   if (getType()->isNullPtrType())
     return NPCK_CXX11_nullptr;
@@ -4458,7 +4468,7 @@ ParenListExpr *ParenListExpr::CreateEmpty(const ASTContext &Ctx,
 BinaryOperator::BinaryOperator(const ASTContext &Ctx, Expr *lhs, Expr *rhs,
                                Opcode opc, QualType ResTy, ExprValueKind VK,
                                ExprObjectKind OK, SourceLocation opLoc,
-                               FPOptions FPFeatures)
+                               FPOptionsOverride FPFeatures)
     : Expr(BinaryOperatorClass, ResTy, VK, OK) {
   BinaryOperatorBits.Opc = opc;
   assert(!isCompoundAssignmentOp() &&
@@ -4466,8 +4476,7 @@ BinaryOperator::BinaryOperator(const ASTContext &Ctx, Expr *lhs, Expr *rhs,
   BinaryOperatorBits.OpLoc = opLoc;
   SubExprs[LHS] = lhs;
   SubExprs[RHS] = rhs;
-  BinaryOperatorBits.HasFPFeatures =
-      FPFeatures.requiresTrailingStorage(Ctx.getLangOpts());
+  BinaryOperatorBits.HasFPFeatures = FPFeatures.requiresTrailingStorage();
   if (BinaryOperatorBits.HasFPFeatures)
     *getTrailingFPFeatures() = FPFeatures;
   setDependence(computeDependence(this));
@@ -4476,7 +4485,7 @@ BinaryOperator::BinaryOperator(const ASTContext &Ctx, Expr *lhs, Expr *rhs,
 BinaryOperator::BinaryOperator(const ASTContext &Ctx, Expr *lhs, Expr *rhs,
                                Opcode opc, QualType ResTy, ExprValueKind VK,
                                ExprObjectKind OK, SourceLocation opLoc,
-                               FPOptions FPFeatures, bool dead2)
+                               FPOptionsOverride FPFeatures, bool dead2)
     : Expr(CompoundAssignOperatorClass, ResTy, VK, OK) {
   BinaryOperatorBits.Opc = opc;
   assert(isCompoundAssignmentOp() &&
@@ -4484,8 +4493,7 @@ BinaryOperator::BinaryOperator(const ASTContext &Ctx, Expr *lhs, Expr *rhs,
   BinaryOperatorBits.OpLoc = opLoc;
   SubExprs[LHS] = lhs;
   SubExprs[RHS] = rhs;
-  BinaryOperatorBits.HasFPFeatures =
-      FPFeatures.requiresTrailingStorage(Ctx.getLangOpts());
+  BinaryOperatorBits.HasFPFeatures = FPFeatures.requiresTrailingStorage();
   if (BinaryOperatorBits.HasFPFeatures)
     *getTrailingFPFeatures() = FPFeatures;
   setDependence(computeDependence(this));
@@ -4503,8 +4511,8 @@ BinaryOperator *BinaryOperator::Create(const ASTContext &C, Expr *lhs,
                                        Expr *rhs, Opcode opc, QualType ResTy,
                                        ExprValueKind VK, ExprObjectKind OK,
                                        SourceLocation opLoc,
-                                       FPOptions FPFeatures) {
-  bool HasFPFeatures = FPFeatures.requiresTrailingStorage(C.getLangOpts());
+                                       FPOptionsOverride FPFeatures) {
+  bool HasFPFeatures = FPFeatures.requiresTrailingStorage();
   unsigned Extra = sizeOfTrailingObjects(HasFPFeatures);
   void *Mem =
       C.Allocate(sizeof(BinaryOperator) + Extra, alignof(BinaryOperator));
@@ -4520,11 +4528,13 @@ CompoundAssignOperator::CreateEmpty(const ASTContext &C, bool HasFPFeatures) {
   return new (Mem) CompoundAssignOperator(C, EmptyShell(), HasFPFeatures);
 }
 
-CompoundAssignOperator *CompoundAssignOperator::Create(
-    const ASTContext &C, Expr *lhs, Expr *rhs, Opcode opc, QualType ResTy,
-    ExprValueKind VK, ExprObjectKind OK, SourceLocation opLoc,
-    FPOptions FPFeatures, QualType CompLHSType, QualType CompResultType) {
-  bool HasFPFeatures = FPFeatures.requiresTrailingStorage(C.getLangOpts());
+CompoundAssignOperator *
+CompoundAssignOperator::Create(const ASTContext &C, Expr *lhs, Expr *rhs,
+                               Opcode opc, QualType ResTy, ExprValueKind VK,
+                               ExprObjectKind OK, SourceLocation opLoc,
+                               FPOptionsOverride FPFeatures,
+                               QualType CompLHSType, QualType CompResultType) {
+  bool HasFPFeatures = FPFeatures.requiresTrailingStorage();
   unsigned Extra = sizeOfTrailingObjects(HasFPFeatures);
   void *Mem = C.Allocate(sizeof(CompoundAssignOperator) + Extra,
                          alignof(CompoundAssignOperator));
@@ -4535,7 +4545,7 @@ CompoundAssignOperator *CompoundAssignOperator::Create(
 
 UnaryOperator *UnaryOperator::CreateEmpty(const ASTContext &C,
                                           bool hasFPFeatures) {
-  void *Mem = C.Allocate(totalSizeToAlloc<FPOptions>(hasFPFeatures),
+  void *Mem = C.Allocate(totalSizeToAlloc<FPOptionsOverride>(hasFPFeatures),
                          alignof(UnaryOperator));
   return new (Mem) UnaryOperator(hasFPFeatures, EmptyShell());
 }
@@ -4543,13 +4553,12 @@ UnaryOperator *UnaryOperator::CreateEmpty(const ASTContext &C,
 UnaryOperator::UnaryOperator(const ASTContext &Ctx, Expr *input, Opcode opc,
                              QualType type, ExprValueKind VK, ExprObjectKind OK,
                              SourceLocation l, bool CanOverflow,
-                             FPOptions FPFeatures)
+                             FPOptionsOverride FPFeatures)
     : Expr(UnaryOperatorClass, type, VK, OK), Val(input) {
   UnaryOperatorBits.Opc = opc;
   UnaryOperatorBits.CanOverflow = CanOverflow;
   UnaryOperatorBits.Loc = l;
-  UnaryOperatorBits.HasFPFeatures =
-      FPFeatures.requiresTrailingStorage(Ctx.getLangOpts());
+  UnaryOperatorBits.HasFPFeatures = FPFeatures.requiresTrailingStorage();
   setDependence(computeDependence(this));
 }
 
@@ -4557,9 +4566,9 @@ UnaryOperator *UnaryOperator::Create(const ASTContext &C, Expr *input,
                                      Opcode opc, QualType type,
                                      ExprValueKind VK, ExprObjectKind OK,
                                      SourceLocation l, bool CanOverflow,
-                                     FPOptions FPFeatures) {
-  bool HasFPFeatures = FPFeatures.requiresTrailingStorage(C.getLangOpts());
-  unsigned Size = totalSizeToAlloc<FPOptions>(HasFPFeatures);
+                                     FPOptionsOverride FPFeatures) {
+  bool HasFPFeatures = FPFeatures.requiresTrailingStorage();
+  unsigned Size = totalSizeToAlloc<FPOptionsOverride>(HasFPFeatures);
   void *Mem = C.Allocate(Size, alignof(UnaryOperator));
   return new (Mem)
       UnaryOperator(C, input, opc, type, VK, OK, l, CanOverflow, FPFeatures);

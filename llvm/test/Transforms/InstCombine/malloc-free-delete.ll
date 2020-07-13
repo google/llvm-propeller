@@ -267,7 +267,16 @@ declare void @_ZdaPvSt11align_val_t(i8*, i64) nobuiltin
 declare void @_ZdlPvSt11align_val_tRKSt9nothrow_t(i8*, i64, i8*) nobuiltin
 ; delete[](void*, align_val_t, nothrow)
 declare void @_ZdaPvSt11align_val_tRKSt9nothrow_t(i8*, i64, i8*) nobuiltin
+; delete(void*, unsigned int, align_val_t)
+declare void @_ZdlPvjSt11align_val_t(i8*, i32, i32) nobuiltin
+; delete(void*, unsigned long, align_val_t)
+declare void @_ZdlPvmSt11align_val_t(i8*, i64, i64) nobuiltin
+; delete[](void*, unsigned int, align_val_t)
+declare void @_ZdaPvjSt11align_val_t(i8*, i32, i32) nobuiltin
+; delete[](void*, unsigned long, align_val_t)
+declare void @_ZdaPvmSt11align_val_t(i8*, i64, i64) nobuiltin
 
+declare void @llvm.assume(i1)
 
 define void @test8() {
 ; CHECK-LABEL: @test8(
@@ -302,6 +311,20 @@ define void @test8() {
   call void @_ZdlPvSt11align_val_tRKSt9nothrow_t(i8* %nwjat, i64 8, i8* %nt) builtin
   %najat = call i8* @_ZnajSt11align_val_tRKSt9nothrow_t(i32 32, i32 8, i8* %nt) builtin
   call void @_ZdaPvSt11align_val_tRKSt9nothrow_t(i8* %najat, i64 8, i8* %nt) builtin
+  %nwa2 = call i8* @_ZnwmSt11align_val_t(i64 32, i64 8) builtin
+  call void @_ZdlPvmSt11align_val_t(i8* %nwa2, i64 32, i64 8) builtin
+  %nwja2 = call i8* @_ZnwjSt11align_val_t(i32 32, i32 8) builtin
+  call void @_ZdlPvjSt11align_val_t(i8* %nwa2, i32 32, i32 8) builtin
+  %naa2 = call i8* @_ZnamSt11align_val_t(i64 32, i64 8) builtin
+  call void @_ZdaPvmSt11align_val_t(i8* %naa2, i64 32, i64 8) builtin
+  %naja2 = call i8* @_ZnajSt11align_val_t(i32 32, i32 8) builtin
+  call void @_ZdaPvjSt11align_val_t(i8* %naja2, i32 32, i32 8) builtin
+
+  ; Check that the alignment assume does not prevent the removal.
+  %nwa3 = call i8* @_ZnwmSt11align_val_t(i64 32, i64 16) builtin
+  call void @llvm.assume(i1 true) [ "align"(i8* %nwa3, i64 16) ]
+  call void @_ZdlPvmSt11align_val_t(i8* %nwa3, i64 32, i64 16) builtin
+
   ret void
 }
 
@@ -328,7 +351,7 @@ define void @test10()  {
 
 define void @test11() {
 ; CHECK-LABEL: @test11(
-; CHECK-NEXT:    [[CALL:%.*]] = call dereferenceable(8) i8* @_Znwm(i64 8) #6
+; CHECK-NEXT:    [[CALL:%.*]] = call dereferenceable(8) i8* @_Znwm(i64 8) #7
 ; CHECK-NEXT:    call void @_ZdlPv(i8* nonnull [[CALL]])
 ; CHECK-NEXT:    ret void
 ;

@@ -14,7 +14,10 @@
 #include "ClangdServer.h"
 #include "GlobalCompilationDatabase.h"
 #include "support/Path.h"
+#include "support/ThreadsafeFS.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "llvm/ADT/None.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/VirtualFileSystem.h"
 
@@ -28,9 +31,9 @@ buildTestFS(llvm::StringMap<std::string> const &Files,
             llvm::StringMap<time_t> const &Timestamps = {});
 
 // A VFS provider that returns TestFSes containing a provided set of files.
-class MockFSProvider : public FileSystemProvider {
+class MockFS : public ThreadsafeFS {
 public:
-  IntrusiveRefCntPtr<llvm::vfs::FileSystem> getFileSystem() const override {
+  IntrusiveRefCntPtr<llvm::vfs::FileSystem> viewImpl() const override {
     return buildTestFS(Files, Timestamps);
   }
 
@@ -66,7 +69,8 @@ private:
 const char *testRoot();
 
 // Returns a suitable absolute path for this OS.
-std::string testPath(PathRef File);
+std::string testPath(PathRef File,
+                     llvm::sys::path::Style = llvm::sys::path::Style::native);
 
 // unittest: is a scheme that refers to files relative to testRoot()
 // This anchor is used to force the linker to link in the generated object file

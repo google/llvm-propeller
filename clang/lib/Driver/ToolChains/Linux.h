@@ -42,7 +42,7 @@ public:
   SanitizerMask getSupportedSanitizers() const override;
   void addProfileRTLibs(const llvm::opt::ArgList &Args,
                         llvm::opt::ArgStringList &CmdArgs) const override;
-  virtual std::string computeSysRoot() const;
+  std::string computeSysRoot() const override;
 
   std::string getDynamicLinker(const llvm::opt::ArgList &Args) const override;
 
@@ -57,6 +57,7 @@ public:
 protected:
   Tool *buildAssembler() const override;
   Tool *buildLinker() const override;
+  Tool *buildStaticLibTool() const override;
 
   std::string getMultiarchTriple(const Driver &D,
                                  const llvm::Triple &TargetTriple,

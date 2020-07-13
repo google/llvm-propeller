@@ -55,6 +55,12 @@ MachineBasicBlock::MachineBasicBlock(MachineFunction &MF, const BasicBlock *B)
 MachineBasicBlock::~MachineBasicBlock() {
 }
 
+unsigned MachineBasicBlock::getBBInfoMetadata() {
+  const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
+  return ((unsigned)isReturnBlock()) |
+         ((!empty() && TII->isTailCall(back())) << 1) | (canFallThrough() << 2);
+}
+
 /// Return the MCSymbol for this basic block.
 MCSymbol *MachineBasicBlock::getSymbol() const {
   if (!CachedMCSymbol) {
@@ -83,9 +89,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
           Ctx.getOrCreateSymbol(Twine(Prefix) + ".BB." + Twine(MF->getName()));
     } else if (MF->hasBBSections() && isBeginSection()) {
       SmallString<5> Suffix;
-      if (SectionID == MBBSectionID::UnknownSectionID) {
-        Suffix += ".unknown";
-      } else if (SectionID == MBBSectionID::ColdSectionID) {
+      if (SectionID == MBBSectionID::ColdSectionID) {
         Suffix += ".cold";
       } else if (SectionID == MBBSectionID::ExceptionSectionID) {
         Suffix += ".eh";
@@ -279,8 +283,16 @@ LLVM_DUMP_METHOD void MachineBasicBlock::dump() const {
 }
 #endif
 
+bool MachineBasicBlock::mayHaveInlineAsmBr() const {
+  for (const MachineBasicBlock *Succ : successors()) {
+    if (Succ->isInlineAsmBrIndirectTarget())
+      return true;
+  }
+  return false;
+}
+
 bool MachineBasicBlock::isLegalToHoistInto() const {
-  if (isReturnBlock() || hasEHPadSuccessor())
+  if (isReturnBlock() || hasEHPadSuccessor() || mayHaveInlineAsmBr())
     return false;
   return true;
 }
@@ -1134,7 +1146,7 @@ bool MachineBasicBlock::canSplitCriticalEdge(
 
   // Splitting the critical edge to a callbr's indirect block isn't advised.
   // Don't do it in this generic function.
-  if (isInlineAsmBrIndirectTarget(Succ))
+  if (Succ->isInlineAsmBrIndirectTarget())
     return false;
 
   const MachineFunction *MF = getParent();
@@ -1469,8 +1481,6 @@ MachineBasicBlock::livein_iterator MachineBasicBlock::livein_begin() const {
   return LiveIns.begin();
 }
 
-const MBBSectionID
-    MBBSectionID::UnknownSectionID(MBBSectionID::SectionType::Unknown);
 const MBBSectionID MBBSectionID::ColdSectionID(MBBSectionID::SectionType::Cold);
 const MBBSectionID
     MBBSectionID::ExceptionSectionID(MBBSectionID::SectionType::Exception);

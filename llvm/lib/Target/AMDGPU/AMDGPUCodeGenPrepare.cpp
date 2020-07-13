@@ -317,10 +317,9 @@ bool AMDGPUCodeGenPrepare::canWidenScalarExtLoad(LoadInst &I) const {
   Type *Ty = I.getType();
   const DataLayout &DL = Mod->getDataLayout();
   int TySize = DL.getTypeSizeInBits(Ty);
-  unsigned Align = I.getAlignment() ?
-                   I.getAlignment() : DL.getABITypeAlignment(Ty);
+  Align Alignment = DL.getValueOrABITypeAlignment(I.getAlign(), Ty);
 
-  return I.isSimple() && TySize < 32 && Align >= 4 && DA->isUniform(&I);
+  return I.isSimple() && TySize < 32 && Alignment >= 4 && DA->isUniform(&I);
 }
 
 bool AMDGPUCodeGenPrepare::promoteUniformOpToI32(BinaryOperator &I) const {
@@ -923,7 +922,10 @@ Value *AMDGPUCodeGenPrepare::expandDivRem24Impl(IRBuilder<> &Builder,
   Value *FQNeg = Builder.CreateFNeg(FQ);
 
   // float fr = mad(fqneg, fb, fa);
-  Value *FR = Builder.CreateIntrinsic(Intrinsic::amdgcn_fmad_ftz,
+  auto FMAD = !ST->hasMadMacF32Insts()
+                  ? Intrinsic::fma
+                  : (Intrinsic::ID)Intrinsic::amdgcn_fmad_ftz;
+  Value *FR = Builder.CreateIntrinsic(FMAD,
                                       {FQNeg->getType()}, {FQNeg, FB, FA}, FQ);
 
   // int iq = (int)fq;

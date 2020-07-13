@@ -121,7 +121,7 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
       elementType = arrayTy->getElementType();
       numElements = arrayTy->getNumElements();
     } else {
-      auto *vectorTy = cast<llvm::VectorType>(llvmType);
+      auto *vectorTy = cast<llvm::FixedVectorType>(llvmType);
       elementType = vectorTy->getElementType();
       numElements = vectorTy->getNumElements();
     }
@@ -129,7 +129,7 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
     // another sequence type. The recursion terminates because each step removes
     // one outer sequential type.
     bool elementTypeSequential =
-        isa<llvm::ArrayType>(elementType) || isa<llvm::VectorType>(elementType);
+        isa<llvm::ArrayType, llvm::VectorType>(elementType);
     llvm::Constant *child = getLLVMConstant(
         elementType,
         elementTypeSequential ? splatAttr : splatAttr.getSplatValue(), loc);
@@ -447,10 +447,15 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
   // emit any LLVM instruction.
   if (auto addressOfOp = dyn_cast<LLVM::AddressOfOp>(opInst)) {
     LLVM::GlobalOp global = addressOfOp.getGlobal();
-    // The verifier should not have allowed this.
-    assert(global && "referencing an undefined global");
+    LLVM::LLVMFuncOp function = addressOfOp.getFunction();
 
-    valueMapping[addressOfOp.getResult()] = globalsMapping.lookup(global);
+    // The verifier should not have allowed this.
+    assert((global || function) &&
+           "referencing an undefined global or function");
+
+    valueMapping[addressOfOp.getResult()] =
+        global ? globalsMapping.lookup(global)
+               : functionMapping.lookup(function.getName());
     return success();
   }
 
@@ -611,7 +616,7 @@ static llvm::SetVector<Block *> topologicalSort(LLVMFuncOp f) {
   // predecessors), add it to the list and traverse its successors in DFS
   // preorder.
   llvm::SetVector<Block *> blocks;
-  for (Block &b : f.getBlocks()) {
+  for (Block &b : f) {
     if (blocks.count(&b) == 0)
       topologicalSortImpl(blocks, &b);
   }
@@ -724,6 +729,18 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
       if (attr.getValue())
         llvmArg.addAttr(llvm::Attribute::AttrKind::NoAlias);
     }
+
+    if (auto attr = func.getArgAttrOfType<IntegerAttr>(argIdx, "llvm.align")) {
+      // NB: Attribute already verified to be int, so check if we can indeed
+      // attach the attribute to this argument, based on its type.
+      auto argTy = mlirArg.getType().dyn_cast<LLVM::LLVMType>();
+      if (!argTy.getUnderlyingType()->isPointerTy())
+        return func.emitError(
+            "llvm.align attribute attached to LLVM non-pointer argument");
+      llvmArg.addAttrs(
+          llvm::AttrBuilder().addAlignmentAttr(llvm::Align(attr.getInt())));
+    }
+
     valueMapping[mlirArg] = &llvmArg;
     argIdx++;
   }
@@ -761,8 +778,7 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
 
 LogicalResult ModuleTranslation::checkSupportedModuleOps(Operation *m) {
   for (Operation &o : getModuleBody(m).getOperations())
-    if (!isa<LLVM::LLVMFuncOp>(&o) && !isa<LLVM::GlobalOp>(&o) &&
-        !o.isKnownTerminator())
+    if (!isa<LLVM::LLVMFuncOp, LLVM::GlobalOp>(&o) && !o.isKnownTerminator())
       return o.emitOpError("unsupported module-level operation");
   return success();
 }

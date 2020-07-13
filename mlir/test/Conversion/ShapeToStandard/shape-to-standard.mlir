@@ -1,4 +1,4 @@
-// RUN: mlir-opt --split-input-file --convert-shape-to-std --verify-diagnostics %s | FileCheck %s --dump-input-on-failure
+// RUN: mlir-opt --split-input-file --convert-shape-to-std --verify-diagnostics %s | FileCheck %s
 
 // Convert `size` to `index` type.
 // CHECK-LABEL: @size_id
@@ -75,3 +75,86 @@ func @binary_ops(%lhs : !shape.size, %rhs : !shape.size) {
   // CHECK-NEXT: muli %[[LHS]], %[[RHS]] : index
   return
 }
+
+// -----
+
+// Convert `const_size` to `constant` op.
+// CHECK-LABEL: @size_const
+func @size_const() -> !shape.size {
+  %c1 = shape.const_size 1
+  return %c1 : !shape.size
+}
+// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK: return %[[C1]] : index
+// -----
+
+// Lower `shape_of` for statically shaped tensor.
+// CHECK-LABEL: @shape_of_stat
+// CHECK-SAME: (%[[ARG:.*]]: tensor<1x2x3xf32>)
+func @shape_of_stat(%arg : tensor<1x2x3xf32>) {
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
+  // CHECK-DAG: %[[C3:.*]] = constant 3 : index
+  // CHECK-DAG: %[[SHAPE:.*]] = tensor_from_elements(%[[C1]], %[[C2]], %[[C3]]) : tensor<3xindex>
+  %shape = shape.shape_of %arg : tensor<1x2x3xf32>
+  return
+}
+
+// -----
+
+// Lower `shape_of` for dynamically shaped tensor.
+// CHECK-LABEL: @shape_of_dyn
+// CHECK-SAME: (%[[ARG:.*]]: tensor<1x5x?xf32>)
+func @shape_of_dyn(%arg : tensor<1x5x?xf32>) {
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C5:.*]] = constant 5 : index
+  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
+  // CHECK-DAG: %[[DYN_DIM:.*]] = dim %[[ARG]], %[[C2]] : tensor<1x5x?xf32>
+  // CHECK-DAG: %[[SHAPE:.*]] = tensor_from_elements(%[[C1]], %[[C5]], %[[DYN_DIM]]) : tensor<3xindex>
+  %shape = shape.shape_of %arg : tensor<1x5x?xf32>
+  return
+}
+
+// -----
+
+// Convert `rank` to `dim` of the first dimension.
+// CHECK-LABEL: @rank
+// CHECK-SAME: (%[[SHAPE:.*]]: tensor<?xindex>) -> index
+func @rank(%shape : !shape.shape) -> !shape.size {
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[RESULT:.*]] = dim %[[SHAPE]], %[[C0]]
+  // CHECK-DAG: return %[[RESULT]] : index
+  %rank = shape.rank %shape
+  return %rank : !shape.size
+}
+
+// -----
+
+// Express `get_extent` as `std.dim` when it relies directly on the outcome of a
+// `shape_of` operation.
+// CHECK-LABEL: @get_extent_shape_of
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<2x3xf32>, %[[IDX:.*]]: index) -> index
+func @get_extent_shape_of(%arg : tensor<2x3xf32>, %idx : !shape.size)
+    -> !shape.size {
+  // CHECK: %[[RESULT:.*]] = dim %[[ARG]], %[[IDX]] : tensor<2x3xf32>
+  // CHECK: return %[[RESULT]] : index
+  %shape = shape.shape_of %arg : tensor<2x3xf32>
+  %result = shape.get_extent %shape, %idx
+  return %result : !shape.size
+}
+
+// -----
+
+// Express `get_extent` as `std.extract_element` when it relies directly on the
+// outcome of a `from_extent_tensor` operation.
+// CHECK-LABEL: @get_extent_from_extent_tensor
+// CHECK-SAME: (%[[EXTENTS:.*]]: tensor<?xindex>, %[[IDX:.*]]: index) -> index
+func @get_extent_from_extent_tensor(%extents : tensor<?xindex>,
+                                    %idx : !shape.size) -> !shape.size {
+  // CHECK: %[[RESULT:.*]] = extract_element %[[EXTENTS]][%[[IDX]]] : tensor<?xindex>
+  // CHECK: return %[[RESULT]] : index
+  %shape = shape.from_extent_tensor %extents : tensor<?xindex>
+  %result = shape.get_extent %shape, %idx
+  return %result : !shape.size
+}
+

@@ -21,6 +21,7 @@ add_flang_library(FortranSemantics
   check-purity.cpp
   check-return.cpp
   check-select-rank.cpp
+  check-select-type.cpp
   check-stop.cpp
   compute-offsets.cpp
   expression.cpp
@@ -38,10 +39,14 @@ add_flang_library(FortranSemantics
   type.cpp
   unparse-with-symbols.cpp
 
+  DEPENDS
+  omp_gen
+
   LINK_LIBS
   FortranCommon
   FortranEvaluate
 
   LINK_COMPONENTS
   Support
+  FrontendOpenMP
 )

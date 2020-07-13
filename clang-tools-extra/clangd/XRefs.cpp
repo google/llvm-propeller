@@ -363,8 +363,8 @@ locateSymbolTextually(const SpelledWord &Word, ParsedAST &AST,
   if ((Word.ExpandedToken && !isDependentName(NodeKind)) ||
       !Word.LikelyIdentifier || !Index)
     return {};
-  // We don't want to handle words in string literals. It'd be nice to whitelist
-  // comments instead, but they're not retained in TokenBuffer.
+  // We don't want to handle words in string literals. It'd be nice to include
+  // comments, but they're not retained in TokenBuffer.
   if (Word.PartOfSpelledToken &&
       isStringLiteral(Word.PartOfSpelledToken->kind()))
     return {};
@@ -469,8 +469,8 @@ const syntax::Token *findNearbyIdentifier(const SpelledWord &Word,
   // Unlikely identifiers are OK if they were used as identifiers nearby.
   if (Word.ExpandedToken)
     return nullptr;
-  // We don't want to handle words in string literals. It'd be nice to whitelist
-  // comments instead, but they're not retained in TokenBuffer.
+  // We don't want to handle words in string literals. It'd be nice to include
+  // comments, but they're not retained in TokenBuffer.
   if (Word.PartOfSpelledToken &&
       isStringLiteral(Word.PartOfSpelledToken->kind()))
     return {};
@@ -993,7 +993,6 @@ std::vector<DocumentHighlight> findDocumentHighlights(ParsedAST &AST,
           DeclRelation::TemplatePattern | DeclRelation::Alias;
       auto Decls = targetDecl(N->ASTNode, Relations);
       if (!Decls.empty()) {
-        auto Refs = findRefs({Decls.begin(), Decls.end()}, AST);
         // FIXME: we may get multiple DocumentHighlights with the same location
         // and different kinds, deduplicate them.
         for (const auto &Ref : findRefs({Decls.begin(), Decls.end()}, AST))
@@ -1050,7 +1049,7 @@ ReferencesResult findReferences(ParsedAST &AST, Position Pos, uint32_t Limit,
       const auto &IDToRefs = AST.getMacros().MacroRefs;
       auto Refs = IDToRefs.find(*MacroSID);
       if (Refs != IDToRefs.end()) {
-        for (const auto Ref : Refs->second) {
+        for (const auto &Ref : Refs->second) {
           Location Result;
           Result.range = Ref;
           Result.uri = URIMainFile;
@@ -1224,6 +1223,14 @@ declToTypeHierarchyItem(ASTContext &Ctx, const NamedDecl &ND,
   }
 
   THI.uri = URIForFile::canonicalize(*FilePath, *TUPath);
+
+  // Compute the SymbolID and store it in the 'data' field.
+  // This allows typeHierarchy/resolve to be used to
+  // resolve children of items returned in a previous request
+  // for parents.
+  if (auto ID = getSymbolID(&ND)) {
+    THI.data = ID->str();
+  }
 
   return THI;
 }

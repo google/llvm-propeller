@@ -1912,11 +1912,11 @@ void DAGTypeLegalizer::SplitVecRes_VAARG(SDNode *N, SDValue &Lo, SDValue &Hi) {
   SDValue SV = N->getOperand(2);
   SDLoc dl(N);
 
-  const unsigned Alignment = DAG.getDataLayout().getABITypeAlignment(
-      NVT.getTypeForEVT(*DAG.getContext()));
+  const Align Alignment =
+      DAG.getDataLayout().getABITypeAlign(NVT.getTypeForEVT(*DAG.getContext()));
 
-  Lo = DAG.getVAArg(NVT, dl, Chain, Ptr, SV, Alignment);
-  Hi = DAG.getVAArg(NVT, dl, Lo.getValue(1), Ptr, SV, Alignment);
+  Lo = DAG.getVAArg(NVT, dl, Chain, Ptr, SV, Alignment.value());
+  Hi = DAG.getVAArg(NVT, dl, Lo.getValue(1), Ptr, SV, Alignment.value());
   Chain = Hi.getValue(1);
 
   // Modified the chain - switch anything that used the old chain to use
@@ -2639,9 +2639,11 @@ SDValue DAGTypeLegalizer::SplitVecOp_VSETCC(SDNode *N) {
   SDLoc DL(N);
   GetSplitVector(N->getOperand(0), Lo0, Hi0);
   GetSplitVector(N->getOperand(1), Lo1, Hi1);
-  unsigned PartElements = Lo0.getValueType().getVectorNumElements();
-  EVT PartResVT = EVT::getVectorVT(*DAG.getContext(), MVT::i1, PartElements);
-  EVT WideResVT = EVT::getVectorVT(*DAG.getContext(), MVT::i1, 2*PartElements);
+  auto PartEltCnt = Lo0.getValueType().getVectorElementCount();
+
+  LLVMContext &Context = *DAG.getContext();
+  EVT PartResVT = EVT::getVectorVT(Context, MVT::i1, PartEltCnt);
+  EVT WideResVT = EVT::getVectorVT(Context, MVT::i1, PartEltCnt*2);
 
   LoRes = DAG.getNode(ISD::SETCC, DL, PartResVT, Lo0, Lo1, N->getOperand(2));
   HiRes = DAG.getNode(ISD::SETCC, DL, PartResVT, Hi0, Hi1, N->getOperand(2));

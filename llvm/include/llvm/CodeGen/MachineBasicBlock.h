@@ -53,15 +53,13 @@ struct MBBSectionID {
     Default = 0, // Regular section (these sections are distinguished by the
                  // Number field).
     Exception,   // Special section type for exception handling blocks
-    Unknown,     // Special section type for blocks with unknown hotness
     Cold,        // Special section type for cold blocks
   } Type;
   unsigned Number;
 
   MBBSectionID(unsigned N) : Type(Default), Number(N) {}
 
-  // Special unique sections for cold, unknown and exception blocks.
-  const static MBBSectionID UnknownSectionID;
+  // Special unique sections for cold and exception blocks.
   const static MBBSectionID ColdSectionID;
   const static MBBSectionID ExceptionSectionID;
 
@@ -70,16 +68,6 @@ struct MBBSectionID {
   }
 
   bool operator!=(const MBBSectionID &Other) const { return !(*this == Other); }
-
-  // This returns a unique index for the section in the range [0, max(Number)+3]
-  struct ToIndexFunctor {
-    using argument_type = MBBSectionID;
-    unsigned operator()(MBBSectionID SectionID) const {
-      return ((unsigned)MBBSectionID::SectionType::Cold) -
-             ((unsigned)SectionID.Type) + SectionID.Number;
-    }
-    static unsigned indexSize(unsigned NumBlockIDs) { return NumBlockIDs + 3; }
-  };
 
 private:
   // This is only used to construct the special cold and exception sections.
@@ -173,17 +161,17 @@ private:
   /// With basic block sections, this stores the Section ID of the basic block.
   MBBSectionID SectionID{0};
 
+  // Symbol marking the end of the basic block. (assigned by AsmPrinter).
+  MCSymbol *EndSymbol = nullptr;
+
   // Indicate that this basic block begins a section.
   bool IsBeginSection = false;
 
   // Indicate that this basic block ends a section.
   bool IsEndSection = false;
 
-  /// Default target of the callbr of a basic block.
-  bool InlineAsmBrDefaultTarget = false;
-
-  /// List of indirect targets of the callbr of a basic block.
-  SmallPtrSet<const MachineBasicBlock*, 4> InlineAsmBrIndirectTargets;
+  /// Indicate that this basic block is the indirect dest of an INLINEASM_BR.
+  bool IsInlineAsmBrIndirectTarget = false;
 
   /// since getSymbol is a relatively heavy-weight operation, the symbol
   /// is only computed once and is cached.
@@ -480,34 +468,34 @@ public:
   /// Returns the section ID of this basic block.
   MBBSectionID getSectionID() const { return SectionID; }
 
+  /// Returns the unique section ID number of this basic block.
+  unsigned getSectionIDNum() const {
+    return ((unsigned)MBBSectionID::SectionType::Cold) -
+           ((unsigned)SectionID.Type) + SectionID.Number;
+  }
+
   /// Sets the section ID for this basic block.
   void setSectionID(MBBSectionID V) { SectionID = V; }
 
+  void setEndSymbol(MCSymbol *V) { EndSymbol = V; }
+
+  MCSymbol *getEndSymbol() const { return EndSymbol; }
+
+  unsigned getBBInfoMetadata();
+
+  /// Returns true if this block may have an INLINEASM_BR (overestimate, by
+  /// checking if any of the successors are indirect targets of any inlineasm_br
+  /// in the function).
+  bool mayHaveInlineAsmBr() const;
+
   /// Returns true if this is the indirect dest of an INLINEASM_BR.
-  bool isInlineAsmBrIndirectTarget(const MachineBasicBlock *Tgt) const {
-    return InlineAsmBrIndirectTargets.count(Tgt);
+  bool isInlineAsmBrIndirectTarget() const {
+    return IsInlineAsmBrIndirectTarget;
   }
 
   /// Indicates if this is the indirect dest of an INLINEASM_BR.
-  void addInlineAsmBrIndirectTarget(const MachineBasicBlock *Tgt) {
-    InlineAsmBrIndirectTargets.insert(Tgt);
-  }
-
-  /// Transfers indirect targets to INLINEASM_BR's copy block.
-  void transferInlineAsmBrIndirectTargets(MachineBasicBlock *CopyBB) {
-    for (auto *Target : InlineAsmBrIndirectTargets)
-      CopyBB->addInlineAsmBrIndirectTarget(Target);
-    return InlineAsmBrIndirectTargets.clear();
-  }
-
-  /// Returns true if this is the default dest of an INLINEASM_BR.
-  bool isInlineAsmBrDefaultTarget() const {
-    return InlineAsmBrDefaultTarget;
-  }
-
-  /// Indicates if this is the default deft of an INLINEASM_BR.
-  void setInlineAsmBrDefaultTarget() {
-    InlineAsmBrDefaultTarget = true;
+  void setIsInlineAsmBrIndirectTarget(bool V = true) {
+    IsInlineAsmBrIndirectTarget = V;
   }
 
   /// Returns true if it is legal to hoist instructions into this block.

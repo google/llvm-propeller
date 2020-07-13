@@ -720,31 +720,31 @@ void TypeSystemClang::CreateASTContext() {
   assert(!m_ast_up);
   m_ast_owned = true;
 
-  m_language_options_up.reset(new LangOptions());
+  m_language_options_up = std::make_unique<LangOptions>();
   ParseLangArgs(*m_language_options_up, clang::Language::ObjCXX,
                 GetTargetTriple());
 
-  m_identifier_table_up.reset(
-      new IdentifierTable(*m_language_options_up, nullptr));
-  m_builtins_up.reset(new Builtin::Context());
+  m_identifier_table_up =
+      std::make_unique<IdentifierTable>(*m_language_options_up, nullptr);
+  m_builtins_up = std::make_unique<Builtin::Context>();
 
-  m_selector_table_up.reset(new SelectorTable());
+  m_selector_table_up = std::make_unique<SelectorTable>();
 
   clang::FileSystemOptions file_system_options;
-  m_file_manager_up.reset(new clang::FileManager(
-      file_system_options, FileSystem::Instance().GetVirtualFileSystem()));
+  m_file_manager_up = std::make_unique<clang::FileManager>(
+      file_system_options, FileSystem::Instance().GetVirtualFileSystem());
 
   llvm::IntrusiveRefCntPtr<DiagnosticIDs> diag_id_sp(new DiagnosticIDs());
-  m_diagnostics_engine_up.reset(
-      new DiagnosticsEngine(diag_id_sp, new DiagnosticOptions()));
+  m_diagnostics_engine_up =
+      std::make_unique<DiagnosticsEngine>(diag_id_sp, new DiagnosticOptions());
 
-  m_source_manager_up.reset(
-      new clang::SourceManager(*m_diagnostics_engine_up, *m_file_manager_up));
-  m_ast_up.reset(new ASTContext(*m_language_options_up, *m_source_manager_up,
-                                *m_identifier_table_up, *m_selector_table_up,
-                                *m_builtins_up));
+  m_source_manager_up = std::make_unique<clang::SourceManager>(
+      *m_diagnostics_engine_up, *m_file_manager_up);
+  m_ast_up = std::make_unique<ASTContext>(
+      *m_language_options_up, *m_source_manager_up, *m_identifier_table_up,
+      *m_selector_table_up, *m_builtins_up);
 
-  m_diagnostic_consumer_up.reset(new NullDiagnosticConsumer);
+  m_diagnostic_consumer_up = std::make_unique<NullDiagnosticConsumer>();
   m_ast_up->getDiagnostics().setClient(m_diagnostic_consumer_up.get(), false);
 
   // This can be NULL if we don't know anything about the architecture or if
@@ -1729,10 +1729,8 @@ TypeSystemClang::GetNumBaseClasses(const CXXRecordDecl *cxx_record_decl,
           base_class_end = cxx_record_decl->bases_end();
            base_class != base_class_end; ++base_class) {
         // Skip empty base classes
-        if (omit_empty_base_classes) {
-          if (BaseSpecifierIsEmpty(base_class))
-            continue;
-        }
+        if (BaseSpecifierIsEmpty(base_class))
+          continue;
         ++num_bases;
       }
     } else
@@ -4820,16 +4818,53 @@ lldb::Encoding TypeSystemClang::GetEncoding(lldb::opaque_compiler_type_t type,
 
     case clang::BuiltinType::SveBool:
     case clang::BuiltinType::SveInt8:
+    case clang::BuiltinType::SveInt8x2:
+    case clang::BuiltinType::SveInt8x3:
+    case clang::BuiltinType::SveInt8x4:
     case clang::BuiltinType::SveInt16:
+    case clang::BuiltinType::SveInt16x2:
+    case clang::BuiltinType::SveInt16x3:
+    case clang::BuiltinType::SveInt16x4:
     case clang::BuiltinType::SveInt32:
+    case clang::BuiltinType::SveInt32x2:
+    case clang::BuiltinType::SveInt32x3:
+    case clang::BuiltinType::SveInt32x4:
     case clang::BuiltinType::SveInt64:
+    case clang::BuiltinType::SveInt64x2:
+    case clang::BuiltinType::SveInt64x3:
+    case clang::BuiltinType::SveInt64x4:
     case clang::BuiltinType::SveUint8:
+    case clang::BuiltinType::SveUint8x2:
+    case clang::BuiltinType::SveUint8x3:
+    case clang::BuiltinType::SveUint8x4:
     case clang::BuiltinType::SveUint16:
+    case clang::BuiltinType::SveUint16x2:
+    case clang::BuiltinType::SveUint16x3:
+    case clang::BuiltinType::SveUint16x4:
     case clang::BuiltinType::SveUint32:
+    case clang::BuiltinType::SveUint32x2:
+    case clang::BuiltinType::SveUint32x3:
+    case clang::BuiltinType::SveUint32x4:
     case clang::BuiltinType::SveUint64:
+    case clang::BuiltinType::SveUint64x2:
+    case clang::BuiltinType::SveUint64x3:
+    case clang::BuiltinType::SveUint64x4:
     case clang::BuiltinType::SveFloat16:
+    case clang::BuiltinType::SveBFloat16:
+    case clang::BuiltinType::SveBFloat16x2:
+    case clang::BuiltinType::SveBFloat16x3:
+    case clang::BuiltinType::SveBFloat16x4:
+    case clang::BuiltinType::SveFloat16x2:
+    case clang::BuiltinType::SveFloat16x3:
+    case clang::BuiltinType::SveFloat16x4:
     case clang::BuiltinType::SveFloat32:
+    case clang::BuiltinType::SveFloat32x2:
+    case clang::BuiltinType::SveFloat32x3:
+    case clang::BuiltinType::SveFloat32x4:
     case clang::BuiltinType::SveFloat64:
+    case clang::BuiltinType::SveFloat64x2:
+    case clang::BuiltinType::SveFloat64x3:
+    case clang::BuiltinType::SveFloat64x4:
       break;
 
     case clang::BuiltinType::IncompleteMatrixIdx:
@@ -7279,6 +7314,35 @@ clang::VarDecl *TypeSystemClang::AddVariableToRecordType(
   return var_decl;
 }
 
+void TypeSystemClang::SetIntegerInitializerForVariable(
+    VarDecl *var, const llvm::APInt &init_value) {
+  assert(!var->hasInit() && "variable already initialized");
+
+  clang::ASTContext &ast = var->getASTContext();
+  QualType qt = var->getType();
+  assert(qt->isIntegralOrEnumerationType() &&
+         "only integer or enum types supported");
+  // If the variable is an enum type, take the underlying integer type as
+  // the type of the integer literal.
+  if (const EnumType *enum_type = llvm::dyn_cast<EnumType>(qt.getTypePtr())) {
+    const EnumDecl *enum_decl = enum_type->getDecl();
+    qt = enum_decl->getIntegerType();
+  }
+  var->setInit(IntegerLiteral::Create(ast, init_value, qt.getUnqualifiedType(),
+                                      SourceLocation()));
+}
+
+void TypeSystemClang::SetFloatingInitializerForVariable(
+    clang::VarDecl *var, const llvm::APFloat &init_value) {
+  assert(!var->hasInit() && "variable already initialized");
+
+  clang::ASTContext &ast = var->getASTContext();
+  QualType qt = var->getType();
+  assert(qt->isFloatingType() && "only floating point types supported");
+  var->setInit(FloatingLiteral::Create(
+      ast, init_value, true, qt.getUnqualifiedType(), SourceLocation()));
+}
+
 clang::CXXMethodDecl *TypeSystemClang::AddMethodToCXXRecordType(
     lldb::opaque_compiler_type_t type, llvm::StringRef name,
     const char *mangled_name, const CompilerType &method_clang_type,
@@ -8180,7 +8244,8 @@ void TypeSystemClang::DumpFromSymbolFile(Stream &s,
         continue;
       }
     }
-    GetCanonicalQualType(full_type.GetOpaqueQualType()).dump(s.AsRawOstream());
+    GetCanonicalQualType(full_type.GetOpaqueQualType())
+        .dump(s.AsRawOstream(), getASTContext());
   }
 }
 
@@ -8899,7 +8964,7 @@ void TypeSystemClang::DumpTypeDescription(lldb::opaque_compiler_type_t type,
         }
       } else {
         if (level == eDescriptionLevelVerbose)
-          qual_type->dump(llvm_ostrm);
+          qual_type->dump(llvm_ostrm, getASTContext());
         else {
           std::string clang_type_name(qual_type.getAsString());
           if (!clang_type_name.empty())
@@ -9023,13 +9088,13 @@ void TypeSystemClang::CompleteObjCInterfaceDecl(
 
 DWARFASTParser *TypeSystemClang::GetDWARFParser() {
   if (!m_dwarf_ast_parser_up)
-    m_dwarf_ast_parser_up.reset(new DWARFASTParserClang(*this));
+    m_dwarf_ast_parser_up = std::make_unique<DWARFASTParserClang>(*this);
   return m_dwarf_ast_parser_up.get();
 }
 
 PDBASTParser *TypeSystemClang::GetPDBParser() {
   if (!m_pdb_ast_parser_up)
-    m_pdb_ast_parser_up.reset(new PDBASTParser(*this));
+    m_pdb_ast_parser_up = std::make_unique<PDBASTParser>(*this);
   return m_pdb_ast_parser_up.get();
 }
 
@@ -9465,8 +9530,8 @@ TypeSystemClangForExpressions::TypeSystemClangForExpressions(
     : TypeSystemClang("scratch ASTContext", triple),
       m_target_wp(target.shared_from_this()),
       m_persistent_variables(new ClangPersistentVariables) {
-  m_scratch_ast_source_up.reset(new ClangASTSource(
-      target.shared_from_this(), m_persistent_variables->GetClangASTImporter()));
+  m_scratch_ast_source_up = std::make_unique<ClangASTSource>(
+      target.shared_from_this(), m_persistent_variables->GetClangASTImporter());
   m_scratch_ast_source_up->InstallASTContext(*this);
   llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> proxy_ast_source(
       m_scratch_ast_source_up->CreateProxy());

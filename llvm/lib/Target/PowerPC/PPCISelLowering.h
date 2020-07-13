@@ -97,6 +97,11 @@ namespace llvm {
     ///
     XXSPLT,
 
+    /// XXSPLTI_SP_TO_DP - The PPC VSX splat instructions for immediates for
+    /// converting immediate single precision numbers to double precision
+    /// vector or scalar.
+    XXSPLTI_SP_TO_DP,
+
     /// VECINSERT - The PPC vector insert instruction
     ///
     VECINSERT,
@@ -132,6 +137,10 @@ namespace llvm {
     /// compute an offset from native SP to the address  of the most recent
     /// dynamic alloca.
     DYNAREAOFFSET,
+
+    /// To avoid stack clash, allocation is performed by block and each block is
+    /// probed.
+    PROBED_ALLOCA,
 
     /// GlobalBaseReg - On Darwin, this node represents the result of the mflr
     /// at function entry, used for PIC code.
@@ -220,6 +229,14 @@ namespace llvm {
     /// Extract a subvector from unsigned integer vector and convert to FP.
     /// As with SINT_VEC_TO_FP, used for converting illegal types.
     UINT_VEC_TO_FP,
+
+    /// PowerPC instructions that have SCALAR_TO_VECTOR semantics tend to
+    /// place the value into the least significant element of the most
+    /// significant doubleword in the vector. This is not element zero for
+    /// anything smaller than a doubleword on either endianness. This node has
+    /// the same semantics as SCALAR_TO_VECTOR except that the value remains in
+    /// the aforementioned location in the vector register.
+    SCALAR_TO_VECTOR_PERMUTED,
 
     // FIXME: Remove these once the ANDI glue bug is fixed:
     /// i1 = ANDI_rec_1_[EQ|GT]_BIT(i32 or i64 x) - Represents the result of the
@@ -709,7 +726,7 @@ namespace llvm {
     /// Returns false if it can be represented by [r+imm], which are preferred.
     bool SelectAddressRegReg(SDValue N, SDValue &Base, SDValue &Index,
                              SelectionDAG &DAG,
-                             unsigned EncodingAlignment = 0) const;
+                             MaybeAlign EncodingAlignment = None) const;
 
     /// SelectAddressRegImm - Returns true if the address N can be represented
     /// by a base register plus a signed 16-bit displacement [r+imm], and if it
@@ -718,7 +735,7 @@ namespace llvm {
     /// requirement, i.e. multiples of 4 for DS form.
     bool SelectAddressRegImm(SDValue N, SDValue &Disp, SDValue &Base,
                              SelectionDAG &DAG,
-                             unsigned EncodingAlignment) const;
+                             MaybeAlign EncodingAlignment) const;
 
     /// SelectAddressRegRegOnly - Given the specified addressed, force it to be
     /// represented as an indexed [r+r] operation.
@@ -790,6 +807,13 @@ namespace llvm {
 
     MachineBasicBlock *emitEHSjLjLongJmp(MachineInstr &MI,
                                          MachineBasicBlock *MBB) const;
+
+    MachineBasicBlock *emitProbedAlloca(MachineInstr &MI,
+                                        MachineBasicBlock *MBB) const;
+
+    bool hasInlineStackProbe(MachineFunction &MF) const override;
+
+    unsigned getStackProbeSize(MachineFunction &MF) const;
 
     ConstraintType getConstraintType(StringRef Constraint) const override;
 
@@ -1095,7 +1119,6 @@ namespace llvm {
     SDValue LowerEXTRACT_VECTOR_ELT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerINTRINSIC_VOID(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerREM(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBSWAP(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerATOMIC_CMP_SWAP(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSCALAR_TO_VECTOR(SDValue Op, SelectionDAG &DAG) const;
@@ -1103,6 +1126,7 @@ namespace llvm {
     SDValue LowerMUL(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerABS(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFP_EXTEND(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerROTL(SDValue Op, SelectionDAG &DAG) const;
 
     SDValue LowerVectorLoad(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVectorStore(SDValue Op, SelectionDAG &DAG) const;
@@ -1214,6 +1238,8 @@ namespace llvm {
     SDValue combineSetCC(SDNode *N, DAGCombinerInfo &DCI) const;
     SDValue combineABS(SDNode *N, DAGCombinerInfo &DCI) const;
     SDValue combineVSelect(SDNode *N, DAGCombinerInfo &DCI) const;
+    SDValue combineVectorShuffle(ShuffleVectorSDNode *SVN,
+                                 SelectionDAG &DAG) const;
     SDValue combineVReverseMemOP(ShuffleVectorSDNode *SVN, LSBaseSDNode *LSBase,
                                  DAGCombinerInfo &DCI) const;
 
@@ -1261,6 +1287,9 @@ namespace llvm {
 
   bool isIntS16Immediate(SDNode *N, int16_t &Imm);
   bool isIntS16Immediate(SDValue Op, int16_t &Imm);
+
+  bool convertToNonDenormSingle(APInt &ArgAPInt);
+  bool convertToNonDenormSingle(APFloat &ArgAPFloat);
 
 } // end namespace llvm
 

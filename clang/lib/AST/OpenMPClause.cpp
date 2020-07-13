@@ -51,6 +51,8 @@ OMPClause::child_range OMPClause::used_children() {
   case OMPC_match:
   case OMPC_unknown:
     break;
+  default:
+    break;
   }
   llvm_unreachable("unknown OMPClause");
 }
@@ -154,6 +156,8 @@ const OMPClauseWithPreInit *OMPClauseWithPreInit::get(const OMPClause *C) {
   case OMPC_uses_allocators:
   case OMPC_affinity:
     break;
+  default:
+    break;
   }
 
   return nullptr;
@@ -245,6 +249,8 @@ const OMPClauseWithPostUpdate *OMPClauseWithPostUpdate::get(const OMPClause *C) 
   case OMPC_exclusive:
   case OMPC_uses_allocators:
   case OMPC_affinity:
+    break;
+  default:
     break;
   }
 
@@ -1207,8 +1213,8 @@ OMPUseDevicePtrClause *OMPUseDevicePtrClause::Create(
   Sizes.NumComponents = getComponentsTotalNumber(ComponentLists);
 
   // We need to allocate:
-  // 3 x NumVars x Expr* - we have an original list expression for each clause
-  // list entry and an equal number of private copies and inits.
+  // NumVars x Expr* - we have an original list expression for each clause
+  // list entry.
   // NumUniqueDeclarations x ValueDecl* - unique base declarations associated
   // with each component list.
   // (NumUniqueDeclarations + NumComponentLists) x unsigned - we specify the

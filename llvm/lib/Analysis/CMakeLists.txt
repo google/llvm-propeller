@@ -1,4 +1,17 @@
-add_subdirectory(ML)
+set(CommonMLSources MLInlineAdvisor.cpp)
+set(ReleaseModeMLSources ReleaseModeModelRunner.cpp)
+
+if (DEFINED LLVM_HAVE_TF_AOT)
+  include(TensorFlowCompile)
+  tfcompile(models/inliner serve action InlinerSizeModel llvm::InlinerSizeModel)
+  list(APPEND ReleaseModeMLSources
+    $<TARGET_OBJECTS:tf_xla_runtime_objects>
+    ${GENERATED_OBJS}
+  )
+  set(MLPolicySources ${CommonMLSources} ${ReleaseModeMLSources})
+else()
+  set(LLVM_OPTIONAL_SOURCES ${CommonMLSources} ${ReleaseModeMLSources})
+endif()
 
 add_llvm_component_library(LLVMAnalysis
   AliasAnalysis.cpp
@@ -43,6 +56,7 @@ add_llvm_component_library(LLVMAnalysis
   IndirectCallPromotionAnalysis.cpp
   InlineCost.cpp
   InlineAdvisor.cpp
+  InlineFeaturesAnalysis.cpp
   InstCount.cpp
   InstructionPrecedenceTracking.cpp
   InstructionSimplify.cpp
@@ -87,7 +101,9 @@ add_llvm_component_library(LLVMAnalysis
   RegionPrinter.cpp
   ScalarEvolution.cpp
   ScalarEvolutionAliasAnalysis.cpp
+  ScalarEvolutionDivision.cpp
   ScalarEvolutionNormalization.cpp
+  StackLifetime.cpp
   StackSafetyAnalysis.cpp
   SyncDependenceAnalysis.cpp
   SyntheticCountsUtils.cpp
@@ -102,6 +118,7 @@ add_llvm_component_library(LLVMAnalysis
   ValueTracking.cpp
   VectorUtils.cpp
   VFABIDemangling.cpp
+  ${MLPolicySources}
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Analysis

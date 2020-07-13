@@ -325,6 +325,8 @@ public:
     return Table.slice(0, Size);
   }
 
+  Optional<DynRegionInfo> getDynSymRegion() const { return DynSymRegion; }
+
   Elf_Sym_Range dynamic_symbols() const {
     if (!DynSymRegion)
       return Elf_Sym_Range();
@@ -334,7 +336,8 @@ public:
   Elf_Rel_Range dyn_rels() const;
   Elf_Rela_Range dyn_relas() const;
   Elf_Relr_Range dyn_relrs() const;
-  std::string getFullSymbolName(const Elf_Sym *Symbol, StringRef StrTable,
+  std::string getFullSymbolName(const Elf_Sym *Symbol,
+                                Optional<StringRef> StrTable,
                                 bool IsDynamic) const;
   Expected<unsigned> getSymbolSectionIndex(const Elf_Sym *Symbol,
                                            const Elf_Sym *FirstSym) const;
@@ -668,7 +671,8 @@ ELFDumper<ELFT>::getVersionDependencies(const Elf_Shdr *Sec) const {
 
 template <class ELFT>
 void ELFDumper<ELFT>::printSymbolsHelper(bool IsDynamic) const {
-  StringRef StrTable, SymtabName;
+  Optional<StringRef> StrTable;
+  StringRef SymtabName;
   size_t Entries = 0;
   Elf_Sym_Range Syms(nullptr, nullptr);
   const ELFFile<ELFT> *Obj = ObjF->getELFFile();
@@ -676,16 +680,36 @@ void ELFDumper<ELFT>::printSymbolsHelper(bool IsDynamic) const {
     StrTable = DynamicStringTable;
     Syms = dynamic_symbols();
     SymtabName = DynSymtabName;
-    if (DynSymRegion)
-      Entries = DynSymRegion->Size / DynSymRegion->EntSize;
+    Entries = Syms.size();
   } else {
     if (!DotSymtabSec)
       return;
-    StrTable = unwrapOrError(ObjF->getFileName(),
-                             Obj->getStringTableForSymtab(*DotSymtabSec));
-    Syms = unwrapOrError(ObjF->getFileName(), Obj->symbols(DotSymtabSec));
-    SymtabName =
-        unwrapOrError(ObjF->getFileName(), Obj->getSectionName(DotSymtabSec));
+
+    if (Expected<StringRef> StrTableOrErr =
+            Obj->getStringTableForSymtab(*DotSymtabSec))
+      StrTable = *StrTableOrErr;
+    else
+      reportUniqueWarning(createError(
+          "unable to get the string table for the SHT_SYMTAB section: " +
+          toString(StrTableOrErr.takeError())));
+
+    if (Expected<Elf_Sym_Range> SymsOrErr = Obj->symbols(DotSymtabSec))
+      Syms = *SymsOrErr;
+    else
+      reportUniqueWarning(
+          createError("unable to read symbols from the SHT_SYMTAB section: " +
+                      toString(SymsOrErr.takeError())));
+
+    if (Expected<StringRef> SymtabNameOrErr =
+            Obj->getSectionName(DotSymtabSec)) {
+      SymtabName = *SymtabNameOrErr;
+    } else {
+      reportUniqueWarning(
+          createError("unable to get the name of the SHT_SYMTAB section: " +
+                      toString(SymtabNameOrErr.takeError())));
+      SymtabName = "<?>";
+    }
+
     Entries = DotSymtabSec->getEntityCount();
   }
   if (Syms.begin() == Syms.end())
@@ -731,8 +755,9 @@ public:
   virtual void printSymtabMessage(const ELFFile<ELFT> *Obj, StringRef Name,
                                   size_t Offset, bool NonVisibilityBitsUsed) {}
   virtual void printSymbol(const ELFFile<ELFT> *Obj, const Elf_Sym *Symbol,
-                           const Elf_Sym *FirstSym, StringRef StrTable,
-                           bool IsDynamic, bool NonVisibilityBitsUsed) = 0;
+                           const Elf_Sym *FirstSym,
+                           Optional<StringRef> StrTable, bool IsDynamic,
+                           bool NonVisibilityBitsUsed) = 0;
   virtual void printProgramHeaders(const ELFFile<ELFT> *Obj,
                                    bool PrintProgramHeaders,
                                    cl::boolOrDefault PrintSectionMapping) = 0;
@@ -885,7 +910,7 @@ private:
   void printRelocation(const ELFO *Obj, const Elf_Sym *Sym,
                        StringRef SymbolName, const Elf_Rela &R, bool IsRela);
   void printSymbol(const ELFO *Obj, const Elf_Sym *Symbol, const Elf_Sym *First,
-                   StringRef StrTable, bool IsDynamic,
+                   Optional<StringRef> StrTable, bool IsDynamic,
                    bool NonVisibilityBitsUsed) override;
   std::string getSymbolSectionNdx(const ELFO *Obj, const Elf_Sym *Symbol,
                                   const Elf_Sym *FirstSym);
@@ -954,7 +979,7 @@ private:
   void printDynamicSymbols(const ELFO *Obj);
   void printSymbolSection(const Elf_Sym *Symbol, const Elf_Sym *First);
   void printSymbol(const ELFO *Obj, const Elf_Sym *Symbol, const Elf_Sym *First,
-                   StringRef StrTable, bool IsDynamic,
+                   Optional<StringRef> StrTable, bool IsDynamic,
                    bool /*NonVisibilityBitsUsed*/) override;
   void printProgramHeaders(const ELFO *Obj);
   void printSectionMapping(const ELFO *Obj) {}
@@ -1082,6 +1107,9 @@ ELFDumper<ELFT>::getRelocationTarget(const Elf_Shdr *SymTab,
         Obj->getSection(Sym, SymTab, ShndxTable);
     if (!SecOrErr)
       return SecOrErr.takeError();
+    // A section symbol describes the section at index 0.
+    if (*SecOrErr == nullptr)
+      return std::make_pair(Sym, "");
 
     Expected<StringRef> NameOrErr = Obj->getSectionName(*SecOrErr);
     if (!NameOrErr)
@@ -1150,10 +1178,18 @@ ELFDumper<ELFT>::getSymbolVersionByIndex(uint32_t SymbolVersionIndex,
 
 template <typename ELFT>
 std::string ELFDumper<ELFT>::getFullSymbolName(const Elf_Sym *Symbol,
-                                               StringRef StrTable,
+                                               Optional<StringRef> StrTable,
                                                bool IsDynamic) const {
-  std::string SymbolName = maybeDemangle(
-      unwrapOrError(ObjF->getFileName(), Symbol->getName(StrTable)));
+  if (!StrTable)
+    return "<?>";
+
+  std::string SymbolName;
+  if (Expected<StringRef> NameOrErr = Symbol->getName(*StrTable)) {
+    SymbolName = maybeDemangle(*NameOrErr);
+  } else {
+    reportUniqueWarning(NameOrErr.takeError());
+    return "<?>";
+  }
 
   if (SymbolName.empty() && Symbol->getType() == ELF::STT_SECTION) {
     Elf_Sym_Range Syms = unwrapOrError(
@@ -1233,7 +1269,7 @@ template <class ELFO>
 static const typename ELFO::Elf_Shdr *
 findNotEmptySectionByAddress(const ELFO *Obj, StringRef FileName,
                              uint64_t Addr) {
-  for (const auto &Shdr : unwrapOrError(FileName, Obj->sections()))
+  for (const typename ELFO::Elf_Shdr &Shdr : cantFail(Obj->sections()))
     if (Shdr.sh_addr == Addr && Shdr.sh_size > 0)
       return &Shdr;
   return nullptr;
@@ -1242,7 +1278,7 @@ findNotEmptySectionByAddress(const ELFO *Obj, StringRef FileName,
 template <class ELFO>
 static const typename ELFO::Elf_Shdr *
 findSectionByName(const ELFO &Obj, StringRef FileName, StringRef Name) {
-  for (const auto &Shdr : unwrapOrError(FileName, Obj.sections()))
+  for (const typename ELFO::Elf_Shdr &Shdr : cantFail(Obj.sections()))
     if (Name == unwrapOrError(FileName, Obj.getSectionName(&Shdr)))
       return &Shdr;
   return nullptr;
@@ -1797,6 +1833,7 @@ static const EnumEntry<unsigned> ElfHeaderAMDGPUFlags[] = {
   LLVM_READOBJ_ENUM_ENT(ELF, EF_AMDGPU_MACH_AMDGCN_GFX1010),
   LLVM_READOBJ_ENUM_ENT(ELF, EF_AMDGPU_MACH_AMDGCN_GFX1011),
   LLVM_READOBJ_ENUM_ENT(ELF, EF_AMDGPU_MACH_AMDGCN_GFX1012),
+  LLVM_READOBJ_ENUM_ENT(ELF, EF_AMDGPU_MACH_AMDGCN_GFX1030),
   LLVM_READOBJ_ENUM_ENT(ELF, EF_AMDGPU_XNACK),
   LLVM_READOBJ_ENUM_ENT(ELF, EF_AMDGPU_SRAM_ECC)
 };
@@ -1862,8 +1899,7 @@ ELFDumper<ELFT>::findDynamic(const ELFFile<ELFT> *Obj) {
 
   // Try to locate the .dynamic section in the sections header table.
   const Elf_Shdr *DynamicSec = nullptr;
-  for (const Elf_Shdr &Sec :
-       unwrapOrError(ObjF->getFileName(), Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     if (Sec.sh_type != ELF::SHT_DYNAMIC)
       continue;
     DynamicSec = &Sec;
@@ -2006,8 +2042,7 @@ ELFDumper<ELFT>::ELFDumper(const object::ELFObjectFile<ELFT> *ObjF,
     ELFDumperStyle.reset(new LLVMStyle<ELFT>(Writer, this));
 
   const ELFFile<ELFT> *Obj = ObjF->getELFFile();
-  typename ELFT::ShdrRange Sections =
-      unwrapOrError(ObjF->getFileName(), Obj->sections());
+  typename ELFT::ShdrRange Sections = cantFail(Obj->sections());
   for (const Elf_Shdr &Sec : Sections) {
     switch (Sec.sh_type) {
     case ELF::SHT_SYMTAB:
@@ -2179,8 +2214,20 @@ void ELFDumper<ELFT>::parseDynamicTable(const ELFFile<ELFT> *Obj) {
       break;
     }
   }
-  if (StringTableBegin)
-    DynamicStringTable = StringRef(StringTableBegin, StringTableSize);
+
+  if (StringTableBegin) {
+    const uint64_t FileSize = ObjF->getELFFile()->getBufSize();
+    const uint64_t Offset =
+        (const uint8_t *)StringTableBegin - ObjF->getELFFile()->base();
+    if (StringTableSize > FileSize - Offset)
+      reportUniqueWarning(createError(
+          "the dynamic string table at 0x" + Twine::utohexstr(Offset) +
+          " goes past the end of the file (0x" + Twine::utohexstr(FileSize) +
+          ") with DT_STRSZ = 0x" + Twine::utohexstr(StringTableSize)));
+    else
+      DynamicStringTable = StringRef(StringTableBegin, StringTableSize);
+  }
+
   SOName = getDynamicString(SONameOffset);
 
   if (DynSymRegion) {
@@ -2198,13 +2245,17 @@ void ELFDumper<ELFT>::parseDynamicTable(const ELFFile<ELFT> *Obj) {
     // equal nchain". Check to see if the DT_HASH hash table nchain value
     // conflicts with the number of symbols in the dynamic symbol table
     // according to the section header.
-    if (HashTable &&
-        HashTable->nchain != DynSymRegion->Size / DynSymRegion->EntSize)
-      reportUniqueWarning(createError(
-          "hash table nchain (" + Twine(HashTable->nchain) +
-          ") differs from symbol count derived from SHT_DYNSYM section "
-          "header (" +
-          Twine(DynSymRegion->Size / DynSymRegion->EntSize) + ")"));
+    if (HashTable) {
+      if (DynSymRegion->EntSize == 0)
+        reportUniqueWarning(
+            createError("SHT_DYNSYM section has sh_entsize == 0"));
+      else if (HashTable->nchain != DynSymRegion->Size / DynSymRegion->EntSize)
+        reportUniqueWarning(createError(
+            "hash table nchain (" + Twine(HashTable->nchain) +
+            ") differs from symbol count derived from SHT_DYNSYM section "
+            "header (" +
+            Twine(DynSymRegion->Size / DynSymRegion->EntSize) + ")"));
+    }
   }
 
   // Delay the creation of the actual dynamic symbol table until now, so that
@@ -2712,6 +2763,40 @@ template <typename ELFT> void ELFDumper<ELFT>::printHashTable() {
   W.printList("Chains", HashTable->chains());
 }
 
+template <class ELFT>
+static Expected<ArrayRef<typename ELFT::Word>>
+getGnuHashTableChains(Optional<DynRegionInfo> DynSymRegion,
+                      const typename ELFT::GnuHash *GnuHashTable) {
+  if (!DynSymRegion)
+    return createError("no dynamic symbol table found");
+
+  ArrayRef<typename ELFT::Sym> DynSymTable =
+      DynSymRegion->getAsArrayRef<typename ELFT::Sym>();
+  size_t NumSyms = DynSymTable.size();
+  if (!NumSyms)
+    return createError("the dynamic symbol table is empty");
+
+  if (GnuHashTable->symndx < NumSyms)
+    return GnuHashTable->values(NumSyms);
+
+  // A normal empty GNU hash table section produced by linker might have
+  // symndx set to the number of dynamic symbols + 1 (for the zero symbol)
+  // and have dummy null values in the Bloom filter and in the buckets
+  // vector (or no values at all). It happens because the value of symndx is not
+  // important for dynamic loaders when the GNU hash table is empty. They just
+  // skip the whole object during symbol lookup. In such cases, the symndx value
+  // is irrelevant and we should not report a warning.
+  ArrayRef<typename ELFT::Word> Buckets = GnuHashTable->buckets();
+  if (!llvm::all_of(Buckets, [](typename ELFT::Word V) { return V == 0; }))
+    return createError("the first hashed symbol index (" +
+                       Twine(GnuHashTable->symndx) +
+                       ") is larger than the number of dynamic symbols (" +
+                       Twine(NumSyms) + ")");
+  // There is no way to represent an array of (dynamic symbols count - symndx)
+  // length.
+  return ArrayRef<typename ELFT::Word>();
+}
+
 template <typename ELFT>
 void ELFDumper<ELFT>::printGnuHashTable(const object::ObjectFile *Obj) {
   DictScope D(W, "GnuHashTable");
@@ -2739,44 +2824,17 @@ void ELFDumper<ELFT>::printGnuHashTable(const object::ObjectFile *Obj) {
   ArrayRef<Elf_Word> Buckets = GnuHashTable->buckets();
   W.printList("Buckets", Buckets);
 
-  if (!DynSymRegion) {
-    reportWarning(createError("unable to dump 'Values' for the SHT_GNU_HASH "
-                              "section: no dynamic symbol table found"),
-                  ObjF->getFileName());
+  Expected<ArrayRef<Elf_Word>> Chains =
+      getGnuHashTableChains<ELFT>(DynSymRegion, GnuHashTable);
+  if (!Chains) {
+    reportUniqueWarning(
+        createError("unable to dump 'Values' for the SHT_GNU_HASH "
+                    "section: " +
+                    toString(Chains.takeError())));
     return;
   }
 
-  size_t NumSyms = dynamic_symbols().size();
-  if (!NumSyms) {
-    reportWarning(createError("unable to dump 'Values' for the SHT_GNU_HASH "
-                              "section: the dynamic symbol table is empty"),
-                  ObjF->getFileName());
-    return;
-  }
-
-  if (GnuHashTable->symndx >= NumSyms) {
-    // A normal empty GNU hash table section produced by linker might have
-    // symndx set to the number of dynamic symbols + 1 (for the zero symbol)
-    // and have dummy null values in the Bloom filter and in the buckets
-    // vector. It happens because the value of symndx is not important for
-    // dynamic loaders when the GNU hash table is empty. They just skip the
-    // whole object during symbol lookup. In such cases, the symndx value is
-    // irrelevant and we should not report a warning.
-    bool IsEmptyHashTable =
-        llvm::all_of(Buckets, [](Elf_Word V) { return V == 0; });
-
-    if (!IsEmptyHashTable) {
-      reportWarning(
-          createError("the first hashed symbol index (" +
-                      Twine(GnuHashTable->symndx) +
-                      ") is larger than the number of dynamic symbols (" +
-                      Twine(NumSyms) + ")"),
-          ObjF->getFileName());
-      return;
-    }
-  }
-
-  W.printHexList("Values", GnuHashTable->values(NumSyms));
+  W.printHexList("Values", *Chains);
 }
 
 template <typename ELFT> void ELFDumper<ELFT>::printLoadName() {
@@ -2822,7 +2880,7 @@ template <class ELFT> void ELFDumper<ELFT>::printAttributes() {
          "Attributes not implemented.");
 
   DictScope BA(W, "BuildAttributes");
-  for (const auto &Sec : unwrapOrError(ObjF->getFileName(), Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     if (Sec.sh_type != ELF::SHT_ARM_ATTRIBUTES &&
         Sec.sh_type != ELF::SHT_RISCV_ATTRIBUTES)
       continue;
@@ -3260,7 +3318,7 @@ template <class ELFT> void ELFDumper<ELFT>::printMipsOptions() {
 template <class ELFT> void ELFDumper<ELFT>::printStackMap() const {
   const ELFFile<ELFT> *Obj = ObjF->getELFFile();
   const Elf_Shdr *StackMapSection = nullptr;
-  for (const auto &Sec : unwrapOrError(ObjF->getFileName(), Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     StringRef Name =
         unwrapOrError(ObjF->getFileName(), Obj->getSectionName(&Sec));
     if (Name == ".llvm_stackmaps") {
@@ -3303,7 +3361,7 @@ static std::string getSectionHeadersNumString(const ELFFile<ELFT> *Obj,
   if (ElfHeader->e_shnum != 0)
     return to_string(ElfHeader->e_shnum);
 
-  ArrayRef<typename ELFT::Shdr> Arr = unwrapOrError(FileName, Obj->sections());
+  ArrayRef<typename ELFT::Shdr> Arr = cantFail(Obj->sections());
   if (Arr.empty())
     return "0";
   return "0 (" + to_string(Arr[0].sh_size) + ")";
@@ -3316,7 +3374,7 @@ static std::string getSectionHeaderTableIndexString(const ELFFile<ELFT> *Obj,
   if (ElfHeader->e_shstrndx != SHN_XINDEX)
     return to_string(ElfHeader->e_shstrndx);
 
-  ArrayRef<typename ELFT::Shdr> Arr = unwrapOrError(FileName, Obj->sections());
+  ArrayRef<typename ELFT::Shdr> Arr = cantFail(Obj->sections());
   if (Arr.empty())
     return "65535 (corrupt: out of range)";
   return to_string(ElfHeader->e_shstrndx) + " (" + to_string(Arr[0].sh_link) +
@@ -3410,7 +3468,7 @@ std::vector<GroupSection> getGroups(const ELFFile<ELFT> *Obj,
 
   std::vector<GroupSection> Ret;
   uint64_t I = 0;
-  for (const Elf_Shdr &Sec : unwrapOrError(FileName, Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     ++I;
     if (Sec.sh_type != ELF::SHT_GROUP)
       continue;
@@ -3515,7 +3573,7 @@ void GNUStyle<ELFT>::printRelocation(const ELFO *Obj, const Elf_Sym *Sym,
   Obj->getRelocationTypeName(R.getType(Obj->isMips64EL()), RelocName);
   Fields[2].Str = RelocName.c_str();
 
-  if (Sym && (!SymbolName.empty() || Sym->getValue() != 0))
+  if (Sym)
     Fields[3].Str = to_string(format_hex_no_prefix(Sym->getValue(), Width));
 
   Fields[4].Str = std::string(SymbolName);
@@ -3561,7 +3619,7 @@ template <class ELFT> void GNUStyle<ELFT>::printRelocHeader(unsigned SType) {
 
 template <class ELFT> void GNUStyle<ELFT>::printRelocations(const ELFO *Obj) {
   bool HasRelocSections = false;
-  for (const Elf_Shdr &Sec : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     if (Sec.sh_type != ELF::SHT_REL && Sec.sh_type != ELF::SHT_RELA &&
         Sec.sh_type != ELF::SHT_RELR && Sec.sh_type != ELF::SHT_ANDROID_REL &&
         Sec.sh_type != ELF::SHT_ANDROID_RELA &&
@@ -3787,7 +3845,7 @@ static void printSectionDescription(formatted_raw_ostream &OS,
 template <class ELFT>
 void GNUStyle<ELFT>::printSectionHeaders(const ELFO *Obj) {
   unsigned Bias = ELFT::Is64Bits ? 0 : 8;
-  ArrayRef<Elf_Shdr> Sections = unwrapOrError(this->FileName, Obj->sections());
+  ArrayRef<Elf_Shdr> Sections = cantFail(Obj->sections());
   OS << "There are " << to_string(Sections.size())
      << " section headers, starting at offset "
      << "0x" << to_hexString(Obj->getHeader()->e_shoff, false) << ":\n\n";
@@ -3801,10 +3859,13 @@ void GNUStyle<ELFT>::printSectionHeaders(const ELFO *Obj) {
     printField(F);
   OS << "\n";
 
-  const ELFObjectFile<ELFT> *ElfObj = this->dumper()->getElfObject();
-  StringRef SecStrTable = unwrapOrError<StringRef>(
-      ElfObj->getFileName(),
-      Obj->getSectionStringTable(Sections, this->dumper()->WarningHandler));
+  StringRef SecStrTable;
+  if (Expected<StringRef> SecStrTableOrErr =
+          Obj->getSectionStringTable(Sections, this->dumper()->WarningHandler))
+    SecStrTable = *SecStrTableOrErr;
+  else
+    this->reportUniqueWarning(SecStrTableOrErr.takeError());
+
   size_t SectionIndex = 0;
   for (const Elf_Shdr &Sec : Sections) {
     Fields[0].Str = to_string(SectionIndex);
@@ -3812,7 +3873,7 @@ void GNUStyle<ELFT>::printSectionHeaders(const ELFO *Obj) {
       Fields[1].Str = "<no-strings>";
     else
       Fields[1].Str = std::string(unwrapOrError<StringRef>(
-          ElfObj->getFileName(), Obj->getSectionName(&Sec, SecStrTable)));
+          this->FileName, Obj->getSectionName(&Sec, SecStrTable)));
     Fields[2].Str =
         getSectionTypeString(Obj->getHeader()->e_machine, Sec.sh_type);
     Fields[3].Str =
@@ -3909,8 +3970,9 @@ std::string GNUStyle<ELFT>::getSymbolSectionNdx(const ELFO *Obj,
 
 template <class ELFT>
 void GNUStyle<ELFT>::printSymbol(const ELFO *Obj, const Elf_Sym *Symbol,
-                                 const Elf_Sym *FirstSym, StringRef StrTable,
-                                 bool IsDynamic, bool NonVisibilityBitsUsed) {
+                                 const Elf_Sym *FirstSym,
+                                 Optional<StringRef> StrTable, bool IsDynamic,
+                                 bool NonVisibilityBitsUsed) {
   static int Idx = 0;
   static bool Dynamic = true;
 
@@ -4045,27 +4107,35 @@ template <class ELFT> void GNUStyle<ELFT>::printHashSymbols(const ELFO *Obj) {
       PrintHashTable(SysVHash);
   }
 
-  // Try printing .gnu.hash
-  if (auto GnuHash = this->dumper()->getGnuHashTable()) {
-    OS << "\n Symbol table of .gnu.hash for image:\n";
-    if (ELFT::Is64Bits)
-      OS << "  Num Buc:    Value          Size   Type   Bind Vis      Ndx Name";
-    else
-      OS << "  Num Buc:    Value  Size   Type   Bind Vis      Ndx Name";
-    OS << "\n";
-    auto Buckets = GnuHash->buckets();
-    for (uint32_t Buc = 0; Buc < GnuHash->nbuckets; Buc++) {
-      if (Buckets[Buc] == ELF::STN_UNDEF)
-        continue;
-      uint32_t Index = Buckets[Buc];
-      uint32_t GnuHashable = Index - GnuHash->symndx;
-      // Print whole chain
-      while (true) {
-        printHashedSymbol(Obj, &DynSyms[0], Index++, StringTable, Buc);
-        // Chain ends at symbol with stopper bit
-        if ((GnuHash->values(DynSyms.size())[GnuHashable++] & 1) == 1)
-          break;
-      }
+  // Try printing the .gnu.hash table.
+  const Elf_GnuHash *GnuHash = this->dumper()->getGnuHashTable();
+  if (!GnuHash)
+    return;
+
+  OS << "\n Symbol table of .gnu.hash for image:\n";
+  if (ELFT::Is64Bits)
+    OS << "  Num Buc:    Value          Size   Type   Bind Vis      Ndx Name";
+  else
+    OS << "  Num Buc:    Value  Size   Type   Bind Vis      Ndx Name";
+  OS << "\n";
+
+  if (Error E = checkGNUHashTable<ELFT>(Obj, GnuHash)) {
+    this->reportUniqueWarning(std::move(E));
+    return;
+  }
+
+  auto Buckets = GnuHash->buckets();
+  for (uint32_t Buc = 0; Buc < GnuHash->nbuckets; Buc++) {
+    if (Buckets[Buc] == ELF::STN_UNDEF)
+      continue;
+    uint32_t Index = Buckets[Buc];
+    uint32_t GnuHashable = Index - GnuHash->symndx;
+    // Print whole chain
+    while (true) {
+      printHashedSymbol(Obj, &DynSyms[0], Index++, StringTable, Buc);
+      // Chain ends at symbol with stopper bit
+      if ((GnuHash->values(DynSyms.size())[GnuHashable++] & 1) == 1)
+        break;
     }
   }
 }
@@ -4237,7 +4307,7 @@ void GNUStyle<ELFT>::printSectionMapping(const ELFO *Obj) {
     std::string Sections;
     OS << format("   %2.2d     ", Phnum++);
     // Check if each section is in a segment and then print mapping.
-    for (const Elf_Shdr &Sec : unwrapOrError(this->FileName, Obj->sections())) {
+    for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
       if (Sec.sh_type == ELF::SHT_NULL)
         continue;
 
@@ -4258,7 +4328,7 @@ void GNUStyle<ELFT>::printSectionMapping(const ELFO *Obj) {
 
   // Display sections that do not belong to a segment.
   std::string Sections;
-  for (const Elf_Shdr &Sec : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     if (BelongsToSegment.find(&Sec) == BelongsToSegment.end())
       Sections +=
           unwrapOrError(this->FileName, Obj->getSectionName(&Sec)).str() + ' ';
@@ -4308,7 +4378,7 @@ RelSymbol<ELFT> getSymbolForReloc(const ELFFile<ELFT> *Obj, StringRef FileName,
   if (!ErrOrName)
     return WarnAndReturn(Sym, toString(ErrOrName.takeError()));
 
-  return {Sym, maybeDemangle(*ErrOrName)};
+  return {Sym == FirstSym ? nullptr : Sym, maybeDemangle(*ErrOrName)};
 }
 } // namespace
 
@@ -4649,20 +4719,26 @@ void GNUStyle<ELFT>::printHashHistogram(const Elf_Hash &HashTable) {
 
 template <class ELFT>
 void GNUStyle<ELFT>::printGnuHashHistogram(const Elf_GnuHash &GnuHashTable) {
-  size_t NBucket = GnuHashTable.nbuckets;
-  ArrayRef<Elf_Word> Buckets = GnuHashTable.buckets();
-  unsigned NumSyms = this->dumper()->dynamic_symbols().size();
-  if (!NumSyms)
+  Expected<ArrayRef<Elf_Word>> ChainsOrErr = getGnuHashTableChains<ELFT>(
+      this->dumper()->getDynSymRegion(), &GnuHashTable);
+  if (!ChainsOrErr) {
+    this->reportUniqueWarning(
+        createError("unable to print the GNU hash table histogram: " +
+                    toString(ChainsOrErr.takeError())));
     return;
-  ArrayRef<Elf_Word> Chains = GnuHashTable.values(NumSyms);
+  }
+
+  ArrayRef<Elf_Word> Chains = *ChainsOrErr;
   size_t Symndx = GnuHashTable.symndx;
   size_t TotalSyms = 0;
   size_t MaxChain = 1;
   size_t CumulativeNonZero = 0;
 
+  size_t NBucket = GnuHashTable.nbuckets;
   if (Chains.empty() || NBucket == 0)
     return;
 
+  ArrayRef<Elf_Word> Buckets = GnuHashTable.buckets();
   std::vector<size_t> ChainLen(NBucket, 0);
   for (size_t B = 0; B < NBucket; B++) {
     if (!Buckets[B])
@@ -5329,7 +5405,7 @@ void GNUStyle<ELFT>::printNotes(const ELFFile<ELFT> *Obj) {
     }
   };
 
-  ArrayRef<Elf_Shdr> Sections = unwrapOrError(this->FileName, Obj->sections());
+  ArrayRef<Elf_Shdr> Sections = cantFail(Obj->sections());
   if (Obj->getHeader()->e_type != ELF::ET_CORE && !Sections.empty()) {
     for (const auto &S : Sections) {
       if (S.sh_type != SHT_NOTE)
@@ -5374,7 +5450,7 @@ void DumpStyle<ELFT>::printDependentLibsHelper(
   };
 
   unsigned I = -1;
-  for (const Elf_Shdr &Shdr : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Shdr : cantFail(Obj->sections())) {
     ++I;
     if (Shdr.sh_type != ELF::SHT_LLVM_DEPENDENT_LIBRARIES)
       continue;
@@ -5998,7 +6074,7 @@ template <class ELFT> void LLVMStyle<ELFT>::printRelocations(const ELFO *Obj) {
   ListScope D(W, "Relocations");
 
   int SectionNumber = -1;
-  for (const Elf_Shdr &Sec : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     ++SectionNumber;
 
     if (Sec.sh_type != ELF::SHT_REL && Sec.sh_type != ELF::SHT_RELA &&
@@ -6100,10 +6176,9 @@ void LLVMStyle<ELFT>::printSectionHeaders(const ELFO *Obj) {
   ListScope SectionsD(W, "Sections");
 
   int SectionIndex = -1;
-  ArrayRef<Elf_Shdr> Sections = unwrapOrError(this->FileName, Obj->sections());
   std::vector<EnumEntry<unsigned>> FlagsList =
       getSectionFlagsForTarget(Obj->getHeader()->e_machine);
-  for (const Elf_Shdr &Sec : Sections) {
+  for (const Elf_Shdr &Sec : cantFail(Obj->sections())) {
     StringRef Name = "<?>";
     if (Expected<StringRef> SecNameOrErr =
             Obj->getSectionName(&Sec, this->dumper()->WarningHandler))
@@ -6192,8 +6267,8 @@ void LLVMStyle<ELFT>::printSymbolSection(const Elf_Sym *Symbol,
 
 template <class ELFT>
 void LLVMStyle<ELFT>::printSymbol(const ELFO *Obj, const Elf_Sym *Symbol,
-                                  const Elf_Sym *First, StringRef StrTable,
-                                  bool IsDynamic,
+                                  const Elf_Sym *First,
+                                  Optional<StringRef> StrTable, bool IsDynamic,
                                   bool /*NonVisibilityBitsUsed*/) {
   std::string FullSymbolName =
       this->dumper()->getFullSymbolName(Symbol, StrTable, IsDynamic);
@@ -6638,7 +6713,7 @@ void LLVMStyle<ELFT>::printNotes(const ELFFile<ELFT> *Obj) {
     }
   };
 
-  ArrayRef<Elf_Shdr> Sections = unwrapOrError(this->FileName, Obj->sections());
+  ArrayRef<Elf_Shdr> Sections = cantFail(Obj->sections());
   if (Obj->getHeader()->e_type != ELF::ET_CORE && !Sections.empty()) {
     for (const auto &S : Sections) {
       if (S.sh_type != SHT_NOTE)
@@ -6673,7 +6748,7 @@ void LLVMStyle<ELFT>::printELFLinkerOptions(const ELFFile<ELFT> *Obj) {
   ListScope L(W, "LinkerOptions");
 
   unsigned I = -1;
-  for (const Elf_Shdr &Shdr : unwrapOrError(this->FileName, Obj->sections())) {
+  for (const Elf_Shdr &Shdr : cantFail(Obj->sections())) {
     ++I;
     if (Shdr.sh_type != ELF::SHT_LLVM_LINKER_OPTIONS)
       continue;

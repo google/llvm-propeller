@@ -122,6 +122,12 @@ struct LinalgPromotionOptions {
     alignment = align;
     return *this;
   }
+  /// Use alloca with the default allocation scheme.
+  bool useAlloca = false;
+  LinalgPromotionOptions &setUseAlloca(bool use) {
+    useAlloca = use;
+    return *this;
+  }
   /// Callback function to do the allocation of the promoted buffer. If None,
   /// then the default allocation scheme of allocating a memref<?xi8> buffer
   /// followed by a view operation is used.
@@ -134,7 +140,6 @@ struct LinalgPromotionOptions {
     deallocationFn = deallocFn;
     return *this;
   }
-
   /// Callback function to do the copy of data to and from the promoted
   /// subview. If None then a linalg.copy is used.
   Optional<CopyCallbackFn> copyInFn = None;
@@ -165,19 +170,16 @@ Optional<LinalgOp> promoteSubViews(OpBuilder &b, LinalgOp op,
 void vectorizeLinalgOp(OpBuilder &builder, Operation *op);
 
 /// Emits a loop nest of `LoopTy` with the proper body for `op`.
-template <typename LoopTy, typename ConcreteOp>
+template <typename LoopTy>
 Optional<LinalgLoops> linalgLowerOpToLoops(OpBuilder &builder, Operation *op);
 
 /// Emits a loop nest of `scf.for` with the proper body for `op`.
-template <typename ConcreteOp>
 LogicalResult linalgOpToLoops(OpBuilder &builder, Operation *op);
 
 /// Emits a loop nest of `scf.parallel` with the proper body for `op`.
-template <typename ConcreteOp>
 LogicalResult linalgOpToParallelLoops(OpBuilder &builder, Operation *op);
 
 /// Emits a loop nest of `affine.for` with the proper body for `op`.
-template <typename ConcreteOp>
 LogicalResult linalgOpToAffineLoops(OpBuilder &builder, Operation *op);
 
 //===----------------------------------------------------------------------===//
@@ -419,12 +421,12 @@ template <typename OpTy> struct LinalgLoweringPattern : public RewritePattern {
       // TODO: Move lowering to library calls here.
       return failure();
     } else if (loweringType == LinalgLoweringType::Loops) {
-      if (failed(linalgOpToLoops<OpTy>(rewriter, op)))
+      if (failed(linalgOpToLoops(rewriter, op)))
         return failure();
     } else if (loweringType == LinalgLoweringType::AffineLoops) {
-      if (failed(linalgOpToAffineLoops<OpTy>(rewriter, op)))
+      if (failed(linalgOpToAffineLoops(rewriter, op)))
         return failure();
-    } else if (failed(linalgOpToParallelLoops<OpTy>(rewriter, op))) {
+    } else if (failed(linalgOpToParallelLoops(rewriter, op))) {
       return failure();
     }
     rewriter.eraseOp(op);

@@ -20,6 +20,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/Basic/CodeGenOptions.h"
+#include "clang/Basic/DiagnosticFrontend.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
 #include "clang/CodeGen/SwiftCallingConv.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -2466,7 +2467,109 @@ public:
       }
     }
   }
+
+  void checkFunctionCallABI(CodeGenModule &CGM, SourceLocation CallLoc,
+                            const FunctionDecl *Caller,
+                            const FunctionDecl *Callee,
+                            const CallArgList &Args) const override;
 };
+
+static void initFeatureMaps(const ASTContext &Ctx,
+                            llvm::StringMap<bool> &CallerMap,
+                            const FunctionDecl *Caller,
+                            llvm::StringMap<bool> &CalleeMap,
+                            const FunctionDecl *Callee) {
+  if (CalleeMap.empty() && CallerMap.empty()) {
+    // The caller is potentially nullptr in the case where the call isn't in a
+    // function.  In this case, the getFunctionFeatureMap ensures we just get
+    // the TU level setting (since it cannot be modified by 'target'..
+    Ctx.getFunctionFeatureMap(CallerMap, Caller);
+    Ctx.getFunctionFeatureMap(CalleeMap, Callee);
+  }
+}
+
+static bool checkAVXParamFeature(DiagnosticsEngine &Diag,
+                                 SourceLocation CallLoc,
+                                 const llvm::StringMap<bool> &CallerMap,
+                                 const llvm::StringMap<bool> &CalleeMap,
+                                 QualType Ty, StringRef Feature,
+                                 bool IsArgument) {
+  bool CallerHasFeat = CallerMap.lookup(Feature);
+  bool CalleeHasFeat = CalleeMap.lookup(Feature);
+  if (!CallerHasFeat && !CalleeHasFeat)
+    return Diag.Report(CallLoc, diag::warn_avx_calling_convention)
+           << IsArgument << Ty << Feature;
+
+  // Mixing calling conventions here is very clearly an error.
+  if (!CallerHasFeat || !CalleeHasFeat)
+    return Diag.Report(CallLoc, diag::err_avx_calling_convention)
+           << IsArgument << Ty << Feature;
+
+  // Else, both caller and callee have the required feature, so there is no need
+  // to diagnose.
+  return false;
+}
+
+static bool checkAVXParam(DiagnosticsEngine &Diag, ASTContext &Ctx,
+                          SourceLocation CallLoc,
+                          const llvm::StringMap<bool> &CallerMap,
+                          const llvm::StringMap<bool> &CalleeMap, QualType Ty,
+                          bool IsArgument) {
+  uint64_t Size = Ctx.getTypeSize(Ty);
+  if (Size > 256)
+    return checkAVXParamFeature(Diag, CallLoc, CallerMap, CalleeMap, Ty,
+                                "avx512f", IsArgument);
+
+  if (Size > 128)
+    return checkAVXParamFeature(Diag, CallLoc, CallerMap, CalleeMap, Ty, "avx",
+                                IsArgument);
+
+  return false;
+}
+
+void X86_64TargetCodeGenInfo::checkFunctionCallABI(
+    CodeGenModule &CGM, SourceLocation CallLoc, const FunctionDecl *Caller,
+    const FunctionDecl *Callee, const CallArgList &Args) const {
+  llvm::StringMap<bool> CallerMap;
+  llvm::StringMap<bool> CalleeMap;
+  unsigned ArgIndex = 0;
+
+  // We need to loop through the actual call arguments rather than the the
+  // function's parameters, in case this variadic.
+  for (const CallArg &Arg : Args) {
+    // The "avx" feature changes how vectors >128 in size are passed. "avx512f"
+    // additionally changes how vectors >256 in size are passed. Like GCC, we
+    // warn when a function is called with an argument where this will change.
+    // Unlike GCC, we also error when it is an obvious ABI mismatch, that is,
+    // the caller and callee features are mismatched.
+    // Unfortunately, we cannot do this diagnostic in SEMA, since the callee can
+    // change its ABI with attribute-target after this call.
+    if (Arg.getType()->isVectorType() &&
+        CGM.getContext().getTypeSize(Arg.getType()) > 128) {
+      initFeatureMaps(CGM.getContext(), CallerMap, Caller, CalleeMap, Callee);
+      QualType Ty = Arg.getType();
+      // The CallArg seems to have desugared the type already, so for clearer
+      // diagnostics, replace it with the type in the FunctionDecl if possible.
+      if (ArgIndex < Callee->getNumParams())
+        Ty = Callee->getParamDecl(ArgIndex)->getType();
+
+      if (checkAVXParam(CGM.getDiags(), CGM.getContext(), CallLoc, CallerMap,
+                        CalleeMap, Ty, /*IsArgument*/ true))
+        return;
+    }
+    ++ArgIndex;
+  }
+
+  // Check return always, as we don't have a good way of knowing in codegen
+  // whether this value is used, tail-called, etc.
+  if (Callee->getReturnType()->isVectorType() &&
+      CGM.getContext().getTypeSize(Callee->getReturnType()) > 128) {
+    initFeatureMaps(CGM.getContext(), CallerMap, Caller, CalleeMap, Callee);
+    checkAVXParam(CGM.getDiags(), CGM.getContext(), CallLoc, CallerMap,
+                  CalleeMap, Callee->getReturnType(),
+                  /*IsArgument*/ false);
+  }
+}
 
 static std::string qualifyWindowsLibrary(llvm::StringRef Lib) {
   // If the argument does not end in .lib, automatically add the suffix.
@@ -6265,24 +6368,6 @@ ABIArgInfo ARMABIInfo::classifyArgumentType(QualType Ty, bool isVariadic,
   if (isIllegalVectorType(Ty))
     return coerceIllegalVector(Ty);
 
-  // _Float16 and __fp16 get passed as if it were an int or float, but
-  // with the top 16 bits unspecified. This is not done for OpenCL as it handles
-  // the half type natively, and does not need to interwork with AAPCS code.
-  if ((Ty->isFloat16Type() || Ty->isHalfType()) &&
-      !getContext().getLangOpts().NativeHalfArgsAndReturns) {
-    llvm::Type *ResType = IsAAPCS_VFP ?
-      llvm::Type::getFloatTy(getVMContext()) :
-      llvm::Type::getInt32Ty(getVMContext());
-    return ABIArgInfo::getDirect(ResType);
-  }
-
-  // __bf16 gets passed using the bfloat IR type, or using i32 but
-  // with the top 16 bits unspecified.
-  if (Ty->isBFloat16Type() && IsFloatABISoftFP) {
-    llvm::Type *ResType = llvm::Type::getInt32Ty(getVMContext());
-    return ABIArgInfo::getDirect(ResType);
-  }
-
   if (!isAggregateTypeForABI(Ty)) {
     // Treat an enum type as its underlying type.
     if (const EnumType *EnumTy = Ty->getAs<EnumType>()) {
@@ -6484,26 +6569,6 @@ ABIArgInfo ARMABIInfo::classifyReturnType(QualType RetTy, bool isVariadic,
         (IsFloatABISoftFP &&
          VT->getElementType()->isBFloat16Type()))
       return coerceIllegalVector(RetTy);
-  }
-
-  // _Float16 and __fp16 get returned as if it were an int or float, but with
-  // the top 16 bits unspecified. This is not done for OpenCL as it handles the
-  // half type natively, and does not need to interwork with AAPCS code.
-  if ((RetTy->isFloat16Type() || RetTy->isHalfType()) &&
-      !getContext().getLangOpts().NativeHalfArgsAndReturns) {
-    llvm::Type *ResType = IsAAPCS_VFP ?
-      llvm::Type::getFloatTy(getVMContext()) :
-      llvm::Type::getInt32Ty(getVMContext());
-    return ABIArgInfo::getDirect(ResType);
-  }
-
-  // if we're using the softfp float abi, __bf16 get returned as if it were an
-  // int but with the top 16 bits unspecified.
-  if (RetTy->isBFloat16Type()) {
-    llvm::Type *ResType = IsAAPCS_VFP ?
-      llvm::Type::getBFloatTy(getVMContext()) :
-      llvm::Type::getInt32Ty(getVMContext());
-    return ABIArgInfo::getDirect(ResType);
   }
 
   if (!isAggregateTypeForABI(RetTy)) {
@@ -9573,11 +9638,15 @@ public:
 
 class XCoreTargetCodeGenInfo : public TargetCodeGenInfo {
   mutable TypeStringCache TSC;
+  void emitTargetMD(const Decl *D, llvm::GlobalValue *GV,
+                    const CodeGen::CodeGenModule &M) const;
+
 public:
   XCoreTargetCodeGenInfo(CodeGenTypes &CGT)
       : TargetCodeGenInfo(std::make_unique<XCoreABIInfo>(CGT)) {}
-  void emitTargetMD(const Decl *D, llvm::GlobalValue *GV,
-                    CodeGen::CodeGenModule &M) const override;
+  void emitTargetMetadata(CodeGen::CodeGenModule &CGM,
+                          const llvm::MapVector<GlobalDecl, StringRef>
+                              &MangledDeclNames) const override;
 };
 
 } // End anonymous namespace.
@@ -9738,11 +9807,13 @@ StringRef TypeStringCache::lookupStr(const IdentifierInfo *ID) {
 /// The output is tested by test/CodeGen/xcore-stringtype.c.
 ///
 static bool getTypeString(SmallStringEnc &Enc, const Decl *D,
-                          CodeGen::CodeGenModule &CGM, TypeStringCache &TSC);
+                          const CodeGen::CodeGenModule &CGM,
+                          TypeStringCache &TSC);
 
 /// XCore uses emitTargetMD to emit TypeString metadata for global symbols.
-void XCoreTargetCodeGenInfo::emitTargetMD(const Decl *D, llvm::GlobalValue *GV,
-                                          CodeGen::CodeGenModule &CGM) const {
+void XCoreTargetCodeGenInfo::emitTargetMD(
+    const Decl *D, llvm::GlobalValue *GV,
+    const CodeGen::CodeGenModule &CGM) const {
   SmallStringEnc Enc;
   if (getTypeString(Enc, D, CGM, TSC)) {
     llvm::LLVMContext &Ctx = CGM.getModule().getContext();
@@ -9754,6 +9825,21 @@ void XCoreTargetCodeGenInfo::emitTargetMD(const Decl *D, llvm::GlobalValue *GV,
   }
 }
 
+void XCoreTargetCodeGenInfo::emitTargetMetadata(
+    CodeGen::CodeGenModule &CGM,
+    const llvm::MapVector<GlobalDecl, StringRef> &MangledDeclNames) const {
+  // Warning, new MangledDeclNames may be appended within this loop.
+  // We rely on MapVector insertions adding new elements to the end
+  // of the container.
+  for (unsigned I = 0; I != MangledDeclNames.size(); ++I) {
+    auto Val = *(MangledDeclNames.begin() + I);
+    llvm::GlobalValue *GV = CGM.GetGlobalValue(Val.second);
+    if (GV) {
+      const Decl *D = Val.first.getDecl()->getMostRecentDecl();
+      emitTargetMD(D, GV, CGM);
+    }
+  }
+}
 //===----------------------------------------------------------------------===//
 // SPIR ABI Implementation
 //===----------------------------------------------------------------------===//
@@ -10087,7 +10173,8 @@ static bool appendType(SmallStringEnc &Enc, QualType QType,
 }
 
 static bool getTypeString(SmallStringEnc &Enc, const Decl *D,
-                          CodeGen::CodeGenModule &CGM, TypeStringCache &TSC) {
+                          const CodeGen::CodeGenModule &CGM,
+                          TypeStringCache &TSC) {
   if (!D)
     return false;
 
@@ -10587,6 +10674,56 @@ public:
 } // namespace
 
 //===----------------------------------------------------------------------===//
+// VE ABI Implementation.
+//
+namespace {
+class VEABIInfo : public DefaultABIInfo {
+public:
+  VEABIInfo(CodeGenTypes &CGT) : DefaultABIInfo(CGT) {}
+
+private:
+  ABIArgInfo classifyReturnType(QualType RetTy) const;
+  ABIArgInfo classifyArgumentType(QualType RetTy) const;
+  void computeInfo(CGFunctionInfo &FI) const override;
+};
+} // end anonymous namespace
+
+ABIArgInfo VEABIInfo::classifyReturnType(QualType Ty) const {
+  if (Ty->isAnyComplexType()) {
+    return ABIArgInfo::getDirect();
+  }
+  return DefaultABIInfo::classifyReturnType(Ty);
+}
+
+ABIArgInfo VEABIInfo::classifyArgumentType(QualType Ty) const {
+  if (Ty->isAnyComplexType()) {
+    return ABIArgInfo::getDirect();
+  }
+  return DefaultABIInfo::classifyArgumentType(Ty);
+}
+
+void VEABIInfo::computeInfo(CGFunctionInfo &FI) const {
+
+  FI.getReturnInfo() = classifyReturnType(FI.getReturnType());
+  for (auto &Arg : FI.arguments())
+    Arg.info = classifyArgumentType(Arg.type);
+}
+
+namespace {
+class VETargetCodeGenInfo : public TargetCodeGenInfo {
+public:
+  VETargetCodeGenInfo(CodeGenTypes &CGT)
+      : TargetCodeGenInfo(std::make_unique<VEABIInfo>(CGT)) {}
+  // VE ABI requires the arguments of variadic and prototype-less functions
+  // are passed in both registers and memory.
+  bool isNoProtoCallVariadic(const CallArgList &args,
+                             const FunctionNoProtoType *fnType) const override {
+    return true;
+  }
+};
+} // end anonymous namespace
+
+//===----------------------------------------------------------------------===//
 // Driver code
 //===----------------------------------------------------------------------===//
 
@@ -10788,6 +10925,8 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
   case llvm::Triple::spir:
   case llvm::Triple::spir64:
     return SetCGInfo(new SPIRTargetCodeGenInfo(Types));
+  case llvm::Triple::ve:
+    return SetCGInfo(new VETargetCodeGenInfo(Types));
   }
 }
 

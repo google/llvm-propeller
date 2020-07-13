@@ -9508,66 +9508,6 @@ bool clang::isBetterOverloadCandidate(
   else if (!Cand1.Viable)
     return false;
 
-  // [CUDA] A function with 'never' preference is marked not viable, therefore
-  // is never shown up here. The worst preference shown up here is 'wrong side',
-  // e.g. a host function called by a device host function in device
-  // compilation. This is valid AST as long as the host device function is not
-  // emitted, e.g. it is an inline function which is called only by a host
-  // function. A deferred diagnostic will be triggered if it is emitted.
-  // However a wrong-sided function is still a viable candidate here.
-  //
-  // If Cand1 can be emitted and Cand2 cannot be emitted in the current
-  // context, Cand1 is better than Cand2. If Cand1 can not be emitted and Cand2
-  // can be emitted, Cand1 is not better than Cand2. This rule should have
-  // precedence over other rules.
-  //
-  // If both Cand1 and Cand2 can be emitted, or neither can be emitted, then
-  // other rules should be used to determine which is better. This is because
-  // host/device based overloading resolution is mostly for determining
-  // viability of a function. If two functions are both viable, other factors
-  // should take precedence in preference, e.g. the standard-defined preferences
-  // like argument conversion ranks or enable_if partial-ordering. The
-  // preference for pass-object-size parameters is probably most similar to a
-  // type-based-overloading decision and so should take priority.
-  //
-  // If other rules cannot determine which is better, CUDA preference will be
-  // used again to determine which is better.
-  //
-  // TODO: Currently IdentifyCUDAPreference does not return correct values
-  // for functions called in global variable initializers due to missing
-  // correct context about device/host. Therefore we can only enforce this
-  // rule when there is a caller. We should enforce this rule for functions
-  // in global variable initializers once proper context is added.
-  if (S.getLangOpts().CUDA && Cand1.Function && Cand2.Function) {
-    if (FunctionDecl *Caller = dyn_cast<FunctionDecl>(S.CurContext)) {
-      bool IsCallerImplicitHD = Sema::IsCUDAImplicitHostDeviceFunction(Caller);
-      bool IsCand1ImplicitHD =
-          Sema::IsCUDAImplicitHostDeviceFunction(Cand1.Function);
-      bool IsCand2ImplicitHD =
-          Sema::IsCUDAImplicitHostDeviceFunction(Cand2.Function);
-      auto P1 = S.IdentifyCUDAPreference(Caller, Cand1.Function);
-      auto P2 = S.IdentifyCUDAPreference(Caller, Cand2.Function);
-      assert(P1 != Sema::CFP_Never && P2 != Sema::CFP_Never);
-      // The implicit HD function may be a function in a system header which
-      // is forced by pragma. In device compilation, if we prefer HD candidates
-      // over wrong-sided candidates, overloading resolution may change, which
-      // may result in non-deferrable diagnostics. As a workaround, we let
-      // implicit HD candidates take equal preference as wrong-sided candidates.
-      // This will preserve the overloading resolution.
-      auto EmitThreshold =
-          (S.getLangOpts().CUDAIsDevice && IsCallerImplicitHD &&
-           (IsCand1ImplicitHD || IsCand2ImplicitHD))
-              ? Sema::CFP_Never
-              : Sema::CFP_WrongSide;
-      auto Cand1Emittable = P1 > EmitThreshold;
-      auto Cand2Emittable = P2 > EmitThreshold;
-      if (Cand1Emittable && !Cand2Emittable)
-        return true;
-      if (!Cand1Emittable && Cand2Emittable)
-        return false;
-    }
-  }
-
   // C++ [over.match.best]p1:
   //
   //   -- if F is a static member function, ICS1(F) is defined such
@@ -9802,6 +9742,12 @@ bool clang::isBetterOverloadCandidate(
       return Cmp == Comparison::Better;
   }
 
+  if (S.getLangOpts().CUDA && Cand1.Function && Cand2.Function) {
+    FunctionDecl *Caller = dyn_cast<FunctionDecl>(S.CurContext);
+    return S.IdentifyCUDAPreference(Caller, Cand1.Function) >
+           S.IdentifyCUDAPreference(Caller, Cand2.Function);
+  }
+
   bool HasPS1 = Cand1.Function != nullptr &&
                 functionHasPassObjectSizeParams(Cand1.Function);
   bool HasPS2 = Cand2.Function != nullptr &&
@@ -9809,21 +9755,8 @@ bool clang::isBetterOverloadCandidate(
   if (HasPS1 != HasPS2 && HasPS1)
     return true;
 
-  auto MV = isBetterMultiversionCandidate(Cand1, Cand2);
-  if (MV == Comparison::Better)
-    return true;
-  if (MV == Comparison::Worse)
-    return false;
-
-  // If other rules cannot determine which is better, CUDA preference is used
-  // to determine which is better.
-  if (S.getLangOpts().CUDA && Cand1.Function && Cand2.Function) {
-    FunctionDecl *Caller = dyn_cast<FunctionDecl>(S.CurContext);
-    return S.IdentifyCUDAPreference(Caller, Cand1.Function) >
-           S.IdentifyCUDAPreference(Caller, Cand2.Function);
-  }
-
-  return false;
+  Comparison MV = isBetterMultiversionCandidate(Cand1, Cand2);
+  return MV == Comparison::Better;
 }
 
 /// Determine whether two declarations are "equivalent" for the purposes of
@@ -9908,6 +9841,33 @@ OverloadCandidateSet::BestViableFunction(Sema &S, SourceLocation Loc,
   llvm::SmallVector<OverloadCandidate *, 16> Candidates;
   std::transform(begin(), end(), std::back_inserter(Candidates),
                  [](OverloadCandidate &Cand) { return &Cand; });
+
+  // [CUDA] HD->H or HD->D calls are technically not allowed by CUDA but
+  // are accepted by both clang and NVCC. However, during a particular
+  // compilation mode only one call variant is viable. We need to
+  // exclude non-viable overload candidates from consideration based
+  // only on their host/device attributes. Specifically, if one
+  // candidate call is WrongSide and the other is SameSide, we ignore
+  // the WrongSide candidate.
+  if (S.getLangOpts().CUDA) {
+    const FunctionDecl *Caller = dyn_cast<FunctionDecl>(S.CurContext);
+    bool ContainsSameSideCandidate =
+        llvm::any_of(Candidates, [&](OverloadCandidate *Cand) {
+          // Check viable function only.
+          return Cand->Viable && Cand->Function &&
+                 S.IdentifyCUDAPreference(Caller, Cand->Function) ==
+                     Sema::CFP_SameSide;
+        });
+    if (ContainsSameSideCandidate) {
+      auto IsWrongSideCandidate = [&](OverloadCandidate *Cand) {
+        // Check viable function only to avoid unnecessary data copying/moving.
+        return Cand->Viable && Cand->Function &&
+               S.IdentifyCUDAPreference(Caller, Cand->Function) ==
+                   Sema::CFP_WrongSide;
+      };
+      llvm::erase_if(Candidates, IsWrongSideCandidate);
+    }
+  }
 
   // Find the best viable function.
   Best = end();
@@ -13081,7 +13041,7 @@ Sema::CreateOverloadedUnaryOp(SourceLocation OpLoc, UnaryOperatorKind Opc,
     if (Fns.empty())
       return UnaryOperator::Create(Context, Input, Opc, Context.DependentTy,
                                    VK_RValue, OK_Ordinary, OpLoc, false,
-                                   CurFPFeatures);
+                                   CurFPFeatureOverrides());
 
     CXXRecordDecl *NamingClass = nullptr; // lookup ignores member operators
     UnresolvedLookupExpr *Fn = UnresolvedLookupExpr::Create(
@@ -13089,7 +13049,7 @@ Sema::CreateOverloadedUnaryOp(SourceLocation OpLoc, UnaryOperatorKind Opc,
         /*ADL*/ true, IsOverloaded(Fns), Fns.begin(), Fns.end());
     return CXXOperatorCallExpr::Create(Context, Op, Fn, ArgsArray,
                                        Context.DependentTy, VK_RValue, OpLoc,
-                                       CurFPFeatures);
+                                       CurFPFeatureOverrides());
   }
 
   // Build an empty overload set.
@@ -13163,7 +13123,7 @@ Sema::CreateOverloadedUnaryOp(SourceLocation OpLoc, UnaryOperatorKind Opc,
       Args[0] = Input;
       CallExpr *TheCall = CXXOperatorCallExpr::Create(
           Context, Op, FnExpr.get(), ArgsArray, ResultTy, VK, OpLoc,
-          CurFPFeatures, Best->IsADLCandidate);
+          CurFPFeatureOverrides(), Best->IsADLCandidate);
 
       if (CheckCallReturnType(FnDecl->getReturnType(), OpLoc, TheCall, FnDecl))
         return ExprError();
@@ -13332,12 +13292,12 @@ ExprResult Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
       // If there are no functions to store, just build a dependent
       // BinaryOperator or CompoundAssignment.
       if (Opc <= BO_Assign || Opc > BO_OrAssign)
-        return BinaryOperator::Create(Context, Args[0], Args[1], Opc,
-                                      Context.DependentTy, VK_RValue,
-                                      OK_Ordinary, OpLoc, CurFPFeatures);
+        return BinaryOperator::Create(
+            Context, Args[0], Args[1], Opc, Context.DependentTy, VK_RValue,
+            OK_Ordinary, OpLoc, CurFPFeatureOverrides());
       return CompoundAssignOperator::Create(
           Context, Args[0], Args[1], Opc, Context.DependentTy, VK_LValue,
-          OK_Ordinary, OpLoc, CurFPFeatures, Context.DependentTy,
+          OK_Ordinary, OpLoc, CurFPFeatureOverrides(), Context.DependentTy,
           Context.DependentTy);
     }
 
@@ -13351,7 +13311,7 @@ ExprResult Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
         /*ADL*/ PerformADL, IsOverloaded(Fns), Fns.begin(), Fns.end());
     return CXXOperatorCallExpr::Create(Context, Op, Fn, Args,
                                        Context.DependentTy, VK_RValue, OpLoc,
-                                       CurFPFeatures);
+                                       CurFPFeatureOverrides());
   }
 
   // Always do placeholder-like conversions on the RHS.
@@ -13520,7 +13480,7 @@ ExprResult Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
 
         CXXOperatorCallExpr *TheCall = CXXOperatorCallExpr::Create(
             Context, ChosenOp, FnExpr.get(), Args, ResultTy, VK, OpLoc,
-            CurFPFeatures, Best->IsADLCandidate);
+            CurFPFeatureOverrides(), Best->IsADLCandidate);
 
         if (CheckCallReturnType(FnDecl->getReturnType(), OpLoc, TheCall,
                                 FnDecl))
@@ -13543,6 +13503,10 @@ ExprResult Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
                   VariadicDoesNotApply);
 
         ExprResult R = MaybeBindToTemporary(TheCall);
+        if (R.isInvalid())
+          return ExprError();
+
+        R = CheckForImmediateInvocation(R, FnDecl);
         if (R.isInvalid())
           return ExprError();
 
@@ -13581,7 +13545,7 @@ ExprResult Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
         if (Best->RewriteKind != CRK_None)
           R = new (Context) CXXRewrittenBinaryOperator(R.get(), IsReversed);
 
-        return CheckForImmediateInvocation(R, FnDecl);
+        return R;
       } else {
         // We matched a built-in operator. Convert the arguments, then
         // break out so that we will build the appropriate built-in
@@ -13788,7 +13752,7 @@ ExprResult Sema::BuildSynthesizedThreeWayComparison(
   Expr *SyntacticForm = BinaryOperator::Create(
       Context, OrigLHS, OrigRHS, BO_Cmp, Result.get()->getType(),
       Result.get()->getValueKind(), Result.get()->getObjectKind(), OpLoc,
-      CurFPFeatures);
+      CurFPFeatureOverrides());
   Expr *SemanticForm[] = {LHS, RHS, Result.get()};
   return PseudoObjectExpr::Create(Context, SyntacticForm, SemanticForm, 2);
 }
@@ -13819,7 +13783,7 @@ Sema::CreateOverloadedArraySubscriptExpr(SourceLocation LLoc,
 
     return CXXOperatorCallExpr::Create(Context, OO_Subscript, Fn, Args,
                                        Context.DependentTy, VK_RValue, RLoc,
-                                       CurFPFeatures);
+                                       CurFPFeatureOverrides());
   }
 
   // Handle placeholders on both operands.
@@ -13892,9 +13856,9 @@ Sema::CreateOverloadedArraySubscriptExpr(SourceLocation LLoc,
         ExprValueKind VK = Expr::getValueKindForType(ResultTy);
         ResultTy = ResultTy.getNonLValueExprType(Context);
 
-        CXXOperatorCallExpr *TheCall =
-            CXXOperatorCallExpr::Create(Context, OO_Subscript, FnExpr.get(),
-                                        Args, ResultTy, VK, RLoc, CurFPFeatures);
+        CXXOperatorCallExpr *TheCall = CXXOperatorCallExpr::Create(
+            Context, OO_Subscript, FnExpr.get(), Args, ResultTy, VK, RLoc,
+            CurFPFeatureOverrides());
         if (CheckCallReturnType(FnDecl->getReturnType(), LLoc, TheCall, FnDecl))
           return ExprError();
 
@@ -14516,9 +14480,9 @@ Sema::BuildCallToObjectOfClassType(Scope *S, Expr *Obj,
   ExprValueKind VK = Expr::getValueKindForType(ResultTy);
   ResultTy = ResultTy.getNonLValueExprType(Context);
 
-  CXXOperatorCallExpr *TheCall =
-      CXXOperatorCallExpr::Create(Context, OO_Call, NewFn.get(), MethodArgs,
-                                  ResultTy, VK, RParenLoc, CurFPFeatures);
+  CXXOperatorCallExpr *TheCall = CXXOperatorCallExpr::Create(
+      Context, OO_Call, NewFn.get(), MethodArgs, ResultTy, VK, RParenLoc,
+      CurFPFeatureOverrides());
 
   if (CheckCallReturnType(Method->getReturnType(), LParenLoc, TheCall, Method))
     return true;
@@ -14634,8 +14598,9 @@ Sema::BuildOverloadedArrowExpr(Scope *S, Expr *Base, SourceLocation OpLoc,
   QualType ResultTy = Method->getReturnType();
   ExprValueKind VK = Expr::getValueKindForType(ResultTy);
   ResultTy = ResultTy.getNonLValueExprType(Context);
-  CXXOperatorCallExpr *TheCall = CXXOperatorCallExpr::Create(
-      Context, OO_Arrow, FnExpr.get(), Base, ResultTy, VK, OpLoc, CurFPFeatures);
+  CXXOperatorCallExpr *TheCall =
+      CXXOperatorCallExpr::Create(Context, OO_Arrow, FnExpr.get(), Base,
+                                  ResultTy, VK, OpLoc, CurFPFeatureOverrides());
 
   if (CheckCallReturnType(Method->getReturnType(), OpLoc, TheCall, Method))
     return ExprError();
@@ -14884,7 +14849,7 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
 
         return UnaryOperator::Create(
             Context, SubExpr, UO_AddrOf, MemPtrType, VK_RValue, OK_Ordinary,
-            UnOp->getOperatorLoc(), false, CurFPFeatures);
+            UnOp->getOperatorLoc(), false, CurFPFeatureOverrides());
       }
     }
     Expr *SubExpr = FixOverloadedFunctionReference(UnOp->getSubExpr(),
@@ -14892,9 +14857,10 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
     if (SubExpr == UnOp->getSubExpr())
       return UnOp;
 
-    return UnaryOperator::Create(
-        Context, SubExpr, UO_AddrOf, Context.getPointerType(SubExpr->getType()),
-        VK_RValue, OK_Ordinary, UnOp->getOperatorLoc(), false, CurFPFeatures);
+    return UnaryOperator::Create(Context, SubExpr, UO_AddrOf,
+                                 Context.getPointerType(SubExpr->getType()),
+                                 VK_RValue, OK_Ordinary, UnOp->getOperatorLoc(),
+                                 false, CurFPFeatureOverrides());
   }
 
   if (UnresolvedLookupExpr *ULE = dyn_cast<UnresolvedLookupExpr>(E)) {

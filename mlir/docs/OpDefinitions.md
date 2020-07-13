@@ -346,20 +346,20 @@ involving multiple operands/attributes/results are provided as the second
 template parameter to the `Op` class. They should be deriving from the `OpTrait`
 class. See [Constraints](#constraints) for more information.
 
-### Operation interfaces
+### Interfaces
 
-[Operation interfaces](Interfaces.md#operation-interfaces) allow
-operations to expose method calls without the
-caller needing to know the exact operation type. Operation interfaces
-defined in C++ can be accessed in the ODS framework via the
-`OpInterfaceTrait` class. Aside from using pre-existing interfaces in
-the C++ API, the ODS framework also provides a simplified mechanism
-for defining such interfaces which removes much of the boilerplate
-necessary.
+[Interfaces](Interfaces.md#attribute-operation-type-interfaces) allow for
+attributes, operations, and types to expose method calls without the caller
+needing to know the derived type. Operation interfaces defined in C++ can be
+accessed in the ODS framework via the `OpInterfaceTrait` class. Aside from using
+pre-existing interfaces in the C++ API, the ODS framework also provides a
+simplified mechanism for defining such interfaces which removes much of the
+boilerplate necessary.
 
-Providing a definition of the `OpInterface` class will auto-generate the C++
-classes for the interface. An `OpInterface` includes a name, for the C++ class,
-a description, and a list of interface methods.
+Providing a definition of the `AttrInterface`, `OpInterface`, or `TypeInterface`
+class will auto-generate the C++ classes for the interface. An interface
+includes a name, for the C++ class, a description, and a list of interface
+methods.
 
 ```tablegen
 def MyInterface : OpInterface<"MyInterface"> {
@@ -450,10 +450,11 @@ def MyInterface : OpInterface<"MyInterface"> {
   ];
 }
 
-// Interfaces can optionally be wrapped inside DeclareOpInterfaceMethods. This
-// would result in autogenerating declarations for members `foo`, `bar` and
-// `fooStatic`. Methods with bodies are not declared inside the op
-// declaration but instead handled by the op interface trait directly.
+// Operation interfaces can optionally be wrapped inside
+// DeclareOpInterfaceMethods. This would result in autogenerating declarations
+// for members `foo`, `bar` and `fooStatic`. Methods with bodies are not
+// declared inside the op declaration but instead handled by the op interface
+// trait directly.
 def OpWithInferTypeInterfaceOp : Op<...
     [DeclareOpInterfaceMethods<MyInterface>]> { ... }
 
@@ -465,9 +466,9 @@ def OpWithOverrideInferTypeInterfaceOp : Op<...
     [DeclareOpInterfaceMethods<MyInterface, ["getNumWithDefault"]>]> { ... }
 ```
 
-A verification method can also be specified on the `OpInterface` by setting
-`verify`. Setting `verify` results in the generated trait having a `verifyTrait`
-method that is applied to all operations implementing the trait.
+Operation interfaces may also provide a verification method on `OpInterface` by
+setting `verify`. Setting `verify` results in the generated trait having a
+`verifyTrait` method that is applied to all operations implementing the trait.
 
 ### Builder methods
 
@@ -848,9 +849,8 @@ to access them. For example, for a binary arithmetic operation, it may provide
 `.lhs()` to access the first operand and `.rhs()` to access the second operand.
 
 The operand adaptor class lives in the same namespace as the operation class,
-and has the name of the operation followed by `OperandAdaptor`. A template
-declaration `OperandAdaptor<>` is provided to look up the operand adaptor for
-the given operation.
+and has the name of the operation followed by `Adaptor` as well as an alias
+`Adaptor` inside the op class.
 
 Operand adaptors can be used in function templates that also process operations:
 
@@ -862,7 +862,7 @@ std::pair<Value, Value> zip(BinaryOpTy &&op) {
 
 void process(AddOp op, ArrayRef<Value> newOperands) {
   zip(op);
-  zip(OperandAdaptor<AddOp>(newOperands));
+  zip(Adaptor<AddOp>(newOperands));
   /*...*/
 }
 ```

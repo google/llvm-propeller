@@ -17,6 +17,7 @@
 include "mlir/Dialect/Affine/IR/AffineOpsBase.td"
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
 include "mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td"
+include "mlir/Interfaces/CopyOpInterface.td"
 
 // The Linalg `NInputs` trait provides the API for ops that are known
 // to have a specified number of inputs, all passed as operands.
@@ -56,7 +57,11 @@ class LinalgStructured_Op<string mnemonic, list<OpTrait> props>
 //===----------------------------------------------------------------------===//
 // At the moment these are not declarative and require a bunch of C++ code.
 // In the future, these should be migrated to a declarative specification.
-def CopyOp : LinalgStructured_Op<"copy", [NInputs<1>, NOutputs<1>]> {
+def CopyOp : LinalgStructured_Op<"copy", [
+    CopyOpInterface,
+    NInputs<1>,
+    NOutputs<1>
+  ]> {
   let description = [{
     Copies the data in the input view into the output view.
 
@@ -141,6 +146,9 @@ def CopyOp : LinalgStructured_Op<"copy", [NInputs<1>, NOutputs<1>]> {
           extractOrIdentityMap(maybeInputMap, inputRank, context),
           extractOrIdentityMap(maybeOutputMap, outputRank, context)};
     }
+
+    Value getSource() { return input();}
+    Value getTarget() { return output(); }
   }];
   let verifier = [{ return ::verify(*this); }];
 
@@ -191,64 +199,6 @@ def DotOp : LinalgStructured_Op<"dot", [NInputs<2>, NOutputs<1>]> {
         AffineMap::get(1, 0, {r_i}, context),
         AffineMap::get(1, 0, {r_i}, context),
         AffineMap::get(1, 0, {}, context)};
-    }
-  }];
-
-  let hasFolder = 1;
-}
-
-def MatvecOp : LinalgStructured_Op<"matvec", [NInputs<2>, NOutputs<1>]> {
-
-  let arguments = (ins AnyStridedMemRefOfRank<2>,
-                       AnyStridedMemRefOfRank<1>,
-                       AnyStridedMemRefOfRank<1>);
-
-  let extraClassDeclaration = libraryCallName # [{
-    llvm::Optional<SmallVector<StringRef, 8>> referenceIterators() {
-      return SmallVector<StringRef, 8>{
-        getParallelIteratorTypeName(), getReductionIteratorTypeName()};
-    }
-
-    // A(i, r_j) * B(r_j) -> C(i)
-    llvm::Optional<SmallVector<AffineMap, 8>> referenceIndexingMaps() {
-      MLIRContext *context = getContext();
-      AffineExpr i, r_j;
-      bindDims(context, i, r_j);
-      return SmallVector<AffineMap, 8>{
-        AffineMap::get(2, 0, {i, r_j}, context),
-        AffineMap::get(2, 0, {r_j}, context),
-        AffineMap::get(2, 0, {i}, context)
-      };
-    }
-  }];
-
-  let hasFolder = 1;
-}
-
-def MatmulOp : LinalgStructured_Op<"matmul", [NInputs<2>, NOutputs<1>]> {
-
-  let arguments = (ins AnyStridedMemRefOfRank<2>,
-                       AnyStridedMemRefOfRank<2>,
-                       AnyStridedMemRefOfRank<2>);
-
-  let extraClassDeclaration = libraryCallName # [{
-    llvm::Optional<SmallVector<StringRef, 8>> referenceIterators() {
-      return SmallVector<StringRef, 8>{
-        getParallelIteratorTypeName(),
-        getParallelIteratorTypeName(),
-        getReductionIteratorTypeName()};
-    }
-
-    //   A(i, r_k) * B(r_k, j) -> C(i, j)
-    llvm::Optional<SmallVector<AffineMap, 8>> referenceIndexingMaps() {
-      MLIRContext *context = getContext();
-      AffineExpr i, j, r_k;
-      bindDims(context, i, j, r_k);
-      return SmallVector<AffineMap, 8>{
-        AffineMap::get(3, 0, {i, r_k}, context),
-        AffineMap::get(3, 0, {r_k, j},context),
-        AffineMap::get(3, 0, {i, j}, context)
-      };
     }
   }];
 
@@ -565,6 +515,7 @@ class GenericOpBase<string mnemonic> : LinalgStructuredBase_Op<mnemonic,
         "No such thing as reference indexing maps for a generic op.");
      }
   }];
+
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parseGenericOp(parser, result); }];
 }
@@ -619,10 +570,10 @@ def GenericOp : GenericOpBase<"generic"> {
     And can be reused in multiple places as:
       ```mlir
       linalg.generic #matmul_trait %A, %B, %C [other-attributes] {
-        (%a: f32, %b: f32, %c: f32) :
+        ^bb0(%a: f32, %b: f32, %c: f32) :
           %d = mulf %a, %b: f32
           %e = addf %c, %d: f32
-          linalg_yield %e : f32
+          linalg.yield %e : f32
       } : memref<?x?xf32, stride_specification>,
           memref<?x?xf32, stride_specification>,
           memref<?x?xf32, stride_specification>
@@ -679,6 +630,14 @@ def GenericOp : GenericOpBase<"generic"> {
     tensor SSA values are expected to be useful and will be added in the near
     future.
   }];
+
+  let builders = [
+    OpBuilder<
+      "OpBuilder &builder, OperationState &result, ArrayRef<Type> resultTypes, "
+      "ValueRange args, int64_t inputCount, int64_t outputCount, "
+      "ArrayRef<AffineMap> indexingMaps, ArrayRef<StringRef> iteratorTypes, "
+      "function_ref<void(OpBuilder &, Location, ValueRange)> = nullptr">
+  ];
 
   let verifier = [{ return ::verify(*this); }];
 
@@ -805,6 +764,16 @@ def IndexedGenericOp : GenericOpBase<"indexed_generic"> {
     tensor SSA values are expected to be useful and will be added in the near
     future.
   }];
+
+  let builders = [
+    OpBuilder<
+      "OpBuilder &builder, OperationState &result, ArrayRef<Type> resultTypes, "
+      "ValueRange args, int64_t inputCount, int64_t outputCount, "
+      "ArrayRef<AffineMap> indexingMaps, ArrayRef<StringRef> iteratorTypes, "
+      "function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)> "
+      "= nullptr">
+  ];
+
 
   let verifier = [{ return ::verify(*this); }];
 

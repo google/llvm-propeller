@@ -275,6 +275,10 @@ Tool *ToolChain::buildLinker() const {
   llvm_unreachable("Linking is not supported by this toolchain");
 }
 
+Tool *ToolChain::buildStaticLibTool() const {
+  llvm_unreachable("Creating static lib is not supported by this toolchain");
+}
+
 Tool *ToolChain::getAssemble() const {
   if (!Assemble)
     Assemble.reset(buildAssembler());
@@ -291,6 +295,12 @@ Tool *ToolChain::getLink() const {
   if (!Link)
     Link.reset(buildLinker());
   return Link.get();
+}
+
+Tool *ToolChain::getStaticLibTool() const {
+  if (!StaticLibTool)
+    StaticLibTool.reset(buildStaticLibTool());
+  return StaticLibTool.get();
 }
 
 Tool *ToolChain::getIfsMerge() const {
@@ -321,6 +331,9 @@ Tool *ToolChain::getTool(Action::ActionClass AC) const {
 
   case Action::LinkJobClass:
     return getLink();
+
+  case Action::StaticLibJobClass:
+    return getStaticLibTool();
 
   case Action::InputClass:
   case Action::BindArchClass:
@@ -565,6 +578,11 @@ std::string ToolChain::GetLinkerPath() const {
   return GetProgramPath(getDefaultLinker());
 }
 
+std::string ToolChain::GetStaticLibToolPath() const {
+  // TODO: Add support for static lib archiving on Windows
+  return GetProgramPath("llvm-ar");
+}
+
 types::ID ToolChain::LookupTypeForExtension(StringRef Ext) const {
   types::ID id = types::lookupTypeForExtension(Ext);
 
@@ -748,6 +766,10 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
 std::string ToolChain::ComputeEffectiveClangTriple(const ArgList &Args,
                                                    types::ID InputType) const {
   return ComputeLLVMTriple(Args, InputType);
+}
+
+std::string ToolChain::computeSysRoot() const {
+  return D.SysRoot;
 }
 
 void ToolChain::AddClangSystemIncludeArgs(const ArgList &DriverArgs,

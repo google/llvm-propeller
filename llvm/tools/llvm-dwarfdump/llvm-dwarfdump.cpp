@@ -63,7 +63,7 @@ public:
       return false;
     }
     if (Arg.getAsInteger(0, Val.Val))
-      return O.error("'" + Arg + "' value invalid for integer argument!");
+      return O.error("'" + Arg + "' value invalid for integer argument");
     Val.HasValue = true;
     Val.IsRequested = true;
     return false;
@@ -89,7 +89,7 @@ public:
   /// Return true on error.
   bool parse(Option &O, StringRef ArgName, StringRef Arg, BoolOption &Val) {
     if (Arg != "")
-      return O.error("this is a flag and does not take a value.");
+      return O.error("this is a flag and does not take a value");
     Val.Val = 0;
     Val.HasValue = false;
     Val.IsRequested = true;
@@ -605,6 +605,10 @@ static std::vector<std::string> expandBundle(const std::string &InputPath) {
 
 int main(int argc, char **argv) {
   InitLLVM X(argc, argv);
+
+  // Flush outs() when printing to errs(). This avoids interleaving output
+  // between the two.
+  errs().tie(&outs());
 
   llvm::InitializeAllTargetInfos();
   llvm::InitializeAllTargetMCs();

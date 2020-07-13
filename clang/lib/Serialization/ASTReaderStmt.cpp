@@ -541,18 +541,35 @@ void ASTStmtReader::VisitExpr(Expr *E) {
 
 void ASTStmtReader::VisitConstantExpr(ConstantExpr *E) {
   VisitExpr(E);
-  E->ConstantExprBits.ResultKind = Record.readInt();
-  switch (E->ConstantExprBits.ResultKind) {
-  case ConstantExpr::RSK_Int64: {
-    E->Int64Result() = Record.readInt();
-    uint64_t tmp = Record.readInt();
-    E->ConstantExprBits.IsUnsigned = tmp & 0x1;
-    E->ConstantExprBits.BitWidth = tmp >> 1;
+
+  auto StorageKind = Record.readInt();
+  assert(E->ConstantExprBits.ResultKind == StorageKind && "Wrong ResultKind!");
+
+  E->ConstantExprBits.APValueKind = Record.readInt();
+  E->ConstantExprBits.IsUnsigned = Record.readInt();
+  E->ConstantExprBits.BitWidth = Record.readInt();
+  E->ConstantExprBits.HasCleanup = false; // Not serialized, see below.
+  E->ConstantExprBits.IsImmediateInvocation = Record.readInt();
+
+  switch (StorageKind) {
+  case ConstantExpr::RSK_None:
     break;
-  }
+
+  case ConstantExpr::RSK_Int64:
+    E->Int64Result() = Record.readInt();
+    break;
+
   case ConstantExpr::RSK_APValue:
     E->APValueResult() = Record.readAPValue();
+    if (E->APValueResult().needsCleanup()) {
+      E->ConstantExprBits.HasCleanup = true;
+      Record.getContext().addDestruction(&E->APValueResult());
+    }
+    break;
+  default:
+    llvm_unreachable("unexpected ResultKind!");
   }
+
   E->setSubExpr(Record.readSubExpr());
 }
 
@@ -689,7 +706,7 @@ void ASTStmtReader::VisitUnaryOperator(UnaryOperator *E) {
   E->setOperatorLoc(readSourceLocation());
   E->setCanOverflow(Record.readInt());
   if (hasFP_Features)
-    E->setStoredFPFeatures(FPOptions(Record.readInt()));
+    E->setStoredFPFeatures(FPOptionsOverride(Record.readInt()));
 }
 
 void ASTStmtReader::VisitOffsetOfExpr(OffsetOfExpr *E) {
@@ -1072,7 +1089,7 @@ void ASTStmtReader::VisitBinaryOperator(BinaryOperator *E) {
   E->setRHS(Record.readSubExpr());
   E->setOperatorLoc(readSourceLocation());
   if (hasFP_Features)
-    E->setStoredFPFeatures(FPOptions(Record.readInt()));
+    E->setStoredFPFeatures(FPOptionsOverride(Record.readInt()));
 }
 
 void ASTStmtReader::VisitCompoundAssignOperator(CompoundAssignOperator *E) {
@@ -1640,8 +1657,8 @@ void ASTStmtReader::VisitMSDependentExistsStmt(MSDependentExistsStmt *S) {
 void ASTStmtReader::VisitCXXOperatorCallExpr(CXXOperatorCallExpr *E) {
   VisitCallExpr(E);
   E->CXXOperatorCallExprBits.OperatorKind = Record.readInt();
-  E->CXXOperatorCallExprBits.FPFeatures = Record.readInt();
   E->Range = Record.readSourceRange();
+  E->setFPFeatures(FPOptionsOverride(Record.readInt()));
 }
 
 void ASTStmtReader::VisitCXXRewrittenBinaryOperator(
@@ -1687,19 +1704,23 @@ void ASTStmtReader::VisitCXXTemporaryObjectExpr(CXXTemporaryObjectExpr *E) {
 void ASTStmtReader::VisitLambdaExpr(LambdaExpr *E) {
   VisitExpr(E);
   unsigned NumCaptures = Record.readInt();
-  assert(NumCaptures == E->NumCaptures);(void)NumCaptures;
+  (void)NumCaptures;
+  assert(NumCaptures == E->LambdaExprBits.NumCaptures);
   E->IntroducerRange = readSourceRange();
-  E->CaptureDefault = static_cast<LambdaCaptureDefault>(Record.readInt());
+  E->LambdaExprBits.CaptureDefault = Record.readInt();
   E->CaptureDefaultLoc = readSourceLocation();
-  E->ExplicitParams = Record.readInt();
-  E->ExplicitResultType = Record.readInt();
+  E->LambdaExprBits.ExplicitParams = Record.readInt();
+  E->LambdaExprBits.ExplicitResultType = Record.readInt();
   E->ClosingBrace = readSourceLocation();
 
   // Read capture initializers.
   for (LambdaExpr::capture_init_iterator C = E->capture_init_begin(),
-                                      CEnd = E->capture_init_end();
+                                         CEnd = E->capture_init_end();
        C != CEnd; ++C)
     *C = Record.readSubExpr();
+
+  // The body will be lazily deserialized when needed from the call operator
+  // declaration.
 }
 
 void
@@ -2855,10 +2876,8 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case EXPR_CONSTANT:
       S = ConstantExpr::CreateEmpty(
-          Context,
-          static_cast<ConstantExpr::ResultStorageKind>(
-              Record[ASTStmtReader::NumExprFields]),
-          Empty);
+          Context, static_cast<ConstantExpr::ResultStorageKind>(
+                       /*StorageKind=*/Record[ASTStmtReader::NumExprFields]));
       break;
 
     case EXPR_PREDEFINED:
@@ -3616,6 +3635,11 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case EXPR_CXX_FUNCTIONAL_CAST:
       S = CXXFunctionalCastExpr::CreateEmpty(Context,
                        /*PathSize*/ Record[ASTStmtReader::NumExprFields]);
+      break;
+
+    case EXPR_BUILTIN_BIT_CAST:
+      assert(Record[ASTStmtReader::NumExprFields] == 0 && "Wrong PathSize!");
+      S = new (Context) BuiltinBitCastExpr(Empty);
       break;
 
     case EXPR_USER_DEFINED_LITERAL:

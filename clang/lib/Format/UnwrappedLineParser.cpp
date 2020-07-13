@@ -900,7 +900,7 @@ void UnwrappedLineParser::parsePPUnknown() {
   addUnwrappedLine();
 }
 
-// Here we blacklist certain tokens that are not usually the first token in an
+// Here we exclude certain tokens that are not usually the first token in an
 // unwrapped line. This is used in attempt to distinguish macro calls without
 // trailing semicolons from other constructs split to several lines.
 static bool tokenCanStartNewLine(const FormatToken &Tok) {
@@ -2220,8 +2220,13 @@ void UnwrappedLineParser::parseLabel(bool LeftAlignLabel) {
     parseBlock(/*MustBeDeclaration=*/false);
     if (FormatTok->Tok.is(tok::kw_break)) {
       if (Style.BraceWrapping.AfterControlStatement ==
-          FormatStyle::BWACS_Always)
+          FormatStyle::BWACS_Always) {
         addUnwrappedLine();
+        if (!Style.IndentCaseBlocks &&
+            Style.BreakBeforeBraces == FormatStyle::BS_Whitesmiths) {
+          Line->Level++;
+        }
+      }
       parseStructuralElement();
     }
     addUnwrappedLine();

@@ -1203,6 +1203,7 @@ uint64_t ValueObject::GetValueAsUnsigned(uint64_t fail_value, bool *success) {
     if (ResolveValue(scalar)) {
       if (success)
         *success = true;
+      scalar.MakeUnsigned();
       return scalar.ULongLong(fail_value);
     }
     // fallthrough, otherwise...
@@ -1220,6 +1221,7 @@ int64_t ValueObject::GetValueAsSigned(int64_t fail_value, bool *success) {
     if (ResolveValue(scalar)) {
       if (success)
         *success = true;
+      scalar.MakeSigned();
       return scalar.SLongLong(fail_value);
     }
     // fallthrough, otherwise...
@@ -1723,7 +1725,7 @@ bool ValueObject::IsRuntimeSupportValue() {
     return false;
 
   if (auto *runtime = process->GetLanguageRuntime(GetVariable()->GetLanguage()))
-    if (runtime->IsWhitelistedRuntimeValue(GetName()))
+    if (runtime->IsAllowedRuntimeValue(GetName()))
       return false;
 
   return true;

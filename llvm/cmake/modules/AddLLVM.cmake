@@ -240,8 +240,14 @@ function(add_link_opts target_name)
         set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                      LINK_FLAGS " -Wl,-dead_strip")
       elseif(${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
-        set_property(TARGET ${target_name} APPEND_STRING PROPERTY
-                     LINK_FLAGS " -Wl,-z -Wl,discard-unused=sections")
+        # Support for ld -z discard-unused=sections was only added in
+        # Solaris 11.4.
+        include(CheckLinkerFlag)
+        check_linker_flag("-Wl,-z,discard-unused=sections" LINKER_SUPPORTS_Z_DISCARD_UNUSED)
+        if (LINKER_SUPPORTS_Z_DISCARD_UNUSED)
+          set_property(TARGET ${target_name} APPEND_STRING PROPERTY
+                       LINK_FLAGS " -Wl,-z,discard-unused=sections")
+        endif()
       elseif(NOT WIN32 AND NOT LLVM_LINKER_IS_GOLD AND
              NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD|AIX")
         # Object files are compiled with -ffunction-data-sections.
@@ -919,6 +925,9 @@ function(add_llvm_pass_plugin name)
     if (TARGET intrinsics_gen)
       add_dependencies(obj.${name} intrinsics_gen)
     endif()
+    if (TARGET omp_gen)
+      add_dependencies(obj.${name} omp_gen)
+    endif()
     set_property(GLOBAL APPEND PROPERTY LLVM_STATIC_EXTENSIONS ${name})
   elseif(NOT ARG_NO_MODULE)
     add_llvm_library(${name} MODULE ${ARG_UNPARSED_ARGUMENTS})
@@ -1422,7 +1431,7 @@ function(add_unittest test_suite test_name)
 
   add_dependencies(${test_suite} ${test_name})
   get_target_property(test_suite_folder ${test_suite} FOLDER)
-  if (NOT ${test_suite_folder} STREQUAL "NOTFOUND")
+  if (test_suite_folder)
     set_property(TARGET ${test_name} PROPERTY FOLDER "${test_suite_folder}")
   endif ()
 endfunction()

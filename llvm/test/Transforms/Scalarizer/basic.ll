@@ -276,14 +276,14 @@ define void @f8(<4 x float *> *%dest, <4 x float *> %ptr0, <4 x i32> %i0,
 ; CHECK: %dest.i1 = getelementptr float*, float** %dest.i0, i32 1
 ; CHECK: %dest.i2 = getelementptr float*, float** %dest.i0, i32 2
 ; CHECK: %dest.i3 = getelementptr float*, float** %dest.i0, i32 3
+; CHECK: %ptr0.i0 = extractelement <4 x float*> %ptr0, i32 0
+; CHECK: %ptr0.i2 = extractelement <4 x float*> %ptr0, i32 2
+; CHECK: %ptr0.i3 = extractelement <4 x float*> %ptr0, i32 3
 ; CHECK: %i0.i1 = extractelement <4 x i32> %i0, i32 1
 ; CHECK: %i0.i3 = extractelement <4 x i32> %i0, i32 3
-; CHECK: %ptr0.i0 = extractelement <4 x float*> %ptr0, i32 0
 ; CHECK: %val.i0 = getelementptr float, float* %ptr0.i0, i32 100
 ; CHECK: %val.i1 = getelementptr float, float* %other, i32 %i0.i1
-; CHECK: %ptr0.i2 = extractelement <4 x float*> %ptr0, i32 2
 ; CHECK: %val.i2 = getelementptr float, float* %ptr0.i2, i32 100
-; CHECK: %ptr0.i3 = extractelement <4 x float*> %ptr0, i32 3
 ; CHECK: %val.i3 = getelementptr float, float* %ptr0.i3, i32 %i0.i3
 ; CHECK: store float* %val.i0, float** %dest.i0, align 32
 ; CHECK: store float* %val.i1, float** %dest.i1, align 8
@@ -360,26 +360,6 @@ define void @f11(<32 x i1> *%dest, <32 x i1> *%src0) {
   %val1 = load <32 x i1> , <32 x i1> *%src1
   %and = and <32 x i1> %val0, %val1
   store <32 x i1> %and, <32 x i1> *%dest
-  ret void
-}
-
-; Test that variable inserts aren't scalarized.
-define void @f12(<4 x i32> *%dest, <4 x i32> *%src, i32 %index) {
-; CHECK: @f12(
-; CHECK: %val1 = insertelement <4 x i32> %val0, i32 1, i32 %index
-; CHECK-DAG: %val1.i0 = extractelement <4 x i32> %val1, i32 0
-; CHECK-DAG: %val1.i1 = extractelement <4 x i32> %val1, i32 1
-; CHECK-DAG: %val1.i2 = extractelement <4 x i32> %val1, i32 2
-; CHECK-DAG: %val1.i3 = extractelement <4 x i32> %val1, i32 3
-; CHECK-DAG: %val2.i0 = shl i32 1, %val1.i0
-; CHECK-DAG: %val2.i1 = shl i32 2, %val1.i1
-; CHECK-DAG: %val2.i2 = shl i32 3, %val1.i2
-; CHECK-DAG: %val2.i3 = shl i32 4, %val1.i3
-; CHECK: ret void
-  %val0 = load <4 x i32> , <4 x i32> *%src
-  %val1 = insertelement <4 x i32> %val0, i32 1, i32 %index
-  %val2 = shl <4 x i32> <i32 1, i32 2, i32 3, i32 4>, %val1
-  store <4 x i32> %val2, <4 x i32> *%dest
   ret void
 }
 

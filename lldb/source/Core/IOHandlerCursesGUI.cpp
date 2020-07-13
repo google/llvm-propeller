@@ -919,7 +919,7 @@ void Menu::DrawMenuTitle(Window &window, bool highlight) {
     const attr_t hilgight_attr = A_REVERSE;
     if (highlight)
       window.AttributeOn(hilgight_attr);
-    if (isprint(shortcut_key)) {
+    if (llvm::isPrint(shortcut_key)) {
       size_t lower_pos = m_name.find(tolower(shortcut_key));
       size_t upper_pos = m_name.find(toupper(shortcut_key));
       const char *name = m_name.c_str();
@@ -948,7 +948,7 @@ void Menu::DrawMenuTitle(Window &window, bool highlight) {
       window.AttributeOff(hilgight_attr);
 
     if (m_key_name.empty()) {
-      if (!underlined_shortcut && isprint(m_key_value)) {
+      if (!underlined_shortcut && llvm::isPrint(m_key_value)) {
         window.AttributeOn(COLOR_PAIR(3));
         window.Printf(" (%c)", m_key_value);
         window.AttributeOff(COLOR_PAIR(3));
@@ -2715,7 +2715,7 @@ static const char *CursesKeyToCString(int ch) {
   case KEY_ESCAPE:
     return "escape";
   default:
-    if (isprint(ch))
+    if (llvm::isPrint(ch))
       snprintf(g_desc, sizeof(g_desc), "%c", ch);
     else
       snprintf(g_desc, sizeof(g_desc), "\\x%2.2x", ch);
@@ -3910,7 +3910,7 @@ IOHandlerCursesGUI::IOHandlerCursesGUI(Debugger &debugger)
 void IOHandlerCursesGUI::Activate() {
   IOHandler::Activate();
   if (!m_app_ap) {
-    m_app_ap.reset(new Application(GetInputFILE(), GetOutputFILE()));
+    m_app_ap = std::make_unique<Application>(GetInputFILE(), GetOutputFILE());
 
     // This is both a window and a menu delegate
     std::shared_ptr<ApplicationDelegate> app_delegate_sp(

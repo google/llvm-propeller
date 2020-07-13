@@ -342,6 +342,8 @@ bool CFIInstrInserter::insertCFIInstrs(MachineFunction &MF) {
       MF.getSubtarget().getFrameLowering()->emitCalleeSavedFrameMoves(
           *MBBInfo.MBB, MBBI);
       InsertedCFIInstr = true;
+      PrevMBBInfo = &MBBInfo;
+      continue;
     }
 
     BitVector SetDifference = PrevMBBInfo->OutgoingCSRSaved;

@@ -412,6 +412,24 @@ static GnuStackKind getZGnuStack(opt::InputArgList &args) {
   return GnuStackKind::NoExec;
 }
 
+static uint8_t getZStartStopVisibility(opt::InputArgList &args) {
+  for (auto *arg : args.filtered_reverse(OPT_z)) {
+    std::pair<StringRef, StringRef> kv = StringRef(arg->getValue()).split('=');
+    if (kv.first == "start-stop-visibility") {
+      if (kv.second == "default")
+        return STV_DEFAULT;
+      else if (kv.second == "internal")
+        return STV_INTERNAL;
+      else if (kv.second == "hidden")
+        return STV_HIDDEN;
+      else if (kv.second == "protected")
+        return STV_PROTECTED;
+      error("unknown -z start-stop-visibility= value: " + StringRef(kv.second));
+    }
+  }
+  return STV_PROTECTED;
+}
+
 static bool isKnownZFlag(StringRef s) {
   return s == "combreloc" || s == "copyreloc" || s == "defs" ||
          s == "execstack" || s == "force-bti" || s == "force-ibt" ||
@@ -427,7 +445,8 @@ static bool isKnownZFlag(StringRef s) {
          s == "rela" || s == "relro" || s == "retpolineplt" ||
          s == "rodynamic" || s == "shstk" || s == "text" || s == "undefs" ||
          s == "wxneeded" || s.startswith("common-page-size=") ||
-         s.startswith("max-page-size=") || s.startswith("stack-size=");
+         s.startswith("max-page-size=") || s.startswith("stack-size=") ||
+         s.startswith("start-stop-visibility=");
 }
 
 // Report an error for an unknown -z option.
@@ -1070,6 +1089,8 @@ static void readConfigs(opt::InputArgList &args) {
       getOldNewOptions(args, OPT_thinlto_object_suffix_replace_eq);
   config->thinLTOPrefixReplace =
       getOldNewOptions(args, OPT_thinlto_prefix_replace_eq);
+  config->thinLTOModulesToCompile =
+      args::getStrings(args, OPT_thinlto_single_module_eq);
   config->timeTraceEnabled = args.hasArg(OPT_time_trace);
   config->timeTraceGranularity =
       args::getInteger(args, OPT_time_trace_granularity, 500);
@@ -1112,6 +1133,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->zSeparate = getZSeparate(args);
   config->zShstk = hasZOption(args, "shstk");
   config->zStackSize = args::getZOptionValue(args, OPT_z, "stack-size", 0);
+  config->zStartStopVisibility = getZStartStopVisibility(args);
   config->zText = getZFlag(args, "text", "notext", true);
   config->zWxneeded = hasZOption(args, "wxneeded");
 
@@ -1254,7 +1276,8 @@ static void readConfigs(opt::InputArgList &args) {
   // -Bsymbolic-functions (if STT_FUNC), --dynamic-list.
   for (auto *arg : args.filtered(OPT_export_dynamic_symbol))
     config->dynamicList.push_back(
-        {arg->getValue(), /*isExternCpp=*/false, /*hasWildcard=*/true});
+        {arg->getValue(), /*isExternCpp=*/false,
+         /*hasWildcard=*/hasWildcard(arg->getValue())});
 
   for (auto *arg : args.filtered(OPT_version_script))
     if (Optional<std::string> path = searchScript(arg->getValue())) {
@@ -1762,8 +1785,11 @@ template <class ELFT> void LinkerDriver::compileBitcodeFiles() {
   for (InputFile *file : lto->compile()) {
     auto *obj = cast<ObjFile<ELFT>>(file);
     obj->parse(/*ignoreComdats=*/true);
-    for (Symbol *sym : obj->getGlobalSymbols())
-      sym->parseSymbolVersion();
+
+    // Parse '@' in symbol names for non-relocatable output.
+    if (!config->relocatable)
+      for (Symbol *sym : obj->getGlobalSymbols())
+        sym->parseSymbolVersion();
     objectFiles.push_back(file);
   }
 }
@@ -2041,7 +2067,10 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   // Likewise, --plugin-opt=emit-llvm and --plugin-opt=emit-asm are the
   // options to create output files in bitcode or assembly code
   // repsectively. No object files are generated.
-  if (config->thinLTOIndexOnly || config->emitLLVM || config->ltoEmitAsm)
+  // Also bail out here when only certain thinLTO modules are specified for
+  // compilation. The intermediate object file are the expected output.
+  if (config->thinLTOIndexOnly || config->emitLLVM || config->ltoEmitAsm ||
+      !config->thinLTOModulesToCompile.empty())
     return;
 
   // Apply symbol renames for -wrap.

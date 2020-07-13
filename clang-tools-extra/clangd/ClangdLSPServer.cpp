@@ -514,7 +514,7 @@ void ClangdLSPServer::onInitialize(const InitializeParams &Params,
   if (ClangdServerOpts.ResourceDir)
     Mangler.ResourceDir = *ClangdServerOpts.ResourceDir;
   CDB.emplace(BaseCDB.get(), Params.initializationOptions.fallbackFlags,
-              tooling::ArgumentsAdjuster(Mangler));
+              tooling::ArgumentsAdjuster(std::move(Mangler)));
   {
     // Switch caller's context with LSPServer's background context. Since we
     // rather want to propagate information from LSPServer's context into the
@@ -524,7 +524,7 @@ void ClangdLSPServer::onInitialize(const InitializeParams &Params,
     if (NegotiatedOffsetEncoding)
       WithOffsetEncoding.emplace(kCurrentOffsetEncoding,
                                  *NegotiatedOffsetEncoding);
-    Server.emplace(*CDB, FSProvider, ClangdServerOpts,
+    Server.emplace(*CDB, TFS, ClangdServerOpts,
                    static_cast<ClangdServer::Callbacks *>(this));
   }
   applyConfiguration(Params.initializationOptions.ConfigSettings);
@@ -879,7 +879,8 @@ void ClangdLSPServer::onDocumentOnTypeFormatting(
         "onDocumentOnTypeFormatting called for non-added file",
         ErrorCode::InvalidParams));
 
-  Reply(Server->formatOnType(Code->Contents, File, Params.position, Params.ch));
+  Server->formatOnType(File, Code->Contents, Params.position, Params.ch,
+                       std::move(Reply));
 }
 
 void ClangdLSPServer::onDocumentRangeFormatting(
@@ -892,12 +893,15 @@ void ClangdLSPServer::onDocumentRangeFormatting(
         "onDocumentRangeFormatting called for non-added file",
         ErrorCode::InvalidParams));
 
-  auto ReplacementsOrError =
-      Server->formatRange(Code->Contents, File, Params.range);
-  if (ReplacementsOrError)
-    Reply(replacementsToEdits(Code->Contents, ReplacementsOrError.get()));
-  else
-    Reply(ReplacementsOrError.takeError());
+  Server->formatRange(
+      File, Code->Contents, Params.range,
+      [Code = Code->Contents, Reply = std::move(Reply)](
+          llvm::Expected<tooling::Replacements> Result) mutable {
+        if (Result)
+          Reply(replacementsToEdits(Code, Result.get()));
+        else
+          Reply(Result.takeError());
+      });
 }
 
 void ClangdLSPServer::onDocumentFormatting(
@@ -910,11 +914,14 @@ void ClangdLSPServer::onDocumentFormatting(
         "onDocumentFormatting called for non-added file",
         ErrorCode::InvalidParams));
 
-  auto ReplacementsOrError = Server->formatFile(Code->Contents, File);
-  if (ReplacementsOrError)
-    Reply(replacementsToEdits(Code->Contents, ReplacementsOrError.get()));
-  else
-    Reply(ReplacementsOrError.takeError());
+  Server->formatFile(File, Code->Contents,
+                     [Code = Code->Contents, Reply = std::move(Reply)](
+                         llvm::Expected<tooling::Replacements> Result) mutable {
+                       if (Result)
+                         Reply(replacementsToEdits(Code, Result.get()));
+                       else
+                         Reply(Result.takeError());
+                     });
 }
 
 /// The functions constructs a flattened view of the DocumentSymbol hierarchy.
@@ -1340,16 +1347,15 @@ void ClangdLSPServer::onSemanticTokensEdits(
 }
 
 ClangdLSPServer::ClangdLSPServer(
-    class Transport &Transp, const FileSystemProvider &FSProvider,
+    class Transport &Transp, const ThreadsafeFS &TFS,
     const clangd::CodeCompleteOptions &CCOpts,
     const clangd::RenameOptions &RenameOpts,
     llvm::Optional<Path> CompileCommandsDir, bool UseDirBasedCDB,
     llvm::Optional<OffsetEncoding> ForcedOffsetEncoding,
     const ClangdServer::Options &Opts)
     : BackgroundContext(Context::current().clone()), Transp(Transp),
-      MsgHandler(new MessageHandler(*this)), FSProvider(FSProvider),
-      CCOpts(CCOpts), RenameOpts(RenameOpts),
-      SupportedSymbolKinds(defaultSymbolKinds()),
+      MsgHandler(new MessageHandler(*this)), TFS(TFS), CCOpts(CCOpts),
+      RenameOpts(RenameOpts), SupportedSymbolKinds(defaultSymbolKinds()),
       SupportedCompletionItemKinds(defaultCompletionItemKinds()),
       UseDirBasedCDB(UseDirBasedCDB),
       CompileCommandsDir(std::move(CompileCommandsDir)), ClangdServerOpts(Opts),

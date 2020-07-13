@@ -190,28 +190,20 @@ def OP_SCALAR_QRDMLAH_LN : Op<(call "vqadd", $p0, (call "vqrdmulh", $p1,
 def OP_SCALAR_QRDMLSH_LN : Op<(call "vqsub", $p0, (call "vqrdmulh", $p1,
                               (call "vget_lane", $p2, $p3)))>;
 
-multiclass ScalarGetSetLaneOpsF16<string scalarTy,
-                                  string vectorTy4, string vectorTy8> {
-  def _GET_LN  : Op<(bitcast scalarTy,
-                        (call "vget_lane",
-                            (bitcast "int16x4_t", $p0), $p1))>;
-  def _GET_LNQ : Op<(bitcast scalarTy,
-                        (call "vget_lane",
-                            (bitcast "int16x8_t", $p0), $p1))>;
-  def _SET_LN  : Op<(bitcast vectorTy4,
-                        (call "vset_lane",
-                            (bitcast "int16_t", $p0),
-                            (bitcast "int16x4_t", $p1), $p2))>;
-  def _SET_LNQ : Op<(bitcast vectorTy8,
-                        (call "vset_lane",
-                            (bitcast "int16_t", $p0),
-                            (bitcast "int16x8_t", $p1), $p2))>;
-}
-
-defm OP_SCALAR_HALF: ScalarGetSetLaneOpsF16<"float16_t",
-                                            "float16x4_t", "float16x8_t">;
-defm OP_SCALAR_BF16: ScalarGetSetLaneOpsF16<"bfloat16_t",
-                                            "bfloat16x4_t", "bfloat16x8_t">;
+def OP_SCALAR_HALF_GET_LN : Op<(bitcast "float16_t",
+                                   (call "vget_lane",
+                                         (bitcast "int16x4_t", $p0), $p1))>;
+def OP_SCALAR_HALF_GET_LNQ : Op<(bitcast "float16_t",
+                                    (call "vget_lane",
+                                          (bitcast "int16x8_t", $p0), $p1))>;
+def OP_SCALAR_HALF_SET_LN : Op<(bitcast "float16x4_t",
+                                   (call "vset_lane",
+                                         (bitcast "int16_t", $p0),
+                                         (bitcast "int16x4_t", $p1), $p2))>;
+def OP_SCALAR_HALF_SET_LNQ : Op<(bitcast "float16x8_t",
+                                    (call "vset_lane",
+                                          (bitcast "int16_t", $p0),
+                                          (bitcast "int16x8_t", $p1), $p2))>;
 
 def OP_DOT_LN
     : Op<(call "vdot", $p0, $p1,
@@ -243,6 +235,50 @@ def OP_SUDOT_LN
 def OP_SUDOT_LNQ
     : Op<(call "vusdot", $p0,
           (cast "8", "U", (call_mangled "splat_lane", (bitcast "int32x4_t", $p2), $p3)), $p1)>;
+
+def OP_BFDOT_LN
+    : Op<(call "vbfdot", $p0, $p1,
+          (bitcast $p1, (call_mangled "splat_lane", (bitcast "float32x2_t", $p2), $p3)))>;
+
+def OP_BFDOT_LNQ
+    : Op<(call "vbfdot", $p0, $p1,
+          (bitcast $p1, (call_mangled "splat_lane", (bitcast "float32x4_t", $p2), $p3)))>;
+
+def OP_BFMLALB_LN
+    : Op<(call "vbfmlalb", $p0, $p1,
+          (dup_typed $p1, (call "vget_lane", $p2, $p3)))>;
+
+def OP_BFMLALT_LN
+    : Op<(call "vbfmlalt", $p0, $p1,
+          (dup_typed $p1, (call "vget_lane", $p2, $p3)))>;
+
+def OP_VCVT_F32_BF16
+    : Op<(bitcast "R",
+          (call "vshll_n", (bitcast "int16x4_t", $p0),
+                           (literal "int32_t", "16")))>;
+def OP_VCVT_F32_BF16_LO
+    : Op<(call "vcvt_f32_bf16", (call "vget_low", $p0))>;
+def OP_VCVT_F32_BF16_HI
+    : Op<(call "vcvt_f32_bf16", (call "vget_high", $p0))>;
+
+def OP_VCVT_BF16_F32_LO_A64
+    : Op<(call "__a64_vcvtq_low_bf16", $p0)>;
+def OP_VCVT_BF16_F32_A64
+    : Op<(call "vget_low", (call "__a64_vcvtq_low_bf16", $p0))>;
+
+def OP_VCVT_BF16_F32_A32
+    : Op<(call "__a32_vcvt_bf16", $p0)>;
+
+def OP_VCVT_BF16_F32_LO_A32
+    : Op<(call "vcombine", (cast "bfloat16x4_t", (literal "uint64_t", "0ULL")),
+                           (call "__a32_vcvt_bf16", $p0))>;
+def OP_VCVT_BF16_F32_HI_A32
+    : Op<(call "vcombine", (call "__a32_vcvt_bf16", $p1),
+                           (call "vget_low", $p0))>;
+
+def OP_CVT_F32_BF16
+    : Op<(bitcast "R", (op "<<", (bitcast "int32_t", $p0),
+                                 (literal "int32_t", "16")))>;
 
 //===----------------------------------------------------------------------===//
 // Auxiliary Instructions
@@ -1847,6 +1883,25 @@ let ArchGuard = "defined(__ARM_FEATURE_MATMUL_INT8)" in {
   }
 }
 
+let ArchGuard = "defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)" in {
+  def VDOT_BF : SInst<"vbfdot", "..BB", "fQf">;
+  def VDOT_LANE_BF : SOpInst<"vbfdot_lane", "..B(Bq)I", "fQf", OP_BFDOT_LN>;
+  def VDOT_LANEQ_BF : SOpInst<"vbfdot_laneq", "..B(BQ)I", "fQf", OP_BFDOT_LNQ> {
+    let isLaneQ = 1;
+  }
+
+  def VFMMLA_BF : SInst<"vbfmmla", "..BB", "Qf">;
+
+  def VFMLALB_BF : SInst<"vbfmlalb", "..BB", "Qf">;
+  def VFMLALT_BF : SInst<"vbfmlalt", "..BB", "Qf">;
+
+  def VFMLALB_LANE_BF : SOpInst<"vbfmlalb_lane", "..B(Bq)I", "Qf", OP_BFMLALB_LN>;
+  def VFMLALB_LANEQ_BF : SOpInst<"vbfmlalb_laneq", "..B(BQ)I", "Qf", OP_BFMLALB_LN>;
+
+  def VFMLALT_LANE_BF : SOpInst<"vbfmlalt_lane", "..B(Bq)I", "Qf", OP_BFMLALT_LN>;
+  def VFMLALT_LANEQ_BF : SOpInst<"vbfmlalt_laneq", "..B(BQ)I", "Qf", OP_BFMLALT_LN>;
+}
+
 // v8.3-A Vector complex addition intrinsics
 let ArchGuard = "defined(__ARM_FEATURE_COMPLEX) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)" in {
   def VCADD_ROT90_FP16   : SInst<"vcadd_rot90", "...", "h">;
@@ -1883,22 +1938,70 @@ let ArchGuard = "defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)" in {
   def VGET_HIGH_BF : NoTestOpInst<"vget_high", ".Q", "b", OP_HI>;
   def VGET_LOW_BF  : NoTestOpInst<"vget_low", ".Q", "b", OP_LO>;
 
-  def VGET_LANE_BF : IOpInst<"vget_lane", "1.I", "b", OP_SCALAR_BF16_GET_LN>;
-  def VSET_LANE_BF : IOpInst<"vset_lane", ".1.I", "b", OP_SCALAR_BF16_SET_LN>;
-  def VGET_LANEQ_BF : IOpInst<"vget_lane", "1.I", "Qb", OP_SCALAR_BF16_GET_LNQ>;
-  def VSET_LANEQ_BF : IOpInst<"vset_lane", ".1.I", "Qb", OP_SCALAR_BF16_SET_LNQ>;
+  def VGET_LANE_BF : IInst<"vget_lane", "1.I", "bQb">;
+  def VSET_LANE_BF : IInst<"vset_lane", ".1.I", "bQb">;
+  def SCALAR_VDUP_LANE_BF : IInst<"vdup_lane", "1.I", "Sb">;
+  def SCALAR_VDUP_LANEQ_BF : IInst<"vdup_laneq", "1QI", "Sb"> {
+    let isLaneQ = 1;
+  }
+
+  def VLD1_BF : WInst<"vld1", ".(c*!)", "bQb">;
+  def VLD2_BF : WInst<"vld2", "2(c*!)", "bQb">;
+  def VLD3_BF : WInst<"vld3", "3(c*!)", "bQb">;
+  def VLD4_BF : WInst<"vld4", "4(c*!)", "bQb">;
+
+  def VST1_BF : WInst<"vst1", "v*(.!)", "bQb">;
+  def VST2_BF : WInst<"vst2", "v*(2!)", "bQb">;
+  def VST3_BF : WInst<"vst3", "v*(3!)", "bQb">;
+  def VST4_BF : WInst<"vst4", "v*(4!)", "bQb">;
+
+  def VLD1_X2_BF : WInst<"vld1_x2", "2(c*!)", "bQb">;
+  def VLD1_X3_BF : WInst<"vld1_x3", "3(c*!)", "bQb">;
+  def VLD1_X4_BF : WInst<"vld1_x4", "4(c*!)", "bQb">;
+
+  def VST1_X2_BF : WInst<"vst1_x2", "v*(2!)", "bQb">;
+  def VST1_X3_BF : WInst<"vst1_x3", "v*(3!)", "bQb">;
+  def VST1_X4_BF : WInst<"vst1_x4", "v*(4!)", "bQb">;
+
+  def VLD1_LANE_BF : WInst<"vld1_lane", ".(c*!).I", "bQb">;
+  def VLD2_LANE_BF : WInst<"vld2_lane", "2(c*!)2I", "bQb">;
+  def VLD3_LANE_BF : WInst<"vld3_lane", "3(c*!)3I", "bQb">;
+  def VLD4_LANE_BF : WInst<"vld4_lane", "4(c*!)4I", "bQb">;
+  def VST1_LANE_BF : WInst<"vst1_lane", "v*(.!)I", "bQb">;
+  def VST2_LANE_BF : WInst<"vst2_lane", "v*(2!)I", "bQb">;
+  def VST3_LANE_BF : WInst<"vst3_lane", "v*(3!)I", "bQb">;
+  def VST4_LANE_BF : WInst<"vst4_lane", "v*(4!)I", "bQb">;
+
+  def VLD1_DUP_BF : WInst<"vld1_dup", ".(c*!)", "bQb">;
+  def VLD2_DUP_BF : WInst<"vld2_dup", "2(c*!)", "bQb">;
+  def VLD3_DUP_BF : WInst<"vld3_dup", "3(c*!)", "bQb">;
+  def VLD4_DUP_BF : WInst<"vld4_dup", "4(c*!)", "bQb">;
+
+  def VCVT_F32_BF16 : SOpInst<"vcvt_f32_bf16", "(F>)(Bq!)",  "Qb", OP_VCVT_F32_BF16>;
+  def VCVT_LOW_F32_BF16 : SOpInst<"vcvt_low_f32", "(F>)(BQ!)",  "Qb", OP_VCVT_F32_BF16_LO>;
+  def VCVT_HIGH_F32_BF16 : SOpInst<"vcvt_high_f32", "(F>)(BQ!)", "Qb", OP_VCVT_F32_BF16_HI>;
+
+  def SCALAR_CVT_BF16_F32 : SInst<"vcvth_bf16", "(1B)1", "f">;
+  def SCALAR_CVT_F32_BF16 : SOpInst<"vcvtah_f32", "(1F>)(1!)", "b", OP_CVT_F32_BF16>;
 }
 
 let ArchGuard = "defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC) && !defined(__aarch64__)" in {
-  def SCALAR_VDUP_LANE_BF_A32 : IOpInst<"vduph_lane", "1.I", "b", OP_SCALAR_BF16_GET_LN>;
-  def SCALAR_VDUP_LANEQ_BF_A32 : IOpInst<"vduph_laneq", "1.I", "Hb", OP_SCALAR_BF16_GET_LNQ>;
+  def VCVT_BF16_F32_A32_INTERNAL : WInst<"__a32_vcvt_bf16", "BQ", "f">;
+  def VCVT_BF16_F32_A32 : SOpInst<"vcvt_bf16", "BQ", "f", OP_VCVT_BF16_F32_A32>;
+  def VCVT_LOW_BF16_F32_A32 : SOpInst<"vcvt_low_bf16",  "BQ", "Qf", OP_VCVT_BF16_F32_LO_A32>;
+  def VCVT_HIGH_BF16_F32_A32 : SOpInst<"vcvt_high_bf16", "BBQ", "Qf", OP_VCVT_BF16_F32_HI_A32>;
 }
 
 let ArchGuard = "defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC) && defined(__aarch64__)" in {
-  def SCALAR_VDUP_LANE_BF_A64 : IInst<"vdup_lane", "1.I", "Sb">;
-  def SCALAR_VDUP_LANEQ_BF_A64 : IInst<"vdup_laneq", "1QI", "Sb"> {
-    let isLaneQ = 1;
-  }
+  def VCVT_LOW_BF16_F32_A64_INTERNAL : WInst<"__a64_vcvtq_low_bf16", "BQ", "Hf">;
+  def VCVT_LOW_BF16_F32_A64 : SOpInst<"vcvt_low_bf16", "BQ", "Qf", OP_VCVT_BF16_F32_LO_A64>;
+  def VCVT_HIGH_BF16_F32_A64 : SInst<"vcvt_high_bf16", "BBQ", "Qf">;
+  def VCVT_BF16_F32 : SOpInst<"vcvt_bf16",    "BQ", "f", OP_VCVT_BF16_F32_A64>;
+
+  def COPY_LANE_BF16 : IOpInst<"vcopy_lane", "..I.I", "b", OP_COPY_LN>;
+  def COPYQ_LANE_BF16 : IOpInst<"vcopy_lane", "..IqI", "Qb", OP_COPY_LN>;
+  def COPY_LANEQ_BF16 : IOpInst<"vcopy_laneq", "..IQI", "b", OP_COPY_LN>;
+  def COPYQ_LANEQ_BF16 : IOpInst<"vcopy_laneq", "..I.I", "Qb", OP_COPY_LN>;
 }
 
 let ArchGuard = "defined(__ARM_FEATURE_BF16) && !defined(__aarch64__)" in {

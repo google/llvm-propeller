@@ -168,31 +168,36 @@ struct AssumingWithTrue : public OpRewritePattern<AssumingOp> {
     if (!witness || !witness.passingAttr())
       return failure();
 
-    auto *blockBeforeAssuming = rewriter.getInsertionBlock();
-    auto *assumingBlock = op.getBody();
-    auto initPosition = rewriter.getInsertionPoint();
-    auto *blockAfterAssuming =
-        rewriter.splitBlock(blockBeforeAssuming, initPosition);
-
-    // Remove the AssumingOp and AssumingYieldOp.
-    auto &yieldOp = assumingBlock->back();
-    rewriter.inlineRegionBefore(op.doRegion(), blockAfterAssuming);
-    rewriter.replaceOp(op, yieldOp.getOperands());
-    rewriter.eraseOp(&yieldOp);
-
-    // Merge blocks together as there was no branching behavior from the
-    // AssumingOp.
-    rewriter.mergeBlocks(assumingBlock, blockBeforeAssuming);
-    rewriter.mergeBlocks(blockAfterAssuming, blockBeforeAssuming);
+    AssumingOp::inlineRegionIntoParent(op, rewriter);
     return success();
   }
 };
-}; // namespace
+} // namespace
 
 void AssumingOp::getCanonicalizationPatterns(OwningRewritePatternList &patterns,
                                              MLIRContext *context) {
-  // If taking a passing witness, inline region
+  // If taking a passing witness, inline region.
   patterns.insert<AssumingWithTrue>(context);
+}
+
+void AssumingOp::inlineRegionIntoParent(AssumingOp &op,
+                                        PatternRewriter &rewriter) {
+  auto *blockBeforeAssuming = rewriter.getInsertionBlock();
+  auto *assumingBlock = op.getBody();
+  auto initPosition = rewriter.getInsertionPoint();
+  auto *blockAfterAssuming =
+      rewriter.splitBlock(blockBeforeAssuming, initPosition);
+
+  // Remove the AssumingOp and AssumingYieldOp.
+  auto &yieldOp = assumingBlock->back();
+  rewriter.inlineRegionBefore(op.doRegion(), blockAfterAssuming);
+  rewriter.replaceOp(op, yieldOp.getOperands());
+  rewriter.eraseOp(&yieldOp);
+
+  // Merge blocks together as there was no branching behavior from the
+  // AssumingOp.
+  rewriter.mergeBlocks(assumingBlock, blockBeforeAssuming);
+  rewriter.mergeBlocks(blockAfterAssuming, blockBeforeAssuming);
 }
 
 //===----------------------------------------------------------------------===//
@@ -359,6 +364,11 @@ OpFoldResult CstrEqOp::fold(ArrayRef<Attribute> operands) {
 // ConstSizeOp
 //===----------------------------------------------------------------------===//
 
+void ConstSizeOp::build(OpBuilder &builder, OperationState &result,
+                        int64_t value) {
+  build(builder, result, builder.getIndexAttr(value));
+}
+
 OpFoldResult ConstSizeOp::fold(ArrayRef<Attribute>) { return valueAttr(); }
 
 void ConstSizeOp::getAsmResultNames(
@@ -387,6 +397,11 @@ OpFoldResult IndexToSizeOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+void IndexToSizeOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context) {
+  patterns.insert<SizeToIndexToSizeCanonicalization>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // FromExtentsOp
 //===----------------------------------------------------------------------===//
@@ -405,15 +420,83 @@ OpFoldResult FromExtentsOp::fold(ArrayRef<Attribute> operands) {
 // GetExtentOp
 //===----------------------------------------------------------------------===//
 
+Optional<int64_t> GetExtentOp::getConstantDim() {
+  if (auto constSizeOp = dim().getDefiningOp<ConstSizeOp>()) {
+    return constSizeOp.value().getLimitedValue();
+  }
+  return llvm::None;
+}
+
 OpFoldResult GetExtentOp::fold(ArrayRef<Attribute> operands) {
   auto elements = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
   if (!elements)
     return nullptr;
-  uint64_t dimToGet = dim().getLimitedValue();
-  // TODO: Constant fold this to some kind of constant error.
-  if (dimToGet >= (uint64_t)elements.getNumElements())
+  Optional<int64_t> dim = getConstantDim();
+  if (!dim.hasValue())
     return nullptr;
-  return elements.getValue({dimToGet});
+  if (dim.getValue() >= elements.getNumElements())
+    return nullptr;
+  return elements.getValue({(uint64_t)dim.getValue()});
+}
+
+void GetExtentOp::build(OpBuilder &builder, OperationState &result, Value shape,
+                        int64_t dim) {
+  auto loc = result.location;
+  auto dimAttr = builder.getIndexAttr(dim);
+  Value dimValue = builder.create<ConstSizeOp>(loc, dimAttr);
+  build(builder, result, shape, dimValue);
+}
+
+//===----------------------------------------------------------------------===//
+// RankOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+  auto shape = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!shape)
+    return {};
+  int64_t rank = shape.getNumElements();
+  Builder builder(getContext());
+  return builder.getIndexAttr(rank);
+}
+
+/// Evaluate the `rank` operation for shapes of ranked tensors at compile time.
+/// Constant folding fails in cases where only the rank is constant, not the
+/// shape itself.
+/// This canonicalization matches `shape.rank(shape.shape_of(%ranked_tensor))`.
+///
+/// Example:
+///
+/// %shape = shape.shape_of %ranked_tensor : tensor<1x2x?xf32>
+/// %rank = shape.rank %shape
+///
+/// becomes
+///
+/// %rank = shape.const_size 3
+
+namespace {
+struct RankShapeOfCanonicalizationPattern : public OpRewritePattern<RankOp> {
+  using OpRewritePattern<RankOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(RankOp op,
+                                PatternRewriter &rewriter) const override {
+    auto shapeOfOp = op.shape().getDefiningOp<ShapeOfOp>();
+    if (!shapeOfOp)
+      return failure();
+    auto rankedTensorType =
+        shapeOfOp.arg().getType().dyn_cast<RankedTensorType>();
+    if (!rankedTensorType)
+      return failure();
+    int64_t rank = rankedTensorType.getRank();
+    rewriter.replaceOpWithNewOp<ConstSizeOp>(op.getOperation(), rank);
+    return success();
+  }
+};
+} // namespace
+
+void RankOp::getCanonicalizationPatterns(OwningRewritePatternList &patterns,
+                                         MLIRContext *context) {
+  patterns.insert<RankShapeOfCanonicalizationPattern>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -456,6 +539,11 @@ OpFoldResult SizeToIndexOp::fold(ArrayRef<Attribute> operands) {
   if (Attribute arg = operands[0])
     return arg;
   return {};
+}
+
+void SizeToIndexOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context) {
+  patterns.insert<IndexToSizeToIndexCanonicalization>(context);
 }
 
 //===----------------------------------------------------------------------===//

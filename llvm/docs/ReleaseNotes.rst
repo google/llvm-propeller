@@ -144,8 +144,14 @@ Changes to the AVR Target
 Changes to the WebAssembly Target
 ---------------------------------
 
-During this release ...
+* Programs which don't have a "main" function, called "reactors" are now
+  properly supported, with a new `-mexec-model=reactor` flag. Programs which
+  previously used `-Wl,--no-entry` to avoid having a main function should
+  switch to this new flag, so that static initialization is properly
+  performed.
 
+* `__attribute__((visibility("protected")))` now evokes a warning, as
+  WebAssembly does not support "protected" visibility.
 
 Changes to the OCaml bindings
 -----------------------------
@@ -180,6 +186,10 @@ Changes to the LLVM tools
 
 * Added an option (--show-section-sizes) to llvm-dwarfdump to show the sizes
   of all debug sections within a file.
+
+* llvm-nm now implements the flag ``--special-syms`` and will filter out special
+  symbols, i.e. mapping symbols on ARM and AArch64, by default. This matches
+  the GNU nm behavior.
 
 Changes to LLDB
 ===============

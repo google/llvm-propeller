@@ -196,7 +196,7 @@ LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
                                     ComputationSliceState *sliceState,
                                     bool addMemRefDimBounds) {
-  assert((isa<AffineReadOpInterface>(op) || isa<AffineWriteOpInterface>(op)) &&
+  assert((isa<AffineReadOpInterface, AffineWriteOpInterface>(op)) &&
          "affine read/write op expected");
 
   MemRefAccess access(op);
@@ -208,13 +208,17 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   LLVM_DEBUG(llvm::dbgs() << "MemRefRegion::compute: " << *op
                           << "depth: " << loopDepth << "\n";);
 
+  // 0-d memrefs.
   if (rank == 0) {
     SmallVector<AffineForOp, 4> ivs;
     getLoopIVs(*op, &ivs);
-    SmallVector<Value, 8> regionSymbols;
+    assert(loopDepth <= ivs.size() && "invalid 'loopDepth'");
+    // The first 'loopDepth' IVs are symbols for this region.
+    ivs.resize(loopDepth);
+    SmallVector<Value, 4> regionSymbols;
     extractForInductionVars(ivs, &regionSymbols);
-    // A rank 0 memref has a 0-d region.
-    cst.reset(rank, loopDepth, 0, regionSymbols);
+    // A 0-d memref has a 0-d region.
+    cst.reset(rank, loopDepth, /*numLocals=*/0, regionSymbols);
     return success();
   }
 
@@ -952,8 +956,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
 
   // Walk this 'affine.for' operation to gather all memory regions.
   auto result = block.walk(start, end, [&](Operation *opInst) -> WalkResult {
-    if (!isa<AffineReadOpInterface>(opInst) &&
-        !isa<AffineWriteOpInterface>(opInst)) {
+    if (!isa<AffineReadOpInterface, AffineWriteOpInterface>(opInst)) {
       // Neither load nor a store op.
       return WalkResult::advance();
     }
@@ -1013,11 +1016,9 @@ bool mlir::isLoopParallel(AffineForOp forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
   auto walkResult = forOp.walk([&](Operation *opInst) -> WalkResult {
-    if (isa<AffineReadOpInterface>(opInst) ||
-        isa<AffineWriteOpInterface>(opInst))
+    if (isa<AffineReadOpInterface, AffineWriteOpInterface>(opInst))
       loadAndStoreOpInsts.push_back(opInst);
-    else if (!isa<AffineForOp>(opInst) && !isa<AffineTerminatorOp>(opInst) &&
-             !isa<AffineIfOp>(opInst) &&
+    else if (!isa<AffineForOp, AffineTerminatorOp, AffineIfOp>(opInst) &&
              !MemoryEffectOpInterface::hasNoEffect(opInst))
       return WalkResult::interrupt();
 

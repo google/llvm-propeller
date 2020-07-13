@@ -42,7 +42,8 @@ private:
   SDValue getImplicitArgPtr(SelectionDAG &DAG, const SDLoc &SL) const;
   SDValue lowerKernargMemParameter(SelectionDAG &DAG, EVT VT, EVT MemVT,
                                    const SDLoc &SL, SDValue Chain,
-                                   uint64_t Offset, unsigned Align, bool Signed,
+                                   uint64_t Offset, Align Alignment,
+                                   bool Signed,
                                    const ISD::InputArg *Arg = nullptr) const;
 
   SDValue lowerStackParameter(SelectionDAG &DAG, CCValAssign &VA,
@@ -216,7 +217,7 @@ private:
   /// \returns 0 If there is a non-constant offset or if the offset is 0.
   /// Otherwise returns the constant offset.
   unsigned setBufferOffsets(SDValue CombinedOffset, SelectionDAG &DAG,
-                           SDValue *Offsets, unsigned Align = 4) const;
+                            SDValue *Offsets, Align Alignment = Align(4)) const;
 
   // Handle 8 bit and 16 bit buffer loads
   SDValue handleByteShortBufferLoads(SelectionDAG &DAG, EVT LoadVT, SDLoc DL,
@@ -396,9 +397,13 @@ public:
                                     std::string &Constraint,
                                     std::vector<SDValue> &Ops,
                                     SelectionDAG &DAG) const override;
-  void LowerAsmOperandForConstraintA(SDValue Op,
-                                     std::vector<SDValue> &Ops,
-                                     SelectionDAG &DAG) const;
+  bool getAsmOperandConstVal(SDValue Op, uint64_t &Val) const;
+  bool checkAsmConstraintVal(SDValue Op,
+                             const std::string &Constraint,
+                             uint64_t Val) const;
+  bool checkAsmConstraintValA(SDValue Op,
+                              uint64_t Val,
+                              unsigned MaxSize = 64) const;
   SDValue copyToM0(SelectionDAG &DAG, SDValue Chain, const SDLoc &DL,
                    SDValue V) const;
 
@@ -408,6 +413,9 @@ public:
                                      KnownBits &Known,
                                      const MachineFunction &MF) const override;
 
+  Align computeKnownAlignForTargetInstr(GISelKnownBits &Analysis, Register R,
+                                        const MachineRegisterInfo &MRI,
+                                        unsigned Depth = 0) const override;
   bool isSDNodeSourceOfDivergence(const SDNode *N,
     FunctionLoweringInfo *FLI, LegacyDivergenceAnalysis *DA) const override;
 

@@ -990,12 +990,9 @@ void GCNPassConfig::addFastRegAlloc() {
 }
 
 void GCNPassConfig::addOptimizedRegAlloc() {
-  if (OptExecMaskPreRA) {
+  if (OptExecMaskPreRA)
     insertPass(&MachineSchedulerID, &SIOptimizeExecMaskingPreRAID);
-    insertPass(&SIOptimizeExecMaskingPreRAID, &SIFormMemoryClausesID);
-  } else {
-    insertPass(&MachineSchedulerID, &SIFormMemoryClausesID);
-  }
+  insertPass(&MachineSchedulerID, &SIFormMemoryClausesID);
 
   // This must be run immediately after phi elimination and before
   // TwoAddressInstructions, otherwise the processing of the tied operand of
@@ -1055,8 +1052,8 @@ void GCNPassConfig::addPreEmitPass() {
     addPass(&SIInsertHardClausesID);
 
   addPass(&SIRemoveShortExecBranchesID);
-  addPass(&SIPreEmitPeepholeID);
   addPass(&SIInsertSkipsPassID);
+  addPass(&SIPreEmitPeepholeID);
   addPass(&BranchRelaxationPassID);
 }
 

@@ -366,6 +366,17 @@ Instruction *InstCombiner::visitMul(BinaryOperator &I) {
     }
   }
 
+  // (zext bool X) * (zext bool Y) --> zext (and X, Y)
+  // (sext bool X) * (sext bool Y) --> zext (and X, Y)
+  // Note: -1 * -1 == 1 * 1 == 1 (if the extends match, the result is the same)
+  if (((match(Op0, m_ZExt(m_Value(X))) && match(Op1, m_ZExt(m_Value(Y)))) ||
+       (match(Op0, m_SExt(m_Value(X))) && match(Op1, m_SExt(m_Value(Y))))) &&
+      X->getType()->isIntOrIntVectorTy(1) && X->getType() == Y->getType() &&
+      (Op0->hasOneUse() || Op1->hasOneUse())) {
+    Value *And = Builder.CreateAnd(X, Y, "mulbool");
+    return CastInst::Create(Instruction::ZExt, And, I.getType());
+  }
+
   // (bool X) * Y --> X ? Y : 0
   // Y * (bool X) --> X ? Y : 0
   if (match(Op0, m_ZExt(m_Value(X))) && X->getType()->isIntOrIntVectorTy(1))
@@ -402,6 +413,40 @@ Instruction *InstCombiner::visitMul(BinaryOperator &I) {
   return Changed ? &I : nullptr;
 }
 
+Instruction *InstCombiner::foldFPSignBitOps(BinaryOperator &I) {
+  BinaryOperator::BinaryOps Opcode = I.getOpcode();
+  assert((Opcode == Instruction::FMul || Opcode == Instruction::FDiv) &&
+         "Expected fmul or fdiv");
+
+  Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
+  Value *X, *Y;
+
+  // -X * -Y --> X * Y
+  // -X / -Y --> X / Y
+  if (match(Op0, m_FNeg(m_Value(X))) && match(Op1, m_FNeg(m_Value(Y))))
+    return BinaryOperator::CreateWithCopiedFlags(Opcode, X, Y, &I);
+
+  // fabs(X) * fabs(X) -> X * X
+  // fabs(X) / fabs(X) -> X / X
+  if (Op0 == Op1 && match(Op0, m_Intrinsic<Intrinsic::fabs>(m_Value(X))))
+    return BinaryOperator::CreateWithCopiedFlags(Opcode, X, X, &I);
+
+  // fabs(X) * fabs(Y) --> fabs(X * Y)
+  // fabs(X) / fabs(Y) --> fabs(X / Y)
+  if (match(Op0, m_Intrinsic<Intrinsic::fabs>(m_Value(X))) &&
+      match(Op1, m_Intrinsic<Intrinsic::fabs>(m_Value(Y))) &&
+      (Op0->hasOneUse() || Op1->hasOneUse())) {
+    IRBuilder<>::FastMathFlagGuard FMFGuard(Builder);
+    Builder.setFastMathFlags(I.getFastMathFlags());
+    Value *XY = Builder.CreateBinOp(Opcode, X, Y);
+    Value *Fabs = Builder.CreateUnaryIntrinsic(Intrinsic::fabs, XY);
+    Fabs->takeName(&I);
+    return replaceInstUsesWith(I, Fabs);
+  }
+
+  return nullptr;
+}
+
 Instruction *InstCombiner::visitFMul(BinaryOperator &I) {
   if (Value *V = SimplifyFMulInst(I.getOperand(0), I.getOperand(1),
                                   I.getFastMathFlags(),
@@ -420,24 +465,19 @@ Instruction *InstCombiner::visitFMul(BinaryOperator &I) {
   if (Value *FoldedMul = foldMulSelectToNegate(I, Builder))
     return replaceInstUsesWith(I, FoldedMul);
 
+  if (Instruction *R = foldFPSignBitOps(I))
+    return R;
+
   // X * -1.0 --> -X
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
   if (match(Op1, m_SpecificFP(-1.0)))
     return UnaryOperator::CreateFNegFMF(Op0, &I);
 
-  // -X * -Y --> X * Y
-  Value *X, *Y;
-  if (match(Op0, m_FNeg(m_Value(X))) && match(Op1, m_FNeg(m_Value(Y))))
-    return BinaryOperator::CreateFMulFMF(X, Y, &I);
-
   // -X * C --> X * -C
+  Value *X, *Y;
   Constant *C;
   if (match(Op0, m_FNeg(m_Value(X))) && match(Op1, m_Constant(C)))
     return BinaryOperator::CreateFMulFMF(X, ConstantExpr::getFNeg(C), &I);
-
-  // fabs(X) * fabs(X) -> X * X
-  if (Op0 == Op1 && match(Op0, m_Intrinsic<Intrinsic::fabs>(m_Value(X))))
-    return BinaryOperator::CreateFMulFMF(X, X, &I);
 
   // (select A, B, C) * (select A, D, E) --> select A, (B*D), (C*E)
   if (Value *V = SimplifySelectsFeedingBinaryOp(I, Op0, Op1))
@@ -1223,6 +1263,9 @@ Instruction *InstCombiner::visitFDiv(BinaryOperator &I) {
   if (Instruction *R = foldFDivConstantDividend(I))
     return R;
 
+  if (Instruction *R = foldFPSignBitOps(I))
+    return R;
+
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
   if (isa<Constant>(Op0))
     if (SelectInst *SI = dyn_cast<SelectInst>(Op1))
@@ -1283,17 +1326,10 @@ Instruction *InstCombiner::visitFDiv(BinaryOperator &I) {
     }
   }
 
-  // -X / -Y -> X / Y
-  Value *X, *Y;
-  if (match(Op0, m_FNeg(m_Value(X))) && match(Op1, m_FNeg(m_Value(Y)))) {
-    replaceOperand(I, 0, X);
-    replaceOperand(I, 1, Y);
-    return &I;
-  }
-
   // X / (X * Y) --> 1.0 / Y
   // Reassociate to (X / X -> 1.0) is legal when NaNs are not allowed.
   // We can ignore the possibility that X is infinity because INF/INF is NaN.
+  Value *X, *Y;
   if (I.hasNoNaNs() && I.hasAllowReassoc() &&
       match(Op1, m_c_FMul(m_Specific(Op0), m_Value(Y)))) {
     replaceOperand(I, 0, ConstantFP::get(I.getType(), 1.0));

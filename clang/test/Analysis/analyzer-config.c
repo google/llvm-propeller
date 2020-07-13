@@ -13,6 +13,7 @@
 // CHECK-NEXT: alpha.security.MmapWriteExec:MmapProtRead = 0x01
 // CHECK-NEXT: alpha.security.taint.TaintPropagation:Config = ""
 // CHECK-NEXT: apiModeling.StdCLibraryFunctions:DisplayLoadedSummaries = false
+// CHECK-NEXT: apiModeling.StdCLibraryFunctions:ModelPOSIX = false
 // CHECK-NEXT: apply-fixits = false
 // CHECK-NEXT: avoid-suppressing-null-argument-paths = false
 // CHECK-NEXT: c++-allocator-inlining = true
@@ -41,14 +42,16 @@
 // CHECK-NEXT: cplusplus.Move:WarnOn = KnownsAndLocals
 // CHECK-NEXT: crosscheck-with-z3 = false
 // CHECK-NEXT: ctu-dir = ""
-// CHECK-NEXT: ctu-import-threshold = 100
+// CHECK-NEXT: ctu-import-threshold = 8
 // CHECK-NEXT: ctu-index-name = externalDefMap.txt
+// CHECK-NEXT: ctu-invocation-list = invocations.yaml
 // CHECK-NEXT: deadcode.DeadStores:ShowFixIts = false
 // CHECK-NEXT: deadcode.DeadStores:WarnForDeadNestedAssignments = true
 // CHECK-NEXT: debug.AnalysisOrder:* = false
 // CHECK-NEXT: debug.AnalysisOrder:Bind = false
 // CHECK-NEXT: debug.AnalysisOrder:EndAnalysis = false
 // CHECK-NEXT: debug.AnalysisOrder:EndFunction = false
+// CHECK-NEXT: debug.AnalysisOrder:EvalCall = false
 // CHECK-NEXT: debug.AnalysisOrder:LiveSymbols = false
 // CHECK-NEXT: debug.AnalysisOrder:NewAllocator = false
 // CHECK-NEXT: debug.AnalysisOrder:PointerEscape = false

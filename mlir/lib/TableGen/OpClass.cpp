@@ -222,12 +222,12 @@ void tblgen::OpClass::addTrait(Twine trait) {
 }
 
 void tblgen::OpClass::writeDeclTo(raw_ostream &os) const {
-  os << "class " << className << " : public Op<" << className;
+  os << "class " << className << " : public ::mlir::Op<" << className;
   for (const auto &trait : traitsVec)
     os << ", " << trait;
   os << "> {\npublic:\n";
   os << "  using Op::Op;\n";
-  os << "  using OperandAdaptor = " << className << "OperandAdaptor;\n";
+  os << "  using Adaptor = " << className << "Adaptor;\n";
 
   bool hasPrivateMethod = false;
   for (const auto &method : methods) {

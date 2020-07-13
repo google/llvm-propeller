@@ -16,10 +16,10 @@
 #include "TestFS.h"
 #include "support/Cancellation.h"
 #include "support/Context.h"
-#include "support/FSProvider.h"
 #include "support/Path.h"
 #include "support/TestTracer.h"
 #include "support/Threading.h"
+#include "support/ThreadsafeFS.h"
 #include "clang/Basic/DiagnosticDriver.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FunctionExtras.h"
@@ -65,8 +65,20 @@ MATCHER_P2(TUState, PreambleActivity, ASTActivity, "") {
   return true;
 }
 
+// Dummy ContextProvider to verify the provider is invoked & contexts are used.
+static Key<std::string> BoundPath;
+Context bindPath(PathRef F) {
+  return Context::current().derive(BoundPath, F.str());
+}
+llvm::StringRef boundPath() {
+  const std::string *V = Context::current().get(BoundPath);
+  return V ? *V : llvm::StringRef("");
+}
+
 TUScheduler::Options optsForTest() {
-  return TUScheduler::Options(ClangdServer::optsForTest());
+  TUScheduler::Options Opts(ClangdServer::optsForTest());
+  Opts.ContextProvider = bindPath;
+  return Opts;
 }
 
 class TUSchedulerTests : public ::testing::Test {
@@ -74,7 +86,7 @@ protected:
   ParseInputs getInputs(PathRef File, std::string Contents) {
     ParseInputs Inputs;
     Inputs.CompileCommand = *CDB.getCompileCommand(File);
-    Inputs.FSProvider = &FSProvider;
+    Inputs.TFS = &FS;
     Inputs.Contents = std::move(Contents);
     Inputs.Opts = ParseOptions();
     return Inputs;
@@ -150,7 +162,7 @@ protected:
                            std::move(CB));
   }
 
-  MockFSProvider FSProvider;
+  MockFS FS;
   MockCompilationDatabase CDB;
 };
 
@@ -161,10 +173,10 @@ TEST_F(TUSchedulerTests, MissingFiles) {
   TUScheduler S(CDB, optsForTest());
 
   auto Added = testPath("added.cpp");
-  FSProvider.Files[Added] = "x";
+  FS.Files[Added] = "x";
 
   auto Missing = testPath("missing.cpp");
-  FSProvider.Files[Missing] = "";
+  FS.Files[Missing] = "";
 
   S.update(Added, getInputs(Added, "x"), WantDiagnostics::No);
 
@@ -425,7 +437,7 @@ TEST_F(TUSchedulerTests, ManyUpdates) {
     for (int I = 0; I < FilesCount; ++I) {
       std::string Name = "foo" + std::to_string(I) + ".cpp";
       Files.push_back(testPath(Name));
-      this->FSProvider.Files[Files.back()] = "";
+      this->FS.Files[Files.back()] = "";
     }
 
     StringRef Contents1 = R"cpp(int a;)cpp";
@@ -454,6 +466,7 @@ TEST_F(TUSchedulerTests, ManyUpdates) {
               [File, Nonce, Version(Inputs.Version), &Mut, &TotalUpdates,
                &LatestDiagVersion](std::vector<Diag>) {
                 EXPECT_THAT(Context::current().get(NonceKey), Pointee(Nonce));
+                EXPECT_EQ(File, boundPath());
 
                 std::lock_guard<std::mutex> Lock(Mut);
                 ++TotalUpdates;
@@ -474,6 +487,7 @@ TEST_F(TUSchedulerTests, ManyUpdates) {
               [File, Inputs, Nonce, &Mut,
                &TotalASTReads](Expected<InputsAndAST> AST) {
                 EXPECT_THAT(Context::current().get(NonceKey), Pointee(Nonce));
+                EXPECT_EQ(File, boundPath());
 
                 ASSERT_TRUE((bool)AST);
                 EXPECT_EQ(AST->Inputs.Contents, Inputs.Contents);
@@ -493,6 +507,7 @@ TEST_F(TUSchedulerTests, ManyUpdates) {
               [File, Inputs, Nonce, &Mut,
                &TotalPreambleReads](Expected<InputsAndPreamble> Preamble) {
                 EXPECT_THAT(Context::current().get(NonceKey), Pointee(Nonce));
+                EXPECT_EQ(File, boundPath());
 
                 ASSERT_TRUE((bool)Preamble);
                 EXPECT_EQ(Preamble->Contents, Inputs.Contents);
@@ -616,8 +631,8 @@ TEST_F(TUSchedulerTests, EmptyPreamble) {
   auto Foo = testPath("foo.cpp");
   auto Header = testPath("foo.h");
 
-  FSProvider.Files[Header] = "void foo()";
-  FSProvider.Timestamps[Header] = time_t(0);
+  FS.Files[Header] = "void foo()";
+  FS.Timestamps[Header] = time_t(0);
   auto WithPreamble = R"cpp(
     #include "foo.h"
     int main() {}
@@ -685,8 +700,8 @@ TEST_F(TUSchedulerTests, NoopOnEmptyChanges) {
   auto Source = testPath("foo.cpp");
   auto Header = testPath("foo.h");
 
-  FSProvider.Files[Header] = "int a;";
-  FSProvider.Timestamps[Header] = time_t(0);
+  FS.Files[Header] = "int a;";
+  FS.Timestamps[Header] = time_t(0);
 
   std::string SourceContents = R"cpp(
       #include "foo.h"
@@ -714,7 +729,7 @@ TEST_F(TUSchedulerTests, NoopOnEmptyChanges) {
   ASSERT_EQ(S.fileStats().lookup(Source).PreambleBuilds, 1u);
 
   // Update to a header should cause a rebuild, though.
-  FSProvider.Timestamps[Header] = time_t(1);
+  FS.Timestamps[Header] = time_t(1);
   ASSERT_TRUE(DoUpdate(SourceContents));
   ASSERT_FALSE(DoUpdate(SourceContents));
   ASSERT_EQ(S.fileStats().lookup(Source).ASTBuilds, 2u);
@@ -742,8 +757,8 @@ TEST_F(TUSchedulerTests, MissingHeader) {
   CDB.ExtraClangFlags.push_back("-I" + testPath("a"));
   CDB.ExtraClangFlags.push_back("-I" + testPath("b"));
   // Force both directories to exist so they don't get pruned.
-  FSProvider.Files.try_emplace("a/__unused__");
-  FSProvider.Files.try_emplace("b/__unused__");
+  FS.Files.try_emplace("a/__unused__");
+  FS.Files.try_emplace("b/__unused__");
   TUScheduler S(CDB, optsForTest(), captureDiags());
 
   auto Source = testPath("foo.cpp");
@@ -771,22 +786,21 @@ TEST_F(TUSchedulerTests, MissingHeader) {
       });
   S.blockUntilIdle(timeoutSeconds(10));
 
-  FSProvider.Files[HeaderB] = "int b;";
-  FSProvider.Timestamps[HeaderB] = time_t(1);
+  FS.Files[HeaderB] = "int b;";
+  FS.Timestamps[HeaderB] = time_t(1);
 
   // The addition of the missing header file triggers a rebuild, no errors.
-  updateWithDiags(
-      S, Source, Inputs, WantDiagnostics::Yes,
-      [&DiagCount](std::vector<Diag> Diags) {
-        ++DiagCount;
-        EXPECT_THAT(Diags, IsEmpty());
-      });
+  updateWithDiags(S, Source, Inputs, WantDiagnostics::Yes,
+                  [&DiagCount](std::vector<Diag> Diags) {
+                    ++DiagCount;
+                    EXPECT_THAT(Diags, IsEmpty());
+                  });
 
   // Ensure previous assertions are done before we touch the FS again.
   ASSERT_TRUE(S.blockUntilIdle(timeoutSeconds(10)));
   // Add the high-priority header file, which should reintroduce the error.
-  FSProvider.Files[HeaderA] = "int a;";
-  FSProvider.Timestamps[HeaderA] = time_t(1);
+  FS.Files[HeaderA] = "int a;";
+  FS.Timestamps[HeaderA] = time_t(1);
 
   // This isn't detected: we don't stat a/foo.h to validate the preamble.
   updateWithDiags(S, Source, Inputs, WantDiagnostics::Yes,
@@ -798,12 +812,12 @@ TEST_F(TUSchedulerTests, MissingHeader) {
 
   // Forcing the reload should should cause a rebuild.
   Inputs.ForceRebuild = true;
-  updateWithDiags(S, Source, Inputs, WantDiagnostics::Yes,
-                  [&DiagCount](std::vector<Diag> Diags) {
-                    ++DiagCount;
-                    ElementsAre(Field(&Diag::Message,
-                                      "use of undeclared identifier 'b'"));
-                  });
+  updateWithDiags(
+      S, Source, Inputs, WantDiagnostics::Yes,
+      [&DiagCount](std::vector<Diag> Diags) {
+        ++DiagCount;
+        ElementsAre(Field(&Diag::Message, "use of undeclared identifier 'b'"));
+      });
 
   ASSERT_TRUE(S.blockUntilIdle(timeoutSeconds(10)));
   EXPECT_EQ(DiagCount, 3U);
@@ -850,18 +864,22 @@ TEST_F(TUSchedulerTests, NoChangeDiags) {
 }
 
 TEST_F(TUSchedulerTests, Run) {
-  TUScheduler S(CDB, optsForTest());
+  auto Opts = optsForTest();
+  Opts.ContextProvider = bindPath;
+  TUScheduler S(CDB, Opts);
   std::atomic<int> Counter(0);
-  S.run("add 1", [&] { ++Counter; });
-  S.run("add 2", [&] { Counter += 2; });
+  S.run("add 1", /*Path=*/"", [&] { ++Counter; });
+  S.run("add 2", /*Path=*/"", [&] { Counter += 2; });
   ASSERT_TRUE(S.blockUntilIdle(timeoutSeconds(10)));
   EXPECT_EQ(Counter.load(), 3);
 
   Notification TaskRun;
   Key<int> TestKey;
   WithContextValue CtxWithKey(TestKey, 10);
-  S.run("props context", [&] {
+  const char *Path = "somepath";
+  S.run("props context", Path, [&] {
     EXPECT_EQ(Context::current().getExisting(TestKey), 10);
+    EXPECT_EQ(Path, boundPath());
     TaskRun.notify();
   });
   TaskRun.wait();
@@ -901,7 +919,7 @@ TEST_F(TUSchedulerTests, TUStatus) {
     std::vector<ASTAction::Kind> ASTActions;
     std::vector<PreambleAction> PreambleActions;
   } CaptureTUStatus;
-  MockFSProvider FS;
+  MockFS FS;
   MockCompilationDatabase CDB;
   ClangdServer Server(CDB, FS, ClangdServer::optsForTest(), &CaptureTUStatus);
   Annotations Code("int m^ain () {}");

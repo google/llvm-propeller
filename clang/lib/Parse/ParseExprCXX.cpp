@@ -1258,17 +1258,16 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
   };
 
   // FIXME: Consider allowing this as an extension for GCC compatibiblity.
-  const bool HasExplicitTemplateParams = Tok.is(tok::less);
-  ParseScope TemplateParamScope(this, Scope::TemplateParamScope,
-                                /*EnteredScope=*/HasExplicitTemplateParams);
-  if (HasExplicitTemplateParams) {
+  MultiParseScope TemplateParamScope(*this);
+  if (Tok.is(tok::less)) {
     Diag(Tok, getLangOpts().CPlusPlus20
                   ? diag::warn_cxx17_compat_lambda_template_parameter_list
                   : diag::ext_lambda_template_parameter_list);
 
     SmallVector<NamedDecl*, 4> TemplateParams;
     SourceLocation LAngleLoc, RAngleLoc;
-    if (ParseTemplateParameters(CurTemplateDepthTracker.getDepth(),
+    if (ParseTemplateParameters(TemplateParamScope,
+                                CurTemplateDepthTracker.getDepth(),
                                 TemplateParams, LAngleLoc, RAngleLoc)) {
       Actions.ActOnLambdaError(LambdaBeginLoc, getCurScope());
       return ExprError();
@@ -3649,18 +3648,24 @@ case tok::kw_ ## Spelling: return BTT_ ## Name;
 }
 
 static ArrayTypeTrait ArrayTypeTraitFromTokKind(tok::TokenKind kind) {
-  switch(kind) {
-  default: llvm_unreachable("Not a known binary type trait");
-  case tok::kw___array_rank:                 return ATT_ArrayRank;
-  case tok::kw___array_extent:               return ATT_ArrayExtent;
+  switch (kind) {
+  default:
+    llvm_unreachable("Not a known array type trait");
+#define ARRAY_TYPE_TRAIT(Spelling, Name, Key)                                  \
+  case tok::kw_##Spelling:                                                     \
+    return ATT_##Name;
+#include "clang/Basic/TokenKinds.def"
   }
 }
 
 static ExpressionTrait ExpressionTraitFromTokKind(tok::TokenKind kind) {
-  switch(kind) {
-  default: llvm_unreachable("Not a known unary expression trait.");
-  case tok::kw___is_lvalue_expr:             return ET_IsLValueExpr;
-  case tok::kw___is_rvalue_expr:             return ET_IsRValueExpr;
+  switch (kind) {
+  default:
+    llvm_unreachable("Not a known unary expression trait.");
+#define EXPRESSION_TRAIT(Spelling, Name, Key)                                  \
+  case tok::kw_##Spelling:                                                     \
+    return ET_##Name;
+#include "clang/Basic/TokenKinds.def"
   }
 }
 

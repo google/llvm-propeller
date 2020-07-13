@@ -140,7 +140,10 @@ struct OutgoingValueHandler : public CallLowering::ValueHandler {
 
     CCValAssign VA = VAs[0];
     assert(VA.needsCustom() && "Value doesn't need custom handling");
-    assert(VA.getValVT() == MVT::f64 && "Unsupported type");
+
+    // Custom lowering for other types, such as f16, is currently not supported
+    if (VA.getValVT() != MVT::f64)
+      return 0;
 
     CCValAssign NextVA = VAs[1];
     assert(NextVA.needsCustom() && "Value doesn't need custom handling");
@@ -200,7 +203,7 @@ void ARMCallLowering::splitToValueTypes(const ArgInfo &OrigArg,
     // Even if there is no splitting to do, we still want to replace the
     // original type (e.g. pointer type -> integer).
     auto Flags = OrigArg.Flags[0];
-    Flags.setOrigAlign(Align(DL.getABITypeAlignment(OrigArg.Ty)));
+    Flags.setOrigAlign(DL.getABITypeAlign(OrigArg.Ty));
     SplitArgs.emplace_back(OrigArg.Regs[0], SplitVTs[0].getTypeForEVT(Ctx),
                            Flags, OrigArg.IsFixed);
     return;
@@ -212,7 +215,7 @@ void ARMCallLowering::splitToValueTypes(const ArgInfo &OrigArg,
     Type *SplitTy = SplitVT.getTypeForEVT(Ctx);
     auto Flags = OrigArg.Flags[0];
 
-    Flags.setOrigAlign(Align(DL.getABITypeAlignment(SplitTy)));
+    Flags.setOrigAlign(DL.getABITypeAlign(SplitTy));
 
     bool NeedsConsecutiveRegisters =
         TLI.functionArgumentNeedsConsecutiveRegisters(
@@ -360,7 +363,10 @@ struct IncomingValueHandler : public CallLowering::ValueHandler {
 
     CCValAssign VA = VAs[0];
     assert(VA.needsCustom() && "Value doesn't need custom handling");
-    assert(VA.getValVT() == MVT::f64 && "Unsupported type");
+
+    // Custom lowering for other types, such as f16, is currently not supported
+    if (VA.getValVT() != MVT::f64)
+      return 0;
 
     CCValAssign NextVA = VAs[1];
     assert(NextVA.needsCustom() && "Value doesn't need custom handling");

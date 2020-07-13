@@ -236,26 +236,26 @@ const DIType *DbgVariable::getType() const {
 static DbgValueLoc getDebugLocValue(const MachineInstr *MI) {
   const DIExpression *Expr = MI->getDebugExpression();
   assert(MI->getNumOperands() == 4);
-  if (MI->getOperand(0).isReg()) {
-    auto RegOp = MI->getOperand(0);
-    auto Op1 = MI->getOperand(1);
+  if (MI->getDebugOperand(0).isReg()) {
+    auto RegOp = MI->getDebugOperand(0);
+    auto Op1 = MI->getDebugOffset();
     // If the second operand is an immediate, this is a
     // register-indirect address.
     assert((!Op1.isImm() || (Op1.getImm() == 0)) && "unexpected offset");
     MachineLocation MLoc(RegOp.getReg(), Op1.isImm());
     return DbgValueLoc(Expr, MLoc);
   }
-  if (MI->getOperand(0).isTargetIndex()) {
-    auto Op = MI->getOperand(0);
+  if (MI->getDebugOperand(0).isTargetIndex()) {
+    auto Op = MI->getDebugOperand(0);
     return DbgValueLoc(Expr,
                        TargetIndexLocation(Op.getIndex(), Op.getOffset()));
   }
-  if (MI->getOperand(0).isImm())
-    return DbgValueLoc(Expr, MI->getOperand(0).getImm());
-  if (MI->getOperand(0).isFPImm())
-    return DbgValueLoc(Expr, MI->getOperand(0).getFPImm());
-  if (MI->getOperand(0).isCImm())
-    return DbgValueLoc(Expr, MI->getOperand(0).getCImm());
+  if (MI->getDebugOperand(0).isImm())
+    return DbgValueLoc(Expr, MI->getDebugOperand(0).getImm());
+  if (MI->getDebugOperand(0).isFPImm())
+    return DbgValueLoc(Expr, MI->getDebugOperand(0).getFPImm());
+  if (MI->getDebugOperand(0).isCImm())
+    return DbgValueLoc(Expr, MI->getDebugOperand(0).getCImm());
 
   llvm_unreachable("Unexpected 4-operand DBG_VALUE instruction!");
 }
@@ -1577,7 +1577,7 @@ static bool validThroughout(LexicalScopes &LScopes,
   // throughout the function. This is a hack, presumably for DWARF v2 and not
   // necessarily correct. It would be much better to use a dbg.declare instead
   // if we know the constant is live throughout the scope.
-  if (DbgValue->getOperand(0).isImm() && MBB->pred_empty())
+  if (DbgValue->getDebugOperand(0).isImm() && MBB->pred_empty())
     return true;
 
   // Now check for situations where an "open-ended" DBG_VALUE isn't enough to
@@ -1665,7 +1665,7 @@ bool DwarfDebug::buildLocationList(SmallVectorImpl<DebugLocEntry> &DebugLoc,
     const MCSymbol *EndLabel;
     if (std::next(EI) == Entries.end()) {
       const MachineBasicBlock &EndMBB = Asm->MF->back();
-      EndLabel = Asm->MBBSectionRanges[EndMBB.getSectionID()].EndLabel;
+      EndLabel = Asm->MBBSectionRanges[EndMBB.getSectionIDNum()].EndLabel;
       if (EI->isClobber())
         EndMI = EI->getInstr();
     }
@@ -2117,11 +2117,8 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
 
   // Add the range of this function to the list of ranges for the CU.
   // With basic block sections, add ranges for all basic block sections.
-  for (auto &MBB : *MF) {
-    if (&MBB == &MF->front() || MBB.isBeginSection())
-      TheCU.addRange({Asm->MBBSectionRanges[MBB.getSectionID()].BeginLabel,
-                      Asm->MBBSectionRanges[MBB.getSectionID()].EndLabel});
-  }
+  for (const auto &R : Asm->MBBSectionRanges)
+    TheCU.addRange({R.second.BeginLabel, R.second.EndLabel});
 
   // Under -gmlt, skip building the subprogram if there are no inlined
   // subroutines inside it. But with -fdebug-info-for-profiling, the subprogram

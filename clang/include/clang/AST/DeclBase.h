@@ -66,6 +66,7 @@ class SourceManager;
 class Stmt;
 class StoredDeclsMap;
 class TemplateDecl;
+class TemplateParameterList;
 class TranslationUnitDecl;
 class UsingDirectiveDecl;
 
@@ -518,7 +519,7 @@ public:
     if (!HasAttrs) return;
 
     AttrVec &Vec = getAttrs();
-    Vec.erase(std::remove_if(Vec.begin(), Vec.end(), isa<T, Attr*>), Vec.end());
+    llvm::erase_if(Vec, [](Attr *A) { return isa<T>(A); });
 
     if (Vec.empty())
       HasAttrs = false;
@@ -780,18 +781,19 @@ public:
   /// all declarations in a global module fragment are unowned.
   Module *getOwningModuleForLinkage(bool IgnoreLinkage = false) const;
 
-  /// Determine whether this declaration might be hidden from name
-  /// lookup. Note that the declaration might be visible even if this returns
-  /// \c false, if the owning module is visible within the query context.
-  // FIXME: Rename this to make it clearer what it does.
-  bool isHidden() const {
-    return (int)getModuleOwnershipKind() > (int)ModuleOwnershipKind::Visible;
+  /// Determine whether this declaration is definitely visible to name lookup,
+  /// independent of whether the owning module is visible.
+  /// Note: The declaration may be visible even if this returns \c false if the
+  /// owning module is visible within the query context. This is a low-level
+  /// helper function; most code should be calling Sema::isVisible() instead.
+  bool isUnconditionallyVisible() const {
+    return (int)getModuleOwnershipKind() <= (int)ModuleOwnershipKind::Visible;
   }
 
   /// Set that this declaration is globally visible, even if it came from a
   /// module that is not visible.
   void setVisibleDespiteOwningModule() {
-    if (isHidden())
+    if (!isUnconditionallyVisible())
       setModuleOwnershipKind(ModuleOwnershipKind::Visible);
   }
 
@@ -860,6 +862,10 @@ public:
   /// Determine whether this declaration is a templated entity (whether it is
   // within the scope of a template parameter).
   bool isTemplated() const;
+
+  /// Determine the number of levels of template parameter surrounding this
+  /// declaration.
+  unsigned getTemplateDepth() const;
 
   /// isDefinedOutsideFunctionOrMethod - This predicate returns true if this
   /// scoped decl is defined outside the current function or method.  This is
@@ -1037,7 +1043,15 @@ public:
 
   /// If this is a declaration that describes some template, this
   /// method returns that template declaration.
+  ///
+  /// Note that this returns nullptr for partial specializations, because they
+  /// are not modeled as TemplateDecls. Use getDescribedTemplateParams to handle
+  /// those cases.
   TemplateDecl *getDescribedTemplate() const;
+
+  /// If this is a declaration that describes some template or partial
+  /// specialization, this returns the corresponding template parameter list.
+  const TemplateParameterList *getDescribedTemplateParams() const;
 
   /// Returns the function itself, or the templated function if this is a
   /// function template.

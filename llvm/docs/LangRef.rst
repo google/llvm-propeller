@@ -1130,7 +1130,7 @@ Currently, only the following parameter attributes are defined:
 
 .. _attr_align:
 
-``align <n>``
+``align <n>`` or ``align(<n>)``
     This indicates that the pointer value may be assumed by the optimizer to
     have the specified alignment.  If the pointer value does not have the
     specified alignment, behavior is undefined.
@@ -2240,7 +2240,7 @@ that will have been done by one of the ``@llvm.call.preallocated.*`` intrinsics.
       ; initialize %b
       call void @bar(i32 42, %foo* preallocated(%foo) %b) ["preallocated"(token %t)]
 
-.. _ob_gc_live
+.. _ob_gc_live:
 
 GC Live Operand Bundles
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -2366,6 +2366,7 @@ as follows:
       starting with ``?`` are not mangled in any way.
     * ``w``: Windows COFF mangling: Similar to ``x``, except that normal C
       symbols do not receive a ``_`` prefix.
+    * ``a``: XCOFF mangling: Private symbols get a ``L..`` prefix.
 ``n<size1>:<size2>:<size3>...``
     This specifies a set of native integer widths for the target CPU in
     bits. For example, it might contain ``n32`` for 32-bit PowerPC,
@@ -4146,7 +4147,13 @@ AMDGPU:
 - ``[0-9]v``: The 32-bit VGPR register, number 0-9.
 - ``[0-9]s``: The 32-bit SGPR register, number 0-9.
 - ``[0-9]a``: The 32-bit AGPR register, number 0-9.
+- ``I``: An integer inline constant in the range from -16 to 64.
+- ``J``: A 16-bit signed integer constant.
 - ``A``: An integer or a floating-point inline constant.
+- ``B``: A 32-bit signed integer constant.
+- ``C``: A 32-bit unsigned integer constant or an integer inline constant in the range from -16 to 64.
+- ``DA``: A 64-bit constant that can be split into two "A" constants.
+- ``DB``: A 64-bit constant that can be split into two "B" constants.
 
 All ARM modes:
 
@@ -4619,7 +4626,7 @@ to the ``add`` instruction using the ``!dbg`` identifier:
     %indvar.next = add i64 %indvar, 1, !dbg !21
 
 Metadata can also be attached to a function or a global variable. Here metadata
-``!22`` is attached to the ``f1`` and ``f2 functions, and the globals ``g1``
+``!22`` is attached to the ``f1`` and ``f2`` functions, and the globals ``g1``
 and ``g2`` using the ``!dbg`` identifier:
 
 .. code-block:: llvm
@@ -6728,7 +6735,7 @@ If the global value is a function, the ``Summary`` entry will look like:
 
 .. code-block:: text
 
-    function: (module: ^0, flags: (linkage: external, notEligibleToImport: 0, live: 0, dsoLocal: 0), insts: 2[, FuncFlags]?[, Calls]?[, TypeIdInfo]?[, Refs]?
+    function: (module: ^0, flags: (linkage: external, notEligibleToImport: 0, live: 0, dsoLocal: 0), insts: 2[, FuncFlags]?[, Calls]?[, TypeIdInfo]?[, Params]?[, Refs]?
 
 The ``module`` field includes the summary entry id for the module containing
 this definition, and the ``flags`` field contains information such as
@@ -6738,7 +6745,7 @@ to a local definition (the latter two are populated during the thin link).
 The ``insts`` field contains the number of IR instructions in the function.
 Finally, there are several optional fields: :ref:`FuncFlags<funcflags_summary>`,
 :ref:`Calls<calls_summary>`, :ref:`TypeIdInfo<typeidinfo_summary>`,
-:ref:`Refs<refs_summary>`.
+:ref:`Params<params_summary>`, :ref:`Refs<refs_summary>`.
 
 .. _variable_summary:
 
@@ -6805,6 +6812,38 @@ of ``hotness`` (which can take the values ``Unknown``, ``Cold``, ``None``,
 ``Hot``, and ``Critical``), and ``relbf`` (which holds the integer
 branch frequency relative to the entry frequency, scaled down by 2^8)
 may be specified. The defaults are ``Unknown`` and ``0``, respectively.
+
+.. _params_summary:
+
+Params
+^^^^^^
+
+The optional ``Params`` is used by ``StackSafety`` and looks like:
+
+.. code-block:: text
+
+    Params: ((Param)[, (Param)]*)
+
+where each ``Param`` describes pointer parameter access inside of the
+function and looks like:
+
+.. code-block:: text
+
+    param: 4, offset: [0, 5][, calls: ((Callee)[, (Callee)]*)]?
+
+where the first ``param`` is the number of the parameter it describes,
+``offset`` is the known access range of the paramenter inside of the function.
+
+where each ``Callee`` decribes how parameter is forwared into other
+functions and looks like:
+
+.. code-block:: text
+
+    callee: ^3, param: 5, offset: [-3, 3]
+
+The ``callee`` refers to the summary entry id of the callee,  ``param`` is
+the number of the callee parameter which points into the callers parameter
+with offset known to be inside of the ``offset`` range.
 
 .. _refs_summary:
 
@@ -15099,7 +15138,17 @@ matches the element-type of the vector input.
 If the intrinsic call has the 'reassoc' or 'fast' flags set, then the
 reduction will not preserve the associativity of an equivalent scalarized
 counterpart. Otherwise the reduction will be *ordered*, thus implying that
-the operation respects the associativity of a scalarized reduction.
+the operation respects the associativity of a scalarized reduction. That is, the
+reduction begins with the start value and performs an fadd operation with consecutively
+increasing vector element indices. See the following pseudocode:
+
+::
+
+    float ordered_fadd(start_value, input_vector)
+      result = start_value
+      for i = 0 to length(input_vector)
+        result = result + input_vector[i]
+      return result
 
 
 Arguments:
@@ -15160,7 +15209,17 @@ matches the element-type of the vector input.
 If the intrinsic call has the 'reassoc' or 'fast' flags set, then the
 reduction will not preserve the associativity of an equivalent scalarized
 counterpart. Otherwise the reduction will be *ordered*, thus implying that
-the operation respects the associativity of a scalarized reduction.
+the operation respects the associativity of a scalarized reduction. That is, the
+reduction begins with the start value and performs an fmul operation with consecutively
+increasing vector element indices. See the following pseudocode:
+
+::
+
+    float ordered_fmul(start_value, input_vector)
+      result = start_value
+      for i = 0 to length(input_vector)
+        result = result * input_vector[i]
+      return result
 
 
 Arguments:
@@ -15434,56 +15493,74 @@ must have <Inner> * <OuterColumns> elements and the returned vector must have
 <OuterRows> * <OuterColumns> elements.
 
 
-'``llvm.matrix.columnwise.load.*``' Intrinsic
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+'``llvm.matrix.column.major.load.*``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Syntax:
 """""""
 
 ::
 
-      declare vectorty @llvm.matrix.columnwise.load.*(ptrty %Ptr, i32 %Stride, i32 <Rows>, i32 <Cols>)
+      declare vectorty @llvm.matrix.column.major.load.*(
+          ptrty %Ptr, i64 %Stride, i1 <IsVolatile>, i32 <Rows>, i32 <Cols>)
 
 Overview:
 """""""""
 
-The '``llvm.matrix.columnwise.load.*``' intrinsic loads a matrix with <Rows>
+The '``llvm.matrix.column.major.load.*``' intrinsic loads a matrix with <Rows>
 rows and <Cols> columns, using a stride of %Stride between columns. For two
 consecutive columns A and B, %Stride refers to the distance (the number of
 elements) between the start of column A and the start of column B. The result
 matrix is returned embedded in the result vector. This allows for convenient
-loading of sub matrixes.
+loading of sub matrixes.  If <IsVolatile> is true, the intrinsic is considered
+a :ref:`volatile memory access <volatile>`.
+
+If the %Ptr argument is known to be aligned to some boundary, this can be
+specified as an attribute on the argument.
 
 Arguments:
 """"""""""
 
-The <Rows> and <Cols> arguments must be constant integers. The returned vector
-must have <Rows> * <Cols> elements. %Stride must be >= <Rows>.
+The <IsVolatile>, <Rows> and <Cols> arguments must be constant integers. The
+returned vector must have <Rows> * <Cols> elements. %Stride must be >= <Rows>.
 
-'``llvm.matrix.columnwise.store.*``' Intrinsic
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The :ref:`align <attr_align>` parameter attribute can be provided
+for the %Ptr arguments.
+
+
+'``llvm.matrix.column.major.store.*``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Syntax:
 """""""
 
 ::
 
-      declare void @llvm.matrix.columnwise.store.*(vectorty %In, ptrty %Ptr, i32 %Stride, i32 <Rows>, i32 <Cols>)
+      declare void @llvm.matrix.column.major.store.*(
+          vectorty %In, ptrty %Ptr, i64 %Stride, i1 <IsVolatile>, i32 <Rows>, i32 <Cols>)
 
 Overview:
 """""""""
 
-The '``llvm.matrix.columnwise.store.*``' intrinsic stores the matrix with
+The '``llvm.matrix.column.major.store.*``' intrinsic stores the matrix with
 <Rows> rows and <Cols> columns embedded in %In, using a stride of %Stride
 between columns. For two consecutive columns A and B, %Stride refers to the
 distance (the number of elements) between the start of column A and the start
-of column B.
+of column B. If <IsVolatile> is true, the intrinsic is considered a
+:ref:`volatile memory access <volatile>`.
+
+If the %Ptr argument is known to be aligned to some boundary, this can be
+specified as an attribute on the argument.
 
 Arguments:
 """"""""""
 
-The <Rows> and <Cols> arguments must be constant integers. The vector argument
-%In must have <Rows> * <Cols> elements. %Stride must be >= <Rows>.
+The <IsVolatile>, <Rows>, <Cols> arguments must be constant integers. The
+vector argument %In must have <Rows> * <Cols> elements. %Stride must be >= <Rows>.
+
+The :ref:`align <attr_align>` parameter attribute can be provided
+for the %Ptr arguments.
+
 
 Half Precision Floating-Point Intrinsics
 ----------------------------------------
@@ -18987,6 +19064,40 @@ Arguments:
 
 The ``llvm.expect`` intrinsic takes two arguments. The first argument is
 a value. The second argument is an expected value.
+
+Semantics:
+""""""""""
+
+This intrinsic is lowered to the ``val``.
+
+'``llvm.expect.with.probability``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+This intrinsic is similar to ``llvm.expect``. This is an overloaded intrinsic.
+You can use ``llvm.expect.with.probability`` on any integer bit width.
+
+::
+
+      declare i1 @llvm.expect.with.probability.i1(i1 <val>, i1 <expected_val>, double <prob>)
+      declare i32 @llvm.expect.with.probability.i32(i32 <val>, i32 <expected_val>, double <prob>)
+      declare i64 @llvm.expect.with.probability.i64(i64 <val>, i64 <expected_val>, double <prob>)
+
+Overview:
+"""""""""
+
+The ``llvm.expect.with.probability`` intrinsic provides information about
+expected value of ``val`` with probability(or confidence) ``prob``, which can
+be used by optimizers.
+
+Arguments:
+""""""""""
+
+The ``llvm.expect.with.probability`` intrinsic takes three arguments. The first
+argument is a value. The second argument is an expected value. The third
+argument is a probability.
 
 Semantics:
 """"""""""

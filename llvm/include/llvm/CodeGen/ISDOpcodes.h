@@ -58,6 +58,7 @@ enum NodeType {
   /// of the extension
   AssertSext,
   AssertZext,
+  AssertAlign,
 
   /// Various leaf nodes.
   BasicBlock,
@@ -869,7 +870,7 @@ enum NodeType {
   /// SDOperands.
   INLINEASM,
 
-  /// INLINEASM_BR - Terminator version of inline asm. Used by asm-goto.
+  /// INLINEASM_BR - Branching version of inline asm. Used by asm-goto.
   INLINEASM_BR,
 
   /// EH_LABEL - Represents a label in mid basic block used to track

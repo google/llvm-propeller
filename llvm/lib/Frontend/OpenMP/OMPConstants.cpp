@@ -19,45 +19,12 @@ using namespace llvm;
 using namespace omp;
 using namespace types;
 
-Directive llvm::omp::getOpenMPDirectiveKind(StringRef Str) {
-  return llvm::StringSwitch<Directive>(Str)
-#define OMP_DIRECTIVE(Enum, Str) .Case(Str, Enum)
-#include "llvm/Frontend/OpenMP/OMPKinds.def"
-      .Default(OMPD_unknown);
-}
-
-StringRef llvm::omp::getOpenMPDirectiveName(Directive Kind) {
-  switch (Kind) {
-#define OMP_DIRECTIVE(Enum, Str)                                               \
-  case Enum:                                                                   \
-    return Str;
-#include "llvm/Frontend/OpenMP/OMPKinds.def"
-  }
-  llvm_unreachable("Invalid OpenMP directive kind");
-}
-
-Clause llvm::omp::getOpenMPClauseKind(StringRef Str) {
-  return llvm::StringSwitch<Clause>(Str)
-#define OMP_CLAUSE(Enum, Str, Implicit)                                        \
-  .Case(Str, Implicit ? OMPC_unknown : Enum)
-#include "llvm/Frontend/OpenMP/OMPKinds.def"
-      .Default(OMPC_unknown);
-}
-
-StringRef llvm::omp::getOpenMPClauseName(Clause C) {
-  switch (C) {
-#define OMP_CLAUSE(Enum, Str, ...)                                             \
-  case Enum:                                                                   \
-    return Str;
-#include "llvm/Frontend/OpenMP/OMPKinds.def"
-  }
-  llvm_unreachable("Invalid OpenMP clause kind");
-}
+#include "llvm/Frontend/OpenMP/OMP.cpp.inc"
 
 bool llvm::omp::isAllowedClauseForDirective(Directive D, Clause C,
                                             unsigned Version) {
-  assert(unsigned(D) <= unsigned(OMPD_unknown));
-  assert(unsigned(C) <= unsigned(OMPC_unknown));
+  assert(unsigned(D) <= llvm::omp::Directive_enumSize);
+  assert(unsigned(C) <= llvm::omp::Clause_enumSize);
 #define OMP_DIRECTIVE_CLAUSE(Dir, MinVersion, MaxVersion, Cl)                  \
   if (D == Dir && C == Cl && MinVersion <= Version && MaxVersion >= Version)   \
     return true;

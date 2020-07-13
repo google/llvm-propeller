@@ -15,11 +15,8 @@
 #ifndef LLVM_CODEGEN_ASMPRINTER_H
 #define LLVM_CODEGEN_ASMPRINTER_H
 
-#include "llvm/ADT/IndexedMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/CodeGen/AsmPrinterHandler.h"
 #include "llvm/CodeGen/DwarfStringPoolEntry.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
@@ -71,8 +68,10 @@ class MDNode;
 class Module;
 class raw_ostream;
 class StackMaps;
+class StringRef;
 class TargetLoweringObjectFile;
 class TargetMachine;
+class Twine;
 
 namespace remarks {
 class RemarkStreamer;
@@ -132,7 +131,8 @@ public:
   struct MBBSectionRange {
     MCSymbol *BeginLabel, *EndLabel;
   };
-  IndexedMap<MBBSectionRange, MBBSectionID::ToIndexFunctor> MBBSectionRanges;
+
+  MapVector<unsigned, MBBSectionRange> MBBSectionRanges;
 
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
@@ -358,6 +358,8 @@ public:
   void emitFrameAlloc(const MachineInstr &MI);
 
   void emitStackSizeSection(const MachineFunction &MF);
+
+  void emitBBInfoSection(MachineFunction &MF);
 
   void emitRemarksSection(remarks::RemarkStreamer &RS);
 
@@ -684,10 +686,10 @@ public:
 
   /// This emits linkage information about \p GVSym based on \p GV, if this is
   /// supported by the target.
-  void emitLinkage(const GlobalValue *GV, MCSymbol *GVSym) const;
+  virtual void emitLinkage(const GlobalValue *GV, MCSymbol *GVSym) const;
 
   /// Return the alignment for the specified \p GV.
-  static Align getGVAlignment(const GlobalValue *GV, const DataLayout &DL,
+  static Align getGVAlignment(const GlobalObject *GV, const DataLayout &DL,
                               Align InAlign = Align(1));
 
 private:

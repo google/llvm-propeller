@@ -640,7 +640,7 @@ Symtab *ObjectFilePECOFF::GetSymtab() {
     std::lock_guard<std::recursive_mutex> guard(module_sp->GetMutex());
     if (m_symtab_up == nullptr) {
       SectionList *sect_list = GetSectionList();
-      m_symtab_up.reset(new Symtab(this));
+      m_symtab_up = std::make_unique<Symtab>(this);
       std::lock_guard<std::recursive_mutex> guard(m_symtab_up->GetMutex());
 
       const uint32_t num_syms = m_coff_header.nsyms;
@@ -868,7 +868,7 @@ SectionType ObjectFilePECOFF::GetSectionType(llvm::StringRef sect_name,
 void ObjectFilePECOFF::CreateSections(SectionList &unified_section_list) {
   if (m_sections_up)
     return;
-  m_sections_up.reset(new SectionList());
+  m_sections_up = std::make_unique<SectionList>();
 
   ModuleSP module_sp(GetModule());
   if (module_sp) {
@@ -969,13 +969,12 @@ uint32_t ObjectFilePECOFF::ParseDependentModules() {
 
   for (const auto &entry : COFFObj->import_directories()) {
     llvm::StringRef dll_name;
-    auto ec = entry.getName(dll_name);
     // Report a bogus entry.
-    if (ec != std::error_code()) {
+    if (llvm::Error e = entry.getName(dll_name)) {
       LLDB_LOGF(log,
                 "ObjectFilePECOFF::ParseDependentModules() - failed to get "
                 "import directory entry name: %s",
-                ec.message().c_str());
+                llvm::toString(std::move(e)).c_str());
       continue;
     }
 

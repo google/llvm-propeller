@@ -1437,8 +1437,7 @@ TEST(GSYMTest, TestDWARFFunctionWithAddresses) {
         - Attribute:       DW_AT_high_pc
           Form:            DW_FORM_addr
   debug_info:
-    - Length:
-        TotalLength:     52
+    - Length:          52
       Version:         4
       AbbrOffset:      0
       AddrSize:        8
@@ -1517,8 +1516,7 @@ TEST(GSYMTest, TestDWARFFunctionWithAddressAndOffset) {
         - Attribute:       DW_AT_high_pc
           Form:            DW_FORM_data4
   debug_info:
-    - Length:
-        TotalLength:     44
+    - Length:          44
       Version:         4
       AbbrOffset:      0
       AddrSize:        8
@@ -1617,8 +1615,7 @@ TEST(GSYMTest, TestDWARFStructMethodNoMangled) {
         - Attribute:       DW_AT_artificial
           Form:            DW_FORM_flag_present
   debug_info:
-    - Length:
-        TotalLength:     68
+    - Length:          68
       Version:         4
       AbbrOffset:      0
       AddrSize:        8
@@ -1722,8 +1719,7 @@ TEST(GSYMTest, TestDWARFTextRanges) {
         - Attribute:       DW_AT_high_pc
           Form:            DW_FORM_data4
   debug_info:
-    - Length:
-        TotalLength:     78
+    - Length:          78
       Version:         4
       AbbrOffset:      0
       AddrSize:        8
@@ -1836,8 +1832,7 @@ TEST(GSYMTest, TestDWARFInlineInfo) {
         - Attribute:       DW_AT_call_line
           Form:            DW_FORM_data4
   debug_info:
-    - Length:
-        TotalLength:     74
+    - Length:          74
       Version:         4
       AbbrOffset:      0
       AddrSize:        8
@@ -1866,8 +1861,7 @@ TEST(GSYMTest, TestDWARFInlineInfo) {
         - AbbrCode:        0x00000000
           Values:
   debug_line:
-    - Length:
-        TotalLength:     96
+    - Length:          96
       Version:         2
       PrologueLength:  46
       MinInstLength:   1
@@ -2093,8 +2087,7 @@ TEST(GSYMTest, TestDWARFNoLines) {
         - Attribute:       DW_AT_decl_line
           Form:            DW_FORM_data1
   debug_info:
-    - Length:
-        TotalLength:     103
+    - Length:          103
       Version:         4
       AbbrOffset:      0
       AddrSize:        8
@@ -2133,8 +2126,7 @@ TEST(GSYMTest, TestDWARFNoLines) {
         - AbbrCode:        0x00000000
           Values:          []
   debug_line:
-    - Length:
-        TotalLength:     92
+    - Length:          92
       Version:         2
       PrologueLength:  34
       MinInstLength:   1
@@ -2344,8 +2336,7 @@ TEST(GSYMTest, TestDWARFDeadStripAddr4) {
         - Attribute:       DW_AT_high_pc
           Form:            DW_FORM_addr
   debug_info:
-    - Length:
-        TotalLength:     75
+    - Length:          75
       Version:         4
       AbbrOffset:      0
       AddrSize:        4
@@ -2487,8 +2478,7 @@ TEST(GSYMTest, TestDWARFDeadStripAddr8) {
         - Attribute:       DW_AT_high_pc
           Form:            DW_FORM_addr
   debug_info:
-    - Length:
-        TotalLength:     103
+    - Length:          103
       Version:         4
       AbbrOffset:      0
       AddrSize:        8

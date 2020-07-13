@@ -100,6 +100,11 @@ def ConvertGpuLaunchFuncToGpuRuntimeCalls : Pass<"launch-func-to-gpu-runtime",
 def ConvertGpuOpsToNVVMOps : Pass<"convert-gpu-to-nvvm", "gpu::GPUModuleOp"> {
   let summary = "Generate NVVM operations for gpu operations";
   let constructor = "mlir::createLowerGpuOpsToNVVMOpsPass()";
+  let options = [
+    Option<"indexBitwidth", "index-bitwidth", "unsigned",
+           /*default=kDeriveIndexBitwidthFromDataLayout*/"0",
+           "Bitwidth of the index type, 0 to use size of machine word">
+  ];
 }
 
 //===----------------------------------------------------------------------===//
@@ -109,6 +114,11 @@ def ConvertGpuOpsToNVVMOps : Pass<"convert-gpu-to-nvvm", "gpu::GPUModuleOp"> {
 def ConvertGpuOpsToROCDLOps : Pass<"convert-gpu-to-rocdl", "gpu::GPUModuleOp"> {
   let summary = "Generate ROCDL operations for gpu operations";
   let constructor = "mlir::createLowerGpuOpsToROCDLOpsPass()";
+  let options = [
+    Option<"indexBitwidth", "index-bitwidth", "unsigned",
+           /*default=kDeriveIndexBitwidthFromDataLayout*/"0",
+           "Bitwidth of the index type, 0 to use size of machine word">
+  ];
 }
 
 //===----------------------------------------------------------------------===//
@@ -207,6 +217,15 @@ def ConvertShapeToStandard : Pass<"convert-shape-to-std", "ModuleOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ShapeToSCF
+//===----------------------------------------------------------------------===//
+
+def ConvertShapeToSCF : FunctionPass<"convert-shape-to-scf"> {
+  let summary = "Convert operations from the shape dialect to the SCF dialect";
+  let constructor = "mlir::createConvertShapeToSCFPass()";
+}
+
+//===----------------------------------------------------------------------===//
 // SPIRVToLLVM
 //===----------------------------------------------------------------------===//
 
@@ -299,6 +318,21 @@ def ConvertVectorToLLVM : Pass<"convert-vector-to-llvm", "ModuleOp"> {
   let summary = "Lower the operations from the vector dialect into the LLVM "
                 "dialect";
   let constructor = "mlir::createConvertVectorToLLVMPass()";
+  let options = [
+    Option<"reassociateFPReductions", "reassociate-fp-reductions",
+           "bool", /*default=*/"false",
+           "Allows llvm to reassociate floating-point reductions for speed">
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// VectorToROCDL
+//===----------------------------------------------------------------------===//
+
+def ConvertVectorToROCDL : Pass<"convert-vector-to-rocdl", "ModuleOp"> {
+  let summary = "Lower the operations from the vector dialect into the ROCDL "
+                "dialect";
+  let constructor = "mlir::createConvertVectorToROCDLPass()";
 }
 
 #endif // MLIR_CONVERSION_PASSES

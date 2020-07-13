@@ -204,16 +204,18 @@ declare ALL_FILES=(
         debuginfo        llvm/test/DebugInfo/X86/basicblock-sections_1.ll
         cfi              llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
         cfi              llvm/include/llvm/CodeGen/TargetFrameLowering.h
-        cfi              llvm/include/llvm/MC/MCDwarf.h
         cfi              llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
         cfi              llvm/lib/CodeGen/AsmPrinter/DwarfException.h
         cfi              llvm/lib/CodeGen/CFIInstrInserter.cpp
-        cfi              llvm/lib/MC/MCDwarf.cpp
         cfi              llvm/lib/Target/AArch64/AArch64FrameLowering.h
         cfi              llvm/lib/Target/X86/X86FrameLowering.cpp
         cfi              llvm/lib/Target/X86/X86FrameLowering.h
-        cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfi.ll
-        cfi              llvm/test/DebugInfo/X86/basicblock-sections-cfiinstr.ll
+	cfi              llvm/test/CodeGen/X86/cfi-basic-block-sections-1.ll
+        cfi              llvm/test/CodeGen/X86/cfi-inserter-basic-block-sections-callee-save-registers.ll
+	cfi-dedup        llvm/include/llvm/MC/MCDwarf.h
+        cfi-dedup        llvm/lib/MC/MCDwarf.cpp
+        cfi-dedup        llvm/test/DebugInfo/X86/basicblock-sections-cfi.ll
+        cfi-dedup        llvm/test/DebugInfo/X86/basicblock-sections-cfiinstr.ll
         exception        llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
         debugassert      llvm/lib/CodeGen/AsmPrinter/DebugLocStream.h
         exception        llvm/lib/CodeGen/AsmPrinter/DwarfCFIException.cpp
@@ -236,4 +238,6 @@ declare ALL_FILES=(
 	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
 # This test was not committed as part of https://reviews.llvm.org/rG05192e585ce175b55f2a26b83b4ed7882785c8e6 
         /dev/null llvm/test/CodeGen/X86/gcc_except_table_basicblock-sections_exception_groups_with_cold.ll
+	other            llvm/include/llvm/MC/MCObjectFileInfo.h
+	other            llvm/lib/MC/MCObjectFileInfo.cpp
     )

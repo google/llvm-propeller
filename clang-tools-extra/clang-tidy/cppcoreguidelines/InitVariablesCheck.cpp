@@ -10,6 +10,8 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/Lex/PPCallbacks.h"
+#include "clang/Lex/Preprocessor.h"
 
 using namespace clang::ast_matchers;
 
@@ -29,11 +31,18 @@ InitVariablesCheck::InitVariablesCheck(StringRef Name,
                                             utils::IncludeSorter::IS_LLVM)),
       MathHeader(Options.get("MathHeader", "math.h")) {}
 
+void InitVariablesCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
+  Options.store(Opts, "IncludeStyle", IncludeStyle,
+                utils::IncludeSorter::getMapping());
+  Options.store(Opts, "MathHeader", MathHeader);
+}
+
 void InitVariablesCheck::registerMatchers(MatchFinder *Finder) {
   std::string BadDecl = "badDecl";
   Finder->addMatcher(
       varDecl(unless(hasInitializer(anything())), unless(isInstantiated()),
               isLocalVarDecl(), unless(isStaticLocal()), isDefinition(),
+              unless(hasParent(cxxCatchStmt())),
               optionally(hasParent(declStmt(hasParent(
                   cxxForRangeStmt(hasLoopVariable(varDecl().bind(BadDecl))))))),
               unless(equalsBoundNode(BadDecl)))
@@ -102,7 +111,6 @@ void InitVariablesCheck::check(const MatchFinder::MatchResult &Result) {
     }
   }
 }
-
 } // namespace cppcoreguidelines
 } // namespace tidy
 } // namespace clang

@@ -110,6 +110,12 @@ cl::opt<bool> AtomicCounterUpdatePromoted(
              " for promoted counters only"),
     cl::init(false));
 
+cl::opt<bool> AtomicFirstCounter(
+    "atomic-first-counter", cl::ZeroOrMore,
+    cl::desc("Use atomic fetch add for first counter in a function (usually "
+             "the entry counter)"),
+    cl::init(false));
+
 // If the option is not specified, the default behavior about whether
 // counter promotion is done depends on how instrumentaiton lowering
 // pipeline is setup, i.e., the default value of true of this option
@@ -696,7 +702,8 @@ void InstrProfiling::lowerIncrement(InstrProfIncrementInst *Inc) {
     Addr = Builder.CreateIntToPtr(Add, Int64PtrTy);
   }
 
-  if (Options.Atomic || AtomicCounterUpdateAll) {
+  if (Options.Atomic || AtomicCounterUpdateAll ||
+      (Index == 0 && AtomicFirstCounter)) {
     Builder.CreateAtomicRMW(AtomicRMWInst::Add, Addr, Inc->getStep(),
                             AtomicOrdering::Monotonic);
   } else {
@@ -844,8 +851,6 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
   CounterPtr->setAlignment(Align(8));
   MaybeSetComdat(CounterPtr);
   CounterPtr->setLinkage(Linkage);
-  CounterPtr->setMetadata(LLVMContext::MD_associated,
-                          MDNode::get(Ctx, ValueAsMetadata::get(CounterPtr)));
 
   auto *Int8PtrTy = Type::getInt8PtrTy(Ctx);
   // Allocate statically the array of pointers to value profile nodes for
@@ -867,8 +872,6 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
           getInstrProfSectionName(IPSK_vals, TT.getObjectFormat()));
       ValuesVar->setAlignment(Align(8));
       MaybeSetComdat(ValuesVar);
-      ValuesVar->setMetadata(LLVMContext::MD_associated,
-                             MDNode::get(Ctx, ValueAsMetadata::get(CounterPtr)));
       ValuesPtrExpr =
           ConstantExpr::getBitCast(ValuesVar, Type::getInt8PtrTy(Ctx));
     }
@@ -903,8 +906,6 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
   Data->setAlignment(Align(INSTR_PROF_DATA_ALIGNMENT));
   MaybeSetComdat(Data);
   Data->setLinkage(Linkage);
-  Data->setMetadata(LLVMContext::MD_associated,
-                    MDNode::get(Ctx, ValueAsMetadata::get(CounterPtr)));
 
   PD.RegionCounters = CounterPtr;
   PD.DataVar = Data;

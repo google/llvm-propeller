@@ -22,14 +22,13 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 
-extern cl::opt<bool> TreatUnknownAsCold;
-static cl::opt<bool> HotFunctionsOnly(
-    "mfs-hot-funcs-only", cl::Hidden,
-    cl::desc("Split hot functions only."),
-    cl::init(true));
+static cl::opt<bool> HotFunctionsOnly("mfs-hot-funcs-only", cl::Hidden,
+                                      cl::desc("Split hot functions only."),
+                                      cl::init(true));
 
 namespace {
 
@@ -66,10 +65,10 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     return false;
   }
 
-  // We don't want to proceed further for cold functions 
+  // We don't want to proceed further for cold functions
   // (or functions of unknown hotness).
   Optional<StringRef> SectionPrefix = MF.getFunction().getSectionPrefix();
-  if (!SectionPrefix.hasValue() || 
+  if (!SectionPrefix.hasValue() ||
       SectionPrefix.getValue().equals(".unlikely") ||
       SectionPrefix.getValue().equals(".unknown")) {
     return false;
@@ -81,12 +80,14 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     return false;
   }
 
-
   MF.RenumberBlocks();
   for (auto &MBB : MF) {
-    if (!MBB.pred_empty() && isColdBlock(MBB, PSI, MBFI)) {
-      MBB.setSectionID(TreatUnknownAsCold ? MBBSectionID::ColdSectionID
-                                          : MBBSectionID::UnknownSectionID);
+    // We do not split out the entry block or eh pads even if they are cold.
+    if (MBB.pred_empty() || MBB.isEHPad()) {
+      continue;
+    }
+    if (isColdBlock(MBB, PSI, MBFI)) {
+      MBB.setSectionID(MBBSectionID::ColdSectionID);
     }
   }
 

@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "LLParser.h"
+#include "LLToken.h"
+#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
@@ -22,6 +24,7 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Comdat.h"
+#include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -1638,7 +1641,7 @@ bool LLParser::ParseOptionalParamAttrs(AttrBuilder &B) {
     }
     case lltok::kw_align: {
       MaybeAlign Alignment;
-      if (ParseOptionalAlignment(Alignment))
+      if (ParseOptionalAlignment(Alignment, true))
         return true;
       B.addAlignmentAttr(Alignment);
       continue;
@@ -2124,14 +2127,26 @@ bool LLParser::ParseOptionalFunctionMetadata(Function &F) {
 /// ParseOptionalAlignment
 ///   ::= /* empty */
 ///   ::= 'align' 4
-bool LLParser::ParseOptionalAlignment(MaybeAlign &Alignment) {
+bool LLParser::ParseOptionalAlignment(MaybeAlign &Alignment, bool AllowParens) {
   Alignment = None;
   if (!EatIfPresent(lltok::kw_align))
     return false;
   LocTy AlignLoc = Lex.getLoc();
   uint32_t Value = 0;
+
+  LocTy ParenLoc = Lex.getLoc();
+  bool HaveParens = false;
+  if (AllowParens) {
+    if (EatIfPresent(lltok::lparen))
+      HaveParens = true;
+  }
+
   if (ParseUInt32(Value))
     return true;
+
+  if (HaveParens && !EatIfPresent(lltok::rparen))
+    return Error(ParenLoc, "expected ')'");
+
   if (!isPowerOf2_32(Value))
     return Error(AlignLoc, "alignment is not a power of two");
   if (Value > Value::MaximumAlignment)
@@ -3647,9 +3662,10 @@ bool LLParser::ParseValID(ValID &ID, PerFunctionState *PFS) {
             ExplicitTypeLoc,
             "explicit pointee type doesn't match operand's pointee type");
 
-      unsigned GEPWidth = BaseType->isVectorTy()
-                              ? cast<VectorType>(BaseType)->getNumElements()
-                              : 0;
+      unsigned GEPWidth =
+          BaseType->isVectorTy()
+              ? cast<FixedVectorType>(BaseType)->getNumElements()
+              : 0;
 
       ArrayRef<Constant *> Indices(Elts.begin() + 1, Elts.end());
       for (Constant *Val : Indices) {
@@ -3657,7 +3673,7 @@ bool LLParser::ParseValID(ValID &ID, PerFunctionState *PFS) {
         if (!ValTy->isIntOrIntVectorTy())
           return Error(ID.Loc, "getelementptr index must be an integer");
         if (auto *ValVTy = dyn_cast<VectorType>(ValTy)) {
-          unsigned ValNumEl = ValVTy->getNumElements();
+          unsigned ValNumEl = cast<FixedVectorType>(ValVTy)->getNumElements();
           if (GEPWidth && (ValNumEl != GEPWidth))
             return Error(
                 ID.Loc,
@@ -6961,9 +6977,11 @@ bool LLParser::ParseCall(Instruction *&Inst, PerFunctionState &PFS,
   CI->setTailCallKind(TCK);
   CI->setCallingConv(CC);
   if (FMF.any()) {
-    if (!isa<FPMathOperator>(CI))
+    if (!isa<FPMathOperator>(CI)) {
+      CI->deleteValue();
       return Error(CallLoc, "fast-math-flags specified for call without "
                    "floating-point scalar or vector return type");
+    }
     CI->setFastMathFlags(FMF);
   }
   CI->setAttributes(PAL);
@@ -8209,7 +8227,8 @@ bool LLParser::ParseGVEntry(unsigned ID) {
 /// FunctionSummary
 ///   ::= 'function' ':' '(' 'module' ':' ModuleReference ',' GVFlags
 ///         ',' 'insts' ':' UInt32 [',' OptionalFFlags]? [',' OptionalCalls]?
-///         [',' OptionalTypeIdInfo]? [',' OptionalRefs]? ')'
+///         [',' OptionalTypeIdInfo]? [',' OptionalParamAccesses]?
+///         [',' OptionalRefs]? ')'
 bool LLParser::ParseFunctionSummary(std::string Name, GlobalValue::GUID GUID,
                                     unsigned ID) {
   assert(Lex.getKind() == lltok::kw_function);
@@ -8222,6 +8241,7 @@ bool LLParser::ParseFunctionSummary(std::string Name, GlobalValue::GUID GUID,
   unsigned InstCount;
   std::vector<FunctionSummary::EdgeTy> Calls;
   FunctionSummary::TypeIdInfo TypeIdInfo;
+  std::vector<FunctionSummary::ParamAccess> ParamAccesses;
   std::vector<ValueInfo> Refs;
   // Default is all-zeros (conservative values).
   FunctionSummary::FFlags FFlags = {};
@@ -8253,6 +8273,10 @@ bool LLParser::ParseFunctionSummary(std::string Name, GlobalValue::GUID GUID,
       if (ParseOptionalRefs(Refs))
         return true;
       break;
+    case lltok::kw_params:
+      if (ParseOptionalParamAccesses(ParamAccesses))
+        return true;
+      break;
     default:
       return Error(Lex.getLoc(), "expected optional function summary field");
     }
@@ -8267,7 +8291,8 @@ bool LLParser::ParseFunctionSummary(std::string Name, GlobalValue::GUID GUID,
       std::move(TypeIdInfo.TypeTestAssumeVCalls),
       std::move(TypeIdInfo.TypeCheckedLoadVCalls),
       std::move(TypeIdInfo.TypeTestAssumeConstVCalls),
-      std::move(TypeIdInfo.TypeCheckedLoadConstVCalls));
+      std::move(TypeIdInfo.TypeCheckedLoadConstVCalls),
+      std::move(ParamAccesses));
 
   FS->setModulePath(ModulePath);
 
@@ -8616,13 +8641,133 @@ bool LLParser::ParseOptionalVTableFuncs(VTableFuncList &VTableFuncs) {
   return false;
 }
 
+/// ParamNo := 'param' ':' UInt64
+bool LLParser::ParseParamNo(uint64_t &ParamNo) {
+  if (ParseToken(lltok::kw_param, "expected 'param' here") ||
+      ParseToken(lltok::colon, "expected ':' here") || ParseUInt64(ParamNo))
+    return true;
+  return false;
+}
+
+/// ParamAccessOffset := 'offset' ':' '[' APSINTVAL ',' APSINTVAL ']'
+bool LLParser::ParseParamAccessOffset(ConstantRange &Range) {
+  APSInt Lower;
+  APSInt Upper;
+  auto ParseAPSInt = [&](APSInt &Val) {
+    if (Lex.getKind() != lltok::APSInt)
+      return TokError("expected integer");
+    Val = Lex.getAPSIntVal();
+    Val = Val.extOrTrunc(FunctionSummary::ParamAccess::RangeWidth);
+    Val.setIsSigned(true);
+    Lex.Lex();
+    return false;
+  };
+  if (ParseToken(lltok::kw_offset, "expected 'offset' here") ||
+      ParseToken(lltok::colon, "expected ':' here") ||
+      ParseToken(lltok::lsquare, "expected '[' here") || ParseAPSInt(Lower) ||
+      ParseToken(lltok::comma, "expected ',' here") || ParseAPSInt(Upper) ||
+      ParseToken(lltok::rsquare, "expected ']' here"))
+    return true;
+
+  ++Upper;
+  Range =
+      (Lower == Upper && !Lower.isMaxValue())
+          ? ConstantRange::getEmpty(FunctionSummary::ParamAccess::RangeWidth)
+          : ConstantRange(Lower, Upper);
+
+  return false;
+}
+
+/// ParamAccessCall
+///   := '(' 'callee' ':' GVReference ',' ParamNo ',' ParamAccessOffset ')'
+bool LLParser::ParseParamAccessCall(FunctionSummary::ParamAccess::Call &Call) {
+  if (ParseToken(lltok::lparen, "expected '(' here") ||
+      ParseToken(lltok::kw_callee, "expected 'callee' here") ||
+      ParseToken(lltok::colon, "expected ':' here"))
+    return true;
+
+  unsigned GVId;
+  ValueInfo VI;
+  if (ParseGVReference(VI, GVId))
+    return true;
+
+  Call.Callee = VI.getGUID();
+
+  if (ParseToken(lltok::comma, "expected ',' here") ||
+      ParseParamNo(Call.ParamNo) ||
+      ParseToken(lltok::comma, "expected ',' here") ||
+      ParseParamAccessOffset(Call.Offsets))
+    return true;
+
+  if (ParseToken(lltok::rparen, "expected ')' here"))
+    return true;
+
+  return false;
+}
+
+/// ParamAccess
+///   := '(' ParamNo ',' ParamAccessOffset [',' OptionalParamAccessCalls]? ')'
+/// OptionalParamAccessCalls := '(' Call [',' Call]* ')'
+bool LLParser::ParseParamAccess(FunctionSummary::ParamAccess &Param) {
+  if (ParseToken(lltok::lparen, "expected '(' here") ||
+      ParseParamNo(Param.ParamNo) ||
+      ParseToken(lltok::comma, "expected ',' here") ||
+      ParseParamAccessOffset(Param.Use))
+    return true;
+
+  if (EatIfPresent(lltok::comma)) {
+    if (ParseToken(lltok::kw_calls, "expected 'calls' here") ||
+        ParseToken(lltok::colon, "expected ':' here") ||
+        ParseToken(lltok::lparen, "expected '(' here"))
+      return true;
+    do {
+      FunctionSummary::ParamAccess::Call Call;
+      if (ParseParamAccessCall(Call))
+        return true;
+      Param.Calls.push_back(Call);
+    } while (EatIfPresent(lltok::comma));
+
+    if (ParseToken(lltok::rparen, "expected ')' here"))
+      return true;
+  }
+
+  if (ParseToken(lltok::rparen, "expected ')' here"))
+    return true;
+
+  return false;
+}
+
+/// OptionalParamAccesses
+///   := 'params' ':' '(' ParamAccess [',' ParamAccess]* ')'
+bool LLParser::ParseOptionalParamAccesses(
+    std::vector<FunctionSummary::ParamAccess> &Params) {
+  assert(Lex.getKind() == lltok::kw_params);
+  Lex.Lex();
+
+  if (ParseToken(lltok::colon, "expected ':' here") ||
+      ParseToken(lltok::lparen, "expected '(' here"))
+    return true;
+
+  do {
+    FunctionSummary::ParamAccess ParamAccess;
+    if (ParseParamAccess(ParamAccess))
+      return true;
+    Params.push_back(ParamAccess);
+  } while (EatIfPresent(lltok::comma));
+
+  if (ParseToken(lltok::rparen, "expected ')' here"))
+    return true;
+
+  return false;
+}
+
 /// OptionalRefs
 ///   := 'refs' ':' '(' GVReference [',' GVReference]* ')'
 bool LLParser::ParseOptionalRefs(std::vector<ValueInfo> &Refs) {
   assert(Lex.getKind() == lltok::kw_refs);
   Lex.Lex();
 
-  if (ParseToken(lltok::colon, "expected ':' in refs") |
+  if (ParseToken(lltok::colon, "expected ':' in refs") ||
       ParseToken(lltok::lparen, "expected '(' in refs"))
     return true;
 

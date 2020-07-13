@@ -53,7 +53,7 @@ Optional<uint64_t>
 AllocaInst::getAllocationSizeInBits(const DataLayout &DL) const {
   uint64_t Size = DL.getTypeAllocSizeInBits(getAllocatedType());
   if (isArrayAllocation()) {
-    auto C = dyn_cast<ConstantInt>(getArraySize());
+    auto *C = dyn_cast<ConstantInt>(getArraySize());
     if (!C)
       return None;
     Size *= C->getZExtValue();
@@ -330,13 +330,13 @@ bool CallBase::paramHasAttr(unsigned ArgNo, Attribute::AttrKind Kind) const {
 
 bool CallBase::hasFnAttrOnCalledFunction(Attribute::AttrKind Kind) const {
   if (const Function *F = getCalledFunction())
-    return F->getAttributes().hasAttribute(AttributeList::FunctionIndex, Kind);
+    return F->getAttributes().hasFnAttribute(Kind);
   return false;
 }
 
 bool CallBase::hasFnAttrOnCalledFunction(StringRef Kind) const {
   if (const Function *F = getCalledFunction())
-    return F->getAttributes().hasAttribute(AttributeList::FunctionIndex, Kind);
+    return F->getAttributes().hasFnAttribute(Kind);
   return false;
 }
 
@@ -960,7 +960,8 @@ CleanupReturnInst::CleanupReturnInst(const CleanupReturnInst &CRI)
                   OperandTraits<CleanupReturnInst>::op_end(this) -
                       CRI.getNumOperands(),
                   CRI.getNumOperands()) {
-  setInstructionSubclassData(CRI.getSubclassDataFromInstruction());
+  setSubclassData<Instruction::OpaqueField>(
+      CRI.getSubclassData<Instruction::OpaqueField>());
   Op<0>() = CRI.Op<0>();
   if (CRI.hasUnwindDest())
     Op<1>() = CRI.Op<1>();
@@ -968,7 +969,7 @@ CleanupReturnInst::CleanupReturnInst(const CleanupReturnInst &CRI)
 
 void CleanupReturnInst::init(Value *CleanupPad, BasicBlock *UnwindBB) {
   if (UnwindBB)
-    setInstructionSubclassData(getSubclassDataFromInstruction() | 1);
+    setSubclassData<UnwindDestField>(true);
 
   Op<0>() = CleanupPad;
   if (UnwindBB)
@@ -1072,7 +1073,7 @@ void CatchSwitchInst::init(Value *ParentPad, BasicBlock *UnwindDest,
 
   Op<0>() = ParentPad;
   if (UnwindDest) {
-    setInstructionSubclassData(getSubclassDataFromInstruction() | 1);
+    setSubclassData<UnwindDestField>(true);
     setUnwindDest(UnwindDest);
   }
 }
@@ -1296,13 +1297,6 @@ AllocaInst::AllocaInst(Type *Ty, unsigned AddrSpace, Value *ArraySize,
   setName(Name);
 }
 
-void AllocaInst::setAlignment(Align Align) {
-  assert(Align <= MaximumAlignment &&
-         "Alignment is greater than MaximumAlignment!");
-  setInstructionSubclassData((getSubclassDataFromInstruction() & ~31) |
-                             encode(Align));
-  assert(getAlignment() == Align.value() && "Alignment representation error!");
-}
 
 bool AllocaInst::isArrayAllocation() const {
   if (ConstantInt *CI = dyn_cast<ConstantInt>(getOperand(0)))
@@ -1394,14 +1388,6 @@ LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
   setName(Name);
 }
 
-void LoadInst::setAlignment(Align Align) {
-  assert(Align <= MaximumAlignment &&
-         "Alignment is greater than MaximumAlignment!");
-  setInstructionSubclassData((getSubclassDataFromInstruction() & ~(31 << 1)) |
-                             (encode(Align) << 1));
-  assert(getAlign() == Align && "Alignment representation error!");
-}
-
 //===----------------------------------------------------------------------===//
 //                           StoreInst Implementation
 //===----------------------------------------------------------------------===//
@@ -1473,13 +1459,6 @@ StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile, Align Align,
   AssertOK();
 }
 
-void StoreInst::setAlignment(Align Alignment) {
-  assert(Alignment <= MaximumAlignment &&
-         "Alignment is greater than MaximumAlignment!");
-  setInstructionSubclassData((getSubclassDataFromInstruction() & ~(31 << 1)) |
-                             (encode(Alignment) << 1));
-  assert(getAlign() == Alignment && "Alignment representation error!");
-}
 
 //===----------------------------------------------------------------------===//
 //                       AtomicCmpXchgInst Implementation
@@ -1540,6 +1519,13 @@ AtomicCmpXchgInst::AtomicCmpXchgInst(Value *Ptr, Value *Cmp, Value *NewVal,
           AtomicCmpXchg, OperandTraits<AtomicCmpXchgInst>::op_begin(this),
           OperandTraits<AtomicCmpXchgInst>::operands(this), InsertAtEnd) {
   Init(Ptr, Cmp, NewVal, SuccessOrdering, FailureOrdering, SSID);
+}
+
+Align AtomicCmpXchgInst::getAlign() const {
+  // The default here is to assume it has NATURAL alignment, not
+  // DataLayout-specified alignment.
+  const DataLayout &DL = getModule()->getDataLayout();
+  return Align(DL.getTypeStoreSize(getCompareOperand()->getType()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1623,6 +1609,13 @@ StringRef AtomicRMWInst::getOperationName(BinOp Op) {
   llvm_unreachable("invalid atomicrmw operation");
 }
 
+Align AtomicRMWInst::getAlign() const {
+  // The default here is to assume it has NATURAL alignment, not
+  // DataLayout-specified alignment.
+  const DataLayout &DL = getModule()->getDataLayout();
+  return Align(DL.getTypeStoreSize(getValOperand()->getType()));
+}
+
 //===----------------------------------------------------------------------===//
 //                       FenceInst Implementation
 //===----------------------------------------------------------------------===//
@@ -1668,29 +1661,29 @@ GetElementPtrInst::GetElementPtrInst(const GetElementPtrInst &GEPI)
 }
 
 Type *GetElementPtrInst::getTypeAtIndex(Type *Ty, Value *Idx) {
-  if (auto Struct = dyn_cast<StructType>(Ty)) {
+  if (auto *Struct = dyn_cast<StructType>(Ty)) {
     if (!Struct->indexValid(Idx))
       return nullptr;
     return Struct->getTypeAtIndex(Idx);
   }
   if (!Idx->getType()->isIntOrIntVectorTy())
     return nullptr;
-  if (auto Array = dyn_cast<ArrayType>(Ty))
+  if (auto *Array = dyn_cast<ArrayType>(Ty))
     return Array->getElementType();
-  if (auto Vector = dyn_cast<VectorType>(Ty))
+  if (auto *Vector = dyn_cast<VectorType>(Ty))
     return Vector->getElementType();
   return nullptr;
 }
 
 Type *GetElementPtrInst::getTypeAtIndex(Type *Ty, uint64_t Idx) {
-  if (auto Struct = dyn_cast<StructType>(Ty)) {
+  if (auto *Struct = dyn_cast<StructType>(Ty)) {
     if (Idx >= Struct->getNumElements())
       return nullptr;
     return Struct->getElementType(Idx);
   }
-  if (auto Array = dyn_cast<ArrayType>(Ty))
+  if (auto *Array = dyn_cast<ArrayType>(Ty))
     return Array->getElementType();
-  if (auto Vector = dyn_cast<VectorType>(Ty))
+  if (auto *Vector = dyn_cast<VectorType>(Ty))
     return Vector->getElementType();
   return nullptr;
 }
@@ -2053,8 +2046,8 @@ static bool isSingleSourceMaskImpl(ArrayRef<int> Mask, int NumOpElts) {
     if (UsesLHS && UsesRHS)
       return false;
   }
-  assert((UsesLHS ^ UsesRHS) && "Should have selected from exactly 1 source");
-  return true;
+  // Allow for degenerate case: completely undef mask means neither source is used.
+  return UsesLHS || UsesRHS;
 }
 
 bool ShuffleVectorInst::isSingleSourceMask(ArrayRef<int> Mask) {
@@ -2182,6 +2175,8 @@ bool ShuffleVectorInst::isExtractSubvectorMask(ArrayRef<int> Mask,
 }
 
 bool ShuffleVectorInst::isIdentityWithPadding() const {
+  if (isa<UndefValue>(Op<2>()))
+    return false;
   int NumOpElts = cast<VectorType>(Op<0>()->getType())->getNumElements();
   int NumMaskElts = cast<VectorType>(getType())->getNumElements();
   if (NumMaskElts <= NumOpElts)
@@ -2201,8 +2196,16 @@ bool ShuffleVectorInst::isIdentityWithPadding() const {
 }
 
 bool ShuffleVectorInst::isIdentityWithExtract() const {
-  int NumOpElts = cast<VectorType>(Op<0>()->getType())->getNumElements();
-  int NumMaskElts = getType()->getNumElements();
+  if (isa<UndefValue>(Op<2>()))
+    return false;
+
+  // FIXME: Not currently possible to express a shuffle mask for a scalable
+  // vector for this case
+  if (isa<ScalableVectorType>(getType()))
+    return false;
+
+  int NumOpElts = cast<FixedVectorType>(Op<0>()->getType())->getNumElements();
+  int NumMaskElts = cast<FixedVectorType>(getType())->getNumElements();
   if (NumMaskElts >= NumOpElts)
     return false;
 
@@ -2211,7 +2214,8 @@ bool ShuffleVectorInst::isIdentityWithExtract() const {
 
 bool ShuffleVectorInst::isConcat() const {
   // Vector concatenation is differentiated from identity with padding.
-  if (isa<UndefValue>(Op<0>()) || isa<UndefValue>(Op<1>()))
+  if (isa<UndefValue>(Op<0>()) || isa<UndefValue>(Op<1>()) ||
+      isa<UndefValue>(Op<2>()))
     return false;
 
   int NumOpElts = cast<VectorType>(Op<0>()->getType())->getNumElements();
