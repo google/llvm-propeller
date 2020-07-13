@@ -434,18 +434,6 @@ MCSymbol *EHStreamer::emitExceptionTable() {
   SmallVector<CallSiteRange, 64> CallSiteRanges;
   computeCallSiteTable(CallSites, CallSiteRanges, LandingPads, FirstActions);
 
-  // If the call-site range vector is empty, add a single range containing all
-  // the call-sites.
-  if (CallSiteRanges.empty()) {
-    CallSiteRange CSRange;
-    CSRange.FragmentBeginLabel = Asm->getFunctionBegin();
-    CSRange.FragmentEndLabel = Asm->getFunctionEnd();
-    CSRange.ExceptionLabel = Asm->getCurExceptionSym();
-    CSRange.CallSiteBeginIdx = 0;
-    CSRange.CallSiteEndIdx = CallSites.size();
-    CallSiteRanges.push_back(CSRange);
-  }
-
   bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
   bool IsWasm = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::Wasm;
   unsigned CallSiteEncoding =
@@ -586,13 +574,16 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     // A missing entry in the call-site table indicates that a call is not
     // supposed to throw.
 
-    CallSiteRange *LandingPadRange = &CallSiteRanges.back();
-
-    // Find the landing-pad range if more than one call-site ranges exist.
-    for (auto &CSRange : CallSiteRanges) {
-      if (CSRange.IsLPRange) {
-        LandingPadRange = &CSRange;
-        break;
+    // Find the call-site range which includes the landing pads.
+    CallSiteRange *LandingPadRange = nullptr;
+    if (CallSiteRanges.size() == 1) {
+      LandingPadRange = &CallSiteRanges.back();
+    } else {
+      for (auto &CSRange : CallSiteRanges) {
+        if (CSRange.IsLPRange) {
+          LandingPadRange = &CSRange;
+          break;
+        }
       }
     }
 
@@ -618,9 +609,9 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       // Emit the LSDA header.
       // If only one call-site range exists, LPStart is omitted as it is the
       // same as the function entry.
-      if (CallSiteRanges.size() == 1)
+      if (CallSiteRanges.size() == 1) {
         Asm->emitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
-      else {
+      } else {
         // For more than one call-site ranges, LPStart must be explicitly
         // specified.
         Asm->emitEncodingByte(dwarf::DW_EH_PE_absptr, "@LPStart");
@@ -648,9 +639,9 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       Asm->emitLabelDifferenceAsULEB128(CstEndLabel, CstBeginLabel);
       Asm->OutStreamer->emitLabel(CstBeginLabel);
 
-      for (auto callSiteIdx = CSRange.CallSiteBeginIdx;
-           callSiteIdx != CSRange.CallSiteEndIdx; ++callSiteIdx) {
-        const CallSiteEntry &S = CallSites[callSiteIdx];
+      for (auto CallSiteIdx = CSRange.CallSiteBeginIdx;
+           CallSiteIdx != CSRange.CallSiteEndIdx; ++CallSiteIdx) {
+        const CallSiteEntry &S = CallSites[CallSiteIdx];
 
         MCSymbol *EHFuncBeginSym = CSRange.FragmentBeginLabel;
         MCSymbol *EHFuncEndSym = CSRange.FragmentEndLabel;
