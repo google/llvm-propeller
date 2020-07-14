@@ -55,10 +55,10 @@ MachineBasicBlock::MachineBasicBlock(MachineFunction &MF, const BasicBlock *B)
 MachineBasicBlock::~MachineBasicBlock() {
 }
 
-unsigned MachineBasicBlock::getBBInfoMetadata() {
+unsigned MachineBasicBlock::getBBInfoMetadata() const {
   const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
   return ((unsigned)isReturnBlock()) |
-         ((!empty() && TII->isTailCall(back())) << 1) | (canFallThrough() << 2);
+         ((!empty() && TII->isTailCall(back())) << 1) | (isEHPad() << 2);
 }
 
 /// Return the MCSymbol for this basic block.
@@ -104,6 +104,19 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     }
   }
   return CachedMCSymbol;
+}
+
+
+MCSymbol *MachineBasicBlock::getEndSymbol() const {
+  if (!CachedEndMCSymbol) {
+    const MachineFunction *MF = getParent();
+    MCContext &Ctx = MF->getContext();
+    auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
+    CachedEndMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB_END" +
+                                             Twine(MF->getFunctionNumber()) +
+                                             "_" + Twine(getNumber()));
+  }
+  return CachedEndMCSymbol;
 }
 
 

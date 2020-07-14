@@ -1030,12 +1030,12 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
                              MCConstantExpr::create(FrameOffset, OutContext));
 }
 
-void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
+void AsmPrinter::emitBBInfoSection(const MachineFunction &MF) {
   if (!EmitBBInfoSection)
     return;
 
   MCSection *BBInfoSection =
-      getObjFileLowering().getBBInfoSection(*getCurrentSection());
+      getObjFileLowering().getBBInfoSection(*MF.getSection());
   if (!BBInfoSection)
     return;
 
@@ -1043,18 +1043,17 @@ void AsmPrinter::emitBBInfoSection(MachineFunction &MF) {
 
   OutStreamer->PushSection();
   OutStreamer->SwitchSection(BBInfoSection);
-  // Uncomment For debug purposes
-  // MCSymbol *BBInfoSymbol = OutContext.getOrCreateSymbol(MF.getName() +
-  // Twine(".bb_info")); OutStreamer->emitLabel(BBInfoSymbol);
-
   OutStreamer->emitSymbolValue(FunctionSymbol, getPointerSize());
-  OutStreamer->emitULEB128IntValue(MF.getNumBlockIDs());
+  // Emit the total number of basic blocks in this function.
+  OutStreamer->emitULEB128IntValue(MF.size());
+  // Emit BB Information for each basic block in the funciton.
   for (auto &MBB : MF) {
+    OutStreamer->emitULEB128IntValue(MBB.getNumber());
     const MCSymbol *MBBBeginSymbol =
         &MBB == &MF.front() ? FunctionSymbol : MBB.getSymbol();
-    OutStreamer->emitULEB128IntValue(MBB.getBBInfoMetadata());
     emitLabelDifferenceAsULEB128(MBBBeginSymbol, FunctionSymbol);
     emitLabelDifferenceAsULEB128(MBB.getEndSymbol(), MBBBeginSymbol);
+    OutStreamer->emitULEB128IntValue(MBB.getBBInfoMetadata());
   }
   OutStreamer->PopSection();
 }
@@ -1220,26 +1219,21 @@ void AsmPrinter::emitFunctionBody() {
       }
     }
 
-    // We need a temporary symbol for the end of this basic block, if either we
+    // We must emit temporary symbol for the end of this basic block, if either we
     // have BBLabels enabled and we want to emit size directive for the BBs, or
     // if this basic blocks marks the end of a section (except the section
     // containing the entry basic block as the end symbol for that section is
     // CurrentFnEnd).
-    MCSymbol *CurrentBBEnd = nullptr;
     if ((MAI->hasDotTypeDotSizeDirective() && MF->hasBBLabels()) ||
         EmitBBInfoSection ||
-        (MBB.isEndSection() && !MBB.sameSection(&MF->front()))) {
-      CurrentBBEnd = OutContext.createTempSymbol();
-      OutStreamer->emitLabel(CurrentBBEnd);
-      MBB.setEndSymbol(CurrentBBEnd);
-    }
+        (MBB.isEndSection() && !MBB.sameSection(&MF->front())))
+      OutStreamer->emitLabel(MBB.getEndSymbol());
 
     // Helper for emitting the size directive associated with a basic block
     // symbol.
     auto emitELFSizeDirective = [&](MCSymbol *SymForSize) {
-      assert(CurrentBBEnd && "Basicblock end symbol not set!");
       const MCExpr *SizeExp = MCBinaryExpr::createSub(
-          MCSymbolRefExpr::create(CurrentBBEnd, OutContext),
+          MCSymbolRefExpr::create(MBB.getEndSymbol(), OutContext),
           MCSymbolRefExpr::create(SymForSize, OutContext), OutContext);
       OutStreamer->emitELFSize(SymForSize, SizeExp);
     };
@@ -1256,7 +1250,7 @@ void AsmPrinter::emitFunctionBody() {
         if (MAI->hasDotTypeDotSizeDirective())
           emitELFSizeDirective(CurrentSectionBeginSym);
         MBBSectionRanges[MBB.getSectionIDNum()] =
-            MBBSectionRange{CurrentSectionBeginSym, CurrentBBEnd};
+            MBBSectionRange{CurrentSectionBeginSym, MBB.getEndSymbol()};
       }
       // If this is the end of the section, nullify the exception symbol to
       // ensure a new symbol is created for the next basicblock section.
