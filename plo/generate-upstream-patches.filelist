@@ -143,6 +143,12 @@ declare ALL_FILES=(
 	lld-base         lld/test/ELF/bb-sections-pc32reloc.s
 # LLVM patch begins here.
 # Base Patch files here:
+	bb-end-labels llvm/include/llvm/CodeGen/MachineBasicBlock.h
+	bb-end-labels llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
+        bb-end-labels llvm/lib/CodeGen/MachineBasicBlock.cpp
+        bb-end-labels llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
+        bb-end-labels llvm/test/CodeGen/X86/basicblock-sections-listbb.ll
+        bb-end-labels llvm/test/CodeGen/X86/basicblock-sections.ll
         bbclusters           llvm/include/llvm/CodeGen/AsmPrinter.h
         bbclusters           llvm/include/llvm/CodeGen/MachineBasicBlock.h
         bbclusters           llvm/include/llvm/CodeGen/MachineFunction.h
