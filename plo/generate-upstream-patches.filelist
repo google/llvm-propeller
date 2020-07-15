@@ -233,6 +233,8 @@ declare ALL_FILES=(
         #base_reloc       llvm/lib/Target/X86/MCTargetDesc/X86ELFObjectWriter.cpp
         exception        llvm/test/CodeGen/X86/gcc_except_table_bb_sections.ll
 	exception        llvm/test/CodeGen/X86/gcc_except_table_bb_sections_ehpad_groups_with_cold.ll
+	bb-info          llvm/test/CodeGen/X86/bb-info-section-function-sections.ll
+	bb-info          llvm/test/CodeGen/X86/bb-info-section.ll
 #
         /dev/null        lld/CMakeLists.txt
         /dev/null        lld/tools/report-size/CMakeLists.txt

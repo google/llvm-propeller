@@ -1219,9 +1219,9 @@ void AsmPrinter::emitFunctionBody() {
       }
     }
 
-    // We must emit temporary symbol for the end of this basic block, if either we
-    // have BBLabels enabled and we want to emit size directive for the BBs, or
-    // if this basic blocks marks the end of a section (except the section
+    // We must emit temporary symbol for the end of this basic block, if either
+    // we have BBLabels enabled and we want to emit size directive for the BBs,
+    // or if this basic blocks marks the end of a section (except the section
     // containing the entry basic block as the end symbol for that section is
     // CurrentFnEnd).
     if ((MAI->hasDotTypeDotSizeDirective() && MF->hasBBLabels()) ||
