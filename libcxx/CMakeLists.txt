@@ -111,6 +111,8 @@ option(LIBCXX_ENABLE_PARALLEL_ALGORITHMS "Enable the parallel algorithms library
 option(LIBCXX_TEST_GDB_PRETTY_PRINTERS "Test gdb pretty printers." OFF)
 set(LIBCXX_TEST_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/test/lit.site.cfg.in" CACHE STRING
     "The Lit testing configuration to use when running the tests.")
+set(LIBCXX_TEST_PARAMS "" CACHE STRING
+    "A list of parameters to run the Lit test suite with.")
 
 # Benchmark options -----------------------------------------------------------
 option(LIBCXX_INCLUDE_BENCHMARKS "Build the libc++ benchmarks and their dependencies" ON)
@@ -427,6 +429,7 @@ elseif(LLVM_LIBRARY_OUTPUT_INTDIR)
   set(LIBCXX_INSTALL_LIBRARY_DIR lib${LIBCXX_LIBDIR_SUFFIX})
 else()
   set(LIBCXX_LIBRARY_DIR ${CMAKE_BINARY_DIR}/lib${LIBCXX_LIBDIR_SUFFIX})
+  set(LIBCXX_HEADER_DIR  ${CMAKE_BINARY_DIR})
   set(LIBCXX_INSTALL_LIBRARY_DIR lib${LIBCXX_LIBDIR_SUFFIX})
 endif()
 
@@ -872,22 +875,11 @@ if (DEFINED WIN32 AND LIBCXX_ENABLE_STATIC AND NOT LIBCXX_ENABLE_SHARED)
   config_define(ON _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS)
 endif()
 
-# We generate a __config_site header (see libcxx/include/CMakeLists.txt) and
-# we make sure to include it when building the library.
-function(cxx_add_config_site target)
-  if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC" OR "${CMAKE_CXX_SIMULATE_ID}" STREQUAL "MSVC")
-    target_compile_options(${target} PUBLIC /FI "${LIBCXX_BINARY_DIR}/__config_site")
-  else()
-    target_compile_options(${target} PUBLIC -include "${LIBCXX_BINARY_DIR}/__config_site")
-  endif()
-endfunction()
-
 # Setup all common build flags =================================================
 function(cxx_add_common_build_flags target)
   cxx_add_basic_build_flags(${target})
   cxx_add_warning_flags(${target})
   cxx_add_windows_flags(${target})
-  cxx_add_config_site(${target})
   cxx_add_exception_flags(${target})
   cxx_add_rtti_flags(${target})
   cxx_add_module_flags(${target})
@@ -897,7 +889,6 @@ endfunction()
 #===============================================================================
 # Setup Source Code And Tests
 #===============================================================================
-include_directories(include)
 add_subdirectory(include)
 add_subdirectory(src)
 

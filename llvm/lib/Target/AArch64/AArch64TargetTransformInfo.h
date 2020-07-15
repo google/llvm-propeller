@@ -153,16 +153,19 @@ public:
   void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
                                TTI::UnrollingPreferences &UP);
 
+  void getPeelingPreferences(Loop *L, ScalarEvolution &SE,
+                             TTI::PeelingPreferences &PP);
+
   Value *getOrCreateResultFromMemIntrinsic(IntrinsicInst *Inst,
                                            Type *ExpectedType);
 
   bool getTgtMemIntrinsic(IntrinsicInst *Inst, MemIntrinsicInfo &Info);
 
   bool isLegalMaskedLoadStore(Type *DataType, Align Alignment) {
-    if (!isa<VectorType>(DataType) || !ST->hasSVE())
+    if (!isa<ScalableVectorType>(DataType) || !ST->hasSVE())
       return false;
 
-    Type *Ty = cast<VectorType>(DataType)->getElementType();
+    Type *Ty = cast<ScalableVectorType>(DataType)->getElementType();
     if (Ty->isBFloatTy() || Ty->isHalfTy() ||
         Ty->isFloatTy() || Ty->isDoubleTy())
       return true;

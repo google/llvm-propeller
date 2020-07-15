@@ -1,12 +1,12 @@
-; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=asm --frame-pointer=all -o - | FileCheck --check-prefix=SECTIONS_CFI %s
-; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=asm --frame-pointer=none -o - | FileCheck --check-prefix=SECTIONS_NOFP_CFI %s
-; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64-unknown-linux-gnu -filetype=obj --frame-pointer=all -o - | llvm-dwarfdump --debug-frame  - | FileCheck --check-prefix=DEBUG_FRAME %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64 -filetype=asm --frame-pointer=all -o - | FileCheck --check-prefix=SECTIONS_CFI %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64 -filetype=asm --frame-pointer=none -o - | FileCheck --check-prefix=SECTIONS_NOFP_CFI %s
+; RUN: llc -O0 %s --basicblock-sections=all -mtriple=x86_64 -filetype=obj --frame-pointer=all -o - | llvm-dwarfdump --eh-frame  - | FileCheck --check-prefix=EH_FRAME %s
 
-; void f1();
-; void f3(bool b) {
-;   if (b)
-;     f1();
-; }
+;; void f1();
+;; void f3(bool b) {
+;;   if (b)
+;;     f1();
+;; }
 
 
 ; SECTIONS_CFI: _Z2f3b:
@@ -46,26 +46,24 @@
 ; SECTIONS_NOFP_CFI: .cfi_endproc
 
 
-; There must be 1 CIE and 3 FDEs
+;; There must be 1 CIE and 3 FDEs.
 
-; DEBUG_FRAME: .debug_frame contents
+; EH_FRAME: CIE
+; EH_FRAME: DW_CFA_def_cfa
+; EH_FRAME: DW_CFA_offset
 
-; DEBUG_FRAME: CIE
-; DEBUG_FRAME: DW_CFA_def_cfa
-; DEBUG_FRAME: DW_CFA_offset
+; EH_FRAME: FDE cie=
+; EH_FRAME: DW_CFA_def_cfa_offset
+; EH_FRAME: DW_CFA_offset
+; EH_FRAME: DW_CFA_def_cfa_register
 
-; DEBUG_FRAME: FDE cie=
-; DEBUG_FRAME: DW_CFA_def_cfa_offset
-; DEBUG_FRAME: DW_CFA_offset
-; DEBUG_FRAME: DW_CFA_def_cfa_register
+; EH_FRAME: FDE cie=
+; EH_FRAME: DW_CFA_def_cfa
+; EH_FRAME: DW_CFA_offset
 
-; DEBUG_FRAME: FDE cie=
-; DEBUG_FRAME: DW_CFA_def_cfa
-; DEBUG_FRAME: DW_CFA_offset
-
-; DEBUG_FRAME: FDE cie=
-; DEBUG_FRAME: DW_CFA_def_cfa
-; DEBUG_FRAME: DW_CFA_offset
+; EH_FRAME: FDE cie=
+; EH_FRAME: DW_CFA_def_cfa
+; EH_FRAME: DW_CFA_offset
 
 ; Function Attrs: noinline optnone uwtable
 define dso_local void @_Z2f3b(i1 zeroext %b) {

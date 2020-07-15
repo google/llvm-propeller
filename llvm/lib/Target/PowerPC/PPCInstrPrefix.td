@@ -1,3 +1,19 @@
+//===----------------------------------------------------------------------===//
+// PowerPC ISA 3.1 specific type constraints.
+//
+
+def SDT_PPCSplat32 : SDTypeProfile<1, 3, [ SDTCisVT<0, v2i64>,
+  SDTCisVec<1>, SDTCisInt<2>, SDTCisInt<3>
+]>;
+
+//===----------------------------------------------------------------------===//
+// ISA 3.1 specific PPCISD nodes.
+//
+
+def PPCxxsplti32dx : SDNode<"PPCISD::XXSPLTI32DX", SDT_PPCSplat32, []>;
+
+//===----------------------------------------------------------------------===//
+
 // PC Relative flag (for instructions that use the address of the prefix for
 // address computations).
 class isPCRel { bit PCRel = 1; }
@@ -380,6 +396,25 @@ class 8RR_XX4Form_IMM3_XTABC6<bits<6> opcode, bits<2> xo, dag OOL, dag IOL,
   let Inst{63} = XT{5};
 }
 
+// [PO BF / XO2 B XO BX /]
+class XX2_BF3_XO5_XB6_XO9<bits<6> opcode, bits<5> xo2, bits<9> xo, dag OOL,
+                          dag IOL, string asmstr, InstrItinClass itin,
+                          list<dag> pattern>
+  : I<opcode, OOL, IOL, asmstr, itin> {
+  bits<3> BF;
+  bits<6> XB;
+
+  let Pattern = pattern;
+
+  let Inst{6-8}   = BF;
+  let Inst{9-10}  = 0;
+  let Inst{11-15} = xo2;
+  let Inst{16-20} = XB{4-0};
+  let Inst{21-29} = xo;
+  let Inst{30}    = XB{5};
+  let Inst{31}    = 0;
+}
+
 multiclass MLS_DForm_R_SI34_RTA5_MEM_p<bits<6> opcode, dag OOL, dag IOL,
                                        dag PCRel_IOL, string asmstr,
                                        InstrItinClass itin> {
@@ -732,8 +767,11 @@ let Predicates = [PrefixInstrs] in {
                                             (PPCxxspltidp i32:$IMM32))]>;
   def XXSPLTI32DX :
       8RR_DForm_IMM32_XT6_IX<32, 0, (outs vsrc:$XT),
-                             (ins vsrc:$XTi, i1imm:$IX, i32imm:$IMM32),
-                             "xxsplti32dx $XT, $IX, $IMM32", IIC_VecGeneral, []>,
+                             (ins vsrc:$XTi, u1imm:$IX, i32imm:$IMM32),
+                             "xxsplti32dx $XT, $IX, $IMM32", IIC_VecGeneral,
+                             [(set v2i64:$XT,
+                                   (PPCxxsplti32dx v2i64:$XTi, i32:$IX,
+                                                   i32:$IMM32))]>,
                              RegConstraint<"$XTi = $XT">, NoEncode<"$XTi">;
   def XXPERMX :
     8RR_XX4Form_IMM3_XTABC6<34, 0, (outs vsrc:$XT), (ins vsrc:$XA, vsrc:$XB,
@@ -775,8 +813,16 @@ let Predicates = [IsISA3_1] in {
                                       (int_ppc_altivec_vsrdbi v16i8:$VRA,
                                                               v16i8:$VRB, 
                                                               i32:$SH))]>;
-  def VINSW : VXForm_VRT5_UIM5_RB5_ins<207, "vinsw", []>;
-  def VINSD : VXForm_VRT5_UIM5_RB5_ins<463, "vinsd", []>;
+  def VINSW : 
+    VXForm_VRT5_UIM5_RB5_ins<207, "vinsw",
+                             [(set v4i32:$vD,
+                                   (int_ppc_altivec_vinsw v4i32:$vDi, i64:$rB,
+                                                          timm:$UIM))]>;
+  def VINSD :
+    VXForm_VRT5_UIM5_RB5_ins<463, "vinsd",
+                             [(set v2i64:$vD,
+                                   (int_ppc_altivec_vinsd v2i64:$vDi, i64:$rB,
+                                                          timm:$UIM))]>;
   def VINSBVLX :
     VXForm_VTB5_RA5_ins<15, "vinsbvlx",
                         [(set v16i8:$vD,
@@ -915,6 +961,25 @@ let Predicates = [IsISA3_1] in {
                          "vclrrb $vD, $vA, $rB", IIC_VecGeneral,
                          [(set v16i8:$vD,
                                (int_ppc_altivec_vclrrb v16i8:$vA, i32:$rB))]>;
+
+  def XVTLSBB : XX2_BF3_XO5_XB6_XO9<60, 2, 475, (outs crrc:$BF), (ins vsrc:$XB),
+                                    "xvtlsbb $BF, $XB", IIC_VecGeneral, []>;
+
+  // The XFormMemOp flag for the following 8 instructions is set on
+  // the instruction format.
+  let mayLoad = 1, mayStore = 0 in {
+    def LXVRBX : X_XT6_RA5_RB5<31, 13, "lxvrbx", vsrc, []>;
+    def LXVRHX : X_XT6_RA5_RB5<31, 45, "lxvrhx", vsrc, []>;
+    def LXVRWX : X_XT6_RA5_RB5<31, 77, "lxvrwx", vsrc, []>;
+    def LXVRDX : X_XT6_RA5_RB5<31, 109, "lxvrdx", vsrc, []>;
+  }
+
+  let mayLoad = 0, mayStore = 1 in {
+    def STXVRBX : X_XS6_RA5_RB5<31, 141, "stxvrbx", vsrc, []>;
+    def STXVRHX : X_XS6_RA5_RB5<31, 173, "stxvrhx", vsrc, []>;
+    def STXVRWX : X_XS6_RA5_RB5<31, 205, "stxvrwx", vsrc, []>;
+    def STXVRDX : X_XS6_RA5_RB5<31, 237, "stxvrdx", vsrc, []>;
+  }
 }
 
 //---------------------------- Anonymous Patterns ----------------------------//
@@ -927,6 +992,10 @@ let Predicates = [IsISA3_1] in {
             (v4i32 (COPY_TO_REGCLASS (XXGENPCVWM $VRB, imm:$IMM), VRRC))>;
   def : Pat<(v2i64 (int_ppc_vsx_xxgenpcvdm v2i64:$VRB, imm:$IMM)),
             (v2i64 (COPY_TO_REGCLASS (XXGENPCVDM $VRB, imm:$IMM), VRRC))>;
+  def : Pat<(i32 (int_ppc_vsx_xvtlsbb v16i8:$XB, -1)),
+            (EXTRACT_SUBREG (XVTLSBB (COPY_TO_REGCLASS $XB, VSRC)), sub_lt)>;
+  def : Pat<(i32 (int_ppc_vsx_xvtlsbb v16i8:$XB, 0)),
+            (EXTRACT_SUBREG (XVTLSBB (COPY_TO_REGCLASS $XB, VSRC)), sub_eq)>;
 }
 
 let AddedComplexity = 400, Predicates = [PrefixInstrs] in {

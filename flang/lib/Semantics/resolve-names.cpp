@@ -5505,7 +5505,15 @@ const parser::Name *DeclarationVisitor::ResolveDataRef(
           },
           [&](const Indirection<parser::ArrayElement> &y) {
             Walk(y.value().subscripts);
-            return ResolveDataRef(y.value().base);
+            const parser::Name *name{ResolveDataRef(y.value().base)};
+            if (!name) {
+            } else if (!name->symbol->has<ProcEntityDetails>()) {
+              ConvertToObjectEntity(*name->symbol);
+            } else if (!context().HasError(*name->symbol)) {
+              SayWithDecl(*name, *name->symbol,
+                  "Cannot reference function '%s' as data"_err_en_US);
+            }
+            return name;
           },
           [&](const Indirection<parser::CoindexedNamedObject> &y) {
             Walk(y.value().imageSelector);
@@ -6002,7 +6010,8 @@ bool ResolveNamesVisitor::Pre(const parser::SpecificationPart &x) {
   Walk(std::get<1>(x.t));
   Walk(std::get<2>(x.t));
   Walk(std::get<3>(x.t));
-  const std::list<parser::DeclarationConstruct> &decls{std::get<4>(x.t)};
+  Walk(std::get<4>(x.t));
+  const std::list<parser::DeclarationConstruct> &decls{std::get<5>(x.t)};
   for (const auto &decl : decls) {
     if (const auto *spec{
             std::get_if<parser::SpecificationConstruct>(&decl.u)}) {

@@ -499,7 +499,7 @@ static codegenoptions::DebugInfoKind DebugLevelToInfoKind(const Arg &A) {
     return codegenoptions::DebugLineTablesOnly;
   if (A.getOption().matches(options::OPT_gline_directives_only))
     return codegenoptions::DebugDirectivesOnly;
-  return codegenoptions::LimitedDebugInfo;
+  return codegenoptions::DebugInfoConstructor;
 }
 
 static bool mustUseNonLeafFramePointerForTarget(const llvm::Triple &Triple) {
@@ -2381,7 +2381,7 @@ static void CollectArgsForIntegratedAssembler(Compilation &C,
           CmdArgs.push_back(Value.data());
         } else {
           RenderDebugEnablingArgs(Args, CmdArgs,
-                                  codegenoptions::LimitedDebugInfo,
+                                  codegenoptions::DebugInfoConstructor,
                                   DwarfVersion, llvm::DebuggerKind::Default);
         }
       } else if (Value.startswith("-mcpu") || Value.startswith("-mfpu") ||
@@ -3662,7 +3662,7 @@ static void RenderDebugOptions(const ToolChain &TC, const Driver &D,
   if (const Arg *A =
           Args.getLastArg(options::OPT_g_Group, options::OPT_gsplit_dwarf,
                           options::OPT_gsplit_dwarf_EQ)) {
-    DebugInfoKind = codegenoptions::LimitedDebugInfo;
+    DebugInfoKind = codegenoptions::DebugInfoConstructor;
 
     // If the last option explicitly specified a debug-info level, use it.
     if (checkDebugInfoOption(A, Args, D, TC) &&
@@ -3767,7 +3767,7 @@ static void RenderDebugOptions(const ToolChain &TC, const Driver &D,
     if (checkDebugInfoOption(A, Args, D, TC)) {
       if (DebugInfoKind != codegenoptions::DebugLineTablesOnly &&
           DebugInfoKind != codegenoptions::DebugDirectivesOnly) {
-        DebugInfoKind = codegenoptions::LimitedDebugInfo;
+        DebugInfoKind = codegenoptions::DebugInfoConstructor;
         CmdArgs.push_back("-dwarf-ext-refs");
         CmdArgs.push_back("-fmodule-format=obj");
       }
@@ -3787,7 +3787,9 @@ static void RenderDebugOptions(const ToolChain &TC, const Driver &D,
           TC.GetDefaultStandaloneDebug());
   if (const Arg *A = Args.getLastArg(options::OPT_fstandalone_debug))
     (void)checkDebugInfoOption(A, Args, D, TC);
-  if (DebugInfoKind == codegenoptions::LimitedDebugInfo && NeedFullDebug)
+  if ((DebugInfoKind == codegenoptions::LimitedDebugInfo ||
+       DebugInfoKind == codegenoptions::DebugInfoConstructor) &&
+      NeedFullDebug)
     DebugInfoKind = codegenoptions::FullDebugInfo;
 
   if (Args.hasFlag(options::OPT_gembed_source, options::OPT_gno_embed_source,
@@ -3960,7 +3962,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     }
   }
 
-  const llvm::Triple *AuxTriple = IsCuda ? TC.getAuxTriple() : nullptr;
+  const llvm::Triple *AuxTriple =
+      (IsCuda || IsHIP) ? TC.getAuxTriple() : nullptr;
   bool IsWindowsMSVC = RawTriple.isWindowsMSVCEnvironment();
   bool IsIAMCU = RawTriple.isOSIAMCU();
 
@@ -4905,10 +4908,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                   options::OPT_finstrument_functions_after_inlining,
                   options::OPT_finstrument_function_entry_bare);
 
-  // NVPTX doesn't support PGO or coverage. There's no runtime support for
-  // sampling, overhead of call arc collection is way too high and there's no
-  // way to collect the output.
-  if (!Triple.isNVPTX())
+  // NVPTX/AMDGCN doesn't support PGO or coverage. There's no runtime support
+  // for sampling, overhead of call arc collection is way too high and there's
+  // no way to collect the output.
+  if (!Triple.isNVPTX() && !Triple.isAMDGCN())
     addPGOAndCoverageFlags(TC, C, D, Output, Args, CmdArgs);
 
   Args.AddLastArg(CmdArgs, options::OPT_fclang_abi_compat_EQ);
@@ -5027,6 +5030,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
     Args.AddLastArg(CmdArgs, options::OPT_ftrigraphs,
                     options::OPT_fno_trigraphs);
+
+    // HIP headers has minimum C++ standard requirements. Therefore set the
+    // default language standard.
+    if (IsHIP)
+      CmdArgs.push_back(IsWindowsMSVC ? "-std=c++14" : "-std=c++11");
   }
 
   // GCC's behavior for -Wwrite-strings is a bit strange:
@@ -5435,8 +5443,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Forward -cl options to -cc1
   RenderOpenCLOptions(Args, CmdArgs);
 
-  if (Args.hasFlag(options::OPT_fhip_new_launch_api,
-                   options::OPT_fno_hip_new_launch_api, false))
+  if (IsHIP && Args.hasFlag(options::OPT_fhip_new_launch_api,
+                            options::OPT_fno_hip_new_launch_api, true))
     CmdArgs.push_back("-fhip-new-launch-api");
 
   if (Arg *A = Args.getLastArg(options::OPT_fcf_protection_EQ)) {
@@ -6591,7 +6599,7 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
                           options::OPT_gline_tables_only)) {
     *EmitCodeView = true;
     if (DebugInfoArg->getOption().matches(options::OPT__SLASH_Z7))
-      *DebugInfoKind = codegenoptions::LimitedDebugInfo;
+      *DebugInfoKind = codegenoptions::DebugInfoConstructor;
     else
       *DebugInfoKind = codegenoptions::DebugLineTablesOnly;
   } else {
@@ -6888,7 +6896,7 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
     // the guard for source type, however there is a test which asserts
     // that some assembler invocation receives no -debug-info-kind,
     // and it's not clear whether that test is just overly restrictive.
-    DebugInfoKind = (WantDebug ? codegenoptions::LimitedDebugInfo
+    DebugInfoKind = (WantDebug ? codegenoptions::DebugInfoConstructor
                                : codegenoptions::NoDebugInfo);
     // Add the -fdebug-compilation-dir flag if needed.
     addDebugCompDirArg(Args, CmdArgs, C.getDriver().getVFS());

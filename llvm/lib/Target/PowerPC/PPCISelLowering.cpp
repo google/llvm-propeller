@@ -117,9 +117,6 @@ cl::desc("disable sibling call optimization on ppc"), cl::Hidden);
 static cl::opt<bool> DisableInnermostLoopAlign32("disable-ppc-innermost-loop-align32",
 cl::desc("don't always align innermost loop to 32 bytes on ppc"), cl::Hidden);
 
-static cl::opt<bool> EnableQuadPrecision("enable-ppc-quad-precision",
-cl::desc("enable quad precision float support on ppc"), cl::Hidden);
-
 static cl::opt<bool> UseAbsoluteJumpTables("ppc-use-absolute-jumptables",
 cl::desc("use absolute jump tables on ppc"), cl::Hidden);
 
@@ -426,6 +423,9 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
 
   if (Subtarget.hasSPE()) {
     // SPE has built-in conversions
+    setOperationAction(ISD::STRICT_FP_TO_SINT, MVT::i32, Legal);
+    setOperationAction(ISD::STRICT_SINT_TO_FP, MVT::i32, Legal);
+    setOperationAction(ISD::STRICT_UINT_TO_FP, MVT::i32, Legal);
     setOperationAction(ISD::FP_TO_SINT, MVT::i32, Legal);
     setOperationAction(ISD::SINT_TO_FP, MVT::i32, Legal);
     setOperationAction(ISD::UINT_TO_FP, MVT::i32, Legal);
@@ -575,9 +575,10 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
       setOperationAction(ISD::SINT_TO_FP, MVT::i32, Custom);
   } else {
     // PowerPC does not have FP_TO_UINT on 32-bit implementations.
-    if (Subtarget.hasSPE())
+    if (Subtarget.hasSPE()) {
+      setOperationAction(ISD::STRICT_FP_TO_UINT, MVT::i32, Legal);
       setOperationAction(ISD::FP_TO_UINT, MVT::i32, Legal);
-    else
+    } else
       setOperationAction(ISD::FP_TO_UINT, MVT::i32, Expand);
   }
 
@@ -1004,61 +1005,59 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
       setOperationAction(ISD::SRL, MVT::v1i128, Legal);
       setOperationAction(ISD::SRA, MVT::v1i128, Expand);
 
-      if (EnableQuadPrecision) {
-        addRegisterClass(MVT::f128, &PPC::VRRCRegClass);
-        setOperationAction(ISD::FADD, MVT::f128, Legal);
-        setOperationAction(ISD::FSUB, MVT::f128, Legal);
-        setOperationAction(ISD::FDIV, MVT::f128, Legal);
-        setOperationAction(ISD::FMUL, MVT::f128, Legal);
-        setOperationAction(ISD::FP_EXTEND, MVT::f128, Legal);
-        // No extending loads to f128 on PPC.
-        for (MVT FPT : MVT::fp_valuetypes())
-          setLoadExtAction(ISD::EXTLOAD, MVT::f128, FPT, Expand);
-        setOperationAction(ISD::FMA, MVT::f128, Legal);
-        setCondCodeAction(ISD::SETULT, MVT::f128, Expand);
-        setCondCodeAction(ISD::SETUGT, MVT::f128, Expand);
-        setCondCodeAction(ISD::SETUEQ, MVT::f128, Expand);
-        setCondCodeAction(ISD::SETOGE, MVT::f128, Expand);
-        setCondCodeAction(ISD::SETOLE, MVT::f128, Expand);
-        setCondCodeAction(ISD::SETONE, MVT::f128, Expand);
+      addRegisterClass(MVT::f128, &PPC::VRRCRegClass);
+      setOperationAction(ISD::FADD, MVT::f128, Legal);
+      setOperationAction(ISD::FSUB, MVT::f128, Legal);
+      setOperationAction(ISD::FDIV, MVT::f128, Legal);
+      setOperationAction(ISD::FMUL, MVT::f128, Legal);
+      setOperationAction(ISD::FP_EXTEND, MVT::f128, Legal);
+      // No extending loads to f128 on PPC.
+      for (MVT FPT : MVT::fp_valuetypes())
+        setLoadExtAction(ISD::EXTLOAD, MVT::f128, FPT, Expand);
+      setOperationAction(ISD::FMA, MVT::f128, Legal);
+      setCondCodeAction(ISD::SETULT, MVT::f128, Expand);
+      setCondCodeAction(ISD::SETUGT, MVT::f128, Expand);
+      setCondCodeAction(ISD::SETUEQ, MVT::f128, Expand);
+      setCondCodeAction(ISD::SETOGE, MVT::f128, Expand);
+      setCondCodeAction(ISD::SETOLE, MVT::f128, Expand);
+      setCondCodeAction(ISD::SETONE, MVT::f128, Expand);
 
-        setOperationAction(ISD::FTRUNC, MVT::f128, Legal);
-        setOperationAction(ISD::FRINT, MVT::f128, Legal);
-        setOperationAction(ISD::FFLOOR, MVT::f128, Legal);
-        setOperationAction(ISD::FCEIL, MVT::f128, Legal);
-        setOperationAction(ISD::FNEARBYINT, MVT::f128, Legal);
-        setOperationAction(ISD::FROUND, MVT::f128, Legal);
+      setOperationAction(ISD::FTRUNC, MVT::f128, Legal);
+      setOperationAction(ISD::FRINT, MVT::f128, Legal);
+      setOperationAction(ISD::FFLOOR, MVT::f128, Legal);
+      setOperationAction(ISD::FCEIL, MVT::f128, Legal);
+      setOperationAction(ISD::FNEARBYINT, MVT::f128, Legal);
+      setOperationAction(ISD::FROUND, MVT::f128, Legal);
 
-        setOperationAction(ISD::SELECT, MVT::f128, Expand);
-        setOperationAction(ISD::FP_ROUND, MVT::f64, Legal);
-        setOperationAction(ISD::FP_ROUND, MVT::f32, Legal);
-        setTruncStoreAction(MVT::f128, MVT::f64, Expand);
-        setTruncStoreAction(MVT::f128, MVT::f32, Expand);
-        setOperationAction(ISD::BITCAST, MVT::i128, Custom);
-        // No implementation for these ops for PowerPC.
-        setOperationAction(ISD::FSIN , MVT::f128, Expand);
-        setOperationAction(ISD::FCOS , MVT::f128, Expand);
-        setOperationAction(ISD::FPOW, MVT::f128, Expand);
-        setOperationAction(ISD::FPOWI, MVT::f128, Expand);
-        setOperationAction(ISD::FREM, MVT::f128, Expand);
+      setOperationAction(ISD::SELECT, MVT::f128, Expand);
+      setOperationAction(ISD::FP_ROUND, MVT::f64, Legal);
+      setOperationAction(ISD::FP_ROUND, MVT::f32, Legal);
+      setTruncStoreAction(MVT::f128, MVT::f64, Expand);
+      setTruncStoreAction(MVT::f128, MVT::f32, Expand);
+      setOperationAction(ISD::BITCAST, MVT::i128, Custom);
+      // No implementation for these ops for PowerPC.
+      setOperationAction(ISD::FSIN, MVT::f128, Expand);
+      setOperationAction(ISD::FCOS, MVT::f128, Expand);
+      setOperationAction(ISD::FPOW, MVT::f128, Expand);
+      setOperationAction(ISD::FPOWI, MVT::f128, Expand);
+      setOperationAction(ISD::FREM, MVT::f128, Expand);
 
-        // Handle constrained floating-point operations of fp128
-        setOperationAction(ISD::STRICT_FADD, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FSUB, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FMUL, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FDIV, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FMA, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FSQRT, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FP_EXTEND, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FP_ROUND, MVT::f64, Legal);
-        setOperationAction(ISD::STRICT_FP_ROUND, MVT::f32, Legal);
-        setOperationAction(ISD::STRICT_FRINT, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FNEARBYINT, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FFLOOR, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FCEIL,  MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FTRUNC, MVT::f128, Legal);
-        setOperationAction(ISD::STRICT_FROUND, MVT::f128, Legal);
-      }
+      // Handle constrained floating-point operations of fp128
+      setOperationAction(ISD::STRICT_FADD, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FSUB, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FMUL, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FDIV, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FMA, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FSQRT, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FP_EXTEND, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FP_ROUND, MVT::f64, Legal);
+      setOperationAction(ISD::STRICT_FP_ROUND, MVT::f32, Legal);
+      setOperationAction(ISD::STRICT_FRINT, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FNEARBYINT, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FFLOOR, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FCEIL, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FTRUNC, MVT::f128, Legal);
+      setOperationAction(ISD::STRICT_FROUND, MVT::f128, Legal);
       setOperationAction(ISD::FP_EXTEND, MVT::v2f32, Custom);
       setOperationAction(ISD::BSWAP, MVT::v8i16, Legal);
       setOperationAction(ISD::BSWAP, MVT::v4i32, Legal);
@@ -1307,20 +1306,18 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setTargetDAGCombine(ISD::VSELECT);
   }
 
-  if (EnableQuadPrecision) {
-    setLibcallName(RTLIB::LOG_F128, "logf128");
-    setLibcallName(RTLIB::LOG2_F128, "log2f128");
-    setLibcallName(RTLIB::LOG10_F128, "log10f128");
-    setLibcallName(RTLIB::EXP_F128, "expf128");
-    setLibcallName(RTLIB::EXP2_F128, "exp2f128");
-    setLibcallName(RTLIB::SIN_F128, "sinf128");
-    setLibcallName(RTLIB::COS_F128, "cosf128");
-    setLibcallName(RTLIB::POW_F128, "powf128");
-    setLibcallName(RTLIB::FMIN_F128, "fminf128");
-    setLibcallName(RTLIB::FMAX_F128, "fmaxf128");
-    setLibcallName(RTLIB::POWI_F128, "__powikf2");
-    setLibcallName(RTLIB::REM_F128, "fmodf128");
-  }
+  setLibcallName(RTLIB::LOG_F128, "logf128");
+  setLibcallName(RTLIB::LOG2_F128, "log2f128");
+  setLibcallName(RTLIB::LOG10_F128, "log10f128");
+  setLibcallName(RTLIB::EXP_F128, "expf128");
+  setLibcallName(RTLIB::EXP2_F128, "exp2f128");
+  setLibcallName(RTLIB::SIN_F128, "sinf128");
+  setLibcallName(RTLIB::COS_F128, "cosf128");
+  setLibcallName(RTLIB::POW_F128, "powf128");
+  setLibcallName(RTLIB::FMIN_F128, "fminf128");
+  setLibcallName(RTLIB::FMAX_F128, "fmaxf128");
+  setLibcallName(RTLIB::POWI_F128, "__powikf2");
+  setLibcallName(RTLIB::REM_F128, "fmodf128");
 
   // With 32 condition bits, we don't need to sink (and duplicate) compares
   // aggressively in CodeGenPrep.
@@ -1477,6 +1474,8 @@ const char *PPCTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case PPCISD::XXSPLT:          return "PPCISD::XXSPLT";
   case PPCISD::XXSPLTI_SP_TO_DP:
     return "PPCISD::XXSPLTI_SP_TO_DP";
+  case PPCISD::XXSPLTI32DX:
+    return "PPCISD::XXSPLTI32DX";
   case PPCISD::VECINSERT:       return "PPCISD::VECINSERT";
   case PPCISD::XXPERMDI:        return "PPCISD::XXPERMDI";
   case PPCISD::VECSHL:          return "PPCISD::VECSHL";
@@ -4297,7 +4296,11 @@ SDValue PPCTargetLowering::LowerFormalArguments_64SVR4(
 
   // If the function takes variable number of arguments, make a frame index for
   // the start of the first vararg value... for expansion of llvm.va_start.
-  if (isVarArg) {
+  // On ELFv2ABI spec, it writes:
+  // C programs that are intended to be *portable* across different compilers
+  // and architectures must use the header file <stdarg.h> to deal with variable
+  // argument lists.
+  if (isVarArg && MFI.hasVAStart()) {
     int Depth = ArgOffset;
 
     FuncInfo->setVarArgsFrameIndex(
@@ -5345,7 +5348,7 @@ static SDValue transformCallee(const SDValue &Callee, SelectionDAG &DAG,
           // MCSectionXCOFF to get the correct storage mapping class.
           // In this case, XCOFF::XMC_PR.
           MCSectionXCOFF *Sec = Context.getXCOFFSection(
-              S->getName(), XCOFF::XMC_PR, XCOFF::XTY_ER, SC,
+              S->getSymbolTableName(), XCOFF::XMC_PR, XCOFF::XTY_ER, SC,
               SectionKind::getMetadata());
           S->setRepresentedCsect(Sec);
         }
@@ -8302,7 +8305,7 @@ SDValue PPCTargetLowering::LowerFP_TO_INT(SDValue Op, SelectionDAG &DAG,
                                           const SDLoc &dl) const {
 
   // FP to INT conversions are legal for f128.
-  if (EnableQuadPrecision && (Op->getOperand(0).getValueType() == MVT::f128))
+  if (Op->getOperand(0).getValueType() == MVT::f128)
     return Op;
 
   // Expand ppcf128 to i32 by hand for the benefit of llvm-gcc bootstrap on
@@ -8570,7 +8573,7 @@ SDValue PPCTargetLowering::LowerINT_TO_FP(SDValue Op,
     return LowerINT_TO_FPVector(Op, DAG, dl);
 
   // Conversions to f128 are legal.
-  if (EnableQuadPrecision && (Op.getValueType() == MVT::f128))
+  if (Op.getValueType() == MVT::f128)
     return Op;
 
   if (Subtarget.hasQPX() && Op.getOperand(0).getValueType() == MVT::v4i1) {
@@ -9098,10 +9101,9 @@ SDValue PPCTargetLowering::LowerBITCAST(SDValue Op, SelectionDAG &DAG) const {
   SDLoc dl(Op);
   SDValue Op0 = Op->getOperand(0);
 
-  if (!EnableQuadPrecision ||
-      (Op.getValueType() != MVT::f128 ) ||
+  if ((Op.getValueType() != MVT::f128) ||
       (Op0.getOpcode() != ISD::BUILD_PAIR) ||
-      (Op0.getOperand(0).getValueType() !=  MVT::i64) ||
+      (Op0.getOperand(0).getValueType() != MVT::i64) ||
       (Op0.getOperand(1).getValueType() != MVT::i64))
     return SDValue();
 
@@ -9778,6 +9780,77 @@ SDValue PPCTargetLowering::lowerToVINSERTH(ShuffleVectorSDNode *N,
   return DAG.getNode(ISD::BITCAST, dl, MVT::v16i8, Ins);
 }
 
+/// lowerToXXSPLTI32DX - Return the SDValue if this VECTOR_SHUFFLE can be
+/// handled by the XXSPLTI32DX instruction introduced in ISA 3.1, otherwise
+/// return the default SDValue.
+SDValue PPCTargetLowering::lowerToXXSPLTI32DX(ShuffleVectorSDNode *SVN,
+                                              SelectionDAG &DAG) const {
+  // The LHS and RHS may be bitcasts to v16i8 as we canonicalize shuffles
+  // to v16i8. Peek through the bitcasts to get the actual operands.
+  SDValue LHS = peekThroughBitcasts(SVN->getOperand(0));
+  SDValue RHS = peekThroughBitcasts(SVN->getOperand(1));
+
+  auto ShuffleMask = SVN->getMask();
+  SDValue VecShuffle(SVN, 0);
+  SDLoc DL(SVN);
+
+  // Check that we have a four byte shuffle.
+  if (!isNByteElemShuffleMask(SVN, 4, 1))
+    return SDValue();
+
+  // Canonicalize the RHS being a BUILD_VECTOR when lowering to xxsplti32dx.
+  if (RHS->getOpcode() != ISD::BUILD_VECTOR) {
+    std::swap(LHS, RHS);
+    VecShuffle = DAG.getCommutedVectorShuffle(*SVN);
+    ShuffleMask = cast<ShuffleVectorSDNode>(VecShuffle)->getMask();
+  }
+
+  // Ensure that the RHS is a vector of constants.
+  BuildVectorSDNode *BVN = dyn_cast<BuildVectorSDNode>(RHS.getNode());
+  if (!BVN)
+    return SDValue();
+
+  // Check if RHS is a splat of 4-bytes (or smaller).
+  APInt APSplatValue, APSplatUndef;
+  unsigned SplatBitSize;
+  bool HasAnyUndefs;
+  if (!BVN->isConstantSplat(APSplatValue, APSplatUndef, SplatBitSize,
+                            HasAnyUndefs, 0, !Subtarget.isLittleEndian()) ||
+      SplatBitSize > 32)
+    return SDValue();
+
+  // Check that the shuffle mask matches the semantics of XXSPLTI32DX.
+  // The instruction splats a constant C into two words of the source vector
+  // producing { C, Unchanged, C, Unchanged } or { Unchanged, C, Unchanged, C }.
+  // Thus we check that the shuffle mask is the equivalent  of
+  // <0, [4-7], 2, [4-7]> or <[4-7], 1, [4-7], 3> respectively.
+  // Note: the check above of isNByteElemShuffleMask() ensures that the bytes
+  // within each word are consecutive, so we only need to check the first byte.
+  SDValue Index;
+  bool IsLE = Subtarget.isLittleEndian();
+  if ((ShuffleMask[0] == 0 && ShuffleMask[8] == 8) &&
+      (ShuffleMask[4] % 4 == 0 && ShuffleMask[12] % 4 == 0 &&
+       ShuffleMask[4] > 15 && ShuffleMask[12] > 15))
+    Index = DAG.getTargetConstant(IsLE ? 0 : 1, DL, MVT::i32);
+  else if ((ShuffleMask[4] == 4 && ShuffleMask[12] == 12) &&
+           (ShuffleMask[0] % 4 == 0 && ShuffleMask[8] % 4 == 0 &&
+            ShuffleMask[0] > 15 && ShuffleMask[8] > 15))
+    Index = DAG.getTargetConstant(IsLE ? 1 : 0, DL, MVT::i32);
+  else
+    return SDValue();
+
+  // If the splat is narrower than 32-bits, we need to get the 32-bit value
+  // for XXSPLTI32DX.
+  unsigned SplatVal = APSplatValue.getZExtValue();
+  for (; SplatBitSize < 32; SplatBitSize <<= 1)
+    SplatVal |= (SplatVal << SplatBitSize);
+
+  SDValue SplatNode = DAG.getNode(
+      PPCISD::XXSPLTI32DX, DL, MVT::v2i64, DAG.getBitcast(MVT::v2i64, LHS),
+      Index, DAG.getTargetConstant(SplatVal, DL, MVT::i32));
+  return DAG.getNode(ISD::BITCAST, DL, MVT::v16i8, SplatNode);
+}
+
 /// LowerROTL - Custom lowering for ROTL(v1i128) to vector_shuffle(v16i8).
 /// We lower ROTL(v1i128) to vector_shuffle(v16i8) only if shift amount is
 /// a multiple of 8. Otherwise convert it to a scalar rotation(i128)
@@ -9823,9 +9896,12 @@ SDValue PPCTargetLowering::LowerVECTOR_SHUFFLE(SDValue Op,
   // to vector legalization will not be sent to the target combine. Try to
   // combine it here.
   if (SDValue NewShuffle = combineVectorShuffle(SVOp, DAG)) {
-    DAG.ReplaceAllUsesOfValueWith(Op, NewShuffle);
+    if (!isa<ShuffleVectorSDNode>(NewShuffle))
+      return NewShuffle;
     Op = NewShuffle;
     SVOp = cast<ShuffleVectorSDNode>(Op);
+    V1 = Op.getOperand(0);
+    V2 = Op.getOperand(1);
   }
   EVT VT = Op.getValueType();
   bool isLittleEndian = Subtarget.isLittleEndian();
@@ -9893,6 +9969,12 @@ SDValue PPCTargetLowering::LowerVECTOR_SHUFFLE(SDValue Op,
     SDValue Ins = DAG.getNode(PPCISD::VECINSERT, dl, MVT::v4i32, Conv1, Conv2,
                               DAG.getConstant(InsertAtByte, dl, MVT::i32));
     return DAG.getNode(ISD::BITCAST, dl, MVT::v16i8, Ins);
+  }
+
+  if (Subtarget.hasPrefixInstrs()) {
+    SDValue SplatInsertNode;
+    if ((SplatInsertNode = lowerToXXSPLTI32DX(SVOp, DAG)))
+      return SplatInsertNode;
   }
 
   if (Subtarget.hasP9Altivec()) {
@@ -16289,7 +16371,7 @@ bool PPCTargetLowering::isFMAFasterThanFMulAndFAdd(const Function &F,
   case Type::DoubleTyID:
     return true;
   case Type::FP128TyID:
-    return EnableQuadPrecision && Subtarget.hasP9Vector();
+    return Subtarget.hasP9Vector();
   default:
     return false;
   }

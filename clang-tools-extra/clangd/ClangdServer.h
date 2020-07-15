@@ -100,7 +100,7 @@ public:
     bool StorePreamblesInMemory = true;
     /// Reuse even stale preambles, and rebuild them in the background.
     /// This improves latency at the cost of accuracy.
-    bool AsyncPreambleBuilds = false;
+    bool AsyncPreambleBuilds = true;
 
     /// If true, ClangdServer builds a dynamic in-memory index for symbols in
     /// opened files and uses the index to augment code completion results.
@@ -156,6 +156,9 @@ public:
 
     /// Enable notification-based semantic highlighting.
     bool TheiaSemanticHighlighting = false;
+
+    /// Enable preview of FoldingRanges feature.
+    bool FoldingRanges = false;
 
     /// Returns true if the tweak should be enabled.
     std::function<bool(const Tweak &)> TweakFilter = [](const Tweak &T) {
@@ -245,6 +248,9 @@ public:
   /// Retrieve the symbols within the specified file.
   void documentSymbols(StringRef File,
                        Callback<std::vector<DocumentSymbol>> CB);
+
+  /// Retrieve ranges that can be used to fold code within the specified file.
+  void foldingRanges(StringRef File, Callback<std::vector<FoldingRange>> CB);
 
   /// Retrieve locations for symbol references.
   void findReferences(PathRef File, Position Pos, uint32_t Limit,

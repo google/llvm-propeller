@@ -534,6 +534,7 @@ def int_instrprof_value_profile : Intrinsic<[],
 
 def int_call_preallocated_setup : Intrinsic<[llvm_token_ty], [llvm_i32_ty]>;
 def int_call_preallocated_arg : Intrinsic<[llvm_ptr_ty], [llvm_token_ty, llvm_i32_ty]>;
+def int_call_preallocated_teardown : Intrinsic<[], [llvm_token_ty]>;
 
 //===------------------- Standard C Library Intrinsics --------------------===//
 //
@@ -1457,7 +1458,7 @@ def int_matrix_multiply
 
 def int_matrix_column_major_load
   : Intrinsic<[llvm_anyvector_ty],
-              [LLVMAnyPointerType<LLVMMatchType<0>>, llvm_i64_ty, llvm_i1_ty,
+              [LLVMPointerToElt<0>, llvm_i64_ty, llvm_i1_ty,
                llvm_i32_ty, llvm_i32_ty],
               [IntrNoSync, IntrWillReturn, IntrArgMemOnly, IntrReadMem,
                NoCapture<ArgIndex<0>>, ImmArg<ArgIndex<2>>, ImmArg<ArgIndex<3>>,
@@ -1465,7 +1466,7 @@ def int_matrix_column_major_load
 
 def int_matrix_column_major_store
   : Intrinsic<[],
-              [llvm_anyvector_ty, LLVMAnyPointerType<LLVMMatchType<0>>,
+              [llvm_anyvector_ty, LLVMPointerToElt<0>,
                llvm_i64_ty, llvm_i1_ty, llvm_i32_ty, llvm_i32_ty],
               [IntrNoSync, IntrWillReturn, IntrArgMemOnly, IntrWriteMem,
                WriteOnly<ArgIndex<1>>, NoCapture<ArgIndex<1>>,

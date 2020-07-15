@@ -1,5 +1,6 @@
 // RUN: llvm-tblgen -gen-directive-decl -I %p/../../include %s | FileCheck -match-full-lines %s
 // RUN: llvm-tblgen -gen-directive-impl -I %p/../../include %s | FileCheck -match-full-lines %s -check-prefix=IMPL
+// RUN: llvm-tblgen -gen-directive-gen -I %p/../../include %s | FileCheck -match-full-lines %s -check-prefix=GEN
 
 include "llvm/Frontend/Directive/DirectiveBase.td"
 
@@ -9,6 +10,7 @@ def TestDirectiveLanguage : DirectiveLanguage {
   let cppNamespace = "tdl";
   let directivePrefix = "TDLD_";
   let clausePrefix = "TDLC_";
+  let includeHeader = "tdl.h.inc";
 }
 
 def TDLC_ClauseA : Clause<"clausea"> {
@@ -19,7 +21,10 @@ def TDLC_ClauseB : Clause<"clauseb"> {
 }
 
 def TDL_DirA : Directive<"dira"> {
-  let allowedClauses = [TDLC_ClauseA, TDLC_ClauseB];
+  let allowedClauses = [
+    VersionedClause<TDLC_ClauseA, 2, 4>,
+    VersionedClause<TDLC_ClauseB, 2>
+  ];
   let isDefault = 1;
 }
 
@@ -52,12 +57,23 @@ def TDL_DirA : Directive<"dira"> {
 // CHECK-EMPTY:
 // CHECK-NEXT:  llvm::StringRef getTdlClauseName(Clause C);
 // CHECK-EMPTY:
+// CHECK-NEXT:  /// Return true if \p C is a valid clause for \p D in version \p Version.
+// CHECK-NEXT:  bool isAllowedClauseForDirective(Directive D, Clause C, unsigned Version);
+// CHECK-EMPTY:
 // CHECK-NEXT:  } // namespace tdl
 // CHECK-NEXT:  } // namespace llvm
 // CHECK-NEXT:  #endif // LLVM_Tdl_INC
 
-
-// IMPL:       Directive llvm::tdl::getTdlDirectiveKind(llvm::StringRef Str) {
+// IMPL:       #include "tdl.h.inc"
+// IMPL-EMPTY:
+// IMPL-NEXT:  #include "llvm/ADT/StringRef.h"
+// IMPL-NEXT:  #include "llvm/ADT/StringSwitch.h"
+// IMPL-NEXT:  #include "llvm/Support/ErrorHandling.h"
+// IMPL-EMPTY:
+// IMPL-NEXT:  using namespace llvm;
+// IMPL-NEXT:  using namespace tdl;
+// IMPL-EMPTY:
+// IMPL-NEXT:  Directive llvm::tdl::getTdlDirectiveKind(llvm::StringRef Str) {
 // IMPL-NEXT:    return llvm::StringSwitch<Directive>(Str)
 // IMPL-NEXT:      .Case("dira",TDLD_dira)
 // IMPL-NEXT:      .Default(TDLD_dira);
@@ -87,3 +103,72 @@ def TDL_DirA : Directive<"dira"> {
 // IMPL-NEXT:    }
 // IMPL-NEXT:    llvm_unreachable("Invalid Tdl Clause kind");
 // IMPL-NEXT:  }
+// IMPL-EMPTY:
+// IMPL-NEXT:  bool llvm::tdl::isAllowedClauseForDirective(Directive D, Clause C, unsigned Version) {
+// IMPL-NEXT:    assert(unsigned(D) <= llvm::tdl::Directive_enumSize);
+// IMPL-NEXT:    assert(unsigned(C) <= llvm::tdl::Clause_enumSize);
+// IMPL-NEXT:    switch (D) {
+// IMPL-NEXT:      case TDLD_dira:
+// IMPL-NEXT:        switch (C) {
+// IMPL-NEXT:          case TDLC_clausea:
+// IMPL-NEXT:            return 2 <= Version && 4 >= Version;
+// IMPL-NEXT:          case TDLC_clauseb:
+// IMPL-NEXT:            return 2 <= Version && 2147483647 >= Version;
+// IMPL-NEXT:          default:
+// IMPL-NEXT:            return false;
+// IMPL-NEXT:        }
+// IMPL-NEXT:        break;
+// IMPL-NEXT:    }
+// IMPL-NEXT:    llvm_unreachable("Invalid Tdl Directive kind");
+// IMPL-NEXT:  }
+
+
+// GEN:      #ifdef GEN_FLANG_DIRECTIVE_CLAUSE_SETS
+// GEN-NEXT: #undef GEN_FLANG_DIRECTIVE_CLAUSE_SETS
+// GEN-EMPTY:
+// GEN-NEXT: namespace llvm {
+// GEN-NEXT: namespace tdl {
+// GEN-EMPTY:
+// GEN-NEXT:   // Sets for dira
+// GEN-EMPTY:
+// GEN-NEXT:   static  allowedClauses_TDLD_dira {
+// GEN-NEXT:     llvm::tdl::Clause::TDLC_clausea,
+// GEN-NEXT:     llvm::tdl::Clause::TDLC_clauseb,
+// GEN-NEXT:   };
+// GEN-EMPTY:
+// GEN-NEXT:   static  allowedOnceClauses_TDLD_dira {
+// GEN-NEXT:   };
+// GEN-EMPTY:
+// GEN-NEXT:   static  allowedExclusiveClauses_TDLD_dira {
+// GEN-NEXT:   };
+// GEN-EMPTY:
+// GEN-NEXT:   static  requiredClauses_TDLD_dira {
+// GEN-NEXT:   };
+// GEN-NEXT: } // namespace tdl
+// GEN-NEXT: } // namespace llvm
+// GEN-EMPTY:
+// GEN-NEXT: #endif // GEN_FLANG_DIRECTIVE_CLAUSE_SETS
+// GEN-EMPTY:
+// GEN-NEXT: #ifdef GEN_FLANG_DIRECTIVE_CLAUSE_MAP
+// GEN-NEXT: #undef GEN_FLANG_DIRECTIVE_CLAUSE_MAP
+// GEN-EMPTY:
+// GEN-NEXT: struct TdlDirectiveClauses {
+// GEN-NEXT:   const  allowed;
+// GEN-NEXT:   const  allowedOnce;
+// GEN-NEXT:   const  allowedExclusive;
+// GEN-NEXT:   const  requiredOneOf;
+// GEN-NEXT: };
+// GEN-EMPTY:
+// GEN-NEXT: std::unordered_map<llvm::tdl::Directive, TdlDirectiveClauses>
+// GEN-NEXT:     directiveClausesTable = {
+// GEN-NEXT:   {llvm::tdl::Directive::TDLD_dira,
+// GEN-NEXT:     {
+// GEN-NEXT:       llvm::tdl::allowedClauses_TDLD_dira,
+// GEN-NEXT:       llvm::tdl::allowedOnceClauses_TDLD_dira,
+// GEN-NEXT:       llvm::tdl::allowedExclusiveClauses_TDLD_dira,
+// GEN-NEXT:       llvm::tdl::requiredClauses_TDLD_dira,
+// GEN-NEXT:     }
+// GEN-NEXT:   },
+// GEN-NEXT: };
+// GEN-EMPTY:
+// GEN-NEXT: #endif // GEN_FLANG_DIRECTIVE_CLAUSE_MAP

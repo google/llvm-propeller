@@ -60,9 +60,12 @@ class LLVMContext;
 class AllocaInst : public UnaryInstruction {
   Type *AllocatedType;
 
-  using AlignmentField = AlignmentBitfieldElement<0>;          // Next bit:5
-  using UsedWithInAllocaField = Bitfield::Element<bool, 5, 1>; // Next bit:6
-  using SwiftErrorField = Bitfield::Element<bool, 6, 1>;       // Next bit:7
+  using AlignmentField = AlignmentBitfieldElementT<0>;
+  using UsedWithInAllocaField = BoolBitfieldElementT<AlignmentField::NextBit>;
+  using SwiftErrorField = BoolBitfieldElementT<UsedWithInAllocaField::NextBit>;
+  static_assert(Bitfield::areContiguous<AlignmentField, UsedWithInAllocaField,
+                                        SwiftErrorField>(),
+                "Bitfields must be contiguous");
 
 protected:
   // Note: Instruction needs to be a friend here to call cloneImpl.
@@ -168,10 +171,12 @@ private:
 /// An instruction for reading from memory. This uses the SubclassData field in
 /// Value to store whether or not the load is volatile.
 class LoadInst : public UnaryInstruction {
-  using VolatileField = Bitfield::Element<bool, 0, 1>;      // Next bit:1
-  using AlignmentField = AlignmentBitfieldElement<1>;       // Next bit:6
-  using OrderingField = Bitfield::Element<AtomicOrdering, 6, 3,
-                                          AtomicOrdering::LAST>; // Next bit:9
+  using VolatileField = BoolBitfieldElementT<0>;
+  using AlignmentField = AlignmentBitfieldElementT<VolatileField::NextBit>;
+  using OrderingField = AtomicOrderingBitfieldElementT<AlignmentField::NextBit>;
+  static_assert(
+      Bitfield::areContiguous<VolatileField, AlignmentField, OrderingField>(),
+      "Bitfields must be contiguous");
 
   void AssertOK();
 
@@ -295,10 +300,12 @@ private:
 
 /// An instruction for storing to memory.
 class StoreInst : public Instruction {
-  using VolatileField = Bitfield::Element<bool, 0, 1>;      // Next bit:1
-  using AlignmentField = AlignmentBitfieldElement<1>;       // Next bit:6
-  using OrderingField = Bitfield::Element<AtomicOrdering, 6, 3,
-                                          AtomicOrdering::LAST>; // Next bit:9
+  using VolatileField = BoolBitfieldElementT<0>;
+  using AlignmentField = AlignmentBitfieldElementT<VolatileField::NextBit>;
+  using OrderingField = AtomicOrderingBitfieldElementT<AlignmentField::NextBit>;
+  static_assert(
+      Bitfield::areContiguous<VolatileField, AlignmentField, OrderingField>(),
+      "Bitfields must be contiguous");
 
   void AssertOK();
 
@@ -434,8 +441,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(StoreInst, Value)
 
 /// An instruction for ordering other memory operations.
 class FenceInst : public Instruction {
-  using OrderingField = Bitfield::Element<AtomicOrdering, 1, 3,
-                                          AtomicOrdering::LAST>; // Next bit:4
+  using OrderingField = AtomicOrderingBitfieldElementT<0>;
 
   void Init(AtomicOrdering Ordering, SyncScope::ID SSID);
 
@@ -513,9 +519,14 @@ private:
 /// failure (false) as second element.
 ///
 class AtomicCmpXchgInst : public Instruction {
-  void Init(Value *Ptr, Value *Cmp, Value *NewVal,
+  void Init(Value *Ptr, Value *Cmp, Value *NewVal, Align Align,
             AtomicOrdering SuccessOrdering, AtomicOrdering FailureOrdering,
             SyncScope::ID SSID);
+
+  template <unsigned Offset>
+  using AtomicOrderingBitfieldElement =
+      typename Bitfield::Element<AtomicOrdering, Offset, 3,
+                                 AtomicOrdering::LAST>;
 
 protected:
   // Note: Instruction needs to be a friend here to call cloneImpl.
@@ -524,34 +535,42 @@ protected:
   AtomicCmpXchgInst *cloneImpl() const;
 
 public:
-  AtomicCmpXchgInst(Value *Ptr, Value *Cmp, Value *NewVal,
+  AtomicCmpXchgInst(Value *Ptr, Value *Cmp, Value *NewVal, Align Alignment,
                     AtomicOrdering SuccessOrdering,
-                    AtomicOrdering FailureOrdering,
-                    SyncScope::ID SSID, Instruction *InsertBefore = nullptr);
-  AtomicCmpXchgInst(Value *Ptr, Value *Cmp, Value *NewVal,
+                    AtomicOrdering FailureOrdering, SyncScope::ID SSID,
+                    Instruction *InsertBefore = nullptr);
+  AtomicCmpXchgInst(Value *Ptr, Value *Cmp, Value *NewVal, Align Alignment,
                     AtomicOrdering SuccessOrdering,
-                    AtomicOrdering FailureOrdering,
-                    SyncScope::ID SSID, BasicBlock *InsertAtEnd);
+                    AtomicOrdering FailureOrdering, SyncScope::ID SSID,
+                    BasicBlock *InsertAtEnd);
 
   // allocate space for exactly three operands
   void *operator new(size_t s) {
     return User::operator new(s, 3);
   }
 
-  // FIXME: Reuse bit 1 that was used by `syncscope.`
-  using VolatileField = Bitfield::Element<bool, 0, 1>; // Next bit:1
+  using VolatileField = BoolBitfieldElementT<0>;
+  using WeakField = BoolBitfieldElementT<VolatileField::NextBit>;
   using SuccessOrderingField =
-      Bitfield::Element<AtomicOrdering, 2, 3,
-                        AtomicOrdering::LAST>; // Next bit:5
+      AtomicOrderingBitfieldElementT<WeakField::NextBit>;
   using FailureOrderingField =
-      Bitfield::Element<AtomicOrdering, 5, 3,
-                        AtomicOrdering::LAST>;     // Next bit:8
-  using WeakField = Bitfield::Element<bool, 8, 1>; // Next bit:9
+      AtomicOrderingBitfieldElementT<SuccessOrderingField::NextBit>;
+  using AlignmentField =
+      AlignmentBitfieldElementT<FailureOrderingField::NextBit>;
+  static_assert(
+      Bitfield::areContiguous<VolatileField, WeakField, SuccessOrderingField,
+                              FailureOrderingField, AlignmentField>(),
+      "Bitfields must be contiguous");
 
-  /// Always returns the natural type alignment.
-  /// FIXME: Introduce a proper alignment
-  /// https://bugs.llvm.org/show_bug.cgi?id=27168
-  Align getAlign() const;
+  /// Return the alignment of the memory that is being allocated by the
+  /// instruction.
+  Align getAlign() const {
+    return Align(1ULL << getSubclassData<AlignmentField>());
+  }
+
+  void setAlignment(Align Align) {
+    setSubclassData<AlignmentField>(Log2(Align));
+  }
 
   /// Return true if this is a cmpxchg from a volatile memory
   /// location.
@@ -726,10 +745,21 @@ public:
     BAD_BINOP
   };
 
-  AtomicRMWInst(BinOp Operation, Value *Ptr, Value *Val,
+private:
+  template <unsigned Offset>
+  using AtomicOrderingBitfieldElement =
+      typename Bitfield::Element<AtomicOrdering, Offset, 3,
+                                 AtomicOrdering::LAST>;
+
+  template <unsigned Offset>
+  using BinOpBitfieldElement =
+      typename Bitfield::Element<BinOp, Offset, 4, BinOp::LAST_BINOP>;
+
+public:
+  AtomicRMWInst(BinOp Operation, Value *Ptr, Value *Val, Align Alignment,
                 AtomicOrdering Ordering, SyncScope::ID SSID,
                 Instruction *InsertBefore = nullptr);
-  AtomicRMWInst(BinOp Operation, Value *Ptr, Value *Val,
+  AtomicRMWInst(BinOp Operation, Value *Ptr, Value *Val, Align Alignment,
                 AtomicOrdering Ordering, SyncScope::ID SSID,
                 BasicBlock *InsertAtEnd);
 
@@ -738,13 +768,14 @@ public:
     return User::operator new(s, 2);
   }
 
-  // FIXME: Reuse bit 1 that was used by `syncscope.`
-  using VolatileField = Bitfield::Element<bool, 0, 1>; // Next bit:1
+  using VolatileField = BoolBitfieldElementT<0>;
   using AtomicOrderingField =
-      Bitfield::Element<AtomicOrdering, 2, 3,
-                        AtomicOrdering::LAST>; // Next bit:5
-  using OperationField = Bitfield::Element<BinOp, 5, 4,
-                                           BinOp::LAST_BINOP>; // Next bit:9
+      AtomicOrderingBitfieldElementT<VolatileField::NextBit>;
+  using OperationField = BinOpBitfieldElement<AtomicOrderingField::NextBit>;
+  using AlignmentField = AlignmentBitfieldElementT<OperationField::NextBit>;
+  static_assert(Bitfield::areContiguous<VolatileField, AtomicOrderingField,
+                                        OperationField, AlignmentField>(),
+                "Bitfields must be contiguous");
 
   BinOp getOperation() const { return getSubclassData<OperationField>(); }
 
@@ -764,10 +795,15 @@ public:
     setSubclassData<OperationField>(Operation);
   }
 
-  /// Always returns the natural type alignment.
-  /// FIXME: Introduce a proper alignment
-  /// https://bugs.llvm.org/show_bug.cgi?id=27168
-  Align getAlign() const;
+  /// Return the alignment of the memory that is being allocated by the
+  /// instruction.
+  Align getAlign() const {
+    return Align(1ULL << getSubclassData<AlignmentField>());
+  }
+
+  void setAlignment(Align Align) {
+    setSubclassData<AlignmentField>(Log2(Align));
+  }
 
   /// Return true if this is a RMW on a volatile memory location.
   ///
@@ -827,7 +863,7 @@ public:
   }
 
 private:
-  void Init(BinOp Operation, Value *Ptr, Value *Val,
+  void Init(BinOp Operation, Value *Ptr, Value *Val, Align Align,
             AtomicOrdering Ordering, SyncScope::ID SSID);
 
   // Shadow Instruction::setInstructionSubclassData with a private forwarding
@@ -1572,6 +1608,9 @@ public:
   };
 
   using TailCallKindField = Bitfield::Element<TailCallKind, 0, 2, TCK_LAST>;
+  static_assert(
+      Bitfield::areContiguous<TailCallKindField, CallBase::CallingConvField>(),
+      "Bitfields must be contiguous");
 
   TailCallKind getTailCallKind() const {
     return getSubclassData<TailCallKindField>();
@@ -2735,7 +2774,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(PHINode, Value)
 /// cleanup.
 ///
 class LandingPadInst : public Instruction {
-  using CleanupField = Bitfield::Element<bool, 0, 1>;
+  using CleanupField = BoolBitfieldElementT<0>;
 
   /// The number of operands actually allocated.  NumOperands is
   /// the number actually in use.
@@ -4106,7 +4145,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(ResumeInst, Value)
 //                         CatchSwitchInst Class
 //===----------------------------------------------------------------------===//
 class CatchSwitchInst : public Instruction {
-  using UnwindDestField = Bitfield::Element<unsigned, 0, 1>; // Next bit:1
+  using UnwindDestField = BoolBitfieldElementT<0>;
 
   /// The number of operands actually allocated.  NumOperands is
   /// the number actually in use.
@@ -4455,7 +4494,8 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(CatchReturnInst, Value)
 //===----------------------------------------------------------------------===//
 
 class CleanupReturnInst : public Instruction {
-  using UnwindDestField = Bitfield::Element<unsigned, 0, 1>; // Next bit:1
+  using UnwindDestField = BoolBitfieldElementT<0>;
+
 private:
   CleanupReturnInst(const CleanupReturnInst &RI);
   CleanupReturnInst(Value *CleanupPad, BasicBlock *UnwindBB, unsigned Values,

@@ -329,13 +329,23 @@ void fillFunctionTypeAndParams(HoverInfo &HI, const Decl *D,
 
 llvm::Optional<std::string> printExprValue(const Expr *E,
                                            const ASTContext &Ctx) {
-  Expr::EvalResult Constant;
+  // InitListExpr has two forms, syntactic and semantic. They are the same thing
+  // (refer to a same AST node) in most cases.
+  // When they are different, RAV returns the syntactic form, and we should feed
+  // the semantic form to EvaluateAsRValue.
+  if (const auto *ILE = llvm::dyn_cast<InitListExpr>(E)) {
+    if (!ILE->isSemanticForm())
+      E = ILE->getSemanticForm();
+  }
+
   // Evaluating [[foo]]() as "&foo" isn't useful, and prevents us walking up
   // to the enclosing call.
   QualType T = E->getType();
   if (T.isNull() || T->isFunctionType() || T->isFunctionPointerType() ||
       T->isFunctionReferenceType())
     return llvm::None;
+
+  Expr::EvalResult Constant;
   // Attempt to evaluate. If expr is dependent, evaluation crashes!
   if (E->isValueDependent() || !E->EvaluateAsRValue(Constant, Ctx) ||
       // Disable printing for record-types, as they are usually confusing and
@@ -659,8 +669,10 @@ bool isHardLineBreakAfter(llvm::StringRef Line, llvm::StringRef Rest) {
 }
 
 void addLayoutInfo(const NamedDecl &ND, HoverInfo &HI) {
-  const auto &Ctx = ND.getASTContext();
+  if (ND.isInvalidDecl())
+    return;
 
+  const auto &Ctx = ND.getASTContext();
   if (auto *RD = llvm::dyn_cast<RecordDecl>(&ND)) {
     if (auto Size = Ctx.getTypeSizeInCharsIfKnown(RD->getTypeForDecl()))
       HI.Size = Size->getQuantity();
@@ -671,11 +683,10 @@ void addLayoutInfo(const NamedDecl &ND, HoverInfo &HI) {
     const auto *Record = FD->getParent();
     if (Record)
       Record = Record->getDefinition();
-    if (Record && !Record->isDependentType()) {
+    if (Record && !Record->isInvalidDecl() && !Record->isDependentType()) {
+      HI.Offset = Ctx.getFieldOffset(FD) / 8;
       if (auto Size = Ctx.getTypeSizeInCharsIfKnown(FD->getType()))
         HI.Size = Size->getQuantity();
-      if (!FD->isInvalidDecl())
-        HI.Offset = Ctx.getFieldOffset(FD) / 8;
     }
     return;
   }

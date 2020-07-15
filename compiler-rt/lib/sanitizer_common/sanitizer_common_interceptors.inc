@@ -2199,6 +2199,24 @@ INTERCEPTOR(int, clock_settime, u32 clk_id, const void *tp) {
 #define INIT_CLOCK_GETTIME
 #endif
 
+#if SANITIZER_INTERCEPT_CLOCK_GETCPUCLOCKID
+INTERCEPTOR(int, clock_getcpuclockid, pid_t pid,
+            __sanitizer_clockid_t *clockid) {
+  void *ctx;
+  COMMON_INTERCEPTOR_ENTER(ctx, clock_getcpuclockid, pid, clockid);
+  int res = REAL(clock_getcpuclockid)(pid, clockid);
+  if (!res && clockid) {
+    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, clockid, sizeof *clockid);
+  }
+  return res;
+}
+
+#define INIT_CLOCK_GETCPUCLOCKID                  \
+  COMMON_INTERCEPT_FUNCTION(clock_getcpuclockid);
+#else
+#define INIT_CLOCK_GETCPUCLOCKID
+#endif
+
 #if SANITIZER_INTERCEPT_GETITIMER
 INTERCEPTOR(int, getitimer, int which, void *curr_value) {
   void *ctx;
@@ -7299,23 +7317,26 @@ INTERCEPTOR(int, setttyentpath, char *path) {
 #endif
 
 #if SANITIZER_INTERCEPT_PROTOENT
+static void write_protoent(void *ctx, struct __sanitizer_protoent *p) {
+  COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p, sizeof(*p));
+
+  COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p->p_name, REAL(strlen)(p->p_name) + 1);
+
+  SIZE_T pp_size = 1; // One handles the trailing \0
+
+  for (char **pp = p->p_aliases; *pp; ++pp, ++pp_size)
+      COMMON_INTERCEPTOR_WRITE_RANGE(ctx, *pp, REAL(strlen)(*pp) + 1);
+
+  COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p->p_aliases,
+                                  pp_size * sizeof(char **));
+}
+
 INTERCEPTOR(struct __sanitizer_protoent *, getprotoent) {
   void *ctx;
   COMMON_INTERCEPTOR_ENTER(ctx, getprotoent);
   struct __sanitizer_protoent *p = REAL(getprotoent)();
-  if (p) {
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p, sizeof(*p));
-
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p->p_name, REAL(strlen)(p->p_name) + 1);
-
-    SIZE_T pp_size = 1; // One handles the trailing \0
-
-    for (char **pp = p->p_aliases; *pp; ++pp, ++pp_size)
-       COMMON_INTERCEPTOR_WRITE_RANGE(ctx, *pp, REAL(strlen)(*pp) + 1);
-
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p->p_aliases,
-                                   pp_size * sizeof(char **));
-  }
+  if (p)
+    write_protoent(ctx, p);
   return p;
 }
 
@@ -7325,19 +7346,8 @@ INTERCEPTOR(struct __sanitizer_protoent *, getprotobyname, const char *name) {
   if (name)
     COMMON_INTERCEPTOR_READ_RANGE(ctx, name, REAL(strlen)(name) + 1);
   struct __sanitizer_protoent *p = REAL(getprotobyname)(name);
-  if (p) {
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p, sizeof(*p));
-
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p->p_name, REAL(strlen)(p->p_name) + 1);
-
-    SIZE_T pp_size = 1; // One handles the trailing \0
-
-    for (char **pp = p->p_aliases; *pp; ++pp, ++pp_size)
-       COMMON_INTERCEPTOR_WRITE_RANGE(ctx, *pp, REAL(strlen)(*pp) + 1);
-
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p->p_aliases,
-                                   pp_size * sizeof(char **));
-  }
+  if (p)
+    write_protoent(ctx, p);
   return p;
 }
 
@@ -7345,19 +7355,8 @@ INTERCEPTOR(struct __sanitizer_protoent *, getprotobynumber, int proto) {
   void *ctx;
   COMMON_INTERCEPTOR_ENTER(ctx, getprotobynumber, proto);
   struct __sanitizer_protoent *p = REAL(getprotobynumber)(proto);
-  if (p) {
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p, sizeof(*p));
-
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p->p_name, REAL(strlen)(p->p_name) + 1);
-
-    SIZE_T pp_size = 1; // One handles the trailing \0
-
-    for (char **pp = p->p_aliases; *pp; ++pp, ++pp_size)
-       COMMON_INTERCEPTOR_WRITE_RANGE(ctx, *pp, REAL(strlen)(*pp) + 1);
-
-    COMMON_INTERCEPTOR_WRITE_RANGE(ctx, p->p_aliases,
-                                   pp_size * sizeof(char **));
-  }
+  if (p)
+    write_protoent(ctx, p);
   return p;
 }
 #define INIT_PROTOENT \
@@ -7366,6 +7365,58 @@ INTERCEPTOR(struct __sanitizer_protoent *, getprotobynumber, int proto) {
   COMMON_INTERCEPT_FUNCTION(getprotobynumber)
 #else
 #define INIT_PROTOENT
+#endif
+
+#if SANITIZER_INTERCEPT_PROTOENT_R
+INTERCEPTOR(int, getprotoent_r, struct __sanitizer_protoent *result_buf,
+            char *buf, SIZE_T buflen, struct __sanitizer_protoent **result) {
+  void *ctx;
+  COMMON_INTERCEPTOR_ENTER(ctx, getprotoent_r, result_buf, buf, buflen,
+                           result);
+  int res = REAL(getprotoent_r)(result_buf, buf, buflen, result);
+
+  COMMON_INTERCEPTOR_WRITE_RANGE(ctx, result, sizeof *result);
+  if (!res && *result)
+    write_protoent(ctx, *result);
+  return res;
+}
+
+INTERCEPTOR(int, getprotobyname_r, const char *name,
+            struct __sanitizer_protoent *result_buf, char *buf, SIZE_T buflen,
+            struct __sanitizer_protoent **result) {
+  void *ctx;
+  COMMON_INTERCEPTOR_ENTER(ctx, getprotobyname_r, name, result_buf, buf,
+                           buflen, result);
+  if (name)
+    COMMON_INTERCEPTOR_READ_RANGE(ctx, name, REAL(strlen)(name) + 1);
+  int res = REAL(getprotobyname_r)(name, result_buf, buf, buflen, result);
+
+  COMMON_INTERCEPTOR_WRITE_RANGE(ctx, result, sizeof *result);
+  if (!res && *result)
+    write_protoent(ctx, *result);
+  return res;
+}
+
+INTERCEPTOR(int, getprotobynumber_r, int num,
+            struct __sanitizer_protoent *result_buf, char *buf,
+            SIZE_T buflen, struct __sanitizer_protoent **result) {
+  void *ctx;
+  COMMON_INTERCEPTOR_ENTER(ctx, getprotobynumber_r, num, result_buf, buf,
+                           buflen, result);
+  int res = REAL(getprotobynumber_r)(num, result_buf, buf, buflen, result);
+
+  COMMON_INTERCEPTOR_WRITE_RANGE(ctx, result, sizeof *result);
+  if (!res && *result)
+    write_protoent(ctx, *result);
+  return res;
+}
+
+#define INIT_PROTOENT_R \
+  COMMON_INTERCEPT_FUNCTION(getprotoent_r); \
+  COMMON_INTERCEPT_FUNCTION(getprotobyname_r); \
+  COMMON_INTERCEPT_FUNCTION(getprotobynumber_r);
+#else
+#define INIT_PROTOENT_R
 #endif
 
 #if SANITIZER_INTERCEPT_NETENT
@@ -9881,6 +9932,7 @@ static void InitializeCommonInterceptors() {
   INIT_FGETGRENT_R;
   INIT_SETPWENT;
   INIT_CLOCK_GETTIME;
+  INIT_CLOCK_GETCPUCLOCKID;
   INIT_GETITIMER;
   INIT_TIME;
   INIT_GLOB;
@@ -10071,6 +10123,7 @@ static void InitializeCommonInterceptors() {
   INIT_STRMODE;
   INIT_TTYENT;
   INIT_PROTOENT;
+  INIT_PROTOENT_R;
   INIT_NETENT;
   INIT_GETMNTINFO;
   INIT_MI_VECTOR_HASH;

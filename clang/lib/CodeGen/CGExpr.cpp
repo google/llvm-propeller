@@ -2398,7 +2398,7 @@ EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
 static LValue EmitThreadPrivateVarDeclLValue(
     CodeGenFunction &CGF, const VarDecl *VD, QualType T, Address Addr,
     llvm::Type *RealVarTy, SourceLocation Loc) {
-  if (CGF.CGM.getOpenMPIRBuilder())
+  if (CGF.CGM.getLangOpts().OpenMPIRBuilder)
     Addr = CodeGenFunction::OMPBuilderCBHelpers::getAddrOfThreadPrivate(
         CGF, VD, Addr, Loc);
   else
@@ -3849,7 +3849,7 @@ LValue CodeGenFunction::EmitOMPArraySectionExpr(const OMPArraySectionExpr *E,
   else
     ResultExprTy = BaseTy->getPointeeType();
   llvm::Value *Idx = nullptr;
-  if (IsLowerBound || E->getColonLoc().isInvalid()) {
+  if (IsLowerBound || E->getColonLocFirst().isInvalid()) {
     // Requesting lower bound or upper bound, but without provided length and
     // without ':' symbol for the default length -> length = 1.
     // Idx = LowerBound ?: 0;

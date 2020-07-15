@@ -116,6 +116,18 @@ EnableOptimizeLogicalImm("aarch64-enable-logical-imm", cl::Hidden,
 /// Value type used for condition codes.
 static const MVT MVT_CC = MVT::i32;
 
+/// Returns true if VT's elements occupy the lowest bit positions of its
+/// associated register class without any intervening space.
+///
+/// For example, nxv2f16, nxv4f16 and nxv8f16 are legal types that belong to the
+/// same register class, but only nxv8f16 can be treated as a packed vector.
+static inline bool isPackedVectorType(EVT VT, SelectionDAG &DAG) {
+  assert(VT.isVector() && DAG.getTargetLoweringInfo().isTypeLegal(VT) &&
+         "Expected legal vector type!");
+  return VT.isFixedLengthVector() ||
+         VT.getSizeInBits().getKnownMinSize() == AArch64::SVEBitsPerBlock;
+}
+
 AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
                                              const AArch64Subtarget &STI)
     : TargetLowering(TM), Subtarget(&STI) {
@@ -908,6 +920,7 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
     // D68877 for more details.
     for (MVT VT : MVT::integer_scalable_vector_valuetypes()) {
       if (isTypeLegal(VT)) {
+        setOperationAction(ISD::INSERT_SUBVECTOR, VT, Custom);
         setOperationAction(ISD::SPLAT_VECTOR, VT, Custom);
         setOperationAction(ISD::SELECT, VT, Custom);
         setOperationAction(ISD::SDIV, VT, Custom);
@@ -921,18 +934,21 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
         setOperationAction(ISD::SRA, VT, Custom);
         if (VT.getScalarType() == MVT::i1)
           setOperationAction(ISD::SETCC, VT, Custom);
-      } else {
-        for (auto VT : { MVT::nxv8i8, MVT::nxv4i16, MVT::nxv2i32 })
-          setOperationAction(ISD::EXTRACT_SUBVECTOR, VT, Custom);
       }
     }
+
+    for (auto VT : {MVT::nxv8i8, MVT::nxv4i16, MVT::nxv2i32})
+      setOperationAction(ISD::EXTRACT_SUBVECTOR, VT, Custom);
+
     setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i8, Custom);
     setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i16, Custom);
 
     for (MVT VT : MVT::fp_scalable_vector_valuetypes()) {
       if (isTypeLegal(VT)) {
+        setOperationAction(ISD::INSERT_SUBVECTOR, VT, Custom);
         setOperationAction(ISD::SPLAT_VECTOR, VT, Custom);
         setOperationAction(ISD::SELECT, VT, Custom);
+        setOperationAction(ISD::FMA, VT, Custom);
       }
     }
 
@@ -945,6 +961,17 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
       for (MVT VT : MVT::fp_fixedlen_vector_valuetypes())
         if (useSVEForFixedLengthVectorVT(VT))
           addTypeForFixedLengthSVE(VT);
+
+      // 64bit results can mean a bigger than NEON input.
+      for (auto VT : {MVT::v8i8, MVT::v4i16})
+        setOperationAction(ISD::TRUNCATE, VT, Custom);
+      setOperationAction(ISD::FP_ROUND, MVT::v4f16, Custom);
+
+      // 128bit results imply a bigger than NEON input.
+      for (auto VT : {MVT::v16i8, MVT::v8i16, MVT::v4i32})
+        setOperationAction(ISD::TRUNCATE, VT, Custom);
+      for (auto VT : {MVT::v8f16, MVT::v4f32})
+        setOperationAction(ISD::FP_ROUND, VT, Expand);
     }
   }
 
@@ -1037,9 +1064,7 @@ void AArch64TargetLowering::addTypeForFixedLengthSVE(MVT VT) {
   for (unsigned Op = 0; Op < ISD::BUILTIN_OP_END; ++Op)
     setOperationAction(Op, VT, Expand);
 
-  // EXTRACT_SUBVECTOR/INSERT_SUBVECTOR are used to "cast" between scalable
-  // and fixed length vector types, although with the current level of support
-  // only the former is exercised.
+  // We use EXTRACT_SUBVECTOR to "cast" a scalable vector to a fixed length one.
   setOperationAction(ISD::EXTRACT_SUBVECTOR, VT, Custom);
 
   // Lower fixed length vector operations to scalable equivalents.
@@ -1047,6 +1072,7 @@ void AArch64TargetLowering::addTypeForFixedLengthSVE(MVT VT) {
   setOperationAction(ISD::FADD, VT, Custom);
   setOperationAction(ISD::LOAD, VT, Custom);
   setOperationAction(ISD::STORE, VT, Custom);
+  setOperationAction(ISD::TRUNCATE, VT, Custom);
 }
 
 void AArch64TargetLowering::addDRTypeForNEON(MVT VT) {
@@ -1457,6 +1483,7 @@ const char *AArch64TargetLowering::getTargetNodeName(unsigned Opcode) const {
     MAKE_CASE(AArch64ISD::FADD_PRED)
     MAKE_CASE(AArch64ISD::FADDA_PRED)
     MAKE_CASE(AArch64ISD::FADDV_PRED)
+    MAKE_CASE(AArch64ISD::FMA_PRED)
     MAKE_CASE(AArch64ISD::FMAXV_PRED)
     MAKE_CASE(AArch64ISD::FMAXNMV_PRED)
     MAKE_CASE(AArch64ISD::FMINV_PRED)
@@ -2688,13 +2715,19 @@ SDValue AArch64TargetLowering::LowerFP_ROUND(SDValue Op,
                                              SelectionDAG &DAG) const {
   bool IsStrict = Op->isStrictFPOpcode();
   SDValue SrcVal = Op.getOperand(IsStrict ? 1 : 0);
-  if (SrcVal.getValueType() != MVT::f128) {
+  EVT SrcVT = SrcVal.getValueType();
+
+  if (SrcVT != MVT::f128) {
+    // Expand cases where the input is a vector bigger than NEON.
+    if (useSVEForFixedLengthVectorVT(SrcVT))
+      return SDValue();
+
     // It's legal except when f128 is involved
     return Op;
   }
 
   RTLIB::Libcall LC;
-  LC = RTLIB::getFPROUND(SrcVal.getValueType(), Op.getValueType());
+  LC = RTLIB::getFPROUND(SrcVT, Op.getValueType());
 
   // FP_ROUND node has a second operand indicating whether it is known to be
   // precise. That doesn't take part in the LibCall so we can't directly use
@@ -3442,6 +3475,8 @@ SDValue AArch64TargetLowering::LowerOperation(SDValue Op,
     return LowerF128Call(Op, DAG, RTLIB::SUB_F128);
   case ISD::FMUL:
     return LowerF128Call(Op, DAG, RTLIB::MUL_F128);
+  case ISD::FMA:
+    return LowerToPredicatedOp(Op, DAG, AArch64ISD::FMA_PRED);
   case ISD::FDIV:
     return LowerF128Call(Op, DAG, RTLIB::DIV_F128);
   case ISD::FP_ROUND:
@@ -3469,6 +3504,8 @@ SDValue AArch64TargetLowering::LowerOperation(SDValue Op,
     return LowerSPLAT_VECTOR(Op, DAG);
   case ISD::EXTRACT_SUBVECTOR:
     return LowerEXTRACT_SUBVECTOR(Op, DAG);
+  case ISD::INSERT_SUBVECTOR:
+    return LowerINSERT_SUBVECTOR(Op, DAG);
   case ISD::SDIV:
     return LowerToPredicatedOp(Op, DAG, AArch64ISD::SDIV_PRED);
   case ISD::UDIV:
@@ -8679,35 +8716,57 @@ AArch64TargetLowering::LowerEXTRACT_VECTOR_ELT(SDValue Op,
 
 SDValue AArch64TargetLowering::LowerEXTRACT_SUBVECTOR(SDValue Op,
                                                       SelectionDAG &DAG) const {
-  assert(!Op.getValueType().isScalableVector() &&
-         "Unexpected scalable type for custom lowering EXTRACT_SUBVECTOR");
+  assert(Op.getValueType().isFixedLengthVector() &&
+         "Only cases that extract a fixed length vector are supported!");
 
-  EVT VT = Op.getOperand(0).getValueType();
-  SDLoc dl(Op);
-  // Just in case...
-  if (!VT.isVector())
-    return SDValue();
-
-  ConstantSDNode *Cst = dyn_cast<ConstantSDNode>(Op.getOperand(1));
-  if (!Cst)
-    return SDValue();
-  unsigned Val = Cst->getZExtValue();
-
+  EVT InVT = Op.getOperand(0).getValueType();
+  unsigned Idx = cast<ConstantSDNode>(Op.getOperand(1))->getZExtValue();
   unsigned Size = Op.getValueSizeInBits();
 
+  if (InVT.isScalableVector()) {
+    // This will be matched by custom code during ISelDAGToDAG.
+    if (Idx == 0 && isPackedVectorType(InVT, DAG))
+      return Op;
+
+    return SDValue();
+  }
+
   // This will get lowered to an appropriate EXTRACT_SUBREG in ISel.
-  if (Val == 0)
+  if (Idx == 0 && InVT.getSizeInBits() <= 128)
     return Op;
 
   // If this is extracting the upper 64-bits of a 128-bit vector, we match
   // that directly.
-  if (Size == 64 && Val * VT.getScalarSizeInBits() == 64)
+  if (Size == 64 && Idx * InVT.getScalarSizeInBits() == 64)
+    return Op;
+
+  return SDValue();
+}
+
+SDValue AArch64TargetLowering::LowerINSERT_SUBVECTOR(SDValue Op,
+                                                     SelectionDAG &DAG) const {
+  assert(Op.getValueType().isScalableVector() &&
+         "Only expect to lower inserts into scalable vectors!");
+
+  EVT InVT = Op.getOperand(1).getValueType();
+  unsigned Idx = cast<ConstantSDNode>(Op.getOperand(2))->getZExtValue();
+
+  // We don't have any patterns for scalable vector yet.
+  if (InVT.isScalableVector() || !useSVEForFixedLengthVectorVT(InVT))
+    return SDValue();
+
+  // This will be matched by custom code during ISelDAGToDAG.
+  if (Idx == 0 && isPackedVectorType(InVT, DAG) && Op.getOperand(0).isUndef())
     return Op;
 
   return SDValue();
 }
 
 bool AArch64TargetLowering::isShuffleMaskLegal(ArrayRef<int> M, EVT VT) const {
+  // Currently no fixed length shuffles that require SVE are legal.
+  if (useSVEForFixedLengthVectorVT(VT))
+    return false;
+
   if (VT.getVectorNumElements() == 4 &&
       (VT.is128BitVector() || VT.is64BitVector())) {
     unsigned PFIndexes[4];
@@ -8801,6 +8860,9 @@ SDValue AArch64TargetLowering::LowerTRUNCATE(SDValue Op,
 
   if (!VT.isVector() || VT.isScalableVector())
     return Op;
+
+  if (useSVEForFixedLengthVectorVT(Op.getOperand(0).getValueType()))
+    return LowerFixedLengthVectorTruncateToSVE(Op, DAG);
 
   // Since we are looking for a right shift by a constant value of 1 and we are
   // operating on types at least 16 bits in length (sign/zero extended OpA and
@@ -15016,6 +15078,42 @@ SDValue AArch64TargetLowering::LowerFixedLengthVectorStoreToSVE(
       getPredicateForFixedLengthVector(DAG, DL, VT), Store->getMemoryVT(),
       Store->getMemOperand(), Store->getAddressingMode(),
       Store->isTruncatingStore());
+}
+
+SDValue AArch64TargetLowering::LowerFixedLengthVectorTruncateToSVE(
+    SDValue Op, SelectionDAG &DAG) const {
+  EVT VT = Op.getValueType();
+  assert(VT.isFixedLengthVector() && "Expected fixed length vector type!");
+
+  SDLoc DL(Op);
+  SDValue Val = Op.getOperand(0);
+  EVT ContainerVT = getContainerForFixedLengthVector(DAG, Val.getValueType());
+  Val = convertToScalableVector(DAG, ContainerVT, Val);
+
+  // Repeatedly truncate Val until the result is of the desired element type.
+  switch (ContainerVT.getSimpleVT().SimpleTy) {
+  default:
+    llvm_unreachable("unimplemented container type");
+  case MVT::nxv2i64:
+    Val = DAG.getNode(ISD::BITCAST, DL, MVT::nxv4i32, Val);
+    Val = DAG.getNode(AArch64ISD::UZP1, DL, MVT::nxv4i32, Val, Val);
+    if (VT.getVectorElementType() == MVT::i32)
+      break;
+    LLVM_FALLTHROUGH;
+  case MVT::nxv4i32:
+    Val = DAG.getNode(ISD::BITCAST, DL, MVT::nxv8i16, Val);
+    Val = DAG.getNode(AArch64ISD::UZP1, DL, MVT::nxv8i16, Val, Val);
+    if (VT.getVectorElementType() == MVT::i16)
+      break;
+    LLVM_FALLTHROUGH;
+  case MVT::nxv8i16:
+    Val = DAG.getNode(ISD::BITCAST, DL, MVT::nxv16i8, Val);
+    Val = DAG.getNode(AArch64ISD::UZP1, DL, MVT::nxv16i8, Val, Val);
+    assert(VT.getVectorElementType() == MVT::i8 && "Unexpected element type!");
+    break;
+  }
+
+  return convertFromScalableVector(DAG, VT, Val);
 }
 
 SDValue AArch64TargetLowering::LowerToPredicatedOp(SDValue Op,

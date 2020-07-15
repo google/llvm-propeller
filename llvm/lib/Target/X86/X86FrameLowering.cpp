@@ -480,7 +480,7 @@ void X86FrameLowering::BuildCFI(MachineBasicBlock &MBB,
 }
 
 /// Emits Dwarf Info specifying offsets of callee saved registers and
-/// frame pointer.
+/// frame pointer. This is called only when basic block sections are enabled.
 void X86FrameLowering::emitCalleeSavedFrameMoves(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) const {
   MachineFunction &MF = *MBB.getParent();

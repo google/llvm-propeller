@@ -1,19 +1,19 @@
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-eabihf \
-; RUN:   -disable-mve-tail-predication=false -loop-vectorize -S < %s | \
+; RUN:   -tail-predication=enabled -loop-vectorize -S < %s | \
 ; RUN:   FileCheck %s -check-prefixes=CHECK,PREFER-FOLDING
 
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-eabihf -mattr=-mve \
-; RUN:   -disable-mve-tail-predication=false -loop-vectorize \
+; RUN:   -tail-predication=enabled -loop-vectorize \
 ; RUN:   -enable-arm-maskedldst=true -S < %s | \
 ; RUN:   FileCheck %s -check-prefixes=CHECK,NO-FOLDING
 
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-eabihf -mattr=+mve \
-; RUN:   -disable-mve-tail-predication=false -loop-vectorize \
+; RUN:   -tail-predication=enabled -loop-vectorize \
 ; RUN:   -enable-arm-maskedldst=false -S < %s | \
 ; RUN:   FileCheck %s -check-prefixes=CHECK,NO-FOLDING
 
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-eabihf -mattr=+mve \
-; RUN:   -disable-mve-tail-predication=true -loop-vectorize \
+; RUN:   -tail-predication=disabled -loop-vectorize \
 ; RUN:   -enable-arm-maskedldst=true -S < %s | \
 ; RUN:   FileCheck %s -check-prefixes=CHECK,NO-FOLDING
 
@@ -21,24 +21,24 @@
 ; 'isHardwareLoopProfitable' return false, so that we test avoiding folding for
 ; these cases.
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-eabihf -mattr=+mve,-lob \
-; RUN:   -disable-mve-tail-predication=false -loop-vectorize \
+; RUN:   -tail-predication=enabled -loop-vectorize \
 ; RUN:   -enable-arm-maskedldst=true -S < %s | \
 ; RUN:   FileCheck %s -check-prefixes=CHECK,NO-FOLDING
 
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-eabihf -mattr=+mve.fp \
-; RUN:   -disable-mve-tail-predication=false -loop-vectorize \
+; RUN:   -tail-predication=enabled -loop-vectorize \
 ; RUN:   -enable-arm-maskedldst=true -S < %s | \
 ; RUN:   FileCheck %s -check-prefixes=CHECK,PREFER-FOLDING
 
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-eabihf -mattr=+mve.fp \
 ; RUN:   -prefer-predicate-over-epilog=false \
-; RUN:   -disable-mve-tail-predication=false -loop-vectorize \
+; RUN:   -tail-predication=enabled -loop-vectorize \
 ; RUN:   -enable-arm-maskedldst=true -S < %s | \
 ; RUN:   FileCheck %s -check-prefixes=CHECK,NO-FOLDING
 
 ; RUN: opt -mtriple=thumbv8.1m.main-arm-eabihf -mattr=+mve.fp \
 ; RUN:   -prefer-predicate-over-epilog=true \
-; RUN:   -disable-mve-tail-predication=false -loop-vectorize \
+; RUN:   -tail-predication=enabled -loop-vectorize \
 ; RUN:   -enable-arm-maskedldst=true -S < %s | \
 ; RUN:   FileCheck %s -check-prefixes=CHECK,FOLDING-OPT
 
@@ -562,14 +562,12 @@ for.body:
   br i1 %exitcond, label %for.cond.cleanup, label %for.body
 }
 
-; TODO: this fpext could be allowed, but we don't lower it very efficiently yet,
-; so reject this for now.
 define void @fpext_allowed(float* noalias nocapture %A, half* noalias nocapture readonly %B, float* noalias nocapture readonly %C) #0 {
 ; CHECK-LABEL:        fpext_allowed(
-; PREFER-FOLDING-NOT: vector.body:
+; PREFER-FOLDING:     vector.body:
 ; PREFER-FOLDING-NOT: llvm.masked.load
 ; PREFER-FOLDING-NOT: llvm.masked.store
-; PREFER-FOLDING-NOT: br i1 %{{.*}}, label %{{.*}}, label %vector.body
+; PREFER-FOLDING:     br i1 %{{.*}}, label %{{.*}}, label %vector.body
 entry:
   br label %for.body
 
@@ -591,14 +589,12 @@ for.body:
   br i1 %exitcond, label %for.cond.cleanup, label %for.body
 }
 
-; TODO: this fptrunc could be allowed, but we don't lower it very efficiently yet,
-; so reject this for now.
 define void @fptrunc_allowed(half* noalias nocapture %A, float* noalias nocapture readonly %B, float* noalias nocapture readonly %C) #0 {
 ; CHECK-LABEL:        fptrunc_allowed(
-; PREFER-FOLDING-NOT: vector.body:
+; PREFER-FOLDING:     vector.body:
 ; PREFER-FOLDING-NOT: llvm.masked.load
 ; PREFER-FOLDING-NOT: llvm.masked.store
-; PREFER-FOLDING-NOT: br i1 %{{.*}}, label %{{.*}}, label %vector.body
+; PREFER-FOLDING:     br i1 %{{.*}}, label %{{.*}}, label %vector.body
 entry:
   br label %for.body
 

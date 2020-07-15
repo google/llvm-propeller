@@ -160,10 +160,6 @@ namespace {
     /// make the right decision when generating code for different targets.
     const X86Subtarget *Subtarget;
 
-    /// If true, selector should try to optimize for code size instead of
-    /// performance.
-    bool OptForSize;
-
     /// If true, selector should try to optimize for minimum code size.
     bool OptForMinSize;
 
@@ -172,7 +168,7 @@ namespace {
 
   public:
     explicit X86DAGToDAGISel(X86TargetMachine &tm, CodeGenOpt::Level OptLevel)
-        : SelectionDAGISel(tm, OptLevel), Subtarget(nullptr), OptForSize(false),
+        : SelectionDAGISel(tm, OptLevel), Subtarget(nullptr),
           OptForMinSize(false), IndirectTlsSegRefs(false) {}
 
     StringRef getPassName() const override {
@@ -186,9 +182,8 @@ namespace {
                              "indirect-tls-seg-refs");
 
       // OptFor[Min]Size are used in pattern predicates that isel is matching.
-      OptForSize = MF.getFunction().hasOptSize();
       OptForMinSize = MF.getFunction().hasMinSize();
-      assert((!OptForMinSize || OptForSize) &&
+      assert((!OptForMinSize || MF.getFunction().hasOptSize()) &&
              "OptForMinSize implies OptForSize");
 
       SelectionDAGISel::runOnMachineFunction(MF);
@@ -4435,8 +4430,39 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
 
       break;
     }
+    case Intrinsic::x86_tileloadd64:
+    case Intrinsic::x86_tileloaddt164:
+    case Intrinsic::x86_tilestored64: {
+      if (!Subtarget->hasAMXTILE())
+        break;
+      unsigned Opc;
+      switch (IntNo) {
+      default: llvm_unreachable("Unexpected intrinsic!");
+      case Intrinsic::x86_tileloadd64:   Opc = X86::PTILELOADD; break;
+      case Intrinsic::x86_tileloaddt164: Opc = X86::PTILELOADDT1; break;
+      case Intrinsic::x86_tilestored64:  Opc = X86::PTILESTORED; break;
+      }
+      // FIXME: Match displacement and scale.
+      unsigned TIndex = Node->getConstantOperandVal(2);
+      SDValue TReg = getI8Imm(TIndex, dl);
+      SDValue Base = Node->getOperand(3);
+      SDValue Scale = getI8Imm(1, dl);
+      SDValue Index = Node->getOperand(4);
+      SDValue Disp = CurDAG->getTargetConstant(0, dl, MVT::i32);
+      SDValue Segment = CurDAG->getRegister(0, MVT::i16);
+      SDValue Chain = Node->getOperand(0);
+      MachineSDNode *CNode;
+      if (Opc == X86::PTILESTORED) {
+        SDValue Ops[] = { Base, Scale, Index, Disp, Segment, TReg, Chain };
+        CNode = CurDAG->getMachineNode(Opc, dl, MVT::Other, Ops);
+      } else {
+        SDValue Ops[] = { TReg, Base, Scale, Index, Disp, Segment, Chain };
+        CNode = CurDAG->getMachineNode(Opc, dl, MVT::Other, Ops);
+      }
+      ReplaceNode(Node, CNode);
+      return;
     }
-
+    }
     break;
   }
   case ISD::BRIND: {
@@ -4526,7 +4552,7 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
     // the patterns on the add/sub/and/or/xor with immediate paterns in the
     // tablegen files to check immediate use count without making the patterns
     // unavailable to the fast-isel table.
-    if (!OptForSize)
+    if (!CurDAG->shouldOptForSize())
       break;
 
     // Only handle i8/i16/i32/i64.

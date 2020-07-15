@@ -688,8 +688,7 @@ void AsmPrinter::emitFunctionHeader() {
   if (!MAI->hasVisibilityOnlyWithLinkage())
     emitVisibility(CurrentFnSym, F.getVisibility());
 
-  if (MAI->needsFunctionDescriptors() &&
-      F.getLinkage() != GlobalValue::InternalLinkage)
+  if (MAI->needsFunctionDescriptors())
     emitLinkage(&F, CurrentFnDescSym);
 
   emitLinkage(&F, CurrentFnSym);
@@ -3126,10 +3125,6 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
       OutStreamer->SwitchSection(
           getObjFileLowering().getSectionForMachineBasicBlock(MF->getFunction(),
                                                               MBB, TM));
-      // Use a more meaningful name if we have basicblock clusters.
-      // if(MBB.getParent()->getBBSectionsType() == BasicBlockSection::List) {
-      //   BBSymbol = getSymbolForBasicBlockCluster(OutContext, MBB);
-      // }
       CurrentSectionBeginSym = BBSymbol;
     }
     OutStreamer->emitLabel(BBSymbol);
@@ -3144,11 +3139,9 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
 void AsmPrinter::emitBasicBlockEnd(const MachineBasicBlock &MBB) {
   // Check if CFI information needs to be updated for this MBB with basic block
   // sections.
-  if (MBB.isEndSection()) {
-    for (const HandlerInfo &HI : Handlers) {
+  if (MBB.isEndSection())
+    for (const HandlerInfo &HI : Handlers)
       HI.Handler->endBasicBlock(MBB);
-    }
-  }
 }
 
 void AsmPrinter::emitVisibility(MCSymbol *Sym, unsigned Visibility,

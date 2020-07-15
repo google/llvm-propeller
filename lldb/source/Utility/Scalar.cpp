@@ -23,6 +23,9 @@
 using namespace lldb;
 using namespace lldb_private;
 
+using llvm::APFloat;
+using llvm::APInt;
+
 namespace {
 enum class Category { Void, Integral, Float };
 }
@@ -557,6 +560,14 @@ bool Scalar::MakeUnsigned() {
   return success;
 }
 
+static llvm::APInt ToAPInt(const llvm::APFloat &f, unsigned bits,
+                           bool is_unsigned) {
+  llvm::APSInt result(bits, is_unsigned);
+  bool isExact;
+  f.convertToInteger(result, llvm::APFloat::rmTowardZero, &isExact);
+  return std::move(result);
+}
+
 template <typename T> T Scalar::GetAs(T fail_value) const {
   switch (GetCategory(m_type)) {
   case Category::Void:
@@ -565,12 +576,9 @@ template <typename T> T Scalar::GetAs(T fail_value) const {
     if (IsSigned(m_type))
       return m_integer.sextOrTrunc(sizeof(T) * 8).getSExtValue();
     return m_integer.zextOrTrunc(sizeof(T) * 8).getZExtValue();
-  case Category::Float: {
-    llvm::APSInt result(sizeof(T) * 8, std::is_unsigned<T>::value);
-    bool isExact;
-    m_float.convertToInteger(result, llvm::APFloat::rmTowardZero, &isExact);
-    return result.getSExtValue();
-  }
+  case Category::Float:
+    return ToAPInt(m_float, sizeof(T) * 8, std::is_unsigned<T>::value)
+        .getSExtValue();
   }
   return fail_value;
 }
@@ -612,148 +620,72 @@ unsigned long long Scalar::ULongLong(unsigned long long fail_value) const {
 }
 
 llvm::APInt Scalar::SInt128(const llvm::APInt &fail_value) const {
-  switch (m_type) {
-  case e_void:
+  switch (GetCategory(m_type)) {
+  case Category::Void:
     break;
-  case e_sint:
-  case e_uint:
-  case e_slong:
-  case e_ulong:
-  case e_slonglong:
-  case e_ulonglong:
-  case e_sint128:
-  case e_uint128:
-  case e_sint256:
-  case e_uint256:
-  case e_sint512:
-  case e_uint512:
+  case Category::Integral:
     return m_integer;
-  case e_float:
-  case e_double:
-  case e_long_double:
-    return m_float.bitcastToAPInt();
+  case Category::Float:
+    return ToAPInt(m_float, 128, /*is_unsigned=*/false);
   }
   return fail_value;
 }
 
 llvm::APInt Scalar::UInt128(const llvm::APInt &fail_value) const {
-  switch (m_type) {
-  case e_void:
+  switch (GetCategory(m_type)) {
+  case Category::Void:
     break;
-  case e_sint:
-  case e_uint:
-  case e_slong:
-  case e_ulong:
-  case e_slonglong:
-  case e_ulonglong:
-  case e_sint128:
-  case e_uint128:
-  case e_sint256:
-  case e_uint256:
-  case e_sint512:
-  case e_uint512:
+  case Category::Integral:
     return m_integer;
-  case e_float:
-  case e_double:
-  case e_long_double:
-    return m_float.bitcastToAPInt();
+  case Category::Float:
+    return ToAPInt(m_float, 128, /*is_unsigned=*/true);
   }
   return fail_value;
 }
 
 float Scalar::Float(float fail_value) const {
-  switch (m_type) {
-  case e_void:
+  switch (GetCategory(m_type)) {
+  case Category::Void:
     break;
-  case e_sint:
-  case e_slong:
-  case e_slonglong:
-  case e_sint128:
-  case e_sint256:
-  case e_sint512:
-    return llvm::APIntOps::RoundSignedAPIntToFloat(m_integer);
-
-  case e_uint:
-  case e_ulong:
-  case e_ulonglong:
-  case e_uint128:
-  case e_uint256:
-  case e_uint512:
+  case Category::Integral:
+    if (IsSigned(m_type))
+      return llvm::APIntOps::RoundSignedAPIntToFloat(m_integer);
     return llvm::APIntOps::RoundAPIntToFloat(m_integer);
 
-  case e_float:
-    return m_float.convertToFloat();
-  case e_double:
-    return static_cast<float_t>(m_float.convertToDouble());
-  case e_long_double:
-    llvm::APInt ldbl_val = m_float.bitcastToAPInt();
-    return ldbl_val.bitsToFloat();
+  case Category::Float: {
+    APFloat result = m_float;
+    bool losesInfo;
+    result.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven,
+                   &losesInfo);
+    return result.convertToFloat();
+  }
   }
   return fail_value;
 }
 
 double Scalar::Double(double fail_value) const {
-  switch (m_type) {
-  case e_void:
+  switch (GetCategory(m_type)) {
+  case Category::Void:
     break;
-  case e_sint:
-  case e_slong:
-  case e_slonglong:
-  case e_sint128:
-  case e_sint256:
-  case e_sint512:
-    return llvm::APIntOps::RoundSignedAPIntToDouble(m_integer);
-
-  case e_uint:
-  case e_ulong:
-  case e_ulonglong:
-  case e_uint128:
-  case e_uint256:
-  case e_uint512:
+  case Category::Integral:
+    if (IsSigned(m_type))
+      return llvm::APIntOps::RoundSignedAPIntToDouble(m_integer);
     return llvm::APIntOps::RoundAPIntToDouble(m_integer);
 
-  case e_float:
-    return static_cast<double_t>(m_float.convertToFloat());
-  case e_double:
-    return m_float.convertToDouble();
-  case e_long_double:
-    llvm::APInt ldbl_val = m_float.bitcastToAPInt();
-    return ldbl_val.bitsToFloat();
+  case Category::Float: {
+    APFloat result = m_float;
+    bool losesInfo;
+    result.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
+                   &losesInfo);
+    return result.convertToDouble();
+  }
   }
   return fail_value;
 }
 
 long double Scalar::LongDouble(long double fail_value) const {
-  switch (m_type) {
-  case e_void:
-    break;
-  case e_sint:
-  case e_slong:
-  case e_slonglong:
-  case e_sint128:
-  case e_sint256:
-  case e_sint512:
-    return static_cast<long_double_t>(
-        llvm::APIntOps::RoundSignedAPIntToDouble(m_integer));
-
-  case e_uint:
-  case e_ulong:
-  case e_ulonglong:
-  case e_uint128:
-  case e_uint256:
-  case e_uint512:
-    return static_cast<long_double_t>(
-        llvm::APIntOps::RoundAPIntToDouble(m_integer));
-
-  case e_float:
-    return static_cast<long_double_t>(m_float.convertToFloat());
-  case e_double:
-    return static_cast<long_double_t>(m_float.convertToDouble());
-  case e_long_double:
-    llvm::APInt ldbl_val = m_float.bitcastToAPInt();
-    return static_cast<long_double_t>(ldbl_val.bitsToDouble());
-  }
-  return fail_value;
+  /// No way to get more precision at the moment.
+  return static_cast<long double>(Double(fail_value));
 }
 
 Scalar &Scalar::operator+=(const Scalar &rhs) {
@@ -1071,116 +1003,60 @@ Status Scalar::SetValueFromCString(const char *value_str, Encoding encoding,
     error.SetErrorString("Invalid encoding.");
     break;
 
-  case eEncodingUint:
-    if (byte_size <= sizeof(uint64_t)) {
-      uint64_t uval64;
-      if (!llvm::to_integer(value_str, uval64))
-        error.SetErrorStringWithFormat(
-            "'%s' is not a valid unsigned integer string value", value_str);
-      else if (!UIntValueIsValidForSize(uval64, byte_size))
-        error.SetErrorStringWithFormat(
-            "value 0x%" PRIx64 " is too large to fit in a %" PRIu64
-            " byte unsigned integer value",
-            uval64, static_cast<uint64_t>(byte_size));
-      else {
-        m_type = Scalar::GetValueTypeForUnsignedIntegerWithByteSize(byte_size);
-        switch (m_type) {
-        case e_uint:
-          m_integer = llvm::APInt(sizeof(uint_t) * 8, uval64, false);
-          break;
-        case e_ulong:
-          m_integer = llvm::APInt(sizeof(ulong_t) * 8, uval64, false);
-          break;
-        case e_ulonglong:
-          m_integer = llvm::APInt(sizeof(ulonglong_t) * 8, uval64, false);
-          break;
-        default:
-          error.SetErrorStringWithFormat(
-              "unsupported unsigned integer byte size: %" PRIu64 "",
-              static_cast<uint64_t>(byte_size));
-          break;
-        }
-      }
-    } else {
-      error.SetErrorStringWithFormat(
-          "unsupported unsigned integer byte size: %" PRIu64 "",
-          static_cast<uint64_t>(byte_size));
-      return error;
-    }
-    break;
-
   case eEncodingSint:
-    if (byte_size <= sizeof(int64_t)) {
-      int64_t sval64;
-      if (!llvm::to_integer(value_str, sval64))
-        error.SetErrorStringWithFormat(
-            "'%s' is not a valid signed integer string value", value_str);
-      else if (!SIntValueIsValidForSize(sval64, byte_size))
-        error.SetErrorStringWithFormat(
-            "value 0x%" PRIx64 " is too large to fit in a %" PRIu64
-            " byte signed integer value",
-            sval64, static_cast<uint64_t>(byte_size));
-      else {
-        m_type = Scalar::GetValueTypeForSignedIntegerWithByteSize(byte_size);
-        switch (m_type) {
-        case e_sint:
-          m_integer = llvm::APInt(sizeof(sint_t) * 8, sval64, true);
-          break;
-        case e_slong:
-          m_integer = llvm::APInt(sizeof(slong_t) * 8, sval64, true);
-          break;
-        case e_slonglong:
-          m_integer = llvm::APInt(sizeof(slonglong_t) * 8, sval64, true);
-          break;
-        default:
-          error.SetErrorStringWithFormat(
-              "unsupported signed integer byte size: %" PRIu64 "",
-              static_cast<uint64_t>(byte_size));
-          break;
-        }
-      }
-    } else {
-      error.SetErrorStringWithFormat(
-          "unsupported signed integer byte size: %" PRIu64 "",
-          static_cast<uint64_t>(byte_size));
-      return error;
+  case eEncodingUint: {
+    llvm::StringRef str = value_str;
+    bool is_signed = encoding == eEncodingSint;
+    bool is_negative = is_signed && str.consume_front("-");
+    APInt integer;
+    if (str.getAsInteger(0, integer)) {
+      error.SetErrorStringWithFormatv(
+          "'{0}' is not a valid integer string value", value_str);
+      break;
     }
+    bool fits;
+    if (is_signed) {
+      integer = integer.zext(integer.getBitWidth() + 1);
+      if (is_negative)
+        integer.negate();
+      fits = integer.isSignedIntN(byte_size * 8);
+    } else
+      fits = integer.isIntN(byte_size * 8);
+    if (!fits) {
+      error.SetErrorStringWithFormatv(
+          "value {0} is too large to fit in a {1} byte integer value",
+          value_str, byte_size);
+      break;
+    }
+    m_type = GetBestTypeForBitSize(8 * byte_size, is_signed);
+    if (m_type == e_void) {
+      error.SetErrorStringWithFormatv("unsupported integer byte size: {0}",
+                                      byte_size);
+      break;
+    }
+    if (is_signed)
+      m_integer = integer.sextOrTrunc(GetBitSize(m_type));
+    else
+      m_integer = integer.zextOrTrunc(GetBitSize(m_type));
     break;
+  }
 
-  case eEncodingIEEE754:
-    static float f_val;
-    static double d_val;
-    static long double l_val;
-    if (byte_size == sizeof(float)) {
-      if (::sscanf(value_str, "%f", &f_val) == 1) {
-        m_float = llvm::APFloat(f_val);
-        m_type = e_float;
-      } else
-        error.SetErrorStringWithFormat("'%s' is not a valid float string value",
-                                       value_str);
-    } else if (byte_size == sizeof(double)) {
-      if (::sscanf(value_str, "%lf", &d_val) == 1) {
-        m_float = llvm::APFloat(d_val);
-        m_type = e_double;
-      } else
-        error.SetErrorStringWithFormat("'%s' is not a valid float string value",
-                                       value_str);
-    } else if (byte_size == sizeof(long double)) {
-      if (::sscanf(value_str, "%Lf", &l_val) == 1) {
-        m_float = llvm::APFloat(
-            llvm::APFloat::x87DoubleExtended(),
-            llvm::APInt(BITWIDTH_INT128, NUM_OF_WORDS_INT128,
-                        (reinterpret_cast<type128 *>(&l_val))->x));
-        m_type = e_long_double;
-      } else
-        error.SetErrorStringWithFormat("'%s' is not a valid float string value",
-                                       value_str);
-    } else {
-      error.SetErrorStringWithFormat("unsupported float byte size: %" PRIu64 "",
-                                     static_cast<uint64_t>(byte_size));
-      return error;
+  case eEncodingIEEE754: {
+    Type type = GetValueTypeForFloatWithByteSize(byte_size);
+    if (type == e_void) {
+      error.SetErrorStringWithFormatv("unsupported float byte size: {0}",
+                                      byte_size);
+      break;
     }
+    APFloat f(GetFltSemantics(type));
+    if (llvm::Expected<APFloat::opStatus> op =
+            f.convertFromString(value_str, APFloat::rmNearestTiesToEven)) {
+      m_type = type;
+      m_float = std::move(f);
+    } else
+      error = op.takeError();
     break;
+  }
 
   case eEncodingVector:
     error.SetErrorString("vector encoding unsupported.");

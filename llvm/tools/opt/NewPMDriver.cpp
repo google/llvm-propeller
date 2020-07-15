@@ -102,9 +102,7 @@ static cl::opt<std::string> OptimizerLastEPPipeline(
     cl::Hidden);
 
 // Individual pipeline tuning options.
-static cl::opt<bool> DisableLoopUnrolling(
-    "new-pm-disable-loop-unrolling",
-    cl::desc("Disable loop unrolling in all relevant passes"), cl::init(false));
+extern cl::opt<bool> DisableLoopUnrolling;
 
 extern cl::opt<PGOKind> PGOKindFlag;
 extern cl::opt<std::string> ProfileFile;
@@ -360,8 +358,11 @@ bool llvm::runPassPipeline(StringRef Arg0, Module &M, TargetMachine *TM,
     }
   }
   for (auto PassName : NonAAPasses) {
-    if (auto Err =
-            PB.parsePassPipeline(MPM, PassName, VerifyEachPass, DebugPM)) {
+    std::string ModifiedPassName(PassName.begin(), PassName.end());
+    if (PB.isAnalysisPassName(PassName))
+      ModifiedPassName = "require<" + ModifiedPassName + ">";
+    if (auto Err = PB.parsePassPipeline(MPM, ModifiedPassName, VerifyEachPass,
+                                        DebugPM)) {
       errs() << Arg0 << ": " << toString(std::move(Err)) << "\n";
       return false;
     }

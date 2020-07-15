@@ -1,51 +1,53 @@
-; This test checks if CFI instructions for callee saved registers are emitted
-; correctly with basic block sections.
-; RUN: llc -O3 %s -mtriple=x86_64-unknown-linux-gnu -filetype=asm --basicblock-sections=all  -stop-after=cfi-instr-inserter  -o - | FileCheck --check-prefix=CFI_INSTR %s
+;; This test checks if CFI instructions for all callee saved registers are emitted
+;; correctly with basic block sections.
+; RUN: llc  %s -mtriple=x86_64 -filetype=asm --basicblock-sections=all --frame-pointer=all -o - | FileCheck --check-prefix=SECTIONS_CFI %s
 
-; CFI_INSTR: _Z3foobiiiiii
-; CFI_INSTR: bb.0.entry:
-; CFI_INSTR:      CFI_INSTRUCTION offset
-; CFI_INSTR-NEXT: CFI_INSTRUCTION offset
-; CFI_INSTR-NEXT: CFI_INSTRUCTION offset
-; CFI_INSTR: bb.1.if.then (bbsections 1):
-; CFI_INSTR: CFI_INSTRUCTION def_cfa $rsp
-; CFI_INSTR-NEXT: CFI_INSTRUCTION offset
-; CFI_INSTR-NEXT: CFI_INSTRUCTION offset
-; CFI_INSTR-NEXT: CFI_INSTRUCTION offset
-; CFI_INSTR: bb.2.if.end (bbsections 2):
-; CFI_INSTR: CFI_INSTRUCTION def_cfa $rsp
-; CFI_INSTR-NEXT: CFI_INSTRUCTION offset
-; CFI_INSTR-NEXT: CFI_INSTRUCTION offset
-; CFI_INSTR-NEXT: CFI_INSTRUCTION offset
+; SECTIONS_CFI:       _Z3foob:
+; SECTIONS_CFI:      .cfi_offset %rbp, -16
+; SECTIONS_CFI:      .cfi_offset [[RA:%r.+]], -56
+; SECTIONS_CFI-NEXT: .cfi_offset [[RB:%r.+]], -48
+; SECTIONS_CFI-NEXT: .cfi_offset [[RC:%r.+]], -40
+; SECTIONS_CFI-NEXT: .cfi_offset [[RD:%r.+]], -32
+; SECTIONS_CFI-NEXT: .cfi_offset [[RE:%r.+]], -24
 
-; Exhaust caller-saved parameter registers and  force callee saved registers to
-; be used.  This tests that CFI directives for callee saved registers are
-; generated with basic block sections.
-; extern void f1(int, int, int);
-;
-; void foo(bool k, int p1, int p2, int p3, int p4, int p5, int p6) {
-;   // Using a conditional forces a basic block section.
-;   if (k) {
-;     // p1, p3 and p5 will use the same parameter registers as p2, p4 and p6
-;     // respectively in making the calls below.  This forces the need to stash
-;     // some of these values (already in the parameter registers) in callee
-;     // saved registers.
-;     f1(p1, p3, p5);
-;     f1(p2, p4, p6);
-;   }
-; }
+; SECTIONS_CFI:      _Z3foob.1:
+; SECTIONS_CFI:      .cfi_offset %rbp, -16
+; SECTIONS_CFI:      .cfi_offset [[RA]], -56
+; SECTIONS_CFI-NEXT: .cfi_offset [[RB]], -48
+; SECTIONS_CFI-NEXT: .cfi_offset [[RC]], -40
+; SECTIONS_CFI-NEXT: .cfi_offset [[RD]], -32
+; SECTIONS_CFI-NEXT: .cfi_offset [[RE]], -24
 
-define dso_local void @_Z3foobiiiiii(i1 zeroext %k, i32 %p1, i32 %p2, i32 %p3, i32 %p4, i32 %p5, i32 %p6) local_unnamed_addr {
+; SECTIONS_CFI:      _Z3foob.2:
+; SECTIONS_CFI:      .cfi_offset %rbp, -16
+; SECTIONS_CFI:      .cfi_offset [[RA]], -56
+; SECTIONS_CFI-NEXT: .cfi_offset [[RB]], -48
+; SECTIONS_CFI-NEXT: .cfi_offset [[RC]], -40
+; SECTIONS_CFI-NEXT: .cfi_offset [[RD]], -32
+; SECTIONS_CFI-NEXT: .cfi_offset [[RE]], -24
+
+
+;; void foo(bool b) {
+;;   if (b) // adds a basic block
+;;     // clobber all callee-save registers to force them to be callee-saved and to
+;;     // be described by cfi_offset directives.
+;;     asm("nop" ::: "r12", "r13", "r14", "r15", "rbx");
+;; }
+
+define dso_local void @_Z3foob(i1 zeroext %b) {
 entry:
-  br i1 %k, label %if.then, label %if.end
+  %b.addr = alloca i8, align 1
+  %frombool = zext i1 %b to i8
+  store i8 %frombool, i8* %b.addr, align 1
+  %0 = load i8, i8* %b.addr, align 1
+  %tobool = trunc i8 %0 to i1
+  br i1 %tobool, label %if.then, label %if.end
 
 if.then:                                          ; preds = %entry
-  tail call void @_Z2f1iii(i32 %p1, i32 %p3, i32 %p5)
-  tail call void @_Z2f1iii(i32 %p2, i32 %p4, i32 %p6)
+  call void asm sideeffect "nop", "~{r12},~{r13},~{r14},~{r15},~{rbx},~{dirflag},~{fpsr},~{flags}"() #1, !srcloc !2
   br label %if.end
 
 if.end:                                           ; preds = %if.then, %entry
   ret void
 }
-
-declare dso_local void @_Z2f1iii(i32, i32, i32) local_unnamed_addr
+!2 = !{i32 38}

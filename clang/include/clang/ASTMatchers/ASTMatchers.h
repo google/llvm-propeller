@@ -2862,7 +2862,7 @@ AST_POLYMORPHIC_MATCHER_P_OVERLOAD(
 /// BaseSpecMatcher.
 ///
 /// Example:
-/// matcher hasAnyBase(hasType(cxxRecordDecl(hasName("SpecialBase")))))
+/// matcher hasAnyBase(hasType(cxxRecordDecl(hasName("SpecialBase"))))
 /// \code
 ///   class Foo;
 ///   class Bar : Foo {};
@@ -2876,6 +2876,26 @@ AST_POLYMORPHIC_MATCHER_P_OVERLOAD(
 AST_MATCHER_P(CXXRecordDecl, hasAnyBase, internal::Matcher<CXXBaseSpecifier>,
               BaseSpecMatcher) {
   return internal::matchesAnyBase(Node, BaseSpecMatcher, Finder, Builder);
+}
+
+/// Matches C++ classes that have a direct base matching \p BaseSpecMatcher.
+///
+/// Example:
+/// matcher hasDirectBase(hasType(cxxRecordDecl(hasName("SpecialBase"))))
+/// \code
+///   class Foo;
+///   class Bar : Foo {};
+///   class Baz : Bar {};
+///   class SpecialBase;
+///   class Proxy : SpecialBase {};  // matches Proxy
+///   class IndirectlyDerived : Proxy {};  // doesn't match
+/// \endcode
+AST_MATCHER_P(CXXRecordDecl, hasDirectBase, internal::Matcher<CXXBaseSpecifier>,
+              BaseSpecMatcher) {
+  return Node.hasDefinition() &&
+         llvm::any_of(Node.bases(), [&](const CXXBaseSpecifier &Base) {
+           return BaseSpecMatcher.matches(Base, Finder, Builder);
+         });
 }
 
 /// Similar to \c isDerivedFrom(), but also matches classes that directly
@@ -7170,10 +7190,12 @@ AST_MATCHER_P(OMPExecutableDirective, hasAnyClause,
 /// \code
 ///   #pragma omp parallel default(none)
 ///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(firstprivate)
 ///   #pragma omp parallel
 /// \endcode
 ///
-/// ``ompDefaultClause()`` matches ``default(none)`` and ``default(shared)``.
+/// ``ompDefaultClause()`` matches ``default(none)``, ``default(shared)``, and
+/// ``default(firstprivate)``
 extern const internal::VariadicDynCastAllOfMatcher<OMPClause, OMPDefaultClause>
     ompDefaultClause;
 
@@ -7185,6 +7207,7 @@ extern const internal::VariadicDynCastAllOfMatcher<OMPClause, OMPDefaultClause>
 ///   #pragma omp parallel
 ///   #pragma omp parallel default(none)
 ///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(firstprivate)
 /// \endcode
 ///
 /// ``ompDefaultClause(isNoneKind())`` matches only ``default(none)``.
@@ -7200,11 +7223,30 @@ AST_MATCHER(OMPDefaultClause, isNoneKind) {
 ///   #pragma omp parallel
 ///   #pragma omp parallel default(none)
 ///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(firstprivate)
 /// \endcode
 ///
 /// ``ompDefaultClause(isSharedKind())`` matches only ``default(shared)``.
 AST_MATCHER(OMPDefaultClause, isSharedKind) {
   return Node.getDefaultKind() == llvm::omp::OMP_DEFAULT_shared;
+}
+
+/// Matches if the OpenMP ``default`` clause has ``firstprivate`` kind
+/// specified.
+///
+/// Given
+///
+/// \code
+///   #pragma omp parallel
+///   #pragma omp parallel default(none)
+///   #pragma omp parallel default(shared)
+///   #pragma omp parallel default(firstprivate)
+/// \endcode
+///
+/// ``ompDefaultClause(isFirstPrivateKind())`` matches only
+/// ``default(firstprivate)``.
+AST_MATCHER(OMPDefaultClause, isFirstPrivateKind) {
+  return Node.getDefaultKind() == llvm::omp::OMP_DEFAULT_firstprivate;
 }
 
 /// Matches if the OpenMP directive is allowed to contain the specified OpenMP

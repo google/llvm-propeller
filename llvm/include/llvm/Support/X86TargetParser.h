@@ -34,7 +34,7 @@ enum ProcessorVendors : unsigned {
 // as a proxy for what's in libgcc/compiler-rt.
 enum ProcessorTypes : unsigned {
   CPU_TYPE_DUMMY,
-#define X86_CPU_TYPE(ARCHNAME, ENUM) \
+#define X86_CPU_TYPE(ENUM, STRING) \
   ENUM,
 #include "llvm/Support/X86TargetParser.def"
   CPU_TYPE_MAX
@@ -44,7 +44,7 @@ enum ProcessorTypes : unsigned {
 // as a proxy for what's in libgcc/compiler-rt.
 enum ProcessorSubtypes : unsigned {
   CPU_SUBTYPE_DUMMY,
-#define X86_CPU_SUBTYPE(ARCHNAME, ENUM) \
+#define X86_CPU_SUBTYPE(ENUM, STRING) \
   ENUM,
 #include "llvm/Support/X86TargetParser.def"
   CPU_SUBTYPE_MAX
@@ -136,6 +136,11 @@ ProcessorFeatures getKeyFeature(CPUKind Kind);
 
 /// Fill in the features that \p CPU supports into \p Features.
 void getFeaturesForCPU(StringRef CPU, SmallVectorImpl<StringRef> &Features);
+
+/// Fill \p Features with the features that are implied to be enabled/disabled
+/// by the provided \p Feature.
+void getImpliedFeatures(StringRef Feature, bool Enabled,
+                        SmallVectorImpl<StringRef> &Features);
 
 } // namespace X86
 } // namespace llvm

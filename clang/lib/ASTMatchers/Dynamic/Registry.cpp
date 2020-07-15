@@ -278,6 +278,7 @@ RegistryMaps::RegistryMaps() {
   REGISTER_MATCHER(hasDefinition);
   REGISTER_MATCHER(hasDescendant);
   REGISTER_MATCHER(hasDestinationType);
+  REGISTER_MATCHER(hasDirectBase);
   REGISTER_MATCHER(hasDynamicExceptionSpec);
   REGISTER_MATCHER(hasEitherOperand);
   REGISTER_MATCHER(hasElementType);
@@ -388,6 +389,7 @@ RegistryMaps::RegistryMaps() {
   REGISTER_MATCHER(isExpr);
   REGISTER_MATCHER(isExternC);
   REGISTER_MATCHER(isFinal);
+  REGISTER_MATCHER(isFirstPrivateKind);
   REGISTER_MATCHER(isImplicit);
   REGISTER_MATCHER(isInStdNamespace);
   REGISTER_MATCHER(isInTemplateInstantiation);

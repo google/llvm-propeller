@@ -1252,6 +1252,12 @@ Currently, only the following parameter attributes are defined:
     only valid on intrinsic declarations and cannot be applied to a
     call site or arbitrary function.
 
+``noundef``
+    This attribute applies to parameters and return values. If the value
+    representation contains any undefined or poison bits, the behavior is
+    undefined. Note that this does not refer to padding introduced by the
+    type's storage representation.
+
 .. _gc:
 
 Garbage Collector Strategy Names
@@ -2772,7 +2778,9 @@ floating-point transformations.
 
 ``contract``
    Allow floating-point contraction (e.g. fusing a multiply followed by an
-   addition into a fused multiply-and-add).
+   addition into a fused multiply-and-add). This does not enable reassociating
+   to form arbitrary contractions. For example, ``(a*b) + (c*d) + e`` can not
+   be transformed into ``(a*b) + ((c*d) + e)`` to create two fma operations.
 
 ``afn``
    Approximate functions - Allow substitution of approximate calculations for
@@ -3657,6 +3665,11 @@ behavior. Notably this includes (but is not limited to):
 -  The condition operand of a :ref:`br <i_br>` instruction.
 -  The callee operand of a :ref:`call <i_call>` or :ref:`invoke <i_invoke>`
    instruction.
+-  The parameter operand of a :ref:`call <i_call>` or :ref:`invoke <i_invoke>`
+   instruction, when the function or invoking call site has a ``noundef``
+   attribute in the corresponding position.
+-  The operand of a :ref:`ret <i_ret>` instruction if the function or invoking
+   call site has a `noundef` attribute in the return value position.
 
 Here are some examples:
 
@@ -5705,33 +5718,34 @@ attribute on parameters and return values.
 
 It is sometimes useful to attach information to loop constructs. Currently,
 loop metadata is implemented as metadata attached to the branch instruction
-in the loop latch block. This type of metadata refer to a metadata node that is
-guaranteed to be separate for each loop. The loop identifier metadata is
-specified with the name ``llvm.loop``.
-
-The loop identifier metadata is implemented using a metadata that refers to
-itself to avoid merging it with any other identifier metadata, e.g.,
-during module linkage or function inlining. That is, each loop should refer
-to their own identification metadata even if they reside in separate functions.
-The following example contains loop identifier metadata for two separate loop
-constructs:
-
-.. code-block:: llvm
-
-    !0 = !{!0}
-    !1 = !{!1}
-
-The loop identifier metadata can be used to specify additional
-per-loop metadata. Any operands after the first operand can be treated
-as user-defined metadata. For example the ``llvm.loop.unroll.count``
-suggests an unroll factor to the loop unroller:
+in the loop latch block. The loop metadata node is a list of
+other metadata nodes, each representing a property of the loop. Usually,
+the first item of the property node is a string. For example, the
+``llvm.loop.unroll.count`` suggests an unroll factor to the loop
+unroller:
 
 .. code-block:: llvm
 
       br i1 %exitcond, label %._crit_edge, label %.lr.ph, !llvm.loop !0
     ...
-    !0 = !{!0, !1}
-    !1 = !{!"llvm.loop.unroll.count", i32 4}
+    !0 = !{!0, !1, !2}
+    !1 = !{!"llvm.loop.unroll.enable"}
+    !2 = !{!"llvm.loop.unroll.count", i32 4}
+
+For legacy reasons, the first item of a loop metadata node must be a
+reference to itself. Before the advent of the 'distinct' keyword, this
+forced the preservation of otherwise identical metadata nodes. Since
+the loop-metadata node can be attached to multiple nodes, the 'distinct'
+keyword has become unnecessary.
+
+Prior to the property nodes, one or two ``DILocation`` (debug location)
+nodes can be present in the list. The first, if present, identifies the
+source-code location where the loop begins. The second, if present,
+identifies the source-code location where the loop ends.
+
+Loop metadata nodes cannot be used as unique identifiers. They are
+neither persistent for the same loop through transformations nor
+necessarily unique to just one loop.
 
 '``llvm.loop.disable_nonforced``'
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -6832,7 +6846,9 @@ function and looks like:
     param: 4, offset: [0, 5][, calls: ((Callee)[, (Callee)]*)]?
 
 where the first ``param`` is the number of the parameter it describes,
-``offset`` is the known access range of the paramenter inside of the function.
+``offset`` is the inclusive range of offsets from the pointer parameter to bytes
+which can be accessed by the function. This range does not include accesses by
+function calls from ``calls`` list.
 
 where each ``Callee`` decribes how parameter is forwared into other
 functions and looks like:
@@ -6843,7 +6859,44 @@ functions and looks like:
 
 The ``callee`` refers to the summary entry id of the callee,  ``param`` is
 the number of the callee parameter which points into the callers parameter
-with offset known to be inside of the ``offset`` range.
+with offset known to be inside of the ``offset`` range. ``calls`` will be
+consumed and removed by thin link stage to update ``Param::offset`` so it
+covers all accesses possible by ``calls``.
+
+Pointer parameter without corresponding ``Param`` is considered unsafe and we
+assume that access with any offset is possible.
+
+Example:
+
+If we have the following function:
+
+.. code-block:: text
+
+    define i64 @foo(i64* %0, i32* %1, i8* %2, i8 %3) {
+      store i32* %1, i32** @x
+      %5 = getelementptr inbounds i8, i8* %2, i64 5
+      %6 = load i8, i8* %5
+      %7 = getelementptr inbounds i8, i8* %2, i8 %3
+      tail call void @bar(i8 %3, i8* %7)
+      %8 = load i64, i64* %0
+      ret i64 %8
+    }
+
+We can expect the record like this:
+
+.. code-block:: text
+
+    params: ((param: 0, offset: [0, 7]),(param: 2, offset: [5, 5], calls: ((callee: ^3, param: 1, offset: [-128, 127]))))
+
+The function may access just 8 bytes of the paramenter %0 . ``calls`` is empty,
+so the parameter is either not used for function calls or ``offset`` already
+covers all accesses from nested function calls.
+Parameter %1 escapes, so access is unknown.
+The function itself can access just a single byte of the parameter %2. Additional
+access is possible inside of the ``@bar`` or ``^3``. The function adds signed
+offset to the pointer and passes the result as the argument %1 into ``^3``.
+This record itself does not tell us how ``^3`` will access the parameter.
+Parameter %3 is not a pointer.
 
 .. _refs_summary:
 
@@ -12103,6 +12156,65 @@ It is undefined behavior if this is called with a token from an
 preallocated call corresponding to the '``llvm.call.preallocated.setup``'
 has already been called.
 
+.. _int_call_preallocated_teardown:
+
+'``llvm.call.preallocated.teardown``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare i8* @llvm.call.preallocated.teardown(token %setup_token)
+
+Overview:
+"""""""""
+
+The '``llvm.call.preallocated.teardown``' intrinsic cleans up the stack
+created by a '``llvm.call.preallocated.setup``'.
+
+Semantics:
+""""""""""
+
+The token argument must be a '``llvm.call.preallocated.setup``'.
+
+The '``llvm.call.preallocated.teardown``' intrinsic cleans up the stack
+allocated by the corresponding '``llvm.call.preallocated.setup``'. Exactly
+one of this or the preallocated call must be called to prevent stack leaks.
+It is undefined behavior to call both a '``llvm.call.preallocated.teardown``'
+and the preallocated call for a given '``llvm.call.preallocated.setup``'.
+
+For example, if the stack is allocated for a preallocated call by a
+'``llvm.call.preallocated.setup``', then an initializer function called on an
+allocated argument throws an exception, there should be a
+'``llvm.call.preallocated.teardown``' in the exception handler to prevent
+stack leaks.
+
+Following the nesting rules in '``llvm.call.preallocated.setup``', nested
+calls to '``llvm.call.preallocated.setup``' and
+'``llvm.call.preallocated.teardown``' are allowed but must be properly
+nested.
+
+Example:
+""""""""
+
+.. code-block:: llvm
+
+        %cs = call token @llvm.call.preallocated.setup(i32 1)
+        %x = call i8* @llvm.call.preallocated.arg(token %cs, i32 0) preallocated(i32)
+        %y = bitcast i8* %x to i32*
+        invoke void @constructor(i32* %y) to label %conta unwind label %contb
+    conta:
+        call void @foo1(i32* preallocated(i32) %y) ["preallocated"(token %cs)]
+        ret void
+    contb:
+        %s = catchswitch within none [label %catch] unwind to caller
+    catch:
+        %p = catchpad within %s []
+        call void @llvm.call.preallocated.teardown(token %cs)
+        ret void
+
 Standard C Library Intrinsics
 -----------------------------
 
@@ -15413,6 +15525,7 @@ The argument to this intrinsic must be a vector of floating-point values.
 
 Syntax:
 """""""
+This is an overloaded intrinsic.
 
 ::
 
@@ -15437,17 +15550,20 @@ Matrix Intrinsics
 -----------------
 
 Operations on matrixes requiring shape information (like number of rows/columns
-or the memory layout) can be expressed using the matrix intrinsics. Matrixes are
-embedded in a flat vector and the intrinsics take the dimensions as arguments.
-Currently column-major layout is assumed. The intrinsics support both integer
-and floating point matrixes.
+or the memory layout) can be expressed using the matrix intrinsics. These
+intrinsics require matrix dimensions to be passed as immediate arguments, and
+matrixes are passed and returned as vectors. This means that for a ``R`` x
+``C`` matrix, element ``i`` of column ``j`` is at index ``j * R + i`` in the
+corresponding vector, with indices starting at 0. Currently column-major layout
+is assumed.  The intrinsics support both integer and floating point matrixes.
 
 
 '``llvm.matrix.transpose.*``' Intrinsic
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Syntax:
 """""""
+This is an overloaded intrinsic.
 
 ::
 
@@ -15456,21 +15572,24 @@ Syntax:
 Overview:
 """""""""
 
-The '``llvm.matrix.transpose.*``' intrinsic treats %In as containing a matrix
-with <Rows> rows and <Cols> columns and returns the transposed matrix embedded in
-the result vector.
+The '``llvm.matrix.transpose.*``' intrinsics treat %In as a <Rows> x <Cols> matrix
+and return the transposed matrix in the result vector.
 
 Arguments:
 """"""""""
 
-The <Rows> and <Cols> arguments must be constant integers. The vector argument
-%In and the returned vector must have <Rows> * <Cols> elements.
+First argument %In is vector that corresponds to a <Rows> x <Cols> matrix.
+Thus, arguments <Rows> and <Cols> correspond to the number of rows and columns,
+respectively, and must be positive, constant integers. The returned vector must
+have <Rows> * <Cols> elements, and have the same float or integer element type
+as %In.
 
 '``llvm.matrix.multiply.*``' Intrinsic
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Syntax:
 """""""
+This is an overloaded intrinsic.
 
 ::
 
@@ -15479,18 +15598,19 @@ Syntax:
 Overview:
 """""""""
 
-The '``llvm.matrix.multiply.*``' intrinsic treats %A as a matrix with <OuterRows>
-rows and <Inner> columns, %B as a matrix with <Inner> rows and <OuterColumns>
-columns and multiplies them. The result matrix is returned embedded in the
-result vector.
+The '``llvm.matrix.multiply.*``' intrinsics treat %A as a <OuterRows> x <Inner>
+matrix, %B as a <Inner> x <OuterColumns> matrix, and multiplies them. The result
+matrix is returned in the result vector.
 
 Arguments:
 """"""""""
 
-The <OuterRows>, <Inner> and <OuterColumns> arguments must be constant
-integers. The vector argument %A must have <OuterRows> * <Inner> elements, %B
-must have <Inner> * <OuterColumns> elements and the returned vector must have
-<OuterRows> * <OuterColumns> elements.
+The first vector argument %A corresponds to a matrix with <OuterRows> * <Inner>
+elements, and the second argument %B to a matrix with <Inner> * <OuterColumns>
+elements. Arguments <OuterRows>, <Inner> and <OuterColumns> must be positive,
+constant integers. The returned vector must have <OuterRows> * <OuterColumns>
+elements. Vectors %A, %B, and the returned vector all have the same float or
+integer element type.
 
 
 '``llvm.matrix.column.major.load.*``' Intrinsic
@@ -15498,6 +15618,7 @@ must have <Inner> * <OuterColumns> elements and the returned vector must have
 
 Syntax:
 """""""
+This is an overloaded intrinsic.
 
 ::
 
@@ -15507,22 +15628,26 @@ Syntax:
 Overview:
 """""""""
 
-The '``llvm.matrix.column.major.load.*``' intrinsic loads a matrix with <Rows>
-rows and <Cols> columns, using a stride of %Stride between columns. For two
-consecutive columns A and B, %Stride refers to the distance (the number of
-elements) between the start of column A and the start of column B. The result
-matrix is returned embedded in the result vector. This allows for convenient
-loading of sub matrixes.  If <IsVolatile> is true, the intrinsic is considered
-a :ref:`volatile memory access <volatile>`.
-
-If the %Ptr argument is known to be aligned to some boundary, this can be
-specified as an attribute on the argument.
+The '``llvm.matrix.column.major.load.*``' intrinsics load a <Rows> x <Cols>
+matrix using a stride of %Stride to compute the start address of the different
+columns.  This allows for convenient loading of sub matrixes. If <IsVolatile>
+is true, the intrinsic is considered a :ref:`volatile memory access
+<volatile>`. The result matrix is returned in the result vector. If the %Ptr
+argument is known to be aligned to some boundary, this can be specified as an
+attribute on the argument.
 
 Arguments:
 """"""""""
 
-The <IsVolatile>, <Rows> and <Cols> arguments must be constant integers. The
-returned vector must have <Rows> * <Cols> elements. %Stride must be >= <Rows>.
+The first argument %Ptr is a pointer type to the returned vector type, and
+correponds to the start address to load from. The second argument %Stride is a
+postive, constant integer with %Stride ``>=`` <Rows>. %Stride is used to compute
+the column memory addresses. I.e., for a column ``C``, its start memory
+addresses is calculated with %Ptr + ``C`` * %Stride. The third Argument
+<IsVolatile> is a boolean value.  The fourth and fifth arguments, <Rows> and
+<Cols>, correspond to the number of rows and columns, respectively, and must be
+positive, constant integers. The returned vector must have <Rows> * <Cols>
+elements.
 
 The :ref:`align <attr_align>` parameter attribute can be provided
 for the %Ptr arguments.
@@ -15542,12 +15667,10 @@ Syntax:
 Overview:
 """""""""
 
-The '``llvm.matrix.column.major.store.*``' intrinsic stores the matrix with
-<Rows> rows and <Cols> columns embedded in %In, using a stride of %Stride
-between columns. For two consecutive columns A and B, %Stride refers to the
-distance (the number of elements) between the start of column A and the start
-of column B. If <IsVolatile> is true, the intrinsic is considered a
-:ref:`volatile memory access <volatile>`.
+The '``llvm.matrix.column.major.store.*``' intrinsics store the <Rows> x <Cols>
+matrix in %In to memory using a stride of %Stride between columns. If
+<IsVolatile> is true, the intrinsic is considered a :ref:`volatile memory
+access <volatile>`.
 
 If the %Ptr argument is known to be aligned to some boundary, this can be
 specified as an attribute on the argument.
@@ -15555,8 +15678,15 @@ specified as an attribute on the argument.
 Arguments:
 """"""""""
 
-The <IsVolatile>, <Rows>, <Cols> arguments must be constant integers. The
-vector argument %In must have <Rows> * <Cols> elements. %Stride must be >= <Rows>.
+The first argument %In is a vector that corresponds to a <Rows> x <Cols> matrix
+to be stored to memory. The second argument %Ptr is a pointer to the vector
+type of %In, and is the start address of the matrix in memory. The third
+argument %Stride is a positive, constant integer with %Stride ``>=`` <Rows>.
+%Stride is used to compute the column memory addresses. I.e., for a column
+``C``, its start memory addresses is calculated with %Ptr + ``C`` * %Stride.
+The fourth argument <IsVolatile> is a boolean value. The arguments <Rows> and
+<Cols> correspond to the number of rows and columns, respectively, and must be
+positive, constant integers.
 
 The :ref:`align <attr_align>` parameter attribute can be provided
 for the %Ptr arguments.

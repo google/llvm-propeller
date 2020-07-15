@@ -271,6 +271,8 @@ void ASTStmtReader::VisitWhileStmt(WhileStmt *S) {
     S->setConditionVariable(Record.getContext(), readDeclAs<VarDecl>());
 
   S->setWhileLoc(readSourceLocation());
+  S->setLParenLoc(readSourceLocation());
+  S->setRParenLoc(readSourceLocation());
 }
 
 void ASTStmtReader::VisitDoStmt(DoStmt *S) {
@@ -937,7 +939,9 @@ void ASTStmtReader::VisitOMPArraySectionExpr(OMPArraySectionExpr *E) {
   E->setBase(Record.readSubExpr());
   E->setLowerBound(Record.readSubExpr());
   E->setLength(Record.readSubExpr());
-  E->setColonLoc(readSourceLocation());
+  E->setStride(Record.readSubExpr());
+  E->setColonLocFirst(readSourceLocation());
+  E->setColonLocSecond(readSourceLocation());
   E->setRBracketLoc(readSourceLocation());
 }
 

@@ -375,18 +375,6 @@ def TrustNonnullChecker : Checker<"TrustNonnull">,
 
 } // end "apiModeling"
 
-let ParentPackage = APIModelingAlpha in {
-
-def StdCLibraryFunctionArgsChecker : Checker<"StdCLibraryFunctionArgs">,
-  HelpText<"Check constraints of arguments of C standard library functions, "
-           "such as whether the parameter of isalpha is in the range [0, 255] "
-           "or is EOF.">,
-  Dependencies<[StdCLibraryFunctionsChecker]>,
-  WeakDependencies<[NonNullParamChecker]>,
-  Documentation<NotDocumented>;
-
-} // end "alpha.apiModeling"
-
 //===----------------------------------------------------------------------===//
 // Evaluate "builtin" functions.
 //===----------------------------------------------------------------------===//
@@ -545,6 +533,14 @@ def BlockInCriticalSectionChecker : Checker<"BlockInCriticalSection">,
   HelpText<"Check for calls to blocking functions inside a critical section">,
   Documentation<HasAlphaDocumentation>;
 
+def StdCLibraryFunctionArgsChecker : Checker<"StdCLibraryFunctionArgs">,
+  HelpText<"Check constraints of arguments of C standard library functions, "
+           "such as whether the parameter of isalpha is in the range [0, 255] "
+           "or is EOF.">,
+  Dependencies<[StdCLibraryFunctionsChecker]>,
+  WeakDependencies<[NonNullParamChecker]>,
+  Documentation<NotDocumented>;
+
 } // end "alpha.unix"
 
 //===----------------------------------------------------------------------===//
@@ -581,9 +577,17 @@ def CXXSelfAssignmentChecker : Checker<"SelfAssignment">,
   Documentation<NotDocumented>,
   Hidden;
 
-def SmartPtrModeling: Checker<"SmartPtr">,
+def SmartPtrModeling: Checker<"SmartPtrModeling">,
   HelpText<"Model behavior of C++ smart pointers">,
   Documentation<NotDocumented>,
+    CheckerOptions<[
+    CmdLineOption<Boolean,
+                  "ModelSmartPtrDereference",
+                  "Enable modeling for SmartPtr null dereferences",
+                  "false",
+                  InAlpha,
+                  Hide>,
+  ]>,
   Hidden;
 
 def MoveChecker: Checker<"Move">,
@@ -738,6 +742,11 @@ def MismatchedIteratorChecker : Checker<"MismatchedIterator">,
   HelpText<"Check for use of iterators of different containers where iterators "
            "of the same container are expected">,
   Dependencies<[IteratorModeling]>,
+  Documentation<HasAlphaDocumentation>;
+
+def SmartPtrChecker: Checker<"SmartPtr">,
+  HelpText<"Find the dereference of null SmrtPtr">,
+  Dependencies<[SmartPtrModeling]>,
   Documentation<HasAlphaDocumentation>;
 
 } // end: "alpha.cplusplus"
