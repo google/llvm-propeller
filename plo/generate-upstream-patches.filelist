@@ -195,6 +195,7 @@ declare ALL_FILES=(
   funcsplit    llvm/lib/CodeGen/CMakeLists.txt
   funcsplit    llvm/lib/CodeGen/MachineFunctionSplitter.cpp
   funcsplit    llvm/lib/CodeGen/TargetPassConfig.cpp
+  funcsplit    llvm/test/CodeGen/X86/machine-function-splitter.ll
 #
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         debuginfo        llvm/include/llvm/CodeGen/AsmPrinter.h
