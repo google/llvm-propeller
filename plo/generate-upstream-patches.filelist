@@ -149,6 +149,7 @@ declare ALL_FILES=(
         bb-end-labels llvm/test/CodeGen/X86/basicblock-sections-clusters.ll
         bb-end-labels llvm/test/CodeGen/X86/basicblock-sections-listbb.ll
         bb-end-labels llvm/test/CodeGen/X86/basicblock-sections.ll
+        bb-end-labels llvm/test/DebugInfo/X86/basicblock-sections_1.ll
         bbclusters           llvm/include/llvm/CodeGen/AsmPrinter.h
         bbclusters           llvm/include/llvm/CodeGen/MachineBasicBlock.h
         bbclusters           llvm/include/llvm/CodeGen/MachineFunction.h

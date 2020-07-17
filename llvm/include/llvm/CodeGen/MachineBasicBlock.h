@@ -475,6 +475,7 @@ public:
   /// Sets the section ID for this basic block.
   void setSectionID(MBBSectionID V) { SectionID = V; }
 
+  /// Returns the MCSymbol marking the end of this basic block.
   MCSymbol *getEndSymbol() const;
 
   /// Returns the BB info metadata to be emitted in the bb_info section.
