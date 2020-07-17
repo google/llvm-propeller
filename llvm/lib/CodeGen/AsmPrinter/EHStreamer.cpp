@@ -604,7 +604,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     unsigned Entry = 0;
     for (auto &CSRange : CallSiteRanges) {
       if (CSRange.CallSiteBeginIdx != 0) {
-        // The call-site range for each range must be aligned.
+        // Align the call-site range for all ranges except the first. The
+        // first range is already aligned due to the exception table alignment.
         Asm->emitAlignment(Align(4));
       }
       Asm->OutStreamer->emitLabel(CSRange.ExceptionLabel);
