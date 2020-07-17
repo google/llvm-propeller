@@ -49,24 +49,16 @@ public:
 };
 } // end anonymous namespace
 
-bool isColdBlock(const MachineBasicBlock &MBB, ProfileSummaryInfo *PSI,
+bool isColdBlock(const MachineBasicBlock &MBB,
                  const MachineBlockFrequencyInfo *MBFI) {
-  auto Count = MBFI->getBlockProfileCount(&MBB);
-  return Count && PSI->isColdCount(*Count);
+  Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
+  return !(Count.hasValue() && Count.getValue() > 0);
 }
 
 bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
   auto *MBFI = &getAnalysis<MachineBlockFrequencyInfo>();
-  auto *PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
-
-  // For now we only target functions with profile coverage. In the future we
-  // can extend this to use existing heuristics to identify cold blocks.
-  if (!PSI->hasProfileSummary()) {
-    return false;
-  }
-
   // We don't want to proceed further for cold functions
-  // (or functions of unknown hotness).
+  // or functions of unknown hotness.
   Optional<StringRef> SectionPrefix = MF.getFunction().getSectionPrefix();
   if (!SectionPrefix.hasValue() ||
       SectionPrefix.getValue().equals(".unlikely") ||
@@ -81,17 +73,18 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
   }
 
   MF.RenumberBlocks();
+  MF.setBBSectionsType(BasicBlockSection::Preset);
+
   for (auto &MBB : MF) {
-    // We do not split out the entry block or eh pads even if they are cold.
-    if (MBB.pred_empty() || MBB.isEHPad()) {
+    if (MBB.pred_empty() || MBB.succ_empty()) {
       continue;
-    }
-    if (isColdBlock(MBB, PSI, MBFI)) {
+    } else if(MBB.isEHPad()) {
+      MBB.setSectionID(MBBSectionID::ExceptionSectionID);
+    } else if (isColdBlock(MBB, MBFI)) {
       MBB.setSectionID(MBBSectionID::ColdSectionID);
     }
   }
 
-  MF.setBBSectionsType(BasicBlockSection::Preset);
   // All cold blocks are grouped together at the end.
   auto Comparator = [](const MachineBasicBlock &X, const MachineBasicBlock &Y) {
     return X.getSectionID().Type < Y.getSectionID().Type;
@@ -104,7 +97,6 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
 void MachineFunctionSplitter::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<MachineModuleInfoWrapperPass>();
   AU.addRequired<MachineBlockFrequencyInfo>();
-  AU.addRequired<ProfileSummaryInfoWrapperPass>();
 }
 
 char MachineFunctionSplitter::ID = 0;
