@@ -603,8 +603,10 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
     unsigned Entry = 0;
     for (auto &CSRange : CallSiteRanges) {
-      // The call-site range for each range must be aligned.
-      Asm->emitAlignment(Align(4));
+      if (CSRange.CallSiteBeginIdx != 0) {
+        // The call-site range for each range must be aligned.
+        Asm->emitAlignment(Align(4));
+      }
       Asm->OutStreamer->emitLabel(CSRange.ExceptionLabel);
 
       // Emit the LSDA header.
