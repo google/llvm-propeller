@@ -174,8 +174,7 @@ private:
   /// is only computed once and is cached.
   mutable MCSymbol *CachedMCSymbol = nullptr;
 
-  /// Marks the end of the basic block, to be used to calculate the size of this
-  /// basic block, or the basic block section ending with it.
+  /// Marks the end of the basic block. Used during basic block sections to calculate the size of the basic block, or the BB section ending with it.
   mutable MCSymbol *CachedEndMCSymbol = nullptr;
 
   // Intrusive list support
