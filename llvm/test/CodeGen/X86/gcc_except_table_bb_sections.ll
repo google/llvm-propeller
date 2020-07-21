@@ -1,5 +1,4 @@
 ; RUN: llc -basicblock-sections=all -mtriple x86_64-pc-linux-gnu < %s | FileCheck %s
-; XFAIL: *
 @_ZTIi = external constant i8*
 
 define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*) {
@@ -14,14 +13,14 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 
 ; CHECK-NOT: .cfi_lsda
 
-; CHECK-LABEL:  r.BB.main:
+; CHECK-LABEL:  main.1:
 ; CHECK:    .cfi_startproc
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0
 ; CHECK:    .cfi_lsda 3, .Lexception1
 
 ; CHECK-NOT: .cfi_lsda
 
-; CHECK-LABEL:  Ar.BB.main:
+; CHECK-LABEL:  main.2:
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0
 ; CHECK:    .cfi_lsda 3, .Lexception2
 ; CHECK:    nop                             # avoids zero-offset landing pad
@@ -54,11 +53,12 @@ declare i32 @__gxx_personality_v0(...)
 
 ; Verify that the exception table gets split across the three basic block sections.
 ;
-; CHECK:  GCC_except_table0:
-; CHECK-NEXT:    .p2align	2
+; CHECK:       .section .gcc_except_table
+; CHECK-NEXT:  .p2align 2
+; CHECK-NEXT:  GCC_except_table0:
 ; CHECK-NEXT:  .Lexception0:
 ; CHECK-NEXT:    .byte	0                       # @LPStart Encoding = absptr
-; CHECK-NEXT:    .quad	Ar.BB.main
+; CHECK-NEXT:    .quad	main.2
 ; CHECK-NEXT:    .byte	3                       # @TType Encoding = udata4
 ; CHECK-NEXT:    .uleb128 .Lttbase0-.Lttbaseref0
 ; CHECK-NEXT:    .Lttbaseref0:
@@ -67,12 +67,12 @@ declare i32 @__gxx_personality_v0(...)
 ; CHECK-NEXT:    .Lcst_begin0:
 ; CHECK-NEXT:    .uleb128 .Ltmp0-.Lfunc_begin0   # >> Call Site 1 <<
 ; CHECK-NEXT:    .uleb128 .Ltmp1-.Ltmp0          #   Call between .Ltmp0 and .Ltmp1
-; CHECK-NEXT:    .uleb128 .Ltmp2-Ar.BB.main      #     jumps to .Ltmp2
+; CHECK-NEXT:    .uleb128 .Ltmp2-main.2      #     jumps to .Ltmp2
 ; CHECK-NEXT:    .byte	3                       #   On action: 2
 ; CHECK-NEXT:    .p2align	2
 ; CHECK-NEXT:  .Lexception1:
 ; CHECK-NEXT:    .byte	0                       # @LPStart Encoding = absptr
-; CHECK-NEXT:    .quad	Ar.BB.main
+; CHECK-NEXT:    .quad	main.2
 ; CHECK-NEXT:    .byte	3                       # @TType Encoding = udata4
 ; CHECK-NEXT:    .uleb128 .Lttbase0-.Lttbaseref1
 ; CHECK-NEXT:  .Lttbaseref1:
@@ -82,15 +82,15 @@ declare i32 @__gxx_personality_v0(...)
 ; CHECK-NEXT:    .p2align 2
 ; CHECK-NEXT:  .Lexception2:
 ; CHECK-NEXT:    .byte	0                       # @LPStart Encoding = absptr
-; CHECK-NEXT:    .quad	Ar.BB.main
+; CHECK-NEXT:    .quad	main.2
 ; CHECK-NEXT:    .byte	3                       # @TType Encoding = udata4
 ; CHECK-NEXT:    .uleb128 .Lttbase0-.Lttbaseref2
 ; CHECK-NEXT:  .Lttbaseref2:
 ; CHECK-NEXT:    .byte	1                       # Call site Encoding = uleb128
 ; CHECK-NEXT:    .uleb128 .Lcst_end0-.Lcst_begin2
 ; CHECK-NEXT:  .Lcst_begin2:
-; CHECK-NEXT:    .uleb128 Ar.BB.main-Ar.BB.main  # >> Call Site 2 <<
-; CHECK-NEXT:    .uleb128 .Ltmp4-Ar.BB.main      #   Call between Ar.BB.main and .Ltmp4
+; CHECK-NEXT:    .uleb128 main.2-main.2  # >> Call Site 2 <<
+; CHECK-NEXT:    .uleb128 .Ltmp4-main.2      #   Call between main.2 and .Ltmp4
 ; CHECK-NEXT:    .byte	0                       #     has no landing pad
 ; CHECK-NEXT:    .byte	0                       #   On action: cleanup
 ; CHECK-NEXT:    .Lcst_end0:

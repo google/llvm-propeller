@@ -21,7 +21,7 @@ endif
 DO_PLO     ?= 0
 ENABLE_EH  ?= OFF
 BUILD_TYPE ?= Release
-ENABLE_ASSERTS ?= ON
+ENABLE_ASSERTS ?= OFF
 
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )
@@ -460,6 +460,10 @@ sample_bblabels.o: sample.c stage1-compiler
 	./stage1-compiler -c -O2 -fpropeller-label $< -o $@
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
+
+sample.bbinfosection.o: sample.c stage1-compiler
+	./stage1-compiler -fpropeller-label -c -O2 -mllvm --bb-info-section $< -o $@
+	@[[ -n `readelf -WS $@ | grep -F '.bb_info'` ]] || { echo "No .bb_info setion found in $@, error" ; exit 1; }
 
 sample.baseline.out: sample_bblabels.o stage1-compiler
 	./stage1-compiler -Wl,-build-id -fpropeller-label -fuse-ld=lld -Wl,-O2 -o $@ $<
