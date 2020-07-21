@@ -449,6 +449,10 @@ sample_bblabels.o: sample.c stage1-compiler
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
 		|| { echo "No.BB.symbols found in $@, error" ; exit 1; }
 
+sample.bbinfosection.o: sample.c stage1-compiler
+	./stage1-compiler -fpropeller-label -c -O2 -mllvm --bb-info-section $< -o $@
+	@[[ -n `readelf -WS $@ | grep -F '.bb_info'` ]] || { echo "No .bb_info setion found in $@, error" ; exit 1; }
+
 sample.baseline.out: sample_bblabels.o stage1-compiler
 	./stage1-compiler -Wl,-build-id -fpropeller-label -fuse-ld=lld -Wl,-O2 -o $@ $<
 	@[[ -n `readelf -Ws $@ | grep -F '.BB.'` ]] \
