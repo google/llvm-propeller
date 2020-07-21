@@ -72,18 +72,18 @@ protected:
   /// Structure describing a contiguous range of call-sites which reside
   /// in the same procedure fragment (BB section).
   struct CallSiteRange {
-    // Index of the first call-site entry in the call-site table which
-    // belongs to this range.
-    unsigned CallSiteBeginIdx = 0;
-    // Index just after the last call-site entry in the call-site table which
-    // belongs to this range.
-    unsigned CallSiteEndIdx = 0;
     // Symbol marking the beginning of the precedure fragment (section).
     MCSymbol *FragmentBeginLabel = nullptr;
     // Symbol marking the end of the procedure fragment (section).
     MCSymbol *FragmentEndLabel = nullptr;
     // LSDA symbol for this call-site range.
     MCSymbol *ExceptionLabel = nullptr;
+    // Index of the first call-site entry in the call-site table which
+    // belongs to this range.
+    size_t CallSiteBeginIdx = 0;
+    // Index just after the last call-site entry in the call-site table which
+    // belongs to this range.
+    size_t CallSiteEndIdx = 0;
     // Whether this is the call-site range containing all the landing pads
     bool IsLPRange = false;
   };

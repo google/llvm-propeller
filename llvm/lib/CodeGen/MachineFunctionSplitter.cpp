@@ -78,7 +78,7 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
   for (auto &MBB : MF) {
     if (MBB.pred_empty() || MBB.succ_empty()) {
       continue;
-    } else if(MBB.isEHPad()) {
+    } else if (MBB.isEHPad()) {
       MBB.setSectionID(MBBSectionID::ExceptionSectionID);
     } else if (isColdBlock(MBB, MBFI)) {
       MBB.setSectionID(MBBSectionID::ColdSectionID);

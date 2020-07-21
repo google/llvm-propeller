@@ -21,7 +21,7 @@ endif
 DO_PLO     ?= 0
 ENABLE_EH  ?= OFF
 BUILD_TYPE ?= Release
-ENABLE_ASSERTS ?= ON
+ENABLE_ASSERTS ?= OFF
 
 BOLT_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pgo-relocs-bolt.result" )
 BOLT_PMU_RESULT := $(shell ( [[ -e "${BOLT}" ]] && [[ -e "${PERF2BOLT}" ]] ) && echo "benchmark-pmu-pgo-relocs-bolt.result" )

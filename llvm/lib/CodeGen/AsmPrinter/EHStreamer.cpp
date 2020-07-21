@@ -266,12 +266,11 @@ void EHStreamer::computeCallSiteTable(
     if (&MBB == &Asm->MF->front() || MBB.isBeginSection()) {
       // We start a call-site range upon function entry and at the beginning of
       // every basic block section.
-      CallSiteRanges.push_back(CallSiteRange());
+      CallSiteRanges.push_back(
+          {Asm->MBBSectionRanges[MBB.getSectionIDNum()].BeginLabel,
+           Asm->MBBSectionRanges[MBB.getSectionIDNum()].EndLabel,
+           Asm->getExceptionSym(&MBB), CallSites.size()});
       CurCSRange = &CallSiteRanges.back();
-      CurCSRange->FragmentBeginLabel =
-          Asm->MBBSectionRanges[MBB.getSectionIDNum()].BeginLabel;
-      CurCSRange->ExceptionLabel = Asm->getExceptionSym(&MBB);
-      CurCSRange->CallSiteBeginIdx = CallSites.size();
       PreviousIsInvoke = false;
       SawPotentiallyThrowing = false;
       LastLabel = nullptr;
@@ -364,9 +363,6 @@ void EHStreamer::computeCallSiteTable(
     // We end the call-site range upon function exit and at the end of every
     // basic block section.
     if (&MBB == &Asm->MF->back() || MBB.isEndSection()) {
-      CurCSRange->FragmentEndLabel =
-          Asm->MBBSectionRanges[MBB.getSectionIDNum()].EndLabel;
-
       // If some instruction between the previous try-range and the end of the
       // function may throw, create a call-site entry with no landing pad for
       // the region following the try-range.
@@ -578,7 +574,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     // Find the call-site range which includes the landing pads.
     CallSiteRange *LandingPadRange = nullptr;
     if (CallSiteRanges.size() == 1) {
-      LandingPadRange = &CallSiteRanges.back();
+      LandingPadRange = &CallSiteRanges.front();
     } else {
       for (auto &CSRange : CallSiteRanges) {
         if (CSRange.IsLPRange) {
@@ -603,8 +599,11 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
     unsigned Entry = 0;
     for (auto &CSRange : CallSiteRanges) {
-      // The call-site range for each range must be aligned.
-      Asm->emitAlignment(Align(4));
+      if (CSRange.CallSiteBeginIdx != 0) {
+        // Align the call-site range for all ranges except the first. The
+        // first range is already aligned due to the exception table alignment.
+        Asm->emitAlignment(Align(4));
+      }
       Asm->OutStreamer->emitLabel(CSRange.ExceptionLabel);
 
       // Emit the LSDA header.
