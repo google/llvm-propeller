@@ -96,5 +96,7 @@ void WasmException::computeCallSiteTable(
   }
 
   // Add a single range containing all the call-sites.
-  CallSiteRanges.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd(), Asm->getCurExceptionSym(), 0, CallSites.size(), true});
+  CallSiteRanges.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd(),
+                            Asm->getCurExceptionSym(), 0, CallSites.size(),
+                            true});
 }
