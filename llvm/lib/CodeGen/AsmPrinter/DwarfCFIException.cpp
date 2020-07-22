@@ -123,7 +123,7 @@ void DwarfCFIException::beginFunction(const MachineFunction *MF) {
 
   shouldEmitCFI = MF->getMMI().getContext().getAsmInfo()->usesCFIForEH() &&
                   (shouldEmitPersonality || shouldEmitMoves);
-  beginFragment(&MF->front(), getExceptionSym);
+  beginFragment(&*MF->begin(), getExceptionSym);
 }
 
 void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,

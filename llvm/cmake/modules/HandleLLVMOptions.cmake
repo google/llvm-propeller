@@ -930,6 +930,21 @@ if(LLVM_PROFDATA_FILE AND EXISTS ${LLVM_PROFDATA_FILE})
   endif()
 endif()
 
+if(LLVM_SAMPLEPROF_FILE AND EXISTS ${LLVM_SAMPLEPROF_FILE})
+  if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" )
+    append("-fprofile-sample-use=\"${LLVM_SAMPLEPROF_FILE}\""
+      CMAKE_CXX_FLAGS
+      CMAKE_C_FLAGS)
+    if(NOT LINKER_IS_LLD_LINK)
+      append("-fprofile-sample-use=\"${LLVM_SAMPLEPROF_FILE}\""
+        CMAKE_EXE_LINKER_FLAGS
+        CMAKE_SHARED_LINKER_FLAGS)
+    endif()
+  else()
+    message(FATAL_ERROR "LLVM_SAMPLEPROF_FILE can only be specified when compiling with clang")
+  endif()
+endif()
+
 option(LLVM_BUILD_INSTRUMENTED_COVERAGE "Build LLVM and tools with Code Coverage instrumentation" Off)
 mark_as_advanced(LLVM_BUILD_INSTRUMENTED_COVERAGE)
 append_if(LLVM_BUILD_INSTRUMENTED_COVERAGE "-fprofile-instr-generate=\"${LLVM_PROFILE_FILE_PATTERN}\" -fcoverage-mapping"

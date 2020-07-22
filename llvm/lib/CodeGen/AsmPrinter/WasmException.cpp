@@ -96,11 +96,7 @@ void WasmException::computeCallSiteTable(
   }
 
   // Add a single range containing all the call-sites.
-  CallSiteRange CSRange;
-  CSRange.FragmentBeginLabel = Asm->getFunctionBegin();
-  CSRange.FragmentEndLabel = Asm->getFunctionEnd();
-  CSRange.ExceptionLabel = Asm->getCurExceptionSym();
-  CSRange.CallSiteBeginIdx = 0;
-  CSRange.CallSiteEndIdx = CallSites.size();
-  CallSiteRanges.push_back(CSRange);
+  CallSiteRanges.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd(),
+                            Asm->getCurExceptionSym(), 0, CallSites.size(),
+                            true});
 }
