@@ -2043,14 +2043,11 @@ namespace BadDefaultInit {
         X<A().k>::n; // expected-note {{in evaluation of exception specification for 'BadDefaultInit::A::A' needed here}}
   };
 
-  // FIXME: The "constexpr constructor must initialize all members" diagnostic
-  // here is bogus (we discard the k(k) initializer because the parameter 'k'
-  // has been marked invalid).
   struct B {
-    constexpr B( // expected-warning {{initialize all members}}
+    constexpr B(
         int k = X<B().k>::n) : // expected-error {{default argument to function 'B' that is declared later}} expected-note {{here}}
       k(k) {}
-    int k; // expected-note {{not initialized}}
+    int k;
   };
 }
 
@@ -2167,6 +2164,11 @@ namespace PR21786 {
 namespace PR21859 {
   constexpr int Fun() { return; } // expected-error {{non-void constexpr function 'Fun' should return a value}}
   constexpr int Var = Fun();
+
+  template <typename T> constexpr int FunT1() { return; } // expected-error {{non-void constexpr function 'FunT1' should return a value}}
+  template <typename T> constexpr int FunT2() { return 0; }
+  template <> constexpr int FunT2<double>() { return 0; }
+  template <> constexpr int FunT2<int>() { return; } // expected-error {{non-void constexpr function 'FunT2<int>' should return a value}}
 }
 
 struct InvalidRedef {

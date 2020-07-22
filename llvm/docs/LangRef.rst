@@ -1066,6 +1066,30 @@ Currently, only the following parameter attributes are defined:
     site. If the alignment is not specified, then the code generator
     makes a target-specific assumption.
 
+.. _attr_byref:
+
+``byref(<ty>)``
+
+    The ``byref`` argument attribute allows specifying the pointee
+    memory type of an argument. This is similar to ``byval``, but does
+    not imply a copy is made anywhere, or that the argument is passed
+    on the stack. This implies the pointer is dereferenceable up to
+    the storage size of the type.
+
+    It is not generally permissible to introduce a write to an
+    ``byref`` pointer. The pointer may have any address space and may
+    be read only.
+
+    This is not a valid attribute for return values.
+
+    The alignment for an ``byref`` parameter can be explicitly
+    specified by combining it with the ``align`` attribute, similar to
+    ``byval``. If the alignment is not specified, then the code generator
+    makes a target-specific assumption.
+
+     This is intended for representing ABI constraints, and is not
+    intended to be inferred for optimization use.
+
 .. _attr_preallocated:
 
 ``preallocated(<ty>)``
@@ -3523,6 +3547,9 @@ uses with" concept would not hold.
 To ensure all uses of a given register observe the same value (even if
 '``undef``'), the :ref:`freeze instruction <i_freeze>` can be used.
 A value is frozen if its uses see the same value.
+An aggregate value or vector is frozen if its elements are frozen.
+The padding of an aggregate isn't considered, since it isn't visible
+without storing it into memory and loading it with a different type.
 
 .. code-block:: llvm
 
@@ -4859,7 +4886,12 @@ DIExpression that describes how to get from an object's address to the actual
 raw data, if they aren't equivalent. This is only supported for array types,
 particularly to describe Fortran arrays, which have an array descriptor in
 addition to the array data. Alternatively it can also be DIVariable which
-has the address of the actual raw data.
+has the address of the actual raw data. The Fortran language supports pointer
+arrays which can be attached to actual arrays, this attachement between pointer
+and pointee is called association.  The optional ``associated`` is a
+DIExpression that describes whether the pointer array is currently associated.
+The optional ``allocated`` is a DIExpression that describes whether the
+allocatable array is currently allocated.
 
 For ``DW_TAG_enumeration_type``, the ``elements:`` should be :ref:`enumerator
 descriptors <DIEnumerator>`, each representing the definition of an enumeration
@@ -10682,6 +10714,9 @@ instructions may yield different values.
 While ``undef`` and ``poison`` pointers can be frozen, the result is a
 non-dereferenceable pointer. See the
 :ref:`Pointer Aliasing Rules <pointeraliasing>` section for more information.
+If an aggregate value or vector is frozen, the operand is frozen element-wise.
+The padding of an aggregate isn't considered, since it isn't visible
+without storing it into memory and loading it with a different type.
 
 
 Example:
@@ -11643,9 +11678,11 @@ the escaped allocas are allocated, which would break attempts to use
 '``llvm.localrecover``'.
 
 .. _int_read_register:
+.. _int_read_volatile_register:
 .. _int_write_register:
 
-'``llvm.read_register``' and '``llvm.write_register``' Intrinsics
+'``llvm.read_register``', '``llvm.read_volatile_register``', and
+'``llvm.write_register``' Intrinsics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Syntax:
@@ -11655,6 +11692,8 @@ Syntax:
 
       declare i32 @llvm.read_register.i32(metadata)
       declare i64 @llvm.read_register.i64(metadata)
+      declare i32 @llvm.read_volatile_register.i32(metadata)
+      declare i64 @llvm.read_volatile_register.i64(metadata)
       declare void @llvm.write_register.i32(metadata, i32 @value)
       declare void @llvm.write_register.i64(metadata, i64 @value)
       !0 = !{!"sp\00"}
@@ -11662,17 +11701,21 @@ Syntax:
 Overview:
 """""""""
 
-The '``llvm.read_register``' and '``llvm.write_register``' intrinsics
-provides access to the named register. The register must be valid on
-the architecture being compiled to. The type needs to be compatible
-with the register being read.
+The '``llvm.read_register``', '``llvm.read_volatile_register``', and
+'``llvm.write_register``' intrinsics provide access to the named register.
+The register must be valid on the architecture being compiled to. The type
+needs to be compatible with the register being read.
 
 Semantics:
 """"""""""
 
-The '``llvm.read_register``' intrinsic returns the current value of the
-register, where possible. The '``llvm.write_register``' intrinsic sets
-the current value of the register, where possible.
+The '``llvm.read_register``' and '``llvm.read_volatile_register``' intrinsics
+return the current value of the register, where possible. The
+'``llvm.write_register``' intrinsic sets the current value of the register,
+where possible.
+
+A call to '``llvm.read_volatile_register``' is assumed to have side-effects
+and possibly return a different value each time (e.g. for a timer register).
 
 This is useful to implement named register global variables that need
 to always be mapped to a specific register, as is common practice on
@@ -15572,17 +15615,17 @@ This is an overloaded intrinsic.
 Overview:
 """""""""
 
-The '``llvm.matrix.transpose.*``' intrinsics treat %In as a <Rows> x <Cols> matrix
-and return the transposed matrix in the result vector.
+The '``llvm.matrix.transpose.*``' intrinsics treat ``%In`` as a ``<Rows> x
+<Cols>`` matrix and return the transposed matrix in the result vector.
 
 Arguments:
 """"""""""
 
-First argument %In is vector that corresponds to a <Rows> x <Cols> matrix.
-Thus, arguments <Rows> and <Cols> correspond to the number of rows and columns,
-respectively, and must be positive, constant integers. The returned vector must
-have <Rows> * <Cols> elements, and have the same float or integer element type
-as %In.
+The first argument ``%In`` is a vector that corresponds to a ``<Rows> x
+<Cols>`` matrix. Thus, arguments ``<Rows>`` and ``<Cols>`` correspond to the
+number of rows and columns, respectively, and must be positive, constant
+integers. The returned vector must have ``<Rows> * <Cols>`` elements, and have
+the same float or integer element type as ``%In``.
 
 '``llvm.matrix.multiply.*``' Intrinsic
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -15598,18 +15641,19 @@ This is an overloaded intrinsic.
 Overview:
 """""""""
 
-The '``llvm.matrix.multiply.*``' intrinsics treat %A as a <OuterRows> x <Inner>
-matrix, %B as a <Inner> x <OuterColumns> matrix, and multiplies them. The result
-matrix is returned in the result vector.
+The '``llvm.matrix.multiply.*``' intrinsics treat ``%A`` as a ``<OuterRows> x
+<Inner>`` matrix, ``%B`` as a ``<Inner> x <OuterColumns>`` matrix, and
+multiplies them. The result matrix is returned in the result vector.
 
 Arguments:
 """"""""""
 
-The first vector argument %A corresponds to a matrix with <OuterRows> * <Inner>
-elements, and the second argument %B to a matrix with <Inner> * <OuterColumns>
-elements. Arguments <OuterRows>, <Inner> and <OuterColumns> must be positive,
-constant integers. The returned vector must have <OuterRows> * <OuterColumns>
-elements. Vectors %A, %B, and the returned vector all have the same float or
+The first vector argument ``%A`` corresponds to a matrix with ``<OuterRows> *
+<Inner>`` elements, and the second argument ``%B`` to a matrix with
+``<Inner> * <OuterColumns>`` elements. Arguments ``<OuterRows>``,
+``<Inner>`` and ``<OuterColumns>`` must be positive, constant integers. The
+returned vector must have ``<OuterRows> * <OuterColumns>`` elements.
+Vectors ``%A``, ``%B``, and the returned vector all have the same float or
 integer element type.
 
 
@@ -15628,29 +15672,29 @@ This is an overloaded intrinsic.
 Overview:
 """""""""
 
-The '``llvm.matrix.column.major.load.*``' intrinsics load a <Rows> x <Cols>
-matrix using a stride of %Stride to compute the start address of the different
-columns.  This allows for convenient loading of sub matrixes. If <IsVolatile>
-is true, the intrinsic is considered a :ref:`volatile memory access
-<volatile>`. The result matrix is returned in the result vector. If the %Ptr
-argument is known to be aligned to some boundary, this can be specified as an
-attribute on the argument.
+The '``llvm.matrix.column.major.load.*``' intrinsics load a ``<Rows> x <Cols>``
+matrix using a stride of ``%Stride`` to compute the start address of the
+different columns.  This allows for convenient loading of sub matrixes. If
+``<IsVolatile>`` is true, the intrinsic is considered a :ref:`volatile memory
+access <volatile>`. The result matrix is returned in the result vector. If the
+``%Ptr`` argument is known to be aligned to some boundary, this can be
+specified as an attribute on the argument.
 
 Arguments:
 """"""""""
 
-The first argument %Ptr is a pointer type to the returned vector type, and
-correponds to the start address to load from. The second argument %Stride is a
-postive, constant integer with %Stride ``>=`` <Rows>. %Stride is used to compute
-the column memory addresses. I.e., for a column ``C``, its start memory
-addresses is calculated with %Ptr + ``C`` * %Stride. The third Argument
-<IsVolatile> is a boolean value.  The fourth and fifth arguments, <Rows> and
-<Cols>, correspond to the number of rows and columns, respectively, and must be
-positive, constant integers. The returned vector must have <Rows> * <Cols>
-elements.
+The first argument ``%Ptr`` is a pointer type to the returned vector type, and
+correponds to the start address to load from. The second argument ``%Stride``
+is a postive, constant integer with ``%Stride >= <Rows>``. ``%Stride`` is used
+to compute the column memory addresses. I.e., for a column ``C``, its start
+memory addresses is calculated with ``%Ptr + C * %Stride``. The third Argument
+``<IsVolatile>`` is a boolean value.  The fourth and fifth arguments,
+``<Rows>`` and ``<Cols>``, correspond to the number of rows and columns,
+respectively, and must be positive, constant integers. The returned vector must
+have ``<Rows> * <Cols>`` elements.
 
-The :ref:`align <attr_align>` parameter attribute can be provided
-for the %Ptr arguments.
+The :ref:`align <attr_align>` parameter attribute can be provided for the
+``%Ptr`` arguments.
 
 
 '``llvm.matrix.column.major.store.*``' Intrinsic
@@ -15667,29 +15711,29 @@ Syntax:
 Overview:
 """""""""
 
-The '``llvm.matrix.column.major.store.*``' intrinsics store the <Rows> x <Cols>
-matrix in %In to memory using a stride of %Stride between columns. If
-<IsVolatile> is true, the intrinsic is considered a :ref:`volatile memory
-access <volatile>`.
+The '``llvm.matrix.column.major.store.*``' intrinsics store the ``<Rows> x
+<Cols>`` matrix in ``%In`` to memory using a stride of ``%Stride`` between
+columns.  If ``<IsVolatile>`` is true, the intrinsic is considered a
+:ref:`volatile memory access <volatile>`.
 
-If the %Ptr argument is known to be aligned to some boundary, this can be
+If the ``%Ptr`` argument is known to be aligned to some boundary, this can be
 specified as an attribute on the argument.
 
 Arguments:
 """"""""""
 
-The first argument %In is a vector that corresponds to a <Rows> x <Cols> matrix
-to be stored to memory. The second argument %Ptr is a pointer to the vector
-type of %In, and is the start address of the matrix in memory. The third
-argument %Stride is a positive, constant integer with %Stride ``>=`` <Rows>.
-%Stride is used to compute the column memory addresses. I.e., for a column
-``C``, its start memory addresses is calculated with %Ptr + ``C`` * %Stride.
-The fourth argument <IsVolatile> is a boolean value. The arguments <Rows> and
-<Cols> correspond to the number of rows and columns, respectively, and must be
-positive, constant integers.
+The first argument ``%In`` is a vector that corresponds to a ``<Rows> x
+<Cols>`` matrix to be stored to memory. The second argument ``%Ptr`` is a
+pointer to the vector type of ``%In``, and is the start address of the matrix
+in memory. The third argument ``%Stride`` is a positive, constant integer with
+``%Stride >= <Rows>``.  ``%Stride`` is used to compute the column memory
+addresses. I.e., for a column ``C``, its start memory addresses is calculated
+with ``%Ptr + C * %Stride``.  The fourth argument ``<IsVolatile>`` is a boolean
+value. The arguments ``<Rows>`` and ``<Cols>`` correspond to the number of rows
+and columns, respectively, and must be positive, constant integers.
 
 The :ref:`align <attr_align>` parameter attribute can be provided
-for the %Ptr arguments.
+for the ``%Ptr`` arguments.
 
 
 Half Precision Floating-Point Intrinsics

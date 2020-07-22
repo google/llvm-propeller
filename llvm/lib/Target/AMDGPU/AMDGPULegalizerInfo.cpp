@@ -441,7 +441,6 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
       .scalarize(0);
   }
 
-  // FIXME: Not really legal. Placeholder for custom lowering.
   getActionDefinitionsBuilder({G_SDIV, G_UDIV, G_SREM, G_UREM})
     .customFor({S32, S64})
     .clampScalar(0, S32, S64)
@@ -599,7 +598,7 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
 
   getActionDefinitionsBuilder(G_FPEXT)
     .legalFor({{S64, S32}, {S32, S16}})
-    .lowerFor({{S64, S16}}) // FIXME: Implement
+    .narrowScalarFor({{S64, S16}}, changeTo(0, S32))
     .scalarize(0);
 
   getActionDefinitionsBuilder(G_FSUB)
@@ -648,12 +647,14 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
   if (ST.has16BitInsts())
     IToFP.legalFor({{S16, S16}});
   IToFP.clampScalar(1, S32, S64)
+       .minScalar(0, S32)
        .scalarize(0)
        .widenScalarToNextPow2(1);
 
   auto &FPToI = getActionDefinitionsBuilder({G_FPTOSI, G_FPTOUI})
     .legalFor({{S32, S32}, {S32, S64}, {S32, S16}})
-    .customFor({{S64, S64}});
+    .customFor({{S64, S64}})
+    .narrowScalarFor({{S64, S16}}, changeTo(0, S32));
   if (ST.has16BitInsts())
     FPToI.legalFor({{S16, S16}});
   else
@@ -745,6 +746,10 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
     ExpOps.customFor({S32});
   ExpOps.clampScalar(0, MinScalarFPTy, S32)
         .scalarize(0);
+
+  getActionDefinitionsBuilder(G_FPOWI)
+    .clampScalar(0, MinScalarFPTy, S32)
+    .lower();
 
   // The 64-bit versions produce 32-bit results, but only on the SALU.
   getActionDefinitionsBuilder(G_CTPOP)
@@ -1721,6 +1726,7 @@ bool AMDGPULegalizerInfo::legalizeFrint(
 
   auto Cond = B.buildFCmp(CmpInst::FCMP_OGT, LLT::scalar(1), Fabs, C2);
   B.buildSelect(MI.getOperand(0).getReg(), Cond, Src, Tmp2);
+  MI.eraseFromParent();
   return true;
 }
 
@@ -1752,7 +1758,7 @@ bool AMDGPULegalizerInfo::legalizeFceil(
   return true;
 }
 
-static MachineInstrBuilder extractF64Exponent(unsigned Hi,
+static MachineInstrBuilder extractF64Exponent(Register Hi,
                                               MachineIRBuilder &B) {
   const unsigned FractBits = 52;
   const unsigned ExpBits = 11;
@@ -1762,6 +1768,7 @@ static MachineInstrBuilder extractF64Exponent(unsigned Hi,
   auto Const1 = B.buildConstant(S32, ExpBits);
 
   auto ExpPart = B.buildIntrinsic(Intrinsic::amdgcn_ubfe, {S32}, false)
+    .addUse(Hi)
     .addUse(Const0.getReg(0))
     .addUse(Const1.getReg(0));
 
@@ -1809,6 +1816,7 @@ bool AMDGPULegalizerInfo::legalizeIntrinsicTrunc(
 
   auto Tmp1 = B.buildSelect(S64, ExpLt0, SignBit64, Tmp0);
   B.buildSelect(MI.getOperand(0).getReg(), ExpGt51, Src, Tmp1);
+  MI.eraseFromParent();
   return true;
 }
 
@@ -3109,19 +3117,13 @@ bool AMDGPULegalizerInfo::legalizeFDIVFastIntrin(MachineInstr &MI,
   return true;
 }
 
-bool AMDGPULegalizerInfo::legalizeImplicitArgPtr(MachineInstr &MI,
-                                                 MachineRegisterInfo &MRI,
-                                                 MachineIRBuilder &B) const {
+bool AMDGPULegalizerInfo::getImplicitArgPtr(Register DstReg,
+                                            MachineRegisterInfo &MRI,
+                                            MachineIRBuilder &B) const {
   const SIMachineFunctionInfo *MFI = B.getMF().getInfo<SIMachineFunctionInfo>();
-  if (!MFI->isEntryFunction()) {
-    return legalizePreloadedArgIntrin(MI, MRI, B,
-                                      AMDGPUFunctionArgInfo::IMPLICIT_ARG_PTR);
-  }
-
   uint64_t Offset =
     ST.getTargetLowering()->getImplicitParameterOffset(
       B.getMF(), AMDGPUTargetLowering::FIRST_IMPLICIT);
-  Register DstReg = MI.getOperand(0).getReg();
   LLT DstTy = MRI.getType(DstReg);
   LLT IdxTy = LLT::scalar(DstTy.getSizeInBits());
 
@@ -3137,7 +3139,24 @@ bool AMDGPULegalizerInfo::legalizeImplicitArgPtr(MachineInstr &MI,
   if (!loadInputValue(KernargPtrReg, B, Arg))
     return false;
 
+  // FIXME: This should be nuw
   B.buildPtrAdd(DstReg, KernargPtrReg, B.buildConstant(IdxTy, Offset).getReg(0));
+  return true;
+}
+
+bool AMDGPULegalizerInfo::legalizeImplicitArgPtr(MachineInstr &MI,
+                                                 MachineRegisterInfo &MRI,
+                                                 MachineIRBuilder &B) const {
+  const SIMachineFunctionInfo *MFI = B.getMF().getInfo<SIMachineFunctionInfo>();
+  if (!MFI->isEntryFunction()) {
+    return legalizePreloadedArgIntrin(MI, MRI, B,
+                                      AMDGPUFunctionArgInfo::IMPLICIT_ARG_PTR);
+  }
+
+  Register DstReg = MI.getOperand(0).getReg();
+  if (!getImplicitArgPtr(DstReg, MRI, B))
+    return false;
+
   MI.eraseFromParent();
   return true;
 }
