@@ -116,9 +116,8 @@ namespace llvm {
   class TargetOptions {
   public:
     TargetOptions()
-        : PrintMachineCode(false), UnsafeFPMath(false), NoInfsFPMath(false),
-          NoNaNsFPMath(false), NoTrappingFPMath(true),
-          NoSignedZerosFPMath(false),
+        : UnsafeFPMath(false), NoInfsFPMath(false), NoNaNsFPMath(false),
+          NoTrappingFPMath(true), NoSignedZerosFPMath(false),
           HonorSignDependentRoundingFPMathOption(false), NoZerosInBSS(false),
           GuaranteedTailCallOpt(false), StackSymbolOrdering(true),
           EnableFastISel(false), EnableGlobalISel(false), UseInitArray(false),
@@ -133,11 +132,6 @@ namespace llvm {
           SupportsDebugEntryValues(false), EnableDebugEntryValues(false),
           ForceDwarfFrameSection(false), XRayOmitFunctionIndex(false),
           FPDenormalMode(DenormalMode::IEEE, DenormalMode::IEEE) {}
-
-    /// PrintMachineCode - This flag is enabled when the -print-machineinstrs
-    /// option is specified on the command line, and should enable debugging
-    /// output from the code generator.
-    unsigned PrintMachineCode : 1;
 
     /// DisableFramePointerElim - This returns true if frame pointer elimination
     /// optimization should be disabled for the given machine function.

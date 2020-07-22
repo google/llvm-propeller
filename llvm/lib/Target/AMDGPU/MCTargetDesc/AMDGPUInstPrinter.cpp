@@ -299,14 +299,23 @@ void AMDGPUInstPrinter::printExpVM(const MCInst *MI, unsigned OpNo,
 void AMDGPUInstPrinter::printFORMAT(const MCInst *MI, unsigned OpNo,
                                     const MCSubtargetInfo &STI,
                                     raw_ostream &O) {
-  if (unsigned Val = MI->getOperand(OpNo).getImm()) {
-    if (AMDGPU::isGFX10(STI))
-      O << " format:" << Val;
-    else {
-      O << " dfmt:" << (Val & 15);
-      O << ", nfmt:" << (Val >> 4);
-    }
+  using namespace llvm::AMDGPU::MTBUFFormat;
+
+  unsigned Val = MI->getOperand(OpNo).getImm();
+  if (AMDGPU::isGFX10(STI)) {
+    if (Val == UFMT_DEFAULT)
+      return;
+    O << " format:" << Val;
+  } else {
+    if (Val == DFMT_NFMT_DEFAULT)
+      return;
+    unsigned Dfmt;
+    unsigned Nfmt;
+    decodeDfmtNfmt(Val, Dfmt, Nfmt);
+    O << " dfmt:" << Dfmt;
+    O << ", nfmt:" << Nfmt;
   }
+  O << ',';
 }
 
 void AMDGPUInstPrinter::printRegOperand(unsigned RegNo, raw_ostream &O,
@@ -382,10 +391,12 @@ void AMDGPUInstPrinter::printImmediateInt16(uint32_t Imm,
                                             const MCSubtargetInfo &STI,
                                             raw_ostream &O) {
   int16_t SImm = static_cast<int16_t>(Imm);
-  if (isInlinableIntLiteral(SImm))
+  if (isInlinableIntLiteral(SImm)) {
     O << SImm;
-  else
-    O << formatHex(static_cast<uint64_t>(Imm));
+  } else {
+    uint64_t Imm16 = static_cast<uint16_t>(Imm);
+    O << formatHex(Imm16);
+  }
 }
 
 void AMDGPUInstPrinter::printImmediate16(uint32_t Imm,
@@ -416,8 +427,10 @@ void AMDGPUInstPrinter::printImmediate16(uint32_t Imm,
   else if (Imm == 0x3118) {
     assert(STI.getFeatureBits()[AMDGPU::FeatureInv2PiInlineImm]);
     O << "0.15915494";
-  } else
-    O << formatHex(static_cast<uint64_t>(Imm));
+  } else {
+    uint64_t Imm16 = static_cast<uint16_t>(Imm);
+    O << formatHex(Imm16);
+  }
 }
 
 void AMDGPUInstPrinter::printImmediateV216(uint32_t Imm,

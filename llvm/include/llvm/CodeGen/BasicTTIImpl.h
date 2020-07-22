@@ -477,6 +477,30 @@ public:
     return BaseT::emitGetActiveLaneMask();
   }
 
+  Optional<Instruction *> instCombineIntrinsic(InstCombiner &IC,
+                                               IntrinsicInst &II) {
+    return BaseT::instCombineIntrinsic(IC, II);
+  }
+
+  Optional<Value *> simplifyDemandedUseBitsIntrinsic(InstCombiner &IC,
+                                                     IntrinsicInst &II,
+                                                     APInt DemandedMask,
+                                                     KnownBits &Known,
+                                                     bool &KnownBitsComputed) {
+    return BaseT::simplifyDemandedUseBitsIntrinsic(IC, II, DemandedMask, Known,
+                                                   KnownBitsComputed);
+  }
+
+  Optional<Value *> simplifyDemandedVectorEltsIntrinsic(
+      InstCombiner &IC, IntrinsicInst &II, APInt DemandedElts, APInt &UndefElts,
+      APInt &UndefElts2, APInt &UndefElts3,
+      std::function<void(Instruction *, unsigned, APInt, APInt &)>
+          SimplifyAndSetOp) {
+    return BaseT::simplifyDemandedVectorEltsIntrinsic(
+        IC, II, DemandedElts, UndefElts, UndefElts2, UndefElts3,
+        SimplifyAndSetOp);
+  }
+
   int getInstructionLatency(const Instruction *I) {
     if (isa<LoadInst>(I))
       return getST()->getSchedModel().DefaultLoadLatency;
@@ -658,7 +682,8 @@ public:
     if (auto *VTy = dyn_cast<VectorType>(Ty)) {
       unsigned Num = cast<FixedVectorType>(VTy)->getNumElements();
       unsigned Cost = thisT()->getArithmeticInstrCost(
-          Opcode, VTy->getScalarType(), CostKind);
+          Opcode, VTy->getScalarType(), CostKind, Opd1Info, Opd2Info,
+          Opd1PropInfo, Opd2PropInfo, Args, CxtI);
       // Return the cost of multiple scalar invocation plus the cost of
       // inserting and extracting the values.
       return getScalarizationOverhead(VTy, Args) + Num * Cost;
@@ -1604,7 +1629,7 @@ public:
       }
     }
 
-    auto MinLegalCostI = std::min_element(LegalCost.begin(), LegalCost.end());
+    auto *MinLegalCostI = std::min_element(LegalCost.begin(), LegalCost.end());
     if (MinLegalCostI != LegalCost.end())
       return *MinLegalCostI;
 
