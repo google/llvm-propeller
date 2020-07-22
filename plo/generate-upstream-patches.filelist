@@ -246,6 +246,7 @@ declare ALL_FILES=(
 # Double check:
         /dev/null        llvm/lib/IR/Mangler.cpp
 	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
+	/dev/null        llvm/cmake/modules/HandleLLVMOptions.cmake
 # This test was not committed as part of https://reviews.llvm.org/rG05192e585ce175b55f2a26b83b4ed7882785c8e6 
 	other            llvm/include/llvm/MC/MCObjectFileInfo.h
 	other            llvm/lib/MC/MCObjectFileInfo.cpp
