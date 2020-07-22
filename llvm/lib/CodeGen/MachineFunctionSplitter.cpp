@@ -18,6 +18,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/CodeGen/MachinePostDominators.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
@@ -26,9 +27,17 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "machine-function-splitter"
+STATISTIC(NumPostDomsAdded, "Number of post-dominated blocks added.");
+
 static cl::opt<bool> HotFunctionsOnly("mfs-hot-funcs-only", cl::Hidden,
                                       cl::desc("Split hot functions only."),
-                                      cl::init(true));
+                                      cl::init(false));
+
+static cl::opt<bool> IncludePostDominators(
+    "mfs-include-post-dominators", cl::Hidden,
+    cl::desc("Include post-dominators of the included blocks."),
+    cl::init(false));
 
 namespace {
 
@@ -49,20 +58,15 @@ public:
 };
 } // end anonymous namespace
 
-bool isColdBlock(const MachineBasicBlock &MBB,
-                 const MachineBlockFrequencyInfo *MBFI) {
-  Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
-  return !(Count.hasValue() && Count.getValue() > 0);
-}
-
 bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
-  auto *MBFI = &getAnalysis<MachineBlockFrequencyInfo>();
+  // auto *PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
+
   // We don't want to proceed further for cold functions
-  // or functions of unknown hotness.
+  // or functions of unknown hotness. Lukewarm functions have no prefix.
   Optional<StringRef> SectionPrefix = MF.getFunction().getSectionPrefix();
-  if (!SectionPrefix.hasValue() ||
-      SectionPrefix.getValue().equals(".unlikely") ||
-      SectionPrefix.getValue().equals(".unknown")) {
+  if (SectionPrefix.hasValue() &&
+      (SectionPrefix.getValue().equals(".unlikely") ||
+       SectionPrefix.getValue().equals(".unknown"))) {
     return false;
   }
 
@@ -75,12 +79,47 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
   MF.RenumberBlocks();
   MF.setBBSectionsType(BasicBlockSection::Preset);
 
+  auto *MBFI = &getAnalysis<MachineBlockFrequencyInfo>();
+
+  SmallSet<const MachineBasicBlock *, 16> RetainedBlocks, SplitBlocks;
   for (auto &MBB : MF) {
-    if (MBB.pred_empty() || MBB.succ_empty()) {
-      continue;
-    } else if(MBB.isEHPad()) {
+    Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
+    // llvm::errs() << "Block: " << MBB.getNumber() << " Count: " << Count <<
+    // "\n";
+    if (Count.hasValue() && Count.getValue() > 0) {
+      RetainedBlocks.insert(&MBB);
+    } else if (MBB.pred_empty()) { // Entry block is always retained.
+      RetainedBlocks.insert(&MBB);
+    } else {
+      SplitBlocks.insert(&MBB);
+    }
+  }
+
+  if (IncludePostDominators) {
+    auto *MPDT = &getAnalysis<MachinePostDominatorTree>();
+
+    SmallVector<const MachineBasicBlock *, 4> PostDominatedBlocks;
+    for (const auto *A : SplitBlocks) {
+      for (const auto *B : RetainedBlocks) {
+        if (MPDT->dominates(A, B)) {
+          PostDominatedBlocks.push_back(A);
+        }
+      }
+    }
+
+    llvm::errs() << "MFS: " << RetainedBlocks.size() << "/"
+                 << SplitBlocks.size() << "/" << PostDominatedBlocks.size()
+                 << " " << MF.getName() << "\n";
+
+    NumPostDomsAdded += PostDominatedBlocks.size();
+    RetainedBlocks.insert(PostDominatedBlocks.begin(),
+                          PostDominatedBlocks.end());
+  }
+
+  for (auto &MBB : MF) {
+    if (MBB.isEHPad()) {
       MBB.setSectionID(MBBSectionID::ExceptionSectionID);
-    } else if (isColdBlock(MBB, MBFI)) {
+    } else if (!RetainedBlocks.count(&MBB)) {
       MBB.setSectionID(MBBSectionID::ColdSectionID);
     }
   }
@@ -97,6 +136,8 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
 void MachineFunctionSplitter::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<MachineModuleInfoWrapperPass>();
   AU.addRequired<MachineBlockFrequencyInfo>();
+  AU.addRequired<ProfileSummaryInfoWrapperPass>();
+  AU.addRequired<MachinePostDominatorTree>();
 }
 
 char MachineFunctionSplitter::ID = 0;
