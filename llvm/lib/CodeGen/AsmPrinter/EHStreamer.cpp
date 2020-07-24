@@ -227,7 +227,7 @@ void EHStreamer::computePadMap(
 ///   - With -function-sections, all call-sites are grouped into one
 ///     call-site-range corresponding to the function section.
 ///
-///   - With -basicblock-sections, one call-site range is created for each
+///   - With -basic-block-sections, one call-site range is created for each
 ///     section, with its FragmentBeginLabel and FragmentEndLabel respectively
 //      set to the beginning and ending of the corresponding section and its
 //      ExceptionLabel set to the exception symbol dedicated for this section.

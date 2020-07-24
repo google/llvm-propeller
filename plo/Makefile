@@ -139,7 +139,7 @@ distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--p
 symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compiler.propeller.order
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
 split_funcs_only           := -Wl,-propeller-opt=no-reorder-blocks -Wl,-propeller-opt=no-reorder-funcs
-lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
+lto_bb_sections_all_opt    := -Wl,--lto-basic-block-sections=all
 branch_align_opt           := -Wl,-mllvm,-x86-branches-within-32B-boundaries
 print_after_flag           := -Wl,-mllvm,-print-after-all
 keep_section_opt 					 := -Wl,-z,keep-text-section-prefix

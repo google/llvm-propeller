@@ -5,7 +5,7 @@
 # RUN: file %t.o | FileCheck %s --check-prefix=FILETYPE 
 # FILETYPE: LLVM IR bitcode
 
-# RUN: clang -fuse-ld=lld -fbasic-block-sections=all -Wl,-lto-basicblock-sections=all -Wl,-propeller=%S/Inputs/propeller.data -Wl,-propeller-keep-named-symbols -O2 %t.o -o %t.out
+# RUN: clang -fuse-ld=lld -fbasic-block-sections=all -Wl,-lto-basic-block-sections=all -Wl,-propeller=%S/Inputs/propeller.data -Wl,-propeller-keep-named-symbols -O2 %t.o -o %t.out
 
 ## We shall have "a.BB.main", "aa.BB.main", "aaa.BB.main", "aaaa.BB.main" in the symbol table.
 # RUN: llvm-nm %t.out | grep -cF ".BB.main" | FileCheck %s --check-prefix=SYM_COUNT
