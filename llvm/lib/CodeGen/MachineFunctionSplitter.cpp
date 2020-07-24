@@ -6,7 +6,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// TODO(snehasishk): Update description.
+// \file
+// Uses profile information to split out cold blocks.
+//
+// This pass splits out cold machine basic blocks from the parent function. This
+// implementation leverages the basic block section framework. Blocks marked
+// cold by this pass are grouped together in a separate section prefixed with
+// ".text.unlikely.*". The linker can then group these together as a cold
+// section. The split part of the function is a contiguous region identified by
+// the symbol "foo.cold". Grouping all cold blocks across functions together
+// decreases fragmentation and improves icache and itlb utilization. Note that
+// the overall changes to the binary size are negligible; only a small number of
+// additional jump instructions may be introduced.
+//
+// For the original, RFC of this pass please see
 //
 //===----------------------------------------------------------------------===//
 

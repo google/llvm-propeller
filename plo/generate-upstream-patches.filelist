@@ -200,12 +200,12 @@ declare ALL_FILES=(
   funcsplit    llvm/lib/CodeGen/TargetPassConfig.cpp
   funcsplit    llvm/include/llvm/Target/TargetOptions.h
   funcsplit    llvm/test/CodeGen/X86/machine-function-splitter.ll
-  funcsplit    clang/include/clang/Driver/Options.td
-  funcsplit    clang/lib/Driver/ToolChains/Clang.cpp
-  funcsplit    clang/include/clang/Basic/CodeGenOptions.def
-  funcsplit    clang/lib/Frontend/CompilerInvocation.cpp
-  funcsplit    clang/lib/CodeGen/BackendUtil.cpp
-# funcsplit    lld/ELF/Driver.cpp
+#  funcsplit    clang/include/clang/Driver/Options.td
+#  funcsplit    clang/lib/Driver/ToolChains/Clang.cpp
+#  funcsplit    clang/include/clang/Basic/CodeGenOptions.def
+#  funcsplit    clang/lib/Frontend/CompilerInvocation.cpp
+#  funcsplit    clang/lib/CodeGen/BackendUtil.cpp
+#  funcsplit    lld/ELF/Driver.cpp
 #  funcsplit    lld/ELF/Config.h
 #  funcsplit    lld/ELF/LTO.cpp
 #
