@@ -71,6 +71,8 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     } else {
       Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
       bool HasCount = (Count.hasValue() && Count.getValue() > 0);
+      // We retain the entry block and any block which has a
+      // non-zero execution count.
       if (!(MBB.pred_empty() || HasCount)) {
         MBB.setSectionID(MBBSectionID::ColdSectionID);
       }
