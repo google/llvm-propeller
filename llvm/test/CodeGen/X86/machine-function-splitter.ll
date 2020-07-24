@@ -5,6 +5,7 @@ define void @foo1(i1 zeroext %0) nounwind !prof !1 !section_prefix !2 {
 ; CHECK-LABEL: foo1:
 ; CHECK: .section        .text.unlikely.foo1
 ; CHECK-NEXT:foo1.cold:
+; CHECK-NOT: callq   bar
   br i1 %0, label %2, label %4, !prof !4
 
 2:                                                ; preds = %1
