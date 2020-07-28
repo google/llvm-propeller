@@ -26,10 +26,6 @@
 
 using namespace llvm;
 
-static cl::opt<bool> HotFunctionsOnly("mfs-hot-funcs-only", cl::Hidden,
-                                      cl::desc("Split hot functions only."),
-                                      cl::init(true));
-
 namespace {
 
 class MachineFunctionSplitter : public MachineFunctionPass {
@@ -49,43 +45,38 @@ public:
 };
 } // end anonymous namespace
 
-bool isColdBlock(const MachineBasicBlock &MBB,
-                 const MachineBlockFrequencyInfo *MBFI) {
-  Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
-  return !(Count.hasValue() && Count.getValue() > 0);
-}
-
 bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
-  auto *MBFI = &getAnalysis<MachineBlockFrequencyInfo>();
-  // We don't want to proceed further for cold functions
-  // or functions of unknown hotness.
-  Optional<StringRef> SectionPrefix = MF.getFunction().getSectionPrefix();
-  if (!SectionPrefix.hasValue() ||
-      SectionPrefix.getValue().equals(".unlikely") ||
-      SectionPrefix.getValue().equals(".unknown")) {
+  // We only target functions with profile data.
+  if (!MF.getFunction().hasProfileData()) {
     return false;
   }
 
-  // Further constrain the functions we split to hot functions only if the flag
-  // is set.
-  if (HotFunctionsOnly && !SectionPrefix.getValue().equals(".hot")) {
+  // We don't want to proceed further for cold functions
+  // or functions of unknown hotness. Lukewarm functions have no prefix.
+  Optional<StringRef> SectionPrefix = MF.getFunction().getSectionPrefix();
+  if (SectionPrefix.hasValue() &&
+      (SectionPrefix.getValue().equals(".unlikely") ||
+       SectionPrefix.getValue().equals(".unknown"))) {
     return false;
   }
 
   MF.RenumberBlocks();
   MF.setBBSectionsType(BasicBlockSection::Preset);
 
+  auto *MBFI = &getAnalysis<MachineBlockFrequencyInfo>();
+
   for (auto &MBB : MF) {
-    if (MBB.pred_empty() || MBB.succ_empty()) {
-      continue;
-    } else if (MBB.isEHPad()) {
+    if (MBB.isEHPad()) {
       MBB.setSectionID(MBBSectionID::ExceptionSectionID);
-    } else if (isColdBlock(MBB, MBFI)) {
-      MBB.setSectionID(MBBSectionID::ColdSectionID);
+    } else {
+      Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
+      bool HasCount = (Count.hasValue() && Count.getValue() > 0);
+      if (!(MBB.pred_empty() || HasCount)) {
+        MBB.setSectionID(MBBSectionID::ColdSectionID);
+      }
     }
   }
 
-  // All cold blocks are grouped together at the end.
   auto Comparator = [](const MachineBasicBlock &X, const MachineBasicBlock &Y) {
     return X.getSectionID().Type < Y.getSectionID().Type;
   };

@@ -11372,9 +11372,10 @@ SDValue DAGCombiner::visitTRUNCATE(SDNode *N) {
       // Stop if more than one members are non-undef.
       if (NumDefs > 1)
         break;
+
       VTs.push_back(EVT::getVectorVT(*DAG.getContext(),
                                      VT.getVectorElementType(),
-                                     X.getValueType().getVectorNumElements()));
+                                     X.getValueType().getVectorElementCount()));
     }
 
     if (NumDefs == 0)
@@ -14099,8 +14100,8 @@ SDValue DAGCombiner::rebuildSetCC(SDValue N) {
     }
   }
 
-  // Transform br(xor(x, y)) -> br(x != y)
-  // Transform br(xor(xor(x,y), 1)) -> br (x == y)
+  // Transform (brcond (xor x, y)) -> (brcond (setcc, x, y, ne))
+  // Transform (brcond (xor (xor x, y), -1)) -> (brcond (setcc, x, y, eq))
   if (N.getOpcode() == ISD::XOR) {
     // Because we may call this on a speculatively constructed
     // SimplifiedSetCC Node, we need to simplify this node first.
@@ -14124,16 +14125,17 @@ SDValue DAGCombiner::rebuildSetCC(SDValue N) {
     if (N.getOpcode() != ISD::XOR)
       return N;
 
-    SDNode *TheXor = N.getNode();
-
-    SDValue Op0 = TheXor->getOperand(0);
-    SDValue Op1 = TheXor->getOperand(1);
+    SDValue Op0 = N->getOperand(0);
+    SDValue Op1 = N->getOperand(1);
 
     if (Op0.getOpcode() != ISD::SETCC && Op1.getOpcode() != ISD::SETCC) {
       bool Equal = false;
-      if (isOneConstant(Op0) && Op0.hasOneUse() &&
-          Op0.getOpcode() == ISD::XOR) {
-        TheXor = Op0.getNode();
+      // (brcond (xor (xor x, y), -1)) -> (brcond (setcc x, y, eq))
+      if (isBitwiseNot(N) && Op0.hasOneUse() && Op0.getOpcode() == ISD::XOR &&
+          Op0.getValueType() == MVT::i1) {
+        N = Op0;
+        Op0 = N->getOperand(0);
+        Op1 = N->getOperand(1);
         Equal = true;
       }
 
@@ -14141,7 +14143,7 @@ SDValue DAGCombiner::rebuildSetCC(SDValue N) {
       if (LegalTypes)
         SetCCVT = getSetCCResultType(SetCCVT);
       // Replace the uses of XOR with SETCC
-      return DAG.getSetCC(SDLoc(TheXor), SetCCVT, Op0, Op1,
+      return DAG.getSetCC(SDLoc(N), SetCCVT, Op0, Op1,
                           Equal ? ISD::SETEQ : ISD::SETNE);
     }
   }
@@ -18794,6 +18796,11 @@ static SDValue combineConcatVectorOfScalars(SDNode *N, SelectionDAG &DAG) {
 static SDValue combineConcatVectorOfExtracts(SDNode *N, SelectionDAG &DAG) {
   EVT VT = N->getValueType(0);
   EVT OpVT = N->getOperand(0).getValueType();
+
+  // We currently can't generate an appropriate shuffle for a scalable vector.
+  if (VT.isScalableVector())
+    return SDValue();
+
   int NumElts = VT.getVectorNumElements();
   int NumOpElts = OpVT.getVectorNumElements();
 
@@ -19054,11 +19061,14 @@ SDValue DAGCombiner::visitCONCAT_VECTORS(SDNode *N) {
     return V;
 
   // Type legalization of vectors and DAG canonicalization of SHUFFLE_VECTOR
-  // nodes often generate nop CONCAT_VECTOR nodes.
-  // Scan the CONCAT_VECTOR operands and look for a CONCAT operations that
-  // place the incoming vectors at the exact same location.
+  // nodes often generate nop CONCAT_VECTOR nodes. Scan the CONCAT_VECTOR
+  // operands and look for a CONCAT operations that place the incoming vectors
+  // at the exact same location.
+  //
+  // For scalable vectors, EXTRACT_SUBVECTOR indexes are implicitly scaled.
   SDValue SingleSource = SDValue();
-  unsigned PartNumElem = N->getOperand(0).getValueType().getVectorNumElements();
+  unsigned PartNumElem =
+      N->getOperand(0).getValueType().getVectorMinNumElements();
 
   for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i) {
     SDValue Op = N->getOperand(i);

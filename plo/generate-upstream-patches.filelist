@@ -192,10 +192,22 @@ declare ALL_FILES=(
 #
   funcsplit    llvm/include/llvm/CodeGen/BasicBlockSectionUtils.h
   funcsplit    llvm/include/llvm/InitializePasses.h
+  funcsplit    llvm/lib/CodeGen/CommandFlags.cpp
+  funcsplit    llvm/include/llvm/CodeGen/Passes.h
   funcsplit    llvm/lib/CodeGen/CMakeLists.txt
   funcsplit    llvm/lib/CodeGen/MachineFunctionSplitter.cpp
+	funcsplit    llvm/lib/CodeGen/BBSectionsPrepare.cpp
   funcsplit    llvm/lib/CodeGen/TargetPassConfig.cpp
+  funcsplit    llvm/include/llvm/Target/TargetOptions.h
   funcsplit    llvm/test/CodeGen/X86/machine-function-splitter.ll
+  funcsplit    clang/include/clang/Driver/Options.td
+  funcsplit    clang/lib/Driver/ToolChains/Clang.cpp
+  funcsplit    clang/include/clang/Basic/CodeGenOptions.def
+  funcsplit    clang/lib/Frontend/CompilerInvocation.cpp
+  funcsplit    clang/lib/CodeGen/BackendUtil.cpp
+# funcsplit    lld/ELF/Driver.cpp
+#  funcsplit    lld/ELF/Config.h
+#  funcsplit    lld/ELF/LTO.cpp
 #
         exception        llvm/include/llvm/CodeGen/AsmPrinter.h
         debuginfo        llvm/include/llvm/CodeGen/AsmPrinter.h
@@ -243,9 +255,11 @@ declare ALL_FILES=(
         /dev/null        lld/tools/report-size/PLOELFView.cpp
         /dev/null        lld/tools/report-size/PLOELFView.h
         /dev/null        lld/tools/report-size/report-size.cpp
+        /dev/null        llvm/cmake/modules/HandleLLVMOptions.cmake
 # Double check:
         /dev/null        llvm/lib/IR/Mangler.cpp
 	/dev/null 	 lld/test/ELF/symbol-alignment-file.s
+	/dev/null        llvm/cmake/modules/HandleLLVMOptions.cmake
 # This test was not committed as part of https://reviews.llvm.org/rG05192e585ce175b55f2a26b83b4ed7882785c8e6 
 	other            llvm/include/llvm/MC/MCObjectFileInfo.h
 	other            llvm/lib/MC/MCObjectFileInfo.cpp

@@ -1,4 +1,4 @@
-; RUN: llc -basicblock-sections=all -mtriple x86_64-pc-linux-gnu < %s | FileCheck %s
+; RUN: llc -basic-block-sections=all -mtriple x86_64-pc-linux-gnu < %s | FileCheck %s
 @_ZTIi = external constant i8*
 
 define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*) {

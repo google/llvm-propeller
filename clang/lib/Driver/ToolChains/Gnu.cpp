@@ -685,17 +685,17 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
         bool ltoBasicblockSectionsPresent = false;
         for (auto *T : CmdArgs) {
           StringRef SR(T);
-          if (SR.startswith("--lto-basicblock-sections=") ||
-              SR.startswith("-lto-basicblock-sections=")) {
+          if (SR.startswith("--lto-basic-block-sections=") ||
+              SR.startswith("-lto-basic-block-sections=")) {
             ltoBasicblockSectionsPresent = true;
             break;
           }
         }
-        // Only if no --lto-basicblock-sections is present in the command line,
+        // Only if no --lto-basic-block-sections is present in the command line,
         // do we append it.
         if (!ltoBasicblockSectionsPresent)
           CmdArgs.push_back(Args.MakeArgString(
-              Twine("--lto-basicblock-sections=") + A->getValue()));
+              Twine("--lto-basic-block-sections=") + A->getValue()));
       }
       // CmdArgs.push_back("--optimize-bb-jumps");
       CmdArgs.push_back("--no-call-graph-profile-sort");
@@ -705,7 +705,7 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     } else if (A->getOption().matches(options::OPT_fpropeller_label)) {
       if (D.isUsingLTO())
         CmdArgs.push_back(
-            Args.MakeArgString(Twine("--lto-basicblock-sections=labels")));
+            Args.MakeArgString(Twine("--lto-basic-block-sections=labels")));
     }
   }
 
@@ -1591,15 +1591,21 @@ static bool findMSP430Multilibs(const Driver &D,
                                 StringRef Path, const ArgList &Args,
                                 DetectedMultilibs &Result) {
   FilterNonExistent NonExistent(Path, "/crtbegin.o", D.getVFS());
-  Multilib MSP430Multilib = makeMultilib("/430");
+  Multilib WithoutExceptions = makeMultilib("/430").flag("-exceptions");
+  Multilib WithExceptions = makeMultilib("/430/exceptions").flag("+exceptions");
+
   // FIXME: when clang starts to support msp430x ISA additional logic
   // to select between multilib must be implemented
   // Multilib MSP430xMultilib = makeMultilib("/large");
 
-  Result.Multilibs.push_back(MSP430Multilib);
+  Result.Multilibs.push_back(WithoutExceptions);
+  Result.Multilibs.push_back(WithExceptions);
   Result.Multilibs.FilterOut(NonExistent);
 
   Multilib::flags_list Flags;
+  addMultilibFlag(Args.hasFlag(options::OPT_fexceptions,
+                               options::OPT_fno_exceptions, false),
+                  "exceptions", Flags);
   if (Result.Multilibs.select(Flags, Result.SelectedMultilib))
     return true;
 

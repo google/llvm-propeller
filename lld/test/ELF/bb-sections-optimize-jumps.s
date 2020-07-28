@@ -1,5 +1,5 @@
 # REQUIRES: x86
-## basicblock-sections tests.
+## basic-block-sections tests.
 ## This test exercises optimizing the jumps (flipping and removing fall-through jumps)
 ## at the end of basic blocks on a single function with a simple loop.
 

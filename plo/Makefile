@@ -49,7 +49,7 @@ check_environment: paths.mk
 	echo "clang version is: ${CLANG_VERSION}" > $@
 
 CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
-ITERATIONS ?= 5
+ITERATIONS ?= 10
 GITHASH := $(shell git rev-parse HEAD)
 $(shell git diff > gitdiff)
 DIFFHASH := $(shell cat gitdiff | sha1sum | awk '{print $$1}')
@@ -118,7 +118,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,--no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,--optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split pgo-afdo plain
+FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split afdo-vanilla afdo-split plain
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -139,7 +139,7 @@ distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--p
 symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compiler.propeller.order
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt -Wl,-build-id
 split_funcs_only           := -Wl,-propeller-opt=no-reorder-blocks -Wl,-propeller-opt=no-reorder-funcs
-lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
+lto_bb_sections_all_opt    := -Wl,--lto-basic-block-sections=all
 branch_align_opt           := -Wl,-mllvm,-x86-branches-within-32B-boundaries
 print_after_flag           := -Wl,-mllvm,-print-after-all
 keep_section_opt           := -Wl,-z,keep-text-section-prefix
@@ -217,7 +217,7 @@ stage-pgo-labels/build/bin/clang-${CLANG_VERSION} stage-pgo-relocs/build/bin/cla
 stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
 
-stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-old-compiler pgo-vanilla-compiler plain-compiler pgo-afdo-compiler pgo-split-compiler pgo-relocs-compiler cspgo-compiler pgo-plo-compiler pgo-plolist-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
+stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-old-compiler pgo-vanilla-compiler plain-compiler afdo-vanilla-compiler afdo-split-compiler pgo-split-compiler pgo-relocs-compiler cspgo-compiler pgo-plo-compiler pgo-plolist-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
 	ln -sf $< $@
 	touch $@
 
@@ -269,10 +269,13 @@ pgo-vanilla/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call gen_linker_flags,"$(gc_sections_opt) $(keep_section_opt)"),"clang;compiler-rt;lld",clang lld)
 
 plain/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
-	$(call build_compiler, -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,"-gline-tables-only","$(gc_sections_opt) $(keep_section_opt)"),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler, -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags,"-g","-fuse-ld=lld $(gc_sections_opt) $(keep_section_opt) $(ro_segment_opt)"),"clang;compiler-rt;lld",clang lld)
 
-pgo-afdo/build/bin/clang-${CLANG_VERSION}: plain.afdo
+afdo-vanilla/build/bin/clang-${CLANG_VERSION}: plain.afdo
 	$(call build_compiler,-DLLVM_SAMPLEPROF_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call gen_linker_flags,"$(gc_sections_opt) $(keep_section_opt)"),"clang;compiler-rt;lld",clang lld)
+
+afdo-split/build/bin/clang-${CLANG_VERSION}: plain.afdo
+	$(call build_compiler,-DLLVM_SAMPLEPROF_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call split_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-split/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata stage1-compiler
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call split_flags),"clang;compiler-rt;lld",clang lld)
@@ -370,8 +373,10 @@ pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler r
 plain.perfdata: plain-compiler run-commands.sh
 	perf record -o $@ -e br_inst_retired.near_taken:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
 
+# The internal version of create_llvm_prof must be used here since the open source version cannot produce a
+# format which is compatible with llvm as of 07/24/20.
 plain.afdo: plain-compiler plain.perfdata
-	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --profile=$(DDIR)/plain.perfdata --format=text --logtostderr --out=$(DDIR)/$@
+	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --profile=$(DDIR)/plain.perfdata --logtostderr --out=$(DDIR)/$@
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --sym_order_out=$@.order --logtostderr 2>&1 | tee $@.autolog ; \

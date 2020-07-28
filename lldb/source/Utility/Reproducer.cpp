@@ -299,7 +299,12 @@ void WorkingDirectoryProvider::Keep() {
   os << m_cwd << "\n";
 }
 
-void FileProvider::recordInterestingDirectory(const llvm::Twine &dir) {
+void FileProvider::RecordInterestingDirectory(const llvm::Twine &dir) {
+  if (m_collector)
+    m_collector->addFile(dir);
+}
+
+void FileProvider::RecordInterestingDirectoryRecursive(const llvm::Twine &dir) {
   if (m_collector)
     m_collector->addDirectory(dir);
 }

@@ -84,9 +84,8 @@ private:
 
 } // namespace
 
-llvm::Optional<llvm::InlineCost>
-getDefaultInlineAdvice(CallBase &CB, FunctionAnalysisManager &FAM,
-                       const InlineParams &Params) {
+llvm::Optional<llvm::InlineCost> static getDefaultInlineAdvice(
+    CallBase &CB, FunctionAnalysisManager &FAM, const InlineParams &Params) {
   Function &Caller = *CB.getCaller();
   ProfileSummaryInfo *PSI =
       FAM.getResult<ModuleAnalysisManagerFunctionProxy>(Caller)
@@ -160,7 +159,13 @@ bool InlineAdvisorAnalysis::Result::tryCreate(InlineParams Params,
     Advisor.reset(new DefaultInlineAdvisor(FAM, Params));
     break;
   case InliningAdvisorMode::Development:
-    // To be added subsequently under conditional compilation.
+#ifdef LLVM_HAVE_TF_API
+    Advisor =
+        llvm::getDevelopmentModeAdvisor(M, MAM, [&FAM, Params](CallBase &CB) {
+          auto OIC = getDefaultInlineAdvice(CB, FAM, Params);
+          return OIC.hasValue();
+        });
+#endif
     break;
   case InliningAdvisorMode::Release:
 #ifdef LLVM_HAVE_TF_AOT
