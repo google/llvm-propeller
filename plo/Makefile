@@ -137,13 +137,13 @@ interp_opt                 := -Wl,--propeller-opt=reorder-ip
 random_opt                 := -Wl,--propeller-opt=reorder-blocks-random
 distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--propeller-backward-jump-distance=2000
 symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compiler.propeller.order
-other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt
+other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt -Wl,-build-id
 split_funcs_only           := -Wl,-propeller-opt=no-reorder-blocks -Wl,-propeller-opt=no-reorder-funcs
 lto_bb_sections_all_opt    := -Wl,--lto-basicblock-sections=all
 branch_align_opt           := -Wl,-mllvm,-x86-branches-within-32B-boundaries
 print_after_flag           := -Wl,-mllvm,-print-after-all
-keep_section_opt 					 := -Wl,-z,keep-text-section-prefix
-split_linker_opt				 := -Wl,-lto-split-machine-functions -Wl,-z,keep-text-section-prefix
+keep_section_opt           := -Wl,-z,keep-text-section-prefix
+split_linker_opt           := -Wl,-lto-split-machine-functions -Wl,-z,keep-text-section-prefix
 bb_info_linker_opt         := -Wl,-mllvm,-bb-info-section
 
 # Use "_flags" suffix to name cmake options, e.g., options that are wrapped by "-DCMAKE_XXX".
@@ -155,7 +155,6 @@ bb_section_all_flags        = $(call gen_build_flags,"-funique-internal-linkage-
 bb_section_list_align_flags       = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3) $(branch_align_opt)")
 bb_section_list_flags       = $(call gen_build_flags,"-funique-internal-linkage-names -fpropeller-optimize=$(1) $(2)","-fuse-ld=lld -fpropeller-optimize=$(1) $(other_opt) $(gc_sections_opt) $(3)")
 split_flags := $(call gen_build_flags,"","${LLD_OPT} $(split_linker_opt)")
-
 
 # $1 is any other cmake flags (optional)
 # $2 is llvm enabled projects
