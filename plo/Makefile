@@ -219,7 +219,7 @@ stage-pgo-labels/build/bin/clang-${CLANG_VERSION} stage-pgo-relocs/build/bin/cla
 stage-pgo-vanilla/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 	$(call build_compiler,-DLLVM_BUILD_INSTRUMENTED=IR,"clang;compiler-rt;lld",all)
 
-stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-old-compiler pgo-vanilla-compiler plain-compiler afdo-vanilla-compiler afdo-split-compiler pgo-split-compiler pgo-relocs-compiler cspgo-compiler pgo-plo-compiler pgo-plolist-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
+stage-pgo-labels-compiler stage-pgo-vanilla-compiler stage-pgo-relocs-compiler stage1-stage-cspgo-compiler nonepgo-compiler nonepgolabels-compiler pgo-labels-compiler pgo-vanilla-old-compiler pgo-vanilla-compiler plain-compiler afdo-vanilla-compiler afdo-split-compiler pgo-split-compiler pgo-relocs-compiler cspgo-compiler pgo-plo-compiler pgo-plolist-compiler pgo-bbinfo-compiler: %-compiler: %/build/bin/clang-${CLANG_VERSION} | check_environment
 	ln -sf $< $@
 	touch $@
 
@@ -258,7 +258,7 @@ pgo-labels/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
 pgo-relocs/build/bin/clang-${CLANG_VERSION}: stage-pgo-relocs.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags, "-funique-internal-linkage-names","$(gc_sections_opt) $(keep_section_opt) $(relocation_gen_opt)"), "clang;compiler-rt;lld",clang lld)
 
-pgo-bb-info/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
+pgo-bbinfo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_info_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-labels-align/build/bin/clang-${CLANG_VERSION} pgo-relocs-align/build/bin/clang-${CLANG_VERSION}: pgo-%-align/build/bin/clang-${CLANG_VERSION}: stage-pgo-%.profdata
@@ -369,7 +369,7 @@ pgo-plolist/build/hot-func-list pgo-plo/build/hot-func-list: %/build/hot-func-li
 pgo-plolist_vs_plo.hot_func_order.diff: pgo-plolist/build/hot-func-list pgo-plo/build/hot-func-list
 	cat $< | xargs -n 20 -P 50 ./compare_func_bb_order.sh 2>&1 | tee $@
 
-pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata: %.perfdata: %-compiler run-commands.sh
+pgo-labels.perfdata cspgo.perfdata pgo-relocs.perfdata pgo-bbinfo.perfdata: %.perfdata: %-compiler run-commands.sh
 	perf record -o $@ -e cycles:u -j any,u -- ./run-commands.sh $(shell readlink -f $<)
 
 plain.perfdata: plain-compiler run-commands.sh
@@ -435,7 +435,7 @@ run-commands.sh: benchmark-dir.o | stage1-compiler
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
 	echo "export CCP=\$$(cd \$$(dirname \$$1); pwd)/\$$(basename \$$1)" > $@
-	echo "head -n 500 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
+	echo "head -n 150 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
                 >> $@
 	chmod +x $@
 
