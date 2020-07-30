@@ -223,8 +223,22 @@ void DebugHandlerBase::beginFunction(const MachineFunction *MF) {
         Entries.front().getInstr()->getDebugVariable();
     if (DIVar->isParameter() &&
         getDISubprogram(DIVar->getScope())->describes(&MF->getFunction())) {
+      // FIXME: If the basic block containing the first mention is not in the
+      // same section as the entry basic block, we cannot use the
+      // CurrentFnBegin label and we use the Section begin label instead.
+      // Using the Section Label will result in loss of debug loc fidelity as
+      // we do not capture the basic blocks before the start of this section.
+      auto FindLabelBeforeInsn = [this](const MachineInstr *MI) {
+        const auto *MBB = MI->getParent();
+        if (MBB->sameSection(&Asm->MF->front()))
+          return Asm->getFunctionBegin();
+        else
+          return Asm->MBBSectionRanges[MBB->getSectionIDNum()].BeginLabel;
+      };
       if (!IsDescribedByReg(Entries.front().getInstr()))
-        LabelsBeforeInsn[Entries.front().getInstr()] = Asm->getFunctionBegin();
+        LabelsBeforeInsn[Entries.front().getInstr()] =
+            FindLabelBeforeInsn(Entries.front().getInstr());
+
       if (Entries.front().getInstr()->getDebugExpression()->isFragment()) {
         // Mark all non-overlapping initial fragments.
         for (auto I = Entries.begin(); I != Entries.end(); ++I) {
@@ -244,7 +258,7 @@ void DebugHandlerBase::beginFunction(const MachineFunction *MF) {
           // registers, we must bail out when encountering such a fragment.
           if (IsDescribedByReg(I->getInstr()))
             break;
-          LabelsBeforeInsn[I->getInstr()] = Asm->getFunctionBegin();
+          LabelsBeforeInsn[I->getInstr()] = FindLabelBeforeInsn(I->getInstr());
         }
       }
     }
