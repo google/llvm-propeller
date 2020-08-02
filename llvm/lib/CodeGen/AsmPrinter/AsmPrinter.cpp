@@ -1046,13 +1046,11 @@ void AsmPrinter::emitBBInfoSection(const MachineFunction &MF) {
   OutStreamer->emitULEB128IntValue(MF.size());
   // Emit BB Information for each basic block in the funciton.
   for (auto &MBB : MF) {
-    // Emit the basic block offset for non-entry basic blocks.
-    if (!MBB.pred_empty())
-      emitLabelDifferenceAsULEB128(MBB.getSymbol(), FunctionSymbol);
+    const MCSymbol *MBBSymbol = MBB.pred_empty() ? FunctionSymbol : MBB.getSymbol();
+    // Emit the basic block offset.
+    emitLabelDifferenceAsULEB128(MBBSymbol, FunctionSymbol);
     // Emit the basic block size.
-    emitLabelDifferenceAsULEB128(MBB.getEndSymbol(), MBB.pred_empty()
-                                                         ? FunctionSymbol
-                                                         : MBB.getSymbol());
+    emitLabelDifferenceAsULEB128(MBB.getEndSymbol(), MBBSymbol);
     OutStreamer->emitULEB128IntValue(MBB.getBBInfoMetadata());
   }
   OutStreamer->PopSection();
