@@ -1,6 +1,13 @@
-; RUN: llc %s --dwarf-version=4 --basic-block-sections=all
+;; For params loaded on the stack like va_args which are used first in a non-entry basic block
+; RUN: llc %s --dwarf-version=4 --basic-block-sections=all -filetype=asm -o - | FileCheck %s
 
-; FIXME: Add CHECK directives.
+; CHECK:      .section .debug_loc
+; CHECK-NEXT: .Ldebug_loc{{[0-9]+}}:
+; CHECK-NEXT: .quad
+; CHECK-NEXT: .quad  _ZL4ncatPcjz.2 # base address
+; CHECK-NEXT: .quad  .Ltmp{{[0-9]+}}-_ZL4ncatPcjz.2
+; CHECK-NEXT: .quad  .Ltmp{{[0-9]+}}-_ZL4ncatPcjz.2
+
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-grtev4-linux-gnu"
 
@@ -28,10 +35,10 @@ attributes #2 = { nounwind readnone speculatable willreturn }
 !llvm.module.flags = !{!20, !21}
 
 !0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus_14, file: !1, producer: "clang version google3-trunk (9d2da6759b4d05d834371bcaaa8fc3d9b3385b18)", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, retainedTypes: !2)
-!1 = !DIFile(filename: "third_party/icu/source/common/locdspnm.cpp", directory: "/proc/self/cwd")
+!1 = !DIFile(filename: "bug.cpp", directory: "/proc/self/cwd")
 !2 = !{!3, !6, !9, !10, !11, !13, !16, !17, !15}
 !3 = !DIDerivedType(tag: DW_TAG_typedef, name: "int32_t", file: !4, line: 38, baseType: !5)
-!4 = !DIFile(filename: "third_party/grte/v4_x86/release/usr/grte/v4/include/stdint.h", directory: "/proc/self/cwd")
+!4 = !DIFile(filename: "stdint.h", directory: "/proc/self/cwd")
 !5 = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
 !6 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !7, size: 64)
 !7 = !DIDerivedType(tag: DW_TAG_const_type, baseType: !8)
@@ -41,7 +48,7 @@ attributes #2 = { nounwind readnone speculatable willreturn }
 !11 = !DIDerivedType(tag: DW_TAG_typedef, name: "uint32_t", file: !4, line: 51, baseType: !12)
 !12 = !DIBasicType(name: "unsigned int", size: 32, encoding: DW_ATE_unsigned)
 !13 = !DIDerivedType(tag: DW_TAG_typedef, name: "UChar", file: !14, line: 372, baseType: !15)
-!14 = !DIFile(filename: "./third_party/icu/include/unicode/umachine.h", directory: "/proc/self/cwd")
+!14 = !DIFile(filename: "umachine.h", directory: "/proc/self/cwd")
 !15 = !DIBasicType(name: "char16_t", size: 16, encoding: DW_ATE_UTF)
 !16 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !3, size: 64)
 !17 = !DIDerivedType(tag: DW_TAG_typedef, name: "UBool", file: !14, line: 261, baseType: !18)
@@ -57,7 +64,7 @@ attributes #2 = { nounwind readnone speculatable willreturn }
 !27 = !DILocalVariable(name: "buflen", arg: 2, scope: !22, file: !1, line: 37, type: !11)
 !28 = !DILocalVariable(name: "args", scope: !22, file: !1, line: 38, type: !29)
 !29 = !DIDerivedType(tag: DW_TAG_typedef, name: "va_list", file: !30, line: 14, baseType: !31)
-!30 = !DIFile(filename: "third_party/crosstool/v18/llvm_unstable/toolchain/lib/clang/google3-trunk/include/stdarg.h", directory: "/proc/self/cwd")
+!30 = !DIFile(filename: "stdarg.h", directory: "/proc/self/cwd")
 !31 = !DIDerivedType(tag: DW_TAG_typedef, name: "__builtin_va_list", file: !1, line: 38, baseType: !32)
 !32 = !DICompositeType(tag: DW_TAG_array_type, baseType: !33, size: 192, elements: !39)
 !33 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "__va_list_tag", file: !1, line: 38, size: 192, flags: DIFlagTypePassByValue, elements: !34, identifier: "_ZTS13__va_list_tag")
