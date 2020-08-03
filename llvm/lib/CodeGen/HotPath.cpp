@@ -118,6 +118,60 @@ bool ConvertToFallthrough(const TargetInstrInfo *TII,
 
   llvm_unreachable("All cases are handled.");
 }
+MachineBasicBlock* cloneEdge(MachineFunction& MF,
+                             MachineBasicBlock* pred_block,
+                             MachineBasicBlock* block) {
+  auto TII = MF.getSubtarget().getInstrInfo();
+  auto layout_succ = pred_block->getFallThrough();
+
+  if (ConvertToFallthrough(TII, pred_block, block)) {
+    WithColor::warning() << "Hot path generation failed.";
+    return nullptr;
+  }
+
+  // The pred_block falls through to block at this point.
+
+  // Remove the original block from the successors of the previous block.
+  // The remove call removes pred_block from predecessors of block as
+  // well.
+  pred_block->removeSuccessor(block);
+
+  auto cloned = CloneMachineBasicBlock(*block);
+
+  // Add the successors of the original block as the new block's
+  // successors as well.
+  auto succ_end = block->succ_end();
+  for (auto succ_it = block->succ_begin(); succ_it != succ_end; ++succ_it) {
+    cloned->copySuccessor(block, succ_it);
+  }
+
+  // Add the block as a successor to the previous block in the hot path.
+  // TODO: get this probability from the profile.
+  pred_block->addSuccessor(cloned, BranchProbability::getOne());
+
+  // The pred block always falls through to us.
+  cloned->moveAfter(pred_block);
+
+  // Not sure if we need this.
+  pred_block->updateTerminator(layout_succ);
+
+  if (auto original_ft = block->getFallThrough()) {
+    // The original block has an implicit fall through.
+    // Insert an explicit unconditional jump from the cloned block to that
+    // same block.
+    TII->insertUnconditionalBranch(*cloned, original_ft,
+                                   cloned->findBranchDebugLoc());
+  }
+
+  assert(pred_block->getFallThrough() == cloned &&
+      "Hot path pass did not generate a fall-through path!");
+
+  for (auto& live : block->liveins()) {
+    cloned->addLiveIn(live);
+  }
+
+  return cloned;
+}
 
 class HotPath : public MachineFunctionPass {
 public:
@@ -127,9 +181,27 @@ public:
     initializeHotPathPass(*PassRegistry::getPassRegistry());
   }
 
-  bool runOnMachineFunction(MachineFunction &MF) override {
-    auto TII = MF.getSubtarget().getInstrInfo();
+  ErrorOr<std::vector<MachineBasicBlock *>>
+  clonePath(MachineFunction &MF, const std::vector<MachineBasicBlock *> &path) {
+    std::vector<MachineBasicBlock *> newPath;
+    newPath.push_back(path[0]); // The first block does not change!
 
+    while (newPath.size() != path.size()) {
+      auto pred_block = newPath.back();
+      auto next_block = path[newPath.size()];
+
+      auto cloned = cloneEdge(MF, pred_block, next_block);
+      if (!cloned) {
+      // Error and it is possible we're in the middle of a path.
+      //TODO: return an error here
+      }
+      newPath.push_back(cloned);
+    }
+
+    return newPath;
+  }
+
+  bool runOnMachineFunction(MachineFunction &MF) override {
     // The function name and the path to generate is hard coded. It will be
     // read from the llvm profile data.
     if (MF.getName().find("do_work") != llvm::StringRef::npos) {
@@ -142,55 +214,9 @@ public:
       std::vector<HotPathBlocks> paths{std::move(hotpath)};
 
       for (auto &hot_path : paths) {
-        auto block = hot_path[1]; // The middle block is to be cloned.
-
-        // Remove the original block from the successors of the previous block.
-        // The remove call removes pred_block from predecessors of block as
-        // well.
-        auto pred_block = hot_path[0];
-        auto layout_succ = pred_block->getFallThrough();
-
-        if (ConvertToFallthrough(TII, pred_block, block)) {
-          WithColor::warning() << "Hot path generation failed.";
-          continue;
-        }
-
-        // The pred_block falls through to block now,
-        pred_block->removeSuccessor(block);
-
-        auto cloned = CloneMachineBasicBlock(*block);
-
-        // Add the successors of the original block as the new block's
-        // successors as well.
-        auto succ_end = block->succ_end();
-        for (auto succ_it = block->succ_begin(); succ_it != succ_end;
-             ++succ_it) {
-          cloned->copySuccessor(block, succ_it);
-        }
-
-        // Add the block as a successor to the previous block in the hot path.
-        // TODO: get this probability from the profile.
-        pred_block->addSuccessor(cloned, BranchProbability::getOne());
-
-        // The pred block always falls through to us.
-        cloned->moveAfter(pred_block);
-
-        // Not sure if we need this.
-        pred_block->updateTerminator(layout_succ);
-
-        if (auto original_ft = block->getFallThrough()) {
-          // The original block has an implicit fall through.
-          // Insert an explicit unconditional jump from the cloned block to that
-          // same block.
-          TII->insertUnconditionalBranch(*cloned, original_ft,
-                                         cloned->findBranchDebugLoc());
-        }
-
-        assert(pred_block->getFallThrough() == cloned &&
-               "Hot path pass did not generate a fall-through path!");
-
-        for (auto &live : block->liveins()) {
-          cloned->addLiveIn(live);
+        auto clone_result = clonePath(MF, hot_path);
+        if (!clone_result) {
+          // Failed
         }
       }
     }
