@@ -81,6 +81,8 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
 
+#include <iostream>
+
 using llvm::SmallSet;
 using llvm::SmallVector;
 using llvm::StringMap;
@@ -88,6 +90,196 @@ using llvm::StringRef;
 using namespace llvm;
 
 namespace {
+MachineBasicBlock *CloneMachineBasicBlock(MachineBasicBlock &bb) {
+  auto MF = bb.getParent();
+
+  // Pass nullptr as this new block doesn't directly correspond to an LLVM basic
+  // block.
+  auto MBB = MF->CreateMachineBasicBlock(nullptr);
+  MF->push_back(MBB);
+
+  for (auto &instr : bb.instrs()) {
+    MBB->push_back(MF->CloneMachineInstr(&instr));
+  }
+
+  return MBB;
+}
+
+// Converts the path from the from block to the to block to be a fallthrough.
+// Requires to to be a successor of from.
+// to_block must be placed after from_block in the layout after this call!
+// Returns true if the conversion could not be completed.
+// If the conversion fails, the parameters will not have changed.
+bool ConvertToFallthrough(const TargetInstrInfo *TII,
+                          MachineBasicBlock *from_block,
+                          const MachineBasicBlock *to_block) {
+  if (!from_block || !to_block) {
+    return true;
+  }
+  if (!from_block->isSuccessor(to_block)) {
+    std::cerr << "The given block must be a successor of from block.";
+    return true;
+  }
+  MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
+  SmallVector<MachineOperand, 4> Cond;
+
+  if (TII->analyzeBranch(*from_block, TBB, FBB, Cond)) {
+    return true;
+  }
+
+  if (!TBB && !FBB) {
+    // Already falls through, no need to modify the block.
+    return false;
+  }
+
+  if (TBB && !FBB && Cond.empty()) {
+    // The from_block has an unconditional jump at the end.
+    // We need to remove that branch so it falls through.
+
+    assert(TBB == to_block &&
+           "from_block ends with an unconditional jump, and to_block is it's "
+           "successor, the jump must be to to_block.");
+
+    TII->removeBranch(*from_block);
+    return false;
+  }
+
+  if (TBB && !FBB) {
+    // There's a conditional jump to a block. It could be jumping to the
+    // original block, or it could be falling through to the original
+    // block.
+
+    if (TBB == to_block) {
+      // Jumps to original block. We need to make this fall-through to us.
+      // Need to invert the branch, make it jump to it's current fall
+      // through and fall through to us.
+      if (TII->reverseBranchCondition(Cond)) {
+        // Could not reverse the condition, abort?
+        return true;
+      }
+
+      auto current_fallthrough = from_block->getFallThrough();
+      TII->removeBranch(*from_block);
+      TII->insertBranch(*from_block, current_fallthrough, nullptr, Cond,
+                        from_block->findBranchDebugLoc());
+    } else {
+      // Already falls through, no need to modify.
+    }
+    return false;
+  }
+
+  if (TBB && FBB) {
+    // The conditional has jump instructions in either direction. We can
+    // eliminate one of the jumps and make it fall through to us.
+
+    if (TBB == to_block) {
+      // Make the true case fall through.
+      if (TII->reverseBranchCondition(Cond)) {
+        // Could not reverse the condition.
+        return true;
+      }
+
+      // We will remove this branch and generate a new one to TBB below.
+      // Since TBB is the block we want to fall through to, after reversing
+      // the branch condition, we also swap the true and false branches.
+      std::swap(FBB, TBB);
+    } else {
+      // Make the false case fall through. This is trivial to do.
+      assert(FBB == to_block &&
+             "to_block is a successor, but it is neither the true basic block, "
+             "nor the false basic block.");
+    }
+
+    TII->removeBranch(*from_block);
+    TII->insertBranch(*from_block, TBB, nullptr, Cond,
+                      from_block->findBranchDebugLoc());
+
+    return false;
+  }
+
+  llvm_unreachable("All cases are handled.");
+}
+MachineBasicBlock* cloneEdge(MachineFunction& MF,
+                             MachineBasicBlock* pred_block,
+                             MachineBasicBlock* block) {
+  auto TII = MF.getSubtarget().getInstrInfo();
+  auto layout_succ = pred_block->getFallThrough();
+
+  if (ConvertToFallthrough(TII, pred_block, block)) {
+    WithColor::warning() << "Hot path generation failed.";
+    return nullptr;
+  }
+
+  // The pred_block falls through to block at this point.
+
+  // Remove the original block from the successors of the previous block.
+  // The remove call removes pred_block from predecessors of block as
+  // well.
+  pred_block->removeSuccessor(block);
+
+  auto cloned = CloneMachineBasicBlock(*block);
+  MF.addToMBBNumbering(cloned);
+
+  // Add the successors of the original block as the new block's
+  // successors as well.
+  auto succ_end = block->succ_end();
+  for (auto succ_it = block->succ_begin(); succ_it != succ_end; ++succ_it) {
+    cloned->copySuccessor(block, succ_it);
+  }
+
+  // Add the block as a successor to the previous block in the hot path.
+  // TODO: get this probability from the profile.
+  pred_block->addSuccessor(cloned, BranchProbability::getOne());
+
+  if (false) {
+    // The pred block always falls through to us.
+    cloned->moveAfter(pred_block);
+  }
+
+  // Not sure if we need this.
+//  pred_block->updateTerminator(layout_succ);
+
+  if (auto original_ft = block->getFallThrough()) {
+    // The original block has an implicit fall through.
+    // Insert an explicit unconditional jump from the cloned block to that
+    // same block.
+    TII->insertUnconditionalBranch(*cloned, original_ft,
+                                   cloned->findBranchDebugLoc());
+  }
+
+  if (false) {
+    assert(pred_block->getFallThrough() == cloned &&
+        "Hot path pass did not generate a fall-through path!");
+  }
+  for (auto& live : block->liveins()) {
+    cloned->addLiveIn(live);
+  }
+
+  return cloned;
+}
+
+struct UniqueBBID {
+  unsigned MBBNumber;
+  unsigned CloneNumber;
+
+  friend bool operator<(const UniqueBBID& left, const UniqueBBID& right) {
+    return left.MBBNumber < right.MBBNumber || left.CloneNumber < right.CloneNumber;
+  }
+
+  friend bool operator==(const UniqueBBID& left, const UniqueBBID& right) {
+    return left.MBBNumber == right.MBBNumber && left.CloneNumber == right.CloneNumber;
+  }
+};
+
+// This struct represents the cluster information for a machine basic block.
+struct BBTempClusterInfo {
+  // MachineBasicBlock ID.
+  UniqueBBID MBBNumber;
+  // Cluster ID this basic block belongs to.
+  unsigned ClusterID;
+  // Position of basic block within the cluster.
+  unsigned PositionInCluster;
+};
 
 // This struct represents the cluster information for a machine basic block.
 struct BBClusterInfo {
@@ -99,6 +291,13 @@ struct BBClusterInfo {
   unsigned PositionInCluster;
 };
 
+struct BBCloneInfo {
+  UniqueBBID Original;
+  UniqueBBID Predecessor;
+  UniqueBBID Clone;
+};
+
+using ProgramBBTemporaryInfoMapTy = StringMap<std::pair<SmallVector<BBTempClusterInfo, 4>, SmallVector<BBCloneInfo, 4>>>;
 using ProgramBBClusterInfoMapTy = StringMap<SmallVector<BBClusterInfo, 4>>;
 
 class BBSectionsPrepare : public MachineFunctionPass {
@@ -115,6 +314,8 @@ public:
   // includes its cluster ID along with the position of the basic block in that
   // cluster.
   ProgramBBClusterInfoMapTy ProgramBBClusterInfo;
+
+  ProgramBBTemporaryInfoMapTy ProgramBBTemporaryInfo;
 
   // Some functions have alias names. We use this map to find the main alias
   // name for which we have mapping in ProgramBBClusterInfo.
@@ -155,10 +356,13 @@ INITIALIZE_PASS(BBSectionsPrepare, "bbsections-prepare",
 // block in a given function to account for changes in the layout.
 static void updateBranches(
     MachineFunction &MF,
-    const SmallVector<MachineBasicBlock *, 4> &PreLayoutFallThroughs) {
+    const SmallVector<MachineBasicBlock *, 4> &PreLayoutFallThroughs, const std::set<const MachineBasicBlock*>& skiplist) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
   for (auto &MBB : MF) {
+    if (skiplist.count(&MBB) != 0) {
+      continue;
+    }
     auto NextMBBI = std::next(MBB.getIterator());
     auto *FTMBB = PreLayoutFallThroughs[MBB.getNumber()];
     // If this block had a fallthrough before we need an explicit unconditional
@@ -183,6 +387,93 @@ static void updateBranches(
       continue;
     MBB.updateTerminator(FTMBB);
   }
+}
+
+static bool performCloning(MachineFunction& MF, const StringMap<StringRef> FuncAliasMap, std::set<const MachineBasicBlock*>& modified_blocks, const ProgramBBTemporaryInfoMapTy &temp, ProgramBBClusterInfoMapTy & out) {
+  auto FuncName = MF.getName();
+  auto R = FuncAliasMap.find(FuncName);
+  StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
+
+  // Find the assoicated cluster information.
+  auto P = temp.find(AliasName);
+  if (P == temp.end())
+    return false;
+
+  std::map<UniqueBBID, unsigned> bb_id_to_linear_index;
+
+  auto get_linear_id = [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
+    if (id.CloneNumber == 0) {
+      return id.MBBNumber;
+    } else {
+      auto it = bb_id_to_linear_index.find(id);
+      if (it != bb_id_to_linear_index.end()) {
+        return it->second;
+      }
+      return None;
+    }
+  };
+
+//  std::cerr << "cloning for " << FuncName.str() << '\n';
+//
+//  for (auto& bb : MF) {
+//    std::cerr << bb.getName().str() << '\n';
+//    bb.dump();
+//  }
+
+  for (auto& clone : P->second.second) {
+    auto pred_linear_id = get_linear_id(clone.Predecessor);
+    if (!pred_linear_id) {
+      return false;
+    }
+    auto orig_linear_id = get_linear_id(clone.Original);
+    if (!orig_linear_id) {
+      return false;
+    }
+
+    unsigned clone_id = MF.getNumBlockIDs();
+    bb_id_to_linear_index[clone.Clone] = clone_id;
+
+    auto pred_block = MF.getBlockNumbered(*pred_linear_id);
+    auto orig_block = MF.getBlockNumbered(*orig_linear_id);
+
+    std::cerr << "pred, original " << clone.Predecessor.MBBNumber << "#" << clone.Predecessor.CloneNumber << " " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
+    std::cerr << "clone id " << clone.Clone.MBBNumber << "#" << clone.Clone.CloneNumber << " " << clone_id << '\n';
+    std::cerr << "pred, original " << *pred_linear_id << " " << *orig_linear_id << '\n';
+//    pred_block->dump();
+//    std::cerr << " --- \n";
+//    orig_block->dump();
+
+    auto cloned = cloneEdge(MF, pred_block, orig_block);
+    if (!cloned) {
+      std::cerr << "Failed: " << MF.getName().str() << '\n';
+      for (auto& mbb : MF) {
+        std::cerr << mbb.getName().str() << '\n';
+        mbb.dump();
+      }
+      assert(false && "Cloning failed");
+    }
+    auto in_mf = MF.getBlockNumbered(clone_id);
+//    std::cerr << " --- \n";
+//    cloned->dump();
+//    std::cerr << "done\n";
+//    if (cloned != in_mf) {
+//      in_mf->dump();
+//    }
+//    assert(cloned == in_mf);
+
+    cloned->setNumber(clone_id);
+    modified_blocks.emplace(pred_block);
+    modified_blocks.emplace(cloned);
+  }
+
+  auto& output = out[AliasName];
+  for (auto& bb : P->second.first) {
+    output.emplace_back(BBClusterInfo {
+      *get_linear_id(bb.MBBNumber), bb.ClusterID, bb.PositionInCluster
+    });
+  }
+
+  return true;
 }
 
 // This function provides the BBCluster information associated with a function.
@@ -274,6 +565,24 @@ assignSections(MachineFunction &MF,
         MBB.setSectionID(EHPadsSectionID.getValue());
 }
 
+void sortBasicBlocksAndUpdateBranches(
+    MachineFunction &MF, MachineBasicBlockComparator MBBCmp, std::set<const MachineBasicBlock*>& skiplist) {
+  SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(
+      MF.getNumBlockIDs());
+  for (auto &MBB : MF)
+    PreLayoutFallThroughs[MBB.getNumber()] = MBB.getFallThrough();
+
+  MF.sort(MBBCmp);
+
+  // Set IsBeginSection and IsEndSection according to the assigned section IDs.
+  MF.assignBeginEndSections();
+
+  // After reordering basic blocks, we must update basic block branches to
+  // insert explicit fallthrough branches when required and optimize branches
+  // when possible.
+  updateBranches(MF, PreLayoutFallThroughs, skiplist);
+}
+
 // This function is exposed externally by BasicBlockSectionUtils.h
 void llvm::sortBasicBlocksAndUpdateBranches(
     MachineFunction &MF, MachineBasicBlockComparator MBBCmp) {
@@ -290,7 +599,7 @@ void llvm::sortBasicBlocksAndUpdateBranches(
   // After reordering basic blocks, we must update basic block branches to
   // insert explicit fallthrough branches when required and optimize branches
   // when possible.
-  updateBranches(MF, PreLayoutFallThroughs);
+  updateBranches(MF, PreLayoutFallThroughs, {});
 }
 
 bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
@@ -306,6 +615,11 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   if (BBSectionsType == BasicBlockSection::Labels) {
     MF.setBBSectionsType(BBSectionsType);
     MF.createBBLabels();
+    return true;
+  }
+
+  std::set<const MachineBasicBlock*> cloning_modified;
+  if (!performCloning(MF, FuncAliasMap, cloning_modified, ProgramBBTemporaryInfo, ProgramBBClusterInfo)) {
     return true;
   }
 
@@ -355,8 +669,23 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
     return X.getNumber() < Y.getNumber();
   };
 
-  sortBasicBlocksAndUpdateBranches(MF, Comparator);
+  sortBasicBlocksAndUpdateBranches(MF, Comparator, cloning_modified);
+
   return true;
+}
+
+static Optional<UniqueBBID> parseBBId(StringRef str) {
+  SmallVector<StringRef, 2> parts;
+  str.split(parts, '#');
+  unsigned long long BBIndex;
+  if (getAsUnsignedInteger(parts[0], 10, BBIndex)) {
+    return None;
+  }
+  unsigned long long clone_id;
+  if (getAsUnsignedInteger(parts[1], 10, clone_id)) {
+    return None;
+  }
+  return UniqueBBID{static_cast<unsigned>(BBIndex), static_cast<unsigned>(clone_id)};
 }
 
 // Basic Block Sections can be enabled for a subset of machine basic blocks.
@@ -373,7 +702,7 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
 // !!1 2
 // !!4
 static Error getBBClusterInfo(const MemoryBuffer *MBuf,
-                              ProgramBBClusterInfoMapTy &ProgramBBClusterInfo,
+                              ProgramBBTemporaryInfoMapTy &ProgramBBClusterInfo,
                               StringMap<StringRef> &FuncAliasMap) {
   assert(MBuf);
   line_iterator LineIt(*MBuf, /*SkipBlanks=*/true, /*CommentMarker=*/'#');
@@ -394,7 +723,7 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
 
   // Temporary set to ensure every basic block ID appears once in the clusters
   // of a function.
-  SmallSet<unsigned, 4> FuncBBIDs;
+  SmallSet<UniqueBBID, 4> FuncBBIDs;
 
   for (; !LineIt.is_at_eof(); ++LineIt) {
     StringRef S(*LineIt);
@@ -403,44 +732,73 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
     // Check for the leading "!"
     if (!S.consume_front("!") || S.empty())
       break;
-    // Check for second "!" which indicates a cluster of basic blocks.
-    if (S.consume_front("!")) {
-      if (FI == ProgramBBClusterInfo.end())
-        return invalidProfileError(
-            "Cluster list does not follow a function name specifier.");
-      SmallVector<StringRef, 4> BBIndexes;
-      S.split(BBIndexes, ' ');
-      // Reset current cluster position.
-      CurrentPosition = 0;
-      for (auto BBIndexStr : BBIndexes) {
-        unsigned long long BBIndex;
-        if (getAsUnsignedInteger(BBIndexStr, 10, BBIndex))
-          return invalidProfileError(Twine("Unsigned integer expected: '") +
-                                     BBIndexStr + "'.");
-        if (!FuncBBIDs.insert(BBIndex).second)
-          return invalidProfileError(Twine("Duplicate basic block id found '") +
-                                     BBIndexStr + "'.");
-        if (!BBIndex && CurrentPosition)
-          return invalidProfileError("Entry BB (0) does not begin a cluster.");
 
-        FI->second.emplace_back(BBClusterInfo{
-            ((unsigned)BBIndex), CurrentCluster, CurrentPosition++});
+    if (S.consume_front("!!")) {
+        if (FI == ProgramBBClusterInfo.end()) {
+          return invalidProfileError(
+              "Clone list does not follow a function name specifier.");
+        }
+        SmallVector<StringRef, 3> CloneInformation;
+        S.split(CloneInformation, ' ');
+
+        if (CloneInformation.size() != 3) {
+          return invalidProfileError(
+              "Malformed clone information.");
+        }
+
+        auto clone_block = parseBBId(CloneInformation[0]);
+        auto org_block = parseBBId(CloneInformation[1]);
+        auto pred_block = parseBBId(CloneInformation[2]);
+        if (!clone_block || !org_block || !pred_block) {
+          return invalidProfileError(
+              "Invalid BB or clone id.");
+        }
+
+        FI->second.second.emplace_back(BBCloneInfo{*org_block, *pred_block, *clone_block});
+    } else {
+      // Check for second "!" which indicates a cluster of basic blocks.
+      if (S.consume_front("!")) {
+        if (FI == ProgramBBClusterInfo.end())
+          return invalidProfileError(
+              "Cluster list does not follow a function name specifier.");
+        SmallVector<StringRef, 4> BBIndexes;
+        S.split(BBIndexes, ' ');
+        // Reset current cluster position.
+        CurrentPosition = 0;
+        for (auto BBIndexStr : BBIndexes) {
+          auto bbId = parseBBId(BBIndexStr);
+          if(!bbId) {
+            return invalidProfileError(Twine("BB Id expected: '") +
+                                       BBIndexStr + "'.");
+          }
+
+          if (!FuncBBIDs.insert(*bbId).second)
+            return invalidProfileError(
+                Twine("Duplicate basic block id found '") + BBIndexStr + "'.");
+
+          if (!bbId->MBBNumber && CurrentPosition)
+            return invalidProfileError(
+                "Entry BB (0) does not begin a cluster.");
+
+          FI->second.first.emplace_back(BBTempClusterInfo{
+              *bbId, CurrentCluster, CurrentPosition++});
+        }
+        CurrentCluster++;
+      } else { // This is a function name specifier.
+        // Function aliases are separated using '/'. We use the first function
+        // name for the cluster info mapping and delegate all other aliases to
+        // this one.
+        SmallVector<StringRef, 4> Aliases;
+        S.split(Aliases, '/');
+        for (size_t i = 1; i < Aliases.size(); ++i)
+          FuncAliasMap.try_emplace(Aliases[i], Aliases.front());
+
+        // Prepare for parsing clusters of this function name.
+        // Start a new cluster map for this function name.
+        FI = ProgramBBClusterInfo.try_emplace(Aliases.front()).first;
+        CurrentCluster = 0;
+        FuncBBIDs.clear();
       }
-      CurrentCluster++;
-    } else { // This is a function name specifier.
-      // Function aliases are separated using '/'. We use the first function
-      // name for the cluster info mapping and delegate all other aliases to
-      // this one.
-      SmallVector<StringRef, 4> Aliases;
-      S.split(Aliases, '/');
-      for (size_t i = 1; i < Aliases.size(); ++i)
-        FuncAliasMap.try_emplace(Aliases[i], Aliases.front());
-
-      // Prepare for parsing clusters of this function name.
-      // Start a new cluster map for this function name.
-      FI = ProgramBBClusterInfo.try_emplace(Aliases.front()).first;
-      CurrentCluster = 0;
-      FuncBBIDs.clear();
     }
   }
   return Error::success();
@@ -449,7 +807,7 @@ static Error getBBClusterInfo(const MemoryBuffer *MBuf,
 bool BBSectionsPrepare::doInitialization(Module &M) {
   if (!MBuf)
     return false;
-  if (auto Err = getBBClusterInfo(MBuf, ProgramBBClusterInfo, FuncAliasMap))
+  if (auto Err = getBBClusterInfo(MBuf, ProgramBBTemporaryInfo, FuncAliasMap))
     report_fatal_error(std::move(Err));
   return false;
 }
