@@ -229,12 +229,18 @@ class VectorType;
       VADDLVpu,
       VADDLVAps,    // Same as VADDLVp[su] but with a v4i1 predicate mask
       VADDLVApu,
-      VMLAVs,
-      VMLAVu,
-      VMLALVs,
-      VMLALVu,
-      VMLALVAs,
-      VMLALVAu,
+      VMLAVs,       // sign- or zero-extend the elements of two vectors to i32, multiply them
+      VMLAVu,       //   and add the results together, returning an i32 of their sum
+      VMLAVps,      // Same as VMLAV[su] with a v4i1 predicate mask
+      VMLAVpu,
+      VMLALVs,      // Same as VMLAV but with i64, returning the low and
+      VMLALVu,      //   high 32-bit halves of the sum
+      VMLALVps,     // Same as VMLALV[su] with a v4i1 predicate mask
+      VMLALVpu,
+      VMLALVAs,     // Same as VMLALV but also add an input accumulator
+      VMLALVAu,     //   provided as low and high halves
+      VMLALVAps,    // Same as VMLALVA[su] with a v4i1 predicate mask
+      VMLALVApu,
 
       SMULWB,       // Signed multiply word by half word, bottom
       SMULWT,       // Signed multiply word by half word, top
@@ -521,12 +527,6 @@ class VectorType;
     /// specified value type.
     const TargetRegisterClass *
     getRegClassFor(MVT VT, bool isDivergent = false) const override;
-
-    /// Returns true if a cast between SrcAS and DestAS is a noop.
-    bool isNoopAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const override {
-      // Addrspacecasts are always noops.
-      return true;
-    }
 
     bool shouldAlignPointerArgs(CallInst *CI, unsigned &MinSize,
                                 unsigned &PrefAlign) const override;

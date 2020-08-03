@@ -18,6 +18,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/ObjectYAML/YAML.h"
 #include "llvm/Support/YAMLTraits.h"
 #include <cstdint>
 #include <vector>
@@ -60,16 +61,16 @@ struct Abbrev {
 
 struct ARangeDescriptor {
   llvm::yaml::Hex64 Address;
-  uint64_t Length;
+  yaml::Hex64 Length;
 };
 
 struct ARange {
   dwarf::DwarfFormat Format;
-  uint64_t Length;
+  Optional<yaml::Hex64> Length;
   uint16_t Version;
-  uint32_t CuOffset;
-  uint8_t AddrSize;
-  uint8_t SegSize;
+  yaml::Hex64 CuOffset;
+  Optional<yaml::Hex8> AddrSize;
+  yaml::Hex8 SegSize;
   std::vector<ARangeDescriptor> Descriptors;
 };
 
@@ -119,12 +120,10 @@ struct DWARFContext {
 };
 
 struct Unit {
-  dwarf::DwarfFormat Format;
-  yaml::Hex64 Length;
-  uint16_t Version;
+  dwarf::FormParams FormParams;
+  Optional<yaml::Hex64> Length;
   llvm::dwarf::UnitType Type; // Added in DWARF 5
   yaml::Hex64 AbbrOffset;
-  uint8_t AddrSize;
   std::vector<Entry> Entries;
 };
 
@@ -190,11 +189,12 @@ struct RnglistEntry {
   std::vector<yaml::Hex64> Values;
 };
 
-struct Rnglist {
-  std::vector<RnglistEntry> Entries;
+template <typename EntryType> struct ListEntries {
+  Optional<std::vector<EntryType>> Entries;
+  Optional<yaml::BinaryRef> Content;
 };
 
-struct RnglistTable {
+template <typename EntryType> struct ListTable {
   dwarf::DwarfFormat Format;
   Optional<yaml::Hex64> Length;
   yaml::Hex16 Version;
@@ -202,7 +202,7 @@ struct RnglistTable {
   yaml::Hex8 SegSelectorSize;
   Optional<uint32_t> OffsetEntryCount;
   Optional<std::vector<yaml::Hex64>> Offsets;
-  std::vector<Rnglist> Lists;
+  std::vector<ListEntries<EntryType>> Lists;
 };
 
 struct Data {
@@ -211,7 +211,7 @@ struct Data {
   std::vector<Abbrev> AbbrevDecls;
   std::vector<StringRef> DebugStrings;
   Optional<std::vector<StringOffsetsTable>> DebugStrOffsets;
-  std::vector<ARange> ARanges;
+  Optional<std::vector<ARange>> DebugAranges;
   std::vector<Ranges> DebugRanges;
   std::vector<AddrTableEntry> DebugAddr;
   Optional<PubSection> PubNames;
@@ -223,11 +223,11 @@ struct Data {
   std::vector<Unit> CompileUnits;
 
   std::vector<LineTable> DebugLines;
-  Optional<std::vector<RnglistTable>> DebugRnglists;
+  Optional<std::vector<ListTable<RnglistEntry>>> DebugRnglists;
 
   bool isEmpty() const;
 
-  SetVector<StringRef> getUsedSectionNames() const;
+  SetVector<StringRef> getNonEmptySectionNames() const;
 };
 
 } // end namespace DWARFYAML
@@ -249,8 +249,10 @@ LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::DWARFYAML::LineTableOpcode)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::DWARFYAML::SegAddrPair)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::DWARFYAML::AddrTableEntry)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::DWARFYAML::StringOffsetsTable)
-LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::DWARFYAML::RnglistTable)
-LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::DWARFYAML::Rnglist)
+LLVM_YAML_IS_SEQUENCE_VECTOR(
+    llvm::DWARFYAML::ListTable<DWARFYAML::RnglistEntry>)
+LLVM_YAML_IS_SEQUENCE_VECTOR(
+    llvm::DWARFYAML::ListEntries<DWARFYAML::RnglistEntry>)
 LLVM_YAML_IS_SEQUENCE_VECTOR(llvm::DWARFYAML::RnglistEntry)
 
 namespace llvm {
@@ -320,12 +322,16 @@ template <> struct MappingTraits<DWARFYAML::SegAddrPair> {
   static void mapping(IO &IO, DWARFYAML::SegAddrPair &SegAddrPair);
 };
 
-template <> struct MappingTraits<DWARFYAML::RnglistTable> {
-  static void mapping(IO &IO, DWARFYAML::RnglistTable &RnglistTable);
+template <typename EntryType>
+struct MappingTraits<DWARFYAML::ListTable<EntryType>> {
+  static void mapping(IO &IO, DWARFYAML::ListTable<EntryType> &ListTable);
 };
 
-template <> struct MappingTraits<DWARFYAML::Rnglist> {
-  static void mapping(IO &IO, DWARFYAML::Rnglist &Rnglist);
+template <typename EntryType>
+struct MappingTraits<DWARFYAML::ListEntries<EntryType>> {
+  static void mapping(IO &IO, DWARFYAML::ListEntries<EntryType> &ListEntries);
+  static StringRef validate(IO &IO,
+                            DWARFYAML::ListEntries<EntryType> &ListEntries);
 };
 
 template <> struct MappingTraits<DWARFYAML::RnglistEntry> {

@@ -14,6 +14,8 @@
 // CHECKLOOP-DAG: #[[$stride2Dilation1:.*]] = affine_map<(d0, d1) -> (d0 * 2 + d1)>
 // CHECKLOOP-DAG: #[[$stride2Dilation4:.*]] = affine_map<(d0, d1) -> (d0 * 2 + d1 * 4)>
 // CHECKLOOP-DAG: #[[$stride3Dilation5:.*]] = affine_map<(d0, d1) -> (d0 * 3 + d1 * 5)>
+// CHECKLOOP-DAG: #[[$convLowerBound:.*]] = affine_map<()[s0] -> (s0 floordiv 2)>
+// CHECKLOOP-DAG: #[[$convUpperBound:.*]] = affine_map<()[s0, s1] -> (s1 + s0 floordiv 2 - s0 + 1)>
 // CHECKLOOP-DAG: #[[$convMap:.*]] = affine_map<(d0, d1)[s0] -> (d0 + d1 - s0 floordiv 2)>
 
 // CHECKPARALLEL-DAG: #[[$strided1D:.*]] = affine_map<(d0)[s0] -> (d0 + s0)>
@@ -26,6 +28,8 @@
 // CHECKPARALLEL-DAG: #[[$stride2Dilation1:.*]] = affine_map<(d0, d1) -> (d0 * 2 + d1)>
 // CHECKPARALLEL-DAG: #[[$stride2Dilation4:.*]] = affine_map<(d0, d1) -> (d0 * 2 + d1 * 4)>
 // CHECKPARALLEL-DAG: #[[$stride3Dilation5:.*]] = affine_map<(d0, d1) -> (d0 * 3 + d1 * 5)>
+// CHECKPARALLEL-DAG: #[[$convLowerBound:.*]] = affine_map<()[s0] -> (s0 floordiv 2)>
+// CHECKPARALLEL-DAG: #[[$convUpperBound:.*]] = affine_map<()[s0, s1] -> (s1 + s0 floordiv 2 - s0 + 1)>
 // CHECKPARALLEL-DAG: #[[$convMap:.*]] = affine_map<(d0, d1)[s0] -> (d0 + d1 - s0 floordiv 2)>
 
 
@@ -119,7 +123,7 @@ func @dot(%arg0: memref<?xi8>, %M: index) {
   %1 = view %arg0[%c0][%M] : memref<?xi8> to memref<?xf32>
   %2 = view %arg0[%c0][%M] : memref<?xi8> to memref<?xf32>
   %3 = view %arg0[%c0][] : memref<?xi8> to memref<f32>
-  linalg.dot(%1, %2, %3) : memref<?xf32>, memref<?xf32>, memref<f32>
+  linalg.dot %1, %2, %3 : (memref<?xf32>, memref<?xf32>, memref<f32>)
   return
 }
 // CHECKLOOP-LABEL: func @dot(%{{.*}}: memref<?xi8>,
@@ -150,7 +154,9 @@ func @dot(%arg0: memref<?xi8>, %M: index) {
 
 
 func @dot_view(%arg0: memref<?xf32, offset: ?, strides: [1]>, %arg1: memref<?xf32, offset: ?, strides: [1]>, %arg2: memref<f32>) {
-  linalg.dot(%arg0, %arg1, %arg2) : memref<?xf32, offset: ?, strides: [1]>, memref<?xf32, offset: ?, strides: [1]>, memref<f32>
+  linalg.dot %arg0, %arg1, %arg2  : (memref<?xf32, offset: ?, strides: [1]>, 
+                                     memref<?xf32, offset: ?, strides: [1]>, 
+                                     memref<f32>)
   return
 }
 // CHECKLOOP-LABEL: func @dot_view(
@@ -947,10 +953,12 @@ func @conv1d(%in : memref<?xf32>, %filter : memref<?xf32>, %out :  memref<?xf32>
 //  CHECKLOOP-SAME: %[[arg1:[a-zA-Z0-9]+]]: memref<?xf32>
 //  CHECKLOOP-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?xf32>
 //       CHECKLOOP: %[[c0:.*]] = constant 0 : index
-//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?xf32>
-//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg2]], %[[c0]] : memref<?xf32>
-//       CHECKLOOP: scf.for %[[b:.*]] = %{{.*}} to %[[dim1]] step %{{.*}} {
-//       CHECKLOOP:   scf.for %[[m:.*]] = %{{.*}} to %[[dim0]] step %{{.*}} {
+//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg0]], %[[c0]] : memref<?xf32>
+//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg1]], %[[c0]] : memref<?xf32>
+//       CHECKLOOP: %[[lowerBound:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim1]]]
+//       CHECKLOOP: %[[upperBound:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim1]], %[[dim0]]]
+//       CHECKLOOP: scf.for %[[b:.*]] = %[[lowerBound]] to %[[upperBound]] step %{{.*}} {
+//       CHECKLOOP:   scf.for %[[m:.*]] = %{{.*}} to %[[dim1]] step %{{.*}} {
 //       CHECKLOOP:     %[[dim2:.*]] = dim %[[arg1]], %[[c0]] : memref<?xf32>
 //       CHECKLOOP:     %[[aff:.*]] = affine.apply #[[$convMap]](%{{.*}}, %{{.*}})[%[[dim2]]]
 //       CHECKLOOP:     %[[va:.*]] = load %[[arg0]][%[[aff]]] : memref<?xf32>
@@ -965,9 +973,11 @@ func @conv1d(%in : memref<?xf32>, %filter : memref<?xf32>, %out :  memref<?xf32>
 //  CHECKPARALLEL-SAME: %[[arg1:[a-zA-Z0-9]+]]: memref<?xf32>
 //  CHECKPARALLEL-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?xf32>
 //       CHECKPARALLEL: %[[c0:.*]] = constant 0 : index
-//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?xf32>
-//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg2]], %[[c0]] : memref<?xf32>
-//       CHECKPARALLEL: scf.parallel (%[[b:.*]], %[[m:.*]]) = (%{{.*}}, %{{.*}}) to (%[[dim1]], %[[dim0]]) step ({{.*}}) {
+//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg0]], %[[c0]] : memref<?xf32>
+//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg1]], %[[c0]] : memref<?xf32>
+//       CHECKPARALLEL: %[[lowerBound:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim1]]]
+//       CHECKPARALLEL: %[[upperBound:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim1]], %[[dim0]]]
+//       CHECKPARALLEL: scf.parallel (%[[b:.*]], %[[m:.*]]) = (%[[lowerBound]], %{{.*}}) to (%[[upperBound]], %[[dim1]]) step ({{.*}}) {
 //       CHECKPARALLEL:   %[[dim2:.*]] = dim %[[arg1]], %[[c0]] : memref<?xf32>
 //       CHECKPARALLEL:   %[[aff:.*]] = affine.apply #[[$convMap]](%{{.*}}, %{{.*}})[%[[dim2]]]
 //       CHECKPARALLEL:   %[[va:.*]] = load %[[arg0]][%[[aff]]] : memref<?xf32>
@@ -1012,14 +1022,18 @@ func @conv2d(%in : memref<?x?xf32>, %filter : memref<?x?xf32>, %out :  memref<?x
 //  CHECKLOOP-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?x?xf32>
 //       CHECKLOOP: %[[c0:.*]] = constant 0 : index
 //       CHECKLOOP: %[[c1:.*]] = constant 1 : index
-//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?xf32>
-//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?xf32>
-//       CHECKLOOP: %[[dim2:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?xf32>
-//       CHECKLOOP: %[[dim3:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?xf32>
-//       CHECKLOOP: scf.for %[[i0:.*]] = %{{.*}} to %[[dim2]] step %{{.*}} {
-//       CHECKLOOP:   scf.for %[[i1:.*]] = %{{.*}} to %[[dim3]] step %{{.*}} {
-//       CHECKLOOP:     scf.for %[[i2:.*]] = %{{.*}} to %[[dim0]] step %{{.*}} {
-//       CHECKLOOP:       scf.for %[[i3:.*]] = %{{.*}} to %[[dim1]] step %{{.*}} {
+//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg0]], %[[c0]] : memref<?x?xf32>
+//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg0]], %[[c1]] : memref<?x?xf32>
+//       CHECKLOOP: %[[dim2:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?xf32>
+//       CHECKLOOP: %[[dim3:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?xf32>
+//       CHECKLOOP: %[[lowerBound1:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim2]]]
+//       CHECKLOOP: %[[upperBound1:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim2]], %[[dim0]]]
+//       CHECKLOOP: %[[lowerBound2:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim3]]]
+//       CHECKLOOP: %[[upperBound2:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim3]], %[[dim1]]]
+//       CHECKLOOP: scf.for %[[i0:.*]] = %[[lowerBound1]] to %[[upperBound1]] step %{{.*}} {
+//       CHECKLOOP:   scf.for %[[i1:.*]] = %[[lowerBound2]] to %[[upperBound2]] step %{{.*}} {
+//       CHECKLOOP:     scf.for %[[i2:.*]] = %{{.*}} to %[[dim2]] step %{{.*}} {
+//       CHECKLOOP:       scf.for %[[i3:.*]] = %{{.*}} to %[[dim3]] step %{{.*}} {
 //       CHECKLOOP:         %[[dim4:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?xf32>
 //       CHECKLOOP:         %[[dim5:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?xf32>
 //       CHECKLOOP:         %[[aff1:.*]] = affine.apply #[[$convMap]](%{{.*}}, %{{.*}})[%[[dim4]]]
@@ -1037,11 +1051,15 @@ func @conv2d(%in : memref<?x?xf32>, %filter : memref<?x?xf32>, %out :  memref<?x
 //  CHECKPARALLEL-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?x?xf32>
 //       CHECKPARALLEL: %[[c0:.*]] = constant 0 : index
 //       CHECKPARALLEL: %[[c1:.*]] = constant 1 : index
-//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?xf32>
-//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?xf32>
-//       CHECKPARALLEL: %[[dim2:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?xf32>
-//       CHECKPARALLEL: %[[dim3:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?xf32>
-//       CHECKPARALLEL: scf.parallel (%[[i0:.*]], %[[i1:.*]], %[[i2:.*]], %[[i3:.*]]) = (%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) to (%[[dim2]], %[[dim3]], %[[dim0]], %[[dim1]]) step ({{.*}}) {
+//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg0]], %[[c0]] : memref<?x?xf32>
+//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg0]], %[[c1]] : memref<?x?xf32>
+//       CHECKPARALLEL: %[[dim2:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?xf32>
+//       CHECKPARALLEL: %[[dim3:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?xf32>
+//       CHECKPARALLEL: %[[lowerBound1:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim2]]]
+//       CHECKPARALLEL: %[[upperBound1:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim2]], %[[dim0]]]
+//       CHECKPARALLEL: %[[lowerBound2:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim3]]]
+//       CHECKPARALLEL: %[[upperBound2:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim3]], %[[dim1]]]
+//       CHECKPARALLEL: scf.parallel (%[[i0:.*]], %[[i1:.*]], %[[i2:.*]], %[[i3:.*]]) = (%[[lowerBound1]], %[[lowerBound2]], %{{.*}}, %{{.*}}) to (%[[upperBound1]], %[[upperBound2]], %[[dim2]], %[[dim3]]) step ({{.*}}) {
 //       CHECKPARALLEL:   %[[dim4:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?xf32>
 //       CHECKPARALLEL:   %[[dim5:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?xf32>
 //       CHECKPARALLEL:   %[[aff1:.*]] = affine.apply #[[$convMap]](%{{.*}}, %{{.*}})[%[[dim4]]]
@@ -1089,18 +1107,24 @@ func @conv3d(%in : memref<?x?x?xf32>, %filter : memref<?x?x?xf32>, %out :  memre
 //       CHECKLOOP: %[[c0:.*]] = constant 0 : index
 //       CHECKLOOP: %[[c1:.*]] = constant 1 : index
 //       CHECKLOOP: %[[c2:.*]] = constant 2 : index
-//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?xf32>
-//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?xf32>
-//       CHECKLOOP: %[[dim2:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?xf32>
-//       CHECKLOOP: %[[dim3:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?x?xf32>
-//       CHECKLOOP: %[[dim4:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?x?xf32>
-//       CHECKLOOP: %[[dim5:.*]] = dim %[[arg2]], %[[c2]] : memref<?x?x?xf32>
-//       CHECKLOOP: scf.for %[[i0:.*]] = %{{.*}} to %[[dim3]] step %{{.*}} {
-//       CHECKLOOP:   scf.for %[[i1:.*]] = %{{.*}} to %[[dim4]] step %{{.*}} {
-//       CHECKLOOP:     scf.for %[[i2:.*]] = %{{.*}} to %[[dim5]] step %{{.*}} {
-//       CHECKLOOP:       scf.for %[[i3:.*]] = %{{.*}} to %[[dim0]] step %{{.*}} {
-//       CHECKLOOP:         scf.for %[[i4:.*]] = %{{.*}} to %[[dim1]] step %{{.*}} {
-//       CHECKLOOP:           scf.for %[[i5:.*]] = %{{.*}} to %[[dim2]] step %{{.*}} {
+//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg0]], %[[c0]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg0]], %[[c1]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim2:.*]] = dim %[[arg0]], %[[c2]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim3:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim4:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim5:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[lowerBound1:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim3]]]
+//       CHECKLOOP: %[[upperBound1:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim3]], %[[dim0]]]
+//       CHECKLOOP: %[[lowerBound2:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim4]]]
+//       CHECKLOOP: %[[upperBound2:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim4]], %[[dim1]]]
+//       CHECKLOOP: %[[lowerBound3:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim5]]]
+//       CHECKLOOP: %[[upperBound3:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim5]], %[[dim2]]]
+//       CHECKLOOP: scf.for %[[i0:.*]] = %[[lowerBound1]] to %[[upperBound1]] step %{{.*}} {
+//       CHECKLOOP:   scf.for %[[i1:.*]] = %[[lowerBound2]] to %[[upperBound2]] step %{{.*}} {
+//       CHECKLOOP:     scf.for %[[i2:.*]] = %[[lowerBound3]] to %[[upperBound3]] step %{{.*}} {
+//       CHECKLOOP:       scf.for %[[i3:.*]] = %{{.*}} to %[[dim3]] step %{{.*}} {
+//       CHECKLOOP:         scf.for %[[i4:.*]] = %{{.*}} to %[[dim4]] step %{{.*}} {
+//       CHECKLOOP:           scf.for %[[i5:.*]] = %{{.*}} to %[[dim5]] step %{{.*}} {
 //       CHECKLOOP:             %[[dim6:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?xf32>
 //       CHECKLOOP:             %[[dim7:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?xf32>
 //       CHECKLOOP:             %[[dim8:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?xf32>
@@ -1121,13 +1145,19 @@ func @conv3d(%in : memref<?x?x?xf32>, %filter : memref<?x?x?xf32>, %out :  memre
 //       CHECKPARALLEL: %[[c0:.*]] = constant 0 : index
 //       CHECKPARALLEL: %[[c1:.*]] = constant 1 : index
 //       CHECKPARALLEL: %[[c2:.*]] = constant 2 : index
-//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?xf32>
-//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?xf32>
-//       CHECKPARALLEL: %[[dim2:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?xf32>
-//       CHECKPARALLEL: %[[dim3:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?x?xf32>
-//       CHECKPARALLEL: %[[dim4:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?x?xf32>
-//       CHECKPARALLEL: %[[dim5:.*]] = dim %[[arg2]], %[[c2]] : memref<?x?x?xf32>
-//       CHECKPARALLEL: scf.parallel (%[[i0:.*]], %[[i1:.*]], %[[i2:.*]], %[[i3:.*]], %[[i4:.*]], %[[i5:.*]]) = (%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) to (%[[dim3]], %[[dim4]], %[[dim5]], %[[dim0]], %[[dim1]], %[[dim2]]) step ({{.*}}) {
+//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg0]], %[[c0]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg0]], %[[c1]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim2:.*]] = dim %[[arg0]], %[[c2]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim3:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim4:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim5:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[lowerBound1:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim3]]]
+//       CHECKPARALLEL: %[[upperBound1:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim3]], %[[dim0]]]
+//       CHECKPARALLEL: %[[lowerBound2:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim4]]]
+//       CHECKPARALLEL: %[[upperBound2:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim4]], %[[dim1]]]
+//       CHECKPARALLEL: %[[lowerBound3:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim5]]]
+//       CHECKPARALLEL: %[[upperBound3:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim5]], %[[dim2]]]
+//       CHECKPARALLEL: scf.parallel (%[[i0:.*]], %[[i1:.*]], %[[i2:.*]], %[[i3:.*]], %[[i4:.*]], %[[i5:.*]]) = (%[[lowerBound1]], %[[lowerBound2]], %[[lowerBound3]], %{{.*}}, %{{.*}}, %{{.*}}) to (%[[upperBound1]], %[[upperBound2]], %[[upperBound3]], %[[dim3]], %[[dim4]], %[[dim5]]) step ({{.*}}) {
 //       CHECKPARALLEL:   %[[dim6:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?xf32>
 //       CHECKPARALLEL:   %[[dim7:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?xf32>
 //       CHECKPARALLEL:   %[[dim8:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?xf32>
@@ -1178,22 +1208,30 @@ func @conv4d(%in : memref<?x?x?x?xf32>, %filter : memref<?x?x?x?xf32>, %out :  m
 //       CHECKLOOP: %[[c1:.*]] = constant 1 : index
 //       CHECKLOOP: %[[c2:.*]] = constant 2 : index
 //       CHECKLOOP: %[[c3:.*]] = constant 3 : index
-//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?x?xf32>
-//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?x?xf32>
-//       CHECKLOOP: %[[dim2:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?x?xf32>
-//       CHECKLOOP: %[[dim3:.*]] = dim %[[arg1]], %[[c3]] : memref<?x?x?x?xf32>
-//       CHECKLOOP: %[[dim4:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?x?x?xf32>
-//       CHECKLOOP: %[[dim5:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?x?x?xf32>
-//       CHECKLOOP: %[[dim6:.*]] = dim %[[arg2]], %[[c2]] : memref<?x?x?x?xf32>
-//       CHECKLOOP: %[[dim7:.*]] = dim %[[arg2]], %[[c3]] : memref<?x?x?x?xf32>
-//       CHECKLOOP: scf.for %[[i0:.*]] = %{{.*}} to %[[dim4]] step %{{.*}} {
-//       CHECKLOOP:   scf.for %[[i1:.*]] = %{{.*}} to %[[dim5]] step %{{.*}} {
-//       CHECKLOOP:     scf.for %[[i2:.*]] = %{{.*}} to %[[dim6]] step %{{.*}} {
-//       CHECKLOOP:       scf.for %[[i3:.*]] = %{{.*}} to %[[dim7]] step %{{.*}} {
-//       CHECKLOOP:         scf.for %[[i4:.*]] = %{{.*}} to %[[dim0]] step %{{.*}} {
-//       CHECKLOOP:           scf.for %[[i5:.*]] = %{{.*}} to %[[dim1]] step %{{.*}} {
-//       CHECKLOOP:             scf.for %[[i6:.*]] = %{{.*}} to %[[dim2]] step %{{.*}} {
-//       CHECKLOOP:               scf.for %[[i7:.*]] = %{{.*}} to %[[dim3]] step %{{.*}} {
+//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg0]], %[[c0]] : memref<?x?x?x?xf32>
+//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg0]], %[[c1]] : memref<?x?x?x?xf32>
+//       CHECKLOOP: %[[dim2:.*]] = dim %[[arg0]], %[[c2]] : memref<?x?x?x?xf32>
+//       CHECKLOOP: %[[dim3:.*]] = dim %[[arg0]], %[[c3]] : memref<?x?x?x?xf32>
+//       CHECKLOOP: %[[dim4:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?x?xf32>
+//       CHECKLOOP: %[[dim5:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?x?xf32>
+//       CHECKLOOP: %[[dim6:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?x?xf32>
+//       CHECKLOOP: %[[dim7:.*]] = dim %[[arg1]], %[[c3]] : memref<?x?x?x?xf32>
+//       CHECKLOOP: %[[lowerBound1:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim4]]]
+//       CHECKLOOP: %[[upperBound1:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim4]], %[[dim0]]]
+//       CHECKLOOP: %[[lowerBound2:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim5]]]
+//       CHECKLOOP: %[[upperBound2:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim5]], %[[dim1]]]
+//       CHECKLOOP: %[[lowerBound3:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim6]]]
+//       CHECKLOOP: %[[upperBound3:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim6]], %[[dim2]]]
+//       CHECKLOOP: %[[lowerBound4:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim7]]]
+//       CHECKLOOP: %[[upperBound4:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim7]], %[[dim3]]]
+//       CHECKLOOP: scf.for %[[i0:.*]] = %[[lowerBound1]] to %[[upperBound1]] step %{{.*}} {
+//       CHECKLOOP:   scf.for %[[i1:.*]] = %[[lowerBound2]] to %[[upperBound2]] step %{{.*}} {
+//       CHECKLOOP:     scf.for %[[i2:.*]] = %[[lowerBound3]] to %[[upperBound3]] step %{{.*}} {
+//       CHECKLOOP:       scf.for %[[i3:.*]] = %[[lowerBound4]] to %[[upperBound4]] step %{{.*}} {
+//       CHECKLOOP:         scf.for %[[i4:.*]] = %{{.*}} to %[[dim4]] step %{{.*}} {
+//       CHECKLOOP:           scf.for %[[i5:.*]] = %{{.*}} to %[[dim5]] step %{{.*}} {
+//       CHECKLOOP:             scf.for %[[i6:.*]] = %{{.*}} to %[[dim6]] step %{{.*}} {
+//       CHECKLOOP:               scf.for %[[i7:.*]] = %{{.*}} to %[[dim7]] step %{{.*}} {
 //       CHECKLOOP:                 %[[dim8:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?x?xf32>
 //       CHECKLOOP:                 %[[dim9:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?x?xf32>
 //       CHECKLOOP:                 %[[dim10:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?x?xf32>
@@ -1217,15 +1255,23 @@ func @conv4d(%in : memref<?x?x?x?xf32>, %filter : memref<?x?x?x?xf32>, %out :  m
 //       CHECKPARALLEL: %[[c1:.*]] = constant 1 : index
 //       CHECKPARALLEL: %[[c2:.*]] = constant 2 : index
 //       CHECKPARALLEL: %[[c3:.*]] = constant 3 : index
-//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?x?xf32>
-//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?x?xf32>
-//       CHECKPARALLEL: %[[dim2:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?x?xf32>
-//       CHECKPARALLEL: %[[dim3:.*]] = dim %[[arg1]], %[[c3]] : memref<?x?x?x?xf32>
-//       CHECKPARALLEL: %[[dim4:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?x?x?xf32>
-//       CHECKPARALLEL: %[[dim5:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?x?x?xf32>
-//       CHECKPARALLEL: %[[dim6:.*]] = dim %[[arg2]], %[[c2]] : memref<?x?x?x?xf32>
-//       CHECKPARALLEL: %[[dim7:.*]] = dim %[[arg2]], %[[c3]] : memref<?x?x?x?xf32>
-//       CHECKPARALLEL: scf.parallel (%[[i0:.*]], %[[i1:.*]], %[[i2:.*]], %[[i3:.*]], %[[i4:.*]], %[[i5:.*]], %[[i6:.*]], %[[i7:.*]]) = (%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) to (%[[dim4]], %[[dim5]], %[[dim6]], %[[dim7]], %[[dim0]], %[[dim1]], %[[dim2]], %[[dim3]]) step ({{.*}}) {
+//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg0]], %[[c0]] : memref<?x?x?x?xf32>
+//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg0]], %[[c1]] : memref<?x?x?x?xf32>
+//       CHECKPARALLEL: %[[dim2:.*]] = dim %[[arg0]], %[[c2]] : memref<?x?x?x?xf32>
+//       CHECKPARALLEL: %[[dim3:.*]] = dim %[[arg0]], %[[c3]] : memref<?x?x?x?xf32>
+//       CHECKPARALLEL: %[[dim4:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?x?xf32>
+//       CHECKPARALLEL: %[[dim5:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?x?xf32>
+//       CHECKPARALLEL: %[[dim6:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?x?xf32>
+//       CHECKPARALLEL: %[[dim7:.*]] = dim %[[arg1]], %[[c3]] : memref<?x?x?x?xf32>
+//       CHECKPARALLEL: %[[lowerBound1:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim4]]]
+//       CHECKPARALLEL: %[[upperBound1:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim4]], %[[dim0]]]
+//       CHECKPARALLEL: %[[lowerBound2:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim5]]]
+//       CHECKPARALLEL: %[[upperBound2:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim5]], %[[dim1]]]
+//       CHECKPARALLEL: %[[lowerBound3:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim6]]]
+//       CHECKPARALLEL: %[[upperBound3:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim6]], %[[dim2]]]
+//       CHECKPARALLEL: %[[lowerBound4:.*]] = affine.apply #[[$convLowerBound]]()[%[[dim7]]]
+//       CHECKPARALLEL: %[[upperBound4:.*]] = affine.apply #[[$convUpperBound]]()[%[[dim7]], %[[dim3]]]
+//       CHECKPARALLEL: scf.parallel (%[[i0:.*]], %[[i1:.*]], %[[i2:.*]], %[[i3:.*]], %[[i4:.*]], %[[i5:.*]], %[[i6:.*]], %[[i7:.*]]) = (%[[lowerBound1]], %[[lowerBound2]], %[[lowerBound3]], %[[lowerBound4]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) to (%[[upperBound1]], %[[upperBound2]], %[[upperBound3]], %[[upperBound4]], %[[dim4]], %[[dim5]], %[[dim6]], %[[dim7]]) step ({{.*}}) {
 //       CHECKPARALLEL:   %[[dim8:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?x?xf32>
 //       CHECKPARALLEL:   %[[dim9:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?x?xf32>
 //       CHECKPARALLEL:   %[[dim10:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?x?xf32>
@@ -1240,3 +1286,154 @@ func @conv4d(%in : memref<?x?x?x?xf32>, %filter : memref<?x?x?x?xf32>, %out :  m
 //       CHECKPARALLEL:   %[[inc:.*]] = mulf %[[va]], %[[vb]] : f32
 //       CHECKPARALLEL:   %[[res:.*]] = addf %[[vc]], %[[inc]] : f32
 //       CHECKPARALLEL:   store %[[res]], %[[arg2]][%[[i0]], %[[i1]], %[[i2]], %[[i3]]] : memref<?x?x?x?xf32>
+
+func @conv1d_no_symbols(%in : memref<?xf32>, %filter : memref<?xf32>, %out : memref<?xf32>) -> () {
+  linalg.conv_1d %in, %filter, %out : (memref<?xf32>, memref<?xf32>, memref<?xf32>)
+  return
+}
+
+// CHECKLOOP-LABEL: @conv1d_no_symbols
+//  CHECKLOOP-SAME: %[[arg0:[a-zA-Z0-9]+]]: memref<?xf32>
+//  CHECKLOOP-SAME: %[[arg1:[a-zA-Z0-9]+]]: memref<?xf32>
+//  CHECKLOOP-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?xf32>
+//       CHECKLOOP: %[[c0:.*]] = constant 0 : index
+//       CHECKLOOP: %[[c1:.*]] = constant 1 : index
+//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?xf32>
+//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg2]], %[[c0]] : memref<?xf32>
+//       CHECKLOOP: scf.for %[[b:.*]] = %[[c0]] to %[[dim1]] step %[[c1]] {
+//       CHECKLOOP:   scf.for %[[m:.*]] = %[[c0]] to %[[dim0]] step %[[c1]] {
+//       CHECKLOOP:     %[[aff:.*]] = affine.apply #[[$stride1Dilation1]](%[[b]], %[[m]])
+//       CHECKLOOP:     %[[vb:.*]] = load %[[arg0]][%[[aff]]] : memref<?xf32>
+//       CHECKLOOP:     %[[va:.*]] = load %[[arg1]][%[[m]]] : memref<?xf32>
+//       CHECKLOOP:     %[[vc:.*]] = load %[[arg2]][%[[b]]] : memref<?xf32>
+//       CHECKLOOP:     %[[inc:.*]] = mulf %[[vb]], %[[va]] : f32
+//       CHECKLOOP:     %[[res:.*]] = addf %[[vc]], %[[inc]] : f32
+//       CHECKLOOP:     store %[[res]], %[[arg2]][%[[b]]] : memref<?xf32>
+
+// CHECKPARALLEL-LABEL: @conv1d_no_symbols
+//  CHECKPARALLEL-SAME: %[[arg0:[a-zA-Z0-9]+]]: memref<?xf32>
+//  CHECKPARALLEL-SAME: %[[arg1:[a-zA-Z0-9]+]]: memref<?xf32>
+//  CHECKPARALLEL-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?xf32>
+//       CHECKPARALLEL: %[[c0:.*]] = constant 0 : index
+//       CHECKPARALLEL: %[[c1:.*]] = constant 1 : index
+//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?xf32>
+//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg2]], %[[c0]] : memref<?xf32>
+//       CHECKPARALLEL: scf.parallel (%[[b:.*]], %[[m:.*]]) = (%[[c0]], %[[c0]]) to (%[[dim1]], %[[dim0]]) step (%[[c1]], %[[c1]]) {
+//       CHECKPARALLEL:   %[[aff:.*]] = affine.apply #[[$stride1Dilation1]](%[[b]], %[[m]])
+//       CHECKPARALLEL:   %[[vb:.*]] = load %[[arg0]][%[[aff]]] : memref<?xf32>
+//       CHECKPARALLEL:   %[[va:.*]] = load %[[arg1]][%[[m]]] : memref<?xf32>
+//       CHECKPARALLEL:   %[[vc:.*]] = load %[[arg2]][%[[b]]] : memref<?xf32>
+//       CHECKPARALLEL:   %[[inc:.*]] = mulf %[[vb]], %[[va]] : f32
+//       CHECKPARALLEL:   %[[res:.*]] = addf %[[vc]], %[[inc]] : f32
+//       CHECKPARALLEL:   store %[[res]], %[[arg2]][%[[b]]] : memref<?xf32>
+
+
+func @conv2d_no_symbols(%in : memref<?x?xf32>, %filter : memref<?x?xf32>, %out : memref<?x?xf32>) -> () {
+  linalg.conv_2d %in, %filter, %out : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>)
+  return
+}
+// CHECKLOOP-LABEL: @conv2d_no_symbols
+//  CHECKLOOP-SAME: %[[arg0:[a-zA-Z0-9]+]]: memref<?x?xf32>
+//  CHECKLOOP-SAME: %[[arg1:[a-zA-Z0-9]+]]: memref<?x?xf32>
+//  CHECKLOOP-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?x?xf32>
+//       CHECKLOOP: %[[c0:.*]] = constant 0 : index
+//       CHECKLOOP: %[[c1:.*]] = constant 1 : index
+//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?xf32>
+//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?xf32>
+//       CHECKLOOP: %[[dim2:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?xf32>
+//       CHECKLOOP: %[[dim3:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?xf32>
+//       CHECKLOOP: scf.for %[[arg3:.*]] = %[[c0]] to %[[dim2]] step %[[c1]] {
+//       CHECKLOOP:   scf.for %[[arg4:.*]] = %[[c0]] to %[[dim3]] step %[[c1]] {
+//       CHECKLOOP:     scf.for %[[arg5:.*]] = %[[c0]] to %[[dim0]] step %[[c1]] {
+//       CHECKLOOP:       scf.for %[[arg6:.*]] = %[[c0]] to %[[dim1]] step %[[c1]] {
+//       CHECKLOOP:         %[[aff:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg3]], %[[arg5]])
+//       CHECKLOOP:         %[[aff2:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg4]], %[[arg6]])
+//       CHECKLOOP:         %[[vb:.*]] = load %[[arg0]][%[[aff]], %[[aff2]]] : memref<?x?xf32>
+
+//       CHECKLOOP:         %[[va:.*]] = load %[[arg1]][%[[arg5]], %[[arg6]]] : memref<?x?xf32>
+//       CHECKLOOP:         %[[vc:.*]] = load %[[arg2]][%[[arg3]], %[[arg4]]] : memref<?x?xf32>
+
+//       CHECKLOOP:         %[[inc:.*]] = mulf %[[vb]], %[[va]] : f32
+//       CHECKLOOP:         %[[res:.*]] = addf %[[vc]], %[[inc]] : f32
+//       CHECKLOOP:         store %[[res]], %[[arg2]][%[[arg3]], %[[arg4]]] : memref<?x?xf32>
+
+// CHECKPARALLEL-LABEL: @conv2d_no_symbols
+//  CHECKPARALLEL-SAME: %[[arg0:[a-zA-Z0-9]+]]: memref<?x?xf32>
+//  CHECKPARALLEL-SAME: %[[arg1:[a-zA-Z0-9]+]]: memref<?x?xf32>
+//  CHECKPARALLEL-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?x?xf32>
+//       CHECKPARALLEL: %[[c0:.*]] = constant 0 : index
+//       CHECKPARALLEL: %[[c1:.*]] = constant 1 : index
+//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?xf32>
+//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?xf32>
+//       CHECKPARALLEL: %[[dim2:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?xf32>
+//       CHECKPARALLEL: %[[dim3:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?xf32>
+//       CHECKPARALLEL: scf.parallel (%[[arg3:.*]], %[[arg4:.*]], %[[arg5:.*]], %[[arg6:.*]]) = (%[[c0]], %[[c0]], %[[c0]], %[[c0]]) to (%[[dim2]], %[[dim3]], %[[dim0]], %[[dim1]]) step (%[[c1]], %[[c1]], %[[c1]], %[[c1]]) {
+//       CHECKPARALLEL:   %[[aff:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg3]], %[[arg5]])
+//       CHECKPARALLEL:   %[[aff2:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg4]], %[[arg6]])
+//       CHECKPARALLEL:   %[[vb:.*]] = load %[[arg0]][%[[aff]], %[[aff2]]] : memref<?x?xf32>
+//       CHECKPARALLEL:   %[[va:.*]] = load %[[arg1]][%[[arg5]], %[[arg6]]] : memref<?x?xf32>
+//       CHECKPARALLEL:   %[[vc:.*]] = load %[[arg2]][%[[arg3]], %[[arg4]]] : memref<?x?xf32>
+//       CHECKPARALLEL:   %[[inc:.*]] = mulf %[[vb]], %[[va]] : f32
+//       CHECKPARALLEL:   %[[res:.*]] = addf %[[vc]], %[[inc]] : f32
+//       CHECKPARALLEL:   store %[[res]], %[[arg2]][%[[arg3]], %[[arg4]]] : memref<?x?xf32>
+
+
+func @conv3d_no_symbols(%in : memref<?x?x?xf32>, %filter : memref<?x?x?xf32>, %out : memref<?x?x?xf32>) -> () {
+  linalg.conv_3d %in, %filter, %out : (memref<?x?x?xf32>, memref<?x?x?xf32>, memref<?x?x?xf32>)
+  return
+}
+
+// CHECKLOOP-LABEL: @conv3d_no_symbols
+//  CHECKLOOP-SAME: %[[arg0:[a-zA-Z0-9]+]]: memref<?x?x?xf32>
+//  CHECKLOOP-SAME: %[[arg1:[a-zA-Z0-9]+]]: memref<?x?x?xf32>
+//  CHECKLOOP-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?x?x?xf32>
+//       CHECKLOOP: %[[c2:.*]] = constant 2 : index
+//       CHECKLOOP: %[[c0:.*]] = constant 0 : index
+//       CHECKLOOP: %[[c1:.*]] = constant 1 : index
+//       CHECKLOOP: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim2:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim3:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim4:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?x?xf32>
+//       CHECKLOOP: %[[dim5:.*]] = dim %[[arg2]], %[[c2]] : memref<?x?x?xf32>
+//       CHECKLOOP: scf.for %[[arg3:.*]] = %[[c0]] to %[[dim3]] step %[[c1]] {
+//       CHECKLOOP:   scf.for %[[arg4:.*]] = %[[c0]] to %[[dim4]] step %[[c1]] {
+//       CHECKLOOP:     scf.for %[[arg5:.*]] = %[[c0]] to %[[dim5]] step %[[c1]] {
+//       CHECKLOOP:       scf.for %[[arg6:.*]] = %[[c0]] to %[[dim0]] step %[[c1]] {
+//       CHECKLOOP:         scf.for %[[arg7:.*]] = %[[c0]] to %[[dim1]] step %[[c1]] {
+//       CHECKLOOP:           scf.for %[[arg8:.*]] = %[[c0]] to %[[dim2]] step %[[c1]] {
+//       CHECKLOOP:             %[[aff:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg3]], %[[arg6]])
+//       CHECKLOOP:             %[[aff2:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg4]], %[[arg7]])
+//       CHECKLOOP:             %[[aff3:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg5]], %[[arg8]])
+//       CHECKLOOP:             %[[vb:.*]] = load %[[arg0]][%[[aff]], %[[aff2]], %[[aff3]]] : memref<?x?x?xf32>
+
+//       CHECKLOOP:             %[[va:.*]] = load %[[arg1]][%[[arg6]], %[[arg7]], %[[arg8]]] : memref<?x?x?xf32>
+//       CHECKLOOP:             %[[vc:.*]] = load %[[arg2]][%[[arg3]], %[[arg4]], %[[arg5]]] : memref<?x?x?xf32>
+
+//       CHECKLOOP:             %[[inc:.*]] = mulf %[[vb]], %[[va]] : f32
+//       CHECKLOOP:             %[[res:.*]] = addf %[[vc]], %[[inc]] : f32
+//       CHECKLOOP:             store %[[res]], %[[arg2]][%[[arg3]], %[[arg4]], %[[arg5]]] : memref<?x?x?xf32>
+
+// CHECKPARALLEL-LABEL: @conv3d_no_symbols
+//  CHECKPARALLEL-SAME: %[[arg0:[a-zA-Z0-9]+]]: memref<?x?x?xf32>
+//  CHECKPARALLEL-SAME: %[[arg1:[a-zA-Z0-9]+]]: memref<?x?x?xf32>
+//  CHECKPARALLEL-SAME: %[[arg2:[a-zA-Z0-9]+]]: memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[c2:.*]] = constant 2 : index
+//       CHECKPARALLEL: %[[c0:.*]] = constant 0 : index
+//       CHECKPARALLEL: %[[c1:.*]] = constant 1 : index
+//       CHECKPARALLEL: %[[dim0:.*]] = dim %[[arg1]], %[[c0]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim1:.*]] = dim %[[arg1]], %[[c1]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim2:.*]] = dim %[[arg1]], %[[c2]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim3:.*]] = dim %[[arg2]], %[[c0]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim4:.*]] = dim %[[arg2]], %[[c1]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: %[[dim5:.*]] = dim %[[arg2]], %[[c2]] : memref<?x?x?xf32>
+//       CHECKPARALLEL: scf.parallel (%[[arg3:.*]], %[[arg4:.*]], %[[arg5:.*]], %[[arg6:.*]], %[[arg7:.*]], %[[arg8:.*]]) = (%[[c0]], %[[c0]], %[[c0]], %[[c0]], %[[c0]], %[[c0]]) to (%[[dim3]], %[[dim4]], %[[dim5]], %[[dim0]], %[[dim1]], %[[dim2]]) step (%[[c1]], %[[c1]], %[[c1]], %[[c1]], %[[c1]], %[[c1]]) {
+//       CHECKPARALLEL:   %[[aff:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg3]], %[[arg6]])
+//       CHECKPARALLEL:   %[[aff2:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg4]], %[[arg7]])
+//       CHECKPARALLEL:   %[[aff3:.*]] = affine.apply #[[$stride1Dilation1]](%[[arg5]], %[[arg8]])
+//       CHECKPARALLEL:   %[[vb:.*]] = load %[[arg0]][%[[aff]], %[[aff2]], %[[aff3]]] : memref<?x?x?xf32>
+//       CHECKPARALLEL:   %[[va:.*]] = load %[[arg1]][%[[arg6]], %[[arg7]], %[[arg8]]] : memref<?x?x?xf32>
+//       CHECKPARALLEL:   %[[vc:.*]] = load %[[arg2]][%[[arg3]], %[[arg4]], %[[arg5]]] : memref<?x?x?xf32>
+//       CHECKPARALLEL:   %[[inc:.*]] = mulf %[[vb]], %[[va]] : f32
+//       CHECKPARALLEL:   %[[res:.*]] = addf %[[vc]], %[[inc]] : f32
+//       CHECKPARALLEL:   store %[[res]], %[[arg2]][%[[arg3]], %[[arg4]], %[[arg5]]] : memref<?x?x?xf32>

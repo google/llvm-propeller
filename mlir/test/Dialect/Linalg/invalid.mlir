@@ -422,8 +422,15 @@ func @generic(%arg0: memref<?x?xi4>) {
 // -----
 
 func @generic_result_0_element_type(%arg0: memref<?xf32>) {
-  // expected-error @+1 {{'linalg.dot' op expected 3 operands, but found 2}}
-  linalg.dot(%arg0, %arg0): memref<?xf32>, memref<?xf32>
+  // expected-error @+1 {{'linalg.dot' expects 3 operands, but found 2}}
+  linalg.dot %arg0, %arg0 : (memref<?xf32>, memref<?xf32>)
+}
+
+// -----
+
+func @conv_rank_limit(%arg0: memref<?xf32>, %arg1: memref<?xf32>, %arg2: memref<?xf32>) {
+  // expected-error @+1 {{expects memref ranks to be greater than 2}}
+  linalg.conv(%arg0, %arg1, %arg2) : memref<?xf32>, memref<?xf32>, memref<?xf32>
 }
 
 // -----
