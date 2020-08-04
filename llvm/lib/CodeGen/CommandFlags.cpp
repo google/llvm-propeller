@@ -403,7 +403,8 @@ codegen::RegisterCodeGenFlags::RegisterCodeGenFlags() {
 
   static cl::opt<bool> EnableMachineFunctionSplitter(
       "split-machine-functions",
-      cl::desc("Split machine functions based on profile information"),
+      cl::desc("Split out cold basic blocks from machine function based on "
+               "profile information"),
       cl::init(false));
   CGBINDOPT(EnableMachineFunctionSplitter);
 

@@ -1014,11 +1014,11 @@ void TargetPassConfig::addMachinePasses() {
       addPass(createMachineOutlinerPass(RunOnAllFunctions));
   }
 
-  if (TM->Options.EnableMachineFunctionSplitter) {
+  // Machine function splitter uses the basic block sections feature. Both
+  // cannot be enabled at the same time.
+  if (TM->Options.EnableMachineFunctionSplitter)
     addPass(createMachineFunctionSplitterPass());
-  }
-
-  if (TM->getBBSectionsType() != llvm::BasicBlockSection::None)
+  else if (TM->getBBSectionsType() != llvm::BasicBlockSection::None)
     addPass(llvm::createBBSectionsPreparePass(TM->getBBSectionsFuncListBuf()));
 
   // Add passes that directly emit MI after all other MI passes.
