@@ -1,11 +1,11 @@
-; RUN: llc < %s -mtriple=x86_64-unknown-linux-gnu -split-machine-functions | FileCheck %s
+; RUN: llc < %s -mtriple=x86_64 -split-machine-functions | FileCheck %s
 
 define void @foo1(i1 zeroext %0) nounwind !prof !1 !section_prefix !2 {
-; Check that cold block is moved to .text.unlikely.
+;; Check that cold block is moved to .text.unlikely.
 ; CHECK-LABEL: foo1:
-; CHECK: .section        .text.unlikely.foo1
-; CHECK-NEXT:foo1.cold:
-; CHECK-NOT: callq   bar
+; CHECK:       .section        .text.unlikely.foo1
+; CHECK-NEXT:  foo1.cold:
+; CHECK-NOT:   callq   bar
   br i1 %0, label %2, label %4, !prof !4
 
 2:                                                ; preds = %1
@@ -22,9 +22,9 @@ define void @foo1(i1 zeroext %0) nounwind !prof !1 !section_prefix !2 {
 }
 
 define void @foo2(i1 zeroext %0) nounwind !prof !1 !section_prefix !3 {
-; Check that function marked unlikely is not split. 
+;; Check that function marked unlikely is not split.
 ; CHECK-LABEL: foo2:
-; CHECK-NOT:foo2.cold:
+; CHECK-NOT:   foo2.cold:
   br i1 %0, label %2, label %4, !prof !4
 
 2:                                                ; preds = %1
@@ -41,9 +41,9 @@ define void @foo2(i1 zeroext %0) nounwind !prof !1 !section_prefix !3 {
 }
 
 define void @foo3(i1 zeroext %0) nounwind !section_prefix !2 {
-; Check that function without profile data is not split.
+;; Check that function without profile data is not split.
 ; CHECK-LABEL: foo3:
-; CHECK-NOT:foo3.cold:
+; CHECK-NOT:   foo3.cold:
   br i1 %0, label %2, label %4
 
 2:                                                ; preds = %1

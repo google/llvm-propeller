@@ -1,4 +1,4 @@
-//===-- MachineFunctionSplitter.cpp - Patchable prologues for LLVM -------------===//
+//===-- MachineFunctionSplitter.cpp - Split machine functions //-----------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -59,7 +59,8 @@ public:
 } // end anonymous namespace
 
 bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
-  // We only target functions with profile data.
+  // FIXME: We only target functions with profile data. Static information may
+  // also be considered but we don't see performance improvements yet.
   if (!MF.getFunction().hasProfileData()) {
     return false;
   }
@@ -79,16 +80,14 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
   auto *MBFI = &getAnalysis<MachineBlockFrequencyInfo>();
 
   for (auto &MBB : MF) {
-    if (MBB.isEHPad()) {
-      MBB.setSectionID(MBBSectionID::ExceptionSectionID);
-    } else {
-      Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
-      bool HasCount = (Count.hasValue() && Count.getValue() > 0);
-      // We retain the entry block and any block which has a
-      // non-zero execution count.
-      if (!(MBB.pred_empty() || HasCount)) {
-        MBB.setSectionID(MBBSectionID::ColdSectionID);
-      }
+    // We retain the entry block and conservatively keep all landing pad blocks
+    // as part of the original function.
+    if ((MBB.pred_empty() || MBB.isEHPad()))
+      continue;
+    // Any block with a non-zero profile count is retained.
+    Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
+    if (!(Count.hasValue() && Count.getValue() > 0)) {
+      MBB.setSectionID(MBBSectionID::ColdSectionID);
     }
   }
 
