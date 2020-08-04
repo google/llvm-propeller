@@ -433,7 +433,7 @@ run-commands.sh: benchmark-dir.o | stage1-compiler
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
 	echo "export CCP=\$$(cd \$$(dirname \$$1); pwd)/\$$(basename \$$1)" > $@
-	echo "head -n 150 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
+	echo "head -n 500 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
                 >> $@
 	chmod +x $@
 
