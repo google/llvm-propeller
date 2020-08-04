@@ -33,9 +33,9 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 ; CHECK-PIC:        .cfi_lsda 27, .Lexception2
 ; CHECK:            nop                             # avoids zero-offset landing pad
 ; CHECK-LABEL:    .Ltmp2:
-; CHECK-LABEL:    .LBB_END0_2:
+; CHECK-LABEL:    .Ltmp4:
 
-; CHECK-NOT:      .cfi_lsda
+; CHECK-NOT:        .cfi_lsda
 
 entry:
   invoke void @_Z1fv() optsize
@@ -109,7 +109,7 @@ declare i32 @__gxx_personality_v0(...)
 ; CHECK-NEXT:           .uleb128 .Lcst_end0-.Lcst_begin2
 ; CHECK-NEXT:         .Lcst_begin2:
 ; CHECK-NEXT:           .uleb128 main.2-main.2  # >> Call Site 2 <<
-; CHECK-NEXT:           .uleb128 .LBB_END0_2-main.2      #   Call between main.2 and .LBB_END0_2
+; CHECK-NEXT:           .uleb128 .Ltmp4-main.2      #   Call between main.2 and .Ltmp4
 ; CHECK-NEXT:           .byte	0                       #     has no landing pad
 ; CHECK-NEXT:           .byte	0                       #   On action: cleanup
 ; CHECK-NEXT:         .Lcst_end0:

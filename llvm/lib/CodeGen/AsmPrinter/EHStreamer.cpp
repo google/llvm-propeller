@@ -613,14 +613,14 @@ MCSymbol *EHStreamer::emitExceptionTable() {
         Asm->emitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
       } else if (!Asm->isPositionIndependent()) {
         // For more than one call-site ranges, LPStart must be explicitly
-        // specified. For non-PIC we can simply use the absolute value.
+        // specified.
+        // For non-PIC we can simply use the absolute value.
         Asm->emitEncodingByte(dwarf::DW_EH_PE_absptr, "@LPStart");
         Asm->OutStreamer->emitSymbolValue(LandingPadRange->FragmentBeginLabel,
                                           Asm->MAI->getCodePointerSize());
       } else {
         // Emit a PC-relative address for PIC instead.
-        Asm->emitEncodingByte(dwarf::DW_EH_PE_absptr | dwarf::DW_EH_PE_pcrel,
-                              "@LPStart");
+        Asm->emitEncodingByte(dwarf::DW_EH_PE_pcrel, "@LPStart");
         MCContext &Context = Asm->OutStreamer->getContext();
         MCSymbol *Dot = Context.createTempSymbol();
         Asm->OutStreamer->emitLabel(Dot);

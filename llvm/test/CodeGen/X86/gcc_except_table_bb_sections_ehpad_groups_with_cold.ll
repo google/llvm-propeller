@@ -20,7 +20,7 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 ; CHECK:    .cfi_personality 3, __gxx_personality_v0
 ; CHECK:    .cfi_lsda 3, .Lexception1
 ; CHECK-LABEL:  .Ltmp2:
-; CHECK-LABEL:  .Ltmp3:
+; CHECK-LABEL:  .Ltmp4:
 
 ; CHECK-NOT: .cfi_lsda
 
@@ -74,7 +74,7 @@ declare i32 @__gxx_personality_v0(...)
 ; CHECK-NEXT:    .uleb128 .Lcst_end0-.Lcst_begin1
 ; CHECK-NEXT:  .Lcst_begin1:
 ; CHECK-NEXT:    .uleb128 main.cold-main.cold    # >> Call Site 2 <<
-; CHECK-NEXT:    .uleb128 .Ltmp3-main.cold       #   Call between main.cold and .Ltmp3
+; CHECK-NEXT:    .uleb128 .Ltmp4-main.cold       #   Call between main.cold and .Ltmp4
 ; CHECK-NEXT:    .byte	0                       #     has no landing pad
 ; CHECK-NEXT:    .byte	0                       #   On action: cleanup
 ; CHECK-NEXT:  .Lcst_end0:
