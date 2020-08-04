@@ -3425,7 +3425,7 @@ void SelectionDAGBuilder::visitAddrSpaceCast(const User &I) {
   unsigned SrcAS = SV->getType()->getPointerAddressSpace();
   unsigned DestAS = I.getType()->getPointerAddressSpace();
 
-  if (!TLI.isNoopAddrSpaceCast(SrcAS, DestAS))
+  if (!TM.isNoopAddrSpaceCast(SrcAS, DestAS))
     N = DAG.getAddrSpaceCast(getCurSDLoc(), DestVT, N, SrcAS, DestAS);
 
   setValue(&I, N);
@@ -3753,8 +3753,6 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
   SDValue N = getValue(Op0);
   SDLoc dl = getCurSDLoc();
   auto &TLI = DAG.getTargetLoweringInfo();
-  MVT PtrTy = TLI.getPointerTy(DAG.getDataLayout(), AS);
-  MVT PtrMemTy = TLI.getPointerMemTy(DAG.getDataLayout(), AS);
 
   // Normalize Vector GEP - all scalar operands should be converted to the
   // splat vector.
@@ -3878,6 +3876,13 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
       N = DAG.getNode(ISD::ADD, dl,
                       N.getValueType(), N, IdxN);
     }
+  }
+
+  MVT PtrTy = TLI.getPointerTy(DAG.getDataLayout(), AS);
+  MVT PtrMemTy = TLI.getPointerMemTy(DAG.getDataLayout(), AS);
+  if (IsVectorGEP) {
+    PtrTy = MVT::getVectorVT(PtrTy, VectorElementCount);
+    PtrMemTy = MVT::getVectorVT(PtrMemTy, VectorElementCount);
   }
 
   if (PtrMemTy != PtrTy && !cast<GEPOperator>(I).isInBounds())
@@ -6363,6 +6368,36 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
                               Op1, Op2, Op3, DAG, TLI));
     return;
   }
+  case Intrinsic::smax: {
+    SDValue Op1 = getValue(I.getArgOperand(0));
+    SDValue Op2 = getValue(I.getArgOperand(1));
+    setValue(&I, DAG.getNode(ISD::SMAX, sdl, Op1.getValueType(), Op1, Op2));
+    return;
+  }
+  case Intrinsic::smin: {
+    SDValue Op1 = getValue(I.getArgOperand(0));
+    SDValue Op2 = getValue(I.getArgOperand(1));
+    setValue(&I, DAG.getNode(ISD::SMIN, sdl, Op1.getValueType(), Op1, Op2));
+    return;
+  }
+  case Intrinsic::umax: {
+    SDValue Op1 = getValue(I.getArgOperand(0));
+    SDValue Op2 = getValue(I.getArgOperand(1));
+    setValue(&I, DAG.getNode(ISD::UMAX, sdl, Op1.getValueType(), Op1, Op2));
+    return;
+  }
+  case Intrinsic::umin: {
+    SDValue Op1 = getValue(I.getArgOperand(0));
+    SDValue Op2 = getValue(I.getArgOperand(1));
+    setValue(&I, DAG.getNode(ISD::UMIN, sdl, Op1.getValueType(), Op1, Op2));
+    return;
+  }
+  case Intrinsic::abs: {
+    // TODO: Preserve "int min is poison" arg in SDAG?
+    SDValue Op1 = getValue(I.getArgOperand(0));
+    setValue(&I, DAG.getNode(ISD::ABS, sdl, Op1.getValueType(), Op1));
+    return;
+  }
   case Intrinsic::stacksave: {
     SDValue Op = getRoot();
     EVT VT = TLI.getValueType(DAG.getDataLayout(), I.getType());
@@ -6601,7 +6636,7 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
         cast<ConstantInt>(I.getArgOperand(0))->getSExtValue();
     Value *const ObjectPtr = I.getArgOperand(1);
     SmallVector<const Value *, 4> Allocas;
-    GetUnderlyingObjects(ObjectPtr, Allocas, *DL);
+    getUnderlyingObjects(ObjectPtr, Allocas);
 
     for (SmallVectorImpl<const Value*>::iterator Object = Allocas.begin(),
            E = Allocas.end(); Object != E; ++Object) {

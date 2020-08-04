@@ -1,4 +1,4 @@
-; RUN: llc -O3 %s -mtriple=x86_64-unknown-linux-gnu -filetype=asm --basicblock-sections=all  -stop-after=cfi-instr-inserter  -o - | FileCheck --check-prefix=CFI_INSTR %s
+; RUN: llc -O3 %s -mtriple=x86_64-unknown-linux-gnu -filetype=asm --basic-block-sections=all  -stop-after=cfi-instr-inserter  -o - | FileCheck --check-prefix=CFI_INSTR %s
 
 ; CFI_INSTR: _Z7computebiiiiiiiiiiii
 ; CFI_INSTR: bb.0

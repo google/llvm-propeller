@@ -157,6 +157,19 @@ check_library_exists(stdc++ __cxa_throw "" COMPILER_RT_HAS_LIBSTDCXX)
 check_linker_flag("-Wl,-z,text" COMPILER_RT_HAS_Z_TEXT)
 check_linker_flag("-fuse-ld=lld" COMPILER_RT_HAS_FUSE_LD_LLD_FLAG)
 
+set(VERS_COMPAT_OPTION "-Wl,-z,gnu-version-script-compat")
+check_linker_flag("${VERS_COMPAT_OPTION}" COMPILER_RT_HAS_GNU_VERSION_SCRIPT_COMPAT)
+
+set(DUMMY_VERS ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/dummy.vers)
+file(WRITE ${DUMMY_VERS} "{};")
+set(VERS_OPTION "-Wl,--version-script,${DUMMY_VERS}")
+if(COMPILER_RT_HAS_GNU_VERSION_SCRIPT_COMPAT)
+  # Solaris 11.4 ld only supports --version-script with
+  # -z gnu-version-script-compat. 
+  string(APPEND VERS_OPTION " ${VERS_COMPAT_OPTION}")
+endif()
+check_linker_flag("${VERS_OPTION}" COMPILER_RT_HAS_VERSION_SCRIPT)
+
 if(ANDROID)
   check_linker_flag("-Wl,-z,global" COMPILER_RT_HAS_Z_GLOBAL)
   check_library_exists(log __android_log_write "" COMPILER_RT_HAS_LIBLOG)
@@ -610,7 +623,8 @@ else()
   set(CAN_SYMBOLIZE 1)
 endif()
 
-find_program(GOLD_EXECUTABLE NAMES ${LLVM_DEFAULT_TARGET_TRIPLE}-ld.gold ld.gold ${LLVM_DEFAULT_TARGET_TRIPLE}-ld ld DOC "The gold linker")
+find_program(GNU_LD_EXECUTABLE NAMES ${LLVM_DEFAULT_TARGET_TRIPLE}-ld.bfd ld.bfd DOC "GNU ld")
+find_program(GOLD_EXECUTABLE NAMES ${LLVM_DEFAULT_TARGET_TRIPLE}-ld.gold ld.gold DOC "GNU gold")
 
 if(COMPILER_RT_SUPPORTED_ARCH)
   list(REMOVE_DUPLICATES COMPILER_RT_SUPPORTED_ARCH)

@@ -16,6 +16,7 @@
 #include "llvm/CodeGen/GlobalISel/CallLowering.h"
 #include "llvm/CodeGen/GlobalISel/GISelChangeObserver.h"
 #include "llvm/CodeGen/GlobalISel/LegalizerInfo.h"
+#include "llvm/CodeGen/GlobalISel/MIPatternMatch.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetFrameLowering.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
@@ -29,6 +30,7 @@
 
 using namespace llvm;
 using namespace LegalizeActions;
+using namespace MIPatternMatch;
 
 /// Try to break down \p OrigTy into \p NarrowTy sized pieces.
 ///
@@ -75,6 +77,8 @@ static Type *getFloatTypeForLLT(LLVMContext &Ctx, LLT Ty) {
     return Type::getFloatTy(Ctx);
   case 64:
     return Type::getDoubleTy(Ctx);
+  case 80:
+    return Type::getX86_FP80Ty(Ctx);
   case 128:
     return Type::getFP128Ty(Ctx);
   default:
@@ -384,7 +388,7 @@ void LegalizerHelper::buildWidenedRemergeToDst(Register DstReg, LLT LCMTy,
 }
 
 static RTLIB::Libcall getRTLibDesc(unsigned Opcode, unsigned Size) {
-#define RTLIBCASE(LibcallPrefix)                                               \
+#define RTLIBCASE_INT(LibcallPrefix)                                           \
   do {                                                                         \
     switch (Size) {                                                            \
     case 32:                                                                   \
@@ -398,19 +402,33 @@ static RTLIB::Libcall getRTLibDesc(unsigned Opcode, unsigned Size) {
     }                                                                          \
   } while (0)
 
-  assert((Size == 32 || Size == 64 || Size == 128) && "Unsupported size");
+#define RTLIBCASE(LibcallPrefix)                                               \
+  do {                                                                         \
+    switch (Size) {                                                            \
+    case 32:                                                                   \
+      return RTLIB::LibcallPrefix##32;                                         \
+    case 64:                                                                   \
+      return RTLIB::LibcallPrefix##64;                                         \
+    case 80:                                                                   \
+      return RTLIB::LibcallPrefix##80;                                         \
+    case 128:                                                                  \
+      return RTLIB::LibcallPrefix##128;                                        \
+    default:                                                                   \
+      llvm_unreachable("unexpected size");                                     \
+    }                                                                          \
+  } while (0)
 
   switch (Opcode) {
   case TargetOpcode::G_SDIV:
-    RTLIBCASE(SDIV_I);
+    RTLIBCASE_INT(SDIV_I);
   case TargetOpcode::G_UDIV:
-    RTLIBCASE(UDIV_I);
+    RTLIBCASE_INT(UDIV_I);
   case TargetOpcode::G_SREM:
-    RTLIBCASE(SREM_I);
+    RTLIBCASE_INT(SREM_I);
   case TargetOpcode::G_UREM:
-    RTLIBCASE(UREM_I);
+    RTLIBCASE_INT(UREM_I);
   case TargetOpcode::G_CTLZ_ZERO_UNDEF:
-    RTLIBCASE(CTLZ_I);
+    RTLIBCASE_INT(CTLZ_I);
   case TargetOpcode::G_FADD:
     RTLIBCASE(ADD_F);
   case TargetOpcode::G_FSUB:
@@ -453,6 +471,8 @@ static RTLIB::Libcall getRTLibDesc(unsigned Opcode, unsigned Size) {
     RTLIBCASE(RINT_F);
   case TargetOpcode::G_FNEARBYINT:
     RTLIBCASE(NEARBYINT_F);
+  case TargetOpcode::G_INTRINSIC_ROUNDEVEN:
+    RTLIBCASE(ROUNDEVEN_F);
   }
   llvm_unreachable("Unknown libcall function");
 }
@@ -668,10 +688,11 @@ LegalizerHelper::libcall(MachineInstr &MI) {
   case TargetOpcode::G_FMAXNUM:
   case TargetOpcode::G_FSQRT:
   case TargetOpcode::G_FRINT:
-  case TargetOpcode::G_FNEARBYINT: {
+  case TargetOpcode::G_FNEARBYINT:
+  case TargetOpcode::G_INTRINSIC_ROUNDEVEN: {
     Type *HLTy = getFloatTypeForLLT(Ctx, LLTy);
-    if (!HLTy || (Size != 32 && Size != 64 && Size != 128)) {
-      LLVM_DEBUG(dbgs() << "No libcall available for size " << Size << ".\n");
+    if (!HLTy || (Size != 32 && Size != 64 && Size != 80 && Size != 128)) {
+      LLVM_DEBUG(dbgs() << "No libcall available for type " << LLTy << ".\n");
       return UnableToLegalize;
     }
     auto Status = simpleLibcall(MI, MIRBuilder, Size, HLTy);
@@ -1204,6 +1225,7 @@ LegalizerHelper::LegalizeResult LegalizerHelper::narrowScalar(MachineInstr &MI,
     MI.eraseFromParent();
     return Legalized;
   }
+  case TargetOpcode::G_PTR_ADD:
   case TargetOpcode::G_PTRMASK: {
     if (TypeIdx != 1)
       return UnableToLegalize;
@@ -1613,8 +1635,7 @@ LegalizerHelper::widenScalarExtract(MachineInstr &MI, unsigned TypeIdx,
     if (WideTy.getSizeInBits() > SrcTy.getSizeInBits()) {
       Src = MIRBuilder.buildAnyExt(WideTy, Src);
       ShiftTy = WideTy;
-    } else if (WideTy.getSizeInBits() > SrcTy.getSizeInBits())
-      return UnableToLegalize;
+    }
 
     auto LShr = MIRBuilder.buildLShr(
       ShiftTy, Src, MIRBuilder.buildConstant(ShiftTy, Offset));
@@ -2161,6 +2182,7 @@ LegalizerHelper::widenScalar(MachineInstr &MI, unsigned TypeIdx, LLT WideTy) {
   case TargetOpcode::G_FPOW:
   case TargetOpcode::G_INTRINSIC_TRUNC:
   case TargetOpcode::G_INTRINSIC_ROUND:
+  case TargetOpcode::G_INTRINSIC_ROUNDEVEN:
     assert(TypeIdx == 0);
     Observer.changingInstr(MI);
 
@@ -2361,6 +2383,13 @@ LegalizerHelper::bitcast(MachineInstr &MI, unsigned TypeIdx, LLT CastTy) {
   }
 }
 
+// Legalize an instruction by changing the opcode in place.
+void LegalizerHelper::changeOpcode(MachineInstr &MI, unsigned NewOpcode) {
+    Observer.changingInstr(MI);
+    MI.setDesc(MIRBuilder.getTII().get(NewOpcode));
+    Observer.changedInstr(MI);
+}
+
 LegalizerHelper::LegalizeResult
 LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
   using namespace TargetOpcode;
@@ -2459,6 +2488,12 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     return lowerFFloor(MI);
   case TargetOpcode::G_INTRINSIC_ROUND:
     return lowerIntrinsicRound(MI);
+  case TargetOpcode::G_INTRINSIC_ROUNDEVEN: {
+    // Since round even is the assumed rounding mode for unconstrained FP
+    // operations, rint and roundeven are the same operation.
+    changeOpcode(MI, TargetOpcode::G_FRINT);
+    return Legalized;
+  }
   case TargetOpcode::G_ATOMIC_CMPXCHG_WITH_SUCCESS: {
     Register OldValRes = MI.getOperand(0).getReg();
     Register SuccessRes = MI.getOperand(1).getReg();
@@ -2713,6 +2748,8 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     MI.eraseFromParent();
     return Legalized;
   }
+  case G_EXTRACT_VECTOR_ELT:
+    return lowerExtractVectorElt(MI);
   case G_SHUFFLE_VECTOR:
     return lowerShuffleVector(MI);
   case G_DYN_STACKALLOC:
@@ -2728,7 +2765,88 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
   case G_READ_REGISTER:
   case G_WRITE_REGISTER:
     return lowerReadWriteRegister(MI);
+  case G_UADDSAT:
+  case G_USUBSAT: {
+    // Try to make a reasonable guess about which lowering strategy to use. The
+    // target can override this with custom lowering and calling the
+    // implementation functions.
+    LLT Ty = MRI.getType(MI.getOperand(0).getReg());
+    if (LI.isLegalOrCustom({G_UMIN, Ty}))
+      return lowerAddSubSatToMinMax(MI);
+    return lowerAddSubSatToAddoSubo(MI);
   }
+  case G_SADDSAT:
+  case G_SSUBSAT: {
+    LLT Ty = MRI.getType(MI.getOperand(0).getReg());
+
+    // FIXME: It would probably make more sense to see if G_SADDO is preferred,
+    // since it's a shorter expansion. However, we would need to figure out the
+    // preferred boolean type for the carry out for the query.
+    if (LI.isLegalOrCustom({G_SMIN, Ty}) && LI.isLegalOrCustom({G_SMAX, Ty}))
+      return lowerAddSubSatToMinMax(MI);
+    return lowerAddSubSatToAddoSubo(MI);
+  }
+  }
+}
+
+Align LegalizerHelper::getStackTemporaryAlignment(LLT Ty,
+                                                  Align MinAlign) const {
+  // FIXME: We're missing a way to go back from LLT to llvm::Type to query the
+  // datalayout for the preferred alignment. Also there should be a target hook
+  // for this to allow targets to reduce the alignment and ignore the
+  // datalayout. e.g. AMDGPU should always use a 4-byte alignment, regardless of
+  // the type.
+  return std::max(Align(PowerOf2Ceil(Ty.getSizeInBytes())), MinAlign);
+}
+
+MachineInstrBuilder
+LegalizerHelper::createStackTemporary(TypeSize Bytes, Align Alignment,
+                                      MachinePointerInfo &PtrInfo) {
+  MachineFunction &MF = MIRBuilder.getMF();
+  const DataLayout &DL = MIRBuilder.getDataLayout();
+  int FrameIdx = MF.getFrameInfo().CreateStackObject(Bytes, Alignment, false);
+
+  unsigned AddrSpace = DL.getAllocaAddrSpace();
+  LLT FramePtrTy = LLT::pointer(AddrSpace, DL.getPointerSizeInBits(AddrSpace));
+
+  PtrInfo = MachinePointerInfo::getFixedStack(MF, FrameIdx);
+  return MIRBuilder.buildFrameIndex(FramePtrTy, FrameIdx);
+}
+
+static Register clampDynamicVectorIndex(MachineIRBuilder &B, Register IdxReg,
+                                        LLT VecTy) {
+  int64_t IdxVal;
+  if (mi_match(IdxReg, *B.getMRI(), m_ICst(IdxVal)))
+    return IdxReg;
+
+  LLT IdxTy = B.getMRI()->getType(IdxReg);
+  unsigned NElts = VecTy.getNumElements();
+  if (isPowerOf2_32(NElts)) {
+    APInt Imm = APInt::getLowBitsSet(IdxTy.getSizeInBits(), Log2_32(NElts));
+    return B.buildAnd(IdxTy, IdxReg, B.buildConstant(IdxTy, Imm)).getReg(0);
+  }
+
+  return B.buildUMin(IdxTy, IdxReg, B.buildConstant(IdxTy, NElts - 1))
+      .getReg(0);
+}
+
+Register LegalizerHelper::getVectorElementPointer(Register VecPtr, LLT VecTy,
+                                                  Register Index) {
+  LLT EltTy = VecTy.getElementType();
+
+  // Calculate the element offset and add it to the pointer.
+  unsigned EltSize = EltTy.getSizeInBits() / 8; // FIXME: should be ABI size.
+  assert(EltSize * 8 == EltTy.getSizeInBits() &&
+         "Converting bits to bytes lost precision");
+
+  Index = clampDynamicVectorIndex(MIRBuilder, Index, VecTy);
+
+  LLT IdxTy = MRI.getType(Index);
+  auto Mul = MIRBuilder.buildMul(IdxTy, Index,
+                                 MIRBuilder.buildConstant(IdxTy, EltSize));
+
+  LLT PtrTy = MRI.getType(VecPtr);
+  return MIRBuilder.buildPtrAdd(PtrTy, VecPtr, Mul).getReg(0);
 }
 
 LegalizerHelper::LegalizeResult LegalizerHelper::fewerElementsVectorImplicitDef(
@@ -3448,6 +3566,7 @@ LegalizerHelper::fewerElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case G_ADD:
   case G_SUB:
   case G_MUL:
+  case G_PTR_ADD:
   case G_SMULH:
   case G_UMULH:
   case G_FADD:
@@ -3471,6 +3590,7 @@ LegalizerHelper::fewerElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case G_FFLOOR:
   case G_FRINT:
   case G_INTRINSIC_ROUND:
+  case G_INTRINSIC_ROUNDEVEN:
   case G_INTRINSIC_TRUNC:
   case G_FCOS:
   case G_FSIN:
@@ -5100,6 +5220,57 @@ LegalizerHelper::lowerUnmergeValues(MachineInstr &MI) {
   return Legalized;
 }
 
+/// Lower a vector extract by writing the vector to a stack temporary and
+/// reloading the element.
+///
+/// %dst = G_EXTRACT_VECTOR_ELT %vec, %idx
+///  =>
+///  %stack_temp = G_FRAME_INDEX
+///  G_STORE %vec, %stack_temp
+///  %idx = clamp(%idx, %vec.getNumElements())
+///  %element_ptr = G_PTR_ADD %stack_temp, %idx
+///  %dst = G_LOAD %element_ptr
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerExtractVectorElt(MachineInstr &MI) {
+  Register DstReg = MI.getOperand(0).getReg();
+  Register SrcVec = MI.getOperand(1).getReg();
+  Register Idx = MI.getOperand(2).getReg();
+  LLT VecTy = MRI.getType(SrcVec);
+  LLT EltTy = VecTy.getElementType();
+  if (!EltTy.isByteSized()) { // Not implemented.
+    LLVM_DEBUG(dbgs() << "Can't handle non-byte element vectors yet\n");
+    return UnableToLegalize;
+  }
+
+  unsigned EltBytes = EltTy.getSizeInBytes();
+  Align StoreAlign = getStackTemporaryAlignment(VecTy);
+  Align LoadAlign;
+
+  MachinePointerInfo PtrInfo;
+  auto StackTemp = createStackTemporary(TypeSize::Fixed(VecTy.getSizeInBytes()),
+                                        StoreAlign, PtrInfo);
+  MIRBuilder.buildStore(SrcVec, StackTemp, PtrInfo, StoreAlign);
+
+  // Get the pointer to the element, and be sure not to hit undefined behavior
+  // if the index is out of bounds.
+  Register LoadPtr = getVectorElementPointer(StackTemp.getReg(0), VecTy, Idx);
+
+  int64_t IdxVal;
+  if (mi_match(Idx, MRI, m_ICst(IdxVal))) {
+    int64_t Offset = IdxVal * EltBytes;
+    PtrInfo = PtrInfo.getWithOffset(Offset);
+    LoadAlign = commonAlignment(StoreAlign, Offset);
+  } else {
+    // We lose information with a variable offset.
+    LoadAlign = getStackTemporaryAlignment(EltTy);
+    PtrInfo = MachinePointerInfo(MRI.getType(LoadPtr).getAddressSpace());
+  }
+
+  MIRBuilder.buildLoad(DstReg, LoadPtr, PtrInfo, LoadAlign);
+  MI.eraseFromParent();
+  return Legalized;
+}
+
 LegalizerHelper::LegalizeResult
 LegalizerHelper::lowerShuffleVector(MachineInstr &MI) {
   Register DstReg = MI.getOperand(0).getReg();
@@ -5311,6 +5482,151 @@ LegalizerHelper::lowerSADDO_SSUBO(MachineInstr &MI) {
       IsAdd ? CmpInst::ICMP_SLT : CmpInst::ICMP_SGT, BoolTy, RHS, Zero);
 
   MIRBuilder.buildXor(Dst1, ConditionRHS, ResultLowerThanLHS);
+  MI.eraseFromParent();
+  return Legalized;
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerAddSubSatToMinMax(MachineInstr &MI) {
+  Register Res = MI.getOperand(0).getReg();
+  Register LHS = MI.getOperand(1).getReg();
+  Register RHS = MI.getOperand(2).getReg();
+  LLT Ty = MRI.getType(Res);
+  bool IsSigned;
+  bool IsAdd;
+  unsigned BaseOp;
+  switch (MI.getOpcode()) {
+  default:
+    llvm_unreachable("unexpected addsat/subsat opcode");
+  case TargetOpcode::G_UADDSAT:
+    IsSigned = false;
+    IsAdd = true;
+    BaseOp = TargetOpcode::G_ADD;
+    break;
+  case TargetOpcode::G_SADDSAT:
+    IsSigned = true;
+    IsAdd = true;
+    BaseOp = TargetOpcode::G_ADD;
+    break;
+  case TargetOpcode::G_USUBSAT:
+    IsSigned = false;
+    IsAdd = false;
+    BaseOp = TargetOpcode::G_SUB;
+    break;
+  case TargetOpcode::G_SSUBSAT:
+    IsSigned = true;
+    IsAdd = false;
+    BaseOp = TargetOpcode::G_SUB;
+    break;
+  }
+
+  if (IsSigned) {
+    // sadd.sat(a, b) ->
+    //   hi = 0x7fffffff - smax(a, 0)
+    //   lo = 0x80000000 - smin(a, 0)
+    //   a + smin(smax(lo, b), hi)
+    // ssub.sat(a, b) ->
+    //   lo = smax(a, -1) - 0x7fffffff
+    //   hi = smin(a, -1) - 0x80000000
+    //   a - smin(smax(lo, b), hi)
+    // TODO: AMDGPU can use a "median of 3" instruction here:
+    //   a +/- med3(lo, b, hi)
+    uint64_t NumBits = Ty.getScalarSizeInBits();
+    auto MaxVal =
+        MIRBuilder.buildConstant(Ty, APInt::getSignedMaxValue(NumBits));
+    auto MinVal =
+        MIRBuilder.buildConstant(Ty, APInt::getSignedMinValue(NumBits));
+    MachineInstrBuilder Hi, Lo;
+    if (IsAdd) {
+      auto Zero = MIRBuilder.buildConstant(Ty, 0);
+      Hi = MIRBuilder.buildSub(Ty, MaxVal, MIRBuilder.buildSMax(Ty, LHS, Zero));
+      Lo = MIRBuilder.buildSub(Ty, MinVal, MIRBuilder.buildSMin(Ty, LHS, Zero));
+    } else {
+      auto NegOne = MIRBuilder.buildConstant(Ty, -1);
+      Lo = MIRBuilder.buildSub(Ty, MIRBuilder.buildSMax(Ty, LHS, NegOne),
+                               MaxVal);
+      Hi = MIRBuilder.buildSub(Ty, MIRBuilder.buildSMin(Ty, LHS, NegOne),
+                               MinVal);
+    }
+    auto RHSClamped =
+        MIRBuilder.buildSMin(Ty, MIRBuilder.buildSMax(Ty, Lo, RHS), Hi);
+    MIRBuilder.buildInstr(BaseOp, {Res}, {LHS, RHSClamped});
+  } else {
+    // uadd.sat(a, b) -> a + umin(~a, b)
+    // usub.sat(a, b) -> a - umin(a, b)
+    Register Not = IsAdd ? MIRBuilder.buildNot(Ty, LHS).getReg(0) : LHS;
+    auto Min = MIRBuilder.buildUMin(Ty, Not, RHS);
+    MIRBuilder.buildInstr(BaseOp, {Res}, {LHS, Min});
+  }
+
+  MI.eraseFromParent();
+  return Legalized;
+}
+
+LegalizerHelper::LegalizeResult
+LegalizerHelper::lowerAddSubSatToAddoSubo(MachineInstr &MI) {
+  Register Res = MI.getOperand(0).getReg();
+  Register LHS = MI.getOperand(1).getReg();
+  Register RHS = MI.getOperand(2).getReg();
+  LLT Ty = MRI.getType(Res);
+  LLT BoolTy = Ty.changeElementSize(1);
+  bool IsSigned;
+  bool IsAdd;
+  unsigned OverflowOp;
+  switch (MI.getOpcode()) {
+  default:
+    llvm_unreachable("unexpected addsat/subsat opcode");
+  case TargetOpcode::G_UADDSAT:
+    IsSigned = false;
+    IsAdd = true;
+    OverflowOp = TargetOpcode::G_UADDO;
+    break;
+  case TargetOpcode::G_SADDSAT:
+    IsSigned = true;
+    IsAdd = true;
+    OverflowOp = TargetOpcode::G_SADDO;
+    break;
+  case TargetOpcode::G_USUBSAT:
+    IsSigned = false;
+    IsAdd = false;
+    OverflowOp = TargetOpcode::G_USUBO;
+    break;
+  case TargetOpcode::G_SSUBSAT:
+    IsSigned = true;
+    IsAdd = false;
+    OverflowOp = TargetOpcode::G_SSUBO;
+    break;
+  }
+
+  auto OverflowRes =
+      MIRBuilder.buildInstr(OverflowOp, {Ty, BoolTy}, {LHS, RHS});
+  Register Tmp = OverflowRes.getReg(0);
+  Register Ov = OverflowRes.getReg(1);
+  MachineInstrBuilder Clamp;
+  if (IsSigned) {
+    // sadd.sat(a, b) ->
+    //   {tmp, ov} = saddo(a, b)
+    //   ov ? (tmp >>s 31) + 0x80000000 : r
+    // ssub.sat(a, b) ->
+    //   {tmp, ov} = ssubo(a, b)
+    //   ov ? (tmp >>s 31) + 0x80000000 : r
+    uint64_t NumBits = Ty.getScalarSizeInBits();
+    auto ShiftAmount = MIRBuilder.buildConstant(Ty, NumBits - 1);
+    auto Sign = MIRBuilder.buildAShr(Ty, Tmp, ShiftAmount);
+    auto MinVal =
+        MIRBuilder.buildConstant(Ty, APInt::getSignedMinValue(NumBits));
+    Clamp = MIRBuilder.buildAdd(Ty, Sign, MinVal);
+  } else {
+    // uadd.sat(a, b) ->
+    //   {tmp, ov} = uaddo(a, b)
+    //   ov ? 0xffffffff : tmp
+    // usub.sat(a, b) ->
+    //   {tmp, ov} = usubo(a, b)
+    //   ov ? 0 : tmp
+    Clamp = MIRBuilder.buildConstant(Ty, IsAdd ? -1 : 0);
+  }
+  MIRBuilder.buildSelect(Res, Ov, Clamp, Tmp);
+
   MI.eraseFromParent();
   return Legalized;
 }

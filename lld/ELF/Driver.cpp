@@ -331,8 +331,6 @@ static void checkOptions() {
   if (config->relocatable) {
     if (config->shared)
       error("-r and -shared may not be used together");
-    if (config->gcSections)
-      error("-r and --gc-sections may not be used together");
     if (config->gdbIndex)
       error("-r and --gdb-index may not be used together");
     if (config->icf != ICFLevel::None)
@@ -498,6 +496,9 @@ void LinkerDriver::main(ArrayRef<const char *> argsArr) {
       tar = std::move(*errOrWriter);
       tar->append("response.txt", createResponseFile(args));
       tar->append("version.txt", getLLDVersion() + "\n");
+      StringRef ltoSampleProfile = args.getLastArgValue(OPT_lto_sample_profile);
+      if (!ltoSampleProfile.empty())
+        readFile(ltoSampleProfile);
     } else {
       error("--reproduce: " + toString(errOrWriter.takeError()));
     }
@@ -965,10 +966,10 @@ static void readConfigs(opt::InputArgList &args) {
   config->ltoPartitions = args::getInteger(args, OPT_lto_partitions, 1);
   config->ltoSampleProfile = args.getLastArgValue(OPT_lto_sample_profile);
   config->ltoBasicBlockSections =
-      args.getLastArgValue(OPT_lto_basicblock_sections);
+      args.getLastArgValue(OPT_lto_basic_block_sections);
   config->ltoUniqueBasicBlockSectionNames =
-      args.hasFlag(OPT_lto_unique_bb_section_names,
-                   OPT_no_lto_unique_bb_section_names, false);
+      args.hasFlag(OPT_lto_unique_basic_block_section_names,
+                   OPT_no_lto_unique_basic_block_section_names, false);
   config->ltoSplitMachineFunctions =
       args.hasFlag(OPT_lto_split_machine_functions,
                    OPT_no_lto_split_machine_functions, false);

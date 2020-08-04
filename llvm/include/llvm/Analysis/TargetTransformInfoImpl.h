@@ -423,6 +423,7 @@ public:
   }
 
   unsigned getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
+                            TTI::CastContextHint CCH,
                             TTI::TargetCostKind CostKind,
                             const Instruction *I) {
     switch (Opcode) {
@@ -672,7 +673,7 @@ protected:
 
       // In case of a vector need to pick the max between the min
       // required size for each element
-      auto *VT = cast<VectorType>(Val->getType());
+      auto *VT = cast<FixedVectorType>(Val->getType());
 
       // Assume unsigned elements
       isSigned = false;
@@ -915,7 +916,8 @@ public:
     case Instruction::SExt:
     case Instruction::ZExt:
     case Instruction::AddrSpaceCast:
-      return TargetTTI->getCastInstrCost(Opcode, Ty, OpTy, CostKind, I);
+      return TargetTTI->getCastInstrCost(
+          Opcode, Ty, OpTy, TTI::getCastContextHint(I), CostKind, I);
     case Instruction::Store: {
       auto *SI = cast<StoreInst>(U);
       Type *ValTy = U->getOperand(0)->getType();

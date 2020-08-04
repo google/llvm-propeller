@@ -112,7 +112,7 @@ Constant *FoldBitCast(Constant *C, Type *DestTy, const DataLayout &DL) {
   if (auto *VTy = dyn_cast<VectorType>(C->getType())) {
     // Handle a vector->scalar integer/fp cast.
     if (isa<IntegerType>(DestTy) || DestTy->isFloatingPointTy()) {
-      unsigned NumSrcElts = VTy->getNumElements();
+      unsigned NumSrcElts = cast<FixedVectorType>(VTy)->getNumElements();
       Type *SrcEltTy = VTy->getElementType();
 
       // If the vector is a vector of floating point, convert it to vector of int
@@ -155,8 +155,8 @@ Constant *FoldBitCast(Constant *C, Type *DestTy, const DataLayout &DL) {
     return ConstantExpr::getBitCast(C, DestTy);
 
   // If the element types match, IR can fold it.
-  unsigned NumDstElt = DestVTy->getNumElements();
-  unsigned NumSrcElt = cast<VectorType>(C->getType())->getNumElements();
+  unsigned NumDstElt = cast<FixedVectorType>(DestVTy)->getNumElements();
+  unsigned NumSrcElt = cast<FixedVectorType>(C->getType())->getNumElements();
   if (NumDstElt == NumSrcElt)
     return ConstantExpr::getBitCast(C, DestTy);
 
@@ -490,8 +490,8 @@ bool ReadDataFromGlobal(Constant *C, uint64_t ByteOffset, unsigned char *CurPtr,
       NumElts = AT->getNumElements();
       EltTy = AT->getElementType();
     } else {
-      NumElts = cast<VectorType>(C->getType())->getNumElements();
-      EltTy = cast<VectorType>(C->getType())->getElementType();
+      NumElts = cast<FixedVectorType>(C->getType())->getNumElements();
+      EltTy = cast<FixedVectorType>(C->getType())->getElementType();
     }
     uint64_t EltSize = DL.getTypeAllocSize(EltTy);
     uint64_t Index = ByteOffset / EltSize;
@@ -718,7 +718,7 @@ Constant *llvm::ConstantFoldLoadFromConstPtr(Constant *C, Type *Ty,
 
   // If this load comes from anywhere in a constant global, and if the global
   // is all undef or zero, we know what it loads.
-  if (auto *GV = dyn_cast<GlobalVariable>(GetUnderlyingObject(CE, DL))) {
+  if (auto *GV = dyn_cast<GlobalVariable>(getUnderlyingObject(CE))) {
     if (GV->isConstant() && GV->hasDefinitiveInitializer()) {
       if (GV->getInitializer()->isNullValue())
         return Constant::getNullValue(Ty);
@@ -1071,6 +1071,8 @@ Constant *ConstantFoldInstOperandsImpl(const Value *InstOrCE, unsigned Opcode,
   default: return nullptr;
   case Instruction::ICmp:
   case Instruction::FCmp: llvm_unreachable("Invalid for compares");
+  case Instruction::Freeze:
+    return isGuaranteedNotToBeUndefOrPoison(Ops[0]) ? Ops[0] : nullptr;
   case Instruction::Call:
     if (auto *F = dyn_cast<Function>(Ops.back())) {
       const auto *Call = cast<CallBase>(InstOrCE);
@@ -1434,6 +1436,11 @@ bool llvm::canConstantFoldCallTo(const CallBase *Call, const Function *F) {
   case Intrinsic::launder_invariant_group:
   case Intrinsic::strip_invariant_group:
   case Intrinsic::masked_load:
+  case Intrinsic::abs:
+  case Intrinsic::smax:
+  case Intrinsic::smin:
+  case Intrinsic::umax:
+  case Intrinsic::umin:
   case Intrinsic::sadd_with_overflow:
   case Intrinsic::uadd_with_overflow:
   case Intrinsic::ssub_with_overflow:
@@ -2384,8 +2391,37 @@ static Constant *ConstantFoldScalarCall2(StringRef Name,
         !getConstIntOrUndef(Operands[1], C1))
       return nullptr;
 
+    unsigned BitWidth = Ty->getScalarSizeInBits();
     switch (IntrinsicID) {
     default: break;
+    case Intrinsic::smax:
+      if (!C0 && !C1)
+        return UndefValue::get(Ty);
+      if (!C0 || !C1)
+        return ConstantInt::get(Ty, APInt::getSignedMaxValue(BitWidth));
+      return ConstantInt::get(Ty, C0->sgt(*C1) ? *C0 : *C1);
+
+    case Intrinsic::smin:
+      if (!C0 && !C1)
+        return UndefValue::get(Ty);
+      if (!C0 || !C1)
+        return ConstantInt::get(Ty, APInt::getSignedMinValue(BitWidth));
+      return ConstantInt::get(Ty, C0->slt(*C1) ? *C0 : *C1);
+
+    case Intrinsic::umax:
+      if (!C0 && !C1)
+        return UndefValue::get(Ty);
+      if (!C0 || !C1)
+        return ConstantInt::get(Ty, APInt::getMaxValue(BitWidth));
+      return ConstantInt::get(Ty, C0->ugt(*C1) ? *C0 : *C1);
+
+    case Intrinsic::umin:
+      if (!C0 && !C1)
+        return UndefValue::get(Ty);
+      if (!C0 || !C1)
+        return ConstantInt::get(Ty, APInt::getMinValue(BitWidth));
+      return ConstantInt::get(Ty, C0->ult(*C1) ? *C0 : *C1);
+
     case Intrinsic::usub_with_overflow:
     case Intrinsic::ssub_with_overflow:
     case Intrinsic::uadd_with_overflow:
@@ -2470,6 +2506,18 @@ static Constant *ConstantFoldScalarCall2(StringRef Name,
         return ConstantInt::get(Ty, C0->countTrailingZeros());
       else
         return ConstantInt::get(Ty, C0->countLeadingZeros());
+
+    case Intrinsic::abs:
+      // Undef or minimum val operand with poison min --> undef
+      assert(C1 && "Must be constant int");
+      if (C1->isOneValue() && (!C0 || C0->isMinSignedValue()))
+        return UndefValue::get(Ty);
+
+      // Undef operand with no poison min --> 0 (sign bit must be clear)
+      if (C1->isNullValue() && !C0)
+        return Constant::getNullValue(Ty);
+
+      return ConstantInt::get(Ty, C0->abs());
     }
 
     return nullptr;
