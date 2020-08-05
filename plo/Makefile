@@ -172,6 +172,7 @@ define build_compiler
 		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE)                 \
 		-DLLVM_ENABLE_EH=$(ENABLE_EH)                    \
 		-DLLVM_ENABLE_RTTI=$(ENABLE_EH)                  \
+		-DLLVM_ENABLE_DUMP=ON				\
 		-DLLVM_ENABLE_LLD="On"                           \
 		-DCMAKE_LINKER="lld"                             \
 		-DLLVM_TARGETS_TO_BUILD="X86"                    \
