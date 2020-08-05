@@ -203,19 +203,20 @@ MachineBasicBlock* cloneEdge(MachineFunction& MF,
                              MachineBasicBlock* pred_block,
                              MachineBasicBlock* block) {
   auto TII = MF.getSubtarget().getInstrInfo();
-  auto layout_succ = pred_block->getFallThrough();
 
-  if (ConvertToFallthrough(TII, pred_block, block)) {
-    WithColor::warning() << "Hot path generation failed.";
-    return nullptr;
+  if (false) {
+    if (ConvertToFallthrough(TII, pred_block, block)) {
+      WithColor::warning() << "Hot path generation failed.";
+      return nullptr;
+    }
+
+    // The pred_block falls through to block at this point.
+
+    // Remove the original block from the successors of the previous block.
+    // The remove call removes pred_block from predecessors of block as
+    // well.
+    pred_block->removeSuccessor(block);
   }
-
-  // The pred_block falls through to block at this point.
-
-  // Remove the original block from the successors of the previous block.
-  // The remove call removes pred_block from predecessors of block as
-  // well.
-  pred_block->removeSuccessor(block);
 
   auto cloned = CloneMachineBasicBlock(*block);
   MF.addToMBBNumbering(cloned);
@@ -227,9 +228,11 @@ MachineBasicBlock* cloneEdge(MachineFunction& MF,
     cloned->copySuccessor(block, succ_it);
   }
 
-  // Add the block as a successor to the previous block in the hot path.
-  // TODO: get this probability from the profile.
-  pred_block->addSuccessor(cloned, BranchProbability::getOne());
+  if (false) {
+    // Add the block as a successor to the previous block in the hot path.
+    // TODO: get this probability from the profile.
+    pred_block->addSuccessor(cloned, BranchProbability::getOne());
+  }
 
   if (false) {
     // The pred block always falls through to us.
@@ -298,7 +301,7 @@ struct BBCloneInfo {
 };
 
 using ProgramBBTemporaryInfoMapTy = StringMap<std::pair<SmallVector<BBTempClusterInfo, 4>, SmallVector<BBCloneInfo, 4>>>;
-using ProgramBBClusterInfoMapTy = StringMap<SmallVector<BBClusterInfo, 4>>;
+using ProgramBBClusterInfoMapTy = StringMap<std::map<int, BBClusterInfo>>;
 
 class BBSectionsPrepare : public MachineFunctionPass {
 public:
@@ -389,7 +392,12 @@ static void updateBranches(
   }
 }
 
-static bool performCloning(MachineFunction& MF, const StringMap<StringRef> FuncAliasMap, std::set<const MachineBasicBlock*>& modified_blocks, const ProgramBBTemporaryInfoMapTy &temp, ProgramBBClusterInfoMapTy & out) {
+static bool performCloning(MachineFunction& MF,
+    const StringMap<StringRef> FuncAliasMap,
+    std::set<const MachineBasicBlock*>& modified_blocks,
+    const ProgramBBTemporaryInfoMapTy &temp,
+    ProgramBBClusterInfoMapTy & out,
+    std::map<UniqueBBID, unsigned>& bb_id_to_linear_index) {
   auto FuncName = MF.getName();
   auto R = FuncAliasMap.find(FuncName);
   StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
@@ -398,8 +406,6 @@ static bool performCloning(MachineFunction& MF, const StringMap<StringRef> FuncA
   auto P = temp.find(AliasName);
   if (P == temp.end())
     return false;
-
-  std::map<UniqueBBID, unsigned> bb_id_to_linear_index;
 
   auto get_linear_id = [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
     if (id.CloneNumber == 0) {
@@ -413,12 +419,15 @@ static bool performCloning(MachineFunction& MF, const StringMap<StringRef> FuncA
     }
   };
 
-//  std::cerr << "cloning for " << FuncName.str() << '\n';
-//
-//  for (auto& bb : MF) {
-//    std::cerr << bb.getName().str() << '\n';
-//    bb.dump();
-//  }
+  if (FuncName == "_ZN5clang11DeclContext33makeDeclVisibleInContextWithFlagsEPNS_9NamedDeclEbb") {
+    std::cerr << "cloning for " << FuncName.str() << '\n';
+
+    for (auto& bb : MF) {
+      std::cerr << bb.getName().str() << '\n';
+      bb.dump();
+    }
+    std::cerr << "#######################";
+  }
 
   for (auto& clone : P->second.second) {
     auto pred_linear_id = get_linear_id(clone.Predecessor);
@@ -462,13 +471,41 @@ static bool performCloning(MachineFunction& MF, const StringMap<StringRef> FuncA
 //    assert(cloned == in_mf);
 
     cloned->setNumber(clone_id);
+  }
+  auto TII = MF.getSubtarget().getInstrInfo();
+
+  for (auto& clone : P->second.second) {
+    auto pred_linear_id = get_linear_id(clone.Predecessor);
+    auto orig_linear_id = get_linear_id(clone.Original);
+    auto clone_linear_id = get_linear_id(clone.Clone);
+
+    auto pred_block = MF.getBlockNumbered(*pred_linear_id);
+    auto orig_block = MF.getBlockNumbered(*orig_linear_id);
+    auto clone_block = MF.getBlockNumbered(*clone_linear_id);
+
+    if (ConvertToFallthrough(TII, pred_block, orig_block)) {
+      WithColor::warning() << "Hot path generation failed.";
+      return false;
+    }
+
+    // The pred_block falls through to block at this point.
+
+    // Remove the original block from the successors of the previous block.
+    // The remove call removes pred_block from predecessors of block as
+    // well.
+    pred_block->removeSuccessor(orig_block);
+    pred_block->addSuccessor(clone_block, BranchProbability::getOne());
+
+    TII->insertUnconditionalBranch(*pred_block, clone_block,
+                                   pred_block->findBranchDebugLoc());
+
     modified_blocks.emplace(pred_block);
-    modified_blocks.emplace(cloned);
+    modified_blocks.emplace(clone_block);
   }
 
   auto& output = out[AliasName];
   for (auto& bb : P->second.first) {
-    output.emplace_back(BBClusterInfo {
+    output.emplace(*get_linear_id(bb.MBBNumber), BBClusterInfo {
       *get_linear_id(bb.MBBNumber), bb.ClusterID, bb.PositionInCluster
     });
   }
@@ -500,7 +537,7 @@ static bool getBBClusterInfoForFunction(
   }
 
   V.resize(MF.getNumBlockIDs());
-  for (auto bbClusterInfo : P->second) {
+  for (auto [key, bbClusterInfo] : P->second) {
     // Bail out if the cluster information contains invalid MBB numbers.
     if (bbClusterInfo.MBBNumber >= MF.getNumBlockIDs())
       return false;
@@ -618,8 +655,9 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
     return true;
   }
 
+  std::map<UniqueBBID, unsigned> bb_id_to_linear_index;
   std::set<const MachineBasicBlock*> cloning_modified;
-  if (!performCloning(MF, FuncAliasMap, cloning_modified, ProgramBBTemporaryInfo, ProgramBBClusterInfo)) {
+  if (!performCloning(MF, FuncAliasMap, cloning_modified, ProgramBBTemporaryInfo, ProgramBBClusterInfo, bb_id_to_linear_index)) {
     return true;
   }
 
@@ -670,6 +708,51 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   };
 
   sortBasicBlocksAndUpdateBranches(MF, Comparator, cloning_modified);
+
+  auto FuncName = MF.getName();
+  auto R = FuncAliasMap.find(FuncName);
+  StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
+
+  // Find the assoicated cluster information.
+  auto P = ProgramBBTemporaryInfo.find(AliasName);
+  if (P == ProgramBBTemporaryInfo.end())
+    return false;
+
+  auto get_linear_id = [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
+    if (id.CloneNumber == 0) {
+      return id.MBBNumber;
+    } else {
+      auto it = bb_id_to_linear_index.find(id);
+      if (it != bb_id_to_linear_index.end()) {
+        return it->second;
+      }
+      return None;
+    }
+  };
+
+  for (auto& clone : P->second.second) {
+    auto pred_linear_id = get_linear_id(clone.Predecessor);
+    auto orig_linear_id = get_linear_id(clone.Original);
+    auto clone_linear_id = get_linear_id(clone.Clone);
+
+    auto pred_block = MF.getBlockNumbered(*pred_linear_id);
+    auto orig_block = MF.getBlockNumbered(*orig_linear_id);
+    auto clone_block = MF.getBlockNumbered(*clone_linear_id);
+
+    if (pred_block->getFallThrough() != clone_block) {
+      std::cerr << "=====\n";
+      std::cerr << "Bad order\n";
+      std::cerr<< "Null? " << (pred_block->getFallThrough() == nullptr) << '\n';
+      if (pred_block->getFallThrough()) {
+      std::cerr<< pred_block->getFallThrough()->getNumber() << '\n';
+      }
+      std::cerr << AliasName.str() << '\n';
+    std::cerr << "pred, original " << clone.Predecessor.MBBNumber << "#" << clone.Predecessor.CloneNumber << " " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
+    std::cerr << "clone id " << clone.Clone.MBBNumber << "#" << clone.Clone.CloneNumber << " " << *clone_linear_id << '\n';
+    std::cerr << "pred, original " << *pred_linear_id << " " << *orig_linear_id << '\n';
+      std::cerr << "=====\n";
+    }
+  }
 
   return true;
 }
