@@ -11,7 +11,12 @@ class TestGuiBasicDebugCommandTest(PExpectTest):
 
     mydir = TestBase.compute_mydir(__file__)
 
+    # PExpect uses many timeouts internally and doesn't play well
+    # under ASAN on a loaded machine..
+    @skipIfAsan
     @skipIfCursesSupportMissing
+    @skipIfRemote # "run" command will not work correctly for remote debug
+    @expectedFailureAll(archs=["aarch64"], oslist=["linux"])
     def test_gui(self):
         self.build()
 
@@ -39,4 +44,8 @@ class TestGuiBasicDebugCommandTest(PExpectTest):
         self.child.send("n") # step over
         self.child.expect("return 0;[^\r\n]+<<< Thread 1: step over")
 
+        # Press escape to quit the gui
+        self.child.send(escape_key)
+
+        self.expect_prompt()
         self.quit()

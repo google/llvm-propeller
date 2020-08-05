@@ -230,22 +230,26 @@ int targetDataMapper(DeviceTy &Device, void *arg_base, void *arg,
   // Construct new arrays for args_base, args, arg_sizes and arg_types
   // using the information in MapperComponents and call the corresponding
   // target_data_* function using these new arrays.
-  std::vector<void *> mapper_args_base;
-  std::vector<void *> mapper_args;
-  std::vector<int64_t> mapper_arg_sizes;
-  std::vector<int64_t> mapper_arg_types;
+  std::vector<void *> MapperArgsBase(MapperComponents.Components.size());
+  std::vector<void *> MapperArgs(MapperComponents.Components.size());
+  std::vector<int64_t> MapperArgSizes(MapperComponents.Components.size());
+  std::vector<int64_t> MapperArgTypes(MapperComponents.Components.size());
 
-  for (auto& C : MapperComponents.Components) {
-    mapper_args_base.push_back(C.Base);
-    mapper_args.push_back(C.Begin);
-    mapper_arg_sizes.push_back(C.Size);
-    mapper_arg_types.push_back(C.Type);
+  for (unsigned I = 0, E = MapperComponents.Components.size(); I < E; ++I) {
+    auto &C =
+        MapperComponents
+            .Components[target_data_function == targetDataEnd ? I : E - I - 1];
+    MapperArgsBase[I] = C.Base;
+    MapperArgs[I] = C.Begin;
+    MapperArgSizes[I] = C.Size;
+    MapperArgTypes[I] = C.Type;
   }
 
   int rc = target_data_function(Device, MapperComponents.Components.size(),
-      mapper_args_base.data(), mapper_args.data(), mapper_arg_sizes.data(),
-      mapper_arg_types.data(), /*arg_mappers*/ nullptr,
-      /*__tgt_async_info*/ nullptr);
+                                MapperArgsBase.data(), MapperArgs.data(),
+                                MapperArgSizes.data(), MapperArgTypes.data(),
+                                /*arg_mappers*/ nullptr,
+                                /*__tgt_async_info*/ nullptr);
 
   return rc;
 }
@@ -506,8 +510,14 @@ int targetDataEnd(DeviceTy &Device, int32_t ArgNum, void **ArgBases,
       DP("Mapping does not exist (%s)\n",
          (HasPresentModifier ? "'present' map type modifier" : "ignored"));
       if (HasPresentModifier) {
-        // FIXME: This should not be an error on exit from "omp target data",
-        // but it should be an error upon entering an "omp target exit data".
+        // This should be an error upon entering an "omp target exit data".  It
+        // should not be an error upon exiting an "omp target data" or "omp
+        // target".  For "omp target data", Clang thus doesn't include present
+        // modifiers for end calls.  For "omp target", we have not found a valid
+        // OpenMP program for which the error matters: it appears that, if a
+        // program can guarantee that data is present at the beginning of an
+        // "omp target" region so that there's no error there, that data is also
+        // guaranteed to be present at the end.
         MESSAGE("device mapping required by 'present' map type modifier does "
                 "not exist for host address " DPxMOD " (%ld bytes)",
                 DPxPTR(HstPtrBegin), DataSize);
@@ -664,8 +674,8 @@ int target_data_update(DeviceTy &Device, int32_t arg_num,
     void *HstPtrBegin = args[i];
     int64_t MapSize = arg_sizes[i];
     bool IsLast, IsHostPtr;
-    void *TgtPtrBegin = Device.getTgtPtrBegin(HstPtrBegin, MapSize, IsLast,
-        false, IsHostPtr);
+    void *TgtPtrBegin = Device.getTgtPtrBegin(
+        HstPtrBegin, MapSize, IsLast, false, IsHostPtr, /*MustContain=*/true);
     if (!TgtPtrBegin) {
       DP("hst data:" DPxMOD " not found, becomes a noop\n", DPxPTR(HstPtrBegin));
       if (arg_types[i] & OMP_TGT_MAPTYPE_PRESENT) {
