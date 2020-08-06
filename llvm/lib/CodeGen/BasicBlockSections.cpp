@@ -90,21 +90,6 @@ using llvm::StringRef;
 using namespace llvm;
 
 namespace {
-MachineBasicBlock *CloneMachineBasicBlock(MachineBasicBlock &bb) {
-  auto MF = bb.getParent();
-
-  // Pass nullptr as this new block doesn't directly correspond to an LLVM basic
-  // block.
-  auto MBB = MF->CreateMachineBasicBlock(nullptr);
-  MF->push_back(MBB);
-
-  for (auto &instr : bb.instrs()) {
-    MBB->push_back(MF->CloneMachineInstr(&instr));
-  }
-
-  return MBB;
-}
-
 // Converts the path from the from block to the to block to be a fallthrough.
 // Requires to to be a successor of from.
 // to_block must be placed after from_block in the layout after this call!
@@ -199,26 +184,20 @@ bool ConvertToFallthrough(const TargetInstrInfo *TII,
 
   llvm_unreachable("All cases are handled.");
 }
-MachineBasicBlock* cloneEdge(MachineFunction& MF,
-                             MachineBasicBlock* pred_block,
-                             MachineBasicBlock* block) {
+
+MachineBasicBlock* CloneMachineBasicBlock(MachineBasicBlock* block) {
+  auto& MF = *block->getParent();
   auto TII = MF.getSubtarget().getInstrInfo();
 
-  if (false) {
-    if (ConvertToFallthrough(TII, pred_block, block)) {
-      WithColor::warning() << "Hot path generation failed.";
-      return nullptr;
-    }
+  // Pass nullptr as this new block doesn't directly correspond to an LLVM basic
+  // block.
+  auto cloned = MF.CreateMachineBasicBlock(nullptr);
+  MF.push_back(cloned);
 
-    // The pred_block falls through to block at this point.
-
-    // Remove the original block from the successors of the previous block.
-    // The remove call removes pred_block from predecessors of block as
-    // well.
-    pred_block->removeSuccessor(block);
+  for (auto &instr : block->instrs()) {
+    cloned->push_back(MF.CloneMachineInstr(&instr));
   }
 
-  auto cloned = CloneMachineBasicBlock(*block);
   MF.addToMBBNumbering(cloned);
 
   // Add the successors of the original block as the new block's
@@ -228,20 +207,6 @@ MachineBasicBlock* cloneEdge(MachineFunction& MF,
     cloned->copySuccessor(block, succ_it);
   }
 
-  if (false) {
-    // Add the block as a successor to the previous block in the hot path.
-    // TODO: get this probability from the profile.
-    pred_block->addSuccessor(cloned, BranchProbability::getOne());
-  }
-
-  if (false) {
-    // The pred block always falls through to us.
-    cloned->moveAfter(pred_block);
-  }
-
-  // Not sure if we need this.
-//  pred_block->updateTerminator(layout_succ);
-
   if (auto original_ft = block->getFallThrough()) {
     // The original block has an implicit fall through.
     // Insert an explicit unconditional jump from the cloned block to that
@@ -250,10 +215,6 @@ MachineBasicBlock* cloneEdge(MachineFunction& MF,
                                    cloned->findBranchDebugLoc());
   }
 
-  if (false) {
-    assert(pred_block->getFallThrough() == cloned &&
-        "Hot path pass did not generate a fall-through path!");
-  }
   for (auto& live : block->liveins()) {
     cloned->addLiveIn(live);
   }
@@ -392,12 +353,22 @@ static void updateBranches(
   }
 }
 
-static bool performCloning(MachineFunction& MF,
-    const StringMap<StringRef> FuncAliasMap,
-    std::set<const MachineBasicBlock*>& modified_blocks,
-    const ProgramBBTemporaryInfoMapTy &temp,
-    ProgramBBClusterInfoMapTy & out,
-    std::map<UniqueBBID, unsigned>& bb_id_to_linear_index) {
+// Performs the cloning instructions in the profile data for the given machine
+// function.
+// After all clones are performed, it will fill the actual cluster info with
+// the correct linear IDs which is used by the block sorting.
+// Alongside the cluster info, it also fills out a set of block that have been
+// modified by the path layout. These blocks should not have their branches
+// adjusted.
+// Finally, it also fills out a map from the unique BB IDs in the profile info
+// to linear BB ids in the MF for cloned blocks.
+static bool performCloningAndPathLayouts(MachineFunction& MF,
+                                         const StringMap<StringRef> FuncAliasMap,
+                                         std::set<const MachineBasicBlock*>& modified_blocks,
+                                         const ProgramBBTemporaryInfoMapTy& temp,
+                                         ProgramBBClusterInfoMapTy& out,
+                                         std::map<UniqueBBID,
+                                                  unsigned>& bb_id_to_linear_index) {
   auto FuncName = MF.getName();
   auto R = FuncAliasMap.find(FuncName);
   StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
@@ -407,33 +378,21 @@ static bool performCloning(MachineFunction& MF,
   if (P == temp.end())
     return false;
 
-  auto get_linear_id = [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
-    if (id.CloneNumber == 0) {
-      return id.MBBNumber;
-    } else {
-      auto it = bb_id_to_linear_index.find(id);
-      if (it != bb_id_to_linear_index.end()) {
-        return it->second;
-      }
-      return None;
-    }
-  };
+  auto get_linear_id =
+      [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
+        if (id.CloneNumber == 0) {
+          return id.MBBNumber;
+        } else {
+          auto it = bb_id_to_linear_index.find(id);
+          if (it != bb_id_to_linear_index.end()) {
+            return it->second;
+          }
+          return None;
+        }
+      };
 
-  if (FuncName == "_ZN5clang11DeclContext33makeDeclVisibleInContextWithFlagsEPNS_9NamedDeclEbb") {
-    std::cerr << "cloning for " << FuncName.str() << '\n';
-
-    for (auto& bb : MF) {
-      std::cerr << bb.getName().str() << '\n';
-      bb.dump();
-    }
-    std::cerr << "#######################";
-  }
-
+  // This step creates all the necessary clones. It does not adjust the branches.
   for (auto& clone : P->second.second) {
-    auto pred_linear_id = get_linear_id(clone.Predecessor);
-    if (!pred_linear_id) {
-      return false;
-    }
     auto orig_linear_id = get_linear_id(clone.Original);
     if (!orig_linear_id) {
       return false;
@@ -442,38 +401,23 @@ static bool performCloning(MachineFunction& MF,
     unsigned clone_id = MF.getNumBlockIDs();
     bb_id_to_linear_index[clone.Clone] = clone_id;
 
-    auto pred_block = MF.getBlockNumbered(*pred_linear_id);
     auto orig_block = MF.getBlockNumbered(*orig_linear_id);
 
-    std::cerr << "pred, original " << clone.Predecessor.MBBNumber << "#" << clone.Predecessor.CloneNumber << " " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
-    std::cerr << "clone id " << clone.Clone.MBBNumber << "#" << clone.Clone.CloneNumber << " " << clone_id << '\n';
-    std::cerr << "pred, original " << *pred_linear_id << " " << *orig_linear_id << '\n';
-//    pred_block->dump();
-//    std::cerr << " --- \n";
-//    orig_block->dump();
+    auto cloned = CloneMachineBasicBlock(orig_block);
 
-    auto cloned = cloneEdge(MF, pred_block, orig_block);
     if (!cloned) {
-      std::cerr << "Failed: " << MF.getName().str() << '\n';
-      for (auto& mbb : MF) {
-        std::cerr << mbb.getName().str() << '\n';
-        mbb.dump();
-      }
-      assert(false && "Cloning failed");
+      WithColor::error() << "A basic block clone failed at "
+                         << MF.getName().str() << '\n';
+      return false;
     }
-    auto in_mf = MF.getBlockNumbered(clone_id);
-//    std::cerr << " --- \n";
-//    cloned->dump();
-//    std::cerr << "done\n";
-//    if (cloned != in_mf) {
-//      in_mf->dump();
-//    }
-//    assert(cloned == in_mf);
 
     cloned->setNumber(clone_id);
   }
+
   auto TII = MF.getSubtarget().getInstrInfo();
 
+  // This step adjusts the branches of predecessors of clones. A clone's
+  // predecessor must always fallthrough to it.
   for (auto& clone : P->second.second) {
     auto pred_linear_id = get_linear_id(clone.Predecessor);
     auto orig_linear_id = get_linear_id(clone.Original);
@@ -494,10 +438,9 @@ static bool performCloning(MachineFunction& MF,
     // The remove call removes pred_block from predecessors of block as
     // well.
     pred_block->removeSuccessor(orig_block);
-    pred_block->addSuccessor(clone_block, BranchProbability::getOne());
 
-    TII->insertUnconditionalBranch(*pred_block, clone_block,
-                                   pred_block->findBranchDebugLoc());
+    //TODO(fbakir): what should be the probability here?
+    pred_block->addSuccessor(clone_block, BranchProbability::getOne());
 
     modified_blocks.emplace(pred_block);
     modified_blocks.emplace(clone_block);
@@ -505,8 +448,8 @@ static bool performCloning(MachineFunction& MF,
 
   auto& output = out[AliasName];
   for (auto& bb : P->second.first) {
-    output.emplace(*get_linear_id(bb.MBBNumber), BBClusterInfo {
-      *get_linear_id(bb.MBBNumber), bb.ClusterID, bb.PositionInCluster
+    output.emplace(*get_linear_id(bb.MBBNumber), BBClusterInfo{
+        *get_linear_id(bb.MBBNumber), bb.ClusterID, bb.PositionInCluster
     });
   }
 
@@ -667,7 +610,12 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
 
   std::map<UniqueBBID, unsigned> bb_id_to_linear_index;
   std::set<const MachineBasicBlock*> cloning_modified;
-  if (!performCloning(MF, FuncAliasMap, cloning_modified, ProgramBBTemporaryInfo, ProgramBBClusterInfo, bb_id_to_linear_index)) {
+  if (!performCloningAndPathLayouts(MF,
+                                    FuncAliasMap,
+                                    cloning_modified,
+                                    ProgramBBTemporaryInfo,
+                                    ProgramBBClusterInfo,
+                                    bb_id_to_linear_index)) {
     return true;
   }
 
@@ -719,51 +667,6 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
   };
 
   sortBasicBlocksAndUpdateBranches(MF, Comparator, cloning_modified);
-
-  auto FuncName = MF.getName();
-  auto R = FuncAliasMap.find(FuncName);
-  StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
-
-  // Find the assoicated cluster information.
-  auto P = ProgramBBTemporaryInfo.find(AliasName);
-  if (P == ProgramBBTemporaryInfo.end())
-    return false;
-
-  auto get_linear_id = [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
-    if (id.CloneNumber == 0) {
-      return id.MBBNumber;
-    } else {
-      auto it = bb_id_to_linear_index.find(id);
-      if (it != bb_id_to_linear_index.end()) {
-        return it->second;
-      }
-      return None;
-    }
-  };
-
-  for (auto& clone : P->second.second) {
-    auto pred_linear_id = get_linear_id(clone.Predecessor);
-    auto orig_linear_id = get_linear_id(clone.Original);
-    auto clone_linear_id = get_linear_id(clone.Clone);
-
-    auto pred_block = MF.getBlockNumbered(*pred_linear_id);
-    auto orig_block = MF.getBlockNumbered(*orig_linear_id);
-    auto clone_block = MF.getBlockNumbered(*clone_linear_id);
-
-    if (pred_block->getFallThrough() != clone_block) {
-      std::cerr << "=====\n";
-      std::cerr << "Bad order\n";
-      std::cerr<< "Null? " << (pred_block->getFallThrough() == nullptr) << '\n';
-      if (pred_block->getFallThrough()) {
-      std::cerr<< pred_block->getFallThrough()->getNumber() << '\n';
-      }
-      std::cerr << AliasName.str() << '\n';
-    std::cerr << "pred, original " << clone.Predecessor.MBBNumber << "#" << clone.Predecessor.CloneNumber << " " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
-    std::cerr << "clone id " << clone.Clone.MBBNumber << "#" << clone.Clone.CloneNumber << " " << *clone_linear_id << '\n';
-    std::cerr << "pred, original " << *pred_linear_id << " " << *orig_linear_id << '\n';
-      std::cerr << "=====\n";
-    }
-  }
 
   return true;
 }
