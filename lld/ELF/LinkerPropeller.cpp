@@ -30,12 +30,12 @@
 
 #include "Config.h"
 #include "InputFiles.h"
+#include "Propeller/BBSectionsProf.h"
 #include "Propeller/Propeller.h"
 #include "Propeller/PropellerCFG.h"
 #include "Propeller/PropellerConfig.h"
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Memory.h"
-#include "llvm/ProfileData/BBSectionsProf.h"
 
 #include <algorithm>
 #include <vector>

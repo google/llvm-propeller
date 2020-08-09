@@ -46,12 +46,12 @@
 #define LLD_ELF_PROPELLER_H
 
 #include "PropellerProtobuf.h"
+#include "BBSectionsProf.h"
 
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/LLVM.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/ProfileData/BBSectionsProf.h"
 #include "llvm/Support/StringSaver.h"
 
 #include <fstream>
