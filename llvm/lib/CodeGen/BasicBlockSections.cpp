@@ -393,8 +393,15 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
 
   // This step creates all the necessary clones. It does not adjust the branches.
   for (auto& clone : P->second.second) {
+    auto pred_linear_id = get_linear_id(clone.Predecessor);
+    if (!pred_linear_id) {
+      WithColor::warning() << "Unknown predecessor " << clone.Predecessor.MBBNumber << "#" << clone.Predecessor.CloneNumber << '\n';
+      return false;
+    }
+
     auto orig_linear_id = get_linear_id(clone.Original);
     if (!orig_linear_id) {
+      WithColor::warning() << "Unknown original " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
       return false;
     }
 
