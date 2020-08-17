@@ -222,8 +222,6 @@ class SDGlobalAtomicNoRtn<string opcode, ValueType ty> : SDNode <opcode,
   [SDNPMemOperand, SDNPHasChain, SDNPMayLoad, SDNPMayStore]
 >;
 
-def SIglobal_atomic_pk_fadd : SDGlobalAtomicNoRtn <"AMDGPUISD::ATOMIC_PK_FADD", v2f16>;
-
 def SIpc_add_rel_offset : SDNode<"AMDGPUISD::PC_ADD_REL_OFFSET",
   SDTypeProfile<1, 2, [SDTCisVT<0, iPTR>, SDTCisSameAs<0,1>, SDTCisSameAs<0,2>]>
 >;
@@ -318,7 +316,7 @@ defm atomic_load_fmax_#as : binary_atomic_op<SIatomic_fmax, 0>;
 } // End let AddressSpaces = ...
 } // End foreach AddrSpace
 
-def atomic_fadd_global_noret : PatFrag<
+def atomic_fadd_global_noret_impl : PatFrag<
   (ops node:$ptr, node:$value),
   (atomic_load_fadd node:$ptr, node:$value)> {
   // FIXME: Move this
@@ -327,14 +325,9 @@ def atomic_fadd_global_noret : PatFrag<
   let AddressSpaces = StoreAddress_global.AddrSpaces;
 }
 
-def atomic_pk_fadd_global_noret : PatFrag<
-    (ops node:$ptr, node:$value),
-    (SIglobal_atomic_pk_fadd node:$ptr, node:$value)> {
-  // FIXME: Move this
-  let MemoryVT = v2f16;
-  let IsAtomic = 1;
-  let AddressSpaces = StoreAddress_global.AddrSpaces;
-}
+def atomic_fadd_global_noret : PatFrags<(ops node:$src0, node:$src1),
+  [(int_amdgcn_global_atomic_fadd node:$src0, node:$src1),
+   (atomic_fadd_global_noret_impl node:$src0, node:$src1)]>;
 
 //===----------------------------------------------------------------------===//
 // SDNodes PatFrags for loads/stores with a glue input.
