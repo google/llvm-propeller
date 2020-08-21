@@ -38,7 +38,7 @@ declare ALL_FILES=(
 	clang-base       llvm/lib/CodeGen/TargetLoweringObjectFileImpl.cpp
         clang-base       llvm/lib/CodeGen/CommandFlags.cpp
         clang-base       llvm/include/llvm/CodeGen/CommandFlags.h
-	clang-base       llvm/lib/CodeGen/BBSectionsPrepare.cpp
+	clang-base       llvm/lib/CodeGen/BasicBlockSections.cpp
 	clang-base       llvm/lib/CodeGen/MachineFunction.cpp
 	clang-base       lld/ELF/LTO.cpp
 	clang-base       lld/ELF/Config.h
@@ -156,7 +156,7 @@ declare ALL_FILES=(
 	bbclusters           llvm/include/llvm/CodeGen/TargetLoweringObjectFileImpl.h
 	bbclusters           llvm/include/llvm/Target/TargetLoweringObjectFile.h
         bbclusters           llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-	bbclusters           llvm/lib/CodeGen/BBSectionsPrepare.cpp
+	bbclusters           llvm/lib/CodeGen/BasicBlockSections.cpp
 	bbclusters           llvm/lib/CodeGen/CodeGen.cpp
         bbclusters           llvm/lib/CodeGen/MachineBasicBlock.cpp
         bbclusters           llvm/lib/CodeGen/MachineFunction.cpp
@@ -196,7 +196,7 @@ declare ALL_FILES=(
   funcsplit    llvm/include/llvm/CodeGen/Passes.h
   funcsplit    llvm/lib/CodeGen/CMakeLists.txt
   funcsplit    llvm/lib/CodeGen/MachineFunctionSplitter.cpp
-	funcsplit    llvm/lib/CodeGen/BBSectionsPrepare.cpp
+  funcsplit    llvm/lib/CodeGen/BasicBlockSections.cpp
   funcsplit    llvm/lib/CodeGen/TargetPassConfig.cpp
   funcsplit    llvm/include/llvm/Target/TargetOptions.h
   funcsplit    llvm/test/CodeGen/X86/machine-function-splitter.ll
@@ -265,4 +265,5 @@ declare ALL_FILES=(
 # This test was not committed as part of https://reviews.llvm.org/rG05192e585ce175b55f2a26b83b4ed7882785c8e6 
 	other            llvm/include/llvm/MC/MCObjectFileInfo.h
 	other            llvm/lib/MC/MCObjectFileInfo.cpp
+	other            lld/ELF/Propeller/BBSectionsProf.h
     )

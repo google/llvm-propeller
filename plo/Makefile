@@ -281,7 +281,7 @@ afdo-split/build/bin/clang-${CLANG_VERSION}: plain.afdo
 	$(call build_compiler,-DLLVM_SAMPLEPROF_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call split_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-split/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata stage1-compiler
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< $(call split_flags),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call split_flags),"clang;compiler-rt;lld",clang lld)
 
 pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
@@ -291,18 +291,6 @@ pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labe
 
 pgo-plolist-align/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_align_flags,$(DDIR)/pgo-labels-compiler.propeller,,),"clang;compiler-rt;lld",clang lld)
-
-pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip pgo-plo/build/bin/clang-${CLANG_VERSION}-ip: %/build/bin/clang-${CLANG_VERSION}-ip: %/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,$*,$(interp_opt),-ip)
-	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-ip.autolog
-
-pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip-2000: pgo-plolist/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,pgo-plolist,$(interp_opt) $(distance_cutoff_opt),-ip-2000)
-	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-ip-2000.autolog
-
-pgo-plolist/build/bin/clang-${CLANG_VERSION}-2000: pgo-plolist/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,pgo-plolist,$(distance_cutoff_opt),-2000)
-	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-2000.autolog
 
 pgo-plo/build/bin/clang-${CLANG_VERSION}-cluster pgo-plolist/build/bin/clang-${CLANG_VERSION}-cluster pgo-plolist-align/build/bin/clang-$(CLANG_VERSION)-cluster: %/build/bin/clang-${CLANG_VERSION}-cluster: %/build/bin/clang-${CLANG_VERSION}
 	$(call gen_relink_script,$*,$(symbol_order_opt),-cluster)
@@ -382,7 +370,7 @@ plain.afdo: plain-compiler plain.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --profile=$(DDIR)/plain.perfdata --logtostderr --out=$(DDIR)/$@
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --sym_order_out=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
+	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --sym_order_out=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
 	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 

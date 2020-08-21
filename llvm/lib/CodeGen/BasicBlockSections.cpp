@@ -284,6 +284,16 @@ void llvm::sortBasicBlocksAndUpdateBranches(
 
   MF.sort(MBBCmp);
 
+  // If any of the BBs have their address taken, we place all basic blocks in
+  // one section.
+  for(auto &MBB : MF) {
+    if (MBB.hasAddressTaken()) {
+      for(auto &MBB: MF)
+        MBB.setSectionID(0);
+      break;
+    }
+  }
+
   // Set IsBeginSection and IsEndSection according to the assigned section IDs.
   MF.assignBeginEndSections();
 
@@ -293,7 +303,7 @@ void llvm::sortBasicBlocksAndUpdateBranches(
   updateBranches(MF, PreLayoutFallThroughs);
 }
 
-bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
+bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
   auto BBSectionsType = MF.getTarget().getBBSectionsType();
   assert(BBSectionsType != BasicBlockSection::None &&
          "BB Sections not enabled!");
@@ -314,6 +324,7 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
       !getBBClusterInfoForFunction(MF, FuncAliasMap, ProgramBBClusterInfo,
                                    FuncBBClusterInfo))
     return true;
+
   MF.setBBSectionsType(BBSectionsType);
   MF.createBBLabels();
   assignSections(MF, FuncBBClusterInfo);
@@ -356,6 +367,7 @@ bool BBSectionsPrepare::runOnMachineFunction(MachineFunction &MF) {
   };
 
   sortBasicBlocksAndUpdateBranches(MF, Comparator);
+
   return true;
 }
 
