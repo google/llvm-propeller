@@ -376,7 +376,9 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
   // Find the assoicated cluster information.
   auto P = temp.find(AliasName);
   if (P == temp.end())
+  {
     return false;
+  }
 
   auto get_linear_id =
       [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
