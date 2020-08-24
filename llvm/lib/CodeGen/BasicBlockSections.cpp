@@ -384,13 +384,12 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
       [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
         if (id.CloneNumber == 0) {
           return id.MBBNumber;
-        } else {
-          auto it = bb_id_to_linear_index.find(id);
-          if (it != bb_id_to_linear_index.end()) {
-            return it->second;
-          }
-          return None;
         }
+        auto it = bb_id_to_linear_index.find(id);
+        if (it != bb_id_to_linear_index.end()) {
+          return it->second;
+        }
+        return None;
       };
 
   // This step creates all the necessary clones. It does not adjust the branches.
