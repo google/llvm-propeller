@@ -288,6 +288,7 @@ void llvm::sortBasicBlocksAndUpdateBranches(
   // one section.
   for(auto &MBB : MF) {
     if (MBB.hasAddressTaken()) {
+      errs() << "ADDRESS TAKEN: " << MF.getName() << "\n";
       for(auto &MBB: MF)
         MBB.setSectionID(0);
       break;
