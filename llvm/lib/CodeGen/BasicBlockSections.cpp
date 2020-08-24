@@ -461,8 +461,8 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
     //TODO(fbakir): what should be the probability here?
     pred_block->addSuccessor(clone_block, BranchProbability::getOne());
 
-    modified_blocks.emplace(pred_block);
-    modified_blocks.emplace(clone_block);
+//    modified_blocks.emplace(pred_block);
+//    modified_blocks.emplace(clone_block);
   }
 
   auto& output = out[AliasName];
