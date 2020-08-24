@@ -227,7 +227,7 @@ struct UniqueBBID {
   unsigned CloneNumber;
 
   friend bool operator<(const UniqueBBID& left, const UniqueBBID& right) {
-    return left.MBBNumber < right.MBBNumber || left.CloneNumber < right.CloneNumber;
+    return std::tie(left.MBBNumber, left.CloneNumber) < std::tie(right.MBBNumber, right.CloneNumber);
   }
 
   friend bool operator==(const UniqueBBID& left, const UniqueBBID& right) {
