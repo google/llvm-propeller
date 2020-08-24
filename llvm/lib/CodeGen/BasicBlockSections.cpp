@@ -99,16 +99,18 @@ bool ConvertToFallthrough(const TargetInstrInfo *TII,
                           MachineBasicBlock *from_block,
                           const MachineBasicBlock *to_block) {
   if (!from_block || !to_block) {
+    std::cerr << "One block is null.\n";
     return true;
   }
   if (!from_block->isSuccessor(to_block)) {
-    std::cerr << "The given block must be a successor of from block.";
+    std::cerr << "The given block must be a successor of from block.\n";
     return true;
   }
   MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
   SmallVector<MachineOperand, 4> Cond;
 
   if (TII->analyzeBranch(*from_block, TBB, FBB, Cond)) {
+    std::cerr << "Could not analyze branch\n";
     return true;
   }
 
@@ -140,6 +142,7 @@ bool ConvertToFallthrough(const TargetInstrInfo *TII,
       // through and fall through to us.
       if (TII->reverseBranchCondition(Cond)) {
         // Could not reverse the condition, abort?
+        std::cerr << "Could not reverse branch\n";
         return true;
       }
 
@@ -161,6 +164,7 @@ bool ConvertToFallthrough(const TargetInstrInfo *TII,
       // Make the true case fall through.
       if (TII->reverseBranchCondition(Cond)) {
         // Could not reverse the condition.
+        std::cerr << "Could not reverse branch\n";
         return true;
       }
 
@@ -405,7 +409,10 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
       WithColor::error() << "Unknown original " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
       return false;
     }
-
+    
+    std::cerr << "pred, original " << clone.Predecessor.MBBNumber << "#" << clone.Predecessor.CloneNumber << " " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
+    std::cerr << "clone id " << clone.Clone.MBBNumber << "#" << clone.Clone.CloneNumber << '\n';
+    std::cerr << "pred, original " << *pred_linear_id << " " << *orig_linear_id << '\n';
     auto orig_block = MF.getBlockNumbered(*orig_linear_id);
 
     auto cloned = CloneMachineBasicBlock(orig_block);
@@ -417,6 +424,7 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
     }
 
     bb_id_to_linear_index[clone.Clone] = cloned->getNumber();
+    std::cerr << "Clone number: " << cloned->getNumber() << '\n';
   }
 
   auto TII = MF.getSubtarget().getInstrInfo();
@@ -431,6 +439,14 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
     auto pred_block = MF.getBlockNumbered(*pred_linear_id);
     auto orig_block = MF.getBlockNumbered(*orig_linear_id);
     auto clone_block = MF.getBlockNumbered(*clone_linear_id);
+
+    std::cerr << "===\nConverting to fallthrough\n"                         << "pred, original " << clone.Predecessor.MBBNumber
+                         << "#" << clone.Predecessor.CloneNumber << " "
+                         << clone.Original.MBBNumber << "#"
+                         << clone.Original.CloneNumber << '\n'
+                         << "clone id " << clone.Clone.MBBNumber << "#"
+                         << clone.Clone.CloneNumber << '\n'
+                         << "pred, original " << *pred_linear_id << " " << *orig_linear_id << "\n===\n";
 
     if (ConvertToFallthrough(TII, pred_block, orig_block)) {
       WithColor::error() << "Hot path generation failed.\n";
