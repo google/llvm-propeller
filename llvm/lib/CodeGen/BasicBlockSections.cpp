@@ -448,6 +448,9 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
       return false;
     }
 
+    TII->insertUnconditionalBranch(*pred_block, clone_block,
+                                   pred_block->findBranchDebugLoc());
+
     // The pred_block falls through to block at this point.
 
     // Remove the original block from the successors of the previous block.
