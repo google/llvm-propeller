@@ -436,7 +436,15 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
     auto clone_block = MF.getBlockNumbered(*clone_linear_id);
 
     if (ConvertToFallthrough(TII, pred_block, orig_block)) {
-      WithColor::warning() << "Hot path generation failed.";
+      WithColor::error() << "Hot path generation failed.\n";
+      std::cerr << MF.getName().str() << '\n';
+
+      for (auto& bb : MF) {
+        std::cerr << bb.getName().str() << '\n';
+        bb.dump();
+      }
+
+      llvm::report_fatal_error("Hot path generation failed");
       return false;
     }
 
