@@ -198,7 +198,7 @@ MachineBasicBlock* CloneMachineBasicBlock(MachineBasicBlock* block) {
     cloned->push_back(MF.CloneMachineInstr(&instr));
   }
 
-  MF.addToMBBNumbering(cloned);
+  cloned->setNumber(MF.addToMBBNumbering(cloned));
 
   // Add the successors of the original block as the new block's
   // successors as well.
