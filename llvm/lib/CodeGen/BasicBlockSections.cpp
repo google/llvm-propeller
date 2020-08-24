@@ -406,9 +406,6 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
       return false;
     }
 
-    unsigned clone_id = MF.getNumBlockIDs();
-    bb_id_to_linear_index[clone.Clone] = clone_id;
-
     auto orig_block = MF.getBlockNumbered(*orig_linear_id);
 
     auto cloned = CloneMachineBasicBlock(orig_block);
@@ -419,7 +416,7 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
       return false;
     }
 
-    cloned->setNumber(clone_id);
+    bb_id_to_linear_index[clone.Clone] = cloned->getNumber();
   }
 
   auto TII = MF.getSubtarget().getInstrInfo();
