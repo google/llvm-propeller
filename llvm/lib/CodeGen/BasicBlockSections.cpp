@@ -402,7 +402,7 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
 
     auto orig_linear_id = get_linear_id(clone.Original);
     if (!orig_linear_id) {
-      WithColor::warning() << "Unknown original " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
+      WithColor::error() << "Unknown original " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
       return false;
     }
 
