@@ -1,4 +1,4 @@
-*
+/*
 !generate-patches.sh
 !generate-patches.filelist
 !.gitignore
@@ -11,3 +11,5 @@
 !generate-core-diff.sh
 !bbfilter.cc
 !ab_test.sh
+!mysql-benchmark
+
