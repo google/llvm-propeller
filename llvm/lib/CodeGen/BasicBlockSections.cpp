@@ -336,7 +336,6 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
 
   if (BBSectionsType == BasicBlockSection::Labels) {
     MF.setBBSectionsType(BBSectionsType);
-    MF.createBBLabels();
     return true;
   }
 
@@ -346,7 +345,6 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
                                    FuncBBClusterInfo))
     return true;
   MF.setBBSectionsType(BBSectionsType);
-  MF.createBBLabels();
   assignSectionsAndSortBasicBlocks(MF, FuncBBClusterInfo);
   return true;
 }

@@ -1700,9 +1700,11 @@ are listed below.
 
 **-fbasic-block-sections=[labels, all, list=<arg>, none]**
 
-  Controls whether Clang emits a label for each basic block.  Further, with
-  values "all" and "list=arg", each basic block or a subset of basic blocks
-  can be placed in its own unique section.
+  Controls how Clang emits text sections for basic blocks. With values "all"
+  and "list=arg", each basic block or a subset of basic blocks can be placed in
+  its own unique section. With the "labels" value, normal sections are emitted,
+  but a ".bb_addr_map" section is emitted which would include address offsets
+  for each basic block in the program, relative to the function address.
 
   With the ``list=<arg>`` option, a file containing the subset of basic blocks
   that need to placed in unique sections can be specified.  The format of the
