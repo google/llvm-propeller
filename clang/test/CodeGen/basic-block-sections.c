@@ -40,7 +40,7 @@ int another(int a) {
 // BB_LABELS: .LBB_END0_5:
 // BB_LABELS: .Lfunc_end0:
 //
-// BB_LABELS:       .section  .bb_info,"o",@progbits,.text
+// BB_LABELS:       .section  .bb_addr_map,"o",@progbits,.text
 // BB_LABELS-NEXT:  .quad  .Lfunc_begin0
 // BB_LABELS-NEXT:  .byte  6
 // BB_LABELS-NEXT:  .uleb128 .Lfunc_begin0-.Lfunc_begin0
@@ -73,7 +73,7 @@ int another(int a) {
 // BB_LABELS: .LBB_END1_3:
 // BB_LABELS: .Lfunc_end1:
 //
-// BB_LABELS:       .section  .bb_info,"o",@progbits,.text
+// BB_LABELS:       .section  .bb_addr_map,"o",@progbits,.text
 // BB_LABELS-NEXT:  .quad  .Lfunc_begin1
 // BB_LABELS-NEXT:  .byte  4
 // BB_LABELS-NEXT:  .uleb128 .Lfunc_begin1-.Lfunc_begin1
