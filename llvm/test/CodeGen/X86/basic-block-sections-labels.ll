@@ -2,28 +2,23 @@
 ; RUN: llc < %s -mtriple=x86_64-unknown-linux-gnu -function-sections -basic-block-sections=labels | FileCheck %s -check-prefix=LINUX-LABELS
 
 define void @_Z3bazb(i1 zeroext) personality i32 (...)* @__gxx_personality_v0 {
-  %2 = alloca i8, align 1
-  %3 = zext i1 %0 to i8
-  store i8 %3, i8* %2, align 1
-  %4 = load i8, i8* %2, align 1
-  %5 = trunc i8 %4 to i1
-  br i1 %5, label %6, label %11
+  br i1 %0, label %2, label %7
 
-6:
-  %7 = invoke i32 @_Z3barv()
-          to label %11 unwind label %9
-  br label %13
+2:
+  %3 = invoke i32 @_Z3barv()
+          to label %7 unwind label %5
+  br label %9
 
-9:
+5:
   landingpad { i8*, i32 }
           catch i8* null
-  br label %13
+  br label %9
 
-11:
-  %12 = call i32 @_Z3foov()
-  br label %13
+7:
+  %8 = call i32 @_Z3foov()
+  br label %9
 
-13:
+9:
   ret void
 }
 

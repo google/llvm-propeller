@@ -1023,6 +1023,22 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
                              MCConstantExpr::create(FrameOffset, OutContext));
 }
 
+/// Returns the BB metadata to be emitted in the bb_addr_map section for a given
+/// basic block. The metadata can be used to capture more precise profile
+/// information. For instance, the return block bit helps to distinguish
+/// recursive return edges vs. indirect branches.
+/// The format of the metadata is described as follows:
+///  * 1st bit (LSB): set if it is a return block (return or tail call).
+///  * 2nd bit: set if it is a block ending with a tail call.
+///  * 3rd bit: set if it is an exception handling (EH) pad.
+/// The remaining bits are zero.
+static unsigned getBBAddrMapMetadata(const MachineBasicBlock &MBB) {
+  const TargetInstrInfo *TII = MBB.getParent()->getSubtarget().getInstrInfo();
+  return ((unsigned)MBB.isReturnBlock()) |
+         ((!MBB.empty() && TII->isTailCall(MBB.back())) << 1) |
+         (MBB.isEHPad() << 2);
+}
+
 void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
   assert(MF.hasBBLabels() && ".bb_addr_map section needs BB labels enabled.");
 
@@ -1047,7 +1063,7 @@ void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
     // Emit the basic block size. When BBs have alignments, their size cannot
     // always be computed from their offsets.
     emitLabelDifferenceAsULEB128(MBB.getEndSymbol(), MBBSymbol);
-    OutStreamer->emitULEB128IntValue(MBB.getBBAddrMapMetadata());
+    OutStreamer->emitULEB128IntValue(getBBAddrMapMetadata(MBB));
   }
   OutStreamer->PopSection();
 }

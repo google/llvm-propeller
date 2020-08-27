@@ -55,12 +55,6 @@ MachineBasicBlock::MachineBasicBlock(MachineFunction &MF, const BasicBlock *B)
 MachineBasicBlock::~MachineBasicBlock() {
 }
 
-unsigned MachineBasicBlock::getBBAddrMapMetadata() const {
-  const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
-  return ((unsigned)isReturnBlock()) |
-         ((!empty() && TII->isTailCall(back())) << 1) | (isEHPad() << 2);
-}
-
 /// Return the MCSymbol for this basic block.
 MCSymbol *MachineBasicBlock::getSymbol() const {
   if (!CachedMCSymbol) {

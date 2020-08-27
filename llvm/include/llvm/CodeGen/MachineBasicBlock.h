@@ -478,18 +478,6 @@ public:
   /// Returns the MCSymbol marking the end of this basic block.
   MCSymbol *getEndSymbol() const;
 
-  /// Returns the BB metadata to be emitted in the bb_addr_map section, which is
-  /// emitted under "-basic-block-sections=labels". The metadata can be used
-  /// to capture more precise profile information. For instance, the return
-  /// block bit helps to distinguish recursive return edges vs. indirect
-  /// branches.
-  /// The format of the result is described as follows:
-  /// 1st bit (LSB): set if this is a return block (return or tail call).
-  /// 2nd bit: set if this is a block ending with a tail call.
-  /// 3rd bit: set if this is an exception handling (EH) pad.
-  /// The remaining bits are zero.
-  unsigned getBBAddrMapMetadata() const;
-
   /// Returns true if this block may have an INLINEASM_BR (overestimate, by
   /// checking if any of the successors are indirect targets of any inlineasm_br
   /// in the function).
