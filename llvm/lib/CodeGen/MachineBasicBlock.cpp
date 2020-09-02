@@ -75,7 +75,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
       }
       CachedMCSymbol = Ctx.getOrCreateSymbol(MF->getName() + Suffix);
     } else {
-      auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
+      const StringRef Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
       CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
                                              Twine(MF->getFunctionNumber()) +
                                              "_" + Twine(getNumber()));
