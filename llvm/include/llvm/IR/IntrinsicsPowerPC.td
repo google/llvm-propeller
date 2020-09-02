@@ -950,6 +950,18 @@ def int_ppc_altivec_vrldmi :
                             [llvm_v2i64_ty, llvm_v2i64_ty, llvm_v2i64_ty],
                             [IntrNoMem]>;
 
+// Vector Divide Extended Intrinsics.
+def int_ppc_altivec_vdivesw : PowerPC_Vec_WWW_Intrinsic<"vdivesw">;
+def int_ppc_altivec_vdiveuw : PowerPC_Vec_WWW_Intrinsic<"vdiveuw">;
+def int_ppc_altivec_vdivesd : PowerPC_Vec_DDD_Intrinsic<"vdivesd">;
+def int_ppc_altivec_vdiveud : PowerPC_Vec_DDD_Intrinsic<"vdiveud">;
+
+// Vector Multiply High Intrinsics.
+def int_ppc_altivec_vmulhsw : PowerPC_Vec_WWW_Intrinsic<"vmulhsw">;
+def int_ppc_altivec_vmulhuw : PowerPC_Vec_WWW_Intrinsic<"vmulhuw">;
+def int_ppc_altivec_vmulhsd : PowerPC_Vec_DDD_Intrinsic<"vmulhsd">;
+def int_ppc_altivec_vmulhud : PowerPC_Vec_DDD_Intrinsic<"vmulhud">;
+
 //===----------------------------------------------------------------------===//
 // PowerPC VSX Intrinsic Definitions.
 
@@ -1112,6 +1124,12 @@ def int_ppc_vsx_xvtstdcsp :
 def int_ppc_vsx_xvcvhpsp :
       PowerPC_VSX_Intrinsic<"xvcvhpsp", [llvm_v4f32_ty],
                             [llvm_v8i16_ty],[IntrNoMem]>;
+def int_ppc_vsx_xvcvspbf16 :
+      PowerPC_VSX_Intrinsic<"xvcvspbf16", [llvm_v16i8_ty],
+                            [llvm_v16i8_ty], [IntrNoMem]>;
+def int_ppc_vsx_xvcvbf16spn :
+      PowerPC_VSX_Intrinsic<"xvcvbf16spn", [llvm_v16i8_ty],
+                            [llvm_v16i8_ty], [IntrNoMem]>;
 def int_ppc_vsx_xxextractuw :
       PowerPC_VSX_Intrinsic<"xxextractuw",[llvm_v2i64_ty],
                             [llvm_v2i64_ty,llvm_i32_ty], [IntrNoMem]>;

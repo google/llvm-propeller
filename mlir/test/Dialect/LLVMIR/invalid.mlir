@@ -48,7 +48,7 @@ func @alloca_missing_input_type() {
 
 // -----
 
-func @alloca_mising_result_type() {
+func @alloca_missing_result_type() {
   // expected-error@+1 {{expected trailing function type with one argument and one result}}
   llvm.alloca %size x !llvm.i32 : (!llvm.i64) -> ()
 }
@@ -58,13 +58,6 @@ func @alloca_mising_result_type() {
 func @alloca_non_function_type() {
   // expected-error@+1 {{expected trailing function type with one argument and one result}}
   llvm.alloca %size x !llvm.i32 : !llvm.ptr<i32>
-}
-
-// -----
-
-func @alloca_nonpositive_alignment(%size : !llvm.i64) {
-  // expected-error@+1 {{expected positive alignment}}
-  llvm.alloca %size x !llvm.i32 {alignment = -1} : (!llvm.i64) -> (!llvm.ptr<i32>)
 }
 
 // -----

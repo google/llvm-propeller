@@ -225,6 +225,24 @@ def select_same_val: GICombineRule<
   (apply [{ return Helper.replaceSingleDefInstWithOperand(*${root}, 2); }])
 >;
 
+// Fold (undef ? x : y) -> y
+def select_undef_cmp: GICombineRule<
+  (defs root:$root),
+  (match (wip_match_opcode G_SELECT):$root,
+    [{ return Helper.matchUndefSelectCmp(*${root}); }]),
+  (apply [{ return Helper.replaceSingleDefInstWithOperand(*${root}, 2); }])
+>;
+
+// Fold (true ? x : y) -> x
+// Fold (false ? x : y) -> y
+def select_constant_cmp_matchdata : GIDefMatchData<"unsigned">;
+def select_constant_cmp: GICombineRule<
+  (defs root:$root, select_constant_cmp_matchdata:$matchinfo),
+  (match (wip_match_opcode G_SELECT):$root,
+    [{ return Helper.matchConstantSelectCmp(*${root}, ${matchinfo}); }]),
+  (apply [{ return Helper.replaceSingleDefInstWithOperand(*${root}, ${matchinfo}); }])
+>;
+
 // Fold x op 0 -> x
 def right_identity_zero: GICombineRule<
   (defs root:$root),
@@ -326,6 +344,43 @@ def and_trivial_mask: GICombineRule <
   (apply [{ return Helper.replaceSingleDefInstWithReg(*${root}, ${matchinfo}); }])
 >;
 
+// If the input is already sign extended, just drop the extension.
+// sext_inreg x, K ->
+//   if computeNumSignBits(x) >= (x.getScalarSizeInBits() - K + 1)
+def redundant_sext_inreg: GICombineRule <
+  (defs root:$root),
+  (match (wip_match_opcode G_SEXT_INREG):$root,
+         [{ return Helper.matchRedundantSExtInReg(*${root}); }]),
+     (apply [{ return Helper.replaceSingleDefInstWithOperand(*${root}, 1); }])
+>;
+
+// Fold (anyext (trunc x)) -> x if the source type is same as
+// the destination type.
+def anyext_trunc_fold_matchinfo : GIDefMatchData<"Register">;
+def anyext_trunc_fold: GICombineRule <
+  (defs root:$root, anyext_trunc_fold_matchinfo:$matchinfo),
+  (match (wip_match_opcode G_ANYEXT):$root,
+         [{ return Helper.matchCombineAnyExtTrunc(*${root}, ${matchinfo}); }]),
+  (apply [{ return Helper.applyCombineAnyExtTrunc(*${root}, ${matchinfo}); }])
+>;
+
+// Fold ([asz]ext ([asz]ext x)) -> ([asz]ext x).
+def ext_ext_fold_matchinfo : GIDefMatchData<"std::tuple<Register, unsigned>">;
+def ext_ext_fold: GICombineRule <
+  (defs root:$root, ext_ext_fold_matchinfo:$matchinfo),
+  (match (wip_match_opcode G_ANYEXT, G_SEXT, G_ZEXT):$root,
+         [{ return Helper.matchCombineExtOfExt(*${root}, ${matchinfo}); }]),
+  (apply [{ return Helper.applyCombineExtOfExt(*${root}, ${matchinfo}); }])
+>;
+
+def not_cmp_fold_matchinfo : GIDefMatchData<"Register">;
+def not_cmp_fold : GICombineRule<
+  (defs root:$d, not_cmp_fold_matchinfo:$info),
+  (match (wip_match_opcode G_XOR): $d,
+  [{ return Helper.matchNotCmp(*${d}, ${info}); }]),
+  (apply [{ return Helper.applyNotCmp(*${d}, ${info}); }])
+>;
+
 // FIXME: These should use the custom predicate feature once it lands.
 def undef_combines : GICombineGroup<[undef_to_fp_zero, undef_to_int_zero,
                                      undef_to_negative_one,
@@ -337,9 +392,14 @@ def undef_combines : GICombineGroup<[undef_to_fp_zero, undef_to_int_zero,
 def identity_combines : GICombineGroup<[select_same_val, right_identity_zero,
                                         binop_same_val, binop_left_to_zero,
                                         binop_right_to_zero, p2i_to_i2p,
-                                        i2p_to_p2i]>;
+                                        i2p_to_p2i, anyext_trunc_fold]>;
+
+def known_bits_simplifications : GICombineGroup<[
+  and_trivial_mask, redundant_sext_inreg]>;
 
 def width_reduction_combines : GICombineGroup<[reduce_shl_of_extend]>;
+
+def select_combines : GICombineGroup<[select_undef_cmp, select_constant_cmp]>;
 
 def trivial_combines : GICombineGroup<[copy_prop, mul_to_shl, add_p2i_to_ptradd]>;
 def all_combines : GICombineGroup<[trivial_combines, ptr_add_immed_chain,
@@ -347,4 +407,6 @@ def all_combines : GICombineGroup<[trivial_combines, ptr_add_immed_chain,
     identity_combines, simplify_add_to_sub,
     hoist_logic_op_with_same_opcode_hands,
     shl_ashr_to_sext_inreg, sext_inreg_of_load,
-    width_reduction_combines]>;
+    width_reduction_combines, select_combines,
+    known_bits_simplifications, ext_ext_fold,
+    not_cmp_fold]>;

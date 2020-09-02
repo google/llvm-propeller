@@ -1024,13 +1024,11 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
 }
 
 /// Returns the BB metadata to be emitted in the bb_addr_map section for a given
-/// basic block. The metadata can be used to capture more precise profile
-/// information. For instance, the return block bit helps to distinguish
-/// recursive return edges vs. indirect branches.
-/// The format of the metadata is described as follows:
-///  * 1st bit (LSB): set if it is a return block (return or tail call).
-///  * 2nd bit: set if it is a block ending with a tail call.
-///  * 3rd bit: set if it is an exception handling (EH) pad.
+/// basic block. This can be used to capture more precise profile information.
+/// We use the last 3 bits (LSBs) to ecnode the following information:
+///  * (1): set if return block (ret or tail call).
+///  * (2): set if ends with a tail call.
+///  * (3): set if exception handling (EH) landing pad.
 /// The remaining bits are zero.
 static unsigned getBBAddrMapMetadata(const MachineBasicBlock &MBB) {
   const TargetInstrInfo *TII = MBB.getParent()->getSubtarget().getInstrInfo();
@@ -1040,12 +1038,9 @@ static unsigned getBBAddrMapMetadata(const MachineBasicBlock &MBB) {
 }
 
 void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
-  assert(MF.hasBBLabels() && ".bb_addr_map section needs BB labels enabled.");
-
   MCSection *BBAddrMapSection =
       getObjFileLowering().getBBAddrMapSection(*MF.getSection());
-  if (!BBAddrMapSection)
-    return;
+  assert(BBAddrMapSection && ".bb_addr_map section is not initialized.");
 
   const MCSymbol *FunctionSymbol = getFunctionBegin();
 
@@ -1055,7 +1050,7 @@ void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
   // Emit the total number of basic blocks in this function.
   OutStreamer->emitULEB128IntValue(MF.size());
   // Emit BB Information for each basic block in the funciton.
-  for (const auto &MBB : MF) {
+  for (const MachineBasicBlock &MBB : MF) {
     const MCSymbol *MBBSymbol =
         MBB.pred_empty() ? FunctionSymbol : MBB.getSymbol();
     // Emit the basic block offset.

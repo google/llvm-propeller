@@ -18,6 +18,15 @@ def PPCxxsplti32dx : SDNode<"PPCISD::XXSPLTI32DX", SDT_PPCSplat32, []>;
 // address computations).
 class isPCRel { bit PCRel = 1; }
 
+// PowerPC specific type constraints.
+def SDT_PPCLXVRZX : SDTypeProfile<1, 2, [
+  SDTCisVT<0, v1i128>, SDTCisPtrTy<1>, SDTCisPtrTy<2>
+]>;
+
+// PPC Specific DAG Nodes.
+def PPClxvrzx : SDNode<"PPCISD::LXVRZX", SDT_PPCLXVRZX,
+                       [SDNPHasChain, SDNPMayLoad]>;
+
 // Top-level class for prefixed instructions.
 class PI<bits<6> pref, bits<6> opcode, dag OOL, dag IOL, string asmstr,
          InstrItinClass itin> : Instruction {
@@ -505,6 +514,11 @@ def PrefixInstrs : Predicate<"Subtarget->hasPrefixInstrs()">;
 def IsISA3_1 : Predicate<"Subtarget->isISA3_1()">;
 def PairedVectorMemops : Predicate<"PPCSubTarget->pairedVectorMemops()">;
 def MMA : Predicate<"PPCSubTarget->hasMMA()">;
+
+def RCCp {
+  dag AToVSRC = (COPY_TO_REGCLASS $XA, VSRC);
+  dag BToVSRC = (COPY_TO_REGCLASS $XB, VSRC);
+}
 
 let Predicates = [PrefixInstrs] in {
   let Interpretation64Bit = 1, isCodeGenOnly = 1 in {
@@ -1207,13 +1221,21 @@ let Predicates = [IsISA3_1] in {
                         "vdivud $vD, $vA, $vB", IIC_VecGeneral,
                         [(set v2i64:$vD, (udiv v2i64:$vA, v2i64:$vB))]>;
   def VDIVESW : VXForm_1<907, (outs vrrc:$vD), (ins vrrc:$vA, vrrc:$vB),
-                         "vdivesw $vD, $vA, $vB", IIC_VecGeneral, []>;
+                         "vdivesw $vD, $vA, $vB", IIC_VecGeneral,
+                         [(set v4i32:$vD, (int_ppc_altivec_vdivesw v4i32:$vA,
+                               v4i32:$vB))]>;
   def VDIVEUW : VXForm_1<651, (outs vrrc:$vD), (ins vrrc:$vA, vrrc:$vB),
-                         "vdiveuw $vD, $vA, $vB", IIC_VecGeneral, []>;
+                         "vdiveuw $vD, $vA, $vB", IIC_VecGeneral,
+                         [(set v4i32:$vD, (int_ppc_altivec_vdiveuw v4i32:$vA,
+                               v4i32:$vB))]>;
   def VDIVESD : VXForm_1<971, (outs vrrc:$vD), (ins vrrc:$vA, vrrc:$vB),
-                         "vdivesd $vD, $vA, $vB", IIC_VecGeneral, []>;
+                         "vdivesd $vD, $vA, $vB", IIC_VecGeneral,
+                         [(set v2i64:$vD, (int_ppc_altivec_vdivesd v2i64:$vA,
+                               v2i64:$vB))]>;
   def VDIVEUD : VXForm_1<715, (outs vrrc:$vD), (ins vrrc:$vA, vrrc:$vB),
-                         "vdiveud $vD, $vA, $vB", IIC_VecGeneral, []>;
+                         "vdiveud $vD, $vA, $vB", IIC_VecGeneral,
+                         [(set v2i64:$vD, (int_ppc_altivec_vdiveud v2i64:$vA,
+                               v2i64:$vB))]>;
   def XVTLSBB : XX2_BF3_XO5_XB6_XO9<60, 2, 475, (outs crrc:$BF), (ins vsrc:$XB),
                                     "xvtlsbb $BF, $XB", IIC_VecGeneral, []>;
 
@@ -1283,8 +1305,22 @@ let Predicates = [IsISA3_1] in {
   def XSCVSQQP : X_VT5_XO5_VB5<63, 11, 836, "xscvsqqp", []>;
 }
 
+let Predicates = [IsISA3_1, HasVSX] in {
+  def XVCVSPBF16 : XX2_XT6_XO5_XB6<60, 17, 475, "xvcvspbf16", vsrc, []>;
+  def XVCVBF16SPN : XX2_XT6_XO5_XB6<60, 16, 475, "xvcvbf16spn", vsrc, []>;
+}
+
 //---------------------------- Anonymous Patterns ----------------------------//
 let Predicates = [IsISA3_1] in {
+  // Exploit the vector multiply high instructions using intrinsics.
+  def : Pat<(v4i32 (int_ppc_altivec_vmulhsw v4i32:$vA, v4i32:$vB)),
+            (v4i32 (VMULHSW $vA, $vB))>;
+  def : Pat<(v4i32 (int_ppc_altivec_vmulhuw v4i32:$vA, v4i32:$vB)),
+            (v4i32 (VMULHUW $vA, $vB))>;
+  def : Pat<(v2i64 (int_ppc_altivec_vmulhsd v2i64:$vA, v2i64:$vB)),
+            (v2i64 (VMULHSD $vA, $vB))>;
+  def : Pat<(v2i64 (int_ppc_altivec_vmulhud v2i64:$vA, v2i64:$vB)),
+            (v2i64 (VMULHUD $vA, $vB))>;
   def : Pat<(v16i8 (int_ppc_vsx_xxgenpcvbm v16i8:$VRB, imm:$IMM)),
             (v16i8 (COPY_TO_REGCLASS (XXGENPCVBM $VRB, imm:$IMM), VRRC))>;
   def : Pat<(v8i16 (int_ppc_vsx_xxgenpcvhm v8i16:$VRB, imm:$IMM)),
@@ -1309,6 +1345,22 @@ let Predicates = [IsISA3_1] in {
             (v1i128 (VSRAQ v1i128:$VRA, v1i128:$VRB))>;
   def : Pat<(v1i128 (PPCsra v1i128:$VRA, v1i128:$VRB)),
             (v1i128 (VSRAQ v1i128:$VRA, v1i128:$VRB))>;
+
+  def : Pat <(v1i128 (PPClxvrzx xoaddr:$src, 8)),
+             (v1i128 (COPY_TO_REGCLASS (LXVRBX xoaddr:$src), VRRC))>;
+  def : Pat <(v1i128 (PPClxvrzx xoaddr:$src, 16)),
+             (v1i128 (COPY_TO_REGCLASS (LXVRHX xoaddr:$src), VRRC))>;
+  def : Pat <(v1i128 (PPClxvrzx xoaddr:$src, 32)),
+             (v1i128 (COPY_TO_REGCLASS (LXVRWX xoaddr:$src), VRRC))>;
+  def : Pat <(v1i128 (PPClxvrzx xoaddr:$src, 64)),
+             (v1i128 (COPY_TO_REGCLASS (LXVRDX xoaddr:$src), VRRC))>;
+}
+
+let Predicates = [IsISA3_1, HasVSX] in {
+  def : Pat<(v16i8 (int_ppc_vsx_xvcvspbf16 v16i8:$XA)),
+            (COPY_TO_REGCLASS (XVCVSPBF16 RCCp.AToVSRC), VRRC)>;
+  def : Pat<(v16i8 (int_ppc_vsx_xvcvbf16spn v16i8:$XA)),
+            (COPY_TO_REGCLASS (XVCVBF16SPN RCCp.AToVSRC), VRRC)>;
 }
 
 let AddedComplexity = 400, Predicates = [IsISA3_1] in {
