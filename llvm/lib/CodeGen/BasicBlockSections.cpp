@@ -197,9 +197,6 @@ MachineBasicBlock* CloneMachineBasicBlock(MachineBasicBlock* block) {
   // block.
   auto cloned = MF.CreateMachineBasicBlock(nullptr);
   MF.push_back(cloned);
-
-    auto& desc =TII->get(2972);
-    BuildMI(cloned, block->findBranchDebugLoc(), desc);
   for (auto &instr : block->instrs()) {
     cloned->push_back(MF.CloneMachineInstr(&instr));
   }
