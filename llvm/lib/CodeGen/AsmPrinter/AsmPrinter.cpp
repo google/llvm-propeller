@@ -3135,7 +3135,7 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
   bool UnreachableMBBSection =
       MBB.pred_empty() && (&MBB != &this->MF->front()) && MBB.isBeginSection();
   if ((MBB.pred_empty() && !UnreachableMBBSection) ||
-      (!MF->hasBBLabels() && isBlockOnlyReachableByFallthrough(&MBB) &&
+      (!MF->hasBBLabels() && !MF->hasBBSections() && isBlockOnlyReachableByFallthrough(&MBB) &&
        !EmitBBInfoSection && !MBB.isEHFuncletEntry() &&
        !MBB.hasLabelMustBeEmitted())) {
     if (isVerbose()) {
