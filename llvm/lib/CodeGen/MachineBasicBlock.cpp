@@ -61,6 +61,24 @@ unsigned MachineBasicBlock::getBBInfoMetadata() const {
          ((!empty() && TII->isTailCall(back())) << 1) | (isEHPad() << 2);
 }
 
+MCSymbol *MachineBasicBlock::getLabelSymbol() const {
+  if (!CachedLabelMCSymbol) {
+    const MachineFunction *MF = getParent();
+    MCContext &Ctx = MF->getContext();
+    auto Iter = MF->getBBSectionsSymbolPrefix().begin();
+    if (getNumber() < 0 ||
+        getNumber() >= (int)MF->getBBSectionsSymbolPrefix().size())
+      report_fatal_error("Unreachable MBB: " + Twine(getNumber()));
+    // The basic blocks for function foo are named a.BB.foo, aa.BB.foo, and
+    // so on.
+    std::string Prefix(Iter + 1, Iter + getNumber() + 1);
+    std::reverse(Prefix.begin(), Prefix.end());
+    CachedLabelMCSymbol =
+        Ctx.getOrCreateSymbol(Twine(Prefix) + ".BB." + Twine(MF->getName()));
+  }
+  return CachedLabelMCSymbol;
+}
+
 /// Return the MCSymbol for this basic block.
 MCSymbol *MachineBasicBlock::getSymbol() const {
   if (!CachedMCSymbol) {
@@ -77,16 +95,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     // this block is the first in a cluster, we use a non-temp descriptive name.
     // Otherwise we fall back to use temp label.
     if (MF->hasBBLabels()) {
-      auto Iter = MF->getBBSectionsSymbolPrefix().begin();
-      if (getNumber() < 0 ||
-          getNumber() >= (int)MF->getBBSectionsSymbolPrefix().size())
-        report_fatal_error("Unreachable MBB: " + Twine(getNumber()));
-      // The basic blocks for function foo are named a.BB.foo, aa.BB.foo, and
-      // so on.
-      std::string Prefix(Iter + 1, Iter + getNumber() + 1);
-      std::reverse(Prefix.begin(), Prefix.end());
-      CachedMCSymbol =
-          Ctx.getOrCreateSymbol(Twine(Prefix) + ".BB." + Twine(MF->getName()));
+      CachedMCSymbol = getLabelSymbol();
     } else if (MF->hasBBSections() && isBeginSection()) {
       SmallString<5> Suffix;
       if (SectionID == MBBSectionID::ColdSectionID) {

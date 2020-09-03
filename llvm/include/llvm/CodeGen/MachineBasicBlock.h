@@ -174,6 +174,9 @@ private:
   /// is only computed once and is cached.
   mutable MCSymbol *CachedMCSymbol = nullptr;
 
+  /// Use this for unary-encoded labels.
+  mutable MCSymbol *CachedLabelMCSymbol = nullptr;
+
   /// Marks the end of the basic block. Used during basic block sections to
   /// calculate the size of the basic block, or the BB section ending with it.
   mutable MCSymbol *CachedEndMCSymbol = nullptr;
@@ -897,6 +900,10 @@ public:
 
   /// Return the MCSymbol for this basic block.
   MCSymbol *getSymbol() const;
+
+  // Return the unary-econded symbol for the basic block. (createBBLabels must
+  // be called on the function.)
+  MCSymbol *getLabelSymbol() const;
 
   Optional<uint64_t> getIrrLoopHeaderWeight() const {
     return IrrLoopHeaderWeight;

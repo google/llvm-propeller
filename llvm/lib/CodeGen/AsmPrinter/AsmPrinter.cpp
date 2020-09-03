@@ -3156,6 +3156,8 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
       CurrentSectionBeginSym = BBSymbol;
     }
     OutStreamer->emitLabel(BBSymbol);
+    if(MF->hasBBSections())
+      OutStreamer->emitLabel(MBB.getLabelSymbol());
     // With BB sections, each basic block must handle CFI information on its own
     // if it begins a section.
     if (MBB.isBeginSection())
