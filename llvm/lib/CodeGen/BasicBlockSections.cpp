@@ -198,6 +198,8 @@ MachineBasicBlock* CloneMachineBasicBlock(MachineBasicBlock* block) {
   auto cloned = MF.CreateMachineBasicBlock(nullptr);
   MF.push_back(cloned);
 
+    auto& desc =TII->get(2972);
+    BuildMI(cloned, block->findBranchDebugLoc(), desc);
   for (auto &instr : block->instrs()) {
     cloned->push_back(MF.CloneMachineInstr(&instr));
   }
@@ -324,13 +326,10 @@ INITIALIZE_PASS(BasicBlockSections, "bbsections-prepare",
 // block in a given function to account for changes in the layout.
 static void updateBranches(
     MachineFunction &MF,
-    const SmallVector<MachineBasicBlock *, 4> &PreLayoutFallThroughs, const std::set<const MachineBasicBlock*>& skiplist) {
+    const SmallVector<MachineBasicBlock *, 4> &PreLayoutFallThroughs) {
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   SmallVector<MachineOperand, 4> Cond;
   for (auto &MBB : MF) {
-    if (skiplist.count(&MBB) != 0) {
-      continue;
-    }
     auto NextMBBI = std::next(MBB.getIterator());
     auto *FTMBB = PreLayoutFallThroughs[MBB.getNumber()];
     // If this block had a fallthrough before we need an explicit unconditional
@@ -385,8 +384,11 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
   }
 
   auto get_linear_id =
-      [&bb_id_to_linear_index](const UniqueBBID& id) -> Optional<unsigned> {
+      [&bb_id_to_linear_index, &MF](const UniqueBBID& id) -> Optional<long long> {
         if (id.CloneNumber == 0) {
+          if (id.MBBNumber >= MF.getNumBlockIDs()) {
+            return None;
+          }
           return id.MBBNumber;
         }
         auto it = bb_id_to_linear_index.find(id);
@@ -395,6 +397,49 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
         }
         return None;
       };
+
+  auto TII = MF.getSubtarget().getInstrInfo();
+
+  for (auto& clone : P->second.second) {
+    auto pred_linear_id = get_linear_id(clone.Predecessor);
+    auto orig_linear_id = get_linear_id(clone.Original);
+
+    if (!pred_linear_id || !orig_linear_id) {
+      WithColor::warning() << "Unknown block in " << MF.getName().str() << '\n';
+      return false;
+    }
+
+    auto pred_block = MF.getBlockNumbered(*pred_linear_id);
+    auto orig_block = MF.getBlockNumbered(*orig_linear_id);
+
+    if (!pred_block->isSuccessor(orig_block)) {
+      WithColor::warning() << "Clone predecessor is wrong in " << MF.getName().str() << '\n';
+      return false;
+    }
+
+    if (!pred_block->empty() && pred_block->back().isIndirectBranch()) {
+      WithColor::warning() << "Predecessor with an indirect branch in " << MF.getName().str() << '\n';
+
+      return false;
+    }
+
+    MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
+    SmallVector<MachineOperand, 4> Cond;
+
+    if (TII->analyzeBranch(*pred_block, TBB, FBB, Cond)) {
+      WithColor::warning() << "Could not analyze branch in " << MF.getName().str() << '\n';
+      return false;
+    }
+    bb_id_to_linear_index[clone.Clone] = *orig_linear_id;
+  }
+  for (auto& bb : P->second.first) {
+    auto linear_id = get_linear_id(bb.MBBNumber);
+    if (!linear_id) {
+      return false;
+    }
+  }
+
+  bb_id_to_linear_index.clear();
 
   // This step creates all the necessary clones. It does not adjust the branches.
   for (auto& clone : P->second.second) {
@@ -425,22 +470,10 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
 
     bb_id_to_linear_index[clone.Clone] = cloned->getNumber();
     std::cerr << "Clone number: " << cloned->getNumber() << '\n';
-  }
-
-  auto TII = MF.getSubtarget().getInstrInfo();
-
-  // This step adjusts the branches of predecessors of clones. A clone's
-  // predecessor must always fallthrough to it.
-  for (auto& clone : P->second.second) {
-    auto pred_linear_id = get_linear_id(clone.Predecessor);
-    auto orig_linear_id = get_linear_id(clone.Original);
-    auto clone_linear_id = get_linear_id(clone.Clone);
 
     auto pred_block = MF.getBlockNumbered(*pred_linear_id);
-    auto orig_block = MF.getBlockNumbered(*orig_linear_id);
-    auto clone_block = MF.getBlockNumbered(*clone_linear_id);
 
-    std::cerr << "===\nConverting to fallthrough\n"                         << "pred, original " << clone.Predecessor.MBBNumber
+        std::cerr << "===\nConverting to fallthrough\n"                         << "pred, original " << clone.Predecessor.MBBNumber
                          << "#" << clone.Predecessor.CloneNumber << " "
                          << clone.Original.MBBNumber << "#"
                          << clone.Original.CloneNumber << '\n'
@@ -461,7 +494,7 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
       return false;
     }
 
-    TII->insertUnconditionalBranch(*pred_block, clone_block,
+    TII->insertUnconditionalBranch(*pred_block, cloned,
                                    pred_block->findBranchDebugLoc());
 
     // The pred_block falls through to block at this point.
@@ -472,16 +505,36 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
     pred_block->removeSuccessor(orig_block);
 
     //TODO(fbakir): what should be the probability here?
-    pred_block->addSuccessor(clone_block, BranchProbability::getOne());
-
-//    modified_blocks.emplace(pred_block);
-//    modified_blocks.emplace(clone_block);
+    pred_block->addSuccessor(cloned, BranchProbability::getOne());
   }
+
+//  // This step adjusts the branches of predecessors of clones. A clone's
+//  // predecessor must always fallthrough to it.
+//  for (auto& clone : P->second.second) {
+//    auto orig_copy = clone.Original;
+//    orig_copy.CloneNumber = 0;
+//    auto pred_linear_id = get_linear_id(clone.Predecessor);
+//    auto orig_linear_id = get_linear_id(orig_copy);
+//    auto clone_linear_id = get_linear_id(clone.Clone);
+//
+//    auto pred_block = MF.getBlockNumbered(*pred_linear_id);
+//    auto orig_block = MF.getBlockNumbered(*orig_linear_id);
+//    auto clone_block = MF.getBlockNumbered(*clone_linear_id);
+//
+//
+////    modified_blocks.emplace(pred_block);
+////    modified_blocks.emplace(clone_block);
+//  }
 
   auto& output = out[AliasName];
   for (auto& bb : P->second.first) {
-    output.emplace(*get_linear_id(bb.MBBNumber), BBClusterInfo{
-        *get_linear_id(bb.MBBNumber), bb.ClusterID, bb.PositionInCluster
+    auto linear_id = get_linear_id(bb.MBBNumber);
+    if (!linear_id) {
+      WithColor::warning() << "Could not find a bb in " << MF.getName().str() << '\n';
+      return false;
+    }
+    output.emplace(*linear_id, BBClusterInfo{
+        static_cast<unsigned>(*linear_id), bb.ClusterID, bb.PositionInCluster
     });
   }
 
@@ -577,24 +630,6 @@ assignSections(MachineFunction &MF,
         MBB.setSectionID(EHPadsSectionID.getValue());
 }
 
-void sortBasicBlocksAndUpdateBranches(
-    MachineFunction &MF, MachineBasicBlockComparator MBBCmp, std::set<const MachineBasicBlock*>& skiplist) {
-  SmallVector<MachineBasicBlock *, 4> PreLayoutFallThroughs(
-      MF.getNumBlockIDs());
-  for (auto &MBB : MF)
-    PreLayoutFallThroughs[MBB.getNumber()] = MBB.getFallThrough();
-
-  MF.sort(MBBCmp);
-
-  // Set IsBeginSection and IsEndSection according to the assigned section IDs.
-  MF.assignBeginEndSections();
-
-  // After reordering basic blocks, we must update basic block branches to
-  // insert explicit fallthrough branches when required and optimize branches
-  // when possible.
-  updateBranches(MF, PreLayoutFallThroughs, skiplist);
-}
-
 // This function is exposed externally by BasicBlockSectionUtils.h
 void llvm::sortBasicBlocksAndUpdateBranches(
     MachineFunction &MF, MachineBasicBlockComparator MBBCmp) {
@@ -621,7 +656,7 @@ void llvm::sortBasicBlocksAndUpdateBranches(
   // After reordering basic blocks, we must update basic block branches to
   // insert explicit fallthrough branches when required and optimize branches
   // when possible.
-  updateBranches(MF, PreLayoutFallThroughs, {});
+  updateBranches(MF, PreLayoutFallThroughs);
 }
 
 bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
@@ -698,7 +733,48 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
     return X.getNumber() < Y.getNumber();
   };
 
-  sortBasicBlocksAndUpdateBranches(MF, Comparator, cloning_modified);
+  sortBasicBlocksAndUpdateBranches(MF, Comparator);
+
+  auto FuncName = MF.getName();
+  auto R = FuncAliasMap.find(FuncName);
+  StringRef AliasName = R == FuncAliasMap.end() ? FuncName : R->second;
+
+  // Find the assoicated cluster information.
+  auto P = ProgramBBTemporaryInfo.find(AliasName);
+  if (P == ProgramBBTemporaryInfo.end())
+  {
+    return true;
+  }
+
+  auto get_linear_id =
+      [&bb_id_to_linear_index, &MF](const UniqueBBID& id) -> Optional<long long> {
+        if (id.CloneNumber == 0) {
+          if (id.MBBNumber >= MF.getNumBlockIDs()) {
+            return None;
+          }
+          return id.MBBNumber;
+        }
+        auto it = bb_id_to_linear_index.find(id);
+        if (it != bb_id_to_linear_index.end()) {
+          return it->second;
+        }
+        return None;
+      };
+  for (auto& clone : P->second.second) {
+    auto mbb_num = get_linear_id(clone.Clone);
+    auto mbb = MF.getBlockNumbered(mbb_num.getValue());
+    auto pred_num = get_linear_id(clone.Predecessor);
+    auto pred_mbb = MF.getBlockNumbered(pred_num.getValue());
+    if (pred_mbb->getFallThrough() != mbb) {
+      WithColor::warning() << MF.getName().str() << '\n';
+      WithColor::warning() << "Clone is not a fallthrough! " << clone.Predecessor.MBBNumber
+                         << "#" << clone.Predecessor.CloneNumber << " "
+                         << clone.Original.MBBNumber << "#"
+                         << clone.Original.CloneNumber << '\n'
+                         << "clone id " << clone.Clone.MBBNumber << "#"
+                         << clone.Clone.CloneNumber << '\n';
+    }
+  }
 
   return true;
 }

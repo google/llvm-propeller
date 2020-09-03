@@ -18,6 +18,7 @@ ifeq '${CREATE_LLVM_PROF_DIR}' ''
 CREATE_LLVM_PROF_DIR=$(shell pwd)/..
 endif
 
+PATH_INDEX ?= -1
 DO_PLO     ?= 0
 ENABLE_EH  ?= OFF
 BUILD_TYPE ?= Release
@@ -389,13 +390,13 @@ plain.perfdata: plain-compiler run-commands.sh
 plain.afdo: plain-compiler plain.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --profile=$(DDIR)/plain.perfdata --logtostderr --out=$(DDIR)/$@
 
-pgo-labels-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --path_optimize=false --logtostderr 2>&1 | tee $@.autolog ; \
+pgo-labels-compiler.propeller cspgo-compiler.propeller pgo-bbinfo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
+	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --path_optimize=false --path_index=0 --logtostderr 2>&1 | tee $@.autolog ; \
 	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 
 pgo-labels-compiler.paths.propeller: %-compiler.paths.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
+	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --path_optimize=false --path_index=$(PATH_INDEX) --logtostderr 2>&1 | tee $@.autolog ; \
 	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 
@@ -449,7 +450,7 @@ run-commands.sh: benchmark-dir.o | stage1-compiler
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
 	echo "export CCP=\$$(cd \$$(dirname \$$1); pwd)/\$$(basename \$$1)" > $@
-	echo "head -n 500 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
+	echo "head -n 150 commands | xargs -P5 -L1 -d \"\\n\" bash -x -c" \
                 >> $@
 	chmod +x $@
 

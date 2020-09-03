@@ -57,8 +57,10 @@ MachineBasicBlock::~MachineBasicBlock() {
 
 unsigned MachineBasicBlock::getBBInfoMetadata() const {
   const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
+  bool has_indirect_jump = !empty() && rbegin()->isIndirectBranch();
   return ((unsigned)isReturnBlock()) |
-         ((!empty() && TII->isTailCall(back())) << 1) | (isEHPad() << 2);
+         ((!empty() && TII->isTailCall(back())) << 1) | (isEHPad() << 2)
+         | (has_indirect_jump << 3);
 }
 
 MCSymbol *MachineBasicBlock::getLabelSymbol() const {
