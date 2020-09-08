@@ -340,7 +340,7 @@ public:
 
   MCSection *getStackSizesSection(const MCSection &TextSec) const;
 
-  MCSection *getBBInfoSection(const MCSection &TextSec) const;
+  MCSection *getBBAddrMapSection(const MCSection &TextSec) const;
 
   // ELF specific sections.
   MCSection *getDataRelROSection() const { return DataRelROSection; }

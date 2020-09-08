@@ -341,30 +341,6 @@ void MachineFunction::RenumberBlocks(MachineBasicBlock *MBB) {
   MBBNumbering.resize(BlockNo);
 }
 
-/// This is used with -fbasic-block-sections or -fbasicblock-labels option.
-/// A unary encoding of basic block labels is done to keep ".strtab" sizes
-/// small.
-void MachineFunction::createBBLabels() {
-  const TargetInstrInfo *TII = getSubtarget().getInstrInfo();
-  this->BBSectionsSymbolPrefix.resize(getNumBlockIDs(), 'a');
-  for (auto MBBI = begin(), E = end(); MBBI != E; ++MBBI) {
-    assert(
-        (MBBI->getNumber() >= 0 && MBBI->getNumber() < (int)getNumBlockIDs()) &&
-        "BasicBlock number was out of range!");
-    // 'f' or 'F' - Fallthrough block (A block which can fallthrough to its
-    // next). 'r' or 'R' - Return block. 'a' or 'A' - All other blocks.
-    char type = 'a';
-    if (MBBI->isReturnBlock() && !TII->isTailCall(MBBI->back()))
-      type = 'r';
-    else if (MBBI->canFallThrough())
-      type = 'a'; // CHANGE THIS to 'f' later to fix b/154263650
-    // We use the uppercase letter to indicate EH block.
-    if (MBBI->isEHPad())
-      type = toUpper(type);
-    BBSectionsSymbolPrefix[MBBI->getNumber()] = type;
-  }
-}
-
 /// This method iterates over the basic blocks and assigns their IsBeginSection
 /// and IsEndSection fields. This must be called after MBB layout is finalized
 /// and the SectionID's are assigned to MBBs.
