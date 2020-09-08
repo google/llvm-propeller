@@ -321,6 +321,9 @@ public:
   /// Check if operand \p OpIdx is zero.
   bool matchOperandIsZero(MachineInstr &MI, unsigned OpIdx);
 
+  /// Check if operand \p OpIdx is undef.
+  bool matchOperandIsUndef(MachineInstr &MI, unsigned OpIdx);
+
   /// Erase \p MI
   bool eraseInst(MachineInstr &MI);
 
@@ -356,8 +359,8 @@ public:
   bool matchRedundantSExtInReg(MachineInstr &MI);
 
   /// Combine inverting a result of a compare into the opposite cond code.
-  bool matchNotCmp(MachineInstr &MI, Register &CmpReg);
-  bool applyNotCmp(MachineInstr &MI, Register &CmpReg);
+  bool matchNotCmp(MachineInstr &MI, SmallVectorImpl<Register> &RegsToNegate);
+  bool applyNotCmp(MachineInstr &MI, SmallVectorImpl<Register> &RegsToNegate);
 
   /// Try to transform \p MI by using all of the above
   /// combine functions. Returns true if changed.

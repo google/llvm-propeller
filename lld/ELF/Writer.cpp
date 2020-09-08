@@ -1373,9 +1373,11 @@ static DenseMap<const InputSectionBase *, int> buildSectionOrder() {
       addSym(*sym);
 
   for (InputFile *file : objectFiles)
-    for (Symbol *sym : file->getSymbols())
-      if (sym->isLocal())
-        addSym(*sym);
+    for (Symbol *sym : file->getSymbols()) {
+      if (!sym->isLocal())
+        break;
+      addSym(*sym);
+    }
 
   if (config->warnSymbolOrdering)
     for (auto orderEntry : symbolOrder)
