@@ -143,11 +143,6 @@ static const char *const CodeViewLineTablesGroupName = "linetables";
 static const char *const CodeViewLineTablesGroupDescription =
   "CodeView Line Tables";
 
-static cl::opt<bool> EmitBBInfoSection(
-    "bb-info-section",
-    cl::desc("Emit a section containing basic block metadata."),
-    cl::init(false));
-
 STATISTIC(EmittedInsts, "Number of machine instrs printed");
 
 char AsmPrinter::ID = 0;
@@ -3141,8 +3136,7 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
       MBB.pred_empty() && (&MBB != &this->MF->front()) && MBB.isBeginSection();
   if ((MBB.pred_empty() && !UnreachableMBBSection) ||
       (!MF->hasBBLabels() && isBlockOnlyReachableByFallthrough(&MBB) &&
-       !EmitBBInfoSection && !MBB.isEHFuncletEntry() &&
-       !MBB.hasLabelMustBeEmitted())) {
+       !MBB.isEHFuncletEntry() && !MBB.hasLabelMustBeEmitted())) {
     if (isVerbose()) {
       // NOTE: Want this comment at start of line, don't emit with AddComment.
       OutStreamer->emitRawComment(" %bb." + Twine(MBB.getNumber()) + ":",
