@@ -114,9 +114,9 @@ static cl::opt<unsigned>
                        cl::desc("The number of memory instructions to scan for "
                                 "dead store elimination (default = 100)"));
 static cl::opt<unsigned> MemorySSAUpwardsStepLimit(
-    "dse-memoryssa-walklimit", cl::init(70), cl::Hidden,
+    "dse-memoryssa-walklimit", cl::init(90), cl::Hidden,
     cl::desc("The maximum number of steps while walking upwards to find "
-             "MemoryDefs that may be killed (default = 70)"));
+             "MemoryDefs that may be killed (default = 90)"));
 
 static cl::opt<unsigned> MemorySSAPartialStoreLimit(
     "dse-memoryssa-partial-store-limit", cl::init(5), cl::Hidden,
@@ -1828,29 +1828,42 @@ struct DSEState {
     MemoryAccess *Current = StartAccess;
     Instruction *KillingI = KillingDef->getMemoryInst();
     bool StepAgain;
-    LLVM_DEBUG(dbgs() << "  trying to get dominating access for "
-                      << *StartAccess << "\n");
+    LLVM_DEBUG(dbgs() << "  trying to get dominating access\n");
 
     // Find the next clobbering Mod access for DefLoc, starting at StartAccess.
     do {
       StepAgain = false;
+      LLVM_DEBUG({
+        dbgs() << "   visiting " << *Current;
+        if (!MSSA.isLiveOnEntryDef(Current) && isa<MemoryUseOrDef>(Current))
+          dbgs() << " (" << *cast<MemoryUseOrDef>(Current)->getMemoryInst()
+                 << ")";
+        dbgs() << "\n";
+      });
+
       // Reached TOP.
-      if (MSSA.isLiveOnEntryDef(Current))
+      if (MSSA.isLiveOnEntryDef(Current)) {
+        LLVM_DEBUG(dbgs() << "   ...  found LiveOnEntryDef\n");
         return None;
+      }
 
       // Cost of a step. Accesses in the same block are more likely to be valid
       // candidates for elimination, hence consider them cheaper.
       unsigned StepCost = KillingDef->getBlock() == Current->getBlock()
                               ? MemorySSASameBBStepCost
                               : MemorySSAOtherBBStepCost;
-      if (WalkerStepLimit <= StepCost)
+      if (WalkerStepLimit <= StepCost) {
+        LLVM_DEBUG(dbgs() << "   ...  hit walker step limit\n");
         return None;
+      }
       WalkerStepLimit -= StepCost;
 
       // Return for MemoryPhis. They cannot be eliminated directly and the
       // caller is responsible for traversing them.
-      if (isa<MemoryPhi>(Current))
+      if (isa<MemoryPhi>(Current)) {
+        LLVM_DEBUG(dbgs() << "   ...  found MemoryPhi\n");
         return Current;
+      }
 
       // Below, check if CurrentDef is a valid candidate to be eliminated by
       // KillingDef. If it is not, check the next candidate.
@@ -1885,6 +1898,18 @@ struct DSEState {
           (Cache.KnownReads.contains(Current) ||
            isReadClobber(DefLoc, CurrentI))) {
         Cache.KnownReads.insert(Current);
+        return None;
+      }
+
+      // Quick check if there are direct uses that are read-clobbers.
+      if (any_of(Current->uses(), [this, &DefLoc, StartAccess](Use &U) {
+            if (auto *UseOrDef = dyn_cast<MemoryUseOrDef>(U.getUser()))
+              return !MSSA.dominates(StartAccess, UseOrDef) &&
+                     isReadClobber(DefLoc, UseOrDef->getMemoryInst());
+            return false;
+          })) {
+        Cache.KnownReads.insert(Current);
+        LLVM_DEBUG(dbgs() << "   ...  found a read clobber\n");
         return None;
       }
 
@@ -2022,6 +2047,14 @@ struct DSEState {
       // MemoryAccesses. We do not have to check it's users.
       if (isMemTerminator(DefLoc, UseInst))
         continue;
+
+      if (UseInst->mayThrow() && !isInvisibleToCallerBeforeRet(DefUO)) {
+        LLVM_DEBUG(dbgs() << "  ... found throwing instruction\n");
+        Cache.KnownReads.insert(UseAccess);
+        Cache.KnownReads.insert(StartAccess);
+        Cache.KnownReads.insert(EarlierAccess);
+        return None;
+      }
 
       // Uses which may read the original MemoryDef mean we cannot eliminate the
       // original MD. Stop walk.
