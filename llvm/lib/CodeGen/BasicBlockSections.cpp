@@ -278,10 +278,10 @@ void llvm::sortBasicBlocksAndUpdateBranches(
 
   // If any of the BBs have their address taken, we place all basic blocks in
   // one section.
-  for(auto &MBB : MF) {
+  for (auto &MBB : MF) {
     if (MBB.hasAddressTaken()) {
       errs() << "ADDRESS TAKEN: " << MF.getName() << "\n";
-      for(auto &MBB: MF)
+      for (auto &MBB : MF)
         MBB.setSectionID(0);
       break;
     }
