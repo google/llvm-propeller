@@ -325,7 +325,6 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
       !getBBClusterInfoForFunction(MF, FuncAliasMap, ProgramBBClusterInfo,
                                    FuncBBClusterInfo))
     return true;
-
   MF.setBBSectionsType(BBSectionsType);
   MF.createBBLabels();
   assignSections(MF, FuncBBClusterInfo);
@@ -368,7 +367,6 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
   };
 
   sortBasicBlocksAndUpdateBranches(MF, Comparator);
-
   return true;
 }
 

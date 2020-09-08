@@ -16,6 +16,7 @@
 
 #include "../PassDetail.h"
 #include "mlir/Dialect/Affine/EDSC/Intrinsics.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/EDSC/Builders.h"
 #include "mlir/Dialect/SCF/EDSC/Intrinsics.h"
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"
@@ -33,6 +34,8 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"
+
+#define ALIGNMENT_SIZE 128
 
 using namespace mlir;
 using namespace mlir::edsc;
@@ -203,7 +206,10 @@ Value NDTransferOpHelper<ConcreteOp>::emitInBoundsCondition(
   Value inBoundsCondition;
   majorIvsPlusOffsets.reserve(majorIvs.size());
   unsigned idx = 0;
-  for (auto it : llvm::zip(majorIvs, majorOffsets, memrefBounds.getUbs())) {
+  SmallVector<Value, 4> bounds =
+      linalg::applyMapToValues(rewriter, xferOp.getLoc(),
+                               xferOp.permutation_map(), memrefBounds.getUbs());
+  for (auto it : llvm::zip(majorIvs, majorOffsets, bounds)) {
     Value iv = std::get<0>(it), off = std::get<1>(it), ub = std::get<2>(it);
     using namespace mlir::edsc::op;
     majorIvsPlusOffsets.push_back(iv + off);
@@ -224,9 +230,12 @@ static Value setAllocAtFunctionEntry(MemRefType memRefMinorVectorType,
                                      Operation *op) {
   auto &b = ScopedContext::getBuilderRef();
   OpBuilder::InsertionGuard guard(b);
-  b.setInsertionPointToStart(&op->getParentOfType<FuncOp>().front());
-  Value res =
-      std_alloca(memRefMinorVectorType, ValueRange{}, b.getI64IntegerAttr(128));
+  Operation *scope =
+      op->getParentWithTrait<OpTrait::AutomaticAllocationScope>();
+  assert(scope && "Expected op to be inside automatic allocation scope");
+  b.setInsertionPointToStart(&scope->getRegion(0).front());
+  Value res = std_alloca(memRefMinorVectorType, ValueRange{},
+                         b.getI64IntegerAttr(ALIGNMENT_SIZE));
   return res;
 }
 
@@ -568,7 +577,8 @@ LogicalResult VectorTransferRewriter<TransferReadOp>::matchAndRewrite(
     steps.push_back(std_constant_index(step));
 
   // 2. Emit alloc-copy-load-dealloc.
-  Value tmp = std_alloc(tmpMemRefType(transfer));
+  Value tmp = std_alloc(tmpMemRefType(transfer), ValueRange{},
+                        rewriter.getI64IntegerAttr(ALIGNMENT_SIZE));
   StdIndexedValue local(tmp);
   Value vec = vector_type_cast(tmp);
   loopNestBuilder(lbs, ubs, steps, [&](ValueRange loopIvs) {
@@ -641,7 +651,8 @@ LogicalResult VectorTransferRewriter<TransferWriteOp>::matchAndRewrite(
     steps.push_back(std_constant_index(step));
 
   // 2. Emit alloc-store-copy-dealloc.
-  Value tmp = std_alloc(tmpMemRefType(transfer));
+  Value tmp = std_alloc(tmpMemRefType(transfer), ValueRange{},
+                        rewriter.getI64IntegerAttr(ALIGNMENT_SIZE));
   StdIndexedValue local(tmp);
   Value vec = vector_type_cast(tmp);
   std_store(vectorValue, vec);

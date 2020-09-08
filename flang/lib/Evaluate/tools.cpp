@@ -661,11 +661,6 @@ std::optional<Expr<SomeType>> ConvertToType(
 
 std::optional<Expr<SomeType>> ConvertToType(
     const Symbol &symbol, Expr<SomeType> &&x) {
-  if (int xRank{x.Rank()}; xRank > 0) {
-    if (symbol.Rank() != xRank) {
-      return std::nullopt;
-    }
-  }
   if (auto symType{DynamicType::From(symbol)}) {
     return ConvertToType(*symType, std::move(x));
   }
@@ -702,6 +697,10 @@ bool IsAssumedRank(const ActualArgument &arg) {
 
 bool IsProcedure(const Expr<SomeType> &expr) {
   return std::holds_alternative<ProcedureDesignator>(expr.u);
+}
+bool IsFunction(const Expr<SomeType> &expr) {
+  const auto *designator{std::get_if<ProcedureDesignator>(&expr.u)};
+  return designator && designator->GetType().has_value();
 }
 
 bool IsProcedurePointer(const Expr<SomeType> &expr) {

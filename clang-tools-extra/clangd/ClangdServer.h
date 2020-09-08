@@ -111,6 +111,9 @@ public:
     /// on background threads. The index is stored in the project root.
     bool BackgroundIndex = false;
 
+    /// Store refs to main-file symbols in the index.
+    bool CollectMainFileRefs = false;
+
     /// If set, use this index to augment code completion results.
     SymbolIndex *StaticIndex = nullptr;
 
@@ -128,7 +131,7 @@ public:
     bool BuildRecoveryAST = true;
 
     /// If true, turn on the `-frecovery-ast-type` clang flag.
-    bool PreserveRecoveryASTType = false;
+    bool PreserveRecoveryASTType = true;
 
     /// Clangd's workspace root. Relevant for "workspace" operations not bound
     /// to a particular file.
