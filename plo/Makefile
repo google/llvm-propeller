@@ -136,7 +136,7 @@ relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
 random_opt                 := -Wl,--propeller-opt=reorder-blocks-random
 distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--propeller-backward-jump-distance=2000
-symbol_order_opt           := -Wl,--symbol-ordering-file=$(DDIR)/pgo-labels-compiler.order
+symbol_order_opt           := -Wl,--symbol-ordering-file=$(DDIR)/pgo-labels-compiler.propeller.order
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt -Wl,-build-id
 split_funcs_only           := -Wl,-propeller-opt=no-reorder-blocks -Wl,-propeller-opt=no-reorder-funcs
 lto_bb_sections_all_opt    := -Wl,--lto-basic-block-sections=all
@@ -371,7 +371,8 @@ plain.afdo: plain-compiler plain.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --profile=$(DDIR)/plain.perfdata --logtostderr --out=$(DDIR)/$@
 
 pgo-labels-compiler.propeller pgo-bbinfo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@ --propeller_symorder="$(shell echo $@ | sed -Ee 's!\.propeller$$!\.order!')" --logtostderr 2>&1 | tee $@.autolog ; \
+	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary="`readlink -f $<`" --format=propeller --profile="$(word 2,$^)" \
+		--out="$(DDIR)/$@" --propeller_symorder="$(DDIR)/$@.order" --logtostderr 2>&1 | tee $@.autolog
 
 pgo-labels-compiler.yaml cspgo-compiler.yaml pgo-relocs-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
@@ -429,7 +430,7 @@ run-commands.sh: benchmark-dir.o | stage1-compiler
 
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	@{ echo "Running $@ for ${ITERATIONS} iterations..." ; \
-		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.all_branches:u,br_inst_retired.conditional:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_hit:u,icache_64b.iftag_miss:u,icache_16b.ifdata_stall:u,itlb_misses.miss_causes_a_walk:u,itlb_misses.stlb_hit:u,idq.dsb_uops:u,idq.mite_uops:u,idq.ms_uops:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
+		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.all_branches:u,br_inst_retired.conditional:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_hit:u,icache_64b.iftag_miss:u,icache_16b.ifdata_stall:u,frontend_retired.itlb_miss:u,idq.dsb_uops:u,idq.mite_uops:u,idq.ms_uops:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
 		awk 'NF {print "${REPOHASH},"$$0}' .$@.pmu ; \
 	} | tee -a $@.result
 
@@ -577,7 +578,7 @@ define append_git_status
 endef
 
 check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plolist-ip.result $(PLO_PMU_RESULTS) $(BOLT_PMU_RESULT)
-	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "itlb_misses.miss_causes_a_walk:u" ) ; \
+	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "frontend_retired.itlb_miss:u" ) ; \
 	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
 	printf "VERSIONS" >> $@.${REPOHASH} ; \
 	for event in "$${PMU_EVENTS[@]}" ; do \
