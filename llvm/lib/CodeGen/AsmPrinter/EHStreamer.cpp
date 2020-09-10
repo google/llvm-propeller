@@ -355,8 +355,9 @@ void EHStreamer::computeCallSiteTable(
       // the region following the try-range.
       if (SawPotentiallyThrowing && !IsSJLJ) {
         CallSiteEntry Site = {LastLabel,
-                              MBB.isEndSection() ? CallSiteRanges.back().FragmentEndLabel
-                                                 : nullptr,
+                              MBB.isEndSection()
+                                  ? CallSiteRanges.back().FragmentEndLabel
+                                  : nullptr,
                               nullptr, 0};
         CallSites.push_back(Site);
         SawPotentiallyThrowing = false;
@@ -569,7 +570,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     const CallSiteRange *LandingPadRange = nullptr;
     for (const CallSiteRange &CSRange : *OptCallSiteRanges) {
       if (CSRange.IsLPRange) {
-        assert(LandingPadRange==nullptr && "All landing pads must be in a single callsite range.");
+        assert(LandingPadRange == nullptr &&
+               "All landing pads must be in a single callsite range.");
         LandingPadRange = &CSRange;
       }
     }

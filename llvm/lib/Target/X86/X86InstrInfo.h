@@ -326,7 +326,8 @@ public:
                               TargetInstrInfo::MachineBranchPredicate &MBP,
                               bool AllowModify = false) const override;
 
-  void insertNoop (MachineBasicBlock &MBB, MachineBasicBlock::iterator MI) const override;
+  void insertNoop(MachineBasicBlock &MBB,
+                  MachineBasicBlock::iterator MI) const override;
 
   unsigned removeBranch(MachineBasicBlock &MBB,
                         int *BytesRemoved = nullptr) const override;

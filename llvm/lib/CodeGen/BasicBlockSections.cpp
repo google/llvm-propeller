@@ -293,7 +293,8 @@ void llvm::sortBasicBlocksAndUpdateBranches(
       // To differentiate this we emit a nop before the EH_LABEL associated
       // with this landing pad.
       MachineBasicBlock::iterator MI = MBB.begin();
-      while(!MI->isEHLabel()) ++MI;
+      while (!MI->isEHLabel())
+        ++MI;
       MF.getSubtarget().getInstrInfo()->insertNoop(MBB, MI);
       break;
     }

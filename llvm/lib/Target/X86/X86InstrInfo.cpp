@@ -87,7 +87,8 @@ X86InstrInfo::X86InstrInfo(X86Subtarget &STI)
 }
 
 // Emit a 1-byte noop at the specified position.
-void X86InstrInfo::insertNoop(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI) const {
+void X86InstrInfo::insertNoop(MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator MI) const {
   DebugLoc DL;
   BuildMI(MBB, MI, DL, get(X86::NOOP));
 }
