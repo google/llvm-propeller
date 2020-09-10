@@ -302,9 +302,9 @@ struct Allocator {
     // This could be a user-facing chunk (with redzones), or some internal
     // housekeeping chunk, like TransferBatch. Start by assuming the former.
     AsanChunk *ac = GetAsanChunk((void *)chunk);
-    uptr allocated_size = allocator.GetActuallyAllocatedSize((void *)ac);
-    if (atomic_load(&ac->chunk_state, memory_order_acquire) ==
-        CHUNK_ALLOCATED) {
+    uptr allocated_size = allocator.GetActuallyAllocatedSize((void *)chunk);
+    if (ac && atomic_load(&ac->chunk_state, memory_order_acquire) ==
+                  CHUNK_ALLOCATED) {
       uptr beg = ac->Beg();
       uptr end = ac->Beg() + ac->UsedSize(true);
       uptr chunk_end = chunk + allocated_size;
@@ -354,17 +354,18 @@ struct Allocator {
 
   // -------------------- Helper methods. -------------------------
   uptr ComputeRZLog(uptr user_requested_size) {
-    u32 rz_log =
-      user_requested_size <= 64        - 16   ? 0 :
-      user_requested_size <= 128       - 32   ? 1 :
-      user_requested_size <= 512       - 64   ? 2 :
-      user_requested_size <= 4096      - 128  ? 3 :
-      user_requested_size <= (1 << 14) - 256  ? 4 :
-      user_requested_size <= (1 << 15) - 512  ? 5 :
-      user_requested_size <= (1 << 16) - 1024 ? 6 : 7;
-    u32 min_rz = atomic_load(&min_redzone, memory_order_acquire);
-    u32 max_rz = atomic_load(&max_redzone, memory_order_acquire);
-    return Min(Max(rz_log, RZSize2Log(min_rz)), RZSize2Log(max_rz));
+    u32 rz_log = user_requested_size <= 64 - 16            ? 0
+                 : user_requested_size <= 128 - 32         ? 1
+                 : user_requested_size <= 512 - 64         ? 2
+                 : user_requested_size <= 4096 - 128       ? 3
+                 : user_requested_size <= (1 << 14) - 256  ? 4
+                 : user_requested_size <= (1 << 15) - 512  ? 5
+                 : user_requested_size <= (1 << 16) - 1024 ? 6
+                                                           : 7;
+    u32 hdr_log = RZSize2Log(RoundUpToPowerOfTwo(sizeof(ChunkHeader)));
+    u32 min_log = RZSize2Log(atomic_load(&min_redzone, memory_order_acquire));
+    u32 max_log = RZSize2Log(atomic_load(&max_redzone, memory_order_acquire));
+    return Min(Max(rz_log, Max(min_log, hdr_log)), Max(max_log, hdr_log));
   }
 
   static uptr ComputeUserRequestedAlignmentLog(uptr user_requested_alignment) {
@@ -384,6 +385,10 @@ struct Allocator {
   // We have an address between two chunks, and we want to report just one.
   AsanChunk *ChooseChunk(uptr addr, AsanChunk *left_chunk,
                          AsanChunk *right_chunk) {
+    if (!left_chunk)
+      return right_chunk;
+    if (!right_chunk)
+      return left_chunk;
     // Prefer an allocated chunk over freed chunk and freed chunk
     // over available chunk.
     u8 left_state = atomic_load(&left_chunk->chunk_state, memory_order_relaxed);
@@ -730,41 +735,31 @@ struct Allocator {
   // -------------------------- Chunk lookup ----------------------
 
   // Assumes alloc_beg == allocator.GetBlockBegin(alloc_beg).
+  // Returns nullptr if AsanChunk is not yet initialized just after
+  // get_allocator().Allocate(), or is being destroyed just before
+  // get_allocator().Deallocate().
   AsanChunk *GetAsanChunk(void *alloc_beg) {
     if (!alloc_beg)
       return nullptr;
+    AsanChunk *p = nullptr;
     if (!allocator.FromPrimary(alloc_beg)) {
       uptr *meta = reinterpret_cast<uptr *>(allocator.GetMetaData(alloc_beg));
-      AsanChunk *m = reinterpret_cast<AsanChunk *>(meta[1]);
-      return m;
+      p = reinterpret_cast<AsanChunk *>(meta[1]);
+    } else {
+      uptr *alloc_magic = reinterpret_cast<uptr *>(alloc_beg);
+      if (alloc_magic[0] == kAllocBegMagic)
+        p = reinterpret_cast<AsanChunk *>(alloc_magic[1]);
+      else
+        p = reinterpret_cast<AsanChunk *>(alloc_beg);
     }
-    uptr *alloc_magic = reinterpret_cast<uptr *>(alloc_beg);
-    if (alloc_magic[0] == kAllocBegMagic)
-      return reinterpret_cast<AsanChunk *>(alloc_magic[1]);
-    // FIXME: This is either valid small chunk with tiny redzone or invalid
-    // chunk which is beeing allocated/deallocated. The latter case should
-    // return nullptr like secondary allocator does.
-    return reinterpret_cast<AsanChunk *>(alloc_beg);
-  }
-
-  AsanChunk *GetAsanChunkDebug(void *alloc_beg) {
-    if (!alloc_beg)
+    if (!p)
       return nullptr;
-    if (!allocator.FromPrimary(alloc_beg)) {
-      uptr *meta = reinterpret_cast<uptr *>(allocator.GetMetaData(alloc_beg));
-      AsanChunk *m = reinterpret_cast<AsanChunk *>(meta[1]);
-      Printf("GetAsanChunkDebug1 alloc_beg %p meta %p m %p\n", alloc_beg, meta,
-             m);
-      return m;
-    }
-    uptr *alloc_magic = reinterpret_cast<uptr *>(alloc_beg);
-    Printf(
-        "GetAsanChunkDebug2 alloc_beg %p  alloc_magic %p alloc_magic[0] %p "
-        "alloc_magic[1] %p\n",
-        alloc_beg, alloc_magic, alloc_magic[0], alloc_magic[1]);
-    if (alloc_magic[0] == kAllocBegMagic)
-      return reinterpret_cast<AsanChunk *>(alloc_magic[1]);
-    return reinterpret_cast<AsanChunk *>(alloc_beg);
+    u8 state = atomic_load(&p->chunk_state, memory_order_relaxed);
+    // It does not guaranty that Chunk is initialized, but it's
+    // definitely not for any other value.
+    if (state == CHUNK_ALLOCATED || state == CHUNK_QUARANTINE)
+      return p;
+    return nullptr;
   }
 
   AsanChunk *GetAsanChunkByAddr(uptr p) {
@@ -779,14 +774,6 @@ struct Allocator {
     return GetAsanChunk(alloc_beg);
   }
 
-  AsanChunk *GetAsanChunkByAddrFastLockedDebug(uptr p) {
-    void *alloc_beg =
-        allocator.GetBlockBeginFastLockedDebug(reinterpret_cast<void *>(p));
-    Printf("GetAsanChunkByAddrFastLockedDebug p %p alloc_beg %p\n", p,
-           alloc_beg);
-    return GetAsanChunkDebug(alloc_beg);
-  }
-
   uptr AllocationSize(uptr p) {
     AsanChunk *m = GetAsanChunkByAddr(p);
     if (!m) return 0;
@@ -798,9 +785,8 @@ struct Allocator {
 
   AsanChunkView FindHeapChunkByAddress(uptr addr) {
     AsanChunk *m1 = GetAsanChunkByAddr(addr);
-    if (!m1) return AsanChunkView(m1);
     sptr offset = 0;
-    if (AsanChunkView(m1).AddrIsAtLeft(addr, 1, &offset)) {
+    if (!m1 || AsanChunkView(m1).AddrIsAtLeft(addr, 1, &offset)) {
       // The address is in the chunk's left redzone, so maybe it is actually
       // a right buffer overflow from the other chunk to the left.
       // Search a bit to the left to see if there is another chunk.
@@ -1090,38 +1076,19 @@ uptr PointsIntoChunk(void* p) {
   return 0;
 }
 
-// Debug code. Delete once issue #1193 is chased down.
-extern "C" SANITIZER_WEAK_ATTRIBUTE const char *__lsan_current_stage;
-
-void GetUserBeginDebug(uptr chunk) {
-  Printf("GetUserBeginDebug1 chunk %p\n", chunk);
-  __asan::AsanChunk *m =
-      __asan::instance.GetAsanChunkByAddrFastLockedDebug(chunk);
-  Printf("GetUserBeginDebug2 m     %p\n", m);
-}
-
 uptr GetUserBegin(uptr chunk) {
   __asan::AsanChunk *m = __asan::instance.GetAsanChunkByAddrFastLocked(chunk);
-  if (!m) {
-    Printf(
-        "ASAN is about to crash with a CHECK failure.\n"
-        "The ASAN developers are trying to chase down this bug,\n"
-        "so if you've encountered this bug please let us know.\n"
-        "See also: https://github.com/google/sanitizers/issues/1193\n"
-        "Internal ref b/149237057\n"
-        "chunk: %p caller %p __lsan_current_stage %s\n",
-        chunk, GET_CALLER_PC(), __lsan_current_stage);
-    GetUserBeginDebug(chunk);
-  }
-  CHECK(m);
-  return m->Beg();
+  return m ? m->Beg() : 0;
 }
 
 LsanMetadata::LsanMetadata(uptr chunk) {
-  metadata_ = reinterpret_cast<void *>(chunk - __asan::kChunkHeaderSize);
+  metadata_ = chunk ? reinterpret_cast<void *>(chunk - __asan::kChunkHeaderSize)
+                    : nullptr;
 }
 
 bool LsanMetadata::allocated() const {
+  if (!metadata_)
+    return false;
   __asan::AsanChunk *m = reinterpret_cast<__asan::AsanChunk *>(metadata_);
   return atomic_load(&m->chunk_state, memory_order_relaxed) ==
          __asan::CHUNK_ALLOCATED;
