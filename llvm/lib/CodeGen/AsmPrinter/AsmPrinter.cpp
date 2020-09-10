@@ -1205,6 +1205,9 @@ void AsmPrinter::emitFunctionBody() {
         MBBSectionRanges[MBB.getSectionIDNum()] =
             MBBSectionRange{CurrentSectionBeginSym, MBB.getEndSymbol()};
       }
+      // If this is the end of the section, nullify the exception symbol to
+      // ensure a new symbol is created for the next basicblock section.
+      CurExceptionSym = nullptr;
     }
     emitBasicBlockEnd(MBB);
   }
@@ -1797,6 +1800,7 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   CurrentSectionBeginSym = nullptr;
   MBBSectionRanges.clear();
   CurExceptionSym = nullptr;
+  ExceptionSymbols.clear();
   bool NeedsLocalForSize = MAI->needsLocalForSize();
   if (F.hasFnAttribute("patchable-function-entry") ||
       F.hasFnAttribute("function-instrument") ||

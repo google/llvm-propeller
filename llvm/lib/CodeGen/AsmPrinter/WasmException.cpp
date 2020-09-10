@@ -76,6 +76,7 @@ void WasmException::endFunction(const MachineFunction *MF) {
 // information.
 void WasmException::computeCallSiteTable(
     SmallVectorImpl<CallSiteEntry> &CallSites,
+    Optional<SmallVector<CallSiteRange, 4>> &OptCallSiteRanges,
     const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
     const SmallVectorImpl<unsigned> &FirstActions) {
   MachineFunction &MF = *Asm->MF;

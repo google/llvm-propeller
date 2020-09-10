@@ -286,6 +286,18 @@ void llvm::sortBasicBlocksAndUpdateBranches(
   // Set IsBeginSection and IsEndSection according to the assigned section IDs.
   MF.assignBeginEndSections();
 
+  for (auto &MBB : MF)
+    if (MBB.isBeginSection() && MBB.isEHPad()) {
+      // If an eh pad begins a section, it will have zero offset relative to
+      // @LPStart. However, zero also means a call site has "no landing pad".
+      // To differentiate with this, we emit a nop before the EH_LABEL
+      // associated with this landing pad.
+      MachineBasicBlock::iterator MI = MBB.begin();
+      while(!MI->isEHLabel()) ++MI;
+      MF.getSubtarget().getInstrInfo()->insertNoop(MBB, MI);
+      break;
+    }
+
   // After reordering basic blocks, we must update basic block branches to
   // insert explicit fallthrough branches when required and optimize branches
   // when possible.
