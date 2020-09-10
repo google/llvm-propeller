@@ -32,7 +32,7 @@ protected:
   // Compute the call site table for wasm EH.
   void computeCallSiteTable(
       SmallVectorImpl<CallSiteEntry> &CallSites,
-      Optional<SmallVector<CallSiteRange, 4>> &OptCallSiteRanges,
+      SmallVectorImpl<CallSiteRange> &CallSiteRanges,
       const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
       const SmallVectorImpl<unsigned> &FirstActions) override;
 };

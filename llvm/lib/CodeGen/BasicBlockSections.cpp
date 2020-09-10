@@ -286,24 +286,30 @@ void llvm::sortBasicBlocksAndUpdateBranches(
   // Set IsBeginSection and IsEndSection according to the assigned section IDs.
   MF.assignBeginEndSections();
 
-  for (auto &MBB : MF) {
-    if (MBB.isBeginSection() && MBB.isEHPad()) {
-      // If an eh pad begins a section, it will have zero offset relative to
-      // @LPStart. However, zero means that a call site has "no landing pad".
-      // To differentiate this we emit a nop before the EH_LABEL associated
-      // with this landing pad.
-      MachineBasicBlock::iterator MI = MBB.begin();
-      while (!MI->isEHLabel())
-        ++MI;
-      MF.getSubtarget().getInstrInfo()->insertNoop(MBB, MI);
-      break;
-    }
-  }
-
   // After reordering basic blocks, we must update basic block branches to
   // insert explicit fallthrough branches when required and optimize branches
   // when possible.
   updateBranches(MF, PreLayoutFallThroughs);
+}
+
+// If the exception section begins with a landing pad, that landing pad will
+// assume a zero offset (relative to @LPStart) in the LSDA. However, a value of
+// zero implies "no landing pad." This function inserts a NOP just before the EH
+// pad label to ensure a nonzero offset. Returns true if padding is not needed.
+bool llvm::avoidZeroOffsetLandingPad(MachineFunction &MF) {
+  for (auto &MBB : MF) {
+    if (MBB.isBeginSection() && MBB.isEHPad()) {
+      MachineBasicBlock::iterator MI = MBB.begin();
+      while (!MI->isEHLabel())
+        ++MI;
+      MCInst Noop;
+      MF.getSubtarget().getInstrInfo()->getNoop(Noop);
+      BuildMI(MBB, MI, DebugLoc(),
+              MF.getSubtarget().getInstrInfo()->get(Noop.getOpcode()));
+      return false;
+    }
+  }
+  return true;
 }
 
 bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
@@ -369,6 +375,7 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
   };
 
   sortBasicBlocksAndUpdateBranches(MF, Comparator);
+  avoidZeroOffsetLandingPad(MF);
   return true;
 }
 

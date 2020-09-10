@@ -236,10 +236,9 @@ void EHStreamer::computePadMap(
 //      shared across all ranges.
 void EHStreamer::computeCallSiteTable(
     SmallVectorImpl<CallSiteEntry> &CallSites,
-    Optional<SmallVector<CallSiteRange, 4>> &OptCallSiteRanges,
+    SmallVectorImpl<CallSiteRange> &CallSiteRanges,
     const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
     const SmallVectorImpl<unsigned> &FirstActions) {
-  SmallVector<CallSiteRange, 4> CallSiteRanges;
   RangeMapType PadMap;
   computePadMap(LandingPads, PadMap);
 
@@ -365,7 +364,6 @@ void EHStreamer::computeCallSiteTable(
       CallSiteRanges.back().CallSiteEndIdx = CallSites.size();
     }
   }
-  OptCallSiteRanges.emplace(CallSiteRanges);
 }
 
 /// Emit landing pads and actions.
@@ -417,8 +415,8 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
   // Compute the call-site table and call-site ranges.
   SmallVector<CallSiteEntry, 64> CallSites;
-  Optional<SmallVector<CallSiteRange, 4>> OptCallSiteRanges;
-  computeCallSiteTable(CallSites, OptCallSiteRanges, LandingPads, FirstActions);
+  SmallVector<CallSiteRange, 4> CallSiteRanges;
+  computeCallSiteTable(CallSites, CallSiteRanges, LandingPads, FirstActions);
 
   bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
   bool IsWasm = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::Wasm;
@@ -517,7 +515,6 @@ MCSymbol *EHStreamer::emitExceptionTable() {
 
     // emit the LSDA header.
     Asm->emitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
-
     EmitTypeTableRefAndCallSiteTableEndRef();
 
     unsigned idx = 0;
@@ -566,9 +563,11 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     // A missing entry in the call-site table indicates that a call is not
     // supposed to throw.
 
+    assert(CallSiteRanges.size() != 0 && "No call-site ranges!");
+
     // Find the call-site range which includes the landing pads.
     const CallSiteRange *LandingPadRange = nullptr;
-    for (const CallSiteRange &CSRange : *OptCallSiteRanges) {
+    for (const CallSiteRange &CSRange : CallSiteRanges) {
       if (CSRange.IsLPRange) {
         assert(LandingPadRange == nullptr &&
                "All landing pads must be in a single callsite range.");
@@ -590,7 +589,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
     // end label. This offset is used to find the action table.
 
     unsigned Entry = 0;
-    for (const CallSiteRange &CSRange : *OptCallSiteRanges) {
+    for (const CallSiteRange &CSRange : CallSiteRanges) {
       if (CSRange.CallSiteBeginIdx != 0) {
         // Align the call-site range for all ranges except the first. The
         // first range is already aligned due to the exception table alignment.
@@ -601,7 +600,7 @@ MCSymbol *EHStreamer::emitExceptionTable() {
       // Emit the LSDA header.
       // If only one call-site range exists, LPStart is omitted as it is the
       // same as the function entry.
-      if (OptCallSiteRanges->size() == 1) {
+      if (CallSiteRanges.size() == 1) {
         Asm->emitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
       } else if (!Asm->isPositionIndependent()) {
         // For more than one call-site ranges, LPStart must be explicitly

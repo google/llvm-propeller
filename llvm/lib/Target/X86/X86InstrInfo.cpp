@@ -86,13 +86,6 @@ X86InstrInfo::X86InstrInfo(X86Subtarget &STI)
       Subtarget(STI), RI(STI.getTargetTriple()) {
 }
 
-// Emit a 1-byte noop at the specified position.
-void X86InstrInfo::insertNoop(MachineBasicBlock &MBB,
-                              MachineBasicBlock::iterator MI) const {
-  DebugLoc DL;
-  BuildMI(MBB, MI, DL, get(X86::NOOP));
-}
-
 bool
 X86InstrInfo::isCoalescableExtInstr(const MachineInstr &MI,
                                     Register &SrcReg, Register &DstReg,

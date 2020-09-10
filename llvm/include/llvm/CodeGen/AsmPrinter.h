@@ -243,10 +243,10 @@ public:
   // with a given basic block. Falls back to getCurExceptionSym() if no
   // association is found.
   MCSymbol *getExceptionSym(const MachineBasicBlock *MBB) {
-    auto r = ExceptionSymbols.find(MBB);
-    if (r == ExceptionSymbols.end())
+    auto R = ExceptionSymbols.find(MBB);
+    if (R == ExceptionSymbols.end())
       return getCurExceptionSym();
-    return r->second;
+    return R->second;
   }
 
   /// Return information about object file lowering.

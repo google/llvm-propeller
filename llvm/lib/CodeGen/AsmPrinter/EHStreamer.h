@@ -14,7 +14,6 @@
 #define LLVM_LIB_CODEGEN_ASMPRINTER_EHSTREAMER_H
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/CodeGen/AsmPrinterHandler.h"
 #include "llvm/Support/Compiler.h"
 
@@ -107,11 +106,11 @@ protected:
   /// containing the call and zero for the landing pad and the action.  Calls
   /// marked 'nounwind' have no entry and must not be contained in the try-range
   /// of any entry - they form gaps in the table.  Entries must be ordered by
-  /// try-range address. Call-site ranges is only populated for Itanium
+  /// try-range address. CallSiteRanges vector is only populated for Itanium
   /// exception handling.
   virtual void computeCallSiteTable(
       SmallVectorImpl<CallSiteEntry> &CallSites,
-      Optional<SmallVector<CallSiteRange, 4>> &CallSiteRanges,
+      SmallVectorImpl<CallSiteRange> &CallSiteRanges,
       const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
       const SmallVectorImpl<unsigned> &FirstActions);
 
