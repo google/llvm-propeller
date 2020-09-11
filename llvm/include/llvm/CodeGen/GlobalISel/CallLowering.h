@@ -17,8 +17,10 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/TargetCallingConv.h"
 #include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MachineValueType.h"
 #include <cstdint>
@@ -30,11 +32,9 @@ class CallBase;
 class DataLayout;
 class Function;
 class MachineIRBuilder;
-class MachineOperand;
 struct MachinePointerInfo;
 class MachineRegisterInfo;
 class TargetLowering;
-class Type;
 class Value;
 
 class CallLowering {
@@ -208,6 +208,17 @@ protected:
     return static_cast<const XXXTargetLowering *>(TLI);
   }
 
+  /// \returns Flags corresponding to the attributes on the \p ArgIdx-th
+  /// parameter of \p Call.
+  ISD::ArgFlagsTy getAttributesForArgIdx(const CallBase &Call,
+                                         unsigned ArgIdx) const;
+
+  /// Adds flags to \p Flags based off of the attributes in \p Attrs.
+  /// \p OpIdx is the index in \p Attrs to add flags from.
+  void addArgFlagsFromAttributes(ISD::ArgFlagsTy &Flags,
+                                 const AttributeList &Attrs,
+                                 unsigned OpIdx) const;
+
   template <typename FuncInfoTy>
   void setArgFlags(ArgInfo &Arg, unsigned OpIdx, const DataLayout &DL,
                    const FuncInfoTy &FuncInfo) const;
@@ -231,7 +242,7 @@ protected:
                   MachineIRBuilder &MIRBuilder) const;
 
   /// Invoke Handler::assignArg on each of the given \p Args and then use
-  /// \p Callback to move them to the assigned locations.
+  /// \p Handler to move them to the assigned locations.
   ///
   /// \return True if everything has succeeded, false otherwise.
   bool handleAssignments(MachineIRBuilder &MIRBuilder,

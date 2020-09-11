@@ -956,9 +956,10 @@ MCObjectFileInfo::getStackSizesSection(const MCSection &TextSec) const {
                             cast<MCSymbolELF>(TextSec.getBeginSymbol()));
 }
 
-MCSection *MCObjectFileInfo::getBBInfoSection(const MCSection &TextSec) const {
+MCSection *
+MCObjectFileInfo::getBBAddrMapSection(const MCSection &TextSec) const {
   if (Env != IsELF)
-    return BBInfoSection;
+    return nullptr;
 
   const MCSectionELF &ElfSec = static_cast<const MCSectionELF &>(TextSec);
   unsigned Flags = ELF::SHF_LINK_ORDER;
@@ -968,7 +969,7 @@ MCSection *MCObjectFileInfo::getBBInfoSection(const MCSection &TextSec) const {
     Flags |= ELF::SHF_GROUP;
   }
 
-  return Ctx->getELFSection(".bb_info", ELF::SHT_PROGBITS, Flags, 0, GroupName,
-                            MCSection::NonUniqueID,
+  return Ctx->getELFSection(".bb_addr_map", ELF::SHT_PROGBITS, Flags, 0,
+                            GroupName, MCSection::NonUniqueID,
                             cast<MCSymbolELF>(TextSec.getBeginSymbol()));
 }

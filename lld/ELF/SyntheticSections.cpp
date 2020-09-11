@@ -18,11 +18,11 @@
 #include "InputFiles.h"
 #include "LinkerScript.h"
 #include "OutputSections.h"
+#include "Propeller/BBSectionsProf.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
 #include "Target.h"
 #include "Writer.h"
-#include "Propeller/BBSectionsProf.h"
 #include "lld/Common/DWARF.h"
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Memory.h"
@@ -3587,8 +3587,8 @@ bool ARMExidxSyntheticSection::classof(const SectionBase *d) {
 }
 
 ThunkSection::ThunkSection(OutputSection *os, uint64_t off)
-    : SyntheticSection(SHF_ALLOC | SHF_EXECINSTR, SHT_PROGBITS, 4,
-                       ".text.thunk") {
+    : SyntheticSection(SHF_ALLOC | SHF_EXECINSTR, SHT_PROGBITS,
+                       config->emachine == EM_PPC64 ? 16 : 4, ".text.thunk") {
   this->parent = os;
   this->outSecOff = off;
 }

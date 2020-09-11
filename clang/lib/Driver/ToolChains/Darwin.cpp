@@ -2271,11 +2271,6 @@ DerivedArgList *MachO::TranslateArgs(const DerivedArgList &Args,
     }
   }
 
-  if (getTriple().isX86())
-    if (!Args.hasArgNoClaim(options::OPT_mtune_EQ))
-      DAL->AddJoinedArg(nullptr, Opts.getOption(options::OPT_mtune_EQ),
-                        "core2");
-
   // Add the arch options based on the particular spelling of -arch, to match
   // how the driver driver works.
   if (!BoundArch.empty()) {
@@ -2413,6 +2408,13 @@ void Darwin::addClangTargetOptions(const llvm::opt::ArgList &DriverArgs,
   // Enable compatibility mode for NSItemProviderCompletionHandler in
   // Foundation/NSItemProvider.h.
   CC1Args.push_back("-fcompatibility-qualified-id-block-type-checking");
+
+  // Give static local variables in inline functions hidden visibility when
+  // -fvisibility-inlines-hidden is enabled.
+  if (!DriverArgs.getLastArgNoClaim(
+          options::OPT_fvisibility_inlines_hidden_static_local_var,
+          options::OPT_fno_visibility_inlines_hidden_static_local_var))
+    CC1Args.push_back("-fvisibility-inlines-hidden-static-local-var");
 }
 
 DerivedArgList *

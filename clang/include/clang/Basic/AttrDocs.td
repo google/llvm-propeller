@@ -1898,6 +1898,9 @@ the target with or without a "-mno-" in front corresponding to the absence
 of the feature, as well as ``arch="CPU"`` which will change the default "CPU"
 for the function.
 
+For X86, the attribute also allows ``tune="CPU"`` to optimize the generated
+code for the given CPU without changing the available instructions.
+
 For AArch64, the attribute also allows the "branch-protection=<args>" option,
 where the permissible arguments and their effect on code generation are the same
 as for the command-line option ``-mbranch-protection``.
@@ -4940,10 +4943,6 @@ to the SVE predicate type ``svbool_t``, this excludes tuple types such as
 ``svint32x4_t``. The behavior of the attribute is undefined unless
 ``N==__ARM_FEATURE_SVE_BITS``, the implementation defined feature macro that is
 enabled under the ``-msve-vector-bits`` flag.
-
-NOTE: This feature is currently WIP, the ``-msve-vector-bits=`` flag defines
-the ``__ARM_FEATURE_SVE_BITS_EXPERIMENTAL`` macro. This feature is complete
-when experimental is dropped.
 
 For more information See `Arm C Language Extensions for SVE
 <https://developer.arm.com/documentation/100987/latest>`_ for more information.

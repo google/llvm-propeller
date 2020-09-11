@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -338,7 +339,8 @@ public:
 class YieldOpConversion : public ConvertToLLVMPattern {
 public:
   explicit YieldOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
-      : ConvertToLLVMPattern(YieldOp::getOperationName(), context, lowering_) {}
+      : ConvertToLLVMPattern(linalg::YieldOp::getOperationName(), context,
+                             lowering_) {}
 
   LogicalResult
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,

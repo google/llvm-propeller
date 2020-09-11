@@ -42,6 +42,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/KnownBits.h"
 #include "llvm/Support/MachineValueType.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -82,7 +83,7 @@ static cl::opt<bool> UseLegacyDA(
 static cl::opt<unsigned> UnrollMaxBlockToAnalyze(
     "amdgpu-unroll-max-block-to-analyze",
     cl::desc("Inner loop block size threshold to analyze in unroll for AMDGPU"),
-    cl::init(20), cl::Hidden);
+    cl::init(32), cl::Hidden);
 
 static bool dependsOnLocalPhi(const Loop *L, const Value *Cond,
                               unsigned Depth = 0) {

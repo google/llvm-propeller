@@ -342,7 +342,7 @@ int llvm::getSplatIndex(ArrayRef<int> Mask) {
 /// This function is not fully general. It checks only 2 cases:
 /// the input value is (1) a splat constant vector or (2) a sequence
 /// of instructions that broadcasts a scalar at element 0.
-const llvm::Value *llvm::getSplatValue(const Value *V) {
+Value *llvm::getSplatValue(const Value *V) {
   if (isa<VectorType>(V->getType()))
     if (auto *C = dyn_cast<Constant>(V))
       return C->getSplatValue();
@@ -357,12 +357,8 @@ const llvm::Value *llvm::getSplatValue(const Value *V) {
   return nullptr;
 }
 
-// This setting is based on its counterpart in value tracking, but it could be
-// adjusted if needed.
-const unsigned MaxDepth = 6;
-
 bool llvm::isSplatValue(const Value *V, int Index, unsigned Depth) {
-  assert(Depth <= MaxDepth && "Limit Search Depth");
+  assert(Depth <= MaxAnalysisRecursionDepth && "Limit Search Depth");
 
   if (isa<VectorType>(V->getType())) {
     if (isa<UndefValue>(V))
@@ -389,7 +385,7 @@ bool llvm::isSplatValue(const Value *V, int Index, unsigned Depth) {
   }
 
   // The remaining tests are all recursive, so bail out if we hit the limit.
-  if (Depth++ == MaxDepth)
+  if (Depth++ == MaxAnalysisRecursionDepth)
     return false;
 
   // If both operands of a binop are splats, the result is a splat.

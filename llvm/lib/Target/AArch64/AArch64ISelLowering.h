@@ -95,6 +95,14 @@ enum NodeType : unsigned {
 
   // Predicated instructions with the result of inactive lanes provided by the
   // last operand.
+  FCEIL_MERGE_PASSTHRU,
+  FFLOOR_MERGE_PASSTHRU,
+  FNEARBYINT_MERGE_PASSTHRU,
+  FNEG_MERGE_PASSTHRU,
+  FRINT_MERGE_PASSTHRU,
+  FROUND_MERGE_PASSTHRU,
+  FROUNDEVEN_MERGE_PASSTHRU,
+  FTRUNC_MERGE_PASSTHRU,
   SIGN_EXTEND_INREG_MERGE_PASSTHRU,
   ZERO_EXTEND_INREG_MERGE_PASSTHRU,
 
@@ -904,6 +912,8 @@ private:
   SDValue LowerSVEStructLoad(unsigned Intrinsic, ArrayRef<SDValue> LoadOps,
                              EVT VT, SelectionDAG &DAG, const SDLoc &DL) const;
 
+  SDValue LowerFixedLengthVectorIntDivideToSVE(SDValue Op,
+                                               SelectionDAG &DAG) const;
   SDValue LowerFixedLengthVectorIntExtendToSVE(SDValue Op,
                                                SelectionDAG &DAG) const;
   SDValue LowerFixedLengthVectorLoadToSVE(SDValue Op, SelectionDAG &DAG) const;

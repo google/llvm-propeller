@@ -12,4 +12,4 @@ int getGlob() {
   return glob;
 }
 
-// CHECK: glob.bd816b262f03c98ffb082cde0847804c = internal global
+// CHECK: glob.{{([[:xdigit:]]{32})}} = internal global

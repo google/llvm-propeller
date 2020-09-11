@@ -96,6 +96,7 @@ LiveDebugVariables::LiveDebugVariables() : MachineFunctionPass(ID) {
 
 enum : unsigned { UndefLocNo = ~0U };
 
+namespace {
 /// Describes a debug variable value by location number and expression along
 /// with some flags about the original usage of the location.
 class DbgVariableValue {
@@ -136,6 +137,7 @@ private:
   unsigned WasIndirect : 1;
   const DIExpression *Expression = nullptr;
 };
+} // namespace
 
 /// Map of where a user value is live to that value.
 using LocMap = IntervalMap<SlotIndex, DbgVariableValue, 4>;
@@ -1440,10 +1442,6 @@ void LDVImpl::emitDebugValues(VirtRegMap *VRM) {
 void LiveDebugVariables::emitDebugValues(VirtRegMap *VRM) {
   if (pImpl)
     static_cast<LDVImpl*>(pImpl)->emitDebugValues(VRM);
-}
-
-bool LiveDebugVariables::doInitialization(Module &M) {
-  return Pass::doInitialization(M);
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)

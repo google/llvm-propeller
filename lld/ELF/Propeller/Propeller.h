@@ -45,8 +45,8 @@
 #ifndef LLD_ELF_PROPELLER_H
 #define LLD_ELF_PROPELLER_H
 
-#include "PropellerProtobuf.h"
 #include "BBSectionsProf.h"
+#include "PropellerProtobuf.h"
 
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/LLVM.h"

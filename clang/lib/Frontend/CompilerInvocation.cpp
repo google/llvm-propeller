@@ -775,6 +775,12 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
     else
       Opts.setDebugInfo(static_cast<codegenoptions::DebugInfoKind>(Val));
   }
+  // If -fuse-ctor-homing is set and limited debug info is already on, then use
+  // constructor homing.
+  if (Args.getLastArg(OPT_fuse_ctor_homing))
+    if (Opts.getDebugInfo() == codegenoptions::LimitedDebugInfo)
+      Opts.setDebugInfo(codegenoptions::DebugInfoConstructor);
+
   if (Arg *A = Args.getLastArg(OPT_debugger_tuning_EQ)) {
     unsigned Val = llvm::StringSwitch<unsigned>(A->getValue())
                        .Case("gdb", unsigned(llvm::DebuggerKind::GDB))
@@ -828,6 +834,9 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   if (Opts.OptimizationLevel > 0 && Opts.hasReducedDebugInfo() &&
       llvm::is_contained(DebugEntryValueArchs, T.getArch()))
     Opts.EmitCallSiteInfo = true;
+
+  Opts.ValueTrackingVariableLocations =
+      Args.hasArg(OPT_fexperimental_debug_variable_locations);
 
   Opts.DisableO0ImplyOptNone = Args.hasArg(OPT_disable_O0_optnone);
   Opts.DisableRedZone = Args.hasArg(OPT_disable_red_zone);
@@ -1026,6 +1035,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   Opts.ThinLinkBitcodeFile =
       std::string(Args.getLastArgValue(OPT_fthin_link_bitcode_EQ));
+
+  Opts.HeapProf = Args.hasArg(OPT_fmemory_profile);
 
   Opts.MSVolatile = Args.hasArg(OPT_fms_volatile);
 
@@ -2758,6 +2769,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   if (Args.hasArg(OPT_fvisibility_inlines_hidden))
     Opts.InlineVisibilityHidden = 1;
 
+  if (Args.hasArg(OPT_fvisibility_inlines_hidden_static_local_var))
+    Opts.VisibilityInlinesHiddenStaticLocalVar = 1;
+
   if (Args.hasArg(OPT_fvisibility_global_new_delete_hidden))
     Opts.GlobalAllocationFunctionVisibilityHidden = 1;
 
@@ -2790,7 +2804,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // Mimicking gcc's behavior, trigraphs are only enabled if -trigraphs
   // is specified, or -std is set to a conforming mode.
   // Trigraphs are disabled by default in c++1z onwards.
-  Opts.Trigraphs = !Opts.GNUMode && !Opts.MSVCCompat && !Opts.CPlusPlus17;
+  // For z/OS, trigraphs are enabled by default (without regard to the above).
+  Opts.Trigraphs =
+      (!Opts.GNUMode && !Opts.MSVCCompat && !Opts.CPlusPlus17) || T.isOSzOS();
   Opts.Trigraphs =
       Args.hasFlag(OPT_ftrigraphs, OPT_fno_trigraphs, Opts.Trigraphs);
 
@@ -2929,8 +2945,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // Recovery AST still heavily relies on dependent-type machinery.
   Opts.RecoveryAST =
       Args.hasFlag(OPT_frecovery_ast, OPT_fno_recovery_ast, Opts.CPlusPlus);
-  Opts.RecoveryASTType =
-      Args.hasFlag(OPT_frecovery_ast_type, OPT_fno_recovery_ast_type, false);
+  Opts.RecoveryASTType = Args.hasFlag(
+      OPT_frecovery_ast_type, OPT_fno_recovery_ast_type, Opts.CPlusPlus);
   Opts.HeinousExtensions = Args.hasArg(OPT_fheinous_gnu_extensions);
   Opts.AccessControl = !Args.hasArg(OPT_fno_access_control);
   Opts.ElideConstructors = !Args.hasArg(OPT_fno_elide_constructors);
@@ -3653,6 +3669,7 @@ static void ParseTargetArgs(TargetOptions &Opts, ArgList &Args,
       Opts.EABIVersion = EABIVersion;
   }
   Opts.CPU = std::string(Args.getLastArgValue(OPT_target_cpu));
+  Opts.TuneCPU = std::string(Args.getLastArgValue(OPT_tune_cpu));
   Opts.FPMath = std::string(Args.getLastArgValue(OPT_mfpmath));
   Opts.FeaturesAsWritten = Args.getAllArgValues(OPT_target_feature);
   Opts.LinkerVersion =
@@ -3868,7 +3885,7 @@ std::string CompilerInvocation::getModuleHash() const {
 
   // Extend the signature with the target options.
   code = hash_combine(code, TargetOpts->Triple, TargetOpts->CPU,
-                      TargetOpts->ABI);
+                      TargetOpts->TuneCPU, TargetOpts->ABI);
   for (const auto &FeatureAsWritten : TargetOpts->FeaturesAsWritten)
     code = hash_combine(code, FeatureAsWritten);
 

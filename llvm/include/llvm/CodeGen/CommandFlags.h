@@ -118,6 +118,8 @@ bool getEnableMachineFunctionSplitter();
 
 bool getEnableDebugEntryValues();
 
+bool getValueTrackingVariableLocations();
+
 bool getForceDwarfFrameSection();
 
 bool getXRayOmitFunctionIndex();

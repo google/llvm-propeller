@@ -480,23 +480,40 @@ public:
 
   // Curses doesn't allow direct output of color escape sequences, but that's
   // how we get source lines from the Highligher class. Read the line and
-  // convert color escape sequences to curses color attributes.
-  void OutputColoredStringTruncated(int right_pad, StringRef string,
+  // convert color escape sequences to curses color attributes. Use
+  // first_skip_count to skip leading visible characters. Returns false if all
+  // visible characters were skipped due to first_skip_count.
+  bool OutputColoredStringTruncated(int right_pad, StringRef string,
+                                    size_t skip_first_count,
                                     bool use_blue_background) {
     attr_t saved_attr;
     short saved_pair;
+    bool result = false;
     wattr_get(m_window, &saved_attr, &saved_pair, nullptr);
     if (use_blue_background)
       ::wattron(m_window, COLOR_PAIR(WhiteOnBlue));
     while (!string.empty()) {
       size_t esc_pos = string.find('\x1b');
       if (esc_pos == StringRef::npos) {
-        PutCStringTruncated(right_pad, string.data(), string.size());
+        string = string.substr(skip_first_count);
+        if (!string.empty()) {
+          PutCStringTruncated(right_pad, string.data(), string.size());
+          result = true;
+        }
         break;
       }
       if (esc_pos > 0) {
-        PutCStringTruncated(right_pad, string.data(), esc_pos);
-        string = string.drop_front(esc_pos);
+        if (skip_first_count > 0) {
+          int skip = std::min(esc_pos, skip_first_count);
+          string = string.substr(skip);
+          skip_first_count -= skip;
+          esc_pos -= skip;
+        }
+        if (esc_pos > 0) {
+          PutCStringTruncated(right_pad, string.data(), esc_pos);
+          result = true;
+          string = string.drop_front(esc_pos);
+        }
       }
       bool consumed = string.consume_front("\x1b");
       assert(consumed);
@@ -531,6 +548,7 @@ public:
       }
     }
     wattr_set(m_window, saved_attr, saved_pair, nullptr);
+    return result;
   }
 
   void Touch() {
@@ -1479,19 +1497,18 @@ struct Row {
   ValueObjectManager value;
   Row *parent;
   // The process stop ID when the children were calculated.
-  uint32_t children_stop_id;
-  int row_idx;
-  int x;
-  int y;
+  uint32_t children_stop_id = 0;
+  int row_idx = 0;
+  int x = 1;
+  int y = 1;
   bool might_have_children;
-  bool expanded;
-  bool calculated_children;
+  bool expanded = false;
+  bool calculated_children = false;
   std::vector<Row> children;
 
   Row(const ValueObjectSP &v, Row *p)
-      : value(v, lldb::eDynamicDontRunTarget, true), parent(p), row_idx(0),
-        x(1), y(1), might_have_children(v ? v->MightHaveChildren() : false),
-        expanded(false), calculated_children(false), children() {}
+      : value(v, lldb::eDynamicDontRunTarget, true), parent(p),
+        might_have_children(v ? v->MightHaveChildren() : false) {}
 
   size_t GetDepth() const {
     if (parent)
@@ -3379,7 +3396,8 @@ public:
         m_disassembly_scope(nullptr), m_disassembly_sp(), m_disassembly_range(),
         m_title(), m_line_width(4), m_selected_line(0), m_pc_line(0),
         m_stop_id(0), m_frame_idx(UINT32_MAX), m_first_visible_line(0),
-        m_min_x(0), m_min_y(0), m_max_x(0), m_max_y(0) {}
+        m_first_visible_column(0), m_min_x(0), m_min_y(0), m_max_x(0),
+        m_max_y(0) {}
 
   ~SourceFileWindowDelegate() override = default;
 
@@ -3396,6 +3414,8 @@ public:
         {KEY_RETURN, "Run to selected line with one shot breakpoint"},
         {KEY_UP, "Select previous source line"},
         {KEY_DOWN, "Select next source line"},
+        {KEY_LEFT, "Scroll to the left"},
+        {KEY_RIGHT, "Scroll to the right"},
         {KEY_PPAGE, "Page up"},
         {KEY_NPAGE, "Page down"},
         {'b', "Set breakpoint on selected source/disassembly line"},
@@ -3650,7 +3670,15 @@ public:
           StringRef line = lineStream.GetString();
           if (line.endswith("\n"))
             line = line.drop_back();
-          window.OutputColoredStringTruncated(1, line, is_pc_line);
+          bool wasWritten = window.OutputColoredStringTruncated(
+              1, line, m_first_visible_column, line_is_selected);
+          if (line_is_selected && !wasWritten) {
+            // Draw an empty space to show the selected line if empty,
+            // or draw '<' if nothing is visible because of scrolling too much
+            // to the right.
+            window.PutCStringTruncated(
+                1, line.empty() && m_first_visible_column == 0 ? " " : "<");
+          }
 
           if (is_pc_line && frame_sp &&
               frame_sp->GetConcreteFrameIndex() == 0) {
@@ -3801,7 +3829,9 @@ public:
             strm.Printf("%s", mnemonic);
 
           int right_pad = 1;
-          window.PutCStringTruncated(right_pad, strm.GetData());
+          window.PutCStringTruncated(
+              right_pad,
+              strm.GetString().substr(m_first_visible_column).data());
 
           if (is_pc_line && frame_sp &&
               frame_sp->GetConcreteFrameIndex() == 0) {
@@ -3894,6 +3924,15 @@ public:
         if (m_first_visible_line + num_visible_lines < m_selected_line)
           m_first_visible_line++;
       }
+      return eKeyHandled;
+
+    case KEY_LEFT:
+      if (m_first_visible_column > 0)
+        --m_first_visible_column;
+      return eKeyHandled;
+
+    case KEY_RIGHT:
+      ++m_first_visible_column;
       return eKeyHandled;
 
     case '\r':
@@ -4127,6 +4166,7 @@ protected:
   uint32_t m_stop_id;
   uint32_t m_frame_idx;
   int m_first_visible_line;
+  int m_first_visible_column;
   int m_min_x;
   int m_min_y;
   int m_max_x;

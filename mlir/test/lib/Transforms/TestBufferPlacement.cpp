@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "TestDialect.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
@@ -63,11 +65,6 @@ struct TestBufferPlacementPreparationPass
               op, "dynamic shapes not currently supported");
         auto memrefType =
             MemRefType::get(type.getShape(), type.getElementType());
-
-        // Compute alloc position and insert a custom allocation node.
-        OpBuilder::InsertionGuard guard(rewriter);
-        rewriter.restoreInsertionPoint(
-            bufferAssignment->computeAllocPosition(result));
         auto alloc = rewriter.create<AllocOp>(loc, memrefType);
         newArgs.push_back(alloc);
         newResults.push_back(alloc);
@@ -108,12 +105,17 @@ struct TestBufferPlacementPreparationPass
   };
 
   void populateTensorLinalgToBufferLinalgConversionPattern(
-      MLIRContext *context, BufferAssignmentPlacer *placer,
-      TypeConverter *converter, OwningRewritePatternList *patterns) {
+      MLIRContext *context, BufferAssignmentTypeConverter *converter,
+      OwningRewritePatternList *patterns) {
     populateWithBufferAssignmentOpConversionPatterns<
-        mlir::ReturnOp, mlir::ReturnOp, linalg::CopyOp,
-        allowMemrefFunctionResults>(context, placer, converter, patterns);
-    patterns->insert<GenericOpConverter>(context, placer, converter);
+        mlir::ReturnOp, mlir::ReturnOp, linalg::CopyOp>(context, converter,
+                                                        patterns);
+    patterns->insert<GenericOpConverter>(context, converter);
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<TestDialect>();
+    registry.insert<linalg::LinalgDialect>();
   }
 
   void runOnOperation() override {
@@ -123,6 +125,10 @@ struct TestBufferPlacementPreparationPass
 
     // Mark all Standard operations legal.
     target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalOp<MakeTupleOp>();
+    target.addLegalOp<GetTupleElementOp>();
+    target.addLegalOp<ModuleOp>();
+    target.addLegalOp<ModuleTerminatorOp>();
 
     // Mark all Linalg operations illegal as long as they work on tensors.
     auto isLegalOperation = [&](Operation *op) {
@@ -145,16 +151,47 @@ struct TestBufferPlacementPreparationPass
              converter.isLegal(&funcOp.getBody());
     });
 
-    // Walk over all the functions to apply buffer assignment.
-    this->getOperation().walk([&](FuncOp function) -> WalkResult {
-      OwningRewritePatternList patterns;
-      BufferAssignmentPlacer placer(function);
-      populateTensorLinalgToBufferLinalgConversionPattern(
-          &context, &placer, &converter, &patterns);
+    auto kind = allowMemrefFunctionResults
+                    ? BufferAssignmentTypeConverter::KeepAsFunctionResult
+                    : BufferAssignmentTypeConverter::AppendToArgumentsList;
+    converter.setResultConversionKind<RankedTensorType, MemRefType>(kind);
+    converter.setResultConversionKind<UnrankedTensorType, UnrankedMemRefType>(
+        kind);
 
-      // Applying full conversion
-      return applyFullConversion(function, target, patterns);
+    converter.addDecomposeTypeConversion(
+        [](TupleType tupleType, SmallVectorImpl<Type> &types) {
+          tupleType.getFlattenedTypes(types);
+          return success();
+        });
+
+    converter.addArgumentMaterialization(
+        [](OpBuilder &builder, TupleType resultType, ValueRange inputs,
+           Location loc) -> Optional<Value> {
+          if (inputs.size() == 1)
+            return llvm::None;
+          TypeRange TypeRange = inputs.getTypes();
+          SmallVector<Type, 2> types(TypeRange.begin(), TypeRange.end());
+          TupleType tuple = TupleType::get(types, builder.getContext());
+          mlir::Value value = builder.create<MakeTupleOp>(loc, tuple, inputs);
+          return value;
+        });
+
+    converter.addDecomposeValueConversion([](OpBuilder &builder, Location loc,
+                                             TupleType resultType, Value value,
+                                             SmallVectorImpl<Value> &values) {
+      for (unsigned i = 0, e = resultType.size(); i < e; ++i) {
+        Value res = builder.create<GetTupleElementOp>(
+            loc, resultType.getType(i), value, builder.getI32IntegerAttr(i));
+        values.push_back(res);
+      }
+      return success();
     });
+
+    OwningRewritePatternList patterns;
+    populateTensorLinalgToBufferLinalgConversionPattern(&context, &converter,
+                                                        &patterns);
+    if (failed(applyFullConversion(this->getOperation(), target, patterns)))
+      this->signalPassFailure();
   };
 };
 } // end anonymous namespace

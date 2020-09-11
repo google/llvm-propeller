@@ -137,7 +137,7 @@ relocation_gen_opt         := -Wl,-q
 interp_opt                 := -Wl,--propeller-opt=reorder-ip
 random_opt                 := -Wl,--propeller-opt=reorder-blocks-random
 distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--propeller-backward-jump-distance=2000
-symbol_order_opt           := -Wl,--symbol-ordering-file=../../pgo-labels-compiler.propeller.order
+symbol_order_opt           := -Wl,--symbol-ordering-file=$(DDIR)/pgo-labels-compiler.propeller.order
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt -Wl,-build-id
 split_funcs_only           := -Wl,-propeller-opt=no-reorder-blocks -Wl,-propeller-opt=no-reorder-funcs
 lto_bb_sections_all_opt    := -Wl,--lto-basic-block-sections=all
@@ -258,6 +258,7 @@ nonepgolabels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 
 pgo-labels/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
+	if readelf -WS "$@" | grep --quiet -E ".bb_addr_map\s+PROGBITS" ; then echo "Found .bb_addr_map section." ; else echo "No .bb_addr_map found in $@." ; rm -f $@ ; fi
 
 pgo-relocs/build/bin/clang-${CLANG_VERSION}: stage-pgo-relocs.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags, "-funique-internal-linkage-names","$(gc_sections_opt) $(keep_section_opt) $(relocation_gen_opt)"), "clang;compiler-rt;lld",clang lld)
@@ -268,11 +269,8 @@ pgo-bbinfo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
 pgo-labels-align/build/bin/clang-${CLANG_VERSION} pgo-relocs-align/build/bin/clang-${CLANG_VERSION}: pgo-%-align/build/bin/clang-${CLANG_VERSION}: stage-pgo-%.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_align_flags),"clang;compiler-rt;lld",clang lld)
 
-pgo-vanilla-old/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",clang lld)
-
 pgo-vanilla/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< $(call gen_linker_flags,"$(gc_sections_opt) $(keep_section_opt)"),"clang;compiler-rt;lld",clang lld)
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin,"clang;compiler-rt;lld",clang lld)
 
 pgo-hcs/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< $(call gen_build_flags,"-mllvm --hot-cold-split","$(gc_sections_opt) $(keep_section_opt)"),"clang;compiler-rt;lld",clang lld)
@@ -391,12 +389,12 @@ plain.afdo: plain-compiler plain.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --profile=$(DDIR)/plain.perfdata --logtostderr --out=$(DDIR)/$@
 
 pgo-labels-compiler.propeller cspgo-compiler.propeller pgo-bbinfo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --path_optimize=false --path_index=0 --logtostderr 2>&1 | tee $@.autolog ; \
+	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
 	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 
 pgo-labels-compiler.paths.propeller: %-compiler.paths.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --path_optimize=false --path_index=$(PATH_INDEX) --logtostderr 2>&1 | tee $@.autolog ; \
+	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --propeller_clone_bbs --logtostderr 2>&1 | tee $@.autolog ; \
 	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 
@@ -450,13 +448,13 @@ run-commands.sh: benchmark-dir.o | stage1-compiler
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
 	echo "export CCP=\$$(cd \$$(dirname \$$1); pwd)/\$$(basename \$$1)" > $@
-	echo "head -n 150 commands | xargs -P5 -L1 -d \"\\n\" bash -x -c" \
+	echo "head -n 500 commands | xargs -P5 -L1 -d \"\\n\" bash -x -c" \
                 >> $@
 	chmod +x $@
 
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	@{ echo "Running $@ for ${ITERATIONS} iterations..." ; \
-		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.all_branches:u,br_inst_retired.conditional:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_hit:u,icache_64b.iftag_miss:u,icache_16b.ifdata_stall:u,itlb_misses.miss_causes_a_walk:u,itlb_misses.stlb_hit:u,idq.dsb_uops:u,idq.mite_uops:u,idq.ms_uops:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
+		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.all_branches:u,br_inst_retired.conditional:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_hit:u,icache_64b.iftag_miss:u,icache_16b.ifdata_stall:u,frontend_retired.itlb_miss:u,idq.dsb_uops:u,idq.mite_uops:u,idq.ms_uops:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
 		awk 'NF {print "${REPOHASH},"$$0}' .$@.pmu ; \
 	} | tee -a $@.result
 
@@ -604,7 +602,7 @@ define append_git_status
 endef
 
 check-pmu-performance: benchmark-pmu-pgo-vanilla.result benchmark-pmu-pgo-plolist.result benchmark-pmu-pgo-plolist-ip.result $(PLO_PMU_RESULTS) $(BOLT_PMU_RESULT)
-	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "itlb_misses.miss_causes_a_walk:u" ) ; \
+	@PMU_EVENTS=( "cycles:u" "br_inst_retired.all_branches:u" "br_inst_retired.not_taken:u" "icache_64b.iftag_miss:u" "frontend_retired.itlb_miss:u" ) ; \
 	echo "CHECK-PMU-PERFORMANCE" > $@.${REPOHASH} ; \
 	printf "VERSIONS" >> $@.${REPOHASH} ; \
 	for event in "$${PMU_EVENTS[@]}" ; do \

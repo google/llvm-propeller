@@ -19,8 +19,8 @@
 // the overall changes to the binary size are negligible; only a small number of
 // additional jump instructions may be introduced.
 //
-// For the original, RFC of this pass please see
-//
+// For the original RFC of this pass please see
+// https://groups.google.com/d/msg/llvm-dev/RUegaMg-iqc/wFAVxa6fCgAJ
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/Statistic.h"
@@ -38,6 +38,18 @@
 #include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
+
+static cl::opt<unsigned>
+    PercentileCutoff("mfs-psi-cutoff",
+                     cl::desc("Percentile profile summary cutoff used to "
+                              "determine cold blocks. Unused if set to zero."),
+                     cl::init(0), cl::Hidden);
+
+static cl::opt<unsigned> ColdCountThreshold(
+    "mfs-count-threshold",
+    cl::desc(
+        "Minimum number of times a block must be executed to be retained."),
+    cl::init(1), cl::Hidden);
 
 namespace {
 
@@ -58,12 +70,31 @@ public:
 };
 } // end anonymous namespace
 
-bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
-  // FIXME: We only target functions with profile data. Static information may
-  // also be considered but we don't see performance improvements yet.
-  if (!MF.getFunction().hasProfileData()) {
-    return false;
+static bool isColdBlock(MachineBasicBlock &MBB,
+                        const MachineBlockFrequencyInfo *MBFI,
+                        ProfileSummaryInfo *PSI) {
+  Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
+  if (!Count.hasValue())
+    return true;
+
+  if (PercentileCutoff > 0) {
+    return PSI->isColdCountNthPercentile(PercentileCutoff, *Count);
   }
+  return (*Count < ColdCountThreshold);
+}
+
+bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
+  // TODO: We only target functions with profile data. Static information may
+  // also be considered but we don't see performance improvements yet.
+  if (!MF.getFunction().hasProfileData())
+    return false;
+
+  // TODO: We don't split functions where a section attribute has been set
+  // since the split part may not be placed in a contiguous region. It may also
+  // be more beneficial to augment the linker to ensure contiguous layout of
+  // split functions within the same section as specified by the attribute.
+  if (!MF.getFunction().getSection().empty())
+    return false;
 
   // We don't want to proceed further for cold functions
   // or functions of unknown hotness. Lukewarm functions have no prefix.
@@ -74,21 +105,23 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
     return false;
   }
 
+  // Renumbering blocks here preserves the order of the blocks as
+  // sortBasicBlocksAndUpdateBranches uses the numeric identifier to sort
+  // blocks. Preserving the order of blocks is essential to retaining decisions
+  // made by prior passes such as MachineBlockPlacement.
   MF.RenumberBlocks();
   MF.setBBSectionsType(BasicBlockSection::Preset);
-
   auto *MBFI = &getAnalysis<MachineBlockFrequencyInfo>();
+  auto *PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
 
   for (auto &MBB : MF) {
-    // We retain the entry block and conservatively keep all landing pad blocks
-    // as part of the original function.
+    // FIXME: We retain the entry block and conservatively keep all landing pad
+    // blocks as part of the original function. Once D73739 is submitted, we can
+    // improve the handling of ehpads.
     if ((MBB.pred_empty() || MBB.isEHPad()))
       continue;
-    // Any block with a non-zero profile count is retained.
-    Optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
-    if (!(Count.hasValue() && Count.getValue() > 0)) {
+    if (isColdBlock(MBB, MBFI, PSI))
       MBB.setSectionID(MBBSectionID::ColdSectionID);
-    }
   }
 
   auto Comparator = [](const MachineBasicBlock &X, const MachineBasicBlock &Y) {
@@ -102,6 +135,7 @@ bool MachineFunctionSplitter::runOnMachineFunction(MachineFunction &MF) {
 void MachineFunctionSplitter::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<MachineModuleInfoWrapperPass>();
   AU.addRequired<MachineBlockFrequencyInfo>();
+  AU.addRequired<ProfileSummaryInfoWrapperPass>();
 }
 
 char MachineFunctionSplitter::ID = 0;

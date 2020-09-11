@@ -36,16 +36,18 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 
 static MLIRContext &globalContext() {
-  static bool init_once = []() {
-    registerDialect<AffineDialect>();
-    registerDialect<linalg::LinalgDialect>();
-    registerDialect<scf::SCFDialect>();
-    registerDialect<StandardOpsDialect>();
-    registerDialect<vector::VectorDialect>();
+  static thread_local MLIRContext context(/*loadAllDialects=*/false);
+  static thread_local bool initOnce = [&]() {
+    // clang-format off
+    context.loadDialect<AffineDialect,
+                        scf::SCFDialect,
+                        linalg::LinalgDialect,
+                        StandardOpsDialect,
+                        vector::VectorDialect>();
+    // clang-format on
     return true;
   }();
-  (void)init_once;
-  static thread_local MLIRContext context;
+  (void)initOnce;
   context.allowUnregisteredDialects();
   return context;
 }
@@ -1087,7 +1089,7 @@ TEST_FUNC(vector_extractelement_op_i32) {
   ScopedContext scope(builder, f.getLoc());
   auto i32Type = builder.getI32Type();
   auto vectorType = VectorType::get(/*shape=*/{8}, i32Type);
-  vector_extractelement(
+  vector_extract_element(
       i32Type, std_constant(vectorType, builder.getI32VectorAttr({10})),
       std_constant_int(0, i32Type));
 

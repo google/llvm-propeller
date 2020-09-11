@@ -13,28 +13,28 @@
 
 #include "llvm/ObjectYAML/DWARFYAML.h"
 #include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/Support/Errc.h"
+#include "llvm/Support/Error.h"
 
 namespace llvm {
 
 bool DWARFYAML::Data::isEmpty() const {
-  return DebugStrings.empty() && AbbrevDecls.empty() && !DebugAranges &&
-         DebugRanges.empty() && !PubNames && !PubTypes && !GNUPubNames &&
-         !GNUPubTypes && CompileUnits.empty() && DebugLines.empty();
+  return getNonEmptySectionNames().empty();
 }
 
 SetVector<StringRef> DWARFYAML::Data::getNonEmptySectionNames() const {
   SetVector<StringRef> SecNames;
-  if (!DebugStrings.empty())
+  if (DebugStrings)
     SecNames.insert("debug_str");
   if (DebugAranges)
     SecNames.insert("debug_aranges");
-  if (!DebugRanges.empty())
+  if (DebugRanges)
     SecNames.insert("debug_ranges");
   if (!DebugLines.empty())
     SecNames.insert("debug_line");
-  if (!DebugAddr.empty())
+  if (DebugAddr)
     SecNames.insert("debug_addr");
-  if (!AbbrevDecls.empty())
+  if (!DebugAbbrev.empty())
     SecNames.insert("debug_abbrev");
   if (!CompileUnits.empty())
     SecNames.insert("debug_info");
@@ -55,6 +55,37 @@ SetVector<StringRef> DWARFYAML::Data::getNonEmptySectionNames() const {
   return SecNames;
 }
 
+Expected<DWARFYAML::Data::AbbrevTableInfo>
+DWARFYAML::Data::getAbbrevTableInfoByID(uint64_t ID) const {
+  if (AbbrevTableInfoMap.empty()) {
+    uint64_t AbbrevTableOffset = 0;
+    for (auto &AbbrevTable : enumerate(DebugAbbrev)) {
+      // If the abbrev table's ID isn't specified, we use the index as its ID.
+      uint64_t AbbrevTableID =
+          AbbrevTable.value().ID.getValueOr(AbbrevTable.index());
+      auto It = AbbrevTableInfoMap.insert(
+          {AbbrevTableID, AbbrevTableInfo{/*Index=*/AbbrevTable.index(),
+                                          /*Offset=*/AbbrevTableOffset}});
+      if (!It.second)
+        return createStringError(
+            errc::invalid_argument,
+            "the ID (%" PRIu64 ") of abbrev table with index %zu has been used "
+            "by abbrev table with index %" PRIu64,
+            AbbrevTableID, AbbrevTable.index(), It.first->second.Index);
+
+      AbbrevTableOffset +=
+          getAbbrevTableContentByIndex(AbbrevTable.index()).size();
+    }
+  }
+
+  auto It = AbbrevTableInfoMap.find(ID);
+  if (It == AbbrevTableInfoMap.end())
+    return createStringError(errc::invalid_argument,
+                             "cannot find abbrev table whose ID is %" PRIu64,
+                             ID);
+  return It->second;
+}
+
 namespace yaml {
 
 void MappingTraits<DWARFYAML::Data>::mapping(IO &IO, DWARFYAML::Data &DWARF) {
@@ -62,10 +93,9 @@ void MappingTraits<DWARFYAML::Data>::mapping(IO &IO, DWARFYAML::Data &DWARF) {
   DWARFYAML::DWARFContext DWARFCtx;
   IO.setContext(&DWARFCtx);
   IO.mapOptional("debug_str", DWARF.DebugStrings);
-  IO.mapOptional("debug_abbrev", DWARF.AbbrevDecls);
+  IO.mapOptional("debug_abbrev", DWARF.DebugAbbrev);
   IO.mapOptional("debug_aranges", DWARF.DebugAranges);
-  if (!DWARF.DebugRanges.empty() || !IO.outputting())
-    IO.mapOptional("debug_ranges", DWARF.DebugRanges);
+  IO.mapOptional("debug_ranges", DWARF.DebugRanges);
   IO.mapOptional("debug_pubnames", DWARF.PubNames);
   IO.mapOptional("debug_pubtypes", DWARF.PubTypes);
   DWARFCtx.IsGNUPubSec = true;
@@ -80,12 +110,18 @@ void MappingTraits<DWARFYAML::Data>::mapping(IO &IO, DWARFYAML::Data &DWARF) {
   IO.setContext(OldContext);
 }
 
+void MappingTraits<DWARFYAML::AbbrevTable>::mapping(
+    IO &IO, DWARFYAML::AbbrevTable &AbbrevTable) {
+  IO.mapOptional("ID", AbbrevTable.ID);
+  IO.mapOptional("Table", AbbrevTable.Table);
+}
+
 void MappingTraits<DWARFYAML::Abbrev>::mapping(IO &IO,
                                                DWARFYAML::Abbrev &Abbrev) {
   IO.mapOptional("Code", Abbrev.Code);
   IO.mapRequired("Tag", Abbrev.Tag);
   IO.mapRequired("Children", Abbrev.Children);
-  IO.mapRequired("Attributes", Abbrev.Attributes);
+  IO.mapOptional("Attributes", Abbrev.Attributes);
 }
 
 void MappingTraits<DWARFYAML::AttributeAbbrev>::mapping(
@@ -150,7 +186,8 @@ void MappingTraits<DWARFYAML::Unit>::mapping(IO &IO, DWARFYAML::Unit &Unit) {
   IO.mapRequired("Version", Unit.Version);
   if (Unit.Version >= 5)
     IO.mapRequired("UnitType", Unit.Type);
-  IO.mapRequired("AbbrOffset", Unit.AbbrOffset);
+  IO.mapOptional("AbbrevTableID", Unit.AbbrevTableID);
+  IO.mapOptional("AbbrOffset", Unit.AbbrOffset);
   IO.mapOptional("AddrSize", Unit.AddrSize);
   IO.mapOptional("Entries", Unit.Entries);
 }
@@ -198,9 +235,9 @@ void MappingTraits<DWARFYAML::LineTableOpcode>::mapping(
 void MappingTraits<DWARFYAML::LineTable>::mapping(
     IO &IO, DWARFYAML::LineTable &LineTable) {
   IO.mapOptional("Format", LineTable.Format, dwarf::DWARF32);
-  IO.mapRequired("Length", LineTable.Length);
+  IO.mapOptional("Length", LineTable.Length);
   IO.mapRequired("Version", LineTable.Version);
-  IO.mapRequired("PrologueLength", LineTable.PrologueLength);
+  IO.mapOptional("PrologueLength", LineTable.PrologueLength);
   IO.mapRequired("MinInstLength", LineTable.MinInstLength);
   if(LineTable.Version >= 4)
     IO.mapRequired("MaxOpsPerInst", LineTable.MaxOpsPerInst);

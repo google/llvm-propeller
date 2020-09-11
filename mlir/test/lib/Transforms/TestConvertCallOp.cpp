@@ -1,4 +1,4 @@
-//===- TestConvertCallOp.cpp - Test LLVM Convesion of Standard CallOp -----===//
+//===- TestConvertCallOp.cpp - Test LLVM Conversion of Standard CallOp ----===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -34,6 +34,10 @@ public:
 class TestConvertCallOp
     : public PassWrapper<TestConvertCallOp, OperationPass<ModuleOp>> {
 public:
+  void getDependentDialects(DialectRegistry &registry) const final {
+    registry.insert<LLVM::LLVMDialect>();
+  }
+
   void runOnOperation() override {
     ModuleOp m = getOperation();
 

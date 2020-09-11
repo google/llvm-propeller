@@ -17,6 +17,7 @@
 #include "llvm/BinaryFormat/Magic.h"
 #include "llvm/ExecutionEngine/JITLink/EHFrameSupport.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
+#include "llvm/ExecutionEngine/Orc/TPCDynamicLibrarySearchGenerator.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
@@ -30,7 +31,6 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
@@ -187,7 +187,7 @@ static Error applyHarnessPromotions(Session &S, LinkGraph &G) {
 
   // If this graph is part of the test then promote any symbols referenced by
   // the harness to default scope, remove all symbols that clash with harness
-  // definitions, demote all other definitions.
+  // definitions.
   std::vector<Symbol *> DefinitionsToRemove;
   for (auto *Sym : G.defined_symbols()) {
 
@@ -219,10 +219,6 @@ static Error applyHarnessPromotions(Session &S, LinkGraph &G) {
     } else if (S.HarnessDefinitions.count(Sym->getName())) {
       LLVM_DEBUG(dbgs() << "  Externalizing " << Sym->getName() << "\n");
       DefinitionsToRemove.push_back(Sym);
-    } else {
-      LLVM_DEBUG(dbgs() << "  Demoting " << Sym->getName() << "\n");
-      Sym->setScope(Scope::Local);
-      Sym->setLive(false);
     }
   }
 
@@ -521,7 +517,7 @@ Error LLVMJITLinkObjectLinkingLayer::add(JITDylib &JD,
       return SymFlagsOrErr.takeError();
 
     // Skip symbols not defined in this object file.
-    if (*SymFlagsOrErr & object::BasicSymbolRef::SF_Undefined)
+    if ((*SymFlagsOrErr & object::BasicSymbolRef::SF_Undefined))
       continue;
 
     auto Name = Sym.getName();
@@ -551,10 +547,9 @@ Error LLVMJITLinkObjectLinkingLayer::add(JITDylib &JD,
         *SymFlags &= ~JITSymbolFlags::Exported;
     } else if (S.HarnessExternals.count(*Name)) {
       *SymFlags |= JITSymbolFlags::Exported;
-    } else {
-      // Skip symbols that aren't in the HarnessExternals set.
+    } else if (S.HarnessDefinitions.count(*Name) ||
+               !(*SymFlagsOrErr & object::BasicSymbolRef::SF_Global))
       continue;
-    }
 
     auto InternedName = S.ES.intern(*Name);
     SymbolFlags[InternedName] = std::move(*SymFlags);
@@ -623,7 +618,7 @@ Session::Session(Triple TT, uint64_t PageSize, Error &Err)
 
   if (!NoExec && !TT.isOSWindows())
     ObjLayer.addPlugin(std::make_unique<EHFrameRegistrationPlugin>(
-        InProcessEHFrameRegistrar::getInstance()));
+        std::make_unique<InProcessEHFrameRegistrar>()));
 
   ObjLayer.addPlugin(std::make_unique<JITLinkSessionPlugin>(*this));
 
@@ -807,19 +802,13 @@ Error sanitizeArguments(const Session &S) {
 }
 
 Error loadProcessSymbols(Session &S) {
-  std::string ErrMsg;
-  if (sys::DynamicLibrary::LoadLibraryPermanently(nullptr, &ErrMsg))
-    return make_error<StringError>(std::move(ErrMsg), inconvertibleErrorCode());
-
-  char GlobalPrefix =
-      S.TPC->getTargetTriple().getObjectFormat() == Triple::MachO ? '_' : '\0';
   auto InternedEntryPointName = S.ES.intern(EntryPointName);
   auto FilterMainEntryPoint = [InternedEntryPointName](SymbolStringPtr Name) {
     return Name != InternedEntryPointName;
   };
   S.MainJD->addGenerator(
-      ExitOnErr(orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-          GlobalPrefix, FilterMainEntryPoint)));
+      ExitOnErr(orc::TPCDynamicLibrarySearchGenerator::GetForTargetProcess(
+          *S.TPC, std::move(FilterMainEntryPoint))));
 
   return Error::success();
 }

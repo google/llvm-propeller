@@ -765,8 +765,8 @@ public:
 
   /// Move assignment operator.
   APInt &operator=(APInt &&that) {
-#ifdef _MSC_VER
-    // The MSVC std::shuffle implementation still does self-assignment.
+#ifdef EXPENSIVE_CHECKS
+    // Some std::shuffle implementations still do self-assignment.
     if (this == &that)
       return *this;
 #endif
@@ -1448,6 +1448,14 @@ public:
   /// Set the sign bit to 1.
   void setSignBit() {
     setBit(BitWidth - 1);
+  }
+
+  /// Set a given bit to a given value.
+  void setBitVal(unsigned BitPosition, bool BitValue) {
+    if (BitValue)
+      setBit(BitPosition);
+    else
+      clearBit(BitPosition);
   }
 
   /// Set the bits from loBit (inclusive) to hiBit (exclusive) to 1.

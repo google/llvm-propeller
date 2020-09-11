@@ -86,19 +86,11 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
   if (!CachedMCSymbol) {
     const MachineFunction *MF = getParent();
     MCContext &Ctx = MF->getContext();
-    auto Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
 
-    assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
-
-    // We emit a non-temporary symbol for every basic block if we have BBLabels
-    // or -- with basic block sections -- when a basic block begins a section.
-    // With basic block symbols, we use a unary encoding which can
-    // compress the symbol names significantly. For basic block sections where
-    // this block is the first in a cluster, we use a non-temp descriptive name.
-    // Otherwise we fall back to use temp label.
-    if (MF->hasBBLabels()) {
-      CachedMCSymbol = getLabelSymbol();
-    } else if (MF->hasBBSections() && isBeginSection()) {
+    // We emit a non-temporary symbol -- with a descriptive name -- if it begins
+    // a section (with basic block sections). Otherwise we fall back to use temp
+    // label.
+    if (MF->hasBBSections() && isBeginSection()) {
       SmallString<5> Suffix;
       if (SectionID == MBBSectionID::ColdSectionID) {
         Suffix += ".cold";
@@ -109,6 +101,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
       }
       CachedMCSymbol = Ctx.getOrCreateSymbol(MF->getName() + Suffix);
     } else {
+      const StringRef Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
       CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
                                              Twine(MF->getFunctionNumber()) +
                                              "_" + Twine(getNumber()));
