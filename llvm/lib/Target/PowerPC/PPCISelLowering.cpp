@@ -316,8 +316,10 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
   setOperationAction(ISD::STRICT_FMUL, MVT::f64, Legal);
   setOperationAction(ISD::STRICT_FDIV, MVT::f64, Legal);
   setOperationAction(ISD::STRICT_FMA, MVT::f64, Legal);
-  if (Subtarget.hasVSX())
-    setOperationAction(ISD::STRICT_FNEARBYINT, MVT::f64, Legal);
+  if (Subtarget.hasVSX()) {
+    setOperationAction(ISD::STRICT_FRINT, MVT::f32, Legal);
+    setOperationAction(ISD::STRICT_FRINT, MVT::f64, Legal);
+  }
 
   if (Subtarget.hasFSQRT()) {
     setOperationAction(ISD::STRICT_FSQRT, MVT::f32, Legal);
@@ -1059,7 +1061,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
       setOperationAction(ISD::STRICT_FSQRT, MVT::v4f32, Legal);
       setOperationAction(ISD::STRICT_FMAXNUM, MVT::v4f32, Legal);
       setOperationAction(ISD::STRICT_FMINNUM, MVT::v4f32, Legal);
-      setOperationAction(ISD::STRICT_FNEARBYINT, MVT::v4f32, Legal);
+      setOperationAction(ISD::STRICT_FRINT, MVT::v4f32, Legal);
       setOperationAction(ISD::STRICT_FFLOOR, MVT::v4f32, Legal);
       setOperationAction(ISD::STRICT_FCEIL,  MVT::v4f32, Legal);
       setOperationAction(ISD::STRICT_FTRUNC, MVT::v4f32, Legal);
@@ -1073,7 +1075,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
       setOperationAction(ISD::STRICT_FSQRT, MVT::v2f64, Legal);
       setOperationAction(ISD::STRICT_FMAXNUM, MVT::v2f64, Legal);
       setOperationAction(ISD::STRICT_FMINNUM, MVT::v2f64, Legal);
-      setOperationAction(ISD::STRICT_FNEARBYINT, MVT::v2f64, Legal);
+      setOperationAction(ISD::STRICT_FRINT, MVT::v2f64, Legal);
       setOperationAction(ISD::STRICT_FFLOOR, MVT::v2f64, Legal);
       setOperationAction(ISD::STRICT_FCEIL,  MVT::v2f64, Legal);
       setOperationAction(ISD::STRICT_FTRUNC, MVT::v2f64, Legal);
@@ -1199,6 +1201,9 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setLibcallName(RTLIB::SRA_I128, nullptr);
   }
 
+  if (!isPPC64)
+    setMaxAtomicSizeInBitsSupported(32);
+
   setStackPointerRegisterToSaveRestore(isPPC64 ? PPC::X1 : PPC::R1);
 
   // We have target-specific dag combine patterns for the following nodes:
@@ -1314,6 +1319,8 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     MaxLoadsPerMemcmp = 8;
     MaxLoadsPerMemcmpOptSize = 4;
   }
+
+  IsStrictFPEnabled = true;
 
   // Let the subtarget (CPU) decide if a predictable select is more expensive
   // than the corresponding branch. This information is used in CGP to decide
@@ -8219,8 +8226,8 @@ SDValue PPCTargetLowering::LowerFP_TO_INT(SDValue Op, SelectionDAG &DAG,
               getSetCCResultType(DAG.getDataLayout(), *DAG.getContext(), SrcVT);
           EVT DstSetCCVT =
               getSetCCResultType(DAG.getDataLayout(), *DAG.getContext(), DstVT);
-          SDValue Sel =
-              DAG.getSetCC(dl, SetCCVT, Src, Cst, ISD::SETLT, Chain, true);
+          SDValue Sel = DAG.getSetCC(dl, SetCCVT, Src, Cst, ISD::SETLT,
+                                     SDNodeFlags(), Chain, true);
           Chain = Sel.getValue(1);
 
           SDValue FltOfs = DAG.getSelect(

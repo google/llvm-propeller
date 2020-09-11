@@ -145,13 +145,11 @@ def combine_indexed_load_store : GICombineRule<
          [{ return Helper.matchCombineIndexedLoadStore(*${root}, ${matchinfo}); }]),
   (apply [{ Helper.applyCombineIndexedLoadStore(*${root}, ${matchinfo}); }])>;
 
-// FIXME: Is there a reason this wasn't in tryCombine? I've left it out of
-//        all_combines because it wasn't there.
-def elide_br_by_inverting_cond : GICombineRule<
+def opt_brcond_by_inverting_cond : GICombineRule<
   (defs root:$root),
   (match (wip_match_opcode G_BR):$root,
-         [{ return Helper.matchElideBrByInvertingCond(*${root}); }]),
-  (apply [{ Helper.applyElideBrByInvertingCond(*${root}); }])>;
+         [{ return Helper.matchOptBrCondByInvertingCond(*${root}); }]),
+  (apply [{ Helper.applyOptBrCondByInvertingCond(*${root}); }])>;
 
 def ptr_add_immed_matchdata : GIDefMatchData<"PtrAddChain">;
 def ptr_add_immed_chain : GICombineRule<
@@ -387,6 +385,15 @@ def not_cmp_fold : GICombineRule<
   (apply [{ return Helper.applyNotCmp(*${d}, ${info}); }])
 >;
 
+// Fold (fneg (fneg x)) -> x.
+def fneg_fneg_fold_matchinfo : GIDefMatchData<"Register">;
+def fneg_fneg_fold: GICombineRule <
+  (defs root:$root, fneg_fneg_fold_matchinfo:$matchinfo),
+  (match (wip_match_opcode G_FNEG):$root,
+         [{ return Helper.matchCombineFNegOfFNeg(*${root}, ${matchinfo}); }]),
+  (apply [{ return Helper.replaceSingleDefInstWithReg(*${root}, ${matchinfo}); }])
+>;
+
 // FIXME: These should use the custom predicate feature once it lands.
 def undef_combines : GICombineGroup<[undef_to_fp_zero, undef_to_int_zero,
                                      undef_to_negative_one,
@@ -399,7 +406,8 @@ def undef_combines : GICombineGroup<[undef_to_fp_zero, undef_to_int_zero,
 def identity_combines : GICombineGroup<[select_same_val, right_identity_zero,
                                         binop_same_val, binop_left_to_zero,
                                         binop_right_to_zero, p2i_to_i2p,
-                                        i2p_to_p2i, anyext_trunc_fold]>;
+                                        i2p_to_p2i, anyext_trunc_fold,
+                                        fneg_fneg_fold]>;
 
 def known_bits_simplifications : GICombineGroup<[
   and_trivial_mask, redundant_sext_inreg]>;
@@ -416,4 +424,4 @@ def all_combines : GICombineGroup<[trivial_combines, ptr_add_immed_chain,
     shl_ashr_to_sext_inreg, sext_inreg_of_load,
     width_reduction_combines, select_combines,
     known_bits_simplifications, ext_ext_fold,
-    not_cmp_fold]>;
+    not_cmp_fold, opt_brcond_by_inverting_cond]>;

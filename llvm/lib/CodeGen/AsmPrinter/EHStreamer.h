@@ -70,11 +70,13 @@ protected:
   };
 
   /// Structure describing a contiguous range of call-sites which reside
-  /// in the same procedure fragment (BB section).
+  /// in the same procedure fragment. With -fbasic-block-sections, there will
+  /// be one call site range per basic block section. Otherwise, we will have
+  /// one call site range containing all the call sites in the function.
   struct CallSiteRange {
-    // Symbol marking the beginning of the precedure fragment (section).
+    // Symbol marking the beginning of the precedure fragment.
     MCSymbol *FragmentBeginLabel = nullptr;
-    // Symbol marking the end of the procedure fragment (section).
+    // Symbol marking the end of the procedure fragmnt.
     MCSymbol *FragmentEndLabel = nullptr;
     // LSDA symbol for this call-site range.
     MCSymbol *ExceptionLabel = nullptr;
@@ -84,7 +86,7 @@ protected:
     // Index just after the last call-site entry in the call-site table which
     // belongs to this range.
     size_t CallSiteEndIdx = 0;
-    // Whether this is the call-site range containing all the landing pads
+    // Whether this is the call-site range containing all the landing pads.
     bool IsLPRange = false;
   };
 
@@ -104,7 +106,8 @@ protected:
   /// containing the call and zero for the landing pad and the action.  Calls
   /// marked 'nounwind' have no entry and must not be contained in the try-range
   /// of any entry - they form gaps in the table.  Entries must be ordered by
-  /// try-range address.
+  /// try-range address. CallSiteRanges vector is only populated for Itanium
+  /// exception handling.
   virtual void computeCallSiteTable(
       SmallVectorImpl<CallSiteEntry> &CallSites,
       SmallVectorImpl<CallSiteRange> &CallSiteRanges,

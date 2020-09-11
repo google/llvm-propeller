@@ -191,6 +191,19 @@ static bool matchSelectWithOptionalNotCond(Value *V, Value *&Cond, Value *&A,
     Pred = ICmpInst::getSwappedPredicate(Pred);
   }
 
+  // Check for inverted variants of min/max by swapping operands.
+  switch (Pred) {
+  case CmpInst::ICMP_ULE:
+  case CmpInst::ICMP_UGE:
+  case CmpInst::ICMP_SLE:
+  case CmpInst::ICMP_SGE:
+    Pred = CmpInst::getInversePredicate(Pred);
+    std::swap(A, B);
+    break;
+  default:
+    break;
+  }
+
   switch (Pred) {
   case CmpInst::ICMP_UGT: Flavor = SPF_UMAX; break;
   case CmpInst::ICMP_ULT: Flavor = SPF_UMIN; break;
@@ -1463,6 +1476,7 @@ public:
     AU.addRequired<TargetLibraryInfoWrapperPass>();
     AU.addRequired<TargetTransformInfoWrapperPass>();
     if (UseMemorySSA) {
+      AU.addRequired<AAResultsWrapperPass>();
       AU.addRequired<MemorySSAWrapperPass>();
       AU.addPreserved<MemorySSAWrapperPass>();
     }
@@ -1504,6 +1518,7 @@ INITIALIZE_PASS_BEGIN(EarlyCSEMemSSALegacyPass, "early-cse-memssa",
                       "Early CSE w/ MemorySSA", false, false)
 INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
+INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(MemorySSAWrapperPass)

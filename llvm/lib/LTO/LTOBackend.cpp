@@ -350,16 +350,10 @@ static cl::opt<bool> EmbedBitcode(
     "lto-embed-bitcode", cl::init(false),
     cl::desc("Embed LLVM bitcode in object files produced by LTO"));
 
-static void EmitBitcodeSection(Module &M, const Config &Conf) {
+static void EmitBitcodeSection(Module &M) {
   if (!EmbedBitcode)
     return;
-  SmallVector<char, 0> Buffer;
-  raw_svector_ostream OS(Buffer);
-  WriteBitcodeToFile(M, OS);
-
-  std::unique_ptr<MemoryBuffer> Buf(
-      new SmallVectorMemoryBuffer(std::move(Buffer)));
-  llvm::EmbedBitcodeInModule(M, Buf->getMemBufferRef(), /*EmbedBitcode*/ true,
+  llvm::EmbedBitcodeInModule(M, llvm::MemoryBufferRef(), /*EmbedBitcode*/ true,
                              /*EmbedMarker*/ false, /*CmdArgs*/ nullptr);
 }
 
@@ -369,7 +363,7 @@ void codegen(const Config &Conf, TargetMachine *TM, AddStreamFn AddStream,
   if (Conf.PreCodeGenModuleHook && !Conf.PreCodeGenModuleHook(Task, Mod))
     return;
 
-  EmitBitcodeSection(Mod, Conf);
+  EmitBitcodeSection(Mod);
 
   std::unique_ptr<ToolOutputFile> DwoOut;
   SmallString<1024> DwoFile(Conf.SplitDwarfOutput);
