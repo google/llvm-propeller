@@ -63,6 +63,7 @@ unsigned MachineBasicBlock::getBBInfoMetadata() const {
          | (has_indirect_jump << 3);
 }
 
+/*
 MCSymbol *MachineBasicBlock::getLabelSymbol() const {
   if (!CachedLabelMCSymbol) {
     const MachineFunction *MF = getParent();
@@ -79,7 +80,7 @@ MCSymbol *MachineBasicBlock::getLabelSymbol() const {
         Ctx.getOrCreateSymbol(Twine(Prefix) + ".BB." + Twine(MF->getName()));
   }
   return CachedLabelMCSymbol;
-}
+}*/
 
 /// Return the MCSymbol for this basic block.
 MCSymbol *MachineBasicBlock::getSymbol() const {

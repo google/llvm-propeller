@@ -1030,14 +1030,16 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
 ///  * (2): set if ends with a tail call.
 ///  * (3): set if exception handling (EH) landing pad.
 /// The remaining bits are zero.
-static unsigned getBBAddrMapMetadata(const MachineBasicBlock &MBB) {
+static unsigned getBBAddrMapMetadata(MachineBasicBlock &MBB) {
   const TargetInstrInfo *TII = MBB.getParent()->getSubtarget().getInstrInfo();
   return ((unsigned)MBB.isReturnBlock()) |
          ((!MBB.empty() && TII->isTailCall(MBB.back())) << 1) |
-         (MBB.isEHPad() << 2);
+         (MBB.isEHPad() << 2) |
+         ((!MBB.empty() && MBB.rbegin()->isIndirectBranch()) << 3) |
+         (MBB.canFallThrough() << 4);
 }
 
-void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
+void AsmPrinter::emitBBAddrMapSection(MachineFunction &MF) {
   MCSection *BBAddrMapSection =
       getObjFileLowering().getBBAddrMapSection(*MF.getSection());
   assert(BBAddrMapSection && ".bb_addr_map section is not initialized.");
@@ -1050,7 +1052,7 @@ void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
   // Emit the total number of basic blocks in this function.
   OutStreamer->emitULEB128IntValue(MF.size());
   // Emit BB Information for each basic block in the funciton.
-  for (const MachineBasicBlock &MBB : MF) {
+  for (MachineBasicBlock &MBB : MF) {
     const MCSymbol *MBBSymbol =
         MBB.pred_empty() ? FunctionSymbol : MBB.getSymbol();
     // Emit the basic block offset.
@@ -3155,8 +3157,8 @@ void AsmPrinter::emitBasicBlockStart(const MachineBasicBlock &MBB) {
       CurrentSectionBeginSym = BBSymbol;
     }
     OutStreamer->emitLabel(BBSymbol);
-    if(MF->hasBBSections())
-      OutStreamer->emitLabel(MBB.getLabelSymbol());
+    //if(MF->hasBBSections())
+    //  OutStreamer->emitLabel(MBB.getLabelSymbol());
     // With BB sections, each basic block must handle CFI information on its own
     // if it begins a section.
     if (MBB.isBeginSection())

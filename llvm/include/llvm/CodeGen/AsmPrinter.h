@@ -359,7 +359,7 @@ public:
 
   void emitStackSizeSection(const MachineFunction &MF);
 
-  void emitBBAddrMapSection(const MachineFunction &MF);
+  void emitBBAddrMapSection(MachineFunction &MF);
 
   void emitRemarksSection(remarks::RemarkStreamer &RS);
 
