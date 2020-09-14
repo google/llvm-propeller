@@ -486,24 +486,6 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
     pred_block->addSuccessor(cloned, BranchProbability::getOne());
   }
 
-//  // This step adjusts the branches of predecessors of clones. A clone's
-//  // predecessor must always fallthrough to it.
-//  for (auto& clone : P->second.second) {
-//    auto orig_copy = clone.Original;
-//    orig_copy.CloneNumber = 0;
-//    auto pred_linear_id = get_linear_id(clone.Predecessor);
-//    auto orig_linear_id = get_linear_id(orig_copy);
-//    auto clone_linear_id = get_linear_id(clone.Clone);
-//
-//    auto pred_block = MF.getBlockNumbered(*pred_linear_id);
-//    auto orig_block = MF.getBlockNumbered(*orig_linear_id);
-//    auto clone_block = MF.getBlockNumbered(*clone_linear_id);
-//
-//
-////    modified_blocks.emplace(pred_block);
-////    modified_blocks.emplace(clone_block);
-//  }
-
   auto& output = out[AliasName];
   for (auto& bb : P->second.first) {
     auto linear_id = get_linear_id(bb.MBBNumber);
