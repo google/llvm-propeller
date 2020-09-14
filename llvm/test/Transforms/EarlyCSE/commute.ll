@@ -688,13 +688,14 @@ define i32 @select_not_invert_pred_cond_wrong_select_op(i8 %x, i8 %y, i32 %t, i3
 ; hashing differently but comparing as equal.  It exhibits such a pair of
 ; values, and we run this test with -earlycse-debug-hash which would catch
 ; the disagreement and fail if it regressed.
+; EarlyCSE should be able to detect the 2nd redundant `select` and eliminate
+; it.
 define i32 @inverted_max(i32 %i) {
 ; CHECK-LABEL: @inverted_max(
 ; CHECK-NEXT:    [[CMP:%.*]] = icmp sle i32 0, [[I:%.*]]
 ; CHECK-NEXT:    [[M1:%.*]] = select i1 [[CMP]], i32 [[I]], i32 0
 ; CHECK-NEXT:    [[CMPINV:%.*]] = icmp sgt i32 0, [[I:%.*]]
-; CHECK-NEXT:    [[M2:%.*]] = select i1 [[CMPINV]], i32 0, i32 [[I]]
-; CHECK-NEXT:    [[R:%.*]] = add i32 [[M1]], [[M2]]
+; CHECK-NEXT:    [[R:%.*]] = add i32 [[M1]], [[M1]]
 ; CHECK-NEXT:    ret i32 [[R]]
   %cmp = icmp sle i32 0, %i
   %m1 = select i1 %cmp, i32 %i, i32 0

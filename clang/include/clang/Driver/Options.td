@@ -56,6 +56,13 @@ def NoDriverOption : OptionFlag;
 // be used), add this flag.
 def LinkOption : OptionFlag;
 
+// FlangOption - This is considered a "core" Flang option, available in
+// flang mode.
+def FlangOption : OptionFlag;
+
+// FC1Option - This option should be accepted by flang -fc1.
+def FC1Option : OptionFlag;
+
 // A short name to show in documentation. The name will be interpreted as rST.
 class DocName<string name> { string DocName = name; }
 
@@ -2112,7 +2119,7 @@ def gno_embed_source : Flag<["-"], "gno-embed-source">, Group<g_flags_Group>,
     Flags<[DriverOption]>,
     HelpText<"Restore the default behavior of not embedding source text in DWARF debug sections">;
 def headerpad__max__install__names : Joined<["-"], "headerpad_max_install_names">;
-def help : Flag<["-", "--"], "help">, Flags<[CC1Option,CC1AsOption]>,
+def help : Flag<["-", "--"], "help">, Flags<[CC1Option,CC1AsOption, FC1Option, FlangOption]>,
   HelpText<"Display available options">;
 def ibuiltininc : Flag<["-"], "ibuiltininc">,
   HelpText<"Enable builtin #include directories even when -nostdinc is used "
@@ -3061,7 +3068,8 @@ def _rtlib : Separate<["--"], "rtlib">, Alias<rtlib_EQ>;
 def _serialize_diags : Separate<["-", "--"], "serialize-diagnostics">, Flags<[DriverOption]>,
   HelpText<"Serialize compiler diagnostics to a file">;
 // We give --version different semantics from -version.
-def _version : Flag<["--"], "version">, Flags<[CoreOption, CC1Option]>,
+def _version : Flag<["--"], "version">,
+  Flags<[CoreOption, CC1Option, FC1Option, FlangOption]>,
   HelpText<"Print version information">;
 def _signed_char : Flag<["--"], "signed-char">, Alias<fsigned_char>;
 def _std : Separate<["--"], "std">, Alias<std_EQ>;
@@ -4328,6 +4336,9 @@ def fno_signed_wchar : Flag<["-"], "fno-signed-wchar">,
 def fcompatibility_qualified_id_block_param_type_checking : Flag<["-"], "fcompatibility-qualified-id-block-type-checking">,
   HelpText<"Allow using blocks with parameters of more specific type than "
            "the type system guarantees when a parameter is qualified id">;
+def fpass_by_value_is_noalias: Flag<["-"], "fpass-by-value-is-noalias">,
+  HelpText<"Allows assuming by-value parameters do not alias any other value. "
+           "Has no effect on non-trivially-copyable classes in C++.">, Group<f_Group>;
 
 // FIXME: Remove these entirely once functionality/tests have been excised.
 def fobjc_gc_only : Flag<["-"], "fobjc-gc-only">, Group<f_Group>,
