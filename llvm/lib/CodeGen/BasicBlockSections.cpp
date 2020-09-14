@@ -471,10 +471,11 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
       return false;
     }
 
+    // The pred_block falls through to block at this point. We now add an
+    // explicit unconditional jump to the clone block. This branch should
+    // ideally be removed later if the clone ends up being a fallthrough.
     TII->insertUnconditionalBranch(*pred_block, cloned,
                                    pred_block->findBranchDebugLoc());
-
-    // The pred_block falls through to block at this point.
 
     // Remove the original block from the successors of the previous block.
     // The remove call removes pred_block from predecessors of block as
