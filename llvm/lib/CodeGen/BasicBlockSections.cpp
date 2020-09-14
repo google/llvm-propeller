@@ -74,9 +74,6 @@
 #include "llvm/Target/TargetMachine.h"
 
 #include <iostream>
-#include <fstream>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 using llvm::SmallSet;
 using llvm::SmallVector;
@@ -433,10 +430,6 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
 
   bb_id_to_linear_index.clear();
 
-  if (!P->second.second.empty()) {
-    ::mkdir("/tmp/clones", 0777);
-    std::ofstream cloneinfo(std::string("/tmp/clones/") + MF.getName().str());
-
   // This step creates all the necessary clones. It does not adjust the branches.
   for (auto& clone : P->second.second) {
     auto pred_linear_id = get_linear_id(clone.Predecessor);
@@ -466,7 +459,6 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
 
     bb_id_to_linear_index[clone.Clone] = cloned->getNumber();
     std::cerr << "Clone number: " << cloned->getNumber() << '\n';
-    cloneinfo << cloned->getNumber() << " is cloned from " << orig_block->getNumber() << '\n';
 
     auto pred_block = MF.getBlockNumbered(*pred_linear_id);
 
@@ -503,7 +495,6 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
 
     //TODO(fbakir): what should be the probability here?
     pred_block->addSuccessor(cloned, BranchProbability::getOne());
-  }
   }
 
 //  // This step adjusts the branches of predecessors of clones. A clone's
