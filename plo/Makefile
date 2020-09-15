@@ -454,7 +454,7 @@ run-commands.sh: benchmark-dir.o | stage1-compiler
 
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	@{ echo "Running $@ for ${ITERATIONS} iterations..." ; \
-		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.all_branches:u,br_inst_retired.conditional:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_hit:u,icache_64b.iftag_miss:u,icache_16b.ifdata_stall:u,frontend_retired.itlb_miss:u,idq.dsb_uops:u,idq.mite_uops:u,idq.ms_uops:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
+		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_miss:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
 		awk 'NF {print "${REPOHASH},"$$0}' .$@.pmu ; \
 	} | tee -a $@.result
 
