@@ -1030,13 +1030,19 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
 ///  * (2): set if ends with a tail call.
 ///  * (3): set if exception handling (EH) landing pad.
 /// The remaining bits are zero.
-static unsigned getBBAddrMapMetadata(MachineBasicBlock &MBB) {
+static unsigned getBBAddrMapMetadata(MachineBasicBlock &MBB, MachineLoopInfo& MLI) {
   const TargetInstrInfo *TII = MBB.getParent()->getSubtarget().getInstrInfo();
+  bool IsLoopHeader = false;
+  auto LoopInfo = MLI.getLoopFor(&MBB);
+  if (LoopInfo) {
+    IsLoopHeader = LoopInfo->getHeader() == &MBB;
+  }
   return ((unsigned)MBB.isReturnBlock()) |
          ((!MBB.empty() && TII->isTailCall(MBB.back())) << 1) |
          (MBB.isEHPad() << 2) |
          ((!MBB.empty() && MBB.rbegin()->isIndirectBranch()) << 3) |
-         (MBB.canFallThrough() << 4);
+         (MBB.canFallThrough() << 4) |
+         (IsLoopHeader << 5);
 }
 
 void AsmPrinter::emitBBAddrMapSection(MachineFunction &MF) {
@@ -1060,7 +1066,7 @@ void AsmPrinter::emitBBAddrMapSection(MachineFunction &MF) {
     // Emit the basic block size. When BBs have alignments, their size cannot
     // always be computed from their offsets.
     emitLabelDifferenceAsULEB128(MBB.getEndSymbol(), MBBSymbol);
-    OutStreamer->emitULEB128IntValue(getBBAddrMapMetadata(MBB));
+    OutStreamer->emitULEB128IntValue(getBBAddrMapMetadata(MBB, *MLI));
   }
   OutStreamer->PopSection();
 }
