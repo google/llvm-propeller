@@ -227,13 +227,13 @@ define generate_summary
 endef
 
 t-test: ../t-test.cc
-	$(COMPILER_INSTALL_BIN)/clang++ -I$(shell pwd)/boost/boost_1_72_0 -O2 $< -o $@
+	pushd .. ; make $@; popd
 
 define a_v_b
 $(1)-vs-$(2): benchmark-$(1) benchmark-$(2) t-test
 	$(call generate_summary,$(1),oltp_read_only)
 	$(call generate_summary,$(2),oltp_read_only)
-	./t-test benchmark-{$(1),$(2)}.oltp_read_only.sysbench.summary 2>&1 | tee $$@
+	../t-test benchmark-{$(1),$(2)}.oltp_read_only.sysbench.summary 2>&1 | tee $$@
 endef
 
 $(eval $(call a_v_b,plain,pgo-vanilla))
