@@ -626,6 +626,9 @@ check-performance: benchmark-pgo-vanilla.result benchmark-pgo-plolist-cluster.re
 	done ; \
 	$(call append_git_status,$@)
 
+t-test: t-test.cc
+	$(DDIR)/stage1/install/bin/clang++ -O2 $< -o $@
+
 bbfilter: bbfilter.cc stage1-compiler
 	./stage1-compiler -x c++ $< -O2 -o $@ -lstdc++
 
