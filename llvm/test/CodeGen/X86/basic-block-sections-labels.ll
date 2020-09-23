@@ -1,5 +1,5 @@
 ; Check the basic block sections labels option
-; RUN: llc < %s -mtriple=x86_64 -function-sections -basic-block-sections=labels | FileCheck %s -check-prefix=CHECK
+; RUN: llc < %s -mtriple=x86_64 -function-sections -basic-block-sections=labels | FileCheck %s
 
 define void @_Z3bazb(i1 zeroext) personality i32 (...)* @__gxx_personality_v0 {
   br i1 %0, label %2, label %7

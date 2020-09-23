@@ -2002,11 +2002,8 @@ defm unique_internal_linkage_names : OptInFFlag<"unique-internal-linkage-names",
 defm unique_section_names : OptOutFFlag<"unique-section-names",
   "", "Don't use unique names for text and data sections">;
 
-def fsplit_machine_functions : Flag <["-"], "fsplit-machine-functions">,
-  Group<f_Group>, Flags<[CC1Option]>,
-  HelpText<"Split machine functions using profile information (ELF Only)">;
-def fno_split_machine_functions: Flag <["-"], "fno-split-machine-functions">,
-  Group<f_Group>;
+defm split_machine_functions: OptInFFlag<"split-machine-functions",
+  "Enable", "Disable", " late function splitting using profile information (x86 ELF)">;
 
 defm strict_return : OptOutFFlag<"strict-return", "",
   "Don't treat control flow paths that fall off the end of a non-void function as unreachable">;

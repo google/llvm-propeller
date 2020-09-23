@@ -1,4 +1,4 @@
-; RUN: llc < %s -mtriple=x86_64-unknown-linux-gnu -function-sections -basic-block-sections=labels | FileCheck %s
+; RUN: llc < %s -mtriple=x86_64 -function-sections -basic-block-sections=labels | FileCheck %s
 
 $_Z4fooTIiET_v = comdat any
 

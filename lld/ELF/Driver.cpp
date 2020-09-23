@@ -1787,7 +1787,7 @@ static void findKeepUniqueSections(opt::InputArgList &args) {
     ArrayRef<Symbol *> syms = obj->getSymbols();
     if (obj->addrsigSec) {
       ArrayRef<uint8_t> contents =
-          check(obj->getObj().getSectionContents(obj->addrsigSec));
+          check(obj->getObj().getSectionContents(*obj->addrsigSec));
       const uint8_t *cur = contents.begin();
       while (cur != contents.end()) {
         unsigned size;

@@ -3476,6 +3476,51 @@ Swift.
   }];
 }
 
+def SwiftBridgeDocs : Documentation {
+  let Category = SwiftDocs;
+  let Heading = "swift_bridge";
+  let Content = [{
+The ``swift_bridge`` attribute indicates that the declaration to which the
+attribute appertains is bridged to the named Swift type.
+
+  .. code-block:: c
+
+    __attribute__((__objc_root__))
+    @interface Base
+    - (instancetype)init;
+    @end
+
+    __attribute__((__swift_bridge__("BridgedI")))
+    @interface I : Base
+    @end
+
+In this example, the Objective-C interface ``I`` will be made available to Swift
+with the name ``BridgedI``.  It would be possible for the compiler to refer to
+``I`` still in order to bridge the type back to Objective-C.
+  }];
+}
+
+def SwiftBridgedTypedefDocs : Documentation {
+  let Category = SwiftDocs;
+  let Heading = "swift_bridged";
+  let Content = [{
+The ``swift_bridged_typedef`` attribute indicates that when the typedef to which
+the attribute appertains is imported into Swift, it should refer to the bridged
+Swift type (e.g. Swift's ``String``) rather than the Objective-C type as written
+(e.g. ``NSString``).
+
+  .. code-block:: c
+
+    @interface NSString;
+    typedef NSString *AliasedString __attribute__((__swift_bridged_typedef__));
+
+    extern void acceptsAliasedString(AliasedString _Nonnull parameter);
+
+In this case, the function ``acceptsAliasedString`` will be imported into Swift
+as a function which accepts a ``String`` type parameter.
+  }];
+}
+
 def SwiftObjCMembersDocs : Documentation {
   let Category = SwiftDocs;
   let Heading = "swift_objc_members";
