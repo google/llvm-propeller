@@ -27,7 +27,6 @@
 #include "ICF.h"
 #include "InputFiles.h"
 #include "InputSection.h"
-#include "LinkerPropeller.h"
 #include "LinkerScript.h"
 #include "MarkLive.h"
 #include "OutputSections.h"
@@ -2187,8 +2186,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   for (BinaryFile *f : binaryFiles)
     for (InputSectionBase *s : f->getSections())
       inputSections.push_back(cast<InputSection>(s));
-
-  lld::propeller::doPropeller();
 
   llvm::erase_if(inputSections, [](InputSectionBase *s) {
     if (s->type == SHT_LLVM_SYMPART) {

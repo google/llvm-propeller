@@ -11,11 +11,9 @@
 #include "ARMErrataFix.h"
 #include "CallGraphSort.h"
 #include "Config.h"
-#include "LinkerPropeller.h"
 #include "LinkerScript.h"
 #include "MapFile.h"
 #include "OutputSections.h"
-#include "Propeller/BBSectionsProf.h"
 #include "Relocations.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
@@ -31,10 +29,7 @@
 #include "llvm/Support/SHA1.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/xxhash.h"
-#include <cctype>
 #include <climits>
-#include <list>
-#include <type_traits>
 
 #define DEBUG_TYPE "lld"
 
@@ -718,9 +713,6 @@ static bool shouldKeepInSymtab(const Defined &sym) {
   if (config->discard == DiscardPolicy::All)
     return false;
 
-  if (lld::propeller::isBBSymbolAndKeepIt(sym.getName()))
-    return true;
-
   // In ELF assembly .L symbols are normally discarded by the assembler.
   // If the assembler fails to do so, the linker discards them if
   // * --discard-locals is used.
@@ -770,8 +762,6 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
     markUsedLocalSymbols<ELFT>();
   for (InputFile *file : objectFiles) {
     ObjFile<ELFT> *f = cast<ObjFile<ELFT>>(file);
-    std::list<Symbol *> localNonBBSymbols;
-    std::list<Symbol *> localBBSymbols;
     for (Symbol *b : f->getLocalSymbols()) {
       assert(b->isLocal() && "should have been caught in initializeSymbols()");
       auto *dr = dyn_cast<Defined>(b);
@@ -783,25 +773,8 @@ template <class ELFT> void Writer<ELFT>::copyLocalSymbols() {
         continue;
       if (!shouldKeepInSymtab(*dr))
         continue;
-
-      if (llvm::propeller::SymbolEntry::isBBSymbol(b->getName()))
-        localBBSymbols.emplace_back(b);
-      else
-        localNonBBSymbols.emplace_back(b);
+      in.symTab->addSymbol(b);
     }
-
-    // We need to add bbsymbols in reverse order of their size. See details in
-    // SymbolTableBaseSection::addSymbol(Symbol *b).
-    localBBSymbols.sort([](Symbol *A, Symbol *B) {
-      return A->getName().size() > B->getName().size();
-    });
-
-    // Add BB symbols to SymTab first.
-    for (auto *S : localBBSymbols)
-      in.symTab->addSymbol(S);
-
-    for (auto *S : localNonBBSymbols)
-      in.symTab->addSymbol(S);
   }
 }
 
