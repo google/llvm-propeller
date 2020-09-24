@@ -18,7 +18,7 @@ ifeq '${CREATE_LLVM_PROF_DIR}' ''
 CREATE_LLVM_PROF_DIR=$(shell pwd)/..
 endif
 
-PATH_INDEX ?= -1
+NUM_CLONES ?= 0
 DO_PLO     ?= 0
 ENABLE_EH  ?= OFF
 BUILD_TYPE ?= Release
@@ -394,7 +394,7 @@ pgo-labels-compiler.propeller cspgo-compiler.propeller pgo-bbinfo-compiler.prope
 	rm $@.tmp
 
 pgo-labels-compiler.paths.propeller: %-compiler.paths.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --propeller_clone_bbs --logtostderr 2>&1 | tee $@.autolog ; \
+	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --clone_count=${CLONE_COUNT} --propeller_symorder=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
 	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
 	rm $@.tmp
 
