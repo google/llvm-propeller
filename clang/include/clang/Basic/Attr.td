@@ -1288,6 +1288,18 @@ def FallThrough : StmtAttr {
   let Documentation = [FallthroughDocs];
 }
 
+def Likely : StmtAttr {
+  // FIXME: Change the date to 201803 once the implementation is finished.
+  let Spellings = [CXX11<"", "likely", 2>, C2x<"clang", "likely">];
+  let Documentation = [LikelihoodDocs];
+}
+
+def Unlikely : StmtAttr {
+  // FIXME: Change the date to 201803 once the implementation is finished.
+  let Spellings = [CXX11<"", "unlikely", 2>, C2x<"clang", "unlikely">];
+  let Documentation = [LikelihoodDocs];
+}
+
 def NoMerge : StmtAttr {
   let Spellings = [Clang<"nomerge">];
   let Documentation = [NoMergeDocs];
@@ -2116,6 +2128,37 @@ def Regparm : TypeAttr {
   let Documentation = [RegparmDocs];
   // Represented as part of the enclosing function type.
   let ASTNode = 0;
+}
+
+def SwiftBridge : InheritableAttr {
+  let Spellings = [GNU<"swift_bridge">];
+  let Args = [StringArgument<"SwiftType">];
+  let Subjects = SubjectList<[Tag, TypedefName, ObjCInterface, ObjCProtocol],
+                             ErrorDiag>;
+  let Documentation = [SwiftBridgeDocs];
+}
+
+def SwiftBridgedTypedef : InheritableAttr {
+  let Spellings = [GNU<"swift_bridged_typedef">];
+  let Subjects = SubjectList<[TypedefName], ErrorDiag>;
+  let Documentation = [SwiftBridgedTypedefDocs];
+}
+
+def SwiftObjCMembers : Attr {
+  let Spellings = [GNU<"swift_objc_members">];
+  let Subjects = SubjectList<[ObjCInterface], ErrorDiag>;
+  let Documentation = [SwiftObjCMembersDocs];
+}
+
+def SwiftError : InheritableAttr {
+  let Spellings = [GNU<"swift_error">];
+  let Args = [
+      EnumArgument<"Convention", "ConventionKind",
+                   ["none", "nonnull_error", "null_result", "zero_result", "nonzero_result"],
+                   ["None", "NonNullError", "NullResult", "ZeroResult", "NonZeroResult"]>
+  ];
+  let Subjects = SubjectList<[Function, ObjCMethod], ErrorDiag>;
+  let Documentation = [SwiftErrorDocs];
 }
 
 def NoDeref : TypeAttr {

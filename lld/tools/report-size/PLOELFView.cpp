@@ -53,26 +53,26 @@ template <class ELFT> bool ELFViewImpl<ELFT>::Init() {
 }
 
 template <class ELFT> bool ELFViewImpl<ELFT>::initEhdr(const ViewFile &VF) {
-  const ViewFileEhdr *EHDR = VF.getHeader();
+  const ViewFileEhdr &EHDR = VF.getHeader();
   // if (uint16_t(EHDR->e_phnum)) {
   //   // PHDR in object file is not supported yet.
   //   return false;
   // }
-  if (uint16_t(EHDR->e_ehsize) != sizeof(*EHDR))
+  if (uint16_t(EHDR.e_ehsize) != sizeof(EHDR))
     return false;
   EhdrPos = Blocks.emplace(
       Blocks.begin(),
       new ELFBlock(ELFBlock::Ty::EHDR_BLK,
-                   StringRef((const char *)EHDR, sizeof(*EHDR))));
+                   StringRef((const char *)&EHDR, sizeof(EHDR))));
   return true;
 }
 
 template <class ELFT> bool ELFViewImpl<ELFT>::initSections(const ViewFile &VF) {
   uint64_t BufSize = FileRef.getBufferSize();
-  uint64_t SecOff = ELFTUInt(VF.getHeader()->e_shoff);
-  uint16_t ShdrEntSize = uint16_t(VF.getHeader()->e_shentsize);
+  uint64_t SecOff = ELFTUInt(VF.getHeader().e_shoff);
+  uint16_t ShdrEntSize = uint16_t(VF.getHeader().e_shentsize);
   RealSecNum = (BufSize - SecOff) / ShdrEntSize;
-  uint16_t ReportedSecNumber = uint16_t(VF.getHeader()->e_shnum);
+  uint16_t ReportedSecNumber = uint16_t(VF.getHeader().e_shnum);
   // Choose realsecnum or reportedsecnumber, heuristically.
   if (ReportedSecNumber >= 1 && ReportedSecNumber < 10000) {
     RealSecNum = ReportedSecNumber;
@@ -80,7 +80,7 @@ template <class ELFT> bool ELFViewImpl<ELFT>::initSections(const ViewFile &VF) {
 
   FirstSectPos = Blocks.end();
   FirstShdrPos = Blocks.end();
-  uint16_t ShStrNdx = uint16_t(VF.getHeader()->e_shstrndx);
+  uint16_t ShStrNdx = uint16_t(VF.getHeader().e_shstrndx);
   for (int64_t i = RealSecNum - 1; i >= 0; --i) {
     auto ErrOrShdr = VF.getSection(i);
     if (!ErrOrShdr) {
@@ -93,7 +93,7 @@ template <class ELFT> bool ELFViewImpl<ELFT>::initSections(const ViewFile &VF) {
       DataStart = nullptr;
       DataSize = 0;
     } else {
-      auto EContents = VF.template getSectionContentsAsArray<char>(Shdr);
+      auto EContents = VF.template getSectionContentsAsArray<char>(*Shdr);
       if (EContents) {
         DataStart = EContents->data();
         DataSize = EContents->size();

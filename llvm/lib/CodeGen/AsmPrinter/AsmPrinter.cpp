@@ -1204,6 +1204,11 @@ void AsmPrinter::emitFunctionBody() {
             emitInstruction(&MI);
         }
         break;
+      case TargetOpcode::DBG_INSTR_REF:
+        // This instruction reference will have been resolved to a machine
+        // location, and a nearby DBG_VALUE created. We can safely ignore
+        // the instruction reference.
+        break;
       case TargetOpcode::DBG_LABEL:
         if (isVerbose()) {
           if (!emitDebugLabelComment(&MI, *this))
@@ -3457,4 +3462,18 @@ uint16_t AsmPrinter::getDwarfVersion() const {
 
 void AsmPrinter::setDwarfVersion(uint16_t Version) {
   OutStreamer->getContext().setDwarfVersion(Version);
+}
+
+bool AsmPrinter::isDwarf64() const {
+  return OutStreamer->getContext().getDwarfFormat() == dwarf::DWARF64;
+}
+
+unsigned int AsmPrinter::getDwarfOffsetByteSize() const {
+  return dwarf::getDwarfOffsetByteSize(
+      OutStreamer->getContext().getDwarfFormat());
+}
+
+unsigned int AsmPrinter::getUnitLengthFieldByteSize() const {
+  return dwarf::getUnitLengthFieldByteSize(
+      OutStreamer->getContext().getDwarfFormat());
 }

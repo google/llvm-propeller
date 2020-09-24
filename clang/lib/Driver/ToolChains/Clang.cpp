@@ -4915,13 +4915,18 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   if (Arg *A = Args.getLastArg(options::OPT_fbasic_block_sections_EQ)) {
-    StringRef Val = A->getValue();
-    if (Val != "all" && Val != "labels" && Val != "none" &&
-        !(Val.startswith("list=") && llvm::sys::fs::exists(Val.substr(5))))
-      D.Diag(diag::err_drv_invalid_value)
-          << A->getAsString(Args) << A->getValue();
-    else
-      A->render(Args, CmdArgs);
+    if (Triple.isX86() && Triple.isOSBinFormatELF()) {
+      StringRef Val = A->getValue();
+      if (Val != "all" && Val != "labels" && Val != "none" &&
+          !(Val.startswith("list=") && llvm::sys::fs::exists(Val.substr(5))))
+        D.Diag(diag::err_drv_invalid_value)
+            << A->getAsString(Args) << A->getValue();
+      else
+        A->render(Args, CmdArgs);
+    } else {
+      D.Diag(diag::err_drv_unsupported_opt_for_target)
+          << A->getAsString(Args) << TripleStr;
+    }
   }
 
   if (Args.hasFlag(options::OPT_fdata_sections, options::OPT_fno_data_sections,
@@ -4944,6 +4949,26 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasFlag(options::OPT_funique_basic_block_section_names,
                    options::OPT_fno_unique_basic_block_section_names, false))
     CmdArgs.push_back("-funique-basic-block-section-names");
+
+  if (Arg *A = Args.getLastArg(options::OPT_fsplit_machine_functions,
+                               options::OPT_fno_split_machine_functions)) {
+    // This codegen pass is only available on x86-elf targets.
+    if (Triple.isX86() && Triple.isOSBinFormatELF()) {
+      if (A->getOption().matches(options::OPT_fsplit_machine_functions)) {
+        // If the flag is enabled but no profile information is available then
+        // emit a warning.
+        if (getLastProfileUseArg(Args) || getLastProfileSampleUseArg(Args)) {
+          A->render(Args, CmdArgs);
+        } else {
+          D.Diag(diag::warn_drv_diagnostics_hotness_requires_pgo)
+              << A->getAsString(Args);
+        }
+      }
+    } else {
+      D.Diag(diag::err_drv_unsupported_opt_for_target)
+          << A->getAsString(Args) << TripleStr;
+    }
+  }
 
   Args.AddLastArg(CmdArgs, options::OPT_finstrument_functions,
                   options::OPT_finstrument_functions_after_inlining,

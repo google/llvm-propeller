@@ -443,7 +443,7 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
       WithColor::error() << "Unknown original " << clone.Original.MBBNumber << "#" << clone.Original.CloneNumber << '\n';
       return false;
     }
-    
+
     auto orig_block = MF.getBlockNumbered(*orig_linear_id);
 
     auto cloned = CloneMachineBasicBlock(orig_block);
@@ -620,6 +620,26 @@ void llvm::sortBasicBlocksAndUpdateBranches(
   updateBranches(MF, PreLayoutFallThroughs);
 }
 
+// If the exception section begins with a landing pad, that landing pad will
+// assume a zero offset (relative to @LPStart) in the LSDA. However, a value of
+// zero implies "no landing pad." This function inserts a NOP just before the EH
+// pad label to ensure a nonzero offset. Returns true if padding is not needed.
+bool llvm::avoidZeroOffsetLandingPad(MachineFunction &MF) {
+  for (auto &MBB : MF) {
+    if (MBB.isBeginSection() && MBB.isEHPad()) {
+      MachineBasicBlock::iterator MI = MBB.begin();
+      while (!MI->isEHLabel())
+        ++MI;
+      MCInst Noop;
+      MF.getSubtarget().getInstrInfo()->getNoop(Noop);
+      BuildMI(MBB, MI, DebugLoc(),
+              MF.getSubtarget().getInstrInfo()->get(Noop.getOpcode()));
+      return false;
+    }
+  }
+  return true;
+}
+
 bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
   auto BBSectionsType = MF.getTarget().getBBSectionsType();
   assert(BBSectionsType != BasicBlockSection::None &&
@@ -692,6 +712,7 @@ bool BasicBlockSections::runOnMachineFunction(MachineFunction &MF) {
   };
 
   sortBasicBlocksAndUpdateBranches(MF, Comparator);
+  avoidZeroOffsetLandingPad(MF);
 
   auto FuncName = MF.getName();
   auto R = FuncAliasMap.find(FuncName);

@@ -3141,6 +3141,9 @@ def warn_nocf_check_attribute_ignored :
 def warn_attribute_after_definition_ignored : Warning<
   "attribute %0 after definition is ignored">,
    InGroup<IgnoredAttributes>;
+def warn_attributes_likelihood_ifstmt_conflict
+    : Warning<"conflicting attributes %0 are ignored">,
+      InGroup<IgnoredAttributes>;
 def warn_cxx11_gnu_attribute_on_type : Warning<
   "attribute %0 ignored, because it cannot be applied to a type">,
   InGroup<IgnoredAttributes>;
@@ -3970,6 +3973,13 @@ def err_objc_bridged_related_known_method : Error<
 
 def err_objc_attr_protocol_requires_definition : Error<
   "attribute %0 can only be applied to @protocol definitions, not forward declarations">;
+
+def err_attr_swift_error_no_error_parameter : Error<
+  "%0 attribute can only be applied to a %select{function|method}1 with an "
+  "error parameter">;
+def err_attr_swift_error_return_type : Error<
+  "%0 attribute with '%1' convention can only be applied to a "
+  "%select{function|method}2 returning %select{an integral type|a pointer}3">;
 
 def warn_ignored_objc_externally_retained : Warning<
   "'objc_externally_retained' can only be applied to local variables "
@@ -7441,6 +7451,12 @@ def err_no_typeid_with_fno_rtti : Error<
   "use of typeid requires -frtti">;
 def err_no_dynamic_cast_with_fno_rtti : Error<
   "use of dynamic_cast requires -frtti">;
+def warn_no_dynamic_cast_with_rtti_disabled: Warning<
+  "dynamic_cast will not work since RTTI data is disabled by " 
+  "%select{-fno-rtti-data|/GR-}0">, InGroup<RTTI>;
+def warn_no_typeid_with_rtti_disabled: Warning<
+  "typeid will not work since RTTI data is disabled by "
+  "%select{-fno-rtti-data|/GR-}0">, InGroup<RTTI>;
 
 def err_cannot_form_pointer_to_member_of_reference_type : Error<
   "cannot form a pointer-to-member to member %0 of reference type %1">;

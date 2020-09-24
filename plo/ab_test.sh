@@ -2,7 +2,7 @@
 # usage: ./ab_test.sh compiler1 compiler2 ...
 make t-test
 
-ITERATIONS=2
+ITERATIONS=10
 declare -A times=()
 for i in $(eval echo "{1..$(($ITERATIONS+1))}") ; do
   for arg; do
@@ -25,9 +25,11 @@ done
 
 if [ "${#times[@]}" == '2' ] ;  then
   for binary in "${!times[@]}"; do
-    rm .${binary}.times
-    echo ${times[$binary]} | tr ' ' '\n' > .${binary}.times
-    arg="${arg} .${binary}.times"
+    binary_base="$(basename -- ${binary})"
+    echo "${binary_base}"
+    rm -f .${binary_base}.times
+    echo ${times[$binary]} | tr ' ' '\n' > .${binary_base}.times
+    arg="${arg} .${binary_base}.times"
   done
   ./t-test ${arg}
 fi

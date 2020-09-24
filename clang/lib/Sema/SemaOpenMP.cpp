@@ -2194,6 +2194,7 @@ VarDecl *Sema::isOpenMPCapturedDecl(ValueDecl *D, bool CheckScopeInfo,
             break;
           }
       }
+      assert(CSI && "Failed to find CapturedRegionScopeInfo");
       SmallVector<OpenMPDirectiveKind, 4> Regions;
       getOpenMPCaptureRegions(Regions,
                               DSAStack->getDirective(CSI->OpenMPLevel));
@@ -15119,6 +15120,17 @@ static bool actOnOMPReductionKindClause(
           continue;
         }
       }
+    } else {
+      // Threadprivates cannot be shared between threads, so dignose if the base
+      // is a threadprivate variable.
+      DSAStackTy::DSAVarData DVar = Stack->getTopDSA(D, /*FromParent=*/false);
+      if (DVar.CKind == OMPC_threadprivate) {
+        S.Diag(ELoc, diag::err_omp_wrong_dsa)
+            << getOpenMPClauseName(DVar.CKind)
+            << getOpenMPClauseName(OMPC_reduction);
+        reportOriginalDsa(S, Stack, D, DVar);
+        continue;
+      }
     }
 
     // Try to find 'declare reduction' corresponding construct before using
@@ -15388,12 +15400,12 @@ static bool actOnOMPReductionKindClause(
       if (!BasePath.empty()) {
         LHS = S.DefaultLvalueConversion(LHS.get());
         RHS = S.DefaultLvalueConversion(RHS.get());
-        LHS = ImplicitCastExpr::Create(Context, PtrRedTy,
-                                       CK_UncheckedDerivedToBase, LHS.get(),
-                                       &BasePath, LHS.get()->getValueKind());
-        RHS = ImplicitCastExpr::Create(Context, PtrRedTy,
-                                       CK_UncheckedDerivedToBase, RHS.get(),
-                                       &BasePath, RHS.get()->getValueKind());
+        LHS = ImplicitCastExpr::Create(
+            Context, PtrRedTy, CK_UncheckedDerivedToBase, LHS.get(), &BasePath,
+            LHS.get()->getValueKind(), FPOptionsOverride());
+        RHS = ImplicitCastExpr::Create(
+            Context, PtrRedTy, CK_UncheckedDerivedToBase, RHS.get(), &BasePath,
+            RHS.get()->getValueKind(), FPOptionsOverride());
       }
       FunctionProtoType::ExtProtoInfo EPI;
       QualType Params[] = {PtrRedTy, PtrRedTy};

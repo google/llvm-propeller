@@ -11095,6 +11095,11 @@ void Sema::CheckMSVCRTEntryPoint(FunctionDecl *FD) {
     if (FD->getName() != "DllMain")
       FD->setHasImplicitReturnZero(true);
 
+  if (FT->getCallConv() != CC_C) {
+    FT = Context.adjustFunctionType(FT, FT->getExtInfo().withCallingConv(CC_C));
+    FD->setType(QualType(FT, 0));
+  }
+
   if (!FD->isInvalidDecl() && FD->getDescribedFunctionTemplate()) {
     Diag(FD->getLocation(), diag::err_mainlike_template_decl) << FD;
     FD->setInvalidDecl();
@@ -18172,11 +18177,9 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
     // Adjust the Expr initializer and type.
     if (ECD->getInitExpr() &&
         !Context.hasSameType(NewTy, ECD->getInitExpr()->getType()))
-      ECD->setInitExpr(ImplicitCastExpr::Create(Context, NewTy,
-                                                CK_IntegralCast,
-                                                ECD->getInitExpr(),
-                                                /*base paths*/ nullptr,
-                                                VK_RValue));
+      ECD->setInitExpr(ImplicitCastExpr::Create(
+          Context, NewTy, CK_IntegralCast, ECD->getInitExpr(),
+          /*base paths*/ nullptr, VK_RValue, FPOptionsOverride()));
     if (getLangOpts().CPlusPlus)
       // C++ [dcl.enum]p4: Following the closing brace of an
       // enum-specifier, each enumerator has the type of its

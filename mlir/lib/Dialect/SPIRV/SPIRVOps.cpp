@@ -305,7 +305,12 @@ static void printSourceMemoryAccessAttribute(
 }
 
 static LogicalResult verifyCastOp(Operation *op,
-                                  bool requireSameBitWidth = true) {
+                                  bool requireSameBitWidth = true,
+                                  bool skipBitWidthCheck = false) {
+  // Some CastOps have no limit on bit widths for result and operand type.
+  if (skipBitWidthCheck)
+    return success();
+
   Type operandType = op->getOperand(0).getType();
   Type resultType = op->getResult(0).getType();
 
@@ -3261,11 +3266,15 @@ namespace spirv {
 // TableGen'erated operation interfaces for querying versions, extensions, and
 // capabilities.
 #include "mlir/Dialect/SPIRV/SPIRVAvailability.cpp.inc"
+} // namespace spirv
+} // namespace mlir
 
 // TablenGen'erated operation definitions.
 #define GET_OP_CLASSES
 #include "mlir/Dialect/SPIRV/SPIRVOps.cpp.inc"
 
+namespace mlir {
+namespace spirv {
 // TableGen'erated operation availability interface implementations.
 #include "mlir/Dialect/SPIRV/SPIRVOpAvailabilityImpl.inc"
 

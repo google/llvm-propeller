@@ -18,7 +18,6 @@
 #include "InputFiles.h"
 #include "LinkerScript.h"
 #include "OutputSections.h"
-#include "Propeller/BBSectionsProf.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
 #include "Target.h"
@@ -50,7 +49,6 @@ using namespace llvm::support;
 using namespace lld;
 using namespace lld::elf;
 
-using llvm::propeller::SymbolEntry;
 using llvm::support::endian::read32le;
 using llvm::support::endian::write32le;
 using llvm::support::endian::write64le;
@@ -2160,10 +2158,6 @@ void SymbolTableBaseSection::addSymbol(Symbol *b) {
   bool hashIt = b->isLocal();
   uint32_t offset = strTabSec.addString(b->getName(), hashIt);
   symbols.push_back({b, offset});
-  if (SymbolEntry::isBBSymbol(b->getName())) {
-    EndsMap.emplace(std::piecewise_construct, std::forward_as_tuple(EndKey),
-                    std::forward_as_tuple(offset, SName.size()));
-  }
 }
 
 size_t SymbolTableBaseSection::getSymbolIndex(Symbol *sym) {

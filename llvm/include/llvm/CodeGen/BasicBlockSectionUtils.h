@@ -22,6 +22,8 @@ using MachineBasicBlockComparator =
 void sortBasicBlocksAndUpdateBranches(MachineFunction &MF,
                                       MachineBasicBlockComparator MBBCmp);
 
+bool avoidZeroOffsetLandingPad(MachineFunction &MF);
+
 } // end namespace llvm
 
 #endif // LLVM_CODEGEN_BASICBLOCKSECTIONUTILS_H

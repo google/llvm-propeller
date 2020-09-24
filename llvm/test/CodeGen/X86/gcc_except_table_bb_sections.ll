@@ -12,6 +12,7 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 ; CHECK-NON-PIC:    .cfi_lsda 3, .Lexception0
 ; CHECK-PIC:        .cfi_lsda 27, .Lexception0
 ; CHECK-LABEL:    .Ltmp0:
+; CHECK-NEXT:       callq   _Z1fv
 ; CHECK-LABEL:    .Ltmp1:
 
 ; CHECK-NOT:        .cfi_lsda
@@ -31,7 +32,7 @@ define i32 @main() uwtable optsize ssp personality i8* bitcast (i32 (...)* @__gx
 ; CHECK-PIC:        .cfi_personality 155, DW.ref.__gxx_personality_v0
 ; CHECK-NON-PIC:    .cfi_lsda 3, .Lexception2
 ; CHECK-PIC:        .cfi_lsda 27, .Lexception2
-; CHECK:            nop                             # avoids zero-offset landing pad
+; CHECK:            nop
 ; CHECK-LABEL:    .Ltmp2:
 ; CHECK-LABEL:    .LBB_END0_2:
 
@@ -57,7 +58,6 @@ eh.resume:
 declare void @_Z1fv() optsize
 
 declare i32 @__gxx_personality_v0(...)
-
 ; Verify that the exception table gets split across the three basic block sections.
 ;
 ; CHECK:                .section .gcc_except_table

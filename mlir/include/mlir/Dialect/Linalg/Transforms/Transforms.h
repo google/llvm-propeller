@@ -313,6 +313,13 @@ struct LinalgTilingPattern : public LinalgBaseTilingPattern {
                       PatternBenefit benefit = 1)
       : LinalgBaseTilingPattern(OpTy::getOperationName(), context, options,
                                 marker, benefit) {}
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (failed(LinalgBaseTilingPattern::matchAndRewrite(op, rewriter)))
+      return failure();
+    rewriter.eraseOp(op);
+    return success();
+  }
 };
 
 ///
@@ -415,7 +422,8 @@ enum class LinalgLoweringType {
   AffineLoops = 2,
   ParallelLoops = 3
 };
-template <typename OpTy> struct LinalgLoweringPattern : public RewritePattern {
+template <typename OpTy>
+struct LinalgLoweringPattern : public RewritePattern {
   LinalgLoweringPattern(MLIRContext *context, LinalgLoweringType loweringType,
                         LinalgMarker marker = LinalgMarker(),
                         PatternBenefit benefit = 1)
@@ -568,10 +576,11 @@ struct AffineMinSCFCanonicalizationPattern
 /// Subsequently, they are contracted together and the result is written to
 /// the first entry of the output buffer.
 template <typename ConvOp, int N>
-struct ConvOpVectorization : public OpRewritePattern<ConvOp> {
+class ConvOpVectorization : public OpRewritePattern<ConvOp> {
   using OpRewritePattern<ConvOp>::OpRewritePattern;
   SmallVector<bool, 4> mask;
 
+public:
   ConvOpVectorization(MLIRContext *context, SmallVector<bool, 4> msk)
       : OpRewritePattern<ConvOp>(context) {
     assert(msk.size() == N && "Mask size does not match rank");
