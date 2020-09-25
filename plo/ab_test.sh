@@ -1,8 +1,9 @@
 #!/bin/bash
-# usage: ./ab_test.sh compiler1 compiler2 ...
+# usage: ./ab_test.sh compiler1 compiler2 ... [ outputs t-test results with two
+# versions ]
 make t-test
 
-ITERATIONS=10
+ITERATIONS=2
 declare -A times=()
 for i in $(eval echo "{1..$(($ITERATIONS+1))}") ; do
   for arg; do
@@ -24,13 +25,13 @@ for binary in "${!times[@]}"; do
 done
 
 if [ "${#times[@]}" == '2' ] ;  then
+  t_test_arg=""
   for binary in "${!times[@]}"; do
     binary_base="$(basename -- ${binary})"
-    echo "${binary_base}"
     rm -f .${binary_base}.times
     echo ${times[$binary]} | tr ' ' '\n' > .${binary_base}.times
-    arg="${arg} .${binary_base}.times"
+    t_test_arg="${t_test_arg} .${binary_base}.times"
   done
-  ./t-test ${arg}
+  ./t-test ${t_test_arg}
 fi
 
