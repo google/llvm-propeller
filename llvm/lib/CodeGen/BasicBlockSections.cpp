@@ -473,7 +473,7 @@ static bool performCloningAndPathLayouts(MachineFunction& MF,
 
       for (auto& bb : MF) {
         std::cerr << bb.getName().str() << '\n';
-        bb.dump();
+        //bb.dump();
       }
 
       llvm::report_fatal_error("Hot path generation failed");
