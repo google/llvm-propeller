@@ -239,9 +239,6 @@ void EHStreamer::computeCallSiteTable(
   // The end label of the previous invoke or nounwind try-range.
   MCSymbol *LastLabel = Asm->getFunctionBegin();
 
-  // Pointer to the current call-site range.
-  CallSiteRange *CurCSRange = nullptr;
-
   // Whether there is a potentially throwing instruction (currently this means
   // an ordinary call) between the end of the previous try-range and now.
   bool SawPotentiallyThrowing = false;
