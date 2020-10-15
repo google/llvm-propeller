@@ -94,48 +94,65 @@ void syntax::Tree::prependChildLowLevel(Node *Child) {
 
 void syntax::Tree::replaceChildRangeLowLevel(Node *BeforeBegin, Node *End,
                                              Node *New) {
-  assert(!BeforeBegin || BeforeBegin->Parent == this);
+  assert((!BeforeBegin || BeforeBegin->Parent == this) &&
+         "`BeforeBegin` is not a child of `this`.");
+  assert((!End || End->Parent == this) && "`End` is not a child of `this`.");
+  assert(canModify() && "Cannot modify `this`.");
+
+  Node *&Begin = BeforeBegin ? BeforeBegin->NextSibling : FirstChild;
 
 #ifndef NDEBUG
-  for (auto *N = New; N; N = N->getNextSibling()) {
+  for (auto *N = New; N; N = N->NextSibling) {
     assert(N->Parent == nullptr);
     assert(N->getRole() != NodeRole::Detached && "Roles must be set");
     // FIXME: sanity-check the role.
   }
+
+  auto Reachable = [](Node *From, Node *N) {
+    if (!N)
+      return true;
+    for (auto *It = From; It; It = It->NextSibling)
+      if (It == N)
+        return true;
+    return false;
+  };
+  assert(Reachable(FirstChild, BeforeBegin) &&
+         "`BeforeBegin` is not reachable.");
+  assert(Reachable(Begin, End) && "`End` is not after `BeforeBegin`.");
 #endif
 
+  if (!New && Begin == End)
+    return;
+
+  // Mark modification.
+  for (auto *T = this; T && T->Original; T = T->Parent)
+    T->Original = false;
+
   // Detach old nodes.
-  for (auto *N = !BeforeBegin ? FirstChild : BeforeBegin->getNextSibling();
-       N != End;) {
+  for (auto *N = Begin; N != End;) {
     auto *Next = N->NextSibling;
 
     N->setRole(NodeRole::Detached);
     N->Parent = nullptr;
     N->NextSibling = nullptr;
     if (N->Original)
-      traverse(N, [&](Node *C) { C->Original = false; });
+      traverse(N, [](Node *C) { C->Original = false; });
 
     N = Next;
   }
 
-  // Attach new nodes.
-  if (BeforeBegin)
-    BeforeBegin->NextSibling = New ? New : End;
-  else
-    FirstChild = New ? New : End;
-
-  if (New) {
-    auto *Last = New;
-    for (auto *N = New; N != nullptr; N = N->getNextSibling()) {
-      Last = N;
-      N->Parent = this;
-    }
-    Last->NextSibling = End;
+  if (!New) {
+    Begin = End;
+    return;
   }
-
-  // Mark the node as modified.
-  for (auto *T = this; T && T->Original; T = T->Parent)
-    T->Original = false;
+  // Attach new nodes.
+  Begin = New;
+  auto *Last = New;
+  for (auto *N = New; N != nullptr; N = N->NextSibling) {
+    Last = N;
+    N->Parent = this;
+  }
+  Last->NextSibling = End;
 }
 
 namespace {
@@ -153,7 +170,7 @@ static void dumpLeaf(raw_ostream &OS, const syntax::Leaf *L,
 
 static void dumpNode(raw_ostream &OS, const syntax::Node *N,
                      const SourceManager &SM, std::vector<bool> IndentMask) {
-  auto dumpExtraInfo = [&OS](const syntax::Node *N) {
+  auto DumpExtraInfo = [&OS](const syntax::Node *N) {
     if (N->getRole() != syntax::NodeRole::Unknown)
       OS << " " << N->getRole();
     if (!N->isOriginal())
@@ -167,14 +184,14 @@ static void dumpNode(raw_ostream &OS, const syntax::Node *N,
     OS << "'";
     dumpLeaf(OS, L, SM);
     OS << "'";
-    dumpExtraInfo(N);
+    DumpExtraInfo(N);
     OS << "\n";
     return;
   }
 
   const auto *T = cast<syntax::Tree>(N);
   OS << T->getKind();
-  dumpExtraInfo(N);
+  DumpExtraInfo(N);
   OS << "\n";
 
   for (const auto *It = T->getFirstChild(); It; It = It->getNextSibling()) {
@@ -255,27 +272,24 @@ void syntax::Node::assertInvariantsRecursive() const {
 }
 
 syntax::Leaf *syntax::Tree::findFirstLeaf() {
-  auto *T = this;
-  while (auto *C = T->getFirstChild()) {
+  for (auto *C = getFirstChild(); C; C = C->getNextSibling()) {
     if (auto *L = dyn_cast<syntax::Leaf>(C))
       return L;
-    T = cast<syntax::Tree>(C);
+    if (auto *L = cast<syntax::Tree>(C)->findFirstLeaf())
+      return L;
   }
   return nullptr;
 }
 
 syntax::Leaf *syntax::Tree::findLastLeaf() {
-  auto *T = this;
-  while (auto *C = T->getFirstChild()) {
-    // Find the last child.
-    while (auto *Next = C->getNextSibling())
-      C = Next;
-
+  syntax::Leaf *Last = nullptr;
+  for (auto *C = getFirstChild(); C; C = C->getNextSibling()) {
     if (auto *L = dyn_cast<syntax::Leaf>(C))
-      return L;
-    T = cast<syntax::Tree>(C);
+      Last = L;
+    else if (auto *L = cast<syntax::Tree>(C)->findLastLeaf())
+      Last = L;
   }
-  return nullptr;
+  return Last;
 }
 
 syntax::Node *syntax::Tree::findChild(NodeRole R) {
@@ -302,20 +316,20 @@ syntax::List::getElementsAsNodesAndDelimiters() {
   if (!getFirstChild())
     return {};
 
-  auto children = std::vector<syntax::List::ElementAndDelimiter<Node>>();
-  syntax::Node *elementWithoutDelimiter = nullptr;
+  std::vector<syntax::List::ElementAndDelimiter<Node>> Children;
+  syntax::Node *ElementWithoutDelimiter = nullptr;
   for (auto *C = getFirstChild(); C; C = C->getNextSibling()) {
     switch (C->getRole()) {
     case syntax::NodeRole::ListElement: {
-      if (elementWithoutDelimiter) {
-        children.push_back({elementWithoutDelimiter, nullptr});
+      if (ElementWithoutDelimiter) {
+        Children.push_back({ElementWithoutDelimiter, nullptr});
       }
-      elementWithoutDelimiter = C;
+      ElementWithoutDelimiter = C;
       break;
     }
     case syntax::NodeRole::ListDelimiter: {
-      children.push_back({elementWithoutDelimiter, cast<syntax::Leaf>(C)});
-      elementWithoutDelimiter = nullptr;
+      Children.push_back({ElementWithoutDelimiter, cast<syntax::Leaf>(C)});
+      ElementWithoutDelimiter = nullptr;
       break;
     }
     default:
@@ -326,19 +340,19 @@ syntax::List::getElementsAsNodesAndDelimiters() {
 
   switch (getTerminationKind()) {
   case syntax::List::TerminationKind::Separated: {
-    children.push_back({elementWithoutDelimiter, nullptr});
+    Children.push_back({ElementWithoutDelimiter, nullptr});
     break;
   }
   case syntax::List::TerminationKind::Terminated:
   case syntax::List::TerminationKind::MaybeTerminated: {
-    if (elementWithoutDelimiter) {
-      children.push_back({elementWithoutDelimiter, nullptr});
+    if (ElementWithoutDelimiter) {
+      Children.push_back({ElementWithoutDelimiter, nullptr});
     }
     break;
   }
   }
 
-  return children;
+  return Children;
 }
 
 // Almost the same implementation of `getElementsAsNodesAndDelimiters` but
@@ -347,20 +361,20 @@ std::vector<syntax::Node *> syntax::List::getElementsAsNodes() {
   if (!getFirstChild())
     return {};
 
-  auto children = std::vector<syntax::Node *>();
-  syntax::Node *elementWithoutDelimiter = nullptr;
+  std::vector<syntax::Node *> Children;
+  syntax::Node *ElementWithoutDelimiter = nullptr;
   for (auto *C = getFirstChild(); C; C = C->getNextSibling()) {
     switch (C->getRole()) {
     case syntax::NodeRole::ListElement: {
-      if (elementWithoutDelimiter) {
-        children.push_back(elementWithoutDelimiter);
+      if (ElementWithoutDelimiter) {
+        Children.push_back(ElementWithoutDelimiter);
       }
-      elementWithoutDelimiter = C;
+      ElementWithoutDelimiter = C;
       break;
     }
     case syntax::NodeRole::ListDelimiter: {
-      children.push_back(elementWithoutDelimiter);
-      elementWithoutDelimiter = nullptr;
+      Children.push_back(ElementWithoutDelimiter);
+      ElementWithoutDelimiter = nullptr;
       break;
     }
     default:
@@ -370,19 +384,19 @@ std::vector<syntax::Node *> syntax::List::getElementsAsNodes() {
 
   switch (getTerminationKind()) {
   case syntax::List::TerminationKind::Separated: {
-    children.push_back(elementWithoutDelimiter);
+    Children.push_back(ElementWithoutDelimiter);
     break;
   }
   case syntax::List::TerminationKind::Terminated:
   case syntax::List::TerminationKind::MaybeTerminated: {
-    if (elementWithoutDelimiter) {
-      children.push_back(elementWithoutDelimiter);
+    if (ElementWithoutDelimiter) {
+      Children.push_back(ElementWithoutDelimiter);
     }
     break;
   }
   }
 
-  return children;
+  return Children;
 }
 
 clang::tok::TokenKind syntax::List::getDelimiterTokenKind() const {

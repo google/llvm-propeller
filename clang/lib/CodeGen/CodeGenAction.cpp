@@ -35,6 +35,7 @@
 #include "llvm/IR/LLVMRemarkStreamer.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/LTO/LTOBackend.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -1066,7 +1067,7 @@ CodeGenAction::loadModule(MemoryBufferRef MBRef) {
     Expected<std::vector<BitcodeModule>> BMsOrErr = getBitcodeModuleList(MBRef);
     if (!BMsOrErr)
       return DiagErrors(BMsOrErr.takeError());
-    BitcodeModule *Bm = FindThinLTOModule(*BMsOrErr);
+    BitcodeModule *Bm = llvm::lto::findThinLTOModule(*BMsOrErr);
     // We have nothing to do if the file contains no ThinLTO module. This is
     // possible if ThinLTO compilation was not able to split module. Content of
     // the file was already processed by indexing and will be passed to the
@@ -1121,11 +1122,10 @@ void CodeGenAction::ExecuteAction() {
     if (BA != Backend_EmitNothing && !OS)
       return;
 
-    bool Invalid;
     SourceManager &SM = CI.getSourceManager();
     FileID FID = SM.getMainFileID();
-    const llvm::MemoryBuffer *MainFile = SM.getBuffer(FID, &Invalid);
-    if (Invalid)
+    Optional<MemoryBufferRef> MainFile = SM.getBufferOrNone(FID);
+    if (!MainFile)
       return;
 
     TheModule = loadModule(*MainFile);
@@ -1140,8 +1140,7 @@ void CodeGenAction::ExecuteAction() {
       TheModule->setTargetTriple(TargetOpts.Triple);
     }
 
-    EmbedBitcode(TheModule.get(), CodeGenOpts,
-                 MainFile->getMemBufferRef());
+    EmbedBitcode(TheModule.get(), CodeGenOpts, *MainFile);
 
     LLVMContext &Ctx = TheModule->getContext();
     Ctx.setInlineAsmDiagnosticHandler(BitcodeInlineAsmDiagHandler,

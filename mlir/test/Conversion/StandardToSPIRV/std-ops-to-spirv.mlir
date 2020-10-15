@@ -578,6 +578,15 @@ func @zexti3(%arg0 : i1) -> i32 {
   return %0 : i32
 }
 
+// CHECK-LABEL: @zexti4
+func @zexti4(%arg0 : vector<4xi1>) -> vector<4xi32> {
+  // CHECK: %[[ZERO:.+]] = spv.constant dense<0> : vector<4xi32>
+  // CHECK: %[[ONE:.+]] = spv.constant dense<1> : vector<4xi32>
+  // CHECK: spv.Select %{{.*}}, %[[ONE]], %[[ZERO]] : vector<4xi1>, vector<4xi32>
+  %0 = std.zexti %arg0 : vector<4xi1> to vector<4xi32>
+  return %0 : vector<4xi32>
+}
+
 // CHECK-LABEL: @trunci1
 func @trunci1(%arg0 : i64) -> i16 {
   // CHECK: spv.SConvert %{{.*}} : i64 to i16
@@ -682,8 +691,8 @@ func @select(%arg0 : i32, %arg1 : i32) {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: @load_store_zero_rank_float
-// CHECK: [[ARG0:%.*]]: !spv.ptr<!spv.struct<!spv.array<1 x f32, stride=4> [0]>, StorageBuffer>,
-// CHECK: [[ARG1:%.*]]: !spv.ptr<!spv.struct<!spv.array<1 x f32, stride=4> [0]>, StorageBuffer>)
+// CHECK: [[ARG0:%.*]]: !spv.ptr<!spv.struct<(!spv.array<1 x f32, stride=4> [0])>, StorageBuffer>,
+// CHECK: [[ARG1:%.*]]: !spv.ptr<!spv.struct<(!spv.array<1 x f32, stride=4> [0])>, StorageBuffer>)
 func @load_store_zero_rank_float(%arg0: memref<f32>, %arg1: memref<f32>) {
   //      CHECK: [[ZERO1:%.*]] = spv.constant 0 : i32
   //      CHECK: spv.AccessChain [[ARG0]][
@@ -701,8 +710,8 @@ func @load_store_zero_rank_float(%arg0: memref<f32>, %arg1: memref<f32>) {
 }
 
 // CHECK-LABEL: @load_store_zero_rank_int
-// CHECK: [[ARG0:%.*]]: !spv.ptr<!spv.struct<!spv.array<1 x i32, stride=4> [0]>, StorageBuffer>,
-// CHECK: [[ARG1:%.*]]: !spv.ptr<!spv.struct<!spv.array<1 x i32, stride=4> [0]>, StorageBuffer>)
+// CHECK: [[ARG0:%.*]]: !spv.ptr<!spv.struct<(!spv.array<1 x i32, stride=4> [0])>, StorageBuffer>,
+// CHECK: [[ARG1:%.*]]: !spv.ptr<!spv.struct<(!spv.array<1 x i32, stride=4> [0])>, StorageBuffer>)
 func @load_store_zero_rank_int(%arg0: memref<i32>, %arg1: memref<i32>) {
   //      CHECK: [[ZERO1:%.*]] = spv.constant 0 : i32
   //      CHECK: spv.AccessChain [[ARG0]][

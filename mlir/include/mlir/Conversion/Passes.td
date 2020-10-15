@@ -242,6 +242,21 @@ def ConvertShapeToStandard : Pass<"convert-shape-to-std", "ModuleOp"> {
   let dependentDialects = ["StandardOpsDialect", "scf::SCFDialect"];
 }
 
+def ConvertShapeConstraints: Pass<"convert-shape-constraints", "FuncOp"> {
+  let summary = "Convert shape constraint operations to the standard dialect";
+  let description = [{
+    This pass eliminates shape constraints from the program, converting them to
+    eager (side-effecting) error handling code.
+
+    This pass is separate from the regular convert-shape-to-standard, despite
+    converting between the same dialects, because converting shape constraints
+    can happen at a different part of the program than general shape
+    computation lowering.
+  }];
+  let constructor = "mlir::createConvertShapeConstraintsPass()";
+  let dependentDialects = ["StandardOpsDialect", "scf::SCFDialect"];
+}
+
 //===----------------------------------------------------------------------===//
 // SPIRVToLLVM
 //===----------------------------------------------------------------------===//
@@ -364,6 +379,17 @@ def ConvertVectorToROCDL : Pass<"convert-vector-to-rocdl", "ModuleOp"> {
                 "dialect";
   let constructor = "mlir::createConvertVectorToROCDLPass()";
   let dependentDialects = ["ROCDL::ROCDLDialect"];
+}
+
+//===----------------------------------------------------------------------===//
+// VectorToSPIRV
+//===----------------------------------------------------------------------===//
+
+def ConvertVectorToSPIRV : Pass<"convert-vector-to-spirv", "ModuleOp"> {
+  let summary = "Lower the operations from the vector dialect into the SPIR-V "
+                "dialect";
+  let constructor = "mlir::createConvertVectorToSPIRVPass()";
+  let dependentDialects = ["spirv::SPIRVDialect"];
 }
 
 #endif // MLIR_CONVERSION_PASSES

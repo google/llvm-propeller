@@ -154,7 +154,8 @@ public:
       MinVersion = llvm::VersionTuple(5U);
       break;
     default:
-      llvm_unreachable("Unexpected OS");
+      // Conservatively return 8 bytes if OS is unknown.
+      return 64;
     }
 
     unsigned Major, Minor, Micro;
@@ -770,11 +771,20 @@ protected:
       // type is not declared as a typedef in system headers.
       Builder.defineMacro("__wchar_t");
     }
+
+    this->PlatformName = llvm::Triple::getOSTypeName(Triple.getOS());
   }
 
 public:
   ZOSTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
-      : OSTargetInfo<Target>(Triple, Opts) {}
+      : OSTargetInfo<Target>(Triple, Opts) {
+    this->WCharType = TargetInfo::UnsignedInt;
+    this->UseBitFieldTypeAlignment = false;
+    this->UseZeroLengthBitfieldAlignment = true;
+    this->ZeroLengthBitfieldBoundary = 32;
+    this->MinGlobalAlign = 0;
+    this->DefaultAlignForAttributeAligned = 128;
+  }
 };
 
 void addWindowsDefines(const llvm::Triple &Triple, const LangOptions &Opts,

@@ -288,6 +288,10 @@ public:
   bool applyCombineAddP2IToPtrAdd(MachineInstr &MI,
                                   std::pair<Register, bool> &PtrRegAndCommute);
 
+  // Transform G_PTR_ADD (G_PTRTOINT C1), C2 -> C1 + C2
+  bool matchCombineConstPtrAddToI2P(MachineInstr &MI, int64_t &NewCst);
+  bool applyCombineConstPtrAddToI2P(MachineInstr &MI, int64_t &NewCst);
+
   /// Transform anyext(trunc(x)) to x.
   bool matchCombineAnyExtTrunc(MachineInstr &MI, Register &Reg);
   bool applyCombineAnyExtTrunc(MachineInstr &MI, Register &Reg);
@@ -414,6 +418,18 @@ public:
   /// Combine inverting a result of a compare into the opposite cond code.
   bool matchNotCmp(MachineInstr &MI, SmallVectorImpl<Register> &RegsToNegate);
   bool applyNotCmp(MachineInstr &MI, SmallVectorImpl<Register> &RegsToNegate);
+
+  /// Fold (xor (and x, y), y) -> (and (not x), y)
+  ///{
+  bool matchXorOfAndWithSameReg(MachineInstr &MI,
+                                std::pair<Register, Register> &MatchInfo);
+  bool applyXorOfAndWithSameReg(MachineInstr &MI,
+                                std::pair<Register, Register> &MatchInfo);
+  ///}
+
+  /// Combine G_PTR_ADD with nullptr to G_INTTOPTR
+  bool matchPtrAddZero(MachineInstr &MI);
+  bool applyPtrAddZero(MachineInstr &MI);
 
   /// Try to transform \p MI by using all of the above
   /// combine functions. Returns true if changed.

@@ -19,14 +19,15 @@
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/CallGraphSCCPass.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/Attributor.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/CallGraphUpdater.h"
-#include "llvm/Analysis/ValueTracking.h"
 
 using namespace llvm;
 using namespace omp;
@@ -36,6 +37,11 @@ using namespace omp;
 static cl::opt<bool> DisableOpenMPOptimizations(
     "openmp-opt-disable", cl::ZeroOrMore,
     cl::desc("Disable OpenMP specific optimizations."), cl::Hidden,
+    cl::init(false));
+
+static cl::opt<bool> EnableParallelRegionMerging(
+    "openmp-opt-enable-merging", cl::ZeroOrMore,
+    cl::desc("Enable the OpenMP region merging optimization."), cl::Hidden,
     cl::init(false));
 
 static cl::opt<bool> PrintICVValues("openmp-print-icv-values", cl::init(false),
@@ -63,6 +69,8 @@ STATISTIC(NumOpenMPTargetRegionKernels,
 STATISTIC(
     NumOpenMPParallelRegionsReplacedInGPUStateMachine,
     "Number of OpenMP parallel regions replaced with ID in GPU state machines");
+STATISTIC(NumOpenMPParallelRegionsMerged,
+          "Number of OpenMP parallel regions merged");
 
 #if !defined(NDEBUG)
 static constexpr auto TAG = "[" DEBUG_TYPE "]";
@@ -476,6 +484,12 @@ struct OpenMPOpt {
       : M(*(*SCC.begin())->getParent()), SCC(SCC), CGUpdater(CGUpdater),
         OREGetter(OREGetter), OMPInfoCache(OMPInfoCache), A(A) {}
 
+  /// Check if any remarks are enabled for openmp-opt
+  bool remarksEnabled() {
+    auto &Ctx = M.getContext();
+    return Ctx.getDiagHandlerPtr()->isAnyRemarkEnabled(DEBUG_TYPE);
+  }
+
   /// Run all OpenMP optimizations on the underlying SCC/ModuleSlice.
   bool run() {
     if (SCC.empty())
@@ -499,10 +513,18 @@ struct OpenMPOpt {
     // Recollect uses, in case Attributor deleted any.
     OMPInfoCache.recollectUses();
 
-    Changed |= deduplicateRuntimeCalls();
     Changed |= deleteParallelRegions();
     if (HideMemoryTransferLatency)
       Changed |= hideMemTransfersLatency();
+    if (remarksEnabled())
+      analysisGlobalization();
+    Changed |= deduplicateRuntimeCalls();
+    if (EnableParallelRegionMerging) {
+      if (mergeParallelRegions()) {
+        deduplicateRuntimeCalls();
+        Changed = true;
+      }
+    }
 
     return Changed;
   }
@@ -510,7 +532,8 @@ struct OpenMPOpt {
   /// Print initial ICV values for testing.
   /// FIXME: This should be done from the Attributor once it is added.
   void printICVs() const {
-    InternalControlVar ICVs[] = {ICV_nthreads, ICV_active_levels, ICV_cancel};
+    InternalControlVar ICVs[] = {ICV_nthreads, ICV_active_levels, ICV_cancel,
+                                 ICV_proc_bind};
 
     for (Function *F : OMPInfoCache.ModuleSlice) {
       for (auto ICV : ICVs) {
@@ -566,6 +589,244 @@ struct OpenMPOpt {
   }
 
 private:
+  /// Merge parallel regions when it is safe.
+  bool mergeParallelRegions() {
+    const unsigned CallbackCalleeOperand = 2;
+    const unsigned CallbackFirstArgOperand = 3;
+    using InsertPointTy = OpenMPIRBuilder::InsertPointTy;
+
+    // Check if there are any __kmpc_fork_call calls to merge.
+    OMPInformationCache::RuntimeFunctionInfo &RFI =
+        OMPInfoCache.RFIs[OMPRTL___kmpc_fork_call];
+
+    if (!RFI.Declaration)
+      return false;
+
+    // Check if there any __kmpc_push_proc_bind calls for explicit affinities.
+    OMPInformationCache::RuntimeFunctionInfo &ProcBindRFI =
+        OMPInfoCache.RFIs[OMPRTL___kmpc_push_proc_bind];
+
+    // Defensively abort if explicit affinities are set.
+    // TODO: Track ICV proc_bind to merge when mergable regions have the same
+    // affinity.
+    if (ProcBindRFI.Declaration)
+      return false;
+
+    bool Changed = false;
+    LoopInfo *LI = nullptr;
+    DominatorTree *DT = nullptr;
+
+    SmallDenseMap<BasicBlock *, SmallPtrSet<Instruction *, 4>> BB2PRMap;
+
+    BasicBlock *StartBB = nullptr, *EndBB = nullptr;
+    auto BodyGenCB = [&](InsertPointTy AllocaIP, InsertPointTy CodeGenIP,
+                         BasicBlock &ContinuationIP) {
+      BasicBlock *CGStartBB = CodeGenIP.getBlock();
+      BasicBlock *CGEndBB =
+          SplitBlock(CGStartBB, &*CodeGenIP.getPoint(), DT, LI);
+      assert(StartBB != nullptr && "StartBB should not be null");
+      CGStartBB->getTerminator()->setSuccessor(0, StartBB);
+      assert(EndBB != nullptr && "EndBB should not be null");
+      EndBB->getTerminator()->setSuccessor(0, CGEndBB);
+    };
+
+    auto PrivCB = [&](InsertPointTy AllocaIP, InsertPointTy CodeGenIP,
+                      Value &VPtr, Value *&ReplacementValue) -> InsertPointTy {
+      ReplacementValue = &VPtr;
+      return CodeGenIP;
+    };
+
+    auto FiniCB = [&](InsertPointTy CodeGenIP) {};
+
+    // Helper to merge the __kmpc_fork_call calls in MergableCIs. They are all
+    // contained in BB and only separated by instructions that can be
+    // redundantly executed in parallel. The block BB is split before the first
+    // call (in MergableCIs) and after the last so the entire region we merge
+    // into a single parallel region is contained in a single basic block
+    // without any other instructions. We use the OpenMPIRBuilder to outline
+    // that block and call the resulting function via __kmpc_fork_call.
+    auto Merge = [&](SmallVectorImpl<CallInst *> &MergableCIs, BasicBlock *BB) {
+      // TODO: Change the interface to allow single CIs expanded, e.g, to
+      // include an outer loop.
+      assert(MergableCIs.size() > 1 && "Assumed multiple mergable CIs");
+
+      auto Remark = [&](OptimizationRemark OR) {
+        OR << "Parallel region at "
+           << ore::NV("OpenMPParallelMergeFront",
+                      MergableCIs.front()->getDebugLoc())
+           << " merged with parallel regions at ";
+        for (auto *CI :
+             llvm::make_range(MergableCIs.begin() + 1, MergableCIs.end())) {
+          OR << ore::NV("OpenMPParallelMerge", CI->getDebugLoc());
+          if (CI != MergableCIs.back())
+            OR << ", ";
+        }
+        return OR;
+      };
+
+      emitRemark<OptimizationRemark>(MergableCIs.front(),
+                                     "OpenMPParallelRegionMerging", Remark);
+
+      Function *OriginalFn = BB->getParent();
+      LLVM_DEBUG(dbgs() << TAG << "Merge " << MergableCIs.size()
+                        << " parallel regions in " << OriginalFn->getName()
+                        << "\n");
+
+      // Isolate the calls to merge in a separate block.
+      EndBB = SplitBlock(BB, MergableCIs.back()->getNextNode(), DT, LI);
+      BasicBlock *AfterBB =
+          SplitBlock(EndBB, &*EndBB->getFirstInsertionPt(), DT, LI);
+      StartBB = SplitBlock(BB, MergableCIs.front(), DT, LI, nullptr,
+                           "omp.par.merged");
+
+      assert(BB->getUniqueSuccessor() == StartBB && "Expected a different CFG");
+      const DebugLoc DL = BB->getTerminator()->getDebugLoc();
+      BB->getTerminator()->eraseFromParent();
+
+      OpenMPIRBuilder::LocationDescription Loc(InsertPointTy(BB, BB->end()),
+                                               DL);
+      IRBuilder<>::InsertPoint AllocaIP(
+          &OriginalFn->getEntryBlock(),
+          OriginalFn->getEntryBlock().getFirstInsertionPt());
+      // Create the merged parallel region with default proc binding, to
+      // avoid overriding binding settings, and without explicit cancellation.
+      InsertPointTy AfterIP = OMPInfoCache.OMPBuilder.CreateParallel(
+          Loc, AllocaIP, BodyGenCB, PrivCB, FiniCB, nullptr, nullptr,
+          OMP_PROC_BIND_default, /* IsCancellable */ false);
+      BranchInst::Create(AfterBB, AfterIP.getBlock());
+
+      // Perform the actual outlining.
+      OMPInfoCache.OMPBuilder.finalize();
+
+      Function *OutlinedFn = MergableCIs.front()->getCaller();
+
+      // Replace the __kmpc_fork_call calls with direct calls to the outlined
+      // callbacks.
+      SmallVector<Value *, 8> Args;
+      for (auto *CI : MergableCIs) {
+        Value *Callee =
+            CI->getArgOperand(CallbackCalleeOperand)->stripPointerCasts();
+        FunctionType *FT =
+            cast<FunctionType>(Callee->getType()->getPointerElementType());
+        Args.clear();
+        Args.push_back(OutlinedFn->getArg(0));
+        Args.push_back(OutlinedFn->getArg(1));
+        for (unsigned U = CallbackFirstArgOperand, E = CI->getNumArgOperands();
+             U < E; ++U)
+          Args.push_back(CI->getArgOperand(U));
+
+        CallInst *NewCI = CallInst::Create(FT, Callee, Args, "", CI);
+        if (CI->getDebugLoc())
+          NewCI->setDebugLoc(CI->getDebugLoc());
+
+        // Forward parameter attributes from the callback to the callee.
+        for (unsigned U = CallbackFirstArgOperand, E = CI->getNumArgOperands();
+             U < E; ++U)
+          for (const Attribute &A : CI->getAttributes().getParamAttributes(U))
+            NewCI->addParamAttr(
+                U - (CallbackFirstArgOperand - CallbackCalleeOperand), A);
+
+        // Emit an explicit barrier to replace the implicit fork-join barrier.
+        if (CI != MergableCIs.back()) {
+          // TODO: Remove barrier if the merged parallel region includes the
+          // 'nowait' clause.
+          OMPInfoCache.OMPBuilder.CreateBarrier(
+              InsertPointTy(NewCI->getParent(),
+                            NewCI->getNextNode()->getIterator()),
+              OMPD_parallel);
+        }
+
+        auto Remark = [&](OptimizationRemark OR) {
+          return OR << "Parallel region at "
+                    << ore::NV("OpenMPParallelMerge", CI->getDebugLoc())
+                    << " merged with "
+                    << ore::NV("OpenMPParallelMergeFront",
+                               MergableCIs.front()->getDebugLoc());
+        };
+        if (CI != MergableCIs.front())
+          emitRemark<OptimizationRemark>(CI, "OpenMPParallelRegionMerging",
+                                         Remark);
+
+        CI->eraseFromParent();
+      }
+
+      assert(OutlinedFn != OriginalFn && "Outlining failed");
+      CGUpdater.registerOutlinedFunction(*OutlinedFn);
+      CGUpdater.reanalyzeFunction(*OriginalFn);
+
+      NumOpenMPParallelRegionsMerged += MergableCIs.size();
+
+      return true;
+    };
+
+    // Helper function that identifes sequences of
+    // __kmpc_fork_call uses in a basic block.
+    auto DetectPRsCB = [&](Use &U, Function &F) {
+      CallInst *CI = getCallIfRegularCall(U, &RFI);
+      BB2PRMap[CI->getParent()].insert(CI);
+
+      return false;
+    };
+
+    BB2PRMap.clear();
+    RFI.foreachUse(SCC, DetectPRsCB);
+    SmallVector<SmallVector<CallInst *, 4>, 4> MergableCIsVector;
+    // Find mergable parallel regions within a basic block that are
+    // safe to merge, that is any in-between instructions can safely
+    // execute in parallel after merging.
+    // TODO: support merging across basic-blocks.
+    for (auto &It : BB2PRMap) {
+      auto &CIs = It.getSecond();
+      if (CIs.size() < 2)
+        continue;
+
+      BasicBlock *BB = It.getFirst();
+      SmallVector<CallInst *, 4> MergableCIs;
+
+      // Find maximal number of parallel region CIs that are safe to merge.
+      for (Instruction &I : *BB) {
+        if (CIs.count(&I)) {
+          MergableCIs.push_back(cast<CallInst>(&I));
+          continue;
+        }
+
+        if (isSafeToSpeculativelyExecute(&I, &I, DT))
+          continue;
+
+        if (MergableCIs.size() > 1) {
+          MergableCIsVector.push_back(MergableCIs);
+          LLVM_DEBUG(dbgs() << TAG << "Found " << MergableCIs.size()
+                            << " parallel regions in block " << BB->getName()
+                            << " of function " << BB->getParent()->getName()
+                            << "\n";);
+        }
+
+        MergableCIs.clear();
+      }
+
+      if (!MergableCIsVector.empty()) {
+        Changed = true;
+
+        for (auto &MergableCIs : MergableCIsVector)
+          Merge(MergableCIs, BB);
+      }
+    }
+
+    if (Changed) {
+      // Update RFI info to set it up for later passes.
+      RFI.clearUsesMap();
+      OMPInfoCache.collectUses(RFI, /* CollectStats */ false);
+
+      // Collect uses for the emitted barrier call.
+      OMPInformationCache::RuntimeFunctionInfo &BarrierRFI =
+          OMPInfoCache.RFIs[OMPRTL___kmpc_barrier];
+      BarrierRFI.clearUsesMap();
+      OMPInfoCache.collectUses(BarrierRFI, /* CollectStats */ false);
+    }
+
+    return Changed;
+  }
+
   /// Try to delete parallel regions if possible.
   bool deleteParallelRegions() {
     const unsigned CallbackCalleeOperand = 2;
@@ -695,6 +956,33 @@ private:
     return Changed;
   }
 
+  void analysisGlobalization() {
+    RuntimeFunction GlobalizationRuntimeIDs[] = {
+        OMPRTL___kmpc_data_sharing_coalesced_push_stack,
+        OMPRTL___kmpc_data_sharing_push_stack};
+
+    for (const auto GlobalizationCallID : GlobalizationRuntimeIDs) {
+      auto &RFI = OMPInfoCache.RFIs[GlobalizationCallID];
+
+      auto CheckGlobalization = [&](Use &U, Function &Decl) {
+        if (CallInst *CI = getCallIfRegularCall(U, &RFI)) {
+          auto Remark = [&](OptimizationRemarkAnalysis ORA) {
+            return ORA
+                   << "Found thread data sharing on the GPU. "
+                   << "Expect degraded performance due to data globalization.";
+          };
+          emitRemark<OptimizationRemarkAnalysis>(CI, "OpenMPGlobalization",
+                                                 Remark);
+        }
+
+        return false;
+      };
+
+      RFI.foreachUse(SCC, CheckGlobalization);
+    }
+    return;
+  }
+
   /// Maps the values stored in the offload arrays passed as arguments to
   /// \p RuntimeCall into the offload arrays in \p OAs.
   bool getValuesInOffloadArrays(CallInst &RuntimeCall,
@@ -812,7 +1100,15 @@ private:
   /// Splits \p RuntimeCall into its "issue" and "wait" counterparts.
   bool splitTargetDataBeginRTC(CallInst &RuntimeCall,
                                Instruction &WaitMovementPoint) {
+    // Create stack allocated handle (__tgt_async_info) at the beginning of the
+    // function. Used for storing information of the async transfer, allowing to
+    // wait on it later.
     auto &IRBuilder = OMPInfoCache.OMPBuilder;
+    auto *F = RuntimeCall.getCaller();
+    Instruction *FirstInst = &(F->getEntryBlock().front());
+    AllocaInst *Handle = new AllocaInst(
+        IRBuilder.AsyncInfo, F->getAddressSpace(), "handle", FirstInst);
+
     // Add "issue" runtime call declaration:
     // declare %struct.tgt_async_info @__tgt_target_data_begin_issue(i64, i32,
     //   i8**, i8**, i64*, i64*)
@@ -823,9 +1119,10 @@ private:
     SmallVector<Value *, 8> Args;
     for (auto &Arg : RuntimeCall.args())
       Args.push_back(Arg.get());
+    Args.push_back(Handle);
 
     CallInst *IssueCallsite =
-        CallInst::Create(IssueDecl, Args, "handle", &RuntimeCall);
+        CallInst::Create(IssueDecl, Args, /*NameStr=*/"", &RuntimeCall);
     RuntimeCall.eraseFromParent();
 
     // Add "wait" runtime call declaration:
@@ -834,9 +1131,10 @@ private:
         M, OMPRTL___tgt_target_data_begin_mapper_wait);
 
     // Add call site to WaitDecl.
+    const unsigned DeviceIDArgNum = 0;
     Value *WaitParams[2] = {
-        IssueCallsite->getArgOperand(0), // device_id.
-        IssueCallsite // returned handle.
+        IssueCallsite->getArgOperand(DeviceIDArgNum), // device_id.
+        Handle                                        // handle to wait on.
     };
     CallInst::Create(WaitDecl, WaitParams, /*NameStr=*/"", &WaitMovementPoint);
 

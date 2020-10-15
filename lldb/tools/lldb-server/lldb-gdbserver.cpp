@@ -38,6 +38,8 @@
 
 #if defined(__linux__)
 #include "Plugins/Process/Linux/NativeProcessLinux.h"
+#elif defined(__FreeBSD__)
+#include "Plugins/Process/FreeBSDRemote/NativeProcessFreeBSD.h"
 #elif defined(__NetBSD__)
 #include "Plugins/Process/NetBSD/NativeProcessNetBSD.h"
 #elif defined(_WIN32)
@@ -61,6 +63,8 @@ using namespace lldb_private::process_gdb_remote;
 namespace {
 #if defined(__linux__)
 typedef process_linux::NativeProcessLinux::Factory NativeProcessFactory;
+#elif defined(__FreeBSD__)
+typedef process_freebsd::NativeProcessFreeBSD::Factory NativeProcessFactory;
 #elif defined(__NetBSD__)
 typedef process_netbsd::NativeProcessNetBSD::Factory NativeProcessFactory;
 #elif defined(_WIN32)
@@ -267,7 +271,8 @@ void ConnectToRemote(MainLoop &mainloop,
       final_host_and_port.append("localhost");
     final_host_and_port.append(host_and_port);
 
-    const std::string::size_type colon_pos = final_host_and_port.find(':');
+    // Note: use rfind, because the host/port may look like "[::1]:12345".
+    const std::string::size_type colon_pos = final_host_and_port.rfind(':');
     if (colon_pos != std::string::npos) {
       connection_host = final_host_and_port.substr(0, colon_pos);
       connection_port = final_host_and_port.substr(colon_pos + 1);

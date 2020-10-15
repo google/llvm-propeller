@@ -1661,6 +1661,14 @@ def : Pat<(add (VEhi tglobaladdr:$in1), (VElo tglobaladdr:$in2)),
           (LEASLrii (ANDrm (LEAzii 0, 0, tglobaladdr:$in2), !add(32, 64)), 0,
                     (tglobaladdr:$in1))>;
 
+// Address calculation and its optimization
+def : Pat<(VEhi tblockaddress:$in), (LEASLzii 0, 0, tblockaddress:$in)>;
+def : Pat<(VElo tblockaddress:$in),
+          (ANDrm (LEAzii 0, 0, tblockaddress:$in), !add(32, 64))>;
+def : Pat<(add (VEhi tblockaddress:$in1), (VElo tblockaddress:$in2)),
+          (LEASLrii (ANDrm (LEAzii 0, 0, tblockaddress:$in2), !add(32, 64)), 0,
+                    (tblockaddress:$in1))>;
+
 // GlobalTLS address calculation and its optimization
 def : Pat<(VEhi tglobaltlsaddr:$in), (LEASLzii 0, 0, tglobaltlsaddr:$in)>;
 def : Pat<(VElo tglobaltlsaddr:$in),
@@ -2027,3 +2035,6 @@ def : Pat<(i32 (and i32:$val, 0xffff)),
                      !add(48, 64)), sub_i32)>;
 def : Pat<(i64 (and i64:$val, 0xffffffff)),
           (ANDrm $val, !add(32, 64))>;
+
+// Vector instructions.
+include "VEInstrVec.td"

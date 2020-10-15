@@ -10,6 +10,7 @@
 #define MLIR_DIALECT_LINALG_UTILS_H_
 
 #include "mlir/Dialect/Affine/EDSC/Intrinsics.h"
+#include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/EDSC/Builders.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -90,21 +91,21 @@ Optional<FusionInfo> fuseProducerOf(OpBuilder &b, LinalgOp consumer,
 
 /// Fuse linalg operation on tensors, with the producer of the operand at
 /// position `consumerIdx` of the consumer.
-Operation *fuseTensorOps(PatternRewriter &rewriter, Operation *consumer,
-                         unsigned consumerIdx,
-                         OperationFolder *folder = nullptr);
+Optional<SmallVector<Value, 1>>
+fuseTensorOps(PatternRewriter &rewriter, Operation *consumer,
+              unsigned consumerIdx, OperationFolder *folder = nullptr);
 
-/// Returns the linearized list of all view dimensions in a `linalgOp`. Applying
-/// the inverse, concatenated loopToOperandRangeMaps to this list allows the
-/// derivation of loop ranges for any linalgOp.
-SmallVector<Value, 8> getViewSizes(OpBuilder &builder, LinalgOp linalgOp);
+/// Returns the linearized list of all shape dimensions in a `linalgOp`.
+/// Applying the inverse, concatenated loopToOperandRangeMaps to this list
+/// allows the derivation of loop ranges for any linalgOp.
+SmallVector<Value, 8> getShape(OpBuilder &builder, LinalgOp linalgOp);
 template <typename ConcreteOpTy>
-SmallVector<Value, 8> getViewSizes(OpBuilder &builder, ConcreteOpTy linalgOp) {
-  return getViewSizes(builder, cast<linalg::LinalgOp>(linalgOp.getOperation()));
+SmallVector<Value, 8> getShape(OpBuilder &builder, ConcreteOpTy linalgOp) {
+  return getShape(builder, cast<linalg::LinalgOp>(linalgOp.getOperation()));
 }
 
 /// Returns the loop ranges of the `linalgOp`. Applies the inverse of the
-/// concatenated indexing maps to the result of `getViewSizes`. Returns None if
+/// concatenated indexing maps to the result of `getShape`. Returns None if
 /// the bounds computation fails.
 Optional<SmallVector<Value, 4>>
 getLoopRanges(OpBuilder &builder, LinalgOp linalgOp,
@@ -117,11 +118,6 @@ getLoopRanges(OpBuilder &builder, LinalgOp linalgOp,
 SmallVector<Value, 4> applyMapToValues(OpBuilder &b, Location loc,
                                        AffineMap map, ValueRange values,
                                        OperationFolder *folder = nullptr);
-
-/// Returns all the operands of `linalgOp` that are not views.
-/// Asserts that these operands are value types to allow transformations like
-/// tiling to just use the values when cloning `linalgOp`.
-SmallVector<Value, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
 
 /// Apply the permutation defined by `permutation` to `inVec`.
 /// Element `i` in `inVec` is mapped to location `j = permutation[i]`.
@@ -149,7 +145,7 @@ enum class DistributionMethod {
   /// scf.parallel(%iv)= (%lb + %procId * %step) to (%ub) step (%step * %nprocs)
   Cyclic = 0,
 
-  /// Cyclic distribtuion where the number of processors can be assumed to be
+  /// Cyclic distribution where the number of processors can be assumed to be
   /// more than or equal to the number of iterations of the distributed loop. In
   /// such cases, a simple in-bounds check is enough (instead of materializing a
   /// loop). Distributes the following loop
@@ -165,7 +161,7 @@ enum class DistributionMethod {
   /// }
   CyclicNumProcsGeNumIters = 1,
 
-  /// Cyclic distribtuion where the number of processors can be assumed to be
+  /// Cyclic distribution where the number of processors can be assumed to be
   ///  equal to the number of iterations of the distributed loop. In such cases,
   ///  no bounds check is needed. Distributes the following loop
   ///
@@ -184,7 +180,7 @@ struct ProcInfo {
   Value nprocs;
 };
 using ProcInfoCallBackFn = std::function<SmallVector<ProcInfo, 2>(
-    OpBuilder &b, Location loc, ArrayRef<SubViewOp::Range> parallelLoopRanges)>;
+    OpBuilder &b, Location loc, ArrayRef<Range> parallelLoopRanges)>;
 
 /// Options that allow distribution of loops generated in Linalg transforms to
 /// processors while generating the loops.
@@ -214,10 +210,11 @@ struct GenerateLoopNest {
       typename std::conditional<std::is_same<LoopTy, AffineForOp>::value,
                                 AffineIndexedValue, StdIndexedValue>::type;
 
-  static void doit(ArrayRef<SubViewOp::Range> loopRanges,
-                   ArrayRef<Attribute> iteratorTypes,
-                   function_ref<void(ValueRange)> bodyBuilderFn,
-                   Optional<LinalgLoopDistributionOptions> = None);
+  static void
+  doit(ArrayRef<Range> loopRanges, ValueRange iterArgInitValues,
+       ArrayRef<Attribute> iteratorTypes,
+       function_ref<scf::ValueVector(ValueRange, ValueRange)> bodyBuilderFn,
+       Optional<LinalgLoopDistributionOptions> = None);
 };
 
 } // namespace linalg

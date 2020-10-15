@@ -76,7 +76,7 @@ protected:
   struct CallSiteRange {
     // Symbol marking the beginning of the precedure fragment.
     MCSymbol *FragmentBeginLabel = nullptr;
-    // Symbol marking the end of the procedure fragmnt.
+    // Symbol marking the end of the procedure fragment.
     MCSymbol *FragmentEndLabel = nullptr;
     // LSDA symbol for this call-site range.
     MCSymbol *ExceptionLabel = nullptr;

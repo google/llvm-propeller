@@ -1056,6 +1056,11 @@ void Verifier::visitDICompositeType(const DICompositeType &N) {
     AssertDI(N.getTag() == dwarf::DW_TAG_array_type,
              "allocated can only appear in array type");
   }
+
+  if (N.getRawRank()) {
+    AssertDI(N.getTag() == dwarf::DW_TAG_array_type,
+             "rank can only appear in array type");
+  }
 }
 
 void Verifier::visitDISubroutineType(const DISubroutineType &N) {
@@ -2433,6 +2438,10 @@ void Verifier::visitFunction(const Function &F) {
                  "function must have a single !dbg attachment", &F, I.second);
         AssertDI(isa<DISubprogram>(I.second),
                  "function !dbg attachment must be a subprogram", &F, I.second);
+        AssertDI(cast<DISubprogram>(I.second)->isDistinct(),
+                 "function definition may only have a distinct !dbg attachment",
+                 &F);
+
         auto *SP = cast<DISubprogram>(I.second);
         const Function *&AttachedTo = DISubprogramAttachments[SP];
         AssertDI(!AttachedTo || AttachedTo == &F,

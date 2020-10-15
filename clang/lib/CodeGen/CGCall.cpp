@@ -1794,9 +1794,6 @@ void CodeGenModule::getDefaultFunctionAttributes(StringRef Name,
                            llvm::utostr(CodeGenOpts.SSPBufferSize));
     FuncAttrs.addAttribute("no-signed-zeros-fp-math",
                            llvm::toStringRef(LangOpts.NoSignedZero));
-    FuncAttrs.addAttribute(
-        "correctly-rounded-divide-sqrt-fp-math",
-        llvm::toStringRef(CodeGenOpts.CorrectlyRoundedDivSqrt));
 
     // TODO: Reciprocal estimate codegen options should apply to instructions?
     const std::vector<std::string> &Recips = CodeGenOpts.Reciprocals;
@@ -2288,8 +2285,8 @@ void CodeGenModule::ConstructAttributeList(
       auto PTy = ParamType->getPointeeType();
       if (!PTy->isIncompleteType() && PTy->isConstantSizeType()) {
         auto info = getContext().getTypeInfoInChars(PTy);
-        Attrs.addDereferenceableAttr(info.first.getQuantity());
-        Attrs.addAlignmentAttr(info.second.getAsAlign());
+        Attrs.addDereferenceableAttr(info.Width.getQuantity());
+        Attrs.addAlignmentAttr(info.Align.getAsAlign());
       }
       break;
     }
@@ -3783,10 +3780,7 @@ void CodeGenFunction::EmitNonNullArgCheck(RValue RV, QualType ArgType,
   }
 
   SanitizerScope SanScope(this);
-  assert(RV.isScalar());
-  llvm::Value *V = RV.getScalarVal();
-  llvm::Value *Cond =
-      Builder.CreateICmpNE(V, llvm::Constant::getNullValue(V->getType()));
+  llvm::Value *Cond = EmitNonNullRValueCheck(RV, ArgType);
   llvm::Constant *StaticData[] = {
       EmitCheckSourceLocation(ArgLoc), EmitCheckSourceLocation(AttrLoc),
       llvm::ConstantInt::get(Int32Ty, ArgNo + 1),

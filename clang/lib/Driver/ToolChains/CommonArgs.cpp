@@ -902,8 +902,14 @@ bool tools::areOptimizationsEnabled(const ArgList &Args) {
   return false;
 }
 
-const char *tools::SplitDebugName(const ArgList &Args, const InputInfo &Input,
+const char *tools::SplitDebugName(const JobAction &JA, const ArgList &Args,
+                                  const InputInfo &Input,
                                   const InputInfo &Output) {
+  auto AddPostfix = [JA](auto &F) {
+    if (JA.getOffloadingDeviceKind() == Action::OFK_HIP)
+      F += (Twine("_") + JA.getOffloadingArch()).str();
+    F += ".dwo";
+  };
   if (Arg *A = Args.getLastArg(options::OPT_gsplit_dwarf_EQ))
     if (StringRef(A->getValue()) == "single")
       return Args.MakeArgString(Output.getFilename());
@@ -911,14 +917,16 @@ const char *tools::SplitDebugName(const ArgList &Args, const InputInfo &Input,
   Arg *FinalOutput = Args.getLastArg(options::OPT_o);
   if (FinalOutput && Args.hasArg(options::OPT_c)) {
     SmallString<128> T(FinalOutput->getValue());
-    llvm::sys::path::replace_extension(T, "dwo");
+    llvm::sys::path::remove_filename(T);
+    llvm::sys::path::append(T, llvm::sys::path::stem(FinalOutput->getValue()));
+    AddPostfix(T);
     return Args.MakeArgString(T);
   } else {
     // Use the compilation dir.
     SmallString<128> T(
         Args.getLastArgValue(options::OPT_fdebug_compilation_dir));
     SmallString<128> F(llvm::sys::path::stem(Input.getBaseInput()));
-    llvm::sys::path::replace_extension(F, "dwo");
+    AddPostfix(F);
     T += F;
     return Args.MakeArgString(F);
   }
@@ -943,12 +951,13 @@ void tools::SplitDebugInfo(const ToolChain &TC, Compilation &C, const Tool &T,
   InputInfo II(types::TY_Object, Output.getFilename(), Output.getFilename());
 
   // First extract the dwo sections.
-  C.addCommand(std::make_unique<Command>(
-      JA, T, ResponseFileSupport::AtFileCurCP(), Exec, ExtractArgs, II));
+  C.addCommand(std::make_unique<Command>(JA, T,
+                                         ResponseFileSupport::AtFileCurCP(),
+                                         Exec, ExtractArgs, II, Output));
 
   // Then remove them from the original .o file.
   C.addCommand(std::make_unique<Command>(
-      JA, T, ResponseFileSupport::AtFileCurCP(), Exec, StripArgs, II));
+      JA, T, ResponseFileSupport::AtFileCurCP(), Exec, StripArgs, II, Output));
 }
 
 // Claim options we don't want to warn if they are unused. We do this for
@@ -1049,8 +1058,6 @@ tools::ParsePICArgs(const ToolChain &ToolChain, const ArgList &Args) {
       break;
 
     case llvm::Triple::ppc:
-    case llvm::Triple::sparc:
-    case llvm::Triple::sparcel:
     case llvm::Triple::sparcv9:
       IsPICLevelTwo = true; // "-fPIE"
       break;

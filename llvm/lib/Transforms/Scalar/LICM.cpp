@@ -449,7 +449,7 @@ bool LoopInvariantCodeMotion::runOnLoop(
   // specifically moving instructions across the loop boundary and so it is
   // especially in need of sanity checking here.
   assert(L->isLCSSAForm(*DT) && "Loop not left in LCSSA form after LICM!");
-  assert((!L->getParentLoop() || L->getParentLoop()->isLCSSAForm(*DT)) &&
+  assert((L->isOutermost() || L->getParentLoop()->isLCSSAForm(*DT)) &&
          "Parent loop not left in LCSSA form after LICM!");
 
   if (MSSAU.get() && VerifyMemorySSA)
@@ -1736,10 +1736,7 @@ static void hoist(Instruction &I, const DominatorTree *DT, const Loop *CurLoop,
     // Move the new node to the destination block, before its terminator.
     moveInstructionBefore(I, *Dest->getTerminator(), *SafetyInfo, MSSAU, SE);
 
-  // Apply line 0 debug locations when we are moving instructions to different
-  // basic blocks because we want to avoid jumpy line tables.
-  if (const DebugLoc &DL = I.getDebugLoc())
-    I.setDebugLoc(DebugLoc::get(0, 0, DL.getScope(), DL.getInlinedAt()));
+  I.updateLocationAfterHoist();
 
   if (isa<LoadInst>(I))
     ++NumMovedLoads;
@@ -1785,7 +1782,7 @@ class LoopPromoter : public LoadAndStorePromoter {
   SmallVectorImpl<Instruction *> &LoopInsertPts;
   SmallVectorImpl<MemoryAccess *> &MSSAInsertPts;
   PredIteratorCache &PredCache;
-  AliasSetTracker &AST;
+  AliasSetTracker *AST;
   MemorySSAUpdater *MSSAU;
   LoopInfo &LI;
   DebugLoc DL;
@@ -1815,7 +1812,7 @@ public:
                SmallVectorImpl<BasicBlock *> &LEB,
                SmallVectorImpl<Instruction *> &LIP,
                SmallVectorImpl<MemoryAccess *> &MSSAIP, PredIteratorCache &PIC,
-               AliasSetTracker &ast, MemorySSAUpdater *MSSAU, LoopInfo &li,
+               AliasSetTracker *ast, MemorySSAUpdater *MSSAU, LoopInfo &li,
                DebugLoc dl, int alignment, bool UnorderedAtomic,
                const AAMDNodes &AATags, ICFLoopSafetyInfo &SafetyInfo)
       : LoadAndStorePromoter(Insts, S), SomePtr(SP), PointerMustAliases(PMA),
@@ -1872,11 +1869,13 @@ public:
 
   void replaceLoadWithValue(LoadInst *LI, Value *V) const override {
     // Update alias analysis.
-    AST.copyValue(LI, V);
+    if (AST)
+      AST->copyValue(LI, V);
   }
   void instructionDeleted(Instruction *I) const override {
     SafetyInfo.removeInstruction(I);
-    AST.deleteValue(I);
+    if (AST)
+      AST->deleteValue(I);
     if (MSSAU)
       MSSAU->removeMemoryAccess(I);
   }
@@ -1922,7 +1921,7 @@ bool llvm::promoteLoopAccessesToScalars(
     ICFLoopSafetyInfo *SafetyInfo, OptimizationRemarkEmitter *ORE) {
   // Verify inputs.
   assert(LI != nullptr && DT != nullptr && CurLoop != nullptr &&
-         CurAST != nullptr && SafetyInfo != nullptr &&
+         SafetyInfo != nullptr &&
          "Unexpected Input to promoteLoopAccessesToScalars");
 
   Value *SomePtr = *PointerMustAliases.begin();
@@ -2150,7 +2149,7 @@ bool llvm::promoteLoopAccessesToScalars(
   SmallVector<PHINode *, 16> NewPHIs;
   SSAUpdater SSA(&NewPHIs);
   LoopPromoter Promoter(SomePtr, LoopUses, SSA, PointerMustAliases, ExitBlocks,
-                        InsertPts, MSSAInsertPts, PIC, *CurAST, MSSAU, *LI, DL,
+                        InsertPts, MSSAInsertPts, PIC, CurAST, MSSAU, *LI, DL,
                         Alignment.value(), SawUnorderedAtomic, AATags,
                         *SafetyInfo);
 

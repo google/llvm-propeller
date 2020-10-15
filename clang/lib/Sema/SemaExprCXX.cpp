@@ -1413,16 +1413,6 @@ Sema::BuildCXXTypeConstructExpr(TypeSourceInfo *TInfo,
   QualType Ty = TInfo->getType();
   SourceLocation TyBeginLoc = TInfo->getTypeLoc().getBeginLoc();
 
-  if (Ty->isDependentType() || CallExpr::hasAnyTypeDependentArguments(Exprs)) {
-    // FIXME: CXXUnresolvedConstructExpr does not model list-initialization
-    // directly. We work around this by dropping the locations of the braces.
-    SourceRange Locs = ListInitialization
-                           ? SourceRange()
-                           : SourceRange(LParenOrBraceLoc, RParenOrBraceLoc);
-    return CXXUnresolvedConstructExpr::Create(Context, TInfo, Locs.getBegin(),
-                                              Exprs, Locs.getEnd());
-  }
-
   assert((!ListInitialization ||
           (Exprs.size() == 1 && isa<InitListExpr>(Exprs[0]))) &&
          "List initialization must have initializer list as expression.");
@@ -1449,6 +1439,17 @@ Sema::BuildCXXTypeConstructExpr(TypeSourceInfo *TInfo,
     if (Ty.isNull())
       return ExprError();
     Entity = InitializedEntity::InitializeTemporary(TInfo, Ty);
+  }
+
+  if (Ty->isDependentType() || CallExpr::hasAnyTypeDependentArguments(Exprs)) {
+    // FIXME: CXXUnresolvedConstructExpr does not model list-initialization
+    // directly. We work around this by dropping the locations of the braces.
+    SourceRange Locs = ListInitialization
+                           ? SourceRange()
+                           : SourceRange(LParenOrBraceLoc, RParenOrBraceLoc);
+    return CXXUnresolvedConstructExpr::Create(Context, Ty.getNonReferenceType(),
+                                              TInfo, Locs.getBegin(), Exprs,
+                                              Locs.getEnd());
   }
 
   // C++ [expr.type.conv]p1:
@@ -1843,12 +1844,13 @@ void Sema::diagnoseUnavailableAlignedAllocation(const FunctionDecl &FD,
     const llvm::Triple &T = getASTContext().getTargetInfo().getTriple();
     StringRef OSName = AvailabilityAttr::getPlatformNameSourceSpelling(
         getASTContext().getTargetInfo().getPlatformName());
+    VersionTuple OSVersion = alignedAllocMinVersion(T.getOS());
 
     OverloadedOperatorKind Kind = FD.getDeclName().getCXXOverloadedOperator();
     bool IsDelete = Kind == OO_Delete || Kind == OO_Array_Delete;
     Diag(Loc, diag::err_aligned_allocation_unavailable)
         << IsDelete << FD.getType().getAsString() << OSName
-        << alignedAllocMinVersion(T.getOS()).getAsString();
+        << OSVersion.getAsString() << OSVersion.empty();
     Diag(Loc, diag::note_silence_aligned_allocation_unavailable);
   }
 }
@@ -6323,6 +6325,8 @@ QualType Sema::CXXCheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
 
   // Similarly, attempt to find composite type of two objective-c pointers.
   Composite = FindCompositeObjCPointerType(LHS, RHS, QuestionLoc);
+  if (LHS.isInvalid() || RHS.isInvalid())
+    return QualType();
   if (!Composite.isNull())
     return Composite;
 
@@ -7245,8 +7249,8 @@ ExprResult Sema::ActOnStartCXXMemberReference(Scope *S, Expr *Base,
   return Base;
 }
 
-static bool CheckArrow(Sema& S, QualType& ObjectType, Expr *&Base,
-                   tok::TokenKind& OpKind, SourceLocation OpLoc) {
+static bool CheckArrow(Sema &S, QualType &ObjectType, Expr *&Base,
+                       tok::TokenKind &OpKind, SourceLocation OpLoc) {
   if (Base->hasPlaceholderType()) {
     ExprResult result = S.CheckPlaceholderExpr(Base);
     if (result.isInvalid()) return true;
@@ -7261,6 +7265,18 @@ static bool CheckArrow(Sema& S, QualType& ObjectType, Expr *&Base,
   // Note that this is rather different from the normal handling for the
   // arrow operator.
   if (OpKind == tok::arrow) {
+    // The operator requires a prvalue, so perform lvalue conversions.
+    // Only do this if we might plausibly end with a pointer, as otherwise
+    // this was likely to be intended to be a '.'.
+    if (ObjectType->isPointerType() || ObjectType->isArrayType() ||
+        ObjectType->isFunctionType()) {
+      ExprResult BaseResult = S.DefaultFunctionArrayLvalueConversion(Base);
+      if (BaseResult.isInvalid())
+        return true;
+      Base = BaseResult.get();
+      ObjectType = Base->getType();
+    }
+
     if (const PointerType *Ptr = ObjectType->getAs<PointerType>()) {
       ObjectType = Ptr->getPointeeType();
     } else if (!Base->isTypeDependent()) {

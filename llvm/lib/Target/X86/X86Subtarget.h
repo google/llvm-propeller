@@ -395,6 +395,15 @@ class X86Subtarget final : public X86GenSubtargetInfo {
   /// Processor supports PCONFIG instruction
   bool HasPCONFIG = false;
 
+  /// Processor support key locker instructions
+  bool HasKL = false;
+
+  /// Processor support key locker wide instructions
+  bool HasWIDEKL = false;
+
+  /// Processor supports HRESET instruction
+  bool HasHRESET = false;
+
   /// Processor supports SERIALIZE instruction
   bool HasSERIALIZE = false;
 
@@ -728,6 +737,9 @@ public:
   bool hasSGX() const { return HasSGX; }
   bool hasINVPCID() const { return HasINVPCID; }
   bool hasENQCMD() const { return HasENQCMD; }
+  bool hasKL() const { return HasKL; }
+  bool hasWIDEKL() const { return HasWIDEKL; }
+  bool hasHRESET() const { return HasHRESET; }
   bool hasSERIALIZE() const { return HasSERIALIZE; }
   bool hasTSXLDTRK() const { return HasTSXLDTRK; }
   bool useRetpolineIndirectCalls() const { return UseRetpolineIndirectCalls; }

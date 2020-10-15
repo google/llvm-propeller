@@ -4,22 +4,28 @@
 # Set your project compile flags.
 link_directories(${LLVM_LIBRARY_DIR})
 
+set( LLVM_LINK_COMPONENTS
+  ${LLVM_TARGETS_TO_BUILD}
+  Option
+  Support
+)
+
 add_flang_tool(flang-new
   driver.cpp
   fc1_main.cpp
 )
 
-# Link against LLVM and Clang libraries
 target_link_libraries(flang-new
   PRIVATE
-  ${LLVM_COMMON_LIBS}
   flangFrontend
   flangFrontendTool
+)
+
+clang_target_link_libraries(flang-new
+  PRIVATE
   clangDriver
   clangBasic
-  LLVMSupport
-  LLVMTarget
-  LLVMOption
+  clangFrontend
 )
 
 install(TARGETS flang-new DESTINATION bin)

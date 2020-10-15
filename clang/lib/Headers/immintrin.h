@@ -10,6 +10,8 @@
 #ifndef __IMMINTRIN_H
 #define __IMMINTRIN_H
 
+#include <x86gprintrin.h>
+
 #if !(defined(_MSC_VER) || defined(__SCE__)) || __has_feature(modules) ||      \
     defined(__MMX__)
 #include <mmintrin.h>
@@ -469,6 +471,11 @@ _storebe_i64(void * __P, long long __D) {
 #if !(defined(_MSC_VER) || defined(__SCE__)) || __has_feature(modules) ||      \
     defined(__INVPCID__)
 #include <invpcidintrin.h>
+#endif
+
+#if !(defined(_MSC_VER) || defined(__SCE__)) || __has_feature(modules) ||      \
+    defined(__KL__) || defined(__WIDEKL__)
+#include <keylockerintrin.h>
 #endif
 
 #if !(defined(_MSC_VER) || defined(__SCE__)) || __has_feature(modules) ||      \

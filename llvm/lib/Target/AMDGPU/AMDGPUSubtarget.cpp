@@ -81,7 +81,7 @@ GCNSubtarget::initializeSubtargetDependencies(const Triple &TT,
   SmallString<256> FullFS("+promote-alloca,+load-store-opt,+enable-ds128,+sram-ecc,+xnack,");
 
   if (isAmdHsaOS()) // Turn on FlatForGlobal for HSA.
-    FullFS += "+flat-for-global,+unaligned-access-mode,+trap-handler,";
+    FullFS += "+flat-for-global,+unaligned-buffer-access,+trap-handler,";
 
   FullFS += "+enable-prt-strict-null,"; // This is overridden by a disable in FS
 
@@ -184,8 +184,8 @@ GCNSubtarget::GCNSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
 
     FlatForGlobal(false),
     AutoWaitcntBeforeBarrier(false),
-    CodeObjectV3(false),
     UnalignedScratchAccess(false),
+    UnalignedBufferAccess(false),
     UnalignedAccessMode(false),
 
     HasApertureRegs(false),
@@ -257,7 +257,6 @@ GCNSubtarget::GCNSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
     HasUnpackedD16VMem(false),
     LDSMisalignedBug(false),
     HasMFMAInlineLiteralBug(false),
-    UnalignedBufferAccess(false),
     UnalignedDSAccess(false),
 
     ScalarizeGlobal(false),
@@ -271,6 +270,8 @@ GCNSubtarget::GCNSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
     HasNSAtoVMEMBug(false),
     HasOffset3fBug(false),
     HasFlatSegmentOffsetBug(false),
+    HasImageStoreD16Bug(false),
+    HasImageGather4D16Bug(false),
 
     FeatureDisable(false),
     InstrInfo(initializeSubtargetDependencies(TT, GPU, FS)),

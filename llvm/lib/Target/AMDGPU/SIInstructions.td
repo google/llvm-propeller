@@ -264,6 +264,7 @@ class WrapTerminatorInst<SOP_Pseudo base_inst> : SPseudoInstSI<
 let WaveSizePredicate = isWave64 in {
 def S_MOV_B64_term : WrapTerminatorInst<S_MOV_B64>;
 def S_XOR_B64_term : WrapTerminatorInst<S_XOR_B64>;
+def S_OR_B64_term : WrapTerminatorInst<S_OR_B64>;
 def S_ANDN2_B64_term : WrapTerminatorInst<S_ANDN2_B64>;
 }
 
@@ -865,7 +866,8 @@ def : GCNPat <
 // VOP2 Patterns
 //===----------------------------------------------------------------------===//
 
-// TODO: Check only no src2 mods?
+// NoMods pattern used for mac. If there are any source modifiers then it's
+// better to select mad instead of mac.
 class FMADPat <ValueType vt, Instruction inst, SDPatternOperator node>
   : GCNPat <(vt (node (vt (VOP3NoMods vt:$src0)),
                       (vt (VOP3NoMods vt:$src1)),
@@ -874,18 +876,30 @@ class FMADPat <ValueType vt, Instruction inst, SDPatternOperator node>
           SRCMODS.NONE, $src2, DSTCLAMP.NONE, DSTOMOD.NONE)
 >;
 
-
 // Prefer mac form when there are no modifiers.
 let AddedComplexity = 9 in {
+let OtherPredicates = [HasMadMacF32Insts] in {
 def : FMADPat <f32, V_MAC_F32_e64, fmad>;
 def : FMADPat <f32, V_MAC_F32_e64, AMDGPUfmad_ftz>;
+} // OtherPredicates = [HasMadMacF32Insts]
+
+// Don't allow source modifiers. If there are any source modifiers then it's
+// better to select mad instead of mac.
+let SubtargetPredicate = isGFX6GFX7GFX10,
+    OtherPredicates = [HasMadMacF32Insts, NoFP32Denormals] in
+def : GCNPat <
+      (f32 (fadd (AMDGPUfmul_legacy (VOP3NoMods f32:$src0),
+                                    (VOP3NoMods f32:$src1)),
+                 (VOP3NoMods f32:$src2))),
+      (V_MAC_LEGACY_F32_e64 SRCMODS.NONE, $src0, SRCMODS.NONE, $src1,
+                            SRCMODS.NONE, $src2, DSTCLAMP.NONE, DSTOMOD.NONE)
+>;
 
 let SubtargetPredicate = Has16BitInsts in {
 def : FMADPat <f16, V_MAC_F16_e64, fmad>;
 def : FMADPat <f16, V_MAC_F16_e64, AMDGPUfmad_ftz>;
-}
-
-}
+} // SubtargetPredicate = Has16BitInsts
+} // AddedComplexity = 9
 
 class FMADModsPat<ValueType Ty, Instruction inst, SDPatternOperator mad_opr>
   : GCNPat<
@@ -896,11 +910,20 @@ class FMADModsPat<ValueType Ty, Instruction inst, SDPatternOperator mad_opr>
   $src2_mod, $src2, DSTCLAMP.NONE, DSTOMOD.NONE)
 >;
 
-let SubtargetPredicate = HasMadMacF32Insts in
+let OtherPredicates = [HasMadMacF32Insts] in
 def : FMADModsPat<f32, V_MAD_F32, AMDGPUfmad_ftz>;
-def : FMADModsPat<f16, V_MAD_F16, AMDGPUfmad_ftz> {
-  let SubtargetPredicate = Has16BitInsts;
-}
+
+let OtherPredicates = [HasMadMacF32Insts, NoFP32Denormals] in
+def : GCNPat <
+      (f32 (fadd (AMDGPUfmul_legacy (VOP3Mods f32:$src0, i32:$src0_mod),
+                                    (VOP3Mods f32:$src1, i32:$src1_mod)),
+                 (VOP3Mods f32:$src2, i32:$src2_mod))),
+      (V_MAD_LEGACY_F32 $src0_mod, $src0, $src1_mod, $src1,
+                        $src2_mod, $src2, DSTCLAMP.NONE, DSTOMOD.NONE)
+>;
+
+let SubtargetPredicate = Has16BitInsts in
+def : FMADModsPat<f16, V_MAD_F16, AMDGPUfmad_ftz>;
 
 class VOPSelectModsPat <ValueType vt> : GCNPat <
   (vt (select i1:$src0, (VOP3Mods vt:$src1, i32:$src1_mods),
@@ -1549,8 +1572,92 @@ def : GCNPat <
 def : IMad24Pat<V_MAD_I32_I24, 1>;
 def : UMad24Pat<V_MAD_U32_U24, 1>;
 
-// FIXME: This should only be done for VALU inputs
-defm : BFIPatterns <V_BFI_B32, S_MOV_B32, SReg_64>;
+// BFI patterns
+
+def BFIImm32 : PatFrag<
+  (ops node:$x, node:$y, node:$z),
+  (i32 (DivergentBinFrag<or> (and node:$y, node:$x), (and node:$z, imm))),
+  [{
+    auto *X = dyn_cast<ConstantSDNode>(N->getOperand(0)->getOperand(1));
+    auto *NotX = dyn_cast<ConstantSDNode>(N->getOperand(1)->getOperand(1));
+    return X && NotX &&
+      ~(unsigned)X->getZExtValue() == (unsigned)NotX->getZExtValue();
+  }]
+>;
+
+// Definition from ISA doc:
+// (y & x) | (z & ~x)
+def : AMDGPUPat <
+  (DivergentBinFrag<or> (and i32:$y, i32:$x), (and i32:$z, (not i32:$x))),
+  (V_BFI_B32 $x, $y, $z)
+>;
+
+// (y & C) | (z & ~C)
+def : AMDGPUPat <
+  (BFIImm32 i32:$x, i32:$y, i32:$z),
+  (V_BFI_B32 $x, $y, $z)
+>;
+
+// 64-bit version
+def : AMDGPUPat <
+  (DivergentBinFrag<or> (and i64:$y, i64:$x), (and i64:$z, (not i64:$x))),
+  (REG_SEQUENCE SReg_64,
+    (V_BFI_B32 (i32 (EXTRACT_SUBREG SReg_64:$x, sub0)),
+               (i32 (EXTRACT_SUBREG SReg_64:$y, sub0)),
+               (i32 (EXTRACT_SUBREG SReg_64:$z, sub0))), sub0,
+    (V_BFI_B32 (i32 (EXTRACT_SUBREG SReg_64:$x, sub1)),
+               (i32 (EXTRACT_SUBREG SReg_64:$y, sub1)),
+               (i32 (EXTRACT_SUBREG SReg_64:$z, sub1))), sub1)
+>;
+
+// SHA-256 Ch function
+// z ^ (x & (y ^ z))
+def : AMDGPUPat <
+  (DivergentBinFrag<xor> i32:$z, (and i32:$x, (xor i32:$y, i32:$z))),
+  (V_BFI_B32 $x, $y, $z)
+>;
+
+// 64-bit version
+def : AMDGPUPat <
+  (DivergentBinFrag<xor> i64:$z, (and i64:$x, (xor i64:$y, i64:$z))),
+  (REG_SEQUENCE SReg_64,
+    (V_BFI_B32 (i32 (EXTRACT_SUBREG SReg_64:$x, sub0)),
+               (i32 (EXTRACT_SUBREG SReg_64:$y, sub0)),
+               (i32 (EXTRACT_SUBREG SReg_64:$z, sub0))), sub0,
+    (V_BFI_B32 (i32 (EXTRACT_SUBREG SReg_64:$x, sub1)),
+               (i32 (EXTRACT_SUBREG SReg_64:$y, sub1)),
+               (i32 (EXTRACT_SUBREG SReg_64:$z, sub1))), sub1)
+>;
+
+def : AMDGPUPat <
+  (fcopysign f32:$src0, f32:$src1),
+  (V_BFI_B32 (S_MOV_B32 (i32 0x7fffffff)), $src0, $src1)
+>;
+
+def : AMDGPUPat <
+  (fcopysign f32:$src0, f64:$src1),
+  (V_BFI_B32 (S_MOV_B32 (i32 0x7fffffff)), $src0,
+             (i32 (EXTRACT_SUBREG SReg_64:$src1, sub1)))
+>;
+
+def : AMDGPUPat <
+  (fcopysign f64:$src0, f64:$src1),
+  (REG_SEQUENCE SReg_64,
+    (i32 (EXTRACT_SUBREG $src0, sub0)), sub0,
+    (V_BFI_B32 (S_MOV_B32 (i32 0x7fffffff)),
+               (i32 (EXTRACT_SUBREG SReg_64:$src0, sub1)),
+               (i32 (EXTRACT_SUBREG SReg_64:$src1, sub1))), sub1)
+>;
+
+def : AMDGPUPat <
+  (fcopysign f64:$src0, f32:$src1),
+  (REG_SEQUENCE SReg_64,
+    (i32 (EXTRACT_SUBREG $src0, sub0)), sub0,
+    (V_BFI_B32 (S_MOV_B32 (i32 0x7fffffff)),
+               (i32 (EXTRACT_SUBREG SReg_64:$src0, sub1)),
+               $src1), sub1)
+>;
+
 def : ROTRPattern <V_ALIGNBIT_B32>;
 
 def : GCNPat<(i32 (trunc (srl i64:$src0, (and i32:$src1, (i32 31))))),
@@ -2046,6 +2153,16 @@ def : GCNPat <
 >;
 
 def : GCNPat <
+  (v2i16 (build_vector (i16 SReg_32:$src1), (i16 0))),
+  (S_AND_B32 (S_MOV_B32 (i32 0xffff)), SReg_32:$src1)
+>;
+
+def : GCNPat <
+  (v2f16 (build_vector (f16 SReg_32:$src1), (f16 FP_ZERO))),
+  (S_AND_B32 (S_MOV_B32 (i32 0xffff)), SReg_32:$src1)
+>;
+
+def : GCNPat <
   (v2i16 (build_vector (i16 SReg_32:$src0), (i16 undef))),
   (COPY_TO_REGCLASS SReg_32:$src0, SReg_32)
 >;
@@ -2220,8 +2337,77 @@ multiclass BFMPatterns <ValueType vt, InstSI BFM, InstSI MOV> {
 defm : BFMPatterns <i32, S_BFM_B32, S_MOV_B32>;
 // FIXME: defm : BFMPatterns <i64, S_BFM_B64, S_MOV_B64>;
 
-defm : BFEPattern <V_BFE_U32, V_BFE_I32, S_MOV_B32>;
-defm : SHA256MaPattern <V_BFI_B32, V_XOR_B32_e64, SReg_64>;
+// Bitfield extract patterns
+
+def IMMZeroBasedBitfieldMask : ImmLeaf <i32, [{
+  return isMask_32(Imm);
+}]>;
+
+def IMMPopCount : SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant(countPopulation(N->getZExtValue()), SDLoc(N),
+                                   MVT::i32);
+}]>;
+
+def : AMDGPUPat <
+  (DivergentBinFrag<and> (i32 (srl i32:$src, i32:$rshift)),
+                         IMMZeroBasedBitfieldMask:$mask),
+  (V_BFE_U32 $src, $rshift, (i32 (IMMPopCount $mask)))
+>;
+
+// x & ((1 << y) - 1)
+def : AMDGPUPat <
+  (DivergentBinFrag<and> i32:$src, (add_oneuse (shl_oneuse 1, i32:$width), -1)),
+  (V_BFE_U32 $src, (i32 0), $width)
+>;
+
+// x & ~(-1 << y)
+def : AMDGPUPat <
+  (DivergentBinFrag<and> i32:$src,
+                         (xor_oneuse (shl_oneuse -1, i32:$width), -1)),
+  (V_BFE_U32 $src, (i32 0), $width)
+>;
+
+// x & (-1 >> (bitwidth - y))
+def : AMDGPUPat <
+  (DivergentBinFrag<and> i32:$src, (srl_oneuse -1, (sub 32, i32:$width))),
+  (V_BFE_U32 $src, (i32 0), $width)
+>;
+
+// x << (bitwidth - y) >> (bitwidth - y)
+def : AMDGPUPat <
+  (DivergentBinFrag<srl> (shl_oneuse i32:$src, (sub 32, i32:$width)),
+                         (sub 32, i32:$width)),
+  (V_BFE_U32 $src, (i32 0), $width)
+>;
+
+def : AMDGPUPat <
+  (DivergentBinFrag<sra> (shl_oneuse i32:$src, (sub 32, i32:$width)),
+                         (sub 32, i32:$width)),
+  (V_BFE_I32 $src, (i32 0), $width)
+>;
+
+// SHA-256 Ma patterns
+
+// ((x & z) | (y & (x | z))) -> BFI (XOR x, y), z, y
+def : AMDGPUPat <
+  (DivergentBinFrag<or> (and i32:$x, i32:$z),
+                        (and i32:$y, (or i32:$x, i32:$z))),
+  (V_BFI_B32 (V_XOR_B32_e64 i32:$x, i32:$y), i32:$z, i32:$y)
+>;
+
+def : AMDGPUPat <
+  (DivergentBinFrag<or> (and i64:$x, i64:$z),
+                        (and i64:$y, (or i64:$x, i64:$z))),
+  (REG_SEQUENCE SReg_64,
+    (V_BFI_B32 (V_XOR_B32_e64 (i32 (EXTRACT_SUBREG SReg_64:$x, sub0)),
+                    (i32 (EXTRACT_SUBREG SReg_64:$y, sub0))),
+               (i32 (EXTRACT_SUBREG SReg_64:$z, sub0)),
+               (i32 (EXTRACT_SUBREG SReg_64:$y, sub0))), sub0,
+    (V_BFI_B32 (V_XOR_B32_e64 (i32 (EXTRACT_SUBREG SReg_64:$x, sub1)),
+                    (i32 (EXTRACT_SUBREG SReg_64:$y, sub1))),
+               (i32 (EXTRACT_SUBREG SReg_64:$z, sub1)),
+               (i32 (EXTRACT_SUBREG SReg_64:$y, sub1))), sub1)
+>;
 
 multiclass IntMed3Pat<Instruction med3Inst,
                  SDPatternOperator min,
@@ -2475,4 +2661,12 @@ def G_AMDGPU_INTRIN_IMAGE_STORE : AMDGPUGenericInstruction {
   let InOperandList = (ins unknown:$intrin, variable_ops);
   let hasSideEffects = 0;
   let mayStore = 1;
+}
+
+def G_AMDGPU_INTRIN_BVH_INTERSECT_RAY : AMDGPUGenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins unknown:$intrin, variable_ops);
+  let hasSideEffects = 0;
+  let mayLoad = 1;
+  let mayStore = 0;
 }

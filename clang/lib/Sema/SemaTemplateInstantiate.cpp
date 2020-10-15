@@ -1414,46 +1414,10 @@ TemplateName TemplateInstantiator::TransformTemplateName(
                                           AllowInjectedClassName);
 }
 
-static ExprResult TransformUniqueStableName(TemplateInstantiator &TI,
-                                            PredefinedExpr *E) {
-  if (E->getIdentKind() == PredefinedExpr::UniqueStableNameType) {
-    TypeSourceInfo *Info =
-        TI.getDerived().TransformType(E->getTypeSourceInfo());
-
-    if (!Info)
-      return ExprError();
-
-    if (!TI.getDerived().AlwaysRebuild() && Info == E->getTypeSourceInfo())
-      return E;
-
-    return TI.getSema().BuildUniqueStableName(E->getLocation(), Info);
-  }
-
-  if (E->getIdentKind() == PredefinedExpr::UniqueStableNameExpr) {
-    EnterExpressionEvaluationContext Unevaluated(
-        TI.getSema(), Sema::ExpressionEvaluationContext::Unevaluated);
-    ExprResult SubExpr = TI.getDerived().TransformExpr(E->getExpr());
-
-    if (SubExpr.isInvalid())
-      return ExprError();
-
-    if (!TI.getDerived().AlwaysRebuild() && SubExpr.get() == E->getExpr())
-      return E;
-
-    return TI.getSema().BuildUniqueStableName(E->getLocation(), SubExpr.get());
-  }
-
-  llvm_unreachable("Only valid for UniqueStableNameType/Expr");
-}
-
 ExprResult
 TemplateInstantiator::TransformPredefinedExpr(PredefinedExpr *E) {
   if (!E->isTypeDependent())
     return E;
-
-  if (E->getIdentKind() == PredefinedExpr::UniqueStableNameType ||
-      E->getIdentKind() == PredefinedExpr::UniqueStableNameExpr)
-    return TransformUniqueStableName(*this, E);
 
   return getSema().BuildPredefinedExpr(E->getLocation(), E->getIdentKind());
 }
@@ -2972,9 +2936,10 @@ bool Sema::InstantiateInClassInitializer(
     RecordDecl *PatternRD = Pattern->getParent();
     RecordDecl *OutermostClass = PatternRD->getOuterLexicalRecordContext();
     Diag(PointOfInstantiation,
-         diag::err_in_class_initializer_not_yet_parsed)
+         diag::err_default_member_initializer_not_yet_parsed)
         << OutermostClass << Pattern;
-    Diag(Pattern->getEndLoc(), diag::note_in_class_initializer_not_yet_parsed);
+    Diag(Pattern->getEndLoc(),
+         diag::note_default_member_initializer_not_yet_parsed);
     Instantiation->setInvalidDecl();
     return true;
   }
@@ -2984,7 +2949,7 @@ bool Sema::InstantiateInClassInitializer(
     return true;
   if (Inst.isAlreadyInstantiating()) {
     // Error out if we hit an instantiation cycle for this initializer.
-    Diag(PointOfInstantiation, diag::err_in_class_initializer_cycle)
+    Diag(PointOfInstantiation, diag::err_default_member_initializer_cycle)
       << Instantiation;
     return true;
   }

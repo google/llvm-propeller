@@ -1701,27 +1701,8 @@ static Instruction *foldOrToXor(BinaryOperator &I,
 /// Return true if a constant shift amount is always less than the specified
 /// bit-width. If not, the shift could create poison in the narrower type.
 static bool canNarrowShiftAmt(Constant *C, unsigned BitWidth) {
-  if (auto *ScalarC = dyn_cast<ConstantInt>(C))
-    return ScalarC->getZExtValue() < BitWidth;
-
-  if (C->getType()->isVectorTy()) {
-    // Check each element of a constant vector.
-    unsigned NumElts = cast<FixedVectorType>(C->getType())->getNumElements();
-    for (unsigned i = 0; i != NumElts; ++i) {
-      Constant *Elt = C->getAggregateElement(i);
-      if (!Elt)
-        return false;
-      if (isa<UndefValue>(Elt))
-        continue;
-      auto *CI = dyn_cast<ConstantInt>(Elt);
-      if (!CI || CI->getZExtValue() >= BitWidth)
-        return false;
-    }
-    return true;
-  }
-
-  // The constant is a constant expression or unknown.
-  return false;
+  APInt Threshold(C->getType()->getScalarSizeInBits(), BitWidth);
+  return match(C, m_SpecificInt_ICMP(ICmpInst::ICMP_ULT, Threshold));
 }
 
 /// Try to use narrower ops (sink zext ops) for an 'and' with binop operand and
@@ -2046,29 +2027,18 @@ Instruction *InstCombinerImpl::matchBSwap(BinaryOperator &Or) {
     Op1 = Ext->getOperand(0);
 
   // (A | B) | C  and  A | (B | C)                  -> bswap if possible.
-  bool OrOfOrs = match(Op0, m_Or(m_Value(), m_Value())) ||
-                 match(Op1, m_Or(m_Value(), m_Value()));
+  bool OrWithOrs = match(Op0, m_Or(m_Value(), m_Value())) ||
+                   match(Op1, m_Or(m_Value(), m_Value()));
 
-  // (A >> B) | (C << D)  and  (A << B) | (B >> C)  -> bswap if possible.
-  bool OrOfShifts = match(Op0, m_LogicalShift(m_Value(), m_Value())) &&
-                    match(Op1, m_LogicalShift(m_Value(), m_Value()));
+  // (A >> B) | C  and  (A << B) | C                -> bswap if possible.
+  bool OrWithShifts = match(Op0, m_LogicalShift(m_Value(), m_Value())) ||
+                      match(Op1, m_LogicalShift(m_Value(), m_Value()));
 
-  // (A & B) | (C & D)                              -> bswap if possible.
-  bool OrOfAnds = match(Op0, m_And(m_Value(), m_Value())) &&
-                  match(Op1, m_And(m_Value(), m_Value()));
+  // (A & B) | C  and  A | (B & C)                  -> bswap if possible.
+  bool OrWithAnds = match(Op0, m_And(m_Value(), m_Value())) ||
+                    match(Op1, m_And(m_Value(), m_Value()));
 
-  // (A << B) | (C & D)                              -> bswap if possible.
-  // The bigger pattern here is ((A & C1) << C2) | ((B >> C2) & C1), which is a
-  // part of the bswap idiom for specific values of C1, C2 (e.g. C1 = 16711935,
-  // C2 = 8 for i32).
-  // This pattern can occur when the operands of the 'or' are not canonicalized
-  // for some reason (not having only one use, for example).
-  bool OrOfAndAndSh = (match(Op0, m_LogicalShift(m_Value(), m_Value())) &&
-                       match(Op1, m_And(m_Value(), m_Value()))) ||
-                      (match(Op0, m_And(m_Value(), m_Value())) &&
-                       match(Op1, m_LogicalShift(m_Value(), m_Value())));
-
-  if (!OrOfOrs && !OrOfShifts && !OrOfAnds && !OrOfAndAndSh)
+  if (!OrWithOrs && !OrWithShifts && !OrWithAnds)
     return nullptr;
 
   SmallVector<Instruction*, 4> Insts;
@@ -2082,34 +2052,72 @@ Instruction *InstCombinerImpl::matchBSwap(BinaryOperator &Or) {
   return LastInst;
 }
 
-/// Transform UB-safe variants of bitwise rotate to the funnel shift intrinsic.
-static Instruction *matchRotate(Instruction &Or) {
+/// Match UB-safe variants of the funnel shift intrinsic.
+static Instruction *matchFunnelShift(Instruction &Or, InstCombinerImpl &IC) {
   // TODO: Can we reduce the code duplication between this and the related
   // rotate matching code under visitSelect and visitTrunc?
   unsigned Width = Or.getType()->getScalarSizeInBits();
-  if (!isPowerOf2_32(Width))
-    return nullptr;
 
-  // First, find an or'd pair of opposite shifts with the same shifted operand:
-  // or (lshr ShVal, ShAmt0), (shl ShVal, ShAmt1)
+  // First, find an or'd pair of opposite shifts:
+  // or (lshr ShVal0, ShAmt0), (shl ShVal1, ShAmt1)
   BinaryOperator *Or0, *Or1;
   if (!match(Or.getOperand(0), m_BinOp(Or0)) ||
       !match(Or.getOperand(1), m_BinOp(Or1)))
     return nullptr;
 
-  Value *ShVal, *ShAmt0, *ShAmt1;
-  if (!match(Or0, m_OneUse(m_LogicalShift(m_Value(ShVal), m_Value(ShAmt0)))) ||
-      !match(Or1, m_OneUse(m_LogicalShift(m_Specific(ShVal), m_Value(ShAmt1)))))
+  Value *ShVal0, *ShVal1, *ShAmt0, *ShAmt1;
+  if (!match(Or0, m_OneUse(m_LogicalShift(m_Value(ShVal0), m_Value(ShAmt0)))) ||
+      !match(Or1, m_OneUse(m_LogicalShift(m_Value(ShVal1), m_Value(ShAmt1)))) ||
+      Or0->getOpcode() == Or1->getOpcode())
     return nullptr;
 
-  BinaryOperator::BinaryOps ShiftOpcode0 = Or0->getOpcode();
-  BinaryOperator::BinaryOps ShiftOpcode1 = Or1->getOpcode();
-  if (ShiftOpcode0 == ShiftOpcode1)
-    return nullptr;
+  // Canonicalize to or(shl(ShVal0, ShAmt0), lshr(ShVal1, ShAmt1)).
+  if (Or0->getOpcode() == BinaryOperator::LShr) {
+    std::swap(Or0, Or1);
+    std::swap(ShVal0, ShVal1);
+    std::swap(ShAmt0, ShAmt1);
+  }
+  assert(Or0->getOpcode() == BinaryOperator::Shl &&
+         Or1->getOpcode() == BinaryOperator::LShr &&
+         "Illegal or(shift,shift) pair");
 
-  // Match the shift amount operands for a rotate pattern. This always matches
-  // a subtraction on the R operand.
-  auto matchShiftAmount = [](Value *L, Value *R, unsigned Width) -> Value * {
+  // Match the shift amount operands for a funnel shift pattern. This always
+  // matches a subtraction on the R operand.
+  auto matchShiftAmount = [&](Value *L, Value *R, unsigned Width) -> Value * {
+    // Check for constant shift amounts that sum to the bitwidth.
+    const APInt *LI, *RI;
+    if (match(L, m_APIntAllowUndef(LI)) && match(R, m_APIntAllowUndef(RI)))
+      if (LI->ult(Width) && RI->ult(Width) && (*LI + *RI) == Width)
+        return ConstantInt::get(L->getType(), *LI);
+
+    Constant *LC, *RC;
+    if (match(L, m_Constant(LC)) && match(R, m_Constant(RC)) &&
+        match(L, m_SpecificInt_ICMP(ICmpInst::ICMP_ULT, APInt(Width, Width))) &&
+        match(R, m_SpecificInt_ICMP(ICmpInst::ICMP_ULT, APInt(Width, Width))) &&
+        match(ConstantExpr::getAdd(LC, RC), m_SpecificIntAllowUndef(Width)))
+      return ConstantExpr::mergeUndefsWith(LC, RC);
+
+    // (shl ShVal, X) | (lshr ShVal, (Width - x)) iff X < Width.
+    // We limit this to X < Width in case the backend re-expands the intrinsic,
+    // and has to reintroduce a shift modulo operation (InstCombine might remove
+    // it after this fold). This still doesn't guarantee that the final codegen
+    // will match this original pattern.
+    if (match(R, m_OneUse(m_Sub(m_SpecificInt(Width), m_Specific(L))))) {
+      KnownBits KnownL = IC.computeKnownBits(L, /*Depth*/ 0, &Or);
+      return KnownL.getMaxValue().ult(Width) ? L : nullptr;
+    }
+
+    // For non-constant cases, the following patterns currently only work for
+    // rotation patterns.
+    // TODO: Add general funnel-shift compatible patterns.
+    if (ShVal0 != ShVal1)
+      return nullptr;
+
+    // For non-constant cases we don't support non-pow2 shift masks.
+    // TODO: Is it worth matching urem as well?
+    if (!isPowerOf2_32(Width))
+      return nullptr;
+
     // The shift amount may be masked with negation:
     // (shl ShVal, (X & (Width - 1))) | (lshr ShVal, ((-X) & (Width - 1)))
     Value *X;
@@ -2129,19 +2137,17 @@ static Instruction *matchRotate(Instruction &Or) {
   };
 
   Value *ShAmt = matchShiftAmount(ShAmt0, ShAmt1, Width);
-  bool SubIsOnLHS = false;
+  bool IsFshl = true; // Sub on LSHR.
   if (!ShAmt) {
     ShAmt = matchShiftAmount(ShAmt1, ShAmt0, Width);
-    SubIsOnLHS = true;
+    IsFshl = false; // Sub on SHL.
   }
   if (!ShAmt)
     return nullptr;
 
-  bool IsFshl = (!SubIsOnLHS && ShiftOpcode0 == BinaryOperator::Shl) ||
-                (SubIsOnLHS && ShiftOpcode1 == BinaryOperator::Shl);
   Intrinsic::ID IID = IsFshl ? Intrinsic::fshl : Intrinsic::fshr;
   Function *F = Intrinsic::getDeclaration(Or.getModule(), IID, Or.getType());
-  return IntrinsicInst::Create(F, { ShVal, ShVal, ShAmt });
+  return IntrinsicInst::Create(F, {ShVal0, ShVal1, ShAmt});
 }
 
 /// Attempt to combine or(zext(x),shl(zext(y),bw/2) concat packing patterns.
@@ -2594,8 +2600,8 @@ Instruction *InstCombinerImpl::visitOr(BinaryOperator &I) {
   if (Instruction *BSwap = matchBSwap(I))
     return BSwap;
 
-  if (Instruction *Rotate = matchRotate(I))
-    return Rotate;
+  if (Instruction *Funnel = matchFunnelShift(I, *this))
+    return Funnel;
 
   if (Instruction *Concat = matchOrConcat(I, Builder))
     return replaceInstUsesWith(I, Concat);

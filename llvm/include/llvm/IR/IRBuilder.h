@@ -573,12 +573,22 @@ public:
                         NoAliasTag);
   }
 
+  CallInst *CreateMemTransferInst(
+      Intrinsic::ID IntrID, Value *Dst, MaybeAlign DstAlign, Value *Src,
+      MaybeAlign SrcAlign, Value *Size, bool isVolatile = false,
+      MDNode *TBAATag = nullptr, MDNode *TBAAStructTag = nullptr,
+      MDNode *ScopeTag = nullptr, MDNode *NoAliasTag = nullptr);
+
   CallInst *CreateMemCpy(Value *Dst, MaybeAlign DstAlign, Value *Src,
                          MaybeAlign SrcAlign, Value *Size,
                          bool isVolatile = false, MDNode *TBAATag = nullptr,
                          MDNode *TBAAStructTag = nullptr,
                          MDNode *ScopeTag = nullptr,
-                         MDNode *NoAliasTag = nullptr);
+                         MDNode *NoAliasTag = nullptr) {
+    return CreateMemTransferInst(Intrinsic::memcpy, Dst, DstAlign, Src,
+                                 SrcAlign, Size, isVolatile, TBAATag,
+                                 TBAAStructTag, ScopeTag, NoAliasTag);
+  }
 
   CallInst *CreateMemCpyInline(Value *Dst, MaybeAlign DstAlign, Value *Src,
                                MaybeAlign SrcAlign, Value *Size);
@@ -2429,6 +2439,13 @@ public:
       if (auto *V2C = dyn_cast<Constant>(V2))
         return Insert(Folder.CreateShuffleVector(V1C, V2C, Mask), Name);
     return Insert(new ShuffleVectorInst(V1, V2, Mask), Name);
+  }
+
+  /// Create a unary shuffle. The second vector operand of the IR instruction
+  /// is undefined.
+  Value *CreateShuffleVector(Value *V, ArrayRef<int> Mask,
+                             const Twine &Name = "") {
+    return CreateShuffleVector(V, UndefValue::get(V->getType()), Mask, Name);
   }
 
   Value *CreateExtractValue(Value *Agg,

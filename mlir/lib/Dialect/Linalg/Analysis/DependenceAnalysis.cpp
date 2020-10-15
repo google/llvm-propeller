@@ -30,7 +30,8 @@ Value Aliases::find(Value v) {
 
   auto it = aliases.find(v);
   if (it != aliases.end()) {
-    assert(it->getSecond().getType().isa<MemRefType>() && "Memref expected");
+    assert(it->getSecond().getType().isa<BaseMemRefType>() &&
+           "Memref expected");
     return it->getSecond();
   }
 
@@ -161,7 +162,7 @@ void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
     }
     // WAW graph
     for (auto dstView : dst.getOutputBuffers()) { // W
-      if (aliases.alias(srcView, dstView)) { // if alias, fill WAW
+      if (aliases.alias(srcView, dstView)) {      // if alias, fill WAW
         addDependenceElem(DependenceType::WAW,
                           LinalgOpView{src.getOperation(), srcView},
                           LinalgOpView{dst.getOperation(), dstView});
@@ -179,7 +180,7 @@ void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
     }
     // WAR graph
     for (auto dstView : dst.getOutputBuffers()) { // W
-      if (aliases.alias(srcView, dstView)) { // if alias, fill WAR
+      if (aliases.alias(srcView, dstView)) {      // if alias, fill WAR
         addDependenceElem(DependenceType::WAR,
                           LinalgOpView{src.getOperation(), srcView},
                           LinalgOpView{dst.getOperation(), dstView});
@@ -240,4 +241,27 @@ LinalgDependenceGraph::findOperationsWithCoveringDependences(
     }
   }
   return res;
+}
+
+bool LinalgDependenceGraph::hasDependenceFrom(
+    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp,
+    ArrayRef<LinalgDependenceGraph::DependenceType> depTypes) const {
+  for (auto dep : depTypes) {
+    for (auto dependence : getDependencesInto(dstLinalgOp, dep)) {
+      if (dependence.dependentOpView.op == srcLinalgOp)
+        return true;
+    }
+  }
+  return false;
+}
+
+bool LinalgDependenceGraph::hasDependentOperations(
+    LinalgOp linalgOp,
+    ArrayRef<LinalgDependenceGraph::DependenceType> depTypes) const {
+  for (auto dep : depTypes) {
+    if (!getDependencesFrom(linalgOp, dep).empty() ||
+        !getDependencesInto(linalgOp, dep).empty())
+      return true;
+  }
+  return false;
 }

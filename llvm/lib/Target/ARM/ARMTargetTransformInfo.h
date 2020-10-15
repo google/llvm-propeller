@@ -126,7 +126,8 @@ public:
   int getIntImmCost(const APInt &Imm, Type *Ty, TTI::TargetCostKind CostKind);
 
   int getIntImmCostInst(unsigned Opcode, unsigned Idx, const APInt &Imm,
-                        Type *Ty, TTI::TargetCostKind CostKind);
+                        Type *Ty, TTI::TargetCostKind CostKind,
+                        Instruction *Inst = nullptr);
 
   /// @}
 
@@ -194,8 +195,8 @@ public:
 
   bool shouldExpandReduction(const IntrinsicInst *II) const {
     switch (II->getIntrinsicID()) {
-    case Intrinsic::experimental_vector_reduce_v2_fadd:
-    case Intrinsic::experimental_vector_reduce_v2_fmul:
+    case Intrinsic::vector_reduce_fadd:
+    case Intrinsic::vector_reduce_fmul:
       // We don't have legalization support for ordered FP reductions.
       return !II->getFastMathFlags().allowReassoc();
     default:

@@ -94,7 +94,9 @@ class ELFDumper {
   Expected<ELFYAML::VerdefSection *> dumpVerdefSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::SymverSection *> dumpSymverSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::VerneedSection *> dumpVerneedSection(const Elf_Shdr *Shdr);
-  Expected<ELFYAML::Group *> dumpGroup(const Elf_Shdr *Shdr);
+  Expected<ELFYAML::GroupSection *> dumpGroupSection(const Elf_Shdr *Shdr);
+  Expected<ELFYAML::ARMIndexTableSection *>
+  dumpARMIndexTableSection(const Elf_Shdr *Shdr);
   Expected<ELFYAML::MipsABIFlags *> dumpMipsABIFlags(const Elf_Shdr *Shdr);
   Expected<ELFYAML::StackSizesSection *>
   dumpStackSizesSection(const Elf_Shdr *Shdr);
@@ -240,7 +242,8 @@ template <class ELFT> Expected<ELFYAML::Object *> ELFDumper<ELFT>::dump() {
   Y->Header.OSABI = Obj.getHeader().e_ident[ELF::EI_OSABI];
   Y->Header.ABIVersion = Obj.getHeader().e_ident[ELF::EI_ABIVERSION];
   Y->Header.Type = Obj.getHeader().e_type;
-  Y->Header.Machine = ELFYAML::ELF_EM(Obj.getHeader().e_machine);
+  if (Obj.getHeader().e_machine != 0)
+    Y->Header.Machine = ELFYAML::ELF_EM(Obj.getHeader().e_machine);
   Y->Header.Flags = Obj.getHeader().e_flags;
   Y->Header.Entry = Obj.getHeader().e_entry;
 
@@ -459,6 +462,13 @@ ELFDumper<ELFT>::dumpSections() {
 
   auto GetDumper = [this](unsigned Type)
       -> std::function<Expected<ELFYAML::Chunk *>(const Elf_Shdr *)> {
+    if (Obj.getHeader().e_machine == ELF::EM_ARM && Type == ELF::SHT_ARM_EXIDX)
+      return [this](const Elf_Shdr *S) { return dumpARMIndexTableSection(S); };
+
+    if (Obj.getHeader().e_machine == ELF::EM_MIPS &&
+        Type == ELF::SHT_MIPS_ABIFLAGS)
+      return [this](const Elf_Shdr *S) { return dumpMipsABIFlags(S); };
+
     switch (Type) {
     case ELF::SHT_DYNAMIC:
       return [this](const Elf_Shdr *S) { return dumpDynamicSection(S); };
@@ -470,9 +480,7 @@ ELFDumper<ELFT>::dumpSections() {
     case ELF::SHT_RELR:
       return [this](const Elf_Shdr *S) { return dumpRelrSection(S); };
     case ELF::SHT_GROUP:
-      return [this](const Elf_Shdr *S) { return dumpGroup(S); };
-    case ELF::SHT_MIPS_ABIFLAGS:
-      return [this](const Elf_Shdr *S) { return dumpMipsABIFlags(S); };
+      return [this](const Elf_Shdr *S) { return dumpGroupSection(S); };
     case ELF::SHT_NOBITS:
       return [this](const Elf_Shdr *S) { return dumpNoBitsSection(S); };
     case ELF::SHT_NOTE:
@@ -522,7 +530,7 @@ ELFDumper<ELFT>::dumpSections() {
 
     // Recognize some special SHT_PROGBITS sections by name.
     if (Sec.sh_type == ELF::SHT_PROGBITS) {
-      auto NameOrErr = getUniquedSectionName(&Sec);
+      auto NameOrErr = Obj.getSectionName(Sec);
       if (!NameOrErr)
         return NameOrErr.takeError();
 
@@ -651,6 +659,8 @@ static unsigned getDefaultShEntSize(ELFYAML::ELF_SHT SecType,
     return sizeof(typename ELFT::Relr);
   case ELF::SHT_DYNAMIC:
     return sizeof(typename ELFT::Dyn);
+  case ELF::SHT_HASH:
+    return sizeof(typename ELFT::Word);
   default:
     if (SecName == ".debug_str")
       return 1;
@@ -919,8 +929,9 @@ ELFDumper<ELFT>::dumpDynamicSection(const Elf_Shdr *Shdr) {
   if (!DynTagsOrErr)
     return DynTagsOrErr.takeError();
 
+  S->Entries.emplace();
   for (const Elf_Dyn &Dyn : *DynTagsOrErr)
-    S->Entries.push_back({(ELFYAML::ELF_DYNTAG)Dyn.getTag(), Dyn.getVal()});
+    S->Entries->push_back({(ELFYAML::ELF_DYNTAG)Dyn.getTag(), Dyn.getVal()});
 
   return S.release();
 }
@@ -935,7 +946,9 @@ ELFDumper<ELFT>::dumpRelocSection(const Elf_Shdr *Shdr) {
   auto SymTabOrErr = Obj.getSection(Shdr->sh_link);
   if (!SymTabOrErr)
     return SymTabOrErr.takeError();
-  const Elf_Shdr *SymTab = *SymTabOrErr;
+
+  if (Shdr->sh_size != 0)
+    S->Relocations.emplace();
 
   if (Shdr->sh_type == ELF::SHT_REL) {
     auto Rels = Obj.rels(*Shdr);
@@ -943,9 +956,9 @@ ELFDumper<ELFT>::dumpRelocSection(const Elf_Shdr *Shdr) {
       return Rels.takeError();
     for (const Elf_Rel &Rel : *Rels) {
       ELFYAML::Relocation R;
-      if (Error E = dumpRelocation(&Rel, SymTab, R))
+      if (Error E = dumpRelocation(&Rel, *SymTabOrErr, R))
         return std::move(E);
-      S->Relocations.push_back(R);
+      S->Relocations->push_back(R);
     }
   } else {
     auto Rels = Obj.relas(*Shdr);
@@ -953,10 +966,10 @@ ELFDumper<ELFT>::dumpRelocSection(const Elf_Shdr *Shdr) {
       return Rels.takeError();
     for (const Elf_Rela &Rel : *Rels) {
       ELFYAML::Relocation R;
-      if (Error E = dumpRelocation(&Rel, SymTab, R))
+      if (Error E = dumpRelocation(&Rel, *SymTabOrErr, R))
         return std::move(E);
       R.Addend = Rel.r_addend;
-      S->Relocations.push_back(R);
+      S->Relocations->push_back(R);
     }
   }
 
@@ -1021,8 +1034,10 @@ ELFDumper<ELFT>::dumpSymtabShndxSection(const Elf_Shdr *Shdr) {
   auto EntriesOrErr = Obj.template getSectionContentsAsArray<Elf_Word>(*Shdr);
   if (!EntriesOrErr)
     return EntriesOrErr.takeError();
+
+  S->Entries.emplace();
   for (const Elf_Word &E : *EntriesOrErr)
-    S->Entries.push_back(E);
+    S->Entries->push_back(E);
   return S.release();
 }
 
@@ -1032,8 +1047,8 @@ ELFDumper<ELFT>::dumpNoBitsSection(const Elf_Shdr *Shdr) {
   auto S = std::make_unique<ELFYAML::NoBitsSection>();
   if (Error E = dumpCommonSection(Shdr, *S))
     return std::move(E);
-  S->Size = Shdr->sh_size;
-
+  if (Shdr->sh_size)
+    S->Size = static_cast<llvm::yaml::Hex64>(Shdr->sh_size);
   return S.release();
 }
 
@@ -1229,8 +1244,10 @@ ELFDumper<ELFT>::dumpSymverSection(const Elf_Shdr *Shdr) {
   auto VersionsOrErr = Obj.template getSectionContentsAsArray<Elf_Half>(*Shdr);
   if (!VersionsOrErr)
     return VersionsOrErr.takeError();
+
+  S->Entries.emplace();
   for (const Elf_Half &E : *VersionsOrErr)
-    S->Entries.push_back(E);
+    S->Entries->push_back(E);
 
   return S.release();
 }
@@ -1313,8 +1330,9 @@ Expected<StringRef> ELFDumper<ELFT>::getSymbolName(uint32_t SymtabNdx,
 }
 
 template <class ELFT>
-Expected<ELFYAML::Group *> ELFDumper<ELFT>::dumpGroup(const Elf_Shdr *Shdr) {
-  auto S = std::make_unique<ELFYAML::Group>();
+Expected<ELFYAML::GroupSection *>
+ELFDumper<ELFT>::dumpGroupSection(const Elf_Shdr *Shdr) {
+  auto S = std::make_unique<ELFYAML::GroupSection>();
   if (Error E = dumpCommonSection(Shdr, *S))
     return std::move(E);
 
@@ -1328,9 +1346,10 @@ Expected<ELFYAML::Group *> ELFDumper<ELFT>::dumpGroup(const Elf_Shdr *Shdr) {
   if (!MembersOrErr)
     return MembersOrErr.takeError();
 
+  S->Members.emplace();
   for (Elf_Word Member : *MembersOrErr) {
     if (Member == llvm::ELF::GRP_COMDAT) {
-      S->Members.push_back({"GRP_COMDAT"});
+      S->Members->push_back({"GRP_COMDAT"});
       continue;
     }
 
@@ -1340,8 +1359,35 @@ Expected<ELFYAML::Group *> ELFDumper<ELFT>::dumpGroup(const Elf_Shdr *Shdr) {
     auto NameOrErr = getUniquedSectionName(*SHdrOrErr);
     if (!NameOrErr)
       return NameOrErr.takeError();
-    S->Members.push_back({*NameOrErr});
+    S->Members->push_back({*NameOrErr});
   }
+  return S.release();
+}
+
+template <class ELFT>
+Expected<ELFYAML::ARMIndexTableSection *>
+ELFDumper<ELFT>::dumpARMIndexTableSection(const Elf_Shdr *Shdr) {
+  auto S = std::make_unique<ELFYAML::ARMIndexTableSection>();
+  if (Error E = dumpCommonSection(Shdr, *S))
+    return std::move(E);
+
+  Expected<ArrayRef<uint8_t>> ContentOrErr = Obj.getSectionContents(*Shdr);
+  if (!ContentOrErr)
+    return ContentOrErr.takeError();
+
+  if (ContentOrErr->size() % (sizeof(Elf_Word) * 2) != 0) {
+    S->Content = yaml::BinaryRef(*ContentOrErr);
+    return S.release();
+  }
+
+  ArrayRef<Elf_Word> Words(
+      reinterpret_cast<const Elf_Word *>(ContentOrErr->data()),
+      ContentOrErr->size() / sizeof(Elf_Word));
+
+  S->Entries.emplace();
+  for (size_t I = 0, E = Words.size(); I != E; I += 2)
+    S->Entries->push_back({(yaml::Hex32)Words[I], (yaml::Hex32)Words[I + 1]});
+
   return S.release();
 }
 

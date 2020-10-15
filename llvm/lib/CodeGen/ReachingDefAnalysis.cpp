@@ -355,8 +355,10 @@ ReachingDefAnalysis::getLiveInUses(MachineBasicBlock *MBB, int PhysReg,
       Uses.insert(&MI);
     }
   }
-  MachineInstr *Last = &*MBB->getLastNonDebugInstr();
-  return isReachingDefLiveOut(Last, PhysReg);
+  auto Last = MBB->getLastNonDebugInstr();
+  if (Last == MBB->end())
+    return true;
+  return isReachingDefLiveOut(&*Last, PhysReg);
 }
 
 void
@@ -433,7 +435,6 @@ MachineInstr *ReachingDefAnalysis::getUniqueReachingMIDef(MachineInstr *MI,
   if (LocalDef && InstIds.lookup(LocalDef) < InstIds.lookup(MI))
     return LocalDef;
 
-  SmallPtrSet<MachineBasicBlock*, 4> VisitedBBs;
   SmallPtrSet<MachineInstr*, 2> Incoming;
   MachineBasicBlock *Parent = MI->getParent();
   for (auto *Pred : Parent->predecessors())
@@ -482,8 +483,9 @@ bool ReachingDefAnalysis::isRegUsedAfter(MachineInstr *MI, int PhysReg) const {
 bool ReachingDefAnalysis::isRegDefinedAfter(MachineInstr *MI,
                                             int PhysReg) const {
   MachineBasicBlock *MBB = MI->getParent();
-  MachineInstr *Last = &*MBB->getLastNonDebugInstr();
-  if (getReachingDef(MI, PhysReg) != getReachingDef(Last, PhysReg))
+  auto Last = MBB->getLastNonDebugInstr();
+  if (Last != MBB->end() &&
+      getReachingDef(MI, PhysReg) != getReachingDef(&*Last, PhysReg))
     return true;
 
   if (auto *Def = getLocalLiveOutMIDef(MBB, PhysReg))
@@ -500,9 +502,9 @@ ReachingDefAnalysis::isReachingDefLiveOut(MachineInstr *MI, int PhysReg) const {
   if (!LiveRegs.contains(PhysReg))
     return false;
 
-  MachineInstr *Last = &*MBB->getLastNonDebugInstr();
+  auto Last = MBB->getLastNonDebugInstr();
   int Def = getReachingDef(MI, PhysReg);
-  if (getReachingDef(Last, PhysReg) != Def)
+  if (Last != MBB->end() && getReachingDef(&*Last, PhysReg) != Def)
     return false;
 
   // Finally check that the last instruction doesn't redefine the register.
@@ -520,11 +522,14 @@ MachineInstr* ReachingDefAnalysis::getLocalLiveOutMIDef(MachineBasicBlock *MBB,
   if (!LiveRegs.contains(PhysReg))
     return nullptr;
 
-  MachineInstr *Last = &*MBB->getLastNonDebugInstr();
-  int Def = getReachingDef(Last, PhysReg);
+  auto Last = MBB->getLastNonDebugInstr();
+  if (Last == MBB->end())
+    return nullptr;
+
+  int Def = getReachingDef(&*Last, PhysReg);
   for (auto &MO : Last->operands())
     if (isValidRegDefOf(MO, PhysReg))
-      return Last;
+      return &*Last;
 
   return Def < 0 ? nullptr : getInstFromId(MBB, Def);
 }
@@ -541,7 +546,7 @@ static bool mayHaveSideEffects(MachineInstr &MI) {
 template<typename Iterator>
 bool ReachingDefAnalysis::isSafeToMove(MachineInstr *From,
                                        MachineInstr *To) const {
-  if (From->getParent() != To->getParent())
+  if (From->getParent() != To->getParent() || From == To)
     return false;
 
   SmallSet<int, 2> Defs;
@@ -570,12 +575,22 @@ bool ReachingDefAnalysis::isSafeToMove(MachineInstr *From,
 
 bool ReachingDefAnalysis::isSafeToMoveForwards(MachineInstr *From,
                                                MachineInstr *To) const {
-  return isSafeToMove<MachineBasicBlock::reverse_iterator>(From, To);
+  using Iterator = MachineBasicBlock::iterator;
+  // Walk forwards until we find the instruction.
+  for (auto I = Iterator(From), E = From->getParent()->end(); I != E; ++I)
+    if (&*I == To)
+      return isSafeToMove<Iterator>(From, To);
+  return false;
 }
 
 bool ReachingDefAnalysis::isSafeToMoveBackwards(MachineInstr *From,
                                                 MachineInstr *To) const {
-  return isSafeToMove<MachineBasicBlock::iterator>(From, To);
+  using Iterator = MachineBasicBlock::reverse_iterator;
+  // Walk backwards until we find the instruction.
+  for (auto I = Iterator(From), E = From->getParent()->rend(); I != E; ++I)
+    if (&*I == To)
+      return isSafeToMove<Iterator>(From, To);
+  return false;
 }
 
 bool ReachingDefAnalysis::isSafeToRemove(MachineInstr *MI,
@@ -626,6 +641,9 @@ void ReachingDefAnalysis::collectKilledOperands(MachineInstr *MI,
                                                 InstSet &Dead) const {
   Dead.insert(MI);
   auto IsDead = [this, &Dead](MachineInstr *Def, int PhysReg) {
+    if (mayHaveSideEffects(*Def))
+      return false;
+
     unsigned LiveDefs = 0;
     for (auto &MO : Def->operands()) {
       if (!isValidRegDef(MO))
@@ -666,7 +684,7 @@ bool ReachingDefAnalysis::isSafeToDefRegAt(MachineInstr *MI, int PhysReg,
   if (isRegUsedAfter(MI, PhysReg)) {
     if (auto *Def = getReachingLocalMIDef(MI, PhysReg)) {
       SmallPtrSet<MachineInstr*, 2> Uses;
-      getReachingLocalUses(Def, PhysReg, Uses);
+      getGlobalUses(Def, PhysReg, Uses);
       for (auto *Use : Uses)
         if (!Ignore.count(Use))
           return false;

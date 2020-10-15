@@ -2172,6 +2172,17 @@ programs using the same instrumentation method as ``-fprofile-generate``.
   profile file, it reads from that file. If ``pathname`` is a directory name,
   it reads from ``pathname/default.profdata``.
 
+.. option:: -fprofile-update[=<method>]
+
+  Unless ``-fsanitize=thread`` is specified, the default is ``single``, which
+  uses non-atomic increments. The counters can be inaccurate under thread
+  contention. ``atomic`` uses atomic increments which is accurate but has
+  overhead. ``prefer-atomic`` will be transformed to ``atomic`` when supported
+  by the target, or ``single`` otherwise.
+
+  This option currently works with ``-fprofile-arcs`` and ``-fprofile-instr-generate``,
+  but not with ``-fprofile-generate``.
+
 Disabling Instrumentation
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -3189,6 +3200,15 @@ using ``asm(".code16gcc")`` with the GNU toolchain. The generated code
 and the ABI remains 32-bit but the assembler emits instructions
 appropriate for a CPU running in 16-bit mode, with address-size and
 operand-size prefixes to enable 32-bit addressing and operations.
+
+Several micro-architecture levels as specified by the x86-64 psABI are defined.
+They are cumulative in the sense that features from previous levels are
+implicitly included in later levels.
+
+- ``-march=x86-64``: CMOV, CMPXCHG8B, FPU, FXSR, MMX, FXSR, SCE, SSE, SSE2
+- ``-march=x86-64-v2``: (close to Nehalem) CMPXCHG16B, LAHF-SAHF, POPCNT, SSE3, SSE4.1, SSE4.2, SSSE3
+- ``-march=x86-64-v3``: (close to Haswell) AVX, AVX2, BMI1, BMI2, F16C, FMA, LZCNT, MOVBE, XSAVE
+- ``-march=x86-64-v4``: AVX512F, AVX512BW, AVX512CD, AVX512DQ, AVX512VL
 
 ARM
 ^^^

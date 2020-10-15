@@ -34,13 +34,13 @@ using namespace llvm;
 #define DEBUG_TYPE "wasm"
 
 // Emscripten's asm.js-style exception handling
-static cl::opt<bool> EnableEmException(
+cl::opt<bool> EnableEmException(
     "enable-emscripten-cxx-exceptions",
     cl::desc("WebAssembly Emscripten-style exception handling"),
     cl::init(false));
 
 // Emscripten's asm.js-style setjmp/longjmp handling
-static cl::opt<bool> EnableEmSjLj(
+cl::opt<bool> EnableEmSjLj(
     "enable-emscripten-sjlj",
     cl::desc("WebAssembly Emscripten-style setjmp/longjmp handling"),
     cl::init(false));
@@ -145,6 +145,11 @@ WebAssemblyTargetMachine::WebAssemblyTargetMachine(
 
 WebAssemblyTargetMachine::~WebAssemblyTargetMachine() = default; // anchor.
 
+const WebAssemblySubtarget *WebAssemblyTargetMachine::getSubtargetImpl() const {
+  return getSubtargetImpl(std::string(getTargetCPU()),
+                          std::string(getTargetFeatureString()));
+}
+
 const WebAssemblySubtarget *
 WebAssemblyTargetMachine::getSubtargetImpl(std::string CPU,
                                            std::string FS) const {
@@ -191,6 +196,7 @@ public:
     FeatureBitset Features = coalesceFeatures(M);
 
     std::string FeatureStr = getFeatureString(Features);
+    WasmTM->setTargetFeatureString(FeatureStr);
     for (auto &F : M)
       replaceFeatures(F, FeatureStr);
 
@@ -348,7 +354,7 @@ FunctionPass *WebAssemblyPassConfig::createTargetRegisterAllocator(bool) {
 //===----------------------------------------------------------------------===//
 
 void WebAssemblyPassConfig::addIRPasses() {
-  // Runs LowerAtomicPass if necessary
+  // Lower atomics and TLS if necessary
   addPass(new CoalesceFeaturesAndStripAtomics(&getWebAssemblyTargetMachine()));
 
   // This is a no-op if atomics are not used in the module

@@ -882,11 +882,9 @@ ASTNodeImporter::import(const TemplateArgumentLoc &TALoc) {
         import(FromInfo.getTemplateEllipsisLoc());
     if (!ToTemplateEllipsisLocOrErr)
       return ToTemplateEllipsisLocOrErr.takeError();
-
     ToInfo = TemplateArgumentLocInfo(
-          *ToTemplateQualifierLocOrErr,
-          *ToTemplateNameLocOrErr,
-          *ToTemplateEllipsisLocOrErr);
+        Importer.getToContext(), *ToTemplateQualifierLocOrErr,
+        *ToTemplateNameLocOrErr, *ToTemplateEllipsisLocOrErr);
   }
 
   return TemplateArgumentLoc(Arg, ToInfo);
@@ -1744,12 +1742,28 @@ ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport) {
       Decl *ImportedDecl = *ImportedOrErr;
       FieldDecl *FieldTo = dyn_cast_or_null<FieldDecl>(ImportedDecl);
       if (FieldFrom && FieldTo) {
-        const RecordType *RecordFrom = FieldFrom->getType()->getAs<RecordType>();
-        const RecordType *RecordTo = FieldTo->getType()->getAs<RecordType>();
-        if (RecordFrom && RecordTo) {
-          RecordDecl *FromRecordDecl = RecordFrom->getDecl();
-          RecordDecl *ToRecordDecl = RecordTo->getDecl();
+        RecordDecl *FromRecordDecl = nullptr;
+        RecordDecl *ToRecordDecl = nullptr;
+        // If we have a field that is an ArrayType we need to check if the array
+        // element is a RecordDecl and if so we need to import the defintion.
+        if (FieldFrom->getType()->isArrayType()) {
+          // getBaseElementTypeUnsafe(...) handles multi-dimensonal arrays for us.
+          FromRecordDecl = FieldFrom->getType()->getBaseElementTypeUnsafe()->getAsRecordDecl();
+          ToRecordDecl = FieldTo->getType()->getBaseElementTypeUnsafe()->getAsRecordDecl();
+        }
 
+        if (!FromRecordDecl || !ToRecordDecl) {
+          const RecordType *RecordFrom =
+              FieldFrom->getType()->getAs<RecordType>();
+          const RecordType *RecordTo = FieldTo->getType()->getAs<RecordType>();
+
+          if (RecordFrom && RecordTo) {
+            FromRecordDecl = RecordFrom->getDecl();
+            ToRecordDecl = RecordTo->getDecl();
+          }
+        }
+
+        if (FromRecordDecl && ToRecordDecl) {
           if (FromRecordDecl->isCompleteDefinition() &&
               !ToRecordDecl->isCompleteDefinition()) {
             Error Err = ImportDefinition(FromRecordDecl, ToRecordDecl);
@@ -7521,6 +7535,7 @@ ExpectedStmt ASTNodeImporter::VisitCXXUnresolvedConstructExpr(
   Error Err = Error::success();
   auto ToLParenLoc = importChecked(Err, E->getLParenLoc());
   auto ToRParenLoc = importChecked(Err, E->getRParenLoc());
+  auto ToType = importChecked(Err, E->getType());
   auto ToTypeSourceInfo = importChecked(Err, E->getTypeSourceInfo());
   if (Err)
     return std::move(Err);
@@ -7531,7 +7546,7 @@ ExpectedStmt ASTNodeImporter::VisitCXXUnresolvedConstructExpr(
     return std::move(Err);
 
   return CXXUnresolvedConstructExpr::Create(
-      Importer.getToContext(), ToTypeSourceInfo, ToLParenLoc,
+      Importer.getToContext(), ToType, ToTypeSourceInfo, ToLParenLoc,
       llvm::makeArrayRef(ToArgs), ToRParenLoc);
 }
 
@@ -8082,6 +8097,16 @@ Expected<Attr *> ASTImporter::Import(const Attr *FromAttr) {
     To->setInherited(From->isInherited());
     To->setPackExpansion(From->isPackExpansion());
     To->setImplicit(From->isImplicit());
+    ToAttr = To;
+    break;
+  }
+  case attr::Format: {
+    const auto *From = cast<FormatAttr>(FromAttr);
+    FormatAttr *To;
+    IdentifierInfo *ToAttrType = Import(From->getType());
+    To = FormatAttr::Create(ToContext, ToAttrType, From->getFormatIdx(),
+                            From->getFirstArg(), ToRange, From->getSyntax());
+    To->setInherited(From->isInherited());
     ToAttr = To;
     break;
   }
@@ -8668,12 +8693,10 @@ Expected<FileID> ASTImporter::Import(FileID FromID, bool IsBuiltin) {
 
     if (ToID.isInvalid() || IsBuiltin) {
       // FIXME: We want to re-use the existing MemoryBuffer!
-      bool Invalid = true;
-      const llvm::MemoryBuffer *FromBuf =
-          Cache->getBuffer(FromContext.getDiagnostics(),
-                           FromSM.getFileManager(), SourceLocation{}, &Invalid);
-      if (!FromBuf || Invalid)
-        // FIXME: Use a new error kind?
+      llvm::Optional<llvm::MemoryBufferRef> FromBuf =
+          Cache->getBufferOrNone(FromContext.getDiagnostics(),
+                                 FromSM.getFileManager(), SourceLocation{});
+      if (!FromBuf)
         return llvm::make_error<ImportError>(ImportError::Unknown);
 
       std::unique_ptr<llvm::MemoryBuffer> ToBuf =

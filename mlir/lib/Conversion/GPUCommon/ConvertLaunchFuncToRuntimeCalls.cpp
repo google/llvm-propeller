@@ -113,10 +113,28 @@ protected:
       }};
   FunctionCallBuilder streamCreateCallBuilder = {
       "mgpuStreamCreate", llvmPointerType /* void *stream */, {}};
+  FunctionCallBuilder streamDestroyCallBuilder = {
+      "mgpuStreamDestroy", llvmVoidType, {llvmPointerType /* void *stream */}};
   FunctionCallBuilder streamSynchronizeCallBuilder = {
       "mgpuStreamSynchronize",
       llvmVoidType,
       {llvmPointerType /* void *stream */}};
+  FunctionCallBuilder streamWaitEventCallBuilder = {
+      "mgpuStreamWaitEvent",
+      llvmVoidType,
+      {llvmPointerType /* void *stream */, llvmPointerType /* void *event */}};
+  FunctionCallBuilder eventCreateCallBuilder = {
+      "mgpuEventCreate", llvmPointerType /* void *event */, {}};
+  FunctionCallBuilder eventDestroyCallBuilder = {
+      "mgpuEventDestroy", llvmVoidType, {llvmPointerType /* void *event */}};
+  FunctionCallBuilder eventSynchronizeCallBuilder = {
+      "mgpuEventSynchronize",
+      llvmVoidType,
+      {llvmPointerType /* void *event */}};
+  FunctionCallBuilder eventRecordCallBuilder = {
+      "mgpuEventRecord",
+      llvmVoidType,
+      {llvmPointerType /* void *event */, llvmPointerType /* void *stream */}};
   FunctionCallBuilder hostRegisterCallBuilder = {
       "mgpuMemHostRegisterMemRef",
       llvmVoidType,
@@ -125,7 +143,7 @@ protected:
        llvmIntPtrType /* intptr_t elementSizeBytes */}};
 };
 
-/// A rewrite patter to convert gpu.host_register operations into a GPU runtime
+/// A rewrite pattern to convert gpu.host_register operations into a GPU runtime
 /// call. Currently it supports CUDA and ROCm (HIP).
 class ConvertHostRegisterOpToGpuRuntimeCallPattern
     : public ConvertOpToGpuRuntimeCallPattern<gpu::HostRegisterOp> {
@@ -279,9 +297,9 @@ Value ConvertLaunchFuncOpToGpuRuntimeCallPattern::generateParamsArray(
   for (auto en : llvm::enumerate(arguments)) {
     auto index = builder.create<LLVM::ConstantOp>(
         loc, llvmInt32Type, builder.getI32IntegerAttr(en.index()));
-    auto fieldPtr =
-        builder.create<LLVM::GEPOp>(loc, structType.getPointerTo(), structPtr,
-                                    ArrayRef<Value>{zero, index.getResult()});
+    auto fieldPtr = builder.create<LLVM::GEPOp>(
+        loc, argumentTypes[en.index()].getPointerTo(), structPtr,
+        ArrayRef<Value>{zero, index.getResult()});
     builder.create<LLVM::StoreOp>(loc, en.value(), fieldPtr);
     auto elementPtr = builder.create<LLVM::GEPOp>(loc, llvmPointerPointerType,
                                                   arrayPtr, index.getResult());

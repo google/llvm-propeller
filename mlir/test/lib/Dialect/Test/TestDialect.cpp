@@ -141,15 +141,22 @@ void TestDialect::initialize() {
       >();
   addInterfaces<TestOpAsmInterface, TestDialectFoldInterface,
                 TestInlinerInterface>();
-  addTypes<TestType, TestRecursiveType>();
+  addTypes<TestType, TestRecursiveType,
+#define GET_TYPEDEF_LIST
+#include "TestTypeDefs.cpp.inc"
+           >();
   allowUnknownOperations();
 }
 
-static Type parseTestType(DialectAsmParser &parser,
+static Type parseTestType(MLIRContext *ctxt, DialectAsmParser &parser,
                           llvm::SetVector<Type> &stack) {
   StringRef typeTag;
   if (failed(parser.parseKeyword(&typeTag)))
     return Type();
+
+  auto genType = generatedTypeParser(ctxt, parser, typeTag);
+  if (genType != Type())
+    return genType;
 
   if (typeTag == "test_type")
     return TestType::get(parser.getBuilder().getContext());
@@ -174,7 +181,7 @@ static Type parseTestType(DialectAsmParser &parser,
   if (failed(parser.parseComma()))
     return Type();
   stack.insert(rec);
-  Type subtype = parseTestType(parser, stack);
+  Type subtype = parseTestType(ctxt, parser, stack);
   stack.pop_back();
   if (!subtype || failed(parser.parseGreater()) || failed(rec.setBody(subtype)))
     return Type();
@@ -184,11 +191,13 @@ static Type parseTestType(DialectAsmParser &parser,
 
 Type TestDialect::parseType(DialectAsmParser &parser) const {
   llvm::SetVector<Type> stack;
-  return parseTestType(parser, stack);
+  return parseTestType(getContext(), parser, stack);
 }
 
 static void printTestType(Type type, DialectAsmPrinter &printer,
                           llvm::SetVector<Type> &stack) {
+  if (succeeded(generatedTypePrinter(type, printer)))
+    return;
   if (type.isa<TestType>()) {
     printer << "test_type";
     return;
@@ -255,7 +264,7 @@ struct FoldToCallOpPattern : public OpRewritePattern<FoldToCallOp> {
 
   LogicalResult matchAndRewrite(FoldToCallOp op,
                                 PatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<CallOp>(op, ArrayRef<Type>(), op.calleeAttr(),
+    rewriter.replaceOpWithNewOp<CallOp>(op, TypeRange(), op.calleeAttr(),
                                         ValueRange());
     return success();
   }
@@ -308,6 +317,25 @@ parseCustomDirectiveResults(OpAsmParser &parser, Type &operandType,
     return failure();
   return success();
 }
+static ParseResult
+parseCustomDirectiveWithTypeRefs(OpAsmParser &parser, Type operandType,
+                                 Type optOperandType,
+                                 const SmallVectorImpl<Type> &varOperandTypes) {
+  if (parser.parseKeyword("type_refs_capture"))
+    return failure();
+
+  Type operandType2, optOperandType2;
+  SmallVector<Type, 1> varOperandTypes2;
+  if (parseCustomDirectiveResults(parser, operandType2, optOperandType2,
+                                  varOperandTypes2))
+    return failure();
+
+  if (operandType != operandType2 || optOperandType != optOperandType2 ||
+      varOperandTypes != varOperandTypes2)
+    return failure();
+
+  return success();
+}
 static ParseResult parseCustomDirectiveOperandsAndTypes(
     OpAsmParser &parser, OpAsmParser::OperandType &operand,
     Optional<OpAsmParser::OperandType> &optOperand,
@@ -345,6 +373,17 @@ parseCustomDirectiveSuccessors(OpAsmParser &parser, Block *&successor,
   varSuccessors.append(2, varSuccessor);
   return success();
 }
+static ParseResult parseCustomDirectiveAttributes(OpAsmParser &parser,
+                                                  IntegerAttr &attr,
+                                                  IntegerAttr &optAttr) {
+  if (parser.parseAttribute(attr))
+    return failure();
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseAttribute(optAttr))
+      return failure();
+  }
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // Printing
@@ -364,6 +403,14 @@ static void printCustomDirectiveResults(OpAsmPrinter &printer, Type operandType,
   if (optOperandType)
     printer << ", " << optOperandType;
   printer << " -> (" << varOperandTypes << ")";
+}
+static void printCustomDirectiveWithTypeRefs(OpAsmPrinter &printer,
+                                             Type operandType,
+                                             Type optOperandType,
+                                             TypeRange varOperandTypes) {
+  printer << " type_refs_capture ";
+  printCustomDirectiveResults(printer, operandType, optOperandType,
+                              varOperandTypes);
 }
 static void
 printCustomDirectiveOperandsAndTypes(OpAsmPrinter &printer, Value operand,
@@ -389,6 +436,13 @@ static void printCustomDirectiveSuccessors(OpAsmPrinter &printer,
   printer << successor;
   if (!varSuccessors.empty())
     printer << ", " << varSuccessors.front();
+}
+static void printCustomDirectiveAttributes(OpAsmPrinter &printer,
+                                           Attribute attribute,
+                                           Attribute optAttribute) {
+  printer << attribute;
+  if (optAttribute)
+    printer << ", " << optAttribute;
 }
 
 //===----------------------------------------------------------------------===//
@@ -640,7 +694,7 @@ void SideEffectOp::getEffects(
 
     // Get the specific memory effect.
     MemoryEffects::Effect *effect =
-        llvm::StringSwitch<MemoryEffects::Effect *>(
+        StringSwitch<MemoryEffects::Effect *>(
             effectElement.get("effect").cast<StringAttr>().getValue())
             .Case("allocate", MemoryEffects::Allocate::get())
             .Case("free", MemoryEffects::Free::get())

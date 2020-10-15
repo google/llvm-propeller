@@ -782,34 +782,27 @@ bool AMDGPUTargetLowering::isCheapToSpeculateCtlz() const {
   return true;
 }
 
-bool AMDGPUTargetLowering::isSDNodeAlwaysUniform(const SDNode * N) const {
+bool AMDGPUTargetLowering::isSDNodeAlwaysUniform(const SDNode *N) const {
   switch (N->getOpcode()) {
-    default:
-    return false;
-    case ISD::EntryToken:
-    case ISD::TokenFactor:
+  case ISD::EntryToken:
+  case ISD::TokenFactor:
+    return true;
+  case ISD::INTRINSIC_WO_CHAIN: {
+    unsigned IntrID = cast<ConstantSDNode>(N->getOperand(0))->getZExtValue();
+    switch (IntrID) {
+    case Intrinsic::amdgcn_readfirstlane:
+    case Intrinsic::amdgcn_readlane:
       return true;
-    case ISD::INTRINSIC_WO_CHAIN:
-    {
-      unsigned IntrID = cast<ConstantSDNode>(N->getOperand(0))->getZExtValue();
-      switch (IntrID) {
-        default:
-        return false;
-        case Intrinsic::amdgcn_readfirstlane:
-        case Intrinsic::amdgcn_readlane:
-          return true;
-      }
     }
-    break;
-    case ISD::LOAD:
-    {
-      if (cast<LoadSDNode>(N)->getMemOperand()->getAddrSpace() ==
-          AMDGPUAS::CONSTANT_ADDRESS_32BIT)
-        return true;
-      return false;
-    }
-    break;
+    return false;
   }
+  case ISD::LOAD:
+    if (cast<LoadSDNode>(N)->getMemOperand()->getAddrSpace() ==
+        AMDGPUAS::CONSTANT_ADDRESS_32BIT)
+      return true;
+    return false;
+  }
+  return false;
 }
 
 SDValue AMDGPUTargetLowering::getNegatedExpression(
@@ -3204,7 +3197,7 @@ SDValue AMDGPUTargetLowering::performTruncateCombine(
     if (Vec.getOpcode() == ISD::BUILD_VECTOR) {
       SDValue Elt0 = Vec.getOperand(0);
       EVT EltVT = Elt0.getValueType();
-      if (VT.getSizeInBits() <= EltVT.getSizeInBits()) {
+      if (VT.getFixedSizeInBits() <= EltVT.getFixedSizeInBits()) {
         if (EltVT.isFloatingPoint()) {
           Elt0 = DAG.getNode(ISD::BITCAST, SL,
                              EltVT.changeTypeToInteger(), Elt0);

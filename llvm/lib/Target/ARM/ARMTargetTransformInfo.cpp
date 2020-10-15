@@ -26,6 +26,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/KnownBits.h"
 #include "llvm/Support/MachineValueType.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/InstCombine/InstCombiner.h"
@@ -283,8 +284,43 @@ int ARMTTIImpl::getIntImmCodeSizeCost(unsigned Opcode, unsigned Idx,
   return 1;
 }
 
-int ARMTTIImpl::getIntImmCostInst(unsigned Opcode, unsigned Idx, const APInt &Imm,
-                                  Type *Ty, TTI::TargetCostKind CostKind) {
+// Checks whether Inst is part of a min(max()) or max(min()) pattern
+// that will match to an SSAT instruction
+static bool isSSATMinMaxPattern(Instruction *Inst, const APInt &Imm) {
+  Value *LHS, *RHS;
+  ConstantInt *C;
+  SelectPatternFlavor InstSPF = matchSelectPattern(Inst, LHS, RHS).Flavor;
+
+  if (InstSPF == SPF_SMAX &&
+      PatternMatch::match(RHS, PatternMatch::m_ConstantInt(C)) &&
+      C->getValue() == Imm && Imm.isNegative() && (-Imm).isPowerOf2()) {
+
+    auto isSSatMin = [&](Value *MinInst) {
+      if (isa<SelectInst>(MinInst)) {
+        Value *MinLHS, *MinRHS;
+        ConstantInt *MinC;
+        SelectPatternFlavor MinSPF =
+            matchSelectPattern(MinInst, MinLHS, MinRHS).Flavor;
+        if (MinSPF == SPF_SMIN &&
+            PatternMatch::match(MinRHS, PatternMatch::m_ConstantInt(MinC)) &&
+            MinC->getValue() == ((-Imm) - 1))
+          return true;
+      }
+      return false;
+    };
+
+    if (isSSatMin(Inst->getOperand(1)) ||
+        (Inst->hasNUses(2) && (isSSatMin(*Inst->user_begin()) ||
+                               isSSatMin(*(++Inst->user_begin())))))
+      return true;
+  }
+  return false;
+}
+
+int ARMTTIImpl::getIntImmCostInst(unsigned Opcode, unsigned Idx,
+                                  const APInt &Imm, Type *Ty,
+                                  TTI::TargetCostKind CostKind,
+                                  Instruction *Inst) {
   // Division by a constant can be turned into multiplication, but only if we
   // know it's constant. So it's not so much that the immediate is cheap (it's
   // not), but that the alternative is worse.
@@ -322,6 +358,16 @@ int ARMTTIImpl::getIntImmCostInst(unsigned Opcode, unsigned Idx, const APInt &Im
   // xor a, -1 can always be folded to MVN
   if (Opcode == Instruction::Xor && Imm.isAllOnesValue())
     return 0;
+
+  // Ensures negative constant of min(max()) or max(min()) patterns that
+  // match to SSAT instructions don't get hoisted
+  if (Inst && ((ST->hasV6Ops() && !ST->isThumb()) || ST->isThumb2()) &&
+      Ty->getIntegerBitWidth() <= 32) {
+    if (isSSATMinMaxPattern(Inst, Imm) ||
+        (isa<ICmpInst>(Inst) && Inst->hasOneUse() &&
+         isSSATMinMaxPattern(cast<Instruction>(*Inst->user_begin()), Imm)))
+      return 0;
+  }
 
   return getIntImmCost(Imm, Ty, CostKind);
 }
@@ -1254,7 +1300,8 @@ int ARMTTIImpl::getInterleavedMemoryOpCost(
     // promoted differently). The cost of 2 here is then a load and vrev or
     // vmovn.
     if (ST->hasMVEIntegerOps() && Factor == 2 && NumElts / Factor > 2 &&
-        VecTy->isIntOrIntVectorTy() && DL.getTypeSizeInBits(SubVecTy) <= 64)
+        VecTy->isIntOrIntVectorTy() &&
+        DL.getTypeSizeInBits(SubVecTy).getFixedSize() <= 64)
       return 2 * BaseCost;
   }
 
@@ -1742,7 +1789,7 @@ bool ARMTTIImpl::preferPredicateOverEpilogue(Loop *L, LoopInfo *LI,
     return false;
   }
 
-  assert(L->empty() && "preferPredicateOverEpilogue: inner-loop expected");
+  assert(L->isInnermost() && "preferPredicateOverEpilogue: inner-loop expected");
 
   HardwareLoopInfo HWLoopInfo(L);
   if (!HWLoopInfo.canAnalyze(*LI)) {

@@ -1165,15 +1165,35 @@ static Instruction *canonicalizeAbsNabs(SelectInst &Sel, ICmpInst &Cmp,
 ///
 /// We can't replace %sel with %add unless we strip away the flags.
 /// TODO: Wrapping flags could be preserved in some cases with better analysis.
-static Value *foldSelectValueEquivalence(SelectInst &Sel, ICmpInst &Cmp,
-                                         const SimplifyQuery &Q) {
+Instruction *InstCombinerImpl::foldSelectValueEquivalence(SelectInst &Sel,
+                                                          ICmpInst &Cmp) {
   if (!Cmp.isEquality())
     return nullptr;
 
   // Canonicalize the pattern to ICMP_EQ by swapping the select operands.
   Value *TrueVal = Sel.getTrueValue(), *FalseVal = Sel.getFalseValue();
-  if (Cmp.getPredicate() == ICmpInst::ICMP_NE)
+  bool Swapped = false;
+  if (Cmp.getPredicate() == ICmpInst::ICMP_NE) {
     std::swap(TrueVal, FalseVal);
+    Swapped = true;
+  }
+
+  // In X == Y ? f(X) : Z, try to evaluate f(Y) and replace the operand.
+  // Make sure Y cannot be undef though, as we might pick different values for
+  // undef in the icmp and in f(Y). Additionally, take care to avoid replacing
+  // X == Y ? X : Z with X == Y ? Y : Z, as that would lead to an infinite
+  // replacement cycle.
+  Value *CmpLHS = Cmp.getOperand(0), *CmpRHS = Cmp.getOperand(1);
+  if (TrueVal != CmpLHS &&
+      isGuaranteedNotToBeUndefOrPoison(CmpRHS, SQ.AC, &Sel, &DT))
+    if (Value *V = SimplifyWithOpReplaced(TrueVal, CmpLHS, CmpRHS, SQ,
+                                          /* AllowRefinement */ true))
+      return replaceOperand(Sel, Swapped ? 2 : 1, V);
+  if (TrueVal != CmpRHS &&
+      isGuaranteedNotToBeUndefOrPoison(CmpLHS, SQ.AC, &Sel, &DT))
+    if (Value *V = SimplifyWithOpReplaced(TrueVal, CmpRHS, CmpLHS, SQ,
+                                          /* AllowRefinement */ true))
+      return replaceOperand(Sel, Swapped ? 2 : 1, V);
 
   auto *FalseInst = dyn_cast<Instruction>(FalseVal);
   if (!FalseInst)
@@ -1182,7 +1202,7 @@ static Value *foldSelectValueEquivalence(SelectInst &Sel, ICmpInst &Cmp,
   // InstSimplify already performed this fold if it was possible subject to
   // current poison-generating flags. Try the transform again with
   // poison-generating flags temporarily dropped.
-  bool WasNUW = false, WasNSW = false, WasExact = false;
+  bool WasNUW = false, WasNSW = false, WasExact = false, WasInBounds = false;
   if (auto *OBO = dyn_cast<OverflowingBinaryOperator>(FalseVal)) {
     WasNUW = OBO->hasNoUnsignedWrap();
     WasNSW = OBO->hasNoSignedWrap();
@@ -1193,17 +1213,20 @@ static Value *foldSelectValueEquivalence(SelectInst &Sel, ICmpInst &Cmp,
     WasExact = PEO->isExact();
     FalseInst->setIsExact(false);
   }
+  if (auto *GEP = dyn_cast<GetElementPtrInst>(FalseVal)) {
+    WasInBounds = GEP->isInBounds();
+    GEP->setIsInBounds(false);
+  }
 
   // Try each equivalence substitution possibility.
   // We have an 'EQ' comparison, so the select's false value will propagate.
   // Example:
   // (X == 42) ? 43 : (X + 1) --> (X == 42) ? (X + 1) : (X + 1) --> X + 1
-  Value *CmpLHS = Cmp.getOperand(0), *CmpRHS = Cmp.getOperand(1);
-  if (SimplifyWithOpReplaced(FalseVal, CmpLHS, CmpRHS, Q,
+  if (SimplifyWithOpReplaced(FalseVal, CmpLHS, CmpRHS, SQ,
                              /* AllowRefinement */ false) == TrueVal ||
-      SimplifyWithOpReplaced(FalseVal, CmpRHS, CmpLHS, Q,
+      SimplifyWithOpReplaced(FalseVal, CmpRHS, CmpLHS, SQ,
                              /* AllowRefinement */ false) == TrueVal) {
-    return FalseVal;
+    return replaceInstUsesWith(Sel, FalseVal);
   }
 
   // Restore poison-generating flags if the transform did not apply.
@@ -1213,6 +1236,8 @@ static Value *foldSelectValueEquivalence(SelectInst &Sel, ICmpInst &Cmp,
     FalseInst->setHasNoSignedWrap();
   if (WasExact)
     FalseInst->setIsExact();
+  if (WasInBounds)
+    cast<GetElementPtrInst>(FalseInst)->setIsInBounds();
 
   return nullptr;
 }
@@ -1439,8 +1464,8 @@ tryToReuseConstantFromSelectInComparison(SelectInst &Sel, ICmpInst &Cmp,
 /// Visit a SelectInst that has an ICmpInst as its first operand.
 Instruction *InstCombinerImpl::foldSelectInstWithICmp(SelectInst &SI,
                                                       ICmpInst *ICI) {
-  if (Value *V = foldSelectValueEquivalence(SI, *ICI, SQ))
-    return replaceInstUsesWith(SI, V);
+  if (Instruction *NewSel = foldSelectValueEquivalence(SI, *ICI))
+    return NewSel;
 
   if (Instruction *NewSel = canonicalizeMinMaxWithConstant(SI, *ICI, *this))
     return NewSel;

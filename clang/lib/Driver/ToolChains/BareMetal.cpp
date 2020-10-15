@@ -35,8 +35,6 @@ BareMetal::BareMetal(const Driver &D, const llvm::Triple &Triple,
     getProgramPaths().push_back(getDriver().Dir);
 }
 
-BareMetal::~BareMetal() {}
-
 /// Is the triple {arm,thumb}-none-none-{eabi,eabihf} ?
 static bool isARMBareMetal(const llvm::Triple &Triple) {
   if (Triple.getArch() != llvm::Triple::arm &&
@@ -62,6 +60,13 @@ bool BareMetal::handlesTarget(const llvm::Triple &Triple) {
 
 Tool *BareMetal::buildLinker() const {
   return new tools::baremetal::Linker(*this);
+}
+
+std::string BareMetal::getCompilerRTPath() const { return getRuntimesDir(); }
+
+std::string BareMetal::getCompilerRTBasename(const llvm::opt::ArgList &,
+                                             StringRef, FileType, bool) const {
+  return ("libclang_rt.builtins-" + getTriple().getArchName() + ".a").str();
 }
 
 std::string BareMetal::getRuntimesDir() const {
@@ -156,8 +161,17 @@ void BareMetal::AddCXXStdlibLibArgs(const ArgList &Args,
 
 void BareMetal::AddLinkRuntimeLib(const ArgList &Args,
                                   ArgStringList &CmdArgs) const {
-  CmdArgs.push_back(Args.MakeArgString("-lclang_rt.builtins-" +
-                                       getTriple().getArchName()));
+  ToolChain::RuntimeLibType RLT = GetRuntimeLibType(Args);
+  switch (RLT) {
+  case ToolChain::RLT_CompilerRT:
+    CmdArgs.push_back(
+        Args.MakeArgString("-lclang_rt.builtins-" + getTriple().getArchName()));
+    return;
+  case ToolChain::RLT_Libgcc:
+    CmdArgs.push_back("-lgcc");
+    return;
+  }
+  llvm_unreachable("Unhandled RuntimeLibType.");
 }
 
 void baremetal::Linker::ConstructJob(Compilation &C, const JobAction &JA,
@@ -193,5 +207,5 @@ void baremetal::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
   C.addCommand(std::make_unique<Command>(JA, *this, ResponseFileSupport::None(),
                                          Args.MakeArgString(TC.GetLinkerPath()),
-                                         CmdArgs, Inputs));
+                                         CmdArgs, Inputs, Output));
 }

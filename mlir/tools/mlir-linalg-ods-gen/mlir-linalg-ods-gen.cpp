@@ -288,7 +288,7 @@ Token Lexer::lexIdentifier(const char *tokStart) {
 
   // Check to see if this identifier is a keyword.
   StringRef str(tokStart, curPtr - tokStart);
-  Token::Kind kind = llvm::StringSwitch<Token::Kind>(str)
+  Token::Kind kind = StringSwitch<Token::Kind>(str)
                          .Case("def", Token::Kind::kw_def)
                          .Case("ods_def", Token::Kind::kw_ods_def)
                          .Case("floordiv", Token::Kind::kw_floordiv)
@@ -980,7 +980,7 @@ public:
 
   /// Print the ODS class that defines a new `cppOpName` for a `linalgOpName`.
   void printODS(llvm::raw_ostream &os, StringRef cppOpName,
-                StringRef linalgOpName);
+                StringRef linalgOpName, ComprehensionParsingState &state);
 
   /// Print the C++ StructuredOpsInterface impl of `iterator_types`.
   void printReferenceIterators(llvm::raw_ostream &os, StringRef cppOpName,
@@ -993,6 +993,10 @@ public:
   /// Print the C++ StructuredOpsInterface impl of `regionBuilder`.
   void printRegionBuilder(llvm::raw_ostream &os, StringRef cppOpName,
                           ComprehensionParsingState &state);
+
+  /// Print the C++ impl for named ops canonicalizers and fodlers.
+  void printCanonicalizersAndFolders(llvm::raw_ostream &os,
+                                     StringRef cppOpName);
 
 private:
   //===--------------------------------------------------------------------===//
@@ -1419,7 +1423,8 @@ LogicalResult TCParser::parseAndEmitODSDef(llvm::raw_ostream &os) {
     return failure();
   }
   if (genODSDecl) {
-    printODS(os, cppOpName, tcName);
+    auto &state = perComprehensionStates.back();
+    printODS(os, cppOpName, tcName, state);
     os << "\n";
   }
   if (genODSImpl) {
@@ -1429,6 +1434,7 @@ LogicalResult TCParser::parseAndEmitODSDef(llvm::raw_ostream &os) {
     printReferenceIterators(ss, cppOpName, state);
     printReferenceIndexingMaps(ss, cppOpName, state);
     printRegionBuilder(ss, cppOpName, state);
+    printCanonicalizersAndFolders(ss, cppOpName);
     ss.flush();
     os << extraMethods << "\n";
   }
@@ -1442,31 +1448,81 @@ LogicalResult TCParser::parseAndEmitODSDef(llvm::raw_ostream &os) {
 
 /// Print the ODS class that defines a new `cppOpName` for a `linalgOpName`.
 void TCParser::printODS(llvm::raw_ostream &os, StringRef cppOpName,
-                        StringRef linalgOpName) {
-  const char *header = R"FMT(  def {0} : LinalgNamedStructured_Op<"{1}", [
-    NInputs<{2}>,
-    NOutputs<{3}>,
+                        StringRef linalgOpName,
+                        ComprehensionParsingState &state) {
+  const char *header = R"FMT(  def {0} : LinalgStructuredBase_Op<"{1}", [
+    NamedStructuredOpTrait,
+    AttrSizedOperandSegments,
     SingleBlockImplicitTerminator<"YieldOp">]> {
-      let arguments = (ins Variadic<LinalgOperand>:$views);
-      let results = (outs Variadic<AnyRankedTensor>:$output_tensors);
-      let regions = (region SizedRegion<1>:$region);
-      let builders = [OpBuilder<
-        "OpBuilder &b, OperationState &result, TypeRange outputTypes, "
-        # "ValueRange views",
+      let arguments = (ins Variadic<AnyShaped>:$inputs,
+                           Variadic<AnyMemRef>:$output_buffers,
+                           Variadic<AnyRankedTensor>:$init_tensors);
+      let results = (outs Variadic<AnyRankedTensor>:$result_tensors);
+      let regions = (region AnyRegion:$region);
+
+      let skipDefaultBuilders = 1;
+      let builders = [ OpBuilder<
+        "ValueRange inputs, ValueRange outputBuffers",
         [{{
-          result.addOperands(views);
-          result.addTypes(outputTypes);
+          $_state.addOperands(inputs);
+          $_state.addOperands(outputBuffers);
+          $_state.addAttribute(
+            "operand_segment_sizes",
+            $_builder.getI32VectorAttr({{
+              static_cast<int32_t>(inputs.size()),
+              static_cast<int32_t>(outputBuffers.size()),
+              static_cast<int32_t>(0)}));
           buildNamedStructuredOpRegionAndAttributes<{0}>(
-            b, result, TypeRange(views), outputTypes);
+            $_builder,
+            $_state,
+            TypeRange(inputs),
+            TypeRange(outputBuffers),
+            TypeRange(),
+            TypeRange());
+        }]>, OpBuilder<
+        "TypeRange resultTensorTypes, ValueRange inputs, "
+        "ValueRange outputBuffers, ValueRange initTensors",
+        [{{
+          $_state.addOperands(inputs);
+          $_state.addOperands(outputBuffers);
+          $_state.addOperands(initTensors);
+          $_state.addTypes(resultTensorTypes);
+          $_state.addAttribute(
+            "operand_segment_sizes",
+            $_builder.getI32VectorAttr({{
+              static_cast<int32_t>(inputs.size()),
+              static_cast<int32_t>(outputBuffers.size()),
+              static_cast<int32_t>(initTensors.size())}));
+          buildNamedStructuredOpRegionAndAttributes<{0}>(
+            $_builder,
+            $_state,
+            TypeRange(inputs),
+            TypeRange(outputBuffers),
+            TypeRange(initTensors),
+            resultTensorTypes);
+        }]>, OpBuilder<
+        "TypeRange resultTensorTypes, ValueRange operands, ArrayRef<NamedAttribute> attributes = {{}",
+        [{{
+          $_state.addOperands(operands);
+          $_state.addAttributes(attributes);
+          $_state.addTypes(resultTensorTypes);
+          (void)$_state.addRegion();
         }]>
       ];
-      let parser = [{
-        return ::parseNamedStructuredOp<{0}>(parser, result);
-      }];
+      let printer = [{{ return ::printNamedStructuredOp(p, *this); }];
+      let parser = [{{ return ::parseNamedStructuredOp<{0}>(parser, result); }];
+      let verifier = [{{ return ::verifyNamedStructuredOp(*this); }];
+      let hasFolder = 1;
+      let hasCanonicalizer = 1;
+
       let extraClassDeclaration = [{{
+        // Auto-generated.
         ArrayAttr iterator_types();
         ArrayAttr indexing_maps();
         static void regionBuilder(Block &block);
+
+        // Generic methods.
+        static unsigned getNumRegionArgs() {{ return {4}; }
         std::string getLibraryCallName() {{
           return generateLibraryCallName(getOperation());
         }
@@ -1481,7 +1537,8 @@ void TCParser::printODS(llvm::raw_ostream &os, StringRef cppOpName,
       nInputs++;
   }
 
-  os << llvm::formatv(header, cppOpName, linalgOpName, nInputs, nOutputs);
+  os << llvm::formatv(header, cppOpName, linalgOpName, nInputs, nOutputs,
+                      state.orderedTensorArgs.size());
 }
 
 /// Print the C++ StructuredOpsInterface impl of `iterator_types`.
@@ -1517,6 +1574,22 @@ void TCParser::printReferenceIterators(llvm::raw_ostream &os,
   ss.flush();
 
   os << llvm::formatv(referenceReferenceIteratorsFmt, cppOpName, iteratorsStr);
+}
+
+void TCParser::printCanonicalizersAndFolders(llvm::raw_ostream &os,
+                                             StringRef cppOpName) {
+  const char *canonicalizersAndFoldersFmt = R"FMT(
+    void {0}::getCanonicalizationPatterns(
+        OwningRewritePatternList &results,
+        MLIRContext *context) {{
+      results.insert<EraseDeadLinalgOp>();
+      results.insert<FoldTensorCastOp>();
+    }
+    LogicalResult {0}::fold(ArrayRef<Attribute>,
+                            SmallVectorImpl<OpFoldResult> &) {{
+      return foldMemRefCast(*this);
+    })FMT";
+  os << llvm::formatv(canonicalizersAndFoldersFmt, cppOpName);
 }
 
 /// Print the C++ StructuredOpsInterface impl of `referenceIndexingMaps`.
@@ -1680,7 +1753,7 @@ int main(int argc, char **argv) {
   }
 
   // Include the proper Linalg header for end-to-end tblgen testing without
-  // resorting to non-portable shgell manipulations.
+  // resorting to non-portable shell manipulations.
   if (testEmitIncludeTdHeader)
     output->os() << "include \"mlir/Dialect/Linalg/IR/LinalgStructuredOps.td\"";
 

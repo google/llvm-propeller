@@ -273,20 +273,7 @@ getOrCreateJumpTableInfo(unsigned EntryKind) {
 }
 
 DenormalMode MachineFunction::getDenormalMode(const fltSemantics &FPType) const {
-  if (&FPType == &APFloat::IEEEsingle()) {
-    Attribute Attr = F.getFnAttribute("denormal-fp-math-f32");
-    StringRef Val = Attr.getValueAsString();
-    if (!Val.empty())
-      return parseDenormalFPAttribute(Val);
-
-    // If the f32 variant of the attribute isn't specified, try to use the
-    // generic one.
-  }
-
-  // TODO: Should probably avoid the connection to the IR and store directly
-  // in the MachineFunction.
-  Attribute Attr = F.getFnAttribute("denormal-fp-math");
-  return parseDenormalFPAttribute(Attr.getValueAsString());
+  return F.getDenormalMode(FPType);
 }
 
 /// Should we be emitting segmented stack stuff for the function
@@ -360,9 +347,9 @@ void MachineFunction::assignBeginEndSections() {
 /// Allocate a new MachineInstr. Use this instead of `new MachineInstr'.
 MachineInstr *MachineFunction::CreateMachineInstr(const MCInstrDesc &MCID,
                                                   const DebugLoc &DL,
-                                                  bool NoImp) {
+                                                  bool NoImplicit) {
   return new (InstructionRecycler.Allocate<MachineInstr>(Allocator))
-    MachineInstr(*this, MCID, DL, NoImp);
+      MachineInstr(*this, MCID, DL, NoImplicit);
 }
 
 /// Create a new MachineInstr which is a copy of the 'Orig' instruction,
@@ -954,6 +941,41 @@ void MachineFunction::moveCallSiteInfo(const MachineInstr *Old,
   CallSiteInfo CSInfo = std::move(CSIt->second);
   CallSitesInfo.erase(CSIt);
   CallSitesInfo[New] = CSInfo;
+}
+
+void MachineFunction::setDebugInstrNumberingCount(unsigned Num) {
+  DebugInstrNumberingCount = Num;
+}
+
+void MachineFunction::makeDebugValueSubstitution(DebugInstrOperandPair A,
+                                                 DebugInstrOperandPair B) {
+  auto Result = DebugValueSubstitutions.insert(std::make_pair(A, B));
+  (void)Result;
+  assert(Result.second && "Substitution for an already substituted value?");
+}
+
+void MachineFunction::substituteDebugValuesForInst(const MachineInstr &Old,
+                                                   MachineInstr &New) {
+  // If the Old instruction wasn't tracked at all, there is no work to do.
+  unsigned OldInstrNum = Old.peekDebugInstrNum();
+  if (!OldInstrNum)
+    return;
+
+  // Iterate over all operands looking for defs to create substitutions for.
+  // Avoid creating new instr numbers unless we create a new substitution.
+  // While this has no functional effect, it risks confusing someone reading
+  // MIR output.
+  for (unsigned int I = 0; I < Old.getNumOperands(); ++I) {
+    const auto &OldMO = Old.getOperand(I);
+
+    if (!OldMO.isReg() || !OldMO.isDef())
+      continue;
+    assert(Old.getOperand(I).isDef());
+
+    unsigned NewInstrNum = New.getDebugInstrNum();
+    makeDebugValueSubstitution(std::make_pair(OldInstrNum, I),
+                               std::make_pair(NewInstrNum, I));
+  }
 }
 
 /// \}

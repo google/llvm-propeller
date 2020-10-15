@@ -81,8 +81,9 @@ void DwarfCFIException::endModule() {
   }
 }
 
-static MCSymbol *getExceptionSym(AsmPrinter *Asm) {
-  return Asm->getCurExceptionSym();
+static MCSymbol *getExceptionSym(AsmPrinter *Asm,
+                                 const MachineBasicBlock *MBB) {
+  return Asm->getMBBExceptionSym(*MBB);
 }
 
 void DwarfCFIException::beginFunction(const MachineFunction *MF) {
@@ -161,10 +162,7 @@ void DwarfCFIException::beginFragment(const MachineBasicBlock *MBB,
 
   // Provide LSDA information.
   if (shouldEmitLSDA)
-    Asm->OutStreamer->emitCFILsda(ESP(Asm), TLOF.getLSDAEncoding());
-
-  // Set the exception symbol associated with this basic block.
-  Asm->setExceptionSym(MBB, ESP(Asm));
+    Asm->OutStreamer->emitCFILsda(ESP(Asm, MBB), TLOF.getLSDAEncoding());
 }
 
 /// endFunction - Gather and emit post-function exception information.

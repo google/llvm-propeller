@@ -37,6 +37,7 @@ CODEGENOPT(AssumeSaneOperatorNew , 1, 1) ///< implicit __attribute__((malloc)) o
 CODEGENOPT(Autolink          , 1, 1) ///< -fno-autolink
 CODEGENOPT(ObjCAutoRefCountExceptions , 1, 0) ///< Whether ARC should be EH-safe.
 CODEGENOPT(Backchain         , 1, 0) ///< -mbackchain
+CODEGENOPT(IgnoreXCOFFVisibility         , 1, 0) ///< -mignore-xcoff-visibility
 CODEGENOPT(ControlFlowGuardNoChecks  , 1, 0) ///< -cfguard-no-checks
 CODEGENOPT(ControlFlowGuard  , 1, 0) ///< -cfguard
 CODEGENOPT(CXAAtExit         , 1, 1) ///< Use __cxa_atexit for calling destructors.
@@ -120,6 +121,12 @@ CODEGENOPT(XRayOmitFunctionIndex , 1, 0)
 ///< XRay instrumentation.
 VALUE_CODEGENOPT(XRayInstructionThreshold , 32, 200)
 
+///< Only instrument 1 in N functions, by dividing functions into N total groups and
+///< instrumenting only the specified group at a time. Group numbers start at 0
+///< and end at N-1.
+VALUE_CODEGENOPT(XRayTotalFunctionGroups, 32, 1)
+VALUE_CODEGENOPT(XRaySelectedFunctionGroup, 32, 0)
+
 VALUE_CODEGENOPT(PatchableFunctionEntryCount , 32, 0) ///< Number of NOPs at function entry
 VALUE_CODEGENOPT(PatchableFunctionEntryOffset , 32, 0)
 
@@ -179,6 +186,7 @@ CODEGENOPT(ObjCConvertMessagesToRuntimeCalls , 1, 1)
 VALUE_CODEGENOPT(OptimizationLevel, 2, 0) ///< The -O[0-3] option specified.
 VALUE_CODEGENOPT(OptimizeSize, 2, 0) ///< If -Os (==1) or -Oz (==2) is specified.
 
+CODEGENOPT(AtomicProfileUpdate , 1, 0) ///< Set -fprofile-update=atomic
 /// Choose profile instrumenation kind or no instrumentation.
 ENUM_CODEGENOPT(ProfileInstr, ProfileInstrKind, 2, ProfileNone)
 /// Choose profile kind for PGO use compilation.
@@ -398,12 +406,15 @@ CODEGENOPT(Addrsig, 1, 0)
 /// Whether to emit unused static constants.
 CODEGENOPT(KeepStaticConsts, 1, 0)
 
-/// Whether to not follow the AAPCS that enforce at least one read before storing to a volatile bitfield
+/// Whether to follow the AAPCS enforcing at least one read before storing to a volatile bitfield
 CODEGENOPT(ForceAAPCSBitfieldLoad, 1, 0)
 
 /// Assume that by-value parameters do not alias any other values.
 CODEGENOPT(PassByValueIsNoAlias, 1, 0)
 
+/// Whether to not follow the AAPCS that enforces volatile bit-field access width to be
+/// according to the field declaring type width.
+CODEGENOPT(AAPCSBitfieldWidth, 1, 1)
 
 #undef CODEGENOPT
 #undef ENUM_CODEGENOPT

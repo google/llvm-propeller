@@ -28,6 +28,10 @@ set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
   )
 
+set(LIBCXX_SOURCE_DIR  ${CMAKE_CURRENT_SOURCE_DIR})
+set(LIBCXX_BINARY_DIR  ${CMAKE_CURRENT_BINARY_DIR})
+set(LIBCXX_BINARY_INCLUDE_DIR "${LIBCXX_BINARY_DIR}/include/c++build")
+
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR OR LIBCXX_STANDALONE_BUILD)
   project(libcxx CXX C)
 
@@ -35,6 +39,12 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR OR LIBCXX_STANDALONE_BUIL
   set(PACKAGE_VERSION 12.0.0git)
   set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
   set(PACKAGE_BUGREPORT "llvm-bugs@lists.llvm.org")
+
+  # In a standalone build, we don't have llvm to automatically generate the
+  # llvm-lit script for us.  So we need to provide an explicit directory that
+  # the configurator should write the script into.
+  set(LIBCXX_STANDALONE_BUILD 1)
+  set(LLVM_LIT_OUTPUT_DIR "${LIBCXX_BINARY_DIR}/bin")
 
   # Find the LLVM sources and simulate LLVM CMake options.
   include(HandleOutOfTreeLLVM)
@@ -94,6 +104,11 @@ option(LIBCXX_ENABLE_FILESYSTEM "Build filesystem as part of the main libc++ lib
     ${ENABLE_FILESYSTEM_DEFAULT})
 option(LIBCXX_INCLUDE_TESTS "Build the libc++ tests." ${LLVM_INCLUDE_TESTS})
 option(LIBCXX_ENABLE_PARALLEL_ALGORITHMS "Enable the parallel algorithms library. This requires the PSTL to be available." OFF)
+option(LIBCXX_ENABLE_DEBUG_MODE_SUPPORT
+  "Whether to include support for libc++'s debugging mode in the library.
+   By default, this is turned on. If you turn it off and try to enable the
+   debug mode when compiling a program against libc++, it will fail to link
+   since the required support isn't provided in the library." ON)
 option(LIBCXX_TEST_GDB_PRETTY_PRINTERS "Test gdb pretty printers." OFF)
 set(LIBCXX_TEST_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/test/configs/legacy.cfg.in" CACHE STRING
     "The Lit testing configuration to use when running the tests.")
@@ -257,23 +272,6 @@ option(LIBCXX_GENERATE_COVERAGE "Enable generating code coverage." OFF)
 set(LIBCXX_COVERAGE_LIBRARY "" CACHE STRING
     "The Profile-rt library used to build with code coverage")
 
-# Don't allow a user to accidentally overwrite the system libc++ installation on Darwin.
-# If the user specifies -DCMAKE_INSTALL_PREFIX=/usr the install rules for libc++
-# will not be generated and a warning will be issued.
-option(LIBCXX_OVERRIDE_DARWIN_INSTALL "Enable overwriting darwins libc++ installation." OFF)
-mark_as_advanced(LIBCXX_OVERRIDE_DARWIN_INSTALL) # Don't show this option by default.
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT LIBCXX_OVERRIDE_DARWIN_INSTALL)
-  if ("${CMAKE_INSTALL_PREFIX}" STREQUAL "/usr")
-    message(WARNING "Disabling libc++ install rules because installation would "
-                    "overwrite the systems installation. Configure with "
-                    "-DLIBCXX_OVERRIDE_DARWIN_INSTALL=ON to suppress this behaviour.")
-    mark_as_advanced(CLEAR LIBCXX_OVERRIDE_DARWIN_INSTALL) # Show the override option.
-    set(LIBCXX_INSTALL_HEADERS OFF)
-    set(LIBCXX_INSTALL_LIBRARY OFF)
-  endif()
-endif()
-
 set(LIBCXX_CONFIGURE_IDE_DEFAULT OFF)
 if (XCODE OR MSVC_IDE)
   set(LIBCXX_CONFIGURE_IDE_DEFAULT ON)
@@ -393,10 +391,6 @@ endif ()
 # Configure System
 #===============================================================================
 
-set(LIBCXX_SOURCE_DIR  ${CMAKE_CURRENT_SOURCE_DIR})
-set(LIBCXX_BINARY_DIR  ${CMAKE_CURRENT_BINARY_DIR})
-set(LIBCXX_BINARY_INCLUDE_DIR "${LIBCXX_BINARY_DIR}/include/c++build")
-
 if(LLVM_ENABLE_PER_TARGET_RUNTIME_DIR AND NOT APPLE)
   set(LIBCXX_LIBRARY_DIR ${LLVM_LIBRARY_OUTPUT_INTDIR}/${LLVM_DEFAULT_TARGET_TRIPLE}/c++)
   set(LIBCXX_HEADER_DIR ${LLVM_BINARY_DIR})
@@ -490,7 +484,7 @@ if (NOT LIBCXX_STANDALONE_BUILD)
   remove_flags(-DNDEBUG -UNDEBUG -D_DEBUG
                -lc++abi)
 endif()
-remove_flags(-stdlib=libc++ -stdlib=libstdc++)
+remove_flags(--stdlib=libc++ -stdlib=libc++ --stdlib=libstdc++ -stdlib=libstdc++)
 
 # FIXME: Remove all debug flags and flags that change which Windows
 # default libraries are linked. Currently we only support linking the

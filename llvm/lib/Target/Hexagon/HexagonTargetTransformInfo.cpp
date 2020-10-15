@@ -87,7 +87,7 @@ void HexagonTTIImpl::getPeelingPreferences(Loop *L, ScalarEvolution &SE,
                                            TTI::PeelingPreferences &PP) {
   BaseT::getPeelingPreferences(L, SE, PP);
   // Only try to peel innermost loops with small runtime trip counts.
-  if (L && L->empty() && canPeel(L) &&
+  if (L && L->isInnermost() && canPeel(L) &&
       SE.getSmallConstantTripCount(L) == 0 &&
       SE.getSmallConstantMaxTripCount(L) > 0 &&
       SE.getSmallConstantMaxTripCount(L) <= 5) {
@@ -108,7 +108,7 @@ unsigned HexagonTTIImpl::getNumberOfRegisters(bool Vector) const {
 }
 
 unsigned HexagonTTIImpl::getMaxInterleaveFactor(unsigned VF) {
-  return useHVX() ? 2 : 0;
+  return useHVX() ? 2 : 1;
 }
 
 unsigned HexagonTTIImpl::getRegisterBitWidth(bool Vector) const {

@@ -94,9 +94,4 @@ void WasmException::computeCallSiteTable(
       CallSites.resize(LPadIndex + 1);
     CallSites[LPadIndex] = Site;
   }
-
-  // Add a single range containing all the call-sites.
-  CallSiteRanges.push_back({Asm->getFunctionBegin(), Asm->getFunctionEnd(),
-                            Asm->getCurExceptionSym(), 0, CallSites.size(),
-                            true});
 }

@@ -2002,9 +2002,9 @@ void ASTWriter::WriteSourceManagerBlock(SourceManager &SourceMgr,
         // We add one to the size so that we capture the trailing NULL
         // that is required by llvm::MemoryBuffer::getMemBuffer (on
         // the reader side).
-        const llvm::MemoryBuffer *Buffer =
-            Content->getBuffer(PP.getDiagnostics(), PP.getFileManager());
-        StringRef Name = Buffer->getBufferIdentifier();
+        llvm::Optional<llvm::MemoryBufferRef> Buffer =
+            Content->getBufferOrNone(PP.getDiagnostics(), PP.getFileManager());
+        StringRef Name = Buffer ? Buffer->getBufferIdentifier() : "";
         Stream.EmitRecordWithBlob(SLocBufferAbbrv, Record,
                                   StringRef(Name.data(), Name.size() + 1));
         EmitBlob = true;
@@ -2016,8 +2016,10 @@ void ASTWriter::WriteSourceManagerBlock(SourceManager &SourceMgr,
       if (EmitBlob) {
         // Include the implicit terminating null character in the on-disk buffer
         // if we're writing it uncompressed.
-        const llvm::MemoryBuffer *Buffer =
-            Content->getBuffer(PP.getDiagnostics(), PP.getFileManager());
+        llvm::Optional<llvm::MemoryBufferRef> Buffer =
+            Content->getBufferOrNone(PP.getDiagnostics(), PP.getFileManager());
+        if (!Buffer)
+          Buffer = llvm::MemoryBufferRef("<<<INVALID BUFFER>>>", "");
         StringRef Blob(Buffer->getBufferStart(), Buffer->getBufferSize() + 1);
         emitBlob(Stream, Blob, SLocBufferBlobCompressedAbbrv,
                  SLocBufferBlobAbbrv);
@@ -3275,9 +3277,8 @@ class ASTIdentifierTableTrait {
   /// doesn't check whether the name has macros defined; use PublicMacroIterator
   /// to check that.
   bool isInterestingIdentifier(const IdentifierInfo *II, uint64_t MacroOffset) {
-    if (MacroOffset ||
-        II->isPoisoned() ||
-        (IsModule ? II->hasRevertedBuiltin() : II->getObjCOrBuiltinID()) ||
+    if (MacroOffset || II->isPoisoned() ||
+        (!IsModule && II->getObjCOrBuiltinID()) ||
         II->hasRevertedTokenIDToIdentifier() ||
         (NeedDecls && II->getFETokenInfo()))
       return true;
@@ -3384,7 +3385,6 @@ public:
     Bits = (Bits << 1) | unsigned(HadMacroDefinition);
     Bits = (Bits << 1) | unsigned(II->isExtensionToken());
     Bits = (Bits << 1) | unsigned(II->isPoisoned());
-    Bits = (Bits << 1) | unsigned(II->hasRevertedBuiltin());
     Bits = (Bits << 1) | unsigned(II->hasRevertedTokenIDToIdentifier());
     Bits = (Bits << 1) | unsigned(II->isCPlusPlusOperatorKeyword());
     LE.write<uint16_t>(Bits);

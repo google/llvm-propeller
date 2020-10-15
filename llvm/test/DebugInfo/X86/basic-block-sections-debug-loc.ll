@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ;; For params loaded on the stack like va_args which are used first in a non-entry basic block
 ; RUN: llc %s --dwarf-version=4 --basic-block-sections=all -filetype=asm -o - | FileCheck %s
 
@@ -7,11 +8,30 @@
 ; CHECK-NEXT: .quad  _ZL4ncatPcjz.2 # base address
 ; CHECK-NEXT: .quad  .Ltmp{{[0-9]+}}-_ZL4ncatPcjz.2
 ; CHECK-NEXT: .quad  .Ltmp{{[0-9]+}}-_ZL4ncatPcjz.2
+=======
+;; The dbg value for buflen in the non-entry basic block spans the entire
+;; function and is emitted as DW_AT_const_value.  Even with basic block
+;; sections, this can be done as the entire function is represented as ranges.
+;; FIXME:  Basic block sections should have the same behavior as the default.
+
+; RUN: llc %s --dwarf-version=4 --basic-block-sections=none -filetype=obj -o %t
+; RUN: llvm-dwarfdump %t | FileCheck %s
+; RUN: llc %s --dwarf-version=4 --basic-block-sections=all -filetype=obj -o %t
+; RUN: llvm-dwarfdump %t | FileCheck --check-prefix=MISSING %s
+
+; CHECK:      DW_AT_const_value (157)
+; CHECK-NEXT: DW_AT_name ("buflen")
+; MISSING-NOT:    DW_AT_const_value (157)
+>>>>>>> master
 
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-grtev4-linux-gnu"
 
+<<<<<<< HEAD
 define dso_local void @_ZL4ncatPcjz(i8* %0, i32 %1, ...) unnamed_addr #0 align 32 !dbg !22 {
+=======
+define dso_local void @_ZL4ncatPcjz(i8* %0, i32 %1, ...) unnamed_addr  align 32 !dbg !22 {
+>>>>>>> master
 .critedge3:
   call void @llvm.dbg.value(metadata i32 157, metadata !27, metadata !DIExpression()), !dbg !46
   call void @llvm.va_start(i8* nonnull undef), !dbg !47
@@ -27,14 +47,21 @@ declare void @llvm.va_start(i8*) #1
 ; Function Attrs: nounwind readnone speculatable willreturn
 declare void @llvm.dbg.value(metadata, metadata, metadata) #2
 
+<<<<<<< HEAD
 attributes #0 = { "use-soft-float"="false" }
+=======
+>>>>>>> master
 attributes #1 = { nounwind }
 attributes #2 = { nounwind readnone speculatable willreturn }
 
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!20, !21}
 
+<<<<<<< HEAD
 !0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus_14, file: !1, producer: "clang version google3-trunk (9d2da6759b4d05d834371bcaaa8fc3d9b3385b18)", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, retainedTypes: !2)
+=======
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus_14, file: !1, producer: "clang", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, retainedTypes: !2)
+>>>>>>> master
 !1 = !DIFile(filename: "bug.cpp", directory: "/proc/self/cwd")
 !2 = !{!3, !6, !9, !10, !11, !13, !16, !17, !15}
 !3 = !DIDerivedType(tag: DW_TAG_typedef, name: "int32_t", file: !4, line: 38, baseType: !5)

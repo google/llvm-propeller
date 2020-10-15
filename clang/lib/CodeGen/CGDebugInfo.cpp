@@ -374,9 +374,8 @@ CGDebugInfo::computeChecksum(FileID FID, SmallString<32> &Checksum) const {
     return None;
 
   SourceManager &SM = CGM.getContext().getSourceManager();
-  bool Invalid;
-  const llvm::MemoryBuffer *MemBuffer = SM.getBuffer(FID, &Invalid);
-  if (Invalid)
+  Optional<llvm::MemoryBufferRef> MemBuffer = SM.getBufferOrNone(FID);
+  if (!MemBuffer)
     return None;
 
   llvm::MD5 Hash;
@@ -1726,7 +1725,7 @@ llvm::DISubprogram *CGDebugInfo::CreateCXXMemberFunction(
   // info is emitted.
   if (DebugKind == codegenoptions::DebugInfoConstructor)
     if (const CXXConstructorDecl *CD = dyn_cast<CXXConstructorDecl>(Method))
-      completeClass(CD->getParent());
+      completeUnusedClass(*CD->getParent());
 
   llvm::DINodeArray TParamsArray = CollectFunctionTemplateParams(Method, Unit);
   llvm::DISubprogram *SP = DBuilder.createMethod(
@@ -2041,7 +2040,8 @@ StringRef CGDebugInfo::getDynamicInitializerName(const VarDecl *VD,
                                                  llvm::Function *InitFn) {
   // If we're not emitting codeview, use the mangled name. For Itanium, this is
   // arbitrary.
-  if (!CGM.getCodeGenOpts().EmitCodeView)
+  if (!CGM.getCodeGenOpts().EmitCodeView ||
+      StubKind == DynamicInitKind::GlobalArrayDestructor)
     return InitFn->getName();
 
   // Print the normal qualified name for the variable, then break off the last
@@ -2066,6 +2066,7 @@ StringRef CGDebugInfo::getDynamicInitializerName(const VarDecl *VD,
 
   switch (StubKind) {
   case DynamicInitKind::NoStub:
+  case DynamicInitKind::GlobalArrayDestructor:
     llvm_unreachable("not an initializer");
   case DynamicInitKind::Initializer:
     OS << "`dynamic initializer for '";
@@ -2281,22 +2282,20 @@ static bool hasExplicitMemberDefinition(CXXRecordDecl::method_iterator I,
 }
 
 static bool canUseCtorHoming(const CXXRecordDecl *RD) {
-  // Constructor homing can be used for classes that have at least one
-  // constructor and have no trivial or constexpr constructors.
+  // Constructor homing can be used for classes that cannnot be constructed
+  // without emitting code for one of their constructors. This is classes that
+  // don't have trivial or constexpr constructors, or can be created from
+  // aggregate initialization. Also skip lambda objects because they don't call
+  // constructors.
+
   // Skip this optimization if the class or any of its methods are marked
   // dllimport.
-  if (RD->isLambda() || RD->hasConstexprNonCopyMoveConstructor() ||
-      isClassOrMethodDLLImport(RD))
+  if (isClassOrMethodDLLImport(RD))
     return false;
 
-  if (RD->ctors().empty())
-    return false;
-
-  for (const auto *Ctor : RD->ctors())
-    if (Ctor->isTrivial() && !Ctor->isCopyOrMoveConstructor())
-      return false;
-
-  return true;
+  return !RD->isLambda() && !RD->isAggregate() &&
+         !RD->hasTrivialDefaultConstructor() &&
+         !RD->hasConstexprNonCopyMoveConstructor();
 }
 
 static bool shouldOmitDefinition(codegenoptions::DebugInfoKind DebugKind,
@@ -3834,7 +3833,8 @@ void CGDebugInfo::EmitFunctionStart(GlobalDecl GD, SourceLocation Loc,
   if (Name.startswith("\01"))
     Name = Name.substr(1);
 
-  if (!HasDecl || D->isImplicit() || D->hasAttr<ArtificialAttr>()) {
+  if (!HasDecl || D->isImplicit() || D->hasAttr<ArtificialAttr>() ||
+      (isa<VarDecl>(D) && GD.getDynamicInitKind() != DynamicInitKind::NoStub)) {
     Flags |= llvm::DINode::FlagArtificial;
     // Artificial functions should not silently reuse CurLoc.
     CurLoc = SourceLocation();

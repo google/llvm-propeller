@@ -2241,6 +2241,8 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   case CK_IntegralToFloating:
   case CK_FloatingToIntegral:
   case CK_FloatingCast:
+  case CK_FixedPointToFloating:
+  case CK_FloatingToFixedPoint:
     return EmitScalarConversion(Visit(E), E->getType(), DestTy,
                                 CE->getExprLoc());
   case CK_BooleanToSignedIntegral: {
@@ -3882,6 +3884,12 @@ static llvm::Intrinsic::ID GetIntrinsic(IntrinsicType IT,
   case BuiltinType::Double:
     return (IT == VCMPEQ) ? llvm::Intrinsic::ppc_vsx_xvcmpeqdp_p :
                             llvm::Intrinsic::ppc_vsx_xvcmpgtdp_p;
+  case BuiltinType::UInt128:
+    return (IT == VCMPEQ) ? llvm::Intrinsic::ppc_altivec_vcmpequq_p
+                          : llvm::Intrinsic::ppc_altivec_vcmpgtuq_p;
+  case BuiltinType::Int128:
+    return (IT == VCMPEQ) ? llvm::Intrinsic::ppc_altivec_vcmpequq_p
+                          : llvm::Intrinsic::ppc_altivec_vcmpgtsq_p;
   }
 }
 

@@ -3,37 +3,37 @@
 ; Note that (mostly) only the banners are checked.
 ;
 ; Simple functionality check.
-; RUN: opt -S -print-changed -passes=instsimplify 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_SIMPLE
+; RUN: opt -S -print-changed -passes=instsimplify 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-SIMPLE
 ;
 ; Check that only the passes that change the IR are printed and that the
 ; others (including g) are filtered out.
-; RUN: opt -S -print-changed -passes=instsimplify -filter-print-funcs=f  2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_FUNC_FILTER
+; RUN: opt -S -print-changed -passes=instsimplify -filter-print-funcs=f  2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-FUNC-FILTER
 ;
 ; Check that the reporting of IRs respects -print-module-scope
-; RUN: opt -S -print-changed -passes=instsimplify -print-module-scope 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_PRINT_MOD_SCOPE
+; RUN: opt -S -print-changed -passes=instsimplify -print-module-scope 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-PRINT-MOD-SCOPE
 ;
 ; Check that the reporting of IRs respects -print-module-scope
-; RUN: opt -S -print-changed -passes=instsimplify -filter-print-funcs=f -print-module-scope 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_FUNC_FILTER_MOD_SCOPE
+; RUN: opt -S -print-changed -passes=instsimplify -filter-print-funcs=f -print-module-scope 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-FUNC-FILTER-MOD-SCOPE
 ;
 ; Check that reporting of multiple functions happens
-; RUN: opt -S -print-changed -passes=instsimplify -filter-print-funcs="f,g" 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_FILTER_MULT_FUNC
+; RUN: opt -S -print-changed -passes=instsimplify -filter-print-funcs="f,g" 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-FILTER-MULT-FUNC
 ;
 ; Check that the reporting of IRs respects -filter-passes
-; RUN: opt -S -print-changed -passes="instsimplify,no-op-function" -filter-passes="NoOpFunctionPass" 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_FILTER_PASSES
+; RUN: opt -S -print-changed -passes="instsimplify,no-op-function" -filter-passes="NoOpFunctionPass" 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-FILTER-PASSES
 ;
 ; Check that the reporting of IRs respects -filter-passes with multiple passes
-; RUN: opt -S -print-changed -passes="instsimplify,no-op-function" -filter-passes="NoOpFunctionPass,InstSimplifyPass" 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_FILTER_MULT_PASSES
+; RUN: opt -S -print-changed -passes="instsimplify,no-op-function" -filter-passes="NoOpFunctionPass,InstSimplifyPass" 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-FILTER-MULT-PASSES
 ;
 ; Check that the reporting of IRs respects both -filter-passes and -filter-print-funcs
-; RUN: opt -S -print-changed -passes="instsimplify,no-op-function" -filter-passes="NoOpFunctionPass,InstSimplifyPass" -filter-print-funcs=f 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_FILTER_FUNC_PASSES
+; RUN: opt -S -print-changed -passes="instsimplify,no-op-function" -filter-passes="NoOpFunctionPass,InstSimplifyPass" -filter-print-funcs=f 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-FILTER-FUNC-PASSES
 ;
 ; Check that the reporting of IRs respects -filter-passes, -filter-print-funcs and -print-module-scope
-; RUN: opt -S -print-changed -passes="instsimplify,no-op-function" -filter-passes="NoOpFunctionPass,InstSimplifyPass" -filter-print-funcs=f -print-module-scope 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_FILTER_FUNC_PASSES_MOD_SCOPE
+; RUN: opt -S -print-changed -passes="instsimplify,no-op-function" -filter-passes="NoOpFunctionPass,InstSimplifyPass" -filter-print-funcs=f -print-module-scope 2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-FILTER-FUNC-PASSES-MOD-SCOPE
 ;
 ; Check that repeated passes that change the IR are printed and that the
 ; others (including g) are filtered out.  Note that the second time
 ; instsimplify is run on f, it does not change the IR
-; RUN: opt -S -print-changed -passes="instsimplify,instsimplify" -filter-print-funcs=f  2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK_MULT_PASSES_FILTER_FUNC
+; RUN: opt -S -print-changed -passes="instsimplify,instsimplify" -filter-print-funcs=f  2>&1 -o /dev/null < %s | FileCheck %s --check-prefix=CHECK-MULT-PASSES-FILTER-FUNC
 
 define i32 @g() {
 entry:
@@ -47,63 +47,82 @@ entry:
   ret i32 %a
 }
 
-; CHECK_SIMPLE: *** IR Dump At Start: ***
-; CHECK_SIMPLE: ; ModuleID = '<stdin>'
-; CHECK_SIMPLE: *** IR Dump After VerifierPass (module) omitted because no change ***
-; CHECK_SIMPLE: *** IR Dump After InstSimplifyPass *** (function: g)
-; CHECK_SIMPLE: *** IR Pass PassManager<llvm::Function> (function: g) ignored ***
-; CHECK_SIMPLE: *** IR Dump After InstSimplifyPass *** (function: f)
-; CHECK_SIMPLE: *** IR Pass PassManager<llvm::Function> (function: f) ignored ***
-; CHECK_SIMPLE: *** IR Pass ModuleToFunctionPassAdaptor<llvm::PassManager<llvm::Function>{{ ?}}> (module) ignored ***
-; CHECK_SIMPLE: *** IR Dump After VerifierPass (module) omitted because no change ***
-; CHECK_SIMPLE: *** IR Dump After PrintModulePass (module) omitted because no change ***
+; CHECK-SIMPLE: *** IR Dump At Start: ***
+; CHECK-SIMPLE-NEXT: ; ModuleID = {{.+}}
+; CHECK-SIMPLE: *** IR Dump After VerifierPass (module) omitted because no change ***
+; CHECK-SIMPLE: *** IR Dump After InstSimplifyPass *** (function: g)
+; CHECK-SIMPLE-NEXT: define i32 @g()
+; CHECK-SIMPLE: *** IR Pass PassManager{{.*}} (function: g) ignored ***
+; CHECK-SIMPLE: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-SIMPLE-NEXT: define i32 @f()
+; CHECK-SIMPLE: *** IR Pass PassManager{{.*}} (function: f) ignored ***
+; CHECK-SIMPLE: *** IR Pass ModuleToFunctionPassAdaptor<{{.*}}PassManager{{.*}}> (module) ignored ***
+; CHECK-SIMPLE: *** IR Dump After VerifierPass (module) omitted because no change ***
+; CHECK-SIMPLE: *** IR Dump After PrintModulePass (module) omitted because no change ***
+; CHECK-SIMPLE-NOT: *** IR
 
-; CHECK_FUNC_FILTER: *** IR Dump At Start: ***
-; CHECK_FUNC_FILTER: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
-; CHECK_FUNC_FILTER: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-FUNC-FILTER: *** IR Dump At Start: ***
+; CHECK-FUNC-FILTER-NEXT: ; ModuleID = {{.+}}
+; CHECK-FUNC-FILTER: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
+; CHECK-FUNC-FILTER: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-FUNC-FILTER-NEXT: define i32 @f()
 
-; CHECK_PRINT_MOD_SCOPE: *** IR Dump At Start: ***
-; CHECK_PRINT_MOD_SCOPE: *** IR Dump After InstSimplifyPass *** (function: g)
-; CHECK_PRINT_MOD_SCOPE: ModuleID = '<stdin>'
-; CHECK_PRINT_MOD_SCOPE: *** IR Dump After InstSimplifyPass *** (function: f)
-; CHECK_PRINT_MOD_SCOPE: ModuleID = '<stdin>'
+; CHECK-PRINT-MOD-SCOPE: *** IR Dump At Start: ***
+; CHECK-PRINT-MOD-SCOPE-NEXT: ModuleID = {{.+}}
+; CHECK-PRINT-MOD-SCOPE: *** IR Dump After InstSimplifyPass *** (function: g)
+; CHECK-PRINT-MOD-SCOPE-NEXT: ModuleID = {{.+}}
+; CHECK-PRINT-MOD-SCOPE: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-PRINT-MOD-SCOPE-NEXT: ModuleID = {{.+}}
 
-; CHECK_FUNC_FILTER_MOD_SCOPE: *** IR Dump At Start: ***
-; CHECK_FUNC_FILTER_MOD_SCOPE: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
-; CHECK_FUNC_FILTER_MOD_SCOPE: *** IR Dump After InstSimplifyPass *** (function: f)
-; CHECK_FUNC_FILTER_MOD_SCOPE: ModuleID = '<stdin>'
+; CHECK-FUNC-FILTER-MOD-SCOPE: *** IR Dump At Start: ***
+; CHECK-FUNC-FILTER-MOD-SCOPE-NEXT: ; ModuleID = {{.+}}
+; CHECK-FUNC-FILTER-MOD-SCOPE: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
+; CHECK-FUNC-FILTER-MOD-SCOPE: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-FUNC-FILTER-MOD-SCOPE-NEXT: ModuleID = {{.+}}
 
-; CHECK_FILTER_MULT_FUNC: *** IR Dump At Start: ***
-; CHECK_FILTER_MULT_FUNC: *** IR Dump After InstSimplifyPass *** (function: g)
-; CHECK_FILTER_MULT_FUNC: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-FILTER-MULT-FUNC: *** IR Dump At Start: ***
+; CHECK-FILTER-MULT-FUNC-NEXT: ; ModuleID = {{.+}}
+; CHECK-FILTER-MULT-FUNC: *** IR Dump After InstSimplifyPass *** (function: g)
+; CHECK-FILTER-MULT-FUNC-NEXT: define i32 @g()
+; CHECK-FILTER-MULT-FUNC: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-FILTER-MULT-FUNC-NEXT: define i32 @f()
 
-; CHECK_FILTER_PASSES: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
-; CHECK_FILTER_PASSES: *** IR Dump At Start: *** (function: g)
-; CHECK_FILTER_PASSES: *** IR Dump After NoOpFunctionPass (function: g) omitted because no change ***
-; CHECK_FILTER_PASSES: *** IR Dump After InstSimplifyPass (function: f) filtered out ***
-; CHECK_FILTER_PASSES: *** IR Dump After NoOpFunctionPass (function: f) omitted because no change ***
+; CHECK-FILTER-PASSES: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
+; CHECK-FILTER-PASSES: *** IR Dump At Start: *** (function: g)
+; CHECK-FILTER-PASSES-NEXT: ; ModuleID = {{.+}}
+; CHECK-FILTER-PASSES: *** IR Dump After NoOpFunctionPass (function: g) omitted because no change ***
+; CHECK-FILTER-PASSES: *** IR Dump After InstSimplifyPass (function: f) filtered out ***
+; CHECK-FILTER-PASSES: *** IR Dump After NoOpFunctionPass (function: f) omitted because no change ***
 
-; CHECK_FILTER_MULT_PASSES: *** IR Dump At Start: *** (function: g)
-; CHECK_FILTER_MULT_PASSES: *** IR Dump After InstSimplifyPass *** (function: g)
-; CHECK_FILTER_MULT_PASSES: *** IR Dump After NoOpFunctionPass (function: g) omitted because no change ***
-; CHECK_FILTER_MULT_PASSES: *** IR Dump After InstSimplifyPass *** (function: f)
-; CHECK_FILTER_MULT_PASSES: *** IR Dump After NoOpFunctionPass (function: f) omitted because no change ***
+; CHECK-FILTER-MULT-PASSES: *** IR Dump At Start: *** (function: g)
+; CHECK-FILTER-MULT-PASSES-NEXT: ; ModuleID = {{.+}}
+; CHECK-FILTER-MULT-PASSES: *** IR Dump After InstSimplifyPass *** (function: g)
+; CHECK-FILTER-MULT-PASSES-NEXT: define i32 @g()
+; CHECK-FILTER-MULT-PASSES: *** IR Dump After NoOpFunctionPass (function: g) omitted because no change ***
+; CHECK-FILTER-MULT-PASSES: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-FILTER-MULT-PASSES-NEXT: define i32 @f()
+; CHECK-FILTER-MULT-PASSES: *** IR Dump After NoOpFunctionPass (function: f) omitted because no change ***
 
-; CHECK_FILTER_FUNC_PASSES: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
-; CHECK_FILTER_FUNC_PASSES: *** IR Dump After NoOpFunctionPass (function: g) filtered out ***
-; CHECK_FILTER_FUNC_PASSES: *** IR Dump At Start: *** (function: f)
-; CHECK_FILTER_FUNC_PASSES: *** IR Dump After InstSimplifyPass *** (function: f)
-; CHECK_FILTER_FUNC_PASSES: *** IR Dump After NoOpFunctionPass (function: f) omitted because no change ***
+; CHECK-FILTER-FUNC-PASSES: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
+; CHECK-FILTER-FUNC-PASSES: *** IR Dump After NoOpFunctionPass (function: g) filtered out ***
+; CHECK-FILTER-FUNC-PASSES: *** IR Dump At Start: *** (function: f)
+; CHECK-FILTER-FUNC-PASSES-NEXT: ; ModuleID = {{.+}}
+; CHECK-FILTER-FUNC-PASSES: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-FILTER-FUNC-PASSES-NEXT: define i32 @f()
+; CHECK-FILTER-FUNC-PASSES: *** IR Dump After NoOpFunctionPass (function: f) omitted because no change ***
 
-; CHECK_FILTER_FUNC_PASSES_MOD_SCOPE: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
-; CHECK_FILTER_FUNC_PASSES_MOD_SCOPE: *** IR Dump After NoOpFunctionPass (function: g) filtered out ***
-; CHECK_FILTER_FUNC_PASSES_MOD_SCOPE: *** IR Dump At Start: *** (function: f)
-; CHECK_FILTER_FUNC_PASSES_MOD_SCOPE: *** IR Dump After InstSimplifyPass *** (function: f)
-; CHECK_FILTER_FUNC_PASSES_MOD_SCOPE: ModuleID = '<stdin>'
-; CHECK_FILTER_FUNC_PASSES_MOD_SCOPE: *** IR Dump After NoOpFunctionPass (function: f) omitted because no change ***
+; CHECK-FILTER-FUNC-PASSES-MOD-SCOPE: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
+; CHECK-FILTER-FUNC-PASSES-MOD-SCOPE: *** IR Dump After NoOpFunctionPass (function: g) filtered out ***
+; CHECK-FILTER-FUNC-PASSES-MOD-SCOPE: *** IR Dump At Start: *** (function: f)
+; CHECK-FILTER-FUNC-PASSES-MOD-SCOPE-NEXT: ; ModuleID = {{.+}}
+; CHECK-FILTER-FUNC-PASSES-MOD-SCOPE: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-FILTER-FUNC-PASSES-MOD-SCOPE-NEXT: ModuleID = {{.+}}
+; CHECK-FILTER-FUNC-PASSES-MOD-SCOPE: *** IR Dump After NoOpFunctionPass (function: f) omitted because no change ***
 
-; CHECK_MULT_PASSES_FILTER_FUNC: *** IR Dump At Start: ***
-; CHECK_MULT_PASSES_FILTER_FUNC: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
-; CHECK_MULT_PASSES_FILTER_FUNC: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
-; CHECK_MULT_PASSES_FILTER_FUNC: *** IR Dump After InstSimplifyPass *** (function: f)
-; CHECK_MULT_PASSES_FILTER_FUNC: *** IR Dump After InstSimplifyPass (function: f) omitted because no change ***
+; CHECK-MULT-PASSES-FILTER-FUNC: *** IR Dump At Start: ***
+; CHECK-MULT-PASSES-FILTER-FUNC-NEXT: ; ModuleID = {{.+}}
+; CHECK-MULT-PASSES-FILTER-FUNC: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
+; CHECK-MULT-PASSES-FILTER-FUNC: *** IR Dump After InstSimplifyPass (function: g) filtered out ***
+; CHECK-MULT-PASSES-FILTER-FUNC: *** IR Dump After InstSimplifyPass *** (function: f)
+; CHECK-MULT-PASSES-FILTER-FUNC-NEXT: define i32 @f()
+; CHECK-MULT-PASSES-FILTER-FUNC: *** IR Dump After InstSimplifyPass (function: f) omitted because no change ***

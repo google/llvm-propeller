@@ -75,19 +75,14 @@ static llvm::cl::opt<bool> LimitedCoverage(
 static const char AnnotationSection[] = "llvm.metadata";
 
 static CGCXXABI *createCXXABI(CodeGenModule &CGM) {
-  switch (CGM.getTarget().getCXXABI().getKind()) {
-  case TargetCXXABI::Fuchsia:
-  case TargetCXXABI::GenericAArch64:
-  case TargetCXXABI::GenericARM:
-  case TargetCXXABI::iOS:
-  case TargetCXXABI::iOS64:
-  case TargetCXXABI::WatchOS:
-  case TargetCXXABI::GenericMIPS:
-  case TargetCXXABI::GenericItanium:
-  case TargetCXXABI::WebAssembly:
-  case TargetCXXABI::XL:
+  switch (CGM.getContext().getCXXABIKind()) {
+#define ITANIUM_CXXABI(Name, Str) case TargetCXXABI::Name:
+#define CXXABI(Name, Str)
+#include "clang/Basic/TargetCXXABI.def"
     return CreateItaniumCXXABI(CGM);
-  case TargetCXXABI::Microsoft:
+#define MICROSOFT_CXXABI(Name, Str) case TargetCXXABI::Name:
+#define CXXABI(Name, Str)
+#include "clang/Basic/TargetCXXABI.def"
     return CreateMicrosoftCXXABI(CGM);
   }
 
@@ -588,6 +583,23 @@ void CodeGenModule::Release() {
     // Indicate that we want to instrument branch control flow protection.
     getModule().addModuleFlag(llvm::Module::Override, "cf-protection-branch",
                               1);
+  }
+
+  if (Arch == llvm::Triple::aarch64 || Arch == llvm::Triple::aarch64_32 ||
+      Arch == llvm::Triple::aarch64_be) {
+    getModule().addModuleFlag(llvm::Module::Error,
+                              "branch-target-enforcement",
+                              LangOpts.BranchTargetEnforcement);
+
+    getModule().addModuleFlag(llvm::Module::Error, "sign-return-address",
+                              LangOpts.hasSignReturnAddress());
+
+    getModule().addModuleFlag(llvm::Module::Error, "sign-return-address-all",
+                              LangOpts.isSignReturnAddressScopeAll());
+
+    getModule().addModuleFlag(llvm::Module::Error,
+                              "sign-return-address-with-bkey",
+                              !LangOpts.isSignReturnAddressWithAKey());
   }
 
   if (LangOpts.CUDAIsDevice && getTriple().isNVPTX()) {
@@ -2194,6 +2206,11 @@ void CodeGenModule::EmitDeferred() {
     // emitted that then need those vtables.
     assert(DeferredVTables.empty());
   }
+
+  // Emit CUDA/HIP static device variables referenced by host code only.
+  if (getLangOpts().CUDA)
+    for (auto V : getContext().CUDAStaticDeviceVarReferencedByHost)
+      DeferredDeclsToEmit.push_back(V);
 
   // Stop if we're out of both deferred vtables and deferred declarations.
   if (DeferredDeclsToEmit.empty())
@@ -4107,7 +4124,12 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
         // Shadow variables and their properties must be registered with CUDA
         // runtime. Skip Extern global variables, which will be registered in
         // the TU where they are defined.
-        if (!D->hasExternalStorage())
+        //
+        // Don't register a C++17 inline variable. The local symbol can be
+        // discarded and referencing a discarded local symbol from outside the
+        // comdat (__cuda_register_globals) is disallowed by the ELF spec.
+        // TODO: Reject __device__ constexpr and __device__ inline in Sema.
+        if (!D->hasExternalStorage() && !D->isInline())
           getCUDARuntime().registerDeviceVar(D, *GV, !D->hasDefinition(),
                                              D->hasAttr<CUDAConstantAttr>());
       } else if (D->hasAttr<CUDASharedAttr>()) {

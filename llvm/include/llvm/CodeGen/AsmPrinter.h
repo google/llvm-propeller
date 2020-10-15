@@ -141,8 +141,11 @@ public:
 
 private:
   MCSymbol *CurrentFnEnd = nullptr;
-  MCSymbol *CurExceptionSym = nullptr;
-  DenseMap<const MachineBasicBlock *, MCSymbol *> ExceptionSymbols;
+
+  /// Map a basic block section ID to the exception symbol associated with that
+  /// section. Map entries are assigned and looked up via
+  /// AsmPrinter::getMBBExceptionSym.
+  DenseMap<unsigned, MCSymbol *> MBBSectionExceptionSyms;
 
   // The symbol used to represent the start of the current BB section of the
   // function. This is used to calculate the size of the BB section.
@@ -239,23 +242,10 @@ public:
 
   MCSymbol *getFunctionBegin() const { return CurrentFnBegin; }
   MCSymbol *getFunctionEnd() const { return CurrentFnEnd; }
-  MCSymbol *getCurExceptionSym();
 
-  // Set the exception symbol associated with the function fragment which begins
-  // with a given basic block.
-  void setExceptionSym(const MachineBasicBlock *MBB, MCSymbol *Sym) {
-    ExceptionSymbols.try_emplace(MBB, Sym);
-  }
-
-  // Get the exception symbol associated with the function fragment which begins
-  // with a given basic block. Falls back to getCurExceptionSym() if no
-  // association is found.
-  MCSymbol *getExceptionSym(const MachineBasicBlock *MBB) {
-    auto R = ExceptionSymbols.find(MBB);
-    if (R == ExceptionSymbols.end())
-      return getCurExceptionSym();
-    return R->second;
-  }
+  // Return the exception symbol associated with the MBB section containing a
+  // given basic block.
+  MCSymbol *getMBBExceptionSym(const MachineBasicBlock &MBB);
 
   /// Return information about object file lowering.
   const TargetLoweringObjectFile &getObjFileLowering() const;

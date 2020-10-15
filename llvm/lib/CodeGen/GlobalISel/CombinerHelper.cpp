@@ -1999,6 +1999,35 @@ bool CombinerHelper::applyCombineAddP2IToPtrAdd(
   return true;
 }
 
+bool CombinerHelper::matchCombineConstPtrAddToI2P(MachineInstr &MI,
+                                                  int64_t &NewCst) {
+  assert(MI.getOpcode() == TargetOpcode::G_PTR_ADD && "Expected a G_PTR_ADD");
+  Register LHS = MI.getOperand(1).getReg();
+  Register RHS = MI.getOperand(2).getReg();
+  MachineRegisterInfo &MRI = Builder.getMF().getRegInfo();
+
+  if (auto RHSCst = getConstantVRegVal(RHS, MRI)) {
+    int64_t Cst;
+    if (mi_match(LHS, MRI, m_GIntToPtr(m_ICst(Cst)))) {
+      NewCst = Cst + *RHSCst;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool CombinerHelper::applyCombineConstPtrAddToI2P(MachineInstr &MI,
+                                                  int64_t &NewCst) {
+  assert(MI.getOpcode() == TargetOpcode::G_PTR_ADD && "Expected a G_PTR_ADD");
+  Register Dst = MI.getOperand(0).getReg();
+
+  Builder.setInstrAndDebugLoc(MI);
+  Builder.buildConstant(Dst, NewCst);
+  MI.eraseFromParent();
+  return true;
+}
+
 bool CombinerHelper::matchCombineAnyExtTrunc(MachineInstr &MI, Register &Reg) {
   assert(MI.getOpcode() == TargetOpcode::G_ANYEXT && "Expected a G_ANYEXT");
   Register DstReg = MI.getOperand(0).getReg();
@@ -2177,8 +2206,7 @@ bool CombinerHelper::applyCombineTruncOfShl(
   Register ShiftAmt = MatchInfo.second;
   Builder.setInstrAndDebugLoc(MI);
   auto TruncShiftSrc = Builder.buildTrunc(DstTy, ShiftSrc);
-  auto TruncShiftAmt = Builder.buildTrunc(DstTy, ShiftAmt);
-  Builder.buildShl(DstReg, TruncShiftSrc, TruncShiftAmt, SrcMI->getFlags());
+  Builder.buildShl(DstReg, TruncShiftSrc, ShiftAmt, SrcMI->getFlags());
   MI.eraseFromParent();
   return true;
 }
@@ -2717,6 +2745,78 @@ bool CombinerHelper::applyNotCmp(MachineInstr &MI,
   }
 
   replaceRegWith(MRI, MI.getOperand(0).getReg(), MI.getOperand(1).getReg());
+  MI.eraseFromParent();
+  return true;
+}
+
+bool CombinerHelper::matchXorOfAndWithSameReg(
+    MachineInstr &MI, std::pair<Register, Register> &MatchInfo) {
+  // Match (xor (and x, y), y) (or any of its commuted cases)
+  assert(MI.getOpcode() == TargetOpcode::G_XOR);
+  Register &X = MatchInfo.first;
+  Register &Y = MatchInfo.second;
+  Register AndReg = MI.getOperand(1).getReg();
+  Register SharedReg = MI.getOperand(2).getReg();
+
+  // Find a G_AND on either side of the G_XOR.
+  // Look for one of
+  //
+  // (xor (and x, y), SharedReg)
+  // (xor SharedReg, (and x, y))
+  if (!mi_match(AndReg, MRI, m_GAnd(m_Reg(X), m_Reg(Y)))) {
+    std::swap(AndReg, SharedReg);
+    if (!mi_match(AndReg, MRI, m_GAnd(m_Reg(X), m_Reg(Y))))
+      return false;
+  }
+
+  // Only do this if we'll eliminate the G_AND.
+  if (!MRI.hasOneNonDBGUse(AndReg))
+    return false;
+
+  // We can combine if SharedReg is the same as either the LHS or RHS of the
+  // G_AND.
+  if (Y != SharedReg)
+    std::swap(X, Y);
+  return Y == SharedReg;
+}
+
+bool CombinerHelper::applyXorOfAndWithSameReg(
+    MachineInstr &MI, std::pair<Register, Register> &MatchInfo) {
+  // Fold (xor (and x, y), y) -> (and (not x), y)
+  Builder.setInstrAndDebugLoc(MI);
+  Register X, Y;
+  std::tie(X, Y) = MatchInfo;
+  auto Not = Builder.buildNot(MRI.getType(X), X);
+  Observer.changingInstr(MI);
+  MI.setDesc(Builder.getTII().get(TargetOpcode::G_AND));
+  MI.getOperand(1).setReg(Not->getOperand(0).getReg());
+  MI.getOperand(2).setReg(Y);
+  Observer.changedInstr(MI);
+  return true;
+}
+
+bool CombinerHelper::matchPtrAddZero(MachineInstr &MI) {
+  Register DstReg = MI.getOperand(0).getReg();
+  LLT Ty = MRI.getType(DstReg);
+  const DataLayout &DL = Builder.getMF().getDataLayout();
+
+  if (DL.isNonIntegralAddressSpace(Ty.getScalarType().getAddressSpace()))
+    return false;
+
+  if (Ty.isPointer()) {
+    auto ConstVal = getConstantVRegVal(MI.getOperand(1).getReg(), MRI);
+    return ConstVal && *ConstVal == 0;
+  }
+
+  assert(Ty.isVector() && "Expecting a vector type");
+  const MachineInstr *VecMI = MRI.getVRegDef(MI.getOperand(1).getReg());
+  return isBuildVectorAllZeros(*VecMI, MRI);
+}
+
+bool CombinerHelper::applyPtrAddZero(MachineInstr &MI) {
+  assert(MI.getOpcode() == TargetOpcode::G_PTR_ADD);
+  Builder.setInstrAndDebugLoc(MI);
+  Builder.buildIntToPtr(MI.getOperand(0), MI.getOperand(2));
   MI.eraseFromParent();
   return true;
 }

@@ -417,7 +417,9 @@ static void instantiateOMPDeclareVariantAttr(
   if (TI.anyScoreOrCondition(SubstScoreOrConditionExpr))
     return;
 
-  // Check function/variant ref.
+  Expr *E = VariantFuncRef.get();
+  // Check function/variant ref for `omp declare variant` but not for `omp
+  // begin declare variant` (which use implicit attributes).
   Optional<std::pair<FunctionDecl *, Expr *>> DeclVarData =
       S.checkOpenMPDeclareVariantFunction(S.ConvertDeclToDeclGroup(New),
                                           VariantFuncRef.get(), TI,
@@ -426,9 +428,42 @@ static void instantiateOMPDeclareVariantAttr(
   if (!DeclVarData)
     return;
 
-  S.ActOnOpenMPDeclareVariantDirective(DeclVarData.getValue().first,
-                                       DeclVarData.getValue().second, TI,
-                                       Attr.getRange());
+  E = DeclVarData.getValue().second;
+  FD = DeclVarData.getValue().first;
+
+  if (auto *VariantDRE = dyn_cast<DeclRefExpr>(E->IgnoreParenImpCasts())) {
+    if (auto *VariantFD = dyn_cast<FunctionDecl>(VariantDRE->getDecl())) {
+      if (auto *VariantFTD = VariantFD->getDescribedFunctionTemplate()) {
+        if (!VariantFTD->isThisDeclarationADefinition())
+          return;
+        Sema::TentativeAnalysisScope Trap(S);
+        const TemplateArgumentList *TAL = TemplateArgumentList::CreateCopy(
+            S.Context, TemplateArgs.getInnermost());
+
+        auto *SubstFD = S.InstantiateFunctionDeclaration(VariantFTD, TAL,
+                                                         New->getLocation());
+        if (!SubstFD)
+          return;
+        QualType NewType = S.Context.mergeFunctionTypes(
+            SubstFD->getType(), FD->getType(),
+            /* OfBlockPointer */ false,
+            /* Unqualified */ false, /* AllowCXX */ true);
+        if (NewType.isNull())
+          return;
+        S.InstantiateFunctionDefinition(
+            New->getLocation(), SubstFD, /* Recursive */ true,
+            /* DefinitionRequired */ false, /* AtEndOfTU */ false);
+        SubstFD->setInstantiationIsPending(!SubstFD->isDefined());
+        E = DeclRefExpr::Create(S.Context, NestedNameSpecifierLoc(),
+                                SourceLocation(), SubstFD,
+                                /* RefersToEnclosingVariableOrCapture */ false,
+                                /* NameLoc */ SubstFD->getLocation(),
+                                SubstFD->getType(), ExprValueKind::VK_RValue);
+      }
+    }
+  }
+
+  S.ActOnOpenMPDeclareVariantDirective(FD, E, TI, Attr.getRange());
 }
 
 static void instantiateDependentAMDGPUFlatWorkGroupSizeAttr(
@@ -2886,7 +2921,7 @@ TemplateDeclInstantiator::VisitTemplateTemplateParmDecl(
     if (!TName.isNull())
       Param->setDefaultArgument(
           SemaRef.Context,
-          TemplateArgumentLoc(TemplateArgument(TName),
+          TemplateArgumentLoc(SemaRef.Context, TemplateArgument(TName),
                               D->getDefaultArgument().getTemplateQualifierLoc(),
                               D->getDefaultArgument().getTemplateNameLoc()));
   }
@@ -3593,11 +3628,11 @@ Decl *TemplateDeclInstantiator::VisitVarTemplateSpecializationDecl(
     return nullptr;
 
   return VisitVarTemplateSpecializationDecl(
-      InstVarTemplate, D, InsertPos, VarTemplateArgsInfo, Converted, PrevDecl);
+      InstVarTemplate, D, VarTemplateArgsInfo, Converted, PrevDecl);
 }
 
 Decl *TemplateDeclInstantiator::VisitVarTemplateSpecializationDecl(
-    VarTemplateDecl *VarTemplate, VarDecl *D, void *InsertPos,
+    VarTemplateDecl *VarTemplate, VarDecl *D,
     const TemplateArgumentListInfo &TemplateArgsInfo,
     ArrayRef<TemplateArgument> Converted,
     VarTemplateSpecializationDecl *PrevDecl) {
@@ -3620,8 +3655,11 @@ Decl *TemplateDeclInstantiator::VisitVarTemplateSpecializationDecl(
       SemaRef.Context, Owner, D->getInnerLocStart(), D->getLocation(),
       VarTemplate, DI->getType(), DI, D->getStorageClass(), Converted);
   Var->setTemplateArgsInfo(TemplateArgsInfo);
-  if (InsertPos)
+  if (!PrevDecl) {
+    void *InsertPos = nullptr;
+    VarTemplate->findSpecialization(Converted, InsertPos);
     VarTemplate->AddSpecialization(Var, InsertPos);
+  }
 
   if (SemaRef.getLangOpts().OpenCL)
     SemaRef.deduceOpenCLAddressSpace(Var);
@@ -4830,7 +4868,7 @@ VarTemplateSpecializationDecl *Sema::BuildVarTemplateInstantiation(
     const TemplateArgumentList &TemplateArgList,
     const TemplateArgumentListInfo &TemplateArgsInfo,
     SmallVectorImpl<TemplateArgument> &Converted,
-    SourceLocation PointOfInstantiation, void *InsertPos,
+    SourceLocation PointOfInstantiation,
     LateInstantiatedAttrVec *LateAttrs,
     LocalInstantiationScope *StartingScope) {
   if (FromVar->isInvalidDecl())
@@ -4869,7 +4907,7 @@ VarTemplateSpecializationDecl *Sema::BuildVarTemplateInstantiation(
 
   return cast_or_null<VarTemplateSpecializationDecl>(
       Instantiator.VisitVarTemplateSpecializationDecl(
-          VarTemplate, FromVar, InsertPos, TemplateArgsInfo, Converted));
+          VarTemplate, FromVar, TemplateArgsInfo, Converted));
 }
 
 /// Instantiates a variable template specialization by completing it
@@ -5292,8 +5330,8 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
     TemplateDeclInstantiator Instantiator(*this, Var->getDeclContext(),
                                           TemplateArgs);
     Var = cast_or_null<VarDecl>(Instantiator.VisitVarTemplateSpecializationDecl(
-        VarSpec->getSpecializedTemplate(), Def, nullptr,
-        VarSpec->getTemplateArgsInfo(), VarSpec->getTemplateArgs().asArray()));
+        VarSpec->getSpecializedTemplate(), Def, VarSpec->getTemplateArgsInfo(),
+        VarSpec->getTemplateArgs().asArray(), VarSpec));
     if (Var) {
       llvm::PointerUnion<VarTemplateDecl *,
                          VarTemplatePartialSpecializationDecl *> PatternPtr =
@@ -5302,12 +5340,6 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
           PatternPtr.dyn_cast<VarTemplatePartialSpecializationDecl *>())
         cast<VarTemplateSpecializationDecl>(Var)->setInstantiationOf(
             Partial, &VarSpec->getTemplateInstantiationArgs());
-
-      // Merge the definition with the declaration.
-      LookupResult R(*this, Var->getDeclName(), Var->getLocation(),
-                     LookupOrdinaryName, forRedeclarationInCurContext());
-      R.addDecl(OldVar);
-      MergeVarDecl(Var, R);
 
       // Attach the initializer.
       InstantiateVariableInitializer(Var, Def, TemplateArgs);

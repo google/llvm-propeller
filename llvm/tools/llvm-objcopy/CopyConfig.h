@@ -230,6 +230,9 @@ struct CopyConfig {
   bool StripUnneeded = false;
   bool Weaken = false;
   bool DecompressDebugSections = false;
+  // install-name-tool's --delete_all_rpaths
+  bool RemoveAllRpaths = false;
+
   DebugCompressionType CompressionType = DebugCompressionType::None;
 
   // parseELFConfig performs ELF-specific command-line parsing. Fills `ELF` on
@@ -266,6 +269,11 @@ parseObjcopyOptions(ArrayRef<const char *> ArgsArr,
 // messege and exit.
 Expected<DriverConfig>
 parseInstallNameToolOptions(ArrayRef<const char *> ArgsArr);
+
+// ParseBitcodeStripOptions returns the config and sets the input arguments.
+// If a help flag is set then ParseBitcodeStripOptions will print the help
+// messege and exit.
+Expected<DriverConfig> parseBitcodeStripOptions(ArrayRef<const char *> ArgsArr);
 
 // ParseStripOptions returns the config and sets the input arguments. If a
 // help flag is set then ParseStripOptions will print the help messege and

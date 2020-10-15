@@ -959,6 +959,7 @@ public:
   static Constant *getAnd(Constant *C1, Constant *C2);
   static Constant *getOr(Constant *C1, Constant *C2);
   static Constant *getXor(Constant *C1, Constant *C2);
+  static Constant *getUMin(Constant *C1, Constant *C2);
   static Constant *getShl(Constant *C1, Constant *C2,
                           bool HasNUW = false, bool HasNSW = false);
   static Constant *getLShr(Constant *C1, Constant *C2, bool isExact = false);
@@ -1033,6 +1034,12 @@ public:
   static Constant *getExactLShr(Constant *C1, Constant *C2) {
     return getLShr(C1, C2, true);
   }
+
+  /// If C is a scalar/fixed width vector of known powers of 2, then this
+  /// function returns a new scalar/fixed width vector obtained from logBase2
+  /// of C. Undef vector elements are set to zero.
+  /// Return a null pointer otherwise.
+  static Constant *getExactLogBase2(Constant *C);
 
   /// Return the identity constant for a binary opcode.
   /// The identity constant C is defined as X op C = X and C op X = X for every

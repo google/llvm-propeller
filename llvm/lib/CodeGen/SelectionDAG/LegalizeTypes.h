@@ -337,6 +337,7 @@ private:
   SDValue PromoteIntRes_TRUNCATE(SDNode *N);
   SDValue PromoteIntRes_UADDSUBO(SDNode *N, unsigned ResNo);
   SDValue PromoteIntRes_ADDSUBCARRY(SDNode *N, unsigned ResNo);
+  SDValue PromoteIntRes_SADDSUBO_CARRY(SDNode *N, unsigned ResNo);
   SDValue PromoteIntRes_UNDEF(SDNode *N);
   SDValue PromoteIntRes_VAARG(SDNode *N);
   SDValue PromoteIntRes_VSCALE(SDNode *N);
@@ -429,6 +430,7 @@ private:
   void ExpandIntRes_ADDSUBC           (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_ADDSUBE           (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_ADDSUBCARRY       (SDNode *N, SDValue &Lo, SDValue &Hi);
+  void ExpandIntRes_SADDSUBO_CARRY    (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_BITREVERSE        (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_BSWAP             (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_PARITY            (SDNode *N, SDValue &Lo, SDValue &Hi);
@@ -943,13 +945,6 @@ private:
   ///   StChain: list of chains for the stores we have generated
   ///   ST:      store of a widen value
   void GenWidenVectorStores(SmallVectorImpl<SDValue> &StChain, StoreSDNode *ST);
-
-  /// Helper function to generate a set of stores to store a truncate widen
-  /// vector into non-widen memory.
-  ///   StChain: list of chains for the stores we have generated
-  ///   ST:      store of a widen value
-  void GenWidenVectorTruncStores(SmallVectorImpl<SDValue> &StChain,
-                                 StoreSDNode *ST);
 
   /// Modifies a vector input (widen or narrows) to a vector of NVT.  The
   /// input vector must have the same element type as NVT.

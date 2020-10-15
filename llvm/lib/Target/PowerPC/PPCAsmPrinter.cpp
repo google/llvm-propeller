@@ -491,7 +491,8 @@ void PPCAsmPrinter::EmitTlsCall(const MachineInstr *MI,
   unsigned Opcode = PPC::BL8_NOP_TLS;
 
   assert(MI->getNumOperands() >= 3 && "Expecting at least 3 operands from MI");
-  if (MI->getOperand(2).getTargetFlags() == PPCII::MO_GOT_TLSGD_PCREL_FLAG) {
+  if (MI->getOperand(2).getTargetFlags() == PPCII::MO_GOT_TLSGD_PCREL_FLAG ||
+      MI->getOperand(2).getTargetFlags() == PPCII::MO_GOT_TLSLD_PCREL_FLAG) {
     Kind = MCSymbolRefExpr::VK_PPC_NOTOC;
     Opcode = PPC::BL8_NOTOC_TLS;
   }
@@ -1146,6 +1147,21 @@ void PPCAsmPrinter::emitInstruction(const MachineInstr *MI) {
             .addExpr(SymDtprel));
     return;
   }
+  case PPC::PADDIdtprel: {
+    // Transform: %rd = PADDIdtprel %rs, @sym
+    // Into:      %rd = PADDI8 %rs, sym@dtprel
+    const MachineOperand &MO = MI->getOperand(2);
+    const GlobalValue *GValue = MO.getGlobal();
+    MCSymbol *MOSymbol = getSymbol(GValue);
+    const MCExpr *SymDtprel = MCSymbolRefExpr::create(
+        MOSymbol, MCSymbolRefExpr::VK_DTPREL, OutContext);
+    EmitToStreamer(*OutStreamer, MCInstBuilder(PPC::PADDI8)
+                                     .addReg(MI->getOperand(0).getReg())
+                                     .addReg(MI->getOperand(1).getReg())
+                                     .addExpr(SymDtprel));
+    return;
+  }
+
   case PPC::ADDIdtprelL:
     // Transform: %xd = ADDIdtprelL %xs, @sym
     // Into:      %xd = ADDI8 %xs, sym@dtprel@l
@@ -1686,17 +1702,19 @@ void PPCAIXAsmPrinter::emitLinkage(const GlobalValue *GV,
   assert(LinkageAttr != MCSA_Invalid && "LinkageAttr should not MCSA_Invalid.");
 
   MCSymbolAttr VisibilityAttr = MCSA_Invalid;
-  switch (GV->getVisibility()) {
+  if (!TM.getIgnoreXCOFFVisibility()) {
+    switch (GV->getVisibility()) {
 
-  // TODO: "exported" and "internal" Visibility needs to go here.
-  case GlobalValue::DefaultVisibility:
-    break;
-  case GlobalValue::HiddenVisibility:
-    VisibilityAttr = MAI->getHiddenVisibilityAttr();
-    break;
-  case GlobalValue::ProtectedVisibility:
-    VisibilityAttr = MAI->getProtectedVisibilityAttr();
-    break;
+    // TODO: "exported" and "internal" Visibility needs to go here.
+    case GlobalValue::DefaultVisibility:
+      break;
+    case GlobalValue::HiddenVisibility:
+      VisibilityAttr = MAI->getHiddenVisibilityAttr();
+      break;
+    case GlobalValue::ProtectedVisibility:
+      VisibilityAttr = MAI->getProtectedVisibilityAttr();
+      break;
+    }
   }
 
   OutStreamer->emitXCOFFSymbolLinkageWithVisibility(GVSym, LinkageAttr,
@@ -1793,11 +1811,16 @@ void PPCAIXAsmPrinter::emitGlobalVariable(const GlobalVariable *GV) {
   MCSymbol *EmittedInitSym = GVSym;
   emitLinkage(GV, EmittedInitSym);
   emitAlignment(getGVAlignment(GV, DL), GV);
-  OutStreamer->emitLabel(EmittedInitSym);
+  // When -fdata-sections is enabled, every GlobalVariable will
+  // be put into its own csect; therefore, label is not necessary here.
+  if (!TM.getDataSections())
+    OutStreamer->emitLabel(EmittedInitSym);
+
   // Emit aliasing label for global variable.
   llvm::for_each(GOAliasMap[GV], [this](const GlobalAlias *Alias) {
     OutStreamer->emitLabel(getSymbol(Alias));
   });
+
   emitGlobalConstant(GV->getParent()->getDataLayout(), GV->getInitializer());
 }
 

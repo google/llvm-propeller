@@ -705,6 +705,7 @@ struct bind_const_intval_ty {
 
 /// Match a specified integer value or vector of all elements of that
 /// value.
+template <bool AllowUndefs>
 struct specific_intval {
   APInt Val;
 
@@ -714,7 +715,7 @@ struct specific_intval {
     const auto *CI = dyn_cast<ConstantInt>(V);
     if (!CI && V->getType()->isVectorTy())
       if (const auto *C = dyn_cast<Constant>(V))
-        CI = dyn_cast_or_null<ConstantInt>(C->getSplatValue());
+        CI = dyn_cast_or_null<ConstantInt>(C->getSplatValue(AllowUndefs));
 
     return CI && APInt::isSameValue(CI->getValue(), Val);
   }
@@ -722,12 +723,20 @@ struct specific_intval {
 
 /// Match a specific integer value or vector with all elements equal to
 /// the value.
-inline specific_intval m_SpecificInt(APInt V) {
-  return specific_intval(std::move(V));
+inline specific_intval<false> m_SpecificInt(APInt V) {
+  return specific_intval<false>(std::move(V));
 }
 
-inline specific_intval m_SpecificInt(uint64_t V) {
+inline specific_intval<false> m_SpecificInt(uint64_t V) {
   return m_SpecificInt(APInt(64, V));
+}
+
+inline specific_intval<true> m_SpecificIntAllowUndef(APInt V) {
+  return specific_intval<true>(std::move(V));
+}
+
+inline specific_intval<true> m_SpecificIntAllowUndef(uint64_t V) {
+  return m_SpecificIntAllowUndef(APInt(64, V));
 }
 
 /// Match a ConstantInt and bind to its value.  This does not match
@@ -2013,6 +2022,18 @@ template <typename Opnd0, typename Opnd1>
 inline typename m_Intrinsic_Ty<Opnd0, Opnd1>::Ty m_FMax(const Opnd0 &Op0,
                                                         const Opnd1 &Op1) {
   return m_Intrinsic<Intrinsic::maxnum>(Op0, Op1);
+}
+
+template <typename Opnd0, typename Opnd1, typename Opnd2>
+inline typename m_Intrinsic_Ty<Opnd0, Opnd1, Opnd2>::Ty
+m_FShl(const Opnd0 &Op0, const Opnd1 &Op1, const Opnd2 &Op2) {
+  return m_Intrinsic<Intrinsic::fshl>(Op0, Op1, Op2);
+}
+
+template <typename Opnd0, typename Opnd1, typename Opnd2>
+inline typename m_Intrinsic_Ty<Opnd0, Opnd1, Opnd2>::Ty
+m_FShr(const Opnd0 &Op0, const Opnd1 &Op1, const Opnd2 &Op2) {
+  return m_Intrinsic<Intrinsic::fshr>(Op0, Op1, Op2);
 }
 
 //===----------------------------------------------------------------------===//

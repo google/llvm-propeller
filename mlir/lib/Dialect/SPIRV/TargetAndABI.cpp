@@ -38,14 +38,6 @@ spirv::TargetEnv::TargetEnv(spirv::TargetEnvAttr targetAttr)
   }
 }
 
-spirv::DeviceType spirv::TargetEnv::getDeviceType() {
-  auto deviceType = spirv::symbolizeDeviceType(
-      targetAttr.getResourceLimits().device_type().getInt());
-  if (!deviceType)
-    return DeviceType::Unknown;
-  return *deviceType;
-}
-
 spirv::Version spirv::TargetEnv::getVersion() {
   return targetAttr.getVersion();
 }
@@ -145,13 +137,11 @@ spirv::getDefaultResourceLimits(MLIRContext *context) {
   // All the fields have default values. Here we just provide a nicer way to
   // construct a default resource limit attribute.
   return spirv::ResourceLimitsAttr ::get(
-      /*vendor_id=*/nullptr,
-      /*device_id*/ nullptr,
-      /*device_type=*/nullptr,
       /*max_compute_shared_memory_size=*/nullptr,
       /*max_compute_workgroup_invocations=*/nullptr,
       /*max_compute_workgroup_size=*/nullptr,
-      /*subgroup_size=*/nullptr, context);
+      /*subgroup_size=*/nullptr,
+      /*cooperative_matrix_properties_nv=*/nullptr, context);
 }
 
 StringRef spirv::getTargetEnvAttrName() { return "spv.target_env"; }
@@ -160,7 +150,9 @@ spirv::TargetEnvAttr spirv::getDefaultTargetEnv(MLIRContext *context) {
   auto triple = spirv::VerCapExtAttr::get(spirv::Version::V_1_0,
                                           {spirv::Capability::Shader},
                                           ArrayRef<Extension>(), context);
-  return spirv::TargetEnvAttr::get(triple,
+  return spirv::TargetEnvAttr::get(triple, spirv::Vendor::Unknown,
+                                   spirv::DeviceType::Unknown,
+                                   spirv::TargetEnvAttr::kUnknownDeviceID,
                                    spirv::getDefaultResourceLimits(context));
 }
 

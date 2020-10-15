@@ -1367,7 +1367,7 @@ private:
 
     void ParseLexedMethodDeclarations() override;
 
-    Parser* Self;
+    Parser *Self;
 
     /// Method - The method declaration.
     Decl *Method;
@@ -1824,7 +1824,6 @@ private:
   ExprResult ParsePostfixExpressionSuffix(ExprResult LHS);
   ExprResult ParseUnaryExprOrTypeTraitExpression();
   ExprResult ParseBuiltinPrimaryExpression();
-  ExprResult ParseUniqueStableNameExpression();
 
   ExprResult ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
                                                      bool &isCastExpr,
@@ -2804,6 +2803,14 @@ private:
                                        SourceLocation ScopeLoc,
                                        ParsedAttr::Syntax Syntax);
 
+  void ParseSwiftNewTypeAttribute(IdentifierInfo &AttrName,
+                                  SourceLocation AttrNameLoc,
+                                  ParsedAttributes &Attrs,
+                                  SourceLocation *EndLoc,
+                                  IdentifierInfo *ScopeName,
+                                  SourceLocation ScopeLoc,
+                                  ParsedAttr::Syntax Syntax);
+
   void ParseTypeTagForDatatypeAttribute(IdentifierInfo &AttrName,
                                         SourceLocation AttrNameLoc,
                                         ParsedAttributes &Attrs,
@@ -3098,7 +3105,8 @@ private:
 
   /// Parse a `match` clause for an '#pragma omp declare variant'. Return true
   /// if there was an error.
-  bool parseOMPDeclareVariantMatchClause(SourceLocation Loc, OMPTraitInfo &TI);
+  bool parseOMPDeclareVariantMatchClause(SourceLocation Loc, OMPTraitInfo &TI,
+                                         OMPTraitInfo *ParentTI);
 
   /// Parse clauses for '#pragma omp declare variant'.
   void ParseOMPDeclareVariantClauses(DeclGroupPtrTy Ptr, CachedTokens &Toks,

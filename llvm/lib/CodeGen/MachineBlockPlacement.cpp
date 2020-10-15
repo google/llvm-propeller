@@ -418,7 +418,7 @@ class MachineBlockPlacement : public MachineFunctionPass {
   /// The return value is used to model tail duplication cost.
   BlockFrequency getBlockCountOrFrequency(const MachineBasicBlock *BB) {
     if (UseProfileCount) {
-      auto Count = MBFI->getMBFI().getBlockProfileCount(BB);
+      auto Count = MBFI->getBlockProfileCount(BB);
       if (Count)
         return *Count;
       else
@@ -2541,10 +2541,14 @@ MachineBlockPlacement::collectLoopBlockSet(const MachineLoop &L) {
                     MBPI->getEdgeProbability(LoopPred, L.getHeader());
 
     for (MachineBasicBlock *LoopBB : L.getBlocks()) {
+      if (LoopBlockSet.count(LoopBB))
+        continue;
       auto Freq = MBFI->getBlockFreq(LoopBB).getFrequency();
       if (Freq == 0 || LoopFreq.getFrequency() / Freq > LoopToColdBlockRatio)
         continue;
-      LoopBlockSet.insert(LoopBB);
+      BlockChain *Chain = BlockToChain[LoopBB];
+      for (MachineBasicBlock *ChainBB : *Chain)
+        LoopBlockSet.insert(ChainBB);
     }
   } else
     LoopBlockSet.insert(L.block_begin(), L.block_end());
@@ -3359,8 +3363,8 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
   // No tail merging opportunities if the block number is less than four.
   if (MF.size() > 3 && EnableTailMerge) {
     unsigned TailMergeSize = TailDupSize + 1;
-    BranchFolder BF(/*EnableTailMerge=*/true, /*CommonHoist=*/false, *MBFI,
-                    *MBPI, PSI, TailMergeSize);
+    BranchFolder BF(/*DefaultEnableTailMerge=*/true, /*CommonHoist=*/false,
+                    *MBFI, *MBPI, PSI, TailMergeSize);
 
     if (BF.OptimizeFunction(MF, TII, MF.getSubtarget().getRegisterInfo(), MLI,
                             /*AfterPlacement=*/true)) {

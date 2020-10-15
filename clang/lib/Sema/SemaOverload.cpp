@@ -4984,18 +4984,19 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
                                      InOverloadResolution,
                                      AllowObjCWritebackConversion);
     }
-    // FIXME: Check the other conditions here: array of character type,
-    // initializer is a string literal.
-    if (ToType->isArrayType()) {
-      InitializedEntity Entity =
-        InitializedEntity::InitializeParameter(S.Context, ToType,
-                                               /*Consumed=*/false);
-      if (S.CanPerformCopyInitialization(Entity, From)) {
-        Result.setStandard();
-        Result.Standard.setAsIdentityConversion();
-        Result.Standard.setFromType(ToType);
-        Result.Standard.setAllToTypes(ToType);
-        return Result;
+
+    if (const auto *AT = S.Context.getAsArrayType(ToType)) {
+      if (S.IsStringInit(From->getInit(0), AT)) {
+        InitializedEntity Entity =
+          InitializedEntity::InitializeParameter(S.Context, ToType,
+                                                 /*Consumed=*/false);
+        if (S.CanPerformCopyInitialization(Entity, From)) {
+          Result.setStandard();
+          Result.Standard.setAsIdentityConversion();
+          Result.Standard.setFromType(ToType);
+          Result.Standard.setAllToTypes(ToType);
+          return Result;
+        }
       }
     }
   }
@@ -12879,7 +12880,12 @@ static QualType chooseRecoveryType(OverloadCandidateSet &CS,
     for (const auto &C : CS)
       ConsiderCandidate(C);
 
-  return Result.getValueOr(QualType());
+  if (!Result)
+    return QualType();
+  auto Value = Result.getValue();
+  if (Value.isNull() || Value->isUndeducedType())
+    return QualType();
+  return Value;
 }
 
 /// FinishOverloadedCallExpr - given an OverloadCandidateSet, builds and returns
@@ -13339,14 +13345,14 @@ ExprResult Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
     if (Fns.empty()) {
       // If there are no functions to store, just build a dependent
       // BinaryOperator or CompoundAssignment.
-      if (Opc <= BO_Assign || Opc > BO_OrAssign)
-        return BinaryOperator::Create(
-            Context, Args[0], Args[1], Opc, Context.DependentTy, VK_RValue,
-            OK_Ordinary, OpLoc, CurFPFeatureOverrides());
-      return CompoundAssignOperator::Create(
-          Context, Args[0], Args[1], Opc, Context.DependentTy, VK_LValue,
-          OK_Ordinary, OpLoc, CurFPFeatureOverrides(), Context.DependentTy,
-          Context.DependentTy);
+      if (BinaryOperator::isCompoundAssignmentOp(Opc))
+        return CompoundAssignOperator::Create(
+            Context, Args[0], Args[1], Opc, Context.DependentTy, VK_LValue,
+            OK_Ordinary, OpLoc, CurFPFeatureOverrides(), Context.DependentTy,
+            Context.DependentTy);
+      return BinaryOperator::Create(Context, Args[0], Args[1], Opc,
+                                    Context.DependentTy, VK_RValue, OK_Ordinary,
+                                    OpLoc, CurFPFeatureOverrides());
     }
 
     // FIXME: save results of ADL from here?

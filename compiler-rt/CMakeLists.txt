@@ -114,6 +114,7 @@ construct_compiler_rt_default_triple()
 if ("${COMPILER_RT_DEFAULT_TARGET_TRIPLE}" MATCHES ".*hf$")
   if (${COMPILER_RT_DEFAULT_TARGET_ARCH} MATCHES "^arm")
     set(COMPILER_RT_DEFAULT_TARGET_ARCH "armhf")
+    CHECK_SYMBOL_EXISTS (__thumb__ "" COMPILER_RT_ARM_THUMB)
   endif()
 endif()
 if ("${COMPILER_RT_DEFAULT_TARGET_TRIPLE}" MATCHES ".*android.*")
@@ -480,6 +481,15 @@ if (CMAKE_LINKER MATCHES "link.exe$")
   # individual static libraries, so we enable the suppression flag for
   # the whole compiler-rt project.
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /IGNORE:4221")
+endif()
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> -X32_64 qc <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> -X32_64 qc <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> -X32_64 q <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> -X32_64 q <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> -X32_64 <TARGET>")
+  set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -X32_64 <TARGET>")
 endif()
 
 add_subdirectory(include)

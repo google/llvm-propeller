@@ -18,6 +18,7 @@
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/ObjCRuntime.h"
 #include "clang/Basic/Sanitizers.h"
+#include "clang/Basic/TargetCXXABI.h"
 #include "clang/Basic/Visibility.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/StringRef.h"
@@ -294,6 +295,10 @@ public:
   /// host code generation.
   std::string OMPHostIRFile;
 
+  /// C++ ABI to compile with, if specified by the frontend through -fc++-abi=.
+  /// This overrides the default ABI used by the target.
+  llvm::Optional<TargetCXXABI::Kind> CXXABI;
+
   /// Indicates whether the front-end is explicitly told that the
   /// input is a header file (i.e. -x c-header).
   bool IsHeaderFile = false;
@@ -432,8 +437,7 @@ public:
   }
 
   bool isFPConstrained() const {
-    return getRoundingMode() !=
-               static_cast<unsigned>(RoundingMode::NearestTiesToEven) ||
+    return getRoundingMode() != llvm::RoundingMode::NearestTiesToEven ||
            getFPExceptionMode() != LangOptions::FPE_Ignore ||
            getAllowFEnvAccess();
   }
@@ -453,8 +457,8 @@ public:
 
   // We can define most of the accessors automatically:
 #define OPTION(NAME, TYPE, WIDTH, PREVIOUS)                                    \
-  unsigned get##NAME() const {                                                 \
-    return static_cast<unsigned>(TYPE((Value & NAME##Mask) >> NAME##Shift));   \
+  TYPE get##NAME() const {                                                     \
+    return static_cast<TYPE>((Value & NAME##Mask) >> NAME##Shift);             \
   }                                                                            \
   void set##NAME(TYPE value) {                                                 \
     Value = (Value & ~NAME##Mask) | (storage_type(value) << NAME##Shift);      \
@@ -561,7 +565,7 @@ public:
   bool has##NAME##Override() const {                                           \
     return OverrideMask & FPOptions::NAME##Mask;                               \
   }                                                                            \
-  unsigned get##NAME##Override() const {                                       \
+  TYPE get##NAME##Override() const {                                           \
     assert(has##NAME##Override());                                             \
     return Options.get##NAME();                                                \
   }                                                                            \

@@ -15,6 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AMDGPUTargetTransformInfo.h"
+#include "llvm/Support/KnownBits.h"
 #include "llvm/Transforms/InstCombine/InstCombiner.h"
 
 using namespace llvm;
@@ -82,7 +83,7 @@ static bool canSafelyConvertTo16Bit(Value &V) {
 }
 
 // Convert a value to 16-bit.
-Value *convertTo16Bit(Value &V, InstCombiner::BuilderTy &Builder) {
+static Value *convertTo16Bit(Value &V, InstCombiner::BuilderTy &Builder) {
   Type *VTy = V.getType();
   if (isa<FPExtInst>(&V) || isa<SExtInst>(&V) || isa<ZExtInst>(&V))
     return cast<Instruction>(&V)->getOperand(0);

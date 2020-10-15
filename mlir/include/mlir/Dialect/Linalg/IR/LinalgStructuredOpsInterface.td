@@ -25,7 +25,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
     //===------------------------------------------------------------------===//
     InterfaceMethod<
       /*desc=*/[{
-        Return the number of parallel loops within the current operation.
+        Return the number of parallel loops.
       }],
       /*retTy=*/"unsigned",
       /*methodName=*/"getNumParallelLoops",
@@ -38,7 +38,19 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
     >,
     InterfaceMethod<
       /*desc=*/[{
-        Return the number of reduction loops within the current operation.
+        Return the dims that are parallel loops.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"getParallelDims",
+      /*args=*/(ins "SmallVectorImpl<AffineExpr> &":$res),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return getDimsOfType($_op, getParallelIteratorTypeName(), res);
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the number of reduction loops.
       }],
       /*retTy=*/"unsigned",
       /*methodName=*/"getNumReductionLoops",
@@ -51,7 +63,19 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
     >,
     InterfaceMethod<
       /*desc=*/[{
-        Return the number of window loops within the current operation.
+        Return the dims that are reduction loops.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"getReductionDims",
+      /*args=*/(ins "SmallVectorImpl<AffineExpr> &":$res),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return getDimsOfType($_op, getReductionIteratorTypeName(), res);
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the number of window loops.
       }],
       /*retTy=*/"unsigned",
       /*methodName=*/"getNumWindowLoops",
@@ -60,6 +84,18 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*defaultImplementation=*/[{
         return getNumIterators(getWindowIteratorTypeName(),
                                $_op.iterator_types());
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the dims that are window loops.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"getWindowDims",
+      /*args=*/(ins "SmallVectorImpl<AffineExpr> &":$res),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return getDimsOfType($_op.getOperation(), getWindowIteratorTypeName(), res);
       }]
     >,
     InterfaceMethod<
@@ -89,24 +125,30 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
                getNumIterators(getReductionIteratorTypeName(), iters) == 1;
       }]>,
     //===------------------------------------------------------------------===//
-    // Num input/output arguments handling.
+    // Num input/output/initTensors arguments handling.
     //===------------------------------------------------------------------===//
     // These special methods must be defined by each op that wants to implement
     // the LinalgStructuredInterface. For now, this is either:
-    // - inherited statically by using the NInputs<unsigned> or
-    //   NOutputs<unsigned> traits.
-    // - derived from args_in/args_out attributes (for linalg.generic and
+    // - Explicitly specified in the op definition.
+    // - Derived from variadic attributes (for "named" ops, linalg.generic and
     //   linalg.indexed_generic ops).
     InterfaceMethod<
       /*desc=*/[{
-        Return the number of inputs from the current operation.
+        Return the number of inputs.
       }],
       /*retTy=*/"unsigned",
       /*methodName=*/"getNumInputs"
     >,
     InterfaceMethod<
       /*desc=*/[{
-        Return the number of outputs from the current operation.
+        Return the number of init tensors.
+      }],
+      /*retTy=*/"unsigned",
+      /*methodName=*/"getNumInitTensors"
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the number of outputs.
       }],
       /*retTy=*/"unsigned",
       /*methodName=*/"getNumOutputs"
@@ -160,7 +202,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
     >,
     InterfaceMethod<
       /*desc=*/[{
-        Return the input operands from the current operation.
+        Return the input operands.
       }],
       /*retTy=*/"Operation::operand_range",
       /*methodName=*/"getInputs",
@@ -187,7 +229,6 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
         return res;
       }]
     >,
-
     //===------------------------------------------------------------------===//
     // Output arguments handling.
     //===------------------------------------------------------------------===//
@@ -267,7 +308,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       }]>,
     InterfaceMethod<
       /*desc=*/[{
-        Return the output buffers (operands) from the current operation.
+        Return the output buffers (operands).
       }],
       /*retTy=*/"Operation::operand_range",
       /*methodName=*/"getOutputBuffers",
@@ -338,6 +379,58 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
     >,
     InterfaceMethod<
       /*desc=*/[{
+        Return the range over init tensors.
+      }],
+      /*retTy=*/"Operation::operand_range",
+      /*methodName=*/"getInitTensors",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        auto range = this->getOperation()->getOperands();
+        return {range.begin() + getNumInputsAndOutputBuffers(),
+                range.begin() + getNumInputsAndOutputs()};
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return one single init tensor at position `$i`.
+      }],
+      /*retTy=*/"Value",
+      /*methodName=*/"getInitTensor",
+      /*args=*/(ins "unsigned":$i),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        assert(i < $_op.getNumInitTensors() && "overflowing init tensor index");
+        return getInitTensors()[i];
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the number of inputs, output buffers and init tensors operands.
+      }],
+      /*retTy=*/"unsigned",
+      /*methodName=*/"getNumShapedOperands",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return getNumInputsAndOutputBuffers() + $_op.getNumInitTensors();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the range over inputs, output buffers and init tensors.
+      }],
+      /*retTy=*/"Operation::operand_range",
+      /*methodName=*/"getShapedOperands",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        auto range = this->getOperation()->getOperands();
+        return {range.begin(), range.begin() + getNumShapedOperands()};
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
         Return the `i`-th shaped type, there are 3 cases:
           1. if `i < $_op.getNumInputs()` then return `getInputShapedType(i)`;
              otherwise
@@ -354,7 +447,9 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
           return getInputShapedType(i);
         if (i < getNumInputsAndOutputBuffers())
           return getOutputBufferType(i - $_op.getNumInputs());
-        return getOutputTensorTypes()[i - getNumInputsAndOutputBuffers()];
+        return this->getOperation()->getResult(
+          i - getNumInputsAndOutputBuffers()).
+          getType().template cast<ShapedType>();
       }]>,
     InterfaceMethod<
       /*desc=*/[{
@@ -374,6 +469,24 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
             llvm::map_range(inputOutputTypes, [](Type type) -> ShapedType {
               return type.cast<ShapedType>();
             }));
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the position of buffer in inputs + outputs list
+      }],
+      /*retTy=*/"Optional<unsigned>",
+      /*methodName=*/"getIndexOfInputAndOutputBuffer",
+      /*args=*/(ins "Value":$value),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        Optional<unsigned> inputIndex = getIndexOfInput(value);
+        if (inputIndex.hasValue()) return inputIndex.getValue();
+        Optional<unsigned> outputIndex = getIndexOfOutputBuffer(value);
+        if (outputIndex.hasValue()) {
+          return $_op.getNumInputs() + outputIndex.getValue();
+        }
+        return llvm::None;
       }]
     >,
 
@@ -409,10 +522,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         return llvm::to_vector<4>(
-            llvm::map_range($_op.indexing_maps(),
-                            [](Attribute attr) -> AffineMap {
-              return attr.cast<AffineMapAttr>().getValue();
-            }));
+          $_op.indexing_maps().template getAsValueRange<AffineMapAttr>());
       }]
     >,
     InterfaceMethod<
@@ -425,10 +535,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         assert(i < getNumInputsAndOutputs());
-        return $_op.indexing_maps()
-            .getValue()[i]
-            .template cast<AffineMapAttr>()
-            .getValue();
+        return getIndexingMaps()[i];
       }]
     >,
     InterfaceMethod<
@@ -441,10 +548,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         assert(i < $_op.getNumInputs());
-        return $_op.indexing_maps()
-            .getValue()[i]
-            .template cast<AffineMapAttr>()
-            .getValue();
+        return getIndexingMaps()[i];
       }]
     >,
     InterfaceMethod<
@@ -457,10 +561,7 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         assert(i < $_op.getNumOutputs());
-        return $_op.indexing_maps()
-            .getValue()[i + $_op.getNumInputs()]
-            .template cast<AffineMapAttr>()
-            .getValue();
+        return getIndexingMaps()[i + $_op.getNumInputs()];
       }]
     >,
     InterfaceMethod<
@@ -493,6 +594,19 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
                llvm::all_of(this->getOperation()->getResults(), isTensorType);
       }]
     >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the name registered for this op when lowering to an external
+        library call.
+      }],
+      /*retTy=*/"std::string",
+      /*methodName=*/"getLibraryCallName",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.getLibraryCallName();
+      }]
+    >,
 
     //===------------------------------------------------------------------===//
     // Other static interface methods.
@@ -504,24 +618,28 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       }],
       /*retTy=*/"Operation *",
       /*methodName=*/"create",
-      (ins "OpBuilder &":$builder, "Location":$loc,
+      (ins "OpBuilder &":$builder, "Location":$loc, "TypeRange":$resultTypes,
            "ValueRange":$operands,
            "ArrayRef<NamedAttribute>":$attributes), [{
-        return builder.create<ConcreteOp>(loc, ArrayRef<Type>{}, operands,
-                                          attributes);
+        return builder.create<ConcreteOp>(
+          loc, resultTypes, operands, attributes);
       }]
     >,
     InterfaceMethod<
       /*desc=*/[{
         Clone the current operation with the given location and operands. This
-        is used to abstract away the optional underlying region creation.
+        is used to abstract away the optional underlying region creation. This 
+        does not change the balance between input, output_buffer and 
+        init_tensors operands.
       }],
       /*retTy=*/"Operation *",
       /*methodName=*/"clone",
-      (ins "OpBuilder &":$b, "Location":$loc, "ValueRange":$operands), [{
+      (ins "OpBuilder &":$b, "Location":$loc, "TypeRange":$resultTypes,
+           "ValueRange":$operands),
+      [{
         BlockAndValueMapping map;
         unsigned numRegions = $_op.getOperation()->getNumRegions();
-        Operation *res = create(b, loc, operands, $_op.getAttrs());
+        Operation *res = create(b, loc, resultTypes, operands, $_op.getAttrs());
         assert(res->getNumRegions() == numRegions && "inconsistent # regions");
         for (unsigned ridx = 0; ridx < numRegions; ++ridx)
           $_op.getOperation()->getRegion(ridx).cloneInto(
@@ -530,6 +648,44 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       }]
     >
   ];
+
+  let extraClassDeclaration = [{
+    /// Returns all the operands past the inputs, output_buffers and
+    /// init_tensors operands. Asserts that these operands are value types to
+    /// allow transformations like tiling to just use the values when cloning
+    /// `linalgOp`.
+    SmallVector<Value, 4> getAssumedNonShapedOperands() {
+      unsigned numShapedOperands = getNumInputsAndOutputs();
+      unsigned nExtraOperands =
+        getOperation()->getNumOperands() - numShapedOperands;
+      SmallVector<Value, 4> res;
+      res.reserve(nExtraOperands);
+      for (unsigned i = 0; i < nExtraOperands; ++i) {
+        res.push_back(getOperation()->getOperand(numShapedOperands + i));
+        assert((res.back().getType().isSignlessIntOrIndexOrFloat()
+                || res.back().getType().isa<VectorType>()) &&
+               "expected scalar or vector type");
+      }
+      return res;
+    }
+    //========================================================================//
+    // Helper functions to mutate the `operand_segment_sizes` attribute.
+    // These are useful when cloning and changing operand types.
+    //========================================================================//
+    void setNumInputs(unsigned num) { setOperandSegmentAt(0, num); }
+    void setNumOutputBuffers(unsigned num) { setOperandSegmentAt(1, num); }
+    void setNumInitTensors(unsigned num) { setOperandSegmentAt(2, num); }
+
+    private:
+    void setOperandSegmentAt(unsigned idx, unsigned val) {
+      auto attr = getOperation()->getAttr("operand_segment_sizes")
+        .cast<DenseIntElementsAttr>();
+      unsigned i = 0;
+      auto newAttr = attr.mapValues(IntegerType::get(32, getContext()),
+        [&](const APInt &v) { return (i++ == idx) ? APInt(32, val) : v; });
+      getOperation()->setAttr("operand_segment_sizes", newAttr);
+    }
+  }];
 }
 
 #endif // LINALG_IR_STRUCTURED_OPS_INTERFACE

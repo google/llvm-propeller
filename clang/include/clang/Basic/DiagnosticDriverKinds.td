@@ -253,6 +253,7 @@ def err_drv_optimization_remark_format : Error<
   "unknown remark serializer format: '%0'">;
 def err_drv_no_neon_modifier : Error<"[no]neon is not accepted as modifier, please use [no]simd instead">;
 def err_drv_invalid_omp_target : Error<"OpenMP target is invalid: '%0'">;
+def err_drv_incompatible_omp_arch : Error<"OpenMP target architecture '%0' pointer size is incompatible with host '%1'">;
 def err_drv_omp_host_ir_file_not_found : Error<
   "The provided host compiler IR file '%0' is required to generate code for OpenMP target regions but cannot be found.">;
 def err_drv_omp_host_target_not_supported : Error<
@@ -463,8 +464,9 @@ def warn_drv_msvc_not_found : Warning<
   "try running Clang from a developer command prompt">,
   InGroup<DiagGroup<"msvc-not-found">>;
 
-def warn_drv_use_ld_non_word : Warning<
-  "'-fuse-ld=' taking a path is deprecated. Use '--ld-path=' instead">;
+def warn_drv_fuse_ld_path : Warning<
+  "'-fuse-ld=' taking a path is deprecated. Use '--ld-path=' instead">,
+  InGroup<FUseLdPath>, DefaultIgnore;
 
 def warn_drv_fine_grained_bitfield_accesses_ignored : Warning<
   "option '-ffine-grained-bitfield-accesses' cannot be enabled together with a sanitizer; flag ignored">,
@@ -522,4 +524,6 @@ def err_drv_invalid_object_mode : Error<"OBJECT_MODE setting %0 is not recognize
 
 def err_drv_invalid_sve_vector_bits : Error<
   "'-msve-vector-bits' is not supported without SVE enabled">;
+
+def err_invalid_cxx_abi : Error<"invalid C++ ABI name '%0'">;
 }

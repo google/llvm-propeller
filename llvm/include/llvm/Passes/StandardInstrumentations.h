@@ -37,7 +37,6 @@ class Function;
 /// (typically Loop or SCC).
 class PrintIRInstrumentation {
 public:
-  PrintIRInstrumentation() = default;
   ~PrintIRInstrumentation();
 
   void registerCallbacks(PassInstrumentationCallbacks &PIC);
@@ -60,7 +59,6 @@ private:
 
 class OptNoneInstrumentation {
 public:
-  OptNoneInstrumentation() {}
   void registerCallbacks(PassInstrumentationCallbacks &PIC);
 
 private:
@@ -141,13 +139,13 @@ public:
 // 8.  To compare two IR representations (of type \p T).
 template <typename IRUnitT> class ChangePrinter {
 protected:
-  ChangePrinter() : InitialIR(true) {}
+  ChangePrinter() {}
 
 public:
   virtual ~ChangePrinter();
 
   // Determine if this pass/IR is interesting and if so, save the IR
-  // otherwise it is left on the stack without data
+  // otherwise it is left on the stack without data.
   void saveIRBeforePass(Any IR, StringRef PassID);
   // Compare the IR from before the pass after the pass.
   void handleIRAfterPass(Any IR, StringRef PassID);
@@ -155,30 +153,30 @@ public:
   void handleInvalidatedPass(StringRef PassID);
 
 protected:
-  // called on the first IR processed
+  // Called on the first IR processed.
   virtual void handleInitialIR(Any IR) = 0;
-  // called before and after a pass to get the representation of the IR
+  // Called before and after a pass to get the representation of the IR.
   virtual void generateIRRepresentation(Any IR, StringRef PassID,
                                         IRUnitT &Output) = 0;
-  // called when the pass is not iteresting
+  // Called when the pass is not iteresting.
   virtual void omitAfter(StringRef PassID, std::string &Name) = 0;
-  // called when an interesting IR has changed
+  // Called when an interesting IR has changed.
   virtual void handleAfter(StringRef PassID, std::string &Name,
                            const IRUnitT &Before, const IRUnitT &After,
                            Any) = 0;
-  // called when an interesting pass is invalidated
+  // Called when an interesting pass is invalidated.
   virtual void handleInvalidated(StringRef PassID) = 0;
-  // called when the IR or pass is not interesting
+  // Called when the IR or pass is not interesting.
   virtual void handleFiltered(StringRef PassID, std::string &Name) = 0;
-  // called when an ignored pass is encountered
+  // Called when an ignored pass is encountered.
   virtual void handleIgnored(StringRef PassID, std::string &Name) = 0;
-  // called to compare the before and after representations of the IR
+  // Called to compare the before and after representations of the IR.
   virtual bool same(const IRUnitT &Before, const IRUnitT &After) = 0;
 
-  // stack of IRs before passes
+  // Stack of IRs before passes.
   std::vector<IRUnitT> BeforeStack;
   // Is this the first IR seen?
-  bool InitialIR;
+  bool InitialIR = true;
 };
 
 // A change printer based on the string representation of the IR as created
@@ -192,27 +190,35 @@ public:
   void registerCallbacks(PassInstrumentationCallbacks &PIC);
 
 protected:
-  // called on the first IR processed
+  // Called on the first IR processed.
   void handleInitialIR(Any IR) override;
-  // called before and after a pass to get the representation of the IR
+  // Called before and after a pass to get the representation of the IR.
   void generateIRRepresentation(Any IR, StringRef PassID,
                                 std::string &Output) override;
-  // called when the pass is not iteresting
+  // Called when the pass is not iteresting.
   void omitAfter(StringRef PassID, std::string &Name) override;
-  // called when an interesting IR has changed
+  // Called when an interesting IR has changed.
   void handleAfter(StringRef PassID, std::string &Name,
                    const std::string &Before, const std::string &After,
                    Any) override;
-  // called when an interesting pass is invalidated
+  // Called when an interesting pass is invalidated.
   void handleInvalidated(StringRef PassID) override;
-  // called when the IR or pass is not interesting
+  // Called when the IR or pass is not interesting.
   void handleFiltered(StringRef PassID, std::string &Name) override;
-  // called when an ignored pass is encountered
+  // Called when an ignored pass is encountered.
   void handleIgnored(StringRef PassID, std::string &Name) override;
-  // called to compare the before and after representations of the IR
+  // Called to compare the before and after representations of the IR.
   bool same(const std::string &Before, const std::string &After) override;
 
   raw_ostream &Out;
+};
+
+class VerifyInstrumentation {
+  bool DebugLogging;
+
+public:
+  VerifyInstrumentation(bool DebugLogging) : DebugLogging(DebugLogging) {}
+  void registerCallbacks(PassInstrumentationCallbacks &PIC);
 };
 
 /// This class provides an interface to register all the standard pass
@@ -224,9 +230,13 @@ class StandardInstrumentations {
   OptNoneInstrumentation OptNone;
   PreservedCFGCheckerInstrumentation PreservedCFGChecker;
   IRChangePrinter PrintChangedIR;
+  VerifyInstrumentation Verify;
+
+  bool VerifyEach;
 
 public:
-  StandardInstrumentations(bool DebugLogging) : PrintPass(DebugLogging) {}
+  StandardInstrumentations(bool DebugLogging, bool VerifyEach = false)
+      : PrintPass(DebugLogging), Verify(DebugLogging), VerifyEach(VerifyEach) {}
 
   void registerCallbacks(PassInstrumentationCallbacks &PIC);
 

@@ -1469,6 +1469,7 @@ bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
   Features["avx512bitalg"]    = HasLeaf7 && ((ECX >> 12) & 1) && HasAVX512Save;
   Features["avx512vpopcntdq"] = HasLeaf7 && ((ECX >> 14) & 1) && HasAVX512Save;
   Features["rdpid"]           = HasLeaf7 && ((ECX >> 22) & 1);
+  Features["kl"]              = HasLeaf7 && ((ECX >> 23) & 1); // key locker
   Features["cldemote"]        = HasLeaf7 && ((ECX >> 25) & 1);
   Features["movdiri"]         = HasLeaf7 && ((ECX >> 27) & 1);
   Features["movdir64b"]       = HasLeaf7 && ((ECX >> 28) & 1);
@@ -1495,6 +1496,7 @@ bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
   bool HasLeaf7Subleaf1 =
       MaxLevel >= 7 && !getX86CpuIDAndInfoEx(0x7, 0x1, &EAX, &EBX, &ECX, &EDX);
   Features["avx512bf16"] = HasLeaf7Subleaf1 && ((EAX >> 5) & 1) && HasAVX512Save;
+  Features["hreset"]     = HasLeaf7Subleaf1 && ((EAX >> 22) & 1);
 
   bool HasLeafD = MaxLevel >= 0xd &&
                   !getX86CpuIDAndInfoEx(0xd, 0x1, &EAX, &EBX, &ECX, &EDX);
@@ -1508,6 +1510,10 @@ bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
                   !getX86CpuIDAndInfoEx(0x14, 0x0, &EAX, &EBX, &ECX, &EDX);
 
   Features["ptwrite"] = HasLeaf14 && ((EBX >> 4) & 1);
+
+  bool HasLeaf19 =
+      MaxLevel >= 0x19 && !getX86CpuIDAndInfo(0x19, &EAX, &EBX, &ECX, &EDX);
+  Features["widekl"] = HasLeaf7 && HasLeaf19 && ((EBX >> 2) & 1);
 
   return true;
 }

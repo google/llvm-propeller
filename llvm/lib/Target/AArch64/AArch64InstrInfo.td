@@ -559,6 +559,16 @@ def AArch64urhadd   : SDNode<"AArch64ISD::URHADD", SDT_AArch64binvec>;
 def AArch64shadd   : SDNode<"AArch64ISD::SHADD", SDT_AArch64binvec>;
 def AArch64uhadd   : SDNode<"AArch64ISD::UHADD", SDT_AArch64binvec>;
 
+def AArch64uabd_n   : SDNode<"AArch64ISD::UABD", SDT_AArch64binvec>;
+def AArch64sabd_n   : SDNode<"AArch64ISD::SABD", SDT_AArch64binvec>;
+
+def AArch64uabd     : PatFrags<(ops node:$lhs, node:$rhs),
+                               [(AArch64uabd_n node:$lhs, node:$rhs),
+                                (int_aarch64_neon_uabd node:$lhs, node:$rhs)]>;
+def AArch64sabd     : PatFrags<(ops node:$lhs, node:$rhs),
+                               [(AArch64sabd_n node:$lhs, node:$rhs),
+                                (int_aarch64_neon_sabd node:$lhs, node:$rhs)]>;
+
 def SDT_AArch64SETTAG : SDTypeProfile<0, 2, [SDTCisPtrTy<0>, SDTCisPtrTy<1>]>;
 def AArch64stg : SDNode<"AArch64ISD::STG", SDT_AArch64SETTAG, [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
 def AArch64stzg : SDNode<"AArch64ISD::STZG", SDT_AArch64SETTAG, [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
@@ -593,8 +603,8 @@ let RecomputePerFunction = 1 in {
   // Avoid generating STRQro if it is slow, unless we're optimizing for code size.
   def UseSTRQro : Predicate<"!Subtarget->isSTRQroSlow() || shouldOptForSize(MF)">;
 
-  def UseBTI : Predicate<[{ MF->getFunction().hasFnAttribute("branch-target-enforcement") }]>;
-  def NotUseBTI : Predicate<[{ !MF->getFunction().hasFnAttribute("branch-target-enforcement") }]>;
+  def UseBTI : Predicate<[{ MF->getInfo<AArch64FunctionInfo>()->branchTargetEnforcement() }]>;
+  def NotUseBTI : Predicate<[{ !MF->getInfo<AArch64FunctionInfo>()->branchTargetEnforcement() }]>;
 
   def SLSBLRMitigation : Predicate<[{ MF->getSubtarget<AArch64Subtarget>().hardenSlsBlr() }]>;
   def NoSLSBLRMitigation : Predicate<[{ !MF->getSubtarget<AArch64Subtarget>().hardenSlsBlr() }]>;
@@ -692,7 +702,8 @@ def : Pat<(AArch64LOADgot tconstpool:$addr),
 // 32-bit jump table destination is actually only 2 instructions since we can
 // use the table itself as a PC-relative base. But optimization occurs after
 // branch relaxation so be pessimistic.
-let Size = 12, Constraints = "@earlyclobber $dst,@earlyclobber $scratch" in {
+let Size = 12, Constraints = "@earlyclobber $dst,@earlyclobber $scratch",
+    isNotDuplicable = 1 in {
 def JumpTableDest32 : Pseudo<(outs GPR64:$dst, GPR64sp:$scratch),
                              (ins GPR64:$table, GPR64:$entry, i32imm:$jti), []>,
                       Sched<[]>;
@@ -3811,7 +3822,7 @@ defm FMOV : FPMoveImmediate<"fmov">;
 //===----------------------------------------------------------------------===//
 
 defm UABDL   : SIMDLongThreeVectorBHSabdl<1, 0b0111, "uabdl",
-                                          int_aarch64_neon_uabd>;
+                                          AArch64uabd>;
 // Match UABDL in log2-shuffle patterns.
 def : Pat<(abs (v8i16 (sub (zext (v8i8 V64:$opA)),
                            (zext (v8i8 V64:$opB))))),
@@ -4081,8 +4092,8 @@ defm MLS      : SIMDThreeSameVectorBHSTied<1, 0b10010, "mls", null_frag>;
 defm MUL      : SIMDThreeSameVectorBHS<0, 0b10011, "mul", mul>;
 defm PMUL     : SIMDThreeSameVectorB<1, 0b10011, "pmul", int_aarch64_neon_pmul>;
 defm SABA     : SIMDThreeSameVectorBHSTied<0, 0b01111, "saba",
-      TriOpFrag<(add node:$LHS, (int_aarch64_neon_sabd node:$MHS, node:$RHS))> >;
-defm SABD     : SIMDThreeSameVectorBHS<0,0b01110,"sabd", int_aarch64_neon_sabd>;
+      TriOpFrag<(add node:$LHS, (AArch64sabd node:$MHS, node:$RHS))> >;
+defm SABD     : SIMDThreeSameVectorBHS<0,0b01110,"sabd", AArch64sabd>;
 defm SHADD    : SIMDThreeSameVectorBHS<0,0b00000,"shadd", AArch64shadd>;
 defm SHSUB    : SIMDThreeSameVectorBHS<0,0b00100,"shsub", int_aarch64_neon_shsub>;
 defm SMAXP    : SIMDThreeSameVectorBHS<0,0b10100,"smaxp", int_aarch64_neon_smaxp>;
@@ -4100,8 +4111,8 @@ defm SRSHL    : SIMDThreeSameVector<0,0b01010,"srshl", int_aarch64_neon_srshl>;
 defm SSHL     : SIMDThreeSameVector<0,0b01000,"sshl", int_aarch64_neon_sshl>;
 defm SUB      : SIMDThreeSameVector<1,0b10000,"sub", sub>;
 defm UABA     : SIMDThreeSameVectorBHSTied<1, 0b01111, "uaba",
-      TriOpFrag<(add node:$LHS, (int_aarch64_neon_uabd node:$MHS, node:$RHS))> >;
-defm UABD     : SIMDThreeSameVectorBHS<1,0b01110,"uabd", int_aarch64_neon_uabd>;
+      TriOpFrag<(add node:$LHS, (AArch64uabd node:$MHS, node:$RHS))> >;
+defm UABD     : SIMDThreeSameVectorBHS<1,0b01110,"uabd", AArch64uabd>;
 defm UHADD    : SIMDThreeSameVectorBHS<1,0b00000,"uhadd", AArch64uhadd>;
 defm UHSUB    : SIMDThreeSameVectorBHS<1,0b00100,"uhsub", int_aarch64_neon_uhsub>;
 defm UMAXP    : SIMDThreeSameVectorBHS<1,0b10100,"umaxp", int_aarch64_neon_umaxp>;
@@ -4675,9 +4686,9 @@ defm RADDHN : SIMDNarrowThreeVectorBHS<1,0b0100,"raddhn",int_aarch64_neon_raddhn
 defm RSUBHN : SIMDNarrowThreeVectorBHS<1,0b0110,"rsubhn",int_aarch64_neon_rsubhn>;
 defm PMULL  : SIMDDifferentThreeVectorBD<0,0b1110,"pmull",int_aarch64_neon_pmull>;
 defm SABAL  : SIMDLongThreeVectorTiedBHSabal<0,0b0101,"sabal",
-                                             int_aarch64_neon_sabd>;
+                                             AArch64sabd>;
 defm SABDL   : SIMDLongThreeVectorBHSabdl<0, 0b0111, "sabdl",
-                                          int_aarch64_neon_sabd>;
+                                          AArch64sabd>;
 defm SADDL   : SIMDLongThreeVectorBHS<   0, 0b0000, "saddl",
             BinOpFrag<(add (sext node:$LHS), (sext node:$RHS))>>;
 defm SADDW   : SIMDWideThreeVectorBHS<   0, 0b0001, "saddw",
@@ -4698,7 +4709,7 @@ defm SSUBL   : SIMDLongThreeVectorBHS<0, 0b0010, "ssubl",
 defm SSUBW   : SIMDWideThreeVectorBHS<0, 0b0011, "ssubw",
                  BinOpFrag<(sub node:$LHS, (sext node:$RHS))>>;
 defm UABAL   : SIMDLongThreeVectorTiedBHSabal<1, 0b0101, "uabal",
-                                              int_aarch64_neon_uabd>;
+                                              AArch64uabd>;
 defm UADDL   : SIMDLongThreeVectorBHS<1, 0b0000, "uaddl",
                  BinOpFrag<(add (zext node:$LHS), (zext node:$RHS))>>;
 defm UADDW   : SIMDWideThreeVectorBHS<1, 0b0001, "uaddw",
@@ -7482,6 +7493,9 @@ def : Pat<(f64 (fadd (vector_extract (v2f64 FPR128:$Rn), (i64 0)),
 def : Pat<(fadd (vector_extract (v4f32 FPR128:$Rn), (i64 0)),
                 (vector_extract (v4f32 FPR128:$Rn), (i64 1))),
           (f32 (FADDPv2i32p (EXTRACT_SUBREG FPR128:$Rn, dsub)))>;
+def : Pat<(fadd (vector_extract (v8f16 FPR128:$Rn), (i64 0)),
+                (vector_extract (v8f16 FPR128:$Rn), (i64 1))),
+          (f16 (FADDPv2i16p (EXTRACT_SUBREG FPR128:$Rn, dsub)))>;
 
 // Scalar 64-bit shifts in FPR64 registers.
 def : Pat<(i64 (int_aarch64_neon_sshl (i64 FPR64:$Rn), (i64 FPR64:$Rm))),

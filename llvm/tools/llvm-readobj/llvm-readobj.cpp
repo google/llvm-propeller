@@ -272,6 +272,10 @@ namespace opts {
   COFFDebugDirectory("coff-debug-directory",
                      cl::desc("Display the PE/COFF debug directory"));
 
+  // --coff-tls-directory
+  cl::opt<bool> COFFTLSDirectory("coff-tls-directory",
+                                 cl::desc("Display the PE/COFF TLS directory"));
+
   // --coff-resources
   cl::opt<bool> COFFResources("coff-resources",
                               cl::desc("Display the PE/COFF .rsrc section"));
@@ -495,13 +499,13 @@ static void dumpObject(const ObjectFile &Obj, ScopedPrinter &Writer,
   if (opts::Symbols || opts::DynamicSymbols)
     Dumper->printSymbols(opts::Symbols, opts::DynamicSymbols);
   if (!opts::StringDump.empty())
-    Dumper->printSectionsAsString(&Obj, opts::StringDump);
+    Dumper->printSectionsAsString(Obj, opts::StringDump);
   if (!opts::HexDump.empty())
-    Dumper->printSectionsAsHex(&Obj, opts::HexDump);
+    Dumper->printSectionsAsHex(Obj, opts::HexDump);
   if (opts::HashTable)
     Dumper->printHashTable();
   if (opts::GnuHashTable)
-    Dumper->printGnuHashTable(&Obj);
+    Dumper->printGnuHashTable();
   if (opts::VersionInfo)
     Dumper->printVersionInfo();
   if (Obj.isELF()) {
@@ -533,6 +537,8 @@ static void dumpObject(const ObjectFile &Obj, ScopedPrinter &Writer,
       Dumper->printCOFFBaseReloc();
     if (opts::COFFDebugDirectory)
       Dumper->printCOFFDebugDirectory();
+    if (opts::COFFTLSDirectory)
+      Dumper->printCOFFTLSDirectory();
     if (opts::COFFResources)
       Dumper->printCOFFResources();
     if (opts::COFFLoadConfig)

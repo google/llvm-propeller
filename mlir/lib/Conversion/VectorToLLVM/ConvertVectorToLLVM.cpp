@@ -561,34 +561,42 @@ public:
     auto kind = reductionOp.kind();
     Type eltType = reductionOp.dest().getType();
     Type llvmType = typeConverter.convertType(eltType);
-    if (eltType.isSignlessInteger(32) || eltType.isSignlessInteger(64)) {
+    if (eltType.isIntOrIndex()) {
       // Integer reductions: add/mul/min/max/and/or/xor.
       if (kind == "add")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_add>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_add>(
             op, llvmType, operands[0]);
       else if (kind == "mul")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_mul>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_mul>(
+            op, llvmType, operands[0]);
+      else if (kind == "min" &&
+               (eltType.isIndex() || eltType.isUnsignedInteger()))
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_umin>(
             op, llvmType, operands[0]);
       else if (kind == "min")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_smin>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_smin>(
+            op, llvmType, operands[0]);
+      else if (kind == "max" &&
+               (eltType.isIndex() || eltType.isUnsignedInteger()))
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_umax>(
             op, llvmType, operands[0]);
       else if (kind == "max")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_smax>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_smax>(
             op, llvmType, operands[0]);
       else if (kind == "and")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_and>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_and>(
             op, llvmType, operands[0]);
       else if (kind == "or")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_or>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_or>(
             op, llvmType, operands[0]);
       else if (kind == "xor")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_xor>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_xor>(
             op, llvmType, operands[0]);
       else
         return failure();
       return success();
 
-    } else if (eltType.isF32() || eltType.isF64()) {
+    } else if (eltType.isa<FloatType>()) {
       // Floating-point reductions: add/mul/min/max
       if (kind == "add") {
         // Optional accumulator (or zero).
@@ -596,7 +604,7 @@ public:
                                         : rewriter.create<LLVM::ConstantOp>(
                                               op->getLoc(), llvmType,
                                               rewriter.getZeroAttr(eltType));
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_v2_fadd>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_fadd>(
             op, llvmType, acc, operands[0],
             rewriter.getBoolAttr(reassociateFPReductions));
       } else if (kind == "mul") {
@@ -606,14 +614,14 @@ public:
                         : rewriter.create<LLVM::ConstantOp>(
                               op->getLoc(), llvmType,
                               rewriter.getFloatAttr(eltType, 1.0));
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_v2_fmul>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_fmul>(
             op, llvmType, acc, operands[0],
             rewriter.getBoolAttr(reassociateFPReductions));
       } else if (kind == "min")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_fmin>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_fmin>(
             op, llvmType, operands[0]);
       else if (kind == "max")
-        rewriter.replaceOpWithNewOp<LLVM::experimental_vector_reduce_fmax>(
+        rewriter.replaceOpWithNewOp<LLVM::vector_reduce_fmax>(
             op, llvmType, operands[0]);
       else
         return failure();
@@ -1090,23 +1098,35 @@ public:
   bool hasBoundedRewriteRecursion() const final { return true; }
 };
 
-/// Returns true if the memory underlying `memRefType` has a contiguous layout.
-/// Strides are written to `strides`.
-static bool isContiguous(MemRefType memRefType,
-                         SmallVectorImpl<int64_t> &strides) {
+/// Returns the strides if the memory underlying `memRefType` has a contiguous
+/// static layout.
+static llvm::Optional<SmallVector<int64_t, 4>>
+computeContiguousStrides(MemRefType memRefType) {
   int64_t offset;
-  auto successStrides = getStridesAndOffset(memRefType, strides, offset);
-  bool isContiguous = strides.empty() || strides.back() == 1;
-  if (isContiguous) {
-    auto sizes = memRefType.getShape();
-    for (int index = 0, e = strides.size() - 2; index < e; ++index) {
-      if (strides[index] != strides[index + 1] * sizes[index + 1]) {
-        isContiguous = false;
-        break;
-      }
-    }
+  SmallVector<int64_t, 4> strides;
+  if (failed(getStridesAndOffset(memRefType, strides, offset)))
+    return None;
+  if (!strides.empty() && strides.back() != 1)
+    return None;
+  // If no layout or identity layout, this is contiguous by definition.
+  if (memRefType.getAffineMaps().empty() ||
+      memRefType.getAffineMaps().front().isIdentity())
+    return strides;
+
+  // Otherwise, we must determine contiguity form shapes. This can only ever
+  // work in static cases because MemRefType is underspecified to represent
+  // contiguous dynamic shapes in other ways than with just empty/identity
+  // layout.
+  auto sizes = memRefType.getShape();
+  for (int index = 0, e = strides.size() - 2; index < e; ++index) {
+    if (ShapedType::isDynamic(sizes[index + 1]) ||
+        ShapedType::isDynamicStrideOrOffset(strides[index]) ||
+        ShapedType::isDynamicStrideOrOffset(strides[index + 1]))
+      return None;
+    if (strides[index] != strides[index + 1] * sizes[index + 1])
+      return None;
   }
-  return succeeded(successStrides) && isContiguous;
+  return strides;
 }
 
 class VectorTypeCastOpConversion : public ConvertToLLVMPattern {
@@ -1142,9 +1162,17 @@ public:
     if (!llvmTargetDescriptorTy || !llvmTargetDescriptorTy.isStructTy())
       return failure();
 
-    // Only contiguous source tensors supported atm.
-    SmallVector<int64_t, 4> strides;
-    if (!isContiguous(sourceMemRefType, strides))
+    // Only contiguous source buffers supported atm.
+    auto sourceStrides = computeContiguousStrides(sourceMemRefType);
+    if (!sourceStrides)
+      return failure();
+    auto targetStrides = computeContiguousStrides(targetMemRefType);
+    if (!targetStrides)
+      return failure();
+    // Only support static strides for now, regardless of contiguity.
+    if (llvm::any_of(*targetStrides, [](int64_t stride) {
+          return ShapedType::isDynamicStrideOrOffset(stride);
+        }))
       return failure();
 
     auto int64Ty = LLVM::LLVMType::getInt64Ty(rewriter.getContext());
@@ -1173,8 +1201,8 @@ public:
           rewriter.getIntegerAttr(rewriter.getIndexType(), indexedSize.value());
       auto size = rewriter.create<LLVM::ConstantOp>(loc, int64Ty, sizeAttr);
       desc.setSize(rewriter, loc, index, size);
-      auto strideAttr =
-          rewriter.getIntegerAttr(rewriter.getIndexType(), strides[index]);
+      auto strideAttr = rewriter.getIntegerAttr(rewriter.getIndexType(),
+                                                (*targetStrides)[index]);
       auto stride = rewriter.create<LLVM::ConstantOp>(loc, int64Ty, strideAttr);
       desc.setStride(rewriter, loc, index, stride);
     }
@@ -1215,8 +1243,8 @@ public:
                                        op->getContext()))
       return failure();
     // Only contiguous source tensors supported atm.
-    SmallVector<int64_t, 4> strides;
-    if (!isContiguous(xferOp.getMemRefType(), strides))
+    auto strides = computeContiguousStrides(xferOp.getMemRefType());
+    if (!strides)
       return failure();
 
     auto toLLVMTy = [&](Type t) { return typeConverter.convertType(t); };
@@ -1319,44 +1347,82 @@ public:
     if (typeConverter.convertType(printType) == nullptr)
       return failure();
 
-    // Make sure element type has runtime support (currently just Float/Double).
+    // Make sure element type has runtime support.
+    PrintConversion conversion = PrintConversion::None;
     VectorType vectorType = printType.dyn_cast<VectorType>();
     Type eltType = vectorType ? vectorType.getElementType() : printType;
-    int64_t rank = vectorType ? vectorType.getRank() : 0;
     Operation *printer;
-    if (eltType.isSignlessInteger(1) || eltType.isSignlessInteger(32))
-      printer = getPrintI32(op);
-    else if (eltType.isSignlessInteger(64))
-      printer = getPrintI64(op);
-    else if (eltType.isF32())
+    if (eltType.isF32()) {
       printer = getPrintFloat(op);
-    else if (eltType.isF64())
+    } else if (eltType.isF64()) {
       printer = getPrintDouble(op);
-    else
+    } else if (eltType.isIndex()) {
+      printer = getPrintU64(op);
+    } else if (auto intTy = eltType.dyn_cast<IntegerType>()) {
+      // Integers need a zero or sign extension on the operand
+      // (depending on the source type) as well as a signed or
+      // unsigned print method. Up to 64-bit is supported.
+      unsigned width = intTy.getWidth();
+      if (intTy.isUnsigned()) {
+        if (width <= 64) {
+          if (width < 64)
+            conversion = PrintConversion::ZeroExt64;
+          printer = getPrintU64(op);
+        } else {
+          return failure();
+        }
+      } else {
+        assert(intTy.isSignless() || intTy.isSigned());
+        if (width <= 64) {
+          // Note that we *always* zero extend booleans (1-bit integers),
+          // so that true/false is printed as 1/0 rather than -1/0.
+          if (width == 1)
+            conversion = PrintConversion::ZeroExt64;
+          else if (width < 64)
+            conversion = PrintConversion::SignExt64;
+          printer = getPrintI64(op);
+        } else {
+          return failure();
+        }
+      }
+    } else {
       return failure();
+    }
 
     // Unroll vector into elementary print calls.
-    emitRanks(rewriter, op, adaptor.source(), vectorType, printer, rank);
+    int64_t rank = vectorType ? vectorType.getRank() : 0;
+    emitRanks(rewriter, op, adaptor.source(), vectorType, printer, rank,
+              conversion);
     emitCall(rewriter, op->getLoc(), getPrintNewline(op));
     rewriter.eraseOp(op);
     return success();
   }
 
 private:
+  enum class PrintConversion {
+    // clang-format off
+    None,
+    ZeroExt64,
+    SignExt64
+    // clang-format on
+  };
+
   void emitRanks(ConversionPatternRewriter &rewriter, Operation *op,
                  Value value, VectorType vectorType, Operation *printer,
-                 int64_t rank) const {
+                 int64_t rank, PrintConversion conversion) const {
     Location loc = op->getLoc();
     if (rank == 0) {
-      if (value.getType() == LLVM::LLVMType::getInt1Ty(rewriter.getContext())) {
-        // Convert i1 (bool) to i32 so we can use the print_i32 method.
-        // This avoids the need for a print_i1 method with an unclear ABI.
-        auto i32Type = LLVM::LLVMType::getInt32Ty(rewriter.getContext());
-        auto trueVal = rewriter.create<ConstantOp>(
-            loc, i32Type, rewriter.getI32IntegerAttr(1));
-        auto falseVal = rewriter.create<ConstantOp>(
-            loc, i32Type, rewriter.getI32IntegerAttr(0));
-        value = rewriter.create<SelectOp>(loc, value, trueVal, falseVal);
+      switch (conversion) {
+      case PrintConversion::ZeroExt64:
+        value = rewriter.create<ZeroExtendIOp>(
+            loc, value, LLVM::LLVMType::getInt64Ty(rewriter.getContext()));
+        break;
+      case PrintConversion::SignExt64:
+        value = rewriter.create<SignExtendIOp>(
+            loc, value, LLVM::LLVMType::getInt64Ty(rewriter.getContext()));
+        break;
+      case PrintConversion::None:
+        break;
       }
       emitCall(rewriter, loc, printer, value);
       return;
@@ -1372,7 +1438,8 @@ private:
           rank > 1 ? reducedType : vectorType.getElementType());
       Value nestedVal =
           extractOne(rewriter, typeConverter, loc, value, llvmType, rank, d);
-      emitRanks(rewriter, op, nestedVal, reducedType, printer, rank - 1);
+      emitRanks(rewriter, op, nestedVal, reducedType, printer, rank - 1,
+                conversion);
       if (d != dim - 1)
         emitCall(rewriter, loc, printComma);
     }
@@ -1382,7 +1449,7 @@ private:
   // Helper to emit a call.
   static void emitCall(ConversionPatternRewriter &rewriter, Location loc,
                        Operation *ref, ValueRange params = ValueRange()) {
-    rewriter.create<LLVM::CallOp>(loc, ArrayRef<Type>{},
+    rewriter.create<LLVM::CallOp>(loc, TypeRange(),
                                   rewriter.getSymbolRefAttr(ref), params);
   }
 
@@ -1402,33 +1469,33 @@ private:
   }
 
   // Helpers for method names.
-  Operation *getPrintI32(Operation *op) const {
-    return getPrint(op, "print_i32",
-                    LLVM::LLVMType::getInt32Ty(op->getContext()));
-  }
   Operation *getPrintI64(Operation *op) const {
-    return getPrint(op, "print_i64",
+    return getPrint(op, "printI64",
+                    LLVM::LLVMType::getInt64Ty(op->getContext()));
+  }
+  Operation *getPrintU64(Operation *op) const {
+    return getPrint(op, "printU64",
                     LLVM::LLVMType::getInt64Ty(op->getContext()));
   }
   Operation *getPrintFloat(Operation *op) const {
-    return getPrint(op, "print_f32",
+    return getPrint(op, "printF32",
                     LLVM::LLVMType::getFloatTy(op->getContext()));
   }
   Operation *getPrintDouble(Operation *op) const {
-    return getPrint(op, "print_f64",
+    return getPrint(op, "printF64",
                     LLVM::LLVMType::getDoubleTy(op->getContext()));
   }
   Operation *getPrintOpen(Operation *op) const {
-    return getPrint(op, "print_open", {});
+    return getPrint(op, "printOpen", {});
   }
   Operation *getPrintClose(Operation *op) const {
-    return getPrint(op, "print_close", {});
+    return getPrint(op, "printClose", {});
   }
   Operation *getPrintComma(Operation *op) const {
-    return getPrint(op, "print_comma", {});
+    return getPrint(op, "printComma", {});
   }
   Operation *getPrintNewline(Operation *op) const {
-    return getPrint(op, "print_newline", {});
+    return getPrint(op, "printNewline", {});
   }
 };
 

@@ -87,7 +87,7 @@ static cl::opt<bool> PrintAfterAll("print-after-all",
 static cl::opt<bool>
     PrintModuleScope("print-module-scope",
                      cl::desc("When printing IR for print-[before|after]{-all} "
-                              "and change reporters always print a module IR"),
+                              "and change reporters, always print a module IR"),
                      cl::init(false), cl::Hidden);
 
 static cl::list<std::string>

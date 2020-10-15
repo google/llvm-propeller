@@ -22,6 +22,7 @@
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassInstrumentation.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -33,7 +34,7 @@ using namespace llvm;
 
 // TODO: remove once all required passes are marked as such.
 static cl::opt<bool>
-    EnableOptnone("enable-npm-optnone", cl::init(false),
+    EnableOptnone("enable-npm-optnone", cl::init(true),
                   cl::desc("Enable skipping optional passes optnone functions "
                            "under new pass manager"));
 
@@ -52,7 +53,7 @@ static cl::opt<bool>
                    cl::desc("Print all pass management debugging information. "
                             "`-debug-pass-manager` must also be specified"));
 
-// A hidden option that prints out the IR after passes, similar to
+// An option that prints out the IR after passes, similar to
 // -print-after-all except that it only prints the IR after passes that
 // change the IR.  Those passes that do not make changes to the IR are
 // reported as not making any changes.  In addition, the initial IR is
@@ -71,7 +72,7 @@ static cl::opt<bool>
 static cl::opt<bool> PrintChanged("print-changed",
                                   cl::desc("Print changed IRs"),
                                   cl::init(false), cl::Hidden);
-// A hidden option that supports the -print-changed option.  See
+// An option that supports the -print-changed option.  See
 // the description for -print-changed for an explanation of the use
 // of this option.  Note that this option has no effect without -print-changed.
 static cl::list<std::string>
@@ -84,14 +85,16 @@ namespace {
 
 /// Extracting Module out of \p IR unit. Also fills a textual description
 /// of \p IR for use in header when printing.
-Optional<std::pair<const Module *, std::string>> unwrapModule(Any IR) {
+Optional<std::pair<const Module *, std::string>>
+unwrapModule(Any IR, bool Force = false) {
   if (any_isa<const Module *>(IR))
     return std::make_pair(any_cast<const Module *>(IR), std::string());
 
   if (any_isa<const Function *>(IR)) {
     const Function *F = any_cast<const Function *>(IR);
-    if (!llvm::isFunctionInPrintList(F->getName()))
+    if (!Force && !llvm::isFunctionInPrintList(F->getName()))
       return None;
+
     const Module *M = F->getParent();
     return std::make_pair(M, formatv(" (function: {0})", F->getName()).str());
   }
@@ -100,18 +103,19 @@ Optional<std::pair<const Module *, std::string>> unwrapModule(Any IR) {
     const LazyCallGraph::SCC *C = any_cast<const LazyCallGraph::SCC *>(IR);
     for (const LazyCallGraph::Node &N : *C) {
       const Function &F = N.getFunction();
-      if (!F.isDeclaration() && isFunctionInPrintList(F.getName())) {
+      if (Force || (!F.isDeclaration() && isFunctionInPrintList(F.getName()))) {
         const Module *M = F.getParent();
         return std::make_pair(M, formatv(" (scc: {0})", C->getName()).str());
       }
     }
+    assert(!Force && "Expected to have made a pair when forced.");
     return None;
   }
 
   if (any_isa<const Loop *>(IR)) {
     const Loop *L = any_cast<const Loop *>(IR);
     const Function *F = L->getHeader()->getParent();
-    if (!isFunctionInPrintList(F->getName()))
+    if (!Force && !isFunctionInPrintList(F->getName()))
       return None;
     const Module *M = F->getParent();
     std::string LoopName;
@@ -230,19 +234,19 @@ void unwrapAndPrint(raw_ostream &OS, Any IR, StringRef Banner,
 }
 
 // Return true when this is a pass for which changes should be ignored
-inline bool isIgnored(StringRef PassID) {
+bool isIgnored(StringRef PassID) {
   return isSpecialPass(PassID,
                        {"PassManager", "PassAdaptor", "AnalysisManagerProxy"});
 }
 
 // Return true when this is a defined function for which printing
 // of changes is desired.
-inline bool isInterestingFunction(const Function &F) {
+bool isInterestingFunction(const Function &F) {
   return llvm::isFunctionInPrintList(F.getName());
 }
 
 // Return true when this is a pass for which printing of changes is desired.
-inline bool isInterestingPass(StringRef PassID) {
+bool isInterestingPass(StringRef PassID) {
   if (isIgnored(PassID))
     return false;
 
@@ -279,7 +283,7 @@ void ChangePrinter<IRUnitT>::saveIRBeforePass(Any IR, StringRef PassID) {
   }
 
   // Save the IR representation on the stack.
-  auto &Data = BeforeStack.back();
+  IRUnitT &Data = BeforeStack.back();
   generateIRRepresentation(IR, PassID, Data);
 }
 
@@ -296,7 +300,7 @@ void ChangePrinter<IRUnitT>::handleIRAfterPass(Any IR, StringRef PassID) {
     if (auto UM = unwrapModule(IR))
       Name = UM->second;
   }
-  if (Name == "")
+  if (Name.empty())
     Name = " (module)";
 
   if (isIgnored(PassID))
@@ -310,7 +314,7 @@ void ChangePrinter<IRUnitT>::handleIRAfterPass(Any IR, StringRef PassID) {
     IRUnitT After;
     generateIRRepresentation(IR, PassID, After);
 
-    // was there a change in IR?
+    // Was there a change in IR?
     if (same(Before, After))
       omitAfter(PassID, Name);
     else
@@ -337,9 +341,7 @@ template <typename IRUnitT> ChangePrinter<IRUnitT>::~ChangePrinter<IRUnitT>() {
 
 IRChangePrinter::IRChangePrinter() : Out(dbgs()) {}
 
-IRChangePrinter::~IRChangePrinter() {
-  ChangePrinter<std::string>::~ChangePrinter();
-}
+IRChangePrinter::~IRChangePrinter() {}
 
 void IRChangePrinter::registerCallbacks(PassInstrumentationCallbacks &PIC) {
   if (!PrintChanged)
@@ -361,9 +363,13 @@ void IRChangePrinter::registerCallbacks(PassInstrumentationCallbacks &PIC) {
 }
 
 void IRChangePrinter::handleInitialIR(Any IR) {
-  StringRef Banner("*** IR Dump At Start: ***");
-  unwrapAndPrint(Out, IR, Banner, true,
-                 /*Brief*/ false, /*ShouldPreserveUseListOrder*/ true);
+  // Always print the module.
+  // Unwrap and print directly to avoid filtering problems in general routines.
+  auto UnwrappedModule = unwrapModule(IR, /*Force=*/true);
+  assert(UnwrappedModule && "Expected module to be unwrapped when forced.");
+  Out << "*** IR Dump At Start: ***" << UnwrappedModule->second << "\n";
+  UnwrappedModule->first->print(Out, nullptr,
+                                /*ShouldPreserveUseListOrder=*/true);
 }
 
 void IRChangePrinter::generateIRRepresentation(Any IR, StringRef PassID,
@@ -372,7 +378,7 @@ void IRChangePrinter::generateIRRepresentation(Any IR, StringRef PassID,
   // use the after banner for all cases so it will match
   SmallString<20> Banner = formatv("*** IR Dump After {0} ***", PassID);
   unwrapAndPrint(OS, IR, Banner, llvm::forcePrintModuleIR(),
-                 /*Brief*/ false, /*ShouldPreserveUseListOrder*/ true);
+                 /*Brief=*/false, /*ShouldPreserveUseListOrder=*/true);
   OS.str();
 }
 
@@ -392,7 +398,7 @@ void IRChangePrinter::handleAfter(StringRef PassID, std::string &Name,
 
   // LazyCallGraph::SCC already has "(scc:..." in banner so only add
   // in the name if it isn't already there.
-  if (Name.substr(0, 6).compare(" (scc:") != 0 && !llvm::forcePrintModuleIR())
+  if (Name.substr(0, 6) != " (scc:" && !llvm::forcePrintModuleIR())
     Out << Name;
 
   Out << After.substr(Banner.size());
@@ -414,8 +420,8 @@ void IRChangePrinter::handleIgnored(StringRef PassID, std::string &Name) {
 
 bool IRChangePrinter::same(const std::string &Before,
                            const std::string &After) {
-  return Before.compare(After) == 0;
-};
+  return Before == After;
+}
 
 PrintIRInstrumentation::~PrintIRInstrumentation() {
   assert(ModuleDescStack.empty() && "ModuleDescStack is not empty at exit");
@@ -719,6 +725,42 @@ void PreservedCFGCheckerInstrumentation::registerCallbacks(
   });
 }
 
+void VerifyInstrumentation::registerCallbacks(
+    PassInstrumentationCallbacks &PIC) {
+  PIC.registerAfterPassCallback(
+      [this](StringRef P, Any IR, const PreservedAnalyses &PassPA) {
+        if (isIgnored(P) || P == "VerifierPass")
+          return;
+        if (any_isa<const Function *>(IR) || any_isa<const Loop *>(IR)) {
+          const Function *F;
+          if (any_isa<const Loop *>(IR))
+            F = any_cast<const Loop *>(IR)->getHeader()->getParent();
+          else
+            F = any_cast<const Function *>(IR);
+          if (DebugLogging)
+            dbgs() << "Verifying function " << F->getName() << "\n";
+
+          if (verifyFunction(*F))
+            report_fatal_error("Broken function found, compilation aborted!");
+        } else if (any_isa<const Module *>(IR) ||
+                   any_isa<const LazyCallGraph::SCC *>(IR)) {
+          const Module *M;
+          if (any_isa<const LazyCallGraph::SCC *>(IR))
+            M = any_cast<const LazyCallGraph::SCC *>(IR)
+                    ->begin()
+                    ->getFunction()
+                    .getParent();
+          else
+            M = any_cast<const Module *>(IR);
+          if (DebugLogging)
+            dbgs() << "Verifying module " << M->getName() << "\n";
+
+          if (verifyModule(*M))
+            report_fatal_error("Broken module found, compilation aborted!");
+        }
+      });
+}
+
 void StandardInstrumentations::registerCallbacks(
     PassInstrumentationCallbacks &PIC) {
   PrintIR.registerCallbacks(PIC);
@@ -727,4 +769,6 @@ void StandardInstrumentations::registerCallbacks(
   OptNone.registerCallbacks(PIC);
   PreservedCFGChecker.registerCallbacks(PIC);
   PrintChangedIR.registerCallbacks(PIC);
+  if (VerifyEach)
+    Verify.registerCallbacks(PIC);
 }

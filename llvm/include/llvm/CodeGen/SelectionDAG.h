@@ -331,6 +331,29 @@ public:
     virtual void anchor();
   };
 
+  /// Help to insert SDNodeFlags automatically in transforming. Use
+  /// RAII to save and resume flags in current scope.
+  class FlagInserter {
+    SelectionDAG &DAG;
+    SDNodeFlags Flags;
+    FlagInserter *LastInserter;
+
+  public:
+    FlagInserter(SelectionDAG &SDAG, SDNodeFlags Flags)
+        : DAG(SDAG), Flags(Flags),
+          LastInserter(SDAG.getFlagInserter()) {
+      SDAG.setFlagInserter(this);
+    }
+    FlagInserter(SelectionDAG &SDAG, SDNode *N)
+        : FlagInserter(SDAG, N->getFlags()) {}
+
+    FlagInserter(const FlagInserter &) = delete;
+    FlagInserter &operator=(const FlagInserter &) = delete;
+    ~FlagInserter() { DAG.setFlagInserter(LastInserter); }
+
+    const SDNodeFlags getFlags() const { return Flags; }
+  };
+
   /// When true, additional steps are taken to
   /// ensure that getConstant() and similar functions return DAG nodes that
   /// have legal types. This is important after type legalization since
@@ -432,6 +455,9 @@ public:
   OptimizationRemarkEmitter &getORE() const { return *ORE; }
   ProfileSummaryInfo *getPSI() const { return PSI; }
   BlockFrequencyInfo *getBFI() const { return BFI; }
+
+  FlagInserter *getFlagInserter() { return Inserter; }
+  void setFlagInserter(FlagInserter *FI) { Inserter = FI; }
 
   /// Just dump dot graph to a user-provided path and title.
   /// This doesn't open the dot viewer program and
@@ -945,21 +971,31 @@ public:
   SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT,
                   ArrayRef<SDUse> Ops);
   SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT,
-                  ArrayRef<SDValue> Ops, const SDNodeFlags Flags = SDNodeFlags());
+                  ArrayRef<SDValue> Ops, const SDNodeFlags Flags);
   SDValue getNode(unsigned Opcode, const SDLoc &DL, ArrayRef<EVT> ResultTys,
                   ArrayRef<SDValue> Ops);
   SDValue getNode(unsigned Opcode, const SDLoc &DL, SDVTList VTList,
-                  ArrayRef<SDValue> Ops, const SDNodeFlags Flags = SDNodeFlags());
+                  ArrayRef<SDValue> Ops, const SDNodeFlags Flags);
+
+  // Use flags from current flag inserter.
+  SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT,
+                  ArrayRef<SDValue> Ops);
+  SDValue getNode(unsigned Opcode, const SDLoc &DL, SDVTList VTList,
+                  ArrayRef<SDValue> Ops);
+  SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT, SDValue Operand);
+  SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT, SDValue N1,
+                  SDValue N2);
+  SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT, SDValue N1,
+                  SDValue N2, SDValue N3);
 
   // Specialize based on number of operands.
   SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT);
   SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT, SDValue Operand,
-                  const SDNodeFlags Flags = SDNodeFlags());
+                  const SDNodeFlags Flags);
   SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT, SDValue N1,
-                  SDValue N2, const SDNodeFlags Flags = SDNodeFlags());
+                  SDValue N2, const SDNodeFlags Flags);
   SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT, SDValue N1,
-                  SDValue N2, SDValue N3,
-                  const SDNodeFlags Flags = SDNodeFlags());
+                  SDValue N2, SDValue N3, const SDNodeFlags Flags);
   SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT, SDValue N1,
                   SDValue N2, SDValue N3, SDValue N4);
   SDValue getNode(unsigned Opcode, const SDLoc &DL, EVT VT, SDValue N1,
@@ -1049,8 +1085,8 @@ public:
   /// Helper function to make it easier to build SetCC's if you just have an
   /// ISD::CondCode instead of an SDValue.
   SDValue getSetCC(const SDLoc &DL, EVT VT, SDValue LHS, SDValue RHS,
-                   ISD::CondCode Cond, SDNodeFlags Flags = SDNodeFlags(),
-                   SDValue Chain = SDValue(), bool IsSignaling = false) {
+                   ISD::CondCode Cond, SDValue Chain = SDValue(),
+                   bool IsSignaling = false) {
     assert(LHS.getValueType().isVector() == RHS.getValueType().isVector() &&
            "Cannot compare scalars to vectors");
     assert(LHS.getValueType().isVector() == VT.isVector() &&
@@ -1060,7 +1096,7 @@ public:
     if (Chain)
       return getNode(IsSignaling ? ISD::STRICT_FSETCCS : ISD::STRICT_FSETCC, DL,
                      {VT, MVT::Other}, {Chain, LHS, RHS, getCondCode(Cond)});
-    return getNode(ISD::SETCC, DL, VT, LHS, RHS, getCondCode(Cond), Flags);
+    return getNode(ISD::SETCC, DL, VT, LHS, RHS, getCondCode(Cond));
   }
 
   /// Helper function to make it easier to build Select's if you just have
@@ -1390,6 +1426,9 @@ public:
   void setNodeMemRefs(MachineSDNode *N,
                       ArrayRef<MachineMemOperand *> NewMemRefs);
 
+  // Calculate divergence of node \p N based on its operands.
+  bool calculateDivergence(SDNode *N);
+
   // Propagates the change in divergence to users
   void updateDivergence(SDNode * N);
 
@@ -1469,8 +1508,10 @@ public:
                                 SDValue Operand, SDValue Subreg);
 
   /// Get the specified node if it's already available, or else return NULL.
-  SDNode *getNodeIfExists(unsigned Opcode, SDVTList VTList, ArrayRef<SDValue> Ops,
-                          const SDNodeFlags Flags = SDNodeFlags());
+  SDNode *getNodeIfExists(unsigned Opcode, SDVTList VTList,
+                          ArrayRef<SDValue> Ops, const SDNodeFlags Flags);
+  SDNode *getNodeIfExists(unsigned Opcode, SDVTList VTList,
+                          ArrayRef<SDValue> Ops);
 
   /// Creates a SDDbgValue node.
   SDDbgValue *getDbgValue(DIVariable *Var, DIExpression *Expr, SDNode *N,
@@ -1999,6 +2040,8 @@ private:
 
   std::map<std::pair<std::string, unsigned>, SDNode *> TargetExternalSymbols;
   DenseMap<MCSymbol *, SDNode *> MCSymbols;
+
+  FlagInserter *Inserter = nullptr;
 };
 
 template <> struct GraphTraits<SelectionDAG*> : public GraphTraits<SDNode*> {
