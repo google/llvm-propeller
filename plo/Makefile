@@ -400,7 +400,7 @@ cspgo-plo/build/bin/clang-${CLANG_VERSION}: stage-cspgo.profdata stage-pgo.profd
 benchmark-dir.o: | stage1-compiler
 	mkdir -p benchmark-dir/source
 	mkdir -p benchmark-dir/build
-	rsync -av -f "- .git*" -f "+ clang/***" -f "+ lld/***" -f "+ llvm/***" -f "- *" $(DDIR)/../ benchmark-dir/source/
+	rsync -av -f "- .git*" -f "+ clang/***" -f "+ lld/***" -f "+ llvm/***" -f "+ libunwind/***" -f "- *" $(DDIR)/../ benchmark-dir/source/
 	cd benchmark-dir/build ; \
 		export TOOLCHAIN="$(DDIR)/stage1/install/bin" ; \
 		cmake -G Ninja -DCMAKE_C_COMPILER=$${TOOLCHAIN}/clang -DCMAKE_CXX_COMPILER=$${TOOLCHAIN}/clang++ -DCMAKE_ASM_COMPILER=$${TOOLCHAIN}/clang \
