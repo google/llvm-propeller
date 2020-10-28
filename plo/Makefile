@@ -18,7 +18,6 @@ ifeq '${CREATE_LLVM_PROF_DIR}' ''
 CREATE_LLVM_PROF_DIR=$(shell pwd)/..
 endif
 
-NUM_CLONES ?= 0
 DO_PLO     ?= 0
 ENABLE_EH  ?= OFF
 BUILD_TYPE ?= Release
@@ -50,6 +49,7 @@ check_environment: paths.mk
 	echo "clang version is: ${CLANG_VERSION}" > $@
 
 CREATE_LLVM_PROF=${CREATE_LLVM_PROF_DIR}/create_llvm_prof
+CREATE_PROPELLER_PROF=/google/src/cloud/rahmanl/ml-bb-cloning/google3/blaze-bin/experimental/users/rahmanl/propeller/create_propeller_prof
 ITERATIONS ?= 10
 GITHASH := $(shell git rev-parse HEAD)
 $(shell git diff > gitdiff)
@@ -119,7 +119,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,--no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,--optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist-cluster-paths pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split afdo-vanilla afdo-split plain pgo-hcs
+FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split afdo-vanilla afdo-split plain pgo-hcs
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -138,6 +138,7 @@ interp_opt                 := -Wl,--propeller-opt=reorder-ip
 random_opt                 := -Wl,--propeller-opt=reorder-blocks-random
 distance_cutoff_opt        := -Wl,--propeller-forward-jump-distance=2000 -Wl,--propeller-backward-jump-distance=2000
 symbol_order_opt           := -Wl,--symbol-ordering-file=$(DDIR)/pgo-labels-compiler.propeller.order
+paths_symbol_order_opt     := -Wl,--symbol-ordering-file=$(DDIR)/pgo-labels-compiler.paths.propeller.order
 other_opt                  := -Wl,-propeller-keep-named-symbols -Wl,-propeller-dump-symbol-order=order.txt -Wl,-build-id
 split_funcs_only           := -Wl,-propeller-opt=no-reorder-blocks -Wl,-propeller-opt=no-reorder-funcs
 lto_bb_sections_all_opt    := -Wl,--lto-basic-block-sections=all
@@ -173,7 +174,6 @@ define build_compiler
 		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE)                 \
 		-DLLVM_ENABLE_EH=$(ENABLE_EH)                    \
 		-DLLVM_ENABLE_RTTI=$(ENABLE_EH)                  \
-		-DLLVM_ENABLE_DUMP=ON				\
 		-DLLVM_ENABLE_LLD="On"                           \
 		-DCMAKE_LINKER="lld"                             \
 		-DLLVM_TARGETS_TO_BUILD="X86"                    \
@@ -235,7 +235,7 @@ pgo-plolist-cluster-compiler: pgo-plolist/build/bin/clang-${CLANG_VERSION}-clust
 	ln -sf $< $@
 	touch $@
 
-pgo-plolist-cluster-paths-compiler: pgo-plolist-paths/build/bin/clang-${CLANG_VERSION}-cluster | check_environment
+pgo-plolist-paths-cluster-compiler: pgo-plolist-paths/build/bin/clang-${CLANG_VERSION}-cluster | check_environment
 	ln -sf $< $@
 	touch $@
 
@@ -258,7 +258,6 @@ nonepgolabels/build/bin/clang-${CLANG_VERSION}: | stage1-compiler
 
 pgo-labels/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(bb_section_labels_flags),"clang;compiler-rt;lld",clang lld)
-	if readelf -WS "$@" | grep --quiet -E ".bb_addr_map\s+PROGBITS" ; then echo "Found .bb_addr_map section." ; else echo "No .bb_addr_map found in $@." ; rm -f $@ ; fi
 
 pgo-relocs/build/bin/clang-${CLANG_VERSION}: stage-pgo-relocs.profdata
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call gen_build_flags, "-funique-internal-linkage-names","$(gc_sections_opt) $(keep_section_opt) $(relocation_gen_opt)"), "clang;compiler-rt;lld",clang lld)
@@ -290,29 +289,21 @@ pgo-split/build/bin/clang-${CLANG_VERSION}: stage-pgo-vanilla.profdata stage1-co
 pgo-plo/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_all_flags,$(DDIR)/pgo-labels-compiler.propeller),"clang;compiler-rt;lld",clang lld)
 
-pgo-plolist-paths/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.paths.propeller
-	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.paths.propeller,,),"clang;compiler-rt;lld",clang lld)
-
 pgo-plolist/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.propeller,,),"clang;compiler-rt;lld",clang lld)
+
+pgo-plolist-paths/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.paths.propeller
+	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_flags,$(DDIR)/pgo-labels-compiler.paths.propeller,,),"clang;compiler-rt;lld",clang lld)
 
 pgo-plolist-align/build/bin/clang-${CLANG_VERSION}: stage-pgo-labels.profdata pgo-labels-compiler.propeller
 	$(call build_compiler,-DLLVM_PROFDATA_FILE=$(DDIR)/$< -DLLVM_ENABLE_LTO=Thin $(call bb_section_list_align_flags,$(DDIR)/pgo-labels-compiler.propeller,,),"clang;compiler-rt;lld",clang lld)
 
-pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip pgo-plo/build/bin/clang-${CLANG_VERSION}-ip: %/build/bin/clang-${CLANG_VERSION}-ip: %/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,$*,$(interp_opt),-ip)
-	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-ip.autolog
-
-pgo-plolist/build/bin/clang-${CLANG_VERSION}-ip-2000: pgo-plolist/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,pgo-plolist,$(interp_opt) $(distance_cutoff_opt),-ip-2000)
-	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-ip-2000.autolog
-
-pgo-plolist/build/bin/clang-${CLANG_VERSION}-2000: pgo-plolist/build/bin/clang-${CLANG_VERSION}
-	$(call gen_relink_script,pgo-plolist,$(distance_cutoff_opt),-2000)
-	cd pgo-plolist/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/pgo-plolist-2000.autolog
-
-pgo-plo/build/bin/clang-${CLANG_VERSION}-cluster pgo-plolist/build/bin/clang-${CLANG_VERSION}-cluster pgo-plolist-align/build/bin/clang-$(CLANG_VERSION)-cluster pgo-plolist-paths/build/bin/clang-${CLANG_VERSION}-cluster: %/build/bin/clang-${CLANG_VERSION}-cluster: %/build/bin/clang-${CLANG_VERSION}
+pgo-plo/build/bin/clang-${CLANG_VERSION}-cluster pgo-plolist/build/bin/clang-${CLANG_VERSION}-cluster pgo-plolist-align/build/bin/clang-$(CLANG_VERSION)-cluster: %/build/bin/clang-${CLANG_VERSION}-cluster: %/build/bin/clang-${CLANG_VERSION}
 	$(call gen_relink_script,$*,$(symbol_order_opt),-cluster)
+	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-cluster.autolog
+
+pgo-plolist-paths/build/bin/clang-${CLANG_VERSION}-cluster: %/build/bin/clang-${CLANG_VERSION}-cluster: %/build/bin/clang-${CLANG_VERSION}
+	$(call gen_relink_script,$*,$(paths_symbol_order_opt),-cluster)
 	cd $*/build; $(DDIR)/$@.relink_script 2>&1 | tee $(DDIR)/$*-cluster.autolog
 
 pgo-plolist/build/bin/clang-${CLANG_VERSION}-split: pgo-plolist/build/bin/clang-${CLANG_VERSION}
@@ -388,15 +379,13 @@ plain.perfdata: plain-compiler run-commands.sh
 plain.afdo: plain-compiler plain.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --profile=$(DDIR)/plain.perfdata --logtostderr --out=$(DDIR)/$@
 
-pgo-labels-compiler.propeller cspgo-compiler.propeller pgo-bbinfo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --propeller_symorder=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
-	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
-	rm $@.tmp
+pgo-labels-compiler.paths.propeller pgo-bbinfo-compiler.paths.propeller cspgo-compiler.paths.propeller: %-compiler.paths.propeller: %-compiler %.perfdata
+	/usr/bin/time -v ${CREATE_PROPELLER_PROF} --binary="`readlink -f $<`" --profile="$(word 2,$^)" --cloning_exttsp_reward_file=reward.txt --clone_count=182 -cloning_factors="9.45557,-99.7848,53.0139,-64.2342,-92.7977,-33.6524,-27.5438" \
+		--out="$(DDIR)/$@" --propeller_symorder="$(DDIR)/$@.order" --logtostderr 2>&1 | tee $@.autolog
 
-pgo-labels-compiler.paths.propeller: %-compiler.paths.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary=`readlink -f $<` --format=propeller --profile=$(word 2,$^) --out=$@.tmp --clone_count=${CLONE_COUNT} --propeller_symorder=$@.order --logtostderr 2>&1 | tee $@.autolog ; \
-	{ echo "@clang-11-random" ; echo "@clang-11-ip" ; echo "@clang-11-2000" ; echo "@clang-11-ip-2000" ; echo "@clang-11-split" ; cat "$@.tmp" ; } > $@ ; \
-	rm $@.tmp
+pgo-labels-compiler.propeller pgo-bbinfo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
+	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary="`readlink -f $<`" --format=propeller --profile="$(word 2,$^)" \
+		--out="$(DDIR)/$@" --propeller_symorder="$(DDIR)/$@.order" --logtostderr 2>&1 | tee $@.autolog
 
 pgo-labels-compiler.yaml cspgo-compiler.yaml pgo-relocs-compiler.yaml: %-compiler.yaml: %.perfdata %-compiler
 	$(PERF2BOLT) -o $(subst .perfdata,.fdata,$<) -w $@ -p $< $(shell readlink -f $(word 2,$^))
@@ -448,13 +437,13 @@ run-commands.sh: benchmark-dir.o | stage1-compiler
 		echo "Empty commands file, ERROR." ; exit 1 ; \
 	fi
 	echo "export CCP=\$$(cd \$$(dirname \$$1); pwd)/\$$(basename \$$1)" > $@
-	echo "head -n 500 commands | xargs -P5 -L1 -d \"\\n\" bash -x -c" \
+	echo "head -n 500 commands | xargs -P50 -L1 -d \"\\n\" bash -x -c" \
                 >> $@
 	chmod +x $@
 
 $(ALL_PMU_BENCHMARKS): benchmark-pmu-%: %-compiler run-commands.sh
 	@{ echo "Running $@ for ${ITERATIONS} iterations..." ; \
-		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_miss:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
+		perf stat -r ${ITERATIONS} -o .$@.pmu --field-separator=, -e cycles:u,instructions:u,br_inst_retired.all_branches:u,br_inst_retired.conditional:u,br_inst_retired.near_taken:u,br_inst_retired.not_taken:u,icache_64b.iftag_hit:u,icache_64b.iftag_miss:u,icache_16b.ifdata_stall:u,frontend_retired.itlb_miss:u,idq.dsb_uops:u,idq.mite_uops:u,idq.ms_uops:u -- ./run-commands.sh $(shell readlink -f $<) &> /dev/null ; \
 		awk 'NF {print "${REPOHASH},"$$0}' .$@.pmu ; \
 	} | tee -a $@.result
 
