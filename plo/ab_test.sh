@@ -2,7 +2,7 @@
 # usage: ./ab_test.sh compiler1 compiler2 ...
 make t-test
 
-ITERATIONS=2
+ITERATIONS=10
 declare -A times=()
 for i in $(eval echo "{1..$(($ITERATIONS+1))}") ; do
   for arg; do

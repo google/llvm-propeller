@@ -119,7 +119,7 @@ PROFILES_DIR       := $(DDIR)/stage2/build/profiles
 CSPROFILES_DIR     := $(DDIR)/cspgo/build/csprofiles
 LLD_NO_OPT         := -fuse-ld=lld -Wl,--no-optimize-bb-jumps
 LLD_OPT            := -fuse-ld=lld -Wl,--optimize-bb-jumps
-FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split afdo-vanilla afdo-split plain pgo-hcs
+FLAVORS            := stage1 nonepgo nonepgolabels pgo-labels pgo-vanilla pgo-relocs pgo-plo pgo-plo-ip pgo-plolist-cluster pgo-plolist-paths-cluster pgo-plolist pgo-plolist-ip pgo-plolist-2000 pgo-plolist-ip-2000 cspgo cspgo-plo pgo-vanilla-bolt pgo-relocs-bolt cspgo-bolt pgo-plo-noorder pgo-vanilla-old pgo-split afdo-vanilla afdo-split plain pgo-hcs
 ALL_COMPILERS      := $(foreach F,$(FLAVORS),$(F)-compiler)
 ALL_PMU_BENCHMARKS := $(foreach F,$(FLAVORS),benchmark-pmu-$(F))
 ALL_BENCHMARKS     := $(foreach F,$(FLAVORS),benchmark-$(F))
@@ -380,8 +380,12 @@ plain.afdo: plain-compiler plain.perfdata
 	${CREATE_LLVM_PROF} --binary=`readlink -f $<` --profile=$(DDIR)/plain.perfdata --logtostderr --out=$(DDIR)/$@
 
 pgo-labels-compiler.paths.propeller pgo-bbinfo-compiler.paths.propeller cspgo-compiler.paths.propeller: %-compiler.paths.propeller: %-compiler %.perfdata
-	/usr/bin/time -v ${CREATE_PROPELLER_PROF} --binary="`readlink -f $<`" --profile="$(word 2,$^)" --cloning_exttsp_reward_file=reward.txt --clone_count=182 -cloning_factors="9.45557,-99.7848,53.0139,-64.2342,-92.7977,-33.6524,-27.5438" \
+	/usr/bin/time -v ${CREATE_PROPELLER_PROF} --binary="`readlink -f $<`" --profile="$(word 2,$^)" --cloning_exttsp_reward_file=reward.txt --clone_count=199 --cloning_factors="100,98.94302577226344,100,77.39648532936778,-46.719563815115826,-66.20493842568376,-100" \
 		--out="$(DDIR)/$@" --propeller_symorder="$(DDIR)/$@.order" --logtostderr 2>&1 | tee $@.autolog
+
+#pgo-labels-compiler.paths.propeller pgo-bbinfo-compiler.paths.propeller cspgo-compiler.paths.propeller: %-compiler.paths.propeller: %-compiler %.perfdata
+#	/usr/bin/time -v ${CREATE_PROPELLER_PROF} --binary="`readlink -f $<`" --profile="$(word 2,$^)" --use_fatih_score --clone_count=200 --cloning_exttsp_reward_file=reward1.txt \
+#		--out="$(DDIR)/$@" --propeller_symorder="$(DDIR)/$@.order" --logtostderr 2>&1 | tee $@.autolog
 
 pgo-labels-compiler.propeller pgo-bbinfo-compiler.propeller cspgo-compiler.propeller: %-compiler.propeller: %-compiler %.perfdata
 	/usr/bin/time -v ${CREATE_LLVM_PROF} --binary="`readlink -f $<`" --format=propeller --profile="$(word 2,$^)" \
