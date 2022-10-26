@@ -213,7 +213,7 @@ ls create_llvm_prof
 
 cp create_llvm_prof ${PATH_TO_ALL_BINARIES}
 
-/usr/bin/time -v ${PATH_TO_CREATE_LLVM_PROF}/bin/create_llvm_prof  --format=propeller --binary=${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION}  --profile=${PATH_TO_PROFILES}/perf.data --out=${PATH_TO_PROFILES}/cluster.txt  --propeller_symorder=${PATH_TO_PROFILES}/symorder.txt --profiled_binary_name=clang-${CLANG_VERSION} 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_profile_conversion.txt
+/usr/bin/time -v ${PATH_TO_CREATE_LLVM_PROF}/bin/create_llvm_prof  --format=propeller --binary=${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION}  --profile=${PATH_TO_PROFILES}/perf.data --out=${PATH_TO_PROFILES}/cluster.txt  --propeller_symorder=${PATH_TO_PROFILES}/symorder.txt --profiled_binary_name=clang-${CLANG_VERSION} --propeller_call_chain_clustering --propeller_chain_split 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_profile_conversion.txt
 
 # Build a Propeller Optimized binary.
 OPTIMIZED_PROPELLER_CC_LD_CMAKE_FLAGS=(
