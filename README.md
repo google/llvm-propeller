@@ -2,9 +2,9 @@
 
 Hardware requirements
 ```
-Intel Skylake or newer
+Intel Skylake or newer.
 32 GB of RAM or more.
-Access to hardware performance counters using linux perf
+Access to hardware performance counters using linux perf.
 ```
 
 To run the experiments for Artifact Evaluation
