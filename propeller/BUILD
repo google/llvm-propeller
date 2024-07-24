@@ -14,7 +14,6 @@ license(name = "license")
 
 # Legacy deprecated licenses rule.
 # Should be kept until transition to new license rules is complete.
-# prop:google3-only(See go/thirdpartylicenses and go/thirdparty/documentation#build for details.)
 licenses(["notice"])
 
 exports_files(["LICENSE"])
