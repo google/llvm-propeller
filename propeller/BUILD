@@ -1,4 +1,4 @@
-load("//tools/build_defs/license:license.bzl", "license")
+load("@rules_license//rules:license.bzl", "license")
 
 # Propeller, a profile-guided, relinking optimizer for warehouse-scale applications.
 package_group(
@@ -22,3 +22,15 @@ license(name = "license")
 licenses(["notice"])
 
 exports_files(["LICENSE"])
+
+###############
+#  Libraries  #
+###############
+cc_library(
+    name = "binary_address_branch",
+    hdrs = ["binary_address_branch.h"],
+    visibility = [
+        ":default_visibility",
+    ],
+    deps = ["@abseil-cpp//absl/strings:str_format"],
+)

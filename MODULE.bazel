@@ -20,3 +20,15 @@ module(
 )
 
 # Only direct dependencies need to be listed below.
+
+bazel_dep(
+    name = "rules_license",
+    version = "0.0.8",
+)
+
+# TODO: b/319475842 - When we add documentation, set up tooling to automatically update this
+# dependency (or remind us to do so).
+bazel_dep(
+    name = "abseil-cpp",
+    version = "20240116.2",
+)
