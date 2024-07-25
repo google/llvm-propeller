@@ -1,11 +1,16 @@
 load("//tools/build_defs/license:license.bzl", "license")
 
 # Propeller, a profile-guided, relinking optimizer for warehouse-scale applications.
+package_group(
+    name = "default_visibility",
+    packages = [
+        "//propeller/...",
+    ],
+)
+
 package(
     default_applicable_licenses = [":license"],
-    default_visibility = [
-        "//third_party/llvm_propeller:__subpackages__",
-    ],
+    default_visibility = [":default_visibility"],
 )
 
 # Define the license for this package, which is used as the default license
