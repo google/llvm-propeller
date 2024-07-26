@@ -34,3 +34,27 @@ cc_library(
     ],
     deps = ["@abseil-cpp//absl/strings:str_format"],
 )
+
+cc_library(
+    name = "branch_aggregation",
+    srcs = ["branch_aggregation.cc"],
+    hdrs = ["branch_aggregation.h"],
+    deps = [
+        "//propeller:binary_address_branch",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+    ],
+)
+
+###########
+#  Tests  #
+###########
+cc_test(
+    name = "branch_aggregation_test",
+    srcs = ["branch_aggregation_test.cc"],
+    deps = [
+        ":branch_aggregation",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
