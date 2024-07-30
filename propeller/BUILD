@@ -40,7 +40,7 @@ cc_library(
     srcs = ["branch_aggregation.cc"],
     hdrs = ["branch_aggregation.h"],
     deps = [
-        "//propeller:binary_address_branch",
+        ":binary_address_branch",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",

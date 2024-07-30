@@ -31,12 +31,10 @@ struct BranchAggregation {
   absl::flat_hash_set<uint64_t> GetUniqueAddresses() const;
 
   // A count of the number of times each branch was taken.
-  absl::flat_hash_map<propeller::BinaryAddressBranch, int64_t>
-      branch_counters;
+  absl::flat_hash_map<BinaryAddressBranch, int64_t> branch_counters;
   // A count of the number of times each fallthrough range (a fully-closed,
   // sequentially-executed interval) was taken.
-  absl::flat_hash_map<propeller::BinaryAddressFallthrough, int64_t>
-      fallthrough_counters;
+  absl::flat_hash_map<BinaryAddressFallthrough, int64_t> fallthrough_counters;
 };
 
 }  // namespace propeller
