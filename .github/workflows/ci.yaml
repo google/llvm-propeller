@@ -16,9 +16,9 @@ name: Propeller CI
 
 on:
   push:
-    branches: [$default-branch, copybara_staging]
+    branches: [main, copybara_staging]
   pull_request:
-    branches: [$default-branch]
+    branches: [main]
   # Allows for manually triggering workflow runs.
   workflow_dispatch:
 
