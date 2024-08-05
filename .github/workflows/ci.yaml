@@ -30,9 +30,15 @@ jobs:
       - name: Checkout the repo
         uses: actions/checkout@v4
 
-      # Currently, we only have Bazel builds on Ubuntu 22.04 for x86_64.
-      - name: Build
+      # Currently, we only have builds on Ubuntu 22.04 for x86_64.
+      - name: Build (Bazel)
         run: bazel build //propeller/...:all
 
-      - name: Test
+      - name: Test (Bazel)
         run: bazel test //propeller/...:all
+
+      - name: Configure (CMake)
+        run: cmake -B build
+
+      - name: Build (CMake)
+        run: make -C build
