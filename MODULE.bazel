@@ -30,7 +30,9 @@ bazel_dep(
 # dependency (or remind us to do so).
 bazel_dep(
     name = "abseil-cpp",
+    # LINT.IfChange(abseil_version)
     version = "20240116.2",
+    # LINT.ThenChange(CMake/Absl/Absl.cmake:version)
 )
 
 bazel_dep(

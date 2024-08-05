@@ -13,17 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
-# https://github.com/google/oss-policies-info/blob/main/foundational-cxx-support-matrix.md
-# As of 2024-07-01, CMake 3.16 is the minimum supported version.
 cmake_minimum_required(VERSION 3.16)
 
-# Configure the project and global settings.
-project(propeller LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+project(absl-external NONE)
 
-# Set up dependencies.
-include(CMake/Absl/Absl.cmake)
-
-include_directories(${CMAKE_HOME_DIRECTORY})
+include(ExternalProject)
+ExternalProject_Add(absl
+  URL                         "${propeller_absl_download_url}"
+  SOURCE_DIR                  "${propeller_absl_src_dir}"
+  BINARY_DIR                  "${propeller_absl_build_dir}"
+  CONFIGURE_COMMAND           ""
+  BUILD_COMMAND               ""
+  INSTALL_COMMAND             ""
+  TEST_COMMAND                ""
+  DOWNLOAD_EXTRACT_TIMESTAMP  TRUE
+)
