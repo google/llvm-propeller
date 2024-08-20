@@ -37,6 +37,8 @@ bazel_dep(
 
 bazel_dep(
     name = "googletest",
+    # LINT.IfChange(gtest_version)
     version = "1.15.0",
     repo_name = "com_google_googletest",
+    # LINT.ThenChange(CMake/Googletest/Googletest.cmake:version)
 )
