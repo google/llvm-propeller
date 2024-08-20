@@ -42,3 +42,6 @@ jobs:
 
       - name: Build (CMake)
         run: make -C build
+
+      - name: Test (CMake)
+        run: make -C build test
