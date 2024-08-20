@@ -19,3 +19,16 @@ add_library(propeller_lib OBJECT
   branch_aggregation.cc
 )
 target_link_libraries(propeller_lib absl::base)
+
+# Build all CXX tests into a unified test target.
+include(${CMAKE_HOME_DIRECTORY}/CMake/GenerateTests.cmake)
+propeller_generate_tests(
+  SRCS
+    branch_aggregation_test.cc
+  DEPS
+    propeller_lib
+    absl::base
+    absl::hash
+    absl::flat_hash_set
+    GTest::gmock_main
+)
