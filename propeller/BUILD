@@ -47,6 +47,14 @@ cc_library(
     ],
 )
 
+proto_library(
+    name = "branch_frequencies_proto",
+    srcs = ["branch_frequencies.proto"],
+    visibility = [
+        ":default_visibility",
+    ],
+)
+
 ###########
 #  Tests  #
 ###########
