@@ -30,6 +30,7 @@ configure_file(
 
 set(ABSL_PROPAGATE_CXX_STD ON)
 set(ABSL_BUILD_TESTING OFF)
+set(ABSL_ENABLE_INSTALL ON)
 
 # Build the external absl project.
 execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
