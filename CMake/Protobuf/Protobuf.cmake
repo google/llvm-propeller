@@ -15,7 +15,9 @@
 #
 # Integrates protobuf into the build.
 
+# LINT.IfChange(version)
 set(_PROTOBUF_VERSION 27.3)
+# LINT.ThenChange(../../MODULE.bazel:protobuf_version)
 
 set(propeller_protobuf_build_dir ${CMAKE_BINARY_DIR}/protobuf-build)
 set(propeller_protobuf_src_dir ${CMAKE_BINARY_DIR}/protobuf-src)
