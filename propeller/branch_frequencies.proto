@@ -1,0 +1,33 @@
+edition = "2023";
+
+package propeller;
+
+// Next Available: 4.
+message TakenBranchCount {
+  // Binary address of the branch source
+  uint64 source = 1;
+
+  // Binary address of the branch destination
+  uint64 dest = 2;
+
+  // Count of the number of times the branch was taken
+  int64 count = 3;
+}
+
+// Next Available: 3.
+message NotTakenBranchCount {
+  // Binary address of the branch instruction
+  uint64 address = 1;
+
+  // Count of the number of times the branch was not-taken
+  int64 count = 2;
+}
+
+// Next Available: 3.
+message BranchFrequenciesProto {
+  // The count for each taken branch.
+  repeated TakenBranchCount taken_counts = 1;
+
+  // The count for each not-taken branch.
+  repeated NotTakenBranchCount not_taken_counts = 2;
+}

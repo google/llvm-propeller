@@ -42,3 +42,11 @@ bazel_dep(
     repo_name = "com_google_googletest",
     # LINT.ThenChange(CMake/Googletest/Googletest.cmake:version)
 )
+
+bazel_dep(
+  name = "protobuf",
+    # LINT.IfChange(protobuf_version)
+    version = "27.3",
+    repo_name = "com_google_protobuf",
+    # LINT.ThenChange(CMake/Protobuf/Protobuf.cmake:version)
+)

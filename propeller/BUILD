@@ -1,3 +1,4 @@
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@rules_license//rules:license.bzl", "license")
 
 # Propeller, a profile-guided, relinking optimizer for warehouse-scale applications.
@@ -45,6 +46,22 @@ cc_library(
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
     ],
+)
+
+proto_library(
+    name = "branch_frequencies_proto",
+    srcs = ["branch_frequencies.proto"],
+    visibility = [
+        ":default_visibility",
+    ],
+)
+
+cc_proto_library(
+    name = "branch_frequencies_cc_proto",
+    visibility = [
+        ":default_visibility",
+    ],
+    deps = [":branch_frequencies_proto"],
 )
 
 ###########
