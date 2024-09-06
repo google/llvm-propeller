@@ -15,39 +15,35 @@
 #
 # Integrates protobuf into the build.
 
+# FetchContent requires CMake 3.11.
+cmake_minimum_required(VERSION 3.11)
+
 # LINT.IfChange(version)
-set(_PROTOBUF_VERSION 27.3)
+set(propeller_protobuf_version 27.3)
 # LINT.ThenChange(../../MODULE.bazel:protobuf_version)
 
-set(propeller_protobuf_build_dir ${CMAKE_BINARY_DIR}/protobuf-build)
-set(propeller_protobuf_src_dir ${CMAKE_BINARY_DIR}/protobuf-src)
-set (propeller_protobuf_download_url
-  https://github.com/protocolbuffers/protobuf/releases/download/v${_PROTOBUF_VERSION}/protobuf-${_PROTOBUF_VERSION}.zip)
-
-# Configure the external protobuf project.
-configure_file(
-  ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.in
-  ${CMAKE_BINARY_DIR}/protobuf-external/CMakeLists.txt
+# Declare and configure the external protobuf package.
+include(FetchContent)
+FetchContent_Declare(protobuf
+  GIT_REPOSITORY              "https://github.com/protocolbuffers/protobuf"
+  GIT_TAG                     "v${propeller_protobuf_version}"
 )
 
-set(protobuf_BUILD_TESTS OFF)
-set(protobuf_USE_STATIC_LIBS TRUE)
+set(protobuf_ABSL_PROVIDER "package" CACHE STRING "" FORCE)
+set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(protobuf_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(protobuf_INSTALL OFF CACHE BOOL "" FORCE)
+set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
+set(protobuf_USE_STATIC_LIBS TRUE CACHE BOOL "" FORCE)
 
-# Build the external protobuf project.
-execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-  RESULT_VARIABLE result
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/protobuf-external )
-if(result)
-  message(FATAL_ERROR "CMake step for protobuf failed: ${result}")
+FetchContent_MakeAvailable(protobuf)
+
+if(NOT TARGET protobuf::libprotobuf OR NOT TARGET protobuf::protoc)
+  message(FATAL_ERROR " Failed to fetch protobuf version ${propeller_protobuf_version}")
 endif()
 
-execute_process(COMMAND ${CMAKE_COMMAND} --build .
-  RESULT_VARIABLE result
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/protobuf-external)
-if(result)
-  message(FATAL_ERROR "Build step for protobuf failed: ${result}")
-endif()
+set(Protobuf_INCLUDE_DIR "${protobuf_SOURCE_DIR}/src" CACHE INTERNAL "")
+set(Protobuf_LIBRARIES protobuf::libprotobuf CACHE INTERNAL "")
 
-# Add the external protobuf project to the build.
-add_subdirectory(${propeller_protobuf_src_dir} ${propeller_protobuf_build_dir} EXCLUDE_FROM_ALL)
-include_directories(${PROTOBUF_INCLUDE_DIRS})
+find_package(Protobuf REQUIRED)
+include_directories(${Protobuf_INCLUDE_DIR})

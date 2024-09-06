@@ -29,5 +29,5 @@ include(CMake/Googletest/Googletest.cmake)
 include(CMake/Protobuf/Protobuf.cmake)
 include(CTest)
 
-include_directories(${CMAKE_HOME_DIRECTORY})
+include_directories(${CMAKE_HOME_DIRECTORY} ${PROJECT_BINARY_DIR})
 add_subdirectory(propeller)
