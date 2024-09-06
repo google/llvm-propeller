@@ -14,11 +14,21 @@
 # limitations under the License.
 #
 
+# Build all Proto targets into a unified C++ library.
+add_library(propeller_protos
+  branch_frequencies.proto
+)
+protobuf_generate(TARGET propeller_protos LANGUAGE cpp)
+target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
+
 # Build all CXX targets into a unified library.
 add_library(propeller_lib OBJECT
   branch_aggregation.cc
 )
-target_link_libraries(propeller_lib absl::base)
+target_link_libraries(propeller_lib
+  absl::base
+  propeller_protos
+)
 
 # Build all CXX tests into a unified test target.
 include(${CMAKE_HOME_DIRECTORY}/CMake/GenerateTests.cmake)
