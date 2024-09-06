@@ -7,7 +7,7 @@ code layout optimizations.
 There are essentially four steps to optimize any binary with Propeller:
 
 1.  Build the peak optimized binary with the basic block labels sections
-    embedded in it using the flag "-fbasic-block-sections=labels". This is used
+    embedded in it using the flag "-fbasic-block-address-map". This is used
     to map basic block addresses to the exact LLVM machine basic blocks.
 2.  Profile the binary using the
     [perf](https://perf.wiki.kernel.org/index.php/Tutorial) tool to collect
@@ -104,7 +104,7 @@ $ ninja clang
 ## Build Basic Block Labels clang binary
 
 This is the first step towards a Propeller optimized clang. Here, we use the
-extra option, **-fbasic-block-sections=labels**, to add a new section to the
+extra option, **-fbasic-block-address-map**, to add a new section to the
 binary that maps virtual addresses to machine basic blocks which helps associate
 sampled profiled info to the right basic block.
 
@@ -112,8 +112,8 @@ To do this, we modify the flags to CC and LD as:
 
 ```bash
 $ LABELS_CC_LD_CMAKE_FLAGS=(
-    "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
-    "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
+    "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-address-map"
+    "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-address-map"
     "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld"
     "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld"
     "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld" )

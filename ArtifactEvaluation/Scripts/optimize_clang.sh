@@ -150,11 +150,11 @@ ninja clang
 
 # Additional Flags to build an Instrumented Propeller binary.
 INSTRUMENTED_PROPELLER_CC_LD_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld  -Wl,--lto-basic-block-sections=labels"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=labels"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=labels" )
+  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-address-map"
+  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-address-map"
+  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld  -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-address-map" )
 
 # Build Propeller Instrumented Clang Binary.
 PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD=${BASE_DIR}/baseline_propeller_only_clang_build
