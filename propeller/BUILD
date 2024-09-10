@@ -78,9 +78,20 @@ cc_proto_library(
     deps = [":branch_frequencies_proto"],
 )
 
-###########
-#  Tests  #
-###########
+########################
+#  Tests & Test Utils  #
+########################
+cc_library(
+    name = "parse_text_proto",
+    testonly = True,
+    hdrs = ["parse_text_proto.h"],
+    deps = [
+        "@abseil-cpp//absl/log:absl_check",
+        "@abseil-cpp//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
 cc_test(
     name = "branch_aggregation_test",
     srcs = ["branch_aggregation_test.cc"],
