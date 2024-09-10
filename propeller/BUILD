@@ -92,6 +92,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "protocol_buffer_matchers",
+    testonly = True,
+    hdrs = ["protocol_buffer_matchers.h"],
+    deps = [
+        "@abseil-cpp//absl/memory",
+        "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
 cc_test(
     name = "branch_aggregation_test",
     srcs = ["branch_aggregation_test.cc"],
