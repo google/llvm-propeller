@@ -78,6 +78,16 @@ cc_proto_library(
     deps = [":branch_frequencies_proto"],
 )
 
+cc_library(
+    name = "lbr_aggregation",
+    hdrs = ["lbr_aggregation.h"],
+    deps = [
+        ":binary_address_branch",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:flat_hash_map",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
