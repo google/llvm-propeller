@@ -62,6 +62,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "branch_frequencies",
+    srcs = ["branch_frequencies.cc"],
+    hdrs = ["branch_frequencies.h"],
+    visibility = [
+        ":default_visibility",
+    ],
+    deps = [
+        ":binary_address_branch",
+        ":branch_frequencies_cc_proto",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:flat_hash_map",
+    ],
+)
+
 proto_library(
     name = "branch_frequencies_proto",
     srcs = ["branch_frequencies.proto"],
@@ -118,6 +133,18 @@ cc_test(
     srcs = ["branch_aggregation_test.cc"],
     deps = [
         ":branch_aggregation",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "branch_frequencies_test",
+    srcs = ["branch_frequencies_test.cc"],
+    deps = [
+        ":branch_frequencies",
+        ":branch_frequencies_cc_proto",
+        ":parse_text_proto",
+        ":protocol_buffer_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

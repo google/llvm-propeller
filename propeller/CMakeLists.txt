@@ -24,6 +24,7 @@ target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
 # Build all CXX targets into a unified library.
 add_library(propeller_lib OBJECT
   branch_aggregation.cc
+  branch_frequencies.cc
 )
 target_link_libraries(propeller_lib
   absl::base
@@ -35,6 +36,7 @@ include(${CMAKE_HOME_DIRECTORY}/CMake/GenerateTests.cmake)
 propeller_generate_tests(
   SRCS
     branch_aggregation_test.cc
+    branch_frequencies_test.cc
   DEPS
     propeller_lib
     absl::base
