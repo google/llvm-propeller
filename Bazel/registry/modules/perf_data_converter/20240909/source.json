@@ -1,0 +1,9 @@
+{
+  "integrity": "sha256-UyO2v4Ym8Imt5QG4wtylECO5cpcJoL7YCWhdDq4bPpI=",
+  "strip_prefix": "perf_data_converter-cf4fe87ba200220e0c10740592ddadeef32064cd",
+  "url": "https://github.com/google/perf_data_converter/archive/cf4fe87ba200220e0c10740592ddadeef32064cd.zip",
+  "patch_strip": 0,
+  "patches": {
+      "module_dot_bazel.patch": "sha256-W19nOdruXnuy3Z99WiUt3JrSkwjNxoCOsHfeyfiqVj4="
+  }
+}
