@@ -11,3 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
+
+# Install LLVM.
+# If updating this metadata becomes tedious, we can automatically sync to the
+# internal version.
+LLVM_COMMIT = "87b00ef35a0060e29fbc771e8557600e396f966c"
+
+new_git_repository(
+    name = "llvm-raw",
+    build_file_content = "# empty",
+    commit = LLVM_COMMIT,
+    remote = "https://github.com/llvm/llvm-project.git",
+)
+
