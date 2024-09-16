@@ -103,6 +103,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "addr2cu",
+    srcs = ["addr2cu.cc"],
+    hdrs = ["addr2cu.h"],
+    deps = [
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:BinaryFormat",
+        "@llvm-project//llvm:DebugInfoDWARF",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "status_macros",
+    hdrs = ["status_macros.h"],
+    deps = [
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -128,6 +157,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "status_matchers",
+    testonly = True,
+    srcs = ["status_matchers.cc"],
+    hdrs = ["status_matchers.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "status_matchers_test",
+    srcs = ["status_matchers_test.cc"],
+    deps = [
+        ":status_matchers",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "status_macros_test",
+    srcs = ["status_macros_test.cc"],
+    deps = [
+        ":status_macros",
+        ":status_matchers",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "branch_aggregation_test",
     srcs = ["branch_aggregation_test.cc"],
@@ -146,5 +210,27 @@ cc_test(
         ":parse_text_proto",
         ":protocol_buffer_matchers",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "addr2cu_test",
+    srcs = ["addr2cu_test.cc"],
+    data = [
+        "//propeller/testdata:test_comdat.symmap",
+        "//propeller/testdata:test_comdat_data",
+        "//propeller/testdata:test_comdat_with_dwp.symmap",
+        "//propeller/testdata:test_comdat_with_dwp_data",
+    ],
+    deps = [
+        "//propeller:addr2cu",
+        "//propeller:status_matchers",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:DebugInfoDWARF",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
     ],
 )
