@@ -22,6 +22,11 @@ module(
 # Only direct dependencies need to be listed below.
 
 bazel_dep(
+    name = "bazel_skylib",
+    version = "1.7.1",
+)
+
+bazel_dep(
     name = "rules_license",
     version = "0.0.8",
 )
@@ -44,7 +49,7 @@ bazel_dep(
 )
 
 bazel_dep(
-  name = "protobuf",
+    name = "protobuf",
     # LINT.IfChange(protobuf_version)
     version = "27.3",
     repo_name = "com_google_protobuf",

@@ -16,7 +16,14 @@
 
 # Bazel utilities for Propeller builds and tests
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 package(
     default_applicable_licenses = ["//propeller:license"],
     default_visibility = ["//propeller:default_visibility"],
+)
+
+bzl_library(
+    name = "list_symbols",
+    srcs = ["list_symbols.bzl"],
 )
