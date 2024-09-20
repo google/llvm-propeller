@@ -18,5 +18,31 @@
 
 package(
     default_applicable_licenses = ["//propeller:license"],
-    default_visibility = ["//propeller:default_visibility"],
+    default_visibility = ["//propeller:default_visibility"] + [
+    ],
+)
+
+exports_files([
+    "test_comdat_1.cc",
+    "test_comdat_2.cc",
+    "test_comdat.h",
+])
+
+# This rule generates a binary with comdat functions.
+genrule(
+    name = "test_comdat_data",
+    srcs = [
+        "test_comdat_1.cc",
+        "test_comdat_2.cc",
+        "test_comdat.h",
+    ],
+    outs = [
+        "test_comdat.bin",
+    ],
+    cmd = "cp $(SRCS) . ; \
+            $(CC) $(CC_FLAGS) -g -O0 test_comdat_1.cc test_comdat_2.cc -o $(RULEDIR)/test_comdat.bin",
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
 )
