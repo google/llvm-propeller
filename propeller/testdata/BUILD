@@ -16,6 +16,8 @@
 
 # Data files for Propeller tests
 
+load("//propeller/bzl:list_symbols.bzl", "list_symbols")
+
 package(
     default_applicable_licenses = ["//propeller:license"],
     default_visibility = ["//propeller:default_visibility"] + [
@@ -45,4 +47,11 @@ genrule(
         "@bazel_tools//tools/cpp:current_cc_toolchain",
         "@bazel_tools//tools/cpp:cc_flags",
     ],
+)
+
+list_symbols(
+    name = "test_comdat.symmap",
+    src = ":test_comdat.bin",
+    address_radix = "dec",
+    defined_only = True,
 )
