@@ -55,3 +55,23 @@ list_symbols(
     address_radix = "dec",
     defined_only = True,
 )
+
+# This rule generates a split-dwarf binary with comdat functions.
+genrule(
+    name = "test_comdat_with_dwp_data",
+    srcs = [
+        "test_comdat_1.cc",
+        "test_comdat_2.cc",
+        "test_comdat.h",
+    ],
+    outs = [
+        "test_comdat_with_dwp.bin",
+        "test_comdat_with_dwp.dwp",
+    ],
+    cmd = "cp $(SRCS) . ;     $(CC) $(CC_FLAGS) -g -O0 -gsplit-dwarf test_comdat_1.cc test_comdat_2.cc     -o $(RULEDIR)/test_comdat_with_dwp.bin ;     $(location @llvm-project//llvm:llvm-dwp)       -e $(RULEDIR)/test_comdat_with_dwp.bin -o $(RULEDIR)/test_comdat_with_dwp.dwp",
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+    tools = ["@llvm-project//llvm:llvm-dwp"],
+)
