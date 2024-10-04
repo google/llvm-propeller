@@ -22,10 +22,14 @@ cmake_minimum_required(VERSION 3.16)
 project(propeller LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release")
+endif()
 
 # Set up dependencies.
 include(CMake/Absl/Absl.cmake)
 include(CMake/Googletest/Googletest.cmake)
+include(CMake/LLVM/LLVM.cmake)
 include(CMake/Protobuf/Protobuf.cmake)
 include(CTest)
 

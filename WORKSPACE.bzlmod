@@ -18,7 +18,9 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 # Install LLVM and its dependencies.
 # If updating this metadata becomes tedious, we can automatically sync to the
 # internal version.
+# LINT.IfChange(llvm_commit_hash)
 LLVM_COMMIT = "87b00ef35a0060e29fbc771e8557600e396f966c"
+# LINT.ThenChange(CMake/LLVM/LLVM.cmake:commit_hash)
 
 new_git_repository(
     name = "llvm-raw",
