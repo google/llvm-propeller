@@ -75,3 +75,10 @@ genrule(
     ],
     tools = ["@llvm-project//llvm:llvm-dwp"],
 )
+
+list_symbols(
+    name = "test_comdat_with_dwp.symmap",
+    src = ":test_comdat_with_dwp.bin",
+    address_radix = "dec",
+    defined_only = True,
+)
