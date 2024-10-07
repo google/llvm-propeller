@@ -128,6 +128,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "status_matchers",
+    testonly = True,
+    srcs = ["status_matchers.cc"],
+    hdrs = ["status_matchers.h"],
+    deps = [
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_test(
     name = "branch_aggregation_test",
     srcs = ["branch_aggregation_test.cc"],
