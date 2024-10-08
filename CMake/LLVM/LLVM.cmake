@@ -61,5 +61,5 @@ if(result)
 endif()
 
 # Add the external llvm project to the build.
-add_subdirectory(${propeller_llvm_src_dir}/llvm EXCLUDE_FROM_ALL)
-include_directories(${propeller_llvm_src_dir}/llvm/include)
+add_subdirectory(${propeller_llvm_src_dir}/llvm ${propeller_llvm_build_dir}/llvm EXCLUDE_FROM_ALL)
+include_directories(${propeller_llvm_src_dir}/llvm/include ${propeller_llvm_build_dir}/llvm/include)
