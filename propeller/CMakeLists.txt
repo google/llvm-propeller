@@ -30,6 +30,15 @@ target_link_libraries(propeller_lib
   absl::base
   propeller_protos
 )
+# Build test-only targets into their own library.
+add_library(propeller_test_lib OBJECT
+  status_matchers.cc
+)
+target_link_libraries(propeller_test_lib
+  absl::base
+  absl::status
+  absl::statusor
+)
 
 # Build all CXX tests into a unified test target.
 include(${CMAKE_HOME_DIRECTORY}/CMake/GenerateTests.cmake)
@@ -37,8 +46,10 @@ propeller_generate_tests(
   SRCS
     branch_aggregation_test.cc
     branch_frequencies_test.cc
+    status_matchers_test.cc
   DEPS
     propeller_lib
+    propeller_test_lib
     absl::base
     absl::hash
     absl::flat_hash_set
