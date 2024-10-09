@@ -20,14 +20,13 @@ load("//propeller/bzl:list_symbols.bzl", "list_symbols")
 
 package(
     default_applicable_licenses = ["//propeller:license"],
-    default_visibility = ["//propeller:default_visibility"] + [
-    ],
+    default_visibility = ["//propeller:default_visibility"],
 )
 
 exports_files([
+    "test_comdat.h",
     "test_comdat_1.cc",
     "test_comdat_2.cc",
-    "test_comdat.h",
 ])
 
 # This rule generates a binary with comdat functions.
@@ -41,8 +40,7 @@ genrule(
     outs = [
         "test_comdat.bin",
     ],
-    cmd = "cp $(SRCS) . ; \
-            $(CC) $(CC_FLAGS) -g -O0 test_comdat_1.cc test_comdat_2.cc -o $(RULEDIR)/test_comdat.bin",
+    cmd = "cp $(SRCS) . ;             $(CC) $(CC_FLAGS) -g -O0 $(location test_comdat_1.cc) $(location test_comdat_2.cc) -o $(RULEDIR)/test_comdat.bin",
     toolchains = [
         "@bazel_tools//tools/cpp:current_cc_toolchain",
         "@bazel_tools//tools/cpp:cc_flags",
@@ -68,7 +66,7 @@ genrule(
         "test_comdat_with_dwp.bin",
         "test_comdat_with_dwp.dwp",
     ],
-    cmd = "cp $(SRCS) . ;     $(CC) $(CC_FLAGS) -g -O0 -gsplit-dwarf test_comdat_1.cc test_comdat_2.cc     -o $(RULEDIR)/test_comdat_with_dwp.bin ;     $(location @llvm-project//llvm:llvm-dwp)       -e $(RULEDIR)/test_comdat_with_dwp.bin -o $(RULEDIR)/test_comdat_with_dwp.dwp",
+    cmd = "cp $(SRCS) . ;     $(CC) $(CC_FLAGS) -g -O0 -gsplit-dwarf $(location test_comdat_1.cc) $(location test_comdat_2.cc)     -o $(RULEDIR)/test_comdat_with_dwp.bin ;     $(location @llvm-project//llvm:llvm-dwp)       -e $(RULEDIR)/test_comdat_with_dwp.bin -o $(RULEDIR)/test_comdat_with_dwp.dwp",
     toolchains = [
         "@bazel_tools//tools/cpp:current_cc_toolchain",
         "@bazel_tools//tools/cpp:cc_flags",

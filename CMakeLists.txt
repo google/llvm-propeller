@@ -27,12 +27,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Set up dependencies.
+include(CTest)
 include(CMake/Googletest/Googletest.cmake)
-# Absl's testing helpers depend on Googletest, so it must be imported first.
+# Absl's testing helpers depend on Googletest and CTest, so they must be
+# imported first.
 include(CMake/Absl/Absl.cmake)
 include(CMake/LLVM/LLVM.cmake)
 include(CMake/Protobuf/Protobuf.cmake)
-include(CTest)
 
 include_directories(${CMAKE_HOME_DIRECTORY} ${PROJECT_BINARY_DIR})
 add_subdirectory(propeller)

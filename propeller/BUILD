@@ -15,6 +15,14 @@
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@rules_license//rules:license.bzl", "license")
 
+package(
+    default_applicable_licenses = [":license"],
+    default_visibility = [":default_visibility"],
+    # Legacy deprecated licenses rule.
+    # Should be kept until transition to new license rules is complete.
+    licenses = ["notice"],
+)
+
 # Propeller, a profile-guided, relinking optimizer for warehouse-scale applications.
 package_group(
     name = "default_visibility",
@@ -23,18 +31,9 @@ package_group(
     ],
 )
 
-package(
-    default_applicable_licenses = [":license"],
-    default_visibility = [":default_visibility"],
-)
-
 # Define the license for this package, which is used as the default license
 # for all targets in this package based on default_applicable_licenses above.
 license(name = "license")
-
-# Legacy deprecated licenses rule.
-# Should be kept until transition to new license rules is complete.
-licenses(["notice"])
 
 exports_files(["LICENSE"])
 
@@ -44,9 +43,6 @@ exports_files(["LICENSE"])
 cc_library(
     name = "binary_address_branch",
     hdrs = ["binary_address_branch.h"],
-    visibility = [
-        ":default_visibility",
-    ],
     deps = ["@abseil-cpp//absl/strings:str_format"],
 )
 
@@ -66,9 +62,6 @@ cc_library(
     name = "branch_frequencies",
     srcs = ["branch_frequencies.cc"],
     hdrs = ["branch_frequencies.h"],
-    visibility = [
-        ":default_visibility",
-    ],
     deps = [
         ":binary_address_branch",
         ":branch_frequencies_cc_proto",
@@ -80,16 +73,10 @@ cc_library(
 proto_library(
     name = "branch_frequencies_proto",
     srcs = ["branch_frequencies.proto"],
-    visibility = [
-        ":default_visibility",
-    ],
 )
 
 cc_proto_library(
     name = "branch_frequencies_cc_proto",
-    visibility = [
-        ":default_visibility",
-    ],
     deps = [":branch_frequencies_proto"],
 )
 
@@ -100,6 +87,16 @@ cc_library(
         ":binary_address_branch",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "status_macros",
+    hdrs = ["status_macros.h"],
+    deps = [
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
     ],
 )
 
@@ -125,6 +122,18 @@ cc_library(
         "@abseil-cpp//absl/memory",
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:protobuf",
+    ],
+)
+
+cc_test(
+    name = "status_macros_test",
+    srcs = ["status_macros_test.cc"],
+    deps = [
+        ":status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

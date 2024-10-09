@@ -37,10 +37,12 @@ propeller_generate_tests(
   SRCS
     branch_aggregation_test.cc
     branch_frequencies_test.cc
+    status_macros_test.cc
   DEPS
     propeller_lib
     absl::base
     absl::hash
     absl::flat_hash_set
+    absl::status_matchers
     GTest::gmock_main
 )
