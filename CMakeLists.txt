@@ -27,8 +27,9 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Set up dependencies.
-include(CMake/Absl/Absl.cmake)
 include(CMake/Googletest/Googletest.cmake)
+# Absl's testing helpers depend on Googletest, so it must be imported first.
+include(CMake/Absl/Absl.cmake)
 include(CMake/LLVM/LLVM.cmake)
 include(CMake/Protobuf/Protobuf.cmake)
 include(CTest)

@@ -32,6 +32,14 @@ set(ABSL_PROPAGATE_CXX_STD ON)
 set(ABSL_BUILD_TESTING OFF)
 set(ABSL_ENABLE_INSTALL ON)
 
+if(BUILD_TESTING)
+  set(ABSL_USE_EXTERNAL_GOOGLETEST ON CACHE BOOL "" FORCE)
+  set(ABSL_FIND_GOOGLETEST OFF CACHE BOOL "" FORCE)
+
+  # Enable test-only helpers, such as absl::status_matchers
+  set(ABSL_BUILD_TEST_HELPERS ON CACHE BOOL "" FORCE)
+endif()
+
 # Build the external absl project.
 execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
   RESULT_VARIABLE result
