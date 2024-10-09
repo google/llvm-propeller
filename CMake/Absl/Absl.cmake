@@ -15,7 +15,7 @@
 #
 
 # LINT.IfChange(version)
-set(_ABSL_VERSION 20240116.2)
+set(_ABSL_VERSION 20240722.0)
 # LINT.ThenChange(../../MODULE.bazel:abseil_version)
 
 set(propeller_absl_build_dir ${CMAKE_BINARY_DIR}/absl-build)

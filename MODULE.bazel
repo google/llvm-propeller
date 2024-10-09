@@ -25,7 +25,6 @@ bazel_dep(
     name = "bazel_skylib",
     version = "1.7.1",
 )
-
 bazel_dep(
     name = "rules_license",
     version = "0.0.8",
@@ -36,10 +35,9 @@ bazel_dep(
 bazel_dep(
     name = "abseil-cpp",
     # LINT.IfChange(abseil_version)
-    version = "20240116.2",
+    version = "20240722.0",
     # LINT.ThenChange(CMake/Absl/Absl.cmake:version)
 )
-
 bazel_dep(
     name = "googletest",
     # LINT.IfChange(gtest_version)
@@ -47,7 +45,6 @@ bazel_dep(
     repo_name = "com_google_googletest",
     # LINT.ThenChange(CMake/Googletest/Googletest.cmake:version)
 )
-
 bazel_dep(
     name = "protobuf",
     # LINT.IfChange(protobuf_version)
