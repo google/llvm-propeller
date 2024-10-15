@@ -38,6 +38,7 @@ propeller_generate_tests(
     branch_aggregation_test.cc
     branch_frequencies_test.cc
     status_macros_test.cc
+    status_testing_macros_test.cc
   DEPS
     propeller_lib
     absl::base

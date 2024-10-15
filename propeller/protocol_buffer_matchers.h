@@ -16,6 +16,7 @@
 #ifndef THIRD_PARTY_PROPELLER_PROTOCOL_BUFFER_MATCHERS_H_
 #define THIRD_PARTY_PROPELLER_PROTOCOL_BUFFER_MATCHERS_H_
 
+#include "propeller/status_testing_macros.h"
 #include "gmock/gmock.h"
 #include "absl/memory/memory.h"
 #include "google/protobuf/dynamic_message.h"

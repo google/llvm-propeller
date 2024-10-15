@@ -125,11 +125,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "status_testing_macros",
+    testonly = True,
+    hdrs = ["status_testing_macros.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "status_testing_macros_test",
+    srcs = ["status_testing_macros_test.cc"],
+    deps = [
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "status_macros_test",
     srcs = ["status_macros_test.cc"],
     deps = [
         ":status_macros",
+        ":status_testing_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
@@ -142,6 +165,7 @@ cc_test(
     srcs = ["branch_aggregation_test.cc"],
     deps = [
         ":branch_aggregation",
+        ":status_testing_macros",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -154,6 +178,7 @@ cc_test(
         ":branch_frequencies_cc_proto",
         ":parse_text_proto",
         ":protocol_buffer_matchers",
+        ":status_testing_macros",
         "@com_google_googletest//:gtest_main",
     ],
 )

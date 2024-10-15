@@ -1,5 +1,6 @@
 #include "propeller/branch_frequencies.h"
 
+#include "propeller/status_testing_macros.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "propeller/branch_frequencies.pb.h"
