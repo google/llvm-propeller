@@ -91,6 +91,23 @@ cc_library(
 )
 
 cc_library(
+    name = "addr2cu",
+    srcs = ["addr2cu.cc"],
+    hdrs = ["addr2cu.h"],
+    deps = [
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:BinaryFormat",
+        "@llvm-project//llvm:DebugInfoDWARF",
+        "@llvm-project//llvm:Object",
+    ],
+)
+
+cc_library(
     name = "status_macros",
     hdrs = ["status_macros.h"],
     deps = [
@@ -180,5 +197,30 @@ cc_test(
         ":protocol_buffer_matchers",
         ":status_testing_macros",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "addr2cu_test",
+    srcs = ["addr2cu_test.cc"],
+    data = [
+        "//propeller/testdata:test_comdat.symmap",
+        "//propeller/testdata:test_comdat_data",
+        "//propeller/testdata:test_comdat_with_dwp.symmap",
+        "//propeller/testdata:test_comdat_with_dwp_data",
+    ],
+    deps = [
+        ":addr2cu",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:DebugInfoDWARF",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
     ],
 )

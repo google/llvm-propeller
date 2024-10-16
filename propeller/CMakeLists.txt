@@ -23,12 +23,15 @@ target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
 
 # Build all CXX targets into a unified library.
 add_library(propeller_lib OBJECT
+  addr2cu.cc
   branch_aggregation.cc
   branch_frequencies.cc
 )
 target_link_libraries(propeller_lib
   absl::base
   propeller_protos
+  LLVMDebugInfoDWARF
+  LLVMSupport
 )
 
 # Build all CXX tests into a unified test target.
