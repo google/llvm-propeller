@@ -56,3 +56,14 @@ llvm_configure(
     name = "llvm-project",
     targets = ["AArch64", "X86"],
 )
+
+# Install Quipper and its dependencies.
+# LINT.IfChange(quipper_commit_hash)
+QUIPPER_COMMIT = "f76cd4dd1e85bb54d60ea3fe69f92168fdf94edb"
+# LINT.ThenChange(CMake/Quipper/Quipper.cmake:commit_hash)
+
+new_git_repository(
+  name = "perf_data_converter",
+  commit = QUIPPER_COMMIT,
+  source = "https://github.com/google/perf_data_converter.git",
+)
