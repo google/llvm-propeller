@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Configure the bzlmod registry.
+common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/refs/heads/main/
+
 # Require c++17 for c++ files.
 build --cxxopt='-std=c++17'
 build --host_cxxopt=-std=c++17
