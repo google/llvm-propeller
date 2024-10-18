@@ -117,6 +117,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lazy_evaluator",
+    hdrs = ["lazy_evaluator.h"],
+    deps = [
+        "@abseil-cpp//absl/functional:any_invocable",
+        "@abseil-cpp//absl/functional:overload",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -222,5 +231,15 @@ cc_test(
         "@llvm-project//llvm:DebugInfoDWARF",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_test(
+    name = "lazy_evaluator_test",
+    srcs = ["lazy_evaluator_test.cc"],
+    deps = [
+        ":lazy_evaluator",
+        ":status_testing_macros",
+        "@com_google_googletest//:gtest_main",
     ],
 )
