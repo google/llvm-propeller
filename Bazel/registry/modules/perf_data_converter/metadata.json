@@ -1,0 +1,17 @@
+{
+  "homepage": "https://github.com/google/perf_data_converter",
+  "maintainers": [
+      {
+          "email": "hoekwater@google.com",
+          "github": "dhoekwater",
+          "name": "Daniel Hoekwater"
+      }
+  ],
+  "repository": [
+      "github:google/perf_data_converter"
+  ],
+  "versions": [
+    "0.0.0-20241014-f76cd4d"
+  ],
+  "yanked_versions": {}
+}
