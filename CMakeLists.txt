@@ -26,7 +26,12 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-# Set up dependencies.
+# Set up system-level dependencies.
+find_library (LIBELF_LIBRARIES NAMES elf REQUIRED)
+find_library (LIBZ_LIBRARIES NAMES z REQUIRED)
+find_library (LIBCRYPTO_LIBRARIES NAMES crypto REQUIRED)
+
+# Set up external dependencies.
 include(CTest)
 include(CMake/Googletest/Googletest.cmake)
 # Absl's testing helpers depend on Googletest and CTest, so they must be
@@ -34,6 +39,7 @@ include(CMake/Googletest/Googletest.cmake)
 include(CMake/Absl/Absl.cmake)
 include(CMake/LLVM/LLVM.cmake)
 include(CMake/Protobuf/Protobuf.cmake)
+include(CMake/Quipper/Quipper.cmake)
 
 include_directories(${CMAKE_HOME_DIRECTORY} ${PROJECT_BINARY_DIR})
 add_subdirectory(propeller)
