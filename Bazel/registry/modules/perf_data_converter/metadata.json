@@ -10,6 +10,8 @@
   "repository": [
       "github:google/perf_data_converter"
   ],
-  "versions": [],
+  "versions": [
+    "0.0.0-20241014-f76cd4d"
+  ],
   "yanked_versions": {}
 }
