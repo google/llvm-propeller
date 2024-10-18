@@ -126,6 +126,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "spe_pid_provider",
+    hdrs = ["spe_pid_provider.h"],
+    deps = [
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_perf_data_converter//src/quipper:arm_spe_decoder",
+    ],
+)
+
+cc_library(
+    name = "spe_tid_pid_provider",
+    srcs = ["spe_tid_pid_provider.cc"],
+    hdrs = ["spe_tid_pid_provider.h"],
+    deps = [
+        ":spe_pid_provider",
+        "@abseil-cpp//absl/base",
+        "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@com_google_perf_data_converter//src/quipper:arm_spe_decoder",
+        "@com_google_perf_data_converter//src/quipper:perf_data_cc_proto",
+        "@com_google_perf_data_converter//src/quipper:perf_data_utils",
+        "@com_google_protobuf//:protobuf:protobuf_lite",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -241,5 +270,20 @@ cc_test(
         ":lazy_evaluator",
         ":status_testing_macros",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "spe_tid_pid_provider_test",
+    srcs = ["spe_tid_pid_provider_test.cc"],
+    deps = [
+        ":parse_text_proto",
+        ":spe_tid_pid_provider",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_perf_data_converter//src/quipper:perf_data_cc_proto",
+        "@com_google_perf_data_converter//src/quipper:perf_parser",
+        "@com_google_protobuf//:protobuf:protobuf_lite",
     ],
 )
