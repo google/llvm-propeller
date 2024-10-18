@@ -1,0 +1,64 @@
+#
+# Copyright 2024 The Propeller Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+cmake_minimum_required(VERSION 3.16)
+
+project(quipper)
+
+add_library(quipper_protos
+  src/quipper/perf_data.proto
+  src/quipper/perf_parser_options.proto
+  src/quipper/perf_stat.proto)
+
+protobuf_generate(TARGET quipper_protos LANGUAGE cpp)
+target_include_directories(quipper_protos PUBLIC
+  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/src/quipper
+  ${PROJECT_BINARY_DIR}
+  ${PROJECT_BINARY_DIR}/src/quipper)
+target_link_libraries(quipper_protos PUBLIC protobuf::libprotobuf)
+
+add_library(quipper_lib OBJECT
+  src/quipper/address_mapper.cc
+  src/quipper/arm_spe_decoder.cc
+  src/quipper/base/logging.cc
+  src/quipper/binary_data_utils.cc
+  src/quipper/binary_data_utils.cc
+  src/quipper/buffer_reader.cc
+  src/quipper/buffer_writer.cc
+  src/quipper/compat/log_level.cc
+  src/quipper/data_reader.cc
+  src/quipper/data_writer.cc
+  src/quipper/dso.cc
+  src/quipper/file_reader.cc
+  src/quipper/file_utils.cc
+  src/quipper/huge_page_deducer.cc
+  src/quipper/perf_buildid.cc
+  src/quipper/perf_data_utils.cc
+  src/quipper/perf_serializer.cc
+  src/quipper/perf_reader.cc
+  src/quipper/perf_parser.cc
+  src/quipper/sample_info_reader.cc
+  src/quipper/string_utils.cc)
+
+target_include_directories(quipper_lib
+  PUBLIC
+  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/src/quipper
+  ${PROJECT_BINARY_DIR}
+  ${PROJECT_BINARY_DIR}/src/quipper)
+target_link_libraries(quipper_lib
+  quipper_protos ${LIBELF_LIBRARIES} ${LIBZ_LIBRARIES} ${LIBCRYPTO_LIBRARIES})
