@@ -52,3 +52,8 @@ bazel_dep(
     repo_name = "com_google_protobuf",
     # LINT.ThenChange(CMake/Protobuf/Protobuf.cmake:version)
 )
+bazel_dep(
+    name = "perf_data_converter",
+    version = "0.0.0-20241014-f76cd4d",
+    repo_name = "com_google_perf_data_converter",
+)
