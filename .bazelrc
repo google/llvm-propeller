@@ -14,6 +14,7 @@
 
 # Configure the bzlmod registry.
 common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/refs/heads/main/
+common --registry=file:%workspace%/Bazel/registry/
 
 # Require c++17 for c++ files.
 build --cxxopt='-std=c++17'
