@@ -42,18 +42,20 @@ bazel_dep(
     name = "googletest",
     # LINT.IfChange(gtest_version)
     version = "1.15.0",
-    repo_name = "com_google_googletest",
     # LINT.ThenChange(CMake/Googletest/Googletest.cmake:version)
+    repo_name = "com_google_googletest",
 )
 bazel_dep(
     name = "protobuf",
     # LINT.IfChange(protobuf_version)
     version = "27.3",
-    repo_name = "com_google_protobuf",
     # LINT.ThenChange(CMake/Protobuf/Protobuf.cmake:version)
+    repo_name = "com_google_protobuf",
 )
 bazel_dep(
     name = "perf_data_converter",
+    # LINT.IfChange(quipper_version)
     version = "0.0.0-20241014-f76cd4d",
+    # LINT.ThenChange(CMake/Quipper/Quipper.cmake:commit_hash)
     repo_name = "com_google_perf_data_converter",
 )

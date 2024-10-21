@@ -34,6 +34,7 @@ include(CMake/Googletest/Googletest.cmake)
 include(CMake/Absl/Absl.cmake)
 include(CMake/LLVM/LLVM.cmake)
 include(CMake/Protobuf/Protobuf.cmake)
+include(CMake/Quipper/Quipper.cmake)
 
 include_directories(${CMAKE_HOME_DIRECTORY} ${PROJECT_BINARY_DIR})
 add_subdirectory(propeller)
