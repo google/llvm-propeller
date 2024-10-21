@@ -44,5 +44,13 @@ if(result)
   message(FATAL_ERROR "Build step for quipper failed: ${result}")
 endif()
 
-# Add the external Quipper directory to the build.
-include_directories(${propeller_quipper_src_dir}/src)
+# Configure the CMake overlay for the external Quipper project.
+configure_file(
+  ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.quipper.txt
+  ${propeller_quipper_src_dir}/CMakeLists.txt
+  COPYONLY
+)
+
+# Add the external Quipper project to the build.
+add_subdirectory(${propeller_quipper_src_dir} ${propeller_quipper_build_dir} EXCLUDE_FROM_ALL)
+include_directories(${propeller_quipper_src_dir}/src ${propeller_quipper_build_dir}/src)
