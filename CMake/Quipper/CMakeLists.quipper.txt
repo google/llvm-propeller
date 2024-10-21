@@ -30,3 +30,35 @@ target_include_directories(quipper_protos PUBLIC
   ${PROJECT_BINARY_DIR}
   ${PROJECT_BINARY_DIR}/src/quipper)
 target_link_libraries(quipper_protos PUBLIC protobuf::libprotobuf)
+
+add_library(quipper_lib OBJECT
+  src/quipper/address_mapper.cc
+  src/quipper/arm_spe_decoder.cc
+  src/quipper/base/logging.cc
+  src/quipper/binary_data_utils.cc
+  src/quipper/binary_data_utils.cc
+  src/quipper/buffer_reader.cc
+  src/quipper/buffer_writer.cc
+  src/quipper/compat/log_level.cc
+  src/quipper/data_reader.cc
+  src/quipper/data_writer.cc
+  src/quipper/dso.cc
+  src/quipper/file_reader.cc
+  src/quipper/file_utils.cc
+  src/quipper/huge_page_deducer.cc
+  src/quipper/perf_buildid.cc
+  src/quipper/perf_data_utils.cc
+  src/quipper/perf_serializer.cc
+  src/quipper/perf_reader.cc
+  src/quipper/perf_parser.cc
+  src/quipper/sample_info_reader.cc
+  src/quipper/string_utils.cc)
+
+target_include_directories(quipper_lib
+  PUBLIC
+  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/src/quipper
+  ${PROJECT_BINARY_DIR}
+  ${PROJECT_BINARY_DIR}/src/quipper)
+target_link_libraries(quipper_lib
+  quipper_protos ${LIBELF_LIBRARIES} ${LIBZ_LIBRARIES} ${LIBCRYPTO_LIBRARIES})
