@@ -2,7 +2,7 @@
 #define PROPELLER_SPE_PID_PROVIDER_H_
 
 #include "absl/status/statusor.h"
-#include "third_party/perf_data_converter/quipper/arm_spe_decoder.h"
+#include "src/quipper/arm_spe_decoder.h"
 namespace propeller {
 
 // An interface for a class that provides a process ID (PID) for SPE records.
