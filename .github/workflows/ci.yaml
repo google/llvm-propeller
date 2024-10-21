@@ -33,7 +33,7 @@ jobs:
       - name: Configure the runner
         run: |
           sudo apt-get update
-          sudo apt-get install ninja-build
+          sudo apt-get install ninja-build libelf-dev
 
       # Currently, we only have builds on Ubuntu 22.04 for x86_64.
       - name: Build (Bazel)
