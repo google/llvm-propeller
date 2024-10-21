@@ -126,6 +126,12 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "bb_handle",
+    hdrs = ["bb_handle.h"],
+    deps = ["@abseil-cpp//absl/strings:str_format"],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
