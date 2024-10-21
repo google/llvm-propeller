@@ -17,3 +17,16 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(quipper)
+
+add_library(quipper_protos
+  src/quipper/perf_data.proto
+  src/quipper/perf_parser_options.proto
+  src/quipper/perf_stat.proto)
+
+protobuf_generate(TARGET quipper_protos LANGUAGE cpp)
+target_include_directories(quipper_protos PUBLIC
+  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/src/quipper
+  ${PROJECT_BINARY_DIR}
+  ${PROJECT_BINARY_DIR}/src/quipper)
+target_link_libraries(quipper_protos PUBLIC protobuf::libprotobuf)
