@@ -132,6 +132,15 @@ cc_library(
     deps = ["@abseil-cpp//absl/strings:str_format"],
 )
 
+cc_library(
+    name = "spe_pid_provider",
+    hdrs = ["spe_pid_provider.h"],
+    deps = [
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_perf_data_converter//src/quipper:arm_spe_decoder",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
