@@ -24,7 +24,11 @@ package(
 )
 
 exports_files([
-    "test_comdat.h",
+    "llvm_function_samples.binary",
+    "llvm_function_samples_perf.data",
+    "propeller_sample_1.bin",
+    "propeller_sample_1.perfdata1",
+    "propeller_sample_1.perfdata2",
     "test_comdat_1.cc",
     "test_comdat_2.cc",
 ])
