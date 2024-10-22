@@ -53,4 +53,8 @@ configure_file(
 
 # Add the external Quipper project to the build.
 add_subdirectory(${propeller_quipper_src_dir} ${propeller_quipper_build_dir} EXCLUDE_FROM_ALL)
-include_directories(${propeller_quipper_src_dir}/src ${propeller_quipper_build_dir}/src)
+include_directories(
+  ${propeller_quipper_src_dir}
+  ${propeller_quipper_build_dir}
+  ${propeller_quipper_src_dir}/src/quipper
+  ${propeller_quipper_build_dir}/src/quipper)

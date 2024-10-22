@@ -26,12 +26,15 @@ add_library(propeller_lib OBJECT
   addr2cu.cc
   branch_aggregation.cc
   branch_frequencies.cc
+  spe_tid_pid_provider.cc
 )
 target_link_libraries(propeller_lib
   absl::base
   propeller_protos
   LLVMDebugInfoDWARF
   LLVMSupport
+  quipper_protos
+  quipper_lib
 )
 
 # Build all CXX tests into a unified test target.
@@ -41,6 +44,7 @@ propeller_generate_tests(
     branch_aggregation_test.cc
     branch_frequencies_test.cc
     lazy_evaluator_test.cc
+    spe_tid_pid_provider_test.cc
     status_macros_test.cc
     status_testing_macros_test.cc
   DEPS
@@ -50,4 +54,6 @@ propeller_generate_tests(
     absl::flat_hash_set
     absl::status_matchers
     GTest::gmock_main
+    quipper_protos
+    quipper_lib
 )
