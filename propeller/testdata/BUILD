@@ -24,7 +24,11 @@ package(
 )
 
 exports_files([
-    "test_comdat.h",
+    "llvm_function_samples.binary",
+    "llvm_function_samples_perf.data",
+    "propeller_sample_1.bin",
+    "propeller_sample_1.perfdata1",
+    "propeller_sample_1.perfdata2",
     "test_comdat_1.cc",
     "test_comdat_2.cc",
 ])
@@ -79,4 +83,65 @@ list_symbols(
     src = ":test_comdat_with_dwp.bin",
     address_radix = "dec",
     defined_only = True,
+)
+
+# This rule is used to manually generate propeller_sample_1.bin, propeller_sample_1.perfdata1 and propeller_sample_1.perfdata2.
+genrule(
+    name = "propeller_sample_1_perfdata",
+    srcs = ["propeller_sample_1.c"],
+    outs = [
+        "propeller_sample_1.bin.gen",
+        "propeller_sample_1.dwp.gen",
+        "propeller_sample_1.perfdata1.gen",
+        "propeller_sample_1.perfdata2.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -O0 -gsplit-dwarf=split -gmlt -Wl,-build-id -pie -fbasic-block-sections=labels $< -o $(RULEDIR)/propeller_sample_1.bin.gen && mv propeller_sample_1.dwo $(RULEDIR)/ && " +
+          "$(location //third_party/llvm/llvm-project/llvm:llvm-dwp) -e $(RULEDIR)/propeller_sample_1.bin.gen -o $(RULEDIR)/propeller_sample_1.dwp.gen $(RULEDIR)/propeller_sample_1.dwo && " +
+          "cd $(RULEDIR) ; /usr/bin/perf record -o propeller_sample_1.perfdata1.gen -e cycles -b -- ./propeller_sample_1.bin.gen ;" +
+          "/usr/bin/perf record -o propeller_sample_1.perfdata2.gen -e cycles -b -- ./propeller_sample_1.bin.gen 1 2 3 4",
+    tags = [
+        "manual",
+    ],
+    # Propeller is x86-only for now.
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+    tools = ["@llvm-project//llvm:llvm-dwp"],
+)
+
+genrule(
+    name = "propeller_barebone_nopie_buildid",
+    srcs = ["propeller_barebone.cc"],
+    outs = [
+        "propeller_barebone_nopie_buildid.bin",
+        "propeller_barebone_nopie_buildid.build-id",
+    ],
+    cmd = """
+    $(CC) $(CC_FLAGS) -no-pie -Wl,--build-id -fbasic-block-sections=labels -x c++ -O0 $< \
+        -o $(RULEDIR)/propeller_barebone_nopie_buildid.bin
+    $(READELF) --wide --hex-dump=.note.gnu.build-id \
+        $(RULEDIR)/propeller_barebone_nopie_buildid.bin | \
+        tail -n 1 | cut -d' ' -f2-3 | tr -d ' ' > \
+        $(RULEDIR)/propeller_barebone_nopie_buildid.build-id
+    """,
+    # This genrule generates an x86 binary.
+    toolchains = [
+        "//propeller/bzl:toolchain_vars",
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+)
+
+genrule(
+    name = "propeller_barebone_pie_nobuildid_bin",
+    srcs = ["propeller_barebone.cc"],
+    outs = ["propeller_barebone_pie_nobuildid.bin"],
+    cmd = "$(CC) $(CC_FLAGS) -pie -Wl,--build-id=none -fbasic-block-sections=labels -x c++ -O0 $< -o $@",
+    # This genrule generates an x86 binary.
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
 )
