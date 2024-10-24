@@ -80,3 +80,38 @@ list_symbols(
     address_radix = "dec",
     defined_only = True,
 )
+
+genrule(
+    name = "propeller_barebone_nopie_buildid",
+    srcs = ["propeller_barebone.cc"],
+    outs = [
+        "propeller_barebone_nopie_buildid.bin",
+        "propeller_barebone_nopie_buildid.build-id",
+    ],
+    cmd = """
+    $(CC) $(CC_FLAGS) -no-pie -Wl,--build-id -fbasic-block-sections=labels -x c++ -O0 $< \
+        -o $(RULEDIR)/propeller_barebone_nopie_buildid.bin
+    $(READELF) --wide --hex-dump=.note.gnu.build-id \
+        $(RULEDIR)/propeller_barebone_nopie_buildid.bin | \
+        tail -n 1 | cut -d' ' -f2-3 | tr -d ' ' > \
+        $(RULEDIR)/propeller_barebone_nopie_buildid.build-id
+    """,
+    # This genrule generates an x86 binary.
+    toolchains = [
+        "//propeller/bzl:toolchain_vars",
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+)
+
+genrule(
+    name = "propeller_barebone_pie_nobuildid_bin",
+    srcs = ["propeller_barebone.cc"],
+    outs = ["propeller_barebone_pie_nobuildid.bin"],
+    cmd = "$(CC) $(CC_FLAGS) -pie -Wl,--build-id=none -fbasic-block-sections=labels -x c++ -O0 $< -o $@",
+    # This genrule generates an x86 binary.
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+)
