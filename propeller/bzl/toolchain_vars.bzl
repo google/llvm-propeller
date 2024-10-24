@@ -1,3 +1,4 @@
+#
 # Copyright 2024 The Propeller Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,15 +12,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
 
-# Configure the bzlmod registry.
-common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/refs/heads/main/
-common --registry=file:%workspace%/Bazel/registry/
+"""A utility to set variables for the current toolchain."""
 
-# Require c++17 for c++ files.
-build --cxxopt='-std=c++17'
-build --host_cxxopt=-std=c++17
-build --repo_env=CC=clang
+# Provides variables with given values.
+def _define_vars_impl(ctx):
+    return [
+        platform_common.TemplateVariableInfo({
+            var_name: var_value
+            for var_name, var_value in ctx.attr.vars.items()
+        }),
+    ]
 
-# Load user-specific configuration, if any.
-try-import %workspace%/user.bazelrc
+define_vars = rule(
+    implementation = _define_vars_impl,
+    attrs = {"vars": attr.string_dict()},
+)
