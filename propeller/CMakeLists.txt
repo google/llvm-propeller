@@ -24,6 +24,7 @@ target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
 # Build all CXX targets into a unified library.
 add_library(propeller_lib OBJECT
   addr2cu.cc
+  binary_content.cc
   branch_aggregation.cc
   branch_frequencies.cc
   spe_tid_pid_provider.cc

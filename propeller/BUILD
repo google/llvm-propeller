@@ -161,6 +161,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "binary_content",
+    srcs = ["binary_content.cc"],
+    hdrs = ["binary_content.h"],
+    deps = [
+        ":addr2cu",
+        ":status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@llvm-project//llvm:BinaryFormat",
+        "@llvm-project//llvm:DebugInfo",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -292,5 +312,24 @@ cc_test(
         "@com_google_perf_data_converter//src/quipper:perf_data_cc_proto",
         "@com_google_perf_data_converter//src/quipper:perf_parser",
         "@com_google_protobuf//:protobuf_lite",
+    ],
+)
+
+cc_test(
+    name = "binary_content_test",
+    srcs = ["binary_content_test.cc"],
+    data = [
+        "//propeller/testdata:llvm_function_samples.binary",
+        "//propeller/testdata:propeller_barebone_nopie_buildid",
+        "//propeller/testdata:propeller_barebone_pie_nobuildid_bin",
+        "//propeller/testdata:propeller_sample_1.bin",
+    ],
+    deps = [
+        ":binary_content",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
