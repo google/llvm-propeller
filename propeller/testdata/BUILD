@@ -84,6 +84,32 @@ list_symbols(
     defined_only = True,
 )
 
+# This rule is used to manually generate propeller_sample_1.bin, propeller_sample_1.perfdata1 and propeller_sample_1.perfdata2.
+genrule(
+    name = "propeller_sample_1_perfdata",
+    srcs = ["propeller_sample_1.c"],
+    outs = [
+        "propeller_sample_1.bin.gen",
+        "propeller_sample_1.dwp.gen",
+        "propeller_sample_1.perfdata1.gen",
+        "propeller_sample_1.perfdata2.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -O0 -gsplit-dwarf=split -gmlt -Wl,-build-id -pie -fbasic-block-sections=labels $< -o $(RULEDIR)/propeller_sample_1.bin.gen && mv propeller_sample_1.dwo $(RULEDIR)/ && " +
+          "$(location //third_party/llvm/llvm-project/llvm:llvm-dwp) -e $(RULEDIR)/propeller_sample_1.bin.gen -o $(RULEDIR)/propeller_sample_1.dwp.gen $(RULEDIR)/propeller_sample_1.dwo && " +
+          "cd $(RULEDIR) ; /usr/bin/perf record -o propeller_sample_1.perfdata1.gen -e cycles -b -- ./propeller_sample_1.bin.gen ;" +
+          "/usr/bin/perf record -o propeller_sample_1.perfdata2.gen -e cycles -b -- ./propeller_sample_1.bin.gen 1 2 3 4",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+    tools = ["@llvm-project//llvm:llvm-dwp"],
+)
+
 genrule(
     name = "propeller_barebone_nopie_buildid",
     srcs = ["propeller_barebone.cc"],
