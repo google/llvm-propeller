@@ -181,6 +181,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cfg_edge_kind",
+    srcs = ["cfg_edge_kind.cc"],
+    hdrs = [
+        "cfg_edge_kind.h",
+    ],
+    deps = ["@abseil-cpp//absl/log"],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
