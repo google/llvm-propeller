@@ -190,6 +190,14 @@ cc_library(
     deps = ["@abseil-cpp//absl/log"],
 )
 
+cc_library(
+    name = "cfg_id",
+    hdrs = [
+        "cfg_id.h",
+    ],
+    deps = ["@abseil-cpp//absl/strings:str_format"],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
