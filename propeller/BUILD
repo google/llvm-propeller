@@ -213,6 +213,11 @@ proto_library(
     srcs = ["propeller_options.proto"],
 )
 
+cc_proto_library(
+    name = "propeller_options_cc_proto",
+    deps = [":propeller_options_proto"],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
