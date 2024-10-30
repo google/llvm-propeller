@@ -198,6 +198,16 @@ cc_library(
     deps = ["@abseil-cpp//absl/strings:str_format"],
 )
 
+cc_library(
+    name = "perf_data_provider",
+    hdrs = ["perf_data_provider.h"],
+    deps = [
+        ":status_macros",
+        "@abseil-cpp//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
