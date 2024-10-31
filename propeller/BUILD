@@ -218,6 +218,13 @@ cc_proto_library(
     deps = [":propeller_options_proto"],
 )
 
+cc_library(
+    name = "resolve_mmap_name",
+    srcs = ["resolve_mmap_name.cc"],
+    hdrs = ["resolve_mmap_name.h"],
+    deps = [":propeller_options_cc_proto"],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################

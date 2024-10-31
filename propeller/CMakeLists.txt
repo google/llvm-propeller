@@ -17,6 +17,7 @@
 # Build all Proto targets into a unified C++ library.
 add_library(propeller_protos
   branch_frequencies.proto
+  propeller_options.proto
 )
 protobuf_generate(TARGET propeller_protos LANGUAGE cpp)
 target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
@@ -27,6 +28,7 @@ add_library(propeller_lib OBJECT
   binary_content.cc
   branch_aggregation.cc
   branch_frequencies.cc
+  resolve_mmap_name.cc
   spe_tid_pid_provider.cc
 )
 target_link_libraries(propeller_lib
