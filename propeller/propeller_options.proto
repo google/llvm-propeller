@@ -1,0 +1,118 @@
+edition = "2023";
+
+package propeller;
+
+option features.enum_type = CLOSED;
+option features.utf8_validation = NONE;
+
+// Enumeration to control the version of the cluster output profile.
+enum ClusterEncodingVersion {
+  option allow_alias = true;
+
+  CLUSTER_ENCODING_VERSION_UNSPECIFIED = 0;
+  VERSION_0 = 1;
+  VERSION_1 = 2;
+  LATEST = 2;
+}
+
+// Enumeration to indicate the type of an input profile.
+enum ProfileType {
+  PROFILE_TYPE_UNSPECIFIED = 0;
+  PERF_LBR = 1;
+  PERF_SPE = 2;
+  FREQUENCIES_PROTO = 3;
+}
+
+// Message for specifying an input perf/proto/etc. profile for Propeller profile
+// generation.
+// Next Available: 3.
+message InputProfile {
+  string name = 1;
+  ProfileType type = 2;
+}
+
+// Next Available: 16.
+message PropellerOptions {
+  // binary file name.
+  string binary_name = 1;
+
+  reserved 2;
+
+  // propeller cluster information output file name.
+  string cluster_out_name = 3;
+
+  // propeller symbol order output file name.
+  string symbol_order_out_name = 4;
+
+  // profiled binary name; if not empty, use this as file name to match MMAP
+  // events in perf.data file, can be "".
+  string profiled_binary_name = 5;
+
+  // ignore the build id; if set, use binary_name or profiled_binary_name to
+  // match MMAP events. Otherwise, use buildid (if exists) to match.
+  bool ignore_build_id = 6;
+
+  // Parameters used to calculate the Extended TSP score for layout.
+  PropellerCodeLayoutParameters code_layout_params = 7;
+
+  // Include extra information such as per-function layout scores in the
+  // propeller cluster file.
+  bool verbose_cluster_output = 8 [default = false];
+
+  // Directory path for dumping the (hot) cfgs in dot format. Dumping won't be
+  // done if field is unset.
+  string cfg_dump_dir_name = 9;
+
+  // Start a http-server to handle /statusz.
+  bool http = 10 [default = false];
+
+  // Output module name for function clusters.
+  bool output_module_name = 11 [default = false];
+
+  // Filter out functions not in .text sections
+  bool filter_non_text_functions = 12 [default = true];
+
+  // Version of profile to output in `cluster_out_name`.
+  ClusterEncodingVersion cluster_out_version = 13 [default = LATEST];
+
+  // The profiles to be used for generating a Propeller profile.
+  repeated InputProfile input_profiles = 14;
+
+  reserved 15;
+}
+
+// Next Available: 13.
+message PropellerCodeLayoutParameters {
+  uint32 fallthrough_weight = 1 [default = 10];
+
+  uint32 forward_jump_weight = 2 [default = 1];
+
+  uint32 backward_jump_weight = 3 [default = 1];
+
+  uint32 forward_jump_distance = 4 [default = 1024];
+
+  uint32 backward_jump_distance = 5 [default = 680];
+
+  // Whether splitting will be done when merging chains.
+  bool chain_split = 6 [default = true];
+
+  // Maximum chain size for which splitting is considered at every node bundle.
+  uint32 chain_split_threshold = 7 [default = 0];
+
+  // Whether to use the call chain clustering algorithm to reorder functions.
+  bool call_chain_clustering = 8 [default = true];
+
+  // Maximum cluster size for call chain clustering (No further clustering is
+  // done on a cluster when it exceeds this size).
+  uint32 cluster_merge_size_threshold = 9 [default = 2097152];
+
+  // Whether to split the cold blocks in hot functions. When `false` cold blocks
+  // are placed immediately after hot ones.
+  bool split_functions = 10 [default = true];
+
+  // Whether to change the relative order of hot blocks.
+  bool reorder_hot_blocks = 11 [default = true];
+
+  // Whether to do inter-procedural reordering.
+  bool inter_function_reordering = 12 [default = false];
+}

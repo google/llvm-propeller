@@ -208,6 +208,11 @@ cc_library(
     ],
 )
 
+proto_library(
+    name = "propeller_options_proto",
+    srcs = ["propeller_options.proto"],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
