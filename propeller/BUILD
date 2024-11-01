@@ -225,6 +225,22 @@ cc_library(
     deps = [":propeller_options_cc_proto"],
 )
 
+cc_library(
+    name = "file_perf_data_provider",
+    srcs = ["file_perf_data_provider.cc"],
+    hdrs = ["file_perf_data_provider.h"],
+    deps = [
+        ":perf_data_provider",
+        ":status_macros",
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -372,6 +388,20 @@ cc_test(
         ":binary_content",
         ":status_testing_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "file_perf_data_provider_test",
+    srcs = ["file_perf_data_provider_test.cc"],
+    deps = [
+        ":file_perf_data_provider",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
