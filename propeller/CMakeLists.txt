@@ -28,6 +28,7 @@ add_library(propeller_lib OBJECT
   binary_content.cc
   branch_aggregation.cc
   branch_frequencies.cc
+  resolve_mmap_name.cc
   spe_tid_pid_provider.cc
 )
 target_link_libraries(propeller_lib
