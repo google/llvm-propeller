@@ -255,6 +255,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cfg_node",
+    srcs = ["cfg_node.cc"],
+    hdrs = ["cfg_node.h"],
+    deps = [
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":cfg_id",
+        "@abseil-cpp//absl/functional:function_ref",
+        "@abseil-cpp//absl/strings",
+        "@llvm-project//llvm:Object",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
