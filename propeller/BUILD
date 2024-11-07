@@ -269,6 +269,30 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cfg",
+    srcs = ["cfg.cc"],
+    hdrs = [
+        "cfg.h",
+    ],
+    deps = [
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":cfg_id",
+        ":cfg_node",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/functional:function_ref",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
