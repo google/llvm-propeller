@@ -44,6 +44,15 @@ target_link_libraries(propeller_lib
   quipper_lib
 )
 
+# Build all CXX test utilities into a unified library.
+add_library(propeller_test_lib OBJECT
+  cfg_testutil.cc
+)
+target_link_libraries(propeller_test_lib
+  absl::base
+  absl::flat_hash_map
+)
+
 # Build all CXX tests into a unified test target.
 include(${CMAKE_HOME_DIRECTORY}/CMake/GenerateTests.cmake)
 propeller_generate_tests(
@@ -57,6 +66,7 @@ propeller_generate_tests(
     status_testing_macros_test.cc
   DEPS
     propeller_lib
+    propeller_test_lib
     absl::base
     absl::hash
     absl::flat_hash_set

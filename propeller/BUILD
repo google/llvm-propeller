@@ -333,6 +333,23 @@ cc_library(
 )
 
 cc_library(
+    name = "cfg_testutil",
+    srcs = ["cfg_testutil.cc"],
+    hdrs = ["cfg_testutil.h"],
+    deps = [
+        ":cfg",
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":cfg_node",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/types:span",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "status_testing_macros",
     testonly = True,
     hdrs = ["status_testing_macros.h"],
