@@ -28,6 +28,9 @@ add_library(propeller_lib OBJECT
   binary_content.cc
   branch_aggregation.cc
   branch_frequencies.cc
+  cfg.cc
+  cfg_edge_kind.cc
+  cfg_node.cc
   file_perf_data_provider.cc
   resolve_mmap_name.cc
   spe_tid_pid_provider.cc
