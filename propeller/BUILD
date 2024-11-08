@@ -319,6 +319,20 @@ cc_library(
 )
 
 cc_library(
+    name = "cfg_matchers",
+    testonly = True,
+    hdrs = ["cfg_matchers.h"],
+    deps = [
+        ":cfg",
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":cfg_id",
+        "@abseil-cpp//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "status_testing_macros",
     testonly = True,
     hdrs = ["status_testing_macros.h"],
