@@ -490,3 +490,20 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "cfg_test",
+    srcs = [
+        "cfg_test.cc",
+    ],
+    deps = [
+        ":cfg",
+        ":cfg_edge_kind",
+        ":cfg_id",
+        ":cfg_matchers",
+        ":cfg_testutil",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

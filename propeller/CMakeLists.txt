@@ -59,6 +59,7 @@ propeller_generate_tests(
   SRCS
     branch_aggregation_test.cc
     branch_frequencies_test.cc
+    cfg_test.cc
     file_perf_data_provider_test.cc
     lazy_evaluator_test.cc
     spe_tid_pid_provider_test.cc
