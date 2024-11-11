@@ -33,6 +33,7 @@ add_library(propeller_lib OBJECT
   cfg_edge_kind.cc
   cfg_node.cc
   file_perf_data_provider.cc
+  propeller_statistics.cc
   program_cfg.cc
   resolve_mmap_name.cc
   spe_tid_pid_provider.cc
@@ -66,6 +67,7 @@ propeller_generate_tests(
     cfg_test.cc
     file_perf_data_provider_test.cc
     lazy_evaluator_test.cc
+    propeller_statistics_test.cc
     spe_tid_pid_provider_test.cc
     status_macros_test.cc
     status_testing_macros_test.cc

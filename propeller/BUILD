@@ -327,6 +327,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "propeller_statistics",
+    srcs = ["propeller_statistics.cc"],
+    hdrs = ["propeller_statistics.h"],
+    deps = [
+        ":cfg_edge_kind",
+        ":chain_merge_order",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -585,6 +599,17 @@ cc_test(
         ":status_testing_macros",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "propeller_statistics_test",
+    srcs = ["propeller_statistics_test.cc"],
+    deps = [
+        ":cfg_edge_kind",
+        ":propeller_statistics",
+        ":status_testing_macros",
         "@com_google_googletest//:gtest_main",
     ],
 )
