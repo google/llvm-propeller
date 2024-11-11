@@ -558,3 +558,24 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "program_cfg_test",
+    srcs = [
+        "program_cfg_test.cc",
+    ],
+    data = [
+        "//propeller/testdata:propeller_sample.protobuf",
+    ],
+    deps = [
+        ":cfg",
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":mock_program_cfg_builder",
+        ":program_cfg",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
