@@ -26,6 +26,7 @@ package(
 exports_files([
     "llvm_function_samples.binary",
     "llvm_function_samples_perf.data",
+    "propeller_sample.protobuf",
     "propeller_sample_1.bin",
     "test_comdat.h",
     "test_comdat_1.cc",

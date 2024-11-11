@@ -1,0 +1,273 @@
+cfg {
+  name: "_init"
+  function_index: 0
+  node {
+    bb_id: 0
+    size: 0
+  }
+}
+cfg {
+  name: "_start"
+  function_index: 1
+  node {
+    bb_id: 0
+    size: 43
+  }
+}
+cfg {
+  name: "deregister_tm_clones"
+  function_index: 2
+  node {
+    bb_id: 0
+    size: 0
+  }
+}
+cfg {
+  name: "register_tm_clones"
+  function_index: 3
+  node {
+    bb_id: 0
+    size: 0
+  }
+}
+cfg {
+  name: "__do_global_dtors_aux"
+  function_index: 4
+  node {
+    bb_id: 0
+    size: 0
+  }
+}
+cfg {
+  name: "frame_dummy"
+  function_index: 5
+  node {
+    bb_id: 0
+    size: 0
+  }
+}
+cfg {
+  name: "this_is_very_code"
+  name: "this_is_very_code.alias"
+  function_index: 6
+  node {
+    bb_id: 0
+    size: 90
+  }
+}
+cfg {
+  name: "compute_flag"
+  function_index: 7
+  node {
+    bb_id: 0
+    size: 27
+    out_edges {
+      sink {
+        function_index: 7
+        bb_index: 2
+      }
+      weight: 2273
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+    out_edges {
+      sink {
+        function_index: 7
+        bb_index: 1
+      }
+      weight: 1128
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 1
+    size: 14
+    out_edges {
+      sink {
+        function_index: 7
+        bb_index: 3
+      }
+      weight: 1170
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 2
+    size: 7
+    out_edges {
+      sink {
+        function_index: 7
+        bb_index: 3
+      }
+      weight: 2212
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 3
+    size: 5
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 2
+      }
+      weight: 3449
+      kind: RETURN
+    }
+  }
+}
+cfg {
+  name: "sample1_func"
+  function_index: 8
+  node {
+    bb_id: 0
+    size: 11
+  }
+}
+cfg {
+  name: "main"
+  function_index: 9
+  node {
+    bb_id: 0
+    size: 56
+  }
+  node {
+    bb_id: 1
+    size: 13
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 2
+      }
+      weight: 3565
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 2
+    size: 36
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 4
+      }
+      weight: 2345
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 3
+      }
+      weight: 1007
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+    out_edges {
+      sink {
+        function_index: 8
+        bb_index: 0
+      }
+      weight: 3656
+      kind: CALL
+    }
+  }
+  node {
+    bb_id: 3
+    size: 46
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 4
+      }
+      weight: 1007
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 4
+    size: 26
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 6
+      }
+      weight: 3438
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 5
+      }
+      weight: 17
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 5
+    size: 52
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 6
+      }
+      weight: 17
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 6
+    size: 5
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 7
+      }
+      weight: 3528
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 7
+    size: 14
+    out_edges {
+      sink {
+        function_index: 9
+        bb_index: 1
+      }
+      weight: 3582
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+}
+cfg {
+  name: "__libc_csu_init"
+  function_index: 10
+  node {
+    bb_id: 0
+    size: 93
+  }
+}
+cfg {
+  name: "__libc_csu_fini"
+  function_index: 11
+  node {
+    bb_id: 0
+    size: 1
+  }
+}
+cfg {
+  name: "_fini"
+  function_index: 12
+  node {
+    bb_id: 0
+    size: 0
+    out_edges {
+      sink {
+        function_index: 12
+        bb_index: 0
+      }
+      weight: 672
+      kind: RETURN
+    }
+  }
+}
