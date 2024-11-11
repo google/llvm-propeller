@@ -45,8 +45,7 @@ genrule(
     ],
     cmd = "cp $(SRCS) . ;             $(CC) $(CC_FLAGS) -g -O0 $(location test_comdat_1.cc) $(location test_comdat_2.cc) -o $(RULEDIR)/test_comdat.bin",
     toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
+        "@bazel_tools//tools/cpp:toolchain_type",
     ],
 )
 
@@ -71,8 +70,7 @@ genrule(
     ],
     cmd = "cp $(SRCS) . ;     $(CC) $(CC_FLAGS) -g -O0 -gsplit-dwarf $(location test_comdat_1.cc) $(location test_comdat_2.cc)     -o $(RULEDIR)/test_comdat_with_dwp.bin ;     $(location @llvm-project//llvm:llvm-dwp)       -e $(RULEDIR)/test_comdat_with_dwp.bin -o $(RULEDIR)/test_comdat_with_dwp.dwp",
     toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
+        "@bazel_tools//tools/cpp:toolchain_type",
     ],
     tools = ["@llvm-project//llvm:llvm-dwp"],
 )
@@ -104,8 +102,7 @@ genrule(
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
     target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],
     toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
+        "@bazel_tools//tools/cpp:toolchain_type",
     ],
     tools = ["@llvm-project//llvm:llvm-dwp"],
 )
@@ -128,8 +125,7 @@ genrule(
     # This genrule generates an x86 binary.
     toolchains = [
         "//propeller/bzl:toolchain_vars",
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
+        "@bazel_tools//tools/cpp:toolchain_type",
     ],
 )
 
@@ -140,7 +136,6 @@ genrule(
     cmd = "$(CC) $(CC_FLAGS) -pie -Wl,--build-id=none -fbasic-block-sections=labels -x c++ -O0 $< -o $@",
     # This genrule generates an x86 binary.
     toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
+        "@bazel_tools//tools/cpp:toolchain_type",
     ],
 )
