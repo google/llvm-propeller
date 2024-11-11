@@ -293,6 +293,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "program_cfg",
+    srcs = ["program_cfg.cc"],
+    hdrs = ["program_cfg.h"],
+    deps = [
+        ":cfg",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/memory",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
