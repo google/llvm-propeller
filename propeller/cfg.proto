@@ -1,0 +1,64 @@
+edition = "2023";
+
+package propeller;
+
+option features.utf8_validation = NONE;
+
+// // Edges.
+// // Next Available: 5.
+message CFGEdgePb {
+  // Whole-program identifier for a CFGNode.
+  // Next Available: 3
+  message NodeId {
+    uint32 function_index = 1;
+    uint32 bb_index = 2;
+  }
+
+  // Id of sink bb.
+  NodeId sink = 2;
+
+  // Frequency count of the jump from profile.
+  uint64 weight = 3;
+
+  enum Kind {
+    option features.enum_type = CLOSED;
+
+    BRANCH_OR_FALLTHROUGH = 0;
+    CALL = 1;
+    RETURN = 2;
+  }
+
+  // Edge kind.
+  Kind kind = 4;
+}
+
+// Basic blocks.
+// Next Available: 5.
+message CFGNodePb {
+  // Next available: 5
+  message MetadataPb {
+    bool can_fallthrough = 1;
+    bool has_return = 2;
+    bool has_tail_call = 3;
+    bool is_landing_pad = 4;
+  }
+
+  uint64 size = 1;
+  repeated CFGEdgePb out_edges = 2;
+  uint32 bb_id = 3;
+  MetadataPb metadata = 4;
+}
+
+// Control flow graph where basic blocks are vertices and jumps are edges.
+// Next Available: 5
+message ControlFlowGraphPb {
+  repeated CFGNodePb node = 1;
+  repeated string name = 2;
+  uint32 function_index = 3;
+  string section_name = 4;
+}
+
+// Next Available: 2.
+message ProgramCfgPb {
+  repeated ControlFlowGraphPb cfg = 1;
+}

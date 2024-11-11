@@ -293,6 +293,16 @@ cc_library(
     ],
 )
 
+proto_library(
+    name = "cfg_proto",
+    srcs = ["cfg.proto"],
+)
+
+cc_proto_library(
+    name = "cfg_cc_proto",
+    deps = ["cfg_proto"],
+)
+
 cc_library(
     name = "program_cfg",
     srcs = ["program_cfg.cc"],
