@@ -103,7 +103,7 @@ genrule(
         "manual",
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
-    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
     tools = ["@llvm-project//llvm:llvm-dwp"],
 )
@@ -148,6 +148,35 @@ genrule(
           "$(CC) $$ALL_FLAGS -c -DVER2 -o $(RULEDIR)/uniq_ver2.o $< && " +
           "$(CC) $$ALL_FLAGS -c -DMAIN -o $(RULEDIR)/uniq_main.o $< && " +
           "$(CC) $$ALL_FLAGS $(RULEDIR)/uniq_{ver1,ver2,main}.o -o $@",
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+)
+
+# This rule generates a bimodal binary which will run in one of the two loops depending on the
+# input. This requires LBR support.  Use `--spawn_strategy=local` when the local machine supports
+# LBR.
+genrule(
+    name = "bimodal_sample_bin",
+    srcs = ["bimodal_sample.c"],
+    outs = [
+        "bimodal_sample.bin.gen",
+        "bimodal_sample.perfdata.1.gen",
+        "bimodal_sample.perfdata.2.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+          "$(RULEDIR)/bimodal_sample.bin.gen && " +
+          "cd $(RULEDIR) ; " +
+          "/usr/bin/perf record -o bimodal_sample.perfdata.1.gen -e cycles -b -- " +
+          "./bimodal_sample.bin.gen && " +
+          "/usr/bin/perf record -o bimodal_sample.perfdata.2.gen -e cycles -b -- " +
+          "./bimodal_sample.bin.gen 1",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = [
         "@bazel_tools//tools/cpp:current_cc_toolchain",
         "@bazel_tools//tools/cpp:cc_flags",
