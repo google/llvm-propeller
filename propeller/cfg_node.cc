@@ -16,8 +16,7 @@ std::string CFGNode::GetName() const {
   return bb_name;
 }
 
-CFGEdge *CFGNode::GetEdgeTo(const CFGNode &node,
-                            propeller::CFGEdgeKind kind) const {
+CFGEdge *CFGNode::GetEdgeTo(const CFGNode &node, CFGEdgeKind kind) const {
   for (const std::vector<CFGEdge *> *edges : {&intra_outs_, &inter_outs_}) {
     for (CFGEdge *edge : *edges) {
       if (edge->kind() != kind) continue;

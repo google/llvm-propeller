@@ -18,7 +18,7 @@ namespace propeller {
 // An SPE PID provider which reads the TID from the context field. It requires
 // that the perf.data the instruction record comes from file was collected with
 // a kernel built with CONFIG_PID_IN_CONTEXTIDR=y.
-class SpeTidPidProvider : public propeller::SpePidProvider {
+class SpeTidPidProvider : public SpePidProvider {
  public:
   // Constructs a provider based on the TIDs and PIDs in `events`.
   explicit SpeTidPidProvider(

@@ -42,12 +42,10 @@ class CFGNode final {
   }
 
   // Returns a program-wide unique id for this node.
-  const propeller::InterCfgId &inter_cfg_id() const { return inter_cfg_id_; }
+  const InterCfgId &inter_cfg_id() const { return inter_cfg_id_; }
   // Returns a cfg-wide unique id for this node.
-  const propeller::IntraCfgId &intra_cfg_id() const {
-    return inter_cfg_id_.intra_cfg_id;
-  }
-  propeller::FullIntraCfgId full_intra_cfg_id() const {
+  const IntraCfgId &intra_cfg_id() const { return inter_cfg_id_.intra_cfg_id; }
+  FullIntraCfgId full_intra_cfg_id() const {
     return {.bb_id = bb_id_, .intra_cfg_id = intra_cfg_id()};
   }
   uint64_t addr() const { return addr_; }
@@ -89,10 +87,10 @@ class CFGNode final {
 
   // Returns the edge from `*this` to `node` of kind `kind`, or `nullptr` if
   // no such edge exists.
-  CFGEdge *GetEdgeTo(const CFGNode &node, propeller::CFGEdgeKind kind) const;
+  CFGEdge *GetEdgeTo(const CFGNode &node, CFGEdgeKind kind) const;
 
   // Returns if there are any edge from `*this` to `node` of kind `kind`.
-  bool HasEdgeTo(const CFGNode &node, propeller::CFGEdgeKind kind) const {
+  bool HasEdgeTo(const CFGNode &node, CFGEdgeKind kind) const {
     return GetEdgeTo(node, kind) != nullptr;
   }
 
@@ -111,7 +109,7 @@ class CFGNode final {
 
   void set_freq(int freq) { freq_ = freq; }
 
-  propeller::InterCfgId inter_cfg_id_;
+  InterCfgId inter_cfg_id_;
   // Fixed ID of the basic block, as defined by the compiler. Must be unique
   // within each cfg. Will be used in the propeller profile.
   const int bb_id_;
@@ -129,7 +127,7 @@ class CFGNode final {
 };
 
 template <typename Sink>
-inline void AbslStringify(Sink &sink, const propeller::CFGNode &node) {
+inline void AbslStringify(Sink &sink, const CFGNode &node) {
   absl::Format(&sink, "[id: %v, addr:%llu size: %d]", node.inter_cfg_id_,
                node.addr_, node.size_);
 }
@@ -138,8 +136,7 @@ template <typename Sink>
 inline void AbslStringify(Sink &sink, const CFGEdge &edge) {
   absl::Format(&sink, "[%s -> %s, weight(%lld), type(%s), inter-section(%d)]",
                edge.src()->GetName(), edge.sink()->GetName(), edge.weight(),
-               propeller::GetCfgEdgeKindString(edge.kind()),
-               edge.inter_section());
+               GetCfgEdgeKindString(edge.kind()), edge.inter_section());
 }
 
 }  // namespace propeller

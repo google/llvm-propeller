@@ -30,20 +30,20 @@ std::vector<testing::Matcher<std::unique_ptr<T>>> GetPointeeMatchers(
 
 MATCHER_P(NodeIntraIdIs, intra_cfg_id_matcher,
           "has intra_cfg_id that " +
-              testing::DescribeMatcher<propeller::IntraCfgId>(
-                  intra_cfg_id_matcher, negation)) {
+              testing::DescribeMatcher<IntraCfgId>(intra_cfg_id_matcher,
+                                                   negation)) {
   return ExplainMatchResult(
-      testing::Property("intra_cfg_id", &propeller::CFGNode::intra_cfg_id,
+      testing::Property("intra_cfg_id", &CFGNode::intra_cfg_id,
                         intra_cfg_id_matcher),
       arg, result_listener);
 }
 
 MATCHER_P(NodeInterIdIs, inter_cfg_id_matcher,
           "has intra_cfg_id that " +
-              testing::DescribeMatcher<propeller::InterCfgId>(
-                  inter_cfg_id_matcher, negation)) {
+              testing::DescribeMatcher<InterCfgId>(inter_cfg_id_matcher,
+                                                   negation)) {
   return ExplainMatchResult(
-      testing::Property("inter_cfg_id", &propeller::CFGNode::inter_cfg_id,
+      testing::Property("inter_cfg_id", &CFGNode::inter_cfg_id,
                         inter_cfg_id_matcher),
       arg, result_listener);
 }
@@ -52,38 +52,33 @@ MATCHER_P(NodeIndexIs, bb_index_matcher,
           "has bb_index that " +
               testing::DescribeMatcher<int>(bb_index_matcher, negation)) {
   return testing::ExplainMatchResult(
-      testing::Property("bb_index", &propeller::CFGNode::bb_index,
-                        bb_index_matcher),
-      arg, result_listener);
+      testing::Property("bb_index", &CFGNode::bb_index, bb_index_matcher), arg,
+      result_listener);
 }
 
 MATCHER_P(NodeFreqIs, freq_matcher,
           "has frequency that " +
               testing::DescribeMatcher<int>(freq_matcher, negation)) {
   return testing::ExplainMatchResult(
-      testing::Property("frequency", &propeller::CFGNode::CalculateFrequency,
+      testing::Property("frequency", &CFGNode::CalculateFrequency,
                         freq_matcher),
       arg, result_listener);
 }
 
 MATCHER_P4(IsCfgEdge, src_matcher, sink_matcher, weight_matcher, kind_matcher,
            "has src that " +
-               testing::DescribeMatcher<propeller::CFGNode*>(src_matcher,
-                                                             negation) +
+               testing::DescribeMatcher<CFGNode*>(src_matcher, negation) +
                (negation ? " or" : " and") + " has sink that " +
-               testing::DescribeMatcher<propeller::CFGNode*>(sink_matcher,
-                                                             negation) +
+               testing::DescribeMatcher<CFGNode*>(sink_matcher, negation) +
                (negation ? " or" : " and") + " has weight that " +
                testing::DescribeMatcher<int>(weight_matcher, negation) +
                (negation ? " or" : " and") + " has kind that " +
-               testing::DescribeMatcher<propeller::CFGEdgeKind>(kind_matcher,
-                                                                negation)) {
+               testing::DescribeMatcher<CFGEdgeKind>(kind_matcher, negation)) {
   return ExplainMatchResult(
-      AllOf(testing::Property("src", &propeller::CFGEdge::src, src_matcher),
-            testing::Property("sink", &propeller::CFGEdge::sink, sink_matcher),
-            testing::Property("weight", &propeller::CFGEdge::weight,
-                              weight_matcher),
-            testing::Property("kind", &propeller::CFGEdge::kind, kind_matcher)),
+      AllOf(testing::Property("src", &CFGEdge::src, src_matcher),
+            testing::Property("sink", &CFGEdge::sink, sink_matcher),
+            testing::Property("weight", &CFGEdge::weight, weight_matcher),
+            testing::Property("kind", &CFGEdge::kind, kind_matcher)),
       arg, result_listener);
 }
 // Matches `nodes()` of a CFG against an ordered list of matchers.
@@ -92,8 +87,7 @@ class CfgNodesMatcher {
   using is_gtest_matcher = void;
 
   explicit CfgNodesMatcher() { matcher_ = testing::_; }
-  explicit CfgNodesMatcher(
-      absl::Span<const testing::Matcher<propeller::CFGNode>> matchers)
+  explicit CfgNodesMatcher(absl::Span<const testing::Matcher<CFGNode>> matchers)
       : matcher_(testing::ElementsAreArray(
             GetPointeeMatchers(std::move(matchers)))) {}
 
@@ -105,7 +99,7 @@ class CfgNodesMatcher {
     DescribeTo(os, /*negation=*/true);
   }
 
-  bool MatchAndExplain(const propeller::ControlFlowGraph& cfg,
+  bool MatchAndExplain(const ControlFlowGraph& cfg,
                        testing::MatchResultListener* listener) const {
     return matcher_.MatchAndExplain(cfg.nodes(), listener);
   }
@@ -115,7 +109,7 @@ class CfgNodesMatcher {
     *os << (negation ? " does not have" : " has") << " nodes that ";
     matcher_.DescribeTo(os);
   }
-  testing::Matcher<std::vector<std::unique_ptr<propeller::CFGNode>>> matcher_;
+  testing::Matcher<std::vector<std::unique_ptr<CFGNode>>> matcher_;
 };
 
 // Matches the `intra_edges()` of a CFG against an unordered list of matchers.
@@ -125,7 +119,7 @@ class CfgIntraEdgesMatcher {
 
   explicit CfgIntraEdgesMatcher() { matcher_ = testing::_; }
   explicit CfgIntraEdgesMatcher(
-      absl::Span<const testing::Matcher<propeller::CFGEdge>> matchers)
+      absl::Span<const testing::Matcher<CFGEdge>> matchers)
       : matcher_(testing::UnorderedElementsAreArray(
             GetPointeeMatchers(std::move(matchers)))) {}
 
@@ -137,7 +131,7 @@ class CfgIntraEdgesMatcher {
     DescribeTo(os, /*negation=*/true);
   }
 
-  bool MatchAndExplain(const propeller::ControlFlowGraph& cfg,
+  bool MatchAndExplain(const ControlFlowGraph& cfg,
                        testing::MatchResultListener* listener) const {
     return matcher_.MatchAndExplain(cfg.intra_edges(), listener);
   }
@@ -148,7 +142,7 @@ class CfgIntraEdgesMatcher {
     matcher_.DescribeTo(os);
   }
 
-  testing::Matcher<std::vector<std::unique_ptr<propeller::CFGEdge>>> matcher_;
+  testing::Matcher<std::vector<std::unique_ptr<CFGEdge>>> matcher_;
 };
 
 // Matches the `inter_edges()` of a CFG against an unordered list of matchers.
@@ -159,7 +153,7 @@ class CfgInterEdgesMatcher {
   explicit CfgInterEdgesMatcher() { matcher_ = testing::_; }
 
   explicit CfgInterEdgesMatcher(
-      absl::Span<const testing::Matcher<propeller::CFGEdge>> matchers)
+      absl::Span<const testing::Matcher<CFGEdge>> matchers)
       : matcher_(testing::UnorderedElementsAreArray(
             GetPointeeMatchers(std::move(matchers)))) {}
 
@@ -171,7 +165,7 @@ class CfgInterEdgesMatcher {
     DescribeTo(os, /*negation=*/true);
   }
 
-  bool MatchAndExplain(const propeller::ControlFlowGraph& cfg,
+  bool MatchAndExplain(const ControlFlowGraph& cfg,
                        testing::MatchResultListener* listener) const {
     return matcher_.MatchAndExplain(cfg.inter_edges(), listener);
   }
@@ -182,7 +176,7 @@ class CfgInterEdgesMatcher {
     matcher_.DescribeTo(os);
   }
 
-  testing::Matcher<std::vector<std::unique_ptr<propeller::CFGEdge>>> matcher_;
+  testing::Matcher<std::vector<std::unique_ptr<CFGEdge>>> matcher_;
 };
 
 // Matches `nodes()`, `intra_edges()` and `inter_edges()` of a CFG.
@@ -206,7 +200,7 @@ class CfgMatcher {
     DescribeTo(os, /*negation=*/true);
   }
 
-  bool MatchAndExplain(const propeller::ControlFlowGraph& cfg,
+  bool MatchAndExplain(const ControlFlowGraph& cfg,
                        testing::MatchResultListener* listener) const {
     return nodes_matcher_.MatchAndExplain(cfg, listener) &&
            intra_edges_matcher_.MatchAndExplain(cfg, listener) &&

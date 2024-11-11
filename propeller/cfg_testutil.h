@@ -29,7 +29,7 @@ struct IntraEdgeArg {
   int from_bb_index;
   int to_bb_index;
   int weight;
-  propeller::CFGEdgeKind kind;
+  CFGEdgeKind kind;
 };
 
 struct InterEdgeArg {
@@ -38,7 +38,7 @@ struct InterEdgeArg {
   int to_function_index;
   int to_bb_index;
   int weight;
-  propeller::CFGEdgeKind kind;
+  CFGEdgeKind kind;
 };
 
 struct CfgArg {
@@ -66,19 +66,18 @@ class TestCfgBuilder {
       : multi_cfg_arg_(multi_cfg_arg) {}
 
   // Builds and returns the CFG.
-  absl::flat_hash_map<int, std::unique_ptr<propeller::ControlFlowGraph>> Build()
-      &&;
+  absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>> Build() &&;
 
  private:
   // Creates and returns a vector of nodes corresponding to one CFG with
   // `function_index` for every `NodeArg` specified in `args`, in the same
   // order.
-  std::vector<std::unique_ptr<propeller::CFGNode>> CreateNodesForCfg(
+  std::vector<std::unique_ptr<CFGNode>> CreateNodesForCfg(
       int function_index, absl::Span<const NodeArg> args);
 
   // Creates intra-function edges for `cfg` for every `IntraEdgeArg` specified
   // in `args`.
-  void CreateIntraEdgesForCfg(propeller::ControlFlowGraph &cfg,
+  void CreateIntraEdgesForCfg(ControlFlowGraph &cfg,
                               absl::Span<const IntraEdgeArg> args);
 
   // Creates inter-function edges for every `InterEdgeArg` specified in `args`.
@@ -86,11 +85,11 @@ class TestCfgBuilder {
 
   MultiCfgArg multi_cfg_arg_;
   // Created CFGs mapped by their function_index.
-  absl::flat_hash_map<int, std::unique_ptr<propeller::ControlFlowGraph>>
+  absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>
       cfgs_by_function_index_;
   // Created nodes mapped first by their function_index and then by their
   // bb_index.
-  absl::flat_hash_map<int, absl::flat_hash_map<int, propeller::CFGNode *>>
+  absl::flat_hash_map<int, absl::flat_hash_map<int, CFGNode *>>
       nodes_by_function_and_bb_index_;
 };
 }  // namespace propeller
