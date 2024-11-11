@@ -31,6 +31,7 @@ _LLVM_PROPELLER_TESTDATA_TOOLCHAINS = [
 
 exports_files([
     "bimodal_sample.bin",
+    "bimodal_sample.x.bin",
     "llvm_function_samples.binary",
     "llvm_function_samples_perf.data",
     "propeller_sample.protobuf",
