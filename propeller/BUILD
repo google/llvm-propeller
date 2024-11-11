@@ -375,6 +375,32 @@ cc_library(
 )
 
 cc_library(
+    name = "mock_program_cfg_builder",
+    testonly = True,
+    srcs = ["mock_program_cfg_builder.cc"],
+    hdrs = ["mock_program_cfg_builder.h"],
+    deps = [
+        ":cfg",
+        ":cfg_cc_proto",
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":cfg_id",
+        ":cfg_node",
+        ":cfg_testutil",
+        ":program_cfg",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:str_format",
+        "@com_google_protobuf//:protobuf",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "status_testing_macros",
     testonly = True,
     hdrs = ["status_testing_macros.h"],

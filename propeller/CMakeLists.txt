@@ -17,6 +17,7 @@
 # Build all Proto targets into a unified C++ library.
 add_library(propeller_protos
   branch_frequencies.proto
+  cfg.proto
   propeller_options.proto
 )
 protobuf_generate(TARGET propeller_protos LANGUAGE cpp)
@@ -32,6 +33,7 @@ add_library(propeller_lib OBJECT
   cfg_edge_kind.cc
   cfg_node.cc
   file_perf_data_provider.cc
+  program_cfg.cc
   resolve_mmap_name.cc
   spe_tid_pid_provider.cc
 )
@@ -47,10 +49,12 @@ target_link_libraries(propeller_lib
 # Build all CXX test utilities into a unified library.
 add_library(propeller_test_lib OBJECT
   cfg_testutil.cc
+  mock_program_cfg_builder.cc
 )
 target_link_libraries(propeller_test_lib
   absl::base
   absl::flat_hash_map
+  propeller_lib
 )
 
 # Build all CXX tests into a unified test target.
