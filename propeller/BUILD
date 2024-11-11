@@ -318,6 +318,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "chain_merge_order",
+    hdrs = ["chain_merge_order.h"],
+    deps = [
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/strings:string_view",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
