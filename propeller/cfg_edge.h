@@ -13,7 +13,7 @@
 
 namespace propeller {
 
-class CFGNode;
+class CFGNode;  // This comment should do nothing!
 
 // All instances of CFGEdge are owned by their cfg_.
 class CFGEdge final {
