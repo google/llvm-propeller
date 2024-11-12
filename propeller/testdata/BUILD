@@ -23,6 +23,12 @@ package(
     default_visibility = ["//propeller:default_visibility"],
 )
 
+_LLVM_PROPELLER_TESTDATA_TOOLCHAINS = [
+    "//propeller/bzl:toolchain_vars",
+    "@bazel_tools//tools/cpp:current_cc_toolchain",
+    "@bazel_tools//tools/cpp:cc_flags",
+]
+
 exports_files([
     "llvm_function_samples.binary",
     "llvm_function_samples_perf.data",
@@ -45,10 +51,7 @@ genrule(
         "test_comdat.bin",
     ],
     cmd = "cp $(SRCS) . ;             $(CC) $(CC_FLAGS) -g -O0 $(location test_comdat_1.cc) $(location test_comdat_2.cc) -o $(RULEDIR)/test_comdat.bin",
-    toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
-    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
 list_symbols(
@@ -71,10 +74,7 @@ genrule(
         "test_comdat_with_dwp.dwp",
     ],
     cmd = "cp $(SRCS) . ;     $(CC) $(CC_FLAGS) -g -O0 -gsplit-dwarf $(location test_comdat_1.cc) $(location test_comdat_2.cc)     -o $(RULEDIR)/test_comdat_with_dwp.bin ;     $(location @llvm-project//llvm:llvm-dwp)       -e $(RULEDIR)/test_comdat_with_dwp.bin -o $(RULEDIR)/test_comdat_with_dwp.dwp",
-    toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
-    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
     tools = ["@llvm-project//llvm:llvm-dwp"],
 )
 
@@ -104,10 +104,7 @@ genrule(
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
     target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],
-    toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
-    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
     tools = ["@llvm-project//llvm:llvm-dwp"],
 )
 
@@ -127,11 +124,7 @@ genrule(
         $(RULEDIR)/propeller_barebone_nopie_buildid.build-id
     """,
     # This genrule generates an x86 binary.
-    toolchains = [
-        "//propeller/bzl:toolchain_vars",
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
-    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
 genrule(
@@ -140,8 +133,5 @@ genrule(
     outs = ["propeller_barebone_pie_nobuildid.bin"],
     cmd = "$(CC) $(CC_FLAGS) -pie -Wl,--build-id=none -fbasic-block-sections=labels -x c++ -O0 $< -o $@",
     # This genrule generates an x86 binary.
-    toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
-    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
