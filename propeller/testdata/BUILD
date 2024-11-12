@@ -183,3 +183,35 @@ genrule(
         "@bazel_tools//tools/cpp:cc_flags",
     ],
 )
+
+# This rule generates a bimodal binary which will run in one of the two loops or both loops
+# depending on the input. This requires LBR support. Use `--spawn_strategy=local` when the local
+# machine supports LBR.
+genrule(
+    name = "bimodal_sample_x_bin",
+    srcs = ["bimodal_sample.x.c"],
+    outs = [
+        "bimodal_sample.x.bin.gen",
+        "bimodal_sample.x.perfdata.1.gen",  # profile over loop 1.
+        "bimodal_sample.x.perfdata.2.gen",  # profile over loop 2.
+        "bimodal_sample.x.perfdata.combined.gen",  # profile over loop 1 and loop 2.
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+          "$(RULEDIR)/bimodal_sample.x.bin.gen && " +
+          "cd $(RULEDIR) ; " +
+          "/usr/bin/perf record -o bimodal_sample.x.perfdata.1.gen -e cycles -b -- " +
+          "./bimodal_sample.x.bin.gen && " +
+          "/usr/bin/perf record -o bimodal_sample.x.perfdata.2.gen -e cycles -b -- " +
+          "./bimodal_sample.x.bin.gen 1 && " +
+          "/usr/bin/perf record -o bimodal_sample.x.perfdata.combined.gen -e cycles -b " +
+          "-- ./bimodal_sample.x.bin.gen 1 2",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+)
