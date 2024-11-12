@@ -36,6 +36,7 @@ exports_files([
     "llvm_function_samples_perf.data",
     "propeller_sample.protobuf",
     "propeller_sample_1.bin",
+    "sample.c",
     "test_comdat.h",
     "test_comdat_1.cc",
     "test_comdat_2.cc",
@@ -215,4 +216,9 @@ genrule(
         "@bazel_tools//tools/cpp:current_cc_toolchain",
         "@bazel_tools//tools/cpp:cc_flags",
     ],
+)
+
+cc_binary(
+    name = "sample",
+    srcs = ["sample.c"],
 )
