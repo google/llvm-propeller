@@ -350,6 +350,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "binary_address_branch_path",
+    hdrs = ["binary_address_branch_path.h"],
+    deps = [
+        ":binary_address_branch",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/time",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
