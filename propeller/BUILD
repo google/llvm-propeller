@@ -341,6 +341,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "function_chain_info",
+    hdrs = ["function_chain_info.h"],
+    deps = [
+        ":cfg_id",
+        "@abseil-cpp//absl/algorithm:container",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
