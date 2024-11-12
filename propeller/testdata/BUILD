@@ -135,3 +135,21 @@ genrule(
     # This genrule generates an x86 binary.
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
+
+# This rule generates "a.out" containing duplicate unique-named functions.
+genrule(
+    name = "duplicate_unique_names",
+    srcs = ["unique_names.cc"],
+    outs = [
+        "duplicate_unique_names.out",
+    ],
+    cmd = "export ALL_FLAGS=\"$(CC_FLAGS) -O0 -fbasic-block-sections=labels -funique-internal-linkage-names\"; " +
+          "$(CC) $$ALL_FLAGS -c -DVER1 -o $(RULEDIR)/uniq_ver1.o $< && " +
+          "$(CC) $$ALL_FLAGS -c -DVER2 -o $(RULEDIR)/uniq_ver2.o $< && " +
+          "$(CC) $$ALL_FLAGS -c -DMAIN -o $(RULEDIR)/uniq_main.o $< && " +
+          "$(CC) $$ALL_FLAGS $(RULEDIR)/uniq_{ver1,ver2,main}.o -o $@",
+    toolchains = [
+        "@bazel_tools//tools/cpp:current_cc_toolchain",
+        "@bazel_tools//tools/cpp:cc_flags",
+    ],
+)
