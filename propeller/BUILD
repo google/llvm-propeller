@@ -433,6 +433,20 @@ cc_library(
 )
 
 cc_library(
+    name = "function_chain_info_matchers",
+    testonly = True,
+    srcs = ["function_chain_info_matchers.cc"],
+    hdrs = ["function_chain_info_matchers.h"],
+    deps = [
+        ":cfg_id",
+        ":function_chain_info",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/algorithm:container",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "status_testing_macros",
     testonly = True,
     hdrs = ["status_testing_macros.h"],
