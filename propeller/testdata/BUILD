@@ -222,3 +222,27 @@ cc_binary(
     name = "sample",
     srcs = ["sample.c"],
 )
+
+# This rule is used to manually generate sample.bin and sample.perfdata.
+genrule(
+    name = "sample_bin",
+    srcs = ["sample.c"],
+    outs = [
+        "sample.bin.gen",
+        "sample.perfdata.gen",
+    ],
+    # Starts 3 sample.bin in parallel and collect profile.
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+          "$(RULEDIR)/sample.bin.gen && " +
+          "cd $(RULEDIR) ; echo '1 2 3' > sample.scratch ; " +
+          "/usr/bin/perf record -o sample.perfdata.gen -e cycles -b -- " +
+          "sh -c 'cat sample.scratch | xargs -n 1 -P3 ./sample.bin.gen'",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    toolchains = [
+        "@bazel_tools//tools/cpp:toolchain_type",
+    ],
+)
