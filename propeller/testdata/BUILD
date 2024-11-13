@@ -38,6 +38,7 @@ exports_files([
     "propeller_sample_1.bin",
     "sample.bin",
     "sample.c",
+    "sample_section.bin",
     "test_comdat.h",
     "test_comdat_1.cc",
     "test_comdat_2.cc",
@@ -245,5 +246,30 @@ genrule(
     ],
     outs = ["duplicate_symbols.bin"],
     cmd = "$(CC) $(CC_FLAGS) -fbasic-block-sections=labels -O0 $(SRCS) -o $@",
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+# This rule generates a binary with functions in four sections (.text, .text.unlikely,
+# .anycall.anysection, and .othercall.othersection), and a profile containing samples from three of
+# these sections (.text, .anycall.anysection, and .othercall.othersection).
+# This requires LBR support.  Use `--spawn_strategy=local` when the local machine supports LBR.
+genrule(
+    name = "sample_section_bin",
+    srcs = ["sample_section.c"],
+    outs = [
+        "sample_section.bin.gen",
+        "sample_section.perfdata.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -no-pie -Wl,-z,keep-text-section-prefix " +
+          "-fbasic-block-sections=labels $< -o " +
+          "$(RULEDIR)/sample_section.bin.gen && " +
+          "cd $(RULEDIR) ; " +
+          "/usr/bin/perf record -o sample_section.perfdata.gen -e cycles -b " +
+          "-- ./sample_section.bin.gen",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
