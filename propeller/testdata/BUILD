@@ -152,10 +152,7 @@ genrule(
           "$(CC) $$ALL_FLAGS -c -DVER2 -o $(RULEDIR)/uniq_ver2.o $< && " +
           "$(CC) $$ALL_FLAGS -c -DMAIN -o $(RULEDIR)/uniq_main.o $< && " +
           "$(CC) $$ALL_FLAGS $(RULEDIR)/uniq_{ver1,ver2,main}.o -o $@",
-    toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
-    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
 # This rule generates a bimodal binary which will run in one of the two loops depending on the
@@ -181,10 +178,7 @@ genrule(
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
     target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
-    toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
-    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
 # This rule generates a bimodal binary which will run in one of the two loops or both loops
@@ -213,10 +207,7 @@ genrule(
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
     target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
-    toolchains = [
-        "@bazel_tools//tools/cpp:current_cc_toolchain",
-        "@bazel_tools//tools/cpp:cc_flags",
-    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
 cc_binary(
@@ -243,7 +234,16 @@ genrule(
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
     target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
-    toolchains = [
-        "@bazel_tools//tools/cpp:toolchain_type",
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+genrule(
+    name = "duplicate_symbols_bin",
+    srcs = [
+        "duplicate_symbol_1.c",
+        "duplicate_symbol_2.c",
     ],
+    outs = ["duplicate_symbols.bin"],
+    cmd = "$(CC) $(CC_FLAGS) -fbasic-block-sections=labels -O0 $(SRCS) -o $@",
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
