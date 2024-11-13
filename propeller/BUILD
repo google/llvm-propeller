@@ -394,6 +394,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "program_cfg_builder",
+    srcs = ["program_cfg_builder.cc"],
+    hdrs = ["program_cfg_builder.h"],
+    deps = [
+        ":addr2cu",
+        ":bb_handle",
+        ":binary_address_mapper",
+        ":branch_aggregation",
+        ":cfg",
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":cfg_id",
+        ":cfg_node",
+        ":program_cfg",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################

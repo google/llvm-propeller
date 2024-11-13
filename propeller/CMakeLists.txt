@@ -36,6 +36,7 @@ add_library(propeller_lib OBJECT
   file_perf_data_provider.cc
   propeller_statistics.cc
   program_cfg.cc
+  program_cfg_builder.cc
   resolve_mmap_name.cc
   spe_tid_pid_provider.cc
 )
