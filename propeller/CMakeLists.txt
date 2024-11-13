@@ -27,6 +27,7 @@ target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
 add_library(propeller_lib OBJECT
   addr2cu.cc
   binary_content.cc
+  binary_address_mapper.cc
   branch_aggregation.cc
   branch_frequencies.cc
   cfg.cc
