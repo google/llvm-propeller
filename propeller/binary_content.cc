@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -14,8 +15,10 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
@@ -27,6 +30,8 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FormatAdapters.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -250,6 +255,70 @@ absl::Status ELFFileUtil<ELFT>::InitializeKernelModule(
 }  // namespace
 
 namespace propeller {
+absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+ReadSymbolTable(const BinaryContent &binary_content) {
+  absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+      symtab;
+  for (llvm::object::SymbolRef sr : binary_content.object_file->symbols()) {
+    llvm::object::ELFSymbolRef symbol(sr);
+    uint8_t stt = symbol.getELFType();
+    if (stt != llvm::ELF::STT_FUNC) continue;
+    llvm::Expected<uint64_t> address = sr.getAddress();
+    if (!address || !*address) continue;
+    llvm::Expected<llvm::StringRef> func_name = symbol.getName();
+    if (!func_name) continue;
+    const uint64_t func_size = symbol.getSize();
+    if (func_size == 0) continue;
+
+    auto &addr_sym_list = symtab[*address];
+    // Check whether there are already symbols on the same address, if so make
+    // sure they have the same size and thus they can be aliased.
+    bool check_size_ok = true;
+    for (auto &sym_ref : addr_sym_list) {
+      uint64_t sym_size = llvm::object::ELFSymbolRef(sym_ref).getSize();
+      if (func_size != sym_size) {
+        LOG(WARNING) << "Multiple function symbols on the same address with "
+                        "different size: "
+                     << absl::StrCat(absl::Hex(*address)) << ": '"
+                     << func_name->str() << "(" << func_size << ")' and '"
+                     << llvm::cantFail(sym_ref.getName()).str() << "("
+                     << sym_size << ")', the former will be dropped.";
+        check_size_ok = false;
+        break;
+      }
+    }
+    if (check_size_ok) addr_sym_list.push_back(sr);
+  }
+  return symtab;
+}
+
+absl::StatusOr<std::vector<llvm::object::BBAddrMap>> ReadBbAddrMap(
+    const BinaryContent &binary_content) {
+  auto *elf_object = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(
+      binary_content.object_file.get());
+  CHECK_NE(elf_object, nullptr);
+  llvm::Expected<std::vector<llvm::object::BBAddrMap>> bb_addr_map =
+      elf_object->readBBAddrMap(
+          binary_content.kernel_module.has_value()
+              ? std::optional<unsigned>(
+                    binary_content.kernel_module->text_section_index)
+              : std::nullopt);
+  if (!bb_addr_map) {
+    return absl::InternalError(
+        llvm::formatv(
+            "Failed to read the LLVM_BB_ADDR_MAP section from {0}: {1}.",
+            binary_content.file_name,
+            llvm::fmt_consume(bb_addr_map.takeError()))
+            .str());
+  }
+  if (bb_addr_map->empty()) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "'%s' does not have a non-empty LLVM_BB_ADDR_MAP section.",
+        binary_content.file_name));
+  }
+  return std::move(*bb_addr_map);
+}
+
 absl::StatusOr<absl::flat_hash_map<absl::string_view, absl::string_view>>
 ELFFileUtilBase::ParseModInfoSectionContent(absl::string_view section_content) {
   // .modinfo section is arranged as <key>=<value> pairs, with \0 as separators,
@@ -370,7 +439,7 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
       CreateDWARFContext(*binary_content->object_file, dwp_file);
   if (dwarf_context.ok()) {
     binary_content->dwarf_context = std::move(*dwarf_context);
-  }else {
+  } else {
     LOG(WARNING) << "Failed to create DWARF context: " << dwarf_context.status()
                  << "\nNo module names wil be available";
   }

@@ -11,8 +11,11 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
+#include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Object/ELFTypes.h"
 #include "llvm/Object/ObjectFile.h"
 
 namespace propeller {
@@ -108,6 +111,16 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
 // `absl::NotFoundError` if the symbol is not found.
 absl::StatusOr<int64_t> GetSymbolAddress(
     const llvm::object::ObjectFile &object_file, absl::string_view symbol_name);
+
+// Returns the binary's function symbols by reading from its symbol table.
+absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+ReadSymbolTable(const BinaryContent &binary_content);
+
+// Returns the binary's `BBAddrMap`s by calling LLVM-side decoding function
+// `ELFObjectFileBase::readBBAddrMap`. Returns error if the call fails or if the
+// result is empty.
+absl::StatusOr<std::vector<llvm::object::BBAddrMap>> ReadBbAddrMap(
+    const BinaryContent &binary_content);
 
 }  // namespace propeller
 
