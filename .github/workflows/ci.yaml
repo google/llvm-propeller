@@ -67,6 +67,7 @@ jobs:
             build/_deps/*-build
             build/_deps/*-subbuild
             build/*-build
+            build/CMakeFiles/TargetDirectories.txt
           key: ${{ runner.os }}-cmake-build-${{ hashFiles('**/CMakeLists.txt', 'CMake/**') }}
           restore-keys: |
             ${{ runner.os }}-cmake-build-
