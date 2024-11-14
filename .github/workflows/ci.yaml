@@ -40,8 +40,12 @@ jobs:
         with:
           path: |
             ~/.cache/bazel
-          key: ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}
+          # To avoid drift, we always want to update the cache. We use a unique primary key so that
+          # there is never a cache hit on the primary key, but there *is* a cache hit on one of the
+          # restore keys; this way, we fetch relevant entries, but always write back the cache.
+          key: ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}-
             ${{ runner.os }}-bazel-
 
       # Currently, we only have builds on Ubuntu 22.04 for x86_64.
