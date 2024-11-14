@@ -35,9 +35,11 @@ add_library(propeller_lib OBJECT
   cfg_node.cc
   file_perf_data_provider.cc
   frequencies_branch_aggregator.cc
-  propeller_statistics.cc
+  lbr_branch_aggregator.cc
   program_cfg.cc
   program_cfg_builder.cc
+  propeller_statistics.cc
+  proto_branch_frequencies_aggregator.cc
   resolve_mmap_name.cc
   spe_tid_pid_provider.cc
 )
@@ -71,7 +73,9 @@ propeller_generate_tests(
     file_perf_data_provider_test.cc
     frequencies_branch_aggregator_test.cc
     lazy_evaluator_test.cc
+    lbr_branch_aggregator_test.cc
     propeller_statistics_test.cc
+    proto_branch_frequencies_aggregator_test.cc
     spe_tid_pid_provider_test.cc
     status_macros_test.cc
     status_testing_macros_test.cc

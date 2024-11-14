@@ -106,6 +106,21 @@ cc_library(
 )
 
 cc_library(
+    name = "proto_branch_frequencies_aggregator",
+    srcs = ["proto_branch_frequencies_aggregator.cc"],
+    hdrs = ["proto_branch_frequencies_aggregator.h"],
+    deps = [
+        ":binary_content",
+        ":branch_frequencies",
+        ":branch_frequencies_aggregator",
+        ":branch_frequencies_cc_proto",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "frequencies_branch_aggregator",
     srcs = ["frequencies_branch_aggregator.cc"],
     hdrs = ["frequencies_branch_aggregator.h"],
@@ -859,6 +874,23 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "proto_branch_frequencies_aggregator_test",
+    srcs = ["proto_branch_frequencies_aggregator_test.cc"],
+    deps = [
+        ":binary_content",
+        ":branch_frequencies",
+        ":branch_frequencies_cc_proto",
+        ":parse_text_proto",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        ":proto_branch_frequencies_aggregator",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
