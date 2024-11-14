@@ -59,6 +59,19 @@ cc_library(
 )
 
 cc_library(
+    name = "branch_aggregator",
+    hdrs = ["branch_aggregator.h"],
+    deps = [
+        ":binary_address_mapper",
+        ":branch_aggregation",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "branch_frequencies",
     srcs = ["branch_frequencies.cc"],
     hdrs = ["branch_frequencies.h"],
