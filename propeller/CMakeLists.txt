@@ -34,6 +34,7 @@ add_library(propeller_lib OBJECT
   cfg_edge_kind.cc
   cfg_node.cc
   file_perf_data_provider.cc
+  frequencies_branch_aggregator.cc
   propeller_statistics.cc
   program_cfg.cc
   program_cfg_builder.cc
@@ -68,6 +69,7 @@ propeller_generate_tests(
     branch_frequencies_test.cc
     cfg_test.cc
     file_perf_data_provider_test.cc
+    frequencies_branch_aggregator_test.cc
     lazy_evaluator_test.cc
     propeller_statistics_test.cc
     spe_tid_pid_provider_test.cc

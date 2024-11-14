@@ -106,6 +106,31 @@ cc_library(
 )
 
 cc_library(
+    name = "frequencies_branch_aggregator",
+    srcs = ["frequencies_branch_aggregator.cc"],
+    hdrs = ["frequencies_branch_aggregator.h"],
+    deps = [
+        ":bb_handle",
+        ":binary_address_branch",
+        ":binary_address_mapper",
+        ":binary_content",
+        ":branch_aggregation",
+        ":branch_aggregator",
+        ":branch_frequencies",
+        ":branch_frequencies_aggregator",
+        ":lazy_evaluator",
+        ":propeller_statistics",
+        ":status_macros",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status:statusor",
+        "@llvm-project//llvm:TargetParser",
+    ],
+)
+
+cc_library(
     name = "lbr_aggregation",
     hdrs = ["lbr_aggregation.h"],
     deps = [
@@ -760,5 +785,25 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_test(
+    name = "frequencies_branch_aggregator_test",
+    srcs = ["frequencies_branch_aggregator_test.cc"],
+    deps = [
+        ":binary_address_mapper",
+        ":binary_content",
+        ":branch_aggregation",
+        ":branch_frequencies",
+        ":branch_frequencies_aggregator",
+        ":frequencies_branch_aggregator",
+        ":propeller_statistics",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Object",
     ],
 )
