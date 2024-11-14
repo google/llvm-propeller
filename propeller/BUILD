@@ -141,6 +141,20 @@ cc_library(
 )
 
 cc_library(
+    name = "lbr_aggregator",
+    hdrs = [
+        "lbr_aggregator.h",
+    ],
+    deps = [
+        ":binary_content",
+        ":lbr_aggregation",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "addr2cu",
     srcs = ["addr2cu.cc"],
     hdrs = ["addr2cu.h"],
