@@ -54,6 +54,7 @@ jobs:
           path: |
             build/_deps/*-src
             build/*-src
+            build/*-external
           # Dependency sources are imported by CMake/*.cmake files, so we only need to key on these.
           key: ${{ runner.os }}-cmake-src-${{ hashFiles('CMake/**') }}
           restore-keys: |
@@ -64,6 +65,7 @@ jobs:
         with:
           path: |
             build/_deps/*-build
+            build/_deps/*-subbuild
             build/*-build
           key: ${{ runner.os }}-cmake-build-${{ hashFiles('**/CMakeLists.txt', 'CMake/**') }}
           restore-keys: |
