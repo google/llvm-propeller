@@ -81,6 +81,18 @@ cc_proto_library(
 )
 
 cc_library(
+    name = "branch_frequencies_aggregator",
+    hdrs = ["branch_frequencies_aggregator.h"],
+    deps = [
+        ":binary_content",
+        ":branch_frequencies",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "lbr_aggregation",
     hdrs = ["lbr_aggregation.h"],
     deps = [

@@ -1,5 +1,5 @@
-#ifndef DEVTOOLS_CROSSTOOL_AUTOFDO_LLVM_PROPELLER_CFG_NODE_H_
-#define DEVTOOLS_CROSSTOOL_AUTOFDO_LLVM_PROPELLER_CFG_NODE_H_
+#ifndef PROPELLER_CFG_NODE_H_
+#define PROPELLER_CFG_NODE_H_
 
 #include <cstdint>
 #include <memory>
@@ -140,4 +140,4 @@ inline void AbslStringify(Sink &sink, const CFGEdge &edge) {
 }
 
 }  // namespace propeller
-#endif  // DEVTOOLS_CROSSTOOL_AUTOFDO_LLVM_PROPELLER_CFG_NODE_H_
+#endif  // PROPELLER_CFG_NODE_H_
