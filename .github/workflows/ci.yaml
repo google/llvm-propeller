@@ -48,6 +48,27 @@ jobs:
             ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}-
             ${{ runner.os }}-bazel-
 
+      - name: Mount the CMake dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps/*-src
+            build/*-src
+          # Dependency sources are imported by CMake/*.cmake files, so we only need to key on these.
+          key: ${{ runner.os }}-cmake-src-${{ hashFiles('CMake/**') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-src-
+
+      - name: Mount the CMake dependency build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps/*-build
+            build/*-build
+          key: ${{ runner.os }}-cmake-build-${{ hashFiles('**/CMakeLists.txt', 'CMake/**') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-build-
+
       # Currently, we only have builds on Ubuntu 22.04 for x86_64.
       - name: Build (Bazel)
         run: bazel build //propeller/...:all
