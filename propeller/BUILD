@@ -155,6 +155,27 @@ cc_library(
 )
 
 cc_library(
+    name = "lbr_branch_aggregator",
+    srcs = ["lbr_branch_aggregator.cc"],
+    hdrs = ["lbr_branch_aggregator.h"],
+    deps = [
+        ":binary_address_mapper",
+        ":binary_content",
+        ":branch_aggregation",
+        ":branch_aggregator",
+        ":lazy_evaluator",
+        ":lbr_aggregation",
+        ":lbr_aggregator",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        ":status_macros",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "addr2cu",
     srcs = ["addr2cu.cc"],
     hdrs = ["addr2cu.h"],
@@ -819,5 +840,25 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Object",
+    ],
+)
+
+cc_test(
+    name = "lbr_branch_aggregator_test",
+    srcs = ["lbr_branch_aggregator_test.cc"],
+    deps = [
+        ":binary_address_mapper",
+        ":binary_content",
+        ":branch_aggregation",
+        ":lbr_aggregation",
+        ":lbr_aggregator",
+        ":lbr_branch_aggregator",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
