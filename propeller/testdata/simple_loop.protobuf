@@ -1,0 +1,94 @@
+## CFG Proto for a function consisting of a conditional and a loop on one side
+## of the conditional.
+##
+##             foo
+##              |
+##              |5
+##              V
+##           a.BB.foo <--+
+##            /  \       |
+##          0/    \95    |90
+##          /      \     |
+##         v        \    |
+##  aa.BB.foo        v   |
+##      \        aaa.BB.foo
+##       \           /
+##        \         /
+##        0\       /10
+##          \     /
+##           v   v
+##         raaa.BB.foo
+
+cfg {
+  name: "foo"
+  name: "foo.alias"
+  function_index: 0
+  node {
+    bb_id: 0
+    size: 10
+    out_edges {
+      sink: {
+        function_index: 0
+        bb_index: 1
+      }
+      weight: 5
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 1
+    size: 6
+    out_edges {
+      sink: {
+        function_index: 0
+        bb_index: 2
+      }
+      weight: 0
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+    out_edges {
+      sink: {
+        function_index: 0
+        bb_index: 3
+      }
+      weight: 95
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 2
+    size: 4
+    out_edges {
+      sink: {
+        function_index: 0
+        bb_index: 4
+      }
+      weight: 0
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 3
+    size: 4
+    out_edges {
+      sink: {
+        function_index: 0
+        bb_index: 1
+      }
+      weight: 90
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+    out_edges {
+      sink: {
+        function_index: 0
+        bb_index: 4
+      }
+      weight: 10
+      kind: BRANCH_OR_FALLTHROUGH
+    }
+  }
+  node {
+    bb_id: 4
+    size: 6
+  }
+}
