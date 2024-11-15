@@ -53,6 +53,7 @@ exports_files([
     "test_comdat_1.cc",
     "test_comdat_2.cc",
     "three_branches.protobuf",
+    "two_conditionals_in_loop.protobuf",
 ])
 
 # This rule generates a binary with comdat functions.
