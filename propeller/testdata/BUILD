@@ -35,6 +35,7 @@ exports_files([
     "bimodal_sample.x.bin",
     "call_from_simple_loop.protobuf",
     "clang_v0_labels.binary",
+    "hot_and_cold_landing_pads.protobuf",
     "llvm_function_samples.binary",
     "llvm_function_samples_perf.data",
     "propeller_sample.protobuf",
