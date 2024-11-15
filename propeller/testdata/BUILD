@@ -38,6 +38,7 @@ exports_files([
     "hot_and_cold_landing_pads.protobuf",
     "llvm_function_samples.binary",
     "llvm_function_samples_perf.data",
+    "loop_no_entry_no_exit.protobuf",
     "propeller_sample.protobuf",
     "propeller_sample_1.bin",
     "sample.bin",
