@@ -46,6 +46,7 @@ exports_files([
     "sample.bin",
     "sample.c",
     "sample_section.bin",
+    "simple_conditionals_join.protobuf",
     "test_comdat.h",
     "test_comdat_1.cc",
     "test_comdat_2.cc",
