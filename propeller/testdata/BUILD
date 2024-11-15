@@ -40,6 +40,7 @@ exports_files([
     "llvm_function_samples_perf.data",
     "loop_no_entry_no_exit.protobuf",
     "multiple_cold_blocks.protobuf",
+    "nested_loop.protobuf",
     "propeller_sample.protobuf",
     "propeller_sample_1.bin",
     "sample.bin",
