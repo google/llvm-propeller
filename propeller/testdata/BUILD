@@ -30,6 +30,7 @@ _LLVM_PROPELLER_TESTDATA_TOOLCHAINS = [
 ]
 
 exports_files([
+    "all_cold_landing_pads.protobuf",
     "bimodal_sample.bin",
     "bimodal_sample.x.bin",
     "clang_v0_labels.binary",
