@@ -48,6 +48,7 @@ exports_files([
     "sample_section.bin",
     "simple_conditionals_join.protobuf",
     "simple_loop.protobuf",
+    "simple_multi_function.protobuf",
     "test_comdat.h",
     "test_comdat_1.cc",
     "test_comdat_2.cc",
