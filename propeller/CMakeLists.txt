@@ -26,18 +26,24 @@ target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
 # Build all CXX targets into a unified library.
 add_library(propeller_lib OBJECT
   addr2cu.cc
-  binary_content.cc
   binary_address_mapper.cc
+  binary_content.cc
   branch_aggregation.cc
   branch_frequencies.cc
-  cfg.cc
   cfg_edge_kind.cc
   cfg_node.cc
+  cfg.cc
+  chain_cluster_builder.cc
+  code_layout_scorer.cc
+  code_layout.cc
   file_perf_data_provider.cc
   frequencies_branch_aggregator.cc
   lbr_branch_aggregator.cc
-  program_cfg.cc
+  node_chain_assembly.cc
+  node_chain_builder.cc
+  node_chain.cc
   program_cfg_builder.cc
+  program_cfg.cc
   propeller_statistics.cc
   proto_branch_frequencies_aggregator.cc
   resolve_mmap_name.cc
@@ -55,6 +61,7 @@ target_link_libraries(propeller_lib
 # Build all CXX test utilities into a unified library.
 add_library(propeller_test_lib OBJECT
   cfg_testutil.cc
+  function_chain_info_matchers.cc
   mock_program_cfg_builder.cc
 )
 target_link_libraries(propeller_test_lib
