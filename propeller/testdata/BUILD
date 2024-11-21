@@ -44,6 +44,7 @@ exports_files([
     "nested_loop.protobuf",
     "propeller_sample.protobuf",
     "propeller_sample_1.bin",
+    "propeller_sample_2.bin",
     "ro_sample.out",
     "sample.bin",
     "sample.c",
