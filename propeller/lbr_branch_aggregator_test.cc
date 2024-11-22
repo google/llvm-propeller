@@ -19,6 +19,9 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::DoAll;
 using ::testing::ElementsAre;
@@ -28,9 +31,6 @@ using ::testing::Pair;
 using ::testing::Return;
 using ::testing::SetArgReferee;
 using ::testing::UnorderedElementsAre;
-using ::absl_testing::IsOk;
-using ::absl_testing::IsOkAndHolds;
-using ::absl_testing::StatusIs;
 
 class MockLbrAggregator : public LbrAggregator {
  public:
@@ -73,7 +73,7 @@ TEST(LbrBranchAggregator, AggregatePropagatesErrors) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/{}, /*thunks=*/{});
   auto mock_aggregator = std::make_unique<MockLbrAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateLbrData)
       .WillOnce(Return(absl::InternalError("")));
@@ -90,7 +90,7 @@ TEST(LbrBranchAggregator, ConvertsLbrAggregations) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/{}, /*thunks=*/{});
 
   auto mock_aggregator = std::make_unique<MockLbrAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateLbrData)
@@ -116,7 +116,7 @@ TEST(LbrBranchAggregator, AggregatePropagatesStats) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/{}, /*thunks=*/{});
 
   auto mock_aggregator = std::make_unique<MockLbrAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateLbrData)

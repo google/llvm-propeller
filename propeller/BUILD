@@ -269,6 +269,7 @@ cc_library(
     deps = [
         ":addr2cu",
         ":status_macros",
+        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
@@ -280,6 +281,7 @@ cc_library(
         "@llvm-project//llvm:DebugInfo",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -474,6 +476,7 @@ cc_library(
         ":binary_address_branch",
         ":binary_address_branch_path",
         ":binary_content",
+        ":branch_aggregation",
         ":propeller_options_cc_proto",
         ":propeller_statistics",
         ":status_macros",

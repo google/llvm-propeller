@@ -20,6 +20,9 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::llvm::object::BBAddrMap;
 using ::testing::AllOf;
 using ::testing::DoAll;
@@ -31,9 +34,6 @@ using ::testing::Pair;
 using ::testing::Return;
 using ::testing::SetArgReferee;
 using ::testing::UnorderedElementsAre;
-using ::absl_testing::IsOk;
-using ::absl_testing::IsOkAndHolds;
-using ::absl_testing::StatusIs;
 
 class MockFrequenciesAggregator : public BranchFrequenciesAggregator {
  public:
@@ -78,7 +78,7 @@ TEST(FrequenciesBranchAggregator, AggregatePropagatesErrors) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/{}, /*thunks=*/{});
   auto mock_aggregator = std::make_unique<MockFrequenciesAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateBranchFrequencies)
       .WillOnce(Return(absl::InternalError("")));
@@ -95,7 +95,7 @@ TEST(FrequenciesBranchAggregator, AggregatePropagatesStats) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/{}, /*thunks=*/{});
   auto mock_aggregator = std::make_unique<MockFrequenciesAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateBranchFrequencies)
       .WillOnce(DoAll(SetArgReferee<2>(PropellerStats{
@@ -141,7 +141,8 @@ TEST(FrequenciesBranchAggregator, AggregateInfersUnconditionalFallthroughs) {
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1},
                           {.function_index = 0, .bb_index = 2}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/{},
+                         /*thunks=*/{}),
                      stats),
       IsOkAndHolds(AllOf(
           Field("branch_counters", &BranchAggregation::branch_counters,
@@ -182,7 +183,8 @@ TEST(FrequenciesBranchAggregator, AggregatePropagatesFallthroughs) {
                           {.function_index = 0, .bb_index = 1},
                           {.function_index = 0, .bb_index = 2},
                           {.function_index = 0, .bb_index = 3}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/{},
+                         /*thunks=*/{}),
                      stats),
       IsOkAndHolds(Field(
           "fallthrough_counters", &BranchAggregation::fallthrough_counters,
@@ -212,7 +214,8 @@ TEST(FrequenciesBranchAggregator, AggregateRespectsNotTakenBranches) {
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/{},
+                         /*thunks=*/{}),
                      stats),
       IsOkAndHolds(Field(
           "fallthrough_counters", &BranchAggregation::fallthrough_counters,
@@ -246,7 +249,8 @@ TEST(FrequenciesBranchAggregator, AggregateIgnoresMidFunctionNotTakenBranches) {
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1},
                           {.function_index = 0, .bb_index = 2}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/{},
+                         /*thunks=*/{}),
                      stats),
       IsOkAndHolds(AllOf(
           Field("branch_counters", &BranchAggregation::branch_counters,
@@ -280,7 +284,8 @@ TEST(FrequenciesBranchAggregator,
                   /*bb_handles=*/
                   {{.function_index = 0, .bb_index = 0},
                    {.function_index = 0, .bb_index = 1}},
-                  /*symbol_info_map=*/{}),
+                  /*symbol_info_map=*/{},
+                  /*thunks=*/{}),
               stats),
       IsOkAndHolds(Field("fallthrough_counters",
                          &BranchAggregation::fallthrough_counters, IsEmpty())));
@@ -312,7 +317,8 @@ TEST(FrequenciesBranchAggregator, AggregatesBlocksEndingInBranches) {
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1},
                           {.function_index = 0, .bb_index = 2}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/{},
+                         /*thunks=*/{}),
                      stats),
       IsOkAndHolds(Field("fallthrough_counters",
                          &BranchAggregation::fallthrough_counters, IsEmpty())));
