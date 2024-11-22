@@ -43,6 +43,7 @@ add_library(propeller_lib OBJECT
   node_chain_builder.cc
   node_chain.cc
   perfdata_reader.cc
+  perf_branch_frequencies_aggregator.cc
   program_cfg_builder.cc
   program_cfg.cc
   propeller_statistics.cc
@@ -83,6 +84,7 @@ propeller_generate_tests(
     lazy_evaluator_test.cc
     lbr_branch_aggregator_test.cc
     perfdata_reader_test.cc
+    perf_branch_frequencies_aggregator_test.cc
     propeller_statistics_test.cc
     proto_branch_frequencies_aggregator_test.cc
     spe_tid_pid_provider_test.cc
