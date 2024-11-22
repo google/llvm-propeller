@@ -18,6 +18,7 @@
 
 load("//propeller/bzl:list_symbols.bzl", "list_symbols")
 
+
 package(
     default_applicable_licenses = ["//propeller:license"],
     default_visibility = ["//propeller:default_visibility"],
@@ -50,6 +51,7 @@ exports_files([
     "sample.bin",
     "sample.c",
     "sample_cc_directives.arm.golden.txt",
+    "sample_different_buildid.bin",
     "sample_ld_directives.arm.golden.txt",
     "sample_section.bin",
     "simple_conditionals_join.protobuf",
