@@ -1,0 +1,181 @@
+# proto-file: third_party/llvm_propeller/branch_frequencies.proto
+# proto-message: propeller.BranchFrequenciesProto
+taken_counts {
+  source: 1167576
+  dest: 1167540
+  count: 10
+}
+taken_counts {
+  source: 18446744073709551615
+  dest: 18446744073709551615
+  count: 18
+}
+taken_counts {
+  source: 409772
+  dest: 404656
+  count: 1
+}
+taken_counts {
+  source: 284644
+  dest: 284688
+  count: 138027
+}
+taken_counts {
+  source: 1151120
+  dest: 1151068
+  count: 1
+}
+taken_counts {
+  source: 879836
+  dest: 879892
+  count: 1
+}
+taken_counts {
+  source: 1151296
+  dest: 1151244
+  count: 1
+}
+taken_counts {
+  source: 415160
+  dest: 415244
+  count: 1
+}
+taken_counts {
+  source: 1167344
+  dest: 1167376
+  count: 7
+}
+taken_counts {
+  source: 1167404
+  dest: 1167340
+  count: 10
+}
+taken_counts {
+  source: 1155920
+  dest: 1174068
+  count: 1
+}
+taken_counts {
+  source: 284716
+  dest: 284612
+  count: 226882
+}
+taken_counts {
+  source: 518680
+  dest: 518708
+  count: 1
+}
+taken_counts {
+  source: 1151472
+  dest: 1151420
+  count: 3
+}
+taken_counts {
+  source: 1150944
+  dest: 1150884
+  count: 2
+}
+taken_counts {
+  source: 1167600
+  dest: 1167556
+  count: 10
+}
+taken_counts {
+  source: 284628
+  dest: 284448
+  count: 217765
+}
+taken_counts {
+  source: 1198244
+  dest: 1198392
+  count: 1
+}
+taken_counts {
+  source: 1198180
+  dest: 1228768
+  count: 1
+}
+taken_counts {
+  source: 409652
+  dest: 409664
+  count: 1
+}
+taken_counts {
+  source: 420644
+  dest: 414720
+  count: 1
+}
+taken_counts {
+  source: 284488
+  dest: 284632
+  count: 224428
+}
+taken_counts {
+  source: 1151764
+  dest: 1151656
+  count: 2
+}
+taken_counts {
+  source: 880804
+  dest: 880788
+  count: 7
+}
+taken_counts {
+  source: 1187648
+  dest: 1198432
+  count: 1
+}
+taken_counts {
+  source: 1167544
+  dest: 1167584
+  count: 11
+}
+taken_counts {
+  source: 531956
+  dest: 531972
+  count: 1
+}
+not_taken_counts {
+  address: 284644
+  count: 109582
+}
+not_taken_counts {
+  address: 284620
+  count: 236897
+}
+not_taken_counts {
+  address: 1167380
+  count: 7
+}
+not_taken_counts {
+  address: 1167588
+  count: 6
+}
+not_taken_counts {
+  address: 425088
+  count: 1
+}
+not_taken_counts {
+  address: 1198568
+  count: 1
+}
+not_taken_counts {
+  address: 18446744073709551615
+  count: 14
+}
+not_taken_counts {
+  address: 879716
+  count: 1
+}
+not_taken_counts {
+  address: 513104
+  count: 1
+}
+not_taken_counts {
+  address: 1169940
+  count: 1
+}
+not_taken_counts {
+  address: 518632
+  count: 1
+}
