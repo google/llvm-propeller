@@ -565,6 +565,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "perfdata_reader",
+    srcs = ["perfdata_reader.cc"],
+    hdrs = ["perfdata_reader.h"],
+    deps = [
+        ":binary_address_branch",
+        ":binary_content",
+        ":branch_frequencies",
+        ":lbr_aggregation",
+        ":perf_data_provider",
+        ":spe_tid_pid_provider",
+        ":status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/functional:function_ref",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+        "@com_google_perf_data_converter//src/quipper:arm_spe_decoder",
+        "@com_google_perf_data_converter//src/quipper:perf_data_cc_proto",
+        "@com_google_perf_data_converter//src/quipper:perf_parser",
+        "@com_google_perf_data_converter//src/quipper:perf_reader",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -980,6 +1009,41 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "perfdata_reader_test",
+    size = "medium",
+    timeout = "long",
+    srcs = ["perfdata_reader_test.cc"],
+    data = [
+        "//propeller/testdata:libro_sample.so",
+        "//propeller/testdata:llvm_function_samples.binary",
+        "//propeller/testdata:propeller_barebone_pie_nobuildid_bin",
+        "//propeller/testdata:propeller_sample_1.bin",
+        "//propeller/testdata:propeller_sample_2.bin",
+        "//propeller/testdata:sample.arm.bin",
+        "//propeller/testdata:sample.bin",
+        "//propeller/testdata:sample_different_buildid.bin",
+    ],
+    tags = [
+        "not_build:arm",
+        "not_run:arm",
+    ],
+    deps = [
+        ":binary_content",
+        ":branch_frequencies",
+        ":file_perf_data_provider",
+        ":lbr_aggregation",
+        ":perf_data_provider",
+        ":perfdata_reader",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
