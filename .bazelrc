@@ -16,9 +16,9 @@
 common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/refs/heads/main/
 common --registry=file:%workspace%/Bazel/registry/
 
-# Require c++17 for c++ files.
-build --cxxopt='-std=c++17'
-build --host_cxxopt=-std=c++17
+# Require c++20 for c++ files.
+build --cxxopt='-std=c++20'
+build --host_cxxopt=-std=c++20
 build --repo_env=CC=clang
 
 # Load user-specific configuration, if any.
