@@ -51,6 +51,7 @@ exports_files([
     "sample.bin",
     "sample.c",
     "sample_cc_directives.arm.golden.txt",
+    "sample_different_buildid.bin",
     "sample_ld_directives.arm.golden.txt",
     "sample_section.bin",
     "simple_conditionals_join.protobuf",
