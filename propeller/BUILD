@@ -615,6 +615,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "profile",
+    hdrs = ["profile.h"],
+    deps = [
+        ":function_chain_info",
+        ":program_cfg",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/container:btree",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
