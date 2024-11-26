@@ -595,6 +595,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "perf_branch_frequencies_aggregator",
+    srcs = ["perf_branch_frequencies_aggregator.cc"],
+    hdrs = ["perf_branch_frequencies_aggregator.h"],
+    deps = [
+        ":binary_content",
+        ":branch_frequencies",
+        ":branch_frequencies_aggregator",
+        ":perf_data_provider",
+        ":perfdata_reader",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        ":resolve_mmap_name",
+        ":status_macros",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -1040,6 +1060,29 @@ cc_test(
         ":lbr_aggregation",
         ":perf_data_provider",
         ":perfdata_reader",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "perf_branch_frequencies_aggregator_test",
+    srcs = ["perf_branch_frequencies_aggregator_test.cc"],
+    data = [
+        "//propeller/testdata:sample.arm.bin",
+    ],
+    deps = [
+        ":binary_content",
+        ":branch_frequencies",
+        ":file_perf_data_provider",
+        ":perf_branch_frequencies_aggregator",
+        ":perf_data_provider",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
         ":status_testing_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
