@@ -627,6 +627,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "profile_writer",
+    srcs = ["profile_writer.cc"],
+    hdrs = ["profile_writer.h"],
+    deps = [
+        ":cfg",
+        ":cfg_edge",
+        ":cfg_id",
+        ":cfg_node",
+        ":function_chain_info",
+        ":profile",
+        ":propeller_options_cc_proto",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
