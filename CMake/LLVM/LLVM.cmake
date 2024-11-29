@@ -62,4 +62,9 @@ endif()
 
 # Add the external llvm project to the build.
 add_subdirectory(${propeller_llvm_src_dir}/llvm ${propeller_llvm_build_dir}/llvm EXCLUDE_FROM_ALL)
-include_directories(${propeller_llvm_src_dir}/llvm/include ${propeller_llvm_build_dir}/llvm/include)
+include_directories(
+  ${propeller_llvm_src_dir}
+  ${propeller_llvm_src_dir}/llvm/include
+  ${propeller_llvm_build_dir}
+  ${propeller_llvm_build_dir}/llvm/include
+)
