@@ -672,6 +672,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "perf_lbr_aggregator",
+    srcs = ["perf_lbr_aggregator.cc"],
+    hdrs = ["perf_lbr_aggregator.h"],
+    deps = [
+        ":binary_address_branch",
+        ":binary_content",
+        ":lbr_aggregation",
+        ":lbr_aggregator",
+        ":mini_disassembler",
+        ":perf_data_provider",
+        ":perfdata_reader",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        ":resolve_mmap_name",
+        ":status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:MC",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
