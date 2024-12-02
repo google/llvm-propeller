@@ -68,3 +68,10 @@ include_directories(
   ${propeller_llvm_build_dir}
   ${propeller_llvm_build_dir}/llvm/include
 )
+# Add generated target-specific library directories.
+foreach (tgt ${LLVM_TARGETS_TO_BUILD})
+  include_directories(
+    ${propeller_llvm_src_dir}/llvm/lib/Target/${tgt}
+    ${propeller_llvm_build_dir}/llvm/lib/Target/${tgt}
+  )
+endforeach()
