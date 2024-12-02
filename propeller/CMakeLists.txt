@@ -122,3 +122,5 @@ propeller_generate_tests(
     quipper_protos
     # keep-sorted end
 )
+
+add_subdirectory(cloning)
