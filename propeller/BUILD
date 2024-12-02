@@ -649,6 +649,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mini_disassembler",
+    srcs = ["mini_disassembler.cc"],
+    hdrs = ["mini_disassembler.h"],
+    deps = [
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:AllTargetsAsmParsers",  # buildcleaner: keep
+        "@llvm-project//llvm:AllTargetsDisassemblers",  # buildcleaner: keep
+        "@llvm-project//llvm:MC",
+        "@llvm-project//llvm:MCDisassembler",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -1123,5 +1146,23 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "mini_disassembler_test",
+    srcs = ["mini_disassembler_test.cc"],
+    data = [
+        "//propeller/testdata:llvm_function_samples.binary",
+    ],
+    deps = [
+        ":binary_content",
+        ":mini_disassembler",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:MC",
+        "@llvm-project//llvm:X86UtilsAndDesc",
     ],
 )

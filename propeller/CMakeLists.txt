@@ -42,6 +42,7 @@ add_library(propeller_lib OBJECT
   file_perf_data_provider.cc
   frequencies_branch_aggregator.cc
   lbr_branch_aggregator.cc
+  mini_disassembler.cc
   node_chain.cc
   node_chain_assembly.cc
   node_chain_builder.cc
@@ -66,6 +67,11 @@ target_link_libraries(propeller_lib
   quipper_protos
   # keep-sorted end
 )
+foreach (tgt ${LLVM_TARGETS_TO_BUILD})
+  foreach (tool AsmParser Desc Disassembler Info)
+    target_link_libraries(propeller_lib LLVM${tgt}${tool})
+  endforeach()
+endforeach()
 
 # Build all CXX test utilities into a unified library.
 add_library(propeller_test_lib OBJECT
