@@ -326,6 +326,11 @@ proto_library(
     srcs = ["path_profile_options.proto"],
 )
 
+cc_proto_library(
+    name = "path_profile_options_cc_proto",
+    deps = [":path_profile_options_proto"],
+)
+
 cc_library(
     name = "resolve_mmap_name",
     srcs = ["resolve_mmap_name.cc"],
