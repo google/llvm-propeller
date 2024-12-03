@@ -873,6 +873,23 @@ cc_library(
 )
 
 cc_library(
+    name = "multi_cfg_test_case",
+    testonly = True,
+    srcs = ["multi_cfg_test_case.cc"],
+    hdrs = ["multi_cfg_test_case.h"],
+    deps = [
+        ":bb_handle",
+        ":cfg_edge_kind",
+        ":cfg_testutil",
+        ":path_node",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:node_hash_map",
+        "@abseil-cpp//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "status_testing_macros",
     testonly = True,
     hdrs = ["status_testing_macros.h"],
