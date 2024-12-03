@@ -40,6 +40,7 @@ add_library(propeller_lib OBJECT
   profile_writer.cc
   program_cfg.cc
   program_cfg_builder.cc
+  program_cfg_path_analyzer.cc
   propeller_statistics.cc
   proto_branch_frequencies_aggregator.cc
   resolve_mmap_name.cc
@@ -92,6 +93,7 @@ propeller_generate_tests(
     lbr_branch_aggregator_test.cc
     perf_branch_frequencies_aggregator_test.cc
     perfdata_reader_test.cc
+    program_cfg_path_analyzer_test.cc
     propeller_statistics_test.cc
     proto_branch_frequencies_aggregator_test.cc
     spe_tid_pid_provider_test.cc
