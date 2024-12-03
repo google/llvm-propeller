@@ -708,6 +708,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "path_node",
+    hdrs = ["path_node.h"],
+    deps = [
+        ":bb_handle",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:node_hash_map",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
