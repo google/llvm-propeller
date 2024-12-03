@@ -724,6 +724,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "program_cfg_path_analyzer",
+    srcs = ["program_cfg_path_analyzer.cc"],
+    hdrs = ["program_cfg_path_analyzer.h"],
+    deps = [
+        ":bb_handle",
+        ":binary_address_mapper",
+        ":cfg",
+        ":path_node",
+        ":path_profile_options_cc_proto",
+        ":program_cfg",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/functional:bind_front",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/time",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -1216,5 +1241,26 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:X86UtilsAndDesc",
+    ],
+)
+
+cc_test(
+    name = "program_cfg_path_analyzer_test",
+    srcs = ["program_cfg_path_analyzer_test.cc"],
+    deps = [
+        ":bb_handle",
+        ":binary_address_mapper",
+        ":cfg_edge_kind",
+        ":mock_program_cfg_builder",
+        ":path_node",
+        ":path_profile_options_cc_proto",
+        ":program_cfg",
+        ":program_cfg_path_analyzer",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/time",
+        "@abseil-cpp//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
