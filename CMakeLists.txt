@@ -20,8 +20,11 @@ cmake_minimum_required(VERSION 3.16)
 
 # Configure the project and global settings.
 project(propeller LANGUAGES CXX)
+# LINT.IfChange(cpp_standard)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# LINT.ThenChange(.bazelrc:cpp_standard)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()

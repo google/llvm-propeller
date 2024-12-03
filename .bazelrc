@@ -16,10 +16,14 @@
 common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/refs/heads/main/
 common --registry=file:%workspace%/Bazel/registry/
 
-# Require c++20 for c++ files.
+# Set the default C++ standard.
+# LINT.IfChange(cpp_standard)
 build --cxxopt='-std=c++20'
 build --host_cxxopt=-std=c++20
+# LINT.ThenChange(CMakeLists.txt:cpp_standard)
+
 build --repo_env=CC=clang
+build --repo_env=CXX=clang++
 
 # Load user-specific configuration, if any.
 try-import %workspace%/user.bazelrc
