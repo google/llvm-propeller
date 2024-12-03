@@ -326,6 +326,11 @@ proto_library(
     srcs = ["path_profile_options.proto"],
 )
 
+cc_proto_library(
+    name = "path_profile_options_cc_proto",
+    deps = [":path_profile_options_proto"],
+)
+
 cc_library(
     name = "resolve_mmap_name",
     srcs = ["resolve_mmap_name.cc"],
@@ -700,6 +705,22 @@ cc_library(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings:str_format",
         "@llvm-project//llvm:MC",
+    ],
+)
+
+cc_library(
+    name = "path_node",
+    hdrs = ["path_node.h"],
+    deps = [
+        ":bb_handle",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:node_hash_map",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
     ],
 )
 
