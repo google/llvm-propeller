@@ -14,17 +14,6 @@
 # limitations under the License.
 #
 
-# Build all Proto targets into a unified C++ library.
-add_library(propeller_protos
-  # keep-sorted start
-  branch_frequencies.proto
-  cfg.proto
-  propeller_options.proto
-  # keep-sorted end
-)
-protobuf_generate(TARGET propeller_protos LANGUAGE cpp)
-target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
-
 # Build all CXX targets into a unified library.
 add_library(propeller_lib OBJECT
   # keep-sorted start

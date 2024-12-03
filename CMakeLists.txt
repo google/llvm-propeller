@@ -42,4 +42,16 @@ include(CMake/Protobuf/Protobuf.cmake)
 include(CMake/Quipper/Quipper.cmake)
 
 include_directories(${CMAKE_HOME_DIRECTORY} ${PROJECT_BINARY_DIR})
+
+# Generate protos at the root level so that protoc uses the right import paths.
+file(
+    GLOB_RECURSE propeller_proto_sources
+    RELATIVE ${CMAKE_HOME_DIRECTORY}
+    propeller/*.proto
+)
+# Build all Propeller proto targets into a unified C++ library.
+add_library(propeller_protos ${propeller_proto_sources})
+protobuf_generate(TARGET propeller_protos LANGUAGE cpp)
+target_link_libraries(propeller_protos PUBLIC ${Protobuf_LIBRARIES})
+
 add_subdirectory(propeller)
