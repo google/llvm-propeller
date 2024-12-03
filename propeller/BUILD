@@ -313,11 +313,17 @@ cc_library(
 proto_library(
     name = "propeller_options_proto",
     srcs = ["propeller_options.proto"],
+    deps = [":path_profile_options_proto"],
 )
 
 cc_proto_library(
     name = "propeller_options_cc_proto",
     deps = [":propeller_options_proto"],
+)
+
+proto_library(
+    name = "path_profile_options_proto",
+    srcs = ["path_profile_options.proto"],
 )
 
 cc_library(

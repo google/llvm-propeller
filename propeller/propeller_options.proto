@@ -2,6 +2,8 @@ edition = "2023";
 
 package propeller;
 
+import "propeller/path_profile_options.proto";
+
 option features.enum_type = CLOSED;
 option features.utf8_validation = NONE;
 
@@ -78,7 +80,8 @@ message PropellerOptions {
   // The profiles to be used for generating a Propeller profile.
   repeated InputProfile input_profiles = 14;
 
-  reserved 15;
+  // Options for path profile generation.
+  propeller.PathProfileOptions path_profile_options = 15;
 }
 
 // Next Available: 13.

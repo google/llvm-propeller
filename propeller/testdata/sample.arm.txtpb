@@ -1,4 +1,4 @@
-# proto-file: third_party/llvm_propeller/branch_frequencies.proto
+# proto-file: propeller/branch_frequencies.proto
 # proto-message: propeller.BranchFrequenciesProto
 taken_counts {
   source: 1167576

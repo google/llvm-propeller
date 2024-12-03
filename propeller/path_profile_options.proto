@@ -1,0 +1,41 @@
+edition = "2023";
+
+package propeller;
+
+// Options for path profile generation.
+// Next Available: 13.
+message PathProfileOptions {
+  // Frequency threshold percentile to use for hot join blocks.
+  int32 hot_cutoff_percentile = 1 [default = 80];
+
+  // Maximum path length to consider for path cloning. Must be greater than one.
+  int32 max_path_length = 2 [default = 6];
+
+  // Minimum out-flow to in-flow ratio to extend a path along a block.
+  double min_flow_ratio = 3 [default = 0.8];
+
+  // Minimum acceptable score gain to consider a cloning for reevaluation.
+  int32 min_initial_cloning_score = 4 [default = -100];
+
+  // Minimum acceptable score gain to apply a cloning after reevaluation.
+  int32 min_final_cloning_score = 8 [default = 10];
+
+  // Icache penalty factor associated with cloning.
+  double icache_penalty_factor = 5 [default = 0.6];
+
+  // Maximum interval which contributes to the icache penalty in milliseconds.
+  int32 max_icache_penalty_interval_millis = 6 [default = 10000];
+
+  // Maximum sample time difference in the path buffer in milliseconds. When we
+  // hit this threshold, we analyze and discard half of the buffered paths in
+  // nondecreasing order of their sample time.
+  int32 max_time_diff_in_path_buffer_millis = 7 [default = 1000];
+
+  bool enable_cloning = 9 [default = false];
+
+  // Base penalty factor for cloning.
+  double base_penalty_factor = 11 [default = 1.0];
+
+  // Enables cloning for paths ending with blocks with indirect branches.
+  bool clone_indirect_branch_blocks = 12 [default = false];
+}
