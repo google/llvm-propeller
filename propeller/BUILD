@@ -814,6 +814,57 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "perf_data_path_reader",
+    srcs = ["perf_data_path_reader.cc"],
+    hdrs = ["perf_data_path_reader.h"],
+    deps = [
+        ":binary_address_branch_path",
+        ":binary_address_mapper",
+        ":perfdata_reader",
+        "@abseil-cpp//absl/functional:function_ref",
+        "@abseil-cpp//absl/time",
+        "@abseil-cpp//absl/types:span",
+        "@com_google_perf_data_converter//src/quipper:perf_data_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "perf_data_path_profile_aggregator",
+    srcs = ["perf_data_path_profile_aggregator.cc"],
+    hdrs = ["perf_data_path_profile_aggregator.h"],
+    deps = [
+        ":binary_address_mapper",
+        ":binary_content",
+        ":path_node",
+        ":path_profile_aggregator",
+        ":path_profile_options_cc_proto",
+        ":perf_data_path_reader",
+        ":perf_data_provider",
+        ":perfdata_reader",
+        ":program_cfg",
+        ":program_cfg_path_analyzer",
+        ":propeller_options_cc_proto",
+        ":resolve_mmap_name",
+        ":status_macros",
+        "@abseil-cpp//absl/functional:bind_front",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:vlog_is_on",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "telemetry_reporter",
+    srcs = ["telemetry_reporter.cc"],
+    hdrs = ["telemetry_reporter.h"],
+    deps = [
+        ":binary_content",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/functional:any_invocable",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
