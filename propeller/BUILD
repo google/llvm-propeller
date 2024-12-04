@@ -814,6 +814,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "perf_data_path_reader",
+    srcs = ["perf_data_path_reader.cc"],
+    hdrs = ["perf_data_path_reader.h"],
+    deps = [
+        ":binary_address_branch_path",
+        ":binary_address_mapper",
+        ":perfdata_reader",
+        "@abseil-cpp//absl/functional:function_ref",
+        "@abseil-cpp//absl/time",
+        "@abseil-cpp//absl/types:span",
+        "@com_google_perf_data_converter//src/quipper:perf_data_cc_proto",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
