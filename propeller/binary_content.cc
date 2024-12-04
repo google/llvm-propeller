@@ -40,19 +40,6 @@
 
 namespace {
 using ::propeller::BinaryContent;
-using ::propeller::CreateDWARFContext;
-
-// Convert binary data stored in data[...] into text representation.
-std::string BinaryDataToAscii(absl::string_view data) {
-  std::string ascii(data.size() * 2, 0);
-  const char heximal[] = "0123456789abcdef";
-  for (int i = 0; i < data.size(); ++i) {
-    uint8_t d(data[i]);
-    ascii[i * 2] = heximal[((d >> 4) & 0xf)];
-    ascii[i * 2 + 1] = heximal[(d & 0xf)];
-  }
-  return ascii;
-}
 
 // Find relocatable ko file's text section index and store it in
 // BinaryContent::kernel_module::text_section_index. We only care the first
