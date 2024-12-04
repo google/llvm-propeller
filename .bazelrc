@@ -22,8 +22,8 @@ build --cxxopt='-std=c++20'
 build --host_cxxopt=-std=c++20
 # LINT.ThenChange(CMakeLists.txt:cpp_standard)
 
-build --repo_env=CC=clang
-build --repo_env=CXX=clang++
+build --repo_env=CC=clang-16
+build --repo_env=CXX=clang++-16
 
 # Load user-specific configuration, if any.
 try-import %workspace%/user.bazelrc
