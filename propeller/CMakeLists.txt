@@ -26,6 +26,7 @@ add_library(propeller_lib OBJECT
   cfg_edge_kind.cc
   cfg_node.cc
   chain_cluster_builder.cc
+  clone_applicator.cc
   code_layout.cc
   code_layout_scorer.cc
   file_perf_data_provider.cc
@@ -35,6 +36,7 @@ add_library(propeller_lib OBJECT
   node_chain.cc
   node_chain_assembly.cc
   node_chain_builder.cc
+  path_clone_evaluator.cc
   perf_branch_frequencies_aggregator.cc
   perfdata_reader.cc
   profile_writer.cc
@@ -88,10 +90,12 @@ propeller_generate_tests(
     branch_aggregation_test.cc
     branch_frequencies_test.cc
     cfg_test.cc
+    clone_applicator_test.cc
     file_perf_data_provider_test.cc
     frequencies_branch_aggregator_test.cc
     lazy_evaluator_test.cc
     lbr_branch_aggregator_test.cc
+    path_clone_evaluator_test.cc
     perf_branch_frequencies_aggregator_test.cc
     perfdata_reader_test.cc
     program_cfg_path_analyzer_test.cc

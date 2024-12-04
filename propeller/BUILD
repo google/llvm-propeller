@@ -776,6 +776,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "clone_applicator",
+    srcs = ["clone_applicator.cc"],
+    hdrs = ["clone_applicator.h"],
+    deps = [
+        ":cfg",
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":cfg_node",
+        ":code_layout",
+        ":function_chain_info",
+        ":path_clone_evaluator",
+        ":path_node",
+        ":path_profile_options_cc_proto",
+        ":program_cfg",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -1335,6 +1360,30 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "clone_applicator_test",
+    srcs = ["clone_applicator_test.cc"],
+    deps = [
+        ":cfg_edge",
+        ":cfg_edge_kind",
+        ":cfg_id",
+        ":cfg_matchers",
+        ":cfg_node",
+        ":cfg_testutil",
+        ":clone_applicator",
+        ":mock_program_cfg_builder",
+        ":multi_cfg_test_case",
+        ":parse_text_proto",
+        ":path_clone_evaluator",
+        ":path_node",
+        ":program_cfg",
+        ":propeller_options_cc_proto",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
