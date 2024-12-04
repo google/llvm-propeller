@@ -801,6 +801,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "path_profile_aggregator",
+    hdrs = ["path_profile_aggregator.h"],
+    deps = [
+        ":binary_address_mapper",
+        ":binary_content",
+        ":path_node",
+        ":path_profile_options_cc_proto",
+        ":program_cfg",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
