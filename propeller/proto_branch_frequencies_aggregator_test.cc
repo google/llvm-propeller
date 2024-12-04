@@ -13,13 +13,13 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOkAndHolds;
 using ::propeller_testing::ParseTextProtoOrDie;
 using ::testing::AllOf;
 using ::testing::ElementsAre;
 using ::testing::Field;
 using ::testing::FieldsAre;
 using ::testing::Pair;
-using ::absl_testing::IsOkAndHolds;
 
 TEST(ProtoBranchFrequenciesAggregator, AggregateBranchFrequencies) {
   BranchFrequenciesProto proto = ParseTextProtoOrDie(R"pb(

@@ -19,6 +19,9 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::DoAll;
 using ::testing::ElementsAre;
@@ -28,9 +31,6 @@ using ::testing::Pair;
 using ::testing::Return;
 using ::testing::SetArgReferee;
 using ::testing::UnorderedElementsAre;
-using ::absl_testing::IsOk;
-using ::absl_testing::IsOkAndHolds;
-using ::absl_testing::StatusIs;
 
 class MockLbrAggregator : public LbrAggregator {
  public:

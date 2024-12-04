@@ -11,8 +11,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
@@ -23,11 +23,11 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::Field;
 using ::testing::SizeIs;
-using ::absl_testing::IsOkAndHolds;
-using ::absl_testing::StatusIs;
 
 class MockPerfDataProvider : public PerfDataProvider {
  public:

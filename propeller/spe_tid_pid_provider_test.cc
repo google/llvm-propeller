@@ -15,10 +15,10 @@
 
 namespace propeller {
 namespace {
-using ::propeller_testing::ParseTextProtoOrDie;
-using ::testing::Eq;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::propeller_testing::ParseTextProtoOrDie;
+using ::testing::Eq;
 
 google::protobuf::RepeatedPtrField<quipper::PerfDataProto_PerfEvent> ToRepeatedPtrField(
     std::vector<quipper::PerfDataProto_PerfEvent> span) {

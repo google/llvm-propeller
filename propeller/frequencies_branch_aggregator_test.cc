@@ -20,6 +20,9 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::llvm::object::BBAddrMap;
 using ::testing::AllOf;
 using ::testing::DoAll;
@@ -31,9 +34,6 @@ using ::testing::Pair;
 using ::testing::Return;
 using ::testing::SetArgReferee;
 using ::testing::UnorderedElementsAre;
-using ::absl_testing::IsOk;
-using ::absl_testing::IsOkAndHolds;
-using ::absl_testing::StatusIs;
 
 class MockFrequenciesAggregator : public BranchFrequenciesAggregator {
  public:

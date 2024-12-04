@@ -17,6 +17,8 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::FieldsAre;
@@ -24,8 +26,6 @@ using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::Optional;
-using ::absl_testing::IsOkAndHolds;
-using ::absl_testing::StatusIs;
 
 MATCHER_P(BufferIs, contents_matcher,
           absl::StrCat("an llvm::MemoryBuffer that ",
@@ -50,8 +50,7 @@ class FilePerfDataProviderTest : public testing::Test {
 };
 
 using FilePerfDataProviderTypes = ::testing::Types<
-    GenericFilePerfDataProvider
-    >;
+    GenericFilePerfDataProvider>;
 TYPED_TEST_SUITE(FilePerfDataProviderTest, FilePerfDataProviderTypes);
 
 TYPED_TEST(FilePerfDataProviderTest, GetNextReadsFilesCorrectly) {

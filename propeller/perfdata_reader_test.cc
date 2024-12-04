@@ -24,6 +24,8 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::EndsWith;
@@ -32,8 +34,6 @@ using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::Optional;
 using ::testing::SizeIs;
-using ::absl_testing::IsOkAndHolds;
-using ::absl_testing::StatusIs;
 
 TEST(PerfDataReaderTest, IsKernel) {
   BinaryContent binary_content;
