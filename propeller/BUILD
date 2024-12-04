@@ -829,6 +829,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "perf_data_path_profile_aggregator",
+    srcs = ["perf_data_path_profile_aggregator.cc"],
+    hdrs = ["perf_data_path_profile_aggregator.h"],
+    deps = [
+        ":binary_address_mapper",
+        ":binary_content",
+        ":path_node",
+        ":path_profile_aggregator",
+        ":path_profile_options_cc_proto",
+        ":perf_data_path_reader",
+        ":perf_data_provider",
+        ":perfdata_reader",
+        ":program_cfg",
+        ":program_cfg_path_analyzer",
+        ":propeller_options_cc_proto",
+        ":resolve_mmap_name",
+        ":status_macros",
+        "@abseil-cpp//absl/functional:bind_front",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:vlog_is_on",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
