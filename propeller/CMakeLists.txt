@@ -69,6 +69,7 @@ add_library(propeller_test_lib OBJECT
   cfg_testutil.cc
   function_chain_info_matchers.cc
   mock_program_cfg_builder.cc
+  multi_cfg_test_case.cc
   # keep-sorted end
 )
 target_link_libraries(propeller_test_lib
