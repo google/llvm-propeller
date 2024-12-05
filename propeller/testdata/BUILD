@@ -50,6 +50,7 @@ exports_files([
     "sample.arm.bin",
     "sample.bin",
     "sample.c",
+    "sample_O0.bin",
     "sample_cc_directives.arm.golden.txt",
     "sample_different_buildid.bin",
     "sample_ld_directives.arm.golden.txt",
