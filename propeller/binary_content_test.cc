@@ -69,5 +69,23 @@ TEST(GetSymbolAddressTest, SymbolNotFound) {
       Not(IsOk()));
 }
 
+TEST(ThunkSymbolsTest, AArch64Thunks) {
+  const std::string binary = absl::StrCat(
+      ::testing::SrcDir(),
+      "_main/propeller/testdata/fake_thunks.bin");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
+                       GetBinaryContent(binary));
+  EXPECT_THAT(ReadThunkSymbols(*binary_content), Optional(SizeIs(2)));
+}
+
+TEST(ThunkSymbolsTest, x86NoThunks) {
+  const std::string binary = absl::StrCat(
+      ::testing::SrcDir(),
+      "_main/propeller/testdata/propeller_sample_1.bin");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
+                       GetBinaryContent(binary));
+  EXPECT_THAT(ReadThunkSymbols(*binary_content), Eq(std::nullopt));
+}
+
 }  // namespace
 }  // namespace propeller

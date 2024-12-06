@@ -18,6 +18,7 @@
 #include "absl/time/time.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_branch_path.h"
@@ -103,6 +104,12 @@ struct BbHandleBranchPath {
   }
 };
 
+struct ThunkInfo {
+  uint64_t address;
+  uint64_t target;
+  llvm::object::ELFSymbolRef symbol;
+};
+
 // Finds basic block entries from binary addresses.
 class BinaryAddressMapper {
  public:
@@ -120,7 +127,8 @@ class BinaryAddressMapper {
       absl::btree_set<int> selected_functions,
       std::vector<llvm::object::BBAddrMap> bb_addr_map,
       std::vector<BbHandle> bb_handles,
-      absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map);
+      absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map,
+      std::optional<std::vector<ThunkInfo>> thunks = std::nullopt);
 
   BinaryAddressMapper(const BinaryAddressMapper &) = delete;
   BinaryAddressMapper &operator=(const BinaryAddressMapper &) = delete;
@@ -139,6 +147,10 @@ class BinaryAddressMapper {
 
   const absl::btree_set<int> &selected_functions() const {
     return selected_functions_;
+  }
+
+  const std::optional<std::vector<ThunkInfo>> &thunks() const {
+    return thunks_;
   }
 
   // Returns the `bb_handles_` index associated with the binary address
@@ -268,6 +280,9 @@ class BinaryAddressMapper {
   // A map from function indices to their symbol info (function names and
   // section name).
   absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map_;
+
+  // A vector of thunks in the binary, ordered in increasing order of address.
+  std::optional<std::vector<ThunkInfo>> thunks_;
 };
 
 // Builds a `BinaryAddressMapper` for binary represented by `binary_content` and
