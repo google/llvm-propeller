@@ -269,6 +269,7 @@ cc_library(
     deps = [
         ":addr2cu",
         ":status_macros",
+        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
@@ -280,6 +281,7 @@ cc_library(
         "@llvm-project//llvm:DebugInfo",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -485,6 +487,7 @@ cc_library(
         ":binary_address_branch",
         ":binary_address_branch_path",
         ":binary_content",
+        ":branch_aggregation",
         ":propeller_options_cc_proto",
         ":propeller_statistics",
         ":status_macros",
@@ -1080,6 +1083,7 @@ cc_test(
     name = "binary_content_test",
     srcs = ["binary_content_test.cc"],
     data = [
+        "//propeller/testdata:fake_thunks.bin",
         "//propeller/testdata:llvm_function_samples.binary",
         "//propeller/testdata:propeller_barebone_nopie_buildid",
         "//propeller/testdata:propeller_barebone_pie_nobuildid_bin",
@@ -1167,6 +1171,7 @@ cc_test(
         "//propeller/testdata:clang_v0_labels.binary",
         "//propeller/testdata:duplicate_symbols_bin",
         "//propeller/testdata:duplicate_unique_names",
+        "//propeller/testdata:fake_thunks.bin",
         "//propeller/testdata:sample.bin",
         "//propeller/testdata:sample_section.bin",
     ],

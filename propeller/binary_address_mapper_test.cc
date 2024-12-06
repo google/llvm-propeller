@@ -606,5 +606,49 @@ TEST(BinaryAddressMapper, ExtractPathsCoalescesCallees) {
                                           .bb_index = 0}}}},
                .returns_to = {{.function_index = 2, .bb_index = 0}}})));
 }
+
+TEST(LlvmBinaryAddressMapper, GetThunkInfoUsingBinaryAddress) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryContent> binary_content,
+      GetBinaryContent(GetPropellerTestDataFilePath("fake_thunks.bin")));
+  PropellerStats stats;
+  PropellerOptions options;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
+      BuildBinaryAddressMapper(options, *binary_content, stats,
+                               /*hot_addresses=*/nullptr));
+
+  // Match thunk address only
+  EXPECT_THAT(binary_address_mapper->GetThunkInfoUsingBinaryAddress(0x107bc),
+              Optional(FieldsAre(0x107bc, _, _)));
+  EXPECT_THAT(binary_address_mapper->GetThunkInfoUsingBinaryAddress(0x107be),
+              Optional(FieldsAre(0x107bc, _, _)));
+
+  EXPECT_THAT(binary_address_mapper->GetThunkInfoUsingBinaryAddress(0x107cc),
+              Optional(FieldsAre(0x107cc, _, _)));
+}
+
+TEST(LlvmBinaryAddressMapper, FindThunkInfoIndexUsingBinaryAddress) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryContent> binary_content,
+      GetBinaryContent(GetPropellerTestDataFilePath("fake_thunks.bin")));
+  PropellerStats stats;
+  PropellerOptions options;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
+      BuildBinaryAddressMapper(options, *binary_content, stats,
+                               /*hot_addresses=*/nullptr));
+
+  EXPECT_THAT(
+      binary_address_mapper->FindThunkInfoIndexUsingBinaryAddress(0x107bc),
+      Optional(0));
+  EXPECT_THAT(
+      binary_address_mapper->FindThunkInfoIndexUsingBinaryAddress(0x107be),
+      Optional(0));
+
+  EXPECT_THAT(
+      binary_address_mapper->FindThunkInfoIndexUsingBinaryAddress(0x107cc),
+      Optional(1));
+}
 }  // namespace
 }  // namespace propeller
