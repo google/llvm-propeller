@@ -42,11 +42,18 @@ using ::testing::UnorderedElementsAre;
 
 using ::llvm::object::BBAddrMap;
 
-MATCHER_P2(BbAddrMapIs, function_address_matcher, bb_entries_matcher, "") {
+MATCHER_P2(BbAddrMapIs, function_address_matcher, bb_ranges_matcher, "") {
   return ExplainMatchResult(function_address_matcher, arg.getFunctionAddress(),
                             result_listener) &&
-         ExplainMatchResult(bb_entries_matcher, arg.getBBEntries(),
+         ExplainMatchResult(bb_ranges_matcher, arg.getBBRanges(),
                             result_listener);
+}
+
+MATCHER_P2(BbRangeIs, base_address_matcher, bb_entries_matcher, "") {
+  // TODO(rahmanl): Introduce accessor functions for BBRangeEntry upstream.
+  return ExplainMatchResult(base_address_matcher, arg.BaseAddress,
+                            result_listener) &&
+         ExplainMatchResult(bb_entries_matcher, arg.BBEntries, result_listener);
 }
 
 MATCHER_P4(BbEntryIs, id, offset, size, metadata, "") {
@@ -122,103 +129,111 @@ TEST(BinaryAddressMapper, ReadBbAddrMap) {
           Pair("main",
                BbAddrMapIs(
                    0x1820,
-                   ElementsAre(BbEntryIs(0, 0x0, 0x30,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(1, 0x30, 0xD,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(2, 0x3D, 0x24,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(3, 0x61, 0x2E,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(4, 0x8F, 0x1A,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(5, 0xA9, 0x34,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(6, 0xDD, 0x5,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(7, 0xE2, 0xE,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = false}),
-                               BbEntryIs(8, 0xF0, 0x8,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = true,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = false})))),
+                   ElementsAre(BbRangeIs(
+                       0x1820,
+                       ElementsAre(BbEntryIs(0, 0x0, 0x30,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(1, 0x30, 0xD,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(2, 0x3D, 0x24,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(3, 0x61, 0x2E,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(4, 0x8F, 0x1A,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(5, 0xA9, 0x34,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(6, 0xDD, 0x5,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(7, 0xE2, 0xE,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = false}),
+                                   BbEntryIs(8, 0xF0, 0x8,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = true,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = false})))))),
           Pair("sample1_func",
-               BbAddrMapIs(0x1810, ElementsAre(BbEntryIs(
-                                       0, 0x0, 0x6,
-                                       BBAddrMap::BBEntry::Metadata{
-                                           .HasReturn = true,
-                                           .HasTailCall = false,
-                                           .IsEHPad = false,
-                                           .CanFallThrough = false})))),
+               BbAddrMapIs(0x1810,
+                           ElementsAre(BbRangeIs(
+                               0x1810, ElementsAre(BbEntryIs(
+                                           0, 0x0, 0x6,
+                                           BBAddrMap::BBEntry::Metadata{
+                                               .HasReturn = true,
+                                               .HasTailCall = false,
+                                               .IsEHPad = false,
+                                               .CanFallThrough = false})))))),
           Pair("compute_flag",
                BbAddrMapIs(
                    0x17D0,
-                   ElementsAre(BbEntryIs(0, 0x0, 0x19,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(1, 0x19, 0x10,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = false}),
-                               BbEntryIs(2, 0x29, 0x8,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = false,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = true}),
-                               BbEntryIs(3, 0x31, 0x5,
-                                         BBAddrMap::BBEntry::Metadata{
-                                             .HasReturn = true,
-                                             .HasTailCall = false,
-                                             .IsEHPad = false,
-                                             .CanFallThrough = false})))),
+                   ElementsAre(BbRangeIs(
+                       0x17D0,
+                       ElementsAre(BbEntryIs(0, 0x0, 0x19,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(1, 0x19, 0x10,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = false}),
+                                   BbEntryIs(2, 0x29, 0x8,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(3, 0x31, 0x5,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = true,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = false})))))),
           Pair("this_is_very_code",
-               BbAddrMapIs(0x1770, ElementsAre(BbEntryIs(
-                                       0, 0x0, 0x5D,
-                                       BBAddrMap::BBEntry::Metadata{
-                                           .HasReturn = true,
-                                           .HasTailCall = false,
-                                           .IsEHPad = false,
-                                           .CanFallThrough = false}))))));
+               BbAddrMapIs(0x1770,
+                           ElementsAre(BbRangeIs(
+                               0x1770, ElementsAre(BbEntryIs(
+                                           0, 0x0, 0x5D,
+                                           BBAddrMap::BBEntry::Metadata{
+                                               .HasReturn = true,
+                                               .HasTailCall = false,
+                                               .IsEHPad = false,
+                                               .CanFallThrough = false}))))))));
 }
 
 TEST(BinaryAddressMapper, DuplicateSymbolsDropped) {
