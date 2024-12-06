@@ -18,10 +18,12 @@
 #include "absl/time/time.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_branch_path.h"
 #include "propeller/binary_content.h"
+#include "propeller/branch_aggregation.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
 
@@ -103,6 +105,14 @@ struct BbHandleBranchPath {
   }
 };
 
+// Represents a range-extension thunk in the binary. The target address is
+// filled based on the branches in the binary profiles.
+struct ThunkInfo {
+  uint64_t address = 0;
+  uint64_t target = 0;
+  llvm::object::ELFSymbolRef symbol;
+};
+
 // Finds basic block entries from binary addresses.
 class BinaryAddressMapper {
  public:
@@ -120,7 +130,8 @@ class BinaryAddressMapper {
       absl::btree_set<int> selected_functions,
       std::vector<llvm::object::BBAddrMap> bb_addr_map,
       std::vector<BbHandle> bb_handles,
-      absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map);
+      absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map,
+      std::vector<ThunkInfo> thunks = {});
 
   BinaryAddressMapper(const BinaryAddressMapper &) = delete;
   BinaryAddressMapper &operator=(const BinaryAddressMapper &) = delete;
@@ -140,6 +151,8 @@ class BinaryAddressMapper {
   const absl::btree_set<int> &selected_functions() const {
     return selected_functions_;
   }
+
+  const std::vector<ThunkInfo> &thunks() const { return thunks_; }
 
   // Returns the `bb_handles_` index associated with the binary address
   // `address` given a branch from/to this address based on `direction`.
@@ -185,6 +198,20 @@ class BinaryAddressMapper {
   // `to_bb_index`.
   bool CanFallThrough(int function_index, int from_bb_index,
                       int to_bb_index) const;
+
+  // Returns the index of the thunk that contains the given binary address.
+  // Returns nullopt if no thunk contains the address.
+  std::optional<int> FindThunkInfoIndexUsingBinaryAddress(
+      uint64_t address) const;
+
+  // Returns the thunk that contains the given binary address. Returns nullopt
+  // if no thunk contains the address.
+  std::optional<ThunkInfo> GetThunkInfoUsingBinaryAddress(
+      uint64_t address) const;
+
+  // Sets the targets of thunks in `binary_address_mapper_` to the targets of
+  // their corresponding branches in `branch_aggregation`.
+  void UpdateThunkTargets(const BranchAggregation &branch_aggregation);
 
   // Returns the full function's BB address map associated with the given
   // `bb_handle`.
@@ -268,6 +295,9 @@ class BinaryAddressMapper {
   // A map from function indices to their symbol info (function names and
   // section name).
   absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map_;
+
+  // A vector of thunks in the binary, ordered in increasing order of address.
+  std::vector<ThunkInfo> thunks_;
 };
 
 // Builds a `BinaryAddressMapper` for binary represented by `binary_content` and
