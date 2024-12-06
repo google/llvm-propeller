@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -35,6 +36,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "propeller/addr2cu.h"
 #include "propeller/status_macros.h"
 
@@ -241,6 +243,30 @@ absl::Status ELFFileUtil<ELFT>::InitializeKernelModule(
 }
 }  // namespace
 
+// Read AArch64 thunks from the symbol table and store them in sorted order.
+absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadAArch64ThunkSymbols(
+    const BinaryContent &binary_content) {
+  absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> thunk_map;
+  for (llvm::object::SymbolRef sr : binary_content.object_file->symbols()) {
+    llvm::object::ELFSymbolRef symbol(sr);
+    uint8_t stt = symbol.getELFType();
+    if (stt != llvm::ELF::STT_FUNC) continue;
+    llvm::Expected<uint64_t> address = sr.getAddress();
+    if (!address || !*address) continue;
+
+    llvm::Expected<llvm::StringRef> func_name = symbol.getName();
+    if (!func_name || (!func_name->starts_with("__AArch64ADRPThunk_") &&
+                       !func_name->starts_with("__AArch64AbsLongThunk_")))
+      continue;
+
+    const uint64_t func_size = symbol.getSize();
+    if (func_size == 0) continue;
+
+    thunk_map.insert({*address, sr});
+  }
+  return thunk_map;
+}
+
 namespace propeller {
 absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
 ReadSymbolTable(const BinaryContent &binary_content) {
@@ -277,6 +303,14 @@ ReadSymbolTable(const BinaryContent &binary_content) {
     if (check_size_ok) addr_sym_list.push_back(sr);
   }
   return symtab;
+}
+
+std::optional<absl::btree_map<uint64_t, llvm::object::ELFSymbolRef>>
+ReadThunkSymbols(const BinaryContent &binary_content) {
+  if (binary_content.object_file->getArch() == llvm::Triple::aarch64)
+    return ::ReadAArch64ThunkSymbols(binary_content);
+
+  return std::nullopt;
 }
 
 absl::StatusOr<std::vector<llvm::object::BBAddrMap>> ReadBbAddrMap(
