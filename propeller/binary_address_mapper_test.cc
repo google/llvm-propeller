@@ -73,7 +73,7 @@ GetBBAddrMapByFunctionName(const BinaryAddressMapper &binary_address_mapper) {
   return bb_addr_map_by_func_name;
 }
 
-TEST(LlvmBinaryAddressMapper, BbAddrMapExist) {
+TEST(BinaryAddressMapper, BbAddrMapExist) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("sample.bin")));
@@ -85,7 +85,7 @@ TEST(LlvmBinaryAddressMapper, BbAddrMapExist) {
   EXPECT_THAT(binary_address_mapper->bb_addr_map(), Not(IsEmpty()));
 }
 
-TEST(LlvmBinaryAddressMapper, BbAddrMapReadSymbolTable) {
+TEST(BinaryAddressMapper, BbAddrMapReadSymbolTable) {
   ASSERT_OK_AND_ASSIGN(
       auto binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("sample.bin")));
@@ -99,7 +99,7 @@ TEST(LlvmBinaryAddressMapper, BbAddrMapReadSymbolTable) {
       Contains(Pair(_, FieldsAre(ElementsAre("sample1_func"), ".text"))));
 }
 
-TEST(LlvmBinaryAddressMapper, ReadBbAddrMap) {
+TEST(BinaryAddressMapper, ReadBbAddrMap) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("sample.bin")));
@@ -221,7 +221,7 @@ TEST(LlvmBinaryAddressMapper, ReadBbAddrMap) {
                                            .CanFallThrough = false}))))));
 }
 
-TEST(LlvmBinaryAddressMapper, DuplicateSymbolsDropped) {
+TEST(BinaryAddressMapper, DuplicateSymbolsDropped) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("duplicate_symbols.bin")));
@@ -241,7 +241,7 @@ TEST(LlvmBinaryAddressMapper, DuplicateSymbolsDropped) {
   EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 1);
 }
 
-TEST(LlvmBinaryAddressMapper, NoneDotTextSymbolsDropped) {
+TEST(BinaryAddressMapper, NoneDotTextSymbolsDropped) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("sample_section.bin")));
@@ -262,7 +262,7 @@ TEST(LlvmBinaryAddressMapper, NoneDotTextSymbolsDropped) {
             Contains(Pair("compute_flag", BbAddrMapIs(_, Not(IsEmpty()))))));
 }
 
-TEST(LlvmBinaryAddressMapper, NonDotTextSymbolsKept) {
+TEST(BinaryAddressMapper, NonDotTextSymbolsKept) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("sample_section.bin")));
@@ -282,7 +282,7 @@ TEST(LlvmBinaryAddressMapper, NonDotTextSymbolsKept) {
             Contains(Pair("compute_flag", BbAddrMapIs(_, Not(IsEmpty()))))));
 }
 
-TEST(LlvmBinaryAddressMapper, DuplicateUniqNames) {
+TEST(BinaryAddressMapper, DuplicateUniqNames) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(GetPropellerTestDataFilePath(
                            "duplicate_unique_names.out")));
@@ -303,7 +303,7 @@ TEST(LlvmBinaryAddressMapper, DuplicateUniqNames) {
   EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 2);
 }
 
-TEST(LlvmBinaryAddressMapper, CheckNoHotFunctions) {
+TEST(BinaryAddressMapper, CheckNoHotFunctions) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("sample_section.bin")));
@@ -324,7 +324,7 @@ TEST(LlvmBinaryAddressMapper, CheckNoHotFunctions) {
                     Not(Contains(Key("sample1_func")))));
 }
 
-TEST(LlvmBinaryAddressMapper, FindBbHandleIndexUsingBinaryAddress) {
+TEST(BinaryAddressMapper, FindBbHandleIndexUsingBinaryAddress) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("clang_v0_labels.binary")));
@@ -378,7 +378,7 @@ TEST(LlvmBinaryAddressMapper, FindBbHandleIndexUsingBinaryAddress) {
               Eq(std::nullopt));
 }
 
-TEST(LlvmBinaryAddressMapper, ExtractsIntraFunctionPaths) {
+TEST(BinaryAddressMapper, ExtractsIntraFunctionPaths) {
   BinaryAddressBranchPath path({.pid = 2080799,
                                 .sample_time = absl::FromUnixSeconds(123456),
                                 .branches = {{0x186a, 0x1730},
@@ -463,7 +463,7 @@ TEST(LlvmBinaryAddressMapper, ExtractsIntraFunctionPaths) {
                                                        .bb_index = 0}}}}})));
 }
 
-TEST(LlvmBinaryAddressMapper, ExtractsPathsWithReturnsFromUnknown) {
+TEST(BinaryAddressMapper, ExtractsPathsWithReturnsFromUnknown) {
   BinaryAddressBranchPath path(
       {.pid = 123456, .branches = {{0x186a, 0xFFFFF0}, {0xFFFFFF, 0x186f}}});
   ASSERT_OK_AND_ASSIGN(
@@ -485,7 +485,7 @@ TEST(LlvmBinaryAddressMapper, ExtractsPathsWithReturnsFromUnknown) {
                          .call_rets = {{}}}}})));
 }
 
-TEST(LlvmBinaryAddressMapper, ExtractsPathsWithReturnsToBasicBlockAddress) {
+TEST(BinaryAddressMapper, ExtractsPathsWithReturnsToBasicBlockAddress) {
   BinaryAddressBranchPath path(
       {.pid = 123456, .branches = {{0x189f, 0x18ce}, {0x18d6, 0xFFFFFF}}});
   ASSERT_OK_AND_ASSIGN(
@@ -516,7 +516,7 @@ TEST(LlvmBinaryAddressMapper, ExtractsPathsWithReturnsToBasicBlockAddress) {
                    {.from_bb = {{.function_index = 3, .bb_index = 2}}}}})));
 }
 
-TEST(LlvmBinaryAddressMapper, ExtractPathsSeparatesPathsWithCorruptBranches) {
+TEST(BinaryAddressMapper, ExtractPathsSeparatesPathsWithCorruptBranches) {
   BinaryAddressBranchPath path(
       {.pid = 123456, .branches = {{0x186a, 0xFFFFF0}, {0x1897, 0x1860}}});
   ASSERT_OK_AND_ASSIGN(
@@ -542,7 +542,7 @@ TEST(LlvmBinaryAddressMapper, ExtractPathsSeparatesPathsWithCorruptBranches) {
                     .to_bb = {{.function_index = 2, .bb_index = 4}}}}})));
 }
 
-TEST(LlvmBinaryAddressMapper, ExtractPathsCoalescesCallees) {
+TEST(BinaryAddressMapper, ExtractPathsCoalescesCallees) {
   BinaryAddressBranchPath path = {.pid = 7654321,
                                   .branches = {{0x1832, 0xFFFFF0},
                                                {0xFFFFF2, 0x1834},

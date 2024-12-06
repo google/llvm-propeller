@@ -26,7 +26,7 @@ using ::testing::UnorderedElementsAre;
 
 // This test checks that the mock can load a CFG from the serialized format
 // correctly.
-TEST(LlvmPropellerWholeProgramCfgInfo, CreateCfgInfoFromProto) {
+TEST(ProgramCfg, CreateCfgInfoFromProto) {
   const std::string protobuf_input = absl::StrCat(
       ::testing::SrcDir(),
       "_main/propeller/testdata/propeller_sample.protobuf");
@@ -50,7 +50,7 @@ TEST(LlvmPropellerWholeProgramCfgInfo, CreateCfgInfoFromProto) {
             edge.sink()->inter_ins().end());
 }
 
-TEST(LlvmPropellerWholeProgramCfgInfo, GetNodeFrequencyThreshold) {
+TEST(ProgramCfg, GetNodeFrequencyThreshold) {
   std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
       {.cfg_args = {{".foo_section",
                      0,
@@ -77,7 +77,7 @@ TEST(LlvmPropellerWholeProgramCfgInfo, GetNodeFrequencyThreshold) {
   EXPECT_EQ(program_cfg->GetNodeFrequencyThreshold(1), 0);
 }
 
-TEST(LlvmPropellerWholeProgramCfgInfo, GetHotJoinNodes) {
+TEST(ProgramCfg, GetHotJoinNodes) {
   std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
       {.cfg_args = {
            {".foo_section",
