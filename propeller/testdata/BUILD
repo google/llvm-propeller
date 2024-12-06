@@ -260,6 +260,34 @@ genrule(
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
+# This rule is used to manually generate a bimodal MFS binary which is FDO-optimized through one
+# input mode, and a LBR profile from that MFS binary with both input modes.
+genrule(
+    name = "bimodal_sample_mfs_bin",
+    srcs = ["bimodal_sample.c"],
+    outs = [
+        "bimodal_sample_mfs.bin.gen",
+        "bimodal_sample_mfs.perfdata.gen",
+    ],
+    cmd = "rm -rf $(RULEDIR)/profile; " +
+          "$(CC) $(CC_FLAGS) -g -O2 -pie -fprofile-generate=$(RULEDIR)/profile $< -o " +
+          "sample_inst.bin.gen ; " +
+          "./sample_inst.bin.gen ; " +
+          "$(LLVM_PROFDATA) merge $(RULEDIR)/profile/* -o $(RULEDIR)/profile/default.profdata ; " +
+          "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fprofile-use=$(RULEDIR)/profile " +
+          "-fbasic-block-sections=labels -fsplit-machine-functions $< -o " +
+          "$(RULEDIR)/bimodal_sample_mfs.bin.gen ; " +
+          "cd $(RULEDIR) ; echo '1' > sample.scratch ; echo '' >> sample.scratch ; " +
+          "/usr/bin/perf record -o bimodal_sample_mfs.perfdata.gen -e cycles -b -- " +
+          "sh -c 'cat sample.scratch | xargs -n 1 -P2 ./bimodal_sample_mfs.bin.gen'",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
 genrule(
     name = "duplicate_symbols_bin",
     srcs = [
