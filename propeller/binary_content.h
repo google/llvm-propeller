@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -115,6 +116,12 @@ absl::StatusOr<int64_t> GetSymbolAddress(
 // Returns the binary's function symbols by reading from its symbol table.
 absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
 ReadSymbolTable(const BinaryContent &binary_content);
+
+// Returns the binary's thunk symbols by reading from its symbol table.
+// These are returned as a map from the thunk's address to the thunk symbol.
+// Returns an empty map if the architecture does not support thunks.
+absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
+    const BinaryContent &binary_content);
 
 // Returns the binary's `BBAddrMap`s by calling LLVM-side decoding function
 // `ELFObjectFileBase::readBBAddrMap`. Returns error if the call fails or if the
