@@ -1,5 +1,6 @@
 #include "propeller/program_cfg_builder.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -218,6 +219,22 @@ absl::Status ProgramCfgBuilder::CreateEdges(
     std::optional<int> to_bb_index =
         binary_address_mapper_->FindBbHandleIndexUsingBinaryAddress(
             branch.to, BranchDirection::kTo);
+
+    uint64_t branch_to = branch.to;
+
+    // Check if the branch is a thunk call, and if so, find the target of the
+    // thunk and set `to_bb_index` accordingly.
+    if (!to_bb_index.has_value()) {
+      std::optional<ThunkInfo> thunk_info =
+          binary_address_mapper_->GetThunkInfoUsingBinaryAddress(branch_to);
+      if (thunk_info.has_value()) {
+        to_bb_index =
+            binary_address_mapper_->FindBbHandleIndexUsingBinaryAddress(
+                thunk_info->target, BranchDirection::kTo);
+        branch_to = thunk_info->target;
+      }
+    }
+
     if (!to_bb_index.has_value()) continue;
 
     BbHandle to_bb_handle = binary_address_mapper_->bb_handles()[*to_bb_index];
@@ -236,9 +253,9 @@ absl::Status ProgramCfgBuilder::CreateEdges(
          binary_address_mapper_->GetBBEntry(from_bb_handle).hasReturn() ||
          to_bb_handle.function_index != from_bb_handle.function_index) &&
         binary_address_mapper_->GetFunctionEntry(to_bb_handle)
-                .getFunctionAddress() != branch.to &&  // Not a call
+                .getFunctionAddress() != branch_to &&  // Not a call
         // Jump to the beginning of the basicblock
-        branch.to == binary_address_mapper_->GetAddress(to_bb_handle)) {
+        branch_to == binary_address_mapper_->GetAddress(to_bb_handle)) {
       if (to_bb_handle.bb_index != 0) {
         // Account for the fall-through between callSiteSym and toSym.
         tmp_bb_fallthrough_counters[{*to_bb_index - 1, *to_bb_index}] += weight;
@@ -253,7 +270,7 @@ absl::Status ProgramCfgBuilder::CreateEdges(
     }
     if (!from_bb_index.has_value()) continue;
     if (!binary_address_mapper_->GetBBEntry(from_bb_handle).hasReturn() &&
-        binary_address_mapper_->GetAddress(to_bb_handle) != branch.to) {
+        binary_address_mapper_->GetAddress(to_bb_handle) != branch_to) {
       // Jump is not a return and its target is not the beginning of a function
       // or a basic block.
       weight_on_dubious_edges += weight;
@@ -261,9 +278,9 @@ absl::Status ProgramCfgBuilder::CreateEdges(
 
     CFGEdgeKind edge_kind = CFGEdgeKind::kBranchOrFallthough;
     if (binary_address_mapper_->GetFunctionEntry(to_bb_handle)
-            .getFunctionAddress() == branch.to) {
+            .getFunctionAddress() == branch_to) {
       edge_kind = CFGEdgeKind::kCall;
-    } else if (branch.to != binary_address_mapper_->GetAddress(to_bb_handle) ||
+    } else if (branch_to != binary_address_mapper_->GetAddress(to_bb_handle) ||
                binary_address_mapper_->GetBBEntry(from_bb_handle).hasReturn()) {
       edge_kind = CFGEdgeKind::kRet;
     }
