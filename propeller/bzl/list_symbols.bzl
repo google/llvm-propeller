@@ -1,6 +1,6 @@
 """A utility to list the symbols of a binary."""
 
-load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "CPP_TOOLCHAIN_TYPE", "find_cpp_toolchain", "use_cpp_toolchain")
+load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 
 def _list_symbols(ctx):
     cc_toolchain = find_cpp_toolchain(ctx)
@@ -22,7 +22,7 @@ def _list_symbols(ctx):
             output.short_path,
         ),
         tools = cc_toolchain.all_files,
-        toolchain = CPP_TOOLCHAIN_TYPE,
+        toolchain = "@bazel_tools//tools/cpp:toolchain_type",
     )
     return DefaultInfo(
         files = depset([output]),
