@@ -9,10 +9,11 @@ namespace propeller {
 
 // A struct representing one basic block entry in the BB address map.
 struct BbHandle {
-  int function_index, bb_index;
+  int function_index, range_index, bb_index;
 
   bool operator==(const BbHandle &other) const {
-    return function_index == other.function_index && bb_index == other.bb_index;
+    return function_index == other.function_index &&
+           range_index == other.range_index && bb_index == other.bb_index;
   }
 
   bool operator!=(const BbHandle &other) const { return !(*this == other); }
@@ -20,12 +21,13 @@ struct BbHandle {
   template <typename H>
   friend H AbslHashValue(H h, const BbHandle &bb_handle) {
     return H::combine(std::move(h), bb_handle.function_index,
-                      bb_handle.bb_index);
+                      bb_handle.range_index, bb_handle.bb_index);
   }
 
   template <typename Sink>
   friend void AbslStringify(Sink &sink, const BbHandle &bb_handle) {
-    absl::Format(&sink, "%d#%d", bb_handle.function_index, bb_handle.bb_index);
+    absl::Format(&sink, "%d#%d#%d", bb_handle.function_index,
+                 bb_handle.range_index, bb_handle.bb_index);
   }
 
   template <typename Sink>

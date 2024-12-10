@@ -38,6 +38,7 @@ using ::testing::Not;
 using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::ResultOf;
+using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 
 using ::llvm::object::BBAddrMap;
@@ -104,6 +105,28 @@ TEST(BinaryAddressMapper, BbAddrMapReadSymbolTable) {
   EXPECT_THAT(
       binary_address_mapper->symbol_info_map(),
       Contains(Pair(_, FieldsAre(ElementsAre("sample1_func"), ".text"))));
+}
+
+// Tests reading the BBAddrMap from a binary built with MFS which has basic
+// block sections.
+TEST(BinaryAddressMapper, ReadsMfsBbAddrMap) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryContent> binary_content,
+      GetBinaryContent(GetPropellerTestDataFilePath("bimodal_sample_mfs.bin")));
+  PropellerStats stats;
+  PropellerOptions options;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
+      BuildBinaryAddressMapper(options, *binary_content, stats));
+  EXPECT_THAT(binary_address_mapper->selected_functions(), Not(IsEmpty()));
+  auto bb_addr_map_by_func_name =
+      GetBBAddrMapByFunctionName(*binary_address_mapper);
+  EXPECT_THAT(
+      bb_addr_map_by_func_name,
+      Contains(Pair(
+          "compute",
+          BbAddrMapIs(0x1770, ElementsAre(BbRangeIs(0x1770, SizeIs(2)),
+                                          BbRangeIs(0x18a8, SizeIs(4)))))));
 }
 
 TEST(BinaryAddressMapper, ReadBbAddrMap) {
