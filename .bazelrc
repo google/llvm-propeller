@@ -16,6 +16,11 @@
 common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/refs/heads/main/
 common --registry=file:%workspace%/Bazel/registry/
 
+# WORKSPACE is disabled by default in Bazel 8. We can enable it manually now,
+# but we'll need to upgrade WORKSPACE dependencies to bzlmod before Bazel 9
+# removes it entirely.
+common --enable_workspace
+
 # Set the default C++ standard.
 # LINT.IfChange(cpp_standard)
 build --cxxopt='-std=c++20'
