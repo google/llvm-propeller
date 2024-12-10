@@ -182,7 +182,8 @@ class BinaryAddressMapper {
 
   // Returns whether in function with index `function_index`, basic block with
   // index `from_bb_index` can fall through to the basic block with index
-  // `to_bb_index`.
+  // `to_bb_index`. `from_bb_index` and `to_bb_index` are indices into the
+  // entire function's bb entries.
   bool CanFallThrough(int function_index, int from_bb_index,
                       int to_bb_index) const;
 
@@ -192,15 +193,26 @@ class BinaryAddressMapper {
     return bb_addr_map_.at(bb_handle.function_index);
   }
 
+  const llvm::object::BBAddrMap::BBRangeEntry &GetBBRangeEntry(
+      BbHandle bb_handle) const {
+    return bb_addr_map_.at(bb_handle.function_index)
+        .getBBRanges()[bb_handle.range_index];
+  }
+
   // Returns the basic block's address map entry associated with the given
   // `bb_handle`.
   const llvm::object::BBAddrMap::BBEntry &GetBBEntry(BbHandle bb_handle) const {
-    return bb_addr_map_.at(bb_handle.function_index)
-        .getBBEntries()[bb_handle.bb_index];
+    const auto &func_bb_addr_map = GetFunctionEntry(bb_handle);
+    int bb_index = bb_handle.bb_index;
+    for (int i = 0; i < bb_handle.range_index; ++i) {
+      bb_index -= func_bb_addr_map.getBBRanges()[i].BBEntries.size();
+    }
+    return func_bb_addr_map.getBBRanges()[bb_handle.range_index]
+        .BBEntries[bb_index];
   }
 
   uint64_t GetAddress(BbHandle bb_handle) const {
-    return GetFunctionEntry(bb_handle).getFunctionAddress() +
+    return GetBBRangeEntry(bb_handle).BaseAddress +
            GetBBEntry(bb_handle).Offset;
   }
 

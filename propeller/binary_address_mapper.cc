@@ -42,6 +42,76 @@ namespace {
 using ::llvm::StringRef;
 using ::llvm::object::BBAddrMap;
 
+// Handle for a BB range.
+struct BbRangeHandle {
+  int function_index = 0;
+  int range_index = 0;
+};
+
+// Returns the BB range handles for BB ranges in `bb_addr_map`, sorted by
+// their base address. If `selected_functions` is provided, only returns the
+// BB range handles for the functions in the set. Otherwise, returns all BB
+// range handles.
+std::vector<BbRangeHandle> GetBbRangeHandles(
+    absl::Span<const BBAddrMap> bb_addr_map,
+    const std::optional<absl::btree_set<int>> &selected_functions =
+        std::nullopt) {
+  std::vector<BbRangeHandle> bb_range_handles;
+  auto addBbRangeHandles = [&](int function_index) {
+    for (int j = 0; j != bb_addr_map[function_index].getBBRanges().size();
+         ++j) {
+      bb_range_handles.push_back(
+          {.function_index = function_index, .range_index = j});
+    }
+  };
+  if (selected_functions.has_value()) {
+    for (int function_index : *selected_functions)
+      addBbRangeHandles(function_index);
+  } else {
+    for (int i = 0; i != bb_addr_map.size(); ++i) addBbRangeHandles(i);
+  }
+  absl::c_sort(bb_range_handles,
+               [&](const BbRangeHandle &a, const BbRangeHandle &b) {
+                 return bb_addr_map[a.function_index]
+                            .getBBRanges()[a.range_index]
+                            .BaseAddress < bb_addr_map[b.function_index]
+                                               .getBBRanges()[b.range_index]
+                                               .BaseAddress;
+               });
+  return bb_range_handles;
+}
+
+// Returns the BB handles for BBs in `selected_functions` in `bb_addr_map`,
+// sorted by their address.
+std::vector<BbHandle> GetBbHandles(
+    absl::Span<const BBAddrMap> bb_addr_map,
+    const absl::btree_set<int> &selected_functions) {
+  std::vector<BbHandle> bb_handles;
+  std::vector<BbRangeHandle> selected_bb_range_handles =
+      GetBbRangeHandles(bb_addr_map, selected_functions);
+  std::optional<uint64_t> last_bb_range_address;
+  // Maps function index to the base index of its BBs. We update the base index
+  // after each BB range we encounter.
+  absl::flat_hash_map<int, int> bb_index_map;
+  for (const BbRangeHandle &bb_range_handle : selected_bb_range_handles) {
+    const BBAddrMap::BBRangeEntry &bb_range =
+        bb_addr_map[bb_range_handle.function_index]
+            .getBBRanges()[bb_range_handle.range_index];
+    if (last_bb_range_address.has_value())
+      CHECK_GE(bb_range.BaseAddress, *last_bb_range_address);
+    int bb_index_base = bb_index_map[bb_range_handle.function_index];
+    for (int i = 0; i != bb_range.BBEntries.size(); ++i) {
+      bb_handles.push_back(
+          BbHandle{.function_index = bb_range_handle.function_index,
+                   .range_index = bb_range_handle.range_index,
+                   .bb_index = i + bb_index_base});
+    }
+    bb_index_map[bb_range_handle.function_index] += bb_range.BBEntries.size();
+    last_bb_range_address = bb_range.BaseAddress;
+  }
+  return bb_handles;
+}
+
 // Returns a map from BB-address-map function indexes to their symbol info.
 absl::flat_hash_map<int, BinaryAddressMapper::FunctionSymbolInfo>
 GetSymbolInfoMap(
@@ -133,6 +203,10 @@ class BinaryAddressMapperBuilder {
 
   // BB address map of functions.
   std::vector<llvm::object::BBAddrMap> bb_addr_map_;
+
+  // Handles for BB ranges in `bb_addr_map_`, stored by their base address.
+  std::vector<BbRangeHandle> bb_range_handles_;
+
   // Non-zero sized function symbols from elf symbol table, indexed by
   // symbol address. Multiple function symbols may exist on the same address.
   absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
@@ -414,9 +488,26 @@ std::optional<BbHandle> BinaryAddressMapper::GetBbHandleUsingBinaryAddress(
 bool BinaryAddressMapper::CanFallThrough(int function_index, int from_bb_index,
                                          int to_bb_index) const {
   if (from_bb_index > to_bb_index) return false;
+  const auto &bb_ranges = bb_addr_map_[function_index].getBBRanges();
+  int base_bb_index = 0;
+  std::optional<int> from_bb_range_index;
+  for (int range_index = 0; range_index < bb_ranges.size(); ++range_index) {
+    if (from_bb_index <
+        base_bb_index + bb_ranges[range_index].BBEntries.size()) {
+      from_bb_range_index = range_index;
+      break;
+    }
+  }
+  if (!from_bb_range_index.has_value()) return false;
+  if (to_bb_index < base_bb_index ||
+      to_bb_index >=
+          base_bb_index + bb_ranges[*from_bb_range_index].BBEntries.size()) {
+    return false;
+  }
   for (int bb_index = from_bb_index; bb_index < to_bb_index; ++bb_index) {
-    if (!GetBBEntry(
-             BbHandle{.function_index = function_index, .bb_index = bb_index})
+    if (!GetBBEntry(BbHandle{.function_index = function_index,
+                             .range_index = *from_bb_range_index,
+                             .bb_index = bb_index})
              .canFallThrough())
       return false;
   }
@@ -476,13 +567,20 @@ bool BinaryAddressMapper::CanFallThrough(int from, int to) const {
         << ": endpoints are in different functions.";
     return false;
   }
+  if (from_bb.range_index != to_bb.range_index) {
+    LOG_EVERY_N(ERROR, 100) << "Skipping fallthrough path " << from_bb << "->"
+                            << to_bb << ": endpoints are in different ranges.";
+    return false;
+  }
   if (from_bb.bb_index > to_bb.bb_index) {
     LOG_EVERY_N(WARNING, 100) << "Skipping fallthrough path " << from_bb << "->"
                               << to_bb << ": start comes after end.";
     return false;
   }
   for (int i = from_bb.bb_index; i != to_bb.bb_index; ++i) {
-    BbHandle bb_sym = {.function_index = from_bb.function_index, .bb_index = i};
+    BbHandle bb_sym = {.function_index = from_bb.function_index,
+                       .range_index = from_bb.range_index,
+                       .bb_index = i};
     // (b/62827958) Sometimes LBR contains duplicate entries in the beginning
     // of the stack which may result in false fallthrough paths. We discard
     // the fallthrough path if any intermediate block (except the destination
@@ -510,20 +608,24 @@ absl::btree_set<int> BinaryAddressMapperBuilder::CalculateHotFunctions(
     const absl::flat_hash_set<uint64_t> &hot_addresses) {
   absl::btree_set<int> hot_functions;
   auto add_to_hot_functions = [this, &hot_functions](uint64_t binary_address) {
-    auto it =
-        absl::c_upper_bound(bb_addr_map_, binary_address,
-                            [](uint64_t addr, const BBAddrMap &func_entry) {
-                              return addr < func_entry.getFunctionAddress();
-                            });
-    if (it == bb_addr_map_.begin()) return;
+    auto it = absl::c_upper_bound(
+        bb_range_handles_, binary_address,
+        [this](uint64_t addr, const BbRangeHandle &bb_range_handle) {
+          return addr < bb_addr_map_[bb_range_handle.function_index]
+                            .getBBRanges()[bb_range_handle.range_index]
+                            .BaseAddress;
+        });
+    if (it == bb_range_handles_.begin()) return;
     it = std::prev(it);
+    const auto &bb_range =
+        bb_addr_map_[it->function_index].getBBRanges()[it->range_index];
     // We know the address is bigger than or equal to the function address.
     // Make sure that it doesn't point beyond the last basic block.
-    if (binary_address >= it->getFunctionAddress() +
-                              it->getBBEntries().back().Offset +
-                              it->getBBEntries().back().Size)
+    if (binary_address >= bb_range.BaseAddress +
+                              bb_range.BBEntries.back().Offset +
+                              bb_range.BBEntries.back().Size)
       return;
-    hot_functions.insert(it - bb_addr_map_.begin());
+    hot_functions.insert(it->function_index);
   };
   for (uint64_t address : hot_addresses) add_to_hot_functions(address);
   stats_->bbaddrmap_stats.hot_functions = hot_functions.size();
@@ -649,6 +751,7 @@ BinaryAddressMapperBuilder::BinaryAddressMapperBuilder(
     std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats &stats,
     absl::Nonnull<const PropellerOptions *> options)
     : bb_addr_map_(std::move(bb_addr_map)),
+      bb_range_handles_(GetBbRangeHandles(bb_addr_map_)),
       symtab_(std::move(symtab)),
       symbol_info_map_(GetSymbolInfoMap(symtab_, bb_addr_map_)),
       stats_(&stats),
@@ -672,7 +775,7 @@ absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
     PropellerStats &stats, const absl::flat_hash_set<uint64_t> *hot_addresses) {
   LOG(INFO) << "Started reading the binary content from: "
             << binary_content.file_name;
-  std::vector<llvm::object::BBAddrMap> bb_addr_map;
+  std::vector<BBAddrMap> bb_addr_map;
   ASSIGN_OR_RETURN(bb_addr_map, ReadBbAddrMap(binary_content));
 
   return BinaryAddressMapperBuilder(ReadSymbolTable(binary_content),
@@ -682,20 +785,10 @@ absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
 
 std::unique_ptr<BinaryAddressMapper> BinaryAddressMapperBuilder::Build(
     const absl::flat_hash_set<uint64_t> *hot_addresses) && {
-  std::optional<uint64_t> last_function_address;
-  std::vector<BbHandle> bb_handles;
   absl::btree_set<int> selected_functions = SelectFunctions(hot_addresses);
   DropNonSelectedFunctions(selected_functions);
-  for (int function_index : selected_functions) {
-    const auto &function_bb_addr_map = bb_addr_map_[function_index];
-    if (last_function_address.has_value())
-      CHECK_GT(function_bb_addr_map.getFunctionAddress(),
-               *last_function_address);
-    for (int bb_index = 0;
-         bb_index != function_bb_addr_map.getBBEntries().size(); ++bb_index)
-      bb_handles.push_back({function_index, bb_index});
-    last_function_address = function_bb_addr_map.getFunctionAddress();
-  }
+  std::vector<BbHandle> bb_handles =
+      GetBbHandles(bb_addr_map_, selected_functions);
   return std::make_unique<BinaryAddressMapper>(
       std::move(selected_functions), std::move(bb_addr_map_),
       std::move(bb_handles), std::move(symbol_info_map_));
