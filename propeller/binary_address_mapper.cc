@@ -13,6 +13,7 @@
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -32,6 +33,7 @@
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_address_branch_path.h"
 #include "propeller/binary_content.h"
+#include "propeller/branch_aggregation.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
 #include "propeller/status_macros.h"
@@ -84,7 +86,8 @@ class BinaryAddressMapperBuilder {
           symtab,
       std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats &stats,
       absl::Nonnull<const PropellerOptions *> options
-          ABSL_ATTRIBUTE_LIFETIME_BOUND);
+          ABSL_ATTRIBUTE_LIFETIME_BOUND,
+      absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> thunk_map = {});
 
   BinaryAddressMapperBuilder(const BinaryAddressMapperBuilder &) = delete;
   BinaryAddressMapperBuilder &operator=(const BinaryAddressMapper &) = delete;
@@ -131,6 +134,9 @@ class BinaryAddressMapperBuilder {
   int FilterDuplicateNameFunctions(
       absl::btree_set<int> &selected_functions) const;
 
+  // Creates a sorted vector of thunks in the binary from `thunk_map_`.
+  std::vector<ThunkInfo> GetThunks();
+
   // BB address map of functions.
   std::vector<llvm::object::BBAddrMap> bb_addr_map_;
   // Non-zero sized function symbols from elf symbol table, indexed by
@@ -144,6 +150,9 @@ class BinaryAddressMapperBuilder {
 
   PropellerStats *stats_;
   const PropellerOptions *options_;
+
+  // Map of thunks by address.
+  absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> thunk_map_;
 };
 
 // Helper class for extracting intra-function paths from binary-address paths.
@@ -504,6 +513,42 @@ bool BinaryAddressMapper::CanFallThrough(int from, int to) const {
   return true;
 }
 
+// Finds a thunk by binary address. Returns std::nullopt if no thunk is found.
+std::optional<ThunkInfo> BinaryAddressMapper::GetThunkInfoUsingBinaryAddress(
+    uint64_t address) const {
+  std::optional<int> index = FindThunkInfoIndexUsingBinaryAddress(address);
+  if (!index.has_value()) return std::nullopt;
+  return thunks_.at(*index);
+}
+
+std::optional<int> BinaryAddressMapper::FindThunkInfoIndexUsingBinaryAddress(
+    uint64_t address) const {
+  if (thunks_.empty()) return std::nullopt;
+  auto it = absl::c_upper_bound(thunks_, address,
+                                [](uint64_t addr, const ThunkInfo &thunk) {
+                                  return addr < thunk.address;
+                                });
+  if (it == thunks_.begin()) return std::nullopt;
+  it = std::prev(it);
+  uint64_t thunk_end_address = it->address + it->symbol.getSize();
+  if (address >= thunk_end_address) return std::nullopt;
+  return it - thunks_.begin();
+}
+
+void BinaryAddressMapper::UpdateThunkTargets(
+    const BranchAggregation &branch_aggregation) {
+  if (thunks_.empty()) return;
+  for (auto [branch, weight] : branch_aggregation.branch_counters) {
+    std::optional<int> thunk_index =
+        FindThunkInfoIndexUsingBinaryAddress(branch.from);
+
+    if (!thunk_index.has_value()) continue;
+
+    ThunkInfo &thunk_info = thunks_.at(*thunk_index);
+    thunk_info.target = branch.to;
+  }
+}
+
 // For each lbr record addr1->addr2, find function1/2 that contain addr1/addr2
 // and add function1/2's index into the returned set.
 absl::btree_set<int> BinaryAddressMapperBuilder::CalculateHotFunctions(
@@ -638,6 +683,15 @@ absl::btree_set<int> BinaryAddressMapperBuilder::SelectFunctions(
   return selected_functions;
 }
 
+std::vector<ThunkInfo> BinaryAddressMapperBuilder::GetThunks() {
+  if (thunk_map_.empty()) return {};
+  std::vector<ThunkInfo> thunks;
+  for (const auto &[thunk_address, thunk_symbol] : thunk_map_)
+    thunks.push_back({.address = thunk_address, .symbol = thunk_symbol});
+
+  return thunks;
+}
+
 std::vector<BbHandleBranchPath> BinaryAddressMapper::ExtractIntraFunctionPaths(
     const BinaryAddressBranchPath &address_path) const {
   return IntraFunctionPathsExtractor(this).Extract(address_path);
@@ -647,12 +701,14 @@ BinaryAddressMapperBuilder::BinaryAddressMapperBuilder(
     absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
         symtab,
     std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats &stats,
-    absl::Nonnull<const PropellerOptions *> options)
+    absl::Nonnull<const PropellerOptions *> options,
+    absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> thunk_map)
     : bb_addr_map_(std::move(bb_addr_map)),
       symtab_(std::move(symtab)),
       symbol_info_map_(GetSymbolInfoMap(symtab_, bb_addr_map_)),
       stats_(&stats),
-      options_(options) {
+      options_(options),
+      thunk_map_(std::move(thunk_map)) {
   stats_->bbaddrmap_stats.bbaddrmap_function_does_not_have_symtab_entry +=
       bb_addr_map_.size() - symbol_info_map_.size();
 }
@@ -661,11 +717,13 @@ BinaryAddressMapper::BinaryAddressMapper(
     absl::btree_set<int> selected_functions,
     std::vector<llvm::object::BBAddrMap> bb_addr_map,
     std::vector<BbHandle> bb_handles,
-    absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map)
+    absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map,
+    std::vector<ThunkInfo> thunks)
     : selected_functions_(std::move(selected_functions)),
       bb_handles_(std::move(bb_handles)),
       bb_addr_map_(std::move(bb_addr_map)),
-      symbol_info_map_(std::move(symbol_info_map)) {}
+      symbol_info_map_(std::move(symbol_info_map)),
+      thunks_(std::move(thunks)) {}
 
 absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
     const PropellerOptions &options, const BinaryContent &binary_content,
@@ -676,7 +734,8 @@ absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
   ASSIGN_OR_RETURN(bb_addr_map, ReadBbAddrMap(binary_content));
 
   return BinaryAddressMapperBuilder(ReadSymbolTable(binary_content),
-                                    std::move(bb_addr_map), stats, &options)
+                                    std::move(bb_addr_map), stats, &options,
+                                    ReadThunkSymbols(binary_content))
       .Build(hot_addresses);
 }
 
@@ -684,6 +743,7 @@ std::unique_ptr<BinaryAddressMapper> BinaryAddressMapperBuilder::Build(
     const absl::flat_hash_set<uint64_t> *hot_addresses) && {
   std::optional<uint64_t> last_function_address;
   std::vector<BbHandle> bb_handles;
+  std::vector<ThunkInfo> thunks = GetThunks();
   absl::btree_set<int> selected_functions = SelectFunctions(hot_addresses);
   DropNonSelectedFunctions(selected_functions);
   for (int function_index : selected_functions) {
@@ -696,9 +756,10 @@ std::unique_ptr<BinaryAddressMapper> BinaryAddressMapperBuilder::Build(
       bb_handles.push_back({function_index, bb_index});
     last_function_address = function_bb_addr_map.getFunctionAddress();
   }
+
   return std::make_unique<BinaryAddressMapper>(
       std::move(selected_functions), std::move(bb_addr_map_),
-      std::move(bb_handles), std::move(symbol_info_map_));
+      std::move(bb_handles), std::move(symbol_info_map_), std::move(thunks));
 }
 
 }  // namespace propeller
