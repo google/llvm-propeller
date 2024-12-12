@@ -911,6 +911,18 @@ cc_library(
 )
 
 cc_library(
+    name = "file_helpers",
+    srcs = ["file_helpers.cc"],
+    hdrs = ["file_helpers.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "protocol_buffer_matchers",
     testonly = True,
     hdrs = ["protocol_buffer_matchers.h"],
