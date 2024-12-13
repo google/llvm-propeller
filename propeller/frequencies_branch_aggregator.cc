@@ -4,14 +4,11 @@
 #include <memory>
 #include <optional>
 #include <utility>
-
 #include "absl/base/attributes.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "llvm/TargetParser/Triple.h"
-#include "propeller/bb_handle.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
