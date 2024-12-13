@@ -180,27 +180,47 @@ class BinaryAddressMapper {
   std::optional<BbHandle> GetBbHandleUsingBinaryAddress(
       uint64_t address, BranchDirection direction) const;
 
-  // Returns whether in function with index `function_index`, basic block with
-  // index `from_bb_index` can fall through to the basic block with index
-  // `to_bb_index`.
-  bool CanFallThrough(int function_index, int from_bb_index,
-                      int to_bb_index) const;
+  // Returns whether in basic block with `from` can fall through to basic block
+  // `to`.
+  bool CanFallThrough(const BbHandle &from, const BbHandle &to) const;
 
   // Returns the full function's BB address map associated with the given
   // `bb_handle`.
-  const llvm::object::BBAddrMap &GetFunctionEntry(BbHandle bb_handle) const {
+  const llvm::object::BBAddrMap &GetFunctionEntry(
+      const BbHandle &bb_handle) const {
     return bb_addr_map_.at(bb_handle.function_index);
   }
+
+  const llvm::object::BBAddrMap::BBRangeEntry &GetBBRangeEntry(
+      const BbHandle &bb_handle) const {
+    return bb_addr_map_.at(bb_handle.function_index)
+        .getBBRanges()[bb_handle.range_index];
+  }
+
+  // Returns the BbHandle associated with the basic block with flat index
+  // `flat_bb_index` in the function with index `function_index`.
+  // `flat_bb_index` is the index into the function's flat list of bb
+  // entries if all BB ranges were flattened. Returns nullopt if no such BB
+  // exists.
+  std::optional<BbHandle> getBbHandle(int function_index,
+                                      int flat_bb_index) const;
+
+  // Returns the flat index of BB associated with `bb_handle` in its function,
+  // if all BB ranges were flattened. Returns nullopt if no BB with `bb_handle`
+  // exists.
+  std::optional<int> GetFlatBbIndex(const BbHandle &bb_handle) const;
 
   // Returns the basic block's address map entry associated with the given
   // `bb_handle`.
   const llvm::object::BBAddrMap::BBEntry &GetBBEntry(BbHandle bb_handle) const {
-    return bb_addr_map_.at(bb_handle.function_index)
-        .getBBEntries()[bb_handle.bb_index];
+    return GetFunctionEntry(bb_handle)
+        .getBBRanges()
+        .at(bb_handle.range_index)
+        .BBEntries.at(bb_handle.bb_index);
   }
 
   uint64_t GetAddress(BbHandle bb_handle) const {
-    return GetFunctionEntry(bb_handle).getFunctionAddress() +
+    return GetBBRangeEntry(bb_handle).BaseAddress +
            GetBBEntry(bb_handle).Offset;
   }
 
@@ -217,13 +237,15 @@ class BinaryAddressMapper {
                   "0x",
                   absl::Hex(GetFunctionEntry(bb_handle).getFunctionAddress()))
             : aliases.front().str();
-    return absl::StrCat(func_name, ":", bb_handle.bb_index);
+    return absl::StrCat(func_name, ":", bb_handle.range_index, ":",
+                        bb_handle.bb_index);
   }
 
   // Returns whether a branch to `to_bb_handle` landing at address `to_address`
   // is a call.
   bool IsCall(BbHandle to_bb_handle, uint64_t to_address) const {
-    return to_bb_handle.bb_index == 0 && to_address == GetAddress(to_bb_handle);
+    return to_bb_handle.range_index == 0 && to_bb_handle.bb_index == 0 &&
+           to_address == GetAddress(to_bb_handle);
   }
 
   // Returns whether a branch from `from_bb_handle` to `to_bb_handle` landing at
@@ -231,7 +253,7 @@ class BinaryAddressMapper {
   bool IsReturn(std::optional<BbHandle> from_bb_handle, BbHandle to_bb_handle,
                 uint64_t to_address) const {
     return GetAddress(to_bb_handle) != to_address ||
-           (to_bb_handle.bb_index != 0 &&
+           ((to_bb_handle.range_index != 0 || to_bb_handle.bb_index != 0) &&
             (!from_bb_handle.has_value() ||
              GetBBEntry(*from_bb_handle).hasReturn()));
   }

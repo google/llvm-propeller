@@ -1218,6 +1218,7 @@ cc_test(
     data = [
         "//propeller/testdata:bimodal_sample.bin",
         "//propeller/testdata:bimodal_sample.x.bin",
+        "//propeller/testdata:bimodal_sample_mfs.bin",
         "//propeller/testdata:clang_v0_labels.binary",
         "//propeller/testdata:duplicate_symbols_bin",
         "//propeller/testdata:duplicate_unique_names",
@@ -1225,6 +1226,7 @@ cc_test(
         "//propeller/testdata:sample_section.bin",
     ],
     deps = [
+        ":bb_handle",
         ":binary_address_branch_path",
         ":binary_address_mapper",
         ":binary_content",
@@ -1303,6 +1305,9 @@ cc_test(
     srcs = ["code_layout_test.cc"],
     data = [
         "//propeller/testdata:all_cold_landing_pads.protobuf",
+        "//propeller/testdata:bimodal_sample_mfs.bin",
+        "//propeller/testdata:bimodal_sample_mfs.cc_profile.txt",
+        "//propeller/testdata:bimodal_sample_mfs.ld_profile.txt",
         "//propeller/testdata:call_from_simple_loop.protobuf",
         "//propeller/testdata:hot_and_cold_landing_pads.protobuf",
         "//propeller/testdata:loop_no_entry_no_exit.protobuf",

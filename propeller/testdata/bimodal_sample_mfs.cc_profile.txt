@@ -1,0 +1,7 @@
+v1
+f bar
+c0
+f main
+c0 2
+f compute
+c0 2 4 5

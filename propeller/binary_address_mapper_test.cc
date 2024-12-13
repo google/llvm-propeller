@@ -18,6 +18,7 @@
 #include "absl/time/time.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
+#include "propeller/bb_handle.h"
 #include "propeller/binary_address_branch_path.h"
 #include "propeller/binary_content.h"
 #include "propeller/propeller_options.pb.h"
@@ -38,6 +39,7 @@ using ::testing::Not;
 using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::ResultOf;
+using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 
 using ::llvm::object::BBAddrMap;
@@ -56,9 +58,12 @@ MATCHER_P2(BbRangeIs, base_address_matcher, bb_entries_matcher, "") {
          ExplainMatchResult(bb_entries_matcher, arg.BBEntries, result_listener);
 }
 
-MATCHER_P4(BbEntryIs, id, offset, size, metadata, "") {
-  return arg.ID == id && arg.Offset == offset && arg.Size == size &&
-         arg.MD == metadata;
+MATCHER_P4(BbEntryIs, id_matcher, offset_matcher, size_matcher,
+           metadata_matcher, "") {
+  return ExplainMatchResult(id_matcher, arg.ID, result_listener) &&
+         ExplainMatchResult(offset_matcher, arg.Offset, result_listener) &&
+         ExplainMatchResult(size_matcher, arg.Size, result_listener) &&
+         ExplainMatchResult(metadata_matcher, arg.MD, result_listener);
 }
 
 std::string GetPropellerTestDataFilePath(absl::string_view filename) {
@@ -104,6 +109,89 @@ TEST(BinaryAddressMapper, BbAddrMapReadSymbolTable) {
   EXPECT_THAT(
       binary_address_mapper->symbol_info_map(),
       Contains(Pair(_, FieldsAre(ElementsAre("sample1_func"), ".text"))));
+}
+
+// Tests reading the BBAddrMap from a binary built with MFS which has basic
+// block sections.
+TEST(BinaryAddressMapper, ReadsMfsBbAddrMap) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryContent> binary_content,
+      GetBinaryContent(GetPropellerTestDataFilePath("bimodal_sample_mfs.bin")));
+  PropellerStats stats;
+  PropellerOptions options;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
+      BuildBinaryAddressMapper(options, *binary_content, stats));
+  EXPECT_THAT(binary_address_mapper->selected_functions(), Not(IsEmpty()));
+  EXPECT_THAT(
+      GetBBAddrMapByFunctionName(*binary_address_mapper),
+      Contains(Pair(
+          "compute",
+          BbAddrMapIs(
+              0x1770,
+              ElementsAre(
+                  BbRangeIs(0x1770, ElementsAre(BbEntryIs(0, 0x0, 0x1D, _),
+                                                BbEntryIs(3, 0x20, 0x3F, _))),
+                  BbRangeIs(0x18a8,
+                            ElementsAre(BbEntryIs(1, 0x0, 0xE, _),
+                                        BbEntryIs(5, 0xE, 0x7, _),
+                                        BbEntryIs(2, 0x15, 0x9, _),
+                                        BbEntryIs(4, 0x1E, 0x37, _))))))));
+}
+
+// Tests computing the flat bb index in the entire function from a bb handle and
+// vice versa.
+TEST(BinaryAddressMapper, HandlesFlatBbIndex) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryContent> binary_content,
+      GetBinaryContent(GetPropellerTestDataFilePath("bimodal_sample_mfs.bin")));
+  PropellerStats stats;
+  PropellerOptions options;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
+      BuildBinaryAddressMapper(options, *binary_content, stats));
+  ASSERT_THAT(
+      binary_address_mapper->bb_addr_map(),
+      ElementsAre(_, BbAddrMapIs(_, ElementsAre(BbRangeIs(_, SizeIs(3)))),
+                  BbAddrMapIs(_, ElementsAre(BbRangeIs(_, SizeIs(2)),
+                                             BbRangeIs(_, SizeIs(4)))),
+                  _));
+  EXPECT_THAT(
+      binary_address_mapper->getBbHandle(/*function_index=*/2,
+                                         /*flat_bb_index=*/1),
+      Optional(BbHandle{.function_index = 2, .range_index = 0, .bb_index = 1}));
+  EXPECT_THAT(
+      binary_address_mapper->getBbHandle(/*function_index=*/2,
+                                         /*flat_bb_index=*/2),
+      Optional(BbHandle{.function_index = 2, .range_index = 1, .bb_index = 0}));
+  EXPECT_THAT(binary_address_mapper->getBbHandle(/*function_index=*/2,
+                                                 /*flat_bb_index=*/6),
+              Eq(std::nullopt));
+  EXPECT_THAT(
+      binary_address_mapper->getBbHandle(/*function_index=*/1,
+                                         /*flat_bb_index=*/2),
+      Optional(BbHandle{.function_index = 1, .range_index = 0, .bb_index = 2}));
+  EXPECT_THAT(binary_address_mapper->getBbHandle(/*function_index=*/1,
+                                                 /*flat_bb_index=*/3),
+              Eq(std::nullopt));
+  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+                BbHandle{.function_index = 2, .range_index = 0, .bb_index = 1}),
+            1);
+  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+                BbHandle{.function_index = 2, .range_index = 1, .bb_index = 0}),
+            2);
+  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+                BbHandle{.function_index = 2, .range_index = 1, .bb_index = 4}),
+            std::nullopt);
+  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+                BbHandle{.function_index = 1, .range_index = 0, .bb_index = 2}),
+            2);
+  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+                BbHandle{.function_index = 1, .range_index = 0, .bb_index = 3}),
+            std::nullopt);
+  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+                BbHandle{.function_index = 5, .range_index = 0, .bb_index = 0}),
+            std::nullopt);
 }
 
 TEST(BinaryAddressMapper, ReadBbAddrMap) {

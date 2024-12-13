@@ -34,12 +34,14 @@ namespace {
 std::vector<std::unique_ptr<CFGNode>> CreateCfgNodes(
     int function_index, const llvm::object::BBAddrMap &func_bb_addr_map) {
   std::vector<std::unique_ptr<CFGNode>> nodes;
-  for (int bb_index = 0; bb_index < func_bb_addr_map.getBBEntries().size();
-       ++bb_index) {
-    const auto &bb_entry = func_bb_addr_map.getBBEntries()[bb_index];
-    nodes.push_back(std::make_unique<CFGNode>(
-        func_bb_addr_map.getFunctionAddress() + bb_entry.Offset, bb_index,
-        bb_entry.ID, bb_entry.Size, bb_entry.MD, function_index));
+  int bb_index = 0;
+  for (const auto &bb_range : func_bb_addr_map.getBBRanges()) {
+    for (const auto &bb_entry : bb_range.BBEntries) {
+      nodes.push_back(std::make_unique<CFGNode>(
+          bb_range.BaseAddress + bb_entry.Offset, bb_index, bb_entry.ID,
+          bb_entry.Size, bb_entry.MD, function_index));
+      ++bb_index;
+    }
   }
   return nodes;
 }
@@ -80,7 +82,7 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
     // Setup mapping from Ids to nodes.
     for (const std::unique_ptr<CFGNode> &node : cfg->nodes())
       node_map.insert({node->inter_cfg_id(), node.get()});
-    CHECK_EQ(cfg->nodes().size(), func_bb_addr_map.getBBEntries().size());
+    CHECK_EQ(cfg->nodes().size(), func_bb_addr_map.getNumBBEntries());
     stats_->cfg_stats.nodes_created += cfg->nodes().size();
     cfgs_.insert({func_index, std::move(cfg)});
     ++stats_->cfg_stats.cfgs_created;
@@ -156,9 +158,15 @@ CFGEdge *ProgramCfgBuilder::InternalCreateEdge(
         *tmp_edge_map) {
   BbHandle from_bb = binary_address_mapper_->bb_handles().at(from_bb_index);
   BbHandle to_bb = binary_address_mapper_->bb_handles().at(to_bb_index);
+  std::optional<int> from_flat_bb_index =
+      binary_address_mapper_->GetFlatBbIndex(from_bb);
+  CHECK(from_flat_bb_index.has_value());
+  std::optional<int> to_flat_bb_index = binary_address_mapper_->GetFlatBbIndex(
+      binary_address_mapper_->bb_handles().at(to_bb_index));
+  CHECK(to_flat_bb_index.has_value());
   // Compute the IDs of the corresponding basic blocks.
-  InterCfgId from_bb_id = {from_bb.function_index, {from_bb.bb_index, 0}};
-  InterCfgId to_bb_id = {to_bb.function_index, {to_bb.bb_index, 0}};
+  InterCfgId from_bb_id = {from_bb.function_index, {*from_flat_bb_index, 0}};
+  InterCfgId to_bb_id = {to_bb.function_index, {*to_flat_bb_index, 0}};
   CFGEdge *edge = nullptr;
   auto i = tmp_edge_map->find(std::make_pair(from_bb_id, to_bb_id));
   if (i != tmp_edge_map->end()) {
