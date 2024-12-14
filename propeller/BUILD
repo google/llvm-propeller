@@ -269,6 +269,7 @@ cc_library(
     deps = [
         ":addr2cu",
         ":status_macros",
+        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
@@ -280,6 +281,7 @@ cc_library(
         "@llvm-project//llvm:DebugInfo",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -1134,6 +1136,7 @@ cc_test(
     name = "binary_content_test",
     srcs = ["binary_content_test.cc"],
     data = [
+        "//propeller/testdata:fake_thunks.bin",
         "//propeller/testdata:llvm_function_samples.binary",
         "//propeller/testdata:propeller_barebone_nopie_buildid",
         "//propeller/testdata:propeller_barebone_pie_nobuildid_bin",

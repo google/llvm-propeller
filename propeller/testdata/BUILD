@@ -40,6 +40,7 @@ exports_files([
     "bimodal_sample_mfs.ld_profile.txt",
     "call_from_simple_loop.protobuf",
     "clang_v0_labels.binary",
+    "fake_thunks.bin",
     "hot_and_cold_landing_pads.protobuf",
     "libro_sample.so",
     "llvm_function_samples.binary",
@@ -364,4 +365,31 @@ genrule(
     ],
     target_compatible_with = ["//third_party/bazel_platforms/cpu:aarch64"],
     tools = [":sample"],
+)
+
+cc_binary(
+    name = "fake_thunks",
+    srcs = ["fake_thunks.c"],
+)
+
+# This rule can be used to manually generate fake_thunks.bin.
+# Do not make this into the deps of tests since regenerating the file every time is cumbersome.
+#
+# To build `fake_thunks_bin`, you need to target Arm. If building with Propeller
+# annotations, pass `--host_features=propeller_annotate` when building the genrule.
+genrule(
+    name = "fake_thunks_bin",
+    srcs = ["fake_thunks.c"],
+    outs = [
+        "fake_thunks.bin.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+          "$(RULEDIR)/fake_thunks.bin.gen",
+    exec_compatible_with = ["//third_party/bazel_platforms/cpu:aarch64"],
+    tags = [
+        "manual",
+        "requires-arch:arm",
+    ],
+    target_compatible_with = ["//third_party/bazel_platforms/cpu:aarch64"],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
