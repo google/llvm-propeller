@@ -15,6 +15,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "google/protobuf/io/zero_copy_stream_impl.h"  // for "proto2::io::FileInputStream"
+#include "google/protobuf/text_format.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
@@ -28,8 +30,6 @@
 #include "propeller/cfg_node.h"
 #include "propeller/cfg_testutil.h"
 #include "propeller/program_cfg.h"
-#include "google/protobuf/io/zero_copy_stream_impl.h"  // for "proto2::io::FileInputStream"
-#include "google/protobuf/text_format.h"
 
 namespace propeller {
 namespace {

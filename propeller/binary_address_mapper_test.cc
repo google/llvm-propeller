@@ -8,14 +8,13 @@
 #include <utility>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/bb_handle.h"
@@ -23,6 +22,7 @@
 #include "propeller/binary_content.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
@@ -68,8 +68,7 @@ MATCHER_P4(BbEntryIs, id_matcher, offset_matcher, size_matcher,
 
 std::string GetPropellerTestDataFilePath(absl::string_view filename) {
   const std::string testdata_filepath =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/", filename);
+      absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/", filename);
   return testdata_filepath;
 }
 

@@ -24,11 +24,11 @@ class Addr2Cu {
   explicit Addr2Cu(llvm::DWARFContext &dwarf_context)
       : dwarf_context_(dwarf_context) {}
 
-  Addr2Cu(const Addr2Cu&) = delete;
-  Addr2Cu& operator=(const Addr2Cu&) = delete;
+  Addr2Cu(const Addr2Cu &) = delete;
+  Addr2Cu &operator=(const Addr2Cu &) = delete;
 
   Addr2Cu(Addr2Cu &&) = delete;
-  Addr2Cu& operator=(Addr2Cu &&) = delete;
+  Addr2Cu &operator=(Addr2Cu &&) = delete;
 
   // Returns the file name for the compile unit that contains the given code
   // address. Note: the returned string_view lives as long as `dwarf_context_`.

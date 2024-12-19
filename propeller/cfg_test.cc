@@ -3,14 +3,14 @@
 #include <memory>
 #include <sstream>
 
-#include "propeller/status_testing_macros.h"
+#include "absl/container/flat_hash_map.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/container/flat_hash_map.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_matchers.h"
 #include "propeller/cfg_testutil.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {

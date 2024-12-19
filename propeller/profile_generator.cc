@@ -12,6 +12,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregator.h"
 #include "propeller/file_helpers.h"
@@ -28,7 +29,6 @@
 #include "propeller/profile_writer.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/proto_branch_frequencies_aggregator.h"
-#include "google/protobuf/repeated_ptr_field.h"
 #include "propeller/status_macros.h"
 
 namespace propeller {

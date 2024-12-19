@@ -3,11 +3,11 @@
 
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "propeller/cfg_id.h"
 #include "propeller/function_chain_info.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 

@@ -12,14 +12,15 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "src/quipper/arm_spe_decoder.h"
 #include "src/quipper/perf_data_utils.h"
-#include "google/protobuf/repeated_ptr_field.h"
 
 namespace propeller {
 
 SpeTidPidProvider::SpeTidPidProvider(
-    const google::protobuf::RepeatedPtrField<quipper::PerfDataProto_PerfEvent>& events) {
+    const google::protobuf::RepeatedPtrField<quipper::PerfDataProto_PerfEvent>&
+        events) {
   for (const quipper::PerfDataProto::PerfEvent& event : events) {
     if (event.has_time_conv_event()) {
       time_conv_event_ = event.time_conv_event();

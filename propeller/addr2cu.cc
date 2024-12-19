@@ -25,14 +25,14 @@ absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
   std::unique_ptr<llvm::DWARFContext> dwarf_context =
       llvm::DWARFContext::create(
           obj, llvm::DWARFContext::ProcessDebugRelocations::Process,
-          /*const LoadedObjectInfo *L=*/ nullptr, std::string(dwp_file));
+          /*const LoadedObjectInfo *L=*/nullptr, std::string(dwp_file));
   CHECK(dwarf_context != nullptr);
   if (dwp_file.empty() &&
       absl::c_any_of(dwarf_context->compile_units(),
-                   [](std::unique_ptr<llvm::DWARFUnit> &cu) {
-                     return cu->getUnitDIE().getTag() ==
-                            llvm::dwarf::DW_TAG_skeleton_unit;
-                   })) {
+                     [](std::unique_ptr<llvm::DWARFUnit> &cu) {
+                       return cu->getUnitDIE().getTag() ==
+                              llvm::dwarf::DW_TAG_skeleton_unit;
+                     })) {
     return absl::FailedPreconditionError(
         "skeleton unit found without a corresponding dwp file");
   }
@@ -48,8 +48,8 @@ absl::StatusOr<absl::string_view> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
   llvm::DWARFCompileUnit *unit =
       dwarf_context_.getCompileUnitForCodeAddress(code_address);
   if (unit == nullptr) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "no compile unit found on address 0x%x", code_address));
+    return absl::FailedPreconditionError(
+        absl::StrFormat("no compile unit found on address 0x%x", code_address));
   }
   llvm::DWARFDie die = unit->getNonSkeletonUnitDIE();
   std::optional<llvm::DWARFFormValue> form_value =

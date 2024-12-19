@@ -192,30 +192,30 @@ std::vector<std::vector<const CFGNode *>> GetForcedPaths(
 }
 
 void NodeChainBuilder::InitNodeChains() {
-  auto add_new_chain = [&](std::vector<std::vector<const CFGNode *>>
-                               chain_nodes) {
-    if (chain_nodes.size() == 1 && chain_nodes[0].size() == 1) {
-      ++stats_.n_single_node_chains;
-    } else {
-      ++stats_.n_multi_node_chains;
-    }
-    auto chain = std::make_unique<NodeChain>(std::move(chain_nodes));
-    for (std::unique_ptr<CFGNodeBundle> &bundle :
-         chain->mutable_node_bundles()) {
-      int bundle_offset = 0;
-      for (const CFGNode *node : bundle->nodes()) {
-        CHECK_EQ(node_to_bundle_mapper_->GetBundleMappingEntry(node).bundle,
-                 nullptr)
-            << "Node " << node->inter_cfg_id() << " is already in a bundle";
-        node_to_bundle_mapper_->SetBundleMappingEntry(
-            node, {.bundle = bundle.get(), .bundle_offset = bundle_offset});
-        bundle_offset += node->size();
-      }
-    }
-    InterCfgId chain_id = chain->id();
-    CHECK(chains_.emplace(chain_id, std::move(chain)).second)
-        << "Duplicate chain id: " << chain_id;
-  };
+  auto add_new_chain =
+      [&](std::vector<std::vector<const CFGNode *>> chain_nodes) {
+        if (chain_nodes.size() == 1 && chain_nodes[0].size() == 1) {
+          ++stats_.n_single_node_chains;
+        } else {
+          ++stats_.n_multi_node_chains;
+        }
+        auto chain = std::make_unique<NodeChain>(std::move(chain_nodes));
+        for (std::unique_ptr<CFGNodeBundle> &bundle :
+             chain->mutable_node_bundles()) {
+          int bundle_offset = 0;
+          for (const CFGNode *node : bundle->nodes()) {
+            CHECK_EQ(node_to_bundle_mapper_->GetBundleMappingEntry(node).bundle,
+                     nullptr)
+                << "Node " << node->inter_cfg_id() << " is already in a bundle";
+            node_to_bundle_mapper_->SetBundleMappingEntry(
+                node, {.bundle = bundle.get(), .bundle_offset = bundle_offset});
+            bundle_offset += node->size();
+          }
+        }
+        InterCfgId chain_id = chain->id();
+        CHECK(chains_.emplace(chain_id, std::move(chain)).second)
+            << "Duplicate chain id: " << chain_id;
+      };
 
   for (const ControlFlowGraph *cfg : cfgs_) {
     if (!cfg->is_hot()) {

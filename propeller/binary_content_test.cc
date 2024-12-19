@@ -5,16 +5,18 @@
 #include <string>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 using ::testing::Contains;
 using ::testing::Eq;
@@ -23,14 +25,11 @@ using ::testing::Not;
 using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::SizeIs;
-using ::absl_testing::IsOk;
-using ::absl_testing::IsOkAndHolds;
 
 TEST(BinaryContentTest, BuildId) {
-  const std::string binary =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
-                   "llvm_function_samples.binary");
+  const std::string binary = absl::StrCat(::testing::SrcDir(),
+                                          "_main/propeller/testdata/"
+                                          "llvm_function_samples.binary");
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_EQ(binary_content->build_id,
@@ -50,8 +49,7 @@ TEST(BinaryContentTest, PieAndNoBuildId) {
 
 TEST(GetSymbolAddressTest, SymbolFound) {
   const std::string binary = absl::StrCat(
-      ::testing::SrcDir(),
-      "_main/propeller/testdata/propeller_sample_1.bin");
+      ::testing::SrcDir(), "_main/propeller/testdata/propeller_sample_1.bin");
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_THAT(GetSymbolAddress(*binary_content->object_file, "main"),
@@ -60,8 +58,7 @@ TEST(GetSymbolAddressTest, SymbolFound) {
 
 TEST(GetSymbolAddressTest, SymbolNotFound) {
   const std::string binary = absl::StrCat(
-      ::testing::SrcDir(),
-      "_main/propeller/testdata/propeller_sample_1.bin");
+      ::testing::SrcDir(), "_main/propeller/testdata/propeller_sample_1.bin");
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_THAT(

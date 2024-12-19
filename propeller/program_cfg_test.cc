@@ -3,15 +3,15 @@
 #include <memory>
 #include <string>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/mock_program_cfg_builder.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
@@ -27,9 +27,9 @@ using ::testing::UnorderedElementsAre;
 // This test checks that the mock can load a CFG from the serialized format
 // correctly.
 TEST(ProgramCfg, CreateCfgInfoFromProto) {
-  const std::string protobuf_input = absl::StrCat(
-      ::testing::SrcDir(),
-      "_main/propeller/testdata/propeller_sample.protobuf");
+  const std::string protobuf_input =
+      absl::StrCat(::testing::SrcDir(),
+                   "_main/propeller/testdata/propeller_sample.protobuf");
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
                        BuildFromCfgProtoPath(protobuf_input));
