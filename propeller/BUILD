@@ -896,6 +896,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "profile_generator",
+    srcs = ["profile_generator.cc"],
+    hdrs = ["profile_generator.h"],
+    deps = [
+        ":binary_content",
+        ":branch_aggregator",
+        ":file_helpers",
+        ":file_perf_data_provider",
+        ":frequencies_branch_aggregator",
+        ":lbr_branch_aggregator",
+        ":path_profile_aggregator",
+        ":perf_branch_frequencies_aggregator",
+        ":perf_data_path_profile_aggregator",
+        ":perf_data_provider",
+        ":perf_lbr_aggregator",
+        ":profile",
+        ":profile_computer",
+        ":profile_writer",
+        ":propeller_options_cc_proto",
+        ":proto_branch_frequencies_aggregator",
+        ":status_macros",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@com_google_protobuf//:protobuf_lite",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
@@ -1537,6 +1569,45 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "profile_generator_test",
+    size = "medium",
+    srcs = ["profile_generator_test.cc"],
+    data = [
+        "//propeller/testdata:bimodal_sample.bin",
+        "//propeller/testdata:bimodal_sample.cloning_cc_profile.txt",
+        "//propeller/testdata:bimodal_sample_mfs.bin",
+        "//propeller/testdata:bimodal_sample_mfs.cc_profile.txt",
+        "//propeller/testdata:bimodal_sample_mfs.ld_profile.txt",
+        "//propeller/testdata:sample.arm.bin",
+        "//propeller/testdata:sample.bin",
+        "//propeller/testdata:sample_cc_directives.arm.golden.txt",
+        "//propeller/testdata:sample_cc_directives.cloning.golden.txt",
+        "//propeller/testdata:sample_cc_directives.golden.txt",
+        "//propeller/testdata:sample_cc_directives.v0.golden.txt",
+        "//propeller/testdata:sample_ld_directives.arm.golden.txt",
+        "//propeller/testdata:sample_ld_directives.golden.txt",
+        "//propeller/testdata:sample_section.bin",
+        "//propeller/testdata:sample_section_cc_directives.golden.txt",
+        "//propeller/testdata:sample_section_ld_directives.golden.txt",
+        "//propeller/testdata:sample_split_only_cc_directives.golden.txt",
+        "//propeller/testdata:sample_split_only_ld_directives.golden.txt",
+        "//propeller/testdata:sample_verbose_cc_directives.golden.txt",
+    ],
+    deps = [
+        ":file_helpers",
+        ":file_perf_data_provider",
+        ":parse_text_proto",
+        ":profile_generator",
+        ":propeller_options_cc_proto",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
