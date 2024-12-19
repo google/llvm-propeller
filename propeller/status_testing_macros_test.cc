@@ -12,11 +12,12 @@
 // see the license for the specific language governing permissions and
 // limitations under the license.
 #include "propeller/status_testing_macros.h"
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest-spi.h"
 #include "gtest/gtest.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 
 namespace {
 

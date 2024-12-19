@@ -37,8 +37,7 @@ MiniDisassembler::Create(const llvm::object::ObjectFile *object_file) {
   llvm::InitializeAllDisassemblers();
 
   llvm::Triple triple;
-  triple.setArch(
-      llvm::Triple::ArchType(object_file->getArch()));
+  triple.setArch(llvm::Triple::ArchType(object_file->getArch()));
   const llvm::Target *target =
       llvm::TargetRegistry::lookupTarget(triple.normalize(), err);
   if (target == nullptr) {

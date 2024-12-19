@@ -4,12 +4,11 @@
 #include <memory>
 #include <utility>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
@@ -17,6 +16,7 @@
 #include "propeller/branch_frequencies.h"
 #include "propeller/branch_frequencies_aggregator.h"
 #include "propeller/propeller_statistics.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {

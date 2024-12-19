@@ -7,9 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_set.h"
@@ -20,6 +17,8 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregation.h"
@@ -32,6 +31,7 @@
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
@@ -76,8 +76,7 @@ MATCHER_P7(CfgNodeFieldsAre, function_index, bb_index, clone_number, bb_id,
 }
 
 static std::string GetPropellerTestDataFilePath(absl::string_view filename) {
-  return absl::StrCat(::testing::SrcDir(),
-                      "_main/propeller/testdata/",
+  return absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/",
                       filename);
 }
 

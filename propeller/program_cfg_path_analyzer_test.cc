@@ -6,13 +6,12 @@
 #include <optional>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/cfg_edge_kind.h"
@@ -20,6 +19,7 @@
 #include "propeller/path_node.h"
 #include "propeller/path_profile_options.pb.h"
 #include "propeller/program_cfg.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {

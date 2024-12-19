@@ -17,10 +17,10 @@
 #ifndef PROPELLER_STATUS_TESTING_MACROS_H_
 #define PROPELLER_STATUS_TESTING_MACROS_H_
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 // Defines useful macros for testing absl::Status and absl::StatusOr.
 // TODO: b/156376166 - Remove the following fork of Status testing macros

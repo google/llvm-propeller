@@ -27,11 +27,11 @@
 #include "propeller/lbr_aggregation.h"
 #include "propeller/perf_data_provider.h"
 #include "propeller/spe_tid_pid_provider.h"
+#include "propeller/status_macros.h"
 #include "src/quipper/arm_spe_decoder.h"
 #include "src/quipper/perf_data.pb.h"
 #include "src/quipper/perf_parser.h"
 #include "src/quipper/perf_reader.h"
-#include "propeller/status_macros.h"
 
 namespace {
 

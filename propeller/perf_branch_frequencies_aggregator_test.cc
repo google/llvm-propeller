@@ -7,19 +7,19 @@
 #include <utility>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
 #include "propeller/file_perf_data_provider.h"
 #include "propeller/perf_data_provider.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
@@ -37,8 +37,7 @@ class MockPerfDataProvider : public PerfDataProvider {
               GetAllAvailableOrNext, ());
 };
 
-static constexpr std::string_view kTestDataDir =
-    "propeller/testdata/";
+static constexpr std::string_view kTestDataDir = "propeller/testdata/";
 
 TEST(PerfBranchFrequenciesAggregator, FailsIfNoPerfData) {
   auto mock_perf_data_provider = std::make_unique<MockPerfDataProvider>();

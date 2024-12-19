@@ -7,9 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
@@ -20,6 +17,8 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
@@ -38,6 +37,7 @@
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
@@ -183,10 +183,10 @@ std::vector<FunctionChainInfo::BbChain> ConstructBbChains(
 
 // Test the proper construction of NodeChainSlice
 TEST(NodeChainSliceTest, TestCreateNodeChainSlice) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "three_branches.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "three_branches.protobuf")));
   const ControlFlowGraph &foo_cfg =
       *proto_program_cfg->program_cfg().GetCfgByIndex(0);
   EXPECT_EQ(foo_cfg.GetPrimaryName(), "foo");
@@ -212,9 +212,9 @@ TEST(NodeChainSliceTest, TestCreateNodeChainSlice) {
 
 TEST(CodeLayoutScorerTest, GetEdgeScore) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "simple_multi_function.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "simple_multi_function.protobuf")));
   const ControlFlowGraph &foo_cfg =
       *proto_program_cfg->program_cfg().GetCfgByIndex(0);
   const ControlFlowGraph &bar_cfg =
@@ -509,9 +509,9 @@ TYPED_TEST(NodeChainBuilderTest, MergeChainsWithAssemblyUpdatesChainEdges) {
 // BreakCycles) in a CFG with a loop.
 TEST(CodeLayoutTest, GetForcedPathsWithLoop) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "loop_no_entry_no_exit.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "loop_no_entry_no_exit.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0)));
   const ControlFlowGraph &foo_cfg =
@@ -537,10 +537,10 @@ TEST(CodeLayoutTest, GetForcedPathsWithLoop) {
 // Test GetForcedPaths and its two separate steps (GetForcedEdges and
 // BreakCycles) in a CFG without a loop.
 TEST(CodeLayoutTest, GetForcedPathsNoLoop) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "three_branches.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "three_branches.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0)));
   const ControlFlowGraph &foo_cfg =
@@ -566,9 +566,9 @@ TEST(CodeLayoutTest, GetForcedPathsNoLoop) {
 
 TYPED_TEST(NodeChainBuilderTest, InitNodeChainsCreatesBundlesForLoop) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "loop_no_entry_no_exit.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "loop_no_entry_no_exit.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0)));
 
@@ -591,10 +591,10 @@ TYPED_TEST(NodeChainBuilderTest, InitNodeChainsCreatesBundlesForLoop) {
 
 // This tests every step in NodeChainBuilder::BuildChains on a single CFG.
 TYPED_TEST(NodeChainBuilderTest, BuildChainsSingleCfgInternal) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "three_branches.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "three_branches.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0)));
   const ControlFlowGraph &foo_cfg =
@@ -689,9 +689,9 @@ TYPED_TEST(NodeChainBuilderTest, BuildChainsSingleCfgInternal) {
 // inter-procedural layout).
 TYPED_TEST(NodeChainBuilderTest, BuildChainsMultipleCfgsInterFunction) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "simple_multi_function.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "simple_multi_function.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0), Key(1), Key(4), Key(100)));
 
@@ -733,9 +733,9 @@ TEST_P(ChainBuilderSplitThresholdTest, BuildChains) {
   const ChainBuilderSplitThresholdTestCase &test_case = GetParam();
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "call_from_simple_loop.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "call_from_simple_loop.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(1), Key(2), Key(3)));
   PropellerStats::CodeLayoutStats stats;
@@ -818,9 +818,9 @@ INSTANTIATE_TEST_SUITE_P(
 // non-inter-procedural layout).
 TYPED_TEST(NodeChainBuilderTest, BuildChainsSingleCfg) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "simple_multi_function.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "simple_multi_function.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0), Key(1), Key(4), Key(100)));
 
@@ -839,10 +839,10 @@ TYPED_TEST(NodeChainBuilderTest, BuildChainsSingleCfg) {
 }
 
 TYPED_TEST(NodeChainBuilderTest, LargeBlocksPreventMerge) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "two_large_blocks.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "two_large_blocks.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0), Key(1)));
   PropellerStats::CodeLayoutStats stats;
@@ -1373,9 +1373,9 @@ INSTANTIATE_TEST_SUITE_P(
 // Test for ChainClusterBuilder::BuildClusters on three functions.
 TEST(CodeLayoutTest, BuildClusters) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "simple_multi_function.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "simple_multi_function.protobuf")));
 
   std::vector<std::unique_ptr<const NodeChain>> built_chains;
   PropellerStats::CodeLayoutStats stats;
@@ -1470,10 +1470,10 @@ TEST(CodeLayoutTest, FindOptimalFallthroughSplitChains) {
 }
 
 TEST(CodeLayoutTest, FindOptimalLoopLayout) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "simple_loop.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "simple_loop.protobuf")));
 
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(), SizeIs(1));
   std::vector<FunctionChainInfo> all_func_chain_info =
@@ -1494,10 +1494,10 @@ TEST(CodeLayoutTest, FindOptimalLoopLayout) {
 }
 
 TEST(CodeLayoutTest, FindOptimalNestedLoopLayout) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "nested_loop.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "nested_loop.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(), SizeIs(1));
   std::vector<FunctionChainInfo> all_func_chain_info =
       CodeLayout(PropellerCodeLayoutParameters(),
@@ -1518,9 +1518,9 @@ TEST(CodeLayoutTest, FindOptimalNestedLoopLayout) {
 
 TEST(CodeLayoutTest, FindOptimalMultiFunctionLayout) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "simple_multi_function.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "simple_multi_function.protobuf")));
 
   PropellerCodeLayoutParameters params;
   params.set_call_chain_clustering(true);
@@ -1556,10 +1556,10 @@ TEST(CodeLayoutTest, FindOptimalMultiFunctionLayout) {
 }
 
 TEST(CodeLayoutTest, FindLayoutNoReorderHotBlocks) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "multiple_cold_blocks.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "multiple_cold_blocks.protobuf")));
 
   PropellerCodeLayoutParameters params;
   params.set_reorder_hot_blocks(false);
@@ -1569,10 +1569,10 @@ TEST(CodeLayoutTest, FindLayoutNoReorderHotBlocks) {
 }
 
 TEST(CodeLayoutTest, FindLayoutNoFunctionSplit) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "multiple_cold_blocks.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "multiple_cold_blocks.protobuf")));
 
   PropellerCodeLayoutParameters params;
   params.set_split_functions(false);
@@ -1588,10 +1588,10 @@ TEST(CodeLayoutTest, FindLayoutNoFunctionSplit) {
 }
 
 TEST(CodeLayoutTest, FindLayoutNoReorderHotBlocksNoFunctionSplit) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "multiple_cold_blocks.protobuf")));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
+      BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
+                                             "multiple_cold_blocks.protobuf")));
 
   PropellerCodeLayoutParameters params;
   params.set_split_functions(false);
@@ -1609,9 +1609,9 @@ TEST(CodeLayoutTest, FindLayoutNoReorderHotBlocksNoFunctionSplit) {
 
 TEST(CodeLayoutTest, FindOptimalMultiFunctionLayoutInterFunction) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "simple_multi_function.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "simple_multi_function.protobuf")));
 
   PropellerCodeLayoutParameters params;
   params.set_call_chain_clustering(true);
@@ -1728,9 +1728,9 @@ TEST(CodeLayoutTest, FindOptimalLayoutHotAndColdLandingPads) {
 
 TEST(CodeLayoutTest, FindOptimalLayoutAllColdLandingPads) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
-                       BuildFromCfgProtoPath(GetTestInputPath(
-                           "_main/propeller/testdata/"
-                           "all_cold_landing_pads.protobuf")));
+                       BuildFromCfgProtoPath(
+                           GetTestInputPath("_main/propeller/testdata/"
+                                            "all_cold_landing_pads.protobuf")));
 
   EXPECT_THAT(CodeLayout(PropellerCodeLayoutParameters(),
                          proto_program_cfg->program_cfg().GetCfgs())

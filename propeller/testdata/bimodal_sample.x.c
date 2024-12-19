@@ -17,7 +17,7 @@ __attribute__((noinline)) double bar(double v) {
   return dead * v / beaf + beaf / dead + v / 187;
 }
 
-__attribute__((noinline)) int compute(double arg){
+__attribute__((noinline)) int compute(double arg) {
   if (arg == 1 || arg >= 3) {
     for (int i = 0; i < arg * 4; ++i) count += foo(i);
   } else if (arg == 2) {
@@ -27,9 +27,8 @@ __attribute__((noinline)) int compute(double arg){
 }
 
 int main(int argc, const char **argv) {
-  for (int i = 0; i< 10000001; ++i) {
+  for (int i = 0; i < 10000001; ++i) {
     sum += compute(argc);
-    if (argc == 3)
-      sum += compute(argc - 1);
+    if (argc == 3) sum += compute(argc - 1);
   }
 }
