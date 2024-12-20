@@ -6,14 +6,14 @@
 #include <string>
 #include <string_view>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
@@ -49,8 +49,7 @@ class FilePerfDataProviderTest : public testing::Test {
   using FilePerfDataProviderType = T;
 };
 
-using FilePerfDataProviderTypes = ::testing::Types<
-    GenericFilePerfDataProvider>;
+using FilePerfDataProviderTypes = ::testing::Types<GenericFilePerfDataProvider>;
 TYPED_TEST_SUITE(FilePerfDataProviderTest, FilePerfDataProviderTypes);
 
 TYPED_TEST(FilePerfDataProviderTest, GetNextReadsFilesCorrectly) {

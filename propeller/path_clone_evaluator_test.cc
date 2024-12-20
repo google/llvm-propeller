@@ -4,14 +4,13 @@
 #include <utility>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/bb_handle.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge_kind.h"
@@ -27,6 +26,7 @@
 #include "propeller/path_profile_options.pb.h"
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_options.pb.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {

@@ -8,10 +8,10 @@
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "propeller/spe_pid_provider.h"
 #include "src/quipper/arm_spe_decoder.h"
 #include "src/quipper/perf_data.pb.h"
-#include "google/protobuf/repeated_ptr_field.h"
 
 namespace propeller {
 
@@ -21,8 +21,8 @@ namespace propeller {
 class SpeTidPidProvider : public SpePidProvider {
  public:
   // Constructs a provider based on the TIDs and PIDs in `events`.
-  explicit SpeTidPidProvider(
-      const google::protobuf::RepeatedPtrField<quipper::PerfDataProto_PerfEvent>& events);
+  explicit SpeTidPidProvider(const google::protobuf::RepeatedPtrField<
+                             quipper::PerfDataProto_PerfEvent>& events);
 
   // SpeTidPidProvider is copyable and movable.
   SpeTidPidProvider(const SpeTidPidProvider&) = default;

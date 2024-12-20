@@ -42,13 +42,13 @@ double PropellerCodeLayoutScorer::GetEdgeScore(const CFGEdge &edge,
       absolute_src_sink_distance < code_layout_params_.forward_jump_distance())
     return edge.weight() * code_layout_params_.forward_jump_weight() *
            (1.0 - absolute_src_sink_distance /
-                    code_layout_params_.forward_jump_distance());
+                      code_layout_params_.forward_jump_distance());
 
   if (src_sink_distance < 0 &&
       absolute_src_sink_distance < code_layout_params_.backward_jump_distance())
     return edge.weight() * code_layout_params_.backward_jump_weight() *
            (1.0 - absolute_src_sink_distance /
-                    code_layout_params_.backward_jump_distance());
+                      code_layout_params_.backward_jump_distance());
   return 0;
 }
 

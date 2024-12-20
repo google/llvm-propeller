@@ -4,10 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
+#include "absl/container/flat_hash_map.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/container/flat_hash_map.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_matchers.h"
@@ -19,6 +18,7 @@
 #include "propeller/path_node.h"
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_options.pb.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {

@@ -7,20 +7,20 @@
 #include <string>
 #include <utility>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
 #include "propeller/file_perf_data_provider.h"
 #include "propeller/lbr_aggregation.h"
 #include "propeller/perf_data_provider.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {

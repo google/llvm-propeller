@@ -30,8 +30,7 @@ class ProgramCfgBuilder {
   // `ProgramCfgBuilder`.
   ProgramCfgBuilder(const BinaryAddressMapper *binary_address_mapper,
                     PropellerStats &stats)
-      : binary_address_mapper_(binary_address_mapper), stats_(&stats) {
-  }
+      : binary_address_mapper_(binary_address_mapper), stats_(&stats) {}
 
   ProgramCfgBuilder(const ProgramCfgBuilder &) = delete;
   ProgramCfgBuilder &operator=(const ProgramCfgBuilder &) = delete;

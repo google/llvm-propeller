@@ -7,9 +7,6 @@
 #include <string>
 #include <utility>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -17,11 +14,14 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "propeller/status_testing_macros.h"
 
 namespace {
 
@@ -68,32 +68,27 @@ absl::StatusOr<BinaryData> SetupBinaryData(absl::string_view binary) {
 }
 
 TEST(Addr2CuTest, ComdatFunc) {
-  const std::string binary =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
-                   "test_comdat.bin");
-  const std::string symmap =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
-                   "test_comdat.symmap");
+  const std::string binary = absl::StrCat(::testing::SrcDir(),
+                                          "_main/propeller/testdata/"
+                                          "test_comdat.bin");
+  const std::string symmap = absl::StrCat(::testing::SrcDir(),
+                                          "_main/propeller/testdata/"
+                                          "test_comdat.symmap");
 
   ASSERT_OK_AND_ASSIGN(BinaryData binary_data, SetupBinaryData(binary));
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<llvm::DWARFContext> context,
-      CreateDWARFContext(*binary_data.object_file));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<llvm::DWARFContext> context,
+                       CreateDWARFContext(*binary_data.object_file));
 
-  EXPECT_THAT(
-      Addr2Cu(*context).GetCompileUnitFileNameForCodeAddress(
-          GetSymbolAddress(symmap, /*symbol=*/"_ZN3Foo7do_workEv")),
-      IsOkAndHolds("propeller/testdata/test_comdat_1.cc"));
+  EXPECT_THAT(Addr2Cu(*context).GetCompileUnitFileNameForCodeAddress(
+                  GetSymbolAddress(symmap, /*symbol=*/"_ZN3Foo7do_workEv")),
+              IsOkAndHolds("propeller/testdata/test_comdat_1.cc"));
 }
 
 TEST(Addr2CuTest, ComdatFuncHasNoDwp) {
-  const std::string binary =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
-                   "test_comdat_with_dwp.bin");
+  const std::string binary = absl::StrCat(::testing::SrcDir(),
+                                          "_main/propeller/testdata/"
+                                          "test_comdat_with_dwp.bin");
 
   ASSERT_OK_AND_ASSIGN(BinaryData binary_data, SetupBinaryData(binary));
 
@@ -103,29 +98,23 @@ TEST(Addr2CuTest, ComdatFuncHasNoDwp) {
 }
 
 TEST(Addr2CuTest, ComdatFuncHasDwp) {
-  const std::string binary =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
-                   "test_comdat_with_dwp.bin");
-  const std::string symmap =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
-                   "test_comdat_with_dwp.symmap");
-  const std::string dwp =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
-                   "test_comdat_with_dwp.dwp");
+  const std::string binary = absl::StrCat(::testing::SrcDir(),
+                                          "_main/propeller/testdata/"
+                                          "test_comdat_with_dwp.bin");
+  const std::string symmap = absl::StrCat(::testing::SrcDir(),
+                                          "_main/propeller/testdata/"
+                                          "test_comdat_with_dwp.symmap");
+  const std::string dwp = absl::StrCat(::testing::SrcDir(),
+                                       "_main/propeller/testdata/"
+                                       "test_comdat_with_dwp.dwp");
 
   ASSERT_OK_AND_ASSIGN(BinaryData binary_data, SetupBinaryData(binary));
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<llvm::DWARFContext> context,
-      CreateDWARFContext(*binary_data.object_file, dwp));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<llvm::DWARFContext> context,
+                       CreateDWARFContext(*binary_data.object_file, dwp));
 
-  EXPECT_THAT(
-      Addr2Cu(*context)
-          .GetCompileUnitFileNameForCodeAddress(
-              GetSymbolAddress(symmap, "_ZN3Foo7do_workEv")),
-      IsOkAndHolds("propeller/testdata/test_comdat_1.cc"));
+  EXPECT_THAT(Addr2Cu(*context).GetCompileUnitFileNameForCodeAddress(
+                  GetSymbolAddress(symmap, "_ZN3Foo7do_workEv")),
+              IsOkAndHolds("propeller/testdata/test_comdat_1.cc"));
 }
 }  // namespace

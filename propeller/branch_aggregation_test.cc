@@ -1,8 +1,8 @@
 #include "propeller/branch_aggregation.h"
 
-#include "propeller/status_testing_macros.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {

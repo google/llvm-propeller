@@ -1,9 +1,9 @@
 #include "propeller/function_chain_info_matchers.h"
 
-#include "propeller/status_testing_macros.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "propeller/function_chain_info.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 

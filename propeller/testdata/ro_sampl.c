@@ -1,4 +1,5 @@
-// link with clang -fuse-ld=lld -o libro_sample.so -fpic -shared -O2 ro.c -Wl,-build-id
+// link with clang -fuse-ld=lld -o libro_sample.so -fpic -shared -O2 ro.c
+// -Wl,-build-id
 
 #include <stdio.h>
 

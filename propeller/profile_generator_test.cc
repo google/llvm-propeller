@@ -5,17 +5,17 @@
 #include <string>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/file_helpers.h"
 #include "propeller/file_perf_data_provider.h"
 #include "propeller/parse_text_proto.h"
 #include "propeller/propeller_options.pb.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
@@ -23,8 +23,7 @@ namespace {
 using ::propeller_testing::ParseTextProtoOrDie;
 
 std::string GetPropellerTestDataDirectoryPath() {
-  return absl::StrCat(::testing::SrcDir(),
-                      "_main/propeller/testdata/");
+  return absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/");
 }
 
 using ::absl_testing::IsOk;
@@ -52,10 +51,9 @@ struct GeneratePropellerProfileTestCase {
 
 TEST(GeneratePropellerProfiles, UsesPassedProvider) {
   PropellerOptions options;
-  options.set_binary_name(
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
-                   "sample.bin"));
+  options.set_binary_name(absl::StrCat(::testing::SrcDir(),
+                                       "_main/propeller/testdata/"
+                                       "sample.bin"));
   options.set_cluster_out_name(absl::StrCat(
       ::testing::TempDir(),
       "/LlvmPropellerProfileGeneratorTest_UsesPassedProvider_cc_profile.txt"));

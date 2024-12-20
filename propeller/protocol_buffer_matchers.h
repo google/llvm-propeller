@@ -16,11 +16,11 @@
 #ifndef THIRD_PARTY_PROPELLER_PROTOCOL_BUFFER_MATCHERS_H_
 #define THIRD_PARTY_PROPELLER_PROTOCOL_BUFFER_MATCHERS_H_
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
 #include "absl/memory/memory.h"
+#include "gmock/gmock.h"
 #include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/text_format.h"
+#include "propeller/status_testing_macros.h"
 
 // This file contains private helpers for dealing with textprotos in our
 // tests.

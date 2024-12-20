@@ -1,11 +1,11 @@
 #include "propeller/branch_frequencies.h"
 
-#include "propeller/status_testing_macros.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "propeller/branch_frequencies.pb.h"
 #include "propeller/parse_text_proto.h"
 #include "propeller/protocol_buffer_matchers.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {

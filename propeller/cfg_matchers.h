@@ -5,14 +5,14 @@
 #include <utility>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
+#include "absl/types/span.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/types/span.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 

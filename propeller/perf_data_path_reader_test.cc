@@ -6,12 +6,11 @@
 #include <utility>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/internal_file_perf_data_provider.h"
@@ -19,6 +18,7 @@
 #include "propeller/perfdata_reader.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
@@ -28,8 +28,7 @@ using ::testing::SizeIs;
 using ::testing::status::IsOkAndHolds;
 
 static std::string GetPropellerTestDataFilePath(absl::string_view filename) {
-  return absl::StrCat(::testing::SrcDir(),
-                      "_main/propeller/testdata/",
+  return absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/",
                       filename);
 }
 

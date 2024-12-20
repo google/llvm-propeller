@@ -3,15 +3,15 @@
 #include <utility>
 #include <vector>
 
-#include "propeller/status_testing_macros.h"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "gmock/gmock.h"
+#include "google/protobuf/repeated_ptr_field.h"
+#include "gtest/gtest.h"
 #include "propeller/parse_text_proto.h"
+#include "propeller/status_testing_macros.h"
 #include "src/quipper/perf_data.pb.h"
 #include "src/quipper/perf_parser.h"
-#include "google/protobuf/repeated_ptr_field.h"
 
 namespace propeller {
 namespace {
@@ -20,8 +20,8 @@ using ::absl_testing::StatusIs;
 using ::propeller_testing::ParseTextProtoOrDie;
 using ::testing::Eq;
 
-google::protobuf::RepeatedPtrField<quipper::PerfDataProto_PerfEvent> ToRepeatedPtrField(
-    std::vector<quipper::PerfDataProto_PerfEvent> span) {
+google::protobuf::RepeatedPtrField<quipper::PerfDataProto_PerfEvent>
+ToRepeatedPtrField(std::vector<quipper::PerfDataProto_PerfEvent> span) {
   google::protobuf::RepeatedPtrField<quipper::PerfDataProto_PerfEvent> result;
   for (quipper::PerfDataProto_PerfEvent& element : span) {
     result.Add(std::move(element));

@@ -1,15 +1,15 @@
 #include "propeller/proto_branch_frequencies_aggregator.h"
 
-#include "propeller/status_testing_macros.h"
+#include "absl/status/status_matchers.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/status/status_matchers.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
 #include "propeller/branch_frequencies.pb.h"
 #include "propeller/parse_text_proto.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
+#include "propeller/status_testing_macros.h"
 
 namespace propeller {
 namespace {
