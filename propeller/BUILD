@@ -928,6 +928,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "text_proto_flag",
+    hdrs = ["text_proto_flag.h"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################
