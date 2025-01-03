@@ -70,6 +70,19 @@ foreach (tgt ${LLVM_TARGETS_TO_BUILD})
   endforeach()
 endforeach()
 
+# Build the standalone profile generation tool.
+add_executable(generate_propeller_profiles generate_propeller_profiles.cc)
+target_link_libraries(generate_propeller_profiles
+  # keep-sorted start
+  absl::base
+  absl::flags
+  absl::flags_parse
+  absl::flags_usage
+  propeller_lib
+  quipper_lib
+  # keep-sorted end
+)
+
 # Build all CXX test utilities into a unified library.
 add_library(propeller_test_lib OBJECT
   # keep-sorted start
