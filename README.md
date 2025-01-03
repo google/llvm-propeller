@@ -1,32 +1,67 @@
-## Propeller: A Profile Guided, Relinking Optimizer for Warehouse Scale Applications
+# LLVM Propeller
 
-Hardware requirements
+Propeller is a profile-guided, relinking optimizer for warehouse-scale
+applications. It is built on top of LLVM and provides a framework for computing
+whole-program optimizations for applications built with LLVM.
+
+_For artifact evaluation, see [ArtifactEvaluation/README.md](ArtifactEvaluation/README.md)_
+
+## Quickstart
+
+### Prerequisites and dependencies
+
+| Operating System | Version  |
+| --- | --- |
+| Ubuntu | 22.04 or newer |
+
+While the Propeller build system automatically pulls in most of its dependencies,
+you will need to install a few packages manually:
+
 ```
-Intel Skylake or newer.
-32 GB of RAM or more.
-Access to hardware performance counters using linux perf.
+# Common dependencies
+sudo apt install -y wget lsb-release software-properties-common gnupg
+
+# Propeller builds with Clang 16.0.0 or newer.
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 16
+export CC=clang-16
+export CXX=clang++-16
+
+# For the CMake build
+sudo apt-get update && sudo apt-get install -y \
+    libelf-dev \
+    libssl-dev \
+    libzstd-dev
 ```
 
-To run the experiments for Artifact Evaluation
+### Building Propeller from source
+
+The Propeller repository provides both CMake and Bazel build configurations. The CMake build requires CMake 3.24 or newer, and the Bazel build requires Bazel 5.0 or newer.
+
+#### CMake
 ```
-$ cd llvm-propeller/ArtifactEvaluation
-$ Scripts/optimize_clang.sh
+cmake -G Ninja -B build
+ninja -C build generate_propeller_profiles
 
-# Generate heatmap
-$ Scripts/gen_heatmap.sh
+# Build and run tests (optional)
+ninja -C build
+ninja -C build test
+```
 
-# Expected contents of Results
-# Contents of Results
-$ Results
-    mem_bolt_profile_conversion.txt
-    mem_propeller_profile_conversion.txt
-    mem_bolt_rewrite.txt
-    mem_propeller_build.txt
-    perf_clang_baseline.txt
-    perf_clang_propeller.txt
-    perf_clang_bolt.txt
-    clang-fdo-heatmap.png
-    clang-propeller-heatmap.png
-    clang-bolt-heatmap.png
-    sizes_clang.txt
+#### Bazel
+```
+bazel build //propeller:generate_propeller_profiles
+
+# Build and run tests (optional)
+bazel test //propeller/...:all
+```
+
+### Generating a Propeller profile
+```
+./generate_propeller_profiles \
+    --binary=/path/to/profiled/binary \
+    --profile=/path/to/input/profile.txt \
+    --cc_profile=/path/to/out/cc_profile.txt \
+    --ld_profile=/path/to/out/ld_profile.txt
 ```
