@@ -42,6 +42,8 @@ add_library(propeller_lib OBJECT
   perf_data_path_reader.cc
   perf_lbr_aggregator.cc
   perfdata_reader.cc
+  profile_computer.cc
+  profile_generator.cc
   profile_writer.cc
   program_cfg.cc
   program_cfg_builder.cc
