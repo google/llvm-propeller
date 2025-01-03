@@ -38,7 +38,9 @@ add_library(propeller_lib OBJECT
   node_chain_builder.cc
   path_clone_evaluator.cc
   perf_branch_frequencies_aggregator.cc
+  perf_data_path_profile_aggregator.cc
   perf_data_path_reader.cc
+  perf_lbr_aggregator.cc
   perfdata_reader.cc
   profile_writer.cc
   program_cfg.cc
