@@ -938,6 +938,30 @@ cc_library(
     ],
 )
 
+#####################
+#  Binaries         #
+#####################
+cc_binary(
+    name = "generate_propeller_profiles",
+    srcs = ["generate_propeller_profiles.cc"],
+    deps = [
+        ":file_helpers",
+        ":profile_generator",
+        ":propeller_options_cc_proto",
+        ":status_macros",
+        ":text_proto_flag",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:string_view",
+    ],
+)
+
 ########################
 #  Tests & Test Utils  #
 ########################

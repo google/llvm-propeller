@@ -248,6 +248,10 @@ genrule(
 cc_binary(
     name = "sample",
     srcs = ["sample.c"],
+    deps = [
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
+    ],
 )
 
 # This rule is used to manually generate sample.bin and sample.perfdata.
