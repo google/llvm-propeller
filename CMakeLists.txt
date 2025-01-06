@@ -15,8 +15,8 @@
 #
 
 # https://github.com/google/oss-policies-info/blob/main/foundational-cxx-support-matrix.md
-# As of 2024-07-01, CMake 3.16 is the minimum supported version.
-cmake_minimum_required(VERSION 3.16)
+# As of 2025-01-03, CMake 3.24 is the minimum supported version.
+cmake_minimum_required(VERSION 3.24)
 
 # Configure the project and global settings.
 project(propeller LANGUAGES CXX)
