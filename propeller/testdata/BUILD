@@ -59,6 +59,7 @@ exports_files([
     "sample_different_buildid.bin",
     "sample_ld_directives.arm.golden.txt",
     "sample_ld_directives.golden.txt",
+    "sample_pgo_analysis_map.bin",
     "sample_section.bin",
     "sample_section_cc_directives.golden.txt",
     "sample_section_ld_directives.golden.txt",
@@ -299,6 +300,19 @@ genrule(
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
     target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+# This rule is used to manually generate a BBAddrMap binary with PGO analysis map.
+genrule(
+    name = "sample_pgo_analysis_map_bin",
+    srcs = ["sample.c"],
+    outs = [
+        "sample_pgo_analysis_map.bin.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-sections=labels " +
+          "-mllvm=-pgo-analysis-map=all $< -o $(RULEDIR)/sample_pgo_analysis_map.bin.gen",
+    tags = ["manual"],
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 

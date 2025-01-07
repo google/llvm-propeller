@@ -293,17 +293,19 @@ ReadSymbolTable(const BinaryContent &binary_content) {
   return symtab;
 }
 
-absl::StatusOr<std::vector<llvm::object::BBAddrMap>> ReadBbAddrMap(
-    const BinaryContent &binary_content) {
+absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
+    const BinaryContent &binary_content, const BbAddrMapReadOptions &options) {
   auto *elf_object = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(
       binary_content.object_file.get());
   CHECK_NE(elf_object, nullptr);
+  std::vector<llvm::object::PGOAnalysisMap> pgo_analyses;
   llvm::Expected<std::vector<llvm::object::BBAddrMap>> bb_addr_map =
       elf_object->readBBAddrMap(
           binary_content.kernel_module.has_value()
               ? std::optional<unsigned>(
                     binary_content.kernel_module->text_section_index)
-              : std::nullopt);
+              : std::nullopt,
+          options.read_pgo_analyses ? &pgo_analyses : nullptr);
   if (!bb_addr_map) {
     return absl::InternalError(
         llvm::formatv(
@@ -317,7 +319,11 @@ absl::StatusOr<std::vector<llvm::object::BBAddrMap>> ReadBbAddrMap(
         "'%s' does not have a non-empty LLVM_BB_ADDR_MAP section.",
         binary_content.file_name));
   }
-  return std::move(*bb_addr_map);
+  return BbAddrMapData{
+      .bb_addr_maps = *std::move(bb_addr_map),
+      .pgo_analyses = options.read_pgo_analyses
+                          ? std::make_optional(std::move(pgo_analyses))
+                          : std::nullopt};
 }
 
 absl::StatusOr<absl::flat_hash_map<absl::string_view, absl::string_view>>

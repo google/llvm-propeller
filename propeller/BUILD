@@ -1204,6 +1204,7 @@ cc_test(
         "//propeller/testdata:propeller_barebone_nopie_buildid",
         "//propeller/testdata:propeller_barebone_pie_nobuildid_bin",
         "//propeller/testdata:propeller_sample_1.bin",
+        "//propeller/testdata:sample_pgo_analysis_map.bin",
     ],
     deps = [
         ":binary_content",

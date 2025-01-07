@@ -805,11 +805,12 @@ absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
     PropellerStats &stats, const absl::flat_hash_set<uint64_t> *hot_addresses) {
   LOG(INFO) << "Started reading the binary content from: "
             << binary_content.file_name;
-  std::vector<BBAddrMap> bb_addr_map;
+  BbAddrMapData bb_addr_map;
   ASSIGN_OR_RETURN(bb_addr_map, ReadBbAddrMap(binary_content));
 
   return BinaryAddressMapperBuilder(ReadSymbolTable(binary_content),
-                                    std::move(bb_addr_map), stats, &options)
+                                    std::move(bb_addr_map.bb_addr_maps), stats,
+                                    &options)
       .Build(hot_addresses);
 }
 

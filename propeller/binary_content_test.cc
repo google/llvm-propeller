@@ -80,5 +80,18 @@ TEST(GetSymbolAddressTest, SymbolNotFound) {
       Not(IsOk()));
 }
 
+TEST(ReadBbAddrMapTest, ReadBbAddrMap) {
+  const std::string binary = absl::StrCat(::testing::SrcDir(),
+                                          "_main/propeller/testdata/"
+                                          "sample_pgo_analysis_map.bin");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
+                       GetBinaryContent(binary));
+  absl::StatusOr<BbAddrMapData> bb_addr_map_data =
+      ReadBbAddrMap(*binary_content, {.read_pgo_analyses = true});
+  ASSERT_OK(bb_addr_map_data);
+  EXPECT_THAT(bb_addr_map_data->bb_addr_maps, SizeIs(4));
+  EXPECT_THAT(bb_addr_map_data->pgo_analyses, Optional(SizeIs(4)));
+}
+
 }  // namespace
 }  // namespace propeller

@@ -34,6 +34,18 @@
 
 namespace propeller {
 
+// A container for the `BbAddrMap` and `PGOAnalysisMap` data read from the
+// binary's SHT_LLVM_BB_ADDR_MAP section.
+struct BbAddrMapData {
+  std::vector<llvm::object::BBAddrMap> bb_addr_maps;
+  std::optional<std::vector<llvm::object::PGOAnalysisMap>> pgo_analyses;
+};
+
+// Options for reading the `BbAddrMapData` from the binary.
+struct BbAddrMapReadOptions {
+  bool read_pgo_analyses = false;
+};
+
 // BinaryContent represents information for an ELF executable or a shared
 // object, the data contained include (loadable) segments, file name, file
 // content and DYN tag (is_pie).
@@ -130,11 +142,13 @@ absl::StatusOr<int64_t> GetSymbolAddress(
 absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
 ReadSymbolTable(const BinaryContent &binary_content);
 
-// Returns the binary's `BBAddrMap`s by calling LLVM-side decoding function
+// Returns the binary's `BbAddrMapData`s by calling LLVM-side decoding function
 // `ELFObjectFileBase::readBBAddrMap`. Returns error if the call fails or if the
-// result is empty.
-absl::StatusOr<std::vector<llvm::object::BBAddrMap>> ReadBbAddrMap(
-    const BinaryContent &binary_content);
+// result is empty. If `options.read_pgo_analyses` is true, the function will
+// also read the PGO analysis map and store it in the returned `BbAddrMapData`.
+absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
+    const BinaryContent &binary_content,
+    const BbAddrMapReadOptions &options = {});
 
 }  // namespace propeller
 
