@@ -50,7 +50,7 @@ date > ${PATH_TO_ALL_RESULTS}/script_start_time.txt
 mkdir -p ${PATH_TO_LLVM_SOURCES} && cd ${PATH_TO_LLVM_SOURCES}
 git clone https://github.com/llvm/llvm-project.git
 # Set correct git hash here!
-cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 6db71b8f1418170324b49d20f1f7b3f7c5086066
+cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard acbd822
 mkdir -p ${PATH_TO_TRUNK_LLVM_BUILD} && cd ${PATH_TO_TRUNK_LLVM_BUILD}
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt;bolt" -DCMAKE_C_COMPILER=clang  -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX="${PATH_TO_TRUNK_LLVM_INSTALL}" -DLLVM_ENABLE_RTTI=On -DLLVM_INCLUDE_TESTS=Off ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
 ninja install
@@ -150,8 +150,8 @@ ninja clang
 
 # Additional Flags to build an Instrumented Propeller binary.
 INSTRUMENTED_PROPELLER_CC_LD_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
+  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-address-map"
+  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-address-map"
   "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld  -Wl,--lto-basic-block-address-map"
   "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-address-map"
   "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-address-map" )
