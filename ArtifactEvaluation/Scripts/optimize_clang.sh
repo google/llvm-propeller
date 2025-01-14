@@ -201,13 +201,16 @@ PATH_TO_CREATE_LLVM_PROF=${BASE_DIR}/create_llvm_prof_build
 mkdir -p ${PATH_TO_CREATE_LLVM_PROF} && cd ${PATH_TO_CREATE_LLVM_PROF}
 
 git clone --recursive https://github.com/google/autofdo.git
-cd autofdo && git fetch && git checkout origin/2022.09.merge
+cd autofdo # Use the newest version.
 cd ${PATH_TO_CREATE_LLVM_PROF}
 mkdir -p bin && cd bin
 cmake -G Ninja -DCMAKE_INSTALL_PREFIX="." \
+      -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER="${PATH_TO_TRUNK_LLVM_INSTALL}/bin/clang" \
       -DCMAKE_CXX_COMPILER="${PATH_TO_TRUNK_LLVM_INSTALL}/bin/clang++" \
-      -DLLVM_PATH="${PATH_TO_TRUNK_LLVM_INSTALL}" ../autofdo/
+      -DENABLE_TOOL=LLVM \
+      -DBUILD_SHARED=On \
+      ../autofdo/
 ninja
 ls create_llvm_prof
 
