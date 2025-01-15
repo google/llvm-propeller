@@ -277,7 +277,7 @@ cc_library(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
         "@llvm-project//llvm:BinaryFormat",
-        "@llvm-project//llvm:DebugInfo",
+        "@llvm-project//llvm:DebugInfoDWARF",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
     ],
