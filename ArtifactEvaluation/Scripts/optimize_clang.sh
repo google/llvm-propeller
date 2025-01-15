@@ -50,7 +50,7 @@ date > ${PATH_TO_ALL_RESULTS}/script_start_time.txt
 mkdir -p ${PATH_TO_LLVM_SOURCES} && cd ${PATH_TO_LLVM_SOURCES}
 git clone https://github.com/llvm/llvm-project.git
 # Set correct git hash here!
-cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 6db71b8f1418170324b49d20f1f7b3f7c5086066
+cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard acbd822
 mkdir -p ${PATH_TO_TRUNK_LLVM_BUILD} && cd ${PATH_TO_TRUNK_LLVM_BUILD}
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt;bolt" -DCMAKE_C_COMPILER=clang  -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX="${PATH_TO_TRUNK_LLVM_INSTALL}" -DLLVM_ENABLE_RTTI=On -DLLVM_INCLUDE_TESTS=Off ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
 ninja install
@@ -201,13 +201,16 @@ PATH_TO_CREATE_LLVM_PROF=${BASE_DIR}/create_llvm_prof_build
 mkdir -p ${PATH_TO_CREATE_LLVM_PROF} && cd ${PATH_TO_CREATE_LLVM_PROF}
 
 git clone --recursive https://github.com/google/autofdo.git
-cd autofdo && git fetch && git checkout origin/2022.09.merge
+cd autofdo # Use the newest version.
 cd ${PATH_TO_CREATE_LLVM_PROF}
 mkdir -p bin && cd bin
 cmake -G Ninja -DCMAKE_INSTALL_PREFIX="." \
+      -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER="${PATH_TO_TRUNK_LLVM_INSTALL}/bin/clang" \
       -DCMAKE_CXX_COMPILER="${PATH_TO_TRUNK_LLVM_INSTALL}/bin/clang++" \
-      -DLLVM_PATH="${PATH_TO_TRUNK_LLVM_INSTALL}" ../autofdo/
+      -DENABLE_TOOL=LLVM \
+      -DBUILD_SHARED=On \
+      ../autofdo/
 ninja
 ls create_llvm_prof
 
