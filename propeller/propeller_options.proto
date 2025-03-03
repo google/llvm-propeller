@@ -2,10 +2,12 @@ edition = "2023";
 
 package propeller;
 
+import "third_party/golang/protobuf/v2/src/google/protobuf/go_features.proto";
 import "propeller/path_profile_options.proto";
 
 option features.enum_type = CLOSED;
 option features.utf8_validation = NONE;
+option features.(pb.go).api_level = API_OPAQUE;
 
 // Enumeration to control the version of the cluster output profile.
 enum ClusterEncodingVersion {
