@@ -1436,6 +1436,7 @@ cc_test(
         "not_run:arm",
     ],
     deps = [
+        ":binary_address_branch",
         ":binary_content",
         ":branch_frequencies",
         ":file_perf_data_provider",
@@ -1448,6 +1449,8 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
     ],
 )
 

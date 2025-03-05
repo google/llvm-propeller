@@ -141,7 +141,7 @@ genrule(
         "manual",
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
-    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
     tools = ["@llvm-project//llvm:llvm-dwp"],
 )
@@ -211,7 +211,7 @@ genrule(
         "manual",
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
-    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
@@ -240,7 +240,7 @@ genrule(
         "manual",
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
-    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
@@ -271,7 +271,7 @@ genrule(
         "manual",
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
-    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
@@ -299,7 +299,7 @@ genrule(
         "manual",
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
-    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
@@ -348,7 +348,7 @@ genrule(
         "manual",
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
-    target_compatible_with = ["//third_party/bazel_platforms/cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
@@ -372,11 +372,11 @@ genrule(
           "-e 'arm_spe_0/branch_filter=1,load_filter=0,store_filter=0,jitter=1,ts_enable=1/' " +
           "--all-user -c 10007 -N -- " +
           "sh -c 'cat sample.arm.scratch | xargs -n 1 -P3 ./sample.arm.bin.gen'",
-    exec_compatible_with = ["//third_party/bazel_platforms/cpu:aarch64"],
+    exec_compatible_with = ["@platforms//cpu:aarch64"],
     tags = [
         "manual",
         "requires-arch:arm",
     ],
-    target_compatible_with = ["//third_party/bazel_platforms/cpu:aarch64"],
+    target_compatible_with = ["@platforms//cpu:aarch64"],
     tools = [":sample"],
 )

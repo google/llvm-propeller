@@ -376,11 +376,10 @@ absl::Status PerfDataReader::ReadWithSpeRecordCallBack(
     absl::FunctionRef<void(const quipper::ArmSpeDecoder::Record &, int)>
         callback) const {
   quipper::PerfReader perf_reader;
-  // We don't need to serialise anything here, so let's exclude all major event
+  // We don't need to serialise anything here, so let's exclude some major event
   // types.
   perf_reader.SetEventTypesToSkipWhenSerializing(
-      {quipper::PERF_RECORD_SAMPLE, quipper::PERF_RECORD_MMAP,
-       quipper::PERF_RECORD_FORK, quipper::PERF_RECORD_COMM});
+      {quipper::PERF_RECORD_MMAP, quipper::PERF_RECORD_COMM});
   if (!perf_reader.ReadFromPointer(perf_data_.buffer->getBufferStart(),
                                    perf_data_.buffer->getBufferSize())) {
     LOG(FATAL) << "Failed to read perf data file: " << perf_data_.description;
