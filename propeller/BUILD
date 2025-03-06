@@ -313,7 +313,10 @@ cc_library(
 proto_library(
     name = "propeller_options_proto",
     srcs = ["propeller_options.proto"],
-    deps = [":path_profile_options_proto"],
+    deps = [
+        ":path_profile_options_proto",
+        "//third_party/golang/protobuf/v2/src/google/protobuf:go_features",
+    ],
 )
 
 cc_proto_library(
