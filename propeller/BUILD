@@ -332,10 +332,16 @@ cc_proto_library(
 )
 
 cc_library(
-    name = "resolve_mmap_name",
-    srcs = ["resolve_mmap_name.cc"],
-    hdrs = ["resolve_mmap_name.h"],
-    deps = [":propeller_options_cc_proto"],
+    name = "mmap_match_criteria",
+    srcs = ["mmap_match_criteria.cc"],
+    hdrs = ["mmap_match_criteria.h"],
+    deps = [
+        ":propeller_options_cc_proto",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/types:span",
+    ],
 )
 
 cc_library(
@@ -586,6 +592,7 @@ cc_library(
         ":binary_content",
         ":branch_frequencies",
         ":lbr_aggregation",
+        ":mmap_match_criteria",
         ":perf_data_provider",
         ":spe_tid_pid_provider",
         ":status_macros",
@@ -614,11 +621,11 @@ cc_library(
         ":binary_content",
         ":branch_frequencies",
         ":branch_frequencies_aggregator",
+        ":mmap_match_criteria",
         ":perf_data_provider",
         ":perfdata_reader",
         ":propeller_options_cc_proto",
         ":propeller_statistics",
-        ":resolve_mmap_name",
         ":status_macros",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/status",
@@ -693,11 +700,11 @@ cc_library(
         ":lbr_aggregation",
         ":lbr_aggregator",
         ":mini_disassembler",
+        ":mmap_match_criteria",
         ":perf_data_provider",
         ":perfdata_reader",
         ":propeller_options_cc_proto",
         ":propeller_statistics",
-        ":resolve_mmap_name",
         ":status_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
@@ -836,6 +843,7 @@ cc_library(
     deps = [
         ":binary_address_mapper",
         ":binary_content",
+        ":mmap_match_criteria",
         ":path_node",
         ":path_profile_aggregator",
         ":path_profile_options_cc_proto",
@@ -845,7 +853,6 @@ cc_library(
         ":program_cfg",
         ":program_cfg_path_analyzer",
         ":propeller_options_cc_proto",
-        ":resolve_mmap_name",
         ":status_macros",
         "@abseil-cpp//absl/functional:bind_front",
         "@abseil-cpp//absl/log",
@@ -1441,6 +1448,7 @@ cc_test(
         ":branch_frequencies",
         ":file_perf_data_provider",
         ":lbr_aggregation",
+        ":mmap_match_criteria",
         ":perf_data_provider",
         ":perfdata_reader",
         ":status_testing_macros",

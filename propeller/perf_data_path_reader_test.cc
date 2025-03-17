@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -36,10 +37,10 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 using ::testing::Optional;
 using ::testing::SizeIs;
-using ::testing::status::IsOkAndHolds;
 
 static std::string GetPropellerTestDataFilePath(absl::string_view filename) {
   return absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/",
@@ -60,8 +61,7 @@ TEST(PerfDataPathReaderTest, ReadPaths) {
   ASSERT_THAT(buffer, IsOkAndHolds(Optional(_)));
   ASSERT_OK_AND_ASSIGN(
       PerfDataReader perf_data_reader,
-      BuildPerfDataReader(**std::move(buffer), binary_content.get(),
-                          /*match_mmap_name=*/""));
+      BuildPerfDataReader(**std::move(buffer), binary_content.get()));
   PropellerStats stats;
   PropellerOptions options;
   ASSERT_OK_AND_ASSIGN(
@@ -92,8 +92,7 @@ TEST(PerfDataPathReaderTest, ReadPathsGetsPathsWithHotJoinBbs) {
   ASSERT_THAT(buffer, IsOkAndHolds(Optional(_)));
   ASSERT_OK_AND_ASSIGN(
       PerfDataReader perf_data_reader,
-      BuildPerfDataReader(**std::move(buffer), binary_content.get(),
-                          /*match_mmap_name=*/""));
+      BuildPerfDataReader(**std::move(buffer), binary_content.get()));
 
   PropellerStats stats;
   PropellerOptions options;
