@@ -12,23 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "propeller/resolve_mmap_name.h"
+#include "propeller/mmap_match_criteria.h"
 
-#include <string>
+#include <optional>
+#include <vector>
+
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "propeller/propeller_options.pb.h"
 
 namespace propeller {
-
-std::string ResolveMmapName(const PropellerOptions &options) {
+namespace {
+std::vector<absl::string_view> ResolveMmapName(
+    const PropellerOptions &options) {
   if (options.has_profiled_binary_name()) {
     // If user specified "--profiled_binary_name", we use it.
-    return options.profiled_binary_name();
+    return {options.profiled_binary_name()};
   } else if (!options.ignore_build_id()) {
     // Return empty string so PerfDataReader::SelectPerfInfo auto
     // picks filename based on build-id, if build id is present; otherwise,
     // PerfDataReader::SelectPerfInfo uses options.binary_name to match mmap
     // event file name.
-    return "";
+    return {};
   }
-  return options.binary_name();
+  return {options.binary_name()};
 };
+
+std::optional<absl::string_view> ResolveMmapBuildId(
+    const PropellerOptions &options) {
+  if (options.has_profiled_build_id()) {
+    return {options.profiled_build_id()};
+  }
+  return std::nullopt;
+}
+}  // namespace
+MMapMatchCriteria::MMapMatchCriteria(const PropellerOptions &options)
+    : MMapMatchCriteria(ResolveMmapName(options), ResolveMmapBuildId(options)) {
+}
 }  // namespace propeller

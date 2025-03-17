@@ -30,11 +30,11 @@
 #include "propeller/binary_content.h"
 #include "propeller/lbr_aggregation.h"
 #include "propeller/mini_disassembler.h"
+#include "propeller/mmap_match_criteria.h"
 #include "propeller/perf_data_provider.h"
 #include "propeller/perfdata_reader.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
-#include "propeller/resolve_mmap_name.h"
 #include "propeller/status_macros.h"
 
 namespace propeller {
@@ -54,7 +54,7 @@ absl::StatusOr<LbrAggregation> PerfLbrAggregator::AggregateLbrData(
     const std::string description = perf_data->description;
     LOG(INFO) << "Parsing " << description << " ...";
     absl::StatusOr<PerfDataReader> perf_data_reader = BuildPerfDataReader(
-        std::move(*perf_data), &binary_content, ResolveMmapName(options));
+        std::move(*perf_data), &binary_content, MMapMatchCriteria(options));
     if (!perf_data_reader.ok()) {
       LOG(WARNING) << "Skipped profile " << description << ": "
                    << perf_data_reader.status();

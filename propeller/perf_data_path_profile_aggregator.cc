@@ -25,13 +25,13 @@
 #include "absl/status/statusor.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
+#include "propeller/mmap_match_criteria.h"
 #include "propeller/path_node.h"
 #include "propeller/perf_data_path_reader.h"
 #include "propeller/perf_data_provider.h"
 #include "propeller/perfdata_reader.h"
 #include "propeller/program_cfg.h"
 #include "propeller/program_cfg_path_analyzer.h"
-#include "propeller/resolve_mmap_name.h"
 #include "propeller/status_macros.h"
 
 namespace propeller {
@@ -54,7 +54,7 @@ absl::StatusOr<ProgramPathProfile> PerfDataPathProfileAggregator::Aggregate(
     LOG(INFO) << "Parsing " << description << " ...";
     absl::StatusOr<PerfDataReader> perf_data_reader =
         BuildPerfDataReader(*std::move(perf_data), &binary_content,
-                            ResolveMmapName(propeller_options_));
+                            MMapMatchCriteria(propeller_options_));
     if (!perf_data_reader.ok()) {
       LOG(WARNING) << "Skipped profile " << description << ": "
                    << perf_data_reader.status();

@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -28,10 +29,10 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
 #include "propeller/lbr_aggregation.h"
+#include "propeller/mmap_match_criteria.h"
 #include "propeller/perf_data_provider.h"
 #include "src/quipper/arm_spe_decoder.h"
 #include "src/quipper/perf_data.pb.h"
@@ -103,7 +104,7 @@ absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
 // build-id name, if the build id is present. Otherwise, it fails.
 absl::StatusOr<BinaryMMaps> SelectMMaps(
     PerfDataProvider::BufferHandle &perf_data,
-    absl::Span<const absl::string_view> match_mmap_names,
+    const MMapMatchCriteria &match_criteria,
     const BinaryContent &binary_content);
 
 class PerfDataReader {
@@ -165,14 +166,14 @@ class PerfDataReader {
   const BinaryContent *binary_content_;
 };
 
-// Returns a `PerfDataReader` for profile represented by `perf_data` and
-// binary represented by `binary_content`. Will use binary name matching
-// instead of build-id if `match_mmap_name` is not empty.
-// `binary_content` which must refer to a valid object that outlives the
-// constructed object.
+// Returns a `PerfDataReader` for profile represented by `perf_data` and binary
+// represented by `binary_content`. Will use `mmap_match_criteria` (if provided)
+// for adhoc mmap matching based on binary name or build id. `binary_content`
+// must refer to a valid object that outlives the constructed object.
 absl::StatusOr<PerfDataReader> BuildPerfDataReader(
     PerfDataProvider::BufferHandle perf_data,
-    const BinaryContent *binary_content, absl::string_view match_mmap_name);
+    const BinaryContent *binary_content,
+    const MMapMatchCriteria &mmap_match_criteria = MMapMatchCriteria());
 
 }  // namespace propeller
 
