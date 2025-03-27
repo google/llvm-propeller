@@ -39,11 +39,12 @@
 
 namespace propeller {
 
-void PathTracer::HandleFallThroughBlocks(std::optional<BbHandle> from_bb,
-                                         std::optional<BbHandle> to_bb,
+void PathTracer::HandleFallThroughBlocks(std::optional<FlatBbHandle> from_bb,
+                                         std::optional<FlatBbHandle> to_bb,
                                          absl::Time sample_time) {
   if (!from_bb.has_value()) {
-    if (to_bb.has_value()) handler_->VisitBlock(to_bb->bb_index, sample_time);
+    if (to_bb.has_value())
+      handler_->VisitBlock(to_bb->flat_bb_index, sample_time);
     return;
   }
   auto can_fallthrough = [&](int from_bb_index, int to_bb_index) {
@@ -57,26 +58,26 @@ void PathTracer::HandleFallThroughBlocks(std::optional<BbHandle> from_bb,
   CHECK_EQ(from_bb->function_index, to_bb->function_index);
   // If we can't fall through, drop the current paths and restart tracing
   // paths.
-  if (!can_fallthrough(from_bb->bb_index, to_bb->bb_index)) {
+  if (!can_fallthrough(from_bb->flat_bb_index, to_bb->flat_bb_index)) {
     handler_->ResetPath();
     return;
   }
-  for (int bb_index = from_bb->bb_index + 1; bb_index <= to_bb->bb_index;
-       ++bb_index) {
+  for (int bb_index = from_bb->flat_bb_index + 1;
+       bb_index <= to_bb->flat_bb_index; ++bb_index) {
     handler_->VisitBlock(bb_index, sample_time);
   }
 }
 
-void PathTracer::TracePath(const BbHandleBranchPath &path) && {
-  std::optional<BbHandle> last_to_bb = std::nullopt;
-  for (const BbHandleBranch &branch : path.branches) {
+void PathTracer::TracePath(const FlatBbHandleBranchPath &path) && {
+  std::optional<FlatBbHandle> last_to_bb = std::nullopt;
+  for (const FlatBbHandleBranch &branch : path.branches) {
     HandleFallThroughBlocks(last_to_bb, branch.from_bb, path.sample_time);
     if (branch.is_callsite()) handler_->HandleCalls(branch.call_rets);
     if (branch.to_bb.has_value()) {
       if (branch.is_callsite()) {
         HandleFallThroughBlocks(branch.from_bb, branch.to_bb, path.sample_time);
       } else {
-        handler_->VisitBlock(branch.to_bb->bb_index, path.sample_time);
+        handler_->VisitBlock(branch.to_bb->flat_bb_index, path.sample_time);
       }
     }
     last_to_bb = branch.to_bb;
@@ -95,9 +96,9 @@ class PathInfoHandler : public PathTraceHandler {
       : path_profile_options_(path_profile_options),
         function_path_info_(function_path_info) {}
 
-  void VisitBlock(int bb_index, absl::Time sample_time) override {
+  void VisitBlock(int flat_bb_index, absl::Time sample_time) override {
     function_path_info_->UpdateCachePressure(
-        bb_index, sample_time, {}, ++path_length_,
+        flat_bb_index, sample_time, {}, ++path_length_,
         absl::Milliseconds(
             path_profile_options_->max_icache_penalty_interval_millis()));
   }
@@ -106,7 +107,7 @@ class PathInfoHandler : public PathTraceHandler {
 
   void HandleCalls(absl::Span<const CallRetInfo> call_rets) override {}
 
-  void HandleReturn(const BbHandle &bb_handle) override {}
+  void HandleReturn(const FlatBbHandle &bb_handle) override {}
 
  private:
   const PathProfileOptions *path_profile_options_;
@@ -140,7 +141,7 @@ class CloningPathTraceHandler : public PathTraceHandler {
   // Visits the block with index `bb_index` with sample time `sample_time`
   // and updates the current paths, by adding this block as a child. Also
   // creates a new path starting from this block if needed.
-  void VisitBlock(int bb_index, absl::Time sample_time) override {
+  void VisitBlock(int flat_bb_index, absl::Time sample_time) override {
     ++path_length_;
     std::vector<BasePathProbe> new_path_probes;
     // Extends `path_probe` with `bb_index` and returns if we should continue
@@ -149,14 +150,15 @@ class CloningPathTraceHandler : public PathTraceHandler {
     // clone).
     auto extend_path_and_return_if_should_trace = [&](PathProbe &path_probe) {
       // Stop tracing if the path is looping.
-      if (!path_probe.AddToNodesInPath(bb_index)) return false;
+      if (!path_probe.AddToNodesInPath(flat_bb_index)) return false;
 
       // Insert a child path node associated with this block.
       PathNode &child_path_node =
           *path_probe.path_node()
                ->mutable_children()
-               .try_emplace(bb_index, std::make_unique<PathNode>(
-                                          bb_index, path_probe.path_node()))
+               .try_emplace(flat_bb_index,
+                            std::make_unique<PathNode>(flat_bb_index,
+                                                       path_probe.path_node()))
                .first->second;
 
       // Increment the frequency associated with the child path node.
@@ -196,10 +198,10 @@ class CloningPathTraceHandler : public PathTraceHandler {
     // ensure that we have all the path frequencies for a join block in case
     // it has other path predecessors with no indirect branches.
     if (prev_node_bb_index_ != -1 &&
-        function_hot_join_bbs_->contains(bb_index)) {
+        function_hot_join_bbs_->contains(flat_bb_index)) {
       // Add the new path tree rooted at this node.
       PathNode &path_node =
-          function_path_profile_->GetOrInsertPathTree(bb_index);
+          function_path_profile_->GetOrInsertPathTree(flat_bb_index);
       // Increment the frequency of the root (given the predecessor block).
       PathPredInfo &path_pred_info =
           path_node.mutable_path_pred_info()[prev_node_bb_index_];
@@ -209,10 +211,10 @@ class CloningPathTraceHandler : public PathTraceHandler {
       new_path_probes.push_back(current_path_probes_.back().base_path_probe());
     }
     function_path_info_->UpdateCachePressure(
-        bb_index, sample_time, std::move(new_path_probes), path_length_,
+        flat_bb_index, sample_time, std::move(new_path_probes), path_length_,
         absl::Milliseconds(
             path_profile_options_->max_icache_penalty_interval_millis()));
-    prev_node_bb_index_ = bb_index;
+    prev_node_bb_index_ = flat_bb_index;
   }
 
   // Inserts `calls` into latest path nodes tracked by `current_path_probes_`.
@@ -231,13 +233,14 @@ class CloningPathTraceHandler : public PathTraceHandler {
     }
   }
 
-  void HandleReturn(const BbHandle &bb_handle) override {
+  void HandleReturn(const FlatBbHandle &bb_handle) override {
     for (PathProbe &path_probe : current_path_probes_) {
       auto &return_to_freqs_for_pred =
           path_probe.path_node()
               ->mutable_path_pred_info()[path_probe.pred_node_bb_index()]
               .return_to_freqs;
-      ++return_to_freqs_for_pred[bb_handle];
+      ++return_to_freqs_for_pred[{.function_index = bb_handle.function_index,
+                                  .flat_bb_index = bb_handle.flat_bb_index}];
     }
   }
 
@@ -272,12 +275,12 @@ class CloningPathTraceHandler : public PathTraceHandler {
 void ProgramCfgPathAnalyzer::AnalyzePaths(std::optional<int> paths_to_analyze) {
   int num_paths = paths_to_analyze.value_or(bb_branch_paths_.size());
   CHECK_LE(num_paths, bb_branch_paths_.size());
-  absl::c_stable_sort(bb_branch_paths_, [](const BbHandleBranchPath &lhs,
-                                           const BbHandleBranchPath &rhs) {
+  absl::c_stable_sort(bb_branch_paths_, [](const FlatBbHandleBranchPath &lhs,
+                                           const FlatBbHandleBranchPath &rhs) {
     return lhs.sample_time < rhs.sample_time;
   });
   for (int i = 0; i < num_paths; ++i) {
-    const BbHandleBranchPath &path = bb_branch_paths_[i];
+    const FlatBbHandleBranchPath &path = bb_branch_paths_[i];
     if (i != 0) CHECK_GE(path.sample_time, bb_branch_paths_[i - 1].sample_time);
     if (!IsFromFunctionWithHotJoinBbs(path)) continue;
     int path_function_index =
@@ -296,7 +299,7 @@ void ProgramCfgPathAnalyzer::AnalyzePaths(std::optional<int> paths_to_analyze) {
       CHECK_EQ(path.branches.size(), 1)
           << "Path with unknown block in the middle: " << path;
       function_path_info.UpdateCachePressure(
-          path.branches.front().from_bb->bb_index, path.sample_time, {},
+          path.branches.front().from_bb->flat_bb_index, path.sample_time, {},
           /*path_length=*/1,
           absl::Milliseconds(
               path_profile_options_->max_icache_penalty_interval_millis()));
@@ -321,7 +324,7 @@ void ProgramCfgPathAnalyzer::AnalyzePaths(std::optional<int> paths_to_analyze) {
 }
 
 void ProgramCfgPathAnalyzer::StoreAndAnalyzePaths(
-    absl::Span<const BbHandleBranchPath> bb_branch_paths) {
+    absl::Span<const FlatBbHandleBranchPath> bb_branch_paths) {
   absl::c_move(bb_branch_paths, std::back_inserter(bb_branch_paths_));
   if (!bb_branch_paths_.empty() &&
       bb_branch_paths_.back().sample_time -
@@ -332,9 +335,10 @@ void ProgramCfgPathAnalyzer::StoreAndAnalyzePaths(
   }
 }
 
-std::vector<BbHandleBranchPath> ProgramCfgPathAnalyzer::GetPathsWithHotJoinBbs(
-    absl::Span<const BbHandleBranchPath> bb_branch_paths) {
-  std::vector<BbHandleBranchPath> result;
+std::vector<FlatBbHandleBranchPath>
+ProgramCfgPathAnalyzer::GetPathsWithHotJoinBbs(
+    absl::Span<const FlatBbHandleBranchPath> bb_branch_paths) {
+  std::vector<FlatBbHandleBranchPath> result;
   absl::c_copy_if(
       bb_branch_paths, std::back_inserter(result),
       absl::bind_front(&ProgramCfgPathAnalyzer::HasHotJoinBbs, this));
@@ -342,35 +346,35 @@ std::vector<BbHandleBranchPath> ProgramCfgPathAnalyzer::GetPathsWithHotJoinBbs(
 }
 
 bool ProgramCfgPathAnalyzer::HasHotJoinBbs(
-    const BbHandleBranchPath &path) const {
-  const BbHandle &first_bb = path.branches.front().from_bb.has_value()
-                                 ? *path.branches.front().from_bb
-                                 : *path.branches.front().to_bb;
+    const FlatBbHandleBranchPath &path) const {
+  const FlatBbHandle &first_bb = path.branches.front().from_bb.has_value()
+                                     ? *path.branches.front().from_bb
+                                     : *path.branches.front().to_bb;
 
   auto func_it = hot_join_bbs_.find(first_bb.function_index);
   // Check if the function has any hot join blocks.
   if (func_it == hot_join_bbs_.end()) return false;
   const absl::btree_set<int> &function_hot_join_bbs = func_it->second;
-  std::optional<BbHandle> last_to = std::nullopt;
+  std::optional<FlatBbHandle> last_to = std::nullopt;
 
   // First check if the `from_bb` of the first branch or the `to_bb` if the
   // last branch are hot join BBs.
-  for (const std::optional<BbHandle> &bb_handle :
+  for (const std::optional<FlatBbHandle> &bb_handle :
        {path.branches.front().from_bb, path.branches.back().to_bb}) {
     if (!bb_handle.has_value()) continue;
-    if (function_hot_join_bbs.contains(bb_handle->bb_index)) return true;
+    if (function_hot_join_bbs.contains(bb_handle->flat_bb_index)) return true;
   }
   // Next check if the fallthrough paths contain any hot join BBs.
-  for (const BbHandleBranch &bb_branch : path.branches) {
+  for (const FlatBbHandleBranch &bb_branch : path.branches) {
     if (last_to.has_value()) {
       CHECK(bb_branch.from_bb.has_value());
       // Check if there are any hot join BBs in the fallthrough path from
       // `last_to` to `bb_branch.from_bb` (including both ends of the path).
       // To do so, find the first hot join BB after or at `last_to`. Return
       // true if that BB does not go after `bb_branch.from_bb`.
-      auto it = function_hot_join_bbs.lower_bound(last_to->bb_index);
+      auto it = function_hot_join_bbs.lower_bound(last_to->flat_bb_index);
       if (it != function_hot_join_bbs.end() &&
-          *it <= bb_branch.from_bb->bb_index) {
+          *it <= bb_branch.from_bb->flat_bb_index) {
         return true;
       }
     }

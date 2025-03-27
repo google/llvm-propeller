@@ -172,15 +172,17 @@ CFGEdge *ProgramCfgBuilder::InternalCreateEdge(
         *tmp_edge_map) {
   BbHandle from_bb = binary_address_mapper_->bb_handles().at(from_bb_index);
   BbHandle to_bb = binary_address_mapper_->bb_handles().at(to_bb_index);
-  std::optional<int> from_flat_bb_index =
-      binary_address_mapper_->GetFlatBbIndex(from_bb);
-  CHECK(from_flat_bb_index.has_value());
-  std::optional<int> to_flat_bb_index = binary_address_mapper_->GetFlatBbIndex(
-      binary_address_mapper_->bb_handles().at(to_bb_index));
-  CHECK(to_flat_bb_index.has_value());
+  std::optional<FlatBbHandle> from_flat_bb_handle =
+      binary_address_mapper_->GetFlatBbHandle(from_bb);
+  CHECK(from_flat_bb_handle.has_value());
+  std::optional<FlatBbHandle> to_flat_bb_handle =
+      binary_address_mapper_->GetFlatBbHandle(to_bb);
+  CHECK(to_flat_bb_handle.has_value());
   // Compute the IDs of the corresponding basic blocks.
-  InterCfgId from_bb_id = {from_bb.function_index, {*from_flat_bb_index, 0}};
-  InterCfgId to_bb_id = {to_bb.function_index, {*to_flat_bb_index, 0}};
+  InterCfgId from_bb_id = {from_bb.function_index,
+                           {from_flat_bb_handle->flat_bb_index, 0}};
+  InterCfgId to_bb_id = {to_bb.function_index,
+                         {to_flat_bb_handle->flat_bb_index, 0}};
   CFGEdge *edge = nullptr;
   auto i = tmp_edge_map->find(std::make_pair(from_bb_id, to_bb_id));
   if (i != tmp_edge_map->end()) {

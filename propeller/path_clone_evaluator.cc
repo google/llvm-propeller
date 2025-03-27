@@ -116,7 +116,7 @@ absl::StatusOr<CfgChangeFromPathCloning> GetCfgChangeForPathCloning(
         cfg_change.inter_edge_reroutes.push_back(
             {.src_function_index = call_ret.return_bb->function_index,
              .sink_function_index = cloning.function_index,
-             .src_bb_index = call_ret.return_bb->bb_index,
+             .src_bb_index = call_ret.return_bb->flat_bb_index,
              .sink_bb_index = path_node->node_bb_index(),
              .src_is_cloned = false,
              .sink_is_cloned = true,
@@ -166,7 +166,7 @@ absl::StatusOr<CfgChangeFromPathCloning> GetCfgChangeForPathCloning(
         {.src_function_index = cloning.function_index,
          .sink_function_index = bb_handle.function_index,
          .src_bb_index = cloning.path_node->node_bb_index(),
-         .sink_bb_index = bb_handle.bb_index,
+         .sink_bb_index = bb_handle.flat_bb_index,
          .src_is_cloned = true,
          .sink_is_cloned = false,
          .kind = CFGEdgeKind::kRet,

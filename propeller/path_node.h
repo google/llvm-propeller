@@ -49,9 +49,9 @@ struct PathPredInfo {
   // its frequency.
   absl::flat_hash_map<propeller::CallRetInfo, int> call_freqs;
   // Frequencies of the returns from this path node, for one path
-  // predecessor block. Maps from the `BbHandle` of each block to the
+  // predecessor block. Maps from the `FlatBbHandle` of each block to the
   // frequency of returns into it.
-  absl::flat_hash_map<propeller::BbHandle, int> return_to_freqs;
+  absl::flat_hash_map<propeller::FlatBbHandle, int> return_to_freqs;
 
   // Implementation of the `AbslStringify` interface.
   template <typename Sink>
@@ -199,6 +199,9 @@ class PathNode {
     return node_bb_index_ < other.node_bb_index_;
   }
 
+  // Returns the total frequency of the children of this path node, for the
+  // given path predecessor block specified by its flat bb index
+  // `path_pred_bb_index`.
   int GetTotalChildrenFreqForPathPred(int path_pred_bb_index) const {
     int total_child_freq = 0;
     for (const auto &[child_bb_index, child_bb_path_node] : children()) {
@@ -215,9 +218,9 @@ class PathNode {
   friend void AbslStringify(Sink &sink, const PathNode &path_node);
 
  private:
-  // Index of the basic block associated with this path node.
+  // Flat bb index of the basic block associated with this path node.
   int node_bb_index_;
-  // Frequency information for each path predecessor block. Keyed by the bb
+  // Frequency information for each path predecessor block. Keyed by the flat bb
   // index of each path predecessor block.
   absl::flat_hash_map<int, PathPredInfo> path_pred_info_;
   // Children of this path node.

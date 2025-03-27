@@ -4,6 +4,7 @@ c0
 f main
 c0 2
 f compute
-c0 2 4 5 1 3
+p4 5
+c0 2 4 5.1 1 3 5
 f foo
 c0

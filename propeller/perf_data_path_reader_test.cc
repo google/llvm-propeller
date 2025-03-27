@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -36,10 +37,10 @@
 
 namespace propeller {
 namespace {
+using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 using ::testing::Optional;
 using ::testing::SizeIs;
-using ::testing::status::IsOkAndHolds;
 
 static std::string GetPropellerTestDataFilePath(absl::string_view filename) {
   return absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/",
@@ -69,7 +70,7 @@ TEST(PerfDataPathReaderTest, ReadPaths) {
       BuildBinaryAddressMapper(options, *binary_content, stats,
                                /*hot_addresses=*/nullptr));
 
-  std::vector<BbHandleBranchPath> all_paths;
+  std::vector<FlatBbHandleBranchPath> all_paths;
   PerfDataPathReader(&perf_data_reader, binary_address_mapper.get())
       .ReadPathsAndApplyCallBack([&](auto paths) {
         all_paths.insert(all_paths.end(), paths.begin(), paths.end());
@@ -102,7 +103,7 @@ TEST(PerfDataPathReaderTest, ReadPathsGetsPathsWithHotJoinBbs) {
       BuildBinaryAddressMapper(options, *binary_content, stats,
                                /*hot_addresses=*/nullptr));
 
-  std::vector<BbHandleBranchPath> all_paths;
+  std::vector<FlatBbHandleBranchPath> all_paths;
   PerfDataPathReader(&perf_data_reader, binary_address_mapper.get())
       .ReadPathsAndApplyCallBack([&](auto paths) {
         all_paths.insert(all_paths.end(), paths.begin(), paths.end());

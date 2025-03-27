@@ -13,7 +13,8 @@
 // limitations under the License.
 
 // A program which can run in either of two loops and call either of 2 functions
-// depending on the input.
+// depending on the input. If the input has zero or one argument, it calls
+// `foo`. Otherwise, it calls `bar`.
 volatile int count;
 
 __attribute__((noinline)) double foo(double v) {
@@ -29,7 +30,7 @@ __attribute__((noinline)) double bar(double v) {
 }
 
 __attribute__((noinline)) void compute(double arg) {
-  if (arg <= 1) {
+  if (arg <= 2) {
     for (int i = 0; i < 801; ++i) count += foo(i);
   } else {
     for (int i = 0; i < 401; ++i) count += bar(i);

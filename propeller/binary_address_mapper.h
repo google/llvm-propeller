@@ -59,29 +59,31 @@ enum class BranchDirection { kFrom, kTo };
 // do work
 // return; // bar.ret
 // }
-struct BbHandleBranch {
+struct FlatBbHandleBranch {
   // `from_bb` or `to_bb` can be null when they point to unknown code (code
   // blocks not mapped by the underlying `BinaryAddressMapper`.
-  std::optional<BbHandle> from_bb = std::nullopt;
-  std::optional<BbHandle> to_bb = std::nullopt;
+  std::optional<FlatBbHandle> from_bb = std::nullopt;
+  int from_bb_flat_index = -1;
+  std::optional<FlatBbHandle> to_bb = std::nullopt;
+  int to_bb_flat_index = -1;
   // All callee functions called from `from_bb` and returning to `to_bb` in the
   // order in which they are called. Callees are represented by their function
   // index, or `std::nullopt` if the function is unknown.
   std::vector<CallRetInfo> call_rets = {};
 
-  bool operator==(const BbHandleBranch &other) const {
+  bool operator==(const FlatBbHandleBranch &other) const {
     return from_bb == other.from_bb && to_bb == other.to_bb &&
            call_rets == other.call_rets;
   }
 
-  bool operator!=(const BbHandleBranch &other) const {
+  bool operator!=(const FlatBbHandleBranch &other) const {
     return !(*this == other);
   }
 
   bool is_callsite() const { return !call_rets.empty(); }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const BbHandleBranch &branch) {
+  friend void AbslStringify(Sink &sink, const FlatBbHandleBranch &branch) {
     absl::Format(&sink, "%v -> %v", branch.from_bb, branch.to_bb);
     if (!branch.is_callsite()) return;
     absl::Format(&sink, "(CALLSITES: %s)",
@@ -89,26 +91,26 @@ struct BbHandleBranch {
   }
 };
 
-struct BbHandleBranchPath {
+struct FlatBbHandleBranchPath {
   int64_t pid;
   absl::Time sample_time;
-  std::vector<BbHandleBranch> branches;
+  std::vector<FlatBbHandleBranch> branches;
   // The block that this path returns to after the last branch.
-  std::optional<BbHandle> returns_to;
+  std::optional<FlatBbHandle> returns_to;
 
-  bool operator==(const BbHandleBranchPath &other) const {
+  bool operator==(const FlatBbHandleBranchPath &other) const {
     return pid == other.pid && branches == other.branches &&
            returns_to == other.returns_to;
   }
 
-  bool operator!=(const BbHandleBranchPath &other) const {
+  bool operator!=(const FlatBbHandleBranchPath &other) const {
     return !(*this == other);
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const BbHandleBranchPath &path) {
+  friend void AbslStringify(Sink &sink, const FlatBbHandleBranchPath &path) {
     absl::Format(
-        &sink, "BBHandleBranchPath[pid:%lld, sample_time:%v, branches:%s",
+        &sink, "FlatBbHandleBranchPath[pid:%lld, sample_time:%v, branches:%s",
         path.pid, path.sample_time, absl::StrJoin(path.branches, ", "));
     if (path.returns_to.has_value()) {
       absl::Format(&sink, ", returns_to:%v", *path.returns_to);
@@ -211,18 +213,20 @@ class BinaryAddressMapper {
         .getBBRanges()[bb_handle.range_index];
   }
 
-  // Returns the BbHandle associated with the basic block with flat index
-  // `flat_bb_index` in the function with index `function_index`.
-  // `flat_bb_index` is the index into the function's flat list of bb
-  // entries if all BB ranges were flattened. Returns nullopt if no such BB
-  // exists.
-  std::optional<BbHandle> getBbHandle(int function_index,
-                                      int flat_bb_index) const;
+  // Returns the BbHandle associated with the basic block with flat BB handle
+  // `flat_bb_handle`. Returns nullopt if no such BB exists.
+  std::optional<BbHandle> GetBbHandle(const FlatBbHandle &flat_bb_handle) const;
 
-  // Returns the flat index of BB associated with `bb_handle` in its function,
-  // if all BB ranges were flattened. Returns nullopt if no BB with `bb_handle`
-  // exists.
-  std::optional<int> GetFlatBbIndex(const BbHandle &bb_handle) const;
+  // Returns the flat BB handle of BB associated with `bb_handle` in its
+  // function, if all BB ranges were flattened. Returns nullopt if no BB with
+  // `bb_handle` exists.
+  std::optional<FlatBbHandle> GetFlatBbHandle(const BbHandle &bb_handle) const;
+
+  std::optional<FlatBbHandle> GetFlatBbHandle(
+      const std::optional<BbHandle> &bb_handle) const {
+    if (!bb_handle.has_value()) return std::nullopt;
+    return GetFlatBbHandle(*bb_handle);
+  }
 
   // Returns the basic block's address map entry associated with the given
   // `bb_handle`.
@@ -279,7 +283,7 @@ class BinaryAddressMapper {
   // Extracts and returns intra-function paths from `address_path`.
   // This will try to stitch call-and-return paths together to form
   // intra-function paths which bypass calls.
-  std::vector<BbHandleBranchPath> ExtractIntraFunctionPaths(
+  std::vector<FlatBbHandleBranchPath> ExtractIntraFunctionPaths(
       const BinaryAddressBranchPath &address_path) const;
 
  private:

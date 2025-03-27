@@ -34,6 +34,8 @@ exports_files([
     "bimodal_sample.x.bin",
     "bimodal_sample_mfs.bin",
     "bimodal_sample_mfs.cc_profile.txt",
+    "bimodal_sample_mfs.cloning.cc_profile.txt",
+    "bimodal_sample_mfs.cloning.ld_profile.txt",
     "bimodal_sample_mfs.ld_profile.txt",
     "call_from_simple_loop.protobuf",
     "clang_v0_labels.binary",
@@ -292,9 +294,11 @@ genrule(
           "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fprofile-use=$(RULEDIR)/profile " +
           "-fbasic-block-sections=labels -fsplit-machine-functions $< -o " +
           "$(RULEDIR)/bimodal_sample_mfs.bin.gen ; " +
-          "cd $(RULEDIR) ; echo '1' > sample.scratch ; echo '' >> sample.scratch ; " +
+          "if [[ `$(NM) $(RULEDIR)/bimodal_sample_mfs.bin.gen | grep compute | wc -l` != 2 ]]; " +
+          "then exit 1; fi; " +
+          "cd $(RULEDIR) ; echo '1' > sample.scratch ; echo '1 2' >> sample.scratch ; " +
           "/usr/bin/perf record -o bimodal_sample_mfs.perfdata.gen -e cycles -b -- " +
-          "sh -c 'cat sample.scratch | xargs -n 1 -P2 ./bimodal_sample_mfs.bin.gen'",
+          "sh -c 'cat sample.scratch | xargs -P2 ./bimodal_sample_mfs.bin.gen'",
     tags = [
         "manual",
     ],
@@ -379,4 +383,13 @@ genrule(
     ],
     target_compatible_with = ["@platforms//cpu:aarch64"],
     tools = [":sample"],
+)
+
+cc_binary(
+    name = "bimodal_sample",
+    srcs = ["bimodal_sample.c"],
+    deps = [
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
+    ],
 )

@@ -239,22 +239,22 @@ class PathTraceHandler {
  public:
   virtual ~PathTraceHandler() = default;
 
-  // Visits the single block corresponding to `bb_index` with sample time
+  // Visits the single block corresponding to `flat_bb_index` with sample time
   // `sample_time`.
-  virtual void VisitBlock(int bb_index, absl::Time sample_time) = 0;
+  virtual void VisitBlock(int flat_bb_index, absl::Time sample_time) = 0;
   // Handles calls to callee functions `call_rets` from the current block.
   virtual void HandleCalls(
       absl::Span<const propeller::CallRetInfo> call_rets) = 0;
   // Handles a return to `bb_handle` from the current block.
-  virtual void HandleReturn(const propeller::BbHandle &bb_handle) = 0;
+  virtual void HandleReturn(const propeller::FlatBbHandle &bb_handle) = 0;
   // Finishes the current path and prepares to start a new path.
   virtual void ResetPath() = 0;
 };
 
-// Traces a single intra-function `BbHandleBranchPath` using a
+// Traces a single intra-function `FlatBbHandleBranchPath` using a
 // `PathTraceHandler`.
 // Usage:
-//   BBHandleBranchPath path = ...
+//   FlatBBHandleBranchPath path = ...
 //   ControlFlowGraph *cfg = ...
 //   PathTraceHandler handler(...)
 //   PathTracer(&cfg, &handler).TracePath(path);
@@ -271,15 +271,15 @@ class PathTracer {
   PathTracer &operator=(PathTracer &&) = delete;
 
   // Traces `path`.
-  void TracePath(const propeller::BbHandleBranchPath &path) &&;
+  void TracePath(const propeller::FlatBbHandleBranchPath &path) &&;
 
  private:
   // If `from_bb` can fall through to `to_bb`, updates the path tree by mapping
   // blocks from `from_bb` to `to_bb` (excluding the endpoints). Otherwise,
   // cuts the current path by clearing `current_path_probes_` and setting
   // `prev_node_bb_index_` to -1.
-  void HandleFallThroughBlocks(std::optional<propeller::BbHandle> from_bb,
-                               std::optional<propeller::BbHandle> to_bb,
+  void HandleFallThroughBlocks(std::optional<propeller::FlatBbHandle> from_bb,
+                               std::optional<propeller::FlatBbHandle> to_bb,
                                absl::Time sample_time);
 
  private:
@@ -287,7 +287,7 @@ class PathTracer {
   PathTraceHandler *handler_;
 };
 
-// Analyzes `BBHandleBranchPath`s by mapping into a `ProgramCfg`.
+// Analyzes `FlatBBHandleBranchPath`s by mapping into a `ProgramCfg`.
 class ProgramCfgPathAnalyzer {
  public:
   // Does not take ownership of any pointer parameters which should all point to
@@ -313,7 +313,7 @@ class ProgramCfgPathAnalyzer {
     return *program_path_profile_;
   }
 
-  const std::deque<propeller::BbHandleBranchPath> &bb_branch_paths() const {
+  const std::deque<propeller::FlatBbHandleBranchPath> &bb_branch_paths() const {
     return bb_branch_paths_;
   }
 
@@ -322,7 +322,7 @@ class ProgramCfgPathAnalyzer {
   // `path_profile_options_->max_time_diff_in_path_buffer_millis`, analyzes and
   // purges half of them by calling `ProgramCfgPathAnalyzer::AnalyzePaths`.
   void StoreAndAnalyzePaths(
-      absl::Span<const propeller::BbHandleBranchPath> bb_branch_paths);
+      absl::Span<const propeller::FlatBbHandleBranchPath> bb_branch_paths);
 
   // Sorts all paths in `bb_branch_paths_` based on their sample_time. Then
   // analyzes and removes the first `paths_to_analyze` paths and updates
@@ -341,17 +341,17 @@ class ProgramCfgPathAnalyzer {
 
   // Returns the paths in `bb_branch_paths` which include hot join BBs, in the
   // same order as in the input.
-  std::vector<propeller::BbHandleBranchPath> GetPathsWithHotJoinBbs(
-      absl::Span<const propeller::BbHandleBranchPath> bb_branch_paths);
+  std::vector<propeller::FlatBbHandleBranchPath> GetPathsWithHotJoinBbs(
+      absl::Span<const propeller::FlatBbHandleBranchPath> bb_branch_paths);
 
   // Returns whether `path` contains any hot join BBs.
-  bool HasHotJoinBbs(const propeller::BbHandleBranchPath &path) const;
+  bool HasHotJoinBbs(const propeller::FlatBbHandleBranchPath &path) const;
 
   // Returns whether the intra-function `path` is from a function with hot join
   // BBs.
   bool IsFromFunctionWithHotJoinBbs(
-      const propeller::BbHandleBranchPath &path) const {
-    const propeller::BbHandle &first_bb =
+      const propeller::FlatBbHandleBranchPath &path) const {
+    const propeller::FlatBbHandle &first_bb =
         path.branches.front().from_bb.has_value()
             ? *path.branches.front().from_bb
             : *path.branches.front().to_bb;
@@ -368,7 +368,7 @@ class ProgramCfgPathAnalyzer {
   // basic block indices.
   absl::flat_hash_map<int, absl::btree_set<int>> hot_join_bbs_;
   // Paths remaining to be analyzed.
-  std::deque<propeller::BbHandleBranchPath> bb_branch_paths_;
+  std::deque<propeller::FlatBbHandleBranchPath> bb_branch_paths_;
   // Program path profile for all functions.
   propeller::ProgramPathProfile *program_path_profile_;
 };

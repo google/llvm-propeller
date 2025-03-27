@@ -101,7 +101,7 @@ class MockPathTraceHandler : public PathTraceHandler {
   MOCK_METHOD(void, VisitBlock, (int bb_index, absl::Time sample_time),
               (override));
   MOCK_METHOD(void, HandleCalls, (absl::Span<const CallRetInfo>), (override));
-  MOCK_METHOD(void, HandleReturn, (const BbHandle &), (override));
+  MOCK_METHOD(void, HandleReturn, (const FlatBbHandle &), (override));
   MOCK_METHOD(void, ResetPath, (), (override));
 };
 
@@ -128,31 +128,31 @@ TEST(ProgramCfgPathAnalyzer, GetsPathsWithHotJoinBbs) {
              {1, 2, 30, CFGEdgeKind::kBranchOrFallthough}}},
        }});
 
-  std::vector<BbHandleBranchPath> paths = {
+  std::vector<FlatBbHandleBranchPath> paths = {
       {.pid = 2080799,
        .sample_time = absl::FromUnixNanos(1010),
-       .branches = {{.to_bb = {{.function_index = 1, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 1, .bb_index = 0}},
-                     .to_bb = {{.function_index = 1, .bb_index = 2}}},
-                    {.from_bb = {{.function_index = 1, .bb_index = 2}}}}},
+       .branches = {{.to_bb = {{.function_index = 1, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 1, .flat_bb_index = 0}},
+                     .to_bb = {{.function_index = 1, .flat_bb_index = 2}}},
+                    {.from_bb = {{.function_index = 1, .flat_bb_index = 2}}}}},
       {.pid = 2080799,
        .sample_time = absl::FromUnixNanos(1020),
-       .branches = {{.to_bb = {{.function_index = 1, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 1, .bb_index = 2}}}}},
+       .branches = {{.to_bb = {{.function_index = 1, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 1, .flat_bb_index = 2}}}}},
       {.pid = 2080799,
        .sample_time = absl::FromUnixNanos(1020),
-       .branches = {{.to_bb = {{.function_index = 0, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 0, .bb_index = 2}},
-                     .to_bb = {{.function_index = 0, .bb_index = 2}},
+       .branches = {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
+                     .to_bb = {{.function_index = 0, .flat_bb_index = 2}},
                      .call_rets = {{{.callee = 1}}}},
-                    {.from_bb = {{.function_index = 0, .bb_index = 2}},
-                     .to_bb = {{.function_index = 0, .bb_index = 1}}},
-                    {.from_bb = {{.function_index = 1, .bb_index = 2}}}}},
+                    {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
+                     .to_bb = {{.function_index = 0, .flat_bb_index = 1}}},
+                    {.from_bb = {{.function_index = 1, .flat_bb_index = 2}}}}},
       {.pid = 2080799,
        .sample_time = absl::FromUnixNanos(1030),
-       .branches = {{.to_bb = {{.function_index = 0, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 0, .bb_index = 0}},
-                     .to_bb = {{.function_index = 0, .bb_index = 3}}}}}};
+       .branches = {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 0, .flat_bb_index = 0}},
+                     .to_bb = {{.function_index = 0, .flat_bb_index = 3}}}}}};
 
   PathProfileOptions options;
   options.set_hot_cutoff_percentile(10);
@@ -160,8 +160,8 @@ TEST(ProgramCfgPathAnalyzer, GetsPathsWithHotJoinBbs) {
   EXPECT_THAT(
       ProgramCfgPathAnalyzer(&options, program_cfg.get(), &program_path_profile)
           .GetPathsWithHotJoinBbs(paths),
-      ElementsAreArray(
-          std::vector<BbHandleBranchPath>(paths.begin(), paths.begin() + 3)));
+      ElementsAreArray(std::vector<FlatBbHandleBranchPath>(paths.begin(),
+                                                           paths.begin() + 3)));
 }
 
 TEST(PathTracer, TracePathUpdatesCachePressureWithShortPaths) {
@@ -178,30 +178,30 @@ TEST(PathTracer, TracePathUpdatesCachePressureWithShortPaths) {
                       {1, 2, 10, CFGEdgeKind::kBranchOrFallthough},
                       {1, 3, 10, CFGEdgeKind::kBranchOrFallthough},
                       {2, 3, 10, CFGEdgeKind::kBranchOrFallthough}}}}});
-  std::vector<BbHandleBranchPath> paths = {
+  std::vector<FlatBbHandleBranchPath> paths = {
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(1010),
-       .branches = {{.to_bb = {{.function_index = 5, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 5, .bb_index = 1}},
-                     .to_bb = {{.function_index = 5, .bb_index = 3}}}}},
+       .branches = {{.to_bb = {{.function_index = 5, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 5, .flat_bb_index = 1}},
+                     .to_bb = {{.function_index = 5, .flat_bb_index = 3}}}}},
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(1020),
-       .branches = {{.from_bb = {{.function_index = 5, .bb_index = 1}},
-                     .to_bb = {{.function_index = 5, .bb_index = 3}}}}},
+       .branches = {{.from_bb = {{.function_index = 5, .flat_bb_index = 1}},
+                     .to_bb = {{.function_index = 5, .flat_bb_index = 3}}}}},
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(1030),
-       .branches = {{.to_bb = {{.function_index = 5, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 5, .bb_index = 0}},
-                     .to_bb = {{.function_index = 5, .bb_index = 2}}},
-                    {.from_bb = {{.function_index = 5, .bb_index = 3}}}}},
+       .branches = {{.to_bb = {{.function_index = 5, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 5, .flat_bb_index = 0}},
+                     .to_bb = {{.function_index = 5, .flat_bb_index = 2}}},
+                    {.from_bb = {{.function_index = 5, .flat_bb_index = 3}}}}},
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(1040),
-       .branches = {{.from_bb = {{.function_index = 5, .bb_index = 0}},
-                     .to_bb = {{.function_index = 5, .bb_index = 2}}}}},
+       .branches = {{.from_bb = {{.function_index = 5, .flat_bb_index = 0}},
+                     .to_bb = {{.function_index = 5, .flat_bb_index = 2}}}}},
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(1050),
-       .branches = {{.to_bb = {{.function_index = 5, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 5, .bb_index = 3}}}}}};
+       .branches = {{.to_bb = {{.function_index = 5, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 5, .flat_bb_index = 3}}}}}};
   PathProfileOptions options;
   options.set_hot_cutoff_percentile(10);
   ProgramPathProfile path_profile;
@@ -259,27 +259,27 @@ TEST(PathTracer, TracePathUpdatesCachePressureWithUnsortedSampleTimes) {
              {1, 2, 30, CFGEdgeKind::kBranchOrFallthough},
              {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   // Branch paths with unsorted sample times.
-  std::vector<BbHandleBranchPath> paths = {
+  std::vector<FlatBbHandleBranchPath> paths = {
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(1010),
-       .branches = {{.to_bb = {{.function_index = 5, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 5, .bb_index = 2}}}}},
+       .branches = {{.to_bb = {{.function_index = 5, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 5, .flat_bb_index = 2}}}}},
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(910),
-       .branches = {{.from_bb = {{.function_index = 5, .bb_index = 2}},
-                     .to_bb = {{.function_index = 5, .bb_index = 1}}}}},
+       .branches = {{.from_bb = {{.function_index = 5, .flat_bb_index = 2}},
+                     .to_bb = {{.function_index = 5, .flat_bb_index = 1}}}}},
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(1900),
-       .branches = {{.from_bb = {{.function_index = 5, .bb_index = 2}},
-                     .to_bb = {{.function_index = 5, .bb_index = 1}}}}},
+       .branches = {{.from_bb = {{.function_index = 5, .flat_bb_index = 2}},
+                     .to_bb = {{.function_index = 5, .flat_bb_index = 1}}}}},
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(1800),
-       .branches = {{.to_bb = {{.function_index = 5, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 5, .bb_index = 2}}}}},
+       .branches = {{.to_bb = {{.function_index = 5, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 5, .flat_bb_index = 2}}}}},
       {.pid = 123456,
        .sample_time = absl::FromUnixMillis(2020),
-       .branches = {{.to_bb = {{.function_index = 5, .bb_index = 0}}},
-                    {.from_bb = {{.function_index = 5, .bb_index = 2}}}}}};
+       .branches = {{.to_bb = {{.function_index = 5, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 5, .flat_bb_index = 2}}}}}};
   PathProfileOptions options;
   options.set_hot_cutoff_percentile(10);
   options.set_max_icache_penalty_interval_millis(2000);
@@ -289,11 +289,11 @@ TEST(PathTracer, TracePathUpdatesCachePressureWithUnsortedSampleTimes) {
   // Store and analyze the paths. This should analyze 2 paths.
   path_analyzer.StoreAndAnalyzePaths(paths);
   EXPECT_THAT(path_analyzer.bb_branch_paths(),
-              ElementsAre(Field(&BbHandleBranchPath::sample_time,
+              ElementsAre(Field(&FlatBbHandleBranchPath::sample_time,
                                 Eq(absl::FromUnixMillis(1800))),
-                          Field(&BbHandleBranchPath::sample_time,
+                          Field(&FlatBbHandleBranchPath::sample_time,
                                 Eq(absl::FromUnixMillis(1900))),
-                          Field(&BbHandleBranchPath::sample_time,
+                          Field(&FlatBbHandleBranchPath::sample_time,
                                 Eq(absl::FromUnixMillis(2020)))));
   // Analyze the remaining paths.
   path_analyzer.AnalyzePaths(/*paths_to_analyze=*/std::nullopt);
@@ -329,17 +329,17 @@ TEST(PathTracer, TracePathVisitsBlocksAndCalls) {
              {1, 2, 30, CFGEdgeKind::kBranchOrFallthough},
              {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
 
-  BbHandleBranchPath path = {
+  FlatBbHandleBranchPath path = {
       .pid = 123456,
       .sample_time = absl::FromUnixNanos(1001),
-      .branches = {{.to_bb = {{.function_index = 5, .bb_index = 0}}},
-                   {.from_bb = {{.function_index = 5, .bb_index = 2}},
-                    .to_bb = {{.function_index = 5, .bb_index = 3}},
+      .branches = {{.to_bb = {{.function_index = 5, .flat_bb_index = 0}}},
+                   {.from_bb = {{.function_index = 5, .flat_bb_index = 2}},
+                    .to_bb = {{.function_index = 5, .flat_bb_index = 3}},
                     .call_rets = {{{.callee = 17,
                                     .return_bb = {{.function_index = 18,
-                                                   .bb_index = 11}}}}}},
-                   {.from_bb = {{.function_index = 5, .bb_index = 3}}}},
-      .returns_to = {{.function_index = 1, .bb_index = 1}}};
+                                                   .flat_bb_index = 11}}}}}},
+                   {.from_bb = {{.function_index = 5, .flat_bb_index = 3}}}},
+      .returns_to = {{.function_index = 1, .flat_bb_index = 1}}};
 
   MockPathTraceHandler mock_path_trace_handler;
   EXPECT_CALL(mock_path_trace_handler, ResetPath()).Times(0);
@@ -351,14 +351,16 @@ TEST(PathTracer, TracePathVisitsBlocksAndCalls) {
                 VisitBlock(1, absl::FromUnixNanos(1001)));
     EXPECT_CALL(mock_path_trace_handler,
                 VisitBlock(2, absl::FromUnixNanos(1001)));
-    EXPECT_CALL(mock_path_trace_handler,
-                HandleCalls(ElementsAre(CallRetInfo{
-                    .callee = 17,
-                    .return_bb = {{.function_index = 18, .bb_index = 11}}})));
+    EXPECT_CALL(
+        mock_path_trace_handler,
+        HandleCalls(ElementsAre(CallRetInfo{
+            .callee = 17,
+            .return_bb = {{.function_index = 18, .flat_bb_index = 11}}})));
     EXPECT_CALL(mock_path_trace_handler,
                 VisitBlock(3, absl::FromUnixNanos(1001)));
-    EXPECT_CALL(mock_path_trace_handler,
-                HandleReturn(BbHandle{.function_index = 1, .bb_index = 1}));
+    EXPECT_CALL(
+        mock_path_trace_handler,
+        HandleReturn(FlatBbHandle{.function_index = 1, .flat_bb_index = 1}));
   }
 
   PathTracer(program_cfg->GetCfgByIndex(/*index=*/5), &mock_path_trace_handler)
@@ -401,49 +403,49 @@ TEST(ProgramCfgPathAnalyzer, BuildPathTree) {
                            {7, 0, 6, 5, 839, CFGEdgeKind::kRet},
                            {8, 0, 6, 5, 952, CFGEdgeKind::kRet}}});
 
-  std::vector<BbHandleBranch> path1_branches = {
-      {.to_bb = {{.function_index = 6, .bb_index = 0}}},
-      {.from_bb = {{.function_index = 6, .bb_index = 4}},
-       .to_bb = {{.function_index = 6, .bb_index = 1}}},
-      {.from_bb = {{.function_index = 6, .bb_index = 2}},
-       .to_bb = {{.function_index = 6, .bb_index = 5}}},
-      {.from_bb = {{.function_index = 6, .bb_index = 5}},
-       .to_bb = {{.function_index = 6, .bb_index = 5}},
+  std::vector<FlatBbHandleBranch> path1_branches = {
+      {.to_bb = {{.function_index = 6, .flat_bb_index = 0}}},
+      {.from_bb = {{.function_index = 6, .flat_bb_index = 4}},
+       .to_bb = {{.function_index = 6, .flat_bb_index = 1}}},
+      {.from_bb = {{.function_index = 6, .flat_bb_index = 2}},
+       .to_bb = {{.function_index = 6, .flat_bb_index = 5}}},
+      {.from_bb = {{.function_index = 6, .flat_bb_index = 5}},
+       .to_bb = {{.function_index = 6, .flat_bb_index = 5}},
        .call_rets = {{{.callee = 7}}}}};
-  std::vector<BbHandleBranchPath> path1_1s(
-      5, BbHandleBranchPath{
+  std::vector<FlatBbHandleBranchPath> path1_1s(
+      5, FlatBbHandleBranchPath{
              .pid = 9876,
              .sample_time = absl::FromUnixNanos(100001),
              .branches = path1_branches,
-             .returns_to = {{.function_index = 123, .bb_index = 45}}});
-  std::vector<BbHandleBranchPath> path1_2s(
-      5, BbHandleBranchPath{
+             .returns_to = {{.function_index = 123, .flat_bb_index = 45}}});
+  std::vector<FlatBbHandleBranchPath> path1_2s(
+      5, FlatBbHandleBranchPath{
              .pid = 9876,
              .sample_time = absl::FromUnixNanos(300001),
              .branches = path1_branches,
-             .returns_to = {{.function_index = 123, .bb_index = 45}}});
-  std::vector<BbHandleBranch> path2_branches = {
-      {.to_bb = {{.function_index = 6, .bb_index = 0}}},
-      {.from_bb = {{.function_index = 6, .bb_index = 2}},
-       .to_bb = {{.function_index = 6, .bb_index = 5}}},
-      {.from_bb = {{.function_index = 6, .bb_index = 5}},
-       .to_bb = {{.function_index = 6, .bb_index = 5}},
+             .returns_to = {{.function_index = 123, .flat_bb_index = 45}}});
+  std::vector<FlatBbHandleBranch> path2_branches = {
+      {.to_bb = {{.function_index = 6, .flat_bb_index = 0}}},
+      {.from_bb = {{.function_index = 6, .flat_bb_index = 2}},
+       .to_bb = {{.function_index = 6, .flat_bb_index = 5}}},
+      {.from_bb = {{.function_index = 6, .flat_bb_index = 5}},
+       .to_bb = {{.function_index = 6, .flat_bb_index = 5}},
        .call_rets = {{{.callee = 8}}}},
   };
-  std::vector<BbHandleBranchPath> path2_1s(
-      5, BbHandleBranchPath{
+  std::vector<FlatBbHandleBranchPath> path2_1s(
+      5, FlatBbHandleBranchPath{
              .pid = 9876,
              .sample_time = absl::FromUnixNanos(200001),
              .branches = path2_branches,
-             .returns_to = {{.function_index = 678, .bb_index = 90}}});
-  std::vector<BbHandleBranchPath> path2_2s(
-      5, BbHandleBranchPath{
+             .returns_to = {{.function_index = 678, .flat_bb_index = 90}}});
+  std::vector<FlatBbHandleBranchPath> path2_2s(
+      5, FlatBbHandleBranchPath{
              .pid = 9876,
              .sample_time = absl::FromUnixNanos(300001),
              .branches = path2_branches,
-             .returns_to = {{.function_index = 678, .bb_index = 90}}});
+             .returns_to = {{.function_index = 678, .flat_bb_index = 90}}});
 
-  std::vector<BbHandleBranchPath> paths;
+  std::vector<FlatBbHandleBranchPath> paths;
   absl::c_copy(path1_1s, std::back_inserter(paths));
   absl::c_copy(path2_1s, std::back_inserter(paths));
   absl::c_copy(path1_2s, std::back_inserter(paths));
@@ -500,10 +502,11 @@ TEST(ProgramCfgPathAnalyzer, BuildPathTree) {
                                                                           8},
                                                           10)),
                                                       UnorderedElementsAre(Pair(
-                                                          BbHandle{
+                                                          FlatBbHandle{
                                                               .function_index =
                                                                   678,
-                                                              .bb_index = 90},
+                                                              .flat_bb_index =
+                                                                  90},
                                                           10)))),
                                               Pair(
                                                   4,
@@ -515,10 +518,11 @@ TEST(ProgramCfgPathAnalyzer, BuildPathTree) {
                                                                           7},
                                                           10)),
                                                       UnorderedElementsAre(Pair(
-                                                          BbHandle{
+                                                          FlatBbHandle{
                                                               .function_index =
                                                                   123,
-                                                              .bb_index = 45},
+                                                              .flat_bb_index =
+                                                                  45},
                                                           10))))),
                                           IsEmpty()))),
                                   Pair(
@@ -555,22 +559,22 @@ TEST(ProgramCfgPathAnalyzer, HandlesPathPredecessorWithIndirectBranch) {
                       {2, 1, 10, CFGEdgeKind::kBranchOrFallthough},
                       {1, 3, 10, CFGEdgeKind::kBranchOrFallthough}}}}});
 
-  BbHandleBranchPath path1 = {
+  FlatBbHandleBranchPath path1 = {
       .pid = 2080799,
-      .branches = {{.from_bb = {{.function_index = 0, .bb_index = 0}},
-                    .to_bb = {{.function_index = 0, .bb_index = 3}}}}};
+      .branches = {{.from_bb = {{.function_index = 0, .flat_bb_index = 0}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 3}}}}};
 
-  BbHandleBranchPath path2 = {
+  FlatBbHandleBranchPath path2 = {
       .pid = 2080799,
-      .branches = {{.from_bb = {{.function_index = 0, .bb_index = 0}},
-                    .to_bb = {{.function_index = 0, .bb_index = 1}}},
-                   {.from_bb = {{.function_index = 0, .bb_index = 2}},
-                    .to_bb = {{.function_index = 0, .bb_index = 1}}},
-                   {.from_bb = {{.function_index = 0, .bb_index = 1}},
-                    .to_bb = {{.function_index = 0, .bb_index = 3}}}}};
-  std::vector<BbHandleBranchPath> path1s(10, path1);
-  std::vector<BbHandleBranchPath> path2s(10, path2);
-  std::vector<BbHandleBranchPath> paths;
+      .branches = {{.from_bb = {{.function_index = 0, .flat_bb_index = 0}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 1}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 1}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 1}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 3}}}}};
+  std::vector<FlatBbHandleBranchPath> path1s(10, path1);
+  std::vector<FlatBbHandleBranchPath> path2s(10, path2);
+  std::vector<FlatBbHandleBranchPath> paths;
   absl::c_copy(path1s, std::back_inserter(paths));
   absl::c_copy(path2s, std::back_inserter(paths));
 
@@ -631,23 +635,23 @@ TEST(ProgramCfgPathAnalyzer, AnalyzesPathEndingWithIndirectBranch) {
                       {2, 4, 5, CFGEdgeKind::kBranchOrFallthough},
                       {4, 5, 5, CFGEdgeKind::kBranchOrFallthough}}}}});
 
-  BbHandleBranchPath path1 = {
+  FlatBbHandleBranchPath path1 = {
       .pid = 2080799,
-      .branches = {{.from_bb = {{.function_index = 0, .bb_index = 0}},
-                    .to_bb = {{.function_index = 0, .bb_index = 2}}},
-                   {.from_bb = {{.function_index = 0, .bb_index = 2}},
-                    .to_bb = {{.function_index = 0, .bb_index = 4}}},
-                   {.from_bb = {{.function_index = 0, .bb_index = 5}}}}};
+      .branches = {{.from_bb = {{.function_index = 0, .flat_bb_index = 0}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 2}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 4}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 5}}}}};
 
-  BbHandleBranchPath path2 = {
+  FlatBbHandleBranchPath path2 = {
       .pid = 2080799,
-      .branches = {{.to_bb = {{.function_index = 0, .bb_index = 0}}},
-                   {.from_bb = {{.function_index = 0, .bb_index = 2}},
-                    .to_bb = {{.function_index = 0, .bb_index = 3}}}}};
+      .branches = {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 3}}}}};
 
-  std::vector<BbHandleBranchPath> path1s(5, path1);
-  std::vector<BbHandleBranchPath> path2s(10, path2);
-  std::vector<BbHandleBranchPath> paths;
+  std::vector<FlatBbHandleBranchPath> path1s(5, path1);
+  std::vector<FlatBbHandleBranchPath> path2s(10, path2);
+  std::vector<FlatBbHandleBranchPath> paths;
   absl::c_copy(path1s, std::back_inserter(paths));
   absl::c_copy(path2s, std::back_inserter(paths));
 
@@ -713,22 +717,22 @@ TEST_P(TreePathLengthTest, LimitsPathLength) {
                       {4, 5, 5, CFGEdgeKind::kBranchOrFallthough},
                       {5, 6, 5, CFGEdgeKind::kBranchOrFallthough}}}}});
 
-  BbHandleBranchPath path1 = {
+  FlatBbHandleBranchPath path1 = {
       .pid = 2080799,
-      .branches = {{.from_bb = {{.function_index = 0, .bb_index = 0}},
-                    .to_bb = {{.function_index = 0, .bb_index = 2}}},
-                   {.from_bb = {{.function_index = 0, .bb_index = 2}},
-                    .to_bb = {{.function_index = 0, .bb_index = 4}}},
-                   {.from_bb = {{.function_index = 0, .bb_index = 6}}}}};
+      .branches = {{.from_bb = {{.function_index = 0, .flat_bb_index = 0}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 2}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 4}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 6}}}}};
 
-  BbHandleBranchPath path2 = {
+  FlatBbHandleBranchPath path2 = {
       .pid = 2080799,
-      .branches = {{.to_bb = {{.function_index = 0, .bb_index = 0}}},
-                   {.from_bb = {{.function_index = 0, .bb_index = 3}}}}};
+      .branches = {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 3}}}}};
 
-  std::vector<BbHandleBranchPath> path1s(5, path1);
-  std::vector<BbHandleBranchPath> path2s(10, path2);
-  std::vector<BbHandleBranchPath> paths;
+  std::vector<FlatBbHandleBranchPath> path1s(5, path1);
+  std::vector<FlatBbHandleBranchPath> path2s(10, path2);
+  std::vector<FlatBbHandleBranchPath> paths;
   absl::c_copy(path1s, std::back_inserter(paths));
   absl::c_copy(path2s, std::back_inserter(paths));
 

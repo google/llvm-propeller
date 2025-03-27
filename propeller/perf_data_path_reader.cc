@@ -27,12 +27,12 @@
 namespace propeller {
 
 void PerfDataPathReader::ReadPathsAndApplyCallBack(
-    absl::FunctionRef<void(absl::Span<const BbHandleBranchPath>)>
+    absl::FunctionRef<void(absl::Span<const FlatBbHandleBranchPath>)>
         handle_paths_callback) {
-  std::vector<BbHandleBranchPath> result;
+  std::vector<FlatBbHandleBranchPath> result;
   perf_data_reader_->ReadWithSampleCallBack(
       [&](const quipper::PerfDataProto_SampleEvent &event) {
-        std::vector<BbHandleBranchPath> paths;
+        std::vector<FlatBbHandleBranchPath> paths;
         BinaryAddressBranchPath lbr_path(
             {.pid = event.pid(),
              .sample_time = absl::FromUnixNanos(event.sample_time_ns())});

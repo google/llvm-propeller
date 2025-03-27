@@ -141,15 +141,15 @@ TEST(BinaryAddressMapper, ReadsMfsBbAddrMap) {
       Contains(Pair(
           "compute",
           BbAddrMapIs(
-              0x1770,
+              0x1790,
               ElementsAre(
-                  BbRangeIs(0x1770, ElementsAre(BbEntryIs(0, 0x0, 0x1D, _),
-                                                BbEntryIs(3, 0x20, 0x3F, _))),
-                  BbRangeIs(0x18a8,
+                  BbRangeIs(0x1790, ElementsAre(BbEntryIs(0, 0x0, 0x1D, _),
+                                                BbEntryIs(3, 0x20, 0x3B, _))),
+                  BbRangeIs(0x18c8,
                             ElementsAre(BbEntryIs(1, 0x0, 0xE, _),
                                         BbEntryIs(5, 0xE, 0x7, _),
                                         BbEntryIs(2, 0x15, 0x9, _),
-                                        BbEntryIs(4, 0x1E, 0x37, _))))))));
+                                        BbEntryIs(4, 0x1E, 0x33, _))))))));
 }
 
 // Tests computing the flat bb index in the entire function from a bb handle and
@@ -170,39 +170,39 @@ TEST(BinaryAddressMapper, HandlesFlatBbIndex) {
                                              BbRangeIs(_, SizeIs(4)))),
                   _));
   EXPECT_THAT(
-      binary_address_mapper->getBbHandle(/*function_index=*/2,
-                                         /*flat_bb_index=*/1),
+      binary_address_mapper->GetBbHandle(
+          {.function_index = 2, .flat_bb_index = 1}),
       Optional(BbHandle{.function_index = 2, .range_index = 0, .bb_index = 1}));
   EXPECT_THAT(
-      binary_address_mapper->getBbHandle(/*function_index=*/2,
-                                         /*flat_bb_index=*/2),
+      binary_address_mapper->GetBbHandle(
+          {.function_index = 2, .flat_bb_index = 2}),
       Optional(BbHandle{.function_index = 2, .range_index = 1, .bb_index = 0}));
-  EXPECT_THAT(binary_address_mapper->getBbHandle(/*function_index=*/2,
-                                                 /*flat_bb_index=*/6),
+  EXPECT_THAT(binary_address_mapper->GetBbHandle(
+                  {.function_index = 2, .flat_bb_index = 6}),
               Eq(std::nullopt));
   EXPECT_THAT(
-      binary_address_mapper->getBbHandle(/*function_index=*/1,
-                                         /*flat_bb_index=*/2),
+      binary_address_mapper->GetBbHandle(
+          {.function_index = 1, .flat_bb_index = 2}),
       Optional(BbHandle{.function_index = 1, .range_index = 0, .bb_index = 2}));
-  EXPECT_THAT(binary_address_mapper->getBbHandle(/*function_index=*/1,
-                                                 /*flat_bb_index=*/3),
+  EXPECT_THAT(binary_address_mapper->GetBbHandle(
+                  {.function_index = 1, .flat_bb_index = 3}),
               Eq(std::nullopt));
-  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
-                BbHandle{.function_index = 2, .range_index = 0, .bb_index = 1}),
-            1);
-  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
-                BbHandle{.function_index = 2, .range_index = 1, .bb_index = 0}),
-            2);
-  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+  EXPECT_THAT(binary_address_mapper->GetFlatBbHandle(BbHandle{
+                  .function_index = 2, .range_index = 0, .bb_index = 1}),
+              Optional(FlatBbHandle{.function_index = 2, .flat_bb_index = 1}));
+  EXPECT_THAT(binary_address_mapper->GetFlatBbHandle(BbHandle{
+                  .function_index = 2, .range_index = 1, .bb_index = 0}),
+              Optional(FlatBbHandle{.function_index = 2, .flat_bb_index = 2}));
+  EXPECT_EQ(binary_address_mapper->GetFlatBbHandle(
                 BbHandle{.function_index = 2, .range_index = 1, .bb_index = 4}),
             std::nullopt);
-  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
-                BbHandle{.function_index = 1, .range_index = 0, .bb_index = 2}),
-            2);
-  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+  EXPECT_THAT(binary_address_mapper->GetFlatBbHandle(BbHandle{
+                  .function_index = 1, .range_index = 0, .bb_index = 2}),
+              Optional(FlatBbHandle{.function_index = 1, .flat_bb_index = 2}));
+  EXPECT_EQ(binary_address_mapper->GetFlatBbHandle(
                 BbHandle{.function_index = 1, .range_index = 0, .bb_index = 3}),
             std::nullopt);
-  EXPECT_EQ(binary_address_mapper->GetFlatBbIndex(
+  EXPECT_EQ(binary_address_mapper->GetFlatBbHandle(
                 BbHandle{.function_index = 5, .range_index = 0, .bb_index = 0}),
             std::nullopt);
 }
@@ -520,63 +520,66 @@ TEST(BinaryAddressMapper, ExtractsIntraFunctionPaths) {
   EXPECT_THAT(
       binary_address_mapper->ExtractIntraFunctionPaths(path),
       ElementsAre(
-          BbHandleBranchPath(
+          FlatBbHandleBranchPath(
               {.pid = 2080799,
                .sample_time = absl::FromUnixSeconds(123456),
-               .branches = {{.from_bb = {{.function_index = 2, .bb_index = 4}},
-                             .to_bb = {{.function_index = 2, .bb_index = 4}},
-                             .call_rets = {{.callee = 0,
-                                            .return_bb = {{.function_index = 0,
-                                                           .bb_index = 0}}}}},
-                            {.from_bb = {{.function_index = 2, .bb_index = 4}},
-                             .to_bb = {{.function_index = 2, .bb_index = 4}}},
-                            {.from_bb = {{.function_index = 2, .bb_index = 4}},
-                             .to_bb = {{.function_index = 2, .bb_index = 4}},
-                             .call_rets = {{.callee = 0,
-                                            .return_bb = {{.function_index = 0,
-                                                           .bb_index = 0}}}}},
-                            {.from_bb = {{.function_index = 2,
-                                          .bb_index = 5}}}},
-               .returns_to = {{.function_index = 3, .bb_index = 1}}}),
-          BbHandleBranchPath(
+               .branches =
+                   {{.from_bb = {{.function_index = 2, .flat_bb_index = 4}},
+                     .to_bb = {{.function_index = 2, .flat_bb_index = 4}},
+                     .call_rets = {{.callee = 0,
+                                    .return_bb = {{.function_index = 0,
+                                                   .flat_bb_index = 0}}}}},
+                    {.from_bb = {{.function_index = 2, .flat_bb_index = 4}},
+                     .to_bb = {{.function_index = 2, .flat_bb_index = 4}}},
+                    {.from_bb = {{.function_index = 2, .flat_bb_index = 4}},
+                     .to_bb = {{.function_index = 2, .flat_bb_index = 4}},
+                     .call_rets = {{.callee = 0,
+                                    .return_bb = {{.function_index = 0,
+                                                   .flat_bb_index = 0}}}}},
+                    {.from_bb = {{.function_index = 2, .flat_bb_index = 5}}}},
+               .returns_to = {{.function_index = 3, .flat_bb_index = 1}}}),
+          FlatBbHandleBranchPath(
               {.pid = 2080799,
                .sample_time = absl::FromUnixSeconds(123456),
-               .branches = {{.to_bb = {{.function_index = 0, .bb_index = 0}}},
-                            {.from_bb = {{.function_index = 0,
-                                          .bb_index = 0}}}},
-               .returns_to = {{.function_index = 2, .bb_index = 4}}}),
-          BbHandleBranchPath(
+               .branches =
+                   {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 0, .flat_bb_index = 0}}}},
+               .returns_to = {{.function_index = 2, .flat_bb_index = 4}}}),
+          FlatBbHandleBranchPath(
               {.pid = 2080799,
                .sample_time = absl::FromUnixSeconds(123456),
-               .branches = {{.to_bb = {{.function_index = 0, .bb_index = 0}}},
-                            {.from_bb = {{.function_index = 0,
-                                          .bb_index = 0}}}},
-               .returns_to = {{.function_index = 2, .bb_index = 4}}}),
-          BbHandleBranchPath(
+               .branches =
+                   {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 0, .flat_bb_index = 0}}}},
+               .returns_to = {{.function_index = 2, .flat_bb_index = 4}}}),
+          FlatBbHandleBranchPath(
               {.pid = 2080799,
                .sample_time = absl::FromUnixSeconds(123456),
-               .branches = {{.to_bb = {{.function_index = 3, .bb_index = 1}},
-                             .call_rets = {{.callee = std::nullopt,
-                                            .return_bb = {{.function_index = 2,
-                                                           .bb_index = 5}}}}},
-                            {.from_bb = {{.function_index = 3, .bb_index = 1}},
-                             .to_bb = {{.function_index = 3, .bb_index = 1}}},
-                            {.from_bb = {{.function_index = 3, .bb_index = 1}},
-                             .call_rets = {{.callee = 2,
-                                            .return_bb = std::nullopt}}}}}),
-          BbHandleBranchPath(
+               .branches =
+                   {{.to_bb = {{.function_index = 3, .flat_bb_index = 1}},
+                     .call_rets = {{.callee = std::nullopt,
+                                    .return_bb = {{.function_index = 2,
+                                                   .flat_bb_index = 5}}}}},
+                    {.from_bb = {{.function_index = 3, .flat_bb_index = 1}},
+                     .to_bb = {{.function_index = 3, .flat_bb_index = 1}}},
+                    {.from_bb = {{.function_index = 3, .flat_bb_index = 1}},
+                     .call_rets = {{.callee = 2,
+                                    .return_bb = std::nullopt}}}}}),
+          FlatBbHandleBranchPath(
               {.pid = 2080799,
                .sample_time = absl::FromUnixSeconds(123456),
-               .branches = {{.to_bb = {{.function_index = 2, .bb_index = 0}}},
-                            {.from_bb = {{.function_index = 2, .bb_index = 0}},
-                             .to_bb = {{.function_index = 2, .bb_index = 3}}},
-                            {.from_bb = {{.function_index = 2, .bb_index = 4}},
-                             .call_rets = {{.callee = 0,
-                                            .return_bb = std::nullopt}}}}}),
-          BbHandleBranchPath({.pid = 2080799,
-                              .sample_time = absl::FromUnixSeconds(123456),
-                              .branches = {{.to_bb = {{.function_index = 0,
-                                                       .bb_index = 0}}}}})));
+               .branches =
+                   {{.to_bb = {{.function_index = 2, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 2, .flat_bb_index = 0}},
+                     .to_bb = {{.function_index = 2, .flat_bb_index = 3}}},
+                    {.from_bb = {{.function_index = 2, .flat_bb_index = 4}},
+                     .call_rets = {{.callee = 0,
+                                    .return_bb = std::nullopt}}}}}),
+          FlatBbHandleBranchPath(
+              {.pid = 2080799,
+               .sample_time = absl::FromUnixSeconds(123456),
+               .branches = {
+                   {.to_bb = {{.function_index = 0, .flat_bb_index = 0}}}}})));
 }
 
 TEST(BinaryAddressMapper, ExtractsPathsWithReturnsFromUnknown) {
@@ -594,10 +597,10 @@ TEST(BinaryAddressMapper, ExtractsPathsWithReturnsFromUnknown) {
 
   EXPECT_THAT(
       binary_address_mapper->ExtractIntraFunctionPaths(path),
-      ElementsAre(BbHandleBranchPath(
+      ElementsAre(FlatBbHandleBranchPath(
           {.pid = 123456,
-           .branches = {{.from_bb = {{.function_index = 2, .bb_index = 4}},
-                         .to_bb = {{.function_index = 2, .bb_index = 4}},
+           .branches = {{.from_bb = {{.function_index = 2, .flat_bb_index = 4}},
+                         .to_bb = {{.function_index = 2, .flat_bb_index = 4}},
                          .call_rets = {{}}}}})));
 }
 
@@ -617,19 +620,20 @@ TEST(BinaryAddressMapper, ExtractsPathsWithReturnsToBasicBlockAddress) {
   EXPECT_THAT(
       binary_address_mapper->ExtractIntraFunctionPaths(path),
       ElementsAre(
-          BbHandleBranchPath(
+          FlatBbHandleBranchPath(
               {.pid = 123456,
                .branches = {{.from_bb = {{.function_index = 2,
-                                          .bb_index = 5}}}},
-               .returns_to = {{.function_index = 3, .bb_index = 1}}}),
-          BbHandleBranchPath(
+                                          .flat_bb_index = 5}}}},
+               .returns_to = {{.function_index = 3, .flat_bb_index = 1}}}),
+          FlatBbHandleBranchPath(
               {.pid = 123456,
                .branches = {
-                   {.from_bb = {{.function_index = 3, .bb_index = 1}},
-                    .to_bb = {{.function_index = 3, .bb_index = 2}},
+                   {.from_bb = {{.function_index = 3, .flat_bb_index = 1}},
+                    .to_bb = {{.function_index = 3, .flat_bb_index = 2}},
                     .call_rets = {{.return_bb = {{.function_index = 2,
-                                                  .bb_index = 5}}}}},
-                   {.from_bb = {{.function_index = 3, .bb_index = 2}}}}})));
+                                                  .flat_bb_index = 5}}}}},
+                   {.from_bb = {
+                        {.function_index = 3, .flat_bb_index = 2}}}}})));
 }
 
 TEST(BinaryAddressMapper, ExtractPathsSeparatesPathsWithCorruptBranches) {
@@ -648,14 +652,15 @@ TEST(BinaryAddressMapper, ExtractPathsSeparatesPathsWithCorruptBranches) {
   EXPECT_THAT(
       binary_address_mapper->ExtractIntraFunctionPaths(path),
       ElementsAre(
-          BbHandleBranchPath({.pid = 123456,
-                              .branches = {{.from_bb = {{.function_index = 2,
-                                                         .bb_index = 4}}}}}),
-          BbHandleBranchPath(
+          FlatBbHandleBranchPath(
+              {.pid = 123456,
+               .branches = {{.from_bb = {{.function_index = 2,
+                                          .flat_bb_index = 4}}}}}),
+          FlatBbHandleBranchPath(
               {.pid = 123456,
                .branches = {
-                   {.from_bb = {{.function_index = 2, .bb_index = 4}},
-                    .to_bb = {{.function_index = 2, .bb_index = 4}}}}})));
+                   {.from_bb = {{.function_index = 2, .flat_bb_index = 4}},
+                    .to_bb = {{.function_index = 2, .flat_bb_index = 4}}}}})));
 }
 
 TEST(BinaryAddressMapper, ExtractPathsCoalescesCallees) {
@@ -679,33 +684,33 @@ TEST(BinaryAddressMapper, ExtractPathsCoalescesCallees) {
   EXPECT_THAT(
       binary_address_mapper->ExtractIntraFunctionPaths(path),
       ElementsAre(
-          BbHandleBranchPath(
+          FlatBbHandleBranchPath(
               {.pid = 7654321,
-               .branches = {{.from_bb =
-                                 {
-                                     {.function_index = 2, .bb_index = 0},
-                                 },
-                             .to_bb = {{.function_index = 2, .bb_index = 0}},
-                             .call_rets = {{},
-                                           {.callee = 0,
-                                            .return_bb = {{.function_index = 0,
-                                                           .bb_index = 0}}},
-                                           {.callee = 1,
-                                            .return_bb = {{.function_index = 1,
-                                                           .bb_index =
-                                                               0}}}}}}}),
-          BbHandleBranchPath(
+               .branches =
+                   {{.from_bb =
+                         {
+                             {.function_index = 2, .flat_bb_index = 0},
+                         },
+                     .to_bb = {{.function_index = 2, .flat_bb_index = 0}},
+                     .call_rets = {{},
+                                   {.callee = 0,
+                                    .return_bb = {{.function_index = 0,
+                                                   .flat_bb_index = 0}}},
+                                   {.callee = 1,
+                                    .return_bb = {{.function_index = 1,
+                                                   .flat_bb_index = 0}}}}}}}),
+          FlatBbHandleBranchPath(
               {.pid = 7654321,
-               .branches = {{.to_bb = {{.function_index = 0, .bb_index = 0}}},
-                            {.from_bb = {{.function_index = 0,
-                                          .bb_index = 0}}}},
-               .returns_to = {{.function_index = 2, .bb_index = 0}}}),
-          BbHandleBranchPath(
+               .branches =
+                   {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 0, .flat_bb_index = 0}}}},
+               .returns_to = {{.function_index = 2, .flat_bb_index = 0}}}),
+          FlatBbHandleBranchPath(
               {.pid = 7654321,
-               .branches = {{.to_bb = {{.function_index = 1, .bb_index = 0}}},
-                            {.from_bb = {{.function_index = 1,
-                                          .bb_index = 0}}}},
-               .returns_to = {{.function_index = 2, .bb_index = 0}}})));
+               .branches =
+                   {{.to_bb = {{.function_index = 1, .flat_bb_index = 0}}},
+                    {.from_bb = {{.function_index = 1, .flat_bb_index = 0}}}},
+               .returns_to = {{.function_index = 2, .flat_bb_index = 0}}})));
 }
 }  // namespace
 }  // namespace propeller

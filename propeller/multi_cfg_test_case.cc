@@ -46,8 +46,8 @@ absl::flat_hash_map<int, FunctionPathProfileArg> GetMapByIndex(
 }  // namespace
 
 ProgramPathProfileArg GetDefaultPathProfileArg() {
-  BbHandle bb_7_1 = {.function_index = 7, .bb_index = 1};
-  BbHandle bb_10_0 = {.function_index = 10, .bb_index = 0};
+  FlatBbHandle bb_7_1 = {.function_index = 7, .flat_bb_index = 1};
+  FlatBbHandle bb_10_0 = {.function_index = 10, .flat_bb_index = 0};
   auto children_of_3_args = GetMapByIndex(
       {{.node_bb_index = 4,
         .path_pred_info =
@@ -66,24 +66,26 @@ ProgramPathProfileArg GetDefaultPathProfileArg() {
               .path_pred_info =
                   {{1,
                     {.freq = 170,
-                     .return_to_freqs = {{BbHandle{.function_index = 9,
-                                                   .bb_index = 1},
+                     .return_to_freqs = {{FlatBbHandle{.function_index = 9,
+                                                       .flat_bb_index = 1},
                                           170}}}},
                    {2,
                     {.freq = 5,
-                     .return_to_freqs = {{BbHandle{.function_index = 9,
-                                                   .bb_index = 1},
+                     .return_to_freqs = {{FlatBbHandle{.function_index = 9,
+                                                       .flat_bb_index = 1},
                                           5}}}}}}})},
        {.node_bb_index = 5,
         .path_pred_info = {
             {1,
              {.freq = 13,
-              .return_to_freqs = {{BbHandle{.function_index = 9, .bb_index = 1},
+              .return_to_freqs = {{FlatBbHandle{.function_index = 9,
+                                                .flat_bb_index = 1},
                                    13}}}},
             {2,
              {.freq = 649,
               .return_to_freqs = {
-                  {BbHandle{.function_index = 9, .bb_index = 1}, 649}}}}}}});
+                  {FlatBbHandle{.function_index = 9, .flat_bb_index = 1},
+                   649}}}}}}});
 
   auto children_of_4_args = GetMapByIndex(
       {{.node_bb_index = 5,

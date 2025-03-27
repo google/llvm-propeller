@@ -248,13 +248,13 @@ class IntraFunctionPathsExtractor {
 
   // Merges adjacent callsite branches by merging all of their calls into the
   // first one, while keeping the order.
-  void MergeCallsites(std::vector<BbHandleBranchPath> &paths) {
+  void MergeCallsites(std::vector<FlatBbHandleBranchPath> &paths) {
     for (auto &path : paths) {
-      BbHandleBranch *prev_branch = &*path.branches.begin();
+      FlatBbHandleBranch *prev_branch = &*path.branches.begin();
       path.branches.erase(
           std::remove_if(
               path.branches.begin() + 1, path.branches.end(),
-              [&](BbHandleBranch &branch) {
+              [&](FlatBbHandleBranch &branch) {
                 if (prev_branch->is_callsite() && branch.is_callsite() &&
                     prev_branch->from_bb == branch.from_bb) {
                   CHECK(prev_branch->from_bb == prev_branch->to_bb)
@@ -273,7 +273,7 @@ class IntraFunctionPathsExtractor {
   }
 
   // Extracts and returns the intra-function paths in `address_path`.
-  std::vector<BbHandleBranchPath> Extract(
+  std::vector<FlatBbHandleBranchPath> Extract(
       const BinaryAddressBranchPath &address_path) && {
     pid_ = address_path.pid;
     sample_time_ = address_path.sample_time;
@@ -293,15 +293,19 @@ class IntraFunctionPathsExtractor {
       std::optional<BbHandle> to_bb_handle = GetBbHandleByIndex(
           address_mapper_->FindBbHandleIndexUsingBinaryAddress(
               branch.to, BranchDirection::kTo));
+      std::optional<FlatBbHandle> from_flat_bb_handle =
+          address_mapper_->GetFlatBbHandle(from_bb_handle);
+      std::optional<FlatBbHandle> to_flat_bb_handle =
+          address_mapper_->GetFlatBbHandle(to_bb_handle);
 
       if (from_bb_handle.has_value()) {
         // Augment the current path if the current path is from the same
         // function and ends at a known address. Otherwise switch to a new path.
         if (from_bb_handle->function_index == current_function_index_ &&
             GetCurrentLastBranch().to_bb.has_value()) {
-          AugmentCurrentPath({.from_bb = from_bb_handle});
+          AugmentCurrentPath({.from_bb = from_flat_bb_handle});
         } else {
-          AddNewPath({.from_bb = from_bb_handle});
+          AddNewPath({.from_bb = from_flat_bb_handle});
         }
       }
       if (!to_bb_handle.has_value()) continue;
@@ -317,13 +321,13 @@ class IntraFunctionPathsExtractor {
         LOG(WARNING) << "Inter-function edge from: " << *from_bb_handle
                      << " to: " << *to_bb_handle
                      << "is not a return or a call.";
-        AddNewPath({.to_bb = to_bb_handle});
+        AddNewPath({.to_bb = to_flat_bb_handle});
         continue;
       }
       // Not a call or a return. It must be a normal branch within the same
       // function.
       CHECK(from_bb_handle.has_value());
-      HandleRegularBranch(*from_bb_handle, *to_bb_handle);
+      HandleRegularBranch(*from_flat_bb_handle, *to_flat_bb_handle);
     }
     MergeCallsites(paths_);
     return std::move(paths_);
@@ -334,7 +338,8 @@ class IntraFunctionPathsExtractor {
   // `to_bb_handle`, which is intra-function and not call or return. Assumes and
   // verifies that `GetCurrentLastBranch()` already has its source assigned as
   // `from_bb_handle` and then assigns its sink to `to_bb_handle`.
-  void HandleRegularBranch(BbHandle from_bb_handle, BbHandle to_bb_handle) {
+  void HandleRegularBranch(FlatBbHandle from_bb_handle,
+                           FlatBbHandle to_bb_handle) {
     CHECK_EQ(from_bb_handle.function_index, to_bb_handle.function_index)
         << " from: " << from_bb_handle << " to: " << to_bb_handle;
     auto &last_branch = GetCurrentLastBranch();
@@ -348,6 +353,8 @@ class IntraFunctionPathsExtractor {
   // `to_bb_handle`.
   void HandleCall(std::optional<BbHandle> from_bb_handle,
                   BbHandle to_bb_handle) {
+    std::optional<FlatBbHandle> to_flat_bb_handle =
+        address_mapper_->GetFlatBbHandle(to_bb_handle);
     if (from_bb_handle.has_value()) {
       // Pop the current path off the call stack if the from bb has a tail call.
       // Note that this may incorrectly pop off the call stack for a regular
@@ -358,7 +365,7 @@ class IntraFunctionPathsExtractor {
       GetCurrentLastBranch().call_rets.push_back(
           {.callee = to_bb_handle.function_index});
     }
-    AddNewPath({.to_bb = to_bb_handle});
+    AddNewPath({.to_bb = to_flat_bb_handle});
   }
 
   // Handles a return from `from_bb_handle` to `to_bb_handle` which returns to
@@ -367,35 +374,44 @@ class IntraFunctionPathsExtractor {
   // this return. Starts a new path if the caller path was not found.
   void HandleReturn(std::optional<BbHandle> from_bb_handle,
                     BbHandle to_bb_handle, uint64_t return_address) {
+    std::optional<FlatBbHandle> to_flat_bb_handle =
+        address_mapper_->GetFlatBbHandle(to_bb_handle);
+    std::optional<FlatBbHandle> from_flat_bb_handle =
+        address_mapper_->GetFlatBbHandle(from_bb_handle);
     // If this is returning to the beginning of a basic block, the call
     // must have been the last instruction of the previous basic block and
     // we actually return to the end of that block.
-    BbHandle return_to_bb =
-        address_mapper_->GetAddress(to_bb_handle) == return_address
-            ? BbHandle{.function_index = to_bb_handle.function_index,
-                       .range_index = to_bb_handle.range_index,
-                       .bb_index = to_bb_handle.bb_index - 1}
-            : to_bb_handle;
+    BbHandle return_to_bb = to_bb_handle;
+    if (address_mapper_->GetAddress(to_bb_handle) == return_address &&
+        to_bb_handle.bb_index != 0) {
+      BbHandle prev_bb_handle = {.function_index = to_bb_handle.function_index,
+                                 .range_index = to_bb_handle.range_index,
+                                 .bb_index = to_bb_handle.bb_index - 1};
+      if (address_mapper_->GetBBEntry(prev_bb_handle).canFallThrough()) {
+        return_to_bb = prev_bb_handle;
+      }
+    }
+    std::optional<FlatBbHandle> return_to_flat_bb =
+        address_mapper_->GetFlatBbHandle(return_to_bb);
     // Set the returns_to block and pop off the call stack if the return is from
     // a known BB.
     if (from_bb_handle.has_value()) {
-      paths_[current_path_index_].returns_to = return_to_bb;
+      paths_[current_path_index_].returns_to = return_to_flat_bb;
       call_stack_[current_function_index_].pop();
     }
     // Find the path corresponding to the callsite.
     auto it = call_stack_.find(to_bb_handle.function_index);
     if (it == call_stack_.end() || it->second.empty()) {
       // The callsite path doesn't exist in this trace.
-
-      AddNewPath({.from_bb = to_bb_handle == return_to_bb
-                                 ? std::nullopt
-                                 : std::optional<BbHandle>(return_to_bb),
-                  .to_bb = to_bb_handle,
-                  .call_rets = {CallRetInfo{.return_bb = from_bb_handle}}});
+      AddNewPath(
+          {.from_bb =
+               to_bb_handle == return_to_bb ? std::nullopt : return_to_flat_bb,
+           .to_bb = to_flat_bb_handle,
+           .call_rets = {CallRetInfo{.return_bb = from_flat_bb_handle}}});
       return;
     }
     current_path_index_ = it->second.top();
-    BbHandleBranch &callsite_branch = GetCurrentLastBranch();
+    FlatBbHandleBranch &callsite_branch = GetCurrentLastBranch();
 
     if (callsite_branch.to_bb.has_value()) {
       LOG_EVERY_N(INFO, 100)
@@ -403,59 +419,59 @@ class IntraFunctionPathsExtractor {
           << to_bb_handle << " branched-to from: " << from_bb_handle
           << " (path's last branch already has a sink): "
           << paths_[current_path_index_];
-      AddNewPath({.from_bb = to_bb_handle == return_to_bb
-                                 ? std::nullopt
-                                 : std::optional<BbHandle>(return_to_bb),
-                  .to_bb = to_bb_handle});
+      AddNewPath({.from_bb = to_bb_handle == return_to_bb ? std::nullopt
+                                                          : return_to_flat_bb,
+                  .to_bb = to_flat_bb_handle});
       return;
     }
     CHECK(callsite_branch.from_bb.has_value());
-    BbHandle &callsite_bb = *callsite_branch.from_bb;
-    CHECK_EQ(callsite_bb.function_index, to_bb_handle.function_index);
+    std::optional<BbHandle> callsite_bb =
+        address_mapper_->GetBbHandle(*callsite_branch.from_bb);
+    CHECK(callsite_bb.has_value());
+    CHECK_EQ(callsite_bb->function_index, to_bb_handle.function_index);
     // Check that the returned-to block is the same as the callsite block or
     // immediately after. Start a new path if found otherwise.
-    if ((to_bb_handle.range_index != callsite_bb.range_index ||
-         to_bb_handle.bb_index != callsite_bb.bb_index) &&
+    if ((to_bb_handle.range_index != callsite_bb->range_index ||
+         to_bb_handle.bb_index != callsite_bb->bb_index) &&
         address_mapper_->GetAddress(to_bb_handle) !=
-            address_mapper_->GetEndAddress(callsite_bb)) {
+            address_mapper_->GetEndAddress(*callsite_bb)) {
       LOG_EVERY_N(INFO, 100)
           << "Found corrupt callsite path while assigning sink: "
           << to_bb_handle << " branched-to from: " << from_bb_handle
           << " (return address does not fall immediately after the call): "
           << paths_[current_path_index_];
-      AddNewPath({.from_bb = to_bb_handle == return_to_bb
-                                 ? std::nullopt
-                                 : std::optional<BbHandle>(return_to_bb),
-                  .to_bb = to_bb_handle});
+      AddNewPath({.from_bb = to_bb_handle == return_to_bb ? std::nullopt
+                                                          : return_to_flat_bb,
+                  .to_bb = to_flat_bb_handle});
       return;
     }
     // Insert a new `CallRetInfo` or assign `return_bb` of the last one.
     if (callsite_branch.call_rets.empty()) {
       callsite_branch.call_rets.push_back(
-          CallRetInfo{.return_bb = from_bb_handle});
+          CallRetInfo{.return_bb = from_flat_bb_handle});
     } else {
       if (callsite_branch.call_rets.back().return_bb.has_value()) {
         callsite_branch.call_rets.push_back(
-            CallRetInfo{.return_bb = from_bb_handle});
+            CallRetInfo{.return_bb = from_flat_bb_handle});
       } else {
-        callsite_branch.call_rets.back().return_bb = from_bb_handle;
+        callsite_branch.call_rets.back().return_bb = from_flat_bb_handle;
       }
     }
     // Assign the sink of the last branch. This can be a return back to the
     // same block or the next (when the call instruction is the last
     // instruction of the block).
-    callsite_branch.to_bb = to_bb_handle;
+    callsite_branch.to_bb = to_flat_bb_handle;
     current_function_index_ = to_bb_handle.function_index;
   }
 
   // Inserts `bb_branch` at the end of the current path.
-  void AugmentCurrentPath(const BbHandleBranch &bb_branch) {
+  void AugmentCurrentPath(const FlatBbHandleBranch &bb_branch) {
     paths_[current_path_index_].branches.push_back(bb_branch);
   }
 
   // Adds a new path with a single branch `bb_branch` and updates
   // `current_path_index_` and `call_stack_`.
-  void AddNewPath(const BbHandleBranch &bb_branch) {
+  void AddNewPath(const FlatBbHandleBranch &bb_branch) {
     current_function_index_ = bb_branch.from_bb.has_value()
                                   ? bb_branch.from_bb->function_index
                                   : bb_branch.to_bb->function_index;
@@ -465,7 +481,7 @@ class IntraFunctionPathsExtractor {
     call_stack_[current_function_index_].push(current_path_index_);
   }
 
-  BbHandleBranch &GetCurrentLastBranch() {
+  FlatBbHandleBranch &GetCurrentLastBranch() {
     CHECK_GE(current_path_index_, 0);
     CHECK(!paths_[current_path_index_].branches.empty());
     return paths_[current_path_index_].branches.back();
@@ -478,7 +494,7 @@ class IntraFunctionPathsExtractor {
   absl::Time sample_time_ = absl::InfinitePast();
   // Index of the current function in address_mapper_->bb_addr_map().
   int current_function_index_ = -1;
-  std::vector<BbHandleBranchPath> paths_;
+  std::vector<FlatBbHandleBranchPath> paths_;
   // Index of the current path in `paths_`.
   int current_path_index_ = -1;
   // Call stack map indexed by function index, mapping to path indices in
@@ -508,15 +524,16 @@ bool BinaryAddressMapper::CanFallThrough(const BbHandle &from,
   return true;
 }
 
-std::optional<BbHandle> BinaryAddressMapper::getBbHandle(
-    int function_index, int flat_bb_index) const {
-  if (function_index >= bb_addr_map_.size()) {
+std::optional<BbHandle> BinaryAddressMapper::GetBbHandle(
+    const FlatBbHandle &flat_bb_handle) const {
+  if (flat_bb_handle.function_index >= bb_addr_map_.size()) {
     return std::nullopt;
   }
-  const auto &bb_ranges = bb_addr_map_[function_index].getBBRanges();
-  BbHandle bb_handle{.function_index = function_index,
+  const auto &bb_ranges =
+      bb_addr_map_[flat_bb_handle.function_index].getBBRanges();
+  BbHandle bb_handle{.function_index = flat_bb_handle.function_index,
                      .range_index = 0,
-                     .bb_index = flat_bb_index};
+                     .bb_index = flat_bb_handle.flat_bb_index};
   while (bb_handle.bb_index >=
          bb_ranges[bb_handle.range_index].BBEntries.size()) {
     bb_handle.bb_index -= bb_ranges[bb_handle.range_index].BBEntries.size();
@@ -528,7 +545,7 @@ std::optional<BbHandle> BinaryAddressMapper::getBbHandle(
   return bb_handle;
 }
 
-std::optional<int> BinaryAddressMapper::GetFlatBbIndex(
+std::optional<FlatBbHandle> BinaryAddressMapper::GetFlatBbHandle(
     const BbHandle &bb_handle) const {
   if (bb_addr_map_.size() <= bb_handle.function_index) return std::nullopt;
   const auto &bb_ranges =
@@ -537,10 +554,13 @@ std::optional<int> BinaryAddressMapper::GetFlatBbIndex(
   if (bb_handle.bb_index >= bb_ranges[bb_handle.range_index].BBEntries.size()) {
     return std::nullopt;
   }
-  return absl::c_accumulate(
-      absl::MakeConstSpan(bb_ranges).subspan(0, bb_handle.range_index),
-      bb_handle.bb_index,
-      [](int sum, const auto &range) { return sum + range.BBEntries.size(); });
+  return FlatBbHandle{
+      .function_index = bb_handle.function_index,
+      .flat_bb_index = absl::c_accumulate(
+          absl::MakeConstSpan(bb_ranges).subspan(0, bb_handle.range_index),
+          bb_handle.bb_index, [](int sum, const auto &range) {
+            return sum + range.BBEntries.size();
+          })};
 }
 
 std::optional<int> BinaryAddressMapper::FindBbHandleIndexUsingBinaryAddress(
@@ -770,7 +790,8 @@ absl::btree_set<int> BinaryAddressMapperBuilder::SelectFunctions(
   return selected_functions;
 }
 
-std::vector<BbHandleBranchPath> BinaryAddressMapper::ExtractIntraFunctionPaths(
+std::vector<FlatBbHandleBranchPath>
+BinaryAddressMapper::ExtractIntraFunctionPaths(
     const BinaryAddressBranchPath &address_path) const {
   return IntraFunctionPathsExtractor(this).Extract(address_path);
 }

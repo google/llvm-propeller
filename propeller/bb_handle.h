@@ -21,11 +21,48 @@
 
 namespace propeller {
 
+// A struct representing a basic block entry in the flattened basic block list
+// of all ranges of a function.
+struct FlatBbHandle {
+  int function_index = -1;
+  // Index of the basic block in the flattened basic block list of all ranges.
+  int flat_bb_index = -1;
+
+  bool operator==(const FlatBbHandle &other) const {
+    return function_index == other.function_index &&
+           flat_bb_index == other.flat_bb_index;
+  }
+
+  bool operator!=(const FlatBbHandle &other) const { return !(*this == other); }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const FlatBbHandle &bb_handle) {
+    return H::combine(std::move(h), bb_handle.function_index,
+                      bb_handle.flat_bb_index);
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink &sink, const FlatBbHandle &bb_handle) {
+    absl::Format(&sink, "%d#%d", bb_handle.function_index,
+                 bb_handle.flat_bb_index);
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink &sink,
+                            const std::optional<FlatBbHandle> &bb_handle) {
+    if (bb_handle.has_value()) {
+      absl::Format(&sink, "%v", *bb_handle);
+    } else {
+      absl::Format(&sink, "%s", "unknown");
+    }
+  }
+};
+
 // A struct representing one basic block entry in the BB address map.
 struct BbHandle {
   // Indexes into BB address map for a basic block, which would access the BB
   // at `bb_addr_map[function_index].BBRanges[range_index].BBEntries[bb_index]`.
-  int function_index, range_index, bb_index;
+  int function_index = -1, range_index = 0, bb_index = -1;
 
   bool operator==(const BbHandle &other) const {
     return function_index == other.function_index &&
@@ -66,7 +103,7 @@ struct CallRetInfo {
   // Index of the callee function (or `std::nullopt` if unknown).
   std::optional<int> callee;
   // Return block (or `std::nullopt` if unknown).
-  std::optional<BbHandle> return_bb;
+  std::optional<FlatBbHandle> return_bb;
 
   template <typename H>
   friend H AbslHashValue(H h, const CallRetInfo &call_ret) {

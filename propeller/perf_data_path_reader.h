@@ -40,7 +40,7 @@ class PerfDataPathReader {
   // Reads intra-function paths from every LBR sample event and calls
   // `handle_paths_callback` on the set of paths captured from each sample.
   void ReadPathsAndApplyCallBack(
-      absl::FunctionRef<void(absl::Span<const BbHandleBranchPath>)>
+      absl::FunctionRef<void(absl::Span<const FlatBbHandleBranchPath>)>
           handle_paths_callback);
 
  private:
