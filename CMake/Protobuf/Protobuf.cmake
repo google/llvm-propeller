@@ -19,7 +19,7 @@
 cmake_minimum_required(VERSION 3.11)
 
 # LINT.IfChange(version)
-set(propeller_protobuf_version 27.3)
+set(propeller_protobuf_version 30.2)
 # LINT.ThenChange(../../MODULE.bazel:protobuf_version)
 
 # Declare and configure the external protobuf package.
