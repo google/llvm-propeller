@@ -90,9 +90,9 @@ namespace {
 // join blocks.
 class PathInfoHandler : public PathTraceHandler {
  public:
-  explicit PathInfoHandler(
-      absl::Nonnull<const PathProfileOptions *> path_profile_options,
-      absl::Nonnull<FunctionPathInfo *> function_path_info)
+  explicit PathInfoHandler(const PathProfileOptions *ABSL_NONNULL
+                               path_profile_options,
+                           FunctionPathInfo *ABSL_NONNULL function_path_info)
       : path_profile_options_(path_profile_options),
         function_path_info_(function_path_info) {}
 
