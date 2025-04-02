@@ -27,7 +27,7 @@ bazel_dep(
 )
 bazel_dep(
     name = "rules_license",
-    version = "0.0.8",
+    version = "1.0.0",
 )
 
 # TODO: b/319475842 - When we add documentation, set up tooling to automatically update this
