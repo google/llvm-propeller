@@ -91,8 +91,8 @@ namespace {
 class PathInfoHandler : public PathTraceHandler {
  public:
   explicit PathInfoHandler(
-      absl::Nonnull<const PathProfileOptions *> path_profile_options,
-      absl::Nonnull<FunctionPathInfo *> function_path_info)
+      const PathProfileOptions *absl_nonnull path_profile_options,
+      FunctionPathInfo *absl_nonnull function_path_info)
       : path_profile_options_(path_profile_options),
         function_path_info_(function_path_info) {}
 

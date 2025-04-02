@@ -136,7 +136,7 @@ class PathNode {
   // path tree.
   explicit PathNode(
       const PathNodeArg &arg,
-      ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nullable<const PathNode *> parent)
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const PathNode *absl_nullable parent)
       : node_bb_index_(arg.node_bb_index),
         path_pred_info_(std::move(arg.path_pred_info)),
         parent_(parent),
