@@ -379,7 +379,7 @@ std::unique_ptr<ControlFlowGraph> CloneCfg(const ControlFlowGraph &cfg);
 class CfgBuilder {
  public:
   explicit CfgBuilder(
-      ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nonnull<const ControlFlowGraph *> cfg)
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const ControlFlowGraph *ABSL_NONNULL cfg)
       : cfg_(cfg), clone_paths_(cfg->clone_paths()) {
     for (const auto &node : cfg_->nodes()) {
       nodes_.push_back(node->Clone(node->clone_number(), nodes_.size()));

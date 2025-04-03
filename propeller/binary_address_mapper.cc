@@ -68,7 +68,7 @@ struct BbRangeHandle {
 // range handles.
 std::vector<BbRangeHandle> GetBbRangeHandles(
     absl::Span<const BBAddrMap> bb_addr_map,
-    absl::Nullable<const absl::btree_set<int> *> selected_functions = nullptr) {
+    const absl::btree_set<int> *ABSL_NULLABLE selected_functions = nullptr) {
   std::vector<BbRangeHandle> bb_range_handles;
   auto add_bb_range_handles = [&](int function_index) {
     for (int j = 0; j != bb_addr_map[function_index].getBBRanges().size();
@@ -161,7 +161,7 @@ class BinaryAddressMapperBuilder {
                           llvm::SmallVector<llvm::object::ELFSymbolRef>>
           symtab,
       std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats &stats,
-      absl::Nonnull<const PropellerOptions *> options
+      const PropellerOptions *ABSL_NONNULL options
           ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
   BinaryAddressMapperBuilder(const BinaryAddressMapperBuilder &) = delete;
@@ -800,7 +800,7 @@ BinaryAddressMapperBuilder::BinaryAddressMapperBuilder(
     absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
         symtab,
     std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats &stats,
-    absl::Nonnull<const PropellerOptions *> options)
+    const PropellerOptions *ABSL_NONNULL options)
     : bb_addr_map_(std::move(bb_addr_map)),
       bb_range_handles_(GetBbRangeHandles(bb_addr_map_)),
       symtab_(std::move(symtab)),

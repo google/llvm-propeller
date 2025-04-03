@@ -105,7 +105,7 @@ absl::StatusOr<PropellerProfile> PropellerProfileComputer::ComputeProfile() && {
 absl::StatusOr<std::unique_ptr<PropellerProfileComputer>>
 PropellerProfileComputer::Create(
     const PropellerOptions &options,
-    ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nonnull<const BinaryContent *>
+    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent *ABSL_NONNULL
         binary_content) {
   if (ContainsNonLbrProfile(options))
     return absl::InvalidArgumentError("non-LBR profile type");
@@ -118,7 +118,7 @@ PropellerProfileComputer::Create(
 absl::StatusOr<std::unique_ptr<PropellerProfileComputer>>
 PropellerProfileComputer::Create(
     const PropellerOptions &options,
-    ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nonnull<const BinaryContent *>
+    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent *ABSL_NONNULL
         binary_content,
     std::unique_ptr<PerfDataProvider> perf_data_provider) {
   if (ContainsNonLbrProfile(options))
@@ -140,7 +140,7 @@ PropellerProfileComputer::Create(
 absl::StatusOr<std::unique_ptr<PropellerProfileComputer>>
 PropellerProfileComputer::Create(
     const PropellerOptions &options,
-    ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nonnull<const BinaryContent *>
+    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent *ABSL_NONNULL
         binary_content,
     std::unique_ptr<BranchAggregator> branch_aggregator,
     std::unique_ptr<PathProfileAggregator> path_profile_aggregator) {
