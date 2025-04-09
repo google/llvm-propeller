@@ -122,10 +122,10 @@ class PathTreeCloneEvaluator {
   // Does not take ownership of any of its arguments which should all point
   // to valid objects which will outlive the constructed object.
   PathTreeCloneEvaluator(
-      absl::Nonnull<const ControlFlowGraph *> cfg,
-      absl::Nonnull<const FunctionChainInfo *> optimal_chain_info,
-      absl::Nonnull<const PathProfileOptions *> path_profile_options,
-      absl::Nonnull<const PropellerCodeLayoutParameters *> code_layout_params)
+      const ControlFlowGraph *ABSL_NONNULL cfg,
+      const FunctionChainInfo *ABSL_NONNULL optimal_chain_info,
+      const PathProfileOptions *ABSL_NONNULL path_profile_options,
+      const PropellerCodeLayoutParameters *ABSL_NONNULL code_layout_params)
       : cfg_(*cfg),
         path_profile_options_(*path_profile_options),
         code_layout_params_(*code_layout_params),

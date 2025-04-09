@@ -39,7 +39,7 @@
 #include "llvm/TargetParser/Triple.h"
 
 namespace propeller {
-absl::StatusOr<absl::Nonnull<std::unique_ptr<MiniDisassembler>>>
+absl::StatusOr<ABSL_NONNULL std::unique_ptr<MiniDisassembler>>
 MiniDisassembler::Create(const llvm::object::ObjectFile *object_file) {
   auto disassembler =
       absl::WrapUnique<MiniDisassembler>(new MiniDisassembler(object_file));

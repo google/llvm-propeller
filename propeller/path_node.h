@@ -134,9 +134,9 @@ class PathNode {
   // This will recursively construct the child path nodes and places them in
   // `this->children_`. If `parent` is `nullptr`, this will be the root of the
   // path tree.
-  explicit PathNode(
-      const PathNodeArg &arg,
-      ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nullable<const PathNode *> parent)
+  explicit PathNode(const PathNodeArg &arg,
+                    ABSL_ATTRIBUTE_LIFETIME_BOUND const PathNode *ABSL_NULLABLE
+                        parent)
       : node_bb_index_(arg.node_bb_index),
         path_pred_info_(std::move(arg.path_pred_info)),
         parent_(parent),

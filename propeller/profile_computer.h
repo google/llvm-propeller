@@ -48,7 +48,7 @@ class PropellerProfileComputer {
   // input profiles are of type PERF_LBR or PROFILE_TYPE_UNSPECIFIED.
   static absl::StatusOr<std::unique_ptr<PropellerProfileComputer>> Create(
       const PropellerOptions &options,
-      ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nonnull<const BinaryContent *>
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent *ABSL_NONNULL
           binary_content);
 
   // Creates a PropellerProfileComputer from a set of options and a perf data
@@ -56,7 +56,7 @@ class PropellerProfileComputer {
   // PROFILE_TYPE_UNSPECIFIED.
   static absl::StatusOr<std::unique_ptr<PropellerProfileComputer>> Create(
       const PropellerOptions &options,
-      ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nonnull<const BinaryContent *>
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent *ABSL_NONNULL
           binary_content,
       std::unique_ptr<PerfDataProvider> perf_data_provider);
 
@@ -65,7 +65,7 @@ class PropellerProfileComputer {
   // in `options`. The profiles specified in `options` are disregarded.
   static absl::StatusOr<std::unique_ptr<PropellerProfileComputer>> Create(
       const PropellerOptions &options,
-      ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nonnull<const BinaryContent *>
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent *ABSL_NONNULL
           binary_content,
       std::unique_ptr<BranchAggregator> branch_aggregator,
       std::unique_ptr<PathProfileAggregator> path_profile_aggregator = nullptr);
@@ -89,7 +89,7 @@ class PropellerProfileComputer {
  private:
   PropellerProfileComputer(
       const PropellerOptions &options,
-      ABSL_ATTRIBUTE_LIFETIME_BOUND absl::Nonnull<const BinaryContent *>
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent *ABSL_NONNULL
           binary_content,
       std::unique_ptr<BranchAggregator> branch_aggregator,
       std::unique_ptr<PathProfileAggregator> path_profile_aggregator)
@@ -110,9 +110,8 @@ class PropellerProfileComputer {
 
   PropellerOptions options_;
   std::unique_ptr<BranchAggregator> branch_aggregator_;
-  absl::Nullable<std::unique_ptr<PathProfileAggregator>>
-      path_profile_aggregator_;
-  absl::Nonnull<const BinaryContent *> binary_content_;
+  ABSL_NULLABLE std::unique_ptr<PathProfileAggregator> path_profile_aggregator_;
+  const BinaryContent *ABSL_NONNULL binary_content_;
   PropellerStats stats_;
   std::unique_ptr<BinaryAddressMapper> binary_address_mapper_;
   std::unique_ptr<ProgramCfg> program_cfg_;
