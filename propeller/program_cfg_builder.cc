@@ -90,8 +90,16 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
     const BinaryAddressMapper::FunctionSymbolInfo symbol_info =
         binary_address_mapper_->symbol_info_map().at(func_index);
 
+    // From the POV of Propeller, we want to treat all .text.* sections as
+    // belonging to the same section, because Propeller can determine their
+    // section prefix (".hot", ".unlikely", etc.).
+    llvm::StringRef section_name =
+        (symbol_info.section_name == ".text" ||
+         symbol_info.section_name.starts_with(".text."))
+            ? symbol_info.section_name.substr(0, 5)
+            : symbol_info.section_name;
     auto cfg = std::make_unique<ControlFlowGraph>(
-        symbol_info.section_name, func_index, module_name, symbol_info.aliases,
+        section_name, func_index, module_name, symbol_info.aliases,
         CreateCfgNodes(func_index, func_bb_addr_map));
     // Setup mapping from Ids to nodes.
     for (const std::unique_ptr<CFGNode> &node : cfg->nodes())

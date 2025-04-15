@@ -128,7 +128,6 @@ GetSymbolInfoMap(
     absl::Span<const BBAddrMap> bb_addr_map) {
   absl::flat_hash_map<int, BinaryAddressMapper::FunctionSymbolInfo>
       symbol_info_map;
-  absl::flat_hash_set<StringRef> section_names;
   for (int function_index = 0; function_index != bb_addr_map.size();
        ++function_index) {
     auto iter = symtab.find(bb_addr_map[function_index].getFunctionAddress());
@@ -142,12 +141,8 @@ GetSymbolInfoMap(
     BinaryAddressMapper::FunctionSymbolInfo symbol_info;
     for (const llvm::object::ELFSymbolRef sr : iter->second)
       symbol_info.aliases.push_back(llvm::cantFail(sr.getName()));
-    StringRef section_name = llvm::cantFail(
+    symbol_info.section_name = llvm::cantFail(
         llvm::cantFail(iter->second.front().getSection())->getName());
-    symbol_info.section_name =
-        (section_name == ".text" || section_name.starts_with(".text."))
-            ? section_name.substr(0, 5)
-            : section_name;
     symbol_info_map.emplace(function_index, std::move(symbol_info));
   }
   return symbol_info_map;
@@ -710,7 +705,8 @@ void BinaryAddressMapperBuilder::FilterNonTextFunctions(
        func_it != selected_functions.end();) {
     int function_index = *func_it;
     const auto &symbol_info = symbol_info_map_.at(function_index);
-    if (symbol_info.section_name != ".text") {
+    if (!symbol_info.section_name.starts_with(".text.") &&
+        symbol_info.section_name != ".text") {
       LOG_EVERY_N(WARNING, 1000) << "Skipped symbol in non-'.text.*' section '"
                                  << symbol_info.section_name.str()
                                  << "': " << symbol_info.aliases.front().str();
