@@ -326,6 +326,22 @@ absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
                           : std::nullopt};
 }
 
+absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
+    const BinaryContent &binary_content) {
+  auto symtab = ReadSymbolTable(binary_content);
+  absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map;
+  for (const auto &[address, symbols] : symtab) {
+    FunctionSymbolInfo symbol_info;
+    for (const llvm::object::ELFSymbolRef sr : symbols) {
+      symbol_info.aliases.push_back(llvm::cantFail(sr.getName()));
+      symbol_info.section_name = llvm::cantFail(
+          llvm::cantFail(symbols.front().getSection())->getName());
+    }
+    symbol_info_map.emplace(address, std::move(symbol_info));
+  }
+  return symbol_info_map;
+}
+
 absl::StatusOr<absl::flat_hash_map<absl::string_view, absl::string_view>>
 ELFFileUtilBase::ParseModInfoSectionContent(absl::string_view section_content) {
   // .modinfo section is arranged as <key>=<value> pairs, with \0 as separators,

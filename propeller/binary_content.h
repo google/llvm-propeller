@@ -33,6 +33,15 @@
 #include "llvm/Object/ObjectFile.h"
 
 namespace propeller {
+// This struct stores the function name aliases and the output section name
+// associated with a function.
+struct FunctionSymbolInfo {
+  // All names associated with the function.
+  llvm::SmallVector<llvm::StringRef> aliases;
+  // Section name of the function in the binary. All .text and .text.*
+  // sections are represented by ".text".
+  llvm::StringRef section_name;
+};
 
 // A container for the `BbAddrMap` and `PGOAnalysisMap` data read from the
 // binary's SHT_LLVM_BB_ADDR_MAP section.
@@ -141,6 +150,10 @@ absl::StatusOr<int64_t> GetSymbolAddress(
 // Returns the binary's function symbols by reading from its symbol table.
 absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
 ReadSymbolTable(const BinaryContent &binary_content);
+
+// Returns a map from function addresses to their symbol info.
+absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
+    const BinaryContent &binary_content);
 
 // Returns the binary's `BbAddrMapData`s by calling LLVM-side decoding function
 // `ELFObjectFileBase::readBBAddrMap`. Returns error if the call fails or if the

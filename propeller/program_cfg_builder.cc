@@ -33,6 +33,7 @@
 #include "propeller/addr2cu.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_mapper.h"
+#include "propeller/binary_content.h"
 #include "propeller/branch_aggregation.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
@@ -87,7 +88,7 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
     // Skip functions which already have a CFG created for them.
     if (cfgs_.contains(func_index)) continue;
 
-    const BinaryAddressMapper::FunctionSymbolInfo symbol_info =
+    const FunctionSymbolInfo &symbol_info =
         binary_address_mapper_->symbol_info_map().at(func_index);
 
     // From the POV of Propeller, we want to treat all .text.* sections as

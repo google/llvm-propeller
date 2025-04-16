@@ -122,16 +122,6 @@ struct FlatBbHandleBranchPath {
 // Finds basic block entries from binary addresses.
 class BinaryAddressMapper {
  public:
-  // This struct stores the function name aliases and the output section name
-  // associated with a function.
-  struct FunctionSymbolInfo {
-    // All names associated with the function.
-    llvm::SmallVector<llvm::StringRef> aliases;
-    // Section name of the function in the binary. All .text and .text.*
-    // sections are represented by ".text".
-    llvm::StringRef section_name;
-  };
-
   BinaryAddressMapper(
       absl::btree_set<int> selected_functions,
       std::vector<llvm::object::BBAddrMap> bb_addr_map,
