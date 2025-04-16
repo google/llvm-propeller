@@ -514,6 +514,7 @@ cc_library(
         ":addr2cu",
         ":bb_handle",
         ":binary_address_mapper",
+        ":binary_content",
         ":branch_aggregation",
         ":cfg",
         ":cfg_edge",

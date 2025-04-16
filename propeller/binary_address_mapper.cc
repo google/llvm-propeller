@@ -121,40 +121,33 @@ std::vector<BbHandle> GetBbHandles(
 }
 
 // Returns a map from BB-address-map function indexes to their symbol info.
-absl::flat_hash_map<int, BinaryAddressMapper::FunctionSymbolInfo>
-GetSymbolInfoMap(
-    const absl::flat_hash_map<
-        uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>> &symtab,
+absl::flat_hash_map<int, FunctionSymbolInfo> GetSymbolInfoMapByFunctionIndex(
+    absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map,
     absl::Span<const BBAddrMap> bb_addr_map) {
-  absl::flat_hash_map<int, BinaryAddressMapper::FunctionSymbolInfo>
-      symbol_info_map;
+  absl::flat_hash_map<int, FunctionSymbolInfo>
+      symbol_info_map_by_function_index;
   for (int function_index = 0; function_index != bb_addr_map.size();
        ++function_index) {
-    auto iter = symtab.find(bb_addr_map[function_index].getFunctionAddress());
-    if (iter == symtab.end()) {
+    auto iter =
+        symbol_info_map.find(bb_addr_map[function_index].getFunctionAddress());
+    if (iter == symbol_info_map.end()) {
       LOG(WARNING) << "BB address map for function at "
                    << absl::StrCat(absl::Hex(
                           bb_addr_map[function_index].getFunctionAddress()))
                    << " has no associated symbol table entry!";
       continue;
     }
-    BinaryAddressMapper::FunctionSymbolInfo symbol_info;
-    for (const llvm::object::ELFSymbolRef sr : iter->second)
-      symbol_info.aliases.push_back(llvm::cantFail(sr.getName()));
-    symbol_info.section_name = llvm::cantFail(
-        llvm::cantFail(iter->second.front().getSection())->getName());
-    symbol_info_map.emplace(function_index, std::move(symbol_info));
+    symbol_info_map_by_function_index.emplace(function_index,
+                                              std::move(iter->second));
   }
-  return symbol_info_map;
+  return symbol_info_map_by_function_index;
 }
 
 // Builds `BinaryAddressMapper` for a binary and its profile.
 class BinaryAddressMapperBuilder {
  public:
   BinaryAddressMapperBuilder(
-      absl::flat_hash_map<uint64_t,
-                          llvm::SmallVector<llvm::object::ELFSymbolRef>>
-          symtab,
+      absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map,
       std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats &stats,
       const PropellerOptions *ABSL_NONNULL options
           ABSL_ATTRIBUTE_LIFETIME_BOUND);
@@ -210,14 +203,8 @@ class BinaryAddressMapperBuilder {
   // Handles for BB ranges in `bb_addr_map_`, sorted by their base address.
   std::vector<BbRangeHandle> bb_range_handles_;
 
-  // Non-zero sized function symbols from elf symbol table, indexed by
-  // symbol address. Multiple function symbols may exist on the same address.
-  absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
-      symtab_;
-
   // Map from every function index (in `bb_addr_map_`) to its symbol info.
-  absl::flat_hash_map<int, BinaryAddressMapper::FunctionSymbolInfo>
-      symbol_info_map_;
+  absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map_;
 
   PropellerStats *stats_;
   const PropellerOptions *options_;
@@ -793,14 +780,13 @@ BinaryAddressMapper::ExtractIntraFunctionPaths(
 }
 
 BinaryAddressMapperBuilder::BinaryAddressMapperBuilder(
-    absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
-        symtab,
+    absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map,
     std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats &stats,
     const PropellerOptions *ABSL_NONNULL options)
     : bb_addr_map_(std::move(bb_addr_map)),
       bb_range_handles_(GetBbRangeHandles(bb_addr_map_)),
-      symtab_(std::move(symtab)),
-      symbol_info_map_(GetSymbolInfoMap(symtab_, bb_addr_map_)),
+      symbol_info_map_(GetSymbolInfoMapByFunctionIndex(
+          std::move(symbol_info_map), bb_addr_map_)),
       stats_(&stats),
       options_(options) {
   stats_->bbaddrmap_stats.bbaddrmap_function_does_not_have_symtab_entry +=
@@ -825,7 +811,7 @@ absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
   BbAddrMapData bb_addr_map;
   ASSIGN_OR_RETURN(bb_addr_map, ReadBbAddrMap(binary_content));
 
-  return BinaryAddressMapperBuilder(ReadSymbolTable(binary_content),
+  return BinaryAddressMapperBuilder(GetSymbolInfoMap(binary_content),
                                     std::move(bb_addr_map.bb_addr_maps), stats,
                                     &options)
       .Build(hot_addresses);
