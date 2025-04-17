@@ -61,8 +61,7 @@ TEST(PerfDataPathReaderTest, ReadPaths) {
   ASSERT_THAT(buffer, IsOkAndHolds(Optional(_)));
   ASSERT_OK_AND_ASSIGN(
       PerfDataReader perf_data_reader,
-      BuildPerfDataReader(**std::move(buffer), binary_content.get(),
-                          /*match_mmap_name=*/""));
+      BuildPerfDataReader(**std::move(buffer), binary_content.get()));
   PropellerStats stats;
   PropellerOptions options;
   ASSERT_OK_AND_ASSIGN(
@@ -93,8 +92,7 @@ TEST(PerfDataPathReaderTest, ReadPathsGetsPathsWithHotJoinBbs) {
   ASSERT_THAT(buffer, IsOkAndHolds(Optional(_)));
   ASSERT_OK_AND_ASSIGN(
       PerfDataReader perf_data_reader,
-      BuildPerfDataReader(**std::move(buffer), binary_content.get(),
-                          /*match_mmap_name=*/""));
+      BuildPerfDataReader(**std::move(buffer), binary_content.get()));
 
   PropellerStats stats;
   PropellerOptions options;

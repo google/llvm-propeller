@@ -33,7 +33,7 @@ message InputProfile {
   ProfileType type = 2;
 }
 
-// Next Available: 16.
+// Next Available: 17.
 message PropellerOptions {
   // binary file name.
   string binary_name = 1;
@@ -49,6 +49,10 @@ message PropellerOptions {
   // profiled binary name; if not empty, use this as file name to match MMAP
   // events in perf.data file, can be "".
   string profiled_binary_name = 5;
+
+  // profiled binary build id; if not empty, use this as build id to match
+  // MMAP events in perf.data file, can be "".
+  string profiled_build_id = 16;
 
   // ignore the build id; if set, use binary_name or profiled_binary_name to
   // match MMAP events. Otherwise, use buildid (if exists) to match.

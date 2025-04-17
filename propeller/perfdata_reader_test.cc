@@ -37,6 +37,7 @@
 #include "propeller/branch_frequencies.h"
 #include "propeller/file_perf_data_provider.h"
 #include "propeller/lbr_aggregation.h"
+#include "propeller/mmap_match_criteria.h"
 #include "propeller/perf_data_provider.h"
 #include "propeller/status_testing_macros.h"
 
