@@ -62,6 +62,7 @@ exports_files([
     "sample_ld_directives.arm.golden.txt",
     "sample_ld_directives.golden.txt",
     "sample_pgo_analysis_map.bin",
+    "sample_pgo_analysis_map_O0.bin",  # sample_pgo_analysis_map_bin built with -O0.
     "sample_section.bin",
     "sample_section_cc_directives.golden.txt",
     "sample_section_ld_directives.golden.txt",
