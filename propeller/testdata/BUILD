@@ -376,7 +376,7 @@ genrule(
           "-e 'arm_spe_0/branch_filter=1,load_filter=0,store_filter=0,jitter=1,ts_enable=1/' " +
           "--all-user -c 10007 -N -- " +
           "sh -c 'cat sample.arm.scratch | xargs -n 1 -P3 ./sample.arm.bin.gen'",
-    exec_compatible_with = ["@platforms//cpu:aarch64"],
+    exec_compatible_with = ["@platforms//cpu:arm64"],
     tags = [
         "manual",
         "requires-arch:arm",
