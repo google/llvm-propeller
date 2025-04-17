@@ -256,6 +256,15 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "thunks",
+    srcs = ["thunks.c"],
+    deps = [
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
+    ],
+)
+
 # This rule is used to manually generate sample.bin and sample.perfdata.
 genrule(
     name = "sample_bin",
@@ -384,6 +393,36 @@ genrule(
     ],
     target_compatible_with = ["@platforms//cpu:aarch64"],
     tools = [":sample"],
+)
+
+# This rule can be used to manually generate thunks.bin.
+#
+# To build `thunks_bin`, you need to target Arm.
+genrule(
+    name = "thunks_bin",
+    srcs = [
+        "thunks.c",
+        "thunks.lds",
+    ],
+    outs = [
+        "thunks.bin.gen",
+        "thunks.perfdata.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-sections=labels " +
+          "-Wl,-z,keep-text-section-prefix -Wl,-T,$(location thunks.lds) $(location thunks.c) -o " +
+          "$(RULEDIR)/thunks.bin.gen ;" +
+          "cd $(RULEDIR) ; echo '1 2 3' > thunks.scratch ; " +
+          "perf5 record -o thunks.perfdata.gen " +
+          "-e 'arm_spe_0/branch_filter=1,load_filter=0,store_filter=0,jitter=1,ts_enable=1/' " +
+          "--all-user -c 10007 -N -- " +
+          "sh -c 'cat thunks.scratch | xargs -n 1 -P3 ./thunks.bin.gen'",
+    exec_compatible_with = ["@platforms//cpu:arm64"],
+    tags = [
+        "manual",
+        "requires-arch:arm",
+    ],
+    target_compatible_with = ["@platforms//cpu:aarch64"],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
 cc_binary(
