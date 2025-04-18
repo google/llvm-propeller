@@ -269,6 +269,7 @@ cc_library(
     deps = [
         ":addr2cu",
         ":status_macros",
+        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
@@ -280,6 +281,7 @@ cc_library(
         "@llvm-project//llvm:DebugInfoDWARF",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -1212,6 +1214,7 @@ cc_test(
         ":status_testing_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
