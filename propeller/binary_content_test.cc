@@ -21,6 +21,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
@@ -91,6 +92,15 @@ TEST(ReadBbAddrMapTest, ReadBbAddrMap) {
   ASSERT_OK(bb_addr_map_data);
   EXPECT_THAT(bb_addr_map_data->bb_addr_maps, SizeIs(4));
   EXPECT_THAT(bb_addr_map_data->pgo_analyses, Optional(SizeIs(4)));
+}
+
+TEST(ThunkSymbolsTest, X86NoThunks) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryContent> binary_content,
+      GetBinaryContent(absl::StrCat(::testing::SrcDir(),
+                                    "_main/propeller/testdata/"
+                                    "propeller_sample_1.bin")));
+  EXPECT_THAT(ReadThunkSymbols(*binary_content), SizeIs(0));
 }
 
 }  // namespace

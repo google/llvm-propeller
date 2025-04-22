@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -49,6 +50,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "propeller/addr2cu.h"
 #include "propeller/status_macros.h"
 
@@ -253,6 +255,26 @@ absl::Status ELFFileUtil<ELFT>::InitializeKernelModule(
     LOG(INFO) << "Found kernel module description: " << desc->second;
   return absl::OkStatus();
 }
+
+// Returns an AArch64 binary's thunk symbols by reading from its symbol table.
+// These are returned as a map from the thunk's address to the thunk symbol.
+absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadAArch64ThunkSymbols(
+    const BinaryContent &binary_content) {
+  absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> thunks;
+  for (const auto &[address, symbols] : ReadSymbolTable(binary_content)) {
+    for (const llvm::object::ELFSymbolRef &symbol : symbols) {
+      llvm::StringRef name = llvm::cantFail(symbol.getName());
+      if (!(name.starts_with("__AArch64ADRPThunk_") ||
+            name.starts_with("__AArch64AbsLongThunk_"))) {
+        continue;
+      }
+
+      thunks.insert({address, symbol});
+      break;
+    }
+  }
+  return thunks;
+}
 }  // namespace
 
 namespace propeller {
@@ -291,6 +313,13 @@ ReadSymbolTable(const BinaryContent &binary_content) {
     if (check_size_ok) addr_sym_list.push_back(sr);
   }
   return symtab;
+}
+
+absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
+    const BinaryContent &binary_content) {
+  if (binary_content.object_file->getArch() != llvm::Triple::aarch64) return {};
+
+  return ReadAArch64ThunkSymbols(binary_content);
 }
 
 absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
