@@ -299,7 +299,10 @@ cc_library(
     hdrs = [
         "cfg_id.h",
     ],
-    deps = ["@abseil-cpp//absl/strings:str_format"],
+    deps = [
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+    ],
 )
 
 cc_library(

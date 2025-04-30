@@ -114,11 +114,9 @@ class CFGNode final {
  private:
   friend class ControlFlowGraph;
 
-  // Returns the bb index as a string to be used in the dot format.
+  // Returns the profile bb id as a string to be used in the dot format.
   std::string GetDotFormatLabel() const {
-    std::string result = absl::StrCat(bb_id_);
-    if (clone_number()) absl::StrAppend(&result, ".", clone_number());
-    return result;
+    return full_intra_cfg_id().profile_bb_id();
   }
 
   void set_freq(int freq) { freq_ = freq; }

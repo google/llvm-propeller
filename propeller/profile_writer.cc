@@ -105,22 +105,28 @@ void DumpCfgs(const PropellerProfile &profile,
   }
 }
 
-// Dumps the intra-function edge profile of `cfg` into `out`.
-// For each CFGNode, it prints out a line in the format of
-// "#<bb>:<bb_freq> <succ_bb_1>:<edge_freq_1> <succ_bb_2>:<edge_freq_2> ..."
-// which starts first with the bb id and frequency of that node, followed by the
-// successors and their edge frequencies. Please note that the edge weights
-// may not precisely add up to the node frequency.
+// Dumps the intra-function edge profile of `cfg` into `out` in a single line
+// which starts with the "#cfg" marker.
+// For each CFGNode with non-zero frequency, it prints out the node and edge
+// frequencies in the following format:
+// "<bb>:<bb_freq>,<succ_bb_1>:<edge_freq_1>,<succ_bb_2>:<edge_freq_2>,..."
+// which starts first with the full bb id and frequency of that node, followed
+// by the successors and their edge frequencies. Please note that the edge
+// weights may not precisely add up to the node frequency.
 void DumpCfgProfile(const ControlFlowGraph &cfg, std::ofstream &out) {
+  out << "#cfg";
   cfg.ForEachNodeRef([&](const CFGNode &node) {
     int node_frequency = node.CalculateFrequency();
-    out << "#cfg-prof " << node.bb_id() << ":" << node_frequency;
+    if (node_frequency == 0) return;
+    out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
+        << node_frequency;
     node.ForEachOutEdgeRef([&](const CFGEdge &edge) {
       if (!edge.IsBranchOrFallthrough()) return;
-      out << " " << edge.sink()->bb_id() << ":" << edge.weight();
+      out << "," << edge.sink()->full_intra_cfg_id().profile_bb_id() << ":"
+          << edge.weight();
     });
-    out << "\n";
   });
+  out << "\n";
 }
 }  // namespace
 
@@ -222,9 +228,7 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
           const auto &full_bb_id = bb_ids_in_chain[bbi];
           cc_profile_os << (bbi != 0 ? " "
                                      : profile_encoding_.cluster_specifier)
-                        << full_bb_id.bb_id;
-          if (full_bb_id.intra_cfg_id.clone_number != 0)
-            cc_profile_os << "." << full_bb_id.intra_cfg_id.clone_number;
+                        << full_bb_id.profile_bb_id();
         }
         cc_profile_os << "\n";
       }

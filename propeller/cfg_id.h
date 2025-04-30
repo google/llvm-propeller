@@ -17,9 +17,11 @@
 
 #include <algorithm>
 #include <ostream>
+#include <string>
 #include <tuple>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 
 namespace propeller {
@@ -65,6 +67,15 @@ struct FullIntraCfgId {
   }
   bool operator!=(const FullIntraCfgId &other) const {
     return !(*this == other);
+  }
+  // Returns a string representation of the basic block id, including the clone
+  // number if not zero. This is used to identify a basic block in the propeller
+  // profile.
+  std::string profile_bb_id() const {
+    std::string result = absl::StrCat(bb_id);
+    if (intra_cfg_id.clone_number != 0)
+      absl::StrAppend(&result, ".", intra_cfg_id.clone_number);
+    return result;
   }
 };
 
