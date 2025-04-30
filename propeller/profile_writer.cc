@@ -105,7 +105,7 @@ void DumpCfgs(const PropellerProfile &profile,
   }
 }
 
-// Dumps the intra-function edge profile of `cfg` into `out` in a single line
+// Writes the intra-function edge profile of `cfg` into `out` in a single line
 // which starts with the "#cfg" marker.
 // For each CFGNode with non-zero frequency, it prints out the node and edge
 // frequencies in the following format:
@@ -113,14 +113,14 @@ void DumpCfgs(const PropellerProfile &profile,
 // which starts first with the full bb id and frequency of that node, followed
 // by the successors and their edge frequencies. Please note that the edge
 // weights may not precisely add up to the node frequency.
-void DumpCfgProfile(const ControlFlowGraph &cfg, std::ofstream &out) {
+void WriteCfgProfile(const ControlFlowGraph &cfg, std::ofstream &out) {
   out << "#cfg";
   cfg.ForEachNodeRef([&](const CFGNode &node) {
     int node_frequency = node.CalculateFrequency();
     if (node_frequency == 0) return;
     out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
         << node_frequency;
-    node.ForEachOutEdgeRef([&](const CFGEdge &edge) {
+    node.ForEachOutEdgeInOrder([&](const CFGEdge &edge) {
       if (!edge.IsBranchOrFallthrough()) return;
       out << "," << edge.sink()->full_intra_cfg_id().profile_bb_id() << ":"
           << edge.weight();
@@ -205,9 +205,6 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
             func_layout_info.optimized_score.intra_score,
             func_layout_info.original_score.inter_out_score,
             func_layout_info.optimized_score.inter_out_score);
-        // Print out the frequency of the function entry node.
-        cc_profile_os << absl::StreamFormat(
-            "#entry-freq %llu\n", cfg->GetEntryNode()->CalculateFrequency());
       }
       const std::vector<FunctionChainInfo::BbChain> &chains =
           func_layout_info.bb_chains;
@@ -234,8 +231,7 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
       }
 
       // Dump the edge profile for this CFG if requested.
-      if (options_.verbose_cluster_output())
-        DumpCfgProfile(*cfg, cc_profile_os);
+      if (options_.write_cfg_profile()) WriteCfgProfile(*cfg, cc_profile_os);
 
       cold_symbol_order[func_layout_info.cold_chain_layout_index] =
           &func_layout_info;

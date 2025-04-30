@@ -25,8 +25,13 @@
 
 namespace propeller_file {
 
-// Reads the contents of the file `file_name` into `output`.
+// Reads the contents of the file `path` and returns it as a string.
 absl::StatusOr<std::string> GetContents(absl::string_view path);
+
+// Reads the contents of the file `path` and returns it as a string, ignoring
+// lines starting with '#'.
+absl::StatusOr<std::string> GetContentsIgnoringCommentLines(
+    absl::string_view path);
 
 // Reads a binary proto from the given path. The proto type is inferred from the
 // template parameter, which must be a proto message type.

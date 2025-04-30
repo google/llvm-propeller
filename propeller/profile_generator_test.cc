@@ -21,6 +21,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
@@ -44,6 +45,7 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::propeller_file::GetContents;
+using ::propeller_file::GetContentsIgnoringCommentLines;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Not;
@@ -61,6 +63,8 @@ struct GeneratePropellerProfileTestCase {
   PropellerOptions options;
   std::string expected_cc_profile_path;
   std::string expected_ld_profile_path;
+  // If true, ignore lines starting with '#' in the actual cluster profile.
+  bool ignore_comment_lines_in_cc_profile = true;
 };
 
 TEST(GeneratePropellerProfiles, UsesPassedProvider) {

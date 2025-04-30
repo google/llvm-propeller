@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "absl/functional/function_ref.h"
-#include "absl/strings/str_cat.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
@@ -93,6 +92,13 @@ class CFGNode final {
     for (CFGEdge *edge : intra_outs_) func(*edge);
     for (CFGEdge *edge : inter_outs_) func(*edge);
   }
+
+  // Iterates over the out edges in the order of their sink's inter_cfg_id, and
+  // applies `func` to each edge. Use this to iterate over the edges in a
+  // deterministic order, since the order of the edges in the vectors
+  // `intra_outs_`, `intra_ins_`, `inter_outs_` and `inter_ins_` is
+  // non-deterministic.
+  void ForEachOutEdgeInOrder(absl::FunctionRef<void(CFGEdge &edge)> func) const;
 
   // Returns if this is the entry of the function.
   bool is_entry() const { return bb_index() == 0; }

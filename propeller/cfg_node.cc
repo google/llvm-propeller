@@ -15,9 +15,13 @@
 #include "propeller/cfg_node.h"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
+#include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "propeller/cfg_edge_kind.h"
 
@@ -80,5 +84,19 @@ int CFGNode::CalculateFrequency() const {
     }
   }
   return std::max({max_call_out, max_ret_in, sum_out, sum_in});
+}
+
+void CFGNode::ForEachOutEdgeInOrder(
+    absl::FunctionRef<void(CFGEdge &edge)> func) const {
+  std::vector<CFGEdge *> edges;
+  edges.reserve(intra_outs_.size() + inter_outs_.size());
+  absl::c_copy(intra_outs_, std::back_inserter(edges));
+  absl::c_copy(inter_outs_, std::back_inserter(edges));
+  // Sort the edges by their sink's inter_cfg_id and then by their kind.
+  absl::c_sort(edges, [](const CFGEdge *a, const CFGEdge *b) {
+    return std::forward_as_tuple(a->sink()->inter_cfg_id(), a->kind()) <
+           std::forward_as_tuple(b->sink()->inter_cfg_id(), b->kind());
+  });
+  for (CFGEdge *edge : edges) func(*edge);
 }
 }  // namespace propeller
