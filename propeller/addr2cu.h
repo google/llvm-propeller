@@ -47,7 +47,7 @@ class Addr2Cu {
   // Returns the file name for the compile unit that contains the given code
   // address. Note: the returned string_view lives as long as `dwarf_context_`.
   absl::StatusOr<absl::string_view> GetCompileUnitFileNameForCodeAddress(
-      uint64_t code_address);
+      uint64_t code_address) const;
 
  private:
   llvm::DWARFContext &dwarf_context_;

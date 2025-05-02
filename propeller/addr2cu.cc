@@ -21,6 +21,7 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -58,7 +59,7 @@ absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
 }
 
 absl::StatusOr<absl::string_view> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
-    uint64_t code_address) {
+    uint64_t code_address) const {
   llvm::DWARFCompileUnit *unit =
       dwarf_context_.getCompileUnitForCodeAddress(code_address);
   if (unit == nullptr) {
