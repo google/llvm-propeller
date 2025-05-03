@@ -86,35 +86,6 @@ void PathTracer::TracePath(const FlatBbHandleBranchPath &path) && {
 }
 
 namespace {
-// Trace handler for updating path info for paths which do not contain any hot
-// join blocks.
-class PathInfoHandler : public PathTraceHandler {
- public:
-  explicit PathInfoHandler(const PathProfileOptions *ABSL_NONNULL
-                               path_profile_options,
-                           FunctionPathInfo *ABSL_NONNULL function_path_info)
-      : path_profile_options_(path_profile_options),
-        function_path_info_(function_path_info) {}
-
-  void VisitBlock(int flat_bb_index, absl::Time sample_time) override {
-    function_path_info_->UpdateCachePressure(
-        flat_bb_index, sample_time, {}, ++path_length_,
-        absl::Milliseconds(
-            path_profile_options_->max_icache_penalty_interval_millis()));
-  }
-
-  void ResetPath() override { path_length_ = 0; }
-
-  void HandleCalls(absl::Span<const CallRetInfo> call_rets) override {}
-
-  void HandleReturn(const FlatBbHandle &bb_handle) override {}
-
- private:
-  const PathProfileOptions *path_profile_options_;
-  FunctionPathInfo *function_path_info_;
-  int path_length_ = 0;
-};
-
 // Traces a single intra-function `BbHandleBranchPath` and maps it to
 // `PathNode`s in a path tree.
 class CloningPathTraceHandler : public PathTraceHandler {
@@ -210,6 +181,8 @@ class CloningPathTraceHandler : public PathTraceHandler {
       current_path_probes_.emplace_back(&path_node, prev_node_bb_index_);
       new_path_probes.push_back(current_path_probes_.back().base_path_probe());
     }
+    // Even if no path probes exist, we still need to update the cache pressure
+    // for the block.
     function_path_info_->UpdateCachePressure(
         flat_bb_index, sample_time, std::move(new_path_probes), path_length_,
         absl::Milliseconds(
@@ -303,13 +276,6 @@ void ProgramCfgPathAnalyzer::AnalyzePaths(std::optional<int> paths_to_analyze) {
           /*path_length=*/1,
           absl::Milliseconds(
               path_profile_options_->max_icache_penalty_interval_millis()));
-      continue;
-    }
-    if (!HasHotJoinBbs(path)) {
-      // We still need to update `function_path_info` for this path since it may
-      // share blocks with paths containing hot join blocks.
-      PathInfoHandler handler(path_profile_options_, &function_path_info);
-      PathTracer(cfg, &handler).TracePath(path);
       continue;
     }
     CloningPathTraceHandler handler(

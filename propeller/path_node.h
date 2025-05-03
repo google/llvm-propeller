@@ -189,6 +189,8 @@ class PathNode {
   }
 
   bool operator<(const PathNode &other) const {
+    // Check for self-comparison.
+    if (this == &other) return false;
     // Order first by `node_bb_index_`, then by `parent_`. Finally, roots are
     // ordered bigger than non-roots.
     if (node_bb_index_ == other.node_bb_index_) {
