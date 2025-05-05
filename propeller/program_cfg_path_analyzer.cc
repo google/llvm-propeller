@@ -23,11 +23,9 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/nullability.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -299,53 +297,5 @@ void ProgramCfgPathAnalyzer::StoreAndAnalyzePaths(
               path_profile_options_->max_time_diff_in_path_buffer_millis())) {
     AnalyzePaths(bb_branch_paths_.size() / 2);
   }
-}
-
-std::vector<FlatBbHandleBranchPath>
-ProgramCfgPathAnalyzer::GetPathsWithHotJoinBbs(
-    absl::Span<const FlatBbHandleBranchPath> bb_branch_paths) {
-  std::vector<FlatBbHandleBranchPath> result;
-  absl::c_copy_if(
-      bb_branch_paths, std::back_inserter(result),
-      absl::bind_front(&ProgramCfgPathAnalyzer::HasHotJoinBbs, this));
-  return result;
-}
-
-bool ProgramCfgPathAnalyzer::HasHotJoinBbs(
-    const FlatBbHandleBranchPath &path) const {
-  const FlatBbHandle &first_bb = path.branches.front().from_bb.has_value()
-                                     ? *path.branches.front().from_bb
-                                     : *path.branches.front().to_bb;
-
-  auto func_it = hot_join_bbs_.find(first_bb.function_index);
-  // Check if the function has any hot join blocks.
-  if (func_it == hot_join_bbs_.end()) return false;
-  const absl::btree_set<int> &function_hot_join_bbs = func_it->second;
-  std::optional<FlatBbHandle> last_to = std::nullopt;
-
-  // First check if the `from_bb` of the first branch or the `to_bb` if the
-  // last branch are hot join BBs.
-  for (const std::optional<FlatBbHandle> &bb_handle :
-       {path.branches.front().from_bb, path.branches.back().to_bb}) {
-    if (!bb_handle.has_value()) continue;
-    if (function_hot_join_bbs.contains(bb_handle->flat_bb_index)) return true;
-  }
-  // Next check if the fallthrough paths contain any hot join BBs.
-  for (const FlatBbHandleBranch &bb_branch : path.branches) {
-    if (last_to.has_value()) {
-      CHECK(bb_branch.from_bb.has_value());
-      // Check if there are any hot join BBs in the fallthrough path from
-      // `last_to` to `bb_branch.from_bb` (including both ends of the path).
-      // To do so, find the first hot join BB after or at `last_to`. Return
-      // true if that BB does not go after `bb_branch.from_bb`.
-      auto it = function_hot_join_bbs.lower_bound(last_to->flat_bb_index);
-      if (it != function_hot_join_bbs.end() &&
-          *it <= bb_branch.from_bb->flat_bb_index) {
-        return true;
-      }
-    }
-    last_to = bb_branch.to_bb;
-  }
-  return false;
 }
 }  // namespace propeller

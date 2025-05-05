@@ -339,11 +339,6 @@ class ProgramCfgPathAnalyzer {
   //
   void AnalyzePaths(std::optional<int> paths_to_analyze);
 
-  // Returns the paths in `bb_branch_paths` which include hot join BBs, in the
-  // same order as in the input.
-  std::vector<propeller::FlatBbHandleBranchPath> GetPathsWithHotJoinBbs(
-      absl::Span<const propeller::FlatBbHandleBranchPath> bb_branch_paths);
-
   // Returns whether `path` contains any hot join BBs.
   bool HasHotJoinBbs(const propeller::FlatBbHandleBranchPath &path) const;
 

@@ -105,65 +105,6 @@ class MockPathTraceHandler : public PathTraceHandler {
   MOCK_METHOD(void, ResetPath, (), (override));
 };
 
-TEST(ProgramCfgPathAnalyzer, GetsPathsWithHotJoinBbs) {
-  std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
-      {.cfg_args = {
-           {".anysection",
-            0,
-            "foo",
-            {{0x1000, 0, 0x10},
-             {0x1010, 1, 0x7},
-             {0x102a, 2, 0x4},
-             {0x1030, 3, 0x8}},
-            {{0, 1, 10, CFGEdgeKind::kBranchOrFallthough},
-             {0, 3, 20, CFGEdgeKind::kBranchOrFallthough},
-             {1, 2, 30, CFGEdgeKind::kBranchOrFallthough},
-             {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}},
-           {".anysection",
-            1,
-            "bar",
-            {{0x2000, 0, 0x10}, {0x2010, 1, 0x7}, {0x202a, 2, 0x4}},
-            {{0, 2, 50, CFGEdgeKind::kBranchOrFallthough},
-             {0, 1, 30, CFGEdgeKind::kBranchOrFallthough},
-             {1, 2, 30, CFGEdgeKind::kBranchOrFallthough}}},
-       }});
-
-  std::vector<FlatBbHandleBranchPath> paths = {
-      {.pid = 2080799,
-       .sample_time = absl::FromUnixNanos(1010),
-       .branches = {{.to_bb = {{.function_index = 1, .flat_bb_index = 0}}},
-                    {.from_bb = {{.function_index = 1, .flat_bb_index = 0}},
-                     .to_bb = {{.function_index = 1, .flat_bb_index = 2}}},
-                    {.from_bb = {{.function_index = 1, .flat_bb_index = 2}}}}},
-      {.pid = 2080799,
-       .sample_time = absl::FromUnixNanos(1020),
-       .branches = {{.to_bb = {{.function_index = 1, .flat_bb_index = 0}}},
-                    {.from_bb = {{.function_index = 1, .flat_bb_index = 2}}}}},
-      {.pid = 2080799,
-       .sample_time = absl::FromUnixNanos(1020),
-       .branches = {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
-                    {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
-                     .to_bb = {{.function_index = 0, .flat_bb_index = 2}},
-                     .call_rets = {{{.callee = 1}}}},
-                    {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
-                     .to_bb = {{.function_index = 0, .flat_bb_index = 1}}},
-                    {.from_bb = {{.function_index = 1, .flat_bb_index = 2}}}}},
-      {.pid = 2080799,
-       .sample_time = absl::FromUnixNanos(1030),
-       .branches = {{.to_bb = {{.function_index = 0, .flat_bb_index = 0}}},
-                    {.from_bb = {{.function_index = 0, .flat_bb_index = 0}},
-                     .to_bb = {{.function_index = 0, .flat_bb_index = 3}}}}}};
-
-  PathProfileOptions options;
-  options.set_hot_cutoff_percentile(10);
-  ProgramPathProfile program_path_profile;
-  EXPECT_THAT(
-      ProgramCfgPathAnalyzer(&options, program_cfg.get(), &program_path_profile)
-          .GetPathsWithHotJoinBbs(paths),
-      ElementsAreArray(std::vector<FlatBbHandleBranchPath>(paths.begin(),
-                                                           paths.begin() + 3)));
-}
-
 TEST(PathTracer, TracePathUpdatesCachePressureWithShortPaths) {
   std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
       {.cfg_args = {{".anysection",
