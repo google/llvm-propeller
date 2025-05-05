@@ -125,10 +125,13 @@ class CloningPathTraceHandler : public PathTraceHandler {
       PathNode &child_path_node =
           *path_probe.path_node()
                ->mutable_children()
-               .try_emplace(flat_bb_index,
-                            std::make_unique<PathNode>(flat_bb_index,
-                                                       path_probe.path_node()))
-               .first->second;
+               .lazy_emplace(flat_bb_index,
+                             [&](const auto &ctor) {
+                               ctor(flat_bb_index,
+                                    std::make_unique<PathNode>(
+                                        flat_bb_index, path_probe.path_node()));
+                             })
+               ->second;
 
       // Increment the frequency associated with the child path node.
       PathPredInfo &path_pred_info =
