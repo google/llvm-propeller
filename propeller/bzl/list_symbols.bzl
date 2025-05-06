@@ -63,7 +63,6 @@ list_symbols = rule(
             values = _ADDRESS_RADIX.keys(),
         ),
         "print_size": attr.bool(default = False),
-        "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
     },
     toolchains = use_cpp_toolchain(),
 )
