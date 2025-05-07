@@ -33,6 +33,7 @@ add_library(propeller_lib OBJECT
   frequencies_branch_aggregator.cc
   lbr_branch_aggregator.cc
   mini_disassembler.cc
+  mmap_match_criteria.cc
   node_chain.cc
   node_chain_assembly.cc
   node_chain_builder.cc
@@ -50,7 +51,6 @@ add_library(propeller_lib OBJECT
   program_cfg_path_analyzer.cc
   propeller_statistics.cc
   proto_branch_frequencies_aggregator.cc
-  resolve_mmap_name.cc
   spe_tid_pid_provider.cc
   # keep-sorted end
 )

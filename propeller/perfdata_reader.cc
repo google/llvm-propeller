@@ -39,6 +39,7 @@
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
 #include "propeller/lbr_aggregation.h"
+#include "propeller/mmap_match_criteria.h"
 #include "propeller/perf_data_provider.h"
 #include "propeller/spe_tid_pid_provider.h"
 #include "propeller/status_macros.h"
@@ -142,29 +143,42 @@ absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
 }
 
 // Find the set of file names in perf.data file which has the same build id as
-// found in "binary_file_name".
+// found in "binary_file_name", or the build id specified by
+// `match_mmap_build_id` if it is provided.
 std::optional<absl::flat_hash_set<std::string>>
-FindFileNameInPerfDataWithFileBuildId(const quipper::PerfReader &perf_reader,
-                                      const std::string &binary_file_name,
-                                      const BinaryContent &binary_content) {
-  if (binary_content.build_id.empty()) {
-    LOG(INFO) << "No Build Id found in '" << binary_file_name << "'.";
-    return std::nullopt;
-  }
-  LOG(INFO) << "Build Id found in '" << binary_file_name
-            << "': " << binary_content.build_id;
-  absl::StatusOr<absl::flat_hash_set<std::string>> build_id_names =
-      GetBuildIdNames(perf_reader, binary_content.build_id);
+FindFileNameInPerfDataWithFileBuildId(
+    const quipper::PerfReader &perf_reader, const std::string &binary_file_name,
+    const BinaryContent &binary_content,
+    std::optional<absl::string_view> match_mmap_build_id) {
+  absl::flat_hash_set<std::string> build_id_names;
+  if (!match_mmap_build_id.has_value()) {
+    if (binary_content.build_id.empty()) {
+      LOG(INFO) << "No Build Id found in '" << binary_file_name << "'.";
+      return std::nullopt;
+    }
+    LOG(INFO) << "Build Id found in '" << binary_file_name
+              << "': " << binary_content.build_id;
+    absl::StatusOr<absl::flat_hash_set<std::string>> this_build_id_names =
+        GetBuildIdNames(perf_reader, binary_content.build_id);
 
-  if (!build_id_names.ok()) {
-    LOG(INFO) << build_id_names.status();
-    return std::nullopt;
+    if (!this_build_id_names.ok()) {
+      LOG(INFO) << this_build_id_names.status();
+      return std::nullopt;
+    }
+    build_id_names = *this_build_id_names;
+  } else {
+    auto my_build_id_names = GetBuildIdNames(perf_reader, *match_mmap_build_id);
+    if (!my_build_id_names.ok()) {
+      LOG(INFO) << my_build_id_names.status();
+      return std::nullopt;
+    }
+    build_id_names = *my_build_id_names;
   }
 
-  for (const std::string &fn : *build_id_names)
+  for (const std::string &fn : build_id_names)
     LOG(INFO) << "Build Id '" << binary_content.build_id << "' has filename '"
               << fn << "'.";
-  return *build_id_names;
+  return build_id_names;
 }
 
 // Select mmaps from perf.data.
@@ -177,7 +191,7 @@ FindFileNameInPerfDataWithFileBuildId(const quipper::PerfReader &perf_reader,
 //    the perf.data mmap is selected using match_mmap_name
 absl::StatusOr<BinaryMMaps> SelectMMaps(
     PerfDataProvider::BufferHandle &perf_data,
-    absl::Span<const absl::string_view> match_mmap_names,
+    const MMapMatchCriteria &mmap_match_criteria,
     const BinaryContent &binary_content) {
   quipper::PerfReader perf_reader;
   // Ignore SAMPLE events for now to reduce memory usage. They will be needed
@@ -198,10 +212,11 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
 
   std::unique_ptr<MMapSelector> mmap_selector;
   // If `match_mmap_names` is empty, we try to use build-id name in matching.
-  if (match_mmap_names.empty()) {
-    if (auto fn_set = FindFileNameInPerfDataWithFileBuildId(
-            perf_reader, binary_content.file_name, binary_content)) {
-      mmap_selector = std::make_unique<MMapSelector>(*fn_set);
+  if (mmap_match_criteria.mmap_binary_names().empty()) {
+    if (auto file_names = FindFileNameInPerfDataWithFileBuildId(
+            perf_reader, binary_content.file_name, binary_content,
+            mmap_match_criteria.mmap_build_id())) {
+      mmap_selector = std::make_unique<MMapSelector>(*file_names);
     } else {
       // No filenames have been found either because the input binary
       // has no build-id or no matching build-id found in perf.data.
@@ -220,7 +235,8 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
   } else {
     mmap_selector =
         std::make_unique<MMapSelector>(absl::flat_hash_set<std::string>(
-            match_mmap_names.begin(), match_mmap_names.end()));
+            mmap_match_criteria.mmap_binary_names().begin(),
+            mmap_match_criteria.mmap_binary_names().end()));
   }
 
   BinaryMMaps binary_mmaps;
@@ -277,7 +293,7 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
   if (binary_mmaps.empty()) {
     return absl::FailedPreconditionError(
         absl::StrCat("Failed to find any mmap entries matching: '",
-                     absl::StrJoin(match_mmap_names, "' or '"), "'."));
+                     mmap_match_criteria, "'."));
   }
 
   for (const auto &[pid, mmap_entries] : binary_mmaps) {
@@ -469,12 +485,11 @@ bool PerfDataReader::IsKernelMode() const {
 
 absl::StatusOr<PerfDataReader> BuildPerfDataReader(
     PerfDataProvider::BufferHandle perf_data,
-    const BinaryContent *binary_content, absl::string_view match_mmap_name) {
-  auto match_mmap_names = absl::MakeConstSpan(
-      &match_mmap_name, /*size=*/match_mmap_name.empty() ? 0 : 1);
-
-  ASSIGN_OR_RETURN(BinaryMMaps binary_mmaps,
-                   SelectMMaps(perf_data, match_mmap_names, *binary_content));
+    const BinaryContent *binary_content,
+    const MMapMatchCriteria &mmap_match_criteria) {
+  ASSIGN_OR_RETURN(
+      BinaryMMaps binary_mmaps,
+      SelectMMaps(perf_data, mmap_match_criteria, *binary_content));
   return PerfDataReader(std::move(perf_data), std::move(binary_mmaps),
                         binary_content);
 }

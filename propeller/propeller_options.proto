@@ -50,6 +50,10 @@ message PropellerOptions {
   // events in perf.data file, can be "".
   string profiled_binary_name = 5;
 
+  // profiled binary build id; if not empty, use this as build id to match
+  // MMAP events in perf.data file, can be "".
+  string profiled_build_id = 16;
+
   // ignore the build id; if set, use binary_name or profiled_binary_name to
   // match MMAP events. Otherwise, use buildid (if exists) to match.
   bool ignore_build_id = 6;
