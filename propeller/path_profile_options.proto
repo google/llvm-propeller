@@ -9,6 +9,7 @@ message PathProfileOptions {
   int32 hot_cutoff_percentile = 1 [default = 80];
 
   // Maximum path length to consider for path cloning. Must be greater than one.
+  // This is the length of the cloned path including the path predecessor block.
   int32 max_path_length = 2 [default = 6];
 
   // Minimum out-flow to in-flow ratio to extend a path along a block.

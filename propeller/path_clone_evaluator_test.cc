@@ -75,46 +75,53 @@ absl::flat_hash_map<int, FunctionPathProfileArg> GetMapByIndex(
 ProgramPathProfileArg GetDefaultPathProfileArg() {
   auto children_of_3_args = GetMapByIndex(
       {{.node_bb_index = 4,
-        .path_pred_info = {{1,
-                            {.freq = 170,
-                             .cache_pressure = 7.2,
-                             .call_freqs = {{CallRetInfo{.callee = 7}, 85},
-                                            {CallRetInfo{.callee = 8}, 85}}}},
-                           {2,
-                            {.freq = 5,
-                             .cache_pressure = 6.2,
-                             .call_freqs = {{CallRetInfo{.callee = 7}, 5},
-                                            {CallRetInfo{.callee = 8}, 0}}}}},
+        .path_pred_info =
+            {.entries = {{1,
+                          {.freq = 170,
+                           .cache_pressure = 7.2,
+                           .call_freqs = {{CallRetInfo{.callee = 7}, 85},
+                                          {CallRetInfo{.callee = 8}, 85}}}},
+                         {2,
+                          {.freq = 5,
+                           .cache_pressure = 6.2,
+                           .call_freqs = {{CallRetInfo{.callee = 7}, 5},
+                                          {CallRetInfo{.callee = 8}, 0}}}}}},
         .children_args = GetMapByIndex(
             {{.node_bb_index = 5,
-              .path_pred_info = {{1, {.freq = 170}}, {2, {.freq = 5}}}}})},
+              .path_pred_info = {.entries = {{1, {.freq = 170}},
+                                             {2, {.freq = 5}}}}}})},
        {.node_bb_index = 5,
-        .path_pred_info = {{1, {.freq = 13}}, {2, {.freq = 649}}}},
-       {.node_bb_index = 1, .path_pred_info = {{1, {.freq = 9}}}}});
+        .path_pred_info = {.entries = {{1, {.freq = 13}}, {2, {.freq = 649}}}}},
+       {.node_bb_index = 1,
+        .path_pred_info = {.entries = {{1, {.freq = 9}}}}}});
 
-  auto children_of_4_args = GetMapByIndex(
-      {{.node_bb_index = 5,
-        .path_pred_info = {{2, {.freq = 10}}, {3, {.freq = 175}}}}});
+  auto children_of_4_args =
+      GetMapByIndex({{.node_bb_index = 5,
+                      .path_pred_info = {.entries = {{2, {.freq = 10}},
+                                                     {3, {.freq = 175}}}}}});
 
   return {
       .function_path_profile_args = GetMapByIndex(
           {{.function_index = 6,
             .path_node_args = GetMapByIndex(
                 {{.node_bb_index = 3,
-                  .path_pred_info = {{1, {.freq = 195}}, {2, {.freq = 656}}},
+                  .path_pred_info = {.entries = {{1, {.freq = 195}},
+                                                 {2, {.freq = 656}}}},
                   .children_args = children_of_3_args},
                  {.node_bb_index = 4,
                   .path_pred_info =
-                      {{2,
-                        {.freq = 10,
-                         .cache_pressure = 8.2,
-                         .call_freqs = {{CallRetInfo{.callee = 7}, 10},
-                                        {CallRetInfo{.callee = 8}, 0}}}},
-                       {3,
-                        {.freq = 175,
-                         .cache_pressure = 9.2,
-                         .call_freqs = {{CallRetInfo{.callee = 7}, 90},
-                                        {CallRetInfo{.callee = 8}, 85}}}}},
+                      {.entries =
+                           {{2,
+                             {.freq = 10,
+                              .cache_pressure = 8.2,
+                              .call_freqs = {{CallRetInfo{.callee = 7}, 10},
+                                             {CallRetInfo{.callee = 8}, 0}}}},
+                            {3,
+                             {.freq = 175,
+                              .cache_pressure = 9.2,
+                              .call_freqs = {{CallRetInfo{.callee = 7}, 90},
+                                             {CallRetInfo{.callee = 8},
+                                              85}}}}}},
                   .children_args = children_of_4_args}})}})};
 }
 
@@ -302,7 +309,9 @@ TEST(PathCloneEvaluator, GetsInitialChains) {
       .path_pred_bb_index = 1};
   ASSERT_OK_AND_ASSIGN(
       CfgChangeFromPathCloning cfg_change,
-      GetCfgChangeForPathCloning(cloning, /*conflict_edges=*/{}));
+      GetCfgChangeForPathCloning(
+          cloning, /*conflict_edges=*/{},
+          path_profile.path_profiles_by_function_index().at(6)));
 
   EXPECT_THAT(
       GetInitialChains(foo_cfg, optimal_chain_info, cfg_change),
@@ -412,7 +421,8 @@ TEST(EvaluateOneCloning, RejectsNonProfitableCloning) {
                       CodeLayout(code_layout_params, {foo_cfg},
                                  /*initial_chains=*/{})
                           .OrderAll()
-                          .front()),
+                          .front(),
+                      path_profile.path_profiles_by_function_index().at(6)),
       StatusIs(absl::StatusCode::kFailedPrecondition,
                "Cloning is not acceptable with score gain: -190.223 < -170"));
 }

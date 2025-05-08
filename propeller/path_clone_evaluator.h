@@ -48,9 +48,12 @@ std::vector<FunctionChainInfo::BbChain> GetInitialChains(
 // Returns the `CfgChange` (including intra- and inter-procedural changes)
 // resulting from applying `cloning` to the cfg, or
 // absl::Status on error when applying `cloning` is found to be infeasible
-// because of conflict with `conflict_edges`.
+// because of conflict with `conflict_edges`. `function_path_profile` is the
+// path profile of the corresponding function, and its missing path predecessor
+// info is used to determine the edge weights to drop for the cloning.
 absl::StatusOr<CfgChangeFromPathCloning> GetCfgChangeForPathCloning(
-    const PathCloning &cloning, const ConflictEdges &conflict_edges);
+    const PathCloning &cloning, const ConflictEdges &conflict_edges,
+    const FunctionPathProfile &function_path_profile);
 
 // Represents a potentially evaluated path cloning.
 struct EvaluatedPathCloning {
@@ -91,12 +94,16 @@ void AbslStringify(Sink &sink, const EvaluatedPathCloning &e) {
 
 // Evaluates `path_cloning` for `cfg` and returns the evaluated path cloning.
 // Returns `absl::kFailedPrecondition` if `path_cloning` is infeasible to apply
-// or if its score gain is lower than `min_score`.
+// or if its score gain is lower than `min_score`. `function_path_profile` is
+// the path profile of the corresponding function, and its missing path
+// predecessor info is used to drop the edge weights which cannot be confidently
+// rerouted.
 absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
     const CfgBuilder &cfg_builder, const PathCloning &path_cloning,
     const PropellerCodeLayoutParameters &code_layout_params,
     const PathProfileOptions &path_profile_options, double min_score,
-    const FunctionChainInfo &optimal_chain_info);
+    const FunctionChainInfo &optimal_chain_info,
+    const FunctionPathProfile &function_path_profile);
 
 // Evaluates and returns all applicable and profitable clonings in
 // `program_path_profile` with `code_layout_params` and `path_profile_options`.
@@ -138,11 +145,13 @@ class PathTreeCloneEvaluator {
   // `path_preds_in_path` is the subset of path predecessor bb indices of the
   // root which have been encountered in the path to `path_tree` (excluding
   // `path_tree` itself). These are filtered out from the predecessor blocks
-  // when evaluating path clonings.
+  // when evaluating path clonings. `function_path_profile` is the path profile
+  // of the corresponding function.
   void EvaluateCloningsForSubtree(
       const PathNode &path_tree, int path_length,
       const absl::flat_hash_set<int> &path_preds_in_path,
-      std::vector<EvaluatedPathCloning> &clonings);
+      std::vector<EvaluatedPathCloning> &clonings,
+      const FunctionPathProfile &function_path_profile);
 
   // Evaluates all clonings associated with `path_node` which includes paths
   // corresponding to `path_node` with every possible path predecessor and adds
@@ -150,10 +159,12 @@ class PathTreeCloneEvaluator {
   // of path predecessor bb indices of the root which have been encountered in
   // the path to `path_tree` (excluding `path_tree` itself). These are filtered
   // out from the predecessor blocks when evaluating path clonings.
+  // `function_path_profile` is the path profile of the corresponding function.
   void EvaluateCloningsForPath(
       const PathNode &path_node,
       const absl::flat_hash_set<int> &path_preds_in_path,
-      std::vector<EvaluatedPathCloning> &clonings);
+      std::vector<EvaluatedPathCloning> &clonings,
+      const FunctionPathProfile &function_path_profile);
 
  private:
   const ControlFlowGraph &cfg_;
