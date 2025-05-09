@@ -31,6 +31,7 @@
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/mock_program_cfg_builder.h"
 #include "propeller/path_node.h"
+#include "propeller/path_node_matchers.h"
 #include "propeller/path_profile_options.pb.h"
 #include "propeller/program_cfg.h"
 #include "propeller/status_testing_macros.h"
@@ -38,53 +39,18 @@
 namespace propeller {
 namespace {
 using ::testing::_;
-using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::DoubleNear;
-using ::testing::Each;
 using ::testing::ElementsAre;
-using ::testing::ElementsAreArray;
 using ::testing::Eq;
-using ::testing::ExplainMatchResult;
 using ::testing::Field;
 using ::testing::InSequence;
 using ::testing::IsEmpty;
 using ::testing::Key;
 using ::testing::Pair;
-using ::testing::Pointee;
-using ::testing::Pointer;
-using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
 constexpr double kEpsilon = 0.001;
-
-MATCHER_P4(PathPredInfoIs, freq_matcher, cache_pressure_matcher,
-           call_freqs_matcher, return_to_freqs_matcher, "") {
-  return ExplainMatchResult(freq_matcher, arg.freq, result_listener) &&
-         ExplainMatchResult(cache_pressure_matcher, arg.cache_pressure,
-                            result_listener) &&
-         ExplainMatchResult(call_freqs_matcher, arg.call_freqs,
-                            result_listener) &&
-         ExplainMatchResult(return_to_freqs_matcher, arg.return_to_freqs,
-                            result_listener);
-}
-
-MATCHER_P3(PathNodeIs, bb_id_matcher, path_pred_info_matcher, children_matcher,
-           "") {
-  return ExplainMatchResult(
-             AllOf(Property("node_bb_index", &PathNode::node_bb_index,
-                            bb_id_matcher),
-                   Property("path_pred_info", &PathNode::path_pred_info,
-                            path_pred_info_matcher),
-                   Property("children", &PathNode::children, children_matcher)),
-             arg, result_listener) &&
-         // Also check that parent pointers of the children point to this
-         // PathNode.
-         ExplainMatchResult(
-             Each(Pair(_, Pointee(Property("parent", &PathNode::parent,
-                                           Pointer(std::addressof(arg)))))),
-             arg.children(), result_listener);
-}
 
 // Returns the max depth in the path tree rooted at `path_node`, with the root
 // having a depth of 1.
@@ -404,38 +370,39 @@ TEST(ProgramCfgPathAnalyzer, BuildPathTree) {
       path_profile.path_profiles_by_function_index(),
       UnorderedElementsAre(Pair(
           6,
-          Property(
-              "path_trees_by_root_bb_index",
-              &FunctionPathProfile::path_trees_by_root_bb_index,
+          FunctionPathProfileIs(
+              6,
               UnorderedElementsAre(Pair(
                   1,
-                  Pointee(PathNodeIs(
-                      1,
+                  PathNodeIs(
+                      1, 2,
                       UnorderedElementsAre(
-                          Pair(0, PathPredInfoIs(20, DoubleNear(20, kEpsilon),
-                                                 IsEmpty(), IsEmpty())),
-                          Pair(4, PathPredInfoIs(10, DoubleNear(20, kEpsilon),
-                                                 IsEmpty(), IsEmpty()))),
+                          Pair(0, PathPredInfoEntryIs(
+                                      20, DoubleNear(20, kEpsilon), IsEmpty(),
+                                      IsEmpty())),
+                          Pair(4, PathPredInfoEntryIs(
+                                      10, DoubleNear(20, kEpsilon), IsEmpty(),
+                                      IsEmpty()))),
                       UnorderedElementsAre(Pair(
                           2,
-                          Pointee(PathNodeIs(
-                              2,
+                          PathNodeIs(
+                              2, 3,
                               UnorderedElementsAre(
-                                  Pair(0, PathPredInfoIs(
+                                  Pair(0, PathPredInfoEntryIs(
                                               20, DoubleNear(20, kEpsilon),
                                               IsEmpty(), IsEmpty())),
-                                  Pair(4, PathPredInfoIs(
+                                  Pair(4, PathPredInfoEntryIs(
                                               10, DoubleNear(20, kEpsilon),
                                               IsEmpty(), IsEmpty()))),
                               UnorderedElementsAre(
                                   Pair(
                                       5,
-                                      Pointee(PathNodeIs(
-                                          5,
+                                      PathNodeIs(
+                                          5, 4,
                                           UnorderedElementsAre(
                                               Pair(
                                                   0,
-                                                  PathPredInfoIs(
+                                                  PathPredInfoEntryIs(
                                                       10,
                                                       DoubleNear(3, kEpsilon),
                                                       UnorderedElementsAre(Pair(
@@ -451,7 +418,7 @@ TEST(ProgramCfgPathAnalyzer, BuildPathTree) {
                                                           10)))),
                                               Pair(
                                                   4,
-                                                  PathPredInfoIs(
+                                                  PathPredInfoEntryIs(
                                                       10,
                                                       DoubleNear(3, kEpsilon),
                                                       UnorderedElementsAre(Pair(
@@ -465,24 +432,23 @@ TEST(ProgramCfgPathAnalyzer, BuildPathTree) {
                                                               .flat_bb_index =
                                                                   45},
                                                           10))))),
-                                          IsEmpty()))),
-                                  Pair(
-                                      3,
-                                      Pointee(PathNodeIs(
-                                          3,
-                                          UnorderedElementsAre(Pair(
-                                              0,
-                                              PathPredInfoIs(10, 0, IsEmpty(),
-                                                             IsEmpty()))),
-                                          UnorderedElementsAre(Pair(
-                                              4,
-                                              Pointee(PathNodeIs(
-                                                  4,
-                                                  UnorderedElementsAre(Pair(
-                                                      0, PathPredInfoIs(
-                                                             10, 0, IsEmpty(),
-                                                             IsEmpty()))),
-                                                  IsEmpty()))))))))))))))))))));
+                                          IsEmpty())),
+                                  Pair(3,
+                                       PathNodeIs(
+                                           3, 4,
+                                           UnorderedElementsAre(
+                                               Pair(0, PathPredInfoEntryIs(
+                                                           10, 0, IsEmpty(),
+                                                           IsEmpty()))),
+                                           UnorderedElementsAre(Pair(
+                                               4,
+                                               PathNodeIs(
+                                                   4, 5,
+                                                   UnorderedElementsAre(Pair(
+                                                       0, PathPredInfoEntryIs(
+                                                              10, 0, IsEmpty(),
+                                                              IsEmpty()))),
+                                                   IsEmpty()))))))))))))))));
 }
 
 TEST(ProgramCfgPathAnalyzer, HandlesPathPredecessorWithIndirectBranch) {
@@ -531,31 +497,28 @@ TEST(ProgramCfgPathAnalyzer, HandlesPathPredecessorWithIndirectBranch) {
       path_profile.path_profiles_by_function_index(),
       UnorderedElementsAre(Pair(
           0,
-          Property(
-              "path_trees_by_root_bb_index",
-              &FunctionPathProfile::path_trees_by_root_bb_index,
-              Contains(Pair(
-                  1,
-                  Pointee(PathNodeIs(
-                      1,
-                      UnorderedElementsAre(
-                          Pair(0, PathPredInfoIs(10, _, IsEmpty(), IsEmpty())),
-                          Pair(2, PathPredInfoIs(10, _, IsEmpty(), IsEmpty()))),
-                      UnorderedElementsAre(
-                          Pair(2,
-                               Pointee(PathNodeIs(
-                                   2,
-                                   UnorderedElementsAre(
-                                       Pair(0, PathPredInfoIs(10, _, IsEmpty(),
+          FunctionPathProfileIs(
+              0, Contains(Pair(
+                     1, PathNodeIs(
+                            1, 2,
+                            UnorderedElementsAre(
+                                Pair(0, PathPredInfoEntryIs(10, _, IsEmpty(),
+                                                            IsEmpty())),
+                                Pair(2, PathPredInfoEntryIs(10, _, IsEmpty(),
+                                                            IsEmpty()))),
+                            UnorderedElementsAre(
+                                Pair(2, PathNodeIs(2, 3,
+                                                   UnorderedElementsAre(Pair(
+                                                       0, PathPredInfoEntryIs(
+                                                              10, _, IsEmpty(),
                                                               IsEmpty()))),
-                                   IsEmpty()))),
-                          Pair(3,
-                               Pointee(PathNodeIs(
-                                   3,
-                                   UnorderedElementsAre(
-                                       Pair(2, PathPredInfoIs(10, _, IsEmpty(),
+                                                   IsEmpty())),
+                                Pair(3, PathNodeIs(3, 3,
+                                                   UnorderedElementsAre(Pair(
+                                                       2, PathPredInfoEntryIs(
+                                                              10, _, IsEmpty(),
                                                               IsEmpty()))),
-                                   IsEmpty()))))))))))));
+                                                   IsEmpty()))))))))));
 }
 
 TEST(ProgramCfgPathAnalyzer, AnalyzesPathEndingWithIndirectBranch) {
@@ -610,30 +573,28 @@ TEST(ProgramCfgPathAnalyzer, AnalyzesPathEndingWithIndirectBranch) {
       path_profile.path_profiles_by_function_index(),
       UnorderedElementsAre(Pair(
           0,
-          Property(
-              "path_trees_by_root_bb_index",
-              &FunctionPathProfile::path_trees_by_root_bb_index,
-              UnorderedElementsAre(Pair(
-                  2,
-                  Pointee(PathNodeIs(
-                      2,
-                      UnorderedElementsAre(
-                          Pair(0, PathPredInfoIs(5, _, IsEmpty(), IsEmpty())),
-                          Pair(1, PathPredInfoIs(10, _, IsEmpty(), IsEmpty()))),
-                      UnorderedElementsAre(
-                          Pair(4, Pointee(PathNodeIs(4,
-                                                     UnorderedElementsAre(Pair(
-                                                         0, PathPredInfoIs(
-                                                                5, _, IsEmpty(),
-                                                                IsEmpty()))),
-                                                     IsEmpty()))),
-                          Pair(3,
-                               Pointee(PathNodeIs(
-                                   3,
-                                   UnorderedElementsAre(
-                                       Pair(1, PathPredInfoIs(10, _, IsEmpty(),
+          FunctionPathProfileIs(
+              0, UnorderedElementsAre(Pair(
+                     2, PathNodeIs(
+                            2, 2,
+                            UnorderedElementsAre(
+                                Pair(0, PathPredInfoEntryIs(5, _, IsEmpty(),
+                                                            IsEmpty())),
+                                Pair(1, PathPredInfoEntryIs(10, _, IsEmpty(),
+                                                            IsEmpty()))),
+                            UnorderedElementsAre(
+                                Pair(4, PathNodeIs(4, 3,
+                                                   UnorderedElementsAre(Pair(
+                                                       0, PathPredInfoEntryIs(
+                                                              5, _, IsEmpty(),
                                                               IsEmpty()))),
-                                   IsEmpty()))))))))))));
+                                                   IsEmpty())),
+                                Pair(3, PathNodeIs(3, 3,
+                                                   UnorderedElementsAre(Pair(
+                                                       1, PathPredInfoEntryIs(
+                                                              10, _, IsEmpty(),
+                                                              IsEmpty()))),
+                                                   IsEmpty()))))))))));
 }
 
 using TreePathLengthTest = testing::TestWithParam<int>;

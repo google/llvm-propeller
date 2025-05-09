@@ -733,6 +733,18 @@ cc_library(
 )
 
 cc_library(
+    name = "path_node_matchers",
+    testonly = True,
+    hdrs = ["path_node_matchers.h"],
+    deps = [
+        ":bb_handle",
+        ":path_node",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "program_cfg_path_analyzer",
     srcs = ["program_cfg_path_analyzer.cc"],
     hdrs = ["program_cfg_path_analyzer.h"],
@@ -1513,6 +1525,7 @@ cc_test(
         ":cfg_edge_kind",
         ":mock_program_cfg_builder",
         ":path_node",
+        ":path_node_matchers",
         ":path_profile_options_cc_proto",
         ":program_cfg",
         ":program_cfg_path_analyzer",
