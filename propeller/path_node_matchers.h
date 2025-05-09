@@ -52,6 +52,10 @@ MATCHER_P4(
             return_to_freqs_matcher, negation))) {
   return ExplainMatchResult(frequency_matcher, arg.freq, result_listener) &&
          ExplainMatchResult(cache_pressure_matcher, arg.cache_pressure,
+                            result_listener) &&
+         ExplainMatchResult(call_freqs_matcher, arg.call_freqs,
+                            result_listener) &&
+         ExplainMatchResult(return_to_freqs_matcher, arg.return_to_freqs,
                             result_listener);
 }
 
