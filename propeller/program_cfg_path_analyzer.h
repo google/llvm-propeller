@@ -210,8 +210,8 @@ class FunctionPathInfo {
         // Update cache pressure for the new path probes.
         for (auto &path_probe : new_path_probe_sample_info.path_probes) {
           if (!bb_path_info.path_probe_sample_info.CouldImply(path_probe)) {
-            path_probe.path_node
-                ->mutable_path_pred_info()[path_probe.pred_node_bb_index]
+            path_probe.path_node->mutable_path_pred_info()
+                .entries[path_probe.pred_node_bb_index]
                 .cache_pressure += pressure;
           }
         }
@@ -219,8 +219,8 @@ class FunctionPathInfo {
         for (auto &last_path_probe :
              bb_path_info.path_probe_sample_info.path_probes) {
           if (!new_path_probe_sample_info.CouldImply(last_path_probe)) {
-            last_path_probe.path_node
-                ->mutable_path_pred_info()[last_path_probe.pred_node_bb_index]
+            last_path_probe.path_node->mutable_path_pred_info()
+                .entries[last_path_probe.pred_node_bb_index]
                 .cache_pressure += pressure;
           }
         }

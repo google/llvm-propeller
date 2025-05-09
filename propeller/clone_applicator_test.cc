@@ -90,10 +90,10 @@ TEST_P(ApplyCloningsTest, TestCloningChangeOnCfgs) {
                           .function_index = path_arg.function_index,
                           .path_pred_bb_index = path_arg.pred_bb_index}});
   }
-  CloneApplicatorStats clone_applicator_stats =
-      ApplyClonings(test_case.propeller_options.code_layout_params(),
-                    test_case.propeller_options.path_profile_options(),
-                    clonings, *program_cfg);
+  CloneApplicatorStats clone_applicator_stats = ApplyClonings(
+      test_case.propeller_options.code_layout_params(),
+      test_case.propeller_options.path_profile_options(), clonings,
+      *program_cfg, path_profile.path_profiles_by_function_index());
 
   for (const auto& [function_index, cfg_matcher] :
        test_case.cfg_matcher_by_function_index) {

@@ -111,6 +111,11 @@ class CloningPathTraceHandler : public PathTraceHandler {
   // and updates the current paths, by adding this block as a child. Also
   // creates a new path starting from this block if needed.
   void VisitBlock(int flat_bb_index, absl::Time sample_time) override {
+    UpdateMissingPredPathNode(flat_bb_index);
+    if (missing_pred_path_node_ != nullptr) {
+      ++missing_pred_path_node_->mutable_path_pred_info()
+            .missing_pred_entry.freq;
+    }
     ++path_length_;
     std::vector<BasePathProbe> new_path_probes;
     // Extends `path_probe` with `bb_index` and returns if we should continue
@@ -134,10 +139,9 @@ class CloningPathTraceHandler : public PathTraceHandler {
                ->second;
 
       // Increment the frequency associated with the child path node.
-      PathPredInfo &path_pred_info =
-          child_path_node
-              .mutable_path_pred_info()[path_probe.pred_node_bb_index()];
-      ++path_pred_info.freq;
+      ++child_path_node.mutable_path_pred_info()
+            .GetOrInsertEntry(path_probe.pred_node_bb_index())
+            .freq;
 
       // Stop tracing if the previous block has an indirect branch. Indirect
       // branches cannot be rewired. Therefore, they can only exist in the last
@@ -175,9 +179,7 @@ class CloningPathTraceHandler : public PathTraceHandler {
       PathNode &path_node =
           function_path_profile_->GetOrInsertPathTree(flat_bb_index);
       // Increment the frequency of the root (given the predecessor block).
-      PathPredInfo &path_pred_info =
-          path_node.mutable_path_pred_info()[prev_node_bb_index_];
-      ++path_pred_info.freq;
+      ++path_node.mutable_path_pred_info().entries[prev_node_bb_index_].freq;
       // Start tracking this path.
       current_path_probes_.emplace_back(&path_node, prev_node_bb_index_);
       new_path_probes.push_back(current_path_probes_.back().base_path_probe());
@@ -193,10 +195,20 @@ class CloningPathTraceHandler : public PathTraceHandler {
 
   // Inserts `calls` into latest path nodes tracked by `current_path_probes_`.
   void HandleCalls(absl::Span<const CallRetInfo> call_rets) override {
+    if (missing_pred_path_node_ != nullptr) {
+      for (const auto &call_ret : call_rets) {
+        // Skips call-returns from unknown code (library functions, etc.).
+        if (!call_ret.callee.has_value() && !call_ret.return_bb.has_value())
+          continue;
+        ++missing_pred_path_node_->mutable_path_pred_info()
+              .missing_pred_entry.call_freqs[call_ret];
+      }
+    }
     for (PathProbe &path_probe : current_path_probes_) {
-      auto &call_freqs_for_pred =
+      absl::flat_hash_map<CallRetInfo, int> &call_freqs_for_pred =
           path_probe.path_node()
-              ->mutable_path_pred_info()[path_probe.pred_node_bb_index()]
+              ->mutable_path_pred_info()
+              .GetOrInsertEntry(path_probe.pred_node_bb_index())
               .call_freqs;
       for (const auto &call_ret : call_rets) {
         // Skips call-returns from unknown code (library functions, etc.).
@@ -208,13 +220,16 @@ class CloningPathTraceHandler : public PathTraceHandler {
   }
 
   void HandleReturn(const FlatBbHandle &bb_handle) override {
+    if (missing_pred_path_node_ != nullptr) {
+      ++missing_pred_path_node_->mutable_path_pred_info()
+            .missing_pred_entry.return_to_freqs[bb_handle];
+    }
     for (PathProbe &path_probe : current_path_probes_) {
-      auto &return_to_freqs_for_pred =
-          path_probe.path_node()
-              ->mutable_path_pred_info()[path_probe.pred_node_bb_index()]
-              .return_to_freqs;
-      ++return_to_freqs_for_pred[{.function_index = bb_handle.function_index,
-                                  .flat_bb_index = bb_handle.flat_bb_index}];
+      ++path_probe.path_node()
+            ->mutable_path_pred_info()
+            .entries[path_probe.pred_node_bb_index()]
+            .return_to_freqs[{.function_index = bb_handle.function_index,
+                              .flat_bb_index = bb_handle.flat_bb_index}];
     }
   }
 
@@ -227,6 +242,40 @@ class CloningPathTraceHandler : public PathTraceHandler {
   }
 
  private:
+  // Updates `missing_pred_path_node_` upon visiting a new block with flat bb
+  // index `flat_bb_index`.
+  void UpdateMissingPredPathNode(int flat_bb_index) {
+    // If `missing_pred_path_node_` is already set, we trace the path through
+    // its child node with corresponding to `flat_bb_index`.
+    if (missing_pred_path_node_ != nullptr) {
+      // Stop tracking the missing predecessor path node once we reach the
+      // cloning path length threshold.
+      if (path_length_ >= path_profile_options_->max_path_length()) {
+        missing_pred_path_node_ = nullptr;
+      } else {
+        // We don't need to check for loops here. Missing predecessor path
+        // nodes for looping paths will be created, but they won't be considered
+        // when applying the cloning since we only clone paths with no loops.
+        missing_pred_path_node_ =
+            missing_pred_path_node_->mutable_children()
+                .lazy_emplace(
+                    flat_bb_index,
+                    [&](const auto &ctor) {
+                      ctor(flat_bb_index,
+                           std::make_unique<PathNode>(flat_bb_index,
+                                                      missing_pred_path_node_));
+                    })
+                ->second.get();
+      }
+    } else if (path_length_ == 0 && flat_bb_index != 0) {
+      // If the path length is 0, we are at the very first block of the path.
+      // We create a new path tree rooted at this node unless this is the
+      // function entry block, which means there is no path predecessor.
+      missing_pred_path_node_ =
+          &function_path_profile_->GetOrInsertPathTree(flat_bb_index);
+    }
+  }
+
   const PathProfileOptions *path_profile_options_;
   const ControlFlowGraph *cfg_;
   // At each point during the tracing of a path, we will potentially be tracking
@@ -242,7 +291,15 @@ class CloningPathTraceHandler : public PathTraceHandler {
   // Previous node's bb_index when traversing the path (Should be -1 before path
   // traversal).
   int prev_node_bb_index_;
+  // Length of the full visited path in terms of number of blocks. This is
+  // incremented for each block visited during the path traversal.
   int path_length_ = 0;
+  // The path node corresponding to the current path with missing path
+  // predecessor which starts from the very first block of the path. This is
+  // used to populate the missing path predecessor info for the paths, which
+  // will later be used to drop edges weights for paths with missing path
+  // predecessors.
+  PathNode *missing_pred_path_node_ = nullptr;
 };
 }  // namespace
 
