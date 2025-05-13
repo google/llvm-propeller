@@ -47,11 +47,11 @@ namespace {
 // Creates and returns a vector CFGNodes containing a `CFGNode` for every
 // BBAddrMap entry in `func_bb_addr_map` in the same order.
 std::vector<std::unique_ptr<CFGNode>> CreateCfgNodes(
-    int function_index, const llvm::object::BBAddrMap &func_bb_addr_map) {
+    int function_index, const llvm::object::BBAddrMap& func_bb_addr_map) {
   std::vector<std::unique_ptr<CFGNode>> nodes;
   int bb_index = 0;
-  for (const auto &bb_range : func_bb_addr_map.getBBRanges()) {
-    for (const auto &bb_entry : bb_range.BBEntries) {
+  for (const auto& bb_range : func_bb_addr_map.getBBRanges()) {
+    for (const auto& bb_entry : bb_range.BBEntries) {
       nodes.push_back(std::make_unique<CFGNode>(
           bb_range.BaseAddress + bb_entry.Offset, bb_index, bb_entry.ID,
           bb_entry.Size, bb_entry.MD, function_index));
@@ -63,17 +63,17 @@ std::vector<std::unique_ptr<CFGNode>> CreateCfgNodes(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
-    const BranchAggregation &branch_aggregation, Addr2Cu *addr2cu) && {
+    const BranchAggregation& branch_aggregation, Addr2Cu* addr2cu) && {
   // Temporary map from Id -> CFGNode.
-  absl::flat_hash_map<InterCfgId, CFGNode *> node_map;
+  absl::flat_hash_map<InterCfgId, CFGNode*> node_map;
   // Insert node mappings for initial CFGs.
-  for (auto &[cfg_index, cfg] : cfgs_) {
-    for (const std::unique_ptr<CFGNode> &node : cfg->nodes()) {
+  for (auto& [cfg_index, cfg] : cfgs_) {
+    for (const std::unique_ptr<CFGNode>& node : cfg->nodes()) {
       node_map.insert({node->inter_cfg_id(), node.get()});
     }
   }
   for (int func_index : binary_address_mapper_->selected_functions()) {
-    const llvm::object::BBAddrMap &func_bb_addr_map =
+    const llvm::object::BBAddrMap& func_bb_addr_map =
         binary_address_mapper_->bb_addr_map()[func_index];
 
     std::optional<llvm::StringRef> module_name = std::nullopt;
@@ -88,7 +88,7 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
     // Skip functions which already have a CFG created for them.
     if (cfgs_.contains(func_index)) continue;
 
-    const FunctionSymbolInfo &symbol_info =
+    const FunctionSymbolInfo& symbol_info =
         binary_address_mapper_->symbol_info_map().at(func_index);
 
     // From the POV of Propeller, we want to treat all .text.* sections as
@@ -103,7 +103,7 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
         section_name, func_index, module_name, symbol_info.aliases,
         CreateCfgNodes(func_index, func_bb_addr_map));
     // Setup mapping from Ids to nodes.
-    for (const std::unique_ptr<CFGNode> &node : cfg->nodes())
+    for (const std::unique_ptr<CFGNode>& node : cfg->nodes())
       node_map.insert({node->inter_cfg_id(), node.get()});
     CHECK_EQ(cfg->nodes().size(), func_bb_addr_map.getNumBBEntries());
     stats_->cfg_stats.nodes_created += cfg->nodes().size();
@@ -117,7 +117,7 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
   }
 
   absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>> cfgs;
-  for (auto &[cfg_index, cfg] : cfgs_) {
+  for (auto& [cfg_index, cfg] : cfgs_) {
     ControlFlowGraph::NodeFrequencyStats cfg_stats =
         cfg->GetNodeFrequencyStats();
     if (cfg_stats.n_hot_blocks == 0) continue;
@@ -138,11 +138,11 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
 //    to_sym>.
 // 3. create edges and apply weights for the above path.
 void ProgramCfgBuilder::CreateFallthroughs(
-    const BranchAggregation &branch_aggregation,
-    const absl::flat_hash_map<InterCfgId, CFGNode *> &tmp_node_map,
-    absl::flat_hash_map<std::pair<int, int>, int> *tmp_bb_fallthrough_counters,
-    absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge *>
-        *tmp_edge_map) {
+    const BranchAggregation& branch_aggregation,
+    const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map,
+    absl::flat_hash_map<std::pair<int, int>, int>* tmp_bb_fallthrough_counters,
+    absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*>*
+        tmp_edge_map) {
   for (auto [fallthrough, cnt] : branch_aggregation.fallthrough_counters) {
     // A fallthrough from A to B implies a branch to A followed by a branch
     // from B. Therefore we respectively use BranchDirection::kTo and
@@ -158,7 +158,7 @@ void ProgramCfgBuilder::CreateFallthroughs(
       (*tmp_bb_fallthrough_counters)[{*from_index, *to_index}] += cnt;
   }
 
-  for (auto &i : *tmp_bb_fallthrough_counters) {
+  for (auto& i : *tmp_bb_fallthrough_counters) {
     int fallthrough_from = i.first.first, fallthrough_to = i.first.second;
     int weight = i.second;
     if (fallthrough_from == fallthrough_to ||
@@ -166,7 +166,7 @@ void ProgramCfgBuilder::CreateFallthroughs(
                                                 fallthrough_to))
       continue;
     for (int sym = fallthrough_from; sym <= fallthrough_to - 1; ++sym) {
-      auto *fallthrough_edge = InternalCreateEdge(
+      auto* fallthrough_edge = InternalCreateEdge(
           sym, sym + 1, weight, CFGEdgeKind::kBranchOrFallthough, tmp_node_map,
           tmp_edge_map);
       if (!fallthrough_edge) break;
@@ -174,11 +174,11 @@ void ProgramCfgBuilder::CreateFallthroughs(
   }
 }
 
-CFGEdge *ProgramCfgBuilder::InternalCreateEdge(
+CFGEdge* ProgramCfgBuilder::InternalCreateEdge(
     int from_bb_index, int to_bb_index, int weight, CFGEdgeKind edge_kind,
-    const absl::flat_hash_map<InterCfgId, CFGNode *> &tmp_node_map,
-    absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge *>
-        *tmp_edge_map) {
+    const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map,
+    absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*>*
+        tmp_edge_map) {
   BbHandle from_bb = binary_address_mapper_->bb_handles().at(from_bb_index);
   BbHandle to_bb = binary_address_mapper_->bb_handles().at(to_bb_index);
   std::optional<FlatBbHandle> from_flat_bb_handle =
@@ -192,7 +192,7 @@ CFGEdge *ProgramCfgBuilder::InternalCreateEdge(
                            {from_flat_bb_handle->flat_bb_index, 0}};
   InterCfgId to_bb_id = {to_bb.function_index,
                          {to_flat_bb_handle->flat_bb_index, 0}};
-  CFGEdge *edge = nullptr;
+  CFGEdge* edge = nullptr;
   auto i = tmp_edge_map->find(std::make_pair(from_bb_id, to_bb_id));
   if (i != tmp_edge_map->end()) {
     edge = i->second;
@@ -208,11 +208,11 @@ CFGEdge *ProgramCfgBuilder::InternalCreateEdge(
          to_ni = tmp_node_map.find(to_bb_id);
     if (from_ni == tmp_node_map.end() || to_ni == tmp_node_map.end())
       return nullptr;
-    CFGNode *from_node = from_ni->second;
-    CFGNode *to_node = to_ni->second;
+    CFGNode* from_node = from_ni->second;
+    CFGNode* to_node = to_ni->second;
     DCHECK(from_node && to_node);
-    ControlFlowGraph &from_cfg = *cfgs_.at(from_bb.function_index);
-    ControlFlowGraph &to_cfg = *cfgs_.at(to_bb.function_index);
+    ControlFlowGraph& from_cfg = *cfgs_.at(from_bb.function_index);
+    ControlFlowGraph& to_cfg = *cfgs_.at(to_bb.function_index);
     edge = cfgs_.at(from_bb.function_index)
                ->CreateEdge(from_node, to_node, weight, edge_kind,
                             (from_cfg.section_name() != to_cfg.section_name()));
@@ -230,14 +230,13 @@ CFGEdge *ProgramCfgBuilder::InternalCreateEdge(
 // to_symbol> and by using tmp_node_map, we further translate it to <from_node,
 // to_node>, and finally create a CFGEdge for such CFGNode pair.
 absl::Status ProgramCfgBuilder::CreateEdges(
-    const BranchAggregation &branch_aggregation,
-    const absl::flat_hash_map<InterCfgId, CFGNode *> &tmp_node_map) {
+    const BranchAggregation& branch_aggregation,
+    const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map) {
   // Temp map that records which CFGEdges are created, so we do not re-create
   // edges. Note this is necessary: although
   // "branch_counters_" have no duplicated <from_addr, to_addr> pairs, the
   // translated <from_bb, to_bb> may have duplicates.
-  absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge *>
-      tmp_edge_map;
+  absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*> tmp_edge_map;
 
   absl::flat_hash_map<std::pair<int, int>, int> tmp_bb_fallthrough_counters;
 

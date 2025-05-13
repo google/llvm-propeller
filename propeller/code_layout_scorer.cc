@@ -35,20 +35,25 @@ namespace propeller {
 // [1] Newell A, Pupyrev S. Improved basic block reordering.
 //     IEEE Transactions on Computers. 2020 Mar 30;69(12):1784-94.
 PropellerCodeLayoutScorer::PropellerCodeLayoutScorer(
-    const PropellerCodeLayoutParameters &params)
+    const PropellerCodeLayoutParameters& params)
     : code_layout_params_(params) {}
 
 // Returns the score for one edge, given its source to sink direction and
 // distance in the layout.
-double PropellerCodeLayoutScorer::GetEdgeScore(const CFGEdge &edge,
+double PropellerCodeLayoutScorer::GetEdgeScore(const CFGEdge& edge,
                                                int src_sink_distance) const {
   // Approximate callsites to be in the middle of the source basic block.
   if (edge.IsCall()) src_sink_distance += edge.src()->size() / 2;
 
   if (edge.IsReturn()) src_sink_distance += edge.sink()->size() / 2;
 
-  if (src_sink_distance == 0 && edge.IsBranchOrFallthrough())
-    return edge.weight() * code_layout_params_.fallthrough_weight();
+  if (src_sink_distance == 0 && edge.IsBranchOrFallthrough()) {
+    double factor = code_layout_params_.fallthrough_weight();
+    if (edge.IsAlwaysTaken()) {
+      factor += code_layout_params_.always_fallthrough_branch_weight();
+    }
+    return edge.weight() * factor;
+  }
 
   double absolute_src_sink_distance =
       static_cast<double>(std::abs(src_sink_distance));

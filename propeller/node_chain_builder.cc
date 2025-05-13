@@ -55,11 +55,11 @@ namespace {
 // `function_index` of some CFG in `cfgs`.
 absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
 GetInitialChainsForCfgs(
-    const std::vector<const ControlFlowGraph *> &cfgs,
-    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
-        &initial_chains) {
+    const std::vector<const ControlFlowGraph*>& cfgs,
+    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+        initial_chains) {
   absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>> result;
-  for (const ControlFlowGraph *cfg : cfgs) {
+  for (const ControlFlowGraph* cfg : cfgs) {
     auto it = initial_chains.find(cfg->function_index());
     if (it == initial_chains.end()) continue;
     result.emplace(cfg->function_index(), it->second);
@@ -70,11 +70,11 @@ GetInitialChainsForCfgs(
 
 template <class AssemblyQueueImpl>
 NodeChainBuilder NodeChainBuilder::CreateNodeChainBuilder(
-    const PropellerCodeLayoutScorer &scorer,
-    const std::vector<const ControlFlowGraph *> &cfgs,
-    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
-        &initial_chains,
-    PropellerStats::CodeLayoutStats &stats) {
+    const PropellerCodeLayoutScorer& scorer,
+    const std::vector<const ControlFlowGraph*>& cfgs,
+    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+        initial_chains,
+    PropellerStats::CodeLayoutStats& stats) {
   return NodeChainBuilder(scorer, cfgs,
                           GetInitialChainsForCfgs(cfgs, initial_chains), stats,
                           std::make_unique<AssemblyQueueImpl>());
@@ -84,25 +84,25 @@ NodeChainBuilder NodeChainBuilder::CreateNodeChainBuilder(
 // types.
 template NodeChainBuilder
 NodeChainBuilder::CreateNodeChainBuilder<NodeChainAssemblyIterativeQueue>(
-    const PropellerCodeLayoutScorer &scorer,
-    const std::vector<const ControlFlowGraph *> &cfgs,
-    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
-        &initial_chains,
-    PropellerStats::CodeLayoutStats &stats);
+    const PropellerCodeLayoutScorer& scorer,
+    const std::vector<const ControlFlowGraph*>& cfgs,
+    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+        initial_chains,
+    PropellerStats::CodeLayoutStats& stats);
 
 template NodeChainBuilder
 NodeChainBuilder::CreateNodeChainBuilder<NodeChainAssemblyBalancedTreeQueue>(
-    const PropellerCodeLayoutScorer &scorer,
-    const std::vector<const ControlFlowGraph *> &cfgs,
-    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
-        &initial_chains,
-    PropellerStats::CodeLayoutStats &stats);
+    const PropellerCodeLayoutScorer& scorer,
+    const std::vector<const ControlFlowGraph*>& cfgs,
+    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+        initial_chains,
+    PropellerStats::CodeLayoutStats& stats);
 
 using NodeChainAssemblyComparator =
     NodeChainAssembly::NodeChainAssemblyComparator;
 
-absl::btree_map<const CFGNode *, const CFGNode *, CFGNodePtrComparator>
-GetForcedEdges(const ControlFlowGraph &cfg) {
+absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
+GetForcedEdges(const ControlFlowGraph& cfg) {
   // Each node can participate in a forced edge at most one time as the source
   // at most one time as the sink.
   // So we compute these edges as a map from source to sink nodes below.
@@ -112,12 +112,12 @@ GetForcedEdges(const ControlFlowGraph &cfg) {
   // have a forced edge. We also keep track of the in-degree of each node.
   // After visiting all edges, we remove all source-sink pairs where
   // sink == nullptr or if sink has an in-degree larger than one.
-  absl::btree_map<const CFGNode *, const CFGNode *, CFGNodePtrComparator>
+  absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
       forced_edges;
   // This stores the number of hot (non-zero weight) incoming edges to every
   // node (hot in-degree).
-  absl::flat_hash_map<const CFGNode *, int> hot_in_degree;
-  for (const std::unique_ptr<CFGEdge> &edge : cfg.intra_edges()) {
+  absl::flat_hash_map<const CFGNode*, int> hot_in_degree;
+  for (const std::unique_ptr<CFGEdge>& edge : cfg.intra_edges()) {
     if (edge->weight() == 0 || edge->IsCall() || edge->IsReturn()) continue;
     auto [it, inserted] = forced_edges.emplace(edge->src(), edge->sink());
     // Nullify the edge for the source node if an out-edge has already been
@@ -137,17 +137,17 @@ GetForcedEdges(const ControlFlowGraph &cfg) {
   return forced_edges;
 }
 
-void BreakCycles(absl::btree_map<const CFGNode *, const CFGNode *,
-                                 CFGNodePtrComparator> &path_next) {
+void BreakCycles(absl::btree_map<const CFGNode*, const CFGNode*,
+                                 CFGNodePtrComparator>& path_next) {
   // This maps each node to the path (id) they belong to. Path ids are 1-based.
-  absl::flat_hash_map<const CFGNode *, int> node_to_path_id;
+  absl::flat_hash_map<const CFGNode*, int> node_to_path_id;
   // These are the source nodes for all edges that must be cut to break cycles.
-  std::vector<const CFGNode *> cycle_cut_nodes;
+  std::vector<const CFGNode*> cycle_cut_nodes;
   int current_path_id = 0;
   for (auto it = path_next.begin(); it != path_next.end(); ++it) {
     // Continue if the node and its path/cycle have already been visited.
     if (node_to_path_id.contains(it->first)) continue;
-    const CFGNode *victim_node = nullptr;
+    const CFGNode* victim_node = nullptr;
     // Start traversing the path from this node to find the victim node.
     auto path_visit_it = it;
     ++current_path_id;
@@ -174,28 +174,28 @@ void BreakCycles(absl::btree_map<const CFGNode *, const CFGNode *,
     }
   }
   // Remove the victim nodes from the path_next map to break cycles.
-  for (const CFGNode *node : cycle_cut_nodes) path_next.erase(node);
+  for (const CFGNode* node : cycle_cut_nodes) path_next.erase(node);
 }
 
-std::vector<std::vector<const CFGNode *>> GetForcedPaths(
-    const ControlFlowGraph &cfg) {
+std::vector<std::vector<const CFGNode*>> GetForcedPaths(
+    const ControlFlowGraph& cfg) {
   // First find all forced fallthrough edges. Each of these edges are the only
   // edge to their sink and the only edge from their source.
-  absl::btree_map<const CFGNode *, const CFGNode *, CFGNodePtrComparator>
+  absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
       path_next = GetForcedEdges(cfg);
 
   // Construct paths from `path_next` after breaking its cycles.
   BreakCycles(path_next);
 
   // Find the beginning nodes of paths.
-  absl::btree_set<const CFGNode *, CFGNodePtrComparator> path_begin_nodes;
+  absl::btree_set<const CFGNode*, CFGNodePtrComparator> path_begin_nodes;
   for (const auto [source, unused] : path_next) path_begin_nodes.insert(source);
   for (const auto [unused, sink] : path_next) path_begin_nodes.erase(sink);
 
-  std::vector<std::vector<const CFGNode *>> paths;
-  for (const CFGNode *begin_node : path_begin_nodes) {
+  std::vector<std::vector<const CFGNode*>> paths;
+  for (const CFGNode* begin_node : path_begin_nodes) {
     // Follow the path specified by bundle_next from this node.
-    std::vector<const CFGNode *> path = {begin_node};
+    std::vector<const CFGNode*> path = {begin_node};
     for (auto it = path_next.find(begin_node); it != path_next.end();
          it = path_next.find(it->second))
       path.push_back(it->second);
@@ -207,17 +207,17 @@ std::vector<std::vector<const CFGNode *>> GetForcedPaths(
 
 void NodeChainBuilder::InitNodeChains() {
   auto add_new_chain =
-      [&](std::vector<std::vector<const CFGNode *>> chain_nodes) {
+      [&](std::vector<std::vector<const CFGNode*>> chain_nodes) {
         if (chain_nodes.size() == 1 && chain_nodes[0].size() == 1) {
           ++stats_.n_single_node_chains;
         } else {
           ++stats_.n_multi_node_chains;
         }
         auto chain = std::make_unique<NodeChain>(std::move(chain_nodes));
-        for (std::unique_ptr<CFGNodeBundle> &bundle :
+        for (std::unique_ptr<CFGNodeBundle>& bundle :
              chain->mutable_node_bundles()) {
           int bundle_offset = 0;
-          for (const CFGNode *node : bundle->nodes()) {
+          for (const CFGNode* node : bundle->nodes()) {
             CHECK_EQ(node_to_bundle_mapper_->GetBundleMappingEntry(node).bundle,
                      nullptr)
                 << "Node " << node->inter_cfg_id() << " is already in a bundle";
@@ -231,14 +231,14 @@ void NodeChainBuilder::InitNodeChains() {
             << "Duplicate chain id: " << chain_id;
       };
 
-  for (const ControlFlowGraph *cfg : cfgs_) {
+  for (const ControlFlowGraph* cfg : cfgs_) {
     if (!cfg->is_hot()) {
       LOG(INFO) << "Function is not hot: \"" << cfg->GetPrimaryName().str()
                 << "\".";
       continue;
     }
     auto it = initial_chains_.find(cfg->function_index());
-    const std::vector<FunctionChainInfo::BbChain> &cfg_initial_chains =
+    const std::vector<FunctionChainInfo::BbChain>& cfg_initial_chains =
         it != initial_chains_.end() ? it->second
                                     : std::vector<FunctionChainInfo::BbChain>{};
     bool has_hot_landing_pads = cfg->has_hot_landing_pads();
@@ -265,20 +265,20 @@ void NodeChainBuilder::InitNodeChains() {
                         code_layout_scorer_, {cfg},
                         {{cfg->function_index(), cfg_initial_chains}}, stats_)
                         .BuildChains();
-      for (const std::unique_ptr<NodeChain> &chain : chains) {
-        std::vector<const CFGNode *> chain_nodes;
-        for (std::unique_ptr<CFGNodeBundle> &bundle :
+      for (const std::unique_ptr<NodeChain>& chain : chains) {
+        std::vector<const CFGNode*> chain_nodes;
+        for (std::unique_ptr<CFGNodeBundle>& bundle :
              chain->mutable_node_bundles()) {
-          for (const CFGNode *node : bundle->nodes())
+          for (const CFGNode* node : bundle->nodes())
             chain_nodes.push_back(node);
         }
         add_new_chain({std::move(chain_nodes)});
       }
       continue;
     }
-    std::vector<const CFGNode *> hot_nodes_in_order;
-    std::vector<const CFGNode *> cold_nodes_in_order;
-    for (const std::unique_ptr<CFGNode> &node : cfg->nodes()) {
+    std::vector<const CFGNode*> hot_nodes_in_order;
+    std::vector<const CFGNode*> cold_nodes_in_order;
+    for (const std::unique_ptr<CFGNode>& node : cfg->nodes()) {
       if (node->CalculateFrequency() != 0 ||
           // Assume the entry block hot in non-inter-procedural mode.
           (node->is_entry() && !code_layout_scorer_.code_layout_params()
@@ -312,14 +312,14 @@ void NodeChainBuilder::InitNodeChains() {
     }
     // Construct the initial chains if requested.
     if (!cfg_initial_chains.empty()) {
-      for (const auto &chain : cfg_initial_chains) {
-        std::vector<std::vector<const CFGNode *>> node_chain;
+      for (const auto& chain : cfg_initial_chains) {
+        std::vector<std::vector<const CFGNode*>> node_chain;
         node_chain.reserve(chain.bb_bundles.size());
-        for (const auto &bundle : chain.bb_bundles) {
+        for (const auto& bundle : chain.bb_bundles) {
           CHECK(!bundle.full_bb_ids.empty());
-          std::vector<const CFGNode *> bundle_nodes;
+          std::vector<const CFGNode*> bundle_nodes;
           bundle_nodes.reserve(bundle.full_bb_ids.size());
-          for (const FullIntraCfgId &full_id : bundle.full_bb_ids)
+          for (const FullIntraCfgId& full_id : bundle.full_bb_ids)
             bundle_nodes.push_back(&cfg->GetNodeById(full_id.intra_cfg_id));
           node_chain.push_back(std::move(bundle_nodes));
         }
@@ -329,11 +329,11 @@ void NodeChainBuilder::InitNodeChains() {
       }
     } else {
       // Construct bundled node chains for the paths.
-      for (auto &path : GetForcedPaths(*cfg)) add_new_chain({std::move(path)});
+      for (auto& path : GetForcedPaths(*cfg)) add_new_chain({std::move(path)});
     }
 
     // Make single-node chains for the remaining hot nodes.
-    for (const CFGNode *node : hot_nodes_in_order) {
+    for (const CFGNode* node : hot_nodes_in_order) {
       if (node_to_bundle_mapper_->GetBundleMappingEntry(node).bundle != nullptr)
         continue;
       add_new_chain({{node}});
@@ -357,13 +357,13 @@ std::vector<std::unique_ptr<NodeChain>> NodeChainBuilder::BuildChains() {
 
   std::vector<std::unique_ptr<NodeChain>> chains;
   chains.reserve(chains_.size());
-  for (auto &[unused, chain] : chains_) chains.push_back(std::move(chain));
+  for (auto& [unused, chain] : chains_) chains.push_back(std::move(chain));
   chains_.clear();
   return chains;
 }
 
-void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain &split_chain,
-                                               NodeChain &unsplit_chain) {
+void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain& split_chain,
+                                               NodeChain& unsplit_chain) {
   absl::StatusOr<NodeChainAssembly> best_assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
@@ -415,9 +415,9 @@ void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain &split_chain,
           };
 
       // Find edges from the end of unsplit_chain to the middle of split_chain.
-      unsplit_chain.GetLastNode()->ForEachOutEdgeRef([&](const CFGEdge &edge) {
+      unsplit_chain.GetLastNode()->ForEachOutEdgeRef([&](const CFGEdge& edge) {
         if (!ShouldVisitEdge(edge)) return;
-        const CFGNodeBundle *sink_node_bundle =
+        const CFGNodeBundle* sink_node_bundle =
             node_to_bundle_mapper_->GetBundleMappingEntry(edge.sink()).bundle;
         if (sink_node_bundle->chain_mapping().chain->id() != split_chain.id())
           return;
@@ -428,9 +428,9 @@ void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain &split_chain,
 
       // Find edges from the middle of split_chain to the beginning of
       // unsplit_chain.
-      unsplit_chain.GetFirstNode()->ForEachInEdgeRef([&](const CFGEdge &edge) {
+      unsplit_chain.GetFirstNode()->ForEachInEdgeRef([&](const CFGEdge& edge) {
         if (!ShouldVisitEdge(edge)) return;
-        const CFGNodeBundle *src_node_bundle =
+        const CFGNodeBundle* src_node_bundle =
             node_to_bundle_mapper_->GetBundleMappingEntry(edge.src()).bundle;
         if (src_node_bundle->chain_mapping().chain->id() != split_chain.id())
           return;
@@ -450,9 +450,9 @@ void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain &split_chain,
 
 // Initializes the chain assemblies (merging candidates) across all the chains.
 void NodeChainBuilder::InitChainAssemblies() {
-  for (auto &[unused, chain_ptr] : chains_) {
-    NodeChain *chain = chain_ptr.get();
-    chain->VisitEachCandidateChain([&](NodeChain *other_chain) {
+  for (auto& [unused, chain_ptr] : chains_) {
+    NodeChain* chain = chain_ptr.get();
+    chain->VisitEachCandidateChain([&](NodeChain* other_chain) {
       // `UpdateNodeChainAssembly(*other_chain, *chain)` is invoked when
       // visiting candidate chains for `other_chain`.
       UpdateNodeChainAssembly(*chain, *other_chain);
@@ -460,8 +460,8 @@ void NodeChainBuilder::InitChainAssemblies() {
   }
 }
 
-void NodeChainBuilder::MergeChains(NodeChain &left_chain,
-                                   NodeChain &right_chain) {
+void NodeChainBuilder::MergeChains(NodeChain& left_chain,
+                                   NodeChain& right_chain) {
   absl::StatusOr<NodeChainAssembly> assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           *node_to_bundle_mapper_, code_layout_scorer_, left_chain, right_chain,
@@ -473,8 +473,8 @@ void NodeChainBuilder::MergeChains(NodeChain &left_chain,
 
 void NodeChainBuilder::MergeChains(NodeChainAssembly assembly) {
   CHECK_GE(assembly.score_gain(), 0);
-  NodeChain &split_chain = assembly.split_chain();
-  NodeChain &unsplit_chain = assembly.unsplit_chain();
+  NodeChain& split_chain = assembly.split_chain();
+  NodeChain& unsplit_chain = assembly.unsplit_chain();
   ++stats_.n_assemblies_by_merge_order[assembly.merge_order()];
 
   split_chain.MergeWith(std::move(assembly), *node_to_bundle_mapper_,
@@ -485,24 +485,24 @@ void NodeChainBuilder::MergeChains(NodeChainAssembly assembly) {
 
 void NodeChainBuilder::InitChainEdges() {
   // Set up the outgoing edges for every chain
-  for (auto &[unused, chain_ptr] : chains_) {
-    NodeChain *chain = chain_ptr.get();
-    chain->VisitEachNodeRef([&](const CFGNode &n) {
-      n.ForEachOutEdgeRef([&](const CFGEdge &edge) {
+  for (auto& [unused, chain_ptr] : chains_) {
+    NodeChain* chain = chain_ptr.get();
+    chain->VisitEachNodeRef([&](const CFGNode& n) {
+      n.ForEachOutEdgeRef([&](const CFGEdge& edge) {
         if (!ShouldVisitEdge(edge)) return;
-        CFGNodeBundle *src_node_bundle =
+        CFGNodeBundle* src_node_bundle =
             node_to_bundle_mapper_->GetBundleMappingEntry(edge.src()).bundle;
-        const CFGNodeBundle *sink_node_bundle =
+        const CFGNodeBundle* sink_node_bundle =
             node_to_bundle_mapper_->GetBundleMappingEntry(edge.sink()).bundle;
         // Ignore edges running within the same bundle, as they won't be split.
         if (src_node_bundle == sink_node_bundle) return;
-        NodeChain *sink_node_chain = sink_node_bundle->chain_mapping().chain;
+        NodeChain* sink_node_chain = sink_node_bundle->chain_mapping().chain;
         if (sink_node_chain == chain) {
           src_node_bundle->mutable_intra_chain_out_edges().push_back(&edge);
           return;
         }
         auto [it, inserted] = chain->mutable_inter_chain_out_edges().emplace(
-            sink_node_chain, std::vector<const CFGEdge *>(1, &edge));
+            sink_node_chain, std::vector<const CFGEdge*>(1, &edge));
         if (inserted)
           sink_node_chain->mutable_inter_chain_in_edges().insert(chain);
         else
@@ -514,16 +514,16 @@ void NodeChainBuilder::InitChainEdges() {
       }
     });
   }
-  for (auto &[chain_id, chain] : chains_) {
+  for (auto& [chain_id, chain] : chains_) {
     chain->SetScore(
         chain->ComputeScore(*node_to_bundle_mapper_, code_layout_scorer_));
   }
 }
 
-void NodeChainBuilder::UpdateAssembliesAfterMerge(NodeChain &kept_chain,
-                                                  NodeChain &defunct_chain) {
+void NodeChainBuilder::UpdateAssembliesAfterMerge(NodeChain& kept_chain,
+                                                  NodeChain& defunct_chain) {
   // Remove all assemblies associated with defunct_chain.
-  defunct_chain.VisitEachCandidateChain([&](NodeChain *other_chain) {
+  defunct_chain.VisitEachCandidateChain([&](NodeChain* other_chain) {
     node_chain_assemblies_->RemoveAssembly(
         {.split_chain = &defunct_chain, .unsplit_chain = other_chain});
     node_chain_assemblies_->RemoveAssembly(
@@ -535,7 +535,7 @@ void NodeChainBuilder::UpdateAssembliesAfterMerge(NodeChain &kept_chain,
 
   // Update assemblies associated with split_chain as their score may have
   // changed by the merge.
-  kept_chain.VisitEachCandidateChain([&](NodeChain *other_chain) {
+  kept_chain.VisitEachCandidateChain([&](NodeChain* other_chain) {
     UpdateNodeChainAssembly(kept_chain, *other_chain);
     UpdateNodeChainAssembly(*other_chain, kept_chain);
   });
@@ -552,14 +552,14 @@ void NodeChainBuilder::CoalesceChains() {
                  << " no chains.";
     return;
   }
-  std::vector<NodeChain *> chain_order;
+  std::vector<NodeChain*> chain_order;
   chain_order.reserve(chains_.size());
-  for (auto &[chain_id, chain] : chains_) chain_order.push_back(chain.get());
+  for (auto& [chain_id, chain] : chains_) chain_order.push_back(chain.get());
 
   // Sort chains in the order they should be merged together. Chains are ordered
   // in decreasing order of their execution density with a special case for the
   // function entry chain which must be placed at the front.
-  absl::c_sort(chain_order, [](const NodeChain *c1, const NodeChain *c2) {
+  absl::c_sort(chain_order, [](const NodeChain* c1, const NodeChain* c2) {
     // Make sure the entry block is placed at the front.
     if (c2->GetFirstNode()->is_entry()) return false;
     if (c1->GetFirstNode()->is_entry()) return true;
@@ -569,9 +569,9 @@ void NodeChainBuilder::CoalesceChains() {
            std::make_tuple(-c2->exec_density(), c2->id());
   });
 
-  NodeChain *coalesced_chain = chain_order.front();
+  NodeChain* coalesced_chain = chain_order.front();
   // Merge runs of consecutive chains from the same CFGs.
-  for (auto *chain : chain_order) {
+  for (auto* chain : chain_order) {
     if (chain == coalesced_chain) continue;
     MergeChains(*coalesced_chain, *chain);
   }
