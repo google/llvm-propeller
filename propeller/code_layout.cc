@@ -81,6 +81,31 @@ absl::flat_hash_map<int, CFGScore> CodeLayout::ComputeCfgScores(
         inter_out_score += code_layout_scorer_.GetEdgeScore(*edge, distance);
       }
     }
+    if (code_layout_scorer_.code_layout_params()
+            .always_fallthrough_branch_weight()) {
+      for (const auto &node : cfg->nodes()) {
+        // Blocks with returns and indirect branches cannot fallthrough.
+        if (node->has_indirect_branch() || node->has_return()) continue;
+        int fallthrough_weight = 0;
+        bool is_always_fallthrough =
+            absl::c_all_of(node->intra_outs(), [&](const auto &edge) {
+              if (edge->IsCall() || edge->weight() == 0) return true;
+              int64_t distance =
+                  static_cast<int64_t>(get_node_addr(edge->sink())) -
+                  get_node_addr(edge->src()) - edge->src()->size();
+              if (distance == 0) {
+                fallthrough_weight += edge->weight();
+                return true;
+              }
+              return false;
+            });
+        if (is_always_fallthrough) {
+          intra_score +=
+              fallthrough_weight * code_layout_scorer_.code_layout_params()
+                                       .always_fallthrough_branch_weight();
+        }
+      }
+    }
     score_map.emplace(cfg->function_index(),
                       CFGScore({intra_score, inter_out_score}));
   }

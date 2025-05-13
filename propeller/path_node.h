@@ -290,16 +290,21 @@ class PathNode {
 };
 
 template <typename Sink>
-void AbslStringify(Sink &sink, const PathNode &path_node) {
-  absl::Format(&sink, "\n");
-  absl::Format(&sink, "{ path node for block #%d\n  path from root: %s\n",
-               path_node.node_bb_index(),
-               absl::StrJoin(path_node.path_from_root(), "->",
+void AbslStringify(Sink &sink, std::vector<const PathNode *> path_from_root) {
+  absl::Format(&sink, "%s",
+               absl::StrJoin(path_from_root, "->",
                              [](std::string *out, const PathNode *path_node) {
                                absl::StrAppend(out, path_node->node_bb_index());
                                if (path_node->children().size() > 1)
                                  absl::StrAppend(out, "*");
                              }));
+}
+
+template <typename Sink>
+void AbslStringify(Sink &sink, const PathNode &path_node) {
+  absl::Format(&sink, "\n");
+  absl::Format(&sink, "{ path node for block #%d\n  path from root: %v\n",
+               path_node.node_bb_index(), path_node.path_from_root());
   absl::Format(&sink, "  path predecessor info: {%v}\n",
                path_node.path_pred_info());
   absl::Format(&sink, "  children: {");
