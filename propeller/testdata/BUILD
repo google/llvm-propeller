@@ -18,6 +18,7 @@ load("//propeller/bzl:list_symbols.bzl", "list_symbols")
 
 package(
     default_applicable_licenses = ["//propeller:license"],
+    default_testonly = 1,
     default_visibility = ["//propeller:default_visibility"],
 )
 
