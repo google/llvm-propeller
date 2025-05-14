@@ -18,6 +18,7 @@ load("//propeller/bzl:list_symbols.bzl", "list_symbols")
 
 package(
     default_applicable_licenses = ["//propeller:license"],
+    default_testonly = True,
     default_visibility = ["//propeller:default_visibility"],
 )
 
@@ -37,6 +38,7 @@ exports_files([
     "bimodal_sample_mfs.cloning.cc_profile.txt",
     "bimodal_sample_mfs.cloning.ld_profile.txt",
     "bimodal_sample_mfs.ld_profile.txt",
+    "bimodal_sample_v2.cloning_cc_profile.txt",
     "call_from_simple_loop.protobuf",
     "clang_v0_labels.binary",
     "hot_and_cold_landing_pads.protobuf",
@@ -193,6 +195,32 @@ genrule(
 )
 
 # This rule generates a bimodal binary which will run in one of the two loops depending on the
+# input. The is a bit more complex than bimodal_sample.c and has more cloning opportunities. This
+# requires LBR support. Use `--spawn_strategy=local` when the local machine supports LBR.
+genrule(
+    name = "bimodal_sample_v2_bin",
+    srcs = ["bimodal_sample_v2.c"],
+    outs = [
+        "bimodal_sample_v2.bin.gen",
+        "bimodal_sample_v2.perfdata.1.gen",
+        "bimodal_sample_v2.perfdata.2.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+          "$(RULEDIR)/bimodal_sample_v2.bin.gen && " +
+          "cd $(RULEDIR) ; " +
+          "/usr/bin/perf record -o bimodal_sample_v2.perfdata.1.gen -e cycles -b -- " +
+          "./bimodal_sample_v2.bin.gen 1 && " +
+          "/usr/bin/perf record -o bimodal_sample_v2.perfdata.2.gen -e cycles -b -- " +
+          "./bimodal_sample_v2.bin.gen 1 2",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+# This rule generates a bimodal binary which will run in one of the two loops depending on the
 # input. This requires LBR support.  Use `--spawn_strategy=local` when the local machine supports
 # LBR.
 genrule(
@@ -207,9 +235,9 @@ genrule(
           "$(RULEDIR)/bimodal_sample.bin.gen && " +
           "cd $(RULEDIR) ; " +
           "/usr/bin/perf record -o bimodal_sample.perfdata.1.gen -e cycles -b -- " +
-          "./bimodal_sample.bin.gen && " +
+          "./bimodal_sample.bin.gen 1 && " +
           "/usr/bin/perf record -o bimodal_sample.perfdata.2.gen -e cycles -b -- " +
-          "./bimodal_sample.bin.gen 1",
+          "./bimodal_sample.bin.gen 1 2",
     tags = [
         "manual",
     ],
@@ -308,7 +336,7 @@ genrule(
           "then exit 1; fi; " +
           "cd $(RULEDIR) ; echo '1' > sample.scratch ; echo '1 2' >> sample.scratch ; " +
           "/usr/bin/perf record -o bimodal_sample_mfs.perfdata.gen -e cycles -b -- " +
-          "sh -c 'cat sample.scratch | xargs -P2 ./bimodal_sample_mfs.bin.gen'",
+          "sh -c 'cat sample.scratch | xargs -L1 -P2 ./bimodal_sample_mfs.bin.gen'",
     tags = [
         "manual",
     ],
@@ -423,13 +451,4 @@ genrule(
     ],
     target_compatible_with = ["@platforms//cpu:aarch64"],
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
-)
-
-cc_binary(
-    name = "bimodal_sample",
-    srcs = ["bimodal_sample.c"],
-    deps = [
-        "@abseil-cpp//absl/flags:parse",
-        "@abseil-cpp//absl/flags:usage",
-    ],
 )

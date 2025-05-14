@@ -1645,6 +1645,7 @@ cc_test(
         "//propeller/testdata:bimodal_sample_mfs.cloning.cc_profile.txt",
         "//propeller/testdata:bimodal_sample_mfs.cloning.ld_profile.txt",
         "//propeller/testdata:bimodal_sample_mfs.ld_profile.txt",
+        "//propeller/testdata:bimodal_sample_v2.cloning_cc_profile.txt",
         "//propeller/testdata:sample.arm.bin",
         "//propeller/testdata:sample.bin",
         "//propeller/testdata:sample_cc_directives.arm.golden.txt",
