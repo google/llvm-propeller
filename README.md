@@ -21,12 +21,12 @@ you will need to install a few packages manually:
 # Common dependencies
 sudo apt install -y wget lsb-release software-properties-common gnupg
 
-# Propeller builds with Clang 16.0.0 or newer.
+# Propeller builds with Clang 19.0.0 or newer.
 wget https://apt.llvm.org/llvm.sh
 chmod +x llvm.sh
-sudo ./llvm.sh 16
-export CC=clang-16
-export CXX=clang++-16
+sudo ./llvm.sh 19
+export CC=clang-19
+export CXX=clang++-19
 
 # For the CMake build
 sudo apt-get update && sudo apt-get install -y \
@@ -37,7 +37,9 @@ sudo apt-get update && sudo apt-get install -y \
 
 ### Building Propeller from source
 
-The Propeller repository provides both CMake and Bazel build configurations. The CMake build requires CMake 3.24 or newer, and the Bazel build requires Bazel 5.0 or newer.
+The Propeller repository provides both CMake and Bazel build configurations.
+The CMake build requires CMake 3.24 or newer, and the Bazel build requires
+Bazel 5.0 or newer.
 
 #### CMake
 ```
