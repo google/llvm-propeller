@@ -34,6 +34,21 @@ using ::testing::Pointer;
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
+MATCHER_P2(
+    PathPredInfoIs, entries_matcher, missing_pred_entry_matcher,
+    absl::StrCat(" is a path predecessor info that ",
+                 (negation ? " doesn't have" : " has"), " entries that ",
+                 DescribeMatcher<absl::flat_hash_map<int, PathPredInfoEntry>>(
+                     entries_matcher, negation),
+                 (negation ? " or doesn't have" : " and has"),
+                 " missing predecessor entry that ",
+                 DescribeMatcher<PathPredInfoEntry>(missing_pred_entry_matcher,
+                                                    negation))) {
+  return ExplainMatchResult(entries_matcher, arg.entries, result_listener) &&
+         ExplainMatchResult(missing_pred_entry_matcher, arg.missing_pred_entry,
+                            result_listener);
+}
+
 MATCHER_P4(
     PathPredInfoEntryIs, frequency_matcher, cache_pressure_matcher,
     call_freqs_matcher, return_to_freqs_matcher,
@@ -59,6 +74,11 @@ MATCHER_P4(
                             result_listener);
 }
 
+inline auto PathPredInfoEntryIsEmpty() {
+  return PathPredInfoEntryIs(Eq(0), testing::DoubleEq(0), testing::IsEmpty(),
+                             testing::IsEmpty());
+}
+
 MATCHER_P4(
     PathNodeIs, node_bb_index_matcher, path_length_matcher,
     path_pred_info_matcher, children_matcher,
@@ -70,8 +90,7 @@ MATCHER_P4(
         DescribeMatcher<int>(path_length_matcher, negation),
         (negation ? " or doesn't have" : " and has"),
         " path predecessor info that ",
-        DescribeMatcher<absl::flat_hash_map<int, propeller::PathPredInfo>>(
-            path_pred_info_matcher, negation),
+        DescribeMatcher<PathPredInfo>(path_pred_info_matcher, negation),
         (negation ? " or doesn't have" : " and has"), " branches that ",
         DescribeMatcher<
             absl::flat_hash_map<int, std::unique_ptr<propeller::PathNode>>>(
@@ -111,4 +130,5 @@ MATCHER_P2(
                             arg.path_trees_by_root_bb_index(), result_listener);
 }
 }  // namespace propeller
+
 #endif  // PROPELLER_PATH_NODE_MATCHERS_H_

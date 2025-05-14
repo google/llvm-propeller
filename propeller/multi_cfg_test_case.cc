@@ -51,68 +51,88 @@ ProgramPathProfileArg GetDefaultPathProfileArg() {
   auto children_of_3_args = GetMapByIndex(
       {{.node_bb_index = 4,
         .path_pred_info =
-            {{1,
-              {.freq = 170,
-               .call_freqs =
-                   {{CallRetInfo{.callee = 7, .return_bb = bb_7_1}, 85},
-                    {CallRetInfo{.callee = 8, .return_bb = bb_10_0}, 85}}}},
-             {2,
-              {.freq = 5,
-               .call_freqs =
-                   {{CallRetInfo{.callee = 7, .return_bb = bb_7_1}, 5},
-                    {CallRetInfo{.callee = 8, .return_bb = bb_10_0}, 0}}}}},
+            {.entries =
+                 {{1,
+                   {.freq = 170,
+                    .call_freqs =
+                        {{CallRetInfo{.callee = 7, .return_bb = bb_7_1}, 85},
+                         {CallRetInfo{.callee = 8, .return_bb = bb_10_0},
+                          85}}}},
+                  {2,
+                   {.freq = 5,
+                    .call_freqs =
+                        {{CallRetInfo{.callee = 7, .return_bb = bb_7_1}, 5},
+                         {CallRetInfo{.callee = 8, .return_bb = bb_10_0},
+                          0}}}}}},
         .children_args = GetMapByIndex(
             {{.node_bb_index = 5,
               .path_pred_info =
-                  {{1,
-                    {.freq = 170,
-                     .return_to_freqs = {{FlatBbHandle{.function_index = 9,
-                                                       .flat_bb_index = 1},
-                                          170}}}},
-                   {2,
-                    {.freq = 5,
-                     .return_to_freqs = {{FlatBbHandle{.function_index = 9,
-                                                       .flat_bb_index = 1},
-                                          5}}}}}}})},
+                  {.entries =
+                       {{1,
+                         {.freq = 170,
+                          .return_to_freqs = {{FlatBbHandle{.function_index = 9,
+                                                            .flat_bb_index = 1},
+                                               170}}}},
+                        {2,
+                         {.freq = 5,
+                          .return_to_freqs = {{FlatBbHandle{.function_index = 9,
+                                                            .flat_bb_index = 1},
+                                               5}}}}}}}})},
        {.node_bb_index = 5,
         .path_pred_info = {
-            {1,
-             {.freq = 13,
-              .return_to_freqs = {{FlatBbHandle{.function_index = 9,
-                                                .flat_bb_index = 1},
-                                   13}}}},
-            {2,
-             {.freq = 649,
-              .return_to_freqs = {
-                  {FlatBbHandle{.function_index = 9, .flat_bb_index = 1},
-                   649}}}}}}});
+            .entries = {{1,
+                         {.freq = 13,
+                          .return_to_freqs = {{FlatBbHandle{.function_index = 9,
+                                                            .flat_bb_index = 1},
+                                               13}}}},
+                        {2,
+                         {.freq = 649,
+                          .return_to_freqs = {{FlatBbHandle{.function_index = 9,
+                                                            .flat_bb_index = 1},
+                                               649}}}}}}}});
 
-  auto children_of_4_args = GetMapByIndex(
-      {{.node_bb_index = 5,
-        .path_pred_info = {{2, {.freq = 10}}, {3, {.freq = 175}}}}});
+  auto children_of_4_args =
+      GetMapByIndex({{.node_bb_index = 5,
+                      .path_pred_info = {.entries = {{2, {.freq = 10}},
+                                                     {3, {.freq = 175}}}}}});
 
   return {
       .function_path_profile_args = GetMapByIndex(
           {{.function_index = 6,
             .path_node_args = GetMapByIndex(
                 {{.node_bb_index = 3,
-                  .path_pred_info = {{1, {.freq = 185}}, {2, {.freq = 656}}},
+                  .path_pred_info = {.entries = {{1, {.freq = 185}},
+                                                 {2, {.freq = 656}}}},
                   .children_args = children_of_3_args},
                  {.node_bb_index = 4,
                   .path_pred_info =
-                      {{2,
-                        {.freq = 10,
-                         .call_freqs =
-                             {{CallRetInfo{.callee = 7, .return_bb = {}}, 10},
-                              {CallRetInfo{.callee = 8, .return_bb = bb_10_0},
-                               0}}}},
-                       {3,
-                        {.freq = 175,
-                         .call_freqs =
-                             {{CallRetInfo{.callee = 7, .return_bb = bb_7_1},
-                               90},
-                              {CallRetInfo{.callee = 8, .return_bb = bb_10_0},
-                               85}}}}},
+                      {.entries =
+                           {{2,
+                             {.freq = 10,
+                              .call_freqs =
+                                  {{CallRetInfo{.callee = 7, .return_bb = {}},
+                                    10},
+                                   {CallRetInfo{
+                                        .callee =
+                                            8,
+                                        .return_bb =
+                                            bb_10_0},
+                                    0}}}},
+                            {3,
+                             {.freq = 175,
+                              .call_freqs =
+                                  {{CallRetInfo{
+                                        .callee =
+                                            7,
+                                        .return_bb =
+                                            bb_7_1},
+                                    90},
+                                   {CallRetInfo{
+                                        .callee =
+                                            8,
+                                        .return_bb =
+                                            bb_10_0},
+                                    85}}}}}},
                   .children_args = children_of_4_args}})}})};
 }
 
