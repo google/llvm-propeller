@@ -138,7 +138,7 @@ genrule(
         "propeller_sample_1.perfdata1.gen",
         "propeller_sample_1.perfdata2.gen",
     ],
-    cmd = "$(CC) $(CC_FLAGS) -O0 -gsplit-dwarf=split -gmlt -Wl,-build-id -pie -fbasic-block-sections=labels $< -o $(RULEDIR)/propeller_sample_1.bin.gen && " +
+    cmd = "$(CC) $(CC_FLAGS) -O0 -gsplit-dwarf=split -gmlt -Wl,-build-id -pie -fbasic-block-address-map $< -o $(RULEDIR)/propeller_sample_1.bin.gen && " +
           "$(location //llvm:llvm-dwp) -e $(RULEDIR)/propeller_sample_1.bin.gen -o $(RULEDIR)/propeller_sample_1.dwp.gen $(RULEDIR)/propeller_sample_1.bin.gen-propeller_sample_1.dwo && " +
           "cd $(RULEDIR) ; /usr/bin/perf record -o propeller_sample_1.perfdata1.gen -e cycles -b -- ./propeller_sample_1.bin.gen ;" +
           "/usr/bin/perf record -o propeller_sample_1.perfdata2.gen -e cycles -b -- ./propeller_sample_1.bin.gen 1 2 3 4",
@@ -159,7 +159,7 @@ genrule(
         "propeller_barebone_nopie_buildid.build-id",
     ],
     cmd = """
-    $(CC) $(CC_FLAGS) -no-pie -Wl,--build-id -fbasic-block-sections=labels -x c++ -O0 $< \
+    $(CC) $(CC_FLAGS) -no-pie -Wl,--build-id -fbasic-block-address-map -x c++ -O0 $< \
         -o $(RULEDIR)/propeller_barebone_nopie_buildid.bin
     $(READELF) --wide --hex-dump=.note.gnu.build-id \
         $(RULEDIR)/propeller_barebone_nopie_buildid.bin | \
@@ -174,7 +174,7 @@ genrule(
     name = "propeller_barebone_pie_nobuildid_bin",
     srcs = ["propeller_barebone.cc"],
     outs = ["propeller_barebone_pie_nobuildid.bin"],
-    cmd = "$(CC) $(CC_FLAGS) -pie -Wl,--build-id=none -fbasic-block-sections=labels -x c++ -O0 $< -o $@",
+    cmd = "$(CC) $(CC_FLAGS) -pie -Wl,--build-id=none -fbasic-block-address-map -x c++ -O0 $< -o $@",
     # This genrule generates an x86 binary.
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
@@ -186,7 +186,7 @@ genrule(
     outs = [
         "duplicate_unique_names.out",
     ],
-    cmd = "export ALL_FLAGS=\"$(CC_FLAGS) -O0 -fbasic-block-sections=labels -funique-internal-linkage-names\"; " +
+    cmd = "export ALL_FLAGS=\"$(CC_FLAGS) -O0 -fbasic-block-address-map -funique-internal-linkage-names\"; " +
           "$(CC) $$ALL_FLAGS -c -DVER1 -o $(RULEDIR)/uniq_ver1.o $< && " +
           "$(CC) $$ALL_FLAGS -c -DVER2 -o $(RULEDIR)/uniq_ver2.o $< && " +
           "$(CC) $$ALL_FLAGS -c -DMAIN -o $(RULEDIR)/uniq_main.o $< && " +
@@ -205,7 +205,7 @@ genrule(
         "bimodal_sample_v2.perfdata.1.gen",
         "bimodal_sample_v2.perfdata.2.gen",
     ],
-    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-address-map $< -o " +
           "$(RULEDIR)/bimodal_sample_v2.bin.gen && " +
           "cd $(RULEDIR) ; " +
           "/usr/bin/perf record -o bimodal_sample_v2.perfdata.1.gen -e cycles -b -- " +
@@ -231,7 +231,7 @@ genrule(
         "bimodal_sample.perfdata.1.gen",
         "bimodal_sample.perfdata.2.gen",
     ],
-    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-address-map $< -o " +
           "$(RULEDIR)/bimodal_sample.bin.gen && " +
           "cd $(RULEDIR) ; " +
           "/usr/bin/perf record -o bimodal_sample.perfdata.1.gen -e cycles -b -- " +
@@ -258,7 +258,7 @@ genrule(
         "bimodal_sample.x.perfdata.2.gen",  # profile over loop 2.
         "bimodal_sample.x.perfdata.combined.gen",  # profile over loop 1 and loop 2.
     ],
-    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+    cmd = "$(CC) $(CC_FLAGS) -O2 -Wl,-build-id -pie -fbasic-block-address-map $< -o " +
           "$(RULEDIR)/bimodal_sample.x.bin.gen && " +
           "cd $(RULEDIR) ; " +
           "/usr/bin/perf record -o bimodal_sample.x.perfdata.1.gen -e cycles -b -- " +
@@ -302,7 +302,7 @@ genrule(
         "sample.perfdata.gen",
     ],
     # Starts 3 sample.bin in parallel and collect profile.
-    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-sections=labels $< -o " +
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-address-map $< -o " +
           "$(RULEDIR)/sample.bin.gen && " +
           "cd $(RULEDIR) ; echo '1 2 3' > sample.scratch ; " +
           "/usr/bin/perf record -o sample.perfdata.gen -e cycles -b -- " +
@@ -330,7 +330,7 @@ genrule(
           "./sample_inst.bin.gen ; " +
           "$(LLVM_PROFDATA) merge $(RULEDIR)/profile/* -o $(RULEDIR)/profile/default.profdata ; " +
           "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fprofile-use=$(RULEDIR)/profile " +
-          "-fbasic-block-sections=labels -fsplit-machine-functions $< -o " +
+          "-fbasic-block-address-map -fsplit-machine-functions $< -o " +
           "$(RULEDIR)/bimodal_sample_mfs.bin.gen ; " +
           "if [[ `$(NM) $(RULEDIR)/bimodal_sample_mfs.bin.gen | grep compute | wc -l` != 2 ]]; " +
           "then exit 1; fi; " +
@@ -352,7 +352,7 @@ genrule(
     outs = [
         "sample_pgo_analysis_map.bin.gen",
     ],
-    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-sections=labels " +
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-address-map " +
           "-mllvm=-pgo-analysis-map=all $< -o $(RULEDIR)/sample_pgo_analysis_map.bin.gen",
     tags = ["manual"],
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
@@ -365,7 +365,7 @@ genrule(
         "duplicate_symbol_2.c",
     ],
     outs = ["duplicate_symbols.bin"],
-    cmd = "$(CC) $(CC_FLAGS) -fbasic-block-sections=labels -O0 $(SRCS) -o $@",
+    cmd = "$(CC) $(CC_FLAGS) -fbasic-block-address-map -O0 $(SRCS) -o $@",
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
@@ -381,7 +381,7 @@ genrule(
         "sample_section.perfdata.gen",
     ],
     cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -no-pie -Wl,-z,keep-text-section-prefix " +
-          "-fbasic-block-sections=labels $< -o " +
+          "-fbasic-block-address-map $< -o " +
           "$(RULEDIR)/sample_section.bin.gen && " +
           "cd $(RULEDIR) ; " +
           "/usr/bin/perf record -o sample_section.perfdata.gen -e cycles -b " +
@@ -436,7 +436,7 @@ genrule(
         "thunks.bin.gen",
         "thunks.perfdata.gen",
     ],
-    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-sections=labels " +
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-address-map " +
           "-Wl,-z,keep-text-section-prefix -Wl,-T,$(location thunks.lds) $(location thunks.c) -o " +
           "$(RULEDIR)/thunks.bin.gen ;" +
           "cd $(RULEDIR) ; echo '1 2 3' > thunks.scratch ; " +
