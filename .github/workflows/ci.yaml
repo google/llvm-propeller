@@ -25,6 +25,9 @@ on:
 # https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobs
 jobs:
   build-and-test:
+    env:
+      CC: clang-20
+      CXX: clang++-20
     runs-on: ubuntu-22.04-16core
     steps:
       - name: Checkout the repo
@@ -37,8 +40,6 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
-          export CC=clang-20
-          export CXX=clang++-20
 
       - name: Mount the Bazel cache
         uses: actions/cache@v4
