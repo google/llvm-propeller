@@ -15,6 +15,7 @@
 # Data files for Propeller tests
 
 load("//propeller/bzl:list_symbols.bzl", "list_symbols")
+load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
 
 package(
     default_applicable_licenses = ["//propeller:license"],
@@ -451,4 +452,22 @@ genrule(
     ],
     target_compatible_with = ["@platforms//cpu:aarch64"],
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+cc_binary(
+    name = "bimodal_sample_v2",
+    srcs = ["bimodal_sample_v2.c"],
+    deps = [
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
+    ],
+)
+
+cc_binary(
+    name = "bimodal_sample",
+    srcs = ["bimodal_sample.c"],
+    deps = [
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
+    ],
 )
