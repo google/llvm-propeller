@@ -13,24 +13,3 @@
 # limitations under the License.
 
 # Bazel utilities for Propeller builds and tests
-
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//propeller/bzl:toolchain_vars.bzl", "define_vars")
-
-package(
-    default_applicable_licenses = ["//propeller:license"],
-    default_visibility = ["//propeller:default_visibility"],
-)
-
-bzl_library(
-    name = "list_symbols",
-    srcs = ["list_symbols.bzl"],
-)
-
-# Define variables for the current toolchain.
-define_vars(
-    name = "toolchain_vars",
-    vars = {
-        "READELF": "readelf",
-    },
-)
