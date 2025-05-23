@@ -104,7 +104,7 @@ struct CfgChangeFromPathCloning {
   // The paths to drop from the CFG. The outgoing edges (inter- and intra-) of
   // from these paths have missing path predecessor info and cannot be
   // confidently rerouted. So we drop their associated weights from the CFG.
-  std::vector<const PathNode * ABSL_NONNULL> paths_to_drop;
+  std::vector<const PathNode *absl_nonnull> paths_to_drop;
   // Intra-function edge weight reroutes.
   std::vector<IntraEdgeReroute> intra_edge_reroutes;
   // Inter-function edge weight reroutes.
@@ -391,7 +391,7 @@ std::unique_ptr<ControlFlowGraph> CloneCfg(const ControlFlowGraph &cfg);
 class CfgBuilder {
  public:
   explicit CfgBuilder(
-      ABSL_ATTRIBUTE_LIFETIME_BOUND const ControlFlowGraph *ABSL_NONNULL cfg)
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const ControlFlowGraph *absl_nonnull cfg)
       : cfg_(cfg), clone_paths_(cfg->clone_paths()) {
     for (const auto &node : cfg_->nodes()) {
       nodes_.push_back(node->Clone(node->clone_number(), nodes_.size()));

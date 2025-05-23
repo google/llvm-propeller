@@ -123,7 +123,7 @@ class CfgChangeBuilder {
   const FunctionPathProfile &function_path_profile_;
   // The path associated with `cloning_` (excluding
   // `cloning_.path_pred_bb_index`).
-  const std::vector<const PathNode * ABSL_NONNULL> path_from_root_;
+  const std::vector<const PathNode *absl_nonnull> path_from_root_;
   // Index of the current block to be visited in `path_from_root_`. -1 means the
   // path predecessor block.
   int current_index_in_path_ = -1;
@@ -131,7 +131,7 @@ class CfgChangeBuilder {
   // in the cloning path. These paths start from different blocks in the cloning
   // path and end at the currently visited block. The outgoing edge weights from
   // these paths must be dropped when applying the cloning.
-  std::vector<const PathNode * ABSL_NONNULL> current_paths_with_missing_pred_;
+  std::vector<const PathNode *absl_nonnull> current_paths_with_missing_pred_;
   // The CFG change which will be constructed and returned by `Build()`.
   CfgChangeFromPathCloning cfg_change_;
 };
@@ -222,10 +222,10 @@ class PathTreeCloneEvaluator {
   // Does not take ownership of any of its arguments which should all point
   // to valid objects which will outlive the constructed object.
   PathTreeCloneEvaluator(
-      const ControlFlowGraph *ABSL_NONNULL cfg,
-      const FunctionChainInfo *ABSL_NONNULL optimal_chain_info,
-      const PathProfileOptions *ABSL_NONNULL path_profile_options,
-      const PropellerCodeLayoutParameters *ABSL_NONNULL code_layout_params)
+      const ControlFlowGraph *absl_nonnull cfg,
+      const FunctionChainInfo *absl_nonnull optimal_chain_info,
+      const PathProfileOptions *absl_nonnull path_profile_options,
+      const PropellerCodeLayoutParameters *absl_nonnull code_layout_params)
       : cfg_(*cfg),
         path_profile_options_(*path_profile_options),
         code_layout_params_(*code_layout_params),

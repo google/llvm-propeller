@@ -71,7 +71,7 @@ class GenericFileReader : public FileReader {
 // A perf.data provider interface for reading from files.
 class FilePerfDataProvider : public PerfDataProvider {
  public:
-  FilePerfDataProvider(ABSL_NONNULL std::unique_ptr<FileReader> file_reader,
+  FilePerfDataProvider(absl_nonnull std::unique_ptr<FileReader> file_reader,
                        std::vector<std::string> file_names)
       : file_reader_(std::move(file_reader)),
         file_names_(std::move(file_names)),

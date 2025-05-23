@@ -37,7 +37,7 @@ class MiniDisassembler {
   // Creates a MiniDisassembler for `object_file`. Does not take ownership of
   // `object_file`, which must point to a valid object that outlives the
   // `MiniDisassembler`.
-  static absl::StatusOr<ABSL_NONNULL std::unique_ptr<MiniDisassembler>> Create(
+  static absl::StatusOr<absl_nonnull std::unique_ptr<MiniDisassembler>> Create(
       const llvm::object::ObjectFile *object_file);
 
   MiniDisassembler(const MiniDisassembler &) = delete;

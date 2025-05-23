@@ -123,7 +123,7 @@ absl::Status CfgChangeBuilder::AddEdgeReroute(
 }
 
 void CfgChangeBuilder::UpdatePathsWithMissingPred(int next_bb_index) {
-  std::vector<const PathNode * ABSL_NONNULL> new_paths_with_missing_pred;
+  std::vector<const PathNode *absl_nonnull> new_paths_with_missing_pred;
   new_paths_with_missing_pred.reserve(current_paths_with_missing_pred_.size());
   for (const PathNode *path_with_missing_pred :
        current_paths_with_missing_pred_) {

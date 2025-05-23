@@ -85,7 +85,7 @@ struct BasePathProbe {
 // path.
 class PathProbe {
  public:
-  PathProbe(propeller::PathNode *ABSL_NONNULL path_node
+  PathProbe(propeller::PathNode *absl_nonnull path_node
                 ABSL_ATTRIBUTE_LIFETIME_BOUND,
             int pred_node_bb_index)
       : base_path_probe_{.path_node = path_node,
@@ -293,9 +293,9 @@ class ProgramCfgPathAnalyzer {
   // Does not take ownership of any pointer parameters which should all point to
   // valid objects which will outlive the constructed object.
   ProgramCfgPathAnalyzer(
-      const propeller::PathProfileOptions *ABSL_NONNULL path_profile_options,
-      const propeller::ProgramCfg *ABSL_NONNULL program_cfg,
-      propeller::ProgramPathProfile *ABSL_NONNULL program_path_profile)
+      const propeller::PathProfileOptions *absl_nonnull path_profile_options,
+      const propeller::ProgramCfg *absl_nonnull program_cfg,
+      propeller::ProgramPathProfile *absl_nonnull program_path_profile)
       : path_profile_options_(path_profile_options),
         hot_threshold_(program_cfg->GetNodeFrequencyThreshold(
             path_profile_options->hot_cutoff_percentile())),
