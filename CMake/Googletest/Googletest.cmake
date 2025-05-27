@@ -16,7 +16,7 @@
 # Integrates googletest into the build.
 
 # LINT.IfChange(version)
-set(_GTEST_VERSION 1.16.0)
+set(_GTEST_VERSION 1.17.0)
 # LINT.ThenChange(../../MODULE.bazel:gtest_version)
 
 set(propeller_gtest_build_dir ${CMAKE_BINARY_DIR}/googletest-build)
