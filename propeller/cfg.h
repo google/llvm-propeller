@@ -30,7 +30,6 @@
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -38,7 +37,6 @@
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_node.h"
-#include "propeller/path_node.h"
 
 namespace propeller {
 
@@ -100,11 +98,6 @@ struct CfgChangeFromPathCloning {
   int path_pred_bb_index;
   // bb_indexes of CFG nodes along the path (excluding the path predecessor).
   std::vector<int> path_to_clone;
-
-  // The paths to drop from the CFG. The outgoing edges (inter- and intra-) of
-  // from these paths have missing path predecessor info and cannot be
-  // confidently rerouted. So we drop their associated weights from the CFG.
-  std::vector<const PathNode *absl_nonnull> paths_to_drop;
   // Intra-function edge weight reroutes.
   std::vector<IntraEdgeReroute> intra_edge_reroutes;
   // Inter-function edge weight reroutes.
@@ -330,11 +323,6 @@ class ControlFlowGraph {
 
   NodeFrequencyStats GetNodeFrequencyStats() const;
 
-  // Implementation of the `AbslStringify` interface for logging the CFG. Do not
-  // rely on exact format.
-  template <typename Sink>
-  void AbslStringify(Sink &sink, const ControlFlowGraph &cfg);
-
  private:
   // The output section name for this function within which it can be reordered.
   llvm::StringRef section_name_;
@@ -416,16 +404,47 @@ class CfgBuilder {
   }
 
   // Adds the path cloning `cfg_change` to `cfg_changes_` and clondes the nodes
-  // in the path accordingly. Also updates `conflict_edges_` based on
-  // `cfg_change`.
-  void AddCfgChange(const CfgChangeFromPathCloning &cfg_change);
+  // in the path accordingly. Also updates `conflict_edges_`.
+  void AddCfgChange(const CfgChangeFromPathCloning &cfg_change) {
+    for (const CfgChangeFromPathCloning::IntraEdgeReroute &edge_reroute :
+         cfg_change.intra_edge_reroutes) {
+      // Update the set of affected original edges.
+      conflict_edges_.affected_edges.insert(
+          {.from_bb_index = edge_reroute.src_bb_index,
+           .to_bb_index = edge_reroute.sink_bb_index});
+      // If the source is not cloned, it means this is the path predecessor
+      // edge. Update the set of path predecessor edges now.
+      if (!edge_reroute.src_is_cloned) {
+        conflict_edges_.path_pred_edges.insert(
+            {.from_bb_index = edge_reroute.src_bb_index,
+             .to_bb_index = edge_reroute.sink_bb_index});
+      }
+    }
+    ClonePath(cfg_change.path_pred_bb_index, cfg_change.path_to_clone);
+    cfg_changes_.push_back(cfg_change);
+  }
 
   int GetNodeSize(int bb_index) const { return nodes_.at(bb_index)->size(); }
 
   // Builds the `ControlFlowGraph` by cloning the intra-function edges from
   // the original cfg and then applying the path cloning changes in
   // `cfg_changes_`.
-  std::unique_ptr<ControlFlowGraph> Build() &&;
+  std::unique_ptr<ControlFlowGraph> Build() && {
+    std::vector<std::unique_ptr<CFGEdge>> intra_edges;
+    // Now copy the intra-function edges.
+    for (const std::unique_ptr<CFGEdge> &edge : cfg_->intra_edges()) {
+      CHECK_EQ(edge->src()->function_index(), edge->sink()->function_index());
+      intra_edges.push_back(std::make_unique<CFGEdge>(
+          nodes_.at(edge->src()->node_index()).get(),
+          nodes_.at(edge->sink()->node_index()).get(), edge->weight(),
+          edge->kind(), edge->inter_section()));
+    }
+    ApplyIntraCfgChanges(intra_edges);
+    return std::make_unique<ControlFlowGraph>(
+        cfg_->section_name(), cfg_->function_index(), cfg_->module_name(),
+        cfg_->names(), std::move(nodes_), std::move(intra_edges),
+        std::move(clone_paths_));
+  }
 
   absl::Span<const CfgChangeFromPathCloning> cfg_changes() const {
     return cfg_changes_;
@@ -435,12 +454,90 @@ class CfgBuilder {
 
  private:
   // Applies the intra-function changes from `cfg_changes_` to `intra_edges`.
-  void ApplyIntraCfgChanges(std::vector<std::unique_ptr<CFGEdge>> &intra_edges);
+  void ApplyIntraCfgChanges(
+      std::vector<std::unique_ptr<CFGEdge>> &intra_edges) {
+    absl::flat_hash_map<int, std::vector<CFGEdge *>>
+        original_edges_by_src_bb_index;
+    for (const std::unique_ptr<CFGEdge> &edge : intra_edges) {
+      if (!edge->src()->is_cloned() && !edge->sink()->is_cloned() &&
+          edge->kind() == CFGEdgeKind::kBranchOrFallthough) {
+        original_edges_by_src_bb_index[edge->src()->bb_index()].push_back(
+            edge.get());
+      }
+    }
+    // Helper for finding the original intra-function edge from `src_bb_index`
+    // to `sink_bb_index`.
+    auto find_original_edge = [&](int src_bb_index,
+                                  int sink_bb_index) -> CFGEdge * {
+      auto it = original_edges_by_src_bb_index.find(src_bb_index);
+      if (it == original_edges_by_src_bb_index.end()) {
+        return nullptr;
+      }
+      for (CFGEdge *edge : it->second) {
+        if (edge->sink()->bb_index() == sink_bb_index) {
+          return edge;
+        }
+      }
+      return nullptr;
+    };
+
+    for (int i = 0; i < cfg_changes_.size(); ++i) {
+      int clone_path_index = clone_paths_.size() - cfg_changes_.size() + i;
+      const CfgChangeFromPathCloning &cfg_change = cfg_changes_[i];
+      absl::flat_hash_map<int, CFGNode *> clones;
+      for (int j = 0; j < cfg_change.path_to_clone.size(); ++j) {
+        int bb_index = cfg_change.path_to_clone[j];
+        clones[bb_index] =
+            nodes_.at(clone_paths_.at(clone_path_index).at(j + 1)).get();
+      }
+      // Apply all intra-procedural edge weight reroutes.
+      for (const CfgChangeFromPathCloning::IntraEdgeReroute &edge_reroute :
+           cfg_change.intra_edge_reroutes) {
+        CFGNode &from_src_node = *nodes_[edge_reroute.src_bb_index];
+        CFGNode &from_sink_node = *nodes_[edge_reroute.sink_bb_index];
+        if (edge_reroute.kind != CFGEdgeKind::kBranchOrFallthough) continue;
+        CFGEdge *edge = find_original_edge(edge_reroute.src_bb_index,
+                                           edge_reroute.sink_bb_index);
+        CHECK_NE(edge, nullptr)
+            << "No edge from block " << edge_reroute.src_bb_index << " to block"
+            << edge_reroute.sink_bb_index << " in function "
+            << cfg_->GetPrimaryName().str()
+            << " [index: " << cfg_->function_index() << "]";
+        // Find and decrement the weight of the original edge.
+        edge->DecrementWeight(edge_reroute.weight);
+        CFGNode *to_src_node = edge_reroute.src_is_cloned
+                                   ? clones[edge_reroute.src_bb_index]
+                                   : &from_src_node;
+        CFGNode *to_sink_node = edge_reroute.sink_is_cloned
+                                    ? clones[edge_reroute.sink_bb_index]
+                                    : &from_sink_node;
+        // Create the edge to reroute the control flow to.
+        intra_edges.push_back(std::make_unique<CFGEdge>(
+            to_src_node, to_sink_node, edge_reroute.weight, edge_reroute.kind,
+            /*inter_section=*/false));
+      }
+    }
+  }
 
   // Clones the basic blocks along the path `path_to_clone` given path
   // predecessor block `path_pred_bb_index`. Both `path_pred_bb_index` and
   // `path_to_clone` are specified in terms of bb_indices of the original nodes.
-  void ClonePath(int path_pred_bb_index, absl::Span<const int> path_to_clone);
+  void ClonePath(int path_pred_bb_index, absl::Span<const int> path_to_clone) {
+    std::vector<int> clone_path;
+    clone_path.reserve(path_to_clone.size() + 1);
+    clone_path.push_back(path_pred_bb_index);
+
+    for (int bb_index : path_to_clone) {
+      // Get the next available clone number for `bb_index`.
+      int clone_number = ++current_clone_numbers_[bb_index];
+      // Create and insert the clone node.
+      nodes_.emplace_back(nodes_.at(bb_index)->Clone(
+          clone_number, static_cast<int>(nodes_.size())));
+      clone_path.push_back(nodes_.size() - 1);
+    }
+    // Add this path to `clone_paths_`.
+    clone_paths_.push_back(std::move(clone_path));
+  }
 
   const ControlFlowGraph *cfg_;
   std::vector<std::unique_ptr<CFGNode>> nodes_;
@@ -449,26 +546,5 @@ class CfgBuilder {
   std::vector<CfgChangeFromPathCloning> cfg_changes_;
   ConflictEdges conflict_edges_;
 };
-
-template <typename Sink>
-inline void AbslStringify(Sink &sink, const ControlFlowGraph &cfg) {
-  absl::Format(&sink,
-               "CFG for function_name: {%s}, function_index: %d, module: %s, "
-               "section: %s",
-               absl::StrJoin(cfg.names(), ", "), cfg.function_index(),
-               cfg.module_name().value_or(""), cfg.section_name());
-  absl::Format(&sink, "\n  nodes:");
-  for (const auto &node : cfg.nodes()) {
-    absl::Format(&sink, "\n    %v", *node);
-  }
-  absl::Format(&sink, "\n  intra edges:");
-  for (const auto &edge : cfg.intra_edges()) {
-    absl::Format(&sink, "\n    %v", *edge);
-  }
-  absl::Format(&sink, "\n  inter edges:");
-  for (const auto &edge : cfg.inter_edges()) {
-    absl::Format(&sink, "\n    %v", *edge);
-  }
-}
 }  // namespace propeller
 #endif  // PROPELLER_CFG_H_

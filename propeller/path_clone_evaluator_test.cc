@@ -15,7 +15,6 @@
 #include "propeller/path_clone_evaluator.h"
 
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -45,41 +44,13 @@
 
 namespace propeller {
 namespace {
-
 using ::absl_testing::StatusIs;
 using ::testing::_;
-using ::testing::Contains;
-using ::testing::DescribeMatcher;
-using ::testing::DoubleNear;
 using ::testing::ElementsAre;
-using ::testing::ExplainMatchResult;
 using ::testing::Field;
-using ::testing::Key;
-using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
-
-constexpr double kEpsilon = 1e-2;
-
-MATCHER_P3(EvaluatedPathCloningIs, path_cloning_matcher, score_matcher,
-           cfg_change_matcher,
-           absl::StrCat(
-               "is an evaluated path cloning that ",
-               (negation ? " doesn't have" : " has"), " path cloning that ",
-               DescribeMatcher<PathCloning>(path_cloning_matcher, negation),
-               (negation ? " or doesn't have" : " and has"), " score that ",
-               DescribeMatcher<std::optional<double>>(score_matcher, negation),
-               (negation ? " or doesn't have" : " and has"),
-               " cfg change that ",
-               DescribeMatcher<CfgChangeFromPathCloning>(cfg_change_matcher,
-                                                         negation))) {
-  return ExplainMatchResult(path_cloning_matcher, arg.path_cloning,
-                            result_listener) &&
-         ExplainMatchResult(score_matcher, arg.score, result_listener) &&
-         ExplainMatchResult(cfg_change_matcher, arg.cfg_change,
-                            result_listener);
-}
 
 // Returns a map from bb_index to PathNodeArg from `args`.
 absl::node_hash_map<int, PathNodeArg> GetMapByIndex(
@@ -106,35 +77,28 @@ ProgramPathProfileArg GetDefaultPathProfileArg() {
       {{.node_bb_index = 4,
         .path_pred_info =
             {.entries = {{1,
-                          {.freq = 160,
+                          {.freq = 170,
                            .cache_pressure = 7.2,
-                           .call_freqs = {{CallRetInfo{.callee = 7}, 80},
-                                          {CallRetInfo{.callee = 8}, 80}}}},
+                           .call_freqs = {{CallRetInfo{.callee = 7}, 85},
+                                          {CallRetInfo{.callee = 8}, 85}}}},
                          {2,
-                          {.freq = 4,
+                          {.freq = 5,
                            .cache_pressure = 6.2,
-                           .call_freqs = {{CallRetInfo{.callee = 7}, 4},
-                                          {CallRetInfo{.callee = 8}, 0}}}}},
-             .missing_pred_entry =
-                 {.freq = 9,
-                  .call_freqs = {{CallRetInfo{.callee = 7}, 4},
-                                 {CallRetInfo{.callee = 8}, 5}}}},
+                           .call_freqs = {{CallRetInfo{.callee = 7}, 5},
+                                          {CallRetInfo{.callee = 8}, 0}}}}}},
         .children_args = GetMapByIndex(
             {{.node_bb_index = 5,
-              .path_pred_info = {.entries = {{1, {.freq = 160}},
-                                             {2, {.freq = 4}}},
-                                 .missing_pred_entry = {.freq = 9}}}})},
+              .path_pred_info = {.entries = {{1, {.freq = 170}},
+                                             {2, {.freq = 5}}}}}})},
        {.node_bb_index = 5,
-        .path_pred_info = {.entries = {{1, {.freq = 13}}, {2, {.freq = 649}}},
-                           .missing_pred_entry = {.freq = 28}}},
+        .path_pred_info = {.entries = {{1, {.freq = 13}}, {2, {.freq = 649}}}}},
        {.node_bb_index = 1,
-        .path_pred_info = {.entries = {{1, {.freq = 9}}},
-                           .missing_pred_entry = {.freq = 1}}}});
+        .path_pred_info = {.entries = {{1, {.freq = 9}}}}}});
 
-  auto children_of_4_args = GetMapByIndex(
-      {{.node_bb_index = 5,
-        .path_pred_info = {.entries = {{2, {.freq = 10}}, {3, {.freq = 173}}},
-                           .missing_pred_entry = {.freq = 2}}}});
+  auto children_of_4_args =
+      GetMapByIndex({{.node_bb_index = 5,
+                      .path_pred_info = {.entries = {{2, {.freq = 10}},
+                                                     {3, {.freq = 175}}}}}});
 
   return {
       .function_path_profile_args = GetMapByIndex(
@@ -142,8 +106,7 @@ ProgramPathProfileArg GetDefaultPathProfileArg() {
             .path_node_args = GetMapByIndex(
                 {{.node_bb_index = 3,
                   .path_pred_info = {.entries = {{1, {.freq = 195}},
-                                                 {2, {.freq = 656}}},
-                                     .missing_pred_entry = {.freq = 38}},
+                                                 {2, {.freq = 656}}}},
                   .children_args = children_of_3_args},
                  {.node_bb_index = 4,
                   .path_pred_info =
@@ -154,14 +117,11 @@ ProgramPathProfileArg GetDefaultPathProfileArg() {
                               .call_freqs = {{CallRetInfo{.callee = 7}, 10},
                                              {CallRetInfo{.callee = 8}, 0}}}},
                             {3,
-                             {.freq = 173,
+                             {.freq = 175,
                               .cache_pressure = 9.2,
-                              .call_freqs = {{CallRetInfo{.callee = 7}, 89},
-                                             {CallRetInfo{.callee = 8}, 84}}}}},
-                       .missing_pred_entry =
-                           {.freq = 2,
-                            .call_freqs = {{CallRetInfo{.callee = 7}, 1},
-                                           {CallRetInfo{.callee = 8}, 1}}}},
+                              .call_freqs = {{CallRetInfo{.callee = 7}, 90},
+                                             {CallRetInfo{.callee = 8},
+                                              85}}}}}},
                   .children_args = children_of_4_args}})}})};
 }
 
@@ -265,9 +225,6 @@ TEST(PathCloneEvaluator, EvaluatesAndReturnsClonings) {
   std::unique_ptr<ProgramCfg> program_cfg =
       BuildFromCfgArg(GetDefaultProgramCfgArg());
   ProgramPathProfile path_profile(GetDefaultPathProfileArg());
-  ASSERT_THAT(path_profile.path_profiles_by_function_index(), Contains(Key(6)));
-  const FunctionPathProfile& function_path_profile =
-      path_profile.path_profiles_by_function_index().at(6);
   PathProfileOptions path_profile_options;
   PropellerCodeLayoutParameters code_layout_params;
   code_layout_params.set_call_chain_clustering(false);
@@ -277,49 +234,20 @@ TEST(PathCloneEvaluator, EvaluatesAndReturnsClonings) {
                               code_layout_params, path_profile_options);
   EXPECT_THAT(
       evaluated_clonings,
-      UnorderedElementsAre(Pair(
-          6,
-          UnorderedElementsAre(
-              EvaluatedPathCloningIs(
-                  Property("full_path", &PathCloning::GetFullPath,
-                           ElementsAre(2, 3)),
-                  Optional(DoubleNear(3102.28, kEpsilon)),
-                  Field("paths_to_drop",
-                        &CfgChangeFromPathCloning::paths_to_drop,
-                        UnorderedElementsAre(
-                            function_path_profile.GetPathTree(3)))),
-              EvaluatedPathCloningIs(
-                  Property("full_path", &PathCloning::GetFullPath,
-                           ElementsAre(2, 3, 4, 5)),
-                  Optional(DoubleNear(2981.55, kEpsilon)),
-                  Field(
-                      "paths_to_drop", &CfgChangeFromPathCloning::paths_to_drop,
-                      UnorderedElementsAre(
-                          function_path_profile.GetPathTree(3),
-                          function_path_profile.GetPathTree(3)->GetChild(4),
-                          function_path_profile.GetPathTree(4),
-                          function_path_profile.GetPathTree(3)
-                              ->GetChild(4)
-                              ->GetChild(5),
-                          function_path_profile.GetPathTree(4)->GetChild(5)))),
-              EvaluatedPathCloningIs(
-                  Property("full_path", &PathCloning::GetFullPath,
-                           ElementsAre(2, 3, 5)),
-                  Optional(DoubleNear(4775.69, kEpsilon)),
-                  Field(
-                      "paths_to_drop", &CfgChangeFromPathCloning::paths_to_drop,
-                      UnorderedElementsAre(
-                          function_path_profile.GetPathTree(3),
-                          function_path_profile.GetPathTree(3)->GetChild(5)))),
-              EvaluatedPathCloningIs(
-                  Property("full_path", &PathCloning::GetFullPath,
-                           ElementsAre(3, 4, 5)),
-                  Optional(DoubleNear(1352.8, kEpsilon)),
-                  Field(
-                      "paths_to_drop", &CfgChangeFromPathCloning::paths_to_drop,
-                      UnorderedElementsAre(function_path_profile.GetPathTree(4),
-                                           function_path_profile.GetPathTree(4)
-                                               ->GetChild(5))))))));
+      UnorderedElementsAre(
+          Pair(6, UnorderedElementsAre(
+                      Field("path_cloning", &EvaluatedPathCloning::path_cloning,
+                            Property("full_path", &PathCloning::GetFullPath,
+                                     ElementsAre(2, 3))),
+                      Field("path_cloning", &EvaluatedPathCloning::path_cloning,
+                            Property("full_path", &PathCloning::GetFullPath,
+                                     ElementsAre(2, 3, 4, 5))),
+                      Field("path_cloning", &EvaluatedPathCloning::path_cloning,
+                            Property("full_path", &PathCloning::GetFullPath,
+                                     ElementsAre(2, 3, 5))),
+                      Field("path_cloning", &EvaluatedPathCloning::path_cloning,
+                            Property("full_path", &PathCloning::GetFullPath,
+                                     ElementsAre(3, 4, 5)))))));
 }
 
 TEST(PathCloneEvaluator, LimitsCloningPathLength) {
@@ -381,9 +309,7 @@ TEST(PathCloneEvaluator, GetsInitialChains) {
       .path_pred_bb_index = 1};
   ASSERT_OK_AND_ASSIGN(
       CfgChangeFromPathCloning cfg_change,
-      CfgChangeBuilder(cloning, /*conflict_edges=*/{},
-                       path_profile.path_profiles_by_function_index().at(6))
-          .Build());
+      GetCfgChangeForPathCloning(cloning, /*conflict_edges=*/{}));
 
   EXPECT_THAT(
       GetInitialChains(foo_cfg, optimal_chain_info, cfg_change),
@@ -394,19 +320,9 @@ TEST(PathCloneEvaluator, GetsInitialChains) {
 TEST(ApplyCloningsTest, ChangesIntraCfg) {
   std::unique_ptr<ProgramCfg> program_cfg =
       BuildFromCfgArg(GetDefaultProgramCfgArg());
-  ProgramPathProfile path_profile(GetDefaultPathProfileArg());
-  ASSERT_TRUE(path_profile.path_profiles_by_function_index().contains(6));
-  const FunctionPathProfile& function_path_profile =
-      path_profile.path_profiles_by_function_index().at(6);
   CfgChangeFromPathCloning cfg_change = {
       .path_pred_bb_index = 1,
       .path_to_clone = {3, 4},
-      .paths_to_drop =
-          {
-              function_path_profile.GetPathTree(3),
-              function_path_profile.GetPathTree(3)->GetChild(4),
-              function_path_profile.GetPathTree(4),
-          },
       .intra_edge_reroutes = {{.src_bb_index = 1,
                                .sink_bb_index = 3,
                                .src_is_cloned = false,
@@ -454,17 +370,17 @@ TEST(ApplyCloningsTest, ChangesIntraCfg) {
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{1, 0}),
                          NodeIntraIdIs(IntraCfgId{3, 0}), 176, _),
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                         NodeIntraIdIs(IntraCfgId{1, 0}), 9, _),
+                         NodeIntraIdIs(IntraCfgId{1, 0}), 10, _),
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{2, 0}),
                          NodeIntraIdIs(IntraCfgId{3, 0}), 656, _),
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{2, 0}),
                          NodeIntraIdIs(IntraCfgId{4, 0}), 10, _),
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                         NodeIntraIdIs(IntraCfgId{4, 0}), 136, _),
+                         NodeIntraIdIs(IntraCfgId{4, 0}), 145, _),
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                         NodeIntraIdIs(IntraCfgId{5, 0}), 622, _),
+                         NodeIntraIdIs(IntraCfgId{5, 0}), 650, _),
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{4, 0}),
-                         NodeIntraIdIs(IntraCfgId{5, 0}), 124, _),
+                         NodeIntraIdIs(IntraCfgId{5, 0}), 135, _),
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{1, 0}),
                          NodeIntraIdIs(IntraCfgId{3, 1}), 20, _),
                IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 1}),
@@ -503,8 +419,7 @@ TEST(EvaluateOneCloning, RejectsNonProfitableCloning) {
                       CodeLayout(code_layout_params, {foo_cfg},
                                  /*initial_chains=*/{})
                           .OrderAll()
-                          .front(),
-                      path_profile.path_profiles_by_function_index().at(6)),
+                          .front()),
       StatusIs(absl::StatusCode::kFailedPrecondition,
                "Cloning is not acceptable with score gain: -190.223 < -170"));
 }

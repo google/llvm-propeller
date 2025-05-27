@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -29,7 +28,6 @@
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_node.h"
-#include "propeller/path_node.h"
 
 namespace propeller {
 
@@ -151,163 +149,5 @@ std::ostream &operator<<(std::ostream &out, const CFGEdge &edge) {
   return out << edge.src()->GetName() << " -> " << edge.sink()->GetName()
              << "[ weight: " << edge.weight()
              << "] [type: " << GetCfgEdgeKindString(edge.kind()) << "]";
-}
-
-void CfgBuilder::AddCfgChange(const CfgChangeFromPathCloning &cfg_change) {
-  for (const CfgChangeFromPathCloning::IntraEdgeReroute &edge_reroute :
-       cfg_change.intra_edge_reroutes) {
-    // Update the set of affected original edges.
-    conflict_edges_.affected_edges.insert(
-        {.from_bb_index = edge_reroute.src_bb_index,
-         .to_bb_index = edge_reroute.sink_bb_index});
-    // If the source is not cloned, it means this is the path predecessor
-    // edge. Update the set of path predecessor edges now.
-    if (!edge_reroute.src_is_cloned) {
-      conflict_edges_.path_pred_edges.insert(
-          {.from_bb_index = edge_reroute.src_bb_index,
-           .to_bb_index = edge_reroute.sink_bb_index});
-    }
-  }
-  ClonePath(cfg_change.path_pred_bb_index, cfg_change.path_to_clone);
-  cfg_changes_.push_back(cfg_change);
-}
-
-std::unique_ptr<ControlFlowGraph> CfgBuilder::Build() && {
-  std::vector<std::unique_ptr<CFGEdge>> intra_edges;
-  intra_edges.reserve(cfg_->intra_edges().size());
-  // Now copy the intra-function edges.
-  for (const std::unique_ptr<CFGEdge> &edge : cfg_->intra_edges()) {
-    CHECK_EQ(edge->src()->function_index(), edge->sink()->function_index())
-        << *edge;
-    intra_edges.push_back(std::make_unique<CFGEdge>(
-        nodes_.at(edge->src()->node_index()).get(),
-        nodes_.at(edge->sink()->node_index()).get(), edge->weight(),
-        edge->kind(), edge->inter_section()));
-  }
-  ApplyIntraCfgChanges(intra_edges);
-  return std::make_unique<ControlFlowGraph>(
-      cfg_->section_name(), cfg_->function_index(), cfg_->module_name(),
-      cfg_->names(), std::move(nodes_), std::move(intra_edges),
-      std::move(clone_paths_));
-}
-
-// Clones the basic blocks along the path `path_to_clone` given path
-// predecessor block `path_pred_bb_index`. Both `path_pred_bb_index` and
-// `path_to_clone` are specified in terms of bb_indices of the original nodes.
-void CfgBuilder::ClonePath(int path_pred_bb_index,
-                           absl::Span<const int> path_to_clone) {
-  std::vector<int> clone_path;
-  clone_path.reserve(path_to_clone.size() + 1);
-  clone_path.push_back(path_pred_bb_index);
-
-  for (int bb_index : path_to_clone) {
-    // Get the next available clone number for `bb_index`.
-    int clone_number = ++current_clone_numbers_[bb_index];
-    int new_node_index = nodes_.size();
-    // Create and insert the clone node.
-    nodes_.push_back(nodes_.at(bb_index)->Clone(clone_number, new_node_index));
-    clone_path.push_back(new_node_index);
-  }
-  // Add this path to `clone_paths_`.
-  clone_paths_.push_back(std::move(clone_path));
-}
-
-void CfgBuilder::ApplyIntraCfgChanges(
-    std::vector<std::unique_ptr<CFGEdge>> &intra_edges) {
-  absl::flat_hash_map<int, std::vector<CFGEdge *>>
-      original_edges_by_src_bb_index;
-  for (const std::unique_ptr<CFGEdge> &edge : intra_edges) {
-    if (!edge->src()->is_cloned() && !edge->sink()->is_cloned() &&
-        edge->kind() == CFGEdgeKind::kBranchOrFallthough) {
-      original_edges_by_src_bb_index[edge->src()->bb_index()].push_back(
-          edge.get());
-    }
-  }
-  // Helper for finding the original intra-function edge from `src_bb_index`
-  // to `sink_bb_index`.
-  auto find_original_edge = [&](int src_bb_index,
-                                int sink_bb_index) -> CFGEdge & {
-    auto it = original_edges_by_src_bb_index.find(src_bb_index);
-    if (it != original_edges_by_src_bb_index.end()) {
-      for (CFGEdge *edge : it->second) {
-        if (edge->sink()->bb_index() == sink_bb_index) {
-          return *edge;
-        }
-      }
-    }
-    LOG(FATAL) << "No edge from block with index " << src_bb_index
-               << " to block with index" << sink_bb_index << " in function "
-               << cfg_->GetPrimaryName().str()
-               << " [function index: " << cfg_->function_index() << "]";
-  };
-
-  // Path profiles are not continuous (due to the limited LBR stack depth).
-  // Therefore, if we have an LBR path that starts from a block in the middle of
-  // the cloned path (and doesn't include the path predecessor), we may not be
-  // able to confidently determine if the predecessor edge was taken or not, and
-  // thus cannot precisely reroute the weights along that path. Therefore, we
-  // drop the weights along the edges of those paths as if they were not
-  // sampled. Although this loses a small amount of profile information, it
-  // warrants that we don't leave any residual edge weights in the edges that
-  // are rerouted to the clones, thereby enabling us to determine if a branch
-  // will be **never-taken** (which can be used in PropellerCodeLayoutScorer).
-  absl::flat_hash_set<const PathNode *> all_paths_to_drop;
-  for (const CfgChangeFromPathCloning &cfg_change : cfg_changes_) {
-    all_paths_to_drop.insert(cfg_change.paths_to_drop.begin(),
-                             cfg_change.paths_to_drop.end());
-  }
-  for (const PathNode *path_node : all_paths_to_drop) {
-    for (const auto &[child_bb_index, child] : path_node->children()) {
-      // We don't drop the weights of the path predecessor edges since they will
-      // be rerouted to the clones.
-      // Note that we don't need to check the affected edges here. Affected
-      // edges of other paths cannot overlap these weights, because if they do,
-      // their path predecessor would have overlapped with the edges along a
-      // path. This cannot happen because we don't clone a path when its path
-      // predecessor is in the affected edges of another path.
-      if (conflict_edges_.path_pred_edges.contains(
-              {.from_bb_index = path_node->node_bb_index(),
-               .to_bb_index = child_bb_index})) {
-        continue;
-      }
-      CFGEdge &edge = find_original_edge(path_node->node_bb_index(),
-                                         child->node_bb_index());
-      edge.DecrementWeight(child->path_pred_info().missing_pred_entry.freq);
-    }
-  }
-
-  for (int i = 0; i < cfg_changes_.size(); ++i) {
-    int clone_path_index = clone_paths_.size() - cfg_changes_.size() + i;
-    const CfgChangeFromPathCloning &cfg_change = cfg_changes_[i];
-    absl::flat_hash_map<int, CFGNode *> clones;
-    for (int j = 0; j < cfg_change.path_to_clone.size(); ++j) {
-      int bb_index = cfg_change.path_to_clone[j];
-      clones[bb_index] =
-          nodes_.at(clone_paths_.at(clone_path_index).at(j + 1)).get();
-    }
-    // Apply all intra-procedural edge weight reroutes. The inter-procedural
-    // edge reroutes will be applied in `CloneApplicator` after all clonings
-    // have been applied.
-    for (const CfgChangeFromPathCloning::IntraEdgeReroute &edge_reroute :
-         cfg_change.intra_edge_reroutes) {
-      CFGNode &from_src_node = *nodes_[edge_reroute.src_bb_index];
-      CFGNode &from_sink_node = *nodes_[edge_reroute.sink_bb_index];
-      if (edge_reroute.kind != CFGEdgeKind::kBranchOrFallthough) continue;
-      CFGEdge &edge = find_original_edge(edge_reroute.src_bb_index,
-                                         edge_reroute.sink_bb_index);
-      // Find and decrement the weight of the original edge.
-      edge.DecrementWeight(edge_reroute.weight);
-      CFGNode *to_src_node = edge_reroute.src_is_cloned
-                                 ? clones[edge_reroute.src_bb_index]
-                                 : &from_src_node;
-      CFGNode *to_sink_node = edge_reroute.sink_is_cloned
-                                  ? clones[edge_reroute.sink_bb_index]
-                                  : &from_sink_node;
-      // Create the edge to reroute the control flow to.
-      intra_edges.push_back(std::make_unique<CFGEdge>(
-          to_src_node, to_sink_node, edge_reroute.weight, edge_reroute.kind,
-          /*inter_section=*/false));
-    }
-  }
 }
 }  // namespace propeller

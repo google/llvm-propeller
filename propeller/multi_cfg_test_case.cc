@@ -63,12 +63,7 @@ ProgramPathProfileArg GetDefaultPathProfileArg() {
                     .call_freqs =
                         {{CallRetInfo{.callee = 7, .return_bb = bb_7_1}, 5},
                          {CallRetInfo{.callee = 8, .return_bb = bb_10_0},
-                          0}}}}},
-             .missing_pred_entry =
-                 {.freq = 1,
-                  .call_freqs =
-                      {{CallRetInfo{.callee = 7, .return_bb = bb_7_1}, 1},
-                       {CallRetInfo{.callee = 8, .return_bb = bb_10_0}, 1}}}},
+                          0}}}}}},
         .children_args = GetMapByIndex(
             {{.node_bb_index = 5,
               .path_pred_info =
@@ -94,12 +89,7 @@ ProgramPathProfileArg GetDefaultPathProfileArg() {
                          {.freq = 649,
                           .return_to_freqs = {{FlatBbHandle{.function_index = 9,
                                                             .flat_bb_index = 1},
-                                               649}}}}},
-            .missing_pred_entry = {
-                .freq = 1,
-                .return_to_freqs = {
-                    {FlatBbHandle{.function_index = 9, .flat_bb_index = 1},
-                     1}}}}}});
+                                               649}}}}}}}});
 
   auto children_of_4_args =
       GetMapByIndex({{.node_bb_index = 5,
@@ -112,8 +102,7 @@ ProgramPathProfileArg GetDefaultPathProfileArg() {
             .path_node_args = GetMapByIndex(
                 {{.node_bb_index = 3,
                   .path_pred_info = {.entries = {{1, {.freq = 185}},
-                                                 {2, {.freq = 656}}},
-                                     .missing_pred_entry = {.freq = 3}},
+                                                 {2, {.freq = 656}}}},
                   .children_args = children_of_3_args},
                  {.node_bb_index = 4,
                   .path_pred_info =
