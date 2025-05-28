@@ -31,7 +31,7 @@
 #include "propeller/branch_frequencies.h"
 #include "propeller/branch_frequencies_aggregator.h"
 #include "propeller/propeller_statistics.h"
-#include "propeller/status_macros.h"
+#include "propeller/status_macros.h"  // Included for macros.
 
 namespace propeller {
 namespace {

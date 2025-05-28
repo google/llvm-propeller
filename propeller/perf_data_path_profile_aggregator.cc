@@ -32,7 +32,7 @@
 #include "propeller/program_cfg.h"
 #include "propeller/program_cfg_path_analyzer.h"
 #include "propeller/resolve_mmap_name.h"
-#include "propeller/status_macros.h"
+#include "propeller/status_macros.h"  // Included for macros.
 
 namespace propeller {
 using ::propeller::ProgramCfgPathAnalyzer;

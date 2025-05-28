@@ -22,7 +22,7 @@
 #include "absl/status/statusor.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "propeller/perf_data_provider.h"
-#include "propeller/status_macros.h"
+#include "propeller/status_macros.h"  // Included for macros.
 
 namespace propeller {
 

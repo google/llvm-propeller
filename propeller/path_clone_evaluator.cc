@@ -38,7 +38,7 @@
 #include "propeller/path_node.h"
 #include "propeller/path_profile_options.pb.h"
 #include "propeller/program_cfg.h"
-#include "propeller/status_macros.h"
+#include "propeller/status_macros.h"  // Included for macros.
 
 namespace propeller {
 

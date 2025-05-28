@@ -52,7 +52,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "propeller/addr2cu.h"
-#include "propeller/status_macros.h"
+#include "propeller/status_macros.h"  // Included for macros.
 
 namespace {
 using ::propeller::BinaryContent;

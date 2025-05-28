@@ -43,7 +43,7 @@
 #include "propeller/profile_writer.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/proto_branch_frequencies_aggregator.h"
-#include "propeller/status_macros.h"
+#include "propeller/status_macros.h"  // Included for macros.
 
 namespace propeller {
 namespace {
