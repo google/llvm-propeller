@@ -41,7 +41,7 @@
 #include "propeller/lbr_aggregation.h"
 #include "propeller/perf_data_provider.h"
 #include "propeller/spe_tid_pid_provider.h"
-#include "propeller/status_macros.h"
+#include "propeller/status_macros.h"  // Included for macros.
 #include "src/quipper/arm_spe_decoder.h"
 #include "src/quipper/perf_data.pb.h"
 #include "src/quipper/perf_parser.h"
