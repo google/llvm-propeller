@@ -16,7 +16,6 @@
 #define PROPELLER_CFG_EDGE_H_
 
 #include <algorithm>
-#include <ostream>
 #include <string>
 
 #include "absl/log/check.h"
@@ -82,8 +81,5 @@ class CFGEdge final {
   // Whether the edge is across functions in different sections.
   bool inter_section_ = false;
 };
-
-std::ostream &operator<<(std::ostream &out, const CFGEdge &edge);
-
 }  // namespace propeller
 #endif  // PROPELLER_CFG_EDGE_H_

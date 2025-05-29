@@ -58,6 +58,10 @@ void PathTracer::HandleFallThroughBlocks(std::optional<FlatBbHandle> from_bb,
   // paths.
   if (!can_fallthrough(from_bb->flat_bb_index, to_bb->flat_bb_index)) {
     handler_->ResetPath();
+    // PathTracer::TracePath will visit the destination of the next branch, so
+    // we still need to visit the last block in the path here (which is the
+    // source of the next branch).
+    handler_->VisitBlock(to_bb->flat_bb_index, sample_time);
     return;
   }
   for (int bb_index = from_bb->flat_bb_index + 1;
@@ -233,9 +237,11 @@ class CloningPathTraceHandler : public PathTraceHandler {
     }
   }
 
-  // Cuts and disconnects the current paths by resetting `current_path_probes_`
-  // and `prev_node_bb_index`;
+  // Cuts and disconnects the current paths by resetting the internal states of
+  // the path visitor, including `current_path_probes_`, `prev_node_bb_index`,
+  // `path_length_`, and `missing_pred_path_node_`.
   void ResetPath() override {
+    missing_pred_path_node_ = nullptr;
     current_path_probes_.clear();
     prev_node_bb_index_ = -1;
     path_length_ = 0;

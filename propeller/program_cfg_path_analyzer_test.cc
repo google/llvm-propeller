@@ -885,5 +885,136 @@ TEST(ProgramCfgPathAnalyzer, TracksMissingPathPredecessorInfo) {
                                               5, path_node_is_5_matcher)))),
                                  Pair(3, path_node_is_3_matcher))))))))));
 }
+
+TEST(ProgramCfgPathAnalyzer,
+     TracksMissingPathPredecessorInfoWithBogusFallthroughPath) {
+  std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
+      {.cfg_args = {{".text",
+                     0,
+                     "foo",
+                     {{0x1000, 0, 0x10, {.CanFallThrough = true}},
+                      {0x1010, 1, 0x9, {.CanFallThrough = true}},
+                      {0x1020, 2, 0x8, {}},
+                      {0x1030, 3, 0x7, {.CanFallThrough = true}},
+                      {0x1040, 4, 0x6, {.HasReturn = true}}},
+                     {{0, 1, 5, CFGEdgeKind::kBranchOrFallthough},
+                      {1, 3, 5, CFGEdgeKind::kBranchOrFallthough},
+                      {1, 2, 5, CFGEdgeKind::kBranchOrFallthough},
+                      {2, 4, 5, CFGEdgeKind::kBranchOrFallthough},
+                      {3, 1, 10, CFGEdgeKind::kBranchOrFallthough},
+                      {3, 4, 5, CFGEdgeKind::kBranchOrFallthough}}}}});
+
+  FlatBbHandleBranchPath path1 = {
+      .pid = 2080799,
+      .branches = {{.from_bb = {{.function_index = 0, .flat_bb_index = 0}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 1}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 2}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 4}}}}};
+
+  FlatBbHandleBranchPath path2 = {
+      .pid = 2080799,
+      .branches = {{.from_bb = {{.function_index = 0, .flat_bb_index = 3}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 1}}},
+                   // This is a bogus fallthrough path since block 2 cannot
+                   // fallthrough.
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 3}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 1}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 1}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 3}}},
+                   {.from_bb = {{.function_index = 0, .flat_bb_index = 3}},
+                    .to_bb = {{.function_index = 0, .flat_bb_index = 4}}}}};
+
+  std::vector<FlatBbHandleBranchPath> path1s(5, path1);
+  std::vector<FlatBbHandleBranchPath> path2s(5, path2);
+  std::vector<FlatBbHandleBranchPath> all_paths;
+  for (const auto &paths : {path1s, path2s}) {
+    absl::c_copy(paths, std::back_inserter(all_paths));
+  }
+
+  PathProfileOptions options;
+  options.set_hot_cutoff_percentile(30);
+  ProgramPathProfile path_profile;
+  ProgramCfgPathAnalyzer path_analyzer(&options, program_cfg.get(),
+                                       &path_profile);
+  path_analyzer.StoreAndAnalyzePaths(all_paths);
+  path_analyzer.AnalyzePaths(/*paths_to_analyze=*/std::nullopt);
+
+  EXPECT_THAT(
+      path_profile.path_profiles_by_function_index(),
+      UnorderedElementsAre(Pair(
+          0,
+          FunctionPathProfileIs(
+              0,
+              UnorderedElementsAre(
+                  Pair(4, PathNodeIs(4, _,
+                                     PathPredInfoIs(
+                                         _, PathPredInfoEntryIs(0, 0, IsEmpty(),
+                                                                IsEmpty())),
+                                     IsEmpty())),
+                  Pair(
+                      1,
+                      PathNodeIs(
+                          1, _,
+                          PathPredInfoIs(
+                              _,
+                              PathPredInfoEntryIs(0, 0, IsEmpty(), IsEmpty())),
+                          UnorderedElementsAre(
+                              Pair(
+                                  2, PathNodeIs(
+                                         2, _,
+                                         PathPredInfoIs(_, PathPredInfoEntryIs(
+                                                               0, 0, IsEmpty(),
+                                                               IsEmpty())),
+                                         UnorderedElementsAre(Pair(
+                                             4, PathNodeIs(
+                                                    4, _,
+                                                    PathPredInfoIs(
+                                                        _, PathPredInfoEntryIs(
+                                                               0, 0, IsEmpty(),
+                                                               IsEmpty())),
+                                                    IsEmpty()))))),
+                              Pair(3, PathNodeIs(
+                                          3, _,
+                                          PathPredInfoIs(_, PathPredInfoEntryIs(
+                                                                0, 0, IsEmpty(),
+                                                                IsEmpty())),
+                                          UnorderedElementsAre(Pair(
+                                              4, PathNodeIs(
+                                                     4, _,
+                                                     PathPredInfoIs(
+                                                         _, PathPredInfoEntryIs(
+                                                                0, 0, IsEmpty(),
+                                                                IsEmpty())),
+                                                     IsEmpty())))))))),
+                  Pair(3,
+                       PathNodeIs(
+                           3, _,
+                           PathPredInfoIs(_, PathPredInfoEntryIs(
+                                                 10, 0, IsEmpty(), IsEmpty())),
+                           UnorderedElementsAre(Pair(
+                               1,
+                               PathNodeIs(
+                                   1, _,
+                                   PathPredInfoIs(
+                                       _, PathPredInfoEntryIs(
+                                              10, 0, IsEmpty(), IsEmpty())),
+                                   UnorderedElementsAre(Pair(
+                                       3,
+                                       PathNodeIs(
+                                           3, _,
+                                           PathPredInfoIs(
+                                               _, PathPredInfoEntryIs(
+                                                      5, 0,
+                                                      IsEmpty(), IsEmpty())),
+                                           UnorderedElementsAre(Pair(
+                                               4,
+                                               PathNodeIs(
+                                                   4, _,
+                                                   PathPredInfoIs(
+                                                       _, PathPredInfoEntryIs(
+                                                              5, 0, IsEmpty(),
+                                                              IsEmpty())),
+                                                   IsEmpty()))))))))))))))));
+}
 }  // namespace
 }  // namespace propeller

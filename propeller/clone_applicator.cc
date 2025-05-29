@@ -23,6 +23,7 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -159,6 +160,72 @@ void CreateInterFunctionEdges(
         ++current_clone_numbers[bb_index];
     }
   }
+
+  auto drop_inter_function_edges = [&](const PathNode &path_node,
+                                       ControlFlowGraph &src_cfg) {
+    CFGNode &src_node = *src_cfg.nodes().at(path_node.node_bb_index());
+    for (const auto &[call_ret, freq] :
+         path_node.path_pred_info().missing_pred_entry.call_freqs) {
+      if (!call_ret.callee.has_value()) continue;
+      ControlFlowGraph &callee_cfg = *clone_cfgs_by_index.at(*call_ret.callee);
+      CFGNode &callee_node = *callee_cfg.nodes().at(0);
+      CFGEdge *call_edge = src_node.GetEdgeTo(callee_node, CFGEdgeKind::kCall);
+      if (call_edge == nullptr) {
+        LOG(WARNING) << "No call edge from block "
+                     << src_cfg.GetPrimaryName().str() << "#"
+                     << src_node.bb_id() << " to function "
+                     << callee_cfg.GetPrimaryName().str();
+        continue;
+      } else {
+        call_edge->DecrementWeight(freq);
+      }
+      if (call_ret.return_bb.has_value()) {
+        ControlFlowGraph &return_from_cfg =
+            *clone_cfgs_by_index.at(call_ret.return_bb->function_index);
+        CFGNode &return_from_node =
+            *return_from_cfg.nodes().at(call_ret.return_bb->flat_bb_index);
+        CFGEdge *return_edge =
+            return_from_node.GetEdgeTo(src_node, CFGEdgeKind::kRet);
+        if (return_edge == nullptr) {
+          LOG(WARNING) << "No return edge from block "
+                       << return_from_cfg.GetPrimaryName().str() << "#"
+                       << return_from_node.bb_id() << " to block "
+                       << src_cfg.GetPrimaryName().str() << "#"
+                       << src_node.bb_id();
+        } else {
+          return_edge->DecrementWeight(freq);
+        }
+      }
+    }
+    for (const auto &[bb_handle, freq] :
+         path_node.path_pred_info().missing_pred_entry.return_to_freqs) {
+      ControlFlowGraph &return_to_cfg =
+          *clone_cfgs_by_index.at(bb_handle.function_index);
+      CFGNode &return_to_node =
+          *return_to_cfg.nodes().at(bb_handle.flat_bb_index);
+      CFGEdge *return_edge =
+          src_node.GetEdgeTo(return_to_node, CFGEdgeKind::kRet);
+      if (return_edge == nullptr) {
+        LOG(WARNING) << "No return edge from block "
+                     << src_cfg.GetPrimaryName().str() << "#"
+                     << src_node.bb_id() << " to block "
+                     << return_to_cfg.GetPrimaryName().str() << "#"
+                     << return_to_node.bb_id();
+      } else {
+        return_edge->DecrementWeight(freq);
+      }
+    }
+  };
+
+  for (const auto &[function_index, function_cfg_changes] :
+       cfg_changes_by_function_index) {
+    ControlFlowGraph &cfg = *clone_cfgs_by_index.at(function_index);
+    for (const auto &function_cfg_change : function_cfg_changes) {
+      for (const PathNode *path_node : function_cfg_change.paths_to_drop) {
+        drop_inter_function_edges(*path_node, cfg);
+      }
+    }
+  }
 }
 }  // namespace
 
@@ -167,7 +234,9 @@ CloneApplicatorStats ApplyClonings(
     const PathProfileOptions &path_profile_options,
     absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>>
         clonings_by_function_index,
-    const propeller::ProgramCfg &program_cfg) {
+    const propeller::ProgramCfg &program_cfg,
+    const absl::flat_hash_map<int, FunctionPathProfile>
+        &path_profiles_by_function_index) {
   double total_score_gain = 0;
 
   LOG(INFO) << "Applying clonings...";
@@ -179,6 +248,8 @@ CloneApplicatorStats ApplyClonings(
   for (auto &[function_index, clonings] : clonings_by_function_index) {
     // Apply clonings in reverse order of their scores.
     absl::c_sort(clonings, std::greater<EvaluatedPathCloning>());
+    const auto &function_path_profile =
+        path_profiles_by_function_index.at(function_index);
 
     const ControlFlowGraph *cfg = program_cfg.GetCfgByIndex(function_index);
     CfgBuilder cfg_builder(cfg);
@@ -212,7 +283,7 @@ CloneApplicatorStats ApplyClonings(
             EvaluateCloning(cfg_builder.Clone(), cloning.path_cloning,
                             code_layout_params, path_profile_options,
                             path_profile_options.min_final_cloning_score(),
-                            optimal_chain_info.value());
+                            optimal_chain_info.value(), function_path_profile);
         if (!evaluated_cloning.ok()) continue;
         register_cloning(std::move(*std::move(evaluated_cloning)));
       } else if (cloning.score <
@@ -265,7 +336,8 @@ std::unique_ptr<propeller::ProgramCfg> ApplyClonings(
 
   CloneApplicatorStats clone_applicator_stats =
       ApplyClonings(fast_code_layout_params, path_profile_options,
-                    std::move(clonings_by_function_index), *program_cfg);
+                    std::move(clonings_by_function_index), *program_cfg,
+                    program_path_profile.path_profiles_by_function_index());
 
   cloning_stats.score_gain = clone_applicator_stats.total_score_gain;
 
