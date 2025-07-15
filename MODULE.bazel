@@ -59,3 +59,6 @@ bazel_dep(
     # LINT.ThenChange(CMake/Quipper/Quipper.cmake:commit_hash)
     repo_name = "com_google_perf_data_converter",
 )
+
+# TODO: b/367348146 - Remove this transitive dependency once we ingest LLVM with bzlmod.
+bazel_dep(name = "rules_python", version = "1.0.0")
