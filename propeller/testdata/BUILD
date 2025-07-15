@@ -41,7 +41,6 @@ exports_files([
     "bimodal_sample_mfs.ld_profile.txt",
     "bimodal_sample_v2.cloning_cc_profile.txt",
     "call_from_simple_loop.protobuf",
-    "clang_v0_labels.binary",
     "hot_and_cold_landing_pads.protobuf",
     "libro_sample.so",
     "llvm_function_samples.binary",
@@ -72,9 +71,11 @@ exports_files([
     "sample_split_only_cc_directives.golden.txt",
     "sample_split_only_ld_directives.golden.txt",
     "sample_verbose_cc_directives.golden.txt",
+    "sample_with_dropped_symbol.bin",
     "simple_conditionals_join.protobuf",
     "simple_loop.protobuf",
     "simple_multi_function.protobuf",
+    "special_case.bin",
     "test_comdat.h",
     "test_comdat_1.cc",
     "test_comdat_2.cc",
@@ -310,6 +311,39 @@ genrule(
     ],
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
     target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+# This rule is used to manually generate sample_with_dropped_symbol.bin which is the same as
+# sample.bin but with the main symbol dropped.
+genrule(
+    name = "sample_with_dropped_symbol_bin",
+    srcs = ["sample.c"],
+    outs = [
+        "sample_with_dropped_symbol_bin.bin.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-address-map $< -o " +
+          "$(RULEDIR)/sample.bin.gen && " +
+          "$(OBJCOPY) --strip-symbol=main $(RULEDIR)/sample.bin.gen " +
+          "$(RULEDIR)/sample_with_dropped_symbol_bin.bin.gen",
+    tags = [
+        "manual",
+    ],
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+# This rule is used to manually generate a binary with special cases of address mapping (empty basic
+# blocks and a call followed by nop).
+genrule(
+    name = "special_case_bin",
+    srcs = ["special_case.c"],
+    outs = [
+        "special_case.bin.gen",
+    ],
+    cmd = "$(CC) -O1 -mllvm -align-all-blocks=4 -fbasic-block-address-map $< -o $(RULEDIR)/special_case.bin.gen",
+    tags = [
+        "manual",
+    ],
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 

@@ -124,6 +124,21 @@ TEST(BinaryAddressMapper, BbAddrMapReadSymbolTable) {
       Contains(Pair(_, FieldsAre(ElementsAre("sample1_func"), ".text"))));
 }
 
+TEST(BinaryAddressMapper, SkipEntryIfSymbolNotInSymtab) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
+                       GetBinaryContent(GetPropellerTestDataFilePath(
+                           "sample_with_dropped_symbol.bin")));
+  PropellerStats stats;
+  PropellerOptions options;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
+      BuildBinaryAddressMapper(options, *binary_content, stats));
+  EXPECT_THAT(binary_address_mapper->selected_functions(), Not(IsEmpty()));
+  EXPECT_EQ(stats.bbaddrmap_stats.bbaddrmap_function_does_not_have_symtab_entry,
+            1);
+}
+
 // Tests reading the BBAddrMap from a binary built with MFS which has basic
 // block sections.
 TEST(BinaryAddressMapper, ReadsMfsBbAddrMap) {
@@ -229,67 +244,55 @@ TEST(BinaryAddressMapper, ReadBbAddrMap) {
       UnorderedElementsAre(
           Pair("main",
                BbAddrMapIs(
-                   0x1820,
+                   0x17C0,
                    ElementsAre(BbRangeIs(
-                       0x1820,
-                       ElementsAre(BbEntryIs(0, 0x0, 0x30,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(1, 0x30, 0xD,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(2, 0x3D, 0x24,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(3, 0x61, 0x2E,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(4, 0x8F, 0x1A,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(5, 0xA9, 0x34,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(6, 0xDD, 0x5,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(7, 0xE2, 0xE,
+                       0x17C0,
+                       ElementsAre(BbEntryIs(0, 0x0, 0x29,
                                              BBAddrMap::BBEntry::Metadata{
                                                  .HasReturn = false,
                                                  .HasTailCall = false,
                                                  .IsEHPad = false,
                                                  .CanFallThrough = false}),
-                                   BbEntryIs(8, 0xF0, 0x8,
+                                   BbEntryIs(5, 0x30, 0xE,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(1, 0x3E, 0x11,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(2, 0x4F, 0x2B,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(3, 0x7A, 0x2A,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = true}),
+                                   BbEntryIs(4, 0xA4, 0x24,
+                                             BBAddrMap::BBEntry::Metadata{
+                                                 .HasReturn = false,
+                                                 .HasTailCall = false,
+                                                 .IsEHPad = false,
+                                                 .CanFallThrough = false}),
+                                   BbEntryIs(6, 0xC8, 0x9,
                                              BBAddrMap::BBEntry::Metadata{
                                                  .HasReturn = true,
                                                  .HasTailCall = false,
                                                  .IsEHPad = false,
                                                  .CanFallThrough = false})))))),
           Pair("sample1_func",
-               BbAddrMapIs(0x1810,
+               BbAddrMapIs(0x17B0,
                            ElementsAre(BbRangeIs(
-                               0x1810, ElementsAre(BbEntryIs(
+                               0x17B0, ElementsAre(BbEntryIs(
                                            0, 0x0, 0x6,
                                            BBAddrMap::BBEntry::Metadata{
                                                .HasReturn = true,
@@ -297,39 +300,20 @@ TEST(BinaryAddressMapper, ReadBbAddrMap) {
                                                .IsEHPad = false,
                                                .CanFallThrough = false})))))),
           Pair("compute_flag",
-               BbAddrMapIs(
-                   0x17D0,
-                   ElementsAre(BbRangeIs(
-                       0x17D0,
-                       ElementsAre(BbEntryIs(0, 0x0, 0x19,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(1, 0x19, 0x10,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = false}),
-                                   BbEntryIs(2, 0x29, 0x8,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = false,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = true}),
-                                   BbEntryIs(3, 0x31, 0x5,
-                                             BBAddrMap::BBEntry::Metadata{
-                                                 .HasReturn = true,
-                                                 .HasTailCall = false,
-                                                 .IsEHPad = false,
-                                                 .CanFallThrough = false})))))),
-          Pair("this_is_very_code",
-               BbAddrMapIs(0x1770,
+               BbAddrMapIs(0x1780,
                            ElementsAre(BbRangeIs(
-                               0x1770, ElementsAre(BbEntryIs(
-                                           0, 0x0, 0x5D,
+                               0x1780, ElementsAre(BbEntryIs(
+                                           0, 0x0, 0x2B,
+                                           BBAddrMap::BBEntry::Metadata{
+                                               .HasReturn = true,
+                                               .HasTailCall = false,
+                                               .IsEHPad = false,
+                                               .CanFallThrough = false})))))),
+          Pair("this_is_very_code",
+               BbAddrMapIs(0x1730,
+                           ElementsAre(BbRangeIs(
+                               0x1730, ElementsAre(BbEntryIs(
+                                           0, 0x0, 0x50,
                                            BBAddrMap::BBEntry::Metadata{
                                                .HasReturn = true,
                                                .HasTailCall = false,
@@ -443,7 +427,7 @@ TEST(BinaryAddressMapper, CheckNoHotFunctions) {
 TEST(BinaryAddressMapper, FindBbHandleIndexUsingBinaryAddress) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
-      GetBinaryContent(GetPropellerTestDataFilePath("clang_v0_labels.binary")));
+      GetBinaryContent(GetPropellerTestDataFilePath("special_case.bin")));
   PropellerStats stats;
   PropellerOptions options;
   ASSERT_OK_AND_ASSIGN(
@@ -451,62 +435,76 @@ TEST(BinaryAddressMapper, FindBbHandleIndexUsingBinaryAddress) {
       BuildBinaryAddressMapper(options, *binary_content, stats,
                                /*hot_addresses=*/nullptr));
   EXPECT_THAT(binary_address_mapper->selected_functions(), Not(IsEmpty()));
-  // At address 0x000001b3d0a8, we have the following symbols all of size zero.
-  //   BB.447 BB.448 BB.449 BB.450 BB.451 BB.452 BB.453 BB.454 BB.455
-  //   BB.456 BB.457 BB.458 BB.459 BB.460
-
   auto bb_index_from_handle_index = [&](int index) {
     return binary_address_mapper->bb_handles()[index].bb_index;
   };
-  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
-                  0x1b3d0a8, BranchDirection::kTo),
-              Optional(ResultOf(bb_index_from_handle_index, 447)));
-  // At address 0x000001b3f5b0: we have the following symbols:
-  //   Func<_ZN5clang18CompilerInvocation14CreateFromArgs...> BB.0 {size: 0x9a}
-  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
-                  0x1b3f5b0, BranchDirection::kTo),
-              Optional(ResultOf(bb_index_from_handle_index, 0)));
-  // At address 0x1e63500: we have the following symbols:
-  //   Func<_ZN4llvm22FoldingSetIteratorImplC2EPPv> BB.0 {size: 0}
-  //                                                BB.1 {size: 0x8}
-  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
-                  0x1e63500, BranchDirection::kTo),
-              Optional(ResultOf(bb_index_from_handle_index, 0)));
-  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
-                  0x1e63500, BranchDirection::kFrom),
-              Optional(ResultOf(bb_index_from_handle_index, 1)));
-  // At address 0x45399d0, we have a call instruction followed by nops. The
-  // return from the callee will branch to 0x45399d5 (the address of the nopw).
-  // So with BranchDirection::kTo 0x45399d5 should be mapped to BB21 and with
-  // BranchDirection::kFrom it should be mapped to std::nullopt (rejected).
+
+  // At address 0x201620 we have an empty block followed by a non-empty block.
+  // With BranchDirection::kTo, the address should be mapped to BB3.
+  // With BranchDirection::kFrom, the address should be mapped to BB4.
   //
-  // <BB21>:
-  //  ...
-  //  45399d0:   callq   <_ZN4llvm22report_bad_alloc_errorEPKcb>
-  //  45399d5:   nopw    %cs:(%rax,%rax)
-  //  45399df:   nop
-  // <BB22>:
+  // <BB1>:
+  //   201610: 0f af c0                      imull   %eax, %eax
+  //   201613: 83 f8 03                      cmpl    $0x3, %eax
+  //   201616: 72 08                         jb       <BB3>
+  //   201618: 0f 1f 84 00 00 00 00 00       nopl    (%rax,%rax)
+  // <BB3>:
+  // <BB4>:
+  //   **201620**: c3                            retq
   EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
-                  0x45399d5, BranchDirection::kTo),
-              Optional(ResultOf(bb_index_from_handle_index, 21)));
+                  0x201620, BranchDirection::kTo),
+              Optional(ResultOf(bb_index_from_handle_index, 3)));
   EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
-                  0x45399d5, BranchDirection::kFrom),
+                  0x201620, BranchDirection::kFrom),
+              Optional(ResultOf(bb_index_from_handle_index, 4)));
+
+  // With BranchDirection::kFrom, 0x201616 should be mapped to BB1 and 0x201618
+  // should be rejected because it is outside of the basic block.
+  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
+                  0x201616, BranchDirection::kFrom),
+              Optional(ResultOf(bb_index_from_handle_index, 2)));
+  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
+                  0x201618, BranchDirection::kFrom),
               Eq(std::nullopt));
+
+  // At address 0x201649, we have a call instruction followed by nopl. The
+  // return from the callee will branch to 0x20164e (the address of the nopl
+  // instruction). So with BranchDirection::kTo 0x20164e should be mapped to BB2
+  // and with BranchDirection::kFrom it should be mapped to std::nullopt
+  // (rejected).
+  //
+  //   201649: e8 a2 ff ff ff                callq    <foo>
+  //   20164e: 66 90                         nop
+  // <BB2>:
+  //   201650: 89 d8                         movl    %ebx, %eax
+  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
+                  0x20164e, BranchDirection::kTo),
+              Optional(ResultOf(bb_index_from_handle_index, 1)));
+  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
+                  0x20164e, BranchDirection::kFrom),
+              Eq(std::nullopt));
+  // 0x201650 should be mapped to BB2 regardless of the direction.
+  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
+                  0x201650, BranchDirection::kTo),
+              Optional(ResultOf(bb_index_from_handle_index, 2)));
+  EXPECT_THAT(binary_address_mapper->FindBbHandleIndexUsingBinaryAddress(
+                  0x201650, BranchDirection::kFrom),
+              Optional(ResultOf(bb_index_from_handle_index, 2)));
 }
 
 TEST(BinaryAddressMapper, ExtractsIntraFunctionPaths) {
   BinaryAddressBranchPath path({.pid = 2080799,
                                 .sample_time = absl::FromUnixSeconds(123456),
-                                .branches = {{0x186a, 0x1730},
-                                             {0x1782, 0x186f},
-                                             {0x1897, 0x1860},
-                                             {0x186a, 0x1730},
-                                             {0x1782, 0x186f},
-                                             {0x189f, 0x18ca},
-                                             {0x18cc, 0x18c0},
-                                             {0x18c5, 0x17f0},
-                                             {0x1802, 0x184b},
-                                             {0x186a, 0x1730}}});
+                                .branches = {{0x189a, 0x1770},
+                                             {0x17bf, 0x189f},
+                                             {0x18c4, 0x1890},
+                                             {0x189a, 0x1770},
+                                             {0x17bf, 0x189f},
+                                             {0x18cc, 0x18fa},
+                                             {0x18fc, 0x18f0},
+                                             {0x18f5, 0x1820},
+                                             {0x1832, 0x1878},
+                                             {0x189a, 0x1770}}});
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("bimodal_sample.bin")));
@@ -584,7 +582,7 @@ TEST(BinaryAddressMapper, ExtractsIntraFunctionPaths) {
 
 TEST(BinaryAddressMapper, ExtractsPathsWithReturnsFromUnknown) {
   BinaryAddressBranchPath path(
-      {.pid = 123456, .branches = {{0x186a, 0xFFFFF0}, {0xFFFFFF, 0x186f}}});
+      {.pid = 123456, .branches = {{0x189a, 0xFFFFF0}, {0xFFFFFF, 0x189f}}});
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("bimodal_sample.bin")));
@@ -606,7 +604,7 @@ TEST(BinaryAddressMapper, ExtractsPathsWithReturnsFromUnknown) {
 
 TEST(BinaryAddressMapper, ExtractsPathsWithReturnsToBasicBlockAddress) {
   BinaryAddressBranchPath path(
-      {.pid = 123456, .branches = {{0x189f, 0x18ce}, {0x18d6, 0xFFFFFF}}});
+      {.pid = 123456, .branches = {{0x18cc, 0x18fa}, {0x1906, 0xFFFFFF}}});
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("bimodal_sample.bin")));
@@ -628,8 +626,7 @@ TEST(BinaryAddressMapper, ExtractsPathsWithReturnsToBasicBlockAddress) {
           FlatBbHandleBranchPath(
               {.pid = 123456,
                .branches = {
-                   {.from_bb = {{.function_index = 3, .flat_bb_index = 1}},
-                    .to_bb = {{.function_index = 3, .flat_bb_index = 2}},
+                   {.to_bb = {{.function_index = 3, .flat_bb_index = 1}},
                     .call_rets = {{.return_bb = {{.function_index = 2,
                                                   .flat_bb_index = 5}}}}},
                    {.from_bb = {
@@ -638,7 +635,7 @@ TEST(BinaryAddressMapper, ExtractsPathsWithReturnsToBasicBlockAddress) {
 
 TEST(BinaryAddressMapper, ExtractPathsSeparatesPathsWithCorruptBranches) {
   BinaryAddressBranchPath path(
-      {.pid = 123456, .branches = {{0x186a, 0xFFFFF0}, {0x1897, 0x1860}}});
+      {.pid = 123456, .branches = {{0x189a, 0xFFFFF0}, {0x18c4, 0x1890}}});
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("bimodal_sample.bin")));
@@ -665,12 +662,12 @@ TEST(BinaryAddressMapper, ExtractPathsSeparatesPathsWithCorruptBranches) {
 
 TEST(BinaryAddressMapper, ExtractPathsCoalescesCallees) {
   BinaryAddressBranchPath path = {.pid = 7654321,
-                                  .branches = {{0x1832, 0xFFFFF0},
-                                               {0xFFFFF2, 0x1834},
-                                               {0x1836, 0x1770},
-                                               {0x17c0, 0x1838},
-                                               {0x1840, 0x17d0},
-                                               {0x1820, 0x1842}}};
+                                  .branches = {{0x1840, 0xFFFFF0},
+                                               {0xFFFFF2, 0x1844},
+                                               {0x1845, 0x1790},
+                                               {0x17df, 0x1849},
+                                               {0x184a, 0x17e0},
+                                               {0x1833, 0x184e}}};
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("bimodal_sample.x.bin")));

@@ -1,5 +1,5 @@
 v1
 f compute_flag
-c0 2 3 1
+c0
 f main
-c0 4 6 7 1 2 3
+c0 2 3 5 1
