@@ -68,7 +68,7 @@ TEST(GetSymbolAddressTest, SymbolFound) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_THAT(GetSymbolAddress(*binary_content->object_file, "main"),
-              IsOkAndHolds(6432));
+              IsOkAndHolds(6096));
 }
 
 TEST(GetSymbolAddressTest, SymbolNotFound) {
