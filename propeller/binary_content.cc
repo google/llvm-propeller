@@ -69,14 +69,14 @@ using ::propeller::BinaryContent;
 // We also create a segment using the section's (offset, address, size).
 template <class ELFT>
 absl::Status FindRelocatableTextSectionToFillSegment(
-    const llvm::object::ELFFile<ELFT> &elf_file,
-    BinaryContent &binary_content) {
+    const llvm::object::ELFFile<ELFT>& elf_file,
+    BinaryContent& binary_content) {
   llvm::Expected<typename ELFT::ShdrRange> sections = elf_file.sections();
   if (!sections) {
     return absl::FailedPreconditionError(
         "failed to read section list from elf object file");
   }
-  for (const typename ELFT::Shdr &shdr : *sections) {
+  for (const typename ELFT::Shdr& shdr : *sections) {
     llvm::Expected<llvm::StringRef> section_name =
         elf_file.getSectionName(shdr);
     if (!section_name) continue;
@@ -104,8 +104,8 @@ absl::Status FindRelocatableTextSectionToFillSegment(
 template <class ELFT>
 class ELFFileUtil : public ::propeller::ELFFileUtilBase {
  public:
-  explicit ELFFileUtil(llvm::object::ObjectFile *object) {
-    llvm::object::ELFObjectFile<ELFT> *elf_object =
+  explicit ELFFileUtil(llvm::object::ObjectFile* object) {
+    llvm::object::ELFObjectFile<ELFT>* elf_object =
         llvm::dyn_cast<llvm::object::ELFObjectFile<ELFT>,
                        llvm::object::ObjectFile>(object);
     if (elf_object) elf_file_ = &elf_object->getELFFile();
@@ -113,14 +113,14 @@ class ELFFileUtil : public ::propeller::ELFFileUtilBase {
 
   std::string GetBuildId() override;
 
-  absl::Status ReadLoadableSegments(BinaryContent &binary_content) override;
+  absl::Status ReadLoadableSegments(BinaryContent& binary_content) override;
 
-  absl::Status InitializeKernelModule(BinaryContent &binary_content) override;
+  absl::Status InitializeKernelModule(BinaryContent& binary_content) override;
 
  private:
-  const llvm::object::ELFFile<ELFT> *elf_file_ = nullptr;
+  const llvm::object::ELFFile<ELFT>* elf_file_ = nullptr;
 
-  absl::StatusOr<const typename ELFT::Shdr *> FindSection(
+  absl::StatusOr<const typename ELFT::Shdr*> FindSection(
       llvm::StringRef section_name) const;
 };
 
@@ -133,7 +133,7 @@ std::string ELFFileUtil<ELFT>::GetBuildId() {
     return 'a' + (v - 10);
   };
   std::vector<std::string> build_ids;
-  for (const typename ELFT::Shdr &shdr :
+  for (const typename ELFT::Shdr& shdr :
        llvm::cantFail(elf_file_->sections())) {
     llvm::Expected<llvm::StringRef> section_name =
         elf_file_->getSectionName(shdr);
@@ -142,7 +142,7 @@ std::string ELFFileUtil<ELFT>::GetBuildId() {
          *section_name != kKernelBuildIDSectionName))
       continue;
     llvm::Error err = llvm::Error::success();
-    for (const typename ELFT::Note &note : elf_file_->notes(shdr, err)) {
+    for (const typename ELFT::Note& note : elf_file_->notes(shdr, err)) {
       llvm::StringRef r = note.getName();
       if (r == kBuildIdNoteName) {
         llvm::ArrayRef<uint8_t> build_id = note.getDesc(shdr.sh_addralign);
@@ -169,7 +169,7 @@ std::string ELFFileUtil<ELFT>::GetBuildId() {
 
 template <class ELFT>
 absl::Status ELFFileUtil<ELFT>::ReadLoadableSegments(
-    BinaryContent &binary_content) {
+    BinaryContent& binary_content) {
   CHECK(elf_file_);
   if (binary_content.is_relocatable &&
       binary_content.kernel_module.has_value()) {
@@ -183,7 +183,7 @@ absl::Status ELFFileUtil<ELFT>::ReadLoadableSegments(
         binary_content.file_name, " does not have program headers"));
   }
 
-  for (const typename ELFT::Phdr &phdr : *program_headers) {
+  for (const typename ELFT::Phdr& phdr : *program_headers) {
     if (phdr.p_type != llvm::ELF::PT_LOAD ||
         ((phdr.p_flags & llvm::ELF::PF_X) == 0))
       continue;
@@ -200,7 +200,7 @@ absl::Status ELFFileUtil<ELFT>::ReadLoadableSegments(
 }
 
 template <class ELFT>
-absl::StatusOr<const typename ELFT::Shdr *> ELFFileUtil<ELFT>::FindSection(
+absl::StatusOr<const typename ELFT::Shdr*> ELFFileUtil<ELFT>::FindSection(
     llvm::StringRef section_name) const {
   llvm::Expected<llvm::ArrayRef<typename ELFT::Shdr>> sections =
       elf_file_->sections();
@@ -209,7 +209,7 @@ absl::StatusOr<const typename ELFT::Shdr *> ELFFileUtil<ELFT>::FindSection(
         absl::StrCat("Failed to get sections from the ELF file: ",
                      llvm::toString(sections.takeError())));
   }
-  for (const typename ELFT::Shdr &shdr : *sections) {
+  for (const typename ELFT::Shdr& shdr : *sections) {
     llvm::Expected<llvm::StringRef> sn = elf_file_->getSectionName(shdr);
     if (!sn) continue;
     if (*sn == section_name) return &shdr;
@@ -221,17 +221,17 @@ absl::StatusOr<const typename ELFT::Shdr *> ELFFileUtil<ELFT>::FindSection(
 
 template <class ELFT>
 absl::Status ELFFileUtil<ELFT>::InitializeKernelModule(
-    BinaryContent &binary_content) {
-  absl::StatusOr<const typename ELFT::Shdr *> this_module_section =
+    BinaryContent& binary_content) {
+  absl::StatusOr<const typename ELFT::Shdr*> this_module_section =
       FindSection(kLinkOnceSectionName);
   if (!this_module_section.ok()) return this_module_section.status();
 
-  ASSIGN_OR_RETURN(const auto &modinfo_section,
+  ASSIGN_OR_RETURN(const auto& modinfo_section,
                    FindSection(kModInfoSectionName));
   int modinfo_section_index = std::distance(
       llvm::cantFail(elf_file_->sections()).begin(), modinfo_section);
 
-  const typename ELFT::Shdr &modinfo =
+  const typename ELFT::Shdr& modinfo =
       llvm::cantFail(elf_file_->sections())[modinfo_section_index];
   llvm::Expected<llvm::ArrayRef<uint8_t>> modinfo_data =
       elf_file_->getSectionContents(modinfo);
@@ -242,7 +242,7 @@ absl::Status ELFFileUtil<ELFT>::InitializeKernelModule(
 
   binary_content.kernel_module = BinaryContent::KernelModule{};
   absl::string_view section_content(
-      reinterpret_cast<const char *>(modinfo_data->data()),
+      reinterpret_cast<const char*>(modinfo_data->data()),
       modinfo_data->size());
   ASSIGN_OR_RETURN(binary_content.kernel_module->modinfo,
                    ParseModInfoSectionContent(section_content));
@@ -259,10 +259,10 @@ absl::Status ELFFileUtil<ELFT>::InitializeKernelModule(
 // Returns an AArch64 binary's thunk symbols by reading from its symbol table.
 // These are returned as a map from the thunk's address to the thunk symbol.
 absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadAArch64ThunkSymbols(
-    const BinaryContent &binary_content) {
+    const BinaryContent& binary_content) {
   absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> thunks;
-  for (const auto &[address, symbols] : ReadSymbolTable(binary_content)) {
-    for (const llvm::object::ELFSymbolRef &symbol : symbols) {
+  for (const auto& [address, symbols] : ReadSymbolTable(binary_content)) {
+    for (const llvm::object::ELFSymbolRef& symbol : symbols) {
       llvm::StringRef name = llvm::cantFail(symbol.getName());
       if (!(name.starts_with("__AArch64ADRPThunk_") ||
             name.starts_with("__AArch64AbsLongThunk_"))) {
@@ -279,7 +279,7 @@ absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadAArch64ThunkSymbols(
 
 namespace propeller {
 absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
-ReadSymbolTable(const BinaryContent &binary_content) {
+ReadSymbolTable(const BinaryContent& binary_content) {
   absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
       symtab;
   for (llvm::object::SymbolRef sr : binary_content.object_file->symbols()) {
@@ -293,11 +293,11 @@ ReadSymbolTable(const BinaryContent &binary_content) {
     const uint64_t func_size = symbol.getSize();
     if (func_size == 0) continue;
 
-    auto &addr_sym_list = symtab[*address];
+    auto& addr_sym_list = symtab[*address];
     // Check whether there are already symbols on the same address, if so make
     // sure they have the same size and thus they can be aliased.
     bool check_size_ok = true;
-    for (auto &sym_ref : addr_sym_list) {
+    for (auto& sym_ref : addr_sym_list) {
       uint64_t sym_size = llvm::object::ELFSymbolRef(sym_ref).getSize();
       if (func_size != sym_size) {
         LOG(WARNING) << "Multiple function symbols on the same address with "
@@ -316,15 +316,15 @@ ReadSymbolTable(const BinaryContent &binary_content) {
 }
 
 absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
-    const BinaryContent &binary_content) {
+    const BinaryContent& binary_content) {
   if (binary_content.object_file->getArch() != llvm::Triple::aarch64) return {};
 
   return ReadAArch64ThunkSymbols(binary_content);
 }
 
 absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
-    const BinaryContent &binary_content, const BbAddrMapReadOptions &options) {
-  auto *elf_object = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(
+    const BinaryContent& binary_content, const BbAddrMapReadOptions& options) {
+  auto* elf_object = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(
       binary_content.object_file.get());
   CHECK_NE(elf_object, nullptr);
   std::vector<llvm::object::PGOAnalysisMap> pgo_analyses;
@@ -356,10 +356,10 @@ absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
 }
 
 absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
-    const BinaryContent &binary_content) {
+    const BinaryContent& binary_content) {
   auto symtab = ReadSymbolTable(binary_content);
   absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map;
-  for (const auto &[address, symbols] : symtab) {
+  for (const auto& [address, symbols] : symtab) {
     FunctionSymbolInfo symbol_info;
     for (const llvm::object::ELFSymbolRef sr : symbols) {
       symbol_info.aliases.push_back(llvm::cantFail(sr.getName()));
@@ -379,7 +379,7 @@ ELFFileUtilBase::ParseModInfoSectionContent(absl::string_view section_content) {
     return absl::FailedPreconditionError("empty .modinfo section");
   absl::flat_hash_map<absl::string_view, absl::string_view> modinfo;
   const char *q, *eq, *p = section_content.data();
-  const char *end = p + section_content.size();
+  const char* end = p + section_content.size();
   while (p < end) {
     q = p;
     eq = p;
@@ -418,10 +418,10 @@ ELFFileUtilBase::ParseModInfoSectionContent(absl::string_view section_content) {
 }
 
 std::unique_ptr<ELFFileUtilBase> CreateELFFileUtil(
-    llvm::object::ObjectFile *object_file) {
+    llvm::object::ObjectFile* object_file) {
   if (!object_file) return nullptr;
   llvm::StringRef content = object_file->getData();
-  const char *elf_start = content.data();
+  const char* elf_start = content.data();
 
   if (content.size() <= strlen(llvm::ELF::ElfMagic) ||
       strncmp(elf_start, llvm::ELF::ElfMagic, strlen(llvm::ELF::ElfMagic))) {
@@ -473,7 +473,7 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
         absl::StrCat("Not a valid ELF file '", binary_file_name,
                      "': ", raw_string_ostream.str()));
   }
-  llvm::object::ELFObjectFileBase *elf_obj =
+  llvm::object::ELFObjectFileBase* elf_obj =
       llvm::dyn_cast<llvm::object::ELFObjectFileBase, llvm::object::ObjectFile>(
           (*obj).get());
   if (!elf_obj) {
@@ -524,9 +524,9 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
 }
 
 absl::StatusOr<int64_t> GetSymbolAddress(
-    const llvm::object::ObjectFile &object_file,
+    const llvm::object::ObjectFile& object_file,
     absl::string_view symbol_name) {
-  const llvm::object::ELFObjectFileBase *elf_object =
+  const llvm::object::ELFObjectFileBase* elf_object =
       llvm::dyn_cast<const llvm::object::ELFObjectFileBase,
                      const llvm::object::ObjectFile>((&object_file));
   if (elf_object == nullptr) {

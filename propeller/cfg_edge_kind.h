@@ -29,7 +29,7 @@ enum class CFGEdgeKind {
 
 std::string GetCfgEdgeKindString(CFGEdgeKind kind);
 std::string GetDotFormatLabelForEdgeKind(CFGEdgeKind kind);
-std::ostream &operator<<(std::ostream &os, const CFGEdgeKind &kind);
+std::ostream& operator<<(std::ostream& os, const CFGEdgeKind& kind);
 
 }  // namespace propeller
 #endif  // PROPELLER_CFG_EDGE_KIND_H_

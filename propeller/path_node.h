@@ -56,11 +56,11 @@ struct PathPredInfoEntry {
 
   // Implementation of the `AbslStringify` interface.
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const PathPredInfoEntry &e);
+  friend void AbslStringify(Sink& sink, const PathPredInfoEntry& e);
 };
 
 template <typename Sink>
-void AbslStringify(Sink &sink, const PathPredInfoEntry &e) {
+void AbslStringify(Sink& sink, const PathPredInfoEntry& e) {
   absl::Format(&sink, "  frequency: {%d}\n", e.freq);
   absl::Format(&sink, "  cache pressure: {%f}\n", e.cache_pressure);
 
@@ -88,7 +88,7 @@ struct PathPredInfo {
 
   // Returns the entry for the given path predecessor block, creating it if it
   // doesn't exist.
-  PathPredInfoEntry &GetOrInsertEntry(int path_pred_bb_index) {
+  PathPredInfoEntry& GetOrInsertEntry(int path_pred_bb_index) {
     // Guard against negative `path_pred_bb_index`. ProgramcFgPathAnalyzer uses
     // -1 to represent missing path predecessor.
     CHECK_GE(path_pred_bb_index, 0);
@@ -107,7 +107,7 @@ struct PathPredInfo {
 
   // Returns the entry for the given path predecessor block, or `nullptr` if the
   // path predecessor is not found.
-  const PathPredInfoEntry *GetEntry(int path_pred_bb_index) const {
+  const PathPredInfoEntry* GetEntry(int path_pred_bb_index) const {
     auto it = entries.find(path_pred_bb_index);
     if (it == entries.end()) return nullptr;
     return &it->second;
@@ -115,11 +115,11 @@ struct PathPredInfo {
 
   // Implementation of the `AbslStringify` interface.
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const PathPredInfo &p);
+  friend void AbslStringify(Sink& sink, const PathPredInfo& p);
 };
 
 template <typename Sink>
-void AbslStringify(Sink &sink, const PathPredInfo &p) {
+void AbslStringify(Sink& sink, const PathPredInfo& p) {
   absl::Format(&sink, "path predecessor info entries: {%v}\n",
                absl::StrJoin(p.entries, ", ", absl::PairFormatter(":")));
   absl::Format(&sink, "missing path predecessor info: {%v}\n",
@@ -142,7 +142,7 @@ struct FunctionPathProfileArg {
   // `absl::node_hash_map` instead of `absl::flat_hash_map`.
   absl::node_hash_map<int, PathNodeArg> path_node_args;
 
-  PathNodeArg &GetOrInsertPathTree(int bb_index) {
+  PathNodeArg& GetOrInsertPathTree(int bb_index) {
     return path_node_args
         .try_emplace(bb_index, PathNodeArg{.node_bb_index = bb_index})
         .first->second;
@@ -151,11 +151,11 @@ struct FunctionPathProfileArg {
 
 struct ProgramPathProfileArg {
   absl::flat_hash_map<int, FunctionPathProfileArg> function_path_profile_args;
-  FunctionPathProfileArg &GetProfileForFunctionIndex(int function_index) {
+  FunctionPathProfileArg& GetProfileForFunctionIndex(int function_index) {
     return function_path_profile_args
         .lazy_emplace(
             function_index,
-            [function_index](const auto &ctor) {
+            [function_index](const auto& ctor) {
               ctor(function_index,
                    FunctionPathProfileArg{.function_index = function_index});
             })
@@ -175,7 +175,7 @@ struct ProgramPathProfileArg {
 // possible path predecessor block (`callee_freqs_by_path_pred`).
 class PathNode {
  public:
-  PathNode(int bb_index, const PathNode *parent)
+  PathNode(int bb_index, const PathNode* parent)
       : node_bb_index_(bb_index),
         parent_(parent),
         path_length_(parent == nullptr ? 2 : parent->path_length() + 1) {}
@@ -185,48 +185,48 @@ class PathNode {
   // `this->children_`. If `parent` is `nullptr`, this will be the root of the
   // path tree.
   explicit PathNode(
-      const PathNodeArg &arg,
-      ABSL_ATTRIBUTE_LIFETIME_BOUND const PathNode *absl_nullable parent)
+      const PathNodeArg& arg,
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const PathNode* absl_nullable parent)
       : node_bb_index_(arg.node_bb_index),
         path_pred_info_(std::move(arg.path_pred_info)),
         parent_(parent),
         path_length_(parent == nullptr ? 2 : parent->path_length() + 1) {
-    for (const auto &[child_bb_index, child_arg] : arg.children_args) {
+    for (const auto& [child_bb_index, child_arg] : arg.children_args) {
       auto child = std::make_unique<PathNode>(child_arg, this);
       children_.emplace(child->node_bb_index_, std::move(child));
     }
   }
 
-  PathNode(const PathNode &) = delete;
-  PathNode &operator=(const PathNode &) = delete;
-  PathNode(PathNode &&) = default;
-  PathNode &operator=(PathNode &&) = default;
+  PathNode(const PathNode&) = delete;
+  PathNode& operator=(const PathNode&) = delete;
+  PathNode(PathNode&&) = default;
+  PathNode& operator=(PathNode&&) = default;
 
   int node_bb_index() const { return node_bb_index_; }
 
   int path_length() const { return path_length_; }
 
-  const PathPredInfo &path_pred_info() const { return path_pred_info_; }
+  const PathPredInfo& path_pred_info() const { return path_pred_info_; }
 
-  PathPredInfo &mutable_path_pred_info() { return path_pred_info_; }
+  PathPredInfo& mutable_path_pred_info() { return path_pred_info_; }
 
-  const absl::flat_hash_map<int, std::unique_ptr<PathNode>> &children() const {
+  const absl::flat_hash_map<int, std::unique_ptr<PathNode>>& children() const {
     return children_;
   }
 
-  const PathNode *parent() const { return parent_; }
-  const PathNode *root() const {
+  const PathNode* parent() const { return parent_; }
+  const PathNode* root() const {
     return parent_ == nullptr ? this : parent_->root();
   }
 
-  absl::flat_hash_map<int, std::unique_ptr<PathNode>> &mutable_children() {
+  absl::flat_hash_map<int, std::unique_ptr<PathNode>>& mutable_children() {
     return children_;
   }
 
   // Returns the path to this path node, from the root of its tree.
-  std::vector<const PathNode *> path_from_root() const {
-    std::vector<const PathNode *> result;
-    for (const PathNode *path_node = this; path_node != nullptr;
+  std::vector<const PathNode*> path_from_root() const {
+    std::vector<const PathNode*> result;
+    for (const PathNode* path_node = this; path_node != nullptr;
          path_node = path_node->parent_) {
       result.push_back(path_node);
     }
@@ -234,7 +234,7 @@ class PathNode {
     return result;
   }
 
-  bool operator<(const PathNode &other) const {
+  bool operator<(const PathNode& other) const {
     // Check for self-comparison.
     if (this == &other) return false;
     // Order first by `node_bb_index_`, then by `parent_`. Finally, roots are
@@ -253,7 +253,7 @@ class PathNode {
   int GetTotalChildrenFreqForPathPred(int path_pred_bb_index) const {
     return absl::c_accumulate(
         children(), 0,
-        [path_pred_bb_index](int total, const auto &child_bb_path_node) {
+        [path_pred_bb_index](int total, const auto& child_bb_path_node) {
           return total +
                  child_bb_path_node.second->path_pred_info().GetFreqForPathPred(
                      path_pred_bb_index);
@@ -262,7 +262,7 @@ class PathNode {
 
   // Returns the child path node with the given flat bb index `child_bb_index`,
   // or `nullptr` if the child is not found.
-  const PathNode *GetChild(int child_bb_index) const {
+  const PathNode* GetChild(int child_bb_index) const {
     auto it = children_.find(child_bb_index);
     if (it == children_.end()) return nullptr;
     return it->second.get();
@@ -271,7 +271,7 @@ class PathNode {
   // Implementation of the `AbslStringify` interface for logging the subtree
   // rooted at a path node. Do not rely on exact format.
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const PathNode &path_node);
+  friend void AbslStringify(Sink& sink, const PathNode& path_node);
 
  private:
   // Flat bb index of the basic block associated with this path node.
@@ -282,7 +282,7 @@ class PathNode {
   // Children of this path node.
   absl::flat_hash_map<int, std::unique_ptr<PathNode>> children_ = {};
   // Parent path node of this tree (`nullptr` for root).
-  const PathNode *parent_ = nullptr;
+  const PathNode* parent_ = nullptr;
   // Length (number of basic blocks) of the paths represented by this path node
   // (including the path predecessor and the `node_bb_index_` block). This will
   // be `2` if this is the root.
@@ -290,10 +290,10 @@ class PathNode {
 };
 
 template <typename Sink>
-void AbslStringify(Sink &sink, std::vector<const PathNode *> path_from_root) {
+void AbslStringify(Sink& sink, std::vector<const PathNode*> path_from_root) {
   absl::Format(&sink, "%s",
                absl::StrJoin(path_from_root, "->",
-                             [](std::string *out, const PathNode *path_node) {
+                             [](std::string* out, const PathNode* path_node) {
                                absl::StrAppend(out, path_node->node_bb_index());
                                if (path_node->children().size() > 1)
                                  absl::StrAppend(out, "*");
@@ -301,14 +301,14 @@ void AbslStringify(Sink &sink, std::vector<const PathNode *> path_from_root) {
 }
 
 template <typename Sink>
-void AbslStringify(Sink &sink, const PathNode &path_node) {
+void AbslStringify(Sink& sink, const PathNode& path_node) {
   absl::Format(&sink, "\n");
   absl::Format(&sink, "{ path node for block #%d\n  path from root: %v\n",
                path_node.node_bb_index(), path_node.path_from_root());
   absl::Format(&sink, "  path predecessor info: {%v}\n",
                path_node.path_pred_info());
   absl::Format(&sink, "  children: {");
-  for (const auto &[child_node_bb_index, child] : path_node.children())
+  for (const auto& [child_node_bb_index, child] : path_node.children())
     absl::Format(&sink, "%v", *child);
   absl::Format(&sink, "}\n");
 }
@@ -318,18 +318,18 @@ void AbslStringify(Sink &sink, const PathNode &path_node) {
 // with the root of `path_node` along the edge from `path_pred_bb_index` and
 // then cloning the path to `path_node` (including `path_node` itself).
 struct PathCloning {
-  const PathNode *path_node;
+  const PathNode* path_node;
   int function_index;
   int path_pred_bb_index;
 
-  bool operator==(const PathCloning &other) const {
+  bool operator==(const PathCloning& other) const {
     return path_node == other.path_node &&
            function_index == other.function_index &&
            path_pred_bb_index == other.path_pred_bb_index;
   }
-  bool operator!=(const PathCloning &other) const { return !(*this == other); }
+  bool operator!=(const PathCloning& other) const { return !(*this == other); }
 
-  bool operator<(const PathCloning &other) const {
+  bool operator<(const PathCloning& other) const {
     return std::forward_as_tuple(function_index, *path_node,
                                  path_pred_bb_index) <
            std::forward_as_tuple(other.function_index, *other.path_node,
@@ -337,30 +337,30 @@ struct PathCloning {
   }
 
   template <typename H>
-  friend H AbslHashValue(H h, const PathCloning &cloning) {
+  friend H AbslHashValue(H h, const PathCloning& cloning) {
     return H::combine(std::move(h), cloning.function_index, cloning.path_node,
                       cloning.path_pred_bb_index);
   }
 
   // Returns the path to `path_node` including `path_pred_bb_index`.
   std::vector<int> GetFullPath() const {
-    std::vector<const PathNode *> path_from_root = path_node->path_from_root();
+    std::vector<const PathNode*> path_from_root = path_node->path_from_root();
     std::vector<int> result;
     result.reserve(path_from_root.size() + 1);
     result.push_back(path_pred_bb_index);
     absl::c_transform(
         path_from_root, std::back_inserter(result),
-        [](const PathNode *path_node) { return path_node->node_bb_index(); });
+        [](const PathNode* path_node) { return path_node->node_bb_index(); });
     return result;
   }
 
   // Implementation of the `AbslStringify` interface for logging path clonings.
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const PathCloning &path_cloning);
+  friend void AbslStringify(Sink& sink, const PathCloning& path_cloning);
 };
 
 template <typename Sink>
-void AbslStringify(Sink &sink, const PathCloning &path_cloning) {
+void AbslStringify(Sink& sink, const PathCloning& path_cloning) {
   absl::Format(&sink, "[function: %d path: %s]", path_cloning.function_index,
                absl::StrJoin(path_cloning.GetFullPath(), "->"));
 }
@@ -371,10 +371,10 @@ class FunctionPathProfile {
   explicit FunctionPathProfile(int function_index)
       : function_index_(function_index) {}
 
-  explicit FunctionPathProfile(const FunctionPathProfileArg &arg)
+  explicit FunctionPathProfile(const FunctionPathProfileArg& arg)
       : function_index_(arg.function_index) {
     path_trees_by_root_bb_index_.reserve(arg.path_node_args.size());
-    for (const auto &[bb_index, path_node_arg] : arg.path_node_args) {
+    for (const auto& [bb_index, path_node_arg] : arg.path_node_args) {
       path_trees_by_root_bb_index_.emplace(
           path_node_arg.node_bb_index,
           std::make_unique<PathNode>(path_node_arg, /*parent=*/nullptr));
@@ -383,22 +383,22 @@ class FunctionPathProfile {
 
   // `path_trees_by_root_bb_index_` is a map to `std::unique_ptr`s. So
   // `FunctionPathProfile` is a move-only object.
-  FunctionPathProfile(const FunctionPathProfile &) = delete;
-  FunctionPathProfile &operator=(const FunctionPathProfile &) = delete;
-  FunctionPathProfile(FunctionPathProfile &&) = default;
-  FunctionPathProfile &operator=(FunctionPathProfile &&) = default;
+  FunctionPathProfile(const FunctionPathProfile&) = delete;
+  FunctionPathProfile& operator=(const FunctionPathProfile&) = delete;
+  FunctionPathProfile(FunctionPathProfile&&) = default;
+  FunctionPathProfile& operator=(FunctionPathProfile&&) = default;
 
   int function_index() const { return function_index_; }
 
   // Returns the path trees keyed by the bb_index of their root.
-  const absl::flat_hash_map<int, std::unique_ptr<PathNode>> &
+  const absl::flat_hash_map<int, std::unique_ptr<PathNode>>&
   path_trees_by_root_bb_index() const {
     return path_trees_by_root_bb_index_;
   }
 
   // Returns the path tree rooted at `bb_index`. Creates a single node path tree
   // if it doesn't exist.
-  PathNode &GetOrInsertPathTree(int bb_index) {
+  PathNode& GetOrInsertPathTree(int bb_index) {
     auto [it, inserted] =
         path_trees_by_root_bb_index_.try_emplace(bb_index, nullptr);
     if (inserted)
@@ -406,7 +406,7 @@ class FunctionPathProfile {
     return *it->second;
   }
 
-  const PathNode *GetPathTree(int bb_index) const {
+  const PathNode* GetPathTree(int bb_index) const {
     auto it = path_trees_by_root_bb_index_.find(bb_index);
     if (it == path_trees_by_root_bb_index_.end()) return nullptr;
     return it->second.get();
@@ -415,7 +415,7 @@ class FunctionPathProfile {
   // Implementation of the `AbslStringify` interface for logging the function
   // path profile. Do not rely on exact format.
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const FunctionPathProfile &profile);
+  friend void AbslStringify(Sink& sink, const FunctionPathProfile& profile);
 
  private:
   // Index of the function.
@@ -426,9 +426,9 @@ class FunctionPathProfile {
 };
 
 template <typename Sink>
-void AbslStringify(Sink &sink, const FunctionPathProfile &profile) {
+void AbslStringify(Sink& sink, const FunctionPathProfile& profile) {
   absl::Format(&sink, "\n{ function index: %d\n", profile.function_index());
-  for (const auto &[root_bb_index, path_tree] :
+  for (const auto& [root_bb_index, path_tree] :
        profile.path_trees_by_root_bb_index()) {
     absl::Format(&sink, "  path tree for root block #%d: %v\n", root_bb_index,
                  *path_tree);
@@ -439,8 +439,8 @@ void AbslStringify(Sink &sink, const FunctionPathProfile &profile) {
 class ProgramPathProfile {
  public:
   ProgramPathProfile() = default;
-  explicit ProgramPathProfile(const ProgramPathProfileArg &arg) {
-    for (const auto &[function_index, function_arg] :
+  explicit ProgramPathProfile(const ProgramPathProfileArg& arg) {
+    for (const auto& [function_index, function_arg] :
          arg.function_path_profile_args)
       path_profiles_by_function_index_.try_emplace(function_index,
                                                    function_arg);
@@ -448,18 +448,18 @@ class ProgramPathProfile {
 
   // `ProgramPathProfile` is a move-only object, since `FunctionPathProfile` is
   // move-only.
-  ProgramPathProfile(const ProgramPathProfile &) = delete;
-  ProgramPathProfile &operator=(const ProgramPathProfile &) = delete;
-  ProgramPathProfile(ProgramPathProfile &&) = default;
-  ProgramPathProfile &operator=(ProgramPathProfile &&) = default;
+  ProgramPathProfile(const ProgramPathProfile&) = delete;
+  ProgramPathProfile& operator=(const ProgramPathProfile&) = delete;
+  ProgramPathProfile(ProgramPathProfile&&) = default;
+  ProgramPathProfile& operator=(ProgramPathProfile&&) = default;
 
   // Returns the function path profiles keyed by their function index.
-  const absl::flat_hash_map<int, FunctionPathProfile> &
+  const absl::flat_hash_map<int, FunctionPathProfile>&
   path_profiles_by_function_index() const {
     return path_profiles_by_function_index_;
   }
 
-  FunctionPathProfile &GetProfileForFunctionIndex(int function_index) {
+  FunctionPathProfile& GetProfileForFunctionIndex(int function_index) {
     return path_profiles_by_function_index_
         .emplace(function_index, function_index)
         .first->second;

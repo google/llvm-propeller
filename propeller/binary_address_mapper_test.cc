@@ -87,9 +87,9 @@ std::string GetPropellerTestDataFilePath(absl::string_view filename) {
 }
 
 static absl::flat_hash_map<llvm::StringRef, BBAddrMap>
-GetBBAddrMapByFunctionName(const BinaryAddressMapper &binary_address_mapper) {
+GetBBAddrMapByFunctionName(const BinaryAddressMapper& binary_address_mapper) {
   absl::flat_hash_map<llvm::StringRef, BBAddrMap> bb_addr_map_by_func_name;
-  for (const auto &[function_index, symbol_info] :
+  for (const auto& [function_index, symbol_info] :
        binary_address_mapper.symbol_info_map()) {
     for (llvm::StringRef alias : symbol_info.aliases)
       bb_addr_map_by_func_name.insert(

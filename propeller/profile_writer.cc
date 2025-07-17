@@ -45,7 +45,7 @@
 
 namespace propeller {
 namespace {
-void DumpCfgs(const PropellerProfile &profile,
+void DumpCfgs(const PropellerProfile& profile,
               absl::string_view cfg_dump_dir_name) {
   // Create the cfg dump directory and the cfg index file.
   llvm::sys::fs::create_directory(cfg_dump_dir_name);
@@ -62,11 +62,11 @@ void DumpCfgs(const PropellerProfile &profile,
                                 " ")
                << "\n";
 
-  for (const auto &[section_name, section_function_chain_info] :
+  for (const auto& [section_name, section_function_chain_info] :
        profile.functions_chain_info_by_section_name) {
-    for (const FunctionChainInfo &func_chain_info :
+    for (const FunctionChainInfo& func_chain_info :
          section_function_chain_info) {
-      const ControlFlowGraph *cfg =
+      const ControlFlowGraph* cfg =
           profile.program_cfg->GetCfgByIndex(func_chain_info.function_index);
       CHECK_NE(cfg, nullptr);
       // Dump hot cfgs into the given directory.
@@ -89,9 +89,9 @@ void DumpCfgs(const PropellerProfile &profile,
           << "Failed to open " << cfg_dump_file << " for writing.";
 
       absl::flat_hash_map<IntraCfgId, int> layout_index_map;
-      for (auto &bb_chain : func_chain_info.bb_chains) {
+      for (auto& bb_chain : func_chain_info.bb_chains) {
         int bbs = 0;
-        for (auto &bb_bundle : bb_chain.bb_bundles) {
+        for (auto& bb_bundle : bb_chain.bb_bundles) {
           for (int bbi = 0; bbi < bb_bundle.full_bb_ids.size(); ++bbi) {
             layout_index_map.insert({bb_bundle.full_bb_ids[bbi].intra_cfg_id,
                                      bb_chain.layout_index + bbs + bbi});
@@ -113,14 +113,14 @@ void DumpCfgs(const PropellerProfile &profile,
 // which starts first with the full bb id and frequency of that node, followed
 // by the successors and their edge frequencies. Please note that the edge
 // weights may not precisely add up to the node frequency.
-void WriteCfgProfile(const ControlFlowGraph &cfg, std::ofstream &out) {
+void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) {
   out << "#cfg";
-  cfg.ForEachNodeRef([&](const CFGNode &node) {
+  cfg.ForEachNodeRef([&](const CFGNode& node) {
     int node_frequency = node.CalculateFrequency();
     if (node_frequency == 0) return;
     out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
         << node_frequency;
-    node.ForEachOutEdgeInOrder([&](const CFGEdge &edge) {
+    node.ForEachOutEdgeInOrder([&](const CFGEdge& edge) {
       if (!edge.IsBranchOrFallthrough()) return;
       out << "," << edge.sink()->full_intra_cfg_id().profile_bb_id() << ":"
           << edge.weight();
@@ -130,20 +130,20 @@ void WriteCfgProfile(const ControlFlowGraph &cfg, std::ofstream &out) {
 }
 }  // namespace
 
-void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
+void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
   std::ofstream cc_profile_os(options_.cluster_out_name());
   std::ofstream ld_profile_os(options_.symbol_order_out_name());
   if (profile_encoding_.version != ClusterEncodingVersion::VERSION_0) {
     cc_profile_os << profile_encoding_.version_specifier << "\n";
   }
   // TODO(b/160339651): Remove this in favour of structured format in LLVM code.
-  for (const auto &[section_name, section_function_chain_info] :
+  for (const auto& [section_name, section_function_chain_info] :
        profile.functions_chain_info_by_section_name) {
     if (options_.verbose_cluster_output())
       cc_profile_os << "#section " << section_name.str() << "\n";
     // Find total number of chains.
     unsigned total_chains = 0;
-    for (const auto &func_chain_info : section_function_chain_info)
+    for (const auto& func_chain_info : section_function_chain_info)
       total_chains += func_chain_info.bb_chains.size();
 
     // Allocate the symbol order vector
@@ -153,11 +153,11 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
     // Allocate the cold symbol order vector equally sized as
     // function_chain_info, as there is (at most) one cold cluster per
     // function.
-    std::vector<const FunctionChainInfo *> cold_symbol_order(
+    std::vector<const FunctionChainInfo*> cold_symbol_order(
         section_function_chain_info.size());
-    for (const FunctionChainInfo &func_layout_info :
+    for (const FunctionChainInfo& func_layout_info :
          section_function_chain_info) {
-      const ControlFlowGraph *cfg =
+      const ControlFlowGraph* cfg =
           profile.program_cfg->GetCfgByIndex(func_layout_info.function_index);
       CHECK_NE(cfg, nullptr);
       if (cfg->module_name().has_value() &&
@@ -185,11 +185,11 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
             << "cloning is not supported for version: "
             << profile_encoding_.version;
       }
-      for (const std::vector<int> &clone_path : cfg->clone_paths()) {
+      for (const std::vector<int>& clone_path : cfg->clone_paths()) {
         cc_profile_os << profile_encoding_.clone_path_specifier
                       << absl::StrJoin(
                              clone_path, " ",
-                             [&](std::string *out, const int bb_index) {
+                             [&](std::string* out, const int bb_index) {
                                absl::StrAppend(out,
                                                cfg->nodes()[bb_index]->bb_id());
                              })
@@ -206,10 +206,10 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
             func_layout_info.original_score.inter_out_score,
             func_layout_info.optimized_score.inter_out_score);
       }
-      const std::vector<FunctionChainInfo::BbChain> &chains =
+      const std::vector<FunctionChainInfo::BbChain>& chains =
           func_layout_info.bb_chains;
       for (unsigned chain_id = 0; chain_id < chains.size(); ++chain_id) {
-        auto &chain = chains[chain_id];
+        auto& chain = chains[chain_id];
         std::vector<FullIntraCfgId> bb_ids_in_chain =
             chains[chain_id].GetAllBbs();
         // If a chain starts with zero BB index (function entry basic block),
@@ -222,7 +222,7 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
                                   ? std::optional<unsigned>()
                                   : chain_id);
         for (int bbi = 0; bbi < bb_ids_in_chain.size(); ++bbi) {
-          const auto &full_bb_id = bb_ids_in_chain[bbi];
+          const auto& full_bb_id = bb_ids_in_chain[bbi];
           cc_profile_os << (bbi != 0 ? " "
                                      : profile_encoding_.cluster_specifier)
                         << full_bb_id.profile_bb_id();
@@ -237,11 +237,11 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
           &func_layout_info;
     }
 
-    for (const auto &[func_names, chain_id] : symbol_order) {
+    for (const auto& [func_names, chain_id] : symbol_order) {
       // Print the symbol names corresponding to every function name alias. This
       // guarantees we get the right order regardless of which function name is
       // picked by the compiler.
-      for (auto &func_name : func_names) {
+      for (auto& func_name : func_names) {
         ld_profile_os << func_name.str();
         if (chain_id.has_value())
           ld_profile_os << ".__part." << chain_id.value();
@@ -250,24 +250,24 @@ void PropellerProfileWriter::Write(const PropellerProfile &profile) const {
     }
 
     // Insert the .cold symbols for cold parts of hot functions.
-    for (const FunctionChainInfo *chain_info : cold_symbol_order) {
-      const ControlFlowGraph *cfg =
+    for (const FunctionChainInfo* chain_info : cold_symbol_order) {
+      const ControlFlowGraph* cfg =
           profile.program_cfg->GetCfgByIndex(chain_info->function_index);
       CHECK_NE(cfg, nullptr);
       // The cold node should not be emitted if all basic blocks appear in the
       // chains.
       int num_bbs_in_chains = 0;
-      for (const FunctionChainInfo::BbChain &chain : chain_info->bb_chains)
+      for (const FunctionChainInfo::BbChain& chain : chain_info->bb_chains)
         num_bbs_in_chains += chain.GetNumBbs();
       if (num_bbs_in_chains == cfg->nodes().size()) continue;
       // Check if the function entry is in the chains. The entry node always
       // begins its chain. So this simply checks the first node in every
       // chain.
       bool entry_is_in_chains = absl::c_any_of(
-          chain_info->bb_chains, [](const FunctionChainInfo::BbChain &chain) {
+          chain_info->bb_chains, [](const FunctionChainInfo::BbChain& chain) {
             return chain.GetFirstBb().intra_cfg_id.bb_index == 0;
           });
-      for (auto &func_name : cfg->names()) {
+      for (auto& func_name : cfg->names()) {
         ld_profile_os << func_name.str();
         // If the entry node is not in chains, function name can serve as the
         // cold symbol name. So we don't need the ".cold" suffix.
