@@ -70,9 +70,9 @@ void PathTracer::HandleFallThroughBlocks(std::optional<FlatBbHandle> from_bb,
   }
 }
 
-void PathTracer::TracePath(const FlatBbHandleBranchPath &path) && {
+void PathTracer::TracePath(const FlatBbHandleBranchPath& path) && {
   std::optional<FlatBbHandle> last_to_bb = std::nullopt;
-  for (const FlatBbHandleBranch &branch : path.branches) {
+  for (const FlatBbHandleBranch& branch : path.branches) {
     HandleFallThroughBlocks(last_to_bb, branch.from_bb, path.sample_time);
     if (branch.is_callsite()) handler_->HandleCalls(branch.call_rets);
     if (branch.to_bb.has_value()) {
@@ -94,11 +94,11 @@ class CloningPathTraceHandler : public PathTraceHandler {
  public:
   // Does not take any ownership, and all pointers must refer to valid objects
   // that outlive the one constructed.
-  CloningPathTraceHandler(const PathProfileOptions *path_profile_options,
-                          const ControlFlowGraph *cfg,
-                          const absl::btree_set<int> *function_hot_join_bbs,
-                          FunctionPathInfo *function_path_info,
-                          FunctionPathProfile *function_path_profile)
+  CloningPathTraceHandler(const PathProfileOptions* path_profile_options,
+                          const ControlFlowGraph* cfg,
+                          const absl::btree_set<int>* function_hot_join_bbs,
+                          FunctionPathInfo* function_path_info,
+                          FunctionPathProfile* function_path_profile)
       : path_profile_options_(path_profile_options),
         cfg_(cfg),
         function_hot_join_bbs_(function_hot_join_bbs),
@@ -106,10 +106,10 @@ class CloningPathTraceHandler : public PathTraceHandler {
         function_path_profile_(function_path_profile),
         prev_node_bb_index_(-1) {}
 
-  CloningPathTraceHandler(const CloningPathTraceHandler &) = delete;
-  CloningPathTraceHandler &operator=(const CloningPathTraceHandler &) = delete;
-  CloningPathTraceHandler(CloningPathTraceHandler &&) = delete;
-  CloningPathTraceHandler &operator=(CloningPathTraceHandler &&) = delete;
+  CloningPathTraceHandler(const CloningPathTraceHandler&) = delete;
+  CloningPathTraceHandler& operator=(const CloningPathTraceHandler&) = delete;
+  CloningPathTraceHandler(CloningPathTraceHandler&&) = delete;
+  CloningPathTraceHandler& operator=(CloningPathTraceHandler&&) = delete;
 
   // Visits the block with index `bb_index` with sample time `sample_time`
   // and updates the current paths, by adding this block as a child. Also
@@ -126,16 +126,16 @@ class CloningPathTraceHandler : public PathTraceHandler {
     // tracing the extended path. Tracing stops when either we find a cycle in
     // the path or if we reach a block with indirect branch (which we can't
     // clone).
-    auto extend_path_and_return_if_should_trace = [&](PathProbe &path_probe) {
+    auto extend_path_and_return_if_should_trace = [&](PathProbe& path_probe) {
       // Stop tracing if the path is looping.
       if (!path_probe.AddToNodesInPath(flat_bb_index)) return false;
 
       // Insert a child path node associated with this block.
-      PathNode &child_path_node =
+      PathNode& child_path_node =
           *path_probe.path_node()
                ->mutable_children()
                .lazy_emplace(flat_bb_index,
-                             [&](const auto &ctor) {
+                             [&](const auto& ctor) {
                                ctor(flat_bb_index,
                                     std::make_unique<PathNode>(
                                         flat_bb_index, path_probe.path_node()));
@@ -180,7 +180,7 @@ class CloningPathTraceHandler : public PathTraceHandler {
     if (prev_node_bb_index_ != -1 &&
         function_hot_join_bbs_->contains(flat_bb_index)) {
       // Add the new path tree rooted at this node.
-      PathNode &path_node =
+      PathNode& path_node =
           function_path_profile_->GetOrInsertPathTree(flat_bb_index);
       // Increment the frequency of the root (given the predecessor block).
       ++path_node.mutable_path_pred_info().entries[prev_node_bb_index_].freq;
@@ -200,7 +200,7 @@ class CloningPathTraceHandler : public PathTraceHandler {
   // Inserts `calls` into latest path nodes tracked by `current_path_probes_`.
   void HandleCalls(absl::Span<const CallRetInfo> call_rets) override {
     if (missing_pred_path_node_ != nullptr) {
-      for (const auto &call_ret : call_rets) {
+      for (const auto& call_ret : call_rets) {
         // Skips call-returns from unknown code (library functions, etc.).
         if (!call_ret.callee.has_value() && !call_ret.return_bb.has_value())
           continue;
@@ -208,13 +208,13 @@ class CloningPathTraceHandler : public PathTraceHandler {
               .missing_pred_entry.call_freqs[call_ret];
       }
     }
-    for (PathProbe &path_probe : current_path_probes_) {
-      absl::flat_hash_map<CallRetInfo, int> &call_freqs_for_pred =
+    for (PathProbe& path_probe : current_path_probes_) {
+      absl::flat_hash_map<CallRetInfo, int>& call_freqs_for_pred =
           path_probe.path_node()
               ->mutable_path_pred_info()
               .GetOrInsertEntry(path_probe.pred_node_bb_index())
               .call_freqs;
-      for (const auto &call_ret : call_rets) {
+      for (const auto& call_ret : call_rets) {
         // Skips call-returns from unknown code (library functions, etc.).
         if (!call_ret.callee.has_value() && !call_ret.return_bb.has_value())
           continue;
@@ -223,12 +223,12 @@ class CloningPathTraceHandler : public PathTraceHandler {
     }
   }
 
-  void HandleReturn(const FlatBbHandle &bb_handle) override {
+  void HandleReturn(const FlatBbHandle& bb_handle) override {
     if (missing_pred_path_node_ != nullptr) {
       ++missing_pred_path_node_->mutable_path_pred_info()
             .missing_pred_entry.return_to_freqs[bb_handle];
     }
-    for (PathProbe &path_probe : current_path_probes_) {
+    for (PathProbe& path_probe : current_path_probes_) {
       ++path_probe.path_node()
             ->mutable_path_pred_info()
             .entries[path_probe.pred_node_bb_index()]
@@ -266,7 +266,7 @@ class CloningPathTraceHandler : public PathTraceHandler {
             missing_pred_path_node_->mutable_children()
                 .lazy_emplace(
                     flat_bb_index,
-                    [&](const auto &ctor) {
+                    [&](const auto& ctor) {
                       ctor(flat_bb_index,
                            std::make_unique<PathNode>(flat_bb_index,
                                                       missing_pred_path_node_));
@@ -282,18 +282,18 @@ class CloningPathTraceHandler : public PathTraceHandler {
     }
   }
 
-  const PathProfileOptions *path_profile_options_;
-  const ControlFlowGraph *cfg_;
+  const PathProfileOptions* path_profile_options_;
+  const ControlFlowGraph* cfg_;
   // At each point during the tracing of a path, we will potentially be tracking
   // multiple paths (all of which end at the visited block but start from
   // different hot join blocks).
   std::vector<PathProbe> current_path_probes_;
   // Hot join block (indices) of `cfg_`.
-  const absl::btree_set<int> *function_hot_join_bbs_;
-  FunctionPathInfo *function_path_info_;
+  const absl::btree_set<int>* function_hot_join_bbs_;
+  FunctionPathInfo* function_path_info_;
   // Path tree corresponding to ‍`cfg_`, stored as a map from block indices to
   // their path tree root.
-  FunctionPathProfile *function_path_profile_;
+  FunctionPathProfile* function_path_profile_;
   // Previous node's bb_index when traversing the path (Should be -1 before path
   // traversal).
   int prev_node_bb_index_;
@@ -305,29 +305,29 @@ class CloningPathTraceHandler : public PathTraceHandler {
   // used to populate the missing path predecessor info for the paths, which
   // will later be used to drop edges weights for paths with missing path
   // predecessors.
-  PathNode *missing_pred_path_node_ = nullptr;
+  PathNode* missing_pred_path_node_ = nullptr;
 };
 }  // namespace
 
 void ProgramCfgPathAnalyzer::AnalyzePaths(std::optional<int> paths_to_analyze) {
   int num_paths = paths_to_analyze.value_or(bb_branch_paths_.size());
   CHECK_LE(num_paths, bb_branch_paths_.size());
-  absl::c_stable_sort(bb_branch_paths_, [](const FlatBbHandleBranchPath &lhs,
-                                           const FlatBbHandleBranchPath &rhs) {
+  absl::c_stable_sort(bb_branch_paths_, [](const FlatBbHandleBranchPath& lhs,
+                                           const FlatBbHandleBranchPath& rhs) {
     return lhs.sample_time < rhs.sample_time;
   });
   for (int i = 0; i < num_paths; ++i) {
-    const FlatBbHandleBranchPath &path = bb_branch_paths_[i];
+    const FlatBbHandleBranchPath& path = bb_branch_paths_[i];
     if (i != 0) CHECK_GE(path.sample_time, bb_branch_paths_[i - 1].sample_time);
     if (!IsFromFunctionWithHotJoinBbs(path)) continue;
     int path_function_index =
         path.branches.front().from_bb.has_value()
             ? path.branches.front().from_bb->function_index
             : path.branches.front().to_bb->function_index;
-    const ControlFlowGraph *cfg =
+    const ControlFlowGraph* cfg =
         program_cfg_->GetCfgByIndex(path_function_index);
     CHECK_NE(cfg, nullptr);
-    FunctionPathInfo &function_path_info =
+    FunctionPathInfo& function_path_info =
         all_function_path_info_
             .try_emplace(path_function_index, cfg->nodes().size())
             .first->second;

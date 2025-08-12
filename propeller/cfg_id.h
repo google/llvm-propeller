@@ -32,24 +32,24 @@ struct IntraCfgId {
   // Clone number of the basic block (zero for an original block).
   int clone_number = 0;
 
-  bool operator==(const IntraCfgId &other) const {
+  bool operator==(const IntraCfgId& other) const {
     return bb_index == other.bb_index && clone_number == other.clone_number;
   }
-  bool operator!=(const IntraCfgId &other) const { return !(*this == other); }
+  bool operator!=(const IntraCfgId& other) const { return !(*this == other); }
   template <typename H>
-  friend H AbslHashValue(H h, const IntraCfgId &id) {
+  friend H AbslHashValue(H h, const IntraCfgId& id) {
     return H::combine(std::move(h), id.bb_index, id.clone_number);
   }
-  bool operator<(const IntraCfgId &other) const {
+  bool operator<(const IntraCfgId& other) const {
     return std::forward_as_tuple(bb_index, clone_number) <
            std::forward_as_tuple(other.bb_index, other.clone_number);
   }
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const IntraCfgId &id) {
+  friend void AbslStringify(Sink& sink, const IntraCfgId& id) {
     absl::Format(&sink, "[BB index: %d, clone number: %v]", id.bb_index,
                  id.clone_number);
   }
-  friend std::ostream &operator<<(std::ostream &os, const IntraCfgId &id) {
+  friend std::ostream& operator<<(std::ostream& os, const IntraCfgId& id) {
     os << absl::StreamFormat("%v", id);
     return os;
   }
@@ -62,10 +62,10 @@ struct FullIntraCfgId {
   int bb_id = 0;
   IntraCfgId intra_cfg_id;
 
-  bool operator==(const FullIntraCfgId &other) const {
+  bool operator==(const FullIntraCfgId& other) const {
     return bb_id == other.bb_id && intra_cfg_id == other.intra_cfg_id;
   }
-  bool operator!=(const FullIntraCfgId &other) const {
+  bool operator!=(const FullIntraCfgId& other) const {
     return !(*this == other);
   }
   // Returns a string representation of the basic block id, including the clone
@@ -85,25 +85,25 @@ struct InterCfgId {
 
   IntraCfgId intra_cfg_id;
 
-  bool operator==(const InterCfgId &other) const {
+  bool operator==(const InterCfgId& other) const {
     return function_index == other.function_index &&
            intra_cfg_id == other.intra_cfg_id;
   }
-  bool operator!=(const InterCfgId &other) const { return !(*this == other); }
+  bool operator!=(const InterCfgId& other) const { return !(*this == other); }
   template <typename H>
-  friend H AbslHashValue(H h, const InterCfgId &id) {
+  friend H AbslHashValue(H h, const InterCfgId& id) {
     return H::combine(std::move(h), id.function_index, id.intra_cfg_id);
   }
-  bool operator<(const InterCfgId &other) const {
+  bool operator<(const InterCfgId& other) const {
     return std::forward_as_tuple(function_index, intra_cfg_id) <
            std::forward_as_tuple(other.function_index, other.intra_cfg_id);
   }
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const InterCfgId &id) {
+  friend void AbslStringify(Sink& sink, const InterCfgId& id) {
     absl::Format(&sink, "[function index: %d, %v]", id.function_index,
                  id.intra_cfg_id);
   }
-  friend std::ostream &operator<<(std::ostream &os, const InterCfgId &id) {
+  friend std::ostream& operator<<(std::ostream& os, const InterCfgId& id) {
     os << absl::StreamFormat("%v", id);
     return os;
   }

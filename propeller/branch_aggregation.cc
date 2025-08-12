@@ -21,11 +21,11 @@
 namespace propeller {
 absl::flat_hash_set<uint64_t> BranchAggregation::GetUniqueAddresses() const {
   absl::flat_hash_set<uint64_t> unique_addresses;
-  for (const auto &[branch, _] : branch_counters) {
+  for (const auto& [branch, _] : branch_counters) {
     unique_addresses.insert(branch.from);
     unique_addresses.insert(branch.to);
   }
-  for (const auto &[fallthrough, _] : fallthrough_counters) {
+  for (const auto& [fallthrough, _] : fallthrough_counters) {
     unique_addresses.insert(fallthrough.from);
     unique_addresses.insert(fallthrough.to);
   }

@@ -34,9 +34,9 @@ namespace propeller {
 
 absl::StatusOr<BranchFrequencies>
 PerfBranchFrequenciesAggregator::AggregateBranchFrequencies(
-    const PropellerOptions &options, const BinaryContent &binary_content,
-    PropellerStats &stats) {
-  PropellerStats::ProfileStats &profile_stats = stats.profile_stats;
+    const PropellerOptions& options, const BinaryContent& binary_content,
+    PropellerStats& stats) {
+  PropellerStats::ProfileStats& profile_stats = stats.profile_stats;
   BranchFrequencies frequencies;
 
   while (true) {
