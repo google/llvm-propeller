@@ -52,7 +52,7 @@ struct FunctionChainInfo {
     // Returns the flattened vector of all BB ids in this chain in order.
     std::vector<FullIntraCfgId> GetAllBbs() const {
       std::vector<FullIntraCfgId> full_bb_ids;
-      for (const auto &bundle : bb_bundles) {
+      for (const auto& bundle : bb_bundles) {
         full_bb_ids.insert(full_bb_ids.end(), bundle.full_bb_ids.begin(),
                            bundle.full_bb_ids.end());
       }
@@ -62,13 +62,13 @@ struct FunctionChainInfo {
     // Returns the total number of BBs in this chain.
     int GetNumBbs() const {
       return absl::c_accumulate(bb_bundles, 0,
-                                [](int sum, const BbBundle &bundle) {
+                                [](int sum, const BbBundle& bundle) {
                                   return sum + bundle.full_bb_ids.size();
                                 });
     }
 
     // Returns the id of the first BB in this chain.
-    const FullIntraCfgId &GetFirstBb() const {
+    const FullIntraCfgId& GetFirstBb() const {
       return bb_bundles.front().full_bb_ids.front();
     }
   };

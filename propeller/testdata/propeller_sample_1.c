@@ -31,7 +31,7 @@ __attribute__((noinline)) int compute_flag(int i) {
 
 int sample1_func() { return 13; }
 
-int main(const int argc, const char *argv[]) {
+int main(const int argc, const char* argv[]) {
   int i;
   int flag;
   volatile double x = 1212121212,

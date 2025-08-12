@@ -31,7 +31,7 @@ using ::testing::Test;
 
 TEST(StatusMatchersTest, AssignOrReturn) {
   auto assigns_or_returns =
-      [](const absl::StatusOr<int> &status_or) -> absl::StatusOr<int> {
+      [](const absl::StatusOr<int>& status_or) -> absl::StatusOr<int> {
     ASSIGN_OR_RETURN(int x, status_or);
     return x;
   };
@@ -43,7 +43,7 @@ TEST(StatusMatchersTest, AssignOrReturn) {
 
 TEST(StatusMatchersTest, ReturnIfError) {
   auto returns_if_error =
-      [](const absl::Status &status) -> absl::StatusOr<int> {
+      [](const absl::Status& status) -> absl::StatusOr<int> {
     RETURN_IF_ERROR(status);
     return 1;
   };
@@ -54,7 +54,7 @@ TEST(StatusMatchersTest, ReturnIfError) {
 }
 
 TEST(StatusMatchersTest, RetCheckOk) {
-  auto ret_check_ok = [](const absl::Status &status) -> absl::Status {
+  auto ret_check_ok = [](const absl::Status& status) -> absl::Status {
     RET_CHECK_OK(status);
     return absl::OkStatus();
   };

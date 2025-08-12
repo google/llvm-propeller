@@ -34,9 +34,9 @@ std::string CFGNode::GetName() const {
   return bb_name;
 }
 
-CFGEdge *CFGNode::GetEdgeTo(const CFGNode &node, CFGEdgeKind kind) const {
-  for (const std::vector<CFGEdge *> *edges : {&intra_outs_, &inter_outs_}) {
-    for (CFGEdge *edge : *edges) {
+CFGEdge* CFGNode::GetEdgeTo(const CFGNode& node, CFGEdgeKind kind) const {
+  for (const std::vector<CFGEdge*>* edges : {&intra_outs_, &inter_outs_}) {
+    for (CFGEdge* edge : *edges) {
       if (edge->kind() != kind) continue;
       if (edge->sink() == &node) return edge;
     }
@@ -64,8 +64,8 @@ int CFGNode::CalculateFrequency() const {
   // Total outgoing edge frequency from the node's exit (last instruction).
   int sum_out = 0;
 
-  for (auto *out_edges : {&inter_outs_, &intra_outs_}) {
-    for (auto &edge : *out_edges) {
+  for (auto* out_edges : {&inter_outs_, &intra_outs_}) {
+    for (auto& edge : *out_edges) {
       if (edge->IsCall()) {
         max_call_out = std::max(max_call_out, edge->weight());
       } else {
@@ -74,8 +74,8 @@ int CFGNode::CalculateFrequency() const {
     }
   }
 
-  for (auto *in_edges : {&inter_ins_, &intra_ins_}) {
-    for (auto &edge : *in_edges) {
+  for (auto* in_edges : {&inter_ins_, &intra_ins_}) {
+    for (auto& edge : *in_edges) {
       if (edge->IsReturn()) {
         max_ret_in = std::max(max_ret_in, edge->weight());
       } else {
@@ -87,16 +87,16 @@ int CFGNode::CalculateFrequency() const {
 }
 
 void CFGNode::ForEachOutEdgeInOrder(
-    absl::FunctionRef<void(CFGEdge &edge)> func) const {
-  std::vector<CFGEdge *> edges;
+    absl::FunctionRef<void(CFGEdge& edge)> func) const {
+  std::vector<CFGEdge*> edges;
   edges.reserve(intra_outs_.size() + inter_outs_.size());
   absl::c_copy(intra_outs_, std::back_inserter(edges));
   absl::c_copy(inter_outs_, std::back_inserter(edges));
   // Sort the edges by their sink's inter_cfg_id and then by their kind.
-  absl::c_sort(edges, [](const CFGEdge *a, const CFGEdge *b) {
+  absl::c_sort(edges, [](const CFGEdge* a, const CFGEdge* b) {
     return std::forward_as_tuple(a->sink()->inter_cfg_id(), a->kind()) <
            std::forward_as_tuple(b->sink()->inter_cfg_id(), b->kind());
   });
-  for (CFGEdge *edge : edges) func(*edge);
+  for (CFGEdge* edge : edges) func(*edge);
 }
 }  // namespace propeller
