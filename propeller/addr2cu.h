@@ -29,20 +29,20 @@ namespace propeller {
 // Creates an `llvm::DWARFContext` instance, which can then be used to create
 // an `Addr2Cu` instance.
 absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
-    const llvm::object::ObjectFile &obj, absl::string_view dwp_file = "");
+    const llvm::object::ObjectFile& obj, absl::string_view dwp_file = "");
 
 // Utility class that gets the module name for a code address with
 // the help of debug information.
 class Addr2Cu {
  public:
-  explicit Addr2Cu(llvm::DWARFContext &dwarf_context)
+  explicit Addr2Cu(llvm::DWARFContext& dwarf_context)
       : dwarf_context_(dwarf_context) {}
 
-  Addr2Cu(const Addr2Cu &) = delete;
-  Addr2Cu &operator=(const Addr2Cu &) = delete;
+  Addr2Cu(const Addr2Cu&) = delete;
+  Addr2Cu& operator=(const Addr2Cu&) = delete;
 
-  Addr2Cu(Addr2Cu &&) = delete;
-  Addr2Cu &operator=(Addr2Cu &&) = delete;
+  Addr2Cu(Addr2Cu&&) = delete;
+  Addr2Cu& operator=(Addr2Cu&&) = delete;
 
   // Returns the file name for the compile unit that contains the given code
   // address. Note: the returned string_view lives as long as `dwarf_context_`.
@@ -50,7 +50,7 @@ class Addr2Cu {
       uint64_t code_address) const;
 
  private:
-  llvm::DWARFContext &dwarf_context_;
+  llvm::DWARFContext& dwarf_context_;
 };
 }  // namespace propeller
 #endif  // PROPELLER_ADDR2CU_H_

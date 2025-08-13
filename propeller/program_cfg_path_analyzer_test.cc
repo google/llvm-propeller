@@ -54,9 +54,9 @@ constexpr double kEpsilon = 0.001;
 
 // Returns the max depth in the path tree rooted at `path_node`, with the root
 // having a depth of 1.
-int GetMaxDepthForPathTree(const PathNode &path_node) {
+int GetMaxDepthForPathTree(const PathNode& path_node) {
   int depth = 0;
-  for (const auto &[bb_index, child_path_node] : path_node.children()) {
+  for (const auto& [bb_index, child_path_node] : path_node.children()) {
     depth = std::max(depth, GetMaxDepthForPathTree(*child_path_node));
   }
   return 1 + depth;
@@ -67,7 +67,7 @@ class MockPathTraceHandler : public PathTraceHandler {
   MOCK_METHOD(void, VisitBlock, (int bb_index, absl::Time sample_time),
               (override));
   MOCK_METHOD(void, HandleCalls, (absl::Span<const CallRetInfo>), (override));
-  MOCK_METHOD(void, HandleReturn, (const FlatBbHandle &), (override));
+  MOCK_METHOD(void, HandleReturn, (const FlatBbHandle&), (override));
   MOCK_METHOD(void, ResetPath, (), (override));
 };
 
@@ -692,7 +692,7 @@ TEST_P(TreePathLengthTest, LimitsPathLength) {
 
 INSTANTIATE_TEST_SUITE_P(ProgramCfgPathAnalyzer, TreePathLengthTest,
                          testing::Values(2, 3, 4),
-                         [](const testing::TestParamInfo<int> &param_info) {
+                         [](const testing::TestParamInfo<int>& param_info) {
                            return absl::StrCat("MaxPathLength",
                                                param_info.param);
                          });
@@ -762,7 +762,7 @@ TEST(ProgramCfgPathAnalyzer, TracksMissingPathPredecessorInfo) {
   std::vector<FlatBbHandleBranchPath> path2_missing_preds(2,
                                                           path2_missing_pred);
   std::vector<FlatBbHandleBranchPath> paths;
-  for (const auto &path :
+  for (const auto& path :
        {path1s, path1_missing_preds, path2s, path2_missing_preds}) {
     absl::c_copy(path, std::back_inserter(paths));
   }
@@ -927,7 +927,7 @@ TEST(ProgramCfgPathAnalyzer,
   std::vector<FlatBbHandleBranchPath> path1s(5, path1);
   std::vector<FlatBbHandleBranchPath> path2s(5, path2);
   std::vector<FlatBbHandleBranchPath> all_paths;
-  for (const auto &paths : {path1s, path2s}) {
+  for (const auto& paths : {path1s, path2s}) {
     absl::c_copy(paths, std::back_inserter(all_paths));
   }
 

@@ -31,15 +31,15 @@ void PerfDataPathReader::ReadPathsAndApplyCallBack(
         handle_paths_callback) {
   std::vector<FlatBbHandleBranchPath> result;
   perf_data_reader_->ReadWithSampleCallBack(
-      [&](const quipper::PerfDataProto_SampleEvent &event) {
+      [&](const quipper::PerfDataProto_SampleEvent& event) {
         std::vector<FlatBbHandleBranchPath> paths;
         BinaryAddressBranchPath lbr_path(
             {.pid = event.pid(),
              .sample_time = absl::FromUnixNanos(event.sample_time_ns())});
-        const auto &branch_stack = event.branch_stack();
+        const auto& branch_stack = event.branch_stack();
         if (branch_stack.empty()) return;
         for (int p = branch_stack.size() - 1; p >= 0; --p) {
-          const auto &branch_entry = branch_stack.Get(p);
+          const auto& branch_entry = branch_stack.Get(p);
           uint64_t from = perf_data_reader_->RuntimeAddressToBinaryAddress(
               event.pid(), branch_entry.from_ip());
           uint64_t to = perf_data_reader_->RuntimeAddressToBinaryAddress(
