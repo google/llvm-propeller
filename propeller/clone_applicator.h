@@ -43,22 +43,22 @@ struct CloneApplicatorStats {
 // containing the resulting CFGs with clonings applied and the total score gain
 // from applying the clonings.
 CloneApplicatorStats ApplyClonings(
-    const PropellerCodeLayoutParameters &code_layout_params,
-    const PathProfileOptions &path_profile_options,
+    const PropellerCodeLayoutParameters& code_layout_params,
+    const PathProfileOptions& path_profile_options,
     absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>>
         clonings_by_function_index,
-    const ProgramCfg &program_cfg,
-    const absl::flat_hash_map<int, FunctionPathProfile>
-        &path_profiles_by_function_index);
+    const ProgramCfg& program_cfg,
+    const absl::flat_hash_map<int, FunctionPathProfile>&
+        path_profiles_by_function_index);
 
 // Applies profitable clonings to `program_cfg` and returns the resulting
 // `ProgramCfg`. Updates `cloning_stats` accordingly.
 std::unique_ptr<ProgramCfg> ApplyClonings(
-    const PropellerCodeLayoutParameters &code_layout_params,
-    const PathProfileOptions &path_profile_options,
-    const ProgramPathProfile &program_path_profile,
+    const PropellerCodeLayoutParameters& code_layout_params,
+    const PathProfileOptions& path_profile_options,
+    const ProgramPathProfile& program_path_profile,
     std::unique_ptr<ProgramCfg> program_cfg,
-    PropellerStats::CloningStats &cloning_stats);
+    PropellerStats::CloningStats& cloning_stats);
 
 }  //  namespace propeller
 #endif  // PROPELLER_CLONE_APPLICATOR_H_

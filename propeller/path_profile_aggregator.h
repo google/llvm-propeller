@@ -30,9 +30,9 @@ class PathProfileAggregator {
 
   // Returns the aggregated path profile.
   virtual absl::StatusOr<ProgramPathProfile> Aggregate(
-      const BinaryContent &binary_content,
-      const BinaryAddressMapper &binary_address_mapper,
-      const ProgramCfg &program_cfg) = 0;
+      const BinaryContent& binary_content,
+      const BinaryAddressMapper& binary_address_mapper,
+      const ProgramCfg& program_cfg) = 0;
 };
 
 }  // namespace propeller

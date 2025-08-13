@@ -40,9 +40,9 @@
 namespace propeller {
 
 absl::StatusOr<LbrAggregation> PerfLbrAggregator::AggregateLbrData(
-    const PropellerOptions &options, const BinaryContent &binary_content,
-    PropellerStats &stats) {
-  PropellerStats::ProfileStats &profile_stats = stats.profile_stats;
+    const PropellerOptions& options, const BinaryContent& binary_content,
+    PropellerStats& stats) {
+  PropellerStats::ProfileStats& profile_stats = stats.profile_stats;
   LbrAggregation lbr_aggregation;
 
   while (true) {
@@ -80,20 +80,20 @@ absl::StatusOr<LbrAggregation> PerfLbrAggregator::AggregateLbrData(
 }
 
 absl::StatusOr<PropellerStats::DisassemblyStats>
-PerfLbrAggregator::CheckLbrAddress(const LbrAggregation &lbr_aggregation,
-                                   const BinaryContent &binary_content) {
+PerfLbrAggregator::CheckLbrAddress(const LbrAggregation& lbr_aggregation,
+                                   const BinaryContent& binary_content) {
   PropellerStats::DisassemblyStats result = {};
 
   ASSIGN_OR_RETURN(std::unique_ptr<MiniDisassembler> disassembler,
                    MiniDisassembler::Create(binary_content.object_file.get()));
 
   absl::flat_hash_map<int64_t, int64_t> counter_sum_by_source_address;
-  for (const auto &[branch, counter] : lbr_aggregation.branch_counters) {
+  for (const auto& [branch, counter] : lbr_aggregation.branch_counters) {
     if (branch.from == kInvalidBinaryAddress) continue;
     counter_sum_by_source_address[branch.from] += counter;
   }
 
-  for (const auto &[address, counter] : counter_sum_by_source_address) {
+  for (const auto& [address, counter] : counter_sum_by_source_address) {
     absl::StatusOr<llvm::MCInst> inst = disassembler->DisassembleOne(address);
     if (!inst.ok()) {
       result.could_not_disassemble.Increment(counter);

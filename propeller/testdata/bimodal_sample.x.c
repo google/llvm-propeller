@@ -40,7 +40,7 @@ __attribute__((noinline)) int compute(double arg) {
   return count;
 }
 
-int main(int argc, const char **argv) {
+int main(int argc, const char** argv) {
   for (int i = 0; i < 10000001; ++i) {
     sum += compute(argc);
     if (argc == 3) sum += compute(argc - 1);
