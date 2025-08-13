@@ -38,8 +38,8 @@ std::string PropellerStats::CodeLayoutStats::DebugString() const {
       {absl::StrCat(
            "Merge order stats: ",
            absl::StrJoin(n_assemblies_by_merge_order, ", ",
-                         [](std::string *out,
-                            const std::pair<ChainMergeOrder, int> &entry) {
+                         [](std::string* out,
+                            const std::pair<ChainMergeOrder, int>& entry) {
                            absl::StrAppend(out, "[",
                                            GetMergeOrderName(entry.first), ":",
                                            entry.second, "]");
@@ -94,8 +94,8 @@ std::string PropellerStats::CfgStats::DebugString() const {
           "Created ", edges_created, " edges: {",
           absl::StrJoin(
               edges_created_by_kind, ", ",
-              [edges_created](std::string *out,
-                              const std::pair<CFGEdgeKind, int64_t> &entry) {
+              [edges_created](std::string* out,
+                              const std::pair<CFGEdgeKind, int64_t>& entry) {
                 return absl::StrAppend(
                     out, absl::StrFormat("%s: %.2f%%",
                                          GetCfgEdgeKindString(entry.first),
@@ -107,8 +107,8 @@ std::string PropellerStats::CfgStats::DebugString() const {
           absl::StrJoin(
               total_edge_weight_by_kind, ", ",
               [total_edge_weight](
-                  std::string *out,
-                  const std::pair<CFGEdgeKind, int64_t> &entry) {
+                  std::string* out,
+                  const std::pair<CFGEdgeKind, int64_t>& entry) {
                 return absl::StrAppend(
                     out, absl::StrFormat(
                              "%s: %.2f%%", GetCfgEdgeKindString(entry.first),

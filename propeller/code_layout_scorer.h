@@ -27,9 +27,9 @@ namespace propeller {
 class PropellerCodeLayoutScorer {
  public:
   explicit PropellerCodeLayoutScorer(
-      const PropellerCodeLayoutParameters &params);
-  double GetEdgeScore(const CFGEdge &edge, int src_sink_distance) const;
-  const PropellerCodeLayoutParameters &code_layout_params() const {
+      const PropellerCodeLayoutParameters& params);
+  double GetEdgeScore(const CFGEdge& edge, int src_sink_distance) const;
+  const PropellerCodeLayoutParameters& code_layout_params() const {
     return code_layout_params_;
   }
 

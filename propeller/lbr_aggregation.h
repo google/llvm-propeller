@@ -36,7 +36,7 @@ struct LbrAggregation {
   int64_t GetNumberOfBranchCounters() const {
     return absl::c_accumulate(
         branch_counters, 0,
-        [](int64_t cnt, const auto &v) { return cnt + v.second; });
+        [](int64_t cnt, const auto& v) { return cnt + v.second; });
   }
 
   // A count of the number of times each branch was taken.
