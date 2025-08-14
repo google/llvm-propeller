@@ -45,6 +45,6 @@ __attribute__((noinline)) void compute(double arg) {
   }
 }
 
-int main(int argc, const char **argv) {
+int main(int argc, const char** argv) {
   for (int i = 0; i < 1000001; ++i) compute(argc);
 }
