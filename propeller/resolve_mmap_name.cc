@@ -18,7 +18,7 @@
 
 namespace propeller {
 
-std::string ResolveMmapName(const PropellerOptions &options) {
+std::string ResolveMmapName(const PropellerOptions& options) {
   if (options.has_profiled_binary_name()) {
     // If user specified "--profiled_binary_name", we use it.
     return options.profiled_binary_name();

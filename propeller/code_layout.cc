@@ -40,14 +40,14 @@
 namespace propeller {
 
 absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
-GenerateLayoutBySection(const ProgramCfg &program_cfg,
-                        const PropellerCodeLayoutParameters &code_layout_params,
-                        PropellerStats::CodeLayoutStats &code_layout_stats) {
+GenerateLayoutBySection(const ProgramCfg& program_cfg,
+                        const PropellerCodeLayoutParameters& code_layout_params,
+                        PropellerStats::CodeLayoutStats& code_layout_stats) {
   absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
       chain_info_by_section_name;
-  absl::flat_hash_map<llvm::StringRef, std::vector<const ControlFlowGraph *>>
+  absl::flat_hash_map<llvm::StringRef, std::vector<const ControlFlowGraph*>>
       cfgs_by_section_name = program_cfg.GetCfgsBySectionName();
-  for (const auto &[section_name, cfgs] : cfgs_by_section_name) {
+  for (const auto& [section_name, cfgs] : cfgs_by_section_name) {
     CodeLayout code_layout(code_layout_params, cfgs);
     chain_info_by_section_name.emplace(section_name, code_layout.OrderAll());
     code_layout_stats += code_layout.stats();
@@ -59,11 +59,11 @@ GenerateLayoutBySection(const ProgramCfg &program_cfg,
 // function for getting the address of each CFG node.
 // This is called by ComputeOrigLayoutScores and ComputeOptLayoutScores below.
 absl::flat_hash_map<int, CFGScore> CodeLayout::ComputeCfgScores(
-    absl::FunctionRef<uint64_t(const CFGNode *)> get_node_addr) {
+    absl::FunctionRef<uint64_t(const CFGNode*)> get_node_addr) {
   absl::flat_hash_map<int, CFGScore> score_map;
-  for (const ControlFlowGraph *cfg : cfgs_) {
+  for (const ControlFlowGraph* cfg : cfgs_) {
     double intra_score = 0;
-    for (const auto &edge : cfg->intra_edges()) {
+    for (const auto& edge : cfg->intra_edges()) {
       if (edge->weight() == 0 || edge->IsReturn()) continue;
       // Compute the distance between the end of src and beginning of sink.
       int64_t distance = static_cast<int64_t>(get_node_addr(edge->sink())) -
@@ -72,7 +72,7 @@ absl::flat_hash_map<int, CFGScore> CodeLayout::ComputeCfgScores(
     }
     double inter_out_score = 0;
     if (cfgs_.size() > 1) {
-      for (const auto &edge : cfg->inter_edges()) {
+      for (const auto& edge : cfg->inter_edges()) {
         if (edge->weight() == 0 || edge->IsReturn() || edge->inter_section()) {
           continue;
         }
@@ -90,7 +90,7 @@ absl::flat_hash_map<int, CFGScore> CodeLayout::ComputeCfgScores(
 // Returns the intra-procedural ext-tsp scores for the given CFGs under the
 // original layout.
 absl::flat_hash_map<int, CFGScore> CodeLayout::ComputeOrigLayoutScores() {
-  return ComputeCfgScores([](const CFGNode *n) { return n->addr(); });
+  return ComputeCfgScores([](const CFGNode* n) { return n->addr(); });
 }
 
 // Returns the intra-procedural ext-tsp scores for the given CFGs under the new
@@ -99,15 +99,15 @@ absl::flat_hash_map<int, CFGScore> CodeLayout::ComputeOptLayoutScores(
     absl::Span<const std::unique_ptr<const ChainCluster>> clusters) {
   // First compute the address of each basic block under the given layout.
   uint64_t layout_addr = 0;
-  absl::flat_hash_map<const CFGNode *, uint64_t> layout_address_map;
-  for (auto &cluster : clusters) {
-    cluster->VisitEachNodeRef([&](const CFGNode &node) {
+  absl::flat_hash_map<const CFGNode*, uint64_t> layout_address_map;
+  for (auto& cluster : clusters) {
+    cluster->VisitEachNodeRef([&](const CFGNode& node) {
       layout_address_map.emplace(&node, layout_addr);
       layout_addr += node.size();
     });
   }
 
-  return ComputeCfgScores([&layout_address_map](const CFGNode *n) {
+  return ComputeCfgScores([&layout_address_map](const CFGNode* n) {
     return layout_address_map.at(n);
   });
 }
@@ -122,7 +122,7 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
                      .BuildChains(),
                  std::back_inserter(built_chains));
   } else {
-    for (auto *cfg : cfgs_) {
+    for (auto* cfg : cfgs_) {
       absl::c_move(NodeChainBuilder::CreateNodeChainBuilder<
                        NodeChainAssemblyIterativeQueue>(
                        code_layout_scorer_, {cfg}, initial_chains_, stats_)
@@ -158,11 +158,11 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
 
   // Iterate over all CFG nodes in order and add them to the chain layout
   // information.
-  for (auto &cluster : clusters) {
-    for (const auto &chain : cluster->chains()) {
-      for (const auto &node_bundle : chain->node_bundles()) {
+  for (auto& cluster : clusters) {
+    for (const auto& chain : cluster->chains()) {
+      for (const auto& node_bundle : chain->node_bundles()) {
         for (int i = 0; i < node_bundle->nodes().size(); ++i) {
-          const CFGNode &node = *node_bundle->nodes()[i];
+          const CFGNode& node = *node_bundle->nodes()[i];
           if (function_index != node.function_index() || node.is_entry()) {
             // Switch to the right chain layout info when the function changes
             // or when an entry basic block is reached.
@@ -197,7 +197,7 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
   }
   std::vector<FunctionChainInfo> all_function_chain_info;
   all_function_chain_info.reserve(function_chain_info_map.size());
-  for (auto &[unused, func_chain_info] : function_chain_info_map) {
+  for (auto& [unused, func_chain_info] : function_chain_info_map) {
     stats_.original_intra_score += func_chain_info.original_score.intra_score;
     stats_.optimized_intra_score += func_chain_info.optimized_score.intra_score;
     stats_.original_inter_score +=
@@ -212,10 +212,10 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
   // the basic block sections list file which is independent from the global
   // chain ordering.
   // TODO(rahmanl): Test the chain order once we have interproc-reordering.
-  for (auto &func_chain_info : all_function_chain_info) {
+  for (auto& func_chain_info : all_function_chain_info) {
     absl::c_sort(func_chain_info.bb_chains,
-                 [](const FunctionChainInfo::BbChain &a,
-                    const FunctionChainInfo::BbChain &b) {
+                 [](const FunctionChainInfo::BbChain& a,
+                    const FunctionChainInfo::BbChain& b) {
                    return a.GetFirstBb().bb_id < b.GetFirstBb().bb_id;
                  });
   }
@@ -223,7 +223,7 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
   // order of their function index (consistent with the original function
   // ordering).
   absl::c_sort(all_function_chain_info,
-               [](const FunctionChainInfo &a, const FunctionChainInfo &b) {
+               [](const FunctionChainInfo& a, const FunctionChainInfo& b) {
                  return a.function_index < b.function_index;
                });
   return all_function_chain_info;

@@ -71,19 +71,19 @@ struct FlatBbHandleBranch {
   // index, or `std::nullopt` if the function is unknown.
   std::vector<CallRetInfo> call_rets = {};
 
-  bool operator==(const FlatBbHandleBranch &other) const {
+  bool operator==(const FlatBbHandleBranch& other) const {
     return from_bb == other.from_bb && to_bb == other.to_bb &&
            call_rets == other.call_rets;
   }
 
-  bool operator!=(const FlatBbHandleBranch &other) const {
+  bool operator!=(const FlatBbHandleBranch& other) const {
     return !(*this == other);
   }
 
   bool is_callsite() const { return !call_rets.empty(); }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const FlatBbHandleBranch &branch) {
+  friend void AbslStringify(Sink& sink, const FlatBbHandleBranch& branch) {
     absl::Format(&sink, "%v -> %v", branch.from_bb, branch.to_bb);
     if (!branch.is_callsite()) return;
     absl::Format(&sink, "(CALLSITES: %s)",
@@ -98,17 +98,17 @@ struct FlatBbHandleBranchPath {
   // The block that this path returns to after the last branch.
   std::optional<FlatBbHandle> returns_to;
 
-  bool operator==(const FlatBbHandleBranchPath &other) const {
+  bool operator==(const FlatBbHandleBranchPath& other) const {
     return pid == other.pid && branches == other.branches &&
            returns_to == other.returns_to;
   }
 
-  bool operator!=(const FlatBbHandleBranchPath &other) const {
+  bool operator!=(const FlatBbHandleBranchPath& other) const {
     return !(*this == other);
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const FlatBbHandleBranchPath &path) {
+  friend void AbslStringify(Sink& sink, const FlatBbHandleBranchPath& path) {
     absl::Format(
         &sink, "FlatBbHandleBranchPath[pid:%lld, sample_time:%v, branches:%s",
         path.pid, path.sample_time, absl::StrJoin(path.branches, ", "));
@@ -128,22 +128,22 @@ class BinaryAddressMapper {
       std::vector<BbHandle> bb_handles,
       absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map);
 
-  BinaryAddressMapper(const BinaryAddressMapper &) = delete;
-  BinaryAddressMapper &operator=(const BinaryAddressMapper &) = delete;
-  BinaryAddressMapper(BinaryAddressMapper &&) = default;
-  BinaryAddressMapper &operator=(BinaryAddressMapper &&) = default;
+  BinaryAddressMapper(const BinaryAddressMapper&) = delete;
+  BinaryAddressMapper& operator=(const BinaryAddressMapper&) = delete;
+  BinaryAddressMapper(BinaryAddressMapper&&) = default;
+  BinaryAddressMapper& operator=(BinaryAddressMapper&&) = default;
 
-  const std::vector<llvm::object::BBAddrMap> &bb_addr_map() const {
+  const std::vector<llvm::object::BBAddrMap>& bb_addr_map() const {
     return bb_addr_map_;
   }
 
-  const absl::flat_hash_map<int, FunctionSymbolInfo> &symbol_info_map() const {
+  const absl::flat_hash_map<int, FunctionSymbolInfo>& symbol_info_map() const {
     return symbol_info_map_;
   }
 
-  const std::vector<BbHandle> &bb_handles() const { return bb_handles_; }
+  const std::vector<BbHandle>& bb_handles() const { return bb_handles_; }
 
-  const absl::btree_set<int> &selected_functions() const {
+  const absl::btree_set<int>& selected_functions() const {
     return selected_functions_;
   }
 
@@ -188,39 +188,39 @@ class BinaryAddressMapper {
 
   // Returns whether in basic block with `from` can fall through to basic block
   // `to`.
-  bool CanFallThrough(const BbHandle &from, const BbHandle &to) const;
+  bool CanFallThrough(const BbHandle& from, const BbHandle& to) const;
 
   // Returns the full function's BB address map associated with the given
   // `bb_handle`.
-  const llvm::object::BBAddrMap &GetFunctionEntry(
-      const BbHandle &bb_handle) const {
+  const llvm::object::BBAddrMap& GetFunctionEntry(
+      const BbHandle& bb_handle) const {
     return bb_addr_map_.at(bb_handle.function_index);
   }
 
-  const llvm::object::BBAddrMap::BBRangeEntry &GetBBRangeEntry(
-      const BbHandle &bb_handle) const {
+  const llvm::object::BBAddrMap::BBRangeEntry& GetBBRangeEntry(
+      const BbHandle& bb_handle) const {
     return bb_addr_map_.at(bb_handle.function_index)
         .getBBRanges()[bb_handle.range_index];
   }
 
   // Returns the BbHandle associated with the basic block with flat BB handle
   // `flat_bb_handle`. Returns nullopt if no such BB exists.
-  std::optional<BbHandle> GetBbHandle(const FlatBbHandle &flat_bb_handle) const;
+  std::optional<BbHandle> GetBbHandle(const FlatBbHandle& flat_bb_handle) const;
 
   // Returns the flat BB handle of BB associated with `bb_handle` in its
   // function, if all BB ranges were flattened. Returns nullopt if no BB with
   // `bb_handle` exists.
-  std::optional<FlatBbHandle> GetFlatBbHandle(const BbHandle &bb_handle) const;
+  std::optional<FlatBbHandle> GetFlatBbHandle(const BbHandle& bb_handle) const;
 
   std::optional<FlatBbHandle> GetFlatBbHandle(
-      const std::optional<BbHandle> &bb_handle) const {
+      const std::optional<BbHandle>& bb_handle) const {
     if (!bb_handle.has_value()) return std::nullopt;
     return GetFlatBbHandle(*bb_handle);
   }
 
   // Returns the basic block's address map entry associated with the given
   // `bb_handle`.
-  const llvm::object::BBAddrMap::BBEntry &GetBBEntry(BbHandle bb_handle) const {
+  const llvm::object::BBAddrMap::BBEntry& GetBBEntry(BbHandle bb_handle) const {
     return GetFunctionEntry(bb_handle)
         .getBBRanges()
         .at(bb_handle.range_index)
@@ -238,7 +238,7 @@ class BinaryAddressMapper {
 
   // Returns the name associated with the given `bb_handle`.
   std::string GetName(BbHandle bb_handle) const {
-    const auto &aliases = symbol_info_map_.at(bb_handle.function_index).aliases;
+    const auto& aliases = symbol_info_map_.at(bb_handle.function_index).aliases;
     std::string func_name =
         aliases.empty()
             ? absl::StrCat(
@@ -274,7 +274,7 @@ class BinaryAddressMapper {
   // This will try to stitch call-and-return paths together to form
   // intra-function paths which bypass calls.
   std::vector<FlatBbHandleBranchPath> ExtractIntraFunctionPaths(
-      const BinaryAddressBranchPath &address_path) const;
+      const BinaryAddressBranchPath& address_path) const;
 
  private:
   absl::btree_set<int> selected_functions_;
@@ -305,9 +305,9 @@ class BinaryAddressMapper {
 // nullptr` all functions will be included. Does not take ownership of
 // `hot_addresses`, which must outlive this call.
 absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
-    const PropellerOptions &options, const BinaryContent &binary_content,
-    PropellerStats &stats,
-    const absl::flat_hash_set<uint64_t> *hot_addresses = nullptr);
+    const PropellerOptions& options, const BinaryContent& binary_content,
+    PropellerStats& stats,
+    const absl::flat_hash_set<uint64_t>* hot_addresses = nullptr);
 
 }  // namespace propeller
 
