@@ -36,7 +36,7 @@ std::string GetDotFormatLabelForEdgeKind(CFGEdgeKind kind) {
   return GetCfgEdgeKindString(kind).substr(0, 1);
 }
 
-std::ostream &operator<<(std::ostream &os, const CFGEdgeKind &kind) {
+std::ostream& operator<<(std::ostream& os, const CFGEdgeKind& kind) {
   return os << GetCfgEdgeKindString(kind);
 }
 

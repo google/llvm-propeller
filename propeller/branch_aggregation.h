@@ -35,7 +35,7 @@ struct BranchAggregation {
   int64_t GetNumberOfBranchCounters() const {
     return absl::c_accumulate(
         branch_counters, int64_t{0},
-        [](int64_t cnt, const auto &v) { return cnt + v.second; });
+        [](int64_t cnt, const auto& v) { return cnt + v.second; });
   }
 
   // Returns the set of unique addresses. An aggregation's addresses can come

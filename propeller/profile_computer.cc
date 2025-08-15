@@ -63,21 +63,21 @@ using ::propeller::ProgramPathProfile;
 namespace {
 // Evaluates if Propeller options contain profiles that are specified as
 // non-LBR.
-bool ContainsNonLbrProfile(const PropellerOptions &options) {
+bool ContainsNonLbrProfile(const PropellerOptions& options) {
   return absl::c_any_of(options.input_profiles(),
-                        [](const InputProfile &profile) {
+                        [](const InputProfile& profile) {
                           return profile.type() != PERF_LBR &&
                                  profile.type() != PROFILE_TYPE_UNSPECIFIED;
                         });
 }
 
 // Extracts the input profile names from Propeller options.
-std::vector<std::string> ExtractProfileNames(const PropellerOptions &options) {
+std::vector<std::string> ExtractProfileNames(const PropellerOptions& options) {
   std::vector<std::string> profile_names;
   profile_names.reserve(options.input_profiles_size());
 
   absl::c_transform(options.input_profiles(), std::back_inserter(profile_names),
-                    [](const InputProfile &profile) { return profile.name(); });
+                    [](const InputProfile& profile) { return profile.name(); });
 
   return profile_names;
 }
@@ -104,9 +104,9 @@ absl::StatusOr<PropellerProfile> PropellerProfileComputer::ComputeProfile() && {
 
 absl::StatusOr<std::unique_ptr<PropellerProfileComputer>>
 PropellerProfileComputer::Create(
-    const PropellerOptions &options,
-    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent
-        *absl_nonnull binary_content) {
+    const PropellerOptions& options,
+    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent* absl_nonnull
+        binary_content) {
   if (ContainsNonLbrProfile(options))
     return absl::InvalidArgumentError("non-LBR profile type");
 
@@ -117,9 +117,9 @@ PropellerProfileComputer::Create(
 
 absl::StatusOr<std::unique_ptr<PropellerProfileComputer>>
 PropellerProfileComputer::Create(
-    const PropellerOptions &options,
-    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent
-        *absl_nonnull binary_content,
+    const PropellerOptions& options,
+    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent* absl_nonnull
+        binary_content,
     std::unique_ptr<PerfDataProvider> perf_data_provider) {
   if (ContainsNonLbrProfile(options))
     return absl::InvalidArgumentError("non-LBR profile type");
@@ -139,9 +139,9 @@ PropellerProfileComputer::Create(
 
 absl::StatusOr<std::unique_ptr<PropellerProfileComputer>>
 PropellerProfileComputer::Create(
-    const PropellerOptions &options,
-    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent
-        *absl_nonnull binary_content,
+    const PropellerOptions& options,
+    ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent* absl_nonnull
+        binary_content,
     std::unique_ptr<BranchAggregator> branch_aggregator,
     std::unique_ptr<PathProfileAggregator> path_profile_aggregator) {
   std::unique_ptr<PropellerProfileComputer> profile_computer =

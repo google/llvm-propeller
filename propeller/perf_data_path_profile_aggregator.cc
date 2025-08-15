@@ -39,9 +39,9 @@ using ::propeller::ProgramCfgPathAnalyzer;
 using ::propeller::ProgramPathProfile;
 
 absl::StatusOr<ProgramPathProfile> PerfDataPathProfileAggregator::Aggregate(
-    const BinaryContent &binary_content,
-    const BinaryAddressMapper &binary_address_mapper,
-    const ProgramCfg &program_cfg) {
+    const BinaryContent& binary_content,
+    const BinaryAddressMapper& binary_address_mapper,
+    const ProgramCfg& program_cfg) {
   ProgramPathProfile program_path_profile;
   ProgramCfgPathAnalyzer path_analyzer(
       &propeller_options_.path_profile_options(), &program_cfg,
@@ -68,10 +68,10 @@ absl::StatusOr<ProgramPathProfile> PerfDataPathProfileAggregator::Aggregate(
     path_analyzer.AnalyzePaths(/*paths_to_analyze=*/std::nullopt);
   }
   if (VLOG_IS_ON(1)) {
-    for (const auto &[function_index, function_path_profile] :
+    for (const auto& [function_index, function_path_profile] :
          program_path_profile.path_profiles_by_function_index()) {
       LOG(INFO) << "Path tree for function: " << function_index << ":\n";
-      for (const auto &[bb_index, path_tree] :
+      for (const auto& [bb_index, path_tree] :
            function_path_profile.path_trees_by_root_bb_index())
         LOG(INFO) << *path_tree << "\n";
     }

@@ -35,20 +35,20 @@ namespace propeller {
 // Represents a pair of NodeChains <`split_chain`, `unsplit_chain`> associated
 // with a `NodeChainAssembly`.
 struct NodeChainPair {
-  NodeChain *split_chain = nullptr;
-  NodeChain *unsplit_chain = nullptr;
-  friend bool operator==(const NodeChainPair &lhs, const NodeChainPair &rhs);
+  NodeChain* split_chain = nullptr;
+  NodeChain* unsplit_chain = nullptr;
+  friend bool operator==(const NodeChainPair& lhs, const NodeChainPair& rhs);
   template <typename H>
-  friend H AbslHashValue(H h, const NodeChainPair &m);
+  friend H AbslHashValue(H h, const NodeChainPair& m);
 };
 
-inline bool operator==(const NodeChainPair &lhs, const NodeChainPair &rhs) {
+inline bool operator==(const NodeChainPair& lhs, const NodeChainPair& rhs) {
   return lhs.split_chain == rhs.split_chain &&
          lhs.unsplit_chain == rhs.unsplit_chain;
 }
 
 template <typename H>
-H AbslHashValue(H h, const NodeChainPair &m) {
+H AbslHashValue(H h, const NodeChainPair& m) {
   return H::combine(std::move(h), m.split_chain, m.unsplit_chain);
 }
 
@@ -60,7 +60,7 @@ class NodeChainSlice {
   // endpoints of the chain. `chain` must outlive the NodeChainSlice.
   // Additionally, any changes to the bundles of the chain would invalidate the
   // slice.
-  explicit NodeChainSlice(NodeChain &chain, int begin, int end)
+  explicit NodeChainSlice(NodeChain& chain, int begin, int end)
       : chain_(&chain), begin_index_(begin), end_index_(end) {
     CHECK_LE(begin, end);
     CHECK_LE(begin, chain.node_bundles().size());
@@ -69,18 +69,18 @@ class NodeChainSlice {
 
   // Constructor for building a chain slice from a node chain containing all
   // of its nodes.
-  explicit NodeChainSlice(NodeChain &chain)
+  explicit NodeChainSlice(NodeChain& chain)
       : chain_(&chain),
         begin_index_(0),
         end_index_(chain.node_bundles().size()) {}
 
   // NodeChainSlice is copyable.
-  NodeChainSlice(const NodeChainSlice &) = default;
-  NodeChainSlice &operator=(const NodeChainSlice &) = default;
-  NodeChainSlice(NodeChainSlice &&) = default;
-  NodeChainSlice &operator=(NodeChainSlice &&) = default;
+  NodeChainSlice(const NodeChainSlice&) = default;
+  NodeChainSlice& operator=(const NodeChainSlice&) = default;
+  NodeChainSlice(NodeChainSlice&&) = default;
+  NodeChainSlice& operator=(NodeChainSlice&&) = default;
 
-  NodeChain &chain() const { return *chain_; }
+  NodeChain& chain() const { return *chain_; }
   // Iterator to the beginning of the slice.
   std::vector<std::unique_ptr<CFGNodeBundle>>::iterator begin_pos() const {
     return chain_->mutable_node_bundles().begin() + begin_index_;
@@ -108,7 +108,7 @@ class NodeChainSlice {
 
  private:
   // The chain from which this slice has been constructed.
-  NodeChain *chain_;
+  NodeChain* chain_;
 
   // The endpoints of the slice in the corresponding chain. `begin_index_` is
   // the first index included in the slice. `end_index_` is one after the last
@@ -142,8 +142,8 @@ class NodeChainAssembly {
   // Comparator for two NodeChainAssemblies. It compares score_gain and break
   // ties consistently.
   struct NodeChainAssemblyComparator {
-    bool operator()(const NodeChainAssembly &lhs,
-                    const NodeChainAssembly &rhs) const;
+    bool operator()(const NodeChainAssembly& lhs,
+                    const NodeChainAssembly& rhs) const;
   };
 
   // Builds a NodeChainAssembly which merges `split_chain` and `unsplit_chain`
@@ -157,25 +157,25 @@ class NodeChainAssembly {
   // 3- The constructed assembly has a negative score gain or it has zero
   //    score gain and `options.error_on_zero_score_gain == true`.
   static absl::StatusOr<NodeChainAssembly> BuildNodeChainAssembly(
-      const NodeToBundleMapper &bundle_mapper,
-      const PropellerCodeLayoutScorer &scorer, NodeChain &split_chain,
-      NodeChain &unsplit_chain, NodeChainAssemblyBuildingOptions options);
+      const NodeToBundleMapper& bundle_mapper,
+      const PropellerCodeLayoutScorer& scorer, NodeChain& split_chain,
+      NodeChain& unsplit_chain, NodeChainAssemblyBuildingOptions options);
 
   // NodeChainAssembly is copyable and moveable.
-  NodeChainAssembly(const NodeChainAssembly &) = default;
-  NodeChainAssembly &operator=(const NodeChainAssembly &) = default;
-  NodeChainAssembly(NodeChainAssembly &&) = default;
-  NodeChainAssembly &operator=(NodeChainAssembly &&) = default;
+  NodeChainAssembly(const NodeChainAssembly&) = default;
+  NodeChainAssembly& operator=(const NodeChainAssembly&) = default;
+  NodeChainAssembly(NodeChainAssembly&&) = default;
+  NodeChainAssembly& operator=(NodeChainAssembly&&) = default;
 
   ChainMergeOrder merge_order() const { return merge_order_; }
 
   std::optional<int> slice_pos() const { return slice_pos_; }
 
   NodeChainPair chain_pair() const { return chain_pair_; }
-  NodeChain &split_chain() const { return *chain_pair_.split_chain; }
-  NodeChain &unsplit_chain() const { return *chain_pair_.unsplit_chain; }
+  NodeChain& split_chain() const { return *chain_pair_.split_chain; }
+  NodeChain& unsplit_chain() const { return *chain_pair_.unsplit_chain; }
 
-  const std::vector<NodeChainSlice> &slices() const { return slices_; }
+  const std::vector<NodeChainSlice>& slices() const { return slices_; }
 
   // Returns whether this assembly actually splits the split_chain.
   bool splits() const { return merge_order_ != ChainMergeOrder::kSU; }
@@ -185,22 +185,22 @@ class NodeChainAssembly {
   // Iterates over all node bundles in the resulting assembled chain while
   // applying a given function to every node bundle.
   void VisitEachNodeBundleInAssemblyOrder(
-      absl::FunctionRef<void(const CFGNodeBundle &bundle)> func) const {
-    for (const NodeChainSlice &slice : slices_) {
+      absl::FunctionRef<void(const CFGNodeBundle& bundle)> func) const {
+    for (const NodeChainSlice& slice : slices_) {
       for (auto it = slice.begin_pos(); it != slice.end_pos(); ++it) func(**it);
     }
   }
 
   void ConsumeEachNodeBundleInAssemblyOrder(
       absl::FunctionRef<void(std::unique_ptr<CFGNodeBundle> bundle)> func) && {
-    for (const NodeChainSlice &slice : slices_) {
+    for (const NodeChainSlice& slice : slices_) {
       for (auto it = slice.begin_pos(); it != slice.end_pos(); ++it)
         func(std::move(*it));
     }
   }
 
   // Gets the first node in the resulting assembled chain.
-  const CFGNode *GetFirstNode() const {
+  const CFGNode* GetFirstNode() const {
     return (*slices_.front().begin_pos())->nodes().front();
   }
 
@@ -208,13 +208,13 @@ class NodeChainAssembly {
   // node. If the node is not contained in this NodeChainAssembly, then return
   // a std::nullopt. Otherwise, return the corresponding index for the slice.
   std::optional<int> FindSliceIndex(
-      const CFGNode *node,
-      const NodeToBundleMapper::BundleMappingEntry &bundle_mapping) const;
+      const CFGNode* node,
+      const NodeToBundleMapper::BundleMappingEntry& bundle_mapping) const;
 
  private:
-  explicit NodeChainAssembly(const NodeToBundleMapper &bundle_mapper,
-                             const PropellerCodeLayoutScorer &scorer,
-                             NodeChain &split_chain, NodeChain &unsplit_chain,
+  explicit NodeChainAssembly(const NodeToBundleMapper& bundle_mapper,
+                             const PropellerCodeLayoutScorer& scorer,
+                             NodeChain& split_chain, NodeChain& unsplit_chain,
                              ChainMergeOrder merge_order,
                              std::optional<int> slice_pos)
       : chain_pair_{.split_chain = &split_chain,
@@ -264,15 +264,15 @@ class NodeChainAssembly {
 
   // Returns the gain in Ext-TSP score if this assembly is applied. May return 0
   // if the actual score gain is negative.
-  double ComputeScoreGain(const NodeToBundleMapper &bundle_mapper,
-                          const PropellerCodeLayoutScorer &scorer) const;
+  double ComputeScoreGain(const NodeToBundleMapper& bundle_mapper,
+                          const PropellerCodeLayoutScorer& scorer) const;
 
   // Returns the total score contribution of edges running from `from_chain` to
   // `to_chain` for this assembly.
-  double ComputeInterChainScore(const NodeToBundleMapper &bundle_mapper,
-                                const PropellerCodeLayoutScorer &scorer,
-                                const NodeChain &from_chain,
-                                const NodeChain &to_chain) const;
+  double ComputeInterChainScore(const NodeToBundleMapper& bundle_mapper,
+                                const PropellerCodeLayoutScorer& scorer,
+                                const NodeChain& from_chain,
+                                const NodeChain& to_chain) const;
 
   // Returns the total score gain from `split_chain()`'s intra-chain edges for
   // this assembly. This is more efficient than calling
@@ -281,13 +281,13 @@ class NodeChainAssembly {
   // `split_chain()` (i.e., their source-to-sink distance has changed by
   // splitting).
   double ComputeSplitChainScoreGain(
-      const NodeToBundleMapper &bundle_mapper,
-      const PropellerCodeLayoutScorer &scorer) const;
+      const NodeToBundleMapper& bundle_mapper,
+      const PropellerCodeLayoutScorer& scorer) const;
 
   // Returns the score contribution of a single edge for this assembly.
-  double ComputeEdgeScore(const NodeToBundleMapper &bundle_mapper,
-                          const PropellerCodeLayoutScorer &scorer,
-                          const CFGEdge &edge) const;
+  double ComputeEdgeScore(const NodeToBundleMapper& bundle_mapper,
+                          const PropellerCodeLayoutScorer& scorer,
+                          const CFGEdge& edge) const;
 
   // The two chains in the assembly.
   NodeChainPair chain_pair_;

@@ -46,12 +46,12 @@ namespace {
 // Returns the penalty for cloning `path_cloning`. The total penalty is the
 // base penalty (relative to the cloned size) plus the interval-based cache
 // pressure penalty.
-double GetClonePenalty(const ControlFlowGraph &cfg,
-                       const PathProfileOptions &path_profile_options,
-                       const PathCloning &path_cloning) {
+double GetClonePenalty(const ControlFlowGraph& cfg,
+                       const PathProfileOptions& path_profile_options,
+                       const PathCloning& path_cloning) {
   double total_icache_penalty = 0;
   double total_base_penalty = 0;
-  for (const PathNode *pn = path_cloning.path_node; pn != nullptr;
+  for (const PathNode* pn = path_cloning.path_node; pn != nullptr;
        pn = pn->parent()) {
     int bb_size = cfg.nodes()[pn->node_bb_index()]->size();
     auto it =
@@ -72,11 +72,11 @@ absl::StatusOr<CfgChangeFromPathCloning> CfgChangeBuilder::Build() && {
   }
   // Record edge changes associated with returns from the last block in the
   // cloning path.
-  const auto &return_to_freqs = path_from_root_.back()
+  const auto& return_to_freqs = path_from_root_.back()
                                     ->path_pred_info()
                                     .entries.at(cloning_.path_pred_bb_index)
                                     .return_to_freqs;
-  for (const auto &[bb_handle, freq] : return_to_freqs) {
+  for (const auto& [bb_handle, freq] : return_to_freqs) {
     AddEdgeReroute(CfgChangeFromPathCloning::InterEdgeReroute{
         .src_function_index = cloning_.function_index,
         .sink_function_index = bb_handle.function_index,
@@ -88,8 +88,50 @@ absl::StatusOr<CfgChangeFromPathCloning> CfgChangeBuilder::Build() && {
         .weight = freq});
   }
   cfg_change_.path_to_clone.reserve(path_from_root_.size());
-  for (const PathNode *path_node : path_from_root_) {
+  for (const PathNode* path_node : path_from_root_) {
     cfg_change_.path_to_clone.push_back(path_node->node_bb_index());
+  }
+  // Record inter-procedural edge weight droppings associated with the paths
+  // with missing predecessors. These will be applied at the end of the cloning
+  // application.
+  for (const PathNode* path_node : cfg_change_.paths_to_drop) {
+    for (const auto& [call_ret, freq] :
+         path_node->path_pred_info().missing_pred_entry.call_freqs) {
+      if (call_ret.callee.has_value()) {
+        cfg_change_.inter_edge_reroutes.push_back(
+            {.src_function_index = cloning_.function_index,
+             .sink_function_index = *call_ret.callee,
+             .src_bb_index = path_node->node_bb_index(),
+             .sink_bb_index = 0,
+             .src_is_cloned = false,
+             .sink_is_cloned = false,
+             .kind = CFGEdgeKind::kCall,
+             .weight = freq});
+      }
+      if (call_ret.return_bb.has_value()) {
+        cfg_change_.inter_edge_reroutes.push_back(
+            {.src_function_index = call_ret.return_bb->function_index,
+             .sink_function_index = cloning_.function_index,
+             .src_bb_index = call_ret.return_bb->flat_bb_index,
+             .sink_bb_index = path_node->node_bb_index(),
+             .src_is_cloned = false,
+             .sink_is_cloned = false,
+             .kind = CFGEdgeKind::kRet,
+             .weight = freq});
+      }
+    }
+    for (const auto& [return_to_bb, freq] :
+         path_node->path_pred_info().missing_pred_entry.return_to_freqs) {
+      cfg_change_.inter_edge_reroutes.push_back(
+          {.src_function_index = cloning_.function_index,
+           .sink_function_index = return_to_bb.function_index,
+           .src_bb_index = path_node->node_bb_index(),
+           .sink_bb_index = return_to_bb.flat_bb_index,
+           .src_is_cloned = false,
+           .sink_is_cloned = false,
+           .kind = CFGEdgeKind::kRet,
+           .weight = freq});
+    }
   }
   return std::move(cfg_change_);
 }
@@ -123,11 +165,11 @@ absl::Status CfgChangeBuilder::AddEdgeReroute(
 }
 
 void CfgChangeBuilder::UpdatePathsWithMissingPred(int next_bb_index) {
-  std::vector<const PathNode *absl_nonnull> new_paths_with_missing_pred;
+  std::vector<const PathNode* absl_nonnull> new_paths_with_missing_pred;
   new_paths_with_missing_pred.reserve(current_paths_with_missing_pred_.size());
-  for (const PathNode *path_with_missing_pred :
+  for (const PathNode* path_with_missing_pred :
        current_paths_with_missing_pred_) {
-    const PathNode *next_path_with_missing_pred =
+    const PathNode* next_path_with_missing_pred =
         path_with_missing_pred->GetChild(next_bb_index);
     if (next_path_with_missing_pred == nullptr ||
         !next_path_with_missing_pred->path_pred_info()
@@ -138,14 +180,14 @@ void CfgChangeBuilder::UpdatePathsWithMissingPred(int next_bb_index) {
   }
   // If there are any paths with missing path predecessor at this block, they
   // must be recorded.
-  const PathNode *new_path_with_missing_pred =
+  const PathNode* new_path_with_missing_pred =
       function_path_profile_.GetPathTree(next_bb_index);
   if (new_path_with_missing_pred != nullptr &&
       new_path_with_missing_pred->path_pred_info().missing_pred_entry.freq) {
     new_paths_with_missing_pred.push_back(new_path_with_missing_pred);
   }
   current_paths_with_missing_pred_ = std::move(new_paths_with_missing_pred);
-  for (const PathNode *path_with_missing_pred :
+  for (const PathNode* path_with_missing_pred :
        current_paths_with_missing_pred_) {
     cfg_change_.paths_to_drop.push_back(path_with_missing_pred);
   }
@@ -166,9 +208,9 @@ absl::Status CfgChangeBuilder::VisitNext() {
                 path_from_root_[current_index_in_path_ + 1]->node_bb_index());
 
   if (current_path_visit_status != PathVisitStatus::kLast) {
-    const PathNode &next_path_node =
+    const PathNode& next_path_node =
         *path_from_root_[current_index_in_path_ + 1];
-    const PathPredInfoEntry *next_path_pred_entry =
+    const PathPredInfoEntry* next_path_pred_entry =
         next_path_node.path_pred_info().GetEntry(cloning_.path_pred_bb_index);
     CHECK_NE(next_path_pred_entry, nullptr)
         << "Path is unreachable via the predecessor block: "
@@ -187,12 +229,12 @@ absl::Status CfgChangeBuilder::VisitNext() {
 
   if (current_path_visit_status != PathVisitStatus::kPred) {
     UpdatePathsWithMissingPred(current_bb_index);
-    const PathNode *current_path_node = path_from_root_[current_index_in_path_];
-    const PathPredInfoEntry &current_path_pred_entry =
+    const PathNode* current_path_node = path_from_root_[current_index_in_path_];
+    const PathPredInfoEntry& current_path_pred_entry =
         current_path_node->path_pred_info().entries.at(
             cloning_.path_pred_bb_index);
     // Record inter-function edge changes.
-    for (const auto &[call_ret, freq] : current_path_pred_entry.call_freqs) {
+    for (const auto& [call_ret, freq] : current_path_pred_entry.call_freqs) {
       if (call_ret.callee.has_value()) {
         AddEdgeReroute(CfgChangeFromPathCloning::InterEdgeReroute{
             .src_function_index = cloning_.function_index,
@@ -218,14 +260,14 @@ absl::Status CfgChangeBuilder::VisitNext() {
     }
     // Visit the child edges from this clone to record changes in their
     // weights.
-    for (const auto &[child_bb_id, child_path_node] :
+    for (const auto& [child_bb_id, child_path_node] :
          current_path_node->children()) {
       // Rerouting the in-path edge is already done above. Here, we reroute
       // other outgoing edges from the path.
       if (next_bb_index.has_value() && child_bb_id == *next_bb_index) {
         continue;
       }
-      const PathPredInfoEntry *child_entry =
+      const PathPredInfoEntry* child_entry =
           child_path_node->path_pred_info().GetEntry(
               cloning_.path_pred_bb_index);
       if (child_entry == nullptr) continue;
@@ -246,11 +288,11 @@ absl::Status CfgChangeBuilder::VisitNext() {
 }
 
 absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
-    const CfgBuilder &cfg_builder, const PathCloning &path_cloning,
-    const PropellerCodeLayoutParameters &code_layout_params,
-    const PathProfileOptions &path_profile_options, double min_score,
-    const FunctionChainInfo &optimal_chain_info,
-    const FunctionPathProfile &function_path_profile) {
+    const CfgBuilder& cfg_builder, const PathCloning& path_cloning,
+    const PropellerCodeLayoutParameters& code_layout_params,
+    const PathProfileOptions& path_profile_options, double min_score,
+    const FunctionChainInfo& optimal_chain_info,
+    const FunctionPathProfile& function_path_profile) {
   CHECK(!code_layout_params.call_chain_clustering());
   CHECK(!code_layout_params.inter_function_reordering());
   CHECK_EQ(optimal_chain_info.function_index,
@@ -303,10 +345,10 @@ absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
 }
 
 void PathTreeCloneEvaluator::EvaluateCloningsForSubtree(
-    const PathNode &path_tree, int path_length,
-    const absl::flat_hash_set<int> &path_preds_in_path,
-    std::vector<EvaluatedPathCloning> &clonings,
-    const FunctionPathProfile &function_path_profile) {
+    const PathNode& path_tree, int path_length,
+    const absl::flat_hash_set<int>& path_preds_in_path,
+    std::vector<EvaluatedPathCloning>& clonings,
+    const FunctionPathProfile& function_path_profile) {
   if (path_tree.parent() == nullptr)
     CHECK_EQ(path_length, 1) << "path_length must be 1 for root.";
   if (path_length > path_profile_options_.max_path_length()) return;
@@ -326,7 +368,7 @@ void PathTreeCloneEvaluator::EvaluateCloningsForSubtree(
     updated_path_preds_in_path = path_preds_in_path;
     updated_path_preds_in_path->insert(path_tree.node_bb_index());
   }
-  const absl::flat_hash_set<int> &new_path_preds_in_path =
+  const absl::flat_hash_set<int>& new_path_preds_in_path =
       updated_path_preds_in_path.value_or(path_preds_in_path);
   // Skip evaluating the rest of the subtree if all possible path predecessors
   // are in the path.
@@ -341,7 +383,7 @@ void PathTreeCloneEvaluator::EvaluateCloningsForSubtree(
   // branches as they can't be rewired.
   if (has_indirect_branch) return;
 
-  for (auto &[child_bb_index, child_path_node] : path_tree.children()) {
+  for (auto& [child_bb_index, child_path_node] : path_tree.children()) {
     CHECK_NE(child_path_node, nullptr);
     EvaluateCloningsForSubtree(*child_path_node, path_length + 1,
                                new_path_preds_in_path, clonings,
@@ -350,16 +392,16 @@ void PathTreeCloneEvaluator::EvaluateCloningsForSubtree(
 }
 
 void PathTreeCloneEvaluator::EvaluateCloningsForPath(
-    const PathNode &path_node,
-    const absl::flat_hash_set<int> &path_preds_in_path,
-    std::vector<EvaluatedPathCloning> &clonings,
-    const FunctionPathProfile &function_path_profile) {
+    const PathNode& path_node,
+    const absl::flat_hash_set<int>& path_preds_in_path,
+    std::vector<EvaluatedPathCloning>& clonings,
+    const FunctionPathProfile& function_path_profile) {
   bool is_return_block =
       cfg_.nodes().at(path_node.node_bb_index())->has_return();
   if (path_node.children().size() < 2 && !is_return_block) {
     return;
   }
-  for (const auto &[pred_bb_index, path_pred_info_entry] :
+  for (const auto& [pred_bb_index, path_pred_info_entry] :
        path_node.path_pred_info().entries) {
     // We can't clone a path when the path predecessor has an indirect branch as
     // it can't be rewired.
@@ -386,26 +428,26 @@ void PathTreeCloneEvaluator::EvaluateCloningsForPath(
 }
 
 absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>> EvaluateAllClonings(
-    const ProgramCfg *program_cfg,
-    const ProgramPathProfile *program_path_profile,
-    const PropellerCodeLayoutParameters &code_layout_params,
-    const PathProfileOptions &path_profile_options) {
+    const ProgramCfg* program_cfg,
+    const ProgramPathProfile* program_path_profile,
+    const PropellerCodeLayoutParameters& code_layout_params,
+    const PathProfileOptions& path_profile_options) {
   CHECK(!code_layout_params.call_chain_clustering());
   CHECK(!code_layout_params.inter_function_reordering());
   LOG(INFO) << "Evaluating clonings...";
   absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>>
       cloning_scores_by_function_index;
-  for (const auto &[function_index, function_path_profile] :
+  for (const auto& [function_index, function_path_profile] :
        program_path_profile->path_profiles_by_function_index()) {
-    const ControlFlowGraph *cfg = program_cfg->GetCfgByIndex(function_index);
+    const ControlFlowGraph* cfg = program_cfg->GetCfgByIndex(function_index);
     CHECK_NE(cfg, nullptr);
     FunctionChainInfo fast_response_original_optimal_chain_info =
         CodeLayout(code_layout_params, {cfg},
                    /*initial_chains=*/{})
             .OrderAll()
             .front();
-    auto &clonings = cloning_scores_by_function_index[function_index];
-    for (const auto &[root_bb_index, path_tree] :
+    auto& clonings = cloning_scores_by_function_index[function_index];
+    for (const auto& [root_bb_index, path_tree] :
          function_path_profile.path_trees_by_root_bb_index()) {
       PathTreeCloneEvaluator(cfg, &fast_response_original_optimal_chain_info,
                              &path_profile_options, &code_layout_params)
@@ -417,20 +459,20 @@ absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>> EvaluateAllClonings(
 }
 
 std::vector<FunctionChainInfo::BbChain> GetInitialChains(
-    const ControlFlowGraph &cfg, const FunctionChainInfo &chain_info,
-    const CfgChangeFromPathCloning &cfg_change) {
+    const ControlFlowGraph& cfg, const FunctionChainInfo& chain_info,
+    const CfgChangeFromPathCloning& cfg_change) {
   CHECK_EQ(cfg.function_index(), chain_info.function_index);
   absl::flat_hash_set<int> bb_indices;
-  for (const auto &intra_edge_reroute : cfg_change.intra_edge_reroutes) {
+  for (const auto& intra_edge_reroute : cfg_change.intra_edge_reroutes) {
     bb_indices.insert(intra_edge_reroute.src_bb_index);
     bb_indices.insert(intra_edge_reroute.sink_bb_index);
   }
   std::vector<FunctionChainInfo::BbChain> all_chains;
-  for (const FunctionChainInfo::BbChain &bb_chain : chain_info.bb_chains) {
+  for (const FunctionChainInfo::BbChain& bb_chain : chain_info.bb_chains) {
     FunctionChainInfo::BbChain new_bb_chain(bb_chain.layout_index);
-    for (const auto &bundle : bb_chain.bb_bundles) {
+    for (const auto& bundle : bb_chain.bb_bundles) {
       new_bb_chain.bb_bundles.emplace_back();
-      for (const FullIntraCfgId &full_bb_id : bundle.full_bb_ids) {
+      for (const FullIntraCfgId& full_bb_id : bundle.full_bb_ids) {
         CHECK(!new_bb_chain.bb_bundles.empty());
         // Commit the current chain and skip this block if it's in the path.
         if (bb_indices.contains(full_bb_id.intra_cfg_id.bb_index)) {
@@ -464,11 +506,11 @@ std::vector<FunctionChainInfo::BbChain> GetInitialChains(
   }
   all_chains.erase(
       std::remove_if(all_chains.begin(), all_chains.end(),
-                     [](FunctionChainInfo::BbChain &chain) {
+                     [](FunctionChainInfo::BbChain& chain) {
                        chain.bb_bundles.erase(
                            std::remove_if(
                                chain.bb_bundles.begin(), chain.bb_bundles.end(),
-                               [](const FunctionChainInfo::BbBundle &bundle) {
+                               [](const FunctionChainInfo::BbBundle& bundle) {
                                  return bundle.full_bb_ids.empty();
                                }),
                            chain.bb_bundles.end());

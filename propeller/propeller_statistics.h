@@ -42,12 +42,12 @@ struct PropellerStats {
     // Number of initial multi-node chains.
     int n_multi_node_chains = 0;
 
-    void operator+=(const CodeLayoutStats &other) {
+    void operator+=(const CodeLayoutStats& other) {
       original_intra_score += other.original_intra_score;
       optimized_intra_score += other.optimized_intra_score;
       original_inter_score += other.original_inter_score;
       optimized_inter_score += other.optimized_inter_score;
-      for (const auto &[merge_order, count] :
+      for (const auto& [merge_order, count] :
            other.n_assemblies_by_merge_order) {
         n_assemblies_by_merge_order[merge_order] += count;
       }
@@ -76,7 +76,7 @@ struct PropellerStats {
         ++absolute;
       }
 
-      void operator+=(const Stat &other) {
+      void operator+=(const Stat& other) {
         absolute += other.absolute;
         weighted += other.weighted;
       }
@@ -86,7 +86,7 @@ struct PropellerStats {
     Stat may_affect_control_flow;
     Stat cant_affect_control_flow;
 
-    void operator+=(const DisassemblyStats &other) {
+    void operator+=(const DisassemblyStats& other) {
       could_not_disassemble += other.could_not_disassemble;
       may_affect_control_flow += other.may_affect_control_flow;
       cant_affect_control_flow += other.cant_affect_control_flow;
@@ -100,7 +100,7 @@ struct PropellerStats {
     int perf_file_parsed = 0;
     uint64_t br_counters_accumulated = 0;
 
-    void operator+=(const ProfileStats &other) {
+    void operator+=(const ProfileStats& other) {
       br_counters_accumulated += other.br_counters_accumulated;
       binary_mmap_num += other.binary_mmap_num;
       perf_file_parsed += other.perf_file_parsed;
@@ -123,7 +123,7 @@ struct PropellerStats {
     int64_t total_edges_created() const {
       return absl::c_accumulate(
           edges_created_by_kind, int64_t{0},
-          [](int64_t psum, const std::pair<CFGEdgeKind, int64_t> &entry) {
+          [](int64_t psum, const std::pair<CFGEdgeKind, int64_t>& entry) {
             return psum + entry.second;
           });
     }
@@ -131,21 +131,21 @@ struct PropellerStats {
     int64_t total_edge_weight_created() const {
       return absl::c_accumulate(
           total_edge_weight_by_kind, int64_t{0},
-          [](int64_t psum, const std::pair<CFGEdgeKind, int64_t> &entry) {
+          [](int64_t psum, const std::pair<CFGEdgeKind, int64_t>& entry) {
             return psum + entry.second;
           });
     }
 
-    void operator+=(const CfgStats &other) {
+    void operator+=(const CfgStats& other) {
       edges_with_same_src_sink_but_different_type +=
           other.edges_with_same_src_sink_but_different_type;
       cfgs_created += other.cfgs_created;
       cfgs_with_hot_landing_pads += other.cfgs_with_hot_landing_pads;
       nodes_created += other.nodes_created;
-      for (const auto &[kind, count] : other.edges_created_by_kind) {
+      for (const auto& [kind, count] : other.edges_created_by_kind) {
         edges_created_by_kind[kind] += count;
       }
-      for (const auto &[kind, count] : other.total_edge_weight_by_kind) {
+      for (const auto& [kind, count] : other.total_edge_weight_by_kind) {
         total_edge_weight_by_kind[kind] += count;
       }
       hot_basic_blocks += other.hot_basic_blocks;
@@ -160,7 +160,7 @@ struct PropellerStats {
     uint64_t bbaddrmap_function_does_not_have_symtab_entry = 0;
     uint64_t hot_functions = 0;
 
-    void operator+=(const BbAddrMapStats &other) {
+    void operator+=(const BbAddrMapStats& other) {
       duplicate_symbols += other.duplicate_symbols;
       bbaddrmap_function_does_not_have_symtab_entry +=
           other.bbaddrmap_function_does_not_have_symtab_entry;
@@ -176,7 +176,7 @@ struct PropellerStats {
     int bytes_cloned = 0;
     double score_gain = 0;
 
-    void operator+=(const CloningStats &other) {
+    void operator+=(const CloningStats& other) {
       paths_cloned += other.paths_cloned;
       bbs_cloned += other.bbs_cloned;
       bytes_cloned += other.bytes_cloned;
@@ -195,7 +195,7 @@ struct PropellerStats {
   CodeLayoutStats code_layout_stats;
   CloningStats cloning_stats;
 
-  void operator+=(const PropellerStats &other) {
+  void operator+=(const PropellerStats& other) {
     bbaddrmap_stats += other.bbaddrmap_stats;
     profile_stats += other.profile_stats;
     disassembly_stats += other.disassembly_stats;

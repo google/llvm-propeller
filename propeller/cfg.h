@@ -56,12 +56,12 @@ struct ConflictEdges {
   struct IntraEdge {
     int from_bb_index, to_bb_index;
 
-    bool operator==(const IntraEdge &other) const {
+    bool operator==(const IntraEdge& other) const {
       return from_bb_index == other.from_bb_index &&
              to_bb_index == other.to_bb_index;
     }
     template <typename H>
-    friend H AbslHashValue(H h, const IntraEdge &edge) {
+    friend H AbslHashValue(H h, const IntraEdge& edge) {
       return H::combine(std::move(h), edge.from_bb_index, edge.to_bb_index);
     }
   };
@@ -83,6 +83,14 @@ struct CfgChangeFromPathCloning {
     bool src_is_cloned, sink_is_cloned;
     CFGEdgeKind kind;
     int weight;
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const IntraEdgeReroute& reroute) {
+      absl::Format(&sink, "(%d%s->%d%s w: %d k: %s)", reroute.src_bb_index,
+                   reroute.src_is_cloned ? "'" : "", reroute.sink_bb_index,
+                   reroute.sink_is_cloned ? "'" : "", reroute.weight,
+                   GetCfgEdgeKindString(reroute.kind));
+    }
   };
   // Represents rerouting the control flow for a single inter-function edge.
   struct InterEdgeReroute {
@@ -94,21 +102,50 @@ struct CfgChangeFromPathCloning {
     bool src_is_cloned, sink_is_cloned;
     CFGEdgeKind kind;
     int weight;
+
+    // Returns true if this represents dropping the edge weight from the
+    // original nodes.
+    bool IsDrop() const { return !src_is_cloned && !sink_is_cloned; }
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const InterEdgeReroute& reroute) {
+      absl::Format(&sink, "(F%d:%d%s->%d:%d%s w: %d k: %s)",
+                   reroute.src_function_index, reroute.src_bb_index,
+                   reroute.src_is_cloned ? "'" : "",
+                   reroute.sink_function_index, reroute.sink_bb_index,
+                   reroute.sink_is_cloned ? "'" : "", reroute.weight,
+                   GetCfgEdgeKindString(reroute.kind));
+    }
   };
 
   // Predecessor block of the path;
   int path_pred_bb_index;
   // bb_indexes of CFG nodes along the path (excluding the path predecessor).
   std::vector<int> path_to_clone;
-
   // The paths to drop from the CFG. The outgoing edges (inter- and intra-) of
   // from these paths have missing path predecessor info and cannot be
   // confidently rerouted. So we drop their associated weights from the CFG.
-  std::vector<const PathNode *absl_nonnull> paths_to_drop;
+  std::vector<const PathNode* absl_nonnull> paths_to_drop;
   // Intra-function edge weight reroutes.
   std::vector<IntraEdgeReroute> intra_edge_reroutes;
   // Inter-function edge weight reroutes.
   std::vector<InterEdgeReroute> inter_edge_reroutes;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink,
+                            const CfgChangeFromPathCloning& change) {
+    absl::Format(&sink,
+                 "path_pred: %d, path_to_clone: [%s], paths_to_drop: [%s], "
+                 "intra_reroutes: [%s], inter_reroutes: [%s]",
+                 change.path_pred_bb_index,
+                 absl::StrJoin(change.path_to_clone, ", "),
+                 absl::StrJoin(change.paths_to_drop, ", ",
+                               [](auto* out, const PathNode* p) {
+                                 absl::StrAppend(out, p->path_from_root());
+                               }),
+                 absl::StrJoin(change.intra_edge_reroutes, ", "),
+                 absl::StrJoin(change.inter_edge_reroutes, ", "));
+  }
 };
 
 class ControlFlowGraph {
@@ -124,21 +161,21 @@ class ControlFlowGraph {
   };
   ControlFlowGraph(llvm::StringRef section_name, int function_index,
                    std::optional<llvm::StringRef> module_name,
-                   const llvm::SmallVectorImpl<llvm::StringRef> &names)
+                   const llvm::SmallVectorImpl<llvm::StringRef>& names)
       : section_name_(section_name),
         function_index_(function_index),
         module_name_(module_name),
         names_(names.begin(), names.end()) {}
   ControlFlowGraph(llvm::StringRef section_name, int function_index,
                    std::optional<llvm::StringRef> module_name,
-                   llvm::SmallVectorImpl<llvm::StringRef> &&names)
+                   llvm::SmallVectorImpl<llvm::StringRef>&& names)
       : section_name_(section_name),
         function_index_(function_index),
         module_name_(module_name),
         names_(std::move(names)) {}
   ControlFlowGraph(llvm::StringRef section_name, int function_index,
                    std::optional<llvm::StringRef> module_name,
-                   const llvm::SmallVectorImpl<llvm::StringRef> &names,
+                   const llvm::SmallVectorImpl<llvm::StringRef>& names,
                    std::vector<std::unique_ptr<CFGNode>> nodes,
                    std::vector<std::unique_ptr<CFGEdge>> intra_edges = {},
                    std::vector<std::vector<int>> clone_paths = {})
@@ -150,7 +187,7 @@ class ControlFlowGraph {
         clone_paths_(std::move(clone_paths)),
         intra_edges_(std::move(intra_edges)) {
     int bb_index = 0;
-    for (auto &n : nodes_) {
+    for (auto& n : nodes_) {
       CHECK_EQ(n->function_index(), function_index_);
       if (!n->is_cloned()) {
         CHECK_EQ(n->bb_index(), bb_index++);
@@ -160,16 +197,16 @@ class ControlFlowGraph {
       }
       if (n->is_landing_pad()) ++n_landing_pads_;
     }
-    for (const auto &e : intra_edges_) {
+    for (const auto& e : intra_edges_) {
       e->src()->intra_outs_.push_back(e.get());
       e->sink()->intra_ins_.push_back(e.get());
     }
   }
 
-  ControlFlowGraph(const ControlFlowGraph &) = delete;
-  ControlFlowGraph &operator=(const ControlFlowGraph &) = delete;
-  ControlFlowGraph(ControlFlowGraph &&) = default;
-  ControlFlowGraph &operator=(ControlFlowGraph &&) = default;
+  ControlFlowGraph(const ControlFlowGraph&) = delete;
+  ControlFlowGraph& operator=(const ControlFlowGraph&) = delete;
+  ControlFlowGraph(ControlFlowGraph&&) = default;
+  ControlFlowGraph& operator=(ControlFlowGraph&&) = default;
 
   int n_landing_pads() const { return n_landing_pads_; }
 
@@ -177,7 +214,7 @@ class ControlFlowGraph {
   // complexity w.r.t the number of nodes.
   int has_hot_landing_pads() const {
     if (n_landing_pads_ == 0) return false;
-    for (const auto &node : nodes_) {
+    for (const auto& node : nodes_) {
       if (!node->is_landing_pad()) continue;
       if (node->CalculateFrequency() != 0) return true;
     }
@@ -189,15 +226,15 @@ class ControlFlowGraph {
   bool is_hot() const {
     if (!inter_edges_.empty() || !intra_edges_.empty()) return true;
     return absl::c_any_of(
-        nodes_, [](const auto &node) { return !node->inter_ins().empty(); });
+        nodes_, [](const auto& node) { return !node->inter_ins().empty(); });
   }
 
-  CFGNode *GetEntryNode() const {
+  CFGNode* GetEntryNode() const {
     CHECK(!nodes_.empty());
     return nodes_.front().get();
   }
 
-  const std::optional<llvm::StringRef> &module_name() const {
+  const std::optional<llvm::StringRef>& module_name() const {
     return module_name_;
   }
 
@@ -206,18 +243,18 @@ class ControlFlowGraph {
     return names_.front();
   }
 
-  void ForEachNodeRef(absl::FunctionRef<void(const CFGNode &)> fn) const {
-    for (const auto &node : nodes_) fn(*node);
+  void ForEachNodeRef(absl::FunctionRef<void(const CFGNode&)> fn) const {
+    for (const auto& node : nodes_) fn(*node);
   }
 
   // Create edge and take ownership. Note: the caller must be responsible for
   // not creating duplicated edges.
-  CFGEdge *CreateEdge(CFGNode *from, CFGNode *to, int weight, CFGEdgeKind kind,
+  CFGEdge* CreateEdge(CFGNode* from, CFGNode* to, int weight, CFGEdgeKind kind,
                       bool inter_section);
 
   // If an edge already exists from `from` to `to` of kind `kind`, then
   // increments its edge weight by weight. Otherwise, creates the edge.
-  CFGEdge *CreateOrUpdateEdge(CFGNode *from, CFGNode *to, int weight,
+  CFGEdge* CreateOrUpdateEdge(CFGNode* from, CFGNode* to, int weight,
                               CFGEdgeKind kind, bool inter_section);
 
   // Returns the frequencies of nodes in this CFG in a vector, in the same order
@@ -225,7 +262,7 @@ class ControlFlowGraph {
   std::vector<int> GetNodeFrequencies() const {
     std::vector<int> node_frequencies;
     node_frequencies.reserve(nodes_.size());
-    for (const auto &node : nodes_)
+    for (const auto& node : nodes_)
       node_frequencies.push_back(node->CalculateFrequency());
     return node_frequencies;
   }
@@ -234,10 +271,10 @@ class ControlFlowGraph {
 
   int function_index() const { return function_index_; }
 
-  CFGNode &GetNodeById(const IntraCfgId &id) const {
+  CFGNode& GetNodeById(const IntraCfgId& id) const {
     if (id.clone_number == 0) {
       CHECK_LE(id.bb_index, nodes_.size());
-      CFGNode *node = nodes_.at(id.bb_index).get();
+      CFGNode* node = nodes_.at(id.bb_index).get();
       CHECK_NE(node, nullptr);
       CHECK_EQ(node->bb_index(), id.bb_index);
       return *node;
@@ -249,27 +286,27 @@ class ControlFlowGraph {
         clones_by_bb_index_.at(id.bb_index).at(id.clone_number - 1));
   }
 
-  const llvm::SmallVector<llvm::StringRef, 3> &names() const { return names_; }
-  const std::vector<std::unique_ptr<CFGNode>> &nodes() const { return nodes_; }
+  const llvm::SmallVector<llvm::StringRef, 3>& names() const { return names_; }
+  const std::vector<std::unique_ptr<CFGNode>>& nodes() const { return nodes_; }
 
-  const std::vector<std::unique_ptr<CFGEdge>> &intra_edges() const {
+  const std::vector<std::unique_ptr<CFGEdge>>& intra_edges() const {
     return intra_edges_;
   }
 
-  const std::vector<std::unique_ptr<CFGEdge>> &inter_edges() const {
+  const std::vector<std::unique_ptr<CFGEdge>>& inter_edges() const {
     return inter_edges_;
   }
 
-  const absl::flat_hash_map<int, std::vector<int>> &clones_by_bb_index() const {
+  const absl::flat_hash_map<int, std::vector<int>>& clones_by_bb_index() const {
     return clones_by_bb_index_;
   }
 
   // Returns a vector of clone nodes (including the original node) for the given
   // `bb_index`, in increasing order of their clone_number.
-  std::vector<CFGNode *> GetAllClonesForBbIndex(int bb_index) const {
-    CFGNode &original_node =
+  std::vector<CFGNode*> GetAllClonesForBbIndex(int bb_index) const {
+    CFGNode& original_node =
         GetNodeById(IntraCfgId{.bb_index = bb_index, .clone_number = 0});
-    std::vector<CFGNode *> clone_instances(1, &original_node);
+    std::vector<CFGNode*> clone_instances(1, &original_node);
     auto it = clones_by_bb_index_.find(bb_index);
     if (it != clones_by_bb_index_.end()) {
       absl::c_transform(
@@ -281,7 +318,7 @@ class ControlFlowGraph {
 
   // Returns the cloned paths in this CFG. Each path is represented as a vector
   // of indices in `nodes_` corresponding to the original nodes.
-  const std::vector<std::vector<int>> &clone_paths() const {
+  const std::vector<std::vector<int>>& clone_paths() const {
     return clone_paths_;
   }
 
@@ -301,7 +338,7 @@ class ControlFlowGraph {
 
     for (int bb_index : path_to_clone) {
       // Get the next available clone number for `bb_index`.
-      auto &clones = clones_by_bb_index_[bb_index];
+      auto& clones = clones_by_bb_index_[bb_index];
       // Create and insert the clone node.
       nodes_.emplace_back(nodes_.at(bb_index)->Clone(
           clones.size() + 1, static_cast<int>(nodes_.size())));
@@ -318,8 +355,8 @@ class ControlFlowGraph {
   // in the layout. Fall-through edges will be colored differently
   // (red) in the dot format. `layout_indexx_map` can be a partial map.
   void WriteDotFormat(
-      std::ostream &os,
-      const absl::flat_hash_map<IntraCfgId, int> &layout_index_map) const;
+      std::ostream& os,
+      const absl::flat_hash_map<IntraCfgId, int>& layout_index_map) const;
 
   // Returns the bb_indexes of hot join nodes in this CFG. These are nodes which
   // have a frequency of at least `hot_node_frequency_threshold` and at least
@@ -333,7 +370,7 @@ class ControlFlowGraph {
   // Implementation of the `AbslStringify` interface for logging the CFG. Do not
   // rely on exact format.
   template <typename Sink>
-  void AbslStringify(Sink &sink, const ControlFlowGraph &cfg);
+  void AbslStringify(Sink& sink, const ControlFlowGraph& cfg);
 
  private:
   // The output section name for this function within which it can be reordered.
@@ -373,11 +410,11 @@ class ControlFlowGraph {
   std::vector<std::unique_ptr<CFGEdge>> inter_edges_;
 };
 
-std::ostream &operator<<(std::ostream &os, const CFGEdgeKind &kind);
+std::ostream& operator<<(std::ostream& os, const CFGEdgeKind& kind);
 
 // Returns a clone of `cfg` with its nodes and intra-function edges cloned and
 // its inter-function edges dropped.
-std::unique_ptr<ControlFlowGraph> CloneCfg(const ControlFlowGraph &cfg);
+std::unique_ptr<ControlFlowGraph> CloneCfg(const ControlFlowGraph& cfg);
 
 // Class for cloning a CFG from another CFG and then applying path clonings.
 // This class should be used as:
@@ -391,25 +428,25 @@ std::unique_ptr<ControlFlowGraph> CloneCfg(const ControlFlowGraph &cfg);
 class CfgBuilder {
  public:
   explicit CfgBuilder(
-      ABSL_ATTRIBUTE_LIFETIME_BOUND const ControlFlowGraph *absl_nonnull cfg)
+      ABSL_ATTRIBUTE_LIFETIME_BOUND const ControlFlowGraph* absl_nonnull cfg)
       : cfg_(cfg), clone_paths_(cfg->clone_paths()) {
-    for (const auto &node : cfg_->nodes()) {
+    for (const auto& node : cfg_->nodes()) {
       nodes_.push_back(node->Clone(node->clone_number(), nodes_.size()));
     }
-    for (const auto &[bb_index, clones] : cfg_->clones_by_bb_index())
+    for (const auto& [bb_index, clones] : cfg_->clones_by_bb_index())
       current_clone_numbers_[bb_index] = clones.size();
   }
 
-  CfgBuilder(const CfgBuilder &) = delete;
-  CfgBuilder &operator=(const CfgBuilder &) = delete;
-  CfgBuilder(CfgBuilder &&) = default;
-  CfgBuilder &operator=(CfgBuilder &&) = default;
+  CfgBuilder(const CfgBuilder&) = delete;
+  CfgBuilder& operator=(const CfgBuilder&) = delete;
+  CfgBuilder(CfgBuilder&&) = default;
+  CfgBuilder& operator=(CfgBuilder&&) = default;
 
   // Returns a clone of `*this` with its `nodes_` cloned and `cfg_changes_`
   // added.
   CfgBuilder Clone() const {
     CfgBuilder cfg_builder(cfg_);
-    for (const CfgChangeFromPathCloning &cfg_change : cfg_changes_) {
+    for (const CfgChangeFromPathCloning& cfg_change : cfg_changes_) {
       cfg_builder.AddCfgChange(cfg_change);
     }
     return cfg_builder;
@@ -418,7 +455,7 @@ class CfgBuilder {
   // Adds the path cloning `cfg_change` to `cfg_changes_` and clondes the nodes
   // in the path accordingly. Also updates `conflict_edges_` based on
   // `cfg_change`.
-  void AddCfgChange(const CfgChangeFromPathCloning &cfg_change);
+  void AddCfgChange(const CfgChangeFromPathCloning& cfg_change);
 
   int GetNodeSize(int bb_index) const { return nodes_.at(bb_index)->size(); }
 
@@ -430,19 +467,19 @@ class CfgBuilder {
   absl::Span<const CfgChangeFromPathCloning> cfg_changes() const {
     return cfg_changes_;
   }
-  const ConflictEdges &conflict_edges() const { return conflict_edges_; }
-  const ControlFlowGraph &cfg() const { return *cfg_; }
+  const ConflictEdges& conflict_edges() const { return conflict_edges_; }
+  const ControlFlowGraph& cfg() const { return *cfg_; }
 
  private:
   // Applies the intra-function changes from `cfg_changes_` to `intra_edges`.
-  void ApplyIntraCfgChanges(std::vector<std::unique_ptr<CFGEdge>> &intra_edges);
+  void ApplyIntraCfgChanges(std::vector<std::unique_ptr<CFGEdge>>& intra_edges);
 
   // Clones the basic blocks along the path `path_to_clone` given path
   // predecessor block `path_pred_bb_index`. Both `path_pred_bb_index` and
   // `path_to_clone` are specified in terms of bb_indices of the original nodes.
   void ClonePath(int path_pred_bb_index, absl::Span<const int> path_to_clone);
 
-  const ControlFlowGraph *cfg_;
+  const ControlFlowGraph* cfg_;
   std::vector<std::unique_ptr<CFGNode>> nodes_;
   std::vector<std::vector<int>> clone_paths_;
   absl::flat_hash_map<int, int> current_clone_numbers_;
@@ -451,22 +488,22 @@ class CfgBuilder {
 };
 
 template <typename Sink>
-inline void AbslStringify(Sink &sink, const ControlFlowGraph &cfg) {
+inline void AbslStringify(Sink& sink, const ControlFlowGraph& cfg) {
   absl::Format(&sink,
                "CFG for function_name: {%s}, function_index: %d, module: %s, "
                "section: %s",
                absl::StrJoin(cfg.names(), ", "), cfg.function_index(),
                cfg.module_name().value_or(""), cfg.section_name());
   absl::Format(&sink, "\n  nodes:");
-  for (const auto &node : cfg.nodes()) {
+  for (const auto& node : cfg.nodes()) {
     absl::Format(&sink, "\n    %v", *node);
   }
   absl::Format(&sink, "\n  intra edges:");
-  for (const auto &edge : cfg.intra_edges()) {
+  for (const auto& edge : cfg.intra_edges()) {
     absl::Format(&sink, "\n    %v", *edge);
   }
   absl::Format(&sink, "\n  inter edges:");
-  for (const auto &edge : cfg.inter_edges()) {
+  for (const auto& edge : cfg.inter_edges()) {
     absl::Format(&sink, "\n    %v", *edge);
   }
 }
