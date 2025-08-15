@@ -27,19 +27,19 @@ namespace propeller {
 struct BinaryAddressBranch {
   uint64_t from, to;
   template <typename H>
-  friend H AbslHashValue(H h, const BinaryAddressBranch &b) {
+  friend H AbslHashValue(H h, const BinaryAddressBranch& b) {
     return H::combine(std::move(h), b.from, b.to);
   }
-  bool operator==(const BinaryAddressBranch &b) const {
+  bool operator==(const BinaryAddressBranch& b) const {
     return from == b.from && to == b.to;
   }
-  bool operator<(const BinaryAddressBranch &b) const {
+  bool operator<(const BinaryAddressBranch& b) const {
     return std::forward_as_tuple(from, to) <
            std::forward_as_tuple(b.from, b.to);
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const BinaryAddressBranch &b) {
+  friend void AbslStringify(Sink& sink, const BinaryAddressBranch& b) {
     absl::Format(&sink, "0x%016x->0x%016x", b.from, b.to);
   }
 };
@@ -49,18 +49,18 @@ struct BinaryAddressBranch {
 struct BinaryAddressNotTakenBranch {
   uint64_t address;
   template <typename H>
-  friend H AbslHashValue(H h, const BinaryAddressNotTakenBranch &b) {
+  friend H AbslHashValue(H h, const BinaryAddressNotTakenBranch& b) {
     return H::combine(std::move(h), b.address);
   }
-  bool operator==(const BinaryAddressNotTakenBranch &b) const {
+  bool operator==(const BinaryAddressNotTakenBranch& b) const {
     return address == b.address;
   }
-  bool operator<(const BinaryAddressNotTakenBranch &b) const {
+  bool operator<(const BinaryAddressNotTakenBranch& b) const {
     return address < b.address;
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const BinaryAddressNotTakenBranch &b) {
+  friend void AbslStringify(Sink& sink, const BinaryAddressNotTakenBranch& b) {
     absl::Format(&sink, "0x%016x", b.address);
   }
 };
@@ -71,15 +71,15 @@ struct BinaryAddressNotTakenBranch {
 struct BinaryAddressFallthrough {
   uint64_t from, to;
   template <typename H>
-  friend H AbslHashValue(H h, const BinaryAddressFallthrough &f) {
+  friend H AbslHashValue(H h, const BinaryAddressFallthrough& f) {
     return H::combine(std::move(h), f.from, f.to);
   }
-  bool operator==(const BinaryAddressFallthrough &f) const {
+  bool operator==(const BinaryAddressFallthrough& f) const {
     return from == f.from && to == f.to;
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const BinaryAddressFallthrough &f) {
+  friend void AbslStringify(Sink& sink, const BinaryAddressFallthrough& f) {
     absl::Format(&sink, "0x%016x->0x%016x", f.from, f.to);
   }
 };

@@ -40,13 +40,13 @@ class ChainCluster {
   }
 
   // ChainCluster is a moveonly type.
-  ChainCluster(ChainCluster &&) = default;
-  ChainCluster &operator=(ChainCluster &&) = default;
+  ChainCluster(ChainCluster&&) = default;
+  ChainCluster& operator=(ChainCluster&&) = default;
 
-  ChainCluster(const ChainCluster &) = delete;
-  ChainCluster &operator=(const ChainCluster &) = delete;
+  ChainCluster(const ChainCluster&) = delete;
+  ChainCluster& operator=(const ChainCluster&) = delete;
 
-  const std::vector<std::unique_ptr<const NodeChain>> &chains() const {
+  const std::vector<std::unique_ptr<const NodeChain>>& chains() const {
     return chains_;
   }
 
@@ -74,8 +74,8 @@ class ChainCluster {
 
   // Iterates over all nodes in this cluster (in order) and applies the given
   // `func` on every node.
-  void VisitEachNodeRef(absl::FunctionRef<void(const CFGNode &)> func) const {
-    for (const std::unique_ptr<const NodeChain> &chain : chains_)
+  void VisitEachNodeRef(absl::FunctionRef<void(const CFGNode&)> func) const {
+    for (const std::unique_ptr<const NodeChain>& chain : chains_)
       chain->VisitEachNodeRef(func);
   }
 
@@ -99,7 +99,7 @@ class ChainClusterBuilder {
   // chain and transfers the ownership of the NodeChain pointer to their
   // associated clusters.
   explicit ChainClusterBuilder(
-      const PropellerCodeLayoutParameters &code_layout_params,
+      const PropellerCodeLayoutParameters& code_layout_params,
       std::vector<std::unique_ptr<const NodeChain>> chains);
 
   // Builds and returns the clusters of chains.
@@ -112,15 +112,15 @@ class ChainClusterBuilder {
 
   // Finds the most frequent predecessor cluster of `chain` and merges it with
   // `chain`'s cluster.
-  void MergeWithBestPredecessorCluster(const NodeChain &chain);
+  void MergeWithBestPredecessorCluster(const NodeChain& chain);
 
   // Merges `right_cluster` into `left_cluster`. This call consumes
   // `right_cluster`.
-  void MergeClusters(ChainCluster &left_cluster, ChainCluster right_cluster);
+  void MergeClusters(ChainCluster& left_cluster, ChainCluster right_cluster);
 
  private:
   PropellerCodeLayoutParameters code_layout_params_;
-  const absl::flat_hash_map<const CFGNode *, const NodeChain *>
+  const absl::flat_hash_map<const CFGNode*, const NodeChain*>
       node_to_chain_map_;
 
   // All clusters currently in process.
@@ -128,7 +128,7 @@ class ChainClusterBuilder {
       clusters_;
 
   // This maps every chain to its containing cluster.
-  absl::flat_hash_map<const NodeChain *, ChainCluster *> chain_to_cluster_map_;
+  absl::flat_hash_map<const NodeChain*, ChainCluster*> chain_to_cluster_map_;
 };
 
 }  // namespace propeller

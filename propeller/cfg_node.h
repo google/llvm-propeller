@@ -35,7 +35,7 @@ class ControlFlowGraph;
 class CFGNode final {
  public:
   CFGNode(uint64_t addr, int bb_index, int bb_id, int size,
-          const llvm::object::BBAddrMap::BBEntry::Metadata &metadata,
+          const llvm::object::BBAddrMap::BBEntry::Metadata& metadata,
           int function_index, int freq = 0, int clone_number = 0,
           int node_index = -1)
       : inter_cfg_id_({function_index, {bb_index, clone_number}}),
@@ -55,9 +55,9 @@ class CFGNode final {
   }
 
   // Returns a program-wide unique id for this node.
-  const InterCfgId &inter_cfg_id() const { return inter_cfg_id_; }
+  const InterCfgId& inter_cfg_id() const { return inter_cfg_id_; }
   // Returns a cfg-wide unique id for this node.
-  const IntraCfgId &intra_cfg_id() const { return inter_cfg_id_.intra_cfg_id; }
+  const IntraCfgId& intra_cfg_id() const { return inter_cfg_id_.intra_cfg_id; }
   FullIntraCfgId full_intra_cfg_id() const {
     return {.bb_id = bb_id_, .intra_cfg_id = intra_cfg_id()};
   }
@@ -78,19 +78,19 @@ class CFGNode final {
   bool has_indirect_branch() const { return metadata_.HasIndirectBranch; }
   int function_index() const { return inter_cfg_id_.function_index; }
 
-  const std::vector<CFGEdge *> &intra_outs() const { return intra_outs_; }
-  const std::vector<CFGEdge *> &intra_ins() const { return intra_ins_; }
-  const std::vector<CFGEdge *> &inter_outs() const { return inter_outs_; }
-  const std::vector<CFGEdge *> &inter_ins() const { return inter_ins_; }
+  const std::vector<CFGEdge*>& intra_outs() const { return intra_outs_; }
+  const std::vector<CFGEdge*>& intra_ins() const { return intra_ins_; }
+  const std::vector<CFGEdge*>& inter_outs() const { return inter_outs_; }
+  const std::vector<CFGEdge*>& inter_ins() const { return inter_ins_; }
 
-  void ForEachInEdgeRef(absl::FunctionRef<void(CFGEdge &edge)> func) const {
-    for (CFGEdge *edge : intra_ins_) func(*edge);
-    for (CFGEdge *edge : inter_ins_) func(*edge);
+  void ForEachInEdgeRef(absl::FunctionRef<void(CFGEdge& edge)> func) const {
+    for (CFGEdge* edge : intra_ins_) func(*edge);
+    for (CFGEdge* edge : inter_ins_) func(*edge);
   }
 
-  void ForEachOutEdgeRef(absl::FunctionRef<void(CFGEdge &edge)> func) const {
-    for (CFGEdge *edge : intra_outs_) func(*edge);
-    for (CFGEdge *edge : inter_outs_) func(*edge);
+  void ForEachOutEdgeRef(absl::FunctionRef<void(CFGEdge& edge)> func) const {
+    for (CFGEdge* edge : intra_outs_) func(*edge);
+    for (CFGEdge* edge : inter_outs_) func(*edge);
   }
 
   // Iterates over the out edges in the order of their sink's inter_cfg_id, and
@@ -98,7 +98,7 @@ class CFGNode final {
   // deterministic order, since the order of the edges in the vectors
   // `intra_outs_`, `intra_ins_`, `inter_outs_` and `inter_ins_` is
   // non-deterministic.
-  void ForEachOutEdgeInOrder(absl::FunctionRef<void(CFGEdge &edge)> func) const;
+  void ForEachOutEdgeInOrder(absl::FunctionRef<void(CFGEdge& edge)> func) const;
 
   // Returns if this is the entry of the function.
   bool is_entry() const { return bb_index() == 0; }
@@ -107,15 +107,15 @@ class CFGNode final {
 
   // Returns the edge from `*this` to `node` of kind `kind`, or `nullptr` if
   // no such edge exists.
-  CFGEdge *GetEdgeTo(const CFGNode &node, CFGEdgeKind kind) const;
+  CFGEdge* GetEdgeTo(const CFGNode& node, CFGEdgeKind kind) const;
 
   // Returns if there are any edge from `*this` to `node` of kind `kind`.
-  bool HasEdgeTo(const CFGNode &node, CFGEdgeKind kind) const {
+  bool HasEdgeTo(const CFGNode& node, CFGEdgeKind kind) const {
     return GetEdgeTo(node, kind) != nullptr;
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const CFGNode &node);
+  friend void AbslStringify(Sink& sink, const CFGNode& node);
 
  private:
   friend class ControlFlowGraph;
@@ -138,20 +138,20 @@ class CFGNode final {
   const llvm::object::BBAddrMap::BBEntry::Metadata metadata_;
   int freq_ = 0;
 
-  std::vector<CFGEdge *> intra_outs_ = {};  // Intra function edges.
-  std::vector<CFGEdge *> intra_ins_ = {};   // Intra function edges.
-  std::vector<CFGEdge *> inter_outs_ = {};  // Calls to other functions.
-  std::vector<CFGEdge *> inter_ins_ = {};   // Returns from other functions.
+  std::vector<CFGEdge*> intra_outs_ = {};  // Intra function edges.
+  std::vector<CFGEdge*> intra_ins_ = {};   // Intra function edges.
+  std::vector<CFGEdge*> inter_outs_ = {};  // Calls to other functions.
+  std::vector<CFGEdge*> inter_ins_ = {};   // Returns from other functions.
 };
 
 template <typename Sink>
-inline void AbslStringify(Sink &sink, const CFGNode &node) {
+inline void AbslStringify(Sink& sink, const CFGNode& node) {
   absl::Format(&sink, "[id: %v, addr:%llu size: %d]", node.inter_cfg_id_,
                node.addr_, node.size_);
 }
 
 template <typename Sink>
-inline void AbslStringify(Sink &sink, const CFGEdge &edge) {
+inline void AbslStringify(Sink& sink, const CFGEdge& edge) {
   absl::Format(&sink, "[%s -> %s, weight(%lld), type(%s), inter-section(%d)]",
                edge.src()->GetName(), edge.sink()->GetName(), edge.weight(),
                GetCfgEdgeKindString(edge.kind()), edge.inter_section());
