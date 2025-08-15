@@ -44,8 +44,8 @@ namespace propeller {
 namespace {
 // Sorts `nodes` in descending order of their frequencies, breaking ties by
 // their `intra_cfg_id`s. `nodes` should be from the same CFG.
-void SortNodesByFrequency(std::vector<CFGNode *> &nodes) {
-  absl::c_sort(nodes, [](const CFGNode *a, const CFGNode *b) {
+void SortNodesByFrequency(std::vector<CFGNode*>& nodes) {
+  absl::c_sort(nodes, [](const CFGNode* a, const CFGNode* b) {
     return std::forward_as_tuple(-a->CalculateFrequency(), a->intra_cfg_id()) <
            std::forward_as_tuple(-b->CalculateFrequency(), b->intra_cfg_id());
   });
@@ -55,17 +55,17 @@ void SortNodesByFrequency(std::vector<CFGNode *> &nodes) {
 // inter-function edges from `program_cfg` and the inter-function edge changes
 // in `cfg_changes_by_function_index`.
 void CreateInterFunctionEdges(
-    const ProgramCfg &program_cfg,
-    const absl::flat_hash_map<int, std::vector<CfgChangeFromPathCloning>>
-        &cfg_changes_by_function_index,
-    absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>
-        &clone_cfgs_by_index) {
+    const ProgramCfg& program_cfg,
+    const absl::flat_hash_map<int, std::vector<CfgChangeFromPathCloning>>&
+        cfg_changes_by_function_index,
+    absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>&
+        clone_cfgs_by_index) {
   // Mirror original inter-function edges in `program_cfg` onto
   // `clone_cfgs_by_index`.
-  for (auto &[function_index, cfg] : program_cfg.cfgs_by_index()) {
-    ControlFlowGraph &src_clone_cfg = *clone_cfgs_by_index.at(function_index);
-    for (const std::unique_ptr<CFGEdge> &edge : cfg->inter_edges()) {
-      ControlFlowGraph &sink_clone_cfg =
+  for (auto& [function_index, cfg] : program_cfg.cfgs_by_index()) {
+    ControlFlowGraph& src_clone_cfg = *clone_cfgs_by_index.at(function_index);
+    for (const std::unique_ptr<CFGEdge>& edge : cfg->inter_edges()) {
+      ControlFlowGraph& sink_clone_cfg =
           *clone_cfgs_by_index.at(edge->sink()->function_index());
       src_clone_cfg.CreateEdge(
           &src_clone_cfg.GetNodeById(edge->src()->intra_cfg_id()),
@@ -75,7 +75,7 @@ void CreateInterFunctionEdges(
   }
 
   // Apply inter-function edge changes.
-  for (const auto &[function_index, function_cfg_changes] :
+  for (const auto& [function_index, function_cfg_changes] :
        cfg_changes_by_function_index) {
     // `function_cfg_changes` includes the cfg changes from clonings in the
     // same order as those clonings have been applied.
@@ -83,29 +83,42 @@ void CreateInterFunctionEdges(
     // blocks (mapped by their bb_index).
     std::vector<int> current_clone_numbers(
         program_cfg.cfgs_by_index().at(function_index)->nodes().size(), 0);
-    for (const auto &cfg_change : function_cfg_changes) {
-      for (const auto &inter_edge_reroute : cfg_change.inter_edge_reroutes) {
-        ControlFlowGraph &src_cfg =
+    for (const auto& cfg_change : function_cfg_changes) {
+      for (const auto& inter_edge_reroute : cfg_change.inter_edge_reroutes) {
+        ControlFlowGraph& src_cfg =
             *clone_cfgs_by_index.at(inter_edge_reroute.src_function_index);
-        ControlFlowGraph &sink_cfg =
+        ControlFlowGraph& sink_cfg =
             *clone_cfgs_by_index.at(inter_edge_reroute.sink_function_index);
+        // Handle the case for dropping the edge weight due to missing path
+        // predecessor.
+        if (inter_edge_reroute.IsDrop()) {
+          CFGNode& orig_src_node =
+              *src_cfg.nodes().at(inter_edge_reroute.src_bb_index);
+          CFGNode& orig_sink_node =
+              *src_cfg.nodes().at(inter_edge_reroute.src_bb_index);
+          CFGEdge* edge =
+              orig_src_node.GetEdgeTo(orig_sink_node, inter_edge_reroute.kind);
+          if (edge == nullptr) continue;
+          edge->DecrementWeight(inter_edge_reroute.weight);
+          continue;
+        }
         int weight_remainder = inter_edge_reroute.weight;
         if (inter_edge_reroute.src_is_cloned) {
           CHECK_EQ(inter_edge_reroute.src_function_index, function_index);
           // This is a call or return edge from this function. We first reduce
           // the edge weight for all edges from the original src node to all
           // clone instances of the sink node.
-          CFGNode &orig_src_node =
+          CFGNode& orig_src_node =
               *src_cfg.nodes().at(inter_edge_reroute.src_bb_index);
-          std::vector<CFGNode *> all_sink_nodes =
+          std::vector<CFGNode*> all_sink_nodes =
               sink_cfg.GetAllClonesForBbIndex(inter_edge_reroute.sink_bb_index);
           // If we have multiple clones for the sink node, the edge weight may
           // have already been distributed among edges to the clones. Therefore,
           // we consider all corresponding edges in decreasing order of their
           // sink node's frequency.
           SortNodesByFrequency(all_sink_nodes);
-          for (CFGNode *sink_node : all_sink_nodes) {
-            CFGEdge *edge =
+          for (CFGNode* sink_node : all_sink_nodes) {
+            CFGEdge* edge =
                 orig_src_node.GetEdgeTo(*sink_node, inter_edge_reroute.kind);
             if (edge == nullptr) continue;
             weight_remainder -= edge->DecrementWeight(weight_remainder);
@@ -114,7 +127,7 @@ void CreateInterFunctionEdges(
           // Now create or update the edge.
           int clone_number =
               current_clone_numbers[inter_edge_reroute.src_bb_index] + 1;
-          CFGNode &clone_src_node =
+          CFGNode& clone_src_node =
               src_cfg.GetNodeById({.bb_index = inter_edge_reroute.src_bb_index,
                                    .clone_number = clone_number});
           src_cfg.CreateOrUpdateEdge(
@@ -128,17 +141,17 @@ void CreateInterFunctionEdges(
           CHECK(inter_edge_reroute.sink_is_cloned);
           CHECK_EQ(inter_edge_reroute.sink_function_index, function_index);
           CHECK_EQ(inter_edge_reroute.kind, CFGEdgeKind::kRet);
-          CFGNode &orig_sink_node =
+          CFGNode& orig_sink_node =
               *sink_cfg.nodes().at(inter_edge_reroute.sink_bb_index);
-          std::vector<CFGNode *> all_src_nodes =
+          std::vector<CFGNode*> all_src_nodes =
               src_cfg.GetAllClonesForBbIndex(inter_edge_reroute.src_bb_index);
           // If we have multiple clones for the src node, the edge weight may
           // have already been distributed among edges from the clones.
           // Therefore, we consider all corresponding edges in decreasing order
           // of their src node's frequency.
           SortNodesByFrequency(all_src_nodes);
-          for (CFGNode *clone_src_node : all_src_nodes) {
-            CFGEdge *edge = clone_src_node->GetEdgeTo(orig_sink_node,
+          for (CFGNode* clone_src_node : all_src_nodes) {
+            CFGEdge* edge = clone_src_node->GetEdgeTo(orig_sink_node,
                                                       inter_edge_reroute.kind);
             if (edge == nullptr) continue;
             weight_remainder -= edge->DecrementWeight(weight_remainder);
@@ -147,7 +160,7 @@ void CreateInterFunctionEdges(
           // Now create or update the edge.
           int clone_number =
               current_clone_numbers[inter_edge_reroute.sink_bb_index] + 1;
-          CFGNode &clone_sink_node = sink_cfg.GetNodeById(
+          CFGNode& clone_sink_node = sink_cfg.GetNodeById(
               {.bb_index = inter_edge_reroute.sink_bb_index,
                .clone_number = clone_number});
           src_cfg.CreateOrUpdateEdge(
@@ -161,15 +174,15 @@ void CreateInterFunctionEdges(
     }
   }
 
-  auto drop_inter_function_edges = [&](const PathNode &path_node,
-                                       ControlFlowGraph &src_cfg) {
-    CFGNode &src_node = *src_cfg.nodes().at(path_node.node_bb_index());
-    for (const auto &[call_ret, freq] :
+  auto drop_inter_function_edges = [&](const PathNode& path_node,
+                                       ControlFlowGraph& src_cfg) {
+    CFGNode& src_node = *src_cfg.nodes().at(path_node.node_bb_index());
+    for (const auto& [call_ret, freq] :
          path_node.path_pred_info().missing_pred_entry.call_freqs) {
       if (!call_ret.callee.has_value()) continue;
-      ControlFlowGraph &callee_cfg = *clone_cfgs_by_index.at(*call_ret.callee);
-      CFGNode &callee_node = *callee_cfg.nodes().at(0);
-      CFGEdge *call_edge = src_node.GetEdgeTo(callee_node, CFGEdgeKind::kCall);
+      ControlFlowGraph& callee_cfg = *clone_cfgs_by_index.at(*call_ret.callee);
+      CFGNode& callee_node = *callee_cfg.nodes().at(0);
+      CFGEdge* call_edge = src_node.GetEdgeTo(callee_node, CFGEdgeKind::kCall);
       if (call_edge == nullptr) {
         LOG(WARNING) << "No call edge from block "
                      << src_cfg.GetPrimaryName().str() << "#"
@@ -180,11 +193,11 @@ void CreateInterFunctionEdges(
         call_edge->DecrementWeight(freq);
       }
       if (call_ret.return_bb.has_value()) {
-        ControlFlowGraph &return_from_cfg =
+        ControlFlowGraph& return_from_cfg =
             *clone_cfgs_by_index.at(call_ret.return_bb->function_index);
-        CFGNode &return_from_node =
+        CFGNode& return_from_node =
             *return_from_cfg.nodes().at(call_ret.return_bb->flat_bb_index);
-        CFGEdge *return_edge =
+        CFGEdge* return_edge =
             return_from_node.GetEdgeTo(src_node, CFGEdgeKind::kRet);
         if (return_edge == nullptr) {
           LOG(WARNING) << "No return edge from block "
@@ -197,13 +210,13 @@ void CreateInterFunctionEdges(
         }
       }
     }
-    for (const auto &[bb_handle, freq] :
+    for (const auto& [bb_handle, freq] :
          path_node.path_pred_info().missing_pred_entry.return_to_freqs) {
-      ControlFlowGraph &return_to_cfg =
+      ControlFlowGraph& return_to_cfg =
           *clone_cfgs_by_index.at(bb_handle.function_index);
-      CFGNode &return_to_node =
+      CFGNode& return_to_node =
           *return_to_cfg.nodes().at(bb_handle.flat_bb_index);
-      CFGEdge *return_edge =
+      CFGEdge* return_edge =
           src_node.GetEdgeTo(return_to_node, CFGEdgeKind::kRet);
       if (return_edge == nullptr) {
         LOG(WARNING) << "No return edge from block "
@@ -217,11 +230,11 @@ void CreateInterFunctionEdges(
     }
   };
 
-  for (const auto &[function_index, function_cfg_changes] :
+  for (const auto& [function_index, function_cfg_changes] :
        cfg_changes_by_function_index) {
-    ControlFlowGraph &cfg = *clone_cfgs_by_index.at(function_index);
-    for (const auto &function_cfg_change : function_cfg_changes) {
-      for (const PathNode *path_node : function_cfg_change.paths_to_drop) {
+    ControlFlowGraph& cfg = *clone_cfgs_by_index.at(function_index);
+    for (const auto& function_cfg_change : function_cfg_changes) {
+      for (const PathNode* path_node : function_cfg_change.paths_to_drop) {
         drop_inter_function_edges(*path_node, cfg);
       }
     }
@@ -230,13 +243,13 @@ void CreateInterFunctionEdges(
 }  // namespace
 
 CloneApplicatorStats ApplyClonings(
-    const propeller::PropellerCodeLayoutParameters &code_layout_params,
-    const PathProfileOptions &path_profile_options,
+    const propeller::PropellerCodeLayoutParameters& code_layout_params,
+    const PathProfileOptions& path_profile_options,
     absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>>
         clonings_by_function_index,
-    const propeller::ProgramCfg &program_cfg,
-    const absl::flat_hash_map<int, FunctionPathProfile>
-        &path_profiles_by_function_index) {
+    const propeller::ProgramCfg& program_cfg,
+    const absl::flat_hash_map<int, FunctionPathProfile>&
+        path_profiles_by_function_index) {
   double total_score_gain = 0;
 
   LOG(INFO) << "Applying clonings...";
@@ -245,13 +258,13 @@ CloneApplicatorStats ApplyClonings(
   absl::flat_hash_map<int, std::vector<CfgChangeFromPathCloning>>
       cfg_changes_by_function_index;
 
-  for (auto &[function_index, clonings] : clonings_by_function_index) {
+  for (auto& [function_index, clonings] : clonings_by_function_index) {
     // Apply clonings in reverse order of their scores.
     absl::c_sort(clonings, std::greater<EvaluatedPathCloning>());
-    const auto &function_path_profile =
+    const auto& function_path_profile =
         path_profiles_by_function_index.at(function_index);
 
-    const ControlFlowGraph *cfg = program_cfg.GetCfgByIndex(function_index);
+    const ControlFlowGraph* cfg = program_cfg.GetCfgByIndex(function_index);
     CfgBuilder cfg_builder(cfg);
     auto compute_optimal_chain_info = [&]() {
       std::unique_ptr<ControlFlowGraph> clone_cfg = cfg_builder.Clone().Build();
@@ -263,9 +276,9 @@ CloneApplicatorStats ApplyClonings(
       return code_layout_result.front();
     };
     std::optional<propeller::FunctionChainInfo> optimal_chain_info;
-    auto &current_cfg_changes = cfg_changes_by_function_index[function_index];
+    auto& current_cfg_changes = cfg_changes_by_function_index[function_index];
 
-    for (EvaluatedPathCloning &cloning : clonings) {
+    for (EvaluatedPathCloning& cloning : clonings) {
       auto register_cloning = [&](EvaluatedPathCloning cloning) {
         total_score_gain += *cloning.score;
         cfg_builder.AddCfgChange(cloning.cfg_change);
@@ -304,10 +317,10 @@ CloneApplicatorStats ApplyClonings(
   // Clone the remaining CFGs (those without any clonings applied) into the
   // clone_cfgs_by_function_index map, so we can recreate the inter-function
   // edges.
-  for (const auto &[function_index, cfg] : program_cfg.cfgs_by_index()) {
+  for (const auto& [function_index, cfg] : program_cfg.cfgs_by_index()) {
     clone_cfgs_by_function_index.lazy_emplace(
         function_index,
-        [&](const auto &ctor) { ctor(function_index, CloneCfg(*cfg)); });
+        [&](const auto& ctor) { ctor(function_index, CloneCfg(*cfg)); });
   }
   CreateInterFunctionEdges(program_cfg, cfg_changes_by_function_index,
                            clone_cfgs_by_function_index);
@@ -317,11 +330,11 @@ CloneApplicatorStats ApplyClonings(
 }
 
 std::unique_ptr<propeller::ProgramCfg> ApplyClonings(
-    const propeller::PropellerCodeLayoutParameters &code_layout_params,
-    const PathProfileOptions &path_profile_options,
-    const ProgramPathProfile &program_path_profile,
+    const propeller::PropellerCodeLayoutParameters& code_layout_params,
+    const PathProfileOptions& path_profile_options,
+    const ProgramPathProfile& program_path_profile,
     std::unique_ptr<propeller::ProgramCfg> program_cfg,
-    propeller::PropellerStats::CloningStats &cloning_stats) {
+    propeller::PropellerStats::CloningStats& cloning_stats) {
   // Use a fast code layout parameter setting for evaluation of clonings by
   // disabling chain splitting.
   PropellerCodeLayoutParameters fast_code_layout_params(code_layout_params);
@@ -341,10 +354,10 @@ std::unique_ptr<propeller::ProgramCfg> ApplyClonings(
 
   cloning_stats.score_gain = clone_applicator_stats.total_score_gain;
 
-  for (const auto &[function_index, clone_cfg] :
+  for (const auto& [function_index, clone_cfg] :
        clone_applicator_stats.clone_cfgs_by_function_index) {
     cloning_stats.paths_cloned += clone_cfg->clone_paths().size();
-    for (const auto &[bb_index, clones] : clone_cfg->clones_by_bb_index()) {
+    for (const auto& [bb_index, clones] : clone_cfg->clones_by_bb_index()) {
       cloning_stats.bbs_cloned += clones.size();
       cloning_stats.bytes_cloned +=
           clone_cfg->nodes().at(bb_index)->size() * clones.size();

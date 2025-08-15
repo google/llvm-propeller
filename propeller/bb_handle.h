@@ -28,28 +28,28 @@ struct FlatBbHandle {
   // Index of the basic block in the flattened basic block list of all ranges.
   int flat_bb_index = -1;
 
-  bool operator==(const FlatBbHandle &other) const {
+  bool operator==(const FlatBbHandle& other) const {
     return function_index == other.function_index &&
            flat_bb_index == other.flat_bb_index;
   }
 
-  bool operator!=(const FlatBbHandle &other) const { return !(*this == other); }
+  bool operator!=(const FlatBbHandle& other) const { return !(*this == other); }
 
   template <typename H>
-  friend H AbslHashValue(H h, const FlatBbHandle &bb_handle) {
+  friend H AbslHashValue(H h, const FlatBbHandle& bb_handle) {
     return H::combine(std::move(h), bb_handle.function_index,
                       bb_handle.flat_bb_index);
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const FlatBbHandle &bb_handle) {
+  friend void AbslStringify(Sink& sink, const FlatBbHandle& bb_handle) {
     absl::Format(&sink, "%d#%d", bb_handle.function_index,
                  bb_handle.flat_bb_index);
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink,
-                            const std::optional<FlatBbHandle> &bb_handle) {
+  friend void AbslStringify(Sink& sink,
+                            const std::optional<FlatBbHandle>& bb_handle) {
     if (bb_handle.has_value()) {
       absl::Format(&sink, "%v", *bb_handle);
     } else {
@@ -64,28 +64,28 @@ struct BbHandle {
   // at `bb_addr_map[function_index].BBRanges[range_index].BBEntries[bb_index]`.
   int function_index = -1, range_index = 0, bb_index = -1;
 
-  bool operator==(const BbHandle &other) const {
+  bool operator==(const BbHandle& other) const {
     return function_index == other.function_index &&
            range_index == other.range_index && bb_index == other.bb_index;
   }
 
-  bool operator!=(const BbHandle &other) const { return !(*this == other); }
+  bool operator!=(const BbHandle& other) const { return !(*this == other); }
 
   template <typename H>
-  friend H AbslHashValue(H h, const BbHandle &bb_handle) {
+  friend H AbslHashValue(H h, const BbHandle& bb_handle) {
     return H::combine(std::move(h), bb_handle.function_index,
                       bb_handle.range_index, bb_handle.bb_index);
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const BbHandle &bb_handle) {
+  friend void AbslStringify(Sink& sink, const BbHandle& bb_handle) {
     absl::Format(&sink, "%d#%d#%d", bb_handle.function_index,
                  bb_handle.range_index, bb_handle.bb_index);
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink,
-                            const std::optional<BbHandle> &bb_handle) {
+  friend void AbslStringify(Sink& sink,
+                            const std::optional<BbHandle>& bb_handle) {
     if (bb_handle.has_value()) {
       absl::Format(&sink, "%v", *bb_handle);
     } else {
@@ -106,18 +106,18 @@ struct CallRetInfo {
   std::optional<FlatBbHandle> return_bb;
 
   template <typename H>
-  friend H AbslHashValue(H h, const CallRetInfo &call_ret) {
+  friend H AbslHashValue(H h, const CallRetInfo& call_ret) {
     return H::combine(std::move(h), call_ret.callee, call_ret.return_bb);
   }
 
-  bool operator==(const CallRetInfo &other) const {
+  bool operator==(const CallRetInfo& other) const {
     return callee == other.callee && return_bb == other.return_bb;
   }
 
-  bool operator!=(const CallRetInfo &other) const { return !(*this == other); }
+  bool operator!=(const CallRetInfo& other) const { return !(*this == other); }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const CallRetInfo &call_ret) {
+  friend void AbslStringify(Sink& sink, const CallRetInfo& call_ret) {
     absl::Format(&sink, "call:");
     if (call_ret.callee.has_value()) {
       absl::Format(&sink, "%d", *call_ret.callee);

@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -48,12 +49,14 @@ namespace {
 
 using ::absl_testing::StatusIs;
 using ::testing::_;
+using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::DescribeMatcher;
 using ::testing::DoubleNear;
 using ::testing::ElementsAre;
 using ::testing::ExplainMatchResult;
 using ::testing::Field;
+using ::testing::IsEmpty;
 using ::testing::Key;
 using ::testing::Optional;
 using ::testing::Pair;
@@ -61,6 +64,68 @@ using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
 constexpr double kEpsilon = 1e-2;
+
+MATCHER_P8(InterEdgeRerouteIs, src_function_index, sink_function_index,
+           src_bb_index, sink_bb_index, src_is_cloned, sink_is_cloned, kind,
+           weight, "") {
+  return ExplainMatchResult(
+      AllOf(
+          Field("src_function_index",
+                &CfgChangeFromPathCloning::InterEdgeReroute::src_function_index,
+                src_function_index),
+          Field(
+              "sink_function_index",
+              &CfgChangeFromPathCloning::InterEdgeReroute::sink_function_index,
+              sink_function_index),
+          Field("src_bb_index",
+                &CfgChangeFromPathCloning::InterEdgeReroute::src_bb_index,
+                src_bb_index),
+          Field("sink_bb_index",
+                &CfgChangeFromPathCloning::InterEdgeReroute::sink_bb_index,
+                sink_bb_index),
+          Field("src_is_cloned",
+                &CfgChangeFromPathCloning::InterEdgeReroute::src_is_cloned,
+                src_is_cloned),
+          Field("sink_is_cloned",
+                &CfgChangeFromPathCloning::InterEdgeReroute::sink_is_cloned,
+                sink_is_cloned),
+          Field("kind", &CfgChangeFromPathCloning::InterEdgeReroute::kind,
+                kind),
+          Field("weight", &CfgChangeFromPathCloning::InterEdgeReroute::weight,
+                weight)),
+      arg, result_listener);
+}
+
+MATCHER_P6(IntraEdgeRerouteIs, src_bb_index, sink_bb_index, src_is_cloned,
+           sink_is_cloned, kind, weight, "") {
+  return ExplainMatchResult(
+      AllOf(Field("src_bb_index",
+                  &CfgChangeFromPathCloning::IntraEdgeReroute::src_bb_index,
+                  src_bb_index),
+            Field("sink_bb_index",
+                  &CfgChangeFromPathCloning::IntraEdgeReroute::sink_bb_index,
+                  sink_bb_index),
+            Field("src_is_cloned",
+                  &CfgChangeFromPathCloning::IntraEdgeReroute::src_is_cloned,
+                  src_is_cloned),
+            Field("sink_is_cloned",
+                  &CfgChangeFromPathCloning::IntraEdgeReroute::sink_is_cloned,
+                  sink_is_cloned),
+            Field("kind", &CfgChangeFromPathCloning::IntraEdgeReroute::kind,
+                  kind),
+            Field("weight", &CfgChangeFromPathCloning::IntraEdgeReroute::weight,
+                  weight)),
+      arg, result_listener);
+}
+MATCHER_P3(PathCloningIs, function_index, path_pred_bb_index, full_path, "") {
+  return ExplainMatchResult(
+      AllOf(
+          Field("function_index", &PathCloning::function_index, function_index),
+          Field("path_pred_bb_index", &PathCloning::path_pred_bb_index,
+                path_pred_bb_index),
+          Property("full_path", &PathCloning::GetFullPath, full_path)),
+      arg, result_listener);
+}
 
 MATCHER_P3(EvaluatedPathCloningIs, path_cloning_matcher, score_matcher,
            cfg_change_matcher,
@@ -79,6 +144,42 @@ MATCHER_P3(EvaluatedPathCloningIs, path_cloning_matcher, score_matcher,
          ExplainMatchResult(score_matcher, arg.score, result_listener) &&
          ExplainMatchResult(cfg_change_matcher, arg.cfg_change,
                             result_listener);
+}
+
+MATCHER_P5(
+    CfgChangeIs, path_pred_bb_index_matcher, path_to_clone_matcher,
+    paths_to_drop_matcher, intra_edge_reroutes_matcher,
+    inter_edge_reroutes_matcher,
+    absl::StrCat(
+        "is a CfgChangeFromPathCloning that ",
+        (negation ? " doesn't have" : " has"), " path_pred_bb_index that ",
+        DescribeMatcher<int>(path_pred_bb_index_matcher, negation),
+        (negation ? " or doesn't have" : " and has"), " path_to_clone that ",
+        DescribeMatcher<const std::vector<int>&>(path_to_clone_matcher,
+                                                 negation),
+        (negation ? " or doesn't have" : " and has"), " paths_to_drop that ",
+        DescribeMatcher<const absl::flat_hash_set<const PathNode*>&>(
+            paths_to_drop_matcher, negation),
+        (negation ? " or doesn't have" : " and has"),
+        " intra_edge_reroutes that ",
+        DescribeMatcher<
+            const std::vector<CfgChangeFromPathCloning::IntraEdgeReroute>&>(
+            intra_edge_reroutes_matcher, negation),
+        (negation ? " or doesn't have" : " and has"),
+        " inter_edge_reroutes that ",
+        DescribeMatcher<
+            const std::vector<CfgChangeFromPathCloning::InterEdgeReroute>&>(
+            inter_edge_reroutes_matcher, negation))) {
+  return ExplainMatchResult(path_pred_bb_index_matcher, arg.path_pred_bb_index,
+                            result_listener) &&
+         ExplainMatchResult(path_to_clone_matcher, arg.path_to_clone,
+                            result_listener) &&
+         ExplainMatchResult(paths_to_drop_matcher, arg.paths_to_drop,
+                            result_listener) &&
+         ExplainMatchResult(intra_edge_reroutes_matcher,
+                            arg.intra_edge_reroutes, result_listener) &&
+         ExplainMatchResult(inter_edge_reroutes_matcher,
+                            arg.inter_edge_reroutes, result_listener);
 }
 
 // Returns a map from bb_index to PathNodeArg from `args`.
@@ -281,19 +382,27 @@ TEST(PathCloneEvaluator, EvaluatesAndReturnsClonings) {
           6,
           UnorderedElementsAre(
               EvaluatedPathCloningIs(
-                  Property("full_path", &PathCloning::GetFullPath,
-                           ElementsAre(2, 3)),
+                  PathCloningIs(6, 2, ElementsAre(2, 3)),
                   Optional(DoubleNear(3102.28, kEpsilon)),
-                  Field("paths_to_drop",
-                        &CfgChangeFromPathCloning::paths_to_drop,
-                        UnorderedElementsAre(
-                            function_path_profile.GetPathTree(3)))),
+                  CfgChangeIs(2, ElementsAre(3),
+                              UnorderedElementsAre(
+                                  function_path_profile.GetPathTree(3)),
+                              UnorderedElementsAre(
+                                  IntraEdgeRerouteIs(
+                                      2, 3, false, true,
+                                      CFGEdgeKind::kBranchOrFallthough, 656),
+                                  IntraEdgeRerouteIs(
+                                      3, 4, true, false,
+                                      CFGEdgeKind::kBranchOrFallthough, 4),
+                                  IntraEdgeRerouteIs(
+                                      3, 5, true, false,
+                                      CFGEdgeKind::kBranchOrFallthough, 649)),
+                              IsEmpty())),
               EvaluatedPathCloningIs(
-                  Property("full_path", &PathCloning::GetFullPath,
-                           ElementsAre(2, 3, 4, 5)),
+                  PathCloningIs(6, 2, ElementsAre(2, 3, 4, 5)),
                   Optional(DoubleNear(2981.55, kEpsilon)),
-                  Field(
-                      "paths_to_drop", &CfgChangeFromPathCloning::paths_to_drop,
+                  CfgChangeIs(
+                      2, ElementsAre(3, 4, 5),
                       UnorderedElementsAre(
                           function_path_profile.GetPathTree(3),
                           function_path_profile.GetPathTree(3)->GetChild(4),
@@ -301,25 +410,76 @@ TEST(PathCloneEvaluator, EvaluatesAndReturnsClonings) {
                           function_path_profile.GetPathTree(3)
                               ->GetChild(4)
                               ->GetChild(5),
-                          function_path_profile.GetPathTree(4)->GetChild(5)))),
+                          function_path_profile.GetPathTree(4)->GetChild(5)),
+                      UnorderedElementsAre(
+                          IntraEdgeRerouteIs(2, 3, false, true,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             656),
+                          IntraEdgeRerouteIs(3, 4, true, true,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             4),
+                          IntraEdgeRerouteIs(3, 5, true, false,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             649),
+                          IntraEdgeRerouteIs(4, 5, true, true,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             4)),
+                      UnorderedElementsAre(
+                          InterEdgeRerouteIs(6, 7, 4, 0, true, false,
+                                             CFGEdgeKind::kCall, 4),
+                          InterEdgeRerouteIs(6, 8, 4, 0, true, false,
+                                             CFGEdgeKind::kCall, 0),
+                          InterEdgeRerouteIs(6, 7, 4, 0, false, false,
+                                             CFGEdgeKind::kCall, 4),
+                          InterEdgeRerouteIs(6, 8, 4, 0, false, false,
+                                             CFGEdgeKind::kCall, 5),
+                          InterEdgeRerouteIs(6, 7, 4, 0, false, false,
+                                             CFGEdgeKind::kCall, 1),
+                          InterEdgeRerouteIs(6, 8, 4, 0, false, false,
+                                             CFGEdgeKind::kCall, 1)))),
               EvaluatedPathCloningIs(
-                  Property("full_path", &PathCloning::GetFullPath,
-                           ElementsAre(2, 3, 5)),
+                  PathCloningIs(6, 2, ElementsAre(2, 3, 5)),
                   Optional(DoubleNear(4775.69, kEpsilon)),
-                  Field(
-                      "paths_to_drop", &CfgChangeFromPathCloning::paths_to_drop,
+                  CfgChangeIs(
+                      2, ElementsAre(3, 5),
                       UnorderedElementsAre(
                           function_path_profile.GetPathTree(3),
-                          function_path_profile.GetPathTree(3)->GetChild(5)))),
+                          function_path_profile.GetPathTree(3)->GetChild(5)),
+                      UnorderedElementsAre(
+                          IntraEdgeRerouteIs(2, 3, false, true,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             656),
+                          IntraEdgeRerouteIs(3, 5, true, true,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             649),
+                          IntraEdgeRerouteIs(3, 4, true, false,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             4)),
+                      IsEmpty())),
               EvaluatedPathCloningIs(
-                  Property("full_path", &PathCloning::GetFullPath,
-                           ElementsAre(3, 4, 5)),
+                  PathCloningIs(6, 3, ElementsAre(3, 4, 5)),
                   Optional(DoubleNear(1352.8, kEpsilon)),
-                  Field(
-                      "paths_to_drop", &CfgChangeFromPathCloning::paths_to_drop,
-                      UnorderedElementsAre(function_path_profile.GetPathTree(4),
-                                           function_path_profile.GetPathTree(4)
-                                               ->GetChild(5))))))));
+                  CfgChangeIs(
+                      3, ElementsAre(4, 5),
+                      UnorderedElementsAre(
+                          function_path_profile.GetPathTree(4),
+                          function_path_profile.GetPathTree(4)->GetChild(5)),
+                      UnorderedElementsAre(
+                          IntraEdgeRerouteIs(3, 4, false, true,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             173),
+                          IntraEdgeRerouteIs(4, 5, true, true,
+                                             CFGEdgeKind::kBranchOrFallthough,
+                                             173)),
+                      UnorderedElementsAre(
+                          InterEdgeRerouteIs(6, 7, 4, 0, true, false,
+                                             CFGEdgeKind::kCall, 89),
+                          InterEdgeRerouteIs(6, 8, 4, 0, true, false,
+                                             CFGEdgeKind::kCall, 84),
+                          InterEdgeRerouteIs(6, 7, 4, 0, false, false,
+                                             CFGEdgeKind::kCall, 1),
+                          InterEdgeRerouteIs(6, 8, 4, 0, false, false,
+                                             CFGEdgeKind::kCall, 1))))))));
 }
 
 TEST(PathCloneEvaluator, LimitsCloningPathLength) {
@@ -335,11 +495,9 @@ TEST(PathCloneEvaluator, LimitsCloningPathLength) {
           EvaluateAllClonings(program_cfg.get(), &path_profile,
                               code_layout_params, path_profile_options);
   EXPECT_THAT(evaluated_clonings,
-              UnorderedElementsAre(Pair(
-                  6, UnorderedElementsAre(Field(
-                         "path_cloning", &EvaluatedPathCloning::path_cloning,
-                         Property("full_path", &PathCloning::GetFullPath,
-                                  ElementsAre(2, 3)))))));
+              UnorderedElementsAre(
+                  Pair(6, UnorderedElementsAre(EvaluatedPathCloningIs(
+                              PathCloningIs(6, 2, ElementsAre(2, 3)), _, _)))));
 }
 
 TEST(PathCloneEvaluator, GetsInitialChains) {
