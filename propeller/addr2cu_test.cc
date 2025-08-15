@@ -45,7 +45,7 @@ using ::propeller::Addr2Cu;
 using ::propeller::CreateDWARFContext;
 using ::testing::HasSubstr;
 
-uint64_t GetSymbolAddress(const std::string &symmap, absl::string_view symbol) {
+uint64_t GetSymbolAddress(const std::string& symmap, absl::string_view symbol) {
   std::ifstream fin(symmap.c_str());
   int64_t addr;
   std::string sym_type;

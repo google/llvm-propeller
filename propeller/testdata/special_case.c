@@ -26,7 +26,7 @@ E:
   return arg;
 }
 
-int main(int argc, const char **argv) {
+int main(int argc, const char** argv) {
   int value = argc - 5;
   if (value < 5) {
     // A call followed by nop, and then the next basic block.

@@ -42,40 +42,40 @@ class ProgramCfgBuilder {
   // Does not take ownership of `binary_address_mapper`, which must refer to a
   // valid `BinaryAddressMapper` that outlives the constructed
   // `ProgramCfgBuilder`.
-  ProgramCfgBuilder(const BinaryAddressMapper *binary_address_mapper,
-                    PropellerStats &stats)
+  ProgramCfgBuilder(const BinaryAddressMapper* binary_address_mapper,
+                    PropellerStats& stats)
       : binary_address_mapper_(binary_address_mapper), stats_(&stats) {}
 
-  ProgramCfgBuilder(const ProgramCfgBuilder &) = delete;
-  ProgramCfgBuilder &operator=(const ProgramCfgBuilder &) = delete;
-  ProgramCfgBuilder(ProgramCfgBuilder &&) = default;
-  ProgramCfgBuilder &operator=(ProgramCfgBuilder &&) = default;
+  ProgramCfgBuilder(const ProgramCfgBuilder&) = delete;
+  ProgramCfgBuilder& operator=(const ProgramCfgBuilder&) = delete;
+  ProgramCfgBuilder(ProgramCfgBuilder&&) = default;
+  ProgramCfgBuilder& operator=(ProgramCfgBuilder&&) = default;
 
   // Creates profile CFGs using the branch profile in `branch_aggregation`.
   // `addr2cu`, if provided, will be used to retrieve module names for CFGs.
   // This function does not assume ownership of it.
   absl::StatusOr<std::unique_ptr<ProgramCfg>> Build(
-      const BranchAggregation &branch_aggregation,
-      Addr2Cu *addr2cu = nullptr) &&;
+      const BranchAggregation& branch_aggregation,
+      Addr2Cu* addr2cu = nullptr) &&;
 
  private:
   // Creates and returns an edge from `from_bb` to `to_bb` (specified by their
   // BbHandle index) with the given `weight` and `edge_kind` and associates it
   // to the corresponding nodes specified by `tmp_node_map`. Finally inserts the
   // edge into `tmp_edge_map` with the key being the pair `{from_bb, to_bb}`.
-  CFGEdge *InternalCreateEdge(
+  CFGEdge* InternalCreateEdge(
       int from_bb_index, int to_bb_index, int weight, CFGEdgeKind edge_kind,
-      const absl::flat_hash_map<InterCfgId, CFGNode *> &tmp_node_map,
-      absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge *>
-          *tmp_edge_map);
+      const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map,
+      absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*>*
+          tmp_edge_map);
 
   void CreateFallthroughs(
-      const BranchAggregation &branch_aggregation,
-      const absl::flat_hash_map<InterCfgId, CFGNode *> &tmp_node_map,
-      absl::flat_hash_map<std::pair<int, int>, int>
-          *tmp_bb_fallthrough_counters,
-      absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge *>
-          *tmp_edge_map);
+      const BranchAggregation& branch_aggregation,
+      const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map,
+      absl::flat_hash_map<std::pair<int, int>, int>*
+          tmp_bb_fallthrough_counters,
+      absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*>*
+          tmp_edge_map);
 
   // Create control flow graph edges from branch_counters_. For each address
   // pair
@@ -84,11 +84,11 @@ class ProgramCfgBuilder {
   // it to <from_node, to_node>, and finally create a CFGEdge for such CFGNode
   // pair.
   absl::Status CreateEdges(
-      const BranchAggregation &branch_aggregation,
-      const absl::flat_hash_map<InterCfgId, CFGNode *> &node_map);
+      const BranchAggregation& branch_aggregation,
+      const absl::flat_hash_map<InterCfgId, CFGNode*>& node_map);
 
-  const BinaryAddressMapper *binary_address_mapper_;
-  PropellerStats *stats_;
+  const BinaryAddressMapper* binary_address_mapper_;
+  PropellerStats* stats_;
   // Maps from function index to its CFG.
   absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>> cfgs_;
 };

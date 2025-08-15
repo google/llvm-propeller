@@ -31,7 +31,7 @@ class CFGNode;
 // All instances of CFGEdge are owned by their cfg_.
 class CFGEdge final {
  public:
-  CFGEdge(CFGNode *n1, CFGNode *n2, int weight, CFGEdgeKind kind,
+  CFGEdge(CFGNode* n1, CFGNode* n2, int weight, CFGEdgeKind kind,
           bool inter_section)
       : src_(n1),
         sink_(n2),
@@ -39,8 +39,8 @@ class CFGEdge final {
         kind_(kind),
         inter_section_(inter_section) {}
 
-  CFGNode *src() const { return src_; }
-  CFGNode *sink() const { return sink_; }
+  CFGNode* src() const { return src_; }
+  CFGNode* sink() const { return sink_; }
   int weight() const { return weight_; }
   CFGEdgeKind kind() const { return kind_; }
   bool inter_section() const { return inter_section_; }
@@ -71,11 +71,11 @@ class CFGEdge final {
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const CFGEdge &edge);
+  friend void AbslStringify(Sink& sink, const CFGEdge& edge);
 
  private:
-  CFGNode *src_ = nullptr;
-  CFGNode *sink_ = nullptr;
+  CFGNode* src_ = nullptr;
+  CFGNode* sink_ = nullptr;
   int weight_ = 0;
   const CFGEdgeKind kind_;
   // Whether the edge is across functions in different sections.
