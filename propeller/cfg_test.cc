@@ -146,7 +146,7 @@ TEST(LlvmPropellerCfg, GetHotJoinNodes) {
                           {4, 2, 30, CFGEdgeKind::kRet}}}}})
           .Build();
   ASSERT_THAT(cfgs, UnorderedElementsAre(Key(0)));
-  auto &foo_cfg = cfgs.at(0);
+  auto& foo_cfg = cfgs.at(0);
   EXPECT_THAT(foo_cfg->GetHotJoinNodes(/*hot_node_frequency_threshold=*/30,
                                        /*hot_edge_frequency_threshold=*/25),
               IsEmpty());

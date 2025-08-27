@@ -37,7 +37,7 @@ class ProtoProgramCfg {
       : program_cfg_(std::move(cfgs)),
         bump_ptr_allocator_(std::move(bump_ptr_allocator)) {}
 
-  const ProgramCfg &program_cfg() const { return program_cfg_; }
+  const ProgramCfg& program_cfg() const { return program_cfg_; }
 
  private:
   const ProgramCfg program_cfg_;
@@ -47,7 +47,7 @@ class ProtoProgramCfg {
 // Constructs and returns a `ProtoProgramCfg` from a a protobuf file stored in
 // `path_to_cfg_proto`.
 absl::StatusOr<std::unique_ptr<ProtoProgramCfg>> BuildFromCfgProtoPath(
-    const std::string &path_to_cfg_proto);
+    const std::string& path_to_cfg_proto);
 
 // Constructs and returns a `ProgramCfg` from a the given `multi_cfg_arg`.
 std::unique_ptr<ProgramCfg> BuildFromCfgArg(MultiCfgArg multi_cfg_arg);

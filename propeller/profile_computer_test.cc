@@ -72,7 +72,7 @@ class MockBranchAggregator : public BranchAggregator {
   MOCK_METHOD(absl::StatusOr<absl::flat_hash_set<uint64_t>>,
               GetBranchEndpointAddresses, (), (override));
   MOCK_METHOD(absl::StatusOr<BranchAggregation>, Aggregate,
-              (const BinaryAddressMapper &, PropellerStats &), (override));
+              (const BinaryAddressMapper&, PropellerStats&), (override));
 };
 
 MATCHER_P7(CfgNodeFieldsAre, function_index, bb_index, clone_number, bb_id,

@@ -40,16 +40,16 @@ namespace propeller {
 // the code layout results as a map keyed by section names, and valued by the
 // `FunctionChainInfo` of all functions in each section.
 absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
-GenerateLayoutBySection(const ProgramCfg &program_cfg,
-                        const PropellerCodeLayoutParameters &code_layout_params,
-                        PropellerStats::CodeLayoutStats &code_layout_stats);
+GenerateLayoutBySection(const ProgramCfg& program_cfg,
+                        const PropellerCodeLayoutParameters& code_layout_params,
+                        PropellerStats::CodeLayoutStats& code_layout_stats);
 
 class CodeLayout {
  public:
   // `initial_chains` describes the cfg nodes that must be placed in single
   // chains initially to make chain merging faster.
-  CodeLayout(const PropellerCodeLayoutParameters &code_layout_params,
-             const std::vector<const ControlFlowGraph *> &cfgs,
+  CodeLayout(const PropellerCodeLayoutParameters& code_layout_params,
+             const std::vector<const ControlFlowGraph*>& cfgs,
              absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
                  initial_chains = {})
       : code_layout_scorer_(code_layout_params),
@@ -65,7 +65,7 @@ class CodeLayout {
  private:
   const PropellerCodeLayoutScorer code_layout_scorer_;
   // CFGs targeted for code layout.
-  const std::vector<const ControlFlowGraph *> cfgs_;
+  const std::vector<const ControlFlowGraph*> cfgs_;
   // Initial node chains, specified as a map from every function index to the
   // vector of initial node chains for the corresponding CFG. Each node chain is
   // specified by a vector of bb_indexes of its nodes.
@@ -77,7 +77,7 @@ class CodeLayout {
   // function for getting the address of each CFG node.
   // This is called by ComputeOrigLayoutScores and ComputeOptLayoutScores below.
   absl::flat_hash_map<int, CFGScore> ComputeCfgScores(
-      absl::FunctionRef<uint64_t(const CFGNode *)>);
+      absl::FunctionRef<uint64_t(const CFGNode*)>);
 
   // Returns the intra-procedural ext-tsp scores for the given CFGs under the
   // original layout.

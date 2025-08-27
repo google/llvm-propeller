@@ -111,13 +111,13 @@ class ELFFileUtilBase {
 
   // Reads loadable and executable segment information into
   // BinaryContent::segments.
-  virtual absl::Status ReadLoadableSegments(BinaryContent &binary_content) = 0;
+  virtual absl::Status ReadLoadableSegments(BinaryContent& binary_content) = 0;
 
   // Initializes BinaryContent::KernelModule::modinfo from the .modinfo section,
   // if binary_content does not contain a valid kernel module, return error
   // status.
   virtual absl::Status InitializeKernelModule(
-      BinaryContent &binary_content) = 0;
+      BinaryContent& binary_content) = 0;
 
   // Parses (key, value) pairs in `section_content` and store them in `modinfo`.
   static absl::StatusOr<
@@ -134,11 +134,11 @@ class ELFFileUtilBase {
   static constexpr llvm::StringRef kBuildIdNoteName = "GNU";
 
   friend std::unique_ptr<ELFFileUtilBase> CreateELFFileUtil(
-      llvm::object::ObjectFile *object_file);
+      llvm::object::ObjectFile* object_file);
 };
 
 std::unique_ptr<ELFFileUtilBase> CreateELFFileUtil(
-    llvm::object::ObjectFile *object_file);
+    llvm::object::ObjectFile* object_file);
 
 absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
     absl::string_view binary_file_name);
@@ -146,29 +146,29 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
 // Returns the binary address of the symbol named `symbol_name`, or
 // `absl::NotFoundError` if the symbol is not found.
 absl::StatusOr<int64_t> GetSymbolAddress(
-    const llvm::object::ObjectFile &object_file, absl::string_view symbol_name);
+    const llvm::object::ObjectFile& object_file, absl::string_view symbol_name);
 
 // Returns the binary's function symbols by reading from its symbol table.
 absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
-ReadSymbolTable(const BinaryContent &binary_content);
+ReadSymbolTable(const BinaryContent& binary_content);
 
 // Returns the binary's thunk symbols by reading from its symbol table.
 // These are returned as a map from the thunk's address to the thunk symbol.
 // Returns an empty map if the architecture does not support thunks.
 absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
-    const BinaryContent &binary_content);
+    const BinaryContent& binary_content);
 
 // Returns a map from function addresses to their symbol info.
 absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
-    const BinaryContent &binary_content);
+    const BinaryContent& binary_content);
 
 // Returns the binary's `BbAddrMapData`s by calling LLVM-side decoding function
 // `ELFObjectFileBase::readBBAddrMap`. Returns error if the call fails or if the
 // result is empty. If `options.read_pgo_analyses` is true, the function will
 // also read the PGO analysis map and store it in the returned `BbAddrMapData`.
 absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
-    const BinaryContent &binary_content,
-    const BbAddrMapReadOptions &options = {});
+    const BinaryContent& binary_content,
+    const BbAddrMapReadOptions& options = {});
 
 }  // namespace propeller
 
