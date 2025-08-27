@@ -38,7 +38,7 @@
 namespace propeller {
 // Comparator for comparing CFGNode pointers from a single CFG.
 struct CFGNodePtrComparator {
-  bool operator()(const CFGNode *a, const CFGNode *b) const {
+  bool operator()(const CFGNode* a, const CFGNode* b) const {
     CHECK_NE(a, nullptr);
     CHECK_NE(b, nullptr);
     CHECK_EQ(a->function_index(), b->function_index());
@@ -128,7 +128,7 @@ class NodeChainAssemblyIterativeQueue : public NodeChainAssemblyQueue {
 
   NodeChainAssembly GetBestAssembly() const override {
     auto best_assembly =
-        absl::c_max_element(assemblies_, [](const auto &lhs, const auto &rhs) {
+        absl::c_max_element(assemblies_, [](const auto& lhs, const auto& rhs) {
           return NodeChainAssembly::NodeChainAssemblyComparator()(lhs.second,
                                                                   rhs.second);
         });
@@ -157,30 +157,30 @@ class NodeChainBuilder {
   // `scorer`, and code layout statistics handle `stats`.
   template <class AssemblyQueueImpl = NodeChainAssemblyIterativeQueue>
   static NodeChainBuilder CreateNodeChainBuilder(
-      const PropellerCodeLayoutScorer &scorer,
-      const std::vector<const ControlFlowGraph *> &cfgs,
-      const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
-          &initial_chains,
-      PropellerStats::CodeLayoutStats &stats);
+      const PropellerCodeLayoutScorer& scorer,
+      const std::vector<const ControlFlowGraph*>& cfgs,
+      const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+          initial_chains,
+      PropellerStats::CodeLayoutStats& stats);
 
-  const NodeToBundleMapper &node_to_bundle_mapper() const {
+  const NodeToBundleMapper& node_to_bundle_mapper() const {
     return *node_to_bundle_mapper_;
   }
 
-  const PropellerCodeLayoutScorer &code_layout_scorer() const {
+  const PropellerCodeLayoutScorer& code_layout_scorer() const {
     return code_layout_scorer_;
   }
 
   // Const public accessors for the internal data structures of chain. Used for
   // testing only.
-  const std::vector<const ControlFlowGraph *> &cfgs() const { return cfgs_; }
+  const std::vector<const ControlFlowGraph*>& cfgs() const { return cfgs_; }
 
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains()
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains()
       const {
     return chains_;
   }
 
-  const NodeChainAssemblyQueue &node_chain_assemblies() const {
+  const NodeChainAssemblyQueue& node_chain_assemblies() const {
     return *node_chain_assemblies_;
   }
 
@@ -214,15 +214,15 @@ class NodeChainBuilder {
   void MergeChains(NodeChainAssembly assembly);
 
   // Merges `right_chain` to the right side of `left_chain`.
-  void MergeChains(NodeChain &left_chain, NodeChain &right_chain);
+  void MergeChains(NodeChain& left_chain, NodeChain& right_chain);
 
  private:
   NodeChainBuilder(
-      const PropellerCodeLayoutScorer &scorer,
-      const std::vector<const ControlFlowGraph *> &cfgs,
+      const PropellerCodeLayoutScorer& scorer,
+      const std::vector<const ControlFlowGraph*>& cfgs,
       absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
           initial_chains,
-      PropellerStats::CodeLayoutStats &stats,
+      PropellerStats::CodeLayoutStats& stats,
       std::unique_ptr<NodeChainAssemblyQueue> node_chain_assemblies)
       : code_layout_scorer_(scorer),
         cfgs_(cfgs),
@@ -239,30 +239,30 @@ class NodeChainBuilder {
   // Merges `inter_chain_out_edges_`, `inter_chain_in_edges`, and
   // `CFGNodeBundle::intra_chain_out_edges_` of the chain `merge_from_chain`
   // into `merge_to_chain`.
-  void MergeChainEdges(NodeChain &merge_from_chain,
-                       NodeChain &merge_to_chain) const;
+  void MergeChainEdges(NodeChain& merge_from_chain,
+                       NodeChain& merge_to_chain) const;
 
   // Removes intra-bundle edges and updates `score_`.
   // After bundles are merged together, their `intra_chain_out_edges_` may
   // include intra-bundle edges. This function removes them while also deducting
   // their contribution to `score_` since intra-bundle edges should not
   // contribute to the chain's `score_`.
-  void RemoveIntraBundleEdges(NodeChain &chain) const;
+  void RemoveIntraBundleEdges(NodeChain& chain) const;
 
   // Updates and removes the assemblies for `kept_chain` and `defunct_chain`.
   // This method is called after `defunct_chain` is merged into `kept_chain` and
   // serves to update all assemblies between `kept_chain` and other chains and
   // also to remove all assemblies related to `defunct_chain`. `defunct_chain`
   // will be removed after this call.
-  void UpdateAssembliesAfterMerge(NodeChain &kept_chain,
-                                  NodeChain &defunct_chain);
+  void UpdateAssembliesAfterMerge(NodeChain& kept_chain,
+                                  NodeChain& defunct_chain);
 
   // Finds and updates the best (highest-gain) assembly for two chains.
-  void UpdateNodeChainAssembly(NodeChain &split_chain,
-                               NodeChain &unsplit_chain);
+  void UpdateNodeChainAssembly(NodeChain& split_chain,
+                               NodeChain& unsplit_chain);
 
   // Returns whether `edge` should be considered in constructing the chains.
-  bool ShouldVisitEdge(const CFGEdge &edge) {
+  bool ShouldVisitEdge(const CFGEdge& edge) {
     return edge.weight() != 0 && !edge.IsReturn() &&
            ((code_layout_scorer_.code_layout_params()
                  .inter_function_reordering() &&
@@ -273,7 +273,7 @@ class NodeChainBuilder {
   const PropellerCodeLayoutScorer code_layout_scorer_;
 
   // CFGs targeted for BB chaining.
-  const std::vector<const ControlFlowGraph *> cfgs_;
+  const std::vector<const ControlFlowGraph*> cfgs_;
 
   std::unique_ptr<NodeToBundleMapper> node_to_bundle_mapper_;
 
@@ -283,7 +283,7 @@ class NodeChainBuilder {
   const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
       initial_chains_;
 
-  PropellerStats::CodeLayoutStats &stats_;
+  PropellerStats::CodeLayoutStats& stats_;
 
   // Constructed chains. This starts by having one chain for every CFGNode and
   // as chains keep merging together, defunct chains are removed from this.
@@ -313,19 +313,19 @@ class NodeChainBuilder {
 // of how other edges are treated by the layout algorithm.
 // Note: The returned paths are sorted in increasing order of their first node's
 // symbol ordinal.
-std::vector<std::vector<const CFGNode *>> GetForcedPaths(
-    const ControlFlowGraph &cfg);
+std::vector<std::vector<const CFGNode*>> GetForcedPaths(
+    const ControlFlowGraph& cfg);
 
 // Returns all mutually-forced edges as a map from their source to their sink.
 // These are the edges which -- based on the profile -- are the only outgoing
 // edges from their source and the only incoming edges to their sinks.
 // Note that the paths represented by these edges may include cycles.
-absl::btree_map<const CFGNode *, const CFGNode *, CFGNodePtrComparator>
-GetForcedEdges(const ControlFlowGraph &cfg);
+absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
+GetForcedEdges(const ControlFlowGraph& cfg);
 
 // Breaks cycles in the `path_next` map by cutting the edge sinking to the
 // smallest address in every cycle (hopefully a loop backedge).
-void BreakCycles(absl::btree_map<const CFGNode *, const CFGNode *,
-                                 CFGNodePtrComparator> &path_next);
+void BreakCycles(absl::btree_map<const CFGNode*, const CFGNode*,
+                                 CFGNodePtrComparator>& path_next);
 }  // namespace propeller
 #endif  // PROPELLER_NODE_CHAIN_BUILDER_H_

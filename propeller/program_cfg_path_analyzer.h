@@ -44,16 +44,16 @@ namespace propeller {
 // `path_node_`.
 struct BasePathProbe {
   // Current path node in the tree.
-  propeller::PathNode *path_node;
+  propeller::PathNode* path_node;
   // Predecessor of the root of the tree.
   int pred_node_bb_index;
 
   // Returns true if the path associated with `*this` is a suffix of the path
   // associated with `other`.
-  bool IsSuffixOf(const BasePathProbe &other) const {
+  bool IsSuffixOf(const BasePathProbe& other) const {
     if (path_node->path_length() > other.path_node->path_length()) return false;
-    const propeller::PathNode *path_node_ptr = path_node;
-    const propeller::PathNode *other_path_node_ptr = other.path_node;
+    const propeller::PathNode* path_node_ptr = path_node;
+    const propeller::PathNode* other_path_node_ptr = other.path_node;
     while (path_node_ptr != nullptr) {
       if (path_node_ptr->node_bb_index() !=
           other_path_node_ptr->node_bb_index()) {
@@ -67,15 +67,15 @@ struct BasePathProbe {
                                       : other_path_node_ptr->node_bb_index());
   }
 
-  bool operator==(const BasePathProbe &other) const {
+  bool operator==(const BasePathProbe& other) const {
     return path_node == other.path_node &&
            pred_node_bb_index == other.pred_node_bb_index;
   }
-  bool operator!=(const BasePathProbe &other) const {
+  bool operator!=(const BasePathProbe& other) const {
     return !(*this == other);
   }
   template <typename H>
-  friend H AbslHashValue(H h, const BasePathProbe &path_probe) {
+  friend H AbslHashValue(H h, const BasePathProbe& path_probe) {
     return H::combine(std::move(h), path_probe.path_node,
                       path_probe.pred_node_bb_index);
   }
@@ -85,26 +85,26 @@ struct BasePathProbe {
 // path.
 class PathProbe {
  public:
-  PathProbe(propeller::PathNode *absl_nonnull path_node
+  PathProbe(propeller::PathNode* absl_nonnull path_node
                 ABSL_ATTRIBUTE_LIFETIME_BOUND,
             int pred_node_bb_index)
       : base_path_probe_{.path_node = path_node,
                          .pred_node_bb_index = pred_node_bb_index},
         nodes_in_path_({path_node->node_bb_index()}) {}
 
-  PathProbe(const PathProbe &) = default;
-  PathProbe &operator=(const PathProbe &) = default;
-  PathProbe(PathProbe &&) = default;
-  PathProbe &operator=(PathProbe &&) = default;
+  PathProbe(const PathProbe&) = default;
+  PathProbe& operator=(const PathProbe&) = default;
+  PathProbe(PathProbe&&) = default;
+  PathProbe& operator=(PathProbe&&) = default;
 
-  propeller::PathNode *path_node() const { return base_path_probe_.path_node; }
+  propeller::PathNode* path_node() const { return base_path_probe_.path_node; }
   int pred_node_bb_index() const { return base_path_probe_.pred_node_bb_index; }
-  const absl::flat_hash_set<int> &nodes_in_path() const {
+  const absl::flat_hash_set<int>& nodes_in_path() const {
     return nodes_in_path_;
   }
-  const BasePathProbe &base_path_probe() const { return base_path_probe_; }
+  const BasePathProbe& base_path_probe() const { return base_path_probe_; }
 
-  void set_path_node(propeller::PathNode *path_node) {
+  void set_path_node(propeller::PathNode* path_node) {
     base_path_probe_.path_node = path_node;
   }
 
@@ -134,7 +134,7 @@ struct PathProbeSampleInfo {
   // Returns true if either `path_probes` contains the given `probe` or if it
   // could have been included in `path_probes` if `path_length` was large
   // enough.
-  bool CouldImply(const BasePathProbe &probe) const {
+  bool CouldImply(const BasePathProbe& probe) const {
     // If this sample was from a short path, check if it could have potentially
     // included the path associated with `probe`.
     if (probe.path_node->path_length() > path_length) {
@@ -150,8 +150,8 @@ struct PathProbeSampleInfo {
 
   // Implementation of the `AbslStringify` interface for logging path clonings.
   template <typename Sink>
-  friend void AbslStringify(Sink &sink,
-                            const PathProbeSampleInfo &path_probe_sample_info) {
+  friend void AbslStringify(Sink& sink,
+                            const PathProbeSampleInfo& path_probe_sample_info) {
     absl::Format(&sink, "sample_time: %s\n",
                  absl::FormatTime(path_probe_sample_info.sample_time));
     absl::Format(&sink, "path_probes: %s\n",
@@ -195,7 +195,7 @@ class FunctionPathInfo {
         .path_probes = std::move(path_probes),
         .path_length = path_length};
 
-    BlockPathInfo &bb_path_info = block_path_info_[bb_index];
+    BlockPathInfo& bb_path_info = block_path_info_[bb_index];
 
     if (bb_path_info.path_probe_sample_info.sample_time !=
             absl::InfinitePast() &&
@@ -208,7 +208,7 @@ class FunctionPathInfo {
         double pressure =
             1.0 - absl::FDivDuration(time_lapse, max_icache_penalty_interval);
         // Update cache pressure for the new path probes.
-        for (auto &path_probe : new_path_probe_sample_info.path_probes) {
+        for (auto& path_probe : new_path_probe_sample_info.path_probes) {
           if (!bb_path_info.path_probe_sample_info.CouldImply(path_probe)) {
             path_probe.path_node->mutable_path_pred_info()
                 .entries[path_probe.pred_node_bb_index]
@@ -216,7 +216,7 @@ class FunctionPathInfo {
           }
         }
         // Update cache pressure for the latest visited path probes.
-        for (auto &last_path_probe :
+        for (auto& last_path_probe :
              bb_path_info.path_probe_sample_info.path_probes) {
           if (!new_path_probe_sample_info.CouldImply(last_path_probe)) {
             last_path_probe.path_node->mutable_path_pred_info()
@@ -246,7 +246,7 @@ class PathTraceHandler {
   virtual void HandleCalls(
       absl::Span<const propeller::CallRetInfo> call_rets) = 0;
   // Handles a return to `bb_handle` from the current block.
-  virtual void HandleReturn(const propeller::FlatBbHandle &bb_handle) = 0;
+  virtual void HandleReturn(const propeller::FlatBbHandle& bb_handle) = 0;
   // Finishes the current path and prepares to start a new path.
   virtual void ResetPath() = 0;
 };
@@ -262,16 +262,16 @@ class PathTracer {
  public:
   // Does not take any ownership, and all pointers must refer to valid objects
   // that outlive the one constructed.
-  PathTracer(const propeller::ControlFlowGraph *cfg, PathTraceHandler *handler)
+  PathTracer(const propeller::ControlFlowGraph* cfg, PathTraceHandler* handler)
       : cfg_(cfg), handler_(handler) {}
 
-  PathTracer(const PathTracer &) = delete;
-  PathTracer &operator=(const PathTracer &) = delete;
-  PathTracer(PathTracer &&) = delete;
-  PathTracer &operator=(PathTracer &&) = delete;
+  PathTracer(const PathTracer&) = delete;
+  PathTracer& operator=(const PathTracer&) = delete;
+  PathTracer(PathTracer&&) = delete;
+  PathTracer& operator=(PathTracer&&) = delete;
 
   // Traces `path`.
-  void TracePath(const propeller::FlatBbHandleBranchPath &path) &&;
+  void TracePath(const propeller::FlatBbHandleBranchPath& path) &&;
 
  private:
   // If `from_bb` can fall through to `to_bb`, updates the path tree by mapping
@@ -283,8 +283,8 @@ class PathTracer {
                                absl::Time sample_time);
 
  private:
-  const propeller::ControlFlowGraph *cfg_;
-  PathTraceHandler *handler_;
+  const propeller::ControlFlowGraph* cfg_;
+  PathTraceHandler* handler_;
 };
 
 // Analyzes `FlatBBHandleBranchPath`s by mapping into a `ProgramCfg`.
@@ -293,9 +293,9 @@ class ProgramCfgPathAnalyzer {
   // Does not take ownership of any pointer parameters which should all point to
   // valid objects which will outlive the constructed object.
   ProgramCfgPathAnalyzer(
-      const propeller::PathProfileOptions *absl_nonnull path_profile_options,
-      const propeller::ProgramCfg *absl_nonnull program_cfg,
-      propeller::ProgramPathProfile *absl_nonnull program_path_profile)
+      const propeller::PathProfileOptions* absl_nonnull path_profile_options,
+      const propeller::ProgramCfg* absl_nonnull program_cfg,
+      propeller::ProgramPathProfile* absl_nonnull program_path_profile)
       : path_profile_options_(path_profile_options),
         hot_threshold_(program_cfg->GetNodeFrequencyThreshold(
             path_profile_options->hot_cutoff_percentile())),
@@ -304,16 +304,16 @@ class ProgramCfgPathAnalyzer {
             hot_threshold_, /*hot_edge_frequency_threshold=*/1)),
         program_path_profile_(program_path_profile) {}
 
-  ProgramCfgPathAnalyzer(const ProgramCfgPathAnalyzer &) = delete;
-  ProgramCfgPathAnalyzer &operator=(const ProgramCfgPathAnalyzer &) = delete;
-  ProgramCfgPathAnalyzer(ProgramCfgPathAnalyzer &&) = default;
-  ProgramCfgPathAnalyzer &operator=(ProgramCfgPathAnalyzer &&) = default;
+  ProgramCfgPathAnalyzer(const ProgramCfgPathAnalyzer&) = delete;
+  ProgramCfgPathAnalyzer& operator=(const ProgramCfgPathAnalyzer&) = delete;
+  ProgramCfgPathAnalyzer(ProgramCfgPathAnalyzer&&) = default;
+  ProgramCfgPathAnalyzer& operator=(ProgramCfgPathAnalyzer&&) = default;
 
-  const propeller::ProgramPathProfile &path_profile() const {
+  const propeller::ProgramPathProfile& path_profile() const {
     return *program_path_profile_;
   }
 
-  const std::deque<propeller::FlatBbHandleBranchPath> &bb_branch_paths() const {
+  const std::deque<propeller::FlatBbHandleBranchPath>& bb_branch_paths() const {
     return bb_branch_paths_;
   }
 
@@ -340,13 +340,13 @@ class ProgramCfgPathAnalyzer {
   void AnalyzePaths(std::optional<int> paths_to_analyze);
 
   // Returns whether `path` contains any hot join BBs.
-  bool HasHotJoinBbs(const propeller::FlatBbHandleBranchPath &path) const;
+  bool HasHotJoinBbs(const propeller::FlatBbHandleBranchPath& path) const;
 
   // Returns whether the intra-function `path` is from a function with hot join
   // BBs.
   bool IsFromFunctionWithHotJoinBbs(
-      const propeller::FlatBbHandleBranchPath &path) const {
-    const propeller::FlatBbHandle &first_bb =
+      const propeller::FlatBbHandleBranchPath& path) const {
+    const propeller::FlatBbHandle& first_bb =
         path.branches.front().from_bb.has_value()
             ? *path.branches.front().from_bb
             : *path.branches.front().to_bb;
@@ -354,18 +354,18 @@ class ProgramCfgPathAnalyzer {
   }
 
  private:
-  const propeller::PathProfileOptions *path_profile_options_;
+  const propeller::PathProfileOptions* path_profile_options_;
   // CFGNode and CFGEdge frequency threshold to be considered hot.
   int64_t hot_threshold_;
   absl::flat_hash_map<int, FunctionPathInfo> all_function_path_info_;
-  const propeller::ProgramCfg *program_cfg_;
+  const propeller::ProgramCfg* program_cfg_;
   // Hot join basic blocks, stored as a map from function indexes to the set of
   // basic block indices.
   absl::flat_hash_map<int, absl::btree_set<int>> hot_join_bbs_;
   // Paths remaining to be analyzed.
   std::deque<propeller::FlatBbHandleBranchPath> bb_branch_paths_;
   // Program path profile for all functions.
-  propeller::ProgramPathProfile *program_path_profile_;
+  propeller::ProgramPathProfile* program_path_profile_;
 };
 }  // namespace propeller
 #endif  // PROPELLER_PROGRAM_CFG_PATH_ANALYZER_H_

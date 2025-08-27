@@ -36,25 +36,25 @@ class ProgramCfg {
       absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>> cfgs)
       : cfgs_(std::move(cfgs)) {}
 
-  ProgramCfg(const ProgramCfg &) = delete;
-  ProgramCfg &operator=(const ProgramCfg &) = delete;
-  ProgramCfg(ProgramCfg &&) = default;
-  ProgramCfg &operator=(ProgramCfg &&) = default;
+  ProgramCfg(const ProgramCfg&) = delete;
+  ProgramCfg& operator=(const ProgramCfg&) = delete;
+  ProgramCfg(ProgramCfg&&) = default;
+  ProgramCfg& operator=(ProgramCfg&&) = default;
 
   // Builds and returns a map of cfgs keyed by their function indexes.
-  absl::flat_hash_map<int, const ControlFlowGraph *> cfgs_by_index() const {
-    absl::flat_hash_map<int, const ControlFlowGraph *> result;
-    for (const auto &[function_index, cfg] : cfgs_) {
+  absl::flat_hash_map<int, const ControlFlowGraph*> cfgs_by_index() const {
+    absl::flat_hash_map<int, const ControlFlowGraph*> result;
+    for (const auto& [function_index, cfg] : cfgs_) {
       result.emplace(function_index, cfg.get());
     }
     return result;
   }
 
   // Builds and returns a map of cfgs keyed by their function names.
-  absl::flat_hash_map<std::string, const ControlFlowGraph *> cfgs_by_name()
+  absl::flat_hash_map<std::string, const ControlFlowGraph*> cfgs_by_name()
       const {
-    absl::flat_hash_map<std::string, const ControlFlowGraph *> result;
-    for (const auto &[function_index, cfg] : cfgs_) {
+    absl::flat_hash_map<std::string, const ControlFlowGraph*> result;
+    for (const auto& [function_index, cfg] : cfgs_) {
       CHECK(result.emplace(cfg->GetPrimaryName().str(), cfg.get()).second)
           << " Duplicate function name: " << cfg->GetPrimaryName().str();
     }
@@ -62,15 +62,15 @@ class ProgramCfg {
   }
 
   // Returns the CFGs in a vector, in increasing order of their function index.
-  std::vector<const ControlFlowGraph *> GetCfgs() const;
+  std::vector<const ControlFlowGraph*> GetCfgs() const;
 
   // Returns a map from section names to the CFGs associated with them.
-  absl::flat_hash_map<llvm::StringRef, std::vector<const ControlFlowGraph *>>
+  absl::flat_hash_map<llvm::StringRef, std::vector<const ControlFlowGraph*>>
   GetCfgsBySectionName() const;
 
   // Returns the cfg with function_index `index` or `nullptr` if it does not
   // exist.
-  const ControlFlowGraph *GetCfgByIndex(int index) const {
+  const ControlFlowGraph* GetCfgByIndex(int index) const {
     auto it = cfgs_.find(index);
     if (it == cfgs_.end()) return nullptr;
     return it->second.get();
@@ -92,10 +92,10 @@ class ProgramCfg {
   absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>
   release_cfgs_by_index() && {
     absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>> ret;
-    for (auto &[function_index, cfg] : cfgs_) {
+    for (auto& [function_index, cfg] : cfgs_) {
       ret.emplace(
           function_index,
-          absl::WrapUnique(const_cast<ControlFlowGraph *>(cfg.release())));
+          absl::WrapUnique(const_cast<ControlFlowGraph*>(cfg.release())));
     }
     return ret;
   }

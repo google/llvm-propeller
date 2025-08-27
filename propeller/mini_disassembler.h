@@ -38,24 +38,24 @@ class MiniDisassembler {
   // `object_file`, which must point to a valid object that outlives the
   // `MiniDisassembler`.
   static absl::StatusOr<absl_nonnull std::unique_ptr<MiniDisassembler>> Create(
-      const llvm::object::ObjectFile *object_file);
+      const llvm::object::ObjectFile* object_file);
 
-  MiniDisassembler(const MiniDisassembler &) = delete;
-  MiniDisassembler(MiniDisassembler &&) = delete;
+  MiniDisassembler(const MiniDisassembler&) = delete;
+  MiniDisassembler(MiniDisassembler&&) = delete;
 
-  MiniDisassembler &operator=(const MiniDisassembler &) = delete;
-  MiniDisassembler &operator=(MiniDisassembler &&) = delete;
+  MiniDisassembler& operator=(const MiniDisassembler&) = delete;
+  MiniDisassembler& operator=(MiniDisassembler&&) = delete;
 
   absl::StatusOr<llvm::MCInst> DisassembleOne(uint64_t binary_address);
-  bool MayAffectControlFlow(const llvm::MCInst &inst);
-  llvm::StringRef GetInstructionName(const llvm::MCInst &inst) const;
+  bool MayAffectControlFlow(const llvm::MCInst& inst);
+  llvm::StringRef GetInstructionName(const llvm::MCInst& inst) const;
   absl::StatusOr<bool> MayAffectControlFlow(uint64_t binary_address);
 
  private:
-  explicit MiniDisassembler(const llvm::object::ObjectFile *object_file)
+  explicit MiniDisassembler(const llvm::object::ObjectFile* object_file)
       : object_file_(object_file) {}
 
-  const llvm::object::ObjectFile *object_file_;
+  const llvm::object::ObjectFile* object_file_;
   std::unique_ptr<const llvm::MCRegisterInfo> mri_;
   std::unique_ptr<const llvm::MCAsmInfo> asm_info_;
   std::unique_ptr<const llvm::MCSubtargetInfo> sti_;

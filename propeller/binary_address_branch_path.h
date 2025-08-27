@@ -31,7 +31,7 @@ struct BinaryAddressBranchPath {
   std::vector<BinaryAddressBranch> branches;
 
   template <typename Sink>
-  friend void AbslStringify(Sink &sink, const BinaryAddressBranchPath &path) {
+  friend void AbslStringify(Sink& sink, const BinaryAddressBranchPath& path) {
     absl::Format(&sink, "BinaryAddressBranchPath[pid:%lld, branches:%s]",
                  path.pid, absl::StrJoin(path.branches, ", "));
   }

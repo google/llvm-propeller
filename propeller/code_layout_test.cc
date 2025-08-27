@@ -82,7 +82,7 @@ MATCHER_P(ChainIdIs, chain_id, "") { return arg->id() == chain_id; }
 MATCHER_P(HasIntraChainEdges, intra_chain_out_edges_matcher,
           absl::StrCat(negation ? "doesn't have" : "has",
                        " intra_chain_out_edges_ that ",
-                       DescribeMatcher<std::vector<CFGEdge *>>(
+                       DescribeMatcher<std::vector<CFGEdge*>>(
                            intra_chain_out_edges_matcher, negation))) {
   return ExplainMatchResult(intra_chain_out_edges_matcher,
                             arg.intra_chain_out_edges(), result_listener);
@@ -95,34 +95,34 @@ std::string GetTestInputPath(absl::string_view testdata_path) {
 // Helper method to capture the node ordinals in a chain/cluster and place them
 // in a vector.
 template <class Container>
-std::vector<InterCfgId> GetOrderedNodeIds(const Container &container) {
+std::vector<InterCfgId> GetOrderedNodeIds(const Container& container) {
   std::vector<InterCfgId> node_ids;
   container.VisitEachNodeRef(
-      [&](const CFGNode &n) { node_ids.push_back(n.inter_cfg_id()); });
+      [&](const CFGNode& n) { node_ids.push_back(n.inter_cfg_id()); });
   return node_ids;
 }
 
-std::vector<InterCfgId> GetOrderedNodeIds(const NodeChainAssembly &assembly) {
+std::vector<InterCfgId> GetOrderedNodeIds(const NodeChainAssembly& assembly) {
   std::vector<InterCfgId> node_ids;
   assembly.VisitEachNodeBundleInAssemblyOrder(
-      [&node_ids](const CFGNodeBundle &bundle) {
-        for (const CFGNode *node : bundle.nodes())
+      [&node_ids](const CFGNodeBundle& bundle) {
+        for (const CFGNode* node : bundle.nodes())
           node_ids.push_back(node->inter_cfg_id());
       });
   return node_ids;
 }
 
 // Captures the nodes of a cfg keyed by their id.
-absl::flat_hash_map<InterCfgId, CFGNode *> GetCfgNodes(
-    const ControlFlowGraph &cfg) {
-  absl::flat_hash_map<InterCfgId, CFGNode *> nodes_by_id_;
-  for (const std::unique_ptr<CFGNode> &node_ptr : cfg.nodes())
+absl::flat_hash_map<InterCfgId, CFGNode*> GetCfgNodes(
+    const ControlFlowGraph& cfg) {
+  absl::flat_hash_map<InterCfgId, CFGNode*> nodes_by_id_;
+  for (const std::unique_ptr<CFGNode>& node_ptr : cfg.nodes())
     nodes_by_id_.emplace(node_ptr->inter_cfg_id(), node_ptr.get());
   return nodes_by_id_;
 }
 
 // Creates one chain containing the given nodes.
-NodeChain CreateNodeChain(absl::Span<CFGNode *const> nodes) {
+NodeChain CreateNodeChain(absl::Span<CFGNode* const> nodes) {
   CHECK(!nodes.empty());
   NodeChain chain({{nodes.front()}});
   for (int i = 1; i < nodes.size(); ++i) {
@@ -137,11 +137,11 @@ NodeChain CreateNodeChain(absl::Span<CFGNode *const> nodes) {
 // the CFG nodes mapped to their slice index in the assembly (or std::nullopt)
 // if they don't occur in the assembly.
 absl::flat_hash_map<InterCfgId, std::optional<int>> GetSliceIndices(
-    const NodeToBundleMapper &node_to_bundle_mapper,
-    const NodeChainAssembly &assembly, const ControlFlowGraph &cfg) {
+    const NodeToBundleMapper& node_to_bundle_mapper,
+    const NodeChainAssembly& assembly, const ControlFlowGraph& cfg) {
   absl::flat_hash_map<InterCfgId, std::optional<int>> slice_index_map;
-  for (const std::unique_ptr<CFGNode> &node : cfg.nodes()) {
-    const NodeToBundleMapper::BundleMappingEntry &bundle_mapping =
+  for (const std::unique_ptr<CFGNode>& node : cfg.nodes()) {
+    const NodeToBundleMapper::BundleMappingEntry& bundle_mapping =
         node_to_bundle_mapper.GetBundleMappingEntry(node.get());
     slice_index_map.emplace(
         node->inter_cfg_id(),
@@ -158,11 +158,11 @@ absl::flat_hash_map<InterCfgId, std::optional<int>> GetSliceIndices(
 // `NodeChainBuilderTest` to verify that the test works for every
 // implementation.
 NodeChainBuilder CreateNodeChainBuilderForCfgs(
-    const ProgramCfg &program_cfg, absl::Span<const int> function_indices,
-    const PropellerCodeLayoutParameters &code_layout_params,
-    PropellerStats::CodeLayoutStats &stats) {
+    const ProgramCfg& program_cfg, absl::Span<const int> function_indices,
+    const PropellerCodeLayoutParameters& code_layout_params,
+    PropellerStats::CodeLayoutStats& stats) {
   const PropellerCodeLayoutScorer scorer(code_layout_params);
-  std::vector<const ControlFlowGraph *> cfgs;
+  std::vector<const ControlFlowGraph*> cfgs;
   for (int function_index : function_indices) {
     cfgs.push_back(program_cfg.GetCfgByIndex(function_index));
   }
@@ -185,7 +185,7 @@ std::vector<FunctionChainInfo::BbChain> ConstructBbChains(
                             absl::c_transform(
                                 bb_ids,
                                 std::back_inserter(bb_bundle.full_bb_ids),
-                                [](const IntraCfgId &bb_id) {
+                                [](const IntraCfgId& bb_id) {
                                   return FullIntraCfgId{.intra_cfg_id = bb_id};
                                 });
                             return bb_bundle;
@@ -201,10 +201,10 @@ TEST(NodeChainSliceTest, TestCreateNodeChainSlice) {
       std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
       BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
                                              "three_branches.protobuf")));
-  const ControlFlowGraph &foo_cfg =
+  const ControlFlowGraph& foo_cfg =
       *proto_program_cfg->program_cfg().GetCfgByIndex(0);
   EXPECT_EQ(foo_cfg.GetPrimaryName(), "foo");
-  absl::flat_hash_map<InterCfgId, CFGNode *> foo_nodes = GetCfgNodes(foo_cfg);
+  absl::flat_hash_map<InterCfgId, CFGNode*> foo_nodes = GetCfgNodes(foo_cfg);
   NodeChain chain =
       CreateNodeChain({foo_nodes.at({0, {0, 0}}), foo_nodes.at({0, {1, 0}}),
                        foo_nodes.at({0, {2, 0}})});
@@ -229,9 +229,9 @@ TEST(CodeLayoutScorerTest, GetEdgeScore) {
                        BuildFromCfgProtoPath(
                            GetTestInputPath("_main/propeller/testdata/"
                                             "simple_multi_function.protobuf")));
-  const ControlFlowGraph &foo_cfg =
+  const ControlFlowGraph& foo_cfg =
       *proto_program_cfg->program_cfg().GetCfgByIndex(0);
-  const ControlFlowGraph &bar_cfg =
+  const ControlFlowGraph& bar_cfg =
       *proto_program_cfg->program_cfg().GetCfgByIndex(1);
 
   // Build a layout scorer with specific parameters.
@@ -245,7 +245,7 @@ TEST(CodeLayoutScorerTest, GetEdgeScore) {
 
   ASSERT_THAT(bar_cfg.inter_edges(), SizeIs(1));
   {
-    const auto &call_edge = bar_cfg.inter_edges().front();
+    const auto& call_edge = bar_cfg.inter_edges().front();
     ASSERT_TRUE(call_edge->IsCall());
     ASSERT_NE(call_edge->weight(), 0);
     ASSERT_NE(call_edge->src()->size(), 0);
@@ -269,7 +269,7 @@ TEST(CodeLayoutScorerTest, GetEdgeScore) {
   }
 
   ASSERT_THAT(foo_cfg.inter_edges(), SizeIs(2));
-  for (const std::unique_ptr<CFGEdge> &ret_edge : foo_cfg.inter_edges()) {
+  for (const std::unique_ptr<CFGEdge>& ret_edge : foo_cfg.inter_edges()) {
     ASSERT_TRUE(ret_edge->IsReturn());
     ASSERT_NE(ret_edge->weight(), 0);
     ASSERT_NE(ret_edge->sink()->size(), 0);
@@ -291,7 +291,7 @@ TEST(CodeLayoutScorerTest, GetEdgeScore) {
     EXPECT_EQ(scorer.GetEdgeScore(*ret_edge, -150), 0);
   }
 
-  for (const std::unique_ptr<CFGEdge> &edge : foo_cfg.intra_edges()) {
+  for (const std::unique_ptr<CFGEdge>& edge : foo_cfg.intra_edges()) {
     ASSERT_EQ(edge->kind(), CFGEdgeKind::kBranchOrFallthough);
     ASSERT_NE(edge->weight(), 0);
     // Fallthrough score.
@@ -318,10 +318,10 @@ class NodeChainBuilderTest : public testing::Test {
   // `function_indices` found in `program_cfg`. `stats` must outlive the
   // returned NodeChainBuilder.
   static NodeChainBuilder InitializeNodeChainBuilderForCfgs(
-      const ProgramCfg &program_cfg, absl::Span<const int> function_indices,
-      const PropellerCodeLayoutParameters &code_layout_params,
-      PropellerStats::CodeLayoutStats &stats) {
-    std::vector<const ControlFlowGraph *> cfgs;
+      const ProgramCfg& program_cfg, absl::Span<const int> function_indices,
+      const PropellerCodeLayoutParameters& code_layout_params,
+      PropellerStats::CodeLayoutStats& stats) {
+    std::vector<const ControlFlowGraph*> cfgs;
     for (int function_index : function_indices) {
       cfgs.push_back(program_cfg.GetCfgByIndex(function_index));
     }
@@ -351,7 +351,7 @@ TYPED_TEST(NodeChainBuilderTest, MergeChainsUpdatesChainEdges) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
 
   EXPECT_THAT(
@@ -464,7 +464,7 @@ TYPED_TEST(NodeChainBuilderTest, MergeChainsWithAssemblyUpdatesChainEdges) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
 
   ASSERT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
@@ -528,14 +528,14 @@ TEST(CodeLayoutTest, GetForcedPathsWithLoop) {
                                             "loop_no_entry_no_exit.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0)));
-  const ControlFlowGraph &foo_cfg =
+  const ControlFlowGraph& foo_cfg =
       *proto_program_cfg->program_cfg().GetCfgByIndex(0);
 
   EXPECT_THAT(GetForcedPaths(foo_cfg),
               ElementsAre(ElementsAre(Pointee(NodeIndexIs(1)),
                                       Pointee(NodeIndexIs(2)))));
 
-  absl::btree_map<const CFGNode *, const CFGNode *, CFGNodePtrComparator>
+  absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
       forced_edges = GetForcedEdges(foo_cfg);
   EXPECT_THAT(forced_edges,
               UnorderedElementsAre(
@@ -557,14 +557,14 @@ TEST(CodeLayoutTest, GetForcedPathsNoLoop) {
                                              "three_branches.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0)));
-  const ControlFlowGraph &foo_cfg =
+  const ControlFlowGraph& foo_cfg =
       *proto_program_cfg->program_cfg().GetCfgByIndex(0);
 
   EXPECT_THAT(GetForcedPaths(foo_cfg),
               ElementsAre(ElementsAre(NodeIndexIs(0), NodeIndexIs(1)),
                           ElementsAre(NodeIndexIs(2), NodeIndexIs(3))));
 
-  absl::btree_map<const CFGNode *, const CFGNode *, CFGNodePtrComparator>
+  absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
       forced_edges = GetForcedEdges(foo_cfg);
   EXPECT_THAT(forced_edges,
               UnorderedElementsAre(
@@ -611,7 +611,7 @@ TYPED_TEST(NodeChainBuilderTest, BuildChainsSingleCfgInternal) {
                                              "three_branches.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(),
               UnorderedElementsAre(Key(0)));
-  const ControlFlowGraph &foo_cfg =
+  const ControlFlowGraph& foo_cfg =
       *proto_program_cfg->program_cfg().GetCfgByIndex(0);
   ASSERT_THAT(foo_cfg.nodes(), SizeIs(6));
   PropellerStats::CodeLayoutStats stats;
@@ -620,7 +620,7 @@ TYPED_TEST(NodeChainBuilderTest, BuildChainsSingleCfgInternal) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
 
-  const auto &chains = chain_builder.chains();
+  const auto& chains = chain_builder.chains();
   // Verify the initial chains to make sure bundles are created.
   EXPECT_THAT(chains,
               UnorderedElementsAre(
@@ -650,7 +650,7 @@ TYPED_TEST(NodeChainBuilderTest, BuildChainsSingleCfgInternal) {
                               {{0, {2, 0}}, 0, 0},
                               {{0, {4, 0}}, 0, 1},
                               {{0, {5, 0}}, 0, 1}};
-  for (const auto &chain_edge_count : expected_edge_counts) {
+  for (const auto& chain_edge_count : expected_edge_counts) {
     EXPECT_EQ(
         chains.at(chain_edge_count.chain_id)->inter_chain_out_edges().size(),
         chain_edge_count.inter_chain_out_edges_count);
@@ -744,7 +744,7 @@ using ChainBuilderSplitThresholdTest =
     ::testing::TestWithParam<ChainBuilderSplitThresholdTestCase>;
 
 TEST_P(ChainBuilderSplitThresholdTest, BuildChains) {
-  const ChainBuilderSplitThresholdTestCase &test_case = GetParam();
+  const ChainBuilderSplitThresholdTestCase& test_case = GetParam();
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
                        BuildFromCfgProtoPath(
@@ -825,8 +825,8 @@ INSTANTIATE_TEST_SUITE_P(
                                            InterCfgId{1, {2, 0}}))),
               Pointee(ResultOf(&GetOrderedNodeIds<CFGNodeBundle>,
                                ElementsAre(InterCfgId{2, {0, 0}}))))}}),
-    [](const testing::TestParamInfo<ChainBuilderSplitThresholdTest::ParamType>
-           &info) { return info.param.test_name; });
+    [](const testing::TestParamInfo<ChainBuilderSplitThresholdTest::ParamType>&
+           info) { return info.param.test_name; });
 
 // This tests NodeChainBuilder::BuildChains on a single CFG (with
 // non-inter-procedural layout).
@@ -894,7 +894,7 @@ TEST(NodeChainAssemblyTest, ApplySUChainMergeOrder) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
   ASSERT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {1, 0}}),
@@ -941,7 +941,7 @@ TEST(NodeChainAssemblyTest, ApplyS1US2ChainMergeOrder) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
   ASSERT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {1, 0}}),
@@ -999,7 +999,7 @@ TEST(NodeChainAssemblyTest, ApplyUS2S1ChainMergeOrder) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
   ASSERT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {1, 0}}),
@@ -1056,7 +1056,7 @@ TEST(NodeChainAssemblyTest, ApplyS2S1UChainMergeOrder) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
   ASSERT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {1, 0}}),
@@ -1114,7 +1114,7 @@ TEST(NodeChainAssemblyTest, ApplyS2US1ChainMergeOrder) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
   ASSERT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {1, 0}}),
@@ -1174,7 +1174,7 @@ using NodeChainAssemblyBuildStatusTest =
     ::testing::TestWithParam<NodeChainAssemblyBuildStatusTestCase>;
 
 TEST_P(NodeChainAssemblyBuildStatusTest, TestBuildNodeChainAssemblyStatus) {
-  const NodeChainAssemblyBuildStatusTestCase &test_case = GetParam();
+  const NodeChainAssemblyBuildStatusTestCase& test_case = GetParam();
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
                        BuildFromCfgProtoPath(GetTestInputPath(
@@ -1188,14 +1188,14 @@ TEST_P(NodeChainAssemblyBuildStatusTest, TestBuildNodeChainAssemblyStatus) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
   ASSERT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {1, 0}}),
                                            Key(InterCfgId{10, {2, 0}}),
                                            Key(InterCfgId{10, {3, 0}}),
                                            Key(InterCfgId{10, {4, 0}})));
-  for (const auto &[left_chain_id, right_chain_id] :
+  for (const auto& [left_chain_id, right_chain_id] :
        test_case.setup_merge_chain_ids)
     chain_builder.MergeChains(*chains.at(left_chain_id),
                               *chains.at(right_chain_id));
@@ -1263,8 +1263,10 @@ INSTANTIATE_TEST_SUITE_P(
           .status_matcher =
               StatusIs(absl::StatusCode::kFailedPrecondition,
                        "Assembly has negative score gain: -980.303079")}}),
-    [](const testing::TestParamInfo<NodeChainAssemblyBuildStatusTest::ParamType>
-           &info) { return info.param.test_name; });
+    [](const testing::TestParamInfo<
+        NodeChainAssemblyBuildStatusTest::ParamType>& info) {
+      return info.param.test_name;
+    });
 
 struct NodeChainAssemblyBuildDeathTestCase {
   std::string test_name;
@@ -1279,7 +1281,7 @@ using NodeChainAssemblyBuildDeathTest =
     ::testing::TestWithParam<NodeChainAssemblyBuildDeathTestCase>;
 
 TEST_P(NodeChainAssemblyBuildDeathTest, TestNodeChainAssemblyBuildDeath) {
-  const NodeChainAssemblyBuildDeathTestCase &test_case = GetParam();
+  const NodeChainAssemblyBuildDeathTestCase& test_case = GetParam();
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
                        BuildFromCfgProtoPath(GetTestInputPath(
@@ -1293,14 +1295,14 @@ TEST_P(NodeChainAssemblyBuildDeathTest, TestNodeChainAssemblyBuildDeath) {
       PropellerCodeLayoutParameters(), stats);
   chain_builder.InitNodeChains();
   chain_builder.InitChainEdges();
-  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>> &chains =
+  const absl::flat_hash_map<InterCfgId, std::unique_ptr<NodeChain>>& chains =
       chain_builder.chains();
   ASSERT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {1, 0}}),
                                            Key(InterCfgId{10, {2, 0}}),
                                            Key(InterCfgId{10, {3, 0}}),
                                            Key(InterCfgId{10, {4, 0}})));
-  for (const auto &[left_chain_id, right_chain_id] :
+  for (const auto& [left_chain_id, right_chain_id] :
        test_case.setup_merge_chain_ids)
     chain_builder.MergeChains(*chains.at(left_chain_id),
                               *chains.at(right_chain_id));
@@ -1381,8 +1383,8 @@ INSTANTIATE_TEST_SUITE_P(
           .options = {.merge_order = ChainMergeOrder::kS1US2, .slice_pos = 0},
           .expected_error =
               "Cannot construct an assembly between a chain and itself."}}),
-    [](const testing::TestParamInfo<NodeChainAssemblyBuildDeathTest::ParamType>
-           &info) { return info.param.test_name; });
+    [](const testing::TestParamInfo<NodeChainAssemblyBuildDeathTest::ParamType>&
+           info) { return info.param.test_name; });
 
 // Test for ChainClusterBuilder::BuildClusters on three functions.
 TEST(CodeLayoutTest, BuildClusters) {
@@ -1393,7 +1395,7 @@ TEST(CodeLayoutTest, BuildClusters) {
 
   std::vector<std::unique_ptr<const NodeChain>> built_chains;
   PropellerStats::CodeLayoutStats stats;
-  for (const ControlFlowGraph *cfg :
+  for (const ControlFlowGraph* cfg :
        proto_program_cfg->program_cfg().GetCfgs()) {
     absl::c_move(NodeChainBuilder::CreateNodeChainBuilder(
                      PropellerCodeLayoutScorer(PropellerCodeLayoutParameters()),
@@ -1447,7 +1449,7 @@ TEST(CodeLayoutTest, FindOptimalFallthroughNoSplitChains) {
   std::vector<FunctionChainInfo> all_func_chain_info =
       CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll();
   ASSERT_THAT(all_func_chain_info, SizeIs(1));
-  auto &func_chain_info = all_func_chain_info[0];
+  auto& func_chain_info = all_func_chain_info[0];
   EXPECT_THAT(all_func_chain_info,
               ElementsAre(FunctionChainInfoIs(
                   22,
@@ -1471,7 +1473,7 @@ TEST(CodeLayoutTest, FindOptimalFallthroughSplitChains) {
   std::vector<FunctionChainInfo> all_func_chain_info =
       CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll();
   ASSERT_THAT(all_func_chain_info, SizeIs(1));
-  auto &func_chain_info = all_func_chain_info[0];
+  auto& func_chain_info = all_func_chain_info[0];
   EXPECT_THAT(func_chain_info,
               FunctionChainInfoIs(
                   22,
@@ -1495,7 +1497,7 @@ TEST(CodeLayoutTest, FindOptimalLoopLayout) {
                  proto_program_cfg->program_cfg().GetCfgs())
           .OrderAll();
   ASSERT_THAT(all_func_chain_info, SizeIs(1));
-  auto &func_chain_info = all_func_chain_info[0];
+  auto& func_chain_info = all_func_chain_info[0];
   EXPECT_THAT(
       func_chain_info,
       FunctionChainInfoIs(0,
@@ -1518,7 +1520,7 @@ TEST(CodeLayoutTest, FindOptimalNestedLoopLayout) {
                  proto_program_cfg->program_cfg().GetCfgs())
           .OrderAll();
   ASSERT_THAT(all_func_chain_info, SizeIs(1));
-  auto &func_chain_info = all_func_chain_info[0];
+  auto& func_chain_info = all_func_chain_info[0];
   EXPECT_THAT(func_chain_info,
               FunctionChainInfoIs(_,
                                   ElementsAre(HasFullBbIds(ElementsAre(

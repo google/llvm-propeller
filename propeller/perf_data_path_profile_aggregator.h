@@ -33,26 +33,26 @@ namespace propeller {
 class PerfDataPathProfileAggregator : public PathProfileAggregator {
  public:
   PerfDataPathProfileAggregator(
-      const PropellerOptions &propeller_options,
+      const PropellerOptions& propeller_options,
       std::unique_ptr<PerfDataProvider> perf_data_provider)
       : propeller_options_(propeller_options),
         perf_data_provider_(std::move(perf_data_provider)) {}
 
-  PerfDataPathProfileAggregator(const PerfDataPathProfileAggregator &) = delete;
-  PerfDataPathProfileAggregator &operator=(
-      const PerfDataPathProfileAggregator &) = delete;
-  PerfDataPathProfileAggregator(PerfDataPathProfileAggregator &&) noexcept =
+  PerfDataPathProfileAggregator(const PerfDataPathProfileAggregator&) = delete;
+  PerfDataPathProfileAggregator& operator=(
+      const PerfDataPathProfileAggregator&) = delete;
+  PerfDataPathProfileAggregator(PerfDataPathProfileAggregator&&) noexcept =
       delete;
-  PerfDataPathProfileAggregator &operator=(
-      PerfDataPathProfileAggregator &&) noexcept = delete;
+  PerfDataPathProfileAggregator& operator=(
+      PerfDataPathProfileAggregator&&) noexcept = delete;
 
   absl::StatusOr<propeller::ProgramPathProfile> Aggregate(
-      const BinaryContent &binary_content,
-      const BinaryAddressMapper &binary_address_mapper,
-      const ProgramCfg &program_cfg) override;
+      const BinaryContent& binary_content,
+      const BinaryAddressMapper& binary_address_mapper,
+      const ProgramCfg& program_cfg) override;
 
  private:
-  const PropellerOptions &propeller_options_;
+  const PropellerOptions& propeller_options_;
   std::unique_ptr<PerfDataProvider> perf_data_provider_;
 };
 

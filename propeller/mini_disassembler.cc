@@ -40,7 +40,7 @@
 
 namespace propeller {
 absl::StatusOr<absl_nonnull std::unique_ptr<MiniDisassembler>>
-MiniDisassembler::Create(const llvm::object::ObjectFile *object_file) {
+MiniDisassembler::Create(const llvm::object::ObjectFile* object_file) {
   auto disassembler =
       absl::WrapUnique<MiniDisassembler>(new MiniDisassembler(object_file));
 
@@ -52,7 +52,7 @@ MiniDisassembler::Create(const llvm::object::ObjectFile *object_file) {
 
   llvm::Triple triple;
   triple.setArch(llvm::Triple::ArchType(object_file->getArch()));
-  const llvm::Target *target =
+  const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple.normalize(), err);
   if (target == nullptr) {
     return absl::FailedPreconditionError(absl::StrFormat(
@@ -105,7 +105,7 @@ MiniDisassembler::Create(const llvm::object::ObjectFile *object_file) {
 
 absl::StatusOr<llvm::MCInst> MiniDisassembler::DisassembleOne(
     uint64_t binary_address) {
-  for (const auto &section : object_file_->sections()) {
+  for (const auto& section : object_file_->sections()) {
     if (!section.isText() || section.isVirtual()) {
       continue;
     }
@@ -118,7 +118,7 @@ absl::StatusOr<llvm::MCInst> MiniDisassembler::DisassembleOne(
       return absl::FailedPreconditionError("section has no content");
     }
     llvm::ArrayRef<uint8_t> content_bytes(
-        reinterpret_cast<const uint8_t *>(content->data()), content->size());
+        reinterpret_cast<const uint8_t*>(content->data()), content->size());
     uint64_t section_offset = binary_address - section.getAddress();
     llvm::MCInst inst;
     uint64_t size;
@@ -134,12 +134,12 @@ absl::StatusOr<llvm::MCInst> MiniDisassembler::DisassembleOne(
       "no section containing address 0x%lx found", binary_address));
 }
 
-bool MiniDisassembler::MayAffectControlFlow(const llvm::MCInst &inst) {
+bool MiniDisassembler::MayAffectControlFlow(const llvm::MCInst& inst) {
   return mii_->get(inst.getOpcode()).mayAffectControlFlow(inst, *mri_);
 }
 
 llvm::StringRef MiniDisassembler::GetInstructionName(
-    const llvm::MCInst &inst) const {
+    const llvm::MCInst& inst) const {
   return mii_->getName(inst.getOpcode());
 }
 

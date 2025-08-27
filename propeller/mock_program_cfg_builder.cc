@@ -60,13 +60,13 @@ CFGEdgeKind ConvertFromPb(CFGEdgePb::Kind kindpb) {
   }
 }
 
-InterCfgId ConvertFromPb(const CFGEdgePb::NodeId &idpb) {
+InterCfgId ConvertFromPb(const CFGEdgePb::NodeId& idpb) {
   return InterCfgId{static_cast<int>(idpb.function_index()),
                     {static_cast<int>(idpb.bb_index()), 0}};
 }
 
 BBAddrMap::BBEntry::Metadata ConvertFromPb(
-    const CFGNodePb::MetadataPb &metadatapb) {
+    const CFGNodePb::MetadataPb& metadatapb) {
   return {.HasReturn = metadatapb.has_return(),
           .HasTailCall = metadatapb.has_tail_call(),
           .IsEHPad = metadatapb.is_landing_pad(),
@@ -74,7 +74,7 @@ BBAddrMap::BBEntry::Metadata ConvertFromPb(
 }
 
 std::unique_ptr<CFGNode> CreateNodeFromNodePb(int function_index,
-                                              const CFGNodePb &nodepb) {
+                                              const CFGNodePb& nodepb) {
   return std::make_unique<CFGNode>(
       /*addr=*/0,
       /*bb_index=*/nodepb.bb_id(),
@@ -86,7 +86,7 @@ std::unique_ptr<CFGNode> CreateNodeFromNodePb(int function_index,
 // Creates control flow graphs from protobuf.
 // Calls `CalculateNodeFreqs` after creating the cfgs.
 std::unique_ptr<ProtoProgramCfg> BuildFromCfgProto(
-    const ProgramCfgPb &program_cfg_pb) {
+    const ProgramCfgPb& program_cfg_pb) {
   absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>> cfgs;
   // When we construct Symbols/CFGs from protobuf, bump_ptr_allocator_ and
   // string_saver_ are used to keep all the string content. (Whereas in case of
@@ -94,16 +94,16 @@ std::unique_ptr<ProtoProgramCfg> BuildFromCfgProto(
   // binary_file_content.)
   auto bump_ptr_allocator = std::make_unique<llvm::BumpPtrAllocator>();
   auto string_saver = std::make_unique<llvm::StringSaver>(*bump_ptr_allocator);
-  absl::flat_hash_map<InterCfgId, CFGNode *> id_to_node_map;
+  absl::flat_hash_map<InterCfgId, CFGNode*> id_to_node_map;
   // Now construct the CFG.
-  for (const auto &cfg_pb : program_cfg_pb.cfg()) {
+  for (const auto& cfg_pb : program_cfg_pb.cfg()) {
     llvm::SmallVector<llvm::StringRef, 3> names;
     names.reserve(cfg_pb.name().size());
-    for (const auto &name : cfg_pb.name())
+    for (const auto& name : cfg_pb.name())
       names.emplace_back(string_saver->save(name));
     std::vector<std::unique_ptr<CFGNode>> nodes;
 
-    for (const auto &nodepb : cfg_pb.node()) {
+    for (const auto& nodepb : cfg_pb.node()) {
       std::unique_ptr<CFGNode> node =
           CreateNodeFromNodePb(cfg_pb.function_index(), nodepb);
       id_to_node_map.try_emplace(node->inter_cfg_id(), node.get());
@@ -117,14 +117,14 @@ std::unique_ptr<ProtoProgramCfg> BuildFromCfgProto(
   }
 
   // Now construct the edges
-  for (const auto &cfg_pb : program_cfg_pb.cfg()) {
-    for (const auto &nodepb : cfg_pb.node()) {
-      for (const auto &edgepb : nodepb.out_edges()) {
+  for (const auto& cfg_pb : program_cfg_pb.cfg()) {
+    for (const auto& nodepb : cfg_pb.node()) {
+      for (const auto& edgepb : nodepb.out_edges()) {
         auto source_id = InterCfgId{static_cast<int>(cfg_pb.function_index()),
                                     {static_cast<int>(nodepb.bb_id()), 0}};
         auto sink_id = ConvertFromPb(edgepb.sink());
-        auto *from_n = id_to_node_map.at(source_id);
-        auto *to_n = id_to_node_map.at(sink_id);
+        auto* from_n = id_to_node_map.at(source_id);
+        auto* to_n = id_to_node_map.at(sink_id);
         CHECK_NE(from_n, nullptr);
         CHECK_NE(to_n, nullptr);
         bool inter_section =
@@ -142,7 +142,7 @@ std::unique_ptr<ProtoProgramCfg> BuildFromCfgProto(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<ProtoProgramCfg>> BuildFromCfgProtoPath(
-    const std::string &path_to_cfg_proto) {
+    const std::string& path_to_cfg_proto) {
   int fd = open(path_to_cfg_proto.c_str(), O_RDONLY);
   if (fd == -1) {
     return absl::Status(absl::ErrnoToStatusCode(errno),
