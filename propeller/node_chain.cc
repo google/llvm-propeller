@@ -35,8 +35,8 @@ namespace propeller {
 namespace {
 // Returns whether merging chains in `assembly` requires rebundling their
 // `node_bundles_`.
-bool ShouldRebundle(const NodeChainAssembly &assembly,
-                    const PropellerCodeLayoutParameters &code_layout_params) {
+bool ShouldRebundle(const NodeChainAssembly& assembly,
+                    const PropellerCodeLayoutParameters& code_layout_params) {
   return (!assembly.split_chain().function_index().has_value() ||
           (assembly.split_chain().function_index() !=
            assembly.unsplit_chain().function_index())) &&
@@ -47,11 +47,11 @@ bool ShouldRebundle(const NodeChainAssembly &assembly,
 }
 
 std::pair<absl::flat_hash_map<int, int>, int> GetBaseOrdinalByFunctionIndex(
-    const std::vector<const ControlFlowGraph *> &cfgs) {
+    const std::vector<const ControlFlowGraph*>& cfgs) {
   absl::flat_hash_map<int, int> base_index_by_function_index;
   int node_index = 0;
   // TODO(rahmanl) : Limit the index range to hot nodes.
-  for (const ControlFlowGraph *cfg : cfgs) {
+  for (const ControlFlowGraph* cfg : cfgs) {
     base_index_by_function_index[cfg->function_index()] = node_index;
     node_index += cfg->nodes().size();
   }
@@ -63,10 +63,10 @@ std::pair<absl::flat_hash_map<int, int>, int> GetBaseOrdinalByFunctionIndex(
 class SingleCfgNodeToBundleMapper : public NodeToBundleMapper {
  public:
   // Constructs a `SingleCfgNodeToBundleMapper` to map nodes of a single CFG.
-  explicit SingleCfgNodeToBundleMapper(const ControlFlowGraph &cfg)
+  explicit SingleCfgNodeToBundleMapper(const ControlFlowGraph& cfg)
       : NodeToBundleMapper(cfg.nodes().size()) {}
 
-  int GetNodeIndex(const CFGNode *node) const override {
+  int GetNodeIndex(const CFGNode* node) const override {
     return node->node_index();
   }
 };
@@ -82,7 +82,7 @@ class MultiCfgNodeToBundleMapper : public NodeToBundleMapper {
         base_index_by_function_index_(std::move(base_index_by_function_index)) {
   }
 
-  int GetNodeIndex(const CFGNode *node) const override {
+  int GetNodeIndex(const CFGNode* node) const override {
     return node->node_index() +
            base_index_by_function_index_.at(node->function_index());
   }
@@ -95,17 +95,17 @@ class MultiCfgNodeToBundleMapper : public NodeToBundleMapper {
 };
 }  // namespace
 
-void NodeChain::MergeChainEdges(NodeChain &other,
-                                const NodeToBundleMapper &bundle_mapper) {
+void NodeChain::MergeChainEdges(NodeChain& other,
+                                const NodeToBundleMapper& bundle_mapper) {
   // Helper function to transfer `edges` to edges from `from_chain` to
   // `to_chain`. If `&from_chain == &to_chain`, each CFGEdge will be moved to
   // `intra_chain_out_edges_` of its source bundle. Otherwise, they will be
   // moved to `from_chain.inter_chain_out_edges_` and
   // `to_chain.inter_chain_in_edges_`.
-  auto move_edges = [&](std::vector<const CFGEdge *> edges,
-                        NodeChain &from_chain, NodeChain &to_chain) {
+  auto move_edges = [&](std::vector<const CFGEdge*> edges,
+                        NodeChain& from_chain, NodeChain& to_chain) {
     if (&from_chain == &to_chain) {
-      for (const CFGEdge *edge : edges) {
+      for (const CFGEdge* edge : edges) {
         DCHECK_NE(bundle_mapper.GetBundleMappingEntry(edge->src()).bundle,
                   bundle_mapper.GetBundleMappingEntry(edge->sink()).bundle);
         bundle_mapper.GetBundleMappingEntry(edge->src())
@@ -127,7 +127,7 @@ void NodeChain::MergeChainEdges(NodeChain &other,
 
   // Move out-edges of the `other` `NodeChain` to out-edges of `*this`
   // `NodeChain`.
-  for (auto &[chain, edges] : other.inter_chain_out_edges_) {
+  for (auto& [chain, edges] : other.inter_chain_out_edges_) {
     CHECK_NE(chain, &other)
         << "Intra-chain edges found within inter-chain edges.";
     move_edges(std::move(edges), *this, *chain);
@@ -135,7 +135,7 @@ void NodeChain::MergeChainEdges(NodeChain &other,
   }
 
   // Move in-edges of the `other` `NodeChain` to in-edges of `*this` chain.
-  for (auto *chain : other.inter_chain_in_edges_) {
+  for (auto* chain : other.inter_chain_in_edges_) {
     CHECK_NE(chain, &other)
         << "Intra-chain edges found within inter-chain edges.";
     auto edges_to_other = chain->inter_chain_out_edges_.find(&other);
@@ -148,16 +148,16 @@ void NodeChain::MergeChainEdges(NodeChain &other,
 }
 
 void NodeChain::RemoveIntraBundleEdges(
-    const NodeToBundleMapper &bundle_mapper,
-    const PropellerCodeLayoutScorer &code_layout_scorer) {
-  for (std::unique_ptr<CFGNodeBundle> &bundle : mutable_node_bundles()) {
+    const NodeToBundleMapper& bundle_mapper,
+    const PropellerCodeLayoutScorer& code_layout_scorer) {
+  for (std::unique_ptr<CFGNodeBundle>& bundle : mutable_node_bundles()) {
     auto it = std::remove_if(
         bundle->mutable_intra_chain_out_edges().begin(),
         bundle->mutable_intra_chain_out_edges().end(),
-        [&](const CFGEdge *edge) {
-          const auto &src_bundle_info =
+        [&](const CFGEdge* edge) {
+          const auto& src_bundle_info =
               bundle_mapper.GetBundleMappingEntry(edge->src());
-          const auto &sink_bundle_info =
+          const auto& sink_bundle_info =
               bundle_mapper.GetBundleMappingEntry(edge->sink());
           if (src_bundle_info.bundle == sink_bundle_info.bundle) {
             int64_t distance = sink_bundle_info.bundle_offset -
@@ -176,13 +176,13 @@ void NodeChain::RemoveIntraBundleEdges(
 // Sorts `intra_chain_out_edges_` of every bundle in the chain. This should be
 // called every time `intra_chain_out_edges_` is modified.
 void NodeChain::SortIntraChainEdges(
-    const NodeToBundleMapper &node_to_bundle_mapper) {
-  for (std::unique_ptr<CFGNodeBundle> &bundle : mutable_node_bundles()) {
+    const NodeToBundleMapper& node_to_bundle_mapper) {
+  for (std::unique_ptr<CFGNodeBundle>& bundle : mutable_node_bundles()) {
     // Sort edges based on the position of the sink node's bundle in the
     // chain.
     absl::c_sort(
         bundle->mutable_intra_chain_out_edges(),
-        [&](const CFGEdge *e1, const CFGEdge *e2) {
+        [&](const CFGEdge* e1, const CFGEdge* e2) {
           return std::forward_as_tuple(
                      node_to_bundle_mapper.GetBundleMappingEntry(e1->sink())
                          .bundle->chain_mapping()
@@ -198,10 +198,10 @@ void NodeChain::SortIntraChainEdges(
 }
 
 void NodeChain::MergeWith(NodeChainAssembly assembly,
-                          NodeToBundleMapper &node_to_bundle_mapper,
-                          const PropellerCodeLayoutScorer &code_layout_scorer) {
+                          NodeToBundleMapper& node_to_bundle_mapper,
+                          const PropellerCodeLayoutScorer& code_layout_scorer) {
   CHECK(this == &assembly.split_chain());
-  NodeChain &unsplit_chain = assembly.unsplit_chain();
+  NodeChain& unsplit_chain = assembly.unsplit_chain();
 
   // Merge in and out edges of the `unsplit_chain` into those of `*this`.
   MergeChainEdges(unsplit_chain, node_to_bundle_mapper);
@@ -221,7 +221,7 @@ void NodeChain::MergeWith(NodeChainAssembly assembly,
   std::vector<std::unique_ptr<CFGNodeBundle>> merged_node_bundles;
   int chain_offset = 0;
   int chain_index = 0;
-  CFGNodeBundle *prev_bundle = nullptr;
+  CFGNodeBundle* prev_bundle = nullptr;
   bool should_rebundle =
       ShouldRebundle(assembly, code_layout_scorer.code_layout_params());
   int n_bundles_pre_merge = assembly.split_chain().node_bundles().size() +
@@ -234,7 +234,7 @@ void NodeChain::MergeWith(NodeChainAssembly assembly,
             prev_bundle->nodes().front()->function_index() ==
                 node_bundle->nodes().front()->function_index()) {
           chain_offset += node_bundle->size();
-          for (const CFGNode *node : node_bundle->nodes()) {
+          for (const CFGNode* node : node_bundle->nodes()) {
             node_to_bundle_mapper.AdjustBundleMappingEntry(
                 node,
                 {.bundle = prev_bundle, .bundle_offset = prev_bundle->size()});
@@ -264,11 +264,11 @@ void NodeChain::MergeWith(NodeChainAssembly assembly,
   if (function_index_ != unsplit_chain.function_index_) function_index_.reset();
 }
 
-double NodeChain::ComputeScore(const NodeToBundleMapper &bundle_mapper,
-                               const PropellerCodeLayoutScorer &scorer) const {
+double NodeChain::ComputeScore(const NodeToBundleMapper& bundle_mapper,
+                               const PropellerCodeLayoutScorer& scorer) const {
   double score = 0;
-  for (const std::unique_ptr<CFGNodeBundle> &bundle : node_bundles()) {
-    for (const CFGEdge *edge : bundle->intra_chain_out_edges()) {
+  for (const std::unique_ptr<CFGNodeBundle>& bundle : node_bundles()) {
+    for (const CFGEdge* edge : bundle->intra_chain_out_edges()) {
       int src_index = bundle_mapper.GetNodeIndex(edge->src());
       int sink_index = bundle_mapper.GetNodeIndex(edge->sink());
       CHECK_NE(bundle_mapper.GetBundleMappingEntry(sink_index).bundle,
@@ -284,7 +284,7 @@ double NodeChain::ComputeScore(const NodeToBundleMapper &bundle_mapper,
 
 std::unique_ptr<NodeToBundleMapper>
 NodeToBundleMapper::CreateNodeToBundleMapper(
-    const std::vector<const ControlFlowGraph *> &cfgs) {
+    const std::vector<const ControlFlowGraph*>& cfgs) {
   if (cfgs.size() == 1)
     return std::make_unique<SingleCfgNodeToBundleMapper>(*cfgs.front());
   auto [base_index_by_function_index, ordinal_size] =

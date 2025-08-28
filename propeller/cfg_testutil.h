@@ -71,10 +71,10 @@ struct MultiCfgArg {
 // Utility class for building a CFG for tests.
 class TestCfgBuilder {
  public:
-  TestCfgBuilder(const TestCfgBuilder &) = delete;
-  TestCfgBuilder &operator=(const TestCfgBuilder &) = delete;
-  TestCfgBuilder(TestCfgBuilder &&) = delete;
-  TestCfgBuilder &operator=(TestCfgBuilder &&) = delete;
+  TestCfgBuilder(const TestCfgBuilder&) = delete;
+  TestCfgBuilder& operator=(const TestCfgBuilder&) = delete;
+  TestCfgBuilder(TestCfgBuilder&&) = delete;
+  TestCfgBuilder& operator=(TestCfgBuilder&&) = delete;
 
   explicit TestCfgBuilder(MultiCfgArg multi_cfg_arg)
       : multi_cfg_arg_(multi_cfg_arg) {}
@@ -91,7 +91,7 @@ class TestCfgBuilder {
 
   // Creates intra-function edges for `cfg` for every `IntraEdgeArg` specified
   // in `args`.
-  void CreateIntraEdgesForCfg(ControlFlowGraph &cfg,
+  void CreateIntraEdgesForCfg(ControlFlowGraph& cfg,
                               absl::Span<const IntraEdgeArg> args);
 
   // Creates inter-function edges for every `InterEdgeArg` specified in `args`.
@@ -103,7 +103,7 @@ class TestCfgBuilder {
       cfgs_by_function_index_;
   // Created nodes mapped first by their function_index and then by their
   // bb_index.
-  absl::flat_hash_map<int, absl::flat_hash_map<int, CFGNode *>>
+  absl::flat_hash_map<int, absl::flat_hash_map<int, CFGNode*>>
       nodes_by_function_and_bb_index_;
 };
 }  // namespace propeller

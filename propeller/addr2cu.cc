@@ -36,7 +36,7 @@
 namespace propeller {
 
 absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
-    const llvm::object::ObjectFile &obj, absl::string_view dwp_file) {
+    const llvm::object::ObjectFile& obj, absl::string_view dwp_file) {
   std::unique_ptr<llvm::DWARFContext> dwarf_context =
       llvm::DWARFContext::create(
           obj, llvm::DWARFContext::ProcessDebugRelocations::Process,
@@ -44,7 +44,7 @@ absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
   CHECK(dwarf_context != nullptr);
   if (dwp_file.empty() &&
       absl::c_any_of(dwarf_context->compile_units(),
-                     [](std::unique_ptr<llvm::DWARFUnit> &cu) {
+                     [](std::unique_ptr<llvm::DWARFUnit>& cu) {
                        return cu->getUnitDIE().getTag() ==
                               llvm::dwarf::DW_TAG_skeleton_unit;
                      })) {
@@ -60,7 +60,7 @@ absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
 
 absl::StatusOr<absl::string_view> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
     uint64_t code_address) const {
-  llvm::DWARFCompileUnit *unit =
+  llvm::DWARFCompileUnit* unit =
       dwarf_context_.getCompileUnitForCodeAddress(code_address);
   if (unit == nullptr) {
     return absl::FailedPreconditionError(

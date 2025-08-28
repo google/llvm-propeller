@@ -32,7 +32,7 @@ namespace propeller {
 std::vector<std::unique_ptr<CFGNode>> TestCfgBuilder::CreateNodesForCfg(
     int function_index, absl::Span<const NodeArg> args) {
   std::vector<std::unique_ptr<CFGNode>> nodes;
-  for (const auto &node_arg : args) {
+  for (const auto& node_arg : args) {
     auto node = std::make_unique<CFGNode>(
         /*addr=*/node_arg.addr,
         // Use the same bb_index and bb_id for tests.
@@ -50,8 +50,8 @@ std::vector<std::unique_ptr<CFGNode>> TestCfgBuilder::CreateNodesForCfg(
 }
 
 void TestCfgBuilder::CreateIntraEdgesForCfg(
-    ControlFlowGraph &cfg, absl::Span<const IntraEdgeArg> args) {
-  for (const auto &edge_arg : args) {
+    ControlFlowGraph& cfg, absl::Span<const IntraEdgeArg> args) {
+  for (const auto& edge_arg : args) {
     cfg.CreateEdge(nodes_by_function_and_bb_index_.at(cfg.function_index())
                        .at(edge_arg.from_bb_index),
                    nodes_by_function_and_bb_index_.at(cfg.function_index())
@@ -61,15 +61,15 @@ void TestCfgBuilder::CreateIntraEdgesForCfg(
 }
 
 void TestCfgBuilder::CreateInterEdges(absl::Span<const InterEdgeArg> args) {
-  for (const auto &edge_arg : args) {
-    std::unique_ptr<ControlFlowGraph> &from_cfg =
+  for (const auto& edge_arg : args) {
+    std::unique_ptr<ControlFlowGraph>& from_cfg =
         cfgs_by_function_index_.at(edge_arg.from_function_index);
-    std::unique_ptr<ControlFlowGraph> &to_cfg =
+    std::unique_ptr<ControlFlowGraph>& to_cfg =
         cfgs_by_function_index_.at(edge_arg.to_function_index);
-    CFGNode *from_node =
+    CFGNode* from_node =
         nodes_by_function_and_bb_index_.at(edge_arg.from_function_index)
             .at(edge_arg.from_bb_index);
-    CFGNode *to_node =
+    CFGNode* to_node =
         nodes_by_function_and_bb_index_.at(edge_arg.to_function_index)
             .at(edge_arg.to_bb_index);
     from_cfg->CreateEdge(from_node, to_node, edge_arg.weight, edge_arg.kind,
@@ -79,7 +79,7 @@ void TestCfgBuilder::CreateInterEdges(absl::Span<const InterEdgeArg> args) {
 
 absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>
 TestCfgBuilder::Build() && {
-  for (const auto &cfg_arg : multi_cfg_arg_.cfg_args) {
+  for (const auto& cfg_arg : multi_cfg_arg_.cfg_args) {
     auto cfg = std::make_unique<ControlFlowGraph>(
         cfg_arg.section_name, cfg_arg.function_index, std::nullopt,
         llvm::SmallVector<llvm::StringRef, 1>({cfg_arg.function_name}),

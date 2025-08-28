@@ -50,12 +50,12 @@ TEST(ProgramCfg, CreateCfgInfoFromProto) {
   EXPECT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(), SizeIs(Gt(10)));
 
   // Check some inter-func edge is valid.
-  const ControlFlowGraph *main =
+  const ControlFlowGraph* main =
       proto_program_cfg->program_cfg().GetCfgByIndex(9);
   ASSERT_NE(main, nullptr);
   EXPECT_EQ(main->GetPrimaryName(), "main");
   EXPECT_THAT(main->inter_edges(), Not(IsEmpty()));
-  CFGEdge &edge = *(main->inter_edges().front());
+  CFGEdge& edge = *(main->inter_edges().front());
   EXPECT_EQ(edge.src()->function_index(), main->function_index());
   EXPECT_NE(edge.sink()->function_index(), main->function_index());
   // The same "edge" instance exists both in src->inter_outs_ and
