@@ -99,7 +99,8 @@ absl::StatusOr<PropellerProfile> PropellerProfileComputer::ComputeProfile() && {
   return PropellerProfile({.program_cfg = std::move(program_cfg_),
                            .functions_chain_info_by_section_name =
                                std::move(chain_info_by_section_name),
-                           .stats = std::move(stats_)});
+                           .stats = std::move(stats_),
+                           .build_id = binary_content_->build_id});
 }
 
 absl::StatusOr<std::unique_ptr<PropellerProfileComputer>>

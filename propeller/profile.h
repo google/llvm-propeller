@@ -16,6 +16,7 @@
 #define PROPELLER_PROFILE_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/btree_map.h"
@@ -32,6 +33,8 @@ struct PropellerProfile {
   absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
       functions_chain_info_by_section_name;
   PropellerStats stats;
+  // Build ID of the binary for which the profile was collected.
+  std::string build_id;
 };
 }  // namespace propeller
 

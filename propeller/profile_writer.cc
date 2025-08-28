@@ -136,6 +136,7 @@ void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
   if (profile_encoding_.version != ClusterEncodingVersion::VERSION_0) {
     cc_profile_os << profile_encoding_.version_specifier << "\n";
   }
+  cc_profile_os << "#Profiled binary build ID: " << profile.build_id << "\n";
   // TODO(b/160339651): Remove this in favour of structured format in LLVM code.
   for (const auto& [section_name, section_function_chain_info] :
        profile.functions_chain_info_by_section_name) {
