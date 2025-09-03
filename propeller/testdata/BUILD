@@ -15,6 +15,7 @@
 # Data files for Propeller tests
 
 load("//propeller/bzl:list_symbols.bzl", "list_symbols")
+# [Google-internal load of `cc_binary`]
 # [Google-internal load of `proto_data`]
 
 package(
