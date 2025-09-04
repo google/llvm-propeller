@@ -73,6 +73,7 @@ exports_files([
     "sample_split_only_cc_directives.golden.txt",
     "sample_split_only_ld_directives.golden.txt",
     "sample_verbose_cc_directives.golden.txt",
+    "sample_with_callsites.bin",  # generated using the "sample_bin" genrule.
     "sample_with_dropped_symbol.bin",
     "simple_conditionals_join.protobuf",
     "simple_loop.protobuf",
