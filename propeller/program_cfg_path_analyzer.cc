@@ -331,17 +331,6 @@ void ProgramCfgPathAnalyzer::AnalyzePaths(std::optional<int> paths_to_analyze) {
         all_function_path_info_
             .try_emplace(path_function_index, cfg->nodes().size())
             .first->second;
-
-    if (!path.branches.front().to_bb.has_value()) {
-      CHECK_EQ(path.branches.size(), 1)
-          << "Path with unknown block in the middle: " << path;
-      function_path_info.UpdateCachePressure(
-          path.branches.front().from_bb->flat_bb_index, path.sample_time, {},
-          /*path_length=*/1,
-          absl::Milliseconds(
-              path_profile_options_->max_icache_penalty_interval_millis()));
-      continue;
-    }
     CloningPathTraceHandler handler(
         path_profile_options_, cfg, &hot_join_bbs_.at(path_function_index),
         &function_path_info,
