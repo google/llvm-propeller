@@ -13,8 +13,8 @@
 # limitations under the License.
 
 # Configure the bzlmod registry.
-common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/refs/heads/main/
 common --registry=file:%workspace%/Bazel/registry/
+common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/refs/heads/main/
 
 # WORKSPACE is disabled by default in Bazel 8. We can enable it manually now,
 # but we'll need to upgrade WORKSPACE dependencies to bzlmod before Bazel 9
