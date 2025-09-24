@@ -1730,6 +1730,8 @@ cc_test(
         "//propeller/testdata:sample_split_only_ld_directives.golden.txt",
         "//propeller/testdata:sample_verbose_cc_directives.golden.txt",
         "//propeller/testdata:sample_with_callsites.bin",
+        "//propeller/testdata:sample_with_bb_hash.bin",
+        "//propeller/testdata:sample_with_bb_hash.perfdata",
     ],
     deps = [
         ":file_helpers",

@@ -114,18 +114,17 @@ void DumpCfgs(const PropellerProfile& profile,
 }
 
 // Writes the intra-function edge profile of `cfg` into `out` in a single line
-// which starts with the "#cfg" marker.
-// For each CFGNode with non-zero frequency, it prints out the node and edge
-// frequencies in the following format:
+// which starts with the "g" marker.
+// For each CFGNode, it prints out the node and edge frequencies in the 
+// following format:
 // "<bb>:<bb_freq>,<succ_bb_1>:<edge_freq_1>,<succ_bb_2>:<edge_freq_2>,..."
 // which starts first with the full bb id and frequency of that node, followed
 // by the successors and their edge frequencies. Please note that the edge
 // weights may not precisely add up to the node frequency.
 void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) {
-  out << "#cfg";
+  out << "g";
   cfg.ForEachNodeRef([&](const CFGNode& node) {
     int node_frequency = node.CalculateFrequency();
-    if (node_frequency == 0) return;
     out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
         << node_frequency;
     node.ForEachOutEdgeInOrder([&](const CFGEdge& edge) {
@@ -136,6 +135,19 @@ void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) {
   });
   out << "\n";
 }
+
+// Writes the basic block hashes in a single line which starts with the "h" marker.
+// For each CFGNode, it prints out the node and hash in the following format:
+// "<bb>:<bb_hash>", the bb_hash is a hexadecimal string without the "0x" prefix.
+void WriteBBHash(const ControlFlowGraph& cfg, std::ofstream& out) {
+  out << "h";
+  cfg.ForEachNodeRef([&](const CFGNode& node) {
+    out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
+        << absl::StrCat(absl::Hex(node.hash()));
+  });
+  out << "\n";
+}
+
 }  // namespace
 
 void PropellerProfileWriter::WritePrefetchInfo(
@@ -274,6 +286,9 @@ void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
 
       // Dump the edge profile for this CFG if requested.
       if (options_.write_cfg_profile()) WriteCfgProfile(*cfg, cc_profile_os);
+
+      // Dump the basic block hashes if requested.
+      if (options_.write_bb_hash()) WriteBBHash(*cfg, cc_profile_os);
     }
 
     for (const auto& [func_names, chain_id] : symbol_order) {

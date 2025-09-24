@@ -37,6 +37,7 @@ struct NodeArg {
   int bb_index;
   uint64_t size;
   llvm::object::BBAddrMap::BBEntry::Metadata metadata;
+  uint64_t hash;
 };
 
 struct IntraEdgeArg {
